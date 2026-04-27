@@ -321,6 +321,9 @@ class JoyImageEditPipeline(DiffusionPipeline):
         prompt = [p.replace("<image>\n", "<|vision_start|><|image_pad|><|vision_end|>") for p in prompt]
         prompt = [template.format(p) for p in prompt]
 
+        if images is not None and isinstance(images, list) and len(images) < len(prompt) and len(prompt) % len(images) == 0:
+            images = images * (len(prompt) // len(images))
+
         inputs = self.qwen_processor(
             text=prompt,
             images=images,
@@ -551,6 +554,12 @@ class JoyImageEditPipeline(DiffusionPipeline):
 
         if latents is None:
             if reference_images is not None:
+                if batch_size > len(reference_images) and batch_size % len(reference_images) == 0:
+                    reference_images = reference_images * (batch_size // len(reference_images))
+                elif batch_size > len(reference_images):
+                    raise ValueError(
+                        f"Cannot duplicate `image` of batch size {len(reference_images)} to {batch_size} text prompts."
+                    )
                 # Encode reference images and concatenate with a noise slot.
                 ref_img = [torch.from_numpy(np.array(x.convert("RGB"))) for x in reference_images]
                 ref_img = torch.stack(ref_img).to(device=device, dtype=dtype)
