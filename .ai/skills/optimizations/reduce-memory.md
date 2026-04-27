@@ -49,28 +49,17 @@ VAEs that do NOT support tiling: `AutoencoderKLWan`, `AsymmetricAutoencoderKL`.
 
 VAEs that do NOT support slicing: `AutoencoderKLWan`, `AsymmetricAutoencoderKL`.
 
-## Group offloading — full parameter reference
+## Group offloading — parameters not in the optimization guide
 
-Parameters available across the three group offloading APIs (`pipe.enable_group_offload`, `component.enable_group_offload`, `apply_group_offloading`):
+For the full parameter reference, see `docs/source/en/optimization/memory.md` / https://huggingface.co/docs/diffusers/main/en/optimization/memory#group-offloading.
 
-| Parameter | Pipeline | Model | `apply_group_offloading` | Description |
-|---|---|---|---|---|
-| `onload_device` | yes | yes | yes | Device to load layers onto for computation |
-| `offload_device` | yes | yes | yes | Device to offload layers to when idle (default: CPU) |
-| `offload_type` | yes | yes | yes | `"block_level"` or `"leaf_level"` |
-| `num_blocks_per_group` | yes | yes | yes | Required for `block_level` — layers per group |
-| `non_blocking` | yes | yes | yes | Non-blocking device transfer |
-| `use_stream` | yes | yes | yes | Overlap transfer/compute via CUDA streams (~2-3× RAM of model) |
-| `record_stream` | yes | yes | yes | With `use_stream`: faster, slightly more VRAM |
-| `low_cpu_mem_usage` | yes | yes | yes | With `use_stream`: pin on-the-fly instead of pre-pinning (saves RAM, slower) |
-| `offload_to_disk_path` | yes | yes | yes | Offload to disk instead of CPU RAM |
-| `exclude_modules` | **pipeline only** | — | — | Component names to keep on `onload_device` |
-| `block_modules` | — | **yes** | **yes** | Override which submodules count as blocks |
-| `exclude_kwargs` | — | **yes** | **yes** | Kwarg keys not to move between devices |
+Three parameters covered only in the API docstrings, not in the guide:
 
-`use_stream=True` forces `num_blocks_per_group=1` for `block_level` offloading (a warning is raised otherwise).
+- **`exclude_modules`** (pipeline-level only) — list of component names to keep on `onload_device` instead of offloading
+- **`block_modules`** (model/`apply_group_offloading` only) — override which submodules are treated as blocks for `block_level` offloading
+- **`exclude_kwargs`** (model/`apply_group_offloading` only) — kwarg keys that should not be moved between devices (e.g. mutable cache state)
 
-Non-diffusers components (e.g. transformers text encoders) must use the functional `apply_group_offloading` API rather than `.enable_group_offload()`.
+Non-diffusers components (e.g. transformers text encoders) must use `apply_group_offloading` rather than `.enable_group_offload()`.
 
 ## Sequential CPU offloading
 
