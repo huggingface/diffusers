@@ -96,16 +96,19 @@ class WanVACETransformer3DTesterConfig(BaseModelTesterConfig):
                 (batch_size, num_channels, num_frames, height, width),
                 generator=self.generator,
                 device=torch_device,
+                dtype=self.torch_dtype,
             ),
             "encoder_hidden_states": randn_tensor(
                 (batch_size, sequence_length, text_encoder_embedding_dim),
                 generator=self.generator,
                 device=torch_device,
+                dtype=self.torch_dtype,
             ),
             "control_hidden_states": randn_tensor(
                 (batch_size, vace_in_channels, num_frames, height, width),
                 generator=self.generator,
                 device=torch_device,
+                dtype=self.torch_dtype,
             ),
             "timestep": torch.randint(0, 1000, size=(batch_size,), generator=self.generator).to(torch_device),
         }

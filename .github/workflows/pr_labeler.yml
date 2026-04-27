@@ -41,6 +41,36 @@ jobs:
             gh pr edit "$PR_NUMBER" --remove-label "missing-tests" 2>/dev/null || true
           fi
 
+  fixes-issue:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check for linked closing issues
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+        run: |
+          OWNER="${REPO%/*}"
+          NAME="${REPO#*/}"
+          COUNT=$(gh api graphql \
+            -F owner="$OWNER" -F name="$NAME" -F number="$PR_NUMBER" \
+            -f query='
+              query($owner: String!, $name: String!, $number: Int!) {
+                repository(owner: $owner, name: $name) {
+                  pullRequest(number: $number) {
+                    closingIssuesReferences(first: 1) {
+                      totalCount
+                    }
+                  }
+                }
+              }' \
+            --jq '.data.repository.pullRequest.closingIssuesReferences.totalCount')
+          if [ "${COUNT:-0}" -gt 0 ]; then
+            gh pr edit "$PR_NUMBER" --repo "$REPO" --add-label "fixes-issue"
+          else
+            gh pr edit "$PR_NUMBER" --repo "$REPO" --remove-label "fixes-issue" 2>/dev/null || true
+          fi
+
   size-label:
     runs-on: ubuntu-latest
     steps:
