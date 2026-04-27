@@ -14,6 +14,7 @@
 
 import copy
 import inspect
+import math
 from dataclasses import dataclass
 from typing import Any, Callable
 
@@ -714,22 +715,50 @@ class LTX2ConditionPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoad
         frame_scale_factor = self.vae_temporal_compression_ratio
         latent_num_frames = (num_frames - 1) // frame_scale_factor + 1
         for i, condition in enumerate(conditions):
+            # Create a channels-last video-like array of shape (F, H, W, C) in preparation for resizing.
             if isinstance(condition.frames, PIL.Image.Image):
-                # Single image, convert to List[PIL.Image.Image]
-                video_like_cond = [condition.frames]
-            elif isinstance(condition.frames, np.ndarray) and condition.frames.ndim == 3:
-                # Image-like ndarray of shape (H, W, C), insert frame dim in first axis
-                video_like_cond = np.expand_dims(condition.frames, axis=0)
-            elif isinstance(condition.frames, torch.Tensor) and condition.frames.ndim == 3:
-                # Image-like tensor of shape (C, H, W), insert frame dim in first dim
-                video_like_cond = condition.frames.unsqueeze(0)
+                arr = np.array(condition.frames.convert("RGB"))[None]  # (1, H, W, 3)
+            elif isinstance(condition.frames, list) and all(
+                isinstance(f, PIL.Image.Image) for f in condition.frames
+            ):
+                arr = np.stack([np.array(f.convert("RGB")) for f in condition.frames])  # (F, H, W, 3)
+            elif isinstance(condition.frames, np.ndarray):
+                arr = condition.frames if condition.frames.ndim == 4 else condition.frames[None]
+            elif isinstance(condition.frames, torch.Tensor):
+                t = condition.frames if condition.frames.ndim == 4 else condition.frames.unsqueeze(0)
+                # Reference layout for video tensors is (F, C, H, W); convert to (F, H, W, C) for the
+                # resize logic, which expects channels-last.
+                arr = t.detach().cpu().permute(0, 2, 3, 1).numpy()
             else:
-                # Treat all other as videos. Note that this means 4D ndarrays and tensors will be treated as videos of
-                # shape (F, H, W, C) and (F, C, H, W), respectively.
-                video_like_cond = condition.frames
-            condition_pixels = self.video_processor.preprocess_video(
-                video_like_cond, height, width, resize_mode="crop"
+                raise TypeError(
+                    f"Unsupported `frames` type for condition {i}: {type(condition.frames)}"
+                )
+
+            src_h, src_w = arr.shape[1], arr.shape[2]
+            num_cond_frames = arr.shape[0]
+            # Convert the NumPy array to a channels-first tensor of shape (1, C, F, H, W)
+            pixels = torch.from_numpy(np.ascontiguousarray(arr)).to(torch.float32)
+            pixels = pixels.permute(3, 0, 1, 2).unsqueeze(0).to(device)  # (1, C, F, H, W)
+
+            # Resize so the longer side fills the target, then center-crop to exact (height, width).
+            scale = max(height / src_h, width / src_w)
+            new_h = math.ceil(src_h * scale)
+            new_w = math.ceil(src_w * scale)
+            # Flatten (B, C, F, H, W) → (B*F, C, H, W) for the per-frame interpolation
+            pixels = pixels.permute(0, 2, 1, 3, 4).reshape(num_cond_frames, 3, src_h, src_w)
+            # NOTE: we avoid using VideoProcessor.preprocess_video here because it uses PIL.Image.resize under the
+            # hood, which will apply an anti-aliasing pre-filter when downsampling. The original LTX-2.X code simply
+            # uses F.interpolate, which is reproduced here.
+            pixels = torch.nn.functional.interpolate(
+                pixels, size=(new_h, new_w), mode="bilinear", align_corners=False
             )
+            top = (new_h - height) // 2
+            left = (new_w - width) // 2
+            pixels = pixels[:, :, top : top + height, left : left + width]
+            pixels = pixels.reshape(1, num_cond_frames, 3, height, width).permute(0, 2, 1, 3, 4)
+
+            # Map [0, 255] → [-1, 1] (VAE input convention).
+            condition_pixels = pixels / 127.5 - 1.0
 
             # Interpret the index as a latent index, following the original LTX-2 code.
             latent_start_idx = condition.index
@@ -887,16 +916,19 @@ class LTX2ConditionPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoad
         Prepare noisy video latents, applying frame conditions.
 
         First-frame conditions (`latent_idx == 0`) are applied by overwriting tokens at the first-frame positions
-        (`VideoConditionByLatentIndex` semantics). Non-first-frame conditions (`latent_idx > 0`) are packaged as
-        keyframe extras to be appended to the latent sequence during the transformer forward pass
-        (`VideoConditionByKeyframeIndex` semantics).
+        (`VideoConditionByLatentIndex` semantics). Non-first-frame conditions (`latent_idx > 0`) are concatenated
+        onto the main latent sequence with per-token `conditioning_mask = strength`
+        (`VideoConditionByKeyframeIndex` semantics) — the denoising loop's existing timestep formula
+        `t * (1 - conditioning_mask)` and post-process blend
+        `denoised * (1 - conditioning_mask) + clean * conditioning_mask` then drive them across steps.
 
         Returns a 4-tuple:
-            - `latents`: packed noisy latents (with first-frame replacement applied if applicable).
-            - `conditioning_mask`: packed conditioning mask (non-zero only at first-frame positions).
-            - `clean_latents`: clean first-frame conditions at first-frame positions (zeros elsewhere).
-            - `keyframe_extras`: `(keyframe_latents, keyframe_coords, keyframe_denoise_factors)` for keyframe
-              conditions at non-zero latent indices, or `None` if there are none.
+            - `latents`: packed noisy latents (base tokens + any keyframe tokens cat'd onto the sequence dim).
+            - `conditioning_mask`: packed conditioning mask with values in `[0, 1]` — `1` at first-frame positions,
+              `strength` at keyframe positions, `0` elsewhere.
+            - `clean_latents`: clean condition values at conditioned positions (zeros elsewhere); same shape as `latents`.
+            - `keyframe_coords`: `[B, 3, num_keyframe_patches, 2]` positional coordinates to append to `video_coords`,
+              or `None` if there are no non-first-frame conditions.
         """
         latent_height = height // self.vae_spatial_compression_ratio
         latent_width = width // self.vae_spatial_compression_ratio
@@ -968,11 +1000,12 @@ class LTX2ConditionPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoad
             latent_width=latent_width,
         )
 
-        # Non-first-frame conditions (latent_idx > 0): append as keyframe extras with offset pixel coords.
+        # Non-first-frame ("keyframe") conditions (latent_idx > 0): append as extra latent tokens to the noisy latent.
+        # Each condition gets a all-`strength` conditioning mask and pos ids, which are also appended to those of the
+        # noisy latent. At each denoising step i, the keyframe conditions get an effective noise level of
+        # (1 - conditioning_strength) * sigma_i.
         frame_scale_factor = self.vae_temporal_compression_ratio
-        keyframe_tokens = []
-        keyframe_coords = []
-        keyframe_denoise_factors = []
+        kf_tokens_list, kf_coords_list, kf_mask_list, kf_clean_list = [], [], [], []
         for cond_5d, cond_packed, strength, latent_idx, num_pixel_frames in zip(
             condition_latents_5d,
             condition_latents_packed,
@@ -984,8 +1017,6 @@ class LTX2ConditionPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoad
                 continue
 
             _, _, kf_latent_frames, kf_latent_height, kf_latent_width = cond_5d.shape
-            # Pixel-space frame index at which the keyframe is placed. Matches the `start_idx` formula in
-            # `preprocess_conditions` used for trimming.
             pixel_frame_idx = (latent_idx - 1) * frame_scale_factor + 1
 
             coords = self._prepare_keyframe_coords(
@@ -999,31 +1030,33 @@ class LTX2ConditionPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoad
             )
 
             num_tokens = cond_packed.shape[1]
-            denoise_factor = torch.full(
-                (1, num_tokens), 1.0 - strength, device=device, dtype=torch.float32
+            kf_mask = torch.full(
+                (cond_packed.shape[0], num_tokens, 1),
+                float(strength),
+                device=device,
+                dtype=conditioning_mask.dtype,
             )
 
-            keyframe_tokens.append(cond_packed)
-            keyframe_coords.append(coords)
-            keyframe_denoise_factors.append(denoise_factor)
+            kf_tokens_list.append(cond_packed)
+            kf_clean_list.append(cond_packed)
+            kf_mask_list.append(kf_mask)
+            kf_coords_list.append(coords)
 
-        keyframe_extras: tuple[torch.Tensor, torch.Tensor, torch.Tensor] | None
-        if keyframe_tokens:
-            keyframe_extras = (
-                torch.cat(keyframe_tokens, dim=1),
-                torch.cat(keyframe_coords, dim=2),
-                torch.cat(keyframe_denoise_factors, dim=1),
-            )
-        else:
-            keyframe_extras = None
+        if kf_tokens_list:
+            keyframe_coords = torch.cat(kf_coords_list, dim=2)
+            latents = torch.cat([latents, torch.cat(kf_tokens_list, dim=1)], dim=1)
+            conditioning_mask = torch.cat([conditioning_mask, torch.cat(kf_mask_list, dim=1)], dim=1)
+            clean_latents = torch.cat([clean_latents, torch.cat(kf_clean_list, dim=1)], dim=1)
 
-        # Sample from the standard Gaussian prior (or an intermediate Gaussian distribution if noise_scale < 1.0).
+        # The conditioning_mask values have the following semantics:
+        #   - mask=0: fully noise tokens (e.g. noisy latents)
+        #   - mask=1: keep fully clean (e.g. I2V first-frame condition, conditions with strength=1)
+        #   - mask in (0, 1): use intermediate noise level mask * sigma_i (noise_scale == sigma_0)
         noise = randn_tensor(latents.shape, generator=generator, device=latents.device, dtype=latents.dtype)
-        scaled_mask = (1.0 - conditioning_mask) * noise_scale
-        # Add noise to the `latents` so that it is at the noise level specified by `noise_scale`.
+        scaled_mask = (1.0 - conditioning_mask) * noise_scale  # noise to initial noise level `noise_scale`
         latents = noise * scaled_mask + latents * (1 - scaled_mask)
 
-        return latents, conditioning_mask, clean_latents, keyframe_extras
+        return latents, conditioning_mask, clean_latents, keyframe_coords
 
     def prepare_audio_latents(
         self,
@@ -1046,16 +1079,15 @@ class LTX2ConditionPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoad
 
         latent_mel_bins = num_mel_bins // self.audio_vae_mel_compression_ratio
 
-        shape = (batch_size, num_channels_latents, audio_latent_length, latent_mel_bins)
-
         if isinstance(generator, list) and len(generator) != batch_size:
             raise ValueError(
                 f"You have passed a list of generators of length {len(generator)}, but requested an effective batch"
                 f" size of {batch_size}. Make sure the batch size matches the length of the generators."
             )
 
-        latents = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
-        latents = self._pack_audio_latents(latents)
+        # Sample in packed shape (B, L, C * M), following the original LTX-2.X code
+        packed_shape = (batch_size, audio_latent_length, num_channels_latents * latent_mel_bins)
+        latents = randn_tensor(packed_shape, generator=generator, device=device, dtype=dtype)
         return latents
 
     def convert_velocity_to_x0(
@@ -1135,90 +1167,6 @@ class LTX2ConditionPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoad
     @property
     def interrupt(self):
         return self._interrupt
-
-    def _run_transformer(
-        self,
-        latent_model_input: torch.Tensor,
-        audio_latent_model_input: torch.Tensor,
-        video_timestep: torch.Tensor,
-        audio_timestep: torch.Tensor,
-        sigma: torch.Tensor,
-        video_coords: torch.Tensor,
-        audio_coords: torch.Tensor,
-        connector_prompt_embeds: torch.Tensor,
-        connector_audio_prompt_embeds: torch.Tensor,
-        connector_attention_mask: torch.Tensor,
-        latent_num_frames: int,
-        latent_height: int,
-        latent_width: int,
-        frame_rate: float,
-        audio_num_frames: int,
-        use_cross_timestep: bool,
-        attention_kwargs: dict[str, Any] | None,
-        cache_context: str,
-        extra_latents: torch.Tensor | None = None,
-        extra_coords: torch.Tensor | None = None,
-        extra_timestep: torch.Tensor | None = None,
-        isolate_modalities: bool = False,
-        spatio_temporal_guidance_blocks: list[int] | None = None,
-    ) -> tuple[torch.Tensor, torch.Tensor]:
-        """
-        Run a single transformer forward pass, optionally concatenating extra tokens (keyframe conditions) to the
-        video hidden states.
-
-        When `extra_latents` is provided, the extra tokens are concatenated to the video hidden states, video coords,
-        and video timesteps. After the transformer forward pass, the extra tokens are stripped from the video output
-        so only the noisy-token predictions are returned.
-
-        Returns:
-            `(noise_pred_video, noise_pred_audio)` where `noise_pred_video` has the same sequence length as the input
-            `latent_model_input` (extras are stripped).
-        """
-        video_seq_len = latent_model_input.shape[1]
-
-        if extra_latents is not None:
-            batch_size = latent_model_input.shape[0]
-            extra_batch = extra_latents.to(latent_model_input.dtype).expand(batch_size, -1, -1)
-            combined_hidden = torch.cat([latent_model_input, extra_batch], dim=1)
-
-            extra_coords_batch = extra_coords.expand(batch_size, -1, -1, -1)
-            combined_coords = torch.cat([video_coords, extra_coords_batch], dim=2)
-
-            extra_ts_batch = extra_timestep.expand(batch_size, -1)
-            combined_timestep = torch.cat([video_timestep, extra_ts_batch], dim=1)
-        else:
-            combined_hidden = latent_model_input
-            combined_coords = video_coords
-            combined_timestep = video_timestep
-
-        with self.transformer.cache_context(cache_context):
-            noise_pred_combined, noise_pred_audio = self.transformer(
-                hidden_states=combined_hidden,
-                audio_hidden_states=audio_latent_model_input,
-                encoder_hidden_states=connector_prompt_embeds,
-                audio_encoder_hidden_states=connector_audio_prompt_embeds,
-                timestep=combined_timestep,
-                audio_timestep=audio_timestep,
-                sigma=sigma,
-                encoder_attention_mask=connector_attention_mask,
-                audio_encoder_attention_mask=connector_attention_mask,
-                num_frames=latent_num_frames,
-                height=latent_height,
-                width=latent_width,
-                fps=frame_rate,
-                audio_num_frames=audio_num_frames,
-                video_coords=combined_coords,
-                audio_coords=audio_coords,
-                isolate_modalities=isolate_modalities,
-                spatio_temporal_guidance_blocks=spatio_temporal_guidance_blocks,
-                perturbation_mask=None,
-                use_cross_timestep=use_cross_timestep,
-                attention_kwargs=attention_kwargs,
-                return_dict=False,
-            )
-
-        noise_pred_video = noise_pred_combined[:, :video_seq_len]
-        return noise_pred_video, noise_pred_audio
 
     @torch.no_grad()
     @replace_example_docstring(EXAMPLE_DOC_STRING)
@@ -1497,7 +1445,7 @@ class LTX2ConditionPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoad
         # video_sequence_length = latent_num_frames * latent_height * latent_width
 
         num_channels_latents = self.transformer.config.in_channels
-        latents, conditioning_mask, clean_latents, keyframe_extras = self.prepare_latents(
+        latents, conditioning_mask, clean_latents, keyframe_coords = self.prepare_latents(
             conditions=conditions,
             batch_size=batch_size * num_videos_per_prompt,
             num_channels_latents=num_channels_latents,
@@ -1581,6 +1529,8 @@ class LTX2ConditionPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoad
         audio_coords = self.transformer.audio_rope.prepare_audio_coords(
             audio_latents.shape[0], audio_num_frames, audio_latents.device
         )
+        if keyframe_coords is not None:
+            video_coords = torch.cat([video_coords, keyframe_coords], dim=2)
         # Duplicate the positional ids as well if using CFG
         if self.do_classifier_free_guidance:
             video_coords = video_coords.repeat((2,) + (1,) * (video_coords.ndim - 1))  # Repeat twice in batch dim
@@ -1604,35 +1554,31 @@ class LTX2ConditionPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoad
                 timestep = t.expand(latent_model_input.shape[0])
                 video_timestep = timestep.unsqueeze(-1) * (1 - conditioning_mask.squeeze(-1))
 
-                # Per-token timestep for keyframe extras: sigma * (1 - strength), i.e. 0 for fully-clean keyframes.
-                extra_latents_in = extra_coords_in = extra_timestep_in = None
-                if keyframe_extras is not None:
-                    extra_latents_in, extra_coords_in, keyframe_denoise_factors = keyframe_extras
-                    extra_timestep_in = t * keyframe_denoise_factors
-
-                noise_pred_video, noise_pred_audio = self._run_transformer(
-                    latent_model_input=latent_model_input,
-                    audio_latent_model_input=audio_latent_model_input,
-                    video_timestep=video_timestep,
-                    audio_timestep=timestep,
-                    sigma=timestep,
-                    video_coords=video_coords,
-                    audio_coords=audio_coords,
-                    connector_prompt_embeds=connector_prompt_embeds,
-                    connector_audio_prompt_embeds=connector_audio_prompt_embeds,
-                    connector_attention_mask=connector_attention_mask,
-                    latent_num_frames=latent_num_frames,
-                    latent_height=latent_height,
-                    latent_width=latent_width,
-                    frame_rate=frame_rate,
-                    audio_num_frames=audio_num_frames,
-                    use_cross_timestep=use_cross_timestep,
-                    attention_kwargs=attention_kwargs,
-                    cache_context="cond_uncond",
-                    extra_latents=extra_latents_in,
-                    extra_coords=extra_coords_in,
-                    extra_timestep=extra_timestep_in,
-                )
+                with self.transformer.cache_context("cond_uncond"):
+                    noise_pred_video, noise_pred_audio = self.transformer(
+                        hidden_states=latent_model_input,
+                        audio_hidden_states=audio_latent_model_input,
+                        encoder_hidden_states=connector_prompt_embeds,
+                        audio_encoder_hidden_states=connector_audio_prompt_embeds,
+                        timestep=video_timestep,
+                        audio_timestep=timestep,
+                        sigma=timestep,  # Used by LTX-2.3
+                        encoder_attention_mask=connector_attention_mask,
+                        audio_encoder_attention_mask=connector_attention_mask,
+                        num_frames=latent_num_frames,
+                        height=latent_height,
+                        width=latent_width,
+                        fps=frame_rate,
+                        audio_num_frames=audio_num_frames,
+                        video_coords=video_coords,
+                        audio_coords=audio_coords,
+                        isolate_modalities=False,
+                        spatio_temporal_guidance_blocks=None,
+                        perturbation_mask=None,
+                        use_cross_timestep=use_cross_timestep,
+                        attention_kwargs=attention_kwargs,
+                        return_dict=False,
+                    )
                 noise_pred_video = noise_pred_video.float()
                 noise_pred_audio = noise_pred_audio.float()
 
@@ -1682,30 +1628,32 @@ class LTX2ConditionPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoad
                     noise_pred_audio = self.convert_velocity_to_x0(audio_latents, noise_pred_audio, i, audio_scheduler)
 
                 if self.do_spatio_temporal_guidance:
-                    noise_pred_video_uncond_stg, noise_pred_audio_uncond_stg = self._run_transformer(
-                        latent_model_input=latents.to(dtype=prompt_embeds.dtype),
-                        audio_latent_model_input=audio_latents.to(dtype=prompt_embeds.dtype),
-                        video_timestep=video_timestep,
-                        audio_timestep=timestep,
-                        sigma=timestep,
-                        video_coords=video_pos_ids,
-                        audio_coords=audio_pos_ids,
-                        connector_prompt_embeds=video_prompt_embeds,
-                        connector_audio_prompt_embeds=audio_prompt_embeds,
-                        connector_attention_mask=prompt_attn_mask,
-                        latent_num_frames=latent_num_frames,
-                        latent_height=latent_height,
-                        latent_width=latent_width,
-                        frame_rate=frame_rate,
-                        audio_num_frames=audio_num_frames,
-                        use_cross_timestep=use_cross_timestep,
-                        attention_kwargs=attention_kwargs,
-                        cache_context="uncond_stg",
-                        extra_latents=extra_latents_in,
-                        extra_coords=extra_coords_in,
-                        extra_timestep=extra_timestep_in,
-                        spatio_temporal_guidance_blocks=spatio_temporal_guidance_blocks,
-                    )
+                    with self.transformer.cache_context("uncond_stg"):
+                        noise_pred_video_uncond_stg, noise_pred_audio_uncond_stg = self.transformer(
+                            hidden_states=latents.to(dtype=prompt_embeds.dtype),
+                            audio_hidden_states=audio_latents.to(dtype=prompt_embeds.dtype),
+                            encoder_hidden_states=video_prompt_embeds,
+                            audio_encoder_hidden_states=audio_prompt_embeds,
+                            timestep=video_timestep,
+                            audio_timestep=timestep,
+                            sigma=timestep,  # Used by LTX-2.3
+                            encoder_attention_mask=prompt_attn_mask,
+                            audio_encoder_attention_mask=prompt_attn_mask,
+                            num_frames=latent_num_frames,
+                            height=latent_height,
+                            width=latent_width,
+                            fps=frame_rate,
+                            audio_num_frames=audio_num_frames,
+                            video_coords=video_pos_ids,
+                            audio_coords=audio_pos_ids,
+                            isolate_modalities=False,
+                            # Use STG at given blocks to perturb model
+                            spatio_temporal_guidance_blocks=spatio_temporal_guidance_blocks,
+                            perturbation_mask=None,
+                            use_cross_timestep=use_cross_timestep,
+                            attention_kwargs=attention_kwargs,
+                            return_dict=False,
+                        )
                     noise_pred_video_uncond_stg = noise_pred_video_uncond_stg.float()
                     noise_pred_audio_uncond_stg = noise_pred_audio_uncond_stg.float()
                     noise_pred_video_uncond_stg = self.convert_velocity_to_x0(
@@ -1721,30 +1669,32 @@ class LTX2ConditionPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoad
                     video_stg_delta = audio_stg_delta = 0
 
                 if self.do_modality_isolation_guidance:
-                    noise_pred_video_uncond_modality, noise_pred_audio_uncond_modality = self._run_transformer(
-                        latent_model_input=latents.to(dtype=prompt_embeds.dtype),
-                        audio_latent_model_input=audio_latents.to(dtype=prompt_embeds.dtype),
-                        video_timestep=video_timestep,
-                        audio_timestep=timestep,
-                        sigma=timestep,
-                        video_coords=video_pos_ids,
-                        audio_coords=audio_pos_ids,
-                        connector_prompt_embeds=video_prompt_embeds,
-                        connector_audio_prompt_embeds=audio_prompt_embeds,
-                        connector_attention_mask=prompt_attn_mask,
-                        latent_num_frames=latent_num_frames,
-                        latent_height=latent_height,
-                        latent_width=latent_width,
-                        frame_rate=frame_rate,
-                        audio_num_frames=audio_num_frames,
-                        use_cross_timestep=use_cross_timestep,
-                        attention_kwargs=attention_kwargs,
-                        cache_context="uncond_modality",
-                        extra_latents=extra_latents_in,
-                        extra_coords=extra_coords_in,
-                        extra_timestep=extra_timestep_in,
-                        isolate_modalities=True,
-                    )
+                    with self.transformer.cache_context("uncond_modality"):
+                        noise_pred_video_uncond_modality, noise_pred_audio_uncond_modality = self.transformer(
+                            hidden_states=latents.to(dtype=prompt_embeds.dtype),
+                            audio_hidden_states=audio_latents.to(dtype=prompt_embeds.dtype),
+                            encoder_hidden_states=video_prompt_embeds,
+                            audio_encoder_hidden_states=audio_prompt_embeds,
+                            timestep=video_timestep,
+                            audio_timestep=timestep,
+                            sigma=timestep,  # Used by LTX-2.3
+                            encoder_attention_mask=prompt_attn_mask,
+                            audio_encoder_attention_mask=prompt_attn_mask,
+                            num_frames=latent_num_frames,
+                            height=latent_height,
+                            width=latent_width,
+                            fps=frame_rate,
+                            audio_num_frames=audio_num_frames,
+                            video_coords=video_pos_ids,
+                            audio_coords=audio_pos_ids,
+                            # Turn off A2V and V2A cross attn to isolate video and audio modalities
+                            isolate_modalities=True,
+                            spatio_temporal_guidance_blocks=None,
+                            perturbation_mask=None,
+                            use_cross_timestep=use_cross_timestep,
+                            attention_kwargs=attention_kwargs,
+                            return_dict=False,
+                        )
                     noise_pred_video_uncond_modality = noise_pred_video_uncond_modality.float()
                     noise_pred_audio_uncond_modality = noise_pred_audio_uncond_modality.float()
                     noise_pred_video_uncond_modality = self.convert_velocity_to_x0(
@@ -1790,7 +1740,8 @@ class LTX2ConditionPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoad
                 # NOTE: this operation should be applied in sample (x0) space and not velocity space (which is the
                 # space the denoising model outputs are in)
                 denoised_sample_cond = (
-                    noise_pred_video * (1 - conditioning_mask[:bsz]) + clean_latents.float() * conditioning_mask[:bsz]
+                    noise_pred_video * (1 - conditioning_mask[:bsz])
+                    + clean_latents * conditioning_mask[:bsz]
                 ).to(noise_pred_video.dtype)
 
                 # Convert the denoised (x0) sample back to a velocity for the scheduler
@@ -1819,6 +1770,10 @@ class LTX2ConditionPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoad
 
                 if XLA_AVAILABLE:
                     xm.mark_step()
+
+        # Remove any appended keyframe (non-first-frame) condition tokens from the final latent
+        base_token_count = latent_num_frames * latent_height * latent_width
+        latents = latents[:, :base_token_count]
 
         latents = self._unpack_latents(
             latents,
