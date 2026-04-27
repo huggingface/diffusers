@@ -32,9 +32,9 @@ When adding a new pipeline (or reviewing one), skim `pipeline_flux.py`, `pipelin
 
 2. **`@torch.no_grad()` discipline.** Two failure modes:
     - **Missing on `__call__` entirely** — causes GPU OOM from gradient accumulation during inference. Always decorate `__call__` with `@torch.no_grad()`.
-    - **Redundant inside helpers** that `__call__` already covers. The decorator puts every descendant in no-grad, so an inner `with torch.no_grad():` is noise — and worse, it forecloses callers who want to invoke `pipe.encode_prompt(...)` with grads enabled (training, embedding optimization). Convention across diffusers (flux, qwen, flux2, stable_audio, audioldm2) is decorator-only.
+    - **Redundant inside helpers** that `__call__` already covers. The decorator puts every descendent in no-grad, so an inner `with torch.no_grad():` is noise — and worse, it forecloses callers who want to invoke `pipe.encode_prompt(...)` with grads enabled (training, embedding optimization). Convention across diffusers (flux, qwen, flux2, stable_audio, audioldm2) is decorator-only.
 
-3. **Reinventing logic that already exists in the repo.** Before adding new logic to a pipeline, check whether diffusers already has it. Reuse out of the box if you can; extend with a small kwarg if the change is genuinely small (use judgement on whether to extend an existing class or write a new one).
+3. **Reinventing logic that already exists in the repo.** Check `src/diffusers/guiders/` and `src/diffusers/schedulers/` before adding new logic. Reuse what's already there; extend with a small kwarg for minor variations.
     - **Schedulers / guiders** — grep `src/diffusers/guiders/` and `src/diffusers/schedulers/` first. APG, CFG variants, DDIM, DPM++, flow matching Euler etc. are all already in the repo.
     - **Reimplementing what the scheduler already does.** Two examples below, both forms of "the scheduler should own this":
       ```python

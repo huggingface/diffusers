@@ -11,7 +11,8 @@ Linked from `AGENTS.md`, `skills/model-integration/SKILL.md`, and `review-rules.
 
 ## Common model conventions
 
-When adding a new transformer (or reviewing one), skim `transformer_flux.py`, `transformer_flux2.py`, `transformer_qwenimage.py`, `transformer_wan.py` first to establish the pattern. Most conventions (mixin set, file structure, naming, gradient-checkpointing implementation, `_no_split_modules` / `_supports_cache_class` settings, etc.) are easiest to internalize by comparison rather than from a fixed list.
+* Models use `ModelMixin` with `register_to_config` for config serialization. 
+* When adding a new transformer (or reviewing one), skim `src/diffusers/models/transformers/transformer_flux.py`, `src/diffusers/models/transformers/transformer_flux2.py`, `src/diffusers/models/transformers/transformer_qwenimage.py`, and `src/diffusers/models/transformers/transformer_wan.py` first to establish the pattern. Most conventions (mixin set, file structure, naming, gradient-checkpointing implementation, `_no_split_modules` settings, etc.) are easiest to internalize by comparison rather than from a fixed list.
 
 ## Attention pattern
 
@@ -61,8 +62,8 @@ What you pass as `attn_mask=` to `dispatch_attention_fn` determines which backen
 
 - **No mask needed → pass `None`, not an all-zero tensor.** A dense 4D additive float mask of all `0.0` does no math but still hard-raises on `flash` / `_flash_3` / `_sage` (see `attention_dispatch.py:2328, 2544, 3266`). Only materialize a mask when it carries information. This is the Flux / Flux2 / Wan pattern: no mask, works on every backend, relies on the model having been trained tolerating consistent padding.
 - **Padding mask → bool `(B, L)` or `(B, 1, 1, L)`.** Stays compatible with the `*_varlen` kernels via `_normalize_attn_mask` (`attention_dispatch.py:639`), which reduces bool masks to `cu_seqlens`. Dense additive-float masks *cannot* be reduced this way and so lose the varlen path. This is the Qwen pattern (`transformer_qwenimage.py:951`).
-- **Structural mask (causal, sliding-window, band-diagonal) → dense `(1, 1, L, L)` is unavoidable.** Row-varying patterns can't be expressed as `(B, L)`. Expect SDPA/Flex-only for these layers; consider Flex's `sliding_window_mask_mod` or FA3's native `window_size=` kwarg if backend flexibility matters.
-- **Don't declare `attention_mask` (or `encoder_hidden_states_mask`) in the forward signature if you ignore it.** "For API stability with other transformers" is not a reason; readers assume a declared param is honored, and downstream pipelines will pass padding masks that silently get dropped. Note: some existing models in the repo carry unused mask params for historical reasons — e.g. `QwenDoubleStreamAttnProcessor2_0.__call__` declares `encoder_hidden_states_mask` but never reads it (the joint mask is routed through `attention_mask` instead), and the block-level forward in `transformer_qwenimage.py` declares it but always receives `None`. This is legacy and should not be replicated in new models.
+- **Structural mask (causal, sliding-window, band-diagonal) → dense `(1, 1, L, L)` is unavoidable.** Row-varying patterns can't be expressed as `(B, L)`. Expect SDPA/Flex-only for these layers; consider Flex's `sliding_window_mask_mod` or FA3's native `window_size=` kwarg if backend flexibility matters. Consult `src/models/transformers/transformer_kandinsky.py` as a reference.
+- **Don't declare `attention_mask` (or `encoder_hidden_states_mask`) in the forward signature if you ignore it.** "For API stability with other transformers" is not a reason; readers assume a declared param is honored, and downstream pipelines will pass padding masks that silently get dropped. Some existing models in the repo carry unused mask params for historical reasons — e.g. `QwenDoubleStreamAttnProcessor2_0.__call__` declares `encoder_hidden_states_mask` but never reads it (the joint mask is routed through `attention_mask` instead), and the block-level forward in `transformer_qwenimage.py` declares it but always receives `None`. This is a legacy behavior and should not be replicated in new models.
 
 ## Gotchas
 
