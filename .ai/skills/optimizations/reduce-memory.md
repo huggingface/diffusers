@@ -63,7 +63,9 @@ Non-diffusers components (e.g. transformers text encoders) must use `apply_group
 
 ## Sequential CPU offloading
 
-`enable_sequential_cpu_offload()` is a legacy API. Group offloading with `leaf_level + use_stream=True` does the same thing but faster. Prefer that.
+`enable_sequential_cpu_offload()` is a legacy API. Group offloading with `leaf_level + use_stream=True` does the same thing but faster — `use_stream` overlaps data transfer with computation via layer prefetching, reducing overall latency. Prefer that over sequential offloading.
+
+See `docs/source/en/optimization/memory.md` / https://huggingface.co/docs/diffusers/main/en/optimization/memory#cuda-stream for details on `use_stream`, `record_stream`, and the 2× RAM requirement.
 
 ## Debugging OOM
 
@@ -71,4 +73,5 @@ Non-diffusers components (e.g. transformers text encoders) must use `apply_group
 2. OOM during `.to("cuda")` → full pipeline doesn't fit; use model CPU offloading or group offloading
 3. OOM during denoising with model CPU offloading → the transformer alone exceeds VRAM; use layerwise casting or group offloading instead
 4. OOM during VAE decode → add `pipe.vae.enable_tiling()`
-5. Still OOM → see [quantization.md](quantization.md) and [memory-calculator.md](memory-calculator.md)
+5. Group offloading causes CPU-side OOM or heavy swapping → use `offload_to_disk_path` to spill to disk instead (see `docs/source/en/optimization/memory.md` / https://huggingface.co/docs/diffusers/main/en/optimization/memory#offloading-to-disk)
+6. Still OOM → see [quantization.md](quantization.md) and [memory-calculator.md](memory-calculator.md)
