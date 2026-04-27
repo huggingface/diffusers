@@ -355,18 +355,20 @@ def _unwrap_model(model):
 
 
 def maybe_raise_or_warn(
-    library_name, library, class_name, importable_classes, passed_class_obj, name, is_pipeline_module
+    library_name,
+    library,
+    class_name,
+    importable_classes,
+    passed_class_obj,
+    name,
+    is_pipeline_module,
+    cache_dir,
 ):
     """Simple helper method to raise or warn in case incorrect module has been passed"""
     if not is_pipeline_module:
-        library = importlib.import_module(library_name)
-
-        # Handle deprecated Transformers classes
-        if library_name == "transformers":
-            class_name = _maybe_remap_transformers_class(class_name) or class_name
-
-        class_obj = getattr(library, class_name)
-        class_candidates = {c: getattr(library, c, None) for c in importable_classes.keys()}
+        class_obj, class_candidates = get_class_obj_and_candidates(
+            library_name, class_name, importable_classes, None, is_pipeline_module, name, cache_dir
+        )
 
         expected_class_obj = None
         for class_name, class_candidate in class_candidates.items():
@@ -687,6 +689,7 @@ def _get_final_device_map(device_map, pipeline_class, passed_class_obj, init_dic
                 passed_class_obj,
                 name,
                 is_pipeline_module,
+                kwargs.get("cached_folder", None),
             )
             with accelerate.init_empty_weights():
                 loaded_sub_model = passed_class_obj[name]

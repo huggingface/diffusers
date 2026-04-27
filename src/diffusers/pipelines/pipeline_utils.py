@@ -1043,7 +1043,14 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 # if the model is in a pipeline module, then we load it from the pipeline
                 # check that passed_class_obj has correct parent class
                 maybe_raise_or_warn(
-                    library_name, library, class_name, importable_classes, passed_class_obj, name, is_pipeline_module
+                    library_name,
+                    library,
+                    class_name,
+                    importable_classes,
+                    passed_class_obj,
+                    name,
+                    is_pipeline_module,
+                    cached_folder,
                 )
 
                 loaded_sub_model = passed_class_obj[name]
