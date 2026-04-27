@@ -192,6 +192,7 @@ def _trim_cache_to_window(
     window_size: int,
 ) -> tuple[torch.Tensor, torch.Tensor, int]:
     if window_size > 0 and key.shape[1] > window_size:
+        # TODO: support pinned sink frames when rolling the cache window.
         trim = key.shape[1] - window_size
         key = key[:, trim:]
         value = value[:, trim:]
