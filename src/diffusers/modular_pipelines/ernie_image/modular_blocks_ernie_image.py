@@ -55,6 +55,10 @@ class ErnieImageAutoPromptEnhancerStep(AutoPipelineBlocks):
       Outputs:
           prompt (`list`):
               The prompt list after prompt-enhancer rewriting.
+          height (`int`):
+              The resolved image height in pixels.
+          width (`int`):
+              The resolved image width in pixels.
     """
 
     model_name = "ernie-image"
