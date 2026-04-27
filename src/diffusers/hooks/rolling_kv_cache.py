@@ -46,9 +46,11 @@ class RollingKVCacheConfig:
 class RollingKVAttentionProcessor:
     r"""Default attention preprocessor used by the rolling KV cache hook.
 
-    The defaults target Wan-style self-attention modules. To support a model with a different
-    attention layout — most often a different rotary embedding form — subclass and override the
-    relevant method, then pass the instance via `apply_rolling_kv_cache(..., attention_processor=...)`.
+    The defaults target Wan-style self-attention modules. The default rotary embedding path mirrors
+    WanAttnProcessor while staying local to avoid a hook dependency on Wan private helpers; override
+    it for other layouts. To support a model with a different attention layout — most often a
+    different rotary embedding form — subclass and override the relevant method, then pass the
+    instance via `apply_rolling_kv_cache(..., attention_processor=...)`.
     """
 
     def prepare_qkv(
@@ -88,7 +90,7 @@ class RollingKVAttentionProcessor:
         )
         freqs_complex = torch.complex(
             freqs_cos[..., 0::2].to(torch.float64),
-            freqs_sin[..., 0::2].to(torch.float64),
+            freqs_sin[..., 1::2].to(torch.float64),
         )
         out = torch.view_as_real(hidden_states_complex * freqs_complex).flatten(-2)
         return out.type_as(hidden_states)

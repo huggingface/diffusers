@@ -159,7 +159,7 @@ class TestRotaryEmb(unittest.TestCase):
 
         expected = torch.view_as_real(
             torch.view_as_complex(x.to(torch.float64).reshape(*x.shape[:-1], -1, 2))
-            * torch.complex(freqs_cos[..., 0::2].to(torch.float64), freqs_sin[..., 0::2].to(torch.float64))
+            * torch.complex(freqs_cos[..., 0::2].to(torch.float64), freqs_sin[..., 1::2].to(torch.float64))
         ).flatten(-2)
         expected = expected.to(x.dtype)
 
@@ -323,6 +323,22 @@ class TestRollingKVCacheMechanics(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "batch size mismatch"):
             with torch.no_grad():
                 transformer(chunk)
+
+    def test_cache_mixin_enable_disable_cache(self):
+        transformer = _FakeTransformer().to(_DEVICE).eval()
+
+        logging.getLogger("diffusers.hooks.rolling_kv_cache").setLevel(logging.ERROR)
+        transformer.enable_cache(RollingKVCacheConfig(window_size=4))
+        logging.getLogger("diffusers.hooks.rolling_kv_cache").setLevel(logging.WARNING)
+
+        self.assertTrue(transformer.is_cache_enabled)
+        self.assertIsNotNone(transformer.attn._diffusers_hook.get_hook(_ROLLING_KV_CACHE_HOOK))
+        self.assertIsNotNone(get_rolling_kv_cache_state(transformer))
+
+        transformer.disable_cache()
+
+        self.assertFalse(transformer.is_cache_enabled)
+        self.assertIsNone(transformer.attn._diffusers_hook.get_hook(_ROLLING_KV_CACHE_HOOK))
 
 
 # ---------- Integration: real Wan attention selection + warning ----------
