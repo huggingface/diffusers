@@ -73,26 +73,36 @@ EXAMPLE_DOC_STRING = """
     Examples:
         ```py
         >>> import torch
+        >>> from safetensors import safe_open
         >>> from diffusers import LTX2HDRLoraPipeline
         >>> from diffusers.pipelines.ltx2.pipeline_ltx2_hdr_lora import LTX2HDRReferenceCondition
         >>> from diffusers.pipelines.ltx2.utils import DISTILLED_SIGMA_VALUES
-        >>> from diffusers.pipelines.ltx2.export_utils import save_hdr_video_frames_as_exr
+        >>> from diffusers.pipelines.ltx2.export_utils import save_hdr_video_frames_as_exr, encode_exr_sequence_to_mp4
         >>> from diffusers.utils import load_video
 
         >>> pipe = LTX2HDRLoraPipeline.from_pretrained(
-        ...     "rootonchair/LTX-2-19b-distilled", torch_dtype=torch.bfloat16
+        ...     "dg845/LTX-2.3-Distilled-Diffusers", torch_dtype=torch.bfloat16
         ... )
         >>> pipe.enable_sequential_cpu_offload(device="cuda")
-        >>> pipe.load_lora_weights("path/to/hdr_ic_lora.safetensors", adapter_name="hdr_lora")
+        >>> pipe.load_lora_weights(
+        >>>     "Lightricks/LTX-2.3-22b-IC-LoRA-HDR",
+        >>>     adapter_name="hdr_lora",
+        >>>     weight_name="ltx-2.3-22b-ic-lora-hdr-0.9.safetensors",
+        >>> )
         >>> pipe.set_adapters("hdr_lora", 1.0)
 
-        >>> reference_video = load_video("reference.mp4")
+        >>> reference_video = load_video("/path/to/reference.mp4")
         >>> ref_cond = LTX2HDRReferenceCondition(frames=reference_video, strength=1.0)
 
-        >>> prompt = "A cinematic landscape at sunset"
+        >>> # Load pre-computed HDR LoRA connector embeddings.
+        >>> with safe_open("/path/to/connector/embeds.safetensors", framework="pt", device="cuda") as f:
+        >>>     connector_video_embeds = f.get_tensor("video_context")
+        >>>     connector_audio_embeds = f.get_tensor("audio_context")
+
         >>> hdr_video = pipe(
-        ...     prompt=prompt,
         ...     reference_conditions=[ref_cond],
+        ...     connector_video_embeds=connector_video_embeds,
+        ...     connector_audio_embeds=connector_audio_embeds,
         ...     width=768,
         ...     height=512,
         ...     num_frames=121,
@@ -105,7 +115,11 @@ EXAMPLE_DOC_STRING = """
         ... )[0]
 
         >>> # `hdr_video` is a linear HDR tensor of shape (batch, frames, H, W, C).
+        >>> # Save the HDR video as per-frame EXR files in the specified directory.
         >>> save_hdr_video_frames_as_exr(hdr_video[0], "hdr_output/")
+        >>> # You can convert these EXR files to .mp4 file as below.
+        >>> # A custom tone-mapper can be specified via the `tone_mapping_fn` argument.
+        >>> encode_exr_sequence_to_mp4("hdr_output/", "ltx2_hdr_lora_output.mp4", frame_rate=24.0)
         ```
 """
 
