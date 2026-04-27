@@ -127,19 +127,22 @@ class JoyImageEditImageProcessor(VaeImageProcessor):
 
     def resize_center_crop(
         self,
-        img: Image.Image,
+        img,
         target_size: Tuple[int, int],
-    ) -> Image.Image:
+    ):
         """
         Scale image to cover target_size, then center-crop.
 
         Args:
-            img: Input PIL image.
+            img: Input PIL image or list of PIL images.
             target_size: (height, width) to crop to.
 
         Returns:
-            Resized and center-cropped PIL image.
+            Resized and center-cropped PIL image(s), matching the input type.
         """
+        if isinstance(img, list):
+            return [self.resize_center_crop(i, target_size) for i in img]
+
         w, h = img.size
         bh, bw = target_size
         scale = max(bh / h, bw / w)

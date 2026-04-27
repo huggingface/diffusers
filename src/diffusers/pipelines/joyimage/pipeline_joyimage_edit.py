@@ -785,7 +785,7 @@ class JoyImageEditPipeline(DiffusionPipeline):
             device,
             generator,
             latents,
-            reference_images=[processed_image],
+            reference_images=processed_image if isinstance(processed_image, list) else [processed_image],
             enable_denormalization=enable_denormalization,
         )
 
@@ -834,7 +834,9 @@ class JoyImageEditPipeline(DiffusionPipeline):
                 latents = self.scheduler.step(noise_pred, t, latents, return_dict=False)[0]
 
                 if callback_on_step_end is not None:
-                    callback_kwargs = {k: locals()[k] for k in callback_on_step_end_tensor_inputs}
+                    callback_kwargs = {}
+                    for k in callback_on_step_end_tensor_inputs:
+                        callback_kwargs[k] = locals()[k]
                     callback_outputs = callback_on_step_end(self, i, t, callback_kwargs)
                     latents = callback_outputs.pop("latents", latents)
                     prompt_embeds = callback_outputs.pop("prompt_embeds", prompt_embeds)
@@ -858,8 +860,9 @@ class JoyImageEditPipeline(DiffusionPipeline):
         else:
             image = latents
 
-        # Extract the last item (target slot) from the batch, shape: (F, C, H, W).
-        image = image.float().permute(0, 1, 3, 2, 4, 5)[0, -1]
+        # Extract the target slot (last item) from each batch element.
+        # (B, num_items, C, T, H, W) -> permute -> (B, num_items, T, C, H, W) -> [:, -1] -> (B, T, C, H, W)
+        image = image.float().permute(0, 1, 3, 2, 4, 5)[:, -1].squeeze(1)
 
         image = self.image_processor.postprocess(image, output_type=output_type)
 
