@@ -290,6 +290,7 @@ class ErnieImageAdaLNContinuous(nn.Module):
 
 class ErnieImageTransformer2DModel(ModelMixin, ConfigMixin):
     _supports_gradient_checkpointing = True
+    _repeated_blocks = ["ErnieImageSharedAdaLNBlock"]
 
     @register_to_config
     def __init__(
