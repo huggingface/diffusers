@@ -1376,11 +1376,10 @@ class LTX2VideoTransformer3DModel(
             audio_encoder_attention_mask (`torch.Tensor`, *optional*):
                 Optional multiplicative text attention mask of shape `(batch_size, text_seq_len)` for audio modeling.
             video_self_attention_mask (`torch.Tensor`, *optional*):
-                Optional multiplicative self-attention mask of shape `(batch_size, num_video_tokens,
-                num_video_tokens)` applied to the video self-attention in each transformer block. Values in `[0, 1]`
-                where `1` means full attention and `0` means masked. Used e.g. by the IC-LoRA pipeline to control
-                attention strength between noisy tokens and appended reference tokens. Audio self-attention is not
-                affected.
+                Optional multiplicative self-attention mask of shape `(batch_size, num_video_tokens, num_video_tokens)`
+                applied to the video self-attention in each transformer block. Values in `[0, 1]` where `1` means full
+                attention and `0` means masked. Used e.g. by the IC-LoRA pipeline to control attention strength between
+                noisy tokens and appended reference tokens. Audio self-attention is not affected.
             num_frames (`int`, *optional*):
                 The number of latent video frames. Used if calculating the video coordinates for RoPE.
             height (`int`, *optional*):

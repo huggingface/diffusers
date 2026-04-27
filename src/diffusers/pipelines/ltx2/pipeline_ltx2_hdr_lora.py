@@ -51,11 +51,11 @@ class LTX2HDRReferenceCondition:
     r"""
     A reference video condition for HDR IC-LoRA conditioning.
 
-    The reference video is encoded into latent tokens and concatenated to the noisy latent sequence during
-    denoising, allowing the HDR IC-LoRA adapter to condition the generation on the reference video content.
+    The reference video is encoded into latent tokens and concatenated to the noisy latent sequence during denoising,
+    allowing the HDR IC-LoRA adapter to condition the generation on the reference video content.
 
-    Matches the `(video_path, strength)` tuples consumed by the reference `HDRICLoraPipeline`'s
-    `video_conditioning` argument.
+    Matches the `(video_path, strength)` tuples consumed by the reference `HDRICLoraPipeline`'s `video_conditioning`
+    argument.
 
     Attributes:
         frames (`PIL.Image.Image` or `List[PIL.Image.Image]` or `np.ndarray` or `torch.Tensor`):
@@ -80,15 +80,13 @@ EXAMPLE_DOC_STRING = """
         >>> from diffusers.pipelines.ltx2.export_utils import save_hdr_video_frames_as_exr, encode_exr_sequence_to_mp4
         >>> from diffusers.utils import load_video
 
-        >>> pipe = LTX2HDRLoraPipeline.from_pretrained(
-        ...     "dg845/LTX-2.3-Distilled-Diffusers", torch_dtype=torch.bfloat16
-        ... )
+        >>> pipe = LTX2HDRLoraPipeline.from_pretrained("dg845/LTX-2.3-Distilled-Diffusers", torch_dtype=torch.bfloat16)
         >>> pipe.enable_sequential_cpu_offload(device="cuda")
         >>> pipe.load_lora_weights(
-        >>>     "Lightricks/LTX-2.3-22b-IC-LoRA-HDR",
-        >>>     adapter_name="hdr_lora",
-        >>>     weight_name="ltx-2.3-22b-ic-lora-hdr-0.9.safetensors",
-        >>> )
+        ...     "Lightricks/LTX-2.3-22b-IC-LoRA-HDR",
+        ...     adapter_name="hdr_lora",
+        ...     weight_name="ltx-2.3-22b-ic-lora-hdr-0.9.safetensors",
+        ... )
         >>> pipe.set_adapters("hdr_lora", 1.0)
 
         >>> reference_video = load_video("/path/to/reference.mp4")
@@ -96,8 +94,8 @@ EXAMPLE_DOC_STRING = """
 
         >>> # Load pre-computed HDR LoRA connector embeddings.
         >>> with safe_open("/path/to/connector/embeds.safetensors", framework="pt", device="cuda") as f:
-        >>>     connector_video_embeds = f.get_tensor("video_context")
-        >>>     connector_audio_embeds = f.get_tensor("audio_context")
+        ...     connector_video_embeds = f.get_tensor("video_context")
+        ...     connector_audio_embeds = f.get_tensor("audio_context")
 
         >>> hdr_video = pipe(
         ...     reference_conditions=[ref_cond],
@@ -243,25 +241,24 @@ class LTX2HDRLoraPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoader
     r"""
     Pipeline for HDR IC-LoRA video generation with reference video conditioning.
 
-    This is a video-only HDR counterpart to [`LTX2ICLoraPipeline`]. The HDR IC-LoRA adapter (loaded as a standard
-    LoRA via `load_lora_weights`) conditions generation on a reference video, and the pipeline's postprocessing
-    applies the LogC3 inverse transform to produce linear HDR output in `[0, ∞)`.
+    This is a video-only HDR counterpart to [`LTX2ICLoraPipeline`]. The HDR IC-LoRA adapter (loaded as a standard LoRA
+    via `load_lora_weights`) conditions generation on a reference video, and the pipeline's postprocessing applies the
+    LogC3 inverse transform to produce linear HDR output in `[0, ∞)`.
 
     Compared to [`LTX2ICLoraPipeline`], the HDR pipeline drops:
 
     - Frame-level keyframe conditioning (the reference HDR pipeline does not support this).
     - The `conditioning_attention_strength` / `conditioning_attention_mask` knobs.
     - Audio output (video-only). The transformer's audio branch is still run since the diffusers transformer API
-      requires audio inputs, but the decoded audio is discarded and audio-specific guidance scales are fixed to
-      no-op values to avoid wasted compute.
+      requires audio inputs, but the decoded audio is discarded and audio-specific guidance scales are fixed to no-op
+      values to avoid wasted compute.
 
     Two-stage inference is supported through separate calls to `__call__`:
 
-    - **Stage 1**: generate video latents at target resolution with HDR IC-LoRA conditioning
-      (`output_type="latent"`).
-    - **Stage 2**: upsample via [`LTX2LatentUpsamplePipeline`] and refine with this same pipeline (or
-      [`LTX2Pipeline`]) by passing `latents=upsampled_latents`. The reference HDR stage-2 additionally supports
-      spatial/temporal tiling of the refinement pass — that optimization is not yet implemented here.
+    - **Stage 1**: generate video latents at target resolution with HDR IC-LoRA conditioning (`output_type="latent"`).
+    - **Stage 2**: upsample via [`LTX2LatentUpsamplePipeline`] and refine with this same pipeline (or [`LTX2Pipeline`])
+      by passing `latents=upsampled_latents`. The reference HDR stage-2 additionally supports spatial/temporal tiling
+      of the refinement pass — that optimization is not yet implemented here.
 
     Reference: https://github.com/Lightricks/LTX-2
 
@@ -704,16 +701,16 @@ class LTX2HDRLoraPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoader
         Builds a packed latent sequence in the order `[base | reference]`:
           - Base: either fresh noise (Stage 1, `latents=None`) or pre-existing upsampled latents (Stage 2).
           - Reference: HDR-encoded reference-video tokens appended with per-token `conditioning_mask = strength`,
-            following the same pattern as [`LTX2ICLoraPipeline.prepare_latents`]. (HDR LoRA does not currently
-            take per-frame `conditions`, so there is no first-frame / keyframe block in between.)
+            following the same pattern as [`LTX2ICLoraPipeline.prepare_latents`]. (HDR LoRA does not currently take
+            per-frame `conditions`, so there is no first-frame / keyframe block in between.)
 
         Returns a 6-tuple matching [`LTX2ICLoraPipeline.prepare_latents`]:
             - `latents`: packed noisy latents `(B, base + n_ref, C)`.
             - `conditioning_mask`: `(B, seq_len, 1)` with `strength` at reference positions, `0` elsewhere.
             - `clean_latents`: clean reference values at reference positions (zeros elsewhere); same shape as
               `latents`.
-            - `appended_coords`: `[1, 3, n_ref, 2]` reference coordinates to concat onto `video_coords`, or
-              `None` when no reference conditions are provided.
+            - `appended_coords`: `[1, 3, n_ref, 2]` reference coordinates to concat onto `video_coords`, or `None` when
+              no reference conditions are provided.
             - `num_ref_tokens`: count of reference tokens at the END of `latents`.
             - `ref_cross_mask`: always `None` for HDR LoRA (no cross-attention masking support).
         """
@@ -853,14 +850,16 @@ class LTX2HDRLoraPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoader
     ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor | None]:
         """Encode HDR IC-LoRA reference videos into `(reference_latents, reference_coords, reference_cross_mask)`.
 
-        Shared encoding core used by both `prepare_latents` (which folds reference tokens into the main noisy
-        sequence) and the back-compat shim `prepare_reference_latents`. HDR LoRA does not currently support
-        cross-attention masking for reference tokens, so the third return is always `None`.
+        Shared encoding core used by both `prepare_latents` (which folds reference tokens into the main noisy sequence)
+        and the back-compat shim `prepare_reference_latents`. HDR LoRA does not currently support cross-attention
+        masking for reference tokens, so the third return is always `None`.
         """
         ref_height = height // reference_downscale_factor
         ref_width = width // reference_downscale_factor
 
-        if reference_downscale_factor != 1 and (height % reference_downscale_factor != 0 or width % reference_downscale_factor != 0):
+        if reference_downscale_factor != 1 and (
+            height % reference_downscale_factor != 0 or width % reference_downscale_factor != 0
+        ):
             raise ValueError(
                 f"Output dimensions ({height}x{width}) must be divisible by reference_downscale_factor "
                 f"({reference_downscale_factor})."
@@ -882,18 +881,14 @@ class LTX2HDRLoraPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoader
             # HDR-specific preprocessing: reflect-pad resize (vs center-crop in the standard IC-LoRA pipeline).
             # For LDR reference videos the numerical output of `preprocess_reference_video_hdr` is identical to the
             # standard [-1, 1] normalization since LogC3's `compress_ldr` is an identity clamp.
-            ref_pixels = self.hdr_video_processor.preprocess_reference_video_hdr(
-                video_like, ref_height, ref_width
-            )
+            ref_pixels = self.hdr_video_processor.preprocess_reference_video_hdr(video_like, ref_height, ref_width)
             ref_pixels = ref_pixels[:, :, :num_frames]
             ref_pixels = ref_pixels.to(dtype=self.vae.dtype, device=device)
 
-            ref_latent = retrieve_latents(
-                self.vae.encode(ref_pixels), generator=generator, sample_mode="argmax"
+            ref_latent = retrieve_latents(self.vae.encode(ref_pixels), generator=generator, sample_mode="argmax")
+            ref_latent = self._normalize_latents(ref_latent, self.vae.latents_mean, self.vae.latents_std).to(
+                device=device, dtype=dtype
             )
-            ref_latent = self._normalize_latents(
-                ref_latent, self.vae.latents_mean, self.vae.latents_std
-            ).to(device=device, dtype=dtype)
 
             _, _, ref_latent_frames, ref_latent_height, ref_latent_width = ref_latent.shape
 
@@ -961,9 +956,7 @@ class LTX2HDRLoraPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoader
         n_total = reference_latents.shape[1]
         n_per_ref = n_total // max(len(reference_conditions), 1)
         denoise_chunks = [
-            torch.full(
-                (1, n_per_ref), 1.0 - ref_cond.strength, device=reference_latents.device, dtype=torch.float32
-            )
+            torch.full((1, n_per_ref), 1.0 - ref_cond.strength, device=reference_latents.device, dtype=torch.float32)
             for ref_cond in reference_conditions
         ]
         reference_denoise_factors = (
@@ -1086,8 +1079,8 @@ class LTX2HDRLoraPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoader
             reference_conditions (`LTX2HDRReferenceCondition` or `List[LTX2HDRReferenceCondition]`, *optional*):
                 Reference video conditions for HDR IC-LoRA conditioning.
             reference_downscale_factor (`int`, *optional*, defaults to `1`):
-                Ratio between target and reference video resolutions. IC-LoRA models trained with downscaled
-                reference videos store this factor in their safetensors metadata.
+                Ratio between target and reference video resolutions. IC-LoRA models trained with downscaled reference
+                videos store this factor in their safetensors metadata.
             height (`int`, *optional*, defaults to `512`):
                 Output video height in pixels. Must be divisible by 32.
             width (`int`, *optional*, defaults to `768`):
@@ -1496,9 +1489,7 @@ class LTX2HDRLoraPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoader
                     noise_pred_video_uncond_mod = self.convert_velocity_to_x0(
                         latents, noise_pred_video_uncond_mod, i, self.scheduler
                     )
-                    video_modality_delta = (self.modality_scale - 1) * (
-                        noise_pred_video - noise_pred_video_uncond_mod
-                    )
+                    video_modality_delta = (self.modality_scale - 1) * (noise_pred_video - noise_pred_video_uncond_mod)
                 else:
                     video_modality_delta = 0
 
@@ -1526,9 +1517,7 @@ class LTX2HDRLoraPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoader
                 # Step the audio scheduler so its internal state stays in sync with the video scheduler (audio
                 # output is discarded at the end, but keeping schedulers aligned avoids surprising behavior if the
                 # scheduler writes internal indices during `.step()`).
-                _ = audio_scheduler.step(
-                    torch.zeros_like(audio_latents), t, audio_latents, return_dict=False
-                )[0]
+                _ = audio_scheduler.step(torch.zeros_like(audio_latents), t, audio_latents, return_dict=False)[0]
 
                 if callback_on_step_end is not None:
                     callback_kwargs = {}

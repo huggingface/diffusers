@@ -718,9 +718,7 @@ class LTX2ConditionPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoad
             # Create a channels-last video-like array of shape (F, H, W, C) in preparation for resizing.
             if isinstance(condition.frames, PIL.Image.Image):
                 arr = np.array(condition.frames.convert("RGB"))[None]  # (1, H, W, 3)
-            elif isinstance(condition.frames, list) and all(
-                isinstance(f, PIL.Image.Image) for f in condition.frames
-            ):
+            elif isinstance(condition.frames, list) and all(isinstance(f, PIL.Image.Image) for f in condition.frames):
                 arr = np.stack([np.array(f.convert("RGB")) for f in condition.frames])  # (F, H, W, 3)
             elif isinstance(condition.frames, np.ndarray):
                 arr = condition.frames if condition.frames.ndim == 4 else condition.frames[None]
@@ -730,9 +728,7 @@ class LTX2ConditionPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoad
                 # resize logic, which expects channels-last.
                 arr = t.detach().cpu().permute(0, 2, 3, 1).numpy()
             else:
-                raise TypeError(
-                    f"Unsupported `frames` type for condition {i}: {type(condition.frames)}"
-                )
+                raise TypeError(f"Unsupported `frames` type for condition {i}: {type(condition.frames)}")
 
             src_h, src_w = arr.shape[1], arr.shape[2]
             num_cond_frames = arr.shape[0]
@@ -749,9 +745,7 @@ class LTX2ConditionPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoad
             # NOTE: we avoid using VideoProcessor.preprocess_video here because it uses PIL.Image.resize under the
             # hood, which will apply an anti-aliasing pre-filter when downsampling. The original LTX-2.X code simply
             # uses F.interpolate, which is reproduced here.
-            pixels = torch.nn.functional.interpolate(
-                pixels, size=(new_h, new_w), mode="bilinear", align_corners=False
-            )
+            pixels = torch.nn.functional.interpolate(pixels, size=(new_h, new_w), mode="bilinear", align_corners=False)
             top = (new_h - height) // 2
             left = (new_w - width) // 2
             pixels = pixels[:, :, top : top + height, left : left + width]
@@ -799,8 +793,8 @@ class LTX2ConditionPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoad
         Apply first-frame visual conditioning by overwriting tokens at the first-frame positions.
 
         Only conditions with `latent_idx == 0` are applied here (matching `VideoConditionByLatentIndex` in the
-        reference implementation). Conditions at non-zero latent indices are appended as separate keyframe tokens
-        via `prepare_keyframe_extras` (matching `VideoConditionByKeyframeIndex`) and are skipped here.
+        reference implementation). Conditions at non-zero latent indices are appended as separate keyframe tokens via
+        `prepare_keyframe_extras` (matching `VideoConditionByKeyframeIndex`) and are skipped here.
 
         Args:
             latents (`torch.Tensor`):
@@ -846,8 +840,8 @@ class LTX2ConditionPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoad
         Compute positional coordinates for a keyframe condition being appended as extra tokens.
 
         Mirrors `VideoConditionByKeyframeIndex.apply_to` in the reference implementation:
-        - Latent coords scaled to pixel space *without* the causal fix (since non-zero-index keyframes don't need
-          the first-frame causal adjustment).
+        - Latent coords scaled to pixel space *without* the causal fix (since non-zero-index keyframes don't need the
+          first-frame causal adjustment).
         - Temporal axis offset by `pixel_frame_idx` (the pixel-space index at which the keyframe appears).
         - For single-pixel-frame keyframes, the per-patch temporal extent is clamped to `[idx, idx + 1)` so the
           keyframe occupies a single pixel timestep rather than the VAE-scaled range.
@@ -864,12 +858,8 @@ class LTX2ConditionPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoad
         grid_f = torch.arange(
             start=0, end=keyframe_latent_num_frames, step=patch_size_t, dtype=torch.float32, device=device
         )
-        grid_h = torch.arange(
-            start=0, end=keyframe_latent_height, step=patch_size, dtype=torch.float32, device=device
-        )
-        grid_w = torch.arange(
-            start=0, end=keyframe_latent_width, step=patch_size, dtype=torch.float32, device=device
-        )
+        grid_h = torch.arange(start=0, end=keyframe_latent_height, step=patch_size, dtype=torch.float32, device=device)
+        grid_w = torch.arange(start=0, end=keyframe_latent_width, step=patch_size, dtype=torch.float32, device=device)
         grid = torch.meshgrid(grid_f, grid_h, grid_w, indexing="ij")
         grid = torch.stack(grid, dim=0)
 
@@ -896,7 +886,6 @@ class LTX2ConditionPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoad
 
         return pixel_coords
 
-
     def prepare_latents(
         self,
         conditions: LTX2VideoCondition | list[LTX2VideoCondition] | None = None,
@@ -916,17 +905,17 @@ class LTX2ConditionPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoad
         Prepare noisy video latents, applying frame conditions.
 
         First-frame conditions (`latent_idx == 0`) are applied by overwriting tokens at the first-frame positions
-        (`VideoConditionByLatentIndex` semantics). Non-first-frame conditions (`latent_idx > 0`) are concatenated
-        onto the main latent sequence with per-token `conditioning_mask = strength`
-        (`VideoConditionByKeyframeIndex` semantics) — the denoising loop's existing timestep formula
-        `t * (1 - conditioning_mask)` and post-process blend
-        `denoised * (1 - conditioning_mask) + clean * conditioning_mask` then drive them across steps.
+        (`VideoConditionByLatentIndex` semantics). Non-first-frame conditions (`latent_idx > 0`) are concatenated onto
+        the main latent sequence with per-token `conditioning_mask = strength` (`VideoConditionByKeyframeIndex`
+        semantics) — the denoising loop's existing timestep formula `t * (1 - conditioning_mask)` and post-process
+        blend `denoised * (1 - conditioning_mask) + clean * conditioning_mask` then drive them across steps.
 
         Returns a 4-tuple:
             - `latents`: packed noisy latents (base tokens + any keyframe tokens cat'd onto the sequence dim).
             - `conditioning_mask`: packed conditioning mask with values in `[0, 1]` — `1` at first-frame positions,
               `strength` at keyframe positions, `0` elsewhere.
-            - `clean_latents`: clean condition values at conditioned positions (zeros elsewhere); same shape as `latents`.
+            - `clean_latents`: clean condition values at conditioned positions (zeros elsewhere); same shape as
+              `latents`.
             - `keyframe_coords`: `[B, 3, num_keyframe_patches, 2]` positional coordinates to append to `video_coords`,
               or `None` if there are no non-first-frame conditions.
         """
@@ -1740,8 +1729,7 @@ class LTX2ConditionPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoad
                 # NOTE: this operation should be applied in sample (x0) space and not velocity space (which is the
                 # space the denoising model outputs are in)
                 denoised_sample_cond = (
-                    noise_pred_video * (1 - conditioning_mask[:bsz])
-                    + clean_latents * conditioning_mask[:bsz]
+                    noise_pred_video * (1 - conditioning_mask[:bsz]) + clean_latents * conditioning_mask[:bsz]
                 ).to(noise_pred_video.dtype)
 
                 # Convert the denoised (x0) sample back to a velocity for the scheduler

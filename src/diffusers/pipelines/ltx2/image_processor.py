@@ -81,8 +81,8 @@ class LTX2VideoHDRProcessor(VideoProcessor):
         r"""
         Resize a video tensor preserving aspect ratio, then reflect-pad to the exact target dimensions.
 
-        Mirrors `resize_and_reflect_pad` in the reference `ltx_pipelines.utils.media_io`. When the source is already
-        at least as large as the target in both dimensions, the interpolation step is skipped entirely.
+        Mirrors `resize_and_reflect_pad` in the reference `ltx_pipelines.utils.media_io`. When the source is already at
+        least as large as the target in both dimensions, the interpolation step is skipped entirely.
 
         Args:
             video (`torch.Tensor`): Input of shape `(B, C, F, H, W)`.

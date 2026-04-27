@@ -205,17 +205,17 @@ def save_exr_tensor(
 
     Args:
         tensor (`torch.Tensor` or `np.ndarray`):
-            A float frame of shape `(H, W, C)` or `(C, H, W)` with linear HDR values in `[0, ∞)`. Channels are
-            assumed to be RGB.
+            A float frame of shape `(H, W, C)` or `(C, H, W)` with linear HDR values in `[0, ∞)`. Channels are assumed
+            to be RGB.
         file_path (`str` or `pathlib.Path`):
             Output EXR path (e.g. `frame_00000.exr`).
         half (`bool`, *optional*, defaults to `False`):
-            When `True`, writes the file as `float16` (HALF) with ZIP compression. `float16` tensors are always
-            saved as HALF regardless of this flag.
+            When `True`, writes the file as `float16` (HALF) with ZIP compression. `float16` tensors are always saved
+            as HALF regardless of this flag.
 
-    The resulting EXR is tagged with Rec.709/sRGB chromaticities and `colorSpace=sRGB` to match the reference.
-    Requires [OpenImageIO](https://openimageio.readthedocs.io) with OpenEXR support:
-    `pip install OpenImageIO` (or `pip install oiio`).
+    The resulting EXR is tagged with Rec.709/sRGB chromaticities and `colorSpace=sRGB` to match the reference. Requires
+    [OpenImageIO](https://openimageio.readthedocs.io) with OpenEXR support: `pip install OpenImageIO` (or `pip install
+    oiio`).
     """
     try:
         import OpenImageIO
@@ -241,9 +241,7 @@ def save_exr_tensor(
     spec = OpenImageIO.ImageSpec(w, h, 3, fmt)
     spec.channelnames = ("R", "G", "B")
     spec.attribute("compression", "zip")
-    spec.attribute(
-        "chromaticities", "float[8]", (0.64, 0.33, 0.30, 0.60, 0.15, 0.06, 0.3127, 0.3290)
-    )
+    spec.attribute("chromaticities", "float[8]", (0.64, 0.33, 0.30, 0.60, 0.15, 0.06, 0.3127, 0.3290))
     spec.attribute("colorSpace", "sRGB")
 
     out = OpenImageIO.ImageOutput.create(file_path)
@@ -263,8 +261,8 @@ def save_exr_tensor(
 def simple_tone_map(x: np.ndarray) -> np.ndarray:
     r"""
     Applies a very simple tone-mapping function on (scene-referred) linear light which simply clips values above `1.0`
-    to `1.0`. This is what the original LTX-2.X code does, but you probably want to do some non-trivial tone-mapping
-    to make the sample look better.
+    to `1.0`. This is what the original LTX-2.X code does, but you probably want to do some non-trivial tone-mapping to
+    make the sample look better.
     """
     return np.clip(x, 0.0, 1.0)
 
@@ -292,8 +290,8 @@ def encode_exr_sequence_to_mp4(
     r"""
     Convert a linear-HDR EXR frame sequence into an sRGB-tonemapped H.264 `.mp4` preview.
 
-    Each EXR frame is loaded, clipped to `[0, 1]`, passed through the sRGB OETF (no exposure/gain, EV=0), quantized
-    to 8-bit, and fed into a libx264 stream at the supplied `frame_rate`.
+    Each EXR frame is loaded, clipped to `[0, 1]`, passed through the sRGB OETF (no exposure/gain, EV=0), quantized to
+    8-bit, and fed into a libx264 stream at the supplied `frame_rate`.
 
     Args:
         exr_dir (`str` or `pathlib.Path`):
@@ -303,23 +301,24 @@ def encode_exr_sequence_to_mp4(
         frame_rate (`float`):
             Frame rate for the output video.
         tone_mapping_fn (`Callable[[np.ndarray], np.ndarray]`, *optional*, defaults to `None`):
-            An optional tone mapping function which takes a float32 NumPy array of shape `(H, W, 3)` containing
-            linear HDR values in `[0, ∞)` and returns tone-mapped linear values in `[0, 1]`. The sRGB transfer
-            function (OETF) is applied afterwards — do **not** pre-apply gamma inside this function. If `None`,
-            defaults to [`simple_tone_map`], which clips values above `1.0`. The channel ordering of the input
-            array is controlled by `tone_map_in_rgb`: BGR by default (matching `opencv-python` conventions), or
-            RGB when `tone_map_in_rgb=True` (matching `colour-science` and most other libraries).
+            An optional tone mapping function which takes a float32 NumPy array of shape `(H, W, 3)` containing linear
+            HDR values in `[0, ∞)` and returns tone-mapped linear values in `[0, 1]`. The sRGB transfer function (OETF)
+            is applied afterwards — do **not** pre-apply gamma inside this function. If `None`, defaults to
+            [`simple_tone_map`], which clips values above `1.0`. The channel ordering of the input array is controlled
+            by `tone_map_in_rgb`: BGR by default (matching `opencv-python` conventions), or RGB when
+            `tone_map_in_rgb=True` (matching `colour-science` and most other libraries).
         tone_map_in_rgb (`bool`, *optional*, defaults to `False`):
-            When `True`, each EXR frame is converted from BGR to RGB before being passed to `tone_mapping_fn`,
-            and the output frame is tagged as `rgb24`. Use this when `tone_mapping_fn` expects RGB input (e.g.
-            operators from `colour-science`). When `False` (default), frames are passed as BGR, which is the
-            native format for `opencv-python` tone mappers (e.g. `cv2.createTonemapReinhard().process`).
+            When `True`, each EXR frame is converted from BGR to RGB before being passed to `tone_mapping_fn`, and the
+            output frame is tagged as `rgb24`. Use this when `tone_mapping_fn` expects RGB input (e.g. operators from
+            `colour-science`). When `False` (default), frames are passed as BGR, which is the native format for
+            `opencv-python` tone mappers (e.g. `cv2.createTonemapReinhard().process`).
         crf (`int`, *optional*, defaults to `18`):
             libx264 CRF quality factor. Lower values produce higher quality.
 
     Requires `opencv-python` (for EXR reading via `OPENCV_IO_ENABLE_OPENEXR`).
     """
     import os
+
     os.environ["OPENCV_IO_ENABLE_OPENEXR"] = "1"
 
     try:

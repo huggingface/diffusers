@@ -79,15 +79,13 @@ EXAMPLE_DOC_STRING = """
         >>> from diffusers.pipelines.ltx2.utils import DEFAULT_NEGATIVE_PROMPT
         >>> from diffusers.utils import load_video
 
-        >>> pipe = LTX2ICLoraPipeline.from_pretrained(
-        ...     "dg845/LTX-2.3-Diffusers", torch_dtype=torch.bfloat16
-        ... )
+        >>> pipe = LTX2ICLoraPipeline.from_pretrained("dg845/LTX-2.3-Diffusers", torch_dtype=torch.bfloat16)
         >>> pipe.enable_sequential_cpu_offload(device="cuda")
         >>> pipe.load_lora_weights(
-        >>>     "Lightricks/LTX-2-19b-LoRA-Camera-Control-Dolly-In",
-        >>>     adapter_name="ic_lora",
-        >>>     weight_name="ltx-2-19b-lora-camera-control-dolly-in.safetensors",
-        >>> )
+        ...     "Lightricks/LTX-2-19b-LoRA-Camera-Control-Dolly-In",
+        ...     adapter_name="ic_lora",
+        ...     weight_name="ltx-2-19b-lora-camera-control-dolly-in.safetensors",
+        ... )
         >>> pipe.set_adapters("ic_lora", 1.0)
 
         >>> # If the IC LoRA uses reference conditions, you can specify them as follows:
@@ -240,8 +238,8 @@ class LTX2ICLoraPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoaderM
     r"""
     Pipeline for IC-LoRA (In-Context LoRA) video generation with reference video conditioning.
 
-    IC-LoRA conditions the generation on a reference video by encoding it into latent tokens and concatenating them
-    to the noisy latent sequence during denoising. The IC-LoRA adapter (loaded as a standard LoRA) learns to use this
+    IC-LoRA conditions the generation on a reference video by encoding it into latent tokens and concatenating them to
+    the noisy latent sequence during denoising. The IC-LoRA adapter (loaded as a standard LoRA) learns to use this
     in-context reference to guide generation (e.g. for style transfer, depth-conditioned generation, etc.).
 
     This pipeline also supports frame-level conditioning via the `conditions` parameter (same as
@@ -249,8 +247,8 @@ class LTX2ICLoraPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoaderM
 
     Two-stage inference is supported through separate calls to `__call__`:
     - **Stage 1**: Generate at target resolution with IC-LoRA conditioning (`output_type="latent"`).
-    - **Stage 2**: Upsample via [`LTX2LatentUpsamplePipeline`], then refine with a distilled LoRA (no IC-LoRA
-      reference conditioning needed for Stage 2).
+    - **Stage 2**: Upsample via [`LTX2LatentUpsamplePipeline`], then refine with a distilled LoRA (no IC-LoRA reference
+      conditioning needed for Stage 2).
 
     Reference: https://github.com/Lightricks/LTX-Video
 
@@ -750,9 +748,7 @@ class LTX2ICLoraPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoaderM
             # Create a channels-last video-like array of shape (F, H, W, C) in preparation for resizing.
             if isinstance(condition.frames, PIL.Image.Image):
                 arr = np.array(condition.frames.convert("RGB"))[None]  # (1, H, W, 3)
-            elif isinstance(condition.frames, list) and all(
-                isinstance(f, PIL.Image.Image) for f in condition.frames
-            ):
+            elif isinstance(condition.frames, list) and all(isinstance(f, PIL.Image.Image) for f in condition.frames):
                 arr = np.stack([np.array(f.convert("RGB")) for f in condition.frames])  # (F, H, W, 3)
             elif isinstance(condition.frames, np.ndarray):
                 arr = condition.frames if condition.frames.ndim == 4 else condition.frames[None]
@@ -762,9 +758,7 @@ class LTX2ICLoraPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoaderM
                 # resize logic, which expects channels-last.
                 arr = t.detach().cpu().permute(0, 2, 3, 1).numpy()
             else:
-                raise TypeError(
-                    f"Unsupported `frames` type for condition {i}: {type(condition.frames)}"
-                )
+                raise TypeError(f"Unsupported `frames` type for condition {i}: {type(condition.frames)}")
 
             src_h, src_w = arr.shape[1], arr.shape[2]
             num_cond_frames = arr.shape[0]
@@ -781,9 +775,7 @@ class LTX2ICLoraPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoaderM
             # NOTE: we avoid using VideoProcessor.preprocess_video here because it uses PIL.Image.resize under the
             # hood, which will apply an anti-aliasing pre-filter when downsampling. The original LTX-2.X code simply
             # uses F.interpolate, which is reproduced here.
-            pixels = torch.nn.functional.interpolate(
-                pixels, size=(new_h, new_w), mode="bilinear", align_corners=False
-            )
+            pixels = torch.nn.functional.interpolate(pixels, size=(new_h, new_w), mode="bilinear", align_corners=False)
             top = (new_h - height) // 2
             left = (new_w - width) // 2
             pixels = pixels[:, :, top : top + height, left : left + width]
@@ -832,8 +824,8 @@ class LTX2ICLoraPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoaderM
         Apply first-frame visual conditioning by overwriting tokens at the first-frame positions.
 
         Only conditions with `latent_idx == 0` are applied here (matching `VideoConditionByLatentIndex` in the
-        reference implementation). Conditions at non-zero latent indices are appended as separate keyframe tokens
-        via `prepare_keyframe_extras` (matching `VideoConditionByKeyframeIndex`) and are skipped here.
+        reference implementation). Conditions at non-zero latent indices are appended as separate keyframe tokens via
+        `prepare_keyframe_extras` (matching `VideoConditionByKeyframeIndex`) and are skipped here.
 
         Args:
             latents (`torch.Tensor`):
@@ -880,8 +872,8 @@ class LTX2ICLoraPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoaderM
         Compute positional coordinates for a keyframe condition being appended as extra tokens.
 
         Mirrors `VideoConditionByKeyframeIndex.apply_to` in the reference implementation:
-        - Latent coords scaled to pixel space *without* the causal fix (since non-zero-index keyframes don't need
-          the first-frame causal adjustment).
+        - Latent coords scaled to pixel space *without* the causal fix (since non-zero-index keyframes don't need the
+          first-frame causal adjustment).
         - Temporal axis offset by `pixel_frame_idx` (the pixel-space index at which the keyframe appears).
         - For single-pixel-frame keyframes, the per-patch temporal extent is clamped to `[idx, idx + 1)` so the
           keyframe occupies a single pixel timestep rather than the VAE-scaled range.
@@ -898,12 +890,8 @@ class LTX2ICLoraPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoaderM
         grid_f = torch.arange(
             start=0, end=keyframe_latent_num_frames, step=patch_size_t, dtype=torch.float32, device=device
         )
-        grid_h = torch.arange(
-            start=0, end=keyframe_latent_height, step=patch_size, dtype=torch.float32, device=device
-        )
-        grid_w = torch.arange(
-            start=0, end=keyframe_latent_width, step=patch_size, dtype=torch.float32, device=device
-        )
+        grid_h = torch.arange(start=0, end=keyframe_latent_height, step=patch_size, dtype=torch.float32, device=device)
+        grid_w = torch.arange(start=0, end=keyframe_latent_width, step=patch_size, dtype=torch.float32, device=device)
         grid = torch.meshgrid(grid_f, grid_h, grid_w, indexing="ij")
         grid = torch.stack(grid, dim=0)
 
@@ -952,35 +940,33 @@ class LTX2ICLoraPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoaderM
         """
         Prepare noisy video latents, applying frame and reference-video conditioning.
 
-        Conditioning sources are unified into a single packed sequence in the order
-        `[base | keyframe | reference]`:
+        Conditioning sources are unified into a single packed sequence in the order `[base | keyframe | reference]`:
 
         - First-frame conditions (`conditions` with `latent_idx == 0`) overwrite tokens at the first-frame positions
           (`VideoConditionByLatentIndex` semantics).
         - Non-first-frame conditions (`conditions` with `latent_idx > 0`) are concatenated onto the main latent
-          sequence with per-token `conditioning_mask = strength`
-          (`VideoConditionByKeyframeIndex` semantics).
+          sequence with per-token `conditioning_mask = strength` (`VideoConditionByKeyframeIndex` semantics).
         - IC-LoRA `reference_conditions` (if any) are encoded by the VAE and appended after the keyframes with
-          per-token `conditioning_mask = strength` (matching the reference repo's
-          `VideoConditionByReferenceLatent` semantics).
+          per-token `conditioning_mask = strength` (matching the reference repo's `VideoConditionByReferenceLatent`
+          semantics).
 
-        For all appended tokens the noise mixing below blends them to noise level `(1 - strength) * sigma_max`,
-        and the existing per-token timestep formula `t * (1 - conditioning_mask)` and the post-process blend
-        `denoised * (1 - cond_mask) + clean * cond_mask` drive them through the loop.
+        For all appended tokens the noise mixing below blends them to noise level `(1 - strength) * sigma_max`, and the
+        existing per-token timestep formula `t * (1 - conditioning_mask)` and the post-process blend `denoised * (1 -
+        cond_mask) + clean * cond_mask` drive them through the loop.
 
         Returns a 6-tuple:
             - `latents`: packed noisy latents `(B, base + n_keyframe + n_ref, C)`.
-            - `conditioning_mask`: `(B, seq_len, 1)` with values in `[0, 1]` — `1` at first-frame positions,
-              `strength` at keyframe / reference positions, `0` elsewhere.
+            - `conditioning_mask`: `(B, seq_len, 1)` with values in `[0, 1]` — `1` at first-frame positions, `strength`
+              at keyframe / reference positions, `0` elsewhere.
             - `clean_latents`: clean condition values at conditioned positions (zeros elsewhere); same shape as
               `latents`.
-            - `appended_coords`: `[1, 3, n_keyframe + n_ref, 2]` positional coordinates to concat onto
-              `video_coords`, or `None` if no keyframe/reference conditions are provided.
-            - `num_ref_tokens`: count of reference tokens at the END of `latents` (used by the call site to
-              build the unified self-attention mask).
-            - `ref_cross_mask`: `[1, num_ref_tokens]` per-reference-token cross-attention strengths in `[0, 1]`,
-              or `None` when `conditioning_attention_strength == 1.0` and no pixel-space mask is provided
-              (in which case attention is uniform).
+            - `appended_coords`: `[1, 3, n_keyframe + n_ref, 2]` positional coordinates to concat onto `video_coords`,
+              or `None` if no keyframe/reference conditions are provided.
+            - `num_ref_tokens`: count of reference tokens at the END of `latents` (used by the call site to build the
+              unified self-attention mask).
+            - `ref_cross_mask`: `[1, num_ref_tokens]` per-reference-token cross-attention strengths in `[0, 1]`, or
+              `None` when `conditioning_attention_strength == 1.0` and no pixel-space mask is provided (in which case
+              attention is uniform).
         """
         latent_height = height // self.vae_spatial_compression_ratio
         latent_width = width // self.vae_spatial_compression_ratio
@@ -1216,9 +1202,9 @@ class LTX2ICLoraPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoaderM
     ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor | None]:
         """Encode IC-LoRA reference videos into `(reference_latents, reference_coords, reference_cross_mask)`.
 
-        This is the shared encoding core used by both `prepare_latents` (which folds reference tokens into the
-        main noisy sequence) and the back-compat shim `prepare_reference_latents` (which exposes the legacy
-        4-tuple output). See `prepare_reference_latents` for parameter documentation.
+        This is the shared encoding core used by both `prepare_latents` (which folds reference tokens into the main
+        noisy sequence) and the back-compat shim `prepare_reference_latents` (which exposes the legacy 4-tuple output).
+        See `prepare_reference_latents` for parameter documentation.
         """
         ref_height = height // reference_downscale_factor
         ref_width = width // reference_downscale_factor
@@ -1240,20 +1226,16 @@ class LTX2ICLoraPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoaderM
             else:
                 video_like = ref_cond.frames
 
-            ref_pixels = self.video_processor.preprocess_video(
-                video_like, ref_height, ref_width, resize_mode="crop"
-            )
+            ref_pixels = self.video_processor.preprocess_video(video_like, ref_height, ref_width, resize_mode="crop")
             # Trim to num_frames
             ref_pixels = ref_pixels[:, :, :num_frames]
             ref_pixels = ref_pixels.to(dtype=self.vae.dtype, device=device)
 
             # Encode through VAE
-            ref_latent = retrieve_latents(
-                self.vae.encode(ref_pixels), generator=generator, sample_mode="argmax"
+            ref_latent = retrieve_latents(self.vae.encode(ref_pixels), generator=generator, sample_mode="argmax")
+            ref_latent = self._normalize_latents(ref_latent, self.vae.latents_mean, self.vae.latents_std).to(
+                device=device, dtype=dtype
             )
-            ref_latent = self._normalize_latents(
-                ref_latent, self.vae.latents_mean, self.vae.latents_std
-            ).to(device=device, dtype=dtype)
 
             # Get latent dimensions for coordinate computation
             _, _, ref_latent_frames, ref_latent_height, ref_latent_width = ref_latent.shape
@@ -1326,10 +1308,10 @@ class LTX2ICLoraPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoaderM
         Each reference video is independently encoded by the VAE, packed into tokens, and its positional coordinates
         are computed with spatial scaling by `reference_downscale_factor` to match the target coordinate space.
 
-        All reference tokens are concatenated into a single sequence. When `conditioning_attention_strength < 1.0`
-        or `conditioning_attention_mask` is provided, a per-token cross-attention mask is also computed for each
-        reference video (downsampled to the reference video's latent dimensions) and returned so callers can build
-        a self-attention mask over the full video sequence.
+        All reference tokens are concatenated into a single sequence. When `conditioning_attention_strength < 1.0` or
+        `conditioning_attention_mask` is provided, a per-token cross-attention mask is also computed for each reference
+        video (downsampled to the reference video's latent dimensions) and returned so callers can build a
+        self-attention mask over the full video sequence.
 
         Args:
             reference_conditions (`list[LTX2ReferenceCondition]`):
@@ -1342,19 +1324,19 @@ class LTX2ICLoraPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoaderM
             num_frames (`int`):
                 Number of target video frames.
             reference_downscale_factor (`int`, defaults to `1`):
-                Ratio between target and reference resolutions. A factor of 2 means the reference video is
-                preprocessed at half the target resolution. Spatial positional coordinates are scaled by this factor
-                to map reference tokens into the target coordinate space.
+                Ratio between target and reference resolutions. A factor of 2 means the reference video is preprocessed
+                at half the target resolution. Spatial positional coordinates are scaled by this factor to map
+                reference tokens into the target coordinate space.
             frame_rate (`float`, defaults to `24.0`):
                 Video frame rate (used for temporal coordinate computation).
             conditioning_attention_strength (`float`, defaults to `1.0`):
-                Scalar in `[0, 1]` controlling how strongly reference tokens attend to noisy tokens (and vice versa)
-                in the self-attention mask. `1.0` means full attention (no masking), `0.0` means reference tokens
-                are effectively ignored by the noisy tokens.
+                Scalar in `[0, 1]` controlling how strongly reference tokens attend to noisy tokens (and vice versa) in
+                the self-attention mask. `1.0` means full attention (no masking), `0.0` means reference tokens are
+                effectively ignored by the noisy tokens.
             conditioning_attention_mask (`torch.Tensor`, *optional*):
                 Optional pixel-space mask of shape `(1, 1, F_pix, H_pix, W_pix)` with values in `[0, 1]` that provides
-                spatially-varying attention strength. Downsampled to latent space per reference video and multiplied
-                by `conditioning_attention_strength`.
+                spatially-varying attention strength. Downsampled to latent space per reference video and multiplied by
+                `conditioning_attention_strength`.
             dtype (`torch.dtype`, *optional*):
                 Data type for the latents.
             device (`torch.device`, *optional*):
@@ -1367,9 +1349,9 @@ class LTX2ICLoraPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoaderM
                 - `reference_latents`: `[1, total_ref_tokens, hidden_dim]`
                 - `reference_coords`: `[1, 3, total_ref_tokens, 2]`
                 - `reference_denoise_factors`: `[1, total_ref_tokens]` — per-token `(1 - strength)` factors
-                - `reference_cross_mask`: `[1, total_ref_tokens]` per-token noisy↔reference attention strengths in
-                  `[0, 1]`, or `None` when `conditioning_attention_strength == 1.0` and no pixel-space mask is
-                  provided (in which case attention is unmasked).
+                - `reference_cross_mask`: `[1, total_ref_tokens]` per-token noisy↔reference attention strengths in `[0,
+                  1]`, or `None` when `conditioning_attention_strength == 1.0` and no pixel-space mask is provided (in
+                  which case attention is unmasked).
         """
         reference_latents, reference_coords, reference_cross_mask = self._encode_reference_conditions(
             reference_conditions=reference_conditions,
@@ -1403,7 +1385,9 @@ class LTX2ICLoraPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoaderM
                 )
             )
             idx += n_per_ref
-        reference_denoise_factors = torch.cat(ref_denoise_chunks, dim=1) if ref_denoise_chunks else reference_latents.new_zeros((1, 0))
+        reference_denoise_factors = (
+            torch.cat(ref_denoise_chunks, dim=1) if ref_denoise_chunks else reference_latents.new_zeros((1, 0))
+        )
 
         return reference_latents, reference_coords, reference_denoise_factors, reference_cross_mask
 
@@ -1419,9 +1403,9 @@ class LTX2ICLoraPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoaderM
 
         Mirrors `ICLoraPipeline._downsample_mask_to_latent` in the reference implementation:
         - Spatial downsampling via `area` interpolation per frame.
-        - Causal temporal downsampling: the first frame is kept as-is (the VAE encodes the first frame
-          independently with temporal stride 1), remaining frames are downsampled by group-mean using factor
-          `(F_pix - 1) // (F_lat - 1)`.
+        - Causal temporal downsampling: the first frame is kept as-is (the VAE encodes the first frame independently
+          with temporal stride 1), remaining frames are downsampled by group-mean using factor `(F_pix - 1) // (F_lat -
+          1)`.
         - Flattened to token order `(F, H, W)` matching the patchifier.
 
         Args:
@@ -1441,9 +1425,7 @@ class LTX2ICLoraPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoaderM
 
         # 1. Spatial downsampling (area interpolation per frame).
         mask_2d = mask.reshape(b * f_pix, 1, mask.shape[-2], mask.shape[-1])
-        spatial_down = torch.nn.functional.interpolate(
-            mask_2d, size=(latent_height, latent_width), mode="area"
-        )
+        spatial_down = torch.nn.functional.interpolate(mask_2d, size=(latent_height, latent_width), mode="area")
         spatial_down = spatial_down.reshape(b, 1, f_pix, latent_height, latent_width)
 
         # 2. Causal temporal downsampling.
@@ -1486,15 +1468,15 @@ class LTX2ICLoraPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoaderM
             num_noisy_tokens (`int`):
                 Number of noisy video tokens.
             extras_cross_masks (`list[torch.Tensor]`):
-                List of per-token cross-attention strengths, one per conditioning group. Each entry has shape
-                `(1, num_tokens_in_group)` with values in `[0, 1]`. Groups must appear in the same order as their
-                tokens in the extras block.
+                List of per-token cross-attention strengths, one per conditioning group. Each entry has shape `(1,
+                num_tokens_in_group)` with values in `[0, 1]`. Groups must appear in the same order as their tokens in
+                the extras block.
             device, dtype:
                 Tensor device and dtype.
 
         Returns:
-            Multiplicative self-attention mask of shape `(1, num_noisy_tokens + sum(group_sizes),
-            num_noisy_tokens + sum(group_sizes))` with values in `[0, 1]`.
+            Multiplicative self-attention mask of shape `(1, num_noisy_tokens + sum(group_sizes), num_noisy_tokens +
+            sum(group_sizes))` with values in `[0, 1]`.
         """
         total_extras = sum(m.shape[1] for m in extras_cross_masks)
         total = num_noisy_tokens + total_extras
@@ -1508,11 +1490,11 @@ class LTX2ICLoraPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoaderM
             n = cross_mask.shape[1]
             cross = cross_mask.to(device=device, dtype=dtype)
             # noisy (rows) ↔ this group (cols)
-            attn_mask[:, :num_noisy_tokens, offset:offset + n] = cross.unsqueeze(1)
+            attn_mask[:, :num_noisy_tokens, offset : offset + n] = cross.unsqueeze(1)
             # this group (rows) ↔ noisy (cols)
-            attn_mask[:, offset:offset + n, :num_noisy_tokens] = cross.unsqueeze(2)
+            attn_mask[:, offset : offset + n, :num_noisy_tokens] = cross.unsqueeze(2)
             # this group ↔ this group (self-attention within the group)
-            attn_mask[:, offset:offset + n, offset:offset + n] = 1.0
+            attn_mask[:, offset : offset + n, offset : offset + n] = 1.0
             offset += n
         return attn_mask
 
@@ -1666,15 +1648,15 @@ class LTX2ICLoraPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoaderM
             conditioning_attention_strength (`float`, *optional*, defaults to `1.0`):
                 Scalar in `[0, 1]` controlling how strongly noisy tokens and appended reference tokens attend to each
                 other in the video self-attention. `1.0` = full attention (no masking, same as the base IC-LoRA
-                behavior). `0.0` = reference tokens are fully masked out of the noisy-token attention (and vice
-                versa). Only takes effect when `reference_conditions` is provided.
+                behavior). `0.0` = reference tokens are fully masked out of the noisy-token attention (and vice versa).
+                Only takes effect when `reference_conditions` is provided.
             conditioning_attention_mask (`torch.Tensor`, *optional*):
-                Optional pixel-space spatial attention mask of shape `(1, 1, F_pix, H_pix, W_pix)` with values in
-                `[0, 1]` that provides per-region attention strength. The mask's spatial-temporal dimensions must
-                match the reference video's pixel dimensions. Downsampled to latent space using VAE scale factors
-                (with causal temporal handling for the first frame) and multiplied by
-                `conditioning_attention_strength` to form the final cross-attention mask between noisy and reference
-                tokens. Only takes effect when `reference_conditions` is provided.
+                Optional pixel-space spatial attention mask of shape `(1, 1, F_pix, H_pix, W_pix)` with values in `[0,
+                1]` that provides per-region attention strength. The mask's spatial-temporal dimensions must match the
+                reference video's pixel dimensions. Downsampled to latent space using VAE scale factors (with causal
+                temporal handling for the first frame) and multiplied by `conditioning_attention_strength` to form the
+                final cross-attention mask between noisy and reference tokens. Only takes effect when
+                `reference_conditions` is provided.
             height (`int`, *optional*, defaults to `512`):
                 The height in pixels of the generated video.
             width (`int`, *optional*, defaults to `768`):
@@ -1748,8 +1730,8 @@ class LTX2ICLoraPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoaderM
 
         Returns:
             [`LTX2PipelineOutput`] or `tuple`:
-                If `return_dict` is `True`, [`LTX2PipelineOutput`] is returned, otherwise a `tuple` of
-                `(video, audio)` is returned.
+                If `return_dict` is `True`, [`LTX2PipelineOutput`] is returned, otherwise a `tuple` of `(video, audio)`
+                is returned.
         """
 
         if isinstance(callback_on_step_end, (PipelineCallback, MultiPipelineCallbacks)):
@@ -2155,9 +2137,7 @@ class LTX2ICLoraPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoaderM
                         audio_latents, noise_pred_audio_uncond_mod, i, audio_scheduler
                     )
 
-                    video_modality_delta = (self.modality_scale - 1) * (
-                        noise_pred_video - noise_pred_video_uncond_mod
-                    )
+                    video_modality_delta = (self.modality_scale - 1) * (noise_pred_video - noise_pred_video_uncond_mod)
                     audio_modality_delta = (self.audio_modality_scale - 1) * (
                         noise_pred_audio - noise_pred_audio_uncond_mod
                     )
