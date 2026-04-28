@@ -73,13 +73,13 @@ EXAMPLE_DOC_STRING = """
     Examples:
         ```py
         >>> import torch
-        >>> from diffusers import LTX2ICLoraPipeline
+        >>> from diffusers import LTX2InContextPipeline
         >>> from diffusers.pipelines.ltx2.pipeline_ltx2_ic_lora import LTX2ReferenceCondition
         >>> from diffusers.pipelines.ltx2.export_utils import encode_video
         >>> from diffusers.pipelines.ltx2.utils import DEFAULT_NEGATIVE_PROMPT
         >>> from diffusers.utils import load_video
 
-        >>> pipe = LTX2ICLoraPipeline.from_pretrained("dg845/LTX-2.3-Diffusers", torch_dtype=torch.bfloat16)
+        >>> pipe = LTX2InContextPipeline.from_pretrained("dg845/LTX-2.3-Diffusers", torch_dtype=torch.bfloat16)
         >>> pipe.enable_sequential_cpu_offload(device="cuda")
         >>> pipe.load_lora_weights(
         ...     "Lightricks/LTX-2-19b-LoRA-Camera-Control-Dolly-In",
@@ -234,7 +234,7 @@ def rescale_noise_cfg(noise_cfg, noise_pred_text, guidance_rescale=0.0):
     return noise_cfg
 
 
-class LTX2ICLoraPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoaderMixin):
+class LTX2InContextPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoaderMixin):
     r"""
     Pipeline for IC-LoRA (In-Context LoRA) video generation with reference video conditioning.
 

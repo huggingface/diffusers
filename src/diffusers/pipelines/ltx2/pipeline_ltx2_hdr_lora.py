@@ -74,13 +74,13 @@ EXAMPLE_DOC_STRING = """
         ```py
         >>> import torch
         >>> from safetensors import safe_open
-        >>> from diffusers import LTX2HDRLoraPipeline
+        >>> from diffusers import LTX2HDRPipeline
         >>> from diffusers.pipelines.ltx2.pipeline_ltx2_hdr_lora import LTX2HDRReferenceCondition
         >>> from diffusers.pipelines.ltx2.utils import DISTILLED_SIGMA_VALUES
         >>> from diffusers.pipelines.ltx2.export_utils import save_hdr_video_frames_as_exr, encode_exr_sequence_to_mp4
         >>> from diffusers.utils import load_video
 
-        >>> pipe = LTX2HDRLoraPipeline.from_pretrained("dg845/LTX-2.3-Distilled-Diffusers", torch_dtype=torch.bfloat16)
+        >>> pipe = LTX2HDRPipeline.from_pretrained("dg845/LTX-2.3-Distilled-Diffusers", torch_dtype=torch.bfloat16)
         >>> pipe.enable_sequential_cpu_offload(device="cuda")
         >>> pipe.load_lora_weights(
         ...     "Lightricks/LTX-2.3-22b-IC-LoRA-HDR",
@@ -237,15 +237,15 @@ def rescale_noise_cfg(noise_cfg, noise_pred_text, guidance_rescale=0.0):
     return noise_cfg
 
 
-class LTX2HDRLoraPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoaderMixin):
+class LTX2HDRPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoaderMixin):
     r"""
     Pipeline for HDR IC-LoRA video generation with reference video conditioning.
 
-    This is a video-only HDR counterpart to [`LTX2ICLoraPipeline`]. The HDR IC-LoRA adapter (loaded as a standard LoRA
-    via `load_lora_weights`) conditions generation on a reference video, and the pipeline's postprocessing applies the
-    LogC3 inverse transform to produce linear HDR output in `[0, ∞)`.
+    This is a video-only HDR counterpart to [`LTX2InContextPipeline`]. The HDR IC-LoRA adapter (loaded as a standard
+    LoRA via `load_lora_weights`) conditions generation on a reference video, and the pipeline's postprocessing applies
+    the LogC3 inverse transform to produce linear HDR output in `[0, ∞)`.
 
-    Compared to [`LTX2ICLoraPipeline`], the HDR pipeline drops:
+    Compared to [`LTX2InContextPipeline`], the HDR pipeline drops:
 
     - Frame-level keyframe conditioning (the reference HDR pipeline does not support this).
     - The `conditioning_attention_strength` / `conditioning_attention_mask` knobs.
@@ -701,10 +701,10 @@ class LTX2HDRLoraPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoader
         Builds a packed latent sequence in the order `[base | reference]`:
           - Base: either fresh noise (Stage 1, `latents=None`) or pre-existing upsampled latents (Stage 2).
           - Reference: HDR-encoded reference-video tokens appended with per-token `conditioning_mask = strength`,
-            following the same pattern as [`LTX2ICLoraPipeline.prepare_latents`]. (HDR LoRA does not currently take
+            following the same pattern as [`LTX2InContextPipeline.prepare_latents`]. (HDR LoRA does not currently take
             per-frame `conditions`, so there is no first-frame / keyframe block in between.)
 
-        Returns a 6-tuple matching [`LTX2ICLoraPipeline.prepare_latents`]:
+        Returns a 6-tuple matching [`LTX2InContextPipeline.prepare_latents`]:
             - `latents`: packed noisy latents `(B, base + n_ref, C)`.
             - `conditioning_mask`: `(B, seq_len, 1)` with `strength` at reference positions, `0` elsewhere.
             - `clean_latents`: clean reference values at reference positions (zeros elsewhere); same shape as
@@ -936,7 +936,7 @@ class LTX2HDRLoraPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoader
         computed at the reference latent dimensions and scaled by `reference_downscale_factor`.
 
         Returns a 3-tuple `(reference_latents, reference_coords, reference_denoise_factors)` with the same shapes as
-        [`LTX2ICLoraPipeline.prepare_reference_latents`].
+        [`LTX2InContextPipeline.prepare_reference_latents`].
         """
         reference_latents, reference_coords, _ = self._encode_reference_conditions(
             reference_conditions=reference_conditions,
@@ -1138,7 +1138,7 @@ class LTX2HDRLoraPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoader
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether to return an [`LTX2PipelineOutput`] instead of a plain tuple.
             attention_kwargs, callback_on_step_end, callback_on_step_end_tensor_inputs, max_sequence_length:
-                Standard hooks and arguments, same as [`LTX2ICLoraPipeline`].
+                Standard hooks and arguments, same as [`LTX2InContextPipeline`].
 
         Examples:
 

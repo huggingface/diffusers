@@ -324,8 +324,8 @@ else:
     _import_structure["ltx2"] = [
         "LTX2Pipeline",
         "LTX2ConditionPipeline",
-        "LTX2HDRLoraPipeline",
-        "LTX2ICLoraPipeline",
+        "LTX2HDRPipeline",
+        "LTX2InContextPipeline",
         "LTX2ImageToVideoPipeline",
         "LTX2LatentUpsamplePipeline",
     ]
@@ -772,9 +772,9 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         )
         from .ltx2 import (
             LTX2ConditionPipeline,
-            LTX2HDRLoraPipeline,
-            LTX2ICLoraPipeline,
+            LTX2HDRPipeline,
             LTX2ImageToVideoPipeline,
+            LTX2InContextPipeline,
             LTX2LatentUpsamplePipeline,
             LTX2Pipeline,
         )
