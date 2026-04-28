@@ -376,14 +376,14 @@ From the above table, it is clear that Ulysses Anything Attention offers better 
 
 The default [Ring Attention](https://huggingface.co/papers/2310.01889) requires the sequence length of hidden states to be evenly divisible across the ring degree. [Ring Anything Attention](https://github.com/huggingface/diffusers/pull/13545#issuecomment-4302195582) is a variant of Ring Attention that supports arbitrary (non-evenly divisible) sequence lengths. It pads each rank's local KV to the global maximum sequence length, all-gathers the padded KV buffer, and slices back to each rank's true length before running attention.
 
-[`ContextParallelConfig`] supports Ring Anything Attention by specifying both `ring_degree` and `ring_anything`. Please note that Ring Anything Attention is not currently supported by Unified Attention. Pass the [`ContextParallelConfig`] with `ring_degree` set to bigger than 1 and `ring_anything=True` to [`~ModelMixin.enable_parallelism`].
+Ring Anything Attention is not supported by Unified Attention. Set `ring_degree > 1` and `ring_anything=True` to enable Ring Anything Attention.
 
 ```py
 pipeline.transformer.enable_parallelism(config=ContextParallelConfig(ring_degree=2, ring_anything=True))
 ```
 
 > [!TIP]
-> To avoid multiple forced CUDA sync caused by H2D and D2H transfers, please add the **gloo** backend in [`init_process_group`](https://docs.pytorch.org/docs/stable/distributed.html#torch.distributed.init_process_group).
+> Add the `gloo` backend to [init_process_group](https://docs.pytorch.org/docs/stable/distributed.html#torch.distributed.init_process_group) to avoid multiple forced CUDA syncs from H2D and D2H transfers.
 
 ```py
 import torch.distributed as dist
@@ -392,10 +392,9 @@ dist.init_process_group(backend="cpu:gloo,cuda:nccl")
 ```
 
 > [!NOTE]
-> Backward is not implemented yet; this mode is currently inference-only.
-> `attn_mask` must be `None`; non-None attention masks are not supported.
+> Ring Anything Attention only currently supports inference and non-`None` attention masks aren't supported. `attn_mask` must be `None`.
 
-We ran a benchmark for FLUX.1-dev with Ulysses, Ring, Unified Attention, Ulysses Anything Attention, and Ring Anything Attention on a node of 4 RTX 4090 (48GB) GPUs. The results are summarized as follows:
+See the FLUX.1-dev benchmarks below on a node of 4 RTX 4090 (48GB) GPUs.
 
 | CP Backend         | Time / Iter (ms) | Steps / Sec | Peak Memory (GB) | Shape (HxW)|
 |--------------------|------------------|-------------|------------------|------------|
