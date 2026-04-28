@@ -22,10 +22,10 @@ import pytest
 import torch
 from accelerate.utils.modeling import compute_module_sizes
 
-from diffusers.utils.testing_utils import _check_safetensors_serialization
 from diffusers.utils.torch_utils import get_torch_cuda_device_capability
 
 from ...testing_utils import (
+    _check_safetensors_serialization,
     assert_tensors_close,
     backend_empty_cache,
     backend_max_memory_allocated,
@@ -361,6 +361,9 @@ class GroupOffloadTesterMixin:
                 offload_to_disk_path=tmpdir,
                 offload_type=offload_type,
                 num_blocks_per_group=num_blocks_per_group,
+                block_modules=model._group_offload_block_modules
+                if hasattr(model, "_group_offload_block_modules")
+                else None,
             )
             if not is_correct:
                 if extra_files:
