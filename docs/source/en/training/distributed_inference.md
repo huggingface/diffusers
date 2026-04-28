@@ -384,12 +384,12 @@ pipeline.transformer.enable_parallelism(config=ContextParallelConfig(ring_degree
 
 > [!TIP]
 > To avoid multiple forced CUDA sync caused by H2D and D2H transfers, please add the **gloo** backend in [`init_process_group`](https://docs.pytorch.org/docs/stable/distributed.html#torch.distributed.init_process_group).
->
-> ```py
-> import torch.distributed as dist
->
-> dist.init_process_group(backend="cpu:gloo,cuda:nccl")
-> ```
+
+```py
+import torch.distributed as dist
+
+dist.init_process_group(backend="cpu:gloo,cuda:nccl")
+```
 
 > [!NOTE]
 > Backward is not implemented yet; this mode is currently inference-only.
