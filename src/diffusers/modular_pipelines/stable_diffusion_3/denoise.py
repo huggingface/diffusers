@@ -103,33 +103,30 @@ class StableDiffusion3LoopDenoiser(ModularPipelineBlocks):
         i: int,
         t: torch.Tensor,
     ) -> PipelineState:
-        do_cfg = getattr(block_state, "negative_prompt_embeds", None) is not None
+
+        do_cfg = block_state.negative_prompt_embeds is not None
+
 
         guider_inputs = {
-            "hidden_states": ((block_state.latents, block_state.latents) if do_cfg else block_state.latents),
+            "hidden_states": (block_state.latents, block_state.latents) if do_cfg else block_state.latents,
             "encoder_hidden_states": (
-                (
-                    getattr(block_state, "prompt_embeds", None),
-                    getattr(block_state, "negative_prompt_embeds", None),
-                )
-                if do_cfg
-                else getattr(block_state, "prompt_embeds", None)
-            ),
+                block_state.prompt_embeds,
+                block_state.negative_prompt_embeds,
+            ) if do_cfg else block_state.prompt_embeds,
             "text_embeds": (
-                (
-                    getattr(block_state, "pooled_prompt_embeds", None),
-                    getattr(block_state, "negative_pooled_prompt_embeds", None),
-                )
-                if do_cfg
-                else getattr(block_state, "pooled_prompt_embeds", None)
-            ),
+                block_state.pooled_prompt_embeds,
+                block_state.negative_pooled_prompt_embeds,
+            ) if do_cfg else block_state.pooled_prompt_embeds,
         }
 
-        components.guider.set_state(step=i, num_inference_steps=block_state.num_inference_steps, timestep=t)
+        components.guider.set_state(
+            step=i, num_inference_steps=block_state.num_inference_steps, timestep=t
+        )
         guider_state = components.guider.prepare_inputs(guider_inputs)
 
         for guider_state_batch in guider_state:
             components.guider.prepare_models(components.transformer)
+
 
             latent_model_input = guider_state_batch.hidden_states
             prompt_embeds = guider_state_batch.encoder_hidden_states
@@ -142,7 +139,7 @@ class StableDiffusion3LoopDenoiser(ModularPipelineBlocks):
                 timestep=timestep,
                 encoder_hidden_states=prompt_embeds,
                 pooled_projections=pooled_projections,
-                joint_attention_kwargs=getattr(block_state, "joint_attention_kwargs", None),
+                joint_attention_kwargs=block_state.joint_attention_kwargs,
                 return_dict=False,
             )[0]
 

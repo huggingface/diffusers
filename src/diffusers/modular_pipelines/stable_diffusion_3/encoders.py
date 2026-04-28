@@ -35,9 +35,7 @@ logger = logging.get_logger(__name__)
 
 # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_img2img.retrieve_latents
 def retrieve_latents(
-    encoder_output: torch.Tensor,
-    generator: torch.Generator | None = None,
-    sample_mode: str = "sample",
+    encoder_output: torch.Tensor, generator: torch.Generator | None = None, sample_mode: str = "sample"
 ):
     if hasattr(encoder_output, "latent_dist") and sample_mode == "sample":
         return encoder_output.latent_dist.sample(generator)
@@ -344,8 +342,7 @@ class StableDiffusion3ProcessImagesInputStep(ModularPipelineBlocks):
 
     @property
     def inputs(self) -> list[InputParam]:
-        return [
-            InputParam("resized_image", description="The pre-resized image input."),
+        return[
             InputParam(
                 "image",
                 description="The input image to be used as the starting point for the image-to-image process.",
@@ -367,27 +364,27 @@ class StableDiffusion3ProcessImagesInputStep(ModularPipelineBlocks):
             raise ValueError(f"Width must be divisible by {vae_scale_factor * patch_size} but is {width}")
 
     @torch.no_grad()
-    def __call__(self, components: StableDiffusion3ModularPipeline, state: PipelineState):
+    def __call__(
+        self, components: StableDiffusion3ModularPipeline, state: PipelineState
+    ):
         block_state = self.get_block_state(state)
 
-        if block_state.resized_image is None and block_state.image is None:
-            raise ValueError("`resized_image` and `image` cannot be None at the same time")
+        if block_state.image is None:
+            raise ValueError("`image` cannot be None")
 
-        if block_state.resized_image is None:
-            image = block_state.image
-            self.check_inputs(
-                height=block_state.height,
-                width=block_state.width,
-                vae_scale_factor=components.vae_scale_factor,
-                patch_size=components.patch_size,
-            )
-            height = block_state.height or components.default_height
-            width = block_state.width or components.default_width
-        else:
-            width, height = block_state.resized_image[0].size
-            image = block_state.resized_image
+        image = block_state.image
+        self.check_inputs(
+            height=block_state.height,
+            width=block_state.width,
+            vae_scale_factor=components.vae_scale_factor,
+            patch_size=components.patch_size,
+        )
+        height = block_state.height or components.default_height
+        width = block_state.width or components.default_width
 
-        block_state.processed_image = components.image_processor.preprocess(image=image, height=height, width=width)
+        block_state.processed_image = components.image_processor.preprocess(
+            image=image, height=height, width=width
+        )
 
         self.set_block_state(state, block_state)
         return components, state
@@ -533,13 +530,15 @@ class StableDiffusion3TextEncoderStep(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components: StableDiffusion3ModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: StableDiffusion3ModularPipeline, state: PipelineState
+    ) -> PipelineState:
         block_state = self.get_block_state(state)
         block_state.device = components._execution_device
 
         lora_scale = (
             block_state.joint_attention_kwargs.get("scale", None)
-            if getattr(block_state, "joint_attention_kwargs", None)
+            if block_state.joint_attention_kwargs
             else None
         )
 
@@ -551,14 +550,14 @@ class StableDiffusion3TextEncoderStep(ModularPipelineBlocks):
         ) = encode_prompt(
             components=components,
             prompt=block_state.prompt,
-            prompt_2=getattr(block_state, "prompt_2", None),
-            prompt_3=getattr(block_state, "prompt_3", None),
+            prompt_2=block_state.prompt_2,
+            prompt_3=block_state.prompt_3,
             device=block_state.device,
-            negative_prompt=getattr(block_state, "negative_prompt", None),
-            negative_prompt_2=getattr(block_state, "negative_prompt_2", None),
-            negative_prompt_3=getattr(block_state, "negative_prompt_3", None),
-            clip_skip=getattr(block_state, "clip_skip", None),
-            max_sequence_length=getattr(block_state, "max_sequence_length", 256),
+            negative_prompt=block_state.negative_prompt,
+            negative_prompt_2=block_state.negative_prompt_2,
+            negative_prompt_3=block_state.negative_prompt_3,
+            clip_skip=block_state.clip_skip,
+            max_sequence_length=block_state.max_sequence_length,
             lora_scale=lora_scale,
         )
 

@@ -41,8 +41,6 @@ class StableDiffusion3Img2ImgVaeEncoderStep(SequentialPipelineBlocks):
           image_processor (`VaeImageProcessor`) vae (`AutoencoderKL`)
 
       Inputs:
-          resized_image (`None`, *optional*):
-              The pre-resized image input.
           image (`None`, *optional*):
               The input image to be used as the starting point for the image-to-image process.
           height (`None`, *optional*):
@@ -74,8 +72,6 @@ class StableDiffusion3AutoVaeEncoderStep(AutoPipelineBlocks):
           image_processor (`VaeImageProcessor`) vae (`AutoencoderKL`)
 
       Inputs:
-          resized_image (`None`, *optional*):
-              The pre-resized image input.
           image (`None`, *optional*):
               The input image to be used as the starting point for the image-to-image process.
           height (`None`, *optional*):
@@ -324,8 +320,6 @@ class StableDiffusion3AutoBlocks(SequentialPipelineBlocks):
               Maximum sequence length to use with the prompt.
           joint_attention_kwargs (`None`, *optional*):
               A kwargs dictionary passed along to the AttentionProcessor.
-          resized_image (`None`, *optional*):
-              The pre-resized image input.
           image (`None`, *optional*):
               The input image to be used as the starting point for the image-to-image process.
           height (`None`, *optional*):

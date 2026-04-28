@@ -31,12 +31,12 @@ class StableDiffusion3DecodeStep(ModularPipelineBlocks):
 
     @property
     def expected_components(self) -> list[ComponentSpec]:
-        return [
+        return[
             ComponentSpec("vae", AutoencoderKL),
             ComponentSpec(
                 "image_processor",
                 VaeImageProcessor,
-                config=FrozenDict({"vae_scale_factor": 8}),
+                config=FrozenDict({"vae_scale_factor": 8, "vae_latent_channels": 16}),
                 default_creation_method="from_config",
             ),
         ]
