@@ -1,18 +1,18 @@
 import argparse
-import pathlib
 from typing import Any, Dict, Tuple
+
 import torch
 from accelerate import init_empty_weights
-from huggingface_hub import hf_hub_download, snapshot_download
-from safetensors.torch import load_file
 from transformers import AutoProcessor, AutoTokenizer, Qwen3VLForConditionalGeneration
-from diffusers.schedulers.scheduling_flow_match_euler_discrete import FlowMatchEulerDiscreteScheduler
-from safetensors.torch import load_file
+
 from diffusers import (
     AutoencoderKLWan,
-    JoyImageEditTransformer3DModel,
     JoyImageEditPipeline,
+    JoyImageEditTransformer3DModel,
 )
+from diffusers.schedulers.scheduling_flow_match_euler_discrete import FlowMatchEulerDiscreteScheduler
+
+
 # This code is modified from convert_wan_to_diffusers.py to support input ckpt path
 def convert_vae(vae_ckpt_path):
     old_state_dict = torch.load(vae_ckpt_path, weights_only=True)
@@ -215,6 +215,7 @@ def convert_vae(vae_ckpt_path):
     vae.load_state_dict(new_state_dict, strict=True, assign=True)
     return vae
 
+
 def get_transformer_config() -> Tuple[Dict[str, Any], ...]:
     config = {
         "diffusers_config": {
@@ -231,6 +232,8 @@ def get_transformer_config() -> Tuple[Dict[str, Any], ...]:
         },
     }
     return config
+
+
 def convert_transformer(ckpt_path: str):
     checkpoint = torch.load(ckpt_path, weights_only=True)
     if "model" in checkpoint:
@@ -240,8 +243,14 @@ def convert_transformer(ckpt_path: str):
 
     # Attention weights moved from block to block.attn submodule
     attn_suffixes = (
-        "img_attn_qkv.", "img_attn_q_norm.", "img_attn_k_norm.", "img_attn_proj.",
-        "txt_attn_qkv.", "txt_attn_q_norm.", "txt_attn_k_norm.", "txt_attn_proj.",
+        "img_attn_qkv.",
+        "img_attn_q_norm.",
+        "img_attn_k_norm.",
+        "img_attn_proj.",
+        "txt_attn_qkv.",
+        "txt_attn_q_norm.",
+        "txt_attn_k_norm.",
+        "txt_attn_proj.",
     )
     remapped = {}
     for key, value in original_state_dict.items():
@@ -256,9 +265,10 @@ def convert_transformer(ckpt_path: str):
 
     config = get_transformer_config()
     with init_empty_weights():
-        transformer = JoyImageEditTransformer3DModel(**config['diffusers_config'])
+        transformer = JoyImageEditTransformer3DModel(**config["diffusers_config"])
     transformer.load_state_dict(remapped, strict=True, assign=True)
     return transformer
+
 
 def get_args():
     parser = argparse.ArgumentParser()
@@ -273,6 +283,7 @@ def get_args():
     parser.add_argument("--dtype", default="bf16", help="Torch dtype to save the transformer in.")
     parser.add_argument("--flow_shift", type=float, default=7.0)
     return parser.parse_args()
+
 
 DTYPE_MAPPING = {
     "fp32": torch.float32,
@@ -301,12 +312,12 @@ if __name__ == "__main__":
             vae.save_pretrained(args.output_path, safe_serialization=True, max_shard_size="5GB")
     if args.save_pipeline:
         processor = AutoProcessor.from_pretrained(args.text_encoder_path)
-        text_encoder = Qwen3VLForConditionalGeneration.from_pretrained(args.text_encoder_path, torch_dtype=torch.bfloat16).to("cuda")
+        text_encoder = Qwen3VLForConditionalGeneration.from_pretrained(
+            args.text_encoder_path, torch_dtype=torch.bfloat16
+        ).to("cuda")
         tokenizer = AutoTokenizer.from_pretrained(args.text_encoder_path)
         flow_shift = 1.5
-        scheduler = FlowMatchEulerDiscreteScheduler(
-            num_train_timesteps=1000, shift=flow_shift
-        )
+        scheduler = FlowMatchEulerDiscreteScheduler(num_train_timesteps=1000, shift=flow_shift)
         transformer = transformer.to("cuda")
         vae = vae.to("cuda")
         pipe = JoyImageEditPipeline(

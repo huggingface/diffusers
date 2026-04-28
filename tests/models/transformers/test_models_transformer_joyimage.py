@@ -75,12 +75,8 @@ class JoyImageEditTransformerTesterConfig(BaseModelTesterConfig):
 
     def get_dummy_inputs(self) -> dict[str, torch.Tensor]:
         batch_size = 1
-        hidden_states = randn_tensor(
-            (batch_size, 16, 1, 4, 4), generator=self.generator, device=torch_device
-        )
-        encoder_hidden_states = randn_tensor(
-            (batch_size, 12, 16), generator=self.generator, device=torch_device
-        )
+        hidden_states = randn_tensor((batch_size, 16, 1, 4, 4), generator=self.generator, device=torch_device)
+        encoder_hidden_states = randn_tensor((batch_size, 12, 16), generator=self.generator, device=torch_device)
         timestep = torch.tensor([1.0]).to(torch_device).expand(batch_size)
         return {
             "hidden_states": hidden_states,

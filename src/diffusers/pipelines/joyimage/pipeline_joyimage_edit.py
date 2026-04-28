@@ -1,20 +1,19 @@
 import inspect
 from dataclasses import dataclass
-from typing import Callable, Dict, List, Optional, Tuple, Union
+from typing import Callable, Dict, List, Optional, Union
 
 import numpy as np
 import torch
-
 from PIL import Image
 from transformers import AutoProcessor, Qwen2Tokenizer, Qwen3VLForConditionalGeneration, Qwen3VLProcessor
 
 from ...callbacks import MultiPipelineCallbacks, PipelineCallback
 from ...image_processor import PipelineImageInput, VaeImageProcessor
 from ...models import AutoencoderKLWan, JoyImageEditTransformer3DModel
-from ..pipeline_utils import DiffusionPipeline
 from ...schedulers import FlowMatchEulerDiscreteScheduler
-from ...utils import BaseOutput, deprecate, replace_example_docstring
+from ...utils import BaseOutput, replace_example_docstring
 from ...utils.torch_utils import randn_tensor
+from ..pipeline_utils import DiffusionPipeline
 from .image_processor import JoyImageEditImageProcessor
 from .pipeline_output import JoyImageEditPipelineOutput
 
@@ -57,8 +56,8 @@ def retrieve_timesteps(
     """
     Configure the scheduler and return its timestep sequence.
 
-    Exactly one of ``timesteps``, ``sigmas``, or ``num_inference_steps`` should be
-    provided to control the denoising schedule.
+    Exactly one of ``timesteps``, ``sigmas``, or ``num_inference_steps`` should be provided to control the denoising
+    schedule.
 
     Args:
         scheduler: The diffusion scheduler.
@@ -109,8 +108,8 @@ class JoyImageEditPipeline(DiffusionPipeline):
     """
     Diffusion pipeline for image editing using the JoyImage architecture.
 
-    The pipeline encodes text and image conditioning via a Qwen3-VL text encoder,
-    denoises latents with a 3-D transformer, and decodes the result with a WAN VAE.
+    The pipeline encodes text and image conditioning via a Qwen3-VL text encoder, denoises latents with a 3-D
+    transformer, and decodes the result with a WAN VAE.
 
     Model offloading order: text_encoder -> transformer -> vae.
     """
@@ -155,12 +154,8 @@ class JoyImageEditPipeline(DiffusionPipeline):
 
         self.text_token_max_length = text_token_max_length
 
-        self.vae_scale_factor_temporal = (
-            self.vae.config.scale_factor_temporal if getattr(self, "vae", None) else 4
-        )
-        self.vae_scale_factor_spatial = (
-            self.vae.config.scale_factor_spatial if getattr(self, "vae", None) else 8
-        )
+        self.vae_scale_factor_temporal = self.vae.config.scale_factor_temporal if getattr(self, "vae", None) else 4
+        self.vae_scale_factor_spatial = self.vae.config.scale_factor_spatial if getattr(self, "vae", None) else 8
         self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor_spatial)
         self.vae_image_processor = JoyImageEditImageProcessor(
             vae_scale_factor=self.vae_scale_factor_spatial,
@@ -168,9 +163,7 @@ class JoyImageEditPipeline(DiffusionPipeline):
 
         if text_encoder_ckpt is None:
             text_encoder_ckpt = _get_text_encoder_ckpt(self.text_encoder)
-        self.qwen_processor = (
-            processor if processor is not None else AutoProcessor.from_pretrained(text_encoder_ckpt)
-        )
+        self.qwen_processor = processor if processor is not None else AutoProcessor.from_pretrained(text_encoder_ckpt)
 
         # Prompt templates used when encoding text with / without image tokens.
         self.prompt_template_encode = {
@@ -195,9 +188,7 @@ class JoyImageEditPipeline(DiffusionPipeline):
     # Internal helpers
     # ------------------------------------------------------------------
 
-    def _extract_masked_hidden(
-        self, hidden_states: torch.Tensor, mask: torch.Tensor
-    ) -> tuple[torch.Tensor, ...]:
+    def _extract_masked_hidden(self, hidden_states: torch.Tensor, mask: torch.Tensor) -> tuple[torch.Tensor, ...]:
         """
         Extract valid (non-padded) hidden states for each sequence in the batch.
 
@@ -230,9 +221,8 @@ class JoyImageEditPipeline(DiffusionPipeline):
             dtype: Target floating-point dtype.
 
         Returns:
-            Tuple of (prompt_embeds, encoder_attention_mask) where both tensors
-            have shape (B, max_seq_len, D) and (B, max_seq_len) respectively,
-            zero-padded to the same length.
+            Tuple of (prompt_embeds, encoder_attention_mask) where both tensors have shape (B, max_seq_len, D) and (B,
+            max_seq_len) respectively, zero-padded to the same length.
         """
         device = device or self._execution_device
         dtype = dtype or self.text_encoder.dtype
@@ -260,10 +250,7 @@ class JoyImageEditPipeline(DiffusionPipeline):
         # Drop system-prompt prefix tokens and re-pack into a padded batch.
         split_hidden_states = self._extract_masked_hidden(hidden_states, txt_tokens.attention_mask)
         split_hidden_states = [e[drop_idx:] for e in split_hidden_states]
-        attn_mask_list = [
-            torch.ones(e.size(0), dtype=torch.long, device=e.device)
-            for e in split_hidden_states
-        ]
+        attn_mask_list = [torch.ones(e.size(0), dtype=torch.long, device=e.device) for e in split_hidden_states]
 
         max_seq_len = min(
             self.text_token_max_length,
@@ -291,8 +278,8 @@ class JoyImageEditPipeline(DiffusionPipeline):
         """
         Encode prompts that contain inline image tokens via the Qwen processor.
 
-        ``<image>\\n`` placeholders in each prompt string are replaced by the
-        Qwen vision special tokens before being fed to the multimodal encoder.
+        ``<image>\\n`` placeholders in each prompt string are replaced by the Qwen vision special tokens before being
+        fed to the multimodal encoder.
 
         Args:
             prompt: Prompt string(s), optionally containing ``<image>\\n`` tokens.
@@ -321,7 +308,12 @@ class JoyImageEditPipeline(DiffusionPipeline):
         prompt = [p.replace("<image>\n", "<|vision_start|><|image_pad|><|vision_end|>") for p in prompt]
         prompt = [template.format(p) for p in prompt]
 
-        if images is not None and isinstance(images, list) and len(images) < len(prompt) and len(prompt) % len(images) == 0:
+        if (
+            images is not None
+            and isinstance(images, list)
+            and len(images) < len(prompt)
+            and len(prompt) % len(images) == 0
+        ):
             images = images * (len(prompt) // len(images))
 
         inputs = self.qwen_processor(
@@ -364,9 +356,8 @@ class JoyImageEditPipeline(DiffusionPipeline):
         """
         Encode a text prompt (and optional inline images) into embeddings.
 
-        When ``images`` is provided the multi-image encoding path is used;
-        otherwise the text-only Qwen tokenizer path is used.  Pre-computed
-        ``prompt_embeds`` bypass encoding entirely.
+        When ``images`` is provided the multi-image encoding path is used; otherwise the text-only Qwen tokenizer path
+        is used. Pre-computed ``prompt_embeds`` bypass encoding entirely.
 
         Args:
             prompt: Prompt string or list of prompt strings.
@@ -396,9 +387,7 @@ class JoyImageEditPipeline(DiffusionPipeline):
         batch_size = len(prompt) if prompt_embeds is None else prompt_embeds.shape[0]
 
         if prompt_embeds is None:
-            prompt_embeds, prompt_embeds_mask = self._get_qwen_prompt_embeds(
-                prompt, template_type, device
-            )
+            prompt_embeds, prompt_embeds_mask = self._get_qwen_prompt_embeds(prompt, template_type, device)
 
         prompt_embeds = prompt_embeds[:, :max_sequence_length]
         prompt_embeds_mask = prompt_embeds_mask[:, :max_sequence_length]
@@ -447,16 +436,14 @@ class JoyImageEditPipeline(DiffusionPipeline):
         if prompt_embeds is not None and prompt_embeds_mask is None:
             raise ValueError("If `prompt_embeds` are provided, `prompt_embeds_mask` is required.")
         if negative_prompt_embeds is not None and negative_prompt_embeds_mask is None:
-            raise ValueError(
-                "If `negative_prompt_embeds` are provided, `negative_prompt_embeds_mask` is required."
-            )
+            raise ValueError("If `negative_prompt_embeds` are provided, `negative_prompt_embeds_mask` is required.")
 
     def normalize_latents(self, latent: torch.Tensor) -> torch.Tensor:
         """
         Normalise latents using per-channel statistics from the VAE config.
 
-        Uses (latent - mean) / std when the VAE exposes ``latents_mean`` and
-        ``latents_std``; otherwise falls back to scaling by ``scaling_factor``.
+        Uses (latent - mean) / std when the VAE exposes ``latents_mean`` and ``latents_std``; otherwise falls back to
+        scaling by ``scaling_factor``.
 
         Args:
             latent: Raw latent tensor from ``vae.encode``.
@@ -465,11 +452,15 @@ class JoyImageEditPipeline(DiffusionPipeline):
             Normalised latent tensor.
         """
         if hasattr(self.vae.config, "latents_mean") and hasattr(self.vae.config, "latents_std"):
-            latents_mean = torch.tensor(self.vae.config.latents_mean).view(1, -1, 1, 1, 1).to(
-                device=latent.device, dtype=latent.dtype
+            latents_mean = (
+                torch.tensor(self.vae.config.latents_mean)
+                .view(1, -1, 1, 1, 1)
+                .to(device=latent.device, dtype=latent.dtype)
             )
-            latents_std = torch.tensor(self.vae.config.latents_std).view(1, -1, 1, 1, 1).to(
-                device=latent.device, dtype=latent.dtype
+            latents_std = (
+                torch.tensor(self.vae.config.latents_std)
+                .view(1, -1, 1, 1, 1)
+                .to(device=latent.device, dtype=latent.dtype)
             )
             latent = (latent - latents_mean) / latents_std
         else:
@@ -487,11 +478,15 @@ class JoyImageEditPipeline(DiffusionPipeline):
             Latent tensor in the scale expected by ``vae.decode``.
         """
         if hasattr(self.vae.config, "latents_mean") and hasattr(self.vae.config, "latents_std"):
-            latents_mean = torch.tensor(self.vae.config.latents_mean).view(1, -1, 1, 1, 1).to(
-                device=latent.device, dtype=latent.dtype
+            latents_mean = (
+                torch.tensor(self.vae.config.latents_mean)
+                .view(1, -1, 1, 1, 1)
+                .to(device=latent.device, dtype=latent.dtype)
             )
-            latents_std = torch.tensor(self.vae.config.latents_std).view(1, -1, 1, 1, 1).to(
-                device=latent.device, dtype=latent.dtype
+            latents_std = (
+                torch.tensor(self.vae.config.latents_std)
+                .view(1, -1, 1, 1, 1)
+                .to(device=latent.device, dtype=latent.dtype)
             )
             latent = latent * latents_std + latents_mean
         else:
@@ -516,10 +511,9 @@ class JoyImageEditPipeline(DiffusionPipeline):
         """
         Prepare the initial noisy latent tensor for the denoising loop.
 
-        When ``reference_images`` is provided the first (num_items - 1) slots are
-        filled with VAE-encoded reference image latents; the last slot is random noise.
-        When ``latents`` is provided it is moved to ``device`` without modification.
-        Otherwise pure random noise is returned.
+        When ``reference_images`` is provided the first (num_items - 1) slots are filled with VAE-encoded reference
+        image latents; the last slot is random noise. When ``latents`` is provided it is moved to ``device`` without
+        modification. Otherwise pure random noise is returned.
 
         Args:
             batch_size: Number of samples in the batch.
@@ -652,17 +646,15 @@ class JoyImageEditPipeline(DiffusionPipeline):
             width (`int`):
                 Width of the generated output in pixels.
             image (`PipelineImageInput`, *optional*):
-                Reference image used for conditioning. When provided the pipeline
-                operates in image-editing mode with ``num_items=2``.
+                Reference image used for conditioning. When provided the pipeline operates in image-editing mode with
+                ``num_items=2``.
             num_inference_steps (`int`, *optional*, defaults to 50):
-                Number of denoising steps. More steps generally improve quality at
-                the cost of slower inference.
+                Number of denoising steps. More steps generally improve quality at the cost of slower inference.
             timesteps (`List[int]`, *optional*):
-                Custom timesteps for the denoising process. When provided,
-                ``num_inference_steps`` is inferred from the list length.
+                Custom timesteps for the denoising process. When provided, ``num_inference_steps`` is inferred from the
+                list length.
             sigmas (`List[float]`, *optional*):
-                Custom sigmas for the denoising process. Mutually exclusive with
-                ``timesteps``.
+                Custom sigmas for the denoising process. Mutually exclusive with ``timesteps``.
             guidance_scale (`float`, *optional*, defaults to 4.0):
                 Classifier-free guidance scale.
             negative_prompt (`str` or `List[str]`, *optional*):
@@ -672,8 +664,7 @@ class JoyImageEditPipeline(DiffusionPipeline):
             generator (`torch.Generator` or `List[torch.Generator]`, *optional*):
                 RNG generator(s) for deterministic sampling.
             latents (`torch.Tensor`, *optional*):
-                Pre-generated noisy latents. Sampled from a Gaussian distribution
-                when not provided.
+                Pre-generated noisy latents. Sampled from a Gaussian distribution when not provided.
             prompt_embeds (`torch.Tensor`, *optional*):
                 Pre-computed prompt embeddings. When provided ``prompt`` can be omitted.
             prompt_embeds_mask (`torch.Tensor`, *optional*):
@@ -687,8 +678,8 @@ class JoyImageEditPipeline(DiffusionPipeline):
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether to return a :class:`JoyImageEditPipelineOutput` or a plain tensor.
             callback_on_step_end (`Callable`, `PipelineCallback`, `MultiPipelineCallbacks`, *optional*):
-                Callback invoked at the end of each denoising step with signature
-                ``(self, step: int, timestep: int, callback_kwargs: Dict)``.
+                Callback invoked at the end of each denoising step with signature ``(self, step: int, timestep: int,
+                callback_kwargs: Dict)``.
             callback_on_step_end_tensor_inputs (`List[str]`, *optional*, defaults to ``["latents"]``):
                 Tensor keys included in ``callback_kwargs`` for ``callback_on_step_end``.
             enable_tiling (`bool`, *optional*, defaults to `False`):
@@ -706,9 +697,8 @@ class JoyImageEditPipeline(DiffusionPipeline):
 
         Returns:
             [`~pipelines.joyimage.JoyImageEditPipelineOutput`] or `torch.Tensor`:
-                If ``return_dict`` is ``True``, returns a pipeline output object
-                containing the generated image(s).  Otherwise returns the image
-                tensor directly.
+                If ``return_dict`` is ``True``, returns a pipeline output object containing the generated image(s).
+                Otherwise returns the image tensor directly.
         """
         # Resize the input image to the nearest bucket resolution.
         # Or resize the specified height and width to the nearest bucket resolution.
@@ -803,7 +793,7 @@ class JoyImageEditPipeline(DiffusionPipeline):
 
         # Cache reference latents to restore them at each denoising step.
         if num_items > 1:
-            ref_latents = latents[:, :(num_items - 1)].clone()
+            ref_latents = latents[:, : (num_items - 1)].clone()
 
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
@@ -812,7 +802,7 @@ class JoyImageEditPipeline(DiffusionPipeline):
 
                 # Restore reference latents so they are never overwritten by the scheduler.
                 if num_items > 1:
-                    latents[:, :(num_items - 1)] = ref_latents.clone()
+                    latents[:, : (num_items - 1)] = ref_latents.clone()
 
                 latent_model_input = latents
                 t_expand = t.repeat(latent_model_input.shape[0])
@@ -849,13 +839,9 @@ class JoyImageEditPipeline(DiffusionPipeline):
                     callback_outputs = callback_on_step_end(self, i, t, callback_kwargs)
                     latents = callback_outputs.pop("latents", latents)
                     prompt_embeds = callback_outputs.pop("prompt_embeds", prompt_embeds)
-                    negative_prompt_embeds = callback_outputs.pop(
-                        "negative_prompt_embeds", negative_prompt_embeds
-                    )
+                    negative_prompt_embeds = callback_outputs.pop("negative_prompt_embeds", negative_prompt_embeds)
 
-                if i == len(timesteps) - 1 or (
-                    (i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0
-                ):
+                if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
                     if progress_bar is not None:
                         progress_bar.update()
 

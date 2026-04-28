@@ -20,7 +20,7 @@ import torchvision.transforms.functional as TF
 from PIL import Image
 
 from ...configuration_utils import register_to_config
-from ...image_processor import PipelineImageInput, VaeImageProcessor
+from ...image_processor import VaeImageProcessor
 
 
 PRECISION_TO_TYPE = {

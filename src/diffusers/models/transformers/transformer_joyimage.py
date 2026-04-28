@@ -14,18 +14,16 @@
 
 import inspect
 import math
-from typing import Any, Optional, Tuple
+from typing import Tuple
 
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...utils import logging
 from ...utils.torch_utils import maybe_allow_in_graph
 from ..attention import AttentionMixin, AttentionModuleMixin, FeedForward
 from ..attention_dispatch import dispatch_attention_fn
-from ..embeddings import PixArtAlphaTextProjection, TimestepEmbedding, Timesteps
 from ..modeling_outputs import Transformer2DModelOutput
 from ..modeling_utils import ModelMixin
 
@@ -203,8 +201,7 @@ def _get_nd_rotary_pos_embed(
 class JoyImageModulate(nn.Module):
     """Wan-style learnable modulation table.
 
-    Produces `factor` modulation vectors by adding the conditioning signal to a
-    learnable parameter table.
+    Produces `factor` modulation vectors by adding the conditioning signal to a learnable parameter table.
     """
 
     def __init__(self, hidden_size: int, factor: int, dtype=None, device=None):
@@ -229,9 +226,8 @@ class JoyImageModulate(nn.Module):
 class JoyImageAttnProcessor:
     """Attention processor for JoyImage double-stream joint attention.
 
-    Implements the joint attention computation where text and image streams are
-    processed together.  The :class:`JoyImageAttention` module stores fused QKV
-    projections (``img_attn_qkv`` / ``txt_attn_qkv``).
+    Implements the joint attention computation where text and image streams are processed together. The
+    :class:`JoyImageAttention` module stores fused QKV projections (``img_attn_qkv`` / ``txt_attn_qkv``).
     """
 
     _attention_backend = None
@@ -322,9 +318,8 @@ class JoyImageAttnProcessor:
 class JoyImageAttention(nn.Module, AttentionModuleMixin):
     """Joint attention module for JoyImage double-stream blocks.
 
-    Wraps the fused QKV projections, QK norms, and output projections for both
-    image and text streams. Delegates the actual attention computation to a
-    pluggable :class:`JoyImageAttnProcessor`.
+    Wraps the fused QKV projections, QK norms, and output projections for both image and text streams. Delegates the
+    actual attention computation to a pluggable :class:`JoyImageAttnProcessor`.
     """
 
     _default_processor_cls = JoyImageAttnProcessor
@@ -399,9 +394,8 @@ def _apply_gate(x: torch.Tensor, gate: torch.Tensor) -> torch.Tensor:
 class JoyImageTransformerBlock(nn.Module):
     """Double-stream transformer block for JoyImage.
 
-    Each block processes an image stream and a text stream jointly through
-    shared attention, following the SD3 / Flux double-stream pattern with
-    WAN-style modulation.
+    Each block processes an image stream and a text stream jointly through shared attention, following the SD3 / Flux
+    double-stream pattern with WAN-style modulation.
     """
 
     def __init__(
@@ -494,8 +488,7 @@ class JoyImageTransformerBlock(nn.Module):
 class JoyImageTransformer3DModel(ModelMixin, ConfigMixin, AttentionMixin):
     """JoyImage Transformer model for image generation / editing.
 
-    Dual-stream DiT architecture with WAN-style conditioning embeddings and
-    custom rotary position embeddings.
+    Dual-stream DiT architecture with WAN-style conditioning embeddings and custom rotary position embeddings.
     """
 
     _skip_layerwise_casting_patterns = ["img_in", "condition_embedder", "norm"]
@@ -624,9 +617,7 @@ class JoyImageTransformer3DModel(ModelMixin, ConfigMixin, AttentionMixin):
             num_items = hidden_states.shape[1]
             if num_items > 1:
                 assert self.patch_size[0] == 1, "For multi-item input, patch_size[0] must be 1"
-                hidden_states = torch.cat(
-                    [hidden_states[:, -1:], hidden_states[:, :-1]], dim=1
-                )
+                hidden_states = torch.cat([hidden_states[:, -1:], hidden_states[:, :-1]], dim=1)
             # rearrange: (b, n, c, t, h, w) -> (b, c, n*t, h, w)
             b, n, c, t, h, w = hidden_states.shape
             hidden_states = hidden_states.permute(0, 2, 1, 3, 4, 5).reshape(b, c, n * t, h, w)

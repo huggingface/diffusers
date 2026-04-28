@@ -1,11 +1,11 @@
 from dataclasses import dataclass
+from typing import List, Union
 
-import torch
+import numpy as np
+import PIL.Image
 
 from ...utils import BaseOutput
-import PIL.Image
-from typing import Union, List, Tuple, Optional
-import numpy as np
+
 
 @dataclass
 class JoyImageEditPipelineOutput(BaseOutput):
