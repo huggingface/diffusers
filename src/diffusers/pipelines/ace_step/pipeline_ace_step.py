@@ -212,7 +212,15 @@ class AceStepPipeline(DiffusionPipeline):
     def do_classifier_free_guidance(self) -> bool:
         """True iff APG guidance should run in the denoising loop."""
         gs = getattr(self, "_guidance_scale", 1.0)
-        return gs is not None and gs > 1.0
+        return gs is not None and gs > 1.0 and not self.is_turbo
+
+    @property
+    def guidance_scale(self) -> float:
+        return self._guidance_scale
+
+    @property
+    def num_timesteps(self) -> int:
+        return self._num_timesteps
 
     def check_inputs(
         self,
