@@ -34,6 +34,7 @@ from ...models.transformers.ace_step_transformer import (
     AceStepMLP,
     _ace_step_rotary_freqs,
     _create_4d_mask,
+    _is_flash_attention_backend,
 )
 from ...utils import logging
 
@@ -89,6 +90,7 @@ class AceStepEncoderLayer(nn.Module):
             bias=attention_bias,
             dropout=attention_dropout,
             eps=rms_norm_eps,
+            sliding_window=sliding_window,
             is_cross_attention=False,
         )
         self.input_layernorm = RMSNorm(hidden_size, eps=rms_norm_eps)
@@ -195,18 +197,22 @@ class AceStepLyricEncoder(ModelMixin, ConfigMixin):
         cos, sin = _ace_step_rotary_freqs(seq_len, self.head_dim, self.rope_theta, device, dtype)
         position_embeddings = (cos, sin)
 
-        full_attn_mask = _create_4d_mask(
-            seq_len=seq_len, dtype=dtype, device=device, attention_mask=attention_mask, is_causal=False
-        )
-        sliding_attn_mask = _create_4d_mask(
-            seq_len=seq_len,
-            dtype=dtype,
-            device=device,
-            attention_mask=attention_mask,
-            sliding_window=self.sliding_window,
-            is_sliding_window=True,
-            is_causal=False,
-        )
+        if _is_flash_attention_backend():
+            full_attn_mask = attention_mask
+            sliding_attn_mask = attention_mask
+        else:
+            full_attn_mask = _create_4d_mask(
+                seq_len=seq_len, dtype=dtype, device=device, attention_mask=attention_mask, is_causal=False
+            )
+            sliding_attn_mask = _create_4d_mask(
+                seq_len=seq_len,
+                dtype=dtype,
+                device=device,
+                attention_mask=attention_mask,
+                sliding_window=self.sliding_window,
+                is_sliding_window=True,
+                is_causal=False,
+            )
 
         hidden_states = inputs_embeds
         for i, layer_module in enumerate(self.layers):
@@ -330,15 +336,17 @@ class AceStepTimbreEncoder(ModelMixin, ConfigMixin):
         cos, sin = _ace_step_rotary_freqs(seq_len, self.head_dim, self.rope_theta, device, dtype)
         position_embeddings = (cos, sin)
 
-        sliding_attn_mask = _create_4d_mask(
-            seq_len=seq_len,
-            dtype=dtype,
-            device=device,
-            attention_mask=None,
-            sliding_window=self.sliding_window,
-            is_sliding_window=True,
-            is_causal=False,
-        )
+        sliding_attn_mask = None
+        if not _is_flash_attention_backend():
+            sliding_attn_mask = _create_4d_mask(
+                seq_len=seq_len,
+                dtype=dtype,
+                device=device,
+                attention_mask=None,
+                sliding_window=self.sliding_window,
+                is_sliding_window=True,
+                is_causal=False,
+            )
 
         hidden_states = inputs_embeds
         for i, layer_module in enumerate(self.layers):
@@ -529,15 +537,17 @@ class AceStepAttentionPooler(nn.Module):
         dtype = hidden_states.dtype
         device = hidden_states.device
         position_embeddings = _ace_step_rotary_freqs(seq_len, self.head_dim, self.rope_theta, device, dtype)
-        sliding_attn_mask = _create_4d_mask(
-            seq_len=seq_len,
-            dtype=dtype,
-            device=device,
-            attention_mask=None,
-            sliding_window=self.sliding_window,
-            is_sliding_window=True,
-            is_causal=False,
-        )
+        sliding_attn_mask = None
+        if not _is_flash_attention_backend():
+            sliding_attn_mask = _create_4d_mask(
+                seq_len=seq_len,
+                dtype=dtype,
+                device=device,
+                attention_mask=None,
+                sliding_window=self.sliding_window,
+                is_sliding_window=True,
+                is_causal=False,
+            )
 
         for i, layer_module in enumerate(self.layers):
             mask = sliding_attn_mask if self._layer_types[i] == "sliding_attention" else None
@@ -622,15 +632,17 @@ class AceStepAudioTokenDetokenizer(ModelMixin, ConfigMixin):
         dtype = hidden_states.dtype
         device = hidden_states.device
         position_embeddings = _ace_step_rotary_freqs(seq_len, self.head_dim, self.rope_theta, device, dtype)
-        sliding_attn_mask = _create_4d_mask(
-            seq_len=seq_len,
-            dtype=dtype,
-            device=device,
-            attention_mask=None,
-            sliding_window=self.sliding_window,
-            is_sliding_window=True,
-            is_causal=False,
-        )
+        sliding_attn_mask = None
+        if not _is_flash_attention_backend():
+            sliding_attn_mask = _create_4d_mask(
+                seq_len=seq_len,
+                dtype=dtype,
+                device=device,
+                attention_mask=None,
+                sliding_window=self.sliding_window,
+                is_sliding_window=True,
+                is_causal=False,
+            )
 
         for i, layer_module in enumerate(self.layers):
             mask = sliding_attn_mask if self._layer_types[i] == "sliding_attention" else None

@@ -23,7 +23,12 @@ import torch.nn.functional as F
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...utils import logging
 from ..attention import AttentionMixin, AttentionModuleMixin
-from ..attention_dispatch import dispatch_attention_fn
+from ..attention_dispatch import (
+    AttentionBackendName,
+    _AttentionBackendRegistry,
+    _maybe_download_kernel_for_backend,
+    dispatch_attention_fn,
+)
 from ..cache_utils import CacheMixin
 from ..embeddings import Timesteps, apply_rotary_emb, get_1d_rotary_pos_embed
 from ..modeling_outputs import Transformer2DModelOutput
@@ -32,6 +37,23 @@ from ..normalization import RMSNorm
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
+
+
+_FLASH_ATTENTION_BACKEND_TO_VARLEN = {
+    AttentionBackendName.FLASH: AttentionBackendName.FLASH_VARLEN,
+    AttentionBackendName.FLASH_HUB: AttentionBackendName.FLASH_VARLEN_HUB,
+}
+
+
+def _get_current_attention_backend(processor: Optional["AceStepAttnProcessor2_0"] = None) -> AttentionBackendName:
+    backend = getattr(processor, "_attention_backend", None)
+    if backend is None:
+        backend, _ = _AttentionBackendRegistry.get_active_backend()
+    return AttentionBackendName(backend)
+
+
+def _is_flash_attention_backend(processor: Optional["AceStepAttnProcessor2_0"] = None) -> bool:
+    return _get_current_attention_backend(processor) in _FLASH_ATTENTION_BACKEND_TO_VARLEN
 
 
 # --------------------------------------------------------------------------- #
@@ -159,6 +181,15 @@ class AceStepAttnProcessor2_0:
         if not hasattr(F, "scaled_dot_product_attention"):
             raise ImportError("AceStepAttnProcessor2_0 requires PyTorch 2.0. Please upgrade your pytorch version.")
 
+    @staticmethod
+    def _padding_mask_from_attention_mask(attention_mask: torch.Tensor) -> torch.Tensor:
+        if attention_mask.ndim == 2:
+            return attention_mask.to(torch.bool)
+        if attention_mask.ndim == 4:
+            keep_mask = attention_mask if attention_mask.dtype == torch.bool else attention_mask == 0
+            return keep_mask.any(dim=(1, 2))
+        raise ValueError(f"Unsupported ACE-Step attention mask shape for flash attention: {attention_mask.shape}")
+
     def __call__(
         self,
         attn: "AceStepAttention",
@@ -184,6 +215,26 @@ class AceStepAttnProcessor2_0:
             query = apply_rotary_emb(query, image_rotary_emb, use_real=True, use_real_unbind_dim=-2, sequence_dim=1)
             key = apply_rotary_emb(key, image_rotary_emb, use_real=True, use_real_unbind_dim=-2, sequence_dim=1)
 
+        attention_kwargs = None
+        backend = _get_current_attention_backend(self)
+        dispatch_backend = self._attention_backend
+        sliding_window = getattr(attn, "sliding_window", None)
+
+        if backend in _FLASH_ATTENTION_BACKEND_TO_VARLEN:
+            if attention_mask is not None:
+                padding_mask = self._padding_mask_from_attention_mask(attention_mask)
+                has_padding = not torch.all(padding_mask).item()
+                attention_mask = None
+                if has_padding:
+                    dispatch_backend = _FLASH_ATTENTION_BACKEND_TO_VARLEN[backend]
+                    _maybe_download_kernel_for_backend(dispatch_backend)
+                    attention_mask = padding_mask
+
+            if not is_cross and sliding_window is not None and key.shape[1] > sliding_window:
+                # ACE-Step's dense mask keeps `abs(i - j) <= sliding_window`; flash-attn uses the same inclusive
+                # left/right window convention, so pass the configured value through directly.
+                attention_kwargs = {"window_size": (sliding_window, sliding_window)}
+
         hidden_states = dispatch_attention_fn(
             query,
             key,
@@ -192,7 +243,8 @@ class AceStepAttnProcessor2_0:
             dropout_p=attn.dropout if attn.training else 0.0,
             scale=attn.scaling,
             enable_gqa=attn.heads != attn.kv_heads,
-            backend=self._attention_backend,
+            attention_kwargs=attention_kwargs,
+            backend=dispatch_backend,
             parallel_config=self._parallel_config,
         )
         hidden_states = hidden_states.flatten(2, 3).to(query.dtype)
@@ -225,6 +277,7 @@ class AceStepAttention(torch.nn.Module, AttentionModuleMixin):
         bias: bool = False,
         dropout: float = 0.0,
         eps: float = 1e-6,
+        sliding_window: Optional[int] = None,
         is_cross_attention: bool = False,
         processor: Optional[AceStepAttnProcessor2_0] = None,
     ):
@@ -234,6 +287,7 @@ class AceStepAttention(torch.nn.Module, AttentionModuleMixin):
         self.head_dim = head_dim
         self.dropout = dropout
         self.scaling = head_dim**-0.5
+        self.sliding_window = sliding_window
         self.is_cross_attention = is_cross_attention
 
         self.to_q = nn.Linear(hidden_size, num_attention_heads * head_dim, bias=bias)
@@ -299,6 +353,7 @@ class AceStepTransformerBlock(nn.Module):
             bias=attention_bias,
             dropout=attention_dropout,
             eps=rms_norm_eps,
+            sliding_window=sliding_window,
             is_cross_attention=False,
         )
 
@@ -514,14 +569,16 @@ class AceStepTransformer1DModel(ModelMixin, ConfigMixin, AttentionMixin, CacheMi
         cos, sin = _ace_step_rotary_freqs(seq_len, self.head_dim, self.rope_theta, device, dtype)
         position_embeddings = (cos, sin)
 
-        sliding_attn_mask = _create_4d_mask(
-            seq_len=seq_len,
-            dtype=dtype,
-            device=device,
-            sliding_window=self.config.sliding_window,
-            is_sliding_window=True,
-            is_causal=False,
-        )
+        sliding_attn_mask = None
+        if not _is_flash_attention_backend():
+            sliding_attn_mask = _create_4d_mask(
+                seq_len=seq_len,
+                dtype=dtype,
+                device=device,
+                sliding_window=self.config.sliding_window,
+                is_sliding_window=True,
+                is_causal=False,
+            )
 
         for i, layer_module in enumerate(self.layers):
             # Full-attention layers see no mask; only the sliding-attention layers
