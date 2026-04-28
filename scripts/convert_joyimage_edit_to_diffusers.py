@@ -220,14 +220,14 @@ def get_transformer_config() -> Tuple[Dict[str, Any], ...]:
         "diffusers_config": {
             "hidden_size": 4096,
             "in_channels": 16,
-            "heads_num": 32,
-            "mm_double_blocks_depth": 40,
+            "num_attention_heads": 32,
+            "num_layers": 40,
             "out_channels": 16,
             "patch_size": [1, 2, 2],
             "rope_dim_list": [16, 56, 56],
-            "text_states_dim": 4096,
+            "text_dim": 4096,
             "rope_type": "rope",
-            "rope_theta": 10000,
+            "theta": 10000,
         },
     }
     return config

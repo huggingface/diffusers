@@ -516,23 +516,8 @@ class JoyImageTransformer3DModel(ModelMixin, ConfigMixin, AttentionMixin):
         rope_dim_list: list[int] = [16, 56, 56],
         rope_type: str = "rope",
         theta: int = 256,
-        # legacy config.json keys (kept for backward compatibility)
-        heads_num: int | None = None,
-        mm_double_blocks_depth: int | None = None,
-        text_states_dim: int | None = None,
-        rope_theta: int | None = None,
     ):
         super().__init__()
-
-        # --- backward-compatible parameter mapping ---
-        if heads_num is not None:
-            num_attention_heads = heads_num
-        if mm_double_blocks_depth is not None:
-            num_layers = mm_double_blocks_depth
-        if text_states_dim is not None:
-            text_dim = text_states_dim
-        if rope_theta is not None:
-            theta = rope_theta
 
         self.out_channels = out_channels or in_channels
         self.patch_size = patch_size
