@@ -77,7 +77,7 @@ EXAMPLE_DOC_STRING = """
         >>> from diffusers import LTX2HDRPipeline
         >>> from diffusers.pipelines.ltx2.pipeline_ltx2_hdr_lora import LTX2HDRReferenceCondition
         >>> from diffusers.pipelines.ltx2.utils import DISTILLED_SIGMA_VALUES
-        >>> from diffusers.pipelines.ltx2.export_utils import save_hdr_video_frames_as_exr, encode_exr_sequence_to_mp4
+        >>> from diffusers.pipelines.ltx2.export_utils import encode_hdr_tensor_to_mp4
         >>> from diffusers.utils import load_video
 
         >>> pipe = LTX2HDRPipeline.from_pretrained("dg845/LTX-2.3-Distilled-Diffusers", torch_dtype=torch.bfloat16)
@@ -97,6 +97,7 @@ EXAMPLE_DOC_STRING = """
         ...     connector_video_embeds = f.get_tensor("video_context")
         ...     connector_audio_embeds = f.get_tensor("audio_context")
 
+        >>> # `hdr_video` is a linear HDR tensor of shape (batch, frames, H, W, C).
         >>> hdr_video = pipe(
         ...     reference_conditions=[ref_cond],
         ...     connector_video_embeds=connector_video_embeds,
@@ -112,12 +113,10 @@ EXAMPLE_DOC_STRING = """
         ...     return_dict=False,
         ... )[0]
 
-        >>> # `hdr_video` is a linear HDR tensor of shape (batch, frames, H, W, C).
-        >>> # Save the HDR video as per-frame EXR files in the specified directory.
-        >>> save_hdr_video_frames_as_exr(hdr_video[0], "hdr_output/")
-        >>> # You can convert these EXR files to .mp4 file as below.
+        >>> # Convert the HDR video to a SDR sRGB-tonemapped `.mp4` video.
+        >>> # You can also save the output to EXR using `save_hdr_video_frames_as_exr`.
         >>> # A custom tone-mapper can be specified via the `tone_mapping_fn` argument.
-        >>> encode_exr_sequence_to_mp4("hdr_output/", "ltx2_hdr_lora_output.mp4", frame_rate=24.0)
+        >>> encode_hdr_tensor_to_mp4(hdr_video[0], "ltx2_hdr_lora_output.mp4", frame_rate=24.0)
         ```
 """
 
