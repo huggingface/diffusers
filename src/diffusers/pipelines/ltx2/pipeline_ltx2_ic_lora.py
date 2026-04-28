@@ -870,7 +870,7 @@ class LTX2InContextPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoad
         """
         Compute positional coordinates for a keyframe condition being appended as extra tokens.
 
-        Mirrors `VideoConditionByKeyframeIndex.apply_to` in the reference implementation:
+        Has the following behavior (based on the LTX-2.X original code):
         - Latent coords scaled to pixel space *without* the causal fix (since non-zero-index keyframes don't need the
           first-frame causal adjustment).
         - Temporal axis offset by `pixel_frame_idx` (the pixel-space index at which the keyframe appears).
@@ -1398,14 +1398,8 @@ class LTX2InContextPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoad
         latent_width: int,
     ) -> torch.Tensor:
         """
-        Downsample a pixel-space attention mask to a flattened per-token latent-space mask.
-
-        Mirrors `ICLoraPipeline._downsample_mask_to_latent` in the reference implementation:
-        - Spatial downsampling via `area` interpolation per frame.
-        - Causal temporal downsampling: the first frame is kept as-is (the VAE encodes the first frame independently
-          with temporal stride 1), remaining frames are downsampled by group-mean using factor `(F_pix - 1) // (F_lat -
-          1)`.
-        - Flattened to token order `(F, H, W)` matching the patchifier.
+        Downsample a pixel-space attention mask to a flattened per-token latent-space mask. Uses causal temporal
+        downsampling (the first frame is kept as-is).
 
         Args:
             mask (`torch.Tensor`):

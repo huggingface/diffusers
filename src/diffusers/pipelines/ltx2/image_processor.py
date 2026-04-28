@@ -29,10 +29,8 @@ class LTX2VideoHDRProcessor(VideoProcessor):
       For LDR (SDR Rec.709) reference videos, `LogC3.compress_ldr` is an identity clamp, so the numerical output is
       equivalent to the standard [-1, 1] normalization used by [`VideoProcessor.preprocess_video`] — only the resize
       strategy differs (reflect-pad vs center-crop).
-
     - `postprocess_hdr_video`: applies the LogC3 inverse transform to the VAE's decoded output, mapping `[0, 1]` →
-      linear HDR `[0, ∞)`. This is the caller-facing counterpart to `apply_hdr_decode_postprocess` in the reference
-      `ltx_core.hdr` module.
+      linear HDR `[0, ∞)`.
 
     Args:
         vae_scale_factor (`int`, *optional*, defaults to `32`):
@@ -80,9 +78,6 @@ class LTX2VideoHDRProcessor(VideoProcessor):
     def _resize_and_reflect_pad_video(video: torch.Tensor, height: int, width: int) -> torch.Tensor:
         r"""
         Resize a video tensor preserving aspect ratio, then reflect-pad to the exact target dimensions.
-
-        Mirrors `resize_and_reflect_pad` in the reference `ltx_pipelines.utils.media_io`. When the source is already at
-        least as large as the target in both dimensions, the interpolation step is skipped entirely.
 
         Args:
             video (`torch.Tensor`): Input of shape `(B, C, F, H, W)`.
