@@ -46,6 +46,7 @@ During inference:
 * The `audio_duration` parameter controls the length of the generated music in seconds.
 * The `vocal_language` parameter should match the language of the lyrics.
 * `pipe.sample_rate` and `pipe.latents_per_second` are sourced from the VAE config (48000 Hz and 25 fps for the released checkpoints).
+* For audio-to-audio tasks, pass `src_audio` and `reference_audio` as preprocessed stereo tensors at `pipe.sample_rate`.
 
 ```python
 import torch

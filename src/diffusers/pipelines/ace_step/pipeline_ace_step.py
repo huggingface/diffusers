@@ -17,7 +17,6 @@ import re
 from typing import Callable, List, Optional, Tuple, Union
 
 import torch
-import torch.nn.functional as F
 from transformers import PreTrainedModel, PreTrainedTokenizerFast
 
 from ...guiders.adaptive_projected_guidance import MomentumBuffer, normalized_guidance
@@ -56,6 +55,28 @@ TASK_INSTRUCTIONS = {
 TASK_TYPES = ["text2music", "repaint", "cover", "extract", "lego", "complete"]
 
 
+def _parse_audio_code_string(code_str: str, max_audio_code: int) -> List[int]:
+    if not code_str:
+        return []
+
+    codes = []
+    for value in re.findall(r"<\|audio_code_(\d+)\|>", code_str):
+        code_value = int(value)
+        codes.append(max(0, min(code_value, max_audio_code)))
+    return codes
+
+
+def _normalize_audio_codes(audio_codes: Union[str, List[str]], batch_size: int) -> List[str]:
+    if isinstance(audio_codes, str):
+        return [audio_codes] * batch_size
+    if not all(isinstance(code, str) for code in audio_codes):
+        raise TypeError("`audio_codes` must be a string or a list of strings.")
+    audio_codes = list(audio_codes[:batch_size])
+    while len(audio_codes) < batch_size:
+        audio_codes.append(audio_codes[-1] if audio_codes else "")
+    return audio_codes
+
+
 EXAMPLE_DOC_STRING = """
     Examples:
         ```py
@@ -80,11 +101,9 @@ EXAMPLE_DOC_STRING = """
         >>> # Save the generated audio
         >>> sf.write("output.wav", audio[0, 0].cpu().numpy(), 48000)
 
-        >>> # Repaint task: regenerate a section of existing audio
-        >>> import torchaudio
-
-        >>> src_audio, sr = torchaudio.load("input.wav")
-        >>> src_audio = pipe._normalize_audio_to_stereo_48k(src_audio, sr)
+        >>> # Repaint task: regenerate a section of existing stereo 48kHz audio
+        >>> src_audio, sr = sf.read("input.wav")
+        >>> src_audio = torch.from_numpy(src_audio).float().T
         >>> audio = pipe(
         ...     prompt="Epic rock guitar solo",
         ...     lyrics="",
@@ -95,8 +114,8 @@ EXAMPLE_DOC_STRING = """
         ... ).audios
 
         >>> # Cover task with reference audio for timbre transfer
-        >>> ref_audio, sr = torchaudio.load("reference.wav")
-        >>> ref_audio = pipe._normalize_audio_to_stereo_48k(ref_audio, sr)
+        >>> ref_audio, sr = sf.read("reference.wav")
+        >>> ref_audio = torch.from_numpy(ref_audio).float().T
         >>> audio = pipe(
         ...     prompt="Pop song with bright vocals",
         ...     lyrics="[verse]\\nHello world",
@@ -555,70 +574,7 @@ class AceStepPipeline(DiffusionPipeline):
             t = shift * t / (1 + (shift - 1) * t)
         return t[:-1]
 
-    def _normalize_audio_to_stereo_48k(self, audio: torch.Tensor, sr: int) -> torch.Tensor:
-        """
-        Normalize audio to stereo 48kHz format.
-
-        Args:
-            audio (`torch.Tensor`): Audio tensor of shape `[channels, samples]` or `[samples]`.
-            sr (`int`): Original sample rate.
-
-        Returns:
-            `torch.Tensor`: Normalized audio tensor of shape `[2, samples]` at 48kHz.
-        """
-        if audio.dim() == 1:
-            audio = audio.unsqueeze(0)
-        if audio.shape[0] == 1:
-            audio = torch.cat([audio, audio], dim=0)
-        audio = audio[:2]
-
-        if sr != self.sample_rate:
-            try:
-                import torchaudio
-
-                audio = torchaudio.transforms.Resample(sr, self.sample_rate)(audio)
-            except ImportError:
-                # Simple linear resampling fallback
-                target_len = int(audio.shape[-1] * self.sample_rate / sr)
-                audio = F.interpolate(audio.unsqueeze(0), size=target_len, mode="linear", align_corners=False)[0]
-
-        audio = torch.clamp(audio, -1.0, 1.0)
-        return audio
-
-    def encode_audio(
-        self,
-        audio: torch.Tensor,
-        device: Optional[torch.device] = None,
-        dtype: Optional[torch.dtype] = None,
-    ) -> torch.Tensor:
-        """Public entry point for encoding a waveform into VAE latents in the layout
-        the DiT expects (`(B, T, D)` or `(T, D)`).
-
-        The input audio can be 1D/2D/3D; stereo is required. Use this instead of calling the VAE directly if you want
-        the tiled encode + layout transpose that the pipeline applies internally.
-        """
-        device = device if device is not None else self._execution_device
-        dtype = dtype if dtype is not None else self.transformer.dtype
-        return self._encode_audio_to_latents(audio, device=device, dtype=dtype)
-
-    def _encode_audio_to_latents(self, audio: torch.Tensor, device: torch.device, dtype: torch.dtype) -> torch.Tensor:
-        """Encode a waveform to VAE latents in the `[B, T, D]` layout the DiT expects."""
-        input_was_2d = audio.dim() == 2
-        if input_was_2d:
-            audio = audio.unsqueeze(0)
-
-        audio = audio.to(device=device, dtype=self.vae.dtype)
-        with torch.no_grad():
-            latents = self.vae.encode(audio).latent_dist.sample()
-
-        # [B, D, T] -> [B, T, D]
-        latents = latents.transpose(1, 2).to(dtype=dtype)
-
-        if input_was_2d:
-            latents = latents.squeeze(0)
-        return latents
-
-    def _prepare_reference_audio_latents(
+    def prepare_reference_audio_latents(
         self,
         reference_audio: torch.Tensor,
         batch_size: int,
@@ -632,7 +588,8 @@ class AceStepPipeline(DiffusionPipeline):
         back), encoded through the VAE, and then transposed for the timbre encoder.
 
         Args:
-            reference_audio (`torch.Tensor`): Reference audio tensor of shape `[channels, samples]` at 48kHz.
+            reference_audio (`torch.Tensor`): Reference audio tensor of shape `[channels, samples]` at
+                `self.sample_rate`.
             batch_size (`int`): Batch size.
             device (`torch.device`): Target device.
             dtype (`torch.dtype`): Target dtype.
@@ -660,157 +617,106 @@ class AceStepPipeline(DiffusionPipeline):
 
         reference_audio = torch.cat([front_audio, middle_audio, back_audio], dim=-1)
 
-        # Encode through VAE
-        with torch.no_grad():
-            ref_audio_input = reference_audio.unsqueeze(0).to(device=device, dtype=self.vae.dtype)
-            ref_latents = self.vae.encode(ref_audio_input).latent_dist.sample()
-            # [1, D, T] -> [1, T, D]
-            ref_latents = ref_latents.transpose(1, 2).to(dtype=dtype)
+        ref_audio_input = reference_audio.unsqueeze(0).to(device=device, dtype=self.vae.dtype)
+        ref_latents = self.vae.encode(ref_audio_input).latent_dist.sample()
+        # [1, D, T] -> [1, T, D]
+        ref_latents = ref_latents.transpose(1, 2).to(dtype=dtype)
 
         # Repeat for batch
         refer_audio_acoustic = ref_latents.expand(batch_size, -1, -1)
         refer_audio_order_mask = torch.arange(batch_size, device=device, dtype=torch.long)
         return refer_audio_acoustic, refer_audio_order_mask
 
-    def _silence_latent_tiled(
+    def prepare_src_latents(
         self,
-        latent_length: int,
         device: torch.device,
         dtype: torch.dtype,
         batch_size: int = 1,
-    ) -> torch.Tensor:
-        """Produce a `(batch, latent_length, C)` silence tensor by slicing / tiling the
-        learned `silence_latent` buffer. Matches the handler's `silence_latent_tiled` (conditioning_target.py) which is
-        used as the default `src_latents` when no target audio is given and as the "repaint fill" inside the repaint
-        window. Passing zeros here puts the DiT's `context_latents` input out of distribution (flat/drone audio)."""
-        sl = getattr(self.condition_encoder, "silence_latent", None)
-        if sl is None or sl.abs().sum() == 0:
-            return torch.zeros(
-                batch_size,
-                latent_length,
-                self.transformer.config.audio_acoustic_hidden_dim,
-                device=device,
-                dtype=dtype,
-            )
-        sl = sl.to(device=device, dtype=dtype)  # (1, T_long, C)
-        T_long = sl.shape[1]
-        if T_long >= latent_length:
-            tiled = sl[:, :latent_length, :]
-        else:
-            repeats = (latent_length + T_long - 1) // T_long
-            tiled = sl.repeat(1, repeats, 1)[:, :latent_length, :]
-        return tiled.expand(batch_size, -1, -1).contiguous()
-
-    def _require_audio_token_modules(self) -> None:
-        if self.audio_tokenizer is None or self.audio_token_detokenizer is None:
-            raise ValueError(
-                "ACE-Step audio-code / source-audio cover conditioning requires the registered "
-                "`audio_tokenizer` and `audio_token_detokenizer` modules. Re-run the converter with "
-                "a checkpoint that includes tokenizer/detokenizer weights."
-            )
-
-    def _parse_audio_code_string(self, code_str: str) -> List[int]:
-        if not code_str:
-            return []
-
-        max_audio_code = 63999
-        audio_tokenizer = getattr(self, "audio_tokenizer", None)
-        if audio_tokenizer is not None:
-            max_audio_code = audio_tokenizer.quantizer.codebook_size - 1
-
-        codes = []
-        for value in re.findall(r"<\|audio_code_(\d+)\|>", code_str):
-            code_value = int(value)
-            codes.append(max(0, min(code_value, max_audio_code)))
-        return codes
-
-    @staticmethod
-    def _normalize_audio_codes(audio_codes: Union[str, List[str]], batch_size: int) -> List[str]:
-        if isinstance(audio_codes, str):
-            return [audio_codes] * batch_size
-        if not all(isinstance(code, str) for code in audio_codes):
-            raise TypeError("`audio_codes` must be a string or a list of strings.")
-        audio_codes = list(audio_codes[:batch_size])
-        while len(audio_codes) < batch_size:
-            audio_codes.append(audio_codes[-1] if audio_codes else "")
-        return audio_codes
-
-    def _get_audio_codes_latent_length(self, audio_codes: Union[str, List[str]], batch_size: int) -> int:
-        audio_codes = self._normalize_audio_codes(audio_codes, batch_size)
-        num_audio_codes = max((len(self._parse_audio_code_string(code)) for code in audio_codes), default=0)
-        pool_window_size = int(getattr(self.audio_token_detokenizer.config, "pool_window_size", 5))
-        return num_audio_codes * pool_window_size
-
-    def _audio_codes_to_lm_hints(
-        self,
-        audio_codes: Union[str, List[str]],
-        batch_size: int,
-        device: torch.device,
-        dtype: torch.dtype,
-    ) -> torch.Tensor:
-        self._require_audio_token_modules()
-
-        audio_codes = self._normalize_audio_codes(audio_codes, batch_size)
-        parsed_codes = [self._parse_audio_code_string(code) for code in audio_codes]
-        max_length = max((len(code_ids) for code_ids in parsed_codes), default=0)
-        if max_length == 0:
-            raise ValueError("`audio_codes` did not contain any `<|audio_code_*|>` tokens.")
-
-        indices = torch.zeros(
-            batch_size,
-            max_length,
-            int(getattr(self.audio_tokenizer.config, "fsq_input_num_quantizers", 1)),
-            device=device,
-            dtype=torch.long,
-        )
-        for batch_idx, code_ids in enumerate(parsed_codes):
-            if code_ids:
-                indices[batch_idx, : len(code_ids), 0] = torch.tensor(code_ids, device=device, dtype=torch.long)
-
-        quantized = self.audio_tokenizer.quantizer.get_output_from_indices(indices).to(device=device, dtype=dtype)
-        return self.audio_token_detokenizer(quantized).to(dtype=dtype)
-
-    def _src_latents_to_lm_hints(
-        self,
-        src_latents: torch.Tensor,
-        latent_length: int,
-        device: torch.device,
-        dtype: torch.dtype,
-    ) -> torch.Tensor:
-        self._require_audio_token_modules()
-
-        silence_latent = getattr(self.condition_encoder, "silence_latent", None)
-        if silence_latent is not None:
-            silence_latent = silence_latent.to(device=device, dtype=dtype)
-        quantized, _ = self.audio_tokenizer.tokenize(src_latents.to(device=device, dtype=dtype), silence_latent)
-        lm_hints = self.audio_token_detokenizer(quantized.to(device=device, dtype=dtype))
-        return lm_hints[:, :latent_length, :].contiguous()
-
-    def _prepare_src_audio_and_latents(
-        self,
-        src_audio: torch.Tensor,
-        device: torch.device,
-        dtype: torch.dtype,
-        batch_size: int,
+        src_audio: Optional[torch.Tensor] = None,
+        audio_codes: Optional[Union[str, List[str]]] = None,
+        latent_length: Optional[int] = None,
+        task_type: str = "text2music",
     ) -> Tuple[torch.Tensor, int]:
         """
-        Encode source audio to latents and compute the latent length.
+        Prepare source latents for text-to-music and audio-to-audio tasks.
 
         Args:
-            src_audio (`torch.Tensor`): Source audio tensor of shape `[channels, samples]` at 48kHz.
+            src_audio (`torch.Tensor`, *optional*): Source audio tensor of shape `[channels, samples]` at
+                `self.sample_rate`.
+            audio_codes (`str` or `List[str]`, *optional*): Audio semantic code strings.
+            latent_length (`int`, *optional*): Target latent length when no source audio or audio codes are given.
             device (`torch.device`): Target device.
             dtype (`torch.dtype`): Target dtype.
             batch_size (`int`): Batch size.
+            task_type (`str`): Current task type.
 
         Returns:
             Tuple of `(src_latents, latent_length)` where `src_latents` has shape `[batch, T, D]`.
         """
-        with torch.no_grad():
-            src_latent = self._encode_audio_to_latents(src_audio, device=device, dtype=dtype)
-            # src_latent is [T, D]
-            latent_length = src_latent.shape[0]
-            src_latents = src_latent.unsqueeze(0).expand(batch_size, -1, -1)
-        return src_latents, latent_length
+        if audio_codes is not None:
+            if self.audio_tokenizer is None or self.audio_token_detokenizer is None:
+                raise ValueError(
+                    "ACE-Step audio-code cover conditioning requires the registered `audio_tokenizer` and "
+                    "`audio_token_detokenizer` modules. Re-run the converter with a checkpoint that includes "
+                    "tokenizer/detokenizer weights."
+                )
+
+            max_audio_code = self.audio_tokenizer.quantizer.codebook_size - 1
+            audio_codes = _normalize_audio_codes(audio_codes, batch_size)
+            parsed_codes = [_parse_audio_code_string(code, max_audio_code) for code in audio_codes]
+            max_length = max((len(code_ids) for code_ids in parsed_codes), default=0)
+            if max_length == 0:
+                raise ValueError("`audio_codes` did not contain any `<|audio_code_*|>` tokens.")
+
+            indices = torch.zeros(
+                batch_size,
+                max_length,
+                int(getattr(self.audio_tokenizer.config, "fsq_input_num_quantizers", 1)),
+                device=device,
+                dtype=torch.long,
+            )
+            for batch_idx, code_ids in enumerate(parsed_codes):
+                if code_ids:
+                    indices[batch_idx, : len(code_ids), 0] = torch.tensor(code_ids, device=device, dtype=torch.long)
+
+            quantized = self.audio_tokenizer.quantizer.get_output_from_indices(indices).to(device=device, dtype=dtype)
+            src_latents = self.audio_token_detokenizer(quantized).to(dtype=dtype)
+            return src_latents, src_latents.shape[1]
+
+        if src_audio is not None:
+            src_audio = src_audio.unsqueeze(0) if src_audio.dim() == 2 else src_audio
+            src_audio = src_audio.to(device=device, dtype=self.vae.dtype)
+            src_latents = self.vae.encode(src_audio).latent_dist.sample().transpose(1, 2).to(dtype=dtype)
+            if src_latents.shape[0] == 1:
+                src_latents = src_latents.expand(batch_size, -1, -1)
+            latent_length = src_latents.shape[1]
+
+            if task_type == "cover":
+                if self.audio_tokenizer is None or self.audio_token_detokenizer is None:
+                    raise ValueError(
+                        "ACE-Step source-audio cover conditioning requires the registered `audio_tokenizer` and "
+                        "`audio_token_detokenizer` modules. Re-run the converter with a checkpoint that includes "
+                        "tokenizer/detokenizer weights."
+                    )
+                silence_latent = self.condition_encoder.silence_latent.to(device=device, dtype=dtype)
+                quantized, _ = self.audio_tokenizer.tokenize(
+                    src_latents.to(device=device, dtype=dtype), silence_latent
+                )
+                src_latents = self.audio_token_detokenizer(quantized.to(device=device, dtype=dtype))
+                src_latents = src_latents[:, :latent_length, :].contiguous()
+
+            return src_latents, latent_length
+
+        if latent_length is None:
+            raise ValueError("`latent_length` must be provided when preparing source latents without source audio.")
+
+        silence_latent = self.condition_encoder.silence_latent.to(device=device, dtype=dtype)
+        if silence_latent.shape[1] >= latent_length:
+            src_latents = silence_latent[:, :latent_length, :]
+        else:
+            repeats = (latent_length + silence_latent.shape[1] - 1) // silence_latent.shape[1]
+            src_latents = silence_latent.repeat(1, repeats, 1)[:, :latent_length, :]
+        return src_latents.expand(batch_size, -1, -1).contiguous(), latent_length
 
     def _build_chunk_mask(
         self,
@@ -1048,9 +954,20 @@ class AceStepPipeline(DiffusionPipeline):
             else:
                 raise TypeError(f"`audio_codes` must be str or list[str], got {type(audio_codes).__name__}")
             if has_audio_codes:
-                self._require_audio_token_modules()
+                if self.audio_tokenizer is None or self.audio_token_detokenizer is None:
+                    raise ValueError(
+                        "ACE-Step audio-code cover conditioning requires the registered `audio_tokenizer` and "
+                        "`audio_token_detokenizer` modules. Re-run the converter with a checkpoint that includes "
+                        "tokenizer/detokenizer weights."
+                    )
                 task_type = "cover" if task_type == "text2music" else task_type
-                audio_codes_latent_length = self._get_audio_codes_latent_length(audio_codes, batch_size)
+                max_audio_code = self.audio_tokenizer.quantizer.codebook_size - 1
+                normalized_audio_codes = _normalize_audio_codes(audio_codes, batch_size)
+                num_audio_codes = max(
+                    (len(_parse_audio_code_string(code, max_audio_code)) for code in normalized_audio_codes), default=0
+                )
+                pool_window_size = int(getattr(self.audio_token_detokenizer.config, "pool_window_size", 5))
+                audio_codes_latent_length = num_audio_codes * pool_window_size
                 if audio_codes_latent_length <= 0:
                     raise ValueError("`audio_codes` did not contain any `<|audio_code_*|>` tokens.")
                 if audio_duration is None or audio_duration <= 0:
@@ -1109,37 +1026,19 @@ class AceStepPipeline(DiffusionPipeline):
 
         # 2. Prepare source latents and latent length (VAE-driven latent frame rate).
         latent_length = math.ceil(audio_duration * self.latents_per_second)
+        src_latents, latent_length = self.prepare_src_latents(
+            device=device,
+            dtype=dtype,
+            batch_size=batch_size,
+            src_audio=src_audio,
+            audio_codes=audio_codes if has_audio_codes else None,
+            latent_length=latent_length,
+            task_type=task_type,
+        )
 
-        if has_src_audio:
-            src_latents, src_latent_length = self._prepare_src_audio_and_latents(
-                src_audio=src_audio, device=device, dtype=dtype, batch_size=batch_size
-            )
-            latent_length = src_latent_length
-        else:
-            # text2music / cover without ref audio: fill with silence_latent tiled to
-            # `latent_length`. Matches handler's `silence_latent_tiled`. Zeros here
-            # produce drone-like output (observed on all pre-fix text2music runs).
-            src_latents = self._silence_latent_tiled(latent_length, device, dtype, batch_size)
-
-        if has_audio_codes:
-            src_latents = self._audio_codes_to_lm_hints(
-                audio_codes=audio_codes,
-                batch_size=batch_size,
-                device=device,
-                dtype=dtype,
-            )
-            latent_length = src_latents.shape[1]
-        elif task_type == "cover" and has_src_audio:
-            src_latents = self._src_latents_to_lm_hints(
-                src_latents=src_latents,
-                latent_length=latent_length,
-                device=device,
-                dtype=dtype,
-            )
-
-        # 4. Prepare reference audio for timbre encoder
+        # 3. Prepare reference audio for timbre encoder
         if reference_audio is not None:
-            refer_audio_acoustic, refer_audio_order_mask = self._prepare_reference_audio_latents(
+            refer_audio_acoustic, refer_audio_order_mask = self.prepare_reference_audio_latents(
                 reference_audio=reference_audio, batch_size=batch_size, device=device, dtype=dtype
             )
         else:
@@ -1147,29 +1046,17 @@ class AceStepPipeline(DiffusionPipeline):
             # condition encoder. Matches
             # acestep/core/generation/handler/conditioning_embed.py:47
             #     if all(refer_audio == 0): refer_audio_latent = silence_latent[:, :750, :]
-            # The silence_latent tensor is stored as (1, T_long=15000, C=64) so the slice
-            # gives (1, timbre_fix_frame=750, timbre_hidden_dim=64). Literal zeros are
-            # OOD for the timbre encoder and produce drone-like output.
-            timbre_fix_frame = 750
-            silence_latent = getattr(self.condition_encoder, "silence_latent", None)
-            if silence_latent is not None and silence_latent.abs().sum() > 0:
-                refer_audio_acoustic = (
-                    silence_latent[:, :timbre_fix_frame, :]
-                    .to(device=device, dtype=dtype)
-                    .expand(batch_size, -1, -1)
-                    .contiguous()
-                )
-            else:
-                refer_audio_acoustic = torch.zeros(
-                    batch_size,
-                    timbre_fix_frame,
-                    self.condition_encoder.config.timbre_hidden_dim,
-                    device=device,
-                    dtype=dtype,
-                )
+            # Literal zeros are OOD for the timbre encoder and produce drone-like output.
+            timbre_fix_frame = math.ceil(30 * self.latents_per_second)
+            refer_audio_acoustic = (
+                self.condition_encoder.silence_latent[:, :timbre_fix_frame, :]
+                .to(device=device, dtype=dtype)
+                .expand(batch_size, -1, -1)
+                .contiguous()
+            )
             refer_audio_order_mask = torch.arange(batch_size, device=device, dtype=torch.long)
 
-        # 5. Encode conditions
+        # 4. Encode conditions
         encoder_hidden_states, encoder_attention_mask = self.condition_encoder(
             text_hidden_states=text_hidden_states,
             text_attention_mask=text_attention_mask,
@@ -1205,7 +1092,7 @@ class AceStepPipeline(DiffusionPipeline):
                 refer_audio_order_mask=refer_audio_order_mask,
             )
 
-        # 6. Build chunk mask and context latents
+        # 5. Build chunk mask and context latents
         chunk_mask = self._build_chunk_mask(
             task_type=task_type,
             latent_length=latent_length,
@@ -1223,12 +1110,14 @@ class AceStepPipeline(DiffusionPipeline):
         # start:end] = silence_latent_tiled[start:end]. chunk_mask is 1 inside the
         # window, 0 outside.
         if task_type in ("repaint",) and has_src_audio:
-            sl_tiled = self._silence_latent_tiled(latent_length, device=device, dtype=dtype, batch_size=batch_size)
+            sl_tiled, _ = self.prepare_src_latents(
+                device=device, dtype=dtype, batch_size=batch_size, latent_length=latent_length
+            )
             src_latents = torch.where(chunk_mask > 0.5, sl_tiled, src_latents)
 
         context_latents = torch.cat([src_latents, chunk_mask], dim=-1)
 
-        # 7. Prepare noise latents
+        # 6. Prepare noise latents
         latents = self.prepare_latents(
             batch_size=batch_size,
             audio_duration=latent_length / self.latents_per_second,
@@ -1238,7 +1127,7 @@ class AceStepPipeline(DiffusionPipeline):
             latents=latents,
         )
 
-        # 8. Prepare null condition for CFG. Matches the base-model behaviour in
+        # 7. Prepare null condition for CFG. Matches the base-model behaviour in
         # `acestep/models/base/modeling_acestep_v15_base.py`: broadcast the learned
         # `null_condition_emb` to the shape of the conditional sequence. Re-encoding empty
         # strings through the text encoder produces out-of-distribution conditioning and

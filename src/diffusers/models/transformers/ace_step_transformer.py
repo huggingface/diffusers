@@ -11,14 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""Diffusion Transformer (DiT) for ACE-Step 1.5 music generation.
-
-Follows the diffusers conventions: reuse ``RMSNorm``, ``get_1d_rotary_pos_embed`` / ``apply_rotary_emb`` and the
-``Timesteps`` sinusoid from the shared primitive modules, and register on ``AttentionMixin`` / ``CacheMixin`` for
-attention-wide operations (QKV fusion, attention-backend dispatch, MagCache/etc.). Helpers only used by the condition
-encoder (``_pack_sequences`` and the shared ``AceStepEncoderLayer``) live in
-``diffusers/pipelines/ace_step/modeling_ace_step.py``.
-"""
+"""Diffusion Transformer (DiT) for ACE-Step 1.5 music generation."""
 
 import inspect
 from typing import List, Optional, Tuple, Union
