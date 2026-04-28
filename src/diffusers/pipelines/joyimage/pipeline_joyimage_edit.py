@@ -18,7 +18,30 @@ from .image_processor import JoyImageEditImageProcessor
 from .pipeline_output import JoyImageEditPipelineOutput
 
 
-EXAMPLE_DOC_STRING = """"""
+EXAMPLE_DOC_STRING = """
+Examples:
+    ```python
+    >>> import torch
+    >>> from PIL import Image
+    >>> from diffusers import JoyImageEditPipeline
+
+    >>> model_id = "jdopensource/JoyAI-Image-Edit-Diffusers"
+    >>> pipe = JoyImageEditPipeline.from_pretrained(model_id, torch_dtype=torch.bfloat16)
+    >>> pipe.to("cuda")
+
+    >>> image = Image.open("input.png").convert("RGB")
+    >>> instruction = "Remove the construction structure from the top of the crane."
+    >>> prompts = [f"<|im_start|>user\\n<image>\\n{instruction}<|im_end|>\\n"]
+    >>> output = pipe(
+    ...     image=image,
+    ...     prompt=prompts,
+    ...     num_inference_steps=30,
+    ...     guidance_scale=4.0,
+    ...     generator=torch.manual_seed(0),
+    ... )
+    >>> output.images[0].save("joyimage_edit.png")
+    ```
+"""
 
 
 def _get_text_encoder_ckpt(
