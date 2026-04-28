@@ -1515,7 +1515,7 @@ class MochiTransformer3DModel(metaclass=DummyObject):
         requires_backends(cls, ["torch"])
 
 
-class MotifVideoTransformer3DModel(metaclass=DummyObject):
+class ModelMixin(metaclass=DummyObject):
     _backends = ["torch"]
 
     def __init__(self, *args, **kwargs):
@@ -1530,7 +1530,7 @@ class MotifVideoTransformer3DModel(metaclass=DummyObject):
         requires_backends(cls, ["torch"])
 
 
-class ModelMixin(metaclass=DummyObject):
+class MotifVideoTransformer3DModel(metaclass=DummyObject):
     _backends = ["torch"]
 
     def __init__(self, *args, **kwargs):

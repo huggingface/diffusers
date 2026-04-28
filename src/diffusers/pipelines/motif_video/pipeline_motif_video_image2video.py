@@ -110,6 +110,30 @@ def get_linear_quadratic_sigmas(
     num_inference_steps: int,
     linear_quadratic_emulating_steps: int = 250,
 ) -> np.ndarray:
+    """
+    Compute a linear-quadratic sigma schedule for flow matching.
+
+    This schedule combines:
+    - First half: Linear interpolation from high noise to medium noise (slow denoising)
+    - Second half: Quadratic interpolation from medium noise to clean (faster denoising)
+
+    Convention:
+    - sigma=1.0 represents pure noise
+    - sigma=0.0 represents clean image
+    - Output sigmas are in descending order (1.0 → ~0)
+
+    Args:
+        num_inference_steps: Total number of denoising steps (must be even).
+        linear_quadratic_emulating_steps: Controls the slope of linear interpolation.
+            Higher values result in gentler slope in the first half.
+
+    Returns:
+        np.ndarray: Array of sigma values with shape (num_inference_steps,).
+            The scheduler will append a terminal 0.
+
+    Raises:
+        ValueError: If num_inference_steps is not even.
+    """
     if num_inference_steps % 2 != 0:
         raise ValueError(
             f"num_inference_steps must be even for linear-quadratic schedule, but got {num_inference_steps}"
@@ -119,12 +143,15 @@ def get_linear_quadratic_sigmas(
     N = linear_quadratic_emulating_steps
     half_steps = steps // 2
 
+    # First half: linear interpolation from 1 toward 0
     linear_part = np.linspace(1.0, 0.0, N + 1)[:half_steps]
 
+    # Second half: quadratic interpolation
     x = np.linspace(0.0, 1.0, half_steps + 1)
     scale_factor = half_steps / N - 1
     quadratic_part = x**2 * scale_factor - scale_factor
 
+    # Concatenate and exclude the last 0 (scheduler appends terminal 0)
     sigmas = np.concatenate([linear_part, quadratic_part])
     sigmas = sigmas[:-1]
 
@@ -134,30 +161,37 @@ def get_linear_quadratic_sigmas(
 # Copied from diffusers.pipelines.motif_video.pipeline_motif_video.retrieve_timesteps
 def retrieve_timesteps(
     scheduler,
-    num_inference_steps: Optional[int] = None,
-    device: Optional[Union[str, torch.device]] = None,
-    timesteps: Optional[List[int]] = None,
-    sigmas: Optional[List[float]] = None,
-    use_linear_quadratic_schedule: bool = False,
-    linear_quadratic_emulating_steps: int = 250,
+    num_inference_steps: int | None = None,
+    device: str | torch.device | None = None,
+    timesteps: list[int] | None = None,
+    sigmas: list[float] | None = None,
     **kwargs,
 ):
+    r"""
+    Calls the scheduler's `set_timesteps` method and retrieves timesteps from the scheduler after the call. Handles
+    custom timesteps. Any kwargs will be supplied to `scheduler.set_timesteps`.
+
+    Args:
+        scheduler (`SchedulerMixin`):
+            The scheduler to get timesteps from.
+        num_inference_steps (`int`):
+            The number of diffusion steps used when generating samples with a pre-trained model. If used, `timesteps`
+            must be `None`.
+        device (`str` or `torch.device`, *optional*):
+            The device to which the timesteps should be moved to. If `None`, the timesteps are not moved.
+        timesteps (`list[int]`, *optional*):
+            Custom timesteps used to override the timestep spacing strategy of the scheduler. If `timesteps` is passed,
+            `num_inference_steps` and `sigmas` must be `None`.
+        sigmas (`list[float]`, *optional*):
+            Custom sigmas used to override the timestep spacing strategy of the scheduler. If `sigmas` is passed,
+            `num_inference_steps` and `timesteps` must be `None`.
+
+    Returns:
+        `tuple[torch.Tensor, int]`: A tuple where the first element is the timestep schedule from the scheduler and the
+        second element is the number of inference steps.
+    """
     if timesteps is not None and sigmas is not None:
         raise ValueError("Only one of `timesteps` or `sigmas` can be passed. Please choose one to set custom values")
-
-    if use_linear_quadratic_schedule:
-        if sigmas is not None:
-            raise ValueError(
-                "Cannot use both `sigmas` and `use_linear_quadratic_schedule`. "
-                "The linear-quadratic schedule computes sigmas automatically."
-            )
-        if num_inference_steps is None:
-            raise ValueError("`num_inference_steps` must be provided when using `use_linear_quadratic_schedule`.")
-        sigmas = get_linear_quadratic_sigmas(
-            num_inference_steps=num_inference_steps,
-            linear_quadratic_emulating_steps=linear_quadratic_emulating_steps,
-        )
-
     if timesteps is not None:
         accepts_timesteps = "timesteps" in set(inspect.signature(scheduler.set_timesteps).parameters.keys())
         if not accepts_timesteps:
