@@ -97,13 +97,6 @@ def retrieve_timesteps(
     return timesteps, num_inference_steps
 
 
-@dataclass
-class _LegacyPipelineOutput(BaseOutput):
-    """Legacy output dataclass retained for backward compatibility."""
-
-    videos: Union[torch.Tensor, np.ndarray]
-
-
 class JoyImageEditPipeline(DiffusionPipeline):
     """
     Diffusion pipeline for image editing using the JoyImage architecture.

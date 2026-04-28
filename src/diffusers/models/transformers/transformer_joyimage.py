@@ -373,19 +373,6 @@ class JoyImageAttention(nn.Module, AttentionModuleMixin):
 
 
 # ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
-
-
-def _modulate(x: torch.Tensor, shift: torch.Tensor, scale: torch.Tensor) -> torch.Tensor:
-    return x * (1 + scale.unsqueeze(1)) + shift.unsqueeze(1)
-
-
-def _apply_gate(x: torch.Tensor, gate: torch.Tensor) -> torch.Tensor:
-    return x * gate.unsqueeze(1)
-
-
-# ---------------------------------------------------------------------------
 # Transformer block
 # ---------------------------------------------------------------------------
 
@@ -455,8 +442,10 @@ class JoyImageTransformerBlock(nn.Module):
         ) = self.txt_mod(temb)
 
         # --- attention ---
-        img_modulated = _modulate(self.img_norm1(hidden_states), img_mod1_shift, img_mod1_scale)
-        txt_modulated = _modulate(self.txt_norm1(encoder_hidden_states), txt_mod1_shift, txt_mod1_scale)
+        img_normed = self.img_norm1(hidden_states)
+        txt_normed = self.txt_norm1(encoder_hidden_states)
+        img_modulated = img_normed * (1 + img_mod1_scale.unsqueeze(1)) + img_mod1_shift.unsqueeze(1)
+        txt_modulated = txt_normed * (1 + txt_mod1_scale.unsqueeze(1)) + txt_mod1_shift.unsqueeze(1)
 
         img_attn, txt_attn = self.attn(
             hidden_states=img_modulated,
@@ -464,18 +453,18 @@ class JoyImageTransformerBlock(nn.Module):
             image_rotary_emb=image_rotary_emb,
         )
 
-        hidden_states = hidden_states + _apply_gate(img_attn, img_mod1_gate)
-        encoder_hidden_states = encoder_hidden_states + _apply_gate(txt_attn, txt_mod1_gate)
+        hidden_states = hidden_states + img_attn * img_mod1_gate.unsqueeze(1)
+        encoder_hidden_states = encoder_hidden_states + txt_attn * txt_mod1_gate.unsqueeze(1)
 
         # --- FFN ---
-        hidden_states = hidden_states + _apply_gate(
-            self.img_mlp(_modulate(self.img_norm2(hidden_states), img_mod2_shift, img_mod2_scale)),
-            img_mod2_gate,
-        )
-        encoder_hidden_states = encoder_hidden_states + _apply_gate(
-            self.txt_mlp(_modulate(self.txt_norm2(encoder_hidden_states), txt_mod2_shift, txt_mod2_scale)),
-            txt_mod2_gate,
-        )
+        img_ffn_normed = self.img_norm2(hidden_states)
+        txt_ffn_normed = self.txt_norm2(encoder_hidden_states)
+        img_ffn_input = img_ffn_normed * (1 + img_mod2_scale.unsqueeze(1)) + img_mod2_shift.unsqueeze(1)
+        txt_ffn_input = txt_ffn_normed * (1 + txt_mod2_scale.unsqueeze(1)) + txt_mod2_shift.unsqueeze(1)
+        img_ffn_output = self.img_mlp(img_ffn_input)
+        txt_ffn_output = self.txt_mlp(txt_ffn_input)
+        hidden_states = hidden_states + img_ffn_output * img_mod2_gate.unsqueeze(1)
+        encoder_hidden_states = encoder_hidden_states + txt_ffn_output * txt_mod2_gate.unsqueeze(1)
 
         return hidden_states, encoder_hidden_states
 
