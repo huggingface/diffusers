@@ -236,14 +236,13 @@ def rescale_noise_cfg(noise_cfg, noise_pred_text, guidance_rescale=0.0):
 
 class LTX2InContextPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoaderMixin):
     r"""
-    Pipeline for IC-LoRA (In-Context LoRA) video generation with reference video conditioning.
+    Pipeline for LTX-2.X models with in-context (IC) conditioning. Also supports frame-level image conditions like
+    `LTX2ConditionPipeline`; both frame and reference conditions can be used together.
 
-    IC-LoRA conditions the generation on a reference video by encoding it into latent tokens and concatenating them to
-    the noisy latent sequence during denoising. The IC-LoRA adapter (loaded as a standard LoRA) learns to use this
-    in-context reference to guide generation (e.g. for style transfer, depth-conditioned generation, etc.).
-
-    This pipeline also supports frame-level conditioning via the `conditions` parameter (same as
-    [`LTX2ConditionPipeline`]), allowing both reference video and frame conditions to be used together.
+    In-context conditioning works by conditioning the generation on a reference video by encoding it into latent tokens
+    and concatenating them to the noisy latent tokens during denoising. The motivating use case is to support LTX-2.X
+    IC LoRAs, which may use reference conditions (e.g. a pose video for pose control) to guide generation, but this
+    pipeline is designed to work with any LTX-2.X-like model trained with in-context reference conditions.
 
     Two-stage inference is supported through separate calls to `__call__`:
     - **Stage 1**: Generate at target resolution with IC-LoRA conditioning (`output_type="latent"`).

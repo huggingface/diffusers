@@ -239,19 +239,19 @@ def rescale_noise_cfg(noise_cfg, noise_pred_text, guidance_rescale=0.0):
 
 class LTX2HDRPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoaderMixin):
     r"""
-    Pipeline for HDR IC-LoRA video generation with reference video conditioning.
+    Pipeline for LTX-2.X HDR video generation with reference video conditioning.
 
-    This is a video-only HDR counterpart to [`LTX2InContextPipeline`]. The HDR IC-LoRA adapter (loaded as a standard
-    LoRA via `load_lora_weights`) conditions generation on a reference video, and the pipeline's postprocessing applies
-    the LogC3 inverse transform to produce linear HDR output in `[0, ∞)`.
+    The pipeline accepts a reference SDR ("normal") video and generates a linear HDR output with values in `[0, ∞)` via
+    a LogC3 inverse transform which has the same content as the reference video. The motivating use case for this
+    pipeline is to support LTX-2.X HDR IC-LoRAs, but it should support any LTX-2.X-like model that operates on HDR
+    inputs as above.
 
-    Compared to [`LTX2InContextPipeline`], the HDR pipeline drops:
+    Compared to [`LTX2InContextPipeline`], the HDR pipeline has the following differences:
 
-    - Frame-level keyframe conditioning (the reference HDR pipeline does not support this).
-    - The `conditioning_attention_strength` / `conditioning_attention_mask` knobs.
-    - Audio output (video-only). The transformer's audio branch is still run since the diffusers transformer API
+    - Video-only (no audio output). The transformer's audio branch is still run since the diffusers transformer API
       requires audio inputs, but the decoded audio is discarded and audio-specific guidance scales are fixed to no-op
       values to avoid wasted compute.
+    - No frame-level keyframe conditioning (the reference HDR pipeline does not support this).
 
     Two-stage inference is supported through separate calls to `__call__`:
 
@@ -260,7 +260,7 @@ class LTX2HDRPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoaderMixi
       by passing `latents=upsampled_latents`. The reference HDR stage-2 additionally supports spatial/temporal tiling
       of the refinement pass — that optimization is not yet implemented here.
 
-    Reference: https://github.com/Lightricks/LTX-2
+    Reference: https://github.com/Lightricks/LTX-2 Paper: https://huggingface.co/papers/2604.11788
 
     Args:
         scheduler ([`FlowMatchEulerDiscreteScheduler`]):
