@@ -35,6 +35,7 @@ from ..utils import (
     is_aiter_available,
     is_aiter_version,
     is_flash_attn_3_available,
+    is_flash_attn_4_available,
     is_flash_attn_available,
     is_flash_attn_version,
     is_kernels_available,
@@ -67,6 +68,7 @@ logger = get_logger(__name__)  # pylint: disable=invalid-name
 
 _CAN_USE_FLASH_ATTN = is_flash_attn_available() and is_flash_attn_version(">=", _REQUIRED_FLASH_VERSION)
 _CAN_USE_FLASH_ATTN_3 = is_flash_attn_3_available()
+_CAN_USE_FLASH_ATTN_4 = is_flash_attn_4_available()
 _CAN_USE_AITER_ATTN = is_aiter_available() and is_aiter_version(">=", _REQUIRED_AITER_VERSION)
 _CAN_USE_SAGE_ATTN = is_sageattention_available() and is_sageattention_version(">=", _REQUIRED_SAGE_VERSION)
 _CAN_USE_FLEX_ATTN = is_torch_version(">=", _REQUIRED_FLEX_VERSION)
@@ -107,6 +109,16 @@ if _CAN_USE_FLASH_ATTN_3:
 else:
     flash_attn_3_func = None
     flash_attn_3_varlen_func = None
+
+if _CAN_USE_FLASH_ATTN_4:
+    try:
+        from flash_attn.cute import flash_attn_func as flash_attn_4_func
+    except (ImportError, OSError, RuntimeError) as e:
+        logger.warning(f"flash_attn_4 failed to import: {e}. Falling back to native attention.")
+        _CAN_USE_FLASH_ATTN_4 = False
+        flash_attn_4_func = None
+else:
+    flash_attn_4_func = None
 
 if _CAN_USE_AITER_ATTN:
     try:
@@ -230,6 +242,7 @@ class AttentionBackendName(str, Enum):
     FLASH_VARLEN = "flash_varlen"
     FLASH_VARLEN_HUB = "flash_varlen_hub"
     FLASH_4_HUB = "flash_4_hub"
+    _FLASH_4 = "_flash_4"
     _FLASH_3 = "_flash_3"
     _FLASH_VARLEN_3 = "_flash_varlen_3"
     _FLASH_3_HUB = "_flash_3_hub"
@@ -521,6 +534,12 @@ def _check_attention_backend_requirements(backend: AttentionBackendName) -> None
         if not _CAN_USE_FLASH_ATTN_3:
             raise RuntimeError(
                 f"Flash Attention 3 backend '{backend.value}' is not usable because of missing package or the version is too old. Please build FA3 beta release from source."
+            )
+
+    elif backend == AttentionBackendName._FLASH_4:
+        if not _CAN_USE_FLASH_ATTN_4:
+            raise RuntimeError(
+                f"Flash Attention 4 backend '{backend.value}' is not usable because flash_attn.cute module is not available. Please install flash-attn>=4.0."
             )
 
     elif backend in [
@@ -2713,6 +2732,36 @@ def _flash_attention_4_hub(
 
     func = _HUB_KERNELS_REGISTRY[AttentionBackendName.FLASH_4_HUB].kernel_fn
     out = func(
+        q=query,
+        k=key,
+        v=value,
+        softmax_scale=scale,
+        causal=is_causal,
+    )
+    if isinstance(out, tuple):
+        return (out[0], out[1]) if return_lse else out[0]
+    return out
+
+
+@_AttentionBackendRegistry.register(
+    AttentionBackendName._FLASH_4,
+    constraints=[_check_device, _check_qkv_dtype_bf16_or_fp16, _check_shape],
+    supports_context_parallel=False,
+)
+def _flash_attention_4(
+    query: torch.Tensor,
+    key: torch.Tensor,
+    value: torch.Tensor,
+    attn_mask: torch.Tensor | None = None,
+    scale: float | None = None,
+    is_causal: bool = False,
+    return_lse: bool = False,
+    _parallel_config: "ParallelConfig" | None = None,
+) -> torch.Tensor:
+    if attn_mask is not None:
+        raise ValueError("`attn_mask` is not supported for flash-attn 4.")
+
+    out = flash_attn_4_func(
         q=query,
         k=key,
         v=value,
