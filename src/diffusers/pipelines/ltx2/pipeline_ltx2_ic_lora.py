@@ -870,7 +870,7 @@ class LTX2InContextPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoad
         """
         Compute positional coordinates for a keyframe condition being appended as extra tokens.
 
-        Has the following behavior (based on the LTX-2.X original code):
+        Mirrors `VideoConditionByKeyframeIndex.apply_to` in the reference implementation:
         - Latent coords scaled to pixel space *without* the causal fix (since non-zero-index keyframes don't need the
           first-frame causal adjustment).
         - Temporal axis offset by `pixel_frame_idx` (the pixel-space index at which the keyframe appears).
