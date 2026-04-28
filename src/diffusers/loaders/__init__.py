@@ -118,6 +118,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
                 AuraFlowLoraLoaderMixin,
                 CogVideoXLoraLoaderMixin,
                 CogView4LoraLoaderMixin,
+                CosmosLoraLoaderMixin,
                 Flux2LoraLoaderMixin,
                 FluxLoraLoaderMixin,
                 HeliosLoraLoaderMixin,
