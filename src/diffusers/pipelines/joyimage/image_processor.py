@@ -22,7 +22,6 @@ from PIL import Image
 from ...configuration_utils import register_to_config
 from ...image_processor import VaeImageProcessor
 
-
 PRECISION_TO_TYPE = {
     "fp32": torch.float32,
     "fp16": torch.float16,
@@ -148,6 +147,11 @@ class JoyImageEditImageProcessor(VaeImageProcessor):
         scale = max(bh / h, bw / w)
         resize_h = math.ceil(h * scale)
         resize_w = math.ceil(w * scale)
-        img = TF.resize(img, (resize_h, resize_w), interpolation=TF.InterpolationMode.BILINEAR, antialias=True)
+        img = TF.resize(
+            img,
+            (resize_h, resize_w),
+            interpolation=TF.InterpolationMode.BILINEAR,
+            antialias=True,
+        )
         img = TF.center_crop(img, target_size)
         return img

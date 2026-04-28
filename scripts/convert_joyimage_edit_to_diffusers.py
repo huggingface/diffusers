@@ -10,7 +10,9 @@ from diffusers import (
     JoyImageEditPipeline,
     JoyImageEditTransformer3DModel,
 )
-from diffusers.schedulers.scheduling_flow_match_euler_discrete import FlowMatchEulerDiscreteScheduler
+from diffusers.schedulers.scheduling_flow_match_euler_discrete import (
+    FlowMatchEulerDiscreteScheduler,
+)
 
 
 # This code is modified from convert_wan_to_diffusers.py to support input ckpt path
@@ -184,7 +186,9 @@ def convert_vae(vae_ckpt_path):
             elif ".shortcut." in key:
                 if block_idx == 4:
                     new_key = key.replace(".shortcut.", ".resnets.0.conv_shortcut.")
-                    new_key = new_key.replace("decoder.upsamples.4", "decoder.up_blocks.1")
+                    new_key = new_key.replace(
+                        "decoder.upsamples.4", "decoder.up_blocks.1"
+                    )
                 else:
                     new_key = key.replace("decoder.upsamples.", "decoder.up_blocks.")
                     new_key = new_key.replace(".shortcut.", ".conv_shortcut.")
@@ -194,11 +198,20 @@ def convert_vae(vae_ckpt_path):
             # Handle upsamplers
             elif ".resample." in key or ".time_conv." in key:
                 if block_idx == 3:
-                    new_key = key.replace(f"decoder.upsamples.{block_idx}", "decoder.up_blocks.0.upsamplers.0")
+                    new_key = key.replace(
+                        f"decoder.upsamples.{block_idx}",
+                        "decoder.up_blocks.0.upsamplers.0",
+                    )
                 elif block_idx == 7:
-                    new_key = key.replace(f"decoder.upsamples.{block_idx}", "decoder.up_blocks.1.upsamplers.0")
+                    new_key = key.replace(
+                        f"decoder.upsamples.{block_idx}",
+                        "decoder.up_blocks.1.upsamplers.0",
+                    )
                 elif block_idx == 11:
-                    new_key = key.replace(f"decoder.upsamples.{block_idx}", "decoder.up_blocks.2.upsamplers.0")
+                    new_key = key.replace(
+                        f"decoder.upsamples.{block_idx}",
+                        "decoder.up_blocks.2.upsamplers.0",
+                    )
                 else:
                     new_key = key.replace("decoder.upsamples.", "decoder.up_blocks.")
 
@@ -273,14 +286,39 @@ def convert_transformer(ckpt_path: str):
 def get_args():
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--transformer_ckpt_path", type=str, default=None, help="Path to original transformer checkpoint"
+        "--transformer_ckpt_path",
+        type=str,
+        default=None,
+        help="Path to original transformer checkpoint",
     )
-    parser.add_argument("--vae_ckpt_path", type=str, default=None, help="Path to original VAE checkpoint")
-    parser.add_argument("--text_encoder_path", type=str, default=None, help="Path to original llama checkpoint")
-    parser.add_argument("--tokenizer_path", type=str, default=None, help="Path to original llama tokenizer")
+    parser.add_argument(
+        "--vae_ckpt_path",
+        type=str,
+        default=None,
+        help="Path to original VAE checkpoint",
+    )
+    parser.add_argument(
+        "--text_encoder_path",
+        type=str,
+        default=None,
+        help="Path to original llama checkpoint",
+    )
+    parser.add_argument(
+        "--tokenizer_path",
+        type=str,
+        default=None,
+        help="Path to original llama tokenizer",
+    )
     parser.add_argument("--save_pipeline", action="store_true")
-    parser.add_argument("--output_path", type=str, required=True, help="Path where converted model should be saved")
-    parser.add_argument("--dtype", default="bf16", help="Torch dtype to save the transformer in.")
+    parser.add_argument(
+        "--output_path",
+        type=str,
+        required=True,
+        help="Path where converted model should be saved",
+    )
+    parser.add_argument(
+        "--dtype", default="bf16", help="Torch dtype to save the transformer in."
+    )
     parser.add_argument("--flow_shift", type=float, default=7.0)
     return parser.parse_args()
 
@@ -304,12 +342,16 @@ if __name__ == "__main__":
         transformer = convert_transformer(args.transformer_ckpt_path)
         transformer = transformer.to(dtype=dtype)
         if not args.save_pipeline:
-            transformer.save_pretrained(args.output_path, safe_serialization=True, max_shard_size="5GB")
+            transformer.save_pretrained(
+                args.output_path, safe_serialization=True, max_shard_size="5GB"
+            )
     if args.vae_ckpt_path is not None:
         vae = convert_vae(args.vae_ckpt_path)
         vae = vae.to(dtype=dtype)
         if not args.save_pipeline:
-            vae.save_pretrained(args.output_path, safe_serialization=True, max_shard_size="5GB")
+            vae.save_pretrained(
+                args.output_path, safe_serialization=True, max_shard_size="5GB"
+            )
     if args.save_pipeline:
         processor = AutoProcessor.from_pretrained(args.text_encoder_path)
         text_encoder = Qwen3VLForConditionalGeneration.from_pretrained(
@@ -317,7 +359,9 @@ if __name__ == "__main__":
         ).to("cuda")
         tokenizer = AutoTokenizer.from_pretrained(args.text_encoder_path)
         flow_shift = 1.5
-        scheduler = FlowMatchEulerDiscreteScheduler(num_train_timesteps=1000, shift=flow_shift)
+        scheduler = FlowMatchEulerDiscreteScheduler(
+            num_train_timesteps=1000, shift=flow_shift
+        )
         transformer = transformer.to("cuda")
         vae = vae.to("cuda")
         pipe = JoyImageEditPipeline(
@@ -328,5 +372,7 @@ if __name__ == "__main__":
             vae=vae,
             scheduler=scheduler,
         ).to("cuda")
-        pipe.save_pretrained(args.output_path, safe_serialization=True, max_shard_size="5GB")
+        pipe.save_pretrained(
+            args.output_path, safe_serialization=True, max_shard_size="5GB"
+        )
         processor.save_pretrained(f"{args.output_path}/processor")

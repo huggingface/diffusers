@@ -28,7 +28,6 @@ from ..testing_utils import (
     TrainingTesterMixin,
 )
 
-
 enable_full_determinism()
 
 
@@ -75,8 +74,12 @@ class JoyImageEditTransformerTesterConfig(BaseModelTesterConfig):
 
     def get_dummy_inputs(self) -> dict[str, torch.Tensor]:
         batch_size = 1
-        hidden_states = randn_tensor((batch_size, 16, 1, 4, 4), generator=self.generator, device=torch_device)
-        encoder_hidden_states = randn_tensor((batch_size, 12, 16), generator=self.generator, device=torch_device)
+        hidden_states = randn_tensor(
+            (batch_size, 16, 1, 4, 4), generator=self.generator, device=torch_device
+        )
+        encoder_hidden_states = randn_tensor(
+            (batch_size, 12, 16), generator=self.generator, device=torch_device
+        )
         timestep = torch.tensor([1.0]).to(torch_device).expand(batch_size)
         return {
             "hidden_states": hidden_states,
@@ -85,25 +88,37 @@ class JoyImageEditTransformerTesterConfig(BaseModelTesterConfig):
         }
 
 
-class TestJoyImageEditTransformer(JoyImageEditTransformerTesterConfig, ModelTesterMixin):
-    @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16], ids=["fp16", "bf16"])
+class TestJoyImageEditTransformer(
+    JoyImageEditTransformerTesterConfig, ModelTesterMixin
+):
+    @pytest.mark.parametrize(
+        "dtype", [torch.float16, torch.bfloat16], ids=["fp16", "bf16"]
+    )
     def test_from_save_pretrained_dtype_inference(self, tmp_path, dtype):
         pytest.skip("Tolerance requirements too high for meaningful test")
 
 
-class TestJoyImageEditTransformerMemory(JoyImageEditTransformerTesterConfig, MemoryTesterMixin):
+class TestJoyImageEditTransformerMemory(
+    JoyImageEditTransformerTesterConfig, MemoryTesterMixin
+):
     pass
 
 
-class TestJoyImageEditTransformerTraining(JoyImageEditTransformerTesterConfig, TrainingTesterMixin):
+class TestJoyImageEditTransformerTraining(
+    JoyImageEditTransformerTesterConfig, TrainingTesterMixin
+):
     def test_gradient_checkpointing_is_applied(self):
         expected_set = {"JoyImageEditTransformer3DModel"}
         super().test_gradient_checkpointing_is_applied(expected_set=expected_set)
 
 
-class TestJoyImageEditTransformerAttention(JoyImageEditTransformerTesterConfig, AttentionTesterMixin):
+class TestJoyImageEditTransformerAttention(
+    JoyImageEditTransformerTesterConfig, AttentionTesterMixin
+):
     pass
 
 
-class TestJoyImageEditTransformerCompile(JoyImageEditTransformerTesterConfig, TorchCompileTesterMixin):
+class TestJoyImageEditTransformerCompile(
+    JoyImageEditTransformerTesterConfig, TorchCompileTesterMixin
+):
     pass
