@@ -1914,9 +1914,12 @@ class TemplatedRingAttention(torch.autograd.Function):
                 out = out.to(torch.float32)
                 lse = lse.to(torch.float32)
 
-            # Refer to:
-            # https://github.com/huggingface/diffusers/pull/12693#issuecomment-3627519544
-            if is_torch_version("<", "2.9.0"):
+            # lse must be 4-D to broadcast with out (B, S, H, D).
+            # Some backends (e.g. cuDNN on torch>=2.9) already return a
+            # trailing-1 dim; others (e.g. flash-hub / native-flash) always
+            # return 3-D lse, so we add the dim here when needed.
+            # See: https://github.com/huggingface/diffusers/pull/12693#issuecomment-3627519544
+            if lse.ndim == 3:
                 lse = lse.unsqueeze(-1)
             if prev_out is not None:
                 out = prev_out - torch.nn.functional.sigmoid(lse - prev_lse) * (prev_out - out)
@@ -2203,10 +2206,11 @@ def _templated_unified_attention(
         scatter_idx,
     )
     if return_lse:
-        # lse is of shape (B, S, H_LOCAL, 1)
-        # Refer to:
-        # https://github.com/huggingface/diffusers/pull/12693#issuecomment-3627519544
-        if is_torch_version("<", "2.9.0"):
+        # lse from TemplatedRingAttention is 3-D (B, S, H_LOCAL) after its
+        # final squeeze(-1). SeqAllToAllDim requires a 4-D input, so we add
+        # the trailing dim here and remove it after the collective.
+        # See: https://github.com/huggingface/diffusers/pull/12693#issuecomment-3627519544
+        if lse.ndim == 3:
             lse = lse.unsqueeze(-1)  # (B, S, H_LOCAL, 1)
         lse = SeqAllToAllDim.apply(ulysses_group, lse, gather_idx, scatter_idx)
         lse = lse.squeeze(-1)
