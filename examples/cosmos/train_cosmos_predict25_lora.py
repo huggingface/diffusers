@@ -279,7 +279,6 @@ class VideoDataset(Dataset):
         caption_format: str = "auto",  # "text", "json", or "auto"
         video_paths: Optional[list[str]] = None,
     ) -> None:
-
         super().__init__()
         self.dataset_dir = dataset_dir
         self.num_frames = num_frames
