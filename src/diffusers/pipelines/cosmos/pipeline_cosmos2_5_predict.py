@@ -21,6 +21,7 @@ from transformers import AutoTokenizer, Qwen2_5_VLForConditionalGeneration
 
 from ...callbacks import MultiPipelineCallbacks, PipelineCallback
 from ...image_processor import PipelineImageInput
+from ...loaders import CosmosLoraLoaderMixin
 from ...models import AutoencoderKLWan, CosmosTransformer3DModel
 from ...schedulers import UniPCMultistepScheduler
 from ...utils import (
@@ -33,7 +34,6 @@ from ...utils import (
 from ...utils.torch_utils import randn_tensor
 from ...video_processor import VideoProcessor
 from ..pipeline_utils import DiffusionPipeline
-from ...loaders import CosmosLoraLoaderMixin
 from .pipeline_output import CosmosPipelineOutput
 
 
@@ -239,11 +239,11 @@ class Cosmos2_5_PredictBasePipeline(DiffusionPipeline, CosmosLoraLoaderMixin):
 
         self.vae_scale_factor_temporal = 2 ** sum(self.vae.temperal_downsample) if getattr(self, "vae", None) else 4
         self.vae_scale_factor_spatial = 2 ** len(self.vae.temperal_downsample) if getattr(self, "vae", None) else 8
-        self.video_processor = VideoProcessor(vae_scale_factor=self.vae_scale_factor_spatial, resample='bilinear')
+        self.video_processor = VideoProcessor(vae_scale_factor=self.vae_scale_factor_spatial, resample="bilinear")
 
         assert getattr(self.vae.config, "latents_mean", None), "VAE configuration must define `latents_mean`."
         assert getattr(self.vae.config, "latents_std", None), "VAE configuration must define `latents_std`."
-        
+
         latents_mean = torch.tensor(self.vae.config.latents_mean).view(1, self.vae.config.z_dim, 1, 1, 1).float()
         latents_std = torch.tensor(self.vae.config.latents_std).view(1, self.vae.config.z_dim, 1, 1, 1).float()
         self.latents_mean = latents_mean
@@ -259,7 +259,7 @@ class Cosmos2_5_PredictBasePipeline(DiffusionPipeline, CosmosLoraLoaderMixin):
                 "torch_dtype": kwargs.get("torch_dtype", None),
                 "attn_implementation": text_encoder_attn_implementation,
             }
-            
+
             if os.path.isdir(pretrained_model_name_or_path):
                 text_encoder_path = os.path.join(pretrained_model_name_or_path, "text_encoder")
             else:
@@ -270,21 +270,21 @@ class Cosmos2_5_PredictBasePipeline(DiffusionPipeline, CosmosLoraLoaderMixin):
             )
 
         return super().from_pretrained(pretrained_model_name_or_path, **kwargs)
-    
+
     def get_latent_shape_cthw(self, height: int, width: int, num_frames: int):
         C = self.vae.config.z_dim
         T = (num_frames - 1) // self.vae_scale_factor_temporal + 1
         H = height // self.vae_scale_factor_spatial
         W = width // self.vae_scale_factor_spatial
         return (C, T, H, W)
-    
+
     def create_condition_mask(self, latent_shape, device, dtype, num_cond_latent_frames):
         bsz, C, T, H, W = latent_shape
         cond_indicator = torch.zeros(bsz, 1, T, 1, 1, dtype=dtype, device=device)
         if isinstance(num_cond_latent_frames, int):
             num_cond_latent_frames = [num_cond_latent_frames] * bsz
         for idx in range(bsz):
-            cond_indicator[idx, :, :num_cond_latent_frames[idx], :, :] = 1.0
+            cond_indicator[idx, :, : num_cond_latent_frames[idx], :, :] = 1.0
         cond_mask = cond_indicator.expand(-1, -1, -1, H, W)
         return cond_indicator, cond_mask
 
@@ -493,11 +493,16 @@ class Cosmos2_5_PredictBasePipeline(DiffusionPipeline, CosmosLoraLoaderMixin):
 
             if isinstance(generator, list):
                 cond_latents = [
-                    retrieve_latents(self.vae.encode(video[i].unsqueeze(0)), generator=generator[i], sample_mode="argmax")
+                    retrieve_latents(
+                        self.vae.encode(video[i].unsqueeze(0)), generator=generator[i], sample_mode="argmax"
+                    )
                     for i in range(batch_size)
                 ]
             else:
-                cond_latents = [retrieve_latents(self.vae.encode(vid.unsqueeze(0)), generator, sample_mode="argmax") for vid in video]
+                cond_latents = [
+                    retrieve_latents(self.vae.encode(vid.unsqueeze(0)), generator, sample_mode="argmax")
+                    for vid in video
+                ]
 
             cond_latents = torch.cat(cond_latents, dim=0).to(dtype)
 
@@ -760,8 +765,8 @@ class Cosmos2_5_PredictBasePipeline(DiffusionPipeline, CosmosLoraLoaderMixin):
                 raise ValueError(
                     f"Input video has only {total_input_frames} frames but Video2World requires at least "
                     f"{frames_to_extract} frames for conditioning."
-                ) 
-            
+                )
+
             video = video[:, :, -frames_to_extract:, :, :]
             if video.shape[2] < num_frames:
                 n_pad_frames = num_frames - video.shape[2]
@@ -807,7 +812,7 @@ class Cosmos2_5_PredictBasePipeline(DiffusionPipeline, CosmosLoraLoaderMixin):
                     continue
 
                 self._current_timestep = t.cpu().item()
-                
+
                 # NOTE: assumes sigma(t) \in [0, 1]
                 sigma_t = self.scheduler.sigmas[i].expand(batch_size).to(device=device, dtype=torch.float32)
                 if conditional_frame_timestep >= 0:

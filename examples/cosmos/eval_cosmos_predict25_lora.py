@@ -7,8 +7,8 @@ import os
 
 import numpy as np
 import torch
-from tqdm import tqdm
 from torch.utils.data import DataLoader, Dataset
+from tqdm import tqdm
 
 from diffusers import Cosmos2_5_PredictBasePipeline
 from diffusers.utils import export_to_video, load_image

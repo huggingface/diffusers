@@ -194,7 +194,9 @@ class CosmosAttnProcessor2_0:
             original_dtype = query.dtype
             with torch.amp.autocast("cuda", enabled=self.autocast_fp32, dtype=torch.float32):
                 target_dtype = torch.float32 if self.autocast_fp32 else original_dtype
-                query = apply_rotary_emb(query.to(target_dtype), image_rotary_emb, use_real=True, use_real_unbind_dim=-2)
+                query = apply_rotary_emb(
+                    query.to(target_dtype), image_rotary_emb, use_real=True, use_real_unbind_dim=-2
+                )
                 key = apply_rotary_emb(key.to(target_dtype), image_rotary_emb, use_real=True, use_real_unbind_dim=-2)
             query = query.to(original_dtype)
             key = key.to(original_dtype)
@@ -267,7 +269,9 @@ class CosmosAttnProcessor2_5:
             original_dtype = query.dtype
             with torch.amp.autocast("cuda", enabled=self.autocast_fp32, dtype=torch.float32):
                 target_dtype = torch.float32 if self.autocast_fp32 else original_dtype
-                query = apply_rotary_emb(query.to(target_dtype), image_rotary_emb, use_real=True, use_real_unbind_dim=-2)
+                query = apply_rotary_emb(
+                    query.to(target_dtype), image_rotary_emb, use_real=True, use_real_unbind_dim=-2
+                )
                 key = apply_rotary_emb(key.to(target_dtype), image_rotary_emb, use_real=True, use_real_unbind_dim=-2)
             query = query.to(original_dtype)
             key = key.to(original_dtype)
