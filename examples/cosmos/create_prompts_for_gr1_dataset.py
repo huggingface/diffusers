@@ -18,6 +18,7 @@ import os
 
 from tqdm import tqdm
 
+
 """example command
 python create_prompts_for_gr1_dataset.py --dataset_path datasets/benchmark_train/gr1
 """

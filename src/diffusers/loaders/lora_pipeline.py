@@ -2263,15 +2263,13 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
 
 class CosmosLoraLoaderMixin(FluxLoraLoaderMixin):
     r"""
-    Load LoRA layers into [`CosmosTransformer3DModel`],
-    Specific to [`Cosmos2_5_PredictBasePipeline`].
+    Load LoRA layers into [`CosmosTransformer3DModel`], Specific to [`Cosmos2_5_PredictBasePipeline`].
     """
 
     _lora_loadable_modules = ["transformer"]
     transformer_name = TRANSFORMER_NAME
     text_encoder_name = TEXT_ENCODER_NAME
     _control_lora_supported_norm_keys = ["norm_q", "norm_k", "norm_added_q", "norm_added_k"]
-
 
     def load_lora_weights(
         self,
@@ -2312,11 +2310,6 @@ class CosmosLoraLoaderMixin(FluxLoraLoaderMixin):
         if not (has_lora_keys or has_norm_keys):
             raise ValueError("Invalid LoRA checkpoint. Make sure all LoRA param names contain `'lora'` substring.")
 
-        transformer_lora_state_dict = {
-            k: state_dict.get(k)
-            for k in list(state_dict.keys())
-            if k.startswith(f"{self.transformer_name}.") and "lora" in k
-        }
         transformer_norm_state_dict = {
             k: state_dict.pop(k)
             for k in list(state_dict.keys())

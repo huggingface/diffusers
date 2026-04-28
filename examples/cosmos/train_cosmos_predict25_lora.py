@@ -4,8 +4,6 @@ import logging
 import math
 import os
 import random
-import shutil
-from contextlib import nullcontext
 from pathlib import Path
 from typing import Any, Optional
 
@@ -19,26 +17,20 @@ from accelerate import Accelerator
 from accelerate.logging import get_logger
 from accelerate.utils import ProjectConfiguration, set_seed
 from peft import LoraConfig
-from peft.utils import get_peft_model_state_dict, set_peft_model_state_dict
+from peft.utils import get_peft_model_state_dict
 from torch.utils.data import DataLoader, Dataset
 from tqdm.auto import tqdm
 
 import diffusers
 from diffusers import Cosmos2_5_PredictBasePipeline
-from diffusers.optimization import get_linear_schedule_with_warmup, get_scheduler
+from diffusers.optimization import get_linear_schedule_with_warmup
 from diffusers.training_utils import cast_training_params
-from diffusers.utils.torch_utils import is_compiled_module
 from diffusers.utils import (
     convert_state_dict_to_diffusers,
-    is_wandb_available,
-    load_video,
     export_to_video,
+    load_video,
 )
 from diffusers.video_processor import VideoProcessor
-
-
-if is_wandb_available():
-    import wandb
 
 
 logger = get_logger(__name__, log_level="INFO")
@@ -287,7 +279,7 @@ class VideoDataset(Dataset):
         caption_format: str = "auto",  # "text", "json", or "auto"
         video_paths: Optional[list[str]] = None,
     ) -> None:
-        
+
         super().__init__()
         self.dataset_dir = dataset_dir
         self.num_frames = num_frames
@@ -307,7 +299,7 @@ class VideoDataset(Dataset):
         logger.info(f"{len(self.video_paths)} videos in total", main_process_only=True)
 
         self.video_size = video_size
-        self.video_processor = VideoProcessor(vae_scale_factor=8, resample='bilinear')
+        self.video_processor = VideoProcessor(vae_scale_factor=8, resample="bilinear")
         self.num_failed_loads = 0
 
     def __str__(self) -> str:
@@ -326,7 +318,7 @@ class VideoDataset(Dataset):
 
         # randomly sample a consecutive window of frames
         max_start_idx = total_frames - self.num_frames
-        start_frame = np.random.randint(0, max_start_idx+1)
+        start_frame = np.random.randint(0, max_start_idx + 1)
         return frames[start_frame : start_frame + self.num_frames]
 
     def _setup_caption_format(self) -> None:
@@ -401,7 +393,7 @@ class VideoDataset(Dataset):
 
     def __getitem__(self, index: int) -> dict | Any:
         try:
-            data = dict()
+            data = {}
             video = self._get_frames(self.video_paths[index])  # [C, T, H, W]
 
             # Load caption based on format
@@ -463,7 +455,7 @@ def sample_train_sigma_t(batch_size, distribution, device, dtype=torch.float32, 
         t = torch.sigmoid(torch.randn((batch_size,))).to(device=device, dtype=dtype)
     else:
         raise NotImplementedError(f"Time distribution {distribution} is not implemented.")
-    sigma_t = shift * t / (1 + (shift - 1) * t) # 0.0 <= sigma_t <= 1.0
+    sigma_t = shift * t / (1 + (shift - 1) * t)  # 0.0 <= sigma_t <= 1.0
     return sigma_t.view(batch_size, 1, 1, 1, 1)
 
 
@@ -516,9 +508,9 @@ def main():
         if args.output_dir is not None:
             os.makedirs(args.output_dir, exist_ok=True)
 
-        print('-'*100)
+        print("-" * 100)
         print(args)
-        print('-'*100)
+        print("-" * 100)
 
     # Initialize models
     pipe = Cosmos2_5_PredictBasePipeline.from_pretrained(
@@ -538,7 +530,7 @@ def main():
     vae.requires_grad_(False)
     text_encoder.requires_grad_(False)
 
-    target_modules_list = ['to_q', 'to_k', 'to_v', 'to_out.0', 'ff.net.0.proj', 'ff.net.2']
+    target_modules_list = ["to_q", "to_k", "to_v", "to_out.0", "ff.net.0.proj", "ff.net.2"]
     dit_lora_config = LoraConfig(
         r=args.lora_rank,
         lora_alpha=args.lora_alpha,
@@ -600,7 +592,7 @@ def main():
                 transformer_lora_layers=dit_lora_state_dict,
                 safe_serialization=True,
             )
-            
+
     accelerator.register_save_state_pre_hook(save_model_hook)
 
     if accelerator.is_main_process:
@@ -634,7 +626,7 @@ def main():
     padding_mask = torch.zeros(1, 1, args.height, args.width, dtype=dit_dtype, device=device)
     latent_shape = pipe.get_latent_shape_cthw(args.height, args.width, args.num_frames)
     latents_mean = pipe.latents_mean.float().to(device)
-    latents_std = pipe.latents_std.float().to(device) # 1/σ
+    latents_std = pipe.latents_std.float().to(device)  # 1/σ
     # Start training
     torch.set_grad_enabled(True)  # re-enable grad disabled by Cosmos2_5_PredictBasePipeline
     for epoch in range(first_epoch, args.num_train_epochs):
@@ -647,7 +639,7 @@ def main():
                 raw_state = batch["video"].to(device=device, dtype=vae.dtype)
                 mu = vae.encode(raw_state).latent_dist.mean  # deterministic
                 clean_latent = ((mu - latents_mean) * latents_std).contiguous().float()
-                assert clean_latent.requires_grad == False
+                assert not clean_latent.requires_grad
                 torch.cuda.empty_cache()
 
                 # Encode text to text embeddings
@@ -655,7 +647,7 @@ def main():
                     prompt=batch["caption"],
                     device=device,
                 )
-                assert prompt_embeds.requires_grad == False
+                assert not prompt_embeds.requires_grad
 
                 # CFG dropout: independently zero out text conditioning per sample
                 bsz = clean_latent.shape[0]
@@ -667,18 +659,21 @@ def main():
                 weights = list(args.conditional_frames_probs.values())
                 num_conditional_frames = random.choices(frames_options, weights=weights, k=bsz)
                 cond_indicator, cond_mask = pipe.create_condition_mask(
-                    (bsz, *latent_shape), device=device, dtype=torch.float32, num_cond_latent_frames=num_conditional_frames
+                    (bsz, *latent_shape),
+                    device=device,
+                    dtype=torch.float32,
+                    num_cond_latent_frames=num_conditional_frames,
                 )
 
                 # Sample a random timestep
-                sigma_t = sample_train_sigma_t(bsz, distribution='logitnormal', device=device)
+                sigma_t = sample_train_sigma_t(bsz, distribution="logitnormal", device=device)
                 # 1. Sample noise 2. Get the target velocity 3. Get xt by interpolation between noise and clean
                 xt_B_C_T_H_W, target_velocity = get_flow_xt_and_target_v(clean_latent, sigma_t, cond_mask)
-                
+
                 # Denoise
                 if args.conditional_frame_timestep >= 0:
                     in_timestep = cond_indicator * args.conditional_frame_timestep + (1 - cond_indicator) * sigma_t
-                
+
                 pred_velocity = dit(
                     hidden_states=xt_B_C_T_H_W,
                     condition_mask=cond_mask,
@@ -717,7 +712,7 @@ def main():
             if global_step >= max_train_steps:
                 break
 
-        if (epoch+1) % args.checkpointing_epochs == 0 and (epoch+1) < args.num_train_epochs:
+        if (epoch + 1) % args.checkpointing_epochs == 0 and (epoch + 1) < args.num_train_epochs:
             if accelerator.is_main_process:
                 save_path = os.path.join(args.output_dir, f"checkpoint-{epoch}")
                 accelerator.save_state(save_path)
@@ -738,7 +733,7 @@ def main():
         if args.do_final_eval:
             noises = arch_invariant_rand((1, *latent_shape), dtype=torch.float32, device=device, seed=args.seed)
             inputs = train_dataloader.dataset[0]
-            
+
             pipe.transformer.eval()
             with torch.inference_mode():
                 frames = pipe(
@@ -747,14 +742,15 @@ def main():
                     prompt=inputs["caption"],
                     num_frames=args.num_frames,
                     num_inference_steps=args.num_inference_steps,
-                    latents=noises, # ensure architecture invariant generation
+                    latents=noises,  # ensure architecture invariant generation
                     height=args.height,
                     width=args.width,
                 ).frames[0]
-            
+
             export_to_video(frames, os.path.join(args.output_dir, "eval_output.mp4"), fps=16)
 
     accelerator.end_training()
+
 
 if __name__ == "__main__":
     main()
