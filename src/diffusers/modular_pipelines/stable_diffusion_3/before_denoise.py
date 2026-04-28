@@ -432,7 +432,7 @@ class StableDiffusion3Img2ImgPrepareLatentsStep(ModularPipelineBlocks):
 
     @property
     def intermediate_outputs(self) -> list[OutputParam]:
-        return[
+        return [
             OutputParam(
                 "latents",
                 type_hint=torch.Tensor,
@@ -442,7 +442,7 @@ class StableDiffusion3Img2ImgPrepareLatentsStep(ModularPipelineBlocks):
                 "initial_noise",
                 type_hint=torch.Tensor,
                 description="The initial noise applied to the image latents.",
-            )
+            ),
         ]
 
     @torch.no_grad()

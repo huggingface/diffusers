@@ -342,7 +342,7 @@ class StableDiffusion3ProcessImagesInputStep(ModularPipelineBlocks):
 
     @property
     def inputs(self) -> list[InputParam]:
-        return[
+        return [
             InputParam(
                 "image",
                 description="The input image to be used as the starting point for the image-to-image process.",
@@ -364,9 +364,7 @@ class StableDiffusion3ProcessImagesInputStep(ModularPipelineBlocks):
             raise ValueError(f"Width must be divisible by {vae_scale_factor * patch_size} but is {width}")
 
     @torch.no_grad()
-    def __call__(
-        self, components: StableDiffusion3ModularPipeline, state: PipelineState
-    ):
+    def __call__(self, components: StableDiffusion3ModularPipeline, state: PipelineState):
         block_state = self.get_block_state(state)
 
         if block_state.image is None:
@@ -382,9 +380,7 @@ class StableDiffusion3ProcessImagesInputStep(ModularPipelineBlocks):
         height = block_state.height or components.default_height
         width = block_state.width or components.default_width
 
-        block_state.processed_image = components.image_processor.preprocess(
-            image=image, height=height, width=width
-        )
+        block_state.processed_image = components.image_processor.preprocess(image=image, height=height, width=width)
 
         self.set_block_state(state, block_state)
         return components, state
@@ -530,16 +526,12 @@ class StableDiffusion3TextEncoderStep(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(
-        self, components: StableDiffusion3ModularPipeline, state: PipelineState
-    ) -> PipelineState:
+    def __call__(self, components: StableDiffusion3ModularPipeline, state: PipelineState) -> PipelineState:
         block_state = self.get_block_state(state)
         block_state.device = components._execution_device
 
         lora_scale = (
-            block_state.joint_attention_kwargs.get("scale", None)
-            if block_state.joint_attention_kwargs
-            else None
+            block_state.joint_attention_kwargs.get("scale", None) if block_state.joint_attention_kwargs else None
         )
 
         (

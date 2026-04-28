@@ -103,30 +103,29 @@ class StableDiffusion3LoopDenoiser(ModularPipelineBlocks):
         i: int,
         t: torch.Tensor,
     ) -> PipelineState:
-
         do_cfg = block_state.negative_prompt_embeds is not None
-
 
         guider_inputs = {
             "hidden_states": (block_state.latents, block_state.latents) if do_cfg else block_state.latents,
             "encoder_hidden_states": (
                 block_state.prompt_embeds,
                 block_state.negative_prompt_embeds,
-            ) if do_cfg else block_state.prompt_embeds,
+            )
+            if do_cfg
+            else block_state.prompt_embeds,
             "text_embeds": (
                 block_state.pooled_prompt_embeds,
                 block_state.negative_pooled_prompt_embeds,
-            ) if do_cfg else block_state.pooled_prompt_embeds,
+            )
+            if do_cfg
+            else block_state.pooled_prompt_embeds,
         }
 
-        components.guider.set_state(
-            step=i, num_inference_steps=block_state.num_inference_steps, timestep=t
-        )
+        components.guider.set_state(step=i, num_inference_steps=block_state.num_inference_steps, timestep=t)
         guider_state = components.guider.prepare_inputs(guider_inputs)
 
         for guider_state_batch in guider_state:
             components.guider.prepare_models(components.transformer)
-
 
             latent_model_input = guider_state_batch.hidden_states
             prompt_embeds = guider_state_batch.encoder_hidden_states

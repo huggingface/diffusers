@@ -31,7 +31,7 @@ class StableDiffusion3DecodeStep(ModularPipelineBlocks):
 
     @property
     def expected_components(self) -> list[ComponentSpec]:
-        return[
+        return [
             ComponentSpec("vae", AutoencoderKL),
             ComponentSpec(
                 "image_processor",
