@@ -377,7 +377,6 @@ class JoyImageAttention(nn.Module, AttentionModuleMixin):
 # ---------------------------------------------------------------------------
 
 
-@maybe_allow_in_graph
 class JoyImageTransformerBlock(nn.Module):
     """Double-stream transformer block for JoyImage.
 
@@ -483,6 +482,7 @@ class JoyImageTransformer3DModel(ModelMixin, ConfigMixin, AttentionMixin):
     _skip_layerwise_casting_patterns = ["img_in", "condition_embedder", "norm"]
     _no_split_modules = ["JoyImageTransformerBlock"]
     _keep_in_fp32_modules = ["time_embedder", "scale_shift_table", "norm1", "norm2", "norm3"]
+    _repeated_blocks = ["JoyImageTransformerBlock"]
 
     @register_to_config
     def __init__(
