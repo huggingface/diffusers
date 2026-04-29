@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 import torch
@@ -20,11 +19,11 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from ...configuration_utils import ConfigMixin, register_to_config
-from ...hooks._helpers import TransformerBlockMetadata, TransformerBlockRegistry
 from ...loaders import FromOriginalModelMixin, PeftAdapterMixin
 from ...utils import USE_PEFT_BACKEND, logging, scale_lora_layers, unscale_lora_layers
-from ..attention import FeedForward
-from ..attention_processor import Attention, AttentionProcessor
+from ..attention import AttentionMixin, FeedForward
+from ..attention_dispatch import dispatch_attention_fn
+from ..attention_processor import Attention
 from ..cache_utils import CacheMixin
 from ..embeddings import (
     PixArtAlphaTextProjection,
@@ -45,22 +44,12 @@ from ..normalization import (
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
-@dataclass
-class CrossAttentionInputs:
-    """Inputs for cross-attention mode where query is pre-projected externally.
-
-    Args:
-        query: Pre-projected query tensor [B, L, D]
-        key: Key tensor for attention [B, L, D]
-        value: Value tensor for attention [B, L, D]
-    """
-
-    query: torch.Tensor
-    key: torch.Tensor
-    value: torch.Tensor
-
-
 class MotifVideoAttnProcessor2_0:
+    """Attention processor for Motif-Video self-attention."""
+
+    _attention_backend = None
+    _parallel_config = None
+
     def __init__(self):
         if not hasattr(F, "scaled_dot_product_attention"):
             raise ImportError(
@@ -74,196 +63,99 @@ class MotifVideoAttnProcessor2_0:
         encoder_hidden_states: Optional[torch.Tensor] = None,
         attention_mask: Optional[torch.Tensor] = None,
         image_rotary_emb: Optional[torch.Tensor] = None,
-        cross_attn_inputs: Optional[CrossAttentionInputs] = None,
     ) -> torch.Tensor:
-        """
-        Process attention with support for cross-attention mode.
-
-        Args:
-            attn: Attention layer
-            hidden_states: Input hidden states [B, L, D]
-            encoder_hidden_states: Optional encoder states [B, E, D]
-            attention_mask: Optional attention mask [B, 1, 1, N]
-            image_rotary_emb: Optional rotary embeddings
-            cross_attn_inputs: Optional pre-projected cross-attention inputs
-
-        Returns:
-            Tuple of (hidden_states, encoder_hidden_states)
-        """
-        if cross_attn_inputs is not None:
-            return self._handle_cross_attention_mode(attn, cross_attn_inputs, attention_mask, image_rotary_emb)
-
-        # Standard attention mode
+        # Concatenate hidden states with encoder hidden states for joint attention if needed
         if attn.add_q_proj is None and encoder_hidden_states is not None:
             hidden_states = torch.cat([hidden_states, encoder_hidden_states], dim=1)
 
-        query, key, value = self._project_qkv(attn, hidden_states)
-        query, key = self._normalize_qk(attn, query, key)
-        query, key = self._apply_rope(attn, query, key, encoder_hidden_states, image_rotary_emb)
-        query, key, value = self._add_encoder_conditioning(attn, query, key, value, encoder_hidden_states)
-        hidden_states = self._compute_attention(query, key, value, attention_mask)
-        return self._project_output(attn, hidden_states, encoder_hidden_states)
-
-    def _handle_cross_attention_mode(
-        self,
-        attn: Attention,
-        cross_attn_inputs: CrossAttentionInputs,
-        attention_mask: Optional[torch.Tensor],
-        image_rotary_emb: Optional[torch.Tensor],
-    ) -> Tuple[torch.Tensor, None]:
-        """Handle cross-attention mode with pre-projected query.
-
-        Query is already projected externally (cross_attn_query_proj + norm), so we skip to_q and only apply reshape +
-        norm_q + RoPE. K/V use to_k/to_v as normal.
-        """
-        query = cross_attn_inputs.query.unflatten(2, (attn.heads, -1)).transpose(1, 2)
-        key = attn.to_k(cross_attn_inputs.key)
-        value = attn.to_v(cross_attn_inputs.value)
-
-        key = key.unflatten(2, (attn.heads, -1)).transpose(1, 2)
-        value = value.unflatten(2, (attn.heads, -1)).transpose(1, 2)
-
-        if attn.norm_q is not None:
-            query = attn.norm_q(query)
-        if attn.norm_k is not None:
-            key = attn.norm_k(key)
-
-        if image_rotary_emb is not None:
-            query = apply_rotary_emb(query, image_rotary_emb)
-
-        hidden_states = F.scaled_dot_product_attention(
-            query, key, value, attn_mask=attention_mask, dropout_p=0.0, is_causal=False
-        )
-        hidden_states = hidden_states.transpose(1, 2).flatten(2, 3)
-        hidden_states = hidden_states.to(query.dtype)
-        return hidden_states, None
-
-    def _project_qkv(
-        self,
-        attn: Attention,
-        hidden_states: torch.Tensor,
-    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-        """Project hidden states to Q, K, V and reshape for attention."""
+        # Project QKV
         query = attn.to_q(hidden_states)
         key = attn.to_k(hidden_states)
         value = attn.to_v(hidden_states)
 
-        query = query.unflatten(2, (attn.heads, -1)).transpose(1, 2)
-        key = key.unflatten(2, (attn.heads, -1)).transpose(1, 2)
-        value = value.unflatten(2, (attn.heads, -1)).transpose(1, 2)
+        query = query.unflatten(2, (attn.heads, -1))
+        key = key.unflatten(2, (attn.heads, -1))
+        value = value.unflatten(2, (attn.heads, -1))
 
-        return query, key, value
-
-    def _normalize_qk(
-        self,
-        attn: Attention,
-        query: torch.Tensor,
-        key: torch.Tensor,
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
-        """Apply QK normalization if present."""
+        # Normalize QK
         if attn.norm_q is not None:
             query = attn.norm_q(query)
         if attn.norm_k is not None:
             key = attn.norm_k(key)
-        return query, key
 
-    def _apply_rope(
-        self,
-        attn: Attention,
-        query: torch.Tensor,
-        key: torch.Tensor,
-        encoder_hidden_states: Optional[torch.Tensor],
-        image_rotary_emb: Optional[torch.Tensor],
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
-        """Apply rotary positional embeddings to query and key."""
+        # Apply RoPE
         if image_rotary_emb is not None:
             if attn.add_q_proj is None and encoder_hidden_states is not None:
                 split_idx = -encoder_hidden_states.shape[1]
                 query = torch.cat(
                     [
-                        apply_rotary_emb(query[:, :, :split_idx], image_rotary_emb),
-                        query[:, :, split_idx:],
+                        apply_rotary_emb(query[:, :split_idx, :, :], image_rotary_emb, sequence_dim=1),
+                        query[:, split_idx:, :, :],
                     ],
-                    dim=2,
+                    dim=1,
                 )
                 key = torch.cat(
                     [
-                        apply_rotary_emb(key[:, :, :split_idx], image_rotary_emb),
-                        key[:, :, split_idx:],
+                        apply_rotary_emb(key[:, :split_idx, :, :], image_rotary_emb, sequence_dim=1),
+                        key[:, split_idx:, :, :],
                     ],
-                    dim=2,
+                    dim=1,
                 )
             else:
-                query = apply_rotary_emb(query, image_rotary_emb)
-                key = apply_rotary_emb(key, image_rotary_emb)
+                query = apply_rotary_emb(query, image_rotary_emb, sequence_dim=1)
+                key = apply_rotary_emb(key, image_rotary_emb, sequence_dim=1)
 
-        return query, key
-
-    def _add_encoder_conditioning(
-        self,
-        attn: Attention,
-        query: torch.Tensor,
-        key: torch.Tensor,
-        value: torch.Tensor,
-        encoder_hidden_states: Optional[torch.Tensor],
-    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-        """Add encoder conditioning QKV projections and normalization."""
+        # Add encoder conditioning QKV projections and normalization
         if attn.add_q_proj is not None and encoder_hidden_states is not None:
             encoder_query = attn.add_q_proj(encoder_hidden_states)
             encoder_key = attn.add_k_proj(encoder_hidden_states)
             encoder_value = attn.add_v_proj(encoder_hidden_states)
 
-            encoder_query = encoder_query.unflatten(2, (attn.heads, -1)).transpose(1, 2)
-            encoder_key = encoder_key.unflatten(2, (attn.heads, -1)).transpose(1, 2)
-            encoder_value = encoder_value.unflatten(2, (attn.heads, -1)).transpose(1, 2)
+            encoder_query = encoder_query.unflatten(2, (attn.heads, -1))
+            encoder_key = encoder_key.unflatten(2, (attn.heads, -1))
+            encoder_value = encoder_value.unflatten(2, (attn.heads, -1))
 
             if attn.norm_added_q is not None:
                 encoder_query = attn.norm_added_q(encoder_query)
             if attn.norm_added_k is not None:
                 encoder_key = attn.norm_added_k(encoder_key)
 
-            query = torch.cat([query, encoder_query], dim=2)
-            key = torch.cat([key, encoder_key], dim=2)
-            value = torch.cat([value, encoder_value], dim=2)
+            query = torch.cat([query, encoder_query], dim=1)
+            key = torch.cat([key, encoder_key], dim=1)
+            value = torch.cat([value, encoder_value], dim=1)
 
-        return query, key, value
-
-    def _compute_attention(
-        self,
-        query: torch.Tensor,
-        key: torch.Tensor,
-        value: torch.Tensor,
-        attention_mask: Optional[torch.Tensor],
-    ) -> torch.Tensor:
-        """Compute scaled dot-product attention."""
-        hidden_states = F.scaled_dot_product_attention(
-            query, key, value, attn_mask=attention_mask, dropout_p=0.0, is_causal=False
+        # Compute attention with backend dispatch
+        hidden_states = dispatch_attention_fn(
+            query,
+            key,
+            value,
+            attn_mask=attention_mask,
+            backend=self._attention_backend,
+            parallel_config=self._parallel_config,
         )
-        hidden_states = hidden_states.transpose(1, 2).flatten(2, 3)
+        hidden_states = hidden_states.flatten(2, 3)
         hidden_states = hidden_states.to(query.dtype)
-        return hidden_states
 
-    def _project_output(
-        self,
-        attn: Attention,
-        hidden_states: torch.Tensor,
-        encoder_hidden_states: Optional[torch.Tensor],
-    ) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
-        """Apply output projections and split encoder states."""
+        # Apply output projections and split encoder states
         if encoder_hidden_states is not None:
             hidden_states, encoder_hidden_states = (
                 hidden_states[:, : -encoder_hidden_states.shape[1]],
                 hidden_states[:, -encoder_hidden_states.shape[1] :],
             )
 
-            if getattr(attn, "to_out", None) is not None:
+            if attn.to_out is not None:
                 hidden_states = attn.to_out[0](hidden_states)
                 hidden_states = attn.to_out[1](hidden_states)
 
-            if getattr(attn, "to_add_out", None) is not None:
+            if attn.to_add_out is not None:
                 encoder_hidden_states = attn.to_add_out(encoder_hidden_states)
 
-        return hidden_states, encoder_hidden_states
+            return hidden_states, encoder_hidden_states
+
+        if attn.to_out is not None:
+            hidden_states = attn.to_out[0](hidden_states)
+            hidden_states = attn.to_out[1](hidden_states)
+        return hidden_states
 
 
 class MotifVideoPatchEmbed(nn.Module):
@@ -413,15 +305,14 @@ class MotifVideoSingleTransformerBlock(nn.Module):
 
         self.attn = Attention(
             query_dim=hidden_size,
-            cross_attention_dim=None,
-            dim_head=attention_head_dim,
             heads=num_attention_heads,
+            dim_head=attention_head_dim,
             out_dim=hidden_size,
             bias=True,
-            processor=MotifVideoAttnProcessor2_0(),
+            pre_only=True,
             qk_norm=qk_norm,
             eps=1e-6,
-            pre_only=True,
+            processor=MotifVideoAttnProcessor2_0(),
         )
 
         self.enable_text_cross_attention = enable_text_cross_attention
@@ -469,23 +360,38 @@ class MotifVideoSingleTransformerBlock(nn.Module):
             image_rotary_emb=image_rotary_emb,
         )
 
-        # Text cross-attention: Q=proj(attn_output), K/V=normed text, reuse self.attn weights
+        # Text cross-attention: Q=proj(attn_output), K/V=normed text, reuse attn weights
         if self.enable_text_cross_attention:
             txt_kv = norm_encoder_hidden_states[:, image_embed_seq_len:, :]
             text_mask = None
             if attention_mask is not None:
                 text_mask = attention_mask[:, :, :, video_tokens + image_embed_seq_len :]
+
             cross_q = self.cross_attn_query_proj(attn_output)
-            cross_output, _ = self.attn(
-                hidden_states=cross_q,
-                cross_attn_inputs=CrossAttentionInputs(
-                    query=cross_q,
-                    key=txt_kv,
-                    value=txt_kv,
-                ),
-                attention_mask=text_mask,
-                image_rotary_emb=image_rotary_emb,
+            if self.cross_attn_query_norm is not None:
+                cross_q = self.cross_attn_query_norm(cross_q)
+            cross_q = cross_q.unflatten(2, (self.attn.heads, -1))
+
+            key = self.attn.to_k(txt_kv)
+            value = self.attn.to_v(txt_kv)
+            key = key.unflatten(2, (self.attn.heads, -1))
+            value = value.unflatten(2, (self.attn.heads, -1))
+            if self.attn.norm_k is not None:
+                key = self.attn.norm_k(key)
+
+            if image_rotary_emb is not None:
+                cross_q = apply_rotary_emb(cross_q, image_rotary_emb, sequence_dim=1)
+
+            cross_output = dispatch_attention_fn(
+                cross_q,
+                key,
+                value,
+                attn_mask=text_mask,
+                backend=MotifVideoAttnProcessor2_0._attention_backend,
+                parallel_config=MotifVideoAttnProcessor2_0._parallel_config,
             )
+            cross_output = cross_output.flatten(2, 3)
+            cross_output = cross_output.to(cross_q.dtype)
             attn_output = attn_output + self.cross_attn_out_proj(cross_output)
 
         attn_output = torch.cat([attn_output, context_attn_output], dim=1)
@@ -521,16 +427,15 @@ class MotifVideoTransformerBlock(nn.Module):
 
         self.attn = Attention(
             query_dim=hidden_size,
-            cross_attention_dim=None,
             added_kv_proj_dim=hidden_size,
-            dim_head=attention_head_dim,
             heads=num_attention_heads,
+            dim_head=attention_head_dim,
             out_dim=hidden_size,
-            context_pre_only=False,
             bias=True,
-            processor=MotifVideoAttnProcessor2_0(),
+            context_pre_only=False,
             qk_norm=qk_norm,
             eps=1e-6,
+            processor=MotifVideoAttnProcessor2_0(),
         )
 
         self.enable_text_cross_attention = enable_text_cross_attention
@@ -573,23 +478,38 @@ class MotifVideoTransformerBlock(nn.Module):
         # 3. Modulation and residual connection
         hidden_states = hidden_states + attn_output * gate_msa.unsqueeze(1)
 
-        # Text cross-attention: Q=proj(attn_output), K/V=normed text, reuse self.attn weights
+        # Text cross-attention: Q=proj(attn_output), K/V=normed text, reuse attn weights
         if self.enable_text_cross_attention:
             txt_kv = norm_encoder_hidden_states[:, image_embed_seq_len:, :]
             text_mask = None
             if attention_mask is not None:
                 text_mask = attention_mask[:, :, :, hidden_states.shape[1] + image_embed_seq_len :]
+
             cross_q = self.cross_attn_query_proj(attn_output)
-            cross_output, _ = self.attn(
-                hidden_states=cross_q,
-                cross_attn_inputs=CrossAttentionInputs(
-                    query=cross_q,
-                    key=txt_kv,
-                    value=txt_kv,
-                ),
-                attention_mask=text_mask,
-                image_rotary_emb=image_rotary_emb,
+            if self.cross_attn_query_norm is not None:
+                cross_q = self.cross_attn_query_norm(cross_q)
+            cross_q = cross_q.unflatten(2, (self.attn.heads, -1))
+
+            key = self.attn.to_k(txt_kv)
+            value = self.attn.to_v(txt_kv)
+            key = key.unflatten(2, (self.attn.heads, -1))
+            value = value.unflatten(2, (self.attn.heads, -1))
+            if self.attn.norm_k is not None:
+                key = self.attn.norm_k(key)
+
+            if image_rotary_emb is not None:
+                cross_q = apply_rotary_emb(cross_q, image_rotary_emb, sequence_dim=1)
+
+            cross_output = dispatch_attention_fn(
+                cross_q,
+                key,
+                value,
+                attn_mask=text_mask,
+                backend=MotifVideoAttnProcessor2_0._attention_backend,
+                parallel_config=MotifVideoAttnProcessor2_0._parallel_config,
             )
+            cross_output = cross_output.flatten(2, 3)
+            cross_output = cross_output.to(cross_q.dtype)
             hidden_states = hidden_states + self.cross_attn_out_proj(cross_output)
 
         encoder_hidden_states = encoder_hidden_states + context_attn_output * c_gate_msa.unsqueeze(1)
@@ -610,23 +530,9 @@ class MotifVideoTransformerBlock(nn.Module):
         return hidden_states, encoder_hidden_states
 
 
-TransformerBlockRegistry.register(
-    model_class=MotifVideoTransformerBlock,
-    metadata=TransformerBlockMetadata(
-        return_hidden_states_index=0,
-        return_encoder_hidden_states_index=1,
-    ),
-)
-TransformerBlockRegistry.register(
-    model_class=MotifVideoSingleTransformerBlock,
-    metadata=TransformerBlockMetadata(
-        return_hidden_states_index=0,
-        return_encoder_hidden_states_index=1,
-    ),
-)
-
-
-class MotifVideoTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOriginalModelMixin, CacheMixin):
+class MotifVideoTransformer3DModel(
+    ModelMixin, ConfigMixin, PeftAdapterMixin, FromOriginalModelMixin, CacheMixin, AttentionMixin
+):
     r"""
     A Transformer model for video-like data used in the Motif-Video model.
 
@@ -665,6 +571,7 @@ class MotifVideoTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Fr
 
     _supports_gradient_checkpointing = True
     _skip_layerwise_casting_patterns = ["x_embedder", "context_embedder", "norm"]
+    _repeated_blocks = ["MotifVideoSingleTransformerBlock", "MotifVideoTransformerBlock"]
     _no_split_modules = [
         "MotifVideoTransformerBlock",
         "MotifVideoSingleTransformerBlock",
@@ -780,63 +687,6 @@ class MotifVideoTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Fr
 
         self.gradient_checkpointing = False
         self.num_decoder_layers = num_decoder_layers
-
-    @property
-    def attn_processors(self) -> Dict[str, AttentionProcessor]:
-        r"""
-        Returns:
-            `dict` of attention processors: A dictionary containing all attention processors used in the model with
-            indexed by its weight name.
-        """
-        processors = {}
-
-        def fn_recursive_add_processors(
-            name: str,
-            module: torch.nn.Module,
-            processors: Dict[str, AttentionProcessor],
-        ):
-            if hasattr(module, "get_processor"):
-                processors[f"{name}.processor"] = module.get_processor()
-
-            for sub_name, child in module.named_children():
-                fn_recursive_add_processors(f"{name}.{sub_name}", child, processors)
-
-            return processors
-
-        for name, module in self.named_children():
-            fn_recursive_add_processors(name, module, processors)
-
-        return processors
-
-    def set_attn_processor(self, processor: Union[AttentionProcessor, Dict[str, AttentionProcessor]]):
-        r"""
-        Sets the attention processor to use to compute attention.
-
-        Parameters:
-            processor (`dict` of `AttentionProcessor` or only `AttentionProcessor`):
-                The instantiated processor class or a dictionary of processor classes that will be set as the processor
-                for **all** `Attention` layers.
-        """
-        count = len(self.attn_processors.keys())
-
-        if isinstance(processor, dict) and len(processor) != count:
-            raise ValueError(
-                f"A dict of processors was passed, but the number of processors {len(processor)} does not match the"
-                f" number of attention layers: {count}. Please make sure to pass {count} processor classes."
-            )
-
-        def fn_recursive_attn_processor(name: str, module: torch.nn.Module, processor):
-            if hasattr(module, "set_processor"):
-                if not isinstance(processor, dict):
-                    module.set_processor(processor)
-                else:
-                    module.set_processor(processor.pop(f"{name}.processor"))
-
-            for sub_name, child in module.named_children():
-                fn_recursive_attn_processor(f"{name}.{sub_name}", child, processor)
-
-        for name, module in self.named_children():
-            fn_recursive_attn_processor(name, module, processor)
 
     def _maybe_gradient_checkpoint_block(self, block, *args):
         if torch.is_grad_enabled() and self.gradient_checkpointing:
