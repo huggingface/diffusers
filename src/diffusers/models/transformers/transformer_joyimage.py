@@ -26,6 +26,7 @@ from ..attention_dispatch import dispatch_attention_fn
 from ..embeddings import PixArtAlphaTextProjection, TimestepEmbedding, Timesteps
 from ..modeling_outputs import Transformer2DModelOutput
 from ..modeling_utils import ModelMixin
+from ..normalization import FP32LayerNorm
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -264,14 +265,14 @@ class JoyImageTransformerBlock(nn.Module):
 
         # image stream
         self.img_mod = JoyImageModulate(dim, factor=6)
-        self.img_norm1 = nn.LayerNorm(dim, elementwise_affine=False, eps=eps)
-        self.img_norm2 = nn.LayerNorm(dim, elementwise_affine=False, eps=eps)
+        self.img_norm1 = FP32LayerNorm(dim, elementwise_affine=False, eps=eps)
+        self.img_norm2 = FP32LayerNorm(dim, elementwise_affine=False, eps=eps)
         self.img_mlp = FeedForward(dim, inner_dim=mlp_hidden_dim, activation_fn="gelu-approximate")
 
         # text stream
         self.txt_mod = JoyImageModulate(dim, factor=6)
-        self.txt_norm1 = nn.LayerNorm(dim, elementwise_affine=False, eps=eps)
-        self.txt_norm2 = nn.LayerNorm(dim, elementwise_affine=False, eps=eps)
+        self.txt_norm1 = FP32LayerNorm(dim, elementwise_affine=False, eps=eps)
+        self.txt_norm2 = FP32LayerNorm(dim, elementwise_affine=False, eps=eps)
         self.txt_mlp = FeedForward(dim, inner_dim=mlp_hidden_dim, activation_fn="gelu-approximate")
 
         # ---- joint attention ----
@@ -445,7 +446,7 @@ class JoyImageEditTransformer3DModel(ModelMixin, ConfigMixin, AttentionMixin):
         )
 
         # output head
-        self.norm_out = nn.LayerNorm(hidden_size, elementwise_affine=False, eps=1e-6)
+        self.norm_out = FP32LayerNorm(hidden_size, elementwise_affine=False, eps=1e-6)
         self.proj_out = nn.Linear(hidden_size, self.out_channels * math.prod(patch_size))
 
         self.gradient_checkpointing = False
