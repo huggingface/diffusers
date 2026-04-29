@@ -816,7 +816,12 @@ class TorchAoConfigMixin:
         return self.model_class.from_pretrained(self.pretrained_model_name_or_path, **kwargs)
 
     def _verify_if_layer_quantized(self, name, module, config_kwargs):
+        from torchao.utils import TorchAOBaseTensor
+
         assert isinstance(module, torch.nn.Linear), f"Layer {name} is not Linear, got {type(module)}"
+        assert isinstance(module.weight, TorchAOBaseTensor), (
+            f"Layer {name} weight is {type(module.weight)}, expected TorchAOBaseTensor"
+        )
 
 
 # int4wo requires CUDA-specific ops (_convert_weight_to_int4pack)
