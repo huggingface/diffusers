@@ -39,7 +39,7 @@ Examples:
     >>> output = pipe(
     ...     image=image,
     ...     prompt=prompts,
-    ...     num_inference_steps=30,
+    ...     num_inference_steps=40,
     ...     guidance_scale=4.0,
     ...     generator=torch.manual_seed(0),
     ... )
@@ -633,7 +633,7 @@ class JoyImageEditPipeline(DiffusionPipeline):
         prompt: str | list[str] = None,
         height: int | None = None,
         width: int | None = None,
-        num_inference_steps: int = 50,
+        num_inference_steps: int = 40,
         timesteps: List[int] = None,
         sigmas: List[float] = None,
         guidance_scale: float = 4.0,
@@ -673,7 +673,7 @@ class JoyImageEditPipeline(DiffusionPipeline):
             image (`PipelineImageInput`, *optional*):
                 Reference image used for conditioning. When provided the pipeline operates in image-editing mode with
                 ``num_items=2``.
-            num_inference_steps (`int`, *optional*, defaults to 50):
+            num_inference_steps (`int`, *optional*, defaults to 40):
                 Number of denoising steps. More steps generally improve quality at the cost of slower inference.
             timesteps (`List[int]`, *optional*):
                 Custom timesteps for the denoising process. When provided, ``num_inference_steps`` is inferred from the
