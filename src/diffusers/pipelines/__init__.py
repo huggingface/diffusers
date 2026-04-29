@@ -345,7 +345,6 @@ else:
         "MotifVideoImage2VideoPipeline",
         "MotifVideoPipelineOutput",
     ]
-    _import_structure["musicldm"] = ["MusicLDMPipeline"]
     _import_structure["omnigen"] = ["OmniGenPipeline"]
     _import_structure["ernie_image"] = ["ErnieImagePipeline"]
     _import_structure["ovis_image"] = ["OvisImagePipeline"]
@@ -789,7 +788,6 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             MotifVideoPipeline,
             MotifVideoPipelineOutput,
         )
-        from .musicldm import MusicLDMPipeline
         from .nucleusmoe_image import NucleusMoEImagePipeline
         from .omnigen import OmniGenPipeline
         from .ovis_image import OvisImagePipeline
