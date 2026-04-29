@@ -124,6 +124,7 @@ if is_torch_available():
     _import_structure["transformers.transformer_ovis_image"] = ["OvisImageTransformer2DModel"]
     _import_structure["transformers.transformer_prx"] = ["PRXTransformer2DModel"]
     _import_structure["transformers.transformer_qwenimage"] = ["QwenImageTransformer2DModel"]
+    _import_structure["transformers.transformer_rae_dit"] = ["RAEDiT2DModel"]
     _import_structure["transformers.transformer_sana_video"] = ["SanaVideoTransformer3DModel"]
     _import_structure["transformers.transformer_sd3"] = ["SD3Transformer2DModel"]
     _import_structure["transformers.transformer_skyreels_v2"] = ["SkyReelsV2Transformer3DModel"]
@@ -250,6 +251,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             PriorTransformer,
             PRXTransformer2DModel,
             QwenImageTransformer2DModel,
+            RAEDiT2DModel,
             SanaTransformer2DModel,
             SanaVideoTransformer3DModel,
             SD3Transformer2DModel,
