@@ -1,0 +1,16 @@
+pipeline_class: ZImagePipeline
+module: diffusers.pipelines.z_image.pipeline_z_image
+
+params_grid:
+  - name: "landscape_50steps_single"
+    width: 1024
+    height: 1024
+    num_inference_steps: 50
+    guidance_scale: 5.0
+    cfg_normalization: false
+    cfg_truncation: 1.0
+    parallel: "single"
+
+prompt: "A serene mountain lake at sunrise, hyperrealistic, 8k quality."
+negative_prompt: ""
+reference_config: "landscape_50steps_single"

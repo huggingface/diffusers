@@ -1,0 +1,16 @@
+pipeline_class: QwenImageLayeredPipeline
+module: diffusers.pipelines.qwenimage.pipeline_qwenimage_layered
+
+params_grid:
+  - name: "default_50steps_single"
+    width: 1024
+    height: 1024
+    num_inference_steps: 50
+    true_cfg_scale: 4.0
+    layers: 4
+    resolution: 640
+    parallel: "single"
+
+prompt: "A cute cat sitting on a wooden table."
+negative_prompt: "blurry, low quality, distorted."
+reference_config: "default_50steps_single"

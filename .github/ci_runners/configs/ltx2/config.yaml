@@ -1,0 +1,16 @@
+pipeline_class: LTX2Pipeline
+module: diffusers.pipelines.ltx2.pipeline_ltx2
+
+params_grid:
+  - name: "landscape_50steps_single"
+    width: 768
+    height: 512
+    num_inference_steps: 50
+    guidance_scale: 4.0
+    num_frames: 49
+    stg_scale: 0.0
+    parallel: "single"
+
+prompt: "A cat walking on a beach at sunset, cinematic quality."
+negative_prompt: "blurry, low quality, distorted."
+reference_config: "landscape_50steps_single"

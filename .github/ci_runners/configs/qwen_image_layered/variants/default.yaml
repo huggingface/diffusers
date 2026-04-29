@@ -1,0 +1,4 @@
+model_id: Qwen/Qwen-Image-Layered
+weight_path: /home/weights/Qwen-Image-Layered
+backend: local
+extra_params: {}

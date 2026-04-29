@@ -1,0 +1,4 @@
+model_id: Tongyi-MAI/Z-Image
+weight_path: /home/weights/Z-Image
+backend: modelscope
+extra_params: {}
