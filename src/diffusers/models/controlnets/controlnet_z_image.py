@@ -597,7 +597,7 @@ class ZImageControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrigi
         for image, cap_feat in zip(all_image, all_cap_feats):
             # Caption
             cap_out, cap_pos_ids, cap_pad_mask, cap_len, _ = self._pad_with_ids(
-                cap_feat, (len(cap_feat) + (-len(cap_feat)) % SEQ_MULTI_OF, 1, 1), (1, 0, 0), device
+                cap_feat, (len(cap_feat), 1, 1), (1, 0, 0), device
             )
             all_cap_out.append(cap_out)
             all_cap_pos_ids.append(cap_pos_ids)
