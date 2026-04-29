@@ -105,59 +105,6 @@ def calculate_shift(
     return mu
 
 
-# Copied from diffusers.pipelines.motif_video.pipeline_motif_video.get_linear_quadratic_sigmas
-def get_linear_quadratic_sigmas(
-    num_inference_steps: int,
-    linear_quadratic_emulating_steps: int = 250,
-) -> np.ndarray:
-    """
-    Compute a linear-quadratic sigma schedule for flow matching.
-
-    This schedule combines:
-    - First half: Linear interpolation from high noise to medium noise (slow denoising)
-    - Second half: Quadratic interpolation from medium noise to clean (faster denoising)
-
-    Convention:
-    - sigma=1.0 represents pure noise
-    - sigma=0.0 represents clean image
-    - Output sigmas are in descending order (1.0 → ~0)
-
-    Args:
-        num_inference_steps: Total number of denoising steps (must be even).
-        linear_quadratic_emulating_steps: Controls the slope of linear interpolation.
-            Higher values result in gentler slope in the first half.
-
-    Returns:
-        np.ndarray: Array of sigma values with shape (num_inference_steps,).
-            The scheduler will append a terminal 0.
-
-    Raises:
-        ValueError: If num_inference_steps is not even.
-    """
-    if num_inference_steps % 2 != 0:
-        raise ValueError(
-            f"num_inference_steps must be even for linear-quadratic schedule, but got {num_inference_steps}"
-        )
-
-    steps = num_inference_steps
-    N = linear_quadratic_emulating_steps
-    half_steps = steps // 2
-
-    # First half: linear interpolation from 1 toward 0
-    linear_part = np.linspace(1.0, 0.0, N + 1)[:half_steps]
-
-    # Second half: quadratic interpolation
-    x = np.linspace(0.0, 1.0, half_steps + 1)
-    scale_factor = half_steps / N - 1
-    quadratic_part = x**2 * scale_factor - scale_factor
-
-    # Concatenate and exclude the last 0 (scheduler appends terminal 0)
-    sigmas = np.concatenate([linear_part, quadratic_part])
-    sigmas = sigmas[:-1]
-
-    return sigmas.astype(np.float32)
-
-
 # Copied from diffusers.pipelines.motif_video.pipeline_motif_video.retrieve_timesteps
 def retrieve_timesteps(
     scheduler,
@@ -666,8 +613,6 @@ class MotifVideoImage2VideoPipeline(DiffusionPipeline):
         frame_rate: int = 25,
         num_inference_steps: int = 50,
         timesteps: Optional[List[int]] = None,
-        use_linear_quadratic_schedule: bool = True,
-        linear_quadratic_emulating_steps: int = 250,
         num_videos_per_prompt: Optional[int] = 1,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
         latents: Optional[torch.Tensor] = None,
@@ -706,10 +651,6 @@ class MotifVideoImage2VideoPipeline(DiffusionPipeline):
                 The number of denoising steps.
             timesteps (`List[int]`, *optional*):
                 Custom timesteps to use for the denoising process.
-            use_linear_quadratic_schedule (`bool`, defaults to `True`):
-                Whether to use a linear-quadratic sigma schedule.
-            linear_quadratic_emulating_steps (`int`, defaults to `250`):
-                Controls the slope of linear interpolation in the first half.
             num_videos_per_prompt (`int`, *optional*, defaults to 1):
                 The number of videos to generate per prompt.
             generator (`torch.Generator` or `List[torch.Generator]`, *optional*):
@@ -848,10 +789,7 @@ class MotifVideoImage2VideoPipeline(DiffusionPipeline):
         packed_latent_num_frames = latent_num_frames // self.transformer_temporal_patch_size
         video_sequence_length = packed_latent_num_frames * packed_latent_height * packed_latent_width
 
-        if use_linear_quadratic_schedule:
-            sigmas = None
-        else:
-            sigmas = np.linspace(1.0, 1 / num_inference_steps, num_inference_steps)
+        sigmas = np.linspace(1.0, 1 / num_inference_steps, num_inference_steps)
 
         mu = calculate_shift(
             video_sequence_length,
@@ -866,8 +804,6 @@ class MotifVideoImage2VideoPipeline(DiffusionPipeline):
             device,
             timesteps,
             sigmas=sigmas,
-            use_linear_quadratic_schedule=use_linear_quadratic_schedule,
-            linear_quadratic_emulating_steps=linear_quadratic_emulating_steps,
             mu=mu,
         )
 
