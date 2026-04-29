@@ -208,6 +208,45 @@ class JoyImageEditPipeline(DiffusionPipeline):
     # Internal helpers
     # ------------------------------------------------------------------
 
+    def _get_last_decoder_hidden_states(self, forward_fn, **kwargs):
+        """
+        Run ``forward_fn(**kwargs)`` while capturing the **pre-norm** output of
+        the last decoder layer via a forward hook.
+
+        This model was trained on transformers 4.57, where
+        ``Qwen3VLForConditionalGeneration``'s ``@check_model_inputs`` decorator
+        monkey-patched each decoder layer to collect ``hidden_states``.  Because
+        ``Qwen3VLCausalLMOutputWithPast`` has no ``last_hidden_state`` field,
+        ``tie_last_hidden_states`` had no effect and ``hidden_states[-1]`` was
+        the **pre-norm** output of the last decoder layer.
+
+        Starting from https://github.com/huggingface/transformers/pull/42609
+        the CausalLM forward explicitly returns
+        ``hidden_states=outputs.hidden_states`` from the inner model.
+        Combined with the subsequent ``@check_model_inputs`` →
+        ``@capture_outputs`` migration (transformers 5.x), ``hidden_states``
+        is now captured at the ``Qwen3VLTextModel`` level where
+        ``tie_last_hidden_states=True`` replaces ``hidden_states[-1]`` with
+        the **post-norm** ``last_hidden_state``.  The CausalLM simply passes
+        this through, so ``hidden_states[-1]`` becomes post-norm – a ~10×
+        scale difference (std ≈ 2 vs ≈ 21) that breaks inference.
+
+        This helper bypasses both mechanisms by hooking the last decoder layer
+        directly, returning the raw pre-norm output regardless of the
+        transformers version.
+        """
+        captured = {}
+
+        def _hook(_module, _input, output):
+            captured["hidden_states"] = output[0] if isinstance(output, tuple) else output
+
+        handle = self.text_encoder.model.language_model.layers[-1].register_forward_hook(_hook)
+        try:
+            forward_fn(**kwargs)
+        finally:
+            handle.remove()
+        return captured["hidden_states"]
+
     def _extract_masked_hidden(self, hidden_states: torch.Tensor, mask: torch.Tensor) -> tuple[torch.Tensor, ...]:
         """
         Extract valid (non-padded) hidden states for each sequence in the batch.
@@ -260,12 +299,11 @@ class JoyImageEditPipeline(DiffusionPipeline):
             return_tensors="pt",
         ).to(device)
 
-        encoder_hidden_states = self.text_encoder(
+        hidden_states = self._get_last_decoder_hidden_states(
+            self.text_encoder,
             input_ids=txt_tokens.input_ids,
             attention_mask=txt_tokens.attention_mask,
-            output_hidden_states=True,
         )
-        hidden_states = encoder_hidden_states.hidden_states[-1]
 
         # Drop system-prompt prefix tokens and re-pack into a padded batch.
         split_hidden_states = self._extract_masked_hidden(hidden_states, txt_tokens.attention_mask)
@@ -343,8 +381,7 @@ class JoyImageEditPipeline(DiffusionPipeline):
             return_tensors="pt",
         ).to(device)
 
-        encoder_hidden_states = self.text_encoder(**inputs, output_hidden_states=True)
-        last_hidden_states = encoder_hidden_states.hidden_states[-1]
+        last_hidden_states = self._get_last_decoder_hidden_states(self.text_encoder, **inputs)
 
         if drop_vit_feature:
             # Find the last vision-end token and drop everything before it.
