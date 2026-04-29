@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import inspect
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 import torch
@@ -21,9 +22,8 @@ import torch.nn.functional as F
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...loaders import FromOriginalModelMixin, PeftAdapterMixin
 from ...utils import USE_PEFT_BACKEND, logging, scale_lora_layers, unscale_lora_layers
-from ..attention import AttentionMixin, FeedForward
+from ..attention import AttentionMixin, AttentionModuleMixin, FeedForward
 from ..attention_dispatch import dispatch_attention_fn
-from ..attention_processor import Attention
 from ..cache_utils import CacheMixin
 from ..embeddings import (
     PixArtAlphaTextProjection,
@@ -58,7 +58,7 @@ class MotifVideoAttnProcessor2_0:
 
     def __call__(
         self,
-        attn: Attention,
+        attn: "MotifVideoAttention",
         hidden_states: torch.Tensor,
         encoder_hidden_states: Optional[torch.Tensor] = None,
         attention_mask: Optional[torch.Tensor] = None,
@@ -156,6 +156,119 @@ class MotifVideoAttnProcessor2_0:
             hidden_states = attn.to_out[0](hidden_states)
             hidden_states = attn.to_out[1](hidden_states)
         return hidden_states
+
+
+class MotifVideoAttention(torch.nn.Module, AttentionModuleMixin):
+    _default_processor_cls = MotifVideoAttnProcessor2_0
+
+    def __init__(
+        self,
+        query_dim: int,
+        heads: int = 8,
+        dim_head: int = 64,
+        dropout: float = 0.0,
+        bias: bool = False,
+        added_kv_proj_dim: int | None = None,
+        added_proj_bias: bool | None = True,
+        out_bias: bool = True,
+        eps: float = 1e-5,
+        out_dim: int = None,
+        elementwise_affine: bool = True,
+        pre_only: bool = False,
+        context_pre_only: bool = False,
+        enable_text_cross_attention: bool = False,
+        qk_norm: str = "rms_norm",
+        processor=None,
+    ):
+        super().__init__()
+
+        self.head_dim = dim_head
+        self.inner_dim = out_dim if out_dim is not None else dim_head * heads
+        self.query_dim = query_dim
+        self.out_dim = out_dim if out_dim is not None else query_dim
+        self.heads = out_dim // dim_head if out_dim is not None else heads
+        self.pre_only = pre_only
+        self.enable_text_cross_attention = enable_text_cross_attention
+
+        self.use_bias = bias
+        self.dropout = dropout
+
+        self.added_kv_proj_dim = added_kv_proj_dim
+        self.added_proj_bias = added_proj_bias
+        self.context_pre_only = context_pre_only
+
+        self.to_q = torch.nn.Linear(query_dim, self.inner_dim, bias=bias)
+        self.to_k = torch.nn.Linear(query_dim, self.inner_dim, bias=bias)
+        self.to_v = torch.nn.Linear(query_dim, self.inner_dim, bias=bias)
+
+        # QK Norm
+        if qk_norm == "rms_norm":
+            self.norm_q = torch.nn.RMSNorm(dim_head, eps=eps, elementwise_affine=elementwise_affine)
+            self.norm_k = torch.nn.RMSNorm(dim_head, eps=eps, elementwise_affine=elementwise_affine)
+        elif qk_norm == "layer_norm":
+            self.norm_q = torch.nn.LayerNorm(dim_head, eps=eps, elementwise_affine=elementwise_affine)
+            self.norm_k = torch.nn.LayerNorm(dim_head, eps=eps, elementwise_affine=elementwise_affine)
+        else:
+            self.norm_q = None
+            self.norm_k = None
+
+        if not pre_only:
+            self.to_out = torch.nn.ModuleList([])
+            self.to_out.append(torch.nn.Linear(self.inner_dim, self.out_dim, bias=out_bias))
+            self.to_out.append(torch.nn.Dropout(dropout))
+        else:
+            self.to_out = None
+
+        if added_kv_proj_dim is not None:
+            self.norm_added_q = torch.nn.RMSNorm(dim_head, eps=eps)
+            self.norm_added_k = torch.nn.RMSNorm(dim_head, eps=eps)
+            self.add_q_proj = torch.nn.Linear(added_kv_proj_dim, self.inner_dim, bias=added_proj_bias)
+            self.add_k_proj = torch.nn.Linear(added_kv_proj_dim, self.inner_dim, bias=added_proj_bias)
+            self.add_v_proj = torch.nn.Linear(added_kv_proj_dim, self.inner_dim, bias=added_proj_bias)
+            if not context_pre_only:
+                self.to_add_out = torch.nn.Linear(self.inner_dim, query_dim, bias=out_bias)
+            else:
+                self.to_add_out = None
+        else:
+            self.norm_added_q = None
+            self.norm_added_k = None
+            self.add_q_proj = None
+            self.add_k_proj = None
+            self.add_v_proj = None
+            self.to_add_out = None
+
+        # Cross-attention parameters
+        if enable_text_cross_attention:
+            self.cross_attn_query_proj = nn.Linear(query_dim, query_dim)
+            self.cross_attn_query_norm = nn.LayerNorm(query_dim, eps=1e-6)
+            self.cross_attn_out_proj = nn.Linear(query_dim, query_dim)
+            nn.init.zeros_(self.cross_attn_out_proj.weight)
+            nn.init.zeros_(self.cross_attn_out_proj.bias)
+        else:
+            self.cross_attn_query_proj = None
+            self.cross_attn_query_norm = None
+            self.cross_attn_out_proj = None
+
+        if processor is None:
+            processor = self._default_processor_cls()
+        self.set_processor(processor)
+
+    def forward(
+        self,
+        hidden_states: torch.Tensor,
+        encoder_hidden_states: torch.Tensor | None = None,
+        attention_mask: torch.Tensor | None = None,
+        image_rotary_emb: torch.Tensor | None = None,
+        **kwargs,
+    ) -> torch.Tensor:
+        attn_parameters = set(inspect.signature(self.processor.__call__).parameters.keys())
+        unused_kwargs = [k for k, _ in kwargs.items() if k not in attn_parameters]
+        if len(unused_kwargs) > 0:
+            logger.warning(
+                f"joint_attention_kwargs {unused_kwargs} are not expected by {self.processor.__class__.__name__} and will be ignored."
+            )
+        kwargs = {k: w for k, w in kwargs.items() if k in attn_parameters}
+        return self.processor(self, hidden_states, encoder_hidden_states, attention_mask, image_rotary_emb, **kwargs)
 
 
 class MotifVideoPatchEmbed(nn.Module):
@@ -303,7 +416,7 @@ class MotifVideoSingleTransformerBlock(nn.Module):
         hidden_size = num_attention_heads * attention_head_dim
         mlp_dim = int(hidden_size * mlp_ratio)
 
-        self.attn = Attention(
+        self.attn = MotifVideoAttention(
             query_dim=hidden_size,
             heads=num_attention_heads,
             dim_head=attention_head_dim,
@@ -312,16 +425,11 @@ class MotifVideoSingleTransformerBlock(nn.Module):
             pre_only=True,
             qk_norm=qk_norm,
             eps=1e-6,
+            enable_text_cross_attention=enable_text_cross_attention,
             processor=MotifVideoAttnProcessor2_0(),
         )
 
         self.enable_text_cross_attention = enable_text_cross_attention
-        if enable_text_cross_attention:
-            self.cross_attn_query_proj = nn.Linear(hidden_size, hidden_size)
-            self.cross_attn_query_norm = nn.LayerNorm(hidden_size, eps=1e-6)
-            self.cross_attn_out_proj = nn.Linear(hidden_size, hidden_size)
-            nn.init.zeros_(self.cross_attn_out_proj.weight)
-            nn.init.zeros_(self.cross_attn_out_proj.bias)
 
         self.norm = AdaLayerNormZeroSingle(hidden_size, norm_type=norm_type)
         self.proj_mlp = nn.Linear(hidden_size, mlp_dim)
@@ -361,15 +469,15 @@ class MotifVideoSingleTransformerBlock(nn.Module):
         )
 
         # Text cross-attention: Q=proj(attn_output), K/V=normed text, reuse attn weights
-        if self.enable_text_cross_attention:
+        if self.attn.enable_text_cross_attention:
             txt_kv = norm_encoder_hidden_states[:, image_embed_seq_len:, :]
             text_mask = None
             if attention_mask is not None:
                 text_mask = attention_mask[:, :, :, video_tokens + image_embed_seq_len :]
 
-            cross_q = self.cross_attn_query_proj(attn_output)
-            if self.cross_attn_query_norm is not None:
-                cross_q = self.cross_attn_query_norm(cross_q)
+            cross_q = self.attn.cross_attn_query_proj(attn_output)
+            if self.attn.cross_attn_query_norm is not None:
+                cross_q = self.attn.cross_attn_query_norm(cross_q)
             cross_q = cross_q.unflatten(2, (self.attn.heads, -1))
 
             key = self.attn.to_k(txt_kv)
@@ -392,7 +500,7 @@ class MotifVideoSingleTransformerBlock(nn.Module):
             )
             cross_output = cross_output.flatten(2, 3)
             cross_output = cross_output.to(cross_q.dtype)
-            attn_output = attn_output + self.cross_attn_out_proj(cross_output)
+            attn_output = attn_output + self.attn.cross_attn_out_proj(cross_output)
 
         attn_output = torch.cat([attn_output, context_attn_output], dim=1)
 
@@ -425,7 +533,7 @@ class MotifVideoTransformerBlock(nn.Module):
         self.norm1 = AdaLayerNormZero(hidden_size, norm_type=norm_type)
         self.norm1_context = AdaLayerNormZero(hidden_size, norm_type=norm_type)
 
-        self.attn = Attention(
+        self.attn = MotifVideoAttention(
             query_dim=hidden_size,
             added_kv_proj_dim=hidden_size,
             heads=num_attention_heads,
@@ -435,16 +543,11 @@ class MotifVideoTransformerBlock(nn.Module):
             context_pre_only=False,
             qk_norm=qk_norm,
             eps=1e-6,
+            enable_text_cross_attention=enable_text_cross_attention,
             processor=MotifVideoAttnProcessor2_0(),
         )
 
         self.enable_text_cross_attention = enable_text_cross_attention
-        if enable_text_cross_attention:
-            self.cross_attn_query_proj = nn.Linear(hidden_size, hidden_size)
-            self.cross_attn_query_norm = nn.LayerNorm(hidden_size, eps=1e-6)
-            self.cross_attn_out_proj = nn.Linear(hidden_size, hidden_size)
-            nn.init.zeros_(self.cross_attn_out_proj.weight)
-            nn.init.zeros_(self.cross_attn_out_proj.bias)
 
         self.norm2 = nn.LayerNorm(hidden_size, elementwise_affine=False, eps=1e-6)
         self.norm2_context = nn.LayerNorm(hidden_size, elementwise_affine=False, eps=1e-6)
@@ -479,15 +582,15 @@ class MotifVideoTransformerBlock(nn.Module):
         hidden_states = hidden_states + attn_output * gate_msa.unsqueeze(1)
 
         # Text cross-attention: Q=proj(attn_output), K/V=normed text, reuse attn weights
-        if self.enable_text_cross_attention:
+        if self.attn.enable_text_cross_attention:
             txt_kv = norm_encoder_hidden_states[:, image_embed_seq_len:, :]
             text_mask = None
             if attention_mask is not None:
                 text_mask = attention_mask[:, :, :, hidden_states.shape[1] + image_embed_seq_len :]
 
-            cross_q = self.cross_attn_query_proj(attn_output)
-            if self.cross_attn_query_norm is not None:
-                cross_q = self.cross_attn_query_norm(cross_q)
+            cross_q = self.attn.cross_attn_query_proj(attn_output)
+            if self.attn.cross_attn_query_norm is not None:
+                cross_q = self.attn.cross_attn_query_norm(cross_q)
             cross_q = cross_q.unflatten(2, (self.attn.heads, -1))
 
             key = self.attn.to_k(txt_kv)
@@ -510,7 +613,7 @@ class MotifVideoTransformerBlock(nn.Module):
             )
             cross_output = cross_output.flatten(2, 3)
             cross_output = cross_output.to(cross_q.dtype)
-            hidden_states = hidden_states + self.cross_attn_out_proj(cross_output)
+            hidden_states = hidden_states + self.attn.cross_attn_out_proj(cross_output)
 
         encoder_hidden_states = encoder_hidden_states + context_attn_output * c_gate_msa.unsqueeze(1)
 
