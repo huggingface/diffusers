@@ -59,3 +59,54 @@ output = await loop.run_in_executor(None, lambda: pipeline(image_input.prompt, g
 At this point, the execution of the pipeline function is placed onto a [new thread](https://docs.python.org/3/library/asyncio-eventloop.html#asyncio.loop.run_in_executor), and the main thread performs other things until a result is returned from the `pipeline`.
 
 Another important aspect of this implementation is creating a `pipeline` from `shared_pipeline`. The goal behind this is to avoid loading the underlying model more than once onto the GPU while still allowing for each new request that is running on a separate thread to have its own generator and scheduler. The scheduler, in particular, is not thread-safe, and it will cause errors like: `IndexError: index 21 is out of bounds for dimension 0 with size 21` if you try to use the same scheduler across multiple threads.
+
+## Production deployment notes
+
+### Synchronous load (the default in this example) is the safe pattern
+
+`server.py` calls `from_pretrained` at module import time, before `uvicorn.run(...)` binds the HTTP port. Whatever orchestrates the process — Kubernetes, Cloud Run, Vertex AI, AWS Fargate — does not see an open port until the model is fully on GPU and ready to serve. No health-check work is required: the readiness probe naturally fails (connection refused) until the model is loaded, and naturally succeeds once it is.
+
+This is fine for small models and slow rollouts. It is **not** fine for cold-start–sensitive deployments of large pipelines like SD3 or FLUX.2, where the orchestrator's startup probe (often a few minutes by default) can time out before `from_pretrained` returns and the replica gets killed before it ever serves a request.
+
+### Background-loading variant — and the health-check trap
+
+The standard fix is to spawn `from_pretrained` on a background thread inside FastAPI's lifespan and bind the port immediately. That moves the readiness signal from "is the port open?" to "what does `/health` return?", which introduces a subtle and very common bug:
+
+> If `/health` returns `200 OK` from the moment the process starts — for example because the route is just `return {"status": "ok"}` — the orchestrator will mark the replica ready as soon as the container boots, then route real traffic to it. Every request will return 5xx until the background load finishes. Worse: if the background load *crashes*, the replica still returns `200 OK` from `/health`, so the orchestrator silently keeps it in rotation.
+
+The `/health` endpoint must reflect the actual state of the pipeline: `503` while loading, `503` if the load errored out, and `200` only once `from_pretrained` returned successfully (and ideally a smoke prediction has succeeded). A minimal pattern:
+
+```python
+from fastapi import FastAPI, Response
+
+app = FastAPI()
+app.state.pipe = None
+app.state.load_error = None
+
+@app.on_event("startup")
+async def _kickoff_load():
+    import threading
+    threading.Thread(target=_load_in_background, daemon=True).start()
+
+def _load_in_background():
+    try:
+        app.state.pipe = StableDiffusion3Pipeline.from_pretrained(
+            "stabilityai/stable-diffusion-3-medium-diffusers",
+            torch_dtype=torch.float16,
+        ).to("cuda")
+    except Exception as e:
+        app.state.load_error = repr(e)
+
+@app.get("/health")
+async def health(response: Response):
+    if app.state.pipe is not None:
+        return {"status": "ready"}
+    response.status_code = 503
+    if app.state.load_error is not None:
+        return {"status": "error", "detail": app.state.load_error}
+    return {"status": "loading"}
+```
+
+The same `503-while-loading` rule applies to Kubernetes `readinessProbe`, Vertex AI's prediction container health route (`AIP_HEALTH_ROUTE`), and Cloud Run's startup probe.
+
+If you do not need cold-start parallelism, prefer the synchronous-load pattern in `server.py`. The bug above is one of the easier ways to lose half a day debugging an "available replica that returns 500 to every request".
