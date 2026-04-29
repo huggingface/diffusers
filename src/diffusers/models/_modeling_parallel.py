@@ -65,8 +65,8 @@ class ContextParallelConfig:
             are not evenly divisible by `ulysses_degree`. When enabled, `ulysses_degree` must be greater than 1 and
             `ring_degree` must be 1.
         ring_anything (`bool`, *optional*, defaults to `False`):
-            Whether to enable "Ring Anything" mode, which supports arbitrary sequence lengths. When enabled, `ring_degree`
-            must be greater than 1 and `ulysses_degree` must be 1.
+            Whether to enable "Ring Anything" mode, which supports arbitrary sequence lengths. When enabled,
+            `ring_degree` must be greater than 1 and `ulysses_degree` must be 1.
         mesh (`torch.distributed.device_mesh.DeviceMesh`, *optional*):
             A custom device mesh to use for context parallelism. If provided, this mesh will be used instead of
             creating a new one. This is useful when combining context parallelism with other parallelism strategies
