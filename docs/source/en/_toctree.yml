@@ -324,6 +324,8 @@
         title: SparseControlNetModel
       title: ControlNets
     - sections:
+      - local: api/models/ace_step_transformer
+        title: AceStepTransformer1DModel
       - local: api/models/allegro_transformer3d
         title: AllegroTransformer3DModel
       - local: api/models/aura_flow_transformer2d
@@ -488,6 +490,8 @@
     - local: api/pipelines/auto_pipeline
       title: AutoPipeline
     - sections:
+      - local: api/pipelines/ace_step
+        title: ACE-Step
       - local: api/pipelines/audioldm2
         title: AudioLDM 2
       - local: api/pipelines/longcat_audio_dit
