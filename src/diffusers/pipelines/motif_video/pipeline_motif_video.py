@@ -167,10 +167,9 @@ class MotifVideoPipeline(DiffusionPipeline):
         transformer ([`MotifVideoTransformer3DModel`]):
             Conditional Transformer architecture to denoise the encoded video latents.
         scheduler ([`SchedulerMixin`]):
-            A scheduler to be used in combination with `transformer` to denoise the encoded video latents.
-            Should be an instance of a class inheriting from `SchedulerMixin`, such as
-            [`DPMSolverMultistepScheduler`]. If not provided, uses the scheduler attached to the
-            pretrained model.
+            A scheduler to be used in combination with `transformer` to denoise the encoded video latents. Should be an
+            instance of a class inheriting from `SchedulerMixin`, such as [`DPMSolverMultistepScheduler`]. If not
+            provided, uses the scheduler attached to the pretrained model.
         vae ([`AutoencoderKLWan`]):
             Variational Auto-Encoder (VAE) Model to encode and decode videos to and from latent representations.
         text_encoder ([`T5Gemma2Encoder`]):
@@ -178,9 +177,9 @@ class MotifVideoPipeline(DiffusionPipeline):
         tokenizer ([`PreTrainedTokenizerBase`]):
             Tokenizer corresponding to the primary text encoder.
         guider ([`BaseGuidance`]):
-            The guidance method to use. Should be an instance of a class inheriting from `BaseGuidance`,
-            such as [`ClassifierFreeGuidance`], [`AdaptiveProjectedGuidance`], or [`SkipLayerGuidance`].
-            If not provided, defaults to `ClassifierFreeGuidance`.
+            The guidance method to use. Should be an instance of a class inheriting from `BaseGuidance`, such as
+            [`ClassifierFreeGuidance`], [`AdaptiveProjectedGuidance`], or [`SkipLayerGuidance`]. If not provided,
+            defaults to `ClassifierFreeGuidance`.
     """
 
     model_cpu_offload_seq = "text_encoder->transformer->vae"
