@@ -1,0 +1,13 @@
+diffusers==0.35.1
+torch
+transformers
+cuda-python==12.4.0
+tensorrt_cu12==10.13.2.6
+tensorrt_cu12_bindings==10.13.2.6
+tensorrt_cu12_libs==10.13.2.6
+polygraphy
+accelerate
+sentencepiece
+protobuf
+onnxruntime==1.19.2
+onnx-graphsurgeon==0.5.2
