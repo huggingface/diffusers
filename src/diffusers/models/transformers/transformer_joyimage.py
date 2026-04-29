@@ -23,6 +23,7 @@ from ...configuration_utils import ConfigMixin, register_to_config
 from ...utils import logging
 from ..attention import AttentionMixin, AttentionModuleMixin, FeedForward
 from ..attention_dispatch import dispatch_attention_fn
+from ..embeddings import PixArtAlphaTextProjection, TimestepEmbedding, Timesteps
 from ..modeling_outputs import Transformer2DModelOutput
 from ..modeling_utils import ModelMixin
 
@@ -35,167 +36,23 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 # ---------------------------------------------------------------------------
 
 
-def _to_tuple(x, dim=2):
-    if isinstance(x, int):
-        return (x,) * dim
-    if len(x) == dim:
-        return tuple(x)
-    raise ValueError(f"Expected length {dim} or int, but got {x}")
-
-
-def _get_meshgrid_nd(start, *args, dim=2):
-    if len(args) == 0:
-        num = _to_tuple(start, dim=dim)
-        start = (0,) * dim
-        stop = num
-    elif len(args) == 1:
-        start = _to_tuple(start, dim=dim)
-        stop = _to_tuple(args[0], dim=dim)
-        num = [stop[i] - start[i] for i in range(dim)]
-    elif len(args) == 2:
-        start = _to_tuple(start, dim=dim)
-        stop = _to_tuple(args[0], dim=dim)
-        num = _to_tuple(args[1], dim=dim)
-    else:
-        raise ValueError(f"len(args) should be 0, 1 or 2, but got {len(args)}")
-
-    axis_grid = []
-    for i in range(dim):
-        a, b, n = start[i], stop[i], num[i]
-        g = torch.linspace(a, b, n + 1, dtype=torch.float32)[:n]
-        axis_grid.append(g)
-    grid = torch.meshgrid(*axis_grid, indexing="ij")
-    return torch.stack(grid, dim=0)
-
-
-def _reshape_for_broadcast(freqs_cis, x: torch.Tensor, head_first: bool = False):
-    ndim = x.ndim
-    if isinstance(freqs_cis, tuple):
-        if head_first:
-            shape = [d if i == ndim - 2 or i == ndim - 1 else 1 for i, d in enumerate(x.shape)]
-        else:
-            shape = [d if i == 1 or i == ndim - 1 else 1 for i, d in enumerate(x.shape)]
-        return freqs_cis[0].view(*shape), freqs_cis[1].view(*shape)
-
-    if head_first:
-        shape = [d if i == ndim - 2 or i == ndim - 1 else 1 for i, d in enumerate(x.shape)]
-    else:
-        shape = [d if i == 1 or i == ndim - 1 else 1 for i, d in enumerate(x.shape)]
-    return freqs_cis.view(*shape)
-
-
-def _rotate_half(x: torch.Tensor):
-    x_real, x_imag = x.float().reshape(*x.shape[:-1], -1, 2).unbind(-1)
-    return torch.stack([-x_imag, x_real], dim=-1).flatten(3)
-
-
 def _apply_rotary_emb(
     xq: torch.Tensor,
     xk: torch.Tensor,
     freqs_cis: Tuple[torch.Tensor, torch.Tensor],
-    head_first: bool = False,
 ) -> Tuple[torch.Tensor, torch.Tensor]:
-    cos, sin = _reshape_for_broadcast(freqs_cis, xq, head_first)
-    cos, sin = cos.to(xq.device), sin.to(xq.device)
-    xq_out = (xq.float() * cos + _rotate_half(xq.float()) * sin).type_as(xq)
-    xk_out = (xk.float() * cos + _rotate_half(xk.float()) * sin).type_as(xk)
+    ndim = xq.ndim
+    shape = [d if i == 1 or i == ndim - 1 else 1 for i, d in enumerate(xq.shape)]
+    cos = freqs_cis[0].view(*shape).to(xq.device)
+    sin = freqs_cis[1].view(*shape).to(xq.device)
+
+    def _rotate_half(x):
+        x_real, x_imag = x.float().reshape(*x.shape[:-1], -1, 2).unbind(-1)
+        return torch.stack([-x_imag, x_real], dim=-1).flatten(3)
+
+    xq_out = (xq.float() * cos + _rotate_half(xq) * sin).type_as(xq)
+    xk_out = (xk.float() * cos + _rotate_half(xk) * sin).type_as(xk)
     return xq_out, xk_out
-
-
-def _get_1d_rotary_pos_embed(
-    dim: int,
-    pos,
-    theta: float = 10000.0,
-    use_real: bool = False,
-    theta_rescale_factor: float = 1.0,
-    interpolation_factor: float = 1.0,
-):
-    if isinstance(pos, int):
-        pos = torch.arange(pos).float()
-
-    if theta_rescale_factor != 1.0:
-        theta *= theta_rescale_factor ** (dim / (dim - 2))
-
-    freqs = 1.0 / (theta ** (torch.arange(0, dim, 2, dtype=torch.float32)[: (dim // 2)] / dim))
-    freqs = torch.outer(pos.float() * interpolation_factor, freqs)
-
-    if use_real:
-        freqs_cos = freqs.cos().repeat_interleave(2, dim=1)
-        freqs_sin = freqs.sin().repeat_interleave(2, dim=1)
-        return freqs_cos, freqs_sin
-
-    return torch.polar(torch.ones_like(freqs), freqs)
-
-
-def _get_nd_rotary_pos_embed(
-    rope_dim_list,
-    start,
-    *args,
-    theta=10000.0,
-    use_real=False,
-    txt_rope_size=None,
-    theta_rescale_factor=1.0,
-    interpolation_factor=1.0,
-):
-    rope_dim_list = list(rope_dim_list)
-    grid = _get_meshgrid_nd(start, *args, dim=len(rope_dim_list))
-
-    if isinstance(theta_rescale_factor, (int, float)):
-        theta_rescale_factor = [float(theta_rescale_factor)] * len(rope_dim_list)
-    elif isinstance(theta_rescale_factor, list) and len(theta_rescale_factor) == 1:
-        theta_rescale_factor = [float(theta_rescale_factor[0])] * len(rope_dim_list)
-
-    if isinstance(interpolation_factor, (int, float)):
-        interpolation_factor = [float(interpolation_factor)] * len(rope_dim_list)
-    elif isinstance(interpolation_factor, list) and len(interpolation_factor) == 1:
-        interpolation_factor = [float(interpolation_factor[0])] * len(rope_dim_list)
-
-    embs = []
-    for i in range(len(rope_dim_list)):
-        emb = _get_1d_rotary_pos_embed(
-            rope_dim_list[i],
-            grid[i].reshape(-1),
-            theta,
-            use_real=use_real,
-            theta_rescale_factor=theta_rescale_factor[i],
-            interpolation_factor=interpolation_factor[i],
-        )
-        embs.append(emb)
-
-    if use_real:
-        vis_emb = (
-            torch.cat([emb[0] for emb in embs], dim=1),
-            torch.cat([emb[1] for emb in embs], dim=1),
-        )
-    else:
-        vis_emb = torch.cat(embs, dim=1)
-
-    if txt_rope_size is None:
-        return vis_emb, None
-
-    embs_txt = []
-    vis_max_ids = grid.view(-1).max().item()
-    grid_txt = torch.arange(txt_rope_size) + vis_max_ids + 1
-    for i in range(len(rope_dim_list)):
-        emb = _get_1d_rotary_pos_embed(
-            rope_dim_list[i],
-            grid_txt,
-            theta,
-            use_real=use_real,
-            theta_rescale_factor=theta_rescale_factor[i],
-            interpolation_factor=interpolation_factor[i],
-        )
-        embs_txt.append(emb)
-
-    if use_real:
-        txt_emb = (
-            torch.cat([emb[0] for emb in embs_txt], dim=1),
-            torch.cat([emb[1] for emb in embs_txt], dim=1),
-        )
-    else:
-        txt_emb = torch.cat(embs_txt, dim=1)
-
-    return vis_emb, txt_emb
 
 
 # ---------------------------------------------------------------------------
@@ -281,9 +138,9 @@ class JoyImageAttnProcessor:
         if image_rotary_emb is not None:
             vis_freqs, txt_freqs = image_rotary_emb
             if vis_freqs is not None:
-                img_query, img_key = _apply_rotary_emb(img_query, img_key, vis_freqs, head_first=False)
+                img_query, img_key = _apply_rotary_emb(img_query, img_key, vis_freqs)
             if txt_freqs is not None:
-                txt_query, txt_key = _apply_rotary_emb(txt_query, txt_key, txt_freqs, head_first=False)
+                txt_query, txt_key = _apply_rotary_emb(txt_query, txt_key, txt_freqs)
 
         # concatenate for joint attention: [img, txt]
         joint_query = torch.cat([img_query, txt_query], dim=1)
@@ -474,6 +331,42 @@ class JoyImageTransformerBlock(nn.Module):
 
 
 # ---------------------------------------------------------------------------
+# Copied from diffusers.models.transformers.transformer_wan.WanTimeTextImageEmbedding
+class JoyImageTimeTextImageEmbedding(nn.Module):
+    def __init__(
+        self,
+        dim: int,
+        time_freq_dim: int,
+        time_proj_dim: int,
+        text_embed_dim: int,
+    ):
+        super().__init__()
+
+        self.timesteps_proj = Timesteps(num_channels=time_freq_dim, flip_sin_to_cos=True, downscale_freq_shift=0)
+        self.time_embedder = TimestepEmbedding(in_channels=time_freq_dim, time_embed_dim=dim)
+        self.act_fn = nn.SiLU()
+        self.time_proj = nn.Linear(dim, time_proj_dim)
+        self.text_embedder = PixArtAlphaTextProjection(text_embed_dim, dim, act_fn="gelu_tanh")
+
+    def forward(
+        self,
+        timestep: torch.Tensor,
+        encoder_hidden_states: torch.Tensor,
+    ):
+        timestep = self.timesteps_proj(timestep)
+
+        time_embedder_dtype = next(iter(self.time_embedder.parameters())).dtype
+        if timestep.dtype != time_embedder_dtype and time_embedder_dtype != torch.int8:
+            timestep = timestep.to(time_embedder_dtype)
+        temb = self.time_embedder(timestep).type_as(encoder_hidden_states)
+        timestep_proj = self.time_proj(self.act_fn(temb))
+
+        encoder_hidden_states = self.text_embedder(encoder_hidden_states)
+
+        return temb, timestep_proj, encoder_hidden_states
+
+
+# ---------------------------------------------------------------------------
 # Main model
 # ---------------------------------------------------------------------------
 
@@ -530,10 +423,8 @@ class JoyImageEditTransformer3DModel(ModelMixin, ConfigMixin, AttentionMixin):
         # image projection
         self.img_in = nn.Conv3d(in_channels, hidden_size, kernel_size=patch_size, stride=patch_size)
 
-        # condition embedder (re-uses WAN implementation)
-        from .transformer_wan import WanTimeTextImageEmbedding
-
-        self.condition_embedder = WanTimeTextImageEmbedding(
+        # condition embedder
+        self.condition_embedder = JoyImageTimeTextImageEmbedding(
             dim=hidden_size,
             time_freq_dim=256,
             time_proj_dim=hidden_size * 6,
@@ -579,14 +470,38 @@ class JoyImageEditTransformer3DModel(ModelMixin, ConfigMixin, AttentionMixin):
         if sum(rope_dim_list) != head_dim:
             raise ValueError("sum(rope_dim_list) should equal head_dim")
 
-        vis_freqs, txt_freqs = _get_nd_rotary_pos_embed(
-            rope_dim_list,
-            vis_rope_size,
-            txt_rope_size=txt_rope_size,
-            theta=self.theta,
-            use_real=True,
-            theta_rescale_factor=1,
+        # Build a 3-D meshgrid [0, size) for each spatial axis
+        grid = torch.stack(
+            torch.meshgrid(
+                *[torch.linspace(0, s, s + 1, dtype=torch.float32)[:s] for s in vis_rope_size],
+                indexing="ij",
+            ),
+            dim=0,
         )
+
+        # Per-axis 1-D rotary embeddings -> concat
+        vis_cos, vis_sin = [], []
+        for i, dim in enumerate(rope_dim_list):
+            pos = grid[i].reshape(-1)
+            freqs = 1.0 / (self.theta ** (torch.arange(0, dim, 2, dtype=torch.float32)[: (dim // 2)] / dim))
+            freqs = torch.outer(pos.float(), freqs)
+            vis_cos.append(freqs.cos().repeat_interleave(2, dim=1))
+            vis_sin.append(freqs.sin().repeat_interleave(2, dim=1))
+        vis_freqs = (torch.cat(vis_cos, dim=1), torch.cat(vis_sin, dim=1))
+
+        if txt_rope_size is None:
+            return vis_freqs, None
+
+        # Text positions start right after the largest visual index
+        grid_txt = torch.arange(txt_rope_size) + grid.view(-1).max().item() + 1
+        txt_cos, txt_sin = [], []
+        for i, dim in enumerate(rope_dim_list):
+            freqs = 1.0 / (self.theta ** (torch.arange(0, dim, 2, dtype=torch.float32)[: (dim // 2)] / dim))
+            freqs = torch.outer(grid_txt.float(), freqs)
+            txt_cos.append(freqs.cos().repeat_interleave(2, dim=1))
+            txt_sin.append(freqs.sin().repeat_interleave(2, dim=1))
+        txt_freqs = (torch.cat(txt_cos, dim=1), torch.cat(txt_sin, dim=1))
+
         return vis_freqs, txt_freqs
 
     # ------------------------------------------------------------------
@@ -600,7 +515,7 @@ class JoyImageEditTransformer3DModel(ModelMixin, ConfigMixin, AttentionMixin):
             raise ValueError(f"Expected t*h*w ({t * h * w}) to equal x.shape[1] ({x.shape[1]})")
 
         x = x.reshape(x.shape[0], t, h, w, pt, ph, pw, c)
-        x = torch.einsum("nthwopqc->nctohpwq", x)
+        x = x.permute(0, 7, 1, 4, 2, 5, 3, 6)  # nthwopqc -> nctohpwq
         return x.reshape(x.shape[0], c, t * pt, h * ph, w * pw)
 
     # ------------------------------------------------------------------
@@ -612,7 +527,6 @@ class JoyImageEditTransformer3DModel(ModelMixin, ConfigMixin, AttentionMixin):
         hidden_states: torch.Tensor,
         timestep: torch.Tensor,
         encoder_hidden_states: torch.Tensor = None,
-        encoder_hidden_states_mask: torch.Tensor = None,
         return_dict: bool = True,
     ):
         # handle multi-item input (b, n, c, t, h, w)
@@ -637,7 +551,7 @@ class JoyImageEditTransformer3DModel(ModelMixin, ConfigMixin, AttentionMixin):
         img = self.img_in(hidden_states).flatten(2).transpose(1, 2)
 
         # condition embeddings
-        _, vec, txt, _ = self.condition_embedder(timestep, encoder_hidden_states)
+        _, vec, txt = self.condition_embedder(timestep, encoder_hidden_states)
         if vec.shape[-1] > self.hidden_size:
             vec = vec.unflatten(1, (6, -1))
 

@@ -873,7 +873,6 @@ class JoyImageEditPipeline(DiffusionPipeline):
                     hidden_states=latent_model_input,
                     timestep=t_expand,
                     encoder_hidden_states=prompt_embeds,
-                    encoder_hidden_states_mask=prompt_embeds_mask,
                     return_dict=False,
                 )[0]
 
@@ -882,7 +881,6 @@ class JoyImageEditPipeline(DiffusionPipeline):
                         hidden_states=latent_model_input,
                         timestep=t_expand,
                         encoder_hidden_states=negative_prompt_embeds,
-                        encoder_hidden_states_mask=negative_prompt_embeds_mask,
                         return_dict=False,
                     )[0]
 
