@@ -7,7 +7,7 @@
 Motif-Video is a 2B parameter diffusion transformer designed for text-to-video and image-to-video generation. It features a three-stage architecture with 12 dual-stream + 16 single-stream + 8 DDT decoder layers, Shared Cross-Attention for stable text-video alignment under long video sequences, T5Gemma2 text encoder, and rectified flow matching for velocity prediction.
 
 <p align="center">
-  <img src="https://huggingface.co/MotifTechnologies/Motif-Video-2B/resolve/main/assets/architecture.png" width="90%" alt="Motif-Video architecture"/>
+  <img src="https://huggingface.co/Motif-Technologies/Motif-Video-2B/resolve/main/assets/architecture.png" width="90%" alt="Motif-Video architecture"/>
 </p>
 
 ## Text-to-Video Generation
