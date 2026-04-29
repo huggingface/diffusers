@@ -48,30 +48,6 @@ Examples:
 """
 
 
-def _get_text_encoder_ckpt(
-    text_encoder: Qwen3VLForConditionalGeneration,
-    fallback: str = "Qwen/Qwen3-VL-8B-Instruct",
-) -> str:
-    """
-    Retrieve the checkpoint identifier from the text encoder.
-
-    Args:
-        text_encoder: The text encoder model instance.
-        fallback: Default checkpoint name if none can be resolved.
-
-    Returns:
-        A non-empty string identifying the checkpoint.
-    """
-    candidates = [
-        getattr(text_encoder, "name_or_path", None),
-        getattr(getattr(text_encoder, "config", None), "_name_or_path", None),
-    ]
-    for c in candidates:
-        if isinstance(c, str) and len(c) > 0:
-            return c
-    return fallback
-
-
 def retrieve_timesteps(
     scheduler,
     num_inference_steps: Optional[int] = None,
@@ -146,7 +122,6 @@ class JoyImageEditPipeline(DiffusionPipeline):
         transformer: JoyImageEditTransformer3DModel,
         processor: Qwen3VLProcessor,
         text_token_max_length: int = 2048,
-        text_encoder_ckpt: Optional[str] = None,
     ):
         """
         Initialise the pipeline and register all sub-modules.
@@ -159,8 +134,6 @@ class JoyImageEditPipeline(DiffusionPipeline):
             transformer: 3-D transformer denoising network.
             processor: Qwen3-VL processor for multi-image prompt preparation.
             text_token_max_length: Maximum number of text tokens for the encoder.
-            text_encoder_ckpt: Path to text encoder checkpoint. Inferred from
-                ``text_encoder`` when not provided.
         """
         super().__init__()
         self.register_modules(
@@ -180,10 +153,6 @@ class JoyImageEditPipeline(DiffusionPipeline):
         self.vae_image_processor = JoyImageEditImageProcessor(
             vae_scale_factor=self.vae_scale_factor_spatial,
         )
-
-        if text_encoder_ckpt is None:
-            text_encoder_ckpt = _get_text_encoder_ckpt(self.text_encoder)
-        self.qwen_processor = processor if processor is not None else AutoProcessor.from_pretrained(text_encoder_ckpt)
 
         # Prompt templates used when encoding text with / without image tokens.
         self.prompt_template_encode = {
@@ -374,7 +343,7 @@ class JoyImageEditPipeline(DiffusionPipeline):
         ):
             images = images * (len(prompt) // len(images))
 
-        inputs = self.qwen_processor(
+        inputs = self.processor(
             text=prompt,
             images=images,
             padding=True,
