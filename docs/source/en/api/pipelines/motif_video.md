@@ -28,7 +28,7 @@ guider = AdaptiveProjectedGuidance(
 )
 
 pipe = MotifVideoPipeline.from_pretrained(
-    "MotifTechnologies/Motif-Video-2B",
+    "Motif-Technologies/Motif-Video-2B",
     torch_dtype=torch.bfloat16,
     guider=guider,
 )
@@ -66,7 +66,7 @@ guider = AdaptiveProjectedGuidance(
 )
 
 pipe = MotifVideoImage2VideoPipeline.from_pretrained(
-    "MotifTechnologies/Motif-Video-2B",
+    "Motif-Technologies/Motif-Video-2B",
     torch_dtype=torch.bfloat16,
     guider=guider,
 )
@@ -110,7 +110,7 @@ guider = AdaptiveProjectedGuidance(
 )
 
 pipe = MotifVideoPipeline.from_pretrained(
-    "MotifTechnologies/Motif-Video-2B",
+    "Motif-Technologies/Motif-Video-2B",
     torch_dtype=torch.bfloat16,
     guider=guider,
 )
