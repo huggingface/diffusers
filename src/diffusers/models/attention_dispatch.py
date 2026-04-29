@@ -326,6 +326,13 @@ class _HubKernelConfig:
     wrapped_backward_attr: str | None = None
     wrapped_forward_fn: Callable | None = None
     wrapped_backward_fn: Callable | None = None
+    # Some backends (e.g. flash attention) have separate kernels for variable-length inputs
+    varlen_function_attr: str | None = None
+    varlen_kernel_fn: Callable | None = None
+    wrapped_varlen_forward_attr: str | None = None
+    wrapped_varlen_backward_attr: str | None = None
+    wrapped_varlen_forward_fn: Callable | None = None
+    wrapped_varlen_backward_fn: Callable | None = None
 
 
 # Registry for hub-based attention kernels
@@ -345,8 +352,11 @@ _HUB_KERNELS_REGISTRY: dict["AttentionBackendName", _HubKernelConfig] = {
     AttentionBackendName.FLASH_HUB: _HubKernelConfig(
         repo_id="kernels-community/flash-attn2",
         function_attr="flash_attn_func",
+        varlen_function_attr="flash_attn_varlen_func",
         wrapped_forward_attr="flash_attn_interface._wrapped_flash_attn_forward",
         wrapped_backward_attr="flash_attn_interface._wrapped_flash_attn_backward",
+        wrapped_varlen_forward_attr="flash_attn_interface._wrapped_flash_attn_varlen_forward",
+        wrapped_varlen_backward_attr="flash_attn_interface._wrapped_flash_attn_varlen_backward",
         version=1,
     ),
     AttentionBackendName.FLASH_VARLEN_HUB: _HubKernelConfig(
@@ -636,6 +646,18 @@ def _prepare_for_flash_attn_or_sage_varlen(
     return _prepare_for_flash_attn_or_sage_varlen_with_mask(batch_size, seq_len_q, attn_mask, device)
 
 
+def _padded_to_unpad(tensor: torch.Tensor, indices: torch.Tensor) -> torch.Tensor:
+    """gather valid tokens from a padded `(batch, seq, ...)` tensor into a packed `(nnz, ...)` tensor."""
+    return tensor.reshape(-1, *tensor.shape[2:])[indices]
+
+
+def _unpad_to_padded(packed: torch.Tensor, indices: torch.Tensor, batch_size: int, seq_len: int) -> torch.Tensor:
+    """scatter a packed `(nnz, ...)` tensor back to padded `(batch_size, seq_len, ...)`."""
+    output = torch.zeros(batch_size * seq_len, *packed.shape[1:], dtype=packed.dtype, device=packed.device)
+    output[indices] = packed
+    return output.view(batch_size, seq_len, *packed.shape[1:])
+
+
 def _normalize_attn_mask(attn_mask: torch.Tensor, batch_size: int, seq_len_k: int) -> torch.Tensor:
     """
     Normalize an attention mask to shape [batch_size, seq_len_k] (bool) suitable for inferring seqlens_[q|k] in
@@ -708,10 +730,24 @@ def _maybe_download_kernel_for_backend(backend: AttentionBackendName) -> None:
     config = _HUB_KERNELS_REGISTRY[backend]
 
     needs_kernel = config.kernel_fn is None
+    needs_varlen_kernel = config.varlen_function_attr is not None and config.varlen_kernel_fn is None
     needs_wrapped_forward = config.wrapped_forward_attr is not None and config.wrapped_forward_fn is None
     needs_wrapped_backward = config.wrapped_backward_attr is not None and config.wrapped_backward_fn is None
+    needs_wrapped_varlen_forward = (
+        config.wrapped_varlen_forward_attr is not None and config.wrapped_varlen_forward_fn is None
+    )
+    needs_wrapped_varlen_backward = (
+        config.wrapped_varlen_backward_attr is not None and config.wrapped_varlen_backward_fn is None
+    )
 
-    if not (needs_kernel or needs_wrapped_forward or needs_wrapped_backward):
+    if not (
+        needs_kernel
+        or needs_varlen_kernel
+        or needs_wrapped_forward
+        or needs_wrapped_backward
+        or needs_wrapped_varlen_forward
+        or needs_wrapped_varlen_backward
+    ):
         return
 
     try:
@@ -721,11 +757,22 @@ def _maybe_download_kernel_for_backend(backend: AttentionBackendName) -> None:
         if needs_kernel:
             config.kernel_fn = _resolve_kernel_attr(kernel_module, config.function_attr)
 
+        if needs_varlen_kernel:
+            config.varlen_kernel_fn = _resolve_kernel_attr(kernel_module, config.varlen_function_attr)
+
         if needs_wrapped_forward:
             config.wrapped_forward_fn = _resolve_kernel_attr(kernel_module, config.wrapped_forward_attr)
 
         if needs_wrapped_backward:
             config.wrapped_backward_fn = _resolve_kernel_attr(kernel_module, config.wrapped_backward_attr)
+
+        if needs_wrapped_varlen_forward:
+            config.wrapped_varlen_forward_fn = _resolve_kernel_attr(kernel_module, config.wrapped_varlen_forward_attr)
+
+        if needs_wrapped_varlen_backward:
+            config.wrapped_varlen_backward_fn = _resolve_kernel_attr(
+                kernel_module, config.wrapped_varlen_backward_attr
+            )
 
     except Exception as e:
         logger.error(f"An error occurred while fetching kernel '{config.repo_id}' from the Hub: {e}")
@@ -1192,8 +1239,6 @@ def _flash_attention_hub_forward_op(
     _save_ctx: bool = True,
     _parallel_config: "ParallelConfig" | None = None,
 ):
-    if attn_mask is not None:
-        raise ValueError("`attn_mask` is not yet supported for flash-attn hub kernels.")
     if enable_gqa:
         raise ValueError("`enable_gqa` is not yet supported for flash-attn hub kernels.")
 
@@ -1217,6 +1262,78 @@ def _flash_attention_hub_forward_op(
 
     if grad_enabled or (_parallel_config is not None and _parallel_config.context_parallel_config._world_size > 1):
         dropout_p = dropout_p if dropout_p > 0 else 1e-30
+
+    if attn_mask is not None:
+        if return_lse:
+            raise NotImplementedError(
+                "`return_lse=True` with `attn_mask` is not yet supported for flash-attn hub kernels."
+            )
+
+        wrapped_varlen_forward_fn = config.wrapped_varlen_forward_fn
+        if wrapped_varlen_forward_fn is None:
+            raise RuntimeError(
+                "Flash attention hub kernels must expose `_wrapped_flash_attn_varlen_forward` for masked attention."
+            )
+
+        batch_size, seq_len_q, _, _ = query.shape
+        _, seq_len_kv, _, _ = key.shape
+        attn_mask_2d = _normalize_attn_mask(attn_mask, batch_size, seq_len_kv)
+
+        _, (cu_seqlens_q, cu_seqlens_k), (_, max_seqlen_k) = _prepare_for_flash_attn_or_sage_varlen_with_mask(
+            batch_size, seq_len_q, attn_mask_2d, query.device
+        )
+        indices_k = torch.nonzero(attn_mask_2d.flatten(), as_tuple=False).flatten()
+        query_packed = query.flatten(0, 1)
+        key_packed = _padded_to_unpad(key, indices_k)
+        value_packed = _padded_to_unpad(value, indices_k)
+
+        with torch.set_grad_enabled(grad_enabled):
+            out_packed, lse, _, rng_state = wrapped_varlen_forward_fn(
+                query_packed,
+                key_packed,
+                value_packed,
+                cu_seqlens_q,
+                cu_seqlens_k,
+                seq_len_q,
+                max_seqlen_k,
+                dropout_p,
+                scale,
+                is_causal,
+                window_size[0],
+                window_size[1],
+                softcap,
+                alibi_slopes,
+                return_lse,
+            )
+
+        out = out_packed.view(batch_size, seq_len_q, *out_packed.shape[1:])
+
+        if _save_ctx:
+            ctx.save_for_backward(
+                query_packed,
+                key_packed,
+                value_packed,
+                out_packed,
+                lse,
+                rng_state,
+                cu_seqlens_q,
+                cu_seqlens_k,
+                indices_k,
+            )
+            ctx.is_varlen_masked = True
+            ctx.max_seqlen_k = max_seqlen_k
+            ctx.batch_size = batch_size
+            ctx.seq_len_q = seq_len_q
+            ctx.seq_len_kv = seq_len_kv
+            ctx.dropout_p = dropout_p
+            ctx.scale = scale
+            ctx.is_causal = is_causal
+            ctx.window_size = window_size
+            ctx.softcap = softcap
+            ctx.alibi_slopes = alibi_slopes
+            ctx.deterministic = deterministic
+
+        return out
 
     with torch.set_grad_enabled(grad_enabled):
         out, lse, S_dmask, rng_state = wrapped_forward_fn(
@@ -1254,6 +1371,67 @@ def _flash_attention_hub_backward_op(
     **kwargs,
 ):
     config = _HUB_KERNELS_REGISTRY[AttentionBackendName.FLASH_HUB]
+
+    if getattr(ctx, "is_varlen_masked", False):
+        wrapped_varlen_backward_fn = config.wrapped_varlen_backward_fn
+        if wrapped_varlen_backward_fn is None:
+            raise RuntimeError(
+                "Flash attention hub kernels must expose `_wrapped_flash_attn_varlen_backward` for masked attention."
+            )
+
+        (
+            query_packed,
+            key_packed,
+            value_packed,
+            out_packed,
+            lse,
+            rng_state,
+            cu_seqlens_q,
+            cu_seqlens_k,
+            indices_k,
+        ) = ctx.saved_tensors
+
+        grad_out_packed = grad_out.flatten(0, 1)
+
+        dq = torch.empty_like(query_packed)
+        dk = torch.empty_like(key_packed)
+        dv = torch.empty_like(value_packed)
+
+        wrapped_varlen_backward_fn(  # noqa: F841
+            grad_out_packed,
+            query_packed,
+            key_packed,
+            value_packed,
+            out_packed,
+            lse,
+            dq,
+            dk,
+            dv,
+            cu_seqlens_q,
+            cu_seqlens_k,
+            ctx.seq_len_q,
+            ctx.max_seqlen_k,
+            ctx.dropout_p,
+            ctx.scale,
+            ctx.is_causal,
+            ctx.window_size[0],
+            ctx.window_size[1],
+            ctx.softcap,
+            ctx.alibi_slopes,
+            ctx.deterministic,
+            rng_state,
+        )
+
+        grad_query = dq.view(ctx.batch_size, ctx.seq_len_q, *dq.shape[1:])
+        grad_key = _unpad_to_padded(dk, indices_k, ctx.batch_size, ctx.seq_len_kv)
+        grad_value = _unpad_to_padded(dv, indices_k, ctx.batch_size, ctx.seq_len_kv)
+
+        grad_query = grad_query[..., : grad_out.shape[-1]]
+        grad_key = grad_key[..., : grad_out.shape[-1]]
+        grad_value = grad_value[..., : grad_out.shape[-1]]
+
+        return grad_query, grad_key, grad_value
+
     wrapped_backward_fn = config.wrapped_backward_fn
     if wrapped_backward_fn is None:
         raise RuntimeError(
@@ -2366,7 +2544,7 @@ def _flash_attention(
 
 @_AttentionBackendRegistry.register(
     AttentionBackendName.FLASH_HUB,
-    constraints=[_check_device, _check_qkv_dtype_bf16_or_fp16, _check_shape],
+    constraints=[_check_attn_mask_or_causal, _check_device, _check_qkv_dtype_bf16_or_fp16, _check_shape],
     supports_context_parallel=True,
 )
 def _flash_attention_hub(
@@ -2381,28 +2559,69 @@ def _flash_attention_hub(
     _parallel_config: "ParallelConfig" | None = None,
 ) -> torch.Tensor:
     lse = None
-    if attn_mask is not None:
-        raise ValueError("`attn_mask` is not supported for flash-attn 2.")
 
     func = _HUB_KERNELS_REGISTRY[AttentionBackendName.FLASH_HUB].kernel_fn
     if _parallel_config is None:
-        out = func(
-            q=query,
-            k=key,
-            v=value,
-            dropout_p=dropout_p,
-            softmax_scale=scale,
-            causal=is_causal,
-            return_attn_probs=return_lse,
-        )
-        if return_lse:
-            out, lse, *_ = out
+        if attn_mask is None:
+            out = func(
+                q=query,
+                k=key,
+                v=value,
+                dropout_p=dropout_p,
+                softmax_scale=scale,
+                causal=is_causal,
+                return_attn_probs=return_lse,
+            )
+            if return_lse:
+                out, lse, *_ = out
+        else:
+            if return_lse:
+                raise NotImplementedError(
+                    "`return_lse=True` with `attn_mask` is not yet supported for the FLASH_HUB backend."
+                )
+            batch_size, _, _, _ = query.shape
+            _, seq_len_kv, _, _ = key.shape
+            attn_mask_2d = _normalize_attn_mask(attn_mask, batch_size, seq_len_kv)
+
+            _, (cu_seqlens_q, cu_seqlens_k), (_, max_seqlen_k) = _prepare_for_flash_attn_or_sage_varlen_with_mask(
+                batch_size, query.shape[1], attn_mask_2d, query.device
+            )
+            indices_k = torch.nonzero(attn_mask_2d.flatten(), as_tuple=False).flatten()
+            query_packed = query.flatten(0, 1)
+            key_packed = _padded_to_unpad(key, indices_k)
+            value_packed = _padded_to_unpad(value, indices_k)
+
+            varlen_func = _HUB_KERNELS_REGISTRY[AttentionBackendName.FLASH_HUB].varlen_kernel_fn
+            if varlen_func is None:
+                raise RuntimeError(
+                    "Flash attention hub kernels must expose `flash_attn_varlen_func` for masked attention."
+                )
+            out_packed = varlen_func(
+                q=query_packed,
+                k=key_packed,
+                v=value_packed,
+                cu_seqlens_q=cu_seqlens_q,
+                cu_seqlens_k=cu_seqlens_k,
+                max_seqlen_q=query.shape[1],
+                max_seqlen_k=max_seqlen_k,
+                dropout_p=dropout_p,
+                softmax_scale=scale,
+                causal=is_causal,
+                return_attn_probs=return_lse,
+            )
+
+            out = out_packed.view(batch_size, query.shape[1], *out_packed.shape[1:])
     else:
+        if attn_mask is not None and _parallel_config.context_parallel_config.ring_degree > 1:
+            raise NotImplementedError(
+                "`attn_mask` is not yet supported for flash-attn hub kernels with ring attention."
+            )
+
         out = _templated_context_parallel_attention(
             query,
             key,
             value,
-            None,
+            attn_mask,
             dropout_p,
             is_causal,
             scale,
