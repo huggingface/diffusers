@@ -486,6 +486,7 @@ class JoyImageEditTransformer3DModel(ModelMixin, ConfigMixin, AttentionMixin):
 
     _skip_layerwise_casting_patterns = ["img_in", "condition_embedder", "norm"]
     _no_split_modules = ["JoyImageTransformerBlock"]
+    _supports_gradient_checkpointing = True
     _keep_in_fp32_modules = [
         "time_embedder",
         "scale_shift_table",
@@ -555,6 +556,8 @@ class JoyImageEditTransformer3DModel(ModelMixin, ConfigMixin, AttentionMixin):
         # output head
         self.norm_out = nn.LayerNorm(hidden_size, elementwise_affine=False, eps=1e-6)
         self.proj_out = nn.Linear(hidden_size, self.out_channels * math.prod(patch_size))
+
+        self.gradient_checkpointing = False
 
     # ------------------------------------------------------------------
     # RoPE helper
@@ -648,12 +651,17 @@ class JoyImageEditTransformer3DModel(ModelMixin, ConfigMixin, AttentionMixin):
 
         # main loop
         for block in self.double_blocks:
-            img, txt = block(
-                hidden_states=img,
-                encoder_hidden_states=txt,
-                temb=vec,
-                image_rotary_emb=(vis_freqs, txt_freqs),
-            )
+            if torch.is_grad_enabled() and self.gradient_checkpointing:
+                img, txt = self._gradient_checkpointing_func(
+                    block, img, txt, vec, (vis_freqs, txt_freqs)
+                )
+            else:
+                img, txt = block(
+                    hidden_states=img,
+                    encoder_hidden_states=txt,
+                    temb=vec,
+                    image_rotary_emb=(vis_freqs, txt_freqs),
+                )
 
         # final layer
         img = self.proj_out(self.norm_out(img))
