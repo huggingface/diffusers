@@ -48,6 +48,7 @@ class QuantizationMethod(str, Enum):
     TORCHAO = "torchao"
     QUANTO = "quanto"
     MODELOPT = "modelopt"
+    AUTOROUND = "auto-round"
 
 
 @dataclass
@@ -749,3 +750,73 @@ class NVIDIAModelOptConfig(QuantizationConfigMixin):
                 )
 
         return BASE_CONFIG
+
+
+@dataclass
+class AutoRoundConfig(QuantizationConfigMixin):
+    """Configuration class for AutoRound quantization.
+
+    AutoRound is a weight-only quantization algorithm that uses sign gradient descent to
+    jointly optimize weight rounding and min-max values. This config targets the W4A16
+    (4-bit weights, 16-bit activations) setting.
+
+    Reference: https://github.com/intel/auto-round
+
+    Args:
+        bits (`int`, *optional*, defaults to `4`):
+            The number of bits to quantize weights to. For W4A16 this should be 4.
+        group_size (`int`, *optional*, defaults to `128`):
+            The group size for weight quantization. Weights in each group share the same
+            scale and zero-point. Common choices: 32, 64, 128, -1 (per-channel).
+        sym (`bool`, *optional*, defaults to `True`):
+            Whether to use symmetric quantization (zero-point fixed at 0) or asymmetric
+            quantization (zero-point is learned).
+        backend (`str`, *optional*, defaults to `"auto"`):
+            The backend kernel to use for quantized inference. Available backends:
+            - `"auto"`: Automatically select the best available backend for the current device.
+            - `"auto_round:torch_zp"`: Pure PyTorch kernel — works on CPU and CUDA.
+            - `"auto_round:tritonv2_zp"`: Triton-based kernel — requires CUDA.
+            - `"gptqmodel:marlin_zp"`: Marlin kernel via GPTQModel — requires CUDA and
+              `gptqmodel>=5.8.0`. Offers the best CUDA inference performance.
+        kwargs (`dict[str, Any]`, *optional*):
+            Additional keyword arguments forwarded to AutoRound (e.g. `iters`, `seqlen`,
+            `batch_size`, `lr`, `minmax_lr` for calibration when quantizing from scratch).
+    """
+
+    def __init__(
+        self,
+        bits: int = 4,
+        group_size: int = 128,
+        sym: bool = True,
+        backend: str = "auto",
+        **kwargs,
+    ) -> None:
+        self.quant_method = QuantizationMethod.AUTOROUND
+        self.bits = bits
+        self.group_size = group_size
+        self.sym = sym
+        self.backend = backend
+        for k, v in kwargs.items():
+            setattr(self, k, v)
+
+    def to_dict(self) -> dict:
+        """Serialize the config to a JSON-compatible dict.
+
+        Output: A dict containing all config fields. The `quant_method` is stored as
+        its string value so it can be round-tripped through JSON.
+        """
+        output = super().to_dict()
+        output["quant_method"] = output["quant_method"].value
+        return output
+
+    @classmethod
+    def from_dict(cls, config_dict: dict, return_unused_kwargs: bool = False, **kwargs):
+        """Instantiate an AutoRoundConfig from a dictionary.
+
+        Input: config_dict with keys like bits, group_size, sym, etc.
+        Output: An AutoRoundConfig instance (and optionally unused kwargs).
+        """
+        # Filter out keys that are not constructor parameters
+        # (e.g. quant_method is set automatically)
+        config_dict = {k: v for k, v in config_dict.items() if k != "quant_method"}
+        return super().from_dict(config_dict, return_unused_kwargs=return_unused_kwargs, **kwargs)

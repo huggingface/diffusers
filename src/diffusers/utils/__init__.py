@@ -88,6 +88,7 @@ from .import_utils import (
     is_hpu_available,
     is_inflect_available,
     is_invisible_watermark_available,
+    is_auto_round_available,
     is_kernels_available,
     is_kernels_version,
     is_kornia_available,
