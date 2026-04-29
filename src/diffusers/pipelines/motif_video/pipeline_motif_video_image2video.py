@@ -34,11 +34,11 @@ if not is_transformers_version(">=", "5.1.0"):
 from transformers import BatchEncoding, PreTrainedTokenizerBase, SiglipImageProcessor, T5Gemma2Encoder
 
 from ...callbacks import MultiPipelineCallbacks, PipelineCallback
-from ...guiders import AdaptiveProjectedGuidance, ClassifierFreeGuidance, SkipLayerGuidance
+from ...guiders import BaseGuidance, ClassifierFreeGuidance
 from ...image_processor import PipelineImageInput
 from ...models import AutoencoderKLWan
 from ...models.transformers import MotifVideoTransformer3DModel
-from ...schedulers import FlowMatchEulerDiscreteScheduler
+from ...schedulers import SchedulerMixin
 from ...utils import is_torch_xla_available, logging, replace_example_docstring
 from ...utils.torch_utils import randn_tensor
 from ...video_processor import VideoProcessor
@@ -175,8 +175,11 @@ class MotifVideoImage2VideoPipeline(DiffusionPipeline):
     Args:
         transformer ([`MotifVideoTransformer3DModel`]):
             Conditional Transformer architecture to denoise the encoded video latents.
-        scheduler ([`FlowMatchEulerDiscreteScheduler`]):
+        scheduler ([`SchedulerMixin`]):
             A scheduler to be used in combination with `transformer` to denoise the encoded video latents.
+            Should be an instance of a class inheriting from `SchedulerMixin`, such as
+            [`DPMSolverMultistepScheduler`]. If not provided, uses the scheduler attached to the
+            pretrained model.
         vae ([`AutoencoderKLWan`]):
             Variational Auto-Encoder (VAE) Model to encode and decode videos to and from latent representations.
         text_encoder ([`T5Gemma2Encoder`]):
@@ -185,25 +188,25 @@ class MotifVideoImage2VideoPipeline(DiffusionPipeline):
             Tokenizer corresponding to the primary text encoder.
         feature_extractor ([`SiglipImageProcessor`]):
             Image processor for the SigLIP vision encoder.
-        guider ([`ClassifierFreeGuidance`] or [`SkipLayerGuidance`] or [`AdaptiveProjectedGuidance`]):
-            The guidance method to use. Can be `ClassifierFreeGuidance`, `SkipLayerGuidance`, or
-            `AdaptiveProjectedGuidance`. For video generation with `AdaptiveProjectedGuidance`, use
-            `normalization_dims="spatial"` for spatial-only normalization that preserves temporal quality by
-            normalizing over [C, H, W] per frame instead of collapsing the temporal dimension.
+        guider ([`BaseGuidance`]):
+            The guidance method to use. Should be an instance of a class inheriting from `BaseGuidance`,
+            such as [`ClassifierFreeGuidance`], [`AdaptiveProjectedGuidance`], or [`SkipLayerGuidance`].
+            If not provided, defaults to `ClassifierFreeGuidance`.
     """
 
     model_cpu_offload_seq = "text_encoder->transformer->vae"
+    _optional_components = ["guider"]
     _callback_tensor_inputs = ["latents", "prompt_embeds", "negative_prompt_embeds"]
 
     def __init__(
         self,
-        scheduler: FlowMatchEulerDiscreteScheduler,
+        scheduler: SchedulerMixin,
         vae: AutoencoderKLWan,
         text_encoder: T5Gemma2Encoder,
         tokenizer: PreTrainedTokenizerBase,
         transformer: MotifVideoTransformer3DModel,
         feature_extractor: SiglipImageProcessor,
-        guider: Optional[Union[AdaptiveProjectedGuidance, ClassifierFreeGuidance, SkipLayerGuidance]] = None,
+        guider: Optional[BaseGuidance] = None,
     ):
         super().__init__()
 
