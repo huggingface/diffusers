@@ -20,7 +20,7 @@ The model can be loaded with the following code snippet.
 ```python
 from diffusers import MotifVideoTransformer3DModel
 
-transformer = MotifVideoTransformer3DModel.from_pretrained("MotifTechnologies/Motif-Video-2B", subfolder="transformer", torch_dtype=torch.bfloat16)
+transformer = MotifVideoTransformer3DModel.from_pretrained("Motif-Technologies/Motif-Video-2B", subfolder="transformer", torch_dtype=torch.bfloat16)
 ```
 
 ## MotifVideoTransformer3DModel
