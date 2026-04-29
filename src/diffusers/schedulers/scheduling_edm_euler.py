@@ -14,7 +14,7 @@
 
 import math
 from dataclasses import dataclass
-from typing import List, Literal, Optional, Tuple, Union
+from typing import Literal
 
 import torch
 
@@ -43,7 +43,7 @@ class EDMEulerSchedulerOutput(BaseOutput):
     """
 
     prev_sample: torch.Tensor
-    pred_original_sample: Optional[torch.Tensor] = None
+    pred_original_sample: torch.Tensor | None = None
 
 
 class EDMEulerScheduler(SchedulerMixin, ConfigMixin):
@@ -141,7 +141,7 @@ class EDMEulerScheduler(SchedulerMixin, ConfigMixin):
         return (self.config.sigma_max**2 + 1) ** 0.5
 
     @property
-    def step_index(self) -> Optional[int]:
+    def step_index(self) -> int:
         """
         Return the index counter for the current timestep. The index will increase by 1 after each scheduler step.
 
@@ -152,7 +152,7 @@ class EDMEulerScheduler(SchedulerMixin, ConfigMixin):
         return self._step_index
 
     @property
-    def begin_index(self) -> Optional[int]:
+    def begin_index(self) -> int:
         """
         Return the index for the first timestep. This should be set from the pipeline with the `set_begin_index`
         method.
@@ -174,7 +174,7 @@ class EDMEulerScheduler(SchedulerMixin, ConfigMixin):
         """
         self._begin_index = begin_index
 
-    def precondition_inputs(self, sample: torch.Tensor, sigma: Union[float, torch.Tensor]) -> torch.Tensor:
+    def precondition_inputs(self, sample: torch.Tensor, sigma: float | torch.Tensor) -> torch.Tensor:
         """
         Precondition the input sample by scaling it according to the EDM formulation.
 
@@ -192,7 +192,7 @@ class EDMEulerScheduler(SchedulerMixin, ConfigMixin):
         scaled_sample = sample * c_in
         return scaled_sample
 
-    def precondition_noise(self, sigma: Union[float, torch.Tensor]) -> torch.Tensor:
+    def precondition_noise(self, sigma: float | torch.Tensor) -> torch.Tensor:
         """
         Precondition the noise level by applying a logarithmic transformation.
 
@@ -215,7 +215,7 @@ class EDMEulerScheduler(SchedulerMixin, ConfigMixin):
         self,
         sample: torch.Tensor,
         model_output: torch.Tensor,
-        sigma: Union[float, torch.Tensor],
+        sigma: float | torch.Tensor,
     ) -> torch.Tensor:
         """
         Precondition the model outputs according to the EDM formulation.
@@ -246,7 +246,7 @@ class EDMEulerScheduler(SchedulerMixin, ConfigMixin):
 
         return denoised
 
-    def scale_model_input(self, sample: torch.Tensor, timestep: Union[float, torch.Tensor]) -> torch.Tensor:
+    def scale_model_input(self, sample: torch.Tensor, timestep: float | torch.Tensor) -> torch.Tensor:
         """
         Scale the denoising model input to match the Euler algorithm. Ensures interchangeability with schedulers that
         need to scale the denoising model input depending on the current timestep.
@@ -272,10 +272,10 @@ class EDMEulerScheduler(SchedulerMixin, ConfigMixin):
 
     def set_timesteps(
         self,
-        num_inference_steps: Optional[int] = None,
-        device: Optional[Union[str, torch.device]] = None,
-        sigmas: Optional[Union[torch.Tensor, List[float]]] = None,
-    ) -> None:
+        num_inference_steps: int = None,
+        device: str | torch.device = None,
+        sigmas: torch.Tensor | list[float] | None = None,
+    ):
         """
         Sets the discrete timesteps used for the diffusion chain (to be run before inference).
 
@@ -284,7 +284,7 @@ class EDMEulerScheduler(SchedulerMixin, ConfigMixin):
                 The number of diffusion steps used when generating samples with a pre-trained model.
             device (`str` or `torch.device`, *optional*):
                 The device to which the timesteps should be moved to. If `None`, the timesteps are not moved.
-            sigmas (`torch.Tensor` or `List[float]`, *optional*):
+            sigmas (`torch.Tensor | list[float]`, *optional*):
                 Custom sigmas to use for the denoising process. If not defined, the default behavior when
                 `num_inference_steps` is passed will be used.
         """
@@ -323,8 +323,8 @@ class EDMEulerScheduler(SchedulerMixin, ConfigMixin):
     def _compute_karras_sigmas(
         self,
         ramp: torch.Tensor,
-        sigma_min: Optional[float] = None,
-        sigma_max: Optional[float] = None,
+        sigma_min: float | None = None,
+        sigma_max: float | None = None,
     ) -> torch.Tensor:
         """
         Construct the noise schedule of [Karras et al. (2022)](https://huggingface.co/papers/2206.00364).
@@ -353,8 +353,8 @@ class EDMEulerScheduler(SchedulerMixin, ConfigMixin):
     def _compute_exponential_sigmas(
         self,
         ramp: torch.Tensor,
-        sigma_min: Optional[float] = None,
-        sigma_max: Optional[float] = None,
+        sigma_min: float | None = None,
+        sigma_max: float | None = None,
     ) -> torch.Tensor:
         """
         Compute the exponential sigma schedule. Implementation closely follows k-diffusion:
@@ -379,7 +379,7 @@ class EDMEulerScheduler(SchedulerMixin, ConfigMixin):
 
     # Copied from diffusers.schedulers.scheduling_euler_discrete.EulerDiscreteScheduler.index_for_timestep
     def index_for_timestep(
-        self, timestep: Union[float, torch.Tensor], schedule_timesteps: Optional[torch.Tensor] = None
+        self, timestep: float | torch.Tensor, schedule_timesteps: torch.Tensor | None = None
     ) -> int:
         """
         Find the index of a given timestep in the timestep schedule.
@@ -409,7 +409,7 @@ class EDMEulerScheduler(SchedulerMixin, ConfigMixin):
         return indices[pos].item()
 
     # Copied from diffusers.schedulers.scheduling_euler_discrete.EulerDiscreteScheduler._init_step_index
-    def _init_step_index(self, timestep: Union[float, torch.Tensor]) -> None:
+    def _init_step_index(self, timestep: float | torch.Tensor) -> None:
         """
         Initialize the step index for the scheduler based on the given timestep.
 
@@ -427,16 +427,16 @@ class EDMEulerScheduler(SchedulerMixin, ConfigMixin):
     def step(
         self,
         model_output: torch.Tensor,
-        timestep: Union[float, torch.Tensor],
+        timestep: float | torch.Tensor,
         sample: torch.Tensor,
         s_churn: float = 0.0,
         s_tmin: float = 0.0,
         s_tmax: float = float("inf"),
         s_noise: float = 1.0,
-        generator: Optional[torch.Generator] = None,
+        generator: torch.Generator | None = None,
         return_dict: bool = True,
-        pred_original_sample: Optional[torch.Tensor] = None,
-    ) -> Union[EDMEulerSchedulerOutput, Tuple[torch.Tensor, torch.Tensor]]:
+        pred_original_sample: torch.Tensor | None = None,
+    ) -> EDMEulerSchedulerOutput | tuple:
         """
         Predict the sample from the previous timestep by reversing the SDE. This function propagates the diffusion
         process from the learned model outputs (most often the predicted noise).
@@ -581,7 +581,7 @@ class EDMEulerScheduler(SchedulerMixin, ConfigMixin):
         noisy_samples = original_samples + noise * sigma
         return noisy_samples
 
-    def _get_conditioning_c_in(self, sigma: Union[float, torch.Tensor]) -> Union[float, torch.Tensor]:
+    def _get_conditioning_c_in(self, sigma: float | torch.Tensor) -> float | torch.Tensor:
         """
         Compute the input conditioning factor for the EDM formulation.
 

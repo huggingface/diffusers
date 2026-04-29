@@ -1,4 +1,6 @@
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
+from __future__ import annotations
+
+from typing import TYPE_CHECKING, Any
 
 from ..base import DiffusersQuantizer
 
@@ -41,7 +43,7 @@ class GGUFQuantizer(DiffusersQuantizer):
 
         self.compute_dtype = quantization_config.compute_dtype
         self.pre_quantized = quantization_config.pre_quantized
-        self.modules_to_not_convert = quantization_config.modules_to_not_convert
+        self.modules_to_not_convert = quantization_config.modules_to_not_convert or []
 
         if not isinstance(self.modules_to_not_convert, list):
             self.modules_to_not_convert = [self.modules_to_not_convert]
@@ -57,7 +59,7 @@ class GGUFQuantizer(DiffusersQuantizer):
             )
 
     # Copied from diffusers.quantizers.bitsandbytes.bnb_quantizer.BnB4BitDiffusersQuantizer.adjust_max_memory
-    def adjust_max_memory(self, max_memory: Dict[str, Union[int, str]]) -> Dict[str, Union[int, str]]:
+    def adjust_max_memory(self, max_memory: dict[str, int | str]) -> dict[str, int | str]:
         # need more space for buffers that are created during quantization
         max_memory = {key: val * 0.90 for key, val in max_memory.items()}
         return max_memory
@@ -90,9 +92,9 @@ class GGUFQuantizer(DiffusersQuantizer):
     def check_if_quantized_param(
         self,
         model: "ModelMixin",
-        param_value: Union["GGUFParameter", "torch.Tensor"],
+        param_value: "GGUFParameter" | "torch.Tensor",
         param_name: str,
-        state_dict: Dict[str, Any],
+        state_dict: dict[str, Any],
         **kwargs,
     ) -> bool:
         if isinstance(param_value, GGUFParameter):
@@ -103,11 +105,11 @@ class GGUFQuantizer(DiffusersQuantizer):
     def create_quantized_param(
         self,
         model: "ModelMixin",
-        param_value: Union["GGUFParameter", "torch.Tensor"],
+        param_value: "GGUFParameter" | "torch.Tensor",
         param_name: str,
         target_device: "torch.device",
-        state_dict: Optional[Dict[str, Any]] = None,
-        unexpected_keys: Optional[List[str]] = None,
+        state_dict: dict[str, Any] | None = None,
+        unexpected_keys: list[str] | None = None,
         **kwargs,
     ):
         module, tensor_name = get_module_from_name(model, param_name)
@@ -123,7 +125,7 @@ class GGUFQuantizer(DiffusersQuantizer):
         self,
         model: "ModelMixin",
         device_map,
-        keep_in_fp32_modules: List[str] = [],
+        keep_in_fp32_modules: list[str] = [],
         **kwargs,
     ):
         state_dict = kwargs.get("state_dict", None)

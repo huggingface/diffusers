@@ -23,6 +23,9 @@ from .constants import (
     DEFAULT_HF_PARALLEL_LOADING_WORKERS,
     DEPRECATED_REVISION_ARGS,
     DIFFUSERS_DYNAMIC_MODULE_NAME,
+    DIFFUSERS_LOAD_ID_FIELDS,
+    FLASHPACK_FILE_EXTENSION,
+    FLASHPACK_WEIGHTS_NAME,
     FLAX_WEIGHTS_NAME,
     GGUF_FILE_EXTENSION,
     HF_ENABLE_PARALLEL_LOADING,
@@ -75,6 +78,7 @@ from .import_utils import (
     is_flash_attn_3_available,
     is_flash_attn_available,
     is_flash_attn_version,
+    is_flashpack_available,
     is_flax_available,
     is_ftfy_available,
     is_gguf_available,
@@ -84,9 +88,8 @@ from .import_utils import (
     is_hpu_available,
     is_inflect_available,
     is_invisible_watermark_available,
-    is_k_diffusion_available,
-    is_k_diffusion_version,
     is_kernels_available,
+    is_kernels_version,
     is_kornia_available,
     is_librosa_available,
     is_matplotlib_available,
@@ -130,6 +133,7 @@ from .loading_utils import get_module_from_name, get_submodule_by_name, load_ima
 from .logging import get_logger
 from .outputs import BaseOutput
 from .peft_utils import (
+    apply_lora_scale,
     check_peft_version,
     delete_adapter_layers,
     get_adapter_name,

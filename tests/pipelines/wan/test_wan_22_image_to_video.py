@@ -18,7 +18,7 @@ import unittest
 import numpy as np
 import torch
 from PIL import Image
-from transformers import AutoTokenizer, T5EncoderModel
+from transformers import AutoConfig, AutoTokenizer, T5EncoderModel
 
 from diffusers import AutoencoderKLWan, UniPCMultistepScheduler, WanImageToVideoPipeline, WanTransformer3DModel
 
@@ -64,7 +64,8 @@ class Wan22ImageToVideoPipelineFastTests(PipelineTesterMixin, unittest.TestCase)
 
         torch.manual_seed(0)
         scheduler = UniPCMultistepScheduler(prediction_type="flow_prediction", use_flow_sigmas=True, flow_shift=3.0)
-        text_encoder = T5EncoderModel.from_pretrained("hf-internal-testing/tiny-random-t5")
+        config = AutoConfig.from_pretrained("hf-internal-testing/tiny-random-t5")
+        text_encoder = T5EncoderModel(config)
         tokenizer = AutoTokenizer.from_pretrained("hf-internal-testing/tiny-random-t5")
 
         torch.manual_seed(0)
@@ -248,7 +249,8 @@ class Wan225BImageToVideoPipelineFastTests(PipelineTesterMixin, unittest.TestCas
 
         torch.manual_seed(0)
         scheduler = UniPCMultistepScheduler(prediction_type="flow_prediction", use_flow_sigmas=True, flow_shift=3.0)
-        text_encoder = T5EncoderModel.from_pretrained("hf-internal-testing/tiny-random-t5")
+        config = AutoConfig.from_pretrained("hf-internal-testing/tiny-random-t5")
+        text_encoder = T5EncoderModel(config)
         tokenizer = AutoTokenizer.from_pretrained("hf-internal-testing/tiny-random-t5")
 
         torch.manual_seed(0)

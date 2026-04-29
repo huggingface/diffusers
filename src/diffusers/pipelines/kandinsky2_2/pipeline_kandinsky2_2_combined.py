@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Callable, Dict, List, Optional, Union
+from typing import Callable
 
 import PIL.Image
 import torch
@@ -112,7 +112,7 @@ class KandinskyV22CombinedPipeline(DiffusionPipeline):
     library implements for all the pipelines (such as downloading or saving, running on a particular device, etc.)
 
     Args:
-        scheduler (Union[`DDIMScheduler`,`DDPMScheduler`]):
+        scheduler (`DDIMScheduler` | `DDPMScheduler`):
             A scheduler to be used in combination with `unet` to generate image latents.
         unet ([`UNet2DConditionModel`]):
             Conditional U-Net architecture to denoise the image embedding.
@@ -176,10 +176,10 @@ class KandinskyV22CombinedPipeline(DiffusionPipeline):
             movq=movq,
         )
 
-    def enable_xformers_memory_efficient_attention(self, attention_op: Optional[Callable] = None):
+    def enable_xformers_memory_efficient_attention(self, attention_op: Callable | None = None):
         self.decoder_pipe.enable_xformers_memory_efficient_attention(attention_op)
 
-    def enable_sequential_cpu_offload(self, gpu_id: Optional[int] = None, device: Union[torch.device, str] = None):
+    def enable_sequential_cpu_offload(self, gpu_id: int | None = None, device: torch.device | str = None):
         r"""
         Offloads all models to CPU using accelerate, significantly reducing memory usage. When called, unet,
         text_encoder, vae and safety checker have their state dicts saved to CPU and then are moved to a
@@ -203,8 +203,8 @@ class KandinskyV22CombinedPipeline(DiffusionPipeline):
     @replace_example_docstring(TEXT2IMAGE_EXAMPLE_DOC_STRING)
     def __call__(
         self,
-        prompt: Union[str, List[str]],
-        negative_prompt: Optional[Union[str, List[str]]] = None,
+        prompt: str | list[str],
+        negative_prompt: str | list[str] | None = None,
         num_inference_steps: int = 100,
         guidance_scale: float = 4.0,
         num_images_per_prompt: int = 1,
@@ -212,24 +212,24 @@ class KandinskyV22CombinedPipeline(DiffusionPipeline):
         width: int = 512,
         prior_guidance_scale: float = 4.0,
         prior_num_inference_steps: int = 25,
-        generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
-        latents: Optional[torch.Tensor] = None,
-        output_type: Optional[str] = "pil",
-        callback: Optional[Callable[[int, int, torch.Tensor], None]] = None,
+        generator: torch.Generator | list[torch.Generator] | None = None,
+        latents: torch.Tensor | None = None,
+        output_type: str | None = "pil",
+        callback: Callable[[int, int, torch.Tensor], None] | None = None,
         callback_steps: int = 1,
         return_dict: bool = True,
-        prior_callback_on_step_end: Optional[Callable[[int, int, Dict], None]] = None,
-        prior_callback_on_step_end_tensor_inputs: List[str] = ["latents"],
-        callback_on_step_end: Optional[Callable[[int, int, Dict], None]] = None,
-        callback_on_step_end_tensor_inputs: List[str] = ["latents"],
+        prior_callback_on_step_end: Callable[[int, int], None] | None = None,
+        prior_callback_on_step_end_tensor_inputs: list[str] = ["latents"],
+        callback_on_step_end: Callable[[int, int], None] | None = None,
+        callback_on_step_end_tensor_inputs: list[str] = ["latents"],
     ):
         """
         Function invoked when calling the pipeline for generation.
 
         Args:
-            prompt (`str` or `List[str]`):
+            prompt (`str` or `list[str]`):
                 The prompt or prompts to guide the image generation.
-            negative_prompt (`str` or `List[str]`, *optional*):
+            negative_prompt (`str` or `list[str]`, *optional*):
                 The prompt or prompts not to guide the image generation. Ignored when not using guidance (i.e., ignored
                 if `guidance_scale` is less than `1`).
             num_images_per_prompt (`int`, *optional*, defaults to 1):
@@ -256,7 +256,7 @@ class KandinskyV22CombinedPipeline(DiffusionPipeline):
                 of [Imagen Paper](https://huggingface.co/papers/2205.11487). Guidance scale is enabled by setting
                 `guidance_scale > 1`. Higher guidance scale encourages to generate images that are closely linked to
                 the text `prompt`, usually at the expense of lower image quality.
-            generator (`torch.Generator` or `List[torch.Generator]`, *optional*):
+            generator (`torch.Generator` or `list[torch.Generator]`, *optional*):
                 One or a list of [torch generator(s)](https://pytorch.org/docs/stable/generated/torch.Generator.html)
                 to make generation deterministic.
             latents (`torch.Tensor`, *optional*):
@@ -272,7 +272,7 @@ class KandinskyV22CombinedPipeline(DiffusionPipeline):
                 A function that calls at the end of each denoising steps during the inference of the prior pipeline.
                 The function is called with the following arguments: `prior_callback_on_step_end(self:
                 DiffusionPipeline, step: int, timestep: int, callback_kwargs: Dict)`.
-            prior_callback_on_step_end_tensor_inputs (`List`, *optional*):
+            prior_callback_on_step_end_tensor_inputs (`list`, *optional*):
                 The list of tensor inputs for the `prior_callback_on_step_end` function. The tensors specified in the
                 list will be passed as `callback_kwargs` argument. You will only be able to include variables listed in
                 the `._callback_tensor_inputs` attribute of your prior pipeline class.
@@ -281,7 +281,7 @@ class KandinskyV22CombinedPipeline(DiffusionPipeline):
                 The function is called with the following arguments: `callback_on_step_end(self: DiffusionPipeline,
                 step: int, timestep: int, callback_kwargs: Dict)`. `callback_kwargs` will include a list of all tensors
                 as specified by `callback_on_step_end_tensor_inputs`.
-            callback_on_step_end_tensor_inputs (`List`, *optional*):
+            callback_on_step_end_tensor_inputs (`list`, *optional*):
                 The list of tensor inputs for the `callback_on_step_end` function. The tensors specified in the list
                 will be passed as `callback_kwargs` argument. You will only be able to include variables listed in the
                 `._callback_tensor_inputs` attribute of your pipeline class.
@@ -340,7 +340,7 @@ class KandinskyV22Img2ImgCombinedPipeline(DiffusionPipeline):
     library implements for all the pipelines (such as downloading or saving, running on a particular device, etc.)
 
     Args:
-        scheduler (Union[`DDIMScheduler`,`DDPMScheduler`]):
+        scheduler (`DDIMScheduler` | `DDPMScheduler`):
             A scheduler to be used in combination with `unet` to generate image latents.
         unet ([`UNet2DConditionModel`]):
             Conditional U-Net architecture to denoise the image embedding.
@@ -404,10 +404,10 @@ class KandinskyV22Img2ImgCombinedPipeline(DiffusionPipeline):
             movq=movq,
         )
 
-    def enable_xformers_memory_efficient_attention(self, attention_op: Optional[Callable] = None):
+    def enable_xformers_memory_efficient_attention(self, attention_op: Callable | None = None):
         self.decoder_pipe.enable_xformers_memory_efficient_attention(attention_op)
 
-    def enable_model_cpu_offload(self, gpu_id: Optional[int] = None, device: Union[torch.device, str] = None):
+    def enable_model_cpu_offload(self, gpu_id: int | None = None, device: torch.device | str = None):
         r"""
         Offloads all models to CPU using accelerate, reducing memory usage with a low impact on performance. Compared
         to `enable_sequential_cpu_offload`, this method moves one whole model at a time to the GPU when its `forward`
@@ -417,7 +417,7 @@ class KandinskyV22Img2ImgCombinedPipeline(DiffusionPipeline):
         self.prior_pipe.enable_model_cpu_offload(gpu_id=gpu_id, device=device)
         self.decoder_pipe.enable_model_cpu_offload(gpu_id=gpu_id, device=device)
 
-    def enable_sequential_cpu_offload(self, gpu_id: Optional[int] = None, device: Union[torch.device, str] = None):
+    def enable_sequential_cpu_offload(self, gpu_id: int | None = None, device: torch.device | str = None):
         r"""
         Offloads all models to CPU using accelerate, significantly reducing memory usage. When called, unet,
         text_encoder, vae and safety checker have their state dicts saved to CPU and then are moved to a
@@ -441,9 +441,9 @@ class KandinskyV22Img2ImgCombinedPipeline(DiffusionPipeline):
     @replace_example_docstring(IMAGE2IMAGE_EXAMPLE_DOC_STRING)
     def __call__(
         self,
-        prompt: Union[str, List[str]],
-        image: Union[torch.Tensor, PIL.Image.Image, List[torch.Tensor], List[PIL.Image.Image]],
-        negative_prompt: Optional[Union[str, List[str]]] = None,
+        prompt: str | list[str],
+        image: torch.Tensor | PIL.Image.Image | list[torch.Tensor] | list[PIL.Image.Image],
+        negative_prompt: str | list[str] | None = None,
         num_inference_steps: int = 100,
         guidance_scale: float = 4.0,
         strength: float = 0.3,
@@ -452,28 +452,28 @@ class KandinskyV22Img2ImgCombinedPipeline(DiffusionPipeline):
         width: int = 512,
         prior_guidance_scale: float = 4.0,
         prior_num_inference_steps: int = 25,
-        generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
-        latents: Optional[torch.Tensor] = None,
-        output_type: Optional[str] = "pil",
-        callback: Optional[Callable[[int, int, torch.Tensor], None]] = None,
+        generator: torch.Generator | list[torch.Generator] | None = None,
+        latents: torch.Tensor | None = None,
+        output_type: str | None = "pil",
+        callback: Callable[[int, int, torch.Tensor], None] | None = None,
         callback_steps: int = 1,
         return_dict: bool = True,
-        prior_callback_on_step_end: Optional[Callable[[int, int, Dict], None]] = None,
-        prior_callback_on_step_end_tensor_inputs: List[str] = ["latents"],
-        callback_on_step_end: Optional[Callable[[int, int, Dict], None]] = None,
-        callback_on_step_end_tensor_inputs: List[str] = ["latents"],
+        prior_callback_on_step_end: Callable[[int, int], None] | None = None,
+        prior_callback_on_step_end_tensor_inputs: list[str] = ["latents"],
+        callback_on_step_end: Callable[[int, int], None] | None = None,
+        callback_on_step_end_tensor_inputs: list[str] = ["latents"],
     ):
         """
         Function invoked when calling the pipeline for generation.
 
         Args:
-            prompt (`str` or `List[str]`):
+            prompt (`str` or `list[str]`):
                 The prompt or prompts to guide the image generation.
-            image (`torch.Tensor`, `PIL.Image.Image`, `np.ndarray`, `List[torch.Tensor]`, `List[PIL.Image.Image]`, or `List[np.ndarray]`):
+            image (`torch.Tensor`, `PIL.Image.Image`, `np.ndarray`, `list[torch.Tensor]`, `list[PIL.Image.Image]`, or `list[np.ndarray]`):
                 `Image`, or tensor representing an image batch, that will be used as the starting point for the
                 process. Can also accept image latents as `image`, if passing latents directly, it will not be encoded
                 again.
-            negative_prompt (`str` or `List[str]`, *optional*):
+            negative_prompt (`str` or `list[str]`, *optional*):
                 The prompt or prompts not to guide the image generation. Ignored when not using guidance (i.e., ignored
                 if `guidance_scale` is less than `1`).
             num_images_per_prompt (`int`, *optional*, defaults to 1):
@@ -506,7 +506,7 @@ class KandinskyV22Img2ImgCombinedPipeline(DiffusionPipeline):
             prior_num_inference_steps (`int`, *optional*, defaults to 100):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
                 expense of slower inference.
-            generator (`torch.Generator` or `List[torch.Generator]`, *optional*):
+            generator (`torch.Generator` or `list[torch.Generator]`, *optional*):
                 One or a list of [torch generator(s)](https://pytorch.org/docs/stable/generated/torch.Generator.html)
                 to make generation deterministic.
             latents (`torch.Tensor`, *optional*):
@@ -589,7 +589,7 @@ class KandinskyV22InpaintCombinedPipeline(DiffusionPipeline):
     library implements for all the pipelines (such as downloading or saving, running on a particular device, etc.)
 
     Args:
-        scheduler (Union[`DDIMScheduler`,`DDPMScheduler`]):
+        scheduler (`DDIMScheduler` | `DDPMScheduler`):
             A scheduler to be used in combination with `unet` to generate image latents.
         unet ([`UNet2DConditionModel`]):
             Conditional U-Net architecture to denoise the image embedding.
@@ -653,10 +653,10 @@ class KandinskyV22InpaintCombinedPipeline(DiffusionPipeline):
             movq=movq,
         )
 
-    def enable_xformers_memory_efficient_attention(self, attention_op: Optional[Callable] = None):
+    def enable_xformers_memory_efficient_attention(self, attention_op: Callable | None = None):
         self.decoder_pipe.enable_xformers_memory_efficient_attention(attention_op)
 
-    def enable_sequential_cpu_offload(self, gpu_id: Optional[int] = None, device: Union[torch.device, str] = None):
+    def enable_sequential_cpu_offload(self, gpu_id: int | None = None, device: torch.device | str = None):
         r"""
         Offloads all models to CPU using accelerate, significantly reducing memory usage. When called, unet,
         text_encoder, vae and safety checker have their state dicts saved to CPU and then are moved to a
@@ -680,10 +680,10 @@ class KandinskyV22InpaintCombinedPipeline(DiffusionPipeline):
     @replace_example_docstring(INPAINT_EXAMPLE_DOC_STRING)
     def __call__(
         self,
-        prompt: Union[str, List[str]],
-        image: Union[torch.Tensor, PIL.Image.Image, List[torch.Tensor], List[PIL.Image.Image]],
-        mask_image: Union[torch.Tensor, PIL.Image.Image, List[torch.Tensor], List[PIL.Image.Image]],
-        negative_prompt: Optional[Union[str, List[str]]] = None,
+        prompt: str | list[str],
+        image: torch.Tensor | PIL.Image.Image | list[torch.Tensor] | list[PIL.Image.Image],
+        mask_image: torch.Tensor | PIL.Image.Image | list[torch.Tensor] | list[PIL.Image.Image],
+        negative_prompt: str | list[str] | None = None,
         num_inference_steps: int = 100,
         guidance_scale: float = 4.0,
         num_images_per_prompt: int = 1,
@@ -691,23 +691,23 @@ class KandinskyV22InpaintCombinedPipeline(DiffusionPipeline):
         width: int = 512,
         prior_guidance_scale: float = 4.0,
         prior_num_inference_steps: int = 25,
-        generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
-        latents: Optional[torch.Tensor] = None,
-        output_type: Optional[str] = "pil",
+        generator: torch.Generator | list[torch.Generator] | None = None,
+        latents: torch.Tensor | None = None,
+        output_type: str | None = "pil",
         return_dict: bool = True,
-        prior_callback_on_step_end: Optional[Callable[[int, int, Dict], None]] = None,
-        prior_callback_on_step_end_tensor_inputs: List[str] = ["latents"],
-        callback_on_step_end: Optional[Callable[[int, int, Dict], None]] = None,
-        callback_on_step_end_tensor_inputs: List[str] = ["latents"],
+        prior_callback_on_step_end: Callable[[int, int], None] | None = None,
+        prior_callback_on_step_end_tensor_inputs: list[str] = ["latents"],
+        callback_on_step_end: Callable[[int, int], None] | None = None,
+        callback_on_step_end_tensor_inputs: list[str] = ["latents"],
         **kwargs,
     ):
         """
         Function invoked when calling the pipeline for generation.
 
         Args:
-            prompt (`str` or `List[str]`):
+            prompt (`str` or `list[str]`):
                 The prompt or prompts to guide the image generation.
-            image (`torch.Tensor`, `PIL.Image.Image`, `np.ndarray`, `List[torch.Tensor]`, `List[PIL.Image.Image]`, or `List[np.ndarray]`):
+            image (`torch.Tensor`, `PIL.Image.Image`, `np.ndarray`, `list[torch.Tensor]`, `list[PIL.Image.Image]`, or `list[np.ndarray]`):
                 `Image`, or tensor representing an image batch, that will be used as the starting point for the
                 process. Can also accept image latents as `image`, if passing latents directly, it will not be encoded
                 again.
@@ -716,7 +716,7 @@ class KandinskyV22InpaintCombinedPipeline(DiffusionPipeline):
                 black pixels will be preserved. If `mask_image` is a PIL image, it will be converted to a single
                 channel (luminance) before use. If it's a tensor, it should contain one color channel (L) instead of 3,
                 so the expected shape would be `(B, H, W, 1)`.
-            negative_prompt (`str` or `List[str]`, *optional*):
+            negative_prompt (`str` or `list[str]`, *optional*):
                 The prompt or prompts not to guide the image generation. Ignored when not using guidance (i.e., ignored
                 if `guidance_scale` is less than `1`).
             num_images_per_prompt (`int`, *optional*, defaults to 1):
@@ -743,7 +743,7 @@ class KandinskyV22InpaintCombinedPipeline(DiffusionPipeline):
             prior_num_inference_steps (`int`, *optional*, defaults to 100):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
                 expense of slower inference.
-            generator (`torch.Generator` or `List[torch.Generator]`, *optional*):
+            generator (`torch.Generator` or `list[torch.Generator]`, *optional*):
                 One or a list of [torch generator(s)](https://pytorch.org/docs/stable/generated/torch.Generator.html)
                 to make generation deterministic.
             latents (`torch.Tensor`, *optional*):
@@ -759,7 +759,7 @@ class KandinskyV22InpaintCombinedPipeline(DiffusionPipeline):
                 A function that calls at the end of each denoising steps during the inference. The function is called
                 with the following arguments: `prior_callback_on_step_end(self: DiffusionPipeline, step: int, timestep:
                 int, callback_kwargs: Dict)`.
-            prior_callback_on_step_end_tensor_inputs (`List`, *optional*):
+            prior_callback_on_step_end_tensor_inputs (`list`, *optional*):
                 The list of tensor inputs for the `prior_callback_on_step_end` function. The tensors specified in the
                 list will be passed as `callback_kwargs` argument. You will only be able to include variables listed in
                 the `._callback_tensor_inputs` attribute of your pipeline class.
@@ -768,7 +768,7 @@ class KandinskyV22InpaintCombinedPipeline(DiffusionPipeline):
                 with the following arguments: `callback_on_step_end(self: DiffusionPipeline, step: int, timestep: int,
                 callback_kwargs: Dict)`. `callback_kwargs` will include a list of all tensors as specified by
                 `callback_on_step_end_tensor_inputs`.
-            callback_on_step_end_tensor_inputs (`List`, *optional*):
+            callback_on_step_end_tensor_inputs (`list`, *optional*):
                 The list of tensor inputs for the `callback_on_step_end` function. The tensors specified in the list
                 will be passed as `callback_kwargs` argument. You will only be able to include variables listed in the
                 `._callback_tensor_inputs` attribute of your pipeline class.

@@ -282,6 +282,8 @@ class AudioLDM2PipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         text_inputs = text_inputs["input_ids"].to(torch_device)
 
         clap_prompt_embeds = audioldm_pipe.text_encoder.get_text_features(text_inputs)
+        if hasattr(clap_prompt_embeds, "pooler_output"):
+            clap_prompt_embeds = clap_prompt_embeds.pooler_output
         clap_prompt_embeds = clap_prompt_embeds[:, None, :]
 
         text_inputs = audioldm_pipe.tokenizer_2(
@@ -341,6 +343,8 @@ class AudioLDM2PipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             text_inputs = text_inputs["input_ids"].to(torch_device)
 
             clap_prompt_embeds = audioldm_pipe.text_encoder.get_text_features(text_inputs)
+            if hasattr(clap_prompt_embeds, "pooler_output"):
+                clap_prompt_embeds = clap_prompt_embeds.pooler_output
             clap_prompt_embeds = clap_prompt_embeds[:, None, :]
 
             text_inputs = audioldm_pipe.tokenizer_2(

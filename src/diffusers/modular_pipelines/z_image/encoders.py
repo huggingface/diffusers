@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import List, Optional, Union
 
 import PIL
 import torch
@@ -37,10 +36,10 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 def get_qwen_prompt_embeds(
     text_encoder: Qwen3Model,
     tokenizer: Qwen2Tokenizer,
-    prompt: Union[str, List[str]],
+    prompt: str | list[str],
     device: torch.device,
     max_sequence_length: int = 512,
-) -> List[torch.Tensor]:
+) -> list[torch.Tensor]:
     prompt = [prompt] if isinstance(prompt, str) else prompt
 
     for i, prompt_item in enumerate(prompt):
@@ -82,7 +81,7 @@ def get_qwen_prompt_embeds(
 
 # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_img2img.retrieve_latents
 def retrieve_latents(
-    encoder_output: torch.Tensor, generator: Optional[torch.Generator] = None, sample_mode: str = "sample"
+    encoder_output: torch.Tensor, generator: torch.Generator | None = None, sample_mode: str = "sample"
 ):
     if hasattr(encoder_output, "latent_dist") and sample_mode == "sample":
         return encoder_output.latent_dist.sample(generator)
@@ -134,7 +133,7 @@ class ZImageTextEncoderStep(ModularPipelineBlocks):
         return "Text Encoder step that generate text_embeddings to guide the video generation"
 
     @property
-    def expected_components(self) -> List[ComponentSpec]:
+    def expected_components(self) -> list[ComponentSpec]:
         return [
             ComponentSpec("text_encoder", Qwen3Model),
             ComponentSpec("tokenizer", Qwen2Tokenizer),
@@ -147,7 +146,7 @@ class ZImageTextEncoderStep(ModularPipelineBlocks):
         ]
 
     @property
-    def inputs(self) -> List[InputParam]:
+    def inputs(self) -> list[InputParam]:
         return [
             InputParam("prompt"),
             InputParam("negative_prompt"),
@@ -155,17 +154,17 @@ class ZImageTextEncoderStep(ModularPipelineBlocks):
         ]
 
     @property
-    def intermediate_outputs(self) -> List[OutputParam]:
+    def intermediate_outputs(self) -> list[OutputParam]:
         return [
             OutputParam(
                 "prompt_embeds",
-                type_hint=List[torch.Tensor],
+                type_hint=list[torch.Tensor],
                 kwargs_type="denoiser_input_fields",
                 description="text embeddings used to guide the image generation",
             ),
             OutputParam(
                 "negative_prompt_embeds",
-                type_hint=List[torch.Tensor],
+                type_hint=list[torch.Tensor],
                 kwargs_type="denoiser_input_fields",
                 description="negative text embeddings used to guide the image generation",
             ),
@@ -182,22 +181,22 @@ class ZImageTextEncoderStep(ModularPipelineBlocks):
     def encode_prompt(
         components,
         prompt: str,
-        device: Optional[torch.device] = None,
+        device: torch.device | None = None,
         prepare_unconditional_embeds: bool = True,
-        negative_prompt: Optional[str] = None,
+        negative_prompt: str | None = None,
         max_sequence_length: int = 512,
     ):
         r"""
         Encodes the prompt into text encoder hidden states.
 
         Args:
-            prompt (`str` or `List[str]`, *optional*):
+            prompt (`str` or `list[str]`, *optional*):
                 prompt to be encoded
             device: (`torch.device`):
                 torch device
             prepare_unconditional_embeds (`bool`):
                 whether to use prepare unconditional embeddings or not
-            negative_prompt (`str` or `List[str]`, *optional*):
+            negative_prompt (`str` or `list[str]`, *optional*):
                 The prompt or prompts not to guide the image generation. If not defined, one has to pass
                 `negative_prompt_embeds` instead. Ignored when not using guidance (i.e., ignored if `guidance_scale` is
                 less than `1`).
@@ -278,7 +277,7 @@ class ZImageVaeImageEncoderStep(ModularPipelineBlocks):
         return "Vae Image Encoder step that generate condition_latents based on image to guide the image generation"
 
     @property
-    def expected_components(self) -> List[ComponentSpec]:
+    def expected_components(self) -> list[ComponentSpec]:
         return [
             ComponentSpec("vae", AutoencoderKL),
             ComponentSpec(
@@ -290,7 +289,7 @@ class ZImageVaeImageEncoderStep(ModularPipelineBlocks):
         ]
 
     @property
-    def inputs(self) -> List[InputParam]:
+    def inputs(self) -> list[InputParam]:
         return [
             InputParam("image", type_hint=PIL.Image.Image, required=True),
             InputParam("height"),
@@ -299,7 +298,7 @@ class ZImageVaeImageEncoderStep(ModularPipelineBlocks):
         ]
 
     @property
-    def intermediate_outputs(self) -> List[OutputParam]:
+    def intermediate_outputs(self) -> list[OutputParam]:
         return [
             OutputParam(
                 "image_latents",

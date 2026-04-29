@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 from dataclasses import dataclass
-from typing import Optional, Tuple
 
 import numpy as np
 import torch
@@ -54,7 +53,7 @@ class DecoderOutput(BaseOutput):
     """
 
     sample: torch.Tensor
-    commit_loss: Optional[torch.FloatTensor] = None
+    commit_loss: torch.FloatTensor | None = None
 
 
 class Encoder(nn.Module):
@@ -66,10 +65,10 @@ class Encoder(nn.Module):
             The number of input channels.
         out_channels (`int`, *optional*, defaults to 3):
             The number of output channels.
-        down_block_types (`Tuple[str, ...]`, *optional*, defaults to `("DownEncoderBlock2D",)`):
+        down_block_types (`tuple[str, ...]`, *optional*, defaults to `("DownEncoderBlock2D",)`):
             The types of down blocks to use. See `~diffusers.models.unet_2d_blocks.get_down_block` for available
             options.
-        block_out_channels (`Tuple[int, ...]`, *optional*, defaults to `(64,)`):
+        block_out_channels (`tuple[int, ...]`, *optional*, defaults to `(64,)`):
             The number of output channels for each block.
         layers_per_block (`int`, *optional*, defaults to 2):
             The number of layers per block.
@@ -85,8 +84,8 @@ class Encoder(nn.Module):
         self,
         in_channels: int = 3,
         out_channels: int = 3,
-        down_block_types: Tuple[str, ...] = ("DownEncoderBlock2D",),
-        block_out_channels: Tuple[int, ...] = (64,),
+        down_block_types: tuple[str, ...] = ("DownEncoderBlock2D",),
+        block_out_channels: tuple[int, ...] = (64,),
         layers_per_block: int = 2,
         norm_num_groups: int = 32,
         act_fn: str = "silu",
@@ -187,9 +186,9 @@ class Decoder(nn.Module):
             The number of input channels.
         out_channels (`int`, *optional*, defaults to 3):
             The number of output channels.
-        up_block_types (`Tuple[str, ...]`, *optional*, defaults to `("UpDecoderBlock2D",)`):
+        up_block_types (`tuple[str, ...]`, *optional*, defaults to `("UpDecoderBlock2D",)`):
             The types of up blocks to use. See `~diffusers.models.unet_2d_blocks.get_up_block` for available options.
-        block_out_channels (`Tuple[int, ...]`, *optional*, defaults to `(64,)`):
+        block_out_channels (`tuple[int, ...]`, *optional*, defaults to `(64,)`):
             The number of output channels for each block.
         layers_per_block (`int`, *optional*, defaults to 2):
             The number of layers per block.
@@ -205,8 +204,8 @@ class Decoder(nn.Module):
         self,
         in_channels: int = 3,
         out_channels: int = 3,
-        up_block_types: Tuple[str, ...] = ("UpDecoderBlock2D",),
-        block_out_channels: Tuple[int, ...] = (64,),
+        up_block_types: tuple[str, ...] = ("UpDecoderBlock2D",),
+        block_out_channels: tuple[int, ...] = (64,),
         layers_per_block: int = 2,
         norm_num_groups: int = 32,
         act_fn: str = "silu",
@@ -280,7 +279,7 @@ class Decoder(nn.Module):
     def forward(
         self,
         sample: torch.Tensor,
-        latent_embeds: Optional[torch.Tensor] = None,
+        latent_embeds: torch.Tensor | None = None,
     ) -> torch.Tensor:
         r"""The forward method of the `Decoder` class."""
 
@@ -402,9 +401,9 @@ class MaskConditionDecoder(nn.Module):
             The number of input channels.
         out_channels (`int`, *optional*, defaults to 3):
             The number of output channels.
-        up_block_types (`Tuple[str, ...]`, *optional*, defaults to `("UpDecoderBlock2D",)`):
+        up_block_types (`tuple[str, ...]`, *optional*, defaults to `("UpDecoderBlock2D",)`):
             The types of up blocks to use. See `~diffusers.models.unet_2d_blocks.get_up_block` for available options.
-        block_out_channels (`Tuple[int, ...]`, *optional*, defaults to `(64,)`):
+        block_out_channels (`tuple[int, ...]`, *optional*, defaults to `(64,)`):
             The number of output channels for each block.
         layers_per_block (`int`, *optional*, defaults to 2):
             The number of layers per block.
@@ -420,8 +419,8 @@ class MaskConditionDecoder(nn.Module):
         self,
         in_channels: int = 3,
         out_channels: int = 3,
-        up_block_types: Tuple[str, ...] = ("UpDecoderBlock2D",),
-        block_out_channels: Tuple[int, ...] = (64,),
+        up_block_types: tuple[str, ...] = ("UpDecoderBlock2D",),
+        block_out_channels: tuple[int, ...] = (64,),
         layers_per_block: int = 2,
         norm_num_groups: int = 32,
         act_fn: str = "silu",
@@ -500,9 +499,9 @@ class MaskConditionDecoder(nn.Module):
     def forward(
         self,
         z: torch.Tensor,
-        image: Optional[torch.Tensor] = None,
-        mask: Optional[torch.Tensor] = None,
-        latent_embeds: Optional[torch.Tensor] = None,
+        image: torch.Tensor | None = None,
+        mask: torch.Tensor | None = None,
+        latent_embeds: torch.Tensor | None = None,
     ) -> torch.Tensor:
         r"""The forward method of the `MaskConditionDecoder` class."""
         sample = z
@@ -633,7 +632,7 @@ class VectorQuantizer(nn.Module):
         back = torch.gather(used[None, :][inds.shape[0] * [0], :], 1, inds)
         return back.reshape(ishape)
 
-    def forward(self, z: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, Tuple]:
+    def forward(self, z: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, tuple]:
         # reshape z -> (batch, height, width, channel) and flatten
         z = z.permute(0, 2, 3, 1).contiguous()
         z_flattened = z.view(-1, self.vq_embed_dim)
@@ -667,7 +666,7 @@ class VectorQuantizer(nn.Module):
 
         return z_q, loss, (perplexity, min_encodings, min_encoding_indices)
 
-    def get_codebook_entry(self, indices: torch.LongTensor, shape: Tuple[int, ...]) -> torch.Tensor:
+    def get_codebook_entry(self, indices: torch.LongTensor, shape: tuple[int, ...]) -> torch.Tensor:
         # shape specifying (batch, height, width, channel)
         if self.remap is not None:
             indices = indices.reshape(shape[0], -1)  # add batch axis
@@ -698,7 +697,7 @@ class DiagonalGaussianDistribution(object):
                 self.mean, device=self.parameters.device, dtype=self.parameters.dtype
             )
 
-    def sample(self, generator: Optional[torch.Generator] = None) -> torch.Tensor:
+    def sample(self, generator: torch.Generator | None = None) -> torch.Tensor:
         # make sure sample is on the same device as the parameters and has same dtype
         sample = randn_tensor(
             self.mean.shape,
@@ -728,7 +727,7 @@ class DiagonalGaussianDistribution(object):
                     dim=[1, 2, 3],
                 )
 
-    def nll(self, sample: torch.Tensor, dims: Tuple[int, ...] = [1, 2, 3]) -> torch.Tensor:
+    def nll(self, sample: torch.Tensor, dims: tuple[int, ...] = [1, 2, 3]) -> torch.Tensor:
         if self.deterministic:
             return torch.Tensor([0.0])
         logtwopi = np.log(2.0 * np.pi)
@@ -745,7 +744,7 @@ class IdentityDistribution(object):
     def __init__(self, parameters: torch.Tensor):
         self.parameters = parameters
 
-    def sample(self, generator: Optional[torch.Generator] = None) -> torch.Tensor:
+    def sample(self, generator: torch.Generator | None = None) -> torch.Tensor:
         return self.parameters
 
     def mode(self) -> torch.Tensor:
@@ -761,10 +760,10 @@ class EncoderTiny(nn.Module):
             The number of input channels.
         out_channels (`int`):
             The number of output channels.
-        num_blocks (`Tuple[int, ...]`):
+        num_blocks (`tuple[int, ...]`):
             Each value of the tuple represents a Conv2d layer followed by `value` number of `AutoencoderTinyBlock`'s to
             use.
-        block_out_channels (`Tuple[int, ...]`):
+        block_out_channels (`tuple[int, ...]`):
             The number of output channels for each block.
         act_fn (`str`):
             The activation function to use. See `~diffusers.models.activations.get_activation` for available options.
@@ -774,8 +773,8 @@ class EncoderTiny(nn.Module):
         self,
         in_channels: int,
         out_channels: int,
-        num_blocks: Tuple[int, ...],
-        block_out_channels: Tuple[int, ...],
+        num_blocks: tuple[int, ...],
+        block_out_channels: tuple[int, ...],
         act_fn: str,
     ):
         super().__init__()
@@ -827,10 +826,10 @@ class DecoderTiny(nn.Module):
             The number of input channels.
         out_channels (`int`):
             The number of output channels.
-        num_blocks (`Tuple[int, ...]`):
+        num_blocks (`tuple[int, ...]`):
             Each value of the tuple represents a Conv2d layer followed by `value` number of `AutoencoderTinyBlock`'s to
             use.
-        block_out_channels (`Tuple[int, ...]`):
+        block_out_channels (`tuple[int, ...]`):
             The number of output channels for each block.
         upsampling_scaling_factor (`int`):
             The scaling factor to use for upsampling.
@@ -842,8 +841,8 @@ class DecoderTiny(nn.Module):
         self,
         in_channels: int,
         out_channels: int,
-        num_blocks: Tuple[int, ...],
-        block_out_channels: Tuple[int, ...],
+        num_blocks: tuple[int, ...],
+        block_out_channels: tuple[int, ...],
         upsampling_scaling_factor: int,
         act_fn: str,
         upsample_fn: str,

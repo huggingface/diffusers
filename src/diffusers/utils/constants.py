@@ -34,6 +34,8 @@ ONNX_WEIGHTS_NAME = "model.onnx"
 SAFETENSORS_WEIGHTS_NAME = "diffusion_pytorch_model.safetensors"
 SAFE_WEIGHTS_INDEX_NAME = "diffusion_pytorch_model.safetensors.index.json"
 SAFETENSORS_FILE_EXTENSION = "safetensors"
+FLASHPACK_WEIGHTS_NAME = "model.flashpack"
+FLASHPACK_FILE_EXTENSION = "flashpack"
 GGUF_FILE_EXTENSION = "gguf"
 ONNX_EXTERNAL_WEIGHTS_NAME = "weights.pb"
 HUGGINGFACE_CO_RESOLVE_ENDPOINT = os.environ.get("HF_ENDPOINT", "https://huggingface.co")
@@ -73,3 +75,11 @@ DECODE_ENDPOINT_HUNYUAN_VIDEO = "https://o7ywnmrahorts457.us-east-1.aws.endpoint
 ENCODE_ENDPOINT_SD_V1 = "https://qc6479g0aac6qwy9.us-east-1.aws.endpoints.huggingface.cloud/"
 ENCODE_ENDPOINT_SD_XL = "https://xjqqhmyn62rog84g.us-east-1.aws.endpoints.huggingface.cloud/"
 ENCODE_ENDPOINT_FLUX = "https://ptccx55jz97f9zgo.us-east-1.aws.endpoints.huggingface.cloud/"
+
+
+DIFFUSERS_LOAD_ID_FIELDS = [
+    "pretrained_model_name_or_path",
+    "subfolder",
+    "variant",
+    "revision",
+]

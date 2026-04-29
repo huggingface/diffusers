@@ -14,7 +14,7 @@
 # limitations under the License.
 
 import inspect
-from typing import Callable, Dict, List, Optional, Union
+from typing import Callable
 
 import numpy as np
 import torch
@@ -228,10 +228,10 @@ def resize_mask(mask, latent, process_first_frame_only=True):
 # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.retrieve_timesteps
 def retrieve_timesteps(
     scheduler,
-    num_inference_steps: Optional[int] = None,
-    device: Optional[Union[str, torch.device]] = None,
-    timesteps: Optional[List[int]] = None,
-    sigmas: Optional[List[float]] = None,
+    num_inference_steps: int | None = None,
+    device: str | torch.device | None = None,
+    timesteps: list[int] | None = None,
+    sigmas: list[float] | None = None,
     **kwargs,
 ):
     r"""
@@ -246,15 +246,15 @@ def retrieve_timesteps(
             must be `None`.
         device (`str` or `torch.device`, *optional*):
             The device to which the timesteps should be moved to. If `None`, the timesteps are not moved.
-        timesteps (`List[int]`, *optional*):
+        timesteps (`list[int]`, *optional*):
             Custom timesteps used to override the timestep spacing strategy of the scheduler. If `timesteps` is passed,
             `num_inference_steps` and `sigmas` must be `None`.
-        sigmas (`List[float]`, *optional*):
+        sigmas (`list[float]`, *optional*):
             Custom sigmas used to override the timestep spacing strategy of the scheduler. If `sigmas` is passed,
             `num_inference_steps` and `timesteps` must be `None`.
 
     Returns:
-        `Tuple[torch.Tensor, int]`: A tuple where the first element is the timestep schedule from the scheduler and the
+        `tuple[torch.Tensor, int]`: A tuple where the first element is the timestep schedule from the scheduler and the
         second element is the number of inference steps.
     """
     if timesteps is not None and sigmas is not None:
@@ -297,9 +297,9 @@ class EasyAnimateControlPipeline(DiffusionPipeline):
     Args:
         vae ([`AutoencoderKLMagvit`]):
             Variational Auto-Encoder (VAE) Model to encode and decode video to and from latent representations.
-        text_encoder (Optional[`~transformers.Qwen2VLForConditionalGeneration`, `~transformers.BertModel`]):
+        text_encoder (`~transformers.Qwen2VLForConditionalGeneration`, `~transformers.BertModel` | None):
             EasyAnimate uses [qwen2 vl](https://huggingface.co/Qwen/Qwen2-VL-7B-Instruct) in V5.1.
-        tokenizer (Optional[`~transformers.Qwen2Tokenizer`, `~transformers.BertTokenizer`]):
+        tokenizer (`~transformers.Qwen2Tokenizer`, `~transformers.BertTokenizer` | None):
             A `Qwen2Tokenizer` or `BertTokenizer` to tokenize text.
         transformer ([`EasyAnimateTransformer3DModel`]):
             The EasyAnimate model designed by EasyAnimate Team.
@@ -313,8 +313,8 @@ class EasyAnimateControlPipeline(DiffusionPipeline):
     def __init__(
         self,
         vae: AutoencoderKLMagvit,
-        text_encoder: Union[Qwen2VLForConditionalGeneration, BertModel],
-        tokenizer: Union[Qwen2Tokenizer, BertTokenizer],
+        text_encoder: Qwen2VLForConditionalGeneration | BertModel,
+        tokenizer: Qwen2Tokenizer | BertTokenizer,
         transformer: EasyAnimateTransformer3DModel,
         scheduler: FlowMatchEulerDiscreteScheduler,
     ):
@@ -351,23 +351,23 @@ class EasyAnimateControlPipeline(DiffusionPipeline):
     # Copied from diffusers.pipelines.easyanimate.pipeline_easyanimate.EasyAnimatePipeline.encode_prompt
     def encode_prompt(
         self,
-        prompt: Union[str, List[str]],
+        prompt: str | list[str],
         num_images_per_prompt: int = 1,
         do_classifier_free_guidance: bool = True,
-        negative_prompt: Optional[Union[str, List[str]]] = None,
-        prompt_embeds: Optional[torch.Tensor] = None,
-        negative_prompt_embeds: Optional[torch.Tensor] = None,
-        prompt_attention_mask: Optional[torch.Tensor] = None,
-        negative_prompt_attention_mask: Optional[torch.Tensor] = None,
-        device: Optional[torch.device] = None,
-        dtype: Optional[torch.dtype] = None,
+        negative_prompt: str | list[str] | None = None,
+        prompt_embeds: torch.Tensor | None = None,
+        negative_prompt_embeds: torch.Tensor | None = None,
+        prompt_attention_mask: torch.Tensor | None = None,
+        negative_prompt_attention_mask: torch.Tensor | None = None,
+        device: torch.device | None = None,
+        dtype: torch.dtype | None = None,
         max_sequence_length: int = 256,
     ):
         r"""
         Encodes the prompt into text encoder hidden states.
 
         Args:
-            prompt (`str` or `List[str]`, *optional*):
+            prompt (`str` or `list[str]`, *optional*):
                 prompt to be encoded
             device: (`torch.device`):
                 torch device
@@ -377,7 +377,7 @@ class EasyAnimateControlPipeline(DiffusionPipeline):
                 number of images that should be generated per prompt
             do_classifier_free_guidance (`bool`):
                 whether to use classifier free guidance or not
-            negative_prompt (`str` or `List[str]`, *optional*):
+            negative_prompt (`str` or `list[str]`, *optional*):
                 The prompt or prompts not to guide the image generation. If not defined, one has to pass
                 `negative_prompt_embeds` instead. Ignored when not using guidance (i.e., ignored if `guidance_scale` is
                 less than `1`).
@@ -671,38 +671,36 @@ class EasyAnimateControlPipeline(DiffusionPipeline):
     @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
         self,
-        prompt: Union[str, List[str]] = None,
-        num_frames: Optional[int] = 49,
-        height: Optional[int] = 512,
-        width: Optional[int] = 512,
-        control_video: Union[torch.FloatTensor] = None,
-        control_camera_video: Union[torch.FloatTensor] = None,
-        ref_image: Union[torch.FloatTensor] = None,
-        num_inference_steps: Optional[int] = 50,
-        guidance_scale: Optional[float] = 5.0,
-        negative_prompt: Optional[Union[str, List[str]]] = None,
-        num_images_per_prompt: Optional[int] = 1,
-        eta: Optional[float] = 0.0,
-        generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
-        latents: Optional[torch.Tensor] = None,
-        prompt_embeds: Optional[torch.Tensor] = None,
-        negative_prompt_embeds: Optional[torch.Tensor] = None,
-        prompt_attention_mask: Optional[torch.Tensor] = None,
-        negative_prompt_attention_mask: Optional[torch.Tensor] = None,
-        output_type: Optional[str] = "pil",
+        prompt: str | list[str] = None,
+        num_frames: int | None = 49,
+        height: int | None = 512,
+        width: int | None = 512,
+        control_video: torch.FloatTensor = None,
+        control_camera_video: torch.FloatTensor = None,
+        ref_image: torch.FloatTensor = None,
+        num_inference_steps: int | None = 50,
+        guidance_scale: float | None = 5.0,
+        negative_prompt: str | list[str] | None = None,
+        num_images_per_prompt: int | None = 1,
+        eta: float | None = 0.0,
+        generator: torch.Generator | list[torch.Generator] | None = None,
+        latents: torch.Tensor | None = None,
+        prompt_embeds: torch.Tensor | None = None,
+        negative_prompt_embeds: torch.Tensor | None = None,
+        prompt_attention_mask: torch.Tensor | None = None,
+        negative_prompt_attention_mask: torch.Tensor | None = None,
+        output_type: str | None = "pil",
         return_dict: bool = True,
-        callback_on_step_end: Optional[
-            Union[Callable[[int, int, Dict], None], PipelineCallback, MultiPipelineCallbacks]
-        ] = None,
-        callback_on_step_end_tensor_inputs: List[str] = ["latents"],
+        callback_on_step_end: Callable[[int, int], None] | PipelineCallback | MultiPipelineCallbacks | None = None,
+        callback_on_step_end_tensor_inputs: list[str] = ["latents"],
         guidance_rescale: float = 0.0,
-        timesteps: Optional[List[int]] = None,
+        timesteps: list[int] | None = None,
     ):
         r"""
         Generates images or video using the EasyAnimate pipeline based on the provided prompts.
 
         Examples:
-            prompt (`str` or `List[str]`, *optional*):
+            prompt (`str` or `list[str]`, *optional*):
                 Text prompts to guide the image or video generation. If not provided, use `prompt_embeds` instead.
             num_frames (`int`, *optional*):
                 Length of the generated video (in frames).
@@ -715,13 +713,13 @@ class EasyAnimateControlPipeline(DiffusionPipeline):
                 down inference.
             guidance_scale (`float`, *optional*, defaults to 5.0):
                 Encourages the model to align outputs with prompts. A higher value may decrease image quality.
-            negative_prompt (`str` or `List[str]`, *optional*):
+            negative_prompt (`str` or `list[str]`, *optional*):
                 Prompts indicating what to exclude in generation. If not specified, use `negative_prompt_embeds`.
             num_images_per_prompt (`int`, *optional*, defaults to 1):
                 Number of images to generate for each prompt.
             eta (`float`, *optional*, defaults to 0.0):
                 Applies to DDIM scheduling. Controlled by the eta parameter from the related literature.
-            generator (`torch.Generator` or `List[torch.Generator]`, *optional*):
+            generator (`torch.Generator` or `list[torch.Generator]`, *optional*):
                 A generator to ensure reproducibility in image generation.
             latents (`torch.Tensor`, *optional*):
                 Predefined latent tensors to condition generation.
@@ -739,7 +737,7 @@ class EasyAnimateControlPipeline(DiffusionPipeline):
                 If `True`, returns a structured output. Otherwise returns a simple tuple.
             callback_on_step_end (`Callable`, *optional*):
                 Functions called at the end of each denoising step.
-            callback_on_step_end_tensor_inputs (`List[str]`, *optional*):
+            callback_on_step_end_tensor_inputs (`list[str]`, *optional*):
                 Tensor names to be included in callback function calls.
             guidance_rescale (`float`, *optional*, defaults to 0.0):
                 Adjusts noise levels based on guidance scale.

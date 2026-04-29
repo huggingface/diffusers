@@ -231,7 +231,7 @@ images = generate(prompt, neg_prompt)
 print(f"First inference in {time.time() - start}")
 ```
 
-From this point forward, any calls to generate should result in a faster inference
+From this point forward, Any calls to generate should result in a faster inference
 time and it won't change.
 
 ```python

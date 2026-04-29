@@ -17,7 +17,7 @@
 
 import math
 from dataclasses import dataclass
-from typing import List, Literal, Optional, Tuple, Union
+from typing import Literal
 
 import numpy as np
 import torch
@@ -44,7 +44,7 @@ class DDIMParallelSchedulerOutput(BaseOutput):
     """
 
     prev_sample: torch.Tensor
-    pred_original_sample: Optional[torch.Tensor] = None
+    pred_original_sample: torch.Tensor | None = None
 
 
 # Copied from diffusers.schedulers.scheduling_ddpm.betas_for_alpha_bar
@@ -202,8 +202,8 @@ class DDIMParallelScheduler(SchedulerMixin, ConfigMixin):
         num_train_timesteps: int = 1000,
         beta_start: float = 0.0001,
         beta_end: float = 0.02,
-        beta_schedule: Literal["linear", "scaled_linear", "squaredcos_cap_v2"] = "linear",
-        trained_betas: Optional[Union[np.ndarray, List[float]]] = None,
+        beta_schedule: str = "linear",
+        trained_betas: np.ndarray | list[float] | None = None,
         clip_sample: bool = True,
         set_alpha_to_one: bool = True,
         steps_offset: int = 0,
@@ -249,7 +249,7 @@ class DDIMParallelScheduler(SchedulerMixin, ConfigMixin):
         self.timesteps = torch.from_numpy(np.arange(0, num_train_timesteps)[::-1].copy().astype(np.int64))
 
     # Copied from diffusers.schedulers.scheduling_ddim.DDIMScheduler.scale_model_input
-    def scale_model_input(self, sample: torch.Tensor, timestep: Optional[int] = None) -> torch.Tensor:
+    def scale_model_input(self, sample: torch.Tensor, timestep: int | None = None) -> torch.Tensor:
         """
         Ensures interchangeability with schedulers that need to scale the denoising model input depending on the
         current timestep.
@@ -266,7 +266,7 @@ class DDIMParallelScheduler(SchedulerMixin, ConfigMixin):
         """
         return sample
 
-    def _get_variance(self, timestep: int, prev_timestep: Optional[int] = None) -> torch.Tensor:
+    def _get_variance(self, timestep: int, prev_timestep: int | None = None) -> torch.Tensor:
         if prev_timestep is None:
             prev_timestep = timestep - self.config.num_train_timesteps // self.num_inference_steps
 
@@ -335,14 +335,14 @@ class DDIMParallelScheduler(SchedulerMixin, ConfigMixin):
         return sample
 
     # Copied from diffusers.schedulers.scheduling_ddim.DDIMScheduler.set_timesteps
-    def set_timesteps(self, num_inference_steps: int, device: Union[str, torch.device] = None) -> None:
+    def set_timesteps(self, num_inference_steps: int, device: str | torch.device = None) -> None:
         """
         Sets the discrete timesteps used for the diffusion chain (to be run before inference).
 
         Args:
             num_inference_steps (`int`):
                 The number of diffusion steps used when generating samples with a pre-trained model.
-            device (`Union[str, torch.device]`, *optional*):
+            device (`str | torch.device`, *optional*):
                 The device to use for the timesteps.
 
         Raises:
@@ -392,10 +392,10 @@ class DDIMParallelScheduler(SchedulerMixin, ConfigMixin):
         sample: torch.Tensor,
         eta: float = 0.0,
         use_clipped_model_output: bool = False,
-        generator: Optional[torch.Generator] = None,
-        variance_noise: Optional[torch.Tensor] = None,
+        generator: torch.Generator | None = None,
+        variance_noise: torch.Tensor | None = None,
         return_dict: bool = True,
-    ) -> Union[DDIMParallelSchedulerOutput, Tuple]:
+    ) -> DDIMParallelSchedulerOutput | tuple:
         """
         Predict the sample at the previous timestep by reversing the SDE. Core function to propagate the diffusion
         process from the learned model outputs (most often the predicted noise).

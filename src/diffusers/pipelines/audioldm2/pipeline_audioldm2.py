@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import inspect
-from typing import Any, Callable, Dict, List, Optional, Union
+from typing import Any, Callable
 
 import numpy as np
 import torch
@@ -196,11 +196,11 @@ class AudioLDM2Pipeline(DiffusionPipeline):
         self,
         vae: AutoencoderKL,
         text_encoder: ClapModel,
-        text_encoder_2: Union[T5EncoderModel, VitsModel],
+        text_encoder_2: T5EncoderModel | VitsModel,
         projection_model: AudioLDM2ProjectionModel,
         language_model: GPT2LMHeadModel,
-        tokenizer: Union[RobertaTokenizer, RobertaTokenizerFast],
-        tokenizer_2: Union[T5Tokenizer, T5TokenizerFast, VitsTokenizer],
+        tokenizer: RobertaTokenizer | RobertaTokenizerFast,
+        tokenizer_2: T5Tokenizer | T5TokenizerFast | VitsTokenizer,
         feature_extractor: ClapFeatureExtractor,
         unet: AudioLDM2UNet2DConditionModel,
         scheduler: KarrasDiffusionSchedulers,
@@ -251,7 +251,7 @@ class AudioLDM2Pipeline(DiffusionPipeline):
         )
         self.vae.disable_slicing()
 
-    def enable_model_cpu_offload(self, gpu_id: Optional[int] = None, device: Union[torch.device, str] = "cuda"):
+    def enable_model_cpu_offload(self, gpu_id: int | None = None, device: torch.device | str = "cuda"):
         r"""
         Offloads all models to CPU using accelerate, reducing memory usage with a low impact on performance. Compared
         to `enable_sequential_cpu_offload`, this method moves one whole model at a time to the GPU when its `forward`
@@ -316,7 +316,7 @@ class AudioLDM2Pipeline(DiffusionPipeline):
                 The sequence used as a prompt for the generation.
             max_new_tokens (`int`):
                 Number of new tokens to generate.
-            model_kwargs (`Dict[str, Any]`, *optional*):
+            model_kwargs (`dict[str, Any]`, *optional*):
                 Ad hoc parametrization of additional model-specific kwargs that will be forwarded to the `forward`
                 function of the model.
 
@@ -324,17 +324,18 @@ class AudioLDM2Pipeline(DiffusionPipeline):
             `inputs_embeds (`torch.Tensor` of shape `(batch_size, sequence_length, hidden_size)`):
                 The sequence of generated hidden-states.
         """
-        cache_position_kwargs = {}
-        if is_transformers_version("<", "4.52.1"):
-            cache_position_kwargs["input_ids"] = inputs_embeds
-        else:
-            cache_position_kwargs["seq_length"] = inputs_embeds.shape[0]
-            cache_position_kwargs["device"] = (
-                self.language_model.device if getattr(self, "language_model", None) is not None else self.device
-            )
-        cache_position_kwargs["model_kwargs"] = model_kwargs
         max_new_tokens = max_new_tokens if max_new_tokens is not None else self.language_model.config.max_new_tokens
-        model_kwargs = self.language_model._get_initial_cache_position(**cache_position_kwargs)
+        if hasattr(self.language_model, "_get_initial_cache_position"):
+            cache_position_kwargs = {}
+            if is_transformers_version("<", "4.52.1"):
+                cache_position_kwargs["input_ids"] = inputs_embeds
+            else:
+                cache_position_kwargs["seq_length"] = inputs_embeds.shape[0]
+                cache_position_kwargs["device"] = (
+                    self.language_model.device if getattr(self, "language_model", None) is not None else self.device
+                )
+            cache_position_kwargs["model_kwargs"] = model_kwargs
+            model_kwargs = self.language_model._get_initial_cache_position(**cache_position_kwargs)
 
         for _ in range(max_new_tokens):
             # prepare model inputs
@@ -361,21 +362,21 @@ class AudioLDM2Pipeline(DiffusionPipeline):
         do_classifier_free_guidance,
         transcription=None,
         negative_prompt=None,
-        prompt_embeds: Optional[torch.Tensor] = None,
-        negative_prompt_embeds: Optional[torch.Tensor] = None,
-        generated_prompt_embeds: Optional[torch.Tensor] = None,
-        negative_generated_prompt_embeds: Optional[torch.Tensor] = None,
-        attention_mask: Optional[torch.LongTensor] = None,
-        negative_attention_mask: Optional[torch.LongTensor] = None,
-        max_new_tokens: Optional[int] = None,
+        prompt_embeds: torch.Tensor | None = None,
+        negative_prompt_embeds: torch.Tensor | None = None,
+        generated_prompt_embeds: torch.Tensor | None = None,
+        negative_generated_prompt_embeds: torch.Tensor | None = None,
+        attention_mask: torch.LongTensor | None = None,
+        negative_attention_mask: torch.LongTensor | None = None,
+        max_new_tokens: int | None = None,
     ):
         r"""
         Encodes the prompt into text encoder hidden states.
 
         Args:
-            prompt (`str` or `List[str]`, *optional*):
+            prompt (`str` or `list[str]`, *optional*):
                 prompt to be encoded
-            transcription (`str` or `List[str]`):
+            transcription (`str` or `list[str]`):
                 transcription of text to speech
             device (`torch.device`):
                 torch device
@@ -383,7 +384,7 @@ class AudioLDM2Pipeline(DiffusionPipeline):
                 number of waveforms that should be generated per prompt
             do_classifier_free_guidance (`bool`):
                 whether to use classifier free guidance or not
-            negative_prompt (`str` or `List[str]`, *optional*):
+            negative_prompt (`str` or `list[str]`, *optional*):
                 The prompt or prompts not to guide the audio generation. If not defined, one has to pass
                 `negative_prompt_embeds` instead. Ignored when not using guidance (i.e., ignored if `guidance_scale` is
                 less than `1`).
@@ -502,6 +503,10 @@ class AudioLDM2Pipeline(DiffusionPipeline):
                         text_input_ids,
                         attention_mask=attention_mask,
                     )
+                    # Extract the pooler output if it's a BaseModelOutputWithPooling (Transformers v5+)
+                    # otherwise use it directly (Transformers v4)
+                    if hasattr(prompt_embeds, "pooler_output"):
+                        prompt_embeds = prompt_embeds.pooler_output
                     # append the seq-len dim: (bs, hidden_size) -> (bs, seq_len, hidden_size)
                     prompt_embeds = prompt_embeds[:, None, :]
                     # make sure that we attend to this single hidden-state
@@ -569,7 +574,7 @@ class AudioLDM2Pipeline(DiffusionPipeline):
 
         # get unconditional embeddings for classifier free guidance
         if do_classifier_free_guidance and negative_prompt_embeds is None:
-            uncond_tokens: List[str]
+            uncond_tokens: list[str]
             if negative_prompt is None:
                 uncond_tokens = [""] * batch_size
             elif type(prompt) is not type(negative_prompt):
@@ -610,6 +615,10 @@ class AudioLDM2Pipeline(DiffusionPipeline):
                         uncond_input_ids,
                         attention_mask=negative_attention_mask,
                     )
+                    # Extract the pooler output if it's a BaseModelOutputWithPooling (Transformers v5+)
+                    # otherwise use it directly (Transformers v4)
+                    if hasattr(negative_prompt_embeds, "pooler_output"):
+                        negative_prompt_embeds = negative_prompt_embeds.pooler_output
                     # append the seq-len dim: (bs, hidden_size) -> (bs, seq_len, hidden_size)
                     negative_prompt_embeds = negative_prompt_embeds[:, None, :]
                     # make sure that we attend to this single hidden-state
@@ -685,7 +694,7 @@ class AudioLDM2Pipeline(DiffusionPipeline):
 
         return prompt_embeds, attention_mask, generated_prompt_embeds
 
-    # Copied from diffusers.pipelines.audioldm.pipeline_audioldm.AudioLDMPipeline.mel_spectrogram_to_waveform
+    # Copied from diffusers.pipelines.deprecated.audioldm.pipeline_audioldm.AudioLDMPipeline.mel_spectrogram_to_waveform
     def mel_spectrogram_to_waveform(self, mel_spectrogram):
         if mel_spectrogram.dim() == 4:
             mel_spectrogram = mel_spectrogram.squeeze(1)
@@ -862,36 +871,36 @@ class AudioLDM2Pipeline(DiffusionPipeline):
     @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
         self,
-        prompt: Union[str, List[str]] = None,
-        transcription: Union[str, List[str]] = None,
-        audio_length_in_s: Optional[float] = None,
+        prompt: str | list[str] = None,
+        transcription: str | list[str] = None,
+        audio_length_in_s: float | None = None,
         num_inference_steps: int = 200,
         guidance_scale: float = 3.5,
-        negative_prompt: Optional[Union[str, List[str]]] = None,
-        num_waveforms_per_prompt: Optional[int] = 1,
+        negative_prompt: str | list[str] | None = None,
+        num_waveforms_per_prompt: int | None = 1,
         eta: float = 0.0,
-        generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
-        latents: Optional[torch.Tensor] = None,
-        prompt_embeds: Optional[torch.Tensor] = None,
-        negative_prompt_embeds: Optional[torch.Tensor] = None,
-        generated_prompt_embeds: Optional[torch.Tensor] = None,
-        negative_generated_prompt_embeds: Optional[torch.Tensor] = None,
-        attention_mask: Optional[torch.LongTensor] = None,
-        negative_attention_mask: Optional[torch.LongTensor] = None,
-        max_new_tokens: Optional[int] = None,
+        generator: torch.Generator | list[torch.Generator] | None = None,
+        latents: torch.Tensor | None = None,
+        prompt_embeds: torch.Tensor | None = None,
+        negative_prompt_embeds: torch.Tensor | None = None,
+        generated_prompt_embeds: torch.Tensor | None = None,
+        negative_generated_prompt_embeds: torch.Tensor | None = None,
+        attention_mask: torch.LongTensor | None = None,
+        negative_attention_mask: torch.LongTensor | None = None,
+        max_new_tokens: int | None = None,
         return_dict: bool = True,
-        callback: Optional[Callable[[int, int, torch.Tensor], None]] = None,
-        callback_steps: Optional[int] = 1,
-        cross_attention_kwargs: Optional[Dict[str, Any]] = None,
-        output_type: Optional[str] = "np",
+        callback: Callable[[int, int, torch.Tensor], None] | None = None,
+        callback_steps: int | None = 1,
+        cross_attention_kwargs: dict[str, Any] | None = None,
+        output_type: str | None = "np",
     ):
         r"""
         The call function to the pipeline for generation.
 
         Args:
-            prompt (`str` or `List[str]`, *optional*):
+            prompt (`str` or `list[str]`, *optional*):
                 The prompt or prompts to guide audio generation. If not defined, you need to pass `prompt_embeds`.
-            transcription (`str` or `List[str]`, *optional*):\
+            transcription (`str` or `list[str]`, *optional*):\
                 The transcript for text to speech.
             audio_length_in_s (`int`, *optional*, defaults to 10.24):
                 The length of the generated audio sample in seconds.
@@ -901,7 +910,7 @@ class AudioLDM2Pipeline(DiffusionPipeline):
             guidance_scale (`float`, *optional*, defaults to 3.5):
                 A higher guidance scale value encourages the model to generate audio that is closely linked to the text
                 `prompt` at the expense of lower sound quality. Guidance scale is enabled when `guidance_scale > 1`.
-            negative_prompt (`str` or `List[str]`, *optional*):
+            negative_prompt (`str` or `list[str]`, *optional*):
                 The prompt or prompts to guide what to not include in audio generation. If not defined, you need to
                 pass `negative_prompt_embeds` instead. Ignored when not using guidance (`guidance_scale < 1`).
             num_waveforms_per_prompt (`int`, *optional*, defaults to 1):
@@ -912,7 +921,7 @@ class AudioLDM2Pipeline(DiffusionPipeline):
             eta (`float`, *optional*, defaults to 0.0):
                 Corresponds to parameter eta (η) from the [DDIM](https://huggingface.co/papers/2010.02502) paper. Only
                 applies to the [`~schedulers.DDIMScheduler`], and is ignored in other schedulers.
-            generator (`torch.Generator` or `List[torch.Generator]`, *optional*):
+            generator (`torch.Generator` or `list[torch.Generator]`, *optional*):
                 A [`torch.Generator`](https://pytorch.org/docs/stable/generated/torch.Generator.html) to make
                 generation deterministic.
             latents (`torch.Tensor`, *optional*):

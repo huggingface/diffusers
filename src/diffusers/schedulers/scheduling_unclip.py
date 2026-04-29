@@ -14,7 +14,7 @@
 
 import math
 from dataclasses import dataclass
-from typing import Literal, Optional, Tuple, Union
+from typing import Literal
 
 import numpy as np
 import torch
@@ -41,7 +41,7 @@ class UnCLIPSchedulerOutput(BaseOutput):
     """
 
     prev_sample: torch.Tensor
-    pred_original_sample: Optional[torch.Tensor] = None
+    pred_original_sample: torch.Tensor | None = None
 
 
 # Copied from diffusers.schedulers.scheduling_ddpm.betas_for_alpha_bar
@@ -132,7 +132,7 @@ class UnCLIPScheduler(SchedulerMixin, ConfigMixin):
         num_train_timesteps: int = 1000,
         variance_type: str = "fixed_small_log",
         clip_sample: bool = True,
-        clip_sample_range: Optional[float] = 1.0,
+        clip_sample_range: float = 1.0,
         prediction_type: str = "epsilon",
         beta_schedule: str = "squaredcos_cap_v2",
     ):
@@ -154,7 +154,7 @@ class UnCLIPScheduler(SchedulerMixin, ConfigMixin):
 
         self.variance_type = variance_type
 
-    def scale_model_input(self, sample: torch.Tensor, timestep: Optional[int] = None) -> torch.Tensor:
+    def scale_model_input(self, sample: torch.Tensor, timestep: int | None = None) -> torch.Tensor:
         """
         Ensures interchangeability with schedulers that need to scale the denoising model input depending on the
         current timestep.
@@ -168,7 +168,7 @@ class UnCLIPScheduler(SchedulerMixin, ConfigMixin):
         """
         return sample
 
-    def set_timesteps(self, num_inference_steps: int, device: Union[str, torch.device] = None):
+    def set_timesteps(self, num_inference_steps: int, device: str | torch.device = None):
         """
         Sets the discrete timesteps used for the diffusion chain. Supporting function to be run before inference.
 
@@ -226,10 +226,10 @@ class UnCLIPScheduler(SchedulerMixin, ConfigMixin):
         model_output: torch.Tensor,
         timestep: int,
         sample: torch.Tensor,
-        prev_timestep: Optional[int] = None,
+        prev_timestep: int | None = None,
         generator=None,
         return_dict: bool = True,
-    ) -> Union[UnCLIPSchedulerOutput, Tuple]:
+    ) -> UnCLIPSchedulerOutput | tuple:
         """
         Predict the sample at the previous timestep by reversing the SDE. Core function to propagate the diffusion
         process from the learned model outputs (most often the predicted noise).

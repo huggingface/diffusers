@@ -13,7 +13,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Optional, Tuple, Union
 
 import torch
 import torch.nn as nn
@@ -48,7 +47,7 @@ class PerChannelRMSNorm(nn.Module):
         self.channel_dim = channel_dim
         self.eps = eps
 
-    def forward(self, x: torch.Tensor, channel_dim: Optional[int] = None) -> torch.Tensor:
+    def forward(self, x: torch.Tensor, channel_dim: int | None = None) -> torch.Tensor:
         """
         Apply RMS normalization along the configured dimension.
         """
@@ -66,9 +65,9 @@ class LTX2VideoCausalConv3d(nn.Module):
         self,
         in_channels: int,
         out_channels: int,
-        kernel_size: Union[int, Tuple[int, int, int]] = 3,
-        stride: Union[int, Tuple[int, int, int]] = 1,
-        dilation: Union[int, Tuple[int, int, int]] = 1,
+        kernel_size: int | tuple[int, int, int] = 3,
+        stride: int | tuple[int, int, int] = 1,
+        dilation: int | tuple[int, int, int] = 1,
         groups: int = 1,
         spatial_padding_mode: str = "zeros",
     ):
@@ -136,7 +135,7 @@ class LTX2VideoResnetBlock3d(nn.Module):
     def __init__(
         self,
         in_channels: int,
-        out_channels: Optional[int] = None,
+        out_channels: int | None = None,
         dropout: float = 0.0,
         eps: float = 1e-6,
         elementwise_affine: bool = False,
@@ -188,8 +187,8 @@ class LTX2VideoResnetBlock3d(nn.Module):
     def forward(
         self,
         inputs: torch.Tensor,
-        temb: Optional[torch.Tensor] = None,
-        generator: Optional[torch.Generator] = None,
+        temb: torch.Tensor | None = None,
+        generator: torch.Generator | None = None,
         causal: bool = True,
     ) -> torch.Tensor:
         hidden_states = inputs
@@ -238,12 +237,12 @@ class LTX2VideoResnetBlock3d(nn.Module):
 
 
 # Like LTX 1.0 LTXVideoDownsampler3d, but uses new causal Conv3d
-class LTXVideoDownsampler3d(nn.Module):
+class LTX2VideoDownsampler3d(nn.Module):
     def __init__(
         self,
         in_channels: int,
         out_channels: int,
-        stride: Union[int, Tuple[int, int, int]] = 1,
+        stride: int | tuple[int, int, int] = 1,
         spatial_padding_mode: str = "zeros",
     ) -> None:
         super().__init__()
@@ -286,11 +285,12 @@ class LTXVideoDownsampler3d(nn.Module):
 
 
 # Like LTX 1.0 LTXVideoUpsampler3d, but uses new causal Conv3d
-class LTXVideoUpsampler3d(nn.Module):
+class LTX2VideoUpsampler3d(nn.Module):
     def __init__(
         self,
         in_channels: int,
-        stride: Union[int, Tuple[int, int, int]] = 1,
+        out_channels: int | None = None,
+        stride: int | tuple[int, int, int] = 1,
         residual: bool = False,
         upscale_factor: int = 1,
         spatial_padding_mode: str = "zeros",
@@ -301,7 +301,8 @@ class LTXVideoUpsampler3d(nn.Module):
         self.residual = residual
         self.upscale_factor = upscale_factor
 
-        out_channels = (in_channels * stride[0] * stride[1] * stride[2]) // upscale_factor
+        out_channels = out_channels or in_channels
+        out_channels = (out_channels * stride[0] * stride[1] * stride[2]) // upscale_factor
 
         self.conv = LTX2VideoCausalConv3d(
             in_channels=in_channels,
@@ -366,7 +367,7 @@ class LTX2VideoDownBlock3D(nn.Module):
     def __init__(
         self,
         in_channels: int,
-        out_channels: Optional[int] = None,
+        out_channels: int | None = None,
         num_layers: int = 1,
         dropout: float = 0.0,
         resnet_eps: float = 1e-6,
@@ -409,7 +410,7 @@ class LTX2VideoDownBlock3D(nn.Module):
                 )
             elif downsample_type == "spatial":
                 self.downsamplers.append(
-                    LTXVideoDownsampler3d(
+                    LTX2VideoDownsampler3d(
                         in_channels=in_channels,
                         out_channels=out_channels,
                         stride=(1, 2, 2),
@@ -418,7 +419,7 @@ class LTX2VideoDownBlock3D(nn.Module):
                 )
             elif downsample_type == "temporal":
                 self.downsamplers.append(
-                    LTXVideoDownsampler3d(
+                    LTX2VideoDownsampler3d(
                         in_channels=in_channels,
                         out_channels=out_channels,
                         stride=(2, 1, 1),
@@ -427,7 +428,7 @@ class LTX2VideoDownBlock3D(nn.Module):
                 )
             elif downsample_type == "spatiotemporal":
                 self.downsamplers.append(
-                    LTXVideoDownsampler3d(
+                    LTX2VideoDownsampler3d(
                         in_channels=in_channels,
                         out_channels=out_channels,
                         stride=(2, 2, 2),
@@ -440,8 +441,8 @@ class LTX2VideoDownBlock3D(nn.Module):
     def forward(
         self,
         hidden_states: torch.Tensor,
-        temb: Optional[torch.Tensor] = None,
-        generator: Optional[torch.Generator] = None,
+        temb: torch.Tensor | None = None,
+        generator: torch.Generator | None = None,
         causal: bool = True,
     ) -> torch.Tensor:
         r"""Forward method of the `LTXDownBlock3D` class."""
@@ -520,8 +521,8 @@ class LTX2VideoMidBlock3d(nn.Module):
     def forward(
         self,
         hidden_states: torch.Tensor,
-        temb: Optional[torch.Tensor] = None,
-        generator: Optional[torch.Generator] = None,
+        temb: torch.Tensor | None = None,
+        generator: torch.Generator | None = None,
         causal: bool = True,
     ) -> torch.Tensor:
         r"""Forward method of the `LTXMidBlock3D` class."""
@@ -575,12 +576,13 @@ class LTX2VideoUpBlock3d(nn.Module):
     def __init__(
         self,
         in_channels: int,
-        out_channels: Optional[int] = None,
+        out_channels: int | None = None,
         num_layers: int = 1,
         dropout: float = 0.0,
         resnet_eps: float = 1e-6,
         resnet_act_fn: str = "swish",
         spatio_temporal_scale: bool = True,
+        upsample_type: str = "spatiotemporal",
         inject_noise: bool = False,
         timestep_conditioning: bool = False,
         upsample_residual: bool = False,
@@ -610,16 +612,23 @@ class LTX2VideoUpBlock3d(nn.Module):
 
         self.upsamplers = None
         if spatio_temporal_scale:
-            self.upsamplers = nn.ModuleList(
-                [
-                    LTXVideoUpsampler3d(
-                        out_channels * upscale_factor,
-                        stride=(2, 2, 2),
-                        residual=upsample_residual,
-                        upscale_factor=upscale_factor,
-                        spatial_padding_mode=spatial_padding_mode,
-                    )
-                ]
+            self.upsamplers = nn.ModuleList()
+
+            if upsample_type == "spatial":
+                upsample_stride = (1, 2, 2)
+            elif upsample_type == "temporal":
+                upsample_stride = (2, 1, 1)
+            elif upsample_type == "spatiotemporal":
+                upsample_stride = (2, 2, 2)
+
+            self.upsamplers.append(
+                LTX2VideoUpsampler3d(
+                    in_channels=out_channels * upscale_factor,
+                    stride=upsample_stride,
+                    residual=upsample_residual,
+                    upscale_factor=upscale_factor,
+                    spatial_padding_mode=spatial_padding_mode,
+                )
             )
 
         resnets = []
@@ -643,8 +652,8 @@ class LTX2VideoUpBlock3d(nn.Module):
     def forward(
         self,
         hidden_states: torch.Tensor,
-        temb: Optional[torch.Tensor] = None,
-        generator: Optional[torch.Generator] = None,
+        temb: torch.Tensor | None = None,
+        generator: torch.Generator | None = None,
         causal: bool = True,
     ) -> torch.Tensor:
         if self.conv_in is not None:
@@ -685,13 +694,13 @@ class LTX2VideoEncoder3d(nn.Module):
             Number of input channels.
         out_channels (`int`, defaults to 128):
             Number of latent channels.
-        block_out_channels (`Tuple[int, ...]`, defaults to `(256, 512, 1024, 2048)`):
+        block_out_channels (`tuple[int, ...]`, defaults to `(256, 512, 1024, 2048)`):
             The number of output channels for each block.
-        spatio_temporal_scaling (`Tuple[bool, ...], defaults to `(True, True, True, True)`:
+        spatio_temporal_scaling (`tuple[bool, ...], defaults to `(True, True, True, True)`:
             Whether a block should contain spatio-temporal downscaling layers or not.
-        layers_per_block (`Tuple[int, ...]`, defaults to `(4, 6, 6, 2, 2)`):
+        layers_per_block (`tuple[int, ...]`, defaults to `(4, 6, 6, 2, 2)`):
             The number of layers per block.
-        downsample_type (`Tuple[str, ...]`, defaults to `("spatial", "temporal", "spatiotemporal", "spatiotemporal")`):
+        downsample_type (`tuple[str, ...]`, defaults to `("spatial", "temporal", "spatiotemporal", "spatiotemporal")`):
             The spatiotemporal downsampling pattern per block. Per-layer values can be
                 - `"spatial"` (downsample spatial dims by 2x)
                 - `"temporal"` (downsample temporal dim by 2x)
@@ -710,16 +719,16 @@ class LTX2VideoEncoder3d(nn.Module):
         self,
         in_channels: int = 3,
         out_channels: int = 128,
-        block_out_channels: Tuple[int, ...] = (256, 512, 1024, 2048),
-        down_block_types: Tuple[str, ...] = (
+        block_out_channels: tuple[int, ...] = (256, 512, 1024, 2048),
+        down_block_types: tuple[str, ...] = (
             "LTX2VideoDownBlock3D",
             "LTX2VideoDownBlock3D",
             "LTX2VideoDownBlock3D",
             "LTX2VideoDownBlock3D",
         ),
-        spatio_temporal_scaling: Tuple[bool, ...] = (True, True, True, True),
-        layers_per_block: Tuple[int, ...] = (4, 6, 6, 2, 2),
-        downsample_type: Tuple[str, ...] = ("spatial", "temporal", "spatiotemporal", "spatiotemporal"),
+        spatio_temporal_scaling: bool | tuple[bool, ...] = (True, True, True, True),
+        layers_per_block: tuple[int, ...] = (4, 6, 6, 2, 2),
+        downsample_type: tuple[str, ...] = ("spatial", "temporal", "spatiotemporal", "spatiotemporal"),
         patch_size: int = 4,
         patch_size_t: int = 1,
         resnet_norm_eps: float = 1e-6,
@@ -727,6 +736,9 @@ class LTX2VideoEncoder3d(nn.Module):
         spatial_padding_mode: str = "zeros",
     ):
         super().__init__()
+        num_encoder_blocks = len(layers_per_block)
+        if isinstance(spatio_temporal_scaling, bool):
+            spatio_temporal_scaling = (spatio_temporal_scaling,) * (num_encoder_blocks - 1)
 
         self.patch_size = patch_size
         self.patch_size_t = patch_size_t
@@ -786,7 +798,7 @@ class LTX2VideoEncoder3d(nn.Module):
 
         self.gradient_checkpointing = False
 
-    def forward(self, hidden_states: torch.Tensor, causal: Optional[bool] = None) -> torch.Tensor:
+    def forward(self, hidden_states: torch.Tensor, causal: bool | None = None) -> torch.Tensor:
         r"""The forward method of the `LTXVideoEncoder3d` class."""
 
         p = self.patch_size
@@ -838,11 +850,11 @@ class LTX2VideoDecoder3d(nn.Module):
             Number of latent channels.
         out_channels (`int`, defaults to 3):
             Number of output channels.
-        block_out_channels (`Tuple[int, ...]`, defaults to `(128, 256, 512, 512)`):
+        block_out_channels (`tuple[int, ...]`, defaults to `(128, 256, 512, 512)`):
             The number of output channels for each block.
-        spatio_temporal_scaling (`Tuple[bool, ...], defaults to `(True, True, True, False)`:
+        spatio_temporal_scaling (`tuple[bool, ...], defaults to `(True, True, True, False)`:
             Whether a block should contain spatio-temporal upscaling layers or not.
-        layers_per_block (`Tuple[int, ...]`, defaults to `(4, 3, 3, 3, 4)`):
+        layers_per_block (`tuple[int, ...]`, defaults to `(4, 3, 3, 3, 4)`):
             The number of layers per block.
         patch_size (`int`, defaults to `4`):
             The size of spatial patches.
@@ -860,20 +872,28 @@ class LTX2VideoDecoder3d(nn.Module):
         self,
         in_channels: int = 128,
         out_channels: int = 3,
-        block_out_channels: Tuple[int, ...] = (256, 512, 1024),
-        spatio_temporal_scaling: Tuple[bool, ...] = (True, True, True),
-        layers_per_block: Tuple[int, ...] = (5, 5, 5, 5),
+        block_out_channels: tuple[int, ...] = (256, 512, 1024),
+        spatio_temporal_scaling: bool | tuple[bool, ...] = (True, True, True),
+        layers_per_block: tuple[int, ...] = (5, 5, 5, 5),
+        upsample_type: tuple[str, ...] = ("spatiotemporal", "spatiotemporal", "spatiotemporal"),
         patch_size: int = 4,
         patch_size_t: int = 1,
         resnet_norm_eps: float = 1e-6,
         is_causal: bool = False,
-        inject_noise: Tuple[bool, ...] = (False, False, False),
+        inject_noise: bool | tuple[bool, ...] = (False, False, False),
         timestep_conditioning: bool = False,
-        upsample_residual: Tuple[bool, ...] = (True, True, True),
-        upsample_factor: Tuple[bool, ...] = (2, 2, 2),
+        upsample_residual: bool | tuple[bool, ...] = (True, True, True),
+        upsample_factor: tuple[bool, ...] = (2, 2, 2),
         spatial_padding_mode: str = "reflect",
     ) -> None:
         super().__init__()
+        num_decoder_blocks = len(layers_per_block)
+        if isinstance(spatio_temporal_scaling, bool):
+            spatio_temporal_scaling = (spatio_temporal_scaling,) * (num_decoder_blocks - 1)
+        if isinstance(inject_noise, bool):
+            inject_noise = (inject_noise,) * num_decoder_blocks
+        if isinstance(upsample_residual, bool):
+            upsample_residual = (upsample_residual,) * (num_decoder_blocks - 1)
 
         self.patch_size = patch_size
         self.patch_size_t = patch_size_t
@@ -918,6 +938,7 @@ class LTX2VideoDecoder3d(nn.Module):
                 num_layers=layers_per_block[i + 1],
                 resnet_eps=resnet_norm_eps,
                 spatio_temporal_scale=spatio_temporal_scaling[i],
+                upsample_type=upsample_type[i],
                 inject_noise=inject_noise[i + 1],
                 timestep_conditioning=timestep_conditioning,
                 upsample_residual=upsample_residual[i],
@@ -952,8 +973,8 @@ class LTX2VideoDecoder3d(nn.Module):
     def forward(
         self,
         hidden_states: torch.Tensor,
-        temb: Optional[torch.Tensor] = None,
-        causal: Optional[bool] = None,
+        temb: torch.Tensor | None = None,
+        causal: bool | None = None,
     ) -> torch.Tensor:
         causal = causal or self.is_causal
 
@@ -1016,11 +1037,11 @@ class AutoencoderKLLTX2Video(ModelMixin, AutoencoderMixin, ConfigMixin, FromOrig
             Number of output channels.
         latent_channels (`int`, defaults to `128`):
             Number of latent channels.
-        block_out_channels (`Tuple[int, ...]`, defaults to `(128, 256, 512, 512)`):
+        block_out_channels (`tuple[int, ...]`, defaults to `(128, 256, 512, 512)`):
             The number of output channels for each block.
-        spatio_temporal_scaling (`Tuple[bool, ...], defaults to `(True, True, True, False)`:
+        spatio_temporal_scaling (`tuple[bool, ...], defaults to `(True, True, True, False)`:
             Whether a block should contain spatio-temporal downscaling or not.
-        layers_per_block (`Tuple[int, ...]`, defaults to `(4, 3, 3, 3, 4)`):
+        layers_per_block (`tuple[int, ...]`, defaults to `(4, 3, 3, 3, 4)`):
             The number of layers per block.
         patch_size (`int`, defaults to `4`):
             The size of spatial patches.
@@ -1049,22 +1070,23 @@ class AutoencoderKLLTX2Video(ModelMixin, AutoencoderMixin, ConfigMixin, FromOrig
         in_channels: int = 3,
         out_channels: int = 3,
         latent_channels: int = 128,
-        block_out_channels: Tuple[int, ...] = (256, 512, 1024, 2048),
-        down_block_types: Tuple[str, ...] = (
+        block_out_channels: tuple[int, ...] = (256, 512, 1024, 2048),
+        down_block_types: tuple[str, ...] = (
             "LTX2VideoDownBlock3D",
             "LTX2VideoDownBlock3D",
             "LTX2VideoDownBlock3D",
             "LTX2VideoDownBlock3D",
         ),
-        decoder_block_out_channels: Tuple[int, ...] = (256, 512, 1024),
-        layers_per_block: Tuple[int, ...] = (4, 6, 6, 2, 2),
-        decoder_layers_per_block: Tuple[int, ...] = (5, 5, 5, 5),
-        spatio_temporal_scaling: Tuple[bool, ...] = (True, True, True, True),
-        decoder_spatio_temporal_scaling: Tuple[bool, ...] = (True, True, True),
-        decoder_inject_noise: Tuple[bool, ...] = (False, False, False, False),
-        downsample_type: Tuple[str, ...] = ("spatial", "temporal", "spatiotemporal", "spatiotemporal"),
-        upsample_residual: Tuple[bool, ...] = (True, True, True),
-        upsample_factor: Tuple[int, ...] = (2, 2, 2),
+        decoder_block_out_channels: tuple[int, ...] = (256, 512, 1024),
+        layers_per_block: tuple[int, ...] = (4, 6, 6, 2, 2),
+        decoder_layers_per_block: tuple[int, ...] = (5, 5, 5, 5),
+        spatio_temporal_scaling: bool | tuple[bool, ...] = (True, True, True, True),
+        decoder_spatio_temporal_scaling: bool | tuple[bool, ...] = (True, True, True),
+        decoder_inject_noise: bool | tuple[bool, ...] = (False, False, False, False),
+        downsample_type: tuple[str, ...] = ("spatial", "temporal", "spatiotemporal", "spatiotemporal"),
+        upsample_type: tuple[str, ...] = ("spatiotemporal", "spatiotemporal", "spatiotemporal"),
+        upsample_residual: bool | tuple[bool, ...] = (True, True, True),
+        upsample_factor: tuple[int, ...] = (2, 2, 2),
         timestep_conditioning: bool = False,
         patch_size: int = 4,
         patch_size_t: int = 1,
@@ -1078,6 +1100,16 @@ class AutoencoderKLLTX2Video(ModelMixin, AutoencoderMixin, ConfigMixin, FromOrig
         temporal_compression_ratio: int = None,
     ) -> None:
         super().__init__()
+        num_encoder_blocks = len(layers_per_block)
+        num_decoder_blocks = len(decoder_layers_per_block)
+        if isinstance(spatio_temporal_scaling, bool):
+            spatio_temporal_scaling = (spatio_temporal_scaling,) * (num_encoder_blocks - 1)
+        if isinstance(decoder_spatio_temporal_scaling, bool):
+            decoder_spatio_temporal_scaling = (decoder_spatio_temporal_scaling,) * (num_decoder_blocks - 1)
+        if isinstance(decoder_inject_noise, bool):
+            decoder_inject_noise = (decoder_inject_noise,) * num_decoder_blocks
+        if isinstance(upsample_residual, bool):
+            upsample_residual = (upsample_residual,) * (num_decoder_blocks - 1)
 
         self.encoder = LTX2VideoEncoder3d(
             in_channels=in_channels,
@@ -1099,6 +1131,7 @@ class AutoencoderKLLTX2Video(ModelMixin, AutoencoderMixin, ConfigMixin, FromOrig
             block_out_channels=decoder_block_out_channels,
             spatio_temporal_scaling=decoder_spatio_temporal_scaling,
             layers_per_block=decoder_layers_per_block,
+            upsample_type=upsample_type,
             patch_size=patch_size,
             patch_size_t=patch_size_t,
             resnet_norm_eps=resnet_norm_eps,
@@ -1158,12 +1191,12 @@ class AutoencoderKLLTX2Video(ModelMixin, AutoencoderMixin, ConfigMixin, FromOrig
 
     def enable_tiling(
         self,
-        tile_sample_min_height: Optional[int] = None,
-        tile_sample_min_width: Optional[int] = None,
-        tile_sample_min_num_frames: Optional[int] = None,
-        tile_sample_stride_height: Optional[float] = None,
-        tile_sample_stride_width: Optional[float] = None,
-        tile_sample_stride_num_frames: Optional[float] = None,
+        tile_sample_min_height: int | None = None,
+        tile_sample_min_width: int | None = None,
+        tile_sample_min_num_frames: int | None = None,
+        tile_sample_stride_height: float | None = None,
+        tile_sample_stride_width: float | None = None,
+        tile_sample_stride_num_frames: float | None = None,
     ) -> None:
         r"""
         Enable tiled VAE decoding. When this option is enabled, the VAE will split the input tensor into tiles to
@@ -1190,7 +1223,7 @@ class AutoencoderKLLTX2Video(ModelMixin, AutoencoderMixin, ConfigMixin, FromOrig
         self.tile_sample_stride_width = tile_sample_stride_width or self.tile_sample_stride_width
         self.tile_sample_stride_num_frames = tile_sample_stride_num_frames or self.tile_sample_stride_num_frames
 
-    def _encode(self, x: torch.Tensor, causal: Optional[bool] = None) -> torch.Tensor:
+    def _encode(self, x: torch.Tensor, causal: bool | None = None) -> torch.Tensor:
         batch_size, num_channels, num_frames, height, width = x.shape
 
         if self.use_framewise_decoding and num_frames > self.tile_sample_min_num_frames:
@@ -1205,8 +1238,8 @@ class AutoencoderKLLTX2Video(ModelMixin, AutoencoderMixin, ConfigMixin, FromOrig
 
     @apply_forward_hook
     def encode(
-        self, x: torch.Tensor, causal: Optional[bool] = None, return_dict: bool = True
-    ) -> Union[AutoencoderKLOutput, Tuple[DiagonalGaussianDistribution]]:
+        self, x: torch.Tensor, causal: bool | None = None, return_dict: bool = True
+    ) -> AutoencoderKLOutput | tuple[DiagonalGaussianDistribution]:
         """
         Encode a batch of images into latents.
 
@@ -1233,10 +1266,10 @@ class AutoencoderKLLTX2Video(ModelMixin, AutoencoderMixin, ConfigMixin, FromOrig
     def _decode(
         self,
         z: torch.Tensor,
-        temb: Optional[torch.Tensor] = None,
-        causal: Optional[bool] = None,
+        temb: torch.Tensor | None = None,
+        causal: bool | None = None,
         return_dict: bool = True,
-    ) -> Union[DecoderOutput, torch.Tensor]:
+    ) -> DecoderOutput | torch.Tensor:
         batch_size, num_channels, num_frames, height, width = z.shape
         tile_latent_min_height = self.tile_sample_min_height // self.spatial_compression_ratio
         tile_latent_min_width = self.tile_sample_min_width // self.spatial_compression_ratio
@@ -1259,10 +1292,10 @@ class AutoencoderKLLTX2Video(ModelMixin, AutoencoderMixin, ConfigMixin, FromOrig
     def decode(
         self,
         z: torch.Tensor,
-        temb: Optional[torch.Tensor] = None,
-        causal: Optional[bool] = None,
+        temb: torch.Tensor | None = None,
+        causal: bool | None = None,
         return_dict: bool = True,
-    ) -> Union[DecoderOutput, torch.Tensor]:
+    ) -> DecoderOutput | torch.Tensor:
         """
         Decode a batch of images.
 
@@ -1317,7 +1350,7 @@ class AutoencoderKLLTX2Video(ModelMixin, AutoencoderMixin, ConfigMixin, FromOrig
             )
         return b
 
-    def tiled_encode(self, x: torch.Tensor, causal: Optional[bool] = None) -> torch.Tensor:
+    def tiled_encode(self, x: torch.Tensor, causal: bool | None = None) -> torch.Tensor:
         r"""Encode a batch of images using a tiled encoder.
 
         Args:
@@ -1370,8 +1403,8 @@ class AutoencoderKLLTX2Video(ModelMixin, AutoencoderMixin, ConfigMixin, FromOrig
         return enc
 
     def tiled_decode(
-        self, z: torch.Tensor, temb: Optional[torch.Tensor], causal: Optional[bool] = None, return_dict: bool = True
-    ) -> Union[DecoderOutput, torch.Tensor]:
+        self, z: torch.Tensor, temb: torch.Tensor | None, causal: bool | None = None, return_dict: bool = True
+    ) -> DecoderOutput | torch.Tensor:
         r"""
         Decode a batch of images using a tiled decoder.
 
@@ -1431,7 +1464,7 @@ class AutoencoderKLLTX2Video(ModelMixin, AutoencoderMixin, ConfigMixin, FromOrig
 
         return DecoderOutput(sample=dec)
 
-    def _temporal_tiled_encode(self, x: torch.Tensor, causal: Optional[bool] = None) -> AutoencoderKLOutput:
+    def _temporal_tiled_encode(self, x: torch.Tensor, causal: bool | None = None) -> AutoencoderKLOutput:
         batch_size, num_channels, num_frames, height, width = x.shape
         latent_num_frames = (num_frames - 1) // self.temporal_compression_ratio + 1
 
@@ -1462,8 +1495,8 @@ class AutoencoderKLLTX2Video(ModelMixin, AutoencoderMixin, ConfigMixin, FromOrig
         return enc
 
     def _temporal_tiled_decode(
-        self, z: torch.Tensor, temb: Optional[torch.Tensor], causal: Optional[bool] = None, return_dict: bool = True
-    ) -> Union[DecoderOutput, torch.Tensor]:
+        self, z: torch.Tensor, temb: torch.Tensor | None, causal: bool | None = None, return_dict: bool = True
+    ) -> DecoderOutput | torch.Tensor:
         batch_size, num_channels, num_frames, height, width = z.shape
         num_sample_frames = (num_frames - 1) * self.temporal_compression_ratio + 1
 
@@ -1502,13 +1535,13 @@ class AutoencoderKLLTX2Video(ModelMixin, AutoencoderMixin, ConfigMixin, FromOrig
     def forward(
         self,
         sample: torch.Tensor,
-        temb: Optional[torch.Tensor] = None,
+        temb: torch.Tensor | None = None,
         sample_posterior: bool = False,
-        encoder_causal: Optional[bool] = None,
-        decoder_causal: Optional[bool] = None,
+        encoder_causal: bool | None = None,
+        decoder_causal: bool | None = None,
         return_dict: bool = True,
-        generator: Optional[torch.Generator] = None,
-    ) -> Union[torch.Tensor, torch.Tensor]:
+        generator: torch.Generator | None = None,
+    ) -> torch.Tensor | torch.Tensor:
         x = sample
         posterior = self.encode(x, causal=encoder_causal).latent_dist
         if sample_posterior:

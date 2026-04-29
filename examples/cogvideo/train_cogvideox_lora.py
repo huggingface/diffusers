@@ -52,7 +52,7 @@ if is_wandb_available():
     import wandb
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
-check_min_version("0.37.0.dev0")
+check_min_version("0.38.0.dev0")
 
 logger = get_logger(__name__)
 
@@ -416,9 +416,9 @@ def get_args():
 class VideoDataset(Dataset):
     def __init__(
         self,
-        instance_data_root: Optional[str] = None,
-        dataset_name: Optional[str] = None,
-        dataset_config_name: Optional[str] = None,
+        instance_data_root: str | None = None,
+        dataset_name: str | None = None,
+        dataset_config_name: str | None = None,
         caption_column: str = "text",
         video_column: str = "video",
         height: int = 480,
@@ -428,8 +428,8 @@ class VideoDataset(Dataset):
         max_num_frames: int = 49,
         skip_frames_start: int = 0,
         skip_frames_end: int = 0,
-        cache_dir: Optional[str] = None,
-        id_token: Optional[str] = None,
+        cache_dir: str | None = None,
+        id_token: str | None = None,
     ) -> None:
         super().__init__()
 
@@ -1232,21 +1232,48 @@ def main(args):
         id_token=args.id_token,
     )
 
-    def encode_video(video, bar):
-        bar.update(1)
+    def encode_video(video):
         video = video.to(accelerator.device, dtype=vae.dtype).unsqueeze(0)
         video = video.permute(0, 2, 1, 3, 4)  # [B, C, F, H, W]
         latent_dist = vae.encode(video).latent_dist
         return latent_dist
 
+    # Distribute video encoding across processes: each process only encodes its own shard
+    num_videos = len(train_dataset.instance_videos)
+    num_procs = accelerator.num_processes
+    local_rank = accelerator.process_index
+    local_count = len(range(local_rank, num_videos, num_procs))
+
     progress_encode_bar = tqdm(
-        range(0, len(train_dataset.instance_videos)),
-        desc="Loading Encode videos",
+        range(local_count),
+        desc="Encoding videos",
+        disable=not accelerator.is_local_main_process,
     )
-    train_dataset.instance_videos = [
-        encode_video(video, progress_encode_bar) for video in train_dataset.instance_videos
-    ]
+
+    encoded_videos = [None] * num_videos
+    for i, video in enumerate(train_dataset.instance_videos):
+        if i % num_procs == local_rank:
+            encoded_videos[i] = encode_video(video)
+            progress_encode_bar.update(1)
     progress_encode_bar.close()
+
+    # Broadcast encoded latent distributions so every process has the full set
+    if num_procs > 1:
+        import torch.distributed as dist
+
+        from diffusers.models.autoencoders.vae import DiagonalGaussianDistribution
+
+        ref_params = next(v for v in encoded_videos if v is not None).parameters
+        for i in range(num_videos):
+            src = i % num_procs
+            if encoded_videos[i] is not None:
+                params = encoded_videos[i].parameters.contiguous()
+            else:
+                params = torch.empty_like(ref_params)
+            dist.broadcast(params, src=src)
+            encoded_videos[i] = DiagonalGaussianDistribution(params)
+
+    train_dataset.instance_videos = encoded_videos
 
     def collate_fn(examples):
         videos = [example["instance_video"].sample() * vae.config.scaling_factor for example in examples]

@@ -121,7 +121,7 @@ from diffusers.modular_pipelines import AutoPipelineBlocks
 
 class AutoImageBlocks(AutoPipelineBlocks):
     # List of sub-block classes to choose from
-    block_classes = [block_inpaint_cls, block_i2i_cls, block_t2i_cls]
+    block_classes = [InpaintBlock, ImageToImageBlock, TextToImageBlock]
     # Names for each block in the same order
     block_names = ["inpaint", "img2img", "text2img"]
     # Trigger inputs that determine which block to run
@@ -129,8 +129,8 @@ class AutoImageBlocks(AutoPipelineBlocks):
     # - "image" triggers img2img workflow (but only if mask is not provided)
     # - if none of above, runs the text2img workflow (default)
     block_trigger_inputs = ["mask", "image", None]
-    # Description is extremely important for AutoPipelineBlocks
 
+    @property
     def description(self):
         return (
             "Pipeline generates images given different types of conditions!\n"
@@ -141,7 +141,7 @@ class AutoImageBlocks(AutoPipelineBlocks):
         )
 ```
 
-It is **very** important to include a `description` to avoid any confusion over how to run a block and what inputs are required. While [`~modular_pipelines.AutoPipelineBlocks`] are convenient, it's conditional logic may be difficult to figure out if it isn't properly explained.
+It is **very** important to include a `description` to avoid any confusion over how to run a block and what inputs are required. While [`~modular_pipelines.AutoPipelineBlocks`] are convenient, its conditional logic may be difficult to figure out if it isn't properly explained.
 
 Create an instance of `AutoImageBlocks`.
 
@@ -152,5 +152,74 @@ auto_blocks = AutoImageBlocks()
 For more complex compositions, such as nested [`~modular_pipelines.AutoPipelineBlocks`] blocks when they're used as sub-blocks in larger pipelines, use the [`~modular_pipelines.SequentialPipelineBlocks.get_execution_blocks`] method to extract the a block that is actually run based on your input.
 
 ```py
-auto_blocks.get_execution_blocks("mask")
+auto_blocks.get_execution_blocks(mask=True)
+```
+
+## ConditionalPipelineBlocks
+
+[`~modular_pipelines.AutoPipelineBlocks`] is a special case of [`~modular_pipelines.ConditionalPipelineBlocks`]. While [`~modular_pipelines.AutoPipelineBlocks`] selects blocks based on whether a trigger input is provided or not, [`~modular_pipelines.ConditionalPipelineBlocks`] is able to select a block based on custom selection logic provided in the `select_block` method.
+
+Here is the same example written using [`~modular_pipelines.ConditionalPipelineBlocks`] directly:
+
+```py
+from diffusers.modular_pipelines import ConditionalPipelineBlocks
+
+class AutoImageBlocks(ConditionalPipelineBlocks):
+    block_classes = [InpaintBlock, ImageToImageBlock, TextToImageBlock]
+    block_names = ["inpaint", "img2img", "text2img"]
+    block_trigger_inputs = ["mask", "image"]
+    default_block_name = "text2img"
+
+    @property
+    def description(self):
+        return (
+            "Pipeline generates images given different types of conditions!\n"
+            + "This is an auto pipeline block that works for text2img, img2img and inpainting tasks.\n"
+            + " - inpaint workflow is run when `mask` is provided.\n"
+            + " - img2img workflow is run when `image` is provided (but only when `mask` is not provided).\n"
+            + " - text2img workflow is run when neither `image` nor `mask` is provided.\n"
+        )
+
+    def select_block(self, mask=None, image=None) -> str | None:
+        if mask is not None:
+            return "inpaint"
+        if image is not None:
+            return "img2img"
+        return None  # falls back to default_block_name ("text2img")
+```
+
+The inputs listed in `block_trigger_inputs` are passed as keyword arguments to `select_block()`. When `select_block` returns `None`, it falls back to `default_block_name`. If `default_block_name` is also `None`, the entire conditional block is skipped — this is useful for optional processing steps that should only run when specific inputs are provided.
+
+## Workflows
+
+Pipelines that contain conditional blocks ([`~modular_pipelines.AutoPipelineBlocks`] or [`~modular_pipelines.ConditionalPipelineBlocks]`) can support multiple workflows — for example, our SDXL modular pipeline supports a dozen workflows all in one pipeline. But this also means it can be confusing for users to know what workflows are supported and how to run them. For pipeline builders, it's useful to be able to extract only the blocks relevant to a specific workflow.
+
+We recommend defining a `_workflow_map` to give each workflow a name and explicitly list the inputs it requires.
+
+```py
+from diffusers.modular_pipelines import SequentialPipelineBlocks
+
+class MyPipelineBlocks(SequentialPipelineBlocks):
+    block_classes = [TextEncoderBlock, AutoImageBlocks, DecodeBlock]
+    block_names = ["text_encoder", "auto_image", "decode"]
+
+    _workflow_map = {
+        "text2image": {"prompt": True},
+        "image2image": {"image": True, "prompt": True},
+        "inpaint": {"mask": True, "image": True, "prompt": True},
+    }
+```
+
+All of our built-in modular pipelines come with pre-defined workflows. The `available_workflows` property lists all supported workflows:
+
+```py
+pipeline_blocks = MyPipelineBlocks()
+pipeline_blocks.available_workflows
+# ['text2image', 'image2image', 'inpaint']
+```
+
+Retrieve a specific workflow with `get_workflow` to inspect and debug a specific block that executes the workflow.
+
+```py
+pipeline_blocks.get_workflow("inpaint")
 ```

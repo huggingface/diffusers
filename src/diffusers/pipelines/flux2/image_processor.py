@@ -13,7 +13,6 @@
 # limitations under the License.
 
 import math
-from typing import List
 
 import PIL.Image
 
@@ -36,8 +35,12 @@ class Flux2ImageProcessor(VaeImageProcessor):
             VAE latent channels.
         do_normalize (`bool`, *optional*, defaults to `True`):
             Whether to normalize the image to [-1,1].
+        do_binarize (`bool`, *optional*, defaults to `False`):
+            Whether to binarize the image to 0/1.
         do_convert_rgb (`bool`, *optional*, defaults to be `True`):
             Whether to convert the images to RGB format.
+        do_convert_grayscale (`bool`, *optional*, defaults to be `False`):
+            Whether to convert the images to grayscale format.
     """
 
     @register_to_config
@@ -47,14 +50,18 @@ class Flux2ImageProcessor(VaeImageProcessor):
         vae_scale_factor: int = 16,
         vae_latent_channels: int = 32,
         do_normalize: bool = True,
+        do_binarize: bool = False,
         do_convert_rgb: bool = True,
+        do_convert_grayscale: bool = False,
     ):
         super().__init__(
             do_resize=do_resize,
             vae_scale_factor=vae_scale_factor,
             vae_latent_channels=vae_latent_channels,
             do_normalize=do_normalize,
+            do_binarize=do_binarize,
             do_convert_rgb=do_convert_rgb,
+            do_convert_grayscale=do_convert_grayscale,
         )
 
     @staticmethod
@@ -148,7 +155,7 @@ class Flux2ImageProcessor(VaeImageProcessor):
     # Taken from
     # https://github.com/black-forest-labs/flux2/blob/5a5d316b1b42f6b59a8c9194b77c8256be848432/src/flux2/sampling.py#L310C1-L339C19
     @staticmethod
-    def concatenate_images(images: List[PIL.Image.Image]) -> PIL.Image.Image:
+    def concatenate_images(images: list[PIL.Image.Image]) -> PIL.Image.Image:
         """
         Concatenate a list of PIL images horizontally with center alignment and white background.
         """

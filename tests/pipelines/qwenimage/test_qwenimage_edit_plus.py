@@ -164,7 +164,7 @@ class QwenImageEditPlusPipelineFastTests(PipelineTesterMixin, unittest.TestCase)
         self.assertEqual(generated_image.shape, (3, 32, 32))
 
         # fmt: off
-        expected_slice = torch.tensor([[0.5637, 0.6341, 0.6001, 0.5620, 0.5794, 0.5498, 0.5757, 0.6389, 0.4174, 0.3597, 0.5649, 0.4894, 0.4969, 0.5255, 0.4083, 0.4986]])
+        expected_slice = torch.tensor([0.5640, 0.6339, 0.5997, 0.5607, 0.5799, 0.5496, 0.5760, 0.6393, 0.4172, 0.3595, 0.5655, 0.4896, 0.4971, 0.5255, 0.4088, 0.4987])
         # fmt: on
 
         generated_slice = generated_image.flatten()
@@ -251,3 +251,30 @@ class QwenImageEditPlusPipelineFastTests(PipelineTesterMixin, unittest.TestCase)
     @pytest.mark.xfail(condition=True, reason="Batch of multiple images needs to be revisited", strict=True)
     def test_inference_batch_single_identical():
         super().test_inference_batch_single_identical()
+
+    def test_true_cfg_without_negative_prompt_embeds_mask(self):
+        components = self.get_dummy_components()
+        pipe = self.pipeline_class(**components)
+        pipe.to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_dummy_inputs(torch_device)
+        prompt = inputs.pop("prompt")
+
+        prompt_embeds, prompt_embeds_mask = pipe.encode_prompt(
+            prompt=prompt,
+            image=inputs.get("image"),
+            device=torch_device,
+            num_images_per_prompt=1,
+            max_sequence_length=inputs.get("max_sequence_length", 16),
+        )
+
+        inputs["prompt_embeds"] = prompt_embeds
+        inputs["prompt_embeds_mask"] = prompt_embeds_mask
+        inputs["negative_prompt_embeds"] = prompt_embeds
+        inputs.pop("negative_prompt", None)
+        inputs.pop("negative_prompt_embeds_mask", None)
+        inputs["true_cfg_scale"] = 2.0
+
+        image = pipe(**inputs).images
+        self.assertIsNotNone(image)

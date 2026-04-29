@@ -15,7 +15,7 @@
 import contextlib
 import os
 import tempfile
-from typing import TYPE_CHECKING, Dict
+from typing import TYPE_CHECKING
 
 from huggingface_hub import DDUFEntry
 from tqdm import tqdm
@@ -34,7 +34,7 @@ if is_safetensors_available():
 
 
 def _load_tokenizer_from_dduf(
-    cls: "PreTrainedTokenizer", name: str, dduf_entries: Dict[str, DDUFEntry], **kwargs
+    cls: "PreTrainedTokenizer", name: str, dduf_entries: dict[str, DDUFEntry], **kwargs
 ) -> "PreTrainedTokenizer":
     """
     Load a tokenizer from a DDUF archive.
@@ -57,7 +57,7 @@ def _load_tokenizer_from_dduf(
 
 
 def _load_transformers_model_from_dduf(
-    cls: "PreTrainedModel", name: str, dduf_entries: Dict[str, DDUFEntry], **kwargs
+    cls: "PreTrainedModel", name: str, dduf_entries: dict[str, DDUFEntry], **kwargs
 ) -> "PreTrainedModel":
     """
     Load a transformers model from a DDUF archive.
@@ -112,6 +112,8 @@ def _load_transformers_model_from_dduf(
                 tensors = safetensors.torch.load(mmap)
                 # Update the state dictionary with tensors
                 state_dict.update(tensors)
+            # `from_pretrained` sets the model to eval mode by default, which is the
+            # correct behavior for inference. Do not call `model.train()` here.
             return cls.from_pretrained(
                 pretrained_model_name_or_path=None,
                 config=config,

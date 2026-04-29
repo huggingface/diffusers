@@ -13,8 +13,6 @@
 # limitations under the License.
 
 
-from typing import Tuple, Union
-
 import torch
 import torch.nn as nn
 
@@ -79,7 +77,7 @@ class CogView3PlusTransformerBlock(nn.Module):
         hidden_states: torch.Tensor,
         encoder_hidden_states: torch.Tensor,
         emb: torch.Tensor,
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
+    ) -> tuple[torch.Tensor, torch.Tensor]:
         text_seq_length = encoder_hidden_states.size(1)
 
         # norm & modulate
@@ -233,7 +231,7 @@ class CogView3PlusTransformer2DModel(ModelMixin, AttentionMixin, ConfigMixin):
         target_size: torch.Tensor,
         crop_coords: torch.Tensor,
         return_dict: bool = True,
-    ) -> Union[Tuple[torch.Tensor], Transformer2DModelOutput]:
+    ) -> tuple[torch.Tensor] | Transformer2DModelOutput:
         """
         The [`CogView3PlusTransformer2DModel`] forward method.
 

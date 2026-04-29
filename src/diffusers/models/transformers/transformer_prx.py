@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any
 
 import torch
 from torch import nn
@@ -96,9 +96,9 @@ class PRXAttnProcessor2_0:
         self,
         attn: "PRXAttention",
         hidden_states: torch.Tensor,
-        encoder_hidden_states: Optional[torch.Tensor] = None,
-        attention_mask: Optional[torch.Tensor] = None,
-        image_rotary_emb: Optional[torch.Tensor] = None,
+        encoder_hidden_states: torch.Tensor | None = None,
+        attention_mask: torch.Tensor | None = None,
+        image_rotary_emb: torch.Tensor | None = None,
         **kwargs,
     ) -> torch.Tensor:
         """
@@ -234,9 +234,9 @@ class PRXAttention(nn.Module, AttentionModuleMixin):
     def forward(
         self,
         hidden_states: torch.Tensor,
-        encoder_hidden_states: Optional[torch.Tensor] = None,
-        attention_mask: Optional[torch.Tensor] = None,
-        image_rotary_emb: Optional[torch.Tensor] = None,
+        encoder_hidden_states: torch.Tensor | None = None,
+        attention_mask: torch.Tensor | None = None,
+        image_rotary_emb: torch.Tensor | None = None,
         **kwargs,
     ) -> torch.Tensor:
         return self.processor(
@@ -263,10 +263,10 @@ class PRXEmbedND(nn.Module):
         theta (int):
         Scaling factor that controls the frequency spectrum of the rotary embeddings.
         axes_dim (list[int]):
-        List of embedding dimensions for each axis (each must be even).
+        list of embedding dimensions for each axis (each must be even).
     """
 
-    def __init__(self, dim: int, theta: int, axes_dim: List[int]):
+    def __init__(self, dim: int, theta: int, axes_dim: list[int]):
         super().__init__()
         self.dim = dim
         self.theta = theta
@@ -346,7 +346,7 @@ class Modulation(nn.Module):
 
     def forward(
         self, vec: torch.Tensor
-    ) -> Tuple[Tuple[torch.Tensor, torch.Tensor, torch.Tensor], Tuple[torch.Tensor, torch.Tensor, torch.Tensor]]:
+    ) -> tuple[tuple[torch.Tensor, torch.Tensor, torch.Tensor], tuple[torch.Tensor, torch.Tensor, torch.Tensor]]:
         out = self.lin(nn.functional.silu(vec))[:, None, :].chunk(6, dim=-1)
         return tuple(out[:3]), tuple(out[3:])
 
@@ -389,7 +389,7 @@ class PRXBlock(nn.Module):
         hidden_size: int,
         num_heads: int,
         mlp_ratio: float = 4.0,
-        qk_scale: Optional[float] = None,
+        qk_scale: float | None = None,
     ):
         super().__init__()
 
@@ -430,8 +430,8 @@ class PRXBlock(nn.Module):
         encoder_hidden_states: torch.Tensor,
         temb: torch.Tensor,
         image_rotary_emb: torch.Tensor,
-        attention_mask: Optional[torch.Tensor] = None,
-        **kwargs: Dict[str, Any],
+        attention_mask: torch.Tensor | None = None,
+        **kwargs: dict[str, Any],
     ) -> torch.Tensor:
         r"""
         Runs modulation-gated cross-attention and MLP, with residual connections.
@@ -607,7 +607,7 @@ class PRXTransformer2DModel(ModelMixin, ConfigMixin, AttentionMixin):
         depth (`int`, *optional*, defaults to 16):
             Number of transformer blocks.
         axes_dim (`list[int]`, *optional*):
-            List of dimensions for each positional embedding axis. Defaults to `[32, 32]`.
+            list of dimensions for each positional embedding axis. Defaults to `[32, 32]`.
         theta (`int`, *optional*, defaults to 10000):
             Frequency scaling factor for rotary embeddings.
         time_factor (`float`, *optional*, defaults to 1000.0):
@@ -728,10 +728,10 @@ class PRXTransformer2DModel(ModelMixin, ConfigMixin, AttentionMixin):
         hidden_states: torch.Tensor,
         timestep: torch.Tensor,
         encoder_hidden_states: torch.Tensor,
-        attention_mask: Optional[torch.Tensor] = None,
-        attention_kwargs: Optional[Dict[str, Any]] = None,
+        attention_mask: torch.Tensor | None = None,
+        attention_kwargs: dict[str, Any] | None = None,
         return_dict: bool = True,
-    ) -> Union[Tuple[torch.Tensor, ...], Transformer2DModelOutput]:
+    ) -> tuple[torch.Tensor, ...] | Transformer2DModelOutput:
         r"""
         Forward pass of the PRXTransformer2DModel.
 

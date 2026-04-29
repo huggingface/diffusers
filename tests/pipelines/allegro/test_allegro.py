@@ -158,6 +158,10 @@ class AllegroPipelineFastTests(PipelineTesterMixin, PyramidAttentionBroadcastTes
     def test_save_load_optional_components(self):
         pass
 
+    @unittest.skip("Decoding without tiling is not yet implemented")
+    def test_pipeline_with_accelerator_device_map(self):
+        pass
+
     def test_inference(self):
         device = "cpu"
 

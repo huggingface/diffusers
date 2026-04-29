@@ -17,12 +17,12 @@ import os
 from contextlib import contextmanager, nullcontext
 from dataclasses import dataclass, replace
 from enum import Enum
-from typing import Dict, List, Optional, Set, Tuple, Union
+from typing import Set
 
 import safetensors.torch
 import torch
 
-from ..utils import get_logger, is_accelerate_available
+from ..utils import get_logger, is_accelerate_available, is_torchao_available
 from ._common import _GO_LC_SUPPORTED_PYTORCH_LAYERS
 from .hooks import HookRegistry, ModelHook
 
@@ -33,6 +33,54 @@ if is_accelerate_available():
 
 
 logger = get_logger(__name__)  # pylint: disable=invalid-name
+
+
+def _is_torchao_tensor(tensor: torch.Tensor) -> bool:
+    if not is_torchao_available():
+        return False
+    from torchao.utils import TorchAOBaseTensor
+
+    return isinstance(tensor, TorchAOBaseTensor)
+
+
+def _get_torchao_inner_tensor_names(tensor: torch.Tensor) -> list[str]:
+    """Get names of all internal tensor data attributes from a TorchAO tensor."""
+    cls = type(tensor)
+    names = list(getattr(cls, "tensor_data_names", []))
+    for attr_name in getattr(cls, "optional_tensor_data_names", []):
+        if getattr(tensor, attr_name, None) is not None:
+            names.append(attr_name)
+    return names
+
+
+def _swap_torchao_tensor(param: torch.Tensor, source: torch.Tensor) -> None:
+    """Move a TorchAO parameter to the device of `source` via `swap_tensors`.
+
+    `param.data = source` does not work for `_make_wrapper_subclass` tensors because the `.data` setter only replaces
+    the outer wrapper storage while leaving the subclass's internal attributes (e.g. `.qdata`, `.scale`) on the
+    original device. `swap_tensors` swaps the full tensor contents in-place, preserving the parameter's identity so
+    that any dict keyed by `id(param)` remains valid.
+
+    Refer to https://github.com/huggingface/diffusers/pull/13276#discussion_r2944471548 for the full discussion.
+    """
+    torch.utils.swap_tensors(param, source)
+
+
+def _restore_torchao_tensor(param: torch.Tensor, source: torch.Tensor) -> None:
+    """Restore internal tensor data of a TorchAO parameter from `source` without mutating `source`.
+
+    Unlike `_swap_torchao_tensor` this copies attribute references one-by-one via `setattr` so that `source` is **not**
+    modified. Use this when `source` is a cached tensor that must remain unchanged (e.g. a pinned CPU copy in
+    `cpu_param_dict`).
+    """
+    for attr_name in _get_torchao_inner_tensor_names(source):
+        setattr(param, attr_name, getattr(source, attr_name))
+
+
+def _record_stream_torchao_tensor(param: torch.Tensor, stream) -> None:
+    """Record stream for all internal tensors of a TorchAO parameter."""
+    for attr_name in _get_torchao_inner_tensor_names(param):
+        getattr(param, attr_name).record_stream(stream)
 
 
 # fmt: off
@@ -56,31 +104,31 @@ class GroupOffloadingConfig:
     non_blocking: bool
     record_stream: bool
     low_cpu_mem_usage: bool
-    num_blocks_per_group: Optional[int] = None
-    offload_to_disk_path: Optional[str] = None
-    stream: Optional[Union[torch.cuda.Stream, torch.Stream]] = None
-    block_modules: Optional[List[str]] = None
-    exclude_kwargs: Optional[List[str]] = None
-    module_prefix: Optional[str] = ""
+    num_blocks_per_group: int | None = None
+    offload_to_disk_path: str | None = None
+    stream: torch.cuda.Stream | torch.Stream | None = None
+    block_modules: list[str] | None = None
+    exclude_kwargs: list[str] | None = None
+    module_prefix: str = ""
 
 
 class ModuleGroup:
     def __init__(
         self,
-        modules: List[torch.nn.Module],
+        modules: list[torch.nn.Module],
         offload_device: torch.device,
         onload_device: torch.device,
         offload_leader: torch.nn.Module,
-        onload_leader: Optional[torch.nn.Module] = None,
-        parameters: Optional[List[torch.nn.Parameter]] = None,
-        buffers: Optional[List[torch.Tensor]] = None,
+        onload_leader: torch.nn.Module | None = None,
+        parameters: list[torch.nn.Parameter] | None = None,
+        buffers: list[torch.Tensor] | None = None,
         non_blocking: bool = False,
-        stream: Union[torch.cuda.Stream, torch.Stream, None] = None,
-        record_stream: Optional[bool] = False,
+        stream: torch.cuda.Stream | torch.Stream | None = None,
+        record_stream: bool | None = False,
         low_cpu_mem_usage: bool = False,
         onload_self: bool = True,
-        offload_to_disk_path: Optional[str] = None,
-        group_id: Optional[Union[int, str]] = None,
+        offload_to_disk_path: str | None = None,
+        group_id: int | str | None = None,
     ) -> None:
         self.modules = modules
         self.offload_device = offload_device
@@ -124,6 +172,13 @@ class ModuleGroup:
             else torch.cuda
         )
 
+    @staticmethod
+    def _to_cpu(tensor, low_cpu_mem_usage):
+        # For TorchAO tensors, `.data` returns an incomplete wrapper without internal attributes
+        # (e.g. `.qdata`, `.scale`), so we must call `.cpu()` on the tensor directly.
+        t = tensor.cpu() if _is_torchao_tensor(tensor) else tensor.data.cpu()
+        return t if low_cpu_mem_usage else t.pin_memory()
+
     def _init_cpu_param_dict(self):
         cpu_param_dict = {}
         if self.stream is None:
@@ -131,17 +186,15 @@ class ModuleGroup:
 
         for module in self.modules:
             for param in module.parameters():
-                cpu_param_dict[param] = param.data.cpu() if self.low_cpu_mem_usage else param.data.cpu().pin_memory()
+                cpu_param_dict[param] = self._to_cpu(param, self.low_cpu_mem_usage)
             for buffer in module.buffers():
-                cpu_param_dict[buffer] = (
-                    buffer.data.cpu() if self.low_cpu_mem_usage else buffer.data.cpu().pin_memory()
-                )
+                cpu_param_dict[buffer] = self._to_cpu(buffer, self.low_cpu_mem_usage)
 
         for param in self.parameters:
-            cpu_param_dict[param] = param.data.cpu() if self.low_cpu_mem_usage else param.data.cpu().pin_memory()
+            cpu_param_dict[param] = self._to_cpu(param, self.low_cpu_mem_usage)
 
         for buffer in self.buffers:
-            cpu_param_dict[buffer] = buffer.data.cpu() if self.low_cpu_mem_usage else buffer.data.cpu().pin_memory()
+            cpu_param_dict[buffer] = self._to_cpu(buffer, self.low_cpu_mem_usage)
 
         return cpu_param_dict
 
@@ -157,9 +210,16 @@ class ModuleGroup:
             pinned_dict = None
 
     def _transfer_tensor_to_device(self, tensor, source_tensor, default_stream):
-        tensor.data = source_tensor.to(self.onload_device, non_blocking=self.non_blocking)
+        moved = source_tensor.to(self.onload_device, non_blocking=self.non_blocking)
+        if _is_torchao_tensor(tensor):
+            _swap_torchao_tensor(tensor, moved)
+        else:
+            tensor.data = moved
         if self.record_stream:
-            tensor.data.record_stream(default_stream)
+            if _is_torchao_tensor(tensor):
+                _record_stream_torchao_tensor(tensor, default_stream)
+            else:
+                tensor.data.record_stream(default_stream)
 
     def _process_tensors_from_modules(self, pinned_memory=None, default_stream=None):
         for group_module in self.modules:
@@ -178,7 +238,19 @@ class ModuleGroup:
             source = pinned_memory[buffer] if pinned_memory else buffer.data
             self._transfer_tensor_to_device(buffer, source, default_stream)
 
+    def _check_disk_offload_torchao(self):
+        all_tensors = list(self.tensor_to_key.keys())
+        has_torchao = any(_is_torchao_tensor(t) for t in all_tensors)
+        if has_torchao:
+            raise ValueError(
+                "Disk offloading is not supported for TorchAO quantized tensors because safetensors "
+                "cannot serialize TorchAO subclass tensors. Use memory offloading instead by not "
+                "setting `offload_to_disk_path`."
+            )
+
     def _onload_from_disk(self):
+        self._check_disk_offload_torchao()
+
         if self.stream is not None:
             # Wait for previous Host->Device transfer to complete
             self.stream.synchronize()
@@ -221,6 +293,8 @@ class ModuleGroup:
                 self._process_tensors_from_modules(None)
 
     def _offload_to_disk(self):
+        self._check_disk_offload_torchao()
+
         # TODO: we can potentially optimize this code path by checking if the _all_ the desired
         # safetensor files exist on the disk and if so, skip this step entirely, reducing IO
         # overhead. Currently, we just check if the given `safetensors_file_path` exists and if not
@@ -245,18 +319,35 @@ class ModuleGroup:
 
             for group_module in self.modules:
                 for param in group_module.parameters():
-                    param.data = self.cpu_param_dict[param]
+                    if _is_torchao_tensor(param):
+                        _restore_torchao_tensor(param, self.cpu_param_dict[param])
+                    else:
+                        param.data = self.cpu_param_dict[param]
             for param in self.parameters:
-                param.data = self.cpu_param_dict[param]
+                if _is_torchao_tensor(param):
+                    _restore_torchao_tensor(param, self.cpu_param_dict[param])
+                else:
+                    param.data = self.cpu_param_dict[param]
             for buffer in self.buffers:
-                buffer.data = self.cpu_param_dict[buffer]
+                if _is_torchao_tensor(buffer):
+                    _restore_torchao_tensor(buffer, self.cpu_param_dict[buffer])
+                else:
+                    buffer.data = self.cpu_param_dict[buffer]
         else:
             for group_module in self.modules:
                 group_module.to(self.offload_device, non_blocking=False)
             for param in self.parameters:
-                param.data = param.data.to(self.offload_device, non_blocking=False)
+                if _is_torchao_tensor(param):
+                    moved = param.to(self.offload_device, non_blocking=False)
+                    _swap_torchao_tensor(param, moved)
+                else:
+                    param.data = param.data.to(self.offload_device, non_blocking=False)
             for buffer in self.buffers:
-                buffer.data = buffer.data.to(self.offload_device, non_blocking=False)
+                if _is_torchao_tensor(buffer):
+                    moved = buffer.to(self.offload_device, non_blocking=False)
+                    _swap_torchao_tensor(buffer, moved)
+                else:
+                    buffer.data = buffer.data.to(self.offload_device, non_blocking=False)
 
     @torch.compiler.disable()
     def onload_(self):
@@ -287,7 +378,7 @@ class GroupOffloadingHook(ModelHook):
 
     def __init__(self, group: ModuleGroup, *, config: GroupOffloadingConfig) -> None:
         self.group = group
-        self.next_group: Optional[ModuleGroup] = None
+        self.next_group: ModuleGroup | None = None
         self.config = config
 
     def initialize_hook(self, module: torch.nn.Module) -> torch.nn.Module:
@@ -307,6 +398,17 @@ class GroupOffloadingHook(ModelHook):
         if self.group.onload_leader == module:
             if self.group.onload_self:
                 self.group.onload_()
+            else:
+                # onload_self=False means this group relies on prefetching from a previous group.
+                # However, for conditionally-executed modules (e.g. patch_short/patch_mid/patch_long in Helios),
+                # the prefetch chain may not cover them if they were absent during the first forward pass
+                # when the execution order was traced. In that case, their weights remain on offload_device,
+                # so we fall back to a synchronous onload here.
+                params = [p for m in self.group.modules for p in m.parameters()] + list(self.group.parameters)
+                if params and params[0].device == self.group.offload_device:
+                    self.group.onload_()
+                    if self.group.stream is not None:
+                        self.group.stream.synchronize()
 
             should_onload_next_group = self.next_group is not None and not self.next_group.onload_self
             if should_onload_next_group:
@@ -359,7 +461,7 @@ class LazyPrefetchGroupOffloadingHook(ModelHook):
     _is_stateful = False
 
     def __init__(self):
-        self.execution_order: List[Tuple[str, torch.nn.Module]] = []
+        self.execution_order: list[tuple[str, torch.nn.Module]] = []
         self._layer_execution_tracker_module_names = set()
 
     def initialize_hook(self, module):
@@ -463,17 +565,17 @@ class LayerExecutionTrackerHook(ModelHook):
 
 def apply_group_offloading(
     module: torch.nn.Module,
-    onload_device: Union[str, torch.device],
-    offload_device: Union[str, torch.device] = torch.device("cpu"),
-    offload_type: Union[str, GroupOffloadingType] = "block_level",
-    num_blocks_per_group: Optional[int] = None,
+    onload_device: str | torch.device,
+    offload_device: str | torch.device = torch.device("cpu"),
+    offload_type: str | GroupOffloadingType = "block_level",
+    num_blocks_per_group: int | None = None,
     non_blocking: bool = False,
     use_stream: bool = False,
     record_stream: bool = False,
     low_cpu_mem_usage: bool = False,
-    offload_to_disk_path: Optional[str] = None,
-    block_modules: Optional[List[str]] = None,
-    exclude_kwargs: Optional[List[str]] = None,
+    offload_to_disk_path: str | None = None,
+    block_modules: list[str] | None = None,
+    exclude_kwargs: list[str] | None = None,
 ) -> None:
     r"""
     Applies group offloading to the internal layers of a torch.nn.Module. To understand what group offloading is, and
@@ -531,10 +633,10 @@ def apply_group_offloading(
             If True, the CPU memory usage is minimized by pinning tensors on-the-fly instead of pre-pinning them. This
             option only matters when using streamed CPU offloading (i.e. `use_stream=True`). This can be useful when
             the CPU memory is a bottleneck but may counteract the benefits of using streams.
-        block_modules (`List[str]`, *optional*):
+        block_modules (`list[str]`, *optional*):
             List of module names that should be treated as blocks for offloading. If provided, only these modules will
             be considered for block-level offloading. If not provided, the default block detection logic will be used.
-        exclude_kwargs (`List[str]`, *optional*):
+        exclude_kwargs (`list[str]`, *optional*):
             List of kwarg keys that should not be processed by send_to_device. This is useful for mutable state like
             caching lists that need to maintain their object identity across forward passes. If not provided, will be
             inferred from the module's `_skip_keys` attribute if it exists.
@@ -844,7 +946,7 @@ def _apply_lazy_group_offloading_hook(
 
 def _gather_parameters_with_no_group_offloading_parent(
     module: torch.nn.Module, modules_with_group_offloading: Set[str]
-) -> List[torch.nn.Parameter]:
+) -> list[torch.nn.Parameter]:
     parameters = []
     for name, parameter in module.named_parameters():
         has_parent_with_group_offloading = False
@@ -862,7 +964,7 @@ def _gather_parameters_with_no_group_offloading_parent(
 
 def _gather_buffers_with_no_group_offloading_parent(
     module: torch.nn.Module, modules_with_group_offloading: Set[str]
-) -> List[torch.Tensor]:
+) -> list[torch.Tensor]:
     buffers = []
     for name, buffer in module.named_buffers():
         has_parent_with_group_offloading = False
@@ -878,7 +980,7 @@ def _gather_buffers_with_no_group_offloading_parent(
     return buffers
 
 
-def _find_parent_module_in_module_dict(name: str, module_dict: Dict[str, torch.nn.Module]) -> str:
+def _find_parent_module_in_module_dict(name: str, module_dict: dict[str, torch.nn.Module]) -> str:
     atoms = name.split(".")
     while len(atoms) > 0:
         parent_name = ".".join(atoms)
@@ -902,7 +1004,7 @@ def _raise_error_if_accelerate_model_or_sequential_hook_present(module: torch.nn
             )
 
 
-def _get_top_level_group_offload_hook(module: torch.nn.Module) -> Optional[GroupOffloadingHook]:
+def _get_top_level_group_offload_hook(module: torch.nn.Module) -> GroupOffloadingHook | None:
     for submodule in module.modules():
         if hasattr(submodule, "_diffusers_hook"):
             group_offloading_hook = submodule._diffusers_hook.get_hook(_GROUP_OFFLOADING)

@@ -13,14 +13,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Any, Dict, Optional, Tuple, Union
+from typing import Any
 
 import torch
 from torch import nn
 
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...loaders import PeftAdapterMixin
-from ...utils import USE_PEFT_BACKEND, logging, scale_lora_layers, unscale_lora_layers
+from ...utils import apply_lora_scale, logging
 from ...utils.torch_utils import maybe_allow_in_graph
 from ..attention import Attention, AttentionMixin, FeedForward
 from ..attention_processor import CogVideoXAttnProcessor2_0, FusedCogVideoXAttnProcessor2_0
@@ -83,7 +83,7 @@ class CogVideoXBlock(nn.Module):
         norm_elementwise_affine: bool = True,
         norm_eps: float = 1e-5,
         final_dropout: bool = True,
-        ff_inner_dim: Optional[int] = None,
+        ff_inner_dim: int | None = None,
         ff_bias: bool = True,
         attention_out_bias: bool = True,
     ):
@@ -120,9 +120,9 @@ class CogVideoXBlock(nn.Module):
         hidden_states: torch.Tensor,
         encoder_hidden_states: torch.Tensor,
         temb: torch.Tensor,
-        image_rotary_emb: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,
-        attention_kwargs: Optional[Dict[str, Any]] = None,
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        image_rotary_emb: tuple[torch.Tensor, torch.Tensor] | None = None,
+        attention_kwargs: dict[str, Any] | None = None,
+    ) -> tuple[torch.Tensor, torch.Tensor]:
         text_seq_length = encoder_hidden_states.size(1)
         attention_kwargs = attention_kwargs or {}
 
@@ -223,11 +223,11 @@ class CogVideoXTransformer3DModel(ModelMixin, AttentionMixin, ConfigMixin, PeftA
         num_attention_heads: int = 30,
         attention_head_dim: int = 64,
         in_channels: int = 16,
-        out_channels: Optional[int] = 16,
+        out_channels: int | None = 16,
         flip_sin_to_cos: bool = True,
         freq_shift: int = 0,
         time_embed_dim: int = 512,
-        ofs_embed_dim: Optional[int] = None,
+        ofs_embed_dim: int | None = None,
         text_embed_dim: int = 4096,
         num_layers: int = 30,
         dropout: float = 0.0,
@@ -236,7 +236,7 @@ class CogVideoXTransformer3DModel(ModelMixin, AttentionMixin, ConfigMixin, PeftA
         sample_height: int = 60,
         sample_frames: int = 49,
         patch_size: int = 2,
-        patch_size_t: Optional[int] = None,
+        patch_size_t: int | None = None,
         temporal_compression_ratio: int = 4,
         max_text_seq_length: int = 226,
         activation_fn: str = "gelu-approximate",
@@ -363,32 +363,18 @@ class CogVideoXTransformer3DModel(ModelMixin, AttentionMixin, ConfigMixin, PeftA
         if self.original_attn_processors is not None:
             self.set_attn_processor(self.original_attn_processors)
 
+    @apply_lora_scale("attention_kwargs")
     def forward(
         self,
         hidden_states: torch.Tensor,
         encoder_hidden_states: torch.Tensor,
-        timestep: Union[int, float, torch.LongTensor],
-        timestep_cond: Optional[torch.Tensor] = None,
-        ofs: Optional[Union[int, float, torch.LongTensor]] = None,
-        image_rotary_emb: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,
-        attention_kwargs: Optional[Dict[str, Any]] = None,
+        timestep: int | float | torch.LongTensor,
+        timestep_cond: torch.Tensor | None = None,
+        ofs: int | float | torch.LongTensor | None = None,
+        image_rotary_emb: tuple[torch.Tensor, torch.Tensor] | None = None,
+        attention_kwargs: dict[str, Any] | None = None,
         return_dict: bool = True,
-    ) -> Union[Tuple[torch.Tensor], Transformer2DModelOutput]:
-        if attention_kwargs is not None:
-            attention_kwargs = attention_kwargs.copy()
-            lora_scale = attention_kwargs.pop("scale", 1.0)
-        else:
-            lora_scale = 1.0
-
-        if USE_PEFT_BACKEND:
-            # weight the lora layers by setting `lora_scale` for each PEFT layer
-            scale_lora_layers(self, lora_scale)
-        else:
-            if attention_kwargs is not None and attention_kwargs.get("scale", None) is not None:
-                logger.warning(
-                    "Passing `scale` via `attention_kwargs` when not using the PEFT backend is ineffective."
-                )
-
+    ) -> tuple[torch.Tensor] | Transformer2DModelOutput:
         batch_size, num_frames, channels, height, width = hidden_states.shape
 
         # 1. Time embedding
@@ -453,10 +439,6 @@ class CogVideoXTransformer3DModel(ModelMixin, AttentionMixin, ConfigMixin, PeftA
                 batch_size, (num_frames + p_t - 1) // p_t, height // p, width // p, -1, p_t, p, p
             )
             output = output.permute(0, 1, 5, 4, 2, 6, 3, 7).flatten(6, 7).flatten(4, 5).flatten(1, 2)
-
-        if USE_PEFT_BACKEND:
-            # remove `lora_scale` from each PEFT layer
-            unscale_lora_layers(self, lora_scale)
 
         if not return_dict:
             return (output,)

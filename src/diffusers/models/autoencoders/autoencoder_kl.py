@@ -11,8 +11,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from typing import Optional, Tuple, Union
-
 import torch
 import torch.nn as nn
 
@@ -47,12 +45,12 @@ class AutoencoderKL(
     Parameters:
         in_channels (int, *optional*, defaults to 3): Number of channels in the input image.
         out_channels (int,  *optional*, defaults to 3): Number of channels in the output.
-        down_block_types (`Tuple[str]`, *optional*, defaults to `("DownEncoderBlock2D",)`):
-            Tuple of downsample block types.
-        up_block_types (`Tuple[str]`, *optional*, defaults to `("UpDecoderBlock2D",)`):
-            Tuple of upsample block types.
-        block_out_channels (`Tuple[int]`, *optional*, defaults to `(64,)`):
-            Tuple of block output channels.
+        down_block_types (`tuple[str]`, *optional*, defaults to `("DownEncoderBlock2D",)`):
+            tuple of downsample block types.
+        up_block_types (`tuple[str]`, *optional*, defaults to `("UpDecoderBlock2D",)`):
+            tuple of upsample block types.
+        block_out_channels (`tuple[int]`, *optional*, defaults to `(64,)`):
+            tuple of block output channels.
         act_fn (`str`, *optional*, defaults to `"silu"`): The activation function to use.
         latent_channels (`int`, *optional*, defaults to 4): Number of channels in the latent space.
         sample_size (`int`, *optional*, defaults to `32`): Sample input size.
@@ -81,18 +79,18 @@ class AutoencoderKL(
         self,
         in_channels: int = 3,
         out_channels: int = 3,
-        down_block_types: Tuple[str, ...] = ("DownEncoderBlock2D",),
-        up_block_types: Tuple[str, ...] = ("UpDecoderBlock2D",),
-        block_out_channels: Tuple[int, ...] = (64,),
+        down_block_types: tuple[str] = ("DownEncoderBlock2D",),
+        up_block_types: tuple[str] = ("UpDecoderBlock2D",),
+        block_out_channels: tuple[int] = (64,),
         layers_per_block: int = 1,
         act_fn: str = "silu",
         latent_channels: int = 4,
         norm_num_groups: int = 32,
         sample_size: int = 32,
         scaling_factor: float = 0.18215,
-        shift_factor: Optional[float] = None,
-        latents_mean: Optional[Tuple[float]] = None,
-        latents_std: Optional[Tuple[float]] = None,
+        shift_factor: float | None = None,
+        latents_mean: tuple[float] | None = None,
+        latents_std: tuple[float] | None = None,
         force_upcast: bool = True,
         use_quant_conv: bool = True,
         use_post_quant_conv: bool = True,
@@ -172,7 +170,7 @@ class AutoencoderKL(
     @apply_forward_hook
     def encode(
         self, x: torch.Tensor, return_dict: bool = True
-    ) -> Union[AutoencoderKLOutput, Tuple[DiagonalGaussianDistribution]]:
+    ) -> AutoencoderKLOutput | tuple[DiagonalGaussianDistribution]:
         """
         Encode a batch of images into latents.
 
@@ -198,7 +196,7 @@ class AutoencoderKL(
 
         return AutoencoderKLOutput(latent_dist=posterior)
 
-    def _decode(self, z: torch.Tensor, return_dict: bool = True) -> Union[DecoderOutput, torch.Tensor]:
+    def _decode(self, z: torch.Tensor, return_dict: bool = True) -> DecoderOutput | torch.Tensor:
         if self.use_tiling and (z.shape[-1] > self.tile_latent_min_size or z.shape[-2] > self.tile_latent_min_size):
             return self.tiled_decode(z, return_dict=return_dict)
 
@@ -215,7 +213,7 @@ class AutoencoderKL(
     @apply_forward_hook
     def decode(
         self, z: torch.FloatTensor, return_dict: bool = True, generator=None
-    ) -> Union[DecoderOutput, torch.FloatTensor]:
+    ) -> DecoderOutput | torch.FloatTensor:
         """
         Decode a batch of images.
 
@@ -363,7 +361,7 @@ class AutoencoderKL(
 
         return AutoencoderKLOutput(latent_dist=posterior)
 
-    def tiled_decode(self, z: torch.Tensor, return_dict: bool = True) -> Union[DecoderOutput, torch.Tensor]:
+    def tiled_decode(self, z: torch.Tensor, return_dict: bool = True) -> DecoderOutput | torch.Tensor:
         r"""
         Decode a batch of images using a tiled decoder.
 
@@ -417,8 +415,8 @@ class AutoencoderKL(
         sample: torch.Tensor,
         sample_posterior: bool = False,
         return_dict: bool = True,
-        generator: Optional[torch.Generator] = None,
-    ) -> Union[DecoderOutput, torch.Tensor]:
+        generator: torch.Generator | None = None,
+    ) -> DecoderOutput | torch.Tensor:
         r"""
         Args:
             sample (`torch.Tensor`): Input sample.

@@ -18,7 +18,7 @@ Typing utilities: Utilities related to type checking and validation
 from typing import Any, Dict, List, Set, Tuple, Type, Union, get_args, get_origin
 
 
-def _is_valid_type(obj: Any, class_or_tuple: Union[Type, Tuple[Type, ...]]) -> bool:
+def _is_valid_type(obj: Any, class_or_tuple: Type | tuple[Type, ...]) -> bool:
     """
     Checks if an object is an instance of any of the provided types. For collections, it checks if every element is of
     the correct type as well.

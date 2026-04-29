@@ -12,7 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Any, Dict, List
+
+from typing import Any
 
 import torch
 
@@ -60,7 +61,7 @@ class QwenImageAfterDenoiseStep(ModularPipelineBlocks):
         return "Step that unpack the latents from 3D tensor (batch_size, sequence_length, channels) into 5D tensor (batch_size, channels, 1, height, width)"
 
     @property
-    def expected_components(self) -> List[ComponentSpec]:
+    def expected_components(self) -> list[ComponentSpec]:
         components = [
             ComponentSpec("pachifier", QwenImagePachifier, default_creation_method="from_config"),
         ]
@@ -68,7 +69,7 @@ class QwenImageAfterDenoiseStep(ModularPipelineBlocks):
         return components
 
     @property
-    def inputs(self) -> List[InputParam]:
+    def inputs(self) -> list[InputParam]:
         return [
             InputParam.template("height", required=True),
             InputParam.template("width", required=True),
@@ -81,7 +82,7 @@ class QwenImageAfterDenoiseStep(ModularPipelineBlocks):
         ]
 
     @property
-    def intermediate_outputs(self) -> List[OutputParam]:
+    def intermediate_outputs(self) -> list[OutputParam]:
         return [
             OutputParam(
                 name="latents", type_hint=torch.Tensor, description="The denoisedlatents unpacked to B, C, 1, H, W"
@@ -131,13 +132,13 @@ class QwenImageLayeredAfterDenoiseStep(ModularPipelineBlocks):
         return "Unpack latents from (B, seq, C*4) to (B, C, layers+1, H, W) after denoising."
 
     @property
-    def expected_components(self) -> List[ComponentSpec]:
+    def expected_components(self) -> list[ComponentSpec]:
         return [
             ComponentSpec("pachifier", QwenImageLayeredPachifier, default_creation_method="from_config"),
         ]
 
     @property
-    def inputs(self) -> List[InputParam]:
+    def inputs(self) -> list[InputParam]:
         return [
             InputParam(
                 name="latents",
@@ -151,7 +152,7 @@ class QwenImageLayeredAfterDenoiseStep(ModularPipelineBlocks):
         ]
 
     @property
-    def intermediate_outputs(self) -> List[OutputParam]:
+    def intermediate_outputs(self) -> list[OutputParam]:
         return [
             OutputParam.template("latents", note="unpacked to B, C, layers+1, H, W"),
         ]
@@ -190,7 +191,7 @@ class QwenImageDecoderStep(ModularPipelineBlocks):
               step.
 
       Outputs:
-          images (`List`):
+          images (`list`):
               Generated images. (tensor output of the vae decoder.)
     """
 
@@ -201,7 +202,7 @@ class QwenImageDecoderStep(ModularPipelineBlocks):
         return "Step that decodes the latents to images"
 
     @property
-    def expected_components(self) -> List[ComponentSpec]:
+    def expected_components(self) -> list[ComponentSpec]:
         components = [
             ComponentSpec("vae", AutoencoderKLQwenImage),
         ]
@@ -209,7 +210,7 @@ class QwenImageDecoderStep(ModularPipelineBlocks):
         return components
 
     @property
-    def inputs(self) -> List[InputParam]:
+    def inputs(self) -> list[InputParam]:
         return [
             InputParam(
                 name="latents",
@@ -220,7 +221,7 @@ class QwenImageDecoderStep(ModularPipelineBlocks):
         ]
 
     @property
-    def intermediate_outputs(self) -> List[OutputParam]:
+    def intermediate_outputs(self) -> list[OutputParam]:
         return [OutputParam.template("images", note="tensor output of the vae decoder.")]
 
     @torch.no_grad()
@@ -267,7 +268,7 @@ class QwenImageLayeredDecoderStep(ModularPipelineBlocks):
               Output format: 'pil', 'np', 'pt'.
 
       Outputs:
-          images (`List`):
+          images (`list`):
               Generated images.
     """
 
@@ -278,7 +279,7 @@ class QwenImageLayeredDecoderStep(ModularPipelineBlocks):
         return "Decode unpacked latents (B, C, layers+1, H, W) into layer images."
 
     @property
-    def expected_components(self) -> List[ComponentSpec]:
+    def expected_components(self) -> list[ComponentSpec]:
         return [
             ComponentSpec("vae", AutoencoderKLQwenImage),
             ComponentSpec(
@@ -290,7 +291,7 @@ class QwenImageLayeredDecoderStep(ModularPipelineBlocks):
         ]
 
     @property
-    def inputs(self) -> List[InputParam]:
+    def inputs(self) -> list[InputParam]:
         return [
             InputParam(
                 name="latents",
@@ -302,10 +303,8 @@ class QwenImageLayeredDecoderStep(ModularPipelineBlocks):
         ]
 
     @property
-    def intermediate_outputs(self) -> List[OutputParam]:
-        return [
-            OutputParam.template("images"),
-        ]
+    def intermediate_outputs(self) -> list[OutputParam]:
+        return [OutputParam.template("images")]
 
     @torch.no_grad()
     def __call__(self, components, state: PipelineState) -> PipelineState:
@@ -367,7 +366,7 @@ class QwenImageProcessImagesOutputStep(ModularPipelineBlocks):
               Output format: 'pil', 'np', 'pt'.
 
       Outputs:
-          images (`List`):
+          images (`list`):
               Generated images.
     """
 
@@ -378,7 +377,7 @@ class QwenImageProcessImagesOutputStep(ModularPipelineBlocks):
         return "postprocess the generated image"
 
     @property
-    def expected_components(self) -> List[ComponentSpec]:
+    def expected_components(self) -> list[ComponentSpec]:
         return [
             ComponentSpec(
                 "image_processor",
@@ -389,7 +388,7 @@ class QwenImageProcessImagesOutputStep(ModularPipelineBlocks):
         ]
 
     @property
-    def inputs(self) -> List[InputParam]:
+    def inputs(self) -> list[InputParam]:
         return [
             InputParam(
                 name="images",
@@ -401,7 +400,7 @@ class QwenImageProcessImagesOutputStep(ModularPipelineBlocks):
         ]
 
     @property
-    def intermediate_outputs(self) -> List[OutputParam]:
+    def intermediate_outputs(self) -> list[OutputParam]:
         return [OutputParam.template("images")]
 
     @staticmethod
@@ -437,12 +436,12 @@ class QwenImageInpaintProcessImagesOutputStep(ModularPipelineBlocks):
               the generated image tensor from decoders step
           output_type (`str`, *optional*, defaults to pil):
               Output format: 'pil', 'np', 'pt'.
-          mask_overlay_kwargs (`Dict`, *optional*):
+          mask_overlay_kwargs (`dict`, *optional*):
               The kwargs for the postprocess step to apply the mask overlay. generated in
               InpaintProcessImagesInputStep.
 
       Outputs:
-          images (`List`):
+          images (`list`):
               Generated images.
     """
 
@@ -453,7 +452,7 @@ class QwenImageInpaintProcessImagesOutputStep(ModularPipelineBlocks):
         return "postprocess the generated image, optional apply the mask overally to the original image.."
 
     @property
-    def expected_components(self) -> List[ComponentSpec]:
+    def expected_components(self) -> list[ComponentSpec]:
         return [
             ComponentSpec(
                 "image_mask_processor",
@@ -464,7 +463,7 @@ class QwenImageInpaintProcessImagesOutputStep(ModularPipelineBlocks):
         ]
 
     @property
-    def inputs(self) -> List[InputParam]:
+    def inputs(self) -> list[InputParam]:
         return [
             InputParam(
                 name="images",
@@ -475,13 +474,13 @@ class QwenImageInpaintProcessImagesOutputStep(ModularPipelineBlocks):
             InputParam.template("output_type"),
             InputParam(
                 name="mask_overlay_kwargs",
-                type_hint=Dict[str, Any],
+                type_hint=dict[str, Any],
                 description="The kwargs for the postprocess step to apply the mask overlay. generated in InpaintProcessImagesInputStep.",
             ),
         ]
 
     @property
-    def intermediate_outputs(self) -> List[OutputParam]:
+    def intermediate_outputs(self) -> list[OutputParam]:
         return [OutputParam.template("images")]
 
     @staticmethod

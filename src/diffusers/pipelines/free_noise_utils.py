@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Callable, Dict, List, Optional, Tuple, Union
+from typing import Callable
 
 import torch
 import torch.nn as nn
@@ -48,7 +48,7 @@ class SplitInferenceModule(nn.Module):
             The size of each chunk after splitting the input tensor.
         split_dim (`int`, defaults to `0`):
             The dimension along which the input tensors are split.
-        input_kwargs_to_split (`List[str]`, defaults to `["hidden_states"]`):
+        input_kwargs_to_split (`list[str]`, defaults to `["hidden_states"]`):
             A list of keyword arguments (strings) that represent the input tensors to be split.
 
     Workflow:
@@ -80,7 +80,7 @@ class SplitInferenceModule(nn.Module):
         module: nn.Module,
         split_size: int = 1,
         split_dim: int = 0,
-        input_kwargs_to_split: List[str] = ["hidden_states"],
+        input_kwargs_to_split: list[str] = ["hidden_states"],
     ) -> None:
         super().__init__()
 
@@ -89,7 +89,7 @@ class SplitInferenceModule(nn.Module):
         self.split_dim = split_dim
         self.input_kwargs_to_split = set(input_kwargs_to_split)
 
-    def forward(self, *args, **kwargs) -> Union[torch.Tensor, Tuple[torch.Tensor]]:
+    def forward(self, *args, **kwargs) -> torch.Tensor | tuple[torch.Tensor]:
         r"""Forward method for the `SplitInferenceModule`.
 
         This method processes the input by splitting specified keyword arguments along a given dimension, running the
@@ -99,13 +99,13 @@ class SplitInferenceModule(nn.Module):
         Args:
             *args (`Any`):
                 Positional arguments that are passed directly to the `module` without modification.
-            **kwargs (`Dict[str, torch.Tensor]`):
+            **kwargs (`dict[str, torch.Tensor]`):
                 Keyword arguments passed to the underlying `module`. Only keyword arguments whose names match the
                 entries in `input_kwargs_to_split` and are of type `torch.Tensor` will be split. The remaining keyword
                 arguments are passed unchanged.
 
         Returns:
-            `Union[torch.Tensor, Tuple[torch.Tensor]]`:
+            `torch.Tensor | tuple[torch.Tensor]`:
                 The outputs obtained from `SplitInferenceModule` are the same as if the underlying module was inferred
                 without it.
                 - If the underlying module returns a single tensor, the result will be a single concatenated tensor
@@ -145,7 +145,7 @@ class SplitInferenceModule(nn.Module):
 class AnimateDiffFreeNoiseMixin:
     r"""Mixin class for [FreeNoise](https://huggingface.co/papers/2310.15169)."""
 
-    def _enable_free_noise_in_block(self, block: Union[CrossAttnDownBlockMotion, DownBlockMotion, UpBlockMotion]):
+    def _enable_free_noise_in_block(self, block: CrossAttnDownBlockMotion | DownBlockMotion | UpBlockMotion):
         r"""Helper function to enable FreeNoise in transformer blocks."""
 
         for motion_module in block.motion_modules:
@@ -186,7 +186,7 @@ class AnimateDiffFreeNoiseMixin:
                         basic_transfomer_block._chunk_size, basic_transfomer_block._chunk_dim
                     )
 
-    def _disable_free_noise_in_block(self, block: Union[CrossAttnDownBlockMotion, DownBlockMotion, UpBlockMotion]):
+    def _disable_free_noise_in_block(self, block: CrossAttnDownBlockMotion | DownBlockMotion | UpBlockMotion):
         r"""Helper function to disable FreeNoise in transformer blocks."""
 
         for motion_module in block.motion_modules:
@@ -255,16 +255,16 @@ class AnimateDiffFreeNoiseMixin:
 
     def _encode_prompt_free_noise(
         self,
-        prompt: Union[str, Dict[int, str]],
+        prompt: str | dict[int, str],
         num_frames: int,
         device: torch.device,
         num_videos_per_prompt: int,
         do_classifier_free_guidance: bool,
-        negative_prompt: Optional[Union[str, Dict[int, str]]] = None,
-        prompt_embeds: Optional[torch.Tensor] = None,
-        negative_prompt_embeds: Optional[torch.Tensor] = None,
-        lora_scale: Optional[float] = None,
-        clip_skip: Optional[int] = None,
+        negative_prompt: str | dict[int, str] | None = None,
+        prompt_embeds: torch.Tensor | None = None,
+        negative_prompt_embeds: torch.Tensor | None = None,
+        lora_scale: float | None = None,
+        clip_skip: int | None = None,
     ) -> torch.Tensor:
         if negative_prompt is None:
             negative_prompt = ""
@@ -362,8 +362,8 @@ class AnimateDiffFreeNoiseMixin:
         width: int,
         dtype: torch.dtype,
         device: torch.device,
-        generator: Optional[torch.Generator] = None,
-        latents: Optional[torch.Tensor] = None,
+        generator: torch.Generator | None = None,
+        latents: torch.Tensor | None = None,
     ):
         if isinstance(generator, list) and len(generator) != batch_size:
             raise ValueError(
@@ -443,13 +443,14 @@ class AnimateDiffFreeNoiseMixin:
 
     def enable_free_noise(
         self,
-        context_length: Optional[int] = 16,
+        context_length: int | None = 16,
         context_stride: int = 4,
         weighting_scheme: str = "pyramid",
         noise_type: str = "shuffle_context",
-        prompt_interpolation_callback: Optional[
-            Callable[[DiffusionPipeline, int, int, torch.Tensor, torch.Tensor], torch.Tensor]
-        ] = None,
+        prompt_interpolation_callback: Callable[
+            [DiffusionPipeline, int, int, torch.Tensor, torch.Tensor], torch.Tensor
+        ]
+        | None = None,
     ) -> None:
         r"""
         Enable long video generation using FreeNoise.
@@ -529,7 +530,7 @@ class AnimateDiffFreeNoiseMixin:
             self._disable_free_noise_in_block(block)
 
     def _enable_split_inference_motion_modules_(
-        self, motion_modules: List[AnimateDiffTransformer3D], spatial_split_size: int
+        self, motion_modules: list[AnimateDiffTransformer3D], spatial_split_size: int
     ) -> None:
         for motion_module in motion_modules:
             motion_module.proj_in = SplitInferenceModule(motion_module.proj_in, spatial_split_size, 0, ["input"])
@@ -545,19 +546,19 @@ class AnimateDiffFreeNoiseMixin:
             motion_module.proj_out = SplitInferenceModule(motion_module.proj_out, spatial_split_size, 0, ["input"])
 
     def _enable_split_inference_attentions_(
-        self, attentions: List[Transformer2DModel], temporal_split_size: int
+        self, attentions: list[Transformer2DModel], temporal_split_size: int
     ) -> None:
         for i in range(len(attentions)):
             attentions[i] = SplitInferenceModule(
                 attentions[i], temporal_split_size, 0, ["hidden_states", "encoder_hidden_states"]
             )
 
-    def _enable_split_inference_resnets_(self, resnets: List[ResnetBlock2D], temporal_split_size: int) -> None:
+    def _enable_split_inference_resnets_(self, resnets: list[ResnetBlock2D], temporal_split_size: int) -> None:
         for i in range(len(resnets)):
             resnets[i] = SplitInferenceModule(resnets[i], temporal_split_size, 0, ["input_tensor", "temb"])
 
     def _enable_split_inference_samplers_(
-        self, samplers: Union[List[Downsample2D], List[Upsample2D]], temporal_split_size: int
+        self, samplers: list[Downsample2D] | list[Upsample2D], temporal_split_size: int
     ) -> None:
         for i in range(len(samplers)):
             samplers[i] = SplitInferenceModule(samplers[i], temporal_split_size, 0, ["hidden_states"])

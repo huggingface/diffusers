@@ -200,7 +200,7 @@ def retrieve_timesteps(
 
 # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_img2img.retrieve_latents
 def retrieve_latents(
-    encoder_output: torch.Tensor, generator: Optional[torch.Generator] = None, sample_mode: str = "sample"
+    encoder_output: torch.Tensor, generator: torch.Generator | None = None, sample_mode: str = "sample"
 ):
     if hasattr(encoder_output, "latent_dist") and sample_mode == "sample":
         return encoder_output.latent_dist.sample(generator)
@@ -535,7 +535,7 @@ class LTXImageToVideoSTGPipeline(DiffusionPipeline, FromSingleFileMixin, LTXVide
         num_frames: int = 161,
         dtype: Optional[torch.dtype] = None,
         device: Optional[torch.device] = None,
-        generator: Optional[torch.Generator] = None,
+        generator: torch.Generator | None = None,
         latents: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
         height = height // self.vae_spatial_compression_ratio
@@ -636,7 +636,7 @@ class LTXImageToVideoSTGPipeline(DiffusionPipeline, FromSingleFileMixin, LTXVide
         negative_prompt_attention_mask: Optional[torch.Tensor] = None,
         decode_timestep: Union[float, List[float]] = 0.0,
         decode_noise_scale: Optional[Union[float, List[float]]] = None,
-        output_type: Optional[str] = "pil",
+        output_type: str | None = "pil",
         return_dict: bool = True,
         attention_kwargs: Optional[Dict[str, Any]] = None,
         callback_on_step_end: Optional[Callable[[int, int, Dict], None]] = None,

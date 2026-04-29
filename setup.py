@@ -101,6 +101,7 @@ _deps = [
     "datasets",
     "filelock",
     "flax>=0.4.1",
+    "ftfy",
     "hf-doc-builder>=0.3.0",
     "httpx<1.0.0",
     "huggingface-hub>=0.34.0,<2.0",
@@ -111,7 +112,6 @@ _deps = [
     "jax>=0.4.1",
     "jaxlib>=0.4.1",
     "Jinja2",
-    "k-diffusion==0.0.12",
     "torchsde",
     "note_seq",
     "librosa",
@@ -122,9 +122,9 @@ _deps = [
     "pytest",
     "pytest-timeout",
     "pytest-xdist",
-    "python>=3.8.0",
+    "python>=3.10.0",
     "ruff==0.9.10",
-    "safetensors>=0.3.1",
+    "safetensors>=0.8.0-rc.0",
     "sentencepiece>=0.1.91,!=0.1.92",
     "GitPython<3.1.19",
     "scipy",
@@ -146,6 +146,7 @@ _deps = [
     "phonemizer",
     "opencv-python",
     "timm",
+    "flashpack",
 ]
 
 # this is a lookup table with items like:
@@ -222,13 +223,14 @@ extras["docs"] = deps_list("hf-doc-builder")
 extras["training"] = deps_list("accelerate", "datasets", "protobuf", "tensorboard", "Jinja2", "peft", "timm")
 extras["test"] = deps_list(
     "compel",
+    "ftfy",
     "GitPython",
     "datasets",
     "Jinja2",
     "invisible-watermark",
-    "k-diffusion",
     "librosa",
     "parameterized",
+    "protobuf",
     "pytest",
     "pytest-timeout",
     "pytest-xdist",
@@ -237,6 +239,7 @@ extras["test"] = deps_list(
     "sentencepiece",
     "scipy",
     "tiktoken",
+    "torchsde",
     "torchvision",
     "transformers",
     "phonemizer",
@@ -248,6 +251,7 @@ extras["gguf"] = deps_list("gguf", "accelerate")
 extras["optimum_quanto"] = deps_list("optimum_quanto", "accelerate")
 extras["torchao"] = deps_list("torchao", "accelerate")
 extras["nvidia_modelopt"] = deps_list("nvidia_modelopt[hf]")
+extras["flashpack"] = deps_list("flashpack")
 
 if os.name == "nt":  # windows
     extras["flax"] = []  # jax is not supported on windows
@@ -274,7 +278,7 @@ version_range_max = max(sys.version_info[1], 10) + 1
 
 setup(
     name="diffusers",
-    version="0.37.0.dev0",  # expected format is one of x.y.z.dev0, or x.y.z.rc1 or x.y.z (no to dashes, yes to dots)
+    version="0.38.0.dev0",  # expected format is one of x.y.z.dev0, or x.y.z.rc1 or x.y.z (no to dashes, yes to dots)
     description="State-of-the-art diffusion in PyTorch and JAX.",
     long_description=open("README.md", "r", encoding="utf-8").read(),
     long_description_content_type="text/markdown",
@@ -287,7 +291,7 @@ setup(
     packages=find_packages("src"),
     package_data={"diffusers": ["py.typed"]},
     include_package_data=True,
-    python_requires=">=3.8.0",
+    python_requires=">=3.10.0",
     install_requires=list(install_requires),
     extras_require=extras,
     entry_points={"console_scripts": ["diffusers-cli=diffusers.commands.diffusers_cli:main"]},

@@ -21,7 +21,7 @@ import unittest
 import numpy as np
 import PIL.Image
 import torch
-from transformers import AutoTokenizer, T5EncoderModel
+from transformers import AutoConfig, AutoTokenizer, T5EncoderModel
 
 from diffusers import (
     AutoencoderKLWan,
@@ -96,7 +96,8 @@ class Cosmos2VideoToWorldPipelineFastTests(PipelineTesterMixin, unittest.TestCas
 
         torch.manual_seed(0)
         scheduler = FlowMatchEulerDiscreteScheduler(use_karras_sigmas=True)
-        text_encoder = T5EncoderModel.from_pretrained("hf-internal-testing/tiny-random-t5")
+        config = AutoConfig.from_pretrained("hf-internal-testing/tiny-random-t5")
+        text_encoder = T5EncoderModel(config)
         tokenizer = AutoTokenizer.from_pretrained("hf-internal-testing/tiny-random-t5")
 
         components = {

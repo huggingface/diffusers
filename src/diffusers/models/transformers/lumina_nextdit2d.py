@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Any, Dict, Optional, Tuple, Union
+from typing import Any
 
 import torch
 import torch.nn as nn
@@ -123,7 +123,7 @@ class LuminaNextDiTBlock(nn.Module):
         encoder_hidden_states: torch.Tensor,
         encoder_mask: torch.Tensor,
         temb: torch.Tensor,
-        cross_attention_kwargs: Optional[Dict[str, Any]] = None,
+        cross_attention_kwargs: dict[str, Any] | None = None,
     ) -> torch.Tensor:
         """
         Perform a forward pass through the LuminaNextDiTBlock.
@@ -135,7 +135,7 @@ class LuminaNextDiTBlock(nn.Module):
             encoder_hidden_states: (`torch.Tensor`): The hidden_states of text prompt are processed by Gemma encoder.
             encoder_mask (`torch.Tensor`): The hidden_states of text prompt attention mask.
             temb (`torch.Tensor`): Timestep embedding with text prompt embedding.
-            cross_attention_kwargs (`Dict[str, Any]`): kwargs for cross attention.
+            cross_attention_kwargs (`dict[str, Any]`): kwargs for cross attention.
         """
         residual = hidden_states
 
@@ -227,19 +227,19 @@ class LuminaNextDiT2DModel(ModelMixin, ConfigMixin):
     def __init__(
         self,
         sample_size: int = 128,
-        patch_size: Optional[int] = 2,
-        in_channels: Optional[int] = 4,
-        hidden_size: Optional[int] = 2304,
-        num_layers: Optional[int] = 32,
-        num_attention_heads: Optional[int] = 32,
-        num_kv_heads: Optional[int] = None,
-        multiple_of: Optional[int] = 256,
-        ffn_dim_multiplier: Optional[float] = None,
-        norm_eps: Optional[float] = 1e-5,
-        learn_sigma: Optional[bool] = True,
-        qk_norm: Optional[bool] = True,
-        cross_attention_dim: Optional[int] = 2048,
-        scaling_factor: Optional[float] = 1.0,
+        patch_size: int | None = 2,
+        in_channels: int | None = 4,
+        hidden_size: int | None = 2304,
+        num_layers: int | None = 32,
+        num_attention_heads: int | None = 32,
+        num_kv_heads: int | None = None,
+        multiple_of: int | None = 256,
+        ffn_dim_multiplier: float | None = None,
+        norm_eps: float | None = 1e-5,
+        learn_sigma: bool | None = True,
+        qk_norm: bool | None = True,
+        cross_attention_dim: int | None = 2048,
+        scaling_factor: float | None = 1.0,
     ) -> None:
         super().__init__()
         self.sample_size = sample_size
@@ -295,9 +295,9 @@ class LuminaNextDiT2DModel(ModelMixin, ConfigMixin):
         encoder_hidden_states: torch.Tensor,
         encoder_mask: torch.Tensor,
         image_rotary_emb: torch.Tensor,
-        cross_attention_kwargs: Dict[str, Any] = None,
+        cross_attention_kwargs: dict[str, Any] = None,
         return_dict=True,
-    ) -> Union[Tuple[torch.Tensor], Transformer2DModelOutput]:
+    ) -> tuple[torch.Tensor] | Transformer2DModelOutput:
         """
         Forward pass of LuminaNextDiT.
 

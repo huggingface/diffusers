@@ -14,7 +14,6 @@
 # limitations under the License.
 
 import random
-import tempfile
 
 import numpy as np
 import PIL
@@ -33,6 +32,19 @@ from ...testing_utils import floats_tensor, torch_device
 from ..test_modular_pipelines_common import ModularPipelineTesterMixin
 
 
+FLUX_TEXT2IMAGE_WORKFLOWS = {
+    "text2image": [
+        ("text_encoder", "FluxTextEncoderStep"),
+        ("denoise.input", "FluxTextInputStep"),
+        ("denoise.before_denoise.prepare_latents", "FluxPrepareLatentsStep"),
+        ("denoise.before_denoise.set_timesteps", "FluxSetTimestepsStep"),
+        ("denoise.before_denoise.prepare_rope_inputs", "FluxRoPEInputsStep"),
+        ("denoise.denoise", "FluxDenoiseStep"),
+        ("decode", "FluxDecodeStep"),
+    ]
+}
+
+
 class TestFluxModularPipelineFast(ModularPipelineTesterMixin):
     pipeline_class = FluxModularPipeline
     pipeline_blocks_class = FluxAutoBlocks
@@ -40,6 +52,7 @@ class TestFluxModularPipelineFast(ModularPipelineTesterMixin):
 
     params = frozenset(["prompt", "height", "width", "guidance_scale"])
     batch_params = frozenset(["prompt"])
+    expected_workflow_blocks = FLUX_TEXT2IMAGE_WORKFLOWS
 
     def get_dummy_inputs(self, seed=0):
         generator = self.get_generator(seed)
@@ -59,6 +72,23 @@ class TestFluxModularPipelineFast(ModularPipelineTesterMixin):
         super().test_float16_inference(9e-2)
 
 
+FLUX_IMAGE2IMAGE_WORKFLOWS = {
+    "image2image": [
+        ("text_encoder", "FluxTextEncoderStep"),
+        ("vae_encoder.preprocess", "FluxProcessImagesInputStep"),
+        ("vae_encoder.encode", "FluxVaeEncoderStep"),
+        ("denoise.input.text_inputs", "FluxTextInputStep"),
+        ("denoise.input.additional_inputs", "FluxAdditionalInputsStep"),
+        ("denoise.before_denoise.prepare_latents", "FluxPrepareLatentsStep"),
+        ("denoise.before_denoise.set_timesteps", "FluxImg2ImgSetTimestepsStep"),
+        ("denoise.before_denoise.prepare_img2img_latents", "FluxImg2ImgPrepareLatentsStep"),
+        ("denoise.before_denoise.prepare_rope_inputs", "FluxRoPEInputsStep"),
+        ("denoise.denoise", "FluxDenoiseStep"),
+        ("decode", "FluxDecodeStep"),
+    ]
+}
+
+
 class TestFluxImg2ImgModularPipelineFast(ModularPipelineTesterMixin):
     pipeline_class = FluxModularPipeline
     pipeline_blocks_class = FluxAutoBlocks
@@ -66,6 +96,7 @@ class TestFluxImg2ImgModularPipelineFast(ModularPipelineTesterMixin):
 
     params = frozenset(["prompt", "height", "width", "guidance_scale", "image"])
     batch_params = frozenset(["prompt", "image"])
+    expected_workflow_blocks = FLUX_IMAGE2IMAGE_WORKFLOWS
 
     def get_pipeline(self, components_manager=None, torch_dtype=torch.float32):
         pipeline = super().get_pipeline(components_manager, torch_dtype)
@@ -97,18 +128,16 @@ class TestFluxImg2ImgModularPipelineFast(ModularPipelineTesterMixin):
 
         return inputs
 
-    def test_save_from_pretrained(self):
+    def test_save_from_pretrained(self, tmp_path):
         pipes = []
         base_pipe = self.get_pipeline().to(torch_device)
         pipes.append(base_pipe)
 
-        with tempfile.TemporaryDirectory() as tmpdirname:
-            base_pipe.save_pretrained(tmpdirname)
-
-            pipe = ModularPipeline.from_pretrained(tmpdirname).to(torch_device)
-            pipe.load_components(torch_dtype=torch.float32)
-            pipe.to(torch_device)
-            pipe.image_processor = VaeImageProcessor(vae_scale_factor=2)
+        base_pipe.save_pretrained(str(tmp_path))
+        pipe = ModularPipeline.from_pretrained(tmp_path).to(torch_device)
+        pipe.load_components(torch_dtype=torch.float32)
+        pipe.to(torch_device)
+        pipe.image_processor = VaeImageProcessor(vae_scale_factor=2)
 
         pipes.append(pipe)
 
@@ -125,6 +154,32 @@ class TestFluxImg2ImgModularPipelineFast(ModularPipelineTesterMixin):
         super().test_float16_inference(8e-2)
 
 
+FLUX_KONTEXT_WORKFLOWS = {
+    "text2image": [
+        ("text_encoder", "FluxTextEncoderStep"),
+        ("denoise.input", "FluxTextInputStep"),
+        ("denoise.before_denoise.prepare_latents", "FluxPrepareLatentsStep"),
+        ("denoise.before_denoise.set_timesteps", "FluxSetTimestepsStep"),
+        ("denoise.before_denoise.prepare_rope_inputs", "FluxRoPEInputsStep"),
+        ("denoise.denoise", "FluxKontextDenoiseStep"),
+        ("decode", "FluxDecodeStep"),
+    ],
+    "image_conditioned": [
+        ("text_encoder", "FluxTextEncoderStep"),
+        ("vae_encoder.preprocess", "FluxKontextProcessImagesInputStep"),
+        ("vae_encoder.encode", "FluxVaeEncoderStep"),
+        ("denoise.input.set_resolution", "FluxKontextSetResolutionStep"),
+        ("denoise.input.text_inputs", "FluxTextInputStep"),
+        ("denoise.input.additional_inputs", "FluxKontextAdditionalInputsStep"),
+        ("denoise.before_denoise.prepare_latents", "FluxPrepareLatentsStep"),
+        ("denoise.before_denoise.set_timesteps", "FluxSetTimestepsStep"),
+        ("denoise.before_denoise.prepare_rope_inputs", "FluxKontextRoPEInputsStep"),
+        ("denoise.denoise", "FluxKontextDenoiseStep"),
+        ("decode", "FluxDecodeStep"),
+    ],
+}
+
+
 class TestFluxKontextModularPipelineFast(ModularPipelineTesterMixin):
     pipeline_class = FluxKontextModularPipeline
     pipeline_blocks_class = FluxKontextAutoBlocks
@@ -132,6 +187,7 @@ class TestFluxKontextModularPipelineFast(ModularPipelineTesterMixin):
 
     params = frozenset(["prompt", "height", "width", "guidance_scale", "image"])
     batch_params = frozenset(["prompt", "image"])
+    expected_workflow_blocks = FLUX_KONTEXT_WORKFLOWS
 
     def get_dummy_inputs(self, seed=0):
         generator = self.get_generator(seed)
@@ -153,18 +209,16 @@ class TestFluxKontextModularPipelineFast(ModularPipelineTesterMixin):
 
         return inputs
 
-    def test_save_from_pretrained(self):
+    def test_save_from_pretrained(self, tmp_path):
         pipes = []
         base_pipe = self.get_pipeline().to(torch_device)
         pipes.append(base_pipe)
 
-        with tempfile.TemporaryDirectory() as tmpdirname:
-            base_pipe.save_pretrained(tmpdirname)
-
-            pipe = ModularPipeline.from_pretrained(tmpdirname).to(torch_device)
-            pipe.load_components(torch_dtype=torch.float32)
-            pipe.to(torch_device)
-            pipe.image_processor = VaeImageProcessor(vae_scale_factor=2)
+        base_pipe.save_pretrained(str(tmp_path))
+        pipe = ModularPipeline.from_pretrained(tmp_path).to(torch_device)
+        pipe.load_components(torch_dtype=torch.float32)
+        pipe.to(torch_device)
+        pipe.image_processor = VaeImageProcessor(vae_scale_factor=2)
 
         pipes.append(pipe)
 

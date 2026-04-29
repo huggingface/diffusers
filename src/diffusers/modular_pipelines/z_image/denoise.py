@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Any, Dict, List, Tuple
+from typing import Any
 
 import torch
 
@@ -46,7 +46,7 @@ class ZImageLoopBeforeDenoiser(ModularPipelineBlocks):
         )
 
     @property
-    def inputs(self) -> List[InputParam]:
+    def inputs(self) -> list[InputParam]:
         return [
             InputParam(
                 "latents",
@@ -80,7 +80,7 @@ class ZImageLoopDenoiser(ModularPipelineBlocks):
 
     def __init__(
         self,
-        guider_input_fields: Dict[str, Any] = {"cap_feats": ("prompt_embeds", "negative_prompt_embeds")},
+        guider_input_fields: dict[str, Any] = {"cap_feats": ("prompt_embeds", "negative_prompt_embeds")},
     ):
         """Initialize a denoiser block that calls the denoiser model. This block is used in Z-Image.
 
@@ -101,7 +101,7 @@ class ZImageLoopDenoiser(ModularPipelineBlocks):
         super().__init__()
 
     @property
-    def expected_components(self) -> List[ComponentSpec]:
+    def expected_components(self) -> list[ComponentSpec]:
         return [
             ComponentSpec(
                 "guider",
@@ -121,7 +121,7 @@ class ZImageLoopDenoiser(ModularPipelineBlocks):
         )
 
     @property
-    def inputs(self) -> List[Tuple[str, Any]]:
+    def inputs(self) -> list[tuple[str, Any]]:
         inputs = [
             InputParam(
                 "num_inference_steps",
@@ -205,7 +205,7 @@ class ZImageLoopAfterDenoiser(ModularPipelineBlocks):
     model_name = "z-image"
 
     @property
-    def expected_components(self) -> List[ComponentSpec]:
+    def expected_components(self) -> list[ComponentSpec]:
         return [
             ComponentSpec("scheduler", FlowMatchEulerDiscreteScheduler),
         ]
@@ -246,13 +246,13 @@ class ZImageDenoiseLoopWrapper(LoopSequentialPipelineBlocks):
         )
 
     @property
-    def loop_expected_components(self) -> List[ComponentSpec]:
+    def loop_expected_components(self) -> list[ComponentSpec]:
         return [
             ComponentSpec("scheduler", FlowMatchEulerDiscreteScheduler),
         ]
 
     @property
-    def loop_inputs(self) -> List[InputParam]:
+    def loop_inputs(self) -> list[InputParam]:
         return [
             InputParam(
                 "timesteps",

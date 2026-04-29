@@ -86,7 +86,7 @@ class IADBPipeline(DiffusionPipeline):
         batch_size: int = 1,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
         num_inference_steps: int = 50,
-        output_type: Optional[str] = "pil",
+        output_type: str | None = "pil",
         return_dict: bool = True,
     ) -> Union[ImagePipelineOutput, Tuple]:
         r"""

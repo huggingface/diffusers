@@ -192,7 +192,7 @@ class StableDiffusionTiledUpscalePipeline(StableDiffusionUpscalePipeline):
         negative_prompt: Optional[Union[str, List[str]]] = None,
         num_images_per_prompt: Optional[int] = 1,
         eta: float = 0.0,
-        generator: Optional[torch.Generator] = None,
+        generator: torch.Generator | None = None,
         latents: Optional[torch.Tensor] = None,
         callback: Optional[Callable[[int, int, torch.Tensor], None]] = None,
         callback_steps: int = 1,

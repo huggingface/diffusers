@@ -7,10 +7,11 @@ import re
 import warnings
 from contextlib import contextmanager
 from functools import partial
-from typing import Any, Dict, Iterable, List, Optional, Set, Tuple, Type, Union
+from typing import Any, Iterable
 
 import numpy as np
 import torch
+import torch.nn.functional as F
 
 
 if getattr(torch, "distributed", None) is not None:
@@ -109,6 +110,92 @@ def compute_snr(noise_scheduler, timesteps):
     return snr
 
 
+def compute_confidence_aware_loss(
+    logits: torch.Tensor,
+    labels: torch.Tensor,
+    *,
+    lambda_conf: float = 0.0,
+    temperature: float = 1.0,
+    per_token_weights: torch.Tensor | None = None,
+    ignore_index: int = -100,
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    """
+    Computes a confidence-aware training loss for token classification-style heads.
+
+    This loss combines:
+      - `loss_sft`: standard supervised cross-entropy on all non-ignored labels.
+      - `loss_conf`: an entropy penalty applied only on tokens that are already predicted correctly.
+
+    Args:
+        logits (`torch.Tensor`): Logits of shape `(..., vocab_size)`.
+        labels (`torch.Tensor`): Labels of shape `(...)`, matching `logits.shape[:-1]`. Values set to `ignore_index`
+            are excluded from both losses.
+        lambda_conf (`float`, *optional*, defaults to `0.0`): Weight for the confidence term.
+        temperature (`float`, *optional*, defaults to `1.0`): Temperature used for the entropy term only. Lower values
+            sharpen the distribution and change the strength of the confidence gradients.
+        per_token_weights (`torch.Tensor`, *optional*): Optional weights of shape `(...)` to reweight both losses per
+            token (e.g. schedule-aware weights). Tokens with weight `0` contribute nothing.
+        ignore_index (`int`, *optional*, defaults to `-100`): Ignore index for labels.
+
+    Returns:
+        `Tuple[torch.Tensor, torch.Tensor, torch.Tensor]`: `(loss, loss_sft, loss_conf)`.
+    """
+    if logits.ndim < 2:
+        raise ValueError(f"`logits` must have at least 2 dims, got shape {tuple(logits.shape)}.")
+    if labels.shape != logits.shape[:-1]:
+        raise ValueError(
+            f"`labels` shape must match `logits.shape[:-1]`, got labels={tuple(labels.shape)} logits={tuple(logits.shape)}."
+        )
+    if temperature <= 0:
+        raise ValueError(f"`temperature` must be > 0, got {temperature}.")
+
+    valid = labels.ne(ignore_index)
+    if per_token_weights is None:
+        weights = torch.ones_like(labels, dtype=logits.dtype)
+    else:
+        if per_token_weights.shape != labels.shape:
+            raise ValueError(
+                f"`per_token_weights` shape must match `labels` shape, got {tuple(per_token_weights.shape)} != {tuple(labels.shape)}."
+            )
+        weights = per_token_weights.to(dtype=logits.dtype)
+
+    # Supervised CE (optionally weighted).
+    vocab_size = logits.shape[-1]
+    per_token_nll = F.cross_entropy(
+        logits.reshape(-1, vocab_size),
+        labels.reshape(-1),
+        reduction="none",
+        ignore_index=ignore_index,
+    ).reshape_as(labels)
+
+    denom_sft = (weights * valid.to(weights.dtype)).sum().clamp_min(1)
+    loss_sft = (per_token_nll * weights * valid.to(per_token_nll.dtype)).sum() / denom_sft
+
+    # Confidence loss: penalize entropy only where prediction is already correct.
+    if lambda_conf == 0.0:
+        loss_conf = torch.zeros((), device=logits.device, dtype=loss_sft.dtype)
+        return loss_sft, loss_sft, loss_conf
+
+    with torch.no_grad():
+        pred = logits.argmax(dim=-1)
+        correct = valid & pred.eq(labels)
+
+    scaled_logits = logits.float()
+    if temperature != 1.0:
+        scaled_logits = scaled_logits / float(temperature)
+
+    probs = torch.softmax(scaled_logits, dim=-1)
+    eps = torch.finfo(probs.dtype).tiny
+    log_probs = torch.log(probs.clamp_min(eps))
+    entropy = -(probs * log_probs).sum(dim=-1).to(dtype=logits.dtype)
+
+    denom_conf = (weights * correct.to(weights.dtype)).sum().clamp_min(1)
+    loss_conf = (entropy * weights * correct.to(entropy.dtype)).sum() / denom_conf
+
+    loss = loss_sft + float(lambda_conf) * loss_conf
+    return loss, loss_sft, loss_conf
+
+
 def resolve_interpolation_mode(interpolation_type: str):
     """
     Maps a string describing an interpolation function to the corresponding torchvision `InterpolationMode` enum. The
@@ -162,7 +249,7 @@ def compute_dream_and_update_latents(
     target: torch.Tensor,
     encoder_hidden_states: torch.Tensor,
     dream_detail_preservation: float = 1.0,
-) -> Tuple[Optional[torch.Tensor], Optional[torch.Tensor]]:
+) -> tuple[torch.Tensor, torch.Tensor]:
     """
     Implements "DREAM (Diffusion Rectification and Estimation-Adaptive Models)" from
     https://huggingface.co/papers/2312.00210. DREAM helps align training with sampling to help training be more
@@ -207,7 +294,7 @@ def compute_dream_and_update_latents(
     return _noisy_latents, _target
 
 
-def unet_lora_state_dict(unet: UNet2DConditionModel) -> Dict[str, torch.Tensor]:
+def unet_lora_state_dict(unet: UNet2DConditionModel) -> dict[str, torch.Tensor]:
     r"""
     Returns:
         A state dict containing just the LoRA parameters.
@@ -226,7 +313,7 @@ def unet_lora_state_dict(unet: UNet2DConditionModel) -> Dict[str, torch.Tensor]:
     return lora_state_dict
 
 
-def cast_training_params(model: Union[torch.nn.Module, List[torch.nn.Module]], dtype=torch.float32):
+def cast_training_params(model: torch.nn.Module | list[torch.nn.Module], dtype=torch.float32):
     """
     Casts the training parameters of the model to the specified data type.
 
@@ -244,7 +331,7 @@ def cast_training_params(model: Union[torch.nn.Module, List[torch.nn.Module]], d
 
 
 def _set_state_dict_into_text_encoder(
-    lora_state_dict: Dict[str, torch.Tensor], prefix: str, text_encoder: torch.nn.Module
+    lora_state_dict: dict[str, torch.Tensor], prefix: str, text_encoder: torch.nn.Module
 ):
     """
     Sets the `lora_state_dict` into `text_encoder` coming from `transformers`.
@@ -262,7 +349,7 @@ def _set_state_dict_into_text_encoder(
     set_peft_model_state_dict(text_encoder, text_encoder_state_dict, adapter_name="default")
 
 
-def _collate_lora_metadata(modules_to_save: Dict[str, torch.nn.Module]) -> Dict[str, Any]:
+def _collate_lora_metadata(modules_to_save: dict[str, torch.nn.Module]) -> dict[str, Any]:
     metadatas = {}
     for module_name, module in modules_to_save.items():
         if module is not None:
@@ -276,8 +363,8 @@ def compute_density_for_timestep_sampling(
     logit_mean: float = None,
     logit_std: float = None,
     mode_scale: float = None,
-    device: Union[torch.device, str] = "cpu",
-    generator: Optional[torch.Generator] = None,
+    device: torch.device | str = "cpu",
+    generator: torch.Generator | None = None,
 ):
     """
     Compute the density for sampling the timesteps when doing SD3 training.
@@ -332,9 +419,7 @@ def free_memory():
 
 
 @contextmanager
-def offload_models(
-    *modules: Union[torch.nn.Module, DiffusionPipeline], device: Union[str, torch.device], offload: bool = True
-):
+def offload_models(*modules: torch.nn.Module | DiffusionPipeline, device: str | torch.device, offload: bool = True):
     """
     Context manager that, if offload=True, moves each module to `device` on enter, then moves it back to its original
     device on exit.
@@ -434,12 +519,12 @@ def get_fsdp_kwargs_from_accelerator(accelerator) -> dict:
 
 def wrap_with_fsdp(
     model: torch.nn.Module,
-    device: Union[str, torch.device],
+    device: str | torch.device,
     offload: bool = True,
     use_orig_params: bool = True,
     limit_all_gathers: bool = True,
-    fsdp_kwargs: Optional[Dict[str, Any]] = None,
-    transformer_layer_cls: Optional[Set[Type[torch.nn.Module]]] = None,
+    fsdp_kwargs: dict[str, Any] | None = None,
+    transformer_layer_cls: set[type[torch.nn.Module]] | None = None,
 ) -> FSDP:
     """
     Wrap a model with FSDP using common defaults and optional transformer auto-wrapping.
@@ -465,10 +550,7 @@ def wrap_with_fsdp(
         logger.info(f"transformer_layer_cls is not provided, auto-inferred as {transformer_layer_cls.__name__}")
 
     # Add auto-wrap policy if transformer layers specified
-    auto_wrap_policy = partial(
-        transformer_auto_wrap_policy,
-        transformer_layer_cls={transformer_layer_cls},
-    )
+    auto_wrap_policy = partial(transformer_auto_wrap_policy, transformer_layer_cls={transformer_layer_cls})
 
     config = {
         "device_id": device,
@@ -498,11 +580,11 @@ class EMAModel:
         min_decay: float = 0.0,
         update_after_step: int = 0,
         use_ema_warmup: bool = False,
-        inv_gamma: Union[float, int] = 1.0,
-        power: Union[float, int] = 2 / 3,
+        inv_gamma: float | int = 1.0,
+        power: float | int = 2 / 3,
         foreach: bool = False,
-        model_cls: Optional[Any] = None,
-        model_config: Dict[str, Any] = None,
+        model_cls: Any | None = None,
+        model_config: dict[str, Any] | None = None,
         **kwargs,
     ):
         """
@@ -516,7 +598,7 @@ class EMAModel:
                 Inverse multiplicative factor of EMA warmup. Default: 1. Only used if `use_ema_warmup` is True.
             power (float): Exponential factor of EMA warmup. Default: 2/3. Only used if `use_ema_warmup` is True.
             foreach (bool): Use torch._foreach functions for updating shadow parameters. Should be faster.
-            device (Optional[Union[str, torch.device]]): The device to store the EMA weights on. If None, the EMA
+            device (str | torch.device | None): The device to store the EMA weights on. If None, the EMA
                         weights will be stored on CPU.
 
         @crowsonkb's notes on EMA Warmup:

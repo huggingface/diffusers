@@ -60,7 +60,7 @@ class QwenImageLayeredTextEncoderStep(SequentialPipelineBlocks):
           (`Qwen2VLProcessor`) tokenizer (`Qwen2Tokenizer`): The tokenizer to use guider (`ClassifierFreeGuidance`)
 
       Inputs:
-          image (`Union[Image, List]`):
+          image (`Image | list`):
               Reference image(s) for denoising. Can be a single image or list of images.
           resolution (`int`, *optional*, defaults to 640):
               The target area to resize the image to, can be 1024 or 640
@@ -74,7 +74,7 @@ class QwenImageLayeredTextEncoderStep(SequentialPipelineBlocks):
               Maximum sequence length for prompt encoding.
 
       Outputs:
-          resized_image (`List`):
+          resized_image (`list`):
               The resized images
           prompt (`str`):
               The prompt or prompts to guide image generation. If not provided, updated using image caption
@@ -117,7 +117,7 @@ class QwenImageLayeredVaeEncoderStep(SequentialPipelineBlocks):
           (`AutoencoderKLQwenImage`)
 
       Inputs:
-          image (`Union[Image, List]`):
+          image (`Image | list`):
               Reference image(s) for denoising. Can be a single image or list of images.
           resolution (`int`, *optional*, defaults to 640):
               The target area to resize the image to, can be 1024 or 640
@@ -125,7 +125,7 @@ class QwenImageLayeredVaeEncoderStep(SequentialPipelineBlocks):
               Torch generator for deterministic generation.
 
       Outputs:
-          resized_image (`List`):
+          resized_image (`list`):
               The resized images
           processed_image (`Tensor`):
               The processed image
@@ -250,9 +250,9 @@ class QwenImageLayeredCoreDenoiseStep(SequentialPipelineBlocks):
               Torch generator for deterministic generation.
           num_inference_steps (`int`, *optional*, defaults to 50):
               The number of denoising steps.
-          sigmas (`List`, *optional*):
+          sigmas (`list`, *optional*):
               Custom sigmas for the denoising process.
-          attention_kwargs (`Dict`, *optional*):
+          attention_kwargs (`dict`, *optional*):
               Additional kwargs for attention processors.
           **denoiser_input_fields (`None`, *optional*):
               conditional model inputs for the denoiser: e.g. prompt_embeds, negative_prompt_embeds, etc.
@@ -317,7 +317,7 @@ class QwenImageLayeredAutoBlocks(SequentialPipelineBlocks):
           scheduler (`FlowMatchEulerDiscreteScheduler`) transformer (`QwenImageTransformer2DModel`)
 
       Inputs:
-          image (`Union[Image, List]`):
+          image (`Image | list`):
               Reference image(s) for denoising. Can be a single image or list of images.
           resolution (`int`, *optional*, defaults to 640):
               The target area to resize the image to, can be 1024 or 640
@@ -339,9 +339,9 @@ class QwenImageLayeredAutoBlocks(SequentialPipelineBlocks):
               Number of layers to extract from the image
           num_inference_steps (`int`, *optional*, defaults to 50):
               The number of denoising steps.
-          sigmas (`List`, *optional*):
+          sigmas (`list`, *optional*):
               Custom sigmas for the denoising process.
-          attention_kwargs (`Dict`, *optional*):
+          attention_kwargs (`dict`, *optional*):
               Additional kwargs for attention processors.
           **denoiser_input_fields (`None`, *optional*):
               conditional model inputs for the denoiser: e.g. prompt_embeds, negative_prompt_embeds, etc.
@@ -349,7 +349,7 @@ class QwenImageLayeredAutoBlocks(SequentialPipelineBlocks):
               Output format: 'pil', 'np', 'pt'.
 
       Outputs:
-          images (`List`):
+          images (`list`):
               Generated images.
     """
 
@@ -363,6 +363,4 @@ class QwenImageLayeredAutoBlocks(SequentialPipelineBlocks):
 
     @property
     def outputs(self):
-        return [
-            OutputParam.template("images"),
-        ]
+        return [OutputParam.template("images")]

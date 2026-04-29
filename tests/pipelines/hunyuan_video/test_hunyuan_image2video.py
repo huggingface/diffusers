@@ -139,7 +139,9 @@ class HunyuanVideoImageToVideoPipelineFastTests(
             num_hidden_layers=2,
             image_size=224,
         )
-        llava_text_encoder_config = LlavaConfig(vision_config, text_config, pad_token_id=100, image_token_index=101)
+        llava_text_encoder_config = LlavaConfig(
+            vision_config=vision_config, text_config=text_config, pad_token_id=100, image_token_index=101
+        )
 
         clip_text_encoder_config = CLIPTextConfig(
             bos_token_id=0,
@@ -205,7 +207,6 @@ class HunyuanVideoImageToVideoPipelineFastTests(
                 "image_emb_len": 49,
                 "image_emb_start": 5,
                 "image_emb_end": 54,
-                "double_return_token_id": 0,
             },
             "generator": generator,
             "num_inference_steps": 2,
@@ -233,7 +234,7 @@ class HunyuanVideoImageToVideoPipelineFastTests(
         self.assertEqual(generated_video.shape, (5, 3, 16, 16))
 
         # fmt: off
-        expected_slice = torch.tensor([0.444, 0.479, 0.4485, 0.5752, 0.3539, 0.1548, 0.2706, 0.3593, 0.5323, 0.6635, 0.6795, 0.5255, 0.5091, 0.345, 0.4276, 0.4128])
+        expected_slice = torch.tensor([0.4441, 0.4790, 0.4485, 0.5748, 0.3539, 0.1553, 0.2707, 0.3594, 0.5331, 0.6645, 0.6799, 0.5257, 0.5092, 0.3450, 0.4276, 0.4127])
         # fmt: on
 
         generated_slice = generated_video.flatten()
@@ -371,13 +372,13 @@ class HunyuanVideoImageToVideoPipelineFastTests(
 
     # TODO(aryan): Create a dummy gemma model with smol vocab size
     @unittest.skip(
-        "A very small vocab size is used for fast tests. So, any kind of prompt other than the empty default used in other tests will lead to a embedding lookup error. This test uses a long prompt that causes the error."
+        "A very small vocab size is used for fast tests. So, Any kind of prompt other than the empty default used in other tests will lead to a embedding lookup error. This test uses a long prompt that causes the error."
     )
     def test_inference_batch_consistent(self):
         pass
 
     @unittest.skip(
-        "A very small vocab size is used for fast tests. So, any kind of prompt other than the empty default used in other tests will lead to a embedding lookup error. This test uses a long prompt that causes the error."
+        "A very small vocab size is used for fast tests. So, Any kind of prompt other than the empty default used in other tests will lead to a embedding lookup error. This test uses a long prompt that causes the error."
     )
     def test_inference_batch_single_identical(self):
         pass

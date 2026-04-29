@@ -13,7 +13,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Optional, Tuple, Union
 
 import torch
 import torch.nn as nn
@@ -38,9 +37,9 @@ class LTX2AudioCausalConv2d(nn.Module):
         self,
         in_channels: int,
         out_channels: int,
-        kernel_size: Union[int, Tuple[int, int]],
+        kernel_size: int | tuple[int, int],
         stride: int = 1,
-        dilation: Union[int, Tuple[int, int]] = 1,
+        dilation: int | tuple[int, int] = 1,
         groups: int = 1,
         bias: bool = True,
         causality_axis: str = "height",
@@ -140,7 +139,7 @@ class LTX2AudioResnetBlock(nn.Module):
     def __init__(
         self,
         in_channels: int,
-        out_channels: Optional[int] = None,
+        out_channels: int | None = None,
         conv_shortcut: bool = False,
         dropout: float = 0.0,
         temb_channels: int = 512,
@@ -201,7 +200,7 @@ class LTX2AudioResnetBlock(nn.Module):
                 else:
                     self.nin_shortcut = nn.Conv2d(in_channels, out_channels, kernel_size=1, stride=1, padding=0)
 
-    def forward(self, x: torch.Tensor, temb: Optional[torch.Tensor] = None) -> torch.Tensor:
+    def forward(self, x: torch.Tensor, temb: torch.Tensor | None = None) -> torch.Tensor:
         h = self.norm1(x)
         h = self.non_linearity(h)
         h = self.conv1(h)
@@ -221,7 +220,7 @@ class LTX2AudioResnetBlock(nn.Module):
 
 
 class LTX2AudioDownsample(nn.Module):
-    def __init__(self, in_channels: int, with_conv: bool, causality_axis: Optional[str] = "height") -> None:
+    def __init__(self, in_channels: int, with_conv: bool, causality_axis: str | None = "height") -> None:
         super().__init__()
         self.with_conv = with_conv
         self.causality_axis = causality_axis
@@ -255,7 +254,7 @@ class LTX2AudioDownsample(nn.Module):
 
 
 class LTX2AudioUpsample(nn.Module):
-    def __init__(self, in_channels: int, with_conv: bool, causality_axis: Optional[str] = "height") -> None:
+    def __init__(self, in_channels: int, with_conv: bool, causality_axis: str | None = "height") -> None:
         super().__init__()
         self.with_conv = with_conv
         self.causality_axis = causality_axis
@@ -313,7 +312,7 @@ class LTX2AudioAudioPatchifier:
         return audio_latents.view(batch, time, channels, mel_bins).permute(0, 2, 1, 3)
 
     @property
-    def patch_size(self) -> Tuple[int, int, int]:
+    def patch_size(self) -> tuple[int, int, int]:
         return self._patch_size
 
 
@@ -323,19 +322,19 @@ class LTX2AudioEncoder(nn.Module):
         base_channels: int = 128,
         output_channels: int = 1,
         num_res_blocks: int = 2,
-        attn_resolutions: Optional[Tuple[int, ...]] = None,
+        attn_resolutions: tuple[int, ...] | None = None,
         in_channels: int = 2,
         resolution: int = 256,
         latent_channels: int = 8,
-        ch_mult: Tuple[int, ...] = (1, 2, 4),
+        ch_mult: tuple[int, ...] = (1, 2, 4),
         norm_type: str = "group",
-        causality_axis: Optional[str] = "width",
+        causality_axis: str | None = "width",
         dropout: float = 0.0,
         mid_block_add_attention: bool = False,
         sample_rate: int = 16000,
         mel_hop_length: int = 160,
         is_causal: bool = True,
-        mel_bins: Optional[int] = 64,
+        mel_bins: int | None = 64,
         double_z: bool = True,
     ):
         super().__init__()
@@ -480,19 +479,19 @@ class LTX2AudioDecoder(nn.Module):
         base_channels: int = 128,
         output_channels: int = 1,
         num_res_blocks: int = 2,
-        attn_resolutions: Optional[Tuple[int, ...]] = None,
+        attn_resolutions: tuple[int, ...] | None = None,
         in_channels: int = 2,
         resolution: int = 256,
         latent_channels: int = 8,
-        ch_mult: Tuple[int, ...] = (1, 2, 4),
+        ch_mult: tuple[int, ...] = (1, 2, 4),
         norm_type: str = "group",
-        causality_axis: Optional[str] = "width",
+        causality_axis: str | None = "width",
         dropout: float = 0.0,
         mid_block_add_attention: bool = False,
         sample_rate: int = 16000,
         mel_hop_length: int = 160,
         is_causal: bool = True,
-        mel_bins: Optional[int] = 64,
+        mel_bins: int | None = 64,
     ) -> None:
         super().__init__()
 
@@ -678,20 +677,20 @@ class AutoencoderKLLTX2Audio(ModelMixin, AutoencoderMixin, ConfigMixin):
         self,
         base_channels: int = 128,
         output_channels: int = 2,
-        ch_mult: Tuple[int, ...] = (1, 2, 4),
+        ch_mult: tuple[int, ...] = (1, 2, 4),
         num_res_blocks: int = 2,
-        attn_resolutions: Optional[Tuple[int, ...]] = None,
+        attn_resolutions: tuple[int, ...] | None = None,
         in_channels: int = 2,
         resolution: int = 256,
         latent_channels: int = 8,
         norm_type: str = "pixel",
-        causality_axis: Optional[str] = "height",
+        causality_axis: str | None = "height",
         dropout: float = 0.0,
         mid_block_add_attention: bool = False,
         sample_rate: int = 16000,
         mel_hop_length: int = 160,
         is_causal: bool = True,
-        mel_bins: Optional[int] = 64,
+        mel_bins: int | None = 64,
         double_z: bool = True,
     ) -> None:
         super().__init__()
@@ -743,8 +742,8 @@ class AutoencoderKLLTX2Audio(ModelMixin, AutoencoderMixin, ConfigMixin):
 
         # Per-channel statistics for normalizing and denormalizing the latent representation. This statics is computed over
         # the entire dataset and stored in model's checkpoint under AudioVAE state_dict
-        latents_std = torch.zeros((base_channels,))
-        latents_mean = torch.ones((base_channels,))
+        latents_std = torch.ones((base_channels,))
+        latents_mean = torch.zeros((base_channels,))
         self.register_buffer("latents_mean", latents_mean, persistent=True)
         self.register_buffer("latents_std", latents_std, persistent=True)
 
@@ -774,7 +773,7 @@ class AutoencoderKLLTX2Audio(ModelMixin, AutoencoderMixin, ConfigMixin):
         return self.decoder(z)
 
     @apply_forward_hook
-    def decode(self, z: torch.Tensor, return_dict: bool = True) -> Union[DecoderOutput, torch.Tensor]:
+    def decode(self, z: torch.Tensor, return_dict: bool = True) -> DecoderOutput | torch.Tensor:
         if self.use_slicing and z.shape[0] > 1:
             decoded_slices = [self._decode(z_slice) for z_slice in z.split(1)]
             decoded = torch.cat(decoded_slices)
@@ -791,8 +790,8 @@ class AutoencoderKLLTX2Audio(ModelMixin, AutoencoderMixin, ConfigMixin):
         sample: torch.Tensor,
         sample_posterior: bool = False,
         return_dict: bool = True,
-        generator: Optional[torch.Generator] = None,
-    ) -> Union[DecoderOutput, torch.Tensor]:
+        generator: torch.Generator | None = None,
+    ) -> DecoderOutput | torch.Tensor:
         posterior = self.encode(sample).latent_dist
         if sample_posterior:
             z = posterior.sample(generator=generator)

@@ -1,5 +1,5 @@
 import os
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+from typing import Any, Callable
 
 import torch
 from torch import nn
@@ -20,30 +20,30 @@ class MultiControlNetModel(ModelMixin):
     compatible with `ControlNetModel`.
 
     Args:
-        controlnets (`List[ControlNetModel]`):
+        controlnets (`list[ControlNetModel]`):
             Provides additional conditioning to the unet during the denoising process. You must set multiple
             `ControlNetModel` as a list.
     """
 
-    def __init__(self, controlnets: Union[List[ControlNetModel], Tuple[ControlNetModel]]):
+    def __init__(self, controlnets: list[ControlNetModel] | tuple[ControlNetModel]):
         super().__init__()
         self.nets = nn.ModuleList(controlnets)
 
     def forward(
         self,
         sample: torch.Tensor,
-        timestep: Union[torch.Tensor, float, int],
+        timestep: torch.Tensor | float | int,
         encoder_hidden_states: torch.Tensor,
-        controlnet_cond: List[torch.tensor],
-        conditioning_scale: List[float],
-        class_labels: Optional[torch.Tensor] = None,
-        timestep_cond: Optional[torch.Tensor] = None,
-        attention_mask: Optional[torch.Tensor] = None,
-        added_cond_kwargs: Optional[Dict[str, torch.Tensor]] = None,
-        cross_attention_kwargs: Optional[Dict[str, Any]] = None,
+        controlnet_cond: list[torch.tensor],
+        conditioning_scale: list[float],
+        class_labels: torch.Tensor | None = None,
+        timestep_cond: torch.Tensor | None = None,
+        attention_mask: torch.Tensor | None = None,
+        added_cond_kwargs: dict[str, torch.Tensor] | None = None,
+        cross_attention_kwargs: dict[str, Any] | None = None,
         guess_mode: bool = False,
         return_dict: bool = True,
-    ) -> Union[ControlNetOutput, Tuple]:
+    ) -> ControlNetOutput | tuple:
         for i, (image, scale, controlnet) in enumerate(zip(controlnet_cond, conditioning_scale, self.nets)):
             down_samples, mid_sample = controlnet(
                 sample=sample,
@@ -74,11 +74,11 @@ class MultiControlNetModel(ModelMixin):
 
     def save_pretrained(
         self,
-        save_directory: Union[str, os.PathLike],
+        save_directory: str | os.PathLike,
         is_main_process: bool = True,
         save_function: Callable = None,
         safe_serialization: bool = True,
-        variant: Optional[str] = None,
+        variant: str | None = None,
     ):
         """
         Save a model and its configuration file to a directory, so that it can be re-loaded using the
@@ -111,7 +111,7 @@ class MultiControlNetModel(ModelMixin):
             )
 
     @classmethod
-    def from_pretrained(cls, pretrained_model_path: Optional[Union[str, os.PathLike]], **kwargs):
+    def from_pretrained(cls, pretrained_model_path: str | os.PathLike | None, **kwargs):
         r"""
         Instantiate a pretrained MultiControlNet model from multiple pre-trained controlnet models.
 
@@ -134,7 +134,7 @@ class MultiControlNetModel(ModelMixin):
                 Override the default `torch.dtype` and load the model under this dtype.
             output_loading_info(`bool`, *optional*, defaults to `False`):
                 Whether or not to also return a dictionary containing missing keys, unexpected keys and error messages.
-            device_map (`str` or `Dict[str, Union[int, str, torch.device]]`, *optional*):
+            device_map (`str` or `dict[str, int | str | torch.device]`, *optional*):
                 A map that specifies where each submodule should go. It doesn't need to be refined to each
                 parameter/buffer name, once a given module name is inside, every submodule of it will be sent to the
                 same device.

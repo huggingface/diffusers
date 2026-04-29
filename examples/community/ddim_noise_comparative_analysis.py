@@ -110,7 +110,7 @@ class DDIMNoiseComparativeAnalysisPipeline(DiffusionPipeline):
         eta: float = 0.0,
         num_inference_steps: int = 50,
         use_clipped_model_output: Optional[bool] = None,
-        output_type: Optional[str] = "pil",
+        output_type: str | None = "pil",
         return_dict: bool = True,
     ) -> Union[ImagePipelineOutput, Tuple]:
         r"""
