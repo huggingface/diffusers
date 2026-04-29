@@ -969,7 +969,13 @@ def collate_fn(examples, with_prior_preservation=False):
 
 
 class BucketBatchSampler(BatchSampler):
-    def __init__(self, dataset: DreamBoothDataset, batch_size: int, drop_last: bool = False):
+    def __init__(
+        self,
+        dataset: DreamBoothDataset,
+        batch_size: int,
+        drop_last: bool = False,
+        shuffle_batches_each_epoch: bool = True,
+    ):
         if not isinstance(batch_size, int) or batch_size <= 0:
             raise ValueError("batch_size should be a positive integer value, but got batch_size={}".format(batch_size))
         if not isinstance(drop_last, bool):
@@ -978,6 +984,7 @@ class BucketBatchSampler(BatchSampler):
         self.dataset = dataset
         self.batch_size = batch_size
         self.drop_last = drop_last
+        self.shuffle_batches_each_epoch = shuffle_batches_each_epoch
 
         # Group indices by bucket
         self.bucket_indices = [[] for _ in range(len(self.dataset.buckets))]
@@ -999,9 +1006,14 @@ class BucketBatchSampler(BatchSampler):
                 self.batches.append(batch)
                 self.sampler_len += 1  # Count the number of batches
 
+        if not self.shuffle_batches_each_epoch:
+            # Shuffle the precomputed batches once to mix buckets while keeping
+            # the order stable across epochs for step-indexed caches.
+            random.shuffle(self.batches)
+
     def __iter__(self):
-        # Shuffle the order of the batches each epoch
-        random.shuffle(self.batches)
+        if self.shuffle_batches_each_epoch:
+            random.shuffle(self.batches)
         for batch in self.batches:
             yield batch
 
@@ -1461,7 +1473,13 @@ def main(args):
         center_crop=args.center_crop,
         buckets=buckets,
     )
-    batch_sampler = BucketBatchSampler(train_dataset, batch_size=args.train_batch_size, drop_last=True)
+    has_step_indexed_caches = args.cache_latents or train_dataset.custom_instance_prompts
+    batch_sampler = BucketBatchSampler(
+        train_dataset,
+        batch_size=args.train_batch_size,
+        drop_last=True,
+        shuffle_batches_each_epoch=not has_step_indexed_caches,
+    )
     train_dataloader = torch.utils.data.DataLoader(
         train_dataset,
         batch_sampler=batch_sampler,
@@ -1528,8 +1546,7 @@ def main(args):
     # if cache_latents is set to True, we encode images to latents and store them.
     # Similar to pre-encoding in the case of a single instance prompt, if custom prompts are provided
     # we encode them in advance as well.
-    precompute_latents = args.cache_latents or train_dataset.custom_instance_prompts
-    if precompute_latents:
+    if has_step_indexed_caches:
         prompt_embeds_cache = []
         text_ids_cache = []
         latents_cache = []
