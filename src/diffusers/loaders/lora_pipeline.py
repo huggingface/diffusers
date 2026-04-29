@@ -2261,6 +2261,83 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
         return tuple(outputs) if (return_alphas or return_metadata) else state_dict
 
 
+class CosmosLoraLoaderMixin(FluxLoraLoaderMixin):
+    r"""
+    Load LoRA layers into [`CosmosTransformer3DModel`], Specific to [`Cosmos2_5_PredictBasePipeline`].
+    """
+
+    _lora_loadable_modules = ["transformer"]
+    transformer_name = TRANSFORMER_NAME
+    text_encoder_name = TEXT_ENCODER_NAME
+    _control_lora_supported_norm_keys = ["norm_q", "norm_k", "norm_added_q", "norm_added_k"]
+
+    def load_lora_weights(
+        self,
+        pretrained_model_name_or_path_or_dict: str | dict[str, torch.Tensor],
+        adapter_name: str | None = None,
+        hotswap: bool = False,
+        **kwargs,
+    ):
+        """
+        See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`] for more details.
+        """
+        if not USE_PEFT_BACKEND:
+            raise ValueError("PEFT backend is required for this method.")
+
+        low_cpu_mem_usage = kwargs.pop("low_cpu_mem_usage", _LOW_CPU_MEM_USAGE_DEFAULT_LORA)
+        if low_cpu_mem_usage and not is_peft_version(">=", "0.13.1"):
+            raise ValueError(
+                "`low_cpu_mem_usage=True` is not compatible with this `peft` version. Please update it with `pip install -U peft`."
+            )
+
+        # if a dict is passed, copy it instead of modifying it inplace
+        if isinstance(pretrained_model_name_or_path_or_dict, dict):
+            pretrained_model_name_or_path_or_dict = pretrained_model_name_or_path_or_dict.copy()
+
+        # First, ensure that the checkpoint is a compatible one and can be successfully loaded.
+        kwargs["return_lora_metadata"] = True
+        state_dict, network_alphas, metadata = self.lora_state_dict(
+            pretrained_model_name_or_path_or_dict, return_alphas=True, **kwargs
+        )
+
+        has_lora_keys = any("lora" in key for key in state_dict.keys())
+
+        # Flux Control LoRAs also have norm keys
+        has_norm_keys = any(
+            norm_key in key for key in state_dict.keys() for norm_key in self._control_lora_supported_norm_keys
+        )
+
+        if not (has_lora_keys or has_norm_keys):
+            raise ValueError("Invalid LoRA checkpoint. Make sure all LoRA param names contain `'lora'` substring.")
+
+        transformer_norm_state_dict = {
+            k: state_dict.pop(k)
+            for k in list(state_dict.keys())
+            if k.startswith(f"{self.transformer_name}.")
+            and any(norm_key in k for norm_key in self._control_lora_supported_norm_keys)
+        }
+
+        transformer = getattr(self, self.transformer_name) if not hasattr(self, "transformer") else self.transformer
+
+        self.load_lora_into_transformer(
+            state_dict,
+            network_alphas=network_alphas,
+            transformer=transformer,
+            adapter_name=adapter_name,
+            metadata=metadata,
+            _pipeline=self,
+            low_cpu_mem_usage=low_cpu_mem_usage,
+            hotswap=hotswap,
+        )
+
+        if len(transformer_norm_state_dict) > 0:
+            transformer._transformer_norm_layers = self._load_norm_into_transformer(
+                transformer_norm_state_dict,
+                transformer=transformer,
+                discard_original_layers=False,
+            )
+
+
 # The reason why we subclass from `StableDiffusionLoraLoaderMixin` here is because Amused initially
 # relied on `StableDiffusionLoraLoaderMixin` for its LoRA support.
 class AmusedLoraLoaderMixin(StableDiffusionLoraLoaderMixin):
