@@ -478,7 +478,7 @@ class JoyImageTransformerBlock(nn.Module):
 # ---------------------------------------------------------------------------
 
 
-class JoyImageTransformer3DModel(ModelMixin, ConfigMixin, AttentionMixin):
+class JoyImageEditTransformer3DModel(ModelMixin, ConfigMixin, AttentionMixin):
     """JoyImage Transformer model for image generation / editing.
 
     Dual-stream DiT architecture with WAN-style conditioning embeddings and custom rotary position embeddings.
@@ -671,8 +671,3 @@ class JoyImageTransformer3DModel(ModelMixin, ConfigMixin, AttentionMixin):
             return (img,)
         return Transformer2DModelOutput(sample=img)
 
-
-class JoyImageEditTransformer3DModel(JoyImageTransformer3DModel):
-    """Alias kept for backward compatibility with pipeline imports."""
-
-    pass

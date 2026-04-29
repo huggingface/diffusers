@@ -114,7 +114,6 @@ if is_torch_available():
     _import_structure["transformers.transformer_hunyuanimage"] = ["HunyuanImageTransformer2DModel"]
     _import_structure["transformers.transformer_joyimage"] = [
         "JoyImageEditTransformer3DModel",
-        "JoyImageTransformer3DModel",
     ]
     _import_structure["transformers.transformer_kandinsky"] = ["Kandinsky5Transformer3DModel"]
     _import_structure["transformers.transformer_longcat_audio_dit"] = ["LongCatAudioDiTTransformer"]
