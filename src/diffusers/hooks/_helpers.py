@@ -188,6 +188,10 @@ def _register_transformer_blocks_metadata():
     from ..models.transformers.transformer_kandinsky import Kandinsky5TransformerDecoderBlock
     from ..models.transformers.transformer_ltx import LTXVideoTransformerBlock
     from ..models.transformers.transformer_mochi import MochiTransformerBlock
+    from ..models.transformers.transformer_motif_video import (
+        MotifVideoSingleTransformerBlock,
+        MotifVideoTransformerBlock,
+    )
     from ..models.transformers.transformer_qwenimage import QwenImageTransformerBlock
     from ..models.transformers.transformer_wan import WanTransformerBlock
     from ..models.transformers.transformer_z_image import ZImageTransformerBlock
@@ -284,6 +288,22 @@ def _register_transformer_blocks_metadata():
     # Mochi
     TransformerBlockRegistry.register(
         model_class=MochiTransformerBlock,
+        metadata=TransformerBlockMetadata(
+            return_hidden_states_index=0,
+            return_encoder_hidden_states_index=1,
+        ),
+    )
+
+    # MotifVideo
+    TransformerBlockRegistry.register(
+        model_class=MotifVideoTransformerBlock,
+        metadata=TransformerBlockMetadata(
+            return_hidden_states_index=0,
+            return_encoder_hidden_states_index=1,
+        ),
+    )
+    TransformerBlockRegistry.register(
+        model_class=MotifVideoSingleTransformerBlock,
         metadata=TransformerBlockMetadata(
             return_hidden_states_index=0,
             return_encoder_hidden_states_index=1,
