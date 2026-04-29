@@ -573,7 +573,8 @@ class JoyImageTransformer3DModel(ModelMixin, ConfigMixin, AttentionMixin):
         rope_dim_list = self.rope_dim_list
         if rope_dim_list is None:
             rope_dim_list = [head_dim // target_ndim for _ in range(target_ndim)]
-        assert sum(rope_dim_list) == head_dim, "sum(rope_dim_list) should equal head_dim"
+        if sum(rope_dim_list) != head_dim:
+            raise ValueError("sum(rope_dim_list) should equal head_dim")
 
         vis_freqs, txt_freqs = _get_nd_rotary_pos_embed(
             rope_dim_list,
@@ -592,7 +593,8 @@ class JoyImageTransformer3DModel(ModelMixin, ConfigMixin, AttentionMixin):
     def unpatchify(self, x: torch.Tensor, t: int, h: int, w: int) -> torch.Tensor:
         c = self.out_channels
         pt, ph, pw = self.patch_size
-        assert t * h * w == x.shape[1]
+        if t * h * w != x.shape[1]:
+            raise ValueError(f"Expected t*h*w ({t * h * w}) to equal x.shape[1] ({x.shape[1]})")
 
         x = x.reshape(x.shape[0], t, h, w, pt, ph, pw, c)
         x = torch.einsum("nthwopqc->nctohpwq", x)
@@ -616,7 +618,8 @@ class JoyImageTransformer3DModel(ModelMixin, ConfigMixin, AttentionMixin):
         if is_multi_item:
             num_items = hidden_states.shape[1]
             if num_items > 1:
-                assert self.patch_size[0] == 1, "For multi-item input, patch_size[0] must be 1"
+                if self.patch_size[0] != 1:
+                    raise ValueError("For multi-item input, patch_size[0] must be 1")
                 hidden_states = torch.cat([hidden_states[:, -1:], hidden_states[:, :-1]], dim=1)
             # rearrange: (b, n, c, t, h, w) -> (b, c, n*t, h, w)
             b, n, c, t, h, w = hidden_states.shape
