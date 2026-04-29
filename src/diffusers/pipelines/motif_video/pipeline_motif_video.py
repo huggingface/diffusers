@@ -225,16 +225,19 @@ class MotifVideoPipeline(DiffusionPipeline):
             self.tokenizer.model_max_length if getattr(self, "tokenizer", None) is not None else 512
         )
 
-    def _get_default_embeds(
+    def _get_prompt_embeds(
         self,
-        text_encoder,
+        text_encoder: T5Gemma2Encoder,
         tokenizer: PreTrainedTokenizerBase,
-        prompt: Union[str, List[str]],
+        prompt: Optional[Union[str, List[str]]] = None,
         max_sequence_length: int = 512,
         device: Optional[torch.device] = None,
         dtype: Optional[torch.dtype] = None,
     ) -> Tuple[torch.Tensor, torch.Tensor]:
+        device = device or self._execution_device
         dtype = dtype or text_encoder.dtype
+
+        prompt = [prompt] if isinstance(prompt, str) else prompt
 
         text_inputs = tokenizer(
             prompt,
@@ -253,32 +256,6 @@ class MotifVideoPipeline(DiffusionPipeline):
         prompt_embeds = prompt_embeds.to(dtype=dtype, device=device)
 
         return prompt_embeds, text_inputs.attention_mask
-
-    def _get_prompt_embeds(
-        self,
-        text_encoder: T5Gemma2Encoder,
-        tokenizer: PreTrainedTokenizerBase,
-        prompt: Optional[Union[str, List[str]]] = None,
-        num_videos_per_prompt: int = 1,
-        max_sequence_length: int = 512,
-        device: Optional[torch.device] = None,
-        dtype: Optional[torch.dtype] = None,
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
-        device = device or self._execution_device
-
-        prompt = [prompt] if isinstance(prompt, str) else prompt
-
-        prompt_embeds_kwargs = {
-            "text_encoder": text_encoder,
-            "tokenizer": tokenizer,
-            "prompt": prompt,
-            "max_sequence_length": max_sequence_length,
-            "device": device,
-            "dtype": dtype,
-        }
-        prompt_embeds, prompt_attention_mask = self._get_default_embeds(**prompt_embeds_kwargs)
-
-        return prompt_embeds, prompt_attention_mask
 
     def encode_prompt(
         self,
