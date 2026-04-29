@@ -26,6 +26,7 @@ from ..attention_dispatch import dispatch_attention_fn
 from ..modeling_outputs import Transformer2DModelOutput
 from ..modeling_utils import ModelMixin
 
+
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
@@ -71,18 +72,13 @@ def _reshape_for_broadcast(freqs_cis, x: torch.Tensor, head_first: bool = False)
     ndim = x.ndim
     if isinstance(freqs_cis, tuple):
         if head_first:
-            shape = [
-                d if i == ndim - 2 or i == ndim - 1 else 1
-                for i, d in enumerate(x.shape)
-            ]
+            shape = [d if i == ndim - 2 or i == ndim - 1 else 1 for i, d in enumerate(x.shape)]
         else:
             shape = [d if i == 1 or i == ndim - 1 else 1 for i, d in enumerate(x.shape)]
         return freqs_cis[0].view(*shape), freqs_cis[1].view(*shape)
 
     if head_first:
-        shape = [
-            d if i == ndim - 2 or i == ndim - 1 else 1 for i, d in enumerate(x.shape)
-        ]
+        shape = [d if i == ndim - 2 or i == ndim - 1 else 1 for i, d in enumerate(x.shape)]
     else:
         shape = [d if i == 1 or i == ndim - 1 else 1 for i, d in enumerate(x.shape)]
     return freqs_cis.view(*shape)
@@ -120,9 +116,7 @@ def _get_1d_rotary_pos_embed(
     if theta_rescale_factor != 1.0:
         theta *= theta_rescale_factor ** (dim / (dim - 2))
 
-    freqs = 1.0 / (
-        theta ** (torch.arange(0, dim, 2, dtype=torch.float32)[: (dim // 2)] / dim)
-    )
+    freqs = 1.0 / (theta ** (torch.arange(0, dim, 2, dtype=torch.float32)[: (dim // 2)] / dim))
     freqs = torch.outer(pos.float() * interpolation_factor, freqs)
 
     if use_real:
@@ -219,17 +213,14 @@ class JoyImageModulate(nn.Module):
         super().__init__()
         self.factor = factor
         self.modulate_table = nn.Parameter(
-            torch.zeros(1, factor, hidden_size, dtype=dtype, device=device)
-            / hidden_size**0.5,
+            torch.zeros(1, factor, hidden_size, dtype=dtype, device=device) / hidden_size**0.5,
             requires_grad=True,
         )
 
     def forward(self, x: torch.Tensor) -> list[torch.Tensor]:
         if x.ndim != 3:
             x = x.unsqueeze(1)
-        return [
-            o.squeeze(1) for o in (self.modulate_table + x).chunk(self.factor, dim=1)
-        ]
+        return [o.squeeze(1) for o in (self.modulate_table + x).chunk(self.factor, dim=1)]
 
 
 # ---------------------------------------------------------------------------
@@ -259,9 +250,7 @@ class JoyImageAttnProcessor:
         **kwargs,
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         if encoder_hidden_states is None:
-            raise ValueError(
-                "JoyImageAttnProcessor requires encoder_hidden_states (text stream)"
-            )
+            raise ValueError("JoyImageAttnProcessor requires encoder_hidden_states (text stream)")
 
         heads = attn.heads
 
@@ -292,13 +281,9 @@ class JoyImageAttnProcessor:
         if image_rotary_emb is not None:
             vis_freqs, txt_freqs = image_rotary_emb
             if vis_freqs is not None:
-                img_query, img_key = _apply_rotary_emb(
-                    img_query, img_key, vis_freqs, head_first=False
-                )
+                img_query, img_key = _apply_rotary_emb(img_query, img_key, vis_freqs, head_first=False)
             if txt_freqs is not None:
-                txt_query, txt_key = _apply_rotary_emb(
-                    txt_query, txt_key, txt_freqs, head_first=False
-                )
+                txt_query, txt_key = _apply_rotary_emb(txt_query, txt_key, txt_freqs, head_first=False)
 
         # concatenate for joint attention: [img, txt]
         joint_query = torch.cat([img_query, txt_query], dim=1)
@@ -381,9 +366,7 @@ class JoyImageAttention(nn.Module, AttentionModuleMixin):
         image_rotary_emb: Tuple[torch.Tensor, torch.Tensor] | None = None,
         **kwargs,
     ) -> Tuple[torch.Tensor, torch.Tensor]:
-        attn_parameters = set(
-            inspect.signature(self.processor.__call__).parameters.keys()
-        )
+        attn_parameters = set(inspect.signature(self.processor.__call__).parameters.keys())
         unused_kwargs = [k for k, _ in kwargs.items() if k not in attn_parameters]
         if len(unused_kwargs) > 0:
             logger.warning(
@@ -391,9 +374,7 @@ class JoyImageAttention(nn.Module, AttentionModuleMixin):
                 f"{self.processor.__class__.__name__} and will be ignored."
             )
         kwargs = {k: w for k, w in kwargs.items() if k in attn_parameters}
-        return self.processor(
-            self, hidden_states, encoder_hidden_states, image_rotary_emb, **kwargs
-        )
+        return self.processor(self, hidden_states, encoder_hidden_states, image_rotary_emb, **kwargs)
 
 
 # ---------------------------------------------------------------------------
@@ -428,22 +409,16 @@ class JoyImageTransformerBlock(nn.Module):
         self.img_mod = JoyImageModulate(dim, factor=6)
         self.img_norm1 = nn.LayerNorm(dim, elementwise_affine=False, eps=eps)
         self.img_norm2 = nn.LayerNorm(dim, elementwise_affine=False, eps=eps)
-        self.img_mlp = FeedForward(
-            dim, inner_dim=mlp_hidden_dim, activation_fn="gelu-approximate"
-        )
+        self.img_mlp = FeedForward(dim, inner_dim=mlp_hidden_dim, activation_fn="gelu-approximate")
 
         # text stream
         self.txt_mod = JoyImageModulate(dim, factor=6)
         self.txt_norm1 = nn.LayerNorm(dim, elementwise_affine=False, eps=eps)
         self.txt_norm2 = nn.LayerNorm(dim, elementwise_affine=False, eps=eps)
-        self.txt_mlp = FeedForward(
-            dim, inner_dim=mlp_hidden_dim, activation_fn="gelu-approximate"
-        )
+        self.txt_mlp = FeedForward(dim, inner_dim=mlp_hidden_dim, activation_fn="gelu-approximate")
 
         # ---- joint attention ----
-        self.attn = JoyImageAttention(
-            dim, num_attention_heads, attention_head_dim, eps=eps
-        )
+        self.attn = JoyImageAttention(dim, num_attention_heads, attention_head_dim, eps=eps)
 
     def forward(
         self,
@@ -473,12 +448,8 @@ class JoyImageTransformerBlock(nn.Module):
         # --- attention ---
         img_normed = self.img_norm1(hidden_states)
         txt_normed = self.txt_norm1(encoder_hidden_states)
-        img_modulated = img_normed * (
-            1 + img_mod1_scale.unsqueeze(1)
-        ) + img_mod1_shift.unsqueeze(1)
-        txt_modulated = txt_normed * (
-            1 + txt_mod1_scale.unsqueeze(1)
-        ) + txt_mod1_shift.unsqueeze(1)
+        img_modulated = img_normed * (1 + img_mod1_scale.unsqueeze(1)) + img_mod1_shift.unsqueeze(1)
+        txt_modulated = txt_normed * (1 + txt_mod1_scale.unsqueeze(1)) + txt_mod1_shift.unsqueeze(1)
 
         img_attn, txt_attn = self.attn(
             hidden_states=img_modulated,
@@ -487,25 +458,17 @@ class JoyImageTransformerBlock(nn.Module):
         )
 
         hidden_states = hidden_states + img_attn * img_mod1_gate.unsqueeze(1)
-        encoder_hidden_states = (
-            encoder_hidden_states + txt_attn * txt_mod1_gate.unsqueeze(1)
-        )
+        encoder_hidden_states = encoder_hidden_states + txt_attn * txt_mod1_gate.unsqueeze(1)
 
         # --- FFN ---
         img_ffn_normed = self.img_norm2(hidden_states)
         txt_ffn_normed = self.txt_norm2(encoder_hidden_states)
-        img_ffn_input = img_ffn_normed * (
-            1 + img_mod2_scale.unsqueeze(1)
-        ) + img_mod2_shift.unsqueeze(1)
-        txt_ffn_input = txt_ffn_normed * (
-            1 + txt_mod2_scale.unsqueeze(1)
-        ) + txt_mod2_shift.unsqueeze(1)
+        img_ffn_input = img_ffn_normed * (1 + img_mod2_scale.unsqueeze(1)) + img_mod2_shift.unsqueeze(1)
+        txt_ffn_input = txt_ffn_normed * (1 + txt_mod2_scale.unsqueeze(1)) + txt_mod2_shift.unsqueeze(1)
         img_ffn_output = self.img_mlp(img_ffn_input)
         txt_ffn_output = self.txt_mlp(txt_ffn_input)
         hidden_states = hidden_states + img_ffn_output * img_mod2_gate.unsqueeze(1)
-        encoder_hidden_states = (
-            encoder_hidden_states + txt_ffn_output * txt_mod2_gate.unsqueeze(1)
-        )
+        encoder_hidden_states = encoder_hidden_states + txt_ffn_output * txt_mod2_gate.unsqueeze(1)
 
         return hidden_states, encoder_hidden_states
 
@@ -564,9 +527,7 @@ class JoyImageTransformer3DModel(ModelMixin, ConfigMixin, AttentionMixin):
             )
 
         # image projection
-        self.img_in = nn.Conv3d(
-            in_channels, hidden_size, kernel_size=patch_size, stride=patch_size
-        )
+        self.img_in = nn.Conv3d(in_channels, hidden_size, kernel_size=patch_size, stride=patch_size)
 
         # condition embedder (re-uses WAN implementation)
         from .transformer_wan import WanTimeTextImageEmbedding
@@ -593,9 +554,7 @@ class JoyImageTransformer3DModel(ModelMixin, ConfigMixin, AttentionMixin):
 
         # output head
         self.norm_out = nn.LayerNorm(hidden_size, elementwise_affine=False, eps=1e-6)
-        self.proj_out = nn.Linear(
-            hidden_size, self.out_channels * math.prod(patch_size)
-        )
+        self.proj_out = nn.Linear(hidden_size, self.out_channels * math.prod(patch_size))
 
     # ------------------------------------------------------------------
     # RoPE helper
@@ -608,17 +567,13 @@ class JoyImageTransformer3DModel(ModelMixin, ConfigMixin, AttentionMixin):
     ):
         target_ndim = 3
         if len(vis_rope_size) != target_ndim:
-            vis_rope_size = [1] * (target_ndim - len(vis_rope_size)) + list(
-                vis_rope_size
-            )
+            vis_rope_size = [1] * (target_ndim - len(vis_rope_size)) + list(vis_rope_size)
 
         head_dim = self.hidden_size // self.num_attention_heads
         rope_dim_list = self.rope_dim_list
         if rope_dim_list is None:
             rope_dim_list = [head_dim // target_ndim for _ in range(target_ndim)]
-        assert (
-            sum(rope_dim_list) == head_dim
-        ), "sum(rope_dim_list) should equal head_dim"
+        assert sum(rope_dim_list) == head_dim, "sum(rope_dim_list) should equal head_dim"
 
         vis_freqs, txt_freqs = _get_nd_rotary_pos_embed(
             rope_dim_list,
@@ -661,17 +616,11 @@ class JoyImageTransformer3DModel(ModelMixin, ConfigMixin, AttentionMixin):
         if is_multi_item:
             num_items = hidden_states.shape[1]
             if num_items > 1:
-                assert (
-                    self.patch_size[0] == 1
-                ), "For multi-item input, patch_size[0] must be 1"
-                hidden_states = torch.cat(
-                    [hidden_states[:, -1:], hidden_states[:, :-1]], dim=1
-                )
+                assert self.patch_size[0] == 1, "For multi-item input, patch_size[0] must be 1"
+                hidden_states = torch.cat([hidden_states[:, -1:], hidden_states[:, :-1]], dim=1)
             # rearrange: (b, n, c, t, h, w) -> (b, c, n*t, h, w)
             b, n, c, t, h, w = hidden_states.shape
-            hidden_states = hidden_states.permute(0, 2, 1, 3, 4, 5).reshape(
-                b, c, n * t, h, w
-            )
+            hidden_states = hidden_states.permute(0, 2, 1, 3, 4, 5).reshape(b, c, n * t, h, w)
 
         batch_size, _, ot, oh, ow = hidden_states.shape
         tt = ot // self.patch_size[0]
