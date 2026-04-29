@@ -321,7 +321,8 @@ class JoyImageEditPipeline(DiffusionPipeline):
         Returns:
             Tuple of (prompt_embeds, prompt_embeds_mask).
         """
-        assert template_type == "multiple_images"
+        if template_type != "multiple_images":
+            raise ValueError(f"Expected template_type 'multiple_images', but got '{template_type}'")
         device = device or self._execution_device
         template = self.prompt_template_encode[template_type]
         drop_idx = self.prompt_template_encode_start_idx[template_type]

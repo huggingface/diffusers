@@ -18,7 +18,7 @@ from unittest.mock import patch
 import pytest
 import torch
 from PIL import Image
-from transformers import Qwen2Tokenizer, Qwen3VLConfig, Qwen3VLForConditionalGeneration, Qwen3VLProcessor
+from transformers import Qwen3VLConfig, Qwen3VLForConditionalGeneration, Qwen3VLProcessor
 
 from diffusers import (
     AutoencoderKLWan,
@@ -67,7 +67,7 @@ class JoyImageEditPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         super().tearDown()
 
     def get_dummy_components(self):
-        tiny_ckpt_id = "hf-internal-testing/tiny-random-Qwen2VLForConditionalGeneration"
+        tiny_ckpt_id = "huangfeice/tiny-random-Qwen3VLForConditionalGeneration"
 
         torch.manual_seed(0)
         transformer = JoyImageEditTransformer3DModel(
@@ -121,7 +121,6 @@ class JoyImageEditPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             },
         )
         text_encoder = Qwen3VLForConditionalGeneration(config).eval()
-        tokenizer = Qwen2Tokenizer.from_pretrained(tiny_ckpt_id)
         processor = Qwen3VLProcessor.from_pretrained(tiny_ckpt_id)
         processor.image_processor.min_pixels = 4 * 28 * 28
         processor.image_processor.max_pixels = 4 * 28 * 28
@@ -131,7 +130,7 @@ class JoyImageEditPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             "vae": vae,
             "scheduler": scheduler,
             "text_encoder": text_encoder,
-            "tokenizer": tokenizer,
+            "tokenizer": processor.tokenizer,
             "processor": processor,
         }
         return components

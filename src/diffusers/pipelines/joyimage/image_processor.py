@@ -16,18 +16,11 @@ import math
 from typing import Tuple
 
 import torch
-import torchvision.transforms.functional as TF
 from PIL import Image
 
 from ...configuration_utils import register_to_config
 from ...image_processor import VaeImageProcessor
 
-
-PRECISION_TO_TYPE = {
-    "fp32": torch.float32,
-    "fp16": torch.float16,
-    "bf16": torch.bfloat16,
-}
 
 # fmt: off
 BUCKETS = {
@@ -148,11 +141,8 @@ class JoyImageEditImageProcessor(VaeImageProcessor):
         scale = max(bh / h, bw / w)
         resize_h = math.ceil(h * scale)
         resize_w = math.ceil(w * scale)
-        img = TF.resize(
-            img,
-            (resize_h, resize_w),
-            interpolation=TF.InterpolationMode.BILINEAR,
-            antialias=True,
-        )
-        img = TF.center_crop(img, target_size)
+        img = img.resize((resize_w, resize_h), Image.BILINEAR)
+        left = (resize_w - bw) // 2
+        top = (resize_h - bh) // 2
+        img = img.crop((left, top, left + bw, top + bh))
         return img
