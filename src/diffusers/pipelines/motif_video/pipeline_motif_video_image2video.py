@@ -65,7 +65,7 @@ EXAMPLE_DOC_STRING = """
         >>> from diffusers.utils import export_to_video, load_image
 
         >>> # Load the Motif-Video image-to-video pipeline
-        >>> motif_video_model_id = "MotifTechnologies/Motif-Video-2B"
+        >>> motif_video_model_id = "Motif-Technologies/Motif-Video-2B"
         >>> pipe = MotifVideoImage2VideoPipeline.from_pretrained(motif_video_model_id, torch_dtype=torch.bfloat16)
         >>> pipe.to("cuda")
 
