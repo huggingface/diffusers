@@ -290,6 +290,7 @@ class MotifVideoImage2VideoPipeline(DiffusionPipeline):
 
         return prompt_embeds, prompt_attention_mask
 
+    # Copied from diffusers.pipelines.motif_video.pipeline_motif_video.MotifVideoPipeline.encode_prompt
     def encode_prompt(
         self,
         prompt: Union[str, List[str]],
