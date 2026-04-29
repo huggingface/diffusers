@@ -72,12 +72,12 @@ EXAMPLE_DOC_STRING = """
         >>> video = pipe(
         ...     prompt=prompt,
         ...     negative_prompt=negative_prompt,
-        ...     width=640,
-        ...     height=352,
-        ...     num_frames=65,
+        ...     width=1280,
+        ...     height=736,
+        ...     num_frames=121,
         ...     num_inference_steps=50,
         ... ).frames[0]
-        >>> export_to_video(video, "output.mp4", fps=16)
+        >>> export_to_video(video, "output.mp4", fps=24)
         ```
 """
 
