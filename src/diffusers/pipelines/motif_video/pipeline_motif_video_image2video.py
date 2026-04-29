@@ -350,11 +350,6 @@ class MotifVideoImage2VideoPipeline(DiffusionPipeline):
             prompt_attention_mask,
         )
 
-    @property
-    def vision_encoder(self):
-        """Get the vision encoder from T5Gemma2."""
-        return self.text_encoder.vision_tower
-
     @staticmethod
     def _get_image_embeds(
         image_encoder,
@@ -450,7 +445,7 @@ class MotifVideoImage2VideoPipeline(DiffusionPipeline):
 
             with torch.no_grad():
                 image_embeds = self._get_image_embeds(
-                    image_encoder=self.vision_encoder,
+                    image_encoder=self.text_encoder.vision_tower,
                     feature_extractor=self.feature_extractor,
                     image=first_frame_vision,
                     device=device,
