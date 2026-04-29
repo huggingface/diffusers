@@ -226,7 +226,6 @@ class StableDiffusion3DenoiseLoopWrapper(LoopSequentialPipelineBlocks):
         return components, state
 
 
-# auto_docstring
 class StableDiffusion3DenoiseStep(StableDiffusion3DenoiseLoopWrapper):
     block_classes = [StableDiffusion3LoopDenoiser, StableDiffusion3LoopAfterDenoiser]
     block_names = ["denoiser", "after_denoiser"]
