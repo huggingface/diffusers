@@ -233,6 +233,14 @@ class LTXEulerAncestralRFScheduler(SchedulerMixin, ConfigMixin):
         if sigmas_tensor.ndim != 1:
             raise ValueError(f"`sigmas` must be a 1D tensor, got shape {tuple(sigmas_tensor.shape)}.")
 
+        if len(sigmas_tensor) > 1 and not torch.all(sigmas_tensor[:-1] >= sigmas_tensor[1:]):
+            raise ValueError(
+                "`sigmas` must be monotonically non-increasing (each sigma must be >= the next). "
+                "A non-monotone sigma schedule violates the CONST parametrization invariant of "
+                "LTXEulerAncestralRFScheduler: `step()` computes `sigma_down` from adjacent pairs, "
+                "and a schedule increase causes `alpha_down < 0`, which corrupts denoising silently."
+            )
+
         if sigmas_tensor[-1].abs().item() > 1e-6:
             logger.warning(
                 "The last sigma in the schedule is not zero (%.6f). "
