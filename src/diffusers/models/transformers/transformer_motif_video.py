@@ -33,7 +33,7 @@ from ..embeddings import (
     get_1d_rotary_pos_embed,
 )
 from ..modeling_outputs import Transformer2DModelOutput
-from ..modeling_utils import ModelMixin
+from ..modeling_utils import ModelMixin, get_parameter_dtype
 from ..normalization import (
     AdaLayerNormContinuous,
     AdaLayerNormZero,
@@ -391,11 +391,10 @@ class MotifVideoConditionEmbedding(nn.Module):
         timestep: torch.Tensor,
     ) -> torch.Tensor:
         timesteps_proj = self.time_proj(timestep)
-        compute_dtype = next(
-            (p.dtype for p in self.timestep_embedder.parameters() if p.is_floating_point()),
-            torch.float32,  # safe fallback
-        )
-        conditioning = self.timestep_embedder(timesteps_proj.to(compute_dtype))  # (N, D)
+        compute_dtype = get_parameter_dtype(self.timestep_embedder)
+        if compute_dtype != torch.int8:
+            timesteps_proj = timesteps_proj.to(compute_dtype)
+        conditioning = self.timestep_embedder(timesteps_proj)  # (N, D)
 
         return conditioning
 
