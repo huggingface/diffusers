@@ -160,6 +160,7 @@ class MotifVideoAttnProcessor2_0:
 
 class MotifVideoAttention(torch.nn.Module, AttentionModuleMixin):
     _default_processor_cls = MotifVideoAttnProcessor2_0
+    _available_processors = [MotifVideoAttnProcessor2_0]
 
     def __init__(
         self,
