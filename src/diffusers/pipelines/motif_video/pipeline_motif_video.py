@@ -488,7 +488,6 @@ class MotifVideoPipeline(DiffusionPipeline):
         ] = None,
         callback_on_step_end_tensor_inputs: List[str] = ["latents"],
         max_sequence_length: int = 512,
-        use_attention_mask: bool = True,
         vae_batch_size: int | None = None,
     ):
         r"""
@@ -538,8 +537,6 @@ class MotifVideoPipeline(DiffusionPipeline):
                 The list of tensor inputs for the `callback_on_step_end` function.
             max_sequence_length (`int`, defaults to `512`):
                 Maximum sequence length for the tokenizer.
-            use_attention_mask (`bool`, defaults to `True`):
-                Whether to use attention masks for text embeddings.
             vae_batch_size (`int`, *optional*):
                 Batch size for VAE decoding. If provided and latents batch size is larger, VAE decoding will be done in
                 chunks.
@@ -686,12 +683,11 @@ class MotifVideoPipeline(DiffusionPipeline):
                 # Guider: collect model inputs
                 guider_inputs = {
                     "encoder_hidden_states": (prompt_embeds, negative_prompt_embeds),
-                }
-                if use_attention_mask:
-                    guider_inputs["encoder_attention_mask"] = (
+                    "encoder_attention_mask": (
                         prompt_attention_mask,
                         negative_prompt_attention_mask,
-                    )
+                    ),
+                }
 
                 self.guider.set_state(step=i, num_inference_steps=num_inference_steps, timestep=t)
                 guider_state = self.guider.prepare_inputs(guider_inputs)
