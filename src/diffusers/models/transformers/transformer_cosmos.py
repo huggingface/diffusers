@@ -67,18 +67,16 @@ class CosmosTimestepEmbedding(nn.Module):
 
 
 class CosmosEmbedding(nn.Module):
-    def __init__(self, embedding_dim: int, condition_dim: int, autocast_fp32: bool = False) -> None:
+    def __init__(self, embedding_dim: int, condition_dim: int) -> None:
         super().__init__()
 
-        self.autocast_fp32 = autocast_fp32
         self.time_proj = Timesteps(embedding_dim, flip_sin_to_cos=True, downscale_freq_shift=0.0)
         self.t_embedder = CosmosTimestepEmbedding(embedding_dim, condition_dim)
         self.norm = RMSNorm(embedding_dim, eps=1e-6, elementwise_affine=True)
 
     def forward(self, hidden_states: torch.Tensor, timestep: torch.Tensor) -> torch.Tensor:
-        target_dtype = torch.float32 if self.autocast_fp32 else hidden_states.dtype
-        with torch.amp.autocast("cuda", enabled=self.autocast_fp32, dtype=torch.float32):
-            timesteps_proj = self.time_proj(timestep).to(target_dtype)
+        with torch.amp.autocast(timestep.device.type, dtype=torch.float32):
+            timesteps_proj = self.time_proj(timestep).to(torch.float32)
             temb = self.t_embedder(timesteps_proj)
             embedded_timestep = self.norm(timesteps_proj)
         return temb, embedded_timestep
@@ -116,10 +114,9 @@ class CosmosAdaLayerNorm(nn.Module):
 
 
 class CosmosAdaLayerNormZero(nn.Module):
-    def __init__(self, in_features: int, hidden_features: int | None = None, autocast_fp32: bool = False) -> None:
+    def __init__(self, in_features: int, hidden_features: int | None = None) -> None:
         super().__init__()
 
-        self.autocast_fp32 = autocast_fp32
         self.norm = nn.LayerNorm(in_features, elementwise_affine=False, eps=1e-6)
         self.activation = nn.SiLU()
 
@@ -137,7 +134,7 @@ class CosmosAdaLayerNormZero(nn.Module):
         temb: torch.Tensor | None = None,
     ) -> torch.Tensor:
         original_dtype = hidden_states.dtype
-        with torch.amp.autocast("cuda", enabled=self.autocast_fp32, dtype=torch.float32):
+        with torch.amp.autocast(hidden_states.device.type, dtype=torch.float32):
             embedded_timestep = self.activation(embedded_timestep)
             embedded_timestep = self.linear_1(embedded_timestep)
             embedded_timestep = self.linear_2(embedded_timestep)
@@ -158,10 +155,9 @@ class CosmosAdaLayerNormZero(nn.Module):
 
 
 class CosmosAttnProcessor2_0:
-    def __init__(self, autocast_fp32: bool = False):
+    def __init__(self):
         if not hasattr(torch.nn.functional, "scaled_dot_product_attention"):
             raise ImportError("CosmosAttnProcessor2_0 requires PyTorch 2.0. To use it, please upgrade PyTorch to 2.0.")
-        self.autocast_fp32 = autocast_fp32
 
     def __call__(
         self,
@@ -192,12 +188,8 @@ class CosmosAttnProcessor2_0:
             from ..embeddings import apply_rotary_emb
 
             original_dtype = query.dtype
-            with torch.amp.autocast("cuda", enabled=self.autocast_fp32, dtype=torch.float32):
-                target_dtype = torch.float32 if self.autocast_fp32 else original_dtype
-                query = apply_rotary_emb(
-                    query.to(target_dtype), image_rotary_emb, use_real=True, use_real_unbind_dim=-2
-                )
-                key = apply_rotary_emb(key.to(target_dtype), image_rotary_emb, use_real=True, use_real_unbind_dim=-2)
+            query = apply_rotary_emb(query.to(torch.float32), image_rotary_emb, use_real=True, use_real_unbind_dim=-2)
+            key = apply_rotary_emb(key.to(torch.float32), image_rotary_emb, use_real=True, use_real_unbind_dim=-2)
             query = query.to(original_dtype)
             key = key.to(original_dtype)
 
@@ -230,10 +222,9 @@ class CosmosAttnProcessor2_0:
 
 
 class CosmosAttnProcessor2_5:
-    def __init__(self, autocast_fp32: bool = False):
+    def __init__(self):
         if not hasattr(torch.nn.functional, "scaled_dot_product_attention"):
             raise ImportError("CosmosAttnProcessor2_5 requires PyTorch 2.0. Please upgrade PyTorch to 2.0 or newer.")
-        self.autocast_fp32 = autocast_fp32
 
     def __call__(
         self,
@@ -267,12 +258,8 @@ class CosmosAttnProcessor2_5:
             from ..embeddings import apply_rotary_emb
 
             original_dtype = query.dtype
-            with torch.amp.autocast("cuda", enabled=self.autocast_fp32, dtype=torch.float32):
-                target_dtype = torch.float32 if self.autocast_fp32 else original_dtype
-                query = apply_rotary_emb(
-                    query.to(target_dtype), image_rotary_emb, use_real=True, use_real_unbind_dim=-2
-                )
-                key = apply_rotary_emb(key.to(target_dtype), image_rotary_emb, use_real=True, use_real_unbind_dim=-2)
+            query = apply_rotary_emb(query.to(torch.float32), image_rotary_emb, use_real=True, use_real_unbind_dim=-2)
+            key = apply_rotary_emb(key.to(torch.float32), image_rotary_emb, use_real=True, use_real_unbind_dim=-2)
             query = query.to(original_dtype)
             key = key.to(original_dtype)
 
@@ -377,15 +364,12 @@ class CosmosTransformerBlock(nn.Module):
         img_context: bool = False,
         before_proj: bool = False,
         after_proj: bool = False,
-        autocast_fp32: bool = False,
     ) -> None:
         super().__init__()
 
         hidden_size = num_attention_heads * attention_head_dim
 
-        self.norm1 = CosmosAdaLayerNormZero(
-            in_features=hidden_size, hidden_features=adaln_lora_dim, autocast_fp32=autocast_fp32
-        )
+        self.norm1 = CosmosAdaLayerNormZero(in_features=hidden_size, hidden_features=adaln_lora_dim)
         self.img_context = img_context
         self.attn1 = Attention(
             query_dim=hidden_size,
@@ -395,12 +379,10 @@ class CosmosTransformerBlock(nn.Module):
             qk_norm=qk_norm,
             elementwise_affine=True,
             out_bias=out_bias,
-            processor=CosmosAttnProcessor2_0(autocast_fp32=autocast_fp32),
+            processor=CosmosAttnProcessor2_0(),
         )
 
-        self.norm2 = CosmosAdaLayerNormZero(
-            in_features=hidden_size, hidden_features=adaln_lora_dim, autocast_fp32=autocast_fp32
-        )
+        self.norm2 = CosmosAdaLayerNormZero(in_features=hidden_size, hidden_features=adaln_lora_dim)
         if img_context:
             self.attn2 = CosmosAttention(
                 query_dim=hidden_size,
@@ -410,7 +392,7 @@ class CosmosTransformerBlock(nn.Module):
                 qk_norm=qk_norm,
                 elementwise_affine=True,
                 out_bias=out_bias,
-                processor=CosmosAttnProcessor2_5(autocast_fp32=autocast_fp32),
+                processor=CosmosAttnProcessor2_5(),
             )
         else:
             self.attn2 = Attention(
@@ -421,12 +403,10 @@ class CosmosTransformerBlock(nn.Module):
                 qk_norm=qk_norm,
                 elementwise_affine=True,
                 out_bias=out_bias,
-                processor=CosmosAttnProcessor2_0(autocast_fp32=autocast_fp32),
+                processor=CosmosAttnProcessor2_0(),
             )
 
-        self.norm3 = CosmosAdaLayerNormZero(
-            in_features=hidden_size, hidden_features=adaln_lora_dim, autocast_fp32=autocast_fp32
-        )
+        self.norm3 = CosmosAdaLayerNormZero(in_features=hidden_size, hidden_features=adaln_lora_dim)
         self.ff = FeedForward(hidden_size, mult=mlp_ratio, activation_fn="gelu", bias=out_bias)
 
         # NOTE: zero conv for CosmosControlNet
@@ -626,10 +606,6 @@ class CosmosTransformer3DModel(ModelMixin, ConfigMixin, FromOriginalModelMixin, 
         img_context_dim_out (`int`):
             The output dimension of the image context projection layer. If `img_context_dim_in` is not provided, then
             this parameter is ignored.
-        autocast_fp32 (`bool`, defaults to `False`):
-            Whether to cast certain computations (AdaLN, timestep embedding, RoPE, final norm and projection) to
-            float32 for numerical stability. Set to `False` to disable autocasting (e.g., when the model is already
-            running in float32 or when autocasting is handled externally).
     """
 
     _supports_gradient_checkpointing = True
@@ -660,7 +636,6 @@ class CosmosTransformer3DModel(ModelMixin, ConfigMixin, FromOriginalModelMixin, 
         img_context_dim_in: int | None = None,
         img_context_num_tokens: int = 256,
         img_context_dim_out: int = 2048,
-        autocast_fp32: bool = False,
     ) -> None:
         super().__init__()
         hidden_size = num_attention_heads * attention_head_dim
@@ -683,7 +658,7 @@ class CosmosTransformer3DModel(ModelMixin, ConfigMixin, FromOriginalModelMixin, 
             )
 
         # 3. Time Embedding
-        self.time_embed = CosmosEmbedding(hidden_size, hidden_size, autocast_fp32=autocast_fp32)
+        self.time_embed = CosmosEmbedding(hidden_size, hidden_size)
 
         # 4. Transformer Blocks
         self.transformer_blocks = nn.ModuleList(
@@ -697,7 +672,6 @@ class CosmosTransformer3DModel(ModelMixin, ConfigMixin, FromOriginalModelMixin, 
                     qk_norm="rms_norm",
                     out_bias=False,
                     img_context=self.config.img_context_dim_in is not None and self.config.img_context_dim_in > 0,
-                    autocast_fp32=autocast_fp32,
                 )
                 for _ in range(num_layers)
             ]
@@ -722,20 +696,6 @@ class CosmosTransformer3DModel(ModelMixin, ConfigMixin, FromOriginalModelMixin, 
                 nn.Linear(self.config.img_context_dim_in, self.config.img_context_dim_out, bias=True),
                 nn.GELU(),
             )
-
-    def set_autocast_fp32(self, autocast_fp32: bool) -> None:
-        """Propagate the ``autocast_fp32`` flag to all sub-modules that use it.
-
-        This allows toggling fp32 autocasting after the model has been constructed (e.g. from a pipeline).
-        """
-        self.register_to_config(autocast_fp32=autocast_fp32)
-        self.time_embed.autocast_fp32 = autocast_fp32
-        for block in self.transformer_blocks:
-            block.norm1.autocast_fp32 = autocast_fp32
-            block.norm2.autocast_fp32 = autocast_fp32
-            block.norm3.autocast_fp32 = autocast_fp32
-            block.attn1.processor.autocast_fp32 = autocast_fp32
-            block.attn2.processor.autocast_fp32 = autocast_fp32
 
     def forward(
         self,
@@ -849,7 +809,7 @@ class CosmosTransformer3DModel(ModelMixin, ConfigMixin, FromOriginalModelMixin, 
                 )
 
         # 8. Output norm & projection & unpatchify
-        with torch.amp.autocast("cuda", enabled=self.config.autocast_fp32, dtype=torch.float32):
+        with torch.amp.autocast(hidden_states.device.type, dtype=torch.float32):
             hidden_states = self.norm_out(hidden_states, embedded_timestep, temb)
             hidden_states = self.proj_out(hidden_states)
         hidden_states = hidden_states.unflatten(2, (p_h, p_w, p_t, -1))

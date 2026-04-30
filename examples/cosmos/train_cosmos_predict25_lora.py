@@ -524,7 +524,6 @@ def main():
     vae = pipe.vae
     text_encoder = pipe.text_encoder
 
-    dit.set_autocast_fp32(True)
     dit.requires_grad_(False)
     vae.requires_grad_(False)
     text_encoder.requires_grad_(False)

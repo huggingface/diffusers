@@ -218,7 +218,6 @@ class Cosmos2_5_PredictBasePipeline(DiffusionPipeline, CosmosLoraLoaderMixin):
         vae: AutoencoderKLWan,
         scheduler: UniPCMultistepScheduler,
         safety_checker: CosmosSafetyChecker = None,
-        autocast_fp32: bool = True,
     ):
         super().__init__()
 
@@ -233,9 +232,6 @@ class Cosmos2_5_PredictBasePipeline(DiffusionPipeline, CosmosLoraLoaderMixin):
             scheduler=scheduler,
             safety_checker=safety_checker,
         )
-
-        if transformer is not None:
-            transformer.set_autocast_fp32(autocast_fp32)
 
         self.vae_scale_factor_temporal = 2 ** sum(self.vae.temperal_downsample) if getattr(self, "vae", None) else 4
         self.vae_scale_factor_spatial = 2 ** len(self.vae.temperal_downsample) if getattr(self, "vae", None) else 8
