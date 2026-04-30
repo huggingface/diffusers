@@ -365,8 +365,11 @@ class ErnieImagePipeline(DiffusionPipeline):
         else:
             # Decode latents to images
             # Unnormalize latents using VAE's BN stats
-            bn_mean = self.vae.bn.running_mean.view(1, -1, 1, 1).to(device)
-            bn_std = torch.sqrt(self.vae.bn.running_var.view(1, -1, 1, 1) + 1e-5).to(device)
+            # TODO: switch to `self.vae.config.batch_norm_eps` once the hub config is updated to match the trained value (1e-5).
+            bn_mean = self.vae.bn.running_mean.view(1, -1, 1, 1).to(device=device, dtype=latents.dtype)
+            bn_std = torch.sqrt(self.vae.bn.running_var.view(1, -1, 1, 1) + 1e-5).to(
+                device=device, dtype=latents.dtype
+            )
             latents = latents * bn_std + bn_mean
 
             # Unpatchify
