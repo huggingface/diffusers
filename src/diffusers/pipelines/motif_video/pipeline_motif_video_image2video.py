@@ -498,6 +498,7 @@ class MotifVideoImage2VideoPipeline(DiffusionPipeline):
                     f"got {prompt_embeds.shape} and {negative_prompt_embeds.shape}."
                 )
 
+    # Copied from diffusers.pipelines.motif_video.pipeline_motif_video.MotifVideoPipeline._prepare_negative_prompt
     def _prepare_negative_prompt(
         self,
         negative_prompt: Optional[Union[str, List[str]]],
@@ -510,6 +511,7 @@ class MotifVideoImage2VideoPipeline(DiffusionPipeline):
             return [negative_prompt] * batch_size
         return negative_prompt
 
+    # Copied from diffusers.pipelines.motif_video.pipeline_motif_video.MotifVideoPipeline._normalize_latents
     @staticmethod
     def _normalize_latents(
         latents: torch.Tensor, latents_mean: torch.Tensor, latents_std: torch.Tensor
@@ -519,6 +521,7 @@ class MotifVideoImage2VideoPipeline(DiffusionPipeline):
         latents = (latents - latents_mean) / latents_std
         return latents
 
+    # Copied from diffusers.pipelines.motif_video.pipeline_motif_video.MotifVideoPipeline._denormalize_latents
     @staticmethod
     def _denormalize_latents(
         latents: torch.Tensor, latents_mean: torch.Tensor, latents_std: torch.Tensor
@@ -528,6 +531,7 @@ class MotifVideoImage2VideoPipeline(DiffusionPipeline):
         latents = latents * latents_std + latents_mean
         return latents
 
+    # Copied from diffusers.pipelines.motif_video.pipeline_motif_video.MotifVideoPipeline.prepare_latents
     def prepare_latents(
         self,
         batch_size: int = 1,
