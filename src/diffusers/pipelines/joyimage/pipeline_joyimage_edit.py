@@ -5,7 +5,6 @@ import numpy as np
 import torch
 from PIL import Image
 from transformers import (
-    AutoProcessor,
     Qwen2Tokenizer,
     Qwen3VLForConditionalGeneration,
     Qwen3VLProcessor,

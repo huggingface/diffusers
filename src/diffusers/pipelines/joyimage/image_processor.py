@@ -15,7 +15,6 @@
 import math
 from typing import Tuple
 
-import torch
 from PIL import Image
 
 from ...configuration_utils import register_to_config

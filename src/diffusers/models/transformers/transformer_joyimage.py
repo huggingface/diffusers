@@ -330,8 +330,6 @@ class JoyImageTransformerBlock(nn.Module):
         return hidden_states, encoder_hidden_states
 
 
-# ---------------------------------------------------------------------------
-# Copied from diffusers.models.transformers.transformer_wan.WanTimeTextImageEmbedding
 class JoyImageTimeTextImageEmbedding(nn.Module):
     def __init__(
         self,
@@ -566,9 +564,7 @@ class JoyImageEditTransformer3DModel(ModelMixin, ConfigMixin, AttentionMixin):
         # main loop
         for block in self.double_blocks:
             if torch.is_grad_enabled() and self.gradient_checkpointing:
-                img, txt = self._gradient_checkpointing_func(
-                    block, img, txt, vec, (vis_freqs, txt_freqs)
-                )
+                img, txt = self._gradient_checkpointing_func(block, img, txt, vec, (vis_freqs, txt_freqs))
             else:
                 img, txt = block(
                     hidden_states=img,
@@ -592,4 +588,3 @@ class JoyImageEditTransformer3DModel(ModelMixin, ConfigMixin, AttentionMixin):
         if not return_dict:
             return (img,)
         return Transformer2DModelOutput(sample=img)
-
