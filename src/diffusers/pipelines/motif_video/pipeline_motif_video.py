@@ -696,10 +696,6 @@ class MotifVideoPipeline(DiffusionPipeline):
                 self.guider.set_state(step=i, num_inference_steps=num_inference_steps, timestep=t)
                 guider_state = self.guider.prepare_inputs(guider_inputs)
 
-                # Sigma injection for guiders that support sigma-based gating
-                if hasattr(self.guider, "_current_sigma") and hasattr(self.scheduler, "sigmas"):
-                    self.guider._current_sigma = float(self.scheduler.sigmas[i])
-
                 for guider_state_batch in guider_state:
                     self.guider.prepare_models(self.transformer)
 
