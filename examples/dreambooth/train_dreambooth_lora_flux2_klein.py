@@ -1473,7 +1473,7 @@ def main(args):
         center_crop=args.center_crop,
         buckets=buckets,
     )
-    has_step_indexed_caches = args.cache_latents or train_dataset.custom_instance_prompts
+    has_step_indexed_caches = precompute_latents = args.cache_latents or train_dataset.custom_instance_prompts
     batch_sampler = BucketBatchSampler(
         train_dataset,
         batch_size=args.train_batch_size,
@@ -1546,7 +1546,7 @@ def main(args):
     # if cache_latents is set to True, we encode images to latents and store them.
     # Similar to pre-encoding in the case of a single instance prompt, if custom prompts are provided
     # we encode them in advance as well.
-    if has_step_indexed_caches:
+    if precompute_latents:
         prompt_embeds_cache = []
         text_ids_cache = []
         latents_cache = []
