@@ -471,7 +471,6 @@ class MotifVideoPipeline(DiffusionPipeline):
         height: int = 736,
         width: int = 1280,
         num_frames: int = 121,
-        frame_rate: int = 25,
         num_inference_steps: int = 50,
         timesteps: Optional[List[int]] = None,
         num_videos_per_prompt: Optional[int] = 1,
@@ -501,14 +500,12 @@ class MotifVideoPipeline(DiffusionPipeline):
             negative_prompt (`str` or `List[str]`, *optional*):
                 The prompt or prompts not to guide the video generation. If not defined, one has to pass
                 `negative_prompt_embeds` instead. Ignored when not using guidance.
-            height (`int`, defaults to `352`):
+            height (`int`, defaults to `736`):
                 The height in pixels of the generated video.
-            width (`int`, defaults to `640`):
+            width (`int`, defaults to `1280`):
                 The width in pixels of the generated video.
-            num_frames (`int`, defaults to `65`):
+            num_frames (`int`, defaults to `121`):
                 The number of video frames to generate.
-            frame_rate (`int`, defaults to `25`):
-                Frame rate for the output video.
             num_inference_steps (`int`, *optional*, defaults to 50):
                 The number of denoising steps. More denoising steps usually lead to a higher quality video at the
                 expense of slower inference.
