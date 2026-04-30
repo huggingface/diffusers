@@ -580,6 +580,8 @@
         title: Lumina-T2X
       - local: api/pipelines/marigold
         title: Marigold
+      - local: api/pipelines/nucleusmoe_image
+        title: NucleusMoE-Image
       - local: api/pipelines/omnigen
         title: OmniGen
       - local: api/pipelines/ovis_image
