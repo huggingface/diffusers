@@ -1,73 +1,47 @@
-# Adapted from https://blog.deepjyoti30.dev/pypi-release-github-action
-
 name: PyPI release
 
 on:
   workflow_dispatch:
   push:
     tags:
-      - "*"
+      - v*
+    branches:
+      - 'v*-release'
+
+permissions:
+  contents: read
 
 jobs:
-  find-and-checkout-latest-branch:
+  build-and-test:
     runs-on: ubuntu-22.04
-    outputs:
-      latest_branch: ${{ steps.set_latest_branch.outputs.latest_branch }}
     steps:
-      - name: Checkout Repo
-        uses: actions/checkout@v6
+      - name: Checkout repo
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
 
       - name: Set up Python
-        uses: actions/setup-python@v6
-        with:
-          python-version: '3.10'
-
-      - name: Fetch latest branch
-        id: fetch_latest_branch
-        run: |
-          pip install -U requests packaging
-          LATEST_BRANCH=$(python utils/fetch_latest_release_branch.py)
-          echo "Latest branch: $LATEST_BRANCH"
-          echo "latest_branch=$LATEST_BRANCH" >> $GITHUB_ENV
-
-      - name: Set latest branch output
-        id: set_latest_branch
-        run: echo "::set-output name=latest_branch::${{ env.latest_branch }}"
-
-  release:
-    needs: find-and-checkout-latest-branch
-    runs-on: ubuntu-22.04
-
-    steps:
-      - name: Checkout Repo
-        uses: actions/checkout@v6
-        with:
-          ref: ${{ needs.find-and-checkout-latest-branch.outputs.latest_branch }}
-
-      - name: Setup Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065  # v5
         with:
           python-version: "3.10"
 
-      - name: Install dependencies
+      - name: Install build dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -U setuptools wheel twine
+          pip install -U build
           pip install -U torch --index-url https://download.pytorch.org/whl/cpu
 
       - name: Build the dist files
-        run: python setup.py bdist_wheel && python setup.py sdist
+        run: python -m build
 
-      - name: Publish to the test PyPI
-        env:
-          TWINE_USERNAME: ${{ secrets.TEST_PYPI_USERNAME }}
-          TWINE_PASSWORD: ${{ secrets.TEST_PYPI_PASSWORD }}
-        run: twine upload dist/* -r pypitest --repository-url=https://test.pypi.org/legacy/
+      - name: Validate dist metadata
+        run: |
+          pip install twine
+          twine check --strict dist/*
+
+      - name: Install from built wheel
+        run: pip install dist/*.whl
 
       - name: Test installing diffusers and importing
         run: |
-          pip install diffusers && pip uninstall diffusers -y
-          pip install -i https://test.pypi.org/simple/ diffusers
           pip install -U transformers
           python utils/print_env.py
           python -c "from diffusers import __version__; print(__version__)"
@@ -75,8 +49,30 @@ jobs:
           python -c "from diffusers import DiffusionPipeline; pipe = DiffusionPipeline.from_pretrained('hf-internal-testing/tiny-stable-diffusion-pipe', safety_checker=None); pipe('ah suh du')"
           python -c "from diffusers import *"
 
-      - name: Publish to PyPI
-        env:
-          TWINE_USERNAME: ${{ secrets.PYPI_USERNAME }}
-          TWINE_PASSWORD: ${{ secrets.PYPI_PASSWORD }}
-        run: twine upload dist/* -r pypi
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4
+        with:
+          name: python-dist
+          path: dist/
+
+  publish-to-pypi:
+    needs: build-and-test
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    environment: pypi-release
+    permissions:
+      id-token: write
+
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+      
+      - name: Download build artifacts
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093  # v4
+        with:
+          name: python-dist
+          path: dist/
+
+      - name: Publish package distributions to TestPyPI
+        uses: pypa/gh-action-pypi-publish@ed0c53931b1dc9bd32cbe73a98c7f6766f8a527e  # release/v1
+        with:
+          verbose: true
