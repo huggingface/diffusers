@@ -253,7 +253,6 @@ class JoyImageTransformerBlock(nn.Module):
         num_attention_heads: int,
         attention_head_dim: int,
         mlp_width_ratio: float = 4.0,
-        qk_norm: str = "rms_norm",
         eps: float = 1e-6,
     ):
         super().__init__()

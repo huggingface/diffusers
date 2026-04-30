@@ -18,7 +18,7 @@ from unittest.mock import patch
 import pytest
 import torch
 from PIL import Image
-from transformers import Qwen3VLConfig, Qwen3VLForConditionalGeneration, Qwen3VLProcessor
+from transformers import Qwen3VLForConditionalGeneration, Qwen3VLProcessor
 
 from diffusers import (
     AutoencoderKLWan,
@@ -92,35 +92,7 @@ class JoyImageEditPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
         scheduler = FlowMatchEulerDiscreteScheduler()
 
-        torch.manual_seed(0)
-        config = Qwen3VLConfig(
-            text_config={
-                "hidden_size": 16,
-                "intermediate_size": 16,
-                "num_hidden_layers": 1,
-                "num_attention_heads": 2,
-                "num_key_value_heads": 2,
-                "rope_scaling": {
-                    "mrope_section": [1, 1, 2],
-                    "rope_type": "default",
-                    "type": "default",
-                },
-                "rope_theta": 1000000.0,
-                "vocab_size": 152064,
-            },
-            vision_config={
-                "depth": 1,
-                "hidden_size": 16,
-                "intermediate_size": 16,
-                "num_heads": 2,
-                "out_hidden_size": 16,
-                "patch_size": 14,
-                "spatial_merge_size": 2,
-                "temporal_patch_size": 2,
-                "deepstack_visual_indexes": [0],
-            },
-        )
-        text_encoder = Qwen3VLForConditionalGeneration(config).eval()
+        text_encoder = Qwen3VLForConditionalGeneration.from_pretrained(tiny_ckpt_id)
         processor = Qwen3VLProcessor.from_pretrained(tiny_ckpt_id)
         processor.image_processor.min_pixels = 4 * 28 * 28
         processor.image_processor.max_pixels = 4 * 28 * 28
