@@ -64,7 +64,6 @@ EXAMPLE_DOC_STRING = """
 """
 
 CONDITION_IMAGE_SIZE = 384 * 384
-VAE_IMAGE_SIZE = 1024 * 1024
 
 
 # Copied from diffusers.pipelines.qwenimage.pipeline_qwenimage.calculate_shift
@@ -534,6 +533,7 @@ class QwenImageEditPlusPipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
         true_cfg_scale: float = 4.0,
         height: int | None = None,
         width: int | None = None,
+        image_area: int = 1024 * 1024,
         num_inference_steps: int = 50,
         sigmas: list[float] | None = None,
         guidance_scale: float | None = None,
@@ -579,6 +579,12 @@ class QwenImageEditPlusPipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
                 The height in pixels of the generated image. This is set to 1024 by default for the best results.
             width (`int`, *optional*, defaults to self.unet.config.sample_size * self.vae_scale_factor):
                 The width in pixels of the generated image. This is set to 1024 by default for the best results.
+            image_area (`int`, *optional*, defaults to `1024 * 1024`):
+                Target pixel area used to derive (a) the default output `height`/`width` from the input image's
+                aspect ratio when those are not explicitly provided, and (b) the resolution at which the input
+                image(s) are encoded by the VAE. When `height` and `width` are both passed explicitly they
+                override the default-derivation, but `image_area` still controls the VAE-encoding size of the
+                input image(s).
             num_inference_steps (`int`, *optional*, defaults to 50):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
                 expense of slower inference.
@@ -640,7 +646,7 @@ class QwenImageEditPlusPipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
             returning a tuple, the first element is a list with the generated images.
         """
         image_size = image[-1].size if isinstance(image, list) else image.size
-        calculated_width, calculated_height = calculate_dimensions(1024 * 1024, image_size[0] / image_size[1])
+        calculated_width, calculated_height = calculate_dimensions(image_area, image_size[0] / image_size[1])
         height = height or calculated_height
         width = width or calculated_width
 
@@ -696,7 +702,7 @@ class QwenImageEditPlusPipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
                 condition_width, condition_height = calculate_dimensions(
                     CONDITION_IMAGE_SIZE, image_width / image_height
                 )
-                vae_width, vae_height = calculate_dimensions(VAE_IMAGE_SIZE, image_width / image_height)
+                vae_width, vae_height = calculate_dimensions(image_area, image_width / image_height)
                 condition_image_sizes.append((condition_width, condition_height))
                 vae_image_sizes.append((vae_width, vae_height))
                 condition_images.append(self.image_processor.resize(img, condition_height, condition_width))
