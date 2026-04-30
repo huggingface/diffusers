@@ -519,7 +519,6 @@ class MotifVideoSingleTransformerBlock(nn.Module):
         image_rotary_emb: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,
         image_embed_seq_len: int = 0,
     ) -> torch.Tensor:
-        video_tokens = hidden_states.shape[1]
         encoder_seq_length = encoder_hidden_states.shape[1]
         hidden_states = torch.cat([hidden_states, encoder_hidden_states], dim=1)
 
