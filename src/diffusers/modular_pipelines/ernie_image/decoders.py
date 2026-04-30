@@ -75,9 +75,7 @@ class ErnieImageVaeDecoderStep(ModularPipelineBlocks):
 
         latents = block_state.latents
         bn_mean = vae.bn.running_mean.view(1, -1, 1, 1).to(device=device, dtype=latents.dtype)
-        bn_std = torch.sqrt(vae.bn.running_var.view(1, -1, 1, 1) + vae.config.batch_norm_eps).to(
-            device=device, dtype=latents.dtype
-        )
+        bn_std = torch.sqrt(vae.bn.running_var.view(1, -1, 1, 1) + 1e-5).to(device=device, dtype=latents.dtype)
         latents = latents * bn_std + bn_mean
 
         latents = components.pachifier.unpack_latents(latents)

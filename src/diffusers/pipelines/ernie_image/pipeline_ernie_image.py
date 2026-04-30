@@ -361,26 +361,26 @@ class ErnieImagePipeline(DiffusionPipeline):
                 progress_bar.update()
 
         if output_type == "latent":
-            return latents
+            images = latents
+        else:
+            # Decode latents to images
+            # Unnormalize latents using VAE's BN stats
+            bn_mean = self.vae.bn.running_mean.view(1, -1, 1, 1).to(device)
+            bn_std = torch.sqrt(self.vae.bn.running_var.view(1, -1, 1, 1) + 1e-5).to(device)
+            latents = latents * bn_std + bn_mean
 
-        # Decode latents to images
-        # Unnormalize latents using VAE's BN stats
-        bn_mean = self.vae.bn.running_mean.view(1, -1, 1, 1).to(device)
-        bn_std = torch.sqrt(self.vae.bn.running_var.view(1, -1, 1, 1) + 1e-5).to(device)
-        latents = latents * bn_std + bn_mean
+            # Unpatchify
+            latents = self._unpatchify_latents(latents)
 
-        # Unpatchify
-        latents = self._unpatchify_latents(latents)
+            # Decode
+            images = self.vae.decode(latents, return_dict=False)[0]
 
-        # Decode
-        images = self.vae.decode(latents, return_dict=False)[0]
+            # Post-process
+            images = (images.clamp(-1, 1) + 1) / 2
+            images = images.cpu().permute(0, 2, 3, 1).float().numpy()
 
-        # Post-process
-        images = (images.clamp(-1, 1) + 1) / 2
-        images = images.cpu().permute(0, 2, 3, 1).float().numpy()
-
-        if output_type == "pil":
-            images = [Image.fromarray((img * 255).astype("uint8")) for img in images]
+            if output_type == "pil":
+                images = [Image.fromarray((img * 255).astype("uint8")) for img in images]
 
         # Offload all models
         self.maybe_free_model_hooks()
