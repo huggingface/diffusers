@@ -20,9 +20,9 @@ import json
 from typing import Callable, List, Optional, Union
 
 import torch
-from PIL import Image
 from transformers import AutoTokenizer, Ministral3ForCausalLM, Mistral3Model
 
+from ...image_processor import VaeImageProcessor
 from ...models import AutoencoderKLFlux2
 from ...models.transformers import ErnieImageTransformer2DModel
 from ...pipelines.pipeline_utils import DiffusionPipeline
@@ -68,6 +68,7 @@ class ErnieImagePipeline(DiffusionPipeline):
             pe_tokenizer=pe_tokenizer,
         )
         self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels)) if getattr(self, "vae", None) else 16
+        self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor)
 
     @property
     def guidance_scale(self):
@@ -379,11 +380,7 @@ class ErnieImagePipeline(DiffusionPipeline):
             images = self.vae.decode(latents, return_dict=False)[0]
 
             # Post-process
-            images = (images.clamp(-1, 1) + 1) / 2
-            images = images.cpu().permute(0, 2, 3, 1).float().numpy()
-
-            if output_type == "pil":
-                images = [Image.fromarray((img * 255).astype("uint8")) for img in images]
+            images = self.image_processor.postprocess(images, output_type=output_type)
 
         # Offload all models
         self.maybe_free_model_hooks()
