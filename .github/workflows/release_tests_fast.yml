@@ -37,7 +37,7 @@ jobs:
           uv pip uninstall transformers huggingface_hub && uv pip install --prerelease allow -U transformers@git+https://github.com/huggingface/transformers.git
       - name: Environment
         run: |
-          python utils/print_env.py
+          diffusers-cli env
       - name: Fetch Pipeline Matrix
         id: fetch_pipeline_matrix
         run: |
@@ -79,7 +79,7 @@ jobs:
           uv pip uninstall transformers huggingface_hub && uv pip install --prerelease allow -U transformers@git+https://github.com/huggingface/transformers.git
       - name: Environment
         run: |
-          python utils/print_env.py
+          diffusers-cli env
       - name: Slow PyTorch CUDA checkpoint tests on Ubuntu
         env:
           HF_TOKEN: ${{ secrets.DIFFUSERS_HF_HUB_READ_TOKEN }}
@@ -132,7 +132,7 @@ jobs:
 
     - name: Environment
       run: |
-        python utils/print_env.py
+        diffusers-cli env
 
     - name: Run PyTorch CUDA tests
       env:
@@ -183,7 +183,7 @@ jobs:
 
       - name: Environment
         run: |
-          python utils/print_env.py
+          diffusers-cli env
 
       - name: Run PyTorch CUDA tests
         env:
@@ -240,7 +240,7 @@ jobs:
         uv pip uninstall transformers huggingface_hub && uv pip install --prerelease allow -U transformers@git+https://github.com/huggingface/transformers.git
     - name: Environment
       run: |
-        python utils/print_env.py
+        diffusers-cli env
     - name: Run torch compile tests on GPU
       env:
         HF_TOKEN: ${{ secrets.DIFFUSERS_HF_HUB_READ_TOKEN }}
@@ -283,7 +283,7 @@ jobs:
         uv pip uninstall transformers huggingface_hub && uv pip install --prerelease allow -U transformers@git+https://github.com/huggingface/transformers.git
     - name: Environment
       run: |
-        python utils/print_env.py
+        diffusers-cli env
     - name: Run example tests on GPU
       env:
         HF_TOKEN: ${{ secrets.DIFFUSERS_HF_HUB_READ_TOKEN }}
@@ -327,7 +327,7 @@ jobs:
 
     - name: Environment
       run: |
-        python utils/print_env.py
+        diffusers-cli env
 
     - name: Run example tests on GPU
       env:

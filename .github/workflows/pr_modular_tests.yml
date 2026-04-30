@@ -124,7 +124,7 @@ jobs:
 
     - name: Environment
       run: |
-        python utils/print_env.py
+        diffusers-cli env
 
     - name: Run fast PyTorch Pipeline CPU tests
       run: |

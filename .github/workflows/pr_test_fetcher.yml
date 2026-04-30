@@ -36,7 +36,7 @@ jobs:
         uv pip install -e ".[quality]"
     - name: Environment
       run: |
-        python utils/print_env.py
+        diffusers-cli env
         echo $(git --version)
     - name: Fetch Tests
       run: |
@@ -94,7 +94,7 @@ jobs:
 
     - name: Environment
       run: |
-        python utils/print_env.py
+        diffusers-cli env
 
     - name: Run all selected tests on CPU
       run: |
@@ -148,7 +148,7 @@ jobs:
 
     - name: Environment
       run: |
-        python utils/print_env.py
+        diffusers-cli env
 
     - name: Run Hub tests for models, schedulers, and pipelines on a staging env
       if: ${{ matrix.config.framework == 'hub_tests_pytorch' }}

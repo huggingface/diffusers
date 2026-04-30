@@ -78,7 +78,7 @@ jobs:
           uv pip install pytest-reportlog
       - name: Environment
         run: |
-          python utils/print_env.py
+          diffusers-cli env
       - name: Pipeline CUDA Test
         env:
           HF_TOKEN: ${{ secrets.DIFFUSERS_HF_HUB_READ_TOKEN }}
@@ -132,7 +132,7 @@ jobs:
         uv pip uninstall transformers huggingface_hub && uv pip install transformers==4.57.1 
         uv pip install pytest-reportlog
     - name: Environment
-      run: python utils/print_env.py
+      run: diffusers-cli env
 
     - name: Run nightly PyTorch CUDA tests for non-pipeline modules
       if: ${{ matrix.module != 'examples'}}
@@ -198,7 +198,7 @@ jobs:
         uv pip uninstall transformers huggingface_hub && uv pip install transformers==4.57.1 
     - name: Environment
       run: |
-        python utils/print_env.py
+        diffusers-cli env
     - name: Run torch compile tests on GPU
       env:
         HF_TOKEN: ${{ secrets.DIFFUSERS_HF_HUB_READ_TOKEN }}
@@ -243,7 +243,7 @@ jobs:
           uv pip install pytest-reportlog
       - name: Environment
         run: |
-          python utils/print_env.py
+          diffusers-cli env
       - name: Selected Torch CUDA Test on big GPU
         env:
           HF_TOKEN: ${{ secrets.DIFFUSERS_HF_HUB_READ_TOKEN }}
@@ -294,7 +294,7 @@ jobs:
 
       - name: Environment
         run: |
-          python utils/print_env.py
+          diffusers-cli env
 
       - name: Run PyTorch CUDA tests
         env:
@@ -372,7 +372,7 @@ jobs:
           uv pip uninstall transformers huggingface_hub && uv pip install transformers==4.57.1 
       - name: Environment
         run: |
-          python utils/print_env.py
+          diffusers-cli env
       - name: ${{ matrix.config.backend }} quantization tests on GPU
         env:
           HF_TOKEN: ${{ secrets.DIFFUSERS_HF_HUB_READ_TOKEN }}
@@ -422,7 +422,7 @@ jobs:
           uv pip install pytest-reportlog
       - name: Environment
         run: |
-          python utils/print_env.py
+          diffusers-cli env
       - name: Pipeline-level quantization tests on GPU
         env:
           HF_TOKEN: ${{ secrets.DIFFUSERS_HF_HUB_READ_TOKEN }}
@@ -538,7 +538,7 @@ jobs:
 #      - name: Environment
 #        shell: arch -arch arm64 bash {0}
 #        run: |
-#          ${CONDA_RUN} python utils/print_env.py
+#          ${CONDA_RUN} diffusers-cli env
 #      - name: Run nightly PyTorch tests on M1 (MPS)
 #        shell: arch -arch arm64 bash {0}
 #        env:
@@ -594,7 +594,7 @@ jobs:
 #      - name: Environment
 #        shell: arch -arch arm64 bash {0}
 #        run: |
-#          ${CONDA_RUN} python utils/print_env.py
+#          ${CONDA_RUN} diffusers-cli env
 #      - name: Run nightly PyTorch tests on M1 (MPS)
 #        shell: arch -arch arm64 bash {0}
 #        env:

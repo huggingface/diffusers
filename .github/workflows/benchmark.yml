@@ -42,7 +42,7 @@ jobs:
           uv pip install -r benchmarks/requirements.txt
       - name: Environment
         run: |
-          python utils/print_env.py
+          diffusers-cli env
       - name: Diffusers Benchmarking
         env:
           HF_TOKEN: ${{ secrets.DIFFUSERS_HF_HUB_READ_TOKEN }}
