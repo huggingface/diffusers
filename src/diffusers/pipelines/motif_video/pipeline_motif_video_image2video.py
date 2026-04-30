@@ -405,11 +405,10 @@ class MotifVideoImage2VideoPipeline(DiffusionPipeline):
         image_embeds = None
 
         if use_conditioning:
-            with torch.no_grad():
-                # video shape: [B, F, C, H, W] -> [B, C, F, H, W] for VAE
-                first_frame_latents = self.vae.encode(video[:, 0:1].permute(0, 2, 1, 3, 4)).latent_dist.sample(
-                    generator=generator
-                )
+            # video shape: [B, F, C, H, W] -> [B, C, F, H, W] for VAE
+            first_frame_latents = self.vae.encode(video[:, 0:1].permute(0, 2, 1, 3, 4)).latent_dist.sample(
+                generator=generator
+            )
             first_frame_latents = self._normalize_latents(
                 latents=first_frame_latents,
                 latents_mean=self.vae.config.latents_mean,
@@ -424,13 +423,12 @@ class MotifVideoImage2VideoPipeline(DiffusionPipeline):
             first_frame_vision = video[:, 0]  # [B, C, H, W]
             first_frame_vision = ((first_frame_vision + 1) / 2).clamp(0, 1)
 
-            with torch.no_grad():
-                image_embeds = self._get_image_embeds(
-                    image_encoder=self.text_encoder.vision_tower,
-                    feature_extractor=self.feature_extractor,
-                    image=first_frame_vision,
-                    device=device,
-                )
+            image_embeds = self._get_image_embeds(
+                image_encoder=self.text_encoder.vision_tower,
+                feature_extractor=self.feature_extractor,
+                image=first_frame_vision,
+                device=device,
+            )
 
         return latent_condition, latent_mask, image_embeds
 
