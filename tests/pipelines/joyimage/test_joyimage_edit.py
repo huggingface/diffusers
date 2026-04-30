@@ -92,10 +92,12 @@ class JoyImageEditPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
         scheduler = FlowMatchEulerDiscreteScheduler()
 
-        text_encoder = Qwen3VLForConditionalGeneration.from_pretrained(tiny_ckpt_id)
         processor = Qwen3VLProcessor.from_pretrained(tiny_ckpt_id)
         processor.image_processor.min_pixels = 4 * 28 * 28
         processor.image_processor.max_pixels = 4 * 28 * 28
+
+        text_encoder = Qwen3VLForConditionalGeneration.from_pretrained(tiny_ckpt_id)
+        text_encoder.resize_token_embeddings(len(processor.tokenizer))
 
         components = {
             "transformer": transformer,
