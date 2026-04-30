@@ -111,6 +111,8 @@ class JoyImageEditImageProcessor(VaeImageProcessor):
     ) -> Tuple[int, int]:
         if height is not None and width is not None:
             src_w, src_h = width, height
+        elif image is None:
+            src_w, src_h = self.config.basesize, self.config.basesize
         elif isinstance(image, list):
             src_w, src_h = image[0].size
         else:

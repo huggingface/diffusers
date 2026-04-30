@@ -26,19 +26,17 @@ EXAMPLE_DOC_STRING = """
 Examples:
     ```python
     >>> import torch
-    >>> from PIL import Image
     >>> from diffusers import JoyImageEditPipeline
+    >>> from diffusers.utils import load_image
 
     >>> model_id = "jdopensource/JoyAI-Image-Edit-Diffusers"
     >>> pipe = JoyImageEditPipeline.from_pretrained(model_id, torch_dtype=torch.bfloat16)
     >>> pipe.to("cuda")
 
-    >>> image = Image.open("input.png").convert("RGB")
-    >>> instruction = "Remove the construction structure from the top of the crane."
-    >>> prompts = [f"<|im_start|>user\\n<image>\\n{instruction}<|im_end|>\\n"]
+    >>> image = load_image("https://huggingface.co/datasets/diffusers/docs-images/resolve/main/astronaut.jpg")
     >>> output = pipe(
-    ...     image=image,
-    ...     prompt=prompts,
+    ...     image=image,  # pass an image for editing; omit for text-to-image generation
+    ...     prompt="Add wings to the astronaut.",
     ...     num_inference_steps=40,
     ...     guidance_scale=4.0,
     ...     generator=torch.manual_seed(0),
@@ -300,7 +298,6 @@ class JoyImageEditPipeline(DiffusionPipeline):
         images: Optional[torch.Tensor] = None,
         template_type: Optional[str] = "multiple_images",
         max_sequence_length: Optional[int] = None,
-        drop_vit_feature: Optional[float] = False,
     ) -> tuple[torch.Tensor, torch.Tensor]:
         """
         Encode prompts that contain inline image tokens via the Qwen processor.
@@ -315,8 +312,6 @@ class JoyImageEditPipeline(DiffusionPipeline):
             template_type: Must be ``"multiple_images"``.
             max_sequence_length: If set, truncate the output to this length
                 (keeping the last ``max_sequence_length`` tokens).
-            drop_vit_feature: When True, drop all tokens up to and including the
-                last vision-end token so that only the text portion is returned.
 
         Returns:
             Tuple of (prompt_embeds, prompt_embeds_mask).
@@ -329,20 +324,17 @@ class JoyImageEditPipeline(DiffusionPipeline):
 
         prompt = [prompt] if isinstance(prompt, str) else prompt
 
-        # If no image tokens are present, discard the image tensors.
-        if not any("<image>\n" in p for p in prompt):
-            images = None
+        prompt = [f"<image>\n{p}" for p in prompt]
+        prompt = [f"<|im_start|>user\n{p}<|im_end|>\n" for p in prompt]
 
         prompt = [p.replace("<image>\n", "<|vision_start|><|image_pad|><|vision_end|>") for p in prompt]
         prompt = [template.format(p) for p in prompt]
 
-        if (
-            images is not None
-            and isinstance(images, list)
-            and len(images) < len(prompt)
-            and len(prompt) % len(images) == 0
-        ):
-            images = images * (len(prompt) // len(images))
+        if images is not None:
+            if not isinstance(images, list):
+                images = [images] * len(prompt)
+            elif len(images) < len(prompt) and len(prompt) % len(images) == 0:
+                images = images * (len(prompt) // len(images))
 
         inputs = self.processor(
             text=prompt,
@@ -352,12 +344,6 @@ class JoyImageEditPipeline(DiffusionPipeline):
         ).to(device)
 
         last_hidden_states = self._get_last_decoder_hidden_states(self.text_encoder, **inputs)
-
-        if drop_vit_feature:
-            # Find the last vision-end token and drop everything before it.
-            input_ids = inputs["input_ids"]
-            vlm_image_end_idx = torch.where(input_ids[0] == 151653)[0][-1]
-            drop_idx = vlm_image_end_idx + 1
 
         prompt_embeds = last_hidden_states[:, drop_idx:]
         prompt_embeds_mask = inputs["attention_mask"][:, drop_idx:]
@@ -378,7 +364,6 @@ class JoyImageEditPipeline(DiffusionPipeline):
         prompt_embeds_mask: Optional[torch.Tensor] = None,
         max_sequence_length: int = 1024,
         template_type: str = "image",
-        drop_vit_feature: bool = False,
     ) -> tuple[torch.Tensor, torch.Tensor]:
         """
         Encode a text prompt (and optional inline images) into embeddings.
@@ -395,7 +380,6 @@ class JoyImageEditPipeline(DiffusionPipeline):
             prompt_embeds_mask: Attention mask for pre-computed embeddings.
             max_sequence_length: Maximum output sequence length.
             template_type: Prompt template key (``"image"`` or ``"multiple_images"``).
-            drop_vit_feature: Drop vision tokens in the multi-image path.
 
         Returns:
             Tuple of (prompt_embeds, prompt_embeds_mask).
@@ -406,7 +390,6 @@ class JoyImageEditPipeline(DiffusionPipeline):
                 images=images,
                 device=device,
                 max_sequence_length=max_sequence_length,
-                drop_vit_feature=drop_vit_feature,
             )
 
         device = device or self._execution_device
@@ -663,7 +646,6 @@ class JoyImageEditPipeline(DiffusionPipeline):
         ] = None,
         callback_on_step_end_tensor_inputs: List[str] = ["latents"],
         max_sequence_length: int = 4096,
-        drop_vit_feature: bool = False,
         enable_denormalization: bool = True,
         **kwargs,
     ):
@@ -718,8 +700,6 @@ class JoyImageEditPipeline(DiffusionPipeline):
                 Enable tiled VAE decoding to reduce peak memory usage.
             max_sequence_length (`int`, *optional*, defaults to 4096):
                 Maximum sequence length for prompt encoding.
-            drop_vit_feature (`bool`, *optional*, defaults to `False`):
-                Drop vision tokens in the multi-image encoding path.
             enable_denormalization (`bool`, *optional*, defaults to `True`):
                 Denormalise latents before VAE decoding.
             **kwargs:
@@ -735,7 +715,9 @@ class JoyImageEditPipeline(DiffusionPipeline):
         # Resize the input image to the nearest bucket resolution.
         # Or resize the specified height and width to the nearest bucket resolution.
         height, width = self.vae_image_processor.get_default_height_width(image, height, width)
-        processed_image = self.vae_image_processor.resize_center_crop(image, (height, width))
+        processed_image = None
+        if image is not None:
+            processed_image = self.vae_image_processor.resize_center_crop(image, (height, width))
 
         self.check_inputs(
             prompt,
@@ -774,16 +756,12 @@ class JoyImageEditPipeline(DiffusionPipeline):
             num_images_per_prompt=num_images_per_prompt,
             max_sequence_length=max_sequence_length,
             template_type="image",
-            drop_vit_feature=drop_vit_feature,
         )
 
         if self.do_classifier_free_guidance:
             # Build default negative prompts when none are provided.
             if negative_prompt is None and negative_prompt_embeds is None:
-                if num_items <= 1:
-                    negative_prompt = ["<|im_start|>user\n<|im_end|>\n"] * batch_size
-                else:
-                    negative_prompt = ["<|im_start|>user\n<image>\n<|im_end|>\n"] * batch_size
+                negative_prompt = [""] * batch_size
 
             negative_prompt_embeds, negative_prompt_embeds_mask = self.encode_prompt(
                 prompt=negative_prompt,
@@ -816,7 +794,11 @@ class JoyImageEditPipeline(DiffusionPipeline):
             device,
             generator,
             latents,
-            reference_images=(processed_image if isinstance(processed_image, list) else [processed_image]),
+            reference_images=(
+                (processed_image if isinstance(processed_image, list) else [processed_image])
+                if processed_image is not None
+                else None
+            ),
             enable_denormalization=enable_denormalization,
         )
 
