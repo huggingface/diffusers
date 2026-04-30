@@ -286,14 +286,14 @@ class ErnieImagePipeline(DiffusionPipeline):
 
         # [Phase 2] Text encoding
         if prompt_embeds is not None:
-            text_hiddens = prompt_embeds
+            text_hiddens = [h for h in prompt_embeds for _ in range(num_images_per_prompt)]
         else:
             text_hiddens = self.encode_prompt(prompt, device, num_images_per_prompt)
 
         # CFG with negative prompt
         if self.do_classifier_free_guidance:
             if negative_prompt_embeds is not None:
-                uncond_text_hiddens = negative_prompt_embeds
+                uncond_text_hiddens = [h for h in negative_prompt_embeds for _ in range(num_images_per_prompt)]
             else:
                 uncond_text_hiddens = self.encode_prompt(negative_prompt, device, num_images_per_prompt)
 
@@ -352,7 +352,9 @@ class ErnieImagePipeline(DiffusionPipeline):
 
                 # Callback
                 if callback_on_step_end is not None:
-                    callback_kwargs = {k: locals()[k] for k in callback_on_step_end_tensor_inputs}
+                    callback_kwargs = {}
+                    for k in callback_on_step_end_tensor_inputs:
+                        callback_kwargs[k] = locals()[k]
                     callback_outputs = callback_on_step_end(self, i, t, callback_kwargs)
                     latents = callback_outputs.pop("latents", latents)
 
