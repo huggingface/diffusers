@@ -368,13 +368,16 @@ class MotifVideoRotaryPosEmbed(nn.Module):
         grid = torch.stack(grid, dim=0)
 
         freqs = []
+        is_mps = hidden_states.device.type == "mps"
+        is_npu = hidden_states.device.type == "npu"
+        freqs_dtype = torch.float32 if (is_mps or is_npu) else torch.float64
         for i in range(3):
             freq = get_1d_rotary_pos_embed(
                 dim=self.rope_dim[i],
                 pos=grid[i].reshape(-1),
                 theta=self.theta,
                 use_real=True,
-                freqs_dtype=torch.float64,
+                freqs_dtype=freqs_dtype,
             )
             freqs.append(freq)
 
