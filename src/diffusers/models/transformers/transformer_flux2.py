@@ -291,8 +291,8 @@ class Flux2SwiGLU(nn.Module):
         self.gate_fn = nn.SiLU()
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        x1, x2 = x.chunk(2, dim=-1)
-        x = self.gate_fn(x1) * x2
+        half = x.shape[-1] // 2
+        x = self.gate_fn(x[..., :half]) * x[..., half:]
         return x
 
 
@@ -961,7 +961,8 @@ class Flux2PosEmbed(nn.Module):
         pos = ids.float()
         is_mps = ids.device.type == "mps"
         is_npu = ids.device.type == "npu"
-        freqs_dtype = torch.float32 if (is_mps or is_npu) else torch.float64
+        is_neuron = ids.device.type == "neuron"
+        freqs_dtype = torch.float32 if (is_mps or is_npu or is_neuron) else torch.float64
         # Unlike Flux 1, loop over len(self.axes_dim) rather than ids.shape[-1]
         for i in range(len(self.axes_dim)):
             cos, sin = get_1d_rotary_pos_embed(

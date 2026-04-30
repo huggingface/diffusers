@@ -29,6 +29,7 @@ from ...utils import (
     deprecate,
     is_bs4_available,
     is_ftfy_available,
+    is_torch_neuronx_available,
     is_torch_xla_available,
     logging,
     replace_example_docstring,
@@ -861,8 +862,12 @@ class PixArtAlphaPipeline(DiffusionPipeline):
             prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds], dim=0)
             prompt_attention_mask = torch.cat([negative_prompt_attention_mask, prompt_attention_mask], dim=0)
 
+        # Neuron compile backend does not support int64; downcast mask to int32.
+        if is_torch_neuronx_available() and prompt_attention_mask.dtype == torch.int64:
+            prompt_attention_mask = prompt_attention_mask.to(torch.int32)
+
         # 4. Prepare timesteps
-        if XLA_AVAILABLE:
+        if XLA_AVAILABLE or is_torch_neuronx_available():
             timestep_device = "cpu"
         else:
             timestep_device = device
@@ -914,10 +919,11 @@ class PixArtAlphaPipeline(DiffusionPipeline):
                     # This would be a good case for the `match` statement (Python 3.10+)
                     is_mps = latent_model_input.device.type == "mps"
                     is_npu = latent_model_input.device.type == "npu"
+                    is_neuron = latent_model_input.device.type == "neuron"
                     if isinstance(current_timestep, float):
-                        dtype = torch.float32 if (is_mps or is_npu) else torch.float64
+                        dtype = torch.float32 if (is_mps or is_npu or is_neuron) else torch.float64
                     else:
-                        dtype = torch.int32 if (is_mps or is_npu) else torch.int64
+                        dtype = torch.int32 if (is_mps or is_npu or is_neuron) else torch.int64
                     current_timestep = torch.tensor([current_timestep], dtype=dtype, device=latent_model_input.device)
                 elif len(current_timestep.shape) == 0:
                     current_timestep = current_timestep[None].to(latent_model_input.device)
