@@ -21,7 +21,7 @@ from typing import Callable, List, Optional, Union
 
 import torch
 from PIL import Image
-from transformers import AutoModel, AutoModelForCausalLM, AutoTokenizer
+from transformers import AutoTokenizer, Ministral3ForCausalLM, Mistral3Model
 
 from ...models import AutoencoderKLFlux2
 from ...models.transformers import ErnieImageTransformer2DModel
@@ -51,10 +51,10 @@ class ErnieImagePipeline(DiffusionPipeline):
         self,
         transformer: ErnieImageTransformer2DModel,
         vae: AutoencoderKLFlux2,
-        text_encoder: AutoModel,
+        text_encoder: Mistral3Model,
         tokenizer: AutoTokenizer,
         scheduler: FlowMatchEulerDiscreteScheduler,
-        pe: Optional[AutoModelForCausalLM] = None,
+        pe: Optional[Ministral3ForCausalLM] = None,
         pe_tokenizer: Optional[AutoTokenizer] = None,
     ):
         super().__init__()
