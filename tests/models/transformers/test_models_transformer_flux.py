@@ -25,6 +25,7 @@ from diffusers.utils.torch_utils import randn_tensor
 
 from ...testing_utils import enable_full_determinism, torch_device
 from ..testing_utils import (
+    AttentionBackendTesterMixin,
     AttentionTesterMixin,
     BaseModelTesterConfig,
     BitsAndBytesCompileTesterMixin,
@@ -240,6 +241,10 @@ class TestFluxTransformerTraining(FluxTransformerTesterConfig, TrainingTesterMix
 
 class TestFluxTransformerAttention(FluxTransformerTesterConfig, AttentionTesterMixin):
     """Attention processor tests for Flux Transformer."""
+
+
+class TestFluxTransformerAttentionBackend(FluxTransformerTesterConfig, AttentionBackendTesterMixin):
+    """Attention backend tests for Flux Transformer."""
 
 
 class TestFluxTransformerContextParallel(FluxTransformerTesterConfig, ContextParallelTesterMixin):
