@@ -215,6 +215,9 @@ class ModuleGroup:
             _swap_torchao_tensor(tensor, moved)
         else:
             tensor.data = moved
+        # `record_stream` only delays deallocation of the underlying block until the
+        # consumer stream is done — it is NOT a pre-write barrier. Cross-stream
+        # synchronization is provided separately by `_gate_default_stream_on_transfer`.
         if self.record_stream:
             if _is_torchao_tensor(tensor):
                 _record_stream_torchao_tensor(tensor, default_stream)
@@ -248,6 +251,25 @@ class ModuleGroup:
                 "setting `offload_to_disk_path`."
             )
 
+    def _gate_default_stream_on_transfer(self):
+        """Block the default stream on the transfer stream completing.
+
+        Without this barrier, the first op on the default stream (e.g. the first
+        matmul of the loaded module) can begin executing before the non-blocking
+        copies on the transfer stream have completed, producing pre-copy state
+        reads. The PyTorch streams contract assigns this synchronization to the
+        user; see
+        https://docs.pytorch.org/docs/stable/notes/cuda.html#cuda-streams.
+        No-op when streams aren't enabled.
+        """
+        if self.stream is None:
+            return
+        current_default = self._torch_accelerator_module.current_stream()
+        if hasattr(current_default, "wait_stream"):
+            current_default.wait_stream(self.stream)
+        else:
+            self.stream.synchronize()
+
     def _onload_from_disk(self):
         self._check_disk_offload_torchao()
 
@@ -277,6 +299,8 @@ class ModuleGroup:
                 for key, tensor_obj in self.key_to_tensor.items():
                     tensor_obj.data = loaded_tensors[key]
 
+        self._gate_default_stream_on_transfer()
+
     def _onload_from_memory(self):
         if self.stream is not None:
             # Wait for previous Host->Device transfer to complete
@@ -292,17 +316,7 @@ class ModuleGroup:
             else:
                 self._process_tensors_from_modules(None)
 
-        # Gate the default stream on the transfer stream completing before the forward pass runs.
-        # On CUDA, implicit stream ordering often masks this race; on AMD ROCm (gfx1xxx) the
-        # first matmul can race ahead of the async CPU→GPU copies and raise a device-mismatch
-        # error ("mat2 is on cpu") inside the first matmul of the loaded module.
-        # `wait_stream` is a no-op when both handles refer to the same stream.
-        if self.stream is not None:
-            current_default = self._torch_accelerator_module.current_stream()
-            if hasattr(current_default, "wait_stream"):
-                current_default.wait_stream(self.stream)
-            else:
-                self.stream.synchronize()
+        self._gate_default_stream_on_transfer()
 
     def _offload_to_disk(self):
         self._check_disk_offload_torchao()
