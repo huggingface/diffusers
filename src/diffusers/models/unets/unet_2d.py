@@ -277,7 +277,14 @@ class UNet2DModel(ModelMixin, ConfigMixin):
         # 1. time
         timesteps = timestep
         if not torch.is_tensor(timesteps):
-            timesteps = torch.tensor([timesteps], dtype=torch.long, device=sample.device)
+            # TODO: this requires sync between CPU and GPU. So try to pass timesteps as tensors if you can
+            is_mps = sample.device.type == "mps"
+            is_npu = sample.device.type == "npu"
+            if isinstance(timestep, float):
+                dtype = torch.float32 if (is_mps or is_npu) else torch.float64
+            else:
+                dtype = torch.int32 if (is_mps or is_npu) else torch.int64
+            timesteps = torch.tensor([timesteps], dtype=dtype, device=sample.device)
         elif torch.is_tensor(timesteps) and len(timesteps.shape) == 0:
             timesteps = timesteps[None].to(sample.device)
 
