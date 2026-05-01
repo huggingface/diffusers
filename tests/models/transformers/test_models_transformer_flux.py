@@ -29,6 +29,7 @@ from ..testing_utils import (
     BaseModelTesterConfig,
     BitsAndBytesCompileTesterMixin,
     BitsAndBytesTesterMixin,
+    ContextParallelAttentionBackendsTesterMixin,
     ContextParallelTesterMixin,
     FasterCacheTesterMixin,
     FirstBlockCacheTesterMixin,
@@ -161,21 +162,36 @@ class FluxTransformerTesterConfig(BaseModelTesterConfig):
 
         return {
             "hidden_states": randn_tensor(
-                (batch_size, height * width, num_latent_channels), generator=self.generator, device=torch_device
+                (batch_size, height * width, num_latent_channels),
+                generator=self.generator,
+                device=torch_device,
+                dtype=self.torch_dtype,
             ),
             "encoder_hidden_states": randn_tensor(
-                (batch_size, sequence_length, embedding_dim), generator=self.generator, device=torch_device
+                (batch_size, sequence_length, embedding_dim),
+                generator=self.generator,
+                device=torch_device,
+                dtype=self.torch_dtype,
             ),
             "pooled_projections": randn_tensor(
-                (batch_size, embedding_dim), generator=self.generator, device=torch_device
+                (batch_size, embedding_dim),
+                generator=self.generator,
+                device=torch_device,
+                dtype=self.torch_dtype,
             ),
             "img_ids": randn_tensor(
-                (height * width, num_image_channels), generator=self.generator, device=torch_device
+                (height * width, num_image_channels),
+                generator=self.generator,
+                device=torch_device,
+                dtype=self.torch_dtype,
             ),
             "txt_ids": randn_tensor(
-                (sequence_length, num_image_channels), generator=self.generator, device=torch_device
+                (sequence_length, num_image_channels),
+                generator=self.generator,
+                device=torch_device,
+                dtype=self.torch_dtype,
             ),
-            "timestep": torch.tensor([1.0]).to(torch_device).expand(batch_size),
+            "timestep": torch.tensor([1.0]).to(torch_device, self.torch_dtype).expand(batch_size),
         }
 
 
@@ -230,6 +246,12 @@ class TestFluxTransformerAttention(FluxTransformerTesterConfig, AttentionTesterM
 
 class TestFluxTransformerContextParallel(FluxTransformerTesterConfig, ContextParallelTesterMixin):
     """Context Parallel inference tests for Flux Transformer"""
+
+
+class TestFluxTransformerContextParallelAttnBackends(
+    FluxTransformerTesterConfig, ContextParallelAttentionBackendsTesterMixin
+):
+    """Context Parallel inference x attention backends tests for Flux Transformer"""
 
 
 class TestFluxTransformerIPAdapter(FluxTransformerTesterConfig, IPAdapterTesterMixin):
@@ -321,6 +343,10 @@ class TestFluxSingleFile(FluxTransformerTesterConfig, SingleFileTesterMixin):
 
 class TestFluxTransformerBitsAndBytes(FluxTransformerTesterConfig, BitsAndBytesTesterMixin):
     """BitsAndBytes quantization tests for Flux Transformer."""
+
+    @property
+    def torch_dtype(self):
+        return torch.float16
 
 
 class TestFluxTransformerQuanto(FluxTransformerTesterConfig, QuantoTesterMixin):

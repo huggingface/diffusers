@@ -149,6 +149,12 @@ else:
             "WuerstchenPriorPipeline",
         ]
     )
+    _import_structure["ace_step"] = [
+        "AceStepAudioTokenDetokenizer",
+        "AceStepAudioTokenizer",
+        "AceStepConditionEncoder",
+        "AceStepPipeline",
+    ]
     _import_structure["allegro"] = ["AllegroPipeline"]
     _import_structure["animatediff"] = [
         "AnimateDiffPipeline",
@@ -160,7 +166,12 @@ else:
     ]
     _import_structure["bria"] = ["BriaPipeline"]
     _import_structure["bria_fibo"] = ["BriaFiboPipeline", "BriaFiboEditPipeline"]
-    _import_structure["flux2"] = ["Flux2Pipeline", "Flux2KleinPipeline", "Flux2KleinKVPipeline"]
+    _import_structure["flux2"] = [
+        "Flux2Pipeline",
+        "Flux2KleinPipeline",
+        "Flux2KleinInpaintPipeline",
+        "Flux2KleinKVPipeline",
+    ]
     _import_structure["flux"] = [
         "FluxControlPipeline",
         "FluxControlInpaintPipeline",
@@ -569,6 +580,12 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     except OptionalDependencyNotAvailable:
         from ..utils.dummy_torch_and_transformers_objects import *
     else:
+        from .ace_step import (
+            AceStepAudioTokenDetokenizer,
+            AceStepAudioTokenizer,
+            AceStepConditionEncoder,
+            AceStepPipeline,
+        )
         from .allegro import AllegroPipeline
         from .animatediff import (
             AnimateDiffControlNetPipeline,
@@ -697,7 +714,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             FluxPriorReduxPipeline,
             ReduxImageEncoder,
         )
-        from .flux2 import Flux2KleinKVPipeline, Flux2KleinPipeline, Flux2Pipeline
+        from .flux2 import Flux2KleinInpaintPipeline, Flux2KleinKVPipeline, Flux2KleinPipeline, Flux2Pipeline
         from .glm_image import GlmImagePipeline
         from .helios import HeliosPipeline, HeliosPyramidPipeline
         from .hidream_image import HiDreamImagePipeline
