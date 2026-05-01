@@ -29,6 +29,7 @@ from numpy.linalg import norm
 from packaging import version
 
 from .constants import DIFFUSERS_REQUEST_TIMEOUT
+from .deprecation_utils import deprecate
 from .import_utils import (
     BACKENDS_MAPPING,
     is_accelerate_available,
@@ -67,9 +68,11 @@ else:
 global_rng = random.Random()
 
 logger = get_logger(__name__)
-logger.warning(
-    "diffusers.utils.testing_utils' is deprecated and will be removed in a future version. "
-    "Determinism and device backend utilities have been moved to `diffusers.utils.torch_utils`. "
+deprecate(
+    "diffusers.utils.testing_utils",
+    "1.0.0",
+    "diffusers.utils.testing_utils is deprecated and will be removed in a future version. "
+    "Determinism and device backend utilities have been moved to `diffusers.utils.torch_utils`. ",
 )
 _required_peft_version = is_peft_available() and version.parse(
     version.parse(importlib.metadata.version("peft")).base_version
