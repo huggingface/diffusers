@@ -24,7 +24,7 @@ guider = AdaptiveProjectedGuidance(
     adaptive_projected_guidance_rescale=12.0,
     adaptive_projected_guidance_momentum=0.1,
     use_original_formulation=True,
-    normalization_dims="spatial",
+    adaptive_projected_guidance_norm_dim=[-1, -2, -4],
 )
 
 pipe = MotifVideoPipeline.from_pretrained(
@@ -62,7 +62,7 @@ guider = AdaptiveProjectedGuidance(
     adaptive_projected_guidance_rescale=12.0,
     adaptive_projected_guidance_momentum=0.1,
     use_original_formulation=True,
-    normalization_dims="spatial",
+    adaptive_projected_guidance_norm_dim=[-1, -2, -4],
 )
 
 pipe = MotifVideoImage2VideoPipeline.from_pretrained(
@@ -106,7 +106,7 @@ guider = AdaptiveProjectedGuidance(
     adaptive_projected_guidance_rescale=12.0,
     adaptive_projected_guidance_momentum=0.1,
     use_original_formulation=True,
-    normalization_dims="spatial",
+    adaptive_projected_guidance_norm_dim=[-1, -2, -4],
 )
 
 pipe = MotifVideoPipeline.from_pretrained(

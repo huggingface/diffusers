@@ -48,12 +48,6 @@ class AdaptiveProjectedMixGuidance(BaseGuidance):
             Whether to use the original formulation of classifier-free guidance as proposed in the paper. By default,
             we use the diffusers-native implementation that has been in the codebase for a long time. See
             [~guiders.classifier_free_guidance.ClassifierFreeGuidance] for more details.
-        normalization_dims (`str` or `list[int]` or `None`, defaults to `None`):
-            Dimensions to normalize over for the guidance computation. Can be:
-            - `None` (default): Normalize over all non-batch dimensions (e.g., [C, H, W] for 4D, [C, T, H, W] for 5D)
-            - `"spatial"`: Spatial-only normalization - normalize over [C, H, W] per frame for 5D tensors, standard for
-              4D
-            - `list[int]`: Custom dimensions to normalize over (e.g., `[-1, -2, -4]` for [W, H, C])
         start (`float`, defaults to `0.0`):
             The fraction of the total number of denoising steps after which the classifier-free guidance starts.
         stop (`float`, defaults to `1.0`):
@@ -77,7 +71,6 @@ class AdaptiveProjectedMixGuidance(BaseGuidance):
         adaptive_projected_guidance_rescale: float = 10.0,
         eta: float = 0.0,
         use_original_formulation: bool = False,
-        normalization_dims: str | list[int] | None = None,
         start: float = 0.0,
         stop: float = 1.0,
         adaptive_projected_guidance_start_step: int = 5,
@@ -93,7 +86,6 @@ class AdaptiveProjectedMixGuidance(BaseGuidance):
         self.eta = eta
         self.adaptive_projected_guidance_start_step = adaptive_projected_guidance_start_step
         self.use_original_formulation = use_original_formulation
-        self.normalization_dims = normalization_dims
         self.momentum_buffer = None
 
     def prepare_inputs(self, data: dict[str, tuple[torch.Tensor, torch.Tensor]]) -> list["BlockState"]:
@@ -146,7 +138,6 @@ class AdaptiveProjectedMixGuidance(BaseGuidance):
                 self.eta,
                 self.adaptive_projected_guidance_rescale,
                 self.use_original_formulation,
-                self.normalization_dims,
             )
 
         if self.guidance_rescale > 0.0:
@@ -278,7 +269,6 @@ def normalized_guidance(
     eta: float = 1.0,
     norm_threshold: float = 0.0,
     use_original_formulation: bool = False,
-    normalization_dims: str | list[int] | None = None,
 ):
     if momentum_buffer is not None:
         update_momentum_buffer(pred_cond, pred_uncond, momentum_buffer)
@@ -286,21 +276,7 @@ def normalized_guidance(
     else:
         diff = pred_cond - pred_uncond
 
-    # Determine normalization dimensions
-    if normalization_dims == "spatial":
-        # Spatial-only normalization: normalize over [C, H, W] per frame for 5D tensors
-        if len(diff.shape) == 5:
-            # [B, C, T, H, W] -> normalize over W(-1), H(-2), C(-4), skip T(-3)
-            dim = [-1, -2, -4]
-        else:
-            # [B, C, H, W] -> standard behavior
-            dim = [-i for i in range(1, len(diff.shape))]
-    elif normalization_dims is None:
-        # Default: normalize over all non-batch dimensions
-        dim = [-i for i in range(1, len(diff.shape))]
-    else:
-        # Custom dimensions provided by user
-        dim = normalization_dims
+    dim = [-i for i in range(1, len(diff.shape))]
 
     if norm_threshold > 0:
         ones = torch.ones_like(diff)
