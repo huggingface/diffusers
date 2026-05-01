@@ -223,9 +223,6 @@ def translate_transformer_state_dict(state_dict: dict[str, Any]) -> dict[str, An
     translated = {}
 
     for key, value in state_dict.items():
-        if key == "pos_embed":
-            continue
-
         if ".mlp.w12." in key:
             new_key = key.replace(".mlp.w12.", ".mlp.net.0.proj.")
             if isinstance(value, torch.Tensor):
@@ -236,6 +233,16 @@ def translate_transformer_state_dict(state_dict: dict[str, Any]) -> dict[str, An
             new_key = key.replace(".mlp.fc1.", ".mlp.net.0.proj.")
         elif ".mlp.fc2." in key:
             new_key = key.replace(".mlp.fc2.", ".mlp.net.2.")
+        elif ".attn.qkv." in key:
+            if not isinstance(value, torch.Tensor) or value.shape[0] % 3 != 0:
+                raise ValueError(f"Cannot split malformed QKV tensor for `{key}` with shape {getattr(value, 'shape', None)}.")
+            query, key_tensor, value_tensor = value.chunk(3, dim=0)
+            translated[key.replace(".attn.qkv.", ".attn.to_q.")] = query
+            translated[key.replace(".attn.qkv.", ".attn.to_k.")] = key_tensor
+            translated[key.replace(".attn.qkv.", ".attn.to_v.")] = value_tensor
+            continue
+        elif ".attn.proj." in key:
+            new_key = key.replace(".attn.proj.", ".attn.to_out.0.")
         else:
             new_key = key
 

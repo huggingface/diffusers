@@ -22,7 +22,8 @@ import torch.nn.functional as F
 from torch import nn
 
 from ...configuration_utils import ConfigMixin, register_to_config
-from ..attention import FeedForward
+from ..attention import AttentionMixin, AttentionModuleMixin, FeedForward
+from ..attention_dispatch import dispatch_attention_fn
 from ..embeddings import PatchEmbed, apply_rotary_emb, get_2d_sincos_pos_embed
 from ..modeling_outputs import Transformer2DModelOutput
 from ..modeling_utils import ModelMixin
@@ -152,7 +153,7 @@ class VisionRotaryEmbedding(nn.Module):
         self.register_buffer("freqs_sin", freqs.sin().view(-1, freqs.shape[-1]))
 
     def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
-        _, _, sequence_length, _ = hidden_states.shape
+        _, sequence_length, _, _ = hidden_states.shape
         base_sequence_length = self.freqs_cos.shape[0]
         repeat = sequence_length // base_sequence_length
 
@@ -162,43 +163,38 @@ class VisionRotaryEmbedding(nn.Module):
             freqs_cos = freqs_cos.repeat_interleave(repeat, dim=0)
             freqs_sin = freqs_sin.repeat_interleave(repeat, dim=0)
 
-        return apply_rotary_emb(hidden_states, (freqs_cos, freqs_sin), sequence_dim=2)
+        return apply_rotary_emb(hidden_states, (freqs_cos, freqs_sin), sequence_dim=1)
 
 
-class RAEDiTAttention(nn.Module):
-    def __init__(
+def _get_rae_dit_qkv_projections(attn: "RAEDiTAttention", hidden_states: torch.Tensor):
+    if attn.fused_projections:
+        return attn.to_qkv(hidden_states).chunk(3, dim=-1)
+
+    return attn.to_q(hidden_states), attn.to_k(hidden_states), attn.to_v(hidden_states)
+
+
+class RAEDiTAttnProcessor:
+    _attention_backend = None
+    _parallel_config = None
+
+    def __init__(self):
+        if not hasattr(F, "scaled_dot_product_attention"):
+            raise ImportError(f"{self.__class__.__name__} requires PyTorch 2.0. Please upgrade your PyTorch version.")
+
+    def __call__(
         self,
-        dim: int,
-        num_heads: int,
-        qkv_bias: bool = True,
-        qk_norm: bool = False,
-        use_rmsnorm: bool = False,
-    ):
-        super().__init__()
-        if dim % num_heads != 0:
-            raise ValueError(f"dim={dim} must be divisible by num_heads={num_heads}")
+        attn: "RAEDiTAttention",
+        hidden_states: torch.Tensor,
+        rope: VisionRotaryEmbedding | None = None,
+    ) -> torch.Tensor:
+        query, key, value = _get_rae_dit_qkv_projections(attn, hidden_states)
 
-        self.num_heads = num_heads
-        self.head_dim = dim // num_heads
+        query = query.unflatten(-1, (attn.num_heads, attn.head_dim))
+        key = key.unflatten(-1, (attn.num_heads, attn.head_dim))
+        value = value.unflatten(-1, (attn.num_heads, attn.head_dim))
 
-        norm_cls = RMSNorm if use_rmsnorm else nn.LayerNorm
-        norm_kwargs = {"eps": 1e-6} if use_rmsnorm else {"elementwise_affine": True, "eps": 1e-6}
-
-        self.qkv = nn.Linear(dim, dim * 3, bias=qkv_bias)
-        self.q_norm = norm_cls(self.head_dim, **norm_kwargs) if qk_norm else nn.Identity()
-        self.k_norm = norm_cls(self.head_dim, **norm_kwargs) if qk_norm else nn.Identity()
-        self.proj = nn.Linear(dim, dim)
-
-    def forward(self, hidden_states: torch.Tensor, rope: VisionRotaryEmbedding | None = None) -> torch.Tensor:
-        batch_size, _, channels = hidden_states.shape
-        query, key, value = self.qkv(hidden_states).chunk(3, dim=-1)
-
-        query = query.unflatten(-1, (self.num_heads, -1)).transpose(1, 2)
-        key = key.unflatten(-1, (self.num_heads, -1)).transpose(1, 2)
-        value = value.unflatten(-1, (self.num_heads, -1)).transpose(1, 2)
-
-        query = self.q_norm(query)
-        key = self.k_norm(key)
+        query = attn.q_norm(query)
+        key = attn.k_norm(key)
 
         if rope is not None:
             query = rope(query)
@@ -207,10 +203,61 @@ class RAEDiTAttention(nn.Module):
         query = query.to(dtype=value.dtype)
         key = key.to(dtype=value.dtype)
 
-        hidden_states = F.scaled_dot_product_attention(query, key, value)
-        hidden_states = hidden_states.transpose(1, 2).reshape(batch_size, -1, channels)
-        hidden_states = self.proj(hidden_states)
+        hidden_states = dispatch_attention_fn(
+            query,
+            key,
+            value,
+            dropout_p=0.0,
+            is_causal=False,
+            backend=self._attention_backend,
+            parallel_config=self._parallel_config,
+        )
+        hidden_states = hidden_states.flatten(2, 3)
+        hidden_states = attn.to_out[0](hidden_states)
+        hidden_states = attn.to_out[1](hidden_states)
         return hidden_states
+
+
+class RAEDiTAttention(nn.Module, AttentionModuleMixin):
+    _default_processor_cls = RAEDiTAttnProcessor
+    _available_processors = [RAEDiTAttnProcessor]
+
+    def __init__(
+        self,
+        dim: int,
+        num_heads: int,
+        qkv_bias: bool = True,
+        qk_norm: bool = False,
+        use_rmsnorm: bool = False,
+        processor: RAEDiTAttnProcessor | None = None,
+    ):
+        super().__init__()
+        if dim % num_heads != 0:
+            raise ValueError(f"dim={dim} must be divisible by num_heads={num_heads}")
+
+        self.num_heads = num_heads
+        self.heads = num_heads
+        self.head_dim = dim // num_heads
+        self.inner_dim = dim
+        self.use_bias = qkv_bias
+        self.dropout = 0.0
+
+        norm_cls = RMSNorm if use_rmsnorm else nn.LayerNorm
+        norm_kwargs = {"eps": 1e-6} if use_rmsnorm else {"elementwise_affine": True, "eps": 1e-6}
+
+        self.to_q = nn.Linear(dim, dim, bias=qkv_bias)
+        self.to_k = nn.Linear(dim, dim, bias=qkv_bias)
+        self.to_v = nn.Linear(dim, dim, bias=qkv_bias)
+        self.q_norm = norm_cls(self.head_dim, **norm_kwargs) if qk_norm else nn.Identity()
+        self.k_norm = norm_cls(self.head_dim, **norm_kwargs) if qk_norm else nn.Identity()
+        self.to_out = nn.ModuleList([nn.Linear(dim, dim), nn.Dropout(self.dropout)])
+
+        if processor is None:
+            processor = self._default_processor_cls()
+        self.set_processor(processor)
+
+    def forward(self, hidden_states: torch.Tensor, rope: VisionRotaryEmbedding | None = None) -> torch.Tensor:
+        return self.processor(self, hidden_states, rope=rope)
 
 
 class RAEDiTBlock(nn.Module):
@@ -323,7 +370,7 @@ class RAEDiTFinalLayer(nn.Module):
         return hidden_states
 
 
-class RAEDiT2DModel(ModelMixin, ConfigMixin):
+class RAEDiT2DModel(ModelMixin, ConfigMixin, AttentionMixin):
     r"""
     Stage-2 latent diffusion transformer used by the RAE paper.
 
@@ -415,7 +462,7 @@ class RAEDiT2DModel(ModelMixin, ConfigMixin):
         if use_pos_embed:
             grid_size = int(num_patches**0.5)
             pos_embed = get_2d_sincos_pos_embed(encoder_hidden_size, grid_size, output_type="pt")
-            self.register_buffer("pos_embed", pos_embed.unsqueeze(0).float(), persistent=False)
+            self.register_buffer("pos_embed", pos_embed.unsqueeze(0).float())
             self.x_pos_embed = None
         else:
             self.register_buffer("pos_embed", None, persistent=False)

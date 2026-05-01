@@ -17,7 +17,13 @@ import pytest
 import torch
 
 from diffusers import RAEDiT2DModel
-from diffusers.models.transformers.transformer_rae_dit import _expand_conditioning_tokens
+from diffusers.models.embeddings import apply_rotary_emb
+from diffusers.models.transformers.transformer_rae_dit import (
+    RAEDiTAttention,
+    RAEDiTAttnProcessor,
+    VisionRotaryEmbedding,
+    _expand_conditioning_tokens,
+)
 from diffusers.utils.torch_utils import randn_tensor
 
 from ...testing_utils import enable_full_determinism, torch_device
@@ -90,6 +96,112 @@ class RAEDiT2DTesterConfig(BaseModelTesterConfig):
 
 
 class TestRAEDiT2DModel(RAEDiT2DTesterConfig, ModelTesterMixin):
+    def test_attention_processor_matches_reference_sdpa(self):
+        attn = RAEDiTAttention(32, num_heads=4, qk_norm=True, use_rmsnorm=True).to(torch_device).eval()
+        hidden_states = randn_tensor((2, 5, 32), generator=self.generator, device=torch_device)
+
+        query = attn.to_q(hidden_states)
+        key = attn.to_k(hidden_states)
+        value = attn.to_v(hidden_states)
+
+        query = query.unflatten(-1, (attn.num_heads, attn.head_dim)).transpose(1, 2)
+        key = key.unflatten(-1, (attn.num_heads, attn.head_dim)).transpose(1, 2)
+        value = value.unflatten(-1, (attn.num_heads, attn.head_dim)).transpose(1, 2)
+
+        query = attn.q_norm(query)
+        key = attn.k_norm(key)
+        query = query.to(dtype=value.dtype)
+        key = key.to(dtype=value.dtype)
+
+        expected = torch.nn.functional.scaled_dot_product_attention(query, key, value)
+        expected = expected.transpose(1, 2).reshape(hidden_states.shape)
+        expected = attn.to_out[0](expected)
+        expected = attn.to_out[1](expected)
+
+        actual = attn(hidden_states)
+
+        assert torch.allclose(actual, expected, atol=1e-6, rtol=1e-5)
+
+    def test_vision_rope_preserves_dispatch_attention_layout(self):
+        rope = VisionRotaryEmbedding(dim=4, pt_seq_len=2).to(torch_device)
+        hidden_states = randn_tensor((2, 4, 4, 8), generator=self.generator, device=torch_device)
+
+        actual = rope(hidden_states)
+        expected = apply_rotary_emb(
+            hidden_states.transpose(1, 2),
+            (rope.freqs_cos, rope.freqs_sin),
+            sequence_dim=2,
+        ).transpose(1, 2)
+
+        assert torch.allclose(actual, expected, atol=1e-6, rtol=1e-5)
+
+    def test_attention_processor_plumbing(self):
+        model = self.model_class(**self.get_init_dict()).to(torch_device).eval()
+
+        processors = model.attn_processors
+
+        assert len(processors) == model.num_blocks
+        assert all(isinstance(processor, RAEDiTAttnProcessor) for processor in processors.values())
+
+        new_processor = RAEDiTAttnProcessor()
+        model.set_attn_processor(new_processor)
+
+        assert all(processor is new_processor for processor in model.attn_processors.values())
+
+    def test_fuse_unfuse_qkv_projections_preserves_attention_output(self):
+        model = self.model_class(**self.get_init_dict()).to(torch_device).eval()
+        attn = model.blocks[0].attn
+        num_patches = model.s_embedder.height * model.s_embedder.width
+        hidden_states = randn_tensor(
+            (2, num_patches, model.encoder_hidden_size), generator=self.generator, device=torch_device
+        )
+
+        output_before_fusion = attn(hidden_states, rope=model.enc_feat_rope)
+
+        attn.fuse_projections()
+
+        assert attn.fused_projections
+        assert hasattr(attn, "to_qkv")
+
+        output_after_fusion = attn(hidden_states, rope=model.enc_feat_rope)
+
+        assert torch.allclose(output_before_fusion, output_after_fusion, atol=1e-6, rtol=1e-5)
+
+        attn.unfuse_projections()
+
+        assert not attn.fused_projections
+        assert not hasattr(attn, "to_qkv")
+        assert torch.allclose(output_before_fusion, attn(hidden_states, rope=model.enc_feat_rope), atol=1e-6, rtol=1e-5)
+
+    def test_model_fuse_unfuse_qkv_projections_preserves_output(self):
+        model = self.model_class(**self.get_init_dict()).to(torch_device).eval()
+        _initialize_non_zero_stage2_head(model)
+        inputs_dict = self.get_dummy_inputs()
+
+        with torch.no_grad():
+            output_before_fusion = model(**inputs_dict).sample
+
+            model.fuse_qkv_projections()
+            output_after_fusion = model(**inputs_dict).sample
+            fused_projections_enabled = all(block.attn.fused_projections for block in model.blocks)
+
+            model.unfuse_qkv_projections()
+            output_after_unfusion = model(**inputs_dict).sample
+
+        assert fused_projections_enabled
+        assert torch.allclose(output_before_fusion, output_after_fusion, atol=1e-6, rtol=1e-5)
+        assert all(not block.attn.fused_projections for block in model.blocks)
+        assert torch.allclose(output_before_fusion, output_after_unfusion, atol=1e-6, rtol=1e-5)
+
+    def test_attention_cpu_bfloat16_smoke(self):
+        attn = RAEDiTAttention(32, num_heads=4, qk_norm=True, use_rmsnorm=True).to(dtype=torch.bfloat16).eval()
+        hidden_states = torch.randn(2, 5, 32, dtype=torch.bfloat16)
+
+        output = attn(hidden_states)
+
+        assert output.shape == hidden_states.shape
+        assert output.dtype == hidden_states.dtype
+
     def test_swiglu_feedforward_matches_previous_chunk_order(self):
         model = self.model_class(**self.get_init_dict()).to(torch_device).eval()
         block = model.blocks[0]

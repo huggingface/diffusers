@@ -20,7 +20,7 @@ from pathlib import Path
 import pytest
 import torch
 
-from diffusers import AutoencoderRAE
+from diffusers import AutoencoderRAE, RAEDiT2DModel
 from scripts.convert_rae_stage2_to_diffusers import (
     RepoAccessor,
     build_scheduler_config,
@@ -82,6 +82,101 @@ def test_translate_transformer_state_dict_maps_gelu_keys():
 
     assert torch.equal(translated["blocks.0.mlp.net.0.proj.weight"], fc1_weight)
     assert torch.equal(translated["blocks.0.mlp.net.2.weight"], fc2_weight)
+
+
+def test_translate_transformer_state_dict_maps_attention_keys():
+    qkv_weight = torch.arange(36, dtype=torch.float32).reshape(12, 3)
+    qkv_bias = torch.arange(12, dtype=torch.float32)
+    proj_weight = torch.arange(16, dtype=torch.float32).reshape(4, 4)
+    proj_bias = torch.arange(4, dtype=torch.float32)
+
+    translated = translate_transformer_state_dict(
+        {
+            "blocks.0.attn.qkv.weight": qkv_weight,
+            "blocks.0.attn.qkv.bias": qkv_bias,
+            "blocks.0.attn.proj.weight": proj_weight,
+            "blocks.0.attn.proj.bias": proj_bias,
+        }
+    )
+
+    query_weight, key_weight, value_weight = qkv_weight.chunk(3, dim=0)
+    query_bias, key_bias, value_bias = qkv_bias.chunk(3, dim=0)
+
+    assert torch.equal(translated["blocks.0.attn.to_q.weight"], query_weight)
+    assert torch.equal(translated["blocks.0.attn.to_k.weight"], key_weight)
+    assert torch.equal(translated["blocks.0.attn.to_v.weight"], value_weight)
+    assert torch.equal(translated["blocks.0.attn.to_q.bias"], query_bias)
+    assert torch.equal(translated["blocks.0.attn.to_k.bias"], key_bias)
+    assert torch.equal(translated["blocks.0.attn.to_v.bias"], value_bias)
+    assert torch.equal(translated["blocks.0.attn.to_out.0.weight"], proj_weight)
+    assert torch.equal(translated["blocks.0.attn.to_out.0.bias"], proj_bias)
+
+
+def test_translate_transformer_state_dict_rejects_malformed_qkv_keys():
+    with pytest.raises(ValueError, match="Cannot split malformed QKV tensor"):
+        translate_transformer_state_dict({"blocks.0.attn.qkv.weight": torch.randn(10, 3)})
+
+
+def test_translate_transformer_state_dict_preserves_pos_embed():
+    pos_embed = torch.randn(1, 4, 8)
+
+    translated = translate_transformer_state_dict({"pos_embed": pos_embed})
+
+    assert translated["pos_embed"] is pos_embed
+
+
+def test_translated_upstream_attention_keys_load_into_rae_dit():
+    model = RAEDiT2DModel(
+        sample_size=4,
+        patch_size=1,
+        in_channels=8,
+        hidden_size=(32, 64),
+        depth=(1, 1),
+        num_heads=(4, 4),
+        mlp_ratio=2.0,
+        class_dropout_prob=0.0,
+        num_classes=10,
+        use_qknorm=True,
+        use_swiglu=True,
+        use_rope=True,
+        use_rmsnorm=True,
+        wo_shift=False,
+        use_pos_embed=True,
+    )
+    upstream_state_dict = {}
+
+    for key, value in model.state_dict().items():
+        if ".attn.to_q." in key:
+            prefix, suffix = key.split(".attn.to_q.")
+            upstream_state_dict[f"{prefix}.attn.qkv.{suffix}"] = torch.cat(
+                [
+                    value,
+                    model.state_dict()[f"{prefix}.attn.to_k.{suffix}"],
+                    model.state_dict()[f"{prefix}.attn.to_v.{suffix}"],
+                ],
+                dim=0,
+            )
+        elif ".attn.to_k." in key or ".attn.to_v." in key:
+            continue
+        elif ".attn.to_out.0." in key:
+            upstream_state_dict[key.replace(".attn.to_out.0.", ".attn.proj.")] = value
+        elif ".attn.to_out.1." in key:
+            continue
+        else:
+            upstream_state_dict[key] = value
+
+    translated = translate_transformer_state_dict(upstream_state_dict)
+    load_result = model.load_state_dict(translated, strict=False)
+    allowed_missing = {
+        "pos_embed",
+        "enc_feat_rope.freqs_cos",
+        "enc_feat_rope.freqs_sin",
+        "dec_feat_rope.freqs_cos",
+        "dec_feat_rope.freqs_sin",
+    }
+
+    assert set(load_result.missing_keys) <= allowed_missing
+    assert load_result.unexpected_keys == []
 
 
 def test_build_scheduler_config_rejects_non_linear_or_non_velocity_transport():
