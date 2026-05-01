@@ -188,6 +188,7 @@ else:
     ]
     _import_structure["models"].extend(
         [
+            "AceStepTransformer1DModel",
             "AllegroTransformer3DModel",
             "AsymmetricAutoencoderKL",
             "AttentionBackendName",
@@ -442,6 +443,8 @@ except OptionalDependencyNotAvailable:
 else:
     _import_structure["modular_pipelines"].extend(
         [
+            "ErnieImageAutoBlocks",
+            "ErnieImageModularPipeline",
             "Flux2AutoBlocks",
             "Flux2KleinAutoBlocks",
             "Flux2KleinBaseAutoBlocks",
@@ -458,6 +461,8 @@ else:
             "HeliosPyramidDistilledAutoBlocks",
             "HeliosPyramidDistilledModularPipeline",
             "HeliosPyramidModularPipeline",
+            "HunyuanVideo15AutoBlocks",
+            "HunyuanVideo15ModularPipeline",
             "LTXAutoBlocks",
             "LTXModularPipeline",
             "QwenImageAutoBlocks",
@@ -484,6 +489,10 @@ else:
     )
     _import_structure["pipelines"].extend(
         [
+            "AceStepAudioTokenDetokenizer",
+            "AceStepAudioTokenizer",
+            "AceStepConditionEncoder",
+            "AceStepPipeline",
             "AllegroPipeline",
             "AltDiffusionImg2ImgPipeline",
             "AltDiffusionPipeline",
@@ -531,6 +540,7 @@ else:
             "EasyAnimateInpaintPipeline",
             "EasyAnimatePipeline",
             "ErnieImagePipeline",
+            "Flux2KleinInpaintPipeline",
             "Flux2KleinKVPipeline",
             "Flux2KleinPipeline",
             "Flux2Pipeline",
@@ -995,6 +1005,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             VaeImageProcessorLDM3D,
         )
         from .models import (
+            AceStepTransformer1DModel,
             AllegroTransformer3DModel,
             AsymmetricAutoencoderKL,
             AttentionBackendName,
@@ -1228,6 +1239,8 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .utils.dummy_torch_and_transformers_objects import *  # noqa F403
     else:
         from .modular_pipelines import (
+            ErnieImageAutoBlocks,
+            ErnieImageModularPipeline,
             Flux2AutoBlocks,
             Flux2KleinAutoBlocks,
             Flux2KleinBaseAutoBlocks,
@@ -1244,6 +1257,8 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             HeliosPyramidDistilledAutoBlocks,
             HeliosPyramidDistilledModularPipeline,
             HeliosPyramidModularPipeline,
+            HunyuanVideo15AutoBlocks,
+            HunyuanVideo15ModularPipeline,
             LTXAutoBlocks,
             LTXModularPipeline,
             QwenImageAutoBlocks,
@@ -1268,6 +1283,10 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             ZImageModularPipeline,
         )
         from .pipelines import (
+            AceStepAudioTokenDetokenizer,
+            AceStepAudioTokenizer,
+            AceStepConditionEncoder,
+            AceStepPipeline,
             AllegroPipeline,
             AltDiffusionImg2ImgPipeline,
             AltDiffusionPipeline,
@@ -1313,6 +1332,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             EasyAnimateInpaintPipeline,
             EasyAnimatePipeline,
             ErnieImagePipeline,
+            Flux2KleinInpaintPipeline,
             Flux2KleinKVPipeline,
             Flux2KleinPipeline,
             Flux2Pipeline,

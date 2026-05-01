@@ -88,6 +88,14 @@ else:
         "QwenImageLayeredModularPipeline",
         "QwenImageLayeredAutoBlocks",
     ]
+    _import_structure["ernie_image"] = [
+        "ErnieImageAutoBlocks",
+        "ErnieImageModularPipeline",
+    ]
+    _import_structure["hunyuan_video1_5"] = [
+        "HunyuanVideo15AutoBlocks",
+        "HunyuanVideo15ModularPipeline",
+    ]
     _import_structure["ltx"] = [
         "LTXAutoBlocks",
         "LTXModularPipeline",
@@ -106,6 +114,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from ..utils.dummy_pt_objects import *  # noqa F403
     else:
         from .components_manager import ComponentsManager
+        from .ernie_image import ErnieImageAutoBlocks, ErnieImageModularPipeline
         from .flux import FluxAutoBlocks, FluxKontextAutoBlocks, FluxKontextModularPipeline, FluxModularPipeline
         from .flux2 import (
             Flux2AutoBlocks,
@@ -122,6 +131,10 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             HeliosPyramidDistilledAutoBlocks,
             HeliosPyramidDistilledModularPipeline,
             HeliosPyramidModularPipeline,
+        )
+        from .hunyuan_video1_5 import (
+            HunyuanVideo15AutoBlocks,
+            HunyuanVideo15ModularPipeline,
         )
         from .ltx import LTXAutoBlocks, LTXModularPipeline
         from .modular_pipeline import (
