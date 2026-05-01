@@ -82,13 +82,16 @@ EXAMPLE_DOC_STRING = """
         ```python
         >>> import cv2
         >>> import numpy as np
+        >>> from PIL import Image
         >>> import torch
         >>> from diffusers import Cosmos2_5_TransferPipeline, AutoModel
         >>> from diffusers.utils import export_to_video, load_video
 
         >>> model_id = "nvidia/Cosmos-Transfer2.5-2B"
         >>> # Load a Transfer2.5 controlnet variant (edge, depth, seg, or blur)
-        >>> controlnet = AutoModel.from_pretrained(model_id, revision="diffusers/controlnet/general/edge")
+        >>> controlnet = AutoModel.from_pretrained(
+        ...     model_id, revision="diffusers/controlnet/general/edge", torch_dtype=torch.bfloat16
+        ... )
         >>> pipe = Cosmos2_5_TransferPipeline.from_pretrained(
         ...     model_id, controlnet=controlnet, revision="diffusers/general", torch_dtype=torch.bfloat16
         ... )

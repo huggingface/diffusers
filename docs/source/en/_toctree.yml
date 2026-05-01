@@ -22,6 +22,8 @@
     title: Reproducibility
   - local: using-diffusers/schedulers
     title: Schedulers
+  - local: using-diffusers/guiders
+    title: Guiders
   - local: using-diffusers/automodel
     title: AutoModel
   - local: using-diffusers/other-formats
@@ -110,8 +112,8 @@
     title: ModularPipeline
   - local: modular_diffusers/components_manager
     title: ComponentsManager
-  - local: modular_diffusers/guiders
-    title: Guiders
+  - local: modular_diffusers/auto_docstring
+    title: Auto docstring and parameter templates
   - local: modular_diffusers/custom_blocks
     title: Building Custom Blocks
   - local: modular_diffusers/mellon
@@ -161,6 +163,8 @@
     - local: training/ddpo
       title: Reinforcement learning training with DDPO
     title: Methods
+  - local: training/nemo_automodel
+    title: NeMo Automodel
   title: Training
 - isExpanded: false
   sections:
@@ -320,6 +324,8 @@
         title: SparseControlNetModel
       title: ControlNets
     - sections:
+      - local: api/models/ace_step_transformer
+        title: AceStepTransformer1DModel
       - local: api/models/allegro_transformer3d
         title: AllegroTransformer3DModel
       - local: api/models/aura_flow_transformer2d
@@ -346,6 +352,8 @@
         title: DiTTransformer2DModel
       - local: api/models/easyanimate_transformer3d
         title: EasyAnimateTransformer3DModel
+      - local: api/models/ernie_image_transformer2d
+        title: ErnieImageTransformer2DModel
       - local: api/models/flux2_transformer
         title: Flux2Transformer2DModel
       - local: api/models/flux_transformer
@@ -446,6 +454,10 @@
         title: AutoencoderKLHunyuanVideo
       - local: api/models/autoencoder_kl_hunyuan_video15
         title: AutoencoderKLHunyuanVideo15
+      - local: api/models/autoencoder_kl_kvae
+        title: AutoencoderKLKVAE
+      - local: api/models/autoencoder_kl_kvae_video
+        title: AutoencoderKLKVAEVideo
       - local: api/models/autoencoderkl_audio_ltx_2
         title: AutoencoderKLLTX2Audio
       - local: api/models/autoencoderkl_ltx_2
@@ -478,28 +490,20 @@
     - local: api/pipelines/auto_pipeline
       title: AutoPipeline
     - sections:
-      - local: api/pipelines/audioldm
-        title: AudioLDM
+      - local: api/pipelines/ace_step
+        title: ACE-Step
       - local: api/pipelines/audioldm2
         title: AudioLDM 2
-      - local: api/pipelines/dance_diffusion
-        title: Dance Diffusion
-      - local: api/pipelines/musicldm
-        title: MusicLDM
+      - local: api/pipelines/longcat_audio_dit
+        title: LongCat-AudioDiT
       - local: api/pipelines/stable_audio
         title: Stable Audio
       title: Audio
     - sections:
-      - local: api/pipelines/amused
-        title: aMUSEd
       - local: api/pipelines/animatediff
         title: AnimateDiff
-      - local: api/pipelines/attend_and_excite
-        title: Attend-and-Excite
       - local: api/pipelines/aura_flow
         title: AuraFlow
-      - local: api/pipelines/blip_diffusion
-        title: BLIP-Diffusion
       - local: api/pipelines/bria_3_2
         title: Bria 3.2
       - local: api/pipelines/bria_fibo
@@ -526,26 +530,20 @@
         title: ControlNet with Stable Diffusion XL
       - local: api/pipelines/controlnet_sana
         title: ControlNet-Sana
-      - local: api/pipelines/controlnetxs
-        title: ControlNet-XS
-      - local: api/pipelines/controlnetxs_sdxl
-        title: ControlNet-XS with Stable Diffusion XL
       - local: api/pipelines/controlnet_union
         title: ControlNetUnion
-      - local: api/pipelines/cosmos
-        title: Cosmos
       - local: api/pipelines/ddim
         title: DDIM
       - local: api/pipelines/ddpm
         title: DDPM
       - local: api/pipelines/deepfloyd_if
         title: DeepFloyd IF
-      - local: api/pipelines/diffedit
-        title: DiffEdit
       - local: api/pipelines/dit
         title: DiT
       - local: api/pipelines/easyanimate
         title: EasyAnimate
+      - local: api/pipelines/ernie_image
+        title: ERNIE-Image
       - local: api/pipelines/flux
         title: Flux
       - local: api/pipelines/flux2
@@ -586,16 +584,14 @@
         title: Lumina-T2X
       - local: api/pipelines/marigold
         title: Marigold
-      - local: api/pipelines/panorama
-        title: MultiDiffusion
+      - local: api/pipelines/nucleusmoe_image
+        title: NucleusMoE-Image
       - local: api/pipelines/omnigen
         title: OmniGen
       - local: api/pipelines/ovis_image
         title: Ovis-Image
       - local: api/pipelines/pag
         title: PAG
-      - local: api/pipelines/paint_by_example
-        title: Paint by Example
       - local: api/pipelines/pixart
         title: PixArt-α
       - local: api/pipelines/pixart_sigma
@@ -610,10 +606,6 @@
         title: Sana Sprint
       - local: api/pipelines/sana_video
         title: Sana Video
-      - local: api/pipelines/self_attention_guidance
-        title: Self-Attention Guidance
-      - local: api/pipelines/semantic_stable_diffusion
-        title: Semantic Guidance
       - local: api/pipelines/shap_e
         title: Shap-E
       - local: api/pipelines/stable_cascade
@@ -623,8 +615,6 @@
           title: Overview
         - local: api/pipelines/stable_diffusion/depth2img
           title: Depth-to-image
-        - local: api/pipelines/stable_diffusion/gligen
-          title: GLIGEN (Grounded Language-to-Image Generation)
         - local: api/pipelines/stable_diffusion/image_variation
           title: Image variation
         - local: api/pipelines/stable_diffusion/img2img
@@ -633,11 +623,6 @@
           title: Inpainting
         - local: api/pipelines/stable_diffusion/latent_upscale
           title: Latent upscaler
-        - local: api/pipelines/stable_diffusion/ldm3d_diffusion
-          title: LDM3D Text-to-(RGB, Depth), Text-to-(RGB-pano, Depth-pano), LDM3D
-            Upscaler
-        - local: api/pipelines/stable_diffusion/stable_diffusion_safe
-          title: Safe Stable Diffusion
         - local: api/pipelines/stable_diffusion/sdxl_turbo
           title: SDXL Turbo
         - local: api/pipelines/stable_diffusion/stable_diffusion_2
@@ -655,19 +640,17 @@
         title: Stable Diffusion
       - local: api/pipelines/stable_unclip
         title: Stable unCLIP
-      - local: api/pipelines/unclip
-        title: unCLIP
-      - local: api/pipelines/unidiffuser
-        title: UniDiffuser
       - local: api/pipelines/value_guided_sampling
         title: Value-guided sampling
       - local: api/pipelines/visualcloze
         title: VisualCloze
-      - local: api/pipelines/wuerstchen
-        title: Wuerstchen
       - local: api/pipelines/z_image
         title: Z-Image
       title: Image
+    - sections:
+      - local: api/pipelines/llada2
+        title: LLaDA2
+      title: Text
     - sections:
       - local: api/pipelines/allegro
         title: Allegro
@@ -677,6 +660,8 @@
         title: CogVideoX
       - local: api/pipelines/consisid
         title: ConsisID
+      - local: api/pipelines/cosmos
+        title: Cosmos
       - local: api/pipelines/framepack
         title: Framepack
       - local: api/pipelines/helios
@@ -685,8 +670,6 @@
         title: HunyuanVideo
       - local: api/pipelines/hunyuan_video15
         title: HunyuanVideo1.5
-      - local: api/pipelines/i2vgenxl
-        title: I2VGen-XL
       - local: api/pipelines/kandinsky5_video
         title: Kandinsky 5.0 Video
       - local: api/pipelines/latte
@@ -697,16 +680,10 @@
         title: LTXVideo
       - local: api/pipelines/mochi
         title: Mochi
-      - local: api/pipelines/pia
-        title: Personalized Image Animator (PIA)
       - local: api/pipelines/skyreels_v2
         title: SkyReels-V2
       - local: api/pipelines/stable_diffusion/svd
         title: Stable Video Diffusion
-      - local: api/pipelines/text_to_video
-        title: Text-to-video
-      - local: api/pipelines/text_to_video_zero
-        title: Text2Video-Zero
       - local: api/pipelines/wan
         title: Wan
       title: Video
@@ -714,6 +691,8 @@
   - sections:
     - local: api/schedulers/overview
       title: Overview
+    - local: api/schedulers/block_refinement
+      title: BlockRefinementScheduler
     - local: api/schedulers/cm_stochastic_iterative
       title: CMStochasticIterativeScheduler
     - local: api/schedulers/ddim_cogvideox

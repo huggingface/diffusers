@@ -41,16 +41,15 @@ The quantized CogVideoX 5B model below requires ~16GB of VRAM.
 
 ```py
 import torch
-from diffusers import CogVideoXPipeline, AutoModel
+from diffusers import CogVideoXPipeline, AutoModel, TorchAoConfig
 from diffusers.quantizers import PipelineQuantizationConfig
 from diffusers.hooks import apply_group_offloading
 from diffusers.utils import export_to_video
+from torchao.quantization import Int8WeightOnlyConfig
 
 # quantize weights to int8 with torchao
 pipeline_quant_config = PipelineQuantizationConfig(
-  quant_backend="torchao",
-  quant_kwargs={"quant_type": "int8wo"},
-  components_to_quantize="transformer"
+  quant_mapping={"transformer": TorchAoConfig(Int8WeightOnlyConfig())}
 )
 
 # fp8 layerwise weight-casting

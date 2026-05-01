@@ -18,7 +18,7 @@ from typing import Any, Callable
 
 import numpy as np
 import torch
-from transformers import Gemma3ForConditionalGeneration, GemmaTokenizer, GemmaTokenizerFast
+from transformers import Gemma3ForConditionalGeneration, Gemma3Processor, GemmaTokenizer, GemmaTokenizerFast
 
 from ...callbacks import MultiPipelineCallbacks, PipelineCallback
 from ...loaders import FromSingleFileMixin, LTX2LoraLoaderMixin
@@ -31,7 +31,7 @@ from ...video_processor import VideoProcessor
 from ..pipeline_utils import DiffusionPipeline
 from .connectors import LTX2TextConnectors
 from .pipeline_output import LTX2PipelineOutput
-from .vocoder import LTX2Vocoder
+from .vocoder import LTX2Vocoder, LTX2VocoderWithBWE
 
 
 if is_torch_xla_available():
@@ -209,7 +209,7 @@ class LTX2Pipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoaderMixin):
     """
 
     model_cpu_offload_seq = "text_encoder->connectors->transformer->vae->audio_vae->vocoder"
-    _optional_components = []
+    _optional_components = ["processor"]
     _callback_tensor_inputs = ["latents", "prompt_embeds", "negative_prompt_embeds"]
 
     def __init__(
@@ -221,7 +221,8 @@ class LTX2Pipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoaderMixin):
         tokenizer: GemmaTokenizer | GemmaTokenizerFast,
         connectors: LTX2TextConnectors,
         transformer: LTX2VideoTransformer3DModel,
-        vocoder: LTX2Vocoder,
+        vocoder: LTX2Vocoder | LTX2VocoderWithBWE,
+        processor: Gemma3Processor | None = None,
     ):
         super().__init__()
 
@@ -234,6 +235,7 @@ class LTX2Pipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoaderMixin):
             transformer=transformer,
             vocoder=vocoder,
             scheduler=scheduler,
+            processor=processor,
         )
 
         self.vae_spatial_compression_ratio = (
@@ -267,73 +269,6 @@ class LTX2Pipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoaderMixin):
         self.tokenizer_max_length = (
             self.tokenizer.model_max_length if getattr(self, "tokenizer", None) is not None else 1024
         )
-
-    @staticmethod
-    def _pack_text_embeds(
-        text_hidden_states: torch.Tensor,
-        sequence_lengths: torch.Tensor,
-        device: str | torch.device,
-        padding_side: str = "left",
-        scale_factor: int = 8,
-        eps: float = 1e-6,
-    ) -> torch.Tensor:
-        """
-        Packs and normalizes text encoder hidden states, respecting padding. Normalization is performed per-batch and
-        per-layer in a masked fashion (only over non-padded positions).
-
-        Args:
-            text_hidden_states (`torch.Tensor` of shape `(batch_size, seq_len, hidden_dim, num_layers)`):
-                Per-layer hidden_states from a text encoder (e.g. `Gemma3ForConditionalGeneration`).
-            sequence_lengths (`torch.Tensor of shape `(batch_size,)`):
-                The number of valid (non-padded) tokens for each batch instance.
-            device: (`str` or `torch.device`, *optional*):
-                torch device to place the resulting embeddings on
-            padding_side: (`str`, *optional*, defaults to `"left"`):
-                Whether the text tokenizer performs padding on the `"left"` or `"right"`.
-            scale_factor (`int`, *optional*, defaults to `8`):
-                Scaling factor to multiply the normalized hidden states by.
-            eps (`float`, *optional*, defaults to `1e-6`):
-                A small positive value for numerical stability when performing normalization.
-
-        Returns:
-            `torch.Tensor` of shape `(batch_size, seq_len, hidden_dim * num_layers)`:
-                Normed and flattened text encoder hidden states.
-        """
-        batch_size, seq_len, hidden_dim, num_layers = text_hidden_states.shape
-        original_dtype = text_hidden_states.dtype
-
-        # Create padding mask
-        token_indices = torch.arange(seq_len, device=device).unsqueeze(0)
-        if padding_side == "right":
-            # For right padding, valid tokens are from 0 to sequence_length-1
-            mask = token_indices < sequence_lengths[:, None]  # [batch_size, seq_len]
-        elif padding_side == "left":
-            # For left padding, valid tokens are from (T - sequence_length) to T-1
-            start_indices = seq_len - sequence_lengths[:, None]  # [batch_size, 1]
-            mask = token_indices >= start_indices  # [B, T]
-        else:
-            raise ValueError(f"padding_side must be 'left' or 'right', got {padding_side}")
-        mask = mask[:, :, None, None]  # [batch_size, seq_len] --> [batch_size, seq_len, 1, 1]
-
-        # Compute masked mean over non-padding positions of shape (batch_size, 1, 1, seq_len)
-        masked_text_hidden_states = text_hidden_states.masked_fill(~mask, 0.0)
-        num_valid_positions = (sequence_lengths * hidden_dim).view(batch_size, 1, 1, 1)
-        masked_mean = masked_text_hidden_states.sum(dim=(1, 2), keepdim=True) / (num_valid_positions + eps)
-
-        # Compute min/max over non-padding positions of shape (batch_size, 1, 1 seq_len)
-        x_min = text_hidden_states.masked_fill(~mask, float("inf")).amin(dim=(1, 2), keepdim=True)
-        x_max = text_hidden_states.masked_fill(~mask, float("-inf")).amax(dim=(1, 2), keepdim=True)
-
-        # Normalization
-        normalized_hidden_states = (text_hidden_states - masked_mean) / (x_max - x_min + eps)
-        normalized_hidden_states = normalized_hidden_states * scale_factor
-
-        # Pack the hidden states to a 3D tensor (batch_size, seq_len, hidden_dim * num_layers)
-        normalized_hidden_states = normalized_hidden_states.flatten(2)
-        mask_flat = mask.squeeze(-1).expand(-1, -1, hidden_dim * num_layers)
-        normalized_hidden_states = normalized_hidden_states.masked_fill(~mask_flat, 0.0)
-        normalized_hidden_states = normalized_hidden_states.to(dtype=original_dtype)
-        return normalized_hidden_states
 
     def _get_gemma_prompt_embeds(
         self,
@@ -387,16 +322,7 @@ class LTX2Pipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoaderMixin):
         )
         text_encoder_hidden_states = text_encoder_outputs.hidden_states
         text_encoder_hidden_states = torch.stack(text_encoder_hidden_states, dim=-1)
-        sequence_lengths = prompt_attention_mask.sum(dim=-1)
-
-        prompt_embeds = self._pack_text_embeds(
-            text_encoder_hidden_states,
-            sequence_lengths,
-            device=device,
-            padding_side=self.tokenizer.padding_side,
-            scale_factor=scale_factor,
-        )
-        prompt_embeds = prompt_embeds.to(dtype=dtype)
+        prompt_embeds = text_encoder_hidden_states.flatten(2, 3).to(dtype=dtype)  # Pack to 3D
 
         # duplicate text embeddings for each generation per prompt, using mps friendly method
         _, seq_len, _ = prompt_embeds.shape
@@ -494,6 +420,50 @@ class LTX2Pipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoaderMixin):
 
         return prompt_embeds, prompt_attention_mask, negative_prompt_embeds, negative_prompt_attention_mask
 
+    @torch.no_grad()
+    def enhance_prompt(
+        self,
+        prompt: str,
+        system_prompt: str,
+        max_new_tokens: int = 512,
+        seed: int = 10,
+        generator: torch.Generator | None = None,
+        generation_kwargs: dict[str, Any] | None = None,
+        device: str | torch.device | None = None,
+    ):
+        """
+        Enhances the supplied `prompt` by generating a new prompt using the current text encoder (default is a
+        `transformers.Gemma3ForConditionalGeneration` model) from it and a system prompt.
+        """
+        device = device or self._execution_device
+        if generation_kwargs is None:
+            # Set to default generation kwargs
+            generation_kwargs = {"do_sample": True, "temperature": 0.7}
+
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": f"user prompt: {prompt}"},
+        ]
+        template = self.processor.tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
+        model_inputs = self.processor(text=template, images=None, return_tensors="pt").to(device)
+        self.text_encoder.to(device)
+
+        # `transformers.GenerationMixin.generate` does not support using a `torch.Generator` to control randomness,
+        # so manually apply a seed for reproducible generation.
+        if generator is not None:
+            # Overwrite seed to generator's initial seed
+            seed = generator.initial_seed()
+        torch.manual_seed(seed)
+        generated_sequences = self.text_encoder.generate(
+            **model_inputs,
+            max_new_tokens=max_new_tokens,
+            **generation_kwargs,
+        )  # tensor of shape [batch_size, seq_len]
+
+        generated_ids = [seq[len(model_inputs.input_ids[i]) :] for i, seq in enumerate(generated_sequences)]
+        enhanced_prompt = self.processor.tokenizer.batch_decode(generated_ids, skip_special_tokens=True)
+        return enhanced_prompt
+
     def check_inputs(
         self,
         prompt,
@@ -504,6 +474,9 @@ class LTX2Pipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoaderMixin):
         negative_prompt_embeds=None,
         prompt_attention_mask=None,
         negative_prompt_attention_mask=None,
+        spatio_temporal_guidance_blocks=None,
+        stg_scale=None,
+        audio_stg_scale=None,
     ):
         if height % 32 != 0 or width % 32 != 0:
             raise ValueError(f"`height` and `width` have to be divisible by 32 but are {height} and {width}.")
@@ -546,6 +519,12 @@ class LTX2Pipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoaderMixin):
                     f" got: `prompt_attention_mask` {prompt_attention_mask.shape} != `negative_prompt_attention_mask`"
                     f" {negative_prompt_attention_mask.shape}."
                 )
+
+        if ((stg_scale > 0.0) or (audio_stg_scale > 0.0)) and not spatio_temporal_guidance_blocks:
+            raise ValueError(
+                "Spatio-Temporal Guidance (STG) is specified but no STG blocks are supplied. Please supply a list of"
+                "block indices at which to apply STG in `spatio_temporal_guidance_blocks`"
+            )
 
     @staticmethod
     def _pack_latents(latents: torch.Tensor, patch_size: int = 1, patch_size_t: int = 1) -> torch.Tensor:
@@ -734,7 +713,6 @@ class LTX2Pipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoaderMixin):
             latents = self._create_noised_state(latents, noise_scale, generator)
             return latents.to(device=device, dtype=dtype)
 
-        # TODO: confirm whether this logic is correct
         latent_mel_bins = num_mel_bins // self.audio_vae_mel_compression_ratio
 
         shape = (batch_size, num_channels_latents, audio_latent_length, latent_mel_bins)
@@ -749,6 +727,24 @@ class LTX2Pipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoaderMixin):
         latents = self._pack_audio_latents(latents)
         return latents
 
+    def convert_velocity_to_x0(
+        self, sample: torch.Tensor, denoised_output: torch.Tensor, step_idx: int, scheduler: Any | None = None
+    ) -> torch.Tensor:
+        if scheduler is None:
+            scheduler = self.scheduler
+
+        sample_x0 = sample - denoised_output * scheduler.sigmas[step_idx]
+        return sample_x0
+
+    def convert_x0_to_velocity(
+        self, sample: torch.Tensor, denoised_output: torch.Tensor, step_idx: int, scheduler: Any | None = None
+    ) -> torch.Tensor:
+        if scheduler is None:
+            scheduler = self.scheduler
+
+        sample_v = (sample - denoised_output) / scheduler.sigmas[step_idx]
+        return sample_v
+
     @property
     def guidance_scale(self):
         return self._guidance_scale
@@ -758,8 +754,40 @@ class LTX2Pipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoaderMixin):
         return self._guidance_rescale
 
     @property
+    def stg_scale(self):
+        return self._stg_scale
+
+    @property
+    def modality_scale(self):
+        return self._modality_scale
+
+    @property
+    def audio_guidance_scale(self):
+        return self._audio_guidance_scale
+
+    @property
+    def audio_guidance_rescale(self):
+        return self._audio_guidance_rescale
+
+    @property
+    def audio_stg_scale(self):
+        return self._audio_stg_scale
+
+    @property
+    def audio_modality_scale(self):
+        return self._audio_modality_scale
+
+    @property
     def do_classifier_free_guidance(self):
-        return self._guidance_scale > 1.0
+        return (self._guidance_scale > 1.0) or (self._audio_guidance_scale > 1.0)
+
+    @property
+    def do_spatio_temporal_guidance(self):
+        return (self._stg_scale > 0.0) or (self._audio_stg_scale > 0.0)
+
+    @property
+    def do_modality_isolation_guidance(self):
+        return (self._modality_scale > 1.0) or (self._audio_modality_scale > 1.0)
 
     @property
     def num_timesteps(self):
@@ -791,7 +819,14 @@ class LTX2Pipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoaderMixin):
         sigmas: list[float] | None = None,
         timesteps: list[int] = None,
         guidance_scale: float = 4.0,
+        stg_scale: float = 0.0,
+        modality_scale: float = 1.0,
         guidance_rescale: float = 0.0,
+        audio_guidance_scale: float | None = None,
+        audio_stg_scale: float | None = None,
+        audio_modality_scale: float | None = None,
+        audio_guidance_rescale: float | None = None,
+        spatio_temporal_guidance_blocks: list[int] | None = None,
         noise_scale: float = 0.0,
         num_videos_per_prompt: int = 1,
         generator: torch.Generator | list[torch.Generator] | None = None,
@@ -803,6 +838,11 @@ class LTX2Pipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoaderMixin):
         negative_prompt_attention_mask: torch.Tensor | None = None,
         decode_timestep: float | list[float] = 0.0,
         decode_noise_scale: float | list[float] | None = None,
+        use_cross_timestep: bool = False,
+        system_prompt: str | None = None,
+        prompt_max_new_tokens: int = 512,
+        prompt_enhancement_kwargs: dict[str, Any] | None = None,
+        prompt_enhancement_seed: int = 10,
         output_type: str = "pil",
         return_dict: bool = True,
         attention_kwargs: dict[str, Any] | None = None,
@@ -841,13 +881,47 @@ class LTX2Pipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoaderMixin):
                 Guidance](https://huggingface.co/papers/2207.12598). `guidance_scale` is defined as `w` of equation 2.
                 of [Imagen Paper](https://huggingface.co/papers/2205.11487). Guidance scale is enabled by setting
                 `guidance_scale > 1`. Higher guidance scale encourages to generate images that are closely linked to
-                the text `prompt`, usually at the expense of lower image quality.
+                the text `prompt`, usually at the expense of lower image quality. Used for the video modality (there is
+                a separate value `audio_guidance_scale` for the audio modality).
+            stg_scale (`float`, *optional*, defaults to `0.0`):
+                Video guidance scale for Spatio-Temporal Guidance (STG), proposed in [Spatiotemporal Skip Guidance for
+                Enhanced Video Diffusion Sampling](https://arxiv.org/abs/2411.18664). STG uses a CFG-like estimate
+                where we move the sample away from a weak sample from a perturbed version of the denoising model.
+                Enabling STG will result in an additional denoising model forward pass; the default value of `0.0`
+                means that STG is disabled.
+            modality_scale (`float`, *optional*, defaults to `1.0`):
+                Video guidance scale for LTX-2.X modality isolation guidance, where we move the sample away from a
+                weaker sample generated by the denoising model withy cross-modality (audio-to-video and video-to-audio)
+                cross attention disabled using a CFG-like estimate. Enabling modality guidance will result in an
+                additional denoising model forward pass; the default value of `1.0` means that modality guidance is
+                disabled.
             guidance_rescale (`float`, *optional*, defaults to 0.0):
                 Guidance rescale factor proposed by [Common Diffusion Noise Schedules and Sample Steps are
                 Flawed](https://huggingface.co/papers/2305.08891) `guidance_scale` is defined as `φ` in equation 16. of
                 [Common Diffusion Noise Schedules and Sample Steps are
                 Flawed](https://huggingface.co/papers/2305.08891). Guidance rescale factor should fix overexposure when
-                using zero terminal SNR.
+                using zero terminal SNR. Used for the video modality.
+            audio_guidance_scale (`float`, *optional* defaults to `None`):
+                Audio guidance scale for CFG with respect to the negative prompt. The CFG update rule is the same for
+                video and audio, but they can use different values for the guidance scale. The LTX-2.X authors suggest
+                that the `audio_guidance_scale` should be higher relative to the video `guidance_scale` (e.g. for
+                LTX-2.3 they suggest 3.0 for video and 7.0 for audio). If `None`, defaults to the video value
+                `guidance_scale`.
+            audio_stg_scale (`float`, *optional*, defaults to `None`):
+                Audio guidance scale for STG. As with CFG, the STG update rule is otherwise the same for video and
+                audio. For LTX-2.3, a value of 1.0 is suggested for both video and audio. If `None`, defaults to the
+                video value `stg_scale`.
+            audio_modality_scale (`float`, *optional*, defaults to `None`):
+                Audio guidance scale for LTX-2.X modality isolation guidance. As with CFG, the modality guidance rule
+                is otherwise the same for video and audio. For LTX-2.3, a value of 3.0 is suggested for both video and
+                audio. If `None`, defaults to the video value `modality_scale`.
+            audio_guidance_rescale (`float`, *optional*, defaults to `None`):
+                A separate guidance rescale factor for the audio modality. If `None`, defaults to the video value
+                `guidance_rescale`.
+            spatio_temporal_guidance_blocks (`list[int]`, *optional*, defaults to `None`):
+                The zero-indexed transformer block indices at which to apply STG. Must be supplied if STG is used
+                (`stg_scale` or `audio_stg_scale` is greater than `0`). A value of `[29]` is recommended for LTX-2.0
+                and `[28]` is recommended for LTX-2.3.
             noise_scale (`float`, *optional*, defaults to `0.0`):
                 The interpolation factor between random noise and denoised latents at each timestep. Applying noise to
                 the `latents` and `audio_latents` before continue denoising.
@@ -878,6 +952,24 @@ class LTX2Pipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoaderMixin):
                 The timestep at which generated video is decoded.
             decode_noise_scale (`float`, defaults to `None`):
                 The interpolation factor between random noise and denoised latents at the decode timestep.
+            use_cross_timestep (`bool` *optional*, defaults to `False`):
+                Whether to use the cross modality (audio is the cross modality of video, and vice versa) sigma when
+                calculating the cross attention modulation parameters. `True` is the newer (e.g. LTX-2.3) behavior;
+                `False` is the legacy LTX-2.0 behavior.
+            system_prompt (`str`, *optional*, defaults to `None`):
+                Optional system prompt to use for prompt enhancement. The system prompt will be used by the current
+                text encoder (by default, a `Gemma3ForConditionalGeneration` model) to generate an enhanced prompt from
+                the original `prompt` to condition generation. If not supplied, prompt enhancement will not be
+                performed.
+            prompt_max_new_tokens (`int`, *optional*, defaults to `512`):
+                The maximum number of new tokens to generate when performing prompt enhancement.
+            prompt_enhancement_kwargs (`dict[str, Any]`, *optional*, defaults to `None`):
+                Keyword arguments for `self.text_encoder.generate`. If not supplied, default arguments of
+                `do_sample=True` and `temperature=0.7` will be used. See
+                https://huggingface.co/docs/transformers/main/en/main_classes/text_generation#transformers.GenerationMixin.generate
+                for more details.
+            prompt_enhancement_seed (`int`, *optional*, default to `10`):
+                Random seed for any random operations during prompt enhancement.
             output_type (`str`, *optional*, defaults to `"pil"`):
                 The output format of the generate image. Choose between
                 [PIL](https://pillow.readthedocs.io/en/stable/): `PIL.Image.Image` or `np.array`.
@@ -910,6 +1002,11 @@ class LTX2Pipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoaderMixin):
         if isinstance(callback_on_step_end, (PipelineCallback, MultiPipelineCallbacks)):
             callback_on_step_end_tensor_inputs = callback_on_step_end.tensor_inputs
 
+        audio_guidance_scale = audio_guidance_scale or guidance_scale
+        audio_stg_scale = audio_stg_scale or stg_scale
+        audio_modality_scale = audio_modality_scale or modality_scale
+        audio_guidance_rescale = audio_guidance_rescale or guidance_rescale
+
         # 1. Check inputs. Raise error if not correct
         self.check_inputs(
             prompt=prompt,
@@ -920,10 +1017,21 @@ class LTX2Pipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoaderMixin):
             negative_prompt_embeds=negative_prompt_embeds,
             prompt_attention_mask=prompt_attention_mask,
             negative_prompt_attention_mask=negative_prompt_attention_mask,
+            spatio_temporal_guidance_blocks=spatio_temporal_guidance_blocks,
+            stg_scale=stg_scale,
+            audio_stg_scale=audio_stg_scale,
         )
 
+        # Per-modality guidance scales (video, audio)
         self._guidance_scale = guidance_scale
+        self._stg_scale = stg_scale
+        self._modality_scale = modality_scale
         self._guidance_rescale = guidance_rescale
+        self._audio_guidance_scale = audio_guidance_scale
+        self._audio_stg_scale = audio_stg_scale
+        self._audio_modality_scale = audio_modality_scale
+        self._audio_guidance_rescale = audio_guidance_rescale
+
         self._attention_kwargs = attention_kwargs
         self._interrupt = False
         self._current_timestep = None
@@ -939,6 +1047,17 @@ class LTX2Pipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoaderMixin):
         device = self._execution_device
 
         # 3. Prepare text embeddings
+        if system_prompt is not None and prompt is not None:
+            prompt = self.enhance_prompt(
+                prompt=prompt,
+                system_prompt=system_prompt,
+                max_new_tokens=prompt_max_new_tokens,
+                seed=prompt_enhancement_seed,
+                generator=generator,
+                generation_kwargs=prompt_enhancement_kwargs,
+                device=device,
+            )
+
         (
             prompt_embeds,
             prompt_attention_mask,
@@ -960,9 +1079,11 @@ class LTX2Pipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoaderMixin):
             prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds], dim=0)
             prompt_attention_mask = torch.cat([negative_prompt_attention_mask, prompt_attention_mask], dim=0)
 
-        additive_attention_mask = (1 - prompt_attention_mask.to(prompt_embeds.dtype)) * -1000000.0
+        tokenizer_padding_side = "left"  # Padding side for default Gemma3-12B text encoder
+        if getattr(self, "tokenizer", None) is not None:
+            tokenizer_padding_side = getattr(self.tokenizer, "padding_side", "left")
         connector_prompt_embeds, connector_audio_prompt_embeds, connector_attention_mask = self.connectors(
-            prompt_embeds, additive_attention_mask, additive_mask=True
+            prompt_embeds, prompt_attention_mask, padding_side=tokenizer_padding_side
         )
 
         # 4. Prepare latent variables
@@ -984,7 +1105,7 @@ class LTX2Pipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoaderMixin):
                 raise ValueError(
                     f"Provided `latents` tensor has shape {latents.shape}, but the expected shape is either [batch_size, seq_len, num_features] or [batch_size, latent_dim, latent_frames, latent_height, latent_width]."
                 )
-        video_sequence_length = latent_num_frames * latent_height * latent_width
+        # video_sequence_length = latent_num_frames * latent_height * latent_width
 
         num_channels_latents = self.transformer.config.in_channels
         latents = self.prepare_latents(
@@ -1041,7 +1162,7 @@ class LTX2Pipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoaderMixin):
         # 5. Prepare timesteps
         sigmas = np.linspace(1.0, 1 / num_inference_steps, num_inference_steps) if sigmas is None else sigmas
         mu = calculate_shift(
-            video_sequence_length,
+            self.scheduler.config.get("max_image_seq_len", 4096),
             self.scheduler.config.get("base_image_seq_len", 1024),
             self.scheduler.config.get("max_image_seq_len", 4096),
             self.scheduler.config.get("base_shift", 0.95),
@@ -1069,11 +1190,6 @@ class LTX2Pipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoaderMixin):
         self._num_timesteps = len(timesteps)
 
         # 6. Prepare micro-conditions
-        rope_interpolation_scale = (
-            self.vae_temporal_compression_ratio / frame_rate,
-            self.vae_spatial_compression_ratio,
-            self.vae_spatial_compression_ratio,
-        )
         # Pre-compute video and audio positional ids as they will be the same at each step of the denoising loop
         video_coords = self.transformer.rope.prepare_video_coords(
             latents.shape[0], latent_num_frames, latent_height, latent_width, latents.device, fps=frame_rate
@@ -1111,6 +1227,7 @@ class LTX2Pipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoaderMixin):
                         encoder_hidden_states=connector_prompt_embeds,
                         audio_encoder_hidden_states=connector_audio_prompt_embeds,
                         timestep=timestep,
+                        sigma=timestep,  # Used by LTX-2.3
                         encoder_attention_mask=connector_attention_mask,
                         audio_encoder_attention_mask=connector_attention_mask,
                         num_frames=latent_num_frames,
@@ -1120,7 +1237,10 @@ class LTX2Pipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoaderMixin):
                         audio_num_frames=audio_num_frames,
                         video_coords=video_coords,
                         audio_coords=audio_coords,
-                        # rope_interpolation_scale=rope_interpolation_scale,
+                        isolate_modalities=False,
+                        spatio_temporal_guidance_blocks=None,
+                        perturbation_mask=None,
+                        use_cross_timestep=use_cross_timestep,
                         attention_kwargs=attention_kwargs,
                         return_dict=False,
                     )
@@ -1128,24 +1248,155 @@ class LTX2Pipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoaderMixin):
                 noise_pred_audio = noise_pred_audio.float()
 
                 if self.do_classifier_free_guidance:
-                    noise_pred_video_uncond, noise_pred_video_text = noise_pred_video.chunk(2)
-                    noise_pred_video = noise_pred_video_uncond + self.guidance_scale * (
-                        noise_pred_video_text - noise_pred_video_uncond
+                    noise_pred_video_uncond_text, noise_pred_video = noise_pred_video.chunk(2)
+                    noise_pred_video = self.convert_velocity_to_x0(latents, noise_pred_video, i, self.scheduler)
+                    noise_pred_video_uncond_text = self.convert_velocity_to_x0(
+                        latents, noise_pred_video_uncond_text, i, self.scheduler
+                    )
+                    # Use delta formulation as it works more nicely with multiple guidance terms
+                    video_cfg_delta = (self.guidance_scale - 1) * (noise_pred_video - noise_pred_video_uncond_text)
+
+                    noise_pred_audio_uncond_text, noise_pred_audio = noise_pred_audio.chunk(2)
+                    noise_pred_audio = self.convert_velocity_to_x0(audio_latents, noise_pred_audio, i, audio_scheduler)
+                    noise_pred_audio_uncond_text = self.convert_velocity_to_x0(
+                        audio_latents, noise_pred_audio_uncond_text, i, audio_scheduler
+                    )
+                    audio_cfg_delta = (self.audio_guidance_scale - 1) * (
+                        noise_pred_audio - noise_pred_audio_uncond_text
                     )
 
-                    noise_pred_audio_uncond, noise_pred_audio_text = noise_pred_audio.chunk(2)
-                    noise_pred_audio = noise_pred_audio_uncond + self.guidance_scale * (
-                        noise_pred_audio_text - noise_pred_audio_uncond
+                    # Get positive values from merged CFG inputs in case we need to do other DiT forward passes
+                    if self.do_spatio_temporal_guidance or self.do_modality_isolation_guidance:
+                        if i == 0:
+                            # Only split values that remain constant throughout the loop once
+                            video_prompt_embeds = connector_prompt_embeds.chunk(2, dim=0)[1]
+                            audio_prompt_embeds = connector_audio_prompt_embeds.chunk(2, dim=0)[1]
+                            prompt_attn_mask = connector_attention_mask.chunk(2, dim=0)[1]
+
+                            video_pos_ids = video_coords.chunk(2, dim=0)[0]
+                            audio_pos_ids = audio_coords.chunk(2, dim=0)[0]
+
+                        # Split values that vary each denoising loop iteration
+                        timestep = timestep.chunk(2, dim=0)[0]
+                else:
+                    video_cfg_delta = audio_cfg_delta = 0
+
+                    video_prompt_embeds = connector_prompt_embeds
+                    audio_prompt_embeds = connector_audio_prompt_embeds
+                    prompt_attn_mask = connector_attention_mask
+
+                    video_pos_ids = video_coords
+                    audio_pos_ids = audio_coords
+
+                    noise_pred_video = self.convert_velocity_to_x0(latents, noise_pred_video, i, self.scheduler)
+                    noise_pred_audio = self.convert_velocity_to_x0(audio_latents, noise_pred_audio, i, audio_scheduler)
+
+                if self.do_spatio_temporal_guidance:
+                    with self.transformer.cache_context("uncond_stg"):
+                        noise_pred_video_uncond_stg, noise_pred_audio_uncond_stg = self.transformer(
+                            hidden_states=latents.to(dtype=prompt_embeds.dtype),
+                            audio_hidden_states=audio_latents.to(dtype=prompt_embeds.dtype),
+                            encoder_hidden_states=video_prompt_embeds,
+                            audio_encoder_hidden_states=audio_prompt_embeds,
+                            timestep=timestep,
+                            sigma=timestep,  # Used by LTX-2.3
+                            encoder_attention_mask=prompt_attn_mask,
+                            audio_encoder_attention_mask=prompt_attn_mask,
+                            num_frames=latent_num_frames,
+                            height=latent_height,
+                            width=latent_width,
+                            fps=frame_rate,
+                            audio_num_frames=audio_num_frames,
+                            video_coords=video_pos_ids,
+                            audio_coords=audio_pos_ids,
+                            isolate_modalities=False,
+                            # Use STG at given blocks to perturb model
+                            spatio_temporal_guidance_blocks=spatio_temporal_guidance_blocks,
+                            perturbation_mask=None,
+                            use_cross_timestep=use_cross_timestep,
+                            attention_kwargs=attention_kwargs,
+                            return_dict=False,
+                        )
+                    noise_pred_video_uncond_stg = noise_pred_video_uncond_stg.float()
+                    noise_pred_audio_uncond_stg = noise_pred_audio_uncond_stg.float()
+                    noise_pred_video_uncond_stg = self.convert_velocity_to_x0(
+                        latents, noise_pred_video_uncond_stg, i, self.scheduler
+                    )
+                    noise_pred_audio_uncond_stg = self.convert_velocity_to_x0(
+                        audio_latents, noise_pred_audio_uncond_stg, i, audio_scheduler
                     )
 
-                    if self.guidance_rescale > 0:
-                        # Based on 3.4. in https://huggingface.co/papers/2305.08891
-                        noise_pred_video = rescale_noise_cfg(
-                            noise_pred_video, noise_pred_video_text, guidance_rescale=self.guidance_rescale
+                    video_stg_delta = self.stg_scale * (noise_pred_video - noise_pred_video_uncond_stg)
+                    audio_stg_delta = self.audio_stg_scale * (noise_pred_audio - noise_pred_audio_uncond_stg)
+                else:
+                    video_stg_delta = audio_stg_delta = 0
+
+                if self.do_modality_isolation_guidance:
+                    with self.transformer.cache_context("uncond_modality"):
+                        noise_pred_video_uncond_modality, noise_pred_audio_uncond_modality = self.transformer(
+                            hidden_states=latents.to(dtype=prompt_embeds.dtype),
+                            audio_hidden_states=audio_latents.to(dtype=prompt_embeds.dtype),
+                            encoder_hidden_states=video_prompt_embeds,
+                            audio_encoder_hidden_states=audio_prompt_embeds,
+                            timestep=timestep,
+                            sigma=timestep,  # Used by LTX-2.3
+                            encoder_attention_mask=prompt_attn_mask,
+                            audio_encoder_attention_mask=prompt_attn_mask,
+                            num_frames=latent_num_frames,
+                            height=latent_height,
+                            width=latent_width,
+                            fps=frame_rate,
+                            audio_num_frames=audio_num_frames,
+                            video_coords=video_pos_ids,
+                            audio_coords=audio_pos_ids,
+                            # Turn off A2V and V2A cross attn to isolate video and audio modalities
+                            isolate_modalities=True,
+                            spatio_temporal_guidance_blocks=None,
+                            perturbation_mask=None,
+                            use_cross_timestep=use_cross_timestep,
+                            attention_kwargs=attention_kwargs,
+                            return_dict=False,
                         )
-                        noise_pred_audio = rescale_noise_cfg(
-                            noise_pred_audio, noise_pred_audio_text, guidance_rescale=self.guidance_rescale
-                        )
+                    noise_pred_video_uncond_modality = noise_pred_video_uncond_modality.float()
+                    noise_pred_audio_uncond_modality = noise_pred_audio_uncond_modality.float()
+                    noise_pred_video_uncond_modality = self.convert_velocity_to_x0(
+                        latents, noise_pred_video_uncond_modality, i, self.scheduler
+                    )
+                    noise_pred_audio_uncond_modality = self.convert_velocity_to_x0(
+                        audio_latents, noise_pred_audio_uncond_modality, i, audio_scheduler
+                    )
+
+                    video_modality_delta = (self.modality_scale - 1) * (
+                        noise_pred_video - noise_pred_video_uncond_modality
+                    )
+                    audio_modality_delta = (self.audio_modality_scale - 1) * (
+                        noise_pred_audio - noise_pred_audio_uncond_modality
+                    )
+                else:
+                    video_modality_delta = audio_modality_delta = 0
+
+                # Now apply all guidance terms
+                noise_pred_video_g = noise_pred_video + video_cfg_delta + video_stg_delta + video_modality_delta
+                noise_pred_audio_g = noise_pred_audio + audio_cfg_delta + audio_stg_delta + audio_modality_delta
+
+                # Apply LTX-2.X guidance rescaling
+                if self.guidance_rescale > 0:
+                    noise_pred_video = rescale_noise_cfg(
+                        noise_pred_video_g, noise_pred_video, guidance_rescale=self.guidance_rescale
+                    )
+                else:
+                    noise_pred_video = noise_pred_video_g
+
+                if self.audio_guidance_rescale > 0:
+                    noise_pred_audio = rescale_noise_cfg(
+                        noise_pred_audio_g, noise_pred_audio, guidance_rescale=self.audio_guidance_rescale
+                    )
+                else:
+                    noise_pred_audio = noise_pred_audio_g
+
+                # Convert back to velocity for scheduler
+                noise_pred_video = self.convert_x0_to_velocity(latents, noise_pred_video, i, self.scheduler)
+                noise_pred_audio = self.convert_x0_to_velocity(audio_latents, noise_pred_audio, i, audio_scheduler)
 
                 # compute the previous noisy sample x_t -> x_t-1
                 latents = self.scheduler.step(noise_pred_video, t, latents, return_dict=False)[0]
@@ -1177,9 +1428,6 @@ class LTX2Pipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoaderMixin):
             self.transformer_spatial_patch_size,
             self.transformer_temporal_patch_size,
         )
-        latents = self._denormalize_latents(
-            latents, self.vae.latents_mean, self.vae.latents_std, self.vae.config.scaling_factor
-        )
 
         audio_latents = self._denormalize_audio_latents(
             audio_latents, self.audio_vae.latents_mean, self.audio_vae.latents_std
@@ -1187,6 +1435,9 @@ class LTX2Pipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoaderMixin):
         audio_latents = self._unpack_audio_latents(audio_latents, audio_num_frames, num_mel_bins=latent_mel_bins)
 
         if output_type == "latent":
+            latents = self._denormalize_latents(
+                latents, self.vae.latents_mean, self.vae.latents_std, self.vae.config.scaling_factor
+            )
             video = latents
             audio = audio_latents
         else:
@@ -1208,6 +1459,10 @@ class LTX2Pipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoaderMixin):
                     :, None, None, None, None
                 ]
                 latents = (1 - decode_noise_scale) * latents + decode_noise_scale * noise
+
+            latents = self._denormalize_latents(
+                latents, self.vae.latents_mean, self.vae.latents_std, self.vae.config.scaling_factor
+            )
 
             latents = latents.to(self.vae.dtype)
             video = self.vae.decode(latents, timestep, return_dict=False)[0]

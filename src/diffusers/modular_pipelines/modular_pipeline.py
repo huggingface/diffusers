@@ -106,6 +106,16 @@ def _wan_i2v_map_fn(config_dict=None):
         return "WanImage2VideoModularPipeline"
 
 
+def _helios_pyramid_map_fn(config_dict=None):
+    if config_dict is None:
+        return "HeliosPyramidModularPipeline"
+
+    if config_dict.get("is_distilled", False):
+        return "HeliosPyramidDistilledModularPipeline"
+    else:
+        return "HeliosPyramidModularPipeline"
+
+
 MODULAR_PIPELINE_MAPPING = OrderedDict(
     [
         ("stable-diffusion-xl", _create_default_map_fn("StableDiffusionXLModularPipeline")),
@@ -120,6 +130,11 @@ MODULAR_PIPELINE_MAPPING = OrderedDict(
         ("qwenimage-edit-plus", _create_default_map_fn("QwenImageEditPlusModularPipeline")),
         ("qwenimage-layered", _create_default_map_fn("QwenImageLayeredModularPipeline")),
         ("z-image", _create_default_map_fn("ZImageModularPipeline")),
+        ("helios", _create_default_map_fn("HeliosModularPipeline")),
+        ("helios-pyramid", _helios_pyramid_map_fn),
+        ("hunyuan-video-1.5", _create_default_map_fn("HunyuanVideo15ModularPipeline")),
+        ("ltx", _create_default_map_fn("LTXModularPipeline")),
+        ("ernie-image", _create_default_map_fn("ErnieImageModularPipeline")),
     ]
 )
 
@@ -423,6 +438,7 @@ class ModularPipelineBlocks(ConfigMixin, PushToHubMixin):
             pretrained_model_name_or_path,
             module_file=module_file,
             class_name=class_name,
+            trust_remote_code=trust_remote_code,
             **hub_kwargs,
         )
         expected_kwargs, optional_kwargs = block_cls._get_signature_keys(block_cls)

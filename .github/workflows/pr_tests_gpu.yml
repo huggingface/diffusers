@@ -1,5 +1,8 @@
 name: Fast GPU Tests on PR
 
+permissions:
+  contents: read
+
 on:
   pull_request:
     branches: main
@@ -132,6 +135,7 @@ jobs:
           uv pip install -e ".[quality]"
           uv pip uninstall accelerate && uv pip install -U accelerate@git+https://github.com/huggingface/accelerate.git
           uv pip uninstall transformers huggingface_hub && uv pip install --prerelease allow -U transformers@git+https://github.com/huggingface/transformers.git
+          uv pip uninstall tokenizers && uv pip install "tokenizers<=0.23.0"
 
       - name: Environment
         run: |
@@ -202,6 +206,7 @@ jobs:
         uv pip install peft@git+https://github.com/huggingface/peft.git
         uv pip uninstall accelerate && uv pip install -U accelerate@git+https://github.com/huggingface/accelerate.git
         uv pip uninstall transformers huggingface_hub && uv pip install --prerelease allow -U transformers@git+https://github.com/huggingface/transformers.git
+        uv pip uninstall tokenizers && uv pip install "tokenizers<=0.23.0"
 
     - name: Environment
       run: |
@@ -263,6 +268,7 @@ jobs:
     - name: Install dependencies
       run: |
         uv pip uninstall transformers huggingface_hub && uv pip install --prerelease allow -U transformers@git+https://github.com/huggingface/transformers.git
+        uv pip uninstall tokenizers && uv pip install "tokenizers<=0.23.0"
         uv pip install -e ".[quality,training]"
 
     - name: Environment
