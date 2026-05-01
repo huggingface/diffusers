@@ -5,6 +5,9 @@ on:
   schedule:
     - cron: "0 0 * * *" # every day at midnight
 
+permissions:
+  contents: read
+
 env:
   DIFFUSERS_IS_CI: yes
   HF_XET_HIGH_PERFORMANCE: 1

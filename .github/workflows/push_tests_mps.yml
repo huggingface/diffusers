@@ -3,6 +3,9 @@ name: Fast mps tests on main
 on:
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 env:
   DIFFUSERS_IS_CI: yes
   HF_HOME: /mnt/cache

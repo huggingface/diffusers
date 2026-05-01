@@ -149,6 +149,12 @@ else:
             "WuerstchenPriorPipeline",
         ]
     )
+    _import_structure["ace_step"] = [
+        "AceStepAudioTokenDetokenizer",
+        "AceStepAudioTokenizer",
+        "AceStepConditionEncoder",
+        "AceStepPipeline",
+    ]
     _import_structure["allegro"] = ["AllegroPipeline"]
     _import_structure["animatediff"] = [
         "AnimateDiffPipeline",
@@ -575,6 +581,12 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     except OptionalDependencyNotAvailable:
         from ..utils.dummy_torch_and_transformers_objects import *
     else:
+        from .ace_step import (
+            AceStepAudioTokenDetokenizer,
+            AceStepAudioTokenizer,
+            AceStepConditionEncoder,
+            AceStepPipeline,
+        )
         from .allegro import AllegroPipeline
         from .animatediff import (
             AnimateDiffControlNetPipeline,
