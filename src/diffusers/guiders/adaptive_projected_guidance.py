@@ -40,6 +40,9 @@ class AdaptiveProjectedGuidance(BaseGuidance):
             The momentum parameter for the adaptive projected guidance. Disabled if set to `None`.
         adaptive_projected_guidance_rescale (`float`, defaults to `15.0`):
             The rescale factor applied to the noise predictions. This is used to improve image quality and fix
+        adaptive_projected_guidance_norm_dim (`int` or `tuple[int]`, *optional*):
+            Dimension(s) over which to compute the APG norm and projection. If omitted, all non-batch dimensions are
+            used, preserving the original behavior.
         guidance_rescale (`float`, defaults to `0.0`):
             The rescale factor applied to the noise predictions. This is used to improve image quality and fix
             overexposure. Based on Section 3.4 from [Common Diffusion Noise Schedules and Sample Steps are
@@ -62,6 +65,7 @@ class AdaptiveProjectedGuidance(BaseGuidance):
         guidance_scale: float = 7.5,
         adaptive_projected_guidance_momentum: float | None = None,
         adaptive_projected_guidance_rescale: float = 15.0,
+        adaptive_projected_guidance_norm_dim: int | tuple[int, ...] | None = None,
         eta: float = 1.0,
         guidance_rescale: float = 0.0,
         use_original_formulation: bool = False,
@@ -74,6 +78,7 @@ class AdaptiveProjectedGuidance(BaseGuidance):
         self.guidance_scale = guidance_scale
         self.adaptive_projected_guidance_momentum = adaptive_projected_guidance_momentum
         self.adaptive_projected_guidance_rescale = adaptive_projected_guidance_rescale
+        self.adaptive_projected_guidance_norm_dim = adaptive_projected_guidance_norm_dim
         self.eta = eta
         self.guidance_rescale = guidance_rescale
         self.use_original_formulation = use_original_formulation
@@ -117,6 +122,7 @@ class AdaptiveProjectedGuidance(BaseGuidance):
                 self.eta,
                 self.adaptive_projected_guidance_rescale,
                 self.use_original_formulation,
+                self.adaptive_projected_guidance_norm_dim,
             )
 
         if self.guidance_rescale > 0.0:
@@ -210,9 +216,15 @@ def normalized_guidance(
     eta: float = 1.0,
     norm_threshold: float = 0.0,
     use_original_formulation: bool = False,
+    norm_dim: int | tuple[int, ...] | None = None,
 ):
     diff = pred_cond - pred_uncond
-    dim = [-i for i in range(1, len(diff.shape))]
+    if norm_dim is None:
+        dim = [-i for i in range(1, len(diff.shape))]
+    elif isinstance(norm_dim, int):
+        dim = [norm_dim]
+    else:
+        dim = list(norm_dim)
 
     if momentum_buffer is not None:
         momentum_buffer.update(diff)
@@ -224,11 +236,15 @@ def normalized_guidance(
         scale_factor = torch.minimum(ones, norm_threshold / diff_norm)
         diff = diff * scale_factor
 
-    v0, v1 = diff.double(), pred_cond.double()
+    if diff.device.type in {"mps", "npu"}:
+        v0, v1 = diff.cpu().double(), pred_cond.cpu().double()
+    else:
+        v0, v1 = diff.double(), pred_cond.double()
     v1 = torch.nn.functional.normalize(v1, dim=dim)
     v0_parallel = (v0 * v1).sum(dim=dim, keepdim=True) * v1
     v0_orthogonal = v0 - v0_parallel
-    diff_parallel, diff_orthogonal = v0_parallel.type_as(diff), v0_orthogonal.type_as(diff)
+    diff_parallel = v0_parallel.to(device=diff.device, dtype=diff.dtype)
+    diff_orthogonal = v0_orthogonal.to(device=diff.device, dtype=diff.dtype)
     normalized_update = diff_orthogonal + eta * diff_parallel
 
     pred = pred_cond if use_original_formulation else pred_uncond
