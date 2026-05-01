@@ -26,7 +26,6 @@ from ..attention import AttentionMixin, AttentionModuleMixin
 from ..attention_dispatch import (
     AttentionBackendName,
     _AttentionBackendRegistry,
-    _maybe_download_kernel_for_backend,
     dispatch_attention_fn,
 )
 from ..cache_utils import CacheMixin
@@ -39,9 +38,16 @@ from ..normalization import RMSNorm
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
-_FLASH_ATTENTION_BACKEND_TO_VARLEN = {
-    AttentionBackendName.FLASH: AttentionBackendName.FLASH_VARLEN,
-    AttentionBackendName.FLASH_HUB: AttentionBackendName.FLASH_VARLEN_HUB,
+_FLASH_ATTENTION_BACKENDS = {
+    AttentionBackendName.FLASH,
+    AttentionBackendName.FLASH_HUB,
+    AttentionBackendName.FLASH_VARLEN,
+    AttentionBackendName.FLASH_VARLEN_HUB,
+}
+
+_FLASH_ATTENTION_VARLEN_BACKENDS = {
+    AttentionBackendName.FLASH_VARLEN,
+    AttentionBackendName.FLASH_VARLEN_HUB,
 }
 
 
@@ -53,7 +59,7 @@ def _get_current_attention_backend(processor: Optional["AceStepAttnProcessor2_0"
 
 
 def _is_flash_attention_backend(processor: Optional["AceStepAttnProcessor2_0"] = None) -> bool:
-    return _get_current_attention_backend(processor) in _FLASH_ATTENTION_BACKEND_TO_VARLEN
+    return _get_current_attention_backend(processor) in _FLASH_ATTENTION_BACKENDS
 
 
 # --------------------------------------------------------------------------- #
@@ -181,15 +187,6 @@ class AceStepAttnProcessor2_0:
         if not hasattr(F, "scaled_dot_product_attention"):
             raise ImportError("AceStepAttnProcessor2_0 requires PyTorch 2.0. Please upgrade your pytorch version.")
 
-    @staticmethod
-    def _padding_mask_from_attention_mask(attention_mask: torch.Tensor) -> torch.Tensor:
-        if attention_mask.ndim == 2:
-            return attention_mask.to(torch.bool)
-        if attention_mask.ndim == 4:
-            keep_mask = attention_mask if attention_mask.dtype == torch.bool else attention_mask == 0
-            return keep_mask.any(dim=(1, 2))
-        raise ValueError(f"Unsupported ACE-Step attention mask shape for flash attention: {attention_mask.shape}")
-
     def __call__(
         self,
         attn: "AceStepAttention",
@@ -220,15 +217,28 @@ class AceStepAttnProcessor2_0:
         dispatch_backend = self._attention_backend
         sliding_window = getattr(attn, "sliding_window", None)
 
-        if backend in _FLASH_ATTENTION_BACKEND_TO_VARLEN:
+        if backend in _FLASH_ATTENTION_BACKENDS:
             if attention_mask is not None:
-                padding_mask = self._padding_mask_from_attention_mask(attention_mask)
+                if attention_mask.ndim == 2:
+                    padding_mask = attention_mask.to(torch.bool)
+                elif attention_mask.ndim == 4:
+                    keep_mask = attention_mask if attention_mask.dtype == torch.bool else attention_mask == 0
+                    padding_mask = keep_mask.any(dim=(1, 2))
+                else:
+                    raise ValueError(
+                        f"Unsupported ACE-Step attention mask shape for flash attention: {attention_mask.shape}"
+                    )
+
                 has_padding = not torch.all(padding_mask).item()
-                attention_mask = None
                 if has_padding:
-                    dispatch_backend = _FLASH_ATTENTION_BACKEND_TO_VARLEN[backend]
-                    _maybe_download_kernel_for_backend(dispatch_backend)
                     attention_mask = padding_mask
+                    if backend not in _FLASH_ATTENTION_VARLEN_BACKENDS:
+                        raise ValueError(
+                            "ACE-Step flash attention received a padded attention mask. Use `flash_varlen` or "
+                            "`flash_varlen_hub` for batched prompts with padding, or use an unpadded batch with `flash`."
+                        )
+                else:
+                    attention_mask = None
 
             if not is_cross and sliding_window is not None and key.shape[1] > sliding_window:
                 # ACE-Step's dense mask keeps `abs(i - j) <= sliding_window`; flash-attn uses the same inclusive
@@ -570,7 +580,7 @@ class AceStepTransformer1DModel(ModelMixin, ConfigMixin, AttentionMixin, CacheMi
         position_embeddings = (cos, sin)
 
         sliding_attn_mask = None
-        if not _is_flash_attention_backend():
+        if not _is_flash_attention_backend(self.layers[0].self_attn.processor):
             sliding_attn_mask = _create_4d_mask(
                 seq_len=seq_len,
                 dtype=dtype,

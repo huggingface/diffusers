@@ -268,18 +268,6 @@ class AceStepPipeline(DiffusionPipeline):
                     f"For repaint, need `repainting_start` < `repainting_end` (got {repainting_start} / {repainting_end})."
                 )
 
-    def _variant_defaults(self) -> dict:
-        """Per-variant sampling defaults matching the original `inference.py`.
-
-        Turbo variants ship with guidance distilled into weights (CFG off by default). Base / SFT variants use APG
-        guidance through the learned `AceStepConditionEncoder.null_condition_emb`. All variants default to an 8-step
-        schedule at `shift=1.0` per `acestep/inference.py:GenerationParams` — base / sft users typically override
-        `num_inference_steps` to 30–60 for higher quality.
-        """
-        if self.is_turbo:
-            return {"num_inference_steps": 8, "shift": 1.0, "guidance_scale": 1.0}
-        return {"num_inference_steps": 8, "shift": 1.0, "guidance_scale": 7.0}
-
     @staticmethod
     def _get_task_instruction(
         task_type: str = "text2music",
@@ -794,12 +782,9 @@ class AceStepPipeline(DiffusionPipeline):
         lyrics: Union[str, List[str]] = "",
         audio_duration: float = 60.0,
         vocal_language: Union[str, List[str]] = "en",
-        # These three have variant-aware defaults: if left as `None`, they fall back
-        # to the variant recipe (turbo: 8 steps / shift=1.0 / guidance=1.0; base+sft:
-        # 8 steps / shift=1.0 / guidance=7.0). See `_variant_defaults`.
-        num_inference_steps: Optional[int] = None,
-        guidance_scale: Optional[float] = None,
-        shift: Optional[float] = None,
+        num_inference_steps: int = 8,
+        guidance_scale: float = 7.0,
+        shift: float = 3.0,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
         latents: Optional[torch.Tensor] = None,
         output_type: Optional[str] = "pt",
@@ -931,17 +916,6 @@ class AceStepPipeline(DiffusionPipeline):
         device = self._execution_device
         dtype = self.transformer.dtype
         acoustic_dim = self.transformer.config.audio_acoustic_hidden_dim
-
-        # Variant-aware defaults. The converter writes `is_turbo` / `model_version` into
-        # the transformer config. Turbo checkpoints have CFG distilled into the weights;
-        # base/SFT use APG via the learned `null_condition_emb`.
-        variant_defaults = self._variant_defaults()
-        if num_inference_steps is None:
-            num_inference_steps = variant_defaults["num_inference_steps"]
-        if shift is None:
-            shift = variant_defaults["shift"]
-        if guidance_scale is None:
-            guidance_scale = variant_defaults["guidance_scale"]
 
         # Turbo checkpoints have guidance distilled into the weights: running CFG
         # produces over-guided audio. Warn + coerce to 1.0 so users who forward their

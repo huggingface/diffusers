@@ -197,7 +197,7 @@ class AceStepLyricEncoder(ModelMixin, ConfigMixin):
         cos, sin = _ace_step_rotary_freqs(seq_len, self.head_dim, self.rope_theta, device, dtype)
         position_embeddings = (cos, sin)
 
-        if _is_flash_attention_backend():
+        if _is_flash_attention_backend(self.layers[0].self_attn.processor):
             full_attn_mask = attention_mask
             sliding_attn_mask = attention_mask
         else:
@@ -337,7 +337,7 @@ class AceStepTimbreEncoder(ModelMixin, ConfigMixin):
         position_embeddings = (cos, sin)
 
         sliding_attn_mask = None
-        if not _is_flash_attention_backend():
+        if not _is_flash_attention_backend(self.layers[0].self_attn.processor):
             sliding_attn_mask = _create_4d_mask(
                 seq_len=seq_len,
                 dtype=dtype,
@@ -538,7 +538,7 @@ class AceStepAttentionPooler(nn.Module):
         device = hidden_states.device
         position_embeddings = _ace_step_rotary_freqs(seq_len, self.head_dim, self.rope_theta, device, dtype)
         sliding_attn_mask = None
-        if not _is_flash_attention_backend():
+        if not _is_flash_attention_backend(self.layers[0].self_attn.processor):
             sliding_attn_mask = _create_4d_mask(
                 seq_len=seq_len,
                 dtype=dtype,
@@ -633,7 +633,7 @@ class AceStepAudioTokenDetokenizer(ModelMixin, ConfigMixin):
         device = hidden_states.device
         position_embeddings = _ace_step_rotary_freqs(seq_len, self.head_dim, self.rope_theta, device, dtype)
         sliding_attn_mask = None
-        if not _is_flash_attention_backend():
+        if not _is_flash_attention_backend(self.layers[0].self_attn.processor):
             sliding_attn_mask = _create_4d_mask(
                 seq_len=seq_len,
                 dtype=dtype,

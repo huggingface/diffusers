@@ -22,13 +22,13 @@ This pipeline was contributed by the [ACE-Step Team](https://github.com/ace-step
 
 ## Variants
 
-ACE-Step 1.5 ships three DiT checkpoints that share the same transformer architecture but differ in sampling recipe; the pipeline auto-detects the variant from the loaded transformer config and applies the matching defaults.
+ACE-Step 1.5 ships three DiT checkpoints that share the same transformer architecture but differ in guidance behavior; the pipeline auto-detects turbo checkpoints from the loaded transformer config and ignores CFG guidance for those guidance-distilled weights.
 
-| Variant | CFG | Default steps | Default `guidance_scale` | HF repo |
-|---------|:---:|:-------------:|:------------------------:|---------|
-| `turbo` (guidance-distilled) | off | 8 | 1.0 | [`ACE-Step/Ace-Step1.5`](https://huggingface.co/ACE-Step/Ace-Step1.5) |
-| `base` | on | 8 | 7.0 | [`ACE-Step/acestep-v15-base`](https://huggingface.co/ACE-Step/acestep-v15-base) |
-| `sft` | on | 8 | 7.0 | [`ACE-Step/acestep-v15-sft`](https://huggingface.co/ACE-Step/acestep-v15-sft) |
+| Variant | CFG | Default steps | Default `guidance_scale` | Default `shift` | HF repo |
+|---------|:---:|:-------------:|:------------------------:|:---------------:|---------|
+| `turbo` (guidance-distilled) | off | 8 | ignored | 3.0 | [`ACE-Step/Ace-Step1.5`](https://huggingface.co/ACE-Step/Ace-Step1.5) |
+| `base` | on | 8 | 7.0 | 3.0 | [`ACE-Step/acestep-v15-base`](https://huggingface.co/ACE-Step/acestep-v15-base) |
+| `sft` | on | 8 | 7.0 | 3.0 | [`ACE-Step/acestep-v15-sft`](https://huggingface.co/ACE-Step/acestep-v15-sft) |
 
 Base and SFT use the learned `null_condition_emb` for classifier-free guidance (APG, not vanilla CFG). Users commonly override `num_inference_steps` to 30–60 on base/sft for higher quality.
 
@@ -42,11 +42,12 @@ When constructing a prompt, keep in mind:
 
 During inference:
 
-* `num_inference_steps`, `guidance_scale`, and `shift` fall back to the variant-specific defaults shown above when left as `None`.
+* `num_inference_steps`, `guidance_scale`, and `shift` default to the values shown above. For turbo checkpoints, `guidance_scale > 1.0` is ignored with a warning because guidance is distilled into the weights.
 * The `audio_duration` parameter controls the length of the generated music in seconds.
 * The `vocal_language` parameter should match the language of the lyrics.
 * `pipe.sample_rate` and `pipe.latents_per_second` are sourced from the VAE config (48000 Hz and 25 fps for the released checkpoints).
 * For audio-to-audio tasks, pass `src_audio` and `reference_audio` as preprocessed stereo tensors at `pipe.sample_rate`.
+* `flash` and `flash_hub` use FlashAttention's native sliding-window support for ACE-Step's self-attention and expect unpadded text batches. If a batched prompt contains padding, use `flash_varlen` or `flash_varlen_hub` instead. Single-prompt inference with `padding="longest"` is normally unpadded.
 
 ```python
 import torch
