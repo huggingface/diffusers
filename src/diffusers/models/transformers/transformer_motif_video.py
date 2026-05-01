@@ -173,49 +173,49 @@ class MotifVideoCrossAttnProcessor2_0:
     def __call__(
         self,
         attn: "MotifVideoAttention",
-        query_source: torch.Tensor,
-        encoder_hidden_states: torch.Tensor,
+        attn_output: torch.Tensor,
+        norm_encoder_hidden_states: torch.Tensor,
         attention_mask: Optional[torch.Tensor] = None,
         image_rotary_emb: Optional[torch.Tensor] = None,
         image_embed_seq_len: int = 0,
     ) -> torch.Tensor:
-        txt_kv = encoder_hidden_states[:, image_embed_seq_len:, :]
+        txt_kv = norm_encoder_hidden_states[:, image_embed_seq_len:, :]
 
         # Build text mask
         text_mask = None
         if attention_mask is not None:
-            video_tokens = query_source.shape[1]
-            text_mask = attention_mask[:, :, :, video_tokens + image_embed_seq_len :]
+            text_mask = attention_mask[:, :, :, image_embed_seq_len - norm_encoder_hidden_states.shape[1] :]
 
-        # Q projection from query_source
-        cross_q = attn.cross_attn_query_proj(query_source)
-        if attn.cross_attn_query_norm is not None:
-            cross_q = attn.cross_attn_query_norm(cross_q)
-        cross_q = cross_q.unflatten(2, (attn.heads, -1))
+        # Q projection from query
+        query = attn.cross_attn_query_proj(attn_output)
 
         # KV projections (reuse attn.to_k/to_v)
         key = attn.to_k(txt_kv)
         value = attn.to_v(txt_kv)
+
+        query = query.unflatten(2, (attn.heads, -1))
         key = key.unflatten(2, (attn.heads, -1))
         value = value.unflatten(2, (attn.heads, -1))
+
+        if attn.norm_q is not None:
+            query = attn.norm_q(query)
         if attn.norm_k is not None:
             key = attn.norm_k(key)
 
-        # RoPE
         if image_rotary_emb is not None:
-            cross_q = apply_rotary_emb(cross_q, image_rotary_emb, sequence_dim=1)
+            query = apply_rotary_emb(query, image_rotary_emb, sequence_dim=1)
 
         # Attention
         cross_output = dispatch_attention_fn(
-            cross_q,
-            key,
-            value,
+            query=query,
+            key=key,
+            value=value,
             attn_mask=text_mask,
             backend=self._attention_backend,
             parallel_config=self._parallel_config,
         )
         cross_output = cross_output.flatten(2, 3)
-        cross_output = cross_output.to(cross_q.dtype)
+        cross_output = cross_output.to(query.dtype)
 
         return attn.cross_attn_out_proj(cross_output)
 
@@ -545,8 +545,8 @@ class MotifVideoSingleTransformerBlock(nn.Module):
         if self.attn.enable_text_cross_attention:
             cross_output = self.attn.cross_attn_processor(
                 self.attn,
-                query_source=attn_output,
-                encoder_hidden_states=norm_encoder_hidden_states,
+                attn_output=attn_output,
+                norm_encoder_hidden_states=norm_encoder_hidden_states,
                 attention_mask=attention_mask,
                 image_rotary_emb=image_rotary_emb,
                 image_embed_seq_len=image_embed_seq_len,
@@ -636,8 +636,8 @@ class MotifVideoTransformerBlock(nn.Module):
         if self.attn.enable_text_cross_attention:
             cross_output = self.attn.cross_attn_processor(
                 self.attn,
-                query_source=attn_output,
-                encoder_hidden_states=norm_encoder_hidden_states,
+                attn_output=attn_output,
+                norm_encoder_hidden_states=norm_encoder_hidden_states,
                 attention_mask=attention_mask,
                 image_rotary_emb=image_rotary_emb,
                 image_embed_seq_len=image_embed_seq_len,
