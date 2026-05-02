@@ -380,10 +380,9 @@ class JoyImageEditTransformer3DModel(ModelMixin, ConfigMixin, AttentionMixin):
     _supports_gradient_checkpointing = True
     _keep_in_fp32_modules = [
         "time_embedder",
-        "scale_shift_table",
         "norm1",
         "norm2",
-        "norm3",
+        "norm_out",
     ]
     _repeated_blocks = ["JoyImageTransformerBlock"]
 

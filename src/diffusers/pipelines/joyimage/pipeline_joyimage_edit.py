@@ -176,30 +176,23 @@ class JoyImageEditPipeline(DiffusionPipeline):
 
     def _get_last_decoder_hidden_states(self, forward_fn, **kwargs):
         """
-        Run ``forward_fn(**kwargs)`` while capturing the **pre-norm** output of
-        the last decoder layer via a forward hook.
+        Run ``forward_fn(**kwargs)`` while capturing the **pre-norm** output of the last decoder layer via a forward
+        hook.
 
-        This model was trained on transformers 4.57, where
-        ``Qwen3VLForConditionalGeneration``'s ``@check_model_inputs`` decorator
-        monkey-patched each decoder layer to collect ``hidden_states``.  Because
-        ``Qwen3VLCausalLMOutputWithPast`` has no ``last_hidden_state`` field,
-        ``tie_last_hidden_states`` had no effect and ``hidden_states[-1]`` was
-        the **pre-norm** output of the last decoder layer.
+        This model was trained on transformers 4.57, where ``Qwen3VLForConditionalGeneration``'s
+        ``@check_model_inputs`` decorator monkey-patched each decoder layer to collect ``hidden_states``. Because
+        ``Qwen3VLCausalLMOutputWithPast`` has no ``last_hidden_state`` field, ``tie_last_hidden_states`` had no effect
+        and ``hidden_states[-1]`` was the **pre-norm** output of the last decoder layer.
 
-        Starting from https://github.com/huggingface/transformers/pull/42609
-        the CausalLM forward explicitly returns
-        ``hidden_states=outputs.hidden_states`` from the inner model.
-        Combined with the subsequent ``@check_model_inputs`` →
-        ``@capture_outputs`` migration (transformers 5.x), ``hidden_states``
-        is now captured at the ``Qwen3VLTextModel`` level where
-        ``tie_last_hidden_states=True`` replaces ``hidden_states[-1]`` with
-        the **post-norm** ``last_hidden_state``.  The CausalLM simply passes
-        this through, so ``hidden_states[-1]`` becomes post-norm – a ~10×
-        scale difference (std ≈ 2 vs ≈ 21) that breaks inference.
+        Starting from https://github.com/huggingface/transformers/pull/42609 the CausalLM forward explicitly returns
+        ``hidden_states=outputs.hidden_states`` from the inner model. Combined with the subsequent
+        ``@check_model_inputs`` → ``@capture_outputs`` migration (transformers 5.x), ``hidden_states`` is now captured
+        at the ``Qwen3VLTextModel`` level where ``tie_last_hidden_states=True`` replaces ``hidden_states[-1]`` with the
+        **post-norm** ``last_hidden_state``. The CausalLM simply passes this through, so ``hidden_states[-1]`` becomes
+        post-norm – a ~10× scale difference (std ≈ 2 vs ≈ 21) that breaks inference.
 
-        This helper bypasses both mechanisms by hooking the last decoder layer
-        directly, returning the raw pre-norm output regardless of the
-        transformers version.
+        This helper bypasses both mechanisms by hooking the last decoder layer directly, returning the raw pre-norm
+        output regardless of the transformers version.
         """
         captured = {}
 
@@ -294,7 +287,10 @@ class JoyImageEditPipeline(DiffusionPipeline):
         self,
         prompt: Union[str, List[str]],
         device: Optional[torch.device] = None,
+        num_images_per_prompt: int = 1,
         images: Optional[torch.Tensor] = None,
+        prompt_embeds: Optional[torch.Tensor] = None,
+        prompt_embeds_mask: Optional[torch.Tensor] = None,
         template_type: Optional[str] = "multiple_images",
         max_sequence_length: Optional[int] = None,
     ) -> tuple[torch.Tensor, torch.Tensor]:
@@ -307,7 +303,10 @@ class JoyImageEditPipeline(DiffusionPipeline):
         Args:
             prompt: Prompt string(s), optionally containing ``<image>\\n`` tokens.
             device: Target device.
+            num_images_per_prompt: Number of outputs to generate per prompt.
             images: Pixel tensors corresponding to the inline image tokens.
+            prompt_embeds: Pre-computed prompt embeddings.
+            prompt_embeds_mask: Attention mask for pre-computed embeddings.
             template_type: Must be ``"multiple_images"``.
             max_sequence_length: If set, truncate the output to this length
                 (keeping the last ``max_sequence_length`` tokens).
@@ -318,45 +317,53 @@ class JoyImageEditPipeline(DiffusionPipeline):
         if template_type != "multiple_images":
             raise ValueError(f"Expected template_type 'multiple_images', but got '{template_type}'")
         device = device or self._execution_device
-        template = self.prompt_template_encode[template_type]
-        drop_idx = self.prompt_template_encode_start_idx[template_type]
 
         prompt = [prompt] if isinstance(prompt, str) else prompt
+        batch_size = len(prompt) if prompt_embeds is None else prompt_embeds.shape[0]
 
-        prompt = [f"<image>\n{p}" for p in prompt]
-        prompt = [f"<|im_start|>user\n{p}<|im_end|>\n" for p in prompt]
+        if prompt_embeds is None:
+            template = self.prompt_template_encode[template_type]
+            drop_idx = self.prompt_template_encode_start_idx[template_type]
 
-        prompt = [p.replace("<image>\n", "<|vision_start|><|image_pad|><|vision_end|>") for p in prompt]
-        prompt = [template.format(p) for p in prompt]
+            prompt = [f"<image>\n{p}" for p in prompt]
+            prompt = [f"<|im_start|>user\n{p}<|im_end|>\n" for p in prompt]
 
-        if images is not None:
-            if not isinstance(images, list):
-                images = [images] * len(prompt)
-            elif len(images) < len(prompt) and len(prompt) % len(images) == 0:
-                images = images * (len(prompt) // len(images))
+            prompt = [p.replace("<image>\n", "<|vision_start|><|image_pad|><|vision_end|>") for p in prompt]
+            prompt = [template.format(p) for p in prompt]
 
-        inputs = self.processor(
-            text=prompt,
-            images=images,
-            padding=True,
-            return_tensors="pt",
-        ).to(device)
+            if images is not None:
+                if not isinstance(images, list):
+                    images = [images] * len(prompt)
+                elif len(images) < len(prompt) and len(prompt) % len(images) == 0:
+                    images = images * (len(prompt) // len(images))
 
-        last_hidden_states = self._get_last_decoder_hidden_states(self.text_encoder, **inputs)
+            inputs = self.processor(
+                text=prompt,
+                images=images,
+                padding=True,
+                return_tensors="pt",
+            ).to(device)
 
-        prompt_embeds = last_hidden_states[:, drop_idx:]
-        prompt_embeds_mask = inputs["attention_mask"][:, drop_idx:]
+            last_hidden_states = self._get_last_decoder_hidden_states(self.text_encoder, **inputs)
 
-        if max_sequence_length is not None and prompt_embeds.shape[1] > max_sequence_length:
-            prompt_embeds = prompt_embeds[:, -max_sequence_length:, :]
-            prompt_embeds_mask = prompt_embeds_mask[:, -max_sequence_length:]
+            prompt_embeds = last_hidden_states[:, drop_idx:]
+            prompt_embeds_mask = inputs["attention_mask"][:, drop_idx:]
+
+            if max_sequence_length is not None and prompt_embeds.shape[1] > max_sequence_length:
+                prompt_embeds = prompt_embeds[:, -max_sequence_length:, :]
+                prompt_embeds_mask = prompt_embeds_mask[:, -max_sequence_length:]
+
+        _, seq_len, _ = prompt_embeds.shape
+        prompt_embeds = prompt_embeds.repeat(1, num_images_per_prompt, 1)
+        prompt_embeds = prompt_embeds.view(batch_size * num_images_per_prompt, seq_len, -1)
+        prompt_embeds_mask = prompt_embeds_mask.repeat(1, num_images_per_prompt, 1)
+        prompt_embeds_mask = prompt_embeds_mask.view(batch_size * num_images_per_prompt, seq_len)
 
         return prompt_embeds, prompt_embeds_mask
 
     def encode_prompt(
         self,
         prompt: Union[str, List[str]],
-        images: Optional[torch.Tensor] = None,
         device: Optional[torch.device] = None,
         num_images_per_prompt: int = 1,
         prompt_embeds: Optional[torch.Tensor] = None,
@@ -365,14 +372,12 @@ class JoyImageEditPipeline(DiffusionPipeline):
         template_type: str = "image",
     ) -> tuple[torch.Tensor, torch.Tensor]:
         """
-        Encode a text prompt (and optional inline images) into embeddings.
+        Encode a text prompt into embeddings (text-only path).
 
-        When ``images`` is provided the multi-image encoding path is used; otherwise the text-only Qwen tokenizer path
-        is used. Pre-computed ``prompt_embeds`` bypass encoding entirely.
+        Pre-computed ``prompt_embeds`` bypass encoding entirely.
 
         Args:
             prompt: Prompt string or list of prompt strings.
-            images: Optional image tensors for multi-image conditioning.
             device: Target device.
             num_images_per_prompt: Number of outputs to generate per prompt.
             prompt_embeds: Pre-computed prompt embeddings.
@@ -383,14 +388,6 @@ class JoyImageEditPipeline(DiffusionPipeline):
         Returns:
             Tuple of (prompt_embeds, prompt_embeds_mask).
         """
-        if images is not None:
-            return self.encode_prompt_multiple_images(
-                prompt=prompt,
-                images=images,
-                device=device,
-                max_sequence_length=max_sequence_length,
-            )
-
         device = device or self._execution_device
         prompt = [prompt] if isinstance(prompt, str) else prompt
         batch_size = len(prompt) if prompt_embeds is None else prompt_embeds.shape[0]
@@ -646,7 +643,6 @@ class JoyImageEditPipeline(DiffusionPipeline):
         callback_on_step_end_tensor_inputs: List[str] = ["latents"],
         max_sequence_length: int = 4096,
         enable_denormalization: bool = True,
-        **kwargs,
     ):
         r"""
         Generate an edited image conditioned on a reference image and a text prompt.
@@ -695,14 +691,10 @@ class JoyImageEditPipeline(DiffusionPipeline):
                 callback_kwargs: Dict)``.
             callback_on_step_end_tensor_inputs (`List[str]`, *optional*, defaults to ``["latents"]``):
                 Tensor keys included in ``callback_kwargs`` for ``callback_on_step_end``.
-            enable_tiling (`bool`, *optional*, defaults to `False`):
-                Enable tiled VAE decoding to reduce peak memory usage.
             max_sequence_length (`int`, *optional*, defaults to 4096):
                 Maximum sequence length for prompt encoding.
             enable_denormalization (`bool`, *optional*, defaults to `True`):
                 Denormalise latents before VAE decoding.
-            **kwargs:
-                Additional keyword arguments for forward compatibility.
 
         Examples:
 
@@ -745,33 +737,51 @@ class JoyImageEditPipeline(DiffusionPipeline):
         # num_items: 1 for unconditional generation, 2 for reference-image editing.
         num_items = 1 if image is None else 2
 
-        # Encode the conditioning prompt (and reference image when present).
-        prompt_embeds, prompt_embeds_mask = self.encode_prompt(
-            prompt=prompt,
-            prompt_embeds=prompt_embeds,
-            prompt_embeds_mask=prompt_embeds_mask,
-            images=processed_image,
-            device=device,
-            num_images_per_prompt=num_images_per_prompt,
-            max_sequence_length=max_sequence_length,
-            template_type="image",
-        )
+        # Encode the conditioning prompt.
+        if processed_image is not None:
+            prompt_embeds, prompt_embeds_mask = self.encode_prompt_multiple_images(
+                prompt=prompt,
+                images=processed_image,
+                prompt_embeds=prompt_embeds,
+                prompt_embeds_mask=prompt_embeds_mask,
+                device=device,
+                num_images_per_prompt=num_images_per_prompt,
+                max_sequence_length=max_sequence_length,
+            )
+        else:
+            prompt_embeds, prompt_embeds_mask = self.encode_prompt(
+                prompt=prompt,
+                prompt_embeds=prompt_embeds,
+                prompt_embeds_mask=prompt_embeds_mask,
+                device=device,
+                num_images_per_prompt=num_images_per_prompt,
+                max_sequence_length=max_sequence_length,
+            )
 
         if self.do_classifier_free_guidance:
             # Build default negative prompts when none are provided.
             if negative_prompt is None and negative_prompt_embeds is None:
                 negative_prompt = [""] * batch_size
 
-            negative_prompt_embeds, negative_prompt_embeds_mask = self.encode_prompt(
-                prompt=negative_prompt,
-                prompt_embeds=negative_prompt_embeds,
-                prompt_embeds_mask=negative_prompt_embeds_mask,
-                images=processed_image,
-                device=device,
-                num_images_per_prompt=num_images_per_prompt,
-                max_sequence_length=max_sequence_length,
-                template_type="image",
-            )
+            if processed_image is not None:
+                negative_prompt_embeds, negative_prompt_embeds_mask = self.encode_prompt_multiple_images(
+                    prompt=negative_prompt,
+                    images=processed_image,
+                    prompt_embeds=negative_prompt_embeds,
+                    prompt_embeds_mask=negative_prompt_embeds_mask,
+                    device=device,
+                    num_images_per_prompt=num_images_per_prompt,
+                    max_sequence_length=max_sequence_length,
+                )
+            else:
+                negative_prompt_embeds, negative_prompt_embeds_mask = self.encode_prompt(
+                    prompt=negative_prompt,
+                    prompt_embeds=negative_prompt_embeds,
+                    prompt_embeds_mask=negative_prompt_embeds_mask,
+                    device=device,
+                    num_images_per_prompt=num_images_per_prompt,
+                    max_sequence_length=max_sequence_length,
+                )
 
         timesteps, num_inference_steps = retrieve_timesteps(
             self.scheduler,
@@ -862,7 +872,7 @@ class JoyImageEditPipeline(DiffusionPipeline):
                 latents = self.denormalize_latents(latents)
 
             image = self.vae.decode(latents, return_dict=False)[0]
-            image = image.unflatten(0, (batch_size, -1))
+            image = image.unflatten(0, (batch_size * num_images_per_prompt, -1))
         else:
             image = latents
 
