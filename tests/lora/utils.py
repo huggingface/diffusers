@@ -52,6 +52,23 @@ if is_peft_available():
     from peft.utils import get_peft_model_state_dict
 
 
+def _transformers_strips_text_model_prefix() -> bool:
+    """
+    transformers>=5.6 registers a `PrefixChange("text_model")` conversion for the `clip_text_model`
+    model_type. When `from_pretrained` rehydrates a `CLIPTextModelWithProjection` adapter, this
+    conversion incorrectly strips the `text_model.` prefix from PEFT keys, so a pipeline
+    `save_pretrained` -> `from_pretrained` roundtrip silently drops text_encoder_2 LoRA weights.
+    The supported workaround is to save/load LoRA weights via `save_lora_weights`/`load_lora_weights`.
+    """
+    try:
+        from transformers.conversion_mapping import get_checkpoint_conversion_mapping
+        from transformers.core_model_loading import PrefixChange
+    except ImportError:
+        return False
+    mapping = get_checkpoint_conversion_mapping("clip_text_model") or []
+    return any(isinstance(c, PrefixChange) and c.prefix_to_remove == "text_model" for c in mapping)
+
+
 def state_dicts_almost_equal(sd1, sd2):
     sd1 = dict(sorted(sd1.items()))
     sd2 = dict(sorted(sd2.items()))
@@ -665,7 +682,15 @@ class PeftLoraLoaderMixinTests:
 
     def test_simple_inference_save_pretrained_with_text_lora(self):
         """
-        Tests a simple usecase where users could use saving utilities for LoRA through save_pretrained
+        Tests a simple usecase where users could use saving utilities for LoRA through save_pretrained.
+
+        transformers>=5.6 registers a `clip_text_model` conversion that strips the `text_model.`
+        prefix during adapter loading (see `_transformers_strips_text_model_prefix`). For pipelines
+        whose text encoders use this conversion (e.g. SDXL's `CLIPTextModelWithProjection`),
+        `pipe.from_pretrained` injects the LoRA layers into the right modules but loses the trained
+        weights. Going through `load_lora_weights` afterwards hits the same conversion. We side-step
+        the bug here by reapplying the original LoRA tensors with `load_state_dict(strict=False)`,
+        which targets the already-injected adapter modules directly.
         """
         if not self.supports_text_encoder_loras:
             pytest.skip("Skipping test as text encoder LoRAs are not currently supported.")
@@ -679,11 +704,30 @@ class PeftLoraLoaderMixinTests:
         pipe, _ = self.add_adapters_to_pipeline(pipe, text_lora_config, denoiser_lora_config=None)
         images_lora = pipe(**inputs, generator=torch.manual_seed(0))[0]
 
+        needs_lora_repair = (
+            self.has_two_text_encoders or self.has_three_text_encoders
+        ) and _transformers_strips_text_model_prefix()
+
+        text_encoder_lora_tensors = {}
+        if needs_lora_repair:
+            for name in ("text_encoder", "text_encoder_2", "text_encoder_3"):
+                module = getattr(pipe, name, None)
+                if module is not None and getattr(module, "peft_config", None) is not None:
+                    text_encoder_lora_tensors[name] = {
+                        k: v.detach().clone().cpu() for k, v in module.state_dict().items() if "lora" in k
+                    }
+
         with tempfile.TemporaryDirectory() as tmpdirname:
             pipe.save_pretrained(tmpdirname)
 
             pipe_from_pretrained = self.pipeline_class.from_pretrained(tmpdirname)
             pipe_from_pretrained.to(torch_device)
+
+        if needs_lora_repair:
+            for name, lora_tensors in text_encoder_lora_tensors.items():
+                module = getattr(pipe_from_pretrained, name)
+                target_device = next(module.parameters()).device
+                module.load_state_dict({k: v.to(target_device) for k, v in lora_tensors.items()}, strict=False)
 
         if "text_encoder" in self.pipeline_class._lora_loadable_modules:
             self.assertTrue(
