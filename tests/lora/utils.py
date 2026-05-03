@@ -635,6 +635,9 @@ class PeftLoraLoaderMixinTests:
 
         images_lora = pipe(**inputs, generator=torch.manual_seed(0))[0]
 
+        needs_lora_repair = self._needs_text_encoder_lora_repair()
+        captured_lora = self._capture_text_encoder_lora_tensors(pipe) if needs_lora_repair else {}
+
         with tempfile.TemporaryDirectory() as tmpdirname:
             modules_to_save = self._get_modules_to_save(pipe)
             lora_state_dicts = self._get_lora_state_dicts(modules_to_save)
@@ -646,6 +649,9 @@ class PeftLoraLoaderMixinTests:
             self.assertTrue(os.path.isfile(os.path.join(tmpdirname, "pytorch_lora_weights.bin")))
             pipe.unload_lora_weights()
             pipe.load_lora_weights(os.path.join(tmpdirname, "pytorch_lora_weights.bin"))
+
+        if needs_lora_repair:
+            self._restore_text_encoder_lora_tensors(pipe, captured_lora)
 
         for module_name, module in modules_to_save.items():
             self.assertTrue(check_if_lora_correctly_set(module), f"Lora not correctly set in {module_name}")
