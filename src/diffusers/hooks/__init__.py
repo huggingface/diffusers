@@ -28,3 +28,4 @@ if is_torch_available():
     from .smoothed_energy_guidance_utils import SmoothedEnergyGuidanceConfig
     from .taylorseer_cache import TaylorSeerCacheConfig, apply_taylorseer_cache
     from .teacache import TeaCacheConfig, apply_teacache
+    from .text_kv_cache import TextKVCacheConfig, apply_text_kv_cache

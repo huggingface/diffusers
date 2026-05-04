@@ -1251,7 +1251,7 @@ def main(args):
 
                 # text encoding.
                 captions = batch["captions"]
-                text_encoding_pipeline = text_encoding_pipeline.to("cuda")
+                text_encoding_pipeline = text_encoding_pipeline.to(accelerator.device)
                 with torch.no_grad():
                     prompt_embeds, pooled_prompt_embeds, text_ids = text_encoding_pipeline.encode_prompt(
                         captions, prompt_2=None
