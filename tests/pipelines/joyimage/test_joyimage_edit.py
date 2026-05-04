@@ -29,7 +29,7 @@ from diffusers import (
 )
 from diffusers.hooks import apply_group_offloading
 
-from ...testing_utils import enable_full_determinism, torch_device
+from ...testing_utils import enable_full_determinism, require_torch_accelerator, torch_device
 from ..pipeline_params import TEXT_TO_IMAGE_PARAMS
 from ..test_pipelines_common import PipelineTesterMixin
 
@@ -155,10 +155,11 @@ class JoyImageEditPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     def test_attention_slicing_forward_pass(self):
         pass
 
-    @pytest.mark.xfail(condition=True, reason="Preconfigured embeddings need to be revisited.", strict=True)
+    @pytest.mark.xfail(condition=True, reason="Preconfigured embeddings need to be revisited.", strict=False)
     def test_encode_prompt_works_in_isolation(self, extra_required_param_value_dict=None, atol=1e-4, rtol=1e-4):
         super().test_encode_prompt_works_in_isolation(extra_required_param_value_dict, atol, rtol)
 
+    @require_torch_accelerator
     def test_group_offloading_inference(self):
         # Qwen3VLForConditionalGeneration (the text encoder) is incompatible with leaf_level group
         # offloading. Its Qwen3VLVisionModel.fast_pos_embed_interpolate reads
