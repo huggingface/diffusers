@@ -21,7 +21,7 @@ from diffusers import QwenImageTransformer2DModel
 from diffusers.models.transformers.transformer_qwenimage import compute_text_seq_len_from_mask
 from diffusers.utils.torch_utils import randn_tensor
 
-from ...testing_utils import enable_full_determinism, is_kernels_available, torch_device
+from ...testing_utils import enable_full_determinism, torch_device
 from ..testing_utils import (
     AttentionTesterMixin,
     BaseModelTesterConfig,
@@ -285,30 +285,8 @@ class TestQwenImageTransformerContextParallelAttnBackends(
 ):
     """Context Parallel inference x attention backends tests for QwenImage Transformer"""
 
-    @pytest.mark.parametrize("cp_type", ["ulysses_degree", "ring_degree"])
-    @pytest.mark.parametrize(
-        "attention_backend",
-        [
-            "native",
-            pytest.param(
-                "flash_hub",
-                marks=pytest.mark.skipif(not is_kernels_available(), reason="`kernels` is not available."),
-            ),
-            pytest.param(
-                "_flash_3_hub",
-                marks=[
-                    pytest.mark.skipif(not is_kernels_available(), reason="`kernels` is not available."),
-                    pytest.mark.xfail(reason="`attn_mask` is not supported for flash-attn 3.", strict=True),
-                ],
-            ),
-        ],
-    )
-    @pytest.mark.parametrize("ulysses_anything", [True, False])
-    @torch.no_grad()
-    def test_context_parallel_attn_backend_inference(self, cp_type, attention_backend, ulysses_anything):
-        if cp_type == "ring_degree" and attention_backend in ("flash_hub", "_flash_3_hub"):
-            pytest.xfail("`attn_mask` is not yet supported for flash-attn hub kernels with ring attention.")
-        super().test_context_parallel_attn_backend_inference(cp_type, attention_backend, ulysses_anything)
+    # flash_hub and _flash_3_hub do not support attn_mask
+    unsupported_attn_backends = ["flash_hub", "_flash_3_hub"]
 
 
 class TestQwenImageTransformerLoRA(QwenImageTransformerTesterConfig, LoraTesterMixin):
