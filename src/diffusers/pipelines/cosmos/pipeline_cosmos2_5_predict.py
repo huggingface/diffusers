@@ -236,20 +236,10 @@ class Cosmos2_5_PredictBasePipeline(DiffusionPipeline, CosmosLoraLoaderMixin):
         self.vae_scale_factor_spatial = 2 ** len(self.vae.temperal_downsample) if getattr(self, "vae", None) else 8
         self.video_processor = VideoProcessor(vae_scale_factor=self.vae_scale_factor_spatial, resample="bilinear")
 
-        assert getattr(self.vae.config, "latents_mean", None), "VAE configuration must define `latents_mean`."
-        assert getattr(self.vae.config, "latents_std", None), "VAE configuration must define `latents_std`."
-
         latents_mean = torch.tensor(self.vae.config.latents_mean).view(1, self.vae.config.z_dim, 1, 1, 1).float()
         latents_std = torch.tensor(self.vae.config.latents_std).view(1, self.vae.config.z_dim, 1, 1, 1).float()
         self.latents_mean = latents_mean
         self.latents_std = 1.0 / latents_std
-
-    def get_latent_shape_cthw(self, height: int, width: int, num_frames: int):
-        C = self.vae.config.z_dim
-        T = (num_frames - 1) // self.vae_scale_factor_temporal + 1
-        H = height // self.vae_scale_factor_spatial
-        W = width // self.vae_scale_factor_spatial
-        return (C, T, H, W)
 
     def create_condition_mask(self, latent_shape, device, dtype, num_cond_latent_frames):
         bsz, C, T, H, W = latent_shape
@@ -438,9 +428,11 @@ class Cosmos2_5_PredictBasePipeline(DiffusionPipeline, CosmosLoraLoaderMixin):
             )
 
         B = batch_size
-        C, T, H, W = self.get_latent_shape_cthw(height, width, num_frames_out)
+        C = num_channels_latents
+        T = (num_frames_out - 1) // self.vae_scale_factor_temporal + 1
+        H = height // self.vae_scale_factor_spatial
+        W = width // self.vae_scale_factor_spatial
         shape = (B, C, T, H, W)
-        assert C == num_channels_latents, f"Expected number of channels to be {num_channels_latents}, but got {C}."
 
         if num_frames_in == 0:
             if latents is None:

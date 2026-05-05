@@ -143,7 +143,12 @@ def main():
         pipe.fuse_lora(lora_scale=1.0)
         print(f"Loaded LoRA weights from {args.lora_dir}")
 
-    latent_shape = pipe.get_latent_shape_cthw(args.height, args.width, args.num_output_frames)
+    latent_shape = (
+        pipe.vae.config.z_dim,
+        (args.num_output_frames - 1) // pipe.vae_scale_factor_temporal + 1,
+        args.height // pipe.vae_scale_factor_spatial,
+        args.width // pipe.vae_scale_factor_spatial,
+    )
     noises = arch_invariant_rand(
         (args.batch_size, *latent_shape), dtype=torch.float32, device=args.device, seed=args.seed
     )

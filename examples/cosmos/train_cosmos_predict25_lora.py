@@ -614,7 +614,12 @@ def main():
     )
 
     padding_mask = torch.zeros(1, 1, args.height, args.width, dtype=dit_dtype, device=device)
-    latent_shape = pipe.get_latent_shape_cthw(args.height, args.width, args.num_frames)
+    latent_shape = (
+        pipe.vae.config.z_dim,
+        (args.num_frames - 1) // pipe.vae_scale_factor_temporal + 1,
+        args.height // pipe.vae_scale_factor_spatial,
+        args.width // pipe.vae_scale_factor_spatial,
+    )
     latents_mean = pipe.latents_mean.float().to(device)
     latents_std = pipe.latents_std.float().to(device)  # 1/σ
     # Start training
