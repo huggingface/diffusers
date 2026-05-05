@@ -75,13 +75,6 @@ def parse_args():
         help="Variant of the model files of the pretrained model identifier from huggingface.co/models, 'e.g.' fp16",
     )
     parser.add_argument(
-        "--text_encoder_attn_implementation",
-        type=str,
-        default="flash_attention_2",
-        choices=["eager", "sdpa", "flash_attention_2"],
-        help="The attention implementation to use for the text encoder (Qwen2.5 VL).",
-    )
-    parser.add_argument(
         "--train_data_dir",
         type=str,
         default="datasets/cosmos_nemo_assets",
@@ -516,7 +509,6 @@ def main():
         args.pretrained_model_name_or_path,
         revision=args.revision,
         torch_dtype=torch.bfloat16,
-        text_encoder_attn_implementation=args.text_encoder_attn_implementation,
         safety_checker=MockSafetyChecker(),
     )
 

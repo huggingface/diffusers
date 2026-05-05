@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import os
 from typing import Callable
 
 import numpy as np
@@ -244,28 +243,6 @@ class Cosmos2_5_PredictBasePipeline(DiffusionPipeline, CosmosLoraLoaderMixin):
         latents_std = torch.tensor(self.vae.config.latents_std).view(1, self.vae.config.z_dim, 1, 1, 1).float()
         self.latents_mean = latents_mean
         self.latents_std = 1.0 / latents_std
-
-    @classmethod
-    def from_pretrained(cls, pretrained_model_name_or_path, **kwargs):
-        text_encoder_attn_implementation = kwargs.pop("text_encoder_attn_implementation", "flash_attention_2")
-        if "text_encoder" not in kwargs:
-            load_kwargs = {
-                "revision": kwargs.get("revision", None),
-                "device_map": kwargs.get("device_map", None),
-                "torch_dtype": kwargs.get("torch_dtype", None),
-                "attn_implementation": text_encoder_attn_implementation,
-            }
-
-            if os.path.isdir(pretrained_model_name_or_path):
-                text_encoder_path = os.path.join(pretrained_model_name_or_path, "text_encoder")
-            else:
-                text_encoder_path = pretrained_model_name_or_path
-                load_kwargs["subfolder"] = "text_encoder"
-            kwargs["text_encoder"] = Qwen2_5_VLForConditionalGeneration.from_pretrained(
-                text_encoder_path, **load_kwargs
-            )
-
-        return super().from_pretrained(pretrained_model_name_or_path, **kwargs)
 
     def get_latent_shape_cthw(self, height: int, width: int, num_frames: int):
         C = self.vae.config.z_dim

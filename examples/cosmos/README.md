@@ -14,13 +14,6 @@ cd examples/cosmos
 pip install -r requirements.txt
 ```
 
-> [!NOTE]
-> `flash-attn` is required for the default `flash_attention_2` text encoder attention implementation and must be installed separately after PyTorch:
-> ```bash
-> pip install flash-attn --no-build-isolation
-> ```
-> If your hardware does not support it, pass `--text_encoder_attn_implementation sdpa` to the training and eval scripts instead.
-
 ## Data preparation
 
 The training script expects a dataset directory with the following layout:
