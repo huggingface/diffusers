@@ -75,10 +75,9 @@ class CosmosEmbedding(nn.Module):
         self.norm = RMSNorm(embedding_dim, eps=1e-6, elementwise_affine=True)
 
     def forward(self, hidden_states: torch.Tensor, timestep: torch.Tensor) -> torch.Tensor:
-        with torch.amp.autocast(timestep.device.type, dtype=torch.float32):
-            timesteps_proj = self.time_proj(timestep).to(torch.float32)
-            temb = self.t_embedder(timesteps_proj)
-            embedded_timestep = self.norm(timesteps_proj)
+        timesteps_proj = self.time_proj(timestep.float())
+        temb = self.t_embedder(timesteps_proj)
+        embedded_timestep = self.norm(timesteps_proj)
         return temb, embedded_timestep
 
 
@@ -134,14 +133,12 @@ class CosmosAdaLayerNormZero(nn.Module):
         temb: torch.Tensor | None = None,
     ) -> torch.Tensor:
         original_dtype = hidden_states.dtype
-        with torch.amp.autocast(hidden_states.device.type, dtype=torch.float32):
-            embedded_timestep = self.activation(embedded_timestep)
-            embedded_timestep = self.linear_1(embedded_timestep)
-            embedded_timestep = self.linear_2(embedded_timestep)
-
-            if temb is not None:
-                embedded_timestep = embedded_timestep + temb
-            shift, scale, gate = embedded_timestep.chunk(3, dim=-1)
+        embedded_timestep = self.activation(embedded_timestep.float())
+        embedded_timestep = self.linear_1(embedded_timestep)
+        embedded_timestep = self.linear_2(embedded_timestep)
+        if temb is not None:
+            embedded_timestep = embedded_timestep + temb.float()
+        shift, scale, gate = embedded_timestep.chunk(3, dim=-1)
         shift = shift.to(original_dtype)
         scale = scale.to(original_dtype)
         gate = gate.to(original_dtype)
@@ -611,7 +608,7 @@ class CosmosTransformer3DModel(ModelMixin, ConfigMixin, FromOriginalModelMixin, 
     _supports_gradient_checkpointing = True
     _skip_layerwise_casting_patterns = ["patch_embed", "final_layer", "norm"]
     _no_split_modules = ["CosmosTransformerBlock"]
-    _keep_in_fp32_modules = ["learnable_pos_embed"]
+    _keep_in_fp32_modules = ["learnable_pos_embed", "time_embed", "norm1", "norm2", "norm3", "norm_out", "proj_out"]
 
     @register_to_config
     def __init__(
@@ -809,9 +806,8 @@ class CosmosTransformer3DModel(ModelMixin, ConfigMixin, FromOriginalModelMixin, 
                 )
 
         # 8. Output norm & projection & unpatchify
-        with torch.amp.autocast(hidden_states.device.type, dtype=torch.float32):
-            hidden_states = self.norm_out(hidden_states, embedded_timestep, temb)
-            hidden_states = self.proj_out(hidden_states)
+        hidden_states = self.norm_out(hidden_states.float(), embedded_timestep, temb)
+        hidden_states = self.proj_out(hidden_states)
         hidden_states = hidden_states.unflatten(2, (p_h, p_w, p_t, -1))
         hidden_states = hidden_states.unflatten(1, (post_patch_num_frames, post_patch_height, post_patch_width))
         # NOTE: The permutation order here is not the inverse operation of what happens when patching as usually expected.
