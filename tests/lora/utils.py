@@ -698,7 +698,7 @@ class PeftLoraLoaderMixinTests:
             state_dict = {
                 f"text_encoder.{module_name}": param
                 for module_name, param in get_peft_model_state_dict(pipe.text_encoder).items()
-                if "text_model.encoder.layers.4" not in module_name
+                if "encoder.layers.4" not in module_name
             }
 
         if self.has_two_text_encoders or self.has_three_text_encoders:
@@ -707,7 +707,7 @@ class PeftLoraLoaderMixinTests:
                     {
                         f"text_encoder_2.{module_name}": param
                         for module_name, param in get_peft_model_state_dict(pipe.text_encoder_2).items()
-                        if "text_model.encoder.layers.4" not in module_name
+                        if "encoder.layers.4" not in module_name
                     }
                 )
 
@@ -859,8 +859,9 @@ class PeftLoraLoaderMixinTests:
         )
 
         if "text_encoder" in self.pipeline_class._lora_loadable_modules:
+            text_encoder_root = getattr(pipe.text_encoder, "text_model", pipe.text_encoder)
             self.assertTrue(
-                pipe.text_encoder.text_model.encoder.layers[0].self_attn.q_proj.scaling["default"] == 1.0,
+                text_encoder_root.encoder.layers[0].self_attn.q_proj.scaling["default"] == 1.0,
                 "The scaling parameter has not been correctly restored!",
             )
 
