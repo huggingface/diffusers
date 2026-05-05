@@ -5,7 +5,6 @@
 import argparse
 import os
 
-import numpy as np
 import torch
 from torch.utils.data import DataLoader, Dataset
 from tqdm import tqdm
@@ -65,12 +64,6 @@ def collate_fn(batch):
         "prompts": [item["prompt"] for item in batch],
         "stems": [item["stem"] for item in batch],
     }
-
-
-def arch_invariant_rand(shape, dtype, device, seed=None):
-    rng = np.random.RandomState(seed)
-    random_array = rng.standard_normal(shape).astype(np.float32)
-    return torch.from_numpy(random_array).to(dtype=dtype, device=device)
 
 
 def parse_args():
@@ -143,15 +136,6 @@ def main():
         pipe.fuse_lora(lora_scale=1.0)
         print(f"Loaded LoRA weights from {args.lora_dir}")
 
-    latent_shape = (
-        pipe.vae.config.z_dim,
-        (args.num_output_frames - 1) // pipe.vae_scale_factor_temporal + 1,
-        args.height // pipe.vae_scale_factor_spatial,
-        args.width // pipe.vae_scale_factor_spatial,
-    )
-    noises = arch_invariant_rand(
-        (args.batch_size, *latent_shape), dtype=torch.float32, device=args.device, seed=args.seed
-    )
     progress = tqdm(total=len(dataset), desc="Generating")
     for batch in dataloader:
         images = batch["images"]
@@ -167,7 +151,6 @@ def main():
                 num_inference_steps=args.num_steps,
                 height=args.height,
                 width=args.width,
-                latents=noises,
             ).frames[0]  # NOTE: batch_size == 1
 
             out_path = os.path.join(args.output_dir, f"{stem}.mp4")
