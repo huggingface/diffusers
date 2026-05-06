@@ -498,7 +498,7 @@ class MotifVideoImage2VideoPipeline(DiffusionPipeline):
         height,
         width,
         batch_size,
-        image=None,
+        image,
         callback_on_step_end_tensor_inputs=None,
         prompt_embeds=None,
         negative_prompt_embeds=None,
@@ -509,6 +509,9 @@ class MotifVideoImage2VideoPipeline(DiffusionPipeline):
             raise ValueError(
                 f"`height` and `width` have to be divisible by {self.vae_scale_factor_spatial} but are {height} and {width}."
             )
+
+        if image is None:
+            raise ValueError("`image` is required for image-to-video generation.")
 
         if image is not None:
             if isinstance(image, list):
@@ -757,15 +760,14 @@ class MotifVideoImage2VideoPipeline(DiffusionPipeline):
         device = self._execution_device
 
         # 3. Preprocess image
-        if latents is None:
-            # preprocess_video expects a list of video frames
-            if not isinstance(image, list):
-                image = [image]
+        # preprocess_video expects a list of video frames
+        if not isinstance(image, list):
+            image = [image]
 
-            video = self.video_processor.preprocess_video(image, height=height, width=width)
-            # preprocess_video returns (B, C, T, H, W), permute to (B, T, C, H, W)
-            video = video.permute(0, 2, 1, 3, 4)
-            video = video.to(device=device, dtype=self.transformer.dtype)
+        video = self.video_processor.preprocess_video(image, height=height, width=width)
+        # preprocess_video returns (B, C, T, H, W), permute to (B, T, C, H, W)
+        video = video.permute(0, 2, 1, 3, 4)
+        video = video.to(device=device, dtype=self.transformer.dtype)
 
         # 4. Prepare latents
         num_channels_latents = self.vae.config.z_dim
