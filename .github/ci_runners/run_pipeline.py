@@ -33,7 +33,7 @@ def save_image(image, output_dir: str, filename: str) -> str:
     return filepath
 
 
-def load_pipeline(pipeline_class_name: str, module_path: str, weight_path: str, backend: str, device: str, torch_dtype: torch.dtype):
+def load_pipeline(pipeline_class_name: str, module_path: str, weight_path: str, model_id: str, backend: str, device: str, torch_dtype: torch.dtype):
     module = importlib.import_module(module_path)
     pipeline_cls = getattr(module, pipeline_class_name)
 
@@ -45,9 +45,15 @@ def load_pipeline(pipeline_class_name: str, module_path: str, weight_path: str, 
         )
     elif backend == "modelscope":
         from modelscope import snapshot_download
-        local_path = snapshot_download(weight_path)
+        local_path = snapshot_download(model_id or weight_path)
         pipe = pipeline_cls.from_pretrained(
             local_path,
+            torch_dtype=torch_dtype,
+            trust_remote_code=True,
+        )
+    elif backend == "hf":
+        pipe = pipeline_cls.from_pretrained(
+            model_id,
             torch_dtype=torch_dtype,
             trust_remote_code=True,
         )
@@ -182,6 +188,7 @@ def generate_reference_only(config_dir: str, output_dir: str):
     pipe = load_pipeline(
         pipeline_class, module_path,
         variant_data.get("weight_path", variant_data["model_id"]),
+        variant_data["model_id"],
         variant_data.get("backend", "local"),
         device, torch_dtype,
     )
