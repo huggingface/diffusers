@@ -21,6 +21,7 @@ import torch
 
 from ..configuration_utils import ConfigMixin, register_to_config
 from ..utils import BaseOutput, is_scipy_available, logging
+from ..utils.torch_utils import randn_tensor
 from .scheduling_utils import SchedulerMixin
 
 
@@ -507,7 +508,7 @@ class FlowMatchEulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
 
         if self.config.stochastic_sampling:
             x0 = sample - current_sigma * model_output
-            noise = torch.randn_like(sample)
+            noise = randn_tensor(sample.shape, generator=generator, device=sample.device, dtype=sample.dtype)
             prev_sample = (1.0 - next_sigma) * x0 + next_sigma * noise
         else:
             prev_sample = sample + dt * model_output
