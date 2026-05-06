@@ -1,9 +1,11 @@
+import importlib.metadata
 import tempfile
 import unittest
 
 import numpy as np
 import pytest
 import torch
+from packaging import version
 
 from diffusers import DiffusionPipeline
 from diffusers.models.attention_processor import Attention, AttnAddedKVProcessor
@@ -87,9 +89,10 @@ class DeprecatedAttentionBlockTests(unittest.TestCase):
         return pytestconfig.getoption("dist") == "loadfile"
 
     @pytest.mark.xfail(
-        condition=torch.device(torch_device).type == "cuda" and is_dist_enabled,
-        reason="Test currently fails on our GPU  CI because of `loadfile`. Note that it only fails when the tests are distributed from `pytest ... tests/models`. If the tests are run individually, even with `loadfile` it won't fail.",
-        strict=True,
+        condition=(torch.device(torch_device).type == "cuda" and is_dist_enabled)
+        or version.parse(importlib.metadata.version("transformers")).is_devrelease,
+        reason="Test currently fails on our GPU CI because of `loadfile` or with source installation of transformers due to CLIPTextModel key prefix changes.",
+        strict=False,
     )
     def test_conversion_when_using_device_map(self):
         pipe = DiffusionPipeline.from_pretrained(

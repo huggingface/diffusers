@@ -64,7 +64,7 @@ from diffusers.utils.import_utils import is_xformers_available
 
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
-check_min_version("0.38.0.dev0")
+check_min_version("0.39.0.dev0")
 
 logger = get_logger(__name__)
 
@@ -874,10 +874,11 @@ def main(args):
             token_embeds[x] = token_embeds[y]
 
         # Freeze all parameters except for the token embeddings in text encoder
+        text_module = text_encoder.text_model if hasattr(text_encoder, "text_model") else text_encoder
         params_to_freeze = itertools.chain(
-            text_encoder.text_model.encoder.parameters(),
-            text_encoder.text_model.final_layer_norm.parameters(),
-            text_encoder.text_model.embeddings.position_embedding.parameters(),
+            text_module.encoder.parameters(),
+            text_module.final_layer_norm.parameters(),
+            text_module.embeddings.position_embedding.parameters(),
         )
         freeze_params(params_to_freeze)
     ########################################################
