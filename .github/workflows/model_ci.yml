@@ -7,6 +7,7 @@ on:
 
 env:
   DIFFUSERS_IS_CI: yes
+  PYTORCH_NPU_ALLOC_CONF: expandable_segments:True
 
 jobs:
   run_pipelines:
