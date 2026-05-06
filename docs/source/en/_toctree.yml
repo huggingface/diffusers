@@ -727,6 +727,8 @@
       title: EulerAncestralDiscreteScheduler
     - local: api/schedulers/euler
       title: EulerDiscreteScheduler
+    - local: api/schedulers/flow_map_euler_discrete
+      title: FlowMapEulerDiscreteScheduler
     - local: api/schedulers/flow_match_euler_discrete
       title: FlowMatchEulerDiscreteScheduler
     - local: api/schedulers/flow_match_heun_discrete
