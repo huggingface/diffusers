@@ -109,6 +109,7 @@ class MotifVideoPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             "scheduler": scheduler,
             "text_encoder": text_encoder,
             "tokenizer": tokenizer,
+            "feature_extractor": None,
             "guider": guider,
         }
         return components
