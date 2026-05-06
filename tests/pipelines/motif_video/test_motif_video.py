@@ -146,6 +146,5 @@ class MotifVideoPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
         self.assertEqual(generated_video.shape, (9, 3, 16, 16))
 
-    @unittest.skip("MotifVideo uses guider pattern instead of guidance_scale")
     def test_inference_batch_single_identical(self):
         pass
