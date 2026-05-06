@@ -76,6 +76,12 @@ class AuraFlowPatchEmbed(nn.Module):
         h_p, w_p = h // self.patch_size, w // self.patch_size
         h_max, w_max = int(self.pos_embed_max_size**0.5), int(self.pos_embed_max_size**0.5)
 
+        if h_p > h_max or w_p > w_max:
+            raise ValueError(
+                f"Input latent size ({h_p}x{w_p} patches) exceeds the positional embedding grid "
+                f"({h_max}x{w_max}). Use a smaller resolution or increase pos_embed_max_size."
+            )
+
         # Calculate the top-left corner indices for the centered patch grid
         starth = h_max // 2 - h_p // 2
         startw = w_max // 2 - w_p // 2
