@@ -252,7 +252,7 @@ class ModuleGroup:
             )
 
     def _gate_default_stream_on_transfer(self):
-        """Block the default stream on the transfer stream completing.
+        """Block the default stream on the transfer stream completing (HIP-only).
 
         Without this barrier, the first op on the default stream (e.g. the first
         matmul of the loaded module) can begin executing before the non-blocking
@@ -260,15 +260,16 @@ class ModuleGroup:
         reads. The PyTorch streams contract assigns this synchronization to the
         user; see
         https://docs.pytorch.org/docs/stable/notes/cuda.html#cuda-streams.
-        No-op when streams aren't enabled.
+
+        Scoped to HIP per maintainer request: CUDA hides this race via implicit
+        driver-level ordering, so applying the gate there is unnecessary today.
+        Will be extended to other backends if community reports surface.
+        No-op when streams aren't enabled or when not running on HIP.
         """
-        if self.stream is None:
+        if self.stream is None or torch.version.hip is None:
             return
         current_default = self._torch_accelerator_module.current_stream()
-        if hasattr(current_default, "wait_stream"):
-            current_default.wait_stream(self.stream)
-        else:
-            self.stream.synchronize()
+        current_default.wait_stream(self.stream)
 
     def _onload_from_disk(self):
         self._check_disk_offload_torchao()
