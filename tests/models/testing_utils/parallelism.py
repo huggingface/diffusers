@@ -405,7 +405,7 @@ class ContextParallelAttentionBackendsTesterMixin:
             pytest.skip("Model does not have a _cp_plan defined for context parallel inference.")
 
         if attention_backend in self.unsupported_attn_backends:
-            pytest.xfail(f"{attention_backend} is not supported for this model.")
+            pytest.skip(f"{attention_backend} is not supported for this model.")
 
         if cp_type == "ring_degree":
             if attention_backend == AttentionBackendName.NATIVE:
