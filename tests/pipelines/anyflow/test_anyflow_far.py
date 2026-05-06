@@ -100,6 +100,7 @@ class AnyFlowFARPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             init_flowmap_model=True,
             gate_value=0.25,
             deltatime_type="r",
+            chunk_partition=[1, 1, 1],
         )
 
         components = {

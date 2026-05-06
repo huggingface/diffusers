@@ -395,6 +395,10 @@ class AnyFlowPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         prompt_embeds: Optional[torch.Tensor] = None,
         negative_prompt_embeds: Optional[torch.Tensor] = None,
         guidance_scale: float = 1.0,
+        callback_on_step_end: Optional[
+            Union[Callable[[int, int, Dict], None], PipelineCallback, MultiPipelineCallbacks]
+        ] = None,
+        callback_on_step_end_tensor_inputs: Optional[List[str]] = None,
     ):
         r"""
         Three-segment Flow-Map backward simulation used as the on-policy rollout for stage-2 DMD
@@ -436,6 +440,7 @@ class AnyFlowPipeline(DiffusionPipeline, WanLoraLoaderMixin):
             context_length = context_sequence.shape[1]
 
         def inference_range(latents, timesteps):
+            nonlocal prompt_embeds, negative_prompt_embeds
 
             for i, t in enumerate(tqdm(timesteps[:-1])):
                 r = timesteps[i + 1]
@@ -472,6 +477,20 @@ class AnyFlowPipeline(DiffusionPipeline, WanLoraLoaderMixin):
                     noise_pred = noise_uncond + guidance_scale * (noise_pred - noise_uncond)
 
                 latents = self.scheduler.step(noise_pred, latents, t, r)
+
+                if callback_on_step_end is not None:
+                    callback_kwargs = {}
+                    for k in callback_on_step_end_tensor_inputs or []:
+                        if k == "latents":
+                            callback_kwargs[k] = latents
+                        elif k == "prompt_embeds":
+                            callback_kwargs[k] = prompt_embeds
+                        elif k == "negative_prompt_embeds":
+                            callback_kwargs[k] = negative_prompt_embeds
+                    callback_outputs = callback_on_step_end(self, i, t, callback_kwargs)
+                    latents = callback_outputs.pop("latents", latents)
+                    prompt_embeds = callback_outputs.pop("prompt_embeds", prompt_embeds)
+                    negative_prompt_embeds = callback_outputs.pop("negative_prompt_embeds", negative_prompt_embeds)
 
             return latents
 
@@ -610,6 +629,8 @@ class AnyFlowPipeline(DiffusionPipeline, WanLoraLoaderMixin):
             prompt_embeds=prompt_embeds,
             negative_prompt_embeds=negative_prompt_embeds,
             guidance_scale=guidance_scale,
+            callback_on_step_end=callback_on_step_end,
+            callback_on_step_end_tensor_inputs=callback_on_step_end_tensor_inputs,
         )
         if context_sequence is not None:
             latents[:, :context_length, ...] = context_sequence

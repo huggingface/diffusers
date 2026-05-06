@@ -404,11 +404,16 @@ class AnyFlowFARPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         kv_cache_flag=None,
         grad_timestep=None,
         chunk_partition=None,
+        callback_on_step_end: Optional[
+            Union[Callable[[int, int, Dict], None], PipelineCallback, MultiPipelineCallbacks]
+        ] = None,
+        callback_on_step_end_tensor_inputs: Optional[List[str]] = None,
     ):
         if negative_prompt_embeds is not None:
             prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds], dim=0)
 
         def inference_range(latents, timesteps):
+            nonlocal prompt_embeds, negative_prompt_embeds
 
             for i, t in enumerate(timesteps[:-1]):
                 r = timesteps[i + 1]
@@ -443,6 +448,20 @@ class AnyFlowFARPipeline(DiffusionPipeline, WanLoraLoaderMixin):
                     noise_pred = noise_uncond + guidance_scale * (noise_pred - noise_uncond)
 
                 latents = self.scheduler.step(noise_pred, latents, t, r)
+
+                if callback_on_step_end is not None:
+                    callback_kwargs = {}
+                    for k in callback_on_step_end_tensor_inputs or []:
+                        if k == "latents":
+                            callback_kwargs[k] = latents
+                        elif k == "prompt_embeds":
+                            callback_kwargs[k] = prompt_embeds
+                        elif k == "negative_prompt_embeds":
+                            callback_kwargs[k] = negative_prompt_embeds
+                    callback_outputs = callback_on_step_end(self, i, t, callback_kwargs)
+                    latents = callback_outputs.pop("latents", latents)
+                    prompt_embeds = callback_outputs.pop("prompt_embeds", prompt_embeds)
+                    negative_prompt_embeds = callback_outputs.pop("negative_prompt_embeds", negative_prompt_embeds)
 
             return latents
 
@@ -486,6 +505,10 @@ class AnyFlowFARPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         negative_prompt_embeds: Optional[torch.Tensor] = None,
         guidance_scale: float = 1.0,
         use_kv_cache=True,
+        callback_on_step_end: Optional[
+            Union[Callable[[int, int, Dict], None], PipelineCallback, MultiPipelineCallbacks]
+        ] = None,
+        callback_on_step_end_tensor_inputs: Optional[List[str]] = None,
     ):
         r"""
         Causal counterpart of :meth:`AnyFlowPipeline.training_rollout`. Drives the chunk-level FAR
@@ -604,6 +627,8 @@ class AnyFlowFARPipeline(DiffusionPipeline, WanLoraLoaderMixin):
                     grad_timestep=grad_timestep,
                     guidance_scale=guidance_scale,
                     chunk_partition=chunk_partition[: chunk_idx + 1],
+                    callback_on_step_end=callback_on_step_end,
+                    callback_on_step_end_tensor_inputs=callback_on_step_end_tensor_inputs,
                 )
                 output[:, sum(chunk_partition[:chunk_idx]) : sum(chunk_partition[: chunk_idx + 1])] = pred_latents
 
@@ -764,6 +789,8 @@ class AnyFlowFARPipeline(DiffusionPipeline, WanLoraLoaderMixin):
             prompt_embeds=prompt_embeds,
             negative_prompt_embeds=negative_prompt_embeds,
             guidance_scale=guidance_scale,
+            callback_on_step_end=callback_on_step_end,
+            callback_on_step_end_tensor_inputs=callback_on_step_end_tensor_inputs,
         )
 
         if not output_type == "latent":
