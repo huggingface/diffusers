@@ -303,7 +303,8 @@ class MotifVideoPipeline(DiffusionPipeline):
                 - `prompt_embeds`: The text embeddings for the positive prompt
                 - `negative_prompt_embeds`: The text embeddings for the negative prompt (None if not using guidance)
                 - `prompt_attention_mask`: The attention mask for the positive prompt
-                - `negative_prompt_attention_mask`: The attention mask for the negative prompt (None if not using guidance)
+                - `negative_prompt_attention_mask`: The attention mask for the negative prompt (None if not using
+                  guidance)
         """
         device = device or self._execution_device
 
@@ -365,7 +366,9 @@ class MotifVideoPipeline(DiffusionPipeline):
 
             negative_prompt_attention_mask = negative_prompt_attention_mask.bool()
             negative_prompt_attention_mask = negative_prompt_attention_mask.view(batch_size, -1)
-            negative_prompt_attention_mask = negative_prompt_attention_mask.repeat_interleave(num_videos_per_prompt, dim=0)
+            negative_prompt_attention_mask = negative_prompt_attention_mask.repeat_interleave(
+                num_videos_per_prompt, dim=0
+            )
 
         return (
             prompt_embeds,
@@ -636,16 +639,18 @@ class MotifVideoPipeline(DiffusionPipeline):
         device = self._execution_device
 
         # 3. Prepare text embeddings
-        prompt_embeds, negative_prompt_embeds, prompt_attention_mask, negative_prompt_attention_mask = self.encode_prompt(
-            prompt=prompt,
-            negative_prompt=negative_prompt,
-            num_videos_per_prompt=num_videos_per_prompt,
-            prompt_embeds=prompt_embeds,
-            negative_prompt_embeds=negative_prompt_embeds,
-            prompt_attention_mask=prompt_attention_mask,
-            negative_prompt_attention_mask=negative_prompt_attention_mask,
-            max_sequence_length=max_sequence_length,
-            device=device,
+        prompt_embeds, negative_prompt_embeds, prompt_attention_mask, negative_prompt_attention_mask = (
+            self.encode_prompt(
+                prompt=prompt,
+                negative_prompt=negative_prompt,
+                num_videos_per_prompt=num_videos_per_prompt,
+                prompt_embeds=prompt_embeds,
+                negative_prompt_embeds=negative_prompt_embeds,
+                prompt_attention_mask=prompt_attention_mask,
+                negative_prompt_attention_mask=negative_prompt_attention_mask,
+                max_sequence_length=max_sequence_length,
+                device=device,
+            )
         )
 
         # 4. Prepare latents

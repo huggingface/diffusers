@@ -315,7 +315,8 @@ class MotifVideoImage2VideoPipeline(DiffusionPipeline):
                 - `prompt_embeds`: The text embeddings for the positive prompt
                 - `negative_prompt_embeds`: The text embeddings for the negative prompt (None if not using guidance)
                 - `prompt_attention_mask`: The attention mask for the positive prompt
-                - `negative_prompt_attention_mask`: The attention mask for the negative prompt (None if not using guidance)
+                - `negative_prompt_attention_mask`: The attention mask for the negative prompt (None if not using
+                  guidance)
         """
         device = device or self._execution_device
 
@@ -377,7 +378,9 @@ class MotifVideoImage2VideoPipeline(DiffusionPipeline):
 
             negative_prompt_attention_mask = negative_prompt_attention_mask.bool()
             negative_prompt_attention_mask = negative_prompt_attention_mask.view(batch_size, -1)
-            negative_prompt_attention_mask = negative_prompt_attention_mask.repeat_interleave(num_videos_per_prompt, dim=0)
+            negative_prompt_attention_mask = negative_prompt_attention_mask.repeat_interleave(
+                num_videos_per_prompt, dim=0
+            )
 
         return (
             prompt_embeds,
@@ -519,18 +522,14 @@ class MotifVideoImage2VideoPipeline(DiffusionPipeline):
                         f"`image` must be a 3D tensor [C, H, W] or 4D tensor [B, C, H, W], got {image.dim()}D"
                     )
                 if image.dim() == 4 and image.shape[0] != 1:
-                    raise ValueError(
-                        f"`image` batch size must be 1 when passed as a 4D tensor, got {image.shape[0]}"
-                    )
+                    raise ValueError(f"`image` batch size must be 1 when passed as a 4D tensor, got {image.shape[0]}")
             elif isinstance(image, np.ndarray):
                 if image.ndim not in (3, 4):
                     raise ValueError(
                         f"`image` must be a 3D array [H, W, C] or 4D array [B, H, W, C], got {image.ndim}D"
                     )
                 if image.ndim == 4 and image.shape[0] != 1:
-                    raise ValueError(
-                        f"`image` batch size must be 1 when passed as a 4D array, got {image.shape[0]}"
-                    )
+                    raise ValueError(f"`image` batch size must be 1 when passed as a 4D array, got {image.shape[0]}")
 
         if callback_on_step_end_tensor_inputs is not None and not all(
             k in self._callback_tensor_inputs for k in callback_on_step_end_tensor_inputs
@@ -795,16 +794,18 @@ class MotifVideoImage2VideoPipeline(DiffusionPipeline):
         )
 
         # 5. Prepare text embeddings
-        prompt_embeds, negative_prompt_embeds, prompt_attention_mask, negative_prompt_attention_mask = self.encode_prompt(
-            prompt=prompt,
-            negative_prompt=negative_prompt,
-            num_videos_per_prompt=num_videos_per_prompt,
-            prompt_embeds=prompt_embeds,
-            negative_prompt_embeds=negative_prompt_embeds,
-            prompt_attention_mask=prompt_attention_mask,
-            negative_prompt_attention_mask=negative_prompt_attention_mask,
-            max_sequence_length=max_sequence_length,
-            device=device,
+        prompt_embeds, negative_prompt_embeds, prompt_attention_mask, negative_prompt_attention_mask = (
+            self.encode_prompt(
+                prompt=prompt,
+                negative_prompt=negative_prompt,
+                num_videos_per_prompt=num_videos_per_prompt,
+                prompt_embeds=prompt_embeds,
+                negative_prompt_embeds=negative_prompt_embeds,
+                prompt_attention_mask=prompt_attention_mask,
+                negative_prompt_attention_mask=negative_prompt_attention_mask,
+                max_sequence_length=max_sequence_length,
+                device=device,
+            )
         )
 
         # 6. First frame conditioning
