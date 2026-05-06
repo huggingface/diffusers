@@ -104,7 +104,7 @@ if is_wandb_available():
     import wandb
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
-check_min_version("0.38.0.dev0")
+check_min_version("0.39.0.dev0")
 
 logger = get_logger(__name__)
 
@@ -1665,8 +1665,8 @@ def main(args):
                     model_input = latents_cache[step].mode()
                 else:
                     with offload_models(vae, device=accelerator.device, offload=args.offload):
-                        pixel_values = batch["pixel_values"].to(dtype=vae.dtype)
-                    model_input = vae.encode(pixel_values).latent_dist.mode()
+                        pixel_values = batch["pixel_values"].to(device=accelerator.device, dtype=vae.dtype)
+                        model_input = vae.encode(pixel_values).latent_dist.mode()
 
                 model_input = (model_input - vae_config_shift_factor) * vae_config_scaling_factor
                 # Sample noise that we'll add to the latents

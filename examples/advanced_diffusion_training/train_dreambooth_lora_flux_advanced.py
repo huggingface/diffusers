@@ -94,7 +94,7 @@ if is_wandb_available():
     import wandb
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
-check_min_version("0.38.0.dev0")
+check_min_version("0.39.0.dev0")
 
 logger = get_logger(__name__)
 
@@ -895,9 +895,8 @@ class TokenEmbeddingsHandler:
                 self.train_ids_t5 = tokenizer.convert_tokens_to_ids(self.inserting_toks)
 
             # random initialization of new tokens
-            embeds = (
-                text_encoder.text_model.embeddings.token_embedding if idx == 0 else text_encoder.encoder.embed_tokens
-            )
+            text_module = text_encoder.text_model if hasattr(text_encoder, "text_model") else text_encoder
+            embeds = text_module.embeddings.token_embedding if idx == 0 else text_encoder.encoder.embed_tokens
             std_token_embedding = embeds.weight.data.std()
 
             logger.info(f"{idx} text encoder's std_token_embedding: {std_token_embedding}")
@@ -905,9 +904,7 @@ class TokenEmbeddingsHandler:
             train_ids = self.train_ids if idx == 0 else self.train_ids_t5
             # if initializer_concept are not provided, token embeddings are initialized randomly
             if args.initializer_concept is None:
-                hidden_size = (
-                    text_encoder.text_model.config.hidden_size if idx == 0 else text_encoder.encoder.config.hidden_size
-                )
+                hidden_size = text_module.config.hidden_size if idx == 0 else text_encoder.encoder.config.hidden_size
                 embeds.weight.data[train_ids] = (
                     torch.randn(len(train_ids), hidden_size).to(device=self.device).to(dtype=self.dtype)
                     * std_token_embedding
@@ -940,7 +937,8 @@ class TokenEmbeddingsHandler:
         idx_to_text_encoder_name = {0: "clip_l", 1: "t5"}
         for idx, text_encoder in enumerate(self.text_encoders):
             train_ids = self.train_ids if idx == 0 else self.train_ids_t5
-            embeds = text_encoder.text_model.embeddings.token_embedding if idx == 0 else text_encoder.shared
+            text_module = text_encoder.text_model if hasattr(text_encoder, "text_model") else text_encoder
+            embeds = text_module.embeddings.token_embedding if idx == 0 else text_encoder.shared
             assert embeds.weight.data.shape[0] == len(self.tokenizers[idx]), "Tokenizers should be the same."
             new_token_embeddings = embeds.weight.data[train_ids]
 
@@ -962,7 +960,8 @@ class TokenEmbeddingsHandler:
     @torch.no_grad()
     def retract_embeddings(self):
         for idx, text_encoder in enumerate(self.text_encoders):
-            embeds = text_encoder.text_model.embeddings.token_embedding if idx == 0 else text_encoder.shared
+            text_module = text_encoder.text_model if hasattr(text_encoder, "text_model") else text_encoder
+            embeds = text_module.embeddings.token_embedding if idx == 0 else text_encoder.shared
             index_no_updates = self.embeddings_settings[f"index_no_updates_{idx}"]
             embeds.weight.data[index_no_updates] = (
                 self.embeddings_settings[f"original_embeddings_{idx}"][index_no_updates]
@@ -2112,7 +2111,8 @@ def main(args):
                 if args.train_text_encoder:
                     text_encoder_one.train()
                     # set top parameter requires_grad = True for gradient checkpointing works
-                    unwrap_model(text_encoder_one).text_model.embeddings.requires_grad_(True)
+                    _te_one = unwrap_model(text_encoder_one)
+                    (_te_one.text_model if hasattr(_te_one, "text_model") else _te_one).embeddings.requires_grad_(True)
                 elif args.train_text_encoder_ti:  # textual inversion / pivotal tuning
                     text_encoder_one.train()
                 if args.enable_t5_ti:

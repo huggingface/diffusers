@@ -103,9 +103,16 @@ post-patch:
 
 codex:
 	ln -snf .ai/AGENTS.md AGENTS.md
+	mkdir -p .agents
+	rm -rf .agents/skills
+	ln -snf ../.ai/skills .agents/skills
 
 claude:
 	ln -snf .ai/AGENTS.md CLAUDE.md
+	mkdir -p .claude
+	rm -rf .claude/skills
+	ln -snf ../.ai/skills .claude/skills
 
 clean-ai:
 	rm -f AGENTS.md CLAUDE.md
+	rm -rf .agents/skills .claude/skills

@@ -195,7 +195,8 @@ class LTX2LatentUpsamplerModel(ModelMixin, ConfigMixin):
         dims: int = 3,
         spatial_upsample: bool = True,
         temporal_upsample: bool = False,
-        rational_spatial_scale: float | None = 2.0,
+        rational_spatial_scale: float = 2.0,
+        use_rational_resampler: bool = True,
     ):
         super().__init__()
 
@@ -220,7 +221,7 @@ class LTX2LatentUpsamplerModel(ModelMixin, ConfigMixin):
                 PixelShuffleND(3),
             )
         elif spatial_upsample:
-            if rational_spatial_scale is not None:
+            if use_rational_resampler:
                 self.upsampler = SpatialRationalResampler(mid_channels=mid_channels, scale=rational_spatial_scale)
             else:
                 self.upsampler = torch.nn.Sequential(

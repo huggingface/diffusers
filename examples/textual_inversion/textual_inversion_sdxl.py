@@ -77,7 +77,7 @@ else:
 
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
-check_min_version("0.38.0.dev0")
+check_min_version("0.39.0.dev0")
 
 logger = get_logger(__name__)
 
@@ -717,12 +717,14 @@ def main():
     unet.requires_grad_(False)
 
     # Freeze all parameters except for the token embeddings in text encoder
-    text_encoder_1.text_model.encoder.requires_grad_(False)
-    text_encoder_1.text_model.final_layer_norm.requires_grad_(False)
-    text_encoder_1.text_model.embeddings.position_embedding.requires_grad_(False)
-    text_encoder_2.text_model.encoder.requires_grad_(False)
-    text_encoder_2.text_model.final_layer_norm.requires_grad_(False)
-    text_encoder_2.text_model.embeddings.position_embedding.requires_grad_(False)
+    text_module_1 = text_encoder_1.text_model if hasattr(text_encoder_1, "text_model") else text_encoder_1
+    text_module_1.encoder.requires_grad_(False)
+    text_module_1.final_layer_norm.requires_grad_(False)
+    text_module_1.embeddings.position_embedding.requires_grad_(False)
+    text_module_2 = text_encoder_2.text_model if hasattr(text_encoder_2, "text_model") else text_encoder_2
+    text_module_2.encoder.requires_grad_(False)
+    text_module_2.final_layer_norm.requires_grad_(False)
+    text_module_2.embeddings.position_embedding.requires_grad_(False)
 
     if args.gradient_checkpointing:
         text_encoder_1.gradient_checkpointing_enable()
@@ -767,8 +769,12 @@ def main():
     optimizer = optimizer_class(
         # only optimize the embeddings
         [
-            text_encoder_1.text_model.embeddings.token_embedding.weight,
-            text_encoder_2.text_model.embeddings.token_embedding.weight,
+            (
+                text_encoder_1.text_model if hasattr(text_encoder_1, "text_model") else text_encoder_1
+            ).embeddings.token_embedding.weight,
+            (
+                text_encoder_2.text_model if hasattr(text_encoder_2, "text_model") else text_encoder_2
+            ).embeddings.token_embedding.weight,
         ],
         lr=args.learning_rate,
         betas=(args.adam_beta1, args.adam_beta2),

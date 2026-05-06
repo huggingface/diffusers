@@ -1,0 +1,110 @@
+name: PR Labeler
+
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  label:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/labeler@8558fd74291d67161a8a78ce36a881fa63b766a9  # v5
+        with:
+          sync-labels: true
+
+  missing-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+      - name: Check for missing tests
+        id: check
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+        run: |
+          gh api --paginate "repos/${REPO}/pulls/${PR_NUMBER}/files" \
+            | python utils/check_test_missing.py
+      - name: Add or remove missing-tests label
+        if: always()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+        run: |
+          HAS_LABEL=$(gh api "repos/${REPO}/issues/${PR_NUMBER}/labels" --jq 'any(.[]; .name == "missing-tests")')
+          if [ "${{ steps.check.outcome }}" = "failure" ]; then
+            if [ "$HAS_LABEL" != "true" ]; then
+              gh pr edit "$PR_NUMBER" --add-label "missing-tests"
+            fi
+          else
+            if [ "$HAS_LABEL" = "true" ]; then
+              gh pr edit "$PR_NUMBER" --remove-label "missing-tests" 2>/dev/null || true
+            fi
+          fi
+
+  fixes-issue:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check for linked closing issues
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+        run: |
+          OWNER="${REPO%/*}"
+          NAME="${REPO#*/}"
+          COUNT=$(gh api graphql \
+            -F owner="$OWNER" -F name="$NAME" -F number="$PR_NUMBER" \
+            -f query='
+              query($owner: String!, $name: String!, $number: Int!) {
+                repository(owner: $owner, name: $name) {
+                  pullRequest(number: $number) {
+                    closingIssuesReferences(first: 1) {
+                      totalCount
+                    }
+                  }
+                }
+              }' \
+            --jq '.data.repository.pullRequest.closingIssuesReferences.totalCount')
+          HAS_LABEL=$(gh api "repos/${REPO}/issues/${PR_NUMBER}/labels" --jq 'any(.[]; .name == "fixes-issue")')
+          if [ "${COUNT:-0}" -gt 0 ]; then
+            if [ "$HAS_LABEL" != "true" ]; then
+              gh pr edit "$PR_NUMBER" --repo "$REPO" --add-label "fixes-issue"
+            fi
+          else
+            if [ "$HAS_LABEL" = "true" ]; then
+              gh pr edit "$PR_NUMBER" --repo "$REPO" --remove-label "fixes-issue" 2>/dev/null || true
+            fi
+          fi
+
+  size-label:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Label PR by diff size
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+        run: |
+          DIFF_SIZE=$(gh api "repos/${REPO}/pulls/${PR_NUMBER}" --jq '.additions + .deletions')
+          if [ "$DIFF_SIZE" -lt 50 ]; then
+            CANDIDATE_LABEL="size/S"
+          elif [ "$DIFF_SIZE" -lt 200 ]; then
+            CANDIDATE_LABEL="size/M"
+          else
+            CANDIDATE_LABEL="size/L"
+          fi
+          CURRENT_LABELS=$(gh api "repos/${REPO}/issues/${PR_NUMBER}/labels" --jq '.[].name')
+          for label in size/S size/M size/L; do
+            if [ "$label" != "$CANDIDATE_LABEL" ] && echo "$CURRENT_LABELS" | grep -qx "$label"; then
+              gh pr edit "$PR_NUMBER" --repo "$REPO" --remove-label "$label" 2>/dev/null || true
+            fi
+          done
+          if ! echo "$CURRENT_LABELS" | grep -qx "$CANDIDATE_LABEL"; then
+            gh pr edit "$PR_NUMBER" --repo "$REPO" --add-label "$CANDIDATE_LABEL"
+          fi

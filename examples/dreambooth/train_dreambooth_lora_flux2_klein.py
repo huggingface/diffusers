@@ -104,7 +104,7 @@ if is_wandb_available():
     import wandb
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
-check_min_version("0.38.0.dev0")
+check_min_version("0.39.0.dev0")
 
 logger = get_logger(__name__)
 
@@ -1249,7 +1249,13 @@ def main(args):
     if args.lora_layers is not None:
         target_modules = [layer.strip() for layer in args.lora_layers.split(",")]
     else:
-        target_modules = ["to_k", "to_q", "to_v", "to_out.0"]
+        # target_modules = ["to_k", "to_q", "to_v", "to_out.0"] # just train transformer_blocks
+
+        # train transformer_blocks and single_transformer_blocks
+        target_modules = ["to_k", "to_q", "to_v", "to_out.0"] + [
+            "to_qkv_mlp_proj",
+            *[f"single_transformer_blocks.{i}.attn.to_out" for i in range(24)],
+        ]
 
     # now we will add new LoRA weights the transformer layers
     transformer_lora_config = LoraConfig(
@@ -1674,17 +1680,20 @@ def main(args):
                     prompt_embeds = prompt_embeds_cache[step]
                     text_ids = text_ids_cache[step]
                 else:
-                    num_repeat_elements = len(prompts)
-                    prompt_embeds = prompt_embeds.repeat(num_repeat_elements, 1, 1)
-                    text_ids = text_ids.repeat(num_repeat_elements, 1, 1)
+                    # With prior preservation, prompt_embeds/text_ids already contain [instance, class] entries,
+                    # while collate_fn orders batches as [inst1..instB, class1..classB]. Repeat each entry along
+                    # dim 0 to preserve that grouping instead of interleaving [inst, class, inst, class, ...].
+                    num_repeat_elements = len(prompts) // 2 if args.with_prior_preservation else len(prompts)
+                    prompt_embeds = prompt_embeds.repeat_interleave(num_repeat_elements, dim=0)
+                    text_ids = text_ids.repeat_interleave(num_repeat_elements, dim=0)
 
                 # Convert images to latent space
                 if args.cache_latents:
                     model_input = latents_cache[step].mode()
                 else:
                     with offload_models(vae, device=accelerator.device, offload=args.offload):
-                        pixel_values = batch["pixel_values"].to(dtype=vae.dtype)
-                    model_input = vae.encode(pixel_values).latent_dist.mode()
+                        pixel_values = batch["pixel_values"].to(device=accelerator.device, dtype=vae.dtype)
+                        model_input = vae.encode(pixel_values).latent_dist.mode()
 
                 model_input = Flux2KleinPipeline._patchify_latents(model_input)
                 model_input = (model_input - latents_bn_mean) / latents_bn_std
@@ -1746,10 +1755,11 @@ def main(args):
                     # Chunk the noise and model_pred into two parts and compute the loss on each part separately.
                     model_pred, model_pred_prior = torch.chunk(model_pred, 2, dim=0)
                     target, target_prior = torch.chunk(target, 2, dim=0)
+                    weighting, weighting_prior = torch.chunk(weighting, 2, dim=0)
 
                     # Compute prior loss
                     prior_loss = torch.mean(
-                        (weighting.float() * (model_pred_prior.float() - target_prior.float()) ** 2).reshape(
+                        (weighting_prior.float() * (model_pred_prior.float() - target_prior.float()) ** 2).reshape(
                             target_prior.shape[0], -1
                         ),
                         1,

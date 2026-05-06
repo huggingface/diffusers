@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import copy
-import functools
 import inspect
 from dataclasses import dataclass
 from typing import Type
@@ -32,7 +31,7 @@ from ..models._modeling_parallel import (
     gather_size_by_comm,
 )
 from ..utils import get_logger
-from ..utils.torch_utils import maybe_allow_in_graph, unwrap_module
+from ..utils.torch_utils import lru_cache_unless_export, maybe_allow_in_graph, unwrap_module
 from .hooks import HookRegistry, ModelHook
 
 
@@ -211,7 +210,7 @@ class ContextParallelSplitHook(ModelHook):
             )
             return x
         else:
-            if self.parallel_config.ulysses_anything:
+            if self.parallel_config.ulysses_anything or self.parallel_config.ring_anything:
                 return PartitionAnythingSharder.shard_anything(
                     x, cp_input.split_dim, self.parallel_config._flattened_mesh
                 )
@@ -240,7 +239,7 @@ class ContextParallelGatherHook(ModelHook):
         for i, cpm in enumerate(self.metadata):
             if cpm is None:
                 continue
-            if self.parallel_config.ulysses_anything:
+            if self.parallel_config.ulysses_anything or self.parallel_config.ring_anything:
                 output[i] = PartitionAnythingSharder.unshard_anything(
                     output[i], cpm.gather_dim, self.parallel_config._flattened_mesh
                 )
@@ -327,7 +326,7 @@ class PartitionAnythingSharder:
         return tensor
 
 
-@functools.lru_cache(maxsize=64)
+@lru_cache_unless_export(maxsize=64)
 def _fill_gather_shapes(shape: tuple[int], gather_dims: tuple[int], dim: int, world_size: int) -> list[list[int]]:
     gather_shapes = []
     for i in range(world_size):

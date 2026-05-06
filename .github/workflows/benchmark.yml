@@ -5,6 +5,9 @@ on:
   schedule:
     - cron: "30 1 1,15 * *" # every 2 weeks on the 1st and the 15th of every month at 1:30 AM
 
+permissions:
+  contents: read
+
 env:
   DIFFUSERS_IS_CI: yes
   HF_XET_HIGH_PERFORMANCE: 1
@@ -28,7 +31,7 @@ jobs:
       options: --shm-size "16gb" --ipc host --gpus all
     steps:
       - name: Checkout diffusers
-        uses: actions/checkout@v6
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
         with:
           fetch-depth: 2
       - name: NVIDIA-SMI
@@ -58,7 +61,7 @@ jobs:
 
       - name: Test suite reports artifacts
         if: ${{ always() }}
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f  # v6
         with:
           name: benchmark_test_reports
           path: benchmarks/${{ env.BASE_PATH }}

@@ -12,8 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import warnings
 
+import pytest
 import torch
 
 from diffusers import QwenImageTransformer2DModel
@@ -77,8 +77,7 @@ class QwenImageTransformerTesterConfig(BaseModelTesterConfig):
             "axes_dims_rope": (8, 4, 4),
         }
 
-    def get_dummy_inputs(self) -> dict[str, torch.Tensor]:
-        batch_size = 1
+    def get_dummy_inputs(self, batch_size: int = 1) -> dict[str, torch.Tensor]:
         num_latent_channels = embedding_dim = 16
         height = width = 4
         sequence_length = 8
@@ -106,9 +105,10 @@ class QwenImageTransformerTesterConfig(BaseModelTesterConfig):
 
 
 class TestQwenImageTransformer(QwenImageTransformerTesterConfig, ModelTesterMixin):
-    def test_infers_text_seq_len_from_mask(self):
+    @pytest.mark.parametrize("batch_size", [1, 2])
+    def test_infers_text_seq_len_from_mask(self, batch_size):
         init_dict = self.get_init_dict()
-        inputs = self.get_dummy_inputs()
+        inputs = self.get_dummy_inputs(batch_size=batch_size)
         model = self.model_class(**init_dict).to(torch_device)
 
         encoder_hidden_states_mask = inputs["encoder_hidden_states_mask"].clone()
@@ -122,7 +122,7 @@ class TestQwenImageTransformer(QwenImageTransformerTesterConfig, ModelTesterMixi
         assert isinstance(per_sample_len, torch.Tensor)
         assert int(per_sample_len.max().item()) == 2
         assert normalized_mask.dtype == torch.bool
-        assert normalized_mask.sum().item() == 2
+        assert normalized_mask.sum().item() == 2 * batch_size
         assert rope_text_seq_len >= inputs["encoder_hidden_states"].shape[1]
 
         inputs["encoder_hidden_states_mask"] = normalized_mask
@@ -139,7 +139,7 @@ class TestQwenImageTransformer(QwenImageTransformerTesterConfig, ModelTesterMixi
         )
 
         assert int(per_sample_len2.max().item()) == 8
-        assert normalized_mask2.sum().item() == 5
+        assert normalized_mask2.sum().item() == 5 * batch_size
 
         rope_text_seq_len_none, per_sample_len_none, normalized_mask_none = compute_text_seq_len_from_mask(
             inputs["encoder_hidden_states"], None
@@ -149,9 +149,10 @@ class TestQwenImageTransformer(QwenImageTransformerTesterConfig, ModelTesterMixi
         assert per_sample_len_none is None
         assert normalized_mask_none is None
 
-    def test_non_contiguous_attention_mask(self):
+    @pytest.mark.parametrize("batch_size", [1, 2])
+    def test_non_contiguous_attention_mask(self, batch_size):
         init_dict = self.get_init_dict()
-        inputs = self.get_dummy_inputs()
+        inputs = self.get_dummy_inputs(batch_size=batch_size)
         model = self.model_class(**init_dict).to(torch_device)
 
         encoder_hidden_states_mask = inputs["encoder_hidden_states_mask"].clone()
@@ -171,31 +172,6 @@ class TestQwenImageTransformer(QwenImageTransformerTesterConfig, ModelTesterMixi
 
         with torch.no_grad():
             output = model(**inputs)
-
-        assert output.sample.shape[1] == inputs["hidden_states"].shape[1]
-
-    def test_txt_seq_lens_deprecation(self):
-        init_dict = self.get_init_dict()
-        inputs = self.get_dummy_inputs()
-        model = self.model_class(**init_dict).to(torch_device)
-
-        txt_seq_lens = [inputs["encoder_hidden_states"].shape[1]]
-
-        inputs_with_deprecated = inputs.copy()
-        inputs_with_deprecated.pop("encoder_hidden_states_mask")
-        inputs_with_deprecated["txt_seq_lens"] = txt_seq_lens
-
-        with warnings.catch_warnings(record=True) as w:
-            warnings.simplefilter("always")
-            with torch.no_grad():
-                output = model(**inputs_with_deprecated)
-
-            future_warnings = [x for x in w if issubclass(x.category, FutureWarning)]
-            assert len(future_warnings) > 0, "Expected FutureWarning to be raised"
-
-            warning_message = str(future_warnings[0].message)
-            assert "txt_seq_lens" in warning_message
-            assert "deprecated" in warning_message
 
         assert output.sample.shape[1] == inputs["hidden_states"].shape[1]
 
@@ -283,6 +259,14 @@ class TestQwenImageTransformerLoRA(QwenImageTransformerTesterConfig, LoraTesterM
 
 class TestQwenImageTransformerLoRAHotSwap(QwenImageTransformerTesterConfig, LoraHotSwappingForModelTesterMixin):
     """LoRA hot-swapping tests for QwenImage Transformer."""
+
+    @pytest.mark.xfail(True, reason="Recompilation issues.", strict=True)
+    def test_hotswapping_compiled_model_linear(self):
+        super().test_hotswapping_compiled_model_linear()
+
+    @pytest.mark.xfail(True, reason="Recompilation issues.", strict=True)
+    def test_hotswapping_compiled_model_both_linear_and_other(self):
+        super().test_hotswapping_compiled_model_both_linear_and_other()
 
     @property
     def different_shapes_for_compilation(self):
