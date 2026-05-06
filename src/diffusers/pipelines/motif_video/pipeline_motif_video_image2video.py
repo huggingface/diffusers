@@ -360,7 +360,8 @@ class MotifVideoImage2VideoPipeline(DiffusionPipeline):
                 negative_prompt = [""] * batch_size
             elif isinstance(negative_prompt, str):
                 negative_prompt = [negative_prompt] * batch_size
-            negative_prompt = [negative_prompt] if isinstance(negative_prompt, str) else negative_prompt
+            else:
+                negative_prompt = list(negative_prompt)
 
             if negative_prompt_embeds is None:
                 negative_prompt_embeds, negative_prompt_attention_mask = self._get_prompt_embeds(
@@ -570,19 +571,6 @@ class MotifVideoImage2VideoPipeline(DiffusionPipeline):
                     f"`prompt_embeds` and `negative_prompt_embeds` must have the same shape, "
                     f"got {prompt_embeds.shape} and {negative_prompt_embeds.shape}."
                 )
-
-    # Copied from diffusers.pipelines.motif_video.pipeline_motif_video.MotifVideoPipeline._prepare_negative_prompt
-    def _prepare_negative_prompt(
-        self,
-        negative_prompt: Optional[Union[str, List[str]]],
-        batch_size: int,
-    ) -> List[str]:
-        """Prepare negative_prompt to match batch_size."""
-        if negative_prompt is None:
-            return [""] * batch_size
-        if isinstance(negative_prompt, str):
-            return [negative_prompt] * batch_size
-        return negative_prompt
 
     # Copied from diffusers.pipelines.motif_video.pipeline_motif_video.MotifVideoPipeline._normalize_latents
     @staticmethod
