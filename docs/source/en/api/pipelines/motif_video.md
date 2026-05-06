@@ -16,21 +16,13 @@ Use `MotifVideoPipeline` for text-to-video generation:
 
 ```python
 import torch
-from diffusers import AdaptiveProjectedGuidance, MotifVideoPipeline
+from diffusers import MotifVideoPipeline
 from diffusers.utils import export_to_video
 
-guider = AdaptiveProjectedGuidance(
-    guidance_scale=8.0,
-    adaptive_projected_guidance_rescale=12.0,
-    adaptive_projected_guidance_momentum=0.1,
-    use_original_formulation=True,
-    adaptive_projected_guidance_norm_dim=[-1, -2, -4],
-)
 
 pipe = MotifVideoPipeline.from_pretrained(
     "Motif-Technologies/Motif-Video-2B",
     torch_dtype=torch.bfloat16,
-    guider=guider,
 )
 pipe.to("cuda")
 
@@ -54,21 +46,13 @@ Use `MotifVideoImage2VideoPipeline` for image-to-video generation:
 
 ```python
 import torch
-from diffusers import AdaptiveProjectedGuidance, MotifVideoImage2VideoPipeline
+from diffusers import MotifVideoImage2VideoPipeline
 from diffusers.utils import export_to_video, load_image
 
-guider = AdaptiveProjectedGuidance(
-    guidance_scale=8.0,
-    adaptive_projected_guidance_rescale=12.0,
-    adaptive_projected_guidance_momentum=0.1,
-    use_original_formulation=True,
-    adaptive_projected_guidance_norm_dim=[-1, -2, -4],
-)
 
 pipe = MotifVideoImage2VideoPipeline.from_pretrained(
     "Motif-Technologies/Motif-Video-2B",
     torch_dtype=torch.bfloat16,
-    guider=guider,
 )
 pipe.to("cuda")
 
@@ -98,21 +82,13 @@ export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 
 ```python
 import torch
-from diffusers import AdaptiveProjectedGuidance, MotifVideoPipeline
+from diffusers import MotifVideoPipeline
 from diffusers.utils import export_to_video
 
-guider = AdaptiveProjectedGuidance(
-    guidance_scale=8.0,
-    adaptive_projected_guidance_rescale=12.0,
-    adaptive_projected_guidance_momentum=0.1,
-    use_original_formulation=True,
-    adaptive_projected_guidance_norm_dim=[-1, -2, -4],
-)
 
 pipe = MotifVideoPipeline.from_pretrained(
     "Motif-Technologies/Motif-Video-2B",
     torch_dtype=torch.bfloat16,
-    guider=guider,
 )
 pipe.enable_model_cpu_offload()
 
