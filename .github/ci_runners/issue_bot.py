@@ -108,7 +108,7 @@ def main():
         print("No failures, no issues to create.")
         return
 
-    date_str = r["timestamp"][:10] if failed else "unknown-date"
+    date_str = failed[0]["timestamp"][:10]
 
     for r in failed:
         title = build_issue_title(r["pipeline"], r["variant"], date_str)
