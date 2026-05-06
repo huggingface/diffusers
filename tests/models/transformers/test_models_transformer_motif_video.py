@@ -22,6 +22,7 @@ from ...testing_utils import enable_full_determinism, torch_device
 from ..test_modeling_common import LoraHotSwappingForModelTesterMixin
 from ..testing_utils import (
     AttentionTesterMixin,
+    BaseModelTesterConfig,
     LoraTesterMixin,
     MemoryTesterMixin,
     ModelTesterMixin,
@@ -33,7 +34,7 @@ from ..testing_utils import (
 enable_full_determinism()
 
 
-class MotifVideoTransformerTesterConfig:
+class MotifVideoTransformerTesterConfig(BaseModelTesterConfig):
     @property
     def model_class(self):
         return MotifVideoTransformer3DModel
@@ -50,47 +51,64 @@ class MotifVideoTransformerTesterConfig:
     def generator(self):
         return torch.Generator("cpu").manual_seed(0)
 
-    def get_init_dict(self) -> dict[str, int | list[int]]:
-        # __init__ parameters:
-        #   in_channels: int = 33
-        #   out_channels: int = 16
-        #   num_attention_heads: int = 24
-        #   attention_head_dim: int = 128
-        #   num_layers: int = 20
-        #   num_single_layers: int = 40
-        #   num_decoder_layers: int = 0
-        #   mlp_ratio: float = 4.0
-        #   patch_size: int = 2
-        #   patch_size_t: int = 1
-        #   qk_norm: str = rms_norm
-        #   norm_type: str = layer_norm
-        #   text_embed_dim: int = 4096
-        #   image_embed_dim: int | None
-        #   rope_theta: float = 256.0
-        #   rope_axes_dim: Tuple[int, Ellipsis] = <complex>
-        #   enable_text_cross_attention_dual: bool = False
-        #   enable_text_cross_attention_single: bool = False
-        return {}
-
-    def get_dummy_inputs(self) -> dict[str, torch.Tensor]:
-        # forward() parameters:
-        #   hidden_states: torch.Tensor
-        #   timestep: torch.LongTensor
-        #   encoder_hidden_states: torch.Tensor
-        #   encoder_attention_mask: torch.Tensor | None
-        #   image_embeds: torch.Tensor | None
-        #   attention_kwargs: Optional[Dict[str, Any]]
-        #   return_dict: bool = True
-        # TODO: Fill in dummy inputs
-        return {}
+    @property
+    def main_input_name(self) -> str:
+        return "hidden_states"
 
     @property
     def input_shape(self) -> tuple[int, ...]:
-        return (1, 1)
+        return (1, 33, 9, 16, 16)
 
     @property
     def output_shape(self) -> tuple[int, ...]:
-        return (1, 1)
+        return (1, 16, 9, 16, 16)
+
+    def get_init_dict(self) -> dict[str, int | list[int] | float | str | bool]:
+        return {
+            "in_channels": 33,
+            "out_channels": 16,
+            "num_attention_heads": 2,
+            "attention_head_dim": 12,
+            "num_layers": 1,
+            "num_single_layers": 1,
+            "num_decoder_layers": 0,
+            "mlp_ratio": 4.0,
+            "patch_size": 1,
+            "patch_size_t": 1,
+            "qk_norm": "rms_norm",
+            "norm_type": "layer_norm",
+            "text_embed_dim": 32,
+            "image_embed_dim": 4,
+            "rope_theta": 256.0,
+            "rope_axes_dim": (4, 4, 4),
+            "enable_text_cross_attention_dual": False,
+            "enable_text_cross_attention_single": False,
+        }
+
+    def get_dummy_inputs(self) -> dict[str, torch.Tensor]:
+        batch_size = 1
+        num_channels = 33
+        num_frames = 9
+        height = 16
+        width = 16
+        text_embed_dim = 32
+        sequence_length = 12
+
+        return {
+            "hidden_states": randn_tensor(
+                (batch_size, num_channels, num_frames, height, width),
+                generator=self.generator,
+                device=torch_device,
+                dtype=self.torch_dtype,
+            ),
+            "encoder_hidden_states": randn_tensor(
+                (batch_size, sequence_length, text_embed_dim),
+                generator=self.generator,
+                device=torch_device,
+                dtype=self.torch_dtype,
+            ),
+            "timestep": torch.randint(0, 1000, size=(batch_size,), generator=self.generator).to(torch_device),
+        }
 
 
 class TestMotifVideoTransformerModel(MotifVideoTransformerTesterConfig, ModelTesterMixin):
@@ -107,8 +125,27 @@ class TestMotifVideoTransformerTorchCompile(MotifVideoTransformerTesterConfig, T
         return [(4, 4), (4, 8), (8, 8)]
 
     def get_dummy_inputs(self, height: int = 4, width: int = 4) -> dict[str, torch.Tensor]:
-        # TODO: Implement dynamic input generation
-        return {}
+        batch_size = 1
+        num_channels = 33
+        num_frames = 9
+        text_embed_dim = 32
+        sequence_length = 12
+
+        return {
+            "hidden_states": randn_tensor(
+                (batch_size, num_channels, num_frames, height, width),
+                generator=self.generator,
+                device=torch_device,
+                dtype=self.torch_dtype,
+            ),
+            "encoder_hidden_states": randn_tensor(
+                (batch_size, sequence_length, text_embed_dim),
+                generator=self.generator,
+                device=torch_device,
+                dtype=self.torch_dtype,
+            ),
+            "timestep": torch.randint(0, 1000, size=(batch_size,), generator=self.generator).to(torch_device),
+        }
 
 
 class TestMotifVideoTransformerLora(MotifVideoTransformerTesterConfig, LoraTesterMixin):
@@ -129,5 +166,24 @@ class TestMotifVideoTransformerLoraHotSwappingForModel(MotifVideoTransformerTest
         return [(4, 4), (4, 8), (8, 8)]
 
     def get_dummy_inputs(self, height: int = 4, width: int = 4) -> dict[str, torch.Tensor]:
-        # TODO: Implement dynamic input generation
-        return {}
+        batch_size = 1
+        num_channels = 33
+        num_frames = 9
+        text_embed_dim = 32
+        sequence_length = 12
+
+        return {
+            "hidden_states": randn_tensor(
+                (batch_size, num_channels, num_frames, height, width),
+                generator=self.generator,
+                device=torch_device,
+                dtype=self.torch_dtype,
+            ),
+            "encoder_hidden_states": randn_tensor(
+                (batch_size, sequence_length, text_embed_dim),
+                generator=self.generator,
+                device=torch_device,
+                dtype=self.torch_dtype,
+            ),
+            "timestep": torch.randint(0, 1000, size=(batch_size,), generator=self.generator).to(torch_device),
+        }
