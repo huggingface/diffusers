@@ -256,10 +256,12 @@ class MotifVideoCrossAttention(nn.Module, AttentionModuleMixin):
             self.norm_q = None
             self.norm_k = None
 
-        self.to_out = nn.ModuleList([
-            nn.Linear(self.inner_dim, query_dim, bias=out_bias),
-            nn.Dropout(dropout),
-        ])
+        self.to_out = nn.ModuleList(
+            [
+                nn.Linear(self.inner_dim, query_dim, bias=out_bias),
+                nn.Dropout(dropout),
+            ]
+        )
 
         if processor is None:
             processor = self._default_processor_cls()

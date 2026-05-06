@@ -160,7 +160,9 @@ class TestMotifVideoTransformerAttention(MotifVideoTransformerTesterConfig, Atte
     pass
 
 
-class TestMotifVideoTransformerLoraHotSwappingForModel(MotifVideoTransformerTesterConfig, LoraHotSwappingForModelTesterMixin):
+class TestMotifVideoTransformerLoraHotSwappingForModel(
+    MotifVideoTransformerTesterConfig, LoraHotSwappingForModelTesterMixin
+):
     @property
     def different_shapes_for_compilation(self):
         return [(4, 4), (4, 8), (8, 8)]
