@@ -159,7 +159,7 @@ class MotifVideoImage2VideoPipelineFastTests(PipelineTesterMixin, unittest.TestC
             "width": 16,
             "num_frames": 9,
             "max_sequence_length": 16,
-            "output_type": "pt",
+            "output_type": "np",
         }
         return inputs
 
@@ -174,7 +174,7 @@ class MotifVideoImage2VideoPipelineFastTests(PipelineTesterMixin, unittest.TestC
         video = pipe(**inputs).frames
         generated_video = video[0]
 
-        self.assertEqual(generated_video.shape, (9, 3, 16, 16))
+        self.assertEqual(generated_video.shape, (9, 16, 16, 3))
 
     @unittest.skip("MotifVideo I2V only supports a single conditioning image")
     def test_inference_batch_consistent(self):
