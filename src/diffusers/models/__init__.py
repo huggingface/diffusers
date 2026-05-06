@@ -95,6 +95,7 @@ if is_torch_available():
     _import_structure["transformers.t5_film_transformer"] = ["T5FilmDecoder"]
     _import_structure["transformers.transformer_2d"] = ["Transformer2DModel"]
     _import_structure["transformers.transformer_allegro"] = ["AllegroTransformer3DModel"]
+    _import_structure["transformers.transformer_anyflow"] = ["AnyFlowTransformer3DModel"]
     _import_structure["transformers.transformer_bria"] = ["BriaTransformer2DModel"]
     _import_structure["transformers.transformer_bria_fibo"] = ["BriaFiboTransformer2DModel"]
     _import_structure["transformers.transformer_chroma"] = ["ChromaTransformer2DModel"]
