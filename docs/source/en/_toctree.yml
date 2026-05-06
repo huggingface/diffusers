@@ -504,6 +504,8 @@
     - sections:
       - local: api/pipelines/animatediff
         title: AnimateDiff
+      - local: api/pipelines/anyflow
+        title: AnyFlow
       - local: api/pipelines/aura_flow
         title: AuraFlow
       - local: api/pipelines/bria_3_2
