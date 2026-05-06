@@ -1190,9 +1190,8 @@ class LTX2Pipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoaderMixin):
         self._num_timesteps = len(timesteps)
 
         # Set begin index to skip nonzero().item() call in scheduler initialization, which triggers GPU sync
-        if hasattr(self.scheduler, "set_begin_index"):
-            self.scheduler.set_begin_index(0)
-            audio_scheduler.set_begin_index(0)
+        self.scheduler.set_begin_index(0)
+        audio_scheduler.set_begin_index(0)
 
         # 6. Prepare micro-conditions
         # Pre-compute video and audio positional ids as they will be the same at each step of the denoising loop
