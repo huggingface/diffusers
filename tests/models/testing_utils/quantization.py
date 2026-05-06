@@ -836,6 +836,10 @@ class TorchAoConfigMixin:
         assert isinstance(module, torch.nn.Linear), f"Layer {name} is not Linear, got {type(module)}"
 
 
+# int4wo requires CUDA or XPU ops (_convert_weight_to_int4pack)
+_int4wo_skip = pytest.mark.skipif(torch_device not in ["cuda", "xpu"], reason="int4wo quantization requires CUDA or XPU")
+
+
 @is_torchao
 @require_accelerator
 @require_torchao_version_greater_or_equal("0.7.0")
@@ -861,7 +865,7 @@ class TorchAoTesterMixin(TorchAoConfigMixin, QuantizationTesterMixin):
     @pytest.mark.parametrize(
         "quant_type",
         [
-            "int4wo",
+            pytest.param("int4wo", marks=_int4wo_skip),
             "int8wo",
             "int8dq",
         ],
@@ -873,7 +877,7 @@ class TorchAoTesterMixin(TorchAoConfigMixin, QuantizationTesterMixin):
     @pytest.mark.parametrize(
         "quant_type",
         [
-            "int4wo",
+            pytest.param("int4wo", marks=_int4wo_skip),
             "int8wo",
             "int8dq",
         ],
@@ -888,7 +892,7 @@ class TorchAoTesterMixin(TorchAoConfigMixin, QuantizationTesterMixin):
     @pytest.mark.parametrize(
         "quant_type",
         [
-            "int4wo",
+            pytest.param("int4wo", marks=_int4wo_skip),
             "int8wo",
             "int8dq",
         ],
