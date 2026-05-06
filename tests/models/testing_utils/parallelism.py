@@ -411,7 +411,7 @@ class ContextParallelAttentionBackendsTesterMixin:
             if attention_backend == AttentionBackendName.NATIVE:
                 pytest.skip("Skipping test because ring isn't supported with native attention backend.")
             elif attention_backend in ("flash_varlen_hub"):
-                pytest.xfail("`ring_degree` is not yet supported for varlen attention hub kernels.")
+                pytest.skip("`ring_degree` is not yet supported for varlen attention hub kernels.")
 
         if ulysses_anything and "ulysses" not in cp_type:
             pytest.skip("Skipping test as ulysses anything needs the ulysses degree set.")
