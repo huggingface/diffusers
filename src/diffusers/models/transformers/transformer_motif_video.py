@@ -825,19 +825,6 @@ class MotifVideoTransformer3DModel(
             return self._gradient_checkpointing_func(block, *args)
         return block(*args)
 
-    def _create_attention_mask(
-        self,
-        hidden_states: torch.Tensor,
-        encoder_attention_mask: torch.Tensor,
-    ) -> torch.Tensor:
-        attention_mask = F.pad(
-            encoder_attention_mask.to(torch.bool),
-            (hidden_states.shape[1], 0),
-            value=True,
-        )
-        attention_mask = attention_mask.unsqueeze(1).unsqueeze(1)
-        return attention_mask
-
     def forward(
         self,
         hidden_states: torch.Tensor,
@@ -918,10 +905,12 @@ class MotifVideoTransformer3DModel(
         decoder_hidden_states = hidden_states.clone()
 
         if encoder_attention_mask is not None:
-            attention_mask = self._create_attention_mask(
-                hidden_states=hidden_states,
-                encoder_attention_mask=encoder_attention_mask,
+            attention_mask = F.pad(
+                encoder_attention_mask.to(torch.bool),
+                (hidden_states.shape[1], 0),
+                value=True,
             )
+            attention_mask = attention_mask.unsqueeze(1).unsqueeze(1)
         else:
             attention_mask = None
 
