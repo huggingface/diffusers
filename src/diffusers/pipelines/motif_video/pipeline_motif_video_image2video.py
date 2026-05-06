@@ -18,19 +18,8 @@ from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 import numpy as np
 import torch
 
-from ...utils import is_transformers_version
-
-
-# Check transformers version before importing T5Gemma2Encoder
-if not is_transformers_version(">=", "5.1.0"):
-    import transformers
-
-    raise ImportError(
-        f"MotifVideoImage2VideoPipeline requires transformers>=5.1.0. "
-        f"Found: {transformers.__version__}. "
-        "Please upgrade transformers: pip install transformers --upgrade"
-    )
-
+# NOTE: This pipeline requires transformers>=5.1.0 for T5Gemma2Encoder support.
+# The T5Gemma2Encoder class is only available in transformers 5.1.0 and later.
 from transformers import BatchEncoding, PreTrainedTokenizerBase, SiglipImageProcessor, T5Gemma2Encoder
 
 from ...callbacks import MultiPipelineCallbacks, PipelineCallback
