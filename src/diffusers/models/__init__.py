@@ -129,7 +129,11 @@ if is_torch_available():
     _import_structure["transformers.transformer_sd3"] = ["SD3Transformer2DModel"]
     _import_structure["transformers.transformer_skyreels_v2"] = ["SkyReelsV2Transformer3DModel"]
     _import_structure["transformers.transformer_temporal"] = ["TransformerTemporalModel"]
-    _import_structure["transformers.transformer_wan"] = ["WanTransformer3DModel"]
+    _import_structure["transformers.transformer_wan"] = [
+        "WanKVBlockCache",
+        "WanKVCache",
+        "WanTransformer3DModel",
+    ]
     _import_structure["transformers.transformer_wan_animate"] = ["WanAnimateTransformer3DModel"]
     _import_structure["transformers.transformer_wan_vace"] = ["WanVACETransformer3DModel"]
     _import_structure["transformers.transformer_z_image"] = ["ZImageTransformer2DModel"]
@@ -261,6 +265,8 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             Transformer2DModel,
             TransformerTemporalModel,
             WanAnimateTransformer3DModel,
+            WanKVBlockCache,
+            WanKVCache,
             WanTransformer3DModel,
             WanVACETransformer3DModel,
             ZImageTransformer2DModel,
