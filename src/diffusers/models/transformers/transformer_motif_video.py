@@ -423,7 +423,7 @@ class MotifVideoRotaryPosEmbed(nn.Module):
         self.rope_dim = rope_dim
         self.theta = theta
 
-    def forward(self, hidden_states: torch.Tensor, timestep: Optional[torch.Tensor] = None) -> torch.Tensor:
+    def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
         batch_size, num_channels, num_frames, height, width = hidden_states.shape
         rope_sizes = [
             num_frames // self.patch_size_t,
@@ -892,7 +892,7 @@ class MotifVideoTransformer3DModel(
         post_patch_width = width // p
 
         # 1. RoPE
-        image_rotary_emb = self.rope(hidden_states, timestep=timestep)
+        image_rotary_emb = self.rope(hidden_states)
 
         # 2. Conditional embeddings
         temb = self.time_text_embed(timestep)
