@@ -295,6 +295,57 @@ class QwenControlNetPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     def test_inference_batch_single_identical(self):
         self._test_inference_batch_single_identical(batch_size=3, expected_max_diff=1e-1)
 
+    def test_qwen_blockwise_controlnet(self):
+        device = "cpu"
+        components = self.get_dummy_components()
+
+        # Replace controlnet with blockwise variant
+        torch.manual_seed(0)
+        blockwise_controlnet = QwenImageControlNetModel(
+            patch_size=2,
+            in_channels=16,
+            out_channels=4,
+            num_layers=2,
+            attention_head_dim=16,
+            num_attention_heads=3,
+            joint_attention_dim=16,
+            axes_dims_rope=(8, 4, 4),
+            controlnet_block_type="blockwise",
+        )
+        components["controlnet"] = blockwise_controlnet
+
+        pipe = self.pipeline_class(**components)
+        pipe.to(device)
+        pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_dummy_inputs(device)
+        image = pipe(**inputs).images
+        generated_image = image[0]
+        self.assertEqual(generated_image.shape, (3, 32, 32))
+
+    def test_qwen_blockwise_controlnet_from_transformer(self):
+        device = "cpu"
+        components = self.get_dummy_components()
+        transformer = components["transformer"]
+
+        blockwise_controlnet = QwenImageControlNetModel.from_transformer(
+            transformer,
+            num_layers=2,
+            attention_head_dim=16,
+            num_attention_heads=3,
+            controlnet_block_type="blockwise",
+        )
+        components["controlnet"] = blockwise_controlnet
+
+        pipe = self.pipeline_class(**components)
+        pipe.to(device)
+        pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_dummy_inputs(device)
+        image = pipe(**inputs).images
+        generated_image = image[0]
+        self.assertEqual(generated_image.shape, (3, 32, 32))
+
     def test_vae_tiling(self, expected_diff_max: float = 0.2):
         generator_device = "cpu"
         components = self.get_dummy_components()
