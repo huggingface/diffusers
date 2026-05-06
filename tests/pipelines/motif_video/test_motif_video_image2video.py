@@ -16,9 +16,17 @@ import unittest
 
 import torch
 from PIL import Image
-from transformers import AutoTokenizer, T5EncoderModel
+from transformers import (
+    AutoTokenizer,
+    SiglipImageProcessor,
+    SiglipVisionConfig,
+    T5Gemma2Encoder,
+    T5Gemma2EncoderConfig,
+    T5Gemma2TextConfig,
+)
 
 from diffusers import AutoencoderKLWan, FlowMatchEulerDiscreteScheduler, MotifVideoImage2VideoPipeline
+from diffusers.guiders import AdaptiveProjectedGuidance
 from diffusers.models.transformers.transformer_motif_video import MotifVideoTransformer3DModel
 from diffusers.utils.testing_utils import enable_full_determinism
 
@@ -65,8 +73,43 @@ class MotifVideoImage2VideoPipelineFastTests(PipelineTesterMixin, unittest.TestC
 
         torch.manual_seed(0)
         scheduler = FlowMatchEulerDiscreteScheduler(shift=7.0)
-        text_encoder = T5EncoderModel.from_pretrained("hf-internal-testing/tiny-random-t5")
+
+        # Build a tiny T5Gemma2Encoder to match the pipeline's expected text_encoder type
+        text_config = T5Gemma2TextConfig(
+            hidden_size=32,
+            num_hidden_layers=1,
+            num_attention_heads=2,
+            intermediate_size=64,
+            vocab_size=1104,
+            max_position_embeddings=128,
+            head_dim=16,
+            num_key_value_heads=2,
+        )
+        text_config.dropout_rate = 0.0
+        text_config.layer_norm_epsilon = 1e-6
+        text_config.dense_act_fn = "gelu"
+
+        vision_config = SiglipVisionConfig(
+            hidden_size=4,
+            num_hidden_layers=1,
+            num_attention_heads=2,
+            intermediate_size=64,
+            image_size=16,
+            patch_size=4,
+            num_channels=3,
+        )
+
+        encoder_config = T5Gemma2EncoderConfig(
+            text_config=text_config,
+            vision_config=vision_config,
+        )
+        text_encoder = T5Gemma2Encoder(encoder_config)
         tokenizer = AutoTokenizer.from_pretrained("hf-internal-testing/tiny-random-t5")
+        feature_extractor = SiglipImageProcessor(
+            image_mean=[0.5, 0.5, 0.5],
+            image_std=[0.5, 0.5, 0.5],
+            size={"height": 16, "width": 16},
+        )
 
         torch.manual_seed(0)
         transformer = MotifVideoTransformer3DModel(
@@ -85,13 +128,16 @@ class MotifVideoImage2VideoPipelineFastTests(PipelineTesterMixin, unittest.TestC
             rope_axes_dim=(4, 4, 4),
         )
 
+        guider = AdaptiveProjectedGuidance()
+
         components = {
             "transformer": transformer,
             "vae": vae,
             "scheduler": scheduler,
             "text_encoder": text_encoder,
             "tokenizer": tokenizer,
-            "feature_extractor": None,
+            "feature_extractor": feature_extractor,
+            "guider": guider,
         }
         return components
 
@@ -129,6 +175,10 @@ class MotifVideoImage2VideoPipelineFastTests(PipelineTesterMixin, unittest.TestC
         generated_video = video[0]
 
         self.assertEqual(generated_video.shape, (9, 3, 16, 16))
+
+    @unittest.skip("MotifVideo I2V only supports a single conditioning image")
+    def test_inference_batch_consistent(self):
+        pass
 
     @unittest.skip("MotifVideo uses guider pattern instead of guidance_scale")
     def test_inference_batch_single_identical(self):

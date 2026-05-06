@@ -15,9 +15,15 @@
 import unittest
 
 import torch
-from transformers import AutoTokenizer, T5EncoderModel
+from transformers import (
+    AutoTokenizer,
+    T5Gemma2Encoder,
+    T5Gemma2EncoderConfig,
+    T5Gemma2TextConfig,
+)
 
 from diffusers import AutoencoderKLWan, FlowMatchEulerDiscreteScheduler, MotifVideoPipeline
+from diffusers.guiders import AdaptiveProjectedGuidance
 from diffusers.models.transformers.transformer_motif_video import MotifVideoTransformer3DModel
 from diffusers.utils.testing_utils import enable_full_determinism
 
@@ -59,8 +65,24 @@ class MotifVideoPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
         torch.manual_seed(0)
         scheduler = FlowMatchEulerDiscreteScheduler(shift=7.0)
-        # Use tiny-random-t5 as a stand-in for T5Gemma2Model's encoder
-        text_encoder = T5EncoderModel.from_pretrained("hf-internal-testing/tiny-random-t5")
+
+        # Build a tiny T5Gemma2Encoder to match the pipeline's expected text_encoder type
+        text_config = T5Gemma2TextConfig(
+            hidden_size=32,
+            num_hidden_layers=1,
+            num_attention_heads=2,
+            intermediate_size=64,
+            vocab_size=1104,
+            max_position_embeddings=128,
+            head_dim=16,
+            num_key_value_heads=2,
+        )
+        text_config.dropout_rate = 0.0
+        text_config.layer_norm_epsilon = 1e-6
+        text_config.dense_act_fn = "gelu"
+
+        encoder_config = T5Gemma2EncoderConfig(text_config=text_config)
+        text_encoder = T5Gemma2Encoder(encoder_config)
         tokenizer = AutoTokenizer.from_pretrained("hf-internal-testing/tiny-random-t5")
 
         torch.manual_seed(0)
@@ -79,12 +101,15 @@ class MotifVideoPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             rope_axes_dim=(4, 4, 4),
         )
 
+        guider = AdaptiveProjectedGuidance()
+
         components = {
             "transformer": transformer,
             "vae": vae,
             "scheduler": scheduler,
             "text_encoder": text_encoder,
             "tokenizer": tokenizer,
+            "guider": guider,
         }
         return components
 
