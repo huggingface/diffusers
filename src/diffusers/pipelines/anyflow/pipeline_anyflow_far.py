@@ -20,7 +20,6 @@ from typing import Any, Callable, Dict, List, Optional, Union
 
 import regex as re
 import torch
-from einops import rearrange
 from tqdm import tqdm
 from transformers import AutoTokenizer, UMT5EncoderModel
 
@@ -300,6 +299,7 @@ class AnyFlowFARPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         ):
             raise ValueError(f"`negative_prompt` has to be of type `str` or `list` but is {type(negative_prompt)}")
 
+    # Copied from diffusers.pipelines.wan.pipeline_wan.WanPipeline.prepare_latents
     def prepare_latents(
         self,
         batch_size: int,
@@ -307,10 +307,10 @@ class AnyFlowFARPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         height: int = 480,
         width: int = 832,
         num_frames: int = 81,
-        dtype: Optional[torch.dtype] = None,
-        device: Optional[torch.device] = None,
-        generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
-        latents: Optional[torch.Tensor] = None,
+        dtype: torch.dtype | None = None,
+        device: torch.device | None = None,
+        generator: torch.Generator | list[torch.Generator] | None = None,
+        latents: torch.Tensor | None = None,
     ) -> torch.Tensor:
         if latents is not None:
             return latents.to(device=device, dtype=dtype)
@@ -330,7 +330,6 @@ class AnyFlowFARPipeline(DiffusionPipeline, WanLoraLoaderMixin):
             )
 
         latents = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
-        latents = rearrange(latents, "b c t h w -> b t c h w")
         return latents
 
     @property
@@ -364,7 +363,7 @@ class AnyFlowFARPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         context_sequence = self.encode_latents(
             context_sequence.to(dtype=self.vae.dtype, device=self._execution_device), sample=False
         )
-        context_sequence = rearrange(context_sequence, "b c t h w -> b t c h w")
+        context_sequence = context_sequence.permute(0, 2, 1, 3, 4)
         return context_sequence
 
     def _normalize_latents(self, latents, latents_mean, latents_std):
@@ -375,7 +374,7 @@ class AnyFlowFARPipeline(DiffusionPipeline, WanLoraLoaderMixin):
 
     @torch.no_grad()
     def encode_latents(self, videos, sample=True):
-        videos = rearrange(videos, "b t c h w -> b c t h w")
+        videos = videos.permute(0, 2, 1, 3, 4)
         moments = self.vae._encode(videos)
 
         latents_mean = torch.tensor(self.vae.config.latents_mean)
@@ -542,7 +541,7 @@ class AnyFlowFARPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         """
         self._guidance_scale = guidance_scale
 
-        latents = rearrange(latents, "b c t h w -> b t c h w")
+        latents = latents.permute(0, 2, 1, 3, 4)
         batch_size, num_frame, _, height, width = latents.shape
 
         # 5. Prepare latent variables
@@ -611,7 +610,7 @@ class AnyFlowFARPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         # setup start sequence
         if context_sequence is not None:
             if "latent" in context_sequence:
-                latents = rearrange(context_sequence["latent"], "b c t h w -> b t c h w")
+                latents = context_sequence["latent"].permute(0, 2, 1, 3, 4)
             else:
                 assert (context_sequence["raw"].shape[1] - 1) % 4 == 0, "require 4n+1 frames"
                 latents = self.vae_encode(context_sequence["raw"])
@@ -652,7 +651,7 @@ class AnyFlowFARPipeline(DiffusionPipeline, WanLoraLoaderMixin):
                     negative_prompt_embeds=negative_prompt_embeds,
                 )  # noqa: E501
 
-        output = rearrange(output, "b f c h w -> b c f h w")
+        output = output.permute(0, 2, 1, 3, 4)
         return output
 
     @torch.no_grad()
@@ -787,8 +786,9 @@ class AnyFlowFARPipeline(DiffusionPipeline, WanLoraLoaderMixin):
             generator,
             latents,
         )
+        # ``prepare_latents`` returns the standard ``(B, C, T, H, W)`` diffusers layout, which is
+        # what the FAR rollout expects on input — no permute needed here.
         init_latents = init_latents.to(transformer_dtype)
-        init_latents = rearrange(init_latents, "b f c h w -> b c f h w")
 
         latents = self._denoise_rollout(
             context_sequence=context_sequence,

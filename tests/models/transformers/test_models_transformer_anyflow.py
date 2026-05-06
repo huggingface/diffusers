@@ -24,9 +24,9 @@ from diffusers.models.transformers.transformer_anyflow import AnyFlowFARTransfor
 from ...testing_utils import enable_full_determinism
 
 
-# AnyFlow's rotary position embeddings use float64 buffers for numerical precision; the model is exercised
-# on CPU/CUDA in production and is not validated on MPS. Tests pin all tensors to CPU to keep CI green on
-# any backend.
+# Rotary embeddings auto-downcast to float32 on MPS / NPU (where complex128 is unavailable); CPU and CUDA
+# build them in float64 for numerical precision. Tests pin all tensors to CPU to keep CI green on any
+# backend.
 
 enable_full_determinism()
 
@@ -43,7 +43,6 @@ def _bidi_init_kwargs(**overrides):
         "ffn_dim": 32,
         "num_layers": 2,
         "cross_attn_norm": True,
-        "qk_norm": "rms_norm_across_heads",
         "rope_max_seq_len": 32,
         "gate_value": 0.25,
         "deltatime_type": "r",

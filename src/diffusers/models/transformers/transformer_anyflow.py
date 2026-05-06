@@ -24,18 +24,17 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from einops import rearrange
 from torch.nn.attention.flex_attention import create_block_mask, flex_attention
 
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...loaders import FromOriginalModelMixin, PeftAdapterMixin
 from ...utils import BaseOutput, logging
-from ..attention import FeedForward
-from ..attention_processor import Attention
+from ..attention import AttentionModuleMixin, FeedForward
+from ..attention_dispatch import dispatch_attention_fn
 from ..embeddings import PixArtAlphaTextProjection, TimestepEmbedding, Timesteps, get_1d_rotary_pos_embed
 from ..modeling_outputs import Transformer2DModelOutput
 from ..modeling_utils import ModelMixin
-from ..normalization import FP32LayerNorm
+from ..normalization import FP32LayerNorm, RMSNorm
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -82,29 +81,43 @@ def build_block_mask(mask_2d, device):
 
 
 def apply_rotary_emb(hidden_states: torch.Tensor, freqs: torch.Tensor):
-    x_rotated = torch.view_as_complex(hidden_states.to(torch.float64).unflatten(3, (-1, 2)))
+    # MPS / NPU backends do not support complex128 / float64; fall back to float32 on those devices.
+    is_mps = hidden_states.device.type == "mps"
+    is_npu = hidden_states.device.type == "npu"
+    rotary_dtype = torch.float32 if (is_mps or is_npu) else torch.float64
+    x_rotated = torch.view_as_complex(hidden_states.to(rotary_dtype).unflatten(3, (-1, 2)))
     x_out = torch.view_as_real(x_rotated * freqs).flatten(3, 4)
     return x_out.type_as(hidden_states)
 
 
-class AnyFlowSelfAttnProcessor2_0:
+class AnyFlowAttnProcessor:
+    """
+    Self-attention processor for AnyFlow. Supports three modes:
+
+    * Bidirectional (``attention_mask`` is ``None``) — standard SDPA / dispatched backend.
+    * FAR causal — :class:`~torch.nn.attention.flex_attention.BlockMask` via ``flex_attention``.
+    * Autoregressive inference with KV cache (read or write) for the FAR variant.
+    """
+
+    _attention_backend = None
+    _parallel_config = None
+
     def __init__(self):
         if not hasattr(F, "scaled_dot_product_attention"):
             raise ImportError(
-                "AnyFlowSelfAttnProcessor2_0 requires PyTorch 2.0. To use it, please upgrade PyTorch to 2.0."
+                "AnyFlowAttnProcessor requires PyTorch 2.0. To use it, please upgrade PyTorch to 2.0 or higher."
             )
 
     def __call__(
         self,
-        attn: Attention,
+        attn: "AnyFlowAttention",
         hidden_states: torch.Tensor,
         encoder_hidden_states: Optional[torch.Tensor] = None,
-        attention_mask: Optional[torch.Tensor] = None,
-        rotary_emb: Optional[torch.Tensor] = None,
-        kv_cache=None,
-        kv_cache_flag=None,
+        attention_mask: Optional[Any] = None,
+        rotary_emb: Optional[Dict[str, torch.Tensor]] = None,
+        kv_cache: Optional[Dict[str, torch.Tensor]] = None,
+        kv_cache_flag: Optional[Dict[str, Any]] = None,
     ) -> torch.Tensor:
-
         if encoder_hidden_states is None:
             encoder_hidden_states = hidden_states
 
@@ -117,6 +130,7 @@ class AnyFlowSelfAttnProcessor2_0:
         if attn.norm_k is not None:
             key = attn.norm_k(key)
 
+        # Layout (B, H, L, D) is required by KV-cache slicing, rotary application, and flex_attention.
         query = query.unflatten(2, (attn.heads, -1)).transpose(1, 2)
         key = key.unflatten(2, (attn.heads, -1)).transpose(1, 2)
         value = value.unflatten(2, (attn.heads, -1)).transpose(1, 2)
@@ -158,10 +172,23 @@ class AnyFlowSelfAttnProcessor2_0:
             key = apply_rotary_emb(key, rotary_emb["key"])
 
         if attention_mask is None:
-            hidden_states = F.scaled_dot_product_attention(
-                query, key, value, attn_mask=attention_mask, dropout_p=0.0, is_causal=False
+            # Pass (B, L, H, D) to dispatch_attention_fn (its native backend permutes back to (B, H, L, D)
+            # internally before calling the kernel).
+            hidden_states = dispatch_attention_fn(
+                query.transpose(1, 2),
+                key.transpose(1, 2),
+                value.transpose(1, 2),
+                attn_mask=None,
+                dropout_p=0.0,
+                is_causal=False,
+                backend=self._attention_backend,
+                parallel_config=self._parallel_config,
             )
+            # Output already in (B, L, H, D); fold heads into the channel dim.
+            hidden_states = hidden_states.flatten(2, 3)
         else:
+            # FAR causal path: BlockMask is consumed by flex_attention only, so we keep the
+            # (B, H, L, D) layout and pad to a multiple of 128 for the BlockMask block size.
             seq_len = query.shape[2]
             padded_length = int(math.ceil(seq_len / 128.0) * 128.0 - seq_len)
             query = torch.cat(
@@ -174,16 +201,18 @@ class AnyFlowSelfAttnProcessor2_0:
                     ),
                 ],
                 dim=2,
-            )  # noqa: E501
+            )
             key = torch.cat(
                 [
                     key,
                     torch.zeros(
-                        [key.shape[0], key.shape[1], padded_length, key.shape[3]], device=key.device, dtype=key.dtype
+                        [key.shape[0], key.shape[1], padded_length, key.shape[3]],
+                        device=key.device,
+                        dtype=key.dtype,
                     ),
                 ],
                 dim=2,
-            )  # noqa: E501
+            )
             value = torch.cat(
                 [
                     value,
@@ -194,35 +223,38 @@ class AnyFlowSelfAttnProcessor2_0:
                     ),
                 ],
                 dim=2,
-            )  # noqa: E501
-
+            )
             hidden_states = flex_attention(query, key, value, block_mask=attention_mask)[:, :, :seq_len]
+            hidden_states = hidden_states.transpose(1, 2).flatten(2, 3)
 
-        hidden_states = hidden_states.transpose(1, 2).flatten(2, 3)
         hidden_states = hidden_states.type_as(query)
-
         hidden_states = attn.to_out[0](hidden_states)
         hidden_states = attn.to_out[1](hidden_states)
-
         return hidden_states
 
 
-class AnyFlowCrossAttnProcessor2_0:
+class AnyFlowCrossAttnProcessor:
+    """
+    Cross-attention processor for AnyFlow. Always uses the dispatched SDPA-compatible backend; no rotary
+    embedding or KV cache is applied to the text→video cross-attention path.
+    """
+
+    _attention_backend = None
+    _parallel_config = None
+
     def __init__(self):
         if not hasattr(F, "scaled_dot_product_attention"):
             raise ImportError(
-                "AnyFlowCrossAttnProcessor2_0 requires PyTorch 2.0. To use it, please upgrade PyTorch to 2.0."
+                "AnyFlowCrossAttnProcessor requires PyTorch 2.0. To use it, please upgrade PyTorch to 2.0 or higher."
             )
 
     def __call__(
         self,
-        attn: Attention,
+        attn: "AnyFlowAttention",
         hidden_states: torch.Tensor,
         encoder_hidden_states: Optional[torch.Tensor] = None,
         attention_mask: Optional[torch.Tensor] = None,
-        rotary_emb: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
-
         query = attn.to_q(hidden_states)
         key = attn.to_k(encoder_hidden_states)
         value = attn.to_v(encoder_hidden_states)
@@ -232,24 +264,69 @@ class AnyFlowCrossAttnProcessor2_0:
         if attn.norm_k is not None:
             key = attn.norm_k(key)
 
-        query = query.unflatten(2, (attn.heads, -1)).transpose(1, 2)
-        key = key.unflatten(2, (attn.heads, -1)).transpose(1, 2)
-        value = value.unflatten(2, (attn.heads, -1)).transpose(1, 2)
+        # (B, L, H, D) layout for dispatch_attention_fn.
+        query = query.unflatten(2, (attn.heads, -1))
+        key = key.unflatten(2, (attn.heads, -1))
+        value = value.unflatten(2, (attn.heads, -1))
 
-        if rotary_emb is not None:
-            query = apply_rotary_emb(query, rotary_emb["query"])
-            key = apply_rotary_emb(key, rotary_emb["key"])
-
-        hidden_states = F.scaled_dot_product_attention(
-            query, key, value, attn_mask=attention_mask, dropout_p=0.0, is_causal=False
+        hidden_states = dispatch_attention_fn(
+            query,
+            key,
+            value,
+            attn_mask=attention_mask,
+            dropout_p=0.0,
+            is_causal=False,
+            backend=self._attention_backend,
+            parallel_config=self._parallel_config,
         )
-
-        hidden_states = hidden_states.transpose(1, 2).flatten(2, 3)
+        hidden_states = hidden_states.flatten(2, 3)
         hidden_states = hidden_states.type_as(query)
-
         hidden_states = attn.to_out[0](hidden_states)
         hidden_states = attn.to_out[1](hidden_states)
         return hidden_states
+
+
+class AnyFlowAttention(torch.nn.Module, AttentionModuleMixin):
+    """
+    Attention module used by :class:`AnyFlowTransformerBlock`. Layout matches the legacy
+    :class:`~diffusers.models.attention_processor.Attention` so existing AnyFlow checkpoints load
+    bit-exactly into this class.
+    """
+
+    _default_processor_cls = AnyFlowAttnProcessor
+    _available_processors = [AnyFlowAttnProcessor, AnyFlowCrossAttnProcessor]
+
+    def __init__(
+        self,
+        dim: int,
+        heads: int,
+        dim_head: int,
+        eps: float = 1e-6,
+        processor: Optional[Any] = None,
+    ):
+        super().__init__()
+        self.heads = heads
+        self.inner_dim = heads * dim_head
+
+        self.to_q = torch.nn.Linear(dim, self.inner_dim, bias=True)
+        self.to_k = torch.nn.Linear(dim, self.inner_dim, bias=True)
+        self.to_v = torch.nn.Linear(dim, self.inner_dim, bias=True)
+        self.to_out = torch.nn.ModuleList(
+            [
+                torch.nn.Linear(self.inner_dim, dim, bias=True),
+                torch.nn.Dropout(0.0),
+            ]
+        )
+        # ``rms_norm_across_heads`` per-axis: normalize Q and K across the entire ``heads * dim_head``
+        # channel axis. We use diffusers' RMSNorm (rather than ``torch.nn.RMSNorm``) so the numerics
+        # match the legacy Attention class that produced the released checkpoints.
+        self.norm_q = RMSNorm(self.inner_dim, eps=eps)
+        self.norm_k = RMSNorm(self.inner_dim, eps=eps)
+
+        self.set_processor(processor if processor is not None else self._default_processor_cls())
+
+    def forward(self, hidden_states: torch.Tensor, **kwargs) -> torch.Tensor:
+        return self.processor(self, hidden_states, **kwargs)
 
 
 class AnyFlowImageEmbedding(torch.nn.Module):
@@ -298,8 +375,8 @@ class AnyFlowDualTimestepTextImageEmbedding(nn.Module):
         self, timestep: torch.Tensor, delta_timestep: torch.Tensor, encoder_hidden_states, token_per_frame
     ):
         batch_size, num_frames = timestep.shape
-        timestep = rearrange(timestep, "b t -> (b t)")
-        delta_timestep = rearrange(delta_timestep, "b t -> (b t)")
+        timestep = timestep.reshape(-1)
+        delta_timestep = delta_timestep.reshape(-1)
 
         timestep = self.timesteps_proj(timestep)
 
@@ -321,10 +398,8 @@ class AnyFlowDualTimestepTextImageEmbedding(nn.Module):
         rt_emb = (1 - gate) * temb + gate * delta_emb
         timestep_proj = self.time_proj(self.act_fn(rt_emb))
 
-        rt_emb = rearrange(rt_emb, "(b t) c -> b t c", b=batch_size).repeat_interleave(token_per_frame, dim=1)
-        timestep_proj = rearrange(timestep_proj, "(b t) c -> b t c", b=batch_size).repeat_interleave(
-            token_per_frame, dim=1
-        )
+        rt_emb = rt_emb.unflatten(0, (batch_size, num_frames)).repeat_interleave(token_per_frame, dim=1)
+        timestep_proj = timestep_proj.unflatten(0, (batch_size, num_frames)).repeat_interleave(token_per_frame, dim=1)
 
         return rt_emb, timestep_proj
 
@@ -401,17 +476,38 @@ class AnyFlowRotaryPosEmbed(nn.Module):
         self.patch_size = patch_size
         self.compressed_patch_size = compressed_patch_size
         self.max_seq_len = max_seq_len
+        self.theta = theta
 
-        h_dim = w_dim = 2 * (attention_head_dim // 6)
-        t_dim = attention_head_dim - h_dim - w_dim
+        # Frequency table is lazily built per-device in ``_build_freqs``: MPS / NPU don't support
+        # complex128, so we downcast to complex64 there.
+        self._freqs_cache: Optional[Tuple[Any, torch.Tensor]] = None
 
-        freqs = []
-        for dim in [t_dim, h_dim, w_dim]:
-            freq = get_1d_rotary_pos_embed(
-                dim, max_seq_len, theta, use_real=False, repeat_interleave_real=False, freqs_dtype=torch.float64
+    def _build_freqs(self, device: torch.device) -> torch.Tensor:
+        cache_key = (device.type, str(device))
+        if self._freqs_cache is not None and self._freqs_cache[0] == cache_key:
+            return self._freqs_cache[1]
+
+        is_mps = device.type == "mps"
+        is_npu = device.type == "npu"
+        freqs_dtype = torch.float32 if (is_mps or is_npu) else torch.float64
+
+        h_dim = w_dim = 2 * (self.attention_head_dim // 6)
+        t_dim = self.attention_head_dim - h_dim - w_dim
+
+        freqs_list = []
+        for dim in (t_dim, h_dim, w_dim):
+            f = get_1d_rotary_pos_embed(
+                dim,
+                self.max_seq_len,
+                self.theta,
+                use_real=False,
+                repeat_interleave_real=False,
+                freqs_dtype=freqs_dtype,
             )
-            freqs.append(freq)
-        self.freqs = torch.cat(freqs, dim=1)
+            freqs_list.append(f.to(device))
+        freqs = torch.cat(freqs_list, dim=1)
+        self._freqs_cache = (cache_key, freqs)
+        return freqs
 
     def avg_pool_complex(self, freq: torch.Tensor, kernel_size: int, stride: int):
 
@@ -436,8 +532,7 @@ class AnyFlowRotaryPosEmbed(nn.Module):
         ppf, pph, ppw = num_frames, height, width
         downscale = [self.compressed_patch_size[i] // self.patch_size[i] for i in range(len(self.patch_size))]
 
-        self.freqs = self.freqs.to(device)
-        freqs = self.freqs.split_with_sizes(
+        freqs = self._build_freqs(device).split_with_sizes(
             [
                 self.attention_head_dim // 2 - 2 * (self.attention_head_dim // 6),
                 self.attention_head_dim // 6,
@@ -460,8 +555,7 @@ class AnyFlowRotaryPosEmbed(nn.Module):
     def _forward_full_frame(self, num_frames, height, width, device) -> torch.Tensor:
         ppf, pph, ppw = num_frames, height, width
 
-        self.freqs = self.freqs.to(device)
-        freqs = self.freqs.split_with_sizes(
+        freqs = self._build_freqs(device).split_with_sizes(
             [
                 self.attention_head_dim // 2 - 2 * (self.attention_head_dim // 6),
                 self.attention_head_dim // 6,
@@ -525,42 +619,28 @@ class AnyFlowTransformerBlock(nn.Module):
         dim: int,
         ffn_dim: int,
         num_heads: int,
-        qk_norm: str = "rms_norm_across_heads",
         cross_attn_norm: bool = False,
         eps: float = 1e-6,
-        added_kv_proj_dim: Optional[int] = None,
     ):
         super().__init__()
 
         # 1. Self-attention
         self.norm1 = FP32LayerNorm(dim, eps, elementwise_affine=False)
-        self.attn1 = Attention(
-            query_dim=dim,
+        self.attn1 = AnyFlowAttention(
+            dim=dim,
             heads=num_heads,
-            kv_heads=num_heads,
             dim_head=dim // num_heads,
-            qk_norm=qk_norm,
             eps=eps,
-            bias=True,
-            cross_attention_dim=None,
-            out_bias=True,
-            processor=AnyFlowSelfAttnProcessor2_0(),
+            processor=AnyFlowAttnProcessor(),
         )
 
         # 2. Cross-attention
-        self.attn2 = Attention(
-            query_dim=dim,
+        self.attn2 = AnyFlowAttention(
+            dim=dim,
             heads=num_heads,
-            kv_heads=num_heads,
             dim_head=dim // num_heads,
-            qk_norm=qk_norm,
             eps=eps,
-            bias=True,
-            cross_attention_dim=None,
-            out_bias=True,
-            added_kv_proj_dim=added_kv_proj_dim,
-            added_proj_bias=True,
-            processor=AnyFlowCrossAttnProcessor2_0(),
+            processor=AnyFlowCrossAttnProcessor(),
         )
         self.norm2 = FP32LayerNorm(dim, eps, elementwise_affine=True) if cross_attn_norm else nn.Identity()
 
@@ -654,14 +734,10 @@ class AnyFlowTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromO
             Number of transformer blocks.
         cross_attn_norm (`bool`, defaults to `True`):
             Enable cross-attention normalization.
-        qk_norm (`Optional[str]`, defaults to `'rms_norm_across_heads'`):
-            Query/key normalization scheme.
         eps (`float`, defaults to `1e-6`):
             Epsilon for normalization layers.
         image_dim (`Optional[int]`, *optional*, defaults to `None`):
             Image embedding dimension for I2V conditioning (`1280` for the original Wan2.1-I2V model).
-        added_kv_proj_dim (`Optional[int]`, *optional*, defaults to `None`):
-            The number of channels to use for the added key/value projections. If `None`, no projection is added.
         rope_max_seq_len (`int`, defaults to `1024`):
             Maximum sequence length used to precompute rotary position frequencies.
         gate_value (`float`, defaults to `0.25`):
@@ -675,7 +751,7 @@ class AnyFlowTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromO
     _skip_layerwise_casting_patterns = ["patch_embedding", "condition_embedder", "norm"]
     _no_split_modules = ["AnyFlowTransformerBlock"]
     _keep_in_fp32_modules = ["time_embedder", "scale_shift_table", "norm1", "norm2", "norm3"]
-    _keys_to_ignore_on_load_unexpected = ["norm_added_q"]
+    _repeated_blocks = ["AnyFlowTransformerBlock"]
 
     @register_to_config
     def __init__(
@@ -690,10 +766,8 @@ class AnyFlowTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromO
         ffn_dim: int = 13824,
         num_layers: int = 40,
         cross_attn_norm: bool = True,
-        qk_norm: Optional[str] = "rms_norm_across_heads",
         eps: float = 1e-6,
         image_dim: Optional[int] = None,
-        added_kv_proj_dim: Optional[int] = None,
         rope_max_seq_len: int = 1024,
         gate_value: float = 0.25,
         deltatime_type: str = "r",
@@ -722,9 +796,7 @@ class AnyFlowTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromO
         # 3. Transformer blocks
         self.blocks = nn.ModuleList(
             [
-                AnyFlowTransformerBlock(
-                    inner_dim, ffn_dim, num_attention_heads, qk_norm, cross_attn_norm, eps, added_kv_proj_dim
-                )
+                AnyFlowTransformerBlock(inner_dim, ffn_dim, num_attention_heads, cross_attn_norm, eps)
                 for _ in range(num_layers)
             ]
         )
@@ -766,7 +838,7 @@ class AnyFlowTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromO
         with the standard ``patch_embedding`` (kernel = stride = ``patch_size``) and denoised with global
         bidirectional self-attention over the resulting flat token sequence.
         """
-        hidden_states = rearrange(hidden_states, "b f c h w -> b c f h w")
+        hidden_states = hidden_states.permute(0, 2, 1, 3, 4)
         batch_size, num_channels, num_frames, height, width = hidden_states.shape
 
         full_token_per_frame = (height * width) // (self.config.patch_size[1] * self.config.patch_size[2])
@@ -877,14 +949,10 @@ class AnyFlowFARTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Fr
             Number of transformer blocks.
         cross_attn_norm (`bool`, defaults to `True`):
             Enable cross-attention normalization.
-        qk_norm (`Optional[str]`, defaults to `'rms_norm_across_heads'`):
-            Query/key normalization scheme.
         eps (`float`, defaults to `1e-6`):
             Epsilon for normalization layers.
         image_dim (`Optional[int]`, *optional*, defaults to `None`):
             Image embedding dimension for I2V conditioning.
-        added_kv_proj_dim (`Optional[int]`, *optional*, defaults to `None`):
-            The number of channels to use for the added key/value projections.
         rope_max_seq_len (`int`, defaults to `1024`):
             Maximum sequence length used to precompute rotary position frequencies.
         gate_value (`float`, defaults to `0.25`):
@@ -902,7 +970,7 @@ class AnyFlowFARTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Fr
     _skip_layerwise_casting_patterns = ["patch_embedding", "far_patch_embedding", "condition_embedder", "norm"]
     _no_split_modules = ["AnyFlowTransformerBlock"]
     _keep_in_fp32_modules = ["time_embedder", "scale_shift_table", "norm1", "norm2", "norm3"]
-    _keys_to_ignore_on_load_unexpected = ["norm_added_q"]
+    _repeated_blocks = ["AnyFlowTransformerBlock"]
 
     @register_to_config
     def __init__(
@@ -919,10 +987,8 @@ class AnyFlowFARTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Fr
         ffn_dim: int = 13824,
         num_layers: int = 40,
         cross_attn_norm: bool = True,
-        qk_norm: Optional[str] = "rms_norm_across_heads",
         eps: float = 1e-6,
         image_dim: Optional[int] = None,
-        added_kv_proj_dim: Optional[int] = None,
         rope_max_seq_len: int = 1024,
         gate_value: float = 0.25,
         deltatime_type: str = "r",
@@ -963,9 +1029,7 @@ class AnyFlowFARTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Fr
         # 3. Transformer blocks
         self.blocks = nn.ModuleList(
             [
-                AnyFlowTransformerBlock(
-                    inner_dim, ffn_dim, num_attention_heads, qk_norm, cross_attn_norm, eps, added_kv_proj_dim
-                )
+                AnyFlowTransformerBlock(inner_dim, ffn_dim, num_attention_heads, cross_attn_norm, eps)
                 for _ in range(num_layers)
             ]
         )
@@ -1235,7 +1299,7 @@ class AnyFlowFARTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Fr
         kv_cache_flag=None,
     ) -> Union[torch.Tensor, Dict[str, torch.Tensor]]:
 
-        hidden_states = rearrange(hidden_states, "b f c h w -> b c f h w")
+        hidden_states = hidden_states.permute(0, 2, 1, 3, 4)
 
         batch_size, num_channels, num_frames, height, width = hidden_states.shape
 
@@ -1357,9 +1421,9 @@ class AnyFlowFARTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Fr
         kv_cache_flag=None,
     ) -> Union[torch.Tensor, Dict[str, torch.Tensor]]:
 
-        hidden_states = rearrange(hidden_states, "b f c h w -> b c f h w")
+        hidden_states = hidden_states.permute(0, 2, 1, 3, 4)
         if clean_hidden_states is not None:
-            clean_hidden_states = rearrange(clean_hidden_states, "b f c h w -> b c f h w")
+            clean_hidden_states = clean_hidden_states.permute(0, 2, 1, 3, 4)
 
         batch_size, num_channels, num_frames, height, width = hidden_states.shape
 
@@ -1463,9 +1527,9 @@ class AnyFlowFARTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Fr
         clean_timestep=None,
     ) -> Union[torch.Tensor, Dict[str, torch.Tensor]]:
 
-        hidden_states = rearrange(hidden_states, "b f c h w -> b c f h w")
+        hidden_states = hidden_states.permute(0, 2, 1, 3, 4)
         if clean_hidden_states is not None:
-            clean_hidden_states = rearrange(clean_hidden_states, "b f c h w -> b c f h w")
+            clean_hidden_states = clean_hidden_states.permute(0, 2, 1, 3, 4)
 
         batch_size, num_channels, num_frames, height, width = hidden_states.shape
 
