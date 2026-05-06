@@ -15,7 +15,7 @@
 import json
 
 import torch
-from transformers import AutoTokenizer, Ministral3ForCausalLM, Mistral3Model
+from transformers import AutoModel, AutoModelForCausalLM, AutoTokenizer
 
 from ...configuration_utils import FrozenDict
 from ...guiders import ClassifierFreeGuidance
@@ -38,7 +38,7 @@ class ErnieImagePromptEnhancerStep(ModularPipelineBlocks):
     @property
     def expected_components(self) -> list[ComponentSpec]:
         return [
-            ComponentSpec("pe", Ministral3ForCausalLM),
+            ComponentSpec("pe", AutoModelForCausalLM),
             ComponentSpec("pe_tokenizer", AutoTokenizer),
         ]
 
@@ -83,7 +83,7 @@ class ErnieImagePromptEnhancerStep(ModularPipelineBlocks):
 
     @staticmethod
     def _enhance_prompt(
-        pe: Ministral3ForCausalLM,
+        pe: AutoModelForCausalLM,
         pe_tokenizer: AutoTokenizer,
         prompt: str,
         device: torch.device,
@@ -160,7 +160,7 @@ class ErnieImageTextEncoderStep(ModularPipelineBlocks):
     @property
     def expected_components(self) -> list[ComponentSpec]:
         return [
-            ComponentSpec("text_encoder", Mistral3Model),
+            ComponentSpec("text_encoder", AutoModel),
             ComponentSpec("tokenizer", AutoTokenizer),
             ComponentSpec(
                 "guider",
@@ -200,7 +200,7 @@ class ErnieImageTextEncoderStep(ModularPipelineBlocks):
 
     @staticmethod
     def _encode(
-        text_encoder: Mistral3Model,
+        text_encoder: AutoModel,
         tokenizer: AutoTokenizer,
         prompt: list[str],
         device: torch.device,

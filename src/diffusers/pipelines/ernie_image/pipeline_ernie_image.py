@@ -20,7 +20,7 @@ import json
 from typing import Callable, List, Optional, Union
 
 import torch
-from transformers import AutoTokenizer, Ministral3ForCausalLM, Mistral3Model
+from transformers import AutoModel, AutoModelForCausalLM, AutoTokenizer
 
 from ...image_processor import VaeImageProcessor
 from ...loaders import ErnieImageLoraLoaderMixin
@@ -52,10 +52,10 @@ class ErnieImagePipeline(DiffusionPipeline, ErnieImageLoraLoaderMixin):
         self,
         transformer: ErnieImageTransformer2DModel,
         vae: AutoencoderKLFlux2,
-        text_encoder: Mistral3Model,
+        text_encoder: AutoModel,
         tokenizer: AutoTokenizer,
         scheduler: FlowMatchEulerDiscreteScheduler,
-        pe: Optional[Ministral3ForCausalLM] = None,
+        pe: Optional[AutoModelForCausalLM] = None,
         pe_tokenizer: Optional[AutoTokenizer] = None,
     ):
         super().__init__()
