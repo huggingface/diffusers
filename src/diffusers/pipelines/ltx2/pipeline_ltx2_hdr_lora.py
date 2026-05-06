@@ -114,7 +114,6 @@ EXAMPLE_DOC_STRING = """
         ... )[0]
 
         >>> # Convert the HDR video to a SDR sRGB-tonemapped `.mp4` video.
-        >>> # You can also save the output to EXR using `save_hdr_video_frames_as_exr`.
         >>> # A custom tone-mapper can be specified via the `tone_mapping_fn` argument.
         >>> encode_hdr_tensor_to_mp4(hdr_video[0], "ltx2_hdr_lora_output.mp4", frame_rate=24.0)
         ```
