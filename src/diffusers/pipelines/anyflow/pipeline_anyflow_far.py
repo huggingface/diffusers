@@ -622,6 +622,10 @@ class AnyFlowFARPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         else:
             num_context_chunks = 0
 
+        # Each non-context chunk runs `num_inference_steps` denoising steps that fire
+        # callback_on_step_end; context chunks only encode KV cache and never call back.
+        self._num_timesteps = (len(chunk_partition) - num_context_chunks) * num_inference_steps
+
         for chunk_idx in tqdm(range(len(chunk_partition))):
             if chunk_idx >= num_context_chunks:
                 pred_latents = self.inference(
@@ -665,9 +669,9 @@ class AnyFlowFARPipeline(DiffusionPipeline, WanLoraLoaderMixin):
 
         latents = output[:, : sum(chunk_partition)]
         latent_model_input = (
-            torch.cat([latents] * 2).to(torch.bfloat16)
+            torch.cat([latents] * 2).to(self.transformer.dtype)
             if self.do_classifier_free_guidance
-            else latents.to(torch.bfloat16)
+            else latents.to(self.transformer.dtype)
         )
 
         timestep = torch.tensor([0], device=latents.device).expand(latent_model_input.shape[0]).unsqueeze(-1)

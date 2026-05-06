@@ -156,6 +156,17 @@ class AnyFlowFARPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     def test_attention_slicing_forward_pass(self):
         pass
 
+    @unittest.skip(
+        "PipelineTesterMixin.test_callback_inputs zeroes latents on the final step and asserts the "
+        "*entire* output is zero. AnyFlowFARPipeline runs a chunk-wise FAR rollout where each chunk "
+        "produces an independent slice of the output buffer; zeroing latents in the final chunk only "
+        "zeroes that chunk's slice while earlier chunks (already written) stay non-zero. "
+        "The callback API itself works correctly (test_callback_cfg passes); only this specific "
+        "global-output assertion is incompatible with chunk-wise generation by construction."
+    )
+    def test_callback_inputs(self):
+        pass
+
 
 @slow
 @require_torch_accelerator

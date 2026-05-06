@@ -24,7 +24,8 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torch.nn.attention.flex_attention import create_block_mask, flex_attention
+from torch.nn.attention.flex_attention import create_block_mask
+from torch.nn.attention.flex_attention import flex_attention as _flex_attention_eager
 
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...loaders import FromOriginalModelMixin, PeftAdapterMixin
@@ -57,15 +58,26 @@ class AnyFlowFARTransformerOutput(BaseOutput):
     kv_cache: Optional[List[Dict[str, torch.Tensor]]] = None
 
 
-# `flex_attention` is JIT-compiled lazily on first call so that importing this module does not require
-# Triton or a CUDA-capable device (CPU CI / older PyTorch builds otherwise fail at import time).
+# Pre-compile `flex_attention` for CUDA (the production path) but fall back to the eager kernel on
+# CPU. The compiled kernel goes through Triton/Inductor C++ codegen which can fail on small or
+# unusual shapes seen in fast tests (e.g. CPU-side `pipe.to("cpu")` with tiny dummy components).
+# Both paths produce identical numeric output — the wrapper only differs in execution speed.
 try:
-    flex_attention = torch.compile(flex_attention, dynamic=True)
+    _flex_attention_compiled = torch.compile(_flex_attention_eager, dynamic=True)
 except Exception as e:  # pragma: no cover - environment-dependent
     logger.warning(
-        "Failed to torch.compile flex_attention; falling back to the eager kernel. Error: %s",
+        "Failed to torch.compile flex_attention at module load; will use the eager kernel everywhere. Error: %s",
         e,
     )
+    _flex_attention_compiled = _flex_attention_eager
+
+
+def flex_attention(query, key, value, *args, **kwargs):
+    """Dispatch to the compiled flex_attention on CUDA (fast path) or the eager one on CPU
+    (avoids Triton/Inductor codegen failures on tiny test shapes)."""
+    if query.device.type == "cuda":
+        return _flex_attention_compiled(query, key, value, *args, **kwargs)
+    return _flex_attention_eager(query, key, value, *args, **kwargs)
 
 
 def build_block_mask(mask_2d, device):
@@ -190,6 +202,7 @@ class AnyFlowAttnProcessor:
             # FAR causal path: BlockMask is consumed by flex_attention only, so we keep the
             # (B, H, L, D) layout and pad to a multiple of 128 for the BlockMask block size.
             seq_len = query.shape[2]
+            head_dim = query.shape[3]
             padded_length = int(math.ceil(seq_len / 128.0) * 128.0 - seq_len)
             query = torch.cat(
                 [
@@ -224,7 +237,20 @@ class AnyFlowAttnProcessor:
                 ],
                 dim=2,
             )
-            hidden_states = flex_attention(query, key, value, block_mask=attention_mask)[:, :, :seq_len]
+            # flex_attention requires head_dim >= 16. When tiny dummy components use head_dim < 16
+            # (real ckpts use 128) we right-pad q/k/v with zeros and pass an explicit scale matched
+            # to the original head_dim; padded value rows contribute 0, so trimming back preserves
+            # output equivalence.
+            head_pad = max(0, 16 - head_dim)
+            scale = 1.0 / (head_dim**0.5) if head_pad > 0 else None
+            if head_pad > 0:
+                query = F.pad(query, (0, head_pad))
+                key = F.pad(key, (0, head_pad))
+                value = F.pad(value, (0, head_pad))
+            hidden_states = flex_attention(query, key, value, block_mask=attention_mask, scale=scale)
+            if head_pad > 0:
+                hidden_states = hidden_states[..., :head_dim]
+            hidden_states = hidden_states[:, :, :seq_len]
             hidden_states = hidden_states.transpose(1, 2).flatten(2, 3)
 
         hidden_states = hidden_states.type_as(query)
@@ -530,9 +556,16 @@ class AnyFlowRotaryPosEmbed(nn.Module):
 
     def _forward_compressed_frame(self, num_frames, height, width, device):
         ppf, pph, ppw = num_frames, height, width
+        # Tiny dummy components (e.g. height=16/width=16 with compressed_patch_size=(1,4,4) and
+        # an upstream VAE stride of 8) can produce 0-element grids; the .view(0, k, 1, -1) reshape
+        # below would be ambiguous. Real ckpts use 60x104 latents and never hit this path.
+        freqs_full = self._build_freqs(device)
+        if min(ppf, pph, ppw) <= 0:
+            freq_channels = self.attention_head_dim // 2
+            return torch.empty((ppf, pph, ppw, freq_channels), dtype=freqs_full.dtype, device=device)
         downscale = [self.compressed_patch_size[i] // self.patch_size[i] for i in range(len(self.patch_size))]
 
-        freqs = self._build_freqs(device).split_with_sizes(
+        freqs = freqs_full.split_with_sizes(
             [
                 self.attention_head_dim // 2 - 2 * (self.attention_head_dim // 6),
                 self.attention_head_dim // 6,
@@ -555,7 +588,12 @@ class AnyFlowRotaryPosEmbed(nn.Module):
     def _forward_full_frame(self, num_frames, height, width, device) -> torch.Tensor:
         ppf, pph, ppw = num_frames, height, width
 
-        freqs = self._build_freqs(device).split_with_sizes(
+        freqs_full = self._build_freqs(device)
+        if min(ppf, pph, ppw) <= 0:
+            freq_channels = self.attention_head_dim // 2
+            return torch.empty((ppf, pph, ppw, freq_channels), dtype=freqs_full.dtype, device=device)
+
+        freqs = freqs_full.split_with_sizes(
             [
                 self.attention_head_dim // 2 - 2 * (self.attention_head_dim // 6),
                 self.attention_head_dim // 6,
