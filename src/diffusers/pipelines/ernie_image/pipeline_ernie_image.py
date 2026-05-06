@@ -17,10 +17,10 @@ Ernie-Image Pipeline for HuggingFace Diffusers.
 """
 
 import json
-from typing import Callable, List, Optional, Union
+from typing import TYPE_CHECKING, Callable, List, Optional, Union
 
 import torch
-from transformers import AutoModel, AutoModelForCausalLM, AutoTokenizer
+from transformers import AutoTokenizer
 
 from ...image_processor import VaeImageProcessor
 from ...loaders import ErnieImageLoraLoaderMixin
@@ -30,6 +30,10 @@ from ...pipelines.pipeline_utils import DiffusionPipeline
 from ...schedulers import FlowMatchEulerDiscreteScheduler
 from ...utils.torch_utils import randn_tensor
 from .pipeline_output import ErnieImagePipelineOutput
+
+
+if TYPE_CHECKING:
+    from transformers import Ministral3ForCausalLM, Mistral3Model
 
 
 class ErnieImagePipeline(DiffusionPipeline, ErnieImageLoraLoaderMixin):
@@ -52,10 +56,10 @@ class ErnieImagePipeline(DiffusionPipeline, ErnieImageLoraLoaderMixin):
         self,
         transformer: ErnieImageTransformer2DModel,
         vae: AutoencoderKLFlux2,
-        text_encoder: AutoModel,
+        text_encoder: "Mistral3Model",
         tokenizer: AutoTokenizer,
         scheduler: FlowMatchEulerDiscreteScheduler,
-        pe: Optional[AutoModelForCausalLM] = None,
+        pe: Optional["Ministral3ForCausalLM"] = None,
         pe_tokenizer: Optional[AutoTokenizer] = None,
     ):
         super().__init__()
