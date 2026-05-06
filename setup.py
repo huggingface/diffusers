@@ -104,7 +104,7 @@ _deps = [
     "ftfy",
     "hf-doc-builder>=0.3.0",
     "httpx<1.0.0",
-    "huggingface-hub>=0.34.0,<2.0",
+    "huggingface-hub==1.14.0.rc0",
     "requests-mock==1.10.0",
     "importlib_metadata",
     "invisible-watermark>=0.2.0",
@@ -151,7 +151,7 @@ _deps = [
 
 # this is a lookup table with items like:
 #
-# tokenizers: "huggingface-hub==0.8.0"
+# tokenizers: "huggingface-hub==1.14.0.rc0"
 # packaging: "packaging"
 #
 # some of the values are versioned whereas others aren't.

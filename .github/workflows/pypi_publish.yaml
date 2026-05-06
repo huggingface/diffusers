@@ -43,7 +43,7 @@ jobs:
       - name: Test installing diffusers and importing
         run: |
           pip install -U transformers
-          uv pip uninstall tokenizers && uv pip install "tokenizers<=0.23.0"
+          uv pip uninstall tokenizers && uv pip install --prerelease=allow "tokenizers<=0.23.0"
           python utils/print_env.py
           python -c "from diffusers import __version__; print(__version__)"
           python -c "from diffusers import DiffusionPipeline; pipe = DiffusionPipeline.from_pretrained('fusing/unet-ldm-dummy-update'); pipe()"
