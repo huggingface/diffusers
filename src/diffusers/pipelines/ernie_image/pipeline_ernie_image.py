@@ -23,6 +23,7 @@ import torch
 from transformers import AutoTokenizer, Ministral3ForCausalLM, Mistral3Model
 
 from ...image_processor import VaeImageProcessor
+from ...loaders import ErnieImageLoraLoaderMixin
 from ...models import AutoencoderKLFlux2
 from ...models.transformers import ErnieImageTransformer2DModel
 from ...pipelines.pipeline_utils import DiffusionPipeline
@@ -31,7 +32,7 @@ from ...utils.torch_utils import randn_tensor
 from .pipeline_output import ErnieImagePipelineOutput
 
 
-class ErnieImagePipeline(DiffusionPipeline):
+class ErnieImagePipeline(DiffusionPipeline, ErnieImageLoraLoaderMixin):
     """
     Pipeline for text-to-image generation using ErnieImageTransformer2DModel.
 
