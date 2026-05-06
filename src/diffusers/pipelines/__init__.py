@@ -320,6 +320,7 @@ else:
     )
     _import_structure["latte"] = ["LattePipeline"]
     _import_structure["llada2"] = ["LLaDA2Pipeline", "LLaDA2PipelineOutput"]
+    _import_structure["unillada"] = ["UniLLaDaPipeline", "UniLLaDaPipelineOutput"]
     _import_structure["ltx"] = [
         "LTXPipeline",
         "LTXImageToVideoPipeline",
@@ -868,6 +869,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             StableDiffusionAdapterPipeline,
             StableDiffusionXLAdapterPipeline,
         )
+        from .unillada import UniLLaDaPipeline, UniLLaDaPipelineOutput
         from .visualcloze import VisualClozeGenerationPipeline, VisualClozePipeline
         from .wan import (
             WanAnimatePipeline,
