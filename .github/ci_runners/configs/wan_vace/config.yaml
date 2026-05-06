@@ -2,14 +2,15 @@ pipeline_class: WanVACEPipeline
 module: diffusers.pipelines.wan.pipeline_wan_vace
 
 params_grid:
-  - name: "square_50steps_single"
-    width: 832
-    height: 480
-    num_inference_steps: 50
+  - name: "small_30steps_single"
+    width: 480
+    height: 272
+    num_inference_steps: 30
     guidance_scale: 5.0
-    num_frames: 81
+    num_frames: 33
     parallel: "single"
+    image: ".github/ci_runners/test_data/sample_input.png"
 
 prompt: "A cat walking on a beach at sunset, cinematic quality."
 negative_prompt: "blurry, low quality, distorted."
-reference_config: "square_50steps_single"
+reference_config: "small_30steps_single"

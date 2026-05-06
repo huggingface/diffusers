@@ -4,3 +4,5 @@ _PipelineMapping/
 _update/
 diffusers/
 fusion_result.json
+src/diffusers.egg-info/
+__pycache__/

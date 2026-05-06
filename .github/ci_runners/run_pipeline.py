@@ -1,4 +1,5 @@
 import argparse
+import gc
 import importlib
 import json
 import os
@@ -94,6 +95,14 @@ def build_kwargs(params_grid_entry: dict, prompt: str, negative_prompt: str, dev
 
     if extra_params:
         kwargs.update(extra_params)
+
+    if "image" in kwargs and isinstance(kwargs["image"], str):
+        from PIL import Image
+        image_path = kwargs["image"]
+        if os.path.isfile(image_path):
+            kwargs["image"] = Image.open(image_path).convert("RGB")
+        else:
+            del kwargs["image"]
 
     gen_device = "cuda" if device == "cuda" else "cpu"
     kwargs["generator"] = torch.Generator(device=gen_device).manual_seed(42)
@@ -208,6 +217,7 @@ def generate_reference_only(config_dir: str, output_dir: str):
     print(f"[{pipeline_name}] reference saved to {ref_path}")
 
     del pipe
+    gc.collect()
     if device == "cuda":
         torch.cuda.empty_cache()
     elif device == "npu":

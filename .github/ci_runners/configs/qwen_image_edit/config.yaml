@@ -8,6 +8,7 @@ params_grid:
     num_inference_steps: 50
     true_cfg_scale: 4.0
     parallel: "single"
+    image: ".github/ci_runners/test_data/sample_input.png"
 
 prompt: "Transform this image into a watercolor painting style."
 negative_prompt: "blurry, low quality, distorted."
