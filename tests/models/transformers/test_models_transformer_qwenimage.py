@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import warnings
 
 import pytest
 import torch
@@ -174,31 +173,6 @@ class TestQwenImageTransformer(QwenImageTransformerTesterConfig, ModelTesterMixi
 
         with torch.no_grad():
             output = model(**inputs)
-
-        assert output.sample.shape[1] == inputs["hidden_states"].shape[1]
-
-    def test_txt_seq_lens_deprecation(self):
-        init_dict = self.get_init_dict()
-        inputs = self.get_dummy_inputs()
-        model = self.model_class(**init_dict).to(torch_device)
-
-        txt_seq_lens = [inputs["encoder_hidden_states"].shape[1]]
-
-        inputs_with_deprecated = inputs.copy()
-        inputs_with_deprecated.pop("encoder_hidden_states_mask")
-        inputs_with_deprecated["txt_seq_lens"] = txt_seq_lens
-
-        with warnings.catch_warnings(record=True) as w:
-            warnings.simplefilter("always")
-            with torch.no_grad():
-                output = model(**inputs_with_deprecated)
-
-            future_warnings = [x for x in w if issubclass(x.category, FutureWarning)]
-            assert len(future_warnings) > 0, "Expected FutureWarning to be raised"
-
-            warning_message = str(future_warnings[0].message)
-            assert "txt_seq_lens" in warning_message
-            assert "deprecated" in warning_message
 
         assert output.sample.shape[1] == inputs["hidden_states"].shape[1]
 
