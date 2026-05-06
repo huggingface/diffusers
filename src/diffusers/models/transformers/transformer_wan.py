@@ -12,7 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from __future__ import annotations
+
 import math
+from dataclasses import dataclass
 from typing import Any
 
 import torch
@@ -36,7 +39,7 @@ from ..normalization import FP32LayerNorm
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
-def _get_qkv_projections(attn: "WanAttention", hidden_states: torch.Tensor, encoder_hidden_states: torch.Tensor):
+def _get_qkv_projections(attn: WanAttention, hidden_states: torch.Tensor, encoder_hidden_states: torch.Tensor):
     # encoder_hidden_states is only passed for cross-attention
     if encoder_hidden_states is None:
         encoder_hidden_states = hidden_states
@@ -56,13 +59,122 @@ def _get_qkv_projections(attn: "WanAttention", hidden_states: torch.Tensor, enco
     return query, key, value
 
 
-def _get_added_kv_projections(attn: "WanAttention", encoder_hidden_states_img: torch.Tensor):
+def _get_added_kv_projections(attn: WanAttention, encoder_hidden_states_img: torch.Tensor):
     if attn.fused_projections:
         key_img, value_img = attn.to_added_kv(encoder_hidden_states_img).chunk(2, dim=-1)
     else:
         key_img = attn.add_k_proj(encoder_hidden_states_img)
         value_img = attn.add_v_proj(encoder_hidden_states_img)
     return key_img, value_img
+
+
+@dataclass
+class WanKVBlockCache:
+    """Per-block rolling KV cache state for autoregressive WAN inference.
+
+    ``cached_key`` and ``cached_value`` hold the post-norm, post-RoPE K/V from prior chunks
+    with shape ``(batch_size, cached_seq_len, num_heads, head_dim)``.
+    """
+
+    cached_key: torch.Tensor | None = None
+    cached_value: torch.Tensor | None = None
+
+    def reset(self) -> None:
+        self.__init__()
+
+
+class WanKVCache:
+    """Rolling KV cache for autoregressive WAN video generation.
+
+    Holds a per-block ``WanKVBlockCache`` for every transformer block, plus shared
+    write-control state. Pass an instance via ``attention_kwargs`` on each transformer forward
+    call. ``WanAttnProcessor`` calls :py:meth:`update` to merge the current chunk's K/V into
+    the cache and get back the (possibly trimmed) attention K/V.
+
+    TODO: cross-attention K/V projections are currently recomputed on every forward pass even
+    though the text embeddings are constant across chunks. A future change can add cross-attn
+    caching alongside the existing self-attn cache.
+
+    Args:
+        num_blocks (`int`): Number of transformer blocks (``len(transformer.blocks)``).
+        window_size (`int`, defaults to ``-1``): Maximum cached tokens per block. ``-1`` keeps
+            the full prefix.
+
+    Example:
+
+    ```python
+    >>> cache = WanKVCache(num_blocks=len(transformer.blocks))
+    >>> transformer(..., attention_kwargs={"kv_cache": cache})
+    ```
+    """
+
+    def __init__(self, num_blocks: int, window_size: int = -1):
+        self.block_caches: list[WanKVBlockCache] = [WanKVBlockCache() for _ in range(num_blocks)]
+        self.window_size: int = window_size
+        self.overwrite_newest: bool = False
+
+    def enable_append_mode(self) -> None:
+        """Next forward pass appends the new chunk's K/V to the cache (cache grows, or oldest gets evicted)."""
+        self.overwrite_newest = False
+
+    def enable_overwrite_mode(self) -> None:
+        """Next forward pass replaces the newest ``chunk_size`` tokens in place (cache size unchanged)."""
+        self.overwrite_newest = True
+
+    def reset(self) -> None:
+        """Clear all cached K/V tensors and reset write-control state."""
+        for bc in self.block_caches:
+            bc.reset()
+        self.overwrite_newest = False
+
+    def update(
+        self,
+        block_idx: int,
+        new_key: torch.Tensor,
+        new_value: torch.Tensor,
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        """Merge the current chunk's K/V into block ``block_idx``'s cache and return the
+        K/V that the self-attention should attend over.
+
+        Two paths:
+        - **Overwrite-newest** (``overwrite_newest=True`` and the cache already holds at
+          least ``new_key.shape[1]`` tokens): write the new K/V *in place* into the trailing
+          positions of the existing tensor. No allocation, no concat.
+        - **Append** (default): concatenate the existing prefix with the new K/V, then trim
+          the oldest tokens from the front if the result exceeds ``window_size``.
+        """
+        block_cache = self.block_caches[block_idx]
+        prefix_k = block_cache.cached_key
+        prefix_v = block_cache.cached_value
+        n = new_key.shape[1]
+
+        if self.window_size > 0 and n > self.window_size:
+            raise RuntimeError(f"new chunk has {n} tokens, which exceeds window_size={self.window_size}.")
+
+        if self.overwrite_newest:
+            if prefix_k is None or prefix_k.shape[1] < n:
+                raise RuntimeError(
+                    "overwrite_newest requires the cache to already hold at least one chunk's worth of tokens "
+                    f"(>= {n}); cached length is {0 if prefix_k is None else prefix_k.shape[1]}. "
+                    "Use enable_append_mode() for the first write of a new chunk."
+                )
+            # In-place update of the cached tensors; block_cache already references them.
+            prefix_k[:, -n:] = new_key
+            prefix_v[:, -n:] = new_value
+            return prefix_k, prefix_v
+
+        if prefix_k is None:
+            block_cache.cached_key = new_key
+            block_cache.cached_value = new_value
+            return new_key, new_value
+
+        keep_prefix = self.window_size - n if self.window_size > 0 else prefix_k.shape[1]
+        if keep_prefix > 0:
+            new_key = torch.cat([prefix_k[:, -keep_prefix:], new_key], dim=1)
+            new_value = torch.cat([prefix_v[:, -keep_prefix:], new_value], dim=1)
+        block_cache.cached_key = new_key
+        block_cache.cached_value = new_value
+        return new_key, new_value
 
 
 class WanAttnProcessor:
@@ -77,11 +189,13 @@ class WanAttnProcessor:
 
     def __call__(
         self,
-        attn: "WanAttention",
+        attn: WanAttention,
         hidden_states: torch.Tensor,
         encoder_hidden_states: torch.Tensor | None = None,
         attention_mask: torch.Tensor | None = None,
         rotary_emb: tuple[torch.Tensor, torch.Tensor] | None = None,
+        kv_cache: WanKVCache | None = None,
+        block_idx: int | None = None,
     ) -> torch.Tensor:
         encoder_hidden_states_img = None
         if attn.add_k_proj is not None:
@@ -116,6 +230,11 @@ class WanAttnProcessor:
 
             query = apply_rotary_emb(query, *rotary_emb)
             key = apply_rotary_emb(key, *rotary_emb)
+
+        # Self-attention rolling KV cache: merge the current chunk's K/V into the per-block
+        # cache and use the (possibly trimmed) result for attention.
+        if kv_cache is not None and encoder_hidden_states is None:
+            key, value = kv_cache.update(block_idx, key, value)
 
         # I2V task
         hidden_states_img = None
@@ -392,7 +511,7 @@ class WanRotaryPosEmbed(nn.Module):
         self.register_buffer("freqs_cos", torch.cat(freqs_cos, dim=1), persistent=False)
         self.register_buffer("freqs_sin", torch.cat(freqs_sin, dim=1), persistent=False)
 
-    def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
+    def forward(self, hidden_states: torch.Tensor, frame_offset: int = 0) -> torch.Tensor:
         batch_size, num_channels, num_frames, height, width = hidden_states.shape
         p_t, p_h, p_w = self.patch_size
         ppf, pph, ppw = num_frames // p_t, height // p_h, width // p_w
@@ -402,11 +521,11 @@ class WanRotaryPosEmbed(nn.Module):
         freqs_cos = self.freqs_cos.split(split_sizes, dim=1)
         freqs_sin = self.freqs_sin.split(split_sizes, dim=1)
 
-        freqs_cos_f = freqs_cos[0][:ppf].view(ppf, 1, 1, -1).expand(ppf, pph, ppw, -1)
+        freqs_cos_f = freqs_cos[0][frame_offset : frame_offset + ppf].view(ppf, 1, 1, -1).expand(ppf, pph, ppw, -1)
         freqs_cos_h = freqs_cos[1][:pph].view(1, pph, 1, -1).expand(ppf, pph, ppw, -1)
         freqs_cos_w = freqs_cos[2][:ppw].view(1, 1, ppw, -1).expand(ppf, pph, ppw, -1)
 
-        freqs_sin_f = freqs_sin[0][:ppf].view(ppf, 1, 1, -1).expand(ppf, pph, ppw, -1)
+        freqs_sin_f = freqs_sin[0][frame_offset : frame_offset + ppf].view(ppf, 1, 1, -1).expand(ppf, pph, ppw, -1)
         freqs_sin_h = freqs_sin[1][:pph].view(1, pph, 1, -1).expand(ppf, pph, ppw, -1)
         freqs_sin_w = freqs_sin[2][:ppw].view(1, 1, ppw, -1).expand(ppf, pph, ppw, -1)
 
@@ -465,6 +584,8 @@ class WanTransformerBlock(nn.Module):
         encoder_hidden_states: torch.Tensor,
         temb: torch.Tensor,
         rotary_emb: torch.Tensor,
+        kv_cache: WanKVCache | None = None,
+        block_idx: int | None = None,
     ) -> torch.Tensor:
         if temb.ndim == 4:
             # temb: batch_size, seq_len, 6, inner_dim (wan2.2 ti2v)
@@ -486,7 +607,14 @@ class WanTransformerBlock(nn.Module):
 
         # 1. Self-attention
         norm_hidden_states = (self.norm1(hidden_states.float()) * (1 + scale_msa) + shift_msa).type_as(hidden_states)
-        attn_output = self.attn1(norm_hidden_states, None, None, rotary_emb)
+        attn_output = self.attn1(
+            norm_hidden_states,
+            None,
+            None,
+            rotary_emb,
+            kv_cache=kv_cache,
+            block_idx=block_idx,
+        )
         hidden_states = (hidden_states.float() + attn_output * gate_msa).type_as(hidden_states)
 
         # 2. Cross-attention
@@ -634,6 +762,7 @@ class WanTransformer3DModel(
         encoder_hidden_states_image: torch.Tensor | None = None,
         return_dict: bool = True,
         attention_kwargs: dict[str, Any] | None = None,
+        frame_offset: int = 0,
     ) -> torch.Tensor | dict[str, torch.Tensor]:
         batch_size, num_channels, num_frames, height, width = hidden_states.shape
         p_t, p_h, p_w = self.config.patch_size
@@ -641,7 +770,8 @@ class WanTransformer3DModel(
         post_patch_height = height // p_h
         post_patch_width = width // p_w
 
-        rotary_emb = self.rope(hidden_states)
+        rotary_emb = self.rope(hidden_states, frame_offset=frame_offset)
+        kv_cache: WanKVCache | None = (attention_kwargs or {}).pop("kv_cache", None)
 
         hidden_states = self.patch_embedding(hidden_states)
         hidden_states = hidden_states.flatten(2).transpose(1, 2)
@@ -668,13 +798,26 @@ class WanTransformer3DModel(
 
         # 4. Transformer blocks
         if torch.is_grad_enabled() and self.gradient_checkpointing:
-            for block in self.blocks:
+            for block_idx, block in enumerate(self.blocks):
                 hidden_states = self._gradient_checkpointing_func(
-                    block, hidden_states, encoder_hidden_states, timestep_proj, rotary_emb
+                    block,
+                    hidden_states,
+                    encoder_hidden_states,
+                    timestep_proj,
+                    rotary_emb,
+                    kv_cache,
+                    block_idx,
                 )
         else:
-            for block in self.blocks:
-                hidden_states = block(hidden_states, encoder_hidden_states, timestep_proj, rotary_emb)
+            for block_idx, block in enumerate(self.blocks):
+                hidden_states = block(
+                    hidden_states,
+                    encoder_hidden_states,
+                    timestep_proj,
+                    rotary_emb,
+                    kv_cache=kv_cache,
+                    block_idx=block_idx,
+                )
 
         # 5. Output norm, projection & unpatchify
         if temb.ndim == 3:
