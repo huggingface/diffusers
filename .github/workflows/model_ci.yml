@@ -15,7 +15,7 @@ jobs:
       image: diffusers_ci
       options: --ipc host --device=/dev/davinci0 --device=/dev/davinci1
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v4
 
       - name: Run all pipelines
         run: |
@@ -35,7 +35,7 @@ jobs:
 
       - name: Upload artifacts
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v4
         with:
           name: ci-run-${GITHUB_RUN_ID}
           path: artifacts/run-${GITHUB_RUN_ID}/
