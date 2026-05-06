@@ -132,6 +132,7 @@ if is_torch_available():
     _import_structure["transformers.transformer_wan"] = ["WanTransformer3DModel"]
     _import_structure["transformers.transformer_wan_animate"] = ["WanAnimateTransformer3DModel"]
     _import_structure["transformers.transformer_wan_vace"] = ["WanVACETransformer3DModel"]
+    _import_structure["transformers.transformer_llada2uni_image"] = ["LLaDA2UniImageTransformer2DModel"]
     _import_structure["transformers.transformer_z_image"] = ["ZImageTransformer2DModel"]
     _import_structure["unets.unet_1d"] = ["UNet1DModel"]
     _import_structure["unets.unet_2d"] = ["UNet2DModel"]
@@ -238,6 +239,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             HunyuanVideoTransformer3DModel,
             Kandinsky5Transformer3DModel,
             LatteTransformer3DModel,
+            LLaDA2UniImageTransformer2DModel,
             LongCatAudioDiTTransformer,
             LongCatImageTransformer2DModel,
             LTX2VideoTransformer3DModel,
