@@ -265,6 +265,7 @@ def main():
                 pipe = load_pipeline(
                     pipeline_class, module_path,
                     variant_data.get("weight_path", variant_data["model_id"]),
+                    variant_data["model_id"],
                     variant_data.get("backend", "local"),
                     device, torch_dtype,
                 )
