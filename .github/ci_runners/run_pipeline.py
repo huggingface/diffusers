@@ -11,6 +11,7 @@ from datetime import datetime, timezone
 import torch
 from diffusers import DiffusionPipeline
 
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__))))
 from runner_utils import detect_device, timer, validate_image, compare_with_reference
 
 
