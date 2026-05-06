@@ -2756,7 +2756,43 @@ def _flash_varlen_attention_hub(
     batch_size, seq_len_q, _, _ = query.shape
     _, seq_len_kv, _, _ = key.shape
 
-    if _parallel_config is not None:
+    if _parallel_config is None:
+        if attn_mask is not None:
+            attn_mask_2d = _normalize_attn_mask(attn_mask, batch_size, seq_len_kv)
+            (_, _), (cu_seqlens_q, cu_seqlens_k), (max_seqlen_q, max_seqlen_k) = (
+                _prepare_for_flash_attn_or_sage_varlen_with_mask(batch_size, seq_len_q, attn_mask_2d, query.device)
+            )
+            indices_k = attn_mask_2d.flatten().nonzero(as_tuple=False).flatten()
+            key_packed = key.reshape(-1, *key.shape[2:])[indices_k]
+            value_packed = value.reshape(-1, *value.shape[2:])[indices_k]
+        else:
+            (_, _), (cu_seqlens_q, cu_seqlens_k), (max_seqlen_q, max_seqlen_k) = (
+                _prepare_for_flash_attn_or_sage_varlen_without_mask(batch_size, seq_len_q, seq_len_kv, query.device)
+            )
+            key_packed = key.flatten(0, 1)
+            value_packed = value.flatten(0, 1)
+
+        query_packed = query.flatten(0, 1)
+
+        func = _HUB_KERNELS_REGISTRY[AttentionBackendName.FLASH_VARLEN_HUB].kernel_fn
+        out = func(
+            q=query_packed,
+            k=key_packed,
+            v=value_packed,
+            cu_seqlens_q=cu_seqlens_q,
+            cu_seqlens_k=cu_seqlens_k,
+            max_seqlen_q=max_seqlen_q,
+            max_seqlen_k=max_seqlen_k,
+            dropout_p=dropout_p,
+            softmax_scale=scale,
+            causal=is_causal,
+            window_size=window_size,
+            return_attn_probs=return_lse,
+        )
+        if return_lse:
+            out, lse, *_ = out
+        out = out.unflatten(0, (batch_size, -1))
+    else:
         if _parallel_config.context_parallel_config.ring_degree > 1:
             raise NotImplementedError("`ring_degree > 1` is not yet supported for the FLASH_VARLEN_HUB backend.")
         forward_op = functools.partial(_flash_varlen_attention_hub_forward_op, window_size=window_size)
@@ -2776,45 +2812,6 @@ def _flash_varlen_attention_hub(
         )
         if return_lse:
             out, lse = out
-        return (out, lse) if return_lse else out
-
-    if attn_mask is not None:
-        attn_mask_2d = _normalize_attn_mask(attn_mask, batch_size, seq_len_kv)
-        (_, _), (cu_seqlens_q, cu_seqlens_k), (max_seqlen_q, max_seqlen_k) = (
-            _prepare_for_flash_attn_or_sage_varlen_with_mask(batch_size, seq_len_q, attn_mask_2d, query.device)
-        )
-        indices_k = attn_mask_2d.flatten().nonzero(as_tuple=False).flatten()
-        key_packed = key.reshape(-1, *key.shape[2:])[indices_k]
-        value_packed = value.reshape(-1, *value.shape[2:])[indices_k]
-    else:
-        (_, _), (cu_seqlens_q, cu_seqlens_k), (max_seqlen_q, max_seqlen_k) = (
-            _prepare_for_flash_attn_or_sage_varlen_without_mask(batch_size, seq_len_q, seq_len_kv, query.device)
-        )
-        key_packed = key.flatten(0, 1)
-        value_packed = value.flatten(0, 1)
-
-    query_packed = query.flatten(0, 1)
-
-    func = _HUB_KERNELS_REGISTRY[AttentionBackendName.FLASH_VARLEN_HUB].kernel_fn
-    out = func(
-        q=query_packed,
-        k=key_packed,
-        v=value_packed,
-        cu_seqlens_q=cu_seqlens_q,
-        cu_seqlens_k=cu_seqlens_k,
-        max_seqlen_q=max_seqlen_q,
-        max_seqlen_k=max_seqlen_k,
-        dropout_p=dropout_p,
-        softmax_scale=scale,
-        causal=is_causal,
-        window_size=window_size,
-        return_attn_probs=return_lse,
-    )
-    if return_lse:
-        out, lse, *_ = out
-    else:
-        out = out
-    out = out.unflatten(0, (batch_size, -1))
 
     return (out, lse) if return_lse else out
 
