@@ -401,6 +401,7 @@ else:
             "StableDiffusionXLPipeline",
         ]
     )
+    _import_structure["supir"] = ["SUPIRPipeline"]
     _import_structure["t2i_adapter"] = [
         "StableDiffusionAdapterPipeline",
         "StableDiffusionXLAdapterPipeline",
@@ -864,6 +865,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             StableDiffusionXLPipeline,
         )
         from .stable_video_diffusion import StableVideoDiffusionPipeline
+        from .supir import SUPIRPipeline
         from .t2i_adapter import (
             StableDiffusionAdapterPipeline,
             StableDiffusionXLAdapterPipeline,
