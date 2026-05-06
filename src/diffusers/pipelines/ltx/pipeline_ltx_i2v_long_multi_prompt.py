@@ -1265,6 +1265,7 @@ class LTXI2VLongMultiPromptPipeline(DiffusionPipeline, FromSingleFileMixin, LTXV
 
             # 6.6 Denoising loop per full window (no spatial tiling)
             sigmas_current = self.scheduler.sigmas.to(device=latents_packed.device)
+            self.scheduler.set_begin_index(0)
             if sigmas_current.shape[0] >= 2:
                 for i, t in enumerate(self.progress_bar(self.scheduler.timesteps[:-1])):
                     if self.interrupt:

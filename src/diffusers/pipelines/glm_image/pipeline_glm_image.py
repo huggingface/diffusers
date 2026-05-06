@@ -956,6 +956,7 @@ class GlmImagePipeline(DiffusionPipeline):
             prior_token_ids = prior_token_ids.repeat_interleave(num_images_per_prompt, dim=0)
         prior_token_drop_cond = torch.full_like(prior_token_ids, False, dtype=torch.bool)
         prior_token_drop_uncond = torch.full_like(prior_token_ids, True, dtype=torch.bool)
+        self.scheduler.set_begin_index(0)
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
                 if self.interrupt:

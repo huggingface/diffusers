@@ -691,6 +691,7 @@ class BriaFiboPipeline(DiffusionPipeline, FluxLoraLoaderMixin):
             text_ids = text_ids[0]
 
         # 6. Denoising loop
+        self.scheduler.set_begin_index(0)
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
                 if self.interrupt:
