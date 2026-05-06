@@ -1,4 +1,4 @@
 model_id: Qwen/Qwen-Image-Layered
 weight_path: /home/weights/Qwen-Image-Layered
-backend: local
+backend: modelscope
 extra_params: {}
