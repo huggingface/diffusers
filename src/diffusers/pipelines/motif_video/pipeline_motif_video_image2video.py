@@ -270,31 +270,52 @@ class MotifVideoImage2VideoPipeline(DiffusionPipeline):
     def encode_prompt(
         self,
         prompt: Union[str, List[str]],
+        negative_prompt: Union[str, List[str]] | None = None,
         num_videos_per_prompt: int = 1,
         prompt_embeds: Optional[torch.Tensor] = None,
+        negative_prompt_embeds: Optional[torch.Tensor] = None,
         prompt_attention_mask: Optional[torch.Tensor] = None,
+        negative_prompt_attention_mask: Optional[torch.Tensor] = None,
         max_sequence_length: int = 512,
         device: Optional[torch.device] = None,
         dtype: Optional[torch.dtype] = None,
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
+    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         r"""
         Encodes the prompt into text encoder hidden states.
 
         Args:
             prompt (`str` or `List[str]`, *optional*):
                 The prompt or prompts to be encoded.
+            negative_prompt (`str` or `List[str]`, *optional*):
+                The prompt or prompts not to guide the image generation. If not defined, one has to pass
+                `negative_prompt_embeds` instead. Ignored when not using guidance (i.e., ignored if `guidance_scale` is
+                less than `1`).
             num_videos_per_prompt (`int`, *optional*, defaults to 1):
                 Number of videos to generate per prompt.
             prompt_embeds (`torch.Tensor`, *optional*):
                 Pre-generated text embeddings.
+            negative_prompt_embeds (`torch.Tensor`, *optional*):
+                Pre-generated negative text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt
+                weighting. If not provided, negative_prompt_embeds will be generated from `negative_prompt` input
+                argument.
             prompt_attention_mask (`torch.Tensor`, *optional*):
                 Pre-generated attention mask for text embeddings.
+            negative_prompt_attention_mask (`torch.Tensor`, *optional*):
+                Pre-generated attention mask for negative text embeddings.
             max_sequence_length (`int`, defaults to 512):
                 Maximum sequence length for the tokenizer.
             device (`torch.device`, *optional*):
                 Device to place tensors on.
             dtype (`torch.dtype`, *optional*):
                 Data type for tensors.
+
+        Returns:
+            `tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]`:
+                A tuple containing:
+                - `prompt_embeds`: The text embeddings for the positive prompt
+                - `negative_prompt_embeds`: The text embeddings for the negative prompt (None if not using guidance)
+                - `prompt_attention_mask`: The attention mask for the positive prompt
+                - `negative_prompt_attention_mask`: The attention mask for the negative prompt (None if not using guidance)
         """
         device = device or self._execution_device
 
@@ -314,6 +335,7 @@ class MotifVideoImage2VideoPipeline(DiffusionPipeline):
                 dtype=dtype,
             )
 
+        # duplicate text embeddings for each generation per prompt, using mps friendly method
         seq_len = prompt_embeds.shape[1]
         prompt_embeds = prompt_embeds.repeat(1, num_videos_per_prompt, 1)
         prompt_embeds = prompt_embeds.view(batch_size * num_videos_per_prompt, seq_len, -1)
@@ -322,9 +344,46 @@ class MotifVideoImage2VideoPipeline(DiffusionPipeline):
         prompt_attention_mask = prompt_attention_mask.view(batch_size, -1)
         prompt_attention_mask = prompt_attention_mask.repeat_interleave(num_videos_per_prompt, dim=0)
 
+        # Compute negative embeddings if guider is enabled and has multiple conditions
+        negative_prompt_embeds = None
+        negative_prompt_attention_mask = None
+
+        if (
+            self.guider is not None
+            and self.guider._enabled
+            and self.guider.num_conditions > 1
+            and negative_prompt is not None
+        ):
+            # Prepare negative_prompt to match batch_size
+            if negative_prompt is None:
+                negative_prompt = [""] * batch_size
+            elif isinstance(negative_prompt, str):
+                negative_prompt = [negative_prompt] * batch_size
+            negative_prompt = [negative_prompt] if isinstance(negative_prompt, str) else negative_prompt
+
+            if negative_prompt_embeds is None:
+                negative_prompt_embeds, negative_prompt_attention_mask = self._get_prompt_embeds(
+                    text_encoder=self.text_encoder,
+                    tokenizer=self.tokenizer,
+                    prompt=negative_prompt,
+                    max_sequence_length=max_sequence_length,
+                    device=device,
+                    dtype=dtype,
+                )
+
+            # duplicate text embeddings for each generation per prompt, using mps friendly method
+            negative_prompt_embeds = negative_prompt_embeds.repeat(1, num_videos_per_prompt, 1)
+            negative_prompt_embeds = negative_prompt_embeds.view(batch_size * num_videos_per_prompt, seq_len, -1)
+
+            negative_prompt_attention_mask = negative_prompt_attention_mask.bool()
+            negative_prompt_attention_mask = negative_prompt_attention_mask.view(batch_size, -1)
+            negative_prompt_attention_mask = negative_prompt_attention_mask.repeat_interleave(num_videos_per_prompt, dim=0)
+
         return (
             prompt_embeds,
+            negative_prompt_embeds,
             prompt_attention_mask,
+            negative_prompt_attention_mask,
         )
 
     @staticmethod
@@ -716,11 +775,14 @@ class MotifVideoImage2VideoPipeline(DiffusionPipeline):
         )
 
         # 5. Prepare text embeddings
-        prompt_embeds, prompt_attention_mask = self.encode_prompt(
+        prompt_embeds, negative_prompt_embeds, prompt_attention_mask, negative_prompt_attention_mask = self.encode_prompt(
             prompt=prompt,
+            negative_prompt=negative_prompt,
             num_videos_per_prompt=num_videos_per_prompt,
             prompt_embeds=prompt_embeds,
+            negative_prompt_embeds=negative_prompt_embeds,
             prompt_attention_mask=prompt_attention_mask,
+            negative_prompt_attention_mask=negative_prompt_attention_mask,
             max_sequence_length=max_sequence_length,
             device=device,
         )
@@ -739,17 +801,6 @@ class MotifVideoImage2VideoPipeline(DiffusionPipeline):
             latent_mask = latent_mask.repeat_interleave(num_videos_per_prompt, dim=0)
             if image_embeds is not None:
                 image_embeds = image_embeds.repeat_interleave(num_videos_per_prompt, dim=0)
-
-        if self.guider._enabled and self.guider.num_conditions > 1:
-            negative_prompt = self._prepare_negative_prompt(negative_prompt, batch_size)
-            negative_prompt_embeds, negative_prompt_attention_mask = self.encode_prompt(
-                prompt=negative_prompt,
-                num_videos_per_prompt=num_videos_per_prompt,
-                prompt_embeds=negative_prompt_embeds,
-                prompt_attention_mask=negative_prompt_attention_mask,
-                max_sequence_length=max_sequence_length,
-                device=device,
-            )
 
         # 7. Prepare timesteps
         latent_height = height // self.vae_scale_factor_spatial
