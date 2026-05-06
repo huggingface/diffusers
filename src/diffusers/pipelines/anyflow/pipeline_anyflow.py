@@ -41,18 +41,22 @@ if is_ftfy_available():
     import ftfy
 
 
+# Copied from diffusers.pipelines.wan.pipeline_wan.basic_clean
 def basic_clean(text):
-    text = ftfy.fix_text(text)
+    if is_ftfy_available():
+        text = ftfy.fix_text(text)
     text = html.unescape(html.unescape(text))
     return text.strip()
 
 
+# Copied from diffusers.pipelines.wan.pipeline_wan.whitespace_clean
 def whitespace_clean(text):
     text = re.sub(r"\s+", " ", text)
     text = text.strip()
     return text
 
 
+# Copied from diffusers.pipelines.wan.pipeline_wan.prompt_clean
 def prompt_clean(text):
     text = whitespace_clean(basic_clean(text))
     return text
@@ -66,6 +70,14 @@ class AnyFlowPipeline(DiffusionPipeline, WanLoraLoaderMixin):
     :math:`z_t \to z_0` mapping of consistency models, so a single distilled checkpoint can be evaluated at
     1, 2, 4, 8, 16... NFE without retraining. This pipeline operates over the full video tensor in one
     bidirectional pass; for frame-level autoregressive (causal) generation use ``AnyFlowCausalPipeline``.
+
+    The released NVIDIA checkpoints loaded by this pipeline went through a two-stage LoRA distillation:
+    (1) forward Flow-Map training with the MeanFlow identity as a stop-grad regression target, and
+    (2) on-policy distillation that combines Flow-Map backward simulation with DMD reverse-divergence
+    supervision over the student's own rollouts. Sampling at inference is plain Euler in mean-velocity
+    form (``z_r = z_t - (t - r) * u``) with no re-noising and no CFG (guidance was fused into the model
+    weights during stage 1). See ``training_rollout`` for the rollout entry point reused during DMD
+    fine-tuning.
 
     This model inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods
     implemented for all pipelines (downloading, saving, running on a particular device, etc.).
@@ -114,13 +126,14 @@ class AnyFlowPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         self.video_processor = VideoProcessor(vae_scale_factor=self.vae_scale_factor_spatial)
         self.use_mean_velocity = use_mean_velocity
 
+    # Copied from diffusers.pipelines.wan.pipeline_wan.WanPipeline._get_t5_prompt_embeds
     def _get_t5_prompt_embeds(
         self,
-        prompt: Union[str, List[str]] = None,
+        prompt: str | list[str] = None,
         num_videos_per_prompt: int = 1,
         max_sequence_length: int = 226,
-        device: Optional[torch.device] = None,
-        dtype: Optional[torch.dtype] = None,
+        device: torch.device | None = None,
+        dtype: torch.dtype | None = None,
     ):
         device = device or self._execution_device
         dtype = dtype or self.text_encoder.dtype
@@ -155,25 +168,26 @@ class AnyFlowPipeline(DiffusionPipeline, WanLoraLoaderMixin):
 
         return prompt_embeds
 
+    # Copied from diffusers.pipelines.wan.pipeline_wan.WanPipeline.encode_prompt
     def encode_prompt(
         self,
-        prompt: Union[str, List[str]],
-        negative_prompt: Optional[Union[str, List[str]]] = None,
+        prompt: str | list[str],
+        negative_prompt: str | list[str] | None = None,
         do_classifier_free_guidance: bool = True,
         num_videos_per_prompt: int = 1,
-        prompt_embeds: Optional[torch.Tensor] = None,
-        negative_prompt_embeds: Optional[torch.Tensor] = None,
+        prompt_embeds: torch.Tensor | None = None,
+        negative_prompt_embeds: torch.Tensor | None = None,
         max_sequence_length: int = 226,
-        device: Optional[torch.device] = None,
-        dtype: Optional[torch.dtype] = None,
+        device: torch.device | None = None,
+        dtype: torch.dtype | None = None,
     ):
         r"""
         Encodes the prompt into text encoder hidden states.
 
         Args:
-            prompt (`str` or `List[str]`, *optional*):
+            prompt (`str` or `list[str]`, *optional*):
                 prompt to be encoded
-            negative_prompt (`str` or `List[str]`, *optional*):
+            negative_prompt (`str` or `list[str]`, *optional*):
                 The prompt or prompts not to guide the image generation. If not defined, one has to pass
                 `negative_prompt_embeds` instead. Ignored when not using guidance (i.e., ignored if `guidance_scale` is
                 less than `1`).
@@ -382,6 +396,36 @@ class AnyFlowPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         negative_prompt_embeds: Optional[torch.Tensor] = None,
         guidance_scale: float = 1.0,
     ):
+        r"""
+        Three-segment Flow-Map backward simulation used as the on-policy rollout for stage-2 DMD
+        distillation. Not part of the standard inference path — end users should call ``__call__``.
+
+        When ``grad_timestep`` is ``None`` the method reduces to a plain (no-grad) multi-step rollout.
+        When ``grad_timestep`` is set, the rollout is split into three segments (``z_T -> z_t``, the
+        gradient anchor ``z_t -> z_r`` step, then ``z_r -> z_0``); every segment contributes to the
+        autograd graph, matching Algorithm 2 of the AnyFlow paper. This is the entry point that the
+        on-policy trainer composes with a frozen ``real_score`` and a trainable discriminator to compute
+        the DMD KL-gradient surrogate.
+
+        Args:
+            context_sequence (`torch.Tensor`, *optional*):
+                Clean prefix latents to keep fixed during the rollout (used by I2V / TV2V variants).
+            num_inference_steps (`int`, defaults to 50):
+                Number of inference steps used to discretize the rollout schedule.
+            grad_timestep (`int`, *optional*):
+                Index into the inference schedule that becomes the gradient anchor. ``None`` disables
+                gradients and turns the call into a plain rollout.
+            latents (`torch.Tensor`, *optional*):
+                Initial Gaussian latents at ``t = T``.
+            prompt_embeds, negative_prompt_embeds (`torch.Tensor`, *optional*):
+                Pre-computed text encoder embeddings.
+            guidance_scale (`float`, defaults to 1.0):
+                CFG scale applied at runtime. Set to 1.0 (default) for distilled checkpoints since CFG
+                was fused into the weights during stage 1.
+
+        Returns:
+            `torch.Tensor`: the rolled-out latents at the final timestep.
+        """
         self._guidance_scale = guidance_scale
 
         if negative_prompt_embeds is not None:
@@ -532,7 +576,7 @@ class AnyFlowPipeline(DiffusionPipeline, WanLoraLoaderMixin):
             device=device,
         )
 
-        transformer_dtype = torch.bfloat16
+        transformer_dtype = self.transformer.dtype
         prompt_embeds = prompt_embeds.to(transformer_dtype)
         if negative_prompt_embeds is not None:
             negative_prompt_embeds = negative_prompt_embeds.to(transformer_dtype)

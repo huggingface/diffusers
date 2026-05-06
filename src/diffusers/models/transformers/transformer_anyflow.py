@@ -33,7 +33,6 @@ from ...loaders import FromOriginalModelMixin, PeftAdapterMixin
 from ...utils import logging
 from ..attention import FeedForward
 from ..attention_processor import Attention
-from ..cache_utils import CacheMixin
 from ..embeddings import PixArtAlphaTextProjection, TimestepEmbedding, Timesteps, get_1d_rotary_pos_embed
 from ..modeling_outputs import Transformer2DModelOutput
 from ..modeling_utils import ModelMixin
@@ -42,7 +41,16 @@ from ..normalization import FP32LayerNorm
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
-flex_attention = torch.compile(flex_attention, dynamic=True)
+
+# `flex_attention` is JIT-compiled lazily on first call so that importing this module does not require
+# Triton or a CUDA-capable device (CPU CI / older PyTorch builds otherwise fail at import time).
+try:
+    flex_attention = torch.compile(flex_attention, dynamic=True)
+except Exception as e:  # pragma: no cover - environment-dependent
+    logger.warning(
+        "Failed to torch.compile flex_attention; falling back to the eager kernel. Error: %s",
+        e,
+    )
 
 
 def build_block_mask(mask_2d, device):
@@ -683,7 +691,7 @@ class AnyFlowTransformerBlock(nn.Module):
         return hidden_states
 
 
-class AnyFlowTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOriginalModelMixin, CacheMixin):
+class AnyFlowTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOriginalModelMixin):
     r"""
     A 3D Transformer for any-step video diffusion. The architecture extends the Wan2.1 3D DiT backbone with two
     optional modules controlled by config flags:
@@ -965,11 +973,9 @@ class AnyFlowTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromO
                 base = frame_idx[q_idx] >= frame_idx[kv_idx]
 
                 # 4) interval mask
-                q_is_context = q_idx < context_seq_len  # noqa: F841
                 q_is_noise = (q_idx >= noise_start) & (q_idx < noise_end)
                 q_is_clean = (q_idx >= clean_start) & (q_idx < clean_end)
 
-                k_is_context = kv_idx < context_seq_len  # noqa: F841
                 k_is_noise = (kv_idx >= noise_start) & (kv_idx < noise_end)
                 k_is_clean = (kv_idx >= clean_start) & (kv_idx < clean_end)
 
@@ -1033,7 +1039,7 @@ class AnyFlowTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromO
 
             def mask_mod(b, h, q_idx, kv_idx):
                 is_padding = (q_idx >= real_seq_len) | (kv_idx >= real_seq_len)
-                base = base = frame_idx[q_idx] >= frame_idx[kv_idx]
+                base = frame_idx[q_idx] >= frame_idx[kv_idx]
                 return base & ~is_padding
 
             return create_block_mask(

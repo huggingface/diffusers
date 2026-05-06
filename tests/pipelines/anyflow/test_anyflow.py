@@ -143,6 +143,10 @@ class AnyFlowPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     def test_save_load_optional_components(self):
         pass
 
+    @unittest.skip("AnyFlow's custom attention processor does not support sliced attention.")
+    def test_attention_slicing_forward_pass(self):
+        pass
+
 
 @slow
 @require_torch_accelerator

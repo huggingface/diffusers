@@ -99,6 +99,11 @@ export_to_video(video, "out.mp4", fps=16)
 
 ### Generation with AnyFlow (FAR Causal)
 
+The causal pipeline selects between T2V / I2V / TV2V via the ``context_sequence`` argument: pass ``None``
+for plain text-to-video, or a dict with a ``"raw"`` key holding a video tensor of shape
+``(B, C, T, H, W)`` with ``T = 4n + 1`` to condition on existing frames. Use a single conditioning frame
+for I2V and a longer clip for TV2V continuation.
+
 <hfoptions id="anyflow-far">
 <hfoption id="t2v">
 
@@ -113,7 +118,6 @@ pipe = AnyFlowCausalPipeline.from_pretrained(
 
 video = pipe(
     prompt="A cat surfing a wave, sunset",
-    task_type="t2v",
     num_inference_steps=4,
     num_frames=33,
 ).frames[0]
@@ -127,16 +131,20 @@ export_to_video(video, "out.mp4", fps=16)
 import torch
 from diffusers import AnyFlowCausalPipeline
 from diffusers.utils import export_to_video, load_image
+from torchvision import transforms
 
 pipe = AnyFlowCausalPipeline.from_pretrained(
     "nvidia/AnyFlow-FAR-Wan2.1-1.3B-Diffusers", torch_dtype=torch.bfloat16
 ).to("cuda")
 
-img = load_image("path/to/first_frame.png")
+# Wrap the conditioning image as a one-frame video tensor: (1, 3, 1, H, W)
+first_frame = load_image("path/to/first_frame.png")
+to_tensor = transforms.Compose([transforms.Resize((480, 832)), transforms.ToTensor()])
+first_frame = to_tensor(first_frame).unsqueeze(0).unsqueeze(2).to("cuda")  # (1, 3, 1, 480, 832)
+
 video = pipe(
     prompt="a cat walks across a sunlit lawn",
-    image=img,
-    task_type="i2v",
+    context_sequence={"raw": first_frame},
     num_inference_steps=4,
     num_frames=33,
 ).frames[0]
@@ -150,16 +158,21 @@ export_to_video(video, "out.mp4", fps=16)
 import torch
 from diffusers import AnyFlowCausalPipeline
 from diffusers.utils import export_to_video, load_video
+from torchvision import transforms
 
 pipe = AnyFlowCausalPipeline.from_pretrained(
     "nvidia/AnyFlow-FAR-Wan2.1-1.3B-Diffusers", torch_dtype=torch.bfloat16
 ).to("cuda")
 
-context = load_video("path/to/context.mp4")
+# Provide a context clip whose frame count is 4n + 1 (e.g., 9, 13, 17).
+context_frames = load_video("path/to/context.mp4")  # list of PIL frames
+to_tensor = transforms.Compose([transforms.Resize((480, 832)), transforms.ToTensor()])
+context_tensor = torch.stack([to_tensor(f) for f in context_frames[:9]], dim=1).unsqueeze(0).to("cuda")
+# Shape: (1, 3, 9, 480, 832)
+
 video = pipe(
     prompt="continue the story",
-    video=context,
-    task_type="tv2v",
+    context_sequence={"raw": context_tensor},
     num_inference_steps=4,
     num_frames=33,
 ).frames[0]
@@ -171,9 +184,11 @@ export_to_video(video, "out.mp4", fps=16)
 
 ## Notes
 
+- The released NVIDIA checkpoints went through a two-stage LoRA distillation: forward Flow-Map training plus on-policy distillation that combines Flow-Map backward simulation with **DMD reverse-divergence supervision** over the student's own rollouts. CFG was fused into the model weights during stage 1 (`fuse_guidance_scale = 3.0`), so inference does not run a second classifier-free guidance pass — quality is recovered from the distilled weights themselves.
 - `FlowMapEulerDiscreteScheduler` is general-purpose. You can attach it to any flow-map-distilled checkpoint via `from_pretrained(..., scheduler=FlowMapEulerDiscreteScheduler.from_config(...))`.
 - The bidirectional pipeline accepts any `AnyFlowTransformer3DModel` configured with `init_flowmap_model=True`. The causal pipeline additionally requires `init_far_model=True`.
 - LoRA training is supported via `WanLoraLoaderMixin`, the same mixin used by the upstream Wan pipelines.
+- For continued on-policy fine-tuning with DMD, both pipelines expose a `training_rollout` method that drives the three-segment Flow-Map backward simulation used in the original AnyFlow stage-2 trainer.
 
 ## AnyFlowPipeline
 

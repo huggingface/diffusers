@@ -42,18 +42,22 @@ if is_ftfy_available():
     import ftfy
 
 
+# Copied from diffusers.pipelines.wan.pipeline_wan.basic_clean
 def basic_clean(text):
-    text = ftfy.fix_text(text)
+    if is_ftfy_available():
+        text = ftfy.fix_text(text)
     text = html.unescape(html.unescape(text))
     return text.strip()
 
 
+# Copied from diffusers.pipelines.wan.pipeline_wan.whitespace_clean
 def whitespace_clean(text):
     text = re.sub(r"\s+", " ", text)
     text = text.strip()
     return text
 
 
+# Copied from diffusers.pipelines.wan.pipeline_wan.prompt_clean
 def prompt_clean(text):
     text = whitespace_clean(basic_clean(text))
     return text
@@ -65,8 +69,21 @@ class AnyFlowCausalPipeline(DiffusionPipeline, WanLoraLoaderMixin):
 
     The pipeline drives a frame-level autoregressive sampling loop over chunks: each chunk is denoised with
     flow-map steps while attending only to past chunks via block-sparse causal attention, and intermediate
-    KV cache is reused across chunks. Set ``task_type`` per call to switch between ``"t2v"``, ``"i2v"``, and
-    ``"tv2v"``.
+    KV cache is reused across chunks.
+
+    The task mode (T2V / I2V / TV2V) is selected by the ``context_sequence`` argument passed to ``__call__``:
+
+    - ``context_sequence=None`` — pure text-to-video.
+    - ``context_sequence={"raw": <video tensor of shape (B, C, T, H, W) with T = 4n + 1>}`` — pre-VAE
+      conditioning frames; the pipeline VAE-encodes them. Pass a single-frame video for I2V or a multi-frame
+      clip for TV2V.
+    - ``context_sequence={"latent": <latent tensor of shape (B, C, T_latent, H_latent, W_latent)>}`` —
+      already-encoded latents (skips the VAE encode step).
+
+    Like ``AnyFlowPipeline``, the released checkpoints went through forward Flow-Map LoRA training plus
+    on-policy DMD distillation with Flow-Map backward simulation, applied on top of the FAR (Gu et al., 2025;
+    arXiv:2503.19325) causal Wan2.1 backbone. Inference is plain Euler in mean-velocity form per chunk with
+    no re-noising and no CFG. Joint T2V / I2V / TV2V is supported by a single distilled model.
 
     This model inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods
     implemented for all pipelines (downloading, saving, running on a particular device, etc.).
@@ -114,13 +131,14 @@ class AnyFlowCausalPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         self.video_processor = VideoProcessor(vae_scale_factor=self.vae_scale_factor_spatial)
         self.use_mean_velocity = use_mean_velocity
 
+    # Copied from diffusers.pipelines.wan.pipeline_wan.WanPipeline._get_t5_prompt_embeds
     def _get_t5_prompt_embeds(
         self,
-        prompt: Union[str, List[str]] = None,
+        prompt: str | list[str] = None,
         num_videos_per_prompt: int = 1,
         max_sequence_length: int = 226,
-        device: Optional[torch.device] = None,
-        dtype: Optional[torch.dtype] = None,
+        device: torch.device | None = None,
+        dtype: torch.dtype | None = None,
     ):
         device = device or self._execution_device
         dtype = dtype or self.text_encoder.dtype
@@ -155,25 +173,26 @@ class AnyFlowCausalPipeline(DiffusionPipeline, WanLoraLoaderMixin):
 
         return prompt_embeds
 
+    # Copied from diffusers.pipelines.wan.pipeline_wan.WanPipeline.encode_prompt
     def encode_prompt(
         self,
-        prompt: Union[str, List[str]],
-        negative_prompt: Optional[Union[str, List[str]]] = None,
+        prompt: str | list[str],
+        negative_prompt: str | list[str] | None = None,
         do_classifier_free_guidance: bool = True,
         num_videos_per_prompt: int = 1,
-        prompt_embeds: Optional[torch.Tensor] = None,
-        negative_prompt_embeds: Optional[torch.Tensor] = None,
+        prompt_embeds: torch.Tensor | None = None,
+        negative_prompt_embeds: torch.Tensor | None = None,
         max_sequence_length: int = 226,
-        device: Optional[torch.device] = None,
-        dtype: Optional[torch.dtype] = None,
+        device: torch.device | None = None,
+        dtype: torch.dtype | None = None,
     ):
         r"""
         Encodes the prompt into text encoder hidden states.
 
         Args:
-            prompt (`str` or `List[str]`, *optional*):
+            prompt (`str` or `list[str]`, *optional*):
                 prompt to be encoded
-            negative_prompt (`str` or `List[str]`, *optional*):
+            negative_prompt (`str` or `list[str]`, *optional*):
                 The prompt or prompts not to guide the image generation. If not defined, one has to pass
                 `negative_prompt_embeds` instead. Ignored when not using guidance (i.e., ignored if `guidance_scale` is
                 less than `1`).
@@ -468,6 +487,31 @@ class AnyFlowCausalPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         guidance_scale: float = 1.0,
         use_kv_cache=True,
     ):
+        r"""
+        Causal counterpart of :meth:`AnyFlowPipeline.training_rollout`. Drives the chunk-level FAR
+        autoregressive rollout used by stage-2 DMD on-policy distillation, with KV cache reused across
+        the three Flow-Map segments to keep training tractable. Not part of the standard inference path
+        — end users should call ``__call__``.
+
+        Args:
+            context_sequence (`torch.Tensor`, *optional*):
+                Clean prefix latents (I2V first frame or TV2V context video).
+            num_inference_steps (`int`, defaults to 50):
+                Inference schedule length.
+            grad_timestep (`int`, *optional*):
+                Gradient anchor index in the schedule. ``None`` disables gradients (plain rollout).
+            latents (`torch.Tensor`, *optional*):
+                Initial Gaussian latents at ``t = T``.
+            prompt_embeds, negative_prompt_embeds (`torch.Tensor`, *optional*):
+                Pre-computed text encoder embeddings.
+            guidance_scale (`float`, defaults to 1.0):
+                CFG scale; defaults to 1.0 for fused-guidance distilled checkpoints.
+            use_kv_cache (`bool`, defaults to ``True``):
+                Reuse KV cache across causal chunks.
+
+        Returns:
+            `torch.Tensor`: the rolled-out latents at the final timestep.
+        """
         self._guidance_scale = guidance_scale
 
         latents = rearrange(latents, "b c t h w -> b t c h w")
@@ -690,7 +734,7 @@ class AnyFlowCausalPipeline(DiffusionPipeline, WanLoraLoaderMixin):
             device=device,
         )
 
-        transformer_dtype = torch.bfloat16
+        transformer_dtype = self.transformer.dtype
         prompt_embeds = prompt_embeds.to(transformer_dtype)
         if negative_prompt_embeds is not None:
             negative_prompt_embeds = negative_prompt_embeds.to(transformer_dtype)

@@ -198,6 +198,8 @@
   title: Model accelerators and hardware
 - isExpanded: false
   sections:
+  - local: using-diffusers/anyflow
+    title: AnyFlow
   - local: using-diffusers/helios
     title: Helios
   - local: using-diffusers/consisid

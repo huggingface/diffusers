@@ -1,0 +1,224 @@
+<!-- Copyright 2026 The AnyFlow Team, NVIDIA Corp., and The HuggingFace Team. All rights reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance
+with the License. You may obtain a copy of the License at
+
+http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software distributed under the License is
+distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See
+the License for the specific language governing permissions and limitations under the License.
+-->
+
+# AnyFlow
+
+[AnyFlow](https://huggingface.co/papers/<arxiv-id>) 是一个视频扩散**蒸馏**框架，把预训练的 Wan2.1 教师
+模型蒸馏成在标准 Euler 采样下支持*任意步数 (any-step)* 的学生模型。同一个蒸馏出来的 checkpoint 可以
+在 1、2、4、8、16... NFE 下推理，**质量随步数单调提升** —— 这一点和 consistency models 不同，后者
+NFE 增加反而经常掉点。
+
+核心思路是学习 **flow map** $\Phi_{r\leftarrow t}: \mathbf{z}_t \to \mathbf{z}_r$（任意 $1 \ge t \ge r \ge 0$），
+而不是 consistency models 学的固定端点映射 $\mathbf{z}_t \to \mathbf{z}_0$。Flow map 的可组合性消除了
+采样步之间的 re-noising；on-policy 蒸馏阶段额外用 **DMD 反向散度监督** + **Flow-Map backward simulation**
+（3 段 shortcut）补上 consistency 蒸馏遗留的 exposure-bias 缺口。
+
+本文档梳理实战要点：怎么选 pipeline、怎么用 any-step 采样、怎么把 AnyFlow 嵌进 T2V / I2V / TV2V 工作流。
+
+## Bidirectional 还是 Causal —— 怎么选 pipeline
+
+AnyFlow 提供两个 pipeline 形态，scheduler 和蒸馏方法相同，区别在于**怎么对帧采样**：
+
+- [`AnyFlowPipeline`](../api/pipelines/anyflow#anyflowpipeline) —— **bidirectional** T2V。一次性对整个
+  视频张量去噪，全局自注意力。**纯 prompt 输入、不要流式输出**时选这个。
+- [`AnyFlowCausalPipeline`](../api/pipelines/anyflow#anyflowcausalpipeline) —— **causal (FAR)**。
+  按 chunk 分段去噪，块稀疏因果注意力 + 跨 chunk 复用 KV cache。**图生视频 (I2V)**、**视频续写 (TV2V)**、
+  或任何受益于逐帧自回归采样的场景选这个。同一个模型通过传入 `context_sequence` 来切换三种任务模式。
+
+简化对照表：
+
+| 场景 | Pipeline | 调用方式 |
+|------|----------|----------|
+| 纯文生视频，固定 NFE 求最大质量 | `AnyFlowPipeline` | `pipe(prompt, ...)` |
+| 图生视频（首帧给定） | `AnyFlowCausalPipeline` | `pipe(prompt, context_sequence={"raw": <单帧 tensor>}, ...)` |
+| 视频续写 / TV2V | `AnyFlowCausalPipeline` | `pipe(prompt, context_sequence={"raw": <多帧 tensor>}, ...)` |
+| 流式 / 渐进式生成 | `AnyFlowCausalPipeline` | — |
+
+高分辨率下 bidirectional 单 token 更快；causal 牺牲一点单步速度，换来在所有 latent 帧分配前就能开始
+采样的能力，对超长序列尤其有用。
+
+## 加载 checkpoint
+
+NVIDIA 发布了 4 个 AnyFlow checkpoint，pipeline × 规模各一份：
+
+```py
+import torch
+from diffusers import AnyFlowPipeline, AnyFlowCausalPipeline
+
+# Bidirectional, 轻量
+pipe = AnyFlowPipeline.from_pretrained(
+    "nvidia/AnyFlow-Wan2.1-T2V-1.3B-Diffusers", torch_dtype=torch.bfloat16
+).to("cuda")
+
+# Bidirectional, 满血
+pipe = AnyFlowPipeline.from_pretrained(
+    "nvidia/AnyFlow-Wan2.1-T2V-14B-Diffusers", torch_dtype=torch.bfloat16
+).to("cuda")
+
+# Causal (FAR), 1.3B
+pipe = AnyFlowCausalPipeline.from_pretrained(
+    "nvidia/AnyFlow-FAR-Wan2.1-1.3B-Diffusers", torch_dtype=torch.bfloat16
+).to("cuda")
+
+# Causal (FAR), 14B
+pipe = AnyFlowCausalPipeline.from_pretrained(
+    "nvidia/AnyFlow-FAR-Wan2.1-14B-Diffusers", torch_dtype=torch.bfloat16
+).to("cuda")
+```
+
+四个 checkpoint 共用同一份 [`FlowMapEulerDiscreteScheduler`](../api/schedulers/flow_map_euler_discrete)，
+默认 `shift=5.0`。
+
+## Any-step 采样
+
+AnyFlow 最关键的特性是同一个 checkpoint **不需重新调度**，NFE 越大质量越高。固定 prompt、扫一下步数
+就能看出模型怎么在延迟和保真度之间权衡：
+
+```py
+import torch
+from diffusers import AnyFlowPipeline
+from diffusers.utils import export_to_video
+
+pipe = AnyFlowPipeline.from_pretrained(
+    "nvidia/AnyFlow-Wan2.1-T2V-1.3B-Diffusers", torch_dtype=torch.bfloat16
+).to("cuda")
+
+prompt = "森林里一只小熊猫在啃竹子，电影感光照"
+
+for nfe in [1, 2, 4, 8, 16, 32]:
+    generator = torch.Generator("cuda").manual_seed(0)
+    video = pipe(prompt, num_inference_steps=nfe, num_frames=33, generator=generator).frames[0]
+    export_to_video(video, f"out_nfe{nfe}.mp4", fps=16)
+```
+
+paper 的 Tab 3 / Fig 1 表明：每个 AnyFlow checkpoint 在 4 → 32 NFE 范围 VBench Quality 都单调上升，而
+consistency 类基线（rCM、Self-Forcing）在同区间反而掉点。
+
+> [!TIP]
+> Classifier-free guidance (CFG) 已经在蒸馏阶段融进权重 (`fuse_guidance_scale = 3.0`)。pipeline 推理
+> 时**不会**再跑一次 unconditional 前向 —— guidance 直接由蒸馏后的权重带出。release 出来的 checkpoint
+> 都用默认的 `guidance_scale=1.0` 即可。
+
+## 图生视频 与 视频续写
+
+Causal pipeline 用同一个蒸馏模型支持三种任务模式，**通过 `context_sequence` 隐式选择**（dict，含
+`"raw"` 视频张量或 `"latent"` 已编码 latent）。Context tensor 的帧数必须满足 `T = 4n + 1`，跟 VAE
+时间步长对齐。
+
+```py
+import torch
+from diffusers import AnyFlowCausalPipeline
+from diffusers.utils import export_to_video, load_image, load_video
+from torchvision import transforms
+
+pipe = AnyFlowCausalPipeline.from_pretrained(
+    "nvidia/AnyFlow-FAR-Wan2.1-1.3B-Diffusers", torch_dtype=torch.bfloat16
+).to("cuda")
+to_tensor = transforms.Compose([transforms.Resize((480, 832)), transforms.ToTensor()])
+
+# 1) 文生视频（无 context）
+video = pipe(prompt="一只猫在夕阳下冲浪", num_inference_steps=4, num_frames=33).frames[0]
+export_to_video(video, "t2v.mp4", fps=16)
+
+# 2) 图生视频 —— 把首帧包成 (1, 3, 1, H, W) 单帧视频
+first_frame = load_image("path/to/first_frame.png")
+first_frame = to_tensor(first_frame).unsqueeze(0).unsqueeze(2).to("cuda")
+video = pipe(
+    prompt="一只猫走过阳光下的草坪",
+    context_sequence={"raw": first_frame},
+    num_inference_steps=4,
+    num_frames=33,
+).frames[0]
+export_to_video(video, "i2v.mp4", fps=16)
+
+# 3) 视频续写。Context 帧数必须是 4n + 1（比如 9 帧）。
+context_frames = load_video("path/to/context.mp4")
+context_tensor = torch.stack([to_tensor(f) for f in context_frames[:9]], dim=1).unsqueeze(0).to("cuda")
+video = pipe(
+    prompt="继续这个故事",
+    context_sequence={"raw": context_tensor},
+    num_inference_steps=4,
+    num_frames=33,
+).frames[0]
+export_to_video(video, "tv2v.mp4", fps=16)
+```
+
+底层 patchify chunk 调度根据 `context_sequence` 自动调整：纯文生用 kernel 2 (full) 和 4 (compressed)；
+有 context 时第一个 chunk 改成 kernel 1，让条件帧保留全分辨率。
+
+如果你已经有 VAE 编码过的 latent，可以直接传 `context_sequence={"latent": ...}` 跳过 `vae_encode` 步骤。
+
+## 显存与推理速度
+
+14B 的 AnyFlow 模型用 group offload + VAE slicing 单卡 40 GB 能跑：
+
+```py
+import torch
+from diffusers import AnyFlowPipeline
+from diffusers.hooks import apply_group_offloading
+
+pipe = AnyFlowPipeline.from_pretrained(
+    "nvidia/AnyFlow-Wan2.1-T2V-14B-Diffusers", torch_dtype=torch.bfloat16
+)
+apply_group_offloading(pipe.transformer, onload_device="cuda", offload_type="leaf_level")
+pipe.vae.enable_slicing()
+pipe.vae.enable_tiling()
+```
+
+延迟方面，`torch.compile` 对 transformer（最重的模块）效果很好：
+
+```py
+pipe = pipe.to("cuda")
+pipe.transformer = torch.compile(pipe.transformer, mode="max-autotune-no-cudagraphs")
+```
+
+编译开销跑几步就摊销掉；配合 AnyFlow 的低 NFE（4-8 步），相比 eager 模式 14B 通常能拿 2-3× 加速。
+
+## LoRA 微调
+
+两个 pipeline 都复用 [`WanLoraLoaderMixin`](../api/loaders/lora)，因此为对应 Wan2.1 backbone 训练的
+LoRA adapter 直接加载即可：
+
+```py
+pipe.load_lora_weights("path/or/repo/with/wan_lora")
+```
+
+如果想做**继续 on-policy 蒸馏微调**（用论文里相同的 DMD 反向散度监督配方训新 LoRA），两个 pipeline
+都暴露了 `training_rollout` 方法，驱动 3 段 Flow-Map backward simulation。普通用户可以在 autograd
+模式下调它，配合自己的 DMD trainer 用。produce 出 release checkpoint 的原始训练框架在
+`Enderfga/AnyFlow`（不在 diffusers 范围内）。
+
+## 常见坑
+
+- **永远 `guidance_scale=1.0`。** 蒸馏后的 checkpoint 已经把 CFG 融进权重。设 `> 1` 会多跑一遍
+  unconditional 前向、延迟翻倍、质量微降。
+- **Bidirectional pipeline 不支持流式。** 所有 `num_frames` 一起去噪。需要边采边播请用 causal pipeline。
+- **Causal pipeline KV cache 假设 chunk 调度跨调用一致。** 中途重建 cache 不被 release 模型支持。
+- **`num_frames` 必须满足 VAE 时间步长。** release checkpoint 用 `(N - 1) % 4 == 0` 的值（如 9、17、33、81）。
+
+## 引用
+
+```bibtex
+@article{gu2026anyflow,
+  title   = {AnyFlow: Any-Step Video Diffusion Model with On-Policy Flow Map Distillation},
+  author  = {Gu, Yuchao and others},
+  journal = {arXiv preprint arXiv:<arxiv-id>},
+  year    = {2026}
+}
+
+@article{gu2025long,
+  title={Long-Context Autoregressive Video Modeling with Next-Frame Prediction},
+  author={Gu, Yuchao and Mao, Weijia and Shou, Mike Zheng},
+  journal={arXiv preprint arXiv:2503.19325},
+  year={2025}
+}
+```

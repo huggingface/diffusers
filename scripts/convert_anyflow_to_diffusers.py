@@ -34,6 +34,7 @@ python scripts/convert_anyflow_to_diffusers.py \\
 """
 
 import argparse
+import logging
 import os
 
 import torch
@@ -44,6 +45,10 @@ from diffusers import (
     AnyFlowTransformer3DModel,
     FlowMapEulerDiscreteScheduler,
 )
+
+
+logger = logging.getLogger(__name__)
+logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 
 
 # Per-variant configuration. ``base_model`` is fetched from the Hub to source the matching VAE / text encoder.
@@ -104,11 +109,17 @@ def build_pipeline(variant: str, ckpt_path: str):
     state_dict = torch.load(ckpt_path, map_location="cpu", weights_only=False)["ema"]
     missing, unexpected = transformer.load_state_dict(state_dict, strict=False)
     if unexpected:
-        print(
-            f"[warn] unexpected keys in state dict (ignored): {unexpected[:5]}{'...' if len(unexpected) > 5 else ''}"
+        logger.warning(
+            "Unexpected keys in state dict (ignored): %s%s",
+            unexpected[:5],
+            "..." if len(unexpected) > 5 else "",
         )
     if missing:
-        print(f"[warn] missing keys not loaded from state dict: {missing[:5]}{'...' if len(missing) > 5 else ''}")
+        logger.warning(
+            "Missing keys not loaded from state dict: %s%s",
+            missing[:5],
+            "..." if len(missing) > 5 else "",
+        )
 
     scheduler = FlowMapEulerDiscreteScheduler(num_train_timesteps=1000, shift=5.0)
 
@@ -145,7 +156,7 @@ def main():
     os.makedirs(args.output_dir, exist_ok=True)
     pipeline = build_pipeline(args.variant, args.ckpt)
     pipeline.save_pretrained(args.output_dir)
-    print(f"Saved {args.variant} pipeline to {args.output_dir}")
+    logger.info("Saved %s pipeline to %s", args.variant, args.output_dir)
 
 
 if __name__ == "__main__":
