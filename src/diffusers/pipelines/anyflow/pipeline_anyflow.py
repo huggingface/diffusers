@@ -48,7 +48,7 @@ def basic_clean(text):
 
 
 def whitespace_clean(text):
-    text = re.sub(r'\s+', ' ', text)
+    text = re.sub(r"\s+", " ", text)
     text = text.strip()
     return text
 
@@ -87,8 +87,8 @@ class AnyFlowPipeline(DiffusionPipeline, WanLoraLoaderMixin):
             (the default training-time behavior). Disable to mirror raw Euler stepping.
     """
 
-    model_cpu_offload_seq = 'text_encoder->transformer->vae'
-    _callback_tensor_inputs = ['latents', 'prompt_embeds', 'negative_prompt_embeds']
+    model_cpu_offload_seq = "text_encoder->transformer->vae"
+    _callback_tensor_inputs = ["latents", "prompt_embeds", "negative_prompt_embeds"]
 
     def __init__(
         self,
@@ -97,7 +97,7 @@ class AnyFlowPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         transformer: AnyFlowTransformer3DModel,
         vae: AutoencoderKLWan,
         scheduler: FlowMapEulerDiscreteScheduler,
-        use_mean_velocity: bool = True
+        use_mean_velocity: bool = True,
     ):
         super().__init__()
 
@@ -109,8 +109,8 @@ class AnyFlowPipeline(DiffusionPipeline, WanLoraLoaderMixin):
             scheduler=scheduler,
         )
 
-        self.vae_scale_factor_temporal = self.vae.config.scale_factor_temporal if getattr(self, 'vae', None) else 4
-        self.vae_scale_factor_spatial = self.vae.config.scale_factor_spatial if getattr(self, 'vae', None) else 8
+        self.vae_scale_factor_temporal = self.vae.config.scale_factor_temporal if getattr(self, "vae", None) else 4
+        self.vae_scale_factor_spatial = self.vae.config.scale_factor_spatial if getattr(self, "vae", None) else 8
         self.video_processor = VideoProcessor(vae_scale_factor=self.vae_scale_factor_spatial)
         self.use_mean_velocity = use_mean_velocity
 
@@ -131,12 +131,12 @@ class AnyFlowPipeline(DiffusionPipeline, WanLoraLoaderMixin):
 
         text_inputs = self.tokenizer(
             prompt,
-            padding='max_length',
+            padding="max_length",
             max_length=max_sequence_length,
             truncation=True,
             add_special_tokens=True,
             return_attention_mask=True,
-            return_tensors='pt',
+            return_tensors="pt",
         )
         text_input_ids, mask = text_inputs.input_ids, text_inputs.attention_mask
         seq_lens = mask.gt(0).sum(dim=1).long()
@@ -211,19 +211,19 @@ class AnyFlowPipeline(DiffusionPipeline, WanLoraLoaderMixin):
             )
 
         if do_classifier_free_guidance and negative_prompt_embeds is None:
-            negative_prompt = negative_prompt or ''
+            negative_prompt = negative_prompt or ""
             negative_prompt = batch_size * [negative_prompt] if isinstance(negative_prompt, str) else negative_prompt
 
             if prompt is not None and type(prompt) is not type(negative_prompt):
                 raise TypeError(
-                    f'`negative_prompt` should be the same type to `prompt`, but got {type(negative_prompt)} !='
-                    f' {type(prompt)}.'
+                    f"`negative_prompt` should be the same type to `prompt`, but got {type(negative_prompt)} !="
+                    f" {type(prompt)}."
                 )
             elif batch_size != len(negative_prompt):
                 raise ValueError(
-                    f'`negative_prompt`: {negative_prompt} has batch size {len(negative_prompt)}, but `prompt`:'
-                    f' {prompt} has batch size {batch_size}. Please make sure that passed `negative_prompt` matches'
-                    ' the batch size of `prompt`.'
+                    f"`negative_prompt`: {negative_prompt} has batch size {len(negative_prompt)}, but `prompt`:"
+                    f" {prompt} has batch size {batch_size}. Please make sure that passed `negative_prompt` matches"
+                    " the batch size of `prompt`."
                 )
 
             negative_prompt_embeds = self._get_t5_prompt_embeds(
@@ -247,35 +247,35 @@ class AnyFlowPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         callback_on_step_end_tensor_inputs=None,
     ):
         if height % 16 != 0 or width % 16 != 0:
-            raise ValueError(f'`height` and `width` have to be divisible by 16 but are {height} and {width}.')
+            raise ValueError(f"`height` and `width` have to be divisible by 16 but are {height} and {width}.")
 
         if callback_on_step_end_tensor_inputs is not None and not all(
             k in self._callback_tensor_inputs for k in callback_on_step_end_tensor_inputs
         ):
             raise ValueError(
-                f'`callback_on_step_end_tensor_inputs` has to be in {self._callback_tensor_inputs}, but found {[k for k in callback_on_step_end_tensor_inputs if k not in self._callback_tensor_inputs]}'  # noqa: E501
+                f"`callback_on_step_end_tensor_inputs` has to be in {self._callback_tensor_inputs}, but found {[k for k in callback_on_step_end_tensor_inputs if k not in self._callback_tensor_inputs]}"  # noqa: E501
             )
 
         if prompt is not None and prompt_embeds is not None:
             raise ValueError(
-                f'Cannot forward both `prompt`: {prompt} and `prompt_embeds`: {prompt_embeds}. Please make sure to'
-                ' only forward one of the two.'
+                f"Cannot forward both `prompt`: {prompt} and `prompt_embeds`: {prompt_embeds}. Please make sure to"
+                " only forward one of the two."
             )
         elif negative_prompt is not None and negative_prompt_embeds is not None:
             raise ValueError(
-                f'Cannot forward both `negative_prompt`: {negative_prompt} and `negative_prompt_embeds`: {negative_prompt_embeds}. Please make sure to'
-                ' only forward one of the two.'
+                f"Cannot forward both `negative_prompt`: {negative_prompt} and `negative_prompt_embeds`: {negative_prompt_embeds}. Please make sure to"
+                " only forward one of the two."
             )
         elif prompt is None and prompt_embeds is None:
             raise ValueError(
-                'Provide either `prompt` or `prompt_embeds`. Cannot leave both `prompt` and `prompt_embeds` undefined.'
+                "Provide either `prompt` or `prompt_embeds`. Cannot leave both `prompt` and `prompt_embeds` undefined."
             )
         elif prompt is not None and (not isinstance(prompt, str) and not isinstance(prompt, list)):
-            raise ValueError(f'`prompt` has to be of type `str` or `list` but is {type(prompt)}')
+            raise ValueError(f"`prompt` has to be of type `str` or `list` but is {type(prompt)}")
         elif negative_prompt is not None and (
             not isinstance(negative_prompt, str) and not isinstance(negative_prompt, list)
         ):
-            raise ValueError(f'`negative_prompt` has to be of type `str` or `list` but is {type(negative_prompt)}')
+            raise ValueError(f"`negative_prompt` has to be of type `str` or `list` but is {type(negative_prompt)}")
 
     def prepare_latents(
         self,
@@ -302,12 +302,12 @@ class AnyFlowPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         )
         if isinstance(generator, list) and len(generator) != batch_size:
             raise ValueError(
-                f'You have passed a list of generators of length {len(generator)}, but requested an effective batch'
-                f' size of {batch_size}. Make sure the batch size matches the length of the generators.'
+                f"You have passed a list of generators of length {len(generator)}, but requested an effective batch"
+                f" size of {batch_size}. Make sure the batch size matches the length of the generators."
             )
 
         latents = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
-        latents = rearrange(latents, 'b c t h w -> b t c h w')
+        latents = rearrange(latents, "b c t h w -> b t c h w")
         return latents
 
     @property
@@ -338,8 +338,10 @@ class AnyFlowPipeline(DiffusionPipeline, WanLoraLoaderMixin):
     def vae_encode(self, context_sequence):
         # normalize: [0, 1] -> [-1, 1]
         context_sequence = context_sequence * 2 - 1
-        context_sequence = self.encode_latents(context_sequence.to(dtype=self.vae.dtype, device=self._execution_device), sample=False)
-        context_sequence = rearrange(context_sequence, 'b c t h w -> b t c h w')
+        context_sequence = self.encode_latents(
+            context_sequence.to(dtype=self.vae.dtype, device=self._execution_device), sample=False
+        )
+        context_sequence = rearrange(context_sequence, "b c t h w -> b t c h w")
         return context_sequence
 
     def _normalize_latents(self, latents, latents_mean, latents_std):
@@ -350,7 +352,7 @@ class AnyFlowPipeline(DiffusionPipeline, WanLoraLoaderMixin):
 
     @torch.no_grad()
     def encode_latents(self, videos, sample=True):
-        videos = rearrange(videos, 'b t c h w -> b c t h w')
+        videos = rearrange(videos, "b t c h w -> b c t h w")
         moments = self.vae._encode(videos)
 
         latents_mean = torch.tensor(self.vae.config.latents_mean)
@@ -418,7 +420,7 @@ class AnyFlowPipeline(DiffusionPipeline, WanLoraLoaderMixin):
                     r_timestep=r_timestep,
                     encoder_hidden_states=prompt_embeds,
                     return_dict=False,
-                    is_causal=False
+                    is_causal=False,
                 )[0]
 
                 if self.do_classifier_free_guidance:
@@ -475,13 +477,13 @@ class AnyFlowPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         latents: Optional[torch.Tensor] = None,
         prompt_embeds: Optional[torch.Tensor] = None,
         negative_prompt_embeds: Optional[torch.Tensor] = None,
-        output_type: Optional[str] = 'np',
+        output_type: Optional[str] = "np",
         return_dict: bool = True,
         attention_kwargs: Optional[Dict[str, Any]] = None,
         callback_on_step_end: Optional[
             Union[Callable[[int, int, Dict], None], PipelineCallback, MultiPipelineCallbacks]
         ] = None,
-        callback_on_step_end_tensor_inputs: List[str] = ['latents'],
+        callback_on_step_end_tensor_inputs: List[str] = ["latents"],
         max_sequence_length: int = 512,
     ):
 
@@ -498,7 +500,7 @@ class AnyFlowPipeline(DiffusionPipeline, WanLoraLoaderMixin):
 
         if num_frames % self.vae_scale_factor_temporal != 1:
             logger.warning(
-                f'`num_frames - 1` has to be divisible by {self.vae_scale_factor_temporal}. Rounding to the nearest number.'
+                f"`num_frames - 1` has to be divisible by {self.vae_scale_factor_temporal}. Rounding to the nearest number."
             )
             num_frames = num_frames // self.vae_scale_factor_temporal * self.vae_scale_factor_temporal + 1
         num_frames = max(num_frames, 1)
@@ -562,13 +564,13 @@ class AnyFlowPipeline(DiffusionPipeline, WanLoraLoaderMixin):
             latents=init_latents,
             prompt_embeds=prompt_embeds,
             negative_prompt_embeds=negative_prompt_embeds,
-            guidance_scale=guidance_scale
+            guidance_scale=guidance_scale,
         )
         if context_sequence is not None:
             latents[:, :context_length, ...] = context_sequence
-        latents = rearrange(latents, 'b f c h w -> b c f h w')
+        latents = rearrange(latents, "b f c h w -> b c f h w")
 
-        if not output_type == 'latent':
+        if not output_type == "latent":
             latents = latents.to(self.vae.dtype)
             latents_mean = (
                 torch.tensor(self.vae.config.latents_mean)

@@ -49,7 +49,7 @@ def basic_clean(text):
 
 
 def whitespace_clean(text):
-    text = re.sub(r'\s+', ' ', text)
+    text = re.sub(r"\s+", " ", text)
     text = text.strip()
     return text
 
@@ -87,8 +87,8 @@ class AnyFlowCausalPipeline(DiffusionPipeline, WanLoraLoaderMixin):
             When ``True`` the model output is averaged across two anchor times to reduce discretization error.
     """
 
-    model_cpu_offload_seq = 'text_encoder->transformer->vae'
-    _callback_tensor_inputs = ['latents', 'prompt_embeds', 'negative_prompt_embeds']
+    model_cpu_offload_seq = "text_encoder->transformer->vae"
+    _callback_tensor_inputs = ["latents", "prompt_embeds", "negative_prompt_embeds"]
 
     def __init__(
         self,
@@ -97,7 +97,7 @@ class AnyFlowCausalPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         transformer: AnyFlowTransformer3DModel,
         vae: AutoencoderKLWan,
         scheduler: FlowMapEulerDiscreteScheduler,
-        use_mean_velocity: bool = True
+        use_mean_velocity: bool = True,
     ):
         super().__init__()
 
@@ -109,8 +109,8 @@ class AnyFlowCausalPipeline(DiffusionPipeline, WanLoraLoaderMixin):
             scheduler=scheduler,
         )
 
-        self.vae_scale_factor_temporal = self.vae.config.scale_factor_temporal if getattr(self, 'vae', None) else 4
-        self.vae_scale_factor_spatial = self.vae.config.scale_factor_spatial if getattr(self, 'vae', None) else 8
+        self.vae_scale_factor_temporal = self.vae.config.scale_factor_temporal if getattr(self, "vae", None) else 4
+        self.vae_scale_factor_spatial = self.vae.config.scale_factor_spatial if getattr(self, "vae", None) else 8
         self.video_processor = VideoProcessor(vae_scale_factor=self.vae_scale_factor_spatial)
         self.use_mean_velocity = use_mean_velocity
 
@@ -131,12 +131,12 @@ class AnyFlowCausalPipeline(DiffusionPipeline, WanLoraLoaderMixin):
 
         text_inputs = self.tokenizer(
             prompt,
-            padding='max_length',
+            padding="max_length",
             max_length=max_sequence_length,
             truncation=True,
             add_special_tokens=True,
             return_attention_mask=True,
-            return_tensors='pt',
+            return_tensors="pt",
         )
         text_input_ids, mask = text_inputs.input_ids, text_inputs.attention_mask
         seq_lens = mask.gt(0).sum(dim=1).long()
@@ -211,19 +211,19 @@ class AnyFlowCausalPipeline(DiffusionPipeline, WanLoraLoaderMixin):
             )
 
         if do_classifier_free_guidance and negative_prompt_embeds is None:
-            negative_prompt = negative_prompt or ''
+            negative_prompt = negative_prompt or ""
             negative_prompt = batch_size * [negative_prompt] if isinstance(negative_prompt, str) else negative_prompt
 
             if prompt is not None and type(prompt) is not type(negative_prompt):
                 raise TypeError(
-                    f'`negative_prompt` should be the same type to `prompt`, but got {type(negative_prompt)} !='
-                    f' {type(prompt)}.'
+                    f"`negative_prompt` should be the same type to `prompt`, but got {type(negative_prompt)} !="
+                    f" {type(prompt)}."
                 )
             elif batch_size != len(negative_prompt):
                 raise ValueError(
-                    f'`negative_prompt`: {negative_prompt} has batch size {len(negative_prompt)}, but `prompt`:'
-                    f' {prompt} has batch size {batch_size}. Please make sure that passed `negative_prompt` matches'
-                    ' the batch size of `prompt`.'
+                    f"`negative_prompt`: {negative_prompt} has batch size {len(negative_prompt)}, but `prompt`:"
+                    f" {prompt} has batch size {batch_size}. Please make sure that passed `negative_prompt` matches"
+                    " the batch size of `prompt`."
                 )
 
             negative_prompt_embeds = self._get_t5_prompt_embeds(
@@ -247,35 +247,35 @@ class AnyFlowCausalPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         callback_on_step_end_tensor_inputs=None,
     ):
         if height % 16 != 0 or width % 16 != 0:
-            raise ValueError(f'`height` and `width` have to be divisible by 16 but are {height} and {width}.')
+            raise ValueError(f"`height` and `width` have to be divisible by 16 but are {height} and {width}.")
 
         if callback_on_step_end_tensor_inputs is not None and not all(
             k in self._callback_tensor_inputs for k in callback_on_step_end_tensor_inputs
         ):
             raise ValueError(
-                f'`callback_on_step_end_tensor_inputs` has to be in {self._callback_tensor_inputs}, but found {[k for k in callback_on_step_end_tensor_inputs if k not in self._callback_tensor_inputs]}'  # noqa: E501
+                f"`callback_on_step_end_tensor_inputs` has to be in {self._callback_tensor_inputs}, but found {[k for k in callback_on_step_end_tensor_inputs if k not in self._callback_tensor_inputs]}"  # noqa: E501
             )
 
         if prompt is not None and prompt_embeds is not None:
             raise ValueError(
-                f'Cannot forward both `prompt`: {prompt} and `prompt_embeds`: {prompt_embeds}. Please make sure to'
-                ' only forward one of the two.'
+                f"Cannot forward both `prompt`: {prompt} and `prompt_embeds`: {prompt_embeds}. Please make sure to"
+                " only forward one of the two."
             )
         elif negative_prompt is not None and negative_prompt_embeds is not None:
             raise ValueError(
-                f'Cannot forward both `negative_prompt`: {negative_prompt} and `negative_prompt_embeds`: {negative_prompt_embeds}. Please make sure to'
-                ' only forward one of the two.'
+                f"Cannot forward both `negative_prompt`: {negative_prompt} and `negative_prompt_embeds`: {negative_prompt_embeds}. Please make sure to"
+                " only forward one of the two."
             )
         elif prompt is None and prompt_embeds is None:
             raise ValueError(
-                'Provide either `prompt` or `prompt_embeds`. Cannot leave both `prompt` and `prompt_embeds` undefined.'
+                "Provide either `prompt` or `prompt_embeds`. Cannot leave both `prompt` and `prompt_embeds` undefined."
             )
         elif prompt is not None and (not isinstance(prompt, str) and not isinstance(prompt, list)):
-            raise ValueError(f'`prompt` has to be of type `str` or `list` but is {type(prompt)}')
+            raise ValueError(f"`prompt` has to be of type `str` or `list` but is {type(prompt)}")
         elif negative_prompt is not None and (
             not isinstance(negative_prompt, str) and not isinstance(negative_prompt, list)
         ):
-            raise ValueError(f'`negative_prompt` has to be of type `str` or `list` but is {type(negative_prompt)}')
+            raise ValueError(f"`negative_prompt` has to be of type `str` or `list` but is {type(negative_prompt)}")
 
     def prepare_latents(
         self,
@@ -302,12 +302,12 @@ class AnyFlowCausalPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         )
         if isinstance(generator, list) and len(generator) != batch_size:
             raise ValueError(
-                f'You have passed a list of generators of length {len(generator)}, but requested an effective batch'
-                f' size of {batch_size}. Make sure the batch size matches the length of the generators.'
+                f"You have passed a list of generators of length {len(generator)}, but requested an effective batch"
+                f" size of {batch_size}. Make sure the batch size matches the length of the generators."
             )
 
         latents = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
-        latents = rearrange(latents, 'b c t h w -> b t c h w')
+        latents = rearrange(latents, "b c t h w -> b t c h w")
         return latents
 
     @property
@@ -338,8 +338,10 @@ class AnyFlowCausalPipeline(DiffusionPipeline, WanLoraLoaderMixin):
     def vae_encode(self, context_sequence):
         # normalize: [0, 1] -> [-1, 1]
         context_sequence = context_sequence * 2 - 1
-        context_sequence = self.encode_latents(context_sequence.to(dtype=self.vae.dtype, device=self._execution_device), sample=False)
-        context_sequence = rearrange(context_sequence, 'b c t h w -> b t c h w')
+        context_sequence = self.encode_latents(
+            context_sequence.to(dtype=self.vae.dtype, device=self._execution_device), sample=False
+        )
+        context_sequence = rearrange(context_sequence, "b c t h w -> b t c h w")
         return context_sequence
 
     def _normalize_latents(self, latents, latents_mean, latents_std):
@@ -350,7 +352,7 @@ class AnyFlowCausalPipeline(DiffusionPipeline, WanLoraLoaderMixin):
 
     @torch.no_grad()
     def encode_latents(self, videos, sample=True):
-        videos = rearrange(videos, 'b t c h w -> b c t h w')
+        videos = rearrange(videos, "b t c h w -> b c t h w")
         moments = self.vae._encode(videos)
 
         latents_mean = torch.tensor(self.vae.config.latents_mean)
@@ -377,12 +379,12 @@ class AnyFlowCausalPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         latents: Optional[torch.Tensor] = None,
         prompt_embeds: Optional[torch.Tensor] = None,
         negative_prompt_embeds: Optional[torch.Tensor] = None,
-        output_type: Optional[str] = 'np',
+        output_type: Optional[str] = "np",
         return_dict: bool = True,
         kv_cache=None,
         kv_cache_flag=None,
         grad_timestep=None,
-        chunk_partition=None
+        chunk_partition=None,
     ):
         if negative_prompt_embeds is not None:
             prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds], dim=0)
@@ -415,7 +417,7 @@ class AnyFlowCausalPipeline(DiffusionPipeline, WanLoraLoaderMixin):
                     chunk_partition=chunk_partition,
                     # kv-cache related
                     kv_cache=kv_cache,
-                    kv_cache_flag=copy.deepcopy(kv_cache_flag)
+                    kv_cache_flag=copy.deepcopy(kv_cache_flag),
                 )
                 if self.do_classifier_free_guidance:
                     noise_uncond, noise_pred = noise_pred.chunk(2)
@@ -468,7 +470,7 @@ class AnyFlowCausalPipeline(DiffusionPipeline, WanLoraLoaderMixin):
     ):
         self._guidance_scale = guidance_scale
 
-        latents = rearrange(latents, 'b c t h w -> b t c h w')
+        latents = rearrange(latents, "b c t h w -> b t c h w")
         batch_size, num_frame, _, height, width = latents.shape
 
         # 5. Prepare latent variables
@@ -476,10 +478,16 @@ class AnyFlowCausalPipeline(DiffusionPipeline, WanLoraLoaderMixin):
 
         chunk_partition = self.transformer.config.chunk_partition
 
-        assert init_latents.shape[1] == sum(chunk_partition), 'please check the chunk_partition equal to num_smaple_frames'
+        assert init_latents.shape[1] == sum(chunk_partition), (
+            "please check the chunk_partition equal to num_smaple_frames"
+        )
 
-        full_token_per_frame = (init_latents.shape[3] // self.transformer.config.patch_size[1]) * (init_latents.shape[4] // self.transformer.config.patch_size[2])  # noqa: E501
-        compressed_token_per_frame = (init_latents.shape[3] // self.transformer.config.compressed_patch_size[1]) * (init_latents.shape[4] // self.transformer.config.compressed_patch_size[2])  # noqa: E501
+        full_token_per_frame = (init_latents.shape[3] // self.transformer.config.patch_size[1]) * (
+            init_latents.shape[4] // self.transformer.config.patch_size[2]
+        )  # noqa: E501
+        compressed_token_per_frame = (init_latents.shape[3] // self.transformer.config.compressed_patch_size[1]) * (
+            init_latents.shape[4] // self.transformer.config.compressed_patch_size[2]
+        )  # noqa: E501
 
         # init kv cache
         if use_kv_cache:
@@ -489,21 +497,35 @@ class AnyFlowCausalPipeline(DiffusionPipeline, WanLoraLoaderMixin):
 
             for layer_idx in range(self.transformer.config.num_layers):
                 kv_cache[layer_idx] = {
-                    'full_cache': torch.zeros((
-                        2, batch_size, self.transformer.config.num_attention_heads,
-                        self.transformer.config.full_chunk_limit * max(chunk_partition) * full_token_per_frame,
-                        self.transformer.config.attention_head_dim
-                    ), device=init_latents.device, dtype=init_latents.dtype),
-                    'compressed_cache': torch.zeros((
-                        2, batch_size, self.transformer.config.num_attention_heads,
-                        (len(chunk_partition) - self.transformer.config.full_chunk_limit + 1) * max(chunk_partition) * compressed_token_per_frame,
-                        self.transformer.config.attention_head_dim
-                    ), device=init_latents.device, dtype=init_latents.dtype)
+                    "full_cache": torch.zeros(
+                        (
+                            2,
+                            batch_size,
+                            self.transformer.config.num_attention_heads,
+                            self.transformer.config.full_chunk_limit * max(chunk_partition) * full_token_per_frame,
+                            self.transformer.config.attention_head_dim,
+                        ),
+                        device=init_latents.device,
+                        dtype=init_latents.dtype,
+                    ),
+                    "compressed_cache": torch.zeros(
+                        (
+                            2,
+                            batch_size,
+                            self.transformer.config.num_attention_heads,
+                            (len(chunk_partition) - self.transformer.config.full_chunk_limit + 1)
+                            * max(chunk_partition)
+                            * compressed_token_per_frame,
+                            self.transformer.config.attention_head_dim,
+                        ),
+                        device=init_latents.device,
+                        dtype=init_latents.dtype,
+                    ),
                 }
 
             kv_cache_flag = {
-                'num_cached_chunks': 0,
-                'is_cache_step': False,
+                "num_cached_chunks": 0,
+                "is_cache_step": False,
             }
         else:
             kv_cache = None
@@ -513,49 +535,64 @@ class AnyFlowCausalPipeline(DiffusionPipeline, WanLoraLoaderMixin):
 
         # setup start sequence
         if context_sequence is not None:
-            if 'latent' in context_sequence:
-                latents = rearrange(context_sequence['latent'], 'b c t h w -> b t c h w')
+            if "latent" in context_sequence:
+                latents = rearrange(context_sequence["latent"], "b c t h w -> b t c h w")
             else:
-                assert (context_sequence['raw'].shape[1] - 1) % 4 == 0, 'require 4n+1 frames'
-                latents = self.vae_encode(context_sequence['raw'])
+                assert (context_sequence["raw"].shape[1] - 1) % 4 == 0, "require 4n+1 frames"
+                latents = self.vae_encode(context_sequence["raw"])
             current_context_length = latents.shape[1]
             output[:, :current_context_length] = latents
-            num_context_chunks = next(i + 1 for i in range(len(chunk_partition)) if sum(chunk_partition[:i + 1]) >= current_context_length)
+            num_context_chunks = next(
+                i + 1 for i in range(len(chunk_partition)) if sum(chunk_partition[: i + 1]) >= current_context_length
+            )
         else:
             num_context_chunks = 0
 
         for chunk_idx in tqdm(range(len(chunk_partition))):
-
             if chunk_idx >= num_context_chunks:
                 pred_latents = self.inference(
                     prompt_embeds=prompt_embeds,
                     negative_prompt_embeds=negative_prompt_embeds,
                     kv_cache=kv_cache,
                     kv_cache_flag=kv_cache_flag,
-                    latents=init_latents[:, sum(chunk_partition[:chunk_idx]): sum(chunk_partition[:chunk_idx + 1])],
+                    latents=init_latents[:, sum(chunk_partition[:chunk_idx]) : sum(chunk_partition[: chunk_idx + 1])],
                     num_inference_steps=num_inference_steps,
                     grad_timestep=grad_timestep,
                     guidance_scale=guidance_scale,
-                    chunk_partition=chunk_partition[:chunk_idx + 1]
+                    chunk_partition=chunk_partition[: chunk_idx + 1],
                 )
-                output[:, sum(chunk_partition[:chunk_idx]): sum(chunk_partition[:chunk_idx + 1])] = pred_latents
+                output[:, sum(chunk_partition[:chunk_idx]) : sum(chunk_partition[: chunk_idx + 1])] = pred_latents
 
             # step1: save to kv cache
             if chunk_idx < len(chunk_partition) - 1:
-                kv_cache = self.encode_kv_cache(kv_cache, kv_cache_flag, chunk_partition=chunk_partition[:chunk_idx + 1], chunk_idx=chunk_idx, output=output, prompt_embeds=prompt_embeds, negative_prompt_embeds=negative_prompt_embeds)  # noqa: E501
+                kv_cache = self.encode_kv_cache(
+                    kv_cache,
+                    kv_cache_flag,
+                    chunk_partition=chunk_partition[: chunk_idx + 1],
+                    chunk_idx=chunk_idx,
+                    output=output,
+                    prompt_embeds=prompt_embeds,
+                    negative_prompt_embeds=negative_prompt_embeds,
+                )  # noqa: E501
 
-        output = rearrange(output, 'b f c h w -> b c f h w')
+        output = rearrange(output, "b f c h w -> b c f h w")
         return output
 
     @torch.no_grad()
-    def encode_kv_cache(self, kv_cache, kv_cache_flag, chunk_partition, chunk_idx, output, prompt_embeds, negative_prompt_embeds):
-        kv_cache_flag['is_cache_step'] = True
+    def encode_kv_cache(
+        self, kv_cache, kv_cache_flag, chunk_partition, chunk_idx, output, prompt_embeds, negative_prompt_embeds
+    ):
+        kv_cache_flag["is_cache_step"] = True
 
         if self.do_classifier_free_guidance:
             prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds], dim=0)
 
-        latents = output[:, :sum(chunk_partition)]
-        latent_model_input = torch.cat([latents] * 2).to(torch.bfloat16) if self.do_classifier_free_guidance else latents.to(torch.bfloat16)
+        latents = output[:, : sum(chunk_partition)]
+        latent_model_input = (
+            torch.cat([latents] * 2).to(torch.bfloat16)
+            if self.do_classifier_free_guidance
+            else latents.to(torch.bfloat16)
+        )
 
         timestep = torch.tensor([0], device=latents.device).expand(latent_model_input.shape[0]).unsqueeze(-1)
         timestep = timestep.repeat((1, latent_model_input.shape[1]))
@@ -572,11 +609,11 @@ class AnyFlowCausalPipeline(DiffusionPipeline, WanLoraLoaderMixin):
             return_dict=False,
             # kv-cache related
             kv_cache=kv_cache,
-            kv_cache_flag=copy.deepcopy(kv_cache_flag)
+            kv_cache_flag=copy.deepcopy(kv_cache_flag),
         )
 
-        kv_cache_flag['num_cached_chunks'] += 1
-        kv_cache_flag['is_cache_step'] = False
+        kv_cache_flag["num_cached_chunks"] += 1
+        kv_cache_flag["is_cache_step"] = False
 
         return kv_cache
 
@@ -596,16 +633,16 @@ class AnyFlowCausalPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         latents: Optional[torch.Tensor] = None,
         prompt_embeds: Optional[torch.Tensor] = None,
         negative_prompt_embeds: Optional[torch.Tensor] = None,
-        output_type: Optional[str] = 'np',
+        output_type: Optional[str] = "np",
         return_dict: bool = True,
         attention_kwargs: Optional[Dict[str, Any]] = None,
         callback_on_step_end: Optional[
             Union[Callable[[int, int, Dict], None], PipelineCallback, MultiPipelineCallbacks]
         ] = None,
-        callback_on_step_end_tensor_inputs: List[str] = ['latents'],
+        callback_on_step_end_tensor_inputs: List[str] = ["latents"],
         max_sequence_length: int = 512,
         show_progress=True,
-        use_kv_cache=True
+        use_kv_cache=True,
     ):
 
         # 1. Check inputs. Raise error if not correct
@@ -621,7 +658,7 @@ class AnyFlowCausalPipeline(DiffusionPipeline, WanLoraLoaderMixin):
 
         if num_frames % self.vae_scale_factor_temporal != 1:
             logger.warning(
-                f'`num_frames - 1` has to be divisible by {self.vae_scale_factor_temporal}. Rounding to the nearest number.'
+                f"`num_frames - 1` has to be divisible by {self.vae_scale_factor_temporal}. Rounding to the nearest number."
             )
             num_frames = num_frames // self.vae_scale_factor_temporal * self.vae_scale_factor_temporal + 1
         num_frames = max(num_frames, 1)
@@ -672,18 +709,19 @@ class AnyFlowCausalPipeline(DiffusionPipeline, WanLoraLoaderMixin):
             latents,
         )
         init_latents = init_latents.to(transformer_dtype)
-        init_latents = rearrange(init_latents, 'b f c h w -> b c f h w')
+        init_latents = rearrange(init_latents, "b f c h w -> b c f h w")
 
         latents = self.training_rollout(
-            context_sequence=context_sequence, num_inference_steps=num_inference_steps,
+            context_sequence=context_sequence,
+            num_inference_steps=num_inference_steps,
             grad_timestep=None,
             latents=init_latents,
             prompt_embeds=prompt_embeds,
             negative_prompt_embeds=negative_prompt_embeds,
-            guidance_scale=guidance_scale
+            guidance_scale=guidance_scale,
         )
 
-        if not output_type == 'latent':
+        if not output_type == "latent":
             latents = latents.to(self.vae.dtype)
             latents_mean = (
                 torch.tensor(self.vae.config.latents_mean)

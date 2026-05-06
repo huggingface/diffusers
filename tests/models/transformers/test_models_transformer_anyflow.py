@@ -43,33 +43,33 @@ class AnyFlowTransformer3DModelTest(unittest.TestCase):
 
     @staticmethod
     def _tiny_init_kwargs(**overrides):
-        kwargs = dict(
-            patch_size=(1, 2, 2),
-            num_attention_heads=2,
-            attention_head_dim=12,
-            in_channels=4,
-            out_channels=4,
-            text_dim=16,
-            freq_dim=256,
-            ffn_dim=32,
-            num_layers=2,
-            cross_attn_norm=True,
-            qk_norm="rms_norm_across_heads",
-            rope_max_seq_len=32,
-        )
+        kwargs = {
+            "patch_size": (1, 2, 2),
+            "num_attention_heads": 2,
+            "attention_head_dim": 12,
+            "in_channels": 4,
+            "out_channels": 4,
+            "text_dim": 16,
+            "freq_dim": 256,
+            "ffn_dim": 32,
+            "num_layers": 2,
+            "cross_attn_norm": True,
+            "qk_norm": "rms_norm_across_heads",
+            "rope_max_seq_len": 32,
+        }
         kwargs.update(overrides)
         return kwargs
 
     @staticmethod
     def _tiny_bidi_inputs(batch_size=1, num_frames=2, height=16, width=16, text_seq_len=12, text_dim=16):
-        return dict(
-            hidden_states=torch.randn(batch_size, num_frames, 4, height, width, device="cpu"),
-            timestep=torch.full((batch_size, num_frames), 500.0, device="cpu"),
-            r_timestep=torch.full((batch_size, num_frames), 250.0, device="cpu"),
-            encoder_hidden_states=torch.randn(batch_size, text_seq_len, text_dim, device="cpu"),
-            is_causal=False,
-            return_dict=True,
-        )
+        return {
+            "hidden_states": torch.randn(batch_size, num_frames, 4, height, width, device="cpu"),
+            "timestep": torch.full((batch_size, num_frames), 500.0, device="cpu"),
+            "r_timestep": torch.full((batch_size, num_frames), 250.0, device="cpu"),
+            "encoder_hidden_states": torch.randn(batch_size, text_seq_len, text_dim, device="cpu"),
+            "is_causal": False,
+            "return_dict": True,
+        }
 
     def test_construction_base_wan(self):
         m = AnyFlowTransformer3DModel(**self._tiny_init_kwargs())
@@ -99,9 +99,13 @@ class AnyFlowTransformer3DModelTest(unittest.TestCase):
 
     def test_bidi_forward_shape_preserved(self):
         torch.manual_seed(0)
-        m = AnyFlowTransformer3DModel(
-            **self._tiny_init_kwargs(init_flowmap_model=True, gate_value=0.25, deltatime_type="r")
-        ).to("cpu").eval()
+        m = (
+            AnyFlowTransformer3DModel(
+                **self._tiny_init_kwargs(init_flowmap_model=True, gate_value=0.25, deltatime_type="r")
+            )
+            .to("cpu")
+            .eval()
+        )
 
         inputs = self._tiny_bidi_inputs()
         with torch.no_grad():
@@ -111,9 +115,13 @@ class AnyFlowTransformer3DModelTest(unittest.TestCase):
 
     def test_bidi_forward_return_dict_false(self):
         torch.manual_seed(0)
-        m = AnyFlowTransformer3DModel(
-            **self._tiny_init_kwargs(init_flowmap_model=True, gate_value=0.25, deltatime_type="r")
-        ).to("cpu").eval()
+        m = (
+            AnyFlowTransformer3DModel(
+                **self._tiny_init_kwargs(init_flowmap_model=True, gate_value=0.25, deltatime_type="r")
+            )
+            .to("cpu")
+            .eval()
+        )
 
         inputs = self._tiny_bidi_inputs()
         inputs["return_dict"] = False
@@ -124,9 +132,13 @@ class AnyFlowTransformer3DModelTest(unittest.TestCase):
 
     def test_bidi_forward_determinism(self):
         torch.manual_seed(0)
-        m = AnyFlowTransformer3DModel(
-            **self._tiny_init_kwargs(init_flowmap_model=True, gate_value=0.25, deltatime_type="r")
-        ).to("cpu").eval()
+        m = (
+            AnyFlowTransformer3DModel(
+                **self._tiny_init_kwargs(init_flowmap_model=True, gate_value=0.25, deltatime_type="r")
+            )
+            .to("cpu")
+            .eval()
+        )
 
         inputs_a = self._tiny_bidi_inputs()
         inputs_b = {k: v.clone() if torch.is_tensor(v) else v for k, v in inputs_a.items()}

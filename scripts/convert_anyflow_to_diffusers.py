@@ -104,7 +104,9 @@ def build_pipeline(variant: str, ckpt_path: str):
     state_dict = torch.load(ckpt_path, map_location="cpu", weights_only=False)["ema"]
     missing, unexpected = transformer.load_state_dict(state_dict, strict=False)
     if unexpected:
-        print(f"[warn] unexpected keys in state dict (ignored): {unexpected[:5]}{'...' if len(unexpected) > 5 else ''}")
+        print(
+            f"[warn] unexpected keys in state dict (ignored): {unexpected[:5]}{'...' if len(unexpected) > 5 else ''}"
+        )
     if missing:
         print(f"[warn] missing keys not loaded from state dict: {missing[:5]}{'...' if len(missing) > 5 else ''}")
 
