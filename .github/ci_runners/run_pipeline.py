@@ -121,7 +121,7 @@ def run_single_config(pipe, kwargs: dict, parallel: str, name: str,
         "device": device,
         "dtype": dtype_str,
         "params": {k: v for k, v in kwargs.items()
-                   if k not in ("prompt", "negative_prompt", "generator")},
+                   if k not in ("prompt", "negative_prompt", "generator", "image")},
         "result": None,
         "error": None,
         "timestamp": datetime.now(timezone.utc).isoformat(),
