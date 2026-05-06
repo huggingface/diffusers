@@ -824,7 +824,9 @@ class TorchAoConfigMixin:
 
 
 # int4wo requires CUDA or XPU ops (_convert_weight_to_int4pack)
-_int4wo_skip = pytest.mark.skipif(torch_device not in ["cuda", "xpu"], reason="int4wo quantization requires CUDA or XPU")
+_int4wo_skip = pytest.mark.skipif(
+    torch_device not in ["cuda", "xpu"], reason="int4wo quantization requires CUDA or XPU"
+)
 
 
 @is_torchao
