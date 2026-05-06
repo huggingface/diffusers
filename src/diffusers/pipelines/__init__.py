@@ -46,10 +46,13 @@ else:
         "AutoPipelineForInpainting",
         "AutoPipelineForText2Image",
     ]
+    _import_structure["bd3lm"] = ["BD3LMPipeline", "BD3LMPipelineOutput"]
     _import_structure["consistency_models"] = ["ConsistencyModelPipeline"]
     _import_structure["ddim"] = ["DDIMPipeline"]
     _import_structure["ddpm"] = ["DDPMPipeline"]
     _import_structure["dit"] = ["DiTPipeline"]
+    _import_structure["hybrid_token_diffusion"] = ["HybridTokenDiffusionPipeline"]
+    _import_structure["token_diffusion"] = ["TokenDiffusionPipeline", "TokenDiffusionPipelineOutput"]
     _import_structure["latent_diffusion"].extend(["LDMSuperResolutionPipeline"])
     _import_structure["pipeline_utils"] = [
         "AudioPipelineOutput",
@@ -418,6 +421,10 @@ else:
         "Kandinsky5T2IPipeline",
         "Kandinsky5I2IPipeline",
     ]
+    _import_structure["dflash"] = ["DFlashPipeline", "DFlashPipelineOutput"]
+    _import_structure["idlm"] = ["IDLMPipeline", "IDLMPipelineOutput"]
+    _import_structure["sdar"] = ["SDARPipeline", "SDARPipelineOutput"]
+    _import_structure["llada2"] = ["LLaDA2Pipeline", "LLaDA2PipelineOutput"]
     _import_structure["z_image"] = [
         "ZImageControlNetInpaintPipeline",
         "ZImageControlNetPipeline",
@@ -546,6 +553,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             AutoPipelineForInpainting,
             AutoPipelineForText2Image,
         )
+        from .bd3lm import BD3LMPipeline, BD3LMPipelineOutput
         from .consistency_models import ConsistencyModelPipeline
         from .ddim import DDIMPipeline
         from .ddpm import DDPMPipeline
@@ -558,6 +566,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             ScoreSdeVePipeline,
         )
         from .dit import DiTPipeline
+        from .hybrid_token_diffusion import HybridTokenDiffusionPipeline
         from .latent_diffusion import LDMSuperResolutionPipeline
         from .pipeline_utils import (
             AudioPipelineOutput,
@@ -565,6 +574,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             ImagePipelineOutput,
             StableDiffusionMixin,
         )
+        from .token_diffusion import TokenDiffusionPipeline, TokenDiffusionPipelineOutput
 
     try:
         if not (is_torch_available() and is_librosa_available()):
@@ -692,6 +702,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             WuerstchenDecoderPipeline,
             WuerstchenPriorPipeline,
         )
+        from .dflash import DFlashPipeline, DFlashPipelineOutput
         from .easyanimate import (
             EasyAnimateControlPipeline,
             EasyAnimateInpaintPipeline,
@@ -727,6 +738,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         )
         from .hunyuan_video1_5 import HunyuanVideo15ImageToVideoPipeline, HunyuanVideo15Pipeline
         from .hunyuandit import HunyuanDiTPipeline
+        from .idlm import IDLMPipeline, IDLMPipelineOutput
         from .kandinsky import (
             KandinskyCombinedPipeline,
             KandinskyImg2ImgCombinedPipeline,
@@ -832,6 +844,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             SanaSprintPipeline,
         )
         from .sana_video import SanaImageToVideoPipeline, SanaVideoPipeline
+        from .sdar import SDARPipeline, SDARPipelineOutput
         from .shap_e import ShapEImg2ImgPipeline, ShapEPipeline
         from .stable_audio import StableAudioPipeline, StableAudioProjectionModel
         from .stable_cascade import (
