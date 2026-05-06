@@ -125,6 +125,7 @@ from .stable_diffusion_xl import (
     StableDiffusionXLInpaintPipeline,
     StableDiffusionXLPipeline,
 )
+from .anyflow import AnyFlowPipeline
 from .wan import WanImageToVideoPipeline, WanPipeline, WanVideoToVideoPipeline
 from .z_image import (
     ZImageControlNetInpaintPipeline,
@@ -249,6 +250,7 @@ AUTO_INPAINT_PIPELINES_MAPPING = OrderedDict(
 
 AUTO_TEXT2VIDEO_PIPELINES_MAPPING = OrderedDict(
     [
+        ("anyflow", AnyFlowPipeline),
         ("wan", WanPipeline),
     ]
 )
