@@ -34,7 +34,7 @@ if not is_transformers_version(">=", "5.1.0"):
 from transformers import BatchEncoding, PreTrainedTokenizerBase, SiglipImageProcessor, T5Gemma2Encoder
 
 from ...callbacks import MultiPipelineCallbacks, PipelineCallback
-from ...guiders import BaseGuidance, ClassifierFreeGuidance
+from ...guiders import BaseGuidance
 from ...image_processor import PipelineImageInput
 from ...models import AutoencoderKLWan
 from ...models.transformers import MotifVideoTransformer3DModel
@@ -194,7 +194,6 @@ class MotifVideoImage2VideoPipeline(DiffusionPipeline):
     """
 
     model_cpu_offload_seq = "text_encoder->transformer->vae"
-    _optional_components = ["guider"]
     _callback_tensor_inputs = ["latents", "prompt_embeds", "negative_prompt_embeds"]
 
     def __init__(
@@ -204,13 +203,10 @@ class MotifVideoImage2VideoPipeline(DiffusionPipeline):
         text_encoder: T5Gemma2Encoder,
         tokenizer: PreTrainedTokenizerBase,
         transformer: MotifVideoTransformer3DModel,
+        guider: BaseGuidance,
         feature_extractor: SiglipImageProcessor,
-        guider: Optional[BaseGuidance] = None,
     ):
         super().__init__()
-
-        if guider is None:
-            guider = ClassifierFreeGuidance()
 
         self.register_modules(
             vae=vae,
