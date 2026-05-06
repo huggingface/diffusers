@@ -212,6 +212,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .transformers import (
             AceStepTransformer1DModel,
             AllegroTransformer3DModel,
+            AnyFlowTransformer3DModel,
             AuraFlowTransformer2DModel,
             BriaFiboTransformer2DModel,
             BriaTransformer2DModel,
