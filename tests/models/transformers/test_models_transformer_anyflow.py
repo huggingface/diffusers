@@ -17,8 +17,9 @@ import unittest
 
 import torch
 
-from diffusers import AnyFlowTransformer3DModel
+from diffusers import AnyFlowFARTransformer3DModel, AnyFlowTransformer3DModel
 from diffusers.models.modeling_outputs import Transformer2DModelOutput
+from diffusers.models.transformers.transformer_anyflow import AnyFlowFARTransformerOutput
 
 from ...testing_utils import enable_full_determinism
 
@@ -30,119 +31,76 @@ from ...testing_utils import enable_full_determinism
 enable_full_determinism()
 
 
+def _bidi_init_kwargs(**overrides):
+    kwargs = {
+        "patch_size": (1, 2, 2),
+        "num_attention_heads": 2,
+        "attention_head_dim": 12,
+        "in_channels": 4,
+        "out_channels": 4,
+        "text_dim": 16,
+        "freq_dim": 256,
+        "ffn_dim": 32,
+        "num_layers": 2,
+        "cross_attn_norm": True,
+        "qk_norm": "rms_norm_across_heads",
+        "rope_max_seq_len": 32,
+        "gate_value": 0.25,
+        "deltatime_type": "r",
+    }
+    kwargs.update(overrides)
+    return kwargs
+
+
+def _far_init_kwargs(**overrides):
+    kwargs = _bidi_init_kwargs()
+    kwargs.update(compressed_patch_size=(1, 4, 4), full_chunk_limit=3)
+    kwargs.update(overrides)
+    return kwargs
+
+
+def _bidi_inputs(batch_size=1, num_frames=2, height=16, width=16, text_seq_len=12, text_dim=16):
+    return {
+        "hidden_states": torch.randn(batch_size, num_frames, 4, height, width, device="cpu"),
+        "timestep": torch.full((batch_size, num_frames), 500.0, device="cpu"),
+        "r_timestep": torch.full((batch_size, num_frames), 250.0, device="cpu"),
+        "encoder_hidden_states": torch.randn(batch_size, text_seq_len, text_dim, device="cpu"),
+        "return_dict": True,
+    }
+
+
 class AnyFlowTransformer3DModelTest(unittest.TestCase):
-    """
-    Unit tests for ``AnyFlowTransformer3DModel``.
+    """Bidirectional flow-map transformer."""
 
-    The model has a non-standard ``forward`` signature (``is_causal``, ``r_timestep``, ``chunk_partition``,
-    ``kv_cache``, ``kv_cache_flag``) and dispatches between four code paths (bidirectional inference, causal
-    training, causal cache prefill, causal autoregressive inference). Fast unit tests cover the bidirectional
-    path here; the causal paths are exercised end-to-end by ``AnyFlowFARPipelineIntegrationTests`` in
-    ``tests/pipelines/anyflow/test_anyflow_far.py``.
-    """
-
-    @staticmethod
-    def _tiny_init_kwargs(**overrides):
-        kwargs = {
-            "patch_size": (1, 2, 2),
-            "num_attention_heads": 2,
-            "attention_head_dim": 12,
-            "in_channels": 4,
-            "out_channels": 4,
-            "text_dim": 16,
-            "freq_dim": 256,
-            "ffn_dim": 32,
-            "num_layers": 2,
-            "cross_attn_norm": True,
-            "qk_norm": "rms_norm_across_heads",
-            "rope_max_seq_len": 32,
-        }
-        kwargs.update(overrides)
-        return kwargs
-
-    @staticmethod
-    def _tiny_bidi_inputs(batch_size=1, num_frames=2, height=16, width=16, text_seq_len=12, text_dim=16):
-        return {
-            "hidden_states": torch.randn(batch_size, num_frames, 4, height, width, device="cpu"),
-            "timestep": torch.full((batch_size, num_frames), 500.0, device="cpu"),
-            "r_timestep": torch.full((batch_size, num_frames), 250.0, device="cpu"),
-            "encoder_hidden_states": torch.randn(batch_size, text_seq_len, text_dim, device="cpu"),
-            "is_causal": False,
-            "return_dict": True,
-        }
-
-    def test_construction_base_wan(self):
-        m = AnyFlowTransformer3DModel(**self._tiny_init_kwargs())
-        self.assertEqual(type(m.condition_embedder).__name__, "AnyFlowTimeTextImageEmbedding")
-        self.assertFalse(hasattr(m, "far_patch_embedding"))
-
-    def test_construction_flowmap_only(self):
-        m = AnyFlowTransformer3DModel(
-            **self._tiny_init_kwargs(init_flowmap_model=True, gate_value=0.25, deltatime_type="r")
-        )
+    def test_construct(self):
+        m = AnyFlowTransformer3DModel(**_bidi_init_kwargs())
         self.assertEqual(type(m.condition_embedder).__name__, "AnyFlowDualTimestepTextImageEmbedding")
         self.assertFalse(hasattr(m, "far_patch_embedding"))
 
-    def test_construction_far_plus_flowmap(self):
-        m = AnyFlowTransformer3DModel(
-            **self._tiny_init_kwargs(
-                compressed_patch_size=(1, 4, 4),
-                full_chunk_limit=3,
-                init_far_model=True,
-                init_flowmap_model=True,
-                gate_value=0.25,
-                deltatime_type="r",
-            )
-        )
-        self.assertEqual(type(m.condition_embedder).__name__, "AnyFlowDualTimestepTextImageEmbedding")
-        self.assertTrue(hasattr(m, "far_patch_embedding"))
-
-    def test_bidi_forward_shape_preserved(self):
+    def test_forward_shape_preserved(self):
         torch.manual_seed(0)
-        m = (
-            AnyFlowTransformer3DModel(
-                **self._tiny_init_kwargs(init_flowmap_model=True, gate_value=0.25, deltatime_type="r")
-            )
-            .to("cpu")
-            .eval()
-        )
-
-        inputs = self._tiny_bidi_inputs()
+        m = AnyFlowTransformer3DModel(**_bidi_init_kwargs()).to("cpu").eval()
+        inputs = _bidi_inputs()
         with torch.no_grad():
             out = m(**inputs)
         self.assertIsInstance(out, Transformer2DModelOutput)
         self.assertEqual(out.sample.shape, inputs["hidden_states"].shape)
 
-    def test_bidi_forward_return_dict_false(self):
+    def test_forward_return_dict_false(self):
         torch.manual_seed(0)
-        m = (
-            AnyFlowTransformer3DModel(
-                **self._tiny_init_kwargs(init_flowmap_model=True, gate_value=0.25, deltatime_type="r")
-            )
-            .to("cpu")
-            .eval()
-        )
-
-        inputs = self._tiny_bidi_inputs()
+        m = AnyFlowTransformer3DModel(**_bidi_init_kwargs()).to("cpu").eval()
+        inputs = _bidi_inputs()
         inputs["return_dict"] = False
         with torch.no_grad():
             out = m(**inputs)
         self.assertIsInstance(out, tuple)
         self.assertEqual(out[0].shape, inputs["hidden_states"].shape)
 
-    def test_bidi_forward_determinism(self):
+    def test_forward_determinism(self):
         torch.manual_seed(0)
-        m = (
-            AnyFlowTransformer3DModel(
-                **self._tiny_init_kwargs(init_flowmap_model=True, gate_value=0.25, deltatime_type="r")
-            )
-            .to("cpu")
-            .eval()
-        )
-
-        inputs_a = self._tiny_bidi_inputs()
+        m = AnyFlowTransformer3DModel(**_bidi_init_kwargs()).to("cpu").eval()
+        inputs_a = _bidi_inputs()
         inputs_b = {k: v.clone() if torch.is_tensor(v) else v for k, v in inputs_a.items()}
-
         with torch.no_grad():
             out_a = m(**inputs_a).sample
             out_b = m(**inputs_b).sample
@@ -150,41 +108,49 @@ class AnyFlowTransformer3DModelTest(unittest.TestCase):
 
     def test_save_load_pretrained_roundtrip(self):
         torch.manual_seed(0)
-        m = AnyFlowTransformer3DModel(
-            **self._tiny_init_kwargs(init_flowmap_model=True, gate_value=0.25, deltatime_type="r")
-        )
-
+        m = AnyFlowTransformer3DModel(**_bidi_init_kwargs())
         with tempfile.TemporaryDirectory() as tmpdir:
             m.save_pretrained(tmpdir)
             m2 = AnyFlowTransformer3DModel.from_pretrained(tmpdir)
-        self.assertEqual(type(m2.condition_embedder).__name__, "AnyFlowDualTimestepTextImageEmbedding")
-        # Compare a parameter to ensure weights round-tripped.
         torch.testing.assert_close(
             m.condition_embedder.delta_embedder.linear_1.weight,
             m2.condition_embedder.delta_embedder.linear_1.weight,
         )
 
-    def test_save_load_pretrained_far_plus_flowmap(self):
-        torch.manual_seed(0)
-        m = AnyFlowTransformer3DModel(
-            **self._tiny_init_kwargs(
-                compressed_patch_size=(1, 4, 4),
-                full_chunk_limit=3,
-                init_far_model=True,
-                init_flowmap_model=True,
-                gate_value=0.25,
-                deltatime_type="r",
-            )
-        )
+    def test_gradient_checkpointing_toggle(self):
+        m = AnyFlowTransformer3DModel(**_bidi_init_kwargs())
+        self.assertFalse(m.gradient_checkpointing)
+        m.enable_gradient_checkpointing()
+        self.assertTrue(m.gradient_checkpointing)
+        m.disable_gradient_checkpointing()
+        self.assertFalse(m.gradient_checkpointing)
 
+
+class AnyFlowFARTransformer3DModelTest(unittest.TestCase):
+    """FAR causal flow-map transformer."""
+
+    def test_construct(self):
+        m = AnyFlowFARTransformer3DModel(**_far_init_kwargs())
+        self.assertEqual(type(m.condition_embedder).__name__, "AnyFlowDualTimestepTextImageEmbedding")
+        self.assertTrue(hasattr(m, "far_patch_embedding"))
+
+    def test_save_load_pretrained_roundtrip(self):
+        torch.manual_seed(0)
+        m = AnyFlowFARTransformer3DModel(**_far_init_kwargs())
         with tempfile.TemporaryDirectory() as tmpdir:
             m.save_pretrained(tmpdir)
-            m2 = AnyFlowTransformer3DModel.from_pretrained(tmpdir)
+            m2 = AnyFlowFARTransformer3DModel.from_pretrained(tmpdir)
         self.assertTrue(hasattr(m2, "far_patch_embedding"))
         torch.testing.assert_close(m.far_patch_embedding.weight, m2.far_patch_embedding.weight)
 
+    def test_output_dataclass_exposed(self):
+        # AnyFlowFARTransformerOutput must be importable for downstream type-checking and
+        # for the autodoc page.
+        self.assertTrue(hasattr(AnyFlowFARTransformerOutput, "sample"))
+        self.assertTrue(hasattr(AnyFlowFARTransformerOutput, "kv_cache"))
+
     def test_gradient_checkpointing_toggle(self):
-        m = AnyFlowTransformer3DModel(**self._tiny_init_kwargs(init_flowmap_model=True))
+        m = AnyFlowFARTransformer3DModel(**_far_init_kwargs())
         self.assertFalse(m.gradient_checkpointing)
         m.enable_gradient_checkpointing()
         self.assertTrue(m.gradient_checkpointing)

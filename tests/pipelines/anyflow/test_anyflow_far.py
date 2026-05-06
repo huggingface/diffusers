@@ -20,7 +20,7 @@ from transformers import AutoConfig, AutoTokenizer, T5EncoderModel
 
 from diffusers import (
     AnyFlowFARPipeline,
-    AnyFlowTransformer3DModel,
+    AnyFlowFARTransformer3DModel,
     AutoencoderKLWan,
     FlowMapEulerDiscreteScheduler,
 )
@@ -81,7 +81,7 @@ class AnyFlowFARPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         tokenizer = AutoTokenizer.from_pretrained("hf-internal-testing/tiny-random-t5")
 
         torch.manual_seed(0)
-        transformer = AnyFlowTransformer3DModel(
+        transformer = AnyFlowFARTransformer3DModel(
             patch_size=(1, 2, 2),
             compressed_patch_size=(1, 4, 4),
             full_chunk_limit=3,
@@ -96,11 +96,8 @@ class AnyFlowFARPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             cross_attn_norm=True,
             qk_norm="rms_norm_across_heads",
             rope_max_seq_len=32,
-            init_far_model=True,
-            init_flowmap_model=True,
             gate_value=0.25,
             deltatime_type="r",
-            chunk_partition=[1, 1, 1],
         )
 
         components = {
@@ -117,6 +114,8 @@ class AnyFlowFARPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             generator = torch.manual_seed(seed)
         else:
             generator = torch.Generator(device=device).manual_seed(seed)
+        # num_frames=9 -> 3 latent frames (VAE temporal stride 4); use a matching
+        # chunk_partition so the FAR pipeline's pre-flight assertion passes.
         inputs = {
             "prompt": "dance monkey",
             "negative_prompt": "negative",
@@ -128,6 +127,7 @@ class AnyFlowFARPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             "num_frames": 9,
             "max_sequence_length": 16,
             "output_type": "pt",
+            "chunk_partition": [1, 1, 1],
         }
         return inputs
 

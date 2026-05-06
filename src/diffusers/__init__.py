@@ -190,6 +190,7 @@ else:
         [
             "AceStepTransformer1DModel",
             "AllegroTransformer3DModel",
+            "AnyFlowFARTransformer3DModel",
             "AnyFlowTransformer3DModel",
             "AsymmetricAutoencoderKL",
             "AttentionBackendName",
@@ -1011,6 +1012,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .models import (
             AceStepTransformer1DModel,
             AllegroTransformer3DModel,
+            AnyFlowFARTransformer3DModel,
             AnyFlowTransformer3DModel,
             AsymmetricAutoencoderKL,
             AttentionBackendName,

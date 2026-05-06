@@ -26,7 +26,7 @@ from transformers import AutoTokenizer, UMT5EncoderModel
 
 from ...callbacks import MultiPipelineCallbacks, PipelineCallback
 from ...loaders import WanLoraLoaderMixin
-from ...models import AnyFlowTransformer3DModel, AutoencoderKLWan
+from ...models import AnyFlowFARTransformer3DModel, AutoencoderKLWan
 from ...models.autoencoders.vae import DiagonalGaussianDistribution
 from ...schedulers import FlowMapEulerDiscreteScheduler
 from ...utils import is_ftfy_available, logging
@@ -93,9 +93,8 @@ class AnyFlowFARPipeline(DiffusionPipeline, WanLoraLoaderMixin):
             Tokenizer from [google/umt5-xxl](https://huggingface.co/google/umt5-xxl).
         text_encoder ([`UMT5EncoderModel`]):
             [google/umt5-xxl](https://huggingface.co/google/umt5-xxl) text encoder.
-        transformer ([`AnyFlowTransformer3DModel`]):
-            Conditional 3D Transformer (must be configured with ``init_far_model=True`` and
-            ``init_flowmap_model=True``).
+        transformer ([`AnyFlowFARTransformer3DModel`]):
+            FAR causal flow-map 3D Transformer.
         vae ([`AutoencoderKLWan`]):
             VAE that encodes/decodes videos to and from latent representations.
         scheduler ([`FlowMapEulerDiscreteScheduler`]):
@@ -107,11 +106,16 @@ class AnyFlowFARPipeline(DiffusionPipeline, WanLoraLoaderMixin):
     model_cpu_offload_seq = "text_encoder->transformer->vae"
     _callback_tensor_inputs = ["latents", "prompt_embeds", "negative_prompt_embeds"]
 
+    # Default chunk partition for the released NVIDIA AnyFlow-FAR checkpoints (81 frames at the diffusers
+    # VAE temporal stride of 4 → 21 latent frames split into 1 + 3*6 + 2 = [1, 3, 3, 3, 3, 3, 3, 2]). Override
+    # via the ``chunk_partition`` argument to ``__call__`` for other frame counts.
+    default_chunk_partition: List[int] = [1, 3, 3, 3, 3, 3, 3, 2]
+
     def __init__(
         self,
         tokenizer: AutoTokenizer,
         text_encoder: UMT5EncoderModel,
-        transformer: AnyFlowTransformer3DModel,
+        transformer: AnyFlowFARTransformer3DModel,
         vae: AutoencoderKLWan,
         scheduler: FlowMapEulerDiscreteScheduler,
         use_mean_velocity: bool = True,
@@ -495,7 +499,7 @@ class AnyFlowFARPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         x_final_val = inference_range(x_next_grad, post_timestep)
         return x_final_val
 
-    def training_rollout(
+    def _denoise_rollout(
         self,
         context_sequence=None,
         num_inference_steps: int = 50,
@@ -509,9 +513,10 @@ class AnyFlowFARPipeline(DiffusionPipeline, WanLoraLoaderMixin):
             Union[Callable[[int, int, Dict], None], PipelineCallback, MultiPipelineCallbacks]
         ] = None,
         callback_on_step_end_tensor_inputs: Optional[List[str]] = None,
+        chunk_partition: Optional[List[int]] = None,
     ):
         r"""
-        Causal counterpart of :meth:`AnyFlowPipeline.training_rollout`. Drives the chunk-level FAR
+        Causal counterpart of :meth:`AnyFlowPipeline._denoise_rollout`. Drives the chunk-level FAR
         autoregressive rollout used by stage-2 DMD on-policy distillation, with KV cache reused across
         the three Flow-Map segments to keep training tractable. Not part of the standard inference path
         — end users should call ``__call__``.
@@ -543,10 +548,13 @@ class AnyFlowFARPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         # 5. Prepare latent variables
         init_latents = latents
 
-        chunk_partition = self.transformer.config.chunk_partition
+        if chunk_partition is None:
+            chunk_partition = list(self.default_chunk_partition)
 
         assert init_latents.shape[1] == sum(chunk_partition), (
-            "please check the chunk_partition equal to num_smaple_frames"
+            f"chunk_partition={chunk_partition} sums to {sum(chunk_partition)}, but the input latent "
+            f"sequence has {init_latents.shape[1]} frames; pass an explicit chunk_partition that matches "
+            "your num_frames if you are not using the default 81-frame schedule."
         )
 
         full_token_per_frame = (init_latents.shape[3] // self.transformer.config.patch_size[1]) * (
@@ -712,6 +720,7 @@ class AnyFlowFARPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         max_sequence_length: int = 512,
         show_progress=True,
         use_kv_cache=True,
+        chunk_partition: Optional[List[int]] = None,
     ):
 
         # 1. Check inputs. Raise error if not correct
@@ -781,7 +790,7 @@ class AnyFlowFARPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         init_latents = init_latents.to(transformer_dtype)
         init_latents = rearrange(init_latents, "b f c h w -> b c f h w")
 
-        latents = self.training_rollout(
+        latents = self._denoise_rollout(
             context_sequence=context_sequence,
             num_inference_steps=num_inference_steps,
             grad_timestep=None,
@@ -791,6 +800,7 @@ class AnyFlowFARPipeline(DiffusionPipeline, WanLoraLoaderMixin):
             guidance_scale=guidance_scale,
             callback_on_step_end=callback_on_step_end,
             callback_on_step_end_tensor_inputs=callback_on_step_end_tensor_inputs,
+            chunk_partition=chunk_partition,
         )
 
         if not output_type == "latent":

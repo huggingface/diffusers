@@ -12,18 +12,14 @@ specific language governing permissions and limitations under the License.
 
 # AnyFlowTransformer3DModel
 
-A 3D Transformer used by `AnyFlowPipeline` and `AnyFlowFARPipeline`. The architecture extends the
-Wan2.1 3D DiT backbone with two optional modules controlled by config flags:
+The bidirectional 3D Transformer used by [`AnyFlowPipeline`](../pipelines/anyflow#anyflowpipeline). It is the
+v0.35.1 Wan2.1 backbone with one structural change: the timestep embedder is replaced by
+``AnyFlowDualTimestepTextImageEmbedding``, so every forward call conditions on both the source timestep
+``t`` and the target timestep ``r``. This is the embedding required to learn the flow map
+:math:`\Phi_{r\leftarrow t}` introduced in [AnyFlow](https://huggingface.co/papers/<arxiv-id>).
 
-1. **FAR causal blocks** (`init_far_model=True`) — block-sparse causal attention via
-   `torch.nn.attention.flex_attention` plus a compressed-frame patch embedding. Enables frame-level
-   autoregressive generation as introduced in [FAR (Gu et al., 2025)](https://arxiv.org/abs/2503.19325).
-2. **Dual-timestep flow-map embedding** (`init_flowmap_model=True`) — adds a second timestep embedder
-   (`delta_embedder`) that conditions on the target timestep `r_timestep` in addition to the source
-   timestep, enabling flow-map sampling $\mathbf{z}_t \to \mathbf{z}_r$ over arbitrary intervals (introduced
-   in [AnyFlow](https://huggingface.co/papers/<arxiv-id>)).
-
-Setting both flags to `False` reduces this model to the v0.35.1 Wan2.1 transformer.
+For frame-level autoregressive (FAR causal) generation, use
+[`AnyFlowFARTransformer3DModel`](anyflow_far_transformer3d) instead.
 
 ```python
 from diffusers import AnyFlowTransformer3DModel
@@ -31,11 +27,6 @@ from diffusers import AnyFlowTransformer3DModel
 # Bidirectional AnyFlow checkpoint (T2V):
 transformer = AnyFlowTransformer3DModel.from_pretrained(
     "nvidia/AnyFlow-Wan2.1-T2V-1.3B-Diffusers", subfolder="transformer"
-)
-
-# Causal AnyFlow checkpoint (FAR):
-transformer = AnyFlowTransformer3DModel.from_pretrained(
-    "nvidia/AnyFlow-FAR-Wan2.1-1.3B-Diffusers", subfolder="transformer"
 )
 ```
 

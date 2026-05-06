@@ -17,7 +17,6 @@
 # is adapted from the v0.35.1 Wan2.1 transformer (transformer_wan.py); upstream Wan has since been
 # refactored, so this file is intentionally self-contained rather than annotated with `# Copied from`.
 
-import copy
 import math
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple, Union
@@ -266,94 +265,6 @@ class AnyFlowImageEmbedding(torch.nn.Module):
         hidden_states = self.ff(hidden_states)
         hidden_states = self.norm2(hidden_states)
         return hidden_states
-
-
-class AnyFlowTimeTextImageEmbedding(nn.Module):
-    def __init__(
-        self,
-        dim: int,
-        time_freq_dim: int,
-        time_proj_dim: int,
-        text_embed_dim: int,
-        image_embed_dim: Optional[int] = None,
-    ):
-        super().__init__()
-
-        self.timesteps_proj = Timesteps(num_channels=time_freq_dim, flip_sin_to_cos=True, downscale_freq_shift=0)
-        self.time_embedder = TimestepEmbedding(in_channels=time_freq_dim, time_embed_dim=dim)
-        self.act_fn = nn.SiLU()
-        self.time_proj = nn.Linear(dim, time_proj_dim)
-        self.text_embedder = PixArtAlphaTextProjection(text_embed_dim, dim, act_fn="gelu_tanh")
-
-        self.image_embedder = None
-        if image_embed_dim is not None:
-            self.image_embedder = AnyFlowImageEmbedding(image_embed_dim, dim)
-
-    def forward_timestep(self, timestep: torch.Tensor, encoder_hidden_states, token_per_frame):
-        batch_size, num_frames = timestep.shape
-        timestep = rearrange(timestep, "b t -> (b t)")
-
-        timestep = self.timesteps_proj(timestep)
-
-        time_embedder_dtype = next(iter(self.time_embedder.parameters())).dtype
-        if timestep.dtype != time_embedder_dtype and time_embedder_dtype != torch.int8:
-            timestep = timestep.to(time_embedder_dtype)
-        temb = self.time_embedder(timestep).type_as(encoder_hidden_states)
-        timestep_proj = self.time_proj(self.act_fn(temb))
-
-        temb = rearrange(temb, "(b t) c -> b t c", b=batch_size).repeat_interleave(token_per_frame, dim=1)
-        timestep_proj = rearrange(timestep_proj, "(b t) c -> b t c", b=batch_size).repeat_interleave(
-            token_per_frame, dim=1
-        )
-
-        return temb, timestep_proj
-
-    def forward(
-        self,
-        timestep: torch.Tensor,
-        r_timestep: torch.Tensor,
-        encoder_hidden_states: torch.Tensor,
-        encoder_hidden_states_image: Optional[torch.Tensor] = None,
-        far_cfg=None,
-        clean_timestep=None,
-        is_causal=True,
-    ):
-
-        if is_causal:
-            full_frame_timestep, full_frame_timestep_proj = self.forward_timestep(
-                timestep[:, -far_cfg["num_full_frames"] :], encoder_hidden_states, far_cfg["full_token_per_frame"]
-            )  # noqa: E501
-            compressed_frame_timestep, compressed_frame_timestep_proj = self.forward_timestep(
-                timestep[:, : -far_cfg["num_full_frames"]],
-                encoder_hidden_states,
-                far_cfg["compressed_token_per_frame"],
-            )  # noqa: E501
-
-            if clean_timestep is not None:
-                clean_timestep, clean_timestep_proj = self.forward_timestep(
-                    clean_timestep, clean_timestep, encoder_hidden_states, far_cfg["full_token_per_frame"]
-                )  # noqa: E501
-                timestep = torch.cat([compressed_frame_timestep, full_frame_timestep, clean_timestep], dim=1)
-                timestep_proj = torch.cat(
-                    [compressed_frame_timestep_proj, full_frame_timestep_proj, clean_timestep_proj], dim=1
-                )
-            else:
-                timestep = torch.cat([compressed_frame_timestep, full_frame_timestep], dim=1)
-                timestep_proj = torch.cat([compressed_frame_timestep_proj, full_frame_timestep_proj], dim=1)
-
-            encoder_hidden_states = self.text_embedder(encoder_hidden_states)
-            if encoder_hidden_states_image is not None:
-                encoder_hidden_states_image = self.image_embedder(encoder_hidden_states_image)
-        else:
-            timestep, timestep_proj = self.forward_timestep(
-                timestep, encoder_hidden_states, far_cfg["full_token_per_frame"]
-            )  # noqa: E501
-
-            encoder_hidden_states = self.text_embedder(encoder_hidden_states)
-            if encoder_hidden_states_image is not None:
-                encoder_hidden_states_image = self.image_embedder(encoder_hidden_states_image)
-
-        return timestep, timestep_proj, encoder_hidden_states, encoder_hidden_states_image
 
 
 class AnyFlowDualTimestepTextImageEmbedding(nn.Module):
@@ -710,27 +621,21 @@ class AnyFlowTransformerBlock(nn.Module):
 
 class AnyFlowTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOriginalModelMixin):
     r"""
-    A 3D Transformer for any-step video diffusion. The architecture extends the Wan2.1 3D DiT backbone with two
-    optional modules controlled by config flags:
+    Bidirectional 3D Transformer for AnyFlow flow-map sampling.
 
-    1. **FAR causal blocks** (``init_far_model=True``) — block-sparse causal attention via
-       ``torch.nn.attention.flex_attention`` plus a compressed-frame patch embedding. This enables frame-level
-       autoregressive generation as introduced in FAR ([Gu et al., 2025](https://arxiv.org/abs/2503.19325)).
-    2. **Dual-timestep flow-map embedding** (``init_flowmap_model=True``) — adds a second timestep embedder
-       (``delta_embedder``) that conditions on the target timestep ``r_timestep`` in addition to the source
-       timestep, enabling flow-map sampling :math:`z_t \to z_r` over arbitrary intervals (AnyFlow).
+    The architecture is the v0.35.1 Wan2.1 3D DiT backbone with one structural change: the timestep
+    embedder is replaced by ``AnyFlowDualTimestepTextImageEmbedding`` so that every forward call conditions
+    on both the source timestep ``t`` and the target timestep ``r``. This is the embedding required to
+    learn the flow map :math:`\Phi_{r\leftarrow t}` introduced in
+    [AnyFlow](https://huggingface.co/papers/<arxiv-id>).
 
-    With both flags off, this model reduces to the v0.35.1 Wan2.1 transformer.
+    For frame-level autoregressive (FAR causal) generation, use ``AnyFlowFARTransformer3DModel`` instead;
+    that variant adds the FAR causal block-mask and a compressed-frame patch embedding on top of the same
+    backbone.
 
     Args:
         patch_size (`Tuple[int]`, defaults to `(1, 2, 2)`):
             3D patch dimensions for video embedding (t_patch, h_patch, w_patch).
-        compressed_patch_size (`Tuple[int]`, defaults to `(1, 4, 4)`):
-            Larger patch dimensions used by the FAR-compressed branch for context frames. Only consulted when
-            ``init_far_model=True``.
-        full_chunk_limit (`int`, defaults to `3`):
-            Maximum number of full-resolution chunks before earlier chunks are demoted to compressed FAR context.
-            Only consulted when ``init_far_model=True``.
         num_attention_heads (`int`, defaults to `40`):
             Number of attention heads.
         attention_head_dim (`int`, defaults to `128`):
@@ -759,22 +664,242 @@ class AnyFlowTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromO
             The number of channels to use for the added key/value projections. If `None`, no projection is added.
         rope_max_seq_len (`int`, defaults to `1024`):
             Maximum sequence length used to precompute rotary position frequencies.
-        chunk_partition (optional list of int, *optional*):
-            Default chunk partition for FAR (overridable per ``forward`` call).
-        init_far_model (`bool`, defaults to `False`):
-            Toggle the FAR causal-attention components.
-        init_flowmap_model (`bool`, defaults to `False`):
-            Toggle the dual-timestep flow-map embedding. Required by the AnyFlow distilled checkpoints.
-        gate_value (`float`, defaults to `0`):
-            Initial mixing gate between source-timestep and delta-timestep embeddings. Only consulted when
-            ``init_flowmap_model=True``.
+        gate_value (`float`, defaults to `0.25`):
+            Mixing gate between source-timestep and delta-timestep embeddings (the AnyFlow paper's :math:`g`
+            parameter, fixed at 0.25 in stage-1 distillation).
         deltatime_type (`str`, defaults to `'r'`):
-            Either ``"r"`` (delta is the target timestep) or ``"t-r"`` (delta is the absolute interval). Only
-            consulted when ``init_flowmap_model=True``.
+            Either ``"r"`` (delta is the target timestep) or ``"t-r"`` (delta is the absolute interval).
     """
 
     _supports_gradient_checkpointing = True
     _skip_layerwise_casting_patterns = ["patch_embedding", "condition_embedder", "norm"]
+    _no_split_modules = ["AnyFlowTransformerBlock"]
+    _keep_in_fp32_modules = ["time_embedder", "scale_shift_table", "norm1", "norm2", "norm3"]
+    _keys_to_ignore_on_load_unexpected = ["norm_added_q"]
+
+    @register_to_config
+    def __init__(
+        self,
+        patch_size: Tuple[int] = (1, 2, 2),
+        num_attention_heads: int = 40,
+        attention_head_dim: int = 128,
+        in_channels: int = 16,
+        out_channels: int = 16,
+        text_dim: int = 4096,
+        freq_dim: int = 256,
+        ffn_dim: int = 13824,
+        num_layers: int = 40,
+        cross_attn_norm: bool = True,
+        qk_norm: Optional[str] = "rms_norm_across_heads",
+        eps: float = 1e-6,
+        image_dim: Optional[int] = None,
+        added_kv_proj_dim: Optional[int] = None,
+        rope_max_seq_len: int = 1024,
+        gate_value: float = 0.25,
+        deltatime_type: str = "r",
+    ) -> None:
+        super().__init__()
+
+        inner_dim = num_attention_heads * attention_head_dim
+        out_channels = out_channels or in_channels
+
+        # 1. Patch & position embedding. ``compressed_patch_size`` is unused in the bidirectional path;
+        # we forward ``patch_size`` itself so the rotary helper has a valid (no-op) value.
+        self.rope = AnyFlowRotaryPosEmbed(attention_head_dim, patch_size, patch_size, rope_max_seq_len)
+        self.patch_embedding = nn.Conv3d(in_channels, inner_dim, kernel_size=patch_size, stride=patch_size)
+
+        # 2. Condition embedding (always dual-timestep for AnyFlow distilled checkpoints).
+        self.condition_embedder = AnyFlowDualTimestepTextImageEmbedding(
+            dim=inner_dim,
+            gate_value=gate_value,
+            deltatime_type=deltatime_type,
+            time_freq_dim=freq_dim,
+            time_proj_dim=inner_dim * 6,
+            text_embed_dim=text_dim,
+            image_embed_dim=image_dim,
+        )
+
+        # 3. Transformer blocks
+        self.blocks = nn.ModuleList(
+            [
+                AnyFlowTransformerBlock(
+                    inner_dim, ffn_dim, num_attention_heads, qk_norm, cross_attn_norm, eps, added_kv_proj_dim
+                )
+                for _ in range(num_layers)
+            ]
+        )
+
+        # 4. Output norm & projection
+        self.norm_out = FP32LayerNorm(inner_dim, eps, elementwise_affine=False)
+        self.proj_out = nn.Linear(inner_dim, out_channels * math.prod(patch_size))
+        self.scale_shift_table = nn.Parameter(torch.randn(1, 2, inner_dim) / inner_dim**0.5)
+
+        self.gradient_checkpointing = False
+
+    def _unpack_latent_sequence(self, latents, num_frames, height, width, patch_size):
+        batch_size, num_patches, channels = latents.shape
+        height, width = height // patch_size, width // patch_size
+
+        latents = latents.view(
+            batch_size * num_frames, height, width, patch_size, patch_size, channels // (patch_size * patch_size)
+        )
+        latents = latents.permute(0, 5, 1, 3, 2, 4)
+        latents = latents.reshape(
+            batch_size, num_frames, channels // (patch_size * patch_size), height * patch_size, width * patch_size
+        )
+        return latents
+
+    def forward(
+        self,
+        hidden_states: torch.Tensor,
+        timestep: torch.Tensor,
+        r_timestep: torch.Tensor,
+        encoder_hidden_states: torch.Tensor,
+        encoder_hidden_states_image: Optional[torch.Tensor] = None,
+        attention_kwargs: Optional[Dict[str, Any]] = None,
+        return_dict: bool = True,
+    ) -> Union[Transformer2DModelOutput, Tuple]:
+        """
+        Bidirectional flow-map forward pass.
+
+        ``hidden_states`` is laid out as ``(B, F, C, H, W)`` (per-frame latents). The input is patchified
+        with the standard ``patch_embedding`` (kernel = stride = ``patch_size``) and denoised with global
+        bidirectional self-attention over the resulting flat token sequence.
+        """
+        hidden_states = rearrange(hidden_states, "b f c h w -> b c f h w")
+        batch_size, num_channels, num_frames, height, width = hidden_states.shape
+
+        full_token_per_frame = (height * width) // (self.config.patch_size[1] * self.config.patch_size[2])
+
+        far_cfg = {
+            "total_frames": num_frames,
+            "full_frame_shape": (height // self.config.patch_size[1], width // self.config.patch_size[2]),
+            "full_token_per_frame": full_token_per_frame,
+        }
+
+        rotary_emb = self.rope(far_cfg=far_cfg, device=hidden_states.device, is_causal=False)
+
+        hidden_states = self.patch_embedding(hidden_states)
+        hidden_states = hidden_states.flatten(2).transpose(1, 2)
+
+        temb, timestep_proj, encoder_hidden_states, encoder_hidden_states_image = self.condition_embedder(
+            timestep,
+            r_timestep,
+            encoder_hidden_states,
+            encoder_hidden_states_image,
+            is_causal=False,
+            far_cfg=far_cfg,
+        )
+        timestep_proj = timestep_proj.unflatten(2, (6, -1))
+
+        attention_mask = None
+
+        if encoder_hidden_states_image is not None:
+            encoder_hidden_states = torch.concat([encoder_hidden_states_image, encoder_hidden_states], dim=1)
+
+        if torch.is_grad_enabled() and self.gradient_checkpointing:
+            for block in self.blocks:
+                hidden_states = self._gradient_checkpointing_func(
+                    block, hidden_states, encoder_hidden_states, timestep_proj, rotary_emb, attention_mask
+                )
+        else:
+            for block in self.blocks:
+                hidden_states = block(hidden_states, encoder_hidden_states, timestep_proj, rotary_emb, attention_mask)
+
+        # Output norm, projection & unpatchify
+        if temb.ndim == 3:
+            shift, scale = (self.scale_shift_table.unsqueeze(0) + temb.unsqueeze(2)).chunk(2, dim=2)
+            shift = shift.squeeze(2)
+            scale = scale.squeeze(2)
+        else:
+            shift, scale = (self.scale_shift_table + temb.unsqueeze(1)).chunk(2, dim=1)
+
+        # Move shift/scale to hidden_states' device for multi-GPU accelerate inference.
+        shift = shift.to(hidden_states.device)
+        scale = scale.to(hidden_states.device)
+
+        hidden_states = (self.norm_out(hidden_states.float()) * (1 + scale) + shift).type_as(hidden_states)
+        hidden_states = self.proj_out(hidden_states)
+
+        output = self._unpack_latent_sequence(
+            hidden_states,
+            num_frames=far_cfg["total_frames"],
+            height=height,
+            width=width,
+            patch_size=self.config.patch_size[1],
+        )
+
+        if not return_dict:
+            return (output,)
+
+        return Transformer2DModelOutput(sample=output)
+
+
+class AnyFlowFARTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOriginalModelMixin):
+    r"""
+    Causal (FAR) 3D Transformer for AnyFlow flow-map sampling with frame-level autoregressive generation.
+
+    Extends the v0.35.1 Wan2.1 backbone with:
+
+    * **FAR causal block-mask** via :func:`torch.nn.attention.flex_attention`, supporting frame-level
+      autoregressive generation (FAR; [Gu et al., 2025](https://arxiv.org/abs/2503.19325)).
+    * **Compressed-frame patch embedding** ``far_patch_embedding`` for context (already-generated) frames,
+      initialized from ``patch_embedding`` via trilinear interpolation so a freshly constructed model is
+      already at a reasonable starting point even before LoRA fine-tuning.
+    * **Dual-timestep flow-map embedding** for any-step sampling (same as ``AnyFlowTransformer3DModel``).
+
+    Use ``AnyFlowTransformer3DModel`` instead for plain bidirectional T2V — that variant skips the FAR
+    causal masking and ``far_patch_embedding`` and is ~5–10% smaller.
+
+    Args:
+        patch_size (`Tuple[int]`, defaults to `(1, 2, 2)`):
+            3D patch dimensions for full-resolution chunks.
+        compressed_patch_size (`Tuple[int]`, defaults to `(1, 4, 4)`):
+            Larger patch dimensions for the FAR-compressed (context) chunks.
+        full_chunk_limit (`int`, defaults to `3`):
+            Maximum number of full-resolution chunks before earlier chunks are demoted to compressed FAR
+            context. The released checkpoints use ``3``.
+        num_attention_heads (`int`, defaults to `40`):
+            Number of attention heads.
+        attention_head_dim (`int`, defaults to `128`):
+            The number of channels in each head.
+        in_channels (`int`, defaults to `16`):
+            The number of channels in the input latent.
+        out_channels (`int`, defaults to `16`):
+            The number of channels in the output latent.
+        text_dim (`int`, defaults to `4096`):
+            Input dimension for text embeddings (UMT5).
+        freq_dim (`int`, defaults to `256`):
+            Dimension for sinusoidal time embeddings.
+        ffn_dim (`int`, defaults to `13824`):
+            Intermediate dimension in feed-forward network.
+        num_layers (`int`, defaults to `40`):
+            Number of transformer blocks.
+        cross_attn_norm (`bool`, defaults to `True`):
+            Enable cross-attention normalization.
+        qk_norm (`Optional[str]`, defaults to `'rms_norm_across_heads'`):
+            Query/key normalization scheme.
+        eps (`float`, defaults to `1e-6`):
+            Epsilon for normalization layers.
+        image_dim (`Optional[int]`, *optional*, defaults to `None`):
+            Image embedding dimension for I2V conditioning.
+        added_kv_proj_dim (`Optional[int]`, *optional*, defaults to `None`):
+            The number of channels to use for the added key/value projections.
+        rope_max_seq_len (`int`, defaults to `1024`):
+            Maximum sequence length used to precompute rotary position frequencies.
+        gate_value (`float`, defaults to `0.25`):
+            Mixing gate between source-timestep and delta-timestep embeddings.
+        deltatime_type (`str`, defaults to `'r'`):
+            Either ``"r"`` (delta is the target timestep) or ``"t-r"`` (delta is the absolute interval).
+
+    .. note::
+        ``chunk_partition`` is **not** a model config field — it is a per-call argument passed to
+        :meth:`forward`. Different inference setups (varying ``num_frames`` or full-vs-compressed schedules)
+        therefore do not require separate checkpoints.
+    """
+
+    _supports_gradient_checkpointing = True
+    _skip_layerwise_casting_patterns = ["patch_embedding", "far_patch_embedding", "condition_embedder", "norm"]
     _no_split_modules = ["AnyFlowTransformerBlock"]
     _keep_in_fp32_modules = ["time_embedder", "scale_shift_table", "norm1", "norm2", "norm3"]
     _keys_to_ignore_on_load_unexpected = ["norm_added_q"]
@@ -799,25 +924,36 @@ class AnyFlowTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromO
         image_dim: Optional[int] = None,
         added_kv_proj_dim: Optional[int] = None,
         rope_max_seq_len: int = 1024,
-        chunk_partition=None,
-        init_far_model=False,
-        init_flowmap_model=False,
-        gate_value=0,
-        deltatime_type="r",
+        gate_value: float = 0.25,
+        deltatime_type: str = "r",
     ) -> None:
         super().__init__()
 
         inner_dim = num_attention_heads * attention_head_dim
         out_channels = out_channels or in_channels
 
-        # 1. Patch & position embedding
+        # 1. Patch & position embedding (full + FAR-compressed branches).
         self.rope = AnyFlowRotaryPosEmbed(attention_head_dim, patch_size, compressed_patch_size, rope_max_seq_len)
         self.patch_embedding = nn.Conv3d(in_channels, inner_dim, kernel_size=patch_size, stride=patch_size)
 
-        # 2. Condition embeddings
-        # image_embedding_dim=1280 for I2V model
-        self.condition_embedder = AnyFlowTimeTextImageEmbedding(
+        self.far_patch_embedding = nn.Conv3d(
+            in_channels, inner_dim, kernel_size=compressed_patch_size, stride=compressed_patch_size
+        )
+        # Warm-start the compressed branch from the full-resolution branch by trilinear interpolation. This
+        # matches FAR-Dev's `setup_far_model()` initialization. State-dict loading will overwrite these
+        # weights for trained checkpoints; the warm-start only matters when constructing a fresh model.
+        original_weight = self.patch_embedding.weight.data.view(-1, 1, *patch_size)
+        new_weight = F.interpolate(original_weight, size=compressed_patch_size, mode="trilinear", align_corners=False)
+        new_weight = new_weight.view(inner_dim, in_channels, *compressed_patch_size)
+        with torch.no_grad():
+            self.far_patch_embedding.weight.copy_(new_weight)
+            self.far_patch_embedding.bias.copy_(self.patch_embedding.bias)
+
+        # 2. Condition embedding (always dual-timestep for AnyFlow distilled checkpoints).
+        self.condition_embedder = AnyFlowDualTimestepTextImageEmbedding(
             dim=inner_dim,
+            gate_value=gate_value,
+            deltatime_type=deltatime_type,
             time_freq_dim=freq_dim,
             time_proj_dim=inner_dim * 6,
             text_embed_dim=text_dim,
@@ -841,53 +977,69 @@ class AnyFlowTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromO
 
         self.gradient_checkpointing = False
 
-        if init_far_model:
-            self.setup_far_model()
-        if init_flowmap_model:
-            self.setup_flowmap_model(gate_value=self.config.gate_value, deltatime_type=self.config.deltatime_type)
+    def forward(
+        self,
+        hidden_states: torch.Tensor,
+        timestep: torch.Tensor,
+        r_timestep: torch.Tensor,
+        encoder_hidden_states: torch.Tensor,
+        chunk_partition: List[int],
+        encoder_hidden_states_image: Optional[torch.Tensor] = None,
+        clean_hidden_states: Optional[torch.Tensor] = None,
+        clean_timestep: Optional[torch.Tensor] = None,
+        kv_cache: Optional[List[Dict[str, torch.Tensor]]] = None,
+        kv_cache_flag: Optional[Dict[str, Any]] = None,
+        attention_kwargs: Optional[Dict[str, Any]] = None,
+        return_dict: bool = True,
+    ) -> Union[Transformer2DModelOutput, AnyFlowFARTransformerOutput, Tuple]:
+        """
+        FAR causal forward pass. Dispatches to one of three internal paths:
 
-    def setup_flowmap_model(self, gate_value=0, deltatime_type="r"):
-        inner_dim = self.config.num_attention_heads * self.config.attention_head_dim
+        * ``kv_cache is None`` → causal training rollout (returns
+          :class:`Transformer2DModelOutput`).
+        * ``kv_cache is not None`` and ``kv_cache_flag["is_cache_step"]`` → cache-prefill (returns
+          :class:`AnyFlowFARTransformerOutput` with ``sample=None``).
+        * Otherwise → autoregressive inference step (returns :class:`AnyFlowFARTransformerOutput`).
 
-        condition_embedder = AnyFlowDualTimestepTextImageEmbedding(
-            dim=inner_dim,
-            gate_value=gate_value,
-            deltatime_type=deltatime_type,
-            time_freq_dim=self.config.freq_dim,
-            time_proj_dim=inner_dim * 6,
-            text_embed_dim=self.config.text_dim,
-            image_embed_dim=self.config.image_dim,
+        Args:
+            hidden_states (`torch.Tensor`): Latent input of shape ``(B, F, C, H, W)``.
+            timestep, r_timestep (`torch.Tensor`): Source / target diffusion timesteps.
+            encoder_hidden_states (`torch.Tensor`): UMT5 text embeddings.
+            chunk_partition (`List[int]`): Per-chunk frame counts; total must match the number of latent
+                frames in ``hidden_states``.
+            encoder_hidden_states_image (`torch.Tensor`, *optional*): I2V image embedding.
+            clean_hidden_states, clean_timestep (`torch.Tensor`, *optional*): Clean conditioning frames
+                used by the training rollout.
+            kv_cache, kv_cache_flag (*optional*): Per-block KV cache and metadata for autoregressive
+                inference.
+            attention_kwargs (*optional*): forwarded to the attention processors.
+            return_dict (`bool`, defaults to `True`): If `False`, returns positional tuples.
+        """
+        common = {
+            "hidden_states": hidden_states,
+            "chunk_partition": chunk_partition,
+            "timestep": timestep,
+            "r_timestep": r_timestep,
+            "encoder_hidden_states": encoder_hidden_states,
+            "encoder_hidden_states_image": encoder_hidden_states_image,
+            "return_dict": return_dict,
+            "attention_kwargs": attention_kwargs,
+        }
+        if kv_cache is not None:
+            common["kv_cache"] = kv_cache
+            common["kv_cache_flag"] = kv_cache_flag
+            if kv_cache_flag is not None and kv_cache_flag.get("is_cache_step"):
+                return self._forward_cache(
+                    clean_hidden_states=clean_hidden_states,
+                    clean_timestep=clean_timestep,
+                    **common,
+                )
+            return self._forward_inference(**common)
+        return self._forward_train(
+            clean_hidden_states=clean_hidden_states,
+            clean_timestep=clean_timestep,
+            **common,
         )
-        condition_embedder.time_embedder = copy.deepcopy(self.condition_embedder.time_embedder)
-        condition_embedder.delta_embedder = copy.deepcopy(self.condition_embedder.time_embedder)
-        condition_embedder.time_proj = copy.deepcopy(self.condition_embedder.time_proj)
-        condition_embedder.text_embedder = copy.deepcopy(self.condition_embedder.text_embedder)
-        condition_embedder.image_embedder = copy.deepcopy(self.condition_embedder.image_embedder)
-        del self.condition_embedder
-
-        self.condition_embedder = condition_embedder
-
-    def setup_far_model(self):
-        inner_dim = self.config.num_attention_heads * self.config.attention_head_dim
-
-        self.far_patch_embedding = nn.Conv3d(
-            self.config.in_channels,
-            inner_dim,
-            kernel_size=self.config.compressed_patch_size,
-            stride=self.config.compressed_patch_size,
-        )
-
-        # init far patch embedding
-        original_weight = self.patch_embedding.weight.data.view(-1, 1, *self.config.patch_size)
-
-        new_weight = F.interpolate(
-            original_weight, size=self.config.compressed_patch_size, mode="trilinear", align_corners=False
-        )
-        new_weight = new_weight.view(inner_dim, self.config.in_channels, *self.config.compressed_patch_size)
-
-        with torch.no_grad():
-            self.far_patch_embedding.weight.copy_(new_weight)
-            self.far_patch_embedding.bias.copy_(self.patch_embedding.bias)
 
     def _unpack_latent_sequence(self, latents, num_frames, height, width, patch_size):
         batch_size, num_patches, channels = latents.shape
@@ -1068,70 +1220,6 @@ class AnyFlowTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromO
                 device=device,
                 _compile=False,
             )
-
-    def forward(
-        self,
-        hidden_states: torch.Tensor,
-        timestep: torch.Tensor,
-        r_timestep: torch.Tensor,
-        encoder_hidden_states: torch.Tensor,
-        encoder_hidden_states_image: Optional[torch.Tensor] = None,
-        chunk_partition: Optional[List[int]] = None,
-        clean_hidden_states: Optional[torch.Tensor] = None,
-        clean_timestep: Optional[torch.Tensor] = None,
-        kv_cache: Optional[List[Dict[str, torch.Tensor]]] = None,
-        kv_cache_flag: Optional[Dict[str, Any]] = None,
-        is_causal: bool = True,
-        attention_kwargs: Optional[Dict[str, Any]] = None,
-        return_dict: bool = True,
-    ) -> Union[Transformer2DModelOutput, AnyFlowFARTransformerOutput, Tuple]:
-        """
-        Forward pass.
-
-        Dispatches to one of four code paths depending on ``is_causal`` and ``kv_cache``:
-
-        * ``is_causal=False`` → bidirectional pass (used by :class:`AnyFlowPipeline`).
-        * ``is_causal=True`` and ``kv_cache is None`` → causal training rollout.
-        * ``is_causal=True`` and ``kv_cache_flag["is_cache_step"]`` → cache-prefill (writes KV cache,
-          returns ``sample=None``).
-        * Otherwise → causal autoregressive inference (consumes KV cache, returns the next chunk's
-          ``sample`` and the updated cache).
-
-        Returns:
-            * :class:`Transformer2DModelOutput` for bidirectional and causal-training paths.
-            * :class:`AnyFlowFARTransformerOutput` for the two causal-inference paths
-              (``sample`` plus ``kv_cache``).
-            * A tuple of these fields when ``return_dict=False``.
-        """
-        common_kwargs = {
-            "hidden_states": hidden_states,
-            "timestep": timestep,
-            "r_timestep": r_timestep,
-            "encoder_hidden_states": encoder_hidden_states,
-            "encoder_hidden_states_image": encoder_hidden_states_image,
-            "return_dict": return_dict,
-            "attention_kwargs": attention_kwargs,
-        }
-        if not is_causal:
-            return self._forward_bidirection(is_causal=is_causal, **common_kwargs)
-
-        common_kwargs["chunk_partition"] = chunk_partition
-        if kv_cache is not None:
-            common_kwargs["kv_cache"] = kv_cache
-            common_kwargs["kv_cache_flag"] = kv_cache_flag
-            if kv_cache_flag is not None and kv_cache_flag.get("is_cache_step"):
-                return self._forward_cache(
-                    clean_hidden_states=clean_hidden_states,
-                    clean_timestep=clean_timestep,
-                    **common_kwargs,
-                )
-            return self._forward_inference(**common_kwargs)
-
-        return self._forward_train(
-            clean_hidden_states=clean_hidden_states,
-            clean_timestep=clean_timestep,
-            **common_kwargs,
-        )
 
     def _forward_inference(
         self,
@@ -1472,93 +1560,6 @@ class AnyFlowTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromO
         output = self._unpack_latent_sequence(
             output,
             num_frames=far_cfg["num_full_frames"],
-            height=height,
-            width=width,
-            patch_size=self.config.patch_size[1],
-        )  # noqa: E501
-
-        if not return_dict:
-            return (output,)
-
-        return Transformer2DModelOutput(sample=output)
-
-    def _forward_bidirection(
-        self,
-        hidden_states: torch.Tensor,
-        timestep: torch.LongTensor,
-        r_timestep: torch.LongTensor,
-        encoder_hidden_states: torch.Tensor,
-        encoder_hidden_states_image: Optional[torch.Tensor] = None,
-        return_dict: bool = True,
-        attention_kwargs: Optional[Dict[str, Any]] = None,
-        is_causal=False,
-    ) -> Union[torch.Tensor, Dict[str, torch.Tensor]]:
-        hidden_states = rearrange(hidden_states, "b f c h w -> b c f h w")
-
-        assert is_causal is False
-        batch_size, num_channels, num_frames, height, width = hidden_states.shape
-
-        full_token_per_frame = (height * width) // (self.config.patch_size[1] * self.config.patch_size[2])
-
-        far_cfg = {
-            "total_frames": num_frames,
-            "full_frame_shape": (height // self.config.patch_size[1], width // self.config.patch_size[2]),
-            "full_token_per_frame": full_token_per_frame,
-        }
-
-        rotary_emb = self.rope(far_cfg=far_cfg, device=hidden_states.device, is_causal=is_causal)
-
-        hidden_states = self.patch_embedding(hidden_states)
-        hidden_states = hidden_states.flatten(2).transpose(1, 2)
-
-        temb, timestep_proj, encoder_hidden_states, encoder_hidden_states_image = self.condition_embedder(
-            timestep,
-            r_timestep,
-            encoder_hidden_states,
-            encoder_hidden_states_image,
-            is_causal=is_causal,
-            far_cfg=far_cfg,
-        )
-        timestep_proj = timestep_proj.unflatten(2, (6, -1))
-
-        attention_mask = None
-
-        if encoder_hidden_states_image is not None:
-            encoder_hidden_states = torch.concat([encoder_hidden_states_image, encoder_hidden_states], dim=1)
-
-        # 4. Transformer blocks
-        if torch.is_grad_enabled() and self.gradient_checkpointing:
-            for block in self.blocks:
-                hidden_states = self._gradient_checkpointing_func(
-                    block, hidden_states, encoder_hidden_states, timestep_proj, rotary_emb, attention_mask
-                )
-        else:
-            for block in self.blocks:
-                hidden_states = block(hidden_states, encoder_hidden_states, timestep_proj, rotary_emb, attention_mask)
-
-        # 5. Output norm, projection & unpatchify
-        if temb.ndim == 3:
-            # batch_size, seq_len, inner_dim (wan 2.2 ti2v)
-            shift, scale = (self.scale_shift_table.unsqueeze(0) + temb.unsqueeze(2)).chunk(2, dim=2)
-            shift = shift.squeeze(2)
-            scale = scale.squeeze(2)
-        else:
-            # batch_size, inner_dim
-            shift, scale = (self.scale_shift_table + temb.unsqueeze(1)).chunk(2, dim=1)
-
-        # Move the shift and scale tensors to the same device as hidden_states.
-        # When using multi-GPU inference via accelerate these will be on the
-        # first device rather than the last device, which hidden_states ends up
-        # on.
-        shift = shift.to(hidden_states.device)
-        scale = scale.to(hidden_states.device)
-
-        hidden_states = (self.norm_out(hidden_states.float()) * (1 + scale) + shift).type_as(hidden_states)
-        hidden_states = self.proj_out(hidden_states)
-
-        output = self._unpack_latent_sequence(
-            hidden_states,
-            num_frames=far_cfg["total_frames"],
             height=height,
             width=width,
             patch_size=self.config.patch_size[1],

@@ -186,9 +186,9 @@ export_to_video(video, "out.mp4", fps=16)
 
 - The released NVIDIA checkpoints went through a two-stage LoRA distillation: forward Flow-Map training plus on-policy distillation that combines Flow-Map backward simulation with **DMD reverse-divergence supervision** over the student's own rollouts. CFG was fused into the model weights during stage 1 (`fuse_guidance_scale = 3.0`), so inference does not run a second classifier-free guidance pass — quality is recovered from the distilled weights themselves.
 - `FlowMapEulerDiscreteScheduler` is general-purpose. You can attach it to any flow-map-distilled checkpoint via `from_pretrained(..., scheduler=FlowMapEulerDiscreteScheduler.from_config(...))`.
-- The bidirectional pipeline accepts any `AnyFlowTransformer3DModel` configured with `init_flowmap_model=True`. The causal pipeline additionally requires `init_far_model=True`.
+- `AnyFlowPipeline` uses [`AnyFlowTransformer3DModel`](../models/anyflow_transformer3d) (bidirectional). `AnyFlowFARPipeline` uses [`AnyFlowFARTransformer3DModel`](../models/anyflow_far_transformer3d), which adds a compressed-frame patch embedding and the FAR causal block-mask.
 - LoRA training is supported via `WanLoraLoaderMixin`, the same mixin used by the upstream Wan pipelines.
-- For continued on-policy fine-tuning with DMD, both pipelines expose a `training_rollout` method that drives the three-segment Flow-Map backward simulation used in the original AnyFlow stage-2 trainer.
+- For continued on-policy fine-tuning with DMD, both pipelines expose a `_denoise_rollout` method that drives the three-segment Flow-Map backward simulation used in the original AnyFlow stage-2 trainer.
 
 ## AnyFlowPipeline
 

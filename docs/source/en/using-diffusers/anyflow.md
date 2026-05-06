@@ -204,7 +204,7 @@ pipe.load_lora_weights("path/or/repo/with/wan_lora")
 ```
 
 For continued **on-policy** fine-tuning with DMD-style reverse-divergence supervision (the same recipe used
-to produce the released checkpoints), both pipelines expose a `training_rollout` method that drives the
+to produce the released checkpoints), both pipelines expose a `_denoise_rollout` method that drives the
 3-segment Flow-Map backward simulation. End users training a new LoRA can call it under autograd to compose
 their own DMD trainer; the original AnyFlow trainer that built the released checkpoints is in
 `Enderfga/AnyFlow` (out of scope for diffusers).

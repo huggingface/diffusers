@@ -193,7 +193,7 @@ pipe.load_lora_weights("path/or/repo/with/wan_lora")
 ```
 
 如果想做**继续 on-policy 蒸馏微调**（用论文里相同的 DMD 反向散度监督配方训新 LoRA），两个 pipeline
-都暴露了 `training_rollout` 方法，驱动 3 段 Flow-Map backward simulation。普通用户可以在 autograd
+都暴露了 `_denoise_rollout` 方法，驱动 3 段 Flow-Map backward simulation。普通用户可以在 autograd
 模式下调它，配合自己的 DMD trainer 用。produce 出 release checkpoint 的原始训练框架在
 `Enderfga/AnyFlow`（不在 diffusers 范围内）。
 

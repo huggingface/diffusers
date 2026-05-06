@@ -41,6 +41,7 @@ import torch
 
 from diffusers import (
     AnyFlowFARPipeline,
+    AnyFlowFARTransformer3DModel,
     AnyFlowPipeline,
     AnyFlowTransformer3DModel,
     FlowMapEulerDiscreteScheduler,
@@ -55,37 +56,25 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(me
 VARIANTS = {
     "AnyFlow-FAR-Wan2.1-1.3B-Diffusers": {
         "base_model": "Wan-AI/Wan2.1-T2V-1.3B-Diffusers",
-        "init_far_model": True,
-        "init_flowmap_model": True,
-        "transformer_kwargs": {
-            "chunk_partition": [1, 3, 3, 3, 3, 3, 3, 2],
-            "full_chunk_limit": 3,
-            "compressed_patch_size": [1, 4, 4],
-        },
+        "transformer_cls": AnyFlowFARTransformer3DModel,
+        "transformer_kwargs": {"full_chunk_limit": 3, "compressed_patch_size": [1, 4, 4]},
         "pipeline_cls": AnyFlowFARPipeline,
     },
     "AnyFlow-FAR-Wan2.1-14B-Diffusers": {
         "base_model": "Wan-AI/Wan2.1-T2V-14B-Diffusers",
-        "init_far_model": True,
-        "init_flowmap_model": True,
-        "transformer_kwargs": {
-            "chunk_partition": [1, 3, 3, 3, 3, 3, 3, 2],
-            "full_chunk_limit": 3,
-            "compressed_patch_size": [1, 4, 4],
-        },
+        "transformer_cls": AnyFlowFARTransformer3DModel,
+        "transformer_kwargs": {"full_chunk_limit": 3, "compressed_patch_size": [1, 4, 4]},
         "pipeline_cls": AnyFlowFARPipeline,
     },
     "AnyFlow-Wan2.1-T2V-1.3B-Diffusers": {
         "base_model": "Wan-AI/Wan2.1-T2V-1.3B-Diffusers",
-        "init_far_model": False,
-        "init_flowmap_model": True,
+        "transformer_cls": AnyFlowTransformer3DModel,
         "transformer_kwargs": {},
         "pipeline_cls": AnyFlowPipeline,
     },
     "AnyFlow-Wan2.1-T2V-14B-Diffusers": {
         "base_model": "Wan-AI/Wan2.1-T2V-14B-Diffusers",
-        "init_far_model": False,
-        "init_flowmap_model": True,
+        "transformer_cls": AnyFlowTransformer3DModel,
         "transformer_kwargs": {},
         "pipeline_cls": AnyFlowPipeline,
     },
@@ -97,11 +86,9 @@ def build_pipeline(variant: str, ckpt_path: str):
         raise ValueError(f"Unknown variant {variant!r}. Choices: {list(VARIANTS)}.")
     spec = VARIANTS[variant]
 
-    transformer = AnyFlowTransformer3DModel.from_pretrained(
+    transformer = spec["transformer_cls"].from_pretrained(
         spec["base_model"],
         subfolder="transformer",
-        init_far_model=spec["init_far_model"],
-        init_flowmap_model=spec["init_flowmap_model"],
         gate_value=0.25,
         deltatime_type="r",
         **spec["transformer_kwargs"],

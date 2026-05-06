@@ -76,7 +76,7 @@ class AnyFlowPipeline(DiffusionPipeline, WanLoraLoaderMixin):
     (2) on-policy distillation that combines Flow-Map backward simulation with DMD reverse-divergence
     supervision over the student's own rollouts. Sampling at inference is plain Euler in mean-velocity
     form (``z_r = z_t - (t - r) * u``) with no re-noising and no CFG (guidance was fused into the model
-    weights during stage 1). See ``training_rollout`` for the rollout entry point reused during DMD
+    weights during stage 1). See ``_denoise_rollout`` for the rollout entry point reused during DMD
     fine-tuning.
 
     This model inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods
@@ -88,7 +88,7 @@ class AnyFlowPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         text_encoder ([`UMT5EncoderModel`]):
             [google/umt5-xxl](https://huggingface.co/google/umt5-xxl) text encoder.
         transformer ([`AnyFlowTransformer3DModel`]):
-            Conditional 3D Transformer (must be configured with ``init_flowmap_model=True``).
+            Bidirectional flow-map 3D Transformer.
         vae ([`AutoencoderKLWan`]):
             VAE that encodes/decodes videos to and from latent representations.
         scheduler ([`FlowMapEulerDiscreteScheduler`]):
@@ -386,7 +386,7 @@ class AnyFlowPipeline(DiffusionPipeline, WanLoraLoaderMixin):
             latents = mu
         return latents
 
-    def training_rollout(
+    def _denoise_rollout(
         self,
         context_sequence=None,
         num_inference_steps: int = 50,
@@ -469,7 +469,6 @@ class AnyFlowPipeline(DiffusionPipeline, WanLoraLoaderMixin):
                     r_timestep=r_timestep,
                     encoder_hidden_states=prompt_embeds,
                     return_dict=False,
-                    is_causal=False,
                 )[0]
 
                 if self.do_classifier_free_guidance:
@@ -621,7 +620,7 @@ class AnyFlowPipeline(DiffusionPipeline, WanLoraLoaderMixin):
             context_sequence = self.vae_encode(context_sequence)
             context_length = context_sequence.shape[1]
 
-        latents = self.training_rollout(
+        latents = self._denoise_rollout(
             context_sequence=context_sequence,
             num_inference_steps=num_inference_steps,
             grad_timestep=None,

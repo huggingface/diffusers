@@ -88,7 +88,6 @@ class AnyFlowPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             cross_attn_norm=True,
             qk_norm="rms_norm_across_heads",
             rope_max_seq_len=32,
-            init_flowmap_model=True,
             gate_value=0.25,
             deltatime_type="r",
         )
