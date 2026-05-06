@@ -433,14 +433,19 @@ class TorchAoConfig(QuantizationConfigMixin):
     """This is a config class for torchao quantization/sparsity techniques.
 
     Args:
-        quant_type (`AOBaseConfig`):
+        quant_type (`AOBaseConfig` | None):
             An `AOBaseConfig` subclass instance specifying the quantization type. See the [torchao
             documentation](https://docs.pytorch.org/ao/main/api_ref_quantization.html#inference-apis-for-quantize) for
             available config classes (e.g. `Int4WeightOnlyConfig`, `Int8WeightOnlyConfig`, `Float8WeightOnlyConfig`,
             `Float8DynamicActivationFloat8WeightConfig`, etc.).
+            Pass `None` when only `attention_backend` is used without weight quantization.
         modules_to_not_convert (`list[str]`, *optional*, default to `None`):
             The list of modules to not quantize, useful for quantizing models that explicitly require to have some
             modules left in their original precision.
+        attention_backend (`str`, *optional*, default to `None`):
+            Low-precision attention backend to use. Currently supported: `"fp8_fa3"` (FP8 attention using Flash
+            Attention 3, requires Hopper GPU with SM90+). This is orthogonal to weight quantization — you can use
+            either or both. When used with `torch.compile`, RoPE fusion is automatically enabled.
 
     Example:
         ```python
@@ -454,24 +459,41 @@ class TorchAoConfig(QuantizationConfigMixin):
             quantization_config=quantization_config,
             torch_dtype=torch.bfloat16,
         )
+
+        # FP8 attention only (no weight quantization)
+        quantization_config = TorchAoConfig(attention_backend="fp8_fa3")
+
+        # Combined: weight quantization + FP8 attention
+        quantization_config = TorchAoConfig(Int8WeightOnlyConfig(), attention_backend="fp8_fa3")
         ```
     """
 
     def __init__(
         self,
-        quant_type: "AOBaseConfig",  # noqa: F821
+        quant_type: "AOBaseConfig | None" = None,  # noqa: F821
         modules_to_not_convert: list[str] | None = None,
+        attention_backend: str | None = None,
         **kwargs,
     ) -> None:
         self.quant_method = QuantizationMethod.TORCHAO
         self.quant_type = quant_type
         self.modules_to_not_convert = modules_to_not_convert
+        self.attention_backend = attention_backend
 
         self.post_init()
 
     def post_init(self):
+        if self.quant_type is None and self.attention_backend is None:
+            raise ValueError(
+                "At least one of `quant_type` or `attention_backend` must be provided."
+            )
+
         if is_torchao_version("<", "0.15.0"):
             raise ValueError("TorchAoConfig requires torchao >= 0.15.0. Please upgrade with `pip install -U torchao`.")
+
+        # Skip quant_type validation when only attention_backend is used
+        if self.quant_type is None:
+            return
 
         from torchao.quantization.quant_api import AOBaseConfig
 
@@ -481,6 +503,12 @@ class TorchAoConfig(QuantizationConfigMixin):
     def to_dict(self):
         """Convert configuration to a dictionary."""
         d = super().to_dict()
+
+        if self.attention_backend is not None:
+            d["attention_backend"] = self.attention_backend
+
+        if self.quant_type is None:
+            return d
 
         # Handle AOBaseConfig serialization
         from torchao.core.config import config_to_dict
@@ -498,8 +526,11 @@ class TorchAoConfig(QuantizationConfigMixin):
         if not is_torchao_version(">=", "0.15.0"):
             raise NotImplementedError("TorchAoConfig requires torchao >= 0.15.0 for construction from dict")
         config_dict = config_dict.copy()
-        quant_type = config_dict.pop("quant_type")
+        quant_type = config_dict.pop("quant_type", None)
+        attention_backend = config_dict.pop("attention_backend", None)
 
+        if quant_type is None:
+            return cls(quant_type=quant_type, attention_backend=attention_backend, **config_dict)
         # Check if we only have one key which is "default"
         # In the future we may update this
         assert len(quant_type) == 1 and "default" in quant_type, (
@@ -512,7 +543,7 @@ class TorchAoConfig(QuantizationConfigMixin):
 
         quant_type = config_from_dict(quant_type)
 
-        return cls(quant_type=quant_type, **config_dict)
+        return cls(quant_type=quant_type, attention_backend=attention_backend, **config_dict)
 
     def get_apply_tensor_subclass(self):
         """Create the appropriate quantization method based on configuration."""
