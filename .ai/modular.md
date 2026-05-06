@@ -2,6 +2,10 @@
 
 Shared reference for modular pipeline conventions, patterns, and gotchas.
 
+## Common modular conventions
+
+When adding a new modular pipeline (or reviewing one), skim `src/diffusers/modular_pipelines/qwenimage/`, `src/diffusers/modular_pipelines/flux2/`, `src/diffusers/modular_pipelines/wan/`, and `src/diffusers/modular_pipelines/helios/` first to establish the pattern. Most conventions (file split between `encoders.py` / `before_denoise.py` / `denoise.py` / `decoders.py`, how `expected_components` / `inputs` / `intermediate_outputs` are declared, the denoise-loop wrapping with `LoopSequentialPipelineBlocks`, top-level assembly via `AutoPipelineBlocks` / `SequentialPipelineBlocks` in `modular_blocks_<model>.py`, the `ModularPipeline` subclass shape, the guider-abstracted denoise body, `kwargs_type="denoiser_input_fields"` plumbing) are easiest to internalize by comparison rather than from a fixed list.
+
 ## File structure
 
 ```
@@ -107,34 +111,60 @@ class AutoDenoise(ConditionalPipelineBlocks):
     default_block_name = "text2video"
 ```
 
-## Standard InputParam/OutputParam templates
+## Key pattern: Standalone block reusability
+
+One of the core reason a pipeline is split into blocks at all: each block (text encoder, VAE encoder, prepare-latents, denoise, decoder) must be runnable on its own, and its output must be reusable as the input to a different downstream chain.
+
+Concretely:
+- The text encoder block returns `prompt_embeds`. A user can run only that block, save the embeddings, and feed them to the denoise loop later — possibly with a different `num_images_per_prompt`, possibly across multiple runs.
+- The VAE encoder is its own block in `encoders.py` (e.g. `WanVaeEncoderStep`) returning `image_latents`. The prepare-latents block accepts `image_latents`, not raw images, so users can swap in pre-encoded latents.
+- The decoder block accepts denoised latents from any source — directly from the denoise loop, or after an injected step (upscale, latent edit). Don't bundle decoding into the denoise loop.
+
+Two consequences for input plumbing:
+
+1. **Encoder / VAE-encoder blocks accept raw inputs only** (`prompt`, `image`, ...) and emit per-prompt outputs (`prompt_embeds`, `image_latents`). They do **not** bake in `num_images_per_prompt`.
+2. **Per-prompt expansion happens in a dedicated input step** inside the core denoise sequence (e.g. `<Model>TextInputStep`). That keeps pre-encoded embeds reusable across runs with different `num_images_per_prompt`. See `qwenimage/before_denoise.py` for the canonical input step.
+
+Standard pipelines accept `prompt_embeds` / `image_latents` as `__call__` inputs so users can skip encoding. In modular pipelines this is unnecessary — users just pop out the encoder block and run it standalone. Don't accept pre-computed encoder outputs as `__call__` inputs of an encoder block.
+
+## Key pattern: Flat block assembly
+
+Prefer flat sequences over nested compositions. Put the `Auto` / `Conditional` selection at the top level and make each workflow variant a flat `InsertableDict` of leaf blocks. Try not to nest `AutoPipelineBlocks` inside `SequentialPipelineBlocks` inside `AutoPipelineBlocks` — debugging which workflow was selected, and which block inside which sub-block touched which state, becomes painful. See `flux2/modular_blocks_flux2_klein.py` for the canonical shape.
+
+## InputParam / OutputParam
+
+Use `.template("<name>")` for params with a canonical meaning (`prompt`, `negative_prompt`, `image`, `generator`, `num_inference_steps`, `latents`, `prompt_embeds`, `images`, `videos`, etc.) — the template carries a vetted description and type hint. The full registry lives in [`src/diffusers/modular_pipelines/modular_pipeline_utils.py`](../src/diffusers/modular_pipelines/modular_pipeline_utils.py) (`INPUT_PARAM_TEMPLATES`, `OUTPUT_PARAM_TEMPLATES`); read that file rather than relying on a hardcoded list here, since names get added.
+
+For params that don't match a template (model-specific names, custom semantics), declare the field directly:
 
 ```python
 # Inputs
-InputParam.template("prompt")              # str, required
-InputParam.template("negative_prompt")     # str, optional
-InputParam.template("image")               # PIL.Image, optional
-InputParam.template("generator")           # torch.Generator, optional
-InputParam.template("num_inference_steps") # int, default=50
-InputParam.template("latents")             # torch.Tensor, optional
+InputParam(
+    "text_lens",
+    required=True,
+    type_hint=torch.Tensor,
+    description="Per-prompt text lengths used by the transformer attention mask.",
+)
 
 # Outputs
-OutputParam.template("prompt_embeds")
-OutputParam.template("negative_prompt_embeds")
-OutputParam.template("image_latents")
-OutputParam.template("latents")
-OutputParam.template("videos")
-OutputParam.template("images")
+OutputParam(
+    "text_bth",
+    type_hint=torch.Tensor,
+    kwargs_type="denoiser_input_fields",
+    description="Padded text hidden states of shape (B, T_max, H) fed into the transformer.",
+)
 ```
+
+If a template's predefined description doesn't fit (e.g. the `"latents"` output template means "Denoised latents", which is wrong for the noisy latents out of a prepare-latents step) — drop the template and declare the field directly with an accurate description. See gotcha #5.
 
 ## ComponentSpec patterns
 
 ```python
-# Heavy models - loaded from pretrained
+# models (with weights) - loaded from pretrained
 ComponentSpec("transformer", YourTransformerModel)
 ComponentSpec("vae", AutoencoderKL)
 
-# Lightweight objects - created inline from config
+# weightless objects - created inline from config
 ComponentSpec(
     "guider",
     ClassifierFreeGuidance,
@@ -149,19 +179,20 @@ ComponentSpec(
 
 2. **Cross-importing between modular pipelines.** Don't import utilities from another model's modular pipeline (e.g. SD3 importing from `qwenimage.inputs`). If a utility is shared, move it to `modular_pipeline_utils.py` or copy it with a `# Copied from` header.
 
-3. **Accepting `guidance_scale` as a pipeline input.** Users configure the guider separately (see [guider docs](https://huggingface.co/docs/diffusers/main/en/api/guiders)). Different guider types have different parameters; forwarding them through the pipeline doesn't scale. Don't manually set `components.guider.guidance_scale = ...` inside blocks. Same applies to computing `do_classifier_free_guidance` — that logic belongs in the guider.
+3. **Accepting `guidance_scale` as a pipeline input.** Users configure the guider separately (see [guider docs](https://huggingface.co/docs/diffusers/main/en/api/guiders)). Different guider types have different parameters; forwarding them through the pipeline doesn't scale. Don't manually set `components.guider.guidance_scale = ...` inside blocks. Same applies to computing `do_classifier_free_guidance` — that logic belongs in the guider. **Exception:** some pipeline only support distilled checkpoints (e.g. distilled Flux) skip CFG entirely and don't carry a guider — `guidance_scale` is then a real model input, not a guider knob, and accepting it as a pipeline input is fine. If you're reviewing a pipeline that doesn't have a `guider` in `expected_components`, flag it explicitly so the choice is intentional.
 
-4. **Accepting pre-computed outputs as inputs to skip encoding.** In standard pipelines we accept `prompt_embeds`, `negative_prompt_embeds`, `image_latents`, etc. so users can skip encoding steps. In modular pipelines this is unnecessary — users just pop out the encoder block and run it separately. Encoder blocks should only accept raw inputs (`prompt`, `image`, etc.).
+4. **Instantiating components inline.** If a class like `VideoProcessor` is needed, register it as a `ComponentSpec` and access via `components.video_processor`. Don't create new instances inside block `__call__`.
 
-5. **VAE encoding inside prepare-latents.** Image encoding should be its own block in `encoders.py` (e.g. `MyModelVaeEncoderStep`). The prepare-latents block should accept `image_latents`, not raw images. This lets users run encoding standalone. See `WanVaeEncoderStep` for reference.
+5. **Using `InputParam.template()` / `OutputParam.template()` when semantics don't match.** Templates carry predefined descriptions — e.g. the `"latents"` output template means "Denoised latents". Don't use it for initial noisy latents from a prepare-latents step. Use a plain `InputParam(...)` / `OutputParam(...)` with an accurate description instead.
 
-6. **Instantiating components inline.** If a class like `VideoProcessor` is needed, register it as a `ComponentSpec` and access via `components.video_processor`. Don't create new instances inside block `__call__`.
+6. **Test model paths pointing to contributor repos.** Tiny test models must live under `hf-internal-testing/`, not personal repos like `username/tiny-model`. Move the model before merge.
 
-7. **Deeply nested block structure.** Prefer flat sequences over nesting Auto blocks inside Sequential blocks inside Auto blocks. Put the `Auto` selection at the top level and make each workflow variant a flat `InsertableDict` of leaf blocks. See `flux2/modular_blocks_flux2_klein.py` for the pattern.
+7. **Respect the declared IO system.** Components in `expected_components`, fields in `inputs` / `intermediate_outputs` — once declared, the modular framework guarantees them. So:
+    - **Don't read defensively.** Declared components are always set as attributes (possibly `None`); declared upstream outputs are always populated in `block_state` after the upstream block runs. `getattr(components, "vae", None)`, `hasattr(self, "vae")`, `getattr(block_state, "prompt_embeds", None)` are dead code that hides typos. Use `components.vae` / `block_state.prompt_embeds` directly. Check `is not None` only when nullability is meaningful (a component the user might not have loaded).
+    - **Don't write undeclared.** If a block sets `block_state.foo = ...`, declare `OutputParam("foo", ...)` in `intermediate_outputs`. The declarations are the public contract — undeclared writes can't be wired to downstream blocks.
+    - **Don't call `state.set()` directly inside a block.** Write to state only through declared `intermediate_outputs` via `self.get_block_state(state)` / `self.set_block_state(state, block_state)`. A direct `state.set("foo", value)` bypasses the block's interface entirely — the field never appears as a declared output, so downstream blocks can't see it through the normal wiring and the framework can't generate docs / validate types for it.
 
-8. **Using `InputParam.template()` / `OutputParam.template()` when semantics don't match.** Templates carry predefined descriptions — e.g. the `"latents"` output template means "Denoised latents". Don't use it for initial noisy latents from a prepare-latents step. Use a plain `InputParam(...)` / `OutputParam(...)` with an accurate description instead.
-
-9. **Test model paths pointing to contributor repos.** Tiny test models must live under `hf-internal-testing/`, not personal repos like `username/tiny-model`. Move the model before merge.
+8. **No-op skip logic inside an optional block.** If a step is conditional (e.g. an optional prompt enhancer), don't have the block check a flag at the top of `__call__` and `return` early. Wrap it in an `AutoPipelineBlocks` with `block_trigger_inputs = ["use_xxx"]` so the block is only assembled into the pipeline when the trigger input is provided. The block's own `__call__` should always assume its components and inputs are present.
 
 ## Conversion checklist
 

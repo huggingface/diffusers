@@ -1,4 +1,4 @@
-__version__ = "0.38.0.dev0"
+__version__ = "0.39.0.dev0"
 
 from typing import TYPE_CHECKING
 
@@ -188,6 +188,7 @@ else:
     ]
     _import_structure["models"].extend(
         [
+            "AceStepTransformer1DModel",
             "AllegroTransformer3DModel",
             "AsymmetricAutoencoderKL",
             "AttentionBackendName",
@@ -442,6 +443,8 @@ except OptionalDependencyNotAvailable:
 else:
     _import_structure["modular_pipelines"].extend(
         [
+            "ErnieImageAutoBlocks",
+            "ErnieImageModularPipeline",
             "Flux2AutoBlocks",
             "Flux2KleinAutoBlocks",
             "Flux2KleinBaseAutoBlocks",
@@ -486,6 +489,10 @@ else:
     )
     _import_structure["pipelines"].extend(
         [
+            "AceStepAudioTokenDetokenizer",
+            "AceStepAudioTokenizer",
+            "AceStepConditionEncoder",
+            "AceStepPipeline",
             "AllegroPipeline",
             "AltDiffusionImg2ImgPipeline",
             "AltDiffusionPipeline",
@@ -998,6 +1005,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             VaeImageProcessorLDM3D,
         )
         from .models import (
+            AceStepTransformer1DModel,
             AllegroTransformer3DModel,
             AsymmetricAutoencoderKL,
             AttentionBackendName,
@@ -1231,6 +1239,8 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .utils.dummy_torch_and_transformers_objects import *  # noqa F403
     else:
         from .modular_pipelines import (
+            ErnieImageAutoBlocks,
+            ErnieImageModularPipeline,
             Flux2AutoBlocks,
             Flux2KleinAutoBlocks,
             Flux2KleinBaseAutoBlocks,
@@ -1273,6 +1283,10 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             ZImageModularPipeline,
         )
         from .pipelines import (
+            AceStepAudioTokenDetokenizer,
+            AceStepAudioTokenizer,
+            AceStepConditionEncoder,
+            AceStepPipeline,
             AllegroPipeline,
             AltDiffusionImg2ImgPipeline,
             AltDiffusionPipeline,
