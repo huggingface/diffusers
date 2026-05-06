@@ -389,7 +389,9 @@ class MOEFeedForwardSwiGLU(nn.Module):
     def moe_infer(self, x, flat_expert_indices, flat_expert_weights):
         expert_cache = torch.zeros_like(x)
         idxs = flat_expert_indices.argsort()
-        tokens_per_expert = flat_expert_indices.bincount().cpu().numpy().cumsum(0)
+        count_freq = torch.bincount(flat_expert_indices, minlength=self.num_activated_experts)
+        tokens_per_expert = count_freq.cumsum(dim=0)
+
         token_idxs = idxs // self.num_activated_experts
         for i, end_idx in enumerate(tokens_per_expert):
             start_idx = 0 if i == 0 else tokens_per_expert[i - 1]
