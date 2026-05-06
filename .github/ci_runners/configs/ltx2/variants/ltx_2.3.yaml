@@ -1,6 +1,0 @@
-model_id: Lightricks/LTX-2.3
-weight_path: /home/weights/LTX-2.3
-backend: modelscope
-extra_params:
-  use_cross_timestep: true
-  spatio_temporal_guidance_blocks: [28]

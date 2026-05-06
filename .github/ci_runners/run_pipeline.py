@@ -208,8 +208,10 @@ def generate_reference_only(config_dir: str, output_dir: str):
     print(f"[{pipeline_name}] reference saved to {ref_path}")
 
     del pipe
-    if device in ("cuda", "npu"):
-        torch.cuda.empty_cache() if device == "cuda" else None
+    if device == "cuda":
+        torch.cuda.empty_cache()
+    elif device == "npu":
+        torch.npu.empty_cache()
 
 
 def scan_pipelines(configs_root: str) -> list[str]:
@@ -316,8 +318,10 @@ def main():
                     print(f"    FAIL")
 
             del pipe
-            if device in ("cuda", "npu"):
+            if device == "cuda":
                 torch.cuda.empty_cache()
+            elif device == "npu":
+                torch.npu.empty_cache()
 
     results_path = os.path.join(args.output, "all_results.json")
     with open(results_path, "w") as f:

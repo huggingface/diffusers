@@ -1,5 +1,4 @@
 model_id: Wan-AI/Wan2.2-TI2V-5B-Diffusers
 weight_path: /home/weights/Wan2.2-TI2V-5B-Diffusers
 backend: modelscope
-extra_params:
-  expand_timesteps: true
+extra_params: {}
