@@ -355,6 +355,24 @@ class AutoencoderOobleck(ModelMixin, AutoencoderMixin, ConfigMixin):
         )
 
         self.use_slicing = False
+        self.use_tiling = False
+
+        # 1D time-axis tiling defaults. `tile_sample_min_length` is the raw-audio
+        # threshold (in samples) above which `encode` splits the input; chunks are
+        # `tile_sample_min_length` wide with `tile_sample_overlap` samples of overlap
+        # on each side, trimmed back out after decoding. `tile_latent_min_length`
+        # is the equivalent threshold on the decode side, expressed in latent frames.
+        self.tile_sample_min_length = sampling_rate * 30  # 30 seconds
+        self.tile_sample_overlap = sampling_rate * 2  # 2 seconds per side
+        # Decode chunk is smaller than encode chunk because the decoder upsamples
+        # back to raw audio and is more VRAM-heavy per frame.
+        self.tile_latent_min_length = 512
+        self.tile_latent_overlap = 64
+
+    def _encode(self, x: torch.Tensor) -> torch.Tensor:
+        if self.use_tiling and x.shape[-1] > self.tile_sample_min_length:
+            return self._tiled_encode(x)
+        return self.encoder(x)
 
     @apply_forward_hook
     def encode(
@@ -373,10 +391,10 @@ class AutoencoderOobleck(ModelMixin, AutoencoderMixin, ConfigMixin):
                 [`~models.autoencoder_kl.AutoencoderKLOutput`] is returned, otherwise a plain `tuple` is returned.
         """
         if self.use_slicing and x.shape[0] > 1:
-            encoded_slices = [self.encoder(x_slice) for x_slice in x.split(1)]
+            encoded_slices = [self._encode(x_slice) for x_slice in x.split(1)]
             h = torch.cat(encoded_slices)
         else:
-            h = self.encoder(x)
+            h = self._encode(x)
 
         posterior = OobleckDiagonalGaussianDistribution(h)
 
@@ -385,13 +403,87 @@ class AutoencoderOobleck(ModelMixin, AutoencoderMixin, ConfigMixin):
 
         return AutoencoderOobleckOutput(latent_dist=posterior)
 
+    def _tiled_encode(self, x: torch.Tensor) -> torch.Tensor:
+        r"""Encode a long audio waveform by splitting it into overlapping tiles along
+        the time axis and concatenating the resulting encoder features. Used to keep memory bounded regardless of clip
+        length. Not bit-identical to a single unsplit encode — each tile has its own receptive-field boundary — but the
+        overlap/trim scheme keeps the joined feature map smooth.
+        """
+        _B, _C, S = x.shape
+        chunk = self.tile_sample_min_length
+        overlap = self.tile_sample_overlap
+        stride = chunk - 2 * overlap
+        if stride <= 0:
+            raise ValueError(
+                f"tile_sample_min_length ({chunk}) must be greater than 2 * tile_sample_overlap ({overlap})"
+            )
+
+        num_steps = math.ceil(S / stride)
+        tiles = []
+        hop = None
+
+        for i in range(num_steps):
+            core_start = i * stride
+            core_end = min(core_start + stride, S)
+            win_start = max(0, core_start - overlap)
+            win_end = min(S, core_end + overlap)
+
+            tile = self.encoder(x[:, :, win_start:win_end])
+
+            if hop is None:
+                hop = (win_end - win_start) / tile.shape[-1]
+
+            trim_l = int(round((core_start - win_start) / hop))
+            trim_r = int(round((win_end - core_end) / hop))
+            end_idx = tile.shape[-1] - trim_r if trim_r > 0 else tile.shape[-1]
+            tiles.append(tile[:, :, trim_l:end_idx])
+
+        return torch.cat(tiles, dim=-1)
+
     def _decode(self, z: torch.Tensor, return_dict: bool = True) -> OobleckDecoderOutput | torch.Tensor:
-        dec = self.decoder(z)
+        if self.use_tiling and z.shape[-1] > self.tile_latent_min_length:
+            dec = self._tiled_decode(z)
+        else:
+            dec = self.decoder(z)
 
         if not return_dict:
             return (dec,)
 
         return OobleckDecoderOutput(sample=dec)
+
+    def _tiled_decode(self, z: torch.Tensor) -> torch.Tensor:
+        r"""Decode a long latent by splitting it into overlapping tiles along the
+        time axis, decoding each, and concatenating the audio tiles back together."""
+        _B, _C, T = z.shape
+        chunk = self.tile_latent_min_length
+        overlap = self.tile_latent_overlap
+        stride = chunk - 2 * overlap
+        if stride <= 0:
+            raise ValueError(
+                f"tile_latent_min_length ({chunk}) must be greater than 2 * tile_latent_overlap ({overlap})"
+            )
+
+        num_steps = math.ceil(T / stride)
+        tiles = []
+        upsample = None
+
+        for i in range(num_steps):
+            core_start = i * stride
+            core_end = min(core_start + stride, T)
+            win_start = max(0, core_start - overlap)
+            win_end = min(T, core_end + overlap)
+
+            tile = self.decoder(z[:, :, win_start:win_end])
+
+            if upsample is None:
+                upsample = tile.shape[-1] / (win_end - win_start)
+
+            trim_l = int(round((core_start - win_start) * upsample))
+            trim_r = int(round((win_end - core_end) * upsample))
+            end_idx = tile.shape[-1] - trim_r if trim_r > 0 else tile.shape[-1]
+            tiles.append(tile[:, :, trim_l:end_idx])
+
+        return torch.cat(tiles, dim=-1)
 
     @apply_forward_hook
     def decode(
