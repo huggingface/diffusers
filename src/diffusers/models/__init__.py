@@ -102,6 +102,7 @@ if is_torch_available():
     _import_structure["transformers.transformer_cogview3plus"] = ["CogView3PlusTransformer2DModel"]
     _import_structure["transformers.transformer_cogview4"] = ["CogView4Transformer2DModel"]
     _import_structure["transformers.transformer_cosmos"] = ["CosmosTransformer3DModel"]
+    _import_structure["transformers.transformer_dream"] = ["DreamTransformer1DModel"]
     _import_structure["transformers.transformer_easyanimate"] = ["EasyAnimateTransformer3DModel"]
     _import_structure["transformers.transformer_ernie_image"] = ["ErnieImageTransformer2DModel"]
     _import_structure["transformers.transformer_flux"] = ["FluxTransformer2DModel"]
@@ -223,6 +224,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             ConsisIDTransformer3DModel,
             CosmosTransformer3DModel,
             DiTTransformer2DModel,
+            DreamTransformer1DModel,
             DualTransformer2DModel,
             EasyAnimateTransformer3DModel,
             ErnieImageTransformer2DModel,
