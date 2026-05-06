@@ -396,6 +396,8 @@
         title: PriorTransformer
       - local: api/models/qwenimage_transformer2d
         title: QwenImageTransformer2DModel
+      - local: api/models/rae_dit_transformer2d
+        title: RAEDiT2DModel
       - local: api/models/sana_transformer2d
         title: SanaTransformer2DModel
       - local: api/models/sana_video_transformer3d
@@ -600,6 +602,8 @@
         title: PRX
       - local: api/pipelines/qwenimage
         title: QwenImage
+      - local: api/pipelines/rae_dit
+        title: RAE DiT
       - local: api/pipelines/sana
         title: Sana
       - local: api/pipelines/sana_sprint
