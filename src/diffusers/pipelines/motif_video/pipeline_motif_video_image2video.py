@@ -600,24 +600,24 @@ class MotifVideoImage2VideoPipeline(DiffusionPipeline):
         generator: Optional[torch.Generator] = None,
         latents: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
-        if latents is not None:
-            return latents.to(device=device, dtype=dtype)
-
-        shape = (
-            batch_size,
-            num_channels_latents,
-            (num_frames - 1) // self.vae_scale_factor_temporal + 1,
-            height // self.vae_scale_factor_spatial,
-            width // self.vae_scale_factor_spatial,
-        )
-
-        if isinstance(generator, list) and len(generator) != batch_size:
-            raise ValueError(
-                f"You have passed a list of generators of length {len(generator)}, but requested an effective batch"
-                f" size of {batch_size}. Make sure the batch size matches the length of the generators."
+        if latents is None:
+            shape = (
+                batch_size,
+                num_channels_latents,
+                (num_frames - 1) // self.vae_scale_factor_temporal + 1,
+                height // self.vae_scale_factor_spatial,
+                width // self.vae_scale_factor_spatial,
             )
 
-        latents = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
+            if isinstance(generator, list) and len(generator) != batch_size:
+                raise ValueError(
+                    f"You have passed a list of generators of length {len(generator)}, but requested an effective batch"
+                    f" size of {batch_size}. Make sure the batch size matches the length of the generators."
+                )
+
+            latents = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
+        else:
+            latents = latents.to(device=device, dtype=dtype)
         return latents
 
     @property
