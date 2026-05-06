@@ -215,6 +215,9 @@ class ModuleGroup:
             _swap_torchao_tensor(tensor, moved)
         else:
             tensor.data = moved
+        # `record_stream` only delays deallocation of the underlying block until the
+        # consumer stream is done — it is NOT a pre-write barrier. Cross-stream
+        # synchronization is provided separately by `_gate_default_stream_on_transfer`.
         if self.record_stream:
             if _is_torchao_tensor(tensor):
                 _record_stream_torchao_tensor(tensor, default_stream)
@@ -248,6 +251,26 @@ class ModuleGroup:
                 "setting `offload_to_disk_path`."
             )
 
+    def _gate_default_stream_on_transfer(self):
+        """Block the default stream on the transfer stream completing (HIP-only).
+
+        Without this barrier, the first op on the default stream (e.g. the first
+        matmul of the loaded module) can begin executing before the non-blocking
+        copies on the transfer stream have completed, producing pre-copy state
+        reads. The PyTorch streams contract assigns this synchronization to the
+        user; see
+        https://docs.pytorch.org/docs/stable/notes/cuda.html#cuda-streams.
+
+        Scoped to HIP per maintainer request: CUDA hides this race via implicit
+        driver-level ordering, so applying the gate there is unnecessary today.
+        Will be extended to other backends if community reports surface.
+        No-op when streams aren't enabled or when not running on HIP.
+        """
+        if self.stream is None or torch.version.hip is None:
+            return
+        current_default = self._torch_accelerator_module.current_stream()
+        current_default.wait_stream(self.stream)
+
     def _onload_from_disk(self):
         self._check_disk_offload_torchao()
 
@@ -277,6 +300,8 @@ class ModuleGroup:
                 for key, tensor_obj in self.key_to_tensor.items():
                     tensor_obj.data = loaded_tensors[key]
 
+        self._gate_default_stream_on_transfer()
+
     def _onload_from_memory(self):
         if self.stream is not None:
             # Wait for previous Host->Device transfer to complete
@@ -291,6 +316,8 @@ class ModuleGroup:
                     self._process_tensors_from_modules(pinned_memory, default_stream=default_stream)
             else:
                 self._process_tensors_from_modules(None)
+
+        self._gate_default_stream_on_transfer()
 
     def _offload_to_disk(self):
         self._check_disk_offload_torchao()
