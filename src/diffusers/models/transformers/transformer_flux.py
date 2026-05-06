@@ -677,7 +677,7 @@ class FluxTransformer2DModel(
             `tuple` where the first element is the sample tensor.
         """
 
-        hidden_states = self.x_embedder(hidden_states)
+        hidden_states = self.x_embedder(hidden_states.to(self.x_embedder.weight.dtype))
 
         timestep = timestep.to(hidden_states.dtype) * 1000
         if guidance is not None:
