@@ -11,9 +11,6 @@ env:
 jobs:
   run_pipelines:
     runs-on: [self-hosted, diffusers_ci]
-    container:
-      image: diffusers_ci
-      options: --ipc host --device=/dev/davinci0 --device=/dev/davinci1
     steps:
       - uses: actions/checkout@v4
 
