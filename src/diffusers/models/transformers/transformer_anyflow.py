@@ -19,8 +19,8 @@
 
 import copy
 import math
-from types import SimpleNamespace
-from typing import Any, Dict, Optional, Tuple, Union
+from dataclasses import dataclass
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import torch
 import torch.nn as nn
@@ -30,7 +30,7 @@ from torch.nn.attention.flex_attention import create_block_mask, flex_attention
 
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...loaders import FromOriginalModelMixin, PeftAdapterMixin
-from ...utils import logging
+from ...utils import BaseOutput, logging
 from ..attention import FeedForward
 from ..attention_processor import Attention
 from ..embeddings import PixArtAlphaTextProjection, TimestepEmbedding, Timesteps, get_1d_rotary_pos_embed
@@ -40,6 +40,23 @@ from ..normalization import FP32LayerNorm
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
+
+
+@dataclass
+class AnyFlowFARTransformerOutput(BaseOutput):
+    """
+    Output dataclass for ``AnyFlowTransformer3DModel``'s causal forward paths.
+
+    Args:
+        sample (`torch.Tensor` or `None`):
+            Predicted denoising target for the autoregressive chunk. ``None`` for the cache-prefill path,
+            which only writes the KV cache and produces no usable sample.
+        kv_cache (`list[dict[str, torch.Tensor]]`, *optional*):
+            Per-block KV cache state used by subsequent autoregressive steps.
+    """
+
+    sample: Optional[torch.Tensor] = None
+    kv_cache: Optional[List[Dict[str, torch.Tensor]]] = None
 
 
 # `flex_attention` is JIT-compiled lazily on first call so that importing this module does not require
@@ -1052,17 +1069,69 @@ class AnyFlowTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromO
                 _compile=False,
             )
 
-    def forward(self, *args, **kwargs):
-        if kwargs.get("is_causal", True):
-            if kwargs.get("kv_cache", None) is not None:
-                if kwargs["kv_cache_flag"].get("is_cache_step"):
-                    return self._forward_cache(*args, **kwargs)
-                else:
-                    return self._forward_inference(*args, **kwargs)
-            else:
-                return self._forward_train(*args, **kwargs)
-        else:
-            return self._forward_bidirection(*args, **kwargs)
+    def forward(
+        self,
+        hidden_states: torch.Tensor,
+        timestep: torch.Tensor,
+        r_timestep: torch.Tensor,
+        encoder_hidden_states: torch.Tensor,
+        encoder_hidden_states_image: Optional[torch.Tensor] = None,
+        chunk_partition: Optional[List[int]] = None,
+        clean_hidden_states: Optional[torch.Tensor] = None,
+        clean_timestep: Optional[torch.Tensor] = None,
+        kv_cache: Optional[List[Dict[str, torch.Tensor]]] = None,
+        kv_cache_flag: Optional[Dict[str, Any]] = None,
+        is_causal: bool = True,
+        attention_kwargs: Optional[Dict[str, Any]] = None,
+        return_dict: bool = True,
+    ) -> Union[Transformer2DModelOutput, AnyFlowFARTransformerOutput, Tuple]:
+        """
+        Forward pass.
+
+        Dispatches to one of four code paths depending on ``is_causal`` and ``kv_cache``:
+
+        * ``is_causal=False`` → bidirectional pass (used by :class:`AnyFlowPipeline`).
+        * ``is_causal=True`` and ``kv_cache is None`` → causal training rollout.
+        * ``is_causal=True`` and ``kv_cache_flag["is_cache_step"]`` → cache-prefill (writes KV cache,
+          returns ``sample=None``).
+        * Otherwise → causal autoregressive inference (consumes KV cache, returns the next chunk's
+          ``sample`` and the updated cache).
+
+        Returns:
+            * :class:`Transformer2DModelOutput` for bidirectional and causal-training paths.
+            * :class:`AnyFlowFARTransformerOutput` for the two causal-inference paths
+              (``sample`` plus ``kv_cache``).
+            * A tuple of these fields when ``return_dict=False``.
+        """
+        common_kwargs = {
+            "hidden_states": hidden_states,
+            "timestep": timestep,
+            "r_timestep": r_timestep,
+            "encoder_hidden_states": encoder_hidden_states,
+            "encoder_hidden_states_image": encoder_hidden_states_image,
+            "return_dict": return_dict,
+            "attention_kwargs": attention_kwargs,
+        }
+        if not is_causal:
+            return self._forward_bidirection(is_causal=is_causal, **common_kwargs)
+
+        common_kwargs["chunk_partition"] = chunk_partition
+        if kv_cache is not None:
+            common_kwargs["kv_cache"] = kv_cache
+            common_kwargs["kv_cache_flag"] = kv_cache_flag
+            if kv_cache_flag is not None and kv_cache_flag.get("is_cache_step"):
+                return self._forward_cache(
+                    clean_hidden_states=clean_hidden_states,
+                    clean_timestep=clean_timestep,
+                    **common_kwargs,
+                )
+            return self._forward_inference(**common_kwargs)
+
+        return self._forward_train(
+            clean_hidden_states=clean_hidden_states,
+            clean_timestep=clean_timestep,
+            **common_kwargs,
+        )
 
     def _forward_inference(
         self,
@@ -1182,7 +1251,7 @@ class AnyFlowTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromO
         if not return_dict:
             return output, kv_cache
 
-        return SimpleNamespace(sample=output, kv_cache=kv_cache)
+        return AnyFlowFARTransformerOutput(sample=output, kv_cache=kv_cache)
 
     def _forward_cache(
         self,
@@ -1287,7 +1356,10 @@ class AnyFlowTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromO
                     kv_cache_flag,
                 )
 
-        return None, kv_cache
+        if not return_dict:
+            return None, kv_cache
+
+        return AnyFlowFARTransformerOutput(sample=None, kv_cache=kv_cache)
 
     def _forward_train(
         self,
@@ -1406,9 +1478,9 @@ class AnyFlowTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromO
         )  # noqa: E501
 
         if not return_dict:
-            return output
+            return (output,)
 
-        return SimpleNamespace(sample=output)
+        return Transformer2DModelOutput(sample=output)
 
     def _forward_bidirection(
         self,

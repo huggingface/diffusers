@@ -23,7 +23,7 @@ class FlowMapEulerDiscreteSchedulerTest(unittest.TestCase):
     """
     The flow-map scheduler has a non-standard ``step`` signature that takes both ``timestep`` and
     ``r_timestep`` (the target timestep), so it cannot use ``SchedulerCommonTest``. The tests below
-    exercise the contract that the scheduler exposes to ``AnyFlowPipeline`` and ``AnyFlowCausalPipeline``.
+    exercise the contract that the scheduler exposes to ``AnyFlowPipeline`` and ``AnyFlowFARPipeline``.
     """
 
     scheduler_class = FlowMapEulerDiscreteScheduler

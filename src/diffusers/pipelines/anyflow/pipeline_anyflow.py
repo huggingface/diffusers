@@ -69,7 +69,7 @@ class AnyFlowPipeline(DiffusionPipeline, WanLoraLoaderMixin):
     AnyFlow learns arbitrary-interval transitions :math:`z_t \to z_r` rather than the fixed
     :math:`z_t \to z_0` mapping of consistency models, so a single distilled checkpoint can be evaluated at
     1, 2, 4, 8, 16... NFE without retraining. This pipeline operates over the full video tensor in one
-    bidirectional pass; for frame-level autoregressive (causal) generation use ``AnyFlowCausalPipeline``.
+    bidirectional pass; for frame-level autoregressive (causal) generation use ``AnyFlowFARPipeline``.
 
     The released NVIDIA checkpoints loaded by this pipeline went through a two-stage LoRA distillation:
     (1) forward Flow-Map training with the MeanFlow identity as a stop-grad regression target, and
@@ -553,6 +553,7 @@ class AnyFlowPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         self._attention_kwargs = attention_kwargs
         self._current_timestep = None
         self._interrupt = False
+        self._num_timesteps = num_inference_steps
 
         device = self._execution_device
 

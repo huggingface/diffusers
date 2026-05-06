@@ -63,7 +63,7 @@ def prompt_clean(text):
     return text
 
 
-class AnyFlowCausalPipeline(DiffusionPipeline, WanLoraLoaderMixin):
+class AnyFlowFARPipeline(DiffusionPipeline, WanLoraLoaderMixin):
     r"""
     Causal (FAR-based) text-to-video / image-to-video / text+video-to-video pipeline for AnyFlow checkpoints.
 
@@ -711,6 +711,7 @@ class AnyFlowCausalPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         self._attention_kwargs = attention_kwargs
         self._current_timestep = None
         self._interrupt = False
+        self._num_timesteps = num_inference_steps
 
         device = self._execution_device
 

@@ -19,7 +19,7 @@ import torch
 from transformers import AutoConfig, AutoTokenizer, T5EncoderModel
 
 from diffusers import (
-    AnyFlowCausalPipeline,
+    AnyFlowFARPipeline,
     AnyFlowTransformer3DModel,
     AutoencoderKLWan,
     FlowMapEulerDiscreteScheduler,
@@ -39,14 +39,14 @@ from ..test_pipelines_common import PipelineTesterMixin
 enable_full_determinism()
 
 
-class AnyFlowCausalPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
+class AnyFlowFARPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     """
     Fast tests for the FAR-causal AnyFlow pipeline. Only T2V is exercised here; the I2V / TV2V branches are
     only meaningful at the spatial resolutions used by released checkpoints and are covered in the slow
     integration tests below.
     """
 
-    pipeline_class = AnyFlowCausalPipeline
+    pipeline_class = AnyFlowFARPipeline
     params = TEXT_TO_IMAGE_PARAMS - {"cross_attention_kwargs"}
     batch_params = TEXT_TO_IMAGE_BATCH_PARAMS
     image_params = TEXT_TO_IMAGE_IMAGE_PARAMS
@@ -119,7 +119,6 @@ class AnyFlowCausalPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         inputs = {
             "prompt": "dance monkey",
             "negative_prompt": "negative",
-            "task_type": "t2v",
             "generator": generator,
             "num_inference_steps": 2,
             "guidance_scale": 6.0,
@@ -160,7 +159,7 @@ class AnyFlowCausalPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
 @slow
 @require_torch_accelerator
-class AnyFlowCausalPipelineIntegrationTests(unittest.TestCase):
+class AnyFlowFARPipelineIntegrationTests(unittest.TestCase):
     """End-to-end integration tests against released NVIDIA AnyFlow-FAR checkpoints. Run with ``RUN_SLOW=1``."""
 
     prompt = "A cat walks on the grass, realistic style."
@@ -176,7 +175,7 @@ class AnyFlowCausalPipelineIntegrationTests(unittest.TestCase):
         backend_empty_cache(torch_device)
 
     def test_anyflow_far_t2v_1_3b(self):
-        pipe = AnyFlowCausalPipeline.from_pretrained(
+        pipe = AnyFlowFARPipeline.from_pretrained(
             "nvidia/AnyFlow-FAR-Wan2.1-1.3B-Diffusers",
             torch_dtype=torch.bfloat16,
         )
@@ -185,7 +184,6 @@ class AnyFlowCausalPipelineIntegrationTests(unittest.TestCase):
         generator = torch.Generator(device=torch_device).manual_seed(0)
         video = pipe(
             prompt=self.prompt,
-            task_type="t2v",
             num_inference_steps=4,
             num_frames=33,
             height=480,

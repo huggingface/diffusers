@@ -37,8 +37,8 @@ class AnyFlowTransformer3DModelTest(unittest.TestCase):
     The model has a non-standard ``forward`` signature (``is_causal``, ``r_timestep``, ``chunk_partition``,
     ``kv_cache``, ``kv_cache_flag``) and dispatches between four code paths (bidirectional inference, causal
     training, causal cache prefill, causal autoregressive inference). Fast unit tests cover the bidirectional
-    path here; the causal paths are exercised end-to-end by ``AnyFlowCausalPipelineIntegrationTests`` in
-    ``tests/pipelines/anyflow/test_anyflow_causal.py``.
+    path here; the causal paths are exercised end-to-end by ``AnyFlowFARPipelineIntegrationTests`` in
+    ``tests/pipelines/anyflow/test_anyflow_far.py``.
     """
 
     @staticmethod

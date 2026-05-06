@@ -34,7 +34,7 @@ how they sample frames:
 - [`AnyFlowPipeline`](../api/pipelines/anyflow#anyflowpipeline) — **bidirectional** T2V. Denoises the entire
   video tensor in one pass with global self-attention. Use this when the input is a single text prompt and you
   do not need streaming output.
-- [`AnyFlowCausalPipeline`](../api/pipelines/anyflow#anyflowcausalpipeline) — **causal (FAR)**. Denoises the
+- [`AnyFlowFARPipeline`](../api/pipelines/anyflow#anyflowfarpipeline) — **causal (FAR)**. Denoises the
   video chunk by chunk with block-sparse causal attention and reuses KV cache across chunks. Use this for
   image-to-video (I2V), text+video-to-video (TV2V) continuation, or any setup that benefits from frame-level
   autoregressive sampling. The same model handles all three task modes via a `task_type` argument.
@@ -44,9 +44,9 @@ A quick selector:
 | Scenario | Pipeline | How to invoke |
 |----------|----------|---------------|
 | Pure text-to-video, max quality at fixed NFE | `AnyFlowPipeline` | `pipe(prompt, ...)` |
-| Image-to-video (start from a still image) | `AnyFlowCausalPipeline` | `pipe(prompt, context_sequence={"raw": <one-frame tensor>}, ...)` |
-| Video continuation / TV2V | `AnyFlowCausalPipeline` | `pipe(prompt, context_sequence={"raw": <multi-frame tensor>}, ...)` |
-| Streaming / progressive generation | `AnyFlowCausalPipeline` | — |
+| Image-to-video (start from a still image) | `AnyFlowFARPipeline` | `pipe(prompt, context_sequence={"raw": <one-frame tensor>}, ...)` |
+| Video continuation / TV2V | `AnyFlowFARPipeline` | `pipe(prompt, context_sequence={"raw": <multi-frame tensor>}, ...)` |
+| Streaming / progressive generation | `AnyFlowFARPipeline` | — |
 
 The bidirectional variant is faster per token at high resolution; the causal variant trades that for the
 ability to start sampling before all latent frames are allocated, useful for very long sequences.
@@ -57,7 +57,7 @@ NVIDIA released four AnyFlow checkpoints, one per pipeline + scale combination:
 
 ```py
 import torch
-from diffusers import AnyFlowPipeline, AnyFlowCausalPipeline
+from diffusers import AnyFlowPipeline, AnyFlowFARPipeline
 
 # Bidirectional, lightweight
 pipe = AnyFlowPipeline.from_pretrained(
@@ -70,12 +70,12 @@ pipe = AnyFlowPipeline.from_pretrained(
 ).to("cuda")
 
 # Causal (FAR), 1.3B
-pipe = AnyFlowCausalPipeline.from_pretrained(
+pipe = AnyFlowFARPipeline.from_pretrained(
     "nvidia/AnyFlow-FAR-Wan2.1-1.3B-Diffusers", torch_dtype=torch.bfloat16
 ).to("cuda")
 
 # Causal (FAR), 14B
-pipe = AnyFlowCausalPipeline.from_pretrained(
+pipe = AnyFlowFARPipeline.from_pretrained(
     "nvidia/AnyFlow-FAR-Wan2.1-14B-Diffusers", torch_dtype=torch.bfloat16
 ).to("cuda")
 ```
@@ -124,11 +124,11 @@ VAE temporal stride.
 
 ```py
 import torch
-from diffusers import AnyFlowCausalPipeline
+from diffusers import AnyFlowFARPipeline
 from diffusers.utils import export_to_video, load_image, load_video
 from torchvision import transforms
 
-pipe = AnyFlowCausalPipeline.from_pretrained(
+pipe = AnyFlowFARPipeline.from_pretrained(
     "nvidia/AnyFlow-FAR-Wan2.1-1.3B-Diffusers", torch_dtype=torch.bfloat16
 ).to("cuda")
 to_tensor = transforms.Compose([transforms.Resize((480, 832)), transforms.ToTensor()])

@@ -12,7 +12,7 @@ specific language governing permissions and limitations under the License.
 
 # AnyFlowTransformer3DModel
 
-A 3D Transformer used by `AnyFlowPipeline` and `AnyFlowCausalPipeline`. The architecture extends the
+A 3D Transformer used by `AnyFlowPipeline` and `AnyFlowFARPipeline`. The architecture extends the
 Wan2.1 3D DiT backbone with two optional modules controlled by config flags:
 
 1. **FAR causal blocks** (`init_far_model=True`) — block-sparse causal attention via

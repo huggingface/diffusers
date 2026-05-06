@@ -36,7 +36,7 @@ The following AnyFlow checkpoints are supported:
 | [`nvidia/AnyFlow-FAR-Wan2.1-14B-Diffusers`](https://huggingface.co/nvidia/AnyFlow-FAR-Wan2.1-14B-Diffusers) | FAR + Wan2.1 14B | Causal T2V / I2V / TV2V |
 
 > [!TIP]
-> Choose `AnyFlowPipeline` for traditional bidirectional text-to-video generation. Choose `AnyFlowCausalPipeline` for streaming I2V, video continuation (TV2V), or any setup that benefits from frame-by-frame autoregressive sampling.
+> Choose `AnyFlowPipeline` for traditional bidirectional text-to-video generation. Choose `AnyFlowFARPipeline` for streaming I2V, video continuation (TV2V), or any setup that benefits from frame-by-frame autoregressive sampling.
 
 > [!TIP]
 > AnyFlow supports any-step sampling: a single distilled checkpoint can be evaluated at 1, 2, 4, 8, 16... NFE without retraining. Quality scales monotonically with steps in our benchmarks.
@@ -109,10 +109,10 @@ for I2V and a longer clip for TV2V continuation.
 
 ```py
 import torch
-from diffusers import AnyFlowCausalPipeline
+from diffusers import AnyFlowFARPipeline
 from diffusers.utils import export_to_video
 
-pipe = AnyFlowCausalPipeline.from_pretrained(
+pipe = AnyFlowFARPipeline.from_pretrained(
     "nvidia/AnyFlow-FAR-Wan2.1-1.3B-Diffusers", torch_dtype=torch.bfloat16
 ).to("cuda")
 
@@ -129,11 +129,11 @@ export_to_video(video, "out.mp4", fps=16)
 
 ```py
 import torch
-from diffusers import AnyFlowCausalPipeline
+from diffusers import AnyFlowFARPipeline
 from diffusers.utils import export_to_video, load_image
 from torchvision import transforms
 
-pipe = AnyFlowCausalPipeline.from_pretrained(
+pipe = AnyFlowFARPipeline.from_pretrained(
     "nvidia/AnyFlow-FAR-Wan2.1-1.3B-Diffusers", torch_dtype=torch.bfloat16
 ).to("cuda")
 
@@ -156,11 +156,11 @@ export_to_video(video, "out.mp4", fps=16)
 
 ```py
 import torch
-from diffusers import AnyFlowCausalPipeline
+from diffusers import AnyFlowFARPipeline
 from diffusers.utils import export_to_video, load_video
 from torchvision import transforms
 
-pipe = AnyFlowCausalPipeline.from_pretrained(
+pipe = AnyFlowFARPipeline.from_pretrained(
     "nvidia/AnyFlow-FAR-Wan2.1-1.3B-Diffusers", torch_dtype=torch.bfloat16
 ).to("cuda")
 
@@ -196,9 +196,9 @@ export_to_video(video, "out.mp4", fps=16)
   - all
   - __call__
 
-## AnyFlowCausalPipeline
+## AnyFlowFARPipeline
 
-[[autodoc]] AnyFlowCausalPipeline
+[[autodoc]] AnyFlowFARPipeline
   - all
   - __call__
 

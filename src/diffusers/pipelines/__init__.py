@@ -166,7 +166,7 @@ else:
     ]
     _import_structure["anyflow"] = [
         "AnyFlowPipeline",
-        "AnyFlowCausalPipeline",
+        "AnyFlowFARPipeline",
     ]
     _import_structure["bria"] = ["BriaPipeline"]
     _import_structure["bria_fibo"] = ["BriaFiboPipeline", "BriaFiboEditPipeline"]
@@ -600,7 +600,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             AnimateDiffVideoToVideoPipeline,
         )
         from .anyflow import (
-            AnyFlowCausalPipeline,
+            AnyFlowFARPipeline,
             AnyFlowPipeline,
         )
         from .audioldm2 import (

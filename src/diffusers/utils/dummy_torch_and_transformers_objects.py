@@ -887,7 +887,7 @@ class AnimateDiffVideoToVideoPipeline(metaclass=DummyObject):
         requires_backends(cls, ["torch", "transformers"])
 
 
-class AnyFlowCausalPipeline(metaclass=DummyObject):
+class AnyFlowFARPipeline(metaclass=DummyObject):
     _backends = ["torch", "transformers"]
 
     def __init__(self, *args, **kwargs):

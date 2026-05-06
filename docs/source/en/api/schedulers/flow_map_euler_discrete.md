@@ -20,7 +20,7 @@ caller-provided, which is what enables any-step sampling: a single distilled che
 
 The scheduler was introduced in
 [AnyFlow: Any-Step Video Diffusion Model with On-Policy Flow Map Distillation](https://huggingface.co/papers/<arxiv-id>)
-and ships with the `AnyFlowPipeline` and `AnyFlowCausalPipeline` integrations, but it is not
+and ships with the `AnyFlowPipeline` and `AnyFlowFARPipeline` integrations, but it is not
 AnyFlow-specific — any flow-map-distilled checkpoint can use it.
 
 ## FlowMapEulerDiscreteScheduler

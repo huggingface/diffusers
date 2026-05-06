@@ -20,7 +20,7 @@ dict for the transformer. This script:
 1. Loads the matching base Wan2.1 pipeline from the Hub (provides VAE, tokenizer, and text encoder).
 2. Constructs an ``AnyFlowTransformer3DModel`` with the right config flags for the chosen variant.
 3. Loads the ``ema`` weights into the transformer.
-4. Wraps everything in an ``AnyFlowPipeline`` (bidirectional) or ``AnyFlowCausalPipeline`` (FAR causal).
+4. Wraps everything in an ``AnyFlowPipeline`` (bidirectional) or ``AnyFlowFARPipeline`` (FAR causal).
 5. Calls ``pipeline.save_pretrained(output_dir)``.
 
 Example:
@@ -40,7 +40,7 @@ import os
 import torch
 
 from diffusers import (
-    AnyFlowCausalPipeline,
+    AnyFlowFARPipeline,
     AnyFlowPipeline,
     AnyFlowTransformer3DModel,
     FlowMapEulerDiscreteScheduler,
@@ -62,7 +62,7 @@ VARIANTS = {
             "full_chunk_limit": 3,
             "compressed_patch_size": [1, 4, 4],
         },
-        "pipeline_cls": AnyFlowCausalPipeline,
+        "pipeline_cls": AnyFlowFARPipeline,
     },
     "AnyFlow-FAR-Wan2.1-14B-Diffusers": {
         "base_model": "Wan-AI/Wan2.1-T2V-14B-Diffusers",
@@ -73,7 +73,7 @@ VARIANTS = {
             "full_chunk_limit": 3,
             "compressed_patch_size": [1, 4, 4],
         },
-        "pipeline_cls": AnyFlowCausalPipeline,
+        "pipeline_cls": AnyFlowFARPipeline,
     },
     "AnyFlow-Wan2.1-T2V-1.3B-Diffusers": {
         "base_model": "Wan-AI/Wan2.1-T2V-1.3B-Diffusers",
