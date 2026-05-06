@@ -638,11 +638,6 @@ def _prepare_for_flash_attn_or_sage_varlen(
     return _prepare_for_flash_attn_or_sage_varlen_with_mask(batch_size, seq_len_q, attn_mask, device)
 
 
-def _padded_to_unpad(tensor: torch.Tensor, indices: torch.Tensor) -> torch.Tensor:
-    """gather valid tokens from a padded `(batch, seq, ...)` tensor into a packed `(nnz, ...)` tensor."""
-    return tensor.reshape(-1, *tensor.shape[2:])[indices]
-
-
 def _unpad_to_padded(packed: torch.Tensor, indices: torch.Tensor, batch_size: int, seq_len: int) -> torch.Tensor:
     """scatter a packed `(nnz, ...)` tensor back to padded `(batch_size, seq_len, ...)`."""
     output = torch.zeros(batch_size * seq_len, *packed.shape[1:], dtype=packed.dtype, device=packed.device)
@@ -1355,8 +1350,8 @@ def _flash_varlen_attention_hub_forward_op(
         )
         indices_k = attn_mask_2d.flatten().nonzero(as_tuple=False).flatten()
         query_packed = query.flatten(0, 1)
-        key_packed = _padded_to_unpad(key, indices_k)
-        value_packed = _padded_to_unpad(value, indices_k)
+        key_packed = key.reshape(-1, *key.shape[2:])[indices_k]
+        value_packed = value.reshape(-1, *value.shape[2:])[indices_k]
         max_seqlen_q = seq_len_q
     else:
         (_, seqlens_k), (cu_seqlens_q, cu_seqlens_k), (max_seqlen_q, max_seqlen_k) = (
@@ -2789,8 +2784,8 @@ def _flash_varlen_attention_hub(
             _prepare_for_flash_attn_or_sage_varlen_with_mask(batch_size, seq_len_q, attn_mask_2d, query.device)
         )
         indices_k = attn_mask_2d.flatten().nonzero(as_tuple=False).flatten()
-        key_packed = _padded_to_unpad(key, indices_k)
-        value_packed = _padded_to_unpad(value, indices_k)
+        key_packed = key.reshape(-1, *key.shape[2:])[indices_k]
+        value_packed = value.reshape(-1, *value.shape[2:])[indices_k]
     else:
         (_, _), (cu_seqlens_q, cu_seqlens_k), (max_seqlen_q, max_seqlen_k) = (
             _prepare_for_flash_attn_or_sage_varlen_without_mask(batch_size, seq_len_q, seq_len_kv, query.device)
