@@ -507,9 +507,30 @@ class MotifVideoImage2VideoPipeline(DiffusionPipeline):
             )
 
         if image is not None:
-            if isinstance(image, torch.Tensor):
-                if image.dim() != 4:
-                    raise ValueError(f"`image` must be a 4D tensor [B, C, H, W], got {image.dim()}D")
+            if isinstance(image, list):
+                if len(image) != 1:
+                    raise ValueError(
+                        f"`image` must be a single image, got a list of {len(image)} images. "
+                        "For image-to-video generation, only a single first frame is supported."
+                    )
+            elif isinstance(image, torch.Tensor):
+                if image.dim() not in (3, 4):
+                    raise ValueError(
+                        f"`image` must be a 3D tensor [C, H, W] or 4D tensor [B, C, H, W], got {image.dim()}D"
+                    )
+                if image.dim() == 4 and image.shape[0] != 1:
+                    raise ValueError(
+                        f"`image` batch size must be 1 when passed as a 4D tensor, got {image.shape[0]}"
+                    )
+            elif isinstance(image, np.ndarray):
+                if image.ndim not in (3, 4):
+                    raise ValueError(
+                        f"`image` must be a 3D array [H, W, C] or 4D array [B, H, W, C], got {image.ndim}D"
+                    )
+                if image.ndim == 4 and image.shape[0] != 1:
+                    raise ValueError(
+                        f"`image` batch size must be 1 when passed as a 4D array, got {image.shape[0]}"
+                    )
 
         if callback_on_step_end_tensor_inputs is not None and not all(
             k in self._callback_tensor_inputs for k in callback_on_step_end_tensor_inputs
@@ -750,15 +771,14 @@ class MotifVideoImage2VideoPipeline(DiffusionPipeline):
 
         # 3. Preprocess image
         if latents is None:
-            if isinstance(image, torch.Tensor):
-                image = image.to(device=device, dtype=self.transformer.dtype)
-                if image.min() >= 0 and image.max() <= 1:
-                    image = image * 2 - 1
-                image = image.clamp(-1, 1)
-            else:
-                image = self.video_processor.preprocess(image, height=height, width=width)
-                image = image.to(device=device, dtype=self.transformer.dtype)
-            video = image.unsqueeze(1)  # [B, 1, C, H, W]
+            # preprocess_video expects a list of video frames
+            if not isinstance(image, list):
+                image = [image]
+
+            video = self.video_processor.preprocess_video(image, height=height, width=width)
+            # preprocess_video returns (B, C, T, H, W), permute to (B, T, C, H, W)
+            video = video.permute(0, 2, 1, 3, 4)
+            video = video.to(device=device, dtype=self.transformer.dtype)
 
         # 4. Prepare latents
         num_channels_latents = self.vae.config.z_dim
