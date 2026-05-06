@@ -401,23 +401,15 @@ class MotifVideoImage2VideoPipeline(DiffusionPipeline):
         image_encoder_dtype = next(image_encoder.parameters()).dtype
 
         if isinstance(image, torch.Tensor):
-            image = feature_extractor.preprocess(
-                images=image.float(),
-                do_resize=True,
-                do_rescale=False,
-                do_normalize=True,
-                do_convert_rgb=True,
-                return_tensors="pt",
-            )
-        else:
-            image = feature_extractor.preprocess(
-                images=image,
-                do_resize=True,
-                do_rescale=False,
-                do_normalize=True,
-                do_convert_rgb=True,
-                return_tensors="pt",
-            )
+            image = image.float()
+        image = feature_extractor.preprocess(
+            images=image,
+            do_resize=True,
+            do_rescale=False,
+            do_normalize=True,
+            do_convert_rgb=True,
+            return_tensors="pt",
+        )
 
         image = image.to(device=device, dtype=image_encoder_dtype)
         return image_encoder(**image).last_hidden_state
