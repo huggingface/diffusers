@@ -6051,15 +6051,17 @@ class CosmosLoraLoaderMixin(LoraBaseMixin):
 
     @classmethod
     @validate_hf_hub_args
+    # Copied from diffusers.loaders.lora_pipeline.SD3LoraLoaderMixin.lora_state_dict
     def lora_state_dict(
         cls,
         pretrained_model_name_or_path_or_dict: str | dict[str, torch.Tensor],
-        return_alphas: bool = False,
         **kwargs,
     ):
         r"""
         See [`~loaders.StableDiffusionLoraLoaderMixin.lora_state_dict`] for more details.
         """
+        # Load the main state dict first which has the LoRA layers for either of
+        # transformer and text encoder or both.
         cache_dir = kwargs.pop("cache_dir", None)
         force_download = kwargs.pop("force_download", False)
         proxies = kwargs.pop("proxies", None)
@@ -6093,30 +6095,16 @@ class CosmosLoraLoaderMixin(LoraBaseMixin):
             allow_pickle=allow_pickle,
         )
 
-        network_alphas = {}
-        for k in list(state_dict.keys()):
-            if "alpha" in k:
-                alpha_value = state_dict.get(k)
-                if (torch.is_tensor(alpha_value) and torch.is_floating_point(alpha_value)) or isinstance(
-                    alpha_value, float
-                ):
-                    network_alphas[k] = state_dict.pop(k)
-                else:
-                    raise ValueError(
-                        f"The alpha key ({k}) seems to be incorrect. If you think this error is unexpected, please open as issue."
-                    )
+        is_dora_scale_present = any("dora_scale" in k for k in state_dict)
+        if is_dora_scale_present:
+            warn_msg = "It seems like you are using a DoRA checkpoint that is not compatible in Diffusers at the moment. So, we are going to filter out the keys associated to 'dora_scale` from the state dict. If you think this is a mistake please open an issue https://github.com/huggingface/diffusers/issues/new."
+            logger.warning(warn_msg)
+            state_dict = {k: v for k, v in state_dict.items() if "dora_scale" not in k}
 
-        if return_alphas or return_lora_metadata:
-            return cls._prepare_outputs(
-                state_dict,
-                metadata=metadata,
-                alphas=network_alphas,
-                return_alphas=return_alphas,
-                return_metadata=return_lora_metadata,
-            )
-        else:
-            return state_dict
+        out = (state_dict, metadata) if return_lora_metadata else state_dict
+        return out
 
+    # Copied from diffusers.loaders.lora_pipeline.CogVideoXLoraLoaderMixin.load_lora_weights
     def load_lora_weights(
         self,
         pretrained_model_name_or_path_or_dict: str | dict[str, torch.Tensor],
@@ -6131,7 +6119,7 @@ class CosmosLoraLoaderMixin(LoraBaseMixin):
             raise ValueError("PEFT backend is required for this method.")
 
         low_cpu_mem_usage = kwargs.pop("low_cpu_mem_usage", _LOW_CPU_MEM_USAGE_DEFAULT_LORA)
-        if low_cpu_mem_usage and not is_peft_version(">=", "0.13.1"):
+        if low_cpu_mem_usage and is_peft_version("<", "0.13.0"):
             raise ValueError(
                 "`low_cpu_mem_usage=True` is not compatible with this `peft` version. Please update it with `pip install -U peft`."
             )
@@ -6142,19 +6130,15 @@ class CosmosLoraLoaderMixin(LoraBaseMixin):
 
         # First, ensure that the checkpoint is a compatible one and can be successfully loaded.
         kwargs["return_lora_metadata"] = True
-        state_dict, network_alphas, metadata = self.lora_state_dict(
-            pretrained_model_name_or_path_or_dict, return_alphas=True, **kwargs
-        )
+        state_dict, metadata = self.lora_state_dict(pretrained_model_name_or_path_or_dict, **kwargs)
 
-        if not any("lora" in key for key in state_dict.keys()):
+        is_correct_format = all("lora" in key for key in state_dict.keys())
+        if not is_correct_format:
             raise ValueError("Invalid LoRA checkpoint. Make sure all LoRA param names contain `'lora'` substring.")
-
-        transformer = getattr(self, self.transformer_name) if not hasattr(self, "transformer") else self.transformer
 
         self.load_lora_into_transformer(
             state_dict,
-            network_alphas=network_alphas,
-            transformer=transformer,
+            transformer=getattr(self, self.transformer_name) if not hasattr(self, "transformer") else self.transformer,
             adapter_name=adapter_name,
             metadata=metadata,
             _pipeline=self,
@@ -6162,31 +6146,31 @@ class CosmosLoraLoaderMixin(LoraBaseMixin):
             hotswap=hotswap,
         )
 
-    # Copied from diffusers.loaders.lora_pipeline.FluxLoraLoaderMixin.load_lora_into_transformer
     @classmethod
+    # Copied from diffusers.loaders.lora_pipeline.SD3LoraLoaderMixin.load_lora_into_transformer with SD3Transformer2DModel->CosmosTransformer3DModel
     def load_lora_into_transformer(
         cls,
         state_dict,
-        network_alphas,
         transformer,
         adapter_name=None,
-        metadata=None,
         _pipeline=None,
         low_cpu_mem_usage=False,
         hotswap: bool = False,
+        metadata=None,
     ):
         """
         See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_into_unet`] for more details.
         """
-        if low_cpu_mem_usage and not is_peft_version(">=", "0.13.1"):
+        if low_cpu_mem_usage and is_peft_version("<", "0.13.0"):
             raise ValueError(
                 "`low_cpu_mem_usage=True` is not compatible with this `peft` version. Please update it with `pip install -U peft`."
             )
 
+        # Load the layers corresponding to transformer.
         logger.info(f"Loading {cls.transformer_name}.")
         transformer.load_lora_adapter(
             state_dict,
-            network_alphas=network_alphas,
+            network_alphas=None,
             adapter_name=adapter_name,
             metadata=metadata,
             _pipeline=_pipeline,
@@ -6194,8 +6178,8 @@ class CosmosLoraLoaderMixin(LoraBaseMixin):
             hotswap=hotswap,
         )
 
-    # Copied from diffusers.loaders.lora_pipeline.FluxLoraLoaderMixin.save_lora_weights
     @classmethod
+    # Copied from diffusers.loaders.lora_pipeline.CogVideoXLoraLoaderMixin.save_lora_weights
     def save_lora_weights(
         cls,
         save_directory: str | os.PathLike,
@@ -6204,42 +6188,32 @@ class CosmosLoraLoaderMixin(LoraBaseMixin):
         weight_name: str = None,
         save_function: Callable = None,
         safe_serialization: bool = True,
-        transformer_lora_adapter_metadata=None,
+        transformer_lora_adapter_metadata: dict | None = None,
     ):
         r"""
-        Save the LoRA parameters corresponding to the transformer.
-
-        Arguments:
-            save_directory (`str` or `os.PathLike`):
-                Directory to save LoRA parameters to. Will be created if it doesn't exist.
-            transformer_lora_layers (`dict[str, torch.nn.Module]` or `dict[str, torch.Tensor]`):
-                State dict of the LoRA layers corresponding to the `transformer`.
-            is_main_process (`bool`, *optional*, defaults to `True`):
-                Whether the process calling this is the main process or not. Useful during distributed training and you
-                need to call this function on all processes. In this case, set `is_main_process=True` only on the main
-                process to avoid race conditions.
-            save_function (`Callable`):
-                The function to use to save the state dictionary. Useful during distributed training when you need to
-                replace `torch.save` with another method. Can be configured with the environment variable
-                `DIFFUSERS_SAVE_MODE`.
-            safe_serialization (`bool`, *optional*, defaults to `True`):
-                Whether to save the model using `safetensors` or the traditional PyTorch way with `pickle`.
-            transformer_lora_adapter_metadata:
-                LoRA adapter metadata associated with the transformer to be serialized with the state dict.
+        See [`~loaders.StableDiffusionLoraLoaderMixin.save_lora_weights`] for more information.
         """
-        if not transformer_lora_layers:
-            raise ValueError("You must pass `transformer_lora_layers`.")
+        lora_layers = {}
+        lora_metadata = {}
+
+        if transformer_lora_layers:
+            lora_layers[cls.transformer_name] = transformer_lora_layers
+            lora_metadata[cls.transformer_name] = transformer_lora_adapter_metadata
+
+        if not lora_layers:
+            raise ValueError("You must pass at least one of `transformer_lora_layers` or `text_encoder_lora_layers`.")
 
         cls._save_lora_weights(
             save_directory=save_directory,
-            lora_layers={cls.transformer_name: transformer_lora_layers},
-            lora_metadata={cls.transformer_name: transformer_lora_adapter_metadata},
+            lora_layers=lora_layers,
+            lora_metadata=lora_metadata,
             is_main_process=is_main_process,
             weight_name=weight_name,
             save_function=save_function,
             safe_serialization=safe_serialization,
         )
 
+    # Copied from diffusers.loaders.lora_pipeline.CogVideoXLoraLoaderMixin.fuse_lora
     def fuse_lora(
         self,
         components: list[str] = ["transformer"],
@@ -6252,24 +6226,19 @@ class CosmosLoraLoaderMixin(LoraBaseMixin):
         See [`~loaders.StableDiffusionLoraLoaderMixin.fuse_lora`] for more details.
         """
         super().fuse_lora(
-            components=components, lora_scale=lora_scale, safe_fusing=safe_fusing, adapter_names=adapter_names, **kwargs
+            components=components,
+            lora_scale=lora_scale,
+            safe_fusing=safe_fusing,
+            adapter_names=adapter_names,
+            **kwargs,
         )
 
+    # Copied from diffusers.loaders.lora_pipeline.CogVideoXLoraLoaderMixin.unfuse_lora
     def unfuse_lora(self, components: list[str] = ["transformer"], **kwargs):
         r"""
         See [`~loaders.StableDiffusionLoraLoaderMixin.unfuse_lora`] for more details.
         """
         super().unfuse_lora(components=components, **kwargs)
-
-    # Copied from diffusers.loaders.lora_pipeline.FluxLoraLoaderMixin._prepare_outputs
-    @staticmethod
-    def _prepare_outputs(state_dict, metadata, alphas=None, return_alphas=False, return_metadata=False):
-        outputs = [state_dict]
-        if return_alphas:
-            outputs.append(alphas)
-        if return_metadata:
-            outputs.append(metadata)
-        return tuple(outputs) if (return_alphas or return_metadata) else state_dict
 
 
 class LoraLoaderMixin(StableDiffusionLoraLoaderMixin):
