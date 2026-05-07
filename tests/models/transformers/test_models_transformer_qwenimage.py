@@ -259,7 +259,8 @@ class TestQwenImageTransformerContextParallelAttnBackends(
 ):
     """Context Parallel inference x attention backends tests for QwenImage Transformer"""
 
-    # flash_hub and _flash_3_hub do not support attn_mask
+    # QwenImage always passes a joint attention mask (text + image), which flash_hub and
+    # _flash_3_hub do not support.
     unsupported_attn_backends = ["flash_hub", "_flash_3_hub"]
 
 
