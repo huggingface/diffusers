@@ -781,7 +781,9 @@ class Cosmos2_5_PredictBasePipeline(DiffusionPipeline, CosmosLoraLoaderMixin):
                 # NOTE: assumes sigma(t) \in [0, 1]
                 sigma_t = self.scheduler.sigmas[i].expand(batch_size).to(device=device, dtype=torch.float32)
                 if conditional_frame_timestep >= 0:
-                    in_timestep = cond_indicator * conditional_frame_timestep + (1 - cond_indicator) * sigma_t
+                    in_timestep = cond_indicator * conditional_frame_timestep + (1 - cond_indicator) * sigma_t.view(
+                        batch_size, 1, 1, 1, 1
+                    )
                 else:
                     in_timestep = sigma_t
                 in_latents = cond_mask * cond_latent + (1 - cond_mask) * latents
