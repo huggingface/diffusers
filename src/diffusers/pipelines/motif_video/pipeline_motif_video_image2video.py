@@ -556,8 +556,8 @@ class MotifVideoImage2VideoPipeline(DiffusionPipeline):
                     f"got {prompt_embeds.shape} and {negative_prompt_embeds.shape}."
                 )
 
-    # Copied from diffusers.pipelines.motif_video.pipeline_motif_video.MotifVideoPipeline._normalize_latents
     @staticmethod
+    # Copied from diffusers.pipelines.motif_video.pipeline_motif_video.MotifVideoPipeline._normalize_latents
     def _normalize_latents(
         latents: torch.Tensor, latents_mean: torch.Tensor, latents_std: torch.Tensor
     ) -> torch.Tensor:
@@ -566,8 +566,8 @@ class MotifVideoImage2VideoPipeline(DiffusionPipeline):
         latents = (latents - latents_mean) / latents_std
         return latents
 
-    # Copied from diffusers.pipelines.motif_video.pipeline_motif_video.MotifVideoPipeline._denormalize_latents
     @staticmethod
+    # Copied from diffusers.pipelines.motif_video.pipeline_motif_video.MotifVideoPipeline._denormalize_latents
     def _denormalize_latents(
         latents: torch.Tensor, latents_mean: torch.Tensor, latents_std: torch.Tensor
     ) -> torch.Tensor:
