@@ -1344,11 +1344,11 @@ def _flash_varlen_attention_hub_forward_op(
     _, seq_len_kv, _, _ = key.shape
 
     if attn_mask is not None:
-        attn_mask_2d = _normalize_attn_mask(attn_mask, batch_size, seq_len_kv)
+        attn_mask = _normalize_attn_mask(attn_mask, batch_size, seq_len_kv)
         (_, seqlens_k), (cu_seqlens_q, cu_seqlens_k), (_, max_seqlen_k) = (
-            _prepare_for_flash_attn_or_sage_varlen_with_mask(batch_size, seq_len_q, attn_mask_2d, query.device)
+            _prepare_for_flash_attn_or_sage_varlen_with_mask(batch_size, seq_len_q, attn_mask, query.device)
         )
-        indices_k = attn_mask_2d.flatten().nonzero(as_tuple=False).flatten()
+        indices_k = attn_mask.flatten().nonzero(as_tuple=False).flatten()
         query_packed = query.flatten(0, 1)
         key_packed = key.reshape(-1, *key.shape[2:])[indices_k]
         value_packed = value.reshape(-1, *value.shape[2:])[indices_k]
@@ -2758,11 +2758,11 @@ def _flash_varlen_attention_hub(
 
     if _parallel_config is None:
         if attn_mask is not None:
-            attn_mask_2d = _normalize_attn_mask(attn_mask, batch_size, seq_len_kv)
+            attn_mask = _normalize_attn_mask(attn_mask, batch_size, seq_len_kv)
             (_, _), (cu_seqlens_q, cu_seqlens_k), (max_seqlen_q, max_seqlen_k) = (
-                _prepare_for_flash_attn_or_sage_varlen_with_mask(batch_size, seq_len_q, attn_mask_2d, query.device)
+                _prepare_for_flash_attn_or_sage_varlen_with_mask(batch_size, seq_len_q, attn_mask, query.device)
             )
-            indices_k = attn_mask_2d.flatten().nonzero(as_tuple=False).flatten()
+            indices_k = attn_mask.flatten().nonzero(as_tuple=False).flatten()
             key_packed = key.reshape(-1, *key.shape[2:])[indices_k]
             value_packed = value.reshape(-1, *value.shape[2:])[indices_k]
         else:
