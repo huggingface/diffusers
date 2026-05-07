@@ -882,8 +882,7 @@ class UniPCMultistepScheduler(SchedulerMixin, ConfigMixin):
             x_t = self.solver_p.step(model_output, s0, x).prev_sample
             return x_t
 
-        device = sample.device
-        sigma_t, sigma_s0 = self.sigmas[self.step_index + 1].to(device), self.sigmas[self.step_index].to(device)
+        sigma_t, sigma_s0 = self.sigmas[self.step_index + 1], self.sigmas[self.step_index]
         alpha_t, sigma_t = self._sigma_to_alpha_sigma_t(sigma_t)
         alpha_s0, sigma_s0 = self._sigma_to_alpha_sigma_t(sigma_s0)
 
@@ -891,20 +890,21 @@ class UniPCMultistepScheduler(SchedulerMixin, ConfigMixin):
         lambda_s0 = torch.log(alpha_s0) - torch.log(sigma_s0)
 
         h = lambda_t - lambda_s0
+        device = sample.device
 
         rks = []
         D1s = []
         for i in range(1, order):
             si = self.step_index - i
             mi = model_output_list[-(i + 1)]
-            alpha_si, sigma_si = self._sigma_to_alpha_sigma_t(self.sigmas[si].to(device))
+            alpha_si, sigma_si = self._sigma_to_alpha_sigma_t(self.sigmas[si])
             lambda_si = torch.log(alpha_si) - torch.log(sigma_si)
             rk = (lambda_si - lambda_s0) / h
             rks.append(rk)
             D1s.append((mi - m0) / rk)
 
-        rks.append(torch.ones((), device=device))
-        rks = torch.stack(rks)
+        rks.append(1.0)
+        rks = torch.tensor(rks, device=device)
 
         R = []
         b = []
@@ -929,13 +929,13 @@ class UniPCMultistepScheduler(SchedulerMixin, ConfigMixin):
             h_phi_k = h_phi_k / hh - 1 / factorial_i
 
         R = torch.stack(R)
-        b = torch.stack(b) if len(b) > 0 else torch.tensor(b, device=device)
+        b = torch.tensor(b, device=device)
 
         if len(D1s) > 0:
             D1s = torch.stack(D1s, dim=1)  # (B, K)
             # for order 2, we use a simplified version
             if order == 2:
-                rhos_p = torch.ones(1, dtype=x.dtype, device=device) * 0.5
+                rhos_p = torch.tensor([0.5], dtype=x.dtype, device=device)
             else:
                 rhos_p = torch.linalg.solve(R[:-1, :-1], b[:-1]).to(device).to(x.dtype)
         else:
@@ -1017,8 +1017,7 @@ class UniPCMultistepScheduler(SchedulerMixin, ConfigMixin):
         x_t = this_sample
         model_t = this_model_output
 
-        device = this_sample.device
-        sigma_t, sigma_s0 = self.sigmas[self.step_index].to(device), self.sigmas[self.step_index - 1].to(device)
+        sigma_t, sigma_s0 = self.sigmas[self.step_index], self.sigmas[self.step_index - 1]
         alpha_t, sigma_t = self._sigma_to_alpha_sigma_t(sigma_t)
         alpha_s0, sigma_s0 = self._sigma_to_alpha_sigma_t(sigma_s0)
 
@@ -1026,20 +1025,21 @@ class UniPCMultistepScheduler(SchedulerMixin, ConfigMixin):
         lambda_s0 = torch.log(alpha_s0) - torch.log(sigma_s0)
 
         h = lambda_t - lambda_s0
+        device = this_sample.device
 
         rks = []
         D1s = []
         for i in range(1, order):
             si = self.step_index - (i + 1)
             mi = model_output_list[-(i + 1)]
-            alpha_si, sigma_si = self._sigma_to_alpha_sigma_t(self.sigmas[si].to(device))
+            alpha_si, sigma_si = self._sigma_to_alpha_sigma_t(self.sigmas[si])
             lambda_si = torch.log(alpha_si) - torch.log(sigma_si)
             rk = (lambda_si - lambda_s0) / h
             rks.append(rk)
             D1s.append((mi - m0) / rk)
 
-        rks.append(torch.ones((), device=device))
-        rks = torch.stack(rks)
+        rks.append(1.0)
+        rks = torch.tensor(rks, device=device)
 
         R = []
         b = []
@@ -1064,7 +1064,7 @@ class UniPCMultistepScheduler(SchedulerMixin, ConfigMixin):
             h_phi_k = h_phi_k / hh - 1 / factorial_i
 
         R = torch.stack(R)
-        b = torch.stack(b) if len(b) > 0 else torch.tensor(b, device=device)
+        b = torch.tensor(b, device=device)
 
         if len(D1s) > 0:
             D1s = torch.stack(D1s, dim=1)
@@ -1073,7 +1073,7 @@ class UniPCMultistepScheduler(SchedulerMixin, ConfigMixin):
 
         # for order 1, we use a simplified version
         if order == 1:
-            rhos_c = torch.ones(1, dtype=x.dtype, device=device) * 0.5
+            rhos_c = torch.tensor([0.5], dtype=x.dtype, device=device)
         else:
             rhos_c = torch.linalg.solve(R, b).to(device).to(x.dtype)
 

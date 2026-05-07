@@ -17,7 +17,7 @@ import torch
 import torch.nn as nn
 
 from ...configuration_utils import ConfigMixin, register_to_config
-from ...loaders import FromOriginalModelMixin
+from ...loaders import FromOriginalModelMixin, PeftAdapterMixin
 from ...utils import is_torchvision_available
 from ..attention import FeedForward
 from ..attention_dispatch import dispatch_attention_fn
@@ -74,8 +74,8 @@ class CosmosEmbedding(nn.Module):
         self.t_embedder = CosmosTimestepEmbedding(embedding_dim, condition_dim)
         self.norm = RMSNorm(embedding_dim, eps=1e-6, elementwise_affine=True)
 
-    def forward(self, hidden_states: torch.Tensor, timestep: torch.LongTensor) -> torch.Tensor:
-        timesteps_proj = self.time_proj(timestep).type_as(hidden_states)
+    def forward(self, hidden_states: torch.Tensor, timestep: torch.Tensor) -> torch.Tensor:
+        timesteps_proj = self.time_proj(timestep.float())
         temb = self.t_embedder(timesteps_proj)
         embedded_timestep = self.norm(timesteps_proj)
         return temb, embedded_timestep
@@ -102,6 +102,7 @@ class CosmosAdaLayerNorm(nn.Module):
             embedded_timestep = embedded_timestep + temb[..., : 2 * self.embedding_dim]
 
         shift, scale = embedded_timestep.chunk(2, dim=-1)
+
         hidden_states = self.norm(hidden_states)
 
         if embedded_timestep.ndim == 2:
@@ -131,14 +132,16 @@ class CosmosAdaLayerNormZero(nn.Module):
         embedded_timestep: torch.Tensor,
         temb: torch.Tensor | None = None,
     ) -> torch.Tensor:
-        embedded_timestep = self.activation(embedded_timestep)
+        original_dtype = hidden_states.dtype
+        embedded_timestep = self.activation(embedded_timestep.float())
         embedded_timestep = self.linear_1(embedded_timestep)
         embedded_timestep = self.linear_2(embedded_timestep)
-
         if temb is not None:
-            embedded_timestep = embedded_timestep + temb
-
+            embedded_timestep = embedded_timestep + temb.float()
         shift, scale, gate = embedded_timestep.chunk(3, dim=-1)
+        shift = shift.to(original_dtype)
+        scale = scale.to(original_dtype)
+        gate = gate.to(original_dtype)
         hidden_states = self.norm(hidden_states)
 
         if embedded_timestep.ndim == 2:
@@ -181,8 +184,11 @@ class CosmosAttnProcessor2_0:
         if image_rotary_emb is not None:
             from ..embeddings import apply_rotary_emb
 
-            query = apply_rotary_emb(query, image_rotary_emb, use_real=True, use_real_unbind_dim=-2)
-            key = apply_rotary_emb(key, image_rotary_emb, use_real=True, use_real_unbind_dim=-2)
+            original_dtype = query.dtype
+            query = apply_rotary_emb(query.to(torch.float32), image_rotary_emb, use_real=True, use_real_unbind_dim=-2)
+            key = apply_rotary_emb(key.to(torch.float32), image_rotary_emb, use_real=True, use_real_unbind_dim=-2)
+            query = query.to(original_dtype)
+            key = key.to(original_dtype)
 
         # 4. Prepare for GQA
         if torch.onnx.is_in_onnx_export():
@@ -248,8 +254,11 @@ class CosmosAttnProcessor2_5:
         if image_rotary_emb is not None:
             from ..embeddings import apply_rotary_emb
 
-            query = apply_rotary_emb(query, image_rotary_emb, use_real=True, use_real_unbind_dim=-2)
-            key = apply_rotary_emb(key, image_rotary_emb, use_real=True, use_real_unbind_dim=-2)
+            original_dtype = query.dtype
+            query = apply_rotary_emb(query.to(torch.float32), image_rotary_emb, use_real=True, use_real_unbind_dim=-2)
+            key = apply_rotary_emb(key.to(torch.float32), image_rotary_emb, use_real=True, use_real_unbind_dim=-2)
+            query = query.to(original_dtype)
+            key = key.to(original_dtype)
 
         if torch.onnx.is_in_onnx_export():
             query_idx = torch.tensor(query.size(3), device=query.device)
@@ -551,7 +560,7 @@ class CosmosLearnablePositionalEmbed(nn.Module):
         return (emb / norm).type_as(hidden_states)
 
 
-class CosmosTransformer3DModel(ModelMixin, ConfigMixin, FromOriginalModelMixin):
+class CosmosTransformer3DModel(ModelMixin, ConfigMixin, FromOriginalModelMixin, PeftAdapterMixin):
     r"""
     A Transformer model for video-like data used in [Cosmos](https://github.com/NVIDIA/Cosmos).
 
@@ -599,7 +608,7 @@ class CosmosTransformer3DModel(ModelMixin, ConfigMixin, FromOriginalModelMixin):
     _supports_gradient_checkpointing = True
     _skip_layerwise_casting_patterns = ["patch_embed", "final_layer", "norm"]
     _no_split_modules = ["CosmosTransformerBlock"]
-    _keep_in_fp32_modules = ["learnable_pos_embed"]
+    _keep_in_fp32_modules = ["learnable_pos_embed", "time_embed", "norm1", "norm2", "norm3", "norm_out", "proj_out"]
 
     @register_to_config
     def __init__(
@@ -797,7 +806,7 @@ class CosmosTransformer3DModel(ModelMixin, ConfigMixin, FromOriginalModelMixin):
                 )
 
         # 8. Output norm & projection & unpatchify
-        hidden_states = self.norm_out(hidden_states, embedded_timestep, temb)
+        hidden_states = self.norm_out(hidden_states.float(), embedded_timestep, temb)
         hidden_states = self.proj_out(hidden_states)
         hidden_states = hidden_states.unflatten(2, (p_h, p_w, p_t, -1))
         hidden_states = hidden_states.unflatten(1, (post_patch_num_frames, post_patch_height, post_patch_width))
