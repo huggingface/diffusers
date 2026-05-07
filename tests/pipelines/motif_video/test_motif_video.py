@@ -76,11 +76,8 @@ class MotifVideoPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             max_position_embeddings=128,
             head_dim=16,
             num_key_value_heads=2,
+            dropout_rate=0.1,
         )
-        text_config.dropout_rate = 0.0
-        text_config.layer_norm_epsilon = 1e-6
-        text_config.dense_act_fn = "gelu"
-
         encoder_config = T5Gemma2EncoderConfig(text_config=text_config)
         text_encoder = T5Gemma2Encoder(encoder_config)
         tokenizer = AutoTokenizer.from_pretrained("hf-internal-testing/tiny-random-t5")
