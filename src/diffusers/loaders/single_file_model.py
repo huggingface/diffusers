@@ -21,7 +21,11 @@ from huggingface_hub.utils import validate_hf_hub_args
 from typing_extensions import Self
 
 from .. import __version__
-from ..models.model_loading_utils import _caching_allocator_warmup, _determine_device_map, _expand_device_map
+from ..models.model_loading_utils import (
+    _caching_allocator_warmup,
+    _determine_device_map,
+    _expand_device_map,
+)
 from ..quantizers import DiffusersAutoQuantizer
 from ..utils import deprecate, is_accelerate_available, is_torch_version, logging
 from ..utils.torch_utils import empty_device_cache
@@ -194,6 +198,10 @@ SINGLE_FILE_LOADABLE_CLASSES = {
         "checkpoint_mapping_fn": convert_ltx2_audio_vae_to_diffusers,
         "default_subfolder": "audio_vae",
     },
+    "MotifVideoTransformer3DModel": {
+        "checkpoint_mapping_fn": lambda checkpoint, **kwargs: checkpoint,
+        "default_subfolder": "transformer",
+    },
 }
 
 
@@ -336,7 +344,11 @@ class FromOriginalModelMixin:
         disable_mmap = kwargs.pop("disable_mmap", False)
         device_map = kwargs.pop("device_map", None)
 
-        user_agent = {"diffusers": __version__, "file_type": "single_file", "framework": "pytorch"}
+        user_agent = {
+            "diffusers": __version__,
+            "file_type": "single_file",
+            "framework": "pytorch",
+        }
         # In order to ensure popular quantization methods are supported. Can be disable with `disable_telemetry`
         if quantization_config is not None:
             user_agent["quant"] = quantization_config.quant_method.value
@@ -393,7 +405,9 @@ class FromOriginalModelMixin:
 
             config_mapping_kwargs = _get_mapping_function_kwargs(config_mapping_fn, **kwargs)
             diffusers_model_config = config_mapping_fn(
-                original_config=original_config, checkpoint=checkpoint, **config_mapping_kwargs
+                original_config=original_config,
+                checkpoint=checkpoint,
+                **config_mapping_kwargs,
             )
         else:
             if config is not None:
@@ -465,7 +479,9 @@ class FromOriginalModelMixin:
 
         if _should_convert_state_dict_to_diffusers(model_state_dict, checkpoint):
             diffusers_format_checkpoint = checkpoint_mapping_fn(
-                config=diffusers_model_config, checkpoint=checkpoint, **checkpoint_mapping_kwargs
+                config=diffusers_model_config,
+                checkpoint=checkpoint,
+                **checkpoint_mapping_kwargs,
             )
         else:
             diffusers_format_checkpoint = checkpoint
