@@ -1,0 +1,15 @@
+pipeline_class: QwenImageEditPipeline
+module: diffusers.pipelines.qwenimage.pipeline_qwenimage_edit
+
+params_grid:
+  - name: "square_50steps_single"
+    width: 1024
+    height: 1024
+    num_inference_steps: 50
+    true_cfg_scale: 4.0
+    parallel: "single"
+    image: ".github/ci_runners/test_data/sample_input.png"
+
+prompt: "Transform this image into a watercolor painting style."
+negative_prompt: "blurry, low quality, distorted."
+reference_config: "square_50steps_single"

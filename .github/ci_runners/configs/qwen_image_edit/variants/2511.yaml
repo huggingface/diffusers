@@ -1,0 +1,4 @@
+model_id: Qwen/Qwen-Image-Edit-2511
+weight_path: /home/weights/Qwen-Image-Edit-2511
+backend: modelscope
+extra_params: {}

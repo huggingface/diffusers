@@ -1,0 +1,4 @@
+model_id: Wan-AI/Wan2.1-T2V-14B-Diffusers
+weight_path: /home/weights/Wan2.1-T2V-14B-Diffusers
+backend: modelscope
+extra_params: {}

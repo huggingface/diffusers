@@ -1,0 +1,43 @@
+name: Model Pipeline CI
+
+on:
+  schedule:
+    - cron: "0 0 1,15 * *"
+  workflow_dispatch:
+
+env:
+  DIFFUSERS_IS_CI: yes
+  PYTORCH_NPU_ALLOC_CONF: expandable_segments:True
+
+jobs:
+  run_pipelines:
+    runs-on: [self-hosted, diffusers_ci]
+    steps:
+      - name: Run all pipelines
+        run: |
+          cd /home/m30063890/diffusers
+          git pull origin main
+          python .github/ci_runners/run_pipeline.py \
+            --configs .github/ci_runners/configs \
+            --output /tmp/artifacts/run-${GITHUB_RUN_ID}
+
+      - name: Generate report
+        if: always()
+        run: |
+          cd /home/m30063890/diffusers
+          python .github/ci_runners/report.py --output /tmp/artifacts/run-${GITHUB_RUN_ID}
+
+      - name: Create issues for failures
+        if: failure()
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          cd /home/m30063890/diffusers
+          python .github/ci_runners/issue_bot.py --report /tmp/artifacts/run-${GITHUB_RUN_ID}
+
+      - name: Upload artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ci-run-${GITHUB_RUN_ID}
+          path: /tmp/artifacts/run-${GITHUB_RUN_ID}/
