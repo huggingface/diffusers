@@ -322,16 +322,8 @@ class MotifVideoPipeline(DiffusionPipeline):
         prompt_attention_mask = prompt_attention_mask.view(batch_size, -1)
         prompt_attention_mask = prompt_attention_mask.repeat_interleave(num_videos_per_prompt, dim=0)
 
-        # Compute negative embeddings if guider is enabled and has multiple conditions
-        negative_prompt_embeds = None
-        negative_prompt_attention_mask = None
-
-        if (
-            self.guider is not None
-            and self.guider._enabled
-            and self.guider.num_conditions > 1
-            and negative_prompt is not None
-        ):
+        # Compute negative embeddings if needed
+        if negative_prompt_embeds is None and negative_prompt is not None:
             # Prepare negative_prompt to match batch_size
             if negative_prompt is None:
                 negative_prompt = [""] * batch_size
@@ -340,15 +332,14 @@ class MotifVideoPipeline(DiffusionPipeline):
             else:
                 negative_prompt = list(negative_prompt)
 
-            if negative_prompt_embeds is None:
-                negative_prompt_embeds, negative_prompt_attention_mask = self._get_prompt_embeds(
-                    text_encoder=self.text_encoder,
-                    tokenizer=self.tokenizer,
-                    prompt=negative_prompt,
-                    max_sequence_length=max_sequence_length,
-                    device=device,
-                    dtype=dtype,
-                )
+            negative_prompt_embeds, negative_prompt_attention_mask = self._get_prompt_embeds(
+                text_encoder=self.text_encoder,
+                tokenizer=self.tokenizer,
+                prompt=negative_prompt,
+                max_sequence_length=max_sequence_length,
+                device=device,
+                dtype=dtype,
+            )
 
             # duplicate text embeddings for each generation per prompt, using mps friendly method
             negative_prompt_embeds = negative_prompt_embeds.repeat(1, num_videos_per_prompt, 1)
@@ -617,6 +608,15 @@ class MotifVideoPipeline(DiffusionPipeline):
         device = self._execution_device
 
         # 3. Prepare text embeddings
+        # Ensure negative prompt is provided for multi-condition guiders
+        if (
+            self.guider is not None
+            and self.guider.num_conditions > 1
+            and negative_prompt_embeds is None
+            and negative_prompt is None
+        ):
+            negative_prompt = ""
+
         prompt_embeds, negative_prompt_embeds, prompt_attention_mask, negative_prompt_attention_mask = (
             self.encode_prompt(
                 prompt=prompt,
@@ -711,13 +711,19 @@ class MotifVideoPipeline(DiffusionPipeline):
                 timestep = t.expand(latents.shape[0])
 
                 # Guider: collect model inputs
-                guider_inputs = {
-                    "encoder_hidden_states": (prompt_embeds, negative_prompt_embeds),
-                    "encoder_attention_mask": (
-                        prompt_attention_mask,
-                        negative_prompt_attention_mask,
-                    ),
-                }
+                if self.guider is not None and self.guider.num_conditions == 1:
+                    guider_inputs = {
+                        "encoder_hidden_states": (prompt_embeds,),
+                        "encoder_attention_mask": (prompt_attention_mask,),
+                    }
+                else:
+                    guider_inputs = {
+                        "encoder_hidden_states": (prompt_embeds, negative_prompt_embeds),
+                        "encoder_attention_mask": (
+                            prompt_attention_mask,
+                            negative_prompt_attention_mask,
+                        ),
+                    }
 
                 self.guider.set_state(step=i, num_inference_steps=num_inference_steps, timestep=t)
                 guider_state = self.guider.prepare_inputs(guider_inputs)

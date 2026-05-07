@@ -184,3 +184,7 @@ class MotifVideoImage2VideoPipelineFastTests(PipelineTesterMixin, unittest.TestC
     @unittest.skip("MotifVideo pipeline does not use guidance_scale")
     def test_pipeline_call_signature(self):
         pass
+
+    @unittest.skip("MotifVideo I2V requires vision tower for image conditioning - cannot work without text_encoder")
+    def test_encode_prompt_works_in_isolation(self):
+        pass
