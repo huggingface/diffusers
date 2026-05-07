@@ -230,6 +230,7 @@ _flash_attn_3_available, _flash_attn_3_version = _is_package_available("flash_at
 _aiter_available, _aiter_version = _is_package_available("aiter", get_dist_name=True)
 _kornia_available, _kornia_version = _is_package_available("kornia")
 _nvidia_modelopt_available, _nvidia_modelopt_version = _is_package_available("modelopt", get_dist_name=True)
+_auto_round_available, _auto_round_version = _is_package_available("auto_round")
 _flashpack_available, _flashpack_version = _is_package_available("flashpack")
 _av_available, _av_version = _is_package_available("av")
 
@@ -376,6 +377,10 @@ def is_optimum_quanto_available():
 
 def is_nvidia_modelopt_available():
     return _nvidia_modelopt_available
+
+
+def is_auto_round_available():
+    return _auto_round_available
 
 
 def is_timm_available():

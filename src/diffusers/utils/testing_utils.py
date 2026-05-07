@@ -33,6 +33,7 @@ from .deprecation_utils import deprecate
 from .import_utils import (
     BACKENDS_MAPPING,
     is_accelerate_available,
+    is_auto_round_available,
     is_bitsandbytes_available,
     is_compel_available,
     is_flax_available,
@@ -649,6 +650,19 @@ def require_modelopt_version_greater_or_equal(modelopt_version):
         ) >= version.parse(modelopt_version)
         return unittest.skipUnless(
             correct_nvidia_modelopt_version, f"Test requires modelopt with version greater than {modelopt_version}."
+        )(test_case)
+
+    return decorator
+
+
+def require_auto_round_version_greater_or_equal(auto_round_version):
+    def decorator(test_case):
+        correct_auto_round_version = is_auto_round_available() and version.parse(
+            version.parse(importlib.metadata.version("auto_round")).base_version
+        ) >= version.parse(auto_round_version)
+        return unittest.skipUnless(
+            correct_auto_round_version,
+            f"Test requires auto-round with version greater than {auto_round_version}.",
         )(test_case)
 
     return decorator
