@@ -299,7 +299,6 @@ class IFSuperResolutionPipeline(DiffusionPipeline, StableDiffusionLoraLoaderMixi
 
         return caption.strip()
 
-    @torch.no_grad()
     # Copied from diffusers.pipelines.deepfloyd_if.pipeline_if.IFPipeline.encode_prompt
     def encode_prompt(
         self,
