@@ -502,7 +502,6 @@ class JoyImageEditPipeline(DiffusionPipeline):
     def prepare_latents(
         self,
         batch_size: int,
-        num_items: int,
         num_channels_latents: int,
         height: int,
         width: int,
@@ -511,19 +510,14 @@ class JoyImageEditPipeline(DiffusionPipeline):
         device: torch.device,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]],
         latents: Optional[torch.Tensor] = None,
-        reference_images: Optional[List[Image.Image]] = None,
+        image: Optional[List[Image.Image]] = None,
         enable_denormalization: bool = True,
-    ) -> torch.Tensor:
+    ) -> tuple[torch.Tensor, Optional[torch.Tensor]]:
         """
         Prepare the initial noisy latent tensor for the denoising loop.
 
-        When ``reference_images`` is provided the first (num_items - 1) slots are filled with VAE-encoded reference
-        image latents; the last slot is random noise. When ``latents`` is provided it is moved to ``device`` without
-        modification. Otherwise pure random noise is returned.
-
         Args:
             batch_size: Number of samples in the batch.
-            num_items: Number of image slots (reference + target).
             num_channels_latents: Latent channel dimension from the transformer config.
             height: Spatial height in pixels.
             width: Spatial width in pixels.
@@ -531,19 +525,20 @@ class JoyImageEditPipeline(DiffusionPipeline):
             dtype: Floating-point dtype for the latent tensor.
             device: Target device.
             generator: RNG generator(s) for reproducible sampling.
-            latents: Optional pre-allocated latent tensor.
-            reference_images: Optional list of PIL images to encode as conditioning.
+            latents: Optional user-provided initial noise for the target slot. When ``None`` random noise is sampled.
+            image: Optional list of PIL reference images to VAE-encode as conditioning slots.
             enable_denormalization: Whether to normalise encoded reference latents.
 
         Returns:
-            Latent tensor of shape (B, num_items, C, T, H', W').
+            Tuple of ``(latents, image_latents)`` where ``latents`` has shape ``(B, 1, C, T, H', W')`` and
+            ``image_latents`` has shape ``(B, N_ref, C, T, H', W')`` or ``None`` when no reference images are given.
 
         Raises:
             ValueError: If ``generator`` is a list whose length differs from ``batch_size``.
         """
-        shape = (
+        noise_shape = (
             batch_size,
-            num_items,
+            1,
             num_channels_latents,
             (video_length - 1) // self.vae_scale_factor_temporal + 1,
             int(height) // self.vae_scale_factor_spatial,
@@ -553,35 +548,28 @@ class JoyImageEditPipeline(DiffusionPipeline):
             raise ValueError("Generator list length must match batch size.")
 
         if latents is None:
-            if reference_images is not None:
-                if batch_size > len(reference_images) and batch_size % len(reference_images) == 0:
-                    reference_images = reference_images * (batch_size // len(reference_images))
-                elif batch_size > len(reference_images):
-                    raise ValueError(
-                        f"Cannot duplicate `image` of batch size {len(reference_images)} to {batch_size} text prompts."
-                    )
-                # Encode reference images and concatenate with a noise slot.
-                ref_img = [torch.from_numpy(np.array(x.convert("RGB"))) for x in reference_images]
-                ref_img = torch.stack(ref_img).to(device=device, dtype=dtype)
-                ref_img = ref_img / 127.5 - 1.0
-                ref_img = ref_img.permute(0, 3, 1, 2).unsqueeze(2)
-                ref_vae = self.vae.encode(ref_img).latent_dist.sample()
-                if enable_denormalization:
-                    ref_vae = self.normalize_latents(ref_vae)
-                ref_vae = ref_vae.view(shape[0], num_items - 1, *ref_vae.shape[1:])
-                noise = randn_tensor(
-                    (shape[0], 1, *shape[2:]),
-                    generator=generator,
-                    device=device,
-                    dtype=dtype,
-                )
-                latents = torch.cat([ref_vae, noise], dim=1)
-            else:
-                latents = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
+            latents = randn_tensor(noise_shape, generator=generator, device=device, dtype=dtype)
         else:
-            latents = latents.to(device)
+            latents = latents.to(device=device, dtype=dtype)
 
-        return latents
+        image_latents = None
+        if image is not None:
+            if batch_size > len(image) and batch_size % len(image) == 0:
+                image = image * (batch_size // len(image))
+            elif batch_size > len(image):
+                raise ValueError(
+                    f"Cannot duplicate `image` of batch size {len(image)} to {batch_size} text prompts."
+                )
+            ref_img = [torch.from_numpy(np.array(x.convert("RGB"))) for x in image]
+            ref_img = torch.stack(ref_img).to(device=device, dtype=dtype)
+            ref_img = ref_img / 127.5 - 1.0
+            ref_img = ref_img.permute(0, 3, 1, 2).unsqueeze(2)
+            image_latents = self.vae.encode(ref_img).latent_dist.sample()
+            if enable_denormalization:
+                image_latents = self.normalize_latents(image_latents)
+            image_latents = image_latents.unsqueeze(1)  # (B, 1, C, T, H', W')
+
+        return latents, image_latents
 
     # ------------------------------------------------------------------
     # Pipeline properties
@@ -673,7 +661,8 @@ class JoyImageEditPipeline(DiffusionPipeline):
             generator (`torch.Generator` or `List[torch.Generator]`, *optional*):
                 RNG generator(s) for deterministic sampling.
             latents (`torch.Tensor`, *optional*):
-                Pre-generated noisy latents. Sampled from a Gaussian distribution when not provided.
+                Pre-generated noisy latents for the target slot. Sampled from a Gaussian distribution when not
+                provided. Can be used to seed generation from a specific starting noise tensor.
             prompt_embeds (`torch.Tensor`, *optional*):
                 Pre-computed prompt embeddings. When provided ``prompt`` can be omitted.
             prompt_embeds_mask (`torch.Tensor`, *optional*):
@@ -792,9 +781,8 @@ class JoyImageEditPipeline(DiffusionPipeline):
         )
 
         num_channels_latents = self.transformer.config.in_channels
-        latents = self.prepare_latents(
+        noise_latents, image_latents = self.prepare_latents(
             batch_size * num_images_per_prompt,
-            num_items,
             num_channels_latents,
             height,
             width,
@@ -803,7 +791,7 @@ class JoyImageEditPipeline(DiffusionPipeline):
             device,
             generator,
             latents,
-            reference_images=(
+            image=(
                 (processed_image if isinstance(processed_image, list) else [processed_image])
                 if processed_image is not None
                 else None
@@ -811,12 +799,13 @@ class JoyImageEditPipeline(DiffusionPipeline):
             enable_denormalization=enable_denormalization,
         )
 
+        if image_latents is not None:
+            latents = torch.cat([image_latents, noise_latents], dim=1)
+        else:
+            latents = noise_latents
+
         num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
         self._num_timesteps = len(timesteps)
-
-        # Cache reference latents to restore them at each denoising step.
-        if num_items > 1:
-            ref_latents = latents[:, : (num_items - 1)].clone()
 
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
@@ -824,8 +813,8 @@ class JoyImageEditPipeline(DiffusionPipeline):
                     continue
 
                 # Restore reference latents so they are never overwritten by the scheduler.
-                if num_items > 1:
-                    latents[:, : (num_items - 1)] = ref_latents.clone()
+                if image_latents is not None:
+                    latents[:, : (num_items - 1)] = image_latents
 
                 latent_model_input = latents
                 t_expand = t.repeat(latent_model_input.shape[0])
