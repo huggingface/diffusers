@@ -557,9 +557,7 @@ class JoyImageEditPipeline(DiffusionPipeline):
             if batch_size > len(image) and batch_size % len(image) == 0:
                 image = image * (batch_size // len(image))
             elif batch_size > len(image):
-                raise ValueError(
-                    f"Cannot duplicate `image` of batch size {len(image)} to {batch_size} text prompts."
-                )
+                raise ValueError(f"Cannot duplicate `image` of batch size {len(image)} to {batch_size} text prompts.")
             ref_img = [torch.from_numpy(np.array(x.convert("RGB"))) for x in image]
             ref_img = torch.stack(ref_img).to(device=device, dtype=dtype)
             ref_img = ref_img / 127.5 - 1.0
