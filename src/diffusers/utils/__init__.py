@@ -113,6 +113,7 @@ from .import_utils import (
     is_timm_available,
     is_torch_available,
     is_torch_mlu_available,
+    is_torch_neuronx_available,
     is_torch_npu_available,
     is_torch_version,
     is_torch_xla_available,
