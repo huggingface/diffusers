@@ -374,6 +374,8 @@ class ContextParallelTesterMixin:
 @is_context_parallel
 @require_torch_multi_accelerator
 class ContextParallelAttentionBackendsTesterMixin:
+    unsupported_attn_backends: list[str] = []
+
     @pytest.mark.parametrize("cp_type", ["ulysses_degree", "ring_degree"])
     @pytest.mark.parametrize(
         "attention_backend",
@@ -381,6 +383,10 @@ class ContextParallelAttentionBackendsTesterMixin:
             "native",
             pytest.param(
                 "flash_hub",
+                marks=pytest.mark.skipif(not is_kernels_available(), reason="`kernels` is not available."),
+            ),
+            pytest.param(
+                "flash_varlen_hub",
                 marks=pytest.mark.skipif(not is_kernels_available(), reason="`kernels` is not available."),
             ),
             pytest.param(
@@ -398,9 +404,14 @@ class ContextParallelAttentionBackendsTesterMixin:
         if getattr(self.model_class, "_cp_plan", None) is None:
             pytest.skip("Model does not have a _cp_plan defined for context parallel inference.")
 
+        if attention_backend in self.unsupported_attn_backends:
+            pytest.skip(f"{attention_backend} is not supported for this model.")
+
         if cp_type == "ring_degree":
             if attention_backend == AttentionBackendName.NATIVE:
                 pytest.skip("Skipping test because ring isn't supported with native attention backend.")
+            elif attention_backend in ("flash_varlen_hub"):
+                pytest.skip("`ring_degree` is not yet supported for varlen attention hub kernels.")
 
         if ulysses_anything and "ulysses" not in cp_type:
             pytest.skip("Skipping test as ulysses anything needs the ulysses degree set.")

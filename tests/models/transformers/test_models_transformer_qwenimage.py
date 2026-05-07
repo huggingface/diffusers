@@ -25,6 +25,7 @@ from ..testing_utils import (
     AttentionTesterMixin,
     BaseModelTesterConfig,
     BitsAndBytesTesterMixin,
+    ContextParallelAttentionBackendsTesterMixin,
     ContextParallelTesterMixin,
     LoraHotSwappingForModelTesterMixin,
     LoraTesterMixin,
@@ -251,6 +252,16 @@ class TestQwenImageTransformerAttention(QwenImageTransformerTesterConfig, Attent
 
 class TestQwenImageTransformerContextParallel(QwenImageTransformerTesterConfig, ContextParallelTesterMixin):
     """Context Parallel inference tests for QwenImage Transformer."""
+
+
+class TestQwenImageTransformerContextParallelAttnBackends(
+    QwenImageTransformerTesterConfig, ContextParallelAttentionBackendsTesterMixin
+):
+    """Context Parallel inference x attention backends tests for QwenImage Transformer"""
+
+    # QwenImage always passes a joint attention mask (text + image), which flash_hub and
+    # _flash_3_hub do not support.
+    unsupported_attn_backends = ["flash_hub", "_flash_3_hub"]
 
 
 class TestQwenImageTransformerLoRA(QwenImageTransformerTesterConfig, LoraTesterMixin):
