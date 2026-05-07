@@ -1,4 +1,4 @@
-__version__ = "0.38.0.dev0"
+__version__ = "0.39.0.dev0"
 
 from typing import TYPE_CHECKING
 
@@ -473,6 +473,8 @@ else:
             "QwenImageLayeredAutoBlocks",
             "QwenImageLayeredModularPipeline",
             "QwenImageModularPipeline",
+            "StableDiffusion3AutoBlocks",
+            "StableDiffusion3ModularPipeline",
             "StableDiffusionXLAutoBlocks",
             "StableDiffusionXLModularPipeline",
             "Wan22Blocks",
@@ -1269,6 +1271,8 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             QwenImageLayeredAutoBlocks,
             QwenImageLayeredModularPipeline,
             QwenImageModularPipeline,
+            StableDiffusion3AutoBlocks,
+            StableDiffusion3ModularPipeline,
             StableDiffusionXLAutoBlocks,
             StableDiffusionXLModularPipeline,
             Wan22Blocks,
