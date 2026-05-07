@@ -774,9 +774,11 @@ class AutoRoundConfig(QuantizationConfigMixin):
         backend (`str`, *optional*, defaults to `"auto"`):
             The backend kernel to use for quantized inference. Available backends:
             - `"auto"`: Automatically select the best available backend for the current device.
-            - `"auto_round:torch_zp"`: Pure PyTorch kernel — works on CPU and CUDA.
-            - `"auto_round:tritonv2_zp"`: Triton-based kernel — requires CUDA.
-            - `"gptqmodel:marlin_zp"`: Marlin kernel via GPTQModel — requires CUDA and
+            - `"torch"`: Pure PyTorch kernel — works on CPU and CUDA.
+            - `"tritonv2"`: Triton-based kernel — requires CUDA.
+            - `"exllamav2"`: Exllamav2 kernel via GPTQModel — requires CUDA and
+              `gptqmodel>=5.8.0`. Offers good CUDA inference performance.
+            - `"marlin"`: Marlin kernel via GPTQModel — requires CUDA and
               `gptqmodel>=5.8.0`. Offers the best CUDA inference performance.
         kwargs (`dict[str, Any]`, *optional*):
             Additional keyword arguments forwarded to AutoRound (e.g. `iters`, `seqlen`,
@@ -795,9 +797,15 @@ class AutoRoundConfig(QuantizationConfigMixin):
         self.bits = bits
         self.group_size = group_size
         self.sym = sym
-        self.backend = backend
+        self.backend = self._validate_backend(backend)
         for k, v in kwargs.items():
             setattr(self, k, v)
+
+    def _validate_backend(self, backend):
+        valid_backends = ["auto","torch","tritonv2","exllamav2","marlin"]
+        if backend not in valid_backends:
+            raise ValueError(f"Invalid backend '{backend}'. Valid options are: {valid_backends}")
+        return backend
 
     def to_dict(self) -> dict:
         """Serialize the config to a JSON-compatible dict.

@@ -140,6 +140,7 @@ class DiffusersAutoQuantizer:
             )
         else:
             warning_msg = ""
+
         if isinstance(quantization_config, dict):
             existing_fields = set(quantization_config.keys())
             quantization_config = cls.from_dict(quantization_config)

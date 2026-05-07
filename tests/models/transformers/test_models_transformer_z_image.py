@@ -21,6 +21,7 @@ import torch
 
 from diffusers import ZImageTransformer2DModel
 
+from ..testing_utils import AutoRoundTesterMixin, AutoRoundCompileTesterMixin
 from ...testing_utils import IS_GITHUB_ACTIONS, torch_device
 from ..test_modeling_common import ModelTesterMixin, TorchCompileTesterMixin
 
@@ -169,3 +170,45 @@ class ZImageTransformerCompileTests(TorchCompileTesterMixin, unittest.TestCase):
     @unittest.skip("Fullgraph is broken")
     def test_compile_on_different_shapes(self):
         super().test_compile_on_different_shapes()
+
+
+class ZImageTransformerTesterConfig:
+    """Configuration class for Z-Image Transformer tests."""
+    @property
+    def model_class(self):
+        return ZImageTransformer2DModel
+
+    @property
+    def pretrained_model_name_or_path(self):
+        return "INCModel/Z-Image-tiny-for-testing"
+
+    @property
+    def quantized_model_name_or_path(self):
+        return "INCModel/Z-Image-tiny-for-testing-W4A16-AutoRound"
+
+    @property
+    def pretrained_model_kwargs(self):
+        return {"subfolder": "transformer"}
+
+    def get_dummy_inputs(self):
+        batch_size = 1
+        in_channels = 16
+        cap_feat_dim = 512
+        height = width = 8
+        frames = 1
+        seq_len = 16
+
+        torch.manual_seed(0)
+        x = [torch.randn((in_channels, frames, height, width)).to(torch_device, dtype=torch.bfloat16) for _ in range(batch_size)]
+        cap_feats = [torch.randn((seq_len, cap_feat_dim)).to(torch_device, dtype=torch.bfloat16) for _ in range(batch_size)]
+        t = torch.tensor([0.5]).to(torch_device, dtype=torch.bfloat16)
+
+        return {"x": x, "cap_feats": cap_feats, "t": t}
+
+
+class TestZImageTransformerAutoRound(ZImageTransformerTesterConfig, AutoRoundTesterMixin):
+    """AutoRound quantization tests for Z-Image Transformer."""
+
+
+class TestZImageTransformerAutoRoundCompile(ZImageTransformerTesterConfig, AutoRoundCompileTesterMixin):
+    """AutoRound quantization + torch.compile tests for Z-Image Transformer."""

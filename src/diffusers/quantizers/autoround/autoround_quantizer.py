@@ -60,7 +60,7 @@ class AutoRoundQuantizer(DiffusersQuantizer):
         if not is_auto_round_available():
             raise ImportError(
                 "Loading an AutoRound quantized model requires the auto-round library "
-                "(`pip install 'auto-round>=0.5'`)"
+                "(`pip install 'auto-round>=0.13.0'`)"
             )
 
     def _process_model_before_weight_loading(

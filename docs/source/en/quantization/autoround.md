@@ -36,7 +36,7 @@ from diffusers import ZImageTransformer2DModel, ZImagePipeline, AutoRoundConfig
 
 model_id = "INCModel/Z-Image-W4A16-AutoRound"
 
-quantization_config = AutoRoundConfig(backend="marlin")
+quantization_config = AutoRoundConfig(backend="auto")
 transformer = ZImageTransformer2DModel.from_pretrained(
     model_id,
     subfolder="transformer",
@@ -61,7 +61,7 @@ image.save("output.png")
 
 ## Backends
 
-AutoRound supports multiple inference backends. The backend controls which kernel handles dequantization during the forward pass. Set the `backend` parameter in [`AutoRoundConfig`] to choose one:
+AutoRound supports multiple inference backends for Weight-only quantized model. The backend controls which kernel handles dequantization during the forward pass. Set the `backend` parameter in [`AutoRoundConfig`] to choose one:
 
 | Backend | Value | Device | Requirements | Notes |
 |---------|-------|--------|--------------|-------|
@@ -92,16 +92,6 @@ config = AutoRoundConfig(backend="torch")
 ```
 
 
-## Quantization configurations
-
-AutoRound focuses on weight-only quantization. The primary configuration is W4A16 (4-bit weights, 16-bit activations), with flexibility in group size and symmetry:
-
-| Configuration | `bits` | `group_size` | `sym` | Description |
-|--------------|--------|-------------|-------|-------------|
-| W4G128 asymmetric | `4` | `128` | `False` | Default. Good balance of accuracy and compression. |
-| W4G128 symmetric | `4` | `128` | `True` | Faster dequantization, small accuracy trade-off. |
-| W4G32 asymmetric | `4` | `32` | `False` | Higher accuracy at the cost of more metadata. |
-
 ## Save and load
 
 <hfoptions id="save-and-load">
@@ -111,6 +101,8 @@ AutoRound focuses on weight-only quantization. The primary configuration is W4A1
 from auto_round import AutoRound
 autoround = AutoRound(
     tiny_z_image_model_path,
+    scheme="W4A16",  # W4G128 symmetric
+    enable_torch_compile=True,
     num_inference_steps=3,
     guidance_scale=7.5,
     dataset="coco2014,
@@ -140,6 +132,26 @@ image.save("output.png")
 
 </hfoption>
 </hfoptions>
+
+
+### Supported Quantization Schemes
+
+AutoRound supports several Schemes:
+
+- **W4A16**(bits:4,group_size:128,sym:True,act_bits:16)
+- **W8A16**(bits:8,group_size:128,sym:True,act_bits:16)
+- **W3A16**(bits:3,group_size:128,sym:True,act_bits:16)
+- **W2A16**(bits:2,group_size:128,sym:True,act_bits:16)
+- **GGUF:Q4_K_M**(all Q*_K,Q*_0,Q*_1 provided by llamacpp are supported)
+- **NVFP4**(Experimental feature, recommend exporting to `llm_compressor` format.data_type nvfp4,act_data_type nvfp4,static_global_scale,group_size 16)
+- **MXFP4**(**Research feature, no real kernel**, Standard MXFP4, data_type mxfp,act_data_type mxfp,bits 4, act_bits 4, group_size 32)
+- **MXINT4**(**Research feature, no real kernel**, Standard MXINT4, data_type mxint,act_data_type mxint,bits 4, act_bits 4, group_size 32)
+- **MXFP4_RCEIL**(**Research feature,no real kernel**, NVIDIA's variant, data_type mxfp,act_data_type mxfp_rceil,bits 4, act_bits 4, group_size 32)
+- **MXFP8**(**Research feature, no real kernel**, data_type mxfp,act_data_type mxfp_rceil,group_size 32)
+- **FPW8A16**(**Research feature, no real kernel**, data_type fp8,group_size 0->per tensor )
+- **FP8_STATIC**(**Research feature, no real kernel**, data_type:fp8,act_data_type:fp8,group_size -1 ->per channel, act_group_size=0->per tensor)
+
+Besides, you could modify the `group_size`, `bits`, `sym` and many other configs you want, though there are maybe no real kernels.
 
 ## Resources
 
