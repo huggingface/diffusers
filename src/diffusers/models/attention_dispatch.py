@@ -2752,6 +2752,9 @@ def _flash_varlen_attention_hub(
     return_lse: bool = False,
     _parallel_config: "ParallelConfig" | None = None,
 ) -> torch.Tensor:
+    if _parallel_config is not None and _parallel_config.context_parallel_config.ring_degree > 1:
+        raise NotImplementedError("`ring_degree > 1` is not yet supported for the FLASH_VARLEN_HUB backend.")
+
     lse = None
     batch_size, seq_len_q, _, _ = query.shape
     _, seq_len_kv, _, _ = key.shape
@@ -2793,8 +2796,6 @@ def _flash_varlen_attention_hub(
             out, lse, *_ = out
         out = out.unflatten(0, (batch_size, -1))
     else:
-        if _parallel_config.context_parallel_config.ring_degree > 1:
-            raise NotImplementedError("`ring_degree > 1` is not yet supported for the FLASH_VARLEN_HUB backend.")
         forward_op = functools.partial(_flash_varlen_attention_hub_forward_op, window_size=window_size)
         out = _templated_context_parallel_attention(
             query,
