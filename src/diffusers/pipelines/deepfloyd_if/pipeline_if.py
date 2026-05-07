@@ -165,7 +165,6 @@ class IFPipeline(DiffusionPipeline, StableDiffusionLoraLoaderMixin):
         )
         self.register_to_config(requires_safety_checker=requires_safety_checker)
 
-    @torch.no_grad()
     def encode_prompt(
         self,
         prompt: str | list[str],
