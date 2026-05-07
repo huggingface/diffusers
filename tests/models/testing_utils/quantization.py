@@ -926,6 +926,7 @@ class TorchAoTesterMixin(TorchAoConfigMixin, QuantizationTesterMixin):
         """Test that device_map='auto' works correctly with quantization."""
         self._test_quantization_device_map(TorchAoConfigMixin.TORCHAO_QUANT_TYPES["int8wo"])
 
+    @pytest.mark.xfail(reason="dequantize is not implemented in torchao")
     def test_torchao_dequantize(self):
         """Test that dequantize() works correctly."""
         self._test_dequantize(TorchAoConfigMixin.TORCHAO_QUANT_TYPES["int8wo"])
