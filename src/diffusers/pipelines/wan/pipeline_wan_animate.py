@@ -384,17 +384,12 @@ class WanAnimatePipeline(DiffusionPipeline, WanLoraLoaderMixin):
         mode=None,
         prev_segment_conditioning_frames=None,
     ):
-        if image is not None and image_embeds is not None:
-            raise ValueError(
-                f"Cannot forward both `image`: {image} and `image_embeds`: {image_embeds}. Please make sure to"
-                " only forward one of the two."
-            )
-        if image is None and image_embeds is None:
-            raise ValueError(
-                "Provide either `image` or `prompt_embeds`. Cannot leave both `image` and `image_embeds` undefined."
-            )
+        if image is None:
+            raise ValueError("`image` must be provided for Wan Animate generation.")
         if image is not None and not isinstance(image, torch.Tensor) and not isinstance(image, PIL.Image.Image):
             raise ValueError(f"`image` has to be of type `torch.Tensor` or `PIL.Image.Image` but is {type(image)}")
+        if image_embeds is not None and (not isinstance(image_embeds, torch.Tensor) or image_embeds.ndim != 3):
+            raise ValueError("`image_embeds` has to be a 3D `torch.Tensor`.")
         if pose_video is None:
             raise ValueError("Provide `pose_video`. Cannot leave `pose_video` undefined.")
         if face_video is None:
@@ -484,6 +479,30 @@ class WanAnimatePipeline(DiffusionPipeline, WanLoraLoaderMixin):
         ).transpose(1, 2)  # [B, C = 1, 4 * T_lat, H_lat, W_lat] --> [B, C = 4, T_lat, H_lat, W_lat]
 
         return mask_lat_size
+
+    def _expand_tensor_to_effective_batch(
+        self,
+        tensor: torch.Tensor,
+        batch_size: int,
+        num_videos_per_prompt: int,
+        tensor_name: str,
+    ) -> torch.Tensor:
+        target_batch_size = batch_size * num_videos_per_prompt
+
+        if tensor.shape[0] == target_batch_size:
+            return tensor
+
+        if tensor.shape[0] == 1:
+            repeat_by = target_batch_size
+        elif tensor.shape[0] == batch_size:
+            repeat_by = num_videos_per_prompt
+        else:
+            raise ValueError(
+                f"`{tensor_name}` batch size must be 1, `batch_size` ({batch_size}), or "
+                f"`batch_size * num_videos_per_prompt` ({target_batch_size}), but got {tensor.shape[0]}."
+            )
+
+        return torch.repeat_interleave(tensor, repeats=repeat_by, dim=0, output_size=tensor.shape[0] * repeat_by)
 
     def prepare_reference_image_latents(
         self,
@@ -776,13 +795,13 @@ class WanAnimatePipeline(DiffusionPipeline, WanLoraLoaderMixin):
         prev_segment_conditioning_frames: int = 1,
         motion_encode_batch_size: int | None = None,
         guidance_scale: float = 1.0,
-        num_videos_per_prompt: int | None = 1,
+        num_videos_per_prompt: int = 1,
         generator: torch.Generator | list[torch.Generator] | None = None,
         latents: torch.Tensor | None = None,
         prompt_embeds: torch.Tensor | None = None,
         negative_prompt_embeds: torch.Tensor | None = None,
         image_embeds: torch.Tensor | None = None,
-        output_type: str | None = "np",
+        output_type: str = "np",
         return_dict: bool = True,
         attention_kwargs: dict[str, Any] | None = None,
         callback_on_step_end: Callable[[int, int, None], PipelineCallback | MultiPipelineCallbacks] | None = None,
@@ -841,10 +860,12 @@ class WanAnimatePipeline(DiffusionPipeline, WanLoraLoaderMixin):
                 the text `prompt`, usually at the expense of lower image quality. By default, CFG is not used in Wan
                 Animate inference.
             num_videos_per_prompt (`int`, *optional*, defaults to 1):
-                The number of images to generate per prompt.
+                The number of videos to generate per prompt. When greater than 1, prompt, image, and conditioning
+                batches are expanded in per-prompt order.
             generator (`torch.Generator` or `list[torch.Generator]`, *optional*):
                 A [`torch.Generator`](https://pytorch.org/docs/stable/generated/torch.Generator.html) to make
-                generation deterministic.
+                generation deterministic. If a list is passed, it must match the effective batch size
+                (`batch_size * num_videos_per_prompt`).
             latents (`torch.Tensor`, *optional*):
                 Pre-generated noisy latents sampled from a Gaussian distribution, to be used as inputs for image
                 generation. Can be used to tweak the same generation with different prompts. If not provided, a latents
@@ -856,10 +877,10 @@ class WanAnimatePipeline(DiffusionPipeline, WanLoraLoaderMixin):
                 Pre-generated text embeddings. Can be used to easily tweak text inputs (prompt weighting). If not
                 provided, text embeddings are generated from the `negative_prompt` input argument.
             image_embeds (`torch.Tensor`, *optional*):
-                Pre-generated image embeddings. Can be used to easily tweak image inputs (weighting). If not provided,
-                image embeddings are generated from the `image` input argument.
+                Pre-generated CLIP image embeddings. If not provided, image embeddings are generated from the `image`
+                input argument. `image` is still required because it is used for VAE reference-image conditioning.
             output_type (`str`, *optional*, defaults to `"np"`):
-                The output format of the generated image. Choose between `PIL.Image` or `np.array`.
+                The output format of the generated video. Choose between `"np"`, `"pt"`, `"pil"`, or `"latent"`.
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`WanPipelineOutput`] instead of a plain tuple.
             attention_kwargs (`dict`, *optional*):
@@ -975,7 +996,9 @@ class WanAnimatePipeline(DiffusionPipeline, WanLoraLoaderMixin):
         # Get CLIP features from the reference image
         if image_embeds is None:
             image_embeds = self.encode_image(image, device)
-        image_embeds = image_embeds.repeat(batch_size * num_videos_per_prompt, 1, 1)
+        image_embeds = self._expand_tensor_to_effective_batch(
+            image_embeds, batch_size, num_videos_per_prompt, "image_embeds"
+        )
         image_embeds = image_embeds.to(transformer_dtype)
 
         # 5. Encode conditioning videos (pose, face)

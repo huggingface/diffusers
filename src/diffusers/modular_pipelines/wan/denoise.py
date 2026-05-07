@@ -27,7 +27,7 @@ from ..modular_pipeline import (
     ModularPipelineBlocks,
     PipelineState,
 )
-from ..modular_pipeline_utils import ComponentSpec, ConfigSpec, InputParam
+from ..modular_pipeline_utils import ComponentSpec, ConfigSpec, InputParam, OutputParam
 from .modular_pipeline import WanModularPipeline
 
 
@@ -54,17 +54,21 @@ class WanLoopBeforeDenoiser(ModularPipelineBlocks):
                 type_hint=torch.Tensor,
                 description="The initial latents to use for the denoising process. Can be generated in prepare_latent step.",
             ),
-            InputParam(
-                "dtype",
-                required=True,
-                type_hint=torch.dtype,
-                description="The dtype of the model inputs. Can be generated in input step.",
-            ),
+        ]
+
+    @property
+    def intermediate_outputs(self) -> list[OutputParam]:
+        return [
+            OutputParam(
+                "latent_model_input",
+                type_hint=torch.Tensor,
+                description="Latents prepared as model hidden states for the denoiser.",
+            )
         ]
 
     @torch.no_grad()
     def __call__(self, components: WanModularPipeline, block_state: BlockState, i: int, t: torch.Tensor):
-        block_state.latent_model_input = block_state.latents.to(block_state.dtype)
+        block_state.latent_model_input = block_state.latents
         return components, block_state
 
 
@@ -94,19 +98,21 @@ class WanImage2VideoLoopBeforeDenoiser(ModularPipelineBlocks):
                 type_hint=torch.Tensor,
                 description="The image condition latents to use for the denoising process. Can be generated in prepare_first_frame_latents/prepare_first_last_frame_latents step.",
             ),
-            InputParam(
-                "dtype",
-                required=True,
-                type_hint=torch.dtype,
-                description="The dtype of the model inputs. Can be generated in input step.",
-            ),
+        ]
+
+    @property
+    def intermediate_outputs(self) -> list[OutputParam]:
+        return [
+            OutputParam(
+                "latent_model_input",
+                type_hint=torch.Tensor,
+                description="Latents and image conditioning prepared as model hidden states for the denoiser.",
+            )
         ]
 
     @torch.no_grad()
     def __call__(self, components: WanModularPipeline, block_state: BlockState, i: int, t: torch.Tensor):
-        block_state.latent_model_input = torch.cat(
-            [block_state.latents, block_state.image_condition_latents], dim=1
-        ).to(block_state.dtype)
+        block_state.latent_model_input = torch.cat([block_state.latents, block_state.image_condition_latents], dim=1)
         return components, block_state
 
 
@@ -165,6 +171,18 @@ class WanLoopDenoiser(ModularPipelineBlocks):
                 type_hint=int,
                 description="The number of inference steps to use for the denoising process. Can be generated in set_timesteps step.",
             ),
+            InputParam(
+                "latent_model_input",
+                required=True,
+                type_hint=torch.Tensor,
+                description="Latents prepared as model hidden states for the denoiser.",
+            ),
+            InputParam(
+                "dtype",
+                required=True,
+                type_hint=torch.dtype,
+                description="The dtype of the model inputs. Can be generated in input step.",
+            ),
         ]
         guider_input_names = []
         for value in self._guider_input_fields.values():
@@ -177,11 +195,22 @@ class WanLoopDenoiser(ModularPipelineBlocks):
             inputs.append(InputParam(name=name, required=True, type_hint=torch.Tensor))
         return inputs
 
+    @property
+    def intermediate_outputs(self) -> list[OutputParam]:
+        return [
+            OutputParam(
+                "noise_pred",
+                type_hint=torch.Tensor,
+                description="The guided noise prediction for the current denoising step.",
+            )
+        ]
+
     @torch.no_grad()
     def __call__(
         self, components: WanModularPipeline, block_state: BlockState, i: int, t: torch.Tensor
     ) -> PipelineState:
         components.guider.set_state(step=i, num_inference_steps=block_state.num_inference_steps, timestep=t)
+        dtype = block_state.dtype
 
         # The guider splits model inputs into separate batches for conditional/unconditional predictions.
         # For CFG with guider_inputs = {"encoder_hidden_states": (prompt_embeds, negative_prompt_embeds)}:
@@ -198,7 +227,7 @@ class WanLoopDenoiser(ModularPipelineBlocks):
             components.guider.prepare_models(components.transformer)
             cond_kwargs = guider_state_batch.as_dict()
             cond_kwargs = {
-                k: v.to(block_state.dtype) if isinstance(v, torch.Tensor) else v
+                k: v.to(dtype) if isinstance(v, torch.Tensor) else v
                 for k, v in cond_kwargs.items()
                 if k in self._guider_input_fields.keys()
             }
@@ -206,8 +235,8 @@ class WanLoopDenoiser(ModularPipelineBlocks):
             # Predict the noise residual
             # store the noise_pred in guider_state_batch so that we can apply guidance across all batches
             guider_state_batch.noise_pred = components.transformer(
-                hidden_states=block_state.latent_model_input.to(block_state.dtype),
-                timestep=t.expand(block_state.latent_model_input.shape[0]).to(block_state.dtype),
+                hidden_states=block_state.latent_model_input.to(dtype),
+                timestep=t.expand(block_state.latent_model_input.shape[0]),
                 attention_kwargs=block_state.attention_kwargs,
                 return_dict=False,
                 **cond_kwargs,
@@ -292,6 +321,12 @@ class Wan22LoopDenoiser(ModularPipelineBlocks):
                 type_hint=int,
                 description="The number of inference steps to use for the denoising process. Can be generated in set_timesteps step.",
             ),
+            InputParam(
+                "latent_model_input",
+                required=True,
+                type_hint=torch.Tensor,
+                description="Latents prepared as model hidden states for the denoiser.",
+            ),
         ]
         guider_input_names = []
         for value in self._guider_input_fields.values():
@@ -304,19 +339,30 @@ class Wan22LoopDenoiser(ModularPipelineBlocks):
             inputs.append(InputParam(name=name, required=True, type_hint=torch.Tensor))
         return inputs
 
+    @property
+    def intermediate_outputs(self) -> list[OutputParam]:
+        return [
+            OutputParam(
+                "noise_pred",
+                type_hint=torch.Tensor,
+                description="The guided noise prediction for the current denoising step.",
+            )
+        ]
+
     @torch.no_grad()
     def __call__(
         self, components: WanModularPipeline, block_state: BlockState, i: int, t: torch.Tensor
     ) -> PipelineState:
         boundary_timestep = components.config.boundary_ratio * components.num_train_timesteps
         if t >= boundary_timestep:
-            block_state.current_model = components.transformer
-            block_state.guider = components.guider
+            current_model = components.transformer
+            guider = components.guider
         else:
-            block_state.current_model = components.transformer_2
-            block_state.guider = components.guider_2
+            current_model = components.transformer_2
+            guider = components.guider_2
+        dtype = current_model.dtype
 
-        block_state.guider.set_state(step=i, num_inference_steps=block_state.num_inference_steps, timestep=t)
+        guider.set_state(step=i, num_inference_steps=block_state.num_inference_steps, timestep=t)
 
         # The guider splits model inputs into separate batches for conditional/unconditional predictions.
         # For CFG with guider_inputs = {"encoder_hidden_states": (prompt_embeds, negative_prompt_embeds)}:
@@ -326,31 +372,31 @@ class Wan22LoopDenoiser(ModularPipelineBlocks):
         #       {"encoder_hidden_states": negative_prompt_embeds, "__guidance_identifier__": "pred_uncond"},  # unconditional batch
         #   ]
         # Other guidance methods may return 1 batch (no guidance) or 3+ batches (e.g., PAG, APG).
-        guider_state = block_state.guider.prepare_inputs_from_block_state(block_state, self._guider_input_fields)
+        guider_state = guider.prepare_inputs_from_block_state(block_state, self._guider_input_fields)
 
         # run the denoiser for each guidance batch
         for guider_state_batch in guider_state:
-            block_state.guider.prepare_models(block_state.current_model)
+            guider.prepare_models(current_model)
             cond_kwargs = guider_state_batch.as_dict()
             cond_kwargs = {
-                k: v.to(block_state.dtype) if isinstance(v, torch.Tensor) else v
+                k: v.to(dtype) if isinstance(v, torch.Tensor) else v
                 for k, v in cond_kwargs.items()
                 if k in self._guider_input_fields.keys()
             }
 
             # Predict the noise residual
             # store the noise_pred in guider_state_batch so that we can apply guidance across all batches
-            guider_state_batch.noise_pred = block_state.current_model(
-                hidden_states=block_state.latent_model_input.to(block_state.dtype),
-                timestep=t.expand(block_state.latent_model_input.shape[0]).to(block_state.dtype),
+            guider_state_batch.noise_pred = current_model(
+                hidden_states=block_state.latent_model_input.to(dtype),
+                timestep=t.expand(block_state.latent_model_input.shape[0]),
                 attention_kwargs=block_state.attention_kwargs,
                 return_dict=False,
                 **cond_kwargs,
             )[0]
-            block_state.guider.cleanup_models(block_state.current_model)
+            guider.cleanup_models(current_model)
 
         # Perform guidance
-        block_state.noise_pred = block_state.guider(guider_state)[0]
+        block_state.noise_pred = guider(guider_state)[0]
 
         return components, block_state
 
@@ -371,6 +417,23 @@ class WanLoopAfterDenoiser(ModularPipelineBlocks):
             "This block should be used to compose the `sub_blocks` attribute of a `LoopSequentialPipelineBlocks` "
             "object (e.g. `WanDenoiseLoopWrapper`)"
         )
+
+    @property
+    def inputs(self) -> list[InputParam]:
+        return [
+            InputParam(
+                "latents",
+                required=True,
+                type_hint=torch.Tensor,
+                description="The latents to update with the scheduler step.",
+            ),
+            InputParam(
+                "noise_pred",
+                required=True,
+                type_hint=torch.Tensor,
+                description="The guided noise prediction for the current denoising step.",
+            ),
+        ]
 
     @torch.no_grad()
     def __call__(self, components: WanModularPipeline, block_state: BlockState, i: int, t: torch.Tensor):

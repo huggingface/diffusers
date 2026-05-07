@@ -17,7 +17,6 @@ import numpy as np
 import PIL.Image
 import torch
 
-from ...configuration_utils import register_to_config
 from ...image_processor import VaeImageProcessor
 from ...utils import PIL_INTERPOLATION
 
@@ -53,7 +52,6 @@ class WanAnimateImageProcessor(VaeImageProcessor):
             if `None`, will default to filling with data from `image`.
     """
 
-    @register_to_config
     def __init__(
         self,
         do_resize: bool = True,
@@ -68,13 +66,18 @@ class WanAnimateImageProcessor(VaeImageProcessor):
         do_convert_grayscale: bool = False,
         fill_color: str | float | tuple[float, ...] | None = 0,
     ):
-        super().__init__()
-        if do_convert_rgb and do_convert_grayscale:
-            raise ValueError(
-                "`do_convert_rgb` and `do_convert_grayscale` can not both be set to `True`,"
-                " if you intended to convert the image into RGB format, please set `do_convert_grayscale = False`.",
-                " if you intended to convert the image into grayscale format, please set `do_convert_rgb = False`",
-            )
+        super().__init__(
+            do_resize=do_resize,
+            vae_scale_factor=vae_scale_factor,
+            vae_latent_channels=vae_latent_channels,
+            resample=resample,
+            reducing_gap=reducing_gap,
+            do_normalize=do_normalize,
+            do_binarize=do_binarize,
+            do_convert_rgb=do_convert_rgb,
+            do_convert_grayscale=do_convert_grayscale,
+        )
+        self.register_to_config(spatial_patch_size=spatial_patch_size, fill_color=fill_color)
 
     def _resize_and_fill(
         self,

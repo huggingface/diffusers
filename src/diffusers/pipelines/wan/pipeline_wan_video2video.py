@@ -18,10 +18,10 @@ from typing import Any, Callable
 
 import regex as re
 import torch
-from PIL import Image
 from transformers import AutoTokenizer, UMT5EncoderModel
 
 from ...callbacks import MultiPipelineCallbacks, PipelineCallback
+from ...image_processor import PipelineImageInput
 from ...loaders import WanLoraLoaderMixin
 from ...models import AutoencoderKLWan, WanTransformer3DModel
 from ...schedulers import FlowMatchEulerDiscreteScheduler
@@ -214,8 +214,8 @@ class WanVideoToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
             scheduler=scheduler,
         )
 
-        self.vae_scale_factor_temporal = 2 ** sum(self.vae.temperal_downsample) if getattr(self, "vae", None) else 4
-        self.vae_scale_factor_spatial = 2 ** len(self.vae.temperal_downsample) if getattr(self, "vae", None) else 8
+        self.vae_scale_factor_temporal = self.vae.config.scale_factor_temporal if getattr(self, "vae", None) else 4
+        self.vae_scale_factor_spatial = self.vae.config.scale_factor_spatial if getattr(self, "vae", None) else 8
         self.video_processor = VideoProcessor(vae_scale_factor=self.vae_scale_factor_spatial)
 
     # Copied from diffusers.pipelines.wan.pipeline_wan.WanPipeline._get_t5_prompt_embeds
@@ -397,7 +397,7 @@ class WanVideoToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         width: int = 832,
         dtype: torch.dtype | None = None,
         device: torch.device | None = None,
-        generator: torch.Generator | None = None,
+        generator: torch.Generator | list[torch.Generator] | None = None,
         latents: torch.Tensor | None = None,
         timestep: torch.Tensor | None = None,
     ):
@@ -480,7 +480,7 @@ class WanVideoToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
     @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
         self,
-        video: list[Image.Image] = None,
+        video: PipelineImageInput | list[PipelineImageInput] | None = None,
         prompt: str | list[str] = None,
         negative_prompt: str | list[str] = None,
         height: int = 480,
@@ -489,12 +489,12 @@ class WanVideoToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         timesteps: list[int] | None = None,
         guidance_scale: float = 5.0,
         strength: float = 0.8,
-        num_videos_per_prompt: int | None = 1,
+        num_videos_per_prompt: int = 1,
         generator: torch.Generator | list[torch.Generator] | None = None,
         latents: torch.Tensor | None = None,
         prompt_embeds: torch.Tensor | None = None,
         negative_prompt_embeds: torch.Tensor | None = None,
-        output_type: str | None = "np",
+        output_type: str = "np",
         return_dict: bool = True,
         attention_kwargs: dict[str, Any] | None = None,
         callback_on_step_end: Callable[[int, int], None] | PipelineCallback | MultiPipelineCallbacks | None = None,
@@ -505,6 +505,9 @@ class WanVideoToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         The call function to the pipeline for generation.
 
         Args:
+            video (`PipelineImageInput` or `list[PipelineImageInput]`, *optional*):
+                The input video or videos to be used as a starting point for the generation. The video can be a list of
+                PIL images, a numpy array, or a torch tensor.
             prompt (`str` or `list[str]`, *optional*):
                 The prompt or prompts to guide the image generation. If not defined, one has to pass `prompt_embeds`
                 instead.
@@ -512,8 +515,6 @@ class WanVideoToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
                 The height in pixels of the generated image.
             width (`int`, defaults to `832`):
                 The width in pixels of the generated image.
-            num_frames (`int`, defaults to `81`):
-                The number of frames in the generated video.
             num_inference_steps (`int`, defaults to `50`):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
                 expense of slower inference.
@@ -526,10 +527,10 @@ class WanVideoToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
             strength (`float`, defaults to `0.8`):
                 Higher strength leads to more differences between original image and generated video.
             num_videos_per_prompt (`int`, *optional*, defaults to 1):
-                The number of images to generate per prompt.
+                The number of videos to generate per prompt. Currently only `1` is supported.
             generator (`torch.Generator` or `list[torch.Generator]`, *optional*):
                 A [`torch.Generator`](https://pytorch.org/docs/stable/generated/torch.Generator.html) to make
-                generation deterministic.
+                generation deterministic. If a list is passed, it must match the effective batch size.
             latents (`torch.Tensor`, *optional*):
                 Pre-generated noisy latents sampled from a Gaussian distribution, to be used as inputs for image
                 generation. Can be used to tweak the same generation with different prompts. If not provided, a latents
@@ -538,7 +539,7 @@ class WanVideoToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
                 Pre-generated text embeddings. Can be used to easily tweak text inputs (prompt weighting). If not
                 provided, text embeddings are generated from the `prompt` input argument.
             output_type (`str`, *optional*, defaults to `"np"`):
-                The output format of the generated image. Choose between `PIL.Image` or `np.array`.
+                The output format of the generated video. Choose between `"np"`, `"pt"`, `"pil"`, or `"latent"`.
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`WanPipelineOutput`] instead of a plain tuple.
             attention_kwargs (`dict`, *optional*):
@@ -572,7 +573,10 @@ class WanVideoToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
 
         height = height or self.transformer.config.sample_height * self.vae_scale_factor_spatial
         width = width or self.transformer.config.sample_width * self.vae_scale_factor_spatial
-        num_videos_per_prompt = 1
+        if num_videos_per_prompt != 1:
+            raise ValueError(
+                "Generating multiple videos per prompt is not yet supported. This may be supported in the future."
+            )
 
         # 1. Check inputs. Raise error if not correct
         self.check_inputs(

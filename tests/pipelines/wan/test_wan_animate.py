@@ -33,6 +33,7 @@ from diffusers import (
     WanAnimatePipeline,
     WanAnimateTransformer3DModel,
 )
+from diffusers.pipelines.wan.image_processor import WanAnimateImageProcessor
 
 from ...testing_utils import (
     backend_empty_cache,
@@ -207,6 +208,66 @@ class WanAnimatePipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
         video = pipe(**inputs).frames[0]
         self.assertEqual(video.shape, (17, 3, 16, 16))
+
+    def test_num_videos_per_prompt_with_image_embeds(self):
+        device = "cpu"
+
+        components = self.get_dummy_components()
+        pipe = self.pipeline_class(**components)
+        pipe.to(device)
+        pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_dummy_inputs(device)
+        inputs.update(
+            {
+                "prompt": ["dance monkey", "dance robot"],
+                "negative_prompt": ["negative", "negative"],
+                "num_videos_per_prompt": 2,
+                "num_inference_steps": 1,
+            }
+        )
+        with torch.no_grad():
+            image_embeds = pipe.encode_image(inputs["image"], device)
+        inputs["image_embeds"] = torch.cat([image_embeds, image_embeds + 1.0], dim=0)
+
+        video = pipe(**inputs).frames
+
+        self.assertEqual(video.shape, (4, 17, 3, 16, 16))
+
+    def test_image_embeds_still_requires_image(self):
+        components = self.get_dummy_components()
+        pipe = self.pipeline_class(**components)
+        inputs = self.get_dummy_inputs("cpu")
+        inputs["image_embeds"] = torch.zeros(1, 1, pipe.transformer.config.image_dim)
+        inputs["image"] = None
+
+        with self.assertRaisesRegex(ValueError, "`image` must be provided"):
+            pipe(**inputs)
+
+    def test_wan_image_processor_preserves_config(self):
+        processor = WanAnimateImageProcessor(
+            do_resize=False,
+            vae_scale_factor=16,
+            vae_latent_channels=32,
+            spatial_patch_size=(1, 4),
+            resample="nearest",
+            reducing_gap=2,
+            do_normalize=False,
+            do_binarize=True,
+            do_convert_rgb=True,
+            fill_color=(1, 2, 3),
+        )
+
+        self.assertFalse(processor.config.do_resize)
+        self.assertEqual(processor.config.vae_scale_factor, 16)
+        self.assertEqual(processor.config.vae_latent_channels, 32)
+        self.assertEqual(processor.config.spatial_patch_size, (1, 4))
+        self.assertEqual(processor.config.resample, "nearest")
+        self.assertEqual(processor.config.reducing_gap, 2)
+        self.assertFalse(processor.config.do_normalize)
+        self.assertTrue(processor.config.do_binarize)
+        self.assertTrue(processor.config.do_convert_rgb)
+        self.assertEqual(processor.config.fill_color, (1, 2, 3))
 
     @unittest.skip("Test not supported")
     def test_attention_slicing_forward_pass(self):

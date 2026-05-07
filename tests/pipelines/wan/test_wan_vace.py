@@ -193,6 +193,47 @@ class WanVACEPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         video_slice = [round(x, 5) for x in video_slice.tolist()]
         self.assertTrue(np.allclose(video_slice, expected_slice, atol=1e-3))
 
+    def test_uses_vae_config_scale_factors(self):
+        components = self.get_dummy_components()
+        components["vae"].register_to_config(scale_factor_temporal=2, scale_factor_spatial=16)
+
+        pipe = self.pipeline_class(**components)
+
+        self.assertEqual(pipe.vae_scale_factor_temporal, 2)
+        self.assertEqual(pipe.vae_scale_factor_spatial, 16)
+        self.assertEqual(pipe.video_processor.config.vae_scale_factor, 16)
+
+    def test_latent_output_trims_reference_latents(self):
+        device = "cpu"
+
+        components = self.get_dummy_components()
+        pipe = self.pipeline_class(**components)
+        pipe.to(device)
+        pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_dummy_inputs(device)
+        inputs["num_inference_steps"] = 1
+        inputs["reference_images"] = Image.new("RGB", (16, 16))
+        inputs["output_type"] = "latent"
+
+        expected_latent_frames = (inputs["num_frames"] - 1) // pipe.vae_scale_factor_temporal + 1
+        latent_height = inputs["height"] // pipe.vae_scale_factor_spatial
+        latent_width = inputs["width"] // pipe.vae_scale_factor_spatial
+        inputs["latents"] = torch.zeros(
+            1,
+            pipe.transformer.config.in_channels,
+            expected_latent_frames + 1,
+            latent_height,
+            latent_width,
+        )
+
+        latents = pipe(**inputs).frames
+
+        self.assertEqual(
+            latents.shape,
+            (1, pipe.transformer.config.in_channels, expected_latent_frames, latent_height, latent_width),
+        )
+
     @unittest.skip("Test not supported")
     def test_attention_slicing_forward_pass(self):
         pass
