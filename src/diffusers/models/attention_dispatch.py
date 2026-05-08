@@ -1091,14 +1091,14 @@ def _flash_attention_forward_op(
     return_lse: bool = False,
     _save_ctx: bool = True,
     _parallel_config: "ParallelConfig" | None = None,
+    *,
+    window_size: tuple[int, int] = (-1, -1),
 ):
     if attn_mask is not None:
         raise ValueError("`attn_mask` is not yet supported for flash-attn 2.")
     if enable_gqa:
         raise ValueError("`enable_gqa` is not yet supported for flash-attn 2.")
 
-    # Hardcoded for now
-    window_size = (-1, -1)
     softcap = 0.0
     alibi_slopes = None
     deterministic = False
@@ -1191,6 +1191,8 @@ def _flash_attention_hub_forward_op(
     return_lse: bool = False,
     _save_ctx: bool = True,
     _parallel_config: "ParallelConfig" | None = None,
+    *,
+    window_size: tuple[int, int] = (-1, -1),
 ):
     if attn_mask is not None:
         raise ValueError("`attn_mask` is not yet supported for flash-attn hub kernels.")
@@ -1209,7 +1211,6 @@ def _flash_attention_hub_forward_op(
     if scale is None:
         scale = query.shape[-1] ** (-0.5)
 
-    window_size = (-1, -1)
     softcap = 0.0
     alibi_slopes = None
     deterministic = False
@@ -2453,6 +2454,7 @@ def _flash_attention(
     dropout_p: float = 0.0,
     is_causal: bool = False,
     scale: float | None = None,
+    window_size: tuple[int, int] = (-1, -1),
     return_lse: bool = False,
     _parallel_config: "ParallelConfig" | None = None,
 ) -> torch.Tensor:
@@ -2468,11 +2470,13 @@ def _flash_attention(
             dropout_p=dropout_p,
             softmax_scale=scale,
             causal=is_causal,
+            window_size=window_size,
             return_attn_probs=return_lse,
         )
         if return_lse:
             out, lse, *_ = out
     else:
+        forward_op = functools.partial(_flash_attention_forward_op, window_size=window_size)
         out = _templated_context_parallel_attention(
             query,
             key,
@@ -2483,7 +2487,7 @@ def _flash_attention(
             scale,
             False,
             return_lse,
-            forward_op=_flash_attention_forward_op,
+            forward_op=forward_op,
             backward_op=_flash_attention_backward_op,
             _parallel_config=_parallel_config,
         )
@@ -2506,6 +2510,7 @@ def _flash_attention_hub(
     dropout_p: float = 0.0,
     is_causal: bool = False,
     scale: float | None = None,
+    window_size: tuple[int, int] = (-1, -1),
     return_lse: bool = False,
     _parallel_config: "ParallelConfig" | None = None,
 ) -> torch.Tensor:
@@ -2522,11 +2527,13 @@ def _flash_attention_hub(
             dropout_p=dropout_p,
             softmax_scale=scale,
             causal=is_causal,
+            window_size=window_size,
             return_attn_probs=return_lse,
         )
         if return_lse:
             out, lse, *_ = out
     else:
+        forward_op = functools.partial(_flash_attention_hub_forward_op, window_size=window_size)
         out = _templated_context_parallel_attention(
             query,
             key,
@@ -2537,7 +2544,7 @@ def _flash_attention_hub(
             scale,
             False,
             return_lse,
-            forward_op=_flash_attention_hub_forward_op,
+            forward_op=forward_op,
             backward_op=_flash_attention_hub_backward_op,
             _parallel_config=_parallel_config,
         )
@@ -2560,6 +2567,7 @@ def _flash_varlen_attention_hub(
     dropout_p: float = 0.0,
     scale: float | None = None,
     is_causal: bool = False,
+    window_size: tuple[int, int] = (-1, -1),
     return_lse: bool = False,
     _parallel_config: "ParallelConfig" | None = None,
 ) -> torch.Tensor:
@@ -2597,6 +2605,7 @@ def _flash_varlen_attention_hub(
         dropout_p=dropout_p,
         softmax_scale=scale,
         causal=is_causal,
+        window_size=window_size,
         return_attn_probs=return_lse,
     )
     out = out.unflatten(0, (batch_size, -1))
@@ -2616,6 +2625,7 @@ def _flash_varlen_attention(
     dropout_p: float = 0.0,
     scale: float | None = None,
     is_causal: bool = False,
+    window_size: tuple[int, int] = (-1, -1),
     return_lse: bool = False,
     _parallel_config: "ParallelConfig" | None = None,
 ) -> torch.Tensor:
@@ -2652,6 +2662,7 @@ def _flash_varlen_attention(
         dropout_p=dropout_p,
         softmax_scale=scale,
         causal=is_causal,
+        window_size=window_size,
         return_attn_probs=return_lse,
     )
     out = out.unflatten(0, (batch_size, -1))
