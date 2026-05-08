@@ -178,6 +178,7 @@ class MotifVideoImage2VideoPipelineFastTests(PipelineTesterMixin, unittest.TestC
     def test_inference_batch_consistent(self):
         pass
 
+    @unittest.skip("MotifVideo I2V only supports a single conditioning image")
     def test_inference_batch_single_identical(self):
         pass
 
@@ -187,4 +188,16 @@ class MotifVideoImage2VideoPipelineFastTests(PipelineTesterMixin, unittest.TestC
 
     @unittest.skip("MotifVideo I2V requires vision tower for image conditioning - cannot work without text_encoder")
     def test_encode_prompt_works_in_isolation(self):
+        pass
+
+    @unittest.skip("T5Gemma2Encoder's vision_tower doesn't support block-level or leaf-level offloading")
+    def test_pipeline_level_group_offloading_inference(self):
+        pass
+
+    @unittest.skip("T5Gemma2Encoder's vision_tower doesn't support block-level or leaf-level offloading")
+    def test_sequential_cpu_offload_forward_pass(self):
+        pass
+
+    @unittest.skip("T5Gemma2Encoder's vision_tower doesn't support block-level or leaf-level offloading")
+    def test_sequential_offload_forward_pass_twice(self):
         pass
