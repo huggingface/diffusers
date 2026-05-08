@@ -153,10 +153,14 @@ class QuarkDiffusersQuantizer(DiffusersQuantizer):
             # quantization happens in _process_model_after_weight_loading.
             return False
 
-        from quark.torch.export.nn.modules.quark_linear_base import QuarkLinearBase
+        # `QparamsOperator` is the marker base class shared by `QParamsLinear`
+        # (and `QParamsLinearWithRotation`) inside amd-quark>=0.10.  In older
+        # quark releases this lived under a different name; if upstream renames
+        # it again, broaden the fallback below rather than tightening the import.
+        from quark.torch.export.nn.modules.qparamslinear import QparamsOperator
 
         module, _ = get_module_from_name(model, param_name)
-        return isinstance(module, QuarkLinearBase)
+        return isinstance(module, QparamsOperator)
 
     def create_quantized_param(
         self,
