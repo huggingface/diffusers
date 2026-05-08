@@ -888,6 +888,16 @@ class QuarkConfig(QuantizationConfigMixin):
         self.quant_method = QuantizationMethod.QUARK
 
     def to_dict(self) -> dict[str, Any]:
+        """Serialize to the JSON-friendly kwargs form accepted by ``__init__``.
+
+        The default ``QuantizationConfigMixin.to_dict`` does
+        ``copy.deepcopy(self.__dict__)``, which would embed the live Quark
+        ``QConfig`` and ``JsonExporterConfig`` dataclasses (not JSON-serializable
+        through ``json.dumps``).  Mirror what
+        ``quark.torch.export.api.QuarkSafetensorsExporter`` writes into
+        ``config.json``: a flat dump of ``QConfig.to_dict()`` plus a top-level
+        ``"export"`` block holding the ``JsonExporterConfig`` fields.
+        """
         config_dict: dict[str, Any] = {}
         if self.quant_config is not None:
             config_dict.update(self.quant_config.to_dict())
@@ -897,4 +907,5 @@ class QuarkConfig(QuantizationConfigMixin):
         return config_dict
 
     def to_diff_dict(self) -> dict[str, Any]:
+        """No meaningful "default" QuarkConfig to diff against — return ``to_dict``."""
         return self.to_dict()
