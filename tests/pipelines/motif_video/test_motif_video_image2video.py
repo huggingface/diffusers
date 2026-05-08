@@ -45,7 +45,7 @@ enable_full_determinism()
 class MotifVideoImage2VideoPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     pipeline_class = MotifVideoImage2VideoPipeline
     params = TEXT_GUIDED_IMAGE_VARIATION_PARAMS - {"guidance_scale"}
-    batch_params = TEXT_TO_IMAGE_BATCH_PARAMS | {"image"}
+    batch_params = TEXT_GUIDED_IMAGE_VARIATION_BATCH_PARAMS
     image_params = IMAGE_TO_IMAGE_IMAGE_PARAMS
     image_latents_params = TEXT_TO_IMAGE_IMAGE_PARAMS
     required_optional_params = frozenset(
