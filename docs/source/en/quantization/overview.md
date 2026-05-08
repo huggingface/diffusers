@@ -28,7 +28,7 @@ There are two ways to use [`~quantizers.PipelineQuantizationConfig`] depending o
 
 Initialize [`~quantizers.PipelineQuantizationConfig`] with the following parameters.
 
-- `quant_backend` specifies which quantization backend to use. Currently supported backends include: `bitsandbytes_4bit`, `bitsandbytes_8bit`, `gguf`, `quanto`, and `torchao`.
+- `quant_backend` specifies which quantization backend to use. Currently supported backends include: `bitsandbytes_4bit`, `bitsandbytes_8bit`, `gguf`, `quanto`, `torchao`, and `quark`.
 - `quant_kwargs` specifies the quantization arguments to use.
 
 > [!TIP]
