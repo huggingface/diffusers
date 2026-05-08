@@ -12,8 +12,19 @@ specific language governing permissions and limitations under the License.
 
 # DFlashTokenDiffusionScheduler
 
-`DFlashTokenDiffusionScheduler` implements the acceptance and posterior sampling logic used in DFlash-style block
-diffusion speculative decoding.
+[`DFlashTokenDiffusionScheduler`] implements the verification step for DFlash-style block-diffusion speculative
+decoding. It samples a posterior block from the target logits, computes the acceptance length as the longest prefix
+where the draft proposal matches the posterior, and exposes the resampled `next_token` for the first rejected
+position. Used by [`DFlashPipeline`].
+
+The scheduler also owns three helpers used by the pipeline's verify loop on hybrid-attention targets:
+
+- `cache_has_linear_attention(cache)` — detect whether a `DynamicCache` contains any linear-attention layers.
+- `snapshot_cache(cache)` / `restore_cache(cache, snapshot)` — clone and restore the full per-layer state so a
+  partial-accept block can be rolled back and the target re-advanced on just the accepted prefix.
+
+These exist because `DynamicCache.crop()` silently no-ops on linear-attention layers, which would otherwise let
+rejected speculative tokens permanently contaminate the recurrent state.
 
 ## DFlashTokenDiffusionScheduler
 [[autodoc]] DFlashTokenDiffusionScheduler
