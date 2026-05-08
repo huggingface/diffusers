@@ -5,6 +5,9 @@ on:
   release:
     types: [published]
 
+permissions:
+  contents: read
+
 jobs:
   build:
     runs-on: ubuntu-22.04

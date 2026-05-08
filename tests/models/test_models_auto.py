@@ -99,6 +99,7 @@ class TestAutoModelFromConfig(unittest.TestCase):
             importable_classes=unittest.mock.ANY,
             pipelines=None,
             is_pipeline_module=False,
+            trust_remote_code=False,
         )
         mock_get_class.return_value[0].from_config.assert_called_once_with(config)
         assert result is mock_model
@@ -139,6 +140,7 @@ class TestAutoModelFromConfig(unittest.TestCase):
             importable_classes=unittest.mock.ANY,
             pipelines=None,
             is_pipeline_module=False,
+            trust_remote_code=False,
         )
         assert result is mock_model
 

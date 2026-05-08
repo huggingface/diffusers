@@ -331,7 +331,7 @@ class WanVACETransformer3DModel(
                 )
                 if i in self.config.vace_layers:
                     control_hint, scale = control_hidden_states_list.pop()
-                    hidden_states = hidden_states + control_hint * scale
+                    hidden_states = hidden_states + control_hint.to(hidden_states.device) * scale
         else:
             # Prepare VACE hints
             control_hidden_states_list = []
@@ -346,7 +346,7 @@ class WanVACETransformer3DModel(
                 hidden_states = block(hidden_states, encoder_hidden_states, timestep_proj, rotary_emb)
                 if i in self.config.vace_layers:
                     control_hint, scale = control_hidden_states_list.pop()
-                    hidden_states = hidden_states + control_hint * scale
+                    hidden_states = hidden_states + control_hint.to(hidden_states.device) * scale
 
         # 6. Output norm, projection & unpatchify
         shift, scale = (self.scale_shift_table.to(temb.device) + temb.unsqueeze(1)).chunk(2, dim=1)
