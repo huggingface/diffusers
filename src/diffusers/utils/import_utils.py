@@ -222,6 +222,7 @@ _gguf_available, _gguf_version = _is_package_available("gguf")
 _torchao_available, _torchao_version = _is_package_available("torchao")
 _bitsandbytes_available, _bitsandbytes_version = _is_package_available("bitsandbytes")
 _optimum_quanto_available, _optimum_quanto_version = _is_package_available("optimum", get_dist_name=True)
+_quark_available, _quark_version = _is_package_available("amd-quark", get_dist_name=True)
 _pytorch_retinaface_available, _pytorch_retinaface_version = _is_package_available("pytorch_retinaface")
 _better_profanity_available, _better_profanity_version = _is_package_available("better_profanity")
 _nltk_available, _nltk_version = _is_package_available("nltk")
@@ -399,6 +400,10 @@ def is_torchao_available():
 
 def is_optimum_quanto_available():
     return _optimum_quanto_available
+
+
+def is_quark_available():
+    return _quark_available
 
 
 def is_nvidia_modelopt_available():
@@ -599,6 +604,11 @@ QUANTO_IMPORT_ERROR = """
 install optimum-quanto`
 """
 
+QUARK_IMPORT_ERROR = """
+{0} requires the AMD Quark library but it was not found in your environment. You can install it with pip: `pip install
+amd-quark`. See https://quark.docs.amd.com/latest/install.html for more details.
+"""
+
 # docstyle-ignore
 PYTORCH_RETINAFACE_IMPORT_ERROR = """
 {0} requires the pytorch_retinaface library but it was not found in your environment. You can install it with pip: `pip install pytorch_retinaface`
@@ -647,6 +657,7 @@ BACKENDS_MAPPING = OrderedDict(
         ("gguf", (is_gguf_available, GGUF_IMPORT_ERROR)),
         ("torchao", (is_torchao_available, TORCHAO_IMPORT_ERROR)),
         ("quanto", (is_optimum_quanto_available, QUANTO_IMPORT_ERROR)),
+        ("quark", (is_quark_available, QUARK_IMPORT_ERROR)),
         ("pytorch_retinaface", (is_pytorch_retinaface_available, PYTORCH_RETINAFACE_IMPORT_ERROR)),
         ("better_profanity", (is_better_profanity_available, BETTER_PROFANITY_IMPORT_ERROR)),
         ("nltk", (is_nltk_available, NLTK_IMPORT_ERROR)),
