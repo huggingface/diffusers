@@ -35,16 +35,17 @@ from ..models.modeling_utils import _LOW_CPU_MEM_USAGE_DEFAULT, load_state_dict
 from ..utils import (
     USE_PEFT_BACKEND,
     _get_model_file,
+    convert_sai_sd_control_lora_state_dict_to_peft,
     convert_unet_state_dict_to_peft,
     deprecate,
     get_adapter_name,
-    get_peft_kwargs,
     is_accelerate_available,
     is_peft_version,
     is_torch_version,
     logging,
 )
 from ..utils.torch_utils import empty_device_cache
+from .lora import _create_lora_config
 from .lora_base import _func_optionally_disable_offloading
 from .lora_pipeline import LORA_WEIGHT_NAME, LORA_WEIGHT_NAME_SAFE, TEXT_ENCODER_NAME, UNET_NAME
 from .utils import AttnProcsLayers
@@ -64,6 +65,83 @@ class UNet2DConditionLoadersMixin:
 
     text_encoder_name = TEXT_ENCODER_NAME
     unet_name = UNET_NAME
+
+    def _load_adapter_from_pretrained(self, pretrained_model_name_or_path_or_dict, **kwargs):
+        """UNet override that handles model-specific LoRA formats before delegating to the base loader.
+
+        - Converts old non-PEFT UNet LoRA naming to PEFT shape (when no key carries ``lora_A``).
+        - Detects SAI Control LoRA (``lora_controlnet`` marker) — that path has its own
+          loader because the LoraConfig needs post-create overrides the base flow doesn't expose.
+          See https://huggingface.co/stabilityai/control-lora and
+          https://huggingface.co/comfyanonymous/ControlNet-v1-1_fp16_safetensors.
+        """
+        from .lora import _HUB_KWARGS, _fetch_state_dict
+
+        # Resolve to a state_dict up-front so we can inspect / convert before the base loader.
+        if isinstance(pretrained_model_name_or_path_or_dict, dict):
+            state_dict = pretrained_model_name_or_path_or_dict
+        else:
+            fetch_kwargs = {k: kwargs.get(k, default) for k, default in _HUB_KWARGS.items()}
+            fetch_kwargs["weight_name"] = kwargs.get("weight_name")
+            fetch_kwargs["use_safetensors"] = kwargs.get("use_safetensors")
+            state_dict = _fetch_state_dict(pretrained_model_name_or_path_or_dict, **fetch_kwargs)
+
+        if not any("lora_A" in k for k in state_dict):
+            state_dict = convert_unet_state_dict_to_peft(state_dict)
+
+        if "lora_controlnet" in state_dict:
+            state_dict = convert_sai_sd_control_lora_state_dict_to_peft(state_dict)
+            return self._load_sai_control_lora(state_dict, **kwargs)
+
+        # Hand the (possibly-converted) state_dict to the base loader. It hits the
+        # dict-passthrough branch in `_fetch_state_dict` and runs the rest of the flow.
+        return super()._load_adapter_from_pretrained(state_dict, **kwargs)
+
+    def _load_sai_control_lora(self, state_dict, **kwargs):
+        """Bespoke loader for SAI Control LoRA: same flow as the base, plus LoraConfig overrides
+        (``lora_alpha`` follows ``r``, all biases trained, ``exclude_modules`` repurposed)."""
+        from .lora import _maybe_warn_for_unhandled_keys, _offloading_disabled
+
+        adapter_name = kwargs.get("adapter_name") or get_adapter_name(self)
+        network_alphas = kwargs.get("network_alphas")
+        prefix = kwargs.get("prefix", "transformer")
+        hotswap = kwargs.get("hotswap", False)
+        low_cpu_mem_usage = kwargs.get("low_cpu_mem_usage", False)
+        metadata = kwargs.get("metadata")
+
+        if prefix is not None:
+            state_dict = {
+                k.removeprefix(f"{prefix}."): v for k, v in state_dict.items() if k.startswith(f"{prefix}.")
+            }
+
+        rank = {
+            f"^{key}": val.shape[1]
+            for key, val in state_dict.items()
+            if "lora_B" in key and val.ndim > 1
+        }
+
+        if network_alphas is not None and len(network_alphas) >= 1:
+            alpha_keys = [k for k in network_alphas if k.startswith(f"{prefix}.")]
+            network_alphas = {k.removeprefix(f"{prefix}."): v for k, v in network_alphas.items() if k in alpha_keys}
+
+        lora_config = _create_lora_config(state_dict, network_alphas, rank, metadata=metadata)
+
+        # SAI Control LoRA overrides: alpha follows rank; all biases are trained.
+        lora_config.lora_alpha = lora_config.r
+        lora_config.alpha_pattern = lora_config.rank_pattern
+        lora_config.bias = "all"
+        lora_config.modules_to_save = lora_config.exclude_modules
+        lora_config.exclude_modules = None
+
+        peft_kwargs = {"low_cpu_mem_usage": low_cpu_mem_usage}
+        with _offloading_disabled(self):
+            if hotswap:
+                self._hotswap_adapter(state_dict, lora_config, adapter_name)
+                incompatible_keys = None
+            else:
+                incompatible_keys = self._inject_adapter(state_dict, lora_config, adapter_name, peft_kwargs)
+                self._maybe_apply_deferred_hotswap_prep(lora_config)
+        _maybe_warn_for_unhandled_keys(incompatible_keys, adapter_name)
 
     @validate_hf_hub_args
     def load_attn_procs(self, pretrained_model_name_or_path_or_dict: str | dict[str, torch.Tensor], **kwargs):
@@ -301,7 +379,7 @@ class UNet2DConditionLoadersMixin:
         if not USE_PEFT_BACKEND:
             raise ValueError("PEFT backend is required for this method.")
 
-        from peft import LoraConfig, inject_adapter_in_model, set_peft_model_state_dict
+        from peft import inject_adapter_in_model, set_peft_model_state_dict
 
         keys = list(state_dict.keys())
 
@@ -339,28 +417,7 @@ class UNet2DConditionLoadersMixin:
                 if "lora_B" in key:
                     rank[key] = val.shape[1]
 
-            lora_config_kwargs = get_peft_kwargs(rank, network_alphas, state_dict, is_unet=True)
-            if "use_dora" in lora_config_kwargs:
-                if lora_config_kwargs["use_dora"]:
-                    if is_peft_version("<", "0.9.0"):
-                        raise ValueError(
-                            "You need `peft` 0.9.0 at least to use DoRA-enabled LoRAs. Please upgrade your installation of `peft`."
-                        )
-                else:
-                    if is_peft_version("<", "0.9.0"):
-                        lora_config_kwargs.pop("use_dora")
-
-            if "lora_bias" in lora_config_kwargs:
-                if lora_config_kwargs["lora_bias"]:
-                    if is_peft_version("<=", "0.13.2"):
-                        raise ValueError(
-                            "You need `peft` 0.14.0 at least to use `bias` in LoRAs. Please upgrade your installation of `peft`."
-                        )
-                else:
-                    if is_peft_version("<=", "0.13.2"):
-                        lora_config_kwargs.pop("lora_bias")
-
-            lora_config = LoraConfig(**lora_config_kwargs)
+            lora_config = _create_lora_config(state_dict, network_alphas, rank)
 
             # adapter_name
             if adapter_name is None:

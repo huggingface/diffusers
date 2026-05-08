@@ -38,7 +38,6 @@ from .single_file_utils import (
     convert_controlnet_checkpoint,
     convert_cosmos_transformer_checkpoint_to_diffusers,
     convert_flux2_transformer_checkpoint_to_diffusers,
-    convert_flux_transformer_checkpoint_to_diffusers,
     convert_hidream_transformer_to_diffusers,
     convert_hunyuan_video_transformer_to_diffusers,
     convert_ldm_unet_checkpoint,
@@ -109,10 +108,6 @@ SINGLE_FILE_LOADABLE_CLASSES = {
     },
     "SparseControlNetModel": {
         "checkpoint_mapping_fn": convert_animatediff_checkpoint_to_diffusers,
-    },
-    "FluxTransformer2DModel": {
-        "checkpoint_mapping_fn": convert_flux_transformer_checkpoint_to_diffusers,
-        "default_subfolder": "transformer",
     },
     "ChromaTransformer2DModel": {
         "checkpoint_mapping_fn": convert_chroma_transformer_checkpoint_to_diffusers,

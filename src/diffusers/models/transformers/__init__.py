@@ -1,13 +1,21 @@
+import sys
+
 from ...utils import is_torch_available
 
 
 if is_torch_available():
+    from . import flux
+
+    # Register backwards compatibility alias so `from .transformer_flux import X` works
+    sys.modules[__name__ + ".transformer_flux"] = flux
+
     from .ace_step_transformer import AceStepTransformer1DModel
     from .auraflow_transformer_2d import AuraFlowTransformer2DModel
     from .cogvideox_transformer_3d import CogVideoXTransformer3DModel
     from .consisid_transformer_3d import ConsisIDTransformer3DModel
     from .dit_transformer_2d import DiTTransformer2DModel
     from .dual_transformer_2d import DualTransformer2DModel
+    from .flux import FluxTransformer2DModel
     from .hunyuan_transformer_2d import HunyuanDiT2DModel
     from .latte_transformer_3d import LatteTransformer3DModel
     from .lumina_nextdit2d import LuminaNextDiT2DModel
@@ -27,7 +35,6 @@ if is_torch_available():
     from .transformer_cosmos import CosmosTransformer3DModel
     from .transformer_easyanimate import EasyAnimateTransformer3DModel
     from .transformer_ernie_image import ErnieImageTransformer2DModel
-    from .transformer_flux import FluxTransformer2DModel
     from .transformer_flux2 import Flux2Transformer2DModel
     from .transformer_glm_image import GlmImageTransformer2DModel
     from .transformer_helios import HeliosTransformer3DModel

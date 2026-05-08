@@ -35,6 +35,7 @@ from .lora_base import (  # noqa
     LORA_WEIGHT_NAME,
     LORA_WEIGHT_NAME_SAFE,
     LoraBaseMixin,
+    _fetch_lora_metadata,
     _fetch_state_dict,
     _load_lora_into_text_encoder,
     _pack_dict_with_prefix,
@@ -223,7 +224,6 @@ class StableDiffusionLoraLoaderMixin(LoraBaseMixin):
             unet=getattr(self, self.unet_name) if not hasattr(self, "unet") else self.unet,
             adapter_name=adapter_name,
             metadata=metadata,
-            _pipeline=self,
             low_cpu_mem_usage=low_cpu_mem_usage,
             hotswap=hotswap,
         )
@@ -235,7 +235,6 @@ class StableDiffusionLoraLoaderMixin(LoraBaseMixin):
             else self.text_encoder,
             lora_scale=self.lora_scale,
             adapter_name=adapter_name,
-            _pipeline=self,
             metadata=metadata,
             low_cpu_mem_usage=low_cpu_mem_usage,
             hotswap=hotswap,
@@ -312,7 +311,7 @@ class StableDiffusionLoraLoaderMixin(LoraBaseMixin):
 
         user_agent = {"file_type": "attn_procs_weights", "framework": "pytorch"}
 
-        state_dict, metadata = _fetch_state_dict(
+        state_dict = _fetch_state_dict(
             pretrained_model_name_or_path_or_dict=pretrained_model_name_or_path_or_dict,
             weight_name=weight_name,
             use_safetensors=use_safetensors,
@@ -325,6 +324,17 @@ class StableDiffusionLoraLoaderMixin(LoraBaseMixin):
             subfolder=subfolder,
             user_agent=user_agent,
             allow_pickle=allow_pickle,
+        )
+        metadata = _fetch_lora_metadata(
+            pretrained_model_name_or_path_or_dict=pretrained_model_name_or_path_or_dict,
+            weight_name=weight_name,
+            local_files_only=local_files_only,
+            cache_dir=cache_dir,
+            force_download=force_download,
+            proxies=proxies,
+            token=token,
+            revision=revision,
+            subfolder=subfolder,
         )
         is_dora_scale_present = any("dora_scale" in k for k in state_dict)
         if is_dora_scale_present:
@@ -402,7 +412,7 @@ class StableDiffusionLoraLoaderMixin(LoraBaseMixin):
         # then the `state_dict` keys should have `cls.unet_name` and/or `cls.text_encoder_name` as
         # their prefixes.
         logger.info(f"Loading {cls.unet_name}.")
-        unet.load_lora_adapter(
+        unet.load_adapter(
             state_dict,
             prefix=cls.unet_name,
             network_alphas=network_alphas,
@@ -650,7 +660,6 @@ class StableDiffusionXLLoraLoaderMixin(LoraBaseMixin):
             unet=self.unet,
             adapter_name=adapter_name,
             metadata=metadata,
-            _pipeline=self,
             low_cpu_mem_usage=low_cpu_mem_usage,
             hotswap=hotswap,
         )
@@ -662,7 +671,6 @@ class StableDiffusionXLLoraLoaderMixin(LoraBaseMixin):
             lora_scale=self.lora_scale,
             adapter_name=adapter_name,
             metadata=metadata,
-            _pipeline=self,
             low_cpu_mem_usage=low_cpu_mem_usage,
             hotswap=hotswap,
         )
@@ -674,7 +682,6 @@ class StableDiffusionXLLoraLoaderMixin(LoraBaseMixin):
             lora_scale=self.lora_scale,
             adapter_name=adapter_name,
             metadata=metadata,
-            _pipeline=self,
             low_cpu_mem_usage=low_cpu_mem_usage,
             hotswap=hotswap,
         )
@@ -751,7 +758,7 @@ class StableDiffusionXLLoraLoaderMixin(LoraBaseMixin):
 
         user_agent = {"file_type": "attn_procs_weights", "framework": "pytorch"}
 
-        state_dict, metadata = _fetch_state_dict(
+        state_dict = _fetch_state_dict(
             pretrained_model_name_or_path_or_dict=pretrained_model_name_or_path_or_dict,
             weight_name=weight_name,
             use_safetensors=use_safetensors,
@@ -764,6 +771,17 @@ class StableDiffusionXLLoraLoaderMixin(LoraBaseMixin):
             subfolder=subfolder,
             user_agent=user_agent,
             allow_pickle=allow_pickle,
+        )
+        metadata = _fetch_lora_metadata(
+            pretrained_model_name_or_path_or_dict=pretrained_model_name_or_path_or_dict,
+            weight_name=weight_name,
+            local_files_only=local_files_only,
+            cache_dir=cache_dir,
+            force_download=force_download,
+            proxies=proxies,
+            token=token,
+            revision=revision,
+            subfolder=subfolder,
         )
         is_dora_scale_present = any("dora_scale" in k for k in state_dict)
         if is_dora_scale_present:
@@ -842,7 +860,7 @@ class StableDiffusionXLLoraLoaderMixin(LoraBaseMixin):
         # then the `state_dict` keys should have `cls.unet_name` and/or `cls.text_encoder_name` as
         # their prefixes.
         logger.info(f"Loading {cls.unet_name}.")
-        unet.load_lora_adapter(
+        unet.load_adapter(
             state_dict,
             prefix=cls.unet_name,
             network_alphas=network_alphas,
@@ -1029,7 +1047,7 @@ class SD3LoraLoaderMixin(LoraBaseMixin):
 
         user_agent = {"file_type": "attn_procs_weights", "framework": "pytorch"}
 
-        state_dict, metadata = _fetch_state_dict(
+        state_dict = _fetch_state_dict(
             pretrained_model_name_or_path_or_dict=pretrained_model_name_or_path_or_dict,
             weight_name=weight_name,
             use_safetensors=use_safetensors,
@@ -1042,6 +1060,17 @@ class SD3LoraLoaderMixin(LoraBaseMixin):
             subfolder=subfolder,
             user_agent=user_agent,
             allow_pickle=allow_pickle,
+        )
+        metadata = _fetch_lora_metadata(
+            pretrained_model_name_or_path_or_dict=pretrained_model_name_or_path_or_dict,
+            weight_name=weight_name,
+            local_files_only=local_files_only,
+            cache_dir=cache_dir,
+            force_download=force_download,
+            proxies=proxies,
+            token=token,
+            revision=revision,
+            subfolder=subfolder,
         )
 
         is_dora_scale_present = any("dora_scale" in k for k in state_dict)
@@ -1089,7 +1118,6 @@ class SD3LoraLoaderMixin(LoraBaseMixin):
             transformer=getattr(self, self.transformer_name) if not hasattr(self, "transformer") else self.transformer,
             adapter_name=adapter_name,
             metadata=metadata,
-            _pipeline=self,
             low_cpu_mem_usage=low_cpu_mem_usage,
             hotswap=hotswap,
         )
@@ -1101,7 +1129,6 @@ class SD3LoraLoaderMixin(LoraBaseMixin):
             lora_scale=self.lora_scale,
             adapter_name=adapter_name,
             metadata=metadata,
-            _pipeline=self,
             low_cpu_mem_usage=low_cpu_mem_usage,
             hotswap=hotswap,
         )
@@ -1113,7 +1140,6 @@ class SD3LoraLoaderMixin(LoraBaseMixin):
             lora_scale=self.lora_scale,
             adapter_name=adapter_name,
             metadata=metadata,
-            _pipeline=self,
             low_cpu_mem_usage=low_cpu_mem_usage,
             hotswap=hotswap,
         )
@@ -1139,7 +1165,7 @@ class SD3LoraLoaderMixin(LoraBaseMixin):
 
         # Load the layers corresponding to transformer.
         logger.info(f"Loading {cls.transformer_name}.")
-        transformer.load_lora_adapter(
+        transformer.load_adapter(
             state_dict,
             network_alphas=None,
             adapter_name=adapter_name,
@@ -1324,7 +1350,7 @@ class AuraFlowLoraLoaderMixin(LoraBaseMixin):
 
         user_agent = {"file_type": "attn_procs_weights", "framework": "pytorch"}
 
-        state_dict, metadata = _fetch_state_dict(
+        state_dict = _fetch_state_dict(
             pretrained_model_name_or_path_or_dict=pretrained_model_name_or_path_or_dict,
             weight_name=weight_name,
             use_safetensors=use_safetensors,
@@ -1337,6 +1363,17 @@ class AuraFlowLoraLoaderMixin(LoraBaseMixin):
             subfolder=subfolder,
             user_agent=user_agent,
             allow_pickle=allow_pickle,
+        )
+        metadata = _fetch_lora_metadata(
+            pretrained_model_name_or_path_or_dict=pretrained_model_name_or_path_or_dict,
+            weight_name=weight_name,
+            local_files_only=local_files_only,
+            cache_dir=cache_dir,
+            force_download=force_download,
+            proxies=proxies,
+            token=token,
+            revision=revision,
+            subfolder=subfolder,
         )
 
         is_dora_scale_present = any("dora_scale" in k for k in state_dict)
@@ -1385,7 +1422,6 @@ class AuraFlowLoraLoaderMixin(LoraBaseMixin):
             transformer=getattr(self, self.transformer_name) if not hasattr(self, "transformer") else self.transformer,
             adapter_name=adapter_name,
             metadata=metadata,
-            _pipeline=self,
             low_cpu_mem_usage=low_cpu_mem_usage,
             hotswap=hotswap,
         )
@@ -1412,7 +1448,7 @@ class AuraFlowLoraLoaderMixin(LoraBaseMixin):
 
         # Load the layers corresponding to transformer.
         logger.info(f"Loading {cls.transformer_name}.")
-        transformer.load_lora_adapter(
+        transformer.load_adapter(
             state_dict,
             network_alphas=None,
             adapter_name=adapter_name,
@@ -1529,7 +1565,7 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
 
         user_agent = {"file_type": "attn_procs_weights", "framework": "pytorch"}
 
-        state_dict, metadata = _fetch_state_dict(
+        state_dict = _fetch_state_dict(
             pretrained_model_name_or_path_or_dict=pretrained_model_name_or_path_or_dict,
             weight_name=weight_name,
             use_safetensors=use_safetensors,
@@ -1542,6 +1578,17 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
             subfolder=subfolder,
             user_agent=user_agent,
             allow_pickle=allow_pickle,
+        )
+        metadata = _fetch_lora_metadata(
+            pretrained_model_name_or_path_or_dict=pretrained_model_name_or_path_or_dict,
+            weight_name=weight_name,
+            local_files_only=local_files_only,
+            cache_dir=cache_dir,
+            force_download=force_download,
+            proxies=proxies,
+            token=token,
+            revision=revision,
+            subfolder=subfolder,
         )
         is_dora_scale_present = any("dora_scale" in k for k in state_dict)
         if is_dora_scale_present:
@@ -1700,7 +1747,6 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
             transformer=transformer,
             adapter_name=adapter_name,
             metadata=metadata,
-            _pipeline=self,
             low_cpu_mem_usage=low_cpu_mem_usage,
             hotswap=hotswap,
         )
@@ -1720,7 +1766,6 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
             lora_scale=self.lora_scale,
             adapter_name=adapter_name,
             metadata=metadata,
-            _pipeline=self,
             low_cpu_mem_usage=low_cpu_mem_usage,
             hotswap=hotswap,
         )
@@ -1747,7 +1792,7 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
 
         # Load the layers corresponding to transformer.
         logger.info(f"Loading {cls.transformer_name}.")
-        transformer.load_lora_adapter(
+        transformer.load_adapter(
             state_dict,
             network_alphas=network_alphas,
             adapter_name=adapter_name,
@@ -2291,7 +2336,7 @@ class AmusedLoraLoaderMixin(StableDiffusionLoraLoaderMixin):
 
         # Load the layers corresponding to transformer.
         logger.info(f"Loading {cls.transformer_name}.")
-        transformer.load_lora_adapter(
+        transformer.load_adapter(
             state_dict,
             network_alphas=network_alphas,
             adapter_name=adapter_name,
@@ -2454,7 +2499,7 @@ class CogVideoXLoraLoaderMixin(LoraBaseMixin):
 
         user_agent = {"file_type": "attn_procs_weights", "framework": "pytorch"}
 
-        state_dict, metadata = _fetch_state_dict(
+        state_dict = _fetch_state_dict(
             pretrained_model_name_or_path_or_dict=pretrained_model_name_or_path_or_dict,
             weight_name=weight_name,
             use_safetensors=use_safetensors,
@@ -2467,6 +2512,17 @@ class CogVideoXLoraLoaderMixin(LoraBaseMixin):
             subfolder=subfolder,
             user_agent=user_agent,
             allow_pickle=allow_pickle,
+        )
+        metadata = _fetch_lora_metadata(
+            pretrained_model_name_or_path_or_dict=pretrained_model_name_or_path_or_dict,
+            weight_name=weight_name,
+            local_files_only=local_files_only,
+            cache_dir=cache_dir,
+            force_download=force_download,
+            proxies=proxies,
+            token=token,
+            revision=revision,
+            subfolder=subfolder,
         )
 
         is_dora_scale_present = any("dora_scale" in k for k in state_dict)
@@ -2514,7 +2570,6 @@ class CogVideoXLoraLoaderMixin(LoraBaseMixin):
             transformer=getattr(self, self.transformer_name) if not hasattr(self, "transformer") else self.transformer,
             adapter_name=adapter_name,
             metadata=metadata,
-            _pipeline=self,
             low_cpu_mem_usage=low_cpu_mem_usage,
             hotswap=hotswap,
         )
@@ -2541,7 +2596,7 @@ class CogVideoXLoraLoaderMixin(LoraBaseMixin):
 
         # Load the layers corresponding to transformer.
         logger.info(f"Loading {cls.transformer_name}.")
-        transformer.load_lora_adapter(
+        transformer.load_adapter(
             state_dict,
             network_alphas=None,
             adapter_name=adapter_name,
@@ -2650,7 +2705,7 @@ class Mochi1LoraLoaderMixin(LoraBaseMixin):
 
         user_agent = {"file_type": "attn_procs_weights", "framework": "pytorch"}
 
-        state_dict, metadata = _fetch_state_dict(
+        state_dict = _fetch_state_dict(
             pretrained_model_name_or_path_or_dict=pretrained_model_name_or_path_or_dict,
             weight_name=weight_name,
             use_safetensors=use_safetensors,
@@ -2663,6 +2718,17 @@ class Mochi1LoraLoaderMixin(LoraBaseMixin):
             subfolder=subfolder,
             user_agent=user_agent,
             allow_pickle=allow_pickle,
+        )
+        metadata = _fetch_lora_metadata(
+            pretrained_model_name_or_path_or_dict=pretrained_model_name_or_path_or_dict,
+            weight_name=weight_name,
+            local_files_only=local_files_only,
+            cache_dir=cache_dir,
+            force_download=force_download,
+            proxies=proxies,
+            token=token,
+            revision=revision,
+            subfolder=subfolder,
         )
 
         is_dora_scale_present = any("dora_scale" in k for k in state_dict)
@@ -2711,7 +2777,6 @@ class Mochi1LoraLoaderMixin(LoraBaseMixin):
             transformer=getattr(self, self.transformer_name) if not hasattr(self, "transformer") else self.transformer,
             adapter_name=adapter_name,
             metadata=metadata,
-            _pipeline=self,
             low_cpu_mem_usage=low_cpu_mem_usage,
             hotswap=hotswap,
         )
@@ -2738,7 +2803,7 @@ class Mochi1LoraLoaderMixin(LoraBaseMixin):
 
         # Load the layers corresponding to transformer.
         logger.info(f"Loading {cls.transformer_name}.")
-        transformer.load_lora_adapter(
+        transformer.load_adapter(
             state_dict,
             network_alphas=None,
             adapter_name=adapter_name,
@@ -2849,7 +2914,7 @@ class LTXVideoLoraLoaderMixin(LoraBaseMixin):
 
         user_agent = {"file_type": "attn_procs_weights", "framework": "pytorch"}
 
-        state_dict, metadata = _fetch_state_dict(
+        state_dict = _fetch_state_dict(
             pretrained_model_name_or_path_or_dict=pretrained_model_name_or_path_or_dict,
             weight_name=weight_name,
             use_safetensors=use_safetensors,
@@ -2862,6 +2927,17 @@ class LTXVideoLoraLoaderMixin(LoraBaseMixin):
             subfolder=subfolder,
             user_agent=user_agent,
             allow_pickle=allow_pickle,
+        )
+        metadata = _fetch_lora_metadata(
+            pretrained_model_name_or_path_or_dict=pretrained_model_name_or_path_or_dict,
+            weight_name=weight_name,
+            local_files_only=local_files_only,
+            cache_dir=cache_dir,
+            force_download=force_download,
+            proxies=proxies,
+            token=token,
+            revision=revision,
+            subfolder=subfolder,
         )
 
         is_dora_scale_present = any("dora_scale" in k for k in state_dict)
@@ -2914,7 +2990,6 @@ class LTXVideoLoraLoaderMixin(LoraBaseMixin):
             transformer=getattr(self, self.transformer_name) if not hasattr(self, "transformer") else self.transformer,
             adapter_name=adapter_name,
             metadata=metadata,
-            _pipeline=self,
             low_cpu_mem_usage=low_cpu_mem_usage,
             hotswap=hotswap,
         )
@@ -2941,7 +3016,7 @@ class LTXVideoLoraLoaderMixin(LoraBaseMixin):
 
         # Load the layers corresponding to transformer.
         logger.info(f"Loading {cls.transformer_name}.")
-        transformer.load_lora_adapter(
+        transformer.load_adapter(
             state_dict,
             network_alphas=None,
             adapter_name=adapter_name,
@@ -3053,7 +3128,7 @@ class LTX2LoraLoaderMixin(LoraBaseMixin):
 
         user_agent = {"file_type": "attn_procs_weights", "framework": "pytorch"}
 
-        state_dict, metadata = _fetch_state_dict(
+        state_dict = _fetch_state_dict(
             pretrained_model_name_or_path_or_dict=pretrained_model_name_or_path_or_dict,
             weight_name=weight_name,
             use_safetensors=use_safetensors,
@@ -3066,6 +3141,17 @@ class LTX2LoraLoaderMixin(LoraBaseMixin):
             subfolder=subfolder,
             user_agent=user_agent,
             allow_pickle=allow_pickle,
+        )
+        metadata = _fetch_lora_metadata(
+            pretrained_model_name_or_path_or_dict=pretrained_model_name_or_path_or_dict,
+            weight_name=weight_name,
+            local_files_only=local_files_only,
+            cache_dir=cache_dir,
+            force_download=force_download,
+            proxies=proxies,
+            token=token,
+            revision=revision,
+            subfolder=subfolder,
         )
 
         is_dora_scale_present = any("dora_scale" in k for k in state_dict)
@@ -3127,7 +3213,6 @@ class LTX2LoraLoaderMixin(LoraBaseMixin):
             transformer=getattr(self, self.transformer_name) if not hasattr(self, "transformer") else self.transformer,
             adapter_name=adapter_name,
             metadata=metadata,
-            _pipeline=self,
             low_cpu_mem_usage=low_cpu_mem_usage,
             hotswap=hotswap,
         )
@@ -3139,7 +3224,6 @@ class LTX2LoraLoaderMixin(LoraBaseMixin):
                 else self.connectors,
                 adapter_name=adapter_name,
                 metadata=metadata,
-                _pipeline=self,
                 low_cpu_mem_usage=low_cpu_mem_usage,
                 hotswap=hotswap,
                 prefix=self.connectors_name,
@@ -3167,7 +3251,7 @@ class LTX2LoraLoaderMixin(LoraBaseMixin):
 
         # Load the layers corresponding to transformer.
         logger.info(f"Loading {prefix}.")
-        transformer.load_lora_adapter(
+        transformer.load_adapter(
             state_dict,
             network_alphas=None,
             adapter_name=adapter_name,
@@ -3280,7 +3364,7 @@ class SanaLoraLoaderMixin(LoraBaseMixin):
 
         user_agent = {"file_type": "attn_procs_weights", "framework": "pytorch"}
 
-        state_dict, metadata = _fetch_state_dict(
+        state_dict = _fetch_state_dict(
             pretrained_model_name_or_path_or_dict=pretrained_model_name_or_path_or_dict,
             weight_name=weight_name,
             use_safetensors=use_safetensors,
@@ -3293,6 +3377,17 @@ class SanaLoraLoaderMixin(LoraBaseMixin):
             subfolder=subfolder,
             user_agent=user_agent,
             allow_pickle=allow_pickle,
+        )
+        metadata = _fetch_lora_metadata(
+            pretrained_model_name_or_path_or_dict=pretrained_model_name_or_path_or_dict,
+            weight_name=weight_name,
+            local_files_only=local_files_only,
+            cache_dir=cache_dir,
+            force_download=force_download,
+            proxies=proxies,
+            token=token,
+            revision=revision,
+            subfolder=subfolder,
         )
 
         is_dora_scale_present = any("dora_scale" in k for k in state_dict)
@@ -3341,7 +3436,6 @@ class SanaLoraLoaderMixin(LoraBaseMixin):
             transformer=getattr(self, self.transformer_name) if not hasattr(self, "transformer") else self.transformer,
             adapter_name=adapter_name,
             metadata=metadata,
-            _pipeline=self,
             low_cpu_mem_usage=low_cpu_mem_usage,
             hotswap=hotswap,
         )
@@ -3368,7 +3462,7 @@ class SanaLoraLoaderMixin(LoraBaseMixin):
 
         # Load the layers corresponding to transformer.
         logger.info(f"Loading {cls.transformer_name}.")
-        transformer.load_lora_adapter(
+        transformer.load_adapter(
             state_dict,
             network_alphas=None,
             adapter_name=adapter_name,
@@ -3680,7 +3774,7 @@ class HunyuanVideoLoraLoaderMixin(LoraBaseMixin):
 
         user_agent = {"file_type": "attn_procs_weights", "framework": "pytorch"}
 
-        state_dict, metadata = _fetch_state_dict(
+        state_dict = _fetch_state_dict(
             pretrained_model_name_or_path_or_dict=pretrained_model_name_or_path_or_dict,
             weight_name=weight_name,
             use_safetensors=use_safetensors,
@@ -3693,6 +3787,17 @@ class HunyuanVideoLoraLoaderMixin(LoraBaseMixin):
             subfolder=subfolder,
             user_agent=user_agent,
             allow_pickle=allow_pickle,
+        )
+        metadata = _fetch_lora_metadata(
+            pretrained_model_name_or_path_or_dict=pretrained_model_name_or_path_or_dict,
+            weight_name=weight_name,
+            local_files_only=local_files_only,
+            cache_dir=cache_dir,
+            force_download=force_download,
+            proxies=proxies,
+            token=token,
+            revision=revision,
+            subfolder=subfolder,
         )
 
         is_dora_scale_present = any("dora_scale" in k for k in state_dict)
@@ -3745,7 +3850,6 @@ class HunyuanVideoLoraLoaderMixin(LoraBaseMixin):
             transformer=getattr(self, self.transformer_name) if not hasattr(self, "transformer") else self.transformer,
             adapter_name=adapter_name,
             metadata=metadata,
-            _pipeline=self,
             low_cpu_mem_usage=low_cpu_mem_usage,
             hotswap=hotswap,
         )
@@ -3772,7 +3876,7 @@ class HunyuanVideoLoraLoaderMixin(LoraBaseMixin):
 
         # Load the layers corresponding to transformer.
         logger.info(f"Loading {cls.transformer_name}.")
-        transformer.load_lora_adapter(
+        transformer.load_adapter(
             state_dict,
             network_alphas=None,
             adapter_name=adapter_name,
@@ -3883,7 +3987,7 @@ class Lumina2LoraLoaderMixin(LoraBaseMixin):
 
         user_agent = {"file_type": "attn_procs_weights", "framework": "pytorch"}
 
-        state_dict, metadata = _fetch_state_dict(
+        state_dict = _fetch_state_dict(
             pretrained_model_name_or_path_or_dict=pretrained_model_name_or_path_or_dict,
             weight_name=weight_name,
             use_safetensors=use_safetensors,
@@ -3896,6 +4000,17 @@ class Lumina2LoraLoaderMixin(LoraBaseMixin):
             subfolder=subfolder,
             user_agent=user_agent,
             allow_pickle=allow_pickle,
+        )
+        metadata = _fetch_lora_metadata(
+            pretrained_model_name_or_path_or_dict=pretrained_model_name_or_path_or_dict,
+            weight_name=weight_name,
+            local_files_only=local_files_only,
+            cache_dir=cache_dir,
+            force_download=force_download,
+            proxies=proxies,
+            token=token,
+            revision=revision,
+            subfolder=subfolder,
         )
 
         is_dora_scale_present = any("dora_scale" in k for k in state_dict)
@@ -3949,7 +4064,6 @@ class Lumina2LoraLoaderMixin(LoraBaseMixin):
             transformer=getattr(self, self.transformer_name) if not hasattr(self, "transformer") else self.transformer,
             adapter_name=adapter_name,
             metadata=metadata,
-            _pipeline=self,
             low_cpu_mem_usage=low_cpu_mem_usage,
             hotswap=hotswap,
         )
@@ -3976,7 +4090,7 @@ class Lumina2LoraLoaderMixin(LoraBaseMixin):
 
         # Load the layers corresponding to transformer.
         logger.info(f"Loading {cls.transformer_name}.")
-        transformer.load_lora_adapter(
+        transformer.load_adapter(
             state_dict,
             network_alphas=None,
             adapter_name=adapter_name,
@@ -4088,7 +4202,7 @@ class KandinskyLoraLoaderMixin(LoraBaseMixin):
 
         user_agent = {"file_type": "attn_procs_weights", "framework": "pytorch"}
 
-        state_dict, metadata = _fetch_state_dict(
+        state_dict = _fetch_state_dict(
             pretrained_model_name_or_path_or_dict=pretrained_model_name_or_path_or_dict,
             weight_name=weight_name,
             use_safetensors=use_safetensors,
@@ -4101,6 +4215,17 @@ class KandinskyLoraLoaderMixin(LoraBaseMixin):
             subfolder=subfolder,
             user_agent=user_agent,
             allow_pickle=allow_pickle,
+        )
+        metadata = _fetch_lora_metadata(
+            pretrained_model_name_or_path_or_dict=pretrained_model_name_or_path_or_dict,
+            weight_name=weight_name,
+            local_files_only=local_files_only,
+            cache_dir=cache_dir,
+            force_download=force_download,
+            proxies=proxies,
+            token=token,
+            revision=revision,
+            subfolder=subfolder,
         )
 
         is_dora_scale_present = any("dora_scale" in k for k in state_dict)
@@ -4149,7 +4274,6 @@ class KandinskyLoraLoaderMixin(LoraBaseMixin):
             transformer=getattr(self, self.transformer_name) if not hasattr(self, "transformer") else self.transformer,
             adapter_name=adapter_name,
             metadata=metadata,
-            _pipeline=self,
             low_cpu_mem_usage=low_cpu_mem_usage,
             hotswap=hotswap,
         )
@@ -4176,7 +4300,7 @@ class KandinskyLoraLoaderMixin(LoraBaseMixin):
 
         # Load the layers corresponding to transformer.
         logger.info(f"Loading {cls.transformer_name}.")
-        transformer.load_lora_adapter(
+        transformer.load_adapter(
             state_dict,
             network_alphas=None,
             adapter_name=adapter_name,
@@ -4287,7 +4411,7 @@ class WanLoraLoaderMixin(LoraBaseMixin):
 
         user_agent = {"file_type": "attn_procs_weights", "framework": "pytorch"}
 
-        state_dict, metadata = _fetch_state_dict(
+        state_dict = _fetch_state_dict(
             pretrained_model_name_or_path_or_dict=pretrained_model_name_or_path_or_dict,
             weight_name=weight_name,
             use_safetensors=use_safetensors,
@@ -4300,6 +4424,17 @@ class WanLoraLoaderMixin(LoraBaseMixin):
             subfolder=subfolder,
             user_agent=user_agent,
             allow_pickle=allow_pickle,
+        )
+        metadata = _fetch_lora_metadata(
+            pretrained_model_name_or_path_or_dict=pretrained_model_name_or_path_or_dict,
+            weight_name=weight_name,
+            local_files_only=local_files_only,
+            cache_dir=cache_dir,
+            force_download=force_download,
+            proxies=proxies,
+            token=token,
+            revision=revision,
+            subfolder=subfolder,
         )
         if any(k.startswith("diffusion_model.") for k in state_dict):
             state_dict = _convert_non_diffusers_wan_lora_to_diffusers(state_dict)
@@ -4411,7 +4546,6 @@ class WanLoraLoaderMixin(LoraBaseMixin):
                 transformer=self.transformer_2,
                 adapter_name=adapter_name,
                 metadata=metadata,
-                _pipeline=self,
                 low_cpu_mem_usage=low_cpu_mem_usage,
                 hotswap=hotswap,
             )
@@ -4423,7 +4557,6 @@ class WanLoraLoaderMixin(LoraBaseMixin):
                 else self.transformer,
                 adapter_name=adapter_name,
                 metadata=metadata,
-                _pipeline=self,
                 low_cpu_mem_usage=low_cpu_mem_usage,
                 hotswap=hotswap,
             )
@@ -4450,7 +4583,7 @@ class WanLoraLoaderMixin(LoraBaseMixin):
 
         # Load the layers corresponding to transformer.
         logger.info(f"Loading {cls.transformer_name}.")
-        transformer.load_lora_adapter(
+        transformer.load_adapter(
             state_dict,
             network_alphas=None,
             adapter_name=adapter_name,
@@ -4562,7 +4695,7 @@ class SkyReelsV2LoraLoaderMixin(LoraBaseMixin):
 
         user_agent = {"file_type": "attn_procs_weights", "framework": "pytorch"}
 
-        state_dict, metadata = _fetch_state_dict(
+        state_dict = _fetch_state_dict(
             pretrained_model_name_or_path_or_dict=pretrained_model_name_or_path_or_dict,
             weight_name=weight_name,
             use_safetensors=use_safetensors,
@@ -4575,6 +4708,17 @@ class SkyReelsV2LoraLoaderMixin(LoraBaseMixin):
             subfolder=subfolder,
             user_agent=user_agent,
             allow_pickle=allow_pickle,
+        )
+        metadata = _fetch_lora_metadata(
+            pretrained_model_name_or_path_or_dict=pretrained_model_name_or_path_or_dict,
+            weight_name=weight_name,
+            local_files_only=local_files_only,
+            cache_dir=cache_dir,
+            force_download=force_download,
+            proxies=proxies,
+            token=token,
+            revision=revision,
+            subfolder=subfolder,
         )
         if any(k.startswith("diffusion_model.") for k in state_dict):
             state_dict = _convert_non_diffusers_wan_lora_to_diffusers(state_dict)
@@ -4688,7 +4832,6 @@ class SkyReelsV2LoraLoaderMixin(LoraBaseMixin):
                 transformer=self.transformer_2,
                 adapter_name=adapter_name,
                 metadata=metadata,
-                _pipeline=self,
                 low_cpu_mem_usage=low_cpu_mem_usage,
                 hotswap=hotswap,
             )
@@ -4700,7 +4843,6 @@ class SkyReelsV2LoraLoaderMixin(LoraBaseMixin):
                 else self.transformer,
                 adapter_name=adapter_name,
                 metadata=metadata,
-                _pipeline=self,
                 low_cpu_mem_usage=low_cpu_mem_usage,
                 hotswap=hotswap,
             )
@@ -4727,7 +4869,7 @@ class SkyReelsV2LoraLoaderMixin(LoraBaseMixin):
 
         # Load the layers corresponding to transformer.
         logger.info(f"Loading {cls.transformer_name}.")
-        transformer.load_lora_adapter(
+        transformer.load_adapter(
             state_dict,
             network_alphas=None,
             adapter_name=adapter_name,
@@ -4839,7 +4981,7 @@ class CogView4LoraLoaderMixin(LoraBaseMixin):
 
         user_agent = {"file_type": "attn_procs_weights", "framework": "pytorch"}
 
-        state_dict, metadata = _fetch_state_dict(
+        state_dict = _fetch_state_dict(
             pretrained_model_name_or_path_or_dict=pretrained_model_name_or_path_or_dict,
             weight_name=weight_name,
             use_safetensors=use_safetensors,
@@ -4852,6 +4994,17 @@ class CogView4LoraLoaderMixin(LoraBaseMixin):
             subfolder=subfolder,
             user_agent=user_agent,
             allow_pickle=allow_pickle,
+        )
+        metadata = _fetch_lora_metadata(
+            pretrained_model_name_or_path_or_dict=pretrained_model_name_or_path_or_dict,
+            weight_name=weight_name,
+            local_files_only=local_files_only,
+            cache_dir=cache_dir,
+            force_download=force_download,
+            proxies=proxies,
+            token=token,
+            revision=revision,
+            subfolder=subfolder,
         )
 
         is_dora_scale_present = any("dora_scale" in k for k in state_dict)
@@ -4900,7 +5053,6 @@ class CogView4LoraLoaderMixin(LoraBaseMixin):
             transformer=getattr(self, self.transformer_name) if not hasattr(self, "transformer") else self.transformer,
             adapter_name=adapter_name,
             metadata=metadata,
-            _pipeline=self,
             low_cpu_mem_usage=low_cpu_mem_usage,
             hotswap=hotswap,
         )
@@ -4927,7 +5079,7 @@ class CogView4LoraLoaderMixin(LoraBaseMixin):
 
         # Load the layers corresponding to transformer.
         logger.info(f"Loading {cls.transformer_name}.")
-        transformer.load_lora_adapter(
+        transformer.load_adapter(
             state_dict,
             network_alphas=None,
             adapter_name=adapter_name,
@@ -5038,7 +5190,7 @@ class HiDreamImageLoraLoaderMixin(LoraBaseMixin):
 
         user_agent = {"file_type": "attn_procs_weights", "framework": "pytorch"}
 
-        state_dict, metadata = _fetch_state_dict(
+        state_dict = _fetch_state_dict(
             pretrained_model_name_or_path_or_dict=pretrained_model_name_or_path_or_dict,
             weight_name=weight_name,
             use_safetensors=use_safetensors,
@@ -5051,6 +5203,17 @@ class HiDreamImageLoraLoaderMixin(LoraBaseMixin):
             subfolder=subfolder,
             user_agent=user_agent,
             allow_pickle=allow_pickle,
+        )
+        metadata = _fetch_lora_metadata(
+            pretrained_model_name_or_path_or_dict=pretrained_model_name_or_path_or_dict,
+            weight_name=weight_name,
+            local_files_only=local_files_only,
+            cache_dir=cache_dir,
+            force_download=force_download,
+            proxies=proxies,
+            token=token,
+            revision=revision,
+            subfolder=subfolder,
         )
 
         is_dora_scale_present = any("dora_scale" in k for k in state_dict)
@@ -5103,7 +5266,6 @@ class HiDreamImageLoraLoaderMixin(LoraBaseMixin):
             transformer=getattr(self, self.transformer_name) if not hasattr(self, "transformer") else self.transformer,
             adapter_name=adapter_name,
             metadata=metadata,
-            _pipeline=self,
             low_cpu_mem_usage=low_cpu_mem_usage,
             hotswap=hotswap,
         )
@@ -5130,7 +5292,7 @@ class HiDreamImageLoraLoaderMixin(LoraBaseMixin):
 
         # Load the layers corresponding to transformer.
         logger.info(f"Loading {cls.transformer_name}.")
-        transformer.load_lora_adapter(
+        transformer.load_adapter(
             state_dict,
             network_alphas=None,
             adapter_name=adapter_name,
@@ -5241,7 +5403,7 @@ class QwenImageLoraLoaderMixin(LoraBaseMixin):
 
         user_agent = {"file_type": "attn_procs_weights", "framework": "pytorch"}
 
-        state_dict, metadata = _fetch_state_dict(
+        state_dict = _fetch_state_dict(
             pretrained_model_name_or_path_or_dict=pretrained_model_name_or_path_or_dict,
             weight_name=weight_name,
             use_safetensors=use_safetensors,
@@ -5254,6 +5416,17 @@ class QwenImageLoraLoaderMixin(LoraBaseMixin):
             subfolder=subfolder,
             user_agent=user_agent,
             allow_pickle=allow_pickle,
+        )
+        metadata = _fetch_lora_metadata(
+            pretrained_model_name_or_path_or_dict=pretrained_model_name_or_path_or_dict,
+            weight_name=weight_name,
+            local_files_only=local_files_only,
+            cache_dir=cache_dir,
+            force_download=force_download,
+            proxies=proxies,
+            token=token,
+            revision=revision,
+            subfolder=subfolder,
         )
 
         is_dora_scale_present = any("dora_scale" in k for k in state_dict)
@@ -5309,7 +5482,6 @@ class QwenImageLoraLoaderMixin(LoraBaseMixin):
             transformer=getattr(self, self.transformer_name) if not hasattr(self, "transformer") else self.transformer,
             adapter_name=adapter_name,
             metadata=metadata,
-            _pipeline=self,
             low_cpu_mem_usage=low_cpu_mem_usage,
             hotswap=hotswap,
         )
@@ -5336,7 +5508,7 @@ class QwenImageLoraLoaderMixin(LoraBaseMixin):
 
         # Load the layers corresponding to transformer.
         logger.info(f"Loading {cls.transformer_name}.")
-        transformer.load_lora_adapter(
+        transformer.load_adapter(
             state_dict,
             network_alphas=None,
             adapter_name=adapter_name,
@@ -5447,7 +5619,7 @@ class ZImageLoraLoaderMixin(LoraBaseMixin):
 
         user_agent = {"file_type": "attn_procs_weights", "framework": "pytorch"}
 
-        state_dict, metadata = _fetch_state_dict(
+        state_dict = _fetch_state_dict(
             pretrained_model_name_or_path_or_dict=pretrained_model_name_or_path_or_dict,
             weight_name=weight_name,
             use_safetensors=use_safetensors,
@@ -5460,6 +5632,17 @@ class ZImageLoraLoaderMixin(LoraBaseMixin):
             subfolder=subfolder,
             user_agent=user_agent,
             allow_pickle=allow_pickle,
+        )
+        metadata = _fetch_lora_metadata(
+            pretrained_model_name_or_path_or_dict=pretrained_model_name_or_path_or_dict,
+            weight_name=weight_name,
+            local_files_only=local_files_only,
+            cache_dir=cache_dir,
+            force_download=force_download,
+            proxies=proxies,
+            token=token,
+            revision=revision,
+            subfolder=subfolder,
         )
 
         is_dora_scale_present = any("dora_scale" in k for k in state_dict)
@@ -5515,7 +5698,6 @@ class ZImageLoraLoaderMixin(LoraBaseMixin):
             transformer=getattr(self, self.transformer_name) if not hasattr(self, "transformer") else self.transformer,
             adapter_name=adapter_name,
             metadata=metadata,
-            _pipeline=self,
             low_cpu_mem_usage=low_cpu_mem_usage,
             hotswap=hotswap,
         )
@@ -5542,7 +5724,7 @@ class ZImageLoraLoaderMixin(LoraBaseMixin):
 
         # Load the layers corresponding to transformer.
         logger.info(f"Loading {cls.transformer_name}.")
-        transformer.load_lora_adapter(
+        transformer.load_adapter(
             state_dict,
             network_alphas=None,
             adapter_name=adapter_name,
@@ -5653,7 +5835,7 @@ class Flux2LoraLoaderMixin(LoraBaseMixin):
 
         user_agent = {"file_type": "attn_procs_weights", "framework": "pytorch"}
 
-        state_dict, metadata = _fetch_state_dict(
+        state_dict = _fetch_state_dict(
             pretrained_model_name_or_path_or_dict=pretrained_model_name_or_path_or_dict,
             weight_name=weight_name,
             use_safetensors=use_safetensors,
@@ -5666,6 +5848,17 @@ class Flux2LoraLoaderMixin(LoraBaseMixin):
             subfolder=subfolder,
             user_agent=user_agent,
             allow_pickle=allow_pickle,
+        )
+        metadata = _fetch_lora_metadata(
+            pretrained_model_name_or_path_or_dict=pretrained_model_name_or_path_or_dict,
+            weight_name=weight_name,
+            local_files_only=local_files_only,
+            cache_dir=cache_dir,
+            force_download=force_download,
+            proxies=proxies,
+            token=token,
+            revision=revision,
+            subfolder=subfolder,
         )
 
         is_dora_scale_present = any("dora_scale" in k for k in state_dict)
@@ -5729,7 +5922,6 @@ class Flux2LoraLoaderMixin(LoraBaseMixin):
             transformer=getattr(self, self.transformer_name) if not hasattr(self, "transformer") else self.transformer,
             adapter_name=adapter_name,
             metadata=metadata,
-            _pipeline=self,
             low_cpu_mem_usage=low_cpu_mem_usage,
             hotswap=hotswap,
         )
@@ -5756,7 +5948,7 @@ class Flux2LoraLoaderMixin(LoraBaseMixin):
 
         # Load the layers corresponding to transformer.
         logger.info(f"Loading {cls.transformer_name}.")
-        transformer.load_lora_adapter(
+        transformer.load_adapter(
             state_dict,
             network_alphas=None,
             adapter_name=adapter_name,

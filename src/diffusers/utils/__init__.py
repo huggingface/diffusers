@@ -138,7 +138,6 @@ from .peft_utils import (
     check_peft_version,
     delete_adapter_layers,
     get_adapter_name,
-    get_peft_kwargs,
     recurse_remove_peft_layers,
     scale_lora_layers,
     set_adapter_layers,
