@@ -248,7 +248,10 @@ def main():
                 block_targets = input_ids[:, start + 1 : start + block_size]
                 block_mask = attention_mask[:, start + 1 : start + block_size]
 
-                position_ids = torch.arange(start, start + block_size, device=input_ids.device).unsqueeze(0)
+                # The draft's attention concatenates `k_ctx` (target_hidden, length `start`) with
+                # `k_noise` (noise_embedding, length `block_size`); RoPE needs cos/sin covering the
+                # full range `[0, start + block_size)` so the K-side broadcast works.
+                position_ids = torch.arange(start + block_size, device=input_ids.device).unsqueeze(0)
                 position_ids = position_ids.expand(input_ids.shape[0], -1)
 
                 with torch.no_grad():

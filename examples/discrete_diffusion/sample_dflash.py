@@ -107,7 +107,7 @@ def main():
     print(f"Loading draft model: {args.draft_model_id}")
     print(f"Loading target model: {args.target_model_id}")
     dtype_arg = torch_dtype if torch_dtype is not None else "auto"
-    # Draft model is a custom DFlashDraftModel; use AutoModel so trust_remote_code routes to the class in `auto_map`.
+    # Draft model is a custom DFlashDraftModel; trust_remote_code routes to the class in `auto_map`.
     draft_model = AutoModel.from_pretrained(
         args.draft_model_id,
         trust_remote_code=True,

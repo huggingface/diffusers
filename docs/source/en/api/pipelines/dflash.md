@@ -31,13 +31,12 @@ from transformers import AutoModel, AutoModelForCausalLM, AutoTokenizer
 
 from diffusers import DFlashPipeline
 
+# Draft ships custom modeling code via `auto_map` — `trust_remote_code=True` is required.
 draft = AutoModel.from_pretrained(
     "z-lab/Qwen3.5-4B-DFlash", trust_remote_code=True, dtype=torch.bfloat16, device_map="auto"
 )
-target = AutoModelForCausalLM.from_pretrained(
-    "Qwen/Qwen3.5-4B", trust_remote_code=True, dtype=torch.bfloat16, device_map="auto"
-)
-tokenizer = AutoTokenizer.from_pretrained("Qwen/Qwen3.5-4B", trust_remote_code=True)
+target = AutoModelForCausalLM.from_pretrained("Qwen/Qwen3.5-4B", dtype=torch.bfloat16, device_map="auto")
+tokenizer = AutoTokenizer.from_pretrained("Qwen/Qwen3.5-4B")
 
 pipe = DFlashPipeline(draft_model=draft, target_model=target, tokenizer=tokenizer)
 output = pipe(

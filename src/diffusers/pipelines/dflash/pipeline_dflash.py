@@ -38,9 +38,9 @@ EXAMPLE_DOC_STRING = """
         >>> from transformers import AutoModel, AutoModelForCausalLM, AutoTokenizer
 
         >>> draft = AutoModel.from_pretrained(
-        ...     "z-lab/Qwen3-8B-DFlash-b16", trust_remote_code=True, torch_dtype=torch.bfloat16
+        ...     "z-lab/Qwen3-8B-DFlash-b16", trust_remote_code=True, dtype=torch.bfloat16
         ... )
-        >>> target = AutoModelForCausalLM.from_pretrained("Qwen/Qwen3-8B", torch_dtype=torch.bfloat16)
+        >>> target = AutoModelForCausalLM.from_pretrained("Qwen/Qwen3-8B", dtype=torch.bfloat16)
         >>> tokenizer = AutoTokenizer.from_pretrained("Qwen/Qwen3-8B")
         >>> pipe = DFlashPipeline(draft_model=draft, target_model=target, tokenizer=tokenizer)
         >>> out = pipe(prompt="How many positive whole-number divisors does 196 have?")
