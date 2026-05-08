@@ -360,27 +360,6 @@ class DFlashPipeline(DiffusionPipeline):
         target_config = getattr(self.target_model, "config", None)
         draft_config = getattr(self.draft_model, "config", None)
 
-        # Fast path: some draft models (e.g. z-lab/Qwen3-8B-DFlash-b16) ship a self-contained
-        # `spec_generate` method. Delegate when available — it's the upstream-canonical loop and
-        # avoids re-implementing rollback. Newer drafts (Qwen3.5-4B-DFlash) drop this method, so
-        # fall back to the explicit pipeline loop below.
-        spec_generate = getattr(self.draft_model, "spec_generate", None)
-        if callable(spec_generate):
-            generated = spec_generate(
-                input_ids=input_ids,
-                max_new_tokens=int(max_new_tokens),
-                temperature=float(temperature),
-                target=self.target_model,
-                stop_token_ids=stop_token_ids,
-            )
-            sequences = generated[:, input_ids.shape[1] :]
-            texts = None
-            if output_type == "text" and getattr(self, "tokenizer", None) is not None:
-                texts = self.tokenizer.batch_decode(sequences, skip_special_tokens=True)
-            if not return_dict:
-                return sequences, texts
-            return DFlashPipelineOutput(sequences=sequences, texts=texts)
-
         # Pass `config=` only when it looks like a real PretrainedConfig — hybrid-attention models
         # (Qwen3.5) need it so `DynamicCache` instantiates the right per-layer cache types
         # (linear vs full), but bare dummy configs in tests don't implement `get_text_config`.

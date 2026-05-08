@@ -53,18 +53,12 @@ and is not yet supported.
 
 ## Hybrid-attention targets
 
-For target models with linear-attention layers (e.g. Qwen3.5's gated-delta-net), `DynamicCache.crop()` silently
-no-ops on those layers, so a partial-accept block would otherwise leak rejected speculative tokens into the
-recurrent state. The pipeline detects linear-attention caches via
-[`DFlashTokenDiffusionScheduler.cache_has_linear_attention`] and uses a snapshot/restore + accepted-prefix
-re-forward pattern to advance both layer types cleanly. This adds one extra target forward per partial-accept
-block but is required for correctness.
-
-## Fast path
-
-When the draft model exposes a `spec_generate(...)` method (e.g. `z-lab/Qwen3-8B-DFlash-b16`), the pipeline
-delegates to it — that loop is the upstream-canonical implementation and avoids re-running the rollback bookkeeping.
-Newer drafts (`z-lab/Qwen3.5-4B-DFlash`) drop `spec_generate`; the pipeline falls back to its explicit verify loop.
+For target models with linear-attention layers (e.g. Qwen3.5's gated-delta-net), `DynamicCache.crop()` is a
+documented no-op on those layers (see `transformers.cache_utils.LinearAttentionCacheLayerMixin.crop`), so a
+partial-accept block would otherwise leak rejected speculative tokens into the recurrent state. The pipeline
+detects linear-attention caches via [`DFlashTokenDiffusionScheduler.cache_has_linear_attention`] and uses a
+snapshot/restore + accepted-prefix re-forward pattern to advance both layer types cleanly. This adds one extra
+target forward per partial-accept block on hybrid targets; full-attention targets use a plain `cache.crop()`.
 
 ## Callbacks
 
