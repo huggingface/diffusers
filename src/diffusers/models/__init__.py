@@ -113,6 +113,9 @@ if is_torch_available():
     _import_structure["transformers.transformer_hunyuan_video15"] = ["HunyuanVideo15Transformer3DModel"]
     _import_structure["transformers.transformer_hunyuan_video_framepack"] = ["HunyuanVideoFramepackTransformer3DModel"]
     _import_structure["transformers.transformer_hunyuanimage"] = ["HunyuanImageTransformer2DModel"]
+    _import_structure["transformers.transformer_joyimage"] = [
+        "JoyImageEditTransformer3DModel",
+    ]
     _import_structure["transformers.transformer_kandinsky"] = ["Kandinsky5Transformer3DModel"]
     _import_structure["transformers.transformer_longcat_audio_dit"] = ["LongCatAudioDiTTransformer"]
     _import_structure["transformers.transformer_longcat_image"] = ["LongCatImageTransformer2DModel"]
@@ -236,6 +239,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             HunyuanVideo15Transformer3DModel,
             HunyuanVideoFramepackTransformer3DModel,
             HunyuanVideoTransformer3DModel,
+            JoyImageEditTransformer3DModel,
             Kandinsky5Transformer3DModel,
             LatteTransformer3DModel,
             LongCatAudioDiTTransformer,

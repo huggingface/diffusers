@@ -20,9 +20,9 @@ import json
 from typing import Callable, List, Optional, Union
 
 import torch
-from PIL import Image
 from transformers import AutoModel, AutoModelForCausalLM, AutoTokenizer
 
+from ...image_processor import VaeImageProcessor
 from ...loaders import ErnieImageLoraLoaderMixin
 from ...models import AutoencoderKLFlux2
 from ...models.transformers import ErnieImageTransformer2DModel
@@ -69,6 +69,7 @@ class ErnieImagePipeline(DiffusionPipeline, ErnieImageLoraLoaderMixin):
             pe_tokenizer=pe_tokenizer,
         )
         self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels)) if getattr(self, "vae", None) else 16
+        self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor)
 
     @property
     def guidance_scale(self):
@@ -362,26 +363,25 @@ class ErnieImagePipeline(DiffusionPipeline, ErnieImageLoraLoaderMixin):
                 progress_bar.update()
 
         if output_type == "latent":
-            return latents
+            images = latents
+        else:
+            # Decode latents to images
+            # Unnormalize latents using VAE's BN stats
+            # TODO: switch to `self.vae.config.batch_norm_eps` once the hub config is updated to match the trained value (1e-5).
+            bn_mean = self.vae.bn.running_mean.view(1, -1, 1, 1).to(device=device, dtype=latents.dtype)
+            bn_std = torch.sqrt(self.vae.bn.running_var.view(1, -1, 1, 1) + 1e-5).to(
+                device=device, dtype=latents.dtype
+            )
+            latents = latents * bn_std + bn_mean
 
-        # Decode latents to images
-        # Unnormalize latents using VAE's BN stats
-        bn_mean = self.vae.bn.running_mean.view(1, -1, 1, 1).to(device)
-        bn_std = torch.sqrt(self.vae.bn.running_var.view(1, -1, 1, 1) + 1e-5).to(device)
-        latents = latents * bn_std + bn_mean
+            # Unpatchify
+            latents = self._unpatchify_latents(latents)
 
-        # Unpatchify
-        latents = self._unpatchify_latents(latents)
+            # Decode
+            images = self.vae.decode(latents, return_dict=False)[0]
 
-        # Decode
-        images = self.vae.decode(latents, return_dict=False)[0]
-
-        # Post-process
-        images = (images.clamp(-1, 1) + 1) / 2
-        images = images.cpu().permute(0, 2, 3, 1).float().numpy()
-
-        if output_type == "pil":
-            images = [Image.fromarray((img * 255).astype("uint8")) for img in images]
+            # Post-process
+            images = self.image_processor.postprocess(images, output_type=output_type)
 
         # Offload all models
         self.maybe_free_model_hooks()
