@@ -114,7 +114,7 @@ if is_torch_available():
     _import_structure["transformers.transformer_hunyuan_video_framepack"] = ["HunyuanVideoFramepackTransformer3DModel"]
     _import_structure["transformers.transformer_hunyuanimage"] = ["HunyuanImageTransformer2DModel"]
     _import_structure["transformers.transformer_joyimage"] = [
-        "JoyImageEditTransformer3DModel",
+        "JoyImageEditTransformer3DModel"
     ]
     _import_structure["transformers.transformer_kandinsky"] = ["Kandinsky5Transformer3DModel"]
     _import_structure["transformers.transformer_longcat_audio_dit"] = ["LongCatAudioDiTTransformer"]
