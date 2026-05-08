@@ -90,10 +90,7 @@ class QwenImageTransformerTesterConfig(BaseModelTesterConfig):
         encoder_hidden_states = randn_tensor(
             (batch_size, sequence_length, embedding_dim), generator=self.generator, device=torch_device
         )
-        encoder_hidden_states_mask = torch.ones((batch_size, sequence_length), dtype=torch.long, device=torch_device)
-        encoder_hidden_states_mask[:, 1] = 0
-        encoder_hidden_states_mask[:, 3] = 0
-        encoder_hidden_states_mask[:, 5:] = 0
+        encoder_hidden_states_mask = torch.ones((batch_size, sequence_length)).to(torch_device, torch.long)
         timestep = torch.tensor([1.0]).to(torch_device).expand(batch_size)
         orig_height = height * 2 * vae_scale_factor
         orig_width = width * 2 * vae_scale_factor
@@ -115,7 +112,7 @@ class TestQwenImageTransformer(QwenImageTransformerTesterConfig, ModelTesterMixi
         inputs = self.get_dummy_inputs(batch_size=batch_size)
         model = self.model_class(**init_dict).to(torch_device)
 
-        encoder_hidden_states_mask = torch.ones_like(inputs["encoder_hidden_states_mask"])
+        encoder_hidden_states_mask = inputs["encoder_hidden_states_mask"].clone()
         encoder_hidden_states_mask[:, 2:] = 0
 
         rope_text_seq_len, per_sample_len, normalized_mask = compute_text_seq_len_from_mask(
@@ -159,13 +156,20 @@ class TestQwenImageTransformer(QwenImageTransformerTesterConfig, ModelTesterMixi
         inputs = self.get_dummy_inputs(batch_size=batch_size)
         model = self.model_class(**init_dict).to(torch_device)
 
+        encoder_hidden_states_mask = inputs["encoder_hidden_states_mask"].clone()
+        encoder_hidden_states_mask[:, 1] = 0
+        encoder_hidden_states_mask[:, 3] = 0
+        encoder_hidden_states_mask[:, 5:] = 0
+
         inferred_rope_len, per_sample_len, normalized_mask = compute_text_seq_len_from_mask(
-            inputs["encoder_hidden_states"], inputs["encoder_hidden_states_mask"]
+            inputs["encoder_hidden_states"], encoder_hidden_states_mask
         )
         assert int(per_sample_len.max().item()) == 5
         assert inferred_rope_len == inputs["encoder_hidden_states"].shape[1]
         assert isinstance(inferred_rope_len, int)
         assert normalized_mask.dtype == torch.bool
+
+        inputs["encoder_hidden_states_mask"] = normalized_mask
 
         with torch.no_grad():
             output = model(**inputs)
@@ -258,6 +262,15 @@ class TestQwenImageTransformerContextParallelAttnBackends(
     # QwenImage always passes a joint attention mask (text + image), which flash_hub and
     # _flash_3_hub do not support.
     unsupported_attn_backends = ["flash_hub", "_flash_3_hub"]
+
+    def get_dummy_inputs(self, batch_size: int = 1) -> dict[str, torch.Tensor]:
+        inputs = super().get_dummy_inputs(batch_size=batch_size)
+        encoder_hidden_states_mask = inputs["encoder_hidden_states_mask"]
+        encoder_hidden_states_mask[:, 1] = 0
+        encoder_hidden_states_mask[:, 3] = 0
+        encoder_hidden_states_mask[:, 5:] = 0
+        inputs["encoder_hidden_states_mask"] = encoder_hidden_states_mask
+        return inputs
 
 
 class TestQwenImageTransformerLoRA(QwenImageTransformerTesterConfig, LoraTesterMixin):
@@ -363,7 +376,7 @@ class TestQwenImageTransformerCompile(QwenImageTransformerTesterConfig, TorchCom
         assert output_no_mask_2.sample.shape[1] == inputs["hidden_states"].shape[1]
 
         inputs_all_ones = inputs.copy()
-        inputs_all_ones["encoder_hidden_states_mask"] = torch.ones_like(inputs["encoder_hidden_states_mask"])
+        assert inputs_all_ones["encoder_hidden_states_mask"].all().item()
 
         with torch.no_grad():
             output_all_ones = model(**inputs_all_ones)
