@@ -124,9 +124,7 @@ class GGUFQuantizer(DiffusersQuantizer):
         ):
             keep_in_fp32 = getattr(self, "keep_in_fp32_modules", [])
             target_dtype = (
-                torch.float32
-                if any(m in param_name.split(".") for m in keep_in_fp32)
-                else self.compute_dtype
+                torch.float32 if any(m in param_name.split(".") for m in keep_in_fp32) else self.compute_dtype
             )
             param_value = dequantize_gguf_tensor(param_value).to(target_dtype)
 
