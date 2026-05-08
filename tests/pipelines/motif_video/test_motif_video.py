@@ -126,7 +126,7 @@ class MotifVideoPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             "width": 16,
             "num_frames": 9,
             "max_sequence_length": 16,
-            "output_type": "pt",
+            "output_type": "np",
         }
         return inputs
 
@@ -141,10 +141,4 @@ class MotifVideoPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         video = pipe(**inputs).frames
         generated_video = video[0]
 
-        self.assertEqual(generated_video.shape, (9, 3, 16, 16))
-
-
-
-    @unittest.skip("MotifVideo outputs video, not images - test infrastructure expects image output")
-    def test_attention_slicing_forward_pass(self):
-        pass
+        self.assertEqual(generated_video.shape, (9, 16, 16, 3))
