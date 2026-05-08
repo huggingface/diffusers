@@ -290,10 +290,6 @@ class QwenImageEditPlusPipelineFastTests(PipelineTesterMixin, unittest.TestCase)
         self.assertEqual(images[0].shape, (3, 32, 32))
         self.assertEqual(images[1].shape, (3, 32, 32))
 
-    @pytest.mark.xfail(condition=True, reason="Batch of multiple images needs to be revisited", strict=True)
-    def test_inference_batch_single_identical():
-        super().test_inference_batch_single_identical()
-
     def test_true_cfg_without_negative_prompt_embeds_mask(self):
         components = self.get_dummy_components()
         pipe = self.pipeline_class(**components)
