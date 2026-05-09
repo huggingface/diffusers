@@ -229,7 +229,7 @@ jobs:
 
           git commit -m "Apply changes from Claude (requested by @${COMMENT_USER} on #${PR_NUMBER})
 
-          Co-Authored-By: Claude Opus 4.6 (1M context) <noreply@anthropic.com>"
+          Co-Authored-By: Claude <noreply@anthropic.com>"
           CLAUDE_COMMIT=$(git rev-parse HEAD)
 
           git fetch --depth=1 origin "$BASE_BRANCH"
