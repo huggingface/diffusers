@@ -29,10 +29,6 @@ The abstract from the paper is:
 
 [[autodoc]] models.autoencoders.autoencoder_oobleck.OobleckDecoderOutput
 
-## OobleckDecoderOutput
-
-[[autodoc]] models.autoencoders.autoencoder_oobleck.OobleckDecoderOutput
-
 ## AutoencoderOobleckOutput
 
 [[autodoc]] models.autoencoders.autoencoder_oobleck.AutoencoderOobleckOutput
