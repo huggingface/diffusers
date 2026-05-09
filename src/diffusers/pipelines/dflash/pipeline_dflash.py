@@ -95,6 +95,10 @@ class DFlashPipeline(DiffusionPipeline):
             draft_model=draft_model, target_model=target_model, tokenizer=tokenizer, scheduler=scheduler
         )
 
+    @property
+    def num_timesteps(self):
+        return self._num_timesteps
+
     # --- Prompt encoding ---
 
     def _prepare_input_ids(
@@ -391,6 +395,7 @@ class DFlashPipeline(DiffusionPipeline):
         start = num_input_tokens
         global_step = 0
         num_blocks = (max_length - num_input_tokens + block_size - 1) // block_size
+        self._num_timesteps = int(num_blocks)
 
         # 5. Block-wise speculative decoding loop
         block_progress_bar_config = getattr(self, "_progress_bar_config", {}).copy()
