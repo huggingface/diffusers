@@ -17,6 +17,68 @@ from ...testing_utils import (
 )
 
 
+class FluxReduxFastTests(unittest.TestCase):
+    pipeline_class = FluxPriorReduxPipeline
+
+    def test_check_inputs_rejects_tensor_image_prompt_batch_mismatch(self):
+        pipe = object.__new__(self.pipeline_class)
+
+        with self.assertRaisesRegex(ValueError, "number of prompts"):
+            pipe.check_inputs(
+                image=torch.zeros(2, 3, 32, 32),
+                prompt=["first", "second", "third"],
+                prompt_2=None,
+            )
+
+    def test_check_inputs_allows_string_prompt_for_tensor_image_batch(self):
+        pipe = object.__new__(self.pipeline_class)
+
+        pipe.check_inputs(
+            image=torch.zeros(2, 3, 32, 32),
+            prompt="same prompt",
+            prompt_2=None,
+        )
+
+    def test_check_inputs_rejects_prompt_embed_batch_mismatch(self):
+        pipe = object.__new__(self.pipeline_class)
+
+        with self.assertRaisesRegex(ValueError, "prompt_embeds"):
+            pipe.check_inputs(
+                image=torch.zeros(2, 3, 32, 32),
+                prompt=None,
+                prompt_2=None,
+                prompt_embeds=torch.zeros(1, 4, 8),
+                pooled_prompt_embeds=torch.zeros(1, 8),
+            )
+
+    def test_check_inputs_rejects_prompt_scale_batch_mismatch(self):
+        pipe = object.__new__(self.pipeline_class)
+
+        with self.assertRaisesRegex(ValueError, "number of weights"):
+            pipe.check_inputs(
+                image=torch.zeros(2, 3, 32, 32),
+                prompt=["first", "second"],
+                prompt_2=None,
+                prompt_embeds_scale=[1.0],
+            )
+
+        with self.assertRaisesRegex(ValueError, "number of pooled weights"):
+            pipe.check_inputs(
+                image=torch.zeros(2, 3, 32, 32),
+                prompt=["first", "second"],
+                prompt_2=None,
+                pooled_prompt_embeds_scale=[1.0],
+            )
+
+        pipe.check_inputs(
+            image=torch.zeros(2, 3, 32, 32),
+            prompt=["first", "second"],
+            prompt_2=None,
+            prompt_embeds_scale=[1.0, 1.0],
+            pooled_prompt_embeds_scale=[1.0, 1.0],
+        )
+
+
 @slow
 @require_big_accelerator
 class FluxReduxSlowTests(unittest.TestCase):

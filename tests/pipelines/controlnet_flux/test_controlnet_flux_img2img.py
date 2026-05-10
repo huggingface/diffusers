@@ -11,9 +11,10 @@ from diffusers import (
     FluxControlNetModel,
     FluxTransformer2DModel,
 )
+from diffusers.pipelines.flux.pipeline_flux_controlnet_image_to_image import logger as controlnet_img2img_logger
 from diffusers.utils.torch_utils import randn_tensor
 
-from ...testing_utils import torch_device
+from ...testing_utils import CaptureLogger, torch_device
 from ..test_pipelines_common import PipelineTesterMixin, check_qkv_fused_layers_exist
 
 
@@ -216,3 +217,38 @@ class FluxControlNetImg2ImgPipelineFastTests(unittest.TestCase, PipelineTesterMi
             image = pipe(**inputs).images[0]
             output_height, output_width, _ = image.shape
             assert (output_height, output_width) == (expected_height, expected_width)
+
+    def test_dimension_check_uses_packed_latent_multiple(self):
+        pipe = object.__new__(self.pipeline_class)
+        pipe.vae_scale_factor = 8
+        pipe._callback_tensor_inputs = ["latents", "prompt_embeds", "control_image"]
+
+        with CaptureLogger(controlnet_img2img_logger) as cap_logger:
+            pipe.check_inputs(
+                prompt="x",
+                prompt_2=None,
+                strength=0.5,
+                height=72,
+                width=72,
+                callback_on_step_end_tensor_inputs=["latents"],
+                prompt_embeds=None,
+                pooled_prompt_embeds=None,
+                max_sequence_length=48,
+            )
+
+        assert "have to be divisible by 16" in cap_logger.out
+
+        with CaptureLogger(controlnet_img2img_logger) as cap_logger:
+            pipe.check_inputs(
+                prompt="x",
+                prompt_2=None,
+                strength=0.5,
+                height=64,
+                width=64,
+                callback_on_step_end_tensor_inputs=["latents"],
+                prompt_embeds=None,
+                pooled_prompt_embeds=None,
+                max_sequence_length=48,
+            )
+
+        assert "have to be divisible by 16" not in cap_logger.out

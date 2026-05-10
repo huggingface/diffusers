@@ -17,13 +17,13 @@ import inspect
 import numpy as np
 import torch
 
-from ...pipelines import FluxPipeline
 from ...schedulers import FlowMatchEulerDiscreteScheduler
 from ...utils import logging
 from ...utils.torch_utils import randn_tensor
 from ..modular_pipeline import ModularPipelineBlocks, PipelineState
 from ..modular_pipeline_utils import ComponentSpec, InputParam, OutputParam
 from .modular_pipeline import FluxModularPipeline
+from .pipeline_helpers import pack_latents, prepare_latent_image_ids
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -390,7 +390,7 @@ class FluxPrepareLatentsStep(ModularPipelineBlocks):
 
         # TODO: move packing latents code to a patchifier similar to Qwen
         latents = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
-        latents = FluxPipeline._pack_latents(latents, batch_size, num_channels_latents, height, width)
+        latents = pack_latents(latents, batch_size, num_channels_latents, height, width)
 
         return latents
 
@@ -470,7 +470,7 @@ class FluxImg2ImgPrepareLatentsStep(ModularPipelineBlocks):
     def check_inputs(image_latents, latents):
         if image_latents.shape[0] != latents.shape[0]:
             raise ValueError(
-                f"`image_latents` must have have same batch size as `latents`, but got {image_latents.shape[0]} and {latents.shape[0]}"
+                f"`image_latents` must have the same batch size as `latents`, but got {image_latents.shape[0]} and {latents.shape[0]}"
             )
 
         if image_latents.ndim != 3:
@@ -541,7 +541,7 @@ class FluxRoPEInputsStep(ModularPipelineBlocks):
 
         height = 2 * (int(block_state.height) // (components.vae_scale_factor * 2))
         width = 2 * (int(block_state.width) // (components.vae_scale_factor * 2))
-        block_state.img_ids = FluxPipeline._prepare_latent_image_ids(None, height // 2, width // 2, device, dtype)
+        block_state.img_ids = prepare_latent_image_ids(None, height // 2, width // 2, device, dtype)
 
         self.set_block_state(state, block_state)
 
@@ -598,15 +598,13 @@ class FluxKontextRoPEInputsStep(ModularPipelineBlocks):
         ):
             image_latent_height = 2 * (int(block_state.image_height) // (components.vae_scale_factor * 2))
             image_latent_width = 2 * (int(block_state.image_width) // (components.vae_scale_factor * 2))
-            img_ids = FluxPipeline._prepare_latent_image_ids(
-                None, image_latent_height // 2, image_latent_width // 2, device, dtype
-            )
+            img_ids = prepare_latent_image_ids(None, image_latent_height // 2, image_latent_width // 2, device, dtype)
             # image ids are the same as latent ids with the first dimension set to 1 instead of 0
             img_ids[..., 0] = 1
 
         height = 2 * (int(block_state.height) // (components.vae_scale_factor * 2))
         width = 2 * (int(block_state.width) // (components.vae_scale_factor * 2))
-        latent_ids = FluxPipeline._prepare_latent_image_ids(None, height // 2, width // 2, device, dtype)
+        latent_ids = prepare_latent_image_ids(None, height // 2, width // 2, device, dtype)
 
         if img_ids is not None:
             latent_ids = torch.cat([latent_ids, img_ids], dim=0)
