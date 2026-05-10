@@ -159,6 +159,7 @@ class CacheMixin:
         registry = HookRegistry.check_if_exists_or_initialize(self)
         registry._set_context(name)
 
-        yield
-
-        registry._set_context(None)
+        try:
+            yield
+        finally:
+            registry._set_context(None)

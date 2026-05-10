@@ -21,9 +21,11 @@ import torch
 from torch import nn
 
 from diffusers.models.attention import GEGLU, AdaLayerNorm, ApproximateGELU
-from diffusers.models.embeddings import get_timestep_embedding
+from diffusers.models.downsampling import FirDownsample2D, downsample_2d
+from diffusers.models.embeddings import get_1d_sincos_pos_embed_from_grid, get_timestep_embedding
 from diffusers.models.resnet import Downsample2D, ResnetBlock2D, Upsample2D
 from diffusers.models.transformers.transformer_2d import Transformer2DModel
+from diffusers.models.upsampling import FirUpsample2D, upsample_2d
 
 from ..testing_utils import (
     backend_manual_seed,
@@ -67,6 +69,20 @@ class EmbeddingsTests(unittest.TestCase):
         t2 = get_timestep_embedding(timesteps, embedding_dim, flip_sin_to_cos=False)
 
         assert torch.allclose(t1.cpu(), t2.cpu(), 1e-3)
+
+    def test_1d_sincos_pos_embed_default_dtype_is_float32(self):
+        pos = torch.arange(4, dtype=torch.float32)
+
+        emb = get_1d_sincos_pos_embed_from_grid(8, pos, output_type="pt")
+
+        assert emb.dtype == torch.float32
+
+    def test_1d_sincos_pos_embed_honors_explicit_dtype(self):
+        pos = torch.arange(4, dtype=torch.float32)
+
+        emb = get_1d_sincos_pos_embed_from_grid(8, pos, output_type="pt", dtype=torch.float64)
+
+        assert emb.dtype == torch.float64
 
     def test_timestep_downscale_freq_shift(self):
         embedding_dim = 16
@@ -136,6 +152,28 @@ class Upsample2DBlockTests(unittest.TestCase):
             [-0.2173, -1.2079, -1.2079, 0.2952, 1.1254, 1.1254, 0.2952, 1.1254, 1.1254], dtype=torch.bfloat16
         )
         assert torch.allclose(output_slice.flatten(), expected_slice, atol=1e-3)
+
+    @require_torch_version_greater_equal("2.1")
+    def test_upsample_2d_fir_bfloat16(self):
+        torch.manual_seed(0)
+        sample = torch.randn(1, 1, 4, 4).to(torch.bfloat16)
+
+        upsampled = upsample_2d(sample)
+
+        assert upsampled.dtype == torch.bfloat16
+        assert upsampled.shape == (1, 1, 8, 8)
+
+    @require_torch_version_greater_equal("2.1")
+    def test_fir_upsample_with_conv_bfloat16(self):
+        torch.manual_seed(0)
+        sample = torch.randn(1, 1, 4, 4).to(torch.bfloat16)
+        upsample = FirUpsample2D(channels=1, out_channels=1, use_conv=True).to(torch.bfloat16)
+
+        with torch.no_grad():
+            upsampled = upsample(sample)
+
+        assert upsampled.dtype == torch.bfloat16
+        assert upsampled.shape == (1, 1, 8, 8)
 
     def test_upsample_with_conv(self):
         torch.manual_seed(0)
@@ -227,6 +265,28 @@ class Downsample2DBlockTests(unittest.TestCase):
         output_slice = downsampled[0, -1, -3:, -3:]
         expected_slice = torch.tensor([-0.6586, 0.5985, 0.0721, 0.1256, -0.1492, 0.4436, -0.2544, 0.5021, 1.1522])
         assert torch.allclose(output_slice.flatten(), expected_slice, atol=1e-3)
+
+    @require_torch_version_greater_equal("2.1")
+    def test_downsample_2d_fir_bfloat16(self):
+        torch.manual_seed(0)
+        sample = torch.randn(1, 1, 8, 8).to(torch.bfloat16)
+
+        downsampled = downsample_2d(sample)
+
+        assert downsampled.dtype == torch.bfloat16
+        assert downsampled.shape == (1, 1, 4, 4)
+
+    @require_torch_version_greater_equal("2.1")
+    def test_fir_downsample_with_conv_bfloat16(self):
+        torch.manual_seed(0)
+        sample = torch.randn(1, 1, 8, 8).to(torch.bfloat16)
+        downsample = FirDownsample2D(channels=1, out_channels=1, use_conv=True).to(torch.bfloat16)
+
+        with torch.no_grad():
+            downsampled = downsample(sample)
+
+        assert downsampled.dtype == torch.bfloat16
+        assert downsampled.shape == (1, 1, 4, 4)
 
 
 class ResnetBlock2DTests(unittest.TestCase):

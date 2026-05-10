@@ -18,7 +18,7 @@ import torch.nn.functional as F
 
 from ..utils import deprecate
 from .normalization import RMSNorm
-from .upsampling import upfirdn2d_native
+from .upsampling import _prepare_fir_kernel, upfirdn2d_native
 
 
 class Downsample1D(nn.Module):
@@ -210,16 +210,13 @@ class FirDownsample2D(nn.Module):
         """
 
         assert isinstance(factor, int) and factor >= 1
-        if kernel is None:
-            kernel = [1] * factor
-
-        # setup kernel
-        kernel = torch.tensor(kernel, dtype=torch.float32)
-        if kernel.ndim == 1:
-            kernel = torch.outer(kernel, kernel)
-        kernel /= torch.sum(kernel)
-
-        kernel = kernel * gain
+        kernel = _prepare_fir_kernel(
+            kernel,
+            factor=factor,
+            gain=gain,
+            device=hidden_states.device,
+            dtype=hidden_states.dtype,
+        )
 
         if self.use_conv:
             _, _, convH, convW = weight.shape
@@ -227,7 +224,7 @@ class FirDownsample2D(nn.Module):
             stride_value = [factor, factor]
             upfirdn_input = upfirdn2d_native(
                 hidden_states,
-                torch.tensor(kernel, device=hidden_states.device),
+                kernel,
                 pad=((pad_value + 1) // 2, pad_value // 2),
             )
             output = F.conv2d(upfirdn_input, weight, stride=stride_value, padding=0)
@@ -235,7 +232,7 @@ class FirDownsample2D(nn.Module):
             pad_value = kernel.shape[0] - factor
             output = upfirdn2d_native(
                 hidden_states,
-                torch.tensor(kernel, device=hidden_states.device),
+                kernel,
                 down=factor,
                 pad=((pad_value + 1) // 2, pad_value // 2),
             )
@@ -380,19 +377,17 @@ def downsample_2d(
     """
 
     assert isinstance(factor, int) and factor >= 1
-    if kernel is None:
-        kernel = [1] * factor
-
-    kernel = torch.tensor(kernel, dtype=torch.float32)
-    if kernel.ndim == 1:
-        kernel = torch.outer(kernel, kernel)
-    kernel /= torch.sum(kernel)
-
-    kernel = kernel * gain
+    kernel = _prepare_fir_kernel(
+        kernel,
+        factor=factor,
+        gain=gain,
+        device=hidden_states.device,
+        dtype=hidden_states.dtype,
+    )
     pad_value = kernel.shape[0] - factor
     output = upfirdn2d_native(
         hidden_states,
-        kernel.to(device=hidden_states.device),
+        kernel,
         down=factor,
         pad=((pad_value + 1) // 2, pad_value // 2),
     )

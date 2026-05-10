@@ -1592,7 +1592,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             "`enable_parallelism` is an experimental feature. The API may change in the future and breaking changes may be introduced at any time without warning."
         )
 
-        if not torch.distributed.is_available() and not torch.distributed.is_initialized():
+        if not torch.distributed.is_available() or not torch.distributed.is_initialized():
             raise RuntimeError(
                 "torch.distributed must be available and initialized before calling `enable_parallelism`."
             )
