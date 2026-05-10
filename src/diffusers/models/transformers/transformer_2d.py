@@ -517,7 +517,7 @@ class Transformer2DModel(LegacyModelMixin, LegacyConfigMixin):
         # (batch, self.num_vector_embeds - 1, self.num_latent_pixels)
         logits = logits.permute(0, 2, 1)
         # log(p(x_0))
-        output = F.log_softmax(logits.double(), dim=1).float()
+        output = F.log_softmax(logits.float(), dim=1)
         return output
 
     def _get_output_for_patched_inputs(

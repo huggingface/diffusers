@@ -99,6 +99,7 @@ class DualTransformer2DModel(nn.Module):
         encoder_hidden_states,
         timestep=None,
         attention_mask=None,
+        encoder_attention_mask=None,
         cross_attention_kwargs=None,
         return_dict: bool = True,
     ):
@@ -113,6 +114,8 @@ class DualTransformer2DModel(nn.Module):
                 Optional timestep to be applied as an embedding in AdaLayerNorm's. Used to indicate denoising step.
             attention_mask (`torch.Tensor`, *optional*):
                 Optional attention mask to be applied in Attention.
+            encoder_attention_mask (`torch.Tensor`, *optional*):
+                Optional cross-attention mask to be applied to `encoder_hidden_states`.
             cross_attention_kwargs (`dict`, *optional*):
                 A kwargs dictionary that if specified is passed along to the `AttentionProcessor` as defined under
                 `self.processor` in
@@ -130,15 +133,20 @@ class DualTransformer2DModel(nn.Module):
 
         encoded_states = []
         tokens_start = 0
-        # attention_mask is not used yet
         for i in range(2):
             # for each of the two transformers, pass the corresponding condition tokens
             condition_state = encoder_hidden_states[:, tokens_start : tokens_start + self.condition_lengths[i]]
+            condition_mask = None
+            if encoder_attention_mask is not None:
+                condition_mask = encoder_attention_mask[..., tokens_start : tokens_start + self.condition_lengths[i]]
+
             transformer_index = self.transformer_index_for_condition[i]
             encoded_state = self.transformers[transformer_index](
                 input_states,
                 encoder_hidden_states=condition_state,
                 timestep=timestep,
+                attention_mask=attention_mask,
+                encoder_attention_mask=condition_mask,
                 cross_attention_kwargs=cross_attention_kwargs,
                 return_dict=False,
             )[0]

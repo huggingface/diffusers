@@ -15,6 +15,7 @@
 
 
 import unittest
+from unittest import mock
 
 import numpy as np
 import torch
@@ -23,11 +24,11 @@ from torch import nn
 from diffusers.models.attention import GEGLU, AdaLayerNorm, ApproximateGELU
 from diffusers.models.embeddings import get_timestep_embedding
 from diffusers.models.resnet import Downsample2D, ResnetBlock2D, Upsample2D
+from diffusers.models.transformers import transformer_2d as transformer_2d_module
 from diffusers.models.transformers.transformer_2d import Transformer2DModel
 
 from ..testing_utils import (
     backend_manual_seed,
-    require_torch_accelerator_with_fp64,
     require_torch_version_greater_equal,
     torch_device,
 )
@@ -432,7 +433,6 @@ class Transformer2DModelTests(unittest.TestCase):
         )
         assert torch.allclose(output_slice.flatten(), expected_slice, atol=1e-3)
 
-    @require_torch_accelerator_with_fp64
     def test_spatial_transformer_discrete(self):
         torch.manual_seed(0)
         backend_manual_seed(torch_device, 0)
@@ -451,8 +451,15 @@ class Transformer2DModelTests(unittest.TestCase):
             .eval()
         )
 
+        original_log_softmax = transformer_2d_module.F.log_softmax
+
+        def checked_log_softmax(input, *args, **kwargs):
+            assert input.dtype != torch.float64
+            return original_log_softmax(input, *args, **kwargs)
+
         with torch.no_grad():
-            attention_scores = spatial_transformer_block(sample).sample
+            with mock.patch.object(transformer_2d_module.F, "log_softmax", side_effect=checked_log_softmax):
+                attention_scores = spatial_transformer_block(sample).sample
 
         assert attention_scores.shape == (1, num_embed - 1, 32)
 
