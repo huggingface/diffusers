@@ -51,7 +51,7 @@ python examples/discrete_diffusion/sample_llada2.py \
 
 ## DFlash
 
-[DFlash](https://huggingface.co/collections/z-lab/dflash) is a block-diffusion **speculative decoding** scheme: a small diffusion *draft* model, conditioned on hidden features from a frozen *target* causal LM, proposes a block of tokens that the target verifies in a single forward pass. The pipeline accepts the longest matching prefix and resamples the next token at the rejection point.
+[DFlash](https://huggingface.co/papers/2602.06036) ([model collection](https://huggingface.co/collections/z-lab/dflash)) is a block-diffusion **speculative decoding** scheme: a small diffusion *draft* model, conditioned on hidden features from a frozen *target* causal LM, proposes a block of tokens that the target verifies in a single forward pass. The pipeline accepts the longest matching prefix and resamples the next token at the rejection point.
 
 ### Sample
 

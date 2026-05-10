@@ -12,16 +12,18 @@ specific language governing permissions and limitations under the License.
 
 # DFlash
 
-[DFlash](https://huggingface.co/collections/z-lab/dflash) is a block-diffusion speculative decoding scheme. A small
-diffusion *draft* model proposes a block of tokens conditioned on hidden features extracted from intermediate layers
-of a frozen *target* causal LM; the target then verifies the proposed block in a single forward pass and accepts the
-longest matching prefix. The draft model is shared with the target's tokenizer, so no calibration is needed.
+[DFlash: Block Diffusion for Flash Speculative Decoding](https://huggingface.co/papers/2602.06036) is by Jian Chen, Yesheng Liang, and Zhijian Liu.
+
+The abstract from the paper is:
+
+*Autoregressive large language models (LLMs) deliver strong performance but require inherently sequential decoding, leading to high inference latency and poor GPU utilization. Speculative decoding mitigates this bottleneck by using a fast draft model whose outputs are verified in parallel by the target LLM. However, existing methods still rely on autoregressive drafting, which remains sequential and constrains practical speedups. Diffusion LLMs offer a promising alternative by enabling parallel generation, but current diffusion models typically underperform compared with autoregressive models. In this paper, we introduce DFlash, a speculative decoding framework that employs a lightweight block diffusion model for parallel drafting. We show that speculative decoding provides a natural and effective setting for diffusion models. By generating draft tokens in a single forward pass, DFlash enables efficient drafting, and by conditioning the draft model on context features extracted from the target model, it achieves high-quality drafts with higher acceptance rates. Experiments show that DFlash achieves over 6× lossless acceleration across a range of models and tasks, delivering up to 2.5× higher speedup than the state-of-the-art speculative decoding method EAGLE-3.*
 
 `DFlashPipeline` ties the two models together: prefill on the target, draft a block, verify against the target's
 posterior via [`DFlashTokenDiffusionScheduler`], commit the accepted prefix and the next-token resample, and repeat
-until `max_new_tokens` or a stop token. Compatible draft/target pairs include `z-lab/Qwen3-8B-DFlash-b16` with
-`Qwen/Qwen3-8B`, and `z-lab/Qwen3.5-4B-DFlash` with `Qwen/Qwen3.5-4B` (the latter is a hybrid-attention target — see
-the rollback note below).
+until `max_new_tokens` or a stop token. Pretrained draft/target pairs are available in the
+[z-lab/dflash collection](https://huggingface.co/collections/z-lab/dflash); compatible pairs include
+`z-lab/Qwen3-8B-DFlash-b16` with `Qwen/Qwen3-8B`, and `z-lab/Qwen3.5-4B-DFlash` with `Qwen/Qwen3.5-4B` (the latter is
+a hybrid-attention target — see the rollback note below).
 
 ## Usage
 
