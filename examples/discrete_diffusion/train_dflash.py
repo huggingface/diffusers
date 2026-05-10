@@ -52,10 +52,13 @@ class TrainConfig:
     weight_decay: float
     lr_scheduler: str
     lr_warmup_steps: int
+    lr_warmup_ratio: float
+    max_grad_norm: float
 
     max_length: int
     block_size: int
     mask_token: str
+    loss_decay_gamma: float
 
 
 def parse_args() -> TrainConfig:
@@ -75,18 +78,32 @@ def parse_args() -> TrainConfig:
 
     parser.add_argument("--per_device_train_batch_size", type=int, default=2)
     parser.add_argument("--gradient_accumulation_steps", type=int, default=1)
-    parser.add_argument("--learning_rate", type=float, default=2e-5)
+    parser.add_argument("--learning_rate", type=float, default=6e-4)
     parser.add_argument("--weight_decay", type=float, default=0.0)
     parser.add_argument(
         "--lr_scheduler", type=str, default="cosine", choices=["linear", "cosine", "cosine_with_restarts"]
     )
-    parser.add_argument("--lr_warmup_steps", type=int, default=100)
+    parser.add_argument(
+        "--lr_warmup_steps",
+        type=int,
+        default=0,
+        help="Absolute warmup steps. Ignored when --lr_warmup_ratio > 0 (default).",
+    )
+    parser.add_argument("--lr_warmup_ratio", type=float, default=0.04)
+    parser.add_argument("--max_grad_norm", type=float, default=1.0)
 
-    parser.add_argument("--max_length", type=int, default=512)
+    parser.add_argument("--max_length", type=int, default=3072)
     parser.add_argument(
         "--block_size", type=int, default=0, help="Override draft block size (0 uses the model config)."
     )
     parser.add_argument("--mask_token", type=str, default="<|MASK|>")
+    parser.add_argument(
+        "--loss_decay_gamma",
+        type=float,
+        default=0.0,
+        help="Per-position loss decay γ for w_k = exp(-(k-1)/γ). 0 selects the paper default for the "
+        "draft block size (γ=7 for block 16, γ=5 for block 10, γ=4 for block 8, else block_size/2).",
+    )
 
     args = parser.parse_args()
     return TrainConfig(**vars(args))
@@ -177,6 +194,14 @@ def main():
     if block_size < 2:
         raise ValueError("`block_size` must be at least 2 for DFlash training.")
 
+    # Eq. 4 in the DFlash paper: w_k = exp(-(k-1)/γ) over predicted positions k=1..block_size-1.
+    # Defaults from Appendix A.1.
+    if cfg.loss_decay_gamma > 0.0:
+        loss_gamma = float(cfg.loss_decay_gamma)
+    else:
+        loss_gamma = {16: 7.0, 10: 5.0, 8: 4.0}.get(block_size, max(2.0, block_size / 2.0))
+    pos_weights = torch.exp(-torch.arange(block_size - 1, dtype=torch.float32) / loss_gamma)
+
     layer_ids = getattr(draft_model, "target_layer_ids", None)
     if layer_ids is None:
         cfg_draft = getattr(draft_model, "config", None)
@@ -208,10 +233,14 @@ def main():
     num_update_steps_per_epoch = math.ceil(len(train_dataloader) / cfg.gradient_accumulation_steps)
     num_train_epochs = math.ceil(cfg.max_train_steps / num_update_steps_per_epoch)
 
+    if cfg.lr_warmup_ratio > 0.0:
+        num_warmup_steps = int(cfg.lr_warmup_ratio * cfg.max_train_steps)
+    else:
+        num_warmup_steps = cfg.lr_warmup_steps
     lr_scheduler = get_scheduler(
         name=cfg.lr_scheduler,
         optimizer=optimizer,
-        num_warmup_steps=cfg.lr_warmup_steps,
+        num_warmup_steps=num_warmup_steps,
         num_training_steps=cfg.max_train_steps,
     )
 
@@ -220,6 +249,7 @@ def main():
     )
     input_embeddings = get_target_input_embeddings(target_model)
     output_embeddings = get_target_output_embeddings(target_model)
+    pos_weights = pos_weights.to(accelerator.device)
 
     global_step = 0
     draft_model.train()
@@ -279,9 +309,12 @@ def main():
                 vocab_size = logits.shape[-1]
                 loss = F.cross_entropy(logits.view(-1, vocab_size), block_targets.reshape(-1), reduction="none")
                 loss = loss.view(block_targets.shape[0], -1)
-                loss = (loss * block_mask.to(loss.dtype)).sum() / block_mask.sum().clamp_min(1)
+                weights = pos_weights.to(loss.dtype)[None, :].expand_as(loss) * block_mask.to(loss.dtype)
+                loss = (loss * weights).sum() / weights.sum().clamp_min(1)
 
                 accelerator.backward(loss)
+                if accelerator.sync_gradients and cfg.max_grad_norm > 0:
+                    accelerator.clip_grad_norm_(draft_model.parameters(), cfg.max_grad_norm)
                 optimizer.step()
                 lr_scheduler.step()
                 optimizer.zero_grad(set_to_none=True)
