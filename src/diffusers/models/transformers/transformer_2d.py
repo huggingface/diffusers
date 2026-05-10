@@ -96,6 +96,7 @@ class Transformer2DModel(LegacyModelMixin, LegacyConfigMixin):
         caption_channels: int = None,
         interpolation_scale: float = None,
         use_additional_conditions: bool | None = None,
+        exclusive_self_attention: bool = False,
     ):
         super().__init__()
 
@@ -199,6 +200,7 @@ class Transformer2DModel(LegacyModelMixin, LegacyConfigMixin):
                     norm_elementwise_affine=self.config.norm_elementwise_affine,
                     norm_eps=self.config.norm_eps,
                     attention_type=self.config.attention_type,
+                    exclusive_self_attention=self.config.exclusive_self_attention,
                 )
                 for _ in range(self.config.num_layers)
             ]
@@ -241,6 +243,7 @@ class Transformer2DModel(LegacyModelMixin, LegacyConfigMixin):
                     norm_elementwise_affine=self.config.norm_elementwise_affine,
                     norm_eps=self.config.norm_eps,
                     attention_type=self.config.attention_type,
+                    exclusive_self_attention=self.config.exclusive_self_attention,
                 )
                 for _ in range(self.config.num_layers)
             ]
@@ -288,6 +291,7 @@ class Transformer2DModel(LegacyModelMixin, LegacyConfigMixin):
                     norm_elementwise_affine=self.config.norm_elementwise_affine,
                     norm_eps=self.config.norm_eps,
                     attention_type=self.config.attention_type,
+                    exclusive_self_attention=self.config.exclusive_self_attention,
                 )
                 for _ in range(self.config.num_layers)
             ]
