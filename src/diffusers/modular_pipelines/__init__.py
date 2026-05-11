@@ -46,6 +46,7 @@ else:
         "InsertableDict",
     ]
     _import_structure["stable_diffusion_xl"] = ["StableDiffusionXLAutoBlocks", "StableDiffusionXLModularPipeline"]
+    _import_structure["stable_diffusion_3"] = ["StableDiffusion3AutoBlocks", "StableDiffusion3ModularPipeline"]
     _import_structure["wan"] = [
         "WanBlocks",
         "Wan22Blocks",
@@ -88,6 +89,10 @@ else:
         "QwenImageLayeredModularPipeline",
         "QwenImageLayeredAutoBlocks",
     ]
+    _import_structure["ernie_image"] = [
+        "ErnieImageAutoBlocks",
+        "ErnieImageModularPipeline",
+    ]
     _import_structure["hunyuan_video1_5"] = [
         "HunyuanVideo15AutoBlocks",
         "HunyuanVideo15ModularPipeline",
@@ -110,6 +115,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from ..utils.dummy_pt_objects import *  # noqa F403
     else:
         from .components_manager import ComponentsManager
+        from .ernie_image import ErnieImageAutoBlocks, ErnieImageModularPipeline
         from .flux import FluxAutoBlocks, FluxKontextAutoBlocks, FluxKontextModularPipeline, FluxModularPipeline
         from .flux2 import (
             Flux2AutoBlocks,
@@ -153,6 +159,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             QwenImageLayeredModularPipeline,
             QwenImageModularPipeline,
         )
+        from .stable_diffusion_3 import StableDiffusion3AutoBlocks, StableDiffusion3ModularPipeline
         from .stable_diffusion_xl import StableDiffusionXLAutoBlocks, StableDiffusionXLModularPipeline
         from .wan import (
             Wan22Blocks,

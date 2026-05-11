@@ -20,6 +20,9 @@ on:
         required: true
         default: 'main'
 
+permissions:
+  contents: read
+
 jobs:
   mirror_community_pipeline:
     env:
