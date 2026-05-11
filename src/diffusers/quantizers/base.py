@@ -235,6 +235,26 @@ class DiffusersQuantizer(ABC):
     @abstractmethod
     def is_serializable(self): ...
 
+    def get_state_dict_and_metadata(
+        self, model: "ModelMixin", safe_serialization: bool = False
+    ) -> tuple[dict[str, Any], dict[str, str]]:
+        """Save-time hook: return `(state_dict, safetensors_metadata)`."""
+        return model.state_dict(), {}
+
+    def set_metadata(self, checkpoint_files: list[str]) -> None:
+        """Load-time hook: read whatever per-shard safetensors metadata the quantizer needs."""
+        return None
+
+    def update_state_dict_with_metadata(
+        self, state_dict: dict[str, Any], metadata: dict[str, str]
+    ) -> dict[str, Any]:
+        """Load-time hook: transform a shard's state dict before per-parameter dispatch."""
+        return state_dict
+
+    def update_loaded_keys(self, loaded_keys: list[str]) -> list[str]:
+        """Load-time hook: rewrite checkpoint key names to match the post-transform state dict."""
+        return loaded_keys
+
     @property
     @abstractmethod
     def is_trainable(self): ...
