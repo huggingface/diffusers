@@ -45,7 +45,7 @@ from ...utils import (
     scale_lora_layers,
     unscale_lora_layers,
 )
-from ...utils.torch_utils import randn_tensor
+from ...utils.torch_utils import randn_tensor, torch_device
 from ..pipeline_utils import DiffusionPipeline, StableDiffusionMixin
 from .pipeline_output import StableDiffusionXLPipelineOutput
 
@@ -1092,11 +1092,8 @@ class StableDiffusionXLPipeline(
         )
 
         # 4. Prepare timesteps
-        # Keep timesteps on CPU for XLA (TPU) and Neuron: both use lazy/XLA execution where
-        # dynamic-shape ops like .nonzero() and .item() inside scheduler.index_for_timestep()
-        # are incompatible with static-graph compilation.
-        is_neuron_device = hasattr(device, "type") and device.type == "neuron"
-        if XLA_AVAILABLE or is_neuron_device:
+        is_neuron = torch_device == "neuron"
+        if XLA_AVAILABLE or is_neuron:
             timestep_device = "cpu"
         else:
             timestep_device = device
@@ -1201,7 +1198,7 @@ class StableDiffusionXLPipeline(
 
                 # For Neuron: scale_model_input on CPU to avoid XLA ops outside the compiled UNet region.
                 # index_for_timestep() uses .nonzero()/.item() which are incompatible with static graphs.
-                if is_neuron_device:
+                if is_neuron:
                     latent_model_input = self.scheduler.scale_model_input(latent_model_input.to("cpu"), t).to(device)
                 else:
                     latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
@@ -1212,7 +1209,7 @@ class StableDiffusionXLPipeline(
                     added_cond_kwargs["image_embeds"] = image_embeds
                 # For Neuron: pre-cast timestep to float32 on device. Neuron XLA does not support
                 # int64 ops; the compiled UNet graph requires a float32 timestep input on-device.
-                t_unet = t.to(torch.float32).to(device) if is_neuron_device else t
+                t_unet = t.to(torch.float32).to(device) if is_neuron else t
                 noise_pred = self.unet(
                     latent_model_input,
                     t_unet,
@@ -1235,7 +1232,7 @@ class StableDiffusionXLPipeline(
                 # compute the previous noisy sample x_t -> x_t-1
                 latents_dtype = latents.dtype
                 # For Neuron: scheduler.step on CPU to keep scheduler arithmetic off the XLA device.
-                if is_neuron_device:
+                if is_neuron:
                     latents = self.scheduler.step(
                         noise_pred.to("cpu"), t, latents.to("cpu"), **extra_step_kwargs, return_dict=False
                     )[0].to(device)
