@@ -955,6 +955,7 @@ class DreamBoothDataset(Dataset):
 def collate_fn(examples, with_prior_preservation=False):
     indices = [example["index"] for example in examples]
     pixel_values = [example["instance_images"] for example in examples]
+    # Keep instance_prompts unchanged for prompt cache precompute; prompts may be extended with class prompts below.
     instance_prompts = [example["instance_prompt"] for example in examples]
     prompts = [example["instance_prompt"] for example in examples]
 
@@ -1584,6 +1585,18 @@ def main(args):
                     for i, idx in enumerate(sample_indices):
                         prompt_embeds_cache[idx] = prompt_embeds[i : i + 1]
                         text_ids_cache[idx] = text_ids[i : i + 1]
+
+        if args.cache_latents:
+            assert all(latents is not None for latents in instance_latents_cache), "Latent cache has unfilled entries."
+            if args.with_prior_preservation:
+                assert all(latents is not None for latents in class_latents_cache), (
+                    "Class latent cache has unfilled entries."
+                )
+        if train_dataset.custom_instance_prompts:
+            assert all(embeds is not None for embeds in prompt_embeds_cache), (
+                "Prompt embedding cache has unfilled entries."
+            )
+            assert all(ids is not None for ids in text_ids_cache), "Text ID cache has unfilled entries."
 
     # move back to cpu before deleting to ensure memory is freed see: https://github.com/huggingface/diffusers/issues/11376#issue-3008144624
     if args.cache_latents:
