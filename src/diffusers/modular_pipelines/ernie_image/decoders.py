@@ -12,11 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import numpy as np
 import torch
-from PIL import Image
 
 from ...configuration_utils import FrozenDict
+from ...image_processor import VaeImageProcessor
 from ...models import AutoencoderKLFlux2
 from ...utils import logging
 from ..modular_pipeline import ModularPipelineBlocks, PipelineState
@@ -42,6 +41,12 @@ class ErnieImageVaeDecoderStep(ModularPipelineBlocks):
                 "pachifier",
                 ErnieImagePachifier,
                 config=FrozenDict({"patch_size": 2}),
+                default_creation_method="from_config",
+            ),
+            ComponentSpec(
+                "image_processor",
+                VaeImageProcessor,
+                config=FrozenDict({"vae_scale_factor": 16}),
                 default_creation_method="from_config",
             ),
         ]
@@ -75,26 +80,13 @@ class ErnieImageVaeDecoderStep(ModularPipelineBlocks):
 
         latents = block_state.latents
         bn_mean = vae.bn.running_mean.view(1, -1, 1, 1).to(device=device, dtype=latents.dtype)
-        bn_std = torch.sqrt(vae.bn.running_var.view(1, -1, 1, 1) + vae.config.batch_norm_eps).to(
-            device=device, dtype=latents.dtype
-        )
+        bn_std = torch.sqrt(vae.bn.running_var.view(1, -1, 1, 1) + 1e-5).to(device=device, dtype=latents.dtype)
         latents = latents * bn_std + bn_mean
 
         latents = components.pachifier.unpack_latents(latents)
 
         images = vae.decode(latents.to(vae.dtype), return_dict=False)[0]
-        images = (images.clamp(-1, 1) + 1) / 2
-
-        output_type = block_state.output_type
-        if output_type == "pt":
-            block_state.images = images
-        elif output_type == "np":
-            block_state.images = images.cpu().permute(0, 2, 3, 1).float().numpy()
-        elif output_type == "pil":
-            images_np = images.cpu().permute(0, 2, 3, 1).float().numpy()
-            block_state.images = [Image.fromarray((img * 255).astype(np.uint8)) for img in images_np]
-        else:
-            raise ValueError(f"Unsupported `output_type`: {output_type!r}. Expected one of 'pil', 'np', 'pt'.")
+        block_state.images = components.image_processor.postprocess(images, output_type=block_state.output_type)
 
         self.set_block_state(state, block_state)
         return components, state

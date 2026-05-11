@@ -588,9 +588,10 @@ class ZImageOmniPipeline(DiffusionPipeline, ZImageLoraLoaderMixin, FromSingleFil
                 negative_prompt_embeds = [npe for npe in negative_prompt_embeds for _ in range(num_images_per_prompt)]
 
         condition_siglip_embeds = [None if sels == [] else sels + [None] for sels in condition_siglip_embeds]
-        negative_condition_siglip_embeds = [
-            None if sels == [] else sels + [None] for sels in negative_condition_siglip_embeds
-        ]
+        if self.do_classifier_free_guidance:
+            negative_condition_siglip_embeds = [
+                None if sels == [] else sels + [None] for sels in negative_condition_siglip_embeds
+            ]
 
         actual_batch_size = batch_size * num_images_per_prompt
         image_seq_len = (latents.shape[2] // 2) * (latents.shape[3] // 2)
