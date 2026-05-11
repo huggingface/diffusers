@@ -759,6 +759,17 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
 
         # Save the model
         state_dict = model_to_save.state_dict()
+        quantization_metadata = {}
+        if safe_serialization and hf_quantizer is not None:
+            get_state_dict_and_metadata = getattr(hf_quantizer, "get_state_dict_and_metadata", None)
+            if callable(get_state_dict_and_metadata):
+                state_dict_and_metadata = get_state_dict_and_metadata(model_to_save)
+            else:
+                state_dict_and_metadata = model_to_save.state_dict()
+            if isinstance(state_dict_and_metadata, tuple):
+                state_dict, quantization_metadata = state_dict_and_metadata
+            else:
+                state_dict = state_dict_and_metadata
 
         if use_flashpack:
             if is_flashpack_available():
@@ -803,15 +814,21 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                 shard = {tensor: state_dict[tensor].contiguous() for tensor in tensors}
                 filepath = os.path.join(save_directory, filename)
                 if safe_serialization:
+                    metadata = dict(state_dict_split.metadata)
+                    metadata.update(quantization_metadata)
+                    metadata = {k: str(v) if not isinstance(v, str) else v for k, v in metadata.items()}
                     # At some point we will need to deal better with save_function (used for TPU and other distributed
                     # joyfulness), but for now this enough.
-                    safetensors.torch.save_file(shard, filepath, metadata={"format": "pt"})
+                    safetensors.torch.save_file(shard, filepath, metadata=metadata)
                 else:
                     torch.save(shard, filepath)
 
             if state_dict_split.is_sharded:
+                metadata = dict(state_dict_split.metadata)
+                metadata.update(quantization_metadata)
+                metadata = {k: str(v) if not isinstance(v, str) else v for k, v in metadata.items()}
                 index = {
-                    "metadata": state_dict_split.metadata,
+                    "metadata": metadata,
                     "weight_map": state_dict_split.tensor_to_filename,
                 }
                 save_index_file = SAFE_WEIGHTS_INDEX_NAME if safe_serialization else WEIGHTS_INDEX_NAME
@@ -1367,10 +1384,26 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         else:
             loaded_keys = list(state_dict.keys())
 
+        checkpoint_files = resolved_model_file
+        if hf_quantizer is not None:
+            if hasattr(hf_quantizer, "set_metadata"):
+                hf_quantizer.set_metadata(checkpoint_files)
+            quantized_weight_names = []
+            if hasattr(hf_quantizer, "get_weight_names"):
+                quantized_weight_names = hf_quantizer.get_weight_names()
+            if quantized_weight_names:
+                loaded_keys = list(quantized_weight_names)
+
         if hf_quantizer is not None:
             hf_quantizer.preprocess_model(
-                model=model, device_map=device_map, keep_in_fp32_modules=keep_in_fp32_modules
+                model=model,
+                device_map=device_map,
+                keep_in_fp32_modules=keep_in_fp32_modules,
+                checkpoint_files=checkpoint_files,
             )
+
+        if hf_quantizer is not None and hf_quantizer.quantization_config.quant_method == QuantizationMethod.TORCHAO:
+            is_parallel_loading_enabled = False
 
         # Now that the model is loaded, we can determine the device_map
         device_map = _determine_device_map(
