@@ -39,7 +39,14 @@ if is_torch_available():
     import torch
     from torch.fft import fftn, fftshift, ifftn, ifftshift
 
-    BACKEND_SUPPORTS_TRAINING = {"cuda": True, "xpu": True, "cpu": True, "mps": False, "neuron": False, "default": True}
+    BACKEND_SUPPORTS_TRAINING = {
+        "cuda": True,
+        "xpu": True,
+        "cpu": True,
+        "mps": False,
+        "neuron": False,
+        "default": True,
+    }
     BACKEND_EMPTY_CACHE = {
         "cuda": torch.cuda.empty_cache,
         "xpu": torch.xpu.empty_cache,
@@ -240,8 +247,10 @@ def fourier_filter(x_in: "torch.Tensor", threshold: int, scale: int) -> "torch.T
     # Non-power of 2 images must be float32
     if (W & (W - 1)) != 0 or (H & (H - 1)) != 0:
         x = x.to(dtype=torch.float32)
-    # fftn does not support bfloat16
-    elif x.dtype == torch.bfloat16:
+    # fftn does not support bfloat16, and produces the experimental ComplexHalf
+    # dtype (torch.complex32) when given float16, which is numerically unstable
+    # and triggers a UserWarning. Upcast any non-float32 dtype to float32.
+    elif x.dtype != torch.float32:
         x = x.to(dtype=torch.float32)
 
     # FFT

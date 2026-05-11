@@ -124,7 +124,7 @@ _deps = [
     "pytest-xdist",
     "python>=3.10.0",
     "ruff==0.9.10",
-    "safetensors>=0.3.1",
+    "safetensors>=0.8.0-rc.0",
     "sentencepiece>=0.1.91,!=0.1.92",
     "GitPython<3.1.19",
     "scipy",

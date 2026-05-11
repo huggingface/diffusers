@@ -132,6 +132,7 @@ MODULAR_PIPELINE_MAPPING = OrderedDict(
         ("z-image", _create_default_map_fn("ZImageModularPipeline")),
         ("helios", _create_default_map_fn("HeliosModularPipeline")),
         ("helios-pyramid", _helios_pyramid_map_fn),
+        ("hunyuan-video-1.5", _create_default_map_fn("HunyuanVideo15ModularPipeline")),
         ("ltx", _create_default_map_fn("LTXModularPipeline")),
     ]
 )

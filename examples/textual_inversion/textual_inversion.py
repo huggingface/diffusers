@@ -702,9 +702,10 @@ def main():
     vae.requires_grad_(False)
     unet.requires_grad_(False)
     # Freeze all parameters except for the token embeddings in text encoder
-    text_encoder.text_model.encoder.requires_grad_(False)
-    text_encoder.text_model.final_layer_norm.requires_grad_(False)
-    text_encoder.text_model.embeddings.position_embedding.requires_grad_(False)
+    text_module = text_encoder.text_model if hasattr(text_encoder, "text_model") else text_encoder
+    text_module.encoder.requires_grad_(False)
+    text_module.final_layer_norm.requires_grad_(False)
+    text_module.embeddings.position_embedding.requires_grad_(False)
 
     if args.gradient_checkpointing:
         # Keep unet in train mode if we are using gradient checkpointing to save memory.

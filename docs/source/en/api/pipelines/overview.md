@@ -29,6 +29,7 @@ The table below lists all the pipelines currently available in 🤗 Diffusers an
 |---|---|
 | [AnimateDiff](animatediff) | text2video |
 | [AudioLDM2](audioldm2) | text2audio |
+| [LongCat-AudioDiT](longcat_audio_dit) | text2audio |
 | [AuraFlow](aura_flow) | text2image |
 | [Bria 3.2](bria_3_2) | text2image |
 | [CogVideoX](cogvideox) | text2video |

@@ -153,7 +153,7 @@ class TensorParallelConfig:
 
     On Neuron, use the ``_pre_shard_and_tp`` workaround from
     ``transformer_flux2_neuron_tp`` to avoid the NRT consecutive-reduce-scatter bug
-    on large tensors (≥ 5120×5120).
+    on large tensors (>= 5120x5120).
 
     Args:
         tp_degree (`int`, defaults to `1`):

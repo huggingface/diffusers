@@ -85,9 +85,11 @@ def log_validation(pipeline, args, accelerator, generator, global_step, is_final
         os.makedirs(val_save_dir)
 
     original_image = (
-        lambda image_url_or_path: load_image(image_url_or_path)
-        if urlparse(image_url_or_path).scheme
-        else Image.open(image_url_or_path).convert("RGB")
+        lambda image_url_or_path: (
+            load_image(image_url_or_path)
+            if urlparse(image_url_or_path).scheme
+            else Image.open(image_url_or_path).convert("RGB")
+        )
     )(args.val_image_url_or_path)
 
     if torch.backends.mps.is_available():
