@@ -100,6 +100,7 @@ except OptionalDependencyNotAvailable:
 
     _dummy_objects.update(get_objects_from_module(dummy_torch_and_transformers_objects))
 else:
+    _import_structure["anima"] = ["AnimaPipeline", "AnimaTextConditioner"]
     _import_structure["deprecated"].extend(
         [
             "AmusedImg2ImgPipeline",
@@ -599,6 +600,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             AceStepPipeline,
         )
         from .allegro import AllegroPipeline
+        from .anima import AnimaPipeline, AnimaTextConditioner
         from .animatediff import (
             AnimateDiffControlNetPipeline,
             AnimateDiffPipeline,
