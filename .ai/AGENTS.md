@@ -4,9 +4,11 @@
 
 Strive to write code as simple and explicit as possible.
 
-- Minimize small helper/utility functions — inline the logic instead. A reader should be able to follow the full flow without jumping between functions.
-- No defensive code or unused code paths — do not add fallback paths, safety checks, or configuration options "just in case". When porting from a research repo, delete training-time code paths, experimental flags, and ablation branches entirely — only keep the inference path you are actually integrating.
+- Prefer inlining small helper/utility functions over factoring them out — a reader should be able to follow the full flow without jumping between functions. If a private helper has only one caller, inlining it at the call site is usually the cleaner choice.
+- No defensive code, unused code paths, or legacy stubs — do not add fallback paths, safety checks, or configuration options "just in case"; do not carry unused method parameters "for API consistency", backwards-compatibility aliases for names that never shipped, or deprecation shims for code that was never released. When porting from a research repo, delete training-time code paths, experimental flags, and ablation branches entirely — only keep the inference path you are actually integrating.
 - Do not guess user intent and silently correct behavior. Make the expected inputs clear in the docstring, and raise a concise error for unsupported cases rather than adding complex fallback logic.
+
+Before opening the PR, self-review against [review-rules.md](review-rules.md), which collects the most common mistakes we catch in review.
 
 ---
 
@@ -27,13 +29,7 @@ Strive to write code as simple and explicit as possible.
 
 ### Pipelines & Schedulers
 
-- Pipelines inherit from `DiffusionPipeline`
-- Schedulers use `SchedulerMixin` with `ConfigMixin`
-- Use `@torch.no_grad()` on pipeline `__call__`
-- Support `output_type="latent"` for skipping VAE decode
-- Support `generator` parameter for reproducibility
-- Use `self.progress_bar(timesteps)` for progress tracking
-- Don't subclass an existing pipeline for a variant — DO NOT use an existing pipeline class (e.g., `FluxPipeline`) to override another pipeline (e.g., `FluxImg2ImgPipeline`) which will be a part of the core codebase (`src`)
+- See [pipelines.md](pipelines.md) for pipeline conventions, patterns, and gotchas.
 
 ### Modular Pipelines
 

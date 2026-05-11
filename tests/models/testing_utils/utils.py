@@ -6,6 +6,7 @@ from diffusers.models.attention_dispatch import AttentionBackendName
 _BF16_REQUIRED_BACKENDS = {
     AttentionBackendName._NATIVE_CUDNN,
     AttentionBackendName.FLASH_HUB,
+    AttentionBackendName.FLASH_VARLEN_HUB,
     AttentionBackendName._FLASH_3_HUB,
 }
 

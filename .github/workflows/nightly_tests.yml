@@ -5,6 +5,9 @@ on:
   schedule:
     - cron: "0 0 * * *" # every day at midnight
 
+permissions:
+  contents: read
+
 env:
   DIFFUSERS_IS_CI: yes
   HF_XET_HIGH_PERFORMANCE: 1
@@ -72,9 +75,9 @@ jobs:
       - name: Install dependencies
         run: |
           uv pip install -e ".[quality]"
+          uv pip uninstall transformers huggingface_hub && uv pip install --prerelease allow -U transformers@git+https://github.com/huggingface/transformers.git
+          uv pip uninstall tokenizers && uv pip install "tokenizers<=0.23.0"
           uv pip uninstall accelerate && uv pip install -U accelerate@git+https://github.com/huggingface/accelerate.git
-          #uv pip uninstall transformers huggingface_hub && uv pip install --prerelease allow -U transformers@git+https://github.com/huggingface/transformers.git
-          uv pip uninstall transformers huggingface_hub && uv pip install transformers==4.57.1 
           uv pip install pytest-reportlog
       - name: Environment
         run: |
@@ -126,10 +129,10 @@ jobs:
     - name: Install dependencies
       run: |
         uv pip install -e ".[quality]"
+        uv pip uninstall transformers huggingface_hub && uv pip install --prerelease allow -U transformers@git+https://github.com/huggingface/transformers.git
+        uv pip uninstall tokenizers && uv pip install "tokenizers<=0.23.0"
         uv pip install peft@git+https://github.com/huggingface/peft.git
         uv pip uninstall accelerate && uv pip install -U accelerate@git+https://github.com/huggingface/accelerate.git
-        #uv pip uninstall transformers huggingface_hub && uv pip install --prerelease allow -U transformers@git+https://github.com/huggingface/transformers.git
-        uv pip uninstall transformers huggingface_hub && uv pip install transformers==4.57.1 
         uv pip install pytest-reportlog
     - name: Environment
       run: python utils/print_env.py
@@ -194,8 +197,8 @@ jobs:
     - name: Install dependencies
       run: |
         uv pip install -e ".[quality,training]"
-        #uv pip uninstall transformers huggingface_hub && uv pip install --prerelease allow -U transformers@git+https://github.com/huggingface/transformers.git
-        uv pip uninstall transformers huggingface_hub && uv pip install transformers==4.57.1 
+        uv pip uninstall transformers huggingface_hub && uv pip install --prerelease allow -U transformers@git+https://github.com/huggingface/transformers.git
+        uv pip uninstall tokenizers && uv pip install "tokenizers<=0.23.0"
     - name: Environment
       run: |
         python utils/print_env.py
@@ -236,10 +239,10 @@ jobs:
       - name: Install dependencies
         run: |
           uv pip install -e ".[quality]"
+          uv pip uninstall transformers huggingface_hub && uv pip install --prerelease allow -U transformers@git+https://github.com/huggingface/transformers.git
+          uv pip uninstall tokenizers && uv pip install "tokenizers<=0.23.0"
           uv pip install peft@git+https://github.com/huggingface/peft.git
           uv pip uninstall accelerate && uv pip install -U accelerate@git+https://github.com/huggingface/accelerate.git
-          #uv pip uninstall transformers huggingface_hub && uv pip install --prerelease allow -U transformers@git+https://github.com/huggingface/transformers.git
-          uv pip uninstall transformers huggingface_hub && uv pip install transformers==4.57.1 
           uv pip install pytest-reportlog
       - name: Environment
         run: |
@@ -287,10 +290,10 @@ jobs:
       - name: Install dependencies
         run: |
           uv pip install -e ".[quality]"
+          uv pip uninstall transformers huggingface_hub && uv pip install --prerelease allow -U transformers@git+https://github.com/huggingface/transformers.git
+          uv pip uninstall tokenizers && uv pip install "tokenizers<=0.23.0"
           uv pip install peft@git+https://github.com/huggingface/peft.git
           uv pip uninstall accelerate && uv pip install -U accelerate@git+https://github.com/huggingface/accelerate.git
-          #uv pip uninstall transformers huggingface_hub && uv pip install --prerelease allow -U transformers@git+https://github.com/huggingface/transformers.git
-          uv pip uninstall transformers huggingface_hub && uv pip install transformers==4.57.1 
 
       - name: Environment
         run: |
@@ -368,8 +371,8 @@ jobs:
               uv pip install ${{ join(matrix.config.additional_deps, ' ') }}
           fi
           uv pip install pytest-reportlog
-          #uv pip uninstall transformers huggingface_hub && uv pip install --prerelease allow -U transformers@git+https://github.com/huggingface/transformers.git
-          uv pip uninstall transformers huggingface_hub && uv pip install transformers==4.57.1 
+          uv pip uninstall transformers huggingface_hub && uv pip install --prerelease allow -U transformers@git+https://github.com/huggingface/transformers.git
+          uv pip uninstall tokenizers && uv pip install "tokenizers<=0.23.0"
       - name: Environment
         run: |
           python utils/print_env.py
@@ -417,8 +420,8 @@ jobs:
         run: |
           uv pip install -e ".[quality]"
           uv pip install -U bitsandbytes optimum_quanto
-          #uv pip uninstall transformers huggingface_hub && uv pip install --prerelease allow -U transformers@git+https://github.com/huggingface/transformers.git
-          uv pip uninstall transformers huggingface_hub && uv pip install transformers==4.57.1 
+          uv pip uninstall transformers huggingface_hub && uv pip install --prerelease allow -U transformers@git+https://github.com/huggingface/transformers.git
+          uv pip uninstall tokenizers && uv pip install "tokenizers<=0.23.0"
           uv pip install pytest-reportlog
       - name: Environment
         run: |
