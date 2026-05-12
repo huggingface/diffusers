@@ -193,25 +193,6 @@ def encode_video(
     container.close()
 
 
-def simple_tone_map(x: np.ndarray) -> np.ndarray:
-    r"""
-    Applies a very simple tone-mapping function on (scene-referred) linear light which simply clips values above `1.0`
-    to `1.0`. This is what the original LTX-2.X code does, but you probably want to do some non-trivial tone-mapping to
-    make the sample look better.
-    """
-    return np.clip(x, 0.0, 1.0)
-
-
-# Adapted from ltx_pipelines.utils.medio_io._linear_to_srgb
-# https://github.com/Lightricks/LTX-2/blob/41d924371612b692c0fd1e4d9d94c3dfb3c02cb3/packages/ltx-pipelines/src/ltx_pipelines/utils/media_io.py#L644
-def linear_to_srgb(x: np.ndarray) -> np.ndarray:
-    r"""
-    Apply the sRGB (Rec.709) transfer function (OETF; IEC 61966-2-1) to a linear light image. Input values must be in
-    `[0, 1]`.
-    """
-    return np.where(x <= 0.0031308, x * 12.92, 1.055 * np.power(x, 1.0 / 2.4) - 0.055)
-
-
 def encode_hdr_tensor_to_mp4(
     frames: torch.Tensor,
     output_mp4: str | Path,
@@ -256,14 +237,19 @@ def encode_hdr_tensor_to_mp4(
 
     pix_fmt = "rgb24" if tone_map_in_rgb else "bgr24"
     if tone_mapping_fn is None:
-        tone_mapping_fn = simple_tone_map
+        # Default to simple tone mapping function which clips values above 1.0 to 1.0. This is what the original
+        # LTX-2.X code does, but you may want to do some non-trivial tone-mapping to make the sample look better.
+        tone_mapping_fn = lambda x: np.clip(x, 0.0, 1.0)
 
     try:
         for i, hdr in enumerate(frames_np):
             if not tone_map_in_rgb:
                 hdr = hdr[..., ::-1]
             hdr_mapped = tone_mapping_fn(hdr)
-            sdr = linear_to_srgb(np.maximum(hdr_mapped, 0.0))
+
+            hdr_mapped = np.clip(hdr_mapped, 0.0, 1.0)  # Clamp to [0, 1] in case tone mapper does not
+            # Apply the sRBG (Rec.709 OETF) transfer function to linear light in [0, 1]
+            sdr = np.where(hdr_mapped <= 0.0031308, hdr_mapped * 12.92, 1.055 * np.power(hdr_mapped, 1.0 / 2.4) - 0.055)
             out8 = (sdr * 255.0 + 0.5).astype(np.uint8)
 
             if i == 0:
