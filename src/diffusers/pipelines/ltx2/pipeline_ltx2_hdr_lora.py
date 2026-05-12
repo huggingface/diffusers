@@ -282,7 +282,7 @@ class LTX2HDRPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoaderMixi
     """
 
     model_cpu_offload_seq = "text_encoder->connectors->transformer->vae->audio_vae->vocoder"
-    _optional_components = []
+    _optional_components = ["audio_scheduler"]
     _callback_tensor_inputs = ["latents", "prompt_embeds", "negative_prompt_embeds"]
 
     def __init__(
@@ -295,9 +295,13 @@ class LTX2HDRPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoaderMixi
         connectors: LTX2TextConnectors,
         transformer: LTX2VideoTransformer3DModel,
         vocoder: LTX2Vocoder | LTX2VocoderWithBWE,
+        audio_scheduler: FlowMatchEulerDiscreteScheduler | None = None,
         hdr_transform: str = "logc3",
     ):
         super().__init__()
+
+        if audio_scheduler is None:
+            audio_scheduler = copy.deepcopy(scheduler)
 
         self.register_modules(
             vae=vae,
@@ -308,6 +312,7 @@ class LTX2HDRPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoaderMixi
             transformer=transformer,
             vocoder=vocoder,
             scheduler=scheduler,
+            audio_scheduler=audio_scheduler,
         )
 
         self.vae_spatial_compression_ratio = (
@@ -1296,9 +1301,8 @@ class LTX2HDRPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoaderMixi
             self.scheduler.config.get("base_shift", 0.95),
             self.scheduler.config.get("max_shift", 2.05),
         )
-        audio_scheduler = copy.deepcopy(self.scheduler)
-        _, _ = retrieve_timesteps(
-            audio_scheduler,
+        audio_timesteps, _ = retrieve_timesteps(
+            self.audio_scheduler,
             num_inference_steps,
             device,
             timesteps,
@@ -1352,6 +1356,9 @@ class LTX2HDRPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoaderMixi
                 else:
                     video_timestep = timestep_scalar.unsqueeze(-1).expand(-1, video_seq_len)
 
+                t_audio = audio_timesteps[i]
+                audio_timestep = t_audio.expand(latent_model_input.shape[0])
+
                 # --- Main forward pass (cond + uncond for CFG) ---
                 with self.transformer.cache_context("cond_uncond"):
                     noise_pred_video, noise_pred_audio = self.transformer(
@@ -1360,8 +1367,9 @@ class LTX2HDRPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoaderMixi
                         encoder_hidden_states=connector_prompt_embeds,
                         audio_encoder_hidden_states=connector_audio_prompt_embeds,
                         timestep=video_timestep,
-                        audio_timestep=timestep_scalar,
+                        audio_timestep=audio_timestep,
                         sigma=timestep_scalar,  # Used by LTX-2.3
+                        audio_sigma=audio_timestep,
                         encoder_attention_mask=connector_attention_mask,
                         audio_encoder_attention_mask=connector_attention_mask,
                         video_self_attention_mask=None,
@@ -1401,6 +1409,7 @@ class LTX2HDRPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoaderMixi
                             video_timestep_single = video_timestep.chunk(2, dim=0)[0]
                         else:
                             video_timestep_single = timestep_scalar_single.unsqueeze(-1).expand(-1, video_seq_len)
+                        audio_timestep_single = audio_timestep.chunk(2, dim=0)[0]
                 else:
                     video_cfg_delta = 0
 
@@ -1415,6 +1424,7 @@ class LTX2HDRPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoaderMixi
                         video_timestep_single = video_timestep
                     else:
                         video_timestep_single = timestep_scalar.unsqueeze(-1).expand(-1, video_seq_len)
+                    audio_timestep_single = audio_timestep
 
                     noise_pred_video = self.convert_velocity_to_x0(latents, noise_pred_video, i, self.scheduler)
 
@@ -1427,8 +1437,9 @@ class LTX2HDRPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoaderMixi
                             encoder_hidden_states=video_prompt_embeds,
                             audio_encoder_hidden_states=audio_prompt_embeds,
                             timestep=video_timestep_single,
-                            audio_timestep=timestep_scalar_single,
+                            audio_timestep=audio_timestep_single,
                             sigma=timestep_scalar_single,  # Used by LTX-2.3
+                            audio_sigma=audio_timestep_single,
                             encoder_attention_mask=prompt_attn_mask,
                             audio_encoder_attention_mask=prompt_attn_mask,
                             video_self_attention_mask=None,
@@ -1464,8 +1475,9 @@ class LTX2HDRPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoaderMixi
                             encoder_hidden_states=video_prompt_embeds,
                             audio_encoder_hidden_states=audio_prompt_embeds,
                             timestep=video_timestep_single,
-                            audio_timestep=timestep_scalar_single,
+                            audio_timestep=audio_timestep_single,
                             sigma=timestep_scalar_single,  # Used by LTX-2.3
+                            audio_sigma=audio_timestep_single,
                             encoder_attention_mask=prompt_attn_mask,
                             audio_encoder_attention_mask=prompt_attn_mask,
                             video_self_attention_mask=None,
@@ -1516,7 +1528,7 @@ class LTX2HDRPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoaderMixi
                 # Step the audio scheduler so its internal state stays in sync with the video scheduler (audio
                 # output is discarded at the end, but keeping schedulers aligned avoids surprising behavior if the
                 # scheduler writes internal indices during `.step()`).
-                _ = audio_scheduler.step(torch.zeros_like(audio_latents), t, audio_latents, return_dict=False)[0]
+                _ = self.audio_scheduler.step(torch.zeros_like(audio_latents), t, audio_latents, return_dict=False)[0]
 
                 if callback_on_step_end is not None:
                     callback_kwargs = {}
