@@ -253,7 +253,9 @@ def encode_hdr_tensor_to_mp4(
 
             hdr_mapped = np.clip(hdr_mapped, 0.0, 1.0)  # Clamp to [0, 1] in case tone mapper does not
             # Apply the sRBG (Rec.709 OETF) transfer function to linear light in [0, 1]
-            sdr = np.where(hdr_mapped <= 0.0031308, hdr_mapped * 12.92, 1.055 * np.power(hdr_mapped, 1.0 / 2.4) - 0.055)
+            sdr = np.where(
+                hdr_mapped <= 0.0031308, hdr_mapped * 12.92, 1.055 * np.power(hdr_mapped, 1.0 / 2.4) - 0.055
+            )
             out8 = (sdr * 255.0 + 0.5).astype(np.uint8)
 
             if i == 0:
