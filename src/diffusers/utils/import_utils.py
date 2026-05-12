@@ -258,6 +258,19 @@ def is_transformers_available():
     return _transformers_available
 
 
+def is_transformers_flax_available():
+    # Flax classes (e.g. FlaxCLIPTextModel, FlaxPreTrainedModel) were removed from
+    # transformers main on the path to its v5 release. Gate Flax pipeline registration
+    # on transformers still shipping them so `import diffusers` doesn't crash.
+    if not (_transformers_available and _flax_available):
+        return False
+    try:
+        import transformers
+    except ImportError:
+        return False
+    return hasattr(transformers, "FlaxPreTrainedModel")
+
+
 def is_inflect_available():
     return _inflect_available
 
