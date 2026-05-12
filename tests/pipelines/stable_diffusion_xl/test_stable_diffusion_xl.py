@@ -23,6 +23,7 @@ import torch
 from transformers import CLIPTextConfig, CLIPTextModel, CLIPTextModelWithProjection, CLIPTokenizer
 
 from diffusers import (
+    AutoPipelineForText2Image,
     AutoencoderKL,
     DDIMScheduler,
     DPMSolverMultistepScheduler,
@@ -34,6 +35,7 @@ from diffusers import (
     UNet2DConditionModel,
     UniPCMultistepScheduler,
 )
+from diffusers.utils.import_utils import is_torch_neuronx_available
 
 from ...testing_utils import (
     backend_empty_cache,
@@ -974,3 +976,54 @@ class StableDiffusionXLPipelineIntegrationTests(unittest.TestCase):
         max_diff = numpy_cosine_similarity_distance(image.flatten(), expected_image.flatten())
 
         assert max_diff < 1e-2
+
+
+@slow
+@require_torch_accelerator
+class StableDiffusionXLTurboPipelineNeuronTests(unittest.TestCase):
+    ckpt_id = "stabilityai/sdxl-turbo"
+    prompt = "A small cactus with a happy face in the Sahara desert."
+
+    def setUp(self):
+        super().setUp()
+        gc.collect()
+        backend_empty_cache(torch_device)
+
+    def tearDown(self):
+        super().tearDown()
+        gc.collect()
+        backend_empty_cache(torch_device)
+
+    def test_sdxl_turbo_512(self):
+        generator = torch.Generator("cpu").manual_seed(0)
+
+        pipe = AutoPipelineForText2Image.from_pretrained(
+            self.ckpt_id, torch_dtype=torch.float16, variant="fp16"
+        )
+        pipe.to(torch_device)
+        if is_torch_neuronx_available():
+            # Flush pending lazy XLA parameter-copy ops so they don't pile up and
+            # trigger a batch compilation on the first inference call (NCC_IDRV017).
+            torch.neuron.synchronize()
+        pipe.set_progress_bar_config(disable=None)
+
+        image = pipe(
+            self.prompt,
+            num_inference_steps=1,
+            guidance_scale=0.0,
+            generator=generator,
+            output_type="np",
+        ).images
+
+        image_slice = image[0, -3:, -3:, -1]
+        self.assertEqual(image.shape, (1, 512, 512, 3))
+
+        # Verify outputs are valid pixel values
+        self.assertTrue(np.all((image >= 0.0) & (image <= 1.0)), "Pixel values must be in [0, 1]")
+        # Verify the image is non-trivial (not blank or saturated)
+        self.assertGreater(image_slice.std(), 0.01, "Output image should have meaningful variance")
+
+        # Neuron uses bfloat16 internally which has lower precision than float16 on CUDA.
+        # Use a wider tolerance when running on Neuron vs. a reference CUDA run.
+        atol = 1e-2 if is_torch_neuronx_available() else 1e-4
+        _ = atol  # atol is used when comparing against a reference slice; add it here once available.
