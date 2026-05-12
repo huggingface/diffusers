@@ -162,6 +162,11 @@ def retrieve_timesteps(
     return timesteps, num_inference_steps
 
 
+# Copied from diffusers.pipelines.z_image.pipeline_z_image.get_default_z_image_sigmas
+def get_default_z_image_sigmas(num_inference_steps: int) -> list[float]:
+    return torch.linspace(1.0, 0.0, num_inference_steps + 1)[:-1].tolist()
+
+
 class ZImageInpaintPipeline(DiffusionPipeline, ZImageLoraLoaderMixin, FromSingleFileMixin):
     r"""
     The ZImage pipeline for inpainting.
@@ -750,7 +755,8 @@ class ZImageInpaintPipeline(DiffusionPipeline, ZImageLoraLoaderMixin, FromSingle
             self.scheduler.config.get("base_shift", 0.5),
             self.scheduler.config.get("max_shift", 1.15),
         )
-        self.scheduler.sigma_min = 0.0
+        if sigmas is None:
+            sigmas = get_default_z_image_sigmas(num_inference_steps)
         scheduler_kwargs = {"mu": mu}
         timesteps, num_inference_steps = retrieve_timesteps(
             self.scheduler,
