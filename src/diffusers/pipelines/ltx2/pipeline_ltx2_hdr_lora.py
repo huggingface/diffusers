@@ -300,9 +300,6 @@ class LTX2HDRPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoaderMixi
     ):
         super().__init__()
 
-        if audio_scheduler is None:
-            audio_scheduler = copy.deepcopy(scheduler)
-
         self.register_modules(
             vae=vae,
             audio_vae=audio_vae,
@@ -1301,8 +1298,12 @@ class LTX2HDRPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoaderMixi
             self.scheduler.config.get("base_shift", 0.95),
             self.scheduler.config.get("max_shift", 2.05),
         )
+        if self.audio_scheduler is not None:
+            audio_scheduler = self.audio_scheduler
+        else:
+            audio_scheduler = copy.deepcopy(self.scheduler)
         audio_timesteps, _ = retrieve_timesteps(
-            self.audio_scheduler,
+            audio_scheduler,
             num_inference_steps,
             device,
             timesteps,
@@ -1325,6 +1326,8 @@ class LTX2HDRPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoaderMixi
             latents.shape[0], latent_num_frames, latent_height, latent_width, latents.device, fps=frame_rate
         )
         if appended_coords is not None:
+            # Expand appended_coords to effective batch size (to [B, 3, num_extra_tokens, 2])
+            appended_coords = appended_coords.expand(latents.shape[0], -1, -1, -1)
             video_coords = torch.cat([video_coords, appended_coords], dim=2)
         audio_coords = self.transformer.audio_rope.prepare_audio_coords(
             audio_latents.shape[0], audio_num_frames, audio_latents.device
@@ -1528,7 +1531,7 @@ class LTX2HDRPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoaderMixi
                 # Step the audio scheduler so its internal state stays in sync with the video scheduler (audio
                 # output is discarded at the end, but keeping schedulers aligned avoids surprising behavior if the
                 # scheduler writes internal indices during `.step()`).
-                _ = self.audio_scheduler.step(torch.zeros_like(audio_latents), t, audio_latents, return_dict=False)[0]
+                _ = audio_scheduler.step(torch.zeros_like(audio_latents), t, audio_latents, return_dict=False)[0]
 
                 if callback_on_step_end is not None:
                     callback_kwargs = {}
