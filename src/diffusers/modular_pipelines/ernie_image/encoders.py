@@ -15,14 +15,21 @@
 import json
 
 import torch
-from transformers import AutoModel, AutoModelForCausalLM, AutoTokenizer
+from transformers import AutoTokenizer, Mistral3Model
 
 from ...configuration_utils import FrozenDict
 from ...guiders import ClassifierFreeGuidance
 from ...utils import logging
+from ...utils.import_utils import is_transformers_version
 from ..modular_pipeline import ModularPipelineBlocks, PipelineState
 from ..modular_pipeline_utils import ComponentSpec, InputParam, OutputParam
 from .modular_pipeline import ErnieImageModularPipeline
+
+
+if is_transformers_version("<", "5.0.0"):
+    raise ImportError("`ErnieImageModularPipeline` requires `transformers>=5.0.0` for `Ministral3ForCausalLM`.")
+
+from transformers import Ministral3ForCausalLM  # noqa: E402
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -38,7 +45,7 @@ class ErnieImagePromptEnhancerStep(ModularPipelineBlocks):
     @property
     def expected_components(self) -> list[ComponentSpec]:
         return [
-            ComponentSpec("pe", AutoModelForCausalLM),
+            ComponentSpec("pe", Ministral3ForCausalLM),
             ComponentSpec("pe_tokenizer", AutoTokenizer),
         ]
 
@@ -83,7 +90,7 @@ class ErnieImagePromptEnhancerStep(ModularPipelineBlocks):
 
     @staticmethod
     def _enhance_prompt(
-        pe: AutoModelForCausalLM,
+        pe: Ministral3ForCausalLM,
         pe_tokenizer: AutoTokenizer,
         prompt: str,
         device: torch.device,
@@ -160,7 +167,7 @@ class ErnieImageTextEncoderStep(ModularPipelineBlocks):
     @property
     def expected_components(self) -> list[ComponentSpec]:
         return [
-            ComponentSpec("text_encoder", AutoModel),
+            ComponentSpec("text_encoder", Mistral3Model),
             ComponentSpec("tokenizer", AutoTokenizer),
             ComponentSpec(
                 "guider",
@@ -200,7 +207,7 @@ class ErnieImageTextEncoderStep(ModularPipelineBlocks):
 
     @staticmethod
     def _encode(
-        text_encoder: AutoModel,
+        text_encoder: Mistral3Model,
         tokenizer: AutoTokenizer,
         prompt: list[str],
         device: torch.device,
