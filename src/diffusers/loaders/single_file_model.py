@@ -33,6 +33,7 @@ from .single_file_utils import (
     convert_chroma_transformer_checkpoint_to_diffusers,
     convert_controlnet_checkpoint,
     convert_cosmos_transformer_checkpoint_to_diffusers,
+    convert_ernie_image_transformer_checkpoint_to_diffusers,
     convert_flux2_transformer_checkpoint_to_diffusers,
     convert_flux_transformer_checkpoint_to_diffusers,
     convert_hidream_transformer_to_diffusers,
@@ -112,6 +113,10 @@ SINGLE_FILE_LOADABLE_CLASSES = {
     },
     "ChromaTransformer2DModel": {
         "checkpoint_mapping_fn": convert_chroma_transformer_checkpoint_to_diffusers,
+        "default_subfolder": "transformer",
+    },
+    "ErnieImageTransformer2DModel": {
+        "checkpoint_mapping_fn": convert_ernie_image_transformer_checkpoint_to_diffusers,
         "default_subfolder": "transformer",
     },
     "LTXVideoTransformer3DModel": {
