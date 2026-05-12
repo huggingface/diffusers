@@ -194,7 +194,7 @@ def encode_video(
 
 
 def encode_hdr_tensor_to_mp4(
-    frames: torch.Tensor,
+    frames: torch.Tensor | np.ndarray,
     output_mp4: str | Path,
     frame_rate: float,
     tone_mapping_fn: Callable[[np.ndarray], np.ndarray] | None = None,
@@ -206,7 +206,7 @@ def encode_hdr_tensor_to_mp4(
     sRGB-tonemapped H.264 `.mp4`).
 
     Args:
-        frames (`torch.Tensor`):
+        frames (`torch.Tensor` or `np.ndarray`):
             A linear HDR tensors with RGB values in `[0, ∞)` of shape `(F, H, W, 3)`.
         output_mp4 (`str` or `pathlib.Path`):
             Output MP4 path.
@@ -228,7 +228,8 @@ def encode_hdr_tensor_to_mp4(
         crf (`int`, *optional*, defaults to `18`):
             libx264 CRF quality factor. Lower values produce higher quality.
     """
-    frames_np = frames.cpu().float().numpy()
+    if isinstance(frames, torch.Tensor):
+        frames = frames.cpu().float().numpy()
 
     container = av.open(str(output_mp4), mode="w")
     stream = container.add_stream("libx264", rate=Fraction(frame_rate).limit_denominator(1000))
@@ -242,7 +243,7 @@ def encode_hdr_tensor_to_mp4(
         tone_mapping_fn = lambda x: np.clip(x, 0.0, 1.0)
 
     try:
-        for i, hdr in enumerate(frames_np):
+        for i, hdr in enumerate(frames):
             if not tone_map_in_rgb:
                 hdr = hdr[..., ::-1]
             hdr_mapped = tone_mapping_fn(hdr)

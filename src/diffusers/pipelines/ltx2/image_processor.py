@@ -12,11 +12,16 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import numpy as np
 import torch
 import torch.nn.functional as F
 
 from ...configuration_utils import register_to_config
+from ...utils import logging
 from ...video_processor import VideoProcessor
+
+
+logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
 class LTX2VideoHDRProcessor(VideoProcessor):
@@ -135,16 +140,36 @@ class LTX2VideoHDRProcessor(VideoProcessor):
         video = self._resize_and_reflect_pad_video(video, height, width)
         return video
 
-    def postprocess_hdr_video(self, video: torch.Tensor) -> torch.Tensor:
+    def postprocess_hdr_video(self, video: torch.Tensor, output_type: str = "np") -> torch.Tensor | np.ndarray:
         r"""
         Postprocess the VAE's decoded output to linear HDR.
 
         Args:
             video (`torch.Tensor`):
                 VAE decoded output in VAE range `[-1, 1]`, shape `(B, C, F, H, W)`.
+            output_type (`str`, *optional*, defaults to `"np"`):
+                Output type of post-processed video tensor; should be in `["np", "pt"]`.
 
         Returns:
-            `torch.Tensor`: Linear HDR video `[0, ∞)`, shape `(B, C, F, H, W)`, dtype `float32`.
+            Returns linear HDR video with values in `[0, ∞)`, depending on `output_type`:
+              - `output_type="pt"`: `torch.Tensor` with shape `(B, F, H, W, C)` and dtype `float32`.
+              - `output_type="np"`: `np.ndarray` with shape `(B, F, H, W, C)` and dtype `float32`.
         """
-        video = (video.float() / 2.0 + 0.5).clamp(0.0, 1.0)
-        return self._logc3_decompress(video)
+        if output_type not in ["np", "pt"]:
+            logger.warning(
+                f"output_type {output_type} is not supported for LTX-2.X HDR postprocessing. Supported types are `np`"
+                f" and `pt`; the output_type will be set to `np`."
+            )
+            output_type = "np"
+
+        video = self.denormalize(video.float())
+        # Apply the inverse transform function to get linear HDR light
+        video = self._logc3_decompress(video)
+
+        # Permute to channels-last: [B, C, F, H, W] --> [B, F, H, W, C]
+        video = video = video.permute(0, 2, 3, 4, 1).contiguous()
+        if output_type == "pt":
+            return video
+
+        video = video.cpu().numpy()
+        return video

@@ -1578,17 +1578,7 @@ class LTX2HDRPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoaderMixi
             # VAE decode returns a video tensor in the VAE's native range ([-1, 1]).
             decoded = self.vae.decode(latents, timestep, return_dict=False)[0]
             # HDR postprocess: LogC3 decompress → linear HDR [0, ∞). Always float32 for HDR fidelity.
-            video = self.hdr_video_processor.postprocess_hdr_video(decoded)
-
-            # Format output (batch, frames, H, W, channels).
-            video = video.permute(0, 2, 3, 4, 1).contiguous()
-            if output_type == "np":
-                video = video.cpu().numpy()
-            elif output_type != "pt":
-                raise ValueError(
-                    f"Unsupported `output_type` {output_type!r} for HDR pipeline. Choose one of 'pt', 'np', or"
-                    f" 'latent'."
-                )
+            video = self.hdr_video_processor.postprocess_hdr_video(decoded, output_type=output_type)
 
         # Audio is always None for this video-only pipeline.
         self.maybe_free_model_hooks()
