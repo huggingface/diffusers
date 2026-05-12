@@ -164,6 +164,9 @@ class AnimaPipeline(DiffusionPipeline, AnimaLoraLoaderMixin):
         )
         text_input_ids = text_inputs.input_ids.to(device)
         prompt_attention_mask = text_inputs.attention_mask.to(device)
+        if text_input_ids.shape[-1] == 0:
+            text_input_ids = text_input_ids.new_zeros((text_input_ids.shape[0], 1))
+            prompt_attention_mask = prompt_attention_mask.new_zeros((prompt_attention_mask.shape[0], 1))
 
         prompt_embeds = self.text_encoder(
             input_ids=text_input_ids,
