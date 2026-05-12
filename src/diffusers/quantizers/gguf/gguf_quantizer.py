@@ -126,9 +126,7 @@ class GGUFQuantizer(DiffusersQuantizer):
             param_should_be_fp32 = any(m in param_name.split(".") for m in keep_in_fp32)
             target_dtype = torch.float32 if param_should_be_fp32 else self.compute_dtype
             if param_should_be_fp32:
-                logger.warning(
-                    f"Quantized parameter {param_name} is required to remain in FP32, dequantizing now."
-                )
+                logger.warning(f"Quantized parameter {param_name} is required to remain in FP32, dequantizing now.")
             else:
                 logger.warning(
                     f"Quantized parameter {param_name} is excluded by `modules_to_not_convert`, dequantizing now."
