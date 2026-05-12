@@ -25,6 +25,7 @@ from ..testing_utils import (
     AttentionTesterMixin,
     BaseModelTesterConfig,
     BitsAndBytesTesterMixin,
+    ContextParallelAttentionBackendsTesterMixin,
     ContextParallelTesterMixin,
     LoraHotSwappingForModelTesterMixin,
     LoraTesterMixin,
@@ -251,6 +252,25 @@ class TestQwenImageTransformerAttention(QwenImageTransformerTesterConfig, Attent
 
 class TestQwenImageTransformerContextParallel(QwenImageTransformerTesterConfig, ContextParallelTesterMixin):
     """Context Parallel inference tests for QwenImage Transformer."""
+
+
+class TestQwenImageTransformerContextParallelAttnBackends(
+    QwenImageTransformerTesterConfig, ContextParallelAttentionBackendsTesterMixin
+):
+    """Context Parallel inference x attention backends tests for QwenImage Transformer"""
+
+    # QwenImage always passes a joint attention mask (text + image), which flash_hub and
+    # _flash_3_hub do not support.
+    unsupported_attn_backends = ["flash_hub", "_flash_3_hub"]
+
+    def get_dummy_inputs(self, batch_size: int = 1) -> dict[str, torch.Tensor]:
+        inputs = super().get_dummy_inputs(batch_size=batch_size)
+        encoder_hidden_states_mask = inputs["encoder_hidden_states_mask"]
+        encoder_hidden_states_mask[:, 1] = 0
+        encoder_hidden_states_mask[:, 3] = 0
+        encoder_hidden_states_mask[:, 5:] = 0
+        inputs["encoder_hidden_states_mask"] = encoder_hidden_states_mask
+        return inputs
 
 
 class TestQwenImageTransformerLoRA(QwenImageTransformerTesterConfig, LoraTesterMixin):
