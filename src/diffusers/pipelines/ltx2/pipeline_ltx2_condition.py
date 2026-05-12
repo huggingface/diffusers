@@ -1036,6 +1036,8 @@ class LTX2ConditionPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoad
             latents = torch.cat([latents, torch.cat(kf_tokens_list, dim=1)], dim=1)
             conditioning_mask = torch.cat([conditioning_mask, torch.cat(kf_mask_list, dim=1)], dim=1)
             clean_latents = torch.cat([clean_latents, torch.cat(kf_clean_list, dim=1)], dim=1)
+        else:
+            keyframe_coords = None
 
         # The conditioning_mask values have the following semantics:
         #   - mask=0: fully noise tokens (e.g. noisy latents)
