@@ -35,8 +35,14 @@ Cache methods speedup diffusion transformers by storing and reusing intermediate
 
 [[autodoc]] apply_first_block_cache
 
-### TaylorSeerCacheConfig
+## TaylorSeerCacheConfig
 
 [[autodoc]] TaylorSeerCacheConfig
 
 [[autodoc]] apply_taylorseer_cache
+
+## MagCacheConfig
+
+[[autodoc]] MagCacheConfig
+
+[[autodoc]] apply_mag_cache
