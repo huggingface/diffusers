@@ -22,7 +22,7 @@ from .utils import (
     is_torchao_available,
     is_torchsde_available,
     is_transformers_available,
-    is_transformers_flax_available,
+    is_transformers_flax_compatible,
     is_transformers_version,
 )
 
@@ -878,7 +878,7 @@ else:
 
 
 try:
-    if not is_transformers_flax_available():
+    if not (is_flax_available() and is_transformers_available() and is_transformers_flax_compatible()):
         raise OptionalDependencyNotAvailable()
 except OptionalDependencyNotAvailable:
     from .utils import dummy_flax_and_transformers_objects  # noqa F403
@@ -1634,7 +1634,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         )
 
     try:
-        if not is_transformers_flax_available():
+        if not (is_flax_available() and is_transformers_available() and is_transformers_flax_compatible()):
             raise OptionalDependencyNotAvailable()
     except OptionalDependencyNotAvailable:
         from .utils.dummy_flax_and_transformers_objects import *  # noqa F403
