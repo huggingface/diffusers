@@ -123,9 +123,16 @@ class GGUFQuantizer(DiffusersQuantizer):
             m in param_name.split(".") for m in self.modules_to_not_convert
         ):
             keep_in_fp32 = getattr(self, "keep_in_fp32_modules", [])
-            target_dtype = (
-                torch.float32 if any(m in param_name.split(".") for m in keep_in_fp32) else self.compute_dtype
-            )
+            param_should_be_fp32 = any(m in param_name.split(".") for m in keep_in_fp32)
+            target_dtype = torch.float32 if param_should_be_fp32 else self.compute_dtype
+            if param_should_be_fp32:
+                logger.warning(
+                    f"Quantized parameter {param_name} is required to remain in FP32, dequantizing now."
+                )
+            else:
+                logger.warning(
+                    f"Quantized parameter {param_name} is excluded by `modules_to_not_convert`, dequantizing now."
+                )
             param_value = dequantize_gguf_tensor(param_value).to(target_dtype)
 
         if tensor_name in module._parameters:
