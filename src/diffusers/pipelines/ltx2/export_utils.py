@@ -240,7 +240,10 @@ def encode_hdr_tensor_to_mp4(
     if tone_mapping_fn is None:
         # Default to simple tone mapping function which clips values above 1.0 to 1.0. This is what the original
         # LTX-2.X code does, but you may want to do some non-trivial tone-mapping to make the sample look better.
-        tone_mapping_fn = lambda x: np.clip(x, 0.0, 1.0)
+        def simple_tone_map(x: np.ndarray) -> np.ndarray:
+            return np.clip(x, 0.0, 1.0)
+
+        tone_mapping_fn = simple_tone_map
 
     try:
         for i, hdr in enumerate(frames):
