@@ -335,14 +335,23 @@ class LTX2HDRPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoaderMixi
         self.audio_hop_length = (
             self.audio_vae.config.mel_hop_length if getattr(self, "audio_vae", None) is not None else 160
         )
+        self.audio_mel_bins = self.audio_vae.config.mel_bins if getattr(self, "audio_vae", None) is not None else 64
+        self.audio_latent_channels = (
+            self.audio_vae.config.latent_channels if getattr(self, "audio_vae", None) is not None else 8
+        )
 
         self.hdr_video_processor = LTX2VideoHDRProcessor(
             vae_scale_factor=self.vae_spatial_compression_ratio,
             hdr_transform=hdr_transform,
         )
+
         self.tokenizer_max_length = (
             self.tokenizer.model_max_length if getattr(self, "tokenizer", None) is not None else 1024
         )
+        tokenizer_padding_side = "left"
+        if getattr(self, "tokenizer", None) is not None:
+            tokenizer_padding_side = getattr(self.tokenizer, "padding_side", "left")
+        self.tokenizer_padding_side = tokenizer_padding_side
 
     # Copied from diffusers.pipelines.ltx2.pipeline_ltx2.LTX2Pipeline._get_gemma_prompt_embeds
     def _get_gemma_prompt_embeds(
@@ -1216,11 +1225,8 @@ class LTX2HDRPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoaderMixi
                 prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds], dim=0)
                 prompt_attention_mask = torch.cat([negative_prompt_attention_mask, prompt_attention_mask], dim=0)
 
-            tokenizer_padding_side = "left"
-            if getattr(self, "tokenizer", None) is not None:
-                tokenizer_padding_side = getattr(self.tokenizer, "padding_side", "left")
             connector_prompt_embeds, connector_audio_prompt_embeds, connector_attention_mask = self.connectors(
-                prompt_embeds, prompt_attention_mask, padding_side=tokenizer_padding_side
+                prompt_embeds, prompt_attention_mask, padding_side=self.tokenizer_padding_side
             )
         else:
             connector_prompt_embeds = connector_video_embeds.to(device=device, dtype=self.transformer.dtype)
@@ -1269,16 +1275,11 @@ class LTX2HDRPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoaderMixi
         )
         audio_num_frames = round(duration_s * audio_latents_per_second)
 
-        num_mel_bins = self.audio_vae.config.mel_bins if getattr(self, "audio_vae", None) is not None else 64
-        latent_mel_bins = num_mel_bins // self.audio_vae_mel_compression_ratio
-        num_channels_latents_audio = (
-            self.audio_vae.config.latent_channels if getattr(self, "audio_vae", None) is not None else 8
-        )
         audio_latents = self.prepare_audio_latents(
             batch_size * num_videos_per_prompt,
-            num_channels_latents=num_channels_latents_audio,
+            num_channels_latents=self.audio_latent_channels,
             audio_latent_length=audio_num_frames,
-            num_mel_bins=num_mel_bins,
+            num_mel_bins=self.audio_mel_bins,
             noise_scale=noise_scale,
             dtype=torch.float32,
             device=device,
@@ -1531,9 +1532,6 @@ class LTX2HDRPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoaderMixi
 
                 if XLA_AVAILABLE:
                     xm.mark_step()
-
-        # Silence unused-variable lints for `audio_latent_model_input` / `latent_mel_bins`.
-        del audio_latent_model_input, latent_mel_bins
 
         # 9. Decode
         # Trim any appended reference tokens from the latents to recover the generated video only.
