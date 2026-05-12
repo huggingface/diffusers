@@ -194,6 +194,7 @@ jobs:
     - name: Install dependencies
       run: |
         uv pip install -e ".[quality]"
+        uv pip uninstall transformers huggingface_hub && UV_PRERELEASE=allow uv pip install -U transformers@git+https://github.com/huggingface/transformers.git
 
     - name: Environment
       run: |
