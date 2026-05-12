@@ -157,6 +157,18 @@ class AnimaPipelineFastTests(unittest.TestCase):
         self.assertEqual(output.shape, (1, 3, 32, 32))
         self.assertFalse(torch.isnan(output).any())
 
+    def test_inference_empty_negative_prompt(self):
+        components = self.get_dummy_components()
+        pipe = self.pipeline_class(**components)
+        pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_dummy_inputs()
+        inputs["negative_prompt"] = ""
+        output = pipe(**inputs).images
+
+        self.assertEqual(output.shape, (1, 3, 32, 32))
+        self.assertFalse(torch.isnan(output).any())
+
     def test_save_load_optional_components(self):
         components = self.get_dummy_components()
         pipe = self.pipeline_class(**components)
