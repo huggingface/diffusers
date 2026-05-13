@@ -109,13 +109,12 @@ class EnvironmentCommand(BaseDiffusersCLICommand):
 
         quantization_versions = {}
         for backend_name, is_available_fn, dist_name in _QUANTIZATION_BACKENDS:
-            if is_available_fn():
-                try:
-                    quantization_versions[backend_name] = importlib.metadata.version(dist_name)
-                except importlib.metadata.PackageNotFoundError:
-                    quantization_versions[backend_name] = "N/A"
-            else:
-                quantization_versions[backend_name] = "not installed"
+            if not is_available_fn():
+                continue
+            try:
+                quantization_versions[backend_name] = importlib.metadata.version(dist_name)
+            except importlib.metadata.PackageNotFoundError:
+                quantization_versions[backend_name] = "N/A"
 
         xformers_version = "not installed"
         if is_xformers_available():
