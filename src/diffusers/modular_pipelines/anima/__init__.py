@@ -21,9 +21,8 @@ except OptionalDependencyNotAvailable:
 
     _dummy_objects.update(get_objects_from_module(dummy_torch_and_transformers_objects))
 else:
-    _import_structure["modeling_anima"] = ["AnimaTextConditioner"]
-    _import_structure["pipeline_anima"] = ["AnimaPipeline"]
-
+    _import_structure["modular_blocks_anima"] = ["AnimaAutoBlocks"]
+    _import_structure["modular_pipeline"] = ["AnimaModularPipeline"]
 
 if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     try:
@@ -32,8 +31,8 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     except OptionalDependencyNotAvailable:
         from ...utils.dummy_torch_and_transformers_objects import *  # noqa F403
     else:
-        from .modeling_anima import AnimaTextConditioner
-        from .pipeline_anima import AnimaPipeline
+        from .modular_blocks_anima import AnimaAutoBlocks
+        from .modular_pipeline import AnimaModularPipeline
 else:
     import sys
 

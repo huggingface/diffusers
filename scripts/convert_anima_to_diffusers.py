@@ -26,7 +26,7 @@ from safetensors.torch import load_file
 from transformers import AutoTokenizer, Qwen3Config, Qwen3Model, T5TokenizerFast
 
 from diffusers import (
-    AnimaPipeline,
+    AnimaAutoBlocks,
     AnimaTextConditioner,
     AutoencoderKLQwenImage,
     FlowMatchEulerDiscreteScheduler,
@@ -251,7 +251,8 @@ def save_pipeline(args, transformer, text_conditioner, text_encoder, vae):
     t5_tokenizer = T5TokenizerFast.from_pretrained(args.t5_tokenizer_path)
     scheduler = FlowMatchEulerDiscreteScheduler(shift=3.0)
 
-    pipe = AnimaPipeline(
+    pipe = AnimaAutoBlocks().init_pipeline()
+    pipe.update_components(
         text_encoder=text_encoder,
         tokenizer=tokenizer,
         t5_tokenizer=t5_tokenizer,
