@@ -359,15 +359,7 @@ class QuantizationTesterMixin:
             if isinstance(module, torch.nn.Linear):
                 assert not self._is_module_quantized(module), f"Module {name} is still quantized after dequantize()"
 
-        # Get model dtype from first parameter
-        model_dtype = next(model.parameters()).dtype
-
         inputs = self.get_dummy_inputs()
-        # Cast inputs to model dtype
-        inputs = {
-            k: v.to(model_dtype) if isinstance(v, torch.Tensor) and v.is_floating_point() else v
-            for k, v in inputs.items()
-        }
         output = model(**inputs, return_dict=False)[0]
         assert output is not None, "Model output is None after dequantization"
         assert not torch.isnan(output).any(), "Model output contains NaN after dequantization"
@@ -575,33 +567,28 @@ class BitsAndBytesTesterMixin(BitsAndBytesConfigMixin, QuantizationTesterMixin):
 
     @torch.no_grad()
     def test_bnb_keep_modules_in_fp32(self):
-        if not hasattr(self.model_class, "_keep_in_fp32_modules"):
-            pytest.skip(f"{self.model_class.__name__} does not have _keep_in_fp32_modules")
+        fp32_modules = getattr(self.model_class, "_keep_in_fp32_modules", None)
+        if not fp32_modules:
+            pytest.skip(f"{self.model_class.__name__} does not declare _keep_in_fp32_modules")
 
         config_kwargs = BitsAndBytesConfigMixin.BNB_CONFIGS["4bit_nf4"]
 
-        original_fp32_modules = getattr(self.model_class, "_keep_in_fp32_modules", None)
-        self.model_class._keep_in_fp32_modules = ["proj_out"]
+        model = self._create_quantized_model(config_kwargs)
+        model.to(torch_device)
 
-        try:
-            model = self._create_quantized_model(config_kwargs)
+        for name, module in model.named_modules():
+            if isinstance(module, torch.nn.Linear):
+                if any(fp32_name in name for fp32_name in fp32_modules):
+                    assert module.weight.dtype == torch.float32, (
+                        f"Module {name} should be FP32 but is {module.weight.dtype}"
+                    )
+                else:
+                    assert module.weight.dtype == torch.uint8, (
+                        f"Module {name} should be uint8 but is {module.weight.dtype}"
+                    )
 
-            for name, module in model.named_modules():
-                if isinstance(module, torch.nn.Linear):
-                    if any(fp32_name in name for fp32_name in model._keep_in_fp32_modules):
-                        assert module.weight.dtype == torch.float32, (
-                            f"Module {name} should be FP32 but is {module.weight.dtype}"
-                        )
-                    else:
-                        assert module.weight.dtype == torch.uint8, (
-                            f"Module {name} should be uint8 but is {module.weight.dtype}"
-                        )
-
-            inputs = self.get_dummy_inputs()
-            _ = model(**inputs)
-        finally:
-            if original_fp32_modules is not None:
-                self.model_class._keep_in_fp32_modules = original_fp32_modules
+        inputs = self.get_dummy_inputs()
+        _ = model(**inputs)
 
     def test_bnb_modules_to_not_convert(self):
         """Test that modules_to_not_convert parameter works correctly."""
@@ -818,6 +805,10 @@ class TorchAoConfigMixin:
     @staticmethod
     def _get_quant_config(config_name):
         config_cls = getattr(_torchao_quantization, config_name)
+        # TorchAO int4 quantization requires plain_int32 packing format on Intel XPU
+        if config_name == "Int4WeightOnlyConfig" and torch_device == "xpu":
+            return TorchAoConfig(config_cls(int4_packing_format="plain_int32"))
+
         return TorchAoConfig(config_cls())
 
     def _create_quantized_model(self, config_name, **extra_kwargs):
@@ -832,8 +823,10 @@ class TorchAoConfigMixin:
         assert isinstance(module, torch.nn.Linear), f"Layer {name} is not Linear, got {type(module)}"
 
 
-# int4wo requires CUDA-specific ops (_convert_weight_to_int4pack)
-_int4wo_skip = pytest.mark.skipif(torch_device != "cuda", reason="int4wo quantization requires CUDA")
+# int4wo requires CUDA or XPU ops (_convert_weight_to_int4pack)
+_int4wo_skip = pytest.mark.skipif(
+    torch_device not in ["cuda", "xpu"], reason="int4wo quantization requires CUDA or XPU"
+)
 
 
 @is_torchao
