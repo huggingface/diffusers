@@ -931,9 +931,18 @@ class TorchAoTesterMixin(TorchAoConfigMixin, QuantizationTesterMixin):
         """Test that device_map='auto' works correctly with quantization."""
         self._test_quantization_device_map(TorchAoConfigMixin.TORCHAO_QUANT_TYPES["int8wo"])
 
-    def test_torchao_dequantize(self):
+    @pytest.mark.parametrize(
+        "quant_type",
+        [
+            pytest.param("int4wo", marks=_int4wo_skip),
+            "int8wo",
+            "int8dq",
+        ],
+        ids=["int4wo", "int8wo", "int8dq"],
+    )
+    def test_torchao_dequantize(self, quant_type):
         """Test that dequantize() works correctly."""
-        self._test_dequantize(TorchAoConfigMixin.TORCHAO_QUANT_TYPES["int8wo"])
+        self._test_dequantize(TorchAoConfigMixin.TORCHAO_QUANT_TYPES[quant_type])
 
     def test_torchao_training(self):
         """Test that quantized models can be used for training with adapters."""
