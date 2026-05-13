@@ -5,9 +5,9 @@ from ...utils import (
     OptionalDependencyNotAvailable,
     _LazyModule,
     get_objects_from_module,
-    is_flax_available,
     is_torch_available,
     is_transformers_available,
+    is_transformers_flax_compatible,
 )
 
 
@@ -15,7 +15,7 @@ _dummy_objects = {}
 _additional_imports = {}
 _import_structure = {"pipeline_output": ["StableDiffusionXLPipelineOutput"]}
 
-if is_transformers_available() and is_flax_available():
+if is_transformers_flax_compatible():
     _import_structure["pipeline_output"].extend(["FlaxStableDiffusionXLPipelineOutput"])
 try:
     if not (is_transformers_available() and is_torch_available()):
@@ -30,7 +30,7 @@ else:
     _import_structure["pipeline_stable_diffusion_xl_inpaint"] = ["StableDiffusionXLInpaintPipeline"]
     _import_structure["pipeline_stable_diffusion_xl_instruct_pix2pix"] = ["StableDiffusionXLInstructPix2PixPipeline"]
 
-if is_transformers_available() and is_flax_available():
+if is_transformers_flax_compatible():
     from ...schedulers.scheduling_pndm_flax import PNDMSchedulerState
 
     _additional_imports.update({"PNDMSchedulerState": PNDMSchedulerState})
@@ -50,7 +50,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .pipeline_stable_diffusion_xl_instruct_pix2pix import StableDiffusionXLInstructPix2PixPipeline
 
     try:
-        if not (is_transformers_available() and is_flax_available()):
+        if not is_transformers_flax_compatible():
             raise OptionalDependencyNotAvailable()
     except OptionalDependencyNotAvailable:
         from ...utils.dummy_flax_objects import *
