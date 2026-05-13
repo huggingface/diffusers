@@ -315,17 +315,8 @@ class DFlashPipeline(DiffusionPipeline):
         if input_ids.shape[0] != 1:
             raise ValueError("DFlashPipeline currently supports batch_size=1 input_ids.")
 
-        target_params = list(self.target_model.parameters()) if hasattr(self.target_model, "parameters") else []
-        device = target_params[0].device if len(target_params) > 0 else torch.device("cpu")
+        device = self._execution_device
         input_ids = input_ids.to(device=device)
-        draft_params = list(self.draft_model.parameters()) if hasattr(self.draft_model, "parameters") else []
-        draft_device = draft_params[0].device if len(draft_params) > 0 else device
-        if draft_device != device:
-            logger.warning(
-                "Draft model is on %s while target model is on %s. For best performance, place both on the same device.",
-                draft_device,
-                device,
-            )
 
         if stop_token_ids is None:
             eos_token_id = getattr(getattr(self, "tokenizer", None), "eos_token_id", None)
