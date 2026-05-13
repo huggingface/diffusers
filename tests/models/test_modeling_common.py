@@ -2104,13 +2104,16 @@ class ModelPushToHubTester(unittest.TestCase):
             up_block_types=("CrossAttnUpBlock2D", "UpBlock2D"),
             cross_attention_dim=32,
         )
-        model.push_to_hub(self.repo_id, token=TOKEN)
+        # Use a method-unique repo to avoid recycling a name that `test_push_to_hub` just deleted,
+        # which the staging server rejects with an LFS pointer error.
+        repo_id = f"test-model-library-name-{uuid.uuid4()}"
+        model.push_to_hub(repo_id, token=TOKEN)
 
-        model_card = ModelCard.load(f"{USER}/{self.repo_id}", token=TOKEN).data
+        model_card = ModelCard.load(f"{USER}/{repo_id}", token=TOKEN).data
         assert model_card.library_name == "diffusers"
 
         # Reset repo
-        delete_repo(self.repo_id, token=TOKEN)
+        delete_repo(repo_id, token=TOKEN)
 
 
 @require_torch_accelerator
