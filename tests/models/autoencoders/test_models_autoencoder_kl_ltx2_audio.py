@@ -13,24 +13,29 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import unittest
+import pytest
 
 from diffusers import AutoencoderKLLTX2Audio
 
-from ...testing_utils import (
-    floats_tensor,
-    torch_device,
-)
-from ..test_modeling_common import ModelTesterMixin
-from .testing_utils import AutoencoderTesterMixin
+from ...testing_utils import floats_tensor, torch_device
+from ..testing_utils import BaseModelTesterConfig, MemoryTesterMixin, ModelTesterMixin, TrainingTesterMixin
+from .testing_utils import NewAutoencoderTesterMixin
 
 
-class AutoencoderKLLTX2AudioTests(ModelTesterMixin, AutoencoderTesterMixin, unittest.TestCase):
-    model_class = AutoencoderKLLTX2Audio
-    main_input_name = "sample"
-    base_precision = 1e-2
+class AutoencoderKLLTX2AudioTesterConfig(BaseModelTesterConfig):
+    @property
+    def main_input_name(self):
+        return "sample"
 
-    def get_autoencoder_kl_ltx_video_config(self):
+    @property
+    def model_class(self):
+        return AutoencoderKLLTX2Audio
+
+    @property
+    def output_shape(self):
+        return (2, 5, 16)
+
+    def get_init_dict(self):
         return {
             "in_channels": 2,  # stereo,
             "output_channels": 2,
@@ -50,39 +55,29 @@ class AutoencoderKLLTX2AudioTests(ModelTesterMixin, AutoencoderTesterMixin, unit
             "double_z": True,
         }
 
-    @property
-    def dummy_input(self):
+    def get_dummy_inputs(self):
         batch_size = 2
         num_channels = 2
         num_frames = 8
         num_mel_bins = 16
-
         spectrogram = floats_tensor((batch_size, num_channels, num_frames, num_mel_bins)).to(torch_device)
+        return {"sample": spectrogram}
 
-        input_dict = {"sample": spectrogram}
-        return input_dict
 
-    @property
-    def input_shape(self):
-        return (2, 5, 16)
+class TestAutoencoderKLLTX2Audio(AutoencoderKLLTX2AudioTesterConfig, ModelTesterMixin):
+    base_precision = 1e-2
 
-    @property
-    def output_shape(self):
-        return (2, 5, 16)
-
-    def prepare_init_args_and_inputs_for_common(self):
-        init_dict = self.get_autoencoder_kl_ltx_video_config()
-        inputs_dict = self.dummy_input
-        return init_dict, inputs_dict
-
-    # Overriding as output shape is not the same as input shape for LTX 2.0 audio VAE
-    def test_output(self):
-        super().test_output(expected_output_shape=(2, 2, 5, 16))
-
-    @unittest.skip("Unsupported test.")
     def test_outputs_equivalence(self):
-        pass
+        pytest.skip("Unsupported test.")
 
-    @unittest.skip("AutoencoderKLLTX2Audio does not support `norm_num_groups` because it does not use GroupNorm.")
-    def test_forward_with_norm_groups(self):
-        pass
+
+class TestAutoencoderKLLTX2AudioTraining(AutoencoderKLLTX2AudioTesterConfig, TrainingTesterMixin):
+    """Training tests for AutoencoderKLLTX2Audio."""
+
+
+class TestAutoencoderKLLTX2AudioMemory(AutoencoderKLLTX2AudioTesterConfig, MemoryTesterMixin):
+    """Memory optimization tests for AutoencoderKLLTX2Audio."""
+
+
+class TestAutoencoderKLLTX2AudioSlicingTiling(AutoencoderKLLTX2AudioTesterConfig, NewAutoencoderTesterMixin):
+    """Slicing and tiling tests for AutoencoderKLLTX2Audio."""
