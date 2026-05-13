@@ -372,6 +372,8 @@
         title: HunyuanVideo15Transformer3DModel
       - local: api/models/hunyuan_video_transformer_3d
         title: HunyuanVideoTransformer3DModel
+      - local: api/models/transformer_joyimage
+        title: JoyImageEditTransformer3DModel
       - local: api/models/latte_transformer3d
         title: LatteTransformer3DModel
       - local: api/models/longcat_image_transformer2d
@@ -560,6 +562,8 @@
         title: HunyuanImage2.1
       - local: api/pipelines/pix2pix
         title: InstructPix2Pix
+      - local: api/pipelines/joyimage_edit
+        title: JoyImage Edit
       - local: api/pipelines/kandinsky
         title: Kandinsky 2.1
       - local: api/pipelines/kandinsky_v22
