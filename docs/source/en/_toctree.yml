@@ -478,11 +478,11 @@
       - local: api/pipelines/stable_audio
         title: Stable Audio
       title: Audio
-	    - sections:
-	      - local: api/pipelines/anima
-	        title: Anima
-	      - local: api/pipelines/animatediff
-	        title: AnimateDiff
+    - sections:
+      - local: api/pipelines/anima
+        title: Anima
+      - local: api/pipelines/animatediff
+        title: AnimateDiff
       - local: api/pipelines/aura_flow
         title: AuraFlow
       - local: api/pipelines/bria_3_2
