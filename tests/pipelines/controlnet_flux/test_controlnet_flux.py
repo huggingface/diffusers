@@ -143,7 +143,7 @@ class FluxControlNetPipelineFastTests(unittest.TestCase, PipelineTesterMixin, Fl
             (1, 3, 32, 32),
             generator=generator,
             device=torch.device(device),
-            dtype=torch.float32,
+            dtype=torch.float16,
         )
 
         controlnet_conditioning_scale = 0.5
@@ -163,7 +163,7 @@ class FluxControlNetPipelineFastTests(unittest.TestCase, PipelineTesterMixin, Fl
     def test_controlnet_flux(self):
         components = self.get_dummy_components()
         flux_pipe = FluxControlNetPipeline(**components)
-        flux_pipe = flux_pipe.to(torch_device, dtype=torch.float32)
+        flux_pipe = flux_pipe.to(torch_device, dtype=torch.float16)
         flux_pipe.set_progress_bar_config(disable=None)
 
         inputs = self.get_dummy_inputs(torch_device)
