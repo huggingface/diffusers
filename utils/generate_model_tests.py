@@ -72,6 +72,7 @@ OPTIONAL_TESTERS = [
     # Other testers
     ("SingleFileTesterMixin", "single_file"),
     ("IPAdapterTesterMixin", "ip_adapter"),
+    ("AttentionBackendTesterMixin", "attention_backends"),
     ("ContextParallelAttentionBackendsTesterMixin", "cp_attn"),
 ]
 
@@ -538,6 +539,7 @@ def main():
             "faster_cache",
             "single_file",
             "ip_adapter",
+            "attention_backends",
             "cp_attn",
             "all",
         ],
