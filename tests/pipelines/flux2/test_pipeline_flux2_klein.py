@@ -238,4 +238,3 @@ class Flux2KleinPipelineIntegrationTests(unittest.TestCase):
 
         atol = 1e-2 if is_torch_neuronx_available() else 1e-4
         _ = atol
-

@@ -1000,9 +1000,7 @@ class StableDiffusionXLTurboPipelineIntegrationTests(unittest.TestCase):
     def test_sdxl_turbo_512(self):
         generator = torch.Generator("cpu").manual_seed(0)
 
-        pipe = AutoPipelineForText2Image.from_pretrained(
-            self.ckpt_id, torch_dtype=torch.float16, variant="fp16"
-        )
+        pipe = AutoPipelineForText2Image.from_pretrained(self.ckpt_id, torch_dtype=torch.float16, variant="fp16")
         pipe.to(torch_device)
         if is_torch_neuronx_available():
             torch.neuron.synchronize()
