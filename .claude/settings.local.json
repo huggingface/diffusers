@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(CUDA_VISIBLE_DEVICES=\"\" python -m pytest tests/pipelines/controlnet_sd3/test_controlnet_sd3.py::StableDiffusion3ControlNetPipelineFastTests::test_controlnet_sd3 -x)",
+      "Bash(CUDA_VISIBLE_DEVICES=\"\" python *)",
+      "Bash(DIFFUSERS_TEST_DEVICE=cpu python -m pytest tests/pipelines/controlnet_sd3/test_controlnet_sd3.py::StableDiffusion3ControlNetPipelineFastTests::test_controlnet_sd3 -x)",
+      "Bash(pip show *)",
+      "Bash(CUDA_VISIBLE_DEVICES=\"\" DIFFUSERS_TEST_DEVICE=cpu python -m pytest tests/pipelines/controlnet_sd3/test_controlnet_sd3.py::StableDiffusion3ControlNetPipelineFastTests::test_controlnet_sd35 tests/pipelines/controlnet_flux/test_controlnet_flux.py::FluxControlNetPipelineFastTests::test_controlnet_flux tests/pipelines/controlnet_hunyuandit/test_controlnet_hunyuandit.py::HunyuanDiTControlNetPipelineFastTests::test_controlnet_hunyuandit tests/pipelines/controlnet_sd3/test_controlnet_inpaint_sd3.py::StableDiffusion3ControlInpaintNetPipelineFastTests::test_controlnet_inpaint_sd3)",
+      "Bash(python *)",
+      "Bash(DIFFUSERS_TEST_DEVICE=cpu python -m pytest tests/pipelines/controlnet_sd3/test_controlnet_sd3.py::StableDiffusion3ControlNetPipelineFastTests::test_controlnet_sd35 -x)",
+      "Bash(DIFFUSERS_TEST_DEVICE=cpu python -m pytest tests/pipelines/controlnet_flux/test_controlnet_flux.py::FluxControlNetPipelineFastTests::test_controlnet_flux -x)",
+      "Bash(DIFFUSERS_TEST_DEVICE=cpu python -m pytest tests/pipelines/controlnet_hunyuandit/test_controlnet_hunyuandit.py::HunyuanDiTControlNetPipelineFastTests::test_controlnet_hunyuandit -x)"
+    ]
+  }
+}

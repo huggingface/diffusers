@@ -156,14 +156,14 @@ class StableDiffusion3ControlInpaintNetPipelineFastTests(unittest.TestCase, Pipe
             (1, 3, 32, 32),
             generator=generator,
             device=torch.device(device),
-            dtype=torch.float16,
+            dtype=torch.float32,
         )
 
         control_mask = randn_tensor(
             (1, 1, 32, 32),
             generator=generator,
             device=torch.device(device),
-            dtype=torch.float16,
+            dtype=torch.float32,
         )
 
         controlnet_conditioning_scale = 0.95
@@ -184,7 +184,7 @@ class StableDiffusion3ControlInpaintNetPipelineFastTests(unittest.TestCase, Pipe
     def test_controlnet_inpaint_sd3(self):
         components = self.get_dummy_components()
         sd_pipe = StableDiffusion3ControlNetInpaintingPipeline(**components)
-        sd_pipe = sd_pipe.to(torch_device, dtype=torch.float16)
+        sd_pipe = sd_pipe.to(torch_device, dtype=torch.float32)
         sd_pipe.set_progress_bar_config(disable=None)
 
         inputs = self.get_dummy_inputs(torch_device)

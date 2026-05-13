@@ -126,7 +126,7 @@ class HunyuanDiTControlNetPipelineFastTests(unittest.TestCase, PipelineTesterMix
             (1, 3, 16, 16),
             generator=generator,
             device=torch.device(device),
-            dtype=torch.float16,
+            dtype=torch.float32,
         )
 
         controlnet_conditioning_scale = 0.5
@@ -146,7 +146,7 @@ class HunyuanDiTControlNetPipelineFastTests(unittest.TestCase, PipelineTesterMix
     def test_controlnet_hunyuandit(self):
         components = self.get_dummy_components()
         pipe = HunyuanDiTControlNetPipeline(**components)
-        pipe = pipe.to(torch_device, dtype=torch.float16)
+        pipe = pipe.to(torch_device, dtype=torch.float32)
         pipe.set_progress_bar_config(disable=None)
 
         inputs = self.get_dummy_inputs(torch_device)

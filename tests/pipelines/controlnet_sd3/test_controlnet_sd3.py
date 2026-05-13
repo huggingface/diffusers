@@ -173,7 +173,7 @@ class StableDiffusion3ControlNetPipelineFastTests(unittest.TestCase, PipelineTes
             (1, 3, 32, 32),
             generator=generator,
             device=torch.device(device),
-            dtype=torch.float16,
+            dtype=torch.float32,
         )
 
         controlnet_conditioning_scale = 0.5
@@ -192,7 +192,7 @@ class StableDiffusion3ControlNetPipelineFastTests(unittest.TestCase, PipelineTes
 
     def run_pipe(self, components, use_sd35=False):
         sd_pipe = StableDiffusion3ControlNetPipeline(**components)
-        sd_pipe = sd_pipe.to(torch_device, dtype=torch.float16)
+        sd_pipe = sd_pipe.to(torch_device, dtype=torch.float32)
         sd_pipe.set_progress_bar_config(disable=None)
 
         inputs = self.get_dummy_inputs(torch_device)
