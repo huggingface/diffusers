@@ -18,6 +18,8 @@ import torch.nn.functional as F
 
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...loaders import PeftAdapterMixin
+from ...models.attention import AttentionModuleMixin
+from ...models.attention_dispatch import dispatch_attention_fn
 from ...models.modeling_utils import ModelMixin
 
 
@@ -60,13 +62,69 @@ class AnimaRotaryEmbedding(nn.Module):
         return cos.to(dtype=hidden_states.dtype), sin.to(dtype=hidden_states.dtype)
 
 
-class AnimaTextConditionerAttention(nn.Module):
+class AnimaTextConditionerAttnProcessor:
+    _attention_backend = None
+    _parallel_config = None
+
+    def __call__(
+        self,
+        attn: "AnimaTextConditionerAttention",
+        hidden_states: torch.Tensor,
+        attention_mask: torch.Tensor | None = None,
+        encoder_hidden_states: torch.Tensor | None = None,
+        position_embeddings: tuple[torch.Tensor, torch.Tensor] | None = None,
+        encoder_position_embeddings: tuple[torch.Tensor, torch.Tensor] | None = None,
+    ) -> torch.Tensor:
+        encoder_hidden_states = hidden_states if encoder_hidden_states is None else encoder_hidden_states
+        input_shape = hidden_states.shape[:-1]
+        encoder_input_shape = encoder_hidden_states.shape[:-1]
+
+        query = attn.q_proj(hidden_states)
+        key = attn.k_proj(encoder_hidden_states)
+        value = attn.v_proj(encoder_hidden_states)
+
+        query = query.view(*input_shape, attn.num_attention_heads, attn.attention_head_dim)
+        key = key.view(*encoder_input_shape, attn.num_attention_heads, attn.attention_head_dim)
+        value = value.view(*encoder_input_shape, attn.num_attention_heads, attn.attention_head_dim)
+
+        query = attn.q_norm(query)
+        key = attn.k_norm(key)
+
+        if position_embeddings is not None:
+            if encoder_position_embeddings is None:
+                raise ValueError("`encoder_position_embeddings` must be provided when using rotary embeddings.")
+            cos, sin = position_embeddings
+            query = _apply_rotary_pos_emb(query, cos, sin, unsqueeze_dim=2)
+            cos, sin = encoder_position_embeddings
+            key = _apply_rotary_pos_emb(key, cos, sin, unsqueeze_dim=2)
+
+        hidden_states = dispatch_attention_fn(
+            query,
+            key,
+            value,
+            attn_mask=attention_mask,
+            dropout_p=0.0,
+            is_causal=False,
+            backend=self._attention_backend,
+            parallel_config=self._parallel_config,
+        )
+        hidden_states = hidden_states.flatten(2, 3).contiguous()
+        hidden_states = attn.o_proj(hidden_states)
+        return hidden_states
+
+
+class AnimaTextConditionerAttention(nn.Module, AttentionModuleMixin):
+    _default_processor_cls = AnimaTextConditionerAttnProcessor
+    _available_processors = [AnimaTextConditionerAttnProcessor]
+    _supports_qkv_fusion = False
+
     def __init__(
         self,
         query_dim: int,
         context_dim: int,
         num_attention_heads: int,
         attention_head_dim: int,
+        processor: AnimaTextConditionerAttnProcessor | None = None,
     ):
         super().__init__()
         inner_dim = num_attention_heads * attention_head_dim
@@ -80,6 +138,10 @@ class AnimaTextConditionerAttention(nn.Module):
         self.v_proj = nn.Linear(context_dim, inner_dim, bias=False)
         self.o_proj = nn.Linear(inner_dim, query_dim, bias=False)
 
+        if processor is None:
+            processor = self._default_processor_cls()
+        self.set_processor(processor)
+
     def forward(
         self,
         hidden_states: torch.Tensor,
@@ -88,33 +150,14 @@ class AnimaTextConditionerAttention(nn.Module):
         position_embeddings: tuple[torch.Tensor, torch.Tensor] | None = None,
         encoder_position_embeddings: tuple[torch.Tensor, torch.Tensor] | None = None,
     ) -> torch.Tensor:
-        encoder_hidden_states = hidden_states if encoder_hidden_states is None else encoder_hidden_states
-        input_shape = hidden_states.shape[:-1]
-        encoder_input_shape = encoder_hidden_states.shape[:-1]
-
-        query = self.q_proj(hidden_states)
-        key = self.k_proj(encoder_hidden_states)
-        value = self.v_proj(encoder_hidden_states)
-
-        query = query.view(*input_shape, self.num_attention_heads, self.attention_head_dim).transpose(1, 2)
-        key = key.view(*encoder_input_shape, self.num_attention_heads, self.attention_head_dim).transpose(1, 2)
-        value = value.view(*encoder_input_shape, self.num_attention_heads, self.attention_head_dim).transpose(1, 2)
-
-        query = self.q_norm(query)
-        key = self.k_norm(key)
-
-        if position_embeddings is not None:
-            if encoder_position_embeddings is None:
-                raise ValueError("`encoder_position_embeddings` must be provided when using rotary embeddings.")
-            cos, sin = position_embeddings
-            query = _apply_rotary_pos_emb(query, cos, sin)
-            cos, sin = encoder_position_embeddings
-            key = _apply_rotary_pos_emb(key, cos, sin)
-
-        hidden_states = F.scaled_dot_product_attention(query, key, value, attn_mask=attention_mask)
-        hidden_states = hidden_states.transpose(1, 2).reshape(*input_shape, -1).contiguous()
-        hidden_states = self.o_proj(hidden_states)
-        return hidden_states
+        return self.processor(
+            self,
+            hidden_states,
+            attention_mask=attention_mask,
+            encoder_hidden_states=encoder_hidden_states,
+            position_embeddings=position_embeddings,
+            encoder_position_embeddings=encoder_position_embeddings,
+        )
 
 
 class AnimaTextConditionerBlock(nn.Module):
@@ -193,6 +236,7 @@ class AnimaTextConditioner(ModelMixin, ConfigMixin, PeftAdapterMixin):
 
     Anima reuses the Cosmos Predict2 DiT. The only model-specific conditioning module is this LLM adapter, which
     cross-attends from learned T5 token embeddings to Qwen3 text encoder hidden states before the diffusion loop.
+    `target_dim` is the conditioner output dimension and must match the transformer's `text_embed_dim`.
     """
 
     _supports_gradient_checkpointing = True
@@ -248,7 +292,6 @@ class AnimaTextConditioner(ModelMixin, ConfigMixin, PeftAdapterMixin):
         target_input_ids: torch.Tensor,
         target_attention_mask: torch.Tensor | None = None,
         source_attention_mask: torch.Tensor | None = None,
-        target_token_weights: torch.Tensor | None = None,
     ) -> torch.Tensor:
         target_attention_mask = self._prepare_attention_mask(target_attention_mask)
         source_attention_mask = self._prepare_attention_mask(source_attention_mask)
@@ -284,8 +327,6 @@ class AnimaTextConditioner(ModelMixin, ConfigMixin, PeftAdapterMixin):
 
         hidden_states = self.norm(self.out_proj(hidden_states))
 
-        if target_token_weights is not None:
-            hidden_states = hidden_states * target_token_weights.to(hidden_states).unsqueeze(-1)
         if target_attention_mask is not None:
             hidden_states = hidden_states * target_attention_mask.squeeze(1).squeeze(1).to(hidden_states).unsqueeze(-1)
 
