@@ -364,6 +364,8 @@
         title: HeliosTransformer3DModel
       - local: api/models/hidream_image_transformer
         title: HiDreamImageTransformer2DModel
+      - local: api/models/hidream_o1_transformer
+        title: HiDreamO1Transformer2DModel
       - local: api/models/hunyuan_transformer2d
         title: HunyuanDiT2DModel
       - local: api/models/hunyuanimage_transformer_2d
