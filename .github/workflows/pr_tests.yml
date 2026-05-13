@@ -194,6 +194,8 @@ jobs:
     - name: Install dependencies
       run: |
         uv pip install -e ".[quality]"
+        uv pip uninstall transformers huggingface_hub && UV_PRERELEASE=allow uv pip install -U transformers@git+https://github.com/huggingface/transformers.git
+        uv pip uninstall tokenizers && uv pip install "tokenizers<=0.23.0"
 
     - name: Environment
       run: |
