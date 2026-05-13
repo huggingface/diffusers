@@ -581,14 +581,10 @@ The repository keeps AI-agent configuration in `.ai/` and exposes local agent fi
 
 ### AI-assisted and agentic contributions
 
-AI-assisted contributions are welcome, but they must be coordinated, scoped, and verified to keep review load manageable. PRs that do not follow these guidelines will most likely be closed.
+AI-assisted contributions are welcome, but they must be coordinated, scoped, and verified to keep review load manageable. PRs that do not follow these guidelines may be closed without detailed review.
 
-- **Coordinate before opening a PR.** Find or open an issue, review similar PRs (open and recently closed), and wait for an explicit acknowledgment from a maintainer on that issue before you start coding. Uncoordinated agent-generated PRs are the single biggest source of triage load and will be closed on sight.
-- **One open AI-assisted PR per contributor at a time.** Do not open batches of small fix PRs in parallel. If you have a systematic cleanup, bundle it into a single PR (see "no busywork PRs" below). Additional PRs opened while you already have one in review will be closed.
-- **No "pure agent" PRs.** The human submitter is responsible for reviewing every changed line, validating behavior end-to-end, and running the relevant tests before requesting review. Do not open a PR you have not read.
-- **No one-off "busywork" PRs.** Avoid PRs that fix a single typo, a single isolated style nit, one mutable-default argument, one dtype cast, etc. Bundle mechanical cleanups into a clear, systematic scope (e.g. "fix mutable defaults across all schedulers") so reviewers can evaluate the pattern once instead of N times.
+- **Coordinate before opening a PR.** Find or open an issue, review similar PRs (open and recently closed), and wait for an explicit acknowledgment from a maintainer on that issue before you start coding. This gives us a chance to discuss scope, avoid duplicate work, and confirm the approach.
+- **Fix patterns, not one-offs.** If you spot an recurring issue, search the codebase for similar instances and open a *single* issue with a clear, systematic scope (e.g. "fix mutable defaults across all schedulers") rather than many issues or PRs for individual instances. 
 - **Include in the PR description:**
   - A **coordination link** to the issue or discussion where a maintainer acknowledged the work, and the maintainer's handle.
-  - **Differentiation** from any existing open or recently merged PRs in the same area, if applicable.
   - The **test commands you ran** and their results (paste relevant output, not just "tests pass").
-  - The **scope of validation** you performed end-to-end (which pipeline / model / config you actually ran, not just unit tests).
