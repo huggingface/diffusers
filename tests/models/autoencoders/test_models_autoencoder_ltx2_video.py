@@ -14,10 +14,12 @@
 # limitations under the License.
 
 import pytest
+import torch
 
 from diffusers import AutoencoderKLLTX2Video
+from diffusers.utils.torch_utils import randn_tensor
 
-from ...testing_utils import enable_full_determinism, floats_tensor, torch_device
+from ...testing_utils import enable_full_determinism, torch_device
 from ..testing_utils import BaseModelTesterConfig, MemoryTesterMixin, ModelTesterMixin, TrainingTesterMixin
 from .testing_utils import NewAutoencoderTesterMixin
 
@@ -37,6 +39,10 @@ class AutoencoderKLLTX2VideoTesterConfig(BaseModelTesterConfig):
     @property
     def output_shape(self):
         return (3, 9, 16, 16)
+
+    @property
+    def generator(self):
+        return torch.Generator("cpu").manual_seed(0)
 
     def get_init_dict(self):
         return {
@@ -68,7 +74,9 @@ class AutoencoderKLLTX2VideoTesterConfig(BaseModelTesterConfig):
         num_frames = 9
         num_channels = 3
         sizes = (16, 16)
-        image = floats_tensor((batch_size, num_channels, num_frames) + sizes).to(torch_device)
+        image = randn_tensor(
+            (batch_size, num_channels, num_frames, *sizes), generator=self.generator, device=torch_device
+        )
         return {"sample": image}
 
 
