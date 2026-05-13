@@ -243,7 +243,7 @@ class LTX2ConditionPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoad
     """
 
     model_cpu_offload_seq = "text_encoder->connectors->transformer->vae->audio_vae->vocoder"
-    _optional_components = []
+    _optional_components = ["audio_scheduler"]
     _callback_tensor_inputs = ["latents", "prompt_embeds", "negative_prompt_embeds"]
 
     def __init__(
@@ -256,6 +256,7 @@ class LTX2ConditionPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoad
         connectors: LTX2TextConnectors,
         transformer: LTX2VideoTransformer3DModel,
         vocoder: LTX2Vocoder | LTX2VocoderWithBWE,
+        audio_scheduler: FlowMatchEulerDiscreteScheduler | None = None,
     ):
         super().__init__()
 
@@ -268,6 +269,7 @@ class LTX2ConditionPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoad
             transformer=transformer,
             vocoder=vocoder,
             scheduler=scheduler,
+            audio_scheduler=audio_scheduler,
         )
 
         self.vae_spatial_compression_ratio = (
@@ -295,11 +297,20 @@ class LTX2ConditionPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoad
         self.audio_hop_length = (
             self.audio_vae.config.mel_hop_length if getattr(self, "audio_vae", None) is not None else 160
         )
+        self.audio_mel_bins = self.audio_vae.config.mel_bins if getattr(self, "audio_vae", None) is not None else 64
+        self.audio_latent_channels = (
+            self.audio_vae.config.latent_channels if getattr(self, "audio_vae", None) is not None else 8
+        )
 
         self.video_processor = VideoProcessor(vae_scale_factor=self.vae_spatial_compression_ratio, resample="bilinear")
+
         self.tokenizer_max_length = (
             self.tokenizer.model_max_length if getattr(self, "tokenizer", None) is not None else 1024
         )
+        tokenizer_padding_side = "left"  # Padding side for default Gemma3-12B text encoder
+        if getattr(self, "tokenizer", None) is not None:
+            tokenizer_padding_side = getattr(self.tokenizer, "padding_side", "left")
+        self.tokenizer_padding_side = tokenizer_padding_side
 
     # Copied from diffusers.pipelines.ltx2.pipeline_ltx2.LTX2Pipeline._get_gemma_prompt_embeds
     def _get_gemma_prompt_embeds(
@@ -1418,11 +1429,8 @@ class LTX2ConditionPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoad
             prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds], dim=0)
             prompt_attention_mask = torch.cat([negative_prompt_attention_mask, prompt_attention_mask], dim=0)
 
-        tokenizer_padding_side = "left"  # Padding side for default Gemma3-12B text encoder
-        if getattr(self, "tokenizer", None) is not None:
-            tokenizer_padding_side = getattr(self.tokenizer, "padding_side", "left")
         connector_prompt_embeds, connector_audio_prompt_embeds, connector_attention_mask = self.connectors(
-            prompt_embeds, prompt_attention_mask, padding_side=tokenizer_padding_side
+            prompt_embeds, prompt_attention_mask, padding_side=self.tokenizer_padding_side
         )
 
         # 4. Prepare latent variables
@@ -1465,16 +1473,12 @@ class LTX2ConditionPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoad
             )
             _, _, audio_num_frames, _ = audio_latents.shape  # [B, C, L, M]
 
-        num_mel_bins = self.audio_vae.config.mel_bins if getattr(self, "audio_vae", None) is not None else 64
-        latent_mel_bins = num_mel_bins // self.audio_vae_mel_compression_ratio
-        num_channels_latents_audio = (
-            self.audio_vae.config.latent_channels if getattr(self, "audio_vae", None) is not None else 8
-        )
+        latent_mel_bins = self.audio_mel_bins // self.audio_vae_mel_compression_ratio
         audio_latents = self.prepare_audio_latents(
             batch_size * num_videos_per_prompt,
-            num_channels_latents=num_channels_latents_audio,
+            num_channels_latents=self.audio_latent_channels,
             audio_latent_length=audio_num_frames,
-            num_mel_bins=num_mel_bins,
+            num_mel_bins=self.audio_mel_bins,
             noise_scale=noise_scale,
             dtype=torch.float32,
             device=device,
@@ -1493,8 +1497,11 @@ class LTX2ConditionPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoad
         )
 
         # For now, duplicate the scheduler for use with the audio latents
-        audio_scheduler = copy.deepcopy(self.scheduler)
-        _, _ = retrieve_timesteps(
+        if self.audio_scheduler is not None:
+            audio_scheduler = self.audio_scheduler
+        else:
+            audio_scheduler = copy.deepcopy(self.scheduler)
+        audio_timesteps, _ = retrieve_timesteps(
             audio_scheduler,
             num_inference_steps,
             device,
@@ -1546,6 +1553,9 @@ class LTX2ConditionPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoad
                 timestep = t.expand(latent_model_input.shape[0])
                 video_timestep = timestep.unsqueeze(-1) * (1 - conditioning_mask.squeeze(-1))
 
+                t_audio = audio_timesteps[i]
+                audio_timestep = t_audio.expand(latent_model_input.shape[0])
+
                 with self.transformer.cache_context("cond_uncond"):
                     noise_pred_video, noise_pred_audio = self.transformer(
                         hidden_states=latent_model_input,
@@ -1553,8 +1563,9 @@ class LTX2ConditionPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoad
                         encoder_hidden_states=connector_prompt_embeds,
                         audio_encoder_hidden_states=connector_audio_prompt_embeds,
                         timestep=video_timestep,
-                        audio_timestep=timestep,
+                        audio_timestep=audio_timestep,
                         sigma=timestep,  # Used by LTX-2.3
+                        audio_sigma=audio_timestep,
                         encoder_attention_mask=connector_attention_mask,
                         audio_encoder_attention_mask=connector_attention_mask,
                         num_frames=latent_num_frames,
@@ -1606,6 +1617,7 @@ class LTX2ConditionPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoad
                         # Split values that vary each denoising loop iteration
                         timestep = timestep.chunk(2, dim=0)[0]
                         video_timestep = video_timestep.chunk(2, dim=0)[0]
+                        audio_timestep = audio_timestep.chunk(2, dim=0)[0]
                 else:
                     video_cfg_delta = audio_cfg_delta = 0
 
@@ -1627,8 +1639,9 @@ class LTX2ConditionPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoad
                             encoder_hidden_states=video_prompt_embeds,
                             audio_encoder_hidden_states=audio_prompt_embeds,
                             timestep=video_timestep,
-                            audio_timestep=timestep,
+                            audio_timestep=audio_timestep,
                             sigma=timestep,  # Used by LTX-2.3
+                            audio_sigma=audio_timestep,
                             encoder_attention_mask=prompt_attn_mask,
                             audio_encoder_attention_mask=prompt_attn_mask,
                             num_frames=latent_num_frames,
@@ -1668,8 +1681,9 @@ class LTX2ConditionPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoad
                             encoder_hidden_states=video_prompt_embeds,
                             audio_encoder_hidden_states=audio_prompt_embeds,
                             timestep=video_timestep,
-                            audio_timestep=timestep,
+                            audio_timestep=audio_timestep,
                             sigma=timestep,  # Used by LTX-2.3
+                            audio_sigma=audio_timestep,
                             encoder_attention_mask=prompt_attn_mask,
                             audio_encoder_attention_mask=prompt_attn_mask,
                             num_frames=latent_num_frames,

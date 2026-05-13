@@ -172,6 +172,7 @@ class LTX2InContextPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             "tokenizer": tokenizer,
             "connectors": connectors,
             "vocoder": vocoder,
+            "audio_scheduler": None,
         }
 
         return components
