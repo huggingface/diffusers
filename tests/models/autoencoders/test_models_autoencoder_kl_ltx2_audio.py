@@ -14,10 +14,12 @@
 # limitations under the License.
 
 import pytest
+import torch
 
 from diffusers import AutoencoderKLLTX2Audio
+from diffusers.utils.torch_utils import randn_tensor
 
-from ...testing_utils import floats_tensor, torch_device
+from ...testing_utils import torch_device
 from ..testing_utils import BaseModelTesterConfig, MemoryTesterMixin, ModelTesterMixin, TrainingTesterMixin
 from .testing_utils import NewAutoencoderTesterMixin
 
@@ -34,6 +36,10 @@ class AutoencoderKLLTX2AudioTesterConfig(BaseModelTesterConfig):
     @property
     def output_shape(self):
         return (2, 5, 16)
+
+    @property
+    def generator(self):
+        return torch.Generator("cpu").manual_seed(0)
 
     def get_init_dict(self):
         return {
@@ -60,7 +66,11 @@ class AutoencoderKLLTX2AudioTesterConfig(BaseModelTesterConfig):
         num_channels = 2
         num_frames = 8
         num_mel_bins = 16
-        spectrogram = floats_tensor((batch_size, num_channels, num_frames, num_mel_bins)).to(torch_device)
+        spectrogram = randn_tensor(
+            (batch_size, num_channels, num_frames, num_mel_bins),
+            generator=self.generator,
+            device=torch_device,
+        )
         return {"sample": spectrogram}
 
 
