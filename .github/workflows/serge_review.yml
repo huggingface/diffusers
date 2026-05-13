@@ -1,0 +1,66 @@
+name: Claude AI Review with inline comments
+
+on:
+  issue_comment:
+    types: [created]
+  pull_request_review_comment:
+    types: [created]
+
+permissions:
+  contents: read
+  pull-requests: write
+  issues: read
+
+jobs:
+  claude-ai-review:
+    if: |
+      (
+        github.event_name == 'issue_comment' &&
+        github.event.issue.pull_request &&
+        github.event.issue.state == 'open' &&
+        contains(github.event.comment.body, '@claude') &&
+        (github.event.comment.author_association == 'MEMBER' ||
+        github.event.comment.author_association == 'OWNER' ||
+        github.event.comment.author_association == 'COLLABORATOR')
+      ) || (
+        github.event_name == 'pull_request_review_comment' &&
+        contains(github.event.comment.body, '@claude') &&
+        (github.event.comment.author_association == 'MEMBER' ||
+        github.event.comment.author_association == 'OWNER' ||
+        github.event.comment.author_association == 'COLLABORATOR')
+      )
+    concurrency:
+      group: claude-ai-review-${{ github.event.issue.number || github.event.pull_request.number }}
+      cancel-in-progress: false
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve PR number
+        id: pr
+        run: |
+          NUM="${{ github.event.issue.number || github.event.pull_request.number }}"
+          echo "number=${NUM}" >> "$GITHUB_OUTPUT"
+
+      - name: Check out PR head (shallow)
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+        with:
+          ref: refs/pull/${{ steps.pr.outputs.number }}/head
+          fetch-depth: 1
+
+      - name: Strip fork-supplied reviewer/agent config
+        # ai-reviewer fetches its config (.ai/review-rules.md, .ai/review-tools.json,
+        # .ai/context-script) from the base repo's default branch via the GitHub
+        # Contents API, so wiping the fork's local copies does not affect rule
+        # loading. The wipe matters because the action also exposes read-only
+        # browse tools (read_file/list_dir/grep) rooted at the PR-head checkout —
+        # without this step a fork could ship its own .ai/review-tools.json or
+        # .ai/context-script and surface them to the LLM. .claude/ + CLAUDE.md
+        # are wiped for parity with the hardening in claude_review.yml.
+        run: rm -rf .ai/ .claude/ CLAUDE.md
+
+      - uses: tarekziade/ai-reviewer@main
+        with:
+          llm_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          llm_api_base: https://api.anthropic.com
+          llm_model: claude-opus-4-6
+          llm_stream: 'true'
+          mention_trigger: '@goku'
