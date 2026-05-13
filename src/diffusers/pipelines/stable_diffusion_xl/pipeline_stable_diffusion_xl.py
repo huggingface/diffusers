@@ -1092,9 +1092,6 @@ class StableDiffusionXLPipeline(
         )
 
         # 4. Prepare timesteps
-        # Keep timesteps on CPU for XLA (TPU) and Neuron: both use lazy/XLA execution where
-        # dynamic-shape ops like .nonzero() and .item() inside scheduler.index_for_timestep()
-        # are incompatible with static-graph compilation.
         is_neuron_device = hasattr(device, "type") and device.type == "neuron"
         if XLA_AVAILABLE or is_neuron_device:
             timestep_device = "cpu"
@@ -1210,7 +1207,7 @@ class StableDiffusionXLPipeline(
                 added_cond_kwargs = {"text_embeds": add_text_embeds, "time_ids": add_time_ids}
                 if ip_adapter_image is not None or ip_adapter_image_embeds is not None:
                     added_cond_kwargs["image_embeds"] = image_embeds
-                # For Neuron: pre-cast timestep to float32 on device. Neuron XLA does not support
+                # [Neuron] pre-cast timestep to float32 on device. Neuron XLA does not support
                 # int64 ops; the compiled UNet graph requires a float32 timestep input on-device.
                 t_unet = t.to(torch.float32).to(device) if is_neuron_device else t
                 noise_pred = self.unet(

@@ -1,4 +1,5 @@
 import gc
+import os
 import unittest
 
 import numpy as np
@@ -192,27 +193,17 @@ class Flux2KleinPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
 @slow
 @require_torch_accelerator
-class Flux2KleinPipelineNeuronTests(unittest.TestCase):
+class Flux2KleinPipelineIntegrationTests(unittest.TestCase):
     ckpt_id = "black-forest-labs/FLUX.2-klein-4B"
     prompt = "A small cactus with a happy face in the Sahara desert."
-    # Reuse the shared NEFF cache so per-op kernels (e.g. dtype casts) are not
-    # recompiled from scratch on each test run. TORCH_NEURONX_FALLBACK_ONLY_FOR_UNIMPLEMENTED_OPS=1
-    # is set system-wide, so a fresh compilation failure raises an error instead of
-    # silently falling back to CPU.
-    neff_cache_dir = "/tmp/neff_cache"
 
     def setUp(self):
         super().setUp()
-        import os
-
-        os.makedirs(self.neff_cache_dir, exist_ok=True)
-        os.environ["TORCH_NEURONX_NEFF_CACHE_DIR"] = self.neff_cache_dir
-        # The Qwen3 text-encoder attention ops accumulate in the XLA lazy graph and
-        # are compiled together when the transformer triggers its first graph flush
-        # (ids.float() in Flux2PosEmbed). The NKI SDPA kernel selected for those
-        # attention ops fails with NCC_INLA001 (NKI version mismatch). Disabling it
-        # falls back to the standard SDPA decomposition which compiles correctly.
-        os.environ.setdefault("TORCH_NEURONX_ENABLE_NKI_SDPA", "0")
+        if is_torch_neuronx_available():
+            neff_cache_dir = "/tmp/neff_cache"
+            os.makedirs(neff_cache_dir, exist_ok=True)
+            os.environ["TORCH_NEURONX_NEFF_CACHE_DIR"] = neff_cache_dir
+            os.environ.setdefault("TORCH_NEURONX_ENABLE_NKI_SDPA", "0")
         gc.collect()
         backend_empty_cache(torch_device)
 
@@ -227,8 +218,6 @@ class Flux2KleinPipelineNeuronTests(unittest.TestCase):
         pipe = Flux2KleinPipeline.from_pretrained(self.ckpt_id, torch_dtype=torch.bfloat16)
         pipe.to(torch_device)
         if is_torch_neuronx_available():
-            # Flush pending lazy XLA parameter-copy ops so they don't pile up and
-            # trigger a batch compilation on the first inference call (NCC_IDRV017).
             torch.neuron.synchronize()
         pipe.set_progress_bar_config(disable=None)
 
@@ -244,14 +233,9 @@ class Flux2KleinPipelineNeuronTests(unittest.TestCase):
 
         image_slice = image[0, -3:, -3:, -1]
         self.assertEqual(image.shape, (1, 512, 512, 3))
-
-        # Verify outputs are valid pixel values
         self.assertTrue(np.all((image >= 0.0) & (image <= 1.0)), "Pixel values must be in [0, 1]")
-        # Verify the image is non-trivial (not blank or saturated)
         self.assertGreater(image_slice.std(), 0.01, "Output image should have meaningful variance")
 
-        # Neuron uses bfloat16 internally which has lower precision than float16 on CUDA.
-        # Use a wider tolerance when running on Neuron vs. a reference CUDA run.
         atol = 1e-2 if is_torch_neuronx_available() else 1e-4
-        _ = atol  # atol is used when comparing against a reference slice; add it here once available.
+        _ = atol
 
