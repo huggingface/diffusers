@@ -606,7 +606,8 @@ NLTK_IMPORT_ERROR = """
 
 
 TORCH_NEURONX_IMPORT_ERROR = """
-{0} requires the torch_neuronx library (AWS Neuron SDK) but it was not found in your environment. Please install it following the AWS Neuron documentation: https://awsdocs-neuron.readthedocs-hosted.com/en/latest/
+{0} requires the torch_neuronx library (AWS Neuron SDK) but it was not found in your environment. Please install it
+following the AWS Neuron documentation: https://awsdocs-neuron.readthedocs-hosted.com/en/latest/
 """
 
 BACKENDS_MAPPING = OrderedDict(
