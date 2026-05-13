@@ -18,13 +18,13 @@ jobs:
         github.event_name == 'issue_comment' &&
         github.event.issue.pull_request &&
         github.event.issue.state == 'open' &&
-        contains(github.event.comment.body, '@claude') &&
+        contains(github.event.comment.body, '@claude-2-serge') &&
         (github.event.comment.author_association == 'MEMBER' ||
         github.event.comment.author_association == 'OWNER' ||
         github.event.comment.author_association == 'COLLABORATOR')
       ) || (
         github.event_name == 'pull_request_review_comment' &&
-        contains(github.event.comment.body, '@claude') &&
+        contains(github.event.comment.body, '@claude-2-serge') &&
         (github.event.comment.author_association == 'MEMBER' ||
         github.event.comment.author_association == 'OWNER' ||
         github.event.comment.author_association == 'COLLABORATOR')
@@ -63,4 +63,4 @@ jobs:
           llm_api_base: https://api.anthropic.com
           llm_model: claude-opus-4-6
           llm_stream: 'true'
-          mention_trigger: '@goku'
+          mention_trigger: '@claude-2-serge'
