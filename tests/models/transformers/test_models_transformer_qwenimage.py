@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import warnings
 
 import pytest
 import torch
@@ -26,6 +25,7 @@ from ..testing_utils import (
     AttentionTesterMixin,
     BaseModelTesterConfig,
     BitsAndBytesTesterMixin,
+    ContextParallelAttentionBackendsTesterMixin,
     ContextParallelTesterMixin,
     LoraHotSwappingForModelTesterMixin,
     LoraTesterMixin,
@@ -176,31 +176,6 @@ class TestQwenImageTransformer(QwenImageTransformerTesterConfig, ModelTesterMixi
 
         assert output.sample.shape[1] == inputs["hidden_states"].shape[1]
 
-    def test_txt_seq_lens_deprecation(self):
-        init_dict = self.get_init_dict()
-        inputs = self.get_dummy_inputs()
-        model = self.model_class(**init_dict).to(torch_device)
-
-        txt_seq_lens = [inputs["encoder_hidden_states"].shape[1]]
-
-        inputs_with_deprecated = inputs.copy()
-        inputs_with_deprecated.pop("encoder_hidden_states_mask")
-        inputs_with_deprecated["txt_seq_lens"] = txt_seq_lens
-
-        with warnings.catch_warnings(record=True) as w:
-            warnings.simplefilter("always")
-            with torch.no_grad():
-                output = model(**inputs_with_deprecated)
-
-            future_warnings = [x for x in w if issubclass(x.category, FutureWarning)]
-            assert len(future_warnings) > 0, "Expected FutureWarning to be raised"
-
-            warning_message = str(future_warnings[0].message)
-            assert "txt_seq_lens" in warning_message
-            assert "deprecated" in warning_message
-
-        assert output.sample.shape[1] == inputs["hidden_states"].shape[1]
-
     def test_layered_model_with_mask(self):
         init_dict = {
             "patch_size": 2,
@@ -277,6 +252,25 @@ class TestQwenImageTransformerAttention(QwenImageTransformerTesterConfig, Attent
 
 class TestQwenImageTransformerContextParallel(QwenImageTransformerTesterConfig, ContextParallelTesterMixin):
     """Context Parallel inference tests for QwenImage Transformer."""
+
+
+class TestQwenImageTransformerContextParallelAttnBackends(
+    QwenImageTransformerTesterConfig, ContextParallelAttentionBackendsTesterMixin
+):
+    """Context Parallel inference x attention backends tests for QwenImage Transformer"""
+
+    # QwenImage always passes a joint attention mask (text + image), which flash_hub and
+    # _flash_3_hub do not support.
+    unsupported_attn_backends = ["flash_hub", "_flash_3_hub"]
+
+    def get_dummy_inputs(self, batch_size: int = 1) -> dict[str, torch.Tensor]:
+        inputs = super().get_dummy_inputs(batch_size=batch_size)
+        encoder_hidden_states_mask = inputs["encoder_hidden_states_mask"]
+        encoder_hidden_states_mask[:, 1] = 0
+        encoder_hidden_states_mask[:, 3] = 0
+        encoder_hidden_states_mask[:, 5:] = 0
+        inputs["encoder_hidden_states_mask"] = encoder_hidden_states_mask
+        return inputs
 
 
 class TestQwenImageTransformerLoRA(QwenImageTransformerTesterConfig, LoraTesterMixin):

@@ -122,6 +122,7 @@ from .import_utils import (
     is_torchsde_available,
     is_torchvision_available,
     is_transformers_available,
+    is_transformers_flax_compatible,
     is_transformers_version,
     is_unidecode_available,
     is_wandb_available,

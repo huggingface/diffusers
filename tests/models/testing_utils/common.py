@@ -206,6 +206,11 @@ class BaseModelTesterConfig:
         return {}
 
     @property
+    def torch_dtype(self) -> torch.dtype:
+        """Compute dtype used to build dummy inputs and cast inputs where needed."""
+        return torch.float32
+
+    @property
     def output_shape(self) -> Optional[tuple]:
         """Expected output shape for output validation tests."""
         return None
