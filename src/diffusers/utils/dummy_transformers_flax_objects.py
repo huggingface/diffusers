@@ -3,90 +3,90 @@ from ..utils import DummyObject, requires_backends
 
 
 class FlaxDiffusionPipeline(metaclass=DummyObject):
-    _backends = ["flax", "transformers"]
+    _backends = ["transformers_flax"]
 
     def __init__(self, *args, **kwargs):
-        requires_backends(self, ["flax", "transformers"])
+        requires_backends(self, ["transformers_flax"])
 
     @classmethod
     def from_config(cls, *args, **kwargs):
-        requires_backends(cls, ["flax", "transformers"])
+        requires_backends(cls, ["transformers_flax"])
 
     @classmethod
     def from_pretrained(cls, *args, **kwargs):
-        requires_backends(cls, ["flax", "transformers"])
+        requires_backends(cls, ["transformers_flax"])
 
 
 class FlaxStableDiffusionControlNetPipeline(metaclass=DummyObject):
-    _backends = ["flax", "transformers"]
+    _backends = ["transformers_flax"]
 
     def __init__(self, *args, **kwargs):
-        requires_backends(self, ["flax", "transformers"])
+        requires_backends(self, ["transformers_flax"])
 
     @classmethod
     def from_config(cls, *args, **kwargs):
-        requires_backends(cls, ["flax", "transformers"])
+        requires_backends(cls, ["transformers_flax"])
 
     @classmethod
     def from_pretrained(cls, *args, **kwargs):
-        requires_backends(cls, ["flax", "transformers"])
+        requires_backends(cls, ["transformers_flax"])
 
 
 class FlaxStableDiffusionImg2ImgPipeline(metaclass=DummyObject):
-    _backends = ["flax", "transformers"]
+    _backends = ["transformers_flax"]
 
     def __init__(self, *args, **kwargs):
-        requires_backends(self, ["flax", "transformers"])
+        requires_backends(self, ["transformers_flax"])
 
     @classmethod
     def from_config(cls, *args, **kwargs):
-        requires_backends(cls, ["flax", "transformers"])
+        requires_backends(cls, ["transformers_flax"])
 
     @classmethod
     def from_pretrained(cls, *args, **kwargs):
-        requires_backends(cls, ["flax", "transformers"])
+        requires_backends(cls, ["transformers_flax"])
 
 
 class FlaxStableDiffusionInpaintPipeline(metaclass=DummyObject):
-    _backends = ["flax", "transformers"]
+    _backends = ["transformers_flax"]
 
     def __init__(self, *args, **kwargs):
-        requires_backends(self, ["flax", "transformers"])
+        requires_backends(self, ["transformers_flax"])
 
     @classmethod
     def from_config(cls, *args, **kwargs):
-        requires_backends(cls, ["flax", "transformers"])
+        requires_backends(cls, ["transformers_flax"])
 
     @classmethod
     def from_pretrained(cls, *args, **kwargs):
-        requires_backends(cls, ["flax", "transformers"])
+        requires_backends(cls, ["transformers_flax"])
 
 
 class FlaxStableDiffusionPipeline(metaclass=DummyObject):
-    _backends = ["flax", "transformers"]
+    _backends = ["transformers_flax"]
 
     def __init__(self, *args, **kwargs):
-        requires_backends(self, ["flax", "transformers"])
+        requires_backends(self, ["transformers_flax"])
 
     @classmethod
     def from_config(cls, *args, **kwargs):
-        requires_backends(cls, ["flax", "transformers"])
+        requires_backends(cls, ["transformers_flax"])
 
     @classmethod
     def from_pretrained(cls, *args, **kwargs):
-        requires_backends(cls, ["flax", "transformers"])
+        requires_backends(cls, ["transformers_flax"])
 
 
 class FlaxStableDiffusionXLPipeline(metaclass=DummyObject):
-    _backends = ["flax", "transformers"]
+    _backends = ["transformers_flax"]
 
     def __init__(self, *args, **kwargs):
-        requires_backends(self, ["flax", "transformers"])
+        requires_backends(self, ["transformers_flax"])
 
     @classmethod
     def from_config(cls, *args, **kwargs):
-        requires_backends(cls, ["flax", "transformers"])
+        requires_backends(cls, ["transformers_flax"])
 
     @classmethod
     def from_pretrained(cls, *args, **kwargs):
-        requires_backends(cls, ["flax", "transformers"])
+        requires_backends(cls, ["transformers_flax"])
