@@ -63,4 +63,4 @@ jobs:
           llm_api_base: https://api.anthropic.com
           llm_model: claude-opus-4-6
           llm_stream: 'true'
-          mention_trigger: '@claude'
+          mention_trigger: '@goku'
