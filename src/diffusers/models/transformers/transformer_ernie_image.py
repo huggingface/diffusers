@@ -25,6 +25,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from ...configuration_utils import ConfigMixin, register_to_config
+from ...loaders import PeftAdapterMixin
 from ...utils import BaseOutput, logging
 from ..attention import AttentionModuleMixin
 from ..attention_dispatch import dispatch_attention_fn
@@ -288,7 +289,7 @@ class ErnieImageAdaLNContinuous(nn.Module):
         return x
 
 
-class ErnieImageTransformer2DModel(ModelMixin, ConfigMixin):
+class ErnieImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
     _supports_gradient_checkpointing = True
     _repeated_blocks = ["ErnieImageSharedAdaLNBlock"]
 
