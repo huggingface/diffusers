@@ -62,21 +62,6 @@ class FlaxAutoencoderKL(metaclass=DummyObject):
         requires_backends(cls, ["flax"])
 
 
-class FlaxDiffusionPipeline(metaclass=DummyObject):
-    _backends = ["flax"]
-
-    def __init__(self, *args, **kwargs):
-        requires_backends(self, ["flax"])
-
-    @classmethod
-    def from_config(cls, *args, **kwargs):
-        requires_backends(cls, ["flax"])
-
-    @classmethod
-    def from_pretrained(cls, *args, **kwargs):
-        requires_backends(cls, ["flax"])
-
-
 class FlaxDDIMScheduler(metaclass=DummyObject):
     _backends = ["flax"]
 
