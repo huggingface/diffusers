@@ -191,6 +191,7 @@ else:
         [
             "AceStepTransformer1DModel",
             "AllegroTransformer3DModel",
+            "AnimaTextConditioner",
             "AnyFlowFARTransformer3DModel",
             "AnyFlowTransformer3DModel",
             "AsymmetricAutoencoderKL",
@@ -479,6 +480,8 @@ else:
             "QwenImageLayeredAutoBlocks",
             "QwenImageLayeredModularPipeline",
             "QwenImageModularPipeline",
+            "AnimaAutoBlocks",
+            "AnimaModularPipeline",
             "StableDiffusion3AutoBlocks",
             "StableDiffusion3ModularPipeline",
             "StableDiffusionXLAutoBlocks",
@@ -507,8 +510,6 @@ else:
             "AmusedImg2ImgPipeline",
             "AmusedInpaintPipeline",
             "AmusedPipeline",
-            "AnimaPipeline",
-            "AnimaTextConditioner",
             "AnimateDiffControlNetPipeline",
             "AnimateDiffPAGPipeline",
             "AnimateDiffPipeline",
@@ -1026,6 +1027,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .models import (
             AceStepTransformer1DModel,
             AllegroTransformer3DModel,
+            AnimaTextConditioner,
             AnyFlowFARTransformer3DModel,
             AnyFlowTransformer3DModel,
             AsymmetricAutoencoderKL,
@@ -1263,6 +1265,8 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .utils.dummy_torch_and_transformers_objects import *  # noqa F403
     else:
         from .modular_pipelines import (
+            AnimaAutoBlocks,
+            AnimaModularPipeline,
             ErnieImageAutoBlocks,
             ErnieImageModularPipeline,
             Flux2AutoBlocks,
@@ -1319,8 +1323,6 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             AmusedImg2ImgPipeline,
             AmusedInpaintPipeline,
             AmusedPipeline,
-            AnimaPipeline,
-            AnimaTextConditioner,
             AnimateDiffControlNetPipeline,
             AnimateDiffPAGPipeline,
             AnimateDiffPipeline,
