@@ -1064,8 +1064,17 @@ class CustomPipelineTests(unittest.TestCase):
         )
 
     def test_load_custom_github(self):
+        with self.assertRaises(ValueError) as cm:
+            DiffusionPipeline.from_pretrained(
+                "google/ddpm-cifar10-32", custom_pipeline="one_step_unet", custom_revision="main"
+            )
+        self.assertIn(
+            "Pass `trust_remote_code=True` to allow loading community pipeline code modules.",
+            str(cm.exception),
+        )
+
         pipeline = DiffusionPipeline.from_pretrained(
-            "google/ddpm-cifar10-32", custom_pipeline="one_step_unet", custom_revision="main"
+            "google/ddpm-cifar10-32", custom_pipeline="one_step_unet", custom_revision="main", trust_remote_code=True
         )
 
         # make sure that on "main" pipeline gives only ones because of: https://github.com/huggingface/diffusers/pull/1690
@@ -1079,7 +1088,7 @@ class CustomPipelineTests(unittest.TestCase):
         del sys.modules["diffusers_modules.git.one_step_unet"]
 
         pipeline = DiffusionPipeline.from_pretrained(
-            "google/ddpm-cifar10-32", custom_pipeline="one_step_unet", custom_revision="0.10.2"
+            "google/ddpm-cifar10-32", custom_pipeline="one_step_unet", custom_revision="0.10.2", trust_remote_code=True
         )
         with torch.no_grad():
             output = pipeline()
