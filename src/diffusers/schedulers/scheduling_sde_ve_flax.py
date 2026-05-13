@@ -103,7 +103,7 @@ class FlaxScoreSdeVeScheduler(FlaxSchedulerMixin, ConfigMixin):
         correct_steps: int = 1,
     ):
         logger.warning(
-            "Flax classes are deprecated and will be removed in Diffusers v1.0.0. We "
+            "Flax classes are deprecated and will be removed in Diffusers v0.40.0. We "
             "recommend migrating to PyTorch classes or pinning your version of Diffusers."
         )
 
