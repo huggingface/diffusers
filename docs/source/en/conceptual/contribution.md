@@ -586,5 +586,5 @@ AI-assisted contributions are welcome, but they must be coordinated, scoped, and
 - **Coordinate before opening a PR.** Find or open an issue, review similar PRs (open and recently closed), and wait for an explicit acknowledgment from a maintainer on that issue before you start coding. This gives us a chance to discuss scope, avoid duplicate work, and confirm the approach.
 - **Fix patterns, not one-offs.** If you spot an recurring issue, search the codebase for similar instances and open a *single* issue with a clear, systematic scope (e.g. "fix mutable defaults across all schedulers") rather than many issues or PRs for individual instances. 
 - **Include in the PR description:**
-  - A **coordination link** to the issue or discussion where a maintainer acknowledged the work, and the maintainer's handle.
+  - A **coordination link** to the issue or discussion where a maintainer acknowledged the work.
   - The **test commands you ran** and their results (paste relevant output, not just "tests pass").
