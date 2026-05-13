@@ -24,8 +24,8 @@ import torch
 from transformers import CLIPTextConfig, CLIPTextModel, CLIPTextModelWithProjection, CLIPTokenizer
 
 from diffusers import (
-    AutoPipelineForText2Image,
     AutoencoderKL,
+    AutoPipelineForText2Image,
     DDIMScheduler,
     DPMSolverMultistepScheduler,
     EulerDiscreteScheduler,
