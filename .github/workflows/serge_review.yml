@@ -57,6 +57,16 @@ jobs:
         # are wiped for parity with the hardening in claude_review.yml.
         run: rm -rf .ai/ .claude/ CLAUDE.md
 
+      - name: Sanitize comment body
+        id: sanitize
+        run: |
+          COMMENT_BODY="${{ github.event.comment.body }}"
+          # Reject comments with adversarial prompt injection phrases
+          if echo "$COMMENT_BODY" | grep -iE '(ignore (previous|all) (instructions?|rules?|prompts?)|disregard (the )?(above|previous)|you are now|new (instructions?|rules?)|system:? |<\|im_start\||<\|im_end\||### (Instruction|System))'; then
+            echo "Potential prompt injection detected in comment" >&2
+            exit 1
+          fi
+
       - uses: tarekziade/ai-reviewer@main
         with:
           llm_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
