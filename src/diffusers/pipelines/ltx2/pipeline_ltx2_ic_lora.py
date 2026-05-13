@@ -1002,7 +1002,6 @@ class LTX2InContextPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoad
                 f"{self.__class__.__name__} does not support using a list of generators. The first generator in the"
                 f" list will be used for all (pseudo-)random operations."
             )
-            generator = generator[0]
 
         condition_frames, condition_strengths, condition_indices, condition_pixel_frames = self.preprocess_conditions(
             conditions, height, width, num_frames, device=device
@@ -1013,7 +1012,9 @@ class LTX2InContextPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoad
         condition_latents_packed = []
         for condition_tensor in condition_frames:
             condition_latent_5d = retrieve_latents(
-                self.vae.encode(condition_tensor), generator=generator, sample_mode="argmax"
+                self.vae.encode(condition_tensor),
+                generator=generator[0] if isinstance(generator, list) else generator,
+                sample_mode="argmax",
             )
             condition_latent_5d = self._normalize_latents(
                 condition_latent_5d, self.vae.latents_mean, self.vae.latents_std
@@ -1106,7 +1107,7 @@ class LTX2InContextPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoad
                 conditioning_attention_mask=conditioning_attention_mask,
                 dtype=dtype,
                 device=device,
-                generator=generator,
+                generator=generator[0] if isinstance(generator, list) else generator,
             )
             num_ref_tokens = ref_latents_packed.shape[1]
 

@@ -733,7 +733,6 @@ class LTX2HDRPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoaderMixi
                     f"You have passed a list of generators of length {len(generator)}, but requested an effective"
                     f" batch size of {batch_size}. Make sure the batch size matches the length of the generators."
                 )
-            generator = generator[0]
 
         # Build the base noisy latents at the maximum sigma (zeros for Stage 1 fresh noise; normalized provided latents
         # for Stage 2). The noise mixing at the bottom converts these into the right partial-denoise state.
@@ -777,7 +776,7 @@ class LTX2HDRPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoaderMixi
                 frame_rate=frame_rate,
                 dtype=dtype,
                 device=device,
-                generator=generator,
+                generator=generator[0] if isinstance(generator, list) else generator,
             )
             num_ref_tokens = ref_latents_packed.shape[1]
 
