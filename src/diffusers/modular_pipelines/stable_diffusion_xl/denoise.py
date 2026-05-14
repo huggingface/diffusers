@@ -341,7 +341,7 @@ class StableDiffusionXLControlNetLoopDenoiser(ModularPipelineBlocks):
         ]
 
     @staticmethod
-    def prepare_extra_kwargs(func, exclude_kwargs=[], **kwargs):
+    def prepare_extra_kwargs(func, exclude_kwargs=(), **kwargs):
         accepted_kwargs = set(inspect.signature(func).parameters.keys())
         extra_kwargs = {}
         for key, value in kwargs.items():
@@ -498,7 +498,7 @@ class StableDiffusionXLLoopAfterDenoiser(ModularPipelineBlocks):
 
     # YiYi TODO: move this out of here
     @staticmethod
-    def prepare_extra_kwargs(func, exclude_kwargs=[], **kwargs):
+    def prepare_extra_kwargs(func, exclude_kwargs=(), **kwargs):
         accepted_kwargs = set(inspect.signature(func).parameters.keys())
         extra_kwargs = {}
         for key, value in kwargs.items():
@@ -584,7 +584,7 @@ class StableDiffusionXLInpaintLoopAfterDenoiser(ModularPipelineBlocks):
         return [OutputParam("latents", type_hint=torch.Tensor, description="The denoised latents")]
 
     @staticmethod
-    def prepare_extra_kwargs(func, exclude_kwargs=[], **kwargs):
+    def prepare_extra_kwargs(func, exclude_kwargs=(), **kwargs):
         accepted_kwargs = set(inspect.signature(func).parameters.keys())
         extra_kwargs = {}
         for key, value in kwargs.items():
