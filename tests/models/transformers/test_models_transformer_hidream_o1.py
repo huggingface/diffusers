@@ -22,6 +22,7 @@ import unittest
 
 import pytest
 import torch
+import torch.nn.functional as F
 
 pytest.importorskip("transformers")
 
@@ -32,6 +33,8 @@ from transformers.models.qwen3_vl.configuration_qwen3_vl import (  # noqa: E402
 )
 
 from diffusers import HiDreamO1Transformer2DModel  # noqa: E402
+from diffusers.models.transformers.transformer_hidream_o1 import HiDreamO1AttnProcessor  # noqa: E402
+from diffusers.models.transformers import transformer_hidream_o1 as hidream_o1_module  # noqa: E402
 
 from ...testing_utils import enable_full_determinism  # noqa: E402
 
@@ -171,6 +174,35 @@ def _load_official_hidream_o1_module():
     return module
 
 
+def _sdpa_flash_attn_func(
+    query: torch.Tensor,
+    key: torch.Tensor,
+    value: torch.Tensor,
+    *args,
+    softmax_scale=None,
+    causal=False,
+    **kwargs,
+):
+    query = query.transpose(1, 2)
+    key = key.transpose(1, 2)
+    value = value.transpose(1, 2)
+    if key.shape[1] != query.shape[1]:
+        repeat_factor = query.shape[1] // key.shape[1]
+        key = key.repeat_interleave(repeat_factor, dim=1)
+        value = value.repeat_interleave(repeat_factor, dim=1)
+
+    output = F.scaled_dot_product_attention(
+        query,
+        key,
+        value,
+        attn_mask=None,
+        dropout_p=0.0,
+        is_causal=causal,
+        scale=softmax_scale,
+    )
+    return output.transpose(1, 2).contiguous()
+
+
 class HiDreamO1Transformer2DModelTests(unittest.TestCase):
     @unittest.skipIf(not torch.cuda.is_available(), "HiDream-O1 parity tests require CUDA.")
     def test_forward_uses_nonzero_zero_initialized_parameters(self):
@@ -186,21 +218,43 @@ class HiDreamO1Transformer2DModelTests(unittest.TestCase):
         self.assertGreater(output_a.abs().max().item(), 0)
         self.assertGreater((output_a - output_b).abs().max().item(), 1e-5)
 
+    def test_attention_processor_api(self):
+        model = HiDreamO1Transformer2DModel(qwen_config=_get_tiny_qwen3_vl_config().to_dict()).eval()
+        processors = model.attn_processors
+
+        self.assertEqual(len(processors), model.qwen_config.text_config.num_hidden_layers)
+        self.assertTrue(all(isinstance(processor, HiDreamO1AttnProcessor) for processor in processors.values()))
+
+        processor = HiDreamO1AttnProcessor(use_flash_attn=False)
+        model.set_attn_processor(processor)
+        self.assertTrue(all(attn_processor is processor for attn_processor in model.attn_processors.values()))
+
+        model.set_default_attn_processor()
+        self.assertTrue(
+            all(isinstance(attn_processor, HiDreamO1AttnProcessor) for attn_processor in model.attn_processors.values())
+        )
+
     @unittest.skipIf(not torch.cuda.is_available(), "HiDream-O1 parity tests require CUDA.")
     def test_matches_official_implementation_with_different_input_distributions(self):
         device = torch.device("cuda")
         official = _load_official_hidream_o1_module()
+        official._flash_attn_func = _sdpa_flash_attn_func
+        hidream_o1_module._flash_attn_func = _sdpa_flash_attn_func
         config = _get_tiny_qwen3_vl_config()
 
-        official_model = official.Qwen3VLForConditionalGeneration(config).to(device).eval()
+        official_model = official.Qwen3VLForConditionalGeneration(config).to(device=device, dtype=torch.bfloat16).eval()
         _randomize_zero_parameters(official_model)
 
         with tempfile.TemporaryDirectory() as tmpdir:
             official_model.save_pretrained(tmpdir)
-            model = HiDreamO1Transformer2DModel.from_pretrained(tmpdir).to(device).eval()
+            model = HiDreamO1Transformer2DModel.from_pretrained(tmpdir).to(device=device, dtype=torch.bfloat16).eval()
             with tempfile.TemporaryDirectory() as diffusers_tmpdir:
                 model.save_pretrained(diffusers_tmpdir)
-                reloaded_model = HiDreamO1Transformer2DModel.from_pretrained(diffusers_tmpdir).to(device).eval()
+                reloaded_model = (
+                    HiDreamO1Transformer2DModel.from_pretrained(diffusers_tmpdir)
+                    .to(device=device, dtype=torch.bfloat16)
+                    .eval()
+                )
 
                 input_distributions = [
                     (0.0, 1.0, 0),
@@ -213,7 +267,10 @@ class HiDreamO1Transformer2DModelTests(unittest.TestCase):
                     with torch.no_grad():
                         for mean, std, seed in input_distributions:
                             inputs = _get_inputs(mean=mean, std=std, seed=seed, device=device)
-                            official_outputs = official_model.model(**inputs)
+                            inputs["vinputs"] = inputs["vinputs"].to(torch.bfloat16)
+                            official_inputs = {**inputs, "use_flash_attn": True}
+                            candidate_inputs = {**inputs, "use_flash_attn": True}
+                            official_outputs = official_model.model(**official_inputs)
 
                             distribution_record = {
                                 "cuda_device": torch.cuda.get_device_name(device),
@@ -235,8 +292,8 @@ class HiDreamO1Transformer2DModelTests(unittest.TestCase):
                                 ("official_checkpoint_load", model),
                                 ("diffusers_reload", reloaded_model),
                             ):
-                                model_outputs = candidate_model.model(**inputs)
-                                wrapper_outputs = candidate_model(**inputs)
+                                model_outputs = candidate_model.model(**candidate_inputs)
+                                wrapper_outputs = candidate_model(**candidate_inputs)
                                 record = {
                                     **distribution_record,
                                     "candidate": candidate_name,

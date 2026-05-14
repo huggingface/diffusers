@@ -15,12 +15,14 @@
 import math
 import os
 from dataclasses import dataclass
-from typing import Optional, Union
+from typing import Any, Optional, Union
 
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 from transformers.cache_utils import Cache
 from transformers.generation import GenerationMixin
+from transformers.modeling_rope_utils import dynamic_rope_update
 from transformers.modeling_outputs import ModelOutput
 from transformers.models.qwen3_vl.configuration_qwen3_vl import Qwen3VLConfig
 from transformers.models.qwen3_vl.modeling_qwen3_vl import (
@@ -57,6 +59,117 @@ else:
             from flash_attn import flash_attn_func as _flash_attn_func
         except ImportError:
             _flash_attn_func = None
+
+
+def _hidream_o1_text_rotary_forward(self, x: torch.Tensor, position_ids: torch.Tensor):
+    if position_ids.ndim == 2:
+        position_ids = position_ids[None, ...].expand(3, position_ids.shape[0], -1)
+
+    if os.environ.get("USE_BF16_ROPE", "0") == "1":
+        inv_freq = self.inv_freq
+    else:
+        inv_freq = self.original_inv_freq
+    inv_freq_expanded = inv_freq[None, None, :, None].float().to(device=x.device).expand(
+        3, position_ids.shape[1], -1, 1
+    )
+    position_ids_expanded = position_ids[:, :, None, :].float()
+
+    device_type = x.device.type if isinstance(x.device.type, str) and x.device.type != "mps" else "cpu"
+    with torch.autocast(device_type=device_type, enabled=False):
+        freqs = (inv_freq_expanded.float() @ position_ids_expanded.float()).transpose(2, 3)
+        freqs = self.apply_interleaved_mrope(freqs, self.mrope_section)
+        emb = torch.cat((freqs, freqs), dim=-1)
+        cos = emb.cos() * self.attention_scaling
+        sin = emb.sin() * self.attention_scaling
+
+    return cos.to(dtype=x.dtype), sin.to(dtype=x.dtype)
+
+
+_hidream_o1_text_rotary_forward = torch.no_grad()(dynamic_rope_update(_hidream_o1_text_rotary_forward))
+
+
+def _patch_hidream_o1_text_rotary_embedding(rotary_emb):
+    if not hasattr(rotary_emb, "original_inv_freq"):
+        rotary_emb.original_inv_freq = rotary_emb.inv_freq.detach().float().clone()
+    rotary_emb.forward = _hidream_o1_text_rotary_forward.__get__(rotary_emb, type(rotary_emb))
+
+
+class HiDreamO1AttnProcessor:
+    def __init__(self, use_flash_attn: bool = True):
+        if not hasattr(F, "scaled_dot_product_attention"):
+            raise ImportError("HiDreamO1AttnProcessor requires PyTorch 2.0 or newer.")
+        self.use_flash_attn = use_flash_attn
+
+    def _attention(self, query, key, value, softmax_scale: float, causal: bool, use_flash_attn: bool):
+        if use_flash_attn and _flash_attn_func is not None:
+            result = _flash_attn_func(
+                query.to(torch.bfloat16),
+                key.to(torch.bfloat16),
+                value.to(torch.bfloat16),
+                softmax_scale=softmax_scale,
+                causal=causal,
+            )
+            return result[0] if isinstance(result, tuple) else result
+
+        query = query.transpose(1, 2)
+        key = key.transpose(1, 2)
+        value = value.transpose(1, 2)
+        if key.shape[1] != query.shape[1]:
+            if query.shape[1] % key.shape[1] != 0:
+                raise ValueError(f"Cannot expand key/value heads from {key.shape[1]} to {query.shape[1]}.")
+            repeat_factor = query.shape[1] // key.shape[1]
+            key = key.repeat_interleave(repeat_factor, dim=1)
+            value = value.repeat_interleave(repeat_factor, dim=1)
+
+        output = F.scaled_dot_product_attention(
+            query,
+            key,
+            value,
+            attn_mask=None,
+            dropout_p=0.0,
+            is_causal=causal,
+            scale=softmax_scale,
+        )
+        return output.transpose(1, 2).contiguous()
+
+    def __call__(
+        self,
+        attn,
+        hidden_states: torch.Tensor,
+        position_embeddings: tuple[torch.Tensor, torch.Tensor],
+        idx_ar: torch.Tensor,
+        use_flash_attn: Optional[bool] = None,
+        **kwargs,
+    ) -> torch.Tensor:
+        input_shape = hidden_states.shape[:-1]
+        head_dim = attn.head_dim
+        hidden_shape = (*input_shape, -1, head_dim)
+
+        query = attn.q_norm(attn.q_proj(hidden_states).view(hidden_shape))
+        key = attn.k_norm(attn.k_proj(hidden_states).view(hidden_shape))
+        value = attn.v_proj(hidden_states).view(hidden_shape)
+
+        cos, sin = position_embeddings
+        query_rot = query.transpose(1, 2)
+        key_rot = key.transpose(1, 2)
+        query_rot, key_rot = apply_rotary_pos_emb(query_rot, key_rot, cos, sin)
+        query = query_rot.transpose(1, 2).contiguous()
+        key = key_rot.transpose(1, 2).contiguous()
+        value = value.contiguous()
+
+        softmax_scale = head_dim**-0.5
+        query_ar = query[:, idx_ar].contiguous()
+        key_ar = key[:, idx_ar].contiguous()
+        value_ar = value[:, idx_ar].contiguous()
+        use_flash_attn = self.use_flash_attn if use_flash_attn is None else use_flash_attn
+
+        out_ar = self._attention(query_ar, key_ar, value_ar, softmax_scale, causal=True, use_flash_attn=use_flash_attn)
+        out_full = self._attention(query, key, value, softmax_scale, causal=False, use_flash_attn=use_flash_attn)
+        out_full = out_full.clone()
+        out_full[:, idx_ar] = out_ar
+
+        attention_output = out_full.reshape(*input_shape, -1).contiguous()
+        return attn.o_proj(attention_output)
 
 
 @dataclass
@@ -178,6 +291,8 @@ class HiDreamO1Qwen3VLModel(Qwen3VLModel):
         tms_token_id: int = 151673,
     ):
         super().__init__(config)
+        _patch_hidream_o1_text_rotary_embedding(self.language_model.rotary_emb)
+        self.set_default_attn_processor()
 
         hidden_size = config.text_config.hidden_size
         bottleneck_dim = hidden_size // 4
@@ -196,18 +311,42 @@ class HiDreamO1Qwen3VLModel(Qwen3VLModel):
         )
         self.tms_token_id = tms_token_id
 
-    def _run_decoder_flash(
+    @property
+    def attn_processors(self) -> dict[str, HiDreamO1AttnProcessor]:
+        return {
+            f"language_model.layers.{layer_idx}.self_attn.processor": decoder_layer.self_attn.processor
+            for layer_idx, decoder_layer in enumerate(self.language_model.layers)
+        }
+
+    def set_attn_processor(self, processor: HiDreamO1AttnProcessor | dict[str, HiDreamO1AttnProcessor]):
+        count = len(self.language_model.layers)
+        if isinstance(processor, dict) and len(processor) != count:
+            raise ValueError(
+                f"A dict of processors was passed, but the number of processors {len(processor)} does not match the "
+                f"number of attention layers: {count}. Please pass {count} processor classes."
+            )
+
+        for layer_idx, decoder_layer in enumerate(self.language_model.layers):
+            if isinstance(processor, dict):
+                processor_name = f"language_model.layers.{layer_idx}.self_attn.processor"
+                decoder_layer.self_attn.processor = processor[processor_name]
+            else:
+                decoder_layer.self_attn.processor = processor
+
+    def set_default_attn_processor(self):
+        self.set_attn_processor(HiDreamO1AttnProcessor())
+
+    def _run_decoder_two_pass_attention(
         self,
         inputs_embeds: torch.Tensor,
         position_ids: torch.Tensor,
         token_types: torch.Tensor,
+        use_flash_attn: bool = True,
+        attention_kwargs: Optional[dict[str, Any]] = None,
         visual_pos_masks: Optional[torch.Tensor] = None,
         deepstack_visual_embeds: Optional[list[torch.Tensor]] = None,
         return_mid_results_layers: Optional[list[int]] = None,
     ):
-        if _flash_attn_func is None:
-            raise ImportError("Flash attention is not available. Install `flash_attn_interface` or `flash_attn`.")
-
         text_model = self.language_model
         if position_ids.ndim == 2:
             position_ids = position_ids[None, ...].expand(3, position_ids.shape[0], -1)
@@ -220,72 +359,34 @@ class HiDreamO1Qwen3VLModel(Qwen3VLModel):
         hidden_states = inputs_embeds
         mid_results = [] if return_mid_results_layers is not None else None
         use_gradient_checkpointing = text_model.gradient_checkpointing and torch.is_grad_enabled()
+        attention_kwargs = {} if attention_kwargs is None else dict(attention_kwargs)
+        if "use_flash_attn" in attention_kwargs:
+            use_flash_attn = attention_kwargs.pop("use_flash_attn")
 
-        def flash_layer_forward(hidden_states, decoder_layer, cos, sin, idx_ar):
-            original_attention_forward = decoder_layer.self_attn.forward
+        def two_pass_layer_forward(hidden_states, decoder_layer, cos, sin, idx_ar):
+            residual = hidden_states
+            hidden_states = decoder_layer.input_layernorm(hidden_states)
+            hidden_states = decoder_layer.self_attn.processor(
+                decoder_layer.self_attn,
+                hidden_states,
+                position_embeddings=(cos, sin),
+                idx_ar=idx_ar,
+                use_flash_attn=use_flash_attn,
+                **attention_kwargs,
+            )
+            hidden_states = residual + hidden_states
 
-            def custom_flash_attention(hidden_states, position_embeddings, attention_mask=None, **kwargs):
-                attn = decoder_layer.self_attn
-                input_shape = hidden_states.shape[:-1]
-                head_dim = attn.head_dim
-                hidden_shape = (*input_shape, -1, head_dim)
-
-                query = attn.q_norm(attn.q_proj(hidden_states).view(hidden_shape))
-                key = attn.k_norm(attn.k_proj(hidden_states).view(hidden_shape))
-                value = attn.v_proj(hidden_states).view(hidden_shape)
-
-                cos_pe, sin_pe = position_embeddings
-                query_rot = query.transpose(1, 2)
-                key_rot = key.transpose(1, 2)
-                query_rot, key_rot = apply_rotary_pos_emb(query_rot, key_rot, cos_pe, sin_pe)
-                query = query_rot.transpose(1, 2).contiguous()
-                key = key_rot.transpose(1, 2).contiguous()
-                value = value.contiguous()
-
-                softmax_scale = head_dim**-0.5
-                query_ar = query[:, idx_ar].contiguous()
-                key_ar = key[:, idx_ar].contiguous()
-                value_ar = value[:, idx_ar].contiguous()
-
-                result_ar = _flash_attn_func(
-                    query_ar.to(torch.bfloat16),
-                    key_ar.to(torch.bfloat16),
-                    value_ar.to(torch.bfloat16),
-                    softmax_scale=softmax_scale,
-                    causal=True,
-                )
-                out_ar = result_ar[0] if isinstance(result_ar, tuple) else result_ar
-
-                result_full = _flash_attn_func(
-                    query.to(torch.bfloat16),
-                    key.to(torch.bfloat16),
-                    value.to(torch.bfloat16),
-                    softmax_scale=softmax_scale,
-                    causal=False,
-                )
-                out_full = result_full[0] if isinstance(result_full, tuple) else result_full
-                out_full = out_full.clone()
-                out_full[:, idx_ar] = out_ar
-
-                attention_output = out_full.reshape(*input_shape, -1).contiguous()
-                attention_output = attn.o_proj(attention_output)
-                return attention_output, None
-
-            saved_gradient_checkpointing = decoder_layer.gradient_checkpointing
-            decoder_layer.gradient_checkpointing = False
-            decoder_layer.self_attn.forward = custom_flash_attention
-            try:
-                hidden_states = decoder_layer(hidden_states, position_embeddings=(cos, sin))
-            finally:
-                decoder_layer.self_attn.forward = original_attention_forward
-                decoder_layer.gradient_checkpointing = saved_gradient_checkpointing
+            residual = hidden_states
+            hidden_states = decoder_layer.post_attention_layernorm(hidden_states)
+            hidden_states = decoder_layer.mlp(hidden_states)
+            hidden_states = residual + hidden_states
 
             return hidden_states
 
         for layer_idx, decoder_layer in enumerate(text_model.layers):
             if use_gradient_checkpointing:
                 hidden_states = torch.utils.checkpoint.checkpoint(
-                    flash_layer_forward,
+                    two_pass_layer_forward,
                     hidden_states,
                     decoder_layer,
                     cos,
@@ -294,7 +395,7 @@ class HiDreamO1Qwen3VLModel(Qwen3VLModel):
                     use_reentrant=False,
                 )
             else:
-                hidden_states = flash_layer_forward(hidden_states, decoder_layer, cos, sin, idx_ar)
+                hidden_states = two_pass_layer_forward(hidden_states, decoder_layer, cos, sin, idx_ar)
 
             if (
                 deepstack_visual_embeds is not None
@@ -326,6 +427,7 @@ class HiDreamO1Qwen3VLModel(Qwen3VLModel):
         image_grid_thw: Optional[torch.LongTensor] = None,
         video_grid_thw: Optional[torch.LongTensor] = None,
         use_flash_attn: bool = False,
+        attention_kwargs: Optional[dict[str, Any]] = None,
         return_mid_results_layers: Optional[list[int]] = None,
         precomputed_image_embeds: Optional[torch.Tensor] = None,
         precomputed_deepstack_image_embeds: Optional[list[torch.Tensor]] = None,
@@ -451,44 +553,16 @@ class HiDreamO1Qwen3VLModel(Qwen3VLModel):
         if token_types.shape[0] == 1 and batch_size > 1:
             token_types = token_types.expand(batch_size, -1)
 
-        if use_flash_attn:
-            hidden_states, mid_results = self._run_decoder_flash(
-                inputs_embeds,
-                position_ids,
-                token_types,
-                visual_pos_masks=visual_pos_masks,
-                deepstack_visual_embeds=deepstack_visual_embeds,
-                return_mid_results_layers=return_mid_results_layers,
-            )
-        else:
-            dtype = inputs_embeds.dtype
-            min_val = torch.finfo(dtype).min
-            attention_masks = []
-            for batch_idx in range(batch_size):
-                causal = torch.full(
-                    (total_seq_len, total_seq_len),
-                    min_val,
-                    device=inputs_embeds.device,
-                    dtype=dtype,
-                )
-                causal = torch.triu(causal, diagonal=1)
-                gen_positions = token_types[batch_idx].bool()
-                causal[gen_positions, :] = 0
-                attention_masks.append(causal)
-            attention_mask_4d = torch.stack(attention_masks, dim=0).unsqueeze(1)
-
-            outputs = self.language_model(
-                input_ids=None,
-                position_ids=position_ids,
-                attention_mask=attention_mask_4d,
-                inputs_embeds=inputs_embeds,
-                use_cache=False,
-                visual_pos_masks=visual_pos_masks,
-                deepstack_visual_embeds=deepstack_visual_embeds,
-                return_mid_results_layers=return_mid_results_layers,
-            )
-            hidden_states = outputs.last_hidden_state
-            mid_results = getattr(outputs, "mid_results", None)
+        hidden_states, mid_results = self._run_decoder_two_pass_attention(
+            inputs_embeds,
+            position_ids,
+            token_types,
+            use_flash_attn=use_flash_attn,
+            attention_kwargs=attention_kwargs,
+            visual_pos_masks=visual_pos_masks,
+            deepstack_visual_embeds=deepstack_visual_embeds,
+            return_mid_results_layers=return_mid_results_layers,
+        )
 
         x_pred = self.final_layer2(hidden_states)
         return HiDreamO1Qwen3VLModelOutputWithPast(
@@ -516,6 +590,7 @@ class HiDreamO1Qwen3VLModel(Qwen3VLModel):
         timestep: Optional[torch.Tensor] = None,
         token_types: Optional[torch.Tensor] = None,
         use_flash_attn: bool = False,
+        attention_kwargs: Optional[dict[str, Any]] = None,
         return_mid_results_layers: Optional[list[int]] = None,
         **kwargs: Unpack[TransformersKwargs],
     ) -> Union[tuple, HiDreamO1Qwen3VLModelOutputWithPast]:
@@ -532,6 +607,7 @@ class HiDreamO1Qwen3VLModel(Qwen3VLModel):
                 image_grid_thw=image_grid_thw,
                 video_grid_thw=video_grid_thw,
                 use_flash_attn=use_flash_attn,
+                attention_kwargs=attention_kwargs,
                 return_mid_results_layers=return_mid_results_layers,
                 **kwargs,
             )
@@ -602,6 +678,16 @@ class HiDreamO1ForConditionalGeneration(Qwen3VLPreTrainedModel, GenerationMixin)
     def visual(self):
         return self.model.visual
 
+    @property
+    def attn_processors(self):
+        return self.model.attn_processors
+
+    def set_attn_processor(self, processor):
+        self.model.set_attn_processor(processor)
+
+    def set_default_attn_processor(self):
+        self.model.set_default_attn_processor()
+
     @check_model_inputs
     def forward(
         self,
@@ -621,6 +707,7 @@ class HiDreamO1ForConditionalGeneration(Qwen3VLPreTrainedModel, GenerationMixin)
         timestep: Optional[torch.Tensor] = None,
         token_types: Optional[torch.Tensor] = None,
         use_flash_attn: bool = False,
+        attention_kwargs: Optional[dict[str, Any]] = None,
         return_mid_results_layers: Optional[list[int]] = None,
         **kwargs: Unpack[TransformersKwargs],
     ) -> Union[tuple, HiDreamO1Qwen3VLCausalLMOutputWithPast]:
@@ -639,6 +726,7 @@ class HiDreamO1ForConditionalGeneration(Qwen3VLPreTrainedModel, GenerationMixin)
             timestep=timestep,
             token_types=token_types,
             use_flash_attn=use_flash_attn,
+            attention_kwargs=attention_kwargs,
             return_mid_results_layers=return_mid_results_layers,
             **kwargs,
         )
@@ -755,6 +843,16 @@ class HiDreamO1Transformer2DModel(ModelMixin, ConfigMixin):
     def visual(self):
         return self.model.visual
 
+    @property
+    def attn_processors(self):
+        return self.model.attn_processors
+
+    def set_attn_processor(self, processor):
+        self.model.set_attn_processor(processor)
+
+    def set_default_attn_processor(self):
+        self.model.set_default_attn_processor()
+
     def get_input_embeddings(self):
         return self.model.get_input_embeddings()
 
@@ -778,6 +876,7 @@ class HiDreamO1Transformer2DModel(ModelMixin, ConfigMixin):
         image_grid_thw: Optional[torch.LongTensor] = None,
         video_grid_thw: Optional[torch.LongTensor] = None,
         use_flash_attn: bool = False,
+        attention_kwargs: Optional[dict[str, Any]] = None,
         return_mid_results_layers: Optional[list[int]] = None,
         return_dict: bool = True,
         **kwargs,
@@ -793,6 +892,7 @@ class HiDreamO1Transformer2DModel(ModelMixin, ConfigMixin):
             image_grid_thw=image_grid_thw,
             video_grid_thw=video_grid_thw,
             use_flash_attn=use_flash_attn,
+            attention_kwargs=attention_kwargs,
             return_mid_results_layers=return_mid_results_layers,
             **kwargs,
         )

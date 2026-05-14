@@ -97,7 +97,7 @@ def parse_args():
         "--use_flash_attn",
         action=argparse.BooleanOptionalAction,
         default=True,
-        help="Use the O1 two-pass flash attention path. Disable only for small smoke tests.",
+        help="Allow the optimized flash-attn kernel for O1 two-pass attention. Disable to use PyTorch SDPA.",
     )
     parser.add_argument(
         "--use_resolution_binning",
@@ -286,7 +286,7 @@ def generate_text_to_image(
     scheduler_name: str,
     timesteps_list: Optional[list[int]],
     seed: int,
-    use_flash_attn: bool,
+    attention_kwargs: Optional[dict],
     noise_scale_start: float,
     noise_scale_end: float,
     noise_clip_std: float,
@@ -347,7 +347,7 @@ def generate_text_to_image(
                 vinputs=z_in,
                 timestep=t_pixeldit.reshape(-1).to(device),
                 token_types=sample["token_types"],
-                use_flash_attn=use_flash_attn,
+                attention_kwargs=attention_kwargs,
             )
         return outputs.sample[0, sample["vinput_mask"][0]].unsqueeze(0)
 
@@ -452,8 +452,9 @@ def main():
     if args.device_map is None:
         transformer.to(torch.device(args.device))
 
-    if not args.use_flash_attn and (height * width) >= 1024 * 1024:
-        print("[hidream-o1] Warning: non-flash attention at high resolution can require very large memory.")
+    attention_kwargs = {"use_flash_attn": args.use_flash_attn}
+    if not attention_kwargs["use_flash_attn"] and (height * width) >= 1024 * 1024:
+        print("[hidream-o1] Warning: PyTorch SDPA attention at high resolution can be slower than flash-attn.")
 
     with torch.no_grad():
         image = generate_text_to_image(
@@ -468,7 +469,7 @@ def main():
             scheduler_name=scheduler_name,
             timesteps_list=timesteps_list,
             seed=args.seed,
-            use_flash_attn=args.use_flash_attn,
+            attention_kwargs=attention_kwargs,
             noise_scale_start=noise_scale_start,
             noise_scale_end=noise_scale_end,
             noise_clip_std=noise_clip_std,
