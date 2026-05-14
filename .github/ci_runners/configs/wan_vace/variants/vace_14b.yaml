@@ -1,0 +1,4 @@
+model_id: Wan-AI/Wan2.1-VACE-14B-diffusers
+weight_path: /home/weights/Wan2.1-VACE-14B-diffusers
+backend: modelscope
+extra_params: {}

@@ -1,0 +1,4 @@
+model_id: Wan-AI/Wan2.1-FLF2V-14B-720P-diffusers
+weight_path: /home/weights/Wan2.1-FLF2V-14B-720P-diffusers
+backend: modelscope
+extra_params: {}

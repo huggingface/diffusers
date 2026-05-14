@@ -1,0 +1,15 @@
+pipeline_class: WanPipeline
+module: diffusers.pipelines.wan.pipeline_wan
+
+params_grid:
+  - name: "small_30steps_single"
+    width: 640
+    height: 352
+    num_inference_steps: 30
+    guidance_scale: 5.0
+    num_frames: 49
+    parallel: "single"
+
+prompt: "A cat walking on a beach at sunset, cinematic quality."
+negative_prompt: "blurry, low quality, distorted."
+reference_config: "small_30steps_single"

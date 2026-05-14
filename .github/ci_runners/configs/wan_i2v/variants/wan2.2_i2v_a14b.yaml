@@ -1,0 +1,6 @@
+model_id: Wan-AI/Wan2.2-I2V-A14B-Diffusers
+weight_path: /home/weights/Wan2.2-I2V-A14B-Diffusers
+backend: modelscope
+extra_params:
+  boundary_ratio: 0.875
+  guidance_scale_2: 5.0
