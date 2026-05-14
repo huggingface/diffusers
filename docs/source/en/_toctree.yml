@@ -388,6 +388,8 @@
         title: LuminaNextDiT2DModel
       - local: api/models/mochi_transformer3d
         title: MochiTransformer3DModel
+      - local: api/models/motif_video_transformer_3d
+        title: MotifVideoTransformer3DModel
       - local: api/models/omnigen_transformer
         title: OmniGenTransformer2DModel
       - local: api/models/ovisimage_transformer2d
@@ -684,6 +686,8 @@
         title: LTXVideo
       - local: api/pipelines/mochi
         title: Mochi
+      - local: api/pipelines/motif_video
+        title: Motif-Video
       - local: api/pipelines/skyreels_v2
         title: SkyReels-V2
       - local: api/pipelines/stable_diffusion/svd

@@ -347,6 +347,11 @@ else:
         ]
     )
     _import_structure["mochi"] = ["MochiPipeline"]
+    _import_structure["motif_video"] = [
+        "MotifVideoPipeline",
+        "MotifVideoImage2VideoPipeline",
+        "MotifVideoPipelineOutput",
+    ]
     _import_structure["omnigen"] = ["OmniGenPipeline"]
     _import_structure["ernie_image"] = ["ErnieImagePipeline"]
     _import_structure["ovis_image"] = ["OvisImagePipeline"]
@@ -792,6 +797,11 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             MarigoldNormalsPipeline,
         )
         from .mochi import MochiPipeline
+        from .motif_video import (
+            MotifVideoImage2VideoPipeline,
+            MotifVideoPipeline,
+            MotifVideoPipelineOutput,
+        )
         from .nucleusmoe_image import NucleusMoEImagePipeline
         from .omnigen import OmniGenPipeline
         from .ovis_image import OvisImagePipeline
