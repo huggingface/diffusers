@@ -431,9 +431,10 @@ class MotifVideoConditionEmbedding(nn.Module):
     def forward(
         self,
         timestep: torch.Tensor,
+        dtype: torch.dtype,
     ) -> torch.Tensor:
         timesteps_proj = self.time_proj(timestep)
-        conditioning = self.timestep_embedder(timesteps_proj)  # (N, D)
+        conditioning = self.timestep_embedder(timesteps_proj.to(dtype))  # (N, D)
 
         return conditioning
 
@@ -770,7 +771,6 @@ class MotifVideoTransformer3DModel(
         "MotifVideoSingleTransformerBlock",
         "MotifVideoPatchEmbed",
     ]
-    _keep_in_fp32_modules = ["timestep_embedder"]
 
     @register_to_config
     def __init__(
@@ -939,7 +939,7 @@ class MotifVideoTransformer3DModel(
         image_rotary_emb = self.rope(hidden_states)
 
         # 2. Conditional embeddings
-        temb = self.time_text_embed(timestep).to(hidden_states.dtype)
+        temb = self.time_text_embed(timestep, dtype=hidden_states.dtype)
         hidden_states = self.x_embedder(hidden_states)
         encoder_hidden_states = self.context_embedder(encoder_hidden_states)
 
