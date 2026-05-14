@@ -33,7 +33,7 @@ from ..embeddings import (
     get_1d_rotary_pos_embed,
 )
 from ..modeling_outputs import Transformer2DModelOutput
-from ..modeling_utils import ModelMixin
+from ..modeling_utils import ModelMixin, get_parameter_dtype
 from ..normalization import (
     AdaLayerNormContinuous,
     AdaLayerNormZero,
@@ -431,10 +431,14 @@ class MotifVideoConditionEmbedding(nn.Module):
     def forward(
         self,
         timestep: torch.Tensor,
-        dtype: torch.dtype,
     ) -> torch.Tensor:
         timesteps_proj = self.time_proj(timestep)
-        conditioning = self.timestep_embedder(timesteps_proj.to(dtype))  # (N, D)
+        param_dtype = get_parameter_dtype(self.timestep_embedder)
+        # Timesteps always returns FP32 output, so cast to the weight dtype of timestep_embedder if we're operating in
+        # FP16 or BF16 (and no quantization)
+        if param_dtype in (torch.float16, torch.bfloat16):
+            timesteps_proj = timesteps_proj.to(param_dtype)
+        conditioning = self.timestep_embedder(timesteps_proj)  # (N, D)
 
         return conditioning
 
@@ -939,7 +943,7 @@ class MotifVideoTransformer3DModel(
         image_rotary_emb = self.rope(hidden_states)
 
         # 2. Conditional embeddings
-        temb = self.time_text_embed(timestep, dtype=hidden_states.dtype)
+        temb = self.time_text_embed(timestep)
         hidden_states = self.x_embedder(hidden_states)
         encoder_hidden_states = self.context_embedder(encoder_hidden_states)
 
