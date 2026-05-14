@@ -19,7 +19,7 @@ import torch
 from diffusers import AutoencoderKLLTX2Audio
 from diffusers.utils.torch_utils import randn_tensor
 
-from ...testing_utils import torch_device
+from ...testing_utils import is_flaky, torch_device
 from ..testing_utils import BaseModelTesterConfig, MemoryTesterMixin, ModelTesterMixin, TrainingTesterMixin
 from .testing_utils import NewAutoencoderTesterMixin
 
@@ -87,6 +87,12 @@ class TestAutoencoderKLLTX2AudioTraining(AutoencoderKLLTX2AudioTesterConfig, Tra
 
 class TestAutoencoderKLLTX2AudioMemory(AutoencoderKLLTX2AudioTesterConfig, MemoryTesterMixin):
     """Memory optimization tests for AutoencoderKLLTX2Audio."""
+
+    @is_flaky()
+    @pytest.mark.parametrize("record_stream", [False, True])
+    @pytest.mark.parametrize("offload_type", ["block_level", "leaf_level"])
+    def test_group_offloading_with_disk(self, tmp_path, record_stream, offload_type, atol=1e-5, rtol=0):
+        super().test_group_offloading_with_disk(tmp_path, record_stream, offload_type, atol=atol, rtol=rtol)
 
 
 class TestAutoencoderKLLTX2AudioSlicingTiling(AutoencoderKLLTX2AudioTesterConfig, NewAutoencoderTesterMixin):
