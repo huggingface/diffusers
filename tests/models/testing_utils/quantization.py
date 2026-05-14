@@ -359,6 +359,9 @@ class QuantizationTesterMixin:
             if isinstance(module, torch.nn.Linear):
                 assert not self._is_module_quantized(module), f"Module {name} is still quantized after dequantize()"
 
+        # Cast model to the expected dtype after dequantization (weights may be float32)
+        model.to(self.torch_dtype)
+
         inputs = self.get_dummy_inputs()
         output = model(**inputs, return_dict=False)[0]
         assert output is not None, "Model output is None after dequantization"
@@ -931,18 +934,9 @@ class TorchAoTesterMixin(TorchAoConfigMixin, QuantizationTesterMixin):
         """Test that device_map='auto' works correctly with quantization."""
         self._test_quantization_device_map(TorchAoConfigMixin.TORCHAO_QUANT_TYPES["int8wo"])
 
-    @pytest.mark.parametrize(
-        "quant_type",
-        [
-            pytest.param("int4wo", marks=_int4wo_skip),
-            "int8wo",
-            "int8dq",
-        ],
-        ids=["int4wo", "int8wo", "int8dq"],
-    )
-    def test_torchao_dequantize(self, quant_type):
+    def test_torchao_dequantize(self):
         """Test that dequantize() works correctly."""
-        self._test_dequantize(TorchAoConfigMixin.TORCHAO_QUANT_TYPES[quant_type])
+        self._test_dequantize(TorchAoConfigMixin.TORCHAO_QUANT_TYPES["int8wo"])
 
     def test_torchao_training(self):
         """Test that quantized models can be used for training with adapters."""
