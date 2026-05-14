@@ -192,7 +192,6 @@ class IFInpaintingPipeline(DiffusionPipeline, StableDiffusionLoraLoaderMixin):
         )
         self.register_to_config(requires_safety_checker=requires_safety_checker)
 
-    @torch.no_grad()
     # Copied from diffusers.pipelines.deepfloyd_if.pipeline_if.IFPipeline.encode_prompt
     def encode_prompt(
         self,
