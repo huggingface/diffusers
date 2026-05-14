@@ -64,25 +64,25 @@ def prompt_clean(text):
 
 class AnyFlowFARPipeline(DiffusionPipeline, WanLoraLoaderMixin):
     r"""
-    Causal (FAR-based) text-to-video / image-to-video / text+video-to-video pipeline for AnyFlow checkpoints.
+    Causal (FAR-based) text-to-video / image-to-video / video-to-video pipeline for AnyFlow checkpoints.
 
     The pipeline drives a frame-level autoregressive sampling loop over chunks: each chunk is denoised with
     flow-map steps while attending only to past chunks via block-sparse causal attention, and intermediate
     KV cache is reused across chunks.
 
-    The task mode (T2V / I2V / TV2V) is selected by the ``context_sequence`` argument passed to ``__call__``:
+    The task mode (T2V / I2V / V2V) is selected by the ``context_sequence`` argument passed to ``__call__``:
 
     - ``context_sequence=None`` — pure text-to-video.
     - ``context_sequence={"raw": <video tensor of shape (B, C, T, H, W) with T = 4n + 1>}`` — pre-VAE
       conditioning frames; the pipeline VAE-encodes them. Pass a single-frame video for I2V or a multi-frame
-      clip for TV2V.
+      clip for V2V.
     - ``context_sequence={"latent": <latent tensor of shape (B, C, T_latent, H_latent, W_latent)>}`` —
       already-encoded latents (skips the VAE encode step).
 
     Like ``AnyFlowPipeline``, the released checkpoints went through forward Flow-Map LoRA training plus
     on-policy DMD distillation with Flow-Map backward simulation, applied on top of the FAR (Gu et al., 2025;
     arXiv:2503.19325) causal Wan2.1 backbone. Inference is plain Euler in mean-velocity form per chunk with
-    no re-noising and no CFG. Joint T2V / I2V / TV2V is supported by a single distilled model.
+    no re-noising and no CFG. Joint T2V / I2V / V2V is supported by a single distilled model.
 
     This model inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods
     implemented for all pipelines (downloading, saving, running on a particular device, etc.).
@@ -522,7 +522,7 @@ class AnyFlowFARPipeline(DiffusionPipeline, WanLoraLoaderMixin):
 
         Args:
             context_sequence (`torch.Tensor`, *optional*):
-                Clean prefix latents (I2V first frame or TV2V context video).
+                Clean prefix latents (I2V first frame or V2V context video).
             num_inference_steps (`int`, defaults to 50):
                 Inference schedule length.
             grad_timestep (`int`, *optional*):

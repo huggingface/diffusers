@@ -12,8 +12,9 @@ specific language governing permissions and limitations under the License.
 
 # AnyFlowFARTransformer3DModel
 
-The causal (FAR) 3D Transformer used by [`AnyFlowFARPipeline`](../pipelines/anyflow#anyflowfarpipeline).
-It extends the v0.35.1 Wan2.1 backbone with three additions:
+The causal (FAR) 3D Transformer used by [`AnyFlowFARPipeline`](../pipelines/anyflow#anyflowfarpipeline) —
+the FAR variant of [AnyFlow](https://huggingface.co/papers/2605.13724) (Yuchao Gu, Guian Fang et al., NUS
+ShowLab × NVIDIA). It extends the v0.35.1 Wan2.1 backbone with three additions:
 
 1. **FAR causal block-mask** via `torch.nn.attention.flex_attention`, supporting frame-level autoregressive
    generation as introduced in [FAR (Gu et al., 2025)](https://arxiv.org/abs/2503.19325).

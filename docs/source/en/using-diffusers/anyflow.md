@@ -12,7 +12,7 @@ the License for the specific language governing permissions and limitations unde
 
 # AnyFlow
 
-[AnyFlow](https://huggingface.co/papers/<arxiv-id>) is a video diffusion **distillation** framework that turns
+[AnyFlow](https://huggingface.co/papers/2605.13724) is a video diffusion **distillation** framework that turns
 a pretrained Wan2.1 teacher into an *any-step* student under standard Euler sampling. A single distilled
 checkpoint can be evaluated at 1, 2, 4, 8, 16... NFE without retraining and quality scales **monotonically**
 with steps — unlike consistency models, which often degrade as NFE grows.
@@ -23,8 +23,10 @@ models. Composability of the flow map removes re-noising between sampling steps;
 **DMD reverse-divergence supervision** plus **Flow-Map backward simulation** (3-segment shortcut) closes the
 exposure-bias gap that consistency-based distillation leaves open.
 
+AnyFlow was developed by Yuchao Gu, Guian Fang and collaborators at [NUS ShowLab](https://sites.google.com/view/showlab) in collaboration with NVIDIA. The original training code lives at [`NVlabs/AnyFlow`](https://github.com/NVlabs/AnyFlow); the project page is at [nvlabs.github.io/AnyFlow](https://nvlabs.github.io/AnyFlow). The four released checkpoints are grouped under the [`nvidia/anyflow`](https://huggingface.co/collections/nvidia/anyflow) Hugging Face collection.
+
 This guide walks through the practical decisions: which pipeline to pick, how to use any-step sampling, and
-how to plug AnyFlow into typical T2V / I2V / TV2V workflows.
+how to plug AnyFlow into typical T2V / I2V / V2V workflows.
 
 ## Bidirectional vs causal — pick a pipeline
 
@@ -36,8 +38,8 @@ how they sample frames:
   do not need streaming output.
 - [`AnyFlowFARPipeline`](../api/pipelines/anyflow#anyflowfarpipeline) — **causal (FAR)**. Denoises the
   video chunk by chunk with block-sparse causal attention and reuses KV cache across chunks. Use this for
-  image-to-video (I2V), text+video-to-video (TV2V) continuation, or any setup that benefits from frame-level
-  autoregressive sampling. The same model handles all three task modes via a `task_type` argument.
+  image-to-video (I2V), video-to-video (V2V) continuation, or any setup that benefits from frame-level
+  autoregressive sampling. The same model handles all three task modes via the `context_sequence` argument.
 
 A quick selector:
 
@@ -45,7 +47,7 @@ A quick selector:
 |----------|----------|---------------|
 | Pure text-to-video, max quality at fixed NFE | `AnyFlowPipeline` | `pipe(prompt, ...)` |
 | Image-to-video (start from a still image) | `AnyFlowFARPipeline` | `pipe(prompt, context_sequence={"raw": <one-frame tensor>}, ...)` |
-| Video continuation / TV2V | `AnyFlowFARPipeline` | `pipe(prompt, context_sequence={"raw": <multi-frame tensor>}, ...)` |
+| Video continuation / V2V | `AnyFlowFARPipeline` | `pipe(prompt, context_sequence={"raw": <multi-frame tensor>}, ...)` |
 | Streaming / progressive generation | `AnyFlowFARPipeline` | — |
 
 The bidirectional variant is faster per token at high resolution; the causal variant trades that for the
@@ -101,6 +103,7 @@ pipe = AnyFlowPipeline.from_pretrained(
 prompt = "A red panda eating bamboo in a forest, cinematic lighting"
 
 for nfe in [1, 2, 4, 8, 16, 32]:
+    # Re-seed the generator inside the loop so the only changing variable across runs is NFE.
     generator = torch.Generator("cuda").manual_seed(0)
     video = pipe(prompt, num_inference_steps=nfe, num_frames=33, generator=generator).frames[0]
     export_to_video(video, f"out_nfe{nfe}.mp4", fps=16)
@@ -115,49 +118,66 @@ on VBench Quality, while consistency-based baselines (rCM, Self-Forcing) degrade
 > guidance comes from the distilled weights themselves. Leave `guidance_scale=1.0` (the default) for the
 > released checkpoints.
 
-## Image-to-video and text+video-to-video
+## Image-to-video and video-to-video
 
 The causal pipeline supports three task modes from a single distilled model. The mode is selected
 implicitly by the ``context_sequence`` argument (a dict with a ``"raw"`` video tensor or ``"latent"``
 pre-encoded latents). Frame counts in the context tensor must satisfy ``T = 4n + 1`` to align with the
 VAE temporal stride.
 
+> [!IMPORTANT]
+> The FAR pipeline runs a chunked rollout, and `num_frames` must agree with the chunk schedule. The default
+> `chunk_partition=[1, 3, 3, 3, 3, 3, 3, 2]` sums to 21 latent frames, which is matched to the released
+> checkpoints' canonical `num_frames=81` (21 = (81 − 1) // 4 + 1). When you change `num_frames`, you **must**
+> pass a matching `chunk_partition` whose entries sum to `(num_frames - 1) // 4 + 1`, otherwise the pipeline
+> raises an `AssertionError`. For example, `num_frames=33` corresponds to 9 latent frames, so a valid
+> override is `chunk_partition=[1, 4, 4]`.
+
 ```py
+import numpy as np
 import torch
 from diffusers import AnyFlowFARPipeline
 from diffusers.utils import export_to_video, load_image, load_video
-from torchvision import transforms
 
 pipe = AnyFlowFARPipeline.from_pretrained(
     "nvidia/AnyFlow-FAR-Wan2.1-1.3B-Diffusers", torch_dtype=torch.bfloat16
 ).to("cuda")
-to_tensor = transforms.Compose([transforms.Resize((480, 832)), transforms.ToTensor()])
 
-# 1) Text-to-video (no context)
-video = pipe(prompt="A cat surfing a wave at sunset", num_inference_steps=4, num_frames=33).frames[0]
+
+def to_video_tensor(images, height=480, width=832):
+    """Convert a list of PIL images into the (B, C, T, H, W) [0, 1] tensor the FAR pipeline consumes."""
+    frames = np.stack([np.asarray(img.resize((width, height))) for img in images]).astype("float32") / 255.0
+    return torch.from_numpy(frames).permute(3, 0, 1, 2).unsqueeze(0)  # (1, C, T, H, W)
+
+
+# 1) Text-to-video (no context). 81 frames matches the default chunk_partition.
+video = pipe(prompt="A cat surfing a wave at sunset", num_inference_steps=4, num_frames=81).frames[0]
 export_to_video(video, "t2v.mp4", fps=16)
 
-# 2) Image-to-video — wrap the still as a one-frame video (1, 3, 1, H, W)
+# 2) Image-to-video — a single conditioning frame produces 1 latent frame, which exactly fits the first
+# entry of the default chunk_partition (`[1, 3, 3, ...]`).
 first_frame = load_image("path/to/first_frame.png")
-first_frame = to_tensor(first_frame).unsqueeze(0).unsqueeze(2).to("cuda")
+context_tensor = to_video_tensor([first_frame]).to("cuda")  # (1, 3, 1, 480, 832), [0, 1]
 video = pipe(
     prompt="a cat walks across a sunlit lawn",
-    context_sequence={"raw": first_frame},
+    context_sequence={"raw": context_tensor},
     num_inference_steps=4,
-    num_frames=33,
+    num_frames=81,
 ).frames[0]
 export_to_video(video, "i2v.mp4", fps=16)
 
-# 3) Text + video → continuation. Context length must be 4n + 1 (e.g., 9 frames).
-context_frames = load_video("path/to/context.mp4")
-context_tensor = torch.stack([to_tensor(f) for f in context_frames[:9]], dim=1).unsqueeze(0).to("cuda")
+# 3) Video-to-video continuation. A 9-frame raw context maps to 3 latent frames; we override
+# chunk_partition so the first chunk covers the whole context exactly.
+context_frames = load_video("path/to/context.mp4")[:9]  # 9 = 4·2 + 1
+context_tensor = to_video_tensor(context_frames).to("cuda")  # (1, 3, 9, 480, 832)
 video = pipe(
     prompt="continue the story",
     context_sequence={"raw": context_tensor},
     num_inference_steps=4,
-    num_frames=33,
+    num_frames=81,
+    chunk_partition=[3, 3, 3, 3, 3, 3, 3],  # 7 chunks × 3 = 21 latent frames; first chunk = context
 ).frames[0]
-export_to_video(video, "tv2v.mp4", fps=16)
+export_to_video(video, "v2v.mp4", fps=16)
 ```
 
 Internally, the patchification chunk schedule depends on whether (and how long) ``context_sequence`` is set:
@@ -191,8 +211,8 @@ pipe = pipe.to("cuda")
 pipe.transformer = torch.compile(pipe.transformer, mode="max-autotune-no-cudagraphs")
 ```
 
-Compile costs are amortized after a few steps; combined with low NFE (4–8 for AnyFlow) you typically see
-2–3× speedup vs the eager 14B path.
+Compile costs are amortized after a few steps; combined with low NFE (4–8 for AnyFlow) `torch.compile`
+delivers a noticeable speedup over eager mode on the 14B path.
 
 ## LoRA fine-tuning
 
@@ -204,10 +224,8 @@ pipe.load_lora_weights("path/or/repo/with/wan_lora")
 ```
 
 For continued **on-policy** fine-tuning with DMD-style reverse-divergence supervision (the same recipe used
-to produce the released checkpoints), both pipelines expose a `_denoise_rollout` method that drives the
-3-segment Flow-Map backward simulation. End users training a new LoRA can call it under autograd to compose
-their own DMD trainer; the original AnyFlow trainer that built the released checkpoints is in
-`Enderfga/AnyFlow` (out of scope for diffusers).
+to produce the released checkpoints), refer to the original AnyFlow training framework at
+[`NVlabs/AnyFlow`](https://github.com/NVlabs/AnyFlow), which is out of scope for diffusers.
 
 ## Common gotchas
 
@@ -225,8 +243,8 @@ their own DMD trainer; the original AnyFlow trainer that built the released chec
 ```bibtex
 @article{gu2026anyflow,
   title   = {AnyFlow: Any-Step Video Diffusion Model with On-Policy Flow Map Distillation},
-  author  = {Gu, Yuchao and others},
-  journal = {arXiv preprint arXiv:<arxiv-id>},
+  author  = {Gu, Yuchao and Fang, Guian and others},
+  journal = {arXiv preprint arXiv:2605.13724},
   year    = {2026}
 }
 

@@ -412,7 +412,7 @@ class AnyFlowPipeline(DiffusionPipeline, WanLoraLoaderMixin):
 
         Args:
             context_sequence (`torch.Tensor`, *optional*):
-                Clean prefix latents to keep fixed during the rollout (used by I2V / TV2V variants).
+                Clean prefix latents to keep fixed during the rollout (used by I2V / V2V variants).
             num_inference_steps (`int`, defaults to 50):
                 Number of inference steps used to discretize the rollout schedule.
             grad_timestep (`int`, *optional*):
