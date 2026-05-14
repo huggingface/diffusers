@@ -758,12 +758,7 @@ class MotifVideoImage2VideoPipeline(DiffusionPipeline):
 
         # 5. Prepare text embeddings
         # Ensure negative prompt is provided for multi-condition guiders
-        if (
-            self.guider is not None
-            and self.guider.num_conditions > 1
-            and negative_prompt_embeds is None
-            and negative_prompt is None
-        ):
+        if self.guider.num_conditions > 1 and negative_prompt_embeds is None and negative_prompt is None:
             negative_prompt = ""
 
         prompt_embeds, negative_prompt_embeds, prompt_attention_mask, negative_prompt_attention_mask = (
@@ -838,7 +833,7 @@ class MotifVideoImage2VideoPipeline(DiffusionPipeline):
 
                 timestep = t.expand(latents.shape[0])
 
-                if self.guider is not None and self.guider.num_conditions == 1:
+                if self.guider.num_conditions == 1:
                     guider_inputs = {
                         "encoder_hidden_states": (prompt_embeds,),
                         "encoder_attention_mask": (prompt_attention_mask,),
