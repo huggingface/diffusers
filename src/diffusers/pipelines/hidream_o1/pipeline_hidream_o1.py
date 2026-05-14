@@ -28,7 +28,6 @@ from ..pipeline_utils import DiffusionPipeline, ImagePipelineOutput
 
 TIMESTEP_TOKEN_NUM = 1
 PATCH_SIZE = 32
-T_EPS = 0.001
 FULL_NOISE_SCALE = 8.0
 
 PREDEFINED_RESOLUTIONS = [
@@ -248,20 +247,67 @@ def _maybe_set_scheduler_shift(scheduler, shift: float):
             scheduler.register_to_config(shift=shift)
 
 
-def _set_timesteps(scheduler, num_inference_steps: int, timesteps: Optional[list[int]], device: torch.device):
+def _to_numpy_float_array(values) -> np.ndarray:
+    if torch.is_tensor(values):
+        return values.detach().cpu().float().numpy()
+    return np.array(values, dtype=np.float32)
+
+
+def _convert_flow_timesteps_to_sigmas(scheduler, timesteps) -> np.ndarray:
+    if not getattr(scheduler.config, "use_flow_sigmas", False):
+        raise ValueError(
+            f"The current scheduler class {scheduler.__class__}'s `set_timesteps` does not support custom timestep "
+            "schedules. Please pass custom `sigmas` instead."
+        )
+    if getattr(scheduler.config, "use_dynamic_shifting", False) or getattr(scheduler.config, "shift_terminal", False):
+        raise ValueError(
+            "Custom `timesteps` cannot be converted automatically for schedulers using dynamic or terminal shifting. "
+            "Please pass the exact custom `sigmas` schedule instead."
+        )
+
+    num_train_timesteps = getattr(scheduler.config, "num_train_timesteps", 1000)
+    sigmas = _to_numpy_float_array(timesteps) / num_train_timesteps
+    flow_shift = getattr(scheduler.config, "flow_shift", getattr(scheduler.config, "shift", 1.0))
+    return sigmas / (flow_shift - sigmas * (flow_shift - 1))
+
+
+def retrieve_timesteps(
+    scheduler,
+    num_inference_steps: Optional[int] = None,
+    device: Optional[torch.device] = None,
+    timesteps: Optional[list[int]] = None,
+    sigmas: Optional[list[float]] = None,
+):
+    if timesteps is not None and sigmas is not None:
+        raise ValueError("Only one of `timesteps` or `sigmas` can be passed. Please choose one to set custom values.")
     if timesteps is not None:
         accepts_timesteps = "timesteps" in set(inspect.signature(scheduler.set_timesteps).parameters.keys())
-        if accepts_timesteps:
-            scheduler.set_timesteps(timesteps=timesteps, device=device)
+        if not accepts_timesteps:
+            accepts_sigmas = "sigmas" in set(inspect.signature(scheduler.set_timesteps).parameters.keys())
+            if not accepts_sigmas:
+                raise ValueError(
+                    f"The current scheduler class {scheduler.__class__}'s `set_timesteps` does not support custom"
+                    " timestep or sigma schedules. Please check whether you are using the correct scheduler."
+                )
+            scheduler.set_timesteps(sigmas=_convert_flow_timesteps_to_sigmas(scheduler, timesteps), device=device)
         else:
-            scheduler.set_timesteps(len(timesteps), device=device)
-            scheduler.timesteps = torch.tensor(timesteps, device=device, dtype=torch.float32)
-            sigmas = [float(timestep) / 1000.0 for timestep in timesteps]
-            sigmas.append(0.0)
-            scheduler.sigmas = torch.tensor(sigmas, device=device, dtype=torch.float32)
+            scheduler.set_timesteps(timesteps=timesteps, device=device)
+        timesteps = scheduler.timesteps
+        num_inference_steps = len(timesteps)
+    elif sigmas is not None:
+        accepts_sigmas = "sigmas" in set(inspect.signature(scheduler.set_timesteps).parameters.keys())
+        if not accepts_sigmas:
+            raise ValueError(
+                f"The current scheduler class {scheduler.__class__}'s `set_timesteps` does not support custom"
+                f" sigmas schedules. Please check whether you are using the correct scheduler."
+            )
+        scheduler.set_timesteps(sigmas=_to_numpy_float_array(sigmas), device=device)
+        timesteps = scheduler.timesteps
+        num_inference_steps = len(timesteps)
     else:
         scheduler.set_timesteps(num_inference_steps, device=device)
-    return scheduler.timesteps
+        timesteps = scheduler.timesteps
+    return timesteps, num_inference_steps
 
 
 class HiDreamO1ImagePipeline(DiffusionPipeline):
@@ -279,7 +325,7 @@ class HiDreamO1ImagePipeline(DiffusionPipeline):
             O1-compatible Qwen3-VL transformer that predicts RGB patches.
         scheduler ([`SchedulerMixin`], *optional*):
             Scheduler used to update the raw RGB patch tensor. Defaults to [`UniPCMultistepScheduler`] configured for
-            flow prediction with `flow_shift=3.0`.
+            sample prediction with `flow_shift=3.0`.
     """
 
     model_cpu_offload_seq = "transformer"
@@ -295,7 +341,7 @@ class HiDreamO1ImagePipeline(DiffusionPipeline):
 
         if scheduler is None:
             scheduler = UniPCMultistepScheduler(
-                prediction_type="flow_prediction",
+                prediction_type="sample",
                 use_flow_sigmas=True,
                 flow_shift=3.0,
             )
@@ -418,6 +464,7 @@ class HiDreamO1ImagePipeline(DiffusionPipeline):
         guidance_scale: Optional[float] = None,
         shift: Optional[float] = None,
         timesteps: Optional[list[int]] = None,
+        sigmas: Optional[list[float]] = None,
         generator: Optional[torch.Generator] = None,
         noise_scale_start: Optional[float] = None,
         noise_scale_end: Optional[float] = None,
@@ -444,7 +491,10 @@ class HiDreamO1ImagePipeline(DiffusionPipeline):
             shift (`float`, *optional*, defaults to 3.0):
                 Flow matching timestep shift.
             timesteps (`list[int]`, *optional*):
-                Optional custom timestep schedule.
+                Optional custom timestep schedule. If the scheduler does not support custom timesteps but supports flow
+                sigmas, this schedule is converted to equivalent sigmas and passed through `set_timesteps(sigmas=...)`.
+            sigmas (`list[float]`, *optional*):
+                Optional custom sigma schedule for schedulers that support custom sigmas.
             generator (`torch.Generator`, *optional*):
                 Random generator for deterministic noise sampling.
             noise_scale_start (`float`, *optional*, defaults to 8.0):
@@ -496,7 +546,9 @@ class HiDreamO1ImagePipeline(DiffusionPipeline):
         patches = _patchify(image_noise, PATCH_SIZE)
 
         _maybe_set_scheduler_shift(self.scheduler, shift)
-        scheduler_timesteps = _set_timesteps(self.scheduler, num_inference_steps, timesteps, device)
+        scheduler_timesteps, num_inference_steps = retrieve_timesteps(
+            self.scheduler, num_inference_steps, device, timesteps, sigmas
+        )
         if len(scheduler_timesteps) > 1:
             noise_scale_schedule = [
                 noise_scale_start + (noise_scale_end - noise_scale_start) * step / (len(scheduler_timesteps) - 1)
@@ -515,25 +567,21 @@ class HiDreamO1ImagePipeline(DiffusionPipeline):
             for step_idx, step_t in enumerate(scheduler_timesteps):
                 step_t = step_t.to(device=device, dtype=torch.float32)
                 t_pixeldit = 1.0 - step_t / 1000.0
-                sigma = (step_t / 1000.0).clamp_min(T_EPS)
 
                 with torch.autocast(device.type, dtype=dtype, enabled=autocast_enabled, cache_enabled=False):
                     x_pred_cond = self._forward_transformer(
                         samples[0], patches.clone(), t_pixeldit, self.attention_kwargs
                     )
-                v_cond = (x_pred_cond.float() - patches.float()) / sigma
 
                 if len(samples) > 1:
                     with torch.autocast(device.type, dtype=dtype, enabled=autocast_enabled, cache_enabled=False):
                         x_pred_uncond = self._forward_transformer(
                             samples[1], patches.clone(), t_pixeldit, self.attention_kwargs
                         )
-                    v_uncond = (x_pred_uncond.float() - patches.float()) / sigma
-                    v_guided = v_uncond + guidance_scale * (v_cond - v_uncond)
+                    model_output = x_pred_uncond + guidance_scale * (x_pred_cond - x_pred_uncond)
                 else:
-                    v_guided = v_cond
+                    model_output = x_pred_cond
 
-                model_output = -v_guided
                 current_step_kwargs = dict(step_kwargs)
                 if "s_noise" in step_signature:
                     current_step_kwargs["s_noise"] = noise_scale_schedule[step_idx]

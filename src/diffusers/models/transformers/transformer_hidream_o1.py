@@ -201,12 +201,6 @@ class HiDreamO1BottleneckPatchEmbed(nn.Module):
         super().__init__()
         self.proj1 = nn.Linear(patch_size * patch_size * in_channels, pca_dim, bias=False)
         self.proj2 = nn.Linear(pca_dim, embed_dim, bias=True)
-        self.initialize_weights()
-
-    def initialize_weights(self):
-        nn.init.xavier_uniform_(self.proj1.weight.data.view(self.proj1.weight.shape[0], -1))
-        nn.init.xavier_uniform_(self.proj2.weight.data.view(self.proj2.weight.shape[0], -1))
-        nn.init.constant_(self.proj2.bias, 0)
 
     def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
         return self.proj2(self.proj1(hidden_states))
@@ -216,13 +210,6 @@ class HiDreamO1FinalLayer(nn.Module):
     def __init__(self, hidden_size: int, patch_size: int, out_channels: int):
         super().__init__()
         self.linear = nn.Linear(hidden_size, patch_size * patch_size * out_channels, bias=True)
-        self.apply(self._init_weights)
-
-    def _init_weights(self, module):
-        if isinstance(module, nn.Linear):
-            nn.init.zeros_(module.weight)
-            if module.bias is not None:
-                nn.init.constant_(module.bias, 0)
 
     def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
         return self.linear(hidden_states)
@@ -357,14 +344,13 @@ class HiDreamO1Qwen3VLModel(Qwen3VLModel):
 
         for layer_idx, decoder_layer in enumerate(text_model.layers):
             if use_gradient_checkpointing:
-                hidden_states = torch.utils.checkpoint.checkpoint(
+                hidden_states = text_model._gradient_checkpointing_func(
                     two_pass_layer_forward,
                     hidden_states,
                     decoder_layer,
                     cos,
                     sin,
                     idx_ar,
-                    use_reentrant=False,
                 )
             else:
                 hidden_states = two_pass_layer_forward(hidden_states, decoder_layer, cos, sin, idx_ar)

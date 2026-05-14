@@ -72,6 +72,8 @@ def parse_args():
     parser.add_argument("--num_inference_steps", type=int, default=50)
     parser.add_argument("--guidance_scale", type=float, default=5.0)
     parser.add_argument("--shift", type=float, default=3.0)
+    parser.add_argument("--timesteps", default=None, help="Comma-separated custom timestep schedule.")
+    parser.add_argument("--sigmas", default=None, help="Comma-separated custom sigma schedule.")
     parser.add_argument("--noise_scale_start", type=float, default=8.0)
     parser.add_argument("--noise_scale_end", type=float, default=None)
     parser.add_argument("--noise_clip_std", type=float, default=0.0)
@@ -105,8 +107,19 @@ def get_torch_dtype(dtype_name: str):
     }[dtype_name]
 
 
+def parse_schedule(schedule: str, value_type):
+    if schedule is None:
+        return None
+    return [value_type(value.strip()) for value in schedule.split(",") if value.strip()]
+
+
 def main():
     args = parse_args()
+    if args.timesteps is not None and args.sigmas is not None:
+        raise ValueError("Only one of --timesteps or --sigmas can be passed.")
+    if args.dev_defaults and (args.timesteps is not None or args.sigmas is not None):
+        raise ValueError("--dev_defaults cannot be combined with --timesteps or --sigmas.")
+
     torch_dtype = get_torch_dtype(args.torch_dtype)
 
     processor = AutoProcessor.from_pretrained(args.model_path, local_files_only=args.local_files_only)
@@ -122,7 +135,7 @@ def main():
         processor=processor,
         transformer=transformer,
         scheduler=UniPCMultistepScheduler(
-            prediction_type="flow_prediction",
+            prediction_type="sample",
             use_flow_sigmas=True,
             flow_shift=args.shift,
         ),
@@ -130,7 +143,8 @@ def main():
     if args.device_map is None:
         pipe.to(args.device)
 
-    timesteps = None
+    timesteps = parse_schedule(args.timesteps, int)
+    sigmas = parse_schedule(args.sigmas, float)
     num_inference_steps = args.num_inference_steps
     guidance_scale = args.guidance_scale
     shift = args.shift
@@ -146,6 +160,10 @@ def main():
         noise_scale_start = 7.5
         noise_scale_end = 7.5
         noise_clip_std = 2.5
+    elif timesteps is not None:
+        num_inference_steps = len(timesteps)
+    elif sigmas is not None:
+        num_inference_steps = len(sigmas)
 
     generator_device = args.device if args.device_map is None else "cpu"
     generator = torch.Generator(device=generator_device).manual_seed(args.seed)
@@ -157,6 +175,7 @@ def main():
         guidance_scale=guidance_scale,
         shift=shift,
         timesteps=timesteps,
+        sigmas=sigmas,
         noise_scale_start=noise_scale_start,
         noise_scale_end=noise_scale_end,
         noise_clip_std=noise_clip_std,

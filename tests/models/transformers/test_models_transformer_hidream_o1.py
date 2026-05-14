@@ -158,12 +158,13 @@ def _write_parity_report(records):
 
 
 def _load_official_hidream_o1_module():
-    repo_root = os.environ.get("HIDREAM_O1_OFFICIAL_REPO", "/tmp/HiDream-O1-Image")
+    repo_root = os.environ.get("HIDREAM_O1_OFFICIAL_REPO")
+    if repo_root is None:
+        raise unittest.SkipTest("Set HIDREAM_O1_OFFICIAL_REPO to the official HiDream-O1-Image repo.")
+
     module_path = os.path.join(repo_root, "models", "qwen3_vl_transformers.py")
     if not os.path.exists(module_path):
-        raise unittest.SkipTest(
-            "Set HIDREAM_O1_OFFICIAL_REPO or clone https://github.com/HiDream-ai/HiDream-O1-Image.git to /tmp."
-        )
+        raise unittest.SkipTest(f"Could not find official HiDream-O1 module at {module_path}.")
 
     spec = importlib.util.spec_from_file_location("official_hidream_o1_qwen3_vl_transformers", module_path)
     module = importlib.util.module_from_spec(spec)

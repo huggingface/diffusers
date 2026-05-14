@@ -129,6 +129,7 @@ class HiDreamO1ImagePipelineFastTests(unittest.TestCase):
             num_inference_steps=1,
             guidance_scale=0.0,
             shift=1.0,
+            timesteps=[500],
             noise_scale_start=1.0,
             noise_scale_end=1.0,
             use_resolution_binning=False,
@@ -139,6 +140,7 @@ class HiDreamO1ImagePipelineFastTests(unittest.TestCase):
         self.assertEqual(image.shape, (1, 3, 64, 64))
         self.assertTrue(torch.isfinite(image).all())
         self.assertGreater(image.abs().max().item(), 0)
+        self.assertEqual(pipe.scheduler.timesteps.tolist(), [500.0])
 
     def test_init_registers_components_with_default_scheduler(self):
         transformer = HiDreamO1Transformer2DModel(qwen_config=_get_tiny_qwen3_vl_config().to_dict()).eval()
@@ -148,3 +150,4 @@ class HiDreamO1ImagePipelineFastTests(unittest.TestCase):
         self.assertIs(pipe.processor, processor)
         self.assertIs(pipe.transformer, transformer)
         self.assertIsInstance(pipe.scheduler, UniPCMultistepScheduler)
+        self.assertEqual(pipe.scheduler.config.prediction_type, "sample")
