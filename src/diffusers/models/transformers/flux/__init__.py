@@ -12,7 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from .lora import FluxTransformerLoRAMixin
+from .ip_adapter import FLUX_IP_ADAPTER_METADATA
+from .lora import FLUX_LORA_METADATA
 from .model import (
     FluxAttention,
     FluxAttnProcessor,
@@ -22,4 +23,4 @@ from .model import (
     FluxTransformer2DModel,
     FluxTransformerBlock,
 )
-from .weight_mapping import FluxTransformerWeightMappingMixin
+from .weight_mapping import FLUX_WEIGHT_MAPPING_METADATA

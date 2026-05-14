@@ -17,9 +17,10 @@ import functools
 import json
 import os
 from collections import defaultdict
+from contextlib import contextmanager
 from functools import partial
 from pathlib import Path
-from typing import Dict, List, Literal, Optional, Union
+from typing import Callable, Dict, List, Literal, Optional, Set, Union
 
 import safetensors
 import torch
@@ -27,10 +28,17 @@ from huggingface_hub import model_info
 from huggingface_hub.constants import HF_HUB_OFFLINE
 
 from ..hooks.group_offloading import (
+    _GROUP_OFFLOADING,
+    _LAYER_EXECUTION_TRACKER,
+    _LAZY_PREFETCH_GROUP_OFFLOADING,
+    _apply_group_offloading,
+    _get_top_level_group_offload_hook,
     _maybe_remove_and_reapply_group_offloading,
 )
-from ..models.modeling_utils import load_state_dict
+from ..hooks.hooks import HookRegistry
+from ..models.model_loading_utils import load_state_dict
 from ..utils import (
+    HUB_KWARGS,
     USE_PEFT_BACKEND,
     _get_model_file,
     delete_adapter_layers,
@@ -48,7 +56,7 @@ from .unet_loader_utils import _maybe_expand_lora_scales
 
 
 if is_accelerate_available():
-    pass
+    from accelerate.hooks import AlignDevicesHook, CpuOffload, add_hook_to_module, remove_hook_from_module
 
 
 if is_peft_available():
@@ -74,18 +82,6 @@ _HAS_REQUIRED_PEFT = USE_PEFT_BACKEND and is_peft_version(">=", _MIN_PEFT_VERSIO
 LORA_WEIGHT_NAME = "pytorch_lora_weights.bin"
 LORA_WEIGHT_NAME_SAFE = "pytorch_lora_weights.safetensors"
 LORA_ADAPTER_METADATA_KEY = "lora_adapter_metadata"
-
-
-# Hub-download kwargs forwarded to `_get_model_file`.
-_HUB_KWARGS = {
-    "cache_dir": None,
-    "force_download": False,
-    "proxies": None,
-    "local_files_only": None,
-    "token": None,
-    "revision": None,
-    "subfolder": None,
-}
 
 
 # Per-class hook for expanding adapter weights before activation. Models that need
@@ -171,6 +167,47 @@ def _split_majority_and_outliers(value_dict):
     return majority, {k: v for k, v in value_dict.items() if v != majority}
 
 
+@contextmanager
+def _offloading_disabled(model):
+    """Temporarily strip accelerate and group-offload hooks from ``model``.
+
+    PEFT injection and weight loading mutate the model graph in ways that fight with
+    active offload hooks (sequential CPU offload, group offload, etc.). This context
+    saves the hook state, removes the hooks for the duration of the block, and
+    restores them on exit so existing offloading config survives a LoRA load.
+    """
+    saved_hf_hook = None
+    is_sequential = False
+    if hasattr(model, "_hf_hook"):
+        hook = model._hf_hook
+        if isinstance(hook, CpuOffload):
+            saved_hf_hook = hook
+        elif isinstance(hook, AlignDevicesHook) or (
+            hasattr(hook, "hooks") and isinstance(hook.hooks[0], AlignDevicesHook)
+        ):
+            saved_hf_hook = hook
+            is_sequential = True
+    if saved_hf_hook is not None:
+        remove_hook_from_module(model, recurse=is_sequential)
+
+    saved_group_offload_config = None
+    top_level_group_hook = _get_top_level_group_offload_hook(model)
+    if top_level_group_hook is not None:
+        saved_group_offload_config = top_level_group_hook.config
+        registry = HookRegistry.check_if_exists_or_initialize(model)
+        registry.remove_hook(_GROUP_OFFLOADING, recurse=True)
+        registry.remove_hook(_LAYER_EXECUTION_TRACKER, recurse=True)
+        registry.remove_hook(_LAZY_PREFETCH_GROUP_OFFLOADING, recurse=True)
+
+    try:
+        yield
+    finally:
+        if saved_hf_hook is not None:
+            add_hook_to_module(model, saved_hf_hook)
+        if saved_group_offload_config is not None:
+            _apply_group_offloading(model, saved_group_offload_config)
+
+
 def _create_lora_config(state_dict, network_alphas, rank_dict, metadata=None):
     """Build a PEFT ``LoraConfig`` from a LoRA state dict.
 
@@ -235,41 +272,23 @@ def _maybe_warn_for_unhandled_keys(incompatible_keys, adapter_name):
         logger.warning(warn_msg)
 
 
-def _fetch_state_dict(
-    pretrained_model_name_or_path_or_dict,
-    weight_name=None,
-    use_safetensors=True,
-    allow_pickle=False,
-    **hub_kwargs,
-):
+def _fetch_state_dict(pretrained_model_name_or_path_or_dict, weight_name=None, **hub_kwargs):
     """Load a LoRA state dict from a path/repo/dict.
 
+    Safetensors only — pickle (``.bin``) LoRAs are no longer supported. Re-save legacy
+    checkpoints with ``safetensors.torch.save_file`` or load them manually with
+    ``torch.load`` and pass the resulting dict.
+
     ``hub_kwargs`` are the download / file-discovery options forwarded to
-    ``_get_model_file`` (see ``_HUB_KWARGS`` for the canonical set). Sidecar
-    :func:`_fetch_lora_metadata`.
+    ``_get_model_file`` (see ``HUB_KWARGS`` for the canonical set).
     """
     if isinstance(pretrained_model_name_or_path_or_dict, dict):
         return pretrained_model_name_or_path_or_dict
 
     source = pretrained_model_name_or_path_or_dict
     local_files_only = hub_kwargs.get("local_files_only")
-
-    # Try safetensors first when the user asked for it (or named a .safetensors file).
-    # Fall through to .bin if the safetensors lookup fails and pickle is allowed.
-    prefer_safetensors = (use_safetensors and weight_name is None) or (
-        weight_name is not None and weight_name.endswith(".safetensors")
-    )
-    if prefer_safetensors:
-        try:
-            name = weight_name or _best_guess_weight_name(source, ".safetensors", local_files_only)
-            model_file = _get_model_file(source, weights_name=name or LORA_WEIGHT_NAME_SAFE, **hub_kwargs)
-            return load_state_dict(model_file)
-        except (IOError, safetensors.SafetensorError):
-            if not allow_pickle:
-                raise
-
-    name = weight_name or _best_guess_weight_name(source, ".bin", local_files_only)
-    model_file = _get_model_file(source, weights_name=name or LORA_WEIGHT_NAME, **hub_kwargs)
+    name = weight_name or _best_guess_weight_name(source, ".safetensors", local_files_only)
+    model_file = _get_model_file(source, weights_name=name or LORA_WEIGHT_NAME_SAFE, **hub_kwargs)
     return load_state_dict(model_file)
 
 
@@ -329,11 +348,17 @@ def _best_guess_weight_name(
     return targeted_files[0]
 
 
-class PeftAdapterMixin:
+class LoRAModelMixin:
     """
-    A class containing all functions for loading and using adapters weights that are supported in PEFT library. For
-    more details about adapters and injecting them in a base model, check out the PEFT
-    [documentation](https://huggingface.co/docs/peft/index).
+    Single mixin for everything LoRA on a diffusers model: PEFT adapter lifecycle
+    (load / fuse / unfuse / set / delete / hotswap) plus foreign-format conversion
+    (kohya / xlabs / bfl / kontext / etc.) into diffusers naming.
+
+    Per-model conversion knobs live in a ``LoRAMetadata`` declared in the model's
+    ``lora.py`` (e.g. ``FLUX_LORA_METADATA``) and attached to the class via
+    ``@register_model_metadata(lora=...)``. The default no-op path just normalizes
+    ``.lora_down/.lora_up`` → ``.lora_A/.lora_B`` suffixes and returns the state
+    dict unchanged.
 
     Install the latest version of PEFT, and use this mixin to:
 
@@ -346,6 +371,49 @@ class PeftAdapterMixin:
     _hf_peft_config_loaded = False
     # kwargs for prepare_model_for_compiled_hotswap, if required
     _lora_hotswap_kwargs: Optional[dict] = None
+
+    # Default class-attribute values; populated per-model by ``register_model_metadata``
+    # (or set directly on subclasses for legacy callers).
+    _lora_format_keys: Dict[str, Set[str]] = {}
+    _map_lora_to_diffusers: Optional[Callable[..., Dict[str, "torch.Tensor"]]] = None
+
+    @classmethod
+    def _detect_lora_format(cls, state_dict: Dict[str, "torch.Tensor"]) -> Optional[str]:
+        """Return the format name (``"kohya"`` etc.) matched by ``state_dict``, or ``None``."""
+        if not cls._lora_format_keys:
+            return None
+        keys = set(state_dict)
+        for fmt, fmt_keys in cls._lora_format_keys.items():
+            if any(any(fk in k for k in keys) for fk in fmt_keys):
+                return fmt
+        return None
+
+    @classmethod
+    def _normalize_lora_suffixes(cls, state_dict: Dict[str, "torch.Tensor"]) -> Dict[str, "torch.Tensor"]:
+        """Rewrite ``.lora_down/.lora_up`` (kohya-ish) to ``.lora_A/.lora_B`` (diffusers)."""
+        out: Dict[str, "torch.Tensor"] = {}
+        for k, v in state_dict.items():
+            new_k = (
+                k.replace(".lora_down.weight", ".lora_A.weight")
+                .replace(".lora_up.weight", ".lora_B.weight")
+                .replace(".down.weight", ".lora_A.weight")
+                .replace(".up.weight", ".lora_B.weight")
+            )
+            out[new_k] = v
+        return out
+
+    @classmethod
+    def map_lora_to_diffusers(cls, state_dict: Dict[str, "torch.Tensor"], **kwargs) -> Dict[str, "torch.Tensor"]:
+        """Canonicalize a LoRA state dict to diffusers naming.
+
+        Default: just normalize suffixes. Models with foreign formats register a
+        converter via ``LoRAMetadata._map_lora_to_diffusers`` — the decorator mirrors
+        it onto ``cls._map_lora_to_diffusers``.
+        """
+        state_dict = cls._normalize_lora_suffixes(state_dict)
+        if cls._map_lora_to_diffusers is None:
+            return state_dict
+        return cls._map_lora_to_diffusers(state_dict, **kwargs)
 
     @_requires_peft
     def load_adapter(
@@ -466,22 +534,23 @@ class PeftAdapterMixin:
                 LoRA adapter metadata. When supplied, the metadata inferred through the state dict isn't used to
                 initialize `LoraConfig`.
         """
-        hub_kwargs = {k: kwargs.pop(k, default) for k, default in _HUB_KWARGS.items()}
+        hub_kwargs = {k: kwargs.pop(k, default) for k, default in HUB_KWARGS.items()}
         hub_kwargs["user_agent"] = {"file_type": "attn_procs_weights", "framework": "pytorch"}
 
         weight_name = kwargs.pop("weight_name", None)
-        use_safetensors = kwargs.pop("use_safetensors", None)
         network_alphas = kwargs.pop("network_alphas", None)
         low_cpu_mem_usage = kwargs.pop("low_cpu_mem_usage", False)
         metadata = kwargs.pop("metadata", None)
 
-        state_dict = _fetch_state_dict(
-            pretrained_model_name_or_path_or_dict=pretrained_model_name_or_path_or_dict,
-            weight_name=weight_name,
-            use_safetensors=use_safetensors,
-            allow_pickle=False,
-            **hub_kwargs,
-        )
+        if isinstance(pretrained_model_name_or_path_or_dict, dict):
+            state_dict = pretrained_model_name_or_path_or_dict
+        else:
+            source = pretrained_model_name_or_path_or_dict
+            name = weight_name or _best_guess_weight_name(source, ".safetensors", hub_kwargs.get("local_files_only"))
+            model_file = _get_model_file(source, weights_name=name or LORA_WEIGHT_NAME_SAFE, **hub_kwargs)
+            state_dict = load_state_dict(model_file)
+
+        state_dict = self.map_lora_to_diffusers(state_dict)
         if not state_dict:
             model_class_name = self.__class__.__name__
             logger.warning(
@@ -601,6 +670,7 @@ class PeftAdapterMixin:
                         if adapter_name in active_adapter:
                             module.delete_adapter(adapter_name)
             self.peft_config.pop(adapter_name, None)
+
         logger.error(f"Loading {adapter_name} was unsuccessful with the following error: \n{error}")
 
     @_requires_peft
@@ -875,3 +945,7 @@ class PeftAdapterMixin:
                     "It is recommended to call `enable_lora_hotswap` before loading the first adapter to avoid recompilation."
                 )
         self._lora_hotswap_kwargs = {"target_rank": target_rank, "check_compiled": check_compiled}
+
+
+# Back-compat alias. Old name from the PEFT-only era; prefer ``LoRAModelMixin``.
+PeftAdapterMixin = LoRAModelMixin

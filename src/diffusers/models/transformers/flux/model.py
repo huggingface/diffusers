@@ -20,8 +20,9 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from ....configuration_utils import ConfigMixin, register_to_config
-from ....loaders import FluxTransformer2DLoadersMixin, PeftAdapterMixin
+from ....configuration_utils import register_to_config
+from ....hooks._helpers import TransformerBlockMetadata
+from ....loaders.ip_adapter_model import IPAdapterModelMixin
 from ....utils import USE_PEFT_BACKEND, logging, scale_lora_layers, unscale_lora_layers
 from ....utils.torch_utils import maybe_allow_in_graph
 from ..._modeling_parallel import ContextParallelInput, ContextParallelOutput
@@ -35,30 +36,14 @@ from ...embeddings import (
     get_1d_rotary_pos_embed,
 )
 from ...modeling_outputs import Transformer2DModelOutput
-from ...modeling_utils import ModelMetadata, ModelMixin
+from ...modeling_utils import ModelMetadata, ModelMixin, register_metadata
 from ...normalization import AdaLayerNormContinuous, AdaLayerNormZero, AdaLayerNormZeroSingle
-from .lora import FluxTransformerLoRAMixin
-from .weight_mapping import FluxTransformerWeightMappingMixin
+from .ip_adapter import FLUX_IP_ADAPTER_METADATA
+from .lora import FLUX_LORA_METADATA
+from .weight_mapping import FLUX_WEIGHT_MAPPING_METADATA
 
 
 logger = logging.get_logger(__name__)
-
-
-FLUX_METADATA = ModelMetadata(
-    supports_gradient_checkpointing=True,
-    no_split_modules=["FluxTransformerBlock", "FluxSingleTransformerBlock"],
-    skip_layerwise_casting_patterns=("pos_embed", "norm"),
-    repeated_blocks=["FluxTransformerBlock", "FluxSingleTransformerBlock"],
-    cp_plan={
-        "": {
-            "hidden_states": ContextParallelInput(split_dim=1, expected_dims=3, split_output=False),
-            "encoder_hidden_states": ContextParallelInput(split_dim=1, expected_dims=3, split_output=False),
-            "img_ids": ContextParallelInput(split_dim=0, expected_dims=2, split_output=False),
-            "txt_ids": ContextParallelInput(split_dim=0, expected_dims=2, split_output=False),
-        },
-        "proj_out": ContextParallelOutput(gather_dim=1, expected_dims=3),
-    },
-)
 
 
 def _get_projections(attn: "FluxAttention", hidden_states, encoder_hidden_states=None):
@@ -372,6 +357,7 @@ class FluxAttention(torch.nn.Module, AttentionModuleMixin):
 
 
 @maybe_allow_in_graph
+@register_metadata(TransformerBlockMetadata(return_hidden_states_index=1, return_encoder_hidden_states_index=0))
 class FluxSingleTransformerBlock(nn.Module):
     def __init__(self, dim: int, num_attention_heads: int, attention_head_dim: int, mlp_ratio: float = 4.0):
         super().__init__()
@@ -426,6 +412,7 @@ class FluxSingleTransformerBlock(nn.Module):
 
 
 @maybe_allow_in_graph
+@register_metadata(TransformerBlockMetadata(return_hidden_states_index=1, return_encoder_hidden_states_index=0))
 class FluxTransformerBlock(nn.Module):
     def __init__(
         self, dim: int, num_attention_heads: int, attention_head_dim: int, qk_norm: str = "rms_norm", eps: float = 1e-6
@@ -541,15 +528,32 @@ class FluxPosEmbed(nn.Module):
         return freqs_cos, freqs_sin
 
 
+FLUX_MODEL_METADATA = ModelMetadata(
+    _supports_gradient_checkpointing=True,
+    _no_split_modules=["FluxTransformerBlock", "FluxSingleTransformerBlock"],
+    _skip_layerwise_casting_patterns=("pos_embed", "norm"),
+    _repeated_blocks=["FluxTransformerBlock", "FluxSingleTransformerBlock"],
+    _cp_plan={
+        "": {
+            "hidden_states": ContextParallelInput(split_dim=1, expected_dims=3, split_output=False),
+            "encoder_hidden_states": ContextParallelInput(split_dim=1, expected_dims=3, split_output=False),
+            "img_ids": ContextParallelInput(split_dim=0, expected_dims=2, split_output=False),
+            "txt_ids": ContextParallelInput(split_dim=0, expected_dims=2, split_output=False),
+        },
+        "proj_out": ContextParallelOutput(gather_dim=1, expected_dims=3),
+    },
+    _lora=FLUX_LORA_METADATA,
+    _weight_mapping=FLUX_WEIGHT_MAPPING_METADATA,
+    _ip_adapter=FLUX_IP_ADAPTER_METADATA,
+)
+
+
+@register_metadata(FLUX_MODEL_METADATA)
 class FluxTransformer2DModel(
     ModelMixin,
-    ConfigMixin,
-    PeftAdapterMixin,
-    FluxTransformerWeightMappingMixin,
-    FluxTransformerLoRAMixin,
-    FluxTransformer2DLoadersMixin,
-    CacheMixin,
     AttentionMixin,
+    CacheMixin,
+    IPAdapterModelMixin,
 ):
     """
     The Transformer model introduced in Flux.
@@ -581,8 +585,6 @@ class FluxTransformer2DModel(
         axes_dims_rope (`Tuple[int]`, defaults to `(16, 56, 56)`):
             The dimensions to use for the rotary positional embeddings.
     """
-
-    _model_metadata = FLUX_METADATA
 
     @register_to_config
     def __init__(

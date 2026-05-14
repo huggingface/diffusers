@@ -51,81 +51,66 @@ if is_peft_available():
     from peft.tuners.tuners_utils import BaseTunerLayer
 
 if is_accelerate_available():
-    pass
+    from accelerate.hooks import AlignDevicesHook, CpuOffload, remove_hook_from_module
 
 logger = logging.get_logger(__name__)
 
-# Constants, fetch helpers, and the offload-disable shim now live in `loaders.lora`.
-# Re-exported here for back-compat.
-from .lora import (  # noqa: F401  (back-compat re-exports)
+
+def _func_optionally_disable_offloading(_pipeline):
+    """Optionally remove accelerate offloading hooks before mutating a pipeline's components.
+
+    Walks ``_pipeline.components``, detects accelerate / group-offload hooks, and removes
+    accelerate hooks in-place (group-offload is reapplied later by the LoRA load path).
+    Returns ``(is_model_cpu_offload, is_sequential_cpu_offload, is_group_offload)`` so
+    callers know which offloading mode was active and can re-enable it after loading.
+
+    Used by pipeline-side LoRA loaders (``LoraBaseMixin._optionally_disable_offloading``)
+    and the legacy paths in ``peft.py`` / ``unet.py``. Model-side loading uses the
+    ``_offloading_disabled`` context manager in ``loaders.lora`` instead.
+    """
+    from ..hooks.group_offloading import _is_group_offload_enabled
+
+    is_model_cpu_offload = False
+    is_sequential_cpu_offload = False
+    is_group_offload = False
+
+    if _pipeline is not None and _pipeline.hf_device_map is None:
+        for _, component in _pipeline.components.items():
+            if not isinstance(component, torch.nn.Module):
+                continue
+            is_group_offload = is_group_offload or _is_group_offload_enabled(component)
+            if not hasattr(component, "_hf_hook"):
+                continue
+            is_model_cpu_offload = is_model_cpu_offload or isinstance(component._hf_hook, CpuOffload)
+            is_sequential_cpu_offload = is_sequential_cpu_offload or (
+                isinstance(component._hf_hook, AlignDevicesHook)
+                or hasattr(component._hf_hook, "hooks")
+                and isinstance(component._hf_hook.hooks[0], AlignDevicesHook)
+            )
+
+        if is_sequential_cpu_offload or is_model_cpu_offload:
+            logger.info(
+                "Accelerate hooks detected. Since you have called `load_lora_weights()`, the previous "
+                "hooks will be first removed. Then the LoRA parameters will be loaded and the hooks "
+                "will be applied again."
+            )
+            for _, component in _pipeline.components.items():
+                if not isinstance(component, torch.nn.Module) or not hasattr(component, "_hf_hook"):
+                    continue
+                remove_hook_from_module(component, recurse=is_sequential_cpu_offload)
+
+    return (is_model_cpu_offload, is_sequential_cpu_offload, is_group_offload)
+
+
+# Constants and fetch helpers live in ``loaders.lora`` — re-exported here for back-compat.
+from .lora import (  # noqa: E402, F401  (intentional mid-file import: back-compat re-exports)
     LORA_ADAPTER_METADATA_KEY,
     LORA_WEIGHT_NAME,
     LORA_WEIGHT_NAME_SAFE,
     _best_guess_weight_name,
     _fetch_lora_metadata,
     _fetch_state_dict,
-    _func_optionally_disable_offloading,
 )
-
-
-class LoRAMappingMixin:
-    """
-    Base mixin providing utilities for LoRA weight mapping and conversion.
-
-    Subclasses should define:
-    - _lora_format_keys: Dict mapping format names to identifying key patterns
-    - _lora_rename_patterns: Dict mapping format names to rename pattern dicts
-    - _map_lora_to_diffusers: Staticmethod for LoRA state dict conversion
-    """
-
-    _lora_format_keys: dict[str, set[str]] = {}
-    _lora_rename_patterns: dict[str, dict[str, str]] = {}
-    _map_lora_to_diffusers = None
-
-    @staticmethod
-    def _rename_lora_key(key: str, patterns: dict[str, str]) -> str:
-        """Apply rename patterns to a LoRA key."""
-        for old, new in patterns.items():
-            key = key.replace(old, new)
-        return key
-
-    @classmethod
-    def _detect_lora_format(cls, state_dict: dict) -> str | None:
-        """
-        Detect the LoRA format from state dict keys.
-
-        Returns format name (e.g., 'kohya') or None if unknown.
-        """
-        if not cls._lora_format_keys:
-            return None
-
-        keys = set(state_dict.keys())
-        for format_name, format_keys in cls._lora_format_keys.items():
-            if any(any(fk in k for k in keys) for fk in format_keys):
-                return format_name
-
-        return None
-
-    @classmethod
-    def _normalize_lora_suffixes(cls, state_dict: dict) -> dict:
-        """Normalize LoRA suffixes to diffusers format (.lora_A.weight, .lora_B.weight)."""
-        normalized = {}
-        for key, value in state_dict.items():
-            new_key = key
-            new_key = new_key.replace(".lora_down.weight", ".lora_A.weight")
-            new_key = new_key.replace(".lora_up.weight", ".lora_B.weight")
-            new_key = new_key.replace(".down.weight", ".lora_A.weight")
-            new_key = new_key.replace(".up.weight", ".lora_B.weight")
-            normalized[new_key] = value
-        return normalized
-
-    @classmethod
-    def map_lora_to_diffusers(cls, state_dict: dict, **kwargs) -> dict:
-        """Normalize LoRA suffixes, then dispatch to the model-specific converter."""
-        if cls._map_lora_to_diffusers is None:
-            raise NotImplementedError(f"{cls.__name__} does not define _map_lora_to_diffusers")
-        state_dict = cls._normalize_lora_suffixes(state_dict)
-        return cls._map_lora_to_diffusers(state_dict, **kwargs)
 
 
 def fuse_text_encoder_lora(text_encoder, lora_scale=1.0, safe_fusing=False, adapter_names=None):

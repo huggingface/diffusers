@@ -75,15 +75,15 @@ class UNet2DConditionLoadersMixin:
           See https://huggingface.co/stabilityai/control-lora and
           https://huggingface.co/comfyanonymous/ControlNet-v1-1_fp16_safetensors.
         """
-        from .lora import _HUB_KWARGS, _fetch_state_dict
+        from ..utils import HUB_KWARGS
+        from .lora import _fetch_state_dict
 
         # Resolve to a state_dict up-front so we can inspect / convert before the base loader.
         if isinstance(pretrained_model_name_or_path_or_dict, dict):
             state_dict = pretrained_model_name_or_path_or_dict
         else:
-            fetch_kwargs = {k: kwargs.get(k, default) for k, default in _HUB_KWARGS.items()}
+            fetch_kwargs = {k: kwargs.get(k, default) for k, default in HUB_KWARGS.items()}
             fetch_kwargs["weight_name"] = kwargs.get("weight_name")
-            fetch_kwargs["use_safetensors"] = kwargs.get("use_safetensors")
             state_dict = _fetch_state_dict(pretrained_model_name_or_path_or_dict, **fetch_kwargs)
 
         if not any("lora_A" in k for k in state_dict):
@@ -110,15 +110,9 @@ class UNet2DConditionLoadersMixin:
         metadata = kwargs.get("metadata")
 
         if prefix is not None:
-            state_dict = {
-                k.removeprefix(f"{prefix}."): v for k, v in state_dict.items() if k.startswith(f"{prefix}.")
-            }
+            state_dict = {k.removeprefix(f"{prefix}."): v for k, v in state_dict.items() if k.startswith(f"{prefix}.")}
 
-        rank = {
-            f"^{key}": val.shape[1]
-            for key, val in state_dict.items()
-            if "lora_B" in key and val.ndim > 1
-        }
+        rank = {f"^{key}": val.shape[1] for key, val in state_dict.items() if "lora_B" in key and val.ndim > 1}
 
         if network_alphas is not None and len(network_alphas) >= 1:
             alpha_keys = [k for k in network_alphas if k.startswith(f"{prefix}.")]

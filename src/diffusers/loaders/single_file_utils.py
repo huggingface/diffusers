@@ -2244,8 +2244,6 @@ def convert_animatediff_checkpoint_to_diffusers(checkpoint, **kwargs):
     return converted_state_dict
 
 
-
-
 def convert_ltx_transformer_checkpoint_to_diffusers(checkpoint, **kwargs):
     converted_state_dict = {key: checkpoint.pop(key) for key in list(checkpoint.keys()) if "vae" not in key}
 

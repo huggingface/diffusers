@@ -15,38 +15,41 @@
 """Reusable infrastructure for converting model checkpoints between original
 and diffusers naming conventions.
 
-A model defines its mapping by subclassing :class:`WeightMappingMixin` and
-populating the class attributes (`_rename_patterns`, `_checkpoint_keys`, etc.)
-plus assigning ``_map_to_diffusers`` / ``_map_from_diffusers`` callables.
+A model declares its mapping in a ``WeightMappingMetadata`` instance (typically
+in its ``weight_mapping.py`` module) and attaches it via
+``@register_model_metadata(weight_mapping=...)``. This mixin supplies the
+generic dispatch methods that read from that metadata.
 
 The :meth:`apply_transforms` helper drives the forward direction from a single
 declarative table — see ``models/transformers/flux/weight_mapping.py`` for an
 example.
 """
 
+from typing import Optional
+
 
 class WeightMappingMixin:
     """
     Base mixin providing utilities for checkpoint weight mapping and conversion.
 
-    Subclasses should define:
-    - _checkpoint_key_prefixes: List of key prefixes to strip (e.g., ["model.diffusion_model."])
-    - _checkpoint_keys: Set of keys to identify compatible checkpoints
-    - _rename_patterns: Dict of substring replacements for key renaming
-    - _model_variants: Dict mapping variant names to config repos
-    - _map_to_diffusers: Function to convert original format to diffusers format
-    - _map_from_diffusers: Function to convert diffusers format to original format
+    Per-model configuration (rename patterns, format-identifying keys, conversion
+    callables, etc.) lives in the model's registered ``WeightMappingMetadata`` —
+    declared in the model's ``weight_mapping.py`` and attached via
+    ``@register_model_metadata``. This mixin just supplies the dispatch methods.
     """
 
-    _checkpoint_key_prefixes: list[str] = []
-    _checkpoint_keys: set[str] = set()
-    _rename_patterns: dict[str, str] = {}
-    _model_variants: dict[str, str] = {}
+    # Default class-attribute values; populated per-model by ``register_model_metadata``.
+    _checkpoint_key_prefixes: list = []
+    _checkpoint_keys: set = set()
+    _rename_patterns: dict = {}
+    _model_variants: dict = {}
     _map_to_diffusers = None
     _map_from_diffusers = None
+    _detect_model_variant_fn = None
+    _default_subfolder: str = "transformer"
 
     @staticmethod
-    def _rename_key(key: str, patterns: dict[str, str]) -> str:
+    def _rename_key(key: str, patterns: dict) -> str:
         """Apply rename patterns to a key."""
         for old, new in patterns.items():
             key = key.replace(old, new)
@@ -57,7 +60,6 @@ class WeightMappingMixin:
         """Strip known prefixes from state_dict keys."""
         if not cls._checkpoint_key_prefixes:
             return state_dict
-
         result = {}
         for key, value in state_dict.items():
             new_key = key
@@ -73,13 +75,20 @@ class WeightMappingMixin:
         """Check if state_dict is in original (non-diffusers) format."""
         if not cls._checkpoint_keys:
             return False
-        keys = set(state_dict.keys())
-        return bool(cls._checkpoint_keys & keys)
+        return bool(cls._checkpoint_keys & set(state_dict.keys()))
 
     @classmethod
-    def _detect_model_variant(cls, state_dict: dict) -> str | None:
-        """Detect which model variant a state_dict belongs to. Subclasses should override."""
-        raise NotImplementedError(f"{cls.__name__} does not implement _detect_model_variant")
+    def _detect_model_variant(cls, state_dict: dict) -> Optional[str]:
+        """Detect which model variant a state_dict belongs to.
+
+        Dispatches to ``cls._detect_model_variant_fn`` (mirrored from the model's metadata);
+        raises if no detector is registered.
+        """
+        if cls._detect_model_variant_fn is None:
+            raise NotImplementedError(
+                f"{cls.__name__} did not register a `_detect_model_variant_fn` in its WeightMappingMetadata."
+            )
+        return cls._detect_model_variant_fn(cls, state_dict)
 
     @classmethod
     def _get_model_config(cls, state_dict: dict) -> str:
@@ -122,12 +131,16 @@ class WeightMappingMixin:
     def map_to_diffusers(cls, state_dict: dict, **kwargs) -> dict:
         """Convert state_dict from original format to diffusers format."""
         if cls._map_to_diffusers is None:
-            raise NotImplementedError(f"{cls.__name__} does not define _map_to_diffusers")
+            raise NotImplementedError(
+                f"{cls.__name__} did not register a `_map_to_diffusers` in its WeightMappingMetadata."
+            )
         return cls._map_to_diffusers(state_dict, **kwargs)
 
     @classmethod
     def map_from_diffusers(cls, state_dict: dict, **kwargs) -> dict:
         """Convert state_dict from diffusers format to original format."""
         if cls._map_from_diffusers is None:
-            raise NotImplementedError(f"{cls.__name__} does not define _map_from_diffusers")
+            raise NotImplementedError(
+                f"{cls.__name__} did not register a `_map_from_diffusers` in its WeightMappingMetadata."
+            )
         return cls._map_from_diffusers(state_dict, **kwargs)

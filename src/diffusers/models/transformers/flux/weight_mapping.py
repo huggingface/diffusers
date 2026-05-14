@@ -17,6 +17,7 @@ from typing import Any
 import torch
 
 from ....loaders.weight_mapping import WeightMappingMixin
+from ...modeling_utils import WeightMappingMetadata
 
 
 def swap_scale_shift(weight: torch.Tensor) -> torch.Tensor:
@@ -256,60 +257,54 @@ def map_from_diffusers(
     return converted_state_dict
 
 
-class FluxTransformerWeightMappingMixin(WeightMappingMixin):
+_FLUX_CHECKPOINT_KEY_PREFIXES: list[str] = ["model.diffusion_model."]
+
+# Distinctive keys for original format detection (only keys that use simple renaming, not splits)
+_FLUX_CHECKPOINT_KEYS: set[str] = {
+    "time_in.in_layer.weight",
+    "double_blocks.0.img_mod.lin.weight",
+}
+_FLUX_MODEL_VARIANTS: dict[str, str] = {
+    "flux-dev": "black-forest-labs/FLUX.1-dev",
+    "flux-schnell": "black-forest-labs/FLUX.1-schnell",
+    "flux-fill": "black-forest-labs/FLUX.1-Fill-dev",
+    "flux-depth": "black-forest-labs/FLUX.1-Depth-dev",
+}
+
+
+def detect_model_variant(cls, state_dict: dict[str, Any]) -> str | None:
+    """Detect which Flux variant a state_dict belongs to (``flux-dev`` / ``-schnell`` / ``-fill`` / ``-depth``).
+
+    Receives ``cls`` so it can reuse the model's ``_is_original_format`` / ``_rename_key`` helpers.
     """
-    Mixin providing Flux-specific weight mapping and conversion.
+    guidance_key = "guidance_in.in_layer.bias"
+    x_embedder_key = "img_in.weight"
 
-    This mixin defines class attributes used by ModelMixin for checkpoint conversion:
-    - Checkpoint identification keys (shared across variants)
-    - Variant-specific metadata (config repos)
-    - Conversion function
-    - Default subfolder
-    """
+    if not cls._is_original_format(state_dict):
+        guidance_key = cls._rename_key(guidance_key, FLUX_RENAME_PATTERNS)
+        x_embedder_key = cls._rename_key(x_embedder_key, FLUX_RENAME_PATTERNS)
 
-    _checkpoint_key_prefixes: list[str] = ["model.diffusion_model."]
-    # Distinctive keys for original format detection (only keys that use simple renaming, not splits)
-    _checkpoint_keys: set[str] = {
-        "time_in.in_layer.weight",
-        "double_blocks.0.img_mod.lin.weight",
-    }
-    _rename_patterns: dict[str, str] = FLUX_RENAME_PATTERNS
-    _model_variants: dict[str, str] = {
-        "flux-dev": "black-forest-labs/FLUX.1-dev",
-        "flux-schnell": "black-forest-labs/FLUX.1-schnell",
-        "flux-fill": "black-forest-labs/FLUX.1-Fill-dev",
-        "flux-depth": "black-forest-labs/FLUX.1-Depth-dev",
-    }
+    if x_embedder_key not in state_dict:
+        return None
 
-    _map_to_diffusers = staticmethod(map_to_diffusers)
-    _map_from_diffusers = staticmethod(map_from_diffusers)
-    _default_subfolder: str = "transformer"
+    if guidance_key not in state_dict:
+        return "flux-schnell"
 
-    @classmethod
-    def _detect_model_variant(cls, state_dict: dict[str, Any]) -> str | None:
-        """
-        Detect which Flux variant a state_dict belongs to.
+    in_channels = state_dict[x_embedder_key].shape[1]
+    if in_channels == 384:
+        return "flux-fill"
+    elif in_channels == 128:
+        return "flux-depth"
 
-        Returns the variant name (e.g., "flux-dev", "flux-schnell", "flux-fill", "flux-depth")
-        or None if unknown.
-        """
-        guidance_key = "guidance_in.in_layer.bias"
-        x_embedder_key = "img_in.weight"
+    return "flux-dev"
 
-        if not cls._is_original_format(state_dict):
-            guidance_key = cls._rename_key(guidance_key, cls._rename_patterns)
-            x_embedder_key = cls._rename_key(x_embedder_key, cls._rename_patterns)
 
-        if x_embedder_key not in state_dict:
-            return None
-
-        if guidance_key not in state_dict:
-            return "flux-schnell"
-
-        in_channels = state_dict[x_embedder_key].shape[1]
-        if in_channels == 384:
-            return "flux-fill"
-        elif in_channels == 128:
-            return "flux-depth"
-
-        return "flux-dev"
+# Metadata constant assembled into ``ModelMetadata`` by ``flux/model.py``.
+FLUX_WEIGHT_MAPPING_METADATA = WeightMappingMetadata(
+    _checkpoint_keys=_FLUX_CHECKPOINT_KEYS,
+    _model_variants=_FLUX_MODEL_VARIANTS,
+    _map_to_diffusers=map_to_diffusers,
+    _map_from_diffusers=map_from_diffusers,
+    _detect_model_variant_fn=detect_model_variant,
+    _default_subfolder="transformer",
+)

@@ -292,5 +292,3 @@ def check_peft_version(min_version: str) -> None:
             f"The version of PEFT you are using is not compatible, please use a version that is greater"
             f" than {min_version}"
         )
-
-
