@@ -959,7 +959,8 @@ class MotifVideoTransformer3DModel(
         # image_embed_seq_len: used by cross-attention blocks to slice text from encoder_hidden_states
         image_embed_seq_len = image_embeds.shape[1] if image_embeds is not None else 0
 
-        decoder_hidden_states = hidden_states.clone()
+        if self.num_decoder_layers > 0:
+            decoder_hidden_states = hidden_states.clone()
 
         if encoder_attention_mask is not None:
             attention_mask = F.pad(
