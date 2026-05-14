@@ -382,6 +382,8 @@ class TorchAoHfQuantizer(DiffusersQuantizer):
 
         for name, module in model.named_modules():
             if isinstance(module, nn.Linear) and isinstance(module.weight, TorchAOBaseTensor):
+                if not hasattr(module.weight, "dequantize"):
+                    continue
                 device = module.weight.device
                 dequantized_weight = module.weight.dequantize().to(device)
                 module.weight = nn.Parameter(dequantized_weight)
