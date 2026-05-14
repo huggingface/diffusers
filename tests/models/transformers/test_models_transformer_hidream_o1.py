@@ -34,7 +34,6 @@ from transformers.models.qwen3_vl.configuration_qwen3_vl import (  # noqa: E402
 
 from diffusers import HiDreamO1Transformer2DModel  # noqa: E402
 from diffusers.models.transformers.transformer_hidream_o1 import HiDreamO1AttnProcessor  # noqa: E402
-from diffusers.models.transformers import transformer_hidream_o1 as hidream_o1_module  # noqa: E402
 
 from ...testing_utils import enable_full_determinism  # noqa: E402
 
@@ -104,7 +103,6 @@ def _get_inputs(mean=0.0, std=1.0, seed=0, device="cpu"):
         "vinputs": vinputs.to(device),
         "timestep": torch.tensor([0.25], dtype=torch.float32, device=device),
         "token_types": torch.tensor([[0, 0, 0, 1, 1, 1, 1, 1]], dtype=torch.long, device=device),
-        "use_flash_attn": False,
     }
 
 
@@ -225,7 +223,7 @@ class HiDreamO1Transformer2DModelTests(unittest.TestCase):
         self.assertEqual(len(processors), model.qwen_config.text_config.num_hidden_layers)
         self.assertTrue(all(isinstance(processor, HiDreamO1AttnProcessor) for processor in processors.values()))
 
-        processor = HiDreamO1AttnProcessor(use_flash_attn=False)
+        processor = HiDreamO1AttnProcessor()
         model.set_attn_processor(processor)
         self.assertTrue(all(attn_processor is processor for attn_processor in model.attn_processors.values()))
 
@@ -239,7 +237,6 @@ class HiDreamO1Transformer2DModelTests(unittest.TestCase):
         device = torch.device("cuda")
         official = _load_official_hidream_o1_module()
         official._flash_attn_func = _sdpa_flash_attn_func
-        hidream_o1_module._flash_attn_func = _sdpa_flash_attn_func
         config = _get_tiny_qwen3_vl_config()
 
         official_model = official.Qwen3VLForConditionalGeneration(config).to(device=device, dtype=torch.bfloat16).eval()
@@ -269,7 +266,7 @@ class HiDreamO1Transformer2DModelTests(unittest.TestCase):
                             inputs = _get_inputs(mean=mean, std=std, seed=seed, device=device)
                             inputs["vinputs"] = inputs["vinputs"].to(torch.bfloat16)
                             official_inputs = {**inputs, "use_flash_attn": True}
-                            candidate_inputs = {**inputs, "use_flash_attn": True}
+                            candidate_inputs = dict(inputs)
                             official_outputs = official_model.model(**official_inputs)
 
                             distribution_record = {

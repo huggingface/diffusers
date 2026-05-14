@@ -131,7 +131,6 @@ class HiDreamO1ImagePipelineFastTests(unittest.TestCase):
             shift=1.0,
             noise_scale_start=1.0,
             noise_scale_end=1.0,
-            attention_kwargs={"use_flash_attn": False},
             use_resolution_binning=False,
             output_type="pt",
             generator=generator,
@@ -141,14 +140,10 @@ class HiDreamO1ImagePipelineFastTests(unittest.TestCase):
         self.assertTrue(torch.isfinite(image).all())
         self.assertGreater(image.abs().max().item(), 0)
 
-    def test_from_pretrained_accepts_preloaded_official_components(self):
+    def test_init_registers_components_with_default_scheduler(self):
         transformer = HiDreamO1Transformer2DModel(qwen_config=_get_tiny_qwen3_vl_config().to_dict()).eval()
         processor = DummyProcessor()
-        pipe = HiDreamO1ImagePipeline.from_pretrained(
-            "not-a-diffusers-pipeline",
-            processor=processor,
-            transformer=transformer,
-        )
+        pipe = HiDreamO1ImagePipeline(processor=processor, transformer=transformer)
 
         self.assertIs(pipe.processor, processor)
         self.assertIs(pipe.transformer, transformer)

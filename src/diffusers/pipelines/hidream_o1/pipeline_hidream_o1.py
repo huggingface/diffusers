@@ -13,7 +13,6 @@
 # limitations under the License.
 
 import inspect
-import os
 from typing import Any, Optional
 
 import numpy as np
@@ -22,19 +21,15 @@ from transformers import AutoProcessor
 
 from ...models import HiDreamO1Transformer2DModel
 from ...schedulers import UniPCMultistepScheduler
-from ...utils import logging, replace_example_docstring
+from ...utils import replace_example_docstring
 from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline, ImagePipelineOutput
 
-
-logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 TIMESTEP_TOKEN_NUM = 1
 PATCH_SIZE = 32
 T_EPS = 0.001
 FULL_NOISE_SCALE = 8.0
-DEV_FLASH_NOISE_SCALE = 7.5
-DEV_FLASH_NOISE_CLIP_STD = 2.5
 
 PREDEFINED_RESOLUTIONS = [
     (2048, 2048),
@@ -50,47 +45,18 @@ PREDEFINED_RESOLUTIONS = [
     (1792, 2304),
 ]
 
-DEFAULT_TIMESTEPS = [
-    999,
-    987,
-    974,
-    960,
-    945,
-    929,
-    913,
-    895,
-    877,
-    857,
-    836,
-    814,
-    790,
-    764,
-    737,
-    707,
-    675,
-    640,
-    602,
-    560,
-    515,
-    464,
-    409,
-    347,
-    278,
-    199,
-    110,
-    8,
-]
-
 EXAMPLE_DOC_STRING = """
     Examples:
         ```py
         >>> import torch
-        >>> from diffusers import HiDreamO1ImagePipeline
+        >>> from diffusers import HiDreamO1ImagePipeline, HiDreamO1Transformer2DModel
 
-        >>> pipe = HiDreamO1ImagePipeline.from_pretrained(
-        ...     "HiDream-ai/HiDream-O1-Image",
-        ...     torch_dtype=torch.bfloat16,
+        >>> from transformers import AutoProcessor
+        >>> processor = AutoProcessor.from_pretrained("HiDream-ai/HiDream-O1-Image")
+        >>> transformer = HiDreamO1Transformer2DModel.from_pretrained(
+        ...     "HiDream-ai/HiDream-O1-Image", torch_dtype=torch.bfloat16
         ... )
+        >>> pipe = HiDreamO1ImagePipeline(processor=processor, transformer=transformer)
         >>> pipe.to("cuda")
         >>> image = pipe(
         ...     "A cinematic portrait of a glass astronaut standing in a neon-lit botanical garden.",
@@ -272,18 +238,6 @@ def _to_device(sample: dict[str, Any], device: torch.device) -> dict[str, Any]:
     return {key: (value.to(device) if torch.is_tensor(value) else value) for key, value in sample.items()}
 
 
-def _get_module_device(module: torch.nn.Module) -> torch.device:
-    for parameter in module.parameters():
-        return parameter.device
-    return torch.device("cpu")
-
-
-def _get_module_dtype(module: torch.nn.Module) -> torch.dtype:
-    for parameter in module.parameters():
-        return parameter.dtype
-    return torch.float32
-
-
 def _maybe_set_scheduler_shift(scheduler, shift: float):
     if hasattr(scheduler, "set_shift"):
         scheduler.set_shift(shift)
@@ -355,77 +309,6 @@ class HiDreamO1ImagePipeline(DiffusionPipeline):
             _add_special_tokens(_get_tokenizer(processor))
         self.default_sample_size = 2048
         self._attention_kwargs = None
-
-    @classmethod
-    def from_pretrained(cls, pretrained_model_name_or_path, **kwargs):
-        r"""
-        Load either a native Diffusers pipeline directory or the official Transformers-style HiDream-O1 checkpoint.
-        """
-        processor = kwargs.pop("processor", None)
-        transformer = kwargs.pop("transformer", None)
-        scheduler = kwargs.pop("scheduler", None)
-
-        path = os.fspath(pretrained_model_name_or_path)
-        is_local_diffusers_pipeline = os.path.isdir(path) and os.path.isfile(os.path.join(path, "model_index.json"))
-        if is_local_diffusers_pipeline and processor is None and transformer is None:
-            passed_components = {}
-            if scheduler is not None:
-                passed_components["scheduler"] = scheduler
-            return super().from_pretrained(pretrained_model_name_or_path, **passed_components, **kwargs)
-
-        if processor is None or transformer is None:
-            try:
-                passed_components = {}
-                if processor is not None:
-                    passed_components["processor"] = processor
-                if transformer is not None:
-                    passed_components["transformer"] = transformer
-                if scheduler is not None:
-                    passed_components["scheduler"] = scheduler
-                return super().from_pretrained(pretrained_model_name_or_path, **passed_components, **kwargs)
-            except (OSError, ValueError) as error:
-                if "model_index.json" not in str(error):
-                    raise
-                logger.info(
-                    "No Diffusers model_index.json found for HiDream-O1. Falling back to official checkpoint loading."
-                )
-
-        shared_load_keys = (
-            "cache_dir",
-            "force_download",
-            "local_files_only",
-            "proxies",
-            "revision",
-            "token",
-            "trust_remote_code",
-        )
-        model_load_keys = shared_load_keys + (
-            "device_map",
-            "max_memory",
-            "offload_folder",
-            "offload_state_dict",
-            "torch_dtype",
-            "variant",
-            "use_safetensors",
-        )
-        processor_kwargs = {key: kwargs[key] for key in shared_load_keys if key in kwargs}
-        transformer_kwargs = {key: kwargs[key] for key in model_load_keys if key in kwargs}
-
-        if processor is None:
-            processor = AutoProcessor.from_pretrained(pretrained_model_name_or_path, **processor_kwargs)
-        if transformer is None:
-            transformer = HiDreamO1Transformer2DModel.from_pretrained(
-                pretrained_model_name_or_path,
-                **transformer_kwargs,
-            )
-        if scheduler is None:
-            scheduler = UniPCMultistepScheduler(
-                prediction_type="flow_prediction",
-                use_flow_sigmas=True,
-                flow_shift=3.0,
-            )
-
-        return cls(processor=processor, transformer=transformer, scheduler=scheduler)
 
     def _build_text_to_image_sample(
         self,
@@ -503,39 +386,6 @@ class HiDreamO1ImagePipeline(DiffusionPipeline):
             width, height = _find_closest_resolution(width, height)
         return height, width
 
-    def _prepare_generation_defaults(
-        self,
-        model_type: str,
-        num_inference_steps: Optional[int],
-        guidance_scale: Optional[float],
-        shift: Optional[float],
-        timesteps: Optional[list[int]],
-        noise_scale_start: Optional[float],
-        noise_scale_end: Optional[float],
-        noise_clip_std: Optional[float],
-    ):
-        if model_type not in {"full", "dev"}:
-            raise ValueError("`model_type` must be 'full' or 'dev'.")
-
-        if model_type == "dev":
-            num_inference_steps = 28 if num_inference_steps is None else num_inference_steps
-            guidance_scale = 0.0 if guidance_scale is None else guidance_scale
-            shift = 1.0 if shift is None else shift
-            timesteps = DEFAULT_TIMESTEPS if timesteps is None else timesteps
-        else:
-            num_inference_steps = 50 if num_inference_steps is None else num_inference_steps
-            guidance_scale = 5.0 if guidance_scale is None else guidance_scale
-            shift = 3.0 if shift is None else shift
-
-        if noise_scale_start is None:
-            noise_scale_start = DEV_FLASH_NOISE_SCALE if model_type == "dev" else FULL_NOISE_SCALE
-        if noise_scale_end is None:
-            noise_scale_end = DEV_FLASH_NOISE_SCALE if model_type == "dev" else noise_scale_start
-        if noise_clip_std is None:
-            noise_clip_std = DEV_FLASH_NOISE_CLIP_STD if model_type == "dev" else 0.0
-
-        return num_inference_steps, guidance_scale, shift, timesteps, noise_scale_start, noise_scale_end, noise_clip_std
-
     def _forward_transformer(
         self,
         sample: dict[str, torch.Tensor],
@@ -569,12 +419,10 @@ class HiDreamO1ImagePipeline(DiffusionPipeline):
         shift: Optional[float] = None,
         timesteps: Optional[list[int]] = None,
         generator: Optional[torch.Generator] = None,
-        model_type: str = "full",
         noise_scale_start: Optional[float] = None,
         noise_scale_end: Optional[float] = None,
         noise_clip_std: Optional[float] = None,
         attention_kwargs: Optional[dict[str, Any]] = None,
-        use_flash_attn: Optional[bool] = None,
         use_resolution_binning: bool = True,
         output_type: str = "pil",
         return_dict: bool = True,
@@ -589,23 +437,25 @@ class HiDreamO1ImagePipeline(DiffusionPipeline):
                 Requested output height. When `use_resolution_binning=True`, this is snapped to a supported bucket.
             width (`int`, defaults to 2048):
                 Requested output width. When `use_resolution_binning=True`, this is snapped to a supported bucket.
-            num_inference_steps (`int`, *optional*):
-                Number of denoising steps. Defaults to 50 for `model_type="full"` and 28 for `model_type="dev"`.
-            guidance_scale (`float`, *optional*):
-                Classifier-free guidance scale. Defaults to 5.0 for `model_type="full"` and 0.0 for
-                `model_type="dev"`.
-            shift (`float`, *optional*):
-                Flow matching timestep shift. Defaults to 3.0 for `model_type="full"` and 1.0 for `model_type="dev"`.
+            num_inference_steps (`int`, *optional*, defaults to 50):
+                Number of denoising steps.
+            guidance_scale (`float`, *optional*, defaults to 5.0):
+                Classifier-free guidance scale.
+            shift (`float`, *optional*, defaults to 3.0):
+                Flow matching timestep shift.
             timesteps (`list[int]`, *optional*):
                 Optional custom timestep schedule.
             generator (`torch.Generator`, *optional*):
                 Random generator for deterministic noise sampling.
-            model_type (`str`, defaults to `"full"`):
-                Generation preset. Use `"full"` for the released full model and `"dev"` for the dev preset.
+            noise_scale_start (`float`, *optional*, defaults to 8.0):
+                Scale applied to the initial image noise before patchification.
+            noise_scale_end (`float`, *optional*):
+                Final noise scale used by schedulers that accept per-step stochastic noise. Defaults to
+                `noise_scale_start`.
+            noise_clip_std (`float`, *optional*, defaults to 0.0):
+                Standard deviation used by schedulers that support clipping their stochastic noise.
             attention_kwargs (`dict`, *optional*):
                 A kwargs dictionary passed to [`HiDreamO1AttnProcessor`].
-            use_flash_attn (`bool`, *optional*):
-                Deprecated convenience flag. Pass `attention_kwargs={"use_flash_attn": ...}` instead.
             use_resolution_binning (`bool`, defaults to `True`):
                 Whether to snap `height` and `width` to one of the official high-resolution buckets.
             output_type (`str`, defaults to `"pil"`):
@@ -621,31 +471,16 @@ class HiDreamO1ImagePipeline(DiffusionPipeline):
         """
         self.check_inputs(prompt, height, width, output_type, use_resolution_binning)
         height, width = self.prepare_image_size(height, width, use_resolution_binning)
-        attention_kwargs = {} if attention_kwargs is None else dict(attention_kwargs)
-        if use_flash_attn is not None:
-            attention_kwargs["use_flash_attn"] = use_flash_attn
-        self._attention_kwargs = attention_kwargs
-        (
-            num_inference_steps,
-            guidance_scale,
-            shift,
-            timesteps,
-            noise_scale_start,
-            noise_scale_end,
-            noise_clip_std,
-        ) = self._prepare_generation_defaults(
-            model_type=model_type,
-            num_inference_steps=num_inference_steps,
-            guidance_scale=guidance_scale,
-            shift=shift,
-            timesteps=timesteps,
-            noise_scale_start=noise_scale_start,
-            noise_scale_end=noise_scale_end,
-            noise_clip_std=noise_clip_std,
-        )
+        self._attention_kwargs = {} if attention_kwargs is None else dict(attention_kwargs)
+        num_inference_steps = 50 if num_inference_steps is None else num_inference_steps
+        guidance_scale = 5.0 if guidance_scale is None else guidance_scale
+        shift = 3.0 if shift is None else shift
+        noise_scale_start = FULL_NOISE_SCALE if noise_scale_start is None else noise_scale_start
+        noise_scale_end = noise_scale_start if noise_scale_end is None else noise_scale_end
+        noise_clip_std = 0.0 if noise_clip_std is None else noise_clip_std
 
-        device = _get_module_device(self.transformer)
-        dtype = _get_module_dtype(self.transformer)
+        device = self._execution_device
+        dtype = self.transformer.dtype
         cond_sample = self._build_text_to_image_sample(prompt, height, width, device)
         samples = [cond_sample]
         if guidance_scale > 1.0:
