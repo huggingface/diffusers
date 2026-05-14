@@ -241,11 +241,14 @@ to produce the released checkpoints), refer to the original AnyFlow training fra
 ## Citation
 
 ```bibtex
-@article{gu2026anyflow,
-  title   = {AnyFlow: Any-Step Video Diffusion Model with On-Policy Flow Map Distillation},
-  author  = {Gu, Yuchao and Fang, Guian and others},
-  journal = {arXiv preprint arXiv:2605.13724},
-  year    = {2026}
+@misc{gu2026anyflowanystepvideodiffusion,
+  title={AnyFlow: Any-Step Video Diffusion Model with On-Policy Flow Map Distillation},
+  author={Yuchao Gu and Guian Fang and Yuxin Jiang and Weijia Mao and Song Han and Han Cai and Mike Zheng Shou},
+  year={2026},
+  eprint={2605.13724},
+  archivePrefix={arXiv},
+  primaryClass={cs.CV},
+  url={https://arxiv.org/abs/2605.13724},
 }
 
 @article{gu2025long,
