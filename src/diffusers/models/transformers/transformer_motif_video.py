@@ -884,11 +884,6 @@ class MotifVideoTransformer3DModel(
         self.gradient_checkpointing = False
         self.num_decoder_layers = num_decoder_layers
 
-    def _maybe_gradient_checkpoint_block(self, block, *args):
-        if torch.is_grad_enabled() and self.gradient_checkpointing:
-            return self._gradient_checkpointing_func(block, *args)
-        return block(*args)
-
     def forward(
         self,
         hidden_states: torch.Tensor,
@@ -980,28 +975,40 @@ class MotifVideoTransformer3DModel(
 
         # 3. Dual stream transformer blocks
         for block in self.transformer_blocks:
-            hidden_states, encoder_hidden_states = self._maybe_gradient_checkpoint_block(
-                block,
-                hidden_states,
-                encoder_hidden_states,
-                temb,
-                attention_mask,
-                image_rotary_emb,
-                image_embed_seq_len,
+            hidden_states, encoder_hidden_states = (
+                self._gradient_checkpointing_func(
+                    block,
+                    hidden_states,
+                    encoder_hidden_states,
+                    temb,
+                    attention_mask,
+                    image_rotary_emb,
+                    image_embed_seq_len,
+                )
+                if torch.is_grad_enabled() and self.gradient_checkpointing
+                else block(
+                    hidden_states, encoder_hidden_states, temb, attention_mask, image_rotary_emb, image_embed_seq_len
+                )
             )
 
         # 4. Single stream transformer blocks (Encoder)
         single_transformer_blocks = self.single_transformer_blocks
 
         for block in single_transformer_blocks[: len(single_transformer_blocks) - self.num_decoder_layers]:
-            hidden_states, encoder_hidden_states = self._maybe_gradient_checkpoint_block(
-                block,
-                hidden_states,
-                encoder_hidden_states,
-                temb,
-                attention_mask,
-                image_rotary_emb,
-                image_embed_seq_len,
+            hidden_states, encoder_hidden_states = (
+                self._gradient_checkpointing_func(
+                    block,
+                    hidden_states,
+                    encoder_hidden_states,
+                    temb,
+                    attention_mask,
+                    image_rotary_emb,
+                    image_embed_seq_len,
+                )
+                if torch.is_grad_enabled() and self.gradient_checkpointing
+                else block(
+                    hidden_states, encoder_hidden_states, temb, attention_mask, image_rotary_emb, image_embed_seq_len
+                )
             )
 
         # 5. Single stream transformer blocks (Decoder)
@@ -1010,13 +1017,12 @@ class MotifVideoTransformer3DModel(
             attention_mask = None
 
             for block in single_transformer_blocks[-self.num_decoder_layers :]:
-                decoder_hidden_states, encoder_hidden_states = self._maybe_gradient_checkpoint_block(
-                    block,
-                    decoder_hidden_states,
-                    encoder_hidden_states,
-                    temb,
-                    attention_mask,
-                    image_rotary_emb,
+                decoder_hidden_states, encoder_hidden_states = (
+                    self._gradient_checkpointing_func(
+                        block, decoder_hidden_states, encoder_hidden_states, temb, attention_mask, image_rotary_emb
+                    )
+                    if torch.is_grad_enabled() and self.gradient_checkpointing
+                    else block(decoder_hidden_states, encoder_hidden_states, temb, attention_mask, image_rotary_emb)
                 )
 
             hidden_states = decoder_hidden_states
