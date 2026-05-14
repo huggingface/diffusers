@@ -359,9 +359,6 @@ class QuantizationTesterMixin:
             if isinstance(module, torch.nn.Linear):
                 assert not self._is_module_quantized(module), f"Module {name} is still quantized after dequantize()"
 
-        # Cast model to the expected dtype after dequantization (weights may be float32)
-        model.to(self.torch_dtype)
-
         inputs = self.get_dummy_inputs()
         output = model(**inputs, return_dict=False)[0]
         assert output is not None, "Model output is None after dequantization"
