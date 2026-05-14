@@ -291,8 +291,8 @@ class Flux2SwiGLU(nn.Module):
         self.gate_fn = nn.SiLU()
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        x1, x2 = x.chunk(2, dim=-1)
-        x = self.gate_fn(x1) * x2
+        half = x.shape[-1] // 2
+        x = self.gate_fn(x[..., :half]) * x[..., half:]
         return x
 
 
@@ -619,6 +619,146 @@ class Flux2ParallelSelfAttnProcessor:
         hidden_states = attn.to_out(hidden_states)
 
         return hidden_states
+
+
+class Flux2AttnProcessorTP(Flux2AttnProcessor):
+    """
+    TP-aware version of ``Flux2AttnProcessor`` for double-stream transformer blocks.
+
+    After column-wise weight sharding, each rank holds ``attn.heads // tp_size`` heads.
+    The only difference from the base class is that ``unflatten`` uses the local head
+    count rather than the full ``attn.heads``.
+
+    Args:
+        tp_size (`int`): Number of tensor-parallel ranks (== ``tp_mesh.size()``).
+    """
+
+    def __init__(self, tp_size: int):
+        super().__init__()
+        self.tp_size = tp_size
+
+    def __call__(
+        self,
+        attn: "Flux2Attention",
+        hidden_states: torch.Tensor,
+        encoder_hidden_states: torch.Tensor = None,
+        attention_mask: torch.Tensor | None = None,
+        image_rotary_emb: torch.Tensor | None = None,
+        **kwargs,
+    ) -> torch.Tensor:
+        local_heads = attn.heads // self.tp_size
+        head_dim = attn.head_dim
+
+        query, key, value, encoder_query, encoder_key, encoder_value = _get_qkv_projections(
+            attn, hidden_states, encoder_hidden_states
+        )
+
+        query = query.unflatten(-1, (local_heads, head_dim))
+        key = key.unflatten(-1, (local_heads, head_dim))
+        value = value.unflatten(-1, (local_heads, head_dim))
+
+        query = attn.norm_q(query)
+        key = attn.norm_k(key)
+
+        if attn.added_kv_proj_dim is not None:
+            encoder_query = encoder_query.unflatten(-1, (local_heads, head_dim))
+            encoder_key = encoder_key.unflatten(-1, (local_heads, head_dim))
+            encoder_value = encoder_value.unflatten(-1, (local_heads, head_dim))
+
+            encoder_query = attn.norm_added_q(encoder_query)
+            encoder_key = attn.norm_added_k(encoder_key)
+
+            query = torch.cat([encoder_query, query], dim=1)
+            key = torch.cat([encoder_key, key], dim=1)
+            value = torch.cat([encoder_value, value], dim=1)
+
+        if image_rotary_emb is not None:
+            query = apply_rotary_emb(query, image_rotary_emb, sequence_dim=1)
+            key = apply_rotary_emb(key, image_rotary_emb, sequence_dim=1)
+
+        hidden_states = dispatch_attention_fn(
+            query,
+            key,
+            value,
+            attn_mask=attention_mask,
+            backend=self._attention_backend,
+            parallel_config=self._parallel_config,
+        )
+        hidden_states = hidden_states.flatten(2, 3).to(query.dtype)
+
+        if encoder_hidden_states is not None:
+            encoder_hidden_states, hidden_states = hidden_states.split_with_sizes(
+                [encoder_hidden_states.shape[1], hidden_states.shape[1] - encoder_hidden_states.shape[1]], dim=1
+            )
+            encoder_hidden_states = attn.to_add_out(encoder_hidden_states)
+
+        hidden_states = attn.to_out[0](hidden_states)
+        hidden_states = attn.to_out[1](hidden_states)
+
+        if encoder_hidden_states is not None:
+            return hidden_states, encoder_hidden_states
+        return hidden_states
+
+
+class Flux2ParallelSelfAttnProcessorTP(Flux2ParallelSelfAttnProcessor):
+    """
+    TP-aware version of ``Flux2ParallelSelfAttnProcessor`` for single-stream blocks.
+
+    After column-wise weight sharding the fused ``to_qkv_mlp_proj`` projection,
+    each rank holds a proportionally smaller slice of Q/K/V and MLP dimensions.
+    The split sizes are computed from the local (per-rank) head count and inner dim.
+
+    Args:
+        tp_size (`int`): Number of tensor-parallel ranks (== ``tp_mesh.size()``).
+    """
+
+    def __init__(self, tp_size: int):
+        super().__init__()
+        self.tp_size = tp_size
+
+    def __call__(
+        self,
+        attn: "Flux2ParallelSelfAttention",
+        hidden_states: torch.Tensor,
+        attention_mask: torch.Tensor | None = None,
+        image_rotary_emb: torch.Tensor | None = None,
+        **kwargs,
+    ) -> torch.Tensor:
+        local_heads = attn.heads // self.tp_size
+        head_dim = attn.head_dim
+        local_inner = attn.inner_dim // self.tp_size
+        local_mlp_gate = attn.mlp_hidden_dim * attn.mlp_mult_factor // self.tp_size
+
+        hidden_states = attn.to_qkv_mlp_proj(hidden_states)
+        qkv, mlp_hidden_states = torch.split(hidden_states, [3 * local_inner, local_mlp_gate], dim=-1)
+
+        query, key, value = qkv.chunk(3, dim=-1)
+
+        query = query.unflatten(-1, (local_heads, head_dim))
+        key = key.unflatten(-1, (local_heads, head_dim))
+        value = value.unflatten(-1, (local_heads, head_dim))
+
+        query = attn.norm_q(query)
+        key = attn.norm_k(key)
+
+        if image_rotary_emb is not None:
+            query = apply_rotary_emb(query, image_rotary_emb, sequence_dim=1)
+            key = apply_rotary_emb(key, image_rotary_emb, sequence_dim=1)
+
+        hidden_states = dispatch_attention_fn(
+            query,
+            key,
+            value,
+            attn_mask=attention_mask,
+            backend=self._attention_backend,
+            parallel_config=self._parallel_config,
+        )
+        hidden_states = hidden_states.flatten(2, 3).to(query.dtype)
+
+        mlp_hidden_states = attn.mlp_act_fn(mlp_hidden_states)
+
+        hidden_states = torch.cat([hidden_states, mlp_hidden_states], dim=-1)
+        return attn.to_out(hidden_states)
 
 
 class Flux2KVParallelSelfAttnProcessor:
@@ -961,7 +1101,8 @@ class Flux2PosEmbed(nn.Module):
         pos = ids.float()
         is_mps = ids.device.type == "mps"
         is_npu = ids.device.type == "npu"
-        freqs_dtype = torch.float32 if (is_mps or is_npu) else torch.float64
+        is_neuron = ids.device.type == "neuron"
+        freqs_dtype = torch.float32 if (is_mps or is_npu or is_neuron) else torch.float64
         # Unlike Flux 1, loop over len(self.axes_dim) rather than ids.shape[-1]
         for i in range(len(self.axes_dim)):
             cos, sin = get_1d_rotary_pos_embed(
@@ -1090,6 +1231,48 @@ class Flux2Transformer2DModel(
         },
         "proj_out": ContextParallelOutput(gather_dim=1, expected_dims=3),
     }
+
+    # Tensor-parallel sharding plans (one per block type).
+    # Used by ``apply_tensor_parallel`` (generic path) and by the Neuron-specific
+    # ``apply_tp_flux2_transformer_neuron`` (which also needs weight permutations).
+    # Populated lazily on first access to avoid importing torch.distributed.tensor
+    # at module import time when TP is not used.
+    _tp_double_block_plan: "dict | None" = None
+    _tp_single_block_plan: "dict | None" = None
+
+    @classmethod
+    def _get_tp_double_block_plan(cls) -> dict:
+        """Return the TP sharding plan for double-stream (cross-attention + FFN) blocks."""
+        from torch.distributed.tensor.parallel import ColwiseParallel, RowwiseParallel
+
+        if cls._tp_double_block_plan is None:
+            cls._tp_double_block_plan = {
+                "attn.to_q": ColwiseParallel(),
+                "attn.to_k": ColwiseParallel(),
+                "attn.to_v": ColwiseParallel(),
+                "attn.to_out.0": RowwiseParallel(),
+                "attn.add_q_proj": ColwiseParallel(),
+                "attn.add_k_proj": ColwiseParallel(),
+                "attn.add_v_proj": ColwiseParallel(),
+                "attn.to_add_out": RowwiseParallel(),
+                "ff.linear_in": ColwiseParallel(),
+                "ff.linear_out": RowwiseParallel(),
+                "ff_context.linear_in": ColwiseParallel(),
+                "ff_context.linear_out": RowwiseParallel(),
+            }
+        return cls._tp_double_block_plan
+
+    @classmethod
+    def _get_tp_single_block_plan(cls) -> dict:
+        """Return the TP sharding plan for single-stream (parallel self-attn + fused MLP) blocks."""
+        from torch.distributed.tensor.parallel import ColwiseParallel, RowwiseParallel
+
+        if cls._tp_single_block_plan is None:
+            cls._tp_single_block_plan = {
+                "attn.to_qkv_mlp_proj": ColwiseParallel(),
+                "attn.to_out": RowwiseParallel(),
+            }
+        return cls._tp_single_block_plan
 
     @register_to_config
     def __init__(

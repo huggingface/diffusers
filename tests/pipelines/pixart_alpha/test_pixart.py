@@ -27,6 +27,7 @@ from diffusers import (
     PixArtAlphaPipeline,
     PixArtTransformer2DModel,
 )
+from diffusers.utils.import_utils import is_torch_neuronx_available
 
 from ...testing_utils import (
     backend_empty_cache,
@@ -291,7 +292,9 @@ class PixArtAlphaPipelineIntegrationTests(unittest.TestCase):
         expected_slice = np.array([0.0742, 0.0835, 0.2114, 0.0295, 0.0784, 0.2361, 0.1738, 0.2251, 0.3589])
 
         max_diff = numpy_cosine_similarity_distance(image_slice.flatten(), expected_slice)
-        self.assertLessEqual(max_diff, 1e-4)
+        # Neuron uses bfloat16 internally which has lower precision than float16 on CUDA
+        atol = 1e-2 if is_torch_neuronx_available() else 1e-4
+        self.assertLessEqual(max_diff, atol)
 
     def test_pixart_512(self):
         generator = torch.Generator("cpu").manual_seed(0)
@@ -307,7 +310,9 @@ class PixArtAlphaPipelineIntegrationTests(unittest.TestCase):
         expected_slice = np.array([0.3477, 0.3882, 0.4541, 0.3413, 0.3821, 0.4463, 0.4001, 0.4409, 0.4958])
 
         max_diff = numpy_cosine_similarity_distance(image_slice.flatten(), expected_slice)
-        self.assertLessEqual(max_diff, 1e-4)
+        # Neuron uses bfloat16 internally which has lower precision than float16 on CUDA
+        atol = 1e-2 if is_torch_neuronx_available() else 1e-4
+        self.assertLessEqual(max_diff, atol)
 
     def test_pixart_1024_without_resolution_binning(self):
         generator = torch.manual_seed(0)
@@ -376,3 +381,47 @@ class PixArtAlphaPipelineIntegrationTests(unittest.TestCase):
         no_res_bin_image_slice = no_res_bin_image[0, -3:, -3:, -1]
 
         assert not np.allclose(image_slice, no_res_bin_image_slice, atol=1e-4, rtol=1e-4)
+
+    @unittest.skipUnless(is_torch_neuronx_available(), "torch_neuronx not available")
+    def test_pixart_512_neuron_compile(self):
+        """
+        Smoke-test PixArtAlphaPipeline under torch.compile(backend="neuron") at 512×512.
+        """
+        import torch_neuronx  # noqa: F401 — registers torch.neuron
+        from torch_neuronx.neuron_dynamo_backend import set_model_name
+
+        device = torch.neuron.current_device()
+        generator = torch.Generator("cpu").manual_seed(0)
+
+        pipe = PixArtAlphaPipeline.from_pretrained(self.ckpt_id_512, torch_dtype=torch.bfloat16)
+        pipe = pipe.to(device)
+        # Flush pending lazy-XLA parameter-copy ops before compiling.
+        torch.neuron.synchronize()
+
+        pipe.transformer.eval()
+        pipe.vae.eval()
+        pipe.text_encoder.eval()
+
+        set_model_name("pixart_text_encoder")
+        pipe.text_encoder = torch.compile(pipe.text_encoder, backend="neuron", fullgraph=True)
+        set_model_name("pixart_transformer")
+        pipe.transformer = torch.compile(pipe.transformer, backend="neuron", fullgraph=True)
+        # VAE must be compiled after pipeline __init__ (which reads vae.config.block_out_channels).
+        set_model_name("pixart_vae")
+        pipe.vae = torch.compile(pipe.vae, backend="neuron", fullgraph=True)
+
+        image = pipe(
+            self.prompt,
+            generator=generator,
+            height=512,
+            width=512,
+            num_inference_steps=2,
+            output_type="np",
+        ).images
+
+        self.assertEqual(image.shape, (1, 512, 512, 3))
+        self.assertFalse(np.isnan(image).any(), "Output contains NaN values")
+        self.assertTrue(
+            (image >= 0.0).all() and (image <= 1.0).all(),
+            "Output pixel values outside [0, 1]",
+        )

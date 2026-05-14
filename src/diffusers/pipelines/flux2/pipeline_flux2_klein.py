@@ -24,7 +24,7 @@ from ...loaders import Flux2LoraLoaderMixin
 from ...models import AutoencoderKLFlux2, Flux2Transformer2DModel
 from ...schedulers import FlowMatchEulerDiscreteScheduler
 from ...utils import is_torch_xla_available, logging, replace_example_docstring
-from ...utils.torch_utils import randn_tensor
+from ...utils.torch_utils import randn_tensor, torch_device
 from ..pipeline_utils import DiffusionPipeline
 from .image_processor import Flux2ImageProcessor
 from .pipeline_output import Flux2PipelineOutput
@@ -279,7 +279,7 @@ class Flux2KleinPipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
             coords = torch.cartesian_prod(t, h, w, l)
             out_ids.append(coords)
 
-        return torch.stack(out_ids)
+        return torch.stack(out_ids).float()
 
     @staticmethod
     # Copied from diffusers.pipelines.flux2.pipeline_flux2.Flux2Pipeline._prepare_latent_ids
@@ -312,7 +312,7 @@ class Flux2KleinPipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
         # Expand to batch: (B, H*W, 4)
         latent_ids = latent_ids.unsqueeze(0).expand(batch_size, -1, -1)
 
-        return latent_ids
+        return latent_ids.float()
 
     @staticmethod
     # Copied from diffusers.pipelines.flux2.pipeline_flux2.Flux2Pipeline._prepare_image_ids
@@ -363,7 +363,7 @@ class Flux2KleinPipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
         image_latent_ids = torch.cat(image_latent_ids, dim=0)
         image_latent_ids = image_latent_ids.unsqueeze(0)
 
-        return image_latent_ids
+        return image_latent_ids.float()
 
     @staticmethod
     # Copied from diffusers.pipelines.flux2.pipeline_flux2.Flux2Pipeline._patchify_latents
@@ -881,6 +881,13 @@ class Flux2KleinPipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
                         # some platforms (eg. apple mps) misbehave due to a pytorch bug: https://github.com/pytorch/pytorch/pull/99272
                         latents = latents.to(latents_dtype)
 
+                # When running with tensor parallelism all ranks run the same
+                # (deterministic) scheduler step, so this broadcast is a safety
+                # measure only — it keeps ranks in sync if numerical drift
+                # or non-determinism ever causes a divergence.
+                if torch.distributed.is_available() and torch.distributed.is_initialized():
+                    torch.distributed.broadcast(latents, src=0)
+
                 if callback_on_step_end is not None:
                     callback_kwargs = {}
                     for k in callback_on_step_end_tensor_inputs:
@@ -902,7 +909,13 @@ class Flux2KleinPipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
         # Pass pre-computed latent height/width to avoid DtoH sync from torch.max().item()
         latent_height = 2 * (int(height) // (self.vae_scale_factor * 2))
         latent_width = 2 * (int(width) // (self.vae_scale_factor * 2))
+        latent_device = latents.device
+        if torch_device == "neuron":
+            latents = latents.cpu()
+            latent_ids = latent_ids.cpu()
         latents = self._unpack_latents_with_ids(latents, latent_ids, latent_height // 2, latent_width // 2)
+        if torch_device == "neuron":
+            latents = latents.to(latent_device)
 
         latents_bn_mean = self.vae.bn.running_mean.view(1, -1, 1, 1).to(latents.device, latents.dtype)
         latents_bn_std = torch.sqrt(self.vae.bn.running_var.view(1, -1, 1, 1) + self.vae.config.batch_norm_eps).to(

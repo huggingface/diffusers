@@ -284,7 +284,7 @@ class Flux2KleinKVPipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
             coords = torch.cartesian_prod(t, h, w, l)
             out_ids.append(coords)
 
-        return torch.stack(out_ids)
+        return torch.stack(out_ids).float()
 
     @staticmethod
     # Copied from diffusers.pipelines.flux2.pipeline_flux2.Flux2Pipeline._prepare_latent_ids
@@ -317,7 +317,7 @@ class Flux2KleinKVPipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
         # Expand to batch: (B, H*W, 4)
         latent_ids = latent_ids.unsqueeze(0).expand(batch_size, -1, -1)
 
-        return latent_ids
+        return latent_ids.float()
 
     @staticmethod
     # Copied from diffusers.pipelines.flux2.pipeline_flux2.Flux2Pipeline._prepare_image_ids
@@ -368,7 +368,7 @@ class Flux2KleinKVPipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
         image_latent_ids = torch.cat(image_latent_ids, dim=0)
         image_latent_ids = image_latent_ids.unsqueeze(0)
 
-        return image_latent_ids
+        return image_latent_ids.float()
 
     @staticmethod
     # Copied from diffusers.pipelines.flux2.pipeline_flux2.Flux2Pipeline._patchify_latents

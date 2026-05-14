@@ -45,7 +45,7 @@ from ...utils import (
     scale_lora_layers,
     unscale_lora_layers,
 )
-from ...utils.torch_utils import randn_tensor
+from ...utils.torch_utils import randn_tensor, torch_device
 from ..pipeline_utils import DiffusionPipeline, StableDiffusionMixin
 from .pipeline_output import StableDiffusionXLPipelineOutput
 
@@ -1092,7 +1092,8 @@ class StableDiffusionXLPipeline(
         )
 
         # 4. Prepare timesteps
-        if XLA_AVAILABLE:
+        is_neuron = torch_device == "neuron"
+        if XLA_AVAILABLE or is_neuron:
             timestep_device = "cpu"
         else:
             timestep_device = device
@@ -1195,15 +1196,23 @@ class StableDiffusionXLPipeline(
                 # expand the latents if we are doing classifier free guidance
                 latent_model_input = torch.cat([latents] * 2) if self.do_classifier_free_guidance else latents
 
-                latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
+                # For Neuron: scale_model_input on CPU to avoid XLA ops outside the compiled UNet region.
+                # index_for_timestep() uses .nonzero()/.item() which are incompatible with static graphs.
+                if is_neuron:
+                    latent_model_input = self.scheduler.scale_model_input(latent_model_input.to("cpu"), t).to(device)
+                else:
+                    latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
 
                 # predict the noise residual
                 added_cond_kwargs = {"text_embeds": add_text_embeds, "time_ids": add_time_ids}
                 if ip_adapter_image is not None or ip_adapter_image_embeds is not None:
                     added_cond_kwargs["image_embeds"] = image_embeds
+                # For Neuron: pre-cast timestep to float32 on device. Neuron XLA does not support
+                # int64 ops; the compiled UNet graph requires a float32 timestep input on-device.
+                t_unet = t.to(torch.float32).to(device) if is_neuron else t
                 noise_pred = self.unet(
                     latent_model_input,
-                    t,
+                    t_unet,
                     encoder_hidden_states=prompt_embeds,
                     timestep_cond=timestep_cond,
                     cross_attention_kwargs=self.cross_attention_kwargs,
@@ -1222,7 +1231,13 @@ class StableDiffusionXLPipeline(
 
                 # compute the previous noisy sample x_t -> x_t-1
                 latents_dtype = latents.dtype
-                latents = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs, return_dict=False)[0]
+                # For Neuron: scheduler.step on CPU to keep scheduler arithmetic off the XLA device.
+                if is_neuron:
+                    latents = self.scheduler.step(
+                        noise_pred.to("cpu"), t, latents.to("cpu"), **extra_step_kwargs, return_dict=False
+                    )[0].to(device)
+                else:
+                    latents = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs, return_dict=False)[0]
                 if latents.dtype != latents_dtype:
                     if torch.backends.mps.is_available():
                         # some platforms (eg. apple mps) misbehave due to a pytorch bug: https://github.com/pytorch/pytorch/pull/99272
