@@ -815,6 +815,10 @@ class LTXConditionPipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoLoraL
         start_index = max(num_inference_steps - num_steps, 0)
         sigmas = sigmas[start_index:]
         timesteps = timesteps[start_index:]
+
+        if hasattr(self.scheduler, "set_begin_index"):
+            self.scheduler.set_begin_index(start_index)
+
         return sigmas, timesteps, num_inference_steps - start_index
 
     @property

@@ -628,6 +628,7 @@ class ZImageControlNetInpaintPipeline(DiffusionPipeline, ZImageLoraLoaderMixin, 
         self._num_timesteps = len(timesteps)
 
         # 6. Denoising loop
+        self.scheduler.set_begin_index(0)
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
                 if self.interrupt:
