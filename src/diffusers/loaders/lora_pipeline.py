@@ -1674,7 +1674,15 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
             and any(norm_key in k for norm_key in self._control_lora_supported_norm_keys)
         }
 
-        transformer = getattr(self, self.transformer_name) if not hasattr(self, "transformer") else self.transformer
+        transformer = getattr(self, self.transformer_name, None)
+        if transformer is None:
+            logger.warning(
+                f"The `{self.transformer_name}` component is not available in this pipeline. "
+                "Skipping LoRA weight loading. This can happen when calling `load_lora_weights` on a "
+                "modular sub-pipeline that does not contain the transformer component."
+            )
+            return
+
         has_param_with_expanded_shape = False
         if len(transformer_lora_state_dict) > 0:
             has_param_with_expanded_shape = self._maybe_expand_transformer_param_shape_or_error_(
@@ -5724,9 +5732,18 @@ class Flux2LoraLoaderMixin(LoraBaseMixin):
         if not is_correct_format:
             raise ValueError("Invalid LoRA checkpoint. Make sure all LoRA param names contain `'lora'` substring.")
 
+        transformer = getattr(self, self.transformer_name, None)
+        if transformer is None:
+            logger.warning(
+                f"The `{self.transformer_name}` component is not available in this pipeline. "
+                "Skipping LoRA weight loading. This can happen when calling `load_lora_weights` on a "
+                "modular sub-pipeline that does not contain the transformer component."
+            )
+            return
+
         self.load_lora_into_transformer(
             state_dict,
-            transformer=getattr(self, self.transformer_name) if not hasattr(self, "transformer") else self.transformer,
+            transformer=transformer,
             adapter_name=adapter_name,
             metadata=metadata,
             _pipeline=self,
