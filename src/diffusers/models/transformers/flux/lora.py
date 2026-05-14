@@ -16,21 +16,18 @@
 
 Each supported foreign format has a top-level ``map_<format>_to_diffusers`` entry point:
 
-    - :func:`map_bfl_to_diffusers`     — original BFL repo layout
+    - :func:`map_bfl_to_diffusers` — original BFL repo layout
     - :func:`map_kontext_to_diffusers` — fal Kontext checkpoints (BFL + ``base_model.model.`` prefix)
-    - :func:`map_xlabs_to_diffusers`   — XLabs ``.processor.qkv_lora`` / ``.processor.proj_lora`` shape
-    - :func:`map_kohya_to_diffusers`   — kohya sd-scripts (and "mixture" / ``lora_transformer_*`` variants)
+    - :func:`map_xlabs_to_diffusers` — XLabs ``.processor.qkv_lora`` / ``.processor.proj_lora`` shape
+    - :func:`map_kohya_to_diffusers` — kohya sd-scripts (and "mixture" / ``lora_transformer_*`` variants)
 
-Each entry point produces a state dict with diffusers naming. Internally they all
-funnel through :func:`_map_to_diffusers`, which converts a BFL-style state dict
-(original Flux module names + ``.lora_A``/``.lora_B`` suffixes) to diffusers names by
-reusing the rename / QKV-split / special-key tables in ``weight_mapping.py`` and applying
-LoRA-specific QKV semantics (``lora_A.weight`` replicates across heads; everything else
-chunks).
+Each entry point produces a state dict with diffusers naming. Internally they all funnel through
+:func:`_map_to_diffusers`, which converts a BFL-style state dict (original Flux module names + ``.lora_A``/``.lora_B``
+suffixes) to diffusers names by reusing the rename / QKV-split / special-key tables in ``weight_mapping.py`` and
+applying LoRA-specific QKV semantics (``lora_A.weight`` replicates across heads; everything else chunks).
 
-A format-specific converter may also emit pre-converted diffusers keys directly when a
-key shape doesn't fit the canonical intermediate (e.g., XLabs single-block QKV without
-a paired MLP LoRA).
+A format-specific converter may also emit pre-converted diffusers keys directly when a key shape doesn't fit the
+canonical intermediate (e.g., XLabs single-block QKV without a paired MLP LoRA).
 """
 
 import re
@@ -422,9 +419,9 @@ _FORMAT_DISPATCH = {
 def map_lora_to_diffusers(state_dict, **kwargs):
     """Detect a Flux LoRA's source format and dispatch to its per-format converter.
 
-    Already-converted (peft) state dicts pass through after filtering to ``transformer.*``
-    keys. Unknown formats (incl. diffusers-native LoRAs with raw ``.alpha`` keys) pass
-    through unchanged so the pipeline's diffusers-native fallback can run.
+    Already-converted (peft) state dicts pass through after filtering to ``transformer.*`` keys. Unknown formats (incl.
+    diffusers-native LoRAs with raw ``.alpha`` keys) pass through unchanged so the pipeline's diffusers-native fallback
+    can run.
     """
     if any(k.startswith("transformer.") for k in state_dict):
         return {k: v for k, v in state_dict.items() if k.startswith("transformer.")}

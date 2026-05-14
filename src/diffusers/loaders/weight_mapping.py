@@ -12,17 +12,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Reusable infrastructure for converting model checkpoints between original
-and diffusers naming conventions.
+"""Reusable infrastructure for converting model checkpoints between original and diffusers naming conventions.
 
-A model declares its mapping in a ``WeightMappingMetadata`` instance (typically
-in its ``weight_mapping.py`` module) and attaches it via
-``@register_model_metadata(weight_mapping=...)``. This mixin supplies the
-generic dispatch methods that read from that metadata.
+A model declares its mapping in a ``WeightMappingMetadata`` instance (typically in its ``weight_mapping.py`` module)
+and attaches it via ``@register_model_metadata(weight_mapping=...)``. This mixin supplies the generic dispatch methods
+that read from that metadata.
 
-The :meth:`apply_transforms` helper drives the forward direction from a single
-declarative table — see ``models/transformers/flux/weight_mapping.py`` for an
-example.
+The :meth:`apply_transforms` helper drives the forward direction from a single declarative table — see
+``models/transformers/flux/weight_mapping.py`` for an example.
 """
 
 from typing import Optional
@@ -32,9 +29,8 @@ class WeightMappingMixin:
     """
     Base mixin providing utilities for checkpoint weight mapping and conversion.
 
-    Per-model configuration (rename patterns, format-identifying keys, conversion
-    callables, etc.) lives in the model's registered ``WeightMappingMetadata`` —
-    declared in the model's ``weight_mapping.py`` and attached via
+    Per-model configuration (rename patterns, format-identifying keys, conversion callables, etc.) lives in the model's
+    registered ``WeightMappingMetadata`` — declared in the model's ``weight_mapping.py`` and attached via
     ``@register_model_metadata``. This mixin just supplies the dispatch methods.
     """
 
@@ -81,8 +77,8 @@ class WeightMappingMixin:
     def _detect_model_variant(cls, state_dict: dict) -> Optional[str]:
         """Detect which model variant a state_dict belongs to.
 
-        Dispatches to ``cls._detect_model_variant_fn`` (mirrored from the model's metadata);
-        raises if no detector is registered.
+        Dispatches to ``cls._detect_model_variant_fn`` (mirrored from the model's metadata); raises if no detector is
+        registered.
         """
         if cls._detect_model_variant_fn is None:
             raise NotImplementedError(
@@ -103,14 +99,12 @@ class WeightMappingMixin:
         """Drive a forward state-dict conversion from a list of (source, targets, fn) entries.
 
         Each entry is a tuple ``(source, targets, forward_fn, reverse_fn)``:
-          - ``source``: substring matched against each key (with surrounding dots,
-            e.g. ``".img_attn.qkv."``); the first matching entry wins.
-          - ``targets``: list of substrings substituted for ``source`` to build the
-            output keys. ``len(targets)`` is the fan-out (1 for a unary transform,
-            >1 for a split).
-          - ``forward_fn(value, **ctx) -> list[tensor]`` returns one tensor per
-            target. (``reverse_fn`` is reserved for a future
-            ``apply_reverse_transforms`` driver.)
+          - ``source``: substring matched against each key (with surrounding dots, e.g. ``".img_attn.qkv."``); the
+            first matching entry wins.
+          - ``targets``: list of substrings substituted for ``source`` to build the output keys. ``len(targets)`` is
+            the fan-out (1 for a unary transform, >1 for a split).
+          - ``forward_fn(value, **ctx) -> list[tensor]`` returns one tensor per target. (``reverse_fn`` is reserved for
+            a future ``apply_reverse_transforms`` driver.)
 
         Keys that match no transform get their dots renamed via ``rename_patterns``.
         """

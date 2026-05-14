@@ -128,8 +128,7 @@ def _unfuse_lora_apply(module):
 def _serialize_lora_adapter_metadata(peft_config):
     """Convert a ``PeftConfig`` to a JSON string suitable for the safetensors metadata blob.
 
-    PEFT configs may contain ``set`` values (which JSON can't serialize); coerce those
-    to lists first.
+    PEFT configs may contain ``set`` values (which JSON can't serialize); coerce those to lists first.
     """
     cfg = peft_config.to_dict()
     for key, value in cfg.items():
@@ -154,9 +153,8 @@ def _scope_state_dict_to_adapter(state_dict, adapter_name):
 def _split_majority_and_outliers(value_dict):
     """Return ``(majority, outliers)`` for ``value_dict``.
 
-    ``majority`` is the most common value (or the lone value if all are equal, or
-    None for an empty dict). ``outliers`` is a sub-dict of the items whose value
-    differs from the majority — empty when every value matches.
+    ``majority`` is the most common value (or the lone value if all are equal, or None for an empty dict). ``outliers``
+    is a sub-dict of the items whose value differs from the majority — empty when every value matches.
     """
     values = list(value_dict.values())
     if not values:
@@ -171,10 +169,9 @@ def _split_majority_and_outliers(value_dict):
 def _offloading_disabled(model):
     """Temporarily strip accelerate and group-offload hooks from ``model``.
 
-    PEFT injection and weight loading mutate the model graph in ways that fight with
-    active offload hooks (sequential CPU offload, group offload, etc.). This context
-    saves the hook state, removes the hooks for the duration of the block, and
-    restores them on exit so existing offloading config survives a LoRA load.
+    PEFT injection and weight loading mutate the model graph in ways that fight with active offload hooks (sequential
+    CPU offload, group offload, etc.). This context saves the hook state, removes the hooks for the duration of the
+    block, and restores them on exit so existing offloading config survives a LoRA load.
     """
     saved_hf_hook = None
     is_sequential = False
@@ -211,10 +208,9 @@ def _offloading_disabled(model):
 def _create_lora_config(state_dict, network_alphas, rank_dict, metadata=None):
     """Build a PEFT ``LoraConfig`` from a LoRA state dict.
 
-    ``metadata`` (when present) overrides the inferred kwargs entirely — used when a
-    saved adapter shipped its own serialized ``LoraConfig`` blob. Otherwise we infer:
-    per-module rank / alpha values that don't match the majority go into
-    ``rank_pattern`` / ``alpha_pattern``; the majority becomes the global default.
+    ``metadata`` (when present) overrides the inferred kwargs entirely — used when a saved adapter shipped its own
+    serialized ``LoraConfig`` blob. Otherwise we infer: per-module rank / alpha values that don't match the majority go
+    into ``rank_pattern`` / ``alpha_pattern``; the majority becomes the global default.
     """
     if metadata is not None:
         return LoraConfig(**metadata)
@@ -275,12 +271,11 @@ def _maybe_warn_for_unhandled_keys(incompatible_keys, adapter_name):
 def _fetch_state_dict(pretrained_model_name_or_path_or_dict, weight_name=None, **hub_kwargs):
     """Load a LoRA state dict from a path/repo/dict.
 
-    Safetensors only — pickle (``.bin``) LoRAs are no longer supported. Re-save legacy
-    checkpoints with ``safetensors.torch.save_file`` or load them manually with
-    ``torch.load`` and pass the resulting dict.
+    Safetensors only — pickle (``.bin``) LoRAs are no longer supported. Re-save legacy checkpoints with
+    ``safetensors.torch.save_file`` or load them manually with ``torch.load`` and pass the resulting dict.
 
-    ``hub_kwargs`` are the download / file-discovery options forwarded to
-    ``_get_model_file`` (see ``HUB_KWARGS`` for the canonical set).
+    ``hub_kwargs`` are the download / file-discovery options forwarded to ``_get_model_file`` (see ``HUB_KWARGS`` for
+    the canonical set).
     """
     if isinstance(pretrained_model_name_or_path_or_dict, dict):
         return pretrained_model_name_or_path_or_dict
@@ -295,8 +290,8 @@ def _fetch_state_dict(pretrained_model_name_or_path_or_dict, weight_name=None, *
 def _fetch_lora_metadata(pretrained_model_name_or_path_or_dict, weight_name=None, **hub_kwargs):
     """Load LoRA adapter metadata from a safetensors file's sidecar.
 
-    Returns ``None`` for non-safetensors sources (dicts, ``.bin`` files, missing
-    sidecar). The hub layer caches the file, so calling this after
+    Returns ``None`` for non-safetensors sources (dicts, ``.bin`` files, missing sidecar). The hub layer caches the
+    file, so calling this after
     """
     if isinstance(pretrained_model_name_or_path_or_dict, dict):
         return None
@@ -350,15 +345,12 @@ def _best_guess_weight_name(
 
 class LoRAModelMixin:
     """
-    Single mixin for everything LoRA on a diffusers model: PEFT adapter lifecycle
-    (load / fuse / unfuse / set / delete / hotswap) plus foreign-format conversion
-    (kohya / xlabs / bfl / kontext / etc.) into diffusers naming.
+    Single mixin for everything LoRA on a diffusers model: PEFT adapter lifecycle (load / fuse / unfuse / set / delete
+    / hotswap) plus foreign-format conversion (kohya / xlabs / bfl / kontext / etc.) into diffusers naming.
 
-    Per-model conversion knobs live in a ``LoRAMetadata`` declared in the model's
-    ``lora.py`` (e.g. ``FLUX_LORA_METADATA``) and attached to the class via
-    ``@register_model_metadata(lora=...)``. The default no-op path just normalizes
-    ``.lora_down/.lora_up`` → ``.lora_A/.lora_B`` suffixes and returns the state
-    dict unchanged.
+    Per-model conversion knobs live in a ``LoRAMetadata`` declared in the model's ``lora.py`` (e.g.
+    ``FLUX_LORA_METADATA``) and attached to the class via ``@register_model_metadata(lora=...)``. The default no-op
+    path just normalizes ``.lora_down/.lora_up`` → ``.lora_A/.lora_B`` suffixes and returns the state dict unchanged.
 
     Install the latest version of PEFT, and use this mixin to:
 
@@ -406,9 +398,8 @@ class LoRAModelMixin:
     def map_lora_to_diffusers(cls, state_dict: Dict[str, "torch.Tensor"], **kwargs) -> Dict[str, "torch.Tensor"]:
         """Canonicalize a LoRA state dict to diffusers naming.
 
-        Default: just normalize suffixes. Models with foreign formats register a
-        converter via ``LoRAMetadata._map_lora_to_diffusers`` — the decorator mirrors
-        it onto ``cls._map_lora_to_diffusers``.
+        Default: just normalize suffixes. Models with foreign formats register a converter via
+        ``LoRAMetadata._map_lora_to_diffusers`` — the decorator mirrors it onto ``cls._map_lora_to_diffusers``.
         """
         state_dict = cls._normalize_lora_suffixes(state_dict)
         if cls._map_lora_to_diffusers is None:
@@ -429,13 +420,13 @@ class LoRAModelMixin:
 
         ``source`` can be either:
 
-        - A ``PeftConfig`` (e.g. ``LoraConfig``) — initializes a fresh adapter with
-          random weights, suitable for training.
-        - A repo id, local path, or pre-loaded ``state_dict`` — loads pretrained
-          adapter weights, suitable for inference.
+        - A ``PeftConfig`` (e.g. ``LoraConfig``) — initializes a fresh adapter with random weights, suitable for
+          training.
+        - A repo id, local path, or pre-loaded ``state_dict`` — loads pretrained adapter weights, suitable for
+          inference.
 
-        For the config path, only ``adapter_name`` is used; ``prefix``, ``hotswap``,
-        and the download/loading kwargs apply to the pretrained path.
+        For the config path, only ``adapter_name`` is used; ``prefix``, ``hotswap``, and the download/loading kwargs
+        apply to the pretrained path.
         """
         adapter_name = adapter_name or get_adapter_name(self)
         if isinstance(adapter, PeftConfig):
@@ -620,9 +611,8 @@ class LoRAModelMixin:
     def _inject_adapter(self, state_dict, lora_config, adapter_name, peft_kwargs):
         """Inject a new adapter into ``self`` and load its weights.
 
-        Returns the ``incompatible_keys`` reported by ``set_peft_model_state_dict``.
-        On failure, rolls back any partial peft_config / adapter modules so the model
-        is left in its prior state.
+        Returns the ``incompatible_keys`` reported by ``set_peft_model_state_dict``. On failure, rolls back any partial
+        peft_config / adapter modules so the model is left in its prior state.
         """
         try:
             inject_adapter_in_model(lora_config, self, adapter_name=adapter_name, state_dict=state_dict, **peft_kwargs)
@@ -637,8 +627,8 @@ class LoRAModelMixin:
 
     def _maybe_apply_deferred_hotswap_prep(self, lora_config):
         """If ``enable_lora_hotswap`` was called before the first adapter was loaded,
-        we deferred ``prepare_model_for_compiled_hotswap`` until LoRA layers existed.
-        Apply it now (after a successful inject) and clear the stash so it only fires once."""
+        we deferred ``prepare_model_for_compiled_hotswap`` until LoRA layers existed. Apply it now (after a successful
+        inject) and clear the stash so it only fires once."""
         if self._lora_hotswap_kwargs is None:
             return
         prepare_model_for_compiled_hotswap(self, config=lora_config, **self._lora_hotswap_kwargs)
@@ -647,8 +637,8 @@ class LoRAModelMixin:
     def _hotswap_adapter(self, state_dict, lora_config, adapter_name):
         """Replace the weights of an already-loaded adapter in-place.
 
-        ``hotswap_adapter_from_state_dict`` raises on incompatible keys; reaching the
-        end of this function means the swap succeeded.
+        ``hotswap_adapter_from_state_dict`` raises on incompatible keys; reaching the end of this function means the
+        swap succeeded.
         """
         state_dict = _scope_state_dict_to_adapter(state_dict, adapter_name)
         check_hotswap_configs_compatible(self.peft_config[adapter_name], lora_config)
@@ -807,8 +797,8 @@ class LoRAModelMixin:
     def set_adapter(self, adapter_name: Union[str, List[str]]) -> None:
         """Deprecated alias for :meth:`set_adapters`.
 
-        Note: ``set_adapters`` resets the per-adapter scale to ``1.0`` when no weights
-        are passed; the original ``set_adapter`` left the previous scale untouched.
+        Note: ``set_adapters`` resets the per-adapter scale to ``1.0`` when no weights are passed; the original
+        ``set_adapter`` left the previous scale untouched.
         """
         deprecate(
             "set_adapter",
@@ -879,12 +869,11 @@ class LoRAModelMixin:
     def delete_adapters(self, adapter_names: Optional[Union[List[str], str]] = None):
         """Remove adapter(s) from the model.
 
-        Pass specific names to delete those adapters only — the PEFT wrapper layers
-        (``lora_A`` / ``lora_B`` modules) stay in place, so a subsequent
-        :meth:`load_adapter` call can reuse them without re-injecting.
+        Pass specific names to delete those adapters only — the PEFT wrapper layers (``lora_A`` / ``lora_B`` modules)
+        stay in place, so a subsequent :meth:`load_adapter` call can reuse them without re-injecting.
 
-        Pass ``None`` (the default) to remove every adapter *and* strip the wrapper
-        layers themselves, returning the model to its pre-LoRA state.
+        Pass ``None`` (the default) to remove every adapter *and* strip the wrapper layers themselves, returning the
+        model to its pre-LoRA state.
         """
         if adapter_names is None:
             recurse_remove_peft_layers(self)

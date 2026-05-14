@@ -238,16 +238,15 @@ def no_init_weights():
 class LoRAMetadata:
     """Per-model LoRA configuration: what foreign formats this model accepts and how to convert them.
 
-    Field names match the legacy ``cls._<name>`` class attributes consumed by
-    ``LoRAModelMixin``, so the decorator can mirror them 1:1.
+    Field names match the legacy ``cls._<name>`` class attributes consumed by ``LoRAModelMixin``, so the decorator can
+    mirror them 1:1.
 
     Attributes:
         _lora_format_keys: Map of format name (``"kohya"``, ``"xlabs"``, ...) to identifying
             key substrings. The first format whose substrings appear in the state dict wins.
         _map_lora_to_diffusers: Callable ``(state_dict, **kwargs) -> state_dict`` that rewrites
-            foreign-format keys to diffusers naming. Called from
-            ``LoRAModelMixin.map_lora_to_diffusers`` after generic suffix normalization.
-            ``None`` for models that only ingest diffusers-native LoRAs.
+            foreign-format keys to diffusers naming. Called from ``LoRAModelMixin.map_lora_to_diffusers`` after generic
+            suffix normalization. ``None`` for models that only ingest diffusers-native LoRAs.
     """
 
     _lora_format_keys: Dict[str, set] = field(default_factory=dict)
@@ -258,17 +257,16 @@ class LoRAMetadata:
 class IPAdapterMetadata:
     """Per-model IP-Adapter configuration: how to convert IP-Adapter state dicts for this architecture.
 
-    Field names match the legacy ``cls._<name>`` class attributes consumed by
-    ``IPAdapterModelMixin``, so the decorator can mirror them 1:1.
+    Field names match the legacy ``cls._<name>`` class attributes consumed by ``IPAdapterModelMixin``, so the decorator
+    can mirror them 1:1.
 
     Attributes:
         _convert_ip_adapter_attn_to_diffusers: Callable
-            ``(model, state_dicts, low_cpu_mem_usage=False) -> dict[str, AttnProcessor]`` returning the
-            attn-processor dict ready for ``set_attn_processor``. Receives the model instance because it
-            needs ``model.attn_processors``, ``model.config``, ``model.inner_dim``, etc.
+            ``(model, state_dicts, low_cpu_mem_usage=False) -> dict[str, AttnProcessor]`` returning the attn-processor
+            dict ready for ``set_attn_processor``. Receives the model instance because it needs
+            ``model.attn_processors``, ``model.config``, ``model.inner_dim``, etc.
         _convert_ip_adapter_image_proj_to_diffusers: Callable
-            ``(model, state_dict, low_cpu_mem_usage=False) -> ImageProjection`` returning the image
-            projection layer.
+            ``(model, state_dict, low_cpu_mem_usage=False) -> ImageProjection`` returning the image projection layer.
     """
 
     _convert_ip_adapter_attn_to_diffusers: Optional[Callable] = None
@@ -279,13 +277,12 @@ class IPAdapterMetadata:
 class WeightMappingMetadata:
     """Per-model checkpoint conversion metadata for single-file loading.
 
-    Field names match the legacy ``cls._<name>`` class attributes consumed by
-    ``WeightMappingMixin``, so the decorator can mirror them 1:1.
+    Field names match the legacy ``cls._<name>`` class attributes consumed by ``WeightMappingMixin``, so the decorator
+    can mirror them 1:1.
 
-    Note: per-key rename tables and checkpoint key prefixes live in the model's
-    ``weight_mapping.py`` module as plain constants (e.g. ``FLUX_RENAME_PATTERNS``).
-    They're consumed directly by the model's ``map_to_diffusers`` / ``map_from_diffusers``
-    callables and don't need to be threaded through metadata.
+    Note: per-key rename tables and checkpoint key prefixes live in the model's ``weight_mapping.py`` module as plain
+    constants (e.g. ``FLUX_RENAME_PATTERNS``). They're consumed directly by the model's ``map_to_diffusers`` /
+    ``map_from_diffusers`` callables and don't need to be threaded through metadata.
 
     Attributes:
         _checkpoint_keys: Distinctive keys whose presence indicates the checkpoint is
@@ -310,12 +307,12 @@ class ModelMetadata:
     """
     Metadata describing model capabilities and configuration hints.
 
-    This is NOT configuration (which is saved to config.json and defines architecture).
-    This is static metadata about the model class's capabilities and hints for
-    optimization features like gradient checkpointing, offloading, and parallelism.
+    This is NOT configuration (which is saved to config.json and defines architecture). This is static metadata about
+    the model class's capabilities and hints for optimization features like gradient checkpointing, offloading, and
+    parallelism.
 
-    Field names match the legacy ``cls._<name>`` class attributes (so the decorator
-    mirrors them 1:1 and existing consumer code keeps working).
+    Field names match the legacy ``cls._<name>`` class attributes (so the decorator mirrors them 1:1 and existing
+    consumer code keeps working).
 
     Attributes:
         _supports_gradient_checkpointing: Whether the model supports gradient checkpointing
@@ -352,10 +349,9 @@ class ModelMetadata:
     def _register(self, cls):
         """Attach this ``ModelMetadata`` to ``cls`` and mirror leaf fields to legacy class attrs.
 
-        Walks nested dataclasses (``_lora``, ``_weight_mapping``, ``_ip_adapter``) so their
-        leaf fields land flat on ``cls``. Field names already starting with ``_`` map 1:1
-        (``_lora_format_keys`` → ``cls._lora_format_keys``); unprefixed names get the
-        underscore added (``rename_patterns`` → ``cls._rename_patterns``).
+        Walks nested dataclasses (``_lora``, ``_weight_mapping``, ``_ip_adapter``) so their leaf fields land flat on
+        ``cls``. Field names already starting with ``_`` map 1:1 (``_lora_format_keys`` → ``cls._lora_format_keys``);
+        unprefixed names get the underscore added (``rename_patterns`` → ``cls._rename_patterns``).
         """
         cls._model_metadata = self
         pending = [self]
@@ -373,16 +369,14 @@ class ModelMetadata:
 def register_metadata(metadata):
     """Generic class decorator that attaches metadata to the decorated class.
 
-    Dispatches via ``metadata._register(cls)`` — each metadata dataclass owns its own
-    attachment logic. Works for both model-level metadata (``ModelMetadata``) and
-    block-level metadata (``TransformerBlockMetadata``)::
+    Dispatches via ``metadata._register(cls)`` — each metadata dataclass owns its own attachment logic. Works for both
+    model-level metadata (``ModelMetadata``) and block-level metadata (``TransformerBlockMetadata``)::
 
-        @register_metadata(FLUX_MODEL_METADATA)
-        class FluxTransformer2DModel(...):
+        @register_metadata(FLUX_MODEL_METADATA) class FluxTransformer2DModel(...):
             ...
 
-        @register_metadata(TransformerBlockMetadata(return_hidden_states_index=1, ...))
-        class FluxTransformerBlock(nn.Module):
+        @register_metadata(TransformerBlockMetadata(return_hidden_states_index=1, ...)) class
+        FluxTransformerBlock(nn.Module):
             ...
     """
 
@@ -424,49 +418,6 @@ class ModelMixin(torch.nn.Module, ConfigMixin, LoRAModelMixin, WeightMappingMixi
     _parallel_config = None
     _cp_plan = None
     _skip_keys = None
-    _model_metadata: Optional["ModelMetadata"] = None
-
-    @classmethod
-    def get_metadata(cls) -> "ModelMetadata":
-        """
-        Get the model's metadata for discovery and introspection.
-
-        Returns a ModelMetadata instance describing the model's capabilities.
-        If `_model_metadata` is defined on the class, returns that directly.
-        Otherwise, constructs a ModelMetadata from the individual class attributes.
-        """
-        if cls._model_metadata is not None:
-            return cls._model_metadata
-        # Fallback for unmigrated models: build from the legacy per-attribute class vars.
-        # ``lora`` / ``weight_mapping`` read from old mixin attrs if present, else stay empty.
-        return ModelMetadata(
-            _supports_gradient_checkpointing=cls._supports_gradient_checkpointing,
-            _no_split_modules=cls._no_split_modules,
-            _keep_in_fp32_modules=cls._keep_in_fp32_modules,
-            _skip_layerwise_casting_patterns=cls._skip_layerwise_casting_patterns,
-            _supports_group_offloading=cls._supports_group_offloading,
-            _repeated_blocks=cls._repeated_blocks if cls._repeated_blocks else [],
-            _cp_plan=cls._cp_plan,
-            _keys_to_ignore_on_load_unexpected=cls._keys_to_ignore_on_load_unexpected,
-            _lora=LoRAMetadata(
-                _lora_format_keys=getattr(cls, "_lora_format_keys", None) or {},
-                _map_lora_to_diffusers=getattr(cls, "_map_lora_to_diffusers", None),
-            ),
-            _weight_mapping=WeightMappingMetadata(
-                _checkpoint_keys=getattr(cls, "_checkpoint_keys", None) or set(),
-                _model_variants=getattr(cls, "_model_variants", None) or {},
-                _map_to_diffusers=getattr(cls, "_map_to_diffusers", None),
-                _map_from_diffusers=getattr(cls, "_map_from_diffusers", None),
-                _detect_model_variant_fn=getattr(cls, "_detect_model_variant_fn", None),
-                _default_subfolder=getattr(cls, "_default_subfolder", "transformer"),
-            ),
-            _ip_adapter=IPAdapterMetadata(
-                _convert_ip_adapter_attn_to_diffusers=getattr(cls, "_convert_ip_adapter_attn_to_diffusers", None),
-                _convert_ip_adapter_image_proj_to_diffusers=getattr(
-                    cls, "_convert_ip_adapter_image_proj_to_diffusers", None
-                ),
-            ),
-        )
 
     @classmethod
     def _maybe_convert_state_dict(cls, model: "ModelMixin", state_dict: Dict[str, Any]) -> Dict[str, Any]:
@@ -474,12 +425,11 @@ class ModelMixin(torch.nn.Module, ConfigMixin, LoRAModelMixin, WeightMappingMixi
 
         Two phases, both declared via the model's :class:`WeightMappingMetadata`:
 
-        1. ``_normalize_checkpoint_keys`` — strip known prefixes (e.g. ``model.diffusion_model.``).
-           Run unconditionally; idempotent and a no-op if no prefixes were registered.
-        2. ``_map_to_diffusers`` — the actual format converter, only invoked if step 1 alone
-           didn't already make the keys match. Skipped if no converter was registered (loading
-           then fails downstream with a clearer key-mismatch error than a deep
-           ``NotImplementedError``).
+        1. ``_normalize_checkpoint_keys`` — strip known prefixes (e.g. ``model.diffusion_model.``). Run
+           unconditionally; idempotent and a no-op if no prefixes were registered.
+        2. ``_map_to_diffusers`` — the actual format converter, only invoked if step 1 alone didn't already make the
+           keys match. Skipped if no converter was registered (loading then fails downstream with a clearer
+           key-mismatch error than a deep ``NotImplementedError``).
         """
         # Step 1: always strip checkpoint key prefixes — idempotent, no-op if none registered.
         state_dict = cls._normalize_checkpoint_keys(state_dict)
@@ -1696,8 +1646,8 @@ class ModelMixin(torch.nn.Module, ConfigMixin, LoRAModelMixin, WeightMappingMixi
     @validate_hf_hub_args
     def from_single_file(cls, pretrained_model_link_or_path_or_dict: Optional[str] = None, **kwargs) -> Self:
         r"""
-        Instantiate a model from pretrained weights saved in the original `.ckpt` or `.safetensors` format.
-        The model is set in evaluation mode (`model.eval()`) by default.
+        Instantiate a model from pretrained weights saved in the original `.ckpt` or `.safetensors` format. The model
+        is set in evaluation mode (`model.eval()`) by default.
 
         Parameters:
             pretrained_model_link_or_path_or_dict (`str`, *optional*):
@@ -1707,20 +1657,20 @@ class ModelMixin(torch.nn.Module, ConfigMixin, LoRAModelMixin, WeightMappingMixi
                     - A path to a local *file* containing the weights of the component model.
                     - A state dict containing the component model weights.
             config (`str`, *optional*):
-                - A string, the *repo id* (for example `CompVis/ldm-text2im-large-256`) of a pretrained pipeline
-                  hosted on the Hub.
-                - A path to a *directory* (for example `./my_pipeline_directory/`) containing the pipeline
-                  component configs in Diffusers format.
+                - A string, the *repo id* (for example `CompVis/ldm-text2im-large-256`) of a pretrained pipeline hosted
+                  on the Hub.
+                - A path to a *directory* (for example `./my_pipeline_directory/`) containing the pipeline component
+                  configs in Diffusers format.
             subfolder (`str`, *optional*, defaults to `""`):
                 The subfolder location of a model file within a larger model repository on the Hub or locally.
             torch_dtype (`torch.dtype`, *optional*):
                 Override the default `torch.dtype` and load the model with another dtype.
             force_download (`bool`, *optional*, defaults to `False`):
-                Whether or not to force the (re-)download of the model weights and configuration files,
-                overriding the cached versions if they exist.
+                Whether or not to force the (re-)download of the model weights and configuration files, overriding the
+                cached versions if they exist.
             cache_dir (`Union[str, os.PathLike]`, *optional*):
-                Path to a directory where a downloaded pretrained model configuration is cached if the
-                standard cache is not used.
+                Path to a directory where a downloaded pretrained model configuration is cached if the standard cache
+                is not used.
             proxies (`Dict[str, str]`, *optional*):
                 A dictionary of proxy servers to use by protocol or endpoint.
             local_files_only (`bool`, *optional*, defaults to `False`):

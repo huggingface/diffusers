@@ -59,14 +59,14 @@ logger = logging.get_logger(__name__)
 def _func_optionally_disable_offloading(_pipeline):
     """Optionally remove accelerate offloading hooks before mutating a pipeline's components.
 
-    Walks ``_pipeline.components``, detects accelerate / group-offload hooks, and removes
-    accelerate hooks in-place (group-offload is reapplied later by the LoRA load path).
-    Returns ``(is_model_cpu_offload, is_sequential_cpu_offload, is_group_offload)`` so
-    callers know which offloading mode was active and can re-enable it after loading.
+    Walks ``_pipeline.components``, detects accelerate / group-offload hooks, and removes accelerate hooks in-place
+    (group-offload is reapplied later by the LoRA load path). Returns ``(is_model_cpu_offload,
+    is_sequential_cpu_offload, is_group_offload)`` so callers know which offloading mode was active and can re-enable
+    it after loading.
 
-    Used by pipeline-side LoRA loaders (``LoraBaseMixin._optionally_disable_offloading``)
-    and the legacy paths in ``peft.py`` / ``unet.py``. Model-side loading uses the
-    ``_offloading_disabled`` context manager in ``loaders.lora`` instead.
+    Used by pipeline-side LoRA loaders (``LoraBaseMixin._optionally_disable_offloading``) and the legacy paths in
+    ``peft.py`` / ``unet.py``. Model-side loading uses the ``_offloading_disabled`` context manager in ``loaders.lora``
+    instead.
     """
     from ..hooks.group_offloading import _is_group_offload_enabled
 

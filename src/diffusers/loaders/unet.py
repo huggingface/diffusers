@@ -70,10 +70,9 @@ class UNet2DConditionLoadersMixin:
         """UNet override that handles model-specific LoRA formats before delegating to the base loader.
 
         - Converts old non-PEFT UNet LoRA naming to PEFT shape (when no key carries ``lora_A``).
-        - Detects SAI Control LoRA (``lora_controlnet`` marker) — that path has its own
-          loader because the LoraConfig needs post-create overrides the base flow doesn't expose.
-          See https://huggingface.co/stabilityai/control-lora and
-          https://huggingface.co/comfyanonymous/ControlNet-v1-1_fp16_safetensors.
+        - Detects SAI Control LoRA (``lora_controlnet`` marker) — that path has its own loader because the LoraConfig
+          needs post-create overrides the base flow doesn't expose. See https://huggingface.co/stabilityai/control-lora
+          and https://huggingface.co/comfyanonymous/ControlNet-v1-1_fp16_safetensors.
         """
         from ..utils import HUB_KWARGS
         from .lora import _fetch_state_dict
