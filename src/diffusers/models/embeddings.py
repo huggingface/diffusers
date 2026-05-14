@@ -1168,9 +1168,18 @@ def get_1d_rotary_pos_embed(
     if is_npu:
         freqs = freqs.float()
     if use_real and repeat_interleave_real:
-        # flux, hunyuan-dit, cogvideox
-        freqs_cos = freqs.cos().repeat_interleave(2, dim=1, output_size=freqs.shape[1] * 2).float()  # [S, D]
-        freqs_sin = freqs.sin().repeat_interleave(2, dim=1, output_size=freqs.shape[1] * 2).float()  # [S, D]
+        if is_npu:
+            # flux, hunyuan-dit, cogvideox that suitable for NPU
+            freqs_cos = (
+                freqs.cos().T.repeat_interleave(2, dim=0, output_size=freqs.shape[1] * 2).T.float().contiguous()
+            )  # [S, D]
+            freqs_sin = (
+                freqs.sin().T.repeat_interleave(2, dim=0, output_size=freqs.shape[1] * 2).T.float().contiguous()
+            )  # [S, D]
+        else:
+            # flux, hunyuan-dit, cogvideox
+            freqs_cos = freqs.cos().repeat_interleave(2, dim=1, output_size=freqs.shape[1] * 2).float()  # [S, D]
+            freqs_sin = freqs.sin().repeat_interleave(2, dim=1, output_size=freqs.shape[1] * 2).float()  # [S, D]
         return freqs_cos, freqs_sin
     elif use_real:
         # stable audio, allegro
