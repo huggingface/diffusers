@@ -237,14 +237,17 @@ def _to_device(sample: dict[str, Any], device: torch.device) -> dict[str, Any]:
     return {key: (value.to(device) if torch.is_tensor(value) else value) for key, value in sample.items()}
 
 
-def _maybe_set_scheduler_shift(scheduler, shift: float):
-    if hasattr(scheduler, "set_shift"):
+def _set_scheduler_shift(scheduler, shift: float):
+    if "flow_shift" in scheduler.config:
+        scheduler.register_to_config(flow_shift=shift)
+        return
+    if "shift" in scheduler.config:
         scheduler.set_shift(shift)
-    elif hasattr(scheduler, "register_to_config") and hasattr(scheduler, "config"):
-        if hasattr(scheduler.config, "flow_shift"):
-            scheduler.register_to_config(flow_shift=shift)
-        elif hasattr(scheduler.config, "shift"):
-            scheduler.register_to_config(shift=shift)
+        return
+    raise ValueError(
+        f"{scheduler.__class__.__name__} does not support runtime shift configuration. Please use a scheduler with "
+        "`flow_shift` in its config or a `set_shift` method."
+    )
 
 
 def _to_numpy_float_array(values) -> np.ndarray:
@@ -545,7 +548,7 @@ class HiDreamO1ImagePipeline(DiffusionPipeline):
         image_noise = noise_scale_start * image_noise.to(device=device, dtype=dtype)
         patches = _patchify(image_noise, PATCH_SIZE)
 
-        _maybe_set_scheduler_shift(self.scheduler, shift)
+        _set_scheduler_shift(self.scheduler, shift)
         scheduler_timesteps, num_inference_steps = retrieve_timesteps(
             self.scheduler, num_inference_steps, device, timesteps, sigmas
         )

@@ -26,7 +26,13 @@ from transformers.models.qwen3_vl.configuration_qwen3_vl import (  # noqa: E402
     Qwen3VLVisionConfig,
 )
 
-from diffusers import HiDreamO1ImagePipeline, HiDreamO1Transformer2DModel, UniPCMultistepScheduler  # noqa: E402
+from diffusers import (  # noqa: E402
+    FlowMatchEulerDiscreteScheduler,
+    HiDreamO1ImagePipeline,
+    HiDreamO1Transformer2DModel,
+    UniPCMultistepScheduler,
+)
+from diffusers.pipelines.hidream_o1.pipeline_hidream_o1 import _set_scheduler_shift  # noqa: E402
 
 from ...testing_utils import enable_full_determinism  # noqa: E402
 
@@ -141,6 +147,7 @@ class HiDreamO1ImagePipelineFastTests(unittest.TestCase):
         self.assertTrue(torch.isfinite(image).all())
         self.assertGreater(image.abs().max().item(), 0)
         self.assertEqual(pipe.scheduler.timesteps.tolist(), [500.0])
+        self.assertEqual(pipe.scheduler.config.flow_shift, 1.0)
 
     def test_init_registers_components_with_default_scheduler(self):
         transformer = HiDreamO1Transformer2DModel(qwen_config=_get_tiny_qwen3_vl_config().to_dict()).eval()
@@ -151,3 +158,12 @@ class HiDreamO1ImagePipelineFastTests(unittest.TestCase):
         self.assertIs(pipe.transformer, transformer)
         self.assertIsInstance(pipe.scheduler, UniPCMultistepScheduler)
         self.assertEqual(pipe.scheduler.config.prediction_type, "sample")
+
+    def test_set_scheduler_shift_uses_explicit_scheduler_api(self):
+        flow_scheduler = FlowMatchEulerDiscreteScheduler(shift=1.0)
+        _set_scheduler_shift(flow_scheduler, 2.0)
+        self.assertEqual(flow_scheduler.shift, 2.0)
+
+        unipc_scheduler = UniPCMultistepScheduler(prediction_type="sample", use_flow_sigmas=True, flow_shift=1.0)
+        _set_scheduler_shift(unipc_scheduler, 2.0)
+        self.assertEqual(unipc_scheduler.config.flow_shift, 2.0)
