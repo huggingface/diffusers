@@ -4,9 +4,9 @@ Anima is a text-to-image model that reuses the [`CosmosTransformer3DModel`] with
 
 ```python
 import torch
-from diffusers import AnimaAutoBlocks
+from diffusers import ModularPipeline
 
-pipe = AnimaAutoBlocks().init_pipeline("path/to/anima-diffusers")
+pipe = ModularPipeline.from_pretrained("mrfatso/anima-preview3-diffusers")
 pipe.load_components(torch_dtype=torch.bfloat16)
 pipe.to("cuda")
 
