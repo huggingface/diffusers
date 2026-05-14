@@ -352,8 +352,10 @@ class DFlashPipeline(DiffusionPipeline):
         output_ids = self.prepare_latents(max_length, block_size, int(mask_token_id), device)
         position_ids = torch.arange(output_ids.shape[1], device=device).unsqueeze(0)
 
-        past_key_values_target = DynamicCache()
-        past_key_values_draft = DynamicCache()
+        target_config = getattr(self.target_model, "config", None)
+        past_key_values_target = DynamicCache(config=target_config)
+        draft_config = getattr(self.draft_model, "config", None)
+        past_key_values_draft = DynamicCache(config=draft_config)
 
         # 4. Prefill step
         output = self._target_forward(
