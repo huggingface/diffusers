@@ -51,7 +51,7 @@ EXAMPLE_DOC_STRING = """
         ... ).to("cuda")
 
         >>> prompt = "an image of a shiba inu, donning a spacesuit and helmet"
-        >>> prior_output = pipe(prompt)
+        >>> prior_output = prior_pipe(prompt)
         ```
 """
 
@@ -73,8 +73,8 @@ class StableCascadePriorPipelineOutput(BaseOutput):
     image_embeddings: torch.Tensor | np.ndarray
     prompt_embeds: torch.Tensor | np.ndarray
     prompt_embeds_pooled: torch.Tensor | np.ndarray
-    negative_prompt_embeds: torch.Tensor | np.ndarray
-    negative_prompt_embeds_pooled: torch.Tensor | np.ndarray
+    negative_prompt_embeds: torch.Tensor | np.ndarray | None
+    negative_prompt_embeds_pooled: torch.Tensor | np.ndarray | None
 
 
 class StableCascadePriorPipeline(DeprecatedPipelineMixin, DiffusionPipeline):
@@ -147,7 +147,7 @@ class StableCascadePriorPipeline(DeprecatedPipelineMixin, DiffusionPipeline):
         else:
             if latents.shape != latent_shape:
                 raise ValueError(f"Unexpected latents shape, got {latents.shape}, expected {latent_shape}")
-            latents = latents.to(device)
+            latents = latents.to(device=device, dtype=dtype)
 
         latents = latents * scheduler.init_noise_sigma
         return latents
@@ -199,22 +199,29 @@ class StableCascadePriorPipeline(DeprecatedPipelineMixin, DiffusionPipeline):
             if prompt_embeds_pooled is None:
                 prompt_embeds_pooled = text_encoder_output.text_embeds.unsqueeze(1)
 
-        prompt_embeds = prompt_embeds.to(dtype=self.text_encoder.dtype, device=device)
-        prompt_embeds_pooled = prompt_embeds_pooled.to(dtype=self.text_encoder.dtype, device=device)
+        prompt_embeds_dtype = self.text_encoder.dtype if self.text_encoder is not None else prompt_embeds.dtype
+        prompt_embeds = prompt_embeds.to(dtype=prompt_embeds_dtype, device=device)
+        prompt_embeds_pooled = prompt_embeds_pooled.to(dtype=prompt_embeds_dtype, device=device)
         prompt_embeds = prompt_embeds.repeat_interleave(num_images_per_prompt, dim=0)
         prompt_embeds_pooled = prompt_embeds_pooled.repeat_interleave(num_images_per_prompt, dim=0)
 
         if negative_prompt_embeds is None and do_classifier_free_guidance:
+            if self.tokenizer is None or self.text_encoder is None:
+                raise ValueError(
+                    "`negative_prompt_embeds` must be provided when classifier-free guidance is enabled and the "
+                    "pipeline does not have a tokenizer and text encoder."
+                )
+
             uncond_tokens: list[str]
             if negative_prompt is None:
                 uncond_tokens = [""] * batch_size
-            elif type(prompt) is not type(negative_prompt):
+            elif prompt is not None and type(prompt) is not type(negative_prompt):
                 raise TypeError(
                     f"`negative_prompt` should be the same type to `prompt`, but got {type(negative_prompt)} !="
                     f" {type(prompt)}."
                 )
             elif isinstance(negative_prompt, str):
-                uncond_tokens = [negative_prompt]
+                uncond_tokens = [negative_prompt] if prompt is not None else [negative_prompt] * batch_size
             elif batch_size != len(negative_prompt):
                 raise ValueError(
                     f"`negative_prompt`: {negative_prompt} has batch size {len(negative_prompt)}, but `prompt`:"
@@ -241,21 +248,12 @@ class StableCascadePriorPipeline(DeprecatedPipelineMixin, DiffusionPipeline):
             negative_prompt_embeds_pooled = negative_prompt_embeds_text_encoder_output.text_embeds.unsqueeze(1)
 
         if do_classifier_free_guidance:
-            # duplicate unconditional embeddings for each generation per prompt, using mps friendly method
-            seq_len = negative_prompt_embeds.shape[1]
-            negative_prompt_embeds = negative_prompt_embeds.to(dtype=self.text_encoder.dtype, device=device)
-            negative_prompt_embeds = negative_prompt_embeds.repeat(1, num_images_per_prompt, 1)
-            negative_prompt_embeds = negative_prompt_embeds.view(batch_size * num_images_per_prompt, seq_len, -1)
-
-            seq_len = negative_prompt_embeds_pooled.shape[1]
-            negative_prompt_embeds_pooled = negative_prompt_embeds_pooled.to(
-                dtype=self.text_encoder.dtype, device=device
+            negative_prompt_embeds = negative_prompt_embeds.to(dtype=prompt_embeds_dtype, device=device)
+            negative_prompt_embeds_pooled = negative_prompt_embeds_pooled.to(dtype=prompt_embeds_dtype, device=device)
+            negative_prompt_embeds = negative_prompt_embeds.repeat_interleave(num_images_per_prompt, dim=0)
+            negative_prompt_embeds_pooled = negative_prompt_embeds_pooled.repeat_interleave(
+                num_images_per_prompt, dim=0
             )
-            negative_prompt_embeds_pooled = negative_prompt_embeds_pooled.repeat(1, num_images_per_prompt, 1)
-            negative_prompt_embeds_pooled = negative_prompt_embeds_pooled.view(
-                batch_size * num_images_per_prompt, seq_len, -1
-            )
-            # done duplicates
 
         return prompt_embeds, prompt_embeds_pooled, negative_prompt_embeds, negative_prompt_embeds_pooled
 
@@ -342,7 +340,12 @@ class StableCascadePriorPipeline(DeprecatedPipelineMixin, DiffusionPipeline):
                 " only forward one of the two."
             )
 
-        if images:
+        if images is not None:
+            if not isinstance(images, list):
+                images = [images]
+            if len(images) == 0:
+                raise ValueError("`images` cannot be an empty list.")
+
             for i, image in enumerate(images):
                 if not isinstance(image, torch.Tensor) and not isinstance(image, PIL.Image.Image):
                     raise TypeError(
@@ -377,11 +380,11 @@ class StableCascadePriorPipeline(DeprecatedPipelineMixin, DiffusionPipeline):
     def __call__(
         self,
         prompt: str | list[str] | None = None,
-        images: torch.Tensor | PIL.Image.Image | list[torch.Tensor] | list[PIL.Image.Image] = None,
+        images: torch.Tensor | PIL.Image.Image | list[torch.Tensor] | list[PIL.Image.Image] | None = None,
         height: int = 1024,
         width: int = 1024,
         num_inference_steps: int = 20,
-        timesteps: list[float] = None,
+        timesteps: list[float] | None = None,
         guidance_scale: float = 4.0,
         negative_prompt: str | list[str] | None = None,
         prompt_embeds: torch.Tensor | None = None,
@@ -392,7 +395,7 @@ class StableCascadePriorPipeline(DeprecatedPipelineMixin, DiffusionPipeline):
         num_images_per_prompt: int | None = 1,
         generator: torch.Generator | list[torch.Generator] | None = None,
         latents: torch.Tensor | None = None,
-        output_type: str | None = "pt",
+        output_type: str = "pt",
         return_dict: bool = True,
         callback_on_step_end: Callable[[int, int], None] | None = None,
         callback_on_step_end_tensor_inputs: list[str] = ["latents"],
@@ -403,22 +406,26 @@ class StableCascadePriorPipeline(DeprecatedPipelineMixin, DiffusionPipeline):
         Args:
             prompt (`str` or `list[str]`):
                 The prompt or prompts to guide the image generation.
+            images (`torch.Tensor`, `PIL.Image.Image`, `list[torch.Tensor]`, `list[PIL.Image.Image]`, *optional*):
+                The image conditioning inputs to guide prior generation.
             height (`int`, *optional*, defaults to 1024):
                 The height in pixels of the generated image.
             width (`int`, *optional*, defaults to 1024):
                 The width in pixels of the generated image.
-            num_inference_steps (`int`, *optional*, defaults to 60):
+            num_inference_steps (`int`, *optional*, defaults to 20):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
                 expense of slower inference.
-            guidance_scale (`float`, *optional*, defaults to 8.0):
+            timesteps (`list[float]`, *optional*):
+                Custom timesteps to use for the denoising process. If provided, `num_inference_steps` is ignored.
+            guidance_scale (`float`, *optional*, defaults to 4.0):
                 Guidance scale as defined in [Classifier-Free Diffusion
-                Guidance](https://huggingface.co/papers/2207.12598). `decoder_guidance_scale` is defined as `w` of
-                equation 2. of [Imagen Paper](https://huggingface.co/papers/2205.11487). Guidance scale is enabled by
-                setting `decoder_guidance_scale > 1`. Higher guidance scale encourages to generate images that are
-                closely linked to the text `prompt`, usually at the expense of lower image quality.
+                Guidance](https://huggingface.co/papers/2207.12598). `guidance_scale` is defined as `w` of equation 2.
+                of [Imagen Paper](https://huggingface.co/papers/2205.11487). Guidance scale is enabled by setting
+                `guidance_scale > 1`. Higher guidance scale encourages image embeddings that are closely linked to the
+                text `prompt`, usually at the expense of lower image quality.
             negative_prompt (`str` or `list[str]`, *optional*):
                 The prompt or prompts not to guide the image generation. Ignored when not using guidance (i.e., ignored
-                if `decoder_guidance_scale` is less than `1`).
+                if `guidance_scale` is less than or equal to `1`).
             prompt_embeds (`torch.Tensor`, *optional*):
                 Pre-generated text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt weighting. If not
                 provided, text embeddings will be generated from `prompt` input argument.
@@ -435,7 +442,7 @@ class StableCascadePriorPipeline(DeprecatedPipelineMixin, DiffusionPipeline):
                 input argument.
             image_embeds (`torch.Tensor`, *optional*):
                 Pre-generated image embeddings. Can be used to easily tweak image inputs, *e.g.* prompt weighting. If
-                not provided, image embeddings will be generated from `image` input argument if existing.
+                not provided, image embeddings will be generated from `images` input argument if existing.
             num_images_per_prompt (`int`, *optional*, defaults to 1):
                 The number of images to generate per prompt.
             generator (`torch.Generator` or `list[torch.Generator]`, *optional*):
@@ -445,9 +452,9 @@ class StableCascadePriorPipeline(DeprecatedPipelineMixin, DiffusionPipeline):
                 Pre-generated noisy latents, sampled from a Gaussian distribution, to be used as inputs for image
                 generation. Can be used to tweak the same generation with different prompts. If not provided, a latents
                 tensor will be generated by sampling using the supplied random `generator`.
-            output_type (`str`, *optional*, defaults to `"pil"`):
-                The output format of the generate image. Choose between: `"pil"` (`PIL.Image.Image`), `"np"`
-                (`np.array`) or `"pt"` (`torch.Tensor`).
+            output_type (`str`, *optional*, defaults to `"pt"`):
+                The output format of the image embeddings. Choose between: `"pt"` (`torch.Tensor`), `"latent"`
+                (`torch.Tensor`) or `"np"` (`np.array`).
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`~pipelines.ImagePipelineOutput`] instead of a plain tuple.
             callback_on_step_end (`Callable`, *optional*):
@@ -472,12 +479,20 @@ class StableCascadePriorPipeline(DeprecatedPipelineMixin, DiffusionPipeline):
         device = self._execution_device
         dtype = next(self.prior.parameters()).dtype
         self._guidance_scale = guidance_scale
+        if output_type not in ["pt", "np", "latent"]:
+            raise ValueError(
+                f"Only the output types `pt`, `np` and `latent` are supported not output_type={output_type}"
+            )
+
         if prompt is not None and isinstance(prompt, str):
             batch_size = 1
         elif prompt is not None and isinstance(prompt, list):
             batch_size = len(prompt)
         else:
             batch_size = prompt_embeds.shape[0]
+
+        if images is not None and not isinstance(images, list):
+            images = [images]
 
         # 1. Check inputs. Raise error if not correct
         self.check_inputs(
@@ -520,7 +535,9 @@ class StableCascadePriorPipeline(DeprecatedPipelineMixin, DiffusionPipeline):
                 num_images_per_prompt=num_images_per_prompt,
             )
         elif image_embeds is not None:
-            image_embeds_pooled = image_embeds.repeat(batch_size * num_images_per_prompt, 1, 1)
+            image_embeds_pooled = image_embeds.to(device=device, dtype=dtype).repeat(
+                batch_size * num_images_per_prompt, 1, 1
+            )
             uncond_image_embeds_pooled = torch.zeros_like(image_embeds_pooled)
         else:
             image_embeds_pooled = torch.zeros(
@@ -556,7 +573,7 @@ class StableCascadePriorPipeline(DeprecatedPipelineMixin, DiffusionPipeline):
         )
 
         # 4. Prepare and set timesteps
-        self.scheduler.set_timesteps(num_inference_steps, device=device)
+        self.scheduler.set_timesteps(num_inference_steps, timesteps=timesteps, device=device)
         timesteps = self.scheduler.timesteps
 
         # 5. Prepare latents
@@ -630,9 +647,15 @@ class StableCascadePriorPipeline(DeprecatedPipelineMixin, DiffusionPipeline):
         if output_type == "np":
             latents = latents.cpu().float().numpy()  # float() as bfloat16-> numpy doesn't work
             prompt_embeds = prompt_embeds.cpu().float().numpy()  # float() as bfloat16-> numpy doesn't work
+            prompt_embeds_pooled = prompt_embeds_pooled.cpu().float().numpy()
             negative_prompt_embeds = (
                 negative_prompt_embeds.cpu().float().numpy() if negative_prompt_embeds is not None else None
             )  # float() as bfloat16-> numpy doesn't work
+            negative_prompt_embeds_pooled = (
+                negative_prompt_embeds_pooled.cpu().float().numpy()
+                if negative_prompt_embeds_pooled is not None
+                else None
+            )
 
         if not return_dict:
             return (

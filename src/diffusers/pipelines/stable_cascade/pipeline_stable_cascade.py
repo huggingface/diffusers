@@ -17,6 +17,7 @@ from typing import Callable
 import torch
 from transformers import CLIPTextModelWithProjection, CLIPTokenizer
 
+from ...image_processor import VaeImageProcessor
 from ...models import StableCascadeUNet
 from ...schedulers import DDPMWuerstchenScheduler
 from ...utils import is_torch_version, is_torch_xla_available, logging, replace_example_docstring
@@ -44,12 +45,12 @@ EXAMPLE_DOC_STRING = """
         >>> prior_pipe = StableCascadePriorPipeline.from_pretrained(
         ...     "stabilityai/stable-cascade-prior", torch_dtype=torch.bfloat16
         ... ).to("cuda")
-        >>> gen_pipe = StableCascadeDecoderPipeline.from_pretrain(
+        >>> gen_pipe = StableCascadeDecoderPipeline.from_pretrained(
         ...     "stabilityai/stable-cascade", torch_dtype=torch.float16
         ... ).to("cuda")
 
         >>> prompt = "an image of a shiba inu, donning a spacesuit and helmet"
-        >>> prior_output = pipe(prompt)
+        >>> prior_output = prior_pipe(prompt)
         >>> images = gen_pipe(prior_output.image_embeddings, prompt=prompt)
         ```
 """
@@ -109,6 +110,7 @@ class StableCascadeDecoderPipeline(DeprecatedPipelineMixin, DiffusionPipeline):
             vqgan=vqgan,
         )
         self.register_to_config(latent_dim_scale=latent_dim_scale)
+        self.image_processor = VaeImageProcessor(do_normalize=False)
 
     def prepare_latents(
         self, batch_size, image_embeddings, num_images_per_prompt, dtype, device, generator, latents, scheduler
@@ -126,7 +128,7 @@ class StableCascadeDecoderPipeline(DeprecatedPipelineMixin, DiffusionPipeline):
         else:
             if latents.shape != latents_shape:
                 raise ValueError(f"Unexpected latents shape, got {latents.shape}, expected {latents_shape}")
-            latents = latents.to(device)
+            latents = latents.to(device=device, dtype=dtype)
 
         latents = latents * scheduler.init_noise_sigma
         return latents
@@ -178,22 +180,29 @@ class StableCascadeDecoderPipeline(DeprecatedPipelineMixin, DiffusionPipeline):
             if prompt_embeds_pooled is None:
                 prompt_embeds_pooled = text_encoder_output.text_embeds.unsqueeze(1)
 
-        prompt_embeds = prompt_embeds.to(dtype=self.text_encoder.dtype, device=device)
-        prompt_embeds_pooled = prompt_embeds_pooled.to(dtype=self.text_encoder.dtype, device=device)
+        prompt_embeds_dtype = self.text_encoder.dtype if self.text_encoder is not None else prompt_embeds.dtype
+        prompt_embeds = prompt_embeds.to(dtype=prompt_embeds_dtype, device=device)
+        prompt_embeds_pooled = prompt_embeds_pooled.to(dtype=prompt_embeds_dtype, device=device)
         prompt_embeds = prompt_embeds.repeat_interleave(num_images_per_prompt, dim=0)
         prompt_embeds_pooled = prompt_embeds_pooled.repeat_interleave(num_images_per_prompt, dim=0)
 
         if negative_prompt_embeds is None and do_classifier_free_guidance:
+            if self.tokenizer is None or self.text_encoder is None:
+                raise ValueError(
+                    "`negative_prompt_embeds` must be provided when classifier-free guidance is enabled and the "
+                    "pipeline does not have a tokenizer and text encoder."
+                )
+
             uncond_tokens: list[str]
             if negative_prompt is None:
                 uncond_tokens = [""] * batch_size
-            elif type(prompt) is not type(negative_prompt):
+            elif prompt is not None and type(prompt) is not type(negative_prompt):
                 raise TypeError(
                     f"`negative_prompt` should be the same type to `prompt`, but got {type(negative_prompt)} !="
                     f" {type(prompt)}."
                 )
             elif isinstance(negative_prompt, str):
-                uncond_tokens = [negative_prompt]
+                uncond_tokens = [negative_prompt] if prompt is not None else [negative_prompt] * batch_size
             elif batch_size != len(negative_prompt):
                 raise ValueError(
                     f"`negative_prompt`: {negative_prompt} has batch size {len(negative_prompt)}, but `prompt`:"
@@ -220,21 +229,12 @@ class StableCascadeDecoderPipeline(DeprecatedPipelineMixin, DiffusionPipeline):
             negative_prompt_embeds_pooled = negative_prompt_embeds_text_encoder_output.text_embeds.unsqueeze(1)
 
         if do_classifier_free_guidance:
-            # duplicate unconditional embeddings for each generation per prompt, using mps friendly method
-            seq_len = negative_prompt_embeds.shape[1]
-            negative_prompt_embeds = negative_prompt_embeds.to(dtype=self.text_encoder.dtype, device=device)
-            negative_prompt_embeds = negative_prompt_embeds.repeat(1, num_images_per_prompt, 1)
-            negative_prompt_embeds = negative_prompt_embeds.view(batch_size * num_images_per_prompt, seq_len, -1)
-
-            seq_len = negative_prompt_embeds_pooled.shape[1]
-            negative_prompt_embeds_pooled = negative_prompt_embeds_pooled.to(
-                dtype=self.text_encoder.dtype, device=device
+            negative_prompt_embeds = negative_prompt_embeds.to(dtype=prompt_embeds_dtype, device=device)
+            negative_prompt_embeds_pooled = negative_prompt_embeds_pooled.to(dtype=prompt_embeds_dtype, device=device)
+            negative_prompt_embeds = negative_prompt_embeds.repeat_interleave(num_images_per_prompt, dim=0)
+            negative_prompt_embeds_pooled = negative_prompt_embeds_pooled.repeat_interleave(
+                num_images_per_prompt, dim=0
             )
-            negative_prompt_embeds_pooled = negative_prompt_embeds_pooled.repeat(1, num_images_per_prompt, 1)
-            negative_prompt_embeds_pooled = negative_prompt_embeds_pooled.view(
-                batch_size * num_images_per_prompt, seq_len, -1
-            )
-            # done duplicates
 
         return prompt_embeds, prompt_embeds_pooled, negative_prompt_embeds, negative_prompt_embeds_pooled
 
@@ -243,7 +243,9 @@ class StableCascadeDecoderPipeline(DeprecatedPipelineMixin, DiffusionPipeline):
         prompt,
         negative_prompt=None,
         prompt_embeds=None,
+        prompt_embeds_pooled=None,
         negative_prompt_embeds=None,
+        negative_prompt_embeds_pooled=None,
         callback_on_step_end_tensor_inputs=None,
     ):
         if callback_on_step_end_tensor_inputs is not None and not all(
@@ -279,6 +281,24 @@ class StableCascadeDecoderPipeline(DeprecatedPipelineMixin, DiffusionPipeline):
                     f" {negative_prompt_embeds.shape}."
                 )
 
+        if prompt_embeds is not None and prompt_embeds_pooled is None:
+            raise ValueError(
+                "If `prompt_embeds` are provided, `prompt_embeds_pooled` must also be provided. Make sure to generate `prompt_embeds_pooled` from the same text encoder that was used to generate `prompt_embeds`"
+            )
+
+        if negative_prompt_embeds is not None and negative_prompt_embeds_pooled is None:
+            raise ValueError(
+                "If `negative_prompt_embeds` are provided, `negative_prompt_embeds_pooled` must also be provided. Make sure to generate `prompt_embeds_pooled` from the same text encoder that was used to generate `prompt_embeds`"
+            )
+
+        if prompt_embeds_pooled is not None and negative_prompt_embeds_pooled is not None:
+            if prompt_embeds_pooled.shape != negative_prompt_embeds_pooled.shape:
+                raise ValueError(
+                    "`prompt_embeds_pooled` and `negative_prompt_embeds_pooled` must have the same shape when passed"
+                    f"directly, but got: `prompt_embeds_pooled` {prompt_embeds_pooled.shape} !="
+                    f"`negative_prompt_embeds_pooled` {negative_prompt_embeds_pooled.shape}."
+                )
+
     @property
     def guidance_scale(self):
         return self._guidance_scale
@@ -306,8 +326,9 @@ class StableCascadeDecoderPipeline(DeprecatedPipelineMixin, DiffusionPipeline):
     def __call__(
         self,
         image_embeddings: torch.Tensor | list[torch.Tensor],
-        prompt: str | list[str] = None,
+        prompt: str | list[str] | None = None,
         num_inference_steps: int = 10,
+        timesteps: list[float] | None = None,
         guidance_scale: float = 0.0,
         negative_prompt: str | list[str] | None = None,
         prompt_embeds: torch.Tensor | None = None,
@@ -317,7 +338,7 @@ class StableCascadeDecoderPipeline(DeprecatedPipelineMixin, DiffusionPipeline):
         num_images_per_prompt: int = 1,
         generator: torch.Generator | list[torch.Generator] | None = None,
         latents: torch.Tensor | None = None,
-        output_type: str | None = "pil",
+        output_type: str = "pil",
         return_dict: bool = True,
         callback_on_step_end: Callable[[int, int], None] | None = None,
         callback_on_step_end_tensor_inputs: list[str] = ["latents"],
@@ -326,22 +347,24 @@ class StableCascadeDecoderPipeline(DeprecatedPipelineMixin, DiffusionPipeline):
         Function invoked when calling the pipeline for generation.
 
         Args:
-            image_embedding (`torch.Tensor` or `list[torch.Tensor]`):
+            image_embeddings (`torch.Tensor` or `list[torch.Tensor]`):
                 Image Embeddings either extracted from an image or generated by a Prior Model.
             prompt (`str` or `list[str]`):
                 The prompt or prompts to guide the image generation.
-            num_inference_steps (`int`, *optional*, defaults to 12):
+            num_inference_steps (`int`, *optional*, defaults to 10):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
                 expense of slower inference.
+            timesteps (`list[float]`, *optional*):
+                Custom timesteps to use for the denoising process. If provided, `num_inference_steps` is ignored.
             guidance_scale (`float`, *optional*, defaults to 0.0):
                 Guidance scale as defined in [Classifier-Free Diffusion
-                Guidance](https://huggingface.co/papers/2207.12598). `decoder_guidance_scale` is defined as `w` of
-                equation 2. of [Imagen Paper](https://huggingface.co/papers/2205.11487). Guidance scale is enabled by
-                setting `decoder_guidance_scale > 1`. Higher guidance scale encourages to generate images that are
-                closely linked to the text `prompt`, usually at the expense of lower image quality.
+                Guidance](https://huggingface.co/papers/2207.12598). `guidance_scale` is defined as `w` of equation 2.
+                of [Imagen Paper](https://huggingface.co/papers/2205.11487). Guidance scale is enabled by setting
+                `guidance_scale > 1`. Higher guidance scale encourages generated images that are closely linked to the
+                text `prompt`, usually at the expense of lower image quality.
             negative_prompt (`str` or `list[str]`, *optional*):
                 The prompt or prompts not to guide the image generation. Ignored when not using guidance (i.e., ignored
-                if `decoder_guidance_scale` is less than `1`).
+                if `guidance_scale` is less than or equal to `1`).
             prompt_embeds (`torch.Tensor`, *optional*):
                 Pre-generated text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt weighting. If not
                 provided, text embeddings will be generated from `prompt` input argument.
@@ -367,7 +390,7 @@ class StableCascadeDecoderPipeline(DeprecatedPipelineMixin, DiffusionPipeline):
                 tensor will be generated by sampling using the supplied random `generator`.
             output_type (`str`, *optional*, defaults to `"pil"`):
                 The output format of the generate image. Choose between: `"pil"` (`PIL.Image.Image`), `"np"`
-                (`np.array`) or `"pt"` (`torch.Tensor`).
+                (`np.array`), `"pt"` (`torch.Tensor`) or `"latent"` (`torch.Tensor`).
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`~pipelines.ImagePipelineOutput`] instead of a plain tuple.
             callback_on_step_end (`Callable`, *optional*):
@@ -384,8 +407,7 @@ class StableCascadeDecoderPipeline(DeprecatedPipelineMixin, DiffusionPipeline):
 
         Returns:
             [`~pipelines.ImagePipelineOutput`] or `tuple` [`~pipelines.ImagePipelineOutput`] if `return_dict` is True,
-            otherwise a `tuple`. When returning a tuple, the first element is a list with the generated image
-            embeddings.
+            otherwise a `tuple`. When returning a tuple, the first element is the generated images.
         """
 
         # 0. Define commonly used variables
@@ -394,17 +416,24 @@ class StableCascadeDecoderPipeline(DeprecatedPipelineMixin, DiffusionPipeline):
         self._guidance_scale = guidance_scale
         if is_torch_version("<", "2.2.0") and dtype == torch.bfloat16:
             raise ValueError("`StableCascadeDecoderPipeline` requires torch>=2.2.0 when using `torch.bfloat16` dtype.")
+        if output_type not in ["pt", "np", "pil", "latent"]:
+            raise ValueError(
+                f"Only the output types `pt`, `np`, `pil` and `latent` are supported not output_type={output_type}"
+            )
 
         # 1. Check inputs. Raise error if not correct
         self.check_inputs(
             prompt,
             negative_prompt=negative_prompt,
             prompt_embeds=prompt_embeds,
+            prompt_embeds_pooled=prompt_embeds_pooled,
             negative_prompt_embeds=negative_prompt_embeds,
+            negative_prompt_embeds_pooled=negative_prompt_embeds_pooled,
             callback_on_step_end_tensor_inputs=callback_on_step_end_tensor_inputs,
         )
         if isinstance(image_embeddings, list):
             image_embeddings = torch.cat(image_embeddings, dim=0)
+        image_embeddings = image_embeddings.to(device=device, dtype=dtype)
 
         if prompt is not None and isinstance(prompt, str):
             batch_size = 1
@@ -420,19 +449,18 @@ class StableCascadeDecoderPipeline(DeprecatedPipelineMixin, DiffusionPipeline):
         num_images_per_prompt = num_images_per_prompt * (image_embeddings.shape[0] // batch_size)
 
         # 2. Encode caption
-        if prompt_embeds is None and negative_prompt_embeds is None:
-            _, prompt_embeds_pooled, _, negative_prompt_embeds_pooled = self.encode_prompt(
-                prompt=prompt,
-                device=device,
-                batch_size=batch_size,
-                num_images_per_prompt=num_images_per_prompt,
-                do_classifier_free_guidance=self.do_classifier_free_guidance,
-                negative_prompt=negative_prompt,
-                prompt_embeds=prompt_embeds,
-                prompt_embeds_pooled=prompt_embeds_pooled,
-                negative_prompt_embeds=negative_prompt_embeds,
-                negative_prompt_embeds_pooled=negative_prompt_embeds_pooled,
-            )
+        _, prompt_embeds_pooled, _, negative_prompt_embeds_pooled = self.encode_prompt(
+            prompt=prompt,
+            device=device,
+            batch_size=batch_size,
+            num_images_per_prompt=num_images_per_prompt,
+            do_classifier_free_guidance=self.do_classifier_free_guidance,
+            negative_prompt=negative_prompt,
+            prompt_embeds=prompt_embeds,
+            prompt_embeds_pooled=prompt_embeds_pooled,
+            negative_prompt_embeds=negative_prompt_embeds,
+            negative_prompt_embeds_pooled=negative_prompt_embeds_pooled,
+        )
 
         # The pooled embeds from the prior are pooled again before being passed to the decoder
         prompt_embeds_pooled = (
@@ -446,7 +474,7 @@ class StableCascadeDecoderPipeline(DeprecatedPipelineMixin, DiffusionPipeline):
             else image_embeddings
         )
 
-        self.scheduler.set_timesteps(num_inference_steps, device=device)
+        self.scheduler.set_timesteps(num_inference_steps, timesteps=timesteps, device=device)
         timesteps = self.scheduler.timesteps
 
         # 5. Prepare latents
@@ -516,20 +544,11 @@ class StableCascadeDecoderPipeline(DeprecatedPipelineMixin, DiffusionPipeline):
             if XLA_AVAILABLE:
                 xm.mark_step()
 
-        if output_type not in ["pt", "np", "pil", "latent"]:
-            raise ValueError(
-                f"Only the output types `pt`, `np`, `pil` and `latent` are supported not output_type={output_type}"
-            )
-
         if not output_type == "latent":
             # 10. Scale and decode the image latents with vq-vae
             latents = self.vqgan.config.scale_factor * latents
             images = self.vqgan.decode(latents).sample.clamp(0, 1)
-            if output_type == "np":
-                images = images.permute(0, 2, 3, 1).cpu().float().numpy()  # float() as bfloat16-> numpy doesn't work
-            elif output_type == "pil":
-                images = images.permute(0, 2, 3, 1).cpu().float().numpy()  # float() as bfloat16-> numpy doesn't work
-                images = self.numpy_to_pil(images)
+            images = self.image_processor.postprocess(images, output_type=output_type)
         else:
             images = latents
 
@@ -537,5 +556,5 @@ class StableCascadeDecoderPipeline(DeprecatedPipelineMixin, DiffusionPipeline):
         self.maybe_free_model_hooks()
 
         if not return_dict:
-            return images
+            return (images,)
         return ImagePipelineOutput(images)

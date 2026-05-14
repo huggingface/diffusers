@@ -135,6 +135,8 @@ class StableCascadeUNetOutput(BaseOutput):
 
 class StableCascadeUNet(ModelMixin, ConfigMixin, FromOriginalModelMixin):
     _supports_gradient_checkpointing = True
+    _supports_group_offloading = False
+    _skip_layerwise_casting_patterns = ["norm"]
 
     @register_to_config
     def __init__(
@@ -148,24 +150,24 @@ class StableCascadeUNet(ModelMixin, ConfigMixin, FromOriginalModelMixin):
         num_attention_heads: tuple[int, ...] = (32, 32),
         down_num_layers_per_block: tuple[int, ...] = (8, 24),
         up_num_layers_per_block: tuple[int, ...] = (24, 8),
-        down_blocks_repeat_mappers: tuple[int] | None = (
+        down_blocks_repeat_mappers: tuple[int, ...] | None = (
             1,
             1,
         ),
-        up_blocks_repeat_mappers: tuple[int] | None = (1, 1),
-        block_types_per_layer: tuple[tuple[str]] = (
+        up_blocks_repeat_mappers: tuple[int, ...] | None = (1, 1),
+        block_types_per_layer: tuple[tuple[str, ...], ...] = (
             ("SDCascadeResBlock", "SDCascadeTimestepBlock", "SDCascadeAttnBlock"),
             ("SDCascadeResBlock", "SDCascadeTimestepBlock", "SDCascadeAttnBlock"),
         ),
         clip_text_in_channels: int | None = None,
-        clip_text_pooled_in_channels=1280,
+        clip_text_pooled_in_channels: int = 1280,
         clip_image_in_channels: int | None = None,
-        clip_seq=4,
+        clip_seq: int = 4,
         effnet_in_channels: int | None = None,
         pixel_mapper_in_channels: int | None = None,
-        kernel_size=3,
-        dropout: float | tuple[float] = (0.1, 0.1),
-        self_attn: bool | tuple[bool] = True,
+        kernel_size: int = 3,
+        dropout: float | tuple[float, ...] = (0.1, 0.1),
+        self_attn: bool | tuple[bool, ...] = True,
         timestep_conditioning_type: tuple[str, ...] = ("sca", "crp"),
         switch_level: tuple[bool] | None = None,
     ):
@@ -431,20 +433,27 @@ class StableCascadeUNet(ModelMixin, ConfigMixin, FromOriginalModelMixin):
 
     def get_clip_embeddings(self, clip_txt_pooled, clip_txt=None, clip_img=None):
         if len(clip_txt_pooled.shape) == 2:
-            clip_txt_pool = clip_txt_pooled.unsqueeze(1)
+            clip_txt_pooled = clip_txt_pooled.unsqueeze(1)
         clip_txt_pool = self.clip_txt_pooled_mapper(clip_txt_pooled).view(
             clip_txt_pooled.size(0), clip_txt_pooled.size(1) * self.config.clip_seq, -1
         )
-        if clip_txt is not None and clip_img is not None:
+
+        clip = []
+        if clip_txt is not None:
             clip_txt = self.clip_txt_mapper(clip_txt)
+            clip.append(clip_txt)
+
+        clip.append(clip_txt_pool)
+
+        if clip_img is not None:
             if len(clip_img.shape) == 2:
                 clip_img = clip_img.unsqueeze(1)
             clip_img = self.clip_img_mapper(clip_img).view(
                 clip_img.size(0), clip_img.size(1) * self.config.clip_seq, -1
             )
-            clip = torch.cat([clip_txt, clip_txt_pool, clip_img], dim=1)
-        else:
-            clip = clip_txt_pool
+            clip.append(clip_img)
+
+        clip = torch.cat(clip, dim=1)
         return self.clip_norm(clip)
 
     def _down_encode(self, x, r_embed, clip):
@@ -548,8 +557,8 @@ class StableCascadeUNet(ModelMixin, ConfigMixin, FromOriginalModelMixin):
         crp=None,
         return_dict=True,
     ):
-        if pixels is None:
-            pixels = sample.new_zeros(sample.size(0), 3, 8, 8)
+        if pixels is None and hasattr(self, "pixels_mapper"):
+            pixels = sample.new_zeros(sample.size(0), self.config.pixel_mapper_in_channels, 8, 8)
 
         # Process the conditioning embeddings
         timestep_ratio_embed = self.get_timestep_ratio_embedding(timestep_ratio)
@@ -560,7 +569,7 @@ class StableCascadeUNet(ModelMixin, ConfigMixin, FromOriginalModelMixin):
                 cond = crp
             else:
                 cond = None
-            t_cond = cond or torch.zeros_like(timestep_ratio)
+            t_cond = cond if cond is not None else torch.zeros_like(timestep_ratio)
             timestep_ratio_embed = torch.cat([timestep_ratio_embed, self.get_timestep_ratio_embedding(t_cond)], dim=1)
         clip = self.get_clip_embeddings(clip_txt_pooled=clip_text_pooled, clip_txt=clip_text, clip_img=clip_img)
 

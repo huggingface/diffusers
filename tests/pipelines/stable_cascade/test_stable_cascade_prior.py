@@ -15,10 +15,12 @@
 
 import gc
 import unittest
+from types import SimpleNamespace
 
 import numpy as np
 import pytest
 import torch
+from PIL import Image
 from transformers import CLIPTextConfig, CLIPTextModelWithProjection, CLIPTokenizer
 
 from diffusers import DDPMWuerstchenScheduler, StableCascadePriorPipeline
@@ -47,6 +49,18 @@ from ..test_pipelines_common import PipelineTesterMixin
 
 
 enable_full_determinism()
+
+
+class DummyStableCascadeImageEncoder(torch.nn.Module):
+    def forward(self, pixel_values):
+        return SimpleNamespace(
+            image_embeds=torch.zeros(pixel_values.shape[0], 768, device=pixel_values.device, dtype=pixel_values.dtype)
+        )
+
+
+class DummyStableCascadeFeatureExtractor:
+    def __call__(self, image, return_tensors=None):
+        return SimpleNamespace(pixel_values=torch.zeros(1, 3, 8, 8))
 
 
 class StableCascadePriorPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
@@ -187,6 +201,135 @@ class StableCascadePriorPipelineFastTests(PipelineTesterMixin, unittest.TestCase
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 5e-2
         assert np.abs(image_from_tuple_slice.flatten() - expected_slice).max() < 5e-2
+
+    def test_check_inputs_accepts_single_images(self):
+        components = self.get_dummy_components()
+        pipe = self.pipeline_class(**components)
+
+        pipe.check_inputs(prompt="horse", images=Image.new("RGB", (8, 8)))
+        pipe.check_inputs(prompt="horse", images=torch.zeros(3, 8, 8))
+        with self.assertRaisesRegex(ValueError, "`images` cannot be an empty list"):
+            pipe.check_inputs(prompt="horse", images=[])
+
+    def test_single_images_are_encoded(self):
+        components = self.get_dummy_components()
+        components["text_encoder"] = None
+        components["tokenizer"] = None
+        components["image_encoder"] = DummyStableCascadeImageEncoder()
+        components["feature_extractor"] = DummyStableCascadeFeatureExtractor()
+        pipe = self.pipeline_class(**components)
+        pipe.set_progress_bar_config(disable=None)
+
+        prompt_embeds = torch.zeros(1, 4, self.text_embedder_hidden_size)
+        prompt_embeds_pooled = torch.zeros(1, 1, self.text_embedder_hidden_size)
+
+        output = pipe(
+            prompt_embeds=prompt_embeds,
+            prompt_embeds_pooled=prompt_embeds_pooled,
+            images=Image.new("RGB", (8, 8)),
+            height=42,
+            width=42,
+            guidance_scale=1.0,
+            num_inference_steps=1,
+            output_type="pt",
+        )
+
+        self.assertEqual(output.image_embeddings.shape, (1, 16, 1, 1))
+
+    def test_prepare_latents_casts_supplied_latents(self):
+        components = self.get_dummy_components()
+        pipe = self.pipeline_class(**components)
+        latents = torch.randn((1, pipe.prior.config.in_channels, 1, 1), dtype=torch.float32)
+
+        latents = pipe.prepare_latents(
+            batch_size=1,
+            height=42,
+            width=42,
+            num_images_per_prompt=1,
+            dtype=torch.bfloat16,
+            device=torch.device("cpu"),
+            generator=None,
+            latents=latents,
+            scheduler=pipe.scheduler,
+        )
+
+        self.assertEqual(latents.dtype, torch.bfloat16)
+
+    def test_custom_timesteps_are_forwarded(self):
+        components = self.get_dummy_components()
+        components["text_encoder"] = None
+        components["tokenizer"] = None
+        pipe = self.pipeline_class(**components)
+        pipe.set_progress_bar_config(disable=None)
+
+        prompt_embeds = torch.zeros(1, 4, self.text_embedder_hidden_size)
+        prompt_embeds_pooled = torch.zeros(1, 1, self.text_embedder_hidden_size)
+        timesteps = [1.0, 0.25, 0.0]
+        seen_timesteps = []
+
+        def callback_on_step_end(pipe, i, t, callback_kwargs):
+            seen_timesteps.append(t.item())
+            return callback_kwargs
+
+        pipe(
+            prompt_embeds=prompt_embeds,
+            prompt_embeds_pooled=prompt_embeds_pooled,
+            height=42,
+            width=42,
+            guidance_scale=1.0,
+            num_inference_steps=1,
+            timesteps=timesteps,
+            output_type="pt",
+            callback_on_step_end=callback_on_step_end,
+        )
+
+        self.assertEqual(seen_timesteps, timesteps[:-1])
+        self.assertTrue(torch.allclose(pipe.scheduler.timesteps.cpu(), torch.tensor(timesteps)))
+
+    def test_precomputed_prompt_embeds_accept_negative_prompt(self):
+        components = self.get_dummy_components()
+        pipe = self.pipeline_class(**components)
+        pipe.set_progress_bar_config(disable=None)
+
+        prompt_embeds = torch.zeros(1, pipe.tokenizer.model_max_length, self.text_embedder_hidden_size)
+        prompt_embeds_pooled = torch.zeros(1, 1, self.text_embedder_hidden_size)
+
+        output = pipe(
+            prompt_embeds=prompt_embeds,
+            prompt_embeds_pooled=prompt_embeds_pooled,
+            negative_prompt="low quality",
+            height=42,
+            width=42,
+            guidance_scale=2.0,
+            num_inference_steps=1,
+            output_type="pt",
+        )
+
+        self.assertEqual(output.image_embeddings.shape, (1, 16, 1, 1))
+
+    def test_np_output_converts_all_prompt_embeds(self):
+        components = self.get_dummy_components()
+        components["text_encoder"] = None
+        components["tokenizer"] = None
+        pipe = self.pipeline_class(**components)
+        pipe.set_progress_bar_config(disable=None)
+
+        prompt_embeds = torch.zeros(1, 4, self.text_embedder_hidden_size)
+        prompt_embeds_pooled = torch.zeros(1, 1, self.text_embedder_hidden_size)
+
+        output = pipe(
+            prompt_embeds=prompt_embeds,
+            prompt_embeds_pooled=prompt_embeds_pooled,
+            height=42,
+            width=42,
+            guidance_scale=1.0,
+            num_inference_steps=1,
+            output_type="np",
+        )
+
+        self.assertIsInstance(output.image_embeddings, np.ndarray)
+        self.assertIsInstance(output.prompt_embeds, np.ndarray)
+        self.assertIsInstance(output.prompt_embeds_pooled, np.ndarray)
 
     @skip_mps
     def test_inference_batch_single_identical(self):

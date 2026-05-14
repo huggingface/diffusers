@@ -180,7 +180,7 @@ class StableCascadeDecoderPipelineFastTests(PipelineTesterMixin, unittest.TestCa
         output = pipe(**self.get_dummy_inputs(device))
         image = output.images
 
-        image_from_tuple = pipe(**self.get_dummy_inputs(device), return_dict=False)
+        image_from_tuple = pipe(**self.get_dummy_inputs(device), return_dict=False)[0]
 
         image_slice = image[0, -3:, -3:, -1]
         image_from_tuple_slice = image_from_tuple[0, -3:, -3:, -1]
@@ -190,6 +190,87 @@ class StableCascadeDecoderPipelineFastTests(PipelineTesterMixin, unittest.TestCa
         expected_slice = np.array([0.0, 0.0, 0.0, 1.0, 1.0, 0.0, 1.0, 1.0, 0.0])
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
         assert np.abs(image_from_tuple_slice.flatten() - expected_slice).max() < 1e-2
+
+    def test_prepare_latents_casts_supplied_latents(self):
+        components = self.get_dummy_components()
+        pipe = self.pipeline_class(**components)
+        image_embeddings = torch.ones((1, 4, 1, 1))
+        latents = torch.randn((1, 4, 4, 4), dtype=torch.float32)
+
+        latents = pipe.prepare_latents(
+            batch_size=1,
+            image_embeddings=image_embeddings,
+            num_images_per_prompt=1,
+            dtype=torch.bfloat16,
+            device=torch.device("cpu"),
+            generator=None,
+            latents=latents,
+            scheduler=pipe.scheduler,
+        )
+
+        self.assertEqual(latents.dtype, torch.bfloat16)
+
+    def test_precomputed_prompt_embeds_with_guidance(self):
+        components = self.get_dummy_components()
+        pipe = self.pipeline_class(**components)
+        pipe.set_progress_bar_config(disable=None)
+
+        prompt_embeds = torch.zeros(1, pipe.tokenizer.model_max_length, self.text_embedder_hidden_size)
+        prompt_embeds_pooled = torch.zeros(1, 1, self.text_embedder_hidden_size)
+
+        output = pipe(
+            image_embeddings=torch.ones((1, 4, 4, 4)),
+            prompt_embeds=prompt_embeds,
+            prompt_embeds_pooled=prompt_embeds_pooled,
+            guidance_scale=2.0,
+            num_inference_steps=1,
+            output_type="latent",
+        )
+
+        self.assertEqual(output.images.shape, (1, 4, 16, 16))
+
+    def test_check_inputs_requires_pooled_prompt_embeds(self):
+        components = self.get_dummy_components()
+        pipe = self.pipeline_class(**components)
+
+        with self.assertRaisesRegex(ValueError, "`prompt_embeds_pooled` must also be provided"):
+            pipe.check_inputs(prompt=None, prompt_embeds=torch.zeros(1, 4, self.text_embedder_hidden_size))
+
+        with self.assertRaisesRegex(ValueError, "`negative_prompt_embeds_pooled` must also be provided"):
+            pipe.check_inputs(
+                prompt="horse",
+                negative_prompt_embeds=torch.zeros(1, 4, self.text_embedder_hidden_size),
+            )
+
+    def test_custom_timesteps_are_forwarded(self):
+        components = self.get_dummy_components()
+        components["text_encoder"] = None
+        components["tokenizer"] = None
+        pipe = self.pipeline_class(**components)
+        pipe.set_progress_bar_config(disable=None)
+
+        prompt_embeds = torch.zeros(1, 4, self.text_embedder_hidden_size)
+        prompt_embeds_pooled = torch.zeros(1, 1, self.text_embedder_hidden_size)
+        timesteps = [1.0, 0.25, 0.0]
+        seen_timesteps = []
+
+        def callback_on_step_end(pipe, i, t, callback_kwargs):
+            seen_timesteps.append(t.item())
+            return callback_kwargs
+
+        pipe(
+            image_embeddings=torch.ones((1, 4, 4, 4)),
+            prompt_embeds=prompt_embeds,
+            prompt_embeds_pooled=prompt_embeds_pooled,
+            guidance_scale=1.0,
+            num_inference_steps=1,
+            timesteps=timesteps,
+            output_type="latent",
+            callback_on_step_end=callback_on_step_end,
+        )
+
+        self.assertEqual(seen_timesteps, timesteps[:-1])
+        self.assertTrue(torch.allclose(pipe.scheduler.timesteps.cpu(), torch.tensor(timesteps)))
 
     @skip_mps
     def test_inference_batch_single_identical(self):

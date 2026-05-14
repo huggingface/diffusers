@@ -14,6 +14,7 @@
 # limitations under the License.
 
 import unittest
+from unittest.mock import Mock
 
 import numpy as np
 import torch
@@ -40,7 +41,9 @@ class StableCascadeCombinedPipelineFastTests(PipelineTesterMixin, unittest.TestC
         "width",
         "latents",
         "prior_guidance_scale",
+        "prior_timesteps",
         "decoder_guidance_scale",
+        "timesteps",
         "negative_prompt",
         "num_inference_steps",
         "return_dict",
@@ -136,6 +139,7 @@ class StableCascadeCombinedPipelineFastTests(PipelineTesterMixin, unittest.TestC
         prior = self.dummy_prior
 
         scheduler = DDPMWuerstchenScheduler()
+        prior_scheduler = DDPMWuerstchenScheduler()
         tokenizer = self.dummy_tokenizer
         text_encoder = self.dummy_text_encoder
         decoder = self.dummy_decoder
@@ -152,7 +156,7 @@ class StableCascadeCombinedPipelineFastTests(PipelineTesterMixin, unittest.TestC
             "prior_text_encoder": prior_text_encoder,
             "prior_tokenizer": prior_tokenizer,
             "prior_prior": prior,
-            "prior_scheduler": scheduler,
+            "prior_scheduler": prior_scheduler,
             "prior_feature_extractor": None,
             "prior_image_encoder": None,
         }
@@ -193,7 +197,7 @@ class StableCascadeCombinedPipelineFastTests(PipelineTesterMixin, unittest.TestC
         image_from_tuple = pipe(**self.get_dummy_inputs(device), return_dict=False)[0]
 
         image_slice = image[0, -3:, -3:, -1]
-        image_from_tuple_slice = image_from_tuple[-3:, -3:, -1]
+        image_from_tuple_slice = image_from_tuple[0, -3:, -3:, -1]
 
         assert image.shape == (1, 128, 128, 3)
 
@@ -204,6 +208,71 @@ class StableCascadeCombinedPipelineFastTests(PipelineTesterMixin, unittest.TestC
         assert np.abs(image_from_tuple_slice.flatten() - expected_slice).max() < 1e-2, (
             f" expected_slice {expected_slice}, but got {image_from_tuple_slice.flatten()}"
         )
+
+    def test_enable_xformers_memory_efficient_attention_delegates_to_both_pipelines(self):
+        pipe = StableCascadeCombinedPipeline.__new__(StableCascadeCombinedPipeline)
+        pipe.prior_pipe = Mock()
+        pipe.decoder_pipe = Mock()
+        attention_op = Mock()
+
+        pipe.enable_xformers_memory_efficient_attention(attention_op)
+
+        pipe.prior_pipe.enable_xformers_memory_efficient_attention.assert_called_once_with(attention_op)
+        pipe.decoder_pipe.enable_xformers_memory_efficient_attention.assert_called_once_with(attention_op)
+
+    def test_decoder_guidance_with_prior_without_guidance(self):
+        device = "cpu"
+        components = self.get_dummy_components()
+
+        pipe = self.pipeline_class(**components)
+        pipe = pipe.to(device)
+        pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_dummy_inputs(device)
+        inputs["prior_guidance_scale"] = 1.0
+        inputs["decoder_guidance_scale"] = 2.0
+        inputs["prior_num_inference_steps"] = 1
+        inputs["num_inference_steps"] = 1
+        inputs["output_type"] = "latent"
+
+        output = pipe(**inputs)
+
+        self.assertEqual(output.images.shape[0], 1)
+
+    def test_custom_timesteps_are_forwarded(self):
+        device = "cpu"
+        components = self.get_dummy_components()
+
+        pipe = self.pipeline_class(**components)
+        pipe = pipe.to(device)
+        pipe.set_progress_bar_config(disable=None)
+
+        prior_timesteps = [1.0, 0.5, 0.0]
+        timesteps = [1.0, 0.25, 0.0]
+        seen_prior_timesteps = []
+        seen_timesteps = []
+
+        def prior_callback_on_step_end(pipe, i, t, callback_kwargs):
+            seen_prior_timesteps.append(t.item())
+            return callback_kwargs
+
+        def callback_on_step_end(pipe, i, t, callback_kwargs):
+            seen_timesteps.append(t.item())
+            return callback_kwargs
+
+        inputs = self.get_dummy_inputs(device)
+        inputs["prior_num_inference_steps"] = 1
+        inputs["prior_timesteps"] = prior_timesteps
+        inputs["num_inference_steps"] = 1
+        inputs["timesteps"] = timesteps
+        inputs["output_type"] = "latent"
+        inputs["prior_callback_on_step_end"] = prior_callback_on_step_end
+        inputs["callback_on_step_end"] = callback_on_step_end
+
+        pipe(**inputs)
+
+        self.assertEqual(seen_prior_timesteps, prior_timesteps[:-1])
+        self.assertEqual(seen_timesteps, timesteps[:-1])
 
     @require_torch_accelerator
     def test_offloads(self):
