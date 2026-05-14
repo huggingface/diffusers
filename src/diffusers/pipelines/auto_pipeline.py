@@ -20,6 +20,7 @@ from huggingface_hub.utils import validate_hf_hub_args
 from ..configuration_utils import ConfigMixin
 from ..models.controlnets import ControlNetUnionModel
 from ..utils import is_sentencepiece_available
+from .anyflow import AnyFlowFARPipeline, AnyFlowPipeline
 from .aura_flow import AuraFlowPipeline
 from .chroma import ChromaPipeline
 from .cogview3 import CogView3PlusPipeline
@@ -125,7 +126,6 @@ from .stable_diffusion_xl import (
     StableDiffusionXLInpaintPipeline,
     StableDiffusionXLPipeline,
 )
-from .anyflow import AnyFlowPipeline
 from .wan import WanImageToVideoPipeline, WanPipeline, WanVideoToVideoPipeline
 from .z_image import (
     ZImageControlNetInpaintPipeline,
@@ -257,12 +257,14 @@ AUTO_TEXT2VIDEO_PIPELINES_MAPPING = OrderedDict(
 
 AUTO_IMAGE2VIDEO_PIPELINES_MAPPING = OrderedDict(
     [
+        ("anyflow-far", AnyFlowFARPipeline),
         ("wan-i2v", WanImageToVideoPipeline),
     ]
 )
 
 AUTO_VIDEO2VIDEO_PIPELINES_MAPPING = OrderedDict(
     [
+        ("anyflow-far", AnyFlowFARPipeline),
         ("wan", WanVideoToVideoPipeline),
     ]
 )

@@ -27,7 +27,7 @@ from ...loaders import WanLoraLoaderMixin
 from ...models import AnyFlowTransformer3DModel, AutoencoderKLWan
 from ...models.autoencoders.vae import DiagonalGaussianDistribution
 from ...schedulers import FlowMapEulerDiscreteScheduler
-from ...utils import is_ftfy_available, logging
+from ...utils import is_ftfy_available, logging, replace_example_docstring
 from ...utils.torch_utils import randn_tensor
 from ...video_processor import VideoProcessor
 from ..pipeline_utils import DiffusionPipeline
@@ -38,6 +38,24 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 if is_ftfy_available():
     import ftfy
+
+
+EXAMPLE_DOC_STRING = """
+    Examples:
+        ```python
+        >>> import torch
+        >>> from diffusers import AnyFlowPipeline
+        >>> from diffusers.utils import export_to_video
+
+        >>> pipe = AnyFlowPipeline.from_pretrained(
+        ...     "nvidia/AnyFlow-Wan2.1-T2V-14B-Diffusers", torch_dtype=torch.bfloat16
+        ... ).to("cuda")
+
+        >>> prompt = "A red panda eating bamboo in a forest, cinematic lighting"
+        >>> video = pipe(prompt, num_inference_steps=4, num_frames=33).frames[0]
+        >>> export_to_video(video, "anyflow_t2v.mp4", fps=16)
+        ```
+"""
 
 
 # Copied from diffusers.pipelines.wan.pipeline_wan.basic_clean
@@ -70,13 +88,9 @@ class AnyFlowPipeline(DiffusionPipeline, WanLoraLoaderMixin):
     1, 2, 4, 8, 16... NFE without retraining. This pipeline operates over the full video tensor in one
     bidirectional pass; for frame-level autoregressive (causal) generation use ``AnyFlowFARPipeline``.
 
-    The released NVIDIA checkpoints loaded by this pipeline went through a two-stage LoRA distillation:
-    (1) forward Flow-Map training with the MeanFlow identity as a stop-grad regression target, and
-    (2) on-policy distillation that combines Flow-Map backward simulation with DMD reverse-divergence
-    supervision over the student's own rollouts. Sampling at inference is plain Euler in mean-velocity
-    form (``z_r = z_t - (t - r) * u``) with no re-noising and no CFG (guidance was fused into the model
-    weights during stage 1). See ``_denoise_rollout`` for the rollout entry point reused during DMD
-    fine-tuning.
+    Sampling is plain Euler in mean-velocity form (``z_r = z_t - (t - r) * u``) with no re-noising. The
+    released NVIDIA checkpoints fold classifier-free guidance into the model weights, so the default
+    ``guidance_scale=1.0`` is the recommended setting.
 
     This model inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods
     implemented for all pipelines (downloading, saving, running on a particular device, etc.).
@@ -91,11 +105,8 @@ class AnyFlowPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         vae ([`AutoencoderKLWan`]):
             VAE that encodes/decodes videos to and from latent representations.
         scheduler ([`FlowMapEulerDiscreteScheduler`]):
-            Flow-map sampler. The pipeline drives ``scheduler.step(..., timestep, r_timestep)`` per inference
-            step.
-        use_mean_velocity (`bool`, defaults to `True`):
-            When ``True`` the model output is averaged across two anchor times to reduce discretization error
-            (the default training-time behavior). Disable to mirror raw Euler stepping.
+            Flow-map sampler. The pipeline drives ``scheduler.step(..., timestep, sample, r_timestep)`` per
+            inference step.
     """
 
     model_cpu_offload_seq = "text_encoder->transformer->vae"
@@ -108,7 +119,6 @@ class AnyFlowPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         transformer: AnyFlowTransformer3DModel,
         vae: AutoencoderKLWan,
         scheduler: FlowMapEulerDiscreteScheduler,
-        use_mean_velocity: bool = True,
     ):
         super().__init__()
 
@@ -123,7 +133,6 @@ class AnyFlowPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         self.vae_scale_factor_temporal = self.vae.config.scale_factor_temporal if getattr(self, "vae", None) else 4
         self.vae_scale_factor_spatial = self.vae.config.scale_factor_spatial if getattr(self, "vae", None) else 8
         self.video_processor = VideoProcessor(vae_scale_factor=self.vae_scale_factor_spatial)
-        self.use_mean_velocity = use_mean_velocity
 
     # Copied from diffusers.pipelines.wan.pipeline_wan.WanPipeline._get_t5_prompt_embeds
     def _get_t5_prompt_embeds(
@@ -336,10 +345,6 @@ class AnyFlowPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         return self._num_timesteps
 
     @property
-    def current_timestep(self):
-        return self._current_timestep
-
-    @property
     def interrupt(self):
         return self._interrupt
 
@@ -389,144 +394,83 @@ class AnyFlowPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         self,
         context_sequence=None,
         num_inference_steps: int = 50,
-        grad_timestep: int = None,
         latents: Optional[torch.Tensor] = None,
         prompt_embeds: Optional[torch.Tensor] = None,
         negative_prompt_embeds: Optional[torch.Tensor] = None,
         guidance_scale: float = 1.0,
+        use_mean_velocity: bool = True,
         callback_on_step_end: Optional[
             Union[Callable[[int, int, Dict], None], PipelineCallback, MultiPipelineCallbacks]
         ] = None,
         callback_on_step_end_tensor_inputs: Optional[List[str]] = None,
     ):
-        r"""
-        Three-segment Flow-Map backward simulation used as the on-policy rollout for stage-2 DMD
-        distillation. Not part of the standard inference path — end users should call ``__call__``.
-
-        When ``grad_timestep`` is ``None`` the method reduces to a plain (no-grad) multi-step rollout.
-        When ``grad_timestep`` is set, the rollout is split into three segments (``z_T -> z_t``, the
-        gradient anchor ``z_t -> z_r`` step, then ``z_r -> z_0``); every segment contributes to the
-        autograd graph, matching Algorithm 2 of the AnyFlow paper. This is the entry point that the
-        on-policy trainer composes with a frozen ``real_score`` and a trainable discriminator to compute
-        the DMD KL-gradient surrogate.
-
-        Args:
-            context_sequence (`torch.Tensor`, *optional*):
-                Clean prefix latents to keep fixed during the rollout (used by I2V / V2V variants).
-            num_inference_steps (`int`, defaults to 50):
-                Number of inference steps used to discretize the rollout schedule.
-            grad_timestep (`int`, *optional*):
-                Index into the inference schedule that becomes the gradient anchor. ``None`` disables
-                gradients and turns the call into a plain rollout.
-            latents (`torch.Tensor`, *optional*):
-                Initial Gaussian latents at ``t = T``.
-            prompt_embeds, negative_prompt_embeds (`torch.Tensor`, *optional*):
-                Pre-computed text encoder embeddings.
-            guidance_scale (`float`, defaults to 1.0):
-                CFG scale applied at runtime. Set to 1.0 (default) for distilled checkpoints since CFG
-                was fused into the weights during stage 1.
-
-        Returns:
-            `torch.Tensor`: the rolled-out latents at the final timestep.
-        """
-        self._guidance_scale = guidance_scale
+        device = self._execution_device
 
         if negative_prompt_embeds is not None:
             prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds], dim=0)
 
-        # setup start sequence
-        if context_sequence is not None:
-            context_length = context_sequence.shape[1]
+        context_length = context_sequence.shape[1] if context_sequence is not None else 0
 
-        def inference_range(latents, timesteps):
-            nonlocal prompt_embeds, negative_prompt_embeds
-
-            for i, t in enumerate(tqdm(timesteps[:-1])):
-                r = timesteps[i + 1]
-
-                if t == r:
-                    continue
-
-                latent_model_input = torch.cat([latents] * 2) if self.do_classifier_free_guidance else latents
-
-                timestep = t.expand(latent_model_input.shape[0]).unsqueeze(-1)
-                timestep = timestep.repeat((1, latent_model_input.shape[1]))
-
-                if self.use_mean_velocity:
-                    r_timestep = r.expand(latent_model_input.shape[0]).unsqueeze(-1)
-                    r_timestep = r_timestep.repeat((1, latent_model_input.shape[1]))
-                else:
-                    r_timestep = timestep
-
-                if context_sequence is not None:
-                    latent_model_input[:, :context_length, ...] = context_sequence
-                    timestep[:, :context_length] = 0
-
-                noise_pred = self.transformer(
-                    hidden_states=latent_model_input,
-                    timestep=timestep,
-                    r_timestep=r_timestep,
-                    encoder_hidden_states=prompt_embeds,
-                    return_dict=False,
-                )[0]
-
-                if self.do_classifier_free_guidance:
-                    noise_uncond, noise_pred = noise_pred.chunk(2)
-                    noise_pred = noise_uncond + guidance_scale * (noise_pred - noise_uncond)
-
-                latents = self.scheduler.step(noise_pred, latents, t, r)
-
-                if callback_on_step_end is not None:
-                    callback_kwargs = {}
-                    for k in callback_on_step_end_tensor_inputs or []:
-                        if k == "latents":
-                            callback_kwargs[k] = latents
-                        elif k == "prompt_embeds":
-                            callback_kwargs[k] = prompt_embeds
-                        elif k == "negative_prompt_embeds":
-                            callback_kwargs[k] = negative_prompt_embeds
-                    callback_outputs = callback_on_step_end(self, i, t, callback_kwargs)
-                    latents = callback_outputs.pop("latents", latents)
-                    prompt_embeds = callback_outputs.pop("prompt_embeds", prompt_embeds)
-                    negative_prompt_embeds = callback_outputs.pop("negative_prompt_embeds", negative_prompt_embeds)
-
-            return latents
-
-        device = self._execution_device
-
-        # 4. Prepare timesteps
         self.scheduler.set_timesteps(num_inference_steps, device=device)
         timesteps = self.scheduler.timesteps
 
-        if grad_timestep is None:
-            x_final_val = inference_range(latents, timesteps)
-            return x_final_val
+        for i, t in enumerate(tqdm(timesteps[:-1])):
+            r = timesteps[i + 1]
 
-        # 6. Denoising loop
-        self._num_timesteps = len(timesteps)
+            if t == r:
+                continue
 
-        if self.do_classifier_free_guidance:
-            prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds], dim=0)
+            latent_model_input = torch.cat([latents] * 2) if self.do_classifier_free_guidance else latents
 
-        prev_timestep = [timesteps[0], timesteps[grad_timestep]]
-        current_timestep = [timesteps[grad_timestep], timesteps[grad_timestep + 1]]
-        post_timestep = [timesteps[grad_timestep + 1], timesteps[-1]]
+            timestep = t.expand(latent_model_input.shape[0]).unsqueeze(-1)
+            timestep = timestep.repeat((1, latent_model_input.shape[1]))
 
-        # 1. Fast-forward to the target timestep without tracking gradients
-        latents = inference_range(latents, prev_timestep)
+            if use_mean_velocity:
+                r_timestep = r.expand(latent_model_input.shape[0]).unsqueeze(-1)
+                r_timestep = r_timestep.repeat((1, latent_model_input.shape[1]))
+            else:
+                r_timestep = timestep
 
-        # 2. Execute a single differentiable step to anchor the gradient flow
-        x_next_grad = inference_range(latents, current_timestep)
+            if context_sequence is not None:
+                latent_model_input[:, :context_length, ...] = context_sequence
+                timestep[:, :context_length] = 0
 
-        # 3. Complete the rollout to x0 in no_grad mode to save VRAM
-        x_final_val = inference_range(x_next_grad, post_timestep)
-        return x_final_val
+            noise_pred = self.transformer(
+                hidden_states=latent_model_input,
+                timestep=timestep,
+                r_timestep=r_timestep,
+                encoder_hidden_states=prompt_embeds,
+                return_dict=False,
+            )[0]
+
+            if self.do_classifier_free_guidance:
+                noise_uncond, noise_pred = noise_pred.chunk(2)
+                noise_pred = noise_uncond + guidance_scale * (noise_pred - noise_uncond)
+
+            latents = self.scheduler.step(noise_pred, t, latents, r_timestep=r, return_dict=False)[0]
+
+            if callback_on_step_end is not None:
+                callback_kwargs = {}
+                for k in callback_on_step_end_tensor_inputs or []:
+                    if k == "latents":
+                        callback_kwargs[k] = latents
+                    elif k == "prompt_embeds":
+                        callback_kwargs[k] = prompt_embeds
+                    elif k == "negative_prompt_embeds":
+                        callback_kwargs[k] = negative_prompt_embeds
+                callback_outputs = callback_on_step_end(self, i, t, callback_kwargs)
+                latents = callback_outputs.pop("latents", latents)
+                prompt_embeds = callback_outputs.pop("prompt_embeds", prompt_embeds)
+                negative_prompt_embeds = callback_outputs.pop("negative_prompt_embeds", negative_prompt_embeds)
+
+        return latents
 
     @torch.no_grad()
+    @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
         self,
         prompt: Union[str, List[str]] = None,
-        context_sequence=None,
+        context_sequence: Optional[torch.Tensor] = None,
         negative_prompt: Union[str, List[str]] = None,
         height: int = 480,
         width: int = 832,
@@ -546,7 +490,73 @@ class AnyFlowPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         ] = None,
         callback_on_step_end_tensor_inputs: List[str] = ["latents"],
         max_sequence_length: int = 512,
+        use_mean_velocity: bool = True,
     ):
+        r"""
+        The call function to the pipeline for generation.
+
+        Args:
+            prompt (`str` or `List[str]`, *optional*):
+                The prompt or prompts to guide the video generation. If not defined, pass `prompt_embeds`
+                instead.
+            context_sequence (`torch.Tensor`, *optional*):
+                Pre-VAE conditioning frames of shape `(B, C, T, H, W)` in `[0, 1]`. When provided, the pipeline
+                VAE-encodes them and keeps the corresponding latent prefix fixed during sampling.
+            negative_prompt (`str` or `List[str]`, *optional*):
+                The prompt or prompts to avoid during video generation. Ignored when not using guidance
+                (`guidance_scale < 1`).
+            height (`int`, defaults to `480`):
+                The height in pixels of the generated video.
+            width (`int`, defaults to `832`):
+                The width in pixels of the generated video.
+            num_frames (`int`, defaults to `81`):
+                The number of frames in the generated video. Must satisfy `(num_frames - 1) %
+                vae_scale_factor_temporal == 0`.
+            num_inference_steps (`int`, defaults to `50`):
+                The number of denoising steps. Distilled AnyFlow checkpoints support any-step sampling, so
+                values as low as `1`, `2`, `4`, or `8` are typical.
+            guidance_scale (`float`, defaults to `1.0`):
+                Classifier-free guidance scale. The released AnyFlow checkpoints fuse CFG into the weights
+                during training; keep at `1.0` unless you know your checkpoint expects otherwise.
+            num_videos_per_prompt (`int`, *optional*, defaults to `1`):
+                The number of videos to generate per prompt.
+            generator (`torch.Generator` or `List[torch.Generator]`, *optional*):
+                A [`torch.Generator`](https://pytorch.org/docs/stable/generated/torch.Generator.html) to make
+                generation deterministic.
+            latents (`torch.Tensor`, *optional*):
+                Pre-generated noisy latents to use as inputs. If not provided, latents are sampled from the
+                supplied `generator`.
+            prompt_embeds (`torch.Tensor`, *optional*):
+                Pre-generated text embeddings. Can be used to tweak text inputs (e.g., prompt weighting). If
+                not provided, embeddings are generated from `prompt`.
+            negative_prompt_embeds (`torch.Tensor`, *optional*):
+                Pre-generated negative text embeddings.
+            output_type (`str`, *optional*, defaults to `"np"`):
+                The output format. One of `"pil"`, `"np"`, `"pt"`, or `"latent"`.
+            return_dict (`bool`, *optional*, defaults to `True`):
+                Whether to return an [`AnyFlowPipelineOutput`] instead of a plain tuple.
+            attention_kwargs (`dict`, *optional*):
+                Reserved for future use; currently forwarded to the transformer but not consumed.
+            callback_on_step_end (`Callable`, *optional*):
+                A function or [`PipelineCallback`] called at the end of each inference step. See
+                [`callbacks`](../callbacks) for details.
+            callback_on_step_end_tensor_inputs (`List[str]`, *optional*, defaults to `["latents"]`):
+                The tensor inputs forwarded to the callback. Must be a subset of
+                `self._callback_tensor_inputs`.
+            max_sequence_length (`int`, defaults to `512`):
+                The maximum text-encoder sequence length. Longer prompts are truncated.
+            use_mean_velocity (`bool`, defaults to `True`):
+                When `True`, the flow-map model is conditioned on both the source timestep `t` and the target
+                timestep `r` to predict a mean velocity, matching the training-time behavior. Disable to
+                mirror raw Euler stepping (`r = t`).
+
+        Examples:
+
+        Returns:
+            [`~AnyFlowPipelineOutput`] or `tuple`:
+                If `return_dict` is `True`, [`AnyFlowPipelineOutput`] is returned, otherwise a `tuple` whose
+                first element is the generated video.
+        """
 
         # 1. Check inputs. Raise error if not correct
         self.check_inputs(
@@ -568,7 +578,6 @@ class AnyFlowPipeline(DiffusionPipeline, WanLoraLoaderMixin):
 
         self._guidance_scale = guidance_scale
         self._attention_kwargs = attention_kwargs
-        self._current_timestep = None
         self._interrupt = False
         self._num_timesteps = num_inference_steps
 
@@ -623,11 +632,11 @@ class AnyFlowPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         latents = self._denoise_rollout(
             context_sequence=context_sequence,
             num_inference_steps=num_inference_steps,
-            grad_timestep=None,
             latents=init_latents,
             prompt_embeds=prompt_embeds,
             negative_prompt_embeds=negative_prompt_embeds,
             guidance_scale=guidance_scale,
+            use_mean_velocity=use_mean_velocity,
             callback_on_step_end=callback_on_step_end,
             callback_on_step_end_tensor_inputs=callback_on_step_end_tensor_inputs,
         )

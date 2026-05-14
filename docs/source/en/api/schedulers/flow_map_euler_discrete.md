@@ -19,7 +19,7 @@ caller-provided, which is what enables any-step sampling: a single distilled che
 1, 2, 4, 8, 16... NFE without retraining.
 
 The scheduler was introduced in
-[AnyFlow: Any-Step Video Diffusion Model with On-Policy Flow Map Distillation](https://huggingface.co/papers/<arxiv-id>)
+[AnyFlow: Any-Step Video Diffusion Model with On-Policy Flow Map Distillation](https://huggingface.co/papers/2605.13724)
 and ships with the `AnyFlowPipeline` and `AnyFlowFARPipeline` integrations, but it is not
 AnyFlow-specific — any flow-map-distilled checkpoint can use it.
 

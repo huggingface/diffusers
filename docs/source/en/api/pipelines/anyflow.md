@@ -193,11 +193,11 @@ export_to_video(video, "out.mp4", fps=16)
 
 ## Notes
 
-- The released NVIDIA checkpoints went through a two-stage LoRA distillation: forward Flow-Map training plus on-policy distillation that combines Flow-Map backward simulation with **DMD reverse-divergence supervision** over the student's own rollouts. CFG was fused into the model weights during stage 1 (`fuse_guidance_scale = 3.0`), so inference does not run a second classifier-free guidance pass — quality is recovered from the distilled weights themselves.
+- Classifier-free guidance is fused into the released checkpoints, so inference does not run a second guided forward pass. Keep the default `guidance_scale=1.0` unless your own checkpoint requires otherwise.
 - `FlowMapEulerDiscreteScheduler` is general-purpose. You can attach it to any flow-map-distilled checkpoint via `from_pretrained(..., scheduler=FlowMapEulerDiscreteScheduler.from_config(...))`.
 - `AnyFlowPipeline` uses [`AnyFlowTransformer3DModel`](../models/anyflow_transformer3d) (bidirectional). `AnyFlowFARPipeline` uses [`AnyFlowFARTransformer3DModel`](../models/anyflow_far_transformer3d), which adds a compressed-frame patch embedding and the FAR causal block-mask.
-- LoRA training is supported via `WanLoraLoaderMixin`, the same mixin used by the upstream Wan pipelines.
-- For continued on-policy fine-tuning with DMD, refer to the original AnyFlow training framework at [`NVlabs/AnyFlow`](https://github.com/NVlabs/AnyFlow); that workflow is out of scope for diffusers.
+- LoRA loading is supported via `WanLoraLoaderMixin`, the same mixin used by the upstream Wan pipelines.
+- For training recipes (forward flow-map training and on-policy distillation), refer to the original AnyFlow training framework at [`NVlabs/AnyFlow`](https://github.com/NVlabs/AnyFlow); training is out of scope for diffusers.
 
 ## AnyFlowPipeline
 

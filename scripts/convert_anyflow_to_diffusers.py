@@ -93,6 +93,8 @@ def build_pipeline(variant: str, ckpt_path: str):
         deltatime_type="r",
         **spec["transformer_kwargs"],
     )
+    # NVlabs/AnyFlow training checkpoints are wrapped Python objects (the `ema` key carries metadata
+    # alongside tensors), so the unpickle is required. Only run this script on checkpoints you trust.
     state_dict = torch.load(ckpt_path, map_location="cpu", weights_only=False)["ema"]
     missing, unexpected = transformer.load_state_dict(state_dict, strict=False)
     if unexpected:

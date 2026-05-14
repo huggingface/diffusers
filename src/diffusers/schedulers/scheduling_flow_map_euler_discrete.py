@@ -12,16 +12,31 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Optional, Union
+from dataclasses import dataclass
+from typing import Optional, Tuple, Union
 
 import torch
 
 from ..configuration_utils import ConfigMixin, register_to_config
-from ..utils import logging
+from ..utils import BaseOutput, logging
 from .scheduling_utils import SchedulerMixin
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
+
+
+@dataclass
+class FlowMapEulerDiscreteSchedulerOutput(BaseOutput):
+    """
+    Output class for the scheduler's `step` function output.
+
+    Args:
+        prev_sample (`torch.Tensor`):
+            Computed sample :math:`z_r` at the target flow-map timestep `r_timestep`. Should be used as the
+            next denoising input.
+    """
+
+    prev_sample: torch.Tensor
 
 
 class FlowMapEulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
@@ -34,7 +49,7 @@ class FlowMapEulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
     `r_timestep` along the predicted velocity.
 
     Introduced in
-    [AnyFlow: Any-Step Video Diffusion Model with On-Policy Flow Map Distillation](https://huggingface.co/papers/<arxiv-id>).
+    [AnyFlow: Any-Step Video Diffusion Model with On-Policy Flow Map Distillation](https://huggingface.co/papers/2605.13724).
 
     This scheduler inherits from [`SchedulerMixin`] and [`ConfigMixin`]. Check the superclass documentation for the
     generic methods implemented for all schedulers (loading, saving, etc.).
@@ -46,10 +61,6 @@ class FlowMapEulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
             Multiplicative timestep shift applied to the inference schedule. ``shift=1.0`` is the identity; values
             greater than 1.0 push the schedule toward more denoising at later steps (e.g., ``shift=5`` matches the
             Wan2.1 default).
-        weight_type (`str`, defaults to `"gaussian"`):
-            Loss-weighting scheme for training. ``"gaussian"`` uses logit-normal weighting centered at
-            ``num_train_timesteps / 2``. ``"beta08"`` uses a beta(1.0, 0.5)-shaped weighting biased toward small
-            timesteps.
     """
 
     _compatibles = []
@@ -60,40 +71,12 @@ class FlowMapEulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
         self,
         num_train_timesteps: int = 1000,
         shift: float = 1.0,
-        weight_type: str = "gaussian",
     ):
         self.set_timesteps(num_train_timesteps, device="cpu")
-        self.set_train_weight(weight_type)
 
-    def adaptive_weighting(self, loss, p=1.0, eps=1e-3):
-        """Inverse-loss reweighting used during distillation training."""
-        weight = 1.0 / torch.pow(loss.detach() + eps, p)
-        return weight * loss
-
-    def set_train_weight(self, weight_type):
-        """Precompute per-timestep training loss weights."""
-        if self.config.weight_type == "gaussian":
-            x = self.timesteps
-            y = torch.exp(-2 * ((x - self.config.num_train_timesteps / 2) / self.config.num_train_timesteps) ** 2)
-            y_shifted = y - y.min()
-            bsmntw_weighing = y_shifted * (self.config.num_train_timesteps / y_shifted.sum())
-            self.linear_timesteps_weights = bsmntw_weighing
-        elif self.config.weight_type == "beta08":
-            t = self.timesteps / self.config.num_train_timesteps
-            y = (t**1.0) * ((1 - t) ** 0.5)
-            self.linear_timesteps_weights = y * (self.config.num_train_timesteps / y.sum())
-        else:
-            raise ValueError(f"Invalid weight type: {weight_type}")
-
-    @torch.no_grad()
-    def get_train_weight(self, timesteps):
-        """Return the precomputed loss weight for each entry in ``timesteps``."""
-        timestep_id = torch.argmin(
-            (self.timesteps.unsqueeze(1) - timesteps.flatten().unsqueeze(0).to(self.timesteps.device)).abs(),
-            dim=0,
-        ).reshape(timesteps.shape)
-        weights = self.linear_timesteps_weights[timestep_id]
-        return weights.to(timesteps.device)
+    def scale_model_input(self, sample: torch.Tensor, *args, **kwargs) -> torch.Tensor:
+        """No-op identity scaling. Provided for API compatibility with other Diffusers schedulers."""
+        return sample
 
     def scale_noise(
         self,
@@ -109,7 +92,7 @@ class FlowMapEulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
         sample = timestep * noise + (1.0 - timestep) * sample
         return sample
 
-    def apply_shift(self, sigmas):
+    def apply_shift(self, sigmas: torch.Tensor) -> torch.Tensor:
         """Apply the configured shift transformation to a sigma tensor."""
         if self.config.shift == 1.0:
             return sigmas
@@ -119,7 +102,7 @@ class FlowMapEulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
         self,
         num_inference_steps: Optional[int] = None,
         device: Union[str, torch.device] = None,
-    ):
+    ) -> None:
         """Build the inference timestep schedule on ``device`` and store it on ``self.timesteps``."""
         timesteps = torch.linspace(1.0, 0.0, num_inference_steps + 1, dtype=torch.float64, device=device)
         timesteps = self.apply_shift(timesteps)
@@ -129,20 +112,48 @@ class FlowMapEulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
     def step(
         self,
         model_output: torch.FloatTensor,
+        timestep: Union[float, torch.FloatTensor],
         sample: torch.FloatTensor,
-        timestep: Optional[Union[float, torch.FloatTensor]] = None,
         r_timestep: Optional[Union[float, torch.FloatTensor]] = None,
-    ):
+        return_dict: bool = True,
+    ) -> Union[FlowMapEulerDiscreteSchedulerOutput, Tuple[torch.Tensor]]:
         """
         Advance ``sample`` from ``timestep`` to ``r_timestep`` using the model-predicted velocity.
 
         Unlike a standard Euler scheduler, both endpoints of the interval are caller-provided so that any-step
-        sampling is possible: a single model call can step from `t` to any chosen target `r` (including `r=0` for
-        a one-shot generation).
+        sampling is possible: a single model call can step from `t` to any chosen target `r` (including `r=0`
+        for a one-shot generation).
+
+        Args:
+            model_output (`torch.Tensor`):
+                Direct output from the flow-map model (predicted mean velocity).
+            timestep (`float` or `torch.Tensor`):
+                Source timestep ``t`` in the same units as ``self.timesteps``.
+            sample (`torch.Tensor`):
+                Current sample :math:`z_t`.
+            r_timestep (`float` or `torch.Tensor`):
+                Target timestep ``r``. Must be provided; passing ``r_timestep=timestep`` is a no-op.
+            return_dict (`bool`, defaults to `True`):
+                Whether to return a [`FlowMapEulerDiscreteSchedulerOutput`] (the default) or a plain tuple.
+
+        Returns:
+            [`FlowMapEulerDiscreteSchedulerOutput`] or `tuple`:
+                When ``return_dict=True``, returns a [`FlowMapEulerDiscreteSchedulerOutput`] whose
+                ``prev_sample`` is :math:`z_r`. Otherwise returns a 1-tuple ``(prev_sample,)``.
         """
+        if r_timestep is None:
+            raise ValueError(
+                "`FlowMapEulerDiscreteScheduler.step` requires an explicit `r_timestep`; this scheduler does "
+                "not infer the target timestep from internal state."
+            )
         timestep = timestep / self.config.num_train_timesteps
         r_timestep = r_timestep / self.config.num_train_timesteps
         timestep = timestep.view(*timestep.shape, *([1] * (model_output.ndim - timestep.ndim)))
         r_timestep = r_timestep.view(*r_timestep.shape, *([1] * (model_output.ndim - r_timestep.ndim)))
         prev_sample = sample - (timestep - r_timestep) * model_output
-        return prev_sample.to(model_output.dtype)
+        prev_sample = prev_sample.to(model_output.dtype)
+
+        if not return_dict:
+            return (prev_sample,)
+
+        return FlowMapEulerDiscreteSchedulerOutput(prev_sample=prev_sample)

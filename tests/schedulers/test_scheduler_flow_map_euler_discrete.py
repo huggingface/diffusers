@@ -17,6 +17,7 @@ import unittest
 import torch
 
 from diffusers import FlowMapEulerDiscreteScheduler
+from diffusers.schedulers.scheduling_flow_map_euler_discrete import FlowMapEulerDiscreteSchedulerOutput
 
 
 class FlowMapEulerDiscreteSchedulerTest(unittest.TestCase):
@@ -32,7 +33,6 @@ class FlowMapEulerDiscreteSchedulerTest(unittest.TestCase):
         config = {
             "num_train_timesteps": 1000,
             "shift": 1.0,
-            "weight_type": "gaussian",
         }
         config.update(**kwargs)
         return config
@@ -73,9 +73,15 @@ class FlowMapEulerDiscreteSchedulerTest(unittest.TestCase):
         timestep = scheduler.timesteps[0:1]
         r_timestep = scheduler.timesteps[1:2]
 
-        prev_sample = scheduler.step(model_output, sample, timestep=timestep, r_timestep=r_timestep)
+        output = scheduler.step(model_output, timestep, sample, r_timestep=r_timestep)
+        self.assertIsInstance(output, FlowMapEulerDiscreteSchedulerOutput)
+        prev_sample = output.prev_sample
         self.assertEqual(prev_sample.shape, sample.shape)
         self.assertEqual(prev_sample.dtype, model_output.dtype)
+
+        # return_dict=False yields a tuple with the same prev_sample.
+        (prev_sample_tuple,) = scheduler.step(model_output, timestep, sample, r_timestep=r_timestep, return_dict=False)
+        torch.testing.assert_close(prev_sample_tuple, prev_sample)
 
     def test_step_zero_interval_is_identity(self):
         # When timestep == r_timestep the update collapses to the input sample.
@@ -86,7 +92,7 @@ class FlowMapEulerDiscreteSchedulerTest(unittest.TestCase):
         model_output = torch.randn_like(sample)
         t = scheduler.timesteps[2:3]
 
-        prev_sample = scheduler.step(model_output, sample, timestep=t, r_timestep=t)
+        prev_sample = scheduler.step(model_output, t, sample, r_timestep=t).prev_sample
         torch.testing.assert_close(prev_sample, sample.to(model_output.dtype))
 
     def test_step_one_shot_sampling(self):
@@ -100,35 +106,12 @@ class FlowMapEulerDiscreteSchedulerTest(unittest.TestCase):
 
         prev_sample = scheduler.step(
             model_output,
+            timesteps[0:1],
             sample,
-            timestep=timesteps[0:1],
             r_timestep=timesteps[1:2],
-        )
+        ).prev_sample
         self.assertEqual(prev_sample.shape, sample.shape)
         self.assertFalse(torch.allclose(prev_sample, sample))
-
-    def test_train_weight_gaussian_shape(self):
-        scheduler = self.scheduler_class(**self.get_default_config(weight_type="gaussian"))
-        weights = scheduler.linear_timesteps_weights
-        self.assertEqual(weights.shape, (scheduler.config.num_train_timesteps + 1,))
-        self.assertTrue(torch.all(weights >= 0))
-
-    def test_train_weight_beta08_shape(self):
-        scheduler = self.scheduler_class(**self.get_default_config(weight_type="beta08"))
-        weights = scheduler.linear_timesteps_weights
-        self.assertEqual(weights.shape, (scheduler.config.num_train_timesteps + 1,))
-        self.assertTrue(torch.all(weights >= 0))
-
-    def test_train_weight_invalid_raises(self):
-        with self.assertRaises(ValueError):
-            self.scheduler_class(**self.get_default_config(weight_type="not-a-real-type"))
-
-    def test_get_train_weight_returns_per_timestep(self):
-        scheduler = self.scheduler_class(**self.get_default_config())
-        timesteps = torch.tensor([0.0, 250.0, 500.0, 750.0, 1000.0])
-        weights = scheduler.get_train_weight(timesteps)
-        self.assertEqual(weights.shape, timesteps.shape)
-        self.assertTrue(torch.all(weights >= 0))
 
     def test_scale_noise_endpoints(self):
         scheduler = self.scheduler_class(**self.get_default_config())

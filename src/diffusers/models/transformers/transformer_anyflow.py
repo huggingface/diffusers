@@ -58,30 +58,41 @@ class AnyFlowFARTransformerOutput(BaseOutput):
     kv_cache: Optional[List[Dict[str, torch.Tensor]]] = None
 
 
-# Pre-compile `flex_attention` for CUDA (the production path) but fall back to the eager kernel on
-# CPU. The compiled kernel goes through Triton/Inductor C++ codegen which can fail on small or
-# unusual shapes seen in fast tests (e.g. CPU-side `pipe.to("cpu")` with tiny dummy components).
-# Both paths produce identical numeric output — the wrapper only differs in execution speed.
-try:
-    _flex_attention_compiled = torch.compile(_flex_attention_eager, dynamic=True)
-except Exception as e:  # pragma: no cover - environment-dependent
-    logger.warning(
-        "Failed to torch.compile flex_attention at module load; will use the eager kernel everywhere. Error: %s",
-        e,
-    )
-    _flex_attention_compiled = _flex_attention_eager
+# `flex_attention` is compiled lazily on first CUDA use. The compiled kernel goes through
+# Triton/Inductor C++ codegen which can fail on small or unusual shapes seen in fast tests
+# (e.g. CPU-side `pipe.to("cpu")` with tiny dummy components), so we always fall back to the
+# eager kernel on CPU. Both paths produce identical numeric output — the wrapper only differs
+# in execution speed.
+_flex_attention_compiled = None
+
+
+def _get_compiled_flex_attention():
+    global _flex_attention_compiled
+    if _flex_attention_compiled is None:
+        try:
+            _flex_attention_compiled = torch.compile(_flex_attention_eager, dynamic=True)
+        except Exception as e:  # pragma: no cover - environment-dependent
+            logger.warning(
+                "Failed to torch.compile flex_attention; falling back to the eager kernel. Error: %s",
+                e,
+            )
+            _flex_attention_compiled = _flex_attention_eager
+    return _flex_attention_compiled
 
 
 def flex_attention(query, key, value, *args, **kwargs):
     """Dispatch to the compiled flex_attention on CUDA (fast path) or the eager one on CPU
     (avoids Triton/Inductor codegen failures on tiny test shapes)."""
     if query.device.type == "cuda":
-        return _flex_attention_compiled(query, key, value, *args, **kwargs)
+        return _get_compiled_flex_attention()(query, key, value, *args, **kwargs)
     return _flex_attention_eager(query, key, value, *args, **kwargs)
 
 
 def build_block_mask(mask_2d, device):
-    assert mask_2d.dim() == 2 and mask_2d.dtype == torch.bool
+    if mask_2d.dim() != 2 or mask_2d.dtype != torch.bool:
+        raise ValueError(
+            f"`mask_2d` must be a 2D boolean tensor, got shape {tuple(mask_2d.shape)} and dtype {mask_2d.dtype}."
+        )
     mask_2d = mask_2d.contiguous()
 
     Q_LEN, KV_LEN = mask_2d.shape
@@ -419,7 +430,6 @@ class AnyFlowDualTimestepTextImageEmbedding(nn.Module):
         delta_emb = self.delta_embedder(delta_timestep).type_as(encoder_hidden_states)
 
         gate = self.delta_emb_gate.to(delta_embedder_dtype)
-        self.gate_track = float(gate)
 
         rt_emb = (1 - gate) * temb + gate * delta_emb
         timestep_proj = self.time_proj(self.act_fn(rt_emb))
@@ -745,7 +755,7 @@ class AnyFlowTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromO
     embedder is replaced by ``AnyFlowDualTimestepTextImageEmbedding`` so that every forward call conditions
     on both the source timestep ``t`` and the target timestep ``r``. This is the embedding required to
     learn the flow map :math:`\Phi_{r\leftarrow t}` introduced in
-    [AnyFlow](https://huggingface.co/papers/<arxiv-id>).
+    [AnyFlow](https://huggingface.co/papers/2605.13724).
 
     For frame-level autoregressive (FAR causal) generation, use ``AnyFlowFARTransformer3DModel`` instead;
     that variant adds the FAR causal block-mask and a compressed-frame patch embedding on top of the same

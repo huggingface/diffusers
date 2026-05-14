@@ -69,7 +69,7 @@ class AnyFlowPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         )
 
         torch.manual_seed(0)
-        scheduler = FlowMapEulerDiscreteScheduler(num_train_timesteps=1000, shift=5.0, weight_type="gaussian")
+        scheduler = FlowMapEulerDiscreteScheduler(num_train_timesteps=1000, shift=5.0)
         config = AutoConfig.from_pretrained("hf-internal-testing/tiny-random-t5")
         text_encoder = T5EncoderModel(config)
         tokenizer = AutoTokenizer.from_pretrained("hf-internal-testing/tiny-random-t5")
@@ -182,5 +182,5 @@ class AnyFlowPipelineIntegrationTests(unittest.TestCase):
         ).frames
 
         self.assertEqual(video[0].shape, (33, 3, 480, 832))
-        # TODO(Phase 7): capture reference slice on real GPU and add tolerance assertion. Until then, we only
-        # assert the output tensor's shape is correct (catches regressions in the sampling loop's frame count).
+        # TODO: extend with a numeric reference slice once a GPU reference run is captured. The current
+        # shape-only assertion guards against regressions in the sampling loop's frame count.

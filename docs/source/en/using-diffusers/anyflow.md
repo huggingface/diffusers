@@ -113,8 +113,8 @@ In our benchmarks (paper Tab 3 / Fig 1) every AnyFlow checkpoint improves monoto
 on VBench Quality, while consistency-based baselines (rCM, Self-Forcing) degrade in the same regime.
 
 > [!TIP]
-> Classifier-free guidance (CFG) was *fused* into the model weights during distillation
-> (`fuse_guidance_scale = 3.0`). The pipeline does not run a second guided forward pass at inference time —
+> Classifier-free guidance (CFG) was *fused* into the released model weights during training.
+> The pipeline does not run a second guided forward pass at inference time —
 > guidance comes from the distilled weights themselves. Leave `guidance_scale=1.0` (the default) for the
 > released checkpoints.
 
