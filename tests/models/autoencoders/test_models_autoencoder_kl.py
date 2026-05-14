@@ -48,6 +48,10 @@ class AutoencoderKLTesterConfig(BaseModelTesterConfig):
         return AutoencoderKL
 
     @property
+    def main_input_name(self) -> str:
+        return "sample"
+
+    @property
     def output_shape(self):
         return (3, 32, 32)
 
