@@ -736,7 +736,7 @@ class CogVideoXPipeline(DiffusionPipeline, CogVideoXLoraLoaderMixin):
                 # perform guidance
                 if use_dynamic_cfg:
                     self._guidance_scale = 1 + guidance_scale * (
-                        (1 - math.cos(math.pi * ((num_inference_steps - t.item()) / num_inference_steps) ** 5.0)) / 2
+                        (1 - math.cos(math.pi * ((num_inference_steps - i) / num_inference_steps) ** 5.0)) / 2
                     )
                 if do_classifier_free_guidance:
                     noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
