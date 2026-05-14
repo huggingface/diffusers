@@ -54,46 +54,33 @@ def _get_torchao_inner_tensor_names(tensor: torch.Tensor) -> list[str]:
 
 
 def _swap_tensor_data(target: torch.Tensor, source: torch.Tensor) -> None:
-    """Replace `target`'s underlying tensor with `source` in-place via `torch.utils.swap_tensors`.
+    """Replace `target`'s underlying tensor with `source` in-place.
 
-    Drop-in for the private `target.data = source` assignment. `target`'s Python identity (and therefore any
-    dict keyed by `id(target)`) is preserved. After this call, `source` should be considered consumed: the swap
-    is bidirectional, so `source` ends up holding what `target` held before.
+    `target`'s Python identity (and therefore any dict keyed by `id(target)`) is preserved.
 
-    For the cached-CPU restore path where `source` must remain unchanged, use `_restore_from_cached_cpu` instead.
+    For TorchAO wrapper-subclass tensors we must use `torch.utils.swap_tensors`: `target.data = source` only replaces
+    the outer wrapper and leaves the internal attributes (`.qdata`, `.scale`, ...) on the wrong device. See
+    https://github.com/huggingface/diffusers/pull/13276#discussion_r2944471548.
 
-    Two subtleties:
-
-    1. `swap_tensors` also swaps `__class__`. If `target` is `nn.Parameter` and `source` is a plain `Tensor`,
-       `target` would be demoted to `Tensor`, breaking `isinstance(p, nn.Parameter)` and any feature that
-       depends on Parameter-ness (e.g. LoRA injection). We wrap `source` in a Parameter first to keep types
-       aligned. This mirrors what `torch.__future__.set_swap_module_params_on_conversion(True)` does in
-       `nn.Module._apply`.
-    2. TorchAO wrapper-subclass tensors store data in internal attributes (`.qdata`, `.scale`, ...) rather
-       than the standard storage; `target.data = source` only replaces the outer wrapper and leaves those
-       attributes on the wrong device. `swap_tensors` operates on the full wrapper, including those
-       attributes, so it works directly without the Parameter wrapping (TorchAO Parameters are themselves
-       wrapper subclasses; `.to()` returns the same subclass). See
-       https://github.com/huggingface/diffusers/pull/13276#discussion_r2944471548.
+    For regular tensors we use the `target.data = source` assignment. `swap_tensors` cannot be used here because
+    `torch.compile` attaches weakrefs to parameters and `swap_tensors` refuses to operate on tensors with weakrefs.
     """
     if _is_torchao_tensor(target):
         torch.utils.swap_tensors(target, source)
-        return
-    if isinstance(target, torch.nn.Parameter) and not isinstance(source, torch.nn.Parameter):
-        source = torch.nn.Parameter(source, requires_grad=target.requires_grad)
-    torch.utils.swap_tensors(target, source)
+    else:
+        target.data = source
 
 
 def _restore_from_cached_cpu(target: torch.Tensor, source: torch.Tensor) -> None:
     """Make `target` reference `source`'s data without mutating `source`.
 
     Used for the stream-offload path where `source` is a long-lived cached CPU copy held in `cpu_param_dict`.
-    `swap_tensors` cannot be used here because it is bidirectional — swapping with the cached copy would put
-    GPU data into it and corrupt the cache for the next onload cycle.
+    `swap_tensors` cannot be used here because it is bidirectional — swapping with the cached copy would put GPU data
+    into it and corrupt the cache for the next onload cycle.
 
-    For TorchAO wrapper-subclass tensors, copy attribute references one-by-one via `setattr`. For regular
-    tensors we still rely on the `target.data = source` assignment: there is no public single-direction
-    equivalent that works on a leaf Parameter without explicitly entering a `no_grad` context.
+    For TorchAO wrapper-subclass tensors, copy attribute references one-by-one via `setattr`. For regular tensors we
+    still rely on the `target.data = source` assignment: there is no public single-direction equivalent that works on a
+    leaf Parameter without explicitly entering a `no_grad` context.
     """
     if _is_torchao_tensor(target):
         for attr_name in _get_torchao_inner_tensor_names(source):
