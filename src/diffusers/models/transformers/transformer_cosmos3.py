@@ -32,6 +32,7 @@ from ...pipelines.cosmos.sequence_packing import (
     set_und_seq,
     zeros_like,
 )
+from ..attention import AttentionModuleMixin
 from ..attention_dispatch import dispatch_attention_fn
 from ..embeddings import TimestepEmbedding, Timesteps
 from ..modeling_utils import ModelMixin
@@ -67,27 +68,57 @@ def _kv_padding_mask(cu_seqlens: torch.Tensor, max_seqlen: int, dtype: torch.dty
 
 
 class CosmosAttnProcessor3_0:
-    """
-    Packed two-way attention processor for Cosmos3. Implements separate causal
-    (understanding) and full (generation) attention pathways via dispatch_attention_fn.
+    """Dual-pathway packed attention processor for Cosmos3.
+
+    Projects, normalizes, applies rotary position embeddings, then runs separate
+    causal (understanding) and full (generation) attention pathways.
     """
 
     def __call__(
         self,
-        packed_query_states: SequencePack,
-        packed_key_states: SequencePack,
-        packed_value_states: SequencePack,
+        attn: "PackedAttentionMoT",
+        pack: SequencePack,
+        packed_position_embeddings: Tuple[SequencePack, SequencePack],
     ) -> SequencePack:
-        causal_q, causal_offsets = get_causal_seq(packed_query_states)
-        causal_k, _ = get_causal_seq(packed_key_states)
-        causal_v, _ = get_causal_seq(packed_value_states)
-        full_q, full_offsets = get_full_only_seq(packed_query_states)
-        sample_offsets = packed_query_states["sample_offsets"]
-        max_causal = packed_query_states["max_causal_len"]
-        max_full = packed_query_states["max_full_len"]
-        max_sample = packed_query_states["max_sample_len"]
+        # Per-pathway projections
+        q_und = attn.q_proj(get_und_seq(pack)).view(-1, attn.num_attention_heads, attn.head_dim)
+        k_und = attn.k_proj(get_und_seq(pack)).view(-1, attn.num_key_value_heads, attn.head_dim)
+        v_und = attn.v_proj(get_und_seq(pack)).view(-1, attn.num_key_value_heads, attn.head_dim)
+        q_gen = attn.q_proj_moe_gen(get_gen_seq(pack)).view(-1, attn.num_attention_heads, attn.head_dim)
+        k_gen = attn.k_proj_moe_gen(get_gen_seq(pack)).view(-1, attn.num_key_value_heads, attn.head_dim)
+        v_gen = attn.v_proj_moe_gen(get_gen_seq(pack)).view(-1, attn.num_key_value_heads, attn.head_dim)
 
-        # Causal (understanding) self-attention
+        q_und = attn.q_norm(q_und)
+        k_und = attn.k_norm(k_und)
+        q_gen = attn.q_norm_moe_gen(q_gen)
+        k_gen = attn.k_norm_moe_gen(k_gen)
+
+        # Apply rotary position embeddings per pathway
+        packed_cos, packed_sin = packed_position_embeddings
+        cos_und = get_und_seq(packed_cos).unsqueeze(1)
+        sin_und = get_und_seq(packed_sin).unsqueeze(1)
+        q_und = q_und * cos_und + _rotate_half(q_und) * sin_und
+        k_und = k_und * cos_und + _rotate_half(k_und) * sin_und
+        cos_gen = get_gen_seq(packed_cos).unsqueeze(1)
+        sin_gen = get_gen_seq(packed_sin).unsqueeze(1)
+        q_gen = q_gen * cos_gen + _rotate_half(q_gen) * sin_gen
+        k_gen = k_gen * cos_gen + _rotate_half(k_gen) * sin_gen
+
+        # Recombine und+gen tokens into a single packed sequence per QKV
+        packed_q = from_und_gen_splits(q_und, q_gen, pack)
+        packed_k = from_und_gen_splits(k_und, k_gen, pack)
+        packed_v = from_und_gen_splits(v_und, v_gen, pack)
+
+        # Two-way attention: causal pathway (understanding) + full pathway (generation cross-attends to all)
+        causal_q, causal_offsets = get_causal_seq(packed_q)
+        causal_k, _ = get_causal_seq(packed_k)
+        causal_v, _ = get_causal_seq(packed_v)
+        full_q, full_offsets = get_full_only_seq(packed_q)
+        sample_offsets = packed_q["sample_offsets"]
+        max_causal = packed_q["max_causal_len"]
+        max_full = packed_q["max_full_len"]
+        max_sample = packed_q["max_sample_len"]
+
         causal_out = dispatch_attention_fn(
             _pack_to_batch(causal_q, causal_offsets, max_causal),
             _pack_to_batch(causal_k, causal_offsets, max_causal),
@@ -97,9 +128,8 @@ class CosmosAttnProcessor3_0:
         )
         causal_out = _batch_to_pack(causal_out, causal_offsets).flatten(-2, -1)
 
-        # Full (generation) cross-attention: Q = gen tokens, K/V = all tokens
-        all_k = get_all_seq(packed_key_states)
-        all_v = get_all_seq(packed_value_states)
+        all_k = get_all_seq(packed_k)
+        all_v = get_all_seq(packed_v)
         full_out = dispatch_attention_fn(
             _pack_to_batch(full_q, full_offsets, max_full),
             _pack_to_batch(all_k, sample_offsets, max_sample),
@@ -110,7 +140,12 @@ class CosmosAttnProcessor3_0:
         )
         full_out = _batch_to_pack(full_out, full_offsets).flatten(-2, -1)
 
-        return from_mode_splits(causal_out, full_out, packed_query_states)
+        packed_attn_output = from_mode_splits(causal_out, full_out, packed_q)
+
+        # Per-pathway output projection
+        und_out = attn.o_proj(get_und_seq(packed_attn_output))
+        gen_out = attn.o_proj_moe_gen(get_gen_seq(packed_attn_output))
+        return from_und_gen_splits(und_out, gen_out, pack)
 
 
 def _rotate_half(x: torch.Tensor) -> torch.Tensor:
@@ -177,8 +212,12 @@ class Cosmos3VLTextMLP(nn.Module):
         return self.down_proj(self.act_fn(self.gate_proj(x)) * self.up_proj(x))
 
 
-class Cosmos3VLTextAttention(nn.Module):
-    """Multi-headed attention from 'Attention Is All You Need' paper"""
+class PackedAttentionMoT(nn.Module, AttentionModuleMixin):
+    """Dual-pathway packed attention for Qwen3VL MoT — separate projections for
+    understanding (causal) and generation (full) token streams."""
+
+    _default_processor_cls = CosmosAttnProcessor3_0
+    _available_processors = [CosmosAttnProcessor3_0]
 
     def __init__(
         self,
@@ -200,107 +239,31 @@ class Cosmos3VLTextAttention(nn.Module):
         self.attention_dropout = attention_dropout
         self.is_causal = True
 
+        # Understanding pathway. q_norm / k_norm are applied per-head (only on
+        # head_dim), so no reshape is needed after them.
         self.q_proj = nn.Linear(hidden_size, num_attention_heads * head_dim, bias=attention_bias)
         self.k_proj = nn.Linear(hidden_size, num_key_value_heads * head_dim, bias=attention_bias)
         self.v_proj = nn.Linear(hidden_size, num_key_value_heads * head_dim, bias=attention_bias)
         self.o_proj = nn.Linear(num_attention_heads * head_dim, hidden_size, bias=attention_bias)
-        # q_norm / k_norm are applied per-head (only on head_dim), so no reshape is needed after them.
         self.q_norm = Cosmos3VLTextRMSNorm(head_dim, eps=rms_norm_eps)
         self.k_norm = Cosmos3VLTextRMSNorm(head_dim, eps=rms_norm_eps)
 
-
-class PackedAttentionMoT(Cosmos3VLTextAttention):
-    """
-    Dual-pathway packed attention for Qwen3VL MoT (Dense version).
-    Implements understanding and generation pathways with separate projections.
-
-    Note that this implementation is used for both Qwen3VL and Qwen3VL-MoE variants,
-    even though it derives from the dense version of Qwen3VLTextAttention.
-    """
-
-    def __init__(
-        self,
-        hidden_size: int,
-        head_dim: int,
-        num_attention_heads: int,
-        num_key_value_heads: int,
-        attention_bias: bool,
-        attention_dropout: float,
-        rms_norm_eps: float,
-    ):
-        super().__init__(
-            hidden_size=hidden_size,
-            head_dim=head_dim,
-            num_attention_heads=num_attention_heads,
-            num_key_value_heads=num_key_value_heads,
-            attention_bias=attention_bias,
-            attention_dropout=attention_dropout,
-            rms_norm_eps=rms_norm_eps,
-        )
-        self.q_norm_moe_gen = Cosmos3VLTextRMSNorm(head_dim, eps=rms_norm_eps)
-        self.k_norm_moe_gen = Cosmos3VLTextRMSNorm(head_dim, eps=rms_norm_eps)
-
+        # Generation pathway
         self.q_proj_moe_gen = nn.Linear(hidden_size, num_attention_heads * head_dim, bias=attention_bias)
         self.k_proj_moe_gen = nn.Linear(hidden_size, num_key_value_heads * head_dim, bias=attention_bias)
         self.v_proj_moe_gen = nn.Linear(hidden_size, num_key_value_heads * head_dim, bias=attention_bias)
         self.o_proj_moe_gen = nn.Linear(num_attention_heads * head_dim, hidden_size, bias=attention_bias)
-        self.dispatch_attention_fn = CosmosAttnProcessor3_0()
+        self.q_norm_moe_gen = Cosmos3VLTextRMSNorm(head_dim, eps=rms_norm_eps)
+        self.k_norm_moe_gen = Cosmos3VLTextRMSNorm(head_dim, eps=rms_norm_eps)
+
+        self.set_processor(CosmosAttnProcessor3_0())
 
     def forward(
         self,
         pack: SequencePack,
         packed_position_embeddings: Tuple[SequencePack, SequencePack],
     ) -> SequencePack:
-        q_und_in = self.q_proj(get_und_seq(pack))  # [N_und,num_heads*head_dim]
-        q_gen_in = self.q_proj_moe_gen(get_gen_seq(pack))  # [N_gen,num_heads*head_dim]
-
-        k_und_in = self.k_proj(get_und_seq(pack))  # [N_und,num_kv_heads*head_dim]
-        k_gen_in = self.k_proj_moe_gen(get_gen_seq(pack))  # [N_gen,num_kv_heads*head_dim]
-
-        v_und_in = self.v_proj(get_und_seq(pack))  # [N_und,num_kv_heads*head_dim]
-        v_gen_in = self.v_proj_moe_gen(get_gen_seq(pack))  # [N_gen,num_kv_heads*head_dim]
-
-        q_und = q_und_in.view(-1, self.num_attention_heads, self.head_dim)  # [N_und,num_heads,head_dim]
-        k_und = k_und_in.view(-1, self.num_key_value_heads, self.head_dim)  # [N_und,num_kv_heads,head_dim]
-        v_und = v_und_in.view(-1, self.num_key_value_heads, self.head_dim)  # [N_und,num_kv_heads,head_dim]
-
-        q_gen = q_gen_in.view(-1, self.num_attention_heads, self.head_dim)  # [N_gen,num_heads,head_dim]
-        k_gen = k_gen_in.view(-1, self.num_key_value_heads, self.head_dim)  # [N_gen,num_kv_heads,head_dim]
-        v_gen = v_gen_in.view(-1, self.num_key_value_heads, self.head_dim)  # [N_gen,num_kv_heads,head_dim]
-
-        q_und = self.q_norm(q_und)  # [N_und,num_heads,head_dim]
-        k_und = self.k_norm(k_und)  # [N_und,num_kv_heads,head_dim]
-
-        q_gen = self.q_norm_moe_gen(q_gen)  # [N_gen,num_heads,head_dim]
-        k_gen = self.k_norm_moe_gen(k_gen)  # [N_gen,num_kv_heads,head_dim]
-
-        packed_cos = packed_position_embeddings[0]
-        packed_sin = packed_position_embeddings[1]
-
-        cos_und = get_und_seq(packed_cos).unsqueeze(1)
-        sin_und = get_und_seq(packed_sin).unsqueeze(1)
-        q_und_ = q_und * cos_und + _rotate_half(q_und) * sin_und  # [N_und,num_heads,head_dim]
-        k_und_ = k_und * cos_und + _rotate_half(k_und) * sin_und  # [N_und,num_kv_heads,head_dim]
-
-        cos_gen = get_gen_seq(packed_cos).unsqueeze(1)
-        sin_gen = get_gen_seq(packed_sin).unsqueeze(1)
-        q_gen_ = q_gen * cos_gen + _rotate_half(q_gen) * sin_gen  # [N_gen,num_heads,head_dim]
-        k_gen_ = k_gen * cos_gen + _rotate_half(k_gen) * sin_gen  # [N_gen,num_kv_heads,head_dim]
-
-        packed_query_states_ = from_und_gen_splits(q_und_, q_gen_, pack)  # [N_und+N_gen,num_heads,head_dim]
-        packed_key_states_ = from_und_gen_splits(k_und_, k_gen_, pack)  # [N_und+N_gen,num_kv_heads,head_dim]
-        packed_value_states_ = from_und_gen_splits(v_und, v_gen, pack)  # [N_und+N_gen,num_kv_heads,head_dim]
-
-        packed_attn_output = self.dispatch_attention_fn(
-            packed_query_states_,
-            packed_key_states_,
-            packed_value_states_,
-        )
-
-        # Apply projections directly to get final results
-        und_seq = self.o_proj(get_und_seq(packed_attn_output))  # [N_und,hidden_size]
-        gen_seq = self.o_proj_moe_gen(get_gen_seq(packed_attn_output))  # [N_gen,hidden_size]
-        return from_und_gen_splits(und_seq, gen_seq, pack)  # [N_und+N_gen,hidden_size]
+        return self.processor(self, pack, packed_position_embeddings)
 
 
 class Cosmos3VLTextMoTDecoderLayer(nn.Module):
