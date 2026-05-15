@@ -123,6 +123,32 @@ def retrieve_latents(
         raise AttributeError("Could not access latents of provided encoder_output")
 
 
+# Copied from diffusers.pipelines.wan.pipeline_wan_animate._expand_tensor_to_effective_batch
+def _expand_tensor_to_effective_batch(
+    tensor: torch.Tensor,
+    batch_size: int,
+    num_per_prompt: int,
+    tensor_name: str | None = None,
+) -> torch.Tensor:
+    target_batch_size = batch_size * num_per_prompt
+
+    if tensor.shape[0] == target_batch_size:
+        return tensor
+
+    if tensor.shape[0] == 1:
+        repeat_by = target_batch_size
+    elif tensor.shape[0] == batch_size:
+        repeat_by = num_per_prompt
+    else:
+        tensor_name = f"`{tensor_name}`" if tensor_name is not None else "Tensor"
+        raise ValueError(
+            f"{tensor_name} batch size must be 1, `batch_size` ({batch_size}), or "
+            f"`batch_size * num_*_per_prompt` ({target_batch_size}), but got {tensor.shape[0]}."
+        )
+
+    return torch.repeat_interleave(tensor, repeats=repeat_by, dim=0, output_size=tensor.shape[0] * repeat_by)
+
+
 class WanImageToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
     r"""
     Pipeline for image-to-video generation using Wan.
@@ -328,30 +354,6 @@ class WanImageToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
 
         return prompt_embeds, negative_prompt_embeds
 
-    def _expand_tensor_to_effective_batch(
-        self,
-        tensor: torch.Tensor,
-        batch_size: int,
-        num_videos_per_prompt: int,
-        tensor_name: str,
-    ) -> torch.Tensor:
-        target_batch_size = batch_size * num_videos_per_prompt
-
-        if tensor.shape[0] == target_batch_size:
-            return tensor
-
-        if tensor.shape[0] == 1:
-            repeat_by = target_batch_size
-        elif tensor.shape[0] == batch_size:
-            repeat_by = num_videos_per_prompt
-        else:
-            raise ValueError(
-                f"`{tensor_name}` batch size must be 1, `batch_size` ({batch_size}), or "
-                f"`batch_size * num_videos_per_prompt` ({target_batch_size}), but got {tensor.shape[0]}."
-            )
-
-        return torch.repeat_interleave(tensor, repeats=repeat_by, dim=0, output_size=tensor.shape[0] * repeat_by)
-
     def _prepare_image_embeds(
         self,
         image: PipelineImageInput,
@@ -382,12 +384,12 @@ class WanImageToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
                     f"{image_embeds.shape[0]}."
                 )
             image_embeds = image_embeds.reshape(-1, 2, *image_embeds.shape[1:])
-            image_embeds = self._expand_tensor_to_effective_batch(
+            image_embeds = _expand_tensor_to_effective_batch(
                 image_embeds, batch_size, num_videos_per_prompt, "image_embeds"
             )
             image_embeds = image_embeds.reshape(-1, *image_embeds.shape[2:])
         else:
-            image_embeds = self._expand_tensor_to_effective_batch(
+            image_embeds = _expand_tensor_to_effective_batch(
                 image_embeds, batch_size, num_videos_per_prompt, "image_embeds"
             )
 
@@ -517,7 +519,7 @@ class WanImageToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         )
 
         latent_condition = retrieve_latents(self.vae.encode(video_condition), sample_mode="argmax")
-        latent_condition = self._expand_tensor_to_effective_batch(
+        latent_condition = _expand_tensor_to_effective_batch(
             latent_condition, batch_size, num_videos_per_prompt, "image"
         )
 

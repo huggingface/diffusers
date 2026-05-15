@@ -256,12 +256,12 @@ class WanTextInputStep(ModularPipelineBlocks):
 
         block_state.prompt_embeds = block_state.prompt_embeds.repeat_interleave(
             block_state.num_videos_per_prompt, dim=0
-        ).to(block_state.dtype)
+        )
 
         if block_state.negative_prompt_embeds is not None:
             block_state.negative_prompt_embeds = block_state.negative_prompt_embeds.repeat_interleave(
                 block_state.num_videos_per_prompt, dim=0
-            ).to(block_state.dtype)
+            )
 
         self.set_block_state(state, block_state)
 

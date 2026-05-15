@@ -15,7 +15,6 @@
 
 from types import SimpleNamespace
 
-import pytest
 import torch
 
 from diffusers.modular_pipelines import WanBlocks, WanModularPipeline
@@ -23,6 +22,7 @@ from diffusers.modular_pipelines.modular_pipeline import BlockState, PipelineSta
 from diffusers.modular_pipelines.wan.before_denoise import WanTextInputStep
 from diffusers.modular_pipelines.wan.denoise import Wan22LoopDenoiser, WanLoopDenoiser
 
+from ...testing_utils import torch_device
 from ..test_modular_pipelines_common import ModularPipelineTesterMixin
 
 
@@ -94,9 +94,23 @@ class TestWanModularPipelineFast(ModularPipelineTesterMixin):
         }
         return inputs
 
-    @pytest.mark.skip(reason="num_videos_per_prompt")
     def test_num_images_per_prompt(self):
-        pass
+        pipe = self.get_pipeline().to(torch_device)
+
+        batch_sizes = [1, 2]
+        num_videos_per_prompts = [1, 2]
+
+        for batch_size in batch_sizes:
+            for num_videos_per_prompt in num_videos_per_prompts:
+                inputs = self.get_dummy_inputs()
+
+                for key in inputs.keys():
+                    if key in self.batch_params:
+                        inputs[key] = batch_size * [inputs[key]]
+
+                videos = pipe(**inputs, num_videos_per_prompt=num_videos_per_prompt, output=self.output_name)
+
+                assert videos.shape[0] == batch_size * num_videos_per_prompt
 
     def test_vae_scale_factors_use_config_values(self):
         pipe = WanModularPipeline.__new__(WanModularPipeline)
@@ -115,7 +129,7 @@ class TestWanModularPipelineFast(ModularPipelineTesterMixin):
         assert pipe.default_width == 1664
         assert pipe.default_num_frames == 41
 
-    def test_text_input_step_uses_transformer_dtype_and_repeat_interleave(self):
+    def test_text_input_step_sets_transformer_dtype_and_repeat_interleave(self):
         step = WanTextInputStep()
         components = SimpleNamespace(transformer=SimpleNamespace(dtype=torch.bfloat16))
         prompt_embeds = torch.arange(2 * 3 * 4, dtype=torch.float32).reshape(2, 3, 4)
@@ -129,10 +143,8 @@ class TestWanModularPipelineFast(ModularPipelineTesterMixin):
 
         assert state.batch_size == 2
         assert state.dtype == torch.bfloat16
-        torch.testing.assert_close(state.prompt_embeds, prompt_embeds.repeat_interleave(2, dim=0).to(torch.bfloat16))
-        torch.testing.assert_close(
-            state.negative_prompt_embeds, negative_prompt_embeds.repeat_interleave(2, dim=0).to(torch.bfloat16)
-        )
+        torch.testing.assert_close(state.prompt_embeds, prompt_embeds.repeat_interleave(2, dim=0))
+        torch.testing.assert_close(state.negative_prompt_embeds, negative_prompt_embeds.repeat_interleave(2, dim=0))
 
     def test_loop_denoiser_preserves_timestep_dtype(self):
         transformer = _FakeTransformer(dtype=torch.bfloat16)

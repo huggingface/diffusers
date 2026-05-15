@@ -27,7 +27,7 @@ from ..modular_pipeline import (
     ModularPipelineBlocks,
     PipelineState,
 )
-from ..modular_pipeline_utils import ComponentSpec, ConfigSpec, InputParam, OutputParam
+from ..modular_pipeline_utils import ComponentSpec, ConfigSpec, InputParam
 from .modular_pipeline import WanModularPipeline
 
 
@@ -54,16 +54,6 @@ class WanLoopBeforeDenoiser(ModularPipelineBlocks):
                 type_hint=torch.Tensor,
                 description="The initial latents to use for the denoising process. Can be generated in prepare_latent step.",
             ),
-        ]
-
-    @property
-    def intermediate_outputs(self) -> list[OutputParam]:
-        return [
-            OutputParam(
-                "latent_model_input",
-                type_hint=torch.Tensor,
-                description="Latents prepared as model hidden states for the denoiser.",
-            )
         ]
 
     @torch.no_grad()
@@ -98,16 +88,6 @@ class WanImage2VideoLoopBeforeDenoiser(ModularPipelineBlocks):
                 type_hint=torch.Tensor,
                 description="The image condition latents to use for the denoising process. Can be generated in prepare_first_frame_latents/prepare_first_last_frame_latents step.",
             ),
-        ]
-
-    @property
-    def intermediate_outputs(self) -> list[OutputParam]:
-        return [
-            OutputParam(
-                "latent_model_input",
-                type_hint=torch.Tensor,
-                description="Latents and image conditioning prepared as model hidden states for the denoiser.",
-            )
         ]
 
     @torch.no_grad()
@@ -172,12 +152,6 @@ class WanLoopDenoiser(ModularPipelineBlocks):
                 description="The number of inference steps to use for the denoising process. Can be generated in set_timesteps step.",
             ),
             InputParam(
-                "latent_model_input",
-                required=True,
-                type_hint=torch.Tensor,
-                description="Latents prepared as model hidden states for the denoiser.",
-            ),
-            InputParam(
                 "dtype",
                 required=True,
                 type_hint=torch.dtype,
@@ -194,16 +168,6 @@ class WanLoopDenoiser(ModularPipelineBlocks):
         for name in guider_input_names:
             inputs.append(InputParam(name=name, required=True, type_hint=torch.Tensor))
         return inputs
-
-    @property
-    def intermediate_outputs(self) -> list[OutputParam]:
-        return [
-            OutputParam(
-                "noise_pred",
-                type_hint=torch.Tensor,
-                description="The guided noise prediction for the current denoising step.",
-            )
-        ]
 
     @torch.no_grad()
     def __call__(
@@ -321,12 +285,6 @@ class Wan22LoopDenoiser(ModularPipelineBlocks):
                 type_hint=int,
                 description="The number of inference steps to use for the denoising process. Can be generated in set_timesteps step.",
             ),
-            InputParam(
-                "latent_model_input",
-                required=True,
-                type_hint=torch.Tensor,
-                description="Latents prepared as model hidden states for the denoiser.",
-            ),
         ]
         guider_input_names = []
         for value in self._guider_input_fields.values():
@@ -338,16 +296,6 @@ class Wan22LoopDenoiser(ModularPipelineBlocks):
         for name in guider_input_names:
             inputs.append(InputParam(name=name, required=True, type_hint=torch.Tensor))
         return inputs
-
-    @property
-    def intermediate_outputs(self) -> list[OutputParam]:
-        return [
-            OutputParam(
-                "noise_pred",
-                type_hint=torch.Tensor,
-                description="The guided noise prediction for the current denoising step.",
-            )
-        ]
 
     @torch.no_grad()
     def __call__(
@@ -417,23 +365,6 @@ class WanLoopAfterDenoiser(ModularPipelineBlocks):
             "This block should be used to compose the `sub_blocks` attribute of a `LoopSequentialPipelineBlocks` "
             "object (e.g. `WanDenoiseLoopWrapper`)"
         )
-
-    @property
-    def inputs(self) -> list[InputParam]:
-        return [
-            InputParam(
-                "latents",
-                required=True,
-                type_hint=torch.Tensor,
-                description="The latents to update with the scheduler step.",
-            ),
-            InputParam(
-                "noise_pred",
-                required=True,
-                type_hint=torch.Tensor,
-                description="The guided noise prediction for the current denoising step.",
-            ),
-        ]
 
     @torch.no_grad()
     def __call__(self, components: WanModularPipeline, block_state: BlockState, i: int, t: torch.Tensor):
