@@ -105,7 +105,7 @@ class FlaxKarrasVeScheduler(FlaxSchedulerMixin, ConfigMixin):
         s_max: float = 50,
     ):
         logger.warning(
-            "Flax classes are deprecated and will be removed in Diffusers v1.0.0. We "
+            "Flax classes are deprecated and will be removed in Diffusers v0.40.0. We "
             "recommend migrating to PyTorch classes or pinning your version of Diffusers."
         )
 

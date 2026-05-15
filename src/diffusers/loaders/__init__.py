@@ -86,6 +86,7 @@ if is_torch_available():
             "ZImageLoraLoaderMixin",
             "Flux2LoraLoaderMixin",
             "ErnieImageLoraLoaderMixin",
+            "CosmosLoraLoaderMixin",
         ]
         _import_structure["textual_inversion"] = ["TextualInversionLoaderMixin"]
         _import_structure["ip_adapter"] = [
@@ -118,6 +119,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
                 AuraFlowLoraLoaderMixin,
                 CogVideoXLoraLoaderMixin,
                 CogView4LoraLoaderMixin,
+                CosmosLoraLoaderMixin,
                 ErnieImageLoraLoaderMixin,
                 Flux2LoraLoaderMixin,
                 FluxLoraLoaderMixin,
