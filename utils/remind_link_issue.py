@@ -18,12 +18,12 @@ Behavior:
 - Scans open, non-draft PRs.
 - A PR is considered "linked" if GitHub's GraphQL `closingIssuesReferences` returns > 0
   (covers both `Fixes #N` keywords in the body and issues linked via the GitHub UI).
-- If a PR is not linked, the script posts up to 3 reminder comments spaced 7 days apart.
+- If a PR is not linked and no prior reminder is present, the script posts a single
+  friendly reminder comment.
 - PRs labeled `no-issue-needed` and bot-authored PRs are skipped.
 """
 
 import os
-from datetime import datetime, timedelta, timezone
 
 import requests
 from github import Github
@@ -31,8 +31,6 @@ from github import Github
 
 REPO = "huggingface/diffusers"
 REMINDER_MARKER = "<!-- pr-link-issue-reminder -->"
-REMINDER_INTERVAL = timedelta(days=7)
-MAX_REMINDERS = 3
 BYPASS_LABELS = {"no-issue-needed"}
 CONTRIBUTION_GUIDE_URL = "https://huggingface.co/docs/diffusers/main/en/conceptual/contribution#coding-with-ai-agents"
 
@@ -62,39 +60,20 @@ def has_linked_issue(token, owner, name, number):
     return payload["data"]["repository"]["pullRequest"]["closingIssuesReferences"]["totalCount"] > 0
 
 
-def reminder_history(pr):
-    reminders = [c for c in pr.get_issue_comments() if REMINDER_MARKER in (c.body or "")]
-    reminders.sort(key=lambda c: c.created_at)
-    return reminders
+def has_existing_reminder(pr):
+    return any(REMINDER_MARKER in (c.body or "") for c in pr.get_issue_comments())
 
 
-def reminder_body(author, count):
-    remaining = MAX_REMINDERS - count
-    lines = [
-        REMINDER_MARKER,
-        f"Hi @{author}, this PR does not appear to link an issue it fixes. "
+def reminder_body(author):
+    return (
+        f"{REMINDER_MARKER}\n"
+        f"Hi @{author}, thanks for the PR! It does not appear to link an issue it fixes. "
         "If this PR addresses an existing issue, please add a closing keyword "
         "(e.g. `Fixes #1234`) to the PR description so the issue is linked. "
-        f"See the [contribution guide]({CONTRIBUTION_GUIDE_URL}) for more details.",
-        "",
-        f"Reminder **{count}/{MAX_REMINDERS}**.",
-    ]
-    if remaining > 0:
-        lines[-1] += (
-            f" If no linked issue is added within {REMINDER_INTERVAL.days} days, "
-            f"you will receive {remaining} more reminder(s)."
-        )
-    else:
-        lines[-1] += (
-            " This is the final reminder. If this PR intentionally does not fix "
-            "a tracked issue, a maintainer can add the `no-issue-needed` label "
-            "to bypass this check."
-        )
-    return "\n".join(lines)
-
-
-def aware(ts):
-    return ts if ts.tzinfo is not None else ts.replace(tzinfo=timezone.utc)
+        f"See the [contribution guide]({CONTRIBUTION_GUIDE_URL}) for more details. "
+        "If this PR intentionally does not fix a tracked issue, a maintainer can "
+        "add the `no-issue-needed` label to silence this reminder."
+    )
 
 
 def main():
@@ -102,8 +81,6 @@ def main():
     g = Github(token)
     repo = g.get_repo(REPO)
     owner, name = REPO.split("/", 1)
-
-    now = datetime.now(timezone.utc)
 
     for pr in repo.get_pulls(state="open"):
         if pr.draft:
@@ -118,21 +95,9 @@ def main():
             continue
         if has_linked_issue(token, owner, name, pr.number):
             continue
-
-        reminders = reminder_history(pr)
-        count = len(reminders)
-
-        if count == 0:
-            pr.create_issue_comment(reminder_body(author, 1))
+        if has_existing_reminder(pr):
             continue
-
-        if count >= MAX_REMINDERS:
-            continue
-
-        if now - aware(reminders[-1].created_at) < REMINDER_INTERVAL:
-            continue
-
-        pr.create_issue_comment(reminder_body(author, count + 1))
+        pr.create_issue_comment(reminder_body(author))
 
 
 if __name__ == "__main__":
