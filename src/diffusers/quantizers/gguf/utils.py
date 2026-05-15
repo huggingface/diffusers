@@ -80,7 +80,7 @@ def _fused_mul_mat_gguf(x: torch.Tensor, qweight: torch.Tensor, qweight_type: in
     # there is no need to call any kernel for fp16/bf16
     if qweight_type in UNQUANTIZED_TYPES:
         weight = dequantize_gguf_tensor(qweight)
-        return x @ weight.T
+        return x @ weight.to(x.dtype).T
 
     # TODO(Isotr0py): GGUF's MMQ and MMVQ implementation are designed for
     # contiguous batching and inefficient with diffusers' batching,
@@ -134,6 +134,8 @@ def _replace_with_gguf_linear(model, compute_dtype, state_dict, prefix="", modul
         return
 
     for name, module in model.named_children():
+        if name in modules_to_not_convert:
+            continue
         module_prefix = prefix + name + "."
         _replace_with_gguf_linear(module, compute_dtype, state_dict, module_prefix, modules_to_not_convert)
 
