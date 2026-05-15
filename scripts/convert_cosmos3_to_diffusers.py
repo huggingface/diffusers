@@ -454,9 +454,6 @@ def main():
             state_dict[f"llm2sound.{k}"] = v
         state_dict["sound_modality_embed"] = sound_modality_embed
     transformer.load_state_dict(state_dict, strict=True, assign=True)
-    # inv_freq is a non-persistent buffer (not in state_dict); initialize it now
-    # that the model is on CUDA (assign=True keeps weights on the source device).
-    transformer.model.rotary_emb.init_weights(buffer_device=torch.device("cuda"))
     del (
         language_model,
         vae2llm,

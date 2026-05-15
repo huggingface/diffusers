@@ -16,11 +16,6 @@ from typing import Tuple
 
 import torch
 import torch.nn as nn
-from transformers.activations import ACT2FN
-from transformers.integrations import use_kernel_forward_from_hub
-from transformers.modeling_rope_utils import ROPE_INIT_FUNCTIONS, dynamic_rope_update
-from transformers.models.qwen3_vl.modeling_qwen3_vl import apply_rotary_pos_emb
-
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...pipelines.cosmos.sequence_packing import (
     SequencePack,
@@ -118,38 +113,29 @@ class CosmosAttnProcessor3_0:
         return from_mode_splits(causal_out, full_out, packed_query_states)
 
 
+def _rotate_half(x: torch.Tensor) -> torch.Tensor:
+    half = x.shape[-1] // 2
+    return torch.cat((-x[..., half:], x[..., :half]), dim=-1)
+
+
 class Cosmos3VLTextRotaryEmbedding(nn.Module):
     def __init__(self, config):
         super().__init__()
-        if hasattr(config, "rope_scaling") and config.rope_scaling is not None:
-            self.rope_type = config.rope_scaling.get("rope_type", "default")
-        else:
-            self.rope_type = "default"
-        self.max_seq_len_cached = config.max_position_embeddings
-        self.original_max_seq_len = config.max_position_embeddings
-
-        self.config = config
-        self.rope_init_fn = ROPE_INIT_FUNCTIONS[self.rope_type]
-
+        head_dim = getattr(config, "head_dim", config.hidden_size // config.num_attention_heads)
+        inv_freq = 1.0 / (
+            config.rope_theta ** (torch.arange(0, head_dim, 2, dtype=torch.int64).float() / head_dim)
+        )
+        self.register_buffer("inv_freq", inv_freq, persistent=False)
         self.mrope_section = (
-            config.rope_scaling.get("mrope_section", [24, 20, 20]) if config.rope_scaling is not None else [24, 20, 20]
+            config.rope_scaling.get("mrope_section", [24, 20, 20])
+            if config.rope_scaling is not None
+            else [24, 20, 20]
         )
 
-    def init_weights(self, buffer_device: torch.device | None = None) -> None:
-        inv_freq, self.attention_scaling = self.rope_init_fn(self.config, buffer_device)
-        self.register_buffer("inv_freq", inv_freq, persistent=False)
-
     def apply_interleaved_mrope(self, freqs, mrope_section):
-        """Apply interleaved MRoPE to 3D rotary embeddings.
-        Reorganizes frequency layout from chunked [TTT...HHH...WWW] to
-        interleaved [THTHWHTHW...TT], preserving frequency continuity.
-        args:
-            x: (3, bs, seq_len, head_dim // 2)
-            mrope_section: (3,)
-        returns:
-            x_t: (bs, seq_len, head_dim // 2)
-        """
-        freqs_t = freqs[0]  # just overwrite the first dimension T
+        """Reorganize chunked [TTT...HHH...WWW] frequency layout into interleaved
+        [THTHWHTHW...TT], preserving frequency continuity across the 3 grids."""
+        freqs_t = freqs[0]
         for dim, offset in enumerate((1, 2), start=1):  # H, W
             length = mrope_section[dim] * 3
             idx = slice(offset, length, 3)
@@ -157,26 +143,17 @@ class Cosmos3VLTextRotaryEmbedding(nn.Module):
         return freqs_t
 
     @torch.no_grad()
-    @dynamic_rope_update  # power user: used with advanced RoPE types (e.g. dynamic rope)
     def forward(self, x, position_ids):
-        assert self.inv_freq.dtype == torch.float32, f"inv_freq must be float32, but got {self.inv_freq.dtype}"
-
-        # In contrast to other models, Cosmos3Omni has different position ids for the grids
-        # So we expand the inv_freq to shape (3, ...)
         if position_ids.ndim == 2:
             position_ids = position_ids[None, ...].expand(3, position_ids.shape[0], -1)  # [3,B,N]
         inv_freq_expanded = (
             self.inv_freq[None, None, :, None].float().expand(3, position_ids.shape[1], -1, 1).to(x.device)
         )  # [3,B,head_dim//2,1]
         position_ids_expanded = position_ids[:, :, None, :].float()  # [3,B,1,N]
-
         freqs = (inv_freq_expanded.float() @ position_ids_expanded.float()).transpose(2, 3)  # [3,B,N,head_dim//2]
         freqs = self.apply_interleaved_mrope(freqs, self.mrope_section)  # [B,N,head_dim//2]
         emb = torch.cat((freqs, freqs), dim=-1)  # [B,N,head_dim]
-        cos = emb.cos() * self.attention_scaling  # [B,N,head_dim]
-        sin = emb.sin() * self.attention_scaling  # [B,N,head_dim]
-
-        return cos.to(dtype=x.dtype), sin.to(dtype=x.dtype)  # each: [B,N,head_dim]
+        return emb.cos().to(dtype=x.dtype), emb.sin().to(dtype=x.dtype)  # each: [B,N,head_dim]
 
 
 class Cosmos3VLTextRMSNorm(nn.Module):
@@ -202,7 +179,7 @@ class Cosmos3VLTextMLP(nn.Module):
         self.gate_proj = nn.Linear(self.hidden_size, self.intermediate_size, bias=False)
         self.up_proj = nn.Linear(self.hidden_size, self.intermediate_size, bias=False)
         self.down_proj = nn.Linear(self.intermediate_size, self.hidden_size, bias=False)
-        self.act_fn = ACT2FN[config.hidden_act]
+        self.act_fn = nn.SiLU()
 
     def forward(self, x):
         down_proj = self.down_proj(self.act_fn(self.gate_proj(x)) * self.up_proj(x))
@@ -313,20 +290,15 @@ class PackedAttentionMoT(Cosmos3VLTextAttention):
         packed_cos = packed_position_embeddings[0]
         packed_sin = packed_position_embeddings[1]
 
-        q_und_, k_und_ = apply_rotary_pos_emb(
-            q_und,
-            k_und,
-            get_und_seq(packed_cos),
-            get_und_seq(packed_sin),
-            unsqueeze_dim=1,
-        )  # q_und_: [N_und,num_heads,head_dim], k_und_: [N_und,num_kv_heads,head_dim]
-        q_gen_, k_gen_ = apply_rotary_pos_emb(
-            q_gen,
-            k_gen,
-            get_gen_seq(packed_cos),
-            get_gen_seq(packed_sin),
-            unsqueeze_dim=1,
-        )  # q_gen_: [N_gen,num_heads,head_dim], k_gen_: [N_gen,num_kv_heads,head_dim]
+        cos_und = get_und_seq(packed_cos).unsqueeze(1)
+        sin_und = get_und_seq(packed_sin).unsqueeze(1)
+        q_und_ = q_und * cos_und + _rotate_half(q_und) * sin_und  # [N_und,num_heads,head_dim]
+        k_und_ = k_und * cos_und + _rotate_half(k_und) * sin_und  # [N_und,num_kv_heads,head_dim]
+
+        cos_gen = get_gen_seq(packed_cos).unsqueeze(1)
+        sin_gen = get_gen_seq(packed_sin).unsqueeze(1)
+        q_gen_ = q_gen * cos_gen + _rotate_half(q_gen) * sin_gen  # [N_gen,num_heads,head_dim]
+        k_gen_ = k_gen * cos_gen + _rotate_half(k_gen) * sin_gen  # [N_gen,num_kv_heads,head_dim]
 
         packed_query_states_ = from_und_gen_splits(q_und_, q_gen_, pack)  # [N_und+N_gen,num_heads,head_dim]
         packed_key_states_ = from_und_gen_splits(k_und_, k_gen_, pack)  # [N_und+N_gen,num_kv_heads,head_dim]
@@ -482,7 +454,6 @@ class Cosmos3OmniTransformer(ModelMixin, ConfigMixin):
         attention_dropout: float = 0.0,
         dtype: str = "bfloat16",
         head_dim: int = 128,
-        hidden_act: str = "silu",
         hidden_size: int = 4096,
         initializer_range: float = 0.02,
         intermediate_size: int = 12288,
@@ -536,14 +507,6 @@ class Cosmos3OmniTransformer(ModelMixin, ConfigMixin):
             self.sound2llm = nn.Linear(sound_dim, hidden_size, bias=True)
             self.llm2sound = nn.Linear(hidden_size, sound_dim, bias=True)
             self.sound_modality_embed = nn.Parameter(torch.zeros(hidden_size))
-
-    @classmethod
-    def from_pretrained(cls, pretrained_model_name_or_path, **kwargs):
-        model = super().from_pretrained(pretrained_model_name_or_path, **kwargs)
-        # inv_freq is a non-persistent buffer absent from the saved state_dict.
-        # Initialize it on CPU; it will move to the correct device with .to() / .cuda().
-        model.model.rotary_emb.init_weights(buffer_device=None)
-        return model
 
     def forward(
         self,
