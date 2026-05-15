@@ -1187,7 +1187,7 @@ class QuantizationCompileTesterMixin:
         model.to(torch_device)
         model.eval()
 
-        model = torch.compile(model, fullgraph=True)
+        model.compile(fullgraph=True)
 
         with torch._dynamo.config.patch(error_on_recompile=True):
             inputs = self.get_dummy_inputs()
@@ -1219,7 +1219,7 @@ class QuantizationCompileTesterMixin:
             "use_stream": use_stream,
         }
         model.enable_group_offload(**group_offload_kwargs)
-        model = torch.compile(model)
+        model.compile()
 
         inputs = self.get_dummy_inputs()
         output = model(**inputs, return_dict=False)[0]
