@@ -58,6 +58,7 @@ if is_torch_available():
     _import_structure["autoencoders.consistency_decoder_vae"] = ["ConsistencyDecoderVAE"]
     _import_structure["autoencoders.vq_model"] = ["VQModel"]
     _import_structure["cache_utils"] = ["CacheMixin"]
+    _import_structure["condition_embedders.condition_embedder_anima"] = ["AnimaTextConditioner"]
     _import_structure["controlnets.controlnet"] = ["ControlNetModel"]
     _import_structure["controlnets.controlnet_cosmos"] = ["CosmosControlNetModel"]
     _import_structure["controlnets.controlnet_flux"] = ["FluxControlNetModel", "FluxMultiControlNetModel"]
@@ -80,7 +81,6 @@ if is_torch_available():
     _import_structure["embeddings"] = ["ImageProjection"]
     _import_structure["modeling_utils"] = ["ModelMixin"]
     _import_structure["transformers.ace_step_transformer"] = ["AceStepTransformer1DModel"]
-    _import_structure["transformers.transformer_anima"] = ["AnimaTextConditioner"]
     _import_structure["transformers.auraflow_transformer_2d"] = ["AuraFlowTransformer2DModel"]
     _import_structure["transformers.cogvideox_transformer_3d"] = ["CogVideoXTransformer3DModel"]
     _import_structure["transformers.consisid_transformer_3d"] = ["ConsisIDTransformer3DModel"]
@@ -192,6 +192,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             VQModel,
         )
         from .cache_utils import CacheMixin
+        from .condition_embedders import AnimaTextConditioner
         from .controlnets import (
             ControlNetModel,
             ControlNetUnionModel,
@@ -217,7 +218,6 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .transformers import (
             AceStepTransformer1DModel,
             AllegroTransformer3DModel,
-            AnimaTextConditioner,
             AnyFlowFARTransformer3DModel,
             AnyFlowTransformer3DModel,
             AuraFlowTransformer2DModel,
