@@ -119,17 +119,12 @@ def _rotate_half(x: torch.Tensor) -> torch.Tensor:
 
 
 class Cosmos3VLTextRotaryEmbedding(nn.Module):
-    def __init__(self, config):
+    def __init__(self, head_dim: int, rope_theta: float, rope_scaling: dict | None = None):
         super().__init__()
-        head_dim = getattr(config, "head_dim", config.hidden_size // config.num_attention_heads)
-        inv_freq = 1.0 / (
-            config.rope_theta ** (torch.arange(0, head_dim, 2, dtype=torch.int64).float() / head_dim)
-        )
+        inv_freq = 1.0 / (rope_theta ** (torch.arange(0, head_dim, 2, dtype=torch.int64).float() / head_dim))
         self.register_buffer("inv_freq", inv_freq, persistent=False)
         self.mrope_section = (
-            config.rope_scaling.get("mrope_section", [24, 20, 20])
-            if config.rope_scaling is not None
-            else [24, 20, 20]
+            rope_scaling.get("mrope_section", [24, 20, 20]) if rope_scaling is not None else [24, 20, 20]
         )
 
     def apply_interleaved_mrope(self, freqs, mrope_section):
@@ -171,52 +166,47 @@ class Cosmos3VLTextRMSNorm(nn.Module):
 
 
 class Cosmos3VLTextMLP(nn.Module):
-    def __init__(self, config):
+    def __init__(self, hidden_size: int, intermediate_size: int):
         super().__init__()
-        self.config = config
-        self.hidden_size = config.hidden_size
-        self.intermediate_size = config.intermediate_size
-        self.gate_proj = nn.Linear(self.hidden_size, self.intermediate_size, bias=False)
-        self.up_proj = nn.Linear(self.hidden_size, self.intermediate_size, bias=False)
-        self.down_proj = nn.Linear(self.intermediate_size, self.hidden_size, bias=False)
+        self.gate_proj = nn.Linear(hidden_size, intermediate_size, bias=False)
+        self.up_proj = nn.Linear(hidden_size, intermediate_size, bias=False)
+        self.down_proj = nn.Linear(intermediate_size, hidden_size, bias=False)
         self.act_fn = nn.SiLU()
 
     def forward(self, x):
-        down_proj = self.down_proj(self.act_fn(self.gate_proj(x)) * self.up_proj(x))
-        return down_proj
+        return self.down_proj(self.act_fn(self.gate_proj(x)) * self.up_proj(x))
 
 
 class Cosmos3VLTextAttention(nn.Module):
     """Multi-headed attention from 'Attention Is All You Need' paper"""
 
-    def __init__(self, config, layer_idx: int):
+    def __init__(
+        self,
+        hidden_size: int,
+        head_dim: int,
+        num_attention_heads: int,
+        num_key_value_heads: int,
+        attention_bias: bool,
+        attention_dropout: float,
+        rms_norm_eps: float,
+    ):
         super().__init__()
-        self.config = config
-        self.layer_idx = layer_idx
-        self.head_dim = getattr(config, "head_dim", config.hidden_size // config.num_attention_heads)
-        self.num_key_value_groups = config.num_attention_heads // config.num_key_value_heads
-        self.scaling = self.head_dim**-0.5
-        self.attention_dropout = config.attention_dropout
+        self.hidden_size = hidden_size
+        self.head_dim = head_dim
+        self.num_attention_heads = num_attention_heads
+        self.num_key_value_heads = num_key_value_heads
+        self.num_key_value_groups = num_attention_heads // num_key_value_heads
+        self.scaling = head_dim**-0.5
+        self.attention_dropout = attention_dropout
         self.is_causal = True
 
-        self.q_proj = nn.Linear(
-            config.hidden_size, config.num_attention_heads * self.head_dim, bias=config.attention_bias
-        )
-        self.k_proj = nn.Linear(
-            config.hidden_size, config.num_key_value_heads * self.head_dim, bias=config.attention_bias
-        )
-        self.v_proj = nn.Linear(
-            config.hidden_size, config.num_key_value_heads * self.head_dim, bias=config.attention_bias
-        )
-        self.o_proj = nn.Linear(
-            config.num_attention_heads * self.head_dim, config.hidden_size, bias=config.attention_bias
-        )
-        self.q_norm = Cosmos3VLTextRMSNorm(
-            self.head_dim, eps=config.rms_norm_eps
-        )  # unlike olmo, only on the head dim!
-        self.k_norm = Cosmos3VLTextRMSNorm(
-            self.head_dim, eps=config.rms_norm_eps
-        )  # thus post q_norm does not need reshape
+        self.q_proj = nn.Linear(hidden_size, num_attention_heads * head_dim, bias=attention_bias)
+        self.k_proj = nn.Linear(hidden_size, num_key_value_heads * head_dim, bias=attention_bias)
+        self.v_proj = nn.Linear(hidden_size, num_key_value_heads * head_dim, bias=attention_bias)
+        self.o_proj = nn.Linear(num_attention_heads * head_dim, hidden_size, bias=attention_bias)
+        # q_norm / k_norm are applied per-head (only on head_dim), so no reshape is needed after them.
+        self.q_norm = Cosmos3VLTextRMSNorm(head_dim, eps=rms_norm_eps)
+        self.k_norm = Cosmos3VLTextRMSNorm(head_dim, eps=rms_norm_eps)
 
 
 class PackedAttentionMoT(Cosmos3VLTextAttention):
@@ -228,35 +218,32 @@ class PackedAttentionMoT(Cosmos3VLTextAttention):
     even though it derives from the dense version of Qwen3VLTextAttention.
     """
 
-    def __init__(self, config, layer_idx: int):
-        super().__init__(config, layer_idx)
+    def __init__(
+        self,
+        hidden_size: int,
+        head_dim: int,
+        num_attention_heads: int,
+        num_key_value_heads: int,
+        attention_bias: bool,
+        attention_dropout: float,
+        rms_norm_eps: float,
+    ):
+        super().__init__(
+            hidden_size=hidden_size,
+            head_dim=head_dim,
+            num_attention_heads=num_attention_heads,
+            num_key_value_heads=num_key_value_heads,
+            attention_bias=attention_bias,
+            attention_dropout=attention_dropout,
+            rms_norm_eps=rms_norm_eps,
+        )
+        self.q_norm_moe_gen = Cosmos3VLTextRMSNorm(head_dim, eps=rms_norm_eps)
+        self.k_norm_moe_gen = Cosmos3VLTextRMSNorm(head_dim, eps=rms_norm_eps)
 
-        # Add missing attributes for MoT compatibility
-        self.hidden_size = config.hidden_size
-        self.num_attention_heads = config.num_attention_heads
-        self.num_key_value_heads = config.num_key_value_heads
-        self.num_key_value_groups = self.num_attention_heads // self.num_key_value_heads
-        self.scaling = self.head_dim**-0.5
-        self.attention_dropout = config.attention_dropout
-
-        # Generation pathway projections (separate from understanding pathway)
-        # Qwen3VL already has q_norm and k_norm built-in, so we add generation versions
-        self.q_norm_moe_gen = Cosmos3VLTextRMSNorm(self.head_dim, eps=config.rms_norm_eps)
-        self.k_norm_moe_gen = Cosmos3VLTextRMSNorm(self.head_dim, eps=config.rms_norm_eps)
-
-        # Generation pathway linear projections
-        self.q_proj_moe_gen = nn.Linear(
-            self.hidden_size, self.num_attention_heads * self.head_dim, bias=config.attention_bias
-        )
-        self.k_proj_moe_gen = nn.Linear(
-            self.hidden_size, self.num_key_value_heads * self.head_dim, bias=config.attention_bias
-        )
-        self.v_proj_moe_gen = nn.Linear(
-            self.hidden_size, self.num_key_value_heads * self.head_dim, bias=config.attention_bias
-        )
-        self.o_proj_moe_gen = nn.Linear(
-            self.num_attention_heads * self.head_dim, self.hidden_size, bias=config.attention_bias
-        )
+        self.q_proj_moe_gen = nn.Linear(hidden_size, num_attention_heads * head_dim, bias=attention_bias)
+        self.k_proj_moe_gen = nn.Linear(hidden_size, num_key_value_heads * head_dim, bias=attention_bias)
+        self.v_proj_moe_gen = nn.Linear(hidden_size, num_key_value_heads * head_dim, bias=attention_bias)
+        self.o_proj_moe_gen = nn.Linear(num_attention_heads * head_dim, hidden_size, bias=attention_bias)
         self.dispatch_attention_fn = CosmosAttnProcessor3_0()
 
     def forward(
@@ -326,20 +313,34 @@ class Cosmos3VLTextMoTDecoderLayer(nn.Module):
 
     def __init__(
         self,
-        config,
-        layer_idx: int,
+        hidden_size: int,
+        head_dim: int,
+        num_attention_heads: int,
+        num_key_value_heads: int,
+        intermediate_size: int,
+        attention_bias: bool,
+        attention_dropout: float,
+        rms_norm_eps: float,
     ):
         super().__init__()
-        self.hidden_size = config.hidden_size
-        self.self_attn = PackedAttentionMoT(config, layer_idx)
+        self.hidden_size = hidden_size
+        self.self_attn = PackedAttentionMoT(
+            hidden_size=hidden_size,
+            head_dim=head_dim,
+            num_attention_heads=num_attention_heads,
+            num_key_value_heads=num_key_value_heads,
+            attention_bias=attention_bias,
+            attention_dropout=attention_dropout,
+            rms_norm_eps=rms_norm_eps,
+        )
 
-        self.mlp = Cosmos3VLTextMLP(config)
-        self.mlp_moe_gen = Cosmos3VLTextMLP(config)
+        self.mlp = Cosmos3VLTextMLP(hidden_size=hidden_size, intermediate_size=intermediate_size)
+        self.mlp_moe_gen = Cosmos3VLTextMLP(hidden_size=hidden_size, intermediate_size=intermediate_size)
 
-        self.input_layernorm = Cosmos3VLTextRMSNorm(config.hidden_size, eps=config.rms_norm_eps)
-        self.input_layernorm_moe_gen = Cosmos3VLTextRMSNorm(config.hidden_size, eps=config.rms_norm_eps)
-        self.post_attention_layernorm = Cosmos3VLTextRMSNorm(config.hidden_size, eps=config.rms_norm_eps)
-        self.post_attention_layernorm_moe_gen = Cosmos3VLTextRMSNorm(config.hidden_size, eps=config.rms_norm_eps)
+        self.input_layernorm = Cosmos3VLTextRMSNorm(hidden_size, eps=rms_norm_eps)
+        self.input_layernorm_moe_gen = Cosmos3VLTextRMSNorm(hidden_size, eps=rms_norm_eps)
+        self.post_attention_layernorm = Cosmos3VLTextRMSNorm(hidden_size, eps=rms_norm_eps)
+        self.post_attention_layernorm_moe_gen = Cosmos3VLTextRMSNorm(hidden_size, eps=rms_norm_eps)
 
     def forward(
         self,
@@ -390,25 +391,43 @@ class Cosmos3VLTextModel(nn.Module):
     under the same attribute names so that weight keys match the checkpoint.
     """
 
-    def __init__(self, config) -> None:
+    def __init__(
+        self,
+        vocab_size: int,
+        hidden_size: int,
+        head_dim: int,
+        num_attention_heads: int,
+        num_key_value_heads: int,
+        intermediate_size: int,
+        num_hidden_layers: int,
+        attention_bias: bool,
+        attention_dropout: float,
+        rms_norm_eps: float,
+        rope_theta: float,
+        rope_scaling: dict | None,
+    ) -> None:
         super().__init__()
-        self.config = config
-
-        self.embed_tokens = nn.Embedding(config.vocab_size, config.hidden_size)
-
+        self.embed_tokens = nn.Embedding(vocab_size, hidden_size)
         self.layers = nn.ModuleList(
             [
-                Cosmos3VLTextMoTDecoderLayer(config, layer_idx)
-                for layer_idx in range(config.num_hidden_layers)
+                Cosmos3VLTextMoTDecoderLayer(
+                    hidden_size=hidden_size,
+                    head_dim=head_dim,
+                    num_attention_heads=num_attention_heads,
+                    num_key_value_heads=num_key_value_heads,
+                    intermediate_size=intermediate_size,
+                    attention_bias=attention_bias,
+                    attention_dropout=attention_dropout,
+                    rms_norm_eps=rms_norm_eps,
+                )
+                for _ in range(num_hidden_layers)
             ]
         )
-
-        # Understanding pathway final norm
-        self.norm = Cosmos3VLTextRMSNorm(config.hidden_size, eps=config.rms_norm_eps)
-        # Generation pathway final norm
-        self.norm_moe_gen = Cosmos3VLTextRMSNorm(config.hidden_size, eps=config.rms_norm_eps)
-
-        self.rotary_emb = Cosmos3VLTextRotaryEmbedding(config=config)
+        self.norm = Cosmos3VLTextRMSNorm(hidden_size, eps=rms_norm_eps)
+        self.norm_moe_gen = Cosmos3VLTextRMSNorm(hidden_size, eps=rms_norm_eps)
+        self.rotary_emb = Cosmos3VLTextRotaryEmbedding(
+            head_dim=head_dim, rope_theta=rope_theta, rope_scaling=rope_scaling
+        )
 
     def forward(
         self,
@@ -452,10 +471,9 @@ class Cosmos3OmniTransformer(ModelMixin, ConfigMixin):
         self,
         attention_bias: bool = False,
         attention_dropout: float = 0.0,
-        dtype: str = "bfloat16",
+        dtype: str = "bfloat16",  # accepted by ConfigMixin loader (configuration_utils.py:288); not read directly
         head_dim: int = 128,
         hidden_size: int = 4096,
-        initializer_range: float = 0.02,
         intermediate_size: int = 12288,
         base_fps: int = 24,
         enable_fps_modulation: bool = True,
@@ -467,24 +485,17 @@ class Cosmos3OmniTransformer(ModelMixin, ConfigMixin):
         unified_3d_mrope_temporal_modality_margin: int = 15000,
         video_temporal_causal: bool = False,
         latent_patch_size: int = 2,
-        max_position_embeddings: int = 262144,
-        model_type: str = "qwen3_vl_text",
         num_attention_heads: int = 32,
         num_hidden_layers: int = 36,
         num_key_value_heads: int = 8,
         patch_latent_dim: int = 192,
-        qk_norm: bool = False,
-        qk_norm_for_diffusion: bool = True,
-        qk_norm_for_text: bool = True,
         rms_norm_eps: float = 1e-6,
         rope_scaling: dict | None = None,
         rope_theta: float = 5000000.0,
         sound_dim: int | None = None,
         sound_gen: bool = False,
         sound_latent_fps: float = 25.0,
-        temporal_compression_factor_sound: int = 1,
         timestep_scale: float = 0.001,
-        use_cache: bool = True,
         use_moe: bool = True,
         vocab_size: int = 151936,
     ):
@@ -494,7 +505,20 @@ class Cosmos3OmniTransformer(ModelMixin, ConfigMixin):
             rope_scaling = {"mrope_interleaved": True, "mrope_section": [24, 20, 20], "rope_type": "default"}
             self.register_to_config(rope_scaling=rope_scaling)
 
-        self.model = Cosmos3VLTextModel(config=self.config)
+        self.model = Cosmos3VLTextModel(
+            vocab_size=vocab_size,
+            hidden_size=hidden_size,
+            head_dim=head_dim,
+            num_attention_heads=num_attention_heads,
+            num_key_value_heads=num_key_value_heads,
+            intermediate_size=intermediate_size,
+            num_hidden_layers=num_hidden_layers,
+            attention_bias=attention_bias,
+            attention_dropout=attention_dropout,
+            rms_norm_eps=rms_norm_eps,
+            rope_theta=rope_theta,
+            rope_scaling=rope_scaling,
+        )
         self.vocab_size = vocab_size
         self.lm_head = nn.Linear(hidden_size, vocab_size, bias=False)
         self.vae2llm = nn.Linear(patch_latent_dim, hidden_size, bias=True)
