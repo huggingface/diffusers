@@ -37,6 +37,7 @@ enable_full_determinism()
 ANIMA_TEXT2IMAGE_WORKFLOWS = {
     "text2image": [
         ("text_encoder", "AnimaTextEncoderStep"),
+        ("denoise.text_conditioning", "AnimaTextConditioningStep"),
         ("denoise.input", "AnimaTextInputStep"),
         ("denoise.prepare_latents", "AnimaPrepareLatentsStep"),
         ("denoise.set_timesteps", "AnimaSetTimestepsStep"),

@@ -18,9 +18,9 @@ import torch.nn.functional as F
 
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...loaders import PeftAdapterMixin
-from ...models.attention import AttentionModuleMixin
-from ...models.attention_dispatch import dispatch_attention_fn
-from ...models.modeling_utils import ModelMixin
+from ..attention import AttentionModuleMixin
+from ..attention_dispatch import dispatch_attention_fn
+from ..modeling_utils import ModelMixin
 
 
 def _rotate_half(hidden_states: torch.Tensor) -> torch.Tensor:
