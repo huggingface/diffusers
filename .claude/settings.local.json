@@ -1,9 +1,0 @@
-{
-  "permissions": {
-    "allow": [
-      "Bash(HUGGINGFACE_CO_STAGING=true pytest -m \"is_staging_test\" tests/models/test_modeling_common.py::ModelPushToHubTester::test_push_to_hub)",
-      "Bash(pip show *)",
-      "Bash(HUGGINGFACE_CO_STAGING=true pytest -m \"is_staging_test\" tests/models/test_modeling_common.py::ModelPushToHubTester::test_push_to_hub_in_organization)"
-    ]
-  }
-}
