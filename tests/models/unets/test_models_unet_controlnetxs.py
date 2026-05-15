@@ -13,59 +13,42 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import unittest
-
 import numpy as np
+import pytest
 import torch
 from torch import nn
 
 from diffusers import ControlNetXSAdapter, UNet2DConditionModel, UNetControlNetXSModel
-from diffusers.utils import logging
 
 from ...testing_utils import enable_full_determinism, floats_tensor, is_flaky, torch_device
-from ..test_modeling_common import ModelTesterMixin, UNetTesterMixin
+from ..test_modeling_common import UNetTesterMixin
+from ..testing_utils import (
+    BaseModelTesterConfig,
+    ModelTesterMixin,
+    TrainingTesterMixin,
+)
 
-
-logger = logging.get_logger(__name__)
 
 enable_full_determinism()
 
 
-class UNetControlNetXSModelTests(ModelTesterMixin, UNetTesterMixin, unittest.TestCase):
-    model_class = UNetControlNetXSModel
-    main_input_name = "sample"
+class UNetControlNetXSTesterConfig(BaseModelTesterConfig):
+    """Base configuration for UNetControlNetXSModel testing."""
 
     @property
-    def dummy_input(self):
-        batch_size = 4
-        num_channels = 4
-        sizes = (16, 16)
-        conditioning_image_size = (3, 32, 32)  # size of additional, unprocessed image for control-conditioning
-
-        noise = floats_tensor((batch_size, num_channels) + sizes).to(torch_device)
-        time_step = torch.tensor([10]).to(torch_device)
-        encoder_hidden_states = floats_tensor((batch_size, 4, 8)).to(torch_device)
-        controlnet_cond = floats_tensor((batch_size, *conditioning_image_size)).to(torch_device)
-        conditioning_scale = 1
-
-        return {
-            "sample": noise,
-            "timestep": time_step,
-            "encoder_hidden_states": encoder_hidden_states,
-            "controlnet_cond": controlnet_cond,
-            "conditioning_scale": conditioning_scale,
-        }
-
-    @property
-    def input_shape(self):
-        return (4, 16, 16)
+    def model_class(self):
+        return UNetControlNetXSModel
 
     @property
     def output_shape(self):
         return (4, 16, 16)
 
-    def prepare_init_args_and_inputs_for_common(self):
-        init_dict = {
+    @property
+    def main_input_name(self):
+        return "sample"
+
+    def get_init_dict(self):
+        return {
             "sample_size": 16,
             "down_block_types": ("DownBlock2D", "CrossAttnDownBlock2D"),
             "up_block_types": ("CrossAttnUpBlock2D", "UpBlock2D"),
@@ -80,11 +63,23 @@ class UNetControlNetXSModelTests(ModelTesterMixin, UNetTesterMixin, unittest.Tes
             "ctrl_max_norm_num_groups": 2,
             "ctrl_conditioning_embedding_out_channels": (2, 2),
         }
-        inputs_dict = self.dummy_input
-        return init_dict, inputs_dict
+
+    def get_dummy_inputs(self):
+        batch_size = 4
+        num_channels = 4
+        sizes = (16, 16)
+        conditioning_image_size = (3, 32, 32)
+
+        return {
+            "sample": floats_tensor((batch_size, num_channels) + sizes).to(torch_device),
+            "timestep": torch.tensor([10]).to(torch_device),
+            "encoder_hidden_states": floats_tensor((batch_size, 4, 8)).to(torch_device),
+            "controlnet_cond": floats_tensor((batch_size, *conditioning_image_size)).to(torch_device),
+            "conditioning_scale": 1,
+        }
 
     def get_dummy_unet(self):
-        """For some tests we also need the underlying UNet. For these, we'll build the UNetControlNetXSModel from the UNet and ControlNetXS-Adapter"""
+        """Build the underlying UNet for tests that construct UNetControlNetXSModel from UNet + Adapter."""
         return UNet2DConditionModel(
             block_out_channels=(4, 8),
             layers_per_block=2,
@@ -99,9 +94,15 @@ class UNetControlNetXSModelTests(ModelTesterMixin, UNetTesterMixin, unittest.Tes
         )
 
     def get_dummy_controlnet_from_unet(self, unet, **kwargs):
-        """For some tests we also need the underlying ControlNetXS-Adapter. For these, we'll build the UNetControlNetXSModel from the UNet and ControlNetXS-Adapter"""
-        # size_ratio and conditioning_embedding_out_channels chosen to keep model small
+        """Build the ControlNetXS-Adapter from a UNet."""
         return ControlNetXSAdapter.from_unet(unet, size_ratio=1, conditioning_embedding_out_channels=(2, 2), **kwargs)
+
+
+class TestUNetControlNetXS(UNetControlNetXSTesterConfig, ModelTesterMixin, UNetTesterMixin):
+    @pytest.mark.skip("Test not supported.")
+    def test_forward_with_norm_groups(self):
+        # UNetControlNetXSModel only supports SD/SDXL with norm_num_groups=32
+        pass
 
     def test_from_unet(self):
         unet = self.get_dummy_unet()
@@ -115,7 +116,7 @@ class UNetControlNetXSModelTests(ModelTesterMixin, UNetTesterMixin, unittest.Tes
                 assert torch.equal(model_state_dict[weight_dict_prefix + "." + param_name], param_value)
 
         # # check unet
-        # everything expect down,mid,up blocks
+        # everything except down,mid,up blocks
         modules_from_unet = [
             "time_embedding",
             "conv_in",
@@ -152,7 +153,7 @@ class UNetControlNetXSModelTests(ModelTesterMixin, UNetTesterMixin, unittest.Tes
                 assert_equal_weights(u.upsamplers[0], f"up_blocks.{i}.upsamplers")
 
         # # check controlnet
-        # everything expect down,mid,up blocks
+        # everything except down,mid,up blocks
         modules_from_controlnet = {
             "controlnet_cond_embedding": "controlnet_cond_embedding",
             "conv_in": "ctrl_conv_in",
@@ -193,12 +194,12 @@ class UNetControlNetXSModelTests(ModelTesterMixin, UNetTesterMixin, unittest.Tes
             for p in module.parameters():
                 assert p.requires_grad
 
-        init_dict, _ = self.prepare_init_args_and_inputs_for_common()
+        init_dict = self.get_init_dict()
         model = UNetControlNetXSModel(**init_dict)
         model.freeze_unet_params()
 
         # # check unet
-        # everything expect down,mid,up blocks
+        # everything except down,mid,up blocks
         modules_from_unet = [
             model.base_time_embedding,
             model.base_conv_in,
@@ -236,7 +237,7 @@ class UNetControlNetXSModelTests(ModelTesterMixin, UNetTesterMixin, unittest.Tes
                 assert_frozen(u.upsamplers)
 
         # # check controlnet
-        # everything expect down,mid,up blocks
+        # everything except down,mid,up blocks
         modules_from_controlnet = [
             model.controlnet_cond_embedding,
             model.ctrl_conv_in,
@@ -267,16 +268,6 @@ class UNetControlNetXSModelTests(ModelTesterMixin, UNetTesterMixin, unittest.Tes
         for u in model.up_blocks:
             assert_unfrozen(u.ctrl_to_base)
 
-    def test_gradient_checkpointing_is_applied(self):
-        expected_set = {
-            "Transformer2DModel",
-            "UNetMidBlock2DCrossAttn",
-            "ControlNetXSCrossAttnDownBlock2D",
-            "ControlNetXSCrossAttnMidBlock2D",
-            "ControlNetXSCrossAttnUpBlock2D",
-        }
-        super().test_gradient_checkpointing_is_applied(expected_set=expected_set)
-
     @is_flaky
     def test_forward_no_control(self):
         unet = self.get_dummy_unet()
@@ -287,7 +278,7 @@ class UNetControlNetXSModelTests(ModelTesterMixin, UNetTesterMixin, unittest.Tes
         unet = unet.to(torch_device)
         model = model.to(torch_device)
 
-        input_ = self.dummy_input
+        input_ = self.get_dummy_inputs()
 
         control_specific_input = ["controlnet_cond", "conditioning_scale"]
         input_for_unet = {k: v for k, v in input_.items() if k not in control_specific_input}
@@ -312,7 +303,7 @@ class UNetControlNetXSModelTests(ModelTesterMixin, UNetTesterMixin, unittest.Tes
         model = model.to(torch_device)
         model_mix_time = model_mix_time.to(torch_device)
 
-        input_ = self.dummy_input
+        input_ = self.get_dummy_inputs()
 
         with torch.no_grad():
             output = model(**input_).sample
@@ -320,7 +311,14 @@ class UNetControlNetXSModelTests(ModelTesterMixin, UNetTesterMixin, unittest.Tes
 
         assert output.shape == output_mix_time.shape
 
-    @unittest.skip("Test not supported.")
-    def test_forward_with_norm_groups(self):
-        # UNetControlNetXSModel currently only supports StableDiffusion and StableDiffusion-XL, both of which have norm_num_groups fixed at 32. So we don't need to test different values for norm_num_groups.
-        pass
+
+class TestUNetControlNetXSTraining(UNetControlNetXSTesterConfig, TrainingTesterMixin):
+    def test_gradient_checkpointing_is_applied(self):
+        expected_set = {
+            "Transformer2DModel",
+            "UNetMidBlock2DCrossAttn",
+            "ControlNetXSCrossAttnDownBlock2D",
+            "ControlNetXSCrossAttnMidBlock2D",
+            "ControlNetXSCrossAttnUpBlock2D",
+        }
+        super().test_gradient_checkpointing_is_applied(expected_set=expected_set)

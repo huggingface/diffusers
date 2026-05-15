@@ -15,12 +15,11 @@
 
 import gc
 import math
-import unittest
 
+import pytest
 import torch
 
 from diffusers import UNet2DModel
-from diffusers.utils import logging
 
 from ...testing_utils import (
     backend_empty_cache,
@@ -31,39 +30,40 @@ from ...testing_utils import (
     torch_all_close,
     torch_device,
 )
-from ..test_modeling_common import ModelTesterMixin, UNetTesterMixin
+from ..test_modeling_common import UNetTesterMixin
+from ..testing_utils import (
+    BaseModelTesterConfig,
+    MemoryTesterMixin,
+    ModelTesterMixin,
+    TrainingTesterMixin,
+)
 
-
-logger = logging.get_logger(__name__)
 
 enable_full_determinism()
 
 
-class Unet2DModelTests(ModelTesterMixin, UNetTesterMixin, unittest.TestCase):
-    model_class = UNet2DModel
-    main_input_name = "sample"
+# =============================================================================
+# Standard UNet2D Model Tests
+# =============================================================================
+
+
+class UNet2DTesterConfig(BaseModelTesterConfig):
+    """Base configuration for standard UNet2DModel testing."""
 
     @property
-    def dummy_input(self):
-        batch_size = 4
-        num_channels = 3
-        sizes = (32, 32)
-
-        noise = floats_tensor((batch_size, num_channels) + sizes).to(torch_device)
-        time_step = torch.tensor([10]).to(torch_device)
-
-        return {"sample": noise, "timestep": time_step}
-
-    @property
-    def input_shape(self):
-        return (3, 32, 32)
+    def model_class(self):
+        return UNet2DModel
 
     @property
     def output_shape(self):
         return (3, 32, 32)
 
-    def prepare_init_args_and_inputs_for_common(self):
-        init_dict = {
+    @property
+    def main_input_name(self):
+        return "sample"
+
+    def get_init_dict(self):
+        return {
             "block_out_channels": (4, 8),
             "norm_num_groups": 2,
             "down_block_types": ("DownBlock2D", "AttnDownBlock2D"),
@@ -74,11 +74,22 @@ class Unet2DModelTests(ModelTesterMixin, UNetTesterMixin, unittest.TestCase):
             "layers_per_block": 2,
             "sample_size": 32,
         }
-        inputs_dict = self.dummy_input
-        return init_dict, inputs_dict
 
+    def get_dummy_inputs(self):
+        batch_size = 4
+        num_channels = 3
+        sizes = (32, 32)
+
+        return {
+            "sample": floats_tensor((batch_size, num_channels) + sizes).to(torch_device),
+            "timestep": torch.tensor([10]).to(torch_device),
+        }
+
+
+class TestUNet2D(UNet2DTesterConfig, ModelTesterMixin, UNetTesterMixin):
     def test_mid_block_attn_groups(self):
-        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+        init_dict = self.get_init_dict()
+        inputs_dict = self.get_dummy_inputs()
 
         init_dict["add_attention"] = True
         init_dict["attn_norm_num_groups"] = 4
@@ -87,13 +98,11 @@ class Unet2DModelTests(ModelTesterMixin, UNetTesterMixin, unittest.TestCase):
         model.to(torch_device)
         model.eval()
 
-        self.assertIsNotNone(
-            model.mid_block.attentions[0].group_norm, "Mid block Attention group norm should exist but does not."
+        assert model.mid_block.attentions[0].group_norm is not None, (
+            "Mid block Attention group norm should exist but does not."
         )
-        self.assertEqual(
-            model.mid_block.attentions[0].group_norm.num_groups,
-            init_dict["attn_norm_num_groups"],
-            "Mid block Attention group norm does not have the expected number of groups.",
+        assert model.mid_block.attentions[0].group_norm.num_groups == init_dict["attn_norm_num_groups"], (
+            "Mid block Attention group norm does not have the expected number of groups."
         )
 
         with torch.no_grad():
@@ -102,13 +111,15 @@ class Unet2DModelTests(ModelTesterMixin, UNetTesterMixin, unittest.TestCase):
             if isinstance(output, dict):
                 output = output.to_tuple()[0]
 
-        self.assertIsNotNone(output)
+        assert output is not None
         expected_shape = inputs_dict["sample"].shape
-        self.assertEqual(output.shape, expected_shape, "Input and output shapes do not match")
+        assert output.shape == expected_shape, "Input and output shapes do not match"
 
     def test_mid_block_none(self):
-        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
-        mid_none_init_dict, mid_none_inputs_dict = self.prepare_init_args_and_inputs_for_common()
+        init_dict = self.get_init_dict()
+        inputs_dict = self.get_dummy_inputs()
+        mid_none_init_dict = self.get_init_dict()
+        mid_none_inputs_dict = self.get_dummy_inputs()
         mid_none_init_dict["mid_block_type"] = None
 
         model = self.model_class(**init_dict)
@@ -119,7 +130,7 @@ class Unet2DModelTests(ModelTesterMixin, UNetTesterMixin, unittest.TestCase):
         mid_none_model.to(torch_device)
         mid_none_model.eval()
 
-        self.assertIsNone(mid_none_model.mid_block, "Mid block should not exist.")
+        assert mid_none_model.mid_block is None, "Mid block should not exist."
 
         with torch.no_grad():
             output = model(**inputs_dict)
@@ -133,8 +144,10 @@ class Unet2DModelTests(ModelTesterMixin, UNetTesterMixin, unittest.TestCase):
             if isinstance(mid_none_output, dict):
                 mid_none_output = mid_none_output.to_tuple()[0]
 
-        self.assertFalse(torch.allclose(output, mid_none_output, rtol=1e-3), "outputs should be different.")
+        assert not torch.allclose(output, mid_none_output, rtol=1e-3), "outputs should be different."
 
+
+class TestUNet2DTraining(UNet2DTesterConfig, TrainingTesterMixin):
     def test_gradient_checkpointing_is_applied(self):
         expected_set = {
             "AttnUpBlock2D",
@@ -143,41 +156,32 @@ class Unet2DModelTests(ModelTesterMixin, UNetTesterMixin, unittest.TestCase):
             "UpBlock2D",
             "DownBlock2D",
         }
-
         # NOTE: unlike UNet2DConditionModel, UNet2DModel does not currently support tuples for `attention_head_dim`
-        attention_head_dim = 8
-        block_out_channels = (16, 32)
-
-        super().test_gradient_checkpointing_is_applied(
-            expected_set=expected_set, attention_head_dim=attention_head_dim, block_out_channels=block_out_channels
-        )
+        super().test_gradient_checkpointing_is_applied(expected_set=expected_set)
 
 
-class UNetLDMModelTests(ModelTesterMixin, UNetTesterMixin, unittest.TestCase):
-    model_class = UNet2DModel
-    main_input_name = "sample"
+# =============================================================================
+# UNet2D LDM Model Tests
+# =============================================================================
 
-    @property
-    def dummy_input(self):
-        batch_size = 4
-        num_channels = 4
-        sizes = (32, 32)
 
-        noise = floats_tensor((batch_size, num_channels) + sizes).to(torch_device)
-        time_step = torch.tensor([10]).to(torch_device)
-
-        return {"sample": noise, "timestep": time_step}
+class UNet2DLDMTesterConfig(BaseModelTesterConfig):
+    """Base configuration for UNet2DModel LDM variant testing."""
 
     @property
-    def input_shape(self):
-        return (4, 32, 32)
+    def model_class(self):
+        return UNet2DModel
 
     @property
     def output_shape(self):
         return (4, 32, 32)
 
-    def prepare_init_args_and_inputs_for_common(self):
-        init_dict = {
+    @property
+    def main_input_name(self):
+        return "sample"
+
+    def get_init_dict(self):
+        return {
             "sample_size": 32,
             "in_channels": 4,
             "out_channels": 4,
@@ -187,17 +191,34 @@ class UNetLDMModelTests(ModelTesterMixin, UNetTesterMixin, unittest.TestCase):
             "down_block_types": ("DownBlock2D", "DownBlock2D"),
             "up_block_types": ("UpBlock2D", "UpBlock2D"),
         }
-        inputs_dict = self.dummy_input
-        return init_dict, inputs_dict
 
+    def get_dummy_inputs(self):
+        batch_size = 4
+        num_channels = 4
+        sizes = (32, 32)
+
+        return {
+            "sample": floats_tensor((batch_size, num_channels) + sizes).to(torch_device),
+            "timestep": torch.tensor([10]).to(torch_device),
+        }
+
+
+class TestUNet2DLDMTraining(UNet2DLDMTesterConfig, TrainingTesterMixin):
+    def test_gradient_checkpointing_is_applied(self):
+        expected_set = {"DownBlock2D", "UNetMidBlock2D", "UpBlock2D"}
+        # NOTE: unlike UNet2DConditionModel, UNet2DModel does not currently support tuples for `attention_head_dim`
+        super().test_gradient_checkpointing_is_applied(expected_set=expected_set)
+
+
+class TestUNet2DLDMHubLoading(UNet2DLDMTesterConfig):
     def test_from_pretrained_hub(self):
         model, loading_info = UNet2DModel.from_pretrained("fusing/unet-ldm-dummy-update", output_loading_info=True)
 
-        self.assertIsNotNone(model)
-        self.assertEqual(len(loading_info["missing_keys"]), 0)
+        assert model is not None
+        assert len(loading_info["missing_keys"]) == 0
 
         model.to(torch_device)
-        image = model(**self.dummy_input).sample
+        image = model(**self.get_dummy_inputs()).sample
 
         assert image is not None, "Make sure output is not None"
 
@@ -205,7 +226,7 @@ class UNetLDMModelTests(ModelTesterMixin, UNetTesterMixin, unittest.TestCase):
     def test_from_pretrained_accelerate(self):
         model, _ = UNet2DModel.from_pretrained("fusing/unet-ldm-dummy-update", output_loading_info=True)
         model.to(torch_device)
-        image = model(**self.dummy_input).sample
+        image = model(**self.get_dummy_inputs()).sample
 
         assert image is not None, "Make sure output is not None"
 
@@ -265,44 +286,31 @@ class UNetLDMModelTests(ModelTesterMixin, UNetTesterMixin, unittest.TestCase):
         expected_output_slice = torch.tensor([-13.3258, -20.1100, -15.9873, -17.6617, -23.0596, -17.9419, -13.3675, -16.1889, -12.3800])
         # fmt: on
 
-        self.assertTrue(torch_all_close(output_slice, expected_output_slice, rtol=1e-3))
-
-    def test_gradient_checkpointing_is_applied(self):
-        expected_set = {"DownBlock2D", "UNetMidBlock2D", "UpBlock2D"}
-
-        # NOTE: unlike UNet2DConditionModel, UNet2DModel does not currently support tuples for `attention_head_dim`
-        attention_head_dim = 32
-        block_out_channels = (32, 64)
-
-        super().test_gradient_checkpointing_is_applied(
-            expected_set=expected_set, attention_head_dim=attention_head_dim, block_out_channels=block_out_channels
-        )
+        assert torch_all_close(output_slice, expected_output_slice, rtol=1e-3)
 
 
-class NCSNppModelTests(ModelTesterMixin, UNetTesterMixin, unittest.TestCase):
-    model_class = UNet2DModel
-    main_input_name = "sample"
+# =============================================================================
+# NCSN++ Model Tests
+# =============================================================================
+
+
+class NCSNppTesterConfig(BaseModelTesterConfig):
+    """Base configuration for UNet2DModel NCSN++ variant testing."""
 
     @property
-    def dummy_input(self, sizes=(32, 32)):
-        batch_size = 4
-        num_channels = 3
-
-        noise = floats_tensor((batch_size, num_channels) + sizes).to(torch_device)
-        time_step = torch.tensor(batch_size * [10]).to(dtype=torch.int32, device=torch_device)
-
-        return {"sample": noise, "timestep": time_step}
-
-    @property
-    def input_shape(self):
-        return (3, 32, 32)
+    def model_class(self):
+        return UNet2DModel
 
     @property
     def output_shape(self):
         return (3, 32, 32)
 
-    def prepare_init_args_and_inputs_for_common(self):
-        init_dict = {
+    @property
+    def main_input_name(self):
+        return "sample"
+
+    def get_init_dict(self):
+        return {
             "block_out_channels": [32, 64, 64, 64],
             "in_channels": 3,
             "layers_per_block": 1,
@@ -324,17 +332,71 @@ class NCSNppModelTests(ModelTesterMixin, UNetTesterMixin, unittest.TestCase):
                 "SkipUpBlock2D",
             ],
         }
-        inputs_dict = self.dummy_input
-        return init_dict, inputs_dict
 
+    def get_dummy_inputs(self):
+        batch_size = 4
+        num_channels = 3
+        sizes = (32, 32)
+
+        return {
+            "sample": floats_tensor((batch_size, num_channels) + sizes).to(torch_device),
+            "timestep": torch.tensor(batch_size * [10]).to(dtype=torch.int32, device=torch_device),
+        }
+
+
+class TestNCSNpp(NCSNppTesterConfig, ModelTesterMixin, UNetTesterMixin):
+    @pytest.mark.skip("Test not supported.")
+    def test_forward_with_norm_groups(self):
+        pass
+
+    @pytest.mark.skip(
+        "To make layerwise casting work with this model, we will have to update the implementation. "
+        "Due to potentially low usage, we don't support it here."
+    )
+    def test_keep_in_fp32_modules(self):
+        pass
+
+    @pytest.mark.skip(
+        "To make layerwise casting work with this model, we will have to update the implementation. "
+        "Due to potentially low usage, we don't support it here."
+    )
+    def test_from_save_pretrained_dtype_inference(self):
+        pass
+
+
+class TestNCSNppMemory(NCSNppTesterConfig, MemoryTesterMixin):
+    @pytest.mark.skip(
+        "To make layerwise casting work with this model, we will have to update the implementation. "
+        "Due to potentially low usage, we don't support it here."
+    )
+    def test_layerwise_casting_memory(self):
+        pass
+
+    @pytest.mark.skip(
+        "To make layerwise casting work with this model, we will have to update the implementation. "
+        "Due to potentially low usage, we don't support it here."
+    )
+    def test_layerwise_casting_training(self):
+        pass
+
+
+class TestNCSNppTraining(NCSNppTesterConfig, TrainingTesterMixin):
+    def test_gradient_checkpointing_is_applied(self):
+        expected_set = {
+            "UNetMidBlock2D",
+        }
+        super().test_gradient_checkpointing_is_applied(expected_set=expected_set)
+
+
+class TestNCSNppHubLoading(NCSNppTesterConfig):
     @slow
     def test_from_pretrained_hub(self):
         model, loading_info = UNet2DModel.from_pretrained("google/ncsnpp-celebahq-256", output_loading_info=True)
-        self.assertIsNotNone(model)
-        self.assertEqual(len(loading_info["missing_keys"]), 0)
+        assert model is not None
+        assert len(loading_info["missing_keys"]) == 0
 
         model.to(torch_device)
-        inputs = self.dummy_input
+        inputs = self.get_dummy_inputs()
         noise = floats_tensor((4, 3) + (256, 256)).to(torch_device)
         inputs["sample"] = noise
         image = model(**inputs)
@@ -361,7 +423,7 @@ class NCSNppModelTests(ModelTesterMixin, UNetTesterMixin, unittest.TestCase):
         expected_output_slice = torch.tensor([-4836.2178, -6487.1470, -3816.8196, -7964.9302, -10966.3037, -20043.5957, 8137.0513, 2340.3328, 544.6056])
         # fmt: on
 
-        self.assertTrue(torch_all_close(output_slice, expected_output_slice, rtol=1e-2))
+        assert torch_all_close(output_slice, expected_output_slice, rtol=1e-2)
 
     def test_output_pretrained_ve_large(self):
         model = UNet2DModel.from_pretrained("fusing/ncsnpp-ffhq-ve-dummy-update")
@@ -382,35 +444,4 @@ class NCSNppModelTests(ModelTesterMixin, UNetTesterMixin, unittest.TestCase):
         expected_output_slice = torch.tensor([-0.0325, -0.0900, -0.0869, -0.0332, -0.0725, -0.0270, -0.0101, 0.0227, 0.0256])
         # fmt: on
 
-        self.assertTrue(torch_all_close(output_slice, expected_output_slice, rtol=1e-2))
-
-    @unittest.skip("Test not supported.")
-    def test_forward_with_norm_groups(self):
-        # not required for this model
-        pass
-
-    def test_gradient_checkpointing_is_applied(self):
-        expected_set = {
-            "UNetMidBlock2D",
-        }
-
-        block_out_channels = (32, 64, 64, 64)
-
-        super().test_gradient_checkpointing_is_applied(
-            expected_set=expected_set, block_out_channels=block_out_channels
-        )
-
-    def test_effective_gradient_checkpointing(self):
-        super().test_effective_gradient_checkpointing(skip={"time_proj.weight"})
-
-    @unittest.skip(
-        "To make layerwise casting work with this model, we will have to update the implementation. Due to potentially low usage, we don't support it here."
-    )
-    def test_layerwise_casting_inference(self):
-        pass
-
-    @unittest.skip(
-        "To make layerwise casting work with this model, we will have to update the implementation. Due to potentially low usage, we don't support it here."
-    )
-    def test_layerwise_casting_memory(self):
-        pass
+        assert torch_all_close(output_slice, expected_output_slice, rtol=1e-2)
