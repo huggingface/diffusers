@@ -34,7 +34,7 @@ jobs:
 
       - name: Install doc-builder
         run: |
-          uv pip install --system git+https://github.com/huggingface/doc-builder.git@main
+          uv pip install --prerelease=allow --system git+https://github.com/huggingface/doc-builder.git@main
 
       - name: Check documentation links
         run: |
@@ -50,4 +50,4 @@ jobs:
       package: diffusers
       languages: en ko zh ja pt
       custom_container: diffusers/diffusers-doc-builder
-      pre_command: uv pip uninstall transformers huggingface_hub && UV_PRERELEASE=allow uv pip install -U transformers@git+https://github.com/huggingface/transformers.git
+      pre_command: uv pip uninstall transformers huggingface_hub && UV_PRERELEASE=allow uv pip install --prerelease=allow -U transformers@git+https://github.com/huggingface/transformers.git
