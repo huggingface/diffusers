@@ -401,7 +401,6 @@ def main():
             attention_dropout=lm_cfg.attention_dropout,
             base_fps=base_fps,
             enable_fps_modulation=enable_fps_modulation,
-            freeze_und=vlm_cfg.freeze_und,
             head_dim=head_dim,
             hidden_act=lm_cfg.hidden_act,
             hidden_size=hidden_size,

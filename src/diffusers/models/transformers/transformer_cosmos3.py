@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import math
-from typing import Optional, Tuple
+from typing import Tuple
 
 import torch
 import torch.nn as nn
@@ -131,15 +131,6 @@ class TimestepEmbedder(nn.Module):
         self.frequency_embedding_size = frequency_embedding_size
         self.hidden_size = hidden_size
 
-    def _init_weights(self):
-        std = 1.0 / math.sqrt(self.frequency_embedding_size)
-        torch.nn.init.trunc_normal_(self.mlp[0].weight, std=std, a=-3 * std, b=3 * std)
-        torch.nn.init.zeros_(self.mlp[0].bias)
-
-        std = 1.0 / math.sqrt(self.hidden_size)
-        torch.nn.init.trunc_normal_(self.mlp[2].weight, std=std, a=-3 * std, b=3 * std)
-        torch.nn.init.zeros_(self.mlp[2].bias)
-
     @staticmethod
     def timestep_embedding(t, dim, max_period=10000):
         half = dim // 2
@@ -155,19 +146,6 @@ class TimestepEmbedder(nn.Module):
     def forward(self, t):
         t_freq = self.timestep_embedding(t, self.frequency_embedding_size)
         return self.mlp(t_freq)
-
-
-class LayerTypes:
-    def __init__(self, is_moe: bool):
-        self.is_moe = is_moe
-        if is_moe:  # TODO: moe is not yet tested
-            self.mlp = Qwen3VLMoeTextMLP
-            self.rms_norm = Qwen3VLMoeTextRMSNorm
-            self.rotary_embedding = Qwen3VLMoeTextRotaryEmbedding
-        else:
-            self.mlp = Cosmos3VLTextMLP
-            self.rms_norm = Cosmos3VLTextRMSNorm
-            self.rotary_embedding = Cosmos3VLTextRotaryEmbedding
 
 
 class Cosmos3VLTextRotaryEmbedding(nn.Module):
@@ -233,9 +211,6 @@ class Cosmos3VLTextRotaryEmbedding(nn.Module):
 
 class Cosmos3VLTextRMSNorm(nn.Module):
     def __init__(self, hidden_size: int, eps: float = 1e-6) -> None:
-        """
-        Cosmos3VLTextRMSNorm is equivalent to T5LayerNorm
-        """
         super().__init__()
         self.weight = nn.Parameter(torch.ones(hidden_size))
         self.variance_epsilon = eps
@@ -246,9 +221,6 @@ class Cosmos3VLTextRMSNorm(nn.Module):
         variance = hidden_states.pow(2).mean(-1, keepdim=True)
         hidden_states = hidden_states * torch.rsqrt(variance + self.variance_epsilon)
         return self.weight * hidden_states.to(input_dtype)
-
-    def extra_repr(self) -> str:
-        return f"{tuple(self.weight.shape)}, eps={self.variance_epsilon}"
 
 
 class Cosmos3VLTextMLP(nn.Module):
@@ -309,7 +281,7 @@ class PackedAttentionMoT(Cosmos3VLTextAttention):
     even though it derives from the dense version of Qwen3VLTextAttention.
     """
 
-    def __init__(self, config, layer_idx: int, layer_types: LayerTypes):
+    def __init__(self, config, layer_idx: int):
         super().__init__(config, layer_idx)
 
         # Add missing attributes for MoT compatibility
@@ -322,8 +294,8 @@ class PackedAttentionMoT(Cosmos3VLTextAttention):
 
         # Generation pathway projections (separate from understanding pathway)
         # Qwen3VL already has q_norm and k_norm built-in, so we add generation versions
-        self.q_norm_moe_gen = layer_types.rms_norm(self.head_dim, eps=config.rms_norm_eps)
-        self.k_norm_moe_gen = layer_types.rms_norm(self.head_dim, eps=config.rms_norm_eps)
+        self.q_norm_moe_gen = Cosmos3VLTextRMSNorm(self.head_dim, eps=config.rms_norm_eps)
+        self.k_norm_moe_gen = Cosmos3VLTextRMSNorm(self.head_dim, eps=config.rms_norm_eps)
 
         # Generation pathway linear projections
         self.q_proj_moe_gen = nn.Linear(
@@ -339,28 +311,12 @@ class PackedAttentionMoT(Cosmos3VLTextAttention):
             self.num_attention_heads * self.head_dim, self.hidden_size, bias=config.attention_bias
         )
         self.dispatch_attention_fn = CosmosAttnProcessor3_0()
-        self.cp_mesh = None
 
     def forward(
         self,
         pack: SequencePack,
-        attention_mask,
         packed_position_embeddings: Tuple[SequencePack, SequencePack],
-        dual_kv_cache=None,
-        natten_metadata: dict | None = None,
     ) -> SequencePack:
-        """Forward pass with optional KV cache for autoregressive generation.
-
-        This method is used for frame 0 where we store K/V for both und and gen tokens.
-        For frame 1+, forward_with_kv_cache() is used instead (optimized path).
-
-        Args:
-            pack: Packed sequence with und/gen tokens
-            attention_mask: Attention mask (BlockMask or SplitInfo)
-            packed_position_embeddings: RoPE embeddings (cos, sin)
-            dual_kv_cache: Optional dual KV cache for AR generation (frame 0).
-        """
-
         q_und_in = self.q_proj(get_und_seq(pack))  # [N_und,num_heads*head_dim]
         q_gen_in = self.q_proj_moe_gen(get_gen_seq(pack))  # [N_gen,num_heads*head_dim]
 
@@ -384,13 +340,6 @@ class PackedAttentionMoT(Cosmos3VLTextAttention):
         q_gen = self.q_norm_moe_gen(q_gen)  # [N_gen,num_heads,head_dim]
         k_gen = self.k_norm_moe_gen(k_gen)  # [N_gen,num_kv_heads,head_dim]
 
-        if self.config.freeze_und:
-            q_und = q_und.detach()
-            k_und = k_und.detach()
-            v_und = v_und.detach()
-
-        # Attempted port: Apply RoPE (BAGEL qwen-2.5)
-        # Note: Position embeddings are now pre-squeezed at model level
         packed_cos = packed_position_embeddings[0]
         packed_sin = packed_position_embeddings[1]
 
@@ -409,32 +358,9 @@ class PackedAttentionMoT(Cosmos3VLTextAttention):
             unsqueeze_dim=1,
         )  # q_gen_: [N_gen,num_heads,head_dim], k_gen_: [N_gen,num_kv_heads,head_dim]
 
-        # === KV CACHE INTEGRATION FOR AUTOREGRESSIVE GENERATION ===
-        # Frame 0: Store und and gen K/V (no fetching)
-        # Apply cache after RoPE (cached keys already have positional info)
-        # CP path: storage happens inside context_parallel_attention() after all-to-all,
-        #          so tensors are stored head-sharded [1,S,H/cp,D].
-        # Non-CP path: store here as [1,S,H,D] for fetch_kv() dim=1 compat.
-        if dual_kv_cache is not None and self.cp_mesh is None:
-            und_len = pack["_num_causal_tokens"]
-            gen_len = pack["_num_full_tokens"]
-            if not dual_kv_cache.und_cache.is_initialized:
-                dual_kv_cache.und_cache.store(
-                    k_und_[:und_len].unsqueeze(0), v_und[:und_len].unsqueeze(0)
-                )  # [1,S_und,H,D]
-            dual_kv_cache.gen_cache.store_kv(
-                k_gen_[:gen_len].unsqueeze(0), v_gen[:gen_len].unsqueeze(0), frame_idx=0
-            )  # [1,S_gen,H,D]
-
         packed_query_states_ = from_und_gen_splits(q_und_, q_gen_, pack)  # [N_und+N_gen,num_heads,head_dim]
         packed_key_states_ = from_und_gen_splits(k_und_, k_gen_, pack)  # [N_und+N_gen,num_kv_heads,head_dim]
         packed_value_states_ = from_und_gen_splits(v_und, v_gen, pack)  # [N_und+N_gen,num_kv_heads,head_dim]
-
-        # CP: pass dual_kv_cache so context_parallel_attention() stores head-sharded K/V
-        dispatch_kwargs: dict = {}
-        if self.cp_mesh is not None and dual_kv_cache is not None:
-            dispatch_kwargs["dual_kv_cache"] = dual_kv_cache
-            dispatch_kwargs["frame_idx"] = 0
 
         packed_attn_output = self.dispatch_attention_fn(
             packed_query_states_,
@@ -460,47 +386,24 @@ class Cosmos3VLTextMoTDecoderLayer(nn.Module):
         self,
         config,
         layer_idx: int,
-        layer_types: LayerTypes,
     ):
         super().__init__()
         self.hidden_size = config.hidden_size
-        self.freeze_und = config.freeze_und
-        self.self_attn = PackedAttentionMoT(config, layer_idx, layer_types)
+        self.self_attn = PackedAttentionMoT(config, layer_idx)
 
-        # TODO: Qwen3VLMoeTextSparseMoeBlock not supported yet
-        self.mlp = layer_types.mlp(config)
-        self.mlp_moe_gen = layer_types.mlp(config)
+        self.mlp = Cosmos3VLTextMLP(config)
+        self.mlp_moe_gen = Cosmos3VLTextMLP(config)
 
-        self.input_layernorm = layer_types.rms_norm(config.hidden_size, eps=config.rms_norm_eps)
-        self.input_layernorm_moe_gen = layer_types.rms_norm(config.hidden_size, eps=config.rms_norm_eps)
-        self.post_attention_layernorm = layer_types.rms_norm(config.hidden_size, eps=config.rms_norm_eps)
-        self.post_attention_layernorm_moe_gen = layer_types.rms_norm(config.hidden_size, eps=config.rms_norm_eps)
+        self.input_layernorm = Cosmos3VLTextRMSNorm(config.hidden_size, eps=config.rms_norm_eps)
+        self.input_layernorm_moe_gen = Cosmos3VLTextRMSNorm(config.hidden_size, eps=config.rms_norm_eps)
+        self.post_attention_layernorm = Cosmos3VLTextRMSNorm(config.hidden_size, eps=config.rms_norm_eps)
+        self.post_attention_layernorm_moe_gen = Cosmos3VLTextRMSNorm(config.hidden_size, eps=config.rms_norm_eps)
 
     def forward(
         self,
         input: SequencePack,
-        attention_mask,
         packed_position_embeddings: Tuple[SequencePack, SequencePack],
-        dual_kv_cache: None = None,
-        frame_idx: Optional[int] = None,
-        natten_metadata: dict | None = None,
     ) -> SequencePack:
-        """Training forward pass with MoT routing - Attempted port from qwen2_mot
-
-        Args:
-            input: Packed sequence with und/gen tokens
-            attention_mask: Attention mask
-            packed_position_embeddings: RoPE embeddings (cos, sin)
-            dual_kv_cache: Optional dual KV cache for AR generation
-            frame_idx: Current frame index (default: None, treated as 0)
-        """
-
-        # Handle None frame_idx as 0
-        if frame_idx is None:
-            frame_idx = 0
-
-        # TODO: support gen_only = True and AR generation (currently always disabled).
-
         # Pre-Attention layernorm
         pack_norm_out = from_und_gen_splits(
             self.input_layernorm(get_und_seq(input)),  # [N_und,hidden_size]
@@ -508,13 +411,9 @@ class Cosmos3VLTextMoTDecoderLayer(nn.Module):
             input,
         )  # [N_und+N_gen,hidden_size]
 
-        # STANDARD PATH: Process both und and gen tokens (frame 0)
         pack_attn_out = self.self_attn(
             pack_norm_out,
-            attention_mask,
             packed_position_embeddings,
-            dual_kv_cache,
-            natten_metadata=natten_metadata,
         )
         residual_und = get_und_seq(input) + get_und_seq(pack_attn_out)  # [N_und,hidden_size]
         residual_gen = get_gen_seq(input) + get_gen_seq(pack_attn_out)  # [N_gen,hidden_size]
@@ -523,9 +422,7 @@ class Cosmos3VLTextMoTDecoderLayer(nn.Module):
         ln_out_und = self.post_attention_layernorm(residual_und)  # [N_und,hidden_size]
         ln_out_gen = self.post_attention_layernorm_moe_gen(residual_gen)  # [N_gen,hidden_size]
 
-        # UNPAD MLP INPUT ===============
-        # NOTE: This is only need for the MoE auxiliary loss computation and to avoid
-        #       artificial expert inbalance due to routing padding tokens.
+        # Unpad MLP input so padding tokens don't perturb the MoE routing path.
         gen_len = pack_attn_out["_num_full_tokens"]
         und_len = pack_attn_out["_num_causal_tokens"]
         ln_out_und_unpadded = ln_out_und[:und_len]  # [N_und_unpadded,hidden_size]
@@ -534,7 +431,7 @@ class Cosmos3VLTextMoTDecoderLayer(nn.Module):
         mlp_out_und_unpadded = self.mlp(ln_out_und_unpadded)  # [N_und_unpadded,hidden_size]
         mlp_out_gen_unpadded = self.mlp_moe_gen(ln_out_gen_unpadded)  # [N_gen_unpadded,hidden_size]
 
-        # PAD MLP OUTPUT ===============
+        # Re-pad the MLP outputs back to the packed-sequence layout.
         mlp_out_und = torch.cat([mlp_out_und_unpadded, ln_out_und[und_len:]], dim=0)  # [N_und,hidden_size]
         mlp_out_gen = torch.cat([mlp_out_gen_unpadded, ln_out_gen[gen_len:]], dim=0)  # [N_gen,hidden_size]
 
@@ -551,7 +448,7 @@ class Cosmos3VLTextModel(nn.Module):
     under the same attribute names so that weight keys match the checkpoint.
     """
 
-    def __init__(self, config, layer_types: LayerTypes) -> None:
+    def __init__(self, config) -> None:
         super().__init__()
         self.config = config
 
@@ -559,39 +456,23 @@ class Cosmos3VLTextModel(nn.Module):
 
         self.layers = nn.ModuleList(
             [
-                Cosmos3VLTextMoTDecoderLayer(config, layer_idx, layer_types)
+                Cosmos3VLTextMoTDecoderLayer(config, layer_idx)
                 for layer_idx in range(config.num_hidden_layers)
             ]
         )
 
         # Understanding pathway final norm
-        self.norm = layer_types.rms_norm(config.hidden_size, eps=config.rms_norm_eps)
+        self.norm = Cosmos3VLTextRMSNorm(config.hidden_size, eps=config.rms_norm_eps)
         # Generation pathway final norm
-        self.norm_moe_gen = layer_types.rms_norm(config.hidden_size, eps=config.rms_norm_eps)
+        self.norm_moe_gen = Cosmos3VLTextRMSNorm(config.hidden_size, eps=config.rms_norm_eps)
 
         self.rotary_emb = Cosmos3VLTextRotaryEmbedding(config=config)
 
     def forward(
         self,
         pack: SequencePack,
-        attention_mask,
         position_ids: torch.Tensor,
-        dual_kv_cache: None = None,  # TODO: support AR generation
-        frame_idx: Optional[int] = None,
-        natten_metadata_list: list | None = None,
     ) -> SequencePack:
-        """
-        Args:
-            pack: Packed sequence
-            attention_mask: Attention mask
-            position_ids: Position IDs
-            dual_kv_cache: Optional dual KV cache for AR generation
-            frame_idx: Current frame index (default: None, treated as 0)
-        """
-        # Handle None frame_idx as 0
-        if frame_idx is None:
-            frame_idx = 0
-
         # Create position embeddings (Qwen3 style) - squeeze once at model level
         # tensor below is only used for its dtype and device
         device, dtype = get_device_and_dtype(pack)
@@ -608,17 +489,12 @@ class Cosmos3VLTextModel(nn.Module):
             from_joint(sin, pack),
         )
 
-        # TODO: Add lbl_metadata_all (we don't need it at inference)
         hidden_states = pack
 
-        for i, decoder_layer in enumerate(self.layers):
+        for decoder_layer in self.layers:
             hidden_states = decoder_layer(
                 hidden_states,
-                attention_mask,
                 position_embeddings,
-                dual_kv_cache[i] if dual_kv_cache is not None else None,
-                frame_idx,
-                natten_metadata=None if natten_metadata_list is None else natten_metadata_list[i],
             )
 
         hidden_states_out = zeros_like(hidden_states)
@@ -635,7 +511,6 @@ class Cosmos3OmniTransformer(ModelMixin, ConfigMixin):
         attention_bias: bool = False,
         attention_dropout: float = 0.0,
         dtype: str = "bfloat16",
-        freeze_und: bool = False,
         head_dim: int = 128,
         hidden_act: str = "silu",
         hidden_size: int = 4096,
@@ -678,7 +553,7 @@ class Cosmos3OmniTransformer(ModelMixin, ConfigMixin):
             rope_scaling = {"mrope_interleaved": True, "mrope_section": [24, 20, 20], "rope_type": "default"}
             self.register_to_config(rope_scaling=rope_scaling)
 
-        self.model = Cosmos3VLTextModel(config=self.config, layer_types=LayerTypes(is_moe=False))
+        self.model = Cosmos3VLTextModel(config=self.config)
         self.vocab_size = vocab_size
         self.lm_head = nn.Linear(hidden_size, vocab_size, bias=False)
         self.vae2llm = nn.Linear(patch_latent_dim, hidden_size, bias=True)
@@ -702,119 +577,6 @@ class Cosmos3OmniTransformer(ModelMixin, ConfigMixin):
     def forward(
         self,
         pack: SequencePack,
-        attention_mask,
         position_ids: torch.Tensor,
-        dual_kv_cache: None = None,
-        frame_idx: Optional[int] = None,
-        natten_metadata_list: list | None = None,
-    ) -> Tuple[SequencePack, None]:
-        """Training forward pass - simplified to match qwen3_mot.
-
-        Returns:
-            (outputs, None) — the None placeholder mirrors the (packed_outputs, lbl_metadata)
-            tuple returned by the original language_model so callers can unpack both.
-        """
-        outputs = self.model(
-            pack=pack,
-            attention_mask=attention_mask,
-            position_ids=position_ids,
-            dual_kv_cache=dual_kv_cache,
-            frame_idx=frame_idx,
-            natten_metadata_list=natten_metadata_list,
-        )
-        return outputs, None
-
-
-@use_kernel_forward_from_hub("RMSNorm")
-class Qwen3VLMoeTextRMSNorm(nn.Module):
-    def __init__(self, hidden_size, eps=1e-6):
-        """
-        Qwen3VLMoeTextRMSNorm is equivalent to T5LayerNorm
-        """
-        super().__init__()
-        self.weight = nn.Parameter(torch.ones(hidden_size))
-        self.variance_epsilon = eps
-
-    def forward(self, hidden_states):
-        input_dtype = hidden_states.dtype
-        hidden_states = hidden_states.to(torch.float32)
-        variance = hidden_states.pow(2).mean(-1, keepdim=True)
-        hidden_states = hidden_states * torch.rsqrt(variance + self.variance_epsilon)
-        return self.weight * hidden_states.to(input_dtype)
-
-    def extra_repr(self):
-        return f"{tuple(self.weight.shape)}, eps={self.variance_epsilon}"
-
-
-class Qwen3VLMoeTextMLP(nn.Module):
-    def __init__(self, config):
-        super().__init__()
-        self.config = config
-        self.hidden_size = config.hidden_size
-        self.intermediate_size = config.intermediate_size
-        self.gate_proj = nn.Linear(self.hidden_size, self.intermediate_size, bias=False)
-        self.up_proj = nn.Linear(self.hidden_size, self.intermediate_size, bias=False)
-        self.down_proj = nn.Linear(self.intermediate_size, self.hidden_size, bias=False)
-        self.act_fn = ACT2FN[config.hidden_act]
-
-    def forward(self, x):
-        down_proj = self.down_proj(self.act_fn(self.gate_proj(x)) * self.up_proj(x))
-        return down_proj
-
-
-class Qwen3VLMoeTextRotaryEmbedding(nn.Module):
-    def __init__(self, config):
-        super().__init__()
-        if hasattr(config, "rope_scaling") and config.rope_scaling is not None:
-            self.rope_type = config.rope_scaling.get("rope_type", "default")
-        else:
-            self.rope_type = "default"
-        self.max_seq_len_cached = config.max_position_embeddings
-        self.original_max_seq_len = config.max_position_embeddings
-        self.mrope_section = config.rope_scaling.get("mrope_section", [24, 20, 20])
-
-        self.config = config
-        self.rope_init_fn = ROPE_INIT_FUNCTIONS[self.rope_type]
-
-    def init_weights(self, buffer_device: torch.device | None = None) -> None:
-        inv_freq, self.attention_scaling = self.rope_init_fn(self.config, buffer_device)
-        self.register_buffer("inv_freq", inv_freq, persistent=False)
-
-    def apply_interleaved_mrope(self, freqs, mrope_section):
-        """Apply interleaved MRoPE to 3D rotary embeddings.
-        Reorganizes frequency layout from chunked [TTT...HHH...WWW] to
-        interleaved [THTHWHTHW...TT], preserving frequency continuity.
-        args:
-            x: (3, bs, seq_len, head_dim // 2)
-            mrope_section: (3,)
-        returns:
-            x_t: (bs, seq_len, head_dim // 2)
-        """
-        freqs_t = freqs[0]  # just overwrite the first dimension T
-        for dim, offset in enumerate((1, 2), start=1):  # H, W
-            length = mrope_section[dim] * 3
-            idx = slice(offset, length, 3)
-            freqs_t[..., idx] = freqs[dim, ..., idx]
-        return freqs_t
-
-    @torch.no_grad()
-    @dynamic_rope_update  # power user: used with advanced RoPE types (e.g. dynamic rope)
-    def forward(self, x, position_ids):
-        assert self.inv_freq.dtype == torch.float32, f"inv_freq must be float32, but got {self.inv_freq.dtype}"
-
-        # In contrast to other models, Qwen3VLMoe has different position ids for the grids
-        # So we expand the inv_freq to shape (3, ...)
-        if position_ids.ndim == 2:
-            position_ids = position_ids[None, ...].expand(3, position_ids.shape[0], -1)  # [3,B,N]
-        inv_freq_expanded = (
-            self.inv_freq[None, None, :, None].float().expand(3, position_ids.shape[1], -1, 1)
-        )  # [3,B,head_dim//2,1]
-        position_ids_expanded = position_ids[:, :, None, :].float()  # [3,B,1,N]
-
-        freqs = (inv_freq_expanded.float() @ position_ids_expanded.float()).transpose(2, 3)  # [3,B,N,head_dim//2]
-        freqs = self.apply_interleaved_mrope(freqs, self.mrope_section)  # [B,N,head_dim//2]
-        emb = torch.cat((freqs, freqs), dim=-1)  # [B,N,head_dim]
-        cos = emb.cos() * self.attention_scaling  # [B,N,head_dim]
-        sin = emb.sin() * self.attention_scaling  # [B,N,head_dim]
-
-        return cos.to(dtype=x.dtype), sin.to(dtype=x.dtype)
+    ) -> SequencePack:
+        return self.model(pack=pack, position_ids=position_ids)

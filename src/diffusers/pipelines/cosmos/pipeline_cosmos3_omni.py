@@ -998,9 +998,9 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
         if noise_x_sound is not None:
             self.encode_sound_tokens(timestep_scale, packed_seq, hidden_states, target_dtype)
 
-        # 4. Build attention metadata
+        # 4. Pack tokens into causal/full mode splits.
         assert use_moe
-        input_pack, attention_meta = build_packed_sequence(
+        input_pack, _ = build_packed_sequence(
             packed_sequence=hidden_states,
             attn_modes=packed_seq.attn_modes,
             split_lens=packed_seq.split_lens,
@@ -1008,13 +1008,9 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
         )
 
         # 5. Run transformer
-        packed_outputs, _ = self.transformer(
+        packed_outputs = self.transformer(
             input_pack,
-            attention_mask=attention_meta,
             position_ids=packed_seq.position_ids,
-            dual_kv_cache=None,
-            frame_idx=None,
-            natten_metadata_list=None,
         )
         last_hidden_state = get_all_seq(packed_outputs)
 
