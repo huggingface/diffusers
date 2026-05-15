@@ -439,8 +439,14 @@ def main():
         state_dict[f"vae2llm.{k}"] = v
     for k, v in llm2vae.state_dict().items():
         state_dict[f"llm2vae.{k}"] = v
+    _TIME_EMBEDDER_REMAP = {
+        "mlp.0.weight": "linear_1.weight",
+        "mlp.0.bias": "linear_1.bias",
+        "mlp.2.weight": "linear_2.weight",
+        "mlp.2.bias": "linear_2.bias",
+    }
     for k, v in time_embedder.state_dict().items():
-        state_dict[f"time_embedder.{k}"] = v
+        state_dict[f"time_embedder.{_TIME_EMBEDDER_REMAP[k]}"] = v
     if sound_gen:
         for k, v in sound2llm.state_dict().items():
             state_dict[f"sound2llm.{k}"] = v

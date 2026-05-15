@@ -504,7 +504,9 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
         if sound.mse_loss_indexes.numel() > 0:
             timesteps_sound = sound.timesteps * timestep_scale
             with torch.autocast("cuda", enabled=True, dtype=torch.float32):
-                packed_timestep_embeds_sound = self.transformer.time_embedder(timesteps_sound)
+                packed_timestep_embeds_sound = self.transformer.time_embedder(
+                    self.transformer.time_proj(timesteps_sound)
+                )
             packed_timestep_embeds_sound = packed_timestep_embeds_sound.to(target_dtype)
             packed_tokens_sound = self.apply_timestep_embeds_to_noisy_tokens(
                 packed_tokens=packed_tokens_sound,
@@ -937,7 +939,9 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
         if vision.mse_loss_indexes.numel() > 0:
             timesteps_vision = vision.timesteps * timestep_scale
             with torch.autocast("cuda", enabled=True, dtype=torch.float32):
-                packed_timestep_embeds_vision = self.transformer.time_embedder(timesteps_vision)
+                packed_timestep_embeds_vision = self.transformer.time_embedder(
+                    self.transformer.time_proj(timesteps_vision)
+                )
             packed_timestep_embeds_vision = packed_timestep_embeds_vision.to(target_dtype)
             packed_tokens_vision = self.apply_timestep_embeds_to_noisy_tokens(
                 packed_tokens=packed_tokens_vision,

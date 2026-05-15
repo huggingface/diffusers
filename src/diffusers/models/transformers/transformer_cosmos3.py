@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import math
 from typing import Tuple
 
 import torch
@@ -39,6 +38,7 @@ from ...pipelines.cosmos.sequence_packing import (
     zeros_like,
 )
 from ..attention_dispatch import dispatch_attention_fn
+from ..embeddings import TimestepEmbedding, Timesteps
 from ..modeling_utils import ModelMixin
 
 
@@ -116,36 +116,6 @@ class CosmosAttnProcessor3_0:
         full_out = _batch_to_pack(full_out, full_offsets).flatten(-2, -1)
 
         return from_mode_splits(causal_out, full_out, packed_query_states)
-
-
-class TimestepEmbedder(nn.Module):
-    """Embeds scalar timesteps into vector representations."""
-
-    def __init__(self, hidden_size, frequency_embedding_size=256):
-        super().__init__()
-        self.mlp = nn.Sequential(
-            nn.Linear(frequency_embedding_size, hidden_size, bias=True),
-            nn.SiLU(),
-            nn.Linear(hidden_size, hidden_size, bias=True),
-        )
-        self.frequency_embedding_size = frequency_embedding_size
-        self.hidden_size = hidden_size
-
-    @staticmethod
-    def timestep_embedding(t, dim, max_period=10000):
-        half = dim // 2
-        freqs = torch.exp(-math.log(max_period) * torch.arange(start=0, end=half, dtype=torch.float32) / half).to(
-            device=t.device
-        )
-        args = t[:, None].float() * freqs[None]
-        embedding = torch.cat([torch.cos(args), torch.sin(args)], dim=-1)
-        if dim % 2:
-            embedding = torch.cat([embedding, torch.zeros_like(embedding[:, :1])], dim=-1)
-        return embedding
-
-    def forward(self, t):
-        t_freq = self.timestep_embedding(t, self.frequency_embedding_size)
-        return self.mlp(t_freq)
 
 
 class Cosmos3VLTextRotaryEmbedding(nn.Module):
@@ -558,7 +528,8 @@ class Cosmos3OmniTransformer(ModelMixin, ConfigMixin):
         self.lm_head = nn.Linear(hidden_size, vocab_size, bias=False)
         self.vae2llm = nn.Linear(patch_latent_dim, hidden_size, bias=True)
         self.llm2vae = nn.Linear(hidden_size, patch_latent_dim, bias=True)
-        self.time_embedder = TimestepEmbedder(hidden_size)
+        self.time_proj = Timesteps(num_channels=256, flip_sin_to_cos=True, downscale_freq_shift=0)
+        self.time_embedder = TimestepEmbedding(in_channels=256, time_embed_dim=hidden_size)
         if sound_gen:
             if sound_dim is None:
                 raise ValueError("`sound_dim` must be provided when `sound_gen=True`.")
