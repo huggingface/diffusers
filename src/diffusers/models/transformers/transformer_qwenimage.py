@@ -913,10 +913,22 @@ class QwenImageTransformer2DModel(
         # This eliminates 60 GPU syncs during training while maintaining torch.compile compatibility
         block_attention_kwargs = attention_kwargs.copy() if attention_kwargs is not None else {}
         if encoder_hidden_states_mask is not None:
-            # Build joint mask: [text_mask, all_ones_for_image]
             batch_size, image_seq_len = hidden_states.shape[:2]
             image_mask = torch.ones((batch_size, image_seq_len), dtype=torch.bool, device=hidden_states.device)
-            joint_attention_mask = torch.cat([encoder_hidden_states_mask, image_mask], dim=1)
+
+            parallel_config = getattr(self, "_parallel_config", None)
+            cp_config = parallel_config.context_parallel_config if parallel_config is not None else None
+            sp_size = cp_config.ulysses_degree if cp_config is not None else 1
+
+            if sp_size == 1:
+                # Build joint mask: [text_mask, all_ones_for_image]
+                joint_attention_mask = torch.cat([encoder_hidden_states_mask, image_mask], dim=1)
+            else:    
+                # Interleave text and image mask chunks to match the post-all-to-all layout
+                txt_chunks = encoder_hidden_states_mask.chunk(sp_size, dim=1)
+                img_chunks = image_mask.chunk(sp_size, dim=1)
+                joint_attention_mask = torch.cat([x for pair in zip(txt_chunks, img_chunks) for x in pair], dim=1)
+
             joint_attention_mask = joint_attention_mask[:, None, None, :]
             block_attention_kwargs["attention_mask"] = joint_attention_mask
 
