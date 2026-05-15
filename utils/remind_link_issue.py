@@ -12,14 +12,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 """
-Script to remind PR authors to link an issue, and close PRs that ignore the reminders.
+Script to remind PR authors to link an issue.
 
 Behavior:
 - Scans open, non-draft PRs.
 - A PR is considered "linked" if GitHub's GraphQL `closingIssuesReferences` returns > 0
   (covers both `Fixes #N` keywords in the body and issues linked via the GitHub UI).
 - If a PR is not linked, the script posts up to 3 reminder comments spaced 7 days apart.
-- If the 3rd reminder is older than 7 days and the PR is still not linked, the PR is closed.
 - PRs labeled `no-issue-needed` and bot-authored PRs are skipped.
 """
 
@@ -32,10 +31,10 @@ from github import Github
 
 REPO = "huggingface/diffusers"
 REMINDER_MARKER = "<!-- pr-link-issue-reminder -->"
-CLOSE_MARKER = "<!-- pr-link-issue-close -->"
 REMINDER_INTERVAL = timedelta(days=7)
 MAX_REMINDERS = 3
 BYPASS_LABELS = {"no-issue-needed"}
+CONTRIBUTION_GUIDE_URL = "https://huggingface.co/docs/diffusers/main/en/conceptual/contribution#coding-with-ai-agents"
 
 GRAPHQL_URL = "https://api.github.com/graphql"
 GRAPHQL_QUERY = """
@@ -75,34 +74,23 @@ def reminder_body(author, count):
         REMINDER_MARKER,
         f"Hi @{author}, this PR does not appear to link an issue it fixes. "
         "If this PR addresses an existing issue, please add a closing keyword "
-        "(e.g. `Fixes #1234`) to the PR description so the issue is linked.",
+        "(e.g. `Fixes #1234`) to the PR description so the issue is linked. "
+        f"See the [contribution guide]({CONTRIBUTION_GUIDE_URL}) for more details.",
         "",
-        f"Reminder **{count}/{MAX_REMINDERS}**. ",
+        f"Reminder **{count}/{MAX_REMINDERS}**.",
     ]
     if remaining > 0:
         lines[-1] += (
-            f"If no linked issue is added within {REMINDER_INTERVAL.days} days, "
+            f" If no linked issue is added within {REMINDER_INTERVAL.days} days, "
             f"you will receive {remaining} more reminder(s)."
         )
     else:
         lines[-1] += (
-            f"This is the final reminder. If no linked issue is added within "
-            f"{REMINDER_INTERVAL.days} days, this PR will be closed automatically. "
-            "If this PR intentionally does not fix a tracked issue, a maintainer "
-            "can add the `no-issue-needed` label to bypass this check."
+            " This is the final reminder. If this PR intentionally does not fix "
+            "a tracked issue, a maintainer can add the `no-issue-needed` label "
+            "to bypass this check."
         )
     return "\n".join(lines)
-
-
-def close_body(author):
-    return (
-        f"{CLOSE_MARKER}\n"
-        f"Closing this PR because @{author} did not add a linked issue after "
-        f"{MAX_REMINDERS} reminders spaced {REMINDER_INTERVAL.days} days apart. "
-        "Please reopen once the PR description references the issue it fixes "
-        "(e.g. `Fixes #1234`), or ask a maintainer to add the `no-issue-needed` "
-        "label if this PR is intentionally unrelated to a tracked issue."
-    )
 
 
 def aware(ts):
@@ -138,14 +126,13 @@ def main():
             pr.create_issue_comment(reminder_body(author, 1))
             continue
 
+        if count >= MAX_REMINDERS:
+            continue
+
         if now - aware(reminders[-1].created_at) < REMINDER_INTERVAL:
             continue
 
-        if count >= MAX_REMINDERS:
-            pr.create_issue_comment(close_body(author))
-            pr.edit(state="closed")
-        else:
-            pr.create_issue_comment(reminder_body(author, count + 1))
+        pr.create_issue_comment(reminder_body(author, count + 1))
 
 
 if __name__ == "__main__":
