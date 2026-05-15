@@ -21,7 +21,6 @@ from typing import List, Optional, Tuple, Union
 import numpy as np
 import torch
 import torchvision.transforms.functional as TF
-from einops import rearrange
 from tqdm import tqdm
 from transformers import AutoTokenizer
 
@@ -31,7 +30,7 @@ from ...models.transformers.transformer_cosmos3 import (
     Cosmos3OmniTransformer,
 )
 from ...schedulers import UniPCMultistepScheduler
-from ...utils import BaseOutput
+from ...utils import BaseOutput, export_to_video
 from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline
 from .sequence_packing import (
@@ -64,13 +63,11 @@ class Cosmos3OmniPipelineOutput(BaseOutput):
     sound: Optional[list] = None
 
 
-def save_img_or_video(sample, save_fp_wo_ext, fps=24, quality=10, ffmpeg_params=None, **kwargs):
-    # TODO: remove this function and use diffusers-style vidoe processor
-    # However, it may cause numerical differences in the saved video, so we keep it for now for exact reproducibility of saved videos.
-    import imageio
+def save_img_or_video(sample, save_fp_wo_ext, fps=24, quality=10):
+    """Save a 4D ``[C, T, H, W]`` sample as a JPEG (T=1) or MP4 (T>1)."""
     from PIL import Image as PILImage
 
-    assert sample.ndim == 4, "Only support 4D tensor"
+    assert sample.ndim == 4, "Only support 4D tensor [C, T, H, W]"
 
     if torch.is_floating_point(sample):
         sample = sample.clamp(0, 1)
@@ -78,25 +75,14 @@ def save_img_or_video(sample, save_fp_wo_ext, fps=24, quality=10, ffmpeg_params=
         assert sample.dtype == torch.uint8, "Only support uint8 tensor"
         sample = sample.float().div(255)
 
-    if sample.shape[1] == 1:
-        save_obj = PILImage.fromarray(
-            rearrange((sample.cpu().float().numpy() * 255), "c 1 h w -> h w c").astype(np.uint8),
-            mode="RGB",
-        )
-        save_obj.save(f"{save_fp_wo_ext}.jpg", format="JPEG", quality=85 if quality is None else quality)
+    arr = (sample.cpu().float().numpy() * 255).astype(np.uint8)  # [C, T, H, W]
+    if arr.shape[1] == 1:
+        img = arr.squeeze(1).transpose(1, 2, 0)  # [H, W, C]
+        PILImage.fromarray(img, mode="RGB").save(f"{save_fp_wo_ext}.jpg", format="JPEG", quality=85)
     else:
-        frames = rearrange((sample.cpu().float().numpy() * 255), "c t h w -> t h w c").astype(np.uint8)
-        h, w = frames.shape[1], frames.shape[2]
-        out_ffmpeg_params = ffmpeg_params if ffmpeg_params is not None else ["-s", f"{w}x{h}"]
-        imageio.mimsave(
-            f"{save_fp_wo_ext}.mp4",
-            frames,
-            fps=fps,
-            quality=quality,
-            macro_block_size=1,
-            ffmpeg_params=out_ffmpeg_params,
-            output_params=["-f", "mp4"],
-        )
+        frames = list(arr.transpose(1, 2, 3, 0))  # list of [H, W, C] frames
+        # macro_block_size=1 allows arbitrary frame sizes (Cosmos3 outputs are not always divisible by 16).
+        export_to_video(frames, f"{save_fp_wo_ext}.mp4", fps=fps, quality=quality, macro_block_size=1)
 
 
 def save_wav(waveform: torch.Tensor, path, sample_rate: int) -> None:
@@ -117,90 +103,9 @@ def save_wav(waveform: torch.Tensor, path, sample_rate: int) -> None:
     sf.write(str(path), audio_np, sample_rate)
 
 
-class DiffusersWan22VAE:
-    """
-    Drop-in replacement for Wan2pt2VAEInterface, backed by AutoencoderKLWan.
-
-    Bridges the following interface differences:
-
-    1. encode – AutoencoderKLWan returns AutoencoderKLOutput(latent_dist=
-       DiagonalGaussianDistribution); we extract .mode() and apply the same
-       (μ - mean) * inv_std normalization that WanVAE does internally.
-
-    2. decode – AutoencoderKLWan expects un-normalized z and returns
-       DecoderOutput(sample=…); we invert the normalization before calling
-       decode and unwrap the result to a plain tensor.
-
-    3. spatial/temporal_compression_factor properties – AutoencoderKLWan
-       stores these as config.scale_factor_spatial / scale_factor_temporal
-       and exposes spatial_compression_ratio (not *_factor).
-
-    Note: AutoencoderKLWan._decode() clamps the output to [-1, 1];
-    Wan2pt2VAEInterface does not.  The pipeline applies .clamp(0, 1) after
-    decode so this difference does not affect saved videos.
-
-    Numerical equivalence requirements (needed for bitwise-identical output
-    vs Wan2pt2VAEInterface):
-
-    - No torch.amp.autocast: Wan2pt2VAEInterface constructs WanVAE with
-      is_amp=False, so the encoder/decoder run as pure bfloat16 with no
-      autocast context.  Wrapping calls in autocast changes how ops such as
-      F.normalize accumulate internally and breaks the match.
-
-    - mean / inv_std must be initialised directly in `dtype` (bfloat16).
-      WanVAE.__init__ does:
-          self.std    = torch.tensor(std, dtype=bfloat16)
-          self.scale  = [self.mean, 1.0 / self.std]  # division in bfloat16
-      Computing 1/std in float32 and then casting to bfloat16 can yield
-      different bit patterns, so we must perform the division in bfloat16
-      from the start.
-    """
-
-    def __init__(self, vae: AutoencoderKLWan, dtype: torch.dtype = torch.bfloat16):
-        self.vae = vae
-        self.dtype = dtype
-        # Initialise in `dtype` so 1/std is computed in bfloat16, matching WanVAE.
-        mean = torch.tensor(vae.config.latents_mean, dtype=dtype)
-        std = torch.tensor(vae.config.latents_std, dtype=dtype)
-        self._mean = mean  # [z_dim]
-        self._inv_std = 1.0 / std  # [z_dim]
-
-    @torch.no_grad()
-    def encode(self, x: torch.Tensor) -> torch.Tensor:
-        """[B,3,T,H,W] -> [B,z_dim,T//4,H//16,W//16]  (normalized μ, matching Wan2pt2VAEInterface)"""
-        in_dtype = x.dtype
-        device = x.device
-        mean = self._mean.to(device=device, dtype=self.dtype)
-        inv_std = self._inv_std.to(device=device, dtype=self.dtype)
-        # No autocast — mirrors WanVAE(is_amp=False), pure bfloat16 forward pass.
-        raw_mu = self.vae.encode(x.to(self.dtype)).latent_dist.mode()
-        normalized = (raw_mu - mean.view(1, -1, 1, 1, 1)) * inv_std.view(1, -1, 1, 1, 1)
-        return normalized.to(in_dtype)
-
-    @torch.no_grad()
-    def decode(self, z: torch.Tensor) -> torch.Tensor:
-        """[B,z_dim,T_lat,H_lat,W_lat] -> [B,3,T,H,W]"""
-        in_dtype = z.dtype
-        device = z.device
-        mean = self._mean.to(device=device, dtype=self.dtype)
-        inv_std = self._inv_std.to(device=device, dtype=self.dtype)
-        z_raw = z.to(self.dtype) / inv_std.view(1, -1, 1, 1, 1) + mean.view(1, -1, 1, 1, 1)
-        # No autocast — mirrors WanVAE(is_amp=False), pure bfloat16 forward pass.
-        out = self.vae.decode(z_raw).sample
-        return out.to(in_dtype)
-
-    @property
-    def spatial_compression_factor(self) -> int:
-        return self.vae.config.scale_factor_spatial
-
-    @property
-    def temporal_compression_factor(self) -> int:
-        return self.vae.config.scale_factor_temporal
-
-
 class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
     _optional_components = ["sound_tokenizer"]
-    model_cpu_offload_seq = "transformer"
+    model_cpu_offload_seq = "transformer->vae->sound_tokenizer"
 
     def __init__(
         self,
@@ -218,15 +123,38 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
             scheduler=scheduler,
             sound_tokenizer=sound_tokenizer,
         )
-        # Plain attribute (not registered): registering the wrapper would cause save_pretrained to call
-        # wrapper.save_pretrained(), which fails since DiffusersWan22VAE has no such method.
-        self.vision_tokenizer = DiffusersWan22VAE(vae)
+        # VAE latent normalization stats — precomputed in bfloat16 so `1/std` is
+        # done in bfloat16 (matches Wan2pt2VAEInterface bit-for-bit).
+        self._vae_dtype = torch.bfloat16
+        self._vae_latents_mean = torch.tensor(vae.config.latents_mean, dtype=self._vae_dtype)
+        self._vae_latents_inv_std = 1.0 / torch.tensor(vae.config.latents_std, dtype=self._vae_dtype)
 
         self.llm_special_tokens = {
             "start_of_generation": text_tokenizer.convert_tokens_to_ids("<|vision_start|>"),
             "end_of_generation": text_tokenizer.convert_tokens_to_ids("<|vision_end|>"),
             "eos_token_id": text_tokenizer.eos_token_id,
         }
+
+    @torch.no_grad()
+    def _encode_video(self, x: torch.Tensor) -> torch.Tensor:
+        """[B,3,T,H,W] → normalized latents [B,z_dim,T//4,H//16,W//16]. Bit-for-bit
+        matches Wan2pt2VAEInterface; no autocast (WanVAE was trained with is_amp=False)."""
+        in_dtype = x.dtype
+        dtype = self._vae_dtype
+        mean = self._vae_latents_mean.to(device=x.device, dtype=dtype)
+        inv_std = self._vae_latents_inv_std.to(device=x.device, dtype=dtype)
+        raw_mu = self.vae.encode(x.to(dtype)).latent_dist.mode()
+        return ((raw_mu - mean.view(1, -1, 1, 1, 1)) * inv_std.view(1, -1, 1, 1, 1)).to(in_dtype)
+
+    @torch.no_grad()
+    def _decode_video(self, z: torch.Tensor) -> torch.Tensor:
+        """[B,z_dim,T_lat,H_lat,W_lat] → raw pixels [B,3,T,H,W]."""
+        in_dtype = z.dtype
+        dtype = self._vae_dtype
+        mean = self._vae_latents_mean.to(device=z.device, dtype=dtype)
+        inv_std = self._vae_latents_inv_std.to(device=z.device, dtype=dtype)
+        z_raw = z.to(dtype) / inv_std.view(1, -1, 1, 1, 1) + mean.view(1, -1, 1, 1, 1)
+        return self.vae.decode(z_raw).sample.to(in_dtype)
 
     def tokenize_caption(
         self,
@@ -610,7 +538,7 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
                 new_image_tensor_list = []
                 for i in range(len(data_batch[input_key])):
                     for img_tensor in data_batch[input_key][i]:
-                        img_tensor = rearrange(img_tensor, "c h w -> 1 c 1 h w").contiguous()
+                        img_tensor = img_tensor.unsqueeze(0).unsqueeze(2).contiguous()
                         if img_tensor.dtype == torch.uint8:
                             img_tensor = img_tensor.to(device=device, dtype=dtype) / 127.5 - 1.0
                         new_image_tensor_list.append(img_tensor)
@@ -671,14 +599,14 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
         self.augment_image_dim_inplace(input_image_key, data_batch, device=device, dtype=dtype)
         raw_state_vision = data_batch[input_image_key if is_img else input_video_key]
         x0_tokens_vision = [
-            self.vision_tokenizer.encode(raw_state_vision_i).contiguous().float()
+            self._encode_video(raw_state_vision_i).contiguous().float()
             for raw_state_vision_i in raw_state_vision
         ]
 
         frame_size = data_batch.get("image_size", None)
         if frame_size is not None:
             x0_tokens_vision = self.remove_padding_from_latent(
-                self.vision_tokenizer.spatial_compression_factor, x0_tokens_vision, frame_size
+                self.vae.config.scale_factor_spatial, x0_tokens_vision, frame_size
             )
 
         fps_raw = data_batch.get("conditioning_fps", None)
@@ -866,7 +794,7 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
             unified_3d_mrope_temporal_modality_margin=self.transformer.config.unified_3d_mrope_temporal_modality_margin,
             enable_fps_modulation=self.transformer.config.enable_fps_modulation,
             base_fps=float(self.transformer.config.base_fps),
-            temporal_compression_factor=self.vision_tokenizer.temporal_compression_factor,
+            temporal_compression_factor=self.vae.config.scale_factor_temporal,
             video_temporal_causal=self.transformer.config.video_temporal_causal,
             action_dim=self.transformer.config.max_action_dim,
         )
@@ -1109,7 +1037,7 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
                 unified_3d_mrope_temporal_modality_margin=self.transformer.config.unified_3d_mrope_temporal_modality_margin,
                 enable_fps_modulation=self.transformer.config.enable_fps_modulation,
                 base_fps=float(self.transformer.config.base_fps),
-                temporal_compression_factor=self.vision_tokenizer.temporal_compression_factor,
+                temporal_compression_factor=self.vae.config.scale_factor_temporal,
                 video_temporal_causal=self.transformer.config.video_temporal_causal,
                 action_dim=self.transformer.config.max_action_dim,
             )
@@ -1260,7 +1188,7 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
         """Decode latents to pixel tensors of shape [C, T, H, W] in [0, 1]."""
         frames = []
         for vision_latent in vision_list:
-            vision = self.vision_tokenizer.decode(vision_latent.cuda())  # [1, C, T, H, W]
+            vision = self._decode_video(vision_latent.cuda())  # [1, C, T, H, W]
             frames.append(((1.0 + vision) / 2).clamp(0, 1).squeeze(0))
         return frames
 

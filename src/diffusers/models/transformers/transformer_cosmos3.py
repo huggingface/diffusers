@@ -16,6 +16,7 @@ from typing import Tuple
 
 import torch
 import torch.nn as nn
+
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...pipelines.cosmos.sequence_packing import (
     SequencePack,
