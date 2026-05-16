@@ -250,7 +250,7 @@ class LLaDA2Pipeline(DiffusionPipeline):
         use_chat_template: bool = True,
         add_generation_prompt: bool = True,
         gen_length: int = 2048,
-        block_length: int = 32,
+        block_length: int | None = None,
         num_inference_steps: int = 32,
         temperature: float = 0.0,
         top_p: float | None = None,
@@ -295,8 +295,8 @@ class LLaDA2Pipeline(DiffusionPipeline):
                 Whether to add the generation prompt when using chat templates.
             gen_length (`int`):
                 Number of tokens to generate.
-            block_length (`int`):
-                Block size for refinement.
+            block_length (`int`, *optional*):
+                Block size for refinement. If not provided, the scheduler's configured `block_length` is used.
             num_inference_steps (`int`):
                 Number of refinement steps per block.
             temperature (`float`):
@@ -348,6 +348,9 @@ class LLaDA2Pipeline(DiffusionPipeline):
             callback_on_step_end_tensor_inputs = callback_on_step_end.tensor_inputs
         if callback_on_step_end_tensor_inputs is None:
             callback_on_step_end_tensor_inputs = ["block_x"]
+
+        if block_length is None:
+            block_length = self.scheduler.config.block_length
 
         self.check_inputs(
             prompt=prompt,
