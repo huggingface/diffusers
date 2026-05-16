@@ -13,28 +13,38 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import unittest
+import pytest
+import torch
 
 from diffusers import AutoencoderKLLTX2Video
+from diffusers.utils.torch_utils import randn_tensor
 
-from ...testing_utils import (
-    enable_full_determinism,
-    floats_tensor,
-    torch_device,
-)
-from ..test_modeling_common import ModelTesterMixin
-from .testing_utils import AutoencoderTesterMixin
+from ...testing_utils import enable_full_determinism, torch_device
+from ..testing_utils import BaseModelTesterConfig, MemoryTesterMixin, ModelTesterMixin, TrainingTesterMixin
+from .testing_utils import NewAutoencoderTesterMixin
 
 
 enable_full_determinism()
 
 
-class AutoencoderKLLTX2VideoTests(ModelTesterMixin, AutoencoderTesterMixin, unittest.TestCase):
-    model_class = AutoencoderKLLTX2Video
-    main_input_name = "sample"
-    base_precision = 1e-2
+class AutoencoderKLLTX2VideoTesterConfig(BaseModelTesterConfig):
+    @property
+    def main_input_name(self):
+        return "sample"
 
-    def get_autoencoder_kl_ltx_video_config(self):
+    @property
+    def model_class(self):
+        return AutoencoderKLLTX2Video
+
+    @property
+    def output_shape(self):
+        return (3, 9, 16, 16)
+
+    @property
+    def generator(self):
+        return torch.Generator("cpu").manual_seed(0)
+
+    def get_init_dict(self):
         return {
             "in_channels": 3,
             "out_channels": 3,
@@ -59,30 +69,26 @@ class AutoencoderKLLTX2VideoTests(ModelTesterMixin, AutoencoderTesterMixin, unit
             "decoder_spatial_padding_mode": "zeros",
         }
 
-    @property
-    def dummy_input(self):
+    def get_dummy_inputs(self):
         batch_size = 2
         num_frames = 9
         num_channels = 3
         sizes = (16, 16)
+        image = randn_tensor(
+            (batch_size, num_channels, num_frames, *sizes), generator=self.generator, device=torch_device
+        )
+        return {"sample": image}
 
-        image = floats_tensor((batch_size, num_channels, num_frames) + sizes).to(torch_device)
 
-        input_dict = {"sample": image}
-        return input_dict
+class TestAutoencoderKLLTX2Video(AutoencoderKLLTX2VideoTesterConfig, ModelTesterMixin):
+    base_precision = 1e-2
 
-    @property
-    def input_shape(self):
-        return (3, 9, 16, 16)
+    def test_outputs_equivalence(self):
+        pytest.skip("Unsupported test.")
 
-    @property
-    def output_shape(self):
-        return (3, 9, 16, 16)
 
-    def prepare_init_args_and_inputs_for_common(self):
-        init_dict = self.get_autoencoder_kl_ltx_video_config()
-        inputs_dict = self.dummy_input
-        return init_dict, inputs_dict
+class TestAutoencoderKLLTX2VideoTraining(AutoencoderKLLTX2VideoTesterConfig, TrainingTesterMixin):
+    """Training tests for AutoencoderKLLTX2Video."""
 
     def test_gradient_checkpointing_is_applied(self):
         expected_set = {
@@ -94,10 +100,10 @@ class AutoencoderKLLTX2VideoTests(ModelTesterMixin, AutoencoderTesterMixin, unit
         }
         super().test_gradient_checkpointing_is_applied(expected_set=expected_set)
 
-    @unittest.skip("Unsupported test.")
-    def test_outputs_equivalence(self):
-        pass
 
-    @unittest.skip("AutoencoderKLLTXVideo does not support `norm_num_groups` because it does not use GroupNorm.")
-    def test_forward_with_norm_groups(self):
-        pass
+class TestAutoencoderKLLTX2VideoMemory(AutoencoderKLLTX2VideoTesterConfig, MemoryTesterMixin):
+    """Memory optimization tests for AutoencoderKLLTX2Video."""
+
+
+class TestAutoencoderKLLTX2VideoSlicingTiling(AutoencoderKLLTX2VideoTesterConfig, NewAutoencoderTesterMixin):
+    """Slicing and tiling tests for AutoencoderKLLTX2Video."""
