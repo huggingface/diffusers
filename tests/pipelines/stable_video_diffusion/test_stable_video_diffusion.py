@@ -151,7 +151,6 @@ class StableVideoDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCa
     def test_attention_slicing_forward_pass(self):
         pass
 
-    @unittest.skip("Batched inference works and outputs look correct, but the test is failing")
     def test_inference_batch_single_identical(
         self,
         batch_size=2,
@@ -188,10 +187,6 @@ class StableVideoDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCa
         max_diff = np.abs(to_np(output_batch[0]) - to_np(output[0])).max()
         assert max_diff < expected_max_diff
 
-    @unittest.skip("Test is similar to test_inference_batch_single_identical")
-    def test_inference_batch_consistent(self):
-        pass
-
     def test_np_output_type(self):
         components = self.get_dummy_components()
         pipe = self.pipeline_class(**components)
@@ -226,7 +221,6 @@ class StableVideoDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCa
         max_diff = np.abs(to_np(output) - to_np(output_tuple)).max()
         self.assertLess(max_diff, expected_max_difference)
 
-    @unittest.skip("Test is currently failing")
     def test_float16_inference(self, expected_max_diff=5e-2):
         components = self.get_dummy_components()
         pipe = self.pipeline_class(**components)

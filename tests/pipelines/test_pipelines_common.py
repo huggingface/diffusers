@@ -2081,7 +2081,7 @@ class PipelineTesterMixin:
                 has_nan = torch.isnan(tensor).any()
             return has_nan
 
-        with tempfile.TemporaryDirectory() as tmpdir:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdir:
             pipe.save_pretrained(tmpdir, variant=variant, safe_serialization=False)
             pipe_loaded = self.pipeline_class.from_pretrained(tmpdir, variant=variant)
 

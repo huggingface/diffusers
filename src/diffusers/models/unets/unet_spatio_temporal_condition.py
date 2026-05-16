@@ -114,7 +114,7 @@ class UNetSpatioTemporalConditionModel(ModelMixin, AttentionMixin, ConfigMixin, 
                 f"Must provide the same number of `num_attention_heads` as `down_block_types`. `num_attention_heads`: {num_attention_heads}. `down_block_types`: {down_block_types}."
             )
 
-        if isinstance(cross_attention_dim, list) and len(cross_attention_dim) != len(down_block_types):
+        if not isinstance(cross_attention_dim, int) and len(cross_attention_dim) != len(down_block_types):
             raise ValueError(
                 f"Must provide the same number of `cross_attention_dim` as `down_block_types`. `cross_attention_dim`: {cross_attention_dim}. `down_block_types`: {down_block_types}."
             )
@@ -122,6 +122,13 @@ class UNetSpatioTemporalConditionModel(ModelMixin, AttentionMixin, ConfigMixin, 
         if not isinstance(layers_per_block, int) and len(layers_per_block) != len(down_block_types):
             raise ValueError(
                 f"Must provide the same number of `layers_per_block` as `down_block_types`. `layers_per_block`: {layers_per_block}. `down_block_types`: {down_block_types}."
+            )
+
+        if not isinstance(transformer_layers_per_block, int) and len(transformer_layers_per_block) != len(
+            down_block_types
+        ):
+            raise ValueError(
+                f"Must provide the same number of `transformer_layers_per_block` as `down_block_types`. `transformer_layers_per_block`: {transformer_layers_per_block}. `down_block_types`: {down_block_types}."
             )
 
         # input
