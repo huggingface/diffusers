@@ -79,7 +79,7 @@ jobs:
         run: |
           uv pip install -e ".[quality]"
           uv pip uninstall accelerate && uv pip install -U accelerate@git+https://github.com/huggingface/accelerate.git
-          uv pip uninstall transformers huggingface_hub && uv pip install --prerelease allow -U transformers@git+https://github.com/huggingface/transformers.git
+          uv pip uninstall transformers huggingface_hub && UV_PRERELEASE=allow uv pip install -U transformers@git+https://github.com/huggingface/transformers.git
           uv pip uninstall tokenizers && uv pip install "tokenizers<=0.23.0"
       - name: Environment
         run: |
@@ -132,7 +132,7 @@ jobs:
         uv pip install -e ".[quality]"
         uv pip install peft@git+https://github.com/huggingface/peft.git
         uv pip uninstall accelerate && uv pip install -U accelerate@git+https://github.com/huggingface/accelerate.git
-        uv pip uninstall transformers huggingface_hub && uv pip install --prerelease allow -U transformers@git+https://github.com/huggingface/transformers.git
+        uv pip uninstall transformers huggingface_hub && UV_PRERELEASE=allow uv pip install -U transformers@git+https://github.com/huggingface/transformers.git
         uv pip uninstall tokenizers && uv pip install "tokenizers<=0.23.0"
 
     - name: Environment
@@ -185,7 +185,7 @@ jobs:
     - name: Install dependencies
       run: |
         uv pip install -e ".[quality,training]"
-        uv pip uninstall transformers huggingface_hub && uv pip install --prerelease allow -U transformers@git+https://github.com/huggingface/transformers.git
+        uv pip uninstall transformers huggingface_hub && UV_PRERELEASE=allow uv pip install -U transformers@git+https://github.com/huggingface/transformers.git
         uv pip uninstall tokenizers && uv pip install "tokenizers<=0.23.0"
     - name: Environment
       run: |
