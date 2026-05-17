@@ -128,6 +128,10 @@ class FlowMatchEulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
         timesteps = torch.from_numpy(timesteps).to(dtype=torch.float32)
 
         sigmas = timesteps / num_train_timesteps
+        # Record the pre-shift sigma range so `set_timesteps` rebuilds the same linear range and
+        # applies the static shift exactly once. Storing the post-shift values here would cause
+        # `set_timesteps` to shift an already-shifted sigma range a second time (see #13243).
+        sigmas_unshifted = sigmas
         if not use_dynamic_shifting:
             # when use_dynamic_shifting is True, we apply the timestep shifting on the fly based on the image resolution
             sigmas = shift * sigmas / (1 + (shift - 1) * sigmas)
@@ -140,8 +144,8 @@ class FlowMatchEulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
         self._shift = shift
 
         self.sigmas = sigmas.to("cpu")  # to avoid too much CPU/GPU communication
-        self.sigma_min = self.sigmas[-1].item()
-        self.sigma_max = self.sigmas[0].item()
+        self.sigma_min = sigmas_unshifted[-1].item()
+        self.sigma_max = sigmas_unshifted[0].item()
 
     @property
     def shift(self):
