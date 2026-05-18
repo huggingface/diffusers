@@ -29,9 +29,6 @@ from diffusers.pipelines.cosmos.pipeline_cosmos3_omni import Cosmos3OmniDiffuser
 
 
 HF_REPO = "nvidia/Cosmos3-Nano"
-# TODO: Remove before merging
-HF_REVISION = "bc5688f1fb6c2a289155761df0d4e0973100620b"
-
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
@@ -58,10 +55,10 @@ def main():
     )
     args = parser.parse_args()
 
+
     print(f"Downloading pipeline from {HF_REPO}")
     local_repo = snapshot_download(
         repo_id=HF_REPO,
-        revision=HF_REVISION,
     )
     pipeline_path = pathlib.Path(local_repo)
     print(f"Loading pipeline from {pipeline_path} …")
