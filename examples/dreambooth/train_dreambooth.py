@@ -175,16 +175,17 @@ def log_validation(
     # run inference
     generator = None if args.seed is None else torch.Generator(device=accelerator.device).manual_seed(args.seed)
     images = []
-    if args.validation_images is None:
-        for _ in range(args.num_validation_images):
-            with torch.autocast("cuda"):
-                image = pipeline(**pipeline_args, num_inference_steps=25, generator=generator).images[0]
-            images.append(image)
-    else:
-        for image in args.validation_images:
-            image = Image.open(image)
-            image = pipeline(**pipeline_args, image=image, generator=generator).images[0]
-            images.append(image)
+    with torch.no_grad():
+        if args.validation_images is None:
+            for _ in range(args.num_validation_images):
+                with torch.autocast("cuda"):
+                    image = pipeline(**pipeline_args, num_inference_steps=25, generator=generator).images[0]
+                images.append(image)
+        else:
+            for image in args.validation_images:
+                image = Image.open(image)
+                image = pipeline(**pipeline_args, image=image, generator=generator).images[0]
+                images.append(image)
 
     for tracker in accelerator.trackers:
         if tracker.name == "tensorboard":

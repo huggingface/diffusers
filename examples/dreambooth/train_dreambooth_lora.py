@@ -155,17 +155,19 @@ def log_validation(
 
     if args.validation_images is None:
         images = []
-        for _ in range(args.num_validation_images):
-            with torch.amp.autocast(accelerator.device.type):
-                image = pipeline(**pipeline_args, generator=generator).images[0]
-                images.append(image)
+        with torch.no_grad():
+            for _ in range(args.num_validation_images):
+                with torch.amp.autocast(accelerator.device.type):
+                    image = pipeline(**pipeline_args, generator=generator).images[0]
+                    images.append(image)
     else:
         images = []
-        for image in args.validation_images:
-            image = Image.open(image)
-            with torch.amp.autocast(accelerator.device.type):
-                image = pipeline(**pipeline_args, image=image, generator=generator).images[0]
-            images.append(image)
+        with torch.no_grad():
+            for image in args.validation_images:
+                image = Image.open(image)
+                with torch.amp.autocast(accelerator.device.type):
+                    image = pipeline(**pipeline_args, image=image, generator=generator).images[0]
+                images.append(image)
 
     for tracker in accelerator.trackers:
         phase_name = "test" if is_final_validation else "validation"
