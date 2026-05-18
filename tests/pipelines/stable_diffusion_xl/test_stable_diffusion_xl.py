@@ -44,6 +44,7 @@ from ...testing_utils import (
     load_image,
     numpy_cosine_similarity_distance,
     require_torch_accelerator,
+    require_torch_neuron,
     slow,
     torch_device,
 )
@@ -979,21 +980,27 @@ class StableDiffusionXLPipelineIntegrationTests(unittest.TestCase):
         assert max_diff < 1e-2
 
 
-@slow
-@require_torch_accelerator
+@require_torch_neuron
 class StableDiffusionXLTurboPipelineIntegrationTests(unittest.TestCase):
     ckpt_id = "stabilityai/sdxl-turbo"
     prompt = "A small cactus with a happy face in the Sahara desert."
 
     def setUp(self):
         super().setUp()
+        self._saved_env = {}
         if is_torch_neuronx_available():
+            self._saved_env["TORCH_NEURONX_ENABLE_NKI_SDPA"] = os.environ.get("TORCH_NEURONX_ENABLE_NKI_SDPA")
             os.environ.setdefault("TORCH_NEURONX_ENABLE_NKI_SDPA", "0")
         gc.collect()
         backend_empty_cache(torch_device)
 
     def tearDown(self):
         super().tearDown()
+        for key, original in self._saved_env.items():
+            if original is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = original
         gc.collect()
         backend_empty_cache(torch_device)
 
@@ -1018,6 +1025,3 @@ class StableDiffusionXLTurboPipelineIntegrationTests(unittest.TestCase):
         self.assertEqual(image.shape, (1, 512, 512, 3))
         self.assertTrue(np.all((image >= 0.0) & (image <= 1.0)), "Pixel values must be in [0, 1]")
         self.assertGreater(image_slice.std(), 0.01, "Output image should have meaningful variance")
-
-        atol = 1e-2 if is_torch_neuronx_available() else 1e-4
-        _ = atol

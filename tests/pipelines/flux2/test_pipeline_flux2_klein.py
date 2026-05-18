@@ -17,8 +17,7 @@ from diffusers.utils.import_utils import is_torch_neuronx_available
 
 from ...testing_utils import (
     backend_empty_cache,
-    require_torch_accelerator,
-    slow,
+    require_torch_neuron,
     torch_device,
 )
 from ..test_pipelines_common import PipelineTesterMixin, check_qkv_fused_layers_exist
@@ -191,17 +190,19 @@ class Flux2KleinPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         pass
 
 
-@slow
-@require_torch_accelerator
+@require_torch_neuron
 class Flux2KleinPipelineIntegrationTests(unittest.TestCase):
     ckpt_id = "black-forest-labs/FLUX.2-klein-4B"
     prompt = "A small cactus with a happy face in the Sahara desert."
 
     def setUp(self):
         super().setUp()
+        self._saved_env = {}
         if is_torch_neuronx_available():
             neff_cache_dir = "/tmp/neff_cache"
             os.makedirs(neff_cache_dir, exist_ok=True)
+            for key in ("TORCH_NEURONX_NEFF_CACHE_DIR", "TORCH_NEURONX_ENABLE_NKI_SDPA"):
+                self._saved_env[key] = os.environ.get(key)
             os.environ["TORCH_NEURONX_NEFF_CACHE_DIR"] = neff_cache_dir
             os.environ.setdefault("TORCH_NEURONX_ENABLE_NKI_SDPA", "0")
         gc.collect()
@@ -209,6 +210,11 @@ class Flux2KleinPipelineIntegrationTests(unittest.TestCase):
 
     def tearDown(self):
         super().tearDown()
+        for key, original in self._saved_env.items():
+            if original is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = original
         gc.collect()
         backend_empty_cache(torch_device)
 
@@ -235,6 +241,3 @@ class Flux2KleinPipelineIntegrationTests(unittest.TestCase):
         self.assertEqual(image.shape, (1, 512, 512, 3))
         self.assertTrue(np.all((image >= 0.0) & (image <= 1.0)), "Pixel values must be in [0, 1]")
         self.assertGreater(image_slice.std(), 0.01, "Output image should have meaningful variance")
-
-        atol = 1e-2 if is_torch_neuronx_available() else 1e-4
-        _ = atol
