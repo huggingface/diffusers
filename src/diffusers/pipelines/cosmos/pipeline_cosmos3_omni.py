@@ -75,13 +75,14 @@ def save_img_or_video(sample, save_fp_wo_ext, fps=24, quality=10):
         assert sample.dtype == torch.uint8, "Only support uint8 tensor"
         sample = sample.float().div(255)
 
-    arr = (sample.cpu().float().numpy() * 255).astype(np.uint8)  # [C, T, H, W]
-    if arr.shape[1] == 1:
-        img = arr.squeeze(1).transpose(1, 2, 0)  # [H, W, C]
+    np_arr = sample.cpu().float().numpy()  # [C, T, H, W] in [0, 1]
+    if np_arr.shape[1] == 1:
+        img = (np_arr.squeeze(1).transpose(1, 2, 0) * 255).astype(np.uint8)  # [H, W, C] uint8 for PIL
         PILImage.fromarray(img, mode="RGB").save(f"{save_fp_wo_ext}.jpg", format="JPEG", quality=85)
     else:
-        frames = list(arr.transpose(1, 2, 3, 0))  # list of [H, W, C] frames
+        # export_to_video scales float [0, 1] ndarrays to uint8 internally — don't pre-scale.
         # macro_block_size=1 allows arbitrary frame sizes (Cosmos3 outputs are not always divisible by 16).
+        frames = list(np_arr.transpose(1, 2, 3, 0))  # list of [H, W, C] float frames
         export_to_video(frames, f"{save_fp_wo_ext}.mp4", fps=fps, quality=quality, macro_block_size=1)
 
 
