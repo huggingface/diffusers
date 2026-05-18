@@ -37,10 +37,11 @@ class Cosmos3AVAEAudioTokenizer(ModelMixin, ConfigMixin):
 
     Parameters:
         sampling_rate (`int`, defaults to `48000`): Audio sample rate in Hz.
-        enc_latent_dim (`int`, defaults to `128`): Latent channels (``sound_dim``).
+        vocoder_input_dim (`int`, defaults to `64`): Latent channel count fed into the decoder
+            (``== transformer sound_dim``).
         dec_dim (`int`, defaults to `320`): Base decoder channel count.
-        dec_c_mults (`list[int]`, defaults to `[1, 2, 4, 8, 16]`): Channel multipliers.
-        dec_strides (`list[int]`, defaults to `[2, 4, 5, 6, 8]`): Upsampling strides.
+        dec_c_mults (`tuple[int, ...]`, defaults to `(1, 2, 4, 8, 16)`): Channel multipliers.
+        dec_strides (`tuple[int, ...]`, defaults to `(2, 4, 5, 6, 8)`): Upsampling strides.
         dec_out_channels (`int`, defaults to `2`): Output audio channels (2 = stereo).
     """
 
@@ -51,7 +52,6 @@ class Cosmos3AVAEAudioTokenizer(ModelMixin, ConfigMixin):
     def __init__(
         self,
         sampling_rate: int = 48000,
-        enc_latent_dim: int = 128,
         vocoder_input_dim: int = 64,
         dec_dim: int = 320,
         dec_c_mults: tuple = (1, 2, 4, 8, 16),
