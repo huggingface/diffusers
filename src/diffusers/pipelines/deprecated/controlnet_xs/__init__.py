@@ -5,9 +5,9 @@ from ....utils import (
     OptionalDependencyNotAvailable,
     _LazyModule,
     get_objects_from_module,
-    is_flax_available,
     is_torch_available,
     is_transformers_available,
+    is_transformers_flax_compatible,
 )
 
 
@@ -25,7 +25,7 @@ else:
     _import_structure["pipeline_controlnet_xs"] = ["StableDiffusionControlNetXSPipeline"]
     _import_structure["pipeline_controlnet_xs_sd_xl"] = ["StableDiffusionXLControlNetXSPipeline"]
 try:
-    if not (is_transformers_available() and is_flax_available()):
+    if not is_transformers_flax_compatible():
         raise OptionalDependencyNotAvailable()
 except OptionalDependencyNotAvailable:
     from ....utils import dummy_flax_and_transformers_objects  # noqa F403
@@ -47,7 +47,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .pipeline_controlnet_xs_sd_xl import StableDiffusionXLControlNetXSPipeline
 
     try:
-        if not (is_transformers_available() and is_flax_available()):
+        if not is_transformers_flax_compatible():
             raise OptionalDependencyNotAvailable()
     except OptionalDependencyNotAvailable:
         from ....utils.dummy_flax_and_transformers_objects import *  # noqa F403

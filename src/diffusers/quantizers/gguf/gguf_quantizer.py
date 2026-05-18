@@ -29,6 +29,7 @@ if is_torch_available() and is_gguf_available():
         _dequantize_gguf_and_restore_linear,
         _quant_shape_from_byte_shape,
         _replace_with_gguf_linear,
+        dequantize_gguf_tensor,
     )
 
 
@@ -116,6 +117,22 @@ class GGUFQuantizer(DiffusersQuantizer):
         if tensor_name not in module._parameters and tensor_name not in module._buffers:
             raise ValueError(f"{module} does not have a parameter or a buffer named {tensor_name}.")
 
+        # If the GGUFParameter should not be quantized (for example, it is a submodule of any excluded module),
+        # dequantize it and set the (dequantized) parameter to the proper dtype.
+        if isinstance(param_value, GGUFParameter) and any(
+            m in param_name.split(".") for m in self.modules_to_not_convert
+        ):
+            keep_in_fp32 = getattr(self, "keep_in_fp32_modules", [])
+            param_should_be_fp32 = any(m in param_name.split(".") for m in keep_in_fp32)
+            target_dtype = torch.float32 if param_should_be_fp32 else self.compute_dtype
+            if param_should_be_fp32:
+                logger.warning(f"Quantized parameter {param_name} is required to remain in FP32, dequantizing now.")
+            else:
+                logger.warning(
+                    f"Quantized parameter {param_name} is excluded by `modules_to_not_convert`, dequantizing now."
+                )
+            param_value = dequantize_gguf_tensor(param_value).to(target_dtype)
+
         if tensor_name in module._parameters:
             module._parameters[tensor_name] = param_value.to(target_device)
         if tensor_name in module._buffers:
@@ -130,7 +147,8 @@ class GGUFQuantizer(DiffusersQuantizer):
     ):
         state_dict = kwargs.get("state_dict", None)
 
-        self.modules_to_not_convert.extend(keep_in_fp32_modules)
+        self.keep_in_fp32_modules = [module for module in keep_in_fp32_modules if module is not None]
+        self.modules_to_not_convert.extend(self.keep_in_fp32_modules)
         self.modules_to_not_convert = [module for module in self.modules_to_not_convert if module is not None]
 
         _replace_with_gguf_linear(
