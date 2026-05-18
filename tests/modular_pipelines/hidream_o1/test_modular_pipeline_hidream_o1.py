@@ -28,11 +28,12 @@ from transformers.models.qwen3_vl.configuration_qwen3_vl import (  # noqa: E402
 
 from diffusers import (  # noqa: E402
     FlowMatchEulerDiscreteScheduler,
-    HiDreamO1ImagePipeline,
+    HiDreamO1AutoBlocks,
+    HiDreamO1ModularPipeline,
     HiDreamO1Transformer2DModel,
     UniPCMultistepScheduler,
 )
-from diffusers.pipelines.hidream_o1.pipeline_hidream_o1 import _set_scheduler_shift  # noqa: E402
+from diffusers.modular_pipelines.hidream_o1.utils import set_scheduler_shift  # noqa: E402
 
 from ...testing_utils import enable_full_determinism  # noqa: E402
 
@@ -117,19 +118,21 @@ def _randomize_zero_parameters(model):
             parameter.copy_(values * 0.02 + 0.01)
 
 
-class HiDreamO1ImagePipelineFastTests(unittest.TestCase):
-    def test_text_to_image_smoke_without_vae(self):
+class HiDreamO1ModularPipelineFastTests(unittest.TestCase):
+    def get_dummy_pipeline(self):
         transformer = HiDreamO1Transformer2DModel(qwen_config=_get_tiny_qwen3_vl_config().to_dict()).eval()
         _randomize_zero_parameters(transformer)
-        pipe = HiDreamO1ImagePipeline(
-            processor=DummyProcessor(),
-            transformer=transformer,
-        )
+        pipe = HiDreamO1ModularPipeline()
+        pipe.update_components(processor=DummyProcessor(), transformer=transformer)
         pipe.set_progress_bar_config(disable=True)
+        return pipe
+
+    def test_text_to_image_smoke_without_vae(self):
+        pipe = self.get_dummy_pipeline()
 
         generator = torch.Generator(device="cpu").manual_seed(0)
-        image = pipe(
-            "a small test prompt",
+        output = pipe(
+            prompt="a small test prompt",
             height=64,
             width=64,
             num_inference_steps=1,
@@ -141,29 +144,26 @@ class HiDreamO1ImagePipelineFastTests(unittest.TestCase):
             use_resolution_binning=False,
             output_type="pt",
             generator=generator,
-        ).images
+        )
 
-        self.assertEqual(image.shape, (1, 3, 64, 64))
-        self.assertTrue(torch.isfinite(image).all())
-        self.assertGreater(image.abs().max().item(), 0)
+        self.assertEqual(output.images.shape, (1, 3, 64, 64))
+        self.assertTrue(torch.isfinite(output.images).all())
+        self.assertGreater(output.images.abs().max().item(), 0)
         self.assertEqual(pipe.scheduler.timesteps.tolist(), [500.0])
         self.assertEqual(pipe.scheduler.config.flow_shift, 1.0)
 
-    def test_init_registers_components_with_default_scheduler(self):
-        transformer = HiDreamO1Transformer2DModel(qwen_config=_get_tiny_qwen3_vl_config().to_dict()).eval()
-        processor = DummyProcessor()
-        pipe = HiDreamO1ImagePipeline(processor=processor, transformer=transformer)
+    def test_default_blocks_and_scheduler(self):
+        pipe = HiDreamO1ModularPipeline()
 
-        self.assertIs(pipe.processor, processor)
-        self.assertIs(pipe.transformer, transformer)
+        self.assertIsInstance(pipe.blocks, HiDreamO1AutoBlocks)
         self.assertIsInstance(pipe.scheduler, UniPCMultistepScheduler)
         self.assertEqual(pipe.scheduler.config.prediction_type, "sample")
 
     def test_set_scheduler_shift_uses_explicit_scheduler_api(self):
         flow_scheduler = FlowMatchEulerDiscreteScheduler(shift=1.0)
-        _set_scheduler_shift(flow_scheduler, 2.0)
+        set_scheduler_shift(flow_scheduler, 2.0)
         self.assertEqual(flow_scheduler.shift, 2.0)
 
         unipc_scheduler = UniPCMultistepScheduler(prediction_type="sample", use_flow_sigmas=True, flow_shift=1.0)
-        _set_scheduler_shift(unipc_scheduler, 2.0)
+        set_scheduler_shift(unipc_scheduler, 2.0)
         self.assertEqual(unipc_scheduler.config.flow_shift, 2.0)

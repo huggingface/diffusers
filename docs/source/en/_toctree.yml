@@ -285,6 +285,8 @@
       title: Components and configs
     - local: api/modular_diffusers/guiders
       title: Guiders
+    - local: api/modular_diffusers/hidream_o1
+      title: HiDream-O1
     title: Modular
   - sections:
     - local: api/loaders/ip_adapter
@@ -558,8 +560,6 @@
         title: GLM-Image
       - local: api/pipelines/hidream
         title: HiDream-I1
-      - local: api/pipelines/hidream_o1
-        title: HiDream-O1
       - local: api/pipelines/hunyuandit
         title: Hunyuan-DiT
       - local: api/pipelines/hunyuanimage21

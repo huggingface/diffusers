@@ -273,7 +273,6 @@ else:
     ]
     _import_structure["helios"] = ["HeliosPipeline", "HeliosPyramidPipeline"]
     _import_structure["hidream_image"] = ["HiDreamImagePipeline"]
-    _import_structure["hidream_o1"] = ["HiDreamO1ImagePipeline"]
     _import_structure["hunyuandit"] = ["HunyuanDiTPipeline"]
     _import_structure["hunyuan_video"] = [
         "HunyuanVideoPipeline",
@@ -720,7 +719,6 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .glm_image import GlmImagePipeline
         from .helios import HeliosPipeline, HeliosPyramidPipeline
         from .hidream_image import HiDreamImagePipeline
-        from .hidream_o1 import HiDreamO1ImagePipeline
         from .hunyuan_image import HunyuanImagePipeline, HunyuanImageRefinerPipeline
         from .hunyuan_video import (
             HunyuanSkyreelsImageToVideoPipeline,

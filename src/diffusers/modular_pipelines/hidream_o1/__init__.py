@@ -11,7 +11,6 @@ from ...utils import (
 
 
 _dummy_objects = {}
-_additional_imports = {}
 _import_structure = {}
 
 try:
@@ -22,7 +21,8 @@ except OptionalDependencyNotAvailable:
 
     _dummy_objects.update(get_objects_from_module(dummy_torch_and_transformers_objects))
 else:
-    _import_structure["pipeline_hidream_o1"] = ["HiDreamO1ImagePipeline"]
+    _import_structure["modular_blocks_hidream_o1"] = ["HiDreamO1AutoBlocks"]
+    _import_structure["modular_pipeline"] = ["HiDreamO1ModularPipeline"]
 
 if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     try:
@@ -31,7 +31,8 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     except OptionalDependencyNotAvailable:
         from ...utils.dummy_torch_and_transformers_objects import *  # noqa F403
     else:
-        from .pipeline_hidream_o1 import HiDreamO1ImagePipeline
+        from .modular_blocks_hidream_o1 import HiDreamO1AutoBlocks
+        from .modular_pipeline import HiDreamO1ModularPipeline
 else:
     import sys
 
@@ -43,6 +44,4 @@ else:
     )
 
     for name, value in _dummy_objects.items():
-        setattr(sys.modules[__name__], name, value)
-    for name, value in _additional_imports.items():
         setattr(sys.modules[__name__], name, value)
