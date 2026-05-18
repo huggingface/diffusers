@@ -131,12 +131,17 @@ import torch_xla.core.xla_model as xm
 from time import time
 from diffusers import StableDiffusionPipeline
 import torch_xla.runtime as xr
+import torch_xla.distributed.spmd as xs;
 
 CACHE_DIR = os.environ.get("CACHE_DIR", None)
 if CACHE_DIR:
     xr.initialize_cache(CACHE_DIR, readonly=False)
 
 def main():
+    mesh = xs.get_1d_mesh("data");
+    xs.set_global_mesh(mesh);
+    xr.initialize_cache("/tmp/", readonly=False);
+    xr.use_spmd();
     device = xm.xla_device()
     model_path = "jffacevedo/pxla_trained_model"
     pipe = StableDiffusionPipeline.from_pretrained(
