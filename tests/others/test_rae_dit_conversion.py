@@ -23,6 +23,7 @@ import torch
 from diffusers import AutoencoderRAE, RAEDiT2DModel
 from scripts.convert_rae_stage2_to_diffusers import (
     RepoAccessor,
+    _load_transformer_for_pipeline_export,
     build_scheduler_config,
     resolve_input_path,
     translate_transformer_state_dict,
@@ -177,6 +178,38 @@ def test_translated_upstream_attention_keys_load_into_rae_dit():
 
     assert set(load_result.missing_keys) <= allowed_missing
     assert load_result.unexpected_keys == []
+
+
+def test_load_transformer_for_pipeline_export_preserves_learned_pos_embed_on_resave():
+    model = RAEDiT2DModel(
+        sample_size=4,
+        patch_size=1,
+        in_channels=8,
+        hidden_size=(32, 64),
+        depth=(1, 1),
+        num_heads=(4, 4),
+        mlp_ratio=2.0,
+        class_dropout_prob=0.0,
+        num_classes=10,
+        use_qknorm=True,
+        use_swiglu=True,
+        use_rope=True,
+        use_rmsnorm=True,
+        wo_shift=False,
+        use_pos_embed=True,
+    )
+    learned_pos_embed = torch.randn_like(model.pos_embed)
+    model.pos_embed.copy_(learned_pos_embed)
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        transformer_dir = Path(tmpdir) / "transformer"
+        model.save_pretrained(transformer_dir, safe_serialization=True)
+
+        loaded = _load_transformer_for_pipeline_export(transformer_dir)
+        loaded.save_pretrained(transformer_dir, safe_serialization=True)
+        reloaded = RAEDiT2DModel.from_pretrained(transformer_dir, low_cpu_mem_usage=False)
+
+    assert torch.equal(reloaded.pos_embed, learned_pos_embed)
 
 
 def test_build_scheduler_config_rejects_non_linear_or_non_velocity_transport():

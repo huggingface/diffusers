@@ -1,6 +1,8 @@
 import argparse
 import json
 import math
+import shutil
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -316,6 +318,15 @@ def convert_transformer_state_dict(
     }
 
 
+def _load_transformer_for_pipeline_export(transformer_output_dir: Path) -> RAEDiT2DModel:
+    # Avoid loading from the same directory that DiffusionPipeline.save_pretrained()
+    # will overwrite; otherwise learned buffers such as pos_embed can be reset.
+    with tempfile.TemporaryDirectory() as tmpdir:
+        temporary_transformer_dir = Path(tmpdir) / DEFAULT_TRANSFORMER_SUBFOLDER
+        shutil.copytree(transformer_output_dir, temporary_transformer_dir)
+        return RAEDiT2DModel.from_pretrained(temporary_transformer_dir, low_cpu_mem_usage=False)
+
+
 def write_metadata(output_path: Path, metadata: dict[str, Any]) -> None:
     with (output_path / "conversion_metadata.json").open("w") as handle:
         json.dump(metadata, handle, indent=2)
@@ -450,7 +461,7 @@ def convert(args: argparse.Namespace) -> None:
 
     if args.vae_model_name_or_path is not None:
         vae = AutoencoderRAE.from_pretrained(args.vae_model_name_or_path, cache_dir=args.cache_dir)
-        transformer = RAEDiT2DModel.from_pretrained(transformer_output_dir, low_cpu_mem_usage=False)
+        transformer = _load_transformer_for_pipeline_export(transformer_output_dir)
         scheduler_for_pipe = FlowMatchEulerDiscreteScheduler.from_pretrained(scheduler_output_dir)
 
         id2label = None
