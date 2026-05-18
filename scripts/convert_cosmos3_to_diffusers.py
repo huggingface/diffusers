@@ -303,7 +303,6 @@ def main():
     lm_cfg = _tmp.net.language_model.config
     net_cfg = _tmp.net.config
     model_cfg = _tmp.config
-    vlm_cfg = _tmp.net.config.vlm_config
     patch_latent_dim = _tmp.net.patch_latent_dim
     hidden_size = _tmp.net.hidden_size
     num_attention_heads = _tmp.net.num_heads
@@ -335,9 +334,6 @@ def main():
     if sound_dim is None and sound2llm is not None:
         sound_dim = sound2llm.in_features
     sound_latent_fps = _get_config_value(net_cfg, model_cfg, name="sound_latent_fps", default=25.0)
-    temporal_compression_factor_sound = _get_config_value(
-        net_cfg, model_cfg, name="temporal_compression_factor_sound", default=1
-    )
     if sound_gen:
         missing_sound_modules = [
             name
