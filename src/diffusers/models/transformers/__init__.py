@@ -44,6 +44,7 @@ if is_torch_available():
     from .transformer_ltx2 import LTX2VideoTransformer3DModel
     from .transformer_lumina2 import Lumina2Transformer2DModel
     from .transformer_mochi import MochiTransformer3DModel
+    from .transformer_motif_video import MotifVideoTransformer3DModel
     from .transformer_nucleusmoe_image import NucleusMoEImageTransformer2DModel
     from .transformer_omnigen import OmniGenTransformer2DModel
     from .transformer_ovis_image import OvisImageTransformer2DModel

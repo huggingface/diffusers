@@ -121,6 +121,7 @@ if is_torch_available():
     _import_structure["transformers.transformer_ltx2"] = ["LTX2VideoTransformer3DModel"]
     _import_structure["transformers.transformer_lumina2"] = ["Lumina2Transformer2DModel"]
     _import_structure["transformers.transformer_mochi"] = ["MochiTransformer3DModel"]
+    _import_structure["transformers.transformer_motif_video"] = ["MotifVideoTransformer3DModel"]
     _import_structure["transformers.transformer_nucleusmoe_image"] = ["NucleusMoEImageTransformer2DModel"]
     _import_structure["transformers.transformer_omnigen"] = ["OmniGenTransformer2DModel"]
     _import_structure["transformers.transformer_ovis_image"] = ["OvisImageTransformer2DModel"]
@@ -247,6 +248,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             Lumina2Transformer2DModel,
             LuminaNextDiT2DModel,
             MochiTransformer3DModel,
+            MotifVideoTransformer3DModel,
             NucleusMoEImageTransformer2DModel,
             OmniGenTransformer2DModel,
             OvisImageTransformer2DModel,
