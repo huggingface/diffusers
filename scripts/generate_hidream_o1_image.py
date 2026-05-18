@@ -20,7 +20,12 @@ import os
 import torch
 from transformers import AutoProcessor
 
-from diffusers import HiDreamO1ImagePipeline, HiDreamO1Transformer2DModel, UniPCMultistepScheduler
+from diffusers import (
+    FlowMatchEulerDiscreteScheduler,
+    HiDreamO1ModularPipeline,
+    HiDreamO1Transformer2DModel,
+    UniPCMultistepScheduler,
+)
 
 
 DEV_TIMESTEPS = [
@@ -80,7 +85,10 @@ def parse_args():
     parser.add_argument(
         "--dev_defaults",
         action="store_true",
-        help="Use the public dev checkpoint generation defaults: 28 steps, no guidance, shift 1.0, and dev timesteps.",
+        help=(
+            "Use the public dev checkpoint generation defaults: stochastic FlowMatch, 28 steps, no guidance, "
+            "shift 1.0, and dev timesteps."
+        ),
     )
     parser.add_argument("--torch_dtype", choices=["bfloat16", "float16", "float32"], default="bfloat16")
     parser.add_argument("--device", default="cuda")
@@ -130,19 +138,6 @@ def main():
     if args.device_map is not None:
         load_kwargs["device_map"] = args.device_map
 
-    transformer = HiDreamO1Transformer2DModel.from_pretrained(args.model_path, **load_kwargs).eval()
-    pipe = HiDreamO1ImagePipeline(
-        processor=processor,
-        transformer=transformer,
-        scheduler=UniPCMultistepScheduler(
-            prediction_type="sample",
-            use_flow_sigmas=True,
-            flow_shift=args.shift,
-        ),
-    )
-    if args.device_map is None:
-        pipe.to(args.device)
-
     timesteps = parse_schedule(args.timesteps, int)
     sigmas = parse_schedule(args.sigmas, float)
     num_inference_steps = args.num_inference_steps
@@ -165,8 +160,18 @@ def main():
     elif sigmas is not None:
         num_inference_steps = len(sigmas)
 
-    generator_device = args.device if args.device_map is None else "cpu"
-    generator = torch.Generator(device=generator_device).manual_seed(args.seed)
+    transformer = HiDreamO1Transformer2DModel.from_pretrained(args.model_path, **load_kwargs).eval()
+    scheduler = (
+        FlowMatchEulerDiscreteScheduler(shift=shift, stochastic_sampling=True)
+        if args.dev_defaults
+        else UniPCMultistepScheduler(prediction_type="sample", use_flow_sigmas=True, flow_shift=shift)
+    )
+    pipe = HiDreamO1ModularPipeline()
+    pipe.update_components(processor=processor, transformer=transformer, scheduler=scheduler)
+    if args.device_map is None:
+        pipe.to(args.device)
+
+    generator = torch.Generator(device="cpu").manual_seed(args.seed + 1)
     image = pipe(
         args.prompt,
         height=args.height,

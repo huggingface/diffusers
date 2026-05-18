@@ -14,6 +14,7 @@
 # limitations under the License.
 
 import unittest
+from unittest import mock
 
 import pytest
 import torch
@@ -167,3 +168,42 @@ class HiDreamO1ModularPipelineFastTests(unittest.TestCase):
         unipc_scheduler = UniPCMultistepScheduler(prediction_type="sample", use_flow_sigmas=True, flow_shift=1.0)
         set_scheduler_shift(unipc_scheduler, 2.0)
         self.assertEqual(unipc_scheduler.config.flow_shift, 2.0)
+
+    def test_flow_match_scheduler_receives_flow_prediction(self):
+        class RecordingFlowMatchEulerDiscreteScheduler(FlowMatchEulerDiscreteScheduler):
+            def step(self, model_output, timestep, sample, *args, **kwargs):
+                self.recorded_model_output = model_output.detach().clone()
+                self.recorded_sample = sample.detach().clone()
+                self.recorded_timestep = timestep.detach().clone()
+                return super().step(model_output, timestep, sample, *args, **kwargs)
+
+        pipe = self.get_dummy_pipeline()
+        scheduler = RecordingFlowMatchEulerDiscreteScheduler(shift=1.0, stochastic_sampling=True)
+        pipe.update_components(scheduler=scheduler)
+
+        def fake_forward(components, sample, patches, timestep, attention_kwargs):
+            return patches * 0.5 + 0.25
+
+        with mock.patch(
+            "diffusers.modular_pipelines.hidream_o1.modular_blocks_hidream_o1._forward_transformer",
+            side_effect=fake_forward,
+        ):
+            pipe(
+                prompt="a small test prompt",
+                height=64,
+                width=64,
+                num_inference_steps=1,
+                guidance_scale=0.0,
+                shift=1.0,
+                timesteps=[500],
+                noise_scale_start=1.0,
+                noise_scale_end=1.0,
+                use_resolution_binning=False,
+                output_type="pt",
+                generator=torch.Generator(device="cpu").manual_seed(0),
+            )
+
+        expected_x0 = scheduler.recorded_sample * 0.5 + 0.25
+        expected_model_output = -((expected_x0 - scheduler.recorded_sample) / 0.5)
+        torch.testing.assert_close(scheduler.recorded_timestep, torch.tensor(500.0))
+        torch.testing.assert_close(scheduler.recorded_model_output, expected_model_output)

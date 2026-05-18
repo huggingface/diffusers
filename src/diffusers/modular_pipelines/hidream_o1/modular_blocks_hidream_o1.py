@@ -22,7 +22,7 @@ from transformers import AutoProcessor
 
 from ...configuration_utils import FrozenDict
 from ...models import HiDreamO1Transformer2DModel
-from ...schedulers import UniPCMultistepScheduler
+from ...schedulers import FlowMatchEulerDiscreteScheduler, UniPCMultistepScheduler
 from ...utils import numpy_to_pil
 from ...utils.torch_utils import randn_tensor
 from ..modular_pipeline import ModularPipelineBlocks, PipelineState, SequentialPipelineBlocks
@@ -31,6 +31,7 @@ from .modular_pipeline import HiDreamO1ModularPipeline, HiDreamO1Patchifier
 from .utils import (
     FULL_NOISE_SCALE,
     PATCH_SIZE,
+    T_EPS,
     TIMESTEP_TOKEN_NUM,
     add_special_tokens,
     find_closest_resolution,
@@ -40,6 +41,10 @@ from .utils import (
     set_scheduler_shift,
     to_device,
 )
+
+
+def _scheduler_expects_flow_prediction(scheduler) -> bool:
+    return isinstance(scheduler, FlowMatchEulerDiscreteScheduler)
 
 
 def _build_text_to_image_sample(
@@ -442,6 +447,12 @@ class HiDreamO1DenoiseStep(ModularPipelineBlocks):
                 else:
                     model_output = x_pred_cond
 
+                if _scheduler_expects_flow_prediction(components.scheduler):
+                    sigma = (step_t.float() / components.scheduler.config.num_train_timesteps).clamp_min(T_EPS)
+                    model_output = -((model_output.float() - block_state.patches.float()) / sigma)
+                else:
+                    model_output = model_output.float()
+
                 current_step_kwargs = dict(step_kwargs)
                 if "s_noise" in step_signature:
                     current_step_kwargs["s_noise"] = block_state.noise_scale_schedule[step_idx]
@@ -449,7 +460,7 @@ class HiDreamO1DenoiseStep(ModularPipelineBlocks):
                     current_step_kwargs["noise_clip_std"] = block_state.noise_clip_std
 
                 block_state.patches = components.scheduler.step(
-                    model_output.float(),
+                    model_output,
                     step_t,
                     block_state.patches.float(),
                     return_dict=False,
