@@ -21,6 +21,27 @@ from ..utils.import_utils import is_torch_version
 from .normalization import RMSNorm
 
 
+def _prepare_fir_kernel(
+    kernel: torch.Tensor | None,
+    *,
+    factor: int,
+    gain: float,
+    device: torch.device,
+    dtype: torch.dtype,
+    upsample: bool = False,
+) -> torch.Tensor:
+    if kernel is None:
+        kernel = [1] * factor
+
+    kernel = torch.as_tensor(kernel, device=device, dtype=torch.float32)
+    if kernel.ndim == 1:
+        kernel = torch.outer(kernel, kernel)
+    kernel = kernel / torch.sum(kernel)
+
+    scale = gain * (factor**2) if upsample else gain
+    return (kernel * scale).to(device=device, dtype=dtype)
+
+
 class Upsample1D(nn.Module):
     """A 1D upsampling layer with an optional convolution.
 
@@ -253,17 +274,14 @@ class FirUpsample2D(nn.Module):
 
         assert isinstance(factor, int) and factor >= 1
 
-        # Setup filter kernel.
-        if kernel is None:
-            kernel = [1] * factor
-
-        # setup kernel
-        kernel = torch.tensor(kernel, dtype=torch.float32)
-        if kernel.ndim == 1:
-            kernel = torch.outer(kernel, kernel)
-        kernel /= torch.sum(kernel)
-
-        kernel = kernel * (gain * (factor**2))
+        kernel = _prepare_fir_kernel(
+            kernel,
+            factor=factor,
+            gain=gain,
+            device=hidden_states.device,
+            dtype=hidden_states.dtype,
+            upsample=True,
+        )
 
         if self.use_conv:
             convH = weight.shape[2]
@@ -300,14 +318,14 @@ class FirUpsample2D(nn.Module):
 
             output = upfirdn2d_native(
                 inverse_conv,
-                torch.tensor(kernel, device=inverse_conv.device),
+                kernel.to(device=inverse_conv.device, dtype=inverse_conv.dtype),
                 pad=((pad_value + 1) // 2 + factor - 1, pad_value // 2 + 1),
             )
         else:
             pad_value = kernel.shape[0] - factor
             output = upfirdn2d_native(
                 hidden_states,
-                torch.tensor(kernel, device=hidden_states.device),
+                kernel,
                 up=factor,
                 pad=((pad_value + 1) // 2 + factor - 1, pad_value // 2),
             )
@@ -496,19 +514,18 @@ def upsample_2d(
             Tensor of the shape `[N, C, H * factor, W * factor]`
     """
     assert isinstance(factor, int) and factor >= 1
-    if kernel is None:
-        kernel = [1] * factor
-
-    kernel = torch.tensor(kernel, dtype=torch.float32)
-    if kernel.ndim == 1:
-        kernel = torch.outer(kernel, kernel)
-    kernel /= torch.sum(kernel)
-
-    kernel = kernel * (gain * (factor**2))
+    kernel = _prepare_fir_kernel(
+        kernel,
+        factor=factor,
+        gain=gain,
+        device=hidden_states.device,
+        dtype=hidden_states.dtype,
+        upsample=True,
+    )
     pad_value = kernel.shape[0] - factor
     output = upfirdn2d_native(
         hidden_states,
-        kernel.to(device=hidden_states.device),
+        kernel,
         up=factor,
         pad=((pad_value + 1) // 2 + factor - 1, pad_value // 2),
     )

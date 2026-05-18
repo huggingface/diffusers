@@ -318,6 +318,8 @@ class FlaxModelMixin(PushToHubMixin):
                 subfolder=subfolder,
                 **kwargs,
             )
+        else:
+            unused_kwargs = kwargs
 
         model, model_kwargs = cls.from_config(config, dtype=dtype, return_unused_kwargs=True, **unused_kwargs)
 

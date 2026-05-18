@@ -2,17 +2,30 @@ import json
 import os
 import tempfile
 import unittest
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import torch
 from transformers import CLIPTextModel, LongformerModel
 
 from diffusers import ConfigMixin
-from diffusers.models import AutoModel, UNet2DConditionModel
+from diffusers.models import AutoModel, UNet2DConditionModel, UNet2DModel
 from diffusers.models.modeling_utils import ModelMixin
 
 
 class TestAutoModel(unittest.TestCase):
+    def _create_tiny_unet(self):
+        return UNet2DModel(
+            sample_size=4,
+            in_channels=1,
+            out_channels=1,
+            layers_per_block=1,
+            block_out_channels=(4,),
+            down_block_types=("DownBlock2D",),
+            up_block_types=("UpBlock2D",),
+            norm_num_groups=1,
+        )
+
     @patch(
         "diffusers.models.AutoModel.load_config",
         side_effect=[EnvironmentError("File not found"), {"_class_name": "UNet2DConditionModel"}],
@@ -79,6 +92,43 @@ class TestAutoModel(unittest.TestCase):
             model = AutoModel.from_pretrained(tmpdir, subfolder=subfolder, trust_remote_code=True)
             assert model.__class__.__name__ == "CustomModel"
             assert model.config["hidden_size"] == 8
+
+    def test_load_from_local_model_index_pathlike_restores_config_name(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            unet_dir = root / "unet"
+
+            self._create_tiny_unet().save_pretrained(unet_dir, safe_serialization=False)
+            (root / "model_index.json").write_text(
+                json.dumps({"_class_name": "DummyPipeline", "unet": ["diffusers", "UNet2DModel"]})
+            )
+
+            model = AutoModel.from_pretrained(root, subfolder="unet", use_safetensors=False)
+
+            self.assertIsInstance(model, UNet2DModel)
+            self.assertEqual(AutoModel.config_name, "config.json")
+            self.assertIsInstance(model._diffusers_load_id, str)
+            self.assertIn(str(root), model._diffusers_load_id)
+
+            model_from_config = AutoModel.from_config(unet_dir)
+            self.assertIsInstance(model_from_config, UNet2DModel)
+
+    def test_load_from_local_config_fallback_restores_config_name(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            model_dir = Path(tmpdir)
+            self._create_tiny_unet().save_pretrained(model_dir, safe_serialization=False)
+
+            model = AutoModel.from_pretrained(model_dir, use_safetensors=False)
+
+            self.assertIsInstance(model, UNet2DModel)
+            self.assertEqual(AutoModel.config_name, "config.json")
+
+    @patch("diffusers.models.AutoModel.load_config", side_effect=RuntimeError("boom"))
+    def test_load_config_exception_restores_config_name(self, mock_load_config):
+        with self.assertRaisesRegex(RuntimeError, "boom"):
+            AutoModel.from_pretrained("does-not-matter")
+
+        self.assertEqual(AutoModel.config_name, "config.json")
 
 
 class TestAutoModelFromConfig(unittest.TestCase):

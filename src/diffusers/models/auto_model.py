@@ -275,10 +275,17 @@ class AutoModel(ConfigMixin):
         library = None
         orig_class_name = None
 
+        def load_config_with_name(config_name, *args, **kwargs):
+            original_config_name = cls.config_name
+            try:
+                cls.config_name = config_name
+                return cls.load_config(*args, **kwargs)
+            finally:
+                cls.config_name = original_config_name
+
         # Always attempt to fetch model_index.json first
         try:
-            cls.config_name = "model_index.json"
-            config = cls.load_config(pretrained_model_or_path, **load_config_kwargs)
+            config = load_config_with_name("model_index.json", pretrained_model_or_path, **load_config_kwargs)
 
             if subfolder is not None and subfolder in config:
                 library, orig_class_name = config[subfolder]
@@ -289,8 +296,9 @@ class AutoModel(ConfigMixin):
 
         # Unable to load from model_index.json so fallback to loading from config
         if library is None and orig_class_name is None:
-            cls.config_name = "config.json"
-            config = cls.load_config(pretrained_model_or_path, subfolder=subfolder, **load_config_kwargs)
+            config = load_config_with_name(
+                "config.json", pretrained_model_or_path, subfolder=subfolder, **load_config_kwargs
+            )
 
             if "_class_name" in config:
                 # If we find a class name in the config, we can try to load the model as a diffusers model
@@ -342,7 +350,7 @@ class AutoModel(ConfigMixin):
 
         load_id_kwargs = {"pretrained_model_name_or_path": pretrained_model_or_path, **kwargs}
         parts = [load_id_kwargs.get(field, "null") for field in DIFFUSERS_LOAD_ID_FIELDS]
-        load_id = "|".join("null" if p is None else p for p in parts)
+        load_id = "|".join("null" if p is None else str(p) for p in parts)
         model._diffusers_load_id = load_id
 
         return model
