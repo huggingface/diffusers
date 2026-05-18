@@ -24,7 +24,7 @@ import torchvision.transforms.functional as TF
 from tqdm import tqdm
 from transformers import AutoTokenizer
 
-from ...models.autoencoders.autoencoder_cosmos3_avae import Cosmos3AVAEAudioTokenizer
+from ...models.autoencoders.autoencoder_cosmos3_audio import Cosmos3AVAEAudioTokenizer
 from ...models.autoencoders.autoencoder_kl_wan import AutoencoderKLWan
 from ...models.transformers.transformer_cosmos3 import (
     Cosmos3OmniTransformer,
