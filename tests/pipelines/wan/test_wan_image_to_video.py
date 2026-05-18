@@ -161,6 +161,164 @@ class WanImageToVideoPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         generated_slice = torch.cat([generated_slice[:8], generated_slice[-8:]])
         self.assertTrue(torch.allclose(generated_slice, expected_slice, atol=1e-3))
 
+    def test_num_videos_per_prompt(self):
+        device = torch_device
+
+        components = self.get_dummy_components()
+        pipe = self.pipeline_class(**components)
+        pipe.to(device)
+        pipe.set_progress_bar_config(disable=None)
+
+        batch_size = 2
+        num_videos_per_prompt = 3
+        inputs = self.get_dummy_inputs(device)
+        inputs.update(
+            {
+                "prompt": ["dance monkey", "dance robot"],
+                "guidance_scale": 1.0,
+                "num_videos_per_prompt": num_videos_per_prompt,
+                "num_inference_steps": 1,
+                "num_frames": 1,
+                "output_type": "latent",
+            }
+        )
+
+        video = pipe(**inputs).frames
+
+        effective_batch_size = batch_size * num_videos_per_prompt
+        self.assertEqual(video.shape, (effective_batch_size, 16, 1, 2, 2))
+
+    def test_prompt_batch_with_image_list(self):
+        device = torch_device
+
+        components = self.get_dummy_components()
+        pipe = self.pipeline_class(**components)
+        pipe.to(device)
+        pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_dummy_inputs(device)
+        inputs.update(
+            {
+                "prompt": ["dance monkey", "dance robot"],
+                "image": [Image.new("RGB", (16, 16), color="black"), Image.new("RGB", (16, 16), color="white")],
+                "guidance_scale": 1.0,
+                "num_inference_steps": 1,
+                "num_frames": 1,
+                "output_type": "latent",
+            }
+        )
+
+        video = pipe(**inputs).frames
+
+        self.assertEqual(video.shape, (2, 16, 1, 2, 2))
+
+    def test_image_embeds_batch_size_expands_per_prompt(self):
+        device = torch_device
+
+        components = self.get_dummy_components()
+        pipe = self.pipeline_class(**components)
+        pipe.to(device)
+        pipe.set_progress_bar_config(disable=None)
+
+        batch_size = 2
+        num_videos_per_prompt = 3
+        inputs = self.get_dummy_inputs(device)
+        inputs.update(
+            {
+                "prompt": ["dance monkey", "dance robot"],
+                "guidance_scale": 1.0,
+                "num_videos_per_prompt": num_videos_per_prompt,
+                "num_inference_steps": 1,
+                "num_frames": 1,
+                "output_type": "latent",
+            }
+        )
+        with torch.no_grad():
+            image_embeds = pipe.encode_image(inputs["image"], device)
+        inputs["image_embeds"] = torch.cat([image_embeds, image_embeds + 1.0], dim=0)
+
+        video = pipe(**inputs).frames
+
+        effective_batch_size = batch_size * num_videos_per_prompt
+        self.assertEqual(video.shape, (effective_batch_size, 16, 1, 2, 2))
+
+    def test_image_embeds_invalid_batch_size_raises(self):
+        device = torch_device
+
+        components = self.get_dummy_components()
+        pipe = self.pipeline_class(**components)
+        pipe.to(device)
+        pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_dummy_inputs(device)
+        inputs.update(
+            {
+                "prompt": ["dance monkey", "dance robot"],
+                "guidance_scale": 1.0,
+                "num_videos_per_prompt": 2,
+                "num_inference_steps": 1,
+                "num_frames": 1,
+                "output_type": "latent",
+            }
+        )
+        with torch.no_grad():
+            image_embeds = pipe.encode_image(inputs["image"], device)
+        inputs["image_embeds"] = image_embeds.repeat(3, 1, 1)
+
+        with self.assertRaisesRegex(ValueError, "`image_embeds` batch size must be 1"):
+            pipe(**inputs)
+
+    def test_last_image_embeds_expand_per_prompt_order(self):
+        components = self.get_dummy_components()
+        pipe = self.pipeline_class(**components)
+        # The tiny test transformer config omits pos_embed_seq_len, so inject pos_embed only to exercise the
+        # first/last-image embedding reshape path.
+        pipe.transformer.condition_embedder.image_embedder.pos_embed = torch.nn.Parameter(torch.zeros(1, 2, 4))
+
+        num_image_embeds = 4
+        sequence_length = 1
+        hidden_size = 1
+        prompt_0_image_embed = 0.0
+        prompt_0_last_image_embed = 1.0
+        prompt_1_image_embed = 10.0
+        prompt_1_last_image_embed = 11.0
+        image_embeds = torch.tensor(
+            [
+                prompt_0_image_embed,
+                prompt_0_last_image_embed,
+                prompt_1_image_embed,
+                prompt_1_last_image_embed,
+            ]
+        ).reshape(num_image_embeds, sequence_length, hidden_size)
+        image_embeds = image_embeds.expand(num_image_embeds, sequence_length, pipe.transformer.config.image_dim)
+
+        image_embeds = pipe._prepare_image_embeds(
+            image=[Image.new("RGB", (16, 16)), Image.new("RGB", (16, 16))],
+            device=torch.device("cpu"),
+            batch_size=2,
+            num_videos_per_prompt=2,
+            transformer_dtype=torch.float32,
+            image_embeds=image_embeds,
+            last_image=[Image.new("RGB", (16, 16)), Image.new("RGB", (16, 16))],
+        )
+
+        # When `last_image` is passed, precomputed image embeds are ordered as (`image`, `last_image`) pairs per prompt:
+        # [prompt_0_image, prompt_0_last_image, prompt_1_image, prompt_1_last_image].
+        # With `num_videos_per_prompt=2`, each prompt's pair should be repeated together before moving to the next prompt.
+        expected = torch.tensor(
+            [
+                prompt_0_image_embed,
+                prompt_0_last_image_embed,
+                prompt_0_image_embed,
+                prompt_0_last_image_embed,
+                prompt_1_image_embed,
+                prompt_1_last_image_embed,
+                prompt_1_image_embed,
+                prompt_1_last_image_embed,
+            ]
+        )
+        torch.testing.assert_close(image_embeds[:, 0, 0], expected)
+
     @unittest.skip("Test not supported")
     def test_attention_slicing_forward_pass(self):
         pass

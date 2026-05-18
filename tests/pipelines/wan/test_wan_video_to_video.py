@@ -133,6 +133,25 @@ class WanVideoToVideoPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         generated_slice = torch.cat([generated_slice[:8], generated_slice[-8:]])
         self.assertTrue(torch.allclose(generated_slice, expected_slice, atol=1e-3))
 
+    def test_uses_vae_config_scale_factors(self):
+        components = self.get_dummy_components()
+        components["vae"].register_to_config(scale_factor_temporal=2, scale_factor_spatial=16)
+
+        pipe = self.pipeline_class(**components)
+
+        self.assertEqual(pipe.vae_scale_factor_temporal, 2)
+        self.assertEqual(pipe.vae_scale_factor_spatial, 16)
+        self.assertEqual(pipe.video_processor.config.vae_scale_factor, 16)
+
+    def test_num_videos_per_prompt_unsupported_raises(self):
+        components = self.get_dummy_components()
+        pipe = self.pipeline_class(**components)
+        inputs = self.get_dummy_inputs("cpu")
+        inputs["num_videos_per_prompt"] = 2
+
+        with self.assertRaisesRegex(ValueError, "Generating multiple videos per prompt"):
+            pipe(**inputs)
+
     @unittest.skip("Test not supported")
     def test_attention_slicing_forward_pass(self):
         pass

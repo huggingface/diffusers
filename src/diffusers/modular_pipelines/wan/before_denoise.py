@@ -223,7 +223,7 @@ class WanTextInputStep(ModularPipelineBlocks):
         ]
 
     @property
-    def intermediate_outputs(self) -> list[str]:
+    def intermediate_outputs(self) -> list[OutputParam]:
         return [
             OutputParam(
                 "batch_size",
@@ -252,21 +252,15 @@ class WanTextInputStep(ModularPipelineBlocks):
         self.check_inputs(components, block_state)
 
         block_state.batch_size = block_state.prompt_embeds.shape[0]
-        block_state.dtype = block_state.prompt_embeds.dtype
+        block_state.dtype = components.transformer.dtype
 
-        _, seq_len, _ = block_state.prompt_embeds.shape
-        block_state.prompt_embeds = block_state.prompt_embeds.repeat(1, block_state.num_videos_per_prompt, 1)
-        block_state.prompt_embeds = block_state.prompt_embeds.view(
-            block_state.batch_size * block_state.num_videos_per_prompt, seq_len, -1
+        block_state.prompt_embeds = block_state.prompt_embeds.repeat_interleave(
+            block_state.num_videos_per_prompt, dim=0
         )
 
         if block_state.negative_prompt_embeds is not None:
-            _, seq_len, _ = block_state.negative_prompt_embeds.shape
-            block_state.negative_prompt_embeds = block_state.negative_prompt_embeds.repeat(
-                1, block_state.num_videos_per_prompt, 1
-            )
-            block_state.negative_prompt_embeds = block_state.negative_prompt_embeds.view(
-                block_state.batch_size * block_state.num_videos_per_prompt, seq_len, -1
+            block_state.negative_prompt_embeds = block_state.negative_prompt_embeds.repeat_interleave(
+                block_state.num_videos_per_prompt, dim=0
             )
 
         self.set_block_state(state, block_state)

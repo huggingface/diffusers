@@ -69,15 +69,15 @@ class WanModularPipeline(
     @property
     def vae_scale_factor_spatial(self):
         vae_scale_factor = 8
-        if hasattr(self, "vae") and self.vae is not None:
-            vae_scale_factor = 2 ** len(self.vae.temperal_downsample)
+        if getattr(self, "vae", None) is not None:
+            vae_scale_factor = self.vae.config.scale_factor_spatial
         return vae_scale_factor
 
     @property
     def vae_scale_factor_temporal(self):
         vae_scale_factor = 4
-        if hasattr(self, "vae") and self.vae is not None:
-            vae_scale_factor = 2 ** sum(self.vae.temperal_downsample)
+        if getattr(self, "vae", None) is not None:
+            vae_scale_factor = self.vae.config.scale_factor_temporal
         return vae_scale_factor
 
     @property

@@ -196,8 +196,8 @@ class WanVACEPipeline(DiffusionPipeline, WanLoraLoaderMixin):
             scheduler=scheduler,
         )
         self.register_to_config(boundary_ratio=boundary_ratio)
-        self.vae_scale_factor_temporal = 2 ** sum(self.vae.temperal_downsample) if getattr(self, "vae", None) else 4
-        self.vae_scale_factor_spatial = 2 ** len(self.vae.temperal_downsample) if getattr(self, "vae", None) else 8
+        self.vae_scale_factor_temporal = self.vae.config.scale_factor_temporal if getattr(self, "vae", None) else 4
+        self.vae_scale_factor_spatial = self.vae.config.scale_factor_spatial if getattr(self, "vae", None) else 8
         self.video_processor = VideoProcessor(vae_scale_factor=self.vae_scale_factor_spatial)
 
     # Copied from diffusers.pipelines.wan.pipeline_wan.WanPipeline._get_t5_prompt_embeds
@@ -702,12 +702,12 @@ class WanVACEPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         num_inference_steps: int = 50,
         guidance_scale: float = 5.0,
         guidance_scale_2: float | None = None,
-        num_videos_per_prompt: int | None = 1,
+        num_videos_per_prompt: int = 1,
         generator: torch.Generator | list[torch.Generator] | None = None,
         latents: torch.Tensor | None = None,
         prompt_embeds: torch.Tensor | None = None,
         negative_prompt_embeds: torch.Tensor | None = None,
-        output_type: str | None = "np",
+        output_type: str = "np",
         return_dict: bool = True,
         attention_kwargs: dict[str, Any] | None = None,
         callback_on_step_end: Callable[[int, int], None] | PipelineCallback | MultiPipelineCallbacks | None = None,
@@ -766,10 +766,10 @@ class WanVACEPipeline(DiffusionPipeline, WanLoraLoaderMixin):
                 `boundary_ratio` is not None, uses the same value as `guidance_scale`. Only used when `transformer_2`
                 and the pipeline's `boundary_ratio` are not None.
             num_videos_per_prompt (`int`, *optional*, defaults to 1):
-                The number of images to generate per prompt.
+                The number of videos to generate per prompt. Currently only `1` is supported.
             generator (`torch.Generator` or `list[torch.Generator]`, *optional*):
                 A [`torch.Generator`](https://pytorch.org/docs/stable/generated/torch.Generator.html) to make
-                generation deterministic.
+                generation deterministic. If a list is passed, it must match the effective batch size.
             latents (`torch.Tensor`, *optional*):
                 Pre-generated noisy latents sampled from a Gaussian distribution, to be used as inputs for image
                 generation. Can be used to tweak the same generation with different prompts. If not provided, a latents
@@ -778,7 +778,7 @@ class WanVACEPipeline(DiffusionPipeline, WanLoraLoaderMixin):
                 Pre-generated text embeddings. Can be used to easily tweak text inputs (prompt weighting). If not
                 provided, text embeddings are generated from the `prompt` input argument.
             output_type (`str`, *optional*, defaults to `"np"`):
-                The output format of the generated image. Choose between `PIL.Image` or `np.array`.
+                The output format of the generated video. Choose between `"np"`, `"pt"`, `"pil"`, or `"latent"`.
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`WanPipelineOutput`] instead of a plain tuple.
             attention_kwargs (`dict`, *optional*):
@@ -1017,8 +1017,8 @@ class WanVACEPipeline(DiffusionPipeline, WanLoraLoaderMixin):
 
         self._current_timestep = None
 
+        latents = latents[:, :, num_reference_images:]
         if not output_type == "latent":
-            latents = latents[:, :, num_reference_images:]
             latents = latents.to(vae_dtype)
             latents_mean = (
                 torch.tensor(self.vae.config.latents_mean)
