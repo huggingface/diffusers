@@ -407,7 +407,9 @@ class QuantizationTesterMixin:
         # Step 3: run forward and backward pass
         inputs = self.get_dummy_inputs()
 
-        with torch.amp.autocast(torch_device, dtype=torch.float16):
+        # Use bfloat16 on XPU to avoid gradient underflow with quantized layers
+        autocast_dtype = torch.bfloat16 if torch_device == "xpu" else torch.float16
+        with torch.amp.autocast(torch_device, dtype=autocast_dtype):
             out = model(**inputs, return_dict=False)[0]
             out.norm().backward()
 
@@ -1187,7 +1189,7 @@ class QuantizationCompileTesterMixin:
         model.to(torch_device)
         model.eval()
 
-        model = torch.compile(model, fullgraph=True)
+        model.compile(fullgraph=True)
 
         with torch._dynamo.config.patch(error_on_recompile=True):
             inputs = self.get_dummy_inputs()
@@ -1219,7 +1221,7 @@ class QuantizationCompileTesterMixin:
             "use_stream": use_stream,
         }
         model.enable_group_offload(**group_offload_kwargs)
-        model = torch.compile(model)
+        model.compile()
 
         inputs = self.get_dummy_inputs()
         output = model(**inputs, return_dict=False)[0]
