@@ -7,6 +7,8 @@ description: >
   visual artifacts — as these are usually parity bugs.
 ---
 
+> **Note**: Parity testing is **separate from** the unit-level tests that ship in `tests/`. If you are integrating a new model, the model-level test suite under `tests/models/` is still required — follow the **"#### Model-level tests"** section in [`../model-integration/SKILL.md`](../model-integration/SKILL.md) (generate via `utils/generate_model_tests.py`, no `--include` flags initially, no `LoraTesterMixin`). Parity tests verify numerical correctness during development; the generated test suite is what CI runs.
+
 ## Setup — gather before starting
 
 Before writing any test code, gather:

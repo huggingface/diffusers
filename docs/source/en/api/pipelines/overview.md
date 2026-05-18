@@ -57,6 +57,7 @@ The table below lists all the pipelines currently available in 🤗 Diffusers an
 | [LLaDA2](llada2) | text2text |
 | [Lumina-T2X](lumina) | text2image |
 | [Marigold](marigold) | depth-estimation, normals-estimation, intrinsic-decomposition |
+| [Motif-Video](motif_video) | text2video, image2video |
 | [PAG](pag) | text2image |
 | [PixArt-α](pixart) | text2image |
 | [PixArt-Σ](pixart_sigma) | text2image |
