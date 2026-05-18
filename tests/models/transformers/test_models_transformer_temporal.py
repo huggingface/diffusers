@@ -18,6 +18,7 @@ import unittest
 import torch
 
 from diffusers.models.transformers import TransformerTemporalModel
+from diffusers.models.transformers.transformer_temporal import TransformerSpatioTemporalModel
 
 from ...testing_utils import (
     enable_full_determinism,
@@ -65,3 +66,57 @@ class TemporalTransformerTests(ModelTesterMixin, unittest.TestCase):
         }
         inputs_dict = self.dummy_input
         return init_dict, inputs_dict
+
+    def test_out_channels_none_and_equal_channels_supported(self):
+        model = TransformerTemporalModel(
+            num_attention_heads=1,
+            attention_head_dim=4,
+            in_channels=4,
+            out_channels=None,
+            num_layers=1,
+            norm_num_groups=1,
+        )
+        assert model.proj_out.out_features == 4
+
+        model = TransformerTemporalModel(
+            num_attention_heads=1,
+            attention_head_dim=4,
+            in_channels=4,
+            out_channels=4,
+            num_layers=1,
+            norm_num_groups=1,
+        )
+        assert model.proj_out.out_features == 4
+
+        hidden_states = torch.randn((2, 4, 4, 4)).to(torch_device)
+        output = model(hidden_states, num_frames=2).sample
+        assert output.shape == hidden_states.shape
+
+        spatio_temporal_model = TransformerSpatioTemporalModel(
+            num_attention_heads=1,
+            attention_head_dim=4,
+            in_channels=32,
+            out_channels=32,
+            num_layers=1,
+        )
+        assert spatio_temporal_model.proj_out.out_features == 32
+
+    def test_out_channels_mismatch_raises(self):
+        with self.assertRaisesRegex(ValueError, "out_channels.*in_channels"):
+            TransformerTemporalModel(
+                num_attention_heads=1,
+                attention_head_dim=4,
+                in_channels=4,
+                out_channels=8,
+                num_layers=1,
+                norm_num_groups=1,
+            )
+
+        with self.assertRaisesRegex(ValueError, "out_channels.*in_channels"):
+            TransformerSpatioTemporalModel(
+                num_attention_heads=1,
+                attention_head_dim=4,
+                in_channels=32,
+                out_channels=64,
+                num_layers=1,
+            )
