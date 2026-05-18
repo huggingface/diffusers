@@ -74,8 +74,6 @@ DEFAULT_SOUND_TOKENIZER_CONFIG = {
     "vocoder_input_dim": 64,
     "latent_mean": None,
     "latent_std": None,
-    "normalization_type": "none",
-    "normalize_latents": False,
 }
 
 SOUND_TOKENIZER_MODEL_INDEX_ENTRY = [

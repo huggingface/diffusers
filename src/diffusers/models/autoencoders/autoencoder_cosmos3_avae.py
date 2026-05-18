@@ -15,13 +15,7 @@
 
 """Cosmos3 AVAE Audio Tokenizer — decoder-only implementation.
 
-Supports two latent normalisation modes controlled by ``normalization_type``:
-
-- ``"tanh"``: latents were tanh-normalised during
-  encoding; decode applies the inverse ``atanh`` before the Oobleck decoder.
-  Constants: ``tanh_input_scale=1.5``, ``tanh_output_scale=3.5``, ``tanh_clamp=0.995``.
-
-- ``"none"``: no latent normalisation; latents are passed directly to the decoder.
+Latents are passed directly to the Oobleck decoder (no latent normalisation).
 """
 
 import math
@@ -47,17 +41,6 @@ class Cosmos3AVAEAudioTokenizer(ModelMixin, ConfigMixin):
         dec_c_mults (`list[int]`, defaults to `[1, 2, 4, 8, 16]`): Channel multipliers.
         dec_strides (`list[int]`, defaults to `[2, 4, 5, 6, 8]`): Upsampling strides.
         dec_out_channels (`int`, defaults to `2`): Output audio channels (2 = stereo).
-        normalization_type (`str`, defaults to `"none"`): Latent normalisation mode.
-            ``"tanh"`` applies inverse-tanh before decoding; ``"none"`` skips it.
-        normalize_latents (`bool`, defaults to `True`): Legacy flag. When
-            ``normalization_type="none"`` and this is ``True``, promotes the type to
-            ``"tanh"``
-        tanh_input_scale (`float`, defaults to `1.5`): Scale applied before ``atanh``
-            during latent denormalisation (only used when ``normalization_type="tanh"``).
-        tanh_output_scale (`float`, defaults to `3.5`): Scale applied after encoding
-            tanh (only used when ``normalization_type="tanh"``).
-        tanh_clamp (`float`, defaults to `0.995`): Clamp limit for ``atanh`` stability
-            (only used when ``normalization_type="tanh"``).
     """
 
     _supports_gradient_checkpointing = False
@@ -70,33 +53,18 @@ class Cosmos3AVAEAudioTokenizer(ModelMixin, ConfigMixin):
         enc_latent_dim: int = 128,
         vocoder_input_dim: int = 64,
         dec_dim: int = 320,
-        dec_c_mults: list = None,
-        dec_strides: list = None,
+        dec_c_mults: tuple = (1, 2, 4, 8, 16),
+        dec_strides: tuple = (2, 4, 5, 6, 8),
         dec_out_channels: int = 2,
-        normalization_type: str = "none",
-        normalize_latents: bool = False,
-        tanh_input_scale: float = 1.5,
-        tanh_output_scale: float = 3.5,
-        tanh_clamp: float = 0.995,
-        **kwargs,
     ):
         super().__init__()
-
-        if dec_c_mults is None:
-            dec_c_mults = [1, 2, 4, 8, 16]
-        if dec_strides is None:
-            dec_strides = [2, 4, 5, 6, 8]
-
-        if normalization_type == "none" and normalize_latents:
-            normalization_type = "tanh"
-        self._normalization_type = normalization_type
 
         self.decoder = OobleckDecoder(
             channels=dec_dim,
             input_channels=vocoder_input_dim,
             audio_channels=dec_out_channels,
             upsampling_ratios=list(reversed(dec_strides)),
-            channel_multiples=dec_c_mults,
+            channel_multiples=list(dec_c_mults),
         )
 
         self._hop_size: int = math.prod(dec_strides)
@@ -119,27 +87,9 @@ class Cosmos3AVAEAudioTokenizer(ModelMixin, ConfigMixin):
         """Return the number of latent frames for ``n_audio_samples`` raw samples."""
         return n_audio_samples // self._hop_size
 
-    def _denormalize_latent(self, latent: torch.Tensor) -> torch.Tensor:
-        """Invert the tanh normalisation applied during AVAE encoding.
-
-        z = atanh(clamp(latent / tanh_output_scale, -tanh_clamp, tanh_clamp))
-            * tanh_input_scale
-        """
-        in_dtype = latent.dtype
-        z = torch.clamp(
-            latent.float() / self.config.tanh_output_scale,
-            -self.config.tanh_clamp,
-            self.config.tanh_clamp,
-        )
-        return (torch.atanh(z) * self.config.tanh_input_scale).to(in_dtype)
-
     @torch.no_grad()
     def decode(self, latents: torch.Tensor) -> torch.Tensor:
         """Decode sound latents into an audio waveform.
-
-        Applies ``_denormalize_latent`` (inverse tanh) before the Oobleck decoder
-        only when ``normalization_type="tanh"``.  When ``normalization_type="none"``
-        (no latent normalisation) latents are passed directly.
 
         Args:
             latents: ``[B, C, T]`` or ``[C, T]`` tensor of diffusion-model latents.
@@ -150,9 +100,7 @@ class Cosmos3AVAEAudioTokenizer(ModelMixin, ConfigMixin):
         squeeze = latents.ndim == 2
         if squeeze:
             latents = latents.unsqueeze(0)
-        z = self._denormalize_latent(latents) if self._normalization_type == "tanh" else latents
-        audio = self.decoder(z)
-        audio = audio.clamp(-1.0, 1.0)
+        audio = self.decoder(latents).clamp(-1.0, 1.0)
         return audio.squeeze(0) if squeeze else audio
 
     # ------------------------------------------------------------------
