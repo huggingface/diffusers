@@ -14,6 +14,7 @@
 # limitations under the License.
 
 import random
+from pathlib import Path
 
 import numpy as np
 import PIL
@@ -26,6 +27,11 @@ from diffusers.modular_pipelines import (
     FluxKontextModularPipeline,
     FluxModularPipeline,
     ModularPipeline,
+)
+from diffusers.modular_pipelines.flux.pipeline_helpers import (
+    pack_latents,
+    prepare_latent_image_ids,
+    unpack_latents,
 )
 
 from ...testing_utils import floats_tensor, torch_device
@@ -43,6 +49,31 @@ FLUX_TEXT2IMAGE_WORKFLOWS = {
         ("decode", "FluxDecodeStep"),
     ]
 }
+
+
+def test_flux_modular_blocks_do_not_import_classic_or_qwenimage_helpers():
+    flux_dir = Path(__file__).parents[3] / "src" / "diffusers" / "modular_pipelines" / "flux"
+    offenders = []
+
+    for path in sorted(flux_dir.glob("*.py")):
+        for line_no, line in enumerate(path.read_text().splitlines(), 1):
+            if "from ...pipelines" in line or "from ..qwenimage" in line or "FluxPipeline._" in line:
+                offenders.append(f"{path.relative_to(flux_dir)}:{line_no}: {line.strip()}")
+
+    assert offenders == []
+
+
+def test_flux_modular_latent_helpers_roundtrip():
+    latents = torch.arange(1 * 4 * 4 * 4, dtype=torch.float32).reshape(1, 4, 4, 4)
+
+    packed = pack_latents(latents, batch_size=1, num_channels_latents=4, height=4, width=4)
+    unpacked = unpack_latents(packed, height=32, width=32, vae_scale_factor=8)
+
+    assert torch.equal(unpacked, latents)
+
+    latent_ids = prepare_latent_image_ids(None, 2, 2, torch.device("cpu"), torch.float32)
+    expected_ids = torch.tensor([[0, 0, 0], [0, 0, 1], [0, 1, 0], [0, 1, 1]], dtype=torch.float32)
+    assert torch.equal(latent_ids, expected_ids)
 
 
 class TestFluxModularPipelineFast(ModularPipelineTesterMixin):

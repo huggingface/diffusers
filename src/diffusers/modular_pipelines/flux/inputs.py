@@ -15,14 +15,11 @@
 
 import torch
 
-from ...pipelines import FluxPipeline
 from ...utils import logging
 from ..modular_pipeline import ModularPipelineBlocks, PipelineState
 from ..modular_pipeline_utils import InputParam, OutputParam
-
-# TODO: consider making these common utilities for modular if they are not pipeline-specific.
-from ..qwenimage.inputs import calculate_dimension_from_latents, repeat_tensor_to_batch_size
 from .modular_pipeline import FluxModularPipeline
+from .pipeline_helpers import calculate_dimension_from_latents, pack_latents, repeat_tensor_to_batch_size
 
 
 logger = logging.get_logger(__name__)
@@ -209,7 +206,7 @@ class FluxAdditionalInputsStep(ModularPipelineBlocks):
             # 2. Patchify the image latent tensor
             # TODO: Implement patchifier for Flux.
             latent_height, latent_width = image_latent_tensor.shape[2:]
-            image_latent_tensor = FluxPipeline._pack_latents(
+            image_latent_tensor = pack_latents(
                 image_latent_tensor, block_state.batch_size, image_latent_tensor.shape[1], latent_height, latent_width
             )
 
@@ -266,7 +263,7 @@ class FluxKontextAdditionalInputsStep(FluxAdditionalInputsStep):
             # 2. Patchify the image latent tensor
             # TODO: Implement patchifier for Flux.
             latent_height, latent_width = image_latent_tensor.shape[2:]
-            image_latent_tensor = FluxPipeline._pack_latents(
+            image_latent_tensor = pack_latents(
                 image_latent_tensor, block_state.batch_size, image_latent_tensor.shape[1], latent_height, latent_width
             )
 

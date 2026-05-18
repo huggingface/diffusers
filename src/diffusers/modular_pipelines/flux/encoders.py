@@ -26,6 +26,7 @@ from ...utils import USE_PEFT_BACKEND, is_ftfy_available, logging, scale_lora_la
 from ..modular_pipeline import ModularPipelineBlocks, PipelineState
 from ..modular_pipeline_utils import ComponentSpec, InputParam, OutputParam
 from .modular_pipeline import FluxModularPipeline
+from .pipeline_helpers import PREFERRED_KONTEXT_RESOLUTIONS
 
 
 if is_ftfy_available():
@@ -170,8 +171,6 @@ class FluxKontextProcessImagesInputStep(ModularPipelineBlocks):
 
     @torch.no_grad()
     def __call__(self, components: FluxModularPipeline, state: PipelineState):
-        from ...pipelines.flux.pipeline_flux_kontext import PREFERRED_KONTEXT_RESOLUTIONS
-
         block_state = self.get_block_state(state)
         images = block_state.image
 

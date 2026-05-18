@@ -234,6 +234,25 @@ class FluxPipelineFastTests(
             np.allclose(no_true_cfg_out, true_cfg_out), "Outputs should be different when true_cfg_scale is set."
         )
 
+    def test_negative_prompt_embeds_shape_mismatch_raises(self):
+        pipe = object.__new__(self.pipeline_class)
+        pipe.vae_scale_factor = 8
+        pipe._callback_tensor_inputs = ["latents", "prompt_embeds"]
+
+        with self.assertRaisesRegex(ValueError, "negative_prompt_embeds"):
+            pipe.check_inputs(
+                prompt=None,
+                prompt_2=None,
+                height=64,
+                width=64,
+                prompt_embeds=torch.zeros(2, 4, 8),
+                pooled_prompt_embeds=torch.zeros(2, 8),
+                negative_prompt_embeds=torch.zeros(1, 4, 8),
+                negative_pooled_prompt_embeds=torch.zeros(1, 8),
+                callback_on_step_end_tensor_inputs=["latents"],
+                max_sequence_length=48,
+            )
+
 
 @nightly
 @require_big_accelerator
