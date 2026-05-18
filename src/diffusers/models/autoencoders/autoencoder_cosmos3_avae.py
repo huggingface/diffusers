@@ -23,6 +23,7 @@ import math
 import torch
 
 from ...configuration_utils import ConfigMixin, register_to_config
+from ...utils.accelerate_utils import apply_forward_hook
 from ..modeling_utils import ModelMixin
 from .autoencoder_oobleck import OobleckDecoder
 
@@ -87,6 +88,7 @@ class Cosmos3AVAEAudioTokenizer(ModelMixin, ConfigMixin):
         """Return the number of latent frames for ``n_audio_samples`` raw samples."""
         return n_audio_samples // self._hop_size
 
+    @apply_forward_hook
     @torch.no_grad()
     def decode(self, latents: torch.Tensor) -> torch.Tensor:
         """Decode sound latents into an audio waveform.
