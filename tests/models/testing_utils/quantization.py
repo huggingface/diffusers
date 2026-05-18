@@ -407,7 +407,9 @@ class QuantizationTesterMixin:
         # Step 3: run forward and backward pass
         inputs = self.get_dummy_inputs()
 
-        with torch.amp.autocast(torch_device, dtype=torch.float16):
+        # Use bfloat16 on XPU to avoid gradient underflow with quantized layers
+        autocast_dtype = torch.bfloat16 if torch_device == "xpu" else torch.float16
+        with torch.amp.autocast(torch_device, dtype=autocast_dtype):
             out = model(**inputs, return_dict=False)[0]
             out.norm().backward()
 
