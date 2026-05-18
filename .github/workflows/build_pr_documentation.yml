@@ -50,3 +50,4 @@ jobs:
       package: diffusers
       languages: en ko zh ja pt
       custom_container: diffusers/diffusers-doc-builder
+      pre_command: uv pip uninstall transformers huggingface_hub && UV_PRERELEASE=allow uv pip install -U transformers@git+https://github.com/huggingface/transformers.git

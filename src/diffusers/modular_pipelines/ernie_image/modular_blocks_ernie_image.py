@@ -13,7 +13,7 @@
 # limitations under the License.
 
 from ...utils import logging
-from ..modular_pipeline import AutoPipelineBlocks, SequentialPipelineBlocks
+from ..modular_pipeline import ConditionalPipelineBlocks, SequentialPipelineBlocks
 from ..modular_pipeline_utils import OutputParam
 from .before_denoise import (
     ErnieImagePrepareLatentsStep,
@@ -29,11 +29,11 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
 # auto_docstring
-class ErnieImageAutoPromptEnhancerStep(AutoPipelineBlocks):
+class ErnieImageAutoPromptEnhancerStep(ConditionalPipelineBlocks):
     """
-    Auto block that runs the optional prompt enhancer when `use_pe` is provided.
-       - `ErnieImagePromptEnhancerStep` is used when `use_pe` is set.
-       - If `use_pe` is not provided, the step is skipped.
+    Conditional block that runs the optional prompt enhancer when `use_pe` is truthy.
+       - `ErnieImagePromptEnhancerStep` is used when `use_pe=True`.
+       - If `use_pe` is `None` or `False`, the step is skipped.
 
       Components:
           pe (`AutoModelForCausalLM`) pe_tokenizer (`AutoTokenizer`)
@@ -66,12 +66,17 @@ class ErnieImageAutoPromptEnhancerStep(AutoPipelineBlocks):
     block_names = ["prompt_enhancer"]
     block_trigger_inputs = ["use_pe"]
 
+    def select_block(self, use_pe=None) -> str | None:
+        if use_pe:
+            return "prompt_enhancer"
+        return None
+
     @property
     def description(self):
         return (
-            "Auto block that runs the optional prompt enhancer when `use_pe` is provided.\n"
-            " - `ErnieImagePromptEnhancerStep` is used when `use_pe` is set.\n"
-            " - If `use_pe` is not provided, the step is skipped."
+            "Conditional block that runs the optional prompt enhancer when `use_pe` is truthy.\n"
+            " - `ErnieImagePromptEnhancerStep` is used when `use_pe=True`.\n"
+            " - If `use_pe` is `None` or `False`, the step is skipped."
         )
 
 

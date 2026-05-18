@@ -23,7 +23,7 @@ import torch.nn.functional as F
 
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...loaders import FromOriginalModelMixin, PeftAdapterMixin
-from ...utils import apply_lora_scale, deprecate, logging
+from ...utils import apply_lora_scale, logging
 from ...utils.torch_utils import lru_cache_unless_export, maybe_allow_in_graph
 from .._modeling_parallel import ContextParallelInput, ContextParallelOutput
 from ..attention import AttentionMixin, FeedForward
@@ -241,7 +241,6 @@ class QwenEmbedRope(nn.Module):
     def forward(
         self,
         video_fhw: tuple[int, int, int, list[tuple[int, int, int]]],
-        txt_seq_lens: list[int] | None = None,
         device: torch.device = None,
         max_txt_seq_len: int | torch.Tensor | None = None,
     ) -> tuple[torch.Tensor, torch.Tensor]:
@@ -249,30 +248,14 @@ class QwenEmbedRope(nn.Module):
         Args:
             video_fhw (`tuple[int, int, int]` or `list[tuple[int, int, int]]`):
                 A list of 3 integers [frame, height, width] representing the shape of the video.
-            txt_seq_lens (`list[int]`, *optional*, **Deprecated**):
-                Deprecated parameter. Use `max_txt_seq_len` instead. If provided, the maximum value will be used.
             device: (`torch.device`, *optional*):
                 The device on which to perform the RoPE computation.
             max_txt_seq_len (`int` or `torch.Tensor`, *optional*):
                 The maximum text sequence length for RoPE computation. This should match the encoder hidden states
                 sequence length. Can be either an int or a scalar tensor (for torch.compile compatibility).
         """
-        # Handle deprecated txt_seq_lens parameter
-        if txt_seq_lens is not None:
-            deprecate(
-                "txt_seq_lens",
-                "0.39.0",
-                "Passing `txt_seq_lens` is deprecated and will be removed in version 0.39.0. "
-                "Please use `max_txt_seq_len` instead. "
-                "The new parameter accepts a single int or tensor value representing the maximum text sequence length.",
-                standard_warn=False,
-            )
-            if max_txt_seq_len is None:
-                # Use max of txt_seq_lens for backward compatibility
-                max_txt_seq_len = max(txt_seq_lens) if isinstance(txt_seq_lens, list) else txt_seq_lens
-
         if max_txt_seq_len is None:
-            raise ValueError("Either `max_txt_seq_len` or `txt_seq_lens` (deprecated) must be provided.")
+            raise ValueError("`max_txt_seq_len` must be provided.")
 
         # Validate batch inference with variable-sized images
         if isinstance(video_fhw, list) and len(video_fhw) > 1:
@@ -855,7 +838,6 @@ class QwenImageTransformer2DModel(
         encoder_hidden_states_mask: torch.Tensor = None,
         timestep: torch.LongTensor = None,
         img_shapes: list[tuple[int, int, int]] | None = None,
-        txt_seq_lens: list[int] | None = None,
         guidance: torch.Tensor = None,  # TODO: this should probably be removed
         attention_kwargs: dict[str, Any] | None = None,
         controlnet_block_samples=None,
@@ -878,9 +860,6 @@ class QwenImageTransformer2DModel(
                 Used to indicate denoising step.
             img_shapes (`list[tuple[int, int, int]]`, *optional*):
                 Image shapes for RoPE computation.
-            txt_seq_lens (`list[int]`, *optional*, **Deprecated**):
-                Deprecated parameter. Use `encoder_hidden_states_mask` instead. If provided, the maximum value will be
-                used to compute RoPE sequence length.
             guidance (`torch.Tensor`, *optional*):
                 Guidance tensor for conditional generation.
             attention_kwargs (`dict`, *optional*):
@@ -897,16 +876,6 @@ class QwenImageTransformer2DModel(
             If `return_dict` is True, an [`~models.transformer_2d.Transformer2DModelOutput`] is returned, otherwise a
             `tuple` where the first element is the sample tensor.
         """
-        if txt_seq_lens is not None:
-            deprecate(
-                "txt_seq_lens",
-                "0.39.0",
-                "Passing `txt_seq_lens` is deprecated and will be removed in version 0.39.0. "
-                "Please use `encoder_hidden_states_mask` instead. "
-                "The mask-based approach is more flexible and supports variable-length sequences.",
-                standard_warn=False,
-            )
-
         hidden_states = self.img_in(hidden_states)
 
         timestep = timestep.to(hidden_states.dtype)
