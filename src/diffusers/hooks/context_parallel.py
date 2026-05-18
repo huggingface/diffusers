@@ -210,7 +210,7 @@ class ContextParallelSplitHook(ModelHook):
             )
             return x
         else:
-            if self.parallel_config.ulysses_anything:
+            if self.parallel_config.ulysses_anything or self.parallel_config.ring_anything:
                 return PartitionAnythingSharder.shard_anything(
                     x, cp_input.split_dim, self.parallel_config._flattened_mesh
                 )
@@ -239,7 +239,7 @@ class ContextParallelGatherHook(ModelHook):
         for i, cpm in enumerate(self.metadata):
             if cpm is None:
                 continue
-            if self.parallel_config.ulysses_anything:
+            if self.parallel_config.ulysses_anything or self.parallel_config.ring_anything:
                 output[i] = PartitionAnythingSharder.unshard_anything(
                     output[i], cpm.gather_dim, self.parallel_config._flattened_mesh
                 )

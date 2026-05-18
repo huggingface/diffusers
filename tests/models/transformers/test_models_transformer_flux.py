@@ -13,22 +13,25 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import tempfile
 from typing import Any
 
 import pytest
 import torch
 
-from diffusers import FluxTransformer2DModel
+from diffusers import BitsAndBytesConfig, FluxTransformer2DModel
 from diffusers.models.embeddings import ImageProjection
 from diffusers.models.transformers.transformer_flux import FluxIPAdapterAttnProcessor
 from diffusers.utils.torch_utils import randn_tensor
 
 from ...testing_utils import enable_full_determinism, torch_device
 from ..testing_utils import (
+    AttentionBackendTesterMixin,
     AttentionTesterMixin,
     BaseModelTesterConfig,
     BitsAndBytesCompileTesterMixin,
     BitsAndBytesTesterMixin,
+    ContextParallelAttentionBackendsTesterMixin,
     ContextParallelTesterMixin,
     FasterCacheTesterMixin,
     FirstBlockCacheTesterMixin,
@@ -159,21 +162,36 @@ class FluxTransformerTesterConfig(BaseModelTesterConfig):
 
         return {
             "hidden_states": randn_tensor(
-                (batch_size, height * width, num_latent_channels), generator=self.generator, device=torch_device
+                (batch_size, height * width, num_latent_channels),
+                generator=self.generator,
+                device=torch_device,
+                dtype=self.torch_dtype,
             ),
             "encoder_hidden_states": randn_tensor(
-                (batch_size, sequence_length, embedding_dim), generator=self.generator, device=torch_device
+                (batch_size, sequence_length, embedding_dim),
+                generator=self.generator,
+                device=torch_device,
+                dtype=self.torch_dtype,
             ),
             "pooled_projections": randn_tensor(
-                (batch_size, embedding_dim), generator=self.generator, device=torch_device
+                (batch_size, embedding_dim),
+                generator=self.generator,
+                device=torch_device,
+                dtype=self.torch_dtype,
             ),
             "img_ids": randn_tensor(
-                (height * width, num_image_channels), generator=self.generator, device=torch_device
+                (height * width, num_image_channels),
+                generator=self.generator,
+                device=torch_device,
+                dtype=self.torch_dtype,
             ),
             "txt_ids": randn_tensor(
-                (sequence_length, num_image_channels), generator=self.generator, device=torch_device
+                (sequence_length, num_image_channels),
+                generator=self.generator,
+                device=torch_device,
+                dtype=self.torch_dtype,
             ),
-            "timestep": torch.tensor([1.0]).to(torch_device).expand(batch_size),
+            "timestep": torch.tensor([1.0]).to(torch_device, self.torch_dtype).expand(batch_size),
         }
 
 
@@ -226,8 +244,18 @@ class TestFluxTransformerAttention(FluxTransformerTesterConfig, AttentionTesterM
     """Attention processor tests for Flux Transformer."""
 
 
+class TestFluxTransformerAttentionBackend(FluxTransformerTesterConfig, AttentionBackendTesterMixin):
+    """Attention backend tests for Flux Transformer."""
+
+
 class TestFluxTransformerContextParallel(FluxTransformerTesterConfig, ContextParallelTesterMixin):
     """Context Parallel inference tests for Flux Transformer"""
+
+
+class TestFluxTransformerContextParallelAttnBackends(
+    FluxTransformerTesterConfig, ContextParallelAttentionBackendsTesterMixin
+):
+    """Context Parallel inference x attention backends tests for Flux Transformer"""
 
 
 class TestFluxTransformerIPAdapter(FluxTransformerTesterConfig, IPAdapterTesterMixin):
@@ -320,6 +348,10 @@ class TestFluxSingleFile(FluxTransformerTesterConfig, SingleFileTesterMixin):
 class TestFluxTransformerBitsAndBytes(FluxTransformerTesterConfig, BitsAndBytesTesterMixin):
     """BitsAndBytes quantization tests for Flux Transformer."""
 
+    @property
+    def torch_dtype(self):
+        return torch.float16
+
 
 class TestFluxTransformerQuanto(FluxTransformerTesterConfig, QuantoTesterMixin):
     """Quanto quantization tests for Flux Transformer."""
@@ -409,9 +441,56 @@ class TestFluxTransformerModelOptCompile(FluxTransformerTesterConfig, ModelOptCo
     """ModelOpt + compile tests for Flux Transformer."""
 
 
-@pytest.mark.skip(reason="torch.compile is not supported by BitsAndBytes")
 class TestFluxTransformerBitsAndBytesCompile(FluxTransformerTesterConfig, BitsAndBytesCompileTesterMixin):
     """BitsAndBytes + compile tests for Flux Transformer."""
+
+    def get_init_dict(self) -> dict[str, int | list[int]]:
+        # Dims must be multiples of 64 (bnb 4bit blocksize) so single-token activations
+        # don't trigger the runtime `warn()` inside bnb.matmul_4bit that breaks fullgraph compile.
+        return {
+            "patch_size": 1,
+            "in_channels": 4,
+            "num_layers": 1,
+            "num_single_layers": 1,
+            "attention_head_dim": 32,
+            "num_attention_heads": 2,
+            "joint_attention_dim": 64,
+            "pooled_projection_dim": 64,
+            "axes_dims_rope": [8, 8, 16],
+        }
+
+    def get_dummy_inputs(self, batch_size: int = 1) -> dict[str, torch.Tensor]:
+        inputs = super().get_dummy_inputs(batch_size=batch_size)
+        embedding_dim = 64
+        sequence_length = inputs["encoder_hidden_states"].shape[1]
+        inputs["encoder_hidden_states"] = randn_tensor(
+            (batch_size, sequence_length, embedding_dim),
+            generator=self.generator,
+            device=torch_device,
+            dtype=self.torch_dtype,
+        )
+        inputs["pooled_projections"] = randn_tensor(
+            (batch_size, embedding_dim), generator=self.generator, device=torch_device, dtype=self.torch_dtype
+        )
+        return inputs
+
+    def _create_quantized_model(self, config_kwargs, **extra_kwargs):
+        config_kwargs = {**config_kwargs, "bnb_4bit_compute_dtype": self.torch_dtype}
+        bnb_config = BitsAndBytesConfig(**config_kwargs)
+        base_model = self.model_class(**self.get_init_dict()).to(self.torch_dtype)
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            base_model.save_pretrained(tmp_dir)
+            del base_model
+            return self.model_class.from_pretrained(
+                tmp_dir, quantization_config=bnb_config, torch_dtype=self.torch_dtype, **extra_kwargs
+            )
+
+    @pytest.mark.parametrize("config_name", ["4bit_nf4"], ids=["4bit_nf4"])
+    def test_bnb_torch_compile_with_group_offload(self, config_name):
+        # use_stream=True is required: bnb 4bit kernels read device pointers eagerly, so
+        # without an explicit prefetch-stream sync we hit "illegal memory access" in
+        # bnb/csrc/ops.cu. The pipeline-level Bnb4BitCompileTests override does the same.
+        self._test_torch_compile_with_group_offload(self.BNB_CONFIGS[config_name], use_stream=True)
 
 
 class TestFluxTransformerFBCCache(FluxTransformerTesterConfig, FirstBlockCacheTesterMixin):
