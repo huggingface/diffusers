@@ -23,7 +23,7 @@ import torch
 import torchvision.transforms.functional as TF
 from transformers import AutoTokenizer
 
-from ...models.autoencoders.autoencoder_cosmos3_audio import Cosmos3AVAEAudioTokenizer
+from ...models.autoencoders.autoencoder_oobleck import AutoencoderOobleck
 from ...models.autoencoders.autoencoder_kl_wan import AutoencoderKLWan
 from ...models.transformers.transformer_cosmos3 import (
     Cosmos3OmniTransformer,
@@ -111,9 +111,13 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
         text_tokenizer: AutoTokenizer,
         vae: AutoencoderKLWan,
         scheduler: UniPCMultistepScheduler,
-        sound_tokenizer: Optional[Cosmos3AVAEAudioTokenizer] = None,
+        sound_tokenizer: Optional[AutoencoderOobleck] = None,
     ):
         super().__init__()
+        # Cosmos3 only uses the AVAE decoder side. Drop the unused encoder before
+        # registering so the encoder weights aren't held alive by the pipeline.
+        if sound_tokenizer is not None:
+            sound_tokenizer.encoder = None
         self.register_modules(
             transformer=transformer,
             text_tokenizer=text_tokenizer,
@@ -478,9 +482,9 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
         Adds/removes the batch dimension expected by the sound tokenizer decoder.
         """
         assert self.sound_tokenizer is not None
-        decoder_dtype = next(self.sound_tokenizer.parameters()).dtype
-        waveform = self.sound_tokenizer.decode(latent.unsqueeze(0).to(decoder_dtype))  # [1, audio_ch, N]
-        return waveform.squeeze(0)  # [audio_ch, N]
+        decoder_dtype = next(self.sound_tokenizer.decoder.parameters()).dtype
+        waveform = self.sound_tokenizer.decode(latent.unsqueeze(0).to(decoder_dtype)).sample  # [1, audio_ch, N]
+        return waveform.squeeze(0).clamp(-1.0, 1.0)  # [audio_ch, N]
 
     def normalize_video_databatch_inplace(
         self,
@@ -708,8 +712,8 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
         if enable_sound:
             sound_dim = self.transformer.config.sound_dim
             sound_latent_fps = float(self.transformer.config.sound_latent_fps)
-            n_audio_samples = int(num_frames / fps * self.sound_tokenizer.sample_rate)
-            hop_size = self.sound_tokenizer._hop_size
+            n_audio_samples = int(num_frames / fps * self.sound_tokenizer.config.sampling_rate)
+            hop_size = self.sound_tokenizer.hop_length
             T_sound = (n_audio_samples + hop_size - 1) // hop_size
             x0_tokens_sound = [torch.zeros(sound_dim, T_sound, device=device, dtype=dtype) for _ in range(batch_size)]
             fps_sound = torch.tensor([sound_latent_fps] * batch_size, device=device, dtype=dtype)

@@ -98,7 +98,7 @@ def main():
 
     if result.sound is not None:
         assert pipeline.sound_tokenizer is not None
-        sample_rate = pipeline.sound_tokenizer.sample_rate
+        sample_rate = pipeline.sound_tokenizer.config.sampling_rate
         for i, waveform in enumerate(result.sound):
             wav_path = output_dir / f"sample-{i}.wav"
             save_wav(waveform, wav_path, sample_rate)

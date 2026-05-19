@@ -30,18 +30,32 @@ from projects.cosmos3.vfm.models.omni_mot_model import OmniMoTModel  # noqa: E40
 from transformers import AutoTokenizer  # noqa: E402
 
 from diffusers import AutoencoderKLWan, UniPCMultistepScheduler  # noqa: E402
-from diffusers.models.autoencoders.autoencoder_cosmos3_audio import Cosmos3AVAEAudioTokenizer  # noqa: E402
+from diffusers.models.autoencoders.autoencoder_oobleck import AutoencoderOobleck  # noqa: E402
 from diffusers.models.transformers.transformer_cosmos3 import Cosmos3OmniTransformer  # noqa: E402
 from diffusers.pipelines.cosmos.pipeline_cosmos3_omni import Cosmos3OmniDiffusersPipeline  # noqa: E402
 
 
+# Upstream Cosmos3 AVAE keys → AutoencoderOobleck keys. The upstream checkpoint
+# ships decoder-only; the encoder is unused (zero-init then dropped post-load).
 DEFAULT_SOUND_TOKENIZER_CONFIG = {
     "sampling_rate": 48000,
-    "vocoder_input_dim": 64,
-    "dec_dim": 320,
-    "dec_c_mults": [1, 2, 4, 8, 16],
-    "dec_strides": [2, 4, 5, 6, 8],
-    "dec_out_channels": 2,
+    "decoder_input_channels": 64,  # was: vocoder_input_dim
+    "decoder_channels": 320,  # was: dec_dim
+    "channel_multiples": [1, 2, 4, 8, 16],  # was: dec_c_mults
+    # AutoencoderOobleck reverses internally (upsampling_ratios = downsampling[::-1]),
+    # so we pass dec_strides through unchanged.
+    "downsampling_ratios": [2, 4, 5, 6, 8],  # was: dec_strides
+    "audio_channels": 2,  # was: dec_out_channels
+    "encoder_hidden_size": 128,  # not used; AutoencoderOobleck default
+}
+
+
+# Upstream JSON uses the legacy Cosmos3 key names; remap to AutoencoderOobleck.
+_SOUND_TOKENIZER_CONFIG_KEY_MAP = {
+    "vocoder_input_dim": "decoder_input_channels",
+    "dec_dim": "decoder_channels",
+    "dec_c_mults": "channel_multiples",
+    "dec_out_channels": "audio_channels",
 }
 
 def _get_config_value(*configs, name, default=None):
@@ -216,7 +230,7 @@ def _sound_tokenizer_reapply_weight_norm(state_dict: dict[str, torch.Tensor]) ->
 
 
 def _remap_avae_state_dict(state_dict: dict[str, torch.Tensor]) -> dict[str, torch.Tensor]:
-    """Convert a legacy AVAE state dict into the Cosmos3AVAEAudioTokenizer state dict."""
+    """Convert a legacy AVAE state dict into AutoencoderOobleck decoder keys."""
     state_dict = _sound_tokenizer_strip_per_key_prefixes(state_dict)
     state_dict = _sound_tokenizer_filter_decoder(state_dict)
     if not state_dict:
@@ -232,26 +246,43 @@ def _remap_avae_state_dict(state_dict: dict[str, torch.Tensor]) -> dict[str, tor
 def _build_sound_tokenizer(
     checkpoint_path: pathlib.Path,
     config_path: pathlib.Path | None,
-) -> Cosmos3AVAEAudioTokenizer:
-    config = _load_sound_tokenizer_config(config_path, fallback_config_path=pathlib.Path())
+) -> AutoencoderOobleck:
+    raw_config = _load_sound_tokenizer_config(config_path, fallback_config_path=pathlib.Path())
+
+    # Translate legacy upstream config keys to AutoencoderOobleck's schema.
+    # `dec_strides` passes through to `downsampling_ratios` unchanged —
+    # AutoencoderOobleck reverses internally (`upsampling_ratios = downsampling[::-1]`).
+    config = {_SOUND_TOKENIZER_CONFIG_KEY_MAP.get(k, k): v for k, v in raw_config.items()}
+    if "dec_strides" in raw_config:
+        config["downsampling_ratios"] = list(raw_config["dec_strides"])
+        config.pop("dec_strides", None)
+
     print(f"Loading AVAE sound tokenizer weights from {checkpoint_path} …")
     raw_state_dict = _load_sound_tokenizer_state_dict(checkpoint_path)
     state_dict = _remap_avae_state_dict(raw_state_dict)
     print(f"  Remapped {len(raw_state_dict)} → {len(state_dict)} decoder keys.")
 
-    sound_tokenizer = Cosmos3AVAEAudioTokenizer(
+    sound_tokenizer = AutoencoderOobleck(
         sampling_rate=config.get("sampling_rate", DEFAULT_SOUND_TOKENIZER_CONFIG["sampling_rate"]),
-        vocoder_input_dim=config.get("vocoder_input_dim", DEFAULT_SOUND_TOKENIZER_CONFIG["vocoder_input_dim"]),
-        dec_dim=config.get("dec_dim", DEFAULT_SOUND_TOKENIZER_CONFIG["dec_dim"]),
-        dec_c_mults=tuple(config.get("dec_c_mults", DEFAULT_SOUND_TOKENIZER_CONFIG["dec_c_mults"])),
-        dec_strides=tuple(config.get("dec_strides", DEFAULT_SOUND_TOKENIZER_CONFIG["dec_strides"])),
-        dec_out_channels=config.get("dec_out_channels", DEFAULT_SOUND_TOKENIZER_CONFIG["dec_out_channels"]),
+        decoder_input_channels=config.get(
+            "decoder_input_channels", DEFAULT_SOUND_TOKENIZER_CONFIG["decoder_input_channels"]
+        ),
+        decoder_channels=config.get("decoder_channels", DEFAULT_SOUND_TOKENIZER_CONFIG["decoder_channels"]),
+        channel_multiples=list(config.get("channel_multiples", DEFAULT_SOUND_TOKENIZER_CONFIG["channel_multiples"])),
+        downsampling_ratios=list(
+            config.get("downsampling_ratios", DEFAULT_SOUND_TOKENIZER_CONFIG["downsampling_ratios"])
+        ),
+        audio_channels=config.get("audio_channels", DEFAULT_SOUND_TOKENIZER_CONFIG["audio_channels"]),
+        encoder_hidden_size=config.get("encoder_hidden_size", DEFAULT_SOUND_TOKENIZER_CONFIG["encoder_hidden_size"]),
     )
-    load_result = sound_tokenizer.load_state_dict(state_dict, strict=True)
-    if load_result.missing_keys or load_result.unexpected_keys:
+    # Decoder-only checkpoint; encoder keys are absent.
+    load_result = sound_tokenizer.load_state_dict(state_dict, strict=False)
+    unexpected = list(load_result.unexpected_keys)
+    decoder_missing = [k for k in load_result.missing_keys if not k.startswith("encoder.")]
+    if unexpected or decoder_missing:
         raise RuntimeError(
-            "Cosmos3 AVAE sound tokenizer load did not match strictly: "
-            f"missing={load_result.missing_keys}, unexpected={load_result.unexpected_keys}."
+            "Cosmos3 AVAE sound tokenizer decoder load failed: "
+            f"missing={decoder_missing}, unexpected={unexpected}."
         )
     return sound_tokenizer
 
