@@ -36,9 +36,7 @@ from ..pipeline_utils import DiffusionPipeline
 from .sequence_packing import (
     GenerationDataClean,
     SequencePlan,
-    build_packed_sequence,
     build_sequence_plans_from_data_batch,
-    get_all_seq,
     pack_input_sequence,
 )
 
@@ -915,21 +913,16 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
         if noise_x_sound is not None:
             self.encode_sound_tokens(timestep_scale, packed_seq, hidden_states, target_dtype)
 
-        # 4. Pack tokens into causal/full mode splits.
+        # 4. Split joint hidden_states into und (causal, text) / gen (full, vision+sound) streams.
+        # Layout is contiguous per pack_input_sequence: [und... | gen...].
         assert use_moe
-        input_pack, _ = build_packed_sequence(
-            packed_sequence=hidden_states,
-            attn_modes=packed_seq.attn_modes,
-            split_lens=packed_seq.split_lens,
-            sample_lens=packed_seq.sample_lens,
-        )
+        und_len = packed_seq.split_lens[0]
+        und_seq = hidden_states[:und_len]
+        gen_seq = hidden_states[und_len:]
 
         # 5. Run transformer
-        packed_outputs = self.transformer(
-            input_pack,
-            position_ids=packed_seq.position_ids,
-        )
-        last_hidden_state = get_all_seq(packed_outputs)
+        und_out, gen_out = self.transformer(und_seq, gen_seq, position_ids=packed_seq.position_ids)
+        last_hidden_state = torch.cat([und_out, gen_out], dim=0)
 
         # 6. Decode vision
         preds_vision = self.decode_vision(
