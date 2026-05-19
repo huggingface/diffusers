@@ -333,19 +333,6 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
             )
         return preds_vision_list
 
-    def _check_sound_enabled(self) -> None:
-        """Fail-fast guard: raise if sound_tokenizer or sound_gen config is missing."""
-        if self.sound_tokenizer is None:
-            raise ValueError(
-                "enable_sound=True requires a sound_tokenizer. "
-                "Load a checkpoint that includes sound_tokenizer/ (e.g. the 6cd74411 checkpoint)."
-            )
-        if not getattr(self.transformer.config, "sound_gen", False):
-            raise ValueError(
-                "enable_sound=True but the transformer was not trained with sound_gen=True. "
-                "Use a sound-capable checkpoint."
-            )
-
     def _pack_sound_latents(
         self,
         tokens_sound: list,
@@ -672,9 +659,6 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
         list[list[int]],
         torch.Tensor,
     ]:
-        if enable_sound:
-            self._check_sound_enabled()
-
         # Build data_batch
         prompts = [prompt] if isinstance(prompt, str) else list(prompt)
         batch_size = len(prompts)
@@ -1223,9 +1207,6 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
         guidance, num_steps, shift, prompt, negative_prompt = self._resolve_defaults_and_prompts(
             prompt, negative_prompt, image, num_frames, fps, height, width
         )
-
-        if enable_sound:
-            self._check_sound_enabled()
 
         sequence_plans, gen_data_clean, cond_tokens, uncond_tokens, initial_noise = self.prepare_inference_data(
             use_system_prompt,

@@ -70,26 +70,12 @@ class Cosmos3AVAEAudioTokenizer(ModelMixin, ConfigMixin):
 
         self._hop_size: int = math.prod(dec_strides)
 
-    # ------------------------------------------------------------------
-    # Interface expected by Cosmos3OmniDiffusersPipeline
-    # ------------------------------------------------------------------
-
     @property
     def sample_rate(self) -> int:
         """Audio sample rate in Hz."""
         return self.config.sampling_rate
 
-    @property
-    def latent_ch(self) -> int:
-        """Number of latent channels (== transformer config ``sound_dim`` == vocoder_input_dim)."""
-        return self.config.vocoder_input_dim
-
-    def get_latent_num_samples(self, n_audio_samples: int) -> int:
-        """Return the number of latent frames for ``n_audio_samples`` raw samples."""
-        return n_audio_samples // self._hop_size
-
     @apply_forward_hook
-    @torch.no_grad()
     def decode(self, latents: torch.Tensor) -> torch.Tensor:
         """Decode sound latents into an audio waveform.
 

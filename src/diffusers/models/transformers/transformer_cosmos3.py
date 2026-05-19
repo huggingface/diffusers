@@ -173,7 +173,6 @@ class Cosmos3VLTextRotaryEmbedding(nn.Module):
             freqs_t[..., idx] = freqs[dim, ..., idx]
         return freqs_t
 
-    @torch.no_grad()
     def forward(self, x, position_ids):
         if position_ids.ndim == 2:
             position_ids = position_ids[None, ...].expand(3, position_ids.shape[0], -1)  # [3,B,N]
