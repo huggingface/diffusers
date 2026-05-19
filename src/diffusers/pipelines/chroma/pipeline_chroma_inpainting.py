@@ -807,10 +807,27 @@ class ChromaInpaintPipeline(
                 The prompt or prompts not to guide the image generation. If not defined, one has to pass
                 `negative_prompt_embeds` instead. Ignored when not using guidance (i.e., ignored if `guidance_scale` is
                 not greater than `1`).
+            true_cfg_scale (`float`, *optional*, defaults to 1.0):
+                True classifier-free guidance (guidance scale) is enabled when `true_cfg_scale` > 1 and
+                `negative_prompt` is provided.
+            image (`PipelineImageInput`):
+                The image input for the pipeline.
+            mask_image (`PipelineImageInput`):
+                `Image`, numpy array or tensor representing an image batch to mask `image`. White pixels in the mask
+                are repainted while black pixels are preserved.
+            masked_image_latents (`torch.Tensor`, *optional*):
+                Pre-encoded latent representation of the masked image. If not provided, it will be computed from
+                `mask_image` and `image`.
             height (`int`, *optional*, defaults to self.unet.config.sample_size * self.vae_scale_factor):
                 The height in pixels of the generated image. This is set to 1024 by default for the best results.
             width (`int`, *optional*, defaults to self.unet.config.sample_size * self.vae_scale_factor):
                 The width in pixels of the generated image. This is set to 1024 by default for the best results.
+            padding_mask_crop (`int`, *optional*, defaults to `None`):
+                The size of margin in the crop to be applied to the image and masking. If `None`, no crop is applied
+                to image and mask_image. If `padding_mask_crop` is not `None`, it will first find a rectangular region
+                with the same aspect ratio of the image and contains all masked area, and then expand that area based
+                on `padding_mask_crop`. The image and mask_image will then be cropped based on the expanded area
+                before resizing to the original image size for inpainting.
             num_inference_steps (`int`, *optional*, defaults to 35):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
                 expense of slower inference.

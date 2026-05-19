@@ -398,6 +398,12 @@ class FluxPriorReduxPipeline(DiffusionPipeline):
                 Pre-generated text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt weighting.
             pooled_prompt_embeds (`torch.FloatTensor`, *optional*):
                 Pre-generated pooled text embeddings.
+            prompt_embeds_scale (`float` or `list[float]`, *optional*, defaults to 1.0):
+                Scale factor (or per-image list of scale factors) applied to the redux prompt embeddings before they
+                are returned.
+            pooled_prompt_embeds_scale (`float` or `list[float]`, *optional*, defaults to 1.0):
+                Scale factor (or per-image list of scale factors) applied to the redux pooled prompt embeddings
+                before they are returned.
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`~pipelines.flux.FluxPriorReduxPipelineOutput`] instead of a plain tuple.
 
