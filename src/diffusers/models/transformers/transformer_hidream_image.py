@@ -861,9 +861,7 @@ class HiDreamImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, 
         )
         initial_encoder_hidden_states_seq_len = initial_encoder_hidden_states.shape[1]
         for bid, block in enumerate(self.double_stream_blocks):
-            cur_llama31_encoder_hidden_states = encoder_hidden_states[block_id].to(
-                initial_encoder_hidden_states.device
-            )
+            cur_llama31_encoder_hidden_states = encoder_hidden_states[block_id].to(hidden_states.device)
             cur_encoder_hidden_states = torch.cat(
                 [initial_encoder_hidden_states, cur_llama31_encoder_hidden_states], dim=1
             )
