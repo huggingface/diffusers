@@ -37,8 +37,8 @@ class _DeprecatedModuleAlias(types.ModuleType):
 def _register_legacy_module_alias(old_name: str, new_name: str) -> None:
     """Register ``old_name`` as a deprecated alias for the already-loaded ``new_name`` submodule.
 
-    Both names are relative to ``diffusers.models.transformers``. The new submodule must already be in
-    ``sys.modules`` (loaded by a prior ``from .<new_name> import ...`` in this file).
+    Both names are relative to ``diffusers.models.transformers``. The new submodule must already be in ``sys.modules``
+    (loaded by a prior ``from .<new_name> import ...`` in this file).
     """
     old_dotted = f"{__name__}.{old_name}"
     target = sys.modules[f"{__name__}.{new_name}"]

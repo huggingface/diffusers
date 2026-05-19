@@ -287,18 +287,27 @@ class WeightMappingMetadata:
     Attributes:
         _checkpoint_keys: Distinctive keys whose presence indicates the checkpoint is
             in the original (pre-diffusers) format.
-        _model_variants: Map of variant name to its default config repo on the Hub.
+        _available_configs:
+            Map of short config name to hub repo id (e.g. ``{"flux-dev": "black-forest-labs/FLUX.1-dev"}``).
+            ``from_single_file`` resolves a config name (via detection or default) to a repo id through this map.
+            Single-config models can ship a one-entry dict; multi-config models like Flux list all known architectures.
+            The short names are stable identifiers — useful in detection logic, error messages, and tracebacks —
+            independent of where the configs are currently hosted on the hub.
         _map_to_diffusers / _map_from_diffusers: Callables driving the two conversion directions.
-        _detect_model_variant_fn: Optional ``(cls, state_dict) -> Optional[str]`` for picking the
-            right variant when a single checkpoint format spans multiple architectures.
+        _detect_config_fn: Optional ``(cls, state_dict) -> Optional[str]`` returning a config name (key into
+            ``_available_configs``) or ``None`` to defer to ``_default_config``.
+        _default_config: Config name (key into ``_available_configs``) used when ``_detect_config_fn`` is
+            unregistered or returns ``None``. Lets single-config models skip detection entirely and multi-config models
+            declare a "best guess" fallback.
         _default_subfolder: Default ``subfolder`` to use when fetching configs (e.g. ``"transformer"``).
     """
 
     _checkpoint_keys: set = field(default_factory=set)
-    _model_variants: dict[str, str] = field(default_factory=dict)
+    _available_configs: dict[str, str] = field(default_factory=dict)
     _map_to_diffusers: Callable | None = None
     _map_from_diffusers: Callable | None = None
-    _detect_model_variant_fn: Callable | None = None
+    _detect_config_fn: Callable | None = None
+    _default_config: str | None = None
     _default_subfolder: str = "transformer"
 
 
@@ -1700,14 +1709,22 @@ class ModelMixin(torch.nn.Module, ConfigMixin, LoRAModelMixin, WeightMappingMixi
             load_single_file_checkpoint,
         )
 
-        # `map_to_diffusers` is inherited universally via ``WeightMappingMixin``-via-``ModelMixin``;
-        # the genuine "is this single-file capable?" signal is whether the model registered a
-        # ``_map_to_diffusers`` callable in its ``WeightMappingMetadata``.
-        if getattr(cls, "_map_to_diffusers", None) is None:
+        # A model is "single-file capable" if its ``WeightMappingMetadata`` declares enough to (a) bring keys to
+        # diffusers naming and (b) resolve which config to load. The two paths are:
+        #   - converter path: ``_map_to_diffusers`` is registered (full key conversion);
+        #   - declarative path: ``_checkpoint_key_prefixes`` strips a known prefix and the model is otherwise
+        #     in diffusers format (e.g. prefix-only finetunes).
+        # Either way, ``_available_configs`` must be non-empty so we know which config repo to fetch.
+        has_converter = getattr(cls, "_map_to_diffusers", None) is not None
+        has_prefix_only = bool(getattr(cls, "_checkpoint_key_prefixes", None))
+        has_available_configs = bool(getattr(cls, "_available_configs", None))
+        if not (has_available_configs and (has_converter or has_prefix_only)):
             raise ValueError(
-                f"{cls.__name__} does not support `from_single_file`. "
-                f"Register a `_map_to_diffusers` callable in its `WeightMappingMetadata` "
-                f"(or use `from_pretrained` if the model is in diffusers format)."
+                f"`{cls.__name__}.from_single_file` is not supported. "
+                f"The model's `WeightMappingMetadata` must register `_available_configs` (so we know which config "
+                f"to load) plus at least one of: `_map_to_diffusers` (full key conversion) or "
+                f"`_checkpoint_key_prefixes` (prefix-only conversion for diffusers-format checkpoints with a "
+                f"foreign prefix). Use `from_pretrained` if the model is already in diffusers format."
             )
         default_subfolder = getattr(cls, "_default_subfolder", None)
 

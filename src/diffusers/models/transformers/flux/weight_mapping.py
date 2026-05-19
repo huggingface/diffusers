@@ -264,7 +264,7 @@ _FLUX_CHECKPOINT_KEYS: set[str] = {
     "time_in.in_layer.weight",
     "double_blocks.0.img_mod.lin.weight",
 }
-_FLUX_MODEL_VARIANTS: dict[str, str] = {
+_FLUX_AVAILABLE_CONFIGS: dict[str, str] = {
     "flux-dev": "black-forest-labs/FLUX.1-dev",
     "flux-schnell": "black-forest-labs/FLUX.1-schnell",
     "flux-fill": "black-forest-labs/FLUX.1-Fill-dev",
@@ -272,8 +272,8 @@ _FLUX_MODEL_VARIANTS: dict[str, str] = {
 }
 
 
-def detect_model_variant(cls, state_dict: dict[str, Any]) -> str | None:
-    """Detect which Flux variant a state_dict belongs to (``flux-dev`` / ``-schnell`` / ``-fill`` / ``-depth``).
+def detect_config(cls, state_dict: dict[str, Any]) -> str | None:
+    """Detect which Flux config name matches this state_dict.
 
     Receives ``cls`` so it can reuse the model's ``_is_original_format`` / ``_rename_key`` helpers.
     """
@@ -302,9 +302,13 @@ def detect_model_variant(cls, state_dict: dict[str, Any]) -> str | None:
 # Metadata constant assembled into ``ModelMetadata`` by ``flux/model.py``.
 FLUX_WEIGHT_MAPPING_METADATA = WeightMappingMetadata(
     _checkpoint_keys=_FLUX_CHECKPOINT_KEYS,
-    _model_variants=_FLUX_MODEL_VARIANTS,
+    _available_configs=_FLUX_AVAILABLE_CONFIGS,
     _map_to_diffusers=map_to_diffusers,
     _map_from_diffusers=map_from_diffusers,
-    _detect_model_variant_fn=detect_model_variant,
+    _detect_config_fn=detect_config,
+    # Kicks in only when ``detect_config`` returns ``None`` (e.g. the ``img_in`` / ``x_embedder`` key is
+    # absent so we can't read in_channels). Most Flux checkpoints in the wild are dev-derived, so it's
+    # the safest fallback config to load.
+    _default_config="flux-dev",
     _default_subfolder="transformer",
 )

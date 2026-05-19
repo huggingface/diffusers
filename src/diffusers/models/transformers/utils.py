@@ -63,8 +63,8 @@ class TransformerBlockOutput(TransformerModuleOutput):
 class AttnProcessorOutput(TransformerModuleOutput):
     """Structured return type for attention-processor ``__call__`` methods.
 
-    Replaces the historical pattern of returning a bare tensor for single-stream attention and a bare
-    ``(hidden_states, encoder_hidden_states)`` tuple for dual-stream attention. Tuple-compatibility inherited from
+    Replaces the historical pattern of returning a bare tensor for single-stream attention and a bare ``(hidden_states,
+    encoder_hidden_states)`` tuple for dual-stream attention. Tuple-compatibility inherited from
     :class:`TransformerModuleOutput`.
 
     Attributes:
