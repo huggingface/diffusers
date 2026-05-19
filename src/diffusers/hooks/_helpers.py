@@ -35,11 +35,13 @@ class TransformerBlockMetadata:
         """Attach this metadata to ``cls`` and register it in :class:`TransformerBlockRegistry`.
 
         Lets ``@register_metadata(TransformerBlockMetadata(...))`` work for block classes that opt into the decorator
-        pattern (e.g. Flux). Models that use the legacy bulk registration in ``_register_transformer_blocks_metadata``
-        are unaffected — both code paths call the same ``TransformerBlockRegistry.register`` underneath.
+        pattern (e.g. Flux). Writes directly to the registry dict instead of going through
+        ``TransformerBlockRegistry.register`` so we don't trigger the lazy bulk-init while the decorated class's module
+        is mid-import (the bulk-init imports from the same module → circular).
         """
+        self._cls = cls
         cls._block_metadata = self
-        TransformerBlockRegistry.register(cls, self)
+        TransformerBlockRegistry._registry[cls] = self
 
     def _get_parameter_from_args_kwargs(self, identifier: str, args=(), kwargs=None):
         kwargs = kwargs or {}
@@ -117,8 +119,8 @@ class TransformerBlockRegistry:
 
 def _register_attention_processors_metadata():
     from ..models.attention_processor import AttnProcessor2_0
+    from ..models.transformers.flux import FluxAttnProcessor
     from ..models.transformers.transformer_cogview4 import CogView4AttnProcessor
-    from ..models.transformers.transformer_flux import FluxAttnProcessor
     from ..models.transformers.transformer_hunyuanimage import HunyuanImageAttnProcessor
     from ..models.transformers.transformer_qwenimage import QwenDoubleStreamAttnProcessor2_0
     from ..models.transformers.transformer_wan import WanAttnProcessor2_0
@@ -182,9 +184,9 @@ def _register_attention_processors_metadata():
 def _register_transformer_blocks_metadata():
     from ..models.attention import BasicTransformerBlock, JointTransformerBlock
     from ..models.transformers.cogvideox_transformer_3d import CogVideoXBlock
+    from ..models.transformers.flux import FluxSingleTransformerBlock, FluxTransformerBlock
     from ..models.transformers.transformer_bria import BriaTransformerBlock
     from ..models.transformers.transformer_cogview4 import CogView4TransformerBlock
-    from ..models.transformers.transformer_flux import FluxSingleTransformerBlock, FluxTransformerBlock
     from ..models.transformers.transformer_hunyuan_video import (
         HunyuanVideoSingleTransformerBlock,
         HunyuanVideoTokenReplaceSingleTransformerBlock,

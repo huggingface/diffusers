@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import inspect
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any
 
 import numpy as np
 import torch
@@ -23,7 +23,7 @@ import torch.nn.functional as F
 from ....configuration_utils import register_to_config
 from ....hooks._helpers import TransformerBlockMetadata
 from ....loaders.ip_adapter_model import IPAdapterModelMixin
-from ....utils import USE_PEFT_BACKEND, logging, scale_lora_layers, unscale_lora_layers
+from ....utils import apply_lora_scale, logging
 from ....utils.torch_utils import maybe_allow_in_graph
 from ..._modeling_parallel import ContextParallelInput, ContextParallelOutput
 from ...attention import AttentionMixin, AttentionModuleMixin, FeedForward
@@ -89,8 +89,8 @@ class FluxAttnProcessor:
         attn: "FluxAttention",
         hidden_states: torch.Tensor,
         encoder_hidden_states: torch.Tensor = None,
-        attention_mask: Optional[torch.Tensor] = None,
-        image_rotary_emb: Optional[torch.Tensor] = None,
+        attention_mask: torch.Tensor | None = None,
+        image_rotary_emb: torch.Tensor | None = None,
     ) -> torch.Tensor:
         query, key, value, encoder_query, encoder_key, encoder_value = _get_qkv_projections(
             attn, hidden_states, encoder_hidden_states
@@ -134,9 +134,9 @@ class FluxAttnProcessor:
             encoder_hidden_states, hidden_states = hidden_states.split_with_sizes(
                 [encoder_hidden_states.shape[1], hidden_states.shape[1] - encoder_hidden_states.shape[1]], dim=1
             )
-            hidden_states = attn.to_out[0](hidden_states)
+            hidden_states = attn.to_out[0](hidden_states.contiguous())
             hidden_states = attn.to_out[1](hidden_states)
-            encoder_hidden_states = attn.to_add_out(encoder_hidden_states)
+            encoder_hidden_states = attn.to_add_out(encoder_hidden_states.contiguous())
 
             return hidden_states, encoder_hidden_states
         else:
@@ -189,10 +189,10 @@ class FluxIPAdapterAttnProcessor(torch.nn.Module):
         attn: "FluxAttention",
         hidden_states: torch.Tensor,
         encoder_hidden_states: torch.Tensor = None,
-        attention_mask: Optional[torch.Tensor] = None,
-        image_rotary_emb: Optional[torch.Tensor] = None,
-        ip_hidden_states: Optional[List[torch.Tensor]] = None,
-        ip_adapter_masks: Optional[torch.Tensor] = None,
+        attention_mask: torch.Tensor | None = None,
+        image_rotary_emb: torch.Tensor | None = None,
+        ip_hidden_states: list[torch.Tensor] | None = None,
+        ip_adapter_masks: torch.Tensor | None = None,
     ) -> torch.Tensor:
         batch_size = hidden_states.shape[0]
 
@@ -290,12 +290,12 @@ class FluxAttention(torch.nn.Module, AttentionModuleMixin):
         dim_head: int = 64,
         dropout: float = 0.0,
         bias: bool = False,
-        added_kv_proj_dim: Optional[int] = None,
-        added_proj_bias: Optional[bool] = True,
+        added_kv_proj_dim: int | None = None,
+        added_proj_bias: bool | None = True,
         out_bias: bool = True,
         eps: float = 1e-5,
         out_dim: int = None,
-        context_pre_only: Optional[bool] = None,
+        context_pre_only: bool | None = None,
         pre_only: bool = False,
         elementwise_affine: bool = True,
         processor=None,
@@ -340,9 +340,9 @@ class FluxAttention(torch.nn.Module, AttentionModuleMixin):
     def forward(
         self,
         hidden_states: torch.Tensor,
-        encoder_hidden_states: Optional[torch.Tensor] = None,
-        attention_mask: Optional[torch.Tensor] = None,
-        image_rotary_emb: Optional[torch.Tensor] = None,
+        encoder_hidden_states: torch.Tensor | None = None,
+        attention_mask: torch.Tensor | None = None,
+        image_rotary_emb: torch.Tensor | None = None,
         **kwargs,
     ) -> torch.Tensor:
         attn_parameters = set(inspect.signature(self.processor.__call__).parameters.keys())
@@ -384,9 +384,9 @@ class FluxSingleTransformerBlock(nn.Module):
         hidden_states: torch.Tensor,
         encoder_hidden_states: torch.Tensor,
         temb: torch.Tensor,
-        image_rotary_emb: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,
-        joint_attention_kwargs: Optional[Dict[str, Any]] = None,
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        image_rotary_emb: tuple[torch.Tensor, torch.Tensor] | None = None,
+        joint_attention_kwargs: dict[str, Any] | None = None,
+    ) -> tuple[torch.Tensor, torch.Tensor]:
         text_seq_len = encoder_hidden_states.shape[1]
         hidden_states = torch.cat([encoder_hidden_states, hidden_states], dim=1)
 
@@ -445,9 +445,9 @@ class FluxTransformerBlock(nn.Module):
         hidden_states: torch.Tensor,
         encoder_hidden_states: torch.Tensor,
         temb: torch.Tensor,
-        image_rotary_emb: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,
-        joint_attention_kwargs: Optional[Dict[str, Any]] = None,
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        image_rotary_emb: tuple[torch.Tensor, torch.Tensor] | None = None,
+        joint_attention_kwargs: dict[str, Any] | None = None,
+    ) -> tuple[torch.Tensor, torch.Tensor]:
         norm_hidden_states, gate_msa, shift_mlp, scale_mlp, gate_mlp = self.norm1(hidden_states, emb=temb)
 
         norm_encoder_hidden_states, c_gate_msa, c_shift_mlp, c_scale_mlp, c_gate_mlp = self.norm1_context(
@@ -499,7 +499,7 @@ class FluxTransformerBlock(nn.Module):
 
 class FluxPosEmbed(nn.Module):
     # modified from https://github.com/black-forest-labs/flux/blob/c00d7c60b085fce8058b9df845e036090873f2ce/src/flux/modules/layers.py#L11
-    def __init__(self, theta: int, axes_dim: List[int]):
+    def __init__(self, theta: int, axes_dim: list[int]):
         super().__init__()
         self.theta = theta
         self.axes_dim = axes_dim
@@ -582,7 +582,7 @@ class FluxTransformer2DModel(
             The number of dimensions to use for the pooled projection.
         guidance_embeds (`bool`, defaults to `False`):
             Whether to use guidance embeddings for guidance-distilled variant of the model.
-        axes_dims_rope (`Tuple[int]`, defaults to `(16, 56, 56)`):
+        axes_dims_rope (`tuple[int]`, defaults to `(16, 56, 56)`):
             The dimensions to use for the rotary positional embeddings.
     """
 
@@ -591,7 +591,7 @@ class FluxTransformer2DModel(
         self,
         patch_size: int = 1,
         in_channels: int = 64,
-        out_channels: Optional[int] = None,
+        out_channels: int | None = None,
         num_layers: int = 19,
         num_single_layers: int = 38,
         attention_head_dim: int = 128,
@@ -599,7 +599,7 @@ class FluxTransformer2DModel(
         joint_attention_dim: int = 4096,
         pooled_projection_dim: int = 768,
         guidance_embeds: bool = False,
-        axes_dims_rope: Tuple[int, int, int] = (16, 56, 56),
+        axes_dims_rope: tuple[int, int, int] = (16, 56, 56),
     ):
         super().__init__()
         self.out_channels = out_channels or in_channels
@@ -644,6 +644,7 @@ class FluxTransformer2DModel(
 
         self.gradient_checkpointing = False
 
+    @apply_lora_scale("joint_attention_kwargs")
     def forward(
         self,
         hidden_states: torch.Tensor,
@@ -653,12 +654,12 @@ class FluxTransformer2DModel(
         img_ids: torch.Tensor = None,
         txt_ids: torch.Tensor = None,
         guidance: torch.Tensor = None,
-        joint_attention_kwargs: Optional[Dict[str, Any]] = None,
+        joint_attention_kwargs: dict[str, Any] | None = None,
         controlnet_block_samples=None,
         controlnet_single_block_samples=None,
         return_dict: bool = True,
         controlnet_blocks_repeat: bool = False,
-    ) -> Union[torch.Tensor, Transformer2DModelOutput]:
+    ) -> torch.Tensor | Transformer2DModelOutput:
         """
         The [`FluxTransformer2DModel`] forward method.
 
@@ -685,21 +686,6 @@ class FluxTransformer2DModel(
             If `return_dict` is True, an [`~models.transformer_2d.Transformer2DModelOutput`] is returned, otherwise a
             `tuple` where the first element is the sample tensor.
         """
-        if joint_attention_kwargs is not None:
-            joint_attention_kwargs = joint_attention_kwargs.copy()
-            lora_scale = joint_attention_kwargs.pop("scale", 1.0)
-        else:
-            lora_scale = 1.0
-
-        if USE_PEFT_BACKEND:
-            # weight the lora layers by setting `lora_scale` for each PEFT layer
-            scale_lora_layers(self, lora_scale)
-        else:
-            if joint_attention_kwargs is not None and joint_attention_kwargs.get("scale", None) is not None:
-                logger.warning(
-                    "Passing `scale` via `joint_attention_kwargs` when not using the PEFT backend is ineffective."
-                )
-
         hidden_states = self.x_embedder(hidden_states)
 
         timestep = timestep.to(hidden_states.dtype) * 1000
@@ -794,10 +780,6 @@ class FluxTransformer2DModel(
 
         hidden_states = self.norm_out(hidden_states, temb)
         output = self.proj_out(hidden_states)
-
-        if USE_PEFT_BACKEND:
-            # remove `lora_scale` from each PEFT layer
-            unscale_lora_layers(self, lora_scale)
 
         if not return_dict:
             return (output,)

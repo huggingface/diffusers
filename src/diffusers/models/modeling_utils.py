@@ -249,8 +249,8 @@ class LoRAMetadata:
             suffix normalization. ``None`` for models that only ingest diffusers-native LoRAs.
     """
 
-    _lora_format_keys: Dict[str, set] = field(default_factory=dict)
-    _map_lora_to_diffusers: Optional[Callable] = None
+    _lora_format_keys: dict[str, set] = field(default_factory=dict)
+    _map_lora_to_diffusers: Callable | None = None
 
 
 @dataclass
@@ -269,8 +269,8 @@ class IPAdapterMetadata:
             ``(model, state_dict, low_cpu_mem_usage=False) -> ImageProjection`` returning the image projection layer.
     """
 
-    _convert_ip_adapter_attn_to_diffusers: Optional[Callable] = None
-    _convert_ip_adapter_image_proj_to_diffusers: Optional[Callable] = None
+    _convert_ip_adapter_attn_to_diffusers: Callable | None = None
+    _convert_ip_adapter_image_proj_to_diffusers: Callable | None = None
 
 
 @dataclass
@@ -295,10 +295,10 @@ class WeightMappingMetadata:
     """
 
     _checkpoint_keys: set = field(default_factory=set)
-    _model_variants: Dict[str, str] = field(default_factory=dict)
-    _map_to_diffusers: Optional[Callable] = None
-    _map_from_diffusers: Optional[Callable] = None
-    _detect_model_variant_fn: Optional[Callable] = None
+    _model_variants: dict[str, str] = field(default_factory=dict)
+    _map_to_diffusers: Callable | None = None
+    _map_from_diffusers: Callable | None = None
+    _detect_model_variant_fn: Callable | None = None
     _default_subfolder: str = "transformer"
 
 
@@ -327,8 +327,8 @@ class ModelMetadata:
         _repeated_blocks: List of module class names that repeat throughout the model,
             useful for optimization and pattern analysis.
         _cp_plan: Context parallel sharding plan. Maps model input/output tensor names to
-            ``ContextParallelInput`` / ``ContextParallelOutput`` declarations. Universal —
-            applies to any tensor-sharding work, not attention-specific.
+            ``ContextParallelInput`` / ``ContextParallelOutput`` declarations. Universal — applies to any
+            tensor-sharding work, not attention-specific.
         _keys_to_ignore_on_load_unexpected: List of keys to ignore when loading
             unexpected keys from a checkpoint.
         _lora: Per-model LoRA loading metadata. See :class:`LoRAMetadata`.
@@ -336,13 +336,13 @@ class ModelMetadata:
     """
 
     _supports_gradient_checkpointing: bool = False
-    _no_split_modules: Optional[List[str]] = None
-    _keep_in_fp32_modules: Optional[List[str]] = None
-    _skip_layerwise_casting_patterns: Optional[Tuple[str, ...]] = None
+    _no_split_modules: list[str] | None = None
+    _keep_in_fp32_modules: list[str] | None = None
+    _skip_layerwise_casting_patterns: tuple[str, ...] | None = None
     _supports_group_offloading: bool = True
-    _repeated_blocks: List[str] = field(default_factory=list)
-    _cp_plan: Optional[Dict[str, Any]] = None
-    _keys_to_ignore_on_load_unexpected: Optional[List[str]] = None
+    _repeated_blocks: list[str] = field(default_factory=list)
+    _cp_plan: dict[str, Any] | None = None
+    _keys_to_ignore_on_load_unexpected: list[str] | None = None
     _lora: LoRAMetadata = field(default_factory=LoRAMetadata)
     _ip_adapter: IPAdapterMetadata = field(default_factory=IPAdapterMetadata)
     _weight_mapping: WeightMappingMetadata = field(default_factory=WeightMappingMetadata)
@@ -388,7 +388,7 @@ def register_metadata(metadata):
     return wrap
 
 
-def _should_convert_checkpoint(model_state_dict: Dict[str, Any], checkpoint: Dict[str, Any]) -> bool:
+def _should_convert_checkpoint(model_state_dict: dict[str, Any], checkpoint: dict[str, Any]) -> bool:
     """Check if checkpoint needs conversion by comparing keys with model state dict."""
     model_state_dict_keys = set(model_state_dict.keys())
     checkpoint_state_dict_keys = set(checkpoint.keys())
@@ -420,7 +420,7 @@ class ModelMixin(torch.nn.Module, ConfigMixin, LoRAModelMixin, WeightMappingMixi
     _skip_keys = None
 
     @classmethod
-    def _maybe_convert_state_dict(cls, model: "ModelMixin", state_dict: Dict[str, Any]) -> Dict[str, Any]:
+    def _maybe_convert_state_dict(cls, model: "ModelMixin", state_dict: dict[str, Any]) -> dict[str, Any]:
         """Convert ``state_dict`` from original format to diffusers format if needed.
 
         Two phases, both declared via the model's :class:`WeightMappingMetadata`:
@@ -1644,7 +1644,7 @@ class ModelMixin(torch.nn.Module, ConfigMixin, LoRAModelMixin, WeightMappingMixi
 
     @classmethod
     @validate_hf_hub_args
-    def from_single_file(cls, pretrained_model_link_or_path_or_dict: Optional[str] = None, **kwargs) -> Self:
+    def from_single_file(cls, pretrained_model_link_or_path_or_dict: str | None = None, **kwargs) -> Self:
         r"""
         Instantiate a model from pretrained weights saved in the original `.ckpt` or `.safetensors` format. The model
         is set in evaluation mode (`model.eval()`) by default.
