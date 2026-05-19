@@ -15,7 +15,6 @@
 import math
 
 import torch
-import torch._dynamo as dynamo
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.nn.utils.rnn import pad_sequence

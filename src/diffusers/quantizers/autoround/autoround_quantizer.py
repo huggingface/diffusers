@@ -62,6 +62,12 @@ class AutoRoundQuantizer(DiffusersQuantizer):
                 "Loading an AutoRound quantized model requires the auto-round library "
                 "(`pip install 'auto-round>=0.13.0'`)"
             )
+        if not self.pre_quantized:
+            raise ValueError(
+                "AutoRound quantizer in diffusers only supports loading pre-quantized models. "
+                "To quantize a model from scratch, use the AutoRound CLI or Python API "
+                "(https://github.com/intel/auto-round) directly, then load the result with Diffusers."
+            )
 
     def _process_model_before_weight_loading(
         self,
@@ -124,5 +130,9 @@ class AutoRoundQuantizer(DiffusersQuantizer):
     def is_serializable(self):
         """AutoRound quantized models can be serialized (the quantization config may be
         updated by the backend, e.g. for GPTQ/AWQ-compatible formats)."""
+        return True
+
+    @property
+    def is_compileable(self) -> bool:
         return True
 

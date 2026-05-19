@@ -785,6 +785,8 @@ class AutoRoundConfig(QuantizationConfigMixin):
             `batch_size`, `lr`, `minmax_lr` for calibration when quantizing from scratch).
     """
 
+    VALID_BACKENDS = ["auto", "torch", "tritonv2", "exllamav2", "marlin"]
+
     def __init__(
         self,
         bits: int = 4,
@@ -794,18 +796,17 @@ class AutoRoundConfig(QuantizationConfigMixin):
         **kwargs,
     ) -> None:
         self.quant_method = QuantizationMethod.AUTOROUND
+        self._validate_backend(backend)
         self.bits = bits
         self.group_size = group_size
         self.sym = sym
-        self.backend = self._validate_backend(backend)
+        self.backend = backend
         for k, v in kwargs.items():
             setattr(self, k, v)
 
     def _validate_backend(self, backend):
-        valid_backends = ["auto","torch","tritonv2","exllamav2","marlin"]
-        if backend not in valid_backends:
-            raise ValueError(f"Invalid backend '{backend}'. Valid options are: {valid_backends}")
-        return backend
+        if backend not in self.VALID_BACKENDS:
+            raise ValueError(f"Invalid backend '{backend}'. Valid options are: {self.VALID_BACKENDS}")
 
     def to_dict(self) -> dict:
         """Serialize the config to a JSON-compatible dict.

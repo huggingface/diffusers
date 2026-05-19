@@ -142,24 +142,23 @@ class DiffusersAutoQuantizer:
             warning_msg = ""
 
         if isinstance(quantization_config, dict):
-            existing_fields = set(quantization_config.keys())
             quantization_config = cls.from_dict(quantization_config)
-        else:
-            existing_fields = set(quantization_config.__dict__.keys())
 
         if isinstance(quantization_config, NVIDIAModelOptConfig):
             quantization_config.check_model_patching()
 
-        if quantization_config_from_args is not None:
-            # Only override fields that the user explicitly set.
+        if quantization_config_from_args is not None and isinstance(quantization_config, AutoRoundConfig):
+            # For AutoRound, allow overriding fields like `backend` from user args,
+            # since the model config may store a default value (e.g. backend="auto").
             for key, value in quantization_config_from_args.__dict__.items():
-                if key not in existing_fields:
-                    # Field does not exist in the model's quantization_config, add it.
-                    setattr(quantization_config, key, value)
-                    warning_msg += (
-                        f" Field `{key}` from `quantization_config_from_args` is not present in the model's "
-                        f"`quantization_config`. Adding it with value: {value!r}."
+                if key in ("quant_method",):
+                    continue
+                if hasattr(quantization_config, key) and getattr(quantization_config, key) != value:
+                    warnings.warn(
+                        f"Overriding `{key}` in the model's quantization_config with value {value!r} "
+                        f"from the user-provided `quantization_config`."
                     )
+                    setattr(quantization_config, key, value)
 
         if warning_msg != "":
             warnings.warn(warning_msg)

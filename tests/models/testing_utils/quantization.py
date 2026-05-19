@@ -112,11 +112,11 @@ class QuantizationTesterMixin:
         - get_dummy_inputs(): Returns dict of inputs to pass to the model forward pass
     """
 
-    def setup_method(self, method=None):
+    def setup_method(self):
         gc.collect()
         backend_empty_cache(torch_device)
 
-    def teardown_method(self, method=None):
+    def teardown_method(self):
         gc.collect()
         backend_empty_cache(torch_device)
 
@@ -179,7 +179,6 @@ class QuantizationTesterMixin:
 
         inputs = self.get_dummy_inputs()
         output = model_quantized(**inputs, return_dict=False)[0]
-        output = output[0] if isinstance(output, (list, tuple)) else output
 
         assert output is not None, "Model output is None"
         assert not torch.isnan(output).any(), "Model output contains NaN"
@@ -340,7 +339,6 @@ class QuantizationTesterMixin:
 
         inputs = self.get_dummy_inputs()
         output = model(**inputs, return_dict=False)[0]
-        output = output[0] if isinstance(output, (list, tuple)) else output
         assert output is not None, "Model output is None"
         assert not torch.isnan(output).any(), "Model output contains NaN"
 
@@ -1164,12 +1162,12 @@ class QuantizationCompileTesterMixin:
         - get_dummy_inputs(): Returns dict of inputs to pass to the model forward pass
     """
 
-    def setup_method(self, method=None):
+    def setup_method(self):
         gc.collect()
         backend_empty_cache(torch_device)
         torch.compiler.reset()
 
-    def teardown_method(self, method=None):
+    def teardown_method(self):
         gc.collect()
         backend_empty_cache(torch_device)
         torch.compiler.reset()
@@ -1191,7 +1189,6 @@ class QuantizationCompileTesterMixin:
         with torch._dynamo.config.patch(error_on_recompile=error_on_recompile):
             inputs = self.get_dummy_inputs()
             output = model(**inputs, return_dict=False)[0]
-            output = output[0] if isinstance(output, (list, tuple)) else output
             assert output is not None, "Model output is None"
             assert not torch.isnan(output).any(), "Model output contains NaN"
 
@@ -1223,7 +1220,6 @@ class QuantizationCompileTesterMixin:
 
         inputs = self.get_dummy_inputs()
         output = model(**inputs, return_dict=False)[0]
-        output = output[0] if isinstance(output, (tuple, list)) else output
         assert output is not None, "Model output is None"
         assert not torch.isnan(output).any(), "Model output contains NaN"
 

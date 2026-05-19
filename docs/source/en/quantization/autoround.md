@@ -28,7 +28,29 @@ pip install "gptqmodel>=5.8.0"
 
 ## Load a quantized model
 
-Load a pre-quantized AutoRound model by passing [`AutoRoundConfig`] to [`~ModelMixin.from_pretrained`]. The method works with any model that loads via [Accelerate(https://hf.co/docs/accelerate/index) and has `torch.nn.Linear` layers.
+Load a pre-quantized AutoRound model by passing [`AutoRoundConfig`] to [`~ModelMixin.from_pretrained`]. The method works with any model that loads via [Accelerate](https://hf.co/docs/accelerate/index) and has `torch.nn.Linear` layers.
+
+You can use [`PipelineQuantizationConfig`] to quantize specific components of a pipeline:
+
+```python
+import torch
+from diffusers import DiffusionPipeline, PipelineQuantizationConfig, AutoRoundConfig
+
+pipeline_quant_config = PipelineQuantizationConfig(
+    quant_mapping={"transformer": AutoRoundConfig(backend="auto")}
+)
+pipe = DiffusionPipeline.from_pretrained(
+    "INCModel/Z-Image-W4A16-AutoRound",
+    quantization_config=pipeline_quant_config,
+    torch_dtype=torch.bfloat16,
+    device_map="cuda",
+)
+
+image = pipe("a cat holding a sign that says hello").images[0]
+image.save("output.png")
+```
+
+Or load a quantized model component directly:
 
 ```python
 import torch
@@ -59,6 +81,27 @@ image.save("output.png")
 > [!NOTE]
 > AutoRound in Diffusers only supports loading *pre-quantized* models. To quantize a model from scratch, use the [AutoRound CLI or Python API](https://github.com/intel/auto-round) directly, then load the result with Diffusers.
 
+## torch.compile
+
+AutoRound is compatible with [`torch.compile`](../optimization/fp16#torchcompile) for faster inference. You can compile the quantized transformer (DiT) for better performance:
+
+```python
+import torch
+from diffusers import DiffusionPipeline, PipelineQuantizationConfig, AutoRoundConfig
+
+pipeline_quant_config = PipelineQuantizationConfig(
+    quant_mapping={"transformer": AutoRoundConfig(backend="auto")}
+)
+pipe = DiffusionPipeline.from_pretrained(
+    "INCModel/Z-Image-W4A16-AutoRound",
+    quantization_config=pipeline_quant_config,
+    torch_dtype=torch.bfloat16,
+    device_map="cuda",
+)
+
+pipe.transformer = torch.compile(pipe.transformer, mode="max-autotune", fullgraph=True)
+```
+
 ## Backends
 
 AutoRound supports multiple inference backends for Weight-only quantized model. The backend controls which kernel handles dequantization during the forward pass. Set the `backend` parameter in [`AutoRoundConfig`] to choose one:
@@ -84,7 +127,7 @@ config = AutoRoundConfig(backend="tritonv2")
 # Marlin backend for best CUDA performance (requires gptqmodel>=5.8.0)
 config = AutoRoundConfig(backend="marlin")
 
-# Marlin backend for best CUDA performance (requires gptqmodel>=5.8.0)
+# ExllamaV2 backend for good CUDA performance (requires gptqmodel>=5.8.0)
 config = AutoRoundConfig(backend="exllamav2")
 
 # PyTorch backend for CPU/CUDA inference
@@ -97,21 +140,27 @@ config = AutoRoundConfig(backend="torch")
 <hfoptions id="save-and-load">
 <hfoption id="save">
 
+AutoRound requires data calibration to quantize a model. This is done outside of Diffusers using the [AutoRound library](https://github.com/intel/auto-round) directly:
+
 ```python
 from auto_round import AutoRound
+
 autoround = AutoRound(
-    tiny_z_image_model_path,
+    "Tongyi-MAI/Z-Image",
     scheme="W4A16",  # W4G128 symmetric
     enable_torch_compile=True,
     num_inference_steps=3,
     guidance_scale=7.5,
-    dataset="coco2014,
+    dataset="coco2014",
 )
 autoround.quantize_and_save("Z-Image-W4A16-AutoRound")
 ```
 
+For more details on calibration options, see the [AutoRound documentation](https://github.com/intel/auto-round).
+
 </hfoption>
 <hfoption id="load">
+
 
 ```python
 import torch
@@ -129,7 +178,6 @@ pipe = ZImagePipeline.from_pretrained(
 image = pipe("a cat holding a sign that says hello").images[0]
 image.save("output.png")
 ```
-
 </hfoption>
 </hfoptions>
 

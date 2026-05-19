@@ -209,6 +209,77 @@ class ZImageTransformerTesterConfig:
 class TestZImageTransformerAutoRound(ZImageTransformerTesterConfig, AutoRoundTesterMixin):
     """AutoRound quantization tests for Z-Image Transformer."""
 
+    @torch.no_grad()
+    def _test_quantization_inference(self, config_kwargs):
+        model_quantized = self._create_quantized_model(config_kwargs)
+        model_quantized.to(torch_device)
+
+        inputs = self.get_dummy_inputs()
+        output = model_quantized(**inputs, return_dict=False)[0]
+        # Z-Image returns a list of tensors from unpatchify
+        output = output[0] if isinstance(output, (list, tuple)) else output
+
+        assert output is not None, "Model output is None"
+        assert not torch.isnan(output).any(), "Model output contains NaN"
+
+    @torch.no_grad()
+    def _test_quantization_device_map(self, config_kwargs):
+        model = self._create_quantized_model(config_kwargs, device_map="auto")
+
+        assert hasattr(model, "hf_device_map"), "Model should have hf_device_map attribute"
+        assert model.hf_device_map is not None, "hf_device_map should not be None"
+
+        inputs = self.get_dummy_inputs()
+        output = model(**inputs, return_dict=False)[0]
+        # Z-Image returns a list of tensors from unpatchify
+        output = output[0] if isinstance(output, (list, tuple)) else output
+        assert output is not None, "Model output is None"
+        assert not torch.isnan(output).any(), "Model output contains NaN"
+
 
 class TestZImageTransformerAutoRoundCompile(ZImageTransformerTesterConfig, AutoRoundCompileTesterMixin):
     """AutoRound quantization + torch.compile tests for Z-Image Transformer."""
+
+    @torch.no_grad()
+    def _test_torch_compile(self, config_kwargs, fullgraph=True, error_on_recompile=True):
+        model = self._create_quantized_model(config_kwargs)
+        model.to(torch_device)
+        model.eval()
+
+        model = torch.compile(model, fullgraph=fullgraph)
+
+        with torch._dynamo.config.patch(error_on_recompile=error_on_recompile):
+            inputs = self.get_dummy_inputs()
+            output = model(**inputs, return_dict=False)[0]
+            # Z-Image returns a list of tensors from unpatchify
+            output = output[0] if isinstance(output, (list, tuple)) else output
+            assert output is not None, "Model output is None"
+            assert not torch.isnan(output).any(), "Model output contains NaN"
+
+    @torch.no_grad()
+    def _test_torch_compile_with_group_offload(self, config_kwargs, use_stream=False):
+        import pytest
+
+        torch._dynamo.config.cache_size_limit = 1000
+
+        model = self._create_quantized_model(config_kwargs)
+        model.eval()
+
+        if not hasattr(model, "enable_group_offload"):
+            pytest.skip("Model does not support group offloading")
+
+        group_offload_kwargs = {
+            "onload_device": torch.device(torch_device),
+            "offload_device": torch.device("cpu"),
+            "offload_type": "leaf_level",
+            "use_stream": use_stream,
+        }
+        model.enable_group_offload(**group_offload_kwargs)
+        model = torch.compile(model)
+
+        inputs = self.get_dummy_inputs()
+        output = model(**inputs, return_dict=False)[0]
+        # Z-Image returns a list of tensors from unpatchify
+        output = output[0] if isinstance(output, (list, tuple)) else output
+        assert output is not None, "Model output is None"
+        assert not torch.isnan(output).any(), "Model output contains NaN"
