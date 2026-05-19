@@ -19,7 +19,7 @@ env:
   MKL_NUM_THREADS: 8
   PYTEST_TIMEOUT: 600
   PIPELINE_USAGE_CUTOFF: 50000
-  # Force tokenizers<=0.23.0 across every `uv pip install` in this workflow,
+  # Force tokenizers<0.23.0 across every `uv pip install` in this workflow,
   # even when transformers@main declares a higher lower-bound.
   UV_OVERRIDE: /tmp/uv-overrides.txt
 
@@ -39,7 +39,7 @@ jobs:
           fetch-depth: 2
       - name: Install dependencies
         run: |
-          echo 'tokenizers<=0.23.0' > "$UV_OVERRIDE"
+          echo 'tokenizers<0.23.0' > "$UV_OVERRIDE"
           uv pip install -e ".[quality]"
           uv pip uninstall transformers huggingface_hub && UV_PRERELEASE=allow uv pip install -U transformers@git+https://github.com/huggingface/transformers.git
       - name: Environment
@@ -81,7 +81,7 @@ jobs:
           nvidia-smi
       - name: Install dependencies
         run: |
-          echo 'tokenizers<=0.23.0' > "$UV_OVERRIDE"
+          echo 'tokenizers<0.23.0' > "$UV_OVERRIDE"
           uv pip install -e ".[quality]"
           uv pip uninstall accelerate && uv pip install -U accelerate@git+https://github.com/huggingface/accelerate.git
           uv pip uninstall transformers huggingface_hub && UV_PRERELEASE=allow uv pip install -U transformers@git+https://github.com/huggingface/transformers.git
@@ -133,7 +133,7 @@ jobs:
 
     - name: Install dependencies
       run: |
-        echo 'tokenizers<=0.23.0' > "$UV_OVERRIDE"
+        echo 'tokenizers<0.23.0' > "$UV_OVERRIDE"
         uv pip install -e ".[quality]"
         uv pip install peft@git+https://github.com/huggingface/peft.git
         uv pip uninstall accelerate && uv pip install -U accelerate@git+https://github.com/huggingface/accelerate.git
@@ -185,7 +185,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          echo 'tokenizers<=0.23.0' > "$UV_OVERRIDE"
+          echo 'tokenizers<0.23.0' > "$UV_OVERRIDE"
           uv pip install -e ".[quality]"
           uv pip install peft@git+https://github.com/huggingface/peft.git
           uv pip uninstall accelerate && uv pip install -U accelerate@git+https://github.com/huggingface/accelerate.git
@@ -246,7 +246,7 @@ jobs:
         nvidia-smi
     - name: Install dependencies
       run: |
-        echo 'tokenizers<=0.23.0' > "$UV_OVERRIDE"
+        echo 'tokenizers<0.23.0' > "$UV_OVERRIDE"
         uv pip install -e ".[quality,training]"
         uv pip uninstall transformers huggingface_hub && UV_PRERELEASE=allow uv pip install -U transformers@git+https://github.com/huggingface/transformers.git
     - name: Environment
@@ -290,7 +290,7 @@ jobs:
         nvidia-smi
     - name: Install dependencies
       run: |
-        echo 'tokenizers<=0.23.0' > "$UV_OVERRIDE"
+        echo 'tokenizers<0.23.0' > "$UV_OVERRIDE"
         uv pip install -e ".[quality,training]"
         uv pip uninstall transformers huggingface_hub && UV_PRERELEASE=allow uv pip install -U transformers@git+https://github.com/huggingface/transformers.git
     - name: Environment
@@ -334,7 +334,7 @@ jobs:
 
     - name: Install dependencies
       run: |
-        echo 'tokenizers<=0.23.0' > "$UV_OVERRIDE"
+        echo 'tokenizers<0.23.0' > "$UV_OVERRIDE"
         uv pip install -e ".[quality,training]"
         uv pip uninstall transformers huggingface_hub && UV_PRERELEASE=allow uv pip install -U transformers@git+https://github.com/huggingface/transformers.git
 

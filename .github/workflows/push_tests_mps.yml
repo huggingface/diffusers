@@ -14,7 +14,7 @@ env:
   HF_XET_HIGH_PERFORMANCE: 1
   PYTEST_TIMEOUT: 600
   RUN_SLOW: no
-  # Force tokenizers<=0.23.0 across every `uv pip install` in this workflow,
+  # Force tokenizers<0.23.0 across every `uv pip install` in this workflow,
   # even when transformers@main declares a higher lower-bound.
   UV_OVERRIDE: /tmp/uv-overrides.txt
 
@@ -46,7 +46,7 @@ jobs:
     - name: Install dependencies
       shell: arch -arch arm64 bash {0}
       run: |
-        echo 'tokenizers<=0.23.0' > "$UV_OVERRIDE"
+        echo 'tokenizers<0.23.0' > "$UV_OVERRIDE"
         ${CONDA_RUN} python -m pip install --upgrade pip uv
         ${CONDA_RUN} python -m uv pip install -e ".[quality]"
         ${CONDA_RUN} python -m uv pip install torch torchvision torchaudio
