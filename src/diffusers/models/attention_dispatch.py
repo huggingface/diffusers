@@ -2200,6 +2200,11 @@ class TemplatedUlyssesAttention(torch.autograd.Function):
         query, key, value = (_all_to_all_single(x, group) for x in (query, key, value))
         query, key, value = (x.flatten(0, 1).permute(1, 0, 2, 3).contiguous() for x in (query, key, value))
 
+        if attn_mask is not None and attn_mask.shape[-1] == S_KV_LOCAL:
+            mask_list = [torch.empty_like(attn_mask) for _ in range(world_size)]
+            dist.all_gather(mask_list, attn_mask, group=group)
+            attn_mask = torch.cat(mask_list, dim=-1)
+
         out = forward_op(
             ctx,
             query,
