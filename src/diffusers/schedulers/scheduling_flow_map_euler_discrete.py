@@ -49,7 +49,7 @@ class FlowMapEulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
     velocity.
 
     Introduced in [AnyFlow: Any-Step Video Diffusion Model with On-Policy Flow Map
-    Distillation](https://huggingface.co/papers/2605.13724).
+    Distillation](https://huggingface.co/papers/2605.13724) by Yuchao Gu, Guian Fang et al.
 
     This scheduler inherits from [`SchedulerMixin`] and [`ConfigMixin`]. Check the superclass documentation for the
     generic methods implemented for all schedulers (loading, saving, etc.).

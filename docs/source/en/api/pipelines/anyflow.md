@@ -101,10 +101,11 @@ export_to_video(video, "out.mp4", fps=16)
 
 ### Generation with AnyFlow (FAR Causal)
 
-The causal pipeline selects between T2V / I2V / V2V via the ``context_sequence`` argument: pass ``None``
-for plain text-to-video, or a dict with a ``"raw"`` key holding a video tensor of shape
-``(B, C, T, H, W)`` with ``T = 4n + 1`` to condition on existing frames. Use a single conditioning frame
-for I2V and a longer clip for V2V continuation.
+The causal pipeline selects between T2V / I2V / V2V via the ``video`` (or ``video_latents``) argument:
+omit both for plain text-to-video, or pass ``video=<tensor>`` of shape ``(B, C, T, H, W)`` in ``[0, 1]``
+with ``T = 4n + 1`` to condition on existing frames. Use a single conditioning frame for I2V and a longer
+clip for V2V continuation. If you already have pre-encoded latents in the model layout, pass them via
+``video_latents=<tensor>`` to skip VAE encoding. ``video`` and ``video_latents`` are mutually exclusive.
 
 > [!IMPORTANT]
 > `AnyFlowFARPipeline.default_chunk_partition = [1, 3, 3, 3, 3, 3, 3, 2]` (sum 21) is matched to the
@@ -152,7 +153,7 @@ context_tensor = torch.from_numpy(arr).permute(2, 0, 1).unsqueeze(0).unsqueeze(2
 
 video = pipe(
     prompt="a cat walks across a sunlit lawn",
-    context_sequence={"raw": context_tensor},
+    video=context_tensor,
     num_inference_steps=4,
     num_frames=81,
 ).frames[0]
@@ -179,7 +180,7 @@ context_tensor = torch.from_numpy(arr).permute(3, 0, 1, 2).unsqueeze(0).to("cuda
 
 video = pipe(
     prompt="continue the story",
-    context_sequence={"raw": context_tensor},
+    video=context_tensor,
     num_inference_steps=4,
     num_frames=81,
     # Override chunk_partition so the first chunk covers exactly the 3 latent context frames.

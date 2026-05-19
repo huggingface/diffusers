@@ -15,7 +15,8 @@
 # This file is the FAR causal sibling of `transformer_anyflow.py`. Shared submodules are duplicated
 # via `# Copied from` so `make fix-copies` keeps both files in sync; this keeps each transformer
 # variant readable in isolation. The FAR architecture comes from Gu et al., 2025
-# (arXiv:2503.19325); the dual-timestep flow-map embedding is AnyFlow's contribution.
+# (arXiv:2503.19325); the dual-timestep flow-map embedding is AnyFlow's contribution
+# (Yuchao Gu, Guian Fang et al., arXiv:2605.13724).
 
 import math
 from dataclasses import dataclass

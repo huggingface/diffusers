@@ -91,7 +91,8 @@ def prompt_clean(text):
 
 class AnyFlowFARPipeline(DiffusionPipeline, WanLoraLoaderMixin):
     r"""
-    Causal (FAR-based) text-to-video / image-to-video / video-to-video pipeline for AnyFlow checkpoints.
+    Causal (FAR-based) text-to-video / image-to-video / video-to-video pipeline for AnyFlow checkpoints,
+    introduced in [AnyFlow](https://huggingface.co/papers/2605.13724) by Yuchao Gu, Guian Fang et al.
 
     The pipeline drives a frame-level autoregressive sampling loop over chunks: each chunk is denoised with flow-map
     steps while attending only to past chunks via block-sparse causal attention, and intermediate KV cache is reused

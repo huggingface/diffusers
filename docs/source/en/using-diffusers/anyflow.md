@@ -39,15 +39,15 @@ how they sample frames:
 - [`AnyFlowFARPipeline`](../api/pipelines/anyflow#anyflowfarpipeline) — **causal (FAR)**. Denoises the
   video chunk by chunk with block-sparse causal attention and reuses KV cache across chunks. Use this for
   image-to-video (I2V), video-to-video (V2V) continuation, or any setup that benefits from frame-level
-  autoregressive sampling. The same model handles all three task modes via the `context_sequence` argument.
+  autoregressive sampling. The same model handles all three task modes via the `video` (or pre-encoded `video_latents`) argument.
 
 A quick selector:
 
 | Scenario | Pipeline | How to invoke |
 |----------|----------|---------------|
 | Pure text-to-video, max quality at fixed NFE | `AnyFlowPipeline` | `pipe(prompt, ...)` |
-| Image-to-video (start from a still image) | `AnyFlowFARPipeline` | `pipe(prompt, context_sequence={"raw": <one-frame tensor>}, ...)` |
-| Video continuation / V2V | `AnyFlowFARPipeline` | `pipe(prompt, context_sequence={"raw": <multi-frame tensor>}, ...)` |
+| Image-to-video (start from a still image) | `AnyFlowFARPipeline` | `pipe(prompt, video=<one-frame tensor>, ...)` |
+| Video continuation / V2V | `AnyFlowFARPipeline` | `pipe(prompt, video=<multi-frame tensor>, ...)` |
 | Streaming / progressive generation | `AnyFlowFARPipeline` | — |
 
 The bidirectional variant is faster per token at high resolution; the causal variant trades that for the
@@ -121,8 +121,8 @@ on VBench Quality, while consistency-based baselines (rCM, Self-Forcing) degrade
 ## Image-to-video and video-to-video
 
 The causal pipeline supports three task modes from a single distilled model. The mode is selected
-implicitly by the ``context_sequence`` argument (a dict with a ``"raw"`` video tensor or ``"latent"``
-pre-encoded latents). Frame counts in the context tensor must satisfy ``T = 4n + 1`` to align with the
+implicitly by the ``video`` (pixel-space) or ``video_latents`` (pre-encoded) argument; omit both for
+plain text-to-video. Frame counts in the ``video`` tensor must satisfy ``T = 4n + 1`` to align with the
 VAE temporal stride.
 
 > [!IMPORTANT]
@@ -160,7 +160,7 @@ first_frame = load_image("path/to/first_frame.png")
 context_tensor = to_video_tensor([first_frame]).to("cuda")  # (1, 3, 1, 480, 832), [0, 1]
 video = pipe(
     prompt="a cat walks across a sunlit lawn",
-    context_sequence={"raw": context_tensor},
+    video=context_tensor,
     num_inference_steps=4,
     num_frames=81,
 ).frames[0]
@@ -172,7 +172,7 @@ context_frames = load_video("path/to/context.mp4")[:9]  # 9 = 4·2 + 1
 context_tensor = to_video_tensor(context_frames).to("cuda")  # (1, 3, 9, 480, 832)
 video = pipe(
     prompt="continue the story",
-    context_sequence={"raw": context_tensor},
+    video=context_tensor,
     num_inference_steps=4,
     num_frames=81,
     chunk_partition=[3, 3, 3, 3, 3, 3, 3],  # 7 chunks × 3 = 21 latent frames; first chunk = context
@@ -180,12 +180,13 @@ video = pipe(
 export_to_video(video, "v2v.mp4", fps=16)
 ```
 
-Internally, the patchification chunk schedule depends on whether (and how long) ``context_sequence`` is set:
-without context the model uses kernel sizes 2 (full) and 4 (compressed); with a context clip the first chunk
-uses kernel size 1 so the conditioning frames keep full resolution.
+Internally, the patchification chunk schedule depends on whether (and how long) the ``video`` /
+``video_latents`` argument is set: without context the model uses kernel sizes 2 (full) and 4 (compressed);
+with a context clip the first chunk uses kernel size 1 so the conditioning frames keep full resolution.
 
-If you already have VAE-encoded latents, pass them via ``context_sequence={"latent": ...}`` to skip the
-``vae_encode`` step.
+If you already have VAE-encoded latents (e.g. cached from a previous run), pass them via
+``video_latents=<tensor>`` to skip the ``encode_video`` step. ``video`` and ``video_latents`` are mutually
+exclusive.
 
 ## Memory and inference speed
 
