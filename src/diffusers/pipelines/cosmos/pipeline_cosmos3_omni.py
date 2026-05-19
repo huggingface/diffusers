@@ -21,7 +21,6 @@ from typing import List, Optional, Tuple, Union
 import numpy as np
 import torch
 import torchvision.transforms.functional as TF
-from tqdm import tqdm
 from transformers import AutoTokenizer
 
 from ...models.autoencoders.autoencoder_cosmos3_audio import Cosmos3AVAEAudioTokenizer
@@ -609,40 +608,22 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
             num_vision_items_per_sample=num_vision_items_per_sample,
         )
 
-    def get_inference_text_tokens(
-        self, use_system_prompt: bool, input_caption_key: str, data_batch: dict, has_negative_prompt: bool
-    ) -> tuple[list[list[int]], list[list[int]]]:
-        cond_tokens = [
-            self.tokenize_caption(c, is_video=False, use_system_prompt=use_system_prompt)
-            for c in data_batch[input_caption_key]
-        ]
-        if has_negative_prompt:
-            neg_key = "neg_" + input_caption_key
-            assert neg_key in data_batch, f"Negative prompt ({neg_key}) not found"
-            uncond_captions = data_batch[neg_key]
-        else:
-            uncond_captions = [""] * len(cond_tokens)
-        uncond_tokens = [
-            self.tokenize_caption(c, is_video=False, use_system_prompt=use_system_prompt) for c in uncond_captions
-        ]
-        return cond_tokens, uncond_tokens
-
     def derive_include_end_of_generation_token(self, joint_attn_implementation: str) -> bool:
         assert joint_attn_implementation in ("flex", "two_way", "three_way")
         return joint_attn_implementation == "flex"
 
-    def prepare_inference_data(
+    def prepare_latents(
         self,
-        use_system_prompt: bool,
         prompt: Union[str, List[str]],
-        negative_prompt: Optional[Union[str, List[str]]] = None,
+        negative_prompt: Optional[Union[str, List[str]]],
+        cond_tokens: list[list[int]],
         image=None,
         num_frames: int = 189,
         height: int = 720,
         width: int = 1280,
         fps: float = 24.0,
         condition_frame_indexes: Optional[List[int]] = None,
-        noises: Optional[List[torch.Tensor]] = None,
+        latents: Optional[torch.Tensor] = None,
         generator: Optional[torch.Generator] = None,
         input_caption_key: str = "ai_caption",
         input_video_key: str = "video",
@@ -650,13 +631,13 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
         device: str = "cuda",
         dtype: torch.dtype = torch.bfloat16,
         enable_sound: bool = False,
-    ) -> tuple[
-        list[SequencePlan],
-        GenerationDataClean,
-        list[list[int]],
-        list[list[int]],
-        torch.Tensor,
-    ]:
+    ) -> tuple[torch.Tensor, GenerationDataClean, list[SequencePlan]]:
+        """Build conditioning + initial noise.
+
+        Returns:
+            ``(latents, gen_data_clean, sequence_plans)``: flat initial noise tensor,
+            modality data (vision/sound shapes + fps), and per-sample sequence plans.
+        """
         # Build data_batch
         prompts = [prompt] if isinstance(prompt, str) else list(prompt)
         batch_size = len(prompts)
@@ -723,11 +704,6 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
                 input_caption_key: prompts,
             }
 
-        has_negative_prompt = negative_prompt is not None
-        if has_negative_prompt:
-            neg_prompts = [negative_prompt] if isinstance(negative_prompt, str) else list(negative_prompt)
-            data_batch["neg_" + input_caption_key] = neg_prompts
-
         # --- Inject sound into seq_plans and data_batch (before build_sequence_plans_from_data_batch) ---
         if enable_sound:
             sound_dim = self.transformer.config.sound_dim
@@ -757,14 +733,11 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
             gen_data_clean.x0_tokens_sound = x0_tokens_sound
             gen_data_clean.fps_sound = fps_sound
 
-        cond_text_tokens, uncond_text_tokens = self.get_inference_text_tokens(
-            use_system_prompt, input_caption_key, data_batch, has_negative_prompt
-        )
-
+        # Run pack_input_sequence with dummy timesteps to extract the condition_mask used for noise blending.
         mask_timesteps = torch.zeros((gen_data_clean.batch_size,), dtype=torch.float32)
         packed_seq = pack_input_sequence(
             sequence_plans=sequence_plans,
-            input_text_indexes=cond_text_tokens,
+            input_text_indexes=cond_tokens,
             gen_data_clean=gen_data_clean,
             input_timesteps=mask_timesteps,
             special_tokens=self.llm_special_tokens,
@@ -787,14 +760,15 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
         assert isinstance(packed_seq.vision.condition_mask, list)
         assert gen_data_clean.x0_tokens_vision is not None
 
+        if latents is not None:
+            # User-supplied flat latents — pass through; conditioning blending happens inside.
+            return latents.to(device=device, dtype=dtype), gen_data_clean, sequence_plans
+
         noise_vision_list: list[torch.Tensor] = []
-        for i, (x0_token, cond_mask) in enumerate(
-            zip(gen_data_clean.x0_tokens_vision, packed_seq.vision.condition_mask, strict=True)
+        for x0_token, cond_mask in zip(
+            gen_data_clean.x0_tokens_vision, packed_seq.vision.condition_mask, strict=True
         ):
-            if noises is not None:
-                pure_noise = noises[i].to(device=device, dtype=dtype)
-            else:
-                pure_noise = randn_tensor(tuple(x0_token.shape), generator=generator, device=device, dtype=dtype)
+            pure_noise = randn_tensor(tuple(x0_token.shape), generator=generator, device=device, dtype=dtype)
             noise_vision_list.append(
                 cond_mask * x0_token.to(device=device, dtype=dtype) + (1.0 - cond_mask) * pure_noise
             )
@@ -809,7 +783,7 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
                 noise_sound = cond_mask_sound.T * x0_sound + (1.0 - cond_mask_sound.T) * pure_noise_sound
                 initial_noise = torch.cat([initial_noise, noise_sound.reshape(-1)])
 
-        return sequence_plans, gen_data_clean, cond_text_tokens, uncond_text_tokens, initial_noise
+        return initial_noise, gen_data_clean, sequence_plans
 
     def encode_text(
         self,
@@ -944,7 +918,7 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
     @torch.no_grad()
     def get_cfg_velocity(
         self,
-        noise_x: torch.Tensor,
+        latents: torch.Tensor,
         timestep: torch.Tensor,
         guidance: float,
         gen_data_clean: GenerationDataClean,
@@ -952,42 +926,41 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
         cond_tokens: list[list[int]],
         uncond_tokens: list[list[int]],
         include_eog: bool,
-        hidden_size: int,
-        latent_patch_size: int,
-        latent_channel: int,
-        patch_latent_dim: int,
-        timestep_scale: float,
-        use_moe: bool,
-        skip_text_tokens_for_cfg: bool = False,
-        normalize_cfg: bool = False,
         device: str = "cuda",
         dtype: torch.dtype = torch.bfloat16,
     ) -> torch.Tensor:
         torch.compiler.cudagraph_mark_step_begin()
         assert timestep.ndim == 2 and timestep.shape == (1, 1)
+        config = self.transformer.config
+        hidden_size = config.hidden_size
+        latent_patch_size = config.latent_patch_size
+        latent_channel = config.latent_channel
+        patch_latent_dim = config.patch_latent_dim
+        timestep_scale = config.timestep_scale
+        use_moe = config.use_moe
 
         has_sound = gen_data_clean.x0_tokens_sound is not None and any(sp.has_sound for sp in sequence_plans)
 
         num_items = gen_data_clean.num_vision_items_per_sample
         num_vis = num_items[0] if num_items is not None else 1
 
-        # Split flat noise_x → vision part
+        # Split flat latents → vision part
         noise_x_vision: list[torch.Tensor] = []
         offset = 0
         for j in range(num_vis):
             vision_shape = gen_data_clean.x0_tokens_vision[j].shape
             vision_dim = int(torch.prod(torch.tensor(vision_shape)))
-            noise_x_vision.append(noise_x[offset : offset + vision_dim].reshape(vision_shape))
+            noise_x_vision.append(latents[offset : offset + vision_dim].reshape(vision_shape))
             offset += vision_dim
 
-        # Split flat noise_x → sound part
+        # Split flat latents → sound part
         noise_x_sound: Optional[list] = None
         if has_sound:
             noise_x_sound = []
             assert gen_data_clean.x0_tokens_sound is not None
             sound_shape = gen_data_clean.x0_tokens_sound[0].shape
             sound_dim_flat = int(torch.prod(torch.tensor(sound_shape)))
-            noise_x_sound.append(noise_x[offset : offset + sound_dim_flat].reshape(sound_shape))
+            noise_x_sound.append(latents[offset : offset + sound_dim_flat].reshape(sound_shape))
 
         gen_data_for_packing = GenerationDataClean(
             batch_size=1,
@@ -1000,7 +973,7 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
             fps_sound=gen_data_clean.fps_sound if has_sound else None,
         )
 
-        def _run_cond(text_tokens: list[list[int]], skip_text: bool) -> torch.Tensor:
+        def _run_cond(text_tokens: list[list[int]]) -> torch.Tensor:
             packed_seq = pack_input_sequence(
                 sequence_plans=sequence_plans,
                 input_text_indexes=text_tokens,
@@ -1009,7 +982,6 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
                 special_tokens=self.llm_special_tokens,
                 latent_patch_size=self.transformer.config.latent_patch_size,
                 include_end_of_generation_token=include_eog,
-                skip_text_tokens=skip_text,
                 position_embedding_type=self.transformer.config.position_embedding_type,
                 unified_3d_mrope_reset_spatial_ids=self.transformer.config.unified_3d_mrope_reset_spatial_ids,
                 unified_3d_mrope_temporal_modality_margin=self.transformer.config.unified_3d_mrope_temporal_modality_margin,
@@ -1054,14 +1026,9 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
 
             return torch.cat(parts)
 
-        cond_v = _run_cond(cond_tokens, False)
-        uncond_v = _run_cond(uncond_tokens, skip_text_tokens_for_cfg)
-
-        v_pred = uncond_v + guidance * (cond_v - uncond_v)
-
-        if normalize_cfg:
-            v_pred = v_pred * (torch.norm(cond_v) / (torch.norm(v_pred) + 1e-8)).clamp(min=0.0, max=1.0)
-        return v_pred
+        cond_v = _run_cond(cond_tokens)
+        uncond_v = _run_cond(uncond_tokens)
+        return uncond_v + guidance * (cond_v - uncond_v)
 
     def _load_image_as_tensor(self, image, target_h: int, target_w: int) -> torch.Tensor:
         """Load image from PIL, path, URL, or tensor; returns [3, 1, H, W] in [-1, 1]."""
@@ -1108,6 +1075,51 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
         img_4d = TF.center_crop(img_4d, [target_h, target_w])
         img_4d = img_4d / 127.5 - 1.0  # normalize after resize, matching load_conditioning_image
         return img_4d.squeeze(0).unsqueeze(1)  # [3, 1, H, W]
+
+    def check_inputs(
+        self,
+        prompt,
+        negative_prompt,
+        image,
+        height: int,
+        width: int,
+        num_frames: int,
+        enable_sound: bool,
+    ) -> None:
+        if not isinstance(prompt, (str, list)) or (isinstance(prompt, list) and not all(isinstance(p, str) for p in prompt)):
+            raise ValueError(f"`prompt` must be a str or list of str, got {type(prompt).__name__}.")
+        if negative_prompt is not None and not isinstance(negative_prompt, (str, list)):
+            raise ValueError(f"`negative_prompt` must be a str, list of str, or None, got {type(negative_prompt).__name__}.")
+        if num_frames < 1:
+            raise ValueError(f"`num_frames` must be >= 1, got {num_frames}.")
+        sf = int(self.vae.config.scale_factor_spatial)
+        if height % sf != 0 or width % sf != 0:
+            raise ValueError(f"`height` and `width` must be multiples of {sf}, got ({height}, {width}).")
+        if enable_sound:
+            if self.sound_tokenizer is None:
+                raise ValueError("`enable_sound=True` requires a sound-capable checkpoint with a `sound_tokenizer`.")
+            if not getattr(self.transformer.config, "sound_gen", False):
+                raise ValueError("`enable_sound=True` but the transformer was not trained with `sound_gen=True`.")
+
+    def encode_prompt(
+        self,
+        prompt: Union[str, List[str]],
+        negative_prompt: Optional[Union[str, List[str]]] = None,
+        use_system_prompt: bool = False,
+    ) -> tuple[list[list[int]], list[list[int]]]:
+        """Tokenize cond/uncond prompts via the Qwen2 chat template.
+
+        Returns:
+            ``(cond_text_tokens, uncond_text_tokens)`` — per-prompt token-ID lists.
+        """
+        prompts = [prompt] if isinstance(prompt, str) else list(prompt)
+        cond_tokens = [self.tokenize_caption(p, is_video=False, use_system_prompt=use_system_prompt) for p in prompts]
+        if negative_prompt is not None:
+            neg_prompts = [negative_prompt] if isinstance(negative_prompt, str) else list(negative_prompt)
+        else:
+            neg_prompts = [""] * len(prompts)
+        uncond_tokens = [self.tokenize_caption(p, is_video=False, use_system_prompt=use_system_prompt) for p in neg_prompts]
+        return cond_tokens, uncond_tokens
 
     def _resolve_defaults_and_prompts(
         self,
@@ -1170,6 +1182,41 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
             frames.append(((1.0 + vision) / 2).clamp(0, 1).squeeze(0))
         return frames
 
+    def _postprocess_latents(
+        self,
+        latents: torch.Tensor,
+        gen_data_clean: GenerationDataClean,
+        enable_sound: bool,
+        output_type: str,
+    ) -> tuple[list[torch.Tensor], Optional[list[torch.Tensor]]]:
+        """Extract vision/sound slices from the flat denoised latent, then decode.
+
+        Returns ``(video, sound)``: ``video`` is a list of ``[C, T, H, W]`` pixel
+        tensors in ``[0, 1]`` (or raw latents when ``output_type == "latent"``);
+        ``sound`` is ``None`` unless ``enable_sound`` was set.
+        """
+        num_vision_items = gen_data_clean.num_vision_items_per_sample
+        n_vis = num_vision_items[0] if num_vision_items is not None else 1
+        result_vision: list[torch.Tensor] = []
+        offset = 0
+        for j in range(n_vis):
+            vision_shape = gen_data_clean.x0_tokens_vision[j].shape
+            vision_dim = int(torch.prod(torch.tensor(vision_shape)))
+            if j == n_vis - 1:
+                result_vision.append(latents[offset : offset + vision_dim].reshape(vision_shape))
+            offset += vision_dim
+
+        result_sound: Optional[list] = None
+        if enable_sound and gen_data_clean.x0_tokens_sound is not None:
+            sound_shape = gen_data_clean.x0_tokens_sound[0].shape  # [sound_dim, T_sound]
+            sound_dim_flat = int(torch.prod(torch.tensor(sound_shape)))
+            sound_latent = latents[offset : offset + sound_dim_flat].reshape(sound_shape)
+            result_sound = [self.decode_sound(sound_latent)]
+
+        if output_type == "latent":
+            return result_vision, result_sound
+        return self.decode_latents(result_vision), result_sound
+
     @torch.no_grad()
     def __call__(
         self,
@@ -1180,106 +1227,88 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
         height: int = 720,
         width: int = 1280,
         fps: float = 24.0,
+        num_inference_steps: Optional[int] = None,
+        guidance_scale: Optional[float] = None,
         condition_frame_indexes: Optional[List[int]] = None,
-        noises: Optional[List[torch.Tensor]] = None,
-        generator: Optional[torch.Generator] = None,
-        use_system_prompt: bool = False,
-        device: str = "cuda",
-        dtype: torch.dtype = torch.bfloat16,
-        output_type: str = "video",
         enable_sound: bool = False,
+        generator: Optional[torch.Generator] = None,
+        latents: Optional[torch.Tensor] = None,
+        output_type: str = "video",
+        return_dict: bool = True,
+        use_system_prompt: bool = False,
     ) -> Cosmos3OmniPipelineOutput:
-        latent_patch_size = self.transformer.config.latent_patch_size
-        latent_channel = self.transformer.config.latent_channel
-        patch_latent_dim = self.transformer.config.patch_latent_dim
-        timestep_scale = self.transformer.config.timestep_scale
-        hidden_size = self.transformer.config.hidden_size
-        use_moe = self.transformer.config.use_moe
-        joint_attn_implementation = self.transformer.config.joint_attn_implementation
+        # 1. Check inputs
+        self.check_inputs(prompt, negative_prompt, image, height, width, num_frames, enable_sound)
 
-        guidance, num_steps, shift, prompt, negative_prompt = self._resolve_defaults_and_prompts(
+        # 2. Resolve mode-specific defaults + apply prompt templates
+        guidance, num_steps, _shift, prompt, negative_prompt = self._resolve_defaults_and_prompts(
             prompt, negative_prompt, image, num_frames, fps, height, width
         )
+        if num_inference_steps is not None:
+            num_steps = num_inference_steps
+        if guidance_scale is not None:
+            guidance = guidance_scale
+        assert guidance != 1.0, "Guidance weight must be != 1.0"
 
-        sequence_plans, gen_data_clean, cond_tokens, uncond_tokens, initial_noise = self.prepare_inference_data(
-            use_system_prompt,
+        device = self._execution_device
+        dtype = self.transformer.dtype
+
+        # 3. Encode prompt
+        cond_tokens, uncond_tokens = self.encode_prompt(prompt, negative_prompt, use_system_prompt=use_system_prompt)
+
+        # 4. Prepare latents (initial noise + conditioning metadata)
+        latents, gen_data_clean, sequence_plans = self.prepare_latents(
             prompt=prompt,
             negative_prompt=negative_prompt,
+            cond_tokens=cond_tokens,
             image=image,
             num_frames=num_frames,
             height=height,
             width=width,
             fps=fps,
             condition_frame_indexes=condition_frame_indexes,
-            noises=noises,
+            latents=latents,
             generator=generator,
             device=device,
             dtype=dtype,
             enable_sound=enable_sound,
         )
 
-        assert guidance != 1.0, "Guidance weight must be != 1.0"
-
-        device = initial_noise.device
+        # 5. Set timesteps
         self.scheduler.set_timesteps(num_steps, device=device)
         timesteps = self.scheduler.timesteps
-        # print(f"sigmas:    first={self.scheduler.sigmas[0].item():.4f}  last={self.scheduler.sigmas[-2].item():.4f}")
-        # print(f"timesteps: first={timesteps[0].item():.2f}  last={timesteps[-1].item():.2f}")
-        # print(f"timestep_scale: {timestep_scale}")
-        # breakpoint()
-        latent = initial_noise
-        include_eog = self.derive_include_end_of_generation_token(joint_attn_implementation)
 
-        # --- Denoising loop ---
-        print("Running generate_samples_from_batch …")
-        for timestep in tqdm(timesteps, desc="Denoising"):
-            velocity_pred = self.get_cfg_velocity(
-                latent,
-                timestep.reshape(1, 1),
-                guidance,
-                gen_data_clean,
-                sequence_plans,
-                cond_tokens,
-                uncond_tokens,
-                include_eog,
-                hidden_size,
-                latent_patch_size,
-                latent_channel,
-                patch_latent_dim,
-                timestep_scale,
-                use_moe,
-                device=device,
-                dtype=dtype,
-            )
-            latent = self.scheduler.step(
-                model_output=velocity_pred,
-                timestep=timestep,
-                sample=latent.unsqueeze(0),
-                return_dict=False,
-            )[0].squeeze(0)
+        # 6. Denoising loop
+        include_eog = self.derive_include_end_of_generation_token(
+            self.transformer.config.joint_attn_implementation
+        )
+        with self.progress_bar(total=len(timesteps)) as progress_bar:
+            for t in timesteps:
+                velocity_pred = self.get_cfg_velocity(
+                    latents,
+                    t.reshape(1, 1),
+                    guidance,
+                    gen_data_clean,
+                    sequence_plans,
+                    cond_tokens,
+                    uncond_tokens,
+                    include_eog,
+                    device=device,
+                    dtype=dtype,
+                )
+                latents = self.scheduler.step(
+                    model_output=velocity_pred,
+                    timestep=t,
+                    sample=latents.unsqueeze(0),
+                    return_dict=False,
+                )[0].squeeze(0)
+                progress_bar.update()
 
-        # --- Extract vision results ---
-        num_vision_items = gen_data_clean.num_vision_items_per_sample
-        n_vis = num_vision_items[0] if num_vision_items is not None else 1
-        result_vision: list[torch.Tensor] = []
-        offset = 0
-        for j in range(n_vis):
-            vision_shape = gen_data_clean.x0_tokens_vision[j].shape
-            vision_dim = int(torch.prod(torch.tensor(vision_shape)))
-            if j == n_vis - 1:
-                result_vision.append(latent[offset : offset + vision_dim].reshape(vision_shape))
-            offset += vision_dim
+        # 7. Postprocess + decode
+        video, sound = self._postprocess_latents(latents, gen_data_clean, enable_sound, output_type)
 
-        # --- Extract and decode sound result ---
-        result_sound: Optional[list] = None
-        if enable_sound and gen_data_clean.x0_tokens_sound is not None:
-            sound_shape = gen_data_clean.x0_tokens_sound[0].shape  # [sound_dim, T_sound]
-            sound_dim_flat = int(torch.prod(torch.tensor(sound_shape)))
-            sound_latent = latent[offset : offset + sound_dim_flat].reshape(sound_shape)
-            result_sound = [self.decode_sound(sound_latent)]
+        self.maybe_free_model_hooks()
 
-        if output_type == "latent":
-            return Cosmos3OmniPipelineOutput(video=result_vision, sound=result_sound)
-
-        frames = self.decode_latents(result_vision)
-        return Cosmos3OmniPipelineOutput(video=frames, sound=result_sound)
+        if not return_dict:
+            return (video, sound)
+        return Cosmos3OmniPipelineOutput(video=video, sound=sound)
