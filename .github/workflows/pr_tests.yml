@@ -1,4 +1,8 @@
-name: Fast tests for PRs
+name: Fast tests for PRs (always-on extras)
+
+# Quality, repo-consistency, and the fetcher-driven matrix live in `pr_test_fetcher.yml`.
+# This workflow holds always-on jobs that should run on every PR regardless of fetcher selection:
+# staging hub tests and the LoRA-with-PEFT-main suite.
 
 on:
   pull_request:
@@ -31,137 +35,7 @@ env:
   PYTEST_TIMEOUT: 60
 
 jobs:
-  check_code_quality:
-    runs-on: ubuntu-22.04
-    steps:
-      - uses: actions/checkout@v6
-      - name: Set up Python
-        uses: actions/setup-python@v6
-        with:
-          python-version: "3.10"
-      - name: Install dependencies
-        run: |
-          pip install --upgrade pip
-          pip install .[quality]
-      - name: Check quality
-        run: make quality
-      - name: Check if failure
-        if: ${{ failure() }}
-        run: |
-          echo "Quality check failed. Please ensure the right dependency versions are installed with 'pip install -e .[quality]' and run 'make style && make quality'" >> $GITHUB_STEP_SUMMARY
-
-  check_repository_consistency:
-    needs: check_code_quality
-    runs-on: ubuntu-22.04
-    steps:
-      - uses: actions/checkout@v6
-      - name: Set up Python
-        uses: actions/setup-python@v6
-        with:
-          python-version: "3.10"
-      - name: Install dependencies
-        run: |
-          pip install --upgrade pip
-          pip install .[quality]
-      - name: Check repo consistency
-        run: |
-          python utils/check_copies.py
-          python utils/check_dummies.py
-          python utils/check_support_list.py
-          make deps_table_check_updated
-      - name: Check if failure
-        if: ${{ failure() }}
-        run: |
-          echo "Repo consistency check failed. Please ensure the right dependency versions are installed with 'pip install -e .[quality]' and run 'make fix-copies'" >> $GITHUB_STEP_SUMMARY
-
-  run_fast_tests:
-    needs: [check_code_quality, check_repository_consistency]
-    strategy:
-      fail-fast: false
-      matrix:
-        config:
-          - name: Fast PyTorch Pipeline CPU tests
-            framework: pytorch_pipelines
-            runner: aws-highmemory-32-plus
-            image: diffusers/diffusers-pytorch-cpu
-            report: torch_cpu_pipelines
-          - name: Fast PyTorch Models & Schedulers CPU tests
-            framework: pytorch_models
-            runner: aws-general-8-plus
-            image: diffusers/diffusers-pytorch-cpu
-            report: torch_cpu_models_schedulers
-          - name: PyTorch Example CPU tests
-            framework: pytorch_examples
-            runner: aws-general-8-plus
-            image: diffusers/diffusers-pytorch-cpu
-            report: torch_example_cpu
-    name: ${{ matrix.config.name }}
-
-    runs-on:
-      group: ${{ matrix.config.runner }}
-
-    container:
-      image: ${{ matrix.config.image }}
-      options: --shm-size "16gb" --ipc host -v /mnt/hf_cache:/mnt/cache/
-
-    defaults:
-      run:
-        shell: bash
-
-    steps:
-    - name: Checkout diffusers
-      uses: actions/checkout@v6
-      with:
-        fetch-depth: 2
-
-    - name: Install dependencies
-      run: |
-        uv pip install -e ".[quality]"
-        uv pip uninstall transformers huggingface_hub && uv pip install --prerelease allow -U transformers@git+https://github.com/huggingface/transformers.git
-        uv pip uninstall tokenizers && uv pip install "tokenizers<=0.23.0"
-        uv pip uninstall accelerate && uv pip install -U accelerate@git+https://github.com/huggingface/accelerate.git --no-deps
-
-    - name: Environment
-      run: |
-        python utils/print_env.py
-
-    - name: Run fast PyTorch Pipeline CPU tests
-      if: ${{ matrix.config.framework == 'pytorch_pipelines' }}
-      run: |
-        pytest -n 8 --max-worker-restart=0 --dist=loadfile \
-          -k "not Flax and not Onnx" \
-          --make-reports=tests_${{ matrix.config.report }} \
-          tests/pipelines
-
-    - name: Run fast PyTorch Model Scheduler CPU tests
-      if: ${{ matrix.config.framework == 'pytorch_models' }}
-      run: |
-        pytest -n 4 --max-worker-restart=0 --dist=loadfile \
-          -k "not Flax and not Onnx and not Dependency" \
-          --make-reports=tests_${{ matrix.config.report }} \
-          tests/models tests/schedulers tests/others
-
-    - name: Run example PyTorch CPU tests
-      if: ${{ matrix.config.framework == 'pytorch_examples' }}
-      run: |
-        uv pip install ".[training]"
-        pytest -n 4 --max-worker-restart=0 --dist=loadfile \
-          --make-reports=tests_${{ matrix.config.report }} \
-          examples
-
-    - name: Failure short reports
-      if: ${{ failure() }}
-      run: cat reports/tests_${{ matrix.config.report }}_failures_short.txt
-
-    - name: Test suite reports artifacts
-      if: ${{ always() }}
-      uses: actions/upload-artifact@v6
-      with:
-        name: pr_${{ matrix.config.framework }}_${{ matrix.config.report }}_test_reports
-        path: reports
-
   run_staging_tests:
-    needs: [check_code_quality, check_repository_consistency]
     strategy:
       fail-fast: false
       matrix:
@@ -219,8 +93,6 @@ jobs:
         path: reports
 
   run_lora_tests:
-    needs: [check_code_quality, check_repository_consistency]
-
     name: LoRA tests with PEFT main
 
     runs-on:
@@ -277,4 +149,3 @@ jobs:
       with:
         name: pr_lora_test_reports
         path: reports
-

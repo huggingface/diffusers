@@ -58,7 +58,7 @@ from ..models.autoencoders.vae import (
     get_autoencoder_tiny_config,
     get_consistency_vae_config,
 )
-from ..models.transformers.test_models_transformer_flux import create_flux_ip_adapter_state_dict
+from ..models.transformers.utils import create_flux_ip_adapter_state_dict
 from ..models.unets.test_models_unet_2d_condition import (
     create_ip_adapter_faceid_state_dict,
     create_ip_adapter_state_dict,

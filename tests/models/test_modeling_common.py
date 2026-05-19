@@ -39,7 +39,7 @@ from huggingface_hub import ModelCard, delete_repo, snapshot_download, try_to_lo
 from huggingface_hub.utils import HfHubHTTPError, is_jinja_available
 from parameterized import parameterized
 
-from diffusers.models import FluxTransformer2DModel, SD3Transformer2DModel, UNet2DConditionModel
+from diffusers.models import UNet2DConditionModel
 from diffusers.models.attention_processor import (
     AttnProcessor,
     AttnProcessor2_0,
@@ -296,6 +296,8 @@ class ModelUtilsTest(unittest.TestCase):
                 assert False, "Parameters not the same!"
 
     def test_local_files_only_with_sharded_checkpoint(self):
+        from diffusers.models import FluxTransformer2DModel
+
         repo_id = "hf-internal-testing/tiny-flux-sharded"
         error_response = mock.Mock(
             status_code=500,
@@ -408,6 +410,8 @@ class ModelUtilsTest(unittest.TestCase):
         A simple tests to check if the modules under `_keep_in_fp32_modules` are kept in fp32 when we load the model in fp16/bf16
         Also ensures if inference works.
         """
+        from diffusers.models import SD3Transformer2DModel
+
         fp32_modules = SD3Transformer2DModel._keep_in_fp32_modules
 
         for torch_dtype in [torch.bfloat16, torch.float16]:
