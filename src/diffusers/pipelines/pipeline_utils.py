@@ -795,15 +795,6 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 f"Passed `torch_dtype` {torch_dtype} is not a `torch.dtype`. Defaulting to `torch.float32`."
             )
 
-        if low_cpu_mem_usage and not is_accelerate_available():
-            low_cpu_mem_usage = False
-            logger.warning(
-                "Cannot initialize model with low cpu memory usage because `accelerate` was not found in the"
-                " environment. Defaulting to `low_cpu_mem_usage=False`. It is strongly recommended to install"
-                " `accelerate` for faster and less memory-intense model loading. You can do so with: \n```\npip"
-                " install accelerate\n```\n."
-            )
-
         if quantization_config is not None and not isinstance(quantization_config, PipelineQuantizationConfig):
             raise ValueError("`quantization_config` must be an instance of `PipelineQuantizationConfig`.")
 
@@ -817,11 +808,6 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             raise NotImplementedError(
                 "Loading and dispatching requires torch >= 1.9.0. Please either update your PyTorch version or set"
                 " `device_map=None`."
-            )
-
-        if device_map is not None and not is_accelerate_available():
-            raise NotImplementedError(
-                "Using `device_map` requires the `accelerate` library. Please install it using: `pip install accelerate`."
             )
 
         if device_map is not None and not isinstance(device_map, str):

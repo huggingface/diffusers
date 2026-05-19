@@ -1032,21 +1032,6 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             use_safetensors = True
             allow_pickle = True
 
-        if low_cpu_mem_usage and not is_accelerate_available():
-            low_cpu_mem_usage = False
-            logger.warning(
-                "Cannot initialize model with low cpu memory usage because `accelerate` was not found in the"
-                " environment. Defaulting to `low_cpu_mem_usage=False`. It is strongly recommended to install"
-                " `accelerate` for faster and less memory-intense model loading. You can do so with: \n```\npip"
-                " install accelerate\n```\n."
-            )
-
-        if device_map is not None and not is_accelerate_available():
-            raise NotImplementedError(
-                "Loading and dispatching requires `accelerate`. Please make sure to install accelerate or set"
-                " `device_map=None`. You can install accelerate with `pip install accelerate`."
-            )
-
         # Check if we can handle device_map and dispatching the weights
         if device_map is not None and not is_torch_version(">=", "1.9.0"):
             raise NotImplementedError(

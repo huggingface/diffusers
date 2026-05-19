@@ -96,7 +96,7 @@ from setuptools import Command, find_packages, setup
 # 2. once modified, run: `make deps_table_update` to update src/diffusers/dependency_versions_table.py
 _deps = [
     "Pillow",  # keep the PIL.Image.Resampling deprecation away
-    "accelerate>=0.31.0",
+    "accelerate>=1.13.0",
     "datasets",
     "filelock",
     "flax>=0.4.1",
@@ -270,6 +270,7 @@ install_requires = [
     deps["requests"],
     deps["safetensors"],
     deps["Pillow"],
+    deps["accelerate"],
 ]
 
 version_range_max = max(sys.version_info[1], 10) + 1
