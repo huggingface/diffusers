@@ -1,17 +1,12 @@
-name: Fast tests for PRs - Test Fetcher
+name: Test Fetcher (manual dispatch only)
 
 on:
-  pull_request:
-    branches: [main]
-    types: [opened, synchronize, reopened, labeled, unlabeled]
-    paths:
-      - "src/diffusers/**.py"
-      - "tests/**.py"
-      - "utils/**.py"
-      - "setup.py"
-      - ".github/workflows/pr_test_fetcher.yml"
   workflow_dispatch:
     inputs:
+      pr_number:
+        description: "PR number to run the fetcher against (e.g. 13664). Leave empty to run against the branch this workflow was dispatched from."
+        type: string
+        default: ""
       force_full_suite:
         description: "Run the full test suite instead of fetcher selection"
         type: boolean
@@ -35,9 +30,11 @@ jobs:
   check_code_quality:
     runs-on: ubuntu-22.04
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          ref: ${{ inputs.pr_number && format('refs/pull/{0}/merge', inputs.pr_number) || '' }}
       - name: Set up Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
         with:
           python-version: "3.10"
       - name: Install dependencies
@@ -55,9 +52,11 @@ jobs:
     needs: check_code_quality
     runs-on: ubuntu-22.04
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          ref: ${{ inputs.pr_number && format('refs/pull/{0}/merge', inputs.pr_number) || '' }}
       - name: Set up Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
         with:
           python-version: "3.10"
       - name: Install dependencies
@@ -91,22 +90,20 @@ jobs:
       test_map: ${{ steps.set_matrix.outputs.test_map }}
     steps:
     - name: Checkout diffusers
-      uses: actions/checkout@v6
+      uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
       with:
+        ref: ${{ inputs.pr_number && format('refs/pull/{0}/merge', inputs.pr_number) || '' }}
         fetch-depth: 0
     - name: Install dependencies
       run: |
         uv pip install -e ".[quality]"
     - name: Environment
       run: |
-        python utils/print_env.py
+        diffusers-cli env
         echo $(git --version)
     - name: Fetch Tests
       env:
-        # Trigger full suite when:
-        #   - the PR has the `run-all-tests` label, or
-        #   - the workflow was dispatched with force_full_suite=true.
-        FORCE_FULL_SUITE: ${{ contains(github.event.pull_request.labels.*.name, 'run-all-tests') || (github.event_name == 'workflow_dispatch' && inputs.force_full_suite) }}
+        FORCE_FULL_SUITE: ${{ inputs.force_full_suite }}
       run: |
         if [ "$FORCE_FULL_SUITE" = "true" ]; then
           python utils/tests_fetcher.py --force_full_suite | tee test_preparation.txt
@@ -114,7 +111,7 @@ jobs:
           python utils/tests_fetcher.py | tee test_preparation.txt
         fi
     - name: Report fetched tests
-      uses: actions/upload-artifact@v6
+      uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
       with:
         name: test_fetched
         path: test_preparation.txt
@@ -152,11 +149,12 @@ jobs:
         shell: bash
     steps:
     - name: Checkout diffusers
-      uses: actions/checkout@v6
+      uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
       with:
+        ref: ${{ inputs.pr_number && format('refs/pull/{0}/merge', inputs.pr_number) || '' }}
         fetch-depth: 2
 
-    - name: Install dependencies
+    - name: Install Dependencies
       run: |
         uv pip install -e ".[quality]"
         uv pip uninstall transformers huggingface_hub && uv pip install --prerelease allow -U transformers@git+https://github.com/huggingface/transformers.git
@@ -165,7 +163,7 @@ jobs:
 
     - name: Environment
       run: |
-        python utils/print_env.py
+        diffusers-cli env
 
     - name: Run selected tests on CPU
       run: |
@@ -183,7 +181,7 @@ jobs:
 
     - name: Test suite reports artifacts
       if: ${{ always() }}
-      uses: actions/upload-artifact@v6
+      uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
       with:
         name: ${{ matrix.modules }}_cpu_test_reports
         path: reports
