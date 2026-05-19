@@ -12,146 +12,109 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import tempfile
-import unittest
-
 import torch
 
-from diffusers import AnyFlowFARTransformer3DModel, AnyFlowTransformer3DModel
-from diffusers.models.modeling_outputs import Transformer2DModelOutput
-from diffusers.models.transformers.transformer_anyflow import AnyFlowFARTransformerOutput
+from diffusers import AnyFlowTransformer3DModel
+from diffusers.utils.torch_utils import randn_tensor
 
-from ...testing_utils import enable_full_determinism
+from ...testing_utils import enable_full_determinism, torch_device
+from ..testing_utils import (
+    AttentionTesterMixin,
+    BaseModelTesterConfig,
+    MemoryTesterMixin,
+    ModelTesterMixin,
+    TorchCompileTesterMixin,
+    TrainingTesterMixin,
+)
 
-
-# Rotary embeddings auto-downcast to float32 on MPS / NPU (where complex128 is unavailable); CPU and CUDA
-# build them in float64 for numerical precision. Tests pin all tensors to CPU to keep CI green on any
-# backend.
 
 enable_full_determinism()
 
 
-def _bidi_init_kwargs(**overrides):
-    kwargs = {
-        "patch_size": (1, 2, 2),
-        "num_attention_heads": 2,
-        "attention_head_dim": 12,
-        "in_channels": 4,
-        "out_channels": 4,
-        "text_dim": 16,
-        "freq_dim": 256,
-        "ffn_dim": 32,
-        "num_layers": 2,
-        "cross_attn_norm": True,
-        "rope_max_seq_len": 32,
-        "gate_value": 0.25,
-        "deltatime_type": "r",
-    }
-    kwargs.update(overrides)
-    return kwargs
+class AnyFlowTransformer3DTesterConfig(BaseModelTesterConfig):
+    @property
+    def model_class(self):
+        return AnyFlowTransformer3DModel
+
+    @property
+    def output_shape(self) -> tuple[int, ...]:
+        return (1, 2, 4, 16, 16)
+
+    @property
+    def input_shape(self) -> tuple[int, ...]:
+        return (1, 2, 4, 16, 16)
+
+    @property
+    def main_input_name(self) -> str:
+        return "hidden_states"
+
+    @property
+    def generator(self):
+        return torch.Generator("cpu").manual_seed(0)
+
+    def get_init_dict(self) -> dict[str, int | list[int] | tuple | str | bool]:
+        return {
+            "patch_size": (1, 2, 2),
+            "num_attention_heads": 2,
+            "attention_head_dim": 12,
+            "in_channels": 4,
+            "out_channels": 4,
+            "text_dim": 16,
+            "freq_dim": 256,
+            "ffn_dim": 32,
+            "num_layers": 2,
+            "cross_attn_norm": True,
+            "rope_max_seq_len": 32,
+            "gate_value": 0.25,
+            "deltatime_type": "r",
+        }
+
+    def get_dummy_inputs(self) -> dict[str, torch.Tensor]:
+        batch_size = 1
+        num_frames = 2
+        num_channels = 4
+        height = 16
+        width = 16
+        text_seq_len = 12
+        text_dim = 16
+
+        return {
+            "hidden_states": randn_tensor(
+                (batch_size, num_frames, num_channels, height, width),
+                generator=self.generator,
+                device=torch_device,
+                dtype=self.torch_dtype,
+            ),
+            "timestep": torch.full((batch_size, num_frames), 500.0, device=torch_device, dtype=self.torch_dtype),
+            "r_timestep": torch.full((batch_size, num_frames), 250.0, device=torch_device, dtype=self.torch_dtype),
+            "encoder_hidden_states": randn_tensor(
+                (batch_size, text_seq_len, text_dim),
+                generator=self.generator,
+                device=torch_device,
+                dtype=self.torch_dtype,
+            ),
+        }
 
 
-def _far_init_kwargs(**overrides):
-    kwargs = _bidi_init_kwargs()
-    kwargs.update(compressed_patch_size=(1, 4, 4), full_chunk_limit=3)
-    kwargs.update(overrides)
-    return kwargs
+class TestAnyFlowTransformer3D(AnyFlowTransformer3DTesterConfig, ModelTesterMixin):
+    """Core model tests for AnyFlow Transformer 3D (bidirectional variant)."""
 
 
-def _bidi_inputs(batch_size=1, num_frames=2, height=16, width=16, text_seq_len=12, text_dim=16):
-    return {
-        "hidden_states": torch.randn(batch_size, num_frames, 4, height, width, device="cpu"),
-        "timestep": torch.full((batch_size, num_frames), 500.0, device="cpu"),
-        "r_timestep": torch.full((batch_size, num_frames), 250.0, device="cpu"),
-        "encoder_hidden_states": torch.randn(batch_size, text_seq_len, text_dim, device="cpu"),
-        "return_dict": True,
-    }
+class TestAnyFlowTransformer3DMemory(AnyFlowTransformer3DTesterConfig, MemoryTesterMixin):
+    """Memory optimization tests for AnyFlow Transformer 3D."""
 
 
-class AnyFlowTransformer3DModelTest(unittest.TestCase):
-    """Bidirectional flow-map transformer."""
+class TestAnyFlowTransformer3DTraining(AnyFlowTransformer3DTesterConfig, TrainingTesterMixin):
+    """Training tests for AnyFlow Transformer 3D."""
 
-    def test_construct(self):
-        m = AnyFlowTransformer3DModel(**_bidi_init_kwargs())
-        self.assertEqual(type(m.condition_embedder).__name__, "AnyFlowDualTimestepTextImageEmbedding")
-        self.assertFalse(hasattr(m, "far_patch_embedding"))
-
-    def test_forward_shape_preserved(self):
-        torch.manual_seed(0)
-        m = AnyFlowTransformer3DModel(**_bidi_init_kwargs()).to("cpu").eval()
-        inputs = _bidi_inputs()
-        with torch.no_grad():
-            out = m(**inputs)
-        self.assertIsInstance(out, Transformer2DModelOutput)
-        self.assertEqual(out.sample.shape, inputs["hidden_states"].shape)
-
-    def test_forward_return_dict_false(self):
-        torch.manual_seed(0)
-        m = AnyFlowTransformer3DModel(**_bidi_init_kwargs()).to("cpu").eval()
-        inputs = _bidi_inputs()
-        inputs["return_dict"] = False
-        with torch.no_grad():
-            out = m(**inputs)
-        self.assertIsInstance(out, tuple)
-        self.assertEqual(out[0].shape, inputs["hidden_states"].shape)
-
-    def test_forward_determinism(self):
-        torch.manual_seed(0)
-        m = AnyFlowTransformer3DModel(**_bidi_init_kwargs()).to("cpu").eval()
-        inputs_a = _bidi_inputs()
-        inputs_b = {k: v.clone() if torch.is_tensor(v) else v for k, v in inputs_a.items()}
-        with torch.no_grad():
-            out_a = m(**inputs_a).sample
-            out_b = m(**inputs_b).sample
-        torch.testing.assert_close(out_a, out_b)
-
-    def test_save_load_pretrained_roundtrip(self):
-        torch.manual_seed(0)
-        m = AnyFlowTransformer3DModel(**_bidi_init_kwargs())
-        with tempfile.TemporaryDirectory() as tmpdir:
-            m.save_pretrained(tmpdir)
-            m2 = AnyFlowTransformer3DModel.from_pretrained(tmpdir)
-        torch.testing.assert_close(
-            m.condition_embedder.delta_embedder.linear_1.weight,
-            m2.condition_embedder.delta_embedder.linear_1.weight,
-        )
-
-    def test_gradient_checkpointing_toggle(self):
-        m = AnyFlowTransformer3DModel(**_bidi_init_kwargs())
-        self.assertFalse(m.gradient_checkpointing)
-        m.enable_gradient_checkpointing()
-        self.assertTrue(m.gradient_checkpointing)
-        m.disable_gradient_checkpointing()
-        self.assertFalse(m.gradient_checkpointing)
+    def test_gradient_checkpointing_is_applied(self):
+        expected_set = {"AnyFlowTransformer3DModel"}
+        super().test_gradient_checkpointing_is_applied(expected_set=expected_set)
 
 
-class AnyFlowFARTransformer3DModelTest(unittest.TestCase):
-    """FAR causal flow-map transformer."""
+class TestAnyFlowTransformer3DAttention(AnyFlowTransformer3DTesterConfig, AttentionTesterMixin):
+    """Attention processor tests for AnyFlow Transformer 3D."""
 
-    def test_construct(self):
-        m = AnyFlowFARTransformer3DModel(**_far_init_kwargs())
-        self.assertEqual(type(m.condition_embedder).__name__, "AnyFlowDualTimestepTextImageEmbedding")
-        self.assertTrue(hasattr(m, "far_patch_embedding"))
 
-    def test_save_load_pretrained_roundtrip(self):
-        torch.manual_seed(0)
-        m = AnyFlowFARTransformer3DModel(**_far_init_kwargs())
-        with tempfile.TemporaryDirectory() as tmpdir:
-            m.save_pretrained(tmpdir)
-            m2 = AnyFlowFARTransformer3DModel.from_pretrained(tmpdir)
-        self.assertTrue(hasattr(m2, "far_patch_embedding"))
-        torch.testing.assert_close(m.far_patch_embedding.weight, m2.far_patch_embedding.weight)
-
-    def test_output_dataclass_exposed(self):
-        # AnyFlowFARTransformerOutput must be importable for downstream type-checking and
-        # for the autodoc page.
-        self.assertTrue(hasattr(AnyFlowFARTransformerOutput, "sample"))
-        self.assertTrue(hasattr(AnyFlowFARTransformerOutput, "kv_cache"))
-
-    def test_gradient_checkpointing_toggle(self):
-        m = AnyFlowFARTransformer3DModel(**_far_init_kwargs())
-        self.assertFalse(m.gradient_checkpointing)
-        m.enable_gradient_checkpointing()
-        self.assertTrue(m.gradient_checkpointing)
-        m.disable_gradient_checkpointing()
-        self.assertFalse(m.gradient_checkpointing)
+class TestAnyFlowTransformer3DCompile(AnyFlowTransformer3DTesterConfig, TorchCompileTesterMixin):
+    """Torch compile tests for AnyFlow Transformer 3D."""
