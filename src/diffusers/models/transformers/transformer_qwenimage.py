@@ -877,7 +877,6 @@ class QwenImageTransformer2DModel(
             `tuple` where the first element is the sample tensor.
         """
         hidden_states = self.img_in(hidden_states)
-
         timestep = timestep.to(hidden_states.dtype)
 
         if self.zero_cond_t:

@@ -326,8 +326,9 @@ class ModelMetadata:
         _supports_group_offloading: Whether the model supports group offloading.
         _repeated_blocks: List of module class names that repeat throughout the model,
             useful for optimization and pattern analysis.
-        _cp_plan: Context parallel configuration plan defining how to split model
-            components for context parallelism across devices.
+        _cp_plan: Context parallel sharding plan. Maps model input/output tensor names to
+            ``ContextParallelInput`` / ``ContextParallelOutput`` declarations. Universal —
+            applies to any tensor-sharding work, not attention-specific.
         _keys_to_ignore_on_load_unexpected: List of keys to ignore when loading
             unexpected keys from a checkpoint.
         _lora: Per-model LoRA loading metadata. See :class:`LoRAMetadata`.
@@ -415,7 +416,6 @@ class ModelMixin(torch.nn.Module, ConfigMixin, LoRAModelMixin, WeightMappingMixi
     _skip_layerwise_casting_patterns = None
     _supports_group_offloading = True
     _repeated_blocks = []
-    _parallel_config = None
     _cp_plan = None
     _skip_keys = None
 
@@ -2077,7 +2077,6 @@ class ModelMixin(torch.nn.Module, ConfigMixin, LoRAModelMixin, WeightMappingMixi
             )
 
         config.setup(rank, world_size, device, mesh=mesh)
-        self._parallel_config = config
 
         for module in self.modules():
             if not isinstance(module, attention_classes):
