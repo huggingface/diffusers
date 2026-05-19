@@ -99,7 +99,7 @@ pipe = DiffusionPipeline.from_pretrained(
     device_map="cuda",
 )
 
-pipe.transformer = torch.compile(pipe.transformer, mode="max-autotune", fullgraph=True)
+pipe.transformer = torch.compile(pipe.transformer, mode="default", fullgraph=False)
 ```
 
 ## Backends
