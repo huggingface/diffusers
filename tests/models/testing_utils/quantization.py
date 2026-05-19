@@ -410,7 +410,9 @@ class QuantizationTesterMixin:
         # Step 3: run forward and backward pass
         inputs = self.get_dummy_inputs()
 
-        with torch.amp.autocast(torch_device, dtype=torch.float16):
+        # Use bfloat16 on XPU to avoid gradient underflow with quantized layers
+        autocast_dtype = torch.bfloat16 if torch_device == "xpu" else torch.float16
+        with torch.amp.autocast(torch_device, dtype=autocast_dtype):
             out = model(**inputs, return_dict=False)[0]
             out.norm().backward()
 
@@ -808,6 +810,10 @@ class TorchAoConfigMixin:
     @staticmethod
     def _get_quant_config(config_name):
         config_cls = getattr(_torchao_quantization, config_name)
+        # TorchAO int4 quantization requires plain_int32 packing format on Intel XPU
+        if config_name == "Int4WeightOnlyConfig" and torch_device == "xpu":
+            return TorchAoConfig(config_cls(int4_packing_format="plain_int32"))
+
         return TorchAoConfig(config_cls())
 
     def _create_quantized_model(self, config_name, **extra_kwargs):
@@ -819,11 +825,18 @@ class TorchAoConfigMixin:
         return self.model_class.from_pretrained(self.pretrained_model_name_or_path, **kwargs)
 
     def _verify_if_layer_quantized(self, name, module, config_kwargs):
+        from torchao.utils import TorchAOBaseTensor
+
         assert isinstance(module, torch.nn.Linear), f"Layer {name} is not Linear, got {type(module)}"
+        assert isinstance(module.weight, TorchAOBaseTensor), (
+            f"Layer {name} weight is {type(module.weight)}, expected TorchAOBaseTensor"
+        )
 
 
-# int4wo requires CUDA-specific ops (_convert_weight_to_int4pack)
-_int4wo_skip = pytest.mark.skipif(torch_device != "cuda", reason="int4wo quantization requires CUDA")
+# int4wo requires CUDA or XPU ops (_convert_weight_to_int4pack)
+_int4wo_skip = pytest.mark.skipif(
+    torch_device not in ["cuda", "xpu"], reason="int4wo quantization requires CUDA or XPU"
+)
 
 
 @is_torchao
@@ -1184,7 +1197,7 @@ class QuantizationCompileTesterMixin:
         model.to(torch_device)
         model.eval()
 
-        model = torch.compile(model, fullgraph=fullgraph)
+        model.compile(fullgraph=True)
 
         with torch._dynamo.config.patch(error_on_recompile=error_on_recompile):
             inputs = self.get_dummy_inputs()
@@ -1216,7 +1229,7 @@ class QuantizationCompileTesterMixin:
             "use_stream": use_stream,
         }
         model.enable_group_offload(**group_offload_kwargs)
-        model = torch.compile(model)
+        model.compile()
 
         inputs = self.get_dummy_inputs()
         output = model(**inputs, return_dict=False)[0]
