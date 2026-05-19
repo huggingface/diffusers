@@ -15,6 +15,7 @@ import argparse
 import contextlib
 import json
 import pathlib
+import re
 
 import torch
 from cosmos3.common.init import init_script
@@ -29,6 +30,7 @@ from projects.cosmos3.vfm.models.omni_mot_model import OmniMoTModel  # noqa: E40
 from transformers import AutoTokenizer  # noqa: E402
 
 from diffusers import AutoencoderKLWan, UniPCMultistepScheduler  # noqa: E402
+from diffusers.models.autoencoders.autoencoder_cosmos3_audio import Cosmos3AVAEAudioTokenizer  # noqa: E402
 from diffusers.models.transformers.transformer_cosmos3 import Cosmos3OmniTransformer  # noqa: E402
 from diffusers.pipelines.cosmos.pipeline_cosmos3_omni import Cosmos3OmniDiffusersPipeline  # noqa: E402
 
@@ -41,12 +43,6 @@ DEFAULT_SOUND_TOKENIZER_CONFIG = {
     "dec_strides": [2, 4, 5, 6, 8],
     "dec_out_channels": 2,
 }
-
-SOUND_TOKENIZER_MODEL_INDEX_ENTRY = [
-    "diffusers",
-    "Cosmos3AVAEAudioTokenizer",
-]
-
 
 def _get_config_value(*configs, name, default=None):
     for config in configs:
@@ -98,122 +94,166 @@ def _load_sound_tokenizer_config(config_path: pathlib.Path | None, fallback_conf
         return json.load(f)
 
 
-def _remap_avae_state_dict(state_dict: dict[str, torch.Tensor]) -> dict[str, torch.Tensor]:
-    """Convert flat Cosmos3 AVAE ``decoder.layers.N.*`` keys to diffusers ``OobleckDecoder``
-    named-attribute keys and fix Snake1d parameter shapes.
-
-    This is the canonical transformation that must be applied at conversion time so that
-    ``Cosmos3AVAEAudioTokenizer.from_pretrained`` can load the weights with no remapping.
-    Only ``decoder.*`` keys are kept; encoder and bottleneck keys are discarded.
-    """
-    import re
-
-    _RES_SUB = {0: "snake1", 1: "conv1", 2: "snake2", 3: "conv2"}
-
-    def _remap_key(key: str) -> str | None:
-        if not key.startswith("decoder."):
-            return None  # drop encoder / bottleneck
-        if not key.startswith("decoder.layers."):
-            return key  # already in good shape
-
-        suffix = key[len("decoder.") :]
-
-        m = re.fullmatch(r"layers\.0\.(.+)", suffix)
-        if m:
-            return f"decoder.conv1.{m.group(1)}"
-
-        m = re.fullmatch(r"layers\.6\.(.+)", suffix)
-        if m:
-            return f"decoder.snake1.{m.group(1)}"
-
-        m = re.fullmatch(r"layers\.7\.(.+)", suffix)
-        if m:
-            return f"decoder.conv2.{m.group(1)}"
-
-        m = re.fullmatch(r"layers\.(\d+)\.layers\.(\d+)\.(.+)", suffix)
-        if m:
-            block_n, sub_m, rest = int(m.group(1)), int(m.group(2)), m.group(3)
-            bi = block_n - 1
-            if sub_m == 0:
-                return f"decoder.block.{bi}.snake1.{rest}"
-            if sub_m == 1:
-                return f"decoder.block.{bi}.conv_t1.{rest}"
-            res_name = f"res_unit{sub_m - 1}"
-            mm = re.fullmatch(r"layers\.(\d+)\.(.+)", rest)
-            if mm:
-                sub_k, sub_rest = int(mm.group(1)), mm.group(2)
-                sub_name = _RES_SUB.get(sub_k, str(sub_k))
-                return f"decoder.block.{bi}.{res_name}.{sub_name}.{sub_rest}"
-
-        return key
-
-    remapped: dict[str, torch.Tensor] = {}
-    for key, val in state_dict.items():
-        new_key = _remap_key(key)
-        if new_key is None:
-            continue
-        # Snake1d stores alpha/beta as [C] in source checkpoints; OobleckDecoder expects [1, C, 1].
-        if (new_key.endswith(".alpha") or new_key.endswith(".beta")) and val.ndim == 1:
-            val = val.unsqueeze(0).unsqueeze(-1)
-        remapped[new_key] = val
-    return remapped
+_SOUND_TOKENIZER_PER_KEY_PREFIXES = ("module.", "generator.", "model.", "state_dict.")
+_SOUND_TOKENIZER_RES_UNIT_INNER_NAMES = {0: "snake1", 1: "conv1", 2: "snake2", 3: "conv2"}
 
 
-def _save_sound_tokenizer(
-    output_dir: pathlib.Path,
-    checkpoint_path: pathlib.Path,
-    config_path: pathlib.Path | None,
-) -> None:
-    try:
-        from safetensors.torch import save_file
-    except ImportError as exc:
-        raise ImportError("Saving AVAE tokenizer weights requires safetensors.") from exc
-
-    sound_tokenizer_dir = output_dir / "sound_tokenizer"
-    sound_tokenizer_dir.mkdir(parents=True, exist_ok=True)
-
-    config = _load_sound_tokenizer_config(config_path, sound_tokenizer_dir / "config.json")
-    with open(sound_tokenizer_dir / "config.json", "w", encoding="utf-8") as f:
-        json.dump(config, f, indent=4)
-        f.write("\n")
-
-    print(f"Loading AVAE sound tokenizer weights from {checkpoint_path} …")
-    raw_state_dict = _load_sound_tokenizer_state_dict(checkpoint_path)
-
-    # Strip common DDP / training-framework prefixes (module., generator., model.).
-    _prefixes = ("module.", "generator.", "model.", "state_dict.")
+def _sound_tokenizer_strip_per_key_prefixes(state_dict: dict[str, torch.Tensor]) -> dict[str, torch.Tensor]:
+    out = dict(state_dict)
     changed = True
     while changed:
         changed = False
-        for prefix in _prefixes:
-            if any(k.startswith(prefix) for k in raw_state_dict):
-                raw_state_dict = {
-                    (k[len(prefix) :] if k.startswith(prefix) else k): v for k, v in raw_state_dict.items()
-                }
+        for prefix in _SOUND_TOKENIZER_PER_KEY_PREFIXES:
+            if any(key.startswith(prefix) for key in out):
+                out = {(key[len(prefix) :] if key.startswith(prefix) else key): value for key, value in out.items()}
                 changed = True
                 break
-        if any(k.startswith("decoder.") for k in raw_state_dict):
+        if any(key.startswith(("decoder.", "encoder.", "bottleneck.")) for key in out):
             break
+    return out
 
-    # Remap to diffusers OobleckDecoder key layout and drop encoder/bottleneck.
+
+def _sound_tokenizer_filter_decoder(state_dict: dict[str, torch.Tensor]) -> dict[str, torch.Tensor]:
+    return {key: value for key, value in state_dict.items() if key.startswith("decoder.")}
+
+
+def _sound_tokenizer_infer_num_blocks(state_dict: dict[str, torch.Tensor]) -> int:
+    block_indices: set[int] = set()
+    for key in state_dict:
+        match = re.match(r"decoder\.layers\.(\d+)\.layers\.\d+\.", key)
+        if match:
+            block_indices.add(int(match.group(1)))
+    return len(block_indices)
+
+
+def _sound_tokenizer_remap_flat_layout(state_dict: dict[str, torch.Tensor]) -> dict[str, torch.Tensor]:
+    """Convert legacy AVAE `decoder.layers.*` keys to OobleckDecoder attribute keys."""
+    if not any(re.match(r"decoder\.layers\.\d+\.", key) for key in state_dict):
+        return state_dict
+
+    num_blocks = _sound_tokenizer_infer_num_blocks(state_dict)
+    if num_blocks == 0:
+        raise RuntimeError(
+            "Detected flat `decoder.layers.*` layout but no decoder blocks were found; cannot remap."
+        )
+    snake1_idx = num_blocks + 1
+    conv2_idx = num_blocks + 2
+
+    def _remap(key: str) -> str:
+        match = re.fullmatch(r"decoder\.layers\.(\d+)\.layers\.(\d+)\.layers\.(\d+)\.(.+)", key)
+        if match:
+            block_n, res_n, inner_n, rest = (
+                int(match.group(1)),
+                int(match.group(2)),
+                int(match.group(3)),
+                match.group(4),
+            )
+            if res_n not in (2, 3, 4):
+                raise RuntimeError(f"Unexpected residual position {res_n} in {key!r}.")
+            inner_name = _SOUND_TOKENIZER_RES_UNIT_INNER_NAMES.get(inner_n)
+            if inner_name is None:
+                raise RuntimeError(f"Unexpected residual inner index {inner_n} in {key!r}.")
+            return f"decoder.block.{block_n - 1}.res_unit{res_n - 1}.{inner_name}.{rest}"
+
+        match = re.fullmatch(r"decoder\.layers\.(\d+)\.layers\.(\d+)\.(.+)", key)
+        if match:
+            block_n, sub_n, rest = int(match.group(1)), int(match.group(2)), match.group(3)
+            block_idx = block_n - 1
+            if sub_n == 0:
+                return f"decoder.block.{block_idx}.snake1.{rest}"
+            if sub_n == 1:
+                return f"decoder.block.{block_idx}.conv_t1.{rest}"
+            raise RuntimeError(f"Unexpected decoder block sub-index {sub_n} in {key!r}.")
+
+        match = re.fullmatch(r"decoder\.layers\.(\d+)\.(.+)", key)
+        if match:
+            layer_n, rest = int(match.group(1)), match.group(2)
+            if layer_n == 0:
+                return f"decoder.conv1.{rest}"
+            if layer_n == snake1_idx:
+                return f"decoder.snake1.{rest}"
+            if layer_n == conv2_idx:
+                return f"decoder.conv2.{rest}"
+            raise RuntimeError(
+                f"Unexpected decoder leaf layer index {layer_n} "
+                f"(expected 0, {snake1_idx}, or {conv2_idx}) in {key!r}."
+            )
+
+        return key
+
+    return {_remap(key): value for key, value in state_dict.items()}
+
+
+def _sound_tokenizer_reshape_snake_params(state_dict: dict[str, torch.Tensor]) -> dict[str, torch.Tensor]:
+    out: dict[str, torch.Tensor] = {}
+    for key, value in state_dict.items():
+        if (key.endswith(".alpha") or key.endswith(".beta")) and value.ndim == 1:
+            value = value.unsqueeze(0).unsqueeze(-1).contiguous()
+        out[key] = value
+    return out
+
+
+def _sound_tokenizer_reapply_weight_norm(state_dict: dict[str, torch.Tensor]) -> dict[str, torch.Tensor]:
+    """Reconstruct weight-norm parameters if the source checkpoint has folded conv weights."""
+    out = dict(state_dict)
+    candidate_keys = [
+        key
+        for key in state_dict
+        if key.endswith(".weight") and any(f".{layer}." in key for layer in ("conv1", "conv2", "conv_t1"))
+    ]
+    for key in candidate_keys:
+        stem = key[: -len(".weight")]
+        weight_g_key = f"{stem}.weight_g"
+        weight_v_key = f"{stem}.weight_v"
+        if weight_g_key in state_dict or weight_v_key in state_dict:
+            continue
+        weight = state_dict[key]
+        norm_dims = tuple(range(1, weight.ndim))
+        out.pop(key)
+        out[weight_g_key] = weight.norm(p=2, dim=norm_dims, keepdim=True).contiguous()
+        out[weight_v_key] = weight.contiguous()
+    return out
+
+
+def _remap_avae_state_dict(state_dict: dict[str, torch.Tensor]) -> dict[str, torch.Tensor]:
+    """Convert a legacy AVAE state dict into the Cosmos3AVAEAudioTokenizer state dict."""
+    state_dict = _sound_tokenizer_strip_per_key_prefixes(state_dict)
+    state_dict = _sound_tokenizer_filter_decoder(state_dict)
+    if not state_dict:
+        raise RuntimeError("Sound tokenizer state dict has no `decoder.*` keys after prefix stripping.")
+    state_dict = _sound_tokenizer_remap_flat_layout(state_dict)
+    state_dict = _sound_tokenizer_reshape_snake_params(state_dict)
+    state_dict = _sound_tokenizer_reapply_weight_norm(state_dict)
+    if any(re.match(r"decoder\.layers\.\d+", key) for key in state_dict):
+        raise RuntimeError("Flat `decoder.layers.*` keys remain after remap; conversion is incomplete.")
+    return state_dict
+
+
+def _build_sound_tokenizer(
+    checkpoint_path: pathlib.Path,
+    config_path: pathlib.Path | None,
+) -> Cosmos3AVAEAudioTokenizer:
+    config = _load_sound_tokenizer_config(config_path, fallback_config_path=pathlib.Path())
+    print(f"Loading AVAE sound tokenizer weights from {checkpoint_path} …")
+    raw_state_dict = _load_sound_tokenizer_state_dict(checkpoint_path)
     state_dict = _remap_avae_state_dict(raw_state_dict)
     print(f"  Remapped {len(raw_state_dict)} → {len(state_dict)} decoder keys.")
 
-    print(f"Saving AVAE sound tokenizer to {sound_tokenizer_dir} …")
-    # Use the diffusers-standard filename so from_pretrained works without overrides.
-    save_file(state_dict, str(sound_tokenizer_dir / "diffusion_pytorch_model.safetensors"), metadata={"format": "pt"})
-
-
-def _add_sound_tokenizer_to_model_index(output_dir: pathlib.Path) -> None:
-    model_index_path = output_dir / "model_index.json"
-    if not model_index_path.exists():
-        return
-    with open(model_index_path, encoding="utf-8") as f:
-        model_index = json.load(f)
-    model_index["sound_tokenizer"] = SOUND_TOKENIZER_MODEL_INDEX_ENTRY
-    with open(model_index_path, "w", encoding="utf-8") as f:
-        json.dump(model_index, f, indent=2)
-        f.write("\n")
+    sound_tokenizer = Cosmos3AVAEAudioTokenizer(
+        sampling_rate=config.get("sampling_rate", DEFAULT_SOUND_TOKENIZER_CONFIG["sampling_rate"]),
+        vocoder_input_dim=config.get("vocoder_input_dim", DEFAULT_SOUND_TOKENIZER_CONFIG["vocoder_input_dim"]),
+        dec_dim=config.get("dec_dim", DEFAULT_SOUND_TOKENIZER_CONFIG["dec_dim"]),
+        dec_c_mults=tuple(config.get("dec_c_mults", DEFAULT_SOUND_TOKENIZER_CONFIG["dec_c_mults"])),
+        dec_strides=tuple(config.get("dec_strides", DEFAULT_SOUND_TOKENIZER_CONFIG["dec_strides"])),
+        dec_out_channels=config.get("dec_out_channels", DEFAULT_SOUND_TOKENIZER_CONFIG["dec_out_channels"]),
+    )
+    load_result = sound_tokenizer.load_state_dict(state_dict, strict=True)
+    if load_result.missing_keys or load_result.unexpected_keys:
+        raise RuntimeError(
+            "Cosmos3 AVAE sound tokenizer load did not match strictly: "
+            f"missing={load_result.missing_keys}, unexpected={load_result.unexpected_keys}."
+        )
+    return sound_tokenizer
 
 
 @contextlib.contextmanager
@@ -437,6 +477,10 @@ def main():
         diffusers_vae = AutoencoderKLWan.from_pretrained(
             "Wan-AI/Wan2.2-TI2V-5B-Diffusers", subfolder="vae", torch_dtype=torch.bfloat16
         )
+        sound_tokenizer = None
+        if include_sound_tokenizer:
+            assert sound_tokenizer_path is not None
+            sound_tokenizer = _build_sound_tokenizer(sound_tokenizer_path, sound_tokenizer_config_path)
 
         # Karras schedule approximating FlowUniPCMultistepScheduler with shift=5, 35 steps.
         # Measured from that schedule: first flow-sigma=0.9998, last flow-sigma=0.1281.
@@ -457,12 +501,10 @@ def main():
             text_tokenizer=text_tokenizer,
             vae=diffusers_vae,
             scheduler=scheduler,
+            sound_tokenizer=sound_tokenizer,
         )
         print(f"Saving full pipeline to {output_dir} …")
         pipeline.save_pretrained(str(output_dir), safe_serialization=True, max_shard_size="5GB")
-        if include_sound_tokenizer:
-            _save_sound_tokenizer(output_dir, sound_tokenizer_path, sound_tokenizer_config_path)
-            _add_sound_tokenizer_to_model_index(output_dir)
     else:
         print(f"Saving transformer to {output_dir} …")
         transformer.save_pretrained(str(output_dir), safe_serialization=True, max_shard_size="5GB")
