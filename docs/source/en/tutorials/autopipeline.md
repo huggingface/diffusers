@@ -62,6 +62,6 @@ pipeline = AutoPipelineForImage2Image.from_pretrained(
 "ValueError: AutoPipeline can't find a pipeline linked to ShapEImg2ImgPipeline for None"
 ```
 
-There are three types of [AutoPipeline](../api/models/auto_model) classes, [`AutoPipelineForText2Image`], [`AutoPipelineForImage2Image`] and [`AutoPipelineForInpainting`]. Each of these classes have a predefined mapping, linking a pipeline to their task-specific subclass.
+There are four types of [AutoPipeline](../api/models/auto_model) classes, [`AutoPipelineForText2Image`], [`AutoPipelineForImage2Image`], [`AutoPipelineForInpainting`] and [`AutoPipelineForText2Audio`]. Each of these classes have a predefined mapping, linking a pipeline to their task-specific subclass.
 
 When [`~AutoPipelineForText2Image.from_pretrained`] is called, it extracts the class name from the `model_index.json` file and selects the appropriate pipeline subclass for the task based on the mapping.

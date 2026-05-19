@@ -20,6 +20,7 @@ from huggingface_hub.utils import validate_hf_hub_args
 from ..configuration_utils import ConfigMixin
 from ..models.controlnets import ControlNetUnionModel
 from ..utils import is_sentencepiece_available
+from .audioldm2 import AudioLDM2Pipeline
 from .aura_flow import AuraFlowPipeline
 from .chroma import ChromaPipeline
 from .cogview3 import CogView3PlusPipeline
@@ -75,6 +76,7 @@ from .kandinsky2_2 import (
 )
 from .kandinsky3 import Kandinsky3Img2ImgPipeline, Kandinsky3Pipeline
 from .latent_consistency_models import LatentConsistencyModelImg2ImgPipeline, LatentConsistencyModelPipeline
+from .longcat_audio_dit import LongCatAudioDiTPipeline
 from .lumina import LuminaPipeline
 from .lumina2 import Lumina2Pipeline
 from .nucleusmoe_image import NucleusMoEImagePipeline
@@ -109,6 +111,7 @@ from .qwenimage import (
     QwenImagePipeline,
 )
 from .sana import SanaPipeline
+from .stable_audio import StableAudioPipeline
 from .stable_cascade import StableCascadeCombinedPipeline, StableCascadeDecoderPipeline
 from .stable_diffusion import (
     StableDiffusionImg2ImgPipeline,
@@ -189,6 +192,14 @@ AUTO_TEXT2IMAGE_PIPELINES_MAPPING = OrderedDict(
         ("z-image-omni", ZImageOmniPipeline),
         ("ovis", OvisImagePipeline),
         ("prx", PRXPipeline),
+    ]
+)
+
+AUTO_TEXT2AUDIO_PIPELINES_MAPPING = OrderedDict(
+    [
+        ("audioldm2", AudioLDM2Pipeline),
+        ("stable-audio", StableAudioPipeline),
+        ("longcat-audio-dit", LongCatAudioDiTPipeline),
     ]
 )
 
@@ -301,6 +312,7 @@ SUPPORTED_TASKS_MAPPINGS = [
     AUTO_TEXT2VIDEO_PIPELINES_MAPPING,
     AUTO_IMAGE2VIDEO_PIPELINES_MAPPING,
     AUTO_VIDEO2VIDEO_PIPELINES_MAPPING,
+    AUTO_TEXT2AUDIO_PIPELINES_MAPPING,
     _AUTO_TEXT2IMAGE_DECODER_PIPELINES_MAPPING,
     _AUTO_IMAGE2IMAGE_DECODER_PIPELINES_MAPPING,
     _AUTO_INPAINT_DECODER_PIPELINES_MAPPING,
@@ -847,7 +859,6 @@ class AutoPipelineForImage2Image(ConfigMixin):
 
         original_config = dict(pipeline.config)
         original_cls_name = pipeline.__class__.__name__
-
         # derive the pipeline class to instantiate
         image_2_image_cls = _get_task_class(AUTO_IMAGE2IMAGE_PIPELINES_MAPPING, original_cls_name)
 
@@ -1231,6 +1242,260 @@ class AutoPipelineForInpainting(ConfigMixin):
             )
 
         model = inpainting_cls(**inpainting_kwargs)
+        model.register_to_config(_name_or_path=pretrained_model_name_or_path)
+        model.register_to_config(**unused_original_config)
+
+        return model
+
+class AutoPipelineForText2Audio(ConfigMixin):
+    r"""
+
+    [`AutoPipelineForText2Audio`] is a generic pipeline class that instantiates a text-to-audio pipeline class. The
+    specific underlying pipeline class is automatically selected from either the
+    [`~AutoPipelineForText2Audio.from_pretrained`] or [`~AutoPipelineForText2Audio.from_pipe`] methods.
+
+    This class cannot be instantiated using `__init__()` (throws an error).
+
+    Class attributes:
+
+        - **config_name** (`str`) -- The configuration filename that stores the class and module names of all the
+          diffusion pipeline's components.
+
+    """
+
+    config_name = "model_index.json"
+
+    def __init__(self, *args, **kwargs):
+        raise EnvironmentError(
+            f"{self.__class__.__name__} is designed to be instantiated "
+            f"using the `{self.__class__.__name__}.from_pretrained(pretrained_model_name_or_path)` or "
+            f"`{self.__class__.__name__}.from_pipe(pipeline)` methods."
+        )
+
+    @classmethod
+    @validate_hf_hub_args
+    def from_pretrained(cls, pretrained_model_or_path, **kwargs):
+        r"""
+        Instantiates a text-to-audio Pytorch diffusion pipeline from pretrained pipeline weight.
+
+        The from_pretrained() method takes care of returning the correct pipeline class instance by:
+            1. Detect the pipeline class of the pretrained_model_or_path based on the _class_name property of its
+               config object
+            2. Find the text-to-audio pipeline linked to the pipeline class using pattern matching on pipeline class
+               name.
+
+        The pipeline is set in evaluation mode (`model.eval()`) by default.
+
+        Parameters:
+            pretrained_model_or_path (`str` or `os.PathLike`, *optional*):
+                Can be either:
+
+                    - A string, the *repo id* (for example `stabilityai/stable-audio-open-1.0`) of a pretrained pipeline
+                      hosted on the Hub.
+                    - A path to a *directory* (for example `./my_pipeline_directory/`) containing pipeline weights
+                      saved using
+                    [`~DiffusionPipeline.save_pretrained`].
+            torch_dtype (`torch.dtype`, *optional*):
+                Override the default `torch.dtype` and load the model with another dtype.
+            force_download (`bool`, *optional*, defaults to `False`):
+                Whether or not to force the (re-)download of the model weights and configuration files, overriding the
+                cached versions if they exist.
+            cache_dir (`str | os.PathLike`, *optional*):
+                Path to a directory where a downloaded pretrained model configuration is cached if the standard cache
+                is not used.
+
+            proxies (`dict[str, str]`, *optional*):
+                A dictionary of proxy servers to use by protocol or endpoint, for example, `{'http': 'foo.bar:3128',
+                'http://hostname': 'foo.bar:4012'}`. The proxies are used on each request.
+            output_loading_info(`bool`, *optional*, defaults to `False`):
+                Whether or not to also return a dictionary containing missing keys, unexpected keys and error messages.
+            local_files_only (`bool`, *optional*, defaults to `False`):
+                Whether to only load local model weights and configuration files or not. If set to `True`, the model
+                won't be downloaded from the Hub.
+            token (`str` or *bool*, *optional*):
+                The token to use as HTTP bearer authorization for remote files. If `True`, the token generated from
+                `diffusers-cli login` (stored in `~/.huggingface`) is used.
+            revision (`str`, *optional*, defaults to `"main"`):
+                The specific model version to use. It can be a branch name, a tag name, a commit id, or any identifier
+                allowed by Git.
+            custom_revision (`str`, *optional*, defaults to `"main"`):
+                The specific model version to use. It can be a branch name, a tag name, or a commit id similar to
+                `revision` when loading a custom pipeline from the Hub. It can be a 🤗 Diffusers version when loading a
+                custom pipeline from GitHub, otherwise it defaults to `"main"` when loading from the Hub.
+            mirror (`str`, *optional*):
+                Mirror source to resolve accessibility issues if you're downloading a model in China. We do not
+                guarantee the timeliness or safety of the source, and you should refer to the mirror site for more
+                information.
+            device_map (`str` or `dict[str, int | str | torch.device]`, *optional*):
+                A map that specifies where each submodule should go. It doesn't need to be defined for each
+                parameter/buffer name; once a given module name is inside, every submodule of it will be sent to the
+                same device.
+
+                Set `device_map="auto"` to have 🤗 Accelerate automatically compute the most optimized `device_map`. For
+                more information about each option see [designing a device
+                map](https://hf.co/docs/accelerate/main/en/usage_guides/big_modeling#designing-a-device-map).
+            max_memory (`Dict`, *optional*):
+                A dictionary device identifier for the maximum memory. Will default to the maximum memory available for
+                each GPU and the available CPU RAM if unset.
+            offload_folder (`str` or `os.PathLike`, *optional*):
+                The path to offload weights if device_map contains the value `"disk"`.
+            offload_state_dict (`bool`, *optional*):
+                If `True`, temporarily offloads the CPU state dict to the hard drive to avoid running out of CPU RAM if
+                the weight of the CPU state dict + the biggest shard of the checkpoint does not fit. Defaults to `True`
+                when there is some disk offload.
+            low_cpu_mem_usage (`bool`, *optional*, defaults to `True` if torch version >= 1.9.0 else `False`):
+                Speed up model loading only loading the pretrained weights and not initializing the weights. This also
+                tries to not use more than 1x model size in CPU memory (including peak memory) while loading the model.
+                Only supported for PyTorch >= 1.9.0. If you are using an older version of PyTorch, setting this
+                argument to `True` will raise an error.
+            use_safetensors (`bool`, *optional*, defaults to `None`):
+                If set to `None`, the safetensors weights are downloaded if they're available **and** if the
+                safetensors library is installed. If set to `True`, the model is forcibly loaded from safetensors
+                weights. If set to `False`, safetensors weights are not loaded.
+            kwargs (remaining dictionary of keyword arguments, *optional*):
+                Can be used to overwrite load and saveable variables (the pipeline components of the specific pipeline
+                class). The overwritten components are passed directly to the pipelines `__init__` method. See example
+                below for more information.
+            variant (`str`, *optional*):
+                Load weights from a specified variant filename such as `"fp16"` or `"ema"`. This is ignored when
+                loading `from_flax`.
+
+        > [!TIP] > To use private or [gated](https://huggingface.co/docs/hub/models-gated#gated-models) models, log-in
+        with `hf > auth login`.
+
+        Examples:
+
+        ```py
+        >>> import torch
+        >>> import soundfile as sf
+        >>> from diffusers import AutoPipelineForText2Audio
+
+        >>> pipeline = AutoPipelineForText2Audio.from_pretrained(
+        ...     "stabilityai/stable-audio-open-1.0",
+        ...     torch_dtype=torch.float16
+        ... )
+        >>> pipeline = pipeline.to("cuda")
+
+        >>> output = pipeline(
+        ...     "Generate a male voice reading a paragraph",
+        ...     num_inference_steps=200,
+        ...     audio_end_in_s=10.0,
+        ... )
+        >>> audio = output.audios[0].T.float().cpu().numpy()
+        >>> sf.write("audio.wav", audio, pipeline.vae.sampling_rate)
+        ```
+        """
+        cache_dir = kwargs.pop("cache_dir", None)
+        force_download = kwargs.pop("force_download", False)
+        proxies = kwargs.pop("proxies", None)
+        token = kwargs.pop("token", None)
+        local_files_only = kwargs.pop("local_files_only", False)
+        revision = kwargs.pop("revision", None)
+
+        load_config_kwargs = {
+            "cache_dir": cache_dir,
+            "force_download": force_download,
+            "proxies": proxies,
+            "token": token,
+            "local_files_only": local_files_only,
+            "revision": revision,
+        }
+
+        config = cls.load_config(pretrained_model_or_path, **load_config_kwargs)
+        orig_class_name = config["_class_name"]
+
+        text_2_audio_cls = _get_task_class(AUTO_TEXT2AUDIO_PIPELINES_MAPPING, orig_class_name)
+
+        kwargs = {**load_config_kwargs, **kwargs}
+        return text_2_audio_cls.from_pretrained(pretrained_model_or_path, **kwargs)
+
+    @classmethod
+    def from_pipe(cls, pipeline, **kwargs):
+        r"""
+        Instantiates a text-to-audio Pytorch diffusion pipeline from another instantiated diffusion pipeline class.
+
+        The from_pipe() method takes care of returning the correct pipeline class instance by finding the text-to-audio
+        pipeline linked to the pipeline class using pattern matching on pipeline class name.
+
+        All the modules the pipeline contains will be used to initialize the new pipeline without reallocating
+        additional memory.
+
+        The pipeline is set in evaluation mode (`model.eval()`) by default.
+
+        Parameters:
+            pipeline (`DiffusionPipeline`):
+                an instantiated `DiffusionPipeline` object
+
+        ```py
+        >>> import torch
+        >>> import soundfile as sf
+        >>> from diffusers import AutoPipelineForText2Audio, StableAudioPipeline
+
+        >>> pipe = StableAudioPipeline.from_pretrained(
+        ...     "stabilityai/stable-audio-open-1.0",
+        ...     torch_dtype=torch.float16
+        ... )
+
+        >>> pipe_audio = AutoPipelineForText2Audio.from_pipe(pipe)
+        >>> output = pipe_audio(
+        ...     "Generate a sound",
+        ...     num_inference_steps=200,
+        ...     audio_end_in_s=10.0,
+        ... )
+        >>> audio = output.audios[0].T.float().cpu().numpy()
+        >>> sf.write("audio.wav", audio, pipe_audio.vae.sampling_rate)
+        ```
+        """
+
+        original_config = dict(pipeline.config)
+        original_cls_name = pipeline.__class__.__name__
+
+        text_2_audio_cls = _get_task_class(AUTO_TEXT2AUDIO_PIPELINES_MAPPING, original_cls_name)
+
+        expected_modules, optional_kwargs = text_2_audio_cls._get_signature_keys(text_2_audio_cls)
+
+        pretrained_model_name_or_path = original_config.pop("_name_or_path", None)
+
+        passed_class_obj = {k: kwargs.pop(k) for k in expected_modules if k in kwargs}
+        original_class_obj = {
+            k: pipeline.components[k]
+            for k, v in pipeline.components.items()
+            if k in expected_modules and k not in passed_class_obj
+        }
+
+        passed_pipe_kwargs = {k: kwargs.pop(k) for k in optional_kwargs if k in kwargs}
+        original_pipe_kwargs = {
+            k: original_config[k]
+            for k, v in original_config.items()
+            if k in optional_kwargs and k not in passed_pipe_kwargs
+        }
+
+        additional_pipe_kwargs = [
+            k[1:]
+            for k in original_config.keys()
+            if k.startswith("_") and k[1:] in optional_kwargs and k[1:] not in passed_pipe_kwargs
+        ]
+        for k in additional_pipe_kwargs:
+            original_pipe_kwargs[k] = original_config.pop(f"_{k}")
+
+        text_2_audio_kwargs = {**passed_class_obj, **original_class_obj, **passed_pipe_kwargs, **original_pipe_kwargs}
+
+        unused_original_config = {
+            f"{'' if k.startswith('_') else '_'}{k}": original_config[k]
+            for k, v in original_config.items()
+            if k not in text_2_audio_kwargs
+        }
+
+        missing_modules = (
+            set(expected_modules) - set(text_2_audio_cls._optional_components) - set(text_2_audio_kwargs.keys())
+        )
+
+        if len(missing_modules) > 0:
+            raise ValueError(
+                f"Pipeline {text_2_audio_cls} expected {expected_modules}, but only {set(list(passed_class_obj.keys()) + list(original_class_obj.keys()))} were passed"
+            )
+
+        model = text_2_audio_cls(**text_2_audio_kwargs)
         model.register_to_config(_name_or_path=pretrained_model_name_or_path)
         model.register_to_config(**unused_original_config)
 
