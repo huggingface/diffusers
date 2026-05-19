@@ -27,7 +27,7 @@ if TYPE_CHECKING:
 
 
 if is_torch_available():
-    import torch
+    pass
 
 logger = logging.get_logger(__name__)
 
@@ -36,12 +36,12 @@ class AutoRoundQuantizer(DiffusersQuantizer):
     r"""
     Diffusers Quantizer for AutoRound (https://github.com/intel/auto-round).
 
-    AutoRound is a weight-only quantization method that uses sign gradient descent to jointly optimize
-    rounding values and min-max ranges for weights. It supports W4A16 (4-bit weight, 16-bit activation)
-    quantization for efficient inference.
+    AutoRound is a weight-only quantization method that uses sign gradient descent to jointly optimize rounding values
+    and min-max ranges for weights. It supports W4A16 (4-bit weight, 16-bit activation) quantization for efficient
+    inference.
 
-    This quantizer only supports loading pre-quantized AutoRound models. On-the-fly quantization
-    (calibration) is not supported through this interface.
+    This quantizer only supports loading pre-quantized AutoRound models. On-the-fly quantization (calibration) is not
+    supported through this interface.
     """
 
     # AutoRound requires data calibration — we only support loading pre-quantized checkpoints.
@@ -53,8 +53,8 @@ class AutoRoundQuantizer(DiffusersQuantizer):
 
     def validate_environment(self, *args, **kwargs):
         """
-        Validates that the auto-round library (>= 0.5) is installed and captures the device_map
-        for later use during model conversion.
+        Validates that the auto-round library (>= 0.5) is installed and captures the device_map for later use during
+        model conversion.
         """
         self.device_map = kwargs.get("device_map", None)
         if not is_auto_round_available():
@@ -77,17 +77,17 @@ class AutoRoundQuantizer(DiffusersQuantizer):
         **kwargs,
     ):
         """
-        Replaces target nn.Linear layers with AutoRound's quantized QuantLinear layers before
-        weights are loaded from the checkpoint.
+        Replaces target nn.Linear layers with AutoRound's quantized QuantLinear layers before weights are loaded from
+        the checkpoint.
 
         Uses `auto_round.inference.convert_model.convert_hf_model` which:
         - Inspects the model architecture and the quantization config (bits, group_size, sym, backend).
-        - Replaces eligible nn.Linear modules with the appropriate QuantLinear variant
-          (the packed-weight layer that stores qweight, scales, qzeros).
+        - Replaces eligible nn.Linear modules with the appropriate QuantLinear variant (the packed-weight layer that
+          stores qweight, scales, qzeros).
         - Returns the converted model and a set of used backend names.
 
-        `infer_target_device` resolves the device_map into a single target device string
-        that AutoRound uses to select the correct kernel backend (e.g. "cuda", "cpu").
+        `infer_target_device` resolves the device_map into a single target device string that AutoRound uses to select
+        the correct kernel backend (e.g. "cuda", "cpu").
         """
         from auto_round.inference.convert_model import convert_hf_model, infer_target_device
 
@@ -98,17 +98,17 @@ class AutoRoundQuantizer(DiffusersQuantizer):
 
     def _process_model_after_weight_loading(self, model, **kwargs):
         """
-        Finalizes the model after all quantized weights (qweight, scales, qzeros, etc.) have
-        been loaded into the QuantLinear layers.
+        Finalizes the model after all quantized weights (qweight, scales, qzeros, etc.) have been loaded into the
+        QuantLinear layers.
 
         Uses `auto_round.inference.convert_model.post_init` which:
-        - Performs backend-specific finalization (e.g. repacking weights into the kernel's
-          expected memory layout, moving buffers to the correct device).
+        - Performs backend-specific finalization (e.g. repacking weights into the kernel's expected memory layout,
+          moving buffers to the correct device).
         - Freezes quantized parameters (requires_grad=False).
         - Prepares the model for inference.
 
-        Raises ValueError if the model is not pre-quantized, since AutoRound does not support
-        on-the-fly quantization through this loading path.
+        Raises ValueError if the model is not pre-quantized, since AutoRound does not support on-the-fly quantization
+        through this loading path.
         """
         if self.pre_quantized:
             from auto_round.inference.convert_model import post_init
@@ -135,4 +135,3 @@ class AutoRoundQuantizer(DiffusersQuantizer):
     @property
     def is_compileable(self) -> bool:
         return True
-

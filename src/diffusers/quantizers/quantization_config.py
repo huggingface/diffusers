@@ -756,9 +756,8 @@ class NVIDIAModelOptConfig(QuantizationConfigMixin):
 class AutoRoundConfig(QuantizationConfigMixin):
     """Configuration class for AutoRound quantization.
 
-    AutoRound is a weight-only quantization algorithm that uses sign gradient descent to
-    jointly optimize weight rounding and min-max values. This config targets the W4A16
-    (4-bit weights, 16-bit activations) setting.
+    AutoRound is a weight-only quantization algorithm that uses sign gradient descent to jointly optimize weight
+    rounding and min-max values. This config targets the W4A16 (4-bit weights, 16-bit activations) setting.
 
     Reference: https://github.com/intel/auto-round
 
@@ -766,23 +765,23 @@ class AutoRoundConfig(QuantizationConfigMixin):
         bits (`int`, *optional*, defaults to `4`):
             The number of bits to quantize weights to. For W4A16 this should be 4.
         group_size (`int`, *optional*, defaults to `128`):
-            The group size for weight quantization. Weights in each group share the same
-            scale and zero-point. Common choices: 32, 64, 128, -1 (per-channel).
+            The group size for weight quantization. Weights in each group share the same scale and zero-point. Common
+            choices: 32, 64, 128, -1 (per-channel).
         sym (`bool`, *optional*, defaults to `True`):
-            Whether to use symmetric quantization (zero-point fixed at 0) or asymmetric
-            quantization (zero-point is learned).
+            Whether to use symmetric quantization (zero-point fixed at 0) or asymmetric quantization (zero-point is
+            learned).
         backend (`str`, *optional*, defaults to `"auto"`):
             The backend kernel to use for quantized inference. Available backends:
             - `"auto"`: Automatically select the best available backend for the current device.
             - `"torch"`: Pure PyTorch kernel — works on CPU and CUDA.
             - `"tritonv2"`: Triton-based kernel — requires CUDA.
-            - `"exllamav2"`: Exllamav2 kernel via GPTQModel — requires CUDA and
-              `gptqmodel>=5.8.0`. Offers good CUDA inference performance.
-            - `"marlin"`: Marlin kernel via GPTQModel — requires CUDA and
-              `gptqmodel>=5.8.0`. Offers the best CUDA inference performance.
+            - `"exllamav2"`: Exllamav2 kernel via GPTQModel — requires CUDA and `gptqmodel>=5.8.0`. Offers good CUDA
+              inference performance.
+            - `"marlin"`: Marlin kernel via GPTQModel — requires CUDA and `gptqmodel>=5.8.0`. Offers the best CUDA
+              inference performance.
         kwargs (`dict[str, Any]`, *optional*):
-            Additional keyword arguments forwarded to AutoRound (e.g. `iters`, `seqlen`,
-            `batch_size`, `lr`, `minmax_lr` for calibration when quantizing from scratch).
+            Additional keyword arguments forwarded to AutoRound (e.g. `iters`, `seqlen`, `batch_size`, `lr`,
+            `minmax_lr` for calibration when quantizing from scratch).
     """
 
     VALID_BACKENDS = ["auto", "torch", "tritonv2", "exllamav2", "marlin"]
@@ -811,8 +810,8 @@ class AutoRoundConfig(QuantizationConfigMixin):
     def to_dict(self) -> dict:
         """Serialize the config to a JSON-compatible dict.
 
-        Output: A dict containing all config fields. The `quant_method` is stored as
-        its string value so it can be round-tripped through JSON.
+        Output: A dict containing all config fields. The `quant_method` is stored as its string value so it can be
+        round-tripped through JSON.
         """
         output = super().to_dict()
         output["quant_method"] = output["quant_method"].value
@@ -822,8 +821,8 @@ class AutoRoundConfig(QuantizationConfigMixin):
     def from_dict(cls, config_dict: dict, return_unused_kwargs: bool = False, **kwargs):
         """Instantiate an AutoRoundConfig from a dictionary.
 
-        Input: config_dict with keys like bits, group_size, sym, etc.
-        Output: An AutoRoundConfig instance (and optionally unused kwargs).
+        Input: config_dict with keys like bits, group_size, sym, etc. Output: An AutoRoundConfig instance (and
+        optionally unused kwargs).
         """
         # Filter out keys that are not constructor parameters
         # (e.g. quant_method is set automatically)

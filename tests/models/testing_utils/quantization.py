@@ -18,9 +18,15 @@ import gc
 import pytest
 import torch
 
-from diffusers import AutoRoundConfig, BitsAndBytesConfig, GGUFQuantizationConfig, NVIDIAModelOptConfig, QuantoConfig, TorchAoConfig
+from diffusers import (
+    AutoRoundConfig,
+    BitsAndBytesConfig,
+    GGUFQuantizationConfig,
+    NVIDIAModelOptConfig,
+    QuantoConfig,
+    TorchAoConfig,
+)
 from diffusers.utils.import_utils import (
-    is_auto_round_available,
     is_bitsandbytes_available,
     is_gguf_available,
     is_nvidia_modelopt_available,
@@ -1399,6 +1405,7 @@ class AutoRoundConfigMixin:
         - quantized_model_name_or_path: Hub repository ID for the quantized model
         - pretrained_model_kwargs: (Optional) Dict of kwargs to pass to from_pretrained
     """
+
     config_dict = {"backend": "auto"}
 
     def _load_unquantized_model(self):
@@ -1443,13 +1450,12 @@ class AutoRoundTesterMixin(AutoRoundConfigMixin, QuantizationTesterMixin):
     Pytest mark: autoround
         Use `pytest -m "not autoround"` to skip these tests
     """
+
     config_dict = {"backend": "auto"}
 
     def test_autoround_quantization_memory_footprint(self):
         expected = 1.5  # AutoRound is a W4A16 method, so we expect around 1.5x memory reduction
-        self._test_quantization_memory_footprint(
-            self.config_dict, expected_memory_reduction=expected
-        )
+        self._test_quantization_memory_footprint(self.config_dict, expected_memory_reduction=expected)
 
     def test_autoround_quantization_inference(self):
         self._test_quantization_inference(self.config_dict)

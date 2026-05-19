@@ -21,9 +21,9 @@ import torch
 
 from diffusers import ZImageTransformer2DModel
 
-from ..testing_utils import AutoRoundTesterMixin, AutoRoundCompileTesterMixin
 from ...testing_utils import IS_GITHUB_ACTIONS, torch_device
 from ..test_modeling_common import ModelTesterMixin, TorchCompileTesterMixin
+from ..testing_utils import AutoRoundCompileTesterMixin, AutoRoundTesterMixin
 
 
 # Z-Image requires torch.use_deterministic_algorithms(False) due to complex64 RoPE operations
@@ -174,6 +174,7 @@ class ZImageTransformerCompileTests(TorchCompileTesterMixin, unittest.TestCase):
 
 class ZImageTransformerTesterConfig:
     """Configuration class for Z-Image Transformer tests."""
+
     @property
     def model_class(self):
         return ZImageTransformer2DModel
@@ -199,8 +200,13 @@ class ZImageTransformerTesterConfig:
         seq_len = 16
 
         torch.manual_seed(0)
-        x = [torch.randn((in_channels, frames, height, width)).to(torch_device, dtype=torch.bfloat16) for _ in range(batch_size)]
-        cap_feats = [torch.randn((seq_len, cap_feat_dim)).to(torch_device, dtype=torch.bfloat16) for _ in range(batch_size)]
+        x = [
+            torch.randn((in_channels, frames, height, width)).to(torch_device, dtype=torch.bfloat16)
+            for _ in range(batch_size)
+        ]
+        cap_feats = [
+            torch.randn((seq_len, cap_feat_dim)).to(torch_device, dtype=torch.bfloat16) for _ in range(batch_size)
+        ]
         t = torch.tensor([0.5]).to(torch_device, dtype=torch.bfloat16)
 
         return {"x": x, "cap_feats": cap_feats, "t": t}
