@@ -640,6 +640,86 @@ class TorchAoSerializationTest(unittest.TestCase):
         self._test_original_model_expected_slice(quant_type, expected_slice)
         self._check_serialization_expected_slice(quant_type, expected_slice, device)
 
+    def _check_safetensors_save(self, quant_type, device):
+        import os
+
+        import safetensors
+        from torchao.prototype.safetensors.safetensors_utils import is_metadata_torchao
+
+        from diffusers.utils.constants import SAFETENSORS_WEIGHTS_NAME
+
+        quantized_model = self.get_dummy_model(quant_type, device)
+        inputs = self.get_dummy_tensor_inputs(torch_device)
+        original_output = quantized_model(**inputs)[0]
+        original_slice = original_output.flatten()[-9:].detach().float().cpu().numpy()
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            quantized_model.save_pretrained(tmp_dir, safe_serialization=True)
+
+            shard_path = os.path.join(tmp_dir, SAFETENSORS_WEIGHTS_NAME)
+            self.assertTrue(os.path.exists(shard_path), "expected a safetensors shard to be written")
+
+            # Safetensors header must carry torchao's flatten metadata alongside the format key.
+            with safetensors.safe_open(shard_path, framework="pt") as f:
+                metadata = f.metadata() or {}
+            self.assertEqual(metadata.get("format"), "pt")
+            self.assertGreater(len(metadata), 1, "expected torchao metadata alongside the format key")
+            self.assertTrue(is_metadata_torchao(metadata), f"safetensors header is not torchao-shaped: {metadata}")
+
+            # Round-trip through from_pretrained: this exercises set_metadata + update_state_dict_with_metadata.
+            loaded = FluxTransformer2DModel.from_pretrained(tmp_dir, torch_dtype=torch.bfloat16).to(device=torch_device)
+
+        loaded_output = loaded(**inputs)[0]
+        loaded_slice = loaded_output.flatten()[-9:].detach().float().cpu().numpy()
+        self.assertIsInstance(loaded.transformer_blocks[0].ff.net[2].weight, TorchAOBaseTensor)
+        self.assertTrue(
+            numpy_cosine_similarity_distance(original_slice, loaded_slice) < 1e-3,
+            f"reloaded outputs diverge from original (slice diff): {original_slice} vs {loaded_slice}",
+        )
+
+    def test_safetensors_save_int_a16w8(self):
+        # torchao's safetensors flatten helper only supports the version=2 tensor subclasses
+        # (Int8Tensor / Int4Tensor / …). version=1 produces the deprecated AffineQuantizedTensor
+        # which `flatten_tensor_state_dict` does not handle.
+        self._check_safetensors_save(Int8WeightOnlyConfig(version=2), torch_device)
+
+    def test_group_offload_to_disk_int_a16w8(self):
+        """Group offload-to-disk for a torchao-quantized model: round-trip and output parity."""
+        import os
+
+        from diffusers.hooks import apply_group_offloading
+
+        quantized = self.get_dummy_model(Int8WeightOnlyConfig(version=2), torch_device)
+        inputs = self.get_dummy_tensor_inputs(torch_device)
+        baseline = quantized(**inputs)[0].flatten()[-9:].detach().float().cpu().numpy()
+
+        offloaded = self.get_dummy_model(Int8WeightOnlyConfig(version=2), torch_device)
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            apply_group_offloading(
+                offloaded,
+                onload_device=torch_device,
+                offload_device="cpu",
+                offload_type="block_level",
+                num_blocks_per_group=1,
+                offload_to_disk_path=tmp_dir,
+            )
+            offloaded_out = offloaded(**inputs)[0].flatten()[-9:].detach().float().cpu().numpy()
+            # The disk cache should now exist with at least one group_*.safetensors shard.
+            shards = [f for f in os.listdir(tmp_dir) if f.startswith("group_") and f.endswith(".safetensors")]
+            self.assertGreater(len(shards), 0, "expected at least one group shard on disk")
+            # After the forward pass each group has been offloaded back to CPU; the torchao subclass
+            # weight should not be lingering on the accelerator (this is the whole point of disk offload).
+            self.assertEqual(
+                offloaded.transformer_blocks[0].ff.net[2].weight.device.type,
+                "cpu",
+                "torchao subclass weight should be on cpu after group offload-to-disk",
+            )
+
+        self.assertTrue(
+            numpy_cosine_similarity_distance(baseline, offloaded_out) < 1e-3,
+            f"group-offloaded output diverges from baseline: {baseline} vs {offloaded_out}",
+        )
+
 
 @require_torchao_version_greater_or_equal("0.15.0")
 class TorchAoCompileTest(QuantCompileTests, unittest.TestCase):
