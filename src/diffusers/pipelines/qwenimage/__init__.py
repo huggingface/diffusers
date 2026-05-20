@@ -22,7 +22,6 @@ except OptionalDependencyNotAvailable:
 
     _dummy_objects.update(get_objects_from_module(dummy_torch_and_transformers_objects))
 else:
-    _import_structure["modeling_qwenimage"] = ["ReduxImageEncoder"]
     _import_structure["pipeline_qwenimage"] = ["QwenImagePipeline"]
     _import_structure["pipeline_qwenimage_controlnet"] = ["QwenImageControlNetPipeline"]
     _import_structure["pipeline_qwenimage_controlnet_inpaint"] = ["QwenImageControlNetInpaintPipeline"]

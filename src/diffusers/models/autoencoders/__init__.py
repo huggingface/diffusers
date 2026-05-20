@@ -1,3 +1,4 @@
+from .audio_tokenizer_ace_step import AceStepAudioTokenDetokenizer, AceStepAudioTokenizer
 from .autoencoder_asym_kl import AsymmetricAutoencoderKL
 from .autoencoder_dc import AutoencoderDC
 from .autoencoder_kl import AutoencoderKL
@@ -25,4 +26,7 @@ from .autoencoder_rae import AutoencoderRAE
 from .autoencoder_tiny import AutoencoderTiny
 from .autoencoder_vidtok import AutoencoderVidTok
 from .consistency_decoder_vae import ConsistencyDecoderVAE
+from .latent_upsampler_ltx import LTXLatentUpsamplerModel
+from .latent_upsampler_ltx2 import LTX2LatentUpsamplerModel
+from .vocoder_ltx2 import LTX2Vocoder, LTX2VocoderWithBWE
 from .vq_model import VQModel

@@ -13,34 +13,22 @@
 # limitations under the License.
 
 
-from dataclasses import dataclass
-
-import torch
-import torch.nn as nn
-
-from ...configuration_utils import ConfigMixin, register_to_config
-from ...models.modeling_utils import ModelMixin
-from ...utils import BaseOutput
-
-
-@dataclass
-class ReduxImageEncoderOutput(BaseOutput):
-    image_embeds: torch.Tensor | None = None
+from ...models.condition_embedders.image_encoder_redux import (
+    ReduxImageEncoder as _ReduxImageEncoder,
+)
+from ...models.condition_embedders.image_encoder_redux import (
+    ReduxImageEncoderOutput,  # noqa: F401  re-exported for back-compat
+)
+from ...utils import deprecate
 
 
-class ReduxImageEncoder(ModelMixin, ConfigMixin):
-    @register_to_config
-    def __init__(
-        self,
-        redux_dim: int = 1152,
-        txt_in_features: int = 4096,
-    ) -> None:
-        super().__init__()
-
-        self.redux_up = nn.Linear(redux_dim, txt_in_features * 3)
-        self.redux_down = nn.Linear(txt_in_features * 3, txt_in_features)
-
-    def forward(self, x: torch.Tensor) -> ReduxImageEncoderOutput:
-        projected_x = self.redux_down(nn.functional.silu(self.redux_up(x)))
-
-        return ReduxImageEncoderOutput(image_embeds=projected_x)
+class ReduxImageEncoder(_ReduxImageEncoder):
+    def __init__(self, *args, **kwargs):
+        deprecate(
+            "ReduxImageEncoder",
+            "1.0.0",
+            "Importing `ReduxImageEncoder` from `diffusers.pipelines.flux.modeling_flux` is "
+            "deprecated. Import it from `diffusers.models.condition_embedders` instead "
+            "(or `from diffusers import ReduxImageEncoder`).",
+        )
+        super().__init__(*args, **kwargs)

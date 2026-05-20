@@ -26,6 +26,7 @@ from transformers import (
 
 from ...image_processor import PipelineImageInput
 from ...loaders import FluxLoraLoaderMixin, TextualInversionLoaderMixin
+from ...models.condition_embedders import ReduxImageEncoder
 from ...utils import (
     USE_PEFT_BACKEND,
     is_torch_xla_available,
@@ -35,7 +36,6 @@ from ...utils import (
     unscale_lora_layers,
 )
 from ..pipeline_utils import DiffusionPipeline
-from .modeling_flux import ReduxImageEncoder
 from .pipeline_output import FluxPriorReduxPipelineOutput
 
 
