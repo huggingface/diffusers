@@ -97,6 +97,10 @@ else:
         "HunyuanVideo15AutoBlocks",
         "HunyuanVideo15ModularPipeline",
     ]
+    _import_structure["hidream_o1"] = [
+        "HiDreamO1AutoBlocks",
+        "HiDreamO1ModularPipeline",
+    ]
     _import_structure["ltx"] = [
         "LTXAutoBlocks",
         "LTXModularPipeline",
@@ -137,6 +141,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             HunyuanVideo15AutoBlocks,
             HunyuanVideo15ModularPipeline,
         )
+        from .hidream_o1 import HiDreamO1AutoBlocks, HiDreamO1ModularPipeline
         from .ltx import LTXAutoBlocks, LTXModularPipeline
         from .modular_pipeline import (
             AutoPipelineBlocks,

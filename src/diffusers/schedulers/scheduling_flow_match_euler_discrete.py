@@ -435,6 +435,7 @@ class FlowMatchEulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
         generator: torch.Generator | None = None,
         per_token_timesteps: torch.Tensor | None = None,
         return_dict: bool = True,
+        noise_clip_std: float = 0.0,
     ) -> FlowMatchEulerDiscreteSchedulerOutput | tuple:
         """
         Predict the sample from the previous timestep by reversing the SDE. This function propagates the diffusion
@@ -459,6 +460,9 @@ class FlowMatchEulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
             return_dict (`bool`, defaults to `True`):
                 Whether or not to return a
                 [`~schedulers.scheduling_flow_match_euler_discrete.FlowMatchEulerDiscreteSchedulerOutput`] or tuple.
+            noise_clip_std (`float`, defaults to 0.0):
+                If greater than 0, clips the stochastic sampling noise to this many standard deviations before
+                applying `s_noise`.
 
         Returns:
             [`~schedulers.scheduling_flow_match_euler_discrete.FlowMatchEulerDiscreteSchedulerOutput`] or `tuple`:
@@ -509,7 +513,11 @@ class FlowMatchEulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
         if self.config.stochastic_sampling:
             x0 = sample - current_sigma * model_output
             noise = randn_tensor(sample.shape, generator=generator, device=sample.device, dtype=sample.dtype)
-            prev_sample = (1.0 - next_sigma) * x0 + next_sigma * noise
+            if noise_clip_std > 0:
+                noise_std = noise.std().item()
+                clip_value = noise_clip_std * noise_std
+                noise = noise.clamp(min=-clip_value, max=clip_value)
+            prev_sample = (1.0 - next_sigma) * x0 + next_sigma * noise * s_noise
         else:
             prev_sample = sample + dt * model_output
 
