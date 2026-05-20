@@ -327,6 +327,12 @@ def get_cached_module_file(
                 f"Pass `trust_remote_code=True` to allow loading remote code modules."
             )
     elif is_community_pipeline:
+        if not trust_remote_code:
+            raise ValueError(
+                f"Loading community pipeline '{pretrained_model_name_or_path}' requires executing code "
+                f"from the diffusers/community-pipelines-mirror dataset.\n"
+                f"Pass `trust_remote_code=True` to allow loading community pipeline code modules."
+            )
         available_versions = get_diffusers_versions()
         # cut ".dev0"
         latest_version = "v" + ".".join(__version__.split(".")[:3])
