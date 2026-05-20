@@ -409,7 +409,10 @@ def is_valid_url(url):
 
 
 def _is_single_file_path_or_url(pretrained_model_name_or_path):
-    if not os.path.isfile(pretrained_model_name_or_path) or not is_valid_url(pretrained_model_name_or_path):
+    if os.path.isfile(pretrained_model_name_or_path):
+        return True
+
+    if not is_valid_url(pretrained_model_name_or_path):
         return False
 
     repo_id, weight_name = _extract_repo_id_and_weights_name(pretrained_model_name_or_path)

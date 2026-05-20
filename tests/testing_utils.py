@@ -34,6 +34,7 @@ from diffusers.utils.import_utils import (
     is_accelerate_available,
     is_bitsandbytes_available,
     is_compel_available,
+    is_flashpack_available,
     is_flax_available,
     is_gguf_available,
     is_kernels_available,
@@ -735,6 +736,13 @@ def require_accelerate(test_case):
     Decorator marking a test that requires accelerate. These tests are skipped when accelerate isn't installed.
     """
     return pytest.mark.skipif(not is_accelerate_available(), reason="test requires accelerate")(test_case)
+
+
+def require_flashpack(test_case):
+    """
+    Decorator marking a test that requires flashpack. These tests are skipped when flashpack isn't installed.
+    """
+    return pytest.mark.skipif(not is_flashpack_available(), reason="test requires flashpack")(test_case)
 
 
 def require_peft_version_greater(peft_version):

@@ -18,7 +18,7 @@
   <img alt="LoRA" src="https://img.shields.io/badge/LoRA-d8b4fe?style=flat"/>
 </div>
 
-LTX-2 is a DiT-based audio-video foundation model designed to generate synchronized video and audio within a single model. It brings together the core building blocks of modern video generation, with open weights and a focus on practical, local execution.
+[LTX-2](https://hf.co/papers/2601.03233) is a DiT-based foundation model designed to generate synchronized video and audio within a single model. It brings together the core building blocks of modern video generation, with open weights and a focus on practical, local execution.
 
 You can find all the original LTX-Video checkpoints under the [Lightricks](https://huggingface.co/Lightricks) organization.
 
@@ -293,6 +293,7 @@ import torch
 from diffusers import LTX2ConditionPipeline
 from diffusers.pipelines.ltx2.pipeline_ltx2_condition import LTX2VideoCondition
 from diffusers.pipelines.ltx2.export_utils import encode_video
+from diffusers.pipelines.ltx2.utils import DEFAULT_NEGATIVE_PROMPT
 from diffusers.utils import load_image, load_video
 
 device = "cuda"
@@ -315,19 +316,6 @@ prompt = (
     "landscape is characterized by rugged terrain and a river visible in the distance. The scene captures the "
     "solitude and beauty of a winter drive through a mountainous region."
 )
-negative_prompt = (
-    "blurry, out of focus, overexposed, underexposed, low contrast, washed out colors, excessive noise, "
-    "grainy texture, poor lighting, flickering, motion blur, distorted proportions, unnatural skin tones, "
-    "deformed facial features, asymmetrical face, missing facial features, extra limbs, disfigured hands, "
-    "wrong hand count, artifacts around text, inconsistent perspective, camera shake, incorrect depth of "
-    "field, background too sharp, background clutter, distracting reflections, harsh shadows, inconsistent "
-    "lighting direction, color banding, cartoonish rendering, 3D CGI look, unrealistic materials, uncanny "
-    "valley effect, incorrect ethnicity, wrong gender, exaggerated expressions, wrong gaze direction, "
-    "mismatched lip sync, silent or muted audio, distorted voice, robotic voice, echo, background noise, "
-    "off-sync audio, incorrect dialogue, added dialogue, repetitive speech, jittery movement, awkward "
-    "pauses, incorrect timing, unnatural transitions, inconsistent framing, tilted camera, flat lighting, "
-    "inconsistent tone, cinematic oversaturation, stylized filters, or AI artifacts."
-)
 
 cond_video = load_video(
     "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/cosmos/cosmos-video2world-input-vid.mp4"
@@ -343,7 +331,7 @@ frame_rate = 24.0
 video, audio = pipe(
     conditions=conditions,
     prompt=prompt,
-    negative_prompt=negative_prompt,
+    negative_prompt=DEFAULT_NEGATIVE_PROMPT,
     width=width,
     height=height,
     num_frames=121,
@@ -365,6 +353,154 @@ encode_video(
 ```
 
 Because the conditioning is done via latent frames, the 8 data space frames corresponding to the specified latent frame for an image condition will tend to be static.
+
+## Multimodal Guidance
+
+LTX-2.X pipelines support multimodal guidance. It is composed of three terms, all using a CFG-style update rule:
+
+1. Classifier-Free Guidance (CFG): standard [CFG](https://huggingface.co/papers/2207.12598) where the perturbed ("weaker") output is generated using the negative prompt.
+2. Spatio-Temporal Guidance (STG): [STG](https://huggingface.co/papers/2411.18664) moves away from a perturbed output created from short-cutting self-attention operations and substitutes in the attention values instead. The idea is that this creates sharper videos and better spatiotemporal consistency.
+3. Modality Isolation Guidance: moves away from a perturbed output created from disabling cross-modality (audio-to-video and video-to-audio) cross attention. This guidance is more specific to [LTX-2.X](https://huggingface.co/papers/2601.03233) models, with the idea that this produces better consistency between the generated audio and video.
+
+These are controlled by the `guidance_scale`, `stg_scale`, and `modality_scale` arguments and can be set separately for video and audio. Additionally, for STG the transformer block indices where self-attention is skipped needs to be specified via the `spatio_temporal_guidance_blocks` argument. The LTX-2.X pipelines also support [guidance rescaling](https://huggingface.co/papers/2305.08891) to help reduce over-exposure, which can be a problem when the guidance scales are set to high values.
+
+```py
+import torch
+from diffusers import LTX2ImageToVideoPipeline
+from diffusers.pipelines.ltx2.export_utils import encode_video
+from diffusers.pipelines.ltx2.utils import DEFAULT_NEGATIVE_PROMPT
+from diffusers.utils import load_image
+
+device = "cuda"
+width = 768
+height = 512
+random_seed = 42
+frame_rate = 24.0
+generator = torch.Generator(device).manual_seed(random_seed)
+model_path = "dg845/LTX-2.3-Diffusers"
+
+pipe = LTX2ImageToVideoPipeline.from_pretrained(model_path, torch_dtype=torch.bfloat16)
+pipe.enable_sequential_cpu_offload(device=device)
+pipe.vae.enable_tiling()
+
+prompt = (
+    "An astronaut hatches from a fragile egg on the surface of the Moon, the shell cracking and peeling apart in "
+    "gentle low-gravity motion. Fine lunar dust lifts and drifts outward with each movement, floating in slow arcs "
+    "before settling back onto the ground. The astronaut pushes free in a deliberate, weightless motion, small "
+    "fragments of the egg tumbling and spinning through the air. In the background, the deep darkness of space subtly "
+    "shifts as stars glide with the camera's movement, emphasizing vast depth and scale. The camera performs a "
+    "smooth, cinematic slow push-in, with natural parallax between the foreground dust, the astronaut, and the "
+    "distant starfield. Ultra-realistic detail, physically accurate low-gravity motion, cinematic lighting, and a "
+    "breath-taking, movie-like shot."
+)
+
+image = load_image(
+    "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/astronaut.jpg",
+)
+
+video, audio = pipe(
+    image=image,
+    prompt=prompt,
+    negative_prompt=DEFAULT_NEGATIVE_PROMPT,
+    width=width,
+    height=height,
+    num_frames=121,
+    frame_rate=frame_rate,
+    num_inference_steps=30,
+    guidance_scale=3.0,  # Recommended LTX-2.3 guidance parameters
+    stg_scale=1.0,  # Note that 0.0 (not 1.0) means that STG is disabled (all other guidance is disabled at 1.0)
+    modality_scale=3.0,
+    guidance_rescale=0.7,
+    audio_guidance_scale=7.0,  # Note that a higher CFG guidance scale is recommended for audio
+    audio_stg_scale=1.0,
+    audio_modality_scale=3.0,
+    audio_guidance_rescale=0.7,
+    spatio_temporal_guidance_blocks=[28],
+    use_cross_timestep=True,
+    generator=generator,
+    output_type="np",
+    return_dict=False,
+)
+
+encode_video(
+    video[0],
+    fps=frame_rate,
+    audio=audio[0].float().cpu(),
+    audio_sample_rate=pipe.vocoder.config.output_sampling_rate,
+    output_path="ltx2_3_i2v_stage_1.mp4",
+)
+```
+
+## Prompt Enhancement
+
+The LTX-2.X models are sensitive to prompting style. Refer to the [official prompting guide](https://ltx.io/model/model-blog/prompting-guide-for-ltx-2) for recommendations on how to write a good prompt. Using prompt enhancement, where the supplied prompts are enhanced using the pipeline's text encoder (by default a [Gemma 3](https://huggingface.co/google/gemma-3-12b-it-qat-q4_0-unquantized) model) given a system prompt, can also improve sample quality. The optional `processor` pipeline component needs to be present to use prompt enhancement. Enable prompt enhancement by supplying a `system_prompt` argument:
+
+
+```py
+import torch
+from transformers import Gemma3Processor
+from diffusers import LTX2Pipeline
+from diffusers.pipelines.ltx2.export_utils import encode_video
+from diffusers.pipelines.ltx2.utils import DEFAULT_NEGATIVE_PROMPT, T2V_DEFAULT_SYSTEM_PROMPT
+
+device = "cuda"
+width = 768
+height = 512
+random_seed = 42
+frame_rate = 24.0
+generator = torch.Generator(device).manual_seed(random_seed)
+model_path = "dg845/LTX-2.3-Diffusers"
+
+pipe = LTX2Pipeline.from_pretrained(model_path, torch_dtype=torch.bfloat16)
+pipe.enable_model_cpu_offload(device=device)
+pipe.vae.enable_tiling()
+if getattr(pipe, "processor", None) is None:
+    processor = Gemma3Processor.from_pretrained("google/gemma-3-12b-it-qat-q4_0-unquantized")
+    pipe.processor = processor
+
+prompt = (
+    "An astronaut hatches from a fragile egg on the surface of the Moon, the shell cracking and peeling apart in "
+    "gentle low-gravity motion. Fine lunar dust lifts and drifts outward with each movement, floating in slow arcs "
+    "before settling back onto the ground. The astronaut pushes free in a deliberate, weightless motion, small "
+    "fragments of the egg tumbling and spinning through the air. In the background, the deep darkness of space subtly "
+    "shifts as stars glide with the camera's movement, emphasizing vast depth and scale. The camera performs a "
+    "smooth, cinematic slow push-in, with natural parallax between the foreground dust, the astronaut, and the "
+    "distant starfield. Ultra-realistic detail, physically accurate low-gravity motion, cinematic lighting, and a "
+    "breath-taking, movie-like shot."
+)
+
+video, audio = pipe(
+    prompt=prompt,
+    negative_prompt=DEFAULT_NEGATIVE_PROMPT,
+    width=width,
+    height=height,
+    num_frames=121,
+    frame_rate=frame_rate,
+    num_inference_steps=30,
+    guidance_scale=3.0,
+    stg_scale=1.0,
+    modality_scale=3.0,
+    guidance_rescale=0.7,
+    audio_guidance_scale=7.0,
+    audio_stg_scale=1.0,
+    audio_modality_scale=3.0,
+    audio_guidance_rescale=0.7,
+    spatio_temporal_guidance_blocks=[28],
+    use_cross_timestep=True,
+    system_prompt=T2V_DEFAULT_SYSTEM_PROMPT,
+    generator=generator,
+    output_type="np",
+    return_dict=False,
+)
+
+encode_video(
+    video[0],
+    fps=frame_rate,
+    audio=audio[0].float().cpu(),
+    audio_sample_rate=pipe.vocoder.config.output_sampling_rate,
+    output_path="ltx2_3_t2v_stage_1.mp4",
+)
+```
 
 ## LTX2Pipeline
 

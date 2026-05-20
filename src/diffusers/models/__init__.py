@@ -50,6 +50,7 @@ if is_torch_available():
     _import_structure["autoencoders.autoencoder_kl_qwenimage"] = ["AutoencoderKLQwenImage"]
     _import_structure["autoencoders.autoencoder_kl_temporal_decoder"] = ["AutoencoderKLTemporalDecoder"]
     _import_structure["autoencoders.autoencoder_kl_wan"] = ["AutoencoderKLWan"]
+    _import_structure["autoencoders.autoencoder_longcat_audio_dit"] = ["LongCatAudioDiTVae"]
     _import_structure["autoencoders.autoencoder_oobleck"] = ["AutoencoderOobleck"]
     _import_structure["autoencoders.autoencoder_rae"] = ["AutoencoderRAE"]
     _import_structure["autoencoders.autoencoder_tiny"] = ["AutoencoderTiny"]
@@ -78,6 +79,7 @@ if is_torch_available():
     _import_structure["controlnets.multicontrolnet_union"] = ["MultiControlNetUnionModel"]
     _import_structure["embeddings"] = ["ImageProjection"]
     _import_structure["modeling_utils"] = ["ModelMixin"]
+    _import_structure["transformers.ace_step_transformer"] = ["AceStepTransformer1DModel"]
     _import_structure["transformers.auraflow_transformer_2d"] = ["AuraFlowTransformer2DModel"]
     _import_structure["transformers.cogvideox_transformer_3d"] = ["CogVideoXTransformer3DModel"]
     _import_structure["transformers.consisid_transformer_3d"] = ["ConsisIDTransformer3DModel"]
@@ -102,6 +104,7 @@ if is_torch_available():
     _import_structure["transformers.transformer_cogview4"] = ["CogView4Transformer2DModel"]
     _import_structure["transformers.transformer_cosmos"] = ["CosmosTransformer3DModel"]
     _import_structure["transformers.transformer_easyanimate"] = ["EasyAnimateTransformer3DModel"]
+    _import_structure["transformers.transformer_ernie_image"] = ["ErnieImageTransformer2DModel"]
     _import_structure["transformers.transformer_flux"] = ["FluxTransformer2DModel"]
     _import_structure["transformers.transformer_flux2"] = ["Flux2Transformer2DModel"]
     _import_structure["transformers.transformer_glm_image"] = ["GlmImageTransformer2DModel"]
@@ -111,12 +114,16 @@ if is_torch_available():
     _import_structure["transformers.transformer_hunyuan_video15"] = ["HunyuanVideo15Transformer3DModel"]
     _import_structure["transformers.transformer_hunyuan_video_framepack"] = ["HunyuanVideoFramepackTransformer3DModel"]
     _import_structure["transformers.transformer_hunyuanimage"] = ["HunyuanImageTransformer2DModel"]
+    _import_structure["transformers.transformer_joyimage"] = ["JoyImageEditTransformer3DModel"]
     _import_structure["transformers.transformer_kandinsky"] = ["Kandinsky5Transformer3DModel"]
+    _import_structure["transformers.transformer_longcat_audio_dit"] = ["LongCatAudioDiTTransformer"]
     _import_structure["transformers.transformer_longcat_image"] = ["LongCatImageTransformer2DModel"]
     _import_structure["transformers.transformer_ltx"] = ["LTXVideoTransformer3DModel"]
     _import_structure["transformers.transformer_ltx2"] = ["LTX2VideoTransformer3DModel"]
     _import_structure["transformers.transformer_lumina2"] = ["Lumina2Transformer2DModel"]
     _import_structure["transformers.transformer_mochi"] = ["MochiTransformer3DModel"]
+    _import_structure["transformers.transformer_motif_video"] = ["MotifVideoTransformer3DModel"]
+    _import_structure["transformers.transformer_nucleusmoe_image"] = ["NucleusMoEImageTransformer2DModel"]
     _import_structure["transformers.transformer_omnigen"] = ["OmniGenTransformer2DModel"]
     _import_structure["transformers.transformer_ovis_image"] = ["OvisImageTransformer2DModel"]
     _import_structure["transformers.transformer_prx"] = ["PRXTransformer2DModel"]
@@ -179,6 +186,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             AutoencoderTiny,
             AutoencoderVidTok,
             ConsistencyDecoderVAE,
+            LongCatAudioDiTVae,
             VQModel,
         )
         from .cache_utils import CacheMixin
@@ -205,6 +213,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .embeddings import ImageProjection
         from .modeling_utils import ModelMixin
         from .transformers import (
+            AceStepTransformer1DModel,
             AllegroTransformer3DModel,
             AuraFlowTransformer2DModel,
             BriaFiboTransformer2DModel,
@@ -219,6 +228,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             DiTTransformer2DModel,
             DualTransformer2DModel,
             EasyAnimateTransformer3DModel,
+            ErnieImageTransformer2DModel,
             Flux2Transformer2DModel,
             FluxTransformer2DModel,
             GlmImageTransformer2DModel,
@@ -230,14 +240,18 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             HunyuanVideoFramepackTransformer3DModel,
             HunyuanVideoTransformer3DModel,
             JiTTransformer2DModel,
+            JoyImageEditTransformer3DModel,
             Kandinsky5Transformer3DModel,
             LatteTransformer3DModel,
+            LongCatAudioDiTTransformer,
             LongCatImageTransformer2DModel,
             LTX2VideoTransformer3DModel,
             LTXVideoTransformer3DModel,
             Lumina2Transformer2DModel,
             LuminaNextDiT2DModel,
             MochiTransformer3DModel,
+            MotifVideoTransformer3DModel,
+            NucleusMoEImageTransformer2DModel,
             OmniGenTransformer2DModel,
             OvisImageTransformer2DModel,
             PixArtTransformer2DModel,

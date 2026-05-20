@@ -19,6 +19,7 @@ from .autoencoder_kl_mochi import AutoencoderKLMochi
 from .autoencoder_kl_qwenimage import AutoencoderKLQwenImage
 from .autoencoder_kl_temporal_decoder import AutoencoderKLTemporalDecoder
 from .autoencoder_kl_wan import AutoencoderKLWan
+from .autoencoder_longcat_audio_dit import LongCatAudioDiTVae
 from .autoencoder_oobleck import AutoencoderOobleck
 from .autoencoder_rae import AutoencoderRAE
 from .autoencoder_tiny import AutoencoderTiny

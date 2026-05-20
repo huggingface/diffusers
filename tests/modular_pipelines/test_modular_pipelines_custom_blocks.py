@@ -24,14 +24,18 @@ import torch
 from diffusers import FluxTransformer2DModel
 from diffusers.modular_pipelines import (
     ComponentSpec,
+    ConditionalPipelineBlocks,
     InputParam,
+    LoopSequentialPipelineBlocks,
     ModularPipelineBlocks,
     OutputParam,
     PipelineState,
+    SequentialPipelineBlocks,
     WanModularPipeline,
 )
+from diffusers.utils import logging
 
-from ..testing_utils import nightly, require_torch, require_torch_accelerator, slow, torch_device
+from ..testing_utils import CaptureLogger, nightly, require_torch, require_torch_accelerator, slow, torch_device
 
 
 def _create_tiny_model_dir(model_dir):
@@ -461,6 +465,117 @@ class TestModularCustomBlocks:
         output = pipe(prompt=prompt)
         output_prompt = output.values["output_prompt"]
         assert output_prompt.startswith("Modular diffusers + ")
+
+
+class TestCustomBlockRequirements:
+    def get_dummy_block_pipe(self):
+        class DummyBlockOne:
+            # keep two arbitrary deps so that we can test warnings.
+            _requirements = {"xyz": ">=0.8.0", "abc": ">=10.0.0"}
+
+        class DummyBlockTwo:
+            # keep two dependencies that will be available during testing.
+            _requirements = {"transformers": ">=4.44.0", "diffusers": ">=0.2.0"}
+
+        pipe = SequentialPipelineBlocks.from_blocks_dict(
+            {"dummy_block_one": DummyBlockOne, "dummy_block_two": DummyBlockTwo}
+        )
+        return pipe
+
+    def get_dummy_conditional_block_pipe(self):
+        class DummyBlockOne:
+            _requirements = {"xyz": ">=0.8.0", "abc": ">=10.0.0"}
+
+        class DummyBlockTwo:
+            _requirements = {"transformers": ">=4.44.0", "diffusers": ">=0.2.0"}
+
+        class DummyConditionalBlocks(ConditionalPipelineBlocks):
+            block_classes = [DummyBlockOne, DummyBlockTwo]
+            block_names = ["block_one", "block_two"]
+            block_trigger_inputs = []
+
+            def select_block(self, **kwargs):
+                return "block_one"
+
+        return DummyConditionalBlocks()
+
+    def get_dummy_loop_block_pipe(self):
+        class DummyBlockOne:
+            _requirements = {"xyz": ">=0.8.0", "abc": ">=10.0.0"}
+
+        class DummyBlockTwo:
+            _requirements = {"transformers": ">=4.44.0", "diffusers": ">=0.2.0"}
+
+        return LoopSequentialPipelineBlocks.from_blocks_dict({"block_one": DummyBlockOne, "block_two": DummyBlockTwo})
+
+    def test_sequential_block_requirements_save_load(self, tmp_path):
+        pipe = self.get_dummy_block_pipe()
+        pipe.save_pretrained(str(tmp_path))
+
+        config_path = tmp_path / "modular_config.json"
+
+        with open(config_path, "r") as f:
+            config = json.load(f)
+
+        assert "requirements" in config
+        requirements = config["requirements"]
+
+        expected_requirements = {
+            "xyz": ">=0.8.0",
+            "abc": ">=10.0.0",
+            "transformers": ">=4.44.0",
+            "diffusers": ">=0.2.0",
+        }
+        assert expected_requirements == requirements
+
+    def test_sequential_block_requirements_warnings(self, tmp_path):
+        pipe = self.get_dummy_block_pipe()
+
+        logger = logging.get_logger("diffusers.modular_pipelines.modular_pipeline_utils")
+        logger.setLevel(30)
+
+        with CaptureLogger(logger) as cap_logger:
+            pipe.save_pretrained(str(tmp_path))
+
+        template = "{req} was specified in the requirements but wasn't found in the current environment"
+        msg_xyz = template.format(req="xyz")
+        msg_abc = template.format(req="abc")
+        assert msg_xyz in str(cap_logger.out)
+        assert msg_abc in str(cap_logger.out)
+
+    def test_conditional_block_requirements_save_load(self, tmp_path):
+        pipe = self.get_dummy_conditional_block_pipe()
+        pipe.save_pretrained(str(tmp_path))
+
+        config_path = tmp_path / "modular_config.json"
+        with open(config_path, "r") as f:
+            config = json.load(f)
+
+        assert "requirements" in config
+        expected_requirements = {
+            "xyz": ">=0.8.0",
+            "abc": ">=10.0.0",
+            "transformers": ">=4.44.0",
+            "diffusers": ">=0.2.0",
+        }
+        assert expected_requirements == config["requirements"]
+
+    def test_loop_block_requirements_save_load(self, tmp_path):
+        pipe = self.get_dummy_loop_block_pipe()
+        pipe.save_pretrained(str(tmp_path))
+
+        config_path = tmp_path / "modular_config.json"
+        with open(config_path, "r") as f:
+            config = json.load(f)
+
+        assert "requirements" in config
+        expected_requirements = {
+            "xyz": ">=0.8.0",
+            "abc": ">=10.0.0",
+            "transformers": ">=4.44.0",
+            "diffusers": ">=0.2.0",
+        }
+        assert expected_requirements == config["requirements"]
 
 
 @slow

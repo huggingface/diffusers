@@ -385,12 +385,19 @@ the image\n<|vision_start|><|image_pad|><|vision_end|><|im_end|>\n<|im_start|>as
             )
 
         if prompt_embeds is not None and prompt_embeds_mask is None:
-            raise ValueError(
-                "If `prompt_embeds` are provided, `prompt_embeds_mask` also have to be passed. Make sure to generate `prompt_embeds_mask` from the same text encoder that was used to generate `prompt_embeds`."
+            logger.warning(
+                "`prompt_embeds` is provided and `prompt_embeds_mask` is not provided, so the model will treat all"
+                " prompt tokens as valid. If `prompt_embeds` contains padding, you should provide the padding mask as"
+                " `prompt_embeds_mask`. Make sure to generate `prompt_embeds_mask` from the same text encoder that was"
+                " used to generate `prompt_embeds`."
             )
+
         if negative_prompt_embeds is not None and negative_prompt_embeds_mask is None:
-            raise ValueError(
-                "If `negative_prompt_embeds` are provided, `negative_prompt_embeds_mask` also have to be passed. Make sure to generate `negative_prompt_embeds_mask` from the same text encoder that was used to generate `negative_prompt_embeds`."
+            logger.warning(
+                "`negative_prompt_embeds` is provided and `negative_prompt_embeds_mask` is not provided, so the model will treat all"
+                " negative prompt tokens as valid. If `negative_prompt_embeds` contains padding, you should provide the padding mask as"
+                " `negative_prompt_embeds_mask`. Make sure to generate `negative_prompt_embeds_mask` from the same text encoder that was"
+                " used to generate `negative_prompt_embeds`."
             )
 
         if max_sequence_length is not None and max_sequence_length > 1024:
@@ -697,9 +704,7 @@ the image\n<|vision_start|><|image_pad|><|vision_end|><|im_end|>\n<|im_start|>as
         else:
             batch_size = prompt_embeds.shape[0]
 
-        has_neg_prompt = negative_prompt is not None or (
-            negative_prompt_embeds is not None and negative_prompt_embeds_mask is not None
-        )
+        has_neg_prompt = negative_prompt is not None or negative_prompt_embeds is not None
 
         if true_cfg_scale > 1 and not has_neg_prompt:
             logger.warning(
