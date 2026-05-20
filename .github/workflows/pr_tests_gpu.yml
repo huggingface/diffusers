@@ -94,7 +94,7 @@ jobs:
           uv pip install -e ".[quality]"
       - name: Environment
         run: |
-          python utils/print_env.py
+          diffusers-cli env
       - name: Fetch Pipeline Matrix
         id: fetch_pipeline_matrix
         run: |
@@ -139,7 +139,7 @@ jobs:
 
       - name: Environment
         run: |
-          python utils/print_env.py
+          diffusers-cli env
       - name: Extract tests
         id: extract_tests
         run: |
@@ -210,7 +210,7 @@ jobs:
 
     - name: Environment
       run: |
-        python utils/print_env.py
+        diffusers-cli env
 
     - name: Extract tests
       id: extract_tests
@@ -273,7 +273,7 @@ jobs:
 
     - name: Environment
       run: |
-        python utils/print_env.py
+        diffusers-cli env
 
     - name: Run example tests on GPU
       env:
