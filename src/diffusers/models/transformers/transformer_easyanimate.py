@@ -478,8 +478,8 @@ class EasyAnimateTransformer3DModel(ModelMixin, ConfigMixin):
             timestep (`torch.LongTensor`):
                 Used to indicate denoising step.
             timestep_cond (`torch.Tensor`, *optional*):
-                Conditional embeddings for timestep. If provided, the embeddings will be summed with the samples
-                passed through the `self.time_embedding` layer to obtain the final timestep embeddings.
+                Conditional embeddings for timestep. If provided, the embeddings will be summed with the samples passed
+                through the `self.time_embedding` layer to obtain the final timestep embeddings.
             encoder_hidden_states (`torch.Tensor`, *optional*):
                 Conditional embeddings (embeddings computed from the input conditions such as prompts) to use.
             encoder_hidden_states_t5 (`torch.Tensor`, *optional*):

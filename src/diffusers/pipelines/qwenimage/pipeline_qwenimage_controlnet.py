@@ -638,8 +638,8 @@ class QwenImageControlNetPipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
             control_image (`PipelineImageInput`, *optional*):
                 The ControlNet input condition to provide guidance for the generation.
             controlnet_conditioning_scale (`float` or `list[float]`, *optional*, defaults to 1.0):
-                The outputs of the ControlNet are multiplied by `controlnet_conditioning_scale` before they are added to
-                the residual in the original `transformer`.
+                The outputs of the ControlNet are multiplied by `controlnet_conditioning_scale` before they are added
+                to the residual in the original `transformer`.
             num_images_per_prompt (`int`, *optional*, defaults to 1):
                 The number of images to generate per prompt.
             generator (`torch.Generator` or `list[torch.Generator]`, *optional*):

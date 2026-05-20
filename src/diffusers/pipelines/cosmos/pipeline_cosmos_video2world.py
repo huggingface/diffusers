@@ -601,8 +601,8 @@ class CosmosVideoToWorldPipeline(DiffusionPipeline):
                 will be passed as `callback_kwargs` argument. You will only be able to include variables listed in the
                 `._callback_tensor_inputs` attribute of your pipeline class.
             max_sequence_length (`int`, defaults to `512`):
-                The maximum number of tokens in the prompt. If the prompt exceeds this length, it will be truncated.
-                If the prompt is shorter than this length, it will be padded.
+                The maximum number of tokens in the prompt. If the prompt exceeds this length, it will be truncated. If
+                the prompt is shorter than this length, it will be padded.
 
         Examples:
 

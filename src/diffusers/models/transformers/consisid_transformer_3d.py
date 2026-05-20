@@ -644,8 +644,8 @@ class ConsisIDTransformer3DModel(ModelMixin, AttentionMixin, ConfigMixin, PeftAd
             timestep (`torch.LongTensor`):
                 Used to indicate denoising step.
             timestep_cond (`torch.Tensor`, *optional*):
-                Conditional embeddings for timestep. If provided, the embeddings will be summed with the samples
-                passed through the `self.time_embedding` layer to obtain the final timestep embeddings.
+                Conditional embeddings for timestep. If provided, the embeddings will be summed with the samples passed
+                through the `self.time_embedding` layer to obtain the final timestep embeddings.
             image_rotary_emb (`tuple` of `torch.Tensor`, *optional*):
                 Pre-computed rotary positional embeddings.
             attention_kwargs (`dict`, *optional*):

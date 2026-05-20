@@ -386,8 +386,8 @@ class CogVideoXTransformer3DModel(ModelMixin, AttentionMixin, ConfigMixin, PeftA
             timestep (`torch.LongTensor`):
                 Used to indicate denoising step.
             timestep_cond (`torch.Tensor`, *optional*):
-                Conditional embeddings for timestep. If provided, the embeddings will be summed with the samples
-                passed through the `self.time_embedding` layer to obtain the final timestep embeddings.
+                Conditional embeddings for timestep. If provided, the embeddings will be summed with the samples passed
+                through the `self.time_embedding` layer to obtain the final timestep embeddings.
             ofs (`torch.Tensor`, *optional*):
                 Offset embeddings used in CogVideoX-5b-I2V.
             image_rotary_emb (`tuple` of `torch.Tensor`, *optional*):
