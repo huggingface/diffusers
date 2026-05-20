@@ -455,10 +455,12 @@ class DPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
             sigmas = np.flip(sigmas).copy()
             sigmas = self._convert_to_exponential(in_sigmas=sigmas, num_inference_steps=num_inference_steps)
             timesteps = np.array([self._sigma_to_t(sigma, log_sigmas) for sigma in sigmas])
+            timesteps = timesteps.round()
         elif self.config.use_beta_sigmas:
             sigmas = np.flip(sigmas).copy()
             sigmas = self._convert_to_beta(in_sigmas=sigmas, num_inference_steps=num_inference_steps)
             timesteps = np.array([self._sigma_to_t(sigma, log_sigmas) for sigma in sigmas])
+            timesteps = timesteps.round()
         elif self.config.use_flow_sigmas:
             alphas = np.linspace(1, 1 / self.config.num_train_timesteps, num_inference_steps + 1)
             sigmas = 1.0 - alphas
