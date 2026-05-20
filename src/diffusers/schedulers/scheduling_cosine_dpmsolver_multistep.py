@@ -653,10 +653,16 @@ class CosineDPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
                 seed = (
                     [g.initial_seed() for g in generator] if isinstance(generator, list) else generator.initial_seed()
                 )
+            # Use the actual extrema of `self.sigmas` rather than the config bounds:
+            # the Karras/exponential reconstruction of the endpoints in fp32 can drift
+            # by a few ULPs, and `final_sigmas_type="zero"` makes `sigmas[-1] == 0`,
+            # both of which fall outside `[config.sigma_min, config.sigma_max]`. An
+            # out-of-range query drives `torchsde` into unbounded recursive splitting
+            # of its Brownian interval and eventually raises `RecursionError` (#13274).
             self.noise_sampler = BrownianTreeNoiseSampler(
                 model_output,
-                sigma_min=self.config.sigma_min,
-                sigma_max=self.config.sigma_max,
+                sigma_min=self.sigmas.min().item(),
+                sigma_max=self.sigmas.max().item(),
                 seed=seed,
             )
         noise = self.noise_sampler(self.sigmas[self.step_index], self.sigmas[self.step_index + 1]).to(
