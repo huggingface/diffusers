@@ -15,25 +15,169 @@
 
 """Cosmos3 AVAE Audio Tokenizer — decoder-only implementation.
 
-Latents are passed directly to the Oobleck decoder (no latent normalisation).
+The decoder reuses the Oobleck architecture (Snake1d activations + weight-norm
+convs + residual units), inlined here instead of imported so the audio module
+is self-contained. The corresponding encoder is intentionally not inlined:
+upstream Cosmos3 uses a spec-convnext encoder whose tensor layout doesn't map
+onto Oobleck's encoder.
 """
 
 import math
 
 import torch
+import torch.nn as nn
+from torch.nn.utils import weight_norm
 
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...utils.accelerate_utils import apply_forward_hook
 from ..modeling_utils import ModelMixin
-from .autoencoder_oobleck import OobleckDecoder
+
+
+# Copied from diffusers.models.autoencoders.autoencoder_oobleck.Snake1d
+class Snake1d(nn.Module):
+    """
+    A 1-dimensional Snake activation function module.
+    """
+
+    def __init__(self, hidden_dim, logscale=True):
+        super().__init__()
+        self.alpha = nn.Parameter(torch.zeros(1, hidden_dim, 1))
+        self.beta = nn.Parameter(torch.zeros(1, hidden_dim, 1))
+
+        self.alpha.requires_grad = True
+        self.beta.requires_grad = True
+        self.logscale = logscale
+
+    def forward(self, hidden_states):
+        shape = hidden_states.shape
+
+        alpha = self.alpha if not self.logscale else torch.exp(self.alpha)
+        beta = self.beta if not self.logscale else torch.exp(self.beta)
+
+        hidden_states = hidden_states.reshape(shape[0], shape[1], -1)
+        hidden_states = hidden_states + (beta + 1e-9).reciprocal() * torch.sin(alpha * hidden_states).pow(2)
+        hidden_states = hidden_states.reshape(shape)
+        return hidden_states
+
+
+# Copied from diffusers.models.autoencoders.autoencoder_oobleck.OobleckResidualUnit with Oobleck->Cosmos3Audio
+class Cosmos3AudioResidualUnit(nn.Module):
+    """
+    A residual unit composed of Snake1d and weight-normalized Conv1d layers with dilations.
+    """
+
+    def __init__(self, dimension: int = 16, dilation: int = 1):
+        super().__init__()
+        pad = ((7 - 1) * dilation) // 2
+
+        self.snake1 = Snake1d(dimension)
+        self.conv1 = weight_norm(nn.Conv1d(dimension, dimension, kernel_size=7, dilation=dilation, padding=pad))
+        self.snake2 = Snake1d(dimension)
+        self.conv2 = weight_norm(nn.Conv1d(dimension, dimension, kernel_size=1))
+
+    def forward(self, hidden_state):
+        """
+        Forward pass through the residual unit.
+
+        Args:
+            hidden_state (`torch.Tensor` of shape `(batch_size, channels, time_steps)`):
+                Input tensor .
+
+        Returns:
+            output_tensor (`torch.Tensor` of shape `(batch_size, channels, time_steps)`)
+                Input tensor after passing through the residual unit.
+        """
+        output_tensor = hidden_state
+        output_tensor = self.conv1(self.snake1(output_tensor))
+        output_tensor = self.conv2(self.snake2(output_tensor))
+
+        padding = (hidden_state.shape[-1] - output_tensor.shape[-1]) // 2
+        if padding > 0:
+            hidden_state = hidden_state[..., padding:-padding]
+        output_tensor = hidden_state + output_tensor
+        return output_tensor
+
+
+# Copied from diffusers.models.autoencoders.autoencoder_oobleck.OobleckDecoderBlock with Oobleck->Cosmos3Audio
+class Cosmos3AudioDecoderBlock(nn.Module):
+    """Decoder block used in Cosmos3Audio decoder."""
+
+    def __init__(self, input_dim, output_dim, stride: int = 1, output_padding: int = 0):
+        super().__init__()
+
+        self.snake1 = Snake1d(input_dim)
+        self.conv_t1 = weight_norm(
+            nn.ConvTranspose1d(
+                input_dim,
+                output_dim,
+                kernel_size=2 * stride,
+                stride=stride,
+                padding=math.ceil(stride / 2),
+                output_padding=output_padding,
+            )
+        )
+        self.res_unit1 = Cosmos3AudioResidualUnit(output_dim, dilation=1)
+        self.res_unit2 = Cosmos3AudioResidualUnit(output_dim, dilation=3)
+        self.res_unit3 = Cosmos3AudioResidualUnit(output_dim, dilation=9)
+
+    def forward(self, hidden_state):
+        hidden_state = self.snake1(hidden_state)
+        hidden_state = self.conv_t1(hidden_state)
+        hidden_state = self.res_unit1(hidden_state)
+        hidden_state = self.res_unit2(hidden_state)
+        hidden_state = self.res_unit3(hidden_state)
+
+        return hidden_state
+
+
+# Copied from diffusers.models.autoencoders.autoencoder_oobleck.OobleckDecoder with Oobleck->Cosmos3Audio
+class Cosmos3AudioDecoder(nn.Module):
+    """Cosmos3Audio Decoder"""
+
+    def __init__(self, channels, input_channels, audio_channels, upsampling_ratios, channel_multiples):
+        super().__init__()
+
+        strides = upsampling_ratios
+        channel_multiples = [1] + channel_multiples
+
+        # Add first conv layer
+        self.conv1 = weight_norm(nn.Conv1d(input_channels, channels * channel_multiples[-1], kernel_size=7, padding=3))
+
+        # Add upsampling + MRF blocks
+        block = []
+        for stride_index, stride in enumerate(strides):
+            block += [
+                Cosmos3AudioDecoderBlock(
+                    input_dim=channels * channel_multiples[len(strides) - stride_index],
+                    output_dim=channels * channel_multiples[len(strides) - stride_index - 1],
+                    stride=stride,
+                    output_padding=stride % 2,
+                )
+            ]
+
+        self.block = nn.ModuleList(block)
+        output_dim = channels
+        self.snake1 = Snake1d(output_dim)
+        self.conv2 = weight_norm(nn.Conv1d(channels, audio_channels, kernel_size=7, padding=3, bias=False))
+
+    def forward(self, hidden_state):
+        hidden_state = self.conv1(hidden_state)
+
+        for layer in self.block:
+            hidden_state = layer(hidden_state)
+
+        hidden_state = self.snake1(hidden_state)
+        hidden_state = self.conv2(hidden_state)
+
+        return hidden_state
 
 
 class Cosmos3AVAEAudioTokenizer(ModelMixin, ConfigMixin):
     """Decoder-only audio tokenizer for Cosmos3 sound generation.
 
-    Wraps the Oobleck decoder used in the AVAE (Audio VAE) component of the Cosmos3
-    omni model.  Provides the interface expected by ``Cosmos3OmniDiffusersPipeline``
-    when ``enable_sound=True``.
+    Wraps the Cosmos3Audio decoder (an inlined copy of Oobleck) used in the AVAE
+    (Audio VAE) component of the Cosmos3 omni model. Provides the interface
+    expected by ``Cosmos3OmniDiffusersPipeline`` when ``enable_sound=True``.
 
     Parameters:
         sampling_rate (`int`, defaults to `48000`): Audio sample rate in Hz.
@@ -60,7 +204,7 @@ class Cosmos3AVAEAudioTokenizer(ModelMixin, ConfigMixin):
     ):
         super().__init__()
 
-        self.decoder = OobleckDecoder(
+        self.decoder = Cosmos3AudioDecoder(
             channels=dec_dim,
             input_channels=vocoder_input_dim,
             audio_channels=dec_out_channels,
