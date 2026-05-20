@@ -40,6 +40,9 @@ from typing_extensions import Self
 
 from .. import __version__
 from ..configuration_utils import ConfigMixin
+from ..loaders.ip_adapter_model import IPAdapterHandler
+from ..loaders.lora import LoRAHandler, LoRAModelMixin
+from ..loaders.weight_mapping import WeightMappingHandler
 from ..quantizers import DiffusersAutoQuantizer, DiffusersQuantizer
 from ..quantizers.quantization_config import QuantizationMethod
 from ..utils import (
@@ -273,11 +276,9 @@ class ModelMetadata:
     _repeated_blocks: list[str] = field(default_factory=list)
     _cp_plan: dict[str, Any] | None = None
     _keys_to_ignore_on_load_unexpected: list[str] | None = None
-    # Handler instances; annotated ``Any`` to avoid a top-level import of the handler classes (which would
-    # create a cycle: ``loaders/{lora,weight_mapping,ip_adapter_model}.py`` already import from ``modeling_utils``).
-    _lora: Any = field(default_factory=lambda: _default_lora_handler())
-    _ip_adapter: Any = field(default_factory=lambda: _default_ip_adapter_handler())
-    _weight_mapping: Any = field(default_factory=lambda: _default_weight_mapping_handler())
+    _lora: LoRAHandler = field(default_factory=LoRAHandler)
+    _ip_adapter: IPAdapterHandler = field(default_factory=IPAdapterHandler)
+    _weight_mapping: WeightMappingHandler = field(default_factory=WeightMappingHandler)
 
     def _register(self, cls):
         """Attach this ``ModelMetadata`` to ``cls``: stash for introspection, install handlers, mirror scalars.
@@ -299,24 +300,6 @@ class ModelMetadata:
             if f.name in {"_lora", "_weight_mapping", "_ip_adapter"}:
                 continue
             setattr(cls, f.name, getattr(self, f.name))
-
-
-def _default_lora_handler():
-    from ..loaders.lora import LoRAHandler
-
-    return LoRAHandler()
-
-
-def _default_ip_adapter_handler():
-    from ..loaders.ip_adapter_model import IPAdapterHandler
-
-    return IPAdapterHandler()
-
-
-def _default_weight_mapping_handler():
-    from ..loaders.weight_mapping import WeightMappingHandler
-
-    return WeightMappingHandler()
 
 
 def register_metadata(metadata):
@@ -346,7 +329,7 @@ def register_metadata(metadata):
 _ATTENTION_API_DEPRECATION_MSG = "`ModelMixin.{name}` is deprecated. Use `{replacement}` instead."
 
 
-class ModelMixin(torch.nn.Module, ConfigMixin, PushToHubMixin):
+class ModelMixin(torch.nn.Module, ConfigMixin, LoRAModelMixin, PushToHubMixin):
     r"""
     Base class for all models.
 

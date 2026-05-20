@@ -23,7 +23,6 @@ import torch.nn.functional as F
 from ....configuration_utils import register_to_config
 from ....hooks._helpers import TransformerBlockMetadata
 from ....loaders.ip_adapter_model import IPAdapterModelMixin
-from ....loaders.lora import LoRAModelMixin
 from ....utils import apply_lora_scale, logging
 from ....utils.torch_utils import maybe_allow_in_graph
 from ..._modeling_parallel import ContextParallelInput, ContextParallelOutput
@@ -555,7 +554,6 @@ class FluxTransformer2DModel(
     AttentionMixin,
     CacheMixin,
     IPAdapterModelMixin,
-    LoRAModelMixin,
 ):
     """
     The Transformer model introduced in Flux.
