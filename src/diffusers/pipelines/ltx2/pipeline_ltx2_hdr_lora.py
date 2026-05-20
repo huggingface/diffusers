@@ -1135,8 +1135,10 @@ class LTX2HDRPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoaderMixi
             connector_audio_embeds (`torch.Tensor`, *optional*):
                 Optional pre-computed connector outputs for the audio modality. Used by the HDR LoRA pipeline; if
                 supplied, will override any `prompt`/`prompt_embeds`.
-            decode_timestep, decode_noise_scale:
+            decode_timestep (`float` or `list[float]`, defaults to `0.0`):
                 VAE-decode timestep conditioning (only used by VAE configs with `timestep_conditioning=True`).
+            decode_noise_scale (`float` or `list[float]`, *optional*):
+                Interpolation factor between random noise and denoised latents at the decode timestep.
             use_cross_timestep (`bool`, *optional*, defaults to `False`):
                 Whether to use cross-modality sigma for cross-attention modulation.
             output_type (`str`, *optional*, defaults to `"pt"`):
@@ -1145,8 +1147,14 @@ class LTX2HDRPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoaderMixi
                 array; `"latent"` returns the raw denoised latents (skip the HDR decode).
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether to return an [`LTX2PipelineOutput`] instead of a plain tuple.
-            attention_kwargs, callback_on_step_end, callback_on_step_end_tensor_inputs, max_sequence_length:
-                Standard hooks and arguments, same as [`LTX2InContextPipeline`].
+            attention_kwargs (`dict`, *optional*):
+                A kwargs dictionary that if specified is passed along to the `AttentionProcessor`.
+            callback_on_step_end (`Callable`, *optional*):
+                A function called at the end of each denoising step, same as [`LTX2InContextPipeline`].
+            callback_on_step_end_tensor_inputs (`list`, *optional*):
+                The list of tensor inputs passed to `callback_on_step_end`.
+            max_sequence_length (`int`, *optional*, defaults to `1024`):
+                Maximum sequence length to use with the `prompt`.
 
         Examples:
 

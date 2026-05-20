@@ -633,6 +633,37 @@ class ConsisIDTransformer3DModel(ModelMixin, AttentionMixin, ConfigMixin, PeftAd
         id_vit_hidden: torch.Tensor | None = None,
         return_dict: bool = True,
     ) -> tuple[torch.Tensor] | Transformer2DModelOutput:
+        """
+        The [`ConsisIDTransformer3DModel`] forward method.
+
+        Args:
+            hidden_states (`torch.Tensor` of shape `(batch_size, num_frames, channels, height, width)`):
+                Input `hidden_states`.
+            encoder_hidden_states (`torch.Tensor` of shape `(batch_size, sequence_len, embed_dims)`):
+                Conditional embeddings (embeddings computed from the input conditions such as prompts) to use.
+            timestep (`torch.LongTensor`):
+                Used to indicate denoising step.
+            timestep_cond (`torch.Tensor`, *optional*):
+                Conditional embeddings for timestep. If provided, the embeddings will be summed with the samples
+                passed through the `self.time_embedding` layer to obtain the final timestep embeddings.
+            image_rotary_emb (`tuple` of `torch.Tensor`, *optional*):
+                Pre-computed rotary positional embeddings.
+            attention_kwargs (`dict`, *optional*):
+                A kwargs dictionary that if specified is passed along to the `AttentionProcessor` as defined under
+                `self.processor` in
+                [diffusers.models.attention_processor](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/attention_processor.py).
+            id_cond (`torch.Tensor`, *optional*):
+                The face embedding extracted by the local facial extractor used for identity conditioning.
+            id_vit_hidden (`torch.Tensor`, *optional*):
+                The ViT hidden states extracted from face images used for identity conditioning.
+            return_dict (`bool`, *optional*, defaults to `True`):
+                Whether or not to return a [`~models.transformer_2d.Transformer2DModelOutput`] instead of a plain
+                tuple.
+
+        Returns:
+            If `return_dict` is True, an [`~models.transformer_2d.Transformer2DModelOutput`] is returned, otherwise a
+            `tuple` where the first element is the sample tensor.
+        """
         # fuse clip and insightface
         valid_face_emb = None
         if self.is_train_face:

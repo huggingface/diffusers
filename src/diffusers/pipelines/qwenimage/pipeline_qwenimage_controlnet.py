@@ -631,6 +631,15 @@ class QwenImageControlNetPipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
                 ignored when not using guidance distilled models. To enable traditional classifier-free guidance,
                 please pass `true_cfg_scale > 1.0` and `negative_prompt` (even an empty negative prompt like " " should
                 enable classifier-free guidance computations).
+            control_guidance_start (`float` or `list[float]`, *optional*, defaults to 0.0):
+                The percentage of total steps at which the ControlNet starts applying.
+            control_guidance_end (`float` or `list[float]`, *optional*, defaults to 1.0):
+                The percentage of total steps at which the ControlNet stops applying.
+            control_image (`PipelineImageInput`, *optional*):
+                The ControlNet input condition to provide guidance for the generation.
+            controlnet_conditioning_scale (`float` or `list[float]`, *optional*, defaults to 1.0):
+                The outputs of the ControlNet are multiplied by `controlnet_conditioning_scale` before they are added to
+                the residual in the original `transformer`.
             num_images_per_prompt (`int`, *optional*, defaults to 1):
                 The number of images to generate per prompt.
             generator (`torch.Generator` or `list[torch.Generator]`, *optional*):
@@ -643,10 +652,14 @@ class QwenImageControlNetPipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
             prompt_embeds (`torch.Tensor`, *optional*):
                 Pre-generated text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt weighting. If not
                 provided, text embeddings will be generated from `prompt` input argument.
+            prompt_embeds_mask (`torch.Tensor`, *optional*):
+                Attention mask for `prompt_embeds`.
             negative_prompt_embeds (`torch.Tensor`, *optional*):
                 Pre-generated negative text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt
                 weighting. If not provided, negative_prompt_embeds will be generated from `negative_prompt` input
                 argument.
+            negative_prompt_embeds_mask (`torch.Tensor`, *optional*):
+                Attention mask for `negative_prompt_embeds`.
             output_type (`str`, *optional*, defaults to `"pil"`):
                 The output format of the generate image. Choose between
                 [PIL](https://pillow.readthedocs.io/en/stable/): `PIL.Image.Image` or `np.array`.

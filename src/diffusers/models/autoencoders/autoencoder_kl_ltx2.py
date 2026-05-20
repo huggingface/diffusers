@@ -1542,6 +1542,23 @@ class AutoencoderKLLTX2Video(ModelMixin, AutoencoderMixin, ConfigMixin, FromOrig
         return_dict: bool = True,
         generator: torch.Generator | None = None,
     ) -> torch.Tensor | torch.Tensor:
+        r"""
+        Args:
+            sample (`torch.Tensor`): Input sample.
+            temb (`torch.Tensor`, *optional*):
+                Optional timestep embedding tensor used to condition the decoder.
+            sample_posterior (`bool`, *optional*, defaults to `False`):
+                Whether to sample from the posterior.
+            encoder_causal (`bool`, *optional*):
+                Whether the encoder should use causal convolutions. If `None`, falls back to the model default.
+            decoder_causal (`bool`, *optional*):
+                Whether the decoder should use causal convolutions. If `None`, falls back to the model default.
+            return_dict (`bool`, *optional*, defaults to `True`):
+                Whether or not to return a [`DecoderOutput`] instead of a plain tuple.
+            generator (`torch.Generator`, *optional*):
+                A [`torch.Generator`](https://pytorch.org/docs/stable/generated/torch.Generator.html) to make sampling
+                deterministic.
+        """
         x = sample
         posterior = self.encode(x, causal=encoder_causal).latent_dist
         if sample_posterior:

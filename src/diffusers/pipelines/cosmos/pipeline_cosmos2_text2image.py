@@ -442,6 +442,10 @@ class Cosmos2TextToImagePipeline(DiffusionPipeline):
             prompt (`str` or `list[str]`, *optional*):
                 The prompt or prompts to guide the image generation. If not defined, one has to pass `prompt_embeds`.
                 instead.
+            negative_prompt (`str` or `list[str]`, *optional*):
+                The prompt or prompts not to guide the image generation. If not defined, one has to pass
+                `negative_prompt_embeds` instead. Ignored when not using guidance (i.e., ignored if `guidance_scale` is
+                not greater than `1`).
             height (`int`, defaults to `768`):
                 The height in pixels of the generated image.
             width (`int`, defaults to `1360`):
@@ -482,6 +486,9 @@ class Cosmos2TextToImagePipeline(DiffusionPipeline):
                 The list of tensor inputs for the `callback_on_step_end` function. The tensors specified in the list
                 will be passed as `callback_kwargs` argument. You will only be able to include variables listed in the
                 `._callback_tensor_inputs` attribute of your pipeline class.
+            max_sequence_length (`int`, defaults to `512`):
+                The maximum number of tokens in the prompt. If the prompt exceeds this length, it will be truncated.
+                If the prompt is shorter than this length, it will be padded.
 
         Examples:
 

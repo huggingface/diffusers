@@ -375,6 +375,35 @@ class CogVideoXTransformer3DModel(ModelMixin, AttentionMixin, ConfigMixin, PeftA
         attention_kwargs: dict[str, Any] | None = None,
         return_dict: bool = True,
     ) -> tuple[torch.Tensor] | Transformer2DModelOutput:
+        """
+        The [`CogVideoXTransformer3DModel`] forward method.
+
+        Args:
+            hidden_states (`torch.Tensor` of shape `(batch_size, num_frames, channels, height, width)`):
+                Input `hidden_states`.
+            encoder_hidden_states (`torch.Tensor` of shape `(batch_size, sequence_len, embed_dims)`):
+                Conditional embeddings (embeddings computed from the input conditions such as prompts) to use.
+            timestep (`torch.LongTensor`):
+                Used to indicate denoising step.
+            timestep_cond (`torch.Tensor`, *optional*):
+                Conditional embeddings for timestep. If provided, the embeddings will be summed with the samples
+                passed through the `self.time_embedding` layer to obtain the final timestep embeddings.
+            ofs (`torch.Tensor`, *optional*):
+                Offset embeddings used in CogVideoX-5b-I2V.
+            image_rotary_emb (`tuple` of `torch.Tensor`, *optional*):
+                Pre-computed rotary positional embeddings.
+            attention_kwargs (`dict`, *optional*):
+                A kwargs dictionary that if specified is passed along to the `AttentionProcessor` as defined under
+                `self.processor` in
+                [diffusers.models.attention_processor](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/attention_processor.py).
+            return_dict (`bool`, *optional*, defaults to `True`):
+                Whether or not to return a [`~models.transformer_2d.Transformer2DModelOutput`] instead of a plain
+                tuple.
+
+        Returns:
+            If `return_dict` is True, an [`~models.transformer_2d.Transformer2DModelOutput`] is returned, otherwise a
+            `tuple` where the first element is the sample tensor.
+        """
         batch_size, num_frames, channels, height, width = hidden_states.shape
 
         # 1. Time embedding

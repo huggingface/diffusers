@@ -541,9 +541,17 @@ class CosmosVideoToWorldPipeline(DiffusionPipeline):
         The call function to the pipeline for generation.
 
         Args:
+            image (`PIL.Image.Image`, `np.ndarray`, `torch.Tensor`, *optional*):
+                The image to be used as a conditioning input for the video generation.
+            video (`list[PIL.Image.Image]`, `np.ndarray`, `torch.Tensor`, *optional*):
+                The video to be used as a conditioning input for the video generation.
             prompt (`str` or `list[str]`, *optional*):
                 The prompt or prompts to guide the image generation. If not defined, one has to pass `prompt_embeds`.
                 instead.
+            negative_prompt (`str` or `list[str]`, *optional*):
+                The prompt or prompts not to guide the image generation. If not defined, one has to pass
+                `negative_prompt_embeds` instead. Ignored when not using guidance (i.e., ignored if `guidance_scale` is
+                not greater than `1`).
             height (`int`, defaults to `720`):
                 The height in pixels of the generated image.
             width (`int`, defaults to `1280`):
@@ -558,6 +566,10 @@ class CosmosVideoToWorldPipeline(DiffusionPipeline):
                 Guidance](https://huggingface.co/papers/2207.12598). `guidance_scale` is defined as `w` of equation 2.
                 of [Imagen Paper](https://huggingface.co/papers/2205.11487). Guidance scale is enabled by setting
                 `guidance_scale > 1`.
+            input_frames_guidance (`bool`, *optional*, defaults to `False`):
+                Whether to apply guidance on the conditional input frames.
+            augment_sigma (`float`, *optional*, defaults to 0.001):
+                Sigma value used to augment the conditional latents during denoising.
             fps (`int`, defaults to `30`):
                 The frames per second of the generated video.
             num_videos_per_prompt (`int`, *optional*, defaults to 1):
@@ -588,6 +600,9 @@ class CosmosVideoToWorldPipeline(DiffusionPipeline):
                 The list of tensor inputs for the `callback_on_step_end` function. The tensors specified in the list
                 will be passed as `callback_kwargs` argument. You will only be able to include variables listed in the
                 `._callback_tensor_inputs` attribute of your pipeline class.
+            max_sequence_length (`int`, defaults to `512`):
+                The maximum number of tokens in the prompt. If the prompt exceeds this length, it will be truncated.
+                If the prompt is shorter than this length, it will be padded.
 
         Examples:
 

@@ -47,6 +47,38 @@ class MultiControlNetUnionModel(ModelMixin):
         guess_mode: bool = False,
         return_dict: bool = True,
     ) -> ControlNetOutput | tuple:
+        r"""
+        Args:
+            sample (`torch.Tensor`):
+                The noisy input tensor.
+            timestep (`torch.Tensor`, `float`, or `int`):
+                The number of timesteps to denoise an input.
+            encoder_hidden_states (`torch.Tensor`):
+                The encoder hidden states.
+            controlnet_cond (`list` of `torch.Tensor`):
+                A list of conditional input tensors, one per ControlNet.
+            control_type (`list` of `torch.Tensor`):
+                A list of control type tensors, one per ControlNet, indicating the active control types.
+            control_type_idx (`list` of `list` of `int`):
+                Per-ControlNet list of control type indices corresponding to `controlnet_cond`.
+            conditioning_scale (`list` of `float`):
+                A list of scale factors applied to the ControlNet outputs.
+            class_labels (`torch.Tensor`, *optional*):
+                Optional class labels for conditioning.
+            timestep_cond (`torch.Tensor`, *optional*):
+                Additional conditional embeddings for timestep.
+            attention_mask (`torch.Tensor`, *optional*):
+                Attention mask applied to `encoder_hidden_states`.
+            added_cond_kwargs (`dict`, *optional*):
+                Additional conditions for the Stable Diffusion XL UNet.
+            cross_attention_kwargs (`dict`, *optional*):
+                A kwargs dictionary that if specified is passed along to the `AttnProcessor`.
+            guess_mode (`bool`, *optional*, defaults to `False`):
+                In this mode, the ControlNet encoder tries its best to recognize the input content even if you remove
+                all prompts.
+            return_dict (`bool`, *optional*, defaults to `True`):
+                Whether or not to return a [`ControlNetOutput`] instead of a plain tuple.
+        """
         down_block_res_samples, mid_block_res_sample = None, None
         for i, (image, ctype, ctype_idx, scale, controlnet) in enumerate(
             zip(controlnet_cond, control_type, control_type_idx, conditioning_scale, self.nets)
