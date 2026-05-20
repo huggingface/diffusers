@@ -134,6 +134,10 @@ def retrieve_timesteps(
     return timesteps, num_inference_steps
 
 
+def get_default_z_image_sigmas(num_inference_steps: int) -> list[float]:
+    return torch.linspace(1.0, 0.0, num_inference_steps + 1)[:-1].tolist()
+
+
 class ZImagePipeline(DiffusionPipeline, ZImageLoraLoaderMixin, FromSingleFileMixin):
     model_cpu_offload_seq = "text_encoder->transformer->vae"
     _optional_components = []
@@ -474,7 +478,8 @@ class ZImagePipeline(DiffusionPipeline, ZImageLoraLoaderMixin, FromSingleFileMix
             self.scheduler.config.get("base_shift", 0.5),
             self.scheduler.config.get("max_shift", 1.15),
         )
-        self.scheduler.sigma_min = 0.0
+        if sigmas is None:
+            sigmas = get_default_z_image_sigmas(num_inference_steps)
         scheduler_kwargs = {"mu": mu}
         timesteps, num_inference_steps = retrieve_timesteps(
             self.scheduler,
