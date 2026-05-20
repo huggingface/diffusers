@@ -84,6 +84,19 @@ class DiTTransformer2DModelTests(ModelTesterMixin, unittest.TestCase):
         model = Transformer2DModel.from_config(init_dict)
         assert isinstance(model, DiTTransformer2DModel)
 
+    def test_exclusive_self_attention_config(self):
+        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+        init_dict["exclusive_self_attention"] = True
+        model = self.model_class(**init_dict).to(torch_device)
+
+        assert model.config.exclusive_self_attention
+        assert model.transformer_blocks[0].attn1.exclusive_self_attention
+
+        with torch.no_grad():
+            output = model(**inputs_dict).sample
+
+        assert output.shape == (inputs_dict[self.main_input_name].shape[0],) + self.output_shape
+
     def test_gradient_checkpointing_is_applied(self):
         expected_set = {"DiTTransformer2DModel"}
         super().test_gradient_checkpointing_is_applied(expected_set=expected_set)

@@ -532,3 +532,20 @@ class Transformer2DModelTests(unittest.TestCase):
         assert spatial_transformer_block.transformer_blocks[0].attn1.to_q.bias is not None
         assert spatial_transformer_block.transformer_blocks[0].attn1.to_k.bias is not None
         assert spatial_transformer_block.transformer_blocks[0].attn1.to_v.bias is not None
+
+    def test_spatial_transformer_exclusive_self_attention_config(self):
+        sample = torch.randn(1, 32, 8, 8).to(torch_device)
+        spatial_transformer_block = Transformer2DModel(
+            num_attention_heads=1,
+            attention_head_dim=32,
+            in_channels=32,
+            exclusive_self_attention=True,
+        ).to(torch_device)
+
+        assert spatial_transformer_block.config.exclusive_self_attention
+        assert spatial_transformer_block.transformer_blocks[0].attn1.exclusive_self_attention
+
+        with torch.no_grad():
+            output = spatial_transformer_block(sample).sample
+
+        assert output.shape == sample.shape
