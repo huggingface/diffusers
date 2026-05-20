@@ -69,6 +69,7 @@ from .import_utils import (
     is_accelerate_version,
     is_aiter_available,
     is_aiter_version,
+    is_auto_round_available,
     is_av_available,
     is_better_profanity_available,
     is_bitsandbytes_available,

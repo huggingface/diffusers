@@ -180,6 +180,8 @@
     title: quanto
   - local: quantization/modelopt
     title: NVIDIA ModelOpt
+  - local: quantization/autoround
+    title: AutoRound
   title: Quantization
 - isExpanded: false
   sections:

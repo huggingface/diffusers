@@ -32,6 +32,7 @@ from diffusers.utils.constants import DIFFUSERS_REQUEST_TIMEOUT
 from diffusers.utils.import_utils import (
     BACKENDS_MAPPING,
     is_accelerate_available,
+    is_auto_round_available,
     is_bitsandbytes_available,
     is_compel_available,
     is_flashpack_available,
@@ -460,6 +461,15 @@ def is_gguf(test_case):
     return pytest.mark.gguf(test_case)
 
 
+def is_autoround(test_case):
+    """
+    Decorator marking a test as an AutoRound quantization test. These tests can be filtered using:
+        pytest -m "not autoround" to skip
+        pytest -m autoround to run only these tests
+    """
+    return pytest.mark.autoround(test_case)
+
+
 def is_modelopt(test_case):
     """
     Decorator marking a test as a NVIDIA ModelOpt quantization test. These tests can be filtered using:
@@ -837,6 +847,19 @@ def require_torchao_version_greater_or_equal(torchao_version):
         ) >= version.parse(torchao_version)
         return pytest.mark.skipif(
             not correct_torchao_version, reason=f"Test requires torchao with version greater than {torchao_version}."
+        )(test_case)
+
+    return decorator
+
+
+def require_auto_round_version_greater_or_equal(auto_round_version):
+    def decorator(test_case):
+        correct_auto_round_version = is_auto_round_available() and version.parse(
+            version.parse(importlib.metadata.version("auto_round")).base_version
+        ) >= version.parse(auto_round_version)
+        return pytest.mark.skipif(
+            not correct_auto_round_version,
+            reason=f"Test requires auto-round with version greater than {auto_round_version}.",
         )(test_case)
 
     return decorator
