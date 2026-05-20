@@ -491,13 +491,19 @@ class QwenDoubleStreamAttnProcessor2_0:
         hidden_states: torch.FloatTensor,  # Image stream
         encoder_hidden_states: torch.FloatTensor = None,  # Text stream
         encoder_hidden_states_mask: torch.FloatTensor = None,
-        attention_mask: torch.FloatTensor | None = None,
+        attention_mask: None = None,
         image_rotary_emb: torch.Tensor | None = None,
     ) -> torch.FloatTensor:
         if encoder_hidden_states is None:
             raise ValueError("QwenDoubleStreamAttnProcessor2_0 requires encoder_hidden_states (text stream)")
 
-        if attention_mask is None and encoder_hidden_states_mask is not None:
+        if attention_mask is not None:
+            raise ValueError(
+                "QwenDoubleStreamAttnProcessor2_0 does not accept an external attention_mask. "
+                "Pass encoder_hidden_states_mask to let the processor build the joint mask."
+            )
+
+        if encoder_hidden_states_mask is not None:
             seq_img = hidden_states.shape[1]
             image_mask = torch.ones((hidden_states.shape[0], seq_img), dtype=torch.bool, device=hidden_states.device)
             attention_mask = torch.cat([encoder_hidden_states_mask, image_mask], dim=1)

@@ -2201,6 +2201,7 @@ class TemplatedUlyssesAttention(torch.autograd.Function):
         query, key, value = (x.flatten(0, 1).permute(1, 0, 2, 3).contiguous() for x in (query, key, value))
 
         if attn_mask is not None and attn_mask.shape[-1] == S_KV_LOCAL:
+            # All-gather a local mask so its layout matches the QKV layout after all-to-all.
             mask_list = [torch.empty_like(attn_mask) for _ in range(world_size)]
             dist.all_gather(mask_list, attn_mask, group=group)
             attn_mask = torch.cat(mask_list, dim=-1)
