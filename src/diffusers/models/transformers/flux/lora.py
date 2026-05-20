@@ -34,8 +34,8 @@ import re
 
 import torch
 
+from ....loaders.lora import LoRAHandler
 from ....utils import logging, state_dict_all_zero
-from ...modeling_utils import LoRAMetadata
 from .weight_mapping import (
     FLUX_QKV_SPLIT_PATTERNS,
     FLUX_QKVMLP_SPLIT_PATTERN,
@@ -433,8 +433,8 @@ def map_lora_to_diffusers(state_dict, **kwargs):
     return state_dict
 
 
-# Metadata constant assembled into ``ModelMetadata`` by ``flux/model.py``.
-FLUX_LORA_METADATA = LoRAMetadata(
-    _lora_format_keys=_FLUX_LORA_FORMAT_KEYS,
-    _map_lora_to_diffusers=map_lora_to_diffusers,
+# Handler assembled into ``ModelMetadata`` by ``flux/model.py``.
+FLUX_LORA = LoRAHandler(
+    format_keys=_FLUX_LORA_FORMAT_KEYS,
+    map_lora_to_diffusers=map_lora_to_diffusers,
 )

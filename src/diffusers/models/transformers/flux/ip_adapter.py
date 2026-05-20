@@ -25,9 +25,10 @@ Per-model converters consumed by ``IPAdapterModelMixin`` via ``FLUX_IP_ADAPTER_M
 
 from contextlib import nullcontext
 
+from ....loaders.ip_adapter_model import IPAdapterHandler
 from ....models.embeddings import ImageProjection
 from ....models.model_loading_utils import load_model_dict_into_meta
-from ....models.modeling_utils import _LOW_CPU_MEM_USAGE_DEFAULT, IPAdapterMetadata
+from ....models.modeling_utils import _LOW_CPU_MEM_USAGE_DEFAULT
 from ....utils import is_accelerate_available, is_torch_version, logging
 from ....utils.torch_utils import empty_device_cache
 
@@ -134,8 +135,8 @@ def convert_attn_processors(model, state_dicts, low_cpu_mem_usage=_LOW_CPU_MEM_U
     return attn_procs
 
 
-# Metadata constant assembled into ``ModelMetadata`` by ``flux/model.py``.
-FLUX_IP_ADAPTER_METADATA = IPAdapterMetadata(
-    _convert_ip_adapter_attn_to_diffusers=convert_attn_processors,
-    _convert_ip_adapter_image_proj_to_diffusers=convert_image_proj,
+# Handler assembled into ``ModelMetadata`` by ``flux/model.py``.
+FLUX_IP_ADAPTER = IPAdapterHandler(
+    convert_attn_to_diffusers=convert_attn_processors,
+    convert_image_proj_to_diffusers=convert_image_proj,
 )

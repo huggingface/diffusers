@@ -16,8 +16,7 @@ from typing import Any
 
 import torch
 
-from ....loaders.weight_mapping import WeightMappingMixin
-from ...modeling_utils import WeightMappingMetadata
+from ....loaders.weight_mapping import WeightMappingHandler
 
 
 def swap_scale_shift(weight: torch.Tensor) -> torch.Tensor:
@@ -148,7 +147,9 @@ def map_to_diffusers(
 ) -> dict[str, torch.Tensor]:
     """Convert a Flux transformer state_dict from original format to diffusers format."""
     inner_dim = _get_inner_dim(state_dict)
-    return WeightMappingMixin.apply_transforms(state_dict, FLUX_TRANSFORMS, FLUX_RENAME_PATTERNS, inner_dim=inner_dim)
+    return WeightMappingHandler.apply_transforms(
+        state_dict, FLUX_TRANSFORMS, FLUX_RENAME_PATTERNS, inner_dim=inner_dim
+    )
 
 
 # Build reverse patterns for map_from_diffusers
@@ -204,7 +205,7 @@ def map_from_diffusers(
                 if target in base_key:
                     base_key = base_key.replace(target, qkv_pattern)
                     break
-            orig_key = WeightMappingMixin._rename_key(base_key, FLUX_RENAME_PATTERNS_REVERSE)
+            orig_key = WeightMappingHandler.rename_key(base_key, FLUX_RENAME_PATTERNS_REVERSE)
 
             if orig_key not in qkv_groups:
                 qkv_groups[orig_key] = []
@@ -216,7 +217,7 @@ def map_from_diffusers(
         for target in FLUX_QKVMLP_TARGETS:
             if target in key and "single_transformer_blocks." in key:
                 base_key = key.replace(target, FLUX_QKVMLP_SPLIT_PATTERN)
-                orig_key = WeightMappingMixin._rename_key(base_key, FLUX_RENAME_PATTERNS_REVERSE)
+                orig_key = WeightMappingHandler.rename_key(base_key, FLUX_RENAME_PATTERNS_REVERSE)
 
                 if orig_key not in qkvmlp_groups:
                     qkvmlp_groups[orig_key] = []
@@ -228,7 +229,7 @@ def map_from_diffusers(
             continue
 
         # Standard rename
-        new_key = WeightMappingMixin._rename_key(key, FLUX_RENAME_PATTERNS_REVERSE)
+        new_key = WeightMappingHandler.rename_key(key, FLUX_RENAME_PATTERNS_REVERSE)
         converted_state_dict[new_key] = value
 
     # Concatenate QKV groups
@@ -272,17 +273,18 @@ _FLUX_AVAILABLE_CONFIGS: dict[str, str] = {
 }
 
 
-def detect_config(cls, state_dict: dict[str, Any]) -> str | None:
+def detect_config(weight_mapping, state_dict: dict[str, Any]) -> str | None:
     """Detect which Flux config name matches this state_dict.
 
-    Receives ``cls`` so it can reuse the model's ``_is_original_format`` / ``_rename_key`` helpers.
+    Receives the :class:`WeightMappingHandler` (not the model class) so it can call ``is_original_format`` and
+    ``rename_key`` directly on the subsystem that owns them.
     """
     guidance_key = "guidance_in.in_layer.bias"
     x_embedder_key = "img_in.weight"
 
-    if not cls._is_original_format(state_dict):
-        guidance_key = cls._rename_key(guidance_key, FLUX_RENAME_PATTERNS)
-        x_embedder_key = cls._rename_key(x_embedder_key, FLUX_RENAME_PATTERNS)
+    if not weight_mapping.is_original_format(state_dict):
+        guidance_key = weight_mapping.rename_key(guidance_key, FLUX_RENAME_PATTERNS)
+        x_embedder_key = weight_mapping.rename_key(x_embedder_key, FLUX_RENAME_PATTERNS)
 
     if x_embedder_key not in state_dict:
         return None
@@ -299,16 +301,18 @@ def detect_config(cls, state_dict: dict[str, Any]) -> str | None:
     return "flux-dev"
 
 
-# Metadata constant assembled into ``ModelMetadata`` by ``flux/model.py``.
-FLUX_WEIGHT_MAPPING_METADATA = WeightMappingMetadata(
-    _checkpoint_keys=_FLUX_CHECKPOINT_KEYS,
-    _available_configs=_FLUX_AVAILABLE_CONFIGS,
-    _map_to_diffusers=map_to_diffusers,
-    _map_from_diffusers=map_from_diffusers,
-    _detect_config_fn=detect_config,
+# Handler assembled into ``ModelMetadata`` by ``flux/model.py``.
+FLUX_WEIGHT_MAPPING = WeightMappingHandler(
+    checkpoint_keys=_FLUX_CHECKPOINT_KEYS,
+    checkpoint_key_prefixes=_FLUX_CHECKPOINT_KEY_PREFIXES,
+    rename_patterns=FLUX_RENAME_PATTERNS,
+    available_configs=_FLUX_AVAILABLE_CONFIGS,
+    map_to_diffusers=map_to_diffusers,
+    map_from_diffusers=map_from_diffusers,
+    detect_config_fn=detect_config,
     # Kicks in only when ``detect_config`` returns ``None`` (e.g. the ``img_in`` / ``x_embedder`` key is
     # absent so we can't read in_channels). Most Flux checkpoints in the wild are dev-derived, so it's
     # the safest fallback config to load.
-    _default_config="flux-dev",
-    _default_subfolder="transformer",
+    default_config="flux-dev",
+    default_subfolder="transformer",
 )

@@ -84,6 +84,60 @@ LORA_WEIGHT_NAME_SAFE = "pytorch_lora_weights.safetensors"
 LORA_ADAPTER_METADATA_KEY = "lora_adapter_metadata"
 
 
+class LoRAHandler:
+    """Composition-style holder for a model class's LoRA conversion configuration.
+
+    Instances are attached to model classes as ``cls._lora`` by ``LoRAMetadata._register``. Owns the foreign-format
+    detection and conversion logic that the legacy ``LoRAModelMixin`` flattened onto the model class itself. The
+    mixin's public-facing methods (``load_lora_adapter``, ``fuse_lora``, etc.) stay on the mixin but read their data
+    from ``self._lora.X`` instead of ``self._X`` flattened attrs.
+    """
+
+    def __init__(
+        self,
+        *,
+        format_keys: Optional[Dict[str, Set[str]]] = None,
+        map_lora_to_diffusers: Optional[Callable[..., Dict[str, "torch.Tensor"]]] = None,
+    ):
+        self.format_keys = format_keys or {}
+        self._map_to_diffusers_fn = map_lora_to_diffusers
+
+    def detect_format(self, state_dict: Dict[str, "torch.Tensor"]) -> Optional[str]:
+        """Return the format name (``"kohya"`` etc.) matched by ``state_dict``, or ``None``."""
+        if not self.format_keys:
+            return None
+        keys = set(state_dict)
+        for fmt, fmt_keys in self.format_keys.items():
+            if any(any(fk in k for k in keys) for fk in fmt_keys):
+                return fmt
+        return None
+
+    @staticmethod
+    def normalize_suffixes(state_dict: Dict[str, "torch.Tensor"]) -> Dict[str, "torch.Tensor"]:
+        """Rewrite ``.lora_down/.lora_up`` (kohya-ish) to ``.lora_A/.lora_B`` (diffusers)."""
+        out: Dict[str, "torch.Tensor"] = {}
+        for k, v in state_dict.items():
+            new_k = (
+                k.replace(".lora_down.weight", ".lora_A.weight")
+                .replace(".lora_up.weight", ".lora_B.weight")
+                .replace(".down.weight", ".lora_A.weight")
+                .replace(".up.weight", ".lora_B.weight")
+            )
+            out[new_k] = v
+        return out
+
+    def map_to_diffusers(self, state_dict: Dict[str, "torch.Tensor"], **kwargs) -> Dict[str, "torch.Tensor"]:
+        """Canonicalize a LoRA state dict to diffusers naming.
+
+        Default: just normalize suffixes. Models with foreign formats register a converter via
+        ``LoRAMetadata._map_lora_to_diffusers``.
+        """
+        state_dict = self.normalize_suffixes(state_dict)
+        if self._map_to_diffusers_fn is None:
+            return state_dict
+        return self._map_to_diffusers_fn(state_dict, **kwargs)
+
+
 # Per-class hook for expanding adapter weights before activation. Models that need
 # expansion (currently only UNet variants) register here; everything else falls
 # through to the identity default so new transformers don't need an entry.
@@ -360,51 +414,13 @@ class LoRAModelMixin:
     - Get a list of the active adapters.
     """
 
+    # Runtime PEFT state — set during adapter load / hotswap setup. Not part of the metadata-driven config.
     _hf_peft_config_loaded = False
-    # kwargs for prepare_model_for_compiled_hotswap, if required
     _lora_hotswap_kwargs: Optional[dict] = None
 
-    # Default class-attribute values; populated per-model by ``register_model_metadata``
-    # (or set directly on subclasses for legacy callers).
-    _lora_format_keys: Dict[str, Set[str]] = {}
-    _map_lora_to_diffusers: Optional[Callable[..., Dict[str, "torch.Tensor"]]] = None
-
-    @classmethod
-    def _detect_lora_format(cls, state_dict: Dict[str, "torch.Tensor"]) -> Optional[str]:
-        """Return the format name (``"kohya"`` etc.) matched by ``state_dict``, or ``None``."""
-        if not cls._lora_format_keys:
-            return None
-        keys = set(state_dict)
-        for fmt, fmt_keys in cls._lora_format_keys.items():
-            if any(any(fk in k for k in keys) for fk in fmt_keys):
-                return fmt
-        return None
-
-    @classmethod
-    def _normalize_lora_suffixes(cls, state_dict: Dict[str, "torch.Tensor"]) -> Dict[str, "torch.Tensor"]:
-        """Rewrite ``.lora_down/.lora_up`` (kohya-ish) to ``.lora_A/.lora_B`` (diffusers)."""
-        out: Dict[str, "torch.Tensor"] = {}
-        for k, v in state_dict.items():
-            new_k = (
-                k.replace(".lora_down.weight", ".lora_A.weight")
-                .replace(".lora_up.weight", ".lora_B.weight")
-                .replace(".down.weight", ".lora_A.weight")
-                .replace(".up.weight", ".lora_B.weight")
-            )
-            out[new_k] = v
-        return out
-
-    @classmethod
-    def map_lora_to_diffusers(cls, state_dict: Dict[str, "torch.Tensor"], **kwargs) -> Dict[str, "torch.Tensor"]:
-        """Canonicalize a LoRA state dict to diffusers naming.
-
-        Default: just normalize suffixes. Models with foreign formats register a converter via
-        ``LoRAMetadata._map_lora_to_diffusers`` — the decorator mirrors it onto ``cls._map_lora_to_diffusers``.
-        """
-        state_dict = cls._normalize_lora_suffixes(state_dict)
-        if cls._map_lora_to_diffusers is None:
-            return state_dict
-        return cls._map_lora_to_diffusers(state_dict, **kwargs)
+    # ``_lora: LoRAHandler`` is provided universally by ``ModelMixin`` (set via the default
+    # ``ModelMetadata()._register(ModelMixin)`` call). Models without LoRA conversion metadata inherit a no-op
+    # handler; ``@register_metadata(ModelMetadata(_lora=...))`` overrides it on the subclass.
 
     @_requires_peft
     def load_adapter(
@@ -541,7 +557,7 @@ class LoRAModelMixin:
             model_file = _get_model_file(source, weights_name=name or LORA_WEIGHT_NAME_SAFE, **hub_kwargs)
             state_dict = load_state_dict(model_file)
 
-        state_dict = self.map_lora_to_diffusers(state_dict)
+        state_dict = self._lora.map_to_diffusers(state_dict)
         if not state_dict:
             model_class_name = self.__class__.__name__
             logger.warning(

@@ -23,6 +23,7 @@ import torch.nn.functional as F
 from ....configuration_utils import register_to_config
 from ....hooks._helpers import TransformerBlockMetadata
 from ....loaders.ip_adapter_model import IPAdapterModelMixin
+from ....loaders.lora import LoRAModelMixin
 from ....utils import apply_lora_scale, logging
 from ....utils.torch_utils import maybe_allow_in_graph
 from ..._modeling_parallel import ContextParallelInput, ContextParallelOutput
@@ -38,9 +39,9 @@ from ...embeddings import (
 from ...modeling_outputs import Transformer2DModelOutput
 from ...modeling_utils import ModelMetadata, ModelMixin, register_metadata
 from ...normalization import AdaLayerNormContinuous, AdaLayerNormZero, AdaLayerNormZeroSingle
-from .ip_adapter import FLUX_IP_ADAPTER_METADATA
-from .lora import FLUX_LORA_METADATA
-from .weight_mapping import FLUX_WEIGHT_MAPPING_METADATA
+from .ip_adapter import FLUX_IP_ADAPTER
+from .lora import FLUX_LORA
+from .weight_mapping import FLUX_WEIGHT_MAPPING
 
 
 logger = logging.get_logger(__name__)
@@ -528,7 +529,7 @@ class FluxPosEmbed(nn.Module):
         return freqs_cos, freqs_sin
 
 
-FLUX_MODEL_METADATA = ModelMetadata(
+_METADATA = ModelMetadata(
     _supports_gradient_checkpointing=True,
     _no_split_modules=["FluxTransformerBlock", "FluxSingleTransformerBlock"],
     _skip_layerwise_casting_patterns=("pos_embed", "norm"),
@@ -542,18 +543,19 @@ FLUX_MODEL_METADATA = ModelMetadata(
         },
         "proj_out": ContextParallelOutput(gather_dim=1, expected_dims=3),
     },
-    _lora=FLUX_LORA_METADATA,
-    _weight_mapping=FLUX_WEIGHT_MAPPING_METADATA,
-    _ip_adapter=FLUX_IP_ADAPTER_METADATA,
+    _lora=FLUX_LORA,
+    _weight_mapping=FLUX_WEIGHT_MAPPING,
+    _ip_adapter=FLUX_IP_ADAPTER,
 )
 
 
-@register_metadata(FLUX_MODEL_METADATA)
+@register_metadata(_METADATA)
 class FluxTransformer2DModel(
     ModelMixin,
     AttentionMixin,
     CacheMixin,
     IPAdapterModelMixin,
+    LoRAModelMixin,
 ):
     """
     The Transformer model introduced in Flux.
