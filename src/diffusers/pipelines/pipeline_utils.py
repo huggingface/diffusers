@@ -2116,7 +2116,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         """
 
         original_config = dict(pipeline.config)
-        torch_dtype = kwargs.pop("torch_dtype", torch.float32)
+        torch_dtype = kwargs.pop("torch_dtype", None)
         trust_remote_code = kwargs.pop("trust_remote_code", False)
 
         # derive the pipeline class to instantiate
