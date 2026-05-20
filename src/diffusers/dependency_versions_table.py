@@ -4,7 +4,6 @@
 deps = {
     "Pillow": "Pillow",
     "accelerate": "accelerate>=0.31.0",
-    "compel": "compel==0.1.8",
     "datasets": "datasets",
     "filelock": "filelock",
     "flax": "flax>=0.4.1",
@@ -45,7 +44,7 @@ deps = {
     "requests": "requests",
     "tensorboard": "tensorboard",
     "tiktoken": "tiktoken>=0.7.0",
-    "torch": "torch>=1.4",
+    "torch": "torch>=2.6",
     "torchvision": "torchvision",
     "transformers": "transformers>=4.41.2",
     "urllib3": "urllib3<=2.0.0",

@@ -852,10 +852,16 @@ class HiDreamImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, 
 
         # 2. Blocks
         block_id = 0
-        initial_encoder_hidden_states = torch.cat([encoder_hidden_states[-1], encoder_hidden_states[-2]], dim=1)
+        initial_encoder_hidden_states = torch.cat(
+            [
+                encoder_hidden_states[-1].to(hidden_states.device),
+                encoder_hidden_states[-2].to(hidden_states.device),
+            ],
+            dim=1,
+        )
         initial_encoder_hidden_states_seq_len = initial_encoder_hidden_states.shape[1]
         for bid, block in enumerate(self.double_stream_blocks):
-            cur_llama31_encoder_hidden_states = encoder_hidden_states[block_id]
+            cur_llama31_encoder_hidden_states = encoder_hidden_states[block_id].to(hidden_states.device)
             cur_encoder_hidden_states = torch.cat(
                 [initial_encoder_hidden_states, cur_llama31_encoder_hidden_states], dim=1
             )
@@ -891,7 +897,7 @@ class HiDreamImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, 
             hidden_states_masks = torch.cat([hidden_states_masks, encoder_attention_mask_ones], dim=1)
 
         for bid, block in enumerate(self.single_stream_blocks):
-            cur_llama31_encoder_hidden_states = encoder_hidden_states[block_id]
+            cur_llama31_encoder_hidden_states = encoder_hidden_states[block_id].to(hidden_states.device)
             hidden_states = torch.cat([hidden_states, cur_llama31_encoder_hidden_states], dim=1)
             if torch.is_grad_enabled() and self.gradient_checkpointing:
                 hidden_states = self._gradient_checkpointing_func(
