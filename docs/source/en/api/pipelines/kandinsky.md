@@ -35,7 +35,7 @@ Make sure you have the following libraries installed.
 >
 > <br>
 >
-> Kandinsky 3 has a more concise architecture and it doesn't require a prior model. This means it's usage is identical to other diffusion models like [Stable Diffusion XL](sdxl).
+> Kandinsky 3 has a more concise architecture and it doesn't require a prior model. This means it's usage is identical to other diffusion models like [Stable Diffusion XL](./stable_diffusion/stable_diffusion_xl).
 
 ## Text-to-image
 
@@ -712,7 +712,7 @@ make_image_grid([img.resize((512, 512)), image.resize((512, 512))], rows=1, cols
 
 Kandinsky is unique because it requires a prior pipeline to generate the mappings, and a second pipeline to decode the latents into an image. Optimization efforts should be focused on the second pipeline because that is where the bulk of the computation is done. Here are some tips to improve Kandinsky during inference.
 
-1. Enable [xFormers](../optimization/xformers) if you're using PyTorch < 2.0:
+1. Enable [xFormers](../../optimization/xformers) if you're using PyTorch < 2.0:
 
 ```diff
   from diffusers import DiffusionPipeline

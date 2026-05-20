@@ -263,7 +263,7 @@ LCMs are compatible with adapters like LoRA, ControlNet, T2I-Adapter, and Animat
 
 ### LoRA
 
-[LoRA](../tutorials/using_peft_for_inference) adapters can be rapidly finetuned to learn a new style from just a few images and plugged into a pretrained model to generate images in that style.
+[LoRA](../../tutorials/using_peft_for_inference) adapters can be rapidly finetuned to learn a new style from just a few images and plugged into a pretrained model to generate images in that style.
 
 <hfoptions id="lcm-lora">
 <hfoption id="LCM">
@@ -458,7 +458,7 @@ image
 
 ### T2I-Adapter
 
-[T2I-Adapter](./t2i_adapter) is an even more lightweight adapter than ControlNet, that provides an additional input to condition a pretrained model with. It is faster than ControlNet but the results may be slightly worse.
+[T2I-Adapter](../../using-diffusers/t2i_adapter) is an even more lightweight adapter than ControlNet, that provides an additional input to condition a pretrained model with. It is faster than ControlNet but the results may be slightly worse.
 
 You can find additional T2I-Adapter checkpoints trained on other inputs in [TencentArc's](https://hf.co/TencentARC) repository.
 
@@ -595,7 +595,7 @@ image = pipe(
 
 ### AnimateDiff
 
-[AnimateDiff](../api/pipelines/animatediff) is an adapter that adds motion to an image. It can be used with most Stable Diffusion models, effectively turning them into "video generation" models. Generating good results with a video model usually requires generating multiple frames (16-24), which can be very slow with a regular Stable Diffusion model. LCM-LoRA can speed up this process by only taking 4-8 steps for each frame.
+[AnimateDiff](./animatediff) is an adapter that adds motion to an image. It can be used with most Stable Diffusion models, effectively turning them into "video generation" models. Generating good results with a video model usually requires generating multiple frames (16-24), which can be very slow with a regular Stable Diffusion model. LCM-LoRA can speed up this process by only taking 4-8 steps for each frame.
 
 Load a [`AnimateDiffPipeline`] and pass a [`MotionAdapter`] to it. Then replace the scheduler with the [`LCMScheduler`], and combine both LoRA adapters with the [`~loaders.UNet2DConditionLoadersMixin.set_adapters`] method. Now you can pass a prompt to the pipeline and generate an animated image.
 

@@ -294,7 +294,7 @@ refiner = DiffusionPipeline.from_pretrained(
 ```
 
 > [!WARNING]
-> You can use SDXL refiner with a different base model. For example, you can use the [Hunyuan-DiT](../api/pipelines/hunyuandit) or [PixArt-Sigma](../api/pipelines/pixart_sigma) pipelines to generate images with better prompt adherence. Once you have generated an image, you can pass it to the SDXL refiner model to enhance final generation quality.
+> You can use SDXL refiner with a different base model. For example, you can use the [Hunyuan-DiT](../hunyuandit) or [PixArt-Sigma](../pixart_sigma) pipelines to generate images with better prompt adherence. Once you have generated an image, you can pass it to the SDXL refiner model to enhance final generation quality.
 
 Generate an image from the base model, and set the model output to **latent** space:
 
@@ -426,7 +426,7 @@ image
     <img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/sdxl-double-prompt.png" alt="generated image of an astronaut in a jungle in the style of a van gogh painting"/>
 </div>
 
-The dual text-encoders also support textual inversion embeddings that need to be loaded separately as explained in the [SDXL textual inversion](textual_inversion_inference#stable-diffusion-xl) section.
+The dual text-encoders also support textual inversion embeddings that need to be loaded separately as explained in the [SDXL textual inversion](../../../using-diffusers/textual_inversion_inference#stable-diffusion-xl) section.
 
 ## Optimizations
 
@@ -448,7 +448,7 @@ SDXL is a large model, and you may need to optimize memory to get it to run on y
 + refiner.unet = torch.compile(refiner.unet, mode="reduce-overhead", fullgraph=True)
 ```
 
-3. Enable [xFormers](../optimization/xformers) to run SDXL if `torch<2.0`:
+3. Enable [xFormers](../../../optimization/xformers) to run SDXL if `torch<2.0`:
 
 ```diff
 + base.enable_xformers_memory_efficient_attention()
