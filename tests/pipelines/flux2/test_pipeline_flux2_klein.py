@@ -240,4 +240,5 @@ class Flux2KleinPipelineIntegrationTests(unittest.TestCase):
         image_slice = image[0, -3:, -3:, -1]
         self.assertEqual(image.shape, (1, 512, 512, 3))
         self.assertTrue(np.all((image >= 0.0) & (image <= 1.0)), "Pixel values must be in [0, 1]")
-        self.assertGreater(image_slice.std(), 0.01, "Output image should have meaningful variance")
+        expected_slice = np.array([0.3652, 0.3574, 0.3633, 0.4102, 0.4062, 0.4043, 0.4453, 0.4355, 0.4570])
+        self.assertLess(np.abs(image_slice.flatten() - expected_slice).max(), 5e-2)
