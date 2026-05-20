@@ -107,7 +107,7 @@ class QuarkConfigParseTest(unittest.TestCase):
         self.assertEqual(cfg.quant_method, QuantizationMethod.QUARK)
         self.assertEqual(cfg.custom_mode, "quark")
         self.assertFalse(cfg.legacy)
-        from quark.torch.quantization.config.config import Config as QConfig
+        from quark.torch.quantization.config.config import QConfig
 
         self.assertIsInstance(cfg.quant_config, QConfig)
 
