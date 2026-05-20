@@ -198,35 +198,6 @@
   title: Model accelerators and hardware
 - isExpanded: false
   sections:
-  - local: using-diffusers/helios
-    title: Helios
-  - local: using-diffusers/consisid
-    title: ConsisID
-  - local: using-diffusers/sdxl
-    title: Stable Diffusion XL
-  - local: using-diffusers/sdxl_turbo
-    title: SDXL Turbo
-  - local: using-diffusers/kandinsky
-    title: Kandinsky
-  - local: using-diffusers/omnigen
-    title: OmniGen
-  - local: using-diffusers/pag
-    title: PAG
-  - local: using-diffusers/inference_with_lcm
-    title: Latent Consistency Model
-  - local: using-diffusers/shap-e
-    title: Shap-E
-  - local: using-diffusers/diffedit
-    title: DiffEdit
-  - local: using-diffusers/inference_with_tcd_lora
-    title: Trajectory Consistency Distillation-LoRA
-  - local: using-diffusers/svd
-    title: Stable Video Diffusion
-  - local: using-diffusers/marigold_usage
-    title: Marigold Computer Vision
-  title: Specific pipeline examples
-- isExpanded: false
-  sections:
   - sections:
     - local: using-diffusers/unconditional_image_generation
       title: Unconditional image generation
@@ -324,6 +295,8 @@
         title: SparseControlNetModel
       title: ControlNets
     - sections:
+      - local: api/models/ace_step_transformer
+        title: AceStepTransformer1DModel
       - local: api/models/allegro_transformer3d
         title: AllegroTransformer3DModel
       - local: api/models/aura_flow_transformer2d
@@ -370,6 +343,8 @@
         title: HunyuanVideo15Transformer3DModel
       - local: api/models/hunyuan_video_transformer_3d
         title: HunyuanVideoTransformer3DModel
+      - local: api/models/transformer_joyimage
+        title: JoyImageEditTransformer3DModel
       - local: api/models/latte_transformer3d
         title: LatteTransformer3DModel
       - local: api/models/longcat_image_transformer2d
@@ -384,6 +359,8 @@
         title: LuminaNextDiT2DModel
       - local: api/models/mochi_transformer3d
         title: MochiTransformer3DModel
+      - local: api/models/motif_video_transformer_3d
+        title: MotifVideoTransformer3DModel
       - local: api/models/omnigen_transformer
         title: OmniGenTransformer2DModel
       - local: api/models/ovisimage_transformer2d
@@ -488,6 +465,8 @@
     - local: api/pipelines/auto_pipeline
       title: AutoPipeline
     - sections:
+      - local: api/pipelines/ace_step
+        title: ACE-Step
       - local: api/pipelines/audioldm2
         title: AudioLDM 2
       - local: api/pipelines/longcat_audio_dit
@@ -556,6 +535,8 @@
         title: HunyuanImage2.1
       - local: api/pipelines/pix2pix
         title: InstructPix2Pix
+      - local: api/pipelines/joyimage_edit
+        title: JoyImage Edit
       - local: api/pipelines/kandinsky
         title: Kandinsky 2.1
       - local: api/pipelines/kandinsky_v22
@@ -580,6 +561,8 @@
         title: Lumina-T2X
       - local: api/pipelines/marigold
         title: Marigold
+      - local: api/pipelines/nucleusmoe_image
+        title: NucleusMoE-Image
       - local: api/pipelines/omnigen
         title: OmniGen
       - local: api/pipelines/ovis_image
@@ -674,6 +657,8 @@
         title: LTXVideo
       - local: api/pipelines/mochi
         title: Mochi
+      - local: api/pipelines/motif_video
+        title: Motif-Video
       - local: api/pipelines/skyreels_v2
         title: SkyReels-V2
       - local: api/pipelines/stable_diffusion/svd

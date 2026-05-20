@@ -405,6 +405,21 @@ class VaeImageProcessorLDM3D(metaclass=DummyObject):
         requires_backends(cls, ["torch"])
 
 
+class AceStepTransformer1DModel(metaclass=DummyObject):
+    _backends = ["torch"]
+
+    def __init__(self, *args, **kwargs):
+        requires_backends(self, ["torch"])
+
+    @classmethod
+    def from_config(cls, *args, **kwargs):
+        requires_backends(cls, ["torch"])
+
+    @classmethod
+    def from_pretrained(cls, *args, **kwargs):
+        requires_backends(cls, ["torch"])
+
+
 class AllegroTransformer3DModel(metaclass=DummyObject):
     _backends = ["torch"]
 
@@ -1350,6 +1365,21 @@ class I2VGenXLUNet(metaclass=DummyObject):
         requires_backends(cls, ["torch"])
 
 
+class JoyImageEditTransformer3DModel(metaclass=DummyObject):
+    _backends = ["torch"]
+
+    def __init__(self, *args, **kwargs):
+        requires_backends(self, ["torch"])
+
+    @classmethod
+    def from_config(cls, *args, **kwargs):
+        requires_backends(cls, ["torch"])
+
+    @classmethod
+    def from_pretrained(cls, *args, **kwargs):
+        requires_backends(cls, ["torch"])
+
+
 class Kandinsky3UNet(metaclass=DummyObject):
     _backends = ["torch"]
 
@@ -1516,6 +1546,21 @@ class MochiTransformer3DModel(metaclass=DummyObject):
 
 
 class ModelMixin(metaclass=DummyObject):
+    _backends = ["torch"]
+
+    def __init__(self, *args, **kwargs):
+        requires_backends(self, ["torch"])
+
+    @classmethod
+    def from_config(cls, *args, **kwargs):
+        requires_backends(cls, ["torch"])
+
+    @classmethod
+    def from_pretrained(cls, *args, **kwargs):
+        requires_backends(cls, ["torch"])
+
+
+class MotifVideoTransformer3DModel(metaclass=DummyObject):
     _backends = ["torch"]
 
     def __init__(self, *args, **kwargs):
