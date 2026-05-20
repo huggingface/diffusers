@@ -655,8 +655,18 @@ class SlowBnb8bitFluxTests(Base8bitTests):
         backend_empty_cache(torch_device)
 
         model_id = "hf-internal-testing/flux.1-dev-int8-pkg"
+        # Load each bnb 8bit component separately and move to CPU immediately
+        # to avoid having both large models on GPU simultaneously (OOM on <=24GB cards).
         t5_8bit = T5EncoderModel.from_pretrained(model_id, subfolder="text_encoder_2")
+        t5_8bit = t5_8bit.to("cpu")
+        gc.collect()
+        backend_empty_cache(torch_device)
+
         transformer_8bit = FluxTransformer2DModel.from_pretrained(model_id, subfolder="transformer")
+        transformer_8bit = transformer_8bit.to("cpu")
+        gc.collect()
+        backend_empty_cache(torch_device)
+
         self.pipeline_8bit = DiffusionPipeline.from_pretrained(
             "black-forest-labs/FLUX.1-dev",
             text_encoder_2=t5_8bit,
