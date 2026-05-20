@@ -44,7 +44,7 @@ def format_text_input(prompt, system_message):
 
 
 def extract_glyph_texts(prompt):
-    pattern = r"\"(.*?)\"|\"(.*?)\""
+    pattern = r"\"(.*?)\"|“(.*?)”"
     matches = re.findall(pattern, prompt)
     result = [match[0] or match[1] for match in matches]
     result = list(dict.fromkeys(result)) if len(result) > 1 else result
