@@ -368,6 +368,10 @@ class TestFluxTransformerQuanto(FluxTransformerTesterConfig, QuantoTesterMixin):
 class TestFluxTransformerTorchAo(FluxTransformerTesterConfig, TorchAoTesterMixin):
     """TorchAO quantization tests for Flux Transformer."""
 
+    @property
+    def torch_dtype(self):
+        return torch.bfloat16
+
 
 class TestFluxTransformerGGUF(FluxTransformerTesterConfig, GGUFTesterMixin):
     @property
@@ -403,6 +407,10 @@ class TestFluxTransformerQuantoCompile(FluxTransformerTesterConfig, QuantoCompil
 
 class TestFluxTransformerTorchAoCompile(FluxTransformerTesterConfig, TorchAoCompileTesterMixin):
     """TorchAO + compile tests for Flux Transformer."""
+
+    @property
+    def torch_dtype(self):
+        return torch.bfloat16
 
 
 class TestFluxTransformerGGUFCompile(FluxTransformerTesterConfig, GGUFCompileTesterMixin):
