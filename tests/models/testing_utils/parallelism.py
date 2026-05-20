@@ -227,6 +227,51 @@ def _custom_mesh_worker(
             dist.destroy_process_group()
 
 
+def _context_parallel_correctness_worker(
+    rank, world_size, master_port, model_class, init_dict, state_dict, cp_dict, inputs_dict, return_dict
+):
+    """Worker that runs a CP forward pass and returns the output tensor for numerical comparison."""
+    try:
+        os.environ["MASTER_ADDR"] = "localhost"
+        os.environ["MASTER_PORT"] = str(master_port)
+        os.environ["RANK"] = str(rank)
+        os.environ["WORLD_SIZE"] = str(world_size)
+
+        device_config = DEVICE_CONFIG.get(torch_device, DEVICE_CONFIG["cuda"])
+        backend = device_config["backend"]
+        device_module = device_config["module"]
+
+        dist.init_process_group(backend=backend, rank=rank, world_size=world_size)
+        device_module.set_device(rank)
+        device = torch.device(f"{torch_device}:{rank}")
+
+        model = model_class(**init_dict)
+        model.load_state_dict(state_dict)
+        model.to(device)
+        model.eval()
+
+        inputs_on_device = {k: v.to(device) if isinstance(v, torch.Tensor) else v for k, v in inputs_dict.items()}
+
+        cp_config = ContextParallelConfig(**cp_dict)
+        model.enable_parallelism(config=cp_config)
+
+        with torch.no_grad():
+            output = model(**inputs_on_device, return_dict=False)[0]
+
+        if rank == 0:
+            return_dict["status"] = "success"
+            # Serialise via nested list so the manager dict can transport it across processes.
+            return_dict["output"] = output.cpu().tolist()
+
+    except Exception as e:
+        if rank == 0:
+            return_dict["status"] = "error"
+            return_dict["error"] = str(e)
+    finally:
+        if dist.is_initialized():
+            dist.destroy_process_group()
+
+
 @is_context_parallel
 @require_torch_multi_accelerator
 class ContextParallelTesterMixin:
@@ -368,6 +413,52 @@ class ContextParallelTesterMixin:
         assert return_dict.get("status") == "success", (
             f"Custom mesh context parallel inference failed: {return_dict.get('error', 'Unknown error')}"
         )
+
+    @pytest.mark.parametrize("cp_type", ["ulysses_degree", "ring_degree"], ids=["ulysses", "ring"])
+    def test_context_parallel_output_correctness(self, cp_type, batch_size: int = 1):
+        """Verify that CP output is numerically identical to a single-GPU reference forward pass."""
+        if not torch.distributed.is_available():
+            pytest.skip("torch.distributed is not available.")
+
+        if not hasattr(self.model_class, "_cp_plan") or self.model_class._cp_plan is None:
+            pytest.skip("Model does not have a _cp_plan defined for context parallel inference.")
+
+        if cp_type == "ring_degree":
+            active_backend, _ = _AttentionBackendRegistry.get_active_backend()
+            if active_backend == AttentionBackendName.NATIVE:
+                pytest.skip("Ring attention is not supported with the native attention backend.")
+
+        world_size = 2
+        init_dict = self.get_init_dict()
+        inputs_dict = self.get_dummy_inputs(batch_size=batch_size)
+
+        # Single-GPU reference
+        model = self.model_class(**init_dict).eval().to(torch_device)
+        state_dict = {k: v.cpu() for k, v in model.state_dict().items()}
+        with torch.no_grad():
+            ref_output = model(**inputs_dict, return_dict=False)[0].cpu()
+
+        # Context-parallel run with the same weights
+        inputs_cpu = {k: v.cpu() if isinstance(v, torch.Tensor) else v for k, v in inputs_dict.items()}
+        cp_dict = {cp_type: world_size}
+
+        master_port = _find_free_port()
+        manager = mp.Manager()
+        return_dict = manager.dict()
+
+        mp.spawn(
+            _context_parallel_correctness_worker,
+            args=(world_size, master_port, self.model_class, init_dict, state_dict, cp_dict, inputs_cpu, return_dict),
+            nprocs=world_size,
+            join=True,
+        )
+
+        assert return_dict.get("status") == "success", (
+            f"Context parallel correctness check failed: {return_dict.get('error', 'Unknown error')}"
+        )
+
+        cp_output = torch.tensor(return_dict["output"])
+        torch.testing.assert_close(ref_output, cp_output, atol=1e-4, rtol=1e-4)
 
 
 @is_attention
