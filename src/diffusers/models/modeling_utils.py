@@ -1903,6 +1903,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         `torch.device`: The device on which the module is (assuming that all the module parameters are on the same
         device).
         """
+        # Not cached: with group offloading, the effective device changes per-forward as groups onload/offload.
         return get_parameter_device(self)
 
     @property
@@ -1910,7 +1911,17 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         """
         `torch.dtype`: The dtype of the module (assuming that all the module parameters have the same dtype).
         """
-        return get_parameter_dtype(self)
+        cached = self.__dict__.get("_cached_dtype")
+        if cached is not None:
+            return cached
+        cached = get_parameter_dtype(self)
+        self.__dict__["_cached_dtype"] = cached
+        return cached
+
+    def _apply(self, fn, *args, **kwargs):
+        # Invalidate cached dtype since `.to()`, `.cpu()`, `.cuda()`, `.half()`, etc. all flow through `_apply`.
+        self.__dict__.pop("_cached_dtype", None)
+        return super()._apply(fn, *args, **kwargs)
 
     def num_parameters(self, only_trainable: bool = False, exclude_embeddings: bool = False) -> int:
         """
