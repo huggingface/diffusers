@@ -10,6 +10,32 @@ Before reviewing, read and apply the guidelines in:
 - [skills/parity-testing/SKILL.md](skills/parity-testing/SKILL.md) — testing rules, comparison utilities
 - [skills/parity-testing/pitfalls.md](skills/parity-testing/pitfalls.md) — known pitfalls (dtype mismatches, config assumptions, etc.)
 
+## Tripwires
+
+A short, non-exhaustive list of mistakes that block merge on their own — the
+clearest signal a contributor hasn't read [AGENTS.md](AGENTS.md) and the docs
+it links to. Failing one of these is enough to send a PR back; passing them
+all doesn't make the PR good, it just means it's worth a proper review.
+
+1. **New mandatory dependency.** Any new import outside the existing
+   dependency set (e.g. `einops`, `rotary_embedding_torch`) — either rewrite
+   in native PyTorch or guard as optional with `is_X_available()` plus a
+   dummy in `utils/dummy_*.py`. See [models.md §Coding style](models.md#coding-style)
+   and gotcha #2.
+
+2. **Attention bypassing the dispatch pattern.** Calls to
+   `F.scaled_dot_product_attention` directly, or imports of third-party
+   attention libraries inside the model file. New attention must define an
+   `Attention` class + processor in the model file and route through
+   `dispatch_attention_fn`. See
+   [models.md §Attention pattern](models.md#attention-pattern).
+
+3. **Custom `from_pretrained` (or `save_pretrained`) on a model or pipeline
+   class.** `ModelMixin` and `DiffusionPipeline` already provide these and
+   handle sharding, dtype, device map, single-file, etc. An override is
+   almost always a sign the contributor missed an existing mixin or kwarg —
+   raise the question before reviewing the rest.
+
 ## Common mistakes
 
 Common mistakes are covered in the common-mistakes / gotcha sections in [AGENTS.md](AGENTS.md), [models.md](models.md), [pipelines.md](pipelines.md), and [modular.md](modular.md). Additionally, watch for below patterns that aren't covered there:
