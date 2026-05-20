@@ -245,5 +245,5 @@ The SDXL training script is discussed in more detail in the [SDXL training](sdxl
 
 Congratulations on distilling a LCM model! To learn more about LCM, the following may be helpful:
 
-- Learn how to use [LCMs for inference](../using-diffusers/inference_with_lcm) for text-to-image, image-to-image, and with LoRA checkpoints.
+- Learn how to use [LCMs for inference](../api/pipelines/latent_consistency_models) for text-to-image, image-to-image, and with LoRA checkpoints.
 - Read the [SDXL in 4 steps with Latent Consistency LoRAs](https://huggingface.co/blog/lcm_lora) blog post to learn more about SDXL LCM-LoRA's for super fast inference, quality comparisons, benchmarks, and more.

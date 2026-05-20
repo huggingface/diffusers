@@ -1,4 +1,4 @@
-from .attention import AttentionTesterMixin
+from .attention import AttentionBackendTesterMixin, AttentionTesterMixin
 from .cache import (
     CacheTesterMixin,
     FasterCacheConfigMixin,
@@ -42,6 +42,7 @@ from .training import TrainingTesterMixin
 
 
 __all__ = [
+    "AttentionBackendTesterMixin",
     "AttentionTesterMixin",
     "BaseModelTesterConfig",
     "BitsAndBytesCompileTesterMixin",
