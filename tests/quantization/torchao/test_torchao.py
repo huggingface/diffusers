@@ -14,6 +14,7 @@
 # limitations under the License.
 
 import gc
+import os
 import tempfile
 import unittest
 from typing import List
@@ -589,13 +590,32 @@ class TorchAoSerializationTest(unittest.TestCase):
         self.assertTrue(isinstance(weight, TorchAOBaseTensor))
         self.assertTrue(numpy_cosine_similarity_distance(output_slice, expected_slice) < 1e-3)
 
-    def _check_serialization_expected_slice(self, quant_type, expected_slice, device):
+    def _check_serialization_expected_slice(
+        self, quant_type, expected_slice, device, safe_serialization=False, max_shard_size=None, assert_sharded=False
+    ):
+        if safe_serialization and getattr(quant_type, "version", None) != 2:
+            self.skipTest("TorchAO safe serialization tests require quantization config version=2.")
+
         quantized_model = self.get_dummy_model(quant_type, device)
 
+        save_kwargs = {"safe_serialization": safe_serialization}
+        if max_shard_size is not None:
+            save_kwargs["max_shard_size"] = max_shard_size
+
         with tempfile.TemporaryDirectory() as tmp_dir:
-            quantized_model.save_pretrained(tmp_dir, safe_serialization=False)
+            quantized_model.save_pretrained(tmp_dir, **save_kwargs)
+            if assert_sharded:
+                shard_files = [f for f in os.listdir(tmp_dir) if f.endswith(".safetensors")]
+                if max_shard_size is not None:
+                    self.assertTrue(len(shard_files) > 1, "Expected a sharded safe-serialization checkpoint.")
+                self.assertTrue(
+                    any("index" in f and f.endswith(".json") for f in os.listdir(tmp_dir)),
+                    "Expected an index file for sharded safe checkpoint.",
+                )
             loaded_quantized_model = FluxTransformer2DModel.from_pretrained(
-                tmp_dir, torch_dtype=torch.bfloat16, use_safetensors=False
+                tmp_dir,
+                torch_dtype=torch.bfloat16,
+                use_safetensors=safe_serialization,
             ).to(device=torch_device)
 
         inputs = self.get_dummy_tensor_inputs(torch_device)
@@ -604,6 +624,55 @@ class TorchAoSerializationTest(unittest.TestCase):
         output_slice = output.flatten()[-9:].detach().float().cpu().numpy()
         self.assertTrue(isinstance(loaded_quantized_model.proj_out.weight, TorchAOBaseTensor))
         self.assertTrue(numpy_cosine_similarity_distance(output_slice, expected_slice) < 1e-3)
+
+    def test_int_a8w8_safe_cpu(self):
+        quant_type = Int8DynamicActivationInt8WeightConfig(version=2)
+        expected_slice = np.array([0.3633, -0.1357, -0.0188, -0.249, -0.4688, 0.5078, -0.1289, -0.6914, 0.4551])
+        device = "cpu"
+        self._check_serialization_expected_slice(quant_type, expected_slice, device, safe_serialization=True)
+
+    def test_int_a8w8_safe(self):
+        quant_type = Int8DynamicActivationInt8WeightConfig(version=2)
+        expected_slice = np.array([0.3633, -0.1357, -0.0188, -0.249, -0.4688, 0.5078, -0.1289, -0.6914, 0.4551])
+        device = torch_device
+        self._check_serialization_expected_slice(quant_type, expected_slice, device, safe_serialization=True)
+
+    def test_group_offload_to_disk(self):
+        quant_type = Int8DynamicActivationInt8WeightConfig(version=2)
+        expected_slice = np.array([0.3633, -0.1357, -0.0188, -0.249, -0.4688, 0.5078, -0.1289, -0.6914, 0.4551])
+
+        quantized_model = self.get_dummy_model(quant_type, torch_device)
+
+        with tempfile.TemporaryDirectory() as offload_to_disk_path:
+            quantized_model.enable_group_offload(
+                onload_device=torch_device,
+                offload_type="leaf_level",
+                offload_to_disk_path=offload_to_disk_path,
+            )
+
+            inputs = self.get_dummy_tensor_inputs(torch_device)
+            output = quantized_model(**inputs)[0]
+            output_slice = output.flatten()[-9:].detach().float().cpu().numpy()
+
+            self.assertTrue(numpy_cosine_similarity_distance(output_slice, expected_slice) < 1e-3)
+
+            output = quantized_model(**inputs)[0]
+            output_slice_2 = output.flatten()[-9:].detach().float().cpu().numpy()
+
+            self.assertTrue(numpy_cosine_similarity_distance(output_slice_2, expected_slice) < 1e-3)
+
+    def test_int_a8w8_safe_sharded(self):
+        quant_type = Int8DynamicActivationInt8WeightConfig(version=2)
+        expected_slice = np.array([0.3633, -0.1357, -0.0188, -0.249, -0.4688, 0.5078, -0.1289, -0.6914, 0.4551])
+        device = torch_device
+        self._check_serialization_expected_slice(
+            quant_type,
+            expected_slice,
+            device,
+            safe_serialization=True,
+            max_shard_size="16KB",
+            assert_sharded=True,
+        )
 
     def test_int_a8w8_accelerator(self):
         quant_type = Int8DynamicActivationInt8WeightConfig()
