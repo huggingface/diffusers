@@ -655,25 +655,19 @@ class SlowBnb8bitFluxTests(Base8bitTests):
         backend_empty_cache(torch_device)
 
         model_id = "hf-internal-testing/flux.1-dev-int8-pkg"
-        # Load each bnb 8bit component separately and move to CPU immediately
-        # to avoid having both large models on GPU simultaneously (OOM on <=24GB cards).
         t5_8bit = T5EncoderModel.from_pretrained(model_id, subfolder="text_encoder_2")
-        t5_8bit = t5_8bit.to("cpu")
-        gc.collect()
-        backend_empty_cache(torch_device)
-
         transformer_8bit = FluxTransformer2DModel.from_pretrained(model_id, subfolder="transformer")
-        transformer_8bit = transformer_8bit.to("cpu")
-        gc.collect()
-        backend_empty_cache(torch_device)
-
         self.pipeline_8bit = DiffusionPipeline.from_pretrained(
             "black-forest-labs/FLUX.1-dev",
             text_encoder_2=t5_8bit,
             transformer=transformer_8bit,
             torch_dtype=torch.float16,
         )
-        self.pipeline_8bit.enable_model_cpu_offload()
+        # Use sequential CPU offload to keep peak GPU memory minimal (one layer at a time).
+        # enable_model_cpu_offload moves an entire sub-model to GPU at once, which OOMs on
+        # <=24 GB cards for FLUX.1-dev even with int8 quantization.
+        # This requires the bitsandbytes fix that preserves Int8Params.SCB across .to() calls.
+        self.pipeline_8bit.enable_sequential_cpu_offload()
 
     def tearDown(self):
         del self.pipeline_8bit
