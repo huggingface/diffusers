@@ -156,7 +156,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PR_NUMBER: ${{ github.event.issue.number || github.event.pull_request.number }}
           COMMENT_USER: ${{ github.event.comment.user.login }}
-          BASE_BRANCH: ${{ github.event.repository.default_branch }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
         run: |
           set -euo pipefail
 
@@ -208,7 +208,9 @@ jobs:
             exit 1
           fi
 
-          PR_BRANCH=$(gh pr view "$PR_NUMBER" --json headRefName --jq '.headRefName')
+          PR_INFO=$(gh pr view "$PR_NUMBER" --json headRefName,isCrossRepository)
+          PR_BRANCH=$(echo "$PR_INFO" | jq -r '.headRefName')
+          IS_FORK=$(echo "$PR_INFO" | jq -r '.isCrossRepository')
 
           if [[ "$PR_BRANCH" == claude/pr-* ]]; then
             # Source PR is already a Claude-opened PR — iterate in place by
@@ -222,9 +224,20 @@ jobs:
             exit 0
           fi
 
-          # Otherwise: commit on the source PR's branch to get a clean SHA,
-          # then cherry-pick onto a fresh branch cut from the default branch.
-          # The follow-up PR's diff is therefore exactly Claude's edits vs. main.
+          # Target the source PR's head branch when we can push to it; fall
+          # back to the default branch for fork PRs since we can't push to a
+          # fork. Targeting the PR head means the follow-up applies cleanly
+          # even when main has diverged, and merging it lands Claude's edits
+          # onto the PR for the maintainer to fold in.
+          if [[ "$IS_FORK" == "true" ]]; then
+            BASE_BRANCH="$DEFAULT_BRANCH"
+          else
+            BASE_BRANCH="$PR_BRANCH"
+          fi
+
+          # Commit on the source PR's branch to get a clean SHA, then
+          # cherry-pick onto a fresh branch cut from BASE_BRANCH so the
+          # follow-up PR's diff is exactly Claude's edits vs. BASE_BRANCH.
           NEW_BRANCH="claude/pr-${PR_NUMBER}-$(date -u +%Y%m%d-%H%M%S)"
 
           git commit -m "Apply changes from Claude (requested by @${COMMENT_USER} on #${PR_NUMBER})
@@ -242,12 +255,18 @@ jobs:
 
           git push -u origin "$NEW_BRANCH"
 
+          if [[ "$IS_FORK" == "true" ]]; then
+            BODY_TAIL="Targets \`${BASE_BRANCH}\` — independent of #${PR_NUMBER}, which is a fork PR we can't push to."
+          else
+            BODY_TAIL="Targets \`${BASE_BRANCH}\` (the head branch of #${PR_NUMBER}). Merging this brings Claude's edits into that PR."
+          fi
+
           NEW_PR_URL=$(gh pr create \
             --base "$BASE_BRANCH" \
             --head "$NEW_BRANCH" \
             --title "Apply Claude's changes from #${PR_NUMBER}" \
             --body "Automated PR with edits Claude made in response to \`COMMIT THIS\` from @${COMMENT_USER} on [#${PR_NUMBER}](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/pull/${PR_NUMBER}).
 
-          Targets \`${BASE_BRANCH}\` — independent of #${PR_NUMBER}. Further \`COMMIT THIS\` requests on *this* PR will commit directly to it.")
+          ${BODY_TAIL}")
 
           post_status "✅ Opened follow-up PR (into \`${BASE_BRANCH}\`) with Claude's edits: ${NEW_PR_URL}"
