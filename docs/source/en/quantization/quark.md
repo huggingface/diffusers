@@ -72,7 +72,7 @@ For configurations that need calibration data, use the offline workflow:
 import torch
 from diffusers import StableDiffusion3Pipeline
 from quark.torch import ModelQuantizer, export_safetensors
-from quark.torch.utils.diffusers import get_calib_dataloader, wrap_for_quantization
+from quark.torch.utils.diffusers import get_calib_dataloader
 
 pipe = StableDiffusion3Pipeline.from_pretrained(
     "stabilityai/stable-diffusion-3-medium-diffusers",
@@ -84,11 +84,9 @@ prompts = [
     "A futuristic city with flying cars at night",
 ]
 dataloader = get_calib_dataloader(pipe, pipe.transformer, prompts, n_steps=20)
-model = wrap_for_quantization(pipe.transformer)
 
 qconfig = ...  # SVDQuant / SmoothQuant / FP8 + activation calibration
-quantized = ModelQuantizer(qconfig).quantize_model(model, dataloader)
-pipe.transformer = quantized.inner_model
+pipe.transformer = ModelQuantizer(qconfig).quantize_model(pipe.transformer, dataloader)
 
 export_safetensors(pipe.transformer, "sd3-quark-svdquant/transformer")
 ```
