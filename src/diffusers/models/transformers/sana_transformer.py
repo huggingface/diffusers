@@ -457,7 +457,19 @@ class SanaTransformer2DModel(ModelMixin, AttentionMixin, ConfigMixin, PeftAdapte
 
         hidden_states = self.patch_embed(hidden_states)
 
-        if guidance is not None:
+        # Dispatch on the embedding *type* rather than on whether `guidance` was
+        # passed: `SanaCombinedTimestepGuidanceEmbeddings` does not accept
+        # `batch_size`, and `AdaLayerNormSingle` does not accept `guidance`,
+        # so routing by input would silently misbehave when the model is built
+        # with `guidance_embeds=True` but the pipeline does not thread guidance
+        # through (e.g. SanaPipeline / SanaPAGPipeline — see #12540).
+        if isinstance(self.time_embed, SanaCombinedTimestepGuidanceEmbeddings):
+            if guidance is None:
+                raise ValueError(
+                    "SanaTransformer2DModel was configured with `guidance_embeds=True`, but `guidance` "
+                    "was not provided. Either pass `guidance` to the transformer or rebuild the model "
+                    "with `guidance_embeds=False`."
+                )
             timestep, embedded_timestep = self.time_embed(
                 timestep, guidance=guidance, hidden_dtype=hidden_states.dtype
             )
