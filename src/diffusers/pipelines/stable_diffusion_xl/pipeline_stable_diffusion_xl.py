@@ -1188,6 +1188,7 @@ class StableDiffusionXLPipeline(
             ).to(device=device, dtype=latents.dtype)
 
         self._num_timesteps = len(timesteps)
+        self.scheduler.set_begin_index(0)
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
                 if self.interrupt:
@@ -1195,13 +1196,7 @@ class StableDiffusionXLPipeline(
 
                 # expand the latents if we are doing classifier free guidance
                 latent_model_input = torch.cat([latents] * 2) if self.do_classifier_free_guidance else latents
-
-                # For Neuron: scale_model_input on CPU to avoid XLA ops outside the compiled UNet region.
-                # index_for_timestep() uses .nonzero()/.item() which are incompatible with static graphs.
-                if is_neuron_device:
-                    latent_model_input = self.scheduler.scale_model_input(latent_model_input.to("cpu"), t).to(device)
-                else:
-                    latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
+                latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
 
                 # predict the noise residual
                 added_cond_kwargs = {"text_embeds": add_text_embeds, "time_ids": add_time_ids}
@@ -1231,13 +1226,7 @@ class StableDiffusionXLPipeline(
 
                 # compute the previous noisy sample x_t -> x_t-1
                 latents_dtype = latents.dtype
-                # For Neuron: scheduler.step on CPU to keep scheduler arithmetic off the XLA device.
-                if is_neuron_device:
-                    latents = self.scheduler.step(
-                        noise_pred.to("cpu"), t, latents.to("cpu"), **extra_step_kwargs, return_dict=False
-                    )[0].to(device)
-                else:
-                    latents = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs, return_dict=False)[0]
+                latents = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs, return_dict=False)[0]
                 if latents.dtype != latents_dtype:
                     if torch.backends.mps.is_available():
                         # some platforms (eg. apple mps) misbehave due to a pytorch bug: https://github.com/pytorch/pytorch/pull/99272

@@ -1024,4 +1024,5 @@ class StableDiffusionXLTurboPipelineIntegrationTests(unittest.TestCase):
         image_slice = image[0, -3:, -3:, -1]
         self.assertEqual(image.shape, (1, 512, 512, 3))
         self.assertTrue(np.all((image >= 0.0) & (image <= 1.0)), "Pixel values must be in [0, 1]")
-        self.assertGreater(image_slice.std(), 0.01, "Output image should have meaningful variance")
+        expected_slice = np.array([0.3524, 0.3160, 0.3652, 0.3316, 0.3376, 0.3315, 0.3042, 0.3102, 0.3449])
+        self.assertLess(np.abs(image_slice.flatten() - expected_slice).max(), 5e-2)
