@@ -46,6 +46,7 @@ from diffusers.utils.import_utils import (
     is_peft_available,
     is_timm_available,
     is_torch_available,
+    is_torch_neuronx_available,
     is_torch_version,
     is_torchao_available,
     is_torchsde_available,
@@ -110,6 +111,8 @@ if is_torch_available():
             torch_device = "cuda"
         elif torch.xpu.is_available():
             torch_device = "xpu"
+        elif is_torch_neuronx_available() and hasattr(torch, "neuron") and torch.neuron.is_available():
+            torch_device = torch.neuron.current_device()
         else:
             torch_device = "cpu"
         is_torch_higher_equal_than_1_12 = version.parse(
@@ -1435,6 +1438,15 @@ if is_torch_available():
     # Behaviour flags
     BACKEND_SUPPORTS_TRAINING = {"cuda": True, "xpu": True, "cpu": True, "mps": False, "default": True}
 
+    # Neuron device key: torch.neuron.current_device() returns an int (e.g. 0).
+    # We capture it once at import time if torch_neuronx is available so we can add it
+    # to all dispatch tables using the same key that torch_device is set to.
+    _neuron_device = (
+        torch.neuron.current_device()
+        if (is_torch_neuronx_available() and hasattr(torch, "neuron") and torch.neuron.is_available())
+        else None
+    )
+
     # Function definitions
     BACKEND_EMPTY_CACHE = {
         "cuda": torch.cuda.empty_cache,
@@ -1486,13 +1498,19 @@ if is_torch_available():
         "default": None,
     }
 
+    if _neuron_device is not None:
+        BACKEND_EMPTY_CACHE[_neuron_device] = None
+        BACKEND_DEVICE_COUNT[_neuron_device] = torch.neuron.device_count
+        BACKEND_MANUAL_SEED[_neuron_device] = torch.manual_seed
+        BACKEND_RESET_PEAK_MEMORY_STATS[_neuron_device] = None
+        BACKEND_RESET_MAX_MEMORY_ALLOCATED[_neuron_device] = None
+        BACKEND_MAX_MEMORY_ALLOCATED[_neuron_device] = 0
+        BACKEND_SYNCHRONIZE[_neuron_device] = torch.neuron.synchronize
+
 
 # This dispatches a defined function according to the accelerator from the function definitions.
 def _device_agnostic_dispatch(device: str, dispatch_table: dict[str, Callable], *args, **kwargs):
-    if device not in dispatch_table:
-        return dispatch_table["default"](*args, **kwargs)
-
-    fn = dispatch_table[device]
+    fn = dispatch_table[device] if device in dispatch_table else dispatch_table["default"]
 
     # Some device agnostic functions return values. Need to guard against 'None' instead at
     # user level

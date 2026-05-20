@@ -1,3 +1,5 @@
+import gc
+import os
 import unittest
 
 import numpy as np
@@ -11,8 +13,14 @@ from diffusers import (
     Flux2KleinPipeline,
     Flux2Transformer2DModel,
 )
+from diffusers.utils.import_utils import is_torch_neuronx_available
 
-from ...testing_utils import torch_device
+from ...testing_utils import (
+    backend_empty_cache,
+    require_torch_accelerator,
+    slow,
+    torch_device,
+)
 from ..test_pipelines_common import PipelineTesterMixin, check_qkv_fused_layers_exist
 
 
@@ -181,3 +189,96 @@ class Flux2KleinPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     @unittest.skip("Needs to be revisited")
     def test_encode_prompt_works_in_isolation(self):
         pass
+
+
+@slow
+@require_torch_accelerator
+class Flux2KleinPipelineIntegrationTests(unittest.TestCase):
+    ckpt_id = "black-forest-labs/FLUX.2-klein-4B"
+    prompt = "A small cactus with a happy face in the Sahara desert."
+
+    def setUp(self):
+        super().setUp()
+        if is_torch_neuronx_available():
+            neff_cache_dir = "/tmp/neff_cache"
+            os.makedirs(neff_cache_dir, exist_ok=True)
+            os.environ["TORCH_NEURONX_NEFF_CACHE_DIR"] = neff_cache_dir
+            os.environ.setdefault("TORCH_NEURONX_ENABLE_NKI_SDPA", "0")
+        gc.collect()
+        backend_empty_cache(torch_device)
+
+    def tearDown(self):
+        super().tearDown()
+        gc.collect()
+        backend_empty_cache(torch_device)
+
+    def test_flux2_klein_inference_512(self):
+        generator = torch.Generator("cpu").manual_seed(0)
+
+        pipe = Flux2KleinPipeline.from_pretrained(self.ckpt_id, torch_dtype=torch.bfloat16)
+        pipe.to(torch_device)
+        if is_torch_neuronx_available():
+            torch.neuron.synchronize()
+        pipe.set_progress_bar_config(disable=None)
+
+        image = pipe(
+            prompt=self.prompt,
+            height=512,
+            width=512,
+            num_inference_steps=4,
+            guidance_scale=1.0,
+            generator=generator,
+            output_type="np",
+        ).images
+
+        image_slice = image[0, -3:, -3:, -1]
+        self.assertEqual(image.shape, (1, 512, 512, 3))
+        self.assertTrue(np.all((image >= 0.0) & (image <= 1.0)), "Pixel values must be in [0, 1]")
+        self.assertGreater(image_slice.std(), 0.01, "Output image should have meaningful variance")
+
+        atol = 1e-2 if is_torch_neuronx_available() else 1e-4
+        _ = atol
+
+    @unittest.skipUnless(is_torch_neuronx_available(), "torch_neuronx not available")
+    def test_flux2_klein_neuron_compile_128(self):
+        import torch_neuronx  # noqa: F401 — registers torch.neuron
+        from torch_neuronx.neuron_dynamo_backend import set_model_name
+        from transformers.utils.output_capturing import install_all_output_capturing_hooks
+
+        device = torch.neuron.current_device()
+        generator = torch.Generator("cpu").manual_seed(0)
+
+        pipe = Flux2KleinPipeline.from_pretrained(self.ckpt_id, torch_dtype=torch.bfloat16)
+        pipe = pipe.to(device)
+        torch.neuron.synchronize()
+
+        pipe.transformer.eval()
+        pipe.vae.eval()
+        pipe.text_encoder.eval()
+
+        install_all_output_capturing_hooks(pipe.text_encoder)
+        set_model_name("flux2_klein_text_encoder")
+        pipe.text_encoder = torch.compile(pipe.text_encoder, backend="neuron", fullgraph=True)
+
+        set_model_name("flux2_klein_transformer")
+        pipe.transformer = torch.compile(pipe.transformer, backend="neuron", fullgraph=True)
+
+        set_model_name("flux2_klein_vae")
+        pipe.vae = torch.compile(pipe.vae, backend="neuron", fullgraph=True)
+
+        image = pipe(
+            prompt=self.prompt,
+            height=128,
+            width=128,
+            num_inference_steps=4,
+            guidance_scale=1.0,
+            generator=generator,
+            output_type="np",
+        ).images
+
+        self.assertEqual(image.shape, (1, 128, 128, 3))
+        self.assertFalse(np.isnan(image).any(), "Output contains NaN values")
+        self.assertTrue(
+            (image >= 0.0).all() and (image <= 1.0).all(),
+            "Output pixel values outside [0, 1]",
+        )
