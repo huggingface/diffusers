@@ -73,7 +73,8 @@ class DDPMPipeline(DiffusionPipeline):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
                 expense of slower inference.
             output_type (`str`, *optional*, defaults to `"pil"`):
-                The output format of the generated image. Choose between `PIL.Image` or `np.array`.
+                The output format of the generated image. Choose between `PIL.Image`, `np.array` or
+                `torch.Tensor`.
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`~pipelines.ImagePipelineOutput`] instead of a plain tuple.
 
@@ -97,6 +98,17 @@ class DDPMPipeline(DiffusionPipeline):
                 If `return_dict` is `True`, [`~pipelines.ImagePipelineOutput`] is returned, otherwise a `tuple` is
                 returned where the first element is a list with the generated images
         """
+        if output_type not in ["pt", "np", "pil"]:
+            raise ValueError(f"output_type must be one of ['pt', 'np', 'pil'], got '{output_type}'.")
+
+        if isinstance(generator, list) and len(generator) != batch_size:
+            raise ValueError(
+                f"You have passed a list of generators of length {len(generator)}, but requested an effective batch"
+                f" size of {batch_size}. Make sure the batch size matches the length of the generators."
+            )
+
+        device = self._execution_device
+
         # Sample gaussian noise to begin loop
         if isinstance(self.unet.config.sample_size, int):
             image_shape = (
@@ -108,12 +120,12 @@ class DDPMPipeline(DiffusionPipeline):
         else:
             image_shape = (batch_size, self.unet.config.in_channels, *self.unet.config.sample_size)
 
-        if self.device.type == "mps":
+        if device.type == "mps":
             # randn does not work reproducibly on mps
             image = randn_tensor(image_shape, generator=generator, dtype=self.unet.dtype)
-            image = image.to(self.device)
+            image = image.to(device)
         else:
-            image = randn_tensor(image_shape, generator=generator, device=self.device, dtype=self.unet.dtype)
+            image = randn_tensor(image_shape, generator=generator, device=device, dtype=self.unet.dtype)
 
         # set step values
         self.scheduler.set_timesteps(num_inference_steps)
@@ -129,9 +141,12 @@ class DDPMPipeline(DiffusionPipeline):
                 xm.mark_step()
 
         image = (image / 2 + 0.5).clamp(0, 1)
-        image = image.cpu().permute(0, 2, 3, 1).numpy()
-        if output_type == "pil":
-            image = self.numpy_to_pil(image)
+        if output_type != "pt":
+            image = image.cpu().permute(0, 2, 3, 1).numpy()
+            if output_type == "pil":
+                image = self.numpy_to_pil(image)
+
+        self.maybe_free_model_hooks()
 
         if not return_dict:
             return (image,)
