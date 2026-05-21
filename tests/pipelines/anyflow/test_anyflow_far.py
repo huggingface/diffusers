@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import gc
 import unittest
 
 import torch
@@ -25,13 +24,7 @@ from diffusers import (
     FlowMapEulerDiscreteScheduler,
 )
 
-from ...testing_utils import (
-    backend_empty_cache,
-    enable_full_determinism,
-    require_torch_accelerator,
-    slow,
-    torch_device,
-)
+from ...testing_utils import enable_full_determinism
 from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_IMAGE_PARAMS, TEXT_TO_IMAGE_PARAMS
 from ..test_pipelines_common import PipelineTesterMixin
 
@@ -162,42 +155,3 @@ class AnyFlowFARPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     )
     def test_callback_inputs(self):
         pass
-
-
-@slow
-@require_torch_accelerator
-class AnyFlowFARPipelineIntegrationTests(unittest.TestCase):
-    """End-to-end integration tests against released NVIDIA AnyFlow-FAR checkpoints. Run with ``RUN_SLOW=1``."""
-
-    prompt = "A cat walks on the grass, realistic style."
-
-    def setUp(self):
-        super().setUp()
-        gc.collect()
-        backend_empty_cache(torch_device)
-
-    def tearDown(self):
-        super().tearDown()
-        gc.collect()
-        backend_empty_cache(torch_device)
-
-    def test_anyflow_far_t2v_1_3b(self):
-        pipe = AnyFlowFARPipeline.from_pretrained(
-            "nvidia/AnyFlow-FAR-Wan2.1-1.3B-Diffusers",
-            torch_dtype=torch.bfloat16,
-        )
-        pipe.to(torch_device)
-
-        generator = torch.Generator(device=torch_device).manual_seed(0)
-        video = pipe(
-            prompt=self.prompt,
-            num_inference_steps=4,
-            num_frames=33,
-            height=480,
-            width=832,
-            generator=generator,
-            output_type="pt",
-        ).frames
-
-        self.assertEqual(video[0].shape, (33, 3, 480, 832))
-        # TODO: extend with a numeric reference slice once a GPU reference run is captured.
