@@ -108,7 +108,7 @@ def _normalize_lora_suffixes(state_dict: Dict[str, "torch.Tensor"]) -> Dict[str,
 class LoRAHandler:
     """Composition-style holder for a model class's LoRA conversion configuration.
 
-    Attached to ``cls._metadata._lora`` by :meth:`ModelMetadata._register`. Holds the per-model foreign-format
+    Attached as the ``_lora`` class attribute on :class:`LoRAModelMixin` (overridden per-model). Holds the per-model foreign-format
     conversion data. Public conversion utilities (``normalize_lora_suffixes``, ``detect_lora_format``) live on
     :class:`LoRAModelMixin` and read from this handler.
 
@@ -398,7 +398,7 @@ class LoRAModelMixin:
     / hotswap) plus foreign-format conversion (kohya / xlabs / bfl / kontext / etc.) into diffusers naming.
 
     Per-model conversion knobs live in a :class:`LoRAHandler` declared in the model's ``lora.py`` (e.g. ``FLUX_LORA``)
-    and attached to the class via ``@register_metadata(ModelMetadata(_lora=...))``. The default no-op handler just
+    and assigned to the model class as ``_lora = FLUX_LORA``. The default no-op handler just
     normalizes ``.lora_down/.lora_up`` → ``.lora_A/.lora_B`` suffixes and returns the state dict unchanged.
 
     Install the latest version of PEFT, and use this mixin to:
@@ -409,13 +409,29 @@ class LoRAModelMixin:
     - Get a list of the active adapters.
     """
 
-    # Runtime PEFT state — set during adapter load / hotswap setup. Not part of the metadata-driven config.
+    # Runtime PEFT state — set during adapter load / hotswap setup.
     _hf_peft_config_loaded = False
     _lora_hotswap_kwargs: Optional[dict] = None
 
-    # ``_lora: LoRAHandler`` is provided universally by ``ModelMixin`` (set via the default
-    # ``ModelMetadata()._register(ModelMixin)`` call). Models without LoRA conversion metadata inherit a no-op
-    # handler; ``@register_metadata(ModelMetadata(_lora=...))`` overrides it on the subclass.
+    # Per-model LoRA conversion config. Defaults to a no-op handler (only suffix normalization, no foreign-format
+    # conversion). Models override by assigning ``_lora = FLUX_LORA`` (etc.) in their class body.
+    _lora: LoRAHandler = LoRAHandler()
+
+    @classmethod
+    def _metadata(cls):
+        """Contribute the ``lora_formats`` row to :class:`ModelMetadata` when foreign formats are registered."""
+        from ..models.modeling_utils import DOCS_BASE
+
+        formats = sorted(cls._lora.format_keys)
+        if not formats:
+            return {}
+        return {
+            "lora_formats": (
+                ", ".join(formats),
+                "Foreign LoRA formats this model converts to diffusers naming on load.",
+                f"{DOCS_BASE}/training/lora",
+            )
+        }
 
     @staticmethod
     def normalize_lora_suffixes(state_dict: Dict[str, "torch.Tensor"]) -> Dict[str, "torch.Tensor"]:
@@ -430,9 +446,9 @@ class LoRAModelMixin:
         """Return the foreign LoRA format name (``"kohya"`` / ``"xlabs"`` / ...) matched by ``state_dict``,
         or ``None`` if no registered format matches (e.g. it's already in diffusers naming).
 
-        Reads ``self._metadata._lora.format_keys`` (the per-model registry of identifying key substrings).
+        Reads ``self._lora.format_keys`` (the per-model registry of identifying key substrings).
         """
-        format_keys = self._metadata._lora.format_keys
+        format_keys = self._lora.format_keys
         if not format_keys:
             return None
         keys = set(state_dict)
@@ -579,7 +595,7 @@ class LoRAModelMixin:
         # Universal suffix normalization first (kohya-style ``.lora_down/.lora_up`` → ``.lora_A/.lora_B``), then
         # run the per-model foreign-format converter (no-op when none is registered).
         state_dict = self.normalize_lora_suffixes(state_dict)
-        state_dict = self._metadata._lora.map_to_diffusers(state_dict)
+        state_dict = self._lora.map_to_diffusers(state_dict)
         if not state_dict:
             model_class_name = self.__class__.__name__
             logger.warning(

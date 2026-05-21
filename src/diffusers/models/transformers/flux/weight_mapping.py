@@ -63,21 +63,14 @@ FLUX_RENAME_PATTERNS: dict[str, str] = {
 # --------------------------------------------------------------------------
 # Per-key transforms (split + special), unified.
 # --------------------------------------------------------------------------
-# Single source of truth. Each entry is
-#   (source_substring, [target_substrings], forward_fn, reverse_fn)
-# - source/targets include surrounding dots so they only match at module
-#   boundaries (e.g. ".img_attn.qkv." matches both "X.img_attn.qkv.weight"
-#   and "X.img_attn.qkv.bias" with one entry).
+# Each entry is ``(source_substring, [target_substrings], forward_fn)``:
+# - source/targets include surrounding dots so they only match at module boundaries
+#   (e.g. ".img_attn.qkv." matches both "X.img_attn.qkv.weight" and "X.img_attn.qkv.bias").
 # - len(targets) == 1 -> a unary transform (e.g. AdaLN scale/shift swap).
 # - len(targets)  > 1 -> a split transform (forward chunks the tensor).
 # - forward_fn(tensor, **ctx) -> list[tensor] of length len(targets).
-# - reverse_fn(list[tensor], **ctx) -> tensor.
 def _swap_to_list(v, **_):
     return [swap_scale_shift(v)]
-
-
-def _list_to_swap(vs, **_):
-    return swap_scale_shift(vs[0])
 
 
 def _make_chunk(n):
@@ -88,20 +81,11 @@ def _qkvmlp_split(v, inner_dim=3072, **_):
     return torch.split(v, [inner_dim, inner_dim, inner_dim, inner_dim * 4], dim=0)
 
 
-def _cat0(vs, **_):
-    return torch.cat(vs, dim=0)
-
-
 FLUX_TRANSFORMS = [
-    ("final_layer.adaLN_modulation.1.", ["norm_out.linear."], _swap_to_list, _list_to_swap),
-    (".img_attn.qkv.", [".attn.to_q.", ".attn.to_k.", ".attn.to_v."], _make_chunk(3), _cat0),
-    (
-        ".txt_attn.qkv.",
-        [".attn.add_q_proj.", ".attn.add_k_proj.", ".attn.add_v_proj."],
-        _make_chunk(3),
-        _cat0,
-    ),
-    (".linear1.", [".attn.to_q.", ".attn.to_k.", ".attn.to_v.", ".proj_mlp."], _qkvmlp_split, _cat0),
+    ("final_layer.adaLN_modulation.1.", ["norm_out.linear."], _swap_to_list),
+    (".img_attn.qkv.", [".attn.to_q.", ".attn.to_k.", ".attn.to_v."], _make_chunk(3)),
+    (".txt_attn.qkv.", [".attn.add_q_proj.", ".attn.add_k_proj.", ".attn.add_v_proj."], _make_chunk(3)),
+    (".linear1.", [".attn.to_q.", ".attn.to_k.", ".attn.to_v.", ".proj_mlp."], _qkvmlp_split),
 ]
 
 
@@ -116,7 +100,7 @@ FLUX_SPECIAL_KEYS: dict[str, dict] = {}
 FLUX_QKV_SPLIT_PATTERNS: dict[str, list[str]] = {}
 FLUX_QKVMLP_SPLIT_PATTERN: str = ""
 FLUX_QKVMLP_TARGETS: list[str] = []
-for _src, _tgts, _fwd, _ in FLUX_TRANSFORMS:
+for _src, _tgts, _fwd in FLUX_TRANSFORMS:
     if len(_tgts) == 1:
         for _suffix in ("weight", "bias"):
             FLUX_SPECIAL_KEYS[_src + _suffix] = {
@@ -138,7 +122,29 @@ def _get_inner_dim(state_dict: dict[str, torch.Tensor]) -> int:
             # Total size = 3 * inner_dim + mlp_hidden_dim = 3 * inner_dim + 4 * inner_dim = 7 * inner_dim
             total = state_dict[key].shape[0]
             return total // 7
+
     return 3072  # Default
+
+
+def _apply_transforms(state_dict, transforms, rename_patterns, **ctx):
+    """Drive a forward state-dict conversion from a list of ``(source, targets, forward_fn)`` entries.
+
+    For each key in ``state_dict``: scan ``transforms``; the first entry whose ``source`` substring matches
+    expands the value via ``forward_fn(value, **ctx)`` into one tensor per target, each at a key derived by
+    ``key.replace(source, target)`` then ``rename_patterns``. Keys that match no transform are just renamed.
+    """
+    out = {}
+    for key, value in state_dict.items():
+        for source, targets, forward_fn in transforms:
+            if source in key:
+                tensors = forward_fn(value, **ctx)
+                for target, tensor in zip(targets, tensors):
+                    new_key = WeightMappingHandler.rename_key(key.replace(source, target), rename_patterns)
+                    out[new_key] = tensor
+                break
+        else:
+            out[WeightMappingHandler.rename_key(key, rename_patterns)] = value
+    return out
 
 
 def map_to_diffusers(
@@ -147,9 +153,7 @@ def map_to_diffusers(
 ) -> dict[str, torch.Tensor]:
     """Convert a Flux transformer state_dict from original format to diffusers format."""
     inner_dim = _get_inner_dim(state_dict)
-    return WeightMappingHandler.apply_transforms(
-        state_dict, FLUX_TRANSFORMS, FLUX_RENAME_PATTERNS, inner_dim=inner_dim
-    )
+    return _apply_transforms(state_dict, FLUX_TRANSFORMS, FLUX_RENAME_PATTERNS, inner_dim=inner_dim)
 
 
 # Build reverse patterns for map_from_diffusers
@@ -258,10 +262,8 @@ def map_from_diffusers(
     return converted_state_dict
 
 
-_FLUX_CHECKPOINT_KEY_PREFIXES: list[str] = ["model.diffusion_model."]
-
 # Distinctive keys for original format detection (only keys that use simple renaming, not splits)
-_FLUX_CHECKPOINT_KEYS: set[str] = {
+_FLUX_STATE_DICT_KEYS: set[str] = {
     "time_in.in_layer.weight",
     "double_blocks.0.img_mod.lin.weight",
 }
@@ -295,17 +297,15 @@ def detect_config(weight_mapping, state_dict: dict[str, Any]) -> str | None:
     in_channels = state_dict[x_embedder_key].shape[1]
     if in_channels == 384:
         return "flux-fill"
-    elif in_channels == 128:
+    if in_channels == 128:
         return "flux-depth"
 
     return "flux-dev"
 
 
-# Handler assembled into ``ModelMetadata`` by ``flux/model.py``.
+# Assigned to ``FluxTransformer2DModel`` as the ``_weight_mapping`` class attribute in ``flux/model.py``.
 FLUX_WEIGHT_MAPPING = WeightMappingHandler(
-    checkpoint_keys=_FLUX_CHECKPOINT_KEYS,
-    checkpoint_key_prefixes=_FLUX_CHECKPOINT_KEY_PREFIXES,
-    rename_patterns=FLUX_RENAME_PATTERNS,
+    original_format_keys=_FLUX_STATE_DICT_KEYS,
     available_configs=_FLUX_AVAILABLE_CONFIGS,
     map_to_diffusers_fn=map_to_diffusers,
     map_from_diffusers_fn=map_from_diffusers,

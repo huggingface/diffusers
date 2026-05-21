@@ -433,7 +433,7 @@ def map_lora_to_diffusers(state_dict, **kwargs):
     return state_dict
 
 
-# Handler assembled into ``ModelMetadata`` by ``flux/model.py``.
+# Assigned to ``FluxTransformer2DModel`` as the ``_lora`` class attribute in ``flux/model.py``.
 FLUX_LORA = LoRAHandler(
     format_keys=_FLUX_LORA_FORMAT_KEYS,
     map_lora_to_diffusers_fn=map_lora_to_diffusers,

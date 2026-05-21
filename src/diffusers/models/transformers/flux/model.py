@@ -36,7 +36,7 @@ from ...embeddings import (
     get_1d_rotary_pos_embed,
 )
 from ...modeling_outputs import Transformer2DModelOutput
-from ...modeling_utils import ModelMetadata, ModelMixin, register_metadata
+from ...modeling_utils import ModelMixin, register_metadata
 from ...normalization import AdaLayerNormContinuous, AdaLayerNormZero, AdaLayerNormZeroSingle
 from .ip_adapter import FLUX_IP_ADAPTER
 from .lora import FLUX_LORA
@@ -528,27 +528,6 @@ class FluxPosEmbed(nn.Module):
         return freqs_cos, freqs_sin
 
 
-_METADATA = ModelMetadata(
-    _supports_gradient_checkpointing=True,
-    _no_split_modules=["FluxTransformerBlock", "FluxSingleTransformerBlock"],
-    _skip_layerwise_casting_patterns=("pos_embed", "norm"),
-    _repeated_blocks=["FluxTransformerBlock", "FluxSingleTransformerBlock"],
-    _cp_plan={
-        "": {
-            "hidden_states": ContextParallelInput(split_dim=1, expected_dims=3, split_output=False),
-            "encoder_hidden_states": ContextParallelInput(split_dim=1, expected_dims=3, split_output=False),
-            "img_ids": ContextParallelInput(split_dim=0, expected_dims=2, split_output=False),
-            "txt_ids": ContextParallelInput(split_dim=0, expected_dims=2, split_output=False),
-        },
-        "proj_out": ContextParallelOutput(gather_dim=1, expected_dims=3),
-    },
-    _lora=FLUX_LORA,
-    _weight_mapping=FLUX_WEIGHT_MAPPING,
-    _ip_adapter=FLUX_IP_ADAPTER,
-)
-
-
-@register_metadata(_METADATA)
 class FluxTransformer2DModel(
     ModelMixin,
     AttentionMixin,
@@ -585,6 +564,24 @@ class FluxTransformer2DModel(
         axes_dims_rope (`tuple[int]`, defaults to `(16, 56, 56)`):
             The dimensions to use for the rotary positional embeddings.
     """
+
+    _supports_gradient_checkpointing = True
+    _no_split_modules = ["FluxTransformerBlock", "FluxSingleTransformerBlock"]
+    _skip_layerwise_casting_patterns = ("pos_embed", "norm")
+    _repeated_blocks = ["FluxTransformerBlock", "FluxSingleTransformerBlock"]
+    _cp_plan = {
+        "": {
+            "hidden_states": ContextParallelInput(split_dim=1, expected_dims=3, split_output=False),
+            "encoder_hidden_states": ContextParallelInput(split_dim=1, expected_dims=3, split_output=False),
+            "img_ids": ContextParallelInput(split_dim=0, expected_dims=2, split_output=False),
+            "txt_ids": ContextParallelInput(split_dim=0, expected_dims=2, split_output=False),
+        },
+        "proj_out": ContextParallelOutput(gather_dim=1, expected_dims=3),
+    }
+
+    _lora = FLUX_LORA
+    _weight_mapping = FLUX_WEIGHT_MAPPING
+    _ip_adapter = FLUX_IP_ADAPTER
 
     @register_to_config
     def __init__(
