@@ -242,10 +242,6 @@ def _pack_text_tokens(
 
     Returns ``(next_curr_rope_id, split_len, curr, mrope_offset)``.
     """
-    assert isinstance(packed_seq.text_ids, list), "PackedSequence must be in build mode"
-    assert isinstance(packed_seq.text_indexes, list)
-    assert isinstance(packed_seq.position_ids, list)
-
     if "bos_token_id" in special_tokens:
         shifted_text_ids = [special_tokens["bos_token_id"]] + text_ids
     else:
@@ -304,17 +300,10 @@ def _pack_vision_tokens(
 
     Returns ``(split_len, curr, mrope_offset)``.
     """
-    assert isinstance(packed_seq.position_ids, list), "PackedSequence must be in build mode"
-
     vision_split_len = 0
 
     if packed_seq.vision is None:
         packed_seq.vision = ModalityData()
-
-    assert isinstance(packed_seq.vision.sequence_indexes, list)
-    assert isinstance(packed_seq.vision.mse_loss_indexes, list)
-    assert isinstance(packed_seq.vision.timesteps, list)
-    assert isinstance(packed_seq.vision.tokens, list)
 
     _, _, latent_t, latent_h, latent_w = input_vision_tokens.shape
     if latent_patch_size < 1:
@@ -328,7 +317,6 @@ def _pack_vision_tokens(
     packed_seq.vision.sequence_indexes.extend(range(curr, curr + num_vision_tokens))
 
     condition_set = {idx for idx in condition_frame_indexes_vision if 0 <= idx < latent_t}
-    assert isinstance(packed_seq.vision.condition_mask, list)
 
     vision_condition_mask = torch.zeros(
         (latent_t, 1, 1), device=input_vision_tokens.device, dtype=input_vision_tokens.dtype
@@ -342,7 +330,6 @@ def _pack_vision_tokens(
         device=input_vision_tokens.device,
         dtype=torch.long,
     )
-    assert isinstance(packed_seq.vision.noisy_frame_indexes, list)
     packed_seq.vision.noisy_frame_indexes.append(vision_noisy_frame_indexes)
 
     frame_token_stride = patch_h * patch_w
@@ -397,19 +384,10 @@ def _pack_sound_tokens(
 
     Returns ``(split_len, curr)``.
     """
-    assert isinstance(packed_seq.position_ids, list), "PackedSequence must be in build mode"
-
     _, sound_split_len = input_sound_tokens.shape
 
     if packed_seq.sound is None:
         packed_seq.sound = ModalityData()
-
-    assert isinstance(packed_seq.sound.sequence_indexes, list)
-    assert isinstance(packed_seq.sound.mse_loss_indexes, list)
-    assert isinstance(packed_seq.sound.timesteps, list)
-    assert isinstance(packed_seq.sound.tokens, list)
-    assert isinstance(packed_seq.sound.condition_mask, list)
-    assert isinstance(packed_seq.sound.noisy_frame_indexes, list)
 
     packed_seq.sound.token_shapes.append((sound_split_len, 1, 1))
     packed_seq.sound.sequence_indexes.extend(range(curr, curr + sound_split_len))
@@ -575,10 +553,6 @@ def pack_input_sequence(
 
     has_any_generation = sequence_plan.has_vision or sequence_plan.has_sound
     if include_end_of_generation_token and has_any_generation:
-        assert isinstance(packed_seq.text_ids, list)
-        assert isinstance(packed_seq.text_indexes, list)
-        assert isinstance(packed_seq.position_ids, list)
-
         packed_seq.text_ids.append(special_tokens["end_of_generation"])
         packed_seq.text_indexes.append(curr)
 
@@ -779,7 +753,6 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
         start_noisy_index = 0
         flattened_noisy_frame_indexes = []
         for noisy_indexes_i, token_shape_i in zip(noisy_frame_indexes, token_shapes):
-            assert noisy_indexes_i.numel() <= token_shape_i[0]
             spatial_numel_i = math.prod(token_shape_i[1:])
             spatial_indexes_i = torch.arange(spatial_numel_i, device=packed_tokens.device)
             noisy_indexes_i = (noisy_indexes_i * spatial_numel_i).unsqueeze(-1).expand(-1, spatial_numel_i)
@@ -787,12 +760,6 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
             flattened_noisy_frame_indexes.append(noisy_indexes_i.flatten())
             start_noisy_index += math.prod(token_shape_i)
         flattened_noisy_frame_indexes = torch.cat(flattened_noisy_frame_indexes, dim=0)
-        assert packed_tokens.dim() == 2
-        assert packed_timestep_embeds.dim() == 2
-        assert packed_timestep_embeds.shape[1] == packed_tokens.shape[1]
-        assert packed_timestep_embeds.shape[0] <= packed_tokens.shape[0]
-        assert flattened_noisy_frame_indexes.dim() == 1
-        assert flattened_noisy_frame_indexes.shape[0] == packed_timestep_embeds.shape[0]
         flattened_noisy_frame_indexes = flattened_noisy_frame_indexes.unsqueeze(-1).expand(
             -1,
             packed_tokens.shape[1],
@@ -1309,11 +1276,6 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
             temporal_compression_factor=self.vae.config.scale_factor_temporal,
         )
 
-        assert packed_seq.vision is not None
-        assert packed_seq.vision.condition_mask is not None
-        assert isinstance(packed_seq.vision.condition_mask, list)
-        assert x0_tokens_vision is not None
-
         if latents is not None:
             return (
                 latents.to(device=device, dtype=dtype),
@@ -1336,7 +1298,6 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
 
         # Append sound noise (all noisy: cond_mask = 0 everywhere)
         if enable_sound and packed_seq.sound is not None:
-            assert isinstance(packed_seq.sound.condition_mask, list)
             for x0_sound, cond_mask_sound in zip(x0_tokens_sound, packed_seq.sound.condition_mask):
                 pure_noise_sound = randn_tensor(tuple(x0_sound.shape), generator=generator, device=device, dtype=dtype)
                 noise_sound = cond_mask_sound.T * x0_sound + (1.0 - cond_mask_sound.T) * pure_noise_sound
