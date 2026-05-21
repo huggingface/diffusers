@@ -14,62 +14,75 @@
 
 """Reusable infrastructure for converting model checkpoints between original and diffusers naming conventions.
 
-A model declares its mapping in a :class:`WeightMappingMetadata` instance (typically in its ``weight_mapping.py``
-module). The ``@register_metadata`` decorator instantiates a :class:`WeightMappingHandler` from that metadata and
-attaches it to the model class as ``cls._weight_mapping``. Internal call sites then go through
-``self._weight_mapping.X`` (e.g. ``self._weight_mapping.normalize_checkpoint_keys(state_dict)``) instead of flattening
-the methods onto the model class itself.
+A model declares its mapping in a :class:`WeightMappingHandler` instance (typically in its ``weight_mapping.py``
+module). The ``@register_metadata`` decorator bundles it into the model's ``ModelMetadata``, reachable as
+``cls._metadata._weight_mapping``. Internal call sites go through ``cls._metadata._weight_mapping.X`` (e.g.
+``cls._metadata._weight_mapping.normalize_checkpoint_keys(state_dict)``) instead of flattening the methods onto the
+model class itself.
 
 The :meth:`WeightMappingHandler.apply_transforms` helper drives the forward direction from a single declarative table —
 see ``models/transformers/flux/weight_mapping.py`` for an example.
 """
 
+from dataclasses import dataclass, field
 from typing import Callable, Optional
 
+from ..utils import logging
 
+
+logger = logging.get_logger(__name__)
+
+
+@dataclass
 class WeightMappingHandler:
     """Composition-style holder for a model class's weight-mapping configuration and helpers.
 
-    Instances are attached to model classes as ``cls._weight_mapping`` by ``WeightMappingMetadata._register``. Owns all
-    the data (available configs, prefixes, rename patterns, converter callables) and all the methods (rename, detect,
-    normalize) that the legacy ``WeightMappingMixin`` flattened onto the model class. The model class itself no longer
-    carries those attributes; access is always via ``cls._weight_mapping.X`` / ``self._weight_mapping.X``.
+    Attached to ``cls._metadata._weight_mapping`` by :meth:`ModelMetadata._register`. Owns all the data (available
+    configs, prefixes, rename patterns, converter callables) and all the methods (rename, detect, normalize) for
+    single-file checkpoint loading. Internal callers reach it via ``cls._metadata._weight_mapping.X``.
+
+    Attributes:
+        checkpoint_keys: Distinctive keys whose presence indicates the checkpoint is in the original
+            (pre-diffusers) format.
+        checkpoint_key_prefixes: Foreign prefixes (e.g. ``["model.diffusion_model."]``) the handler will strip via
+            :meth:`normalize_checkpoint_keys`. Set this on prefix-only models to skip registering a
+            ``map_to_diffusers_fn`` callable.
+        rename_patterns: Default rename patterns shared between forward and reverse conversions (consumed by
+            :meth:`apply_transforms`).
+        available_configs:
+            Map of short config name to hub repo id (e.g. ``{"flux-dev": "black-forest-labs/FLUX.1-dev"}``).
+        default_config: Config name (key into ``available_configs``) used when ``detect_config_fn`` is
+            unregistered or returns ``None``.
+        default_subfolder: Default ``subfolder`` to use when fetching configs (e.g. ``"transformer"``).
+        map_to_diffusers_fn: Callable ``(state_dict, **kwargs) -> state_dict`` performing full key conversion.
+            ``None`` for prefix-only models.
+        map_from_diffusers_fn: Reverse callable (diffusers → original format).
+        detect_config_fn: ``(handler, state_dict) -> Optional[str]`` returning a config name from
+            ``available_configs``, or ``None`` to fall back to ``default_config``.
     """
 
-    def __init__(
-        self,
-        *,
-        checkpoint_keys: Optional[set] = None,
-        checkpoint_key_prefixes: Optional[list] = None,
-        rename_patterns: Optional[dict] = None,
-        available_configs: Optional[dict] = None,
-        default_config: Optional[str] = None,
-        default_subfolder: str = "transformer",
-        map_to_diffusers: Optional[Callable] = None,
-        map_from_diffusers: Optional[Callable] = None,
-        detect_config_fn: Optional[Callable] = None,
-    ):
-        self.checkpoint_keys = checkpoint_keys or set()
-        self.checkpoint_key_prefixes = checkpoint_key_prefixes or []
-        self.rename_patterns = rename_patterns or {}
-        self.available_configs = available_configs or {}
-        self.default_config = default_config
-        self.default_subfolder = default_subfolder
-        self._map_to_diffusers_fn = map_to_diffusers
-        self._map_from_diffusers_fn = map_from_diffusers
-        self._detect_config_fn = detect_config_fn
+    checkpoint_keys: set = field(default_factory=set)
+    checkpoint_key_prefixes: list = field(default_factory=list)
+    rename_patterns: dict = field(default_factory=dict)
+    available_configs: dict = field(default_factory=dict)
+    default_config: Optional[str] = None
+    default_subfolder: str = "transformer"
+    map_to_diffusers_fn: Optional[Callable] = None
+    map_from_diffusers_fn: Optional[Callable] = None
+    detect_config_fn: Optional[Callable] = None
 
     # ---- single-file capability ----
 
     @property
     def supports_single_file(self) -> bool:
-        """Whether the model has enough metadata to load from a single-file checkpoint.
+        """Whether ``from_single_file(path)`` works for this model with no extra arguments.
 
-        Requires ``available_configs`` (so a config repo can be resolved) plus either a converter callable
-        (``_map_to_diffusers_fn``) or a non-empty ``checkpoint_key_prefixes`` (declarative prefix-only path).
+        Requires ``default_config`` to be set so config resolution always succeeds (with or without a successful
+        ``detect_config_fn`` call). Models that declare only ``available_configs`` still load via
+        ``from_single_file(path, config=...)``, but they don't auto-resolve and so don't count as supporting. Key
+        normalization is all no-op-safe; the architecture-resolution step is the only hard requirement.
         """
-        has_normalizer = self._map_to_diffusers_fn is not None or bool(self.checkpoint_key_prefixes)
-        return bool(self.available_configs) and has_normalizer
+        return self.default_config is not None
 
     # ---- key utilities ----
 
@@ -105,25 +118,34 @@ class WeightMappingHandler:
     def detect_config(self, state_dict: dict) -> Optional[str]:
         """Detect which config name from ``available_configs`` matches this state_dict.
 
-        Dispatches to ``self._detect_config_fn(self, state_dict)``. If unregistered, returns ``None`` so the caller can
+        Dispatches to ``self.detect_config_fn(self, state_dict)``. If unregistered, returns ``None`` so the caller can
         fall back to ``self.default_config``.
         """
-        if self._detect_config_fn is None:
+        if self.detect_config_fn is None:
             return None
-        return self._detect_config_fn(self, state_dict)
+        return self.detect_config_fn(self, state_dict)
 
     def get_model_config(self, state_dict: dict) -> str:
         """Resolve the hub repo id whose config best matches this checkpoint.
 
         Resolution order:
             1. Run ``detect_config(state_dict)`` (if a detector is registered).
-            2. If detection returns ``None``, fall back to ``default_config``.
+            2. If detection returns ``None``, fall back to ``default_config`` and warn (since the user is now getting a
+               config that may not match the checkpoint shape).
             3. Look up the chosen name in ``available_configs`` to get the hub repo id.
         """
-        config_name = self.detect_config(state_dict) or self.default_config
+        detected = self.detect_config(state_dict)
+        if detected is None and self.default_config is not None and self.detect_config_fn is not None:
+            logger.warning(
+                f"Could not auto-detect a config for this checkpoint; falling back to default_config="
+                f"'{self.default_config}' ({self.available_configs.get(self.default_config)}). "
+                f"If this is the wrong architecture, pass `config=<hub-repo-id>` to `from_single_file(...)` "
+                f"explicitly. Known configs: {sorted(self.available_configs)}."
+            )
+        config_name = detected or self.default_config
         if config_name is None:
             available = sorted(self.available_configs) or "<none registered>"
-            has_detector = self._detect_config_fn is not None
+            has_detector = self.detect_config_fn is not None
             raise ValueError(
                 "Could not determine which config to load for this checkpoint.\n"
                 "\n"
@@ -133,8 +155,8 @@ class WeightMappingHandler:
                 "\n"
                 "To fix this, either:\n"
                 '  - pass `config="<hub-repo-id>"` to `from_single_file(...)` to skip auto-detection, OR\n'
-                "  - update the model's `WeightMappingMetadata` to register a `_detect_config_fn` that returns a "
-                "name from `_available_configs`, and/or set `_default_config` to a name in `_available_configs`."
+                "  - update the model's `WeightMappingHandler` to set `detect_config_fn` (returns a name from "
+                "`available_configs`), and/or set `default_config` to a name in `available_configs`."
             )
         if config_name not in self.available_configs:
             raise ValueError(
@@ -151,9 +173,9 @@ class WeightMappingHandler:
         No-op (returns ``state_dict`` unchanged) if no converter callable is registered; callers are expected to use
         the prefix-only path (via :meth:`normalize_checkpoint_keys`) in that case.
         """
-        if self._map_to_diffusers_fn is None:
+        if self.map_to_diffusers_fn is None:
             return state_dict
-        return self._map_to_diffusers_fn(state_dict, **kwargs)
+        return self.map_to_diffusers_fn(state_dict, **kwargs)
 
     def maybe_convert_state_dict(self, model, state_dict: dict) -> dict:
         """Bring ``state_dict`` to diffusers naming if it isn't already. Two phases:
@@ -175,9 +197,9 @@ class WeightMappingHandler:
 
     def map_from_diffusers(self, state_dict: dict, **kwargs) -> dict:
         """Convert state_dict from diffusers format to original format."""
-        if self._map_from_diffusers_fn is None:
-            raise NotImplementedError("No `_map_from_diffusers` callable registered for this model.")
-        return self._map_from_diffusers_fn(state_dict, **kwargs)
+        if self.map_from_diffusers_fn is None:
+            raise NotImplementedError("No `map_from_diffusers_fn` callable registered for this model.")
+        return self.map_from_diffusers_fn(state_dict, **kwargs)
 
     # ---- driver for declarative transforms ----
 

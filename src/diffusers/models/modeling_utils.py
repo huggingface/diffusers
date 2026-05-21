@@ -237,69 +237,103 @@ def no_init_weights():
 
 @dataclass
 class ModelMetadata:
-    """
-    Capability flags and subsystem registrations for a diffusers model class.
-
-    Two kinds of fields:
-
-    1. **Scalar capability flags** (``_supports_gradient_checkpointing``, ``_no_split_modules``, ``_cp_plan``, etc.) —
-       passive declarative data; mirrored directly onto the model class.
-    2. **Subsystem handlers** (``_lora``, ``_weight_mapping``, ``_ip_adapter``) — concrete handler instances holding
-       both data and behavior for foreign-format conversion. The handler is the *runtime* object the model uses; the
-       model class accesses them as ``cls._lora`` / ``cls._weight_mapping`` / ``cls._ip_adapter``.
-
-    Models declare their full picture in one place via ``@register_metadata(ModelMetadata(...))``.
-
-    Attributes:
-        _supports_gradient_checkpointing: Whether the model supports gradient checkpointing for
-            memory-efficient training.
-        _no_split_modules: Module class names that should NOT be split across devices during model
-            parallelism.
-        _keep_in_fp32_modules: Module names to keep in FP32 precision when using lower-precision dtypes.
-        _skip_layerwise_casting_patterns: Patterns to exclude from layerwise casting.
-        _supports_group_offloading: Whether the model supports group offloading.
-        _repeated_blocks: Module class names that repeat throughout the model (used by optimization passes).
-        _cp_plan: Context-parallel sharding plan mapping input/output tensor names to ``ContextParallelInput``
-            / ``ContextParallelOutput`` declarations. Universal — applies to any tensor-sharding work.
-        _keys_to_ignore_on_load_unexpected: State-dict keys to silently ignore at load time.
-        _lora: :class:`LoRAHandler` instance owning per-model LoRA format detection and conversion.
-        _weight_mapping: :class:`WeightMappingHandler` instance owning per-model single-file checkpoint
-            conversion (prefix-stripping, key remapping, variant detection).
-        _ip_adapter: :class:`IPAdapterHandler` instance owning per-model IP-Adapter conversion callables.
-    """
-
-    _supports_gradient_checkpointing: bool = False
-    _no_split_modules: list[str] | None = None
-    _keep_in_fp32_modules: list[str] | None = None
-    _skip_layerwise_casting_patterns: tuple[str, ...] | None = None
-    _supports_group_offloading: bool = True
-    _repeated_blocks: list[str] = field(default_factory=list)
-    _cp_plan: dict[str, Any] | None = None
-    _keys_to_ignore_on_load_unexpected: list[str] | None = None
-    _lora: LoRAHandler = field(default_factory=LoRAHandler)
-    _ip_adapter: IPAdapterHandler = field(default_factory=IPAdapterHandler)
-    _weight_mapping: WeightMappingHandler = field(default_factory=WeightMappingHandler)
+    _supports_gradient_checkpointing: bool = field(
+        default=False,
+        metadata={"doc": "Whether the model supports gradient checkpointing for memory-efficient training."},
+    )
+    _no_split_modules: list[str] | None = field(
+        default=None,
+        metadata={"doc": "Block class names that must stay on a single device under `device_map='auto'` sharding."},
+    )
+    _keep_in_fp32_modules: list[str] | None = field(
+        default=None,
+        metadata={"doc": "Submodule name patterns that must remain in fp32 even when the model is cast to fp16/bf16."},
+    )
+    _skip_layerwise_casting_patterns: tuple[str, ...] | None = field(
+        default=None,
+        metadata={"doc": "Parameter name substrings excluded from layerwise dtype casting (e.g. embeddings, norms)."},
+    )
+    _supports_group_offloading: bool = field(
+        default=True,
+        metadata={"doc": "Whether the model can be loaded with `enable_group_offload` for CPU/disk-staged inference."},
+    )
+    _repeated_blocks: list[str] = field(
+        default_factory=list,
+        metadata={
+            "doc": "Block class names safe to `torch.compile` once and reuse — enables `compile_repeated_blocks`."
+        },
+    )
+    _cp_plan: dict[str, Any] | None = field(
+        default=None,
+        metadata={
+            "label": "supports_context_parallel",
+            "doc": "Context-parallel I/O plan: which forward inputs to scatter and outputs to gather across CP ranks.",
+        },
+    )
+    _keys_to_ignore_on_load_unexpected: list[str] | None = field(
+        default=None,
+        metadata={
+            "doc": "State-dict keys silently dropped at load time instead of being surfaced as 'unexpected keys'."
+        },
+    )
+    _lora: LoRAHandler = field(
+        default_factory=LoRAHandler,
+        metadata={"doc": "Foreign-format LoRA detection + conversion (kohya/xlabs/bfl/...) to diffusers naming."},
+    )
+    _ip_adapter: IPAdapterHandler = field(
+        default_factory=IPAdapterHandler,
+        metadata={"doc": "IP-Adapter weight conversion: attn-processor builders and image-projection construction."},
+    )
+    _weight_mapping: WeightMappingHandler = field(
+        default_factory=WeightMappingHandler,
+        metadata={
+            "label": "supported_model_types",
+            "doc": "Single-file checkpoint loading: prefix stripping, key renaming, config auto-detection.",
+        },
+    )
 
     def _register(self, cls):
-        """Attach this ``ModelMetadata`` to ``cls``: stash for introspection, install handlers, mirror scalars.
+        """Attach this ``ModelMetadata`` to ``cls``.
 
-        Two steps:
-            1. Attach subsystem handlers directly as ``cls._lora`` / ``cls._weight_mapping`` / ``cls._ip_adapter``.
-               These are the runtime entry points; internal code reaches them via composition (e.g.
-               ``cls._weight_mapping.normalize_checkpoint_keys(...)``).
-            2. Mirror the scalar capability fields (``_supports_gradient_checkpointing``, ``_no_split_modules``,
-               ``_cp_plan``, etc.) directly onto ``cls`` — consumed by code via bare attribute access.
+        ``cls._metadata`` is the canonical umbrella for all subsystem access — internal callers reach the handlers via
+        ``cls._metadata._lora`` / ``._weight_mapping`` / ``._ip_adapter``. Scalar capability fields
+        (``_supports_gradient_checkpointing``, ``_no_split_modules``, ``_cp_plan``, etc.) are *additionally* mirrored
+        directly onto ``cls`` so existing code paths that do bare attribute access (e.g. ``cls._keep_in_fp32_modules``
+        in ``from_pretrained``) keep working unchanged.
         """
-        cls._model_metadata = self
-        # Subsystem handlers attach directly — they're already the runtime objects.
-        cls._lora = self._lora
-        cls._weight_mapping = self._weight_mapping
-        cls._ip_adapter = self._ip_adapter
-        # Scalar capability fields mirror to ``cls``.
+        cls._metadata = self
+        # Scalar capability fields mirror directly to ``cls``; handlers stay accessible only via ``cls._metadata``.
         for f in fields(self):
             if f.name in {"_lora", "_weight_mapping", "_ip_adapter"}:
                 continue
             setattr(cls, f.name, getattr(self, f.name))
+
+
+def _render_metadata_value(value):
+    """Format a ``ModelMetadata`` field value for the introspection tables.
+
+    Returns ``None`` to mean "this capability isn't present" — callers can skip the row entirely or render an empty
+    cell depending on whether they want a per-model view (:meth:`ModelMixin.describe_capabilities`) or a full-schema
+    view (:meth:`ModelMixin.doc`).
+    """
+    if isinstance(value, LoRAHandler):
+        formats = sorted(value.format_keys)
+        return ", ".join(formats) if formats else None
+    if isinstance(value, WeightMappingHandler):
+        if not value.supports_single_file:
+            return None
+        return ", ".join(sorted(value.available_configs))
+    if isinstance(value, IPAdapterHandler):
+        return "yes" if value.supports_ip_adapter else None
+    if isinstance(value, bool):
+        return "yes" if value else None
+    if value is None:
+        return None
+    if isinstance(value, dict):
+        return "yes" if value else None
+    if isinstance(value, (list, tuple)):
+        return ", ".join(map(str, value)) if value else None
+    return str(value) or None
 
 
 def register_metadata(metadata):
@@ -368,6 +402,63 @@ class ModelMixin(torch.nn.Module, ConfigMixin, LoRAModelMixin, PushToHubMixin):
 
         # call PyTorch's https://pytorch.org/docs/stable/_modules/torch/nn/modules/module.html#Module
         return super().__getattr__(name)
+
+    @classmethod
+    def describe_capabilities(cls) -> None:
+        """Print a two-column summary of the capabilities this model declares in ``cls._metadata``.
+
+        Only present capabilities are shown — fields that are ``False``, ``None``, empty, or whose handler reports it
+        doesn't support the subsystem are omitted. Useful as a quick "what does this model support?" introspection at
+        the REPL.
+        """
+        rows = []
+        for f in fields(cls._metadata):
+            rendered = _render_metadata_value(getattr(cls._metadata, f.name))
+            if rendered is None:
+                continue
+            label = f.metadata.get("label") or f.name.lstrip("_")
+            rows.append((label, rendered))
+
+        title = f"{cls.__name__} capabilities"
+        if not rows:
+            print(f"\n{title}\n(none declared)\n")
+            return
+
+        name_w = max(len(n) for n, _ in rows)
+        width = max(len(title), name_w + max(len(v) for _, v in rows) + 2)
+
+        print()
+        print(title)
+        print("─" * width)
+        for name, val in rows:
+            print(f"{name:<{name_w}}  {val}")
+        print()
+
+    @classmethod
+    def doc(cls, verbose: bool = False) -> None:
+        """Print every :class:`ModelMetadata` field with its current value.
+
+        Columns: ``field name | current value``. The value column is blank for fields this model leaves at the default.
+        Pass ``verbose=True`` to also print each field's description.
+        """
+        rows = []
+        for f in fields(cls._metadata):
+            rendered = _render_metadata_value(getattr(cls._metadata, f.name)) or ""
+            label = f.metadata.get("label") or f.name.lstrip("_")
+            rows.append((label, rendered, f.metadata.get("doc", "")))
+
+        name_w = max(len(n) for n, _, _ in rows)
+        val_w = max(len(v) for _, v, _ in rows)
+        title = f"{cls.__name__} fields"
+        print()
+        print(title)
+        print("─" * len(title))
+        for name, val, doc in rows:
+            if verbose:
+                print(f"{name:<{name_w}}  {val:<{val_w}}  {doc}")
+            else:
+                print(f"{name:<{name_w}}  {val}")
+        print()
 
     @property
     def is_gradient_checkpointing(self) -> bool:
@@ -1532,7 +1623,7 @@ class ModelMixin(torch.nn.Module, ConfigMixin, LoRAModelMixin, PushToHubMixin):
 
             # Convert checkpoint if needed (e.g., original format to diffusers format). For models that haven't
             # registered weight-mapping metadata this is a no-op via the default handler.
-            state_dict = cls._weight_mapping.maybe_convert_state_dict(model, state_dict)
+            state_dict = cls._metadata._weight_mapping.maybe_convert_state_dict(model, state_dict)
 
         if is_sharded:
             loaded_keys = sharded_metadata["all_checkpoint_keys"]
@@ -1680,18 +1771,18 @@ class ModelMixin(torch.nn.Module, ConfigMixin, LoRAModelMixin, PushToHubMixin):
             load_single_file_checkpoint,
         )
 
-        # ``cls._weight_mapping`` is the composed ``WeightMappingHandler`` (attached by ``@register_metadata``,
-        # or the no-op default placeholder on ``ModelMixin``). Bind it once and reuse below. Its
+        # The ``WeightMappingHandler`` is composed under ``cls._metadata._weight_mapping`` (by
+        # ``@register_metadata``, or the no-op default on ``ModelMixin``). Bind it once and reuse below. Its
         # ``supports_single_file`` property checks that the model declared enough to (a) bring keys to
         # diffusers naming (converter or prefix-only path) and (b) resolve which config to load
         # (``available_configs`` non-empty).
-        _weight_mapping = cls._weight_mapping
+        _weight_mapping = cls._metadata._weight_mapping
         if not _weight_mapping.supports_single_file:
             raise ValueError(
                 f"`{cls.__name__}.from_single_file` is not supported. "
-                "The model's `WeightMappingMetadata` must register `_available_configs` (so we know which config "
-                "to load) plus at least one of: `_map_to_diffusers` (full key conversion) or "
-                "`_checkpoint_key_prefixes` (prefix-only conversion for diffusers-format checkpoints with a "
+                "The model's `WeightMappingHandler` must register `available_configs` (so we know which config "
+                "to load) plus at least one of: `map_to_diffusers_fn` (full key conversion) or "
+                "`checkpoint_key_prefixes` (prefix-only conversion for diffusers-format checkpoints with a "
                 "foreign prefix). Use `from_pretrained` if the model is already in diffusers format."
             )
         default_subfolder = _weight_mapping.default_subfolder

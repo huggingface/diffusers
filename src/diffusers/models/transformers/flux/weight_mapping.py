@@ -307,8 +307,8 @@ FLUX_WEIGHT_MAPPING = WeightMappingHandler(
     checkpoint_key_prefixes=_FLUX_CHECKPOINT_KEY_PREFIXES,
     rename_patterns=FLUX_RENAME_PATTERNS,
     available_configs=_FLUX_AVAILABLE_CONFIGS,
-    map_to_diffusers=map_to_diffusers,
-    map_from_diffusers=map_from_diffusers,
+    map_to_diffusers_fn=map_to_diffusers,
+    map_from_diffusers_fn=map_from_diffusers,
     detect_config_fn=detect_config,
     # Kicks in only when ``detect_config`` returns ``None`` (e.g. the ``img_in`` / ``x_embedder`` key is
     # absent so we can't read in_channels). Most Flux checkpoints in the wild are dev-derived, so it's

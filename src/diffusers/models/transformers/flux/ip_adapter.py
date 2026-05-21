@@ -137,6 +137,6 @@ def convert_attn_processors(model, state_dicts, low_cpu_mem_usage=_LOW_CPU_MEM_U
 
 # Handler assembled into ``ModelMetadata`` by ``flux/model.py``.
 FLUX_IP_ADAPTER = IPAdapterHandler(
-    convert_attn_to_diffusers=convert_attn_processors,
-    convert_image_proj_to_diffusers=convert_image_proj,
+    convert_attn_to_diffusers_fn=convert_attn_processors,
+    convert_image_proj_to_diffusers_fn=convert_image_proj,
 )
