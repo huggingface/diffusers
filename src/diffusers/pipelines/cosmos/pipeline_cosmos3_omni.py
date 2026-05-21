@@ -19,7 +19,6 @@ from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import numpy as np
 import torch
-import torchvision.transforms.functional as TF
 from transformers import AutoTokenizer
 
 from ...callbacks import MultiPipelineCallbacks, PipelineCallback
@@ -31,6 +30,7 @@ from ...models.transformers.transformer_cosmos3 import (
 from ...schedulers import UniPCMultistepScheduler
 from ...utils import BaseOutput, export_to_video
 from ...utils.torch_utils import randn_tensor
+from ...video_processor import VideoProcessor
 from ..pipeline_utils import DiffusionPipeline
 
 
@@ -621,6 +621,12 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
         self._vae_latents_mean = torch.tensor(vae.config.latents_mean, dtype=self._vae_dtype)
         self._vae_latents_inv_std = 1.0 / torch.tensor(vae.config.latents_std, dtype=self._vae_dtype)
 
+        # Image preprocessor for caller-supplied conditioning frames (PIL / tensor / numpy).
+        self.vae_scale_factor_spatial = (
+            int(self.vae.config.scale_factor_spatial) if getattr(self, "vae", None) else 16
+        )
+        self.video_processor = VideoProcessor(vae_scale_factor=self.vae_scale_factor_spatial, resample="bilinear")
+
         self.llm_special_tokens = {
             "start_of_generation": text_tokenizer.convert_tokens_to_ids("<|vision_start|>"),
             "end_of_generation": text_tokenizer.convert_tokens_to_ids("<|vision_end|>"),
@@ -1027,15 +1033,18 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
         """
         is_image = num_frames == 1
 
-        conditioning_frames = None
+        # video_processor.preprocess handles PIL/np/tensor → [1, 3, H, W] in [-1, 1], resized to (height, width).
+        conditioning_frame_2d: torch.Tensor | None = None
         if image is not None:
-            conditioning_frames = self._load_image_as_tensor(image, height, width)
+            conditioning_frame_2d = self.video_processor.preprocess(image, height=height, width=width).to(
+                device=device, dtype=dtype
+            )
 
         # Build the vision conditioning tensor (always [1, 3, T, H, W], in [-1, 1], on device).
         if is_image:
             vision_tensor = (
-                conditioning_frames.unsqueeze(0).to(device=device, dtype=dtype)
-                if conditioning_frames is not None
+                conditioning_frame_2d.unsqueeze(2)  # [1, 3, 1, H, W]
+                if conditioning_frame_2d is not None
                 else torch.zeros(1, 3, 1, height, width, dtype=dtype, device=device)
             )
             condition_frame_indexes_vision: List[int] = []
@@ -1043,15 +1052,15 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
             cond_indexes = (
                 condition_frame_indexes
                 if condition_frame_indexes is not None
-                else ([0] if conditioning_frames is not None else [])
+                else ([0] if conditioning_frame_2d is not None else [])
             )
             vision_tensor = torch.zeros(1, 3, num_frames, height, width, dtype=dtype, device=device)
-            if conditioning_frames is not None:
-                t_fill = min(conditioning_frames.shape[1], num_frames)
-                vision_tensor[0, :, :t_fill] = conditioning_frames[:, :t_fill].to(device=device, dtype=dtype)
-                if t_fill < num_frames:
-                    vision_tensor[0, :, t_fill:] = vision_tensor[0, :, t_fill - 1 : t_fill].expand(
-                        -1, num_frames - t_fill, -1, -1
+            if conditioning_frame_2d is not None:
+                # Single conditioning frame at t=0, repeat-pad the rest with that same frame.
+                vision_tensor[:, :, 0] = conditioning_frame_2d
+                if num_frames > 1:
+                    vision_tensor[:, :, 1:] = conditioning_frame_2d.unsqueeze(2).expand(
+                        -1, -1, num_frames - 1, -1, -1
                     )
             condition_frame_indexes_vision = list(cond_indexes)
 
@@ -1182,52 +1191,6 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
 
         hidden_states[vision.sequence_indexes] = packed_tokens_vision
         return original_latent_shapes
-
-    def _load_image_as_tensor(self, image, target_h: int, target_w: int) -> torch.Tensor:
-        """Load image from PIL, path, URL, or tensor; returns [3, 1, H, W] in [-1, 1]."""
-        from PIL import Image as PILImage
-
-        if isinstance(image, (str, Path)):
-            image_str = str(image)
-            if image_str.startswith("http://") or image_str.startswith("https://"):
-                import io
-                import urllib.request
-
-                with urllib.request.urlopen(image_str) as resp:
-                    img_bytes = resp.read()
-                pil_img = PILImage.open(io.BytesIO(img_bytes)).convert("RGB")
-            else:
-                with open(image_str, "rb") as f:
-                    pil_img = PILImage.open(f).convert("RGB")
-            img_t = torch.from_numpy(np.array(pil_img)).permute(2, 0, 1).float()
-        elif hasattr(image, "convert"):  # PIL.Image
-            img_t = torch.from_numpy(np.array(image.convert("RGB"))).permute(2, 0, 1).float()
-        elif isinstance(image, torch.Tensor):
-            img_t = image.float()
-            if img_t.dim() == 4:
-                img_t = img_t.squeeze(0)
-            # if already normalized to [-1, 1], skip the /127.5-1 step below
-            if img_t.max() <= 1.1:
-                img_4d = img_t.unsqueeze(0)
-                orig_h, orig_w = img_4d.shape[2], img_4d.shape[3]
-                scale = max(target_w / orig_w, target_h / orig_h)
-                resize_h = int(math.ceil(scale * orig_h))
-                resize_w = int(math.ceil(scale * orig_w))
-                img_4d = TF.resize(img_4d, [resize_h, resize_w])
-                img_4d = TF.center_crop(img_4d, [target_h, target_w])
-                return img_4d.squeeze(0).unsqueeze(1)
-        else:
-            raise TypeError(f"Unsupported image type: {type(image)}")
-
-        img_4d = img_t.unsqueeze(0)  # [1, 3, H, W]  (uint8-range [0, 255])
-        orig_h, orig_w = img_4d.shape[2], img_4d.shape[3]
-        scale = max(target_w / orig_w, target_h / orig_h)
-        resize_h = int(math.ceil(scale * orig_h))
-        resize_w = int(math.ceil(scale * orig_w))
-        img_4d = TF.resize(img_4d, [resize_h, resize_w])
-        img_4d = TF.center_crop(img_4d, [target_h, target_w])
-        img_4d = img_4d / 127.5 - 1.0  # normalize after resize, matching load_conditioning_image
-        return img_4d.squeeze(0).unsqueeze(1)  # [3, 1, H, W]
 
     def check_inputs(
         self,

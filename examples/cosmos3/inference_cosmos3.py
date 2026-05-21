@@ -26,6 +26,7 @@ import torch
 from huggingface_hub import snapshot_download
 
 from diffusers.pipelines.cosmos.pipeline_cosmos3_omni import Cosmos3OmniDiffusersPipeline, save_img_or_video, save_wav
+from diffusers.utils import load_image
 
 
 HF_REPO = "nvidia/Cosmos3-Nano"
@@ -81,9 +82,11 @@ def main():
     output_dir = pathlib.Path(args.output)
     output_dir.mkdir(parents=True, exist_ok=True)
 
+    image = load_image(vision_path) if vision_path is not None else None
+
     result = pipeline(
         prompt=prompt,
-        image=vision_path,
+        image=image,
         num_frames=num_frames,
         height=args.height,
         width=args.width,
