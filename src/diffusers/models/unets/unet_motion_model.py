@@ -1191,6 +1191,10 @@ class MotionAdapter(ModelMixin, ConfigMixin, FromOriginalModelMixin):
         self.up_blocks = nn.ModuleList(up_blocks)
 
     def forward(self, sample):
+        r"""
+        Args:
+            sample (`torch.Tensor`): Input sample.
+        """
         pass
 
 
@@ -1909,6 +1913,8 @@ class UNetMotionModel(ModelMixin, AttentionMixin, ConfigMixin, UNet2DConditionLo
                 A kwargs dictionary that if specified is passed along to the `AttentionProcessor` as defined under
                 `self.processor` in
                 [diffusers.models.attention_processor](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/attention_processor.py).
+            added_cond_kwargs (`dict`, *optional*):
+                A dictionary of additional embeddings (e.g. text and time embeddings) used to condition the model.
             down_block_additional_residuals: (`tuple` of `torch.Tensor`, *optional*):
                 A tuple of tensors that if specified are added to the residuals of down unet blocks.
             mid_block_additional_residual: (`torch.Tensor`, *optional*):

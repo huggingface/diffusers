@@ -483,8 +483,12 @@ class LongCatImageTransformer2DModel(
                 Conditional embeddings (embeddings computed from the input conditions such as prompts) to use.
             timestep ( `torch.LongTensor`):
                 Used to indicate denoising step.
-            block_controlnet_hidden_states: (`list` of `torch.Tensor`):
-                A list of tensors that if specified are added to the residuals of transformer blocks.
+            img_ids (`torch.Tensor`):
+                Image position ids used to compute the rotary positional embeddings.
+            txt_ids (`torch.Tensor`):
+                Text position ids used to compute the rotary positional embeddings.
+            guidance (`torch.Tensor`, *optional*):
+                Guidance scale embedding used for guidance-distilled variants of the model.
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`~models.transformer_2d.Transformer2DModelOutput`] instead of a plain
                 tuple.
