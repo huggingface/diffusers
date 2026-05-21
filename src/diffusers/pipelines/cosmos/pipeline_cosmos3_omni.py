@@ -724,7 +724,6 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
             "surreal or glitchy hallucination. Overall, the video is of poor quality."
         )
 
-    @torch.no_grad()
     def _encode_video(self, x: torch.Tensor) -> torch.Tensor:
         """[B,3,T,H,W] → normalized latents [B,z_dim,T//4,H//16,W//16]. Bit-for-bit
         matches Wan2pt2VAEInterface; no autocast (WanVAE was trained with is_amp=False)."""
@@ -735,7 +734,6 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
         raw_mu = self.vae.encode(x.to(dtype)).latent_dist.mode()
         return ((raw_mu - mean.view(1, -1, 1, 1, 1)) * inv_std.view(1, -1, 1, 1, 1)).to(in_dtype)
 
-    @torch.no_grad()
     def _decode_video(self, z: torch.Tensor) -> torch.Tensor:
         """[B,z_dim,T_lat,H_lat,W_lat] → raw pixels [B,3,T,H,W]."""
         in_dtype = z.dtype
@@ -1183,10 +1181,6 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
 
         return num_vision_items, x0_tokens_vision, fps_vision
 
-    def derive_include_end_of_generation_token(self, joint_attn_implementation: str) -> bool:
-        assert joint_attn_implementation in ("flex", "two_way", "three_way")
-        return joint_attn_implementation == "flex"
-
     def prepare_latents(
         self,
         prompt: str,
@@ -1306,9 +1300,7 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
             x0_tokens_sound=x0_tokens_sound,
             fps_sound=fps_sound,
             latent_patch_size=self.transformer.config.latent_patch_size,
-            include_end_of_generation_token=self.derive_include_end_of_generation_token(
-                self.transformer.config.joint_attn_implementation
-            ),
+            include_end_of_generation_token=self.transformer.config.joint_attn_implementation == "flex",
             position_embedding_type=self.transformer.config.position_embedding_type,
             unified_3d_mrope_reset_spatial_ids=self.transformer.config.unified_3d_mrope_reset_spatial_ids,
             unified_3d_mrope_temporal_modality_margin=self.transformer.config.unified_3d_mrope_temporal_modality_margin,
@@ -1467,6 +1459,7 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
         height: int,
         width: int,
         num_frames: int,
+        guidance_scale: float,
         enable_sound: bool,
     ) -> None:
         if not isinstance(prompt, (str, list)) or (
@@ -1482,6 +1475,8 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
         sf = int(self.vae.config.scale_factor_spatial)
         if height % sf != 0 or width % sf != 0:
             raise ValueError(f"`height` and `width` must be multiples of {sf}, got ({height}, {width}).")
+        if guidance_scale == 1.0:
+            raise ValueError("`guidance_scale` must be != 1.0 (classifier-free guidance is required).")
         if enable_sound:
             if self.sound_tokenizer is None:
                 raise ValueError("`enable_sound=True` requires a sound-capable checkpoint with a `sound_tokenizer`.")
@@ -1534,7 +1529,6 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
         uncond_tokens = self.tokenize_caption(negative_prompt, is_video=False, use_system_prompt=use_system_prompt)
         return cond_tokens, uncond_tokens
 
-    @torch.no_grad()
     def decode_latents(self, vision_list: list[torch.Tensor]) -> list[torch.Tensor]:
         """Decode latents to pixel tensors of shape [C, T, H, W] in [0, 1]."""
         frames = []
@@ -1614,13 +1608,12 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
             callback_on_step_end_tensor_inputs = callback_on_step_end.tensor_inputs
 
         # 1. Check inputs
-        self.check_inputs(prompt, negative_prompt, image, height, width, num_frames, enable_sound)
+        self.check_inputs(prompt, negative_prompt, image, height, width, num_frames, guidance_scale, enable_sound)
         if not all(k in self._callback_tensor_inputs for k in callback_on_step_end_tensor_inputs):
             raise ValueError(
                 f"`callback_on_step_end_tensor_inputs` has to be in {self._callback_tensor_inputs}, but found "
                 f"{[k for k in callback_on_step_end_tensor_inputs if k not in self._callback_tensor_inputs]}"
             )
-        assert guidance_scale != 1.0, "Guidance weight must be != 1.0"
 
         self._current_timestep = None
         self._interrupt = False
@@ -1683,7 +1676,7 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
         patch_latent_dim = config.patch_latent_dim
         timestep_scale = config.timestep_scale
         assert config.use_moe
-        include_eog = self.derive_include_end_of_generation_token(config.joint_attn_implementation)
+        include_eog = config.joint_attn_implementation == "flex"
         has_sound = x0_tokens_sound is not None and sequence_plan.has_sound
 
         # 6. Denoising loop
