@@ -33,6 +33,11 @@ Run from the repository root:
 Optionally restrict to specific files:
 
     python utils/check_forward_call_docstrings.py --paths src/diffusers/models/transformers/transformer_flux.py
+
+Auto-fix stale (documented-but-removed) entries — missing entries are never
+auto-added (no placeholders), only stale ones are removed:
+
+    python utils/check_forward_call_docstrings.py --fix
 """
 
 from __future__ import annotations
@@ -199,6 +204,123 @@ def check_file(path: Path, kind: str) -> list[str]:
     return errors
 
 
+def fix_file(path: Path, kind: str) -> list[str]:
+    """Remove stale arg entries (documented but not in signature) in-place.
+
+    Missing-in-signature → docstring entries are NOT added (no placeholders).
+    Returns a list of ``"ClassName.method: removed name1, name2"`` strings
+    describing what was removed.
+    """
+    method_name = "forward" if kind == "model" else "__call__"
+    base_class = MODEL_BASE if kind == "model" else PIPELINE_BASE
+
+    source = path.read_text(encoding="utf-8")
+    try:
+        tree = ast.parse(source)
+    except (SyntaxError, UnicodeDecodeError):
+        return []
+
+    lines = source.splitlines(keepends=True)
+    # (start_idx, end_idx_exclusive) ranges of lines to drop.
+    deletions: list[tuple[int, int]] = []
+    summaries: list[str] = []
+
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.ClassDef):
+            continue
+        if base_class not in _base_class_names(node):
+            continue
+        method = _find_method(node, method_name)
+        if method is None:
+            continue
+        # Method must start with a string docstring expression.
+        if not (
+            method.body
+            and isinstance(method.body[0], ast.Expr)
+            and isinstance(method.body[0].value, ast.Constant)
+            and isinstance(method.body[0].value.value, str)
+        ):
+            continue
+
+        sig_set = set(_signature_arg_names(method))
+        documented = _extract_documented_args(ast.get_docstring(method))
+        stale = documented - sig_set
+        if not stale:
+            continue
+
+        docstring_expr = method.body[0]
+        doc_start = docstring_expr.lineno - 1  # 0-indexed
+        doc_end = docstring_expr.end_lineno - 1  # 0-indexed, inclusive
+
+        # Locate the Args/Arguments/Parameters header in raw source.
+        args_idx: int | None = None
+        header_indent = 0
+        for i in range(doc_start, doc_end + 1):
+            stripped = lines[i].strip()
+            if stripped in {"Args:", "Arguments:", "Parameters:"}:
+                args_idx = i
+                header_indent = len(lines[i]) - len(lines[i].lstrip())
+                break
+        if args_idx is None:
+            continue
+
+        # First non-empty line after the header sets the per-entry indent.
+        entry_indent: int | None = None
+        for i in range(args_idx + 1, doc_end + 1):
+            stripped = lines[i].strip()
+            if not stripped:
+                continue
+            entry_indent = len(lines[i]) - len(lines[i].lstrip())
+            break
+        if entry_indent is None or entry_indent <= header_indent:
+            continue
+
+        # Walk entries; each entry spans from its header line up to (but not
+        # including) the next entry header / section header / end of docstring.
+        current_name: str | None = None
+        current_start: int = -1
+        end_of_args: int | None = None
+
+        for i in range(args_idx + 1, doc_end + 1):
+            line = lines[i]
+            stripped = line.strip()
+            if not stripped:
+                continue
+            indent = len(line) - len(line.lstrip())
+
+            if indent <= header_indent and stripped in SECTION_HEADERS:
+                end_of_args = i
+                break
+
+            if indent == entry_indent:
+                m = _ARG_HEADER_RE.match(stripped)
+                if m:
+                    if current_name in stale:
+                        deletions.append((current_start, i))
+                    current_name = m.group(1)
+                    current_start = i
+
+        if current_name in stale:
+            end = end_of_args if end_of_args is not None else doc_end
+            # Trailing blank lines belong to inter-section spacing (or the
+            # blank line before the closing """), not to this entry.
+            while end > current_start + 1 and not lines[end - 1].strip():
+                end -= 1
+            deletions.append((current_start, end))
+
+        summaries.append(f"{node.name}.{method_name}: removed {', '.join(sorted(stale))}")
+
+    if not deletions:
+        return []
+
+    deletions.sort()
+    new_lines = list(lines)
+    for start, end in reversed(deletions):
+        del new_lines[start:end]
+    path.write_text("".join(new_lines), encoding="utf-8")
+    return summaries
+
+
 def _kind_for_path(path: Path) -> str | None:
     parts = path.resolve().parts
     if "pipelines" in parts:
@@ -222,6 +344,15 @@ def main() -> int:
         help=(
             "Debug helper: when --paths is not given, only check the first N files "
             "(in sorted order) from each of models/ and pipelines/."
+        ),
+    )
+    parser.add_argument(
+        "--fix",
+        action="store_true",
+        help=(
+            "Remove stale (documented-but-not-in-signature) argument entries from "
+            "docstrings in-place. Missing-in-docstring entries are NOT auto-added "
+            "(no placeholders) and will still be reported."
         ),
     )
     args = parser.parse_args()
@@ -253,6 +384,17 @@ def main() -> int:
         for p in pipeline_files:
             targets.append((p, "pipeline"))
 
+    if args.fix:
+        fix_summaries: list[str] = []
+        for path, kind in targets:
+            for summary in fix_file(path, kind):
+                fix_summaries.append(f"{path.relative_to(REPO_ROOT)}: {summary}")
+        if fix_summaries:
+            print("Removed stale docstring entries:")
+            print("\n".join(f"  {s}" for s in fix_summaries))
+        else:
+            print("No stale docstring entries to remove.")
+
     all_errors: list[str] = []
     for path, kind in targets:
         all_errors.extend(check_file(path, kind))
@@ -263,6 +405,14 @@ def main() -> int:
             f"\nFound {len(all_errors)} docstring/signature mismatch(es).",
             file=sys.stderr,
         )
+        if not args.fix and any("documents argument(s) not in the signature" in e for e in all_errors):
+            print(
+                "Hint: run `python utils/check_forward_call_docstrings.py --fix` "
+                "to remove the stale argument entries flagged above. "
+                "(Missing-in-docstring entries must be added manually — the tool "
+                "never inserts placeholders.)",
+                file=sys.stderr,
+            )
         return 1
 
     print("All forward/__call__ arguments are documented.")
