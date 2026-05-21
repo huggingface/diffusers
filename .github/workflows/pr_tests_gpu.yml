@@ -72,6 +72,7 @@ jobs:
           python utils/check_copies.py
           python utils/check_dummies.py
           python utils/check_support_list.py
+          python utils/check_forward_call_docstrings.py
           make deps_table_check_updated
       - name: Check if failure
         if: ${{ failure() }}
@@ -98,7 +99,7 @@ jobs:
           uv pip install -e ".[quality]"
       - name: Environment
         run: |
-          python utils/print_env.py
+          diffusers-cli env
       - name: Fetch Pipeline Matrix
         id: fetch_pipeline_matrix
         run: |
@@ -143,7 +144,7 @@ jobs:
 
       - name: Environment
         run: |
-          python utils/print_env.py
+          diffusers-cli env
       - name: Extract tests
         id: extract_tests
         run: |
@@ -214,7 +215,7 @@ jobs:
 
     - name: Environment
       run: |
-        python utils/print_env.py
+        diffusers-cli env
 
     - name: Extract tests
       id: extract_tests
@@ -277,7 +278,7 @@ jobs:
 
     - name: Environment
       run: |
-        python utils/print_env.py
+        diffusers-cli env
 
     - name: Run example tests on GPU
       env:
