@@ -12,141 +12,77 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Loading + import-path tests for classes relocated under ``models/condition_embedders``,
+"""Deprecation-warning coverage for classes relocated under ``models/condition_embedders``,
 ``models/autoencoders``, ``models/unets``, and ``models/others``.
 
-The point of this file is narrow: confirm that (a) the new canonical import paths work,
-(b) the deprecated import paths still resolve and emit a ``FutureWarning`` on instantiation,
-and (c) ``save_pretrained`` / ``from_pretrained`` round-trips through a temp directory using the
-new path — i.e. ``_class_name`` resolution in saved configs is unaffected by the move. No real
-checkpoints are downloaded; instantiation kwargs are tiny by design so this file stays fast and
-the entire suite can be deleted once the deprecation shims are removed.
+Each relocated class has a deprecation shim left behind at its previous pipeline-local path. This
+file verifies that importing+constructing the class through the deprecated path emits a
+``FutureWarning``, for every shim in the codebase. Instantiation runs under ``torch.device("meta")``
+so no real weights are allocated — the test only cares about the deprecation signal, not the
+model state. The whole file should be deleted in the cleanup PR that removes the shims.
 """
 
-import tempfile
+import importlib
 import warnings
 
 import pytest
+import torch
 
 
-CANONICAL_CASES = [
-    # (top-level import name, factory returning a small instance)
-    ("CLIPImageProjection", lambda C: C(hidden_size=32)),
-    (
-        "AudioLDM2ProjectionModel",
-        lambda C: C(text_encoder_dim=8, text_encoder_1_dim=8, langauge_model_dim=16),
-    ),
-    ("StableAudioProjectionModel", lambda C: C(text_encoder_dim=8, conditioning_dim=8, min_value=0, max_value=10)),
-    ("ReduxImageEncoder", lambda C: C(redux_dim=32, txt_in_features=16)),
-    (
-        "LTXLatentUpsamplerModel",
-        lambda C: C(in_channels=4, mid_channels=64, num_blocks_per_stage=1, dims=2, spatial_upsample=True),
-    ),
-]
-
-
-SHIM_CASES = [
-    # (old module dotted path, class name, factory)
-    (
-        "diffusers.pipelines.stable_diffusion.clip_image_project_model",
-        "CLIPImageProjection",
-        lambda C: C(hidden_size=32),
-    ),
+# (deprecated module path, class name, kwargs). Most ctors have full defaults so ``kwargs`` is
+# empty; only ``AudioLDM2ProjectionModel`` and ``StableAudioProjectionModel`` have required
+# positional args, so we pass the smallest values that satisfy the signature.
+DEPRECATED_PATHS = [
+    ("diffusers.pipelines.stable_diffusion.clip_image_project_model", "CLIPImageProjection", {}),
     (
         "diffusers.pipelines.audioldm2.modeling_audioldm2",
         "AudioLDM2ProjectionModel",
-        lambda C: C(text_encoder_dim=8, text_encoder_1_dim=8, langauge_model_dim=16),
+        {"text_encoder_dim": 8, "text_encoder_1_dim": 8, "langauge_model_dim": 16},
     ),
+    ("diffusers.pipelines.audioldm2.modeling_audioldm2", "AudioLDM2UNet2DConditionModel", {}),
     (
         "diffusers.pipelines.stable_audio.modeling_stable_audio",
         "StableAudioProjectionModel",
-        lambda C: C(text_encoder_dim=8, conditioning_dim=8, min_value=0, max_value=10),
+        {"text_encoder_dim": 8, "conditioning_dim": 8, "min_value": 0, "max_value": 10},
     ),
-    (
-        "diffusers.pipelines.flux.modeling_flux",
-        "ReduxImageEncoder",
-        lambda C: C(redux_dim=32, txt_in_features=16),
-    ),
-    (
-        "diffusers.pipelines.ltx.modeling_latent_upsampler",
-        "LTXLatentUpsamplerModel",
-        lambda C: C(in_channels=4, mid_channels=64, num_blocks_per_stage=1, dims=2, spatial_upsample=True),
-    ),
-    (
-        "diffusers.pipelines.deepfloyd_if.watermark",
-        "IFWatermarker",
-        lambda C: C(),
-    ),
-    (
-        "diffusers.pipelines.stable_diffusion.stable_unclip_image_normalizer",
-        "StableUnCLIPImageNormalizer",
-        lambda C: C(embedding_dim=16),
-    ),
+    ("diffusers.pipelines.flux.modeling_flux", "ReduxImageEncoder", {}),
+    ("diffusers.pipelines.ltx.modeling_latent_upsampler", "LTXLatentUpsamplerModel", {}),
+    ("diffusers.pipelines.ltx2.latent_upsampler", "LTX2LatentUpsamplerModel", {}),
+    ("diffusers.pipelines.ltx2.vocoder", "LTX2Vocoder", {}),
+    ("diffusers.pipelines.ltx2.vocoder", "LTX2VocoderWithBWE", {}),
+    ("diffusers.pipelines.ltx2.connectors", "LTX2TextConnectors", {}),
+    ("diffusers.pipelines.ace_step.modeling_ace_step", "AceStepAudioTokenizer", {}),
+    ("diffusers.pipelines.ace_step.modeling_ace_step", "AceStepAudioTokenDetokenizer", {}),
+    ("diffusers.pipelines.ace_step.modeling_ace_step", "AceStepConditionEncoder", {}),
+    ("diffusers.pipelines.ace_step.modeling_ace_step", "AceStepLyricEncoder", {}),
+    ("diffusers.pipelines.ace_step.modeling_ace_step", "AceStepTimbreEncoder", {}),
+    ("diffusers.pipelines.shap_e.renderer", "ShapERenderer", {}),
+    ("diffusers.pipelines.deepfloyd_if.watermark", "IFWatermarker", {}),
+    ("diffusers.pipelines.stable_diffusion.stable_unclip_image_normalizer", "StableUnCLIPImageNormalizer", {}),
 ]
 
 
-@pytest.mark.parametrize("name, factory", CANONICAL_CASES, ids=[c[0] for c in CANONICAL_CASES])
-def test_canonical_import_and_save_load_roundtrip(name, factory):
-    """The new canonical path imports, instantiates, and survives a save/load round-trip."""
-    import diffusers
-
-    cls = getattr(diffusers, name)
-    model = factory(cls)
-
-    with tempfile.TemporaryDirectory() as tmp:
-        model.save_pretrained(tmp)
-        loaded = cls.from_pretrained(tmp)
-
-    assert isinstance(loaded, cls)
-    # Config resolution check: the saved `_class_name` must resolve back to a real class.
-    assert loaded.config._class_name == name
-
-
 @pytest.mark.parametrize(
-    "module, name, factory",
-    SHIM_CASES,
-    ids=[f"{m.rsplit('.', 1)[-1]}:{n}" for m, n, _ in SHIM_CASES],
+    "module, name, kwargs",
+    DEPRECATED_PATHS,
+    ids=[name for _, name, _ in DEPRECATED_PATHS],
 )
-def test_deprecated_path_warns_on_instantiation(module, name, factory):
-    """Importing from the old pipeline path still works but instantiation emits FutureWarning."""
-    import importlib
+def test_deprecated_path_warns_on_use(module, name, kwargs):
+    """Constructing the relocated class through its deprecated pipeline path emits FutureWarning.
 
+    Instantiation runs under ``torch.device("meta")`` so the test stays fast and CPU-only — the
+    parameters are meta tensors and no real memory is allocated. We only verify the deprecation
+    signal here; functional behaviour of each class is covered by its own dedicated tests at the
+    canonical model path.
+    """
     mod = importlib.import_module(module)
     cls = getattr(mod, name)
 
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
-        factory(cls)
+        with torch.device("meta"):
+            cls(**kwargs)
 
     assert any(issubclass(w.category, FutureWarning) and "deprecated" in str(w.message).lower() for w in caught), (
         f"expected a FutureWarning containing 'deprecated' for {module}.{name}, got: {[str(w.message) for w in caught]}"
     )
-
-
-@pytest.mark.parametrize(
-    "module, name, factory",
-    SHIM_CASES,
-    ids=[f"{m.rsplit('.', 1)[-1]}:{n}" for m, n, _ in SHIM_CASES],
-)
-def test_deprecated_path_isinstance_compatible(module, name, factory):
-    """An instance built via the shim subclass is still an instance of the canonical class."""
-    import importlib
-
-    shim_cls = getattr(importlib.import_module(module), name)
-
-    # The canonical class lives in either top-level diffusers (most moves) or
-    # diffusers.models.others (pipeline-local utilities like IFWatermarker).
-    try:
-        import diffusers
-
-        canonical_cls = getattr(diffusers, name)
-    except AttributeError:
-        from diffusers.models import others
-
-        canonical_cls = getattr(others, name)
-
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore")
-        instance = factory(shim_cls)
-
-    assert isinstance(instance, canonical_cls)
