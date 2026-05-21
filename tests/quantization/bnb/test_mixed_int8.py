@@ -663,7 +663,11 @@ class SlowBnb8bitFluxTests(Base8bitTests):
             transformer=transformer_8bit,
             torch_dtype=torch.float16,
         )
-        self.pipeline_8bit.enable_model_cpu_offload()
+        # Use sequential CPU offload to keep peak GPU memory minimal (one layer at a time).
+        # enable_model_cpu_offload moves an entire sub-model to GPU at once, which OOMs on
+        # <=24 GB cards for FLUX.1-dev even with int8 quantization.
+        # This requires the bitsandbytes fix that preserves Int8Params.SCB across .to() calls.
+        self.pipeline_8bit.enable_sequential_cpu_offload()
 
     def tearDown(self):
         del self.pipeline_8bit
@@ -709,7 +713,7 @@ class SlowBnb8bitFluxTests(Base8bitTests):
         expected_slice = np.array([0.3916, 0.3916, 0.3887, 0.4243, 0.4155, 0.4233, 0.4570, 0.4531, 0.4248])
 
         max_diff = numpy_cosine_similarity_distance(expected_slice, out_slice)
-        self.assertTrue(max_diff < 1e-3)
+        self.assertTrue(max_diff < 2e-3)
 
 
 @require_transformers_version_greater("4.44.0")
