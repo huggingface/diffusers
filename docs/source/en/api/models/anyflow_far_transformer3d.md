@@ -42,4 +42,4 @@ transformer = AnyFlowFARTransformer3DModel.from_pretrained(
 
 ## AnyFlowFARTransformerOutput
 
-[[autodoc]] models.transformers.transformer_anyflow.AnyFlowFARTransformerOutput
+[[autodoc]] models.transformers.transformer_anyflow_far.AnyFlowFARTransformerOutput

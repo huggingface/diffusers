@@ -570,7 +570,6 @@ class AnyFlowTransformerBlock(nn.Module):
         kv_cache=None,
         kv_cache_flag=None,
     ) -> torch.Tensor:
-
         shift_msa, scale_msa, gate_msa, c_shift_msa, c_scale_msa, c_gate_msa = (
             self.scale_shift_table + temb.float()
         ).chunk(6, dim=2)
@@ -670,7 +669,6 @@ class AnyFlowCausalRotaryPosEmbed(nn.Module):
         return freqs
 
     def avg_pool_complex(self, freq: torch.Tensor, kernel_size: int, stride: int):
-
         real = freq.real  # [B, C, L], float
         real = real.transpose(0, 1).unsqueeze(0)
         imag = freq.imag  # [B, C, L], float
@@ -988,7 +986,6 @@ class AnyFlowFARTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Fr
         return latents
 
     def forward_far_patchify(self, hidden_states, far_cfg, clean_hidden_states=None):
-
         full_hidden_states, compressed_hidden_states = (
             hidden_states[:, :, far_cfg["num_compressed_frames"] :],
             hidden_states[:, :, : far_cfg["num_compressed_frames"]],
@@ -1166,7 +1163,6 @@ class AnyFlowFARTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Fr
         kv_cache=None,
         kv_cache_flag=None,
     ) -> Union[torch.Tensor, Dict[str, torch.Tensor]]:
-
         hidden_states = hidden_states.permute(0, 2, 1, 3, 4)
 
         batch_size, num_channels, num_frames, height, width = hidden_states.shape
@@ -1288,7 +1284,6 @@ class AnyFlowFARTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Fr
         kv_cache=None,
         kv_cache_flag=None,
     ) -> Union[torch.Tensor, Dict[str, torch.Tensor]]:
-
         hidden_states = hidden_states.permute(0, 2, 1, 3, 4)
         if clean_hidden_states is not None:
             clean_hidden_states = clean_hidden_states.permute(0, 2, 1, 3, 4)
@@ -1394,7 +1389,6 @@ class AnyFlowFARTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Fr
         clean_hidden_states=None,
         clean_timestep=None,
     ) -> Union[torch.Tensor, Dict[str, torch.Tensor]]:
-
         hidden_states = hidden_states.permute(0, 2, 1, 3, 4)
         if clean_hidden_states is not None:
             clean_hidden_states = clean_hidden_states.permute(0, 2, 1, 3, 4)

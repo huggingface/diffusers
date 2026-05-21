@@ -461,7 +461,6 @@ class AnyFlowTransformerBlock(nn.Module):
         kv_cache=None,
         kv_cache_flag=None,
     ) -> torch.Tensor:
-
         shift_msa, scale_msa, gate_msa, c_shift_msa, c_scale_msa, c_gate_msa = (
             self.scale_shift_table + temb.float()
         ).chunk(6, dim=2)
@@ -511,8 +510,8 @@ class AnyFlowTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromO
     The architecture is the v0.35.1 Wan2.1 3D DiT backbone with one structural change: the timestep embedder is
     replaced by ``AnyFlowDualTimestepTextImageEmbedding`` so that every forward call conditions on both the source
     timestep ``t`` and the target timestep ``r``. This is the embedding required to learn the flow map
-    :math:`\Phi_{r\leftarrow t}` introduced in [AnyFlow](https://huggingface.co/papers/2605.13724) by Yuchao Gu,
-    Guian Fang et al.
+    :math:`\Phi_{r\leftarrow t}` introduced in [AnyFlow](https://huggingface.co/papers/2605.13724) by Yuchao Gu, Guian
+    Fang et al.
 
     For frame-level autoregressive (FAR causal) generation, use ``AnyFlowFARTransformer3DModel`` instead; that variant
     adds the FAR causal block-mask and a compressed-frame patch embedding on top of the same backbone.
