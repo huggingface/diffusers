@@ -539,6 +539,20 @@ class Cosmos3OmniPipelineOutput(BaseOutput):
     sound: Optional[list] = None
 
 
+# Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_img2img.retrieve_latents
+def retrieve_latents(
+    encoder_output: torch.Tensor, generator: torch.Generator | None = None, sample_mode: str = "sample"
+):
+    if hasattr(encoder_output, "latent_dist") and sample_mode == "sample":
+        return encoder_output.latent_dist.sample(generator)
+    elif hasattr(encoder_output, "latent_dist") and sample_mode == "argmax":
+        return encoder_output.latent_dist.mode()
+    elif hasattr(encoder_output, "latents"):
+        return encoder_output.latents
+    else:
+        raise AttributeError("Could not access latents of provided encoder_output")
+
+
 def save_img_or_video(sample, save_fp_wo_ext, fps=24, quality=10):
     """Save a 4D ``[C, T, H, W]`` sample as a JPEG (T=1) or MP4 (T>1)."""
     from PIL import Image as PILImage
@@ -649,7 +663,7 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
         dtype = self._vae_dtype
         mean = self._vae_latents_mean.to(device=x.device, dtype=dtype)
         inv_std = self._vae_latents_inv_std.to(device=x.device, dtype=dtype)
-        raw_mu = self.vae.encode(x.to(dtype)).latent_dist.mode()
+        raw_mu = retrieve_latents(self.vae.encode(x.to(dtype)), sample_mode="argmax")
         return ((raw_mu - mean.view(1, -1, 1, 1, 1)) * inv_std.view(1, -1, 1, 1, 1)).to(in_dtype)
 
     def _decode_video(self, z: torch.Tensor) -> torch.Tensor:
