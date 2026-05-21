@@ -152,8 +152,8 @@ class FlowMapEulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
     def _init_step_index(self, timestep: Union[float, torch.FloatTensor]) -> None:
         """Initialize ``self._step_index`` on the first :meth:`step` call after :meth:`set_timesteps`.
 
-        Off-schedule timesteps are allowed (any-step sampling is documented in :meth:`step`); in that case the
-        counter starts at 0 so it can still be used as an observable rollout marker.
+        Off-schedule timesteps are allowed (any-step sampling is documented in :meth:`step`); in that case the counter
+        starts at 0 so it can still be used as an observable rollout marker.
         """
         if self._begin_index is not None:
             self._step_index = self._begin_index
