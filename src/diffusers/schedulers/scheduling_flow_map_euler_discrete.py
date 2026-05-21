@@ -150,18 +150,16 @@ class FlowMapEulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
         self._begin_index = None
 
     def _init_step_index(self, timestep: Union[float, torch.FloatTensor]) -> None:
-        """Initialize ``self._step_index`` on the first :meth:`step` call after :meth:`set_timesteps`."""
+        """Initialize ``self._step_index`` on the first :meth:`step` call after :meth:`set_timesteps`.
+
+        Off-schedule timesteps are allowed (any-step sampling is documented in :meth:`step`); in that case the
+        counter starts at 0 so it can still be used as an observable rollout marker.
+        """
         if self._begin_index is not None:
             self._step_index = self._begin_index
             return
         idx = self.index_for_timestep(timestep)
-        if idx is None:
-            t_value = float(timestep.flatten()[0].item()) if torch.is_tensor(timestep) else float(timestep)
-            raise ValueError(
-                f"`timestep={t_value}` is not on the current schedule and `begin_index` was not set. "
-                "Call `set_begin_index` first or pass a timestep from `self.timesteps`."
-            )
-        self._step_index = idx
+        self._step_index = idx if idx is not None else 0
 
     def index_for_timestep(self, timestep: Union[float, torch.FloatTensor]) -> Optional[int]:
         """Return the index of ``timestep`` on the current schedule, or ``None`` if off-schedule.
@@ -178,30 +176,6 @@ class FlowMapEulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
         if diffs[idx].item() > 1e-3:
             return None
         return idx
-
-    def _resolve_next_timestep(
-        self, timestep: Union[float, torch.FloatTensor], device: torch.device
-    ) -> torch.FloatTensor:
-        """Look up the next timestep on the current schedule for the given ``timestep``.
-
-        Used when ``r_timestep`` is omitted from :meth:`step`. Matches against ``self.timesteps`` via
-        :meth:`index_for_timestep` and returns ``sigmas[i + 1] * num_train_timesteps``. Raises ``ValueError`` if
-        ``timestep`` is not on the schedule — in that case the caller must pass ``r_timestep`` explicitly.
-        """
-        if self.sigmas is None or self.timesteps is None:
-            raise ValueError(
-                "`r_timestep` is None and `set_timesteps` has not been called; "
-                "call `set_timesteps` first or pass an explicit `r_timestep`."
-            )
-        idx = self.index_for_timestep(timestep)
-        if idx is None:
-            t_value = float(timestep.flatten()[0].item()) if torch.is_tensor(timestep) else float(timestep)
-            raise ValueError(
-                f"`r_timestep` is None but `timestep={t_value}` is not on the current schedule; "
-                "pass an explicit `r_timestep` for any-step sampling outside the schedule."
-            )
-        r_sigma = self.sigmas[idx + 1]
-        return (r_sigma * self.config.num_train_timesteps).to(device=device, dtype=self.sigmas.dtype)
 
     def step(
         self,

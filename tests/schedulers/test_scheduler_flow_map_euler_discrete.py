@@ -129,6 +129,23 @@ class FlowMapEulerDiscreteSchedulerTest(unittest.TestCase):
             scheduler.step(torch.randn_like(sample), t, sample)
             self.assertEqual(scheduler.step_index, i + 1)
 
+    def test_step_off_schedule_anystep_supported(self):
+        # Documented contract: `step` accepts off-schedule (timestep, r_timestep) pairs and falls back to
+        # `t/num_train_timesteps` for both. State machine must not block this (regression: an earlier draft
+        # raised in `_init_step_index` for off-schedule t, which silently broke any-step sampling).
+        scheduler = self.scheduler_class(**self.get_default_config())
+        scheduler.set_timesteps(num_inference_steps=8)
+
+        sample = torch.randn(1, 4, 4, 4)
+        model_output = torch.randn_like(sample)
+        t_off = torch.tensor([777.7])
+        r_off = torch.tensor([123.4])
+
+        prev = scheduler.step(model_output, t_off, sample, r_timestep=r_off).prev_sample
+        self.assertEqual(prev.shape, sample.shape)
+        # step_index initialized to 0 (observable counter) and advanced after the call.
+        self.assertEqual(scheduler.step_index, 1)
+
     def test_set_begin_index_anchors_step_index(self):
         # `set_begin_index(k)` makes the first `step` initialize `_step_index = k` (mid-schedule restart).
         scheduler = self.scheduler_class(**self.get_default_config())
