@@ -211,6 +211,12 @@ export_to_video(video, "output.mp4", fps=8)
   - all
   - __call__
 
+## CogVideoXFunInpaintPipeline
+
+[[autodoc]] CogVideoXFunInpaintPipeline
+  - all
+  - __call__
+
 ## CogVideoXPipelineOutput
 
 [[autodoc]] pipelines.cogvideo.pipeline_output.CogVideoXPipelineOutput
