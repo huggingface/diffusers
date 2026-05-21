@@ -36,6 +36,46 @@ all doesn't make the PR good, it just means it's worth a proper review.
    almost always a sign the contributor missed an existing mixin or kwarg —
    raise the question before reviewing the rest.
 
+4. **Unconditional `torch.float64` / `.double()` in model code.** MPS and
+   several NPU backends don't support float64 — ops will either error out
+   or silently fall back. Reference repos commonly reach for float64 in RoPE
+   frequency bases, timestep embeddings, and sinusoidal position encodings.
+   Default fix: use `torch.float32`. Only if float32 visibly degrades output,
+   fall back to the device-gated pattern (`is_mps or is_npu`). See
+   [models.md §Gotchas #5](models.md#gotchas).
+
+5. **Missing `@torch.no_grad()` on pipeline `__call__`.** Without it, every
+   forward pass accumulates gradients → GPU OOM during inference. Every
+   pipeline `__call__` must be decorated. Conversely, don't add redundant
+   `with torch.no_grad():` inside helpers that `__call__` already covers —
+   it blocks callers who need grads (training, embedding optimization). See
+   [pipelines.md §Gotchas #2](pipelines.md#gotchas).
+
+6. **Missing import registration in `__init__.py`.** Every new public class
+   must be registered in both the sub-package `__init__.py` and the top-level
+   `src/diffusers/__init__.py` (which has `_import_structure` and
+   `_lazy_modules`). Missing either causes `ImportError` that only surfaces
+   when users try `from diffusers import NewClass`. See
+   [models.md §Gotchas #1](models.md#gotchas).
+
+7. **Graph-breaking ops in model `forward`.** NumPy operations, data-dependent
+   control flow, or other patterns that break `torch.compile` with
+   `fullgraph=True`. All model forward paths must be compile-safe. See
+   [models.md §Coding style](models.md#coding-style).
+
+8. **Modular blocks importing from `diffusers.pipelines.*`.** The modular and
+   standard pipeline systems are parallel — modular blocks must never import
+   from standard pipelines. For shared utilities, either redefine as
+   standalone functions or use `# Copied from` headers. See
+   [modular.md §Gotchas #1](modular.md#gotchas).
+
+9. **Hardcoded dtype in model `forward`.** Don't hardcode `torch.float32` or
+   `torch.bfloat16`, and don't cast activations by reading a weight's dtype
+   (`self.linear.weight.dtype`) — the stored weight dtype isn't the compute
+   dtype under GGUF / quantized loading. Derive the cast target from the
+   input tensor's dtype or `self.dtype`. See
+   [models.md §Gotchas #4](models.md#gotchas).
+
 ## Common mistakes
 
 Common mistakes are covered in the common-mistakes / gotcha sections in [AGENTS.md](AGENTS.md), [models.md](models.md), [pipelines.md](pipelines.md), and [modular.md](modular.md). Additionally, watch for below patterns that aren't covered there:
