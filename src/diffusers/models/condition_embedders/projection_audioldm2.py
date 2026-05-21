@@ -109,6 +109,18 @@ class AudioLDM2ProjectionModel(ModelMixin, ConfigMixin):
         attention_mask: torch.LongTensor | None = None,
         attention_mask_1: torch.LongTensor | None = None,
     ):
+        """
+        Args:
+            hidden_states (`torch.Tensor`, *optional*):
+                Hidden states from the first text encoder of shape `(batch_size, sequence_length, text_encoder_dim)`.
+            hidden_states_1 (`torch.Tensor`, *optional*):
+                Hidden states from the second text encoder of shape `(batch_size, sequence_length_1,
+                text_encoder_1_dim)`.
+            attention_mask (`torch.LongTensor`, *optional*):
+                Attention mask of shape `(batch_size, sequence_length)` for `hidden_states`.
+            attention_mask_1 (`torch.LongTensor`, *optional*):
+                Attention mask of shape `(batch_size, sequence_length_1)` for `hidden_states_1`.
+        """
         hidden_states = self.projection(hidden_states)
         hidden_states, attention_mask = add_special_tokens(
             hidden_states, attention_mask, sos_token=self.sos_embed, eos_token=self.eos_embed

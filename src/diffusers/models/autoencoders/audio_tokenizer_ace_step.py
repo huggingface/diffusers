@@ -341,6 +341,12 @@ class AceStepAudioTokenDetokenizer(ModelMixin, ConfigMixin):
         self.gradient_checkpointing = False
 
     def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
+        """
+        Args:
+            hidden_states (`torch.Tensor`):
+                Input audio tokens of shape `(batch_size, num_tokens, hidden_size)` to be unpooled back to the 25 Hz
+                acoustic-latent rate.
+        """
         batch_size, num_tokens, _ = hidden_states.shape
         hidden_states = self.embed_tokens(hidden_states)
         hidden_states = hidden_states.unsqueeze(2).expand(-1, -1, self.pool_window_size, -1)
@@ -436,6 +442,12 @@ class AceStepAudioTokenizer(ModelMixin, ConfigMixin):
         self.pool_window_size = pool_window_size
 
     def forward(self, hidden_states: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+        """
+        Args:
+            hidden_states (`torch.Tensor`):
+                Input acoustic latents of shape `(batch_size, latent_length, audio_acoustic_hidden_dim)` to be
+                quantized into ACE-Step 5 Hz audio tokens.
+        """
         input_dtype = hidden_states.dtype
         hidden_states = self.audio_acoustic_proj(hidden_states)
         hidden_states = self.attention_pooler(hidden_states)

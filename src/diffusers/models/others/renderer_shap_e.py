@@ -659,6 +659,21 @@ class MLPNeRSTFModel(ModelMixin, ConfigMixin):
         return mapped_output
 
     def forward(self, *, position, direction, ts, nerf_level="coarse", rendering_mode="nerf"):
+        """
+        Args:
+            position (`torch.Tensor`):
+                3D query positions of shape `(batch_size, ..., 3)` to evaluate the NeRSTF MLP at.
+            direction (`torch.Tensor`):
+                Viewing directions of shape `(batch_size, ..., 3)` used for view-dependent color prediction.
+            ts (`torch.Tensor`):
+                Per-ray sample distances of shape `(batch_size, ..., 1)` passed through to the output for downstream
+                integration.
+            nerf_level (`str`, *optional*, defaults to `"coarse"`):
+                Which density/color head to read from — `"coarse"` or `"fine"`.
+            rendering_mode (`str`, *optional*, defaults to `"nerf"`):
+                Output head to use: `"nerf"` for radiance-field colors or `"stf"` for the signed-distance/texture
+                field.
+        """
         h = encode_position(position)
 
         h_preact = h
@@ -769,6 +784,12 @@ class ShapEParamsProjModel(ModelMixin, ConfigMixin):
             )
 
     def forward(self, x: torch.Tensor):
+        """
+        Args:
+            x (`torch.Tensor`):
+                Latent representation of a 3D asset of shape `(batch_size, total_vectors, d_latent)`, sliced per
+                `param_name` and projected to each MLP weight tensor.
+        """
         out = {}
         start = 0
         for k, shape in zip(self.config.param_names, self.config.param_shapes):

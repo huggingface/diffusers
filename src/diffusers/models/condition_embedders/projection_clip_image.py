@@ -26,4 +26,9 @@ class CLIPImageProjection(ModelMixin, ConfigMixin):
         self.project = nn.Linear(self.hidden_size, self.hidden_size, bias=False)
 
     def forward(self, x):
+        """
+        Args:
+            x (`torch.Tensor`):
+                Input CLIP image embeddings of shape `(batch_size, hidden_size)`.
+        """
         return self.project(x)

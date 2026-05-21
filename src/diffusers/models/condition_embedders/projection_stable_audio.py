@@ -141,6 +141,15 @@ class StableAudioProjectionModel(ModelMixin, ConfigMixin):
         start_seconds: torch.Tensor | None = None,
         end_seconds: torch.Tensor | None = None,
     ):
+        """
+        Args:
+            text_hidden_states (`torch.Tensor`, *optional*):
+                Hidden states from the text encoder of shape `(batch_size, sequence_length, text_encoder_dim)`.
+            start_seconds (`torch.Tensor`, *optional*):
+                Start-time-in-seconds conditioning values of shape `(batch_size,)`.
+            end_seconds (`torch.Tensor`, *optional*):
+                End-time-in-seconds conditioning values of shape `(batch_size,)`.
+        """
         text_hidden_states = (
             text_hidden_states if text_hidden_states is None else self.text_projection(text_hidden_states)
         )

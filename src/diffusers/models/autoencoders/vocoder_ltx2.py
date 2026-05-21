@@ -572,6 +572,11 @@ class LTX2VocoderWithBWE(ModelMixin, ConfigMixin):
         )
 
     def forward(self, mel_spec: torch.Tensor) -> torch.Tensor:
+        """
+        Args:
+            mel_spec (`torch.Tensor`):
+                Input mel spectrogram of shape `(batch_size, num_channels, num_frames, num_mel_bins)`.
+        """
         # 1. Run stage 1 vocoder to get low sampling rate waveform
         x = self.vocoder(mel_spec)
         batch_size, num_channels, num_samples = x.shape

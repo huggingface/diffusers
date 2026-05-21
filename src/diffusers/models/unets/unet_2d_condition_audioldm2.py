@@ -512,6 +512,16 @@ class AudioLDM2UNet2DConditionModel(ModelMixin, AttentionMixin, ConfigMixin, UNe
             timestep (`torch.Tensor` or `float` or `int`): The number of timesteps to denoise an input.
             encoder_hidden_states (`torch.Tensor`):
                 The encoder hidden states with shape `(batch, sequence_length, feature_dim)`.
+            class_labels (`torch.Tensor`, *optional*):
+                Conditional class labels of shape `(batch,)`. Only used when the model is configured with a
+                `class_embed_type`.
+            timestep_cond (`torch.Tensor`, *optional*):
+                Additional timestep conditioning of shape `(batch, time_cond_proj_dim)`, applied after the timestep
+                embedding.
+            attention_mask (`torch.Tensor`, *optional*):
+                A self-attention mask of shape `(batch, sequence_length)`. If `True` the mask is kept, otherwise if
+                `False` it is discarded. The mask is converted to a bias added to the attention scores for "discard"
+                tokens.
             encoder_attention_mask (`torch.Tensor`):
                 A cross-attention mask of shape `(batch, sequence_length)` is applied to `encoder_hidden_states`. If
                 `True` the mask is kept, otherwise if `False` it is discarded. Mask will be converted into a bias,

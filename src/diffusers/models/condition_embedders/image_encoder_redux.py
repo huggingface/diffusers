@@ -41,6 +41,12 @@ class ReduxImageEncoder(ModelMixin, ConfigMixin):
         self.redux_down = nn.Linear(txt_in_features * 3, txt_in_features)
 
     def forward(self, x: torch.Tensor) -> ReduxImageEncoderOutput:
+        """
+        Args:
+            x (`torch.Tensor`):
+                Image embeddings of shape `(batch_size, sequence_length, redux_dim)` produced by the SigLIP image
+                encoder.
+        """
         projected_x = self.redux_down(nn.functional.silu(self.redux_up(x)))
 
         return ReduxImageEncoderOutput(image_embeds=projected_x)

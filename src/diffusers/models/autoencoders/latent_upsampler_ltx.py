@@ -144,6 +144,12 @@ class LTXLatentUpsamplerModel(ModelMixin, ConfigMixin):
         self.final_conv = ConvNd(mid_channels, in_channels, kernel_size=3, padding=1)
 
     def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
+        """
+        Args:
+            hidden_states (`torch.Tensor`):
+                Input latents of shape `(batch_size, num_channels, num_frames, height, width)` to spatially or
+                temporally upsample.
+        """
         batch_size, num_channels, num_frames, height, width = hidden_states.shape
 
         if self.dims == 2:
