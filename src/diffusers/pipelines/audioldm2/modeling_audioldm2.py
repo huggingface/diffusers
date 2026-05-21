@@ -32,8 +32,12 @@ from ...models.unets.unet_2d_condition_audioldm2 import (
 from ...utils import deprecate
 
 
+# The deprecation warning is emitted from ``__new__`` rather than ``__init__`` so the shim does not
+# override the parent's ``__init__`` signature — ``ConfigMixin.extract_init_dict`` reflects on
+# ``inspect.signature(cls.__init__)`` to decide which saved config keys to forward at
+# ``from_pretrained`` time, and an ``__init__(self, *args, **kwargs)`` override would erase them all.
 class AudioLDM2ProjectionModel(_AudioLDM2ProjectionModel):
-    def __init__(self, *args, **kwargs):
+    def __new__(cls, *args, **kwargs):
         deprecate(
             "AudioLDM2ProjectionModel",
             "1.0.0",
@@ -41,11 +45,11 @@ class AudioLDM2ProjectionModel(_AudioLDM2ProjectionModel):
             "deprecated. Import it from `diffusers.models.condition_embedders` instead "
             "(or `from diffusers import AudioLDM2ProjectionModel`).",
         )
-        super().__init__(*args, **kwargs)
+        return super().__new__(cls)
 
 
 class AudioLDM2UNet2DConditionModel(_AudioLDM2UNet2DConditionModel):
-    def __init__(self, *args, **kwargs):
+    def __new__(cls, *args, **kwargs):
         deprecate(
             "AudioLDM2UNet2DConditionModel",
             "1.0.0",
@@ -53,4 +57,4 @@ class AudioLDM2UNet2DConditionModel(_AudioLDM2UNet2DConditionModel):
             "deprecated. Import it from `diffusers.models.unets` instead "
             "(or `from diffusers import AudioLDM2UNet2DConditionModel`).",
         )
-        super().__init__(*args, **kwargs)
+        return super().__new__(cls)

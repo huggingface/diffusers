@@ -38,8 +38,12 @@ from ...models.condition_embedders.condition_encoder_ace_step import (
 from ...utils import deprecate
 
 
+# The deprecation warning is emitted from ``__new__`` rather than ``__init__`` so the shim does not
+# override the parent's ``__init__`` signature — ``ConfigMixin.extract_init_dict`` reflects on
+# ``inspect.signature(cls.__init__)`` to decide which saved config keys to forward at
+# ``from_pretrained`` time, and an ``__init__(self, *args, **kwargs)`` override would erase them all.
 class AceStepAudioTokenizer(_AceStepAudioTokenizer):
-    def __init__(self, *args, **kwargs):
+    def __new__(cls, *args, **kwargs):
         deprecate(
             "AceStepAudioTokenizer",
             "1.0.0",
@@ -47,11 +51,11 @@ class AceStepAudioTokenizer(_AceStepAudioTokenizer):
             "Import it from `diffusers.models.autoencoders` instead "
             "(or `from diffusers import AceStepAudioTokenizer`).",
         )
-        super().__init__(*args, **kwargs)
+        return super().__new__(cls)
 
 
 class AceStepAudioTokenDetokenizer(_AceStepAudioTokenDetokenizer):
-    def __init__(self, *args, **kwargs):
+    def __new__(cls, *args, **kwargs):
         deprecate(
             "AceStepAudioTokenDetokenizer",
             "1.0.0",
@@ -59,11 +63,11 @@ class AceStepAudioTokenDetokenizer(_AceStepAudioTokenDetokenizer):
             "Import it from `diffusers.models.autoencoders` instead "
             "(or `from diffusers import AceStepAudioTokenDetokenizer`).",
         )
-        super().__init__(*args, **kwargs)
+        return super().__new__(cls)
 
 
 class AceStepConditionEncoder(_AceStepConditionEncoder):
-    def __init__(self, *args, **kwargs):
+    def __new__(cls, *args, **kwargs):
         deprecate(
             "AceStepConditionEncoder",
             "1.0.0",
@@ -71,26 +75,26 @@ class AceStepConditionEncoder(_AceStepConditionEncoder):
             "Import it from `diffusers.models.condition_embedders` instead "
             "(or `from diffusers import AceStepConditionEncoder`).",
         )
-        super().__init__(*args, **kwargs)
+        return super().__new__(cls)
 
 
 class AceStepLyricEncoder(_AceStepLyricEncoder):
-    def __init__(self, *args, **kwargs):
+    def __new__(cls, *args, **kwargs):
         deprecate(
             "AceStepLyricEncoder",
             "1.0.0",
             "Importing `AceStepLyricEncoder` from `diffusers.pipelines.ace_step.modeling_ace_step` is deprecated. "
             "Import it from `diffusers.models.condition_embedders.condition_encoder_ace_step` instead.",
         )
-        super().__init__(*args, **kwargs)
+        return super().__new__(cls)
 
 
 class AceStepTimbreEncoder(_AceStepTimbreEncoder):
-    def __init__(self, *args, **kwargs):
+    def __new__(cls, *args, **kwargs):
         deprecate(
             "AceStepTimbreEncoder",
             "1.0.0",
             "Importing `AceStepTimbreEncoder` from `diffusers.pipelines.ace_step.modeling_ace_step` is deprecated. "
             "Import it from `diffusers.models.condition_embedders.condition_encoder_ace_step` instead.",
         )
-        super().__init__(*args, **kwargs)
+        return super().__new__(cls)
