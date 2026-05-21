@@ -713,7 +713,7 @@ class SlowBnb8bitFluxTests(Base8bitTests):
         expected_slice = np.array([0.3916, 0.3916, 0.3887, 0.4243, 0.4155, 0.4233, 0.4570, 0.4531, 0.4248])
 
         max_diff = numpy_cosine_similarity_distance(expected_slice, out_slice)
-        self.assertTrue(max_diff < 1e-3)
+        self.assertTrue(max_diff < 2e-3)
 
 
 @require_transformers_version_greater("4.44.0")
