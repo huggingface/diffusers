@@ -146,14 +146,14 @@ class PackedSequence:
     vision: ModalityData | None = None
     sound: ModalityData | None = None
 
-    def finalize(self) -> "PackedSequence":
-        """Convert all lists to tensors and compute derived values."""
+    def finalize(self, device: torch.device | str = "cuda") -> "PackedSequence":
+        """Convert all lists to tensors on the target device and compute derived values."""
         vision: ModalityData | None = None
         if self.vision is not None and len(self.vision.sequence_indexes) > 0:
             vision = ModalityData(
-                sequence_indexes=torch.tensor(self.vision.sequence_indexes, dtype=torch.long),
-                timesteps=torch.tensor(self.vision.timesteps),
-                mse_loss_indexes=torch.tensor(self.vision.mse_loss_indexes, dtype=torch.long),
+                sequence_indexes=torch.tensor(self.vision.sequence_indexes, dtype=torch.long, device=device),
+                timesteps=torch.tensor(self.vision.timesteps, device=device),
+                mse_loss_indexes=torch.tensor(self.vision.mse_loss_indexes, dtype=torch.long, device=device),
                 token_shapes=list(self.vision.token_shapes),
                 tokens=self.vision.tokens,
                 condition_mask=list(self.vision.condition_mask),
@@ -163,9 +163,9 @@ class PackedSequence:
         sound: ModalityData | None = None
         if self.sound is not None and len(self.sound.sequence_indexes) > 0:
             sound = ModalityData(
-                sequence_indexes=torch.tensor(self.sound.sequence_indexes, dtype=torch.long),
-                timesteps=torch.tensor(self.sound.timesteps),
-                mse_loss_indexes=torch.tensor(self.sound.mse_loss_indexes, dtype=torch.long),
+                sequence_indexes=torch.tensor(self.sound.sequence_indexes, dtype=torch.long, device=device),
+                timesteps=torch.tensor(self.sound.timesteps, device=device),
+                mse_loss_indexes=torch.tensor(self.sound.mse_loss_indexes, dtype=torch.long, device=device),
                 token_shapes=list(self.sound.token_shapes),
                 tokens=self.sound.tokens,
                 condition_mask=list(self.sound.condition_mask),
@@ -176,37 +176,17 @@ class PackedSequence:
         if len(self.position_ids) > 0 and isinstance(self.position_ids[0], torch.Tensor):
             position_ids = torch.cat(self.position_ids, dim=1)  # [3, total_seq_len]
         else:
-            position_ids = torch.tensor(self.position_ids)  # [total_seq_len]
+            position_ids = torch.tensor(self.position_ids, device=device)  # [total_seq_len]
 
         return PackedSequence(
             sequence_length=self.sequence_length,
             und_len=self.und_len,
-            text_ids=torch.tensor(self.text_ids, dtype=torch.long),
-            text_indexes=torch.tensor(self.text_indexes, dtype=torch.long),
+            text_ids=torch.tensor(self.text_ids, dtype=torch.long, device=device),
+            text_indexes=torch.tensor(self.text_indexes, dtype=torch.long, device=device),
             position_ids=position_ids,
             vision=vision,
             sound=sound,
         )
-
-    def to_cuda(self) -> None:
-        """Move every tensor field (and modality sub-objects) to CUDA in-place."""
-        for attr in ("text_ids", "text_indexes", "position_ids"):
-            val = getattr(self, attr)
-            if isinstance(val, torch.Tensor):
-                setattr(self, attr, val.cuda())
-        for modality in (self.vision, self.sound):
-            if modality is not None:
-                _modality_to_cuda(modality)
-
-
-def _modality_to_cuda(modality: ModalityData) -> None:
-    for attr in ("sequence_indexes", "timesteps", "mse_loss_indexes"):
-        val = getattr(modality, attr)
-        if isinstance(val, torch.Tensor):
-            setattr(modality, attr, val.cuda())
-    modality.tokens = [t.cuda() for t in modality.tokens]
-    modality.condition_mask = [m.cuda() for m in modality.condition_mask]
-    modality.noisy_frame_indexes = [i.cuda() for i in modality.noisy_frame_indexes]
 
 
 @dataclass
@@ -236,6 +216,7 @@ def _pack_text_tokens(
     mrope_offset: int | float,
     use_mrope: bool,
     has_generation: bool,
+    device: torch.device | str,
     use_float_positions: bool = False,
 ) -> Tuple[int, int, int, int | float]:
     """Pack text tokens into the sequence.
@@ -272,7 +253,7 @@ def _pack_text_tokens(
             temporal_offset=mrope_offset,
             use_float_positions=use_float_positions,
         )
-        packed_seq.position_ids.append(text_mrope_ids)
+        packed_seq.position_ids.append(text_mrope_ids.to(device))
     else:
         packed_seq.position_ids.extend(range(curr_rope_id, curr_rope_id + split_len))
     packed_seq.und_len = split_len
@@ -290,6 +271,7 @@ def _pack_vision_tokens(
     mrope_offset: int | float,
     use_mrope: bool,
     mrope_reset_spatial: bool,
+    device: torch.device | str,
     latent_patch_size: int = 1,
     vision_fps: float | None = None,
     enable_fps_modulation: bool = False,
@@ -319,7 +301,7 @@ def _pack_vision_tokens(
     condition_set = {idx for idx in condition_frame_indexes_vision if 0 <= idx < latent_t}
 
     vision_condition_mask = torch.zeros(
-        (latent_t, 1, 1), device=input_vision_tokens.device, dtype=input_vision_tokens.dtype
+        (latent_t, 1, 1), device=device, dtype=input_vision_tokens.dtype
     )
     for frame_idx in condition_set:
         vision_condition_mask[frame_idx, 0, 0] = 1.0
@@ -327,7 +309,7 @@ def _pack_vision_tokens(
 
     vision_noisy_frame_indexes = torch.tensor(
         [idx for idx in range(latent_t) if idx not in condition_set],
-        device=input_vision_tokens.device,
+        device=device,
         dtype=torch.long,
     )
     packed_seq.vision.noisy_frame_indexes.append(vision_noisy_frame_indexes)
@@ -360,7 +342,7 @@ def _pack_vision_tokens(
             base_fps=base_fps,
             temporal_compression_factor=temporal_compression_factor,
         )
-        packed_seq.position_ids.append(vision_mrope_ids)
+        packed_seq.position_ids.append(vision_mrope_ids.to(device))
     else:
         packed_seq.position_ids.extend([curr_rope_id] * vision_split_len)
 
@@ -375,6 +357,7 @@ def _pack_sound_tokens(
     curr: int,
     use_mrope: bool,
     mrope_reset_spatial: bool,
+    device: torch.device | str,
     sound_temporal_offset: int | float = 0,
     enable_fps_modulation: bool = False,
     base_fps: float = 24.0,
@@ -394,10 +377,10 @@ def _pack_sound_tokens(
     packed_seq.sound.tokens.append(input_sound_tokens)
 
     packed_seq.sound.condition_mask.append(
-        torch.zeros((sound_split_len, 1), device=input_sound_tokens.device, dtype=input_sound_tokens.dtype)
+        torch.zeros((sound_split_len, 1), device=device, dtype=input_sound_tokens.dtype)
     )
     packed_seq.sound.noisy_frame_indexes.append(
-        torch.arange(sound_split_len, device=input_sound_tokens.device, dtype=torch.long)
+        torch.arange(sound_split_len, device=device, dtype=torch.long)
     )
 
     packed_seq.sound.mse_loss_indexes.extend(range(curr, curr + sound_split_len))
@@ -416,7 +399,7 @@ def _pack_sound_tokens(
             temporal_compression_factor=1,
             start_frame_offset=0,
         )
-        packed_seq.position_ids.append(sound_mrope_ids)
+        packed_seq.position_ids.append(sound_mrope_ids.to(device))
     else:
         packed_seq.position_ids.extend([curr_rope_id] * sound_split_len)
 
@@ -428,6 +411,7 @@ def pack_input_sequence(
     text_tokens: list[int],
     input_timestep: torch.Tensor,
     special_tokens: dict[str, int],
+    device: torch.device | str = "cuda",
     num_vision_items: int = 1,
     x0_tokens_vision: Optional[List[torch.Tensor]] = None,
     fps_vision: Optional[torch.Tensor] = None,
@@ -478,6 +462,7 @@ def pack_input_sequence(
             mrope_offset=mrope_offset,
             use_mrope=use_mrope,
             has_generation=has_generation_for_sample,
+            device=device,
             use_float_positions=enable_fps_modulation,
         )
         sample_len += text_sample_len
@@ -516,6 +501,7 @@ def pack_input_sequence(
                 mrope_offset=mrope_offset,
                 use_mrope=use_mrope,
                 mrope_reset_spatial=mrope_reset_spatial,
+                device=device,
                 latent_patch_size=latent_patch_size,
                 vision_fps=vision_fps,
                 enable_fps_modulation=enable_fps_modulation,
@@ -542,6 +528,7 @@ def pack_input_sequence(
             curr=curr,
             use_mrope=use_mrope,
             mrope_reset_spatial=mrope_reset_spatial,
+            device=device,
             sound_temporal_offset=vision_start_temporal_offset,
             enable_fps_modulation=enable_fps_modulation,
             base_fps=base_fps,
@@ -558,7 +545,7 @@ def pack_input_sequence(
 
         if use_mrope:
             eov_dtype = torch.float32 if enable_fps_modulation else torch.long
-            eov_mrope_ids = torch.full((3, 1), mrope_offset, dtype=eov_dtype)
+            eov_mrope_ids = torch.full((3, 1), mrope_offset, dtype=eov_dtype, device=device)
             packed_seq.position_ids.append(eov_mrope_ids)  # type: ignore[arg-type]
         else:
             packed_seq.position_ids.append(curr_rope_id)  # type: ignore[arg-type]
@@ -567,7 +554,7 @@ def pack_input_sequence(
 
     packed_seq.sequence_length = sample_len
 
-    return packed_seq.finalize()
+    return packed_seq.finalize(device=device)
 
 
 # ============================================================================
@@ -1261,6 +1248,7 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
             text_tokens=cond_tokens,
             input_timestep=mask_timestep,
             special_tokens=self.llm_special_tokens,
+            device=device,
             num_vision_items=num_vision_items,
             x0_tokens_vision=x0_tokens_vision,
             fps_vision=fps_vision,
@@ -1672,6 +1660,7 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
                     text_tokens=cond_tokens,
                     input_timestep=timestep.cpu(),
                     special_tokens=self.llm_special_tokens,
+                    device=device,
                     num_vision_items=num_vision_items,
                     x0_tokens_vision=noise_x_vision,
                     fps_vision=fps_vision,
@@ -1690,7 +1679,6 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
                     packed_seq.vision.tokens = [x.to(device=device, dtype=dtype) for x in noise_x_vision]
                 if noise_x_sound is not None and packed_seq.sound is not None:
                     packed_seq.sound.tokens = [x.to(device=device, dtype=dtype) for x in noise_x_sound]
-                packed_seq.to_cuda()
 
                 hidden_states, target_dtype = self.encode_text(hidden_size, packed_seq)
                 original_latent_shapes = self.encode_vision(
@@ -1730,6 +1718,7 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
                     text_tokens=uncond_tokens,
                     input_timestep=timestep.cpu(),
                     special_tokens=self.llm_special_tokens,
+                    device=device,
                     num_vision_items=num_vision_items,
                     x0_tokens_vision=noise_x_vision,
                     fps_vision=fps_vision,
@@ -1748,7 +1737,6 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
                     packed_seq.vision.tokens = [x.to(device=device, dtype=dtype) for x in noise_x_vision]
                 if noise_x_sound is not None and packed_seq.sound is not None:
                     packed_seq.sound.tokens = [x.to(device=device, dtype=dtype) for x in noise_x_sound]
-                packed_seq.to_cuda()
 
                 hidden_states, target_dtype = self.encode_text(hidden_size, packed_seq)
                 original_latent_shapes = self.encode_vision(
