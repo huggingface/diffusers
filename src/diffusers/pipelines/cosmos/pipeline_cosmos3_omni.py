@@ -189,24 +189,6 @@ class PackedSequence:
         )
 
 
-@dataclass
-class SequencePlan:
-    """Plan describing which modalities are present in a sample."""
-
-    has_text: bool
-    has_vision: bool = False
-    condition_frame_indexes_vision: list[int] = field(default_factory=list)
-    has_sound: bool = False
-
-    def as_dict(self) -> dict:
-        return {
-            "has_text": self.has_text,
-            "has_vision": self.has_vision,
-            "has_sound": self.has_sound,
-            "condition_frame_indexes_vision": self.condition_frame_indexes_vision,
-        }
-
-
 def _pack_text_tokens(
     packed_seq: PackedSequence,
     text_ids: List[int],
@@ -223,18 +205,12 @@ def _pack_text_tokens(
 
     Returns ``(next_curr_rope_id, split_len, curr, mrope_offset)``.
     """
-    if "bos_token_id" in special_tokens:
-        shifted_text_ids = [special_tokens["bos_token_id"]] + text_ids
-    else:
-        shifted_text_ids = text_ids
-
     split_len = 0
 
-    packed_seq.text_ids.extend(shifted_text_ids)
-    packed_seq.text_indexes.extend(range(curr, curr + len(shifted_text_ids)))
-
-    curr += len(shifted_text_ids)
-    split_len += len(shifted_text_ids)
+    packed_seq.text_ids.extend(text_ids)
+    packed_seq.text_indexes.extend(range(curr, curr + len(text_ids)))
+    curr += len(text_ids)
+    split_len += len(text_ids)
 
     packed_seq.text_ids.append(special_tokens["eos_token_id"])
     packed_seq.text_indexes.append(curr)
@@ -407,18 +383,17 @@ def _pack_sound_tokens(
 
 
 def pack_input_sequence(
-    sequence_plan: SequencePlan,
     text_tokens: list[int],
     input_timestep: torch.Tensor,
     special_tokens: dict[str, int],
+    x0_tokens_vision: List[torch.Tensor],
     device: torch.device | str = "cuda",
     num_vision_items: int = 1,
-    x0_tokens_vision: Optional[List[torch.Tensor]] = None,
+    condition_frame_indexes_vision: Optional[List[int]] = None,
     fps_vision: Optional[torch.Tensor] = None,
     x0_tokens_sound: Optional[List[torch.Tensor]] = None,
     fps_sound: Optional[torch.Tensor] = None,
     latent_patch_size: int = 1,
-    skip_text_tokens: bool = False,
     include_end_of_generation_token: bool = False,
     position_embedding_type: str = "3d_rope",
     unified_3d_mrope_reset_spatial_ids: bool = True,
@@ -429,14 +404,13 @@ def pack_input_sequence(
     initial_mrope_temporal_offset: int | float = 0,
 ) -> PackedSequence:
     """Pack a single sample's text + vision + sound tokens into the joint sequence layout."""
-    assert special_tokens is not None, "Special tokens must be provided"
-    assert isinstance(input_timestep, torch.Tensor), "input_timestep must be a tensor"
     if input_timestep.is_cuda:
         raise ValueError("input_timestep must be on CPU, not CUDA")
     if isinstance(text_tokens, torch.Tensor):
         raise ValueError("text_tokens must be a list, not a tensor")
-    if not skip_text_tokens:
-        assert sequence_plan.has_text, "sequence_plan must have has_text=True when skip_text_tokens=False"
+    if condition_frame_indexes_vision is None:
+        condition_frame_indexes_vision = []
+    has_sound = x0_tokens_sound is not None
 
     packed_seq = PackedSequence()
     use_mrope = position_embedding_type == "unified_3d_mrope"
@@ -449,80 +423,68 @@ def pack_input_sequence(
     curr = 0
     curr_rope_id = 0
     sample_len = 0
-    idx_vision = 0  # walks across multi-vision items within this single sample
 
-    if sequence_plan.has_text and not skip_text_tokens:
-        has_generation_for_sample = sequence_plan.has_vision or sequence_plan.has_sound
-        curr_rope_id, text_sample_len, curr, mrope_offset = _pack_text_tokens(
-            packed_seq,
-            text_tokens,
-            special_tokens,
-            curr_rope_id,
+    # Text segment (always present in this pipeline).
+    curr_rope_id, text_sample_len, curr, mrope_offset = _pack_text_tokens(
+        packed_seq,
+        text_tokens,
+        special_tokens,
+        curr_rope_id,
+        curr=curr,
+        mrope_offset=mrope_offset,
+        use_mrope=use_mrope,
+        has_generation=True,
+        device=device,
+        use_float_positions=enable_fps_modulation,
+    )
+    sample_len += text_sample_len
+    mrope_offset += unified_3d_mrope_temporal_modality_margin
+    vision_start_temporal_offset = mrope_offset
+
+    # Vision segment (always present in this pipeline).
+    vision_split_len = 0
+    for item_idx in range(num_vision_items):
+        input_vision_tokens = x0_tokens_vision[item_idx]
+        vision_fps: float | None = None
+        if enable_fps_modulation and fps_vision is not None and item_idx < len(fps_vision):
+            vision_fps = float(fps_vision[item_idx].item())
+
+        # Multi-vision: all but the last item are fully-conditioned (e.g. extra reference clips).
+        if num_vision_items > 1 and item_idx < num_vision_items - 1:
+            latent_t = input_vision_tokens.shape[2]
+            item_condition_frames = list(range(latent_t))
+        else:
+            item_condition_frames = condition_frame_indexes_vision
+
+        item_split_len, curr, mrope_offset = _pack_vision_tokens(
+            packed_seq=packed_seq,
+            input_vision_tokens=input_vision_tokens,
+            condition_frame_indexes_vision=item_condition_frames,
+            input_timestep=input_timestep_val,
+            curr_rope_id=curr_rope_id,
             curr=curr,
             mrope_offset=mrope_offset,
             use_mrope=use_mrope,
-            has_generation=has_generation_for_sample,
+            mrope_reset_spatial=mrope_reset_spatial,
             device=device,
-            use_float_positions=enable_fps_modulation,
+            latent_patch_size=latent_patch_size,
+            vision_fps=vision_fps,
+            enable_fps_modulation=enable_fps_modulation,
+            base_fps=base_fps,
+            temporal_compression_factor=temporal_compression_factor,
         )
-        sample_len += text_sample_len
-        mrope_offset += unified_3d_mrope_temporal_modality_margin
+        vision_split_len += item_split_len
+    sample_len += vision_split_len
 
-    vision_start_temporal_offset = mrope_offset
-
-    if sequence_plan.has_vision:
-        vision_split_len = 0
-        for item_idx in range(num_vision_items):
-            input_vision_tokens = x0_tokens_vision[idx_vision]
-
-            vision_fps: float | None = None
-            if (
-                enable_fps_modulation
-                and fps_vision is not None
-                and idx_vision < len(fps_vision)
-            ):
-                vision_fps = float(fps_vision[idx_vision].item())
-
-            idx_vision += 1
-
-            if num_vision_items > 1 and item_idx < num_vision_items - 1:
-                latent_t = input_vision_tokens.shape[2]
-                item_condition_frames = list(range(latent_t))
-            else:
-                item_condition_frames = sequence_plan.condition_frame_indexes_vision
-
-            item_split_len, curr, mrope_offset = _pack_vision_tokens(
-                packed_seq=packed_seq,
-                input_vision_tokens=input_vision_tokens,
-                condition_frame_indexes_vision=item_condition_frames,
-                input_timestep=input_timestep_val,
-                curr_rope_id=curr_rope_id,
-                curr=curr,
-                mrope_offset=mrope_offset,
-                use_mrope=use_mrope,
-                mrope_reset_spatial=mrope_reset_spatial,
-                device=device,
-                latent_patch_size=latent_patch_size,
-                vision_fps=vision_fps,
-                enable_fps_modulation=enable_fps_modulation,
-                base_fps=base_fps,
-                temporal_compression_factor=temporal_compression_factor,
-            )
-            vision_split_len += item_split_len
-        sample_len += vision_split_len
-    else:
-        vision_split_len = 0
-
-    if sequence_plan.has_sound:
-        input_sound_tokens = x0_tokens_sound[0]
-
+    # Sound segment (optional).
+    if has_sound:
         sound_fps: float | None = None
         if enable_fps_modulation and fps_sound is not None and len(fps_sound) > 0:
             sound_fps = float(fps_sound[0].item())
 
         sound_split_len, curr = _pack_sound_tokens(
             packed_seq=packed_seq,
-            input_sound_tokens=input_sound_tokens,
+            input_sound_tokens=x0_tokens_sound[0],
             input_timestep=input_timestep_val,
             curr_rope_id=curr_rope_id,
             curr=curr,
@@ -535,25 +497,20 @@ def pack_input_sequence(
             sound_fps=sound_fps,
         )
         sample_len += sound_split_len
-    else:
-        sound_split_len = 0
 
-    has_any_generation = sequence_plan.has_vision or sequence_plan.has_sound
-    if include_end_of_generation_token and has_any_generation:
+    # End-of-generation marker.
+    if include_end_of_generation_token:
         packed_seq.text_ids.append(special_tokens["end_of_generation"])
         packed_seq.text_indexes.append(curr)
-
         if use_mrope:
             eov_dtype = torch.float32 if enable_fps_modulation else torch.long
             eov_mrope_ids = torch.full((3, 1), mrope_offset, dtype=eov_dtype, device=device)
             packed_seq.position_ids.append(eov_mrope_ids)  # type: ignore[arg-type]
         else:
             packed_seq.position_ids.append(curr_rope_id)  # type: ignore[arg-type]
-
         sample_len += 1
 
     packed_seq.sequence_length = sample_len
-
     return packed_seq.finalize(device=device)
 
 
@@ -1155,7 +1112,7 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
         enable_sound: bool = False,
     ) -> tuple[
         torch.Tensor,
-        SequencePlan,
+        List[int],
         int,
         List[torch.Tensor],
         Optional[torch.Tensor],
@@ -1165,8 +1122,8 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
         """Build conditioning + initial noise for a single sample.
 
         Returns:
-            ``(latents, sequence_plan, num_vision_items, x0_tokens_vision,
-            fps_vision, x0_tokens_sound, fps_sound)``.
+            ``(latents, condition_frame_indexes_vision, num_vision_items,
+            x0_tokens_vision, fps_vision, x0_tokens_sound, fps_sound)``.
         """
         is_image = num_frames == 1
 
@@ -1182,7 +1139,7 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
                 if conditioning_frames is not None
                 else torch.zeros(1, 3, 1, height, width, dtype=dtype, device=device)
             )
-            sequence_plan = SequencePlan(has_text=True, has_vision=True, condition_frame_indexes_vision=[])
+            condition_frame_indexes_vision: List[int] = []
             data_batch = {
                 input_image_key: [img_tensor],
                 "image_size": image_size,
@@ -1190,7 +1147,6 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
                 "fps": torch.tensor([float(fps)], device=device),
                 "conditioning_fps": torch.tensor([float(fps)], device=device),
                 "num_frames": torch.tensor([num_frames], device=device),
-                "sequence_plan": [sequence_plan],
                 input_caption_key: [prompt],
             }
         else:
@@ -1210,9 +1166,7 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
                 video_tensor = video_data.to(device=device)
             else:
                 video_tensor = torch.zeros(1, 3, num_frames, height, width, dtype=dtype, device=device)
-            sequence_plan = SequencePlan(
-                has_text=True, has_vision=True, condition_frame_indexes_vision=list(cond_indexes)
-            )
+            condition_frame_indexes_vision = list(cond_indexes)
             data_batch = {
                 input_video_key: [video_tensor],
                 "image_size": image_size,
@@ -1220,11 +1174,9 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
                 "fps": torch.tensor([float(fps)], device=device),
                 "conditioning_fps": torch.tensor([float(fps)], device=device),
                 "num_frames": torch.tensor([num_frames], device=device),
-                "sequence_plan": [sequence_plan],
                 input_caption_key: [prompt],
             }
 
-        # --- Inject sound into sequence_plan ---
         x0_tokens_sound: list[torch.Tensor] | None = None
         fps_sound: torch.Tensor | None = None
         if enable_sound:
@@ -1235,7 +1187,6 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
             T_sound = (n_audio_samples + hop_size - 1) // hop_size
             x0_tokens_sound = [torch.zeros(sound_dim, T_sound, device=device, dtype=dtype)]
             fps_sound = torch.tensor([sound_latent_fps], device=device, dtype=dtype)
-            sequence_plan.has_sound = True
 
         num_vision_items, x0_tokens_vision, fps_vision = self.get_data_and_condition(
             input_image_key, input_video_key, data_batch, device=device, dtype=dtype
@@ -1244,13 +1195,13 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
         # Run pack_input_sequence with a dummy timestep to extract the condition_mask used for noise blending.
         mask_timestep = torch.zeros((1,), dtype=torch.float32)
         packed_seq = pack_input_sequence(
-            sequence_plan=sequence_plan,
             text_tokens=cond_tokens,
             input_timestep=mask_timestep,
             special_tokens=self.llm_special_tokens,
+            x0_tokens_vision=x0_tokens_vision,
             device=device,
             num_vision_items=num_vision_items,
-            x0_tokens_vision=x0_tokens_vision,
+            condition_frame_indexes_vision=condition_frame_indexes_vision,
             fps_vision=fps_vision,
             x0_tokens_sound=x0_tokens_sound,
             fps_sound=fps_sound,
@@ -1267,7 +1218,7 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
         if latents is not None:
             return (
                 latents.to(device=device, dtype=dtype),
-                sequence_plan,
+                condition_frame_indexes_vision,
                 num_vision_items,
                 x0_tokens_vision,
                 fps_vision,
@@ -1293,7 +1244,7 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
 
         return (
             initial_noise,
-            sequence_plan,
+            condition_frame_indexes_vision,
             num_vision_items,
             x0_tokens_vision,
             fps_vision,
@@ -1591,7 +1542,7 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
         # 4. Prepare latents (initial noise + conditioning metadata)
         (
             latents,
-            sequence_plan,
+            condition_frame_indexes_vision,
             num_vision_items,
             x0_tokens_vision,
             fps_vision,
@@ -1626,7 +1577,7 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
         timestep_scale = config.timestep_scale
         assert config.use_moe
         include_eog = config.joint_attn_implementation == "flex"
-        has_sound = x0_tokens_sound is not None and sequence_plan.has_sound
+        has_sound = x0_tokens_sound is not None
 
         # 6. Denoising loop
         num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
@@ -1656,13 +1607,13 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
 
                 # --- Conditional pass ---
                 packed_seq = pack_input_sequence(
-                    sequence_plan=sequence_plan,
                     text_tokens=cond_tokens,
                     input_timestep=timestep.cpu(),
                     special_tokens=self.llm_special_tokens,
+                    x0_tokens_vision=noise_x_vision,
                     device=device,
                     num_vision_items=num_vision_items,
-                    x0_tokens_vision=noise_x_vision,
+                    condition_frame_indexes_vision=condition_frame_indexes_vision,
                     fps_vision=fps_vision,
                     x0_tokens_sound=noise_x_sound,
                     fps_sound=fps_sound if has_sound else None,
@@ -1714,13 +1665,13 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
 
                 # --- Unconditional pass ---
                 packed_seq = pack_input_sequence(
-                    sequence_plan=sequence_plan,
                     text_tokens=uncond_tokens,
                     input_timestep=timestep.cpu(),
                     special_tokens=self.llm_special_tokens,
+                    x0_tokens_vision=noise_x_vision,
                     device=device,
                     num_vision_items=num_vision_items,
-                    x0_tokens_vision=noise_x_vision,
+                    condition_frame_indexes_vision=condition_frame_indexes_vision,
                     fps_vision=fps_vision,
                     x0_tokens_sound=noise_x_sound,
                     fps_sound=fps_sound if has_sound else None,
