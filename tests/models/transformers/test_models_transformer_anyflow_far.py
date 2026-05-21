@@ -157,9 +157,9 @@ class AnyFlowCausalAttnProcessorTest(unittest.TestCase):
     * the `AnyFlowFARTransformerOutput` dataclass is importable for downstream typing.
     """
 
-    def test_default_backend_is_none(self):
+    def test_default_backend_is_flex(self):
         processor = AnyFlowCausalAttnProcessor()
-        self.assertIsNone(processor._attention_backend)
+        self.assertEqual(processor._attention_backend, "flex")
 
     def test_unsupported_backend_raises(self):
         processor = AnyFlowCausalAttnProcessor()

@@ -52,10 +52,10 @@ EXAMPLE_DOC_STRING = """
         ...     "nvidia/AnyFlow-FAR-Wan2.1-1.3B-Diffusers", torch_dtype=torch.bfloat16
         ... ).to("cuda")
 
-        >>> # Single-frame I2V: wrap the conditioning image as a (1, 3, 1, H, W) tensor in [0, 1].
+        >>> # Single-frame I2V: wrap the conditioning image as a (1, 1, 3, H, W) tensor in [0, 1].
         >>> first_frame = load_image("path/to/first_frame.png").resize((832, 480))
         >>> arr = np.asarray(first_frame).astype("float32") / 255.0
-        >>> context = torch.from_numpy(arr).permute(2, 0, 1).unsqueeze(0).unsqueeze(2).to("cuda")
+        >>> context = torch.from_numpy(arr).permute(2, 0, 1).unsqueeze(0).unsqueeze(1).to("cuda")
 
         >>> video = pipe(
         ...     prompt="a cat walks across a sunlit lawn",
@@ -101,7 +101,7 @@ class AnyFlowFARPipeline(DiffusionPipeline, WanLoraLoaderMixin):
     The task mode (T2V / I2V / V2V) is selected by which conditioning argument is passed to ``__call__``:
 
     - both ``video=None`` and ``video_latents=None`` — pure text-to-video.
-    - ``video=<tensor of shape (B, C, T, H, W) in [0, 1] with T = 4n + 1>`` — pre-VAE conditioning frames; the pipeline
+    - ``video=<tensor of shape (B, T, C, H, W) in [0, 1] with T = 4n + 1>`` — pre-VAE conditioning frames; the pipeline
       VAE-encodes them. Pass a single-frame video for I2V or a multi-frame clip for V2V.
     - ``video_latents=<latent tensor of shape (B, T_latent, C, H_latent, W_latent)>`` — already-encoded latents in the
       FAR layout (skips the VAE encode step).
@@ -375,7 +375,6 @@ class AnyFlowFARPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         return self._attention_kwargs
 
     @torch.no_grad()
-    @torch.no_grad()
     def encode_video(self, video: torch.Tensor, height: int, width: int) -> torch.Tensor:
         """Encode a pixel-space video into AnyFlow-FAR's latent layout.
 
@@ -470,7 +469,7 @@ class AnyFlowFARPipeline(DiffusionPipeline, WanLoraLoaderMixin):
             prompt (`str` or `List[str]`, *optional*):
                 The prompt or prompts to guide the video generation. If not defined, pass `prompt_embeds` instead.
             video (`torch.Tensor`, *optional*):
-                Pre-VAE conditioning frames of shape `(B, C, T, H, W)` in `[0, 1]` (`T = 4n + 1`). When provided, the
+                Pre-VAE conditioning frames of shape `(B, T, C, H, W)` in `[0, 1]` (`T = 4n + 1`). When provided, the
                 pipeline VAE-encodes them and keeps the corresponding latent prefix fixed during sampling. Mutually
                 exclusive with `video_latents`.
             video_latents (`torch.Tensor`, *optional*):

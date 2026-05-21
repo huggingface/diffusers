@@ -407,7 +407,7 @@ class AnyFlowPipeline(DiffusionPipeline, WanLoraLoaderMixin):
             prompt (`str` or `List[str]`, *optional*):
                 The prompt or prompts to guide the video generation. If not defined, pass `prompt_embeds` instead.
             video (`torch.Tensor`, *optional*):
-                Pre-VAE conditioning frames of shape `(B, C, T, H, W)` in `[0, 1]`. When provided, the pipeline
+                Pre-VAE conditioning frames of shape `(B, T, C, H, W)` in `[0, 1]`. When provided, the pipeline
                 VAE-encodes them and keeps the corresponding latent prefix fixed during sampling. Mutually exclusive
                 with `video_latents`.
             video_latents (`torch.Tensor`, *optional*):

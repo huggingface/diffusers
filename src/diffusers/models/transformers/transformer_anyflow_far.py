@@ -81,10 +81,10 @@ class AnyFlowCausalAttnProcessor:
     :class:`ValueError` is raised if a non-flex backend is configured via ``_attention_backend``.
     """
 
-    _attention_backend = None
+    _attention_backend = "flex"
     _parallel_config = None
 
-    _SUPPORTED_BACKENDS = (None, "flex", "_native_flex")
+    _SUPPORTED_BACKENDS = ("flex", "_native_flex")
 
     def __init__(self):
         if not hasattr(F, "scaled_dot_product_attention"):
@@ -194,7 +194,7 @@ class AnyFlowCausalAttnProcessor:
             dropout_p=0.0,
             is_causal=False,
             scale=scale,
-            backend="flex",
+            backend=self._attention_backend,
             parallel_config=self._parallel_config,
         )
         # `dispatch_attention_fn` returns (B, L, H, D). Trim head pad on the last axis, then trim
@@ -641,6 +641,7 @@ class AnyFlowCausalRotaryPosEmbed(nn.Module):
         # complex128, so we downcast to complex64 there.
         self._freqs_cache: Optional[Tuple[Any, torch.Tensor]] = None
 
+    # Copied from diffusers.models.transformers.transformer_anyflow.AnyFlowRotaryPosEmbed._build_freqs
     def _build_freqs(self, device: torch.device) -> torch.Tensor:
         cache_key = (device.type, str(device))
         if self._freqs_cache is not None and self._freqs_cache[0] == cache_key:
@@ -717,6 +718,7 @@ class AnyFlowCausalRotaryPosEmbed(nn.Module):
         freqs = torch.cat([freqs_f, freqs_h, freqs_w], dim=-1)
         return freqs
 
+    # Copied from diffusers.models.transformers.transformer_anyflow.AnyFlowRotaryPosEmbed._forward_full_frame
     def _forward_full_frame(self, num_frames, height, width, device) -> torch.Tensor:
         ppf, pph, ppw = num_frames, height, width
 

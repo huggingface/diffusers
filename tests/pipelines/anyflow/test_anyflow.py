@@ -137,10 +137,6 @@ class AnyFlowPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     def test_save_load_float16(self):
         pass
 
-    @unittest.skip("AnyFlow has no optional components.")
-    def test_save_load_optional_components(self):
-        pass
-
     @unittest.skip("AnyFlow's custom attention processor does not support sliced attention.")
     def test_attention_slicing_forward_pass(self):
         pass
