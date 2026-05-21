@@ -64,24 +64,32 @@ class CosmosAttnProcessor3_0:
         k_gen = k_gen * cos_gen + _rotate_half(k_gen) * sin_gen
 
         # Causal pathway (understanding): und tokens self-attend with causal masking.
-        causal_out = dispatch_attention_fn(
-            q_und.unsqueeze(0),
-            k_und.unsqueeze(0),
-            v_und.unsqueeze(0),
-            is_causal=True,
-            enable_gqa=True,
-        ).squeeze(0).flatten(-2, -1)
+        causal_out = (
+            dispatch_attention_fn(
+                q_und.unsqueeze(0),
+                k_und.unsqueeze(0),
+                v_und.unsqueeze(0),
+                is_causal=True,
+                enable_gqa=True,
+            )
+            .squeeze(0)
+            .flatten(-2, -1)
+        )
 
         # Full pathway (generation): gen tokens cross-attend to all (und + gen) keys/values.
         all_k = torch.cat([k_und, k_gen], dim=0)
         all_v = torch.cat([v_und, v_gen], dim=0)
-        full_out = dispatch_attention_fn(
-            q_gen.unsqueeze(0),
-            all_k.unsqueeze(0),
-            all_v.unsqueeze(0),
-            is_causal=False,
-            enable_gqa=True,
-        ).squeeze(0).flatten(-2, -1)
+        full_out = (
+            dispatch_attention_fn(
+                q_gen.unsqueeze(0),
+                all_k.unsqueeze(0),
+                all_v.unsqueeze(0),
+                is_causal=False,
+                enable_gqa=True,
+            )
+            .squeeze(0)
+            .flatten(-2, -1)
+        )
 
         # Per-pathway output projection
         und_out = attn.o_proj(causal_out)

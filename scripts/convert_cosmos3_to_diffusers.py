@@ -44,6 +44,7 @@ DEFAULT_SOUND_TOKENIZER_CONFIG = {
     "dec_out_channels": 2,
 }
 
+
 def _get_config_value(*configs, name, default=None):
     for config in configs:
         if config is None:
@@ -133,9 +134,7 @@ def _sound_tokenizer_remap_flat_layout(state_dict: dict[str, torch.Tensor]) -> d
 
     num_blocks = _sound_tokenizer_infer_num_blocks(state_dict)
     if num_blocks == 0:
-        raise RuntimeError(
-            "Detected flat `decoder.layers.*` layout but no decoder blocks were found; cannot remap."
-        )
+        raise RuntimeError("Detected flat `decoder.layers.*` layout but no decoder blocks were found; cannot remap.")
     snake1_idx = num_blocks + 1
     conv2_idx = num_blocks + 2
 
@@ -175,8 +174,7 @@ def _sound_tokenizer_remap_flat_layout(state_dict: dict[str, torch.Tensor]) -> d
             if layer_n == conv2_idx:
                 return f"decoder.conv2.{rest}"
             raise RuntimeError(
-                f"Unexpected decoder leaf layer index {layer_n} "
-                f"(expected 0, {snake1_idx}, or {conv2_idx}) in {key!r}."
+                f"Unexpected decoder leaf layer index {layer_n} (expected 0, {snake1_idx}, or {conv2_idx}) in {key!r}."
             )
 
         return key
