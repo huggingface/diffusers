@@ -27,7 +27,7 @@ import torch.nn.functional as F
 
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...loaders import FromOriginalModelMixin, PeftAdapterMixin
-from ...utils import logging
+from ...utils import apply_lora_scale, logging
 from ..attention import AttentionModuleMixin, FeedForward
 from ..attention_dispatch import dispatch_attention_fn
 from ..embeddings import PixArtAlphaTextProjection, TimestepEmbedding, Timesteps, get_1d_rotary_pos_embed
@@ -287,7 +287,7 @@ class AnyFlowDualTimestepTextImageEmbedding(nn.Module):
         r_timestep: torch.Tensor,
         encoder_hidden_states: torch.Tensor,
         encoder_hidden_states_image: Optional[torch.Tensor] = None,
-        far_cfg=None,
+        layout_cfg=None,
     ):
         if self.deltatime_type == "r":
             delta_timestep = r_timestep
@@ -297,7 +297,7 @@ class AnyFlowDualTimestepTextImageEmbedding(nn.Module):
             raise NotImplementedError
 
         timestep, timestep_proj = self.forward_timestep(
-            timestep, delta_timestep, encoder_hidden_states, far_cfg["full_token_per_frame"]
+            timestep, delta_timestep, encoder_hidden_states, layout_cfg["full_token_per_frame"]
         )
 
         encoder_hidden_states = self.text_embedder(encoder_hidden_states)
@@ -383,11 +383,11 @@ class AnyFlowRotaryPosEmbed(nn.Module):
         freqs = torch.cat([freqs_f, freqs_h, freqs_w], dim=-1)
         return freqs
 
-    def forward(self, far_cfg, device):
+    def forward(self, layout_cfg, device):
         freqs = self._forward_full_frame(
-            num_frames=far_cfg["total_frames"],
-            height=far_cfg["full_frame_shape"][0],
-            width=far_cfg["full_frame_shape"][1],
+            num_frames=layout_cfg["total_frames"],
+            height=layout_cfg["full_frame_shape"][0],
+            width=layout_cfg["full_frame_shape"][1],
             device=device,
         )
         freqs = freqs.flatten(start_dim=0, end_dim=2)
@@ -623,6 +623,7 @@ class AnyFlowTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromO
         )
         return latents
 
+    @apply_lora_scale("attention_kwargs")
     def forward(
         self,
         hidden_states: torch.Tensor,
@@ -664,13 +665,13 @@ class AnyFlowTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromO
 
         full_token_per_frame = (height * width) // (self.config.patch_size[1] * self.config.patch_size[2])
 
-        far_cfg = {
+        layout_cfg = {
             "total_frames": num_frames,
             "full_frame_shape": (height // self.config.patch_size[1], width // self.config.patch_size[2]),
             "full_token_per_frame": full_token_per_frame,
         }
 
-        rotary_emb = self.rope(far_cfg=far_cfg, device=hidden_states.device)
+        rotary_emb = self.rope(layout_cfg=layout_cfg, device=hidden_states.device)
 
         hidden_states = self.patch_embedding(hidden_states)
         hidden_states = hidden_states.flatten(2).transpose(1, 2)
@@ -680,7 +681,7 @@ class AnyFlowTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromO
             r_timestep,
             encoder_hidden_states,
             encoder_hidden_states_image,
-            far_cfg=far_cfg,
+            layout_cfg=layout_cfg,
         )
         timestep_proj = timestep_proj.unflatten(2, (6, -1))
 
@@ -698,13 +699,11 @@ class AnyFlowTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromO
             for block in self.blocks:
                 hidden_states = block(hidden_states, encoder_hidden_states, timestep_proj, rotary_emb, attention_mask)
 
-        # Output norm, projection & unpatchify
-        if temb.ndim == 3:
-            shift, scale = (self.scale_shift_table.unsqueeze(0) + temb.unsqueeze(2)).chunk(2, dim=2)
-            shift = shift.squeeze(2)
-            scale = scale.squeeze(2)
-        else:
-            shift, scale = (self.scale_shift_table + temb.unsqueeze(1)).chunk(2, dim=1)
+        # Output norm, projection & unpatchify. `temb` is always 3D from `condition_embedder.forward()`
+        # (broadcast over total tokens), so no ndim==2 branch is needed.
+        shift, scale = (self.scale_shift_table.unsqueeze(0) + temb.unsqueeze(2)).chunk(2, dim=2)
+        shift = shift.squeeze(2)
+        scale = scale.squeeze(2)
 
         # Move shift/scale to hidden_states' device for multi-GPU accelerate inference.
         shift = shift.to(hidden_states.device)
@@ -715,7 +714,7 @@ class AnyFlowTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromO
 
         output = self._unpack_latent_sequence(
             hidden_states,
-            num_frames=far_cfg["total_frames"],
+            num_frames=layout_cfg["total_frames"],
             height=height,
             width=width,
             patch_size=self.config.patch_size[1],

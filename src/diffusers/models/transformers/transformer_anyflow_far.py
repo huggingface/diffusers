@@ -29,7 +29,7 @@ from torch.nn.attention.flex_attention import create_block_mask
 
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...loaders import FromOriginalModelMixin, PeftAdapterMixin
-from ...utils import BaseOutput, logging
+from ...utils import BaseOutput, apply_lora_scale, logging
 from ..attention import AttentionModuleMixin, FeedForward
 from ..attention_dispatch import dispatch_attention_fn
 from ..embeddings import PixArtAlphaTextProjection, TimestepEmbedding, Timesteps, get_1d_rotary_pos_embed
@@ -910,6 +910,7 @@ class AnyFlowFARTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Fr
 
         self.gradient_checkpointing = False
 
+    @apply_lora_scale("attention_kwargs")
     def forward(
         self,
         hidden_states: torch.Tensor,
@@ -959,6 +960,8 @@ class AnyFlowFARTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Fr
             return_dict (`bool`, *optional*, defaults to `True`):
                 If `False`, returns positional tuples instead of an output dataclass.
         """
+        # `attention_kwargs` is consumed by the @apply_lora_scale decorator on this method;
+        # it does not need to thread through to the inner _forward_* paths.
         common = {
             "hidden_states": hidden_states,
             "chunk_partition": chunk_partition,
@@ -967,7 +970,6 @@ class AnyFlowFARTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Fr
             "encoder_hidden_states": encoder_hidden_states,
             "encoder_hidden_states_image": encoder_hidden_states_image,
             "return_dict": return_dict,
-            "attention_kwargs": attention_kwargs,
         }
         if kv_cache is not None:
             common["kv_cache"] = kv_cache
@@ -999,7 +1001,7 @@ class AnyFlowFARTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Fr
         )
         return latents
 
-    def forward_far_patchify(self, hidden_states, far_cfg, clean_hidden_states=None):
+    def _forward_far_patchify(self, hidden_states, far_cfg, clean_hidden_states=None):
         full_hidden_states, compressed_hidden_states = (
             hidden_states[:, :, far_cfg["num_compressed_frames"] :],
             hidden_states[:, :, : far_cfg["num_compressed_frames"]],
@@ -1023,7 +1025,7 @@ class AnyFlowFARTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Fr
             hidden_states = patchified_full_hidden_states
         return hidden_states
 
-    def forward_far_patchify_inference(self, hidden_states):
+    def _forward_far_patchify_inference(self, hidden_states):
         hidden_states = self.patch_embedding(hidden_states).flatten(start_dim=2, end_dim=4).transpose(1, 2)
         return hidden_states
 
@@ -1081,20 +1083,20 @@ class AnyFlowFARTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Fr
                 # 1) whether is padding
                 is_padding = (q_idx >= real_seq_len) | (kv_idx >= real_seq_len)
 
-                # 3) chunk casual
+                # 2) chunk causal
                 base = frame_idx[q_idx] >= frame_idx[kv_idx]
 
-                # 4) interval mask
+                # 3) interval mask
                 q_is_noise = (q_idx >= noise_start) & (q_idx < noise_end)
                 q_is_clean = (q_idx >= clean_start) & (q_idx < clean_end)
 
                 k_is_noise = (kv_idx >= noise_start) & (kv_idx < noise_end)
                 k_is_clean = (kv_idx >= clean_start) & (kv_idx < clean_end)
 
-                # 5) clean -> noise: disallowed
+                # 4) clean -> noise: disallowed
                 is_clean_to_noise = q_is_clean & k_is_noise
 
-                # 6) noise -> noise: only same frame
+                # 5) noise -> noise: only same frame
                 same_frame_idx = frame_idx[q_idx] == frame_idx[kv_idx]
 
                 noise_to_noise = q_is_noise & k_is_noise
@@ -1173,7 +1175,6 @@ class AnyFlowFARTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Fr
         encoder_hidden_states: torch.Tensor,
         encoder_hidden_states_image: Optional[torch.Tensor] = None,
         return_dict: bool = True,
-        attention_kwargs: Optional[Dict[str, Any]] = None,
         kv_cache=None,
         kv_cache_flag=None,
     ) -> Union[torch.Tensor, Dict[str, torch.Tensor]]:
@@ -1219,7 +1220,7 @@ class AnyFlowFARTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Fr
 
         # step 3: generate attention mask
         attention_mask = None
-        hidden_states = self.forward_far_patchify_inference(hidden_states)
+        hidden_states = self._forward_far_patchify_inference(hidden_states)
 
         rotary_emb = self.rope(far_cfg=far_cfg, device=hidden_states.device)
         rotary_emb["query"] = rotary_emb["query"][:, :, -hidden_states.shape[1] :]
@@ -1292,7 +1293,6 @@ class AnyFlowFARTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Fr
         encoder_hidden_states: torch.Tensor,
         encoder_hidden_states_image: Optional[torch.Tensor] = None,
         return_dict: bool = True,
-        attention_kwargs: Optional[Dict[str, Any]] = None,
         clean_hidden_states=None,
         clean_timestep=None,
         kv_cache=None,
@@ -1344,7 +1344,7 @@ class AnyFlowFARTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Fr
         )
 
         rotary_emb = self.rope(far_cfg=far_cfg, clean_hidden_states=clean_hidden_states, device=hidden_states.device)
-        hidden_states = self.forward_far_patchify(
+        hidden_states = self._forward_far_patchify(
             hidden_states, far_cfg=far_cfg, clean_hidden_states=clean_hidden_states
         )
 
@@ -1399,7 +1399,6 @@ class AnyFlowFARTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Fr
         encoder_hidden_states: torch.Tensor,
         encoder_hidden_states_image: Optional[torch.Tensor] = None,
         return_dict: bool = True,
-        attention_kwargs: Optional[Dict[str, Any]] = None,
         clean_hidden_states=None,
         clean_timestep=None,
     ) -> Union[torch.Tensor, Dict[str, torch.Tensor]]:
@@ -1446,7 +1445,7 @@ class AnyFlowFARTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Fr
 
         rotary_emb = self.rope(far_cfg=far_cfg, clean_hidden_states=clean_hidden_states, device=hidden_states.device)
 
-        hidden_states = self.forward_far_patchify(
+        hidden_states = self._forward_far_patchify(
             hidden_states, far_cfg=far_cfg, clean_hidden_states=clean_hidden_states
         )
 

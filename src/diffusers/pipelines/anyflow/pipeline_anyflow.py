@@ -356,7 +356,6 @@ class AnyFlowPipeline(DiffusionPipeline, WanLoraLoaderMixin):
     def attention_kwargs(self):
         return self._attention_kwargs
 
-    @torch.no_grad()
     def encode_video(self, video: torch.Tensor, height: int, width: int) -> torch.Tensor:
         """Encode a pixel-space video into AnyFlow's latent layout.
 
@@ -452,7 +451,9 @@ class AnyFlowPipeline(DiffusionPipeline, WanLoraLoaderMixin):
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether to return an [`AnyFlowPipelineOutput`] instead of a plain tuple.
             attention_kwargs (`dict`, *optional*):
-                Reserved for future use; currently forwarded to the transformer but not consumed.
+                A kwargs dictionary that if specified is passed along to the `AttentionProcessor` as defined under
+                `self.processor` in
+                [diffusers.models.attention_processor](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/attention_processor.py).
             callback_on_step_end (`Callable`, *optional*):
                 A function or [`PipelineCallback`] called at the end of each inference step. See
                 [`callbacks`](../callbacks) for details.
@@ -525,7 +526,7 @@ class AnyFlowPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         if negative_prompt_embeds is not None:
             negative_prompt_embeds = negative_prompt_embeds.to(transformer_dtype)
 
-        # 5. Prepare latent variables. ``prepare_latents`` returns the standard ``(B, C, T, H, W)``
+        # 4. Prepare latent variables. ``prepare_latents`` returns the standard ``(B, C, T, H, W)``
         # diffusers layout; the AnyFlow rollout expects ``(B, T, C, H, W)`` so we permute here.
         num_channels_latents = self.transformer.config.in_channels
         init_latents = self.prepare_latents(
@@ -541,12 +542,12 @@ class AnyFlowPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         )
         init_latents = init_latents.permute(0, 2, 1, 3, 4).to(transformer_dtype)
 
-        # 6. Encode conditioning frames (or accept pre-encoded latents).
+        # 5. Encode conditioning frames (or accept pre-encoded latents).
         if video is not None:
             video_latents = self.encode_video(video, height=height, width=width)
         context_length = video_latents.shape[1] if video_latents is not None else 0
 
-        # 7. Denoising loop (inlined; follows the `WanPipeline.__call__` convention).
+        # 6. Denoising loop (inlined; follows the `WanPipeline.__call__` convention).
         latents = init_latents
         if negative_prompt_embeds is not None:
             prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds], dim=0)
@@ -586,6 +587,7 @@ class AnyFlowPipeline(DiffusionPipeline, WanLoraLoaderMixin):
                     timestep=timestep,
                     r_timestep=r_timestep,
                     encoder_hidden_states=prompt_embeds,
+                    attention_kwargs=attention_kwargs,
                     return_dict=False,
                 )[0]
 

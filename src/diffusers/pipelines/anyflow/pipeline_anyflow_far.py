@@ -381,7 +381,6 @@ class AnyFlowFARPipeline(DiffusionPipeline, WanLoraLoaderMixin):
     def attention_kwargs(self):
         return self._attention_kwargs
 
-    @torch.no_grad()
     def encode_video(self, video: torch.Tensor, height: int, width: int) -> torch.Tensor:
         """Encode a pixel-space video into AnyFlow-FAR's latent layout.
 
@@ -399,7 +398,6 @@ class AnyFlowFARPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         latents = ((mu.float() - latents_mean) * latents_std).to(mu)
         return latents.permute(0, 2, 1, 3, 4)
 
-    @torch.no_grad()
     def encode_kv_cache(
         self, kv_cache, kv_cache_flag, chunk_partition, chunk_idx, output, prompt_embeds, negative_prompt_embeds
     ):
@@ -427,6 +425,7 @@ class AnyFlowFARPipeline(DiffusionPipeline, WanLoraLoaderMixin):
             timestep=timestep,
             r_timestep=r_timestep,
             encoder_hidden_states=prompt_embeds,
+            attention_kwargs=self.attention_kwargs,
             return_dict=False,
             # kv-cache related
             kv_cache=kv_cache,
@@ -512,7 +511,9 @@ class AnyFlowFARPipeline(DiffusionPipeline, WanLoraLoaderMixin):
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether to return an [`AnyFlowPipelineOutput`] instead of a plain tuple.
             attention_kwargs (`dict`, *optional*):
-                Reserved for future use.
+                A kwargs dictionary that if specified is passed along to the `AttentionProcessor` as defined under
+                `self.processor` in
+                [diffusers.models.attention_processor](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/attention_processor.py).
             callback_on_step_end (`Callable`, *optional*):
                 A function or [`PipelineCallback`] called at the end of each inference step.
             callback_on_step_end_tensor_inputs (`List[str]`, *optional*, defaults to `["latents"]`):
@@ -589,7 +590,7 @@ class AnyFlowFARPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         if negative_prompt_embeds is not None:
             negative_prompt_embeds = negative_prompt_embeds.to(transformer_dtype)
 
-        # 5. Prepare latent variables
+        # 4. Prepare latent variables
         num_channels_latents = self.transformer.config.in_channels
         init_latents = self.prepare_latents(
             batch_size * num_videos_per_prompt,
@@ -606,7 +607,7 @@ class AnyFlowFARPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         # rollout permutes to ``(B, T, C, H, W)`` once before chunking.
         init_latents = init_latents.to(transformer_dtype).permute(0, 2, 1, 3, 4)
 
-        # 6. Resolve conditioning latents (pre-encoded or pixel-space).
+        # 5. Resolve conditioning latents (pre-encoded or pixel-space).
         if video is not None:
             video_latents = self.encode_video(video, height=height, width=width)
 
@@ -626,7 +627,7 @@ class AnyFlowFARPipeline(DiffusionPipeline, WanLoraLoaderMixin):
             init_latents.shape[4] // self.transformer.config.compressed_patch_size[2]
         )
 
-        # 7. Allocate KV cache (across chunks). The cache stays None when use_kv_cache=False.
+        # 6. Allocate KV cache (across chunks). The cache stays None when use_kv_cache=False.
         if use_kv_cache:
             kv_cache_batch_size = (
                 init_latents.shape[0] * 2 if self.do_classifier_free_guidance else init_latents.shape[0]
@@ -666,7 +667,7 @@ class AnyFlowFARPipeline(DiffusionPipeline, WanLoraLoaderMixin):
 
         output = torch.zeros_like(init_latents)
 
-        # 8. Apply conditioning prefix.
+        # 7. Apply conditioning prefix.
         if video_latents is not None:
             output[:, : video_latents.shape[1]] = video_latents
             num_context_chunks = next(
@@ -679,7 +680,7 @@ class AnyFlowFARPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         # callback_on_step_end; context chunks only encode KV cache and never call back.
         self._num_timesteps = (len(chunk_partition) - num_context_chunks) * num_inference_steps
 
-        # Inlined denoise rollout — outer loop over chunks, inner loop over timesteps. Mirrors
+        # 8. Denoising loop (inlined; outer over chunks, inner over timesteps). Mirrors
         # `WanAnimatePipeline.__call__`'s nested-loop convention (cf. pipeline_wan_animate.py:1035).
         # `encode_kv_cache` is kept as a method because it is its own coherent operation (a single
         # cache-prefill call on the transformer); inlining it would obscure the read.
@@ -726,6 +727,7 @@ class AnyFlowFARPipeline(DiffusionPipeline, WanLoraLoaderMixin):
                         timestep=timestep,
                         r_timestep=r_timestep,
                         encoder_hidden_states=encoder_hidden_states,
+                        attention_kwargs=attention_kwargs,
                         return_dict=False,
                         chunk_partition=this_chunk_partition,
                         kv_cache=kv_cache,

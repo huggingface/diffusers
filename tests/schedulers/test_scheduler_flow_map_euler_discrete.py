@@ -117,6 +117,29 @@ class FlowMapEulerDiscreteSchedulerTest(unittest.TestCase):
         self.assertEqual(prev_sample.shape, sample.shape)
         self.assertFalse(torch.allclose(prev_sample, sample))
 
+    def test_step_index_advances(self):
+        # After `set_timesteps`, `step_index` is None. Each `step` call advances it; `begin_index` defaults to None.
+        scheduler = self.scheduler_class(**self.get_default_config())
+        scheduler.set_timesteps(num_inference_steps=4)
+        self.assertIsNone(scheduler.step_index)
+        self.assertIsNone(scheduler.begin_index)
+
+        sample = torch.randn(1, 4, 4, 4)
+        for i, t in enumerate(scheduler.timesteps):
+            scheduler.step(torch.randn_like(sample), t, sample)
+            self.assertEqual(scheduler.step_index, i + 1)
+
+    def test_set_begin_index_anchors_step_index(self):
+        # `set_begin_index(k)` makes the first `step` initialize `_step_index = k` (mid-schedule restart).
+        scheduler = self.scheduler_class(**self.get_default_config())
+        scheduler.set_timesteps(num_inference_steps=4)
+        scheduler.set_begin_index(2)
+        self.assertEqual(scheduler.begin_index, 2)
+
+        sample = torch.randn(1, 4, 4, 4)
+        scheduler.step(torch.randn_like(sample), scheduler.timesteps[0], sample)
+        self.assertEqual(scheduler.step_index, 3)  # 2 -> 3 after one step
+
     def test_scale_noise_endpoints(self):
         scheduler = self.scheduler_class(**self.get_default_config())
         sample = torch.zeros(2, 4, 4, 4)

@@ -72,7 +72,29 @@ class FlowMapEulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
         num_train_timesteps: int = 1000,
         shift: float = 1.0,
     ):
+        # `_step_index` and `_begin_index` mirror `FlowMatchEulerDiscreteScheduler`'s state machine:
+        # `_step_index` advances on every `step()` so callbacks and composable schedulers can read it;
+        # `_begin_index` is honoured on the very first `step()` after `set_timesteps` to support
+        # mid-schedule restarts (e.g. image-to-image style use).
+        self._step_index: Optional[int] = None
+        self._begin_index: Optional[int] = None
         self.set_timesteps(num_train_timesteps, device="cpu")
+
+    @property
+    def step_index(self) -> Optional[int]:
+        """The index counter for current timestep. Returns ``None`` before the first :meth:`step` call after
+        :meth:`set_timesteps`."""
+        return self._step_index
+
+    @property
+    def begin_index(self) -> Optional[int]:
+        """The index for the first timestep — set by :meth:`set_begin_index`. Defaults to ``None``."""
+        return self._begin_index
+
+    def set_begin_index(self, begin_index: int = 0):
+        """Set the begin index for the scheduler. Pipelines that start mid-schedule (e.g. image-to-image)
+        call this between :meth:`set_timesteps` and the first :meth:`step` to anchor the rollout."""
+        self._begin_index = begin_index
 
     def scale_model_input(self, sample: torch.Tensor, *args, **kwargs) -> torch.Tensor:
         """No-op identity scaling. Provided for API compatibility with other Diffusers schedulers."""
@@ -123,6 +145,23 @@ class FlowMapEulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
         self.num_inference_steps = num_inference_steps
         self.sigmas = sigmas.to(device=device, dtype=out_dtype)
         self.timesteps = (self.sigmas[:-1] * self.config.num_train_timesteps).to(device=device, dtype=out_dtype)
+        # Reset the state machine — first `step()` after this will re-initialize `_step_index`.
+        self._step_index = None
+        self._begin_index = None
+
+    def _init_step_index(self, timestep: Union[float, torch.FloatTensor]) -> None:
+        """Initialize ``self._step_index`` on the first :meth:`step` call after :meth:`set_timesteps`."""
+        if self._begin_index is not None:
+            self._step_index = self._begin_index
+            return
+        idx = self.index_for_timestep(timestep)
+        if idx is None:
+            t_value = float(timestep.flatten()[0].item()) if torch.is_tensor(timestep) else float(timestep)
+            raise ValueError(
+                f"`timestep={t_value}` is not on the current schedule and `begin_index` was not set. "
+                "Call `set_begin_index` first or pass a timestep from `self.timesteps`."
+            )
+        self._step_index = idx
 
     def index_for_timestep(self, timestep: Union[float, torch.FloatTensor]) -> Optional[int]:
         """Return the index of ``timestep`` on the current schedule, or ``None`` if off-schedule.
@@ -207,6 +246,12 @@ class FlowMapEulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
         if self.sigmas is None or self.timesteps is None:
             raise ValueError("`set_timesteps` has not been called.")
 
+        # `_step_index` is maintained purely as observable state for callbacks / composable schedulers.
+        # Sigma resolution stays a pure function of the passed-in (`timestep`, `r_timestep`) so the call is
+        # idempotent — calling `step` twice with the same arguments always returns the same `prev_sample`.
+        if self._step_index is None:
+            self._init_step_index(timestep)
+
         # Resolve source sigma via index lookup; fall back to / num_train_timesteps only if `timestep` is off-schedule.
         t_idx = self.index_for_timestep(timestep)
         if t_idx is not None:
@@ -236,6 +281,9 @@ class FlowMapEulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
         sigma_r = sigma_r.view(*sigma_r.shape, *([1] * (model_output.ndim - sigma_r.ndim)))
         prev_sample = sample - (sigma_t - sigma_r) * model_output
         prev_sample = prev_sample.to(model_output.dtype)
+
+        # Advance state machine so downstream callbacks / composable schedulers observe correct `step_index`.
+        self._step_index += 1
 
         if not return_dict:
             return (prev_sample,)
