@@ -1,3 +1,5 @@
+import gc
+import os
 import unittest
 
 import numpy as np
@@ -11,8 +13,13 @@ from diffusers import (
     Flux2KleinPipeline,
     Flux2Transformer2DModel,
 )
+from diffusers.utils.import_utils import is_torch_neuronx_available
 
-from ...testing_utils import torch_device
+from ...testing_utils import (
+    backend_empty_cache,
+    require_torch_neuron,
+    torch_device,
+)
 from ..test_pipelines_common import PipelineTesterMixin, check_qkv_fused_layers_exist
 
 
@@ -181,3 +188,57 @@ class Flux2KleinPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     @unittest.skip("Needs to be revisited")
     def test_encode_prompt_works_in_isolation(self):
         pass
+
+
+@require_torch_neuron
+class Flux2KleinPipelineIntegrationTests(unittest.TestCase):
+    ckpt_id = "black-forest-labs/FLUX.2-klein-4B"
+    prompt = "A small cactus with a happy face in the Sahara desert."
+
+    def setUp(self):
+        super().setUp()
+        self._saved_env = {}
+        if is_torch_neuronx_available():
+            neff_cache_dir = "/tmp/neff_cache"
+            os.makedirs(neff_cache_dir, exist_ok=True)
+            for key in ("TORCH_NEURONX_NEFF_CACHE_DIR", "TORCH_NEURONX_ENABLE_NKI_SDPA"):
+                self._saved_env[key] = os.environ.get(key)
+            os.environ["TORCH_NEURONX_NEFF_CACHE_DIR"] = neff_cache_dir
+            os.environ.setdefault("TORCH_NEURONX_ENABLE_NKI_SDPA", "0")
+        gc.collect()
+        backend_empty_cache(torch_device)
+
+    def tearDown(self):
+        super().tearDown()
+        for key, original in self._saved_env.items():
+            if original is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = original
+        gc.collect()
+        backend_empty_cache(torch_device)
+
+    def test_flux2_klein_inference_512(self):
+        generator = torch.Generator("cpu").manual_seed(0)
+
+        pipe = Flux2KleinPipeline.from_pretrained(self.ckpt_id, torch_dtype=torch.bfloat16)
+        pipe.to(torch_device)
+        if is_torch_neuronx_available():
+            torch.neuron.synchronize()
+        pipe.set_progress_bar_config(disable=None)
+
+        image = pipe(
+            prompt=self.prompt,
+            height=512,
+            width=512,
+            num_inference_steps=4,
+            guidance_scale=1.0,
+            generator=generator,
+            output_type="np",
+        ).images
+
+        image_slice = image[0, -3:, -3:, -1]
+        self.assertEqual(image.shape, (1, 512, 512, 3))
+        self.assertTrue(np.all((image >= 0.0) & (image <= 1.0)), "Pixel values must be in [0, 1]")
+        expected_slice = np.array([0.3652, 0.3574, 0.3633, 0.4102, 0.4062, 0.4043, 0.4453, 0.4355, 0.4570])
+        self.assertLess(np.abs(image_slice.flatten() - expected_slice).max(), 5e-2)
