@@ -89,8 +89,7 @@ class CogView4PipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             hidden_size=32, intermediate_size=8, num_hidden_layers=2, num_attention_heads=4, head_dim=8
         )
         text_encoder = GlmForCausalLM(text_encoder_config)
-        # TODO(aryan): change this to THUDM/CogView4 once released
-        tokenizer = AutoTokenizer.from_pretrained("THUDM/glm-4-9b-chat", trust_remote_code=True)
+        tokenizer = AutoTokenizer.from_pretrained("THUDM/CogView4-6B", subfolder="tokenizer")
 
         components = {
             "transformer": transformer,
