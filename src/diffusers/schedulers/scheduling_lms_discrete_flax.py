@@ -36,7 +36,7 @@ logger = logging.get_logger(__name__)
 class LMSDiscreteSchedulerState:
     common: CommonSchedulerState
 
-    # setable values
+    # settable values
     init_noise_sigma: jnp.ndarray
     timesteps: jnp.ndarray
     sigmas: jnp.ndarray
@@ -82,8 +82,8 @@ class FlaxLMSDiscreteScheduler(FlaxSchedulerMixin, ConfigMixin):
         beta_start (`float`): the starting `beta` value of inference.
         beta_end (`float`): the final `beta` value.
         beta_schedule (`str`):
-            the beta schedule, a mapping from a beta range to a sequence of betas for stepping the model. Choose from
-            `linear` or `scaled_linear`.
+            The beta schedule, a mapping from a beta range to a sequence of betas for stepping the model. Choose from
+            `linear`, `scaled_linear`, or `squaredcos_cap_v2` (same options as [`CommonSchedulerState`]).
         trained_betas (`jnp.ndarray`, optional):
             option to pass an array of betas directly to the constructor to bypass `beta_start`, `beta_end` etc.
         prediction_type (`str`, default `epsilon`, optional):
@@ -117,6 +117,10 @@ class FlaxLMSDiscreteScheduler(FlaxSchedulerMixin, ConfigMixin):
             "Flax classes are deprecated and will be removed in Diffusers v0.40.0. We "
             "recommend migrating to PyTorch classes or pinning your version of Diffusers."
         )
+        if prediction_type not in ("epsilon", "sample", "v_prediction"):
+            raise ValueError(
+                f"`prediction_type` must be one of `epsilon`, `sample`, `v_prediction`, got {prediction_type!r}"
+            )
         self.dtype = dtype
 
     def create_state(self, common: CommonSchedulerState | None = None) -> LMSDiscreteSchedulerState:
@@ -158,14 +162,16 @@ class FlaxLMSDiscreteScheduler(FlaxSchedulerMixin, ConfigMixin):
         sample = sample / ((sigma**2 + 1) ** 0.5)
         return sample
 
-    def get_lms_coefficient(self, state: LMSDiscreteSchedulerState, order, t, current_order):
+    def get_lms_coefficient(
+        self, state: LMSDiscreteSchedulerState, order: int, t: int, current_order: int
+    ) -> float:
         """
         Compute a linear multistep coefficient.
 
         Args:
-            order (TODO):
-            t (TODO):
-            current_order (TODO):
+            order (`int`): Multistep order (number of derivative history terms used).
+            t (`int`): Current step index along the inference sigma schedule (not the training timestep id).
+            current_order (`int`): Index of the Lagrange basis term; must satisfy `0 <= current_order < order`.
         """
 
         def lms_derivative(tau):
@@ -240,7 +246,8 @@ class FlaxLMSDiscreteScheduler(FlaxSchedulerMixin, ConfigMixin):
         Args:
             state (`LMSDiscreteSchedulerState`): the `FlaxLMSDiscreteScheduler` state data class instance.
             model_output (`jnp.ndarray`): direct output from learned diffusion model.
-            timestep (`int`): current discrete timestep in the diffusion chain.
+            timestep (`int` or scalar array): value taken from `state.timesteps` at the current inference step (not the
+                inference step index; same convention as [`FlaxEulerDiscreteScheduler.step`]).
             sample (`jnp.ndarray`):
                 current instance of sample being created by diffusion process.
             order: coefficient for multi-step inference.
@@ -256,7 +263,10 @@ class FlaxLMSDiscreteScheduler(FlaxSchedulerMixin, ConfigMixin):
                 "Number of inference steps is 'None', you need to run 'set_timesteps' after creating the scheduler"
             )
 
-        sigma = state.sigmas[timestep]
+        (step_index,) = jnp.where(state.timesteps == timestep, size=1)
+        step_index = step_index[0]
+
+        sigma = state.sigmas[step_index]
 
         # 1. compute predicted original sample (x_0) from sigma-scaled predicted noise
         if self.config.prediction_type == "epsilon":
@@ -264,9 +274,11 @@ class FlaxLMSDiscreteScheduler(FlaxSchedulerMixin, ConfigMixin):
         elif self.config.prediction_type == "v_prediction":
             # * c_out + input * c_skip
             pred_original_sample = model_output * (-sigma / (sigma**2 + 1) ** 0.5) + (sample / (sigma**2 + 1))
+        elif self.config.prediction_type == "sample":
+            pred_original_sample = model_output
         else:
             raise ValueError(
-                f"prediction_type given as {self.config.prediction_type} must be one of `epsilon`, or `v_prediction`"
+                f"prediction_type given as {self.config.prediction_type} must be one of `epsilon`, `sample`, or `v_prediction`"
             )
 
         # 2. Convert to an ODE derivative
@@ -276,8 +288,9 @@ class FlaxLMSDiscreteScheduler(FlaxSchedulerMixin, ConfigMixin):
             state = state.replace(derivatives=jnp.delete(state.derivatives, 0))
 
         # 3. Compute linear multistep coefficients
-        order = min(timestep + 1, order)
-        lms_coeffs = [self.get_lms_coefficient(state, order, timestep, curr_order) for curr_order in range(order)]
+        idx = int(step_index)
+        order = min(idx + 1, order)
+        lms_coeffs = [self.get_lms_coefficient(state, order, idx, curr_order) for curr_order in range(order)]
 
         # 4. Compute previous sample based on the derivatives path
         prev_sample = sample + sum(
