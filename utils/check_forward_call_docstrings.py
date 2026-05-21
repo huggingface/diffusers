@@ -17,9 +17,11 @@ Check that arguments of ``forward()`` (for models) and ``__call__()`` (for
 pipelines) match the method's docstring exactly:
 
 * every signature argument has an entry in the ``Args:`` /
-  ``Arguments:`` / ``Parameters:`` section, and
+  ``Arguments:`` / ``Parameters:`` section,
 * every documented argument still exists in the signature
-  (stale entries from removed/renamed args are flagged).
+  (stale entries from removed/renamed args are flagged), and
+* when the method has a non-``None`` return annotation, the docstring has
+  a ``Returns:`` / ``Return:`` / ``Yields:`` section.
 
 A "main" class is detected via its base classes — models inherit from
 ``ModelMixin`` and pipelines inherit from ``DiffusionPipeline``. Only methods
@@ -98,6 +100,17 @@ def _find_method(class_def: ast.ClassDef, method_name: str) -> ast.FunctionDef |
     return None
 
 
+def _docstring_node(func: ast.FunctionDef | ast.AsyncFunctionDef) -> ast.Expr | None:
+    if (
+        func.body
+        and isinstance(func.body[0], ast.Expr)
+        and isinstance(func.body[0].value, ast.Constant)
+        and isinstance(func.body[0].value.value, str)
+    ):
+        return func.body[0]
+    return None
+
+
 def _signature_arg_names(func: ast.FunctionDef | ast.AsyncFunctionDef) -> list[str]:
     args = func.args
     collected: list[str] = []
@@ -106,6 +119,30 @@ def _signature_arg_names(func: ast.FunctionDef | ast.AsyncFunctionDef) -> list[s
             continue
         collected.append(a.arg)
     return collected
+
+
+def _has_meaningful_return(func: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
+    """True iff the method has a return annotation other than ``None`` or ``NoReturn``."""
+    ret = func.returns
+    if ret is None:  # no annotation at all
+        return False
+    if isinstance(ret, ast.Constant) and ret.value is None:  # `-> None`
+        return False
+    # `-> NoReturn` or `-> typing.NoReturn`
+    if isinstance(ret, ast.Name) and ret.id == "NoReturn":
+        return False
+    if isinstance(ret, ast.Attribute) and ret.attr == "NoReturn":
+        return False
+    return True
+
+
+def _has_returns_section(docstring: str | None) -> bool:
+    if not docstring:
+        return False
+    for line in docstring.splitlines():
+        if line.strip() in {"Returns:", "Return:", "Yields:", "Yield:"}:
+            return True
+    return False
 
 
 def _extract_documented_args(docstring: str | None) -> set[str]:
@@ -185,10 +222,9 @@ def check_file(path: Path, kind: str) -> list[str]:
         if method is None:
             continue
         sig_args = _signature_arg_names(method)
-        if not sig_args:
-            continue
         sig_set = set(sig_args)
-        documented = _extract_documented_args(ast.get_docstring(method))
+        docstring_text = ast.get_docstring(method)
+        documented = _extract_documented_args(docstring_text)
         missing = [a for a in sig_args if a not in documented]
         stale = sorted(documented - sig_set)
         if missing:
@@ -200,6 +236,17 @@ def check_file(path: Path, kind: str) -> list[str]:
             errors.append(
                 f"{rel}:{method.lineno}: {node.name}.{method_name} documents "
                 f"argument(s) not in the signature: {', '.join(stale)}"
+            )
+        if _has_meaningful_return(method) and not _has_returns_section(docstring_text):
+            return_repr = ast.unparse(method.returns)
+            ds = _docstring_node(method)
+            if ds is None:
+                where = " (method has no docstring)"
+            else:
+                where = f' (add it just above the closing """ on line {ds.end_lineno})'
+            errors.append(
+                f"{rel}:{method.lineno}: {node.name}.{method_name} returns "
+                f"`{return_repr}` but the docstring has no Returns: section{where}"
             )
     return errors
 
