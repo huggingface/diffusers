@@ -46,9 +46,12 @@ class FlowMapEulerDiscreteSchedulerTest(unittest.TestCase):
         scheduler = self.scheduler_class(**self.get_default_config())
         for nfe in [1, 2, 4, 8, 16]:
             scheduler.set_timesteps(num_inference_steps=nfe)
-            self.assertEqual(scheduler.timesteps.shape, (nfe + 1,))
+            # `timesteps` is N-length (mirrors FlowMatchEulerDiscreteScheduler); the final
+            # r-endpoint sigma=0 lives in the internal `sigmas` buffer of length N+1.
+            self.assertEqual(scheduler.timesteps.shape, (nfe,))
+            self.assertEqual(scheduler.sigmas.shape, (nfe + 1,))
             self.assertAlmostEqual(scheduler.timesteps[0].item(), 1000.0, places=4)
-            self.assertAlmostEqual(scheduler.timesteps[-1].item(), 0.0, places=4)
+            self.assertAlmostEqual(scheduler.sigmas[-1].item(), 0.0, places=4)
 
     def test_apply_shift_identity(self):
         scheduler = self.scheduler_class(**self.get_default_config(shift=1.0))
@@ -99,6 +102,8 @@ class FlowMapEulerDiscreteSchedulerTest(unittest.TestCase):
         # Flow-map promise: stepping straight from t=T to r=0 produces a clean sample in a single call.
         scheduler = self.scheduler_class(**self.get_default_config(shift=5.0))
         scheduler.set_timesteps(num_inference_steps=1)
+        # `timesteps` is N=1 (just t=T); r=0 comes from the schedule's terminal sigma.
+        # Pass r_timestep=None so step() resolves it via self.sigmas[-1] * num_train_timesteps.
         timesteps = scheduler.timesteps
 
         sample = torch.randn(1, 4, 4, 4)
@@ -108,7 +113,6 @@ class FlowMapEulerDiscreteSchedulerTest(unittest.TestCase):
             model_output,
             timesteps[0:1],
             sample,
-            r_timestep=timesteps[1:2],
         ).prev_sample
         self.assertEqual(prev_sample.shape, sample.shape)
         self.assertFalse(torch.allclose(prev_sample, sample))

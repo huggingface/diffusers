@@ -121,6 +121,22 @@ class TestAnyFlowFARTransformer3DTraining(AnyFlowFARTransformer3DTesterConfig, T
         expected_set = {"AnyFlowFARTransformer3DModel"}
         super().test_gradient_checkpointing_is_applied(expected_set=expected_set)
 
+    # FAR causal self-attention routes through `flex_attention`, whose backward kernel is
+    # GPU-only (`torch.nn.attention.flex_attention` raises NotImplementedError on CPU). The
+    # bidi transformer test file covers training on the SDPA path; FAR training correctness
+    # is exercised end-to-end on H200 via the pipeline replay (L2=0 against NVlabs/AnyFlow).
+    @unittest.skipIf(torch_device == "cpu", "FlexAttention has no CPU backward kernel.")
+    def test_training(self):
+        super().test_training()
+
+    @unittest.skipIf(torch_device == "cpu", "FlexAttention has no CPU backward kernel.")
+    def test_training_with_ema(self):
+        super().test_training_with_ema()
+
+    @unittest.skipIf(torch_device == "cpu", "FlexAttention has no CPU backward kernel.")
+    def test_gradient_checkpointing_equivalence(self, loss_tolerance=1e-5, param_grad_tol=5e-5, skip=None):
+        super().test_gradient_checkpointing_equivalence(loss_tolerance, param_grad_tol, skip)
+
 
 class TestAnyFlowFARTransformer3DAttention(AnyFlowFARTransformer3DTesterConfig, AttentionTesterMixin):
     """Attention processor tests for AnyFlow FAR Transformer 3D."""
