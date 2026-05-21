@@ -517,15 +517,19 @@ class ZImageControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrigi
 
     @classmethod
     def from_transformer(cls, controlnet, transformer):
+        import copy
+
         controlnet.t_scale = transformer.t_scale
-        controlnet.t_embedder = transformer.t_embedder
-        controlnet.all_x_embedder = transformer.all_x_embedder
-        controlnet.cap_embedder = transformer.cap_embedder
-        controlnet.rope_embedder = transformer.rope_embedder
-        controlnet.noise_refiner = transformer.noise_refiner
-        controlnet.context_refiner = transformer.context_refiner
-        controlnet.x_pad_token = transformer.x_pad_token
-        controlnet.cap_pad_token = transformer.cap_pad_token
+        # Use deep copies to avoid sharing references with the transformer.
+        # This ensures modifying controlnet weights won't affect the transformer.
+        controlnet.t_embedder = copy.deepcopy(transformer.t_embedder)
+        controlnet.all_x_embedder = copy.deepcopy(transformer.all_x_embedder)
+        controlnet.cap_embedder = copy.deepcopy(transformer.cap_embedder)
+        controlnet.rope_embedder = copy.deepcopy(transformer.rope_embedder)
+        controlnet.noise_refiner = copy.deepcopy(transformer.noise_refiner)
+        controlnet.context_refiner = copy.deepcopy(transformer.context_refiner)
+        controlnet.x_pad_token = copy.deepcopy(transformer.x_pad_token)
+        controlnet.cap_pad_token = copy.deepcopy(transformer.cap_pad_token)
         return controlnet
 
     @staticmethod
