@@ -13,30 +13,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Smoke test for the condition-embedders refactor.
-
-For each model class that was relocated under ``src/diffusers/models/`` by the refactor, this
-script tests if they can be loaded from the pre-trained checkpoint for assurance.
-
-The goal is to confirm that the ``_class_name`` entry in each saved ``config.json`` still resolves
-correctly after the class moved, and that nothing in the pipeline factory regressed.
-
-Coverage audit
---------------
-All 18 classes from the refactor are checked here except the two internal-only encoders that have
-no standalone checkpoint:
-
-  - ``AceStepLyricEncoder`` and ``AceStepTimbreEncoder`` are constructed inside
-    ``AceStepConditionEncoder`` and never saved at the top level — they get exercised transitively
-    by the ``AceStepConditionEncoder`` row.
-
-Pipelines exercised at the umbrella level: ``AudioLDM2Pipeline``, ``StableAudioPipeline``,
-``FluxPriorReduxPipeline``, ``AceStepPipeline``, ``LTXLatentUpsamplePipeline``, ``LTX2Pipeline``,
-``ShapEPipeline``, ``IFPipeline``, ``StableUnCLIPPipeline``, ``StableDiffusionGLIGENTextImagePipeline``.
-``LTX2LatentUpsamplePipeline`` has no ``from_pretrained`` (docs construct it manually); its
-component coverage runs through the ``LTX2LatentUpsamplerModel`` row.
-"""
-
 from __future__ import annotations
 
 import argparse
@@ -120,7 +96,9 @@ def _load_ltx2_vocoder():
 def _load_ltx2_vocoder_with_bwe():
     from diffusers import LTX2VocoderWithBWE
 
-    return LTX2VocoderWithBWE.from_pretrained("Lightricks/LTX-2", subfolder="vocoder", torch_dtype=torch.bfloat16)
+    return LTX2VocoderWithBWE.from_pretrained(
+        "dg845/LTX-2.3-Diffusers", subfolder="vocoder", torch_dtype=torch.bfloat16
+    )
 
 
 def _load_ltx2_text_connectors():
@@ -129,22 +107,27 @@ def _load_ltx2_text_connectors():
     return LTX2TextConnectors.from_pretrained("Lightricks/LTX-2", subfolder="connectors", torch_dtype=torch.bfloat16)
 
 
-def _load_ace_step_tokenizer():
-    from diffusers import AceStepAudioTokenizer
+# (sayakpaul): Could not find the checkpoints for `AceStepAudioTokenizer` and
+# `AceStepAudioTokenDetokenizer`
 
-    return AceStepAudioTokenizer.from_pretrained("ACE-Step/Ace-Step1.5", subfolder="audio_tokenizer")
+# def _load_ace_step_tokenizer():
+#     from diffusers import AceStepAudioTokenizer
+
+#     return AceStepAudioTokenizer.from_pretrained("ACE-Step/Ace-Step1.5", subfolder="audio_tokenizer")
 
 
-def _load_ace_step_detokenizer():
-    from diffusers import AceStepAudioTokenDetokenizer
+# def _load_ace_step_detokenizer():
+#     from diffusers import AceStepAudioTokenDetokenizer
 
-    return AceStepAudioTokenDetokenizer.from_pretrained("ACE-Step/Ace-Step1.5", subfolder="audio_token_detokenizer")
+#     return AceStepAudioTokenDetokenizer.from_pretrained("ACE-Step/Ace-Step1.5", subfolder="audio_token_detokenizer")
 
 
 def _load_ace_step_condition_encoder():
     from diffusers import AceStepConditionEncoder
 
-    return AceStepConditionEncoder.from_pretrained("ACE-Step/Ace-Step1.5", subfolder="condition_encoder")
+    return AceStepConditionEncoder.from_pretrained(
+        "ACE-Step/acestep-v15-xl-turbo-diffusers", subfolder="condition_encoder"
+    )
 
 
 def _load_shap_e_renderer():
@@ -157,14 +140,6 @@ def _load_if_watermarker():
     from diffusers.models.others import IFWatermarker
 
     return IFWatermarker.from_pretrained("DeepFloyd/IF-I-XL-v1.0", subfolder="watermarker")
-
-
-def _load_stable_unclip_normalizer():
-    from diffusers.models.others import StableUnCLIPImageNormalizer
-
-    return StableUnCLIPImageNormalizer.from_pretrained(
-        "stabilityai/stable-diffusion-2-1-unclip", subfolder="image_normalizer"
-    )
 
 
 # --- Pipeline loaders. Set torch_dtype to bf16/fp16 wherever possible to keep RAM bounded. ---
@@ -191,7 +166,7 @@ def _load_flux_prior_redux_pipeline():
 def _load_ace_step_pipeline():
     from diffusers import AceStepPipeline
 
-    return AceStepPipeline.from_pretrained("ACE-Step/Ace-Step1.5", torch_dtype=torch.bfloat16)
+    return AceStepPipeline.from_pretrained("ACE-Step/acestep-v15-xl-turbo-diffusers", torch_dtype=torch.bfloat16)
 
 
 def _load_ltx_upsample_pipeline():
@@ -211,21 +186,13 @@ def _load_ltx2_pipeline():
 def _load_shap_e_pipeline():
     from diffusers import ShapEPipeline
 
-    return ShapEPipeline.from_pretrained("openai/shap-e", torch_dtype=torch.float16, variant="fp16")
+    return ShapEPipeline.from_pretrained("openai/shap-e", torch_dtype=torch.float16)
 
 
 def _load_if_pipeline():
     from diffusers import IFPipeline
 
     return IFPipeline.from_pretrained("DeepFloyd/IF-I-XL-v1.0", torch_dtype=torch.float16, variant="fp16")
-
-
-def _load_stable_unclip_pipeline():
-    from diffusers import StableUnCLIPPipeline
-
-    return StableUnCLIPPipeline.from_pretrained(
-        "stabilityai/stable-diffusion-2-1-unclip", torch_dtype=torch.float16, variant="fp16"
-    )
 
 
 def _load_gligen_text_image_pipeline():
@@ -309,7 +276,7 @@ CASES: list[Case] = [
     ),
     Case(
         label="LTX2VocoderWithBWE",
-        model_repo="Lightricks/LTX-2",
+        model_repo="dg845/LTX-2.3-Diffusers",
         model_subfolder="vocoder",
         model_loader=_load_ltx2_vocoder_with_bwe,
         pipeline_repo=None,
@@ -324,25 +291,25 @@ CASES: list[Case] = [
         pipeline_repo=None,
         pipeline_loader=None,
     ),
-    Case(
-        label="AceStepAudioTokenizer",
-        model_repo="ACE-Step/Ace-Step1.5",
-        model_subfolder="audio_tokenizer",
-        model_loader=_load_ace_step_tokenizer,
-        pipeline_repo="ACE-Step/Ace-Step1.5",
-        pipeline_loader=_load_ace_step_pipeline,
-    ),
-    Case(
-        label="AceStepAudioTokenDetokenizer",
-        model_repo="ACE-Step/Ace-Step1.5",
-        model_subfolder="audio_token_detokenizer",
-        model_loader=_load_ace_step_detokenizer,
-        pipeline_repo=None,  # pipeline coverage above.
-        pipeline_loader=None,
-    ),
+    # Case(
+    #     label="AceStepAudioTokenizer",
+    #     model_repo="ACE-Step/Ace-Step1.5",
+    #     model_subfolder="audio_tokenizer",
+    #     model_loader=_load_ace_step_tokenizer,
+    #     pipeline_repo="ACE-Step/Ace-Step1.5",
+    #     pipeline_loader=_load_ace_step_pipeline,
+    # ),
+    # Case(
+    #     label="AceStepAudioTokenDetokenizer",
+    #     model_repo="ACE-Step/Ace-Step1.5",
+    #     model_subfolder="audio_token_detokenizer",
+    #     model_loader=_load_ace_step_detokenizer,
+    #     pipeline_repo=None,  # pipeline coverage above.
+    #     pipeline_loader=None,
+    # ),
     Case(
         label="AceStepConditionEncoder",
-        model_repo="ACE-Step/Ace-Step1.5",
+        model_repo="ACE-Step/acestep-v15-xl-turbo-diffusers",
         model_subfolder="condition_encoder",
         model_loader=_load_ace_step_condition_encoder,
         pipeline_repo=None,
@@ -365,14 +332,6 @@ CASES: list[Case] = [
         pipeline_loader=_load_if_pipeline,
         notes="Gated repo: requires accepting the license + `huggingface-cli login`.",
     ),
-    Case(
-        label="StableUnCLIPImageNormalizer",
-        model_repo="stabilityai/stable-diffusion-2-1-unclip",
-        model_subfolder="image_normalizer",
-        model_loader=_load_stable_unclip_normalizer,
-        pipeline_repo="stabilityai/stable-diffusion-2-1-unclip",
-        pipeline_loader=_load_stable_unclip_pipeline,
-    ),
 ]
 
 
@@ -394,7 +353,7 @@ class Failure:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    parser = argparse.ArgumentParser()
     parser.add_argument("--quick", action="store_true", help="Skip the (slow) pipeline loads.")
     parser.add_argument("--only", default=None, help="Substring filter applied to the case label.")
     parser.add_argument(

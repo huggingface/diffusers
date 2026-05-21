@@ -22,6 +22,8 @@ class IFSafetyChecker(PreTrainedModel):
         self.p_head = nn.Linear(config.vision_config.projection_dim, 1)
         self.w_head = nn.Linear(config.vision_config.projection_dim, 1)
 
+        self.post_init()
+
     @torch.no_grad()
     def forward(self, clip_input, images, p_threshold=0.5, w_threshold=0.5):
         image_embeds = self.vision_model(clip_input)[0]
