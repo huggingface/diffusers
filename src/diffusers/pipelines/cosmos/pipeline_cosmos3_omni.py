@@ -131,11 +131,11 @@ class ModalityData:
 class PackedSequence:
     """Unified sequence container - works as builder during packing and final output."""
 
-    # Sequence structure
-    sample_lens: list[int] = field(default_factory=list)
-    split_lens: list[int] = field(default_factory=list)
-    attn_modes: list[str] = field(default_factory=list)
+    # Sequence structure (we only support a single sample with fixed text+vision+sound layout,
+    # so sequence_length holds the full packed length and und_len is the causal-text prefix length
+    # used to split off the "understanding" stream from "generation" inside the transformer call).
     sequence_length: int = 0
+    und_len: int = 0
 
     # Build-time tracking
     curr: int = 0
@@ -156,11 +156,6 @@ class PackedSequence:
 
     def finalize(self) -> "PackedSequence":
         """Convert all lists to tensors and compute derived values."""
-        sequence_length = sum(self.sample_lens)
-        sample_lens = self.sample_lens.copy()
-        split_lens = self.split_lens.copy()
-        attn_modes = self.attn_modes.copy()
-
         vision: ModalityData | None = None
         if self.vision is not None and len(self.vision.sequence_indexes) > 0:
             vision = ModalityData(
@@ -192,10 +187,8 @@ class PackedSequence:
             position_ids = torch.tensor(self.position_ids)  # [seq_len]
 
         return PackedSequence(
-            sequence_length=sequence_length,
-            sample_lens=sample_lens,
-            split_lens=split_lens,
-            attn_modes=attn_modes,
+            sequence_length=self.sequence_length,
+            und_len=self.und_len,
             text_ids=torch.tensor(self.text_ids, dtype=torch.long),
             text_indexes=torch.tensor(self.text_indexes, dtype=torch.long),
             position_ids=position_ids,
@@ -290,8 +283,7 @@ def _pack_text_tokens(
         packed_seq.position_ids.append(text_mrope_ids)
     else:
         packed_seq.position_ids.extend(range(curr_rope_id, curr_rope_id + split_len))
-    packed_seq.attn_modes.append("causal")
-    packed_seq.split_lens.append(split_len)
+    packed_seq.und_len = split_len
 
     packed_seq.curr = curr
     return curr_rope_id + split_len, split_len, split_len
@@ -588,10 +580,7 @@ def pack_input_sequence(
         eov_len = 1
         sample_len += 1
 
-    combined_split_len = vision_split_len + sound_split_len + eov_len
-    packed_seq.attn_modes.append("full")
-    packed_seq.split_lens.append(combined_split_len)
-    packed_seq.sample_lens.append(sample_len)
+    packed_seq.sequence_length = sample_len
 
     return packed_seq.finalize()
 
@@ -1738,7 +1727,7 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
                 if noise_x_sound is not None:
                     self.encode_sound_tokens(timestep_scale, packed_seq, hidden_states, target_dtype)
 
-                und_len = packed_seq.split_lens[0]
+                und_len = packed_seq.und_len
                 und_out, gen_out = self.transformer(
                     hidden_states[:und_len], hidden_states[und_len:], position_ids=packed_seq.position_ids
                 )
@@ -1796,7 +1785,7 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
                 if noise_x_sound is not None:
                     self.encode_sound_tokens(timestep_scale, packed_seq, hidden_states, target_dtype)
 
-                und_len = packed_seq.split_lens[0]
+                und_len = packed_seq.und_len
                 und_out, gen_out = self.transformer(
                     hidden_states[:und_len], hidden_states[und_len:], position_ids=packed_seq.position_ids
                 )
