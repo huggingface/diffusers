@@ -850,12 +850,12 @@ class EMAModel:
             raise RuntimeError("This ExponentialMovingAverage has no `store()`ed weights to `restore()`")
         if self.foreach:
             torch._foreach_copy_(
-                [param.data for param in parameters], [c_param.data for c_param in self.temp_stored_params]
+                [param.data for param in parameters],
+                [c_param.to(param.device).data for c_param, param in zip(self.temp_stored_params, parameters)],
             )
         else:
             for c_param, param in zip(self.temp_stored_params, parameters):
                 param.data.copy_(c_param.data)
-
         # Better memory-wise.
         self.temp_stored_params = None
 
