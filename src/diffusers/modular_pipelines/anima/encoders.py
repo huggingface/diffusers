@@ -101,7 +101,9 @@ class AnimaTextEncoderStep(ModularPipelineBlocks):
         if not isinstance(block_state.prompt, str) and not isinstance(block_state.prompt, list):
             raise ValueError(f"`prompt` has to be of type `str` or `list` but is {type(block_state.prompt)}")
         if block_state.max_sequence_length is not None and block_state.max_sequence_length > 4096:
-            raise ValueError(f"`max_sequence_length` cannot be greater than 4096 but is {block_state.max_sequence_length}")
+            raise ValueError(
+                f"`max_sequence_length` cannot be greater than 4096 but is {block_state.max_sequence_length}"
+            )
 
     @staticmethod
     def _get_qwen_prompt_embeds(

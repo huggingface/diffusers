@@ -284,7 +284,9 @@ if __name__ == "__main__":
     dtype = DTYPE_MAPPING[args.dtype]
 
     raw_transformer_state_dict = load_file(args.transformer_ckpt_path, device="cpu")
-    transformer_state_dict, text_conditioner_state_dict = split_anima_transformer_checkpoint(raw_transformer_state_dict)
+    transformer_state_dict, text_conditioner_state_dict = split_anima_transformer_checkpoint(
+        raw_transformer_state_dict
+    )
     transformer = convert_transformer(
         "Cosmos-2.0-Diffusion-2B-Text2Image", state_dict=transformer_state_dict, weights_only=True
     ).to(dtype=dtype)

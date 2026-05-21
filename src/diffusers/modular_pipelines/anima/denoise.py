@@ -124,8 +124,7 @@ class AnimaLoopDenoiser(ModularPipelineBlocks):
         for guider_state_batch in guider_state:
             components.guider.prepare_models(components.transformer)
             cond_kwargs = {
-                key: getattr(guider_state_batch, key).to(block_state.dtype)
-                for key in self._guider_input_fields.keys()
+                key: getattr(guider_state_batch, key).to(block_state.dtype) for key in self._guider_input_fields.keys()
             }
             guider_state_batch.noise_pred = components.transformer(
                 hidden_states=block_state.latent_model_input,
@@ -202,9 +201,7 @@ class AnimaDenoiseLoopWrapper(LoopSequentialPipelineBlocks):
 class AnimaDenoiseStep(AnimaDenoiseLoopWrapper):
     block_classes = [
         AnimaLoopBeforeDenoiser,
-        AnimaLoopDenoiser(
-            guider_input_fields={"encoder_hidden_states": ("prompt_embeds", "negative_prompt_embeds")}
-        ),
+        AnimaLoopDenoiser(guider_input_fields={"encoder_hidden_states": ("prompt_embeds", "negative_prompt_embeds")}),
         AnimaLoopAfterDenoiser,
     ]
     block_names = ["before_denoiser", "denoiser", "after_denoiser"]

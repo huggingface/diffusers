@@ -31,10 +31,8 @@ class AnimaCoreDenoiseStep(SequentialPipelineBlocks):
     Denoise block that takes encoded Anima text inputs and runs the denoising process.
 
       Components:
-          text_conditioner (`AnimaTextConditioner`)
-          transformer (`CosmosTransformer3DModel`)
-          scheduler (`FlowMatchEulerDiscreteScheduler`)
-          guider (`ClassifierFreeGuidance`)
+          text_conditioner (`AnimaTextConditioner`) transformer (`CosmosTransformer3DModel`) scheduler
+          (`FlowMatchEulerDiscreteScheduler`) guider (`ClassifierFreeGuidance`)
 
       Inputs:
           num_images_per_prompt (`int`, *optional*, defaults to 1):
@@ -99,8 +97,7 @@ class AnimaDecodeStep(SequentialPipelineBlocks):
     Decode Anima latents into generated images.
 
       Components:
-          vae (`AutoencoderKLQwenImage`)
-          image_processor (`VaeImageProcessor`)
+          vae (`AutoencoderKLQwenImage`) image_processor (`VaeImageProcessor`)
 
       Inputs:
           latents (`Tensor`):
@@ -134,15 +131,9 @@ class AnimaAutoBlocks(SequentialPipelineBlocks):
         - `text2image`: requires `prompt`
 
       Components:
-          text_encoder (`Qwen3Model`)
-          tokenizer (`Qwen2Tokenizer`)
-          t5_tokenizer (`T5Tokenizer`)
-          text_conditioner (`AnimaTextConditioner`)
-          guider (`ClassifierFreeGuidance`)
-          transformer (`CosmosTransformer3DModel`)
-          scheduler (`FlowMatchEulerDiscreteScheduler`)
-          vae (`AutoencoderKLQwenImage`)
-          image_processor (`VaeImageProcessor`)
+          text_encoder (`Qwen3Model`) tokenizer (`Qwen2Tokenizer`) t5_tokenizer (`T5Tokenizer`) text_conditioner
+          (`AnimaTextConditioner`) guider (`ClassifierFreeGuidance`) transformer (`CosmosTransformer3DModel`) scheduler
+          (`FlowMatchEulerDiscreteScheduler`) vae (`AutoencoderKLQwenImage`) image_processor (`VaeImageProcessor`)
 
       Inputs:
           prompt (`str`):

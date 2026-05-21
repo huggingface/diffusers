@@ -450,6 +450,8 @@ except OptionalDependencyNotAvailable:
 else:
     _import_structure["modular_pipelines"].extend(
         [
+            "AnimaAutoBlocks",
+            "AnimaModularPipeline",
             "ErnieImageAutoBlocks",
             "ErnieImageModularPipeline",
             "Flux2AutoBlocks",
@@ -480,8 +482,6 @@ else:
             "QwenImageLayeredAutoBlocks",
             "QwenImageLayeredModularPipeline",
             "QwenImageModularPipeline",
-            "AnimaAutoBlocks",
-            "AnimaModularPipeline",
             "StableDiffusion3AutoBlocks",
             "StableDiffusion3ModularPipeline",
             "StableDiffusionXLAutoBlocks",
