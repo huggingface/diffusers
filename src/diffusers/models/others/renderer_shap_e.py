@@ -21,7 +21,6 @@ import torch.nn.functional as F
 from torch import nn
 
 from ...configuration_utils import ConfigMixin, register_to_config
-from ...pipelines.shap_e.camera import create_pan_cameras
 from ...utils import BaseOutput
 from .. import ModelMixin
 
@@ -940,6 +939,11 @@ class ShapERenderer(ModelMixin, ConfigMixin):
                 param.copy_(projected_params[f"nerstf.{name}"].squeeze(0))
 
         # create cameras object
+        # Deferred import: `camera.py` lives under `pipelines/shap_e/`, and a top-level import here
+        # would trigger a circular import when `diffusers.models` is loaded before `diffusers.pipelines`
+        # (e.g. under DIFFUSERS_SLOW_IMPORT used by the docs build).
+        from ...pipelines.shap_e.camera import create_pan_cameras
+
         camera = create_pan_cameras(size)
         rays = camera.camera_rays
         rays = rays.to(device)
