@@ -20,13 +20,14 @@ import unittest
 import torch
 from transformers import AutoTokenizer, Qwen3Config, Qwen3Model
 
-from diffusers import AutoencoderOobleck, FlowMatchEulerDiscreteScheduler
-from diffusers.models.transformers.ace_step_transformer import AceStepTransformer1DModel
-from diffusers.pipelines.ace_step import (
+from diffusers import (
     AceStepAudioTokenDetokenizer,
     AceStepAudioTokenizer,
     AceStepConditionEncoder,
     AceStepPipeline,
+    AceStepTransformer1DModel,
+    AutoencoderOobleck,
+    FlowMatchEulerDiscreteScheduler,
 )
 
 from ...testing_utils import enable_full_determinism
