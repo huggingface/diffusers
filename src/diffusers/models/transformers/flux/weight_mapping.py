@@ -129,9 +129,9 @@ def _get_inner_dim(state_dict: dict[str, torch.Tensor]) -> int:
 def _apply_transforms(state_dict, transforms, rename_patterns, **ctx):
     """Drive a forward state-dict conversion from a list of ``(source, targets, forward_fn)`` entries.
 
-    For each key in ``state_dict``: scan ``transforms``; the first entry whose ``source`` substring matches
-    expands the value via ``forward_fn(value, **ctx)`` into one tensor per target, each at a key derived by
-    ``key.replace(source, target)`` then ``rename_patterns``. Keys that match no transform are just renamed.
+    For each key in ``state_dict``: scan ``transforms``; the first entry whose ``source`` substring matches expands the
+    value via ``forward_fn(value, **ctx)`` into one tensor per target, each at a key derived by ``key.replace(source,
+    target)`` then ``rename_patterns``. Keys that match no transform are just renamed.
     """
     out = {}
     for key, value in state_dict.items():
@@ -144,6 +144,7 @@ def _apply_transforms(state_dict, transforms, rename_patterns, **ctx):
                 break
         else:
             out[WeightMappingHandler.rename_key(key, rename_patterns)] = value
+
     return out
 
 

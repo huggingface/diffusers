@@ -15,8 +15,8 @@
 
 Generic orchestration (set processors, build ``MultiIPAdapterImageProjection``, flip ``encoder_hid_dim_type``) lives on
 :class:`IPAdapterModelMixin`. Per-model conversion lives in an :class:`IPAdapterHandler` declared next to the model
-(e.g. ``flux/ip_adapter.py`` exports ``FLUX_IP_ADAPTER``), assigned to the model class as
-``_ip_adapter = FLUX_IP_ADAPTER``.
+(e.g. ``flux/ip_adapter.py`` exports ``FLUX_IP_ADAPTER``), assigned to the model class as ``_ip_adapter =
+FLUX_IP_ADAPTER``.
 """
 
 from dataclasses import dataclass
@@ -36,8 +36,9 @@ logger = logging.get_logger(__name__)
 class IPAdapterHandler:
     """Composition-style holder for a model class's IP-Adapter conversion callables.
 
-    Attached as the ``_ip_adapter`` class attribute on :class:`IPAdapterModelMixin` (overridden per-model). The converter callables receive the
-    model instance because they need to read its config (``attn_processors``, ``inner_dim``, etc.).
+    Attached as the ``_ip_adapter`` class attribute on :class:`IPAdapterModelMixin` (overridden per-model). The
+    converter callables receive the model instance because they need to read its config (``attn_processors``,
+    ``inner_dim``, etc.).
 
     Attributes:
         convert_attn_to_diffusers_fn:
@@ -124,9 +125,7 @@ class IPAdapterModelMixin:
 
         self.encoder_hid_proj = None
 
-        attn_procs = self._ip_adapter.convert_attn_processors(
-            self, state_dicts, low_cpu_mem_usage=low_cpu_mem_usage
-        )
+        attn_procs = self._ip_adapter.convert_attn_processors(self, state_dicts, low_cpu_mem_usage=low_cpu_mem_usage)
         self.set_attn_processor(attn_procs)
 
         image_projection_layers = []

@@ -108,9 +108,9 @@ def _normalize_lora_suffixes(state_dict: Dict[str, "torch.Tensor"]) -> Dict[str,
 class LoRAHandler:
     """Composition-style holder for a model class's LoRA conversion configuration.
 
-    Attached as the ``_lora`` class attribute on :class:`LoRAModelMixin` (overridden per-model). Holds the per-model foreign-format
-    conversion data. Public conversion utilities (``normalize_lora_suffixes``, ``detect_lora_format``) live on
-    :class:`LoRAModelMixin` and read from this handler.
+    Attached as the ``_lora`` class attribute on :class:`LoRAModelMixin` (overridden per-model). Holds the per-model
+    foreign-format conversion data. Public conversion utilities (``normalize_lora_suffixes``, ``detect_lora_format``)
+    live on :class:`LoRAModelMixin` and read from this handler.
 
     Attributes:
         format_keys: Map of format name (``"kohya"``, ``"xlabs"``, ...) to identifying key substrings. The first
@@ -398,8 +398,8 @@ class LoRAModelMixin:
     / hotswap) plus foreign-format conversion (kohya / xlabs / bfl / kontext / etc.) into diffusers naming.
 
     Per-model conversion knobs live in a :class:`LoRAHandler` declared in the model's ``lora.py`` (e.g. ``FLUX_LORA``)
-    and assigned to the model class as ``_lora = FLUX_LORA``. The default no-op handler just
-    normalizes ``.lora_down/.lora_up`` → ``.lora_A/.lora_B`` suffixes and returns the state dict unchanged.
+    and assigned to the model class as ``_lora = FLUX_LORA``. The default no-op handler just normalizes
+    ``.lora_down/.lora_up`` → ``.lora_A/.lora_B`` suffixes and returns the state dict unchanged.
 
     Install the latest version of PEFT, and use this mixin to:
 

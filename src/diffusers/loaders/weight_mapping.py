@@ -42,14 +42,13 @@ PREFIXES_TO_REMOVE: list[str] = [
 class WeightMappingHandler:
     """Composition-style holder for a model class's weight-mapping configuration and helpers.
 
-    Attached as the ``_weight_mapping`` class attribute on :class:`ModelMixin` (overridden per-model). Owns all
-    the data (available configs, prefixes, rename patterns, converter callables) and all the methods (rename,
-    detect, normalize) for single-file checkpoint loading. Internal callers reach it via ``cls._weight_mapping.X``.
+    Attached as the ``_weight_mapping`` class attribute on :class:`ModelMixin` (overridden per-model). Owns all the
+    data (available configs, prefixes, rename patterns, converter callables) and all the methods (rename, detect,
+    normalize) for single-file checkpoint loading. Internal callers reach it via ``cls._weight_mapping.X``.
 
     Attributes:
         original_format_keys: Distinctive keys whose presence indicates the state_dict is in the original
-            (pre-diffusers) format. Used by :meth:`is_original_format` to decide whether key conversion is
-            needed.
+            (pre-diffusers) format. Used by :meth:`is_original_format` to decide whether key conversion is needed.
         prefixes_to_remove: Foreign prefixes (e.g. ``["model.diffusion_model."]``) the handler will strip via
             :meth:`normalize_state_dict_keys`. Defaults to the shared :data:`PREFIXES_TO_REMOVE` list — most models
             only need that. Extend it for family-specific wrappers; prefix-only models can rely on the default and skip
@@ -100,9 +99,9 @@ class WeightMappingHandler:
     def is_original_format(self, state_dict: dict) -> bool:
         """Check if state_dict is in the original (pre-diffusers) format by presence of a known marker key.
 
-        Returns ``True`` only when a registered ``original_format_keys`` entry is observed in the state_dict.
-        Returning ``False`` means "no positive evidence of original format" — empty / unrelated / unknown
-        state_dicts all fall here. Callers treat ``False`` as "proceed with diffusers-native keys."
+        Returns ``True`` only when a registered ``original_format_keys`` entry is observed in the state_dict. Returning
+        ``False`` means "no positive evidence of original format" — empty / unrelated / unknown state_dicts all fall
+        here. Callers treat ``False`` as "proceed with diffusers-native keys."
         """
         if not self.original_format_keys:
             return False

@@ -245,9 +245,9 @@ class ModelMetadata:
     """Read-only snapshot of a model class's capabilities.
 
     Constructed by :meth:`ModelMixin.metadata`, which walks ``cls.__mro__`` collecting rows from each mixin's
-    ``_metadata`` classmethod. Purely a display object — printing it renders a formatted table.
-    Programmatic handler access (``model._lora``, ``model._weight_mapping``, ``model._ip_adapter``) goes
-    through the class attributes directly.
+    ``_metadata`` classmethod. Purely a display object — printing it renders a formatted table. Programmatic handler
+    access (``model._lora``, ``model._weight_mapping``, ``model._ip_adapter``) goes through the class attributes
+    directly.
 
     ``rows`` maps a capability label to ``(value, description, docs_url)``. ``verbose=True`` (via
     ``Model.metadata(verbose=True)``) renders the description and docs link under each row.
@@ -285,8 +285,8 @@ def register_metadata(metadata):
     by :class:`~diffusers.hooks._helpers.TransformerBlockMetadata` to register block-level metadata into
     :class:`TransformerBlockRegistry`::
 
-        @register_metadata(TransformerBlockMetadata(return_hidden_states_index=1, ...))
-        class FluxTransformerBlock(nn.Module):
+        @register_metadata(TransformerBlockMetadata(return_hidden_states_index=1, ...)) class
+        FluxTransformerBlock(nn.Module):
             ...
 
     Model-level capabilities are declared as plain class attributes on :class:`ModelMixin` (and the appropriate
@@ -338,9 +338,8 @@ class ModelMixin(torch.nn.Module, ConfigMixin, LoRAModelMixin, PushToHubMixin):
     def _metadata(cls) -> dict[str, tuple[str, str, str]]:
         """Return ``ModelMixin``-level rows for the metadata snapshot.
 
-        Each row is keyed by capability label and maps to ``(value, description, docs_url)``. Only present
-        capabilities are returned. See :meth:`metadata` for the aggregated view across all mixins in
-        ``cls.__mro__``.
+        Each row is keyed by capability label and maps to ``(value, description, docs_url)``. Only present capabilities
+        are returned. See :meth:`metadata` for the aggregated view across all mixins in ``cls.__mro__``.
         """
         rows: dict[str, tuple[str, str, str]] = {}
         if cls._supports_gradient_checkpointing:
@@ -397,12 +396,12 @@ class ModelMixin(torch.nn.Module, ConfigMixin, LoRAModelMixin, PushToHubMixin):
     def metadata(cls, verbose: bool = False) -> "ModelMetadata":
         """Return a read-only snapshot of this class's capabilities.
 
-        Walks ``cls.__mro__`` and merges rows from each ancestor class's own ``_metadata`` classmethod
-        (handled via direct ``__dict__`` lookup so the aggregator never recurses into itself). First-seen
-        wins on label collisions; this puts the model's own overrides ahead of inherited defaults.
+        Walks ``cls.__mro__`` and merges rows from each ancestor class's own ``_metadata`` classmethod (handled via
+        direct ``__dict__`` lookup so the aggregator never recurses into itself). First-seen wins on label collisions;
+        this puts the model's own overrides ahead of inherited defaults.
 
-        ``print(Model.metadata())`` shows the formatted table. Pass ``verbose=True`` to render each row with
-        a description and a link to the relevant docs section.
+        ``print(Model.metadata())`` shows the formatted table. Pass ``verbose=True`` to render each row with a
+        description and a link to the relevant docs section.
         """
         merged: dict[str, tuple[str, str, str]] = {}
         for klass in cls.__mro__:
