@@ -265,10 +265,15 @@ class AnyFlowPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         width,
         prompt_embeds=None,
         negative_prompt_embeds=None,
+        video=None,
+        video_latents=None,
         callback_on_step_end_tensor_inputs=None,
     ):
         if height % 16 != 0 or width % 16 != 0:
             raise ValueError(f"`height` and `width` have to be divisible by 16 but are {height} and {width}.")
+
+        if video is not None and video_latents is not None:
+            raise ValueError("Provide either `video` or `video_latents`, not both.")
 
         if callback_on_step_end_tensor_inputs is not None and not all(
             k in self._callback_tensor_inputs for k in callback_on_step_end_tensor_inputs
@@ -476,7 +481,9 @@ class AnyFlowPipeline(DiffusionPipeline, WanLoraLoaderMixin):
             width,
             prompt_embeds,
             negative_prompt_embeds,
-            callback_on_step_end_tensor_inputs,
+            video=video,
+            video_latents=video_latents,
+            callback_on_step_end_tensor_inputs=callback_on_step_end_tensor_inputs,
         )
 
         if num_frames % self.vae_scale_factor_temporal != 1:
@@ -535,8 +542,6 @@ class AnyFlowPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         init_latents = init_latents.permute(0, 2, 1, 3, 4).to(transformer_dtype)
 
         # 6. Encode conditioning frames (or accept pre-encoded latents).
-        if video is not None and video_latents is not None:
-            raise ValueError("Provide either `video` or `video_latents`, not both.")
         if video is not None:
             video_latents = self.encode_video(video, height=height, width=width)
         context_length = video_latents.shape[1] if video_latents is not None else 0

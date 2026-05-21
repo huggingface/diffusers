@@ -124,24 +124,39 @@ class FlowMapEulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
         self.sigmas = sigmas.to(device=device, dtype=out_dtype)
         self.timesteps = (self.sigmas[:-1] * self.config.num_train_timesteps).to(device=device, dtype=out_dtype)
 
+    def index_for_timestep(self, timestep: Union[float, torch.FloatTensor]) -> Optional[int]:
+        """Return the index of ``timestep`` on the current schedule, or ``None`` if off-schedule.
+
+        Lookup is done against ``self.timesteps`` with a small fp tolerance. Used to recover the corresponding sigma
+        without assuming the linear ``timesteps = sigmas * num_train_timesteps`` relationship — that way a custom
+        schedule (e.g. non-linear shift, manually-set timesteps) still resolves correctly.
+        """
+        if self.timesteps is None:
+            return None
+        t_value = float(timestep.flatten()[0].item()) if torch.is_tensor(timestep) else float(timestep)
+        diffs = (self.timesteps.float() - t_value).abs()
+        idx = int(diffs.argmin().item())
+        if diffs[idx].item() > 1e-3:
+            return None
+        return idx
+
     def _resolve_next_timestep(
         self, timestep: Union[float, torch.FloatTensor], device: torch.device
     ) -> torch.FloatTensor:
         """Look up the next timestep on the current schedule for the given ``timestep``.
 
-        Used when ``r_timestep`` is omitted from :meth:`step`. Matches against ``self.timesteps`` and returns
-        ``sigmas[i + 1] * num_train_timesteps``. Raises ``ValueError`` if ``timestep`` is not on the schedule (within a
-        small fp tolerance) — in that case the caller must pass ``r_timestep`` explicitly.
+        Used when ``r_timestep`` is omitted from :meth:`step`. Matches against ``self.timesteps`` via
+        :meth:`index_for_timestep` and returns ``sigmas[i + 1] * num_train_timesteps``. Raises ``ValueError`` if
+        ``timestep`` is not on the schedule — in that case the caller must pass ``r_timestep`` explicitly.
         """
         if self.sigmas is None or self.timesteps is None:
             raise ValueError(
                 "`r_timestep` is None and `set_timesteps` has not been called; "
                 "call `set_timesteps` first or pass an explicit `r_timestep`."
             )
-        t_value = float(timestep.flatten()[0].item()) if torch.is_tensor(timestep) else float(timestep)
-        diffs = (self.timesteps.float() - t_value).abs()
-        idx = int(diffs.argmin().item())
-        if diffs[idx].item() > 1e-3:  # not on the schedule
+        idx = self.index_for_timestep(timestep)
+        if idx is None:
+            t_value = float(timestep.flatten()[0].item()) if torch.is_tensor(timestep) else float(timestep)
             raise ValueError(
                 f"`r_timestep` is None but `timestep={t_value}` is not on the current schedule; "
                 "pass an explicit `r_timestep` for any-step sampling outside the schedule."
@@ -165,6 +180,12 @@ class FlowMapEulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
         one-shot generation). When ``r_timestep`` is omitted, it defaults to the next timestep on the schedule
         (matching ``FlowMatchEulerDiscreteScheduler`` semantics).
 
+        Internally the source and target sigmas are recovered by indexing ``self.sigmas`` via
+        :meth:`index_for_timestep` rather than by dividing the input timesteps by ``num_train_timesteps``, so any
+        schedule whose timestep / sigma relationship is non-linear (for example a custom shift) stays correct. For an
+        off-schedule ``r_timestep``, the scheduler falls back to ``r_timestep / num_train_timesteps`` so any-step
+        sampling outside the schedule remains supported.
+
         Args:
             model_output (`torch.Tensor`):
                 Direct output from the flow-map model (predicted mean velocity).
@@ -183,13 +204,37 @@ class FlowMapEulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
                 When ``return_dict=True``, returns a [`FlowMapEulerDiscreteSchedulerOutput`] whose ``prev_sample`` is
                 :math:`z_r`. Otherwise returns a 1-tuple ``(prev_sample,)``.
         """
+        if self.sigmas is None or self.timesteps is None:
+            raise ValueError("`set_timesteps` has not been called.")
+
+        # Resolve source sigma via index lookup; fall back to / num_train_timesteps only if `timestep` is off-schedule.
+        t_idx = self.index_for_timestep(timestep)
+        if t_idx is not None:
+            sigma_t = self.sigmas[t_idx].to(device=sample.device, dtype=self.sigmas.dtype)
+        else:
+            t_value = timestep.to(self.sigmas.dtype) if torch.is_tensor(timestep) else torch.tensor(timestep)
+            sigma_t = (t_value / self.config.num_train_timesteps).to(device=sample.device, dtype=self.sigmas.dtype)
+
+        # Resolve target sigma. None defaults to sigmas[t_idx + 1] when on-schedule; otherwise the caller's
+        # explicit `r_timestep` is used (sigma lookup first, fall back to scaling for off-schedule any-step).
         if r_timestep is None:
-            r_timestep = self._resolve_next_timestep(timestep, device=sample.device)
-        timestep = timestep / self.config.num_train_timesteps
-        r_timestep = r_timestep / self.config.num_train_timesteps
-        timestep = timestep.view(*timestep.shape, *([1] * (model_output.ndim - timestep.ndim)))
-        r_timestep = r_timestep.view(*r_timestep.shape, *([1] * (model_output.ndim - r_timestep.ndim)))
-        prev_sample = sample - (timestep - r_timestep) * model_output
+            if t_idx is None:
+                raise ValueError(
+                    "`r_timestep` is None but `timestep` is not on the current schedule; "
+                    "pass an explicit `r_timestep` for any-step sampling outside the schedule."
+                )
+            sigma_r = self.sigmas[t_idx + 1].to(device=sample.device, dtype=self.sigmas.dtype)
+        else:
+            r_idx = self.index_for_timestep(r_timestep)
+            if r_idx is not None:
+                sigma_r = self.sigmas[r_idx].to(device=sample.device, dtype=self.sigmas.dtype)
+            else:
+                r_value = r_timestep.to(self.sigmas.dtype) if torch.is_tensor(r_timestep) else torch.tensor(r_timestep)
+                sigma_r = (r_value / self.config.num_train_timesteps).to(device=sample.device, dtype=self.sigmas.dtype)
+
+        sigma_t = sigma_t.view(*sigma_t.shape, *([1] * (model_output.ndim - sigma_t.ndim)))
+        sigma_r = sigma_r.view(*sigma_r.shape, *([1] * (model_output.ndim - sigma_r.ndim)))
+        prev_sample = sample - (sigma_t - sigma_r) * model_output
         prev_sample = prev_sample.to(model_output.dtype)
 
         if not return_dict:

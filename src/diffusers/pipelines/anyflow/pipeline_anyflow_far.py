@@ -288,10 +288,17 @@ class AnyFlowFARPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         width,
         prompt_embeds=None,
         negative_prompt_embeds=None,
+        video=None,
+        video_latents=None,
         callback_on_step_end_tensor_inputs=None,
     ):
         if height % 16 != 0 or width % 16 != 0:
             raise ValueError(f"`height` and `width` have to be divisible by 16 but are {height} and {width}.")
+
+        if video is not None and video_latents is not None:
+            raise ValueError("Provide either `video` or `video_latents`, not both.")
+        if video is not None and (video.shape[1] - 1) % 4 != 0:
+            raise ValueError(f"`video` must have `(num_frames - 1) % 4 == 0`, got num_frames={video.shape[1]}.")
 
         if callback_on_step_end_tensor_inputs is not None and not all(
             k in self._callback_tensor_inputs for k in callback_on_step_end_tensor_inputs
@@ -459,7 +466,6 @@ class AnyFlowFARPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         max_sequence_length: int = 512,
         use_mean_velocity: bool = True,
         use_kv_cache: bool = True,
-        show_progress: bool = True,
         chunk_partition: Optional[List[int]] = None,
     ):
         r"""
@@ -518,8 +524,6 @@ class AnyFlowFARPipeline(DiffusionPipeline, WanLoraLoaderMixin):
                 to predict a mean velocity. Disable to mirror raw Euler stepping.
             use_kv_cache (`bool`, defaults to `True`):
                 Reuse the FAR attention KV cache across causal chunks. Disable only for debugging.
-            show_progress (`bool`, defaults to `True`):
-                Display a per-chunk progress bar.
             chunk_partition (`List[int]`, *optional*):
                 Per-chunk frame counts. Defaults to `default_chunk_partition` (matched to the released 81-frame
                 checkpoints). When you change `num_frames`, supply a `chunk_partition` that sums to `(num_frames - 1)
@@ -541,7 +545,9 @@ class AnyFlowFARPipeline(DiffusionPipeline, WanLoraLoaderMixin):
             width,
             prompt_embeds,
             negative_prompt_embeds,
-            callback_on_step_end_tensor_inputs,
+            video=video,
+            video_latents=video_latents,
+            callback_on_step_end_tensor_inputs=callback_on_step_end_tensor_inputs,
         )
 
         if num_frames % self.vae_scale_factor_temporal != 1:
@@ -601,11 +607,7 @@ class AnyFlowFARPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         init_latents = init_latents.to(transformer_dtype).permute(0, 2, 1, 3, 4)
 
         # 6. Resolve conditioning latents (pre-encoded or pixel-space).
-        if video is not None and video_latents is not None:
-            raise ValueError("Provide either `video` or `video_latents`, not both.")
         if video is not None:
-            if (video.shape[1] - 1) % 4 != 0:
-                raise ValueError(f"`video` must have `(num_frames - 1) % 4 == 0`, got num_frames={video.shape[1]}.")
             video_latents = self.encode_video(video, height=height, width=width)
 
         if chunk_partition is None:
@@ -686,10 +688,9 @@ class AnyFlowFARPipeline(DiffusionPipeline, WanLoraLoaderMixin):
             if (negative_prompt_embeds is not None)
             else prompt_embeds
         )
-        chunk_iter = range(len(chunk_partition))
-        if show_progress:
-            chunk_iter = tqdm(chunk_iter)
-        for chunk_idx in chunk_iter:
+        outer_progress_bar_config = getattr(self, "_progress_bar_config", {}).copy() or {}
+        chunk_progress_bar_config = {**outer_progress_bar_config, "position": 0, "desc": "Chunks"}
+        for chunk_idx in tqdm(range(len(chunk_partition)), **chunk_progress_bar_config):
             if chunk_idx >= num_context_chunks:
                 chunk_latents = init_latents[
                     :, sum(chunk_partition[:chunk_idx]) : sum(chunk_partition[: chunk_idx + 1])
@@ -698,7 +699,13 @@ class AnyFlowFARPipeline(DiffusionPipeline, WanLoraLoaderMixin):
 
                 self.scheduler.set_timesteps(num_inference_steps, device=device)
                 timesteps = self.scheduler.timesteps  # length N; `step` resolves the next sigma internally.
-                for i, t in enumerate(timesteps):
+                inner_progress_bar_config = {
+                    **outer_progress_bar_config,
+                    "position": 1,
+                    "leave": False,
+                    "desc": f"Chunk {chunk_idx} Inference Steps",
+                }
+                for i, t in enumerate(tqdm(timesteps, **inner_progress_bar_config)):
                     r = self.scheduler.sigmas[i + 1] * self.scheduler.config.num_train_timesteps
                     if t == r:
                         continue
