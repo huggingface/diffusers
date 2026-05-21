@@ -269,6 +269,10 @@ class T2IAdapter(ModelMixin, ConfigMixin):
         each representing information extracted at a different scale from the input. The length of the list is
         determined by the number of downsample blocks in the Adapter, as specified by the `channels` and
         `num_res_blocks` parameters during initialization.
+
+        Args:
+            x (`torch.Tensor`):
+                The input tensor to process through the adapter model.
         """
         return self.adapter(x)
 

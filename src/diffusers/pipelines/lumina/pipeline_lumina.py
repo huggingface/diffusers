@@ -686,9 +686,6 @@ class LuminaPipeline(DiffusionPipeline):
                 The height in pixels of the generated image.
             width (`int`, *optional*, defaults to self.unet.config.sample_size):
                 The width in pixels of the generated image.
-            eta (`float`, *optional*, defaults to 0.0):
-                Corresponds to parameter eta (η) in the DDIM paper: https://huggingface.co/papers/2010.02502. Only
-                applies to [`schedulers.DDIMScheduler`], will be ignored for others.
             generator (`torch.Generator` or `list[torch.Generator]`, *optional*):
                 One or a list of [torch generator(s)](https://pytorch.org/docs/stable/generated/torch.Generator.html)
                 to make generation deterministic.
@@ -716,6 +713,10 @@ class LuminaPipeline(DiffusionPipeline):
                 prompt.
             max_sequence_length (`int` defaults to 120):
                 Maximum sequence length to use with the `prompt`.
+            scaling_watershed (`float`, *optional*, defaults to 1.0):
+                Resolution scaling threshold used by Lumina to switch between standard and extended-context attention.
+            proportional_attn (`bool`, *optional*, defaults to True):
+                Whether to scale attention proportionally for high-resolution generation.
             callback_on_step_end (`Callable`, *optional*):
                 A function that calls at the end of each denoising steps during the inference. The function is called
                 with the following arguments: `callback_on_step_end(self: DiffusionPipeline, step: int, timestep: int,

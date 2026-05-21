@@ -904,8 +904,32 @@ class ZImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOr
         f_patch_size: int = 1,
     ):
         """
+        The [`ZImageTransformer2DModel`] forward method.
+
         Flow: patchify -> t_embed -> x_embed -> x_refine -> cap_embed -> cap_refine
               -> [siglip_embed -> siglip_refine] -> build_unified -> main_layers -> final_layer -> unpatchify
+
+        Args:
+            x (`list` of `torch.Tensor` or nested `list` of `torch.Tensor`):
+                Input latents. A flat list when running in standard mode, or a nested list when running in omni mode.
+            t (`torch.Tensor`):
+                Used to indicate denoising step.
+            cap_feats (`list` of `torch.Tensor` or nested `list` of `torch.Tensor`):
+                Conditional caption embeddings (embeddings computed from the input conditions such as prompts) to use.
+            return_dict (`bool`, *optional*, defaults to `True`):
+                Whether or not to return a [`~models.transformer_2d.Transformer2DModelOutput`] instead of a plain
+                tuple.
+            controlnet_block_samples (`dict` of `int` to `torch.Tensor`, *optional*):
+                A mapping from block index to tensor that if specified are added to the residuals of transformer
+                blocks.
+            siglip_feats (`list` of `list` of `torch.Tensor`, *optional*):
+                Optional SigLIP image features used as additional conditioning.
+            image_noise_mask (`list` of `list` of `int`, *optional*):
+                Per-image noise masks indicating noisy vs. clean tokens in omni mode.
+            patch_size (`int`, *optional*, defaults to 2):
+                Spatial patch size used to patchify the input latents.
+            f_patch_size (`int`, *optional*, defaults to 1):
+                Temporal patch size used to patchify the input latents.
         """
         assert patch_size in self.all_patch_size and f_patch_size in self.all_f_patch_size
         omni_mode = isinstance(x[0], list)

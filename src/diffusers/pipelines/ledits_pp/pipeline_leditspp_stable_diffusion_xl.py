@@ -903,12 +903,6 @@ class LEditsPPPipelineStableDiffusionXL(
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`~pipelines.stable_diffusion_xl.StableDiffusionXLPipelineOutput`] instead
                 of a plain tuple.
-            callback (`Callable`, *optional*):
-                A function that will be called every `callback_steps` steps during inference. The function will be
-                called with the following arguments: `callback(step: int, timestep: int, latents: torch.Tensor)`.
-            callback_steps (`int`, *optional*, defaults to 1):
-                The frequency at which the `callback` function will be called. If not specified, the callback will be
-                called at every step.
             cross_attention_kwargs (`dict`, *optional*):
                 A kwargs dictionary that if specified is passed along to the `AttentionProcessor` as defined under
                 `self.processor` in
@@ -935,7 +929,7 @@ class LEditsPPPipelineStableDiffusionXL(
             editing_prompt_embeddings (`torch.Tensor`, *optional*):
                 Pre-generated edit text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt weighting.
                 If not provided, editing_prompt_embeddings will be generated from `editing_prompt` input argument.
-            editing_pooled_prompt_embeddings (`torch.Tensor`, *optional*):
+            editing_pooled_prompt_embeds (`torch.Tensor`, *optional*):
                 Pre-generated pooled edit text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt
                 weighting. If not provided, editing_prompt_embeddings will be generated from `editing_prompt` input
                 argument.
