@@ -354,13 +354,11 @@ def main():
     joint_attn_implementation = net_cfg.joint_attn_implementation
     base_fps = int(net_cfg.base_fps)
     enable_fps_modulation = net_cfg.enable_fps_modulation
-    max_action_dim = _tmp.config.max_action_dim
     position_embedding_type = net_cfg.position_embedding_type
     unified_3d_mrope_reset_spatial_ids = _tmp.config.diffusion_expert_config.unified_3d_mrope_reset_spatial_ids
     unified_3d_mrope_temporal_modality_margin = (
         _tmp.config.diffusion_expert_config.unified_3d_mrope_temporal_modality_margin
     )
-    video_temporal_causal = net_cfg.video_temporal_causal
     sound2llm = getattr(_tmp.net, "sound2llm", None)
     llm2sound = getattr(_tmp.net, "llm2sound", None)
     sound_modality_embed = getattr(_tmp.net, "sound_modality_embed", None)
@@ -405,7 +403,6 @@ def main():
             joint_attn_implementation=joint_attn_implementation,
             latent_channel=latent_channel,
             latent_patch_size=latent_patch_size,
-            max_action_dim=max_action_dim,
             num_attention_heads=num_attention_heads,
             num_hidden_layers=num_hidden_layers,
             num_key_value_heads=num_key_value_heads,
@@ -421,7 +418,6 @@ def main():
             unified_3d_mrope_reset_spatial_ids=unified_3d_mrope_reset_spatial_ids,
             unified_3d_mrope_temporal_modality_margin=unified_3d_mrope_temporal_modality_margin,
             use_moe=use_moe,
-            video_temporal_causal=video_temporal_causal,
             vocab_size=lm_cfg.vocab_size,
         )
     state_dict = language_model.state_dict()
