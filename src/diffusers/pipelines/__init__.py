@@ -189,6 +189,8 @@ else:
         "FluxKontextInpaintPipeline",
     ]
     _import_structure["prx"] = ["PRXPipeline"]
+    _import_structure["rae_dit"] = ["RAEDiTPipeline", "RAEDiTPipelineOutput"]
+    _import_structure["audioldm"] = ["AudioLDMPipeline"]
     _import_structure["audioldm2"] = [
         "AudioLDM2Pipeline",
         "AudioLDM2ProjectionModel",
@@ -846,6 +848,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             QwenImageLayeredPipeline,
             QwenImagePipeline,
         )
+        from .rae_dit import RAEDiTPipeline, RAEDiTPipelineOutput
         from .sana import (
             SanaControlNetPipeline,
             SanaPipeline,
