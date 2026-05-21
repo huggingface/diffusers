@@ -15,13 +15,14 @@
 import math
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple, Union
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import numpy as np
 import torch
 import torchvision.transforms.functional as TF
 from transformers import AutoTokenizer
 
+from ...callbacks import MultiPipelineCallbacks, PipelineCallback
 from ...models.autoencoders.autoencoder_cosmos3_audio import Cosmos3AVAEAudioTokenizer
 from ...models.autoencoders.autoencoder_kl_wan import AutoencoderKLWan
 from ...models.transformers.transformer_cosmos3 import (
@@ -134,7 +135,6 @@ class PackedSequence:
     sample_lens: list[int] = field(default_factory=list)
     split_lens: list[int] = field(default_factory=list)
     attn_modes: list[str] = field(default_factory=list)
-    is_image_batch: bool = False
     sequence_length: int = 0
 
     # Build-time tracking
@@ -145,11 +145,6 @@ class PackedSequence:
     text_indexes: list[int] | torch.Tensor = field(default_factory=list)
     position_ids: list[int] | torch.Tensor = field(default_factory=list)
 
-    # Loss computation - Cross Entropy (text)
-    label_ids: list[int] | torch.Tensor | None = field(default_factory=list)
-    ce_loss_indexes: list[int] | torch.Tensor | None = field(default_factory=list)
-    ce_loss_weights: list[float] | torch.Tensor | None = field(default_factory=list)
-
     # Build-time mRoPE tracking
     _use_mrope: bool = False
     _mrope_temporal_offset: int | float = 0
@@ -159,20 +154,12 @@ class PackedSequence:
     vision: ModalityData | None = None
     sound: ModalityData | None = None
 
-    def finalize(self, is_image_batch: bool) -> "PackedSequence":
+    def finalize(self) -> "PackedSequence":
         """Convert all lists to tensors and compute derived values."""
         sequence_length = sum(self.sample_lens)
         sample_lens = self.sample_lens.copy()
         split_lens = self.split_lens.copy()
         attn_modes = self.attn_modes.copy()
-
-        label_ids: torch.Tensor | None = None
-        ce_loss_indexes: torch.Tensor | None = None
-        ce_loss_weights: torch.Tensor | None = None
-        if self.label_ids and len(self.label_ids) > 0:
-            label_ids = torch.tensor(self.label_ids)
-            ce_loss_indexes = torch.tensor(self.ce_loss_indexes)
-            ce_loss_weights = torch.tensor(self.ce_loss_weights)
 
         vision: ModalityData | None = None
         if self.vision is not None and len(self.vision.sequence_indexes) > 0:
@@ -209,20 +196,16 @@ class PackedSequence:
             sample_lens=sample_lens,
             split_lens=split_lens,
             attn_modes=attn_modes,
-            is_image_batch=is_image_batch,
             text_ids=torch.tensor(self.text_ids, dtype=torch.long),
             text_indexes=torch.tensor(self.text_indexes, dtype=torch.long),
             position_ids=position_ids,
-            label_ids=label_ids,
-            ce_loss_indexes=ce_loss_indexes,
-            ce_loss_weights=ce_loss_weights,
             vision=vision,
             sound=sound,
         )
 
     def to_cuda(self) -> None:
         """Move every tensor field (and modality sub-objects) to CUDA in-place."""
-        for attr in ("text_ids", "text_indexes", "position_ids", "label_ids", "ce_loss_indexes", "ce_loss_weights"):
+        for attr in ("text_ids", "text_indexes", "position_ids"):
             val = getattr(self, attr)
             if isinstance(val, torch.Tensor):
                 setattr(self, attr, val.cuda())
@@ -249,7 +232,6 @@ class SequencePlan:
     has_vision: bool = False
     condition_frame_indexes_vision: list[int] = field(default_factory=list)
     has_sound: bool = False
-    condition_frame_indexes_sound: list[int] = field(default_factory=list)
 
     def as_dict(self) -> dict:
         return {
@@ -257,7 +239,6 @@ class SequencePlan:
             "has_vision": self.has_vision,
             "has_sound": self.has_sound,
             "condition_frame_indexes_vision": self.condition_frame_indexes_vision,
-            "condition_frame_indexes_sound": self.condition_frame_indexes_sound,
         }
 
 
@@ -273,9 +254,6 @@ def _pack_text_tokens(
     assert isinstance(packed_seq.text_ids, list), "PackedSequence must be in build mode"
     assert isinstance(packed_seq.text_indexes, list)
     assert isinstance(packed_seq.position_ids, list)
-    assert isinstance(packed_seq.label_ids, list)
-    assert isinstance(packed_seq.ce_loss_indexes, list)
-    assert isinstance(packed_seq.ce_loss_weights, list)
 
     curr = packed_seq.curr
 
@@ -288,10 +266,6 @@ def _pack_text_tokens(
 
     packed_seq.text_ids.extend(shifted_text_ids)
     packed_seq.text_indexes.extend(range(curr, curr + len(shifted_text_ids)))
-
-    packed_seq.ce_loss_indexes.extend(range(curr, curr + len(shifted_text_ids)))
-    packed_seq.ce_loss_weights.extend([1.0] * len(shifted_text_ids))
-    packed_seq.label_ids.extend(text_ids[1:] + [special_tokens["eos_token_id"]])
 
     curr += len(shifted_text_ids)
     split_len += len(shifted_text_ids)
@@ -417,7 +391,6 @@ def _pack_vision_tokens(
 def _pack_sound_tokens(
     packed_seq: PackedSequence,
     input_sound_tokens: torch.Tensor,
-    condition_frame_indexes_sound: list[int],
     input_timestep: float,
     curr_rope_id: int,
     sound_temporal_offset: int | float = 0,
@@ -425,7 +398,7 @@ def _pack_sound_tokens(
     base_fps: float = 24.0,
     sound_fps: float | None = None,
 ) -> int:
-    """Pack sound/audio tokens into the sequence."""
+    """Pack sound/audio tokens into the sequence. All sound frames are noisy (no conditioning)."""
     assert isinstance(packed_seq.position_ids, list), "PackedSequence must be in build mode"
 
     curr = packed_seq.curr
@@ -438,36 +411,22 @@ def _pack_sound_tokens(
     assert isinstance(packed_seq.sound.mse_loss_indexes, list)
     assert isinstance(packed_seq.sound.timesteps, list)
     assert isinstance(packed_seq.sound.tokens, list)
+    assert isinstance(packed_seq.sound.condition_mask, list)
+    assert isinstance(packed_seq.sound.noisy_frame_indexes, list)
 
     packed_seq.sound.token_shapes.append((sound_split_len, 1, 1))
     packed_seq.sound.sequence_indexes.extend(range(curr, curr + sound_split_len))
     packed_seq.sound.tokens.append(input_sound_tokens)
 
-    condition_set = {idx for idx in condition_frame_indexes_sound if 0 <= idx < sound_split_len}
-    assert isinstance(packed_seq.sound.condition_mask, list)
-
-    sound_condition_mask = torch.zeros(
-        (sound_split_len, 1), device=input_sound_tokens.device, dtype=input_sound_tokens.dtype
+    packed_seq.sound.condition_mask.append(
+        torch.zeros((sound_split_len, 1), device=input_sound_tokens.device, dtype=input_sound_tokens.dtype)
     )
-    for frame_idx in condition_set:
-        sound_condition_mask[frame_idx, 0] = 1.0
-    packed_seq.sound.condition_mask.append(sound_condition_mask)
-
-    sound_noisy_frame_indexes = torch.tensor(
-        [idx for idx in range(sound_split_len) if idx not in condition_set],
-        device=input_sound_tokens.device,
-        dtype=torch.long,
+    packed_seq.sound.noisy_frame_indexes.append(
+        torch.arange(sound_split_len, device=input_sound_tokens.device, dtype=torch.long)
     )
-    assert isinstance(packed_seq.sound.noisy_frame_indexes, list)
-    packed_seq.sound.noisy_frame_indexes.append(sound_noisy_frame_indexes)
 
-    for frame_idx in range(sound_split_len):
-        if frame_idx in condition_set:
-            continue
-        frame_start = curr + frame_idx
-        frame_end = frame_start + 1
-        packed_seq.sound.mse_loss_indexes.extend(range(frame_start, frame_end))
-        packed_seq.sound.timesteps.extend([input_timestep])
+    packed_seq.sound.mse_loss_indexes.extend(range(curr, curr + sound_split_len))
+    packed_seq.sound.timesteps.extend([input_timestep] * sound_split_len)
 
     if packed_seq._use_mrope:
         effective_fps = sound_fps if enable_fps_modulation else None
@@ -495,7 +454,6 @@ def pack_input_sequence(
     text_tokens: list[int],
     input_timestep: torch.Tensor,
     special_tokens: dict[str, int],
-    is_image_batch: bool = False,
     num_vision_items: int = 1,
     x0_tokens_vision: Optional[List[torch.Tensor]] = None,
     fps_vision: Optional[torch.Tensor] = None,
@@ -597,7 +555,6 @@ def pack_input_sequence(
         sound_split_len = _pack_sound_tokens(
             packed_seq=packed_seq,
             input_sound_tokens=input_sound_tokens,
-            condition_frame_indexes_sound=sequence_plan.condition_frame_indexes_sound,
             input_timestep=input_timestep_val,
             curr_rope_id=curr_rope_id,
             sound_temporal_offset=vision_start_temporal_offset,
@@ -636,7 +593,7 @@ def pack_input_sequence(
     packed_seq.split_lens.append(combined_split_len)
     packed_seq.sample_lens.append(sample_len)
 
-    return packed_seq.finalize(is_image_batch=is_image_batch)
+    return packed_seq.finalize()
 
 
 # ============================================================================
@@ -708,6 +665,7 @@ def save_wav(waveform: torch.Tensor, path, sample_rate: int) -> None:
 class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
     _optional_components = ["sound_tokenizer"]
     model_cpu_offload_seq = "transformer->vae->sound_tokenizer"
+    _callback_tensor_inputs = ["latents"]
 
     def __init__(
         self,
@@ -1188,8 +1146,8 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
         data_batch: dict,
         device: str = "cuda",
         dtype: torch.dtype = torch.bfloat16,
-    ) -> tuple[bool, int, List[torch.Tensor], Optional[torch.Tensor]]:
-        """Encode vision input and return ``(is_image_batch, num_vision_items, x0_tokens_vision, fps_vision)``."""
+    ) -> tuple[int, List[torch.Tensor], Optional[torch.Tensor]]:
+        """Encode vision input and return ``(num_vision_items, x0_tokens_vision, fps_vision)``."""
         assert (input_image_key in data_batch) != (input_video_key in data_batch)
         is_img = input_image_key in data_batch
         sample_vision_list = data_batch[input_image_key if is_img else input_video_key]
@@ -1223,7 +1181,7 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
             fps_raw = torch.stack(fps_raw).flatten()
         fps_vision = fps_raw.to(device=device, dtype=dtype) if fps_raw is not None else None
 
-        return is_img, num_vision_items, x0_tokens_vision, fps_vision
+        return num_vision_items, x0_tokens_vision, fps_vision
 
     def derive_include_end_of_generation_token(self, joint_attn_implementation: str) -> bool:
         assert joint_attn_implementation in ("flex", "two_way", "three_way")
@@ -1250,7 +1208,6 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
     ) -> tuple[
         torch.Tensor,
         SequencePlan,
-        bool,
         int,
         List[torch.Tensor],
         Optional[torch.Tensor],
@@ -1260,7 +1217,7 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
         """Build conditioning + initial noise for a single sample.
 
         Returns:
-            ``(latents, sequence_plan, is_image_batch, num_vision_items, x0_tokens_vision,
+            ``(latents, sequence_plan, num_vision_items, x0_tokens_vision,
             fps_vision, x0_tokens_sound, fps_sound)``.
         """
         is_image = num_frames == 1
@@ -1331,9 +1288,8 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
             x0_tokens_sound = [torch.zeros(sound_dim, T_sound, device=device, dtype=dtype)]
             fps_sound = torch.tensor([sound_latent_fps], device=device, dtype=dtype)
             sequence_plan.has_sound = True
-            sequence_plan.condition_frame_indexes_sound = []
 
-        is_image_batch, num_vision_items, x0_tokens_vision, fps_vision = self.get_data_and_condition(
+        num_vision_items, x0_tokens_vision, fps_vision = self.get_data_and_condition(
             input_image_key, input_video_key, data_batch, device=device, dtype=dtype
         )
 
@@ -1344,7 +1300,6 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
             text_tokens=cond_tokens,
             input_timestep=mask_timestep,
             special_tokens=self.llm_special_tokens,
-            is_image_batch=is_image_batch,
             num_vision_items=num_vision_items,
             x0_tokens_vision=x0_tokens_vision,
             fps_vision=fps_vision,
@@ -1371,7 +1326,6 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
             return (
                 latents.to(device=device, dtype=dtype),
                 sequence_plan,
-                is_image_batch,
                 num_vision_items,
                 x0_tokens_vision,
                 fps_vision,
@@ -1399,7 +1353,6 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
         return (
             initial_noise,
             sequence_plan,
-            is_image_batch,
             num_vision_items,
             x0_tokens_vision,
             fps_vision,
@@ -1459,192 +1412,6 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
 
         hidden_states[vision.sequence_indexes] = packed_tokens_vision
         return original_latent_shapes
-
-    @torch.no_grad()
-    def run_single(
-        self,
-        packed_seq,
-        noise_x_vision: list[torch.Tensor],
-        hidden_size: int,
-        latent_patch_size: int,
-        latent_channel: int,
-        patch_latent_dim: int,
-        timestep_scale: float,
-        use_moe: bool,
-        fps_vision: Optional[torch.Tensor],
-        noise_x_sound: Optional[list] = None,
-        device: str = "cuda",
-        dtype: torch.dtype = torch.bfloat16,
-    ) -> tuple:
-        """Inlined forward pass from Cosmos3VFMNetworkSimple.forward().
-
-        Returns:
-            ``(preds_vision_list, preds_sound_list)`` — sound list is ``None``
-            when ``noise_x_sound`` is ``None``.
-        """
-        if packed_seq.vision is not None:
-            packed_seq.vision.tokens = [x.to(device=device, dtype=dtype) for x in noise_x_vision]
-
-        # Set sound tokens before packing
-        if noise_x_sound is not None and packed_seq.sound is not None:
-            packed_seq.sound.tokens = [x.to(device=device, dtype=dtype) for x in noise_x_sound]
-
-        packed_seq.to_cuda()
-
-        # 1. Encode text
-        hidden_states, target_dtype = self.encode_text(hidden_size, packed_seq)
-
-        # 2. Encode vision
-        original_latent_shapes = self.encode_vision(
-            timestep_scale,
-            latent_patch_size,
-            latent_channel,
-            packed_seq,
-            hidden_states,
-            target_dtype,
-            fps=fps_vision,
-        )
-
-        # 3. Encode sound (in-place into hidden_states)
-        if noise_x_sound is not None:
-            self.encode_sound_tokens(timestep_scale, packed_seq, hidden_states, target_dtype)
-
-        # 4. Split joint hidden_states into und (causal, text) / gen (full, vision+sound) streams.
-        # Layout is contiguous per pack_input_sequence: [und... | gen...].
-        assert use_moe
-        und_len = packed_seq.split_lens[0]
-        und_seq = hidden_states[:und_len]
-        gen_seq = hidden_states[und_len:]
-
-        # 5. Run transformer
-        und_out, gen_out = self.transformer(und_seq, gen_seq, position_ids=packed_seq.position_ids)
-        last_hidden_state = torch.cat([und_out, gen_out], dim=0)
-
-        # 6. Decode vision
-        preds_vision = self.decode_vision(
-            patch_latent_dim,
-            latent_patch_size,
-            latent_channel,
-            packed_seq,
-            last_hidden_state,
-            original_latent_shapes,
-        )
-
-        # 7. Decode sound
-        preds_sound = None
-        if noise_x_sound is not None:
-            preds_sound = self.decode_sound_tokens(packed_seq, last_hidden_state)
-
-        return preds_vision, preds_sound
-
-    @torch.no_grad()
-    def get_cfg_velocity(
-        self,
-        latents: torch.Tensor,
-        timestep: torch.Tensor,
-        guidance: float,
-        sequence_plan: SequencePlan,
-        cond_tokens: list[int],
-        uncond_tokens: list[int],
-        include_eog: bool,
-        is_image_batch: bool,
-        num_vision_items: int,
-        x0_tokens_vision: List[torch.Tensor],
-        fps_vision: Optional[torch.Tensor],
-        x0_tokens_sound: Optional[List[torch.Tensor]] = None,
-        fps_sound: Optional[torch.Tensor] = None,
-        device: str = "cuda",
-        dtype: torch.dtype = torch.bfloat16,
-    ) -> torch.Tensor:
-        torch.compiler.cudagraph_mark_step_begin()
-        assert timestep.ndim == 2 and timestep.shape == (1, 1)
-        config = self.transformer.config
-        hidden_size = config.hidden_size
-        latent_patch_size = config.latent_patch_size
-        latent_channel = config.latent_channel
-        patch_latent_dim = config.patch_latent_dim
-        timestep_scale = config.timestep_scale
-        use_moe = config.use_moe
-
-        has_sound = x0_tokens_sound is not None and sequence_plan.has_sound
-
-        # Split flat latents → vision part
-        noise_x_vision: list[torch.Tensor] = []
-        offset = 0
-        for j in range(num_vision_items):
-            vision_shape = x0_tokens_vision[j].shape
-            vision_dim = int(torch.prod(torch.tensor(vision_shape)))
-            noise_x_vision.append(latents[offset : offset + vision_dim].reshape(vision_shape))
-            offset += vision_dim
-
-        # Split flat latents → sound part
-        noise_x_sound: Optional[list] = None
-        if has_sound:
-            noise_x_sound = []
-            assert x0_tokens_sound is not None
-            sound_shape = x0_tokens_sound[0].shape
-            sound_dim_flat = int(torch.prod(torch.tensor(sound_shape)))
-            noise_x_sound.append(latents[offset : offset + sound_dim_flat].reshape(sound_shape))
-
-        def _run_cond(text_tokens: list[int]) -> torch.Tensor:
-            packed_seq = pack_input_sequence(
-                sequence_plan=sequence_plan,
-                text_tokens=text_tokens,
-                input_timestep=timestep.cpu(),
-                special_tokens=self.llm_special_tokens,
-                is_image_batch=is_image_batch,
-                num_vision_items=num_vision_items,
-                x0_tokens_vision=noise_x_vision,
-                fps_vision=fps_vision,
-                x0_tokens_sound=noise_x_sound,
-                fps_sound=fps_sound if has_sound else None,
-                latent_patch_size=self.transformer.config.latent_patch_size,
-                include_end_of_generation_token=include_eog,
-                position_embedding_type=self.transformer.config.position_embedding_type,
-                unified_3d_mrope_reset_spatial_ids=self.transformer.config.unified_3d_mrope_reset_spatial_ids,
-                unified_3d_mrope_temporal_modality_margin=self.transformer.config.unified_3d_mrope_temporal_modality_margin,
-                enable_fps_modulation=self.transformer.config.enable_fps_modulation,
-                base_fps=float(self.transformer.config.base_fps),
-                temporal_compression_factor=self.vae.config.scale_factor_temporal,
-            )
-            preds_vision, preds_sound = self.run_single(
-                packed_seq,
-                noise_x_vision,
-                hidden_size,
-                latent_patch_size,
-                latent_channel,
-                patch_latent_dim,
-                timestep_scale,
-                use_moe,
-                fps_vision=fps_vision,
-                noise_x_sound=noise_x_sound,
-                device=device,
-                dtype=dtype,
-            )
-
-            assert packed_seq.vision is not None
-            assert packed_seq.vision.condition_mask is not None
-            assert isinstance(packed_seq.vision.condition_mask, list)
-            velocity_vision = [
-                pred * (1.0 - m).to(dtype=pred.dtype, device=pred.device)
-                if (1.0 - m).sum() > 0
-                else torch.zeros_like(pred)
-                for pred, m in zip(preds_vision, packed_seq.vision.condition_mask)
-            ]
-            parts = [v.reshape(-1) for v in velocity_vision]
-
-            if preds_sound is not None and packed_seq.sound is not None:
-                assert isinstance(packed_seq.sound.condition_mask, list)
-                for pred_s, cond_mask_s in zip(preds_sound, packed_seq.sound.condition_mask):
-                    noisy_mask_s = (1.0 - cond_mask_s).T.to(dtype=pred_s.dtype, device=pred_s.device)
-                    v_sound = pred_s * noisy_mask_s if noisy_mask_s.sum() > 0 else torch.zeros_like(pred_s)
-                    parts.append(v_sound.reshape(-1))
-
-            return torch.cat(parts)
-
-        cond_v = _run_cond(cond_tokens)
-        uncond_v = _run_cond(uncond_tokens)
-        return uncond_v + guidance * (cond_v - uncond_v)
 
     def _load_image_as_tensor(self, image, target_h: int, target_w: int) -> torch.Tensor:
         """Load image from PIL, path, URL, or tensor; returns [3, 1, H, W] in [-1, 1]."""
@@ -1811,6 +1578,14 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
             return result_vision, result_sound
         return self.decode_latents(result_vision), result_sound
 
+    @property
+    def current_timestep(self):
+        return self._current_timestep
+
+    @property
+    def interrupt(self):
+        return self._interrupt
+
     @torch.no_grad()
     def __call__(
         self,
@@ -1830,10 +1605,25 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
         output_type: str = "video",
         return_dict: bool = True,
         use_system_prompt: bool = False,
+        callback_on_step_end: Optional[
+            Union[Callable[[int, int, Dict[str, Any]], None], PipelineCallback, MultiPipelineCallbacks]
+        ] = None,
+        callback_on_step_end_tensor_inputs: List[str] = ["latents"],
     ) -> Cosmos3OmniPipelineOutput:
+        if isinstance(callback_on_step_end, (PipelineCallback, MultiPipelineCallbacks)):
+            callback_on_step_end_tensor_inputs = callback_on_step_end.tensor_inputs
+
         # 1. Check inputs
         self.check_inputs(prompt, negative_prompt, image, height, width, num_frames, enable_sound)
+        if not all(k in self._callback_tensor_inputs for k in callback_on_step_end_tensor_inputs):
+            raise ValueError(
+                f"`callback_on_step_end_tensor_inputs` has to be in {self._callback_tensor_inputs}, but found "
+                f"{[k for k in callback_on_step_end_tensor_inputs if k not in self._callback_tensor_inputs]}"
+            )
         assert guidance_scale != 1.0, "Guidance weight must be != 1.0"
+
+        self._current_timestep = None
+        self._interrupt = False
 
         # Pipeline supports a single sample at a time; collapse list-style inputs to a single string.
         if isinstance(prompt, list):
@@ -1860,7 +1650,6 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
         (
             latents,
             sequence_plan,
-            is_image_batch,
             num_vision_items,
             x0_tokens_vision,
             fps_vision,
@@ -1886,34 +1675,176 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
         self.scheduler.set_timesteps(num_inference_steps, device=device)
         timesteps = self.scheduler.timesteps
 
+        # Hoist per-step constants out of the loop
+        config = self.transformer.config
+        hidden_size = config.hidden_size
+        latent_patch_size = config.latent_patch_size
+        latent_channel = config.latent_channel
+        patch_latent_dim = config.patch_latent_dim
+        timestep_scale = config.timestep_scale
+        assert config.use_moe
+        include_eog = self.derive_include_end_of_generation_token(config.joint_attn_implementation)
+        has_sound = x0_tokens_sound is not None and sequence_plan.has_sound
+
         # 6. Denoising loop
-        include_eog = self.derive_include_end_of_generation_token(self.transformer.config.joint_attn_implementation)
-        with self.progress_bar(total=len(timesteps)) as progress_bar:
-            for t in timesteps:
-                velocity_pred = self.get_cfg_velocity(
-                    latents,
-                    t.reshape(1, 1),
-                    guidance_scale,
-                    sequence_plan,
-                    cond_tokens,
-                    uncond_tokens,
-                    include_eog,
-                    is_image_batch=is_image_batch,
+        num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
+        self._num_timesteps = len(timesteps)
+        with self.progress_bar(total=num_inference_steps) as progress_bar:
+            for i, t in enumerate(timesteps):
+                if self.interrupt:
+                    continue
+
+                self._current_timestep = t
+                torch._inductor.cudagraph_mark_step_begin()
+                timestep = t.reshape(1, 1)
+
+                # Split flat latents → per-modality noisy tensors for this step
+                noise_x_vision: list[torch.Tensor] = []
+                offset = 0
+                for j in range(num_vision_items):
+                    vision_shape = x0_tokens_vision[j].shape
+                    vision_dim = int(torch.prod(torch.tensor(vision_shape)))
+                    noise_x_vision.append(latents[offset : offset + vision_dim].reshape(vision_shape))
+                    offset += vision_dim
+                noise_x_sound: Optional[list] = None
+                if has_sound:
+                    sound_shape = x0_tokens_sound[0].shape
+                    sound_dim_flat = int(torch.prod(torch.tensor(sound_shape)))
+                    noise_x_sound = [latents[offset : offset + sound_dim_flat].reshape(sound_shape)]
+
+                # --- Conditional pass ---
+                packed_seq = pack_input_sequence(
+                    sequence_plan=sequence_plan,
+                    text_tokens=cond_tokens,
+                    input_timestep=timestep.cpu(),
+                    special_tokens=self.llm_special_tokens,
                     num_vision_items=num_vision_items,
-                    x0_tokens_vision=x0_tokens_vision,
+                    x0_tokens_vision=noise_x_vision,
                     fps_vision=fps_vision,
-                    x0_tokens_sound=x0_tokens_sound,
-                    fps_sound=fps_sound,
-                    device=device,
-                    dtype=dtype,
+                    x0_tokens_sound=noise_x_sound,
+                    fps_sound=fps_sound if has_sound else None,
+                    latent_patch_size=latent_patch_size,
+                    include_end_of_generation_token=include_eog,
+                    position_embedding_type=config.position_embedding_type,
+                    unified_3d_mrope_reset_spatial_ids=config.unified_3d_mrope_reset_spatial_ids,
+                    unified_3d_mrope_temporal_modality_margin=config.unified_3d_mrope_temporal_modality_margin,
+                    enable_fps_modulation=config.enable_fps_modulation,
+                    base_fps=float(config.base_fps),
+                    temporal_compression_factor=self.vae.config.scale_factor_temporal,
                 )
+                if packed_seq.vision is not None:
+                    packed_seq.vision.tokens = [x.to(device=device, dtype=dtype) for x in noise_x_vision]
+                if noise_x_sound is not None and packed_seq.sound is not None:
+                    packed_seq.sound.tokens = [x.to(device=device, dtype=dtype) for x in noise_x_sound]
+                packed_seq.to_cuda()
+
+                hidden_states, target_dtype = self.encode_text(hidden_size, packed_seq)
+                original_latent_shapes = self.encode_vision(
+                    timestep_scale, latent_patch_size, latent_channel, packed_seq, hidden_states, target_dtype, fps=fps_vision
+                )
+                if noise_x_sound is not None:
+                    self.encode_sound_tokens(timestep_scale, packed_seq, hidden_states, target_dtype)
+
+                und_len = packed_seq.split_lens[0]
+                und_out, gen_out = self.transformer(
+                    hidden_states[:und_len], hidden_states[und_len:], position_ids=packed_seq.position_ids
+                )
+                last_hidden_state = torch.cat([und_out, gen_out], dim=0)
+
+                preds_vision = self.decode_vision(
+                    patch_latent_dim, latent_patch_size, latent_channel, packed_seq, last_hidden_state, original_latent_shapes
+                )
+                preds_sound = self.decode_sound_tokens(packed_seq, last_hidden_state) if noise_x_sound is not None else None
+
+                velocity_vision = [
+                    pred * (1.0 - m).to(dtype=pred.dtype, device=pred.device)
+                    if (1.0 - m).sum() > 0
+                    else torch.zeros_like(pred)
+                    for pred, m in zip(preds_vision, packed_seq.vision.condition_mask)
+                ]
+                parts = [v.reshape(-1) for v in velocity_vision]
+                if preds_sound is not None and packed_seq.sound is not None:
+                    for pred_s, cond_mask_s in zip(preds_sound, packed_seq.sound.condition_mask):
+                        noisy_mask_s = (1.0 - cond_mask_s).T.to(dtype=pred_s.dtype, device=pred_s.device)
+                        v_sound = pred_s * noisy_mask_s if noisy_mask_s.sum() > 0 else torch.zeros_like(pred_s)
+                        parts.append(v_sound.reshape(-1))
+                cond_v = torch.cat(parts)
+
+                # --- Unconditional pass ---
+                packed_seq = pack_input_sequence(
+                    sequence_plan=sequence_plan,
+                    text_tokens=uncond_tokens,
+                    input_timestep=timestep.cpu(),
+                    special_tokens=self.llm_special_tokens,
+                    num_vision_items=num_vision_items,
+                    x0_tokens_vision=noise_x_vision,
+                    fps_vision=fps_vision,
+                    x0_tokens_sound=noise_x_sound,
+                    fps_sound=fps_sound if has_sound else None,
+                    latent_patch_size=latent_patch_size,
+                    include_end_of_generation_token=include_eog,
+                    position_embedding_type=config.position_embedding_type,
+                    unified_3d_mrope_reset_spatial_ids=config.unified_3d_mrope_reset_spatial_ids,
+                    unified_3d_mrope_temporal_modality_margin=config.unified_3d_mrope_temporal_modality_margin,
+                    enable_fps_modulation=config.enable_fps_modulation,
+                    base_fps=float(config.base_fps),
+                    temporal_compression_factor=self.vae.config.scale_factor_temporal,
+                )
+                if packed_seq.vision is not None:
+                    packed_seq.vision.tokens = [x.to(device=device, dtype=dtype) for x in noise_x_vision]
+                if noise_x_sound is not None and packed_seq.sound is not None:
+                    packed_seq.sound.tokens = [x.to(device=device, dtype=dtype) for x in noise_x_sound]
+                packed_seq.to_cuda()
+
+                hidden_states, target_dtype = self.encode_text(hidden_size, packed_seq)
+                original_latent_shapes = self.encode_vision(
+                    timestep_scale, latent_patch_size, latent_channel, packed_seq, hidden_states, target_dtype, fps=fps_vision
+                )
+                if noise_x_sound is not None:
+                    self.encode_sound_tokens(timestep_scale, packed_seq, hidden_states, target_dtype)
+
+                und_len = packed_seq.split_lens[0]
+                und_out, gen_out = self.transformer(
+                    hidden_states[:und_len], hidden_states[und_len:], position_ids=packed_seq.position_ids
+                )
+                last_hidden_state = torch.cat([und_out, gen_out], dim=0)
+
+                preds_vision = self.decode_vision(
+                    patch_latent_dim, latent_patch_size, latent_channel, packed_seq, last_hidden_state, original_latent_shapes
+                )
+                preds_sound = self.decode_sound_tokens(packed_seq, last_hidden_state) if noise_x_sound is not None else None
+
+                velocity_vision = [
+                    pred * (1.0 - m).to(dtype=pred.dtype, device=pred.device)
+                    if (1.0 - m).sum() > 0
+                    else torch.zeros_like(pred)
+                    for pred, m in zip(preds_vision, packed_seq.vision.condition_mask)
+                ]
+                parts = [v.reshape(-1) for v in velocity_vision]
+                if preds_sound is not None and packed_seq.sound is not None:
+                    for pred_s, cond_mask_s in zip(preds_sound, packed_seq.sound.condition_mask):
+                        noisy_mask_s = (1.0 - cond_mask_s).T.to(dtype=pred_s.dtype, device=pred_s.device)
+                        v_sound = pred_s * noisy_mask_s if noisy_mask_s.sum() > 0 else torch.zeros_like(pred_s)
+                        parts.append(v_sound.reshape(-1))
+                uncond_v = torch.cat(parts)
+
+                # --- CFG combine + scheduler step ---
+                # UniPC's multistep_uni_p_bh_update einsum ("k,bkc...->bc...") requires sample
+                # to carry a batch dim; our latents are 1-D flat, so wrap for the step.
+                velocity_pred = uncond_v + guidance_scale * (cond_v - uncond_v)
                 latents = self.scheduler.step(
-                    model_output=velocity_pred,
-                    timestep=t,
-                    sample=latents.unsqueeze(0),
-                    return_dict=False,
+                    velocity_pred.unsqueeze(0), t, latents.unsqueeze(0), return_dict=False
                 )[0].squeeze(0)
-                progress_bar.update()
+
+                if callback_on_step_end is not None:
+                    callback_kwargs = {k: locals()[k] for k in callback_on_step_end_tensor_inputs}
+                    callback_outputs = callback_on_step_end(self, i, t, callback_kwargs)
+                    latents = callback_outputs.pop("latents", latents)
+
+                if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
+                    progress_bar.update()
+
+        self._current_timestep = None
 
         # 7. Postprocess + decode
         video, sound = self._postprocess_latents(
