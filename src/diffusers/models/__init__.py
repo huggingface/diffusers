@@ -29,6 +29,10 @@ if is_torch_available():
     _import_structure["adapter"] = ["MultiAdapter", "T2IAdapter"]
     _import_structure["attention_dispatch"] = ["AttentionBackendName", "attention_backend"]
     _import_structure["auto_model"] = ["AutoModel"]
+    _import_structure["autoencoders.audio_tokenizer_ace_step"] = [
+        "AceStepAudioTokenDetokenizer",
+        "AceStepAudioTokenizer",
+    ]
     _import_structure["autoencoders.autoencoder_asym_kl"] = ["AsymmetricAutoencoderKL"]
     _import_structure["autoencoders.autoencoder_dc"] = ["AutoencoderDC"]
     _import_structure["autoencoders.autoencoder_kl"] = ["AutoencoderKL"]
@@ -56,8 +60,17 @@ if is_torch_available():
     _import_structure["autoencoders.autoencoder_tiny"] = ["AutoencoderTiny"]
     _import_structure["autoencoders.autoencoder_vidtok"] = ["AutoencoderVidTok"]
     _import_structure["autoencoders.consistency_decoder_vae"] = ["ConsistencyDecoderVAE"]
+    _import_structure["autoencoders.latent_upsampler_ltx"] = ["LTXLatentUpsamplerModel"]
+    _import_structure["autoencoders.latent_upsampler_ltx2"] = ["LTX2LatentUpsamplerModel"]
+    _import_structure["autoencoders.vocoder_ltx2"] = ["LTX2Vocoder", "LTX2VocoderWithBWE"]
     _import_structure["autoencoders.vq_model"] = ["VQModel"]
     _import_structure["cache_utils"] = ["CacheMixin"]
+    _import_structure["condition_embedders.condition_encoder_ace_step"] = ["AceStepConditionEncoder"]
+    _import_structure["condition_embedders.image_encoder_redux"] = ["ReduxImageEncoder"]
+    _import_structure["condition_embedders.projection_audioldm2"] = ["AudioLDM2ProjectionModel"]
+    _import_structure["condition_embedders.projection_clip_image"] = ["CLIPImageProjection"]
+    _import_structure["condition_embedders.projection_stable_audio"] = ["StableAudioProjectionModel"]
+    _import_structure["condition_embedders.text_connector_ltx2"] = ["LTX2TextConnectors"]
     _import_structure["controlnets.controlnet"] = ["ControlNetModel"]
     _import_structure["controlnets.controlnet_cosmos"] = ["CosmosControlNetModel"]
     _import_structure["controlnets.controlnet_flux"] = ["FluxControlNetModel", "FluxMultiControlNetModel"]
@@ -79,6 +92,18 @@ if is_torch_available():
     _import_structure["controlnets.multicontrolnet_union"] = ["MultiControlNetUnionModel"]
     _import_structure["embeddings"] = ["ImageProjection"]
     _import_structure["modeling_utils"] = ["ModelMixin"]
+    _import_structure["others.image_normalizer_stable_unclip"] = ["StableUnCLIPImageNormalizer"]
+    _import_structure["others.renderer_shap_e"] = [
+        "BoundingBoxVolume",
+        "ImportanceRaySampler",
+        "MLPNeRFModelOutput",
+        "MLPNeRSTFModel",
+        "ShapEParamsProjModel",
+        "ShapERenderer",
+        "StratifiedRaySampler",
+        "VoidNeRFModel",
+    ]
+    _import_structure["others.watermark_if"] = ["IFWatermarker"]
     _import_structure["transformers.ace_step_transformer"] = ["AceStepTransformer1DModel"]
     _import_structure["transformers.auraflow_transformer_2d"] = ["AuraFlowTransformer2DModel"]
     _import_structure["transformers.cogvideox_transformer_3d"] = ["CogVideoXTransformer3DModel"]
@@ -138,6 +163,7 @@ if is_torch_available():
     _import_structure["unets.unet_1d"] = ["UNet1DModel"]
     _import_structure["unets.unet_2d"] = ["UNet2DModel"]
     _import_structure["unets.unet_2d_condition"] = ["UNet2DConditionModel"]
+    _import_structure["unets.unet_2d_condition_audioldm2"] = ["AudioLDM2UNet2DConditionModel"]
     _import_structure["unets.unet_3d_condition"] = ["UNet3DConditionModel"]
     _import_structure["unets.unet_i2vgen_xl"] = ["I2VGenXLUNet"]
     _import_structure["unets.unet_kandinsky3"] = ["Kandinsky3UNet"]
@@ -159,6 +185,8 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .attention_dispatch import AttentionBackendName, attention_backend
         from .auto_model import AutoModel
         from .autoencoders import (
+            AceStepAudioTokenDetokenizer,
+            AceStepAudioTokenizer,
             AsymmetricAutoencoderKL,
             AutoencoderDC,
             AutoencoderKL,
@@ -186,9 +214,21 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             AutoencoderVidTok,
             ConsistencyDecoderVAE,
             LongCatAudioDiTVae,
+            LTX2LatentUpsamplerModel,
+            LTX2Vocoder,
+            LTX2VocoderWithBWE,
+            LTXLatentUpsamplerModel,
             VQModel,
         )
         from .cache_utils import CacheMixin
+        from .condition_embedders import (
+            AceStepConditionEncoder,
+            AudioLDM2ProjectionModel,
+            CLIPImageProjection,
+            LTX2TextConnectors,
+            ReduxImageEncoder,
+            StableAudioProjectionModel,
+        )
         from .controlnets import (
             ControlNetModel,
             ControlNetUnionModel,
@@ -211,6 +251,18 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         )
         from .embeddings import ImageProjection
         from .modeling_utils import ModelMixin
+        from .others import (
+            BoundingBoxVolume,
+            IFWatermarker,
+            ImportanceRaySampler,
+            MLPNeRFModelOutput,
+            MLPNeRSTFModel,
+            ShapEParamsProjModel,
+            ShapERenderer,
+            StableUnCLIPImageNormalizer,
+            StratifiedRaySampler,
+            VoidNeRFModel,
+        )
         from .transformers import (
             AceStepTransformer1DModel,
             AllegroTransformer3DModel,
@@ -270,6 +322,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             ZImageTransformer2DModel,
         )
         from .unets import (
+            AudioLDM2UNet2DConditionModel,
             I2VGenXLUNet,
             Kandinsky3UNet,
             MotionAdapter,
