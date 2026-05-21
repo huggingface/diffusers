@@ -634,11 +634,30 @@ class AnyFlowTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromO
         return_dict: bool = True,
     ) -> Union[Transformer2DModelOutput, Tuple]:
         """
-        Bidirectional flow-map forward pass.
+        Bidirectional flow-map forward pass. ``hidden_states`` is laid out as ``(B, F, C, H, W)`` (per-frame latents).
+        The input is patchified with the standard ``patch_embedding`` (kernel = stride = ``patch_size``) and denoised
+        with global bidirectional self-attention over the resulting flat token sequence.
 
-        ``hidden_states`` is laid out as ``(B, F, C, H, W)`` (per-frame latents). The input is patchified with the
-        standard ``patch_embedding`` (kernel = stride = ``patch_size``) and denoised with global bidirectional
-        self-attention over the resulting flat token sequence.
+        Args:
+            hidden_states (`torch.Tensor` of shape `(batch_size, num_frames, num_channels, height, width)`):
+                Input video latents.
+            timestep (`torch.Tensor`):
+                Source (noisier) flow-map timestep `t`.
+            r_timestep (`torch.Tensor`):
+                Target (cleaner) flow-map timestep `r`; defines the destination of the flow-map step.
+            encoder_hidden_states (`torch.Tensor` of shape `(batch_size, sequence_len, embed_dims)`):
+                Text-conditioning embeddings.
+            encoder_hidden_states_image (`torch.Tensor`, *optional*):
+                Image-conditioning embeddings; concatenated before the text tokens when provided.
+            attention_kwargs (`dict`, *optional*):
+                Kwargs forwarded to the `AttentionProcessor` as defined under `self.processor` in
+                [diffusers.models.attention_processor](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/attention_processor.py).
+            return_dict (`bool`, *optional*, defaults to `True`):
+                Whether to return a [`~models.transformer_2d.Transformer2DModelOutput`] instead of a plain tuple.
+
+        Returns:
+            [`~models.transformer_2d.Transformer2DModelOutput`] if `return_dict` is True, otherwise a `tuple` whose
+            first element is the predicted velocity tensor.
         """
         hidden_states = hidden_states.permute(0, 2, 1, 3, 4)
         batch_size, num_channels, num_frames, height, width = hidden_states.shape

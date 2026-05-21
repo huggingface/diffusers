@@ -932,18 +932,30 @@ class AnyFlowFARTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Fr
         * Otherwise → autoregressive inference step (returns :class:`AnyFlowFARTransformerOutput`).
 
         Args:
-            hidden_states (`torch.Tensor`): Latent input of shape ``(B, F, C, H, W)``.
-            timestep, r_timestep (`torch.Tensor`): Source / target diffusion timesteps.
-            encoder_hidden_states (`torch.Tensor`): UMT5 text embeddings.
-            chunk_partition (`List[int]`): Per-chunk frame counts; total must match the number of latent
-                frames in ``hidden_states``.
-            encoder_hidden_states_image (`torch.Tensor`, *optional*): I2V image embedding.
-            clean_hidden_states, clean_timestep (`torch.Tensor`, *optional*): Clean conditioning frames
-                used by the training rollout.
-            kv_cache, kv_cache_flag (*optional*): Per-block KV cache and metadata for autoregressive
-                inference.
-            attention_kwargs (*optional*): forwarded to the attention processors.
-            return_dict (`bool`, defaults to `True`): If `False`, returns positional tuples.
+            hidden_states (`torch.Tensor`):
+                Latent input of shape ``(B, F, C, H, W)``.
+            timestep (`torch.Tensor`):
+                Source (noisier) flow-map timestep `t`.
+            r_timestep (`torch.Tensor`):
+                Target (cleaner) flow-map timestep `r`.
+            encoder_hidden_states (`torch.Tensor`):
+                UMT5 text embeddings.
+            chunk_partition (`List[int]`):
+                Per-chunk frame counts; total must match the number of latent frames in ``hidden_states``.
+            encoder_hidden_states_image (`torch.Tensor`, *optional*):
+                I2V image embedding; concatenated before text tokens when provided.
+            clean_hidden_states (`torch.Tensor`, *optional*):
+                Clean (noise-free) conditioning frames used by the training rollout.
+            clean_timestep (`torch.Tensor`, *optional*):
+                Timesteps for the clean conditioning frames in the training rollout.
+            kv_cache (`List[Dict[str, torch.Tensor]]`, *optional*):
+                Per-block KV cache for autoregressive inference. `None` selects the training path.
+            kv_cache_flag (`Dict[str, Any]`, *optional*):
+                KV-cache metadata (e.g. ``is_cache_step`` flag and token counts).
+            attention_kwargs (`dict`, *optional*):
+                Forwarded to the attention processors.
+            return_dict (`bool`, *optional*, defaults to `True`):
+                If `False`, returns positional tuples instead of an output dataclass.
         """
         common = {
             "hidden_states": hidden_states,
