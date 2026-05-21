@@ -102,7 +102,7 @@ export_to_video(video, "out.mp4", fps=16)
 ### Generation with AnyFlow (FAR Causal)
 
 The causal pipeline selects between T2V / I2V / V2V via the ``video`` (or ``video_latents``) argument:
-omit both for plain text-to-video, or pass ``video=<tensor>`` of shape ``(B, C, T, H, W)`` in ``[0, 1]``
+omit both for plain text-to-video, or pass ``video=<tensor>`` of shape ``(B, T, C, H, W)`` in ``[0, 1]``
 with ``T = 4n + 1`` to condition on existing frames. Use a single conditioning frame for I2V and a longer
 clip for V2V continuation. If you already have pre-encoded latents in the model layout, pass them via
 ``video_latents=<tensor>`` to skip VAE encoding. ``video`` and ``video_latents`` are mutually exclusive.
@@ -146,10 +146,10 @@ pipe = AnyFlowFARPipeline.from_pretrained(
     "nvidia/AnyFlow-FAR-Wan2.1-1.3B-Diffusers", torch_dtype=torch.bfloat16
 ).to("cuda")
 
-# Wrap the conditioning image as a one-frame video tensor: (1, 3, 1, H, W) in [0, 1].
+# Wrap the conditioning image as a one-frame video tensor: (1, 1, 3, H, W) in [0, 1].
 first_frame = load_image("path/to/first_frame.png").resize((832, 480))
 arr = np.asarray(first_frame).astype("float32") / 255.0  # (480, 832, 3)
-context_tensor = torch.from_numpy(arr).permute(2, 0, 1).unsqueeze(0).unsqueeze(2).to("cuda")
+context_tensor = torch.from_numpy(arr).permute(2, 0, 1).unsqueeze(0).unsqueeze(1).to("cuda")
 
 video = pipe(
     prompt="a cat walks across a sunlit lawn",
@@ -176,7 +176,8 @@ pipe = AnyFlowFARPipeline.from_pretrained(
 # Context clip — 9 raw frames map to 3 latent frames (9 = 4·2 + 1, 3 = 2 + 1).
 context_frames = load_video("path/to/context.mp4")[:9]
 arr = np.stack([np.asarray(f.resize((832, 480))) for f in context_frames]).astype("float32") / 255.0
-context_tensor = torch.from_numpy(arr).permute(3, 0, 1, 2).unsqueeze(0).to("cuda")  # (1, 3, 9, 480, 832)
+# np.stack gives (T, H, W, C) = (9, 480, 832, 3) → permute to (T, C, H, W) then add batch.
+context_tensor = torch.from_numpy(arr).permute(0, 3, 1, 2).unsqueeze(0).to("cuda")  # (1, 9, 3, 480, 832)
 
 video = pipe(
     prompt="continue the story",
