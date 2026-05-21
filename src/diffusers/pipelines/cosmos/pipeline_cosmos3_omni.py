@@ -137,18 +137,10 @@ class PackedSequence:
     sequence_length: int = 0
     und_len: int = 0
 
-    # Build-time tracking
-    curr: int = 0
-
     # Text modality (list during build, tensor after finalize)
     text_ids: list[int] | torch.Tensor = field(default_factory=list)
     text_indexes: list[int] | torch.Tensor = field(default_factory=list)
     position_ids: list[int] | torch.Tensor = field(default_factory=list)
-
-    # Build-time mRoPE tracking
-    _use_mrope: bool = False
-    _mrope_temporal_offset: int | float = 0
-    _mrope_reset_spatial: bool = True
 
     # Generation modalities
     vision: ModalityData | None = None
@@ -180,11 +172,11 @@ class PackedSequence:
                 noisy_frame_indexes=list(self.sound.noisy_frame_indexes),
             )
 
-        if self._use_mrope and len(self.position_ids) > 0 and isinstance(self.position_ids[0], torch.Tensor):
-            mrope_tensors: list[torch.Tensor] = self.position_ids  # type: ignore[assignment]
-            position_ids = torch.cat(mrope_tensors, dim=1)  # [3,actual_seq_len]
+        # mRoPE mode appends [3, N] tensors per modality segment; non-mRoPE extends with ints.
+        if len(self.position_ids) > 0 and isinstance(self.position_ids[0], torch.Tensor):
+            position_ids = torch.cat(self.position_ids, dim=1)  # [3, total_seq_len]
         else:
-            position_ids = torch.tensor(self.position_ids)  # [seq_len]
+            position_ids = torch.tensor(self.position_ids)  # [total_seq_len]
 
         return PackedSequence(
             sequence_length=self.sequence_length,
@@ -240,15 +232,19 @@ def _pack_text_tokens(
     text_ids: List[int],
     special_tokens: Dict[str, int],
     curr_rope_id: int,
+    curr: int,
+    mrope_offset: int | float,
+    use_mrope: bool,
     has_generation: bool,
     use_float_positions: bool = False,
-) -> Tuple[int, int, int]:
-    """Pack text tokens into the sequence."""
+) -> Tuple[int, int, int, int | float]:
+    """Pack text tokens into the sequence.
+
+    Returns ``(next_curr_rope_id, split_len, curr, mrope_offset)``.
+    """
     assert isinstance(packed_seq.text_ids, list), "PackedSequence must be in build mode"
     assert isinstance(packed_seq.text_indexes, list)
     assert isinstance(packed_seq.position_ids, list)
-
-    curr = packed_seq.curr
 
     if "bos_token_id" in special_tokens:
         shifted_text_ids = [special_tokens["bos_token_id"]] + text_ids
@@ -274,10 +270,10 @@ def _pack_text_tokens(
         curr += 1
         split_len += 1
 
-    if packed_seq._use_mrope:
-        text_mrope_ids, packed_seq._mrope_temporal_offset = get_3d_mrope_ids_text_tokens(
+    if use_mrope:
+        text_mrope_ids, mrope_offset = get_3d_mrope_ids_text_tokens(
             num_tokens=split_len,
-            temporal_offset=packed_seq._mrope_temporal_offset,
+            temporal_offset=mrope_offset,
             use_float_positions=use_float_positions,
         )
         packed_seq.position_ids.append(text_mrope_ids)
@@ -285,8 +281,7 @@ def _pack_text_tokens(
         packed_seq.position_ids.extend(range(curr_rope_id, curr_rope_id + split_len))
     packed_seq.und_len = split_len
 
-    packed_seq.curr = curr
-    return curr_rope_id + split_len, split_len, split_len
+    return curr_rope_id + split_len, split_len, curr, mrope_offset
 
 
 def _pack_vision_tokens(
@@ -295,16 +290,22 @@ def _pack_vision_tokens(
     condition_frame_indexes_vision: list[int],
     input_timestep: float | torch.Tensor,
     curr_rope_id: int,
+    curr: int,
+    mrope_offset: int | float,
+    use_mrope: bool,
+    mrope_reset_spatial: bool,
     latent_patch_size: int = 1,
     vision_fps: float | None = None,
     enable_fps_modulation: bool = False,
     base_fps: float = 24.0,
     temporal_compression_factor: int = 4,
-) -> int:
-    """Pack vision tokens into the sequence."""
+) -> Tuple[int, int, int | float]:
+    """Pack vision tokens into the sequence.
+
+    Returns ``(split_len, curr, mrope_offset)``.
+    """
     assert isinstance(packed_seq.position_ids, list), "PackedSequence must be in build mode"
 
-    curr = packed_seq.curr
     vision_split_len = 0
 
     if packed_seq.vision is None:
@@ -360,14 +361,14 @@ def _pack_vision_tokens(
     curr += num_vision_tokens
     vision_split_len += num_vision_tokens
 
-    if packed_seq._use_mrope:
+    if use_mrope:
         effective_fps = vision_fps if enable_fps_modulation else None
-        vision_mrope_ids, packed_seq._mrope_temporal_offset = get_3d_mrope_ids_vae_tokens(
+        vision_mrope_ids, mrope_offset = get_3d_mrope_ids_vae_tokens(
             grid_t=latent_t,
             grid_h=patch_h,
             grid_w=patch_w,
-            temporal_offset=packed_seq._mrope_temporal_offset,
-            reset_spatial_indices=packed_seq._mrope_reset_spatial,
+            temporal_offset=mrope_offset,
+            reset_spatial_indices=mrope_reset_spatial,
             fps=effective_fps,
             base_fps=base_fps,
             temporal_compression_factor=temporal_compression_factor,
@@ -376,8 +377,7 @@ def _pack_vision_tokens(
     else:
         packed_seq.position_ids.extend([curr_rope_id] * vision_split_len)
 
-    packed_seq.curr = curr
-    return vision_split_len
+    return vision_split_len, curr, mrope_offset
 
 
 def _pack_sound_tokens(
@@ -385,15 +385,20 @@ def _pack_sound_tokens(
     input_sound_tokens: torch.Tensor,
     input_timestep: float,
     curr_rope_id: int,
+    curr: int,
+    use_mrope: bool,
+    mrope_reset_spatial: bool,
     sound_temporal_offset: int | float = 0,
     enable_fps_modulation: bool = False,
     base_fps: float = 24.0,
     sound_fps: float | None = None,
-) -> int:
-    """Pack sound/audio tokens into the sequence. All sound frames are noisy (no conditioning)."""
+) -> Tuple[int, int]:
+    """Pack sound/audio tokens into the sequence. All sound frames are noisy (no conditioning).
+
+    Returns ``(split_len, curr)``.
+    """
     assert isinstance(packed_seq.position_ids, list), "PackedSequence must be in build mode"
 
-    curr = packed_seq.curr
     _, sound_split_len = input_sound_tokens.shape
 
     if packed_seq.sound is None:
@@ -420,14 +425,14 @@ def _pack_sound_tokens(
     packed_seq.sound.mse_loss_indexes.extend(range(curr, curr + sound_split_len))
     packed_seq.sound.timesteps.extend([input_timestep] * sound_split_len)
 
-    if packed_seq._use_mrope:
+    if use_mrope:
         effective_fps = sound_fps if enable_fps_modulation else None
         sound_mrope_ids, _ = get_3d_mrope_ids_vae_tokens(
             grid_t=sound_split_len,
             grid_h=1,
             grid_w=1,
             temporal_offset=sound_temporal_offset,
-            reset_spatial_indices=packed_seq._mrope_reset_spatial,
+            reset_spatial_indices=mrope_reset_spatial,
             fps=effective_fps,
             base_fps=base_fps,
             temporal_compression_factor=1,
@@ -437,8 +442,7 @@ def _pack_sound_tokens(
     else:
         packed_seq.position_ids.extend([curr_rope_id] * sound_split_len)
 
-    packed_seq.curr = curr + sound_split_len
-    return sound_split_len
+    return sound_split_len, curr + sound_split_len
 
 
 def pack_input_sequence(
@@ -473,31 +477,35 @@ def pack_input_sequence(
         assert sequence_plan.has_text, "sequence_plan must have has_text=True when skip_text_tokens=False"
 
     packed_seq = PackedSequence()
-    packed_seq._use_mrope = position_embedding_type == "unified_3d_mrope"
-    packed_seq._mrope_reset_spatial = unified_3d_mrope_reset_spatial_ids
-    packed_seq._mrope_temporal_offset = initial_mrope_temporal_offset
+    use_mrope = position_embedding_type == "unified_3d_mrope"
+    mrope_reset_spatial = unified_3d_mrope_reset_spatial_ids
+    mrope_offset: int | float = initial_mrope_temporal_offset
 
     _ts = input_timestep.flatten()
     input_timestep_val = _ts[0].item() if _ts.numel() == 1 else _ts
 
+    curr = 0
     curr_rope_id = 0
     sample_len = 0
     idx_vision = 0  # walks across multi-vision items within this single sample
 
     if sequence_plan.has_text and not skip_text_tokens:
         has_generation_for_sample = sequence_plan.has_vision or sequence_plan.has_sound
-        curr_rope_id, _, text_sample_len = _pack_text_tokens(
+        curr_rope_id, text_sample_len, curr, mrope_offset = _pack_text_tokens(
             packed_seq,
             text_tokens,
             special_tokens,
             curr_rope_id,
+            curr=curr,
+            mrope_offset=mrope_offset,
+            use_mrope=use_mrope,
             has_generation=has_generation_for_sample,
             use_float_positions=enable_fps_modulation,
         )
         sample_len += text_sample_len
-        packed_seq._mrope_temporal_offset += unified_3d_mrope_temporal_modality_margin
+        mrope_offset += unified_3d_mrope_temporal_modality_margin
 
-    vision_start_temporal_offset = packed_seq._mrope_temporal_offset
+    vision_start_temporal_offset = mrope_offset
 
     if sequence_plan.has_vision:
         vision_split_len = 0
@@ -520,12 +528,16 @@ def pack_input_sequence(
             else:
                 item_condition_frames = sequence_plan.condition_frame_indexes_vision
 
-            item_split_len = _pack_vision_tokens(
+            item_split_len, curr, mrope_offset = _pack_vision_tokens(
                 packed_seq=packed_seq,
                 input_vision_tokens=input_vision_tokens,
                 condition_frame_indexes_vision=item_condition_frames,
                 input_timestep=input_timestep_val,
                 curr_rope_id=curr_rope_id,
+                curr=curr,
+                mrope_offset=mrope_offset,
+                use_mrope=use_mrope,
+                mrope_reset_spatial=mrope_reset_spatial,
                 latent_patch_size=latent_patch_size,
                 vision_fps=vision_fps,
                 enable_fps_modulation=enable_fps_modulation,
@@ -544,11 +556,14 @@ def pack_input_sequence(
         if enable_fps_modulation and fps_sound is not None and len(fps_sound) > 0:
             sound_fps = float(fps_sound[0].item())
 
-        sound_split_len = _pack_sound_tokens(
+        sound_split_len, curr = _pack_sound_tokens(
             packed_seq=packed_seq,
             input_sound_tokens=input_sound_tokens,
             input_timestep=input_timestep_val,
             curr_rope_id=curr_rope_id,
+            curr=curr,
+            use_mrope=use_mrope,
+            mrope_reset_spatial=mrope_reset_spatial,
             sound_temporal_offset=vision_start_temporal_offset,
             enable_fps_modulation=enable_fps_modulation,
             base_fps=base_fps,
@@ -558,7 +573,6 @@ def pack_input_sequence(
     else:
         sound_split_len = 0
 
-    eov_len = 0
     has_any_generation = sequence_plan.has_vision or sequence_plan.has_sound
     if include_end_of_generation_token and has_any_generation:
         assert isinstance(packed_seq.text_ids, list)
@@ -566,18 +580,15 @@ def pack_input_sequence(
         assert isinstance(packed_seq.position_ids, list)
 
         packed_seq.text_ids.append(special_tokens["end_of_generation"])
-        packed_seq.text_indexes.append(packed_seq.curr)
+        packed_seq.text_indexes.append(curr)
 
-        if packed_seq._use_mrope:
+        if use_mrope:
             eov_dtype = torch.float32 if enable_fps_modulation else torch.long
-            eov_mrope_ids = torch.full((3, 1), packed_seq._mrope_temporal_offset, dtype=eov_dtype)
+            eov_mrope_ids = torch.full((3, 1), mrope_offset, dtype=eov_dtype)
             packed_seq.position_ids.append(eov_mrope_ids)  # type: ignore[arg-type]
-            packed_seq._mrope_temporal_offset += 1
         else:
             packed_seq.position_ids.append(curr_rope_id)  # type: ignore[arg-type]
 
-        packed_seq.curr += 1
-        eov_len = 1
         sample_len += 1
 
     packed_seq.sequence_length = sample_len
