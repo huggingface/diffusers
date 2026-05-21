@@ -996,119 +996,8 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
         waveform = self.sound_tokenizer.decode(latent.unsqueeze(0).to(decoder_dtype))  # [1, audio_ch, N]
         return waveform.squeeze(0)  # [audio_ch, N]
 
-    def normalize_video_databatch_inplace(
-        self,
-        input_video_key: str,
-        data_batch: dict,
-        input_key: str | None = None,
-        device: str = "cuda",
-        dtype: torch.dtype = torch.bfloat16,
-    ) -> None:
-        input_key = input_video_key if input_key is None else input_key
-        if input_key in data_batch:
-            if data_batch.get("is_preprocessed", False) is True:
-                for i in range(len(data_batch[input_key])):
-                    assert torch.is_floating_point(data_batch[input_key][i])
-                    assert torch.all((data_batch[input_key][i] >= -1.0001) & (data_batch[input_key][i] <= 1.0001))
-            else:
-                for i in range(len(data_batch[input_key])):
-                    item = data_batch[input_key][i]
-                    if isinstance(item, torch.Tensor):
-                        item = [item]
-                    assert item[0].dtype == torch.uint8
-                    data_batch[input_key][i] = torch.stack(item).to(device=device, dtype=dtype) / 127.5 - 1.0
-                data_batch["is_preprocessed"] = True
-
-    def augment_image_dim_inplace(
-        self,
-        input_image_key: str,
-        data_batch: dict,
-        input_key: str | None = None,
-        device: str = "cuda",
-        dtype: torch.dtype = torch.bfloat16,
-    ) -> None:
-        input_key = input_image_key if input_key is None else input_key
-        if input_key in data_batch:
-            if data_batch.get("is_preprocessed", False) is True:
-                for i in range(len(data_batch[input_key])):
-                    assert data_batch[input_key][i].shape[2] == 1
-                return
-            else:
-                new_image_tensor_list = []
-                for i in range(len(data_batch[input_key])):
-                    for img_tensor in data_batch[input_key][i]:
-                        img_tensor = img_tensor.unsqueeze(0).unsqueeze(2).contiguous()
-                        if img_tensor.dtype == torch.uint8:
-                            img_tensor = img_tensor.to(device=device, dtype=dtype) / 127.5 - 1.0
-                        new_image_tensor_list.append(img_tensor)
-                data_batch[input_key] = new_image_tensor_list
-                data_batch["is_preprocessed"] = True
-
-    def remove_padding_from_latent(
-        self,
-        spatial_compression_factor: int,
-        x0_tokens_vision: list[torch.Tensor],
-        frame_size: list[torch.Tensor],
-    ) -> list[torch.Tensor]:
-        cropped_latents = []
-        for i in range(len(x0_tokens_vision)):
-            fs = frame_size[i]
-            if fs.dim() == 2:
-                fs = fs[0]
-            orig_h = int(fs[2].item())
-            orig_w = int(fs[3].item())
-            orig_h_latent = orig_h // spatial_compression_factor
-            orig_w_latent = orig_w // spatial_compression_factor
-            cropped_latents.append(x0_tokens_vision[i][:, :, :, :orig_h_latent, :orig_w_latent].contiguous())
-        return cropped_latents
-
-    def get_data_and_condition(
-        self,
-        input_image_key: str,
-        input_video_key: str,
-        data_batch: dict,
-        device: str = "cuda",
-        dtype: torch.dtype = torch.bfloat16,
-    ) -> tuple[int, List[torch.Tensor], Optional[torch.Tensor]]:
-        """Encode vision input and return ``(num_vision_items, x0_tokens_vision, fps_vision)``."""
-        assert (input_image_key in data_batch) != (input_video_key in data_batch)
-        is_img = input_image_key in data_batch
-        sample_vision_list = data_batch[input_image_key if is_img else input_video_key]
-
-        # Detect multi-vision (e.g. image + video conditioning) within this single sample.
-        has_multiple_vision = any(isinstance(v, (list, tuple)) and len(v) > 1 for v in sample_vision_list)
-        if has_multiple_vision:
-            num_vision_items = sum(len(v) for v in sample_vision_list)
-            media_key = input_video_key if not is_img else input_image_key
-            data_batch[media_key] = [item.unsqueeze(0) for sublist in sample_vision_list for item in sublist]
-            if data_batch[media_key][0].dtype == torch.float32 and not is_img:
-                data_batch["is_preprocessed"] = True
-        else:
-            num_vision_items = 1
-
-        self.normalize_video_databatch_inplace(input_video_key, data_batch, device=device, dtype=dtype)
-        self.augment_image_dim_inplace(input_image_key, data_batch, device=device, dtype=dtype)
-        raw_state_vision = data_batch[input_image_key if is_img else input_video_key]
-        x0_tokens_vision = [
-            self._encode_video(raw_state_vision_i).contiguous().float() for raw_state_vision_i in raw_state_vision
-        ]
-
-        frame_size = data_batch.get("image_size", None)
-        if frame_size is not None:
-            x0_tokens_vision = self.remove_padding_from_latent(
-                self.vae.config.scale_factor_spatial, x0_tokens_vision, frame_size
-            )
-
-        fps_raw = data_batch.get("conditioning_fps", None)
-        if isinstance(fps_raw, list):
-            fps_raw = torch.stack(fps_raw).flatten()
-        fps_vision = fps_raw.to(device=device, dtype=dtype) if fps_raw is not None else None
-
-        return num_vision_items, x0_tokens_vision, fps_vision
-
     def prepare_latents(
         self,
-        prompt: str,
         cond_tokens: list[int],
         image=None,
         num_frames: int = 189,
@@ -1118,9 +1007,6 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
         condition_frame_indexes: Optional[List[int]] = None,
         latents: Optional[torch.Tensor] = None,
         generator: Optional[torch.Generator] = None,
-        input_caption_key: str = "ai_caption",
-        input_video_key: str = "video",
-        input_image_key: str = "images",
         device: str = "cuda",
         dtype: torch.dtype = torch.bfloat16,
         enable_sound: bool = False,
@@ -1145,51 +1031,33 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
         if image is not None:
             conditioning_frames = self._load_image_as_tensor(image, height, width)
 
-        image_size = [torch.tensor([[height, width, height, width]], dtype=torch.float32, device=device)]
-
+        # Build the vision conditioning tensor (always [1, 3, T, H, W], in [-1, 1], on device).
         if is_image:
-            img_tensor = (
+            vision_tensor = (
                 conditioning_frames.unsqueeze(0).to(device=device, dtype=dtype)
                 if conditioning_frames is not None
                 else torch.zeros(1, 3, 1, height, width, dtype=dtype, device=device)
             )
             condition_frame_indexes_vision: List[int] = []
-            data_batch = {
-                input_image_key: [img_tensor],
-                "image_size": image_size,
-                "is_preprocessed": True,
-                "fps": torch.tensor([float(fps)], device=device),
-                "conditioning_fps": torch.tensor([float(fps)], device=device),
-                "num_frames": torch.tensor([num_frames], device=device),
-                input_caption_key: [prompt],
-            }
         else:
             cond_indexes = (
                 condition_frame_indexes
                 if condition_frame_indexes is not None
                 else ([0] if conditioning_frames is not None else [])
             )
+            vision_tensor = torch.zeros(1, 3, num_frames, height, width, dtype=dtype, device=device)
             if conditioning_frames is not None:
-                video_data = torch.zeros(1, 3, num_frames, height, width, dtype=dtype)
                 t_fill = min(conditioning_frames.shape[1], num_frames)
-                video_data[0, :, :t_fill] = conditioning_frames[:, :t_fill].to(dtype=dtype)
+                vision_tensor[0, :, :t_fill] = conditioning_frames[:, :t_fill].to(device=device, dtype=dtype)
                 if t_fill < num_frames:
-                    video_data[0, :, t_fill:] = video_data[0, :, t_fill - 1 : t_fill].expand(
+                    vision_tensor[0, :, t_fill:] = vision_tensor[0, :, t_fill - 1 : t_fill].expand(
                         -1, num_frames - t_fill, -1, -1
                     )
-                video_tensor = video_data.to(device=device)
-            else:
-                video_tensor = torch.zeros(1, 3, num_frames, height, width, dtype=dtype, device=device)
             condition_frame_indexes_vision = list(cond_indexes)
-            data_batch = {
-                input_video_key: [video_tensor],
-                "image_size": image_size,
-                "is_preprocessed": True,
-                "fps": torch.tensor([float(fps)], device=device),
-                "conditioning_fps": torch.tensor([float(fps)], device=device),
-                "num_frames": torch.tensor([num_frames], device=device),
-                input_caption_key: [prompt],
-            }
+
+        num_vision_items = 1
+        x0_tokens_vision = [self._encode_video(vision_tensor).contiguous().float()]
+        fps_vision = torch.tensor([float(fps)], device=device, dtype=dtype)
 
         x0_tokens_sound: list[torch.Tensor] | None = None
         fps_sound: torch.Tensor | None = None
@@ -1201,10 +1069,6 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
             T_sound = (n_audio_samples + hop_size - 1) // hop_size
             x0_tokens_sound = [torch.zeros(sound_dim, T_sound, device=device, dtype=dtype)]
             fps_sound = torch.tensor([sound_latent_fps], device=device, dtype=dtype)
-
-        num_vision_items, x0_tokens_vision, fps_vision = self.get_data_and_condition(
-            input_image_key, input_video_key, data_batch, device=device, dtype=dtype
-        )
 
         # Run pack_input_sequence with a dummy timestep to extract the condition_mask used for noise blending.
         mask_timestep = torch.zeros((1,), dtype=torch.float32)
@@ -1563,7 +1427,6 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
             x0_tokens_sound,
             fps_sound,
         ) = self.prepare_latents(
-            prompt=prompt,
             cond_tokens=cond_tokens,
             image=image,
             num_frames=num_frames,
