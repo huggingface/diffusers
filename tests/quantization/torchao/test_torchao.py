@@ -112,6 +112,31 @@ class TorchAoConfigTest(unittest.TestCase):
         with self.assertRaises(TypeError):
             _ = TorchAoConfig(42)
 
+    def test_string_quant_type_error_includes_migration_hint(self):
+        """
+        Passing a legacy string quant_type should raise TypeError and the message should name the
+        replacement AOBaseConfig class so users on torchao >= 0.16 (where the legacy lowercase
+        factories were removed) can self-migrate. See issues #13286 and #13266.
+        """
+        legacy_to_config = {
+            "int8_weight_only": "Int8WeightOnlyConfig",
+            "int8wo": "Int8WeightOnlyConfig",
+            "float8_weight_only": "Float8WeightOnlyConfig",
+            "float8dq_e4m3_row": "Float8DynamicActivationFloat8WeightConfig",
+            "float8_dynamic_activation_float8_weight": "Float8DynamicActivationFloat8WeightConfig",
+        }
+        for legacy, config_name in legacy_to_config.items():
+            with self.assertRaises(TypeError) as cm:
+                TorchAoConfig(legacy)
+            message = str(cm.exception)
+            self.assertIn(repr(legacy), message)
+            self.assertIn(config_name, message)
+
+        # Strings without a known mapping should still raise TypeError and point at the docs.
+        with self.assertRaises(TypeError) as cm:
+            TorchAoConfig("not_a_real_quant_type")
+        self.assertIn("AOBaseConfig", str(cm.exception))
+
     def test_repr(self):
         """
         Check that there is no error in the repr
