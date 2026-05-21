@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import json
 import math
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -737,6 +736,35 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
             "end_of_generation": text_tokenizer.convert_tokens_to_ids("<|vision_end|>"),
             "eos_token_id": text_tokenizer.eos_token_id,
         }
+
+        # Prompt-augmentation templates: appended to the user-supplied prompt and negative prompt
+        # inside `encode_prompt` so the LLM sees the same metadata the model was trained with.
+        self.duration_template = "The video is {duration:.1f} seconds long and is of {fps:.0f} FPS."
+        self.image_resolution_template = "This image is of {height}x{width} resolution."
+        self.video_resolution_template = "This video is of {height}x{width} resolution."
+
+        # Default negative prompts used when the caller doesn't supply one.
+        self.text2image_negative_prompt = ""
+        self.text2video_negative_prompt = (
+            "The video captures a series of frames showing ugly scenes, static with no motion, motion blur, "
+            "over-saturation, shaky footage, low resolution, grainy texture, pixelated images, poorly lit areas, "
+            "underexposed and overexposed scenes, poor color balance, washed out colors, choppy sequences, jerky "
+            "movements, low frame rate, artifacting, color banding, unnatural transitions, outdated special effects, "
+            "fake elements, unconvincing visuals, poorly edited content, jump cuts, visual noise, and flickering. "
+            "Overall, the video is of poor quality."
+        )
+        self.image2video_negative_prompt = (
+            "The video captures a series of frames showing macroblocking artifacts, chromatic aberration, "
+            "high-frequency noise, and rolling shutter distortion. It includes static with no motion, motion blur, "
+            "over-saturation, shaky footage, low resolution, grainy texture, pixelated images, poorly lit areas, "
+            "underexposed and overexposed scenes, poor color balance, washed out colors, choppy sequences, jerky "
+            "movements, low frame rate, bit-depth compression artifacts, color banding, unnatural transitions, "
+            "outdated special effects, fake elements, unconvincing visuals, poorly edited content, jump cuts, visual "
+            "noise, and flickering. Avoid moiré patterns, edge halos, and temporal aliasing. Furthermore, the content "
+            "defies common sense, generating illogical scenarios, nonsensical entities, absurd character behaviors, "
+            "and conceptual paradoxes that violate basic human reasoning and everyday reality. The video looks like a "
+            "surreal or glitchy hallucination. Overall, the video is of poor quality."
+        )
 
     @torch.no_grad()
     def _encode_video(self, x: torch.Tensor) -> torch.Tensor:
@@ -1697,72 +1725,47 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
         self,
         prompt: str,
         negative_prompt: Optional[str] = None,
+        image=None,
+        num_frames: int = 189,
+        height: int = 720,
+        width: int = 1280,
+        fps: float = 24.0,
         use_system_prompt: bool = False,
     ) -> tuple[list[int], list[int]]:
-        """Tokenize cond/uncond prompts via the Qwen2 chat template.
+        """Apply prompt-augmentation templates and tokenize cond/uncond prompts via the Qwen2 chat template.
+
+        When ``negative_prompt`` is ``None``, a mode-specific default is chosen
+        (text2image / text2video / image2video). The duration and resolution
+        templates are then appended to both prompts so the LLM sees the same
+        metadata it was trained with.
 
         Returns:
             ``(cond_text_tokens, uncond_text_tokens)`` — token-ID lists for this sample.
         """
-        cond_tokens = self.tokenize_caption(prompt, is_video=False, use_system_prompt=use_system_prompt)
-        uncond_tokens = self.tokenize_caption(
-            negative_prompt if negative_prompt is not None else "",
-            is_video=False,
-            use_system_prompt=use_system_prompt,
-        )
-        return cond_tokens, uncond_tokens
-
-    def _resolve_defaults_and_prompts(
-        self,
-        prompt: Union[str, List[str]],
-        negative_prompt: Optional[Union[str, List[str]]],
-        image,
-        num_frames: int,
-        fps: float,
-        height: int,
-        width: int,
-    ) -> tuple[float, int, float, Union[str, List[str]], Union[str, List[str]]]:
-        """Load modality defaults and apply duration/resolution templates to prompts.
-
-        Returns (guidance, num_steps, shift, formatted_prompt, formatted_negative_prompt).
-        """
-        if image is not None:
-            model_mode = "image2video"
-        elif num_frames == 1:
-            model_mode = "text2image"
-        else:
-            model_mode = "text2video"
-        # Defaults live under examples/cosmos3/sample_args/ in the source checkout
-        # (parents[4] = repo root from this file).
-        defaults_path = Path(__file__).parents[4] / "examples" / "cosmos3" / "sample_args" / f"{model_mode}.json"
-        defaults = json.loads(defaults_path.read_text())
-
-        guidance = float(defaults["guidance"])
-        num_steps = int(defaults["num_steps"])
-        shift = float(defaults["shift"])
-        print(f"model_mode={model_mode!r}: guidance={guidance}, num_steps={num_steps}, shift={shift}")
-
-        duration_template = defaults.get("duration_template")
-        resolution_template = defaults.get("resolution_template")
-        negative_prompt_base = defaults.get("negative_prompt", "")
-        keep_metadata = defaults.get("negative_prompt_keep_metadata", False)
-
-        def _apply_templates(text: str) -> str:
-            if duration_template and num_frames > 1:
-                text = text.rstrip(".") + ". " + duration_template.format(duration=num_frames / fps, fps=fps)
-            if resolution_template:
-                text = text.rstrip(".") + ". " + resolution_template.format(height=height, width=width)
-            return text
-
-        if isinstance(prompt, str):
-            prompt = _apply_templates(prompt)
-        else:
-            prompt = [_apply_templates(p) for p in prompt]
+        is_image = num_frames == 1
 
         if negative_prompt is None:
-            negative_prompt = _apply_templates(negative_prompt_base) if keep_metadata else negative_prompt_base
+            if image is not None:
+                negative_prompt = self.image2video_negative_prompt
+            elif is_image:
+                negative_prompt = self.text2image_negative_prompt
+            else:
+                negative_prompt = self.text2video_negative_prompt
 
-        return guidance, num_steps, shift, prompt, negative_prompt
+        resolution_template = self.image_resolution_template if is_image else self.video_resolution_template
+
+        def _apply_templates(text: str) -> str:
+            if not is_image:
+                text = text.rstrip(".") + ". " + self.duration_template.format(duration=num_frames / fps, fps=fps)
+            text = text.rstrip(".") + ". " + resolution_template.format(height=height, width=width)
+            return text
+
+        prompt = _apply_templates(prompt)
+        negative_prompt = _apply_templates(negative_prompt)
+
+        cond_tokens = self.tokenize_caption(prompt, is_video=False, use_system_prompt=use_system_prompt)
+        uncond_tokens = self.tokenize_caption(negative_prompt, is_video=False, use_system_prompt=use_system_prompt)
+        return cond_tokens, uncond_tokens
 
     @torch.no_grad()
     def decode_latents(self, vision_list: list[torch.Tensor]) -> list[torch.Tensor]:
@@ -1818,8 +1821,8 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
         height: int = 720,
         width: int = 1280,
         fps: float = 24.0,
-        num_inference_steps: Optional[int] = None,
-        guidance_scale: Optional[float] = None,
+        num_inference_steps: int = 35,
+        guidance_scale: float = 6.0,
         condition_frame_indexes: Optional[List[int]] = None,
         enable_sound: bool = False,
         generator: Optional[torch.Generator] = None,
@@ -1830,16 +1833,7 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
     ) -> Cosmos3OmniPipelineOutput:
         # 1. Check inputs
         self.check_inputs(prompt, negative_prompt, image, height, width, num_frames, enable_sound)
-
-        # 2. Resolve mode-specific defaults + apply prompt templates
-        guidance, num_steps, _shift, prompt, negative_prompt = self._resolve_defaults_and_prompts(
-            prompt, negative_prompt, image, num_frames, fps, height, width
-        )
-        if num_inference_steps is not None:
-            num_steps = num_inference_steps
-        if guidance_scale is not None:
-            guidance = guidance_scale
-        assert guidance != 1.0, "Guidance weight must be != 1.0"
+        assert guidance_scale != 1.0, "Guidance weight must be != 1.0"
 
         # Pipeline supports a single sample at a time; collapse list-style inputs to a single string.
         if isinstance(prompt, list):
@@ -1850,8 +1844,17 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
         device = self._execution_device
         dtype = self.transformer.dtype
 
-        # 3. Encode prompt
-        cond_tokens, uncond_tokens = self.encode_prompt(prompt, negative_prompt, use_system_prompt=use_system_prompt)
+        # 2. Encode prompt (applies metadata templates and selects mode-specific default negative prompt)
+        cond_tokens, uncond_tokens = self.encode_prompt(
+            prompt,
+            negative_prompt,
+            image=image,
+            num_frames=num_frames,
+            height=height,
+            width=width,
+            fps=fps,
+            use_system_prompt=use_system_prompt,
+        )
 
         # 4. Prepare latents (initial noise + conditioning metadata)
         (
@@ -1880,7 +1883,7 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
         )
 
         # 5. Set timesteps
-        self.scheduler.set_timesteps(num_steps, device=device)
+        self.scheduler.set_timesteps(num_inference_steps, device=device)
         timesteps = self.scheduler.timesteps
 
         # 6. Denoising loop
@@ -1890,7 +1893,7 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
                 velocity_pred = self.get_cfg_velocity(
                     latents,
                     t.reshape(1, 1),
-                    guidance,
+                    guidance_scale,
                     sequence_plan,
                     cond_tokens,
                     uncond_tokens,
