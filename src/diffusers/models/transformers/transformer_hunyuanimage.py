@@ -754,6 +754,38 @@ class HunyuanImageTransformer2DModel(
         attention_kwargs: dict[str, Any] | None = None,
         return_dict: bool = True,
     ) -> torch.Tensor | dict[str, torch.Tensor]:
+        """
+        The [`HunyuanImageTransformer2DModel`] forward method.
+
+        Args:
+            hidden_states (`torch.Tensor` of shape `(batch_size, num_channels, height, width)` or `(batch_size, num_channels, num_frames, height, width)`):
+                Input `hidden_states`.
+            timestep (`torch.LongTensor`):
+                Used to indicate denoising step.
+            encoder_hidden_states (`torch.Tensor` of shape `(batch_size, sequence_len, embed_dims)`):
+                Conditional embeddings (embeddings computed from the input conditions such as prompts) to use.
+            encoder_attention_mask (`torch.Tensor`):
+                Mask applied to `encoder_hidden_states` during attention.
+            timestep_r (`torch.LongTensor`, *optional*):
+                Refiner timestep conditioning.
+            encoder_hidden_states_2 (`torch.Tensor`, *optional*):
+                Additional conditional embeddings computed from a second text encoder.
+            encoder_attention_mask_2 (`torch.Tensor`, *optional*):
+                Mask applied to `encoder_hidden_states_2` during attention.
+            guidance (`torch.Tensor`, *optional*):
+                Guidance scale embedding used for guidance-distilled variants of the model.
+            attention_kwargs (`dict`, *optional*):
+                A kwargs dictionary that if specified is passed along to the `AttentionProcessor` as defined under
+                `self.processor` in
+                [diffusers.models.attention_processor](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/attention_processor.py).
+            return_dict (`bool`, *optional*, defaults to `True`):
+                Whether or not to return a [`~models.transformer_2d.Transformer2DModelOutput`] instead of a plain
+                tuple.
+
+        Returns:
+            If `return_dict` is True, an [`~models.transformer_2d.Transformer2DModelOutput`] is returned, otherwise a
+            `tuple` where the first element is the sample tensor.
+        """
         if hidden_states.ndim == 4:
             batch_size, channels, height, width = hidden_states.shape
             sizes = (height, width)

@@ -53,7 +53,7 @@ jobs:
     - name: Environment
       shell: arch -arch arm64 bash {0}
       run: |
-        ${CONDA_RUN} python utils/print_env.py
+        ${CONDA_RUN} diffusers-cli env
 
     - name: Run fast PyTorch tests on M1 (MPS)
       shell: arch -arch arm64 bash {0}

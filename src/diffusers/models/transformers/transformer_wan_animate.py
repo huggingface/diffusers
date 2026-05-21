@@ -1188,6 +1188,10 @@ class WanAnimateTransformer3DModel(
                 `self.config.motion_encoder_batch_size` if not set.
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether to return the output as a dict or tuple.
+            attention_kwargs (`dict`, *optional*):
+                A kwargs dictionary that if specified is passed along to the `AttentionProcessor` as defined under
+                `self.processor` in
+                [diffusers.models.attention_processor](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/attention_processor.py).
         """
 
         # Check that shapes match up

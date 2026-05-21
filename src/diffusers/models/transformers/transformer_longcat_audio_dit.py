@@ -545,6 +545,25 @@ class LongCatAudioDiTTransformer(ModelMixin, ConfigMixin):
         latent_cond: torch.Tensor | None = None,
         return_dict: bool = True,
     ) -> LongCatAudioDiTTransformerOutput | tuple[torch.Tensor]:
+        """
+        The [`LongCatAudioDiTTransformer`] forward method.
+
+        Args:
+            hidden_states (`torch.Tensor` of shape `(batch_size, sequence_length, in_channels)`):
+                Input `hidden_states`.
+            encoder_hidden_states (`torch.Tensor` of shape `(batch_size, sequence_len, embed_dims)`):
+                Conditional embeddings (embeddings computed from the input conditions such as prompts) to use.
+            encoder_attention_mask (`torch.BoolTensor`):
+                Mask applied to `encoder_hidden_states` during attention.
+            timestep (`torch.LongTensor`):
+                Used to indicate denoising step.
+            attention_mask (`torch.BoolTensor`, *optional*):
+                Mask applied to `hidden_states` during self-attention.
+            latent_cond (`torch.Tensor`, *optional*):
+                Latent conditioning concatenated to `hidden_states`.
+            return_dict (`bool`, *optional*, defaults to `True`):
+                Whether or not to return a [`LongCatAudioDiTTransformerOutput`] instead of a plain tuple.
+        """
         dtype = hidden_states.dtype
         encoder_hidden_states = encoder_hidden_states.to(dtype)
         timestep = timestep.to(dtype)

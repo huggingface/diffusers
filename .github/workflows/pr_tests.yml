@@ -68,6 +68,7 @@ jobs:
           python utils/check_copies.py
           python utils/check_dummies.py
           python utils/check_support_list.py
+          python utils/check_forward_call_docstrings.py
           make deps_table_check_updated
       - name: Check if failure
         if: ${{ failure() }}
@@ -123,7 +124,7 @@ jobs:
 
     - name: Environment
       run: |
-        python utils/print_env.py
+        diffusers-cli env
 
     - name: Run fast PyTorch Pipeline CPU tests
       if: ${{ matrix.config.framework == 'pytorch_pipelines' }}
@@ -199,7 +200,7 @@ jobs:
 
     - name: Environment
       run: |
-        python utils/print_env.py
+        diffusers-cli env
 
     - name: Run Hub tests for models, schedulers, and pipelines on a staging env
       if: ${{ matrix.config.framework == 'hub_tests_pytorch' }}
@@ -254,7 +255,7 @@ jobs:
 
     - name: Environment
       run: |
-        python utils/print_env.py
+        diffusers-cli env
 
     - name: Run fast PyTorch LoRA tests with PEFT
       run: |

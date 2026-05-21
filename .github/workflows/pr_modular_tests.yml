@@ -73,6 +73,7 @@ jobs:
           python utils/check_copies.py
           python utils/check_dummies.py
           python utils/check_support_list.py
+          python utils/check_forward_call_docstrings.py
           make deps_table_check_updated
       - name: Check if failure
         if: ${{ failure() }}
@@ -127,7 +128,7 @@ jobs:
 
     - name: Environment
       run: |
-        python utils/print_env.py
+        diffusers-cli env
 
     - name: Run fast PyTorch Pipeline CPU tests
       run: |
