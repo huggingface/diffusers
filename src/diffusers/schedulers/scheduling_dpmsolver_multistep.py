@@ -1133,6 +1133,15 @@ class DPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
                 + (alpha_t * ((1.0 - torch.exp(-2.0 * h) - 2.0 * h) / (2.0 * h) ** 2 - 0.5)) * D2
                 + sigma_t * torch.sqrt(1.0 - torch.exp(-2 * h)) * noise
             )
+        elif self.config.algorithm_type == "sde-dpmsolver":
+            assert noise is not None
+            x_t = (
+                (alpha_t / alpha_s0) * sample
+                - 2.0 * (sigma_t * (torch.exp(h) - 1.0)) * D0
+                - 2.0 * (sigma_t * ((torch.exp(h) - 1.0) / h - 1.0)) * D1
+                - 2.0 * (sigma_t * ((torch.exp(h) - 1.0 - h) / h**2 - 0.5)) * D2
+                + sigma_t * torch.sqrt(torch.exp(2 * h) - 1.0) * noise
+            )
         return x_t
 
     def index_for_timestep(
