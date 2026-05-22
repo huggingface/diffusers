@@ -856,11 +856,6 @@ class EMAModel:
         else:
             for c_param, param in zip(self.temp_stored_params, parameters):
                 param.data.copy_(c_param.data)
-                [c_param.to(param.device).data for c_param, param in zip(self.temp_stored_params, parameters)],
-            )
-        else:
-            for c_param, param in zip(self.temp_stored_params, parameters):
-                param.data.copy_(c_param.data)
         # Better memory-wise.
         self.temp_stored_params = None
 
