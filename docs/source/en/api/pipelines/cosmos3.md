@@ -62,10 +62,17 @@ pipe = Cosmos3OmniDiffusersPipeline.from_pretrained(
 prompt = (
     "The video opens with a view of a well-lit indoor space featuring a wooden display case with "
     "compartments filled with various fruits, including bananas, apples, pears, oranges, and carambolas. "
-    "Two robotic arms with grippers are positioned at the bottom of the frame. The robotic arm on the "
-    "right begins its action, extending towards the right side of the display case. It carefully picks "
-    "up a pear from the fruit section, placing it into a plastic bag in the shopping cart nearby. "
-    "The process repeats with an orange and a carambola, then the arm returns to its initial position."
+    "The bananas are neatly arranged in the middle compartment, while apples are in the left and a mix "
+    "of pears, oranges, and carambolas are in the right. Two robotic arms with grippers are positioned "
+    "at the bottom of the frame, with the one on the left remaining stationary, partially obscuring the "
+    "apples. The robotic arm on the right begins its action, extending towards the right side of the "
+    "display case. It carefully picks up a pear from the fruit section, placing it into a plastic bag "
+    "in the shopping cart nearby, which has red handles. After securing the pear, the arm retracts back "
+    "to its original position. The process repeats as the robotic arm picks up an orange and places it "
+    "in the bag, followed by a carambola. The final frame captures the robotic arm returning to its "
+    "initial position, leaving the display case and surrounding area unchanged. The video showcases a "
+    "seamless and efficient automated fruit-picking process, highlighting the precision and efficiency "
+    "of modern robotics in a retail setting."
 )
 
 result = pipe(prompt=prompt, num_frames=189, height=720, width=1280, fps=24.0)
@@ -90,9 +97,22 @@ image = load_image(
     "https://github.com/nvidia-cosmos/cosmos-dependencies/releases/download/assets/robot_153.jpg"
 )
 prompt = (
-    "The right robotic hand extends outward from its initial position, picks up the red spherical object "
-    "on the top rack of the wooden shelf, and places it on the lowest rack. The left robotic hand remains "
-    "stationary. The scene concludes with the right robotic hand returning to its initial position."
+    "The video opens with a view of a testing environment, characterized by a large wooden table at the "
+    "center. On this table, two robot arms are positioned at opposite ends, with the left arm closer to "
+    "the camera and the right arm further away. Between the hands lies a dark wooden shelf with a red "
+    "spherical object on its top rack, likely serving as a platform or obstacle. In the background, "
+    "various pieces of equipment, including a tripod, a chair, are visible. A person wearing a blue "
+    "jacket and black pants stands near the center of the room, observing the experiment, with a static "
+    "hand position throughout. The floor is tiled with a patterned design, and additional items like a "
+    "small robot figure and some cables can be seen scattered around the space. As the video progresses, "
+    "the right robotic hand extends outward, moving from its initial position towards the red spherical "
+    "object on the shelf. The hand then picks up the object and places it on the lowest rack of the "
+    "shelf, completing a smooth, deliberate manipulation. The left robotic hand remains stationary "
+    "throughout the sequence. No new objects appear in the video; all existing elements maintain their "
+    "positions except for the movement of the right robotic hand. The scene concludes with the right "
+    "robotic hand returning to its initial position, while the left hand continues to rest on the table. "
+    "The overall environment remains unchanged, with the focus remaining on the interaction between the "
+    "robotic hands and the wooden block, highlighting precise control during the demonstration."
 )
 
 result = pipe(prompt=prompt, image=image, num_frames=189, height=720, width=1280, fps=24.0)
@@ -103,6 +123,8 @@ save_img_or_video(result.video[0], "cosmos3_i2v", fps=24)  # writes cosmos3_i2v.
 
 When the checkpoint carries a `sound_tokenizer`, pass `enable_sound=True` to jointly generate a synchronized audio track. The waveform is returned alongside the video and decoded by the audio tokenizer's vocoder.
 
+This is the same call as the text-to-video example above with `enable_sound=True` added:
+
 ```python
 import torch
 from diffusers import Cosmos3OmniDiffusersPipeline
@@ -112,8 +134,24 @@ pipe = Cosmos3OmniDiffusersPipeline.from_pretrained(
     "nvidia/Cosmos3-Nano", torch_dtype=torch.bfloat16, device_map="cuda"
 )
 
+prompt = (
+    "The video opens with a view of a well-lit indoor space featuring a wooden display case with "
+    "compartments filled with various fruits, including bananas, apples, pears, oranges, and carambolas. "
+    "The bananas are neatly arranged in the middle compartment, while apples are in the left and a mix "
+    "of pears, oranges, and carambolas are in the right. Two robotic arms with grippers are positioned "
+    "at the bottom of the frame, with the one on the left remaining stationary, partially obscuring the "
+    "apples. The robotic arm on the right begins its action, extending towards the right side of the "
+    "display case. It carefully picks up a pear from the fruit section, placing it into a plastic bag "
+    "in the shopping cart nearby, which has red handles. After securing the pear, the arm retracts back "
+    "to its original position. The process repeats as the robotic arm picks up an orange and places it "
+    "in the bag, followed by a carambola. The final frame captures the robotic arm returning to its "
+    "initial position, leaving the display case and surrounding area unchanged. The video showcases a "
+    "seamless and efficient automated fruit-picking process, highlighting the precision and efficiency "
+    "of modern robotics in a retail setting."
+)
+
 result = pipe(
-    prompt="A waterfall cascading down a rocky cliff in a lush forest.",
+    prompt=prompt,
     num_frames=189,
     height=720,
     width=1280,
