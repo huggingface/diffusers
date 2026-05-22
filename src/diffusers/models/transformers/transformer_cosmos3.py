@@ -288,13 +288,17 @@ class Cosmos3OmniTransformer(ModelMixin, ConfigMixin, PeftAdapterMixin, Attentio
     _repeated_blocks = ["Cosmos3VLTextMoTDecoderLayer"]
     _skip_layerwise_casting_patterns = ["embed_tokens", "time_embedder", "norm"]
     _keep_in_fp32_modules = ["time_embedder"]
+    # `dtype` is injected into init_dict by ModelMixin.from_pretrained (configuration_utils.py:289),
+    # so __init__ must accept it. Excluding it here keeps save_pretrained from writing it into
+    # config.json — the value is a load-time runtime hint, not part of the model architecture.
+    ignore_for_config = ["dtype"]
 
     @register_to_config
     def __init__(
         self,
         attention_bias: bool = False,
         attention_dropout: float = 0.0,
-        dtype: str = "bfloat16",  # accepted by ConfigMixin loader (configuration_utils.py:288); not read directly
+        dtype: str = "bfloat16",  # required by the loader (see `ignore_for_config` above); not read here
         head_dim: int = 128,
         hidden_size: int = 4096,
         intermediate_size: int = 12288,
