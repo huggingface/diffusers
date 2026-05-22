@@ -699,8 +699,8 @@ class AnyFlowTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromO
             for block in self.blocks:
                 hidden_states = block(hidden_states, encoder_hidden_states, timestep_proj, rotary_emb, attention_mask)
 
-        # Output norm, projection & unpatchify. `temb` is always 3D from `condition_embedder.forward()`
-        # (broadcast over total tokens), so no ndim==2 branch is needed.
+        # Output norm, projection & unpatchify.
+        # `temb` is always 3D from `condition_embedder.forward()` (broadcast over total tokens).
         shift, scale = (self.scale_shift_table.unsqueeze(0) + temb.unsqueeze(2)).chunk(2, dim=2)
         shift = shift.squeeze(2)
         scale = scale.squeeze(2)

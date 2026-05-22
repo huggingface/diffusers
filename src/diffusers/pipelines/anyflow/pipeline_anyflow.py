@@ -388,6 +388,8 @@ class AnyFlowPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         width: int = 832,
         num_frames: int = 81,
         num_inference_steps: int = 50,
+        sigmas: Optional[List[float]] = None,
+        timesteps: Optional[List[float]] = None,
         guidance_scale: float = 1.0,
         num_videos_per_prompt: Optional[int] = 1,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
@@ -429,7 +431,13 @@ class AnyFlowPipeline(DiffusionPipeline, WanLoraLoaderMixin):
                 == 0`.
             num_inference_steps (`int`, defaults to `50`):
                 The number of denoising steps. Distilled AnyFlow checkpoints support any-step sampling, so values as
-                low as `1`, `2`, `4`, or `8` are typical.
+                low as `1`, `2`, `4`, or `8` are typical. Ignored when `sigmas` or `timesteps` is provided.
+            sigmas (`List[float]`, *optional*):
+                Custom sigma schedule for any-step sampling, in `[0, 1]` and ordered from noisy to clean. Length
+                determines the effective `num_inference_steps`; the scheduler appends the terminal `0` sigma.
+            timesteps (`List[float]`, *optional*):
+                Custom timestep schedule for any-step sampling, in the same units as `self.scheduler.timesteps`
+                (i.e. scaled by `num_train_timesteps`). Mutually exclusive with `sigmas`.
             guidance_scale (`float`, defaults to `1.0`):
                 Classifier-free guidance scale. The released AnyFlow checkpoints fuse CFG into the weights during
                 training; keep at `1.0` unless you know your checkpoint expects otherwise.
@@ -497,6 +505,11 @@ class AnyFlowPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         self._guidance_scale = guidance_scale
         self._attention_kwargs = attention_kwargs
         self._interrupt = False
+        # Custom sigmas / timesteps override num_inference_steps (matches LTX2Pipeline / retrieve_timesteps convention).
+        if sigmas is not None:
+            num_inference_steps = len(sigmas)
+        elif timesteps is not None:
+            num_inference_steps = len(timesteps)
         self._num_timesteps = num_inference_steps
 
         device = self._execution_device
@@ -547,12 +560,12 @@ class AnyFlowPipeline(DiffusionPipeline, WanLoraLoaderMixin):
             video_latents = self.encode_video(video, height=height, width=width)
         context_length = video_latents.shape[1] if video_latents is not None else 0
 
-        # 6. Denoising loop (inlined; follows the `WanPipeline.__call__` convention).
+        # 6. Denoising loop
         latents = init_latents
         if negative_prompt_embeds is not None:
             prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds], dim=0)
 
-        self.scheduler.set_timesteps(num_inference_steps, device=device)
+        self.scheduler.set_timesteps(num_inference_steps, device=device, sigmas=sigmas, timesteps=timesteps)
         timesteps = self.scheduler.timesteps  # length N; `step` resolves the next sigma internally.
 
         with self.progress_bar(total=len(timesteps)) as progress_bar:

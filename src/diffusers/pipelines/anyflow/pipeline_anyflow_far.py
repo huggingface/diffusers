@@ -449,6 +449,8 @@ class AnyFlowFARPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         width: int = 832,
         num_frames: int = 81,
         num_inference_steps: int = 50,
+        sigmas: Optional[List[float]] = None,
+        timesteps: Optional[List[float]] = None,
         guidance_scale: float = 1.0,
         num_videos_per_prompt: Optional[int] = 1,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
@@ -492,7 +494,13 @@ class AnyFlowFARPipeline(DiffusionPipeline, WanLoraLoaderMixin):
                 == 0`.
             num_inference_steps (`int`, defaults to `50`):
                 The number of denoising steps per chunk. Distilled AnyFlow-FAR checkpoints support any-step sampling
-                (1, 2, 4, 8, ...).
+                (1, 2, 4, 8, ...). Ignored when `sigmas` or `timesteps` is provided.
+            sigmas (`List[float]`, *optional*):
+                Custom sigma schedule for any-step sampling, in `[0, 1]` and ordered from noisy to clean. Length
+                determines the effective `num_inference_steps`; the scheduler appends the terminal `0` sigma.
+            timesteps (`List[float]`, *optional*):
+                Custom timestep schedule for any-step sampling, in the same units as `self.scheduler.timesteps`
+                (i.e. scaled by `num_train_timesteps`). Mutually exclusive with `sigmas`.
             guidance_scale (`float`, defaults to `1.0`):
                 Classifier-free guidance scale. The released AnyFlow checkpoints fuse CFG into the weights during
                 training; keep at `1.0` unless the checkpoint requires otherwise.
@@ -561,6 +569,11 @@ class AnyFlowFARPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         self._guidance_scale = guidance_scale
         self._attention_kwargs = attention_kwargs
         self._interrupt = False
+        # Custom sigmas / timesteps override num_inference_steps (matches LTX2Pipeline / retrieve_timesteps convention).
+        if sigmas is not None:
+            num_inference_steps = len(sigmas)
+        elif timesteps is not None:
+            num_inference_steps = len(timesteps)
         self._num_timesteps = num_inference_steps
 
         device = self._execution_device
@@ -680,10 +693,7 @@ class AnyFlowFARPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         # callback_on_step_end; context chunks only encode KV cache and never call back.
         self._num_timesteps = (len(chunk_partition) - num_context_chunks) * num_inference_steps
 
-        # 8. Denoising loop (inlined; outer over chunks, inner over timesteps). Mirrors
-        # `WanAnimatePipeline.__call__`'s nested-loop convention (cf. pipeline_wan_animate.py:1035).
-        # `encode_kv_cache` is kept as a method because it is its own coherent operation (a single
-        # cache-prefill call on the transformer); inlining it would obscure the read.
+        # 8. Denoising loop (outer over chunks, inner over timesteps).
         encoder_hidden_states = (
             torch.cat([negative_prompt_embeds, prompt_embeds], dim=0)
             if (negative_prompt_embeds is not None)
@@ -698,8 +708,8 @@ class AnyFlowFARPipeline(DiffusionPipeline, WanLoraLoaderMixin):
                 ]
                 this_chunk_partition = chunk_partition[: chunk_idx + 1]
 
-                self.scheduler.set_timesteps(num_inference_steps, device=device)
-                timesteps = self.scheduler.timesteps  # length N; `step` resolves the next sigma internally.
+                self.scheduler.set_timesteps(num_inference_steps, device=device, sigmas=sigmas, timesteps=timesteps)
+                timesteps = self.scheduler.timesteps
                 inner_progress_bar_config = {
                     **outer_progress_bar_config,
                     "position": 1,

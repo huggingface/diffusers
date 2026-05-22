@@ -157,6 +157,27 @@ class FlowMapEulerDiscreteSchedulerTest(unittest.TestCase):
         scheduler.step(torch.randn_like(sample), scheduler.timesteps[0], sample)
         self.assertEqual(scheduler.step_index, 3)  # 2 -> 3 after one step
 
+    def test_set_timesteps_custom_sigmas(self):
+        # Custom sigmas override: length N, terminal 0 appended automatically. Default-shift schedule untouched.
+        scheduler = self.scheduler_class(**self.get_default_config(shift=1.0))
+        custom = [0.9, 0.7, 0.4, 0.1]
+        scheduler.set_timesteps(sigmas=custom)
+        self.assertEqual(scheduler.num_inference_steps, 4)
+        self.assertEqual(scheduler.timesteps.shape, (4,))
+        self.assertEqual(scheduler.sigmas.shape, (5,))
+        self.assertAlmostEqual(scheduler.sigmas[-1].item(), 0.0, places=6)
+        for i, s in enumerate(custom):
+            self.assertAlmostEqual(scheduler.sigmas[i].item(), s, places=5)
+
+    def test_set_timesteps_custom_timesteps(self):
+        # Custom timesteps override: scheduler converts to sigmas via /num_train_timesteps.
+        scheduler = self.scheduler_class(**self.get_default_config(shift=1.0))
+        custom = [900.0, 700.0, 400.0, 100.0]
+        scheduler.set_timesteps(timesteps=custom)
+        self.assertEqual(scheduler.num_inference_steps, 4)
+        for i, t in enumerate(custom):
+            self.assertAlmostEqual(scheduler.sigmas[i].item(), t / 1000.0, places=5)
+
     def test_scale_noise_endpoints(self):
         scheduler = self.scheduler_class(**self.get_default_config())
         sample = torch.zeros(2, 4, 4, 4)

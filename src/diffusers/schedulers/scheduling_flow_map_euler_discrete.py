@@ -13,7 +13,7 @@
 # limitations under the License.
 
 from dataclasses import dataclass
-from typing import Optional, Tuple, Union
+from typing import List, Optional, Tuple, Union
 
 import torch
 
@@ -124,14 +124,47 @@ class FlowMapEulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
         self,
         num_inference_steps: Optional[int] = None,
         device: Union[str, torch.device] = None,
+        sigmas: Optional[List[float]] = None,
+        timesteps: Optional[List[float]] = None,
     ) -> None:
         """Build the inference timestep schedule.
 
-        Internally tracks ``self.sigmas`` of length ``num_inference_steps + 1`` (linspace endpoints :math:`[1, ...,
-        0]`); ``self.timesteps`` exposes the first ``num_inference_steps`` sigmas scaled by ``num_train_timesteps`` —
-        i.e. one timestep per inference step, matching :class:`~diffusers.schedulers.FlowMatchEulerDiscreteScheduler`.
-        The final sigma (== 0) is the implicit r-endpoint of the last step.
+        Internally tracks ``self.sigmas`` of length ``num_inference_steps + 1`` (the configured shift applied to a
+        linspace from ``1.0`` to ``0.0`` by default); ``self.timesteps`` exposes the first ``num_inference_steps``
+        sigmas scaled by ``num_train_timesteps`` — i.e. one timestep per inference step, matching
+        :class:`~diffusers.schedulers.FlowMatchEulerDiscreteScheduler`. The final sigma (``0``) is the implicit
+        r-endpoint of the last step and is appended automatically when ``sigmas`` / ``timesteps`` are user-provided.
+
+        Args:
+            num_inference_steps (`int`, *optional*):
+                Number of inference steps. If ``None``, must pass ``sigmas`` or ``timesteps``.
+            device (`str` or `torch.device`, *optional*):
+                Target device for ``self.sigmas`` / ``self.timesteps``.
+            sigmas (`List[float]`, *optional*):
+                Custom sigma schedule of length ``num_inference_steps``. The terminal ``0`` sigma is appended
+                automatically. The configured ``shift`` is applied on top.
+            timesteps (`List[float]`, *optional*):
+                Custom timestep schedule of length ``num_inference_steps``, in the same units as
+                ``self.timesteps`` (i.e. scaled by ``num_train_timesteps``). Converted to sigmas internally.
+                If both ``sigmas`` and ``timesteps`` are passed, their lengths must match.
         """
+        if sigmas is not None and timesteps is not None and len(sigmas) != len(timesteps):
+            raise ValueError("`sigmas` and `timesteps` should have the same length")
+
+        if num_inference_steps is not None:
+            if (sigmas is not None and len(sigmas) != num_inference_steps) or (
+                timesteps is not None and len(timesteps) != num_inference_steps
+            ):
+                raise ValueError(
+                    "`sigmas` and `timesteps` should have the same length as `num_inference_steps` when both are provided"
+                )
+        elif sigmas is not None:
+            num_inference_steps = len(sigmas)
+        elif timesteps is not None:
+            num_inference_steps = len(timesteps)
+        else:
+            raise ValueError("`num_inference_steps` must be provided when both `sigmas` and `timesteps` are `None`")
+
         # MPS / NPU don't support float64 — build the schedule in float64 on CPU and only move
         # the final tensors to the requested device (with a float32 downcast for MPS / NPU).
         device_obj = torch.device(device) if device is not None and not isinstance(device, torch.device) else device
@@ -139,11 +172,20 @@ class FlowMapEulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
         is_npu = device_obj is not None and device_obj.type == "npu"
         out_dtype = torch.float32 if (is_mps or is_npu) else torch.float64
 
-        sigmas = torch.linspace(1.0, 0.0, num_inference_steps + 1, dtype=torch.float64)
-        sigmas = self.apply_shift(sigmas)
+        # Build the working sigma sequence (length N) before appending the terminal 0.
+        if sigmas is not None:
+            working_sigmas = torch.tensor(sigmas, dtype=torch.float64)
+        elif timesteps is not None:
+            working_sigmas = torch.tensor(timesteps, dtype=torch.float64) / self.config.num_train_timesteps
+        else:
+            working_sigmas = torch.linspace(1.0, 0.0, num_inference_steps + 1, dtype=torch.float64)[:-1]
+
+        working_sigmas = self.apply_shift(working_sigmas)
+        # Append the terminal 0 sigma as the r-endpoint of the last step.
+        full_sigmas = torch.cat([working_sigmas, torch.zeros(1, dtype=working_sigmas.dtype)])
 
         self.num_inference_steps = num_inference_steps
-        self.sigmas = sigmas.to(device=device, dtype=out_dtype)
+        self.sigmas = full_sigmas.to(device=device, dtype=out_dtype)
         self.timesteps = (self.sigmas[:-1] * self.config.num_train_timesteps).to(device=device, dtype=out_dtype)
         # Reset the state machine — first `step()` after this will re-initialize `_step_index`.
         self._step_index = None
@@ -239,8 +281,8 @@ class FlowMapEulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
         if r_timestep is None:
             if t_idx is None:
                 raise ValueError(
-                    "`r_timestep` is None but `timestep` is not on the current schedule; "
-                    "pass an explicit `r_timestep` for any-step sampling outside the schedule."
+                    "`r_timestep` is None but `timestep` is not on the current schedule, so `r` cannot be inferred. "
+                    "Please pass an explicit `r_timestep` for any-step sampling outside the schedule."
                 )
             sigma_r = self.sigmas[t_idx + 1].to(device=sample.device, dtype=self.sigmas.dtype)
         else:
