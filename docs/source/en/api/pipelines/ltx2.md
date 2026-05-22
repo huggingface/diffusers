@@ -377,7 +377,7 @@ height = 512
 random_seed = 42
 frame_rate = 24.0
 generator = torch.Generator(device).manual_seed(random_seed)
-model_path = "dg845/LTX-2.3-Diffusers"
+model_path = "diffusers/LTX-2.3-Diffusers"
 
 pipe = LTX2ImageToVideoPipeline.from_pretrained(model_path, torch_dtype=torch.bfloat16)
 pipe.enable_sequential_cpu_offload(device=device)
@@ -449,7 +449,7 @@ height = 512
 random_seed = 42
 frame_rate = 24.0
 generator = torch.Generator(device).manual_seed(random_seed)
-model_path = "dg845/LTX-2.3-Diffusers"
+model_path = "diffusers/LTX-2.3-Diffusers"
 
 pipe = LTX2Pipeline.from_pretrained(model_path, torch_dtype=torch.bfloat16)
 pipe.enable_model_cpu_offload(device=device)
