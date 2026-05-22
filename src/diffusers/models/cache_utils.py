@@ -35,12 +35,13 @@ class CacheMixin:
 
     @classmethod
     def _metadata(cls):
-        """Contribute the ``cache`` row to :class:`ModelMetadata` when the model inherits :class:`CacheMixin`."""
+        """Contribute the ``_supports_cache`` row to :class:`ModelMetadata` for models inheriting :class:`CacheMixin`."""
         from .modeling_utils import DOCS_BASE
 
         return {
-            "cache": (
-                "yes",
+            "_supports_cache": (
+                True,
+                "True",
                 "Supports caching techniques (PAB / FasterCache / FirstBlockCache) via `enable_cache`.",
                 f"{DOCS_BASE}/optimization/cache",
             )

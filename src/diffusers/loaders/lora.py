@@ -222,6 +222,7 @@ def _offloading_disabled(model):
     CPU offload, group offload, etc.). This context saves the hook state, removes the hooks for the duration of the
     block, and restores them on exit so existing offloading config survives a LoRA load.
     """
+
     saved_hf_hook = None
     is_sequential = False
     if hasattr(model, "_hf_hook"):
@@ -233,6 +234,7 @@ def _offloading_disabled(model):
         ):
             saved_hf_hook = hook
             is_sequential = True
+
     if saved_hf_hook is not None:
         remove_hook_from_module(model, recurse=is_sequential)
 
@@ -419,14 +421,15 @@ class LoRAModelMixin:
 
     @classmethod
     def _metadata(cls):
-        """Contribute the ``lora_formats`` row to :class:`ModelMetadata` when foreign formats are registered."""
+        """Contribute the ``_lora`` row to :class:`ModelMetadata` when foreign formats are registered."""
         from ..models.modeling_utils import DOCS_BASE
 
         formats = sorted(cls._lora.format_keys)
         if not formats:
             return {}
         return {
-            "lora_formats": (
+            "_lora": (
+                formats,
                 ", ".join(formats),
                 "Foreign LoRA formats this model converts to diffusers naming on load.",
                 f"{DOCS_BASE}/training/lora",

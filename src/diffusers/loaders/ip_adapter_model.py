@@ -96,14 +96,15 @@ class IPAdapterModelMixin:
 
     @classmethod
     def _metadata(cls):
-        """Contribute the ``ip_adapter`` row to :class:`ModelMetadata` when converters are registered."""
+        """Contribute the ``_ip_adapter`` row to :class:`ModelMetadata` when converters are registered."""
         from ..models.modeling_utils import DOCS_BASE
 
         if not cls._ip_adapter.supports_ip_adapter:
             return {}
         return {
-            "ip_adapter": (
-                "yes",
+            "_ip_adapter": (
+                True,
+                "True",
                 "Supports loading IP-Adapter weights (image-conditioning adapters).",
                 f"{DOCS_BASE}/using-diffusers/ip_adapter",
             )

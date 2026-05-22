@@ -25,7 +25,6 @@ import shutil
 import tempfile
 from collections import OrderedDict
 from contextlib import ExitStack, contextmanager, nullcontext
-from dataclasses import dataclass
 from functools import wraps
 from pathlib import Path
 from typing import Any, Callable, ContextManager, Type
@@ -240,44 +239,6 @@ def no_init_weights():
 DOCS_BASE = "https://huggingface.co/docs/diffusers/main/en"
 
 
-@dataclass(frozen=True)
-class ModelMetadata:
-    """Read-only snapshot of a model class's capabilities.
-
-    Constructed by :meth:`ModelMixin.metadata`, which walks ``cls.__mro__`` collecting rows from each mixin's
-    ``_metadata`` classmethod. Purely a display object — printing it renders a formatted table. Programmatic handler
-    access (``model._lora``, ``model._weight_mapping``, ``model._ip_adapter``) goes through the class attributes
-    directly.
-
-    ``rows`` maps a capability label to ``(value, description, docs_url)``. ``verbose=True`` (via
-    ``Model.metadata(verbose=True)``) renders the description and docs link under each row.
-    """
-
-    rows: dict[str, tuple[str, str, str]]
-    verbose: bool = False
-
-    def __repr__(self) -> str:
-        if not self.rows:
-            return "ModelMetadata(no capabilities declared)"
-
-        name_w = max(len(n) for n in self.rows)
-        if not self.verbose:
-            lines = ["ModelMetadata:"]
-            for label, (value, _doc, _link) in self.rows.items():
-                lines.append(f"  {label:<{name_w}}  {value}")
-            return "\n".join(lines)
-
-        lines = ["ModelMetadata:"]
-        for label, (value, doc, link) in self.rows.items():
-            lines.append(f"  {label:<{name_w}}  {value}")
-            if doc:
-                lines.append(f"  {'':<{name_w}}    {doc}")
-            if link:
-                lines.append(f"  {'':<{name_w}}    docs: {link}")
-            lines.append("")
-        return "\n".join(lines).rstrip()
-
-
 def register_metadata(metadata):
     """Generic class decorator that attaches metadata to the decorated class.
 
@@ -335,82 +296,126 @@ class ModelMixin(torch.nn.Module, ConfigMixin, LoRAModelMixin, PushToHubMixin):
         self._gradient_checkpointing_func = None
 
     @classmethod
-    def _metadata(cls) -> dict[str, tuple[str, str, str]]:
+    def _metadata(cls) -> dict[str, tuple[Any, str, str, str]]:
         """Return ``ModelMixin``-level rows for the metadata snapshot.
 
-        Each row is keyed by capability label and maps to ``(value, description, docs_url)``. Only present capabilities
-        are returned. See :meth:`metadata` for the aggregated view across all mixins in ``cls.__mro__``.
+        Each row is keyed by the **class attribute name** that controls the capability (e.g.
+        ``"_supports_gradient_checkpointing"``) and maps to ``(value, display, description, docs_url)``. Only present
+        capabilities are returned.
         """
-        rows: dict[str, tuple[str, str, str]] = {}
+        rows: dict[str, tuple[Any, str, str, str]] = {}
         if cls._supports_gradient_checkpointing:
-            rows["gradient_checkpointing"] = (
-                "yes",
+            rows["_supports_gradient_checkpointing"] = (
+                True,
+                "True",
                 "Trades compute for memory by recomputing activations during backward.",
                 f"{DOCS_BASE}/optimization/memory#gradient-checkpointing",
             )
         if cls._supports_group_offloading:
-            rows["group_offloading"] = (
-                "yes",
+            rows["_supports_group_offloading"] = (
+                True,
+                "True",
                 "Stage parameter groups on CPU/disk and stream them to the accelerator for inference.",
                 f"{DOCS_BASE}/optimization/memory#group-offloading",
             )
         if cls._no_split_modules:
-            rows["no_split_modules"] = (
+            rows["_no_split_modules"] = (
+                list(cls._no_split_modules),
                 ", ".join(cls._no_split_modules),
                 "Block class names that must stay on a single device under `device_map='auto'` sharding.",
                 f"{DOCS_BASE}/training/distributed_inference#device-map",
             )
         if cls._keep_in_fp32_modules:
-            rows["keep_in_fp32_modules"] = (
+            rows["_keep_in_fp32_modules"] = (
+                list(cls._keep_in_fp32_modules),
                 ", ".join(cls._keep_in_fp32_modules),
                 "Submodule name patterns that remain in fp32 even when the model is cast to fp16/bf16.",
                 f"{DOCS_BASE}/optimization/fp16#mixed-precision",
             )
         if cls._skip_layerwise_casting_patterns:
-            rows["skip_layerwise_casting_patterns"] = (
+            rows["_skip_layerwise_casting_patterns"] = (
+                tuple(cls._skip_layerwise_casting_patterns),
                 ", ".join(cls._skip_layerwise_casting_patterns),
                 "Parameter name substrings excluded from layerwise dtype casting (embeddings, norms, ...).",
                 f"{DOCS_BASE}/optimization/memory#layerwise-casting",
             )
         if cls._repeated_blocks:
-            rows["repeated_blocks"] = (
+            rows["_repeated_blocks"] = (
+                list(cls._repeated_blocks),
                 ", ".join(cls._repeated_blocks),
                 "Block class names safe to `torch.compile` once and reuse — enables `compile_repeated_blocks`.",
                 f"{DOCS_BASE}/optimization/torch2.0",
             )
         if cls._cp_plan:
-            rows["context_parallel"] = (
-                "yes",
-                "Forward inputs/outputs are scatter/gathered across context-parallel ranks.",
+            rows["_cp_plan"] = (
+                True,
+                "True",
+                "Support context parallel inference.",
                 f"{DOCS_BASE}/training/distributed_inference#context-parallelism",
             )
         if cls._weight_mapping.supports_single_file:
-            rows["supported_model_types"] = (
-                ", ".join(sorted(cls._weight_mapping.available_configs)),
+            configs = sorted(cls._weight_mapping.available_configs)
+            rows["_weight_mapping"] = (
+                configs,
+                ", ".join(configs),
                 "Auto-resolvable configs for `from_single_file(path)` (no `config=` argument required).",
                 f"{DOCS_BASE}/api/loaders/single_file",
             )
         return rows
 
     @classmethod
-    def metadata(cls, verbose: bool = False) -> "ModelMetadata":
-        """Return a read-only snapshot of this class's capabilities.
+    def describe(cls, verbose: bool = False) -> None:
+        """Print this class's feature attributes, keyed by the controlling class attribute name.
 
         Walks ``cls.__mro__`` and merges rows from each ancestor class's own ``_metadata`` classmethod (handled via
         direct ``__dict__`` lookup so the aggregator never recurses into itself). First-seen wins on label collisions;
         this puts the model's own overrides ahead of inherited defaults.
 
-        ``print(Model.metadata())`` shows the formatted table. Pass ``verbose=True`` to render each row with a
-        description and a link to the relevant docs section.
+        Compact form (default): two-column ``<class attr> <value>``. With ``verbose=True``, each row is followed by an
+        indented description and docs link. ANSI color/style is applied when stdout is a TTY and stripped otherwise so
+        the output stays clean in logs and pipes.
         """
-        merged: dict[str, tuple[str, str, str]] = {}
-        for klass in cls.__mro__:
-            method = klass.__dict__.get("_metadata")
+        import sys
+
+        merged: dict[str, tuple[Any, str, str, str]] = {}
+        for mixin in cls.__mro__:
+            method = mixin.__dict__.get("_metadata")
             if method is None:
                 continue
-            for label, info in method.__func__(cls).items():
-                merged.setdefault(label, info)
-        return ModelMetadata(rows=merged, verbose=verbose)
+            for attr, info in method.__func__(cls).items():
+                merged.setdefault(attr, info)
+
+        if not merged:
+            print(f"{cls.__name__}: no feature attributes declared")
+            return
+
+        is_tty = sys.stdout.isatty()
+        bold = "\033[1m" if is_tty else ""
+        dim = "\033[2m" if is_tty else ""
+        cyan = "\033[36m" if is_tty else ""
+        underline = "\033[4m" if is_tty else ""
+        reset = "\033[0m" if is_tty else ""
+
+        attr_w = max(len(attr) for attr in merged)
+        title = f"{cls.__name__} feature attributes"
+        rule_width = max(len(title), attr_w + 2 + max(len(row[1]) for row in merged.values()))
+        lines = [
+            f"{bold}{title}{reset}",
+            f"{dim}{'─' * rule_width}{reset}",
+        ]
+
+        rows = list(merged.items())
+        for i, (attr, (_value, display, doc, link)) in enumerate(rows):
+            lines.append(f"  {bold}{cyan}{attr:<{attr_w}}{reset}  {display}")
+            if verbose:
+                if doc:
+                    lines.append(f"      {dim}{doc}{reset}")
+                if link:
+                    lines.append(f"      {dim}See {underline}{link}{reset}")
+                if i < len(rows) - 1:
+                    lines.append("")
+        lines.append("")
+        print("\n".join(lines))
 
     def __getattr__(self, name: str) -> Any:
         """The only reason we overwrite `getattr` here is to gracefully deprecate accessing

@@ -41,12 +41,13 @@ class AttentionMixin:
 
     @classmethod
     def _metadata(cls):
-        """Contribute the ``attention`` row to :class:`ModelMetadata` when the model inherits :class:`AttentionMixin`."""
+        """Contribute the ``_supports_attention`` row to :class:`ModelMetadata` for models inheriting :class:`AttentionMixin`."""
         from .modeling_utils import DOCS_BASE
 
         return {
-            "attention": (
-                "yes",
+            "_supports_attention": (
+                True,
+                "True",
                 "Model contains attention modules; supports `set_attention_backend(...)`.",
                 f"{DOCS_BASE}/optimization/attention_backends",
             )
