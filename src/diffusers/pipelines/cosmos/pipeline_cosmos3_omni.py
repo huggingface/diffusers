@@ -520,6 +520,21 @@ class Cosmos3OmniPipelineOutput(BaseOutput):
     sound: Optional[list] = None
 
 
+@dataclass
+class Cosmos3Condition:
+    """Per-sample conditioning data computed by :meth:`prepare_latents` and threaded
+    through the denoising loop. Holds the encoded vision (and optional sound)
+    targets that get re-mixed with noise at each step, alongside the metadata that
+    :func:`pack_input_sequence` needs (FPS values, frame indices kept as condition)."""
+
+    num_vision_items: int
+    x0_tokens_vision: List[torch.Tensor]
+    fps_vision: torch.Tensor
+    condition_frame_indexes_vision: List[int]
+    x0_tokens_sound: Optional[List[torch.Tensor]] = None
+    fps_sound: Optional[torch.Tensor] = None
+
+
 # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_img2img.retrieve_latents
 def retrieve_latents(
     encoder_output: torch.Tensor, generator: torch.Generator | None = None, sample_mode: str = "sample"
@@ -668,20 +683,13 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
         device: str = "cuda",
         dtype: torch.dtype = torch.bfloat16,
         enable_sound: bool = False,
-    ) -> tuple[
-        torch.Tensor,
-        List[int],
-        int,
-        List[torch.Tensor],
-        Optional[torch.Tensor],
-        Optional[List[torch.Tensor]],
-        Optional[torch.Tensor],
-    ]:
+    ) -> tuple[torch.Tensor, Cosmos3Condition]:
         """Build conditioning + initial noise for a single sample.
 
         Returns:
-            ``(latents, condition_frame_indexes_vision, num_vision_items,
-            x0_tokens_vision, fps_vision, x0_tokens_sound, fps_sound)``.
+            ``(latents, condition)`` — ``latents`` is the flat initial-noise tensor
+            consumed by the denoiser; ``condition`` is the :class:`Cosmos3Condition`
+            re-used at every step.
         """
         is_image = num_frames == 1
 
@@ -751,16 +759,17 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
             temporal_compression_factor=self.vae.config.scale_factor_temporal,
         )
 
+        condition = Cosmos3Condition(
+            num_vision_items=num_vision_items,
+            x0_tokens_vision=x0_tokens_vision,
+            fps_vision=fps_vision,
+            condition_frame_indexes_vision=condition_frame_indexes_vision,
+            x0_tokens_sound=x0_tokens_sound,
+            fps_sound=fps_sound,
+        )
+
         if latents is not None:
-            return (
-                latents.to(device=device, dtype=dtype),
-                condition_frame_indexes_vision,
-                num_vision_items,
-                x0_tokens_vision,
-                fps_vision,
-                x0_tokens_sound,
-                fps_sound,
-            )
+            return latents.to(device=device, dtype=dtype), condition
 
         noise_vision_list: list[torch.Tensor] = []
         for x0_token, cond_mask in zip(x0_tokens_vision, packed_seq.vision.condition_mask, strict=True):
@@ -778,15 +787,7 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
                 noise_sound = cond_mask_sound.T * x0_sound + (1.0 - cond_mask_sound.T) * pure_noise_sound
                 initial_noise = torch.cat([initial_noise, noise_sound.reshape(-1)])
 
-        return (
-            initial_noise,
-            condition_frame_indexes_vision,
-            num_vision_items,
-            x0_tokens_vision,
-            fps_vision,
-            x0_tokens_sound,
-            fps_sound,
-        )
+        return initial_noise, condition
 
     def check_inputs(
         self,
@@ -877,9 +878,7 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
     def _postprocess_latents(
         self,
         latents: torch.Tensor,
-        num_vision_items: int,
-        x0_tokens_vision: List[torch.Tensor],
-        x0_tokens_sound: Optional[List[torch.Tensor]],
+        condition: "Cosmos3Condition",
         enable_sound: bool,
         output_type: str,
     ) -> tuple[list[torch.Tensor], Optional[list[torch.Tensor]]]:
@@ -891,16 +890,16 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
         """
         result_vision: list[torch.Tensor] = []
         offset = 0
-        for j in range(num_vision_items):
-            vision_shape = x0_tokens_vision[j].shape
+        for j in range(condition.num_vision_items):
+            vision_shape = condition.x0_tokens_vision[j].shape
             vision_dim = math.prod(vision_shape)
-            if j == num_vision_items - 1:
+            if j == condition.num_vision_items - 1:
                 result_vision.append(latents[offset : offset + vision_dim].reshape(vision_shape))
             offset += vision_dim
 
         result_sound: Optional[list] = None
-        if enable_sound and x0_tokens_sound is not None:
-            sound_shape = x0_tokens_sound[0].shape  # [sound_dim, T_sound]
+        if enable_sound and condition.x0_tokens_sound is not None:
+            sound_shape = condition.x0_tokens_sound[0].shape  # [sound_dim, T_sound]
             sound_dim_flat = math.prod(sound_shape)
             sound_latent = latents[offset : offset + sound_dim_flat].reshape(sound_shape)
             result_sound = [self.decode_sound(sound_latent)]
@@ -977,15 +976,7 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
         )
 
         # 4. Prepare latents (initial noise + conditioning metadata)
-        (
-            latents,
-            condition_frame_indexes_vision,
-            num_vision_items,
-            x0_tokens_vision,
-            fps_vision,
-            x0_tokens_sound,
-            fps_sound,
-        ) = self.prepare_latents(
+        latents, condition = self.prepare_latents(
             cond_tokens=cond_tokens,
             image=image,
             num_frames=num_frames,
@@ -1007,7 +998,7 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
         # Hoist per-step constants out of the loop
         config = self.transformer.config
         latent_patch_size = config.latent_patch_size
-        has_sound = x0_tokens_sound is not None
+        has_sound = condition.x0_tokens_sound is not None
 
         # 6. Denoising loop
         num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
@@ -1023,14 +1014,14 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
                 # Split flat latents → per-modality noisy tensors for this step
                 noise_x_vision: list[torch.Tensor] = []
                 offset = 0
-                for j in range(num_vision_items):
-                    vision_shape = x0_tokens_vision[j].shape
+                for j in range(condition.num_vision_items):
+                    vision_shape = condition.x0_tokens_vision[j].shape
                     vision_dim = math.prod(vision_shape)
                     noise_x_vision.append(latents[offset : offset + vision_dim].reshape(vision_shape))
                     offset += vision_dim
                 noise_x_sound: Optional[list] = None
                 if has_sound:
-                    sound_shape = x0_tokens_sound[0].shape
+                    sound_shape = condition.x0_tokens_sound[0].shape
                     sound_dim_flat = math.prod(sound_shape)
                     noise_x_sound = [latents[offset : offset + sound_dim_flat].reshape(sound_shape)]
 
@@ -1041,11 +1032,11 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
                     special_tokens=self.llm_special_tokens,
                     x0_tokens_vision=noise_x_vision,
                     device=device,
-                    num_vision_items=num_vision_items,
-                    condition_frame_indexes_vision=condition_frame_indexes_vision,
-                    fps_vision=fps_vision,
+                    num_vision_items=condition.num_vision_items,
+                    condition_frame_indexes_vision=condition.condition_frame_indexes_vision,
+                    fps_vision=condition.fps_vision,
                     x0_tokens_sound=noise_x_sound,
-                    fps_sound=fps_sound if has_sound else None,
+                    fps_sound=condition.fps_sound if has_sound else None,
                     latent_patch_size=latent_patch_size,
                     position_embedding_type=config.position_embedding_type,
                     unified_3d_mrope_reset_spatial_ids=config.unified_3d_mrope_reset_spatial_ids,
@@ -1081,11 +1072,11 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
                     special_tokens=self.llm_special_tokens,
                     x0_tokens_vision=noise_x_vision,
                     device=device,
-                    num_vision_items=num_vision_items,
-                    condition_frame_indexes_vision=condition_frame_indexes_vision,
-                    fps_vision=fps_vision,
+                    num_vision_items=condition.num_vision_items,
+                    condition_frame_indexes_vision=condition.condition_frame_indexes_vision,
+                    fps_vision=condition.fps_vision,
                     x0_tokens_sound=noise_x_sound,
-                    fps_sound=fps_sound if has_sound else None,
+                    fps_sound=condition.fps_sound if has_sound else None,
                     latent_patch_size=latent_patch_size,
                     position_embedding_type=config.position_embedding_type,
                     unified_3d_mrope_reset_spatial_ids=config.unified_3d_mrope_reset_spatial_ids,
@@ -1135,9 +1126,7 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
         # 7. Postprocess + decode
         video, sound = self._postprocess_latents(
             latents,
-            num_vision_items=num_vision_items,
-            x0_tokens_vision=x0_tokens_vision,
-            x0_tokens_sound=x0_tokens_sound,
+            condition=condition,
             enable_sound=enable_sound,
             output_type=output_type,
         )
