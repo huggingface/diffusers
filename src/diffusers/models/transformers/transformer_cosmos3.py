@@ -502,7 +502,8 @@ class Cosmos3OmniTransformer(ModelMixin, ConfigMixin, PeftAdapterMixin, Attentio
         """Run a full denoising-step forward pass.
 
         Args:
-            packed_seq: ``PackedSequence`` from ``pack_input_sequence`` — carries text/vision/sound
+            packed_seq: ``Cosmos3PackedSequence`` from ``Cosmos3OmniDiffusersPipeline.pack_input_sequence``
+                — carries text/vision/sound
                 token data + position_ids + the und/gen split point.
 
         Returns:

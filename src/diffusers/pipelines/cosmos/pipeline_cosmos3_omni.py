@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import math
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import torch
@@ -109,82 +109,35 @@ def get_3d_mrope_ids_vae_tokens(
 
 
 @dataclass
-class ModalityData:
-    """Unified container for a single generation modality's data.
+class _ModalityData:
+    """Per-modality slice of the joint sequence — all fields are finalized tensors
+    (or lists of tensors, for per-item entries like ``tokens`` / ``condition_mask``)."""
 
-    Acts as a builder during packing (lists), then holds finalized tensors after ``finalize()``.
-    """
-
-    sequence_indexes: list[int] | torch.Tensor = field(default_factory=list)
-    timesteps: list[float] | torch.Tensor = field(default_factory=list)
-    mse_loss_indexes: list[int] | torch.Tensor = field(default_factory=list)
-    token_shapes: list = field(default_factory=list)
-
-    tokens: list[torch.Tensor] = field(default_factory=list)
-    condition_mask: list[torch.Tensor] = field(default_factory=list)
-    noisy_frame_indexes: list[torch.Tensor] = field(default_factory=list)
+    tokens: List[torch.Tensor]
+    token_shapes: List[Tuple[int, int, int]]
+    sequence_indexes: torch.Tensor
+    mse_loss_indexes: torch.Tensor
+    timesteps: torch.Tensor
+    noisy_frame_indexes: List[torch.Tensor]
+    condition_mask: List[torch.Tensor]
 
 
 @dataclass
-class PackedSequence:
-    """Unified sequence container - works as builder during packing and final output."""
+class Cosmos3PackedSequence:
+    """Joint text + vision + (optional) sound sequence consumed by the Cosmos3 transformer.
 
-    # Sequence structure (we only support a single sample with fixed text+vision+sound layout,
-    # so sequence_length holds the full packed length and und_len is the causal-text prefix length
-    # used to split off the "understanding" stream from "generation" inside the transformer call).
-    sequence_length: int = 0
-    und_len: int = 0
+    ``sequence_length`` is the full packed length; ``und_len`` is the causal-text prefix
+    length used to split the understanding stream from the generation stream inside the
+    transformer call. ``position_ids`` is the ``[3, sequence_length]`` mRoPE tensor.
+    """
 
-    # Text modality (list during build, tensor after finalize)
-    text_ids: list[int] | torch.Tensor = field(default_factory=list)
-    text_indexes: list[int] | torch.Tensor = field(default_factory=list)
-    position_ids: list[int] | torch.Tensor = field(default_factory=list)
-
-    # Generation modalities
-    vision: ModalityData | None = None
-    sound: ModalityData | None = None
-
-    def finalize(self, device: torch.device | str = "cuda") -> "PackedSequence":
-        """Convert all lists to tensors on the target device and compute derived values."""
-        vision: ModalityData | None = None
-        if self.vision is not None and len(self.vision.sequence_indexes) > 0:
-            vision = ModalityData(
-                sequence_indexes=torch.tensor(self.vision.sequence_indexes, dtype=torch.long, device=device),
-                timesteps=torch.tensor(self.vision.timesteps, device=device),
-                mse_loss_indexes=torch.tensor(self.vision.mse_loss_indexes, dtype=torch.long, device=device),
-                token_shapes=list(self.vision.token_shapes),
-                tokens=self.vision.tokens,
-                condition_mask=list(self.vision.condition_mask),
-                noisy_frame_indexes=list(self.vision.noisy_frame_indexes),
-            )
-
-        sound: ModalityData | None = None
-        if self.sound is not None and len(self.sound.sequence_indexes) > 0:
-            sound = ModalityData(
-                sequence_indexes=torch.tensor(self.sound.sequence_indexes, dtype=torch.long, device=device),
-                timesteps=torch.tensor(self.sound.timesteps, device=device),
-                mse_loss_indexes=torch.tensor(self.sound.mse_loss_indexes, dtype=torch.long, device=device),
-                token_shapes=list(self.sound.token_shapes),
-                tokens=self.sound.tokens,
-                condition_mask=list(self.sound.condition_mask),
-                noisy_frame_indexes=list(self.sound.noisy_frame_indexes),
-            )
-
-        # mRoPE mode appends [3, N] tensors per modality segment; non-mRoPE extends with ints.
-        if len(self.position_ids) > 0 and isinstance(self.position_ids[0], torch.Tensor):
-            position_ids = torch.cat(self.position_ids, dim=1)  # [3, total_seq_len]
-        else:
-            position_ids = torch.tensor(self.position_ids, device=device)  # [total_seq_len]
-
-        return PackedSequence(
-            sequence_length=self.sequence_length,
-            und_len=self.und_len,
-            text_ids=torch.tensor(self.text_ids, dtype=torch.long, device=device),
-            text_indexes=torch.tensor(self.text_indexes, dtype=torch.long, device=device),
-            position_ids=position_ids,
-            vision=vision,
-            sound=sound,
-        )
+    sequence_length: int
+    und_len: int
+    text_ids: torch.Tensor
+    text_indexes: torch.Tensor
+    position_ids: torch.Tensor
+    vision: _ModalityData
+    sound: Optional[_ModalityData] = None
 
 
 # ============================================================================
@@ -395,7 +348,7 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
         vision_fps: float | None,
         curr: int,
         device: torch.device | str,
-    ) -> Tuple[ModalityData, torch.Tensor, int | float, int]:
+    ) -> Tuple[_ModalityData, torch.Tensor, int | float, int]:
         """Build the vision segment of the joint sequence.
 
         Returns ``(vision_data, vision_mrope_ids, next_mrope_offset, num_vision_tokens)``.
@@ -442,14 +395,14 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
             temporal_compression_factor=self.vae.config.scale_factor_temporal,
         )
 
-        vision_data = ModalityData(
-            sequence_indexes=list(range(curr, curr + num_vision_tokens)),
-            timesteps=timesteps,
-            mse_loss_indexes=mse_loss_indexes,
-            token_shapes=[(latent_t, patch_h, patch_w)],
+        vision_data = _ModalityData(
             tokens=[input_vision_tokens],
-            condition_mask=[condition_mask],
+            token_shapes=[(latent_t, patch_h, patch_w)],
+            sequence_indexes=torch.arange(curr, curr + num_vision_tokens, dtype=torch.long, device=device),
+            mse_loss_indexes=torch.tensor(mse_loss_indexes, dtype=torch.long, device=device),
+            timesteps=torch.tensor(timesteps, device=device),
             noisy_frame_indexes=[noisy_frame_indexes],
+            condition_mask=[condition_mask],
         )
         return vision_data, vision_mrope_ids, next_mrope_offset, num_vision_tokens
 
@@ -461,7 +414,7 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
         sound_fps: float | None,
         curr: int,
         device: torch.device | str,
-    ) -> Tuple[ModalityData, torch.Tensor, int]:
+    ) -> Tuple[_ModalityData, torch.Tensor, int]:
         """Build the sound segment of the joint sequence. All sound frames are noisy.
 
         Returns ``(sound_data, sound_mrope_ids, sound_len)``.
@@ -481,14 +434,15 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
             temporal_compression_factor=1,
         )
 
-        sound_data = ModalityData(
-            sequence_indexes=list(range(curr, curr + sound_len)),
-            timesteps=[input_timestep] * sound_len,
-            mse_loss_indexes=list(range(curr, curr + sound_len)),
-            token_shapes=[(sound_len, 1, 1)],
+        sequence_indexes = torch.arange(curr, curr + sound_len, dtype=torch.long, device=device)
+        sound_data = _ModalityData(
             tokens=[input_sound_tokens],
-            condition_mask=[torch.zeros((sound_len, 1), device=device, dtype=input_sound_tokens.dtype)],
+            token_shapes=[(sound_len, 1, 1)],
+            sequence_indexes=sequence_indexes,
+            mse_loss_indexes=sequence_indexes.clone(),
+            timesteps=torch.full((sound_len,), float(input_timestep), device=device),
             noisy_frame_indexes=[torch.arange(sound_len, device=device, dtype=torch.long)],
+            condition_mask=[torch.zeros((sound_len, 1), device=device, dtype=input_sound_tokens.dtype)],
         )
         return sound_data, sound_mrope_ids, sound_len
 
@@ -500,7 +454,7 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
         condition: "Cosmos3Condition",
         sound_tokens: Optional[List[torch.Tensor]] = None,
         device: torch.device | str = "cuda",
-    ) -> PackedSequence:
+    ) -> Cosmos3PackedSequence:
         """Assemble the joint text + vision + (optional) sound sequence consumed by the transformer.
 
         ``vision_tokens`` / ``sound_tokens`` carry the per-step token tensors (noisy at each
@@ -520,13 +474,14 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
 
         curr = 0
         mrope_offset: int | float = 0
+        position_ids_segments: list[torch.Tensor] = []
 
         # Text segment.
         text_ids, text_mrope_ids, mrope_offset = self._pack_text_tokens(text_tokens, mrope_offset)
         und_len = len(text_ids)
         text_indexes = list(range(curr, curr + und_len))
         curr += und_len
-        position_ids: list = [text_mrope_ids.to(device)]
+        position_ids_segments.append(text_mrope_ids.to(device))
 
         mrope_offset += config.unified_3d_mrope_temporal_modality_margin
         vision_start_temporal_offset = mrope_offset
@@ -545,10 +500,10 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
             device=device,
         )
         curr += num_vision_tokens
-        position_ids.append(vision_mrope_ids.to(device))
+        position_ids_segments.append(vision_mrope_ids.to(device))
 
         # Sound segment (optional).
-        sound_data: Optional[ModalityData] = None
+        sound_data: Optional[_ModalityData] = None
         if has_sound:
             sound_fps: float | None = None
             if config.enable_fps_modulation and condition.fps_sound is not None and len(condition.fps_sound) > 0:
@@ -562,18 +517,17 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
                 device=device,
             )
             curr += sound_len
-            position_ids.append(sound_mrope_ids.to(device))
+            position_ids_segments.append(sound_mrope_ids.to(device))
 
-        packed_seq = PackedSequence(
+        return Cosmos3PackedSequence(
             sequence_length=curr,
             und_len=und_len,
-            text_ids=text_ids,
-            text_indexes=text_indexes,
-            position_ids=position_ids,
+            text_ids=torch.tensor(text_ids, dtype=torch.long, device=device),
+            text_indexes=torch.tensor(text_indexes, dtype=torch.long, device=device),
+            position_ids=torch.cat(position_ids_segments, dim=1),
             vision=vision_data,
             sound=sound_data,
         )
-        return packed_seq.finalize(device=device)
 
     def prepare_latents(
         self,
