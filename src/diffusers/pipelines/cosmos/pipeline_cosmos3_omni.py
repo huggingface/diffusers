@@ -932,7 +932,6 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
     def interrupt(self):
         return self._interrupt
 
-    @torch.no_grad()
     def __call__(
         self,
         prompt: Union[str, List[str]],
