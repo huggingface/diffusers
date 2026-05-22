@@ -5695,10 +5695,6 @@ class AnimaLoraLoaderMixin(LoraBaseMixin):
             raise ValueError("PEFT backend is required for this method.")
 
         low_cpu_mem_usage = kwargs.pop("low_cpu_mem_usage", _LOW_CPU_MEM_USAGE_DEFAULT_LORA)
-        if low_cpu_mem_usage and is_peft_version("<", "0.13.0"):
-            raise ValueError(
-                "`low_cpu_mem_usage=True` is not compatible with this `peft` version. Please update it with `pip install -U peft`."
-            )
 
         if isinstance(pretrained_model_name_or_path_or_dict, dict):
             pretrained_model_name_or_path_or_dict = pretrained_model_name_or_path_or_dict.copy()
@@ -5748,11 +5744,6 @@ class AnimaLoraLoaderMixin(LoraBaseMixin):
         hotswap: bool = False,
         metadata=None,
     ):
-        if low_cpu_mem_usage and is_peft_version("<", "0.13.0"):
-            raise ValueError(
-                "`low_cpu_mem_usage=True` is not compatible with this `peft` version. Please update it with `pip install -U peft`."
-            )
-
         logger.info(f"Loading {cls.transformer_name}.")
         transformer.load_lora_adapter(
             state_dict,
@@ -5775,11 +5766,6 @@ class AnimaLoraLoaderMixin(LoraBaseMixin):
         hotswap: bool = False,
         metadata=None,
     ):
-        if low_cpu_mem_usage and is_peft_version("<", "0.13.0"):
-            raise ValueError(
-                "`low_cpu_mem_usage=True` is not compatible with this `peft` version. Please update it with `pip install -U peft`."
-            )
-
         logger.info(f"Loading {cls.text_conditioner_name}.")
         text_conditioner.load_lora_adapter(
             state_dict,
