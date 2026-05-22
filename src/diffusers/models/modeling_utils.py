@@ -1635,10 +1635,6 @@ class ModelMixin(torch.nn.Module, ConfigMixin, PushToHubMixin):
             # We only fix it for non sharded checkpoints as we don't need it yet for sharded one.
             model._fix_state_dict_keys_on_load(state_dict)
 
-            # Convert checkpoint if needed (e.g., original format to diffusers format). For models that haven't
-            # registered weight-mapping metadata this is a no-op via the default handler.
-            state_dict = cls._weight_mapping.maybe_convert_state_dict(model, state_dict)
-
         if is_sharded:
             loaded_keys = sharded_metadata["all_checkpoint_keys"]
         else:
