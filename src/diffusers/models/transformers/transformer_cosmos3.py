@@ -12,7 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Tuple
+import math
+from typing import Any, List, Optional, Tuple
 
 import torch
 import torch.nn as nn
@@ -274,10 +275,9 @@ class Cosmos3VLTextMoTDecoderLayer(nn.Module):
 
 
 class Cosmos3VLTextModel(nn.Module):
-    """Inner transformer stack — mirrors Cosmos3OmniTextModel.
-
-    Holds ``embed_tokens``, ``layers``, dual final norms, and ``rotary_emb``
-    under the same attribute names so that weight keys match the checkpoint.
+    """Inner transformer stack — mirrors the source checkpoint's ``language_model.model``
+    layout so existing checkpoints bind cleanly (``model.embed_tokens.X``, ``model.layers.X``,
+    ``model.norm.X``, ``model.norm_moe_gen.X``, ``model.rotary_emb.X``).
     """
 
     def __init__(
@@ -318,33 +318,6 @@ class Cosmos3VLTextModel(nn.Module):
             head_dim=head_dim, rope_theta=rope_theta, rope_scaling=rope_scaling
         )
 
-    def forward(
-        self,
-        und_seq: torch.Tensor,
-        gen_seq: torch.Tensor,
-        position_ids: torch.Tensor,
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
-        # Create position embeddings (Qwen3 style). The dummy tensor only carries
-        # dtype/device — rotary_emb needs its dtype to cast cos/sin back.
-        _meta_tensor = torch.tensor([], dtype=und_seq.dtype, device=und_seq.device)
-        cos, sin = self.rotary_emb(
-            _meta_tensor,
-            position_ids=position_ids.unsqueeze(0) if position_ids.ndim == 1 else position_ids.unsqueeze(1),
-        )  # if ndim == 2, then the mrope position_ids is (3, seq_len), we need to put batch dimension in the middle to make it compatible with the rotary_emb
-        # cos, sin: [1,N,head_dim] (1D pos_ids) or [3,1,N,head_dim] (mrope pos_ids)
-        cos = cos.squeeze(0)  # [N,head_dim] or [3,N,head_dim]
-        sin = sin.squeeze(0)  # [N,head_dim] or [3,N,head_dim]
-
-        # The joint sequence layout is [und... | gen...] contiguously (per pack_input_sequence),
-        # so the und/gen position embeddings are just the leading / trailing slices.
-        und_len = und_seq.shape[0]
-        position_embeddings = (cos[:und_len], sin[:und_len], cos[und_len:], sin[und_len:])
-
-        for decoder_layer in self.layers:
-            und_seq, gen_seq = decoder_layer(und_seq, gen_seq, position_embeddings)
-
-        return self.norm(und_seq), self.norm_moe_gen(gen_seq)
-
 
 class Cosmos3OmniTransformer(ModelMixin, ConfigMixin):
     @register_to_config
@@ -384,6 +357,10 @@ class Cosmos3OmniTransformer(ModelMixin, ConfigMixin):
             rope_scaling = {"mrope_interleaved": True, "mrope_section": [24, 20, 20], "rope_type": "default"}
             self.register_to_config(rope_scaling=rope_scaling)
 
+        # Text model wraps the layers under `model.` to match the published checkpoint
+        # layout. Diffusers sharded loading currently has no key-remapping hook that
+        # works across all paths, so keeping the structural wrapper is the practical
+        # path until we re-publish a checkpoint with the flat layout.
         self.model = Cosmos3VLTextModel(
             vocab_size=vocab_size,
             hidden_size=hidden_size,
@@ -398,6 +375,8 @@ class Cosmos3OmniTransformer(ModelMixin, ConfigMixin):
             rope_theta=rope_theta,
             rope_scaling=rope_scaling,
         )
+
+        # Modality projection heads + timestep embedding live directly on the transformer.
         self.vocab_size = vocab_size
         self.lm_head = nn.Linear(hidden_size, vocab_size, bias=False)
         self.vae2llm = nn.Linear(patch_latent_dim, hidden_size, bias=True)
@@ -411,10 +390,303 @@ class Cosmos3OmniTransformer(ModelMixin, ConfigMixin):
             self.llm2sound = nn.Linear(hidden_size, sound_dim, bias=True)
             self.sound_modality_embed = nn.Parameter(torch.zeros(hidden_size))
 
-    def forward(
+    # -------------------------------------------------------------------------
+    # Modality encode / decode helpers (called from forward; previously lived in
+    # the pipeline file and reached into self.transformer.X — moved here so the
+    # pipeline never touches the model's sub-layers directly).
+    # -------------------------------------------------------------------------
+
+    def _encode_text(self, packed_seq: Any) -> Tuple[torch.Tensor, torch.dtype]:
+        """Embed text tokens. Returns ``(hidden_states [N_total, H], target_dtype)``."""
+        packed_text_embedding = self.model.embed_tokens(packed_seq.text_ids)
+        hidden_states = packed_text_embedding.new_zeros(size=(packed_seq.sequence_length, self.config.hidden_size))
+        hidden_states[packed_seq.text_indexes] = packed_text_embedding
+        return hidden_states, packed_text_embedding.dtype
+
+    def _encode_vision(
         self,
-        und_seq: torch.Tensor,
-        gen_seq: torch.Tensor,
-        position_ids: torch.Tensor,
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
-        return self.model(und_seq=und_seq, gen_seq=gen_seq, position_ids=position_ids)
+        packed_seq: Any,
+        hidden_states: torch.Tensor,
+        target_dtype: torch.dtype,
+    ) -> List[Tuple[int, int, int]] | None:
+        """Project vision tokens into ``hidden_states`` in-place. Returns ``original_latent_shapes``."""
+        vision = packed_seq.vision
+        if vision is None or vision.tokens is None:
+            return None
+        packed_tokens_vision, original_latent_shapes = self._patchify_and_pack_latents(
+            vision.tokens, vision.token_shapes
+        )
+        packed_tokens_vision = self.vae2llm(packed_tokens_vision)
+        if vision.mse_loss_indexes.numel() > 0:
+            timesteps_vision = vision.timesteps * self.config.timestep_scale
+            with torch.autocast("cuda", enabled=True, dtype=torch.float32):
+                packed_timestep_embeds_vision = self.time_embedder(self.time_proj(timesteps_vision))
+            packed_timestep_embeds_vision = packed_timestep_embeds_vision.to(target_dtype)
+            packed_tokens_vision = self._apply_timestep_embeds_to_noisy_tokens(
+                packed_tokens=packed_tokens_vision,
+                packed_timestep_embeds=packed_timestep_embeds_vision,
+                noisy_frame_indexes=vision.noisy_frame_indexes,
+                token_shapes=vision.token_shapes,
+            )
+        hidden_states[vision.sequence_indexes] = packed_tokens_vision
+        return original_latent_shapes
+
+    def _encode_sound(
+        self,
+        packed_seq: Any,
+        hidden_states: torch.Tensor,
+        target_dtype: torch.dtype,
+    ) -> None:
+        """Project sound tokens into ``hidden_states`` in-place via ``sound2llm`` + timestep embeds."""
+        sound = packed_seq.sound
+        if sound is None or sound.tokens is None:
+            return
+        packed_tokens_sound = self._pack_sound_latents(sound.tokens, sound.token_shapes).to(target_dtype)
+        packed_tokens_sound = self.sound2llm(packed_tokens_sound) + self.sound_modality_embed
+        if sound.mse_loss_indexes.numel() > 0:
+            timesteps_sound = sound.timesteps * self.config.timestep_scale
+            with torch.autocast("cuda", enabled=True, dtype=torch.float32):
+                packed_timestep_embeds_sound = self.time_embedder(self.time_proj(timesteps_sound))
+            packed_timestep_embeds_sound = packed_timestep_embeds_sound.to(target_dtype)
+            packed_tokens_sound = self._apply_timestep_embeds_to_noisy_tokens(
+                packed_tokens=packed_tokens_sound,
+                packed_timestep_embeds=packed_timestep_embeds_sound,
+                noisy_frame_indexes=sound.noisy_frame_indexes,
+                token_shapes=sound.token_shapes,
+            )
+        hidden_states[sound.sequence_indexes] = packed_tokens_sound
+
+    def _decode_vision(
+        self,
+        packed_seq: Any,
+        last_hidden_state: torch.Tensor,
+        original_latent_shapes: Optional[List[Tuple[int, int, int]]],
+    ) -> List[torch.Tensor]:
+        """Decode vision predictions from ``last_hidden_state``."""
+        vision = packed_seq.vision
+        has_noisy_vision = (
+            vision is not None
+            and vision.tokens is not None
+            and isinstance(vision.mse_loss_indexes, torch.Tensor)
+            and vision.mse_loss_indexes.numel() > 0
+        )
+        if not has_noisy_vision:
+            # No noisy vision tokens: run a dummy projection so the graph is intact.
+            preds_vision = torch.zeros(
+                [1, self.config.patch_latent_dim], device=last_hidden_state.device, dtype=last_hidden_state.dtype
+            )
+            preds_vision = self.vae2llm(preds_vision)
+            preds_vision = self.llm2vae(preds_vision)
+            if vision is not None and vision.tokens is not None:
+                preds_vision_list = [torch.zeros_like(tok) for tok in vision.tokens]
+                preds_vision_list[0] = preds_vision_list[0] + 0.0 * preds_vision.sum()
+            else:
+                preds_vision_list = [preds_vision]
+            return preds_vision_list
+
+        preds_vision = self.llm2vae(last_hidden_state[vision.mse_loss_indexes])
+        return self._unpatchify_and_unpack_latents(
+            preds_vision,
+            token_shapes_vision=vision.token_shapes,
+            noisy_frame_indexes_vision=vision.noisy_frame_indexes,
+            original_latent_shapes=original_latent_shapes,
+        )
+
+    def _decode_sound(self, packed_seq: Any, last_hidden_state: torch.Tensor) -> List[torch.Tensor]:
+        """Decode sound predictions from ``last_hidden_state`` via ``llm2sound``."""
+        sound = packed_seq.sound
+        has_noisy_sound = (
+            sound is not None
+            and sound.tokens is not None
+            and isinstance(sound.mse_loss_indexes, torch.Tensor)
+            and sound.mse_loss_indexes.numel() > 0
+        )
+        if not has_noisy_sound:
+            dummy = torch.zeros(
+                [1, self.config.sound_dim], device=last_hidden_state.device, dtype=last_hidden_state.dtype
+            )
+            dummy = self.sound2llm(dummy) + self.sound_modality_embed
+            dummy = self.llm2sound(dummy)
+            if sound is not None and sound.tokens is not None:
+                preds = [torch.zeros_like(tok) for tok in sound.tokens]
+                preds[0] = preds[0] + 0.0 * dummy.sum()
+            else:
+                preds = [dummy]
+            return preds
+        preds_packed = self.llm2sound(last_hidden_state[sound.mse_loss_indexes])
+        return self._unpack_sound_latents(preds_packed, sound.token_shapes, sound.noisy_frame_indexes)
+
+    # -------------------------------------------------------------------------
+    # Pure-tensor packing/unpacking helpers (no layer state).
+    # -------------------------------------------------------------------------
+
+    def _apply_timestep_embeds_to_noisy_tokens(
+        self,
+        packed_tokens: torch.Tensor,
+        packed_timestep_embeds: torch.Tensor,
+        noisy_frame_indexes: List[torch.Tensor],
+        token_shapes: List[Tuple[int, ...]],
+    ) -> torch.Tensor:
+        start_noisy_index = 0
+        flattened_noisy_frame_indexes: List[torch.Tensor] = []
+        for noisy_indexes_i, token_shape_i in zip(noisy_frame_indexes, token_shapes):
+            spatial_numel_i = math.prod(token_shape_i[1:])
+            spatial_indexes_i = torch.arange(spatial_numel_i, device=packed_tokens.device)
+            noisy_indexes_i = (noisy_indexes_i * spatial_numel_i).unsqueeze(-1).expand(-1, spatial_numel_i)
+            noisy_indexes_i = noisy_indexes_i.clone() + spatial_indexes_i + start_noisy_index
+            flattened_noisy_frame_indexes.append(noisy_indexes_i.flatten())
+            start_noisy_index += math.prod(token_shape_i)
+        flattened = torch.cat(flattened_noisy_frame_indexes, dim=0).unsqueeze(-1).expand(-1, packed_tokens.shape[1])
+        return packed_tokens.scatter_add(dim=0, index=flattened, src=packed_timestep_embeds)
+
+    def _patchify_and_pack_latents(
+        self,
+        tokens_vision: List[torch.Tensor],
+        token_shapes_vision: List[Tuple[int, int, int]],
+    ) -> Tuple[torch.Tensor, List[Tuple[int, int, int]]]:
+        p = self.config.latent_patch_size
+        latent_channel = self.config.latent_channel
+        packed_latent: List[torch.Tensor] = []
+        original_latent_shapes: List[Tuple[int, int, int]] = []
+        for latent, (t, h, w) in zip(tokens_vision, token_shapes_vision):
+            latent = latent.squeeze(0)  # [C, T, H, W]
+            _, t_actual, h_actual, w_actual = latent.shape
+            original_latent_shapes.append((t_actual, h_actual, w_actual))
+            h_padded = ((h_actual + p - 1) // p) * p
+            w_padded = ((w_actual + p - 1) // p) * p
+            if h_padded != h_actual or w_padded != w_actual:
+                padded = torch.zeros(
+                    (latent_channel, t_actual, h_padded, w_padded),
+                    device=latent.device,
+                    dtype=latent.dtype,
+                )
+                padded[:, :, :h_actual, :w_actual] = latent
+                latent = padded
+            h_patches = h_padded // p
+            w_patches = w_padded // p
+            latent = latent.reshape(latent_channel, t_actual, h_patches, p, w_patches, p)
+            latent = torch.einsum("cthpwq->thwpqc", latent).reshape(-1, p * p * latent_channel)
+            packed_latent.append(latent)
+        return torch.cat(packed_latent, dim=0), original_latent_shapes
+
+    def _unpatchify_and_unpack_latents(
+        self,
+        packed_mse_preds: torch.Tensor,
+        token_shapes_vision: List[Tuple[int, int, int]],
+        noisy_frame_indexes_vision: List[torch.Tensor],
+        original_latent_shapes: Optional[List[Tuple[int, int, int]]] = None,
+    ) -> List[torch.Tensor]:
+        p = self.config.latent_patch_size
+        latent_channel = self.config.latent_channel
+        unpatchified_latents: List[torch.Tensor] = []
+        start_idx = 0
+        for i, (t_c, h_c, w_c) in enumerate(token_shapes_vision):
+            if original_latent_shapes is not None:
+                _, h_orig, w_orig = original_latent_shapes[i]
+                h_padded = ((h_orig + p - 1) // p) * p
+                w_padded = ((w_orig + p - 1) // p) * p
+                h_patches = h_padded // p
+                w_patches = w_padded // p
+            else:
+                h_orig, w_orig = h_c * p, w_c * p
+                h_patches, w_patches = h_c, w_c
+            noisy_frame_indexes = noisy_frame_indexes_vision[i]
+            t_n = len(noisy_frame_indexes)
+            output_tensor = torch.zeros(
+                (latent_channel, t_c, h_orig, w_orig),
+                device=packed_mse_preds.device,
+                dtype=packed_mse_preds.dtype,
+            )
+            num_patches = t_n * h_patches * w_patches
+            if num_patches > 0:
+                end_idx = start_idx + num_patches
+                latent_patches = packed_mse_preds[start_idx:end_idx]
+                latent_patches = latent_patches.reshape(t_n, h_patches, w_patches, p, p, latent_channel)
+                latent = torch.einsum("thwpqc->cthpwq", latent_patches)
+                latent = latent.reshape(latent_channel, t_n, h_patches * p, w_patches * p)
+                latent = latent[:, :, :h_orig, :w_orig]
+                output_tensor[:, noisy_frame_indexes] = latent
+                start_idx = end_idx
+            unpatchified_latents.append(output_tensor.unsqueeze(0))
+        return unpatchified_latents
+
+    def _pack_sound_latents(
+        self,
+        tokens_sound: List[torch.Tensor],
+        token_shapes_sound: List[Tuple[int, int, int]],
+    ) -> torch.Tensor:
+        """List of ``[C, T]`` tensors → packed ``[total_T, C]`` tensor."""
+        packed: List[torch.Tensor] = []
+        for sound, shape in zip(tokens_sound, token_shapes_sound):
+            T = shape[0]
+            packed.append(sound[:, :T].permute(1, 0))  # [C, T] → [T, C]
+        return torch.cat(packed, dim=0)
+
+    def _unpack_sound_latents(
+        self,
+        packed_preds: torch.Tensor,
+        token_shapes_sound: List[Tuple[int, int, int]],
+        noisy_frame_indexes_sound: List[torch.Tensor],
+    ) -> List[torch.Tensor]:
+        """Packed ``[total_noisy_T, C]`` predictions → list of ``[C, T]`` tensors (zeros at conditioned positions)."""
+        sound_dim = self.config.sound_dim
+        unpacked: List[torch.Tensor] = []
+        start_idx = 0
+        for shape, noisy_idxs in zip(token_shapes_sound, noisy_frame_indexes_sound):
+            T = shape[0]
+            output = torch.zeros((sound_dim, T), device=packed_preds.device, dtype=packed_preds.dtype)
+            t_n = len(noisy_idxs)
+            if t_n > 0:
+                output[:, noisy_idxs] = packed_preds[start_idx : start_idx + t_n].T
+                start_idx += t_n
+            unpacked.append(output)
+        return unpacked
+
+    # -------------------------------------------------------------------------
+    # forward: full per-step pass — encode text/vision/sound → run layers →
+    # decode vision/sound. Pipeline calls this once per CFG pass.
+    # -------------------------------------------------------------------------
+
+    def forward(self, packed_seq: Any) -> Tuple[List[torch.Tensor], Optional[List[torch.Tensor]]]:
+        """Run a full denoising-step forward pass.
+
+        Args:
+            packed_seq: ``PackedSequence`` from ``pack_input_sequence`` — carries text/vision/sound
+                token data + position_ids + the und/gen split point.
+
+        Returns:
+            ``(preds_vision, preds_sound)`` — list of per-modality latents (``preds_sound`` is
+            ``None`` when the model has no sound branch or the packed sequence has no sound tokens).
+        """
+        has_sound = packed_seq.sound is not None and packed_seq.sound.tokens is not None
+
+        # Build joint hidden_states: text embedding then in-place projections for vision/sound.
+        hidden_states, target_dtype = self._encode_text(packed_seq)
+        original_latent_shapes = self._encode_vision(packed_seq, hidden_states, target_dtype)
+        if has_sound:
+            self._encode_sound(packed_seq, hidden_states, target_dtype)
+
+        # Compute rotary embeddings once for the joint sequence, then slice into und/gen halves.
+        _meta_tensor = torch.tensor([], dtype=hidden_states.dtype, device=hidden_states.device)
+        position_ids = packed_seq.position_ids
+        cos, sin = self.model.rotary_emb(
+            _meta_tensor,
+            position_ids=position_ids.unsqueeze(0) if position_ids.ndim == 1 else position_ids.unsqueeze(1),
+        )
+        # cos, sin: [1, N, head_dim] (1-D pos_ids) or [3, 1, N, head_dim] (mrope pos_ids)
+        cos = cos.squeeze(0)
+        sin = sin.squeeze(0)
+
+        und_len = packed_seq.und_len
+        und_seq = hidden_states[:und_len]
+        gen_seq = hidden_states[und_len:]
+        position_embeddings = (cos[:und_len], sin[:und_len], cos[und_len:], sin[und_len:])
+        for decoder_layer in self.model.layers:
+            und_seq, gen_seq = decoder_layer(und_seq, gen_seq, position_embeddings)
+        und_out = self.model.norm(und_seq)
+        gen_out = self.model.norm_moe_gen(gen_seq)
+        last_hidden_state = torch.cat([und_out, gen_out], dim=0)
+
+        preds_vision = self._decode_vision(packed_seq, last_hidden_state, original_latent_shapes)
+        preds_sound = self._decode_sound(packed_seq, last_hidden_state) if has_sound else None
+        return preds_vision, preds_sound
