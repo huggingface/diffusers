@@ -102,9 +102,9 @@ jobs:
       env:
         DISPATCH_REF: ${{ github.ref }}
       run: |
-        git fetch --depth=1 origin "$DISPATCH_REF"
-        git checkout FETCH_HEAD -- utils/tests_fetcher.py
-        git diff --stat HEAD -- utils/tests_fetcher.py || true
+        git -c safe.directory="$GITHUB_WORKSPACE" fetch --depth=1 origin "$DISPATCH_REF"
+        git -c safe.directory="$GITHUB_WORKSPACE" checkout FETCH_HEAD -- utils/tests_fetcher.py
+        git -c safe.directory="$GITHUB_WORKSPACE" diff --stat HEAD -- utils/tests_fetcher.py || true
     - name: Install dependencies
       run: |
         uv pip install -e ".[quality]"
