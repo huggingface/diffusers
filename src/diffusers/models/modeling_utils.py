@@ -22,6 +22,7 @@ import json
 import os
 import re
 import shutil
+import sys
 import tempfile
 from collections import OrderedDict
 from contextlib import ExitStack, contextmanager, nullcontext
@@ -239,6 +240,90 @@ def no_init_weights():
 DOCS_BASE = "https://huggingface.co/docs/diffusers/main/en"
 
 
+class ModelMetadata:
+    """Snapshot of a model class's feature attributes.
+
+    Constructed by :meth:`ModelMixin.metadata` — walks ``cls.__mro__`` collecting rows from each mixin's ``_metadata``
+    classmethod and exposes the raw values as attributes:
+
+        >>> meta = FluxTransformer2DModel.metadata() >>> meta._supports_ip_adapter True >>> meta._lora ['bfl', 'kohya',
+        'kontext', 'xlabs'] >>> '_supports_cache' in meta True
+
+    ``repr(meta)`` (and ``print(meta)``) render a formatted table. Call :meth:`describe` to print the verbose variant
+    with descriptions and docs links.
+    """
+
+    # Internal storage is name-mangled (``self.__rows`` → ``self._ModelMetadata__rows``) so ``dir(meta)`` and
+    # tab-completion show only the feature attributes + ``describe``, not the snapshot's bookkeeping fields.
+    def __init__(self, rows: dict[str, tuple[Any, str, str, str]], cls_name: str):
+        self.__rows = rows
+        self.__cls_name = cls_name
+        for attr, (value, _display, _doc, _link) in rows.items():
+            setattr(self, attr, value)
+
+    def __iter__(self):
+        return iter(self.__rows)
+
+    def __contains__(self, key):
+        return key in self.__rows
+
+    def __len__(self):
+        return len(self.__rows)
+
+    def __dir__(self):
+        return list(self.__rows) + ["describe", "keys", "values", "items"]
+
+    def keys(self):
+        """Names of the feature attributes this snapshot exposes."""
+        return self.__rows.keys()
+
+    def values(self):
+        """Raw values for each feature attribute (same as ``meta.<attr>`` access)."""
+        return (info[0] for info in self.__rows.values())
+
+    def items(self):
+        """Pairs of ``(attribute_name, value)`` for each feature attribute."""
+        return ((attr, info[0]) for attr, info in self.__rows.items())
+
+    def __repr__(self) -> str:
+        return self._render(verbose=False)
+
+    def describe(self, verbose: bool = False) -> None:
+        """Print the formatted capability table. ``verbose=True`` adds descriptions and docs links per row."""
+        print(self._render(verbose=verbose))
+
+    def _render(self, verbose: bool) -> str:
+        if not self.__rows:
+            return f"{self.__cls_name}: no feature attributes declared"
+
+        is_tty = sys.stdout.isatty()
+        bold = "\033[1m" if is_tty else ""
+        dim = "\033[2m" if is_tty else ""
+        cyan = "\033[36m" if is_tty else ""
+        underline = "\033[4m" if is_tty else ""
+        reset = "\033[0m" if is_tty else ""
+
+        attr_w = max(len(attr) for attr in self.__rows)
+        title = f"{self.__cls_name} feature attributes"
+        rule_width = max(len(title), attr_w + 2 + max(len(row[1]) for row in self.__rows.values()))
+        lines = [
+            f"{bold}{title}{reset}",
+            f"{dim}{'─' * rule_width}{reset}",
+        ]
+
+        rows = list(self.__rows.items())
+        for i, (attr, (_value, display, doc, link)) in enumerate(rows):
+            lines.append(f"  {bold}{cyan}{attr:<{attr_w}}{reset}  {display}")
+            if verbose:
+                if doc:
+                    lines.append(f"      {dim}{doc}{reset}")
+                if link:
+                    lines.append(f"      {dim}See {underline}{link}{reset}")
+                if i < len(rows) - 1:
+                    lines.append("")
+        return "\n".join(lines)
+
+
 def register_metadata(metadata):
     """Generic class decorator that attaches metadata to the decorated class.
 
@@ -250,9 +335,8 @@ def register_metadata(metadata):
         FluxTransformerBlock(nn.Module):
             ...
 
-    Model-level capabilities are declared as plain class attributes on :class:`ModelMixin` (and on subsystem
-    mixins like :class:`LoRAModelMixin` or model-specific ones like ``FluxIPAdapterMixin``) — no decorator
-    needed.
+    Model-level capabilities are declared as plain class attributes on :class:`ModelMixin` (and on subsystem mixins
+    like :class:`LoRAModelMixin` or model-specific ones like ``FluxIPAdapterMixin``) — no decorator needed.
     """
 
     def wrap(cls):
@@ -365,58 +449,27 @@ class ModelMixin(torch.nn.Module, ConfigMixin, LoRAModelMixin, PushToHubMixin):
         return rows
 
     @classmethod
-    def describe(cls, verbose: bool = False) -> None:
-        """Print this class's feature attributes, keyed by the controlling class attribute name.
+    def metadata(cls) -> "ModelMetadata":
+        """Return a :class:`ModelMetadata` snapshot of this class's feature attributes.
 
         Walks ``cls.__mro__`` and merges rows from each ancestor class's own ``_metadata`` classmethod (handled via
         direct ``__dict__`` lookup so the aggregator never recurses into itself). First-seen wins on label collisions;
-        this puts the model's own overrides ahead of inherited defaults.
+        subclass overrides win over inherited defaults.
 
-        Compact form (default): two-column ``<class attr> <value>``. With ``verbose=True``, each row is followed by an
-        indented description and docs link. ANSI color/style is applied when stdout is a TTY and stripped otherwise so
-        the output stays clean in logs and pipes.
+        The returned object exposes feature values as attributes (``meta._supports_ip_adapter``, ``meta._lora``, ...),
+        supports ``hasattr`` / ``in`` for presence checks, and prints as a formatted table via its ``__repr__``. Call
+        ``meta.describe(verbose=True)`` for the verbose variant with descriptions and docs.
         """
-        import sys
-
         merged: dict[str, tuple[Any, str, str, str]] = {}
         for mixin in cls.__mro__:
             method = mixin.__dict__.get("_metadata")
             if method is None:
                 continue
+
             for attr, info in method.__func__(cls).items():
                 merged.setdefault(attr, info)
 
-        if not merged:
-            print(f"{cls.__name__}: no feature attributes declared")
-            return
-
-        is_tty = sys.stdout.isatty()
-        bold = "\033[1m" if is_tty else ""
-        dim = "\033[2m" if is_tty else ""
-        cyan = "\033[36m" if is_tty else ""
-        underline = "\033[4m" if is_tty else ""
-        reset = "\033[0m" if is_tty else ""
-
-        attr_w = max(len(attr) for attr in merged)
-        title = f"{cls.__name__} feature attributes"
-        rule_width = max(len(title), attr_w + 2 + max(len(row[1]) for row in merged.values()))
-        lines = [
-            f"{bold}{title}{reset}",
-            f"{dim}{'─' * rule_width}{reset}",
-        ]
-
-        rows = list(merged.items())
-        for i, (attr, (_value, display, doc, link)) in enumerate(rows):
-            lines.append(f"  {bold}{cyan}{attr:<{attr_w}}{reset}  {display}")
-            if verbose:
-                if doc:
-                    lines.append(f"      {dim}{doc}{reset}")
-                if link:
-                    lines.append(f"      {dim}See {underline}{link}{reset}")
-                if i < len(rows) - 1:
-                    lines.append("")
-        lines.append("")
-        print("\n".join(lines))
+        return ModelMetadata(merged, cls.__name__)
 
     def __getattr__(self, name: str) -> Any:
         """The only reason we overwrite `getattr` here is to gracefully deprecate accessing

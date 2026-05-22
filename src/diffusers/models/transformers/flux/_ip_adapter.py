@@ -13,13 +13,13 @@
 # limitations under the License.
 """Flux-specific IP-Adapter loading.
 
-IP-Adapter behavior — what's in the state dict, what the attn processors look like, which blocks they bind
-to — varies enough across models that a generic mixin can't really capture the orchestration. Flux owns its
-own ``_load_ip_adapter_weights`` here, including the loop over blocks, the choice to skip single-stream
-blocks, and the projection-dim computation.
+IP-Adapter behavior — what's in the state dict, what the attn processors look like, which blocks they bind to — varies
+enough across models that a generic mixin can't really capture the orchestration. Flux owns its own
+``_load_ip_adapter_weights`` here, including the loop over blocks, the choice to skip single-stream blocks, and the
+projection-dim computation.
 
-``FluxIPAdapterMixin`` is added to ``FluxTransformer2DModel``'s bases in ``flux/model.py``. Models that don't
-support IP-Adapter simply don't inherit anything — there's no opt-in handler default to override.
+``FluxIPAdapterMixin`` is added to ``FluxTransformer2DModel``'s bases in ``flux/model.py``. Models that don't support
+IP-Adapter simply don't inherit anything — there's no opt-in handler default to override.
 """
 
 from contextlib import nullcontext
