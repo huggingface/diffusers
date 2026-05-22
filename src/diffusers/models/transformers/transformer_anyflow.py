@@ -334,8 +334,11 @@ class AnyFlowRotaryPosEmbed(nn.Module):
         self._freqs_cache: Optional[Tuple[Any, torch.Tensor]] = None
 
     def _build_freqs(self, device: torch.device) -> torch.Tensor:
+        # Skip the cache read/write inside torch.compile: mutating ``self._freqs_cache`` between calls
+        # becomes a Dynamo guard and forces recompilation on the second invocation.
+        is_compiling = torch.compiler.is_compiling()
         cache_key = (device.type, str(device))
-        if self._freqs_cache is not None and self._freqs_cache[0] == cache_key:
+        if not is_compiling and self._freqs_cache is not None and self._freqs_cache[0] == cache_key:
             return self._freqs_cache[1]
 
         is_mps = device.type == "mps"
@@ -357,7 +360,8 @@ class AnyFlowRotaryPosEmbed(nn.Module):
             )
             freqs_list.append(f.to(device))
         freqs = torch.cat(freqs_list, dim=1)
-        self._freqs_cache = (cache_key, freqs)
+        if not is_compiling:
+            self._freqs_cache = (cache_key, freqs)
         return freqs
 
     def _forward_full_frame(self, num_frames, height, width, device) -> torch.Tensor:

@@ -423,12 +423,21 @@ class AnyFlowFARPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         r_timestep = torch.tensor([0], device=latents.device).expand(latent_model_input.shape[0]).unsqueeze(-1)
         r_timestep = r_timestep.repeat((1, latent_model_input.shape[1]))
 
+        attention_mask = self.transformer.build_attention_mask(
+            chunk_partition=chunk_partition,
+            height=latent_model_input.shape[-2],
+            width=latent_model_input.shape[-1],
+            device=latent_model_input.device,
+            mode="cache",
+        )
+
         _, kv_cache = self.transformer(
             hidden_states=latent_model_input,
             chunk_partition=chunk_partition,
             timestep=timestep,
             r_timestep=r_timestep,
             encoder_hidden_states=prompt_embeds,
+            attention_mask=attention_mask,
             attention_kwargs=self.attention_kwargs,
             return_dict=False,
             # kv-cache related
