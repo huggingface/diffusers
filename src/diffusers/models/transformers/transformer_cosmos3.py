@@ -368,94 +368,6 @@ class Cosmos3OmniTransformer(ModelMixin, ConfigMixin, PeftAdapterMixin, Attentio
         self.gradient_checkpointing = False
 
     # -------------------------------------------------------------------------
-    # Modality encode / decode helpers (called from forward; previously lived in
-    # the pipeline file and reached into self.transformer.X — moved here so the
-    # pipeline never touches the model's sub-layers directly).
-    # -------------------------------------------------------------------------
-
-    def _encode_text(self, packed_seq: Any) -> Tuple[torch.Tensor, torch.dtype]:
-        """Embed text tokens. Returns ``(hidden_states [N_total, H], target_dtype)``."""
-        packed_text_embedding = self.embed_tokens(packed_seq.text_ids)
-        hidden_states = packed_text_embedding.new_zeros(size=(packed_seq.sequence_length, self.config.hidden_size))
-        hidden_states[packed_seq.text_indexes] = packed_text_embedding
-        return hidden_states, packed_text_embedding.dtype
-
-    def _encode_vision(
-        self,
-        packed_seq: Any,
-        hidden_states: torch.Tensor,
-        target_dtype: torch.dtype,
-    ) -> List[Tuple[int, int, int]] | None:
-        """Project vision tokens into ``hidden_states`` in-place. Returns ``original_latent_shapes``."""
-        vision = packed_seq.vision
-        if vision is None or vision.tokens is None:
-            return None
-        packed_tokens_vision, original_latent_shapes = self._patchify_and_pack_latents(
-            vision.tokens, vision.token_shapes
-        )
-        packed_tokens_vision = self.vae2llm(packed_tokens_vision)
-        if vision.mse_loss_indexes.numel() > 0:
-            timesteps_vision = vision.timesteps * self.config.timestep_scale
-            with torch.autocast("cuda", enabled=True, dtype=torch.float32):
-                packed_timestep_embeds_vision = self.time_embedder(self.time_proj(timesteps_vision))
-            packed_timestep_embeds_vision = packed_timestep_embeds_vision.to(target_dtype)
-            packed_tokens_vision = self._apply_timestep_embeds_to_noisy_tokens(
-                packed_tokens=packed_tokens_vision,
-                packed_timestep_embeds=packed_timestep_embeds_vision,
-                noisy_frame_indexes=vision.noisy_frame_indexes,
-                token_shapes=vision.token_shapes,
-            )
-        hidden_states[vision.sequence_indexes] = packed_tokens_vision
-        return original_latent_shapes
-
-    def _encode_sound(
-        self,
-        packed_seq: Any,
-        hidden_states: torch.Tensor,
-        target_dtype: torch.dtype,
-    ) -> None:
-        """Project sound tokens into ``hidden_states`` in-place via ``sound2llm`` + timestep embeds."""
-        sound = packed_seq.sound
-        if sound is None or sound.tokens is None:
-            return
-        packed_tokens_sound = self._pack_sound_latents(sound.tokens, sound.token_shapes).to(target_dtype)
-        packed_tokens_sound = self.sound2llm(packed_tokens_sound) + self.sound_modality_embed
-        if sound.mse_loss_indexes.numel() > 0:
-            timesteps_sound = sound.timesteps * self.config.timestep_scale
-            with torch.autocast("cuda", enabled=True, dtype=torch.float32):
-                packed_timestep_embeds_sound = self.time_embedder(self.time_proj(timesteps_sound))
-            packed_timestep_embeds_sound = packed_timestep_embeds_sound.to(target_dtype)
-            packed_tokens_sound = self._apply_timestep_embeds_to_noisy_tokens(
-                packed_tokens=packed_tokens_sound,
-                packed_timestep_embeds=packed_timestep_embeds_sound,
-                noisy_frame_indexes=sound.noisy_frame_indexes,
-                token_shapes=sound.token_shapes,
-            )
-        hidden_states[sound.sequence_indexes] = packed_tokens_sound
-
-    def _decode_vision(
-        self,
-        packed_seq: Any,
-        last_hidden_state: torch.Tensor,
-        original_latent_shapes: Optional[List[Tuple[int, int, int]]],
-    ) -> List[torch.Tensor]:
-        """Decode vision predictions from ``last_hidden_state``."""
-        vision = packed_seq.vision
-        preds_vision = self.llm2vae(last_hidden_state[vision.mse_loss_indexes])
-        return self._unpatchify_and_unpack_latents(
-            preds_vision,
-            token_shapes_vision=vision.token_shapes,
-            noisy_frame_indexes_vision=vision.noisy_frame_indexes,
-            original_latent_shapes=original_latent_shapes,
-        )
-
-    def _decode_sound(self, packed_seq: Any, last_hidden_state: torch.Tensor) -> List[torch.Tensor]:
-        """Decode sound predictions from ``last_hidden_state`` via ``llm2sound``."""
-        sound = packed_seq.sound
-        preds_packed = self.llm2sound(last_hidden_state[sound.mse_loss_indexes])
-        return self._unpack_sound_latents(preds_packed, sound.token_shapes, sound.noisy_frame_indexes)
-
-    # -------------------------------------------------------------------------
     # Pure-tensor packing/unpacking helpers (no layer state).
     # -------------------------------------------------------------------------
 
@@ -597,13 +509,48 @@ class Cosmos3OmniTransformer(ModelMixin, ConfigMixin, PeftAdapterMixin, Attentio
             ``(preds_vision, preds_sound)`` — list of per-modality latents (``preds_sound`` is
             ``None`` when the model has no sound branch or the packed sequence has no sound tokens).
         """
-        has_sound = packed_seq.sound is not None and packed_seq.sound.tokens is not None
+        vision = packed_seq.vision
+        sound = packed_seq.sound
+        has_sound = sound is not None and sound.tokens is not None
 
-        # Build joint hidden_states: text embedding then in-place projections for vision/sound.
-        hidden_states, target_dtype = self._encode_text(packed_seq)
-        original_latent_shapes = self._encode_vision(packed_seq, hidden_states, target_dtype)
+        # Embed text tokens into the joint hidden_states buffer at their sequence positions.
+        packed_text_embedding = self.embed_tokens(packed_seq.text_ids)
+        target_dtype = packed_text_embedding.dtype
+        hidden_states = packed_text_embedding.new_zeros(size=(packed_seq.sequence_length, self.config.hidden_size))
+        hidden_states[packed_seq.text_indexes] = packed_text_embedding
+
+        # Patchify + project vision latents, then add timestep embeddings to noisy frames.
+        packed_tokens_vision, original_latent_shapes = self._patchify_and_pack_latents(
+            vision.tokens, vision.token_shapes
+        )
+        packed_tokens_vision = self.vae2llm(packed_tokens_vision)
+        timesteps_vision = vision.timesteps * self.config.timestep_scale
+        with torch.autocast("cuda", enabled=True, dtype=torch.float32):
+            packed_timestep_embeds_vision = self.time_embedder(self.time_proj(timesteps_vision))
+        packed_timestep_embeds_vision = packed_timestep_embeds_vision.to(target_dtype)
+        packed_tokens_vision = self._apply_timestep_embeds_to_noisy_tokens(
+            packed_tokens=packed_tokens_vision,
+            packed_timestep_embeds=packed_timestep_embeds_vision,
+            noisy_frame_indexes=vision.noisy_frame_indexes,
+            token_shapes=vision.token_shapes,
+        )
+        hidden_states[vision.sequence_indexes] = packed_tokens_vision
+
+        # Pack + project sound latents (when present); all sound frames are noisy.
         if has_sound:
-            self._encode_sound(packed_seq, hidden_states, target_dtype)
+            packed_tokens_sound = self._pack_sound_latents(sound.tokens, sound.token_shapes).to(target_dtype)
+            packed_tokens_sound = self.sound2llm(packed_tokens_sound) + self.sound_modality_embed
+            timesteps_sound = sound.timesteps * self.config.timestep_scale
+            with torch.autocast("cuda", enabled=True, dtype=torch.float32):
+                packed_timestep_embeds_sound = self.time_embedder(self.time_proj(timesteps_sound))
+            packed_timestep_embeds_sound = packed_timestep_embeds_sound.to(target_dtype)
+            packed_tokens_sound = self._apply_timestep_embeds_to_noisy_tokens(
+                packed_tokens=packed_tokens_sound,
+                packed_timestep_embeds=packed_timestep_embeds_sound,
+                noisy_frame_indexes=sound.noisy_frame_indexes,
+                token_shapes=sound.token_shapes,
+            )
+            hidden_states[sound.sequence_indexes] = packed_tokens_sound
 
         # Compute rotary embeddings once for the joint sequence, then slice into und/gen halves.
         _meta_tensor = torch.tensor([], dtype=hidden_states.dtype, device=hidden_states.device)
@@ -631,6 +578,18 @@ class Cosmos3OmniTransformer(ModelMixin, ConfigMixin, PeftAdapterMixin, Attentio
         gen_out = self.norm_moe_gen(gen_seq)
         last_hidden_state = torch.cat([und_out, gen_out], dim=0)
 
-        preds_vision = self._decode_vision(packed_seq, last_hidden_state, original_latent_shapes)
-        preds_sound = self._decode_sound(packed_seq, last_hidden_state) if has_sound else None
+        # Decode vision predictions from the joint hidden state.
+        preds_vision_packed = self.llm2vae(last_hidden_state[vision.mse_loss_indexes])
+        preds_vision = self._unpatchify_and_unpack_latents(
+            preds_vision_packed,
+            token_shapes_vision=vision.token_shapes,
+            noisy_frame_indexes_vision=vision.noisy_frame_indexes,
+            original_latent_shapes=original_latent_shapes,
+        )
+
+        preds_sound: Optional[List[torch.Tensor]] = None
+        if has_sound:
+            preds_sound_packed = self.llm2sound(last_hidden_state[sound.mse_loss_indexes])
+            preds_sound = self._unpack_sound_latents(preds_sound_packed, sound.token_shapes, sound.noisy_frame_indexes)
+
         return preds_vision, preds_sound
