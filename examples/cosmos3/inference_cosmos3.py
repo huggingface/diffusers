@@ -25,11 +25,13 @@ import pathlib
 import torch
 from huggingface_hub import snapshot_download
 
-from diffusers.pipelines.cosmos.pipeline_cosmos3_omni import Cosmos3OmniDiffusersPipeline, save_img_or_video, save_wav
+from diffusers.pipelines.cosmos.export_utils import save_img_or_video, save_wav
+from diffusers.pipelines.cosmos.pipeline_cosmos3_omni import Cosmos3OmniDiffusersPipeline
 from diffusers.utils import load_image
 
 
 HF_REPO = "nvidia/Cosmos3-Nano"
+
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)

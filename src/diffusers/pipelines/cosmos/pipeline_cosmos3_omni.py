@@ -14,10 +14,8 @@
 
 import math
 from dataclasses import dataclass, field
-from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
-import numpy as np
 import torch
 from transformers import AutoTokenizer
 
@@ -28,7 +26,7 @@ from ...models.transformers.transformer_cosmos3 import (
     Cosmos3OmniTransformer,
 )
 from ...schedulers import UniPCMultistepScheduler
-from ...utils import BaseOutput, export_to_video
+from ...utils import BaseOutput
 from ...utils.torch_utils import randn_tensor
 from ...video_processor import VideoProcessor
 from ..pipeline_utils import DiffusionPipeline
@@ -276,9 +274,7 @@ def _pack_vision_tokens(
 
     condition_set = {idx for idx in condition_frame_indexes_vision if 0 <= idx < latent_t}
 
-    vision_condition_mask = torch.zeros(
-        (latent_t, 1, 1), device=device, dtype=input_vision_tokens.dtype
-    )
+    vision_condition_mask = torch.zeros((latent_t, 1, 1), device=device, dtype=input_vision_tokens.dtype)
     for frame_idx in condition_set:
         vision_condition_mask[frame_idx, 0, 0] = 1.0
     packed_seq.vision.condition_mask.append(vision_condition_mask)
@@ -355,9 +351,7 @@ def _pack_sound_tokens(
     packed_seq.sound.condition_mask.append(
         torch.zeros((sound_split_len, 1), device=device, dtype=input_sound_tokens.dtype)
     )
-    packed_seq.sound.noisy_frame_indexes.append(
-        torch.arange(sound_split_len, device=device, dtype=torch.long)
-    )
+    packed_seq.sound.noisy_frame_indexes.append(torch.arange(sound_split_len, device=device, dtype=torch.long))
 
     packed_seq.sound.mse_loss_indexes.extend(range(curr, curr + sound_split_len))
     packed_seq.sound.timesteps.extend([input_timestep] * sound_split_len)
@@ -553,47 +547,6 @@ def retrieve_latents(
         raise AttributeError("Could not access latents of provided encoder_output")
 
 
-def save_img_or_video(sample, save_fp_wo_ext, fps=24, quality=10):
-    """Save a 4D ``[C, T, H, W]`` sample as a JPEG (T=1) or MP4 (T>1)."""
-    from PIL import Image as PILImage
-
-    assert sample.ndim == 4, "Only support 4D tensor [C, T, H, W]"
-
-    if torch.is_floating_point(sample):
-        sample = sample.clamp(0, 1)
-    else:
-        assert sample.dtype == torch.uint8, "Only support uint8 tensor"
-        sample = sample.float().div(255)
-
-    np_arr = sample.cpu().float().numpy()  # [C, T, H, W] in [0, 1]
-    if np_arr.shape[1] == 1:
-        img = (np_arr.squeeze(1).transpose(1, 2, 0) * 255).astype(np.uint8)  # [H, W, C] uint8 for PIL
-        PILImage.fromarray(img, mode="RGB").save(f"{save_fp_wo_ext}.jpg", format="JPEG", quality=85)
-    else:
-        # export_to_video scales float [0, 1] ndarrays to uint8 internally — don't pre-scale.
-        # macro_block_size=1 allows arbitrary frame sizes (Cosmos3 outputs are not always divisible by 16).
-        frames = list(np_arr.transpose(1, 2, 3, 0))  # list of [H, W, C] float frames
-        export_to_video(frames, f"{save_fp_wo_ext}.mp4", fps=fps, quality=quality, macro_block_size=1)
-
-
-def save_wav(waveform: torch.Tensor, path, sample_rate: int) -> None:
-    """Save a decoded waveform ``[C, N]`` or ``[N]`` as a WAV file.
-
-    Args:
-        waveform: Audio tensor of shape ``[C, N]`` (multi-channel) or ``[N]`` (mono).
-        path: Destination file path (``str`` or :class:`~pathlib.Path`).  The ``.wav``
-            extension is expected but not enforced.
-        sample_rate: Sample rate in Hz.
-    """
-    import soundfile as sf  # type: ignore[import-not-found]
-
-    audio_np = waveform.clamp(-1.0, 1.0).to(dtype=torch.float32).cpu().numpy()
-    if audio_np.ndim == 2:
-        audio_np = audio_np.T  # soundfile expects [N, C]
-    Path(path).parent.mkdir(parents=True, exist_ok=True)
-    sf.write(str(path), audio_np, sample_rate)
-
-
 class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
     _optional_components = ["sound_tokenizer"]
     model_cpu_offload_seq = "transformer->vae->sound_tokenizer"
@@ -622,9 +575,7 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
         self._vae_latents_inv_std = 1.0 / torch.tensor(vae.config.latents_std, dtype=self._vae_dtype)
 
         # Image preprocessor for caller-supplied conditioning frames (PIL / tensor / numpy).
-        self.vae_scale_factor_spatial = (
-            int(self.vae.config.scale_factor_spatial) if getattr(self, "vae", None) else 16
-        )
+        self.vae_scale_factor_spatial = int(self.vae.config.scale_factor_spatial) if getattr(self, "vae", None) else 16
         self.video_processor = VideoProcessor(vae_scale_factor=self.vae_scale_factor_spatial, resample="bilinear")
 
         self.llm_special_tokens = {
@@ -774,9 +725,7 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
                 # Single conditioning frame at t=0, repeat-pad the rest with that same frame.
                 vision_tensor[:, :, 0] = conditioning_frame_2d
                 if num_frames > 1:
-                    vision_tensor[:, :, 1:] = conditioning_frame_2d.unsqueeze(2).expand(
-                        -1, -1, num_frames - 1, -1, -1
-                    )
+                    vision_tensor[:, :, 1:] = conditioning_frame_2d.unsqueeze(2).expand(-1, -1, num_frames - 1, -1, -1)
             condition_frame_indexes_vision = list(cond_indexes)
 
         num_vision_items = 1
@@ -1189,9 +1138,9 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
                 # UniPC's multistep_uni_p_bh_update einsum ("k,bkc...->bc...") requires sample
                 # to carry a batch dim; our latents are 1-D flat, so wrap for the step.
                 velocity_pred = uncond_v + guidance_scale * (cond_v - uncond_v)
-                latents = self.scheduler.step(
-                    velocity_pred.unsqueeze(0), t, latents.unsqueeze(0), return_dict=False
-                )[0].squeeze(0)
+                latents = self.scheduler.step(velocity_pred.unsqueeze(0), t, latents.unsqueeze(0), return_dict=False)[
+                    0
+                ].squeeze(0)
 
                 if callback_on_step_end is not None:
                     callback_kwargs = {k: locals()[k] for k in callback_on_step_end_tensor_inputs}
