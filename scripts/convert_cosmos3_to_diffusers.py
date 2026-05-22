@@ -420,7 +420,12 @@ def main():
             use_moe=use_moe,
             vocab_size=lm_cfg.vocab_size,
         )
-    state_dict = language_model.state_dict()
+    # The source language_model nests its transformer stack under a `model.` attribute
+    # (HF Qwen-style). Diffusers Cosmos3OmniTransformer holds those layers flat, so
+    # strip the leading `model.` prefix from the language-model state-dict keys.
+    state_dict = {
+        (k[len("model.") :] if k.startswith("model.") else k): v for k, v in language_model.state_dict().items()
+    }
     for k, v in vae2llm.state_dict().items():
         state_dict[f"vae2llm.{k}"] = v
     for k, v in llm2vae.state_dict().items():

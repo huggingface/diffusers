@@ -274,51 +274,6 @@ class Cosmos3VLTextMoTDecoderLayer(nn.Module):
         return residual_und + mlp_out_und, residual_gen + mlp_out_gen
 
 
-class Cosmos3VLTextModel(nn.Module):
-    """Inner transformer stack — mirrors the source checkpoint's ``language_model.model``
-    layout so existing checkpoints bind cleanly (``model.embed_tokens.X``, ``model.layers.X``,
-    ``model.norm.X``, ``model.norm_moe_gen.X``, ``model.rotary_emb.X``).
-    """
-
-    def __init__(
-        self,
-        vocab_size: int,
-        hidden_size: int,
-        head_dim: int,
-        num_attention_heads: int,
-        num_key_value_heads: int,
-        intermediate_size: int,
-        num_hidden_layers: int,
-        attention_bias: bool,
-        attention_dropout: float,
-        rms_norm_eps: float,
-        rope_theta: float,
-        rope_scaling: dict | None,
-    ) -> None:
-        super().__init__()
-        self.embed_tokens = nn.Embedding(vocab_size, hidden_size)
-        self.layers = nn.ModuleList(
-            [
-                Cosmos3VLTextMoTDecoderLayer(
-                    hidden_size=hidden_size,
-                    head_dim=head_dim,
-                    num_attention_heads=num_attention_heads,
-                    num_key_value_heads=num_key_value_heads,
-                    intermediate_size=intermediate_size,
-                    attention_bias=attention_bias,
-                    attention_dropout=attention_dropout,
-                    rms_norm_eps=rms_norm_eps,
-                )
-                for _ in range(num_hidden_layers)
-            ]
-        )
-        self.norm = Cosmos3VLTextRMSNorm(hidden_size, eps=rms_norm_eps)
-        self.norm_moe_gen = Cosmos3VLTextRMSNorm(hidden_size, eps=rms_norm_eps)
-        self.rotary_emb = Cosmos3VLTextRotaryEmbedding(
-            head_dim=head_dim, rope_theta=rope_theta, rope_scaling=rope_scaling
-        )
-
-
 class Cosmos3OmniTransformer(ModelMixin, ConfigMixin):
     @register_to_config
     def __init__(
@@ -357,26 +312,32 @@ class Cosmos3OmniTransformer(ModelMixin, ConfigMixin):
             rope_scaling = {"mrope_interleaved": True, "mrope_section": [24, 20, 20], "rope_type": "default"}
             self.register_to_config(rope_scaling=rope_scaling)
 
-        # Text model wraps the layers under `model.` to match the published checkpoint
-        # layout. Diffusers sharded loading currently has no key-remapping hook that
-        # works across all paths, so keeping the structural wrapper is the practical
-        # path until we re-publish a checkpoint with the flat layout.
-        self.model = Cosmos3VLTextModel(
-            vocab_size=vocab_size,
-            hidden_size=hidden_size,
-            head_dim=head_dim,
-            num_attention_heads=num_attention_heads,
-            num_key_value_heads=num_key_value_heads,
-            intermediate_size=intermediate_size,
-            num_hidden_layers=num_hidden_layers,
-            attention_bias=attention_bias,
-            attention_dropout=attention_dropout,
-            rms_norm_eps=rms_norm_eps,
-            rope_theta=rope_theta,
-            rope_scaling=rope_scaling,
+        # Text-model layers live directly on the transformer (flat layout). The published
+        # checkpoint must be re-keyed with the leading `model.` prefix stripped — see
+        # scripts/build_flat_layout_repo.py for the rewrite.
+        self.embed_tokens = nn.Embedding(vocab_size, hidden_size)
+        self.layers = nn.ModuleList(
+            [
+                Cosmos3VLTextMoTDecoderLayer(
+                    hidden_size=hidden_size,
+                    head_dim=head_dim,
+                    num_attention_heads=num_attention_heads,
+                    num_key_value_heads=num_key_value_heads,
+                    intermediate_size=intermediate_size,
+                    attention_bias=attention_bias,
+                    attention_dropout=attention_dropout,
+                    rms_norm_eps=rms_norm_eps,
+                )
+                for _ in range(num_hidden_layers)
+            ]
+        )
+        self.norm = Cosmos3VLTextRMSNorm(hidden_size, eps=rms_norm_eps)
+        self.norm_moe_gen = Cosmos3VLTextRMSNorm(hidden_size, eps=rms_norm_eps)
+        self.rotary_emb = Cosmos3VLTextRotaryEmbedding(
+            head_dim=head_dim, rope_theta=rope_theta, rope_scaling=rope_scaling
         )
 
-        # Modality projection heads + timestep embedding live directly on the transformer.
+        # Modality projection heads + timestep embedding.
         self.vocab_size = vocab_size
         self.lm_head = nn.Linear(hidden_size, vocab_size, bias=False)
         self.vae2llm = nn.Linear(patch_latent_dim, hidden_size, bias=True)
@@ -398,7 +359,7 @@ class Cosmos3OmniTransformer(ModelMixin, ConfigMixin):
 
     def _encode_text(self, packed_seq: Any) -> Tuple[torch.Tensor, torch.dtype]:
         """Embed text tokens. Returns ``(hidden_states [N_total, H], target_dtype)``."""
-        packed_text_embedding = self.model.embed_tokens(packed_seq.text_ids)
+        packed_text_embedding = self.embed_tokens(packed_seq.text_ids)
         hidden_states = packed_text_embedding.new_zeros(size=(packed_seq.sequence_length, self.config.hidden_size))
         hidden_states[packed_seq.text_indexes] = packed_text_embedding
         return hidden_states, packed_text_embedding.dtype
@@ -669,7 +630,7 @@ class Cosmos3OmniTransformer(ModelMixin, ConfigMixin):
         # Compute rotary embeddings once for the joint sequence, then slice into und/gen halves.
         _meta_tensor = torch.tensor([], dtype=hidden_states.dtype, device=hidden_states.device)
         position_ids = packed_seq.position_ids
-        cos, sin = self.model.rotary_emb(
+        cos, sin = self.rotary_emb(
             _meta_tensor,
             position_ids=position_ids.unsqueeze(0) if position_ids.ndim == 1 else position_ids.unsqueeze(1),
         )
@@ -681,10 +642,10 @@ class Cosmos3OmniTransformer(ModelMixin, ConfigMixin):
         und_seq = hidden_states[:und_len]
         gen_seq = hidden_states[und_len:]
         position_embeddings = (cos[:und_len], sin[:und_len], cos[und_len:], sin[und_len:])
-        for decoder_layer in self.model.layers:
+        for decoder_layer in self.layers:
             und_seq, gen_seq = decoder_layer(und_seq, gen_seq, position_embeddings)
-        und_out = self.model.norm(und_seq)
-        gen_out = self.model.norm_moe_gen(gen_seq)
+        und_out = self.norm(und_seq)
+        gen_out = self.norm_moe_gen(gen_seq)
         last_hidden_state = torch.cat([und_out, gen_out], dim=0)
 
         preds_vision = self._decode_vision(packed_seq, last_hidden_state, original_latent_shapes)
