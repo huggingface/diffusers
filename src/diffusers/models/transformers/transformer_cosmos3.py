@@ -19,7 +19,8 @@ import torch
 import torch.nn as nn
 
 from ...configuration_utils import ConfigMixin, register_to_config
-from ..attention import AttentionModuleMixin
+from ...loaders import PeftAdapterMixin
+from ..attention import AttentionMixin, AttentionModuleMixin
 from ..attention_dispatch import dispatch_attention_fn
 from ..embeddings import TimestepEmbedding, Timesteps
 from ..modeling_utils import ModelMixin
@@ -32,6 +33,9 @@ class CosmosAttnProcessor3_0:
     causal (understanding) and full (generation) attention pathways. The generation
     pathway cross-attends to both und and gen keys/values.
     """
+
+    _attention_backend = None
+    _parallel_config = None
 
     def __call__(
         self,
@@ -72,6 +76,8 @@ class CosmosAttnProcessor3_0:
                 v_und.unsqueeze(0),
                 is_causal=True,
                 enable_gqa=True,
+                backend=self._attention_backend,
+                parallel_config=self._parallel_config,
             )
             .squeeze(0)
             .flatten(-2, -1)
@@ -87,6 +93,8 @@ class CosmosAttnProcessor3_0:
                 all_v.unsqueeze(0),
                 is_causal=False,
                 enable_gqa=True,
+                backend=self._attention_backend,
+                parallel_config=self._parallel_config,
             )
             .squeeze(0)
             .flatten(-2, -1)
@@ -274,7 +282,13 @@ class Cosmos3VLTextMoTDecoderLayer(nn.Module):
         return residual_und + mlp_out_und, residual_gen + mlp_out_gen
 
 
-class Cosmos3OmniTransformer(ModelMixin, ConfigMixin):
+class Cosmos3OmniTransformer(ModelMixin, ConfigMixin, PeftAdapterMixin, AttentionMixin):
+    _supports_gradient_checkpointing = True
+    _no_split_modules = ["Cosmos3VLTextMoTDecoderLayer"]
+    _repeated_blocks = ["Cosmos3VLTextMoTDecoderLayer"]
+    _skip_layerwise_casting_patterns = ["embed_tokens", "time_embedder", "norm"]
+    _keep_in_fp32_modules = ["time_embedder"]
+
     @register_to_config
     def __init__(
         self,
@@ -350,6 +364,8 @@ class Cosmos3OmniTransformer(ModelMixin, ConfigMixin):
             self.sound2llm = nn.Linear(sound_dim, hidden_size, bias=True)
             self.llm2sound = nn.Linear(hidden_size, sound_dim, bias=True)
             self.sound_modality_embed = nn.Parameter(torch.zeros(hidden_size))
+
+        self.gradient_checkpointing = False
 
     # -------------------------------------------------------------------------
     # Modality encode / decode helpers (called from forward; previously lived in
@@ -643,7 +659,12 @@ class Cosmos3OmniTransformer(ModelMixin, ConfigMixin):
         gen_seq = hidden_states[und_len:]
         position_embeddings = (cos[:und_len], sin[:und_len], cos[und_len:], sin[und_len:])
         for decoder_layer in self.layers:
-            und_seq, gen_seq = decoder_layer(und_seq, gen_seq, position_embeddings)
+            if torch.is_grad_enabled() and self.gradient_checkpointing:
+                und_seq, gen_seq = self._gradient_checkpointing_func(
+                    decoder_layer.__call__, und_seq, gen_seq, position_embeddings
+                )
+            else:
+                und_seq, gen_seq = decoder_layer(und_seq, gen_seq, position_embeddings)
         und_out = self.norm(und_seq)
         gen_out = self.norm_moe_gen(gen_seq)
         last_hidden_state = torch.cat([und_out, gen_out], dim=0)
