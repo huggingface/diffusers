@@ -144,9 +144,9 @@ class FlowMapEulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
                 Custom sigma schedule of length ``num_inference_steps``. The terminal ``0`` sigma is appended
                 automatically. The configured ``shift`` is applied on top.
             timesteps (`List[float]`, *optional*):
-                Custom timestep schedule of length ``num_inference_steps``, in the same units as
-                ``self.timesteps`` (i.e. scaled by ``num_train_timesteps``). Converted to sigmas internally.
-                If both ``sigmas`` and ``timesteps`` are passed, their lengths must match.
+                Custom timestep schedule of length ``num_inference_steps``, in the same units as ``self.timesteps``
+                (i.e. scaled by ``num_train_timesteps``). Converted to sigmas internally. If both ``sigmas`` and
+                ``timesteps`` are passed, their lengths must match.
         """
         if sigmas is not None and timesteps is not None and len(sigmas) != len(timesteps):
             raise ValueError("`sigmas` and `timesteps` should have the same length")

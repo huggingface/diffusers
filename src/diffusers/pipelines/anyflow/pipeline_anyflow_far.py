@@ -499,8 +499,8 @@ class AnyFlowFARPipeline(DiffusionPipeline, WanLoraLoaderMixin):
                 Custom sigma schedule for any-step sampling, in `[0, 1]` and ordered from noisy to clean. Length
                 determines the effective `num_inference_steps`; the scheduler appends the terminal `0` sigma.
             timesteps (`List[float]`, *optional*):
-                Custom timestep schedule for any-step sampling, in the same units as `self.scheduler.timesteps`
-                (i.e. scaled by `num_train_timesteps`). Mutually exclusive with `sigmas`.
+                Custom timestep schedule for any-step sampling, in the same units as `self.scheduler.timesteps` (i.e.
+                scaled by `num_train_timesteps`). Mutually exclusive with `sigmas`.
             guidance_scale (`float`, defaults to `1.0`):
                 Classifier-free guidance scale. The released AnyFlow checkpoints fuse CFG into the weights during
                 training; keep at `1.0` unless the checkpoint requires otherwise.
