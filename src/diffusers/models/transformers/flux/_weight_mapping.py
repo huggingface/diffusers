@@ -126,7 +126,7 @@ def _get_inner_dim(state_dict: dict[str, torch.Tensor]) -> int:
     return 3072  # Default
 
 
-def _apply_transforms(state_dict, transforms, rename_patterns, **ctx):
+def apply_transforms(state_dict, transforms, rename_patterns, **ctx):
     """Drive a forward state-dict conversion from a list of ``(source, targets, forward_fn)`` entries.
 
     For each key in ``state_dict``: scan ``transforms``; the first entry whose ``source`` substring matches expands the
@@ -154,7 +154,7 @@ def map_to_diffusers(
 ) -> dict[str, torch.Tensor]:
     """Convert a Flux transformer state_dict from original format to diffusers format."""
     inner_dim = _get_inner_dim(state_dict)
-    return _apply_transforms(state_dict, FLUX_TRANSFORMS, FLUX_RENAME_PATTERNS, inner_dim=inner_dim)
+    return apply_transforms(state_dict, FLUX_TRANSFORMS, FLUX_RENAME_PATTERNS, inner_dim=inner_dim)
 
 
 # Build reverse patterns for map_from_diffusers

@@ -36,7 +36,7 @@ import torch
 
 from ....loaders.lora import LoRAHandler
 from ....utils import logging, state_dict_all_zero
-from .weight_mapping import (
+from ._weight_mapping import (
     FLUX_QKV_SPLIT_PATTERNS,
     FLUX_QKVMLP_SPLIT_PATTERN,
     FLUX_QKVMLP_TARGETS,

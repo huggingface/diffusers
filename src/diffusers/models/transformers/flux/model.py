@@ -38,9 +38,9 @@ from ...embeddings import (
 from ...modeling_outputs import Transformer2DModelOutput
 from ...modeling_utils import ModelMixin, register_metadata
 from ...normalization import AdaLayerNormContinuous, AdaLayerNormZero, AdaLayerNormZeroSingle
-from .ip_adapter import FLUX_IP_ADAPTER
-from .lora import FLUX_LORA
-from .weight_mapping import FLUX_WEIGHT_MAPPING
+from ._ip_adapter import FLUX_IP_ADAPTER
+from ._lora import FLUX_LORA
+from ._weight_mapping import FLUX_WEIGHT_MAPPING
 
 
 logger = logging.get_logger(__name__)

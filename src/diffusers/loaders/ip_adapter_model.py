@@ -15,7 +15,7 @@
 
 Generic orchestration (set processors, build ``MultiIPAdapterImageProjection``, flip ``encoder_hid_dim_type``) lives on
 :class:`IPAdapterModelMixin`. Per-model conversion lives in an :class:`IPAdapterHandler` declared next to the model
-(e.g. ``flux/ip_adapter.py`` exports ``FLUX_IP_ADAPTER``), assigned to the model class as ``_ip_adapter =
+(e.g. ``flux/_ip_adapter.py`` exports ``FLUX_IP_ADAPTER``), assigned to the model class as ``_ip_adapter =
 FLUX_IP_ADAPTER``.
 """
 
