@@ -378,3 +378,20 @@ class EMAModelTestsForeach(unittest.TestCase):
         output_loaded = loaded_unet(noisy_latents, timesteps, encoder_hidden_states).sample
 
         assert torch.allclose(output, output_loaded, atol=1e-4)
+
+    def test_store_restore(self):
+        # The foreach restore() path passed raw CPU tensors from store() to
+        # torch._foreach_copy_(), which requires same-device tensors and therefore
+        # crashes on GPU. Fix: mirror copy_to()'s pattern of moving each stored
+        # tensor to param.device before the foreach copy.
+        unet, ema_unet = self.get_models()
+        original_params = [p.data.clone() for p in unet.parameters()]
+        unet = self.simulate_backprop(unet)
+        ema_unet.step(unet.parameters())
+        ema_unet.store(unet.parameters())
+        ema_unet.copy_to(unet.parameters())
+        ema_unet.restore(unet.parameters())
+        for restored, original in zip(unet.parameters(), original_params):
+            assert torch.allclose(restored.data, original.to(restored.device), atol=1e-6), (
+                "restore() foreach path did not correctly recover the stored parameters"
+            )
