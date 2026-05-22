@@ -95,6 +95,8 @@ if is_torch_available():
     _import_structure["transformers.t5_film_transformer"] = ["T5FilmDecoder"]
     _import_structure["transformers.transformer_2d"] = ["Transformer2DModel"]
     _import_structure["transformers.transformer_allegro"] = ["AllegroTransformer3DModel"]
+    _import_structure["transformers.transformer_anyflow"] = ["AnyFlowTransformer3DModel"]
+    _import_structure["transformers.transformer_anyflow_far"] = ["AnyFlowFARTransformer3DModel"]
     _import_structure["transformers.transformer_bria"] = ["BriaTransformer2DModel"]
     _import_structure["transformers.transformer_bria_fibo"] = ["BriaFiboTransformer2DModel"]
     _import_structure["transformers.transformer_chroma"] = ["ChromaTransformer2DModel"]
@@ -214,6 +216,8 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .transformers import (
             AceStepTransformer1DModel,
             AllegroTransformer3DModel,
+            AnyFlowFARTransformer3DModel,
+            AnyFlowTransformer3DModel,
             AuraFlowTransformer2DModel,
             BriaFiboTransformer2DModel,
             BriaTransformer2DModel,
