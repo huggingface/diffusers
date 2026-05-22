@@ -22,6 +22,7 @@ import torch.nn.functional as F
 
 from ....configuration_utils import register_to_config
 from ....hooks._helpers import TransformerBlockMetadata
+from ....loaders.lora import LoRAModelMixin
 from ....utils import apply_lora_scale, logging
 from ....utils.torch_utils import maybe_allow_in_graph
 from ..._modeling_parallel import ContextParallelInput, ContextParallelOutput
@@ -529,6 +530,7 @@ class FluxPosEmbed(nn.Module):
 
 class FluxTransformer2DModel(
     ModelMixin,
+    LoRAModelMixin,
     AttentionMixin,
     CacheMixin,
     FluxIPAdapterMixin,

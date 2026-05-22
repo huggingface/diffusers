@@ -40,7 +40,6 @@ from typing_extensions import Self
 
 from .. import __version__
 from ..configuration_utils import ConfigMixin
-from ..loaders.lora import LoRAModelMixin
 from ..loaders.weight_mapping import WeightMappingHandler
 from ..quantizers import DiffusersAutoQuantizer, DiffusersQuantizer
 from ..quantizers.quantization_config import QuantizationMethod
@@ -352,7 +351,7 @@ def register_metadata(metadata):
 _ATTENTION_API_DEPRECATION_MSG = "`ModelMixin.{name}` is deprecated. Use `{replacement}` instead."
 
 
-class ModelMixin(torch.nn.Module, ConfigMixin, LoRAModelMixin, PushToHubMixin):
+class ModelMixin(torch.nn.Module, ConfigMixin, PushToHubMixin):
     r"""
     Base class for all models.
 
@@ -382,12 +381,7 @@ class ModelMixin(torch.nn.Module, ConfigMixin, LoRAModelMixin, PushToHubMixin):
 
     @classmethod
     def _metadata(cls) -> dict[str, tuple[Any, str, str, str]]:
-        """Return ``ModelMixin``-level rows for the metadata snapshot.
-
-        Each row is keyed by the **class attribute name** that controls the capability (e.g.
-        ``"_supports_gradient_checkpointing"``) and maps to ``(value, display, description, docs_url)``. Only present
-        capabilities are returned.
-        """
+        """Return ``ModelMixin``-level rows for the metadata snapshot."""
         rows: dict[str, tuple[Any, str, str, str]] = {}
         if cls._supports_gradient_checkpointing:
             rows["_supports_gradient_checkpointing"] = (
@@ -450,16 +444,7 @@ class ModelMixin(torch.nn.Module, ConfigMixin, LoRAModelMixin, PushToHubMixin):
 
     @classmethod
     def metadata(cls) -> "ModelMetadata":
-        """Return a :class:`ModelMetadata` snapshot of this class's feature attributes.
-
-        Walks ``cls.__mro__`` and merges rows from each ancestor class's own ``_metadata`` classmethod (handled via
-        direct ``__dict__`` lookup so the aggregator never recurses into itself). First-seen wins on label collisions;
-        subclass overrides win over inherited defaults.
-
-        The returned object exposes feature values as attributes (``meta._supports_ip_adapter``, ``meta._lora``, ...),
-        supports ``hasattr`` / ``in`` for presence checks, and prints as a formatted table via its ``__repr__``. Call
-        ``meta.describe(verbose=True)`` for the verbose variant with descriptions and docs.
-        """
+        """Return a :class:`ModelMetadata` snapshot of this class's feature attributes."""
         merged: dict[str, tuple[Any, str, str, str]] = {}
         for mixin in cls.__mro__:
             method = mixin.__dict__.get("_metadata")
