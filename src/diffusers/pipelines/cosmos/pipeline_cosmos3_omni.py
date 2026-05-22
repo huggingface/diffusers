@@ -388,7 +388,6 @@ def pack_input_sequence(
     x0_tokens_sound: Optional[List[torch.Tensor]] = None,
     fps_sound: Optional[torch.Tensor] = None,
     latent_patch_size: int = 1,
-    include_end_of_generation_token: bool = False,
     position_embedding_type: str = "3d_rope",
     unified_3d_mrope_reset_spatial_ids: bool = True,
     unified_3d_mrope_temporal_modality_margin: int = 0,
@@ -492,18 +491,6 @@ def pack_input_sequence(
         )
         sample_len += sound_split_len
 
-    # End-of-generation marker.
-    if include_end_of_generation_token:
-        packed_seq.text_ids.append(special_tokens["end_of_generation"])
-        packed_seq.text_indexes.append(curr)
-        if use_mrope:
-            eov_dtype = torch.float32 if enable_fps_modulation else torch.long
-            eov_mrope_ids = torch.full((3, 1), mrope_offset, dtype=eov_dtype, device=device)
-            packed_seq.position_ids.append(eov_mrope_ids)  # type: ignore[arg-type]
-        else:
-            packed_seq.position_ids.append(curr_rope_id)  # type: ignore[arg-type]
-        sample_len += 1
-
     packed_seq.sequence_length = sample_len
     return packed_seq.finalize(device=device)
 
@@ -580,7 +567,6 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
 
         self.llm_special_tokens = {
             "start_of_generation": text_tokenizer.convert_tokens_to_ids("<|vision_start|>"),
-            "end_of_generation": text_tokenizer.convert_tokens_to_ids("<|vision_end|>"),
             "eos_token_id": text_tokenizer.eos_token_id,
         }
 
@@ -757,7 +743,6 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
             x0_tokens_sound=x0_tokens_sound,
             fps_sound=fps_sound,
             latent_patch_size=self.transformer.config.latent_patch_size,
-            include_end_of_generation_token=self.transformer.config.joint_attn_implementation == "flex",
             position_embedding_type=self.transformer.config.position_embedding_type,
             unified_3d_mrope_reset_spatial_ids=self.transformer.config.unified_3d_mrope_reset_spatial_ids,
             unified_3d_mrope_temporal_modality_margin=self.transformer.config.unified_3d_mrope_temporal_modality_margin,
@@ -908,7 +893,7 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
         offset = 0
         for j in range(num_vision_items):
             vision_shape = x0_tokens_vision[j].shape
-            vision_dim = int(torch.prod(torch.tensor(vision_shape)))
+            vision_dim = math.prod(vision_shape)
             if j == num_vision_items - 1:
                 result_vision.append(latents[offset : offset + vision_dim].reshape(vision_shape))
             offset += vision_dim
@@ -916,7 +901,7 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
         result_sound: Optional[list] = None
         if enable_sound and x0_tokens_sound is not None:
             sound_shape = x0_tokens_sound[0].shape  # [sound_dim, T_sound]
-            sound_dim_flat = int(torch.prod(torch.tensor(sound_shape)))
+            sound_dim_flat = math.prod(sound_shape)
             sound_latent = latents[offset : offset + sound_dim_flat].reshape(sound_shape)
             result_sound = [self.decode_sound(sound_latent)]
 
@@ -1021,9 +1006,7 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
 
         # Hoist per-step constants out of the loop
         config = self.transformer.config
-        assert config.use_moe
         latent_patch_size = config.latent_patch_size
-        include_eog = config.joint_attn_implementation == "flex"
         has_sound = x0_tokens_sound is not None
 
         # 6. Denoising loop
@@ -1035,7 +1018,6 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
                     continue
 
                 self._current_timestep = t
-                torch._inductor.cudagraph_mark_step_begin()
                 timestep = t.reshape(1, 1)
 
                 # Split flat latents → per-modality noisy tensors for this step
@@ -1043,13 +1025,13 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
                 offset = 0
                 for j in range(num_vision_items):
                     vision_shape = x0_tokens_vision[j].shape
-                    vision_dim = int(torch.prod(torch.tensor(vision_shape)))
+                    vision_dim = math.prod(vision_shape)
                     noise_x_vision.append(latents[offset : offset + vision_dim].reshape(vision_shape))
                     offset += vision_dim
                 noise_x_sound: Optional[list] = None
                 if has_sound:
                     sound_shape = x0_tokens_sound[0].shape
-                    sound_dim_flat = int(torch.prod(torch.tensor(sound_shape)))
+                    sound_dim_flat = math.prod(sound_shape)
                     noise_x_sound = [latents[offset : offset + sound_dim_flat].reshape(sound_shape)]
 
                 # --- Conditional pass ---
@@ -1065,7 +1047,6 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
                     x0_tokens_sound=noise_x_sound,
                     fps_sound=fps_sound if has_sound else None,
                     latent_patch_size=latent_patch_size,
-                    include_end_of_generation_token=include_eog,
                     position_embedding_type=config.position_embedding_type,
                     unified_3d_mrope_reset_spatial_ids=config.unified_3d_mrope_reset_spatial_ids,
                     unified_3d_mrope_temporal_modality_margin=config.unified_3d_mrope_temporal_modality_margin,
@@ -1106,7 +1087,6 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
                     x0_tokens_sound=noise_x_sound,
                     fps_sound=fps_sound if has_sound else None,
                     latent_patch_size=latent_patch_size,
-                    include_end_of_generation_token=include_eog,
                     position_embedding_type=config.position_embedding_type,
                     unified_3d_mrope_reset_spatial_ids=config.unified_3d_mrope_reset_spatial_ids,
                     unified_3d_mrope_temporal_modality_margin=config.unified_3d_mrope_temporal_modality_margin,
