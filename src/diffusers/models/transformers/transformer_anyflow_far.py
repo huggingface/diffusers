@@ -1218,7 +1218,6 @@ class AnyFlowFARTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Fr
             "compressed_token_per_frame": compressed_token_per_frame,
         }
 
-        # step 3: generate attention mask
         attention_mask = None
         hidden_states = self._forward_far_patchify_inference(hidden_states)
 
@@ -1338,7 +1337,6 @@ class AnyFlowFARTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Fr
             far_cfg["num_compressed_frames"] * far_cfg["compressed_token_per_frame"]
         )
 
-        # step 3: generate attention mask
         attention_mask = self._build_causal_mask(
             far_cfg, clean_hidden_states=clean_hidden_states, device=hidden_states.device, dtype=hidden_states.dtype
         )
@@ -1438,7 +1436,6 @@ class AnyFlowFARTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Fr
             "chunk_partition": chunk_partition,
         }
 
-        # step 3: generate attention mask
         attention_mask = self._build_causal_mask(
             far_cfg, clean_hidden_states=clean_hidden_states, device=hidden_states.device, dtype=hidden_states.dtype
         )

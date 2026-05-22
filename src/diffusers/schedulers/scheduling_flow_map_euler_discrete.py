@@ -181,8 +181,9 @@ class FlowMapEulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
             working_sigmas = torch.linspace(1.0, 0.0, num_inference_steps + 1, dtype=torch.float64)[:-1]
 
         working_sigmas = self.apply_shift(working_sigmas)
-        # Append the terminal 0 sigma as the r-endpoint of the last step.
-        full_sigmas = torch.cat([working_sigmas, torch.zeros(1, dtype=working_sigmas.dtype)])
+        # Append the terminal 0 sigma as the r-endpoint of the last step. `new_zeros(1)` inherits both
+        # device and dtype from `working_sigmas` so `torch.cat` stays device-consistent on CUDA.
+        full_sigmas = torch.cat([working_sigmas, working_sigmas.new_zeros(1)])
 
         self.num_inference_steps = num_inference_steps
         self.sigmas = full_sigmas.to(device=device, dtype=out_dtype)

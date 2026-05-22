@@ -381,15 +381,19 @@ class AnyFlowFARPipeline(DiffusionPipeline, WanLoraLoaderMixin):
     def attention_kwargs(self):
         return self._attention_kwargs
 
+    # Copied from diffusers.pipelines.anyflow.pipeline_anyflow.AnyFlowPipeline.encode_video
     def encode_video(self, video: torch.Tensor, height: int, width: int) -> torch.Tensor:
-        """Encode a pixel-space video into AnyFlow-FAR's latent layout.
+        """Encode a pixel-space video into AnyFlow's latent layout.
 
-        Mirrors the single-helper convention of other diffusers pipelines. Output layout is ``(B, T_latent, C,
-        H_latent, W_latent)`` — the per-frame layout the FAR rollout consumes.
+        Mirrors the single-helper convention of other diffusers pipelines (cf.
+        ``WanImageToVideoPipeline.encode_image``): wraps preprocessing, VAE encoding, and latent normalization into one
+        call. Output layout is ``(B, T_latent, C, H, W)``, which is what the AnyFlow transformer expects for
+        conditioning frames.
         """
         video = self.video_processor.preprocess_video(video, height=height, width=width).to(
             dtype=self.vae.dtype, device=self._execution_device
         )
+        # ``self.vae._encode`` expects (B, C, T, H, W); the AnyFlow rollout consumes (B, T_latent, C, H, W).
         moments = self.vae._encode(video)
         mu = torch.chunk(moments, 2, dim=1)[0]
 
