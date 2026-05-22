@@ -180,28 +180,6 @@ class EMAModelTests(unittest.TestCase):
         assert torch.allclose(output, output_loaded, atol=1e-4)
 
     def test_store_restore(self):
-        # The foreach restore() path passed raw CPU tensors from store() to
-        # torch._foreach_copy_(), which requires same-device tensors and therefore
-        # crashes on GPU.  Fix: mirror copy_to()'s pattern of moving each stored
-        # tensor to param.device before the foreach copy.
-        unet, ema_unet = self.get_models()
-        original_params = [p.data.clone() for p in unet.parameters()]
-
-        # Simulate one EMA step so shadow params differ from model params.
-        unet = self.simulate_backprop(unet)
-        ema_unet.step(unet.parameters())
-
-        # Standard EMA validation pattern: store → copy_to → restore.
-        ema_unet.store(unet.parameters())
-        ema_unet.copy_to(unet.parameters())
-        ema_unet.restore(unet.parameters())
-
-        # After restore(), model weights must equal the pre-copy_to values.
-        for restored, original in zip(unet.parameters(), original_params):
-            assert torch.allclose(restored.data, original.to(restored.device), atol=1e-6), (
-                "restore() foreach path did not correctly recover the stored parameters"
-            )
-    def test_store_restore(self):
         # store() saves params to CPU; restore() must move them back to the model's
         # device before copying.  The non-foreach path uses copy_() which is
         # cross-device safe; this test guards that restore() actually round-trips
