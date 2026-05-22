@@ -441,26 +441,6 @@ class Cosmos3OmniTransformer(ModelMixin, ConfigMixin, PeftAdapterMixin, Attentio
     ) -> List[torch.Tensor]:
         """Decode vision predictions from ``last_hidden_state``."""
         vision = packed_seq.vision
-        has_noisy_vision = (
-            vision is not None
-            and vision.tokens is not None
-            and isinstance(vision.mse_loss_indexes, torch.Tensor)
-            and vision.mse_loss_indexes.numel() > 0
-        )
-        if not has_noisy_vision:
-            # No noisy vision tokens: run a dummy projection so the graph is intact.
-            preds_vision = torch.zeros(
-                [1, self.config.patch_latent_dim], device=last_hidden_state.device, dtype=last_hidden_state.dtype
-            )
-            preds_vision = self.vae2llm(preds_vision)
-            preds_vision = self.llm2vae(preds_vision)
-            if vision is not None and vision.tokens is not None:
-                preds_vision_list = [torch.zeros_like(tok) for tok in vision.tokens]
-                preds_vision_list[0] = preds_vision_list[0] + 0.0 * preds_vision.sum()
-            else:
-                preds_vision_list = [preds_vision]
-            return preds_vision_list
-
         preds_vision = self.llm2vae(last_hidden_state[vision.mse_loss_indexes])
         return self._unpatchify_and_unpack_latents(
             preds_vision,
@@ -472,24 +452,6 @@ class Cosmos3OmniTransformer(ModelMixin, ConfigMixin, PeftAdapterMixin, Attentio
     def _decode_sound(self, packed_seq: Any, last_hidden_state: torch.Tensor) -> List[torch.Tensor]:
         """Decode sound predictions from ``last_hidden_state`` via ``llm2sound``."""
         sound = packed_seq.sound
-        has_noisy_sound = (
-            sound is not None
-            and sound.tokens is not None
-            and isinstance(sound.mse_loss_indexes, torch.Tensor)
-            and sound.mse_loss_indexes.numel() > 0
-        )
-        if not has_noisy_sound:
-            dummy = torch.zeros(
-                [1, self.config.sound_dim], device=last_hidden_state.device, dtype=last_hidden_state.dtype
-            )
-            dummy = self.sound2llm(dummy) + self.sound_modality_embed
-            dummy = self.llm2sound(dummy)
-            if sound is not None and sound.tokens is not None:
-                preds = [torch.zeros_like(tok) for tok in sound.tokens]
-                preds[0] = preds[0] + 0.0 * dummy.sum()
-            else:
-                preds = [dummy]
-            return preds
         preds_packed = self.llm2sound(last_hidden_state[sound.mse_loss_indexes])
         return self._unpack_sound_latents(preds_packed, sound.token_shapes, sound.noisy_frame_indexes)
 
