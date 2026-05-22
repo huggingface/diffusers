@@ -12,16 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Deprecation-warning coverage for classes relocated under ``models/condition_embedders``,
-``models/autoencoders``, ``models/unets``, and ``models/others``.
-
-Each relocated class has a deprecation shim left behind at its previous pipeline-local path. This
-file verifies that importing+constructing the class through the deprecated path emits a
-``FutureWarning``, for every shim in the codebase. Instantiation runs under ``torch.device("meta")``
-so no real weights are allocated — the test only cares about the deprecation signal, not the
-model state. The whole file should be deleted in the cleanup PR that removes the shims.
-"""
-
 import importlib
 import warnings
 
