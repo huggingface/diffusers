@@ -22,7 +22,6 @@ import torch.nn.functional as F
 
 from ....configuration_utils import register_to_config
 from ....hooks._helpers import TransformerBlockMetadata
-from ....loaders.ip_adapter_model import IPAdapterModelMixin
 from ....utils import apply_lora_scale, logging
 from ....utils.torch_utils import maybe_allow_in_graph
 from ..._modeling_parallel import ContextParallelInput, ContextParallelOutput
@@ -38,7 +37,7 @@ from ...embeddings import (
 from ...modeling_outputs import Transformer2DModelOutput
 from ...modeling_utils import ModelMixin, register_metadata
 from ...normalization import AdaLayerNormContinuous, AdaLayerNormZero, AdaLayerNormZeroSingle
-from ._ip_adapter import FLUX_IP_ADAPTER
+from ._ip_adapter import FluxIPAdapterMixin
 from ._lora import FLUX_LORA
 from ._weight_mapping import FLUX_WEIGHT_MAPPING
 
@@ -532,7 +531,7 @@ class FluxTransformer2DModel(
     ModelMixin,
     AttentionMixin,
     CacheMixin,
-    IPAdapterModelMixin,
+    FluxIPAdapterMixin,
 ):
     """
     The Transformer model introduced in Flux.
@@ -581,7 +580,6 @@ class FluxTransformer2DModel(
 
     _lora = FLUX_LORA
     _weight_mapping = FLUX_WEIGHT_MAPPING
-    _ip_adapter = FLUX_IP_ADAPTER
 
     @register_to_config
     def __init__(

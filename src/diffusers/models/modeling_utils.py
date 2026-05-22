@@ -250,8 +250,9 @@ def register_metadata(metadata):
         FluxTransformerBlock(nn.Module):
             ...
 
-    Model-level capabilities are declared as plain class attributes on :class:`ModelMixin` (and the appropriate
-    subsystem mixins like :class:`LoRAModelMixin`, :class:`IPAdapterModelMixin`) — no decorator needed.
+    Model-level capabilities are declared as plain class attributes on :class:`ModelMixin` (and on subsystem
+    mixins like :class:`LoRAModelMixin` or model-specific ones like ``FluxIPAdapterMixin``) — no decorator
+    needed.
     """
 
     def wrap(cls):

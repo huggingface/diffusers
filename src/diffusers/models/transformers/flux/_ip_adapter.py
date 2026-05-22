@@ -11,24 +11,22 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""Flux IP-Adapter conversion.
+"""Flux-specific IP-Adapter loading.
 
-Per-model converters consumed by ``IPAdapterModelMixin`` via ``FLUX_IP_ADAPTER_METADATA``:
+IP-Adapter behavior — what's in the state dict, what the attn processors look like, which blocks they bind
+to — varies enough across models that a generic mixin can't really capture the orchestration. Flux owns its
+own ``_load_ip_adapter_weights`` here, including the loop over blocks, the choice to skip single-stream
+blocks, and the projection-dim computation.
 
-- ``convert_image_proj``: rewrites ``proj.weight`` → ``image_embeds.weight`` and builds an ``ImageProjection`` sized
-  off the source state dict (4 or 16 image-text embeds depending on the ``proj.weight`` row count).
-- ``convert_attn_processors``: walks ``model.attn_processors``, skips ``single_transformer_blocks`` (Flux only attaches
-  IP-Adapter on the double-stream blocks), and builds one ``FluxIPAdapterAttnProcessor`` per remaining block. Reads
-  ``model.config.joint_attention_dim`` and ``model.inner_dim`` for the projection dimensions and pulls ``to_k_ip`` /
-  ``to_v_ip`` weights/biases keyed by ``key_id``.
+``FluxIPAdapterMixin`` is added to ``FluxTransformer2DModel``'s bases in ``flux/model.py``. Models that don't
+support IP-Adapter simply don't inherit anything — there's no opt-in handler default to override.
 """
 
 from contextlib import nullcontext
 
-from ....loaders.ip_adapter_model import IPAdapterHandler
-from ....models.embeddings import ImageProjection
+from ....models.embeddings import ImageProjection, MultiIPAdapterImageProjection
 from ....models.model_loading_utils import load_model_dict_into_meta
-from ....models.modeling_utils import _LOW_CPU_MEM_USAGE_DEFAULT
+from ....models.modeling_utils import _LOW_CPU_MEM_USAGE_DEFAULT, DOCS_BASE
 from ....utils import is_accelerate_available, is_torch_version, logging
 from ....utils.torch_utils import empty_device_cache
 
@@ -58,7 +56,7 @@ def _resolve_init_context(low_cpu_mem_usage):
     return nullcontext, False
 
 
-def convert_image_proj(model, state_dict, low_cpu_mem_usage=_LOW_CPU_MEM_USAGE_DEFAULT):
+def _convert_image_proj(model, state_dict, low_cpu_mem_usage=_LOW_CPU_MEM_USAGE_DEFAULT):
     """Build a Flux ``ImageProjection`` from an IP-Adapter ``image_proj`` state dict."""
     init_context, low_cpu_mem_usage = _resolve_init_context(low_cpu_mem_usage)
 
@@ -88,7 +86,7 @@ def convert_image_proj(model, state_dict, low_cpu_mem_usage=_LOW_CPU_MEM_USAGE_D
     return image_projection
 
 
-def convert_attn_processors(model, state_dicts, low_cpu_mem_usage=_LOW_CPU_MEM_USAGE_DEFAULT):
+def _convert_attn_processors(model, state_dicts, low_cpu_mem_usage=_LOW_CPU_MEM_USAGE_DEFAULT):
     """Build the IP-Adapter attn-processor dict for a ``FluxTransformer2DModel``.
 
     Single-stream blocks keep their existing processor; double-stream blocks get a ``FluxIPAdapterAttnProcessor``
@@ -135,8 +133,43 @@ def convert_attn_processors(model, state_dicts, low_cpu_mem_usage=_LOW_CPU_MEM_U
     return attn_procs
 
 
-# Assigned to ``FluxTransformer2DModel`` as the ``_ip_adapter`` class attribute in ``flux/model.py``.
-FLUX_IP_ADAPTER = IPAdapterHandler(
-    convert_attn_to_diffusers_fn=convert_attn_processors,
-    convert_image_proj_to_diffusers_fn=convert_image_proj,
-)
+class FluxIPAdapterMixin:
+    """Flux-specific IP-Adapter loader. Mixed into :class:`FluxTransformer2DModel`."""
+
+    _supports_ip_adapter = True
+
+    @classmethod
+    def _metadata(cls):
+        """Contribute the ``_supports_ip_adapter`` row to the metadata describe() table."""
+        return {
+            "_supports_ip_adapter": (
+                True,
+                "True",
+                "Supports loading IP-Adapter weights (image-conditioning adapters).",
+                f"{DOCS_BASE}/using-diffusers/ip_adapter",
+            )
+        }
+
+    def _load_ip_adapter_weights(self, state_dicts, low_cpu_mem_usage=_LOW_CPU_MEM_USAGE_DEFAULT):
+        """Install IP-Adapter weights on the Flux transformer.
+
+        ``state_dicts`` is a single state dict (or a list, for multi-adapter loading); each dict must contain
+        ``"image_proj"`` and ``"ip_adapter"`` sub-dicts.
+        """
+        if not isinstance(state_dicts, list):
+            state_dicts = [state_dicts]
+
+        self.encoder_hid_proj = None
+
+        attn_procs = _convert_attn_processors(self, state_dicts, low_cpu_mem_usage=low_cpu_mem_usage)
+        self.set_attn_processor(attn_procs)
+
+        image_projection_layers = []
+        for state_dict in state_dicts:
+            image_projection_layer = _convert_image_proj(
+                self, state_dict["image_proj"], low_cpu_mem_usage=low_cpu_mem_usage
+            )
+            image_projection_layers.append(image_projection_layer)
+
+        self.encoder_hid_proj = MultiIPAdapterImageProjection(image_projection_layers)
+        self.config.encoder_hid_dim_type = "ip_image_proj"
