@@ -407,6 +407,15 @@ class FlowMatchEulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
 
         indices = (schedule_timesteps == timestep).nonzero()
 
+        if indices.numel() == 0:
+            # `schedule_timesteps` is derived from `sigmas * num_train_timesteps` and is stored in float32,
+            # so values that are conceptually integers (e.g. `254`) can carry a small rounding error
+            # (e.g. `254.00001`). An exact `==` lookup then misses them, which happens in particular for the
+            # training path of `scale_noise`/`add_noise` where integer timesteps are passed in. Fall back to a
+            # tolerance-based match so these timesteps resolve to their index instead of raising an `IndexError`.
+            timestep = torch.as_tensor(timestep, dtype=schedule_timesteps.dtype, device=schedule_timesteps.device)
+            indices = torch.isclose(schedule_timesteps, timestep).nonzero()
+
         # The sigma index that is taken for the **very** first `step`
         # is always the second index (or the last index if there is only 1)
         # This way we can ensure we don't accidentally skip a sigma in
