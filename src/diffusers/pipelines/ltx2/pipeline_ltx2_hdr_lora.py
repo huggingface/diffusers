@@ -79,7 +79,7 @@ EXAMPLE_DOC_STRING = """
         >>> from diffusers.pipelines.ltx2.export_utils import encode_hdr_tensor_to_mp4
         >>> from diffusers.utils import load_video
 
-        >>> pipe = LTX2HDRPipeline.from_pretrained("dg845/LTX-2.3-Distilled-Diffusers", torch_dtype=torch.bfloat16)
+        >>> pipe = LTX2HDRPipeline.from_pretrained("diffusers/LTX-2.3-Distilled-Diffusers", torch_dtype=torch.bfloat16)
         >>> pipe.enable_sequential_cpu_offload(device="cuda")
         >>> pipe.load_lora_weights(
         ...     "Lightricks/LTX-2.3-22b-IC-LoRA-HDR",
