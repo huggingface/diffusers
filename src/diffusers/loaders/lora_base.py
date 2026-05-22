@@ -22,10 +22,14 @@ from typing import Callable
 
 import safetensors
 import torch
+import torch.nn as nn
+from huggingface_hub import model_info
+from huggingface_hub.constants import HF_HUB_OFFLINE
 
-from ..models.modeling_utils import ModelMixin
+from ..models.modeling_utils import ModelMixin, load_state_dict
 from ..utils import (
     USE_PEFT_BACKEND,
+    _get_model_file,
     convert_state_dict_to_diffusers,
     convert_state_dict_to_peft,
     delete_adapter_layers,
@@ -42,6 +46,8 @@ from ..utils import (
     set_adapter_layers,
     set_weights_and_activate_adapters,
 )
+from ..utils.peft_utils import _create_lora_config
+from ..utils.state_dict_utils import _load_sft_state_dict_metadata
 
 
 if is_transformers_available():
@@ -55,62 +61,9 @@ if is_accelerate_available():
 
 logger = logging.get_logger(__name__)
 
-
-def _func_optionally_disable_offloading(_pipeline):
-    """Optionally remove accelerate offloading hooks before mutating a pipeline's components.
-
-    Walks ``_pipeline.components``, detects accelerate / group-offload hooks, and removes accelerate hooks in-place
-    (group-offload is reapplied later by the LoRA load path). Returns ``(is_model_cpu_offload,
-    is_sequential_cpu_offload, is_group_offload)`` so callers know which offloading mode was active and can re-enable
-    it after loading.
-
-    Used by pipeline-side LoRA loaders (``LoraBaseMixin._optionally_disable_offloading``) and the legacy paths in
-    ``peft.py`` / ``unet.py``. Model-side loading uses the ``_offloading_disabled`` context manager in ``loaders.lora``
-    instead.
-    """
-    from ..hooks.group_offloading import _is_group_offload_enabled
-
-    is_model_cpu_offload = False
-    is_sequential_cpu_offload = False
-    is_group_offload = False
-
-    if _pipeline is not None and _pipeline.hf_device_map is None:
-        for _, component in _pipeline.components.items():
-            if not isinstance(component, torch.nn.Module):
-                continue
-            is_group_offload = is_group_offload or _is_group_offload_enabled(component)
-            if not hasattr(component, "_hf_hook"):
-                continue
-            is_model_cpu_offload = is_model_cpu_offload or isinstance(component._hf_hook, CpuOffload)
-            is_sequential_cpu_offload = is_sequential_cpu_offload or (
-                isinstance(component._hf_hook, AlignDevicesHook)
-                or hasattr(component._hf_hook, "hooks")
-                and isinstance(component._hf_hook.hooks[0], AlignDevicesHook)
-            )
-
-        if is_sequential_cpu_offload or is_model_cpu_offload:
-            logger.info(
-                "Accelerate hooks detected. Since you have called `load_lora_weights()`, the previous "
-                "hooks will be first removed. Then the LoRA parameters will be loaded and the hooks "
-                "will be applied again."
-            )
-            for _, component in _pipeline.components.items():
-                if not isinstance(component, torch.nn.Module) or not hasattr(component, "_hf_hook"):
-                    continue
-                remove_hook_from_module(component, recurse=is_sequential_cpu_offload)
-
-    return (is_model_cpu_offload, is_sequential_cpu_offload, is_group_offload)
-
-
-# Constants and fetch helpers live in ``loaders.lora`` — re-exported here for back-compat.
-from .lora import (  # noqa: E402, F401  (intentional mid-file import: back-compat re-exports)
-    LORA_ADAPTER_METADATA_KEY,
-    LORA_WEIGHT_NAME,
-    LORA_WEIGHT_NAME_SAFE,
-    _best_guess_weight_name,
-    _fetch_lora_metadata,
-    _fetch_state_dict,
-)
+LORA_WEIGHT_NAME = "pytorch_lora_weights.bin"
+LORA_WEIGHT_NAME_SAFE = "pytorch_lora_weights.safetensors"
+LORA_ADAPTER_METADATA_KEY = "lora_adapter_metadata"
 
 
 def fuse_text_encoder_lora(text_encoder, lora_scale=1.0, safe_fusing=False, adapter_names=None):
@@ -242,6 +195,124 @@ def _remove_text_encoder_monkey_patch(text_encoder):
         text_encoder._hf_peft_config_loaded = None
 
 
+def _fetch_state_dict(
+    pretrained_model_name_or_path_or_dict,
+    weight_name,
+    use_safetensors,
+    local_files_only,
+    cache_dir,
+    force_download,
+    proxies,
+    token,
+    revision,
+    subfolder,
+    user_agent,
+    allow_pickle,
+    metadata=None,
+):
+    model_file = None
+    if not isinstance(pretrained_model_name_or_path_or_dict, dict):
+        # Let's first try to load .safetensors weights
+        if (use_safetensors and weight_name is None) or (
+            weight_name is not None and weight_name.endswith(".safetensors")
+        ):
+            try:
+                # Here we're relaxing the loading check to enable more Inference API
+                # friendliness where sometimes, it's not at all possible to automatically
+                # determine `weight_name`.
+                if weight_name is None:
+                    weight_name = _best_guess_weight_name(
+                        pretrained_model_name_or_path_or_dict,
+                        file_extension=".safetensors",
+                        local_files_only=local_files_only,
+                    )
+                model_file = _get_model_file(
+                    pretrained_model_name_or_path_or_dict,
+                    weights_name=weight_name or LORA_WEIGHT_NAME_SAFE,
+                    cache_dir=cache_dir,
+                    force_download=force_download,
+                    proxies=proxies,
+                    local_files_only=local_files_only,
+                    token=token,
+                    revision=revision,
+                    subfolder=subfolder,
+                    user_agent=user_agent,
+                )
+                state_dict = safetensors.torch.load_file(model_file, device="cpu")
+                metadata = _load_sft_state_dict_metadata(model_file)
+
+            except (IOError, safetensors.SafetensorError) as e:
+                if not allow_pickle:
+                    raise e
+                # try loading non-safetensors weights
+                model_file = None
+                metadata = None
+                pass
+
+        if model_file is None:
+            if weight_name is None:
+                weight_name = _best_guess_weight_name(
+                    pretrained_model_name_or_path_or_dict, file_extension=".bin", local_files_only=local_files_only
+                )
+            model_file = _get_model_file(
+                pretrained_model_name_or_path_or_dict,
+                weights_name=weight_name or LORA_WEIGHT_NAME,
+                cache_dir=cache_dir,
+                force_download=force_download,
+                proxies=proxies,
+                local_files_only=local_files_only,
+                token=token,
+                revision=revision,
+                subfolder=subfolder,
+                user_agent=user_agent,
+            )
+            state_dict = load_state_dict(model_file)
+            metadata = None
+    else:
+        state_dict = pretrained_model_name_or_path_or_dict
+
+    return state_dict, metadata
+
+
+def _best_guess_weight_name(
+    pretrained_model_name_or_path_or_dict, file_extension=".safetensors", local_files_only=False
+):
+    if local_files_only or HF_HUB_OFFLINE:
+        raise ValueError("When using the offline mode, you must specify a `weight_name`.")
+
+    targeted_files = []
+
+    if os.path.isfile(pretrained_model_name_or_path_or_dict):
+        return
+    elif os.path.isdir(pretrained_model_name_or_path_or_dict):
+        targeted_files = [f for f in os.listdir(pretrained_model_name_or_path_or_dict) if f.endswith(file_extension)]
+    else:
+        files_in_repo = model_info(pretrained_model_name_or_path_or_dict).siblings
+        targeted_files = [f.rfilename for f in files_in_repo if f.rfilename.endswith(file_extension)]
+    if len(targeted_files) == 0:
+        return
+
+    # "scheduler" does not correspond to a LoRA checkpoint.
+    # "optimizer" does not correspond to a LoRA checkpoint
+    # only top-level checkpoints are considered and not the other ones, hence "checkpoint".
+    unallowed_substrings = {"scheduler", "optimizer", "checkpoint"}
+    targeted_files = list(
+        filter(lambda x: all(substring not in x for substring in unallowed_substrings), targeted_files)
+    )
+
+    if any(f.endswith(LORA_WEIGHT_NAME) for f in targeted_files):
+        targeted_files = list(filter(lambda x: x.endswith(LORA_WEIGHT_NAME), targeted_files))
+    elif any(f.endswith(LORA_WEIGHT_NAME_SAFE) for f in targeted_files):
+        targeted_files = list(filter(lambda x: x.endswith(LORA_WEIGHT_NAME_SAFE), targeted_files))
+
+    if len(targeted_files) > 1:
+        logger.warning(
+            f"Provided path contains more than one weights file in the {file_extension} format. `{targeted_files[0]}` is going to be loaded, for precise control, specify a `weight_name` in `load_lora_weights`."
+        )
+    weight_name = targeted_files[0]
+    return weight_name
+
+
 def _pack_dict_with_prefix(state_dict, prefix):
     sd_with_prefix = {f"{prefix}.{key}": value for key, value in state_dict.items()}
     return sd_with_prefix
@@ -316,9 +387,7 @@ def _load_lora_into_text_encoder(
             network_alphas = {k.removeprefix(f"{prefix}."): v for k, v in network_alphas.items() if k in alpha_keys}
 
         # create `LoraConfig`
-        from .lora import _create_lora_config
-
-        lora_config = _create_lora_config(state_dict, network_alphas, rank, metadata=metadata)
+        lora_config = _create_lora_config(state_dict, network_alphas, metadata, rank, is_unet=False)
 
         # adapter_name
         if adapter_name is None:
@@ -361,6 +430,50 @@ def _load_lora_into_text_encoder(
             "to resolve the warning. Otherwise, open an issue if you think it's unexpected: "
             "https://github.com/huggingface/diffusers/issues/new"
         )
+
+
+def _func_optionally_disable_offloading(_pipeline):
+    """
+    Optionally removes offloading in case the pipeline has been already sequentially offloaded to CPU.
+
+    Args:
+        _pipeline (`DiffusionPipeline`):
+            The pipeline to disable offloading for.
+
+    Returns:
+        tuple:
+            A tuple indicating if `is_model_cpu_offload` or `is_sequential_cpu_offload` or `is_group_offload` is True.
+    """
+    from ..hooks.group_offloading import _is_group_offload_enabled
+
+    is_model_cpu_offload = False
+    is_sequential_cpu_offload = False
+    is_group_offload = False
+
+    if _pipeline is not None and _pipeline.hf_device_map is None:
+        for _, component in _pipeline.components.items():
+            if not isinstance(component, nn.Module):
+                continue
+            is_group_offload = is_group_offload or _is_group_offload_enabled(component)
+            if not hasattr(component, "_hf_hook"):
+                continue
+            is_model_cpu_offload = is_model_cpu_offload or isinstance(component._hf_hook, CpuOffload)
+            is_sequential_cpu_offload = is_sequential_cpu_offload or (
+                isinstance(component._hf_hook, AlignDevicesHook)
+                or hasattr(component._hf_hook, "hooks")
+                and isinstance(component._hf_hook.hooks[0], AlignDevicesHook)
+            )
+
+        if is_sequential_cpu_offload or is_model_cpu_offload:
+            logger.info(
+                "Accelerate hooks detected. Since you have called `load_lora_weights()`, the previous hooks will be first removed. Then the LoRA parameters will be loaded and the hooks will be applied again."
+            )
+            for _, component in _pipeline.components.items():
+                if not isinstance(component, nn.Module) or not hasattr(component, "_hf_hook"):
+                    continue
+                remove_hook_from_module(component, recurse=is_sequential_cpu_offload)
+
+    return (is_model_cpu_offload, is_sequential_cpu_offload, is_group_offload)
 
 
 class LoraBaseMixin:
@@ -417,7 +530,7 @@ class LoraBaseMixin:
             model = getattr(self, component, None)
             if model is not None:
                 if issubclass(model.__class__, ModelMixin):
-                    model.delete_adapters()
+                    model.unload_lora()
                 elif issubclass(model.__class__, PreTrainedModel):
                     _remove_text_encoder_monkey_patch(model)
 
