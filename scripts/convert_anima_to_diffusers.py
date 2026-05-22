@@ -7,8 +7,8 @@ python scripts/convert_anima_to_diffusers.py \
     --transformer_ckpt_path anima_model/anima-preview3-base.safetensors \
     --text_encoder_ckpt_path anima_model/qwen_3_06b_base.safetensors \
     --vae_ckpt_path anima_model/qwen_image_vae.safetensors \
-    --qwen_tokenizer_path /home/user/Dev/ComfyUI/comfy/text_encoders/qwen25_tokenizer \
-    --t5_tokenizer_path /home/user/Dev/ComfyUI/comfy/text_encoders/t5_tokenizer \
+    --qwen_tokenizer_path path/to/qwen25_tokenizer \
+    --t5_tokenizer_path path/to/t5_tokenizer \
     --output_path anima_model/anima-preview3-diffusers \
     --save_pipeline
 ```

@@ -131,7 +131,7 @@ class AnimaAutoBlocks(SequentialPipelineBlocks):
         - `text2image`: requires `prompt`
 
       Components:
-          text_encoder (`Qwen3Model`) tokenizer (`Qwen2Tokenizer`) t5_tokenizer (`T5Tokenizer`) text_conditioner
+          text_encoder (`Qwen3Model`) tokenizer (`Qwen2Tokenizer`) t5_tokenizer (`T5TokenizerFast`) text_conditioner
           (`AnimaTextConditioner`) guider (`ClassifierFreeGuidance`) transformer (`CosmosTransformer3DModel`) scheduler
           (`FlowMatchEulerDiscreteScheduler`) vae (`AutoencoderKLQwenImage`) image_processor (`VaeImageProcessor`)
 
