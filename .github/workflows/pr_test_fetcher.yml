@@ -94,6 +94,17 @@ jobs:
       with:
         ref: ${{ inputs.pr_number && format('refs/pull/{0}/merge', inputs.pr_number) || '' }}
         fetch-depth: 0
+    - name: Overlay fetcher script from dispatch branch
+      # When dispatching with `pr_number`, the checkout is the PR's merge ref, which contains the PR's
+      # version of `utils/tests_fetcher.py`. Replace it with the dispatch branch's version so we always
+      # run the latest fetcher logic regardless of which PR we're testing against.
+      if: ${{ inputs.pr_number != '' }}
+      env:
+        DISPATCH_REF: ${{ github.ref }}
+      run: |
+        git fetch --depth=1 origin "$DISPATCH_REF"
+        git checkout FETCH_HEAD -- utils/tests_fetcher.py
+        git diff --stat HEAD -- utils/tests_fetcher.py || true
     - name: Install dependencies
       run: |
         uv pip install -e ".[quality]"
