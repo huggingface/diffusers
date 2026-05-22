@@ -323,6 +323,8 @@
         title: ConsisIDTransformer3DModel
       - local: api/models/cosmos_transformer3d
         title: CosmosTransformer3DModel
+      - local: api/models/cosmos3_omni_transformer
+        title: Cosmos3OmniTransformer
       - local: api/models/dit_transformer2d
         title: DiTTransformer2DModel
       - local: api/models/easyanimate_transformer3d
@@ -645,6 +647,8 @@
         title: ConsisID
       - local: api/pipelines/cosmos
         title: Cosmos
+      - local: api/pipelines/cosmos3
+        title: Cosmos3
       - local: api/pipelines/framepack
         title: Framepack
       - local: api/pipelines/helios

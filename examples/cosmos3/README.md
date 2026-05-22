@@ -1,42 +1,61 @@
-# Cosmos3 Inference
+# Cosmos3 — smoke-test runner
 
-This example shows how to run inference with the Cosmos3 Omni pipeline — NVIDIA's Mixture-of-Transformer (MoT) world foundation model — using the diffusers library.
+The canonical reference for `Cosmos3OmniDiffusersPipeline` lives in the diffusers docs:
+[`docs/source/en/api/pipelines/cosmos3.md`](../../docs/source/en/api/pipelines/cosmos3.md). Use the
+examples there as the source of truth for application code — they cover text-to-image,
+text-to-video, image-to-video, and text+sound modes.
+
+This directory provides a small CLI wrapper (`inference_cosmos3.py`) that exercises the full
+load → encode → denoise → decode path against either the Hub release or a local checkpoint
+during development.
 
 ## Setup
-
-Install the example's dependencies:
 
 ```bash
 pip install -r examples/cosmos3/requirements.txt
 ```
 
-## Running inference
+## Usage
 
-The script downloads the pipeline from the [HuggingFace Hub](https://huggingface.co/nvidia/Cosmos3-Nano/tree/main/):
+Text-to-image:
 
 ```bash
-CUDA_VISIBLE_DEVICES=0 python examples/cosmos3/inference_cosmos3.py \
-    --input examples/cosmos3/inputs/omni/i2v.json
+python examples/cosmos3/inference_cosmos3.py \
+    --prompt "A medium shot of a modern robotics research laboratory…" \
+    --num-frames 1
 ```
 
-### Arguments
+Text-to-video:
 
-| Argument | Default | Description |
+```bash
+python examples/cosmos3/inference_cosmos3.py \
+    --prompt "A waterfall cascading down a rocky cliff in a lush forest."
+```
+
+Image-to-video:
+
+```bash
+python examples/cosmos3/inference_cosmos3.py \
+    --prompt "The right robotic hand picks up the red sphere…" \
+    --vision-path https://github.com/nvidia-cosmos/cosmos-dependencies/releases/download/assets/robot_153.jpg
+```
+
+Text-to-video-with-sound (sound-capable checkpoint only):
+
+```bash
+python examples/cosmos3/inference_cosmos3.py \
+    --prompt "A waterfall in a lush forest." \
+    --enable-sound
+```
+
+### Useful flags
+
+| Flag | Default | Description |
 |---|---|---|
-| `--input` | `inputs/omni/i2v.json` | JSON file with `prompt` and optional `vision_path` |
-| `--output` | `.` | Directory to write output files |
-| `--height` | `720` | Output height in pixels |
-| `--width` | `1280` | Output width in pixels |
-| `--num-frames` | from JSON, else `189` | Number of frames (`1` = image) |
-
-## Example inputs
-
-The `inputs/` directory contains ready-to-use examples:
-
-| File | Mode |
-|---|---|
-| `inputs/omni/t2i.json` | Text-to-image (`"num_frames": 1`) |
-| `inputs/omni/t2v.json` | Text-to-video |
-| `inputs/omni/i2v.json` | Image-to-video |
-
-Each JSON requires a `"prompt"` field and optionally a `"vision_path"` (URL or local path) for image conditioning.
+| `--prompt` | (required) | Text prompt. |
+| `--vision-path` | `None` | URL or local path for an image-conditioning frame (image-to-video). |
+| `--num-frames` | `189` | `1` = image, otherwise number of video frames (`189` ≈ 7.9 s @ 24 FPS). |
+| `--height` / `--width` | `720` / `1280` | Output resolution (must be a multiple of the VAE spatial scale factor). |
+| `--fps` | `24.0` | Frame rate of the generated video. |
+| `--enable-sound` | off | Generate a synchronized audio track. |
+| `--output` | `.` | Directory to write `sample-*.jpg` / `sample-*.mp4` / `sample-*.wav`. |
