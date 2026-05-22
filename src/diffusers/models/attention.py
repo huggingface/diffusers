@@ -37,22 +37,6 @@ logger = logging.get_logger(__name__)
 
 
 class AttentionMixin:
-    _supports_attention = True
-
-    @classmethod
-    def _metadata(cls):
-        """Contribute the ``_supports_attention`` row to :class:`ModelMetadata` for models inheriting :class:`AttentionMixin`."""
-        from .modeling_utils import DOCS_BASE
-
-        return {
-            "_supports_attention": (
-                True,
-                "True",
-                "Model contains attention modules; supports `set_attention_backend(...)`.",
-                f"{DOCS_BASE}/optimization/attention_backends",
-            )
-        }
-
     @property
     def attn_processors(self) -> dict[str, AttentionProcessor]:
         r"""
