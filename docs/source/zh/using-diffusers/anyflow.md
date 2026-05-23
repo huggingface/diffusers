@@ -125,11 +125,11 @@ Causal pipeline 用同一个蒸馏模型支持三种任务模式，**通过 `vid
 Context tensor 的帧数必须满足 `T = 4n + 1`，跟 VAE 时间步长对齐。
 
 > [!IMPORTANT]
-> FAR pipeline 是分块 (chunk) rollout，`num_frames` 必须配合 chunk 调度。默认
-> `chunk_partition=[1, 3, 3, 3, 3, 3, 3, 2]`（求和 21）对应发布 checkpoint 的标准 `num_frames=81`
-> （21 = (81 − 1) // 4 + 1）。改 `num_frames` 时**必须**显式传匹配的 `chunk_partition`，使其求和等于
-> `(num_frames - 1) // 4 + 1`，否则 pipeline 会抛 `AssertionError`。比如 `num_frames=33` 对应 9 个 latent
-> 帧，可用 `chunk_partition=[1, 4, 4]`。
+> FAR pipeline 是分块 (chunk) rollout，`num_frames` 必须配合 chunk 调度。发布的 checkpoint 在
+> transformer config 里写入 `chunk_partition=[1, 3, 3, 3, 3, 3, 3, 2]`（求和 21），对应标准
+> `num_frames=81`（21 = (81 − 1) // 4 + 1）。改 `num_frames` 时**必须**显式传匹配的 `chunk_partition`，
+> 使其求和等于 `(num_frames - 1) // 4 + 1`，否则 pipeline 会抛 `ValueError`。比如 `num_frames=33` 对应
+> 9 个 latent 帧，可用 `chunk_partition=[1, 4, 4]`。
 
 ```py
 import numpy as np

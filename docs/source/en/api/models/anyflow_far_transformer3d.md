@@ -25,8 +25,10 @@ the v0.35.1 Wan2.1 backbone with three additions:
    [`AnyFlowTransformer3DModel`](anyflow_transformer3d)) — every forward call conditions on both the source
    timestep ``t`` and the target timestep ``r``.
 
-The chunk schedule (`chunk_partition`) is **not** baked into the model config. It is a per-call argument to
-`forward`, so the same checkpoint handles different `num_frames` configurations without retraining.
+The default chunk schedule (`chunk_partition`) is stored in the model config; the released NVIDIA AnyFlow-FAR
+checkpoints use `[1, 3, 3, 3, 3, 3, 3, 2]` for the canonical 81-frame setting. `forward` accepts a per-call
+`chunk_partition` override, so the same checkpoint also handles other `num_frames` configurations without
+retraining.
 
 ```python
 from diffusers import AnyFlowFARTransformer3DModel

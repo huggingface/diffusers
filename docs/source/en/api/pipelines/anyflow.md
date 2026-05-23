@@ -70,10 +70,10 @@ clip for V2V continuation. If you already have pre-encoded latents in the model 
 ``video_latents=<tensor>`` to skip VAE encoding. ``video`` and ``video_latents`` are mutually exclusive.
 
 > [!IMPORTANT]
-> `AnyFlowFARPipeline.default_chunk_partition = [1, 3, 3, 3, 3, 3, 3, 2]` (sum 21) is matched to the
-> released checkpoints' canonical 81 raw frames (21 latent frames at the VAE temporal stride of 4). When
-> you change `num_frames`, you must also pass a matching `chunk_partition` summing to
-> `(num_frames - 1) // 4 + 1`, otherwise the pipeline raises an `AssertionError`.
+> The released checkpoints bake `chunk_partition=[1, 3, 3, 3, 3, 3, 3, 2]` (sum 21) into the transformer
+> config, matched to the canonical 81 raw frames (21 latent frames at the VAE temporal stride of 4). When
+> you change `num_frames`, pass a matching `chunk_partition` summing to `(num_frames - 1) // 4 + 1`,
+> otherwise the pipeline raises a `ValueError`.
 
 <hfoptions id="anyflow-far">
 <hfoption id="t2v">

@@ -129,11 +129,6 @@ class AnyFlowFARPipeline(DiffusionPipeline, WanLoraLoaderMixin):
     model_cpu_offload_seq = "text_encoder->transformer->vae"
     _callback_tensor_inputs = ["latents", "prompt_embeds", "negative_prompt_embeds"]
 
-    # Default chunk partition for the released NVIDIA AnyFlow-FAR checkpoints (81 frames at the diffusers
-    # VAE temporal stride of 4 → 21 latent frames split into 1 + 3*6 + 2 = [1, 3, 3, 3, 3, 3, 3, 2]). Override
-    # via the ``chunk_partition`` argument to ``__call__`` for other frame counts.
-    default_chunk_partition: List[int] = [1, 3, 3, 3, 3, 3, 3, 2]
-
     def __init__(
         self,
         tokenizer: AutoTokenizer,
@@ -547,9 +542,9 @@ class AnyFlowFARPipeline(DiffusionPipeline, WanLoraLoaderMixin):
             use_kv_cache (`bool`, defaults to `True`):
                 Reuse the FAR attention KV cache across causal chunks. Disable only for debugging.
             chunk_partition (`List[int]`, *optional*):
-                Per-chunk frame counts. Defaults to `default_chunk_partition` (matched to the released 81-frame
-                checkpoints). When you change `num_frames`, supply a `chunk_partition` that sums to `(num_frames - 1)
-                // vae_scale_factor_temporal + 1`.
+                Per-chunk frame counts. Defaults to `self.transformer.config.chunk_partition` (matched to the
+                released 81-frame checkpoints). When you change `num_frames`, supply a `chunk_partition` that
+                sums to `(num_frames - 1) // vae_scale_factor_temporal + 1`.
 
         Examples:
 
@@ -638,7 +633,7 @@ class AnyFlowFARPipeline(DiffusionPipeline, WanLoraLoaderMixin):
             video_latents = self.encode_video(video, height=height, width=width)
 
         if chunk_partition is None:
-            chunk_partition = list(self.default_chunk_partition)
+            chunk_partition = list(self.transformer.config.chunk_partition)
         if init_latents.shape[1] != sum(chunk_partition):
             raise ValueError(
                 f"chunk_partition={chunk_partition} sums to {sum(chunk_partition)}, but the input latent "
