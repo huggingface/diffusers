@@ -22,7 +22,7 @@ NFE 增加反而经常掉点。
 采样步之间的 re-noising；on-policy 蒸馏阶段额外用 **DMD 反向散度监督** + **Flow-Map backward simulation**
 （3 段 shortcut）补上 consistency 蒸馏遗留的 exposure-bias 缺口。
 
-AnyFlow 由 Yuchao Gu、Guian Fang 等人在 [NUS ShowLab](https://sites.google.com/view/showlab) 与 NVIDIA 合作完成。原始训练代码在 [`NVlabs/AnyFlow`](https://github.com/NVlabs/AnyFlow)，项目主页是 [nvlabs.github.io/AnyFlow](https://nvlabs.github.io/AnyFlow)。4 个发布 checkpoint 归在 [`nvidia/anyflow`](https://huggingface.co/collections/nvidia/anyflow) Hugging Face collection 里。
+AnyFlow 由 NVIDIA、新加坡国立大学（NUS）和 MIT 合作完成，作者为 Yuchao Gu、Guian Fang、Yuxin Jiang、Weijia Mao、Song Han、Han Cai、Mike Zheng Shou。原始训练代码在 [`NVlabs/AnyFlow`](https://github.com/NVlabs/AnyFlow)，项目主页是 [nvlabs.github.io/AnyFlow](https://nvlabs.github.io/AnyFlow)，4 个发布 checkpoint 归在 [`nvidia/anyflow`](https://huggingface.co/collections/nvidia/anyflow) Hugging Face collection 里。
 
 本文档梳理实战要点：怎么选 pipeline、怎么用 any-step 采样、怎么把 AnyFlow 嵌进 T2V / I2V / V2V 工作流。
 
@@ -100,7 +100,7 @@ prompt = "森林里一只小熊猫在啃竹子，电影感光照"
 for nfe in [1, 2, 4, 8, 16, 32]:
     # 每轮重建 generator —— 这样跨步数对比时唯一变量是 NFE。
     generator = torch.Generator("cuda").manual_seed(0)
-    video = pipe(prompt, num_inference_steps=nfe, num_frames=33, generator=generator).frames[0]
+    video = pipe(prompt, num_inference_steps=nfe, num_frames=81, generator=generator).frames[0]
     export_to_video(video, f"out_nfe{nfe}.mp4", fps=16)
 ```
 
@@ -182,33 +182,6 @@ export_to_video(video, "v2v.mp4", fps=16)
 
 如果你已经有 VAE 编码过的 latent，可以直接传 `video_latents=<tensor>` 跳过 `vae_encode` 步骤
 （和 `video` 互斥）。
-
-## 显存与推理速度
-
-14B 的 AnyFlow 模型用 group offload + VAE slicing 单卡 40 GB 能跑：
-
-```py
-import torch
-from diffusers import AnyFlowPipeline
-from diffusers.hooks import apply_group_offloading
-
-pipe = AnyFlowPipeline.from_pretrained(
-    "nvidia/AnyFlow-Wan2.1-T2V-14B-Diffusers", torch_dtype=torch.bfloat16
-)
-apply_group_offloading(pipe.transformer, onload_device="cuda", offload_type="leaf_level")
-pipe.vae.enable_slicing()
-pipe.vae.enable_tiling()
-```
-
-延迟方面，`torch.compile` 对 transformer（最重的模块）效果很好：
-
-```py
-pipe = pipe.to("cuda")
-pipe.transformer = torch.compile(pipe.transformer, mode="max-autotune-no-cudagraphs")
-```
-
-编译开销跑几步就摊销掉；配合 AnyFlow 的低 NFE（4-8 步），`torch.compile` 在 14B 上相比 eager
-模式有明显加速。
 
 ## LoRA 微调
 

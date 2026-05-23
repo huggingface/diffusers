@@ -16,8 +16,9 @@ The bidirectional 3D Transformer used by [`AnyFlowPipeline`](../pipelines/anyflo
 v0.35.1 Wan2.1 backbone with one structural change: the timestep embedder is replaced by
 ``AnyFlowDualTimestepTextImageEmbedding``, so every forward call conditions on both the source timestep
 ``t`` and the target timestep ``r``. This is the embedding required to learn the flow map
-:math:`\Phi_{r\leftarrow t}` introduced in
-[AnyFlow](https://huggingface.co/papers/2605.13724) (Yuchao Gu, Guian Fang et al., NUS ShowLab × NVIDIA).
+$\Phi_{r\leftarrow t}$ introduced in
+[AnyFlow](https://huggingface.co/papers/2605.13724). See the [`AnyFlowPipeline`](../pipelines/anyflow) page
+for paper, authors, and released checkpoints.
 
 For frame-level autoregressive (FAR causal) generation, use
 [`AnyFlowFARTransformer3DModel`](anyflow_far_transformer3d) instead.
