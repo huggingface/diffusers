@@ -1008,10 +1008,10 @@ class AnyFlowFARTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Fr
         deltatime_type (`str`, defaults to `'r'`):
             Either ``"r"`` (delta is the target timestep) or ``"t-r"`` (delta is the absolute interval).
         chunk_partition (`Tuple[int, ...]`, defaults to `(1, 3, 3, 3, 3, 3, 3, 2)`):
-            Default per-chunk frame counts used by the pipeline. The released NVIDIA AnyFlow-FAR checkpoints
-            target ``num_frames=81`` (21 latent frames at VAE temporal stride 4) split as
-            ``1 + 3*6 + 2``. A different ``num_frames`` requires a matching ``chunk_partition`` override
-            passed to :meth:`AnyFlowFARPipeline.__call__` (and likewise to :meth:`forward`).
+            Default per-chunk frame counts used by the pipeline. The released NVIDIA AnyFlow-FAR checkpoints target
+            ``num_frames=81`` (21 latent frames at VAE temporal stride 4) split as ``1 + 3*6 + 2``. A different
+            ``num_frames`` requires a matching ``chunk_partition`` override passed to
+            :meth:`AnyFlowFARPipeline.__call__` (and likewise to :meth:`forward`).
     """
 
     _supports_gradient_checkpointing = True

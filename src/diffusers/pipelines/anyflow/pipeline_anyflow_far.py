@@ -542,9 +542,9 @@ class AnyFlowFARPipeline(DiffusionPipeline, WanLoraLoaderMixin):
             use_kv_cache (`bool`, defaults to `True`):
                 Reuse the FAR attention KV cache across causal chunks. Disable only for debugging.
             chunk_partition (`List[int]`, *optional*):
-                Per-chunk frame counts. Defaults to `self.transformer.config.chunk_partition` (matched to the
-                released 81-frame checkpoints). When you change `num_frames`, supply a `chunk_partition` that
-                sums to `(num_frames - 1) // vae_scale_factor_temporal + 1`.
+                Per-chunk frame counts. Defaults to `self.transformer.config.chunk_partition` (matched to the released
+                81-frame checkpoints). When you change `num_frames`, supply a `chunk_partition` that sums to
+                `(num_frames - 1) // vae_scale_factor_temporal + 1`.
 
         Examples:
 
