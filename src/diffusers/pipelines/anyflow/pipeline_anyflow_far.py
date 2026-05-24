@@ -92,11 +92,10 @@ def prompt_clean(text):
 class AnyFlowFARPipeline(DiffusionPipeline, WanLoraLoaderMixin):
     r"""
     Causal (FAR-based) text-to-video / image-to-video / video-to-video pipeline for AnyFlow checkpoints, introduced in
-    [AnyFlow](https://huggingface.co/papers/2605.13724) by Yuchao Gu, Guian Fang et al.
+    [AnyFlow](https://huggingface.co/papers/2605.13724).
 
-    The pipeline drives a frame-level autoregressive sampling loop over chunks: each chunk is denoised with flow-map
-    steps while attending only to past chunks via block-sparse causal attention, and intermediate KV cache is reused
-    across chunks.
+    The pipeline drives a chunk-wise autoregressive sampling loop: each chunk is denoised with flow-map steps while
+    attending only to past chunks via block-sparse causal attention, and intermediate KV cache is reused across chunks.
 
     The task mode (T2V / I2V / V2V) is selected by which conditioning argument is passed to ``__call__``:
 
@@ -106,9 +105,9 @@ class AnyFlowFARPipeline(DiffusionPipeline, WanLoraLoaderMixin):
     - ``video_latents=<latent tensor of shape (B, T_latent, C, H_latent, W_latent)>`` — already-encoded latents in the
       FAR layout (skips the VAE encode step).
 
-    The FAR backbone is the causal Wan2.1 variant introduced by FAR (Gu et al., 2025; arXiv:2503.19325). Inference is
-    plain Euler in mean-velocity form per chunk with no re-noising. Joint T2V / I2V / V2V is supported by a single
-    distilled model.
+    The FAR backbone is the causal Wan2.1 variant introduced by [FAR](https://huggingface.co/papers/2503.19325).
+    Inference is plain Euler in mean-velocity form per chunk with no re-noising. Joint T2V / I2V / V2V is supported by
+    a single distilled model.
 
     This model inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods
     implemented for all pipelines (downloading, saving, running on a particular device, etc.).

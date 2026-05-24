@@ -12,9 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #
-# This file derives from the FAR architecture (Gu et al., 2025, arXiv:2503.19325) and adds the
-# AnyFlow dual-timestep flow-map embedding (AnyFlowDualTimestepTextImageEmbedding) introduced by
-# Yuchao Gu, Guian Fang et al. (arXiv:2605.13724). The base 3D DiT structure is adapted from the
+# This file derives from the FAR architecture (arXiv:2503.19325) and adds the
+# AnyFlow dual-timestep flow-map embedding (AnyFlowDualTimestepTextImageEmbedding) introduced in
+# AnyFlow (arXiv:2605.13724). The base 3D DiT structure is adapted from the
 # v0.35.1 Wan2.1 transformer (transformer_wan.py); upstream Wan has since been refactored, so
 # this file is intentionally self-contained rather than annotated with `# Copied from`.
 
@@ -514,10 +514,9 @@ class AnyFlowTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromO
     The architecture is the v0.35.1 Wan2.1 3D DiT backbone with one structural change: the timestep embedder is
     replaced by ``AnyFlowDualTimestepTextImageEmbedding`` so that every forward call conditions on both the source
     timestep ``t`` and the target timestep ``r``. This is the embedding required to learn the flow map
-    :math:`\Phi_{r\leftarrow t}` introduced in [AnyFlow](https://huggingface.co/papers/2605.13724) by Yuchao Gu, Guian
-    Fang et al.
+    :math:`\Phi_{r\leftarrow t}` introduced in [AnyFlow](https://huggingface.co/papers/2605.13724).
 
-    For frame-level autoregressive (FAR causal) generation, use ``AnyFlowFARTransformer3DModel`` instead; that variant
+    For chunk-wise autoregressive (FAR causal) generation, use ``AnyFlowFARTransformer3DModel`` instead; that variant
     adds the FAR causal block-mask and a compressed-frame patch embedding on top of the same backbone.
 
     Args:

@@ -17,8 +17,8 @@ the FAR variant of [AnyFlow](https://huggingface.co/papers/2605.13724). See the
 [`AnyFlowFARPipeline`](../pipelines/anyflow) page for paper, authors, and released checkpoints. It extends
 the v0.35.1 Wan2.1 backbone with three additions:
 
-1. **FAR causal block-mask** via `torch.nn.attention.flex_attention`, supporting frame-level autoregressive
-   generation as introduced in [FAR (Gu et al., 2025)](https://arxiv.org/abs/2503.19325).
+1. **FAR causal block-mask** via `torch.nn.attention.flex_attention`, supporting chunk-wise autoregressive
+   generation as introduced in [FAR](https://huggingface.co/papers/2503.19325).
 2. **Compressed-frame patch embedding** (`far_patch_embedding`) for context (already-generated) frames,
    warm-started from the full-resolution `patch_embedding` at construction time via trilinear interpolation.
 3. **Dual-timestep flow-map embedding** (same as

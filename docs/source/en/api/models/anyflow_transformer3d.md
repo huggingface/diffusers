@@ -20,7 +20,7 @@ $\Phi_{r\leftarrow t}$ introduced in
 [AnyFlow](https://huggingface.co/papers/2605.13724). See the [`AnyFlowPipeline`](../pipelines/anyflow) page
 for paper, authors, and released checkpoints.
 
-For frame-level autoregressive (FAR causal) generation, use
+For chunk-wise autoregressive (FAR causal) generation, use
 [`AnyFlowFARTransformer3DModel`](anyflow_far_transformer3d) instead.
 
 ```python

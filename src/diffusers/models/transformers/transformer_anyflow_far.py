@@ -14,9 +14,9 @@
 #
 # This file is the FAR causal sibling of `transformer_anyflow.py`. Shared submodules are duplicated
 # via `# Copied from` so `make fix-copies` keeps both files in sync; this keeps each transformer
-# variant readable in isolation. The FAR architecture comes from Gu et al., 2025
+# variant readable in isolation. The FAR architecture comes from FAR
 # (arXiv:2503.19325); the dual-timestep flow-map embedding is AnyFlow's contribution
-# (Yuchao Gu, Guian Fang et al., arXiv:2605.13724).
+# (arXiv:2605.13724).
 
 import math
 from dataclasses import dataclass
@@ -957,12 +957,12 @@ def _build_far_block_mask_from_far_cfg(far_cfg, has_clean, device):
 
 class AnyFlowFARTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOriginalModelMixin):
     r"""
-    Causal (FAR) 3D Transformer for AnyFlow flow-map sampling with frame-level autoregressive generation.
+    Causal (FAR) 3D Transformer for AnyFlow flow-map sampling with chunk-wise autoregressive generation.
 
     Extends the v0.35.1 Wan2.1 backbone with:
 
-    * **FAR causal block-mask** via :func:`torch.nn.attention.flex_attention`, supporting frame-level autoregressive
-      generation (FAR; [Gu et al., 2025](https://arxiv.org/abs/2503.19325)).
+    * **FAR causal block-mask** via :func:`torch.nn.attention.flex_attention`, supporting chunk-wise autoregressive
+      generation ([FAR](https://huggingface.co/papers/2503.19325)).
     * **Compressed-frame patch embedding** ``far_patch_embedding`` for context (already-generated) frames, initialized
       from ``patch_embedding`` via trilinear interpolation so a freshly constructed model is already at a reasonable
       starting point even before LoRA fine-tuning.
