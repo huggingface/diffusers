@@ -17,6 +17,7 @@ import json
 import os
 import tempfile
 import unittest
+from unittest import mock
 
 import numpy as np
 import PIL.Image
@@ -157,6 +158,27 @@ class Cosmos2VideoToWorldPipelineFastTests(PipelineTesterMixin, unittest.TestCas
         generated_slice = generated_video.flatten()
         generated_slice = torch.cat([generated_slice[:8], generated_slice[-8:]])
         self.assertTrue(torch.allclose(generated_slice, expected_slice, atol=1e-3))
+
+    def test_default_safety_checker_preserves_grad_mode(self):
+        components = self.get_dummy_components()
+        components.pop("safety_checker")
+
+        class GradDisablingCosmosSafetyChecker:
+            def __init__(self):
+                torch.set_grad_enabled(False)
+
+        original_grad_mode = torch.is_grad_enabled()
+        torch.set_grad_enabled(True)
+        try:
+            with mock.patch(
+                "diffusers.pipelines.cosmos.pipeline_cosmos2_video2world.CosmosSafetyChecker",
+                GradDisablingCosmosSafetyChecker,
+            ):
+                self.pipeline_class(**components)
+
+            self.assertTrue(torch.is_grad_enabled())
+        finally:
+            torch.set_grad_enabled(original_grad_mode)
 
     def test_components_function(self):
         init_components = self.get_dummy_components()
