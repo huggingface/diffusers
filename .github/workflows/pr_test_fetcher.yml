@@ -89,6 +89,14 @@ jobs:
       cpu_matrix: ${{ steps.set_matrix.outputs.cpu_matrix }}
       test_map: ${{ steps.set_matrix.outputs.test_map }}
     steps:
+    - name: Show dispatch inputs
+      run: |
+        if [ -n "${{ inputs.pr_number }}" ]; then
+          echo "Running fetcher against PR #${{ inputs.pr_number }} (https://github.com/${{ github.repository }}/pull/${{ inputs.pr_number }})"
+        else
+          echo "Running fetcher against dispatch ref: ${{ github.ref }}"
+        fi
+        echo "force_full_suite=${{ inputs.force_full_suite }}"
     - name: Checkout diffusers
       uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
       with:
@@ -98,26 +106,13 @@ jobs:
       # `actions/checkout ref: ...` only fetches the named ref. The fetcher diffs HEAD against
       # `origin/main`, so we explicitly fetch main and download its objects.
       run: |
-        cd "$GITHUB_WORKSPACE"
-        export GIT_OPTS="-c safe.directory=$GITHUB_WORKSPACE"
-        echo "--- remotes before fetch ---"
-        git $GIT_OPTS remote -v
-        echo "--- existing origin/main ref (if any) ---"
-        git $GIT_OPTS for-each-ref refs/remotes/origin/main
-        echo "--- fetching main ---"
-        git $GIT_OPTS fetch --no-tags --depth=2147483647 origin +refs/heads/main:refs/remotes/origin/main
-        echo "--- after fetch ---"
-        git $GIT_OPTS rev-parse refs/remotes/origin/main
-        git $GIT_OPTS cat-file -t "$(git $GIT_OPTS rev-parse refs/remotes/origin/main)"
-        git $GIT_OPTS log --oneline -3 refs/remotes/origin/main
-        echo "--- HEAD ---"
-        git $GIT_OPTS log --oneline -3 HEAD
-        echo "--- merge-base ---"
-        git $GIT_OPTS merge-base refs/remotes/origin/main HEAD || echo "(no merge-base)"
+        git -c safe.directory="$GITHUB_WORKSPACE" fetch --no-tags origin +refs/heads/main:refs/remotes/origin/main
     - name: Overlay fetcher script from dispatch branch
-      # When dispatching with `pr_number`, the checkout is the PR's merge ref, which contains the PR's
-      # version of `utils/tests_fetcher.py`. Replace it with the dispatch branch's version so we always
-      # run the latest fetcher logic regardless of which PR we're testing against.
+      # TODO: remove once this workflow's fetcher is on `main`. Until then, dispatching with
+      # `pr_number` checks out the PR's merge ref, which contains the PR's (old) version of
+      # `utils/tests_fetcher.py`. We overlay the dispatch branch's version so we exercise the
+      # fetcher we're trying to validate, not the PR's stale copy. After merge, dispatching from
+      # `main` already brings the canonical fetcher, and this step becomes unnecessary.
       if: ${{ inputs.pr_number != '' }}
       env:
         DISPATCH_REF: ${{ github.ref }}
