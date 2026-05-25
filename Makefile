@@ -36,6 +36,7 @@ repo-consistency:
 	python utils/check_dummies.py
 	python utils/check_repo.py
 	python utils/check_inits.py
+	python utils/check_forward_call_docstrings.py
 
 # this target runs checks on all files
 
@@ -73,6 +74,10 @@ fix-copies:
 # Auto docstrings in modular blocks
 modular-autodoctrings:
 	python utils/modular_auto_docstring.py
+
+# Verify forward() / __call__() arguments are documented in their docstrings
+check-forward-call-docstrings:
+	python utils/check_forward_call_docstrings.py
 
 # Run tests for the library
 

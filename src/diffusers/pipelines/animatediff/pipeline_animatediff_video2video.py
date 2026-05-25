@@ -786,6 +786,9 @@ class AnimateDiffVideoToVideoPipeline(
             num_inference_steps (`int`, *optional*, defaults to 50):
                 The number of denoising steps. More denoising steps usually lead to a higher quality videos at the
                 expense of slower inference.
+            enforce_inference_steps (`bool`, *optional*, defaults to `False`):
+                Whether to enforce `num_inference_steps` denoising steps regardless of the `strength` parameter. When
+                `False`, the effective number of inference steps is reduced according to `strength`.
             timesteps (`list[int]`, *optional*):
                 Custom timesteps to use for the denoising process with schedulers which support a `timesteps` argument
                 in their `set_timesteps` method. If not defined, the default behavior when `num_inference_steps` is
@@ -802,6 +805,8 @@ class AnimateDiffVideoToVideoPipeline(
             negative_prompt (`str` or `list[str]`, *optional*):
                 The prompt or prompts to guide what to not include in image generation. If not defined, you need to
                 pass `negative_prompt_embeds` instead. Ignored when not using guidance (`guidance_scale < 1`).
+            num_videos_per_prompt (`int`, *optional*, defaults to 1):
+                The number of videos to generate per prompt.
             eta (`float`, *optional*, defaults to 0.0):
                 Corresponds to parameter eta (η) from the [DDIM](https://huggingface.co/papers/2010.02502) paper. Only
                 applies to the [`~schedulers.DDIMScheduler`], and is ignored in other schedulers.

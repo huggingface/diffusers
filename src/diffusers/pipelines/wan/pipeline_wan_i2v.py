@@ -537,6 +537,9 @@ class WanImageToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         Args:
             image (`PipelineImageInput`):
                 The input image to condition the generation on. Must be an image, a list of images or a `torch.Tensor`.
+            last_image (`torch.Tensor`, *optional*):
+                Optional last frame to condition the generated video on. When provided, the model interpolates between
+                `image` (first frame) and `last_image` (last frame).
             prompt (`str` or `list[str]`, *optional*):
                 The prompt or prompts to guide the image generation. If not defined, one has to pass `prompt_embeds`.
                 instead.

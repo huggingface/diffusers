@@ -29,6 +29,9 @@ env:
   OMP_NUM_THREADS: 4
   MKL_NUM_THREADS: 4
   PYTEST_TIMEOUT: 60
+  # Force tokenizers<0.23.0 across every `uv pip install` in this workflow,
+  # even when transformers@main declares a higher lower-bound.
+  UV_OVERRIDE: /tmp/uv-overrides.txt
 
 jobs:
   check_code_quality:
@@ -68,6 +71,7 @@ jobs:
           python utils/check_copies.py
           python utils/check_dummies.py
           python utils/check_support_list.py
+          python utils/check_forward_call_docstrings.py
           make deps_table_check_updated
       - name: Check if failure
         if: ${{ failure() }}
@@ -116,9 +120,9 @@ jobs:
 
     - name: Install dependencies
       run: |
+        echo 'tokenizers<0.23.0' > "$UV_OVERRIDE"
         uv pip install -e ".[quality]"
         uv pip uninstall transformers huggingface_hub && UV_PRERELEASE=allow uv pip install -U transformers@git+https://github.com/huggingface/transformers.git
-        uv pip uninstall tokenizers && uv pip install "tokenizers<=0.23.0"
         uv pip uninstall accelerate && uv pip install -U accelerate@git+https://github.com/huggingface/accelerate.git --no-deps
 
     - name: Environment
@@ -193,9 +197,9 @@ jobs:
 
     - name: Install dependencies
       run: |
+        echo 'tokenizers<0.23.0' > "$UV_OVERRIDE"
         uv pip install -e ".[quality]"
         uv pip uninstall transformers huggingface_hub && UV_PRERELEASE=allow uv pip install -U transformers@git+https://github.com/huggingface/transformers.git
-        uv pip uninstall tokenizers && uv pip install "tokenizers<=0.23.0"
 
     - name: Environment
       run: |
@@ -244,13 +248,12 @@ jobs:
 
     - name: Install dependencies
       run: |
+        echo 'tokenizers<0.23.0' > "$UV_OVERRIDE"
         uv pip install -e ".[quality]"
         # TODO (sayakpaul, DN6): revisit `--no-deps`
         uv pip install -U peft@git+https://github.com/huggingface/peft.git --no-deps
-        uv pip install -U tokenizers
         uv pip uninstall accelerate && uv pip install -U accelerate@git+https://github.com/huggingface/accelerate.git --no-deps
         uv pip uninstall transformers huggingface_hub && UV_PRERELEASE=allow uv pip install -U transformers@git+https://github.com/huggingface/transformers.git
-        uv pip uninstall tokenizers && uv pip install "tokenizers<=0.23.0"
 
     - name: Environment
       run: |
