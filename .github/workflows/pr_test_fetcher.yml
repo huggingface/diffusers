@@ -94,6 +94,11 @@ jobs:
       with:
         ref: ${{ inputs.pr_number && format('refs/pull/{0}/merge', inputs.pr_number) || '' }}
         fetch-depth: 0
+    - name: Ensure origin/main is locally available
+      # `actions/checkout ref: ...` only fetches the named ref. The fetcher diffs HEAD against
+      # `origin/main`, so we explicitly fetch main as a remote-tracking ref.
+      run: |
+        git -c safe.directory="$GITHUB_WORKSPACE" fetch origin main:refs/remotes/origin/main
     - name: Overlay fetcher script from dispatch branch
       # When dispatching with `pr_number`, the checkout is the PR's merge ref, which contains the PR's
       # version of `utils/tests_fetcher.py`. Replace it with the dispatch branch's version so we always
@@ -120,6 +125,12 @@ jobs:
           python utils/tests_fetcher.py --force_full_suite | tee test_preparation.txt
         else
           python utils/tests_fetcher.py | tee test_preparation.txt
+        fi
+        echo "--- test_map.json ---"
+        if [ -f test_map.json ]; then
+          cat test_map.json
+        else
+          echo "(no test_map.json produced)"
         fi
     - name: Report fetched tests
       uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
