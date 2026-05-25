@@ -101,7 +101,23 @@ class ErnieImageTransformerTesterConfig(BaseModelTesterConfig):
 
 
 class TestErnieImageTransformer(ErnieImageTransformerTesterConfig, ModelTesterMixin):
-    pass
+    def test_attention_mask_is_none_when_text_is_unpadded(self):
+        # Regression for #13801: unpadded text should produce attn_mask=None.
+        from unittest import mock
+
+        from diffusers.models.transformers import transformer_ernie_image as t
+
+        model = self.model_class(**self.get_init_dict()).to(torch_device).eval()
+        captured = []
+
+        def spy(query, *a, attn_mask=None, **k):
+            captured.append(attn_mask)
+            return torch.zeros_like(query)
+
+        with torch.no_grad(), mock.patch.object(t, "dispatch_attention_fn", side_effect=spy):
+            model(**self.get_dummy_inputs())
+
+        assert captured and all(m is None for m in captured)
 
 
 class TestErnieImageTransformerTraining(ErnieImageTransformerTesterConfig, TrainingTesterMixin):

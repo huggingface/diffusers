@@ -408,15 +408,15 @@ class ErnieImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
         )
         rotary_pos_emb = self.pos_embed(torch.cat([image_ids, text_ids], dim=1))
 
-        # Attention mask: True = valid (attend), False = padding (mask out), matches sdpa bool convention
-        valid_text = (
-            torch.arange(Tmax, device=device).view(1, Tmax) < text_lens.view(B, 1)
-            if Tmax > 0
-            else torch.zeros((B, 0), device=device, dtype=torch.bool)
-        )
-        attention_mask = torch.cat([torch.ones((B, N_img), device=device, dtype=torch.bool), valid_text], dim=1)[
-            :, None, None, :
-        ]
+        # Only build the mask when there's real padding. flash-attn 2 rejects
+        # any non-None attn_mask, so we leave it None for unpadded inputs.
+        if Tmax > 0 and bool((text_lens < Tmax).any()):
+            valid_text = torch.arange(Tmax, device=device).view(1, Tmax) < text_lens.view(B, 1)
+            attention_mask = torch.cat([torch.ones((B, N_img), device=device, dtype=torch.bool), valid_text], dim=1)[
+                :, None, None, :
+            ]
+        else:
+            attention_mask = None
 
         # AdaLN
         sample = self.time_proj(timestep)
