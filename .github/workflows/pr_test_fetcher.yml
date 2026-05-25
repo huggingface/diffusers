@@ -135,6 +135,12 @@ jobs:
     - name: Fetch Tests
       env:
         FORCE_FULL_SUITE: ${{ inputs.force_full_suite }}
+        # Trust the workspace for every git subprocess spawned by gitpython. Without this,
+        # `git cat-file --batch-check` aborts on the container-runner ownership mismatch and
+        # writes nothing to stdout, which surfaces as "SHA could not be resolved" in the fetcher.
+        GIT_CONFIG_COUNT: "1"
+        GIT_CONFIG_KEY_0: "safe.directory"
+        GIT_CONFIG_VALUE_0: ${{ github.workspace }}
       run: |
         if [ "$FORCE_FULL_SUITE" = "true" ]; then
           python utils/tests_fetcher.py --force_full_suite
