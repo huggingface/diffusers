@@ -426,10 +426,35 @@ def main():
     state_dict = {
         (k[len("model.") :] if k.startswith("model.") else k): v for k, v in language_model.state_dict().items()
     }
+    # Remap PackedAttentionMoT attribute names from the source (Qwen-style q_proj/k_proj/...
+    # plus cosmos-specific *_moe_gen) to the diffusers AttentionModuleMixin canonical names.
+    # Order matters: the *_moe_gen substrings must be substituted before the plain ones.
+    _ATTN_KEY_REMAP = [
+        (".q_proj_moe_gen.", ".add_q_proj."),
+        (".k_proj_moe_gen.", ".add_k_proj."),
+        (".v_proj_moe_gen.", ".add_v_proj."),
+        (".o_proj_moe_gen.", ".to_add_out."),
+        (".q_norm_moe_gen.", ".norm_added_q."),
+        (".k_norm_moe_gen.", ".norm_added_k."),
+        (".q_proj.", ".to_q."),
+        (".k_proj.", ".to_k."),
+        (".v_proj.", ".to_v."),
+        (".o_proj.", ".to_out."),
+        (".q_norm.", ".norm_q."),
+        (".k_norm.", ".norm_k."),
+    ]
+    remapped_state_dict: dict[str, torch.Tensor] = {}
+    for k, v in state_dict.items():
+        for old, new in _ATTN_KEY_REMAP:
+            if old in k:
+                k = k.replace(old, new)
+                break
+        remapped_state_dict[k] = v
+    state_dict = remapped_state_dict
     for k, v in vae2llm.state_dict().items():
-        state_dict[f"vae2llm.{k}"] = v
+        state_dict[f"proj_in.{k}"] = v
     for k, v in llm2vae.state_dict().items():
-        state_dict[f"llm2vae.{k}"] = v
+        state_dict[f"proj_out.{k}"] = v
     _TIME_EMBEDDER_REMAP = {
         "mlp.0.weight": "linear_1.weight",
         "mlp.0.bias": "linear_1.bias",
@@ -440,10 +465,10 @@ def main():
         state_dict[f"time_embedder.{_TIME_EMBEDDER_REMAP[k]}"] = v
     if sound_gen:
         for k, v in sound2llm.state_dict().items():
-            state_dict[f"sound2llm.{k}"] = v
+            state_dict[f"audio_proj_in.{k}"] = v
         for k, v in llm2sound.state_dict().items():
-            state_dict[f"llm2sound.{k}"] = v
-        state_dict["sound_modality_embed"] = sound_modality_embed
+            state_dict[f"audio_proj_out.{k}"] = v
+        state_dict["audio_modality_embed"] = sound_modality_embed
     transformer.load_state_dict(state_dict, strict=True, assign=True)
     del (
         language_model,

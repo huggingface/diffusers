@@ -871,7 +871,7 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
                     sound_dim_flat = math.prod(sound_shape)
                     noise_x_sound = [latents[offset : offset + sound_dim_flat].reshape(sound_shape)]
 
-                # The transformer projections (vae2llm / sound2llm) are bf16; cast the per-step
+                # The transformer projections (proj_in / audio_proj_in) are bf16; cast the per-step
                 # noisy tokens before packing so the modality tokens enter the model in the right dtype.
                 vision_tokens = [x.to(device=device, dtype=dtype) for x in noise_x_vision]
                 sound_tokens = (

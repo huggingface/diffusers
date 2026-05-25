@@ -45,17 +45,17 @@ class CosmosAttnProcessor3_0:
         position_embeddings: Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor],
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         # Per-pathway projections
-        q_und = attn.q_proj(und_seq).view(-1, attn.num_attention_heads, attn.head_dim)
-        k_und = attn.k_proj(und_seq).view(-1, attn.num_key_value_heads, attn.head_dim)
-        v_und = attn.v_proj(und_seq).view(-1, attn.num_key_value_heads, attn.head_dim)
-        q_gen = attn.q_proj_moe_gen(gen_seq).view(-1, attn.num_attention_heads, attn.head_dim)
-        k_gen = attn.k_proj_moe_gen(gen_seq).view(-1, attn.num_key_value_heads, attn.head_dim)
-        v_gen = attn.v_proj_moe_gen(gen_seq).view(-1, attn.num_key_value_heads, attn.head_dim)
+        q_und = attn.to_q(und_seq).view(-1, attn.num_attention_heads, attn.head_dim)
+        k_und = attn.to_k(und_seq).view(-1, attn.num_key_value_heads, attn.head_dim)
+        v_und = attn.to_v(und_seq).view(-1, attn.num_key_value_heads, attn.head_dim)
+        q_gen = attn.add_q_proj(gen_seq).view(-1, attn.num_attention_heads, attn.head_dim)
+        k_gen = attn.add_k_proj(gen_seq).view(-1, attn.num_key_value_heads, attn.head_dim)
+        v_gen = attn.add_v_proj(gen_seq).view(-1, attn.num_key_value_heads, attn.head_dim)
 
-        q_und = attn.q_norm(q_und)
-        k_und = attn.k_norm(k_und)
-        q_gen = attn.q_norm_moe_gen(q_gen)
-        k_gen = attn.k_norm_moe_gen(k_gen)
+        q_und = attn.norm_q(q_und)
+        k_und = attn.norm_k(k_und)
+        q_gen = attn.norm_added_q(q_gen)
+        k_gen = attn.norm_added_k(k_gen)
 
         # Apply rotary position embeddings per pathway
         cos_und, sin_und, cos_gen, sin_gen = position_embeddings
@@ -101,8 +101,8 @@ class CosmosAttnProcessor3_0:
         )
 
         # Per-pathway output projection
-        und_out = attn.o_proj(causal_out)
-        gen_out = attn.o_proj_moe_gen(full_out)
+        und_out = attn.to_out(causal_out)
+        gen_out = attn.to_add_out(full_out)
         return und_out, gen_out
 
 
@@ -196,22 +196,22 @@ class PackedAttentionMoT(nn.Module, AttentionModuleMixin):
         self.attention_dropout = attention_dropout
         self.is_causal = True
 
-        # Understanding pathway. q_norm / k_norm are applied per-head (only on
+        # Understanding pathway. norm_q / norm_k are applied per-head (only on
         # head_dim), so no reshape is needed after them.
-        self.q_proj = nn.Linear(hidden_size, num_attention_heads * head_dim, bias=attention_bias)
-        self.k_proj = nn.Linear(hidden_size, num_key_value_heads * head_dim, bias=attention_bias)
-        self.v_proj = nn.Linear(hidden_size, num_key_value_heads * head_dim, bias=attention_bias)
-        self.o_proj = nn.Linear(num_attention_heads * head_dim, hidden_size, bias=attention_bias)
-        self.q_norm = Cosmos3VLTextRMSNorm(head_dim, eps=rms_norm_eps)
-        self.k_norm = Cosmos3VLTextRMSNorm(head_dim, eps=rms_norm_eps)
+        self.to_q = nn.Linear(hidden_size, num_attention_heads * head_dim, bias=attention_bias)
+        self.to_k = nn.Linear(hidden_size, num_key_value_heads * head_dim, bias=attention_bias)
+        self.to_v = nn.Linear(hidden_size, num_key_value_heads * head_dim, bias=attention_bias)
+        self.to_out = nn.Linear(num_attention_heads * head_dim, hidden_size, bias=attention_bias)
+        self.norm_q = Cosmos3VLTextRMSNorm(head_dim, eps=rms_norm_eps)
+        self.norm_k = Cosmos3VLTextRMSNorm(head_dim, eps=rms_norm_eps)
 
         # Generation pathway
-        self.q_proj_moe_gen = nn.Linear(hidden_size, num_attention_heads * head_dim, bias=attention_bias)
-        self.k_proj_moe_gen = nn.Linear(hidden_size, num_key_value_heads * head_dim, bias=attention_bias)
-        self.v_proj_moe_gen = nn.Linear(hidden_size, num_key_value_heads * head_dim, bias=attention_bias)
-        self.o_proj_moe_gen = nn.Linear(num_attention_heads * head_dim, hidden_size, bias=attention_bias)
-        self.q_norm_moe_gen = Cosmos3VLTextRMSNorm(head_dim, eps=rms_norm_eps)
-        self.k_norm_moe_gen = Cosmos3VLTextRMSNorm(head_dim, eps=rms_norm_eps)
+        self.add_q_proj = nn.Linear(hidden_size, num_attention_heads * head_dim, bias=attention_bias)
+        self.add_k_proj = nn.Linear(hidden_size, num_key_value_heads * head_dim, bias=attention_bias)
+        self.add_v_proj = nn.Linear(hidden_size, num_key_value_heads * head_dim, bias=attention_bias)
+        self.to_add_out = nn.Linear(num_attention_heads * head_dim, hidden_size, bias=attention_bias)
+        self.norm_added_q = Cosmos3VLTextRMSNorm(head_dim, eps=rms_norm_eps)
+        self.norm_added_k = Cosmos3VLTextRMSNorm(head_dim, eps=rms_norm_eps)
 
         self.set_processor(CosmosAttnProcessor3_0())
 
@@ -358,16 +358,16 @@ class Cosmos3OmniTransformer(ModelMixin, ConfigMixin, PeftAdapterMixin, Attentio
         # Modality projection heads + timestep embedding.
         self.vocab_size = vocab_size
         self.lm_head = nn.Linear(hidden_size, vocab_size, bias=False)
-        self.vae2llm = nn.Linear(patch_latent_dim, hidden_size, bias=True)
-        self.llm2vae = nn.Linear(hidden_size, patch_latent_dim, bias=True)
+        self.proj_in = nn.Linear(patch_latent_dim, hidden_size, bias=True)
+        self.proj_out = nn.Linear(hidden_size, patch_latent_dim, bias=True)
         self.time_proj = Timesteps(num_channels=256, flip_sin_to_cos=True, downscale_freq_shift=0)
         self.time_embedder = TimestepEmbedding(in_channels=256, time_embed_dim=hidden_size)
         if sound_gen:
             if sound_dim is None:
                 raise ValueError("`sound_dim` must be provided when `sound_gen=True`.")
-            self.sound2llm = nn.Linear(sound_dim, hidden_size, bias=True)
-            self.llm2sound = nn.Linear(hidden_size, sound_dim, bias=True)
-            self.sound_modality_embed = nn.Parameter(torch.zeros(hidden_size))
+            self.audio_proj_in = nn.Linear(sound_dim, hidden_size, bias=True)
+            self.audio_proj_out = nn.Linear(hidden_size, sound_dim, bias=True)
+            self.audio_modality_embed = nn.Parameter(torch.zeros(hidden_size))
 
         self.gradient_checkpointing = False
 
@@ -528,7 +528,7 @@ class Cosmos3OmniTransformer(ModelMixin, ConfigMixin, PeftAdapterMixin, Attentio
         packed_tokens_vision, original_latent_shapes = self._patchify_and_pack_latents(
             vision.tokens, vision.token_shapes
         )
-        packed_tokens_vision = self.vae2llm(packed_tokens_vision)
+        packed_tokens_vision = self.proj_in(packed_tokens_vision)
         timesteps_vision = vision.timesteps * self.config.timestep_scale
         with torch.autocast("cuda", enabled=True, dtype=torch.float32):
             packed_timestep_embeds_vision = self.time_embedder(self.time_proj(timesteps_vision))
@@ -544,7 +544,7 @@ class Cosmos3OmniTransformer(ModelMixin, ConfigMixin, PeftAdapterMixin, Attentio
         # Pack + project sound latents (when present); all sound frames are noisy.
         if has_sound:
             packed_tokens_sound = self._pack_sound_latents(sound.tokens, sound.token_shapes).to(target_dtype)
-            packed_tokens_sound = self.sound2llm(packed_tokens_sound) + self.sound_modality_embed
+            packed_tokens_sound = self.audio_proj_in(packed_tokens_sound) + self.audio_modality_embed
             timesteps_sound = sound.timesteps * self.config.timestep_scale
             with torch.autocast("cuda", enabled=True, dtype=torch.float32):
                 packed_timestep_embeds_sound = self.time_embedder(self.time_proj(timesteps_sound))
@@ -584,7 +584,7 @@ class Cosmos3OmniTransformer(ModelMixin, ConfigMixin, PeftAdapterMixin, Attentio
         last_hidden_state = torch.cat([und_out, gen_out], dim=0)
 
         # Decode vision predictions from the joint hidden state.
-        preds_vision_packed = self.llm2vae(last_hidden_state[vision.mse_loss_indexes])
+        preds_vision_packed = self.proj_out(last_hidden_state[vision.mse_loss_indexes])
         preds_vision = self._unpatchify_and_unpack_latents(
             preds_vision_packed,
             token_shapes_vision=vision.token_shapes,
@@ -594,7 +594,7 @@ class Cosmos3OmniTransformer(ModelMixin, ConfigMixin, PeftAdapterMixin, Attentio
 
         preds_sound: Optional[List[torch.Tensor]] = None
         if has_sound:
-            preds_sound_packed = self.llm2sound(last_hidden_state[sound.mse_loss_indexes])
+            preds_sound_packed = self.audio_proj_out(last_hidden_state[sound.mse_loss_indexes])
             preds_sound = self._unpack_sound_latents(preds_sound_packed, sound.token_shapes, sound.noisy_frame_indexes)
 
         return preds_vision, preds_sound
