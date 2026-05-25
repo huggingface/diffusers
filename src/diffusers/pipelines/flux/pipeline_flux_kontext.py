@@ -883,6 +883,8 @@ class FluxKontextPipeline(
             max_area (`int`, defaults to `1024 ** 2`):
                 The maximum area of the generated image in pixels. The height and width will be adjusted to fit this
                 area while maintaining the aspect ratio.
+            _auto_resize (`bool`, *optional*, defaults to `True`):
+                Whether to automatically resize the input image to the preferred resolutions.
 
         Examples:
 

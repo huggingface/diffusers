@@ -430,6 +430,14 @@ class ZImageControlNetPipeline(DiffusionPipeline, ZImageLoraLoaderMixin, FromSin
                 Paper](https://arxiv.org/pdf/2205.11487.pdf). Guidance scale is enabled by setting `guidance_scale >
                 1`. Higher guidance scale encourages to generate images that are closely linked to the text `prompt`,
                 usually at the expense of lower image quality.
+            control_image (`PipelineImageInput`):
+                The ControlNet input condition to provide guidance to the `transformer` for generation. If the type is
+                specified as `torch.Tensor`, it is passed to ControlNet as is. `PIL.Image.Image` can also be accepted
+                as an image. The dimensions of the output image defaults to `control_image`'s dimensions. If height
+                and/or width are passed, `control_image` is resized accordingly.
+            controlnet_conditioning_scale (`float` or `list[float]`, *optional*, defaults to 0.75):
+                The outputs of the ControlNet are multiplied by `controlnet_conditioning_scale` before they are added
+                to the residual in the original `transformer`.
             cfg_normalization (`bool`, *optional*, defaults to False):
                 Whether to apply configuration normalization.
             cfg_truncation (`float`, *optional*, defaults to 1.0):
