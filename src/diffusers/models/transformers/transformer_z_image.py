@@ -457,14 +457,14 @@ class ZImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOr
                     for layer_id in range(n_refiner_layers)
                 ]
             )
-            self.siglip_pad_token = nn.Parameter(torch.empty((1, dim)))
+            self.siglip_pad_token = nn.Parameter(torch.zeros((1, dim)))
         else:
             self.siglip_embedder = None
             self.siglip_refiner = None
             self.siglip_pad_token = None
 
-        self.x_pad_token = nn.Parameter(torch.empty((1, dim)))
-        self.cap_pad_token = nn.Parameter(torch.empty((1, dim)))
+        self.x_pad_token = nn.Parameter(torch.zeros((1, dim)))
+        self.cap_pad_token = nn.Parameter(torch.zeros((1, dim)))
 
         self.layers = nn.ModuleList(
             [
