@@ -102,8 +102,8 @@ jobs:
         export GIT_OPTS="-c safe.directory=$GITHUB_WORKSPACE"
         echo "--- remotes before fetch ---"
         git $GIT_OPTS remote -v
-        echo "--- existing refs/remotes ---"
-        git $GIT_OPTS for-each-ref refs/remotes | head -10
+        echo "--- existing origin/main ref (if any) ---"
+        git $GIT_OPTS for-each-ref refs/remotes/origin/main
         echo "--- fetching main ---"
         git $GIT_OPTS fetch --no-tags --depth=2147483647 origin +refs/heads/main:refs/remotes/origin/main
         echo "--- after fetch ---"
