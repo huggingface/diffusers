@@ -122,9 +122,9 @@ jobs:
         FORCE_FULL_SUITE: ${{ inputs.force_full_suite }}
       run: |
         if [ "$FORCE_FULL_SUITE" = "true" ]; then
-          python utils/tests_fetcher.py --force_full_suite | tee test_preparation.txt
+          python utils/tests_fetcher.py --force_full_suite
         else
-          python utils/tests_fetcher.py | tee test_preparation.txt
+          python utils/tests_fetcher.py
         fi
         echo "--- test_map.json ---"
         if [ -f test_map.json ]; then
@@ -132,11 +132,6 @@ jobs:
         else
           echo "(no test_map.json produced)"
         fi
-    - name: Report fetched tests
-      uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
-      with:
-        name: test_fetched
-        path: test_preparation.txt
     - id: set_matrix
       name: Create Test Matrix
       run: |

@@ -449,5 +449,9 @@ if __name__ == "__main__":
     try:
         fetch_tests_to_run(args.json_output_file, diff_with_last_commit)
     except Exception as e:
-        print(f"\nError when trying to grab the relevant tests: {e}\n\nRunning all tests.")
+        import traceback
+
+        print(f"\nError when trying to grab the relevant tests: {e}\n")
+        traceback.print_exc()
+        print("\nRunning all tests.")
         _write_full_suite(args.json_output_file)
