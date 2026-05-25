@@ -477,7 +477,7 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
         position_ids_segments: list[torch.Tensor] = []
 
         # Text segment.
-        text_ids, text_mrope_ids, mrope_offset = self._pack_text_tokens(text_tokens, mrope_offset)
+        text_ids, text_mrope_ids, mrope_offset = self._pack_text_tokens(text_tokens.input_ids, mrope_offset)
         und_len = len(text_ids)
         text_indexes = list(range(curr, curr + und_len))
         curr += und_len
