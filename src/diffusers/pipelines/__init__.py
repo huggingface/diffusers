@@ -373,6 +373,11 @@ else:
         "SanaVideoPipeline",
         "SanaImageToVideoPipeline",
     ]
+    _import_structure["sana_wm"] = [
+        "SanaWMPipeline",
+        "SanaWMLTX2Refiner",
+        "SanaWMPipelineOutput",
+    ]
     _import_structure["shap_e"] = ["ShapEImg2ImgPipeline", "ShapEPipeline"]
     _import_structure["stable_audio"] = [
         "StableAudioProjectionModel",
@@ -861,6 +866,11 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             SanaSprintPipeline,
         )
         from .sana_video import SanaImageToVideoPipeline, SanaVideoPipeline
+        from .sana_wm import (
+            SanaWMLTX2Refiner,
+            SanaWMPipeline,
+            SanaWMPipelineOutput,
+        )
         from .shap_e import ShapEImg2ImgPipeline, ShapEPipeline
         from .stable_audio import StableAudioPipeline, StableAudioProjectionModel
         from .stable_cascade import (
