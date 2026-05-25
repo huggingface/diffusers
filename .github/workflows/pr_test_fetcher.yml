@@ -96,9 +96,24 @@ jobs:
         fetch-depth: 0
     - name: Ensure origin/main is locally available
       # `actions/checkout ref: ...` only fetches the named ref. The fetcher diffs HEAD against
-      # `origin/main`, so we explicitly fetch main as a remote-tracking ref.
+      # `origin/main`, so we explicitly fetch main and download its objects.
       run: |
-        git -c safe.directory="$GITHUB_WORKSPACE" fetch origin main:refs/remotes/origin/main
+        cd "$GITHUB_WORKSPACE"
+        export GIT_OPTS="-c safe.directory=$GITHUB_WORKSPACE"
+        echo "--- remotes before fetch ---"
+        git $GIT_OPTS remote -v
+        echo "--- existing refs/remotes ---"
+        git $GIT_OPTS for-each-ref refs/remotes | head -10
+        echo "--- fetching main ---"
+        git $GIT_OPTS fetch --no-tags --depth=2147483647 origin +refs/heads/main:refs/remotes/origin/main
+        echo "--- after fetch ---"
+        git $GIT_OPTS rev-parse refs/remotes/origin/main
+        git $GIT_OPTS cat-file -t "$(git $GIT_OPTS rev-parse refs/remotes/origin/main)"
+        git $GIT_OPTS log --oneline -3 refs/remotes/origin/main
+        echo "--- HEAD ---"
+        git $GIT_OPTS log --oneline -3 HEAD
+        echo "--- merge-base ---"
+        git $GIT_OPTS merge-base refs/remotes/origin/main HEAD || echo "(no merge-base)"
     - name: Overlay fetcher script from dispatch branch
       # When dispatching with `pr_number`, the checkout is the PR's merge ref, which contains the PR's
       # version of `utils/tests_fetcher.py`. Replace it with the dispatch branch's version so we always
