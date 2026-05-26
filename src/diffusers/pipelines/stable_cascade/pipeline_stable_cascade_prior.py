@@ -403,6 +403,9 @@ class StableCascadePriorPipeline(DeprecatedPipelineMixin, DiffusionPipeline):
         Args:
             prompt (`str` or `list[str]`):
                 The prompt or prompts to guide the image generation.
+            images (`torch.Tensor`, `PIL.Image.Image`, `list[torch.Tensor]` or `list[PIL.Image.Image]`, *optional*):
+                Reference image(s) used to condition the prior generation. When provided, image embeddings are derived
+                from the image and combined with the text prompt.
             height (`int`, *optional*, defaults to 1024):
                 The height in pixels of the generated image.
             width (`int`, *optional*, defaults to 1024):
@@ -410,6 +413,10 @@ class StableCascadePriorPipeline(DeprecatedPipelineMixin, DiffusionPipeline):
             num_inference_steps (`int`, *optional*, defaults to 60):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
                 expense of slower inference.
+            timesteps (`list[float]`, *optional*):
+                Custom timesteps to use for the denoising process with schedulers which support a `timesteps` argument
+                in their `set_timesteps` method. If not defined, the default behavior when `num_inference_steps` is
+                passed will be used. Must be in descending order.
             guidance_scale (`float`, *optional*, defaults to 8.0):
                 Guidance scale as defined in [Classifier-Free Diffusion
                 Guidance](https://huggingface.co/papers/2207.12598). `decoder_guidance_scale` is defined as `w` of

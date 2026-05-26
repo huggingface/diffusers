@@ -1201,6 +1201,12 @@ class Flux2Transformer2DModel(
                 Conditional embeddings (embeddings computed from the input conditions such as prompts) to use.
             timestep (`torch.LongTensor`):
                 Used to indicate denoising step.
+            img_ids (`torch.Tensor`):
+                Image position ids used to compute the rotary positional embeddings.
+            txt_ids (`torch.Tensor`):
+                Text position ids used to compute the rotary positional embeddings.
+            guidance (`torch.Tensor`, *optional*):
+                Guidance scale embedding used for guidance-distilled variants of the model.
             joint_attention_kwargs (`dict`, *optional*):
                 A kwargs dictionary that if specified is passed along to the `AttentionProcessor` as defined under
                 `self.processor` in

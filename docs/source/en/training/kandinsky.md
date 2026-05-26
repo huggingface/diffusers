@@ -308,5 +308,5 @@ image = pipeline(prompt="A robot naruto, 4k photo").images[0]
 
 Congratulations on training a Kandinsky 2.2 model! To learn more about how to use your new model, the following guides may be helpful:
 
-- Read the [Kandinsky](../using-diffusers/kandinsky) guide to learn how to use it for a variety of different tasks (text-to-image, image-to-image, inpainting, interpolation), and how it can be combined with a ControlNet.
+- Read the [Kandinsky](../api/pipelines/kandinsky) guide to learn how to use it for a variety of different tasks (text-to-image, image-to-image, inpainting, interpolation), and how it can be combined with a ControlNet.
 - Check out the [DreamBooth](dreambooth) and [LoRA](lora) training guides to learn how to train a personalized Kandinsky model with just a few example images. These two training techniques can even be combined!
