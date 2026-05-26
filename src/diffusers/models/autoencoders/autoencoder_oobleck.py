@@ -116,7 +116,7 @@ class OobleckEncoderBlock(nn.Module):
 class OobleckDecoderBlock(nn.Module):
     """Decoder block used in Oobleck decoder."""
 
-    def __init__(self, input_dim, output_dim, stride: int = 1, output_padding: int = 0):
+    def __init__(self, input_dim, output_dim, stride: int = 1):
         super().__init__()
 
         self.snake1 = Snake1d(input_dim)
@@ -127,7 +127,6 @@ class OobleckDecoderBlock(nn.Module):
                 kernel_size=2 * stride,
                 stride=stride,
                 padding=math.ceil(stride / 2),
-                output_padding=output_padding,
             )
         )
         self.res_unit1 = OobleckResidualUnit(output_dim, dilation=1)
@@ -272,7 +271,6 @@ class OobleckDecoder(nn.Module):
                     input_dim=channels * channel_multiples[len(strides) - stride_index],
                     output_dim=channels * channel_multiples[len(strides) - stride_index - 1],
                     stride=stride,
-                    output_padding=stride % 2,
                 )
             ]
 

@@ -98,7 +98,10 @@ class Cosmos3AudioResidualUnit(nn.Module):
         return output_tensor
 
 
-# Copied from diffusers.models.autoencoders.autoencoder_oobleck.OobleckDecoderBlock with Oobleck->Cosmos3Audio
+"""
+Copied from diffusers.models.autoencoders.autoencoder_oobleck.OobleckDecoderBlock with Oobleck->Cosmos3Audio
+with output_padding enabled.
+"""
 class Cosmos3AudioDecoderBlock(nn.Module):
     """Decoder block used in Cosmos3Audio decoder."""
 
@@ -130,7 +133,10 @@ class Cosmos3AudioDecoderBlock(nn.Module):
         return hidden_state
 
 
-# Copied from diffusers.models.autoencoders.autoencoder_oobleck.OobleckDecoder with Oobleck->Cosmos3Audio
+"""
+Copied from diffusers.models.autoencoders.autoencoder_oobleck.OobleckDecoder with Oobleck->Cosmos3Audio and
+one change of adding "output_padding=stride % 2,"
+"""
 class Cosmos3AudioDecoder(nn.Module):
     """Cosmos3Audio Decoder"""
 
