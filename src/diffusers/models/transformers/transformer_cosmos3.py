@@ -107,20 +107,18 @@ def _rotate_half(x: torch.Tensor) -> torch.Tensor:
 
 
 class Cosmos3VLTextRotaryEmbedding(nn.Module):
-    def __init__(self, head_dim: int, rope_theta: float, rope_scaling: dict | None = None):
+    def __init__(self, head_dim: int, rope_theta: float, rope_axes_dim: tuple[int, int, int]):
         super().__init__()
-        inv_freq = 1.0 / (rope_theta ** (torch.arange(0, head_dim, 2, dtype=torch.int64).float() / head_dim))
+        inv_freq = 1.0 / (rope_theta ** (torch.arange(0, head_dim, 2, dtype=torch.float32) / head_dim))
         self.register_buffer("inv_freq", inv_freq, persistent=False)
-        self.mrope_section = (
-            rope_scaling.get("mrope_section", [24, 20, 20]) if rope_scaling is not None else [24, 20, 20]
-        )
+        self.rope_axes_dim = rope_axes_dim
 
-    def apply_interleaved_mrope(self, freqs, mrope_section):
+    def apply_interleaved_mrope(self, freqs, rope_axes_dim):
         """Reorganize chunked [TTT...HHH...WWW] frequency layout into interleaved
         [THTHWHTHW...TT], preserving frequency continuity across the 3 grids."""
         freqs_t = freqs[0]
         for dim, offset in enumerate((1, 2), start=1):  # H, W
-            length = mrope_section[dim] * 3
+            length = rope_axes_dim[dim] * 3
             idx = slice(offset, length, 3)
             freqs_t[..., idx] = freqs[dim, ..., idx]
         return freqs_t
@@ -133,7 +131,7 @@ class Cosmos3VLTextRotaryEmbedding(nn.Module):
         )  # [3,B,head_dim//2,1]
         position_ids_expanded = position_ids[:, :, None, :].float()  # [3,B,1,N]
         freqs = (inv_freq_expanded @ position_ids_expanded).transpose(2, 3)  # [3,B,N,head_dim//2]
-        freqs = self.apply_interleaved_mrope(freqs, self.mrope_section)  # [B,N,head_dim//2]
+        freqs = self.apply_interleaved_mrope(freqs, self.rope_axes_dim)  # [B,N,head_dim//2]
         emb = torch.cat((freqs, freqs), dim=-1)  # [B,N,head_dim]
         return emb.cos().to(dtype=dtype), emb.sin().to(dtype=dtype)  # each: [B,N,head_dim]
 
@@ -306,9 +304,8 @@ class Cosmos3OmniTransformer(ModelMixin, ConfigMixin, PeftAdapterMixin, Attentio
     ):
         super().__init__()
 
-        if rope_scaling is None:
-            rope_scaling = {"mrope_interleaved": True, "mrope_section": [24, 20, 20], "rope_type": "default"}
-            self.register_to_config(rope_scaling=rope_scaling)
+        rope_axes_dim = rope_scaling.get("mrope_section", [24, 20, 20]) if rope_scaling is not None else [24, 20, 20]
+        self.register_to_config(rope_axes_dim=rope_axes_dim)
 
         # Text-model layers live directly on the transformer (flat layout). The published
         # checkpoint must be re-keyed with the leading `model.` prefix stripped — see
@@ -332,7 +329,7 @@ class Cosmos3OmniTransformer(ModelMixin, ConfigMixin, PeftAdapterMixin, Attentio
         self.norm = RMSNorm(hidden_size, eps=rms_norm_eps, elementwise_affine=True, bias=False)
         self.norm_moe_gen = RMSNorm(hidden_size, eps=rms_norm_eps, elementwise_affine=True, bias=False)
         self.rotary_emb = Cosmos3VLTextRotaryEmbedding(
-            head_dim=head_dim, rope_theta=rope_theta, rope_scaling=rope_scaling
+            head_dim=head_dim, rope_theta=rope_theta, rope_axes_dim=rope_axes_dim
         )
 
         # Modality projection heads + timestep embedding.
