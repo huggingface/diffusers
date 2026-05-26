@@ -297,6 +297,28 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
     # that returns its own data; pack_input_sequence stitches them together.
     # ------------------------------------------------------------------
 
+    @staticmethod
+    def _build_vision_condition_mask(
+        latent_t: int,
+        has_image_condition: bool,
+        device: torch.device | str,
+        dtype: torch.dtype,
+    ) -> torch.Tensor:
+        """Per-frame vision conditioning mask of shape ``[latent_t, 1, 1]``."""
+        condition_mask = torch.zeros((latent_t, 1, 1), device=device, dtype=dtype)
+        if has_image_condition:
+            condition_mask[0, 0, 0] = 1.0
+        return condition_mask
+
+    @staticmethod
+    def _build_sound_condition_mask(
+        sound_len: int,
+        device: torch.device | str,
+        dtype: torch.dtype,
+    ) -> torch.Tensor:
+        """Per-frame sound conditioning mask of shape ``[sound_len, 1]`` (always zero)."""
+        return torch.zeros((sound_len, 1), device=device, dtype=dtype)
+
     def _pack_input_ids(
         self,
         input_ids: List[int],
@@ -336,9 +358,9 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
         patch_w = math.ceil(latent_w / latent_patch_size)
         num_vision_tokens = latent_t * patch_h * patch_w
 
-        condition_mask = torch.zeros((latent_t, 1, 1), device=device, dtype=input_vision_tokens.dtype)
-        if has_image_condition:
-            condition_mask[0, 0, 0] = 1.0
+        condition_mask = self._build_vision_condition_mask(
+            latent_t, has_image_condition, device, input_vision_tokens.dtype
+        )
 
         noisy_start = 1 if has_image_condition else 0
         noisy_frame_indexes = torch.arange(noisy_start, latent_t, device=device, dtype=torch.long)
@@ -409,7 +431,7 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
             "mse_loss_indexes": sequence_indexes.clone(),
             "timesteps": torch.full((sound_len,), float(input_timestep), device=device),
             "noisy_frame_indexes": [torch.arange(sound_len, device=device, dtype=torch.long)],
-            "condition_mask": [torch.zeros((sound_len, 1), device=device, dtype=input_sound_tokens.dtype)],
+            "condition_mask": [self._build_sound_condition_mask(sound_len, device, input_sound_tokens.dtype)],
             "sound_mrope_ids": sound_mrope_ids,
             "sound_len": sound_len,
         }
@@ -516,7 +538,6 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
 
     def prepare_latents(
         self,
-        input_ids: BatchEncoding,
         image=None,
         num_frames: int = 189,
         height: int = 720,
@@ -580,20 +601,10 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
             T_sound = (n_audio_samples + hop_size - 1) // hop_size
             x0_tokens_sound = torch.zeros(sound_dim, T_sound, device=device, dtype=dtype)
 
-        # Run pack_input_sequence with a dummy timestep to extract the condition_mask used for noise blending.
-        packed = self.pack_input_sequence(
-            input_ids=input_ids,
-            input_timestep=0.0,
-            vision_tokens=x0_tokens_vision,
-            fps_vision=fps,
-            has_image_condition=has_image_condition,
-            sound_tokens=x0_tokens_sound,
-            fps_sound=fps_sound,
-            device=device,
-        )
-
         if latents is None:
-            cond_mask_vision = packed["vision_condition_mask"][0]
+            cond_mask_vision = self._build_vision_condition_mask(
+                x0_tokens_vision.shape[2], has_image_condition, device, dtype
+            )
             pure_noise = randn_tensor(vision_shape, generator=generator, device=device, dtype=dtype)
             latents = (
                 cond_mask_vision * x0_tokens_vision.to(device=device, dtype=dtype)
@@ -602,9 +613,9 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
         else:
             latents = latents.to(device=device, dtype=dtype)
 
-        if enable_sound and "sound_condition_mask" in packed and x0_tokens_sound is not None:
+        if enable_sound and x0_tokens_sound is not None:
             if sound_latents is None:
-                cond_mask_sound = packed["sound_condition_mask"][0]
+                cond_mask_sound = self._build_sound_condition_mask(x0_tokens_sound.shape[1], device, dtype)
                 pure_noise_sound = randn_tensor(
                     tuple(x0_tokens_sound.shape), generator=generator, device=device, dtype=dtype
                 )
@@ -892,7 +903,6 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
         # 4. Prepare latents (initial noise per modality + pack metadata)
         has_image_condition = image is not None and num_frames > 1
         latents, sound_latents, fps_vision, fps_sound = self.prepare_latents(
-            input_ids=cond_input_ids,
             image=image,
             num_frames=num_frames,
             height=height,
