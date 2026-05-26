@@ -246,17 +246,11 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
     def _get_execution_device(self) -> torch.device:
         # `self._execution_device` walks `self.components` and ultimately falls back to
         # `self.device`, which iterates modules in sorted order and ignores
-        # `_exclude_from_cpu_offload`. With `safety_checker` registered, that fallback
-        # touches `CosmosSafetyChecker.device`, which raises `AttributeError` on
-        # `Qwen3Guard.device` (plain `nn.Module` has no `.device`). The exception is
-        # silently caught by Python's descriptor protocol and re-raised as
-        # "no attribute `_execution_device`". Catch it here and pick the device from
-        # the actual compute modules.
-        try:
-            return self._execution_device
-        except AttributeError:
-            pass
-
+        # `_exclude_from_cpu_offload`. With `safety_checker` registered, that path picks
+        # up `CosmosSafetyChecker.device` — which either raises `AttributeError`
+        # (silently surfaced as "no attribute `_execution_device`") or returns `cpu`
+        # because the auto-instantiated checker is on CPU. In both cases the pipeline
+        # ends up running on the wrong device. Walk the actual compute modules first.
         for component in (self.transformer, self.vae, self.sound_tokenizer):
             if not isinstance(component, torch.nn.Module):
                 continue
@@ -272,7 +266,10 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
             except StopIteration:
                 continue
 
-        return torch.device("cpu")
+        try:
+            return self._execution_device
+        except AttributeError:
+            return torch.device("cpu")
 
     def _encode_video(self, x: torch.Tensor) -> torch.Tensor:
         """[B,3,T,H,W] → normalized latents [B,z_dim,T//4,H//16,W//16]. Bit-for-bit
