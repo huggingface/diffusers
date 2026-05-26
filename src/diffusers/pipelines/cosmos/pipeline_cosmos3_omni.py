@@ -479,8 +479,8 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
         """Build conditioning + initial noise for a single sample.
 
         Returns:
-            ``(initial_noise, vision_shape, sound_shape, fps_vision, fps_sound)``.
-            ``initial_noise`` is the flat noise tensor consumed by the denoiser.
+            ``(latents, vision_shape, sound_shape, fps_vision, fps_sound)``.
+            ``latents`` is the flat noise tensor consumed by the denoiser.
             ``vision_shape`` / ``sound_shape`` are the per-modality latent shapes used to
             slice the flat tensor at each step (``sound_shape`` is ``None`` unless
             ``enable_sound`` was set). The FPS scalars are passed into
@@ -553,16 +553,16 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
         noise_vision = (
             cond_mask_vision * x0_tokens_vision.to(device=device, dtype=dtype) + (1.0 - cond_mask_vision) * pure_noise
         )
-        initial_noise = noise_vision.reshape(-1)
+        latents = noise_vision.reshape(-1)
 
         # Append sound noise (all noisy: cond_mask = 0 everywhere)
         if enable_sound and packed_seq.sound is not None and x0_tokens_sound is not None:
             cond_mask_sound = packed_seq.sound.condition_mask[0]
             pure_noise_sound = randn_tensor(tuple(x0_tokens_sound.shape), generator=generator, device=device, dtype=dtype)
-            noise_sound = cond_mask_sound.T * x0_tokens_sound + (1.0 - cond_mask_sound.T) * pure_noise_sound
-            initial_noise = torch.cat([initial_noise, noise_sound.reshape(-1)])
+            noise_latents = cond_mask_sound.T * x0_tokens_sound + (1.0 - cond_mask_sound.T) * pure_noise_sound
+            latents = torch.cat([latents, noise_latents.reshape(-1)])
 
-        return initial_noise, vision_shape, sound_shape, fps, fps_sound
+        return latents, vision_shape, sound_shape, fps, fps_sound
 
     def check_inputs(
         self,
