@@ -749,37 +749,6 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
 
         return velocity_vision, velocity_sound
 
-    def _postprocess_latents(
-        self,
-        vision_latents: torch.Tensor,
-        sound_latents: Optional[torch.Tensor],
-        output_type: str,
-    ) -> tuple[Any, Optional[torch.Tensor]]:
-        """Decode per-modality denoised latents.
-
-        Returns ``(video, sound)``. ``video`` is a raw latent tensor when
-        ``output_type == "latent"``, otherwise the output of
-        :meth:`VideoProcessor.postprocess_video` (e.g. a list of PIL frames for
-        ``output_type="pil"``). ``sound`` is ``None`` when ``sound_latents`` is ``None``.
-        """
-        sound: Optional[torch.Tensor] = None
-        if sound_latents is not None:
-            sound = self.decode_sound(sound_latents)
-
-        if output_type == "latent":
-            return vision_latents, sound
-
-        # VAE denormalize → decode → postprocess. Inputs are [1, z_dim, T, H, W];
-        # postprocess_video handles the [-1, 1] → output_type conversion (denorm + clamp).
-        in_dtype = vision_latents.dtype
-        dtype = self._vae_dtype
-        mean = self._vae_latents_mean.to(device=vision_latents.device, dtype=dtype)
-        inv_std = self._vae_latents_inv_std.to(device=vision_latents.device, dtype=dtype)
-        z_raw = vision_latents.to(dtype) / inv_std.view(1, -1, 1, 1, 1) + mean.view(1, -1, 1, 1, 1)
-        decoded = self.vae.decode(z_raw).sample.to(in_dtype)
-        video = self.video_processor.postprocess_video(decoded, output_type=output_type)[0]
-        return video, sound
-
     def _apply_video_safety_check(self, video: Any, output_type: str, device: torch.device) -> Any:
         """Run the Cosmos video guardrail on a postprocessed video and return it in the same format.
 
@@ -996,11 +965,17 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
         self._current_timestep = None
 
         # 7. Postprocess + decode
-        video, sound = self._postprocess_latents(
-            vision_latents=latents,
-            sound_latents=sound_latents,
-            output_type=output_type,
-        )
+        sound = self.decode_sound(sound_latents) if sound_latents is not None else None
+        if output_type == "latent":
+            video = latents
+        else:
+            in_dtype = latents.dtype
+            dtype = self._vae_dtype
+            mean = self._vae_latents_mean.to(device=latents.device, dtype=dtype)
+            inv_std = self._vae_latents_inv_std.to(device=latents.device, dtype=dtype)
+            z_raw = latents.to(dtype) / inv_std.view(1, -1, 1, 1, 1) + mean.view(1, -1, 1, 1, 1)
+            decoded = self.vae.decode(z_raw).sample.to(in_dtype)
+            video = self.video_processor.postprocess_video(decoded, output_type=output_type)[0]
 
         if (
             enable_safety_check
