@@ -125,17 +125,17 @@ class Cosmos3VLTextRotaryEmbedding(nn.Module):
             freqs_t[..., idx] = freqs[dim, ..., idx]
         return freqs_t
 
-    def forward(self, x, position_ids):
+    def forward(self, position_ids, device, dtype):
         if position_ids.ndim == 2:
             position_ids = position_ids[None, ...].expand(3, position_ids.shape[0], -1)  # [3,B,N]
         inv_freq_expanded = (
-            self.inv_freq[None, None, :, None].float().expand(3, position_ids.shape[1], -1, 1).to(x.device)
+            self.inv_freq[None, None, :, None].float().expand(3, position_ids.shape[1], -1, 1).to(device)
         )  # [3,B,head_dim//2,1]
         position_ids_expanded = position_ids[:, :, None, :].float()  # [3,B,1,N]
         freqs = (inv_freq_expanded @ position_ids_expanded).transpose(2, 3)  # [3,B,N,head_dim//2]
         freqs = self.apply_interleaved_mrope(freqs, self.mrope_section)  # [B,N,head_dim//2]
         emb = torch.cat((freqs, freqs), dim=-1)  # [B,N,head_dim]
-        return emb.cos().to(dtype=x.dtype), emb.sin().to(dtype=x.dtype)  # each: [B,N,head_dim]
+        return emb.cos().to(dtype=dtype), emb.sin().to(dtype=dtype)  # each: [B,N,head_dim]
 
 
 class Cosmos3VLTextMLP(nn.Module):
@@ -530,11 +530,11 @@ class Cosmos3OmniTransformer(ModelMixin, ConfigMixin, PeftAdapterMixin, Attentio
             hidden_states[sound.sequence_indexes] = packed_tokens_sound
 
         # Compute rotary embeddings once for the joint sequence, then slice into und/gen halves.
-        _meta_tensor = torch.tensor([], dtype=hidden_states.dtype, device=hidden_states.device)
         position_ids = packed_seq.position_ids
         cos, sin = self.rotary_emb(
-            _meta_tensor,
             position_ids=position_ids.unsqueeze(0) if position_ids.ndim == 1 else position_ids.unsqueeze(1),
+            device=hidden_states.device,
+            dtype=hidden_states.dtype,
         )
         # cos, sin: [1, N, head_dim] (1-D pos_ids) or [3, 1, N, head_dim] (mrope pos_ids)
         cos = cos.squeeze(0)
