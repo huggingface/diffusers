@@ -706,6 +706,12 @@ class AutoencoderDC(ModelMixin, AutoencoderMixin, ConfigMixin, FromOriginalModel
         return DecoderOutput(sample=decoded)
 
     def forward(self, sample: torch.Tensor, return_dict: bool = True) -> torch.Tensor:
+        r"""
+        Args:
+            sample (`torch.Tensor`): Input sample.
+            return_dict (`bool`, *optional*, defaults to `True`):
+                Whether or not to return a [`DecoderOutput`] instead of a plain tuple.
+        """
         encoded = self.encode(sample, return_dict=False)[0]
         decoded = self.decode(encoded, return_dict=False)[0]
         if not return_dict:
