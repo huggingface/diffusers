@@ -301,28 +301,6 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
     # per-step assembly happens inline in the denoising loop in __call__.
     # ------------------------------------------------------------------
 
-    @staticmethod
-    def _build_vision_condition_mask(
-        latent_t: int,
-        has_image_condition: bool,
-        device: torch.device | str,
-        dtype: torch.dtype,
-    ) -> torch.Tensor:
-        """Per-frame vision conditioning mask of shape ``[latent_t, 1, 1]``."""
-        condition_mask = torch.zeros((latent_t, 1, 1), device=device, dtype=dtype)
-        if has_image_condition:
-            condition_mask[0, 0, 0] = 1.0
-        return condition_mask
-
-    @staticmethod
-    def _build_sound_condition_mask(
-        sound_len: int,
-        device: torch.device | str,
-        dtype: torch.dtype,
-    ) -> torch.Tensor:
-        """Per-frame sound conditioning mask of shape ``[sound_len, 1]`` (always zero)."""
-        return torch.zeros((sound_len, 1), device=device, dtype=dtype)
-
     def _pack_text_tokens(
         self,
         input_ids: List[int],
@@ -376,9 +354,11 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
         patch_w = math.ceil(latent_w / latent_patch_size)
         num_vision_tokens = latent_t * patch_h * patch_w
 
-        condition_mask = self._build_vision_condition_mask(
-            latent_t, has_image_condition, device, input_vision_tokens.dtype
-        )
+        # Per-frame vision conditioning mask of shape [latent_t, 1, 1]: frame 0 is the
+        # supplied conditioning image (mask=1) when present, all other frames are noisy.
+        condition_mask = torch.zeros((latent_t, 1, 1), device=device, dtype=input_vision_tokens.dtype)
+        if has_image_condition:
+            condition_mask[0, 0, 0] = 1.0
 
         noisy_start = 1 if has_image_condition else 0
         noisy_frame_indexes = torch.arange(noisy_start, latent_t, device=device, dtype=torch.long)
@@ -451,7 +431,8 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
             "sound_mse_loss_indexes": sequence_indexes.clone(),
             "sound_timesteps": torch.full((sound_len,), float(input_timestep), device=device),
             "sound_noisy_frame_indexes": [torch.arange(sound_len, device=device, dtype=torch.long)],
-            "sound_condition_mask": [self._build_sound_condition_mask(sound_len, device, input_sound_tokens.dtype)],
+            # All sound frames are noisy, so the per-frame conditioning mask is always zero.
+            "sound_condition_mask": [torch.zeros((sound_len, 1), device=device, dtype=input_sound_tokens.dtype)],
             # Assembly helpers (consumed inline before the transformer call).
             "sound_mrope_ids": sound_mrope_ids.to(device),
             "sound_len": sound_len,
@@ -524,9 +505,10 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
             x0_tokens_sound = torch.zeros(sound_dim, T_sound, device=device, dtype=dtype)
 
         if latents is None:
-            cond_mask_vision = self._build_vision_condition_mask(
-                x0_tokens_vision.shape[2], has_image_condition, device, dtype
-            )
+            # Vision conditioning mask [latent_t, 1, 1]: frame 0 anchored when image-conditioning, rest noisy.
+            cond_mask_vision = torch.zeros((x0_tokens_vision.shape[2], 1, 1), device=device, dtype=dtype)
+            if has_image_condition:
+                cond_mask_vision[0, 0, 0] = 1.0
             pure_noise = randn_tensor(vision_shape, generator=generator, device=device, dtype=dtype)
             latents = (
                 cond_mask_vision * x0_tokens_vision.to(device=device, dtype=dtype)
@@ -537,7 +519,8 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
 
         if enable_sound and x0_tokens_sound is not None:
             if sound_latents is None:
-                cond_mask_sound = self._build_sound_condition_mask(x0_tokens_sound.shape[1], device, dtype)
+                # All sound frames are noisy, so the conditioning mask is always zero.
+                cond_mask_sound = torch.zeros((x0_tokens_sound.shape[1], 1), device=device, dtype=dtype)
                 pure_noise_sound = randn_tensor(
                     tuple(x0_tokens_sound.shape), generator=generator, device=device, dtype=dtype
                 )
