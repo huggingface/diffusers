@@ -49,7 +49,7 @@ import torch
 import torch.nn.functional as F
 from accelerate import Accelerator
 from accelerate.logging import get_logger
-from accelerate.utils import ProjectConfiguration, set_seed
+from accelerate.utils import ProjectConfiguration, is_compiled_module, set_seed
 from datasets import load_dataset
 from torch.nn.attention.flex_attention import create_block_mask
 from torch.utils.data import DataLoader
@@ -376,6 +376,14 @@ def main():
     draft_model, optimizer, train_dataloader, lr_scheduler, target_model = accelerator.prepare(
         draft_model, optimizer, train_dataloader, lr_scheduler, target_model
     )
+
+    # Strip `_orig_mod` when Accelerate compiled the model (via --dynamo_backend),
+    # so `save_pretrained` sees the real HF module. Same helper diffusers' other
+    # training examples (e.g. text_to_image/train_text_to_image_sdxl.py) use.
+    def unwrap_model(model):
+        model = accelerator.unwrap_model(model)
+        return model._orig_mod if is_compiled_module(model) else model
+
     input_embeddings = get_target_input_embeddings(target_model)
     output_embeddings = get_target_output_embeddings(target_model)
     pos_weights = pos_weights.to(accelerator.device)
@@ -494,7 +502,7 @@ def main():
                     if accelerator.is_main_process:
                         save_dir = os.path.join(cfg.output_dir, f"checkpoint-{global_step}")
                         os.makedirs(save_dir, exist_ok=True)
-                        unwrapped = accelerator.unwrap_model(draft_model)
+                        unwrapped = unwrap_model(draft_model)
                         unwrapped.save_pretrained(save_dir, save_function=accelerator.save)
                         tokenizer.save_pretrained(save_dir)
 
@@ -508,7 +516,7 @@ def main():
     if accelerator.is_main_process:
         final_dir = os.path.join(cfg.output_dir, "final")
         os.makedirs(final_dir, exist_ok=True)
-        unwrapped = accelerator.unwrap_model(draft_model)
+        unwrapped = unwrap_model(draft_model)
         unwrapped.save_pretrained(final_dir, save_function=accelerator.save)
         tokenizer.save_pretrained(final_dir)
 
