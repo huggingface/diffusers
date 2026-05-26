@@ -58,4 +58,4 @@ python examples/cosmos3/inference_cosmos3.py \
 | `--height` / `--width` | `720` / `1280` | Output resolution (must be a multiple of the VAE spatial scale factor). |
 | `--fps` | `24.0` | Frame rate of the generated video. |
 | `--enable-sound` | off | Generate a synchronized audio track. |
-| `--output` | `.` | Directory to write `sample-*.jpg` / `sample-*.mp4` / `sample-*.wav`. |
+| `--output` | `.` | Directory to write `sample.jpg` or `sample.mp4`. |

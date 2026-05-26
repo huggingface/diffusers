@@ -2,6 +2,7 @@
 torch
 torchvision
 accelerate>=0.31.0
+av
 huggingface_hub
 imageio
 imageio-ffmpeg
@@ -14,4 +15,3 @@ tqdm
 sentencepiece
 tensorboard
 wandb
-soundfile

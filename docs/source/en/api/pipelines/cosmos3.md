@@ -160,15 +160,14 @@ export_to_video(result.video, "cosmos3_i2v.mp4", fps=24, macro_block_size=1)
 
 ## Text-to-video with sound
 
-When the checkpoint carries a `sound_tokenizer`, pass `enable_sound=True` to jointly generate a synchronized audio track. The waveform is returned alongside the video and decoded by the audio tokenizer's vocoder.
+When the checkpoint carries a `sound_tokenizer`, pass `enable_sound=True` to jointly generate a synchronized audio track. The waveform is returned alongside the video and can be muxed into the MP4 with [`~utils.encode_video`].
 
 This is the same call as the text-to-video example above with `enable_sound=True` added:
 
 ```python
 import torch
 from diffusers import Cosmos3OmniDiffusersPipeline
-from diffusers.pipelines.cosmos.export_utils import save_wav
-from diffusers.utils import export_to_video
+from diffusers.utils import encode_video
 
 pipe = Cosmos3OmniDiffusersPipeline.from_pretrained(
     "nvidia/Cosmos3-Nano", torch_dtype=torch.bfloat16, device_map="cuda"
@@ -212,9 +211,13 @@ result = pipe(
     enable_sound=True,
 )
 
-# macro_block_size=1 allows arbitrary frame sizes (Cosmos3 outputs are not always divisible by 16).
-export_to_video(result.video, "cosmos3_with_sound.mp4", fps=24, macro_block_size=1)
-save_wav(result.sound, "cosmos3_with_sound.wav", pipe.sound_tokenizer.sample_rate)
+encode_video(
+    result.video,
+    fps=24,
+    audio=result.sound,
+    audio_sample_rate=pipe.sound_tokenizer.sample_rate,
+    output_path="cosmos3_with_sound.mp4",
+)
 ```
 
 ## Cosmos3OmniDiffusersPipeline
