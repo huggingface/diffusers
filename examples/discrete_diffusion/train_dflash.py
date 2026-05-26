@@ -58,6 +58,11 @@ from transformers import AutoModel, AutoModelForCausalLM, AutoTokenizer, DataCol
 
 logger = get_logger(__name__)
 
+# Cache torch.compile across calls — mask_mod closes over per-step anchor tensors,
+# but the create_block_mask machinery itself is identical and worth compiling once.
+# Compilation of the draft model end-to-end is left to Accelerate's --dynamo_backend.
+_compiled_create_block_mask = torch.compile(create_block_mask, dynamic=False)
+
 
 @dataclass
 class TrainConfig:
@@ -251,7 +256,7 @@ def build_dflash_mask(
             noise_visible = (kv_idx >= ctx_len) & (q_block == kv_block)
             return (ctx_visible | noise_visible) & (q_block < n)
 
-        return create_block_mask(mask_mod, B=None, H=None, Q_LEN=Q_LEN, KV_LEN=KV_LEN, device=device)
+        return _compiled_create_block_mask(mask_mod, B=None, H=None, Q_LEN=Q_LEN, KV_LEN=KV_LEN, device=device)
 
     # SDPA: dense additive mask.
     q_idx = torch.arange(Q_LEN, device=device).view(1, 1, -1, 1)
