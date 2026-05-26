@@ -243,6 +243,7 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
         # Recommended quality-control negative prompts are documented in the Cosmos3 docs
         # page (text2video / image2video). When the caller passes None we fall back to "".
 
+    # TODO YiYi & Daniel: fix for this use case in the base class 
     def _get_execution_device(self) -> torch.device:
         # `self._execution_device` walks `self.components` and ultimately falls back to
         # `self.device`, which iterates modules in sorted order and ignores
