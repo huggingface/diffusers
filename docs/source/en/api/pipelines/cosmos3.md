@@ -187,7 +187,9 @@ prompt = (
     "in the bag, followed by a carambola. The final frame captures the robotic arm returning to its "
     "initial position, leaving the display case and surrounding area unchanged. The video showcases a "
     "seamless and efficient automated fruit-picking process, highlighting the precision and efficiency "
-    "of modern robotics in a retail setting."
+    "of modern robotics in a retail setting. Audio description: the soft whir of servo motors, gentle " 
+    "thuds as fruits land in the plastic bag, the rustle of the bag settling in the shopping cart, and "
+    "a faint refrigeration hum in the background."
 )
 
 # Recommended quality-control negative prompt (same as text-to-video).
