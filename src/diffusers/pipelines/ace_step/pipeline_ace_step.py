@@ -84,7 +84,9 @@ EXAMPLE_DOC_STRING = """
         >>> import soundfile as sf
         >>> from diffusers import AceStepPipeline
 
-        >>> pipe = AceStepPipeline.from_pretrained("ACE-Step/Ace-Step1.5", torch_dtype=torch.bfloat16)
+        >>> pipe = AceStepPipeline.from_pretrained(
+        ...     "ACE-Step/acestep-v15-xl-turbo-diffusers", torch_dtype=torch.bfloat16
+        ... )
         >>> pipe = pipe.to("cuda")
 
         >>> # Text-to-music generation with metadata
