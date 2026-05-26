@@ -73,6 +73,18 @@ def main():
         default=True,
         help="Skip the resolution metadata sentence appended to the prompt and negative prompt.",
     )
+    parser.add_argument(
+        "--disable-safety-checker",
+        action="store_true",
+        default=False,
+        help="Disable the Cosmos Guardrail safety checker at pipeline construction (no checker instantiated).",
+    )
+    parser.add_argument(
+        "--no-safety-check",
+        action="store_true",
+        default=False,
+        help="Skip the Cosmos Guardrail text/video safety checks for this call (checker still constructed).",
+    )
     args = parser.parse_args()
 
     print(f"Downloading pipeline from {HF_REPO}")
@@ -82,6 +94,7 @@ def main():
         str(pipeline_path),
         torch_dtype=torch.bfloat16,
         device_map="cuda",
+        enable_safety_checker=not args.disable_safety_checker,
     )
     print("Pipeline loaded successfully.")
 
@@ -100,6 +113,7 @@ def main():
         enable_sound=args.enable_sound,
         add_resolution_template=args.add_resolution_template,
         add_duration_template=args.add_duration_template,
+        enable_safety_check=not args.no_safety_check,
     )
 
     if args.num_frames == 1:

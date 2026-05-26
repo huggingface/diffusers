@@ -241,6 +241,56 @@ result = pipe(
 
 `add_duration_template` has no effect when `num_frames == 1` (image mode); only the resolution sentence is appended in that case.
 
+## Safety checker
+
+Cosmos3 wires up the [`cosmos_guardrail`](https://pypi.org/project/cosmos-guardrail/) `CosmosSafetyChecker` and runs it **by default**. The text guardrail rejects unsafe prompts before generation (`ValueError`); the video guardrail runs on the decoded frames and either pixelates detected faces or rejects the output. Audio output is not guardrailed.
+
+Install the optional dependency to enable the default checker:
+
+```
+pip install cosmos_guardrail
+```
+
+The checker is mandatory under the NVIDIA Open Model License Agreement. The two flags below exist for tests and development workflows where the guardrail would be redundant (e.g., the input has already been cleared, or you are intentionally exercising the pipeline on edge inputs).
+
+**Disable at construction** (no checker is instantiated, so no guardrail models are downloaded or loaded into memory):
+
+```python
+import torch
+from diffusers import Cosmos3OmniDiffusersPipeline
+
+pipe = Cosmos3OmniDiffusersPipeline.from_pretrained(
+    "nvidia/Cosmos3-Nano",
+    torch_dtype=torch.bfloat16,
+    device_map="cuda",
+    enable_safety_checker=False,
+)
+```
+
+**Disable for a single call** (checker stays loaded — useful for one-off bypass while keeping the default on for subsequent calls):
+
+```python
+result = pipe(
+    prompt=prompt,
+    num_frames=189,
+    height=720,
+    width=1280,
+    fps=24.0,
+    enable_safety_check=False,
+)
+```
+
+To supply a custom checker (e.g., a no-op subclass for fast tests), pass it as `safety_checker=`:
+
+```python
+pipe = Cosmos3OmniDiffusersPipeline.from_pretrained(
+    "nvidia/Cosmos3-Nano",
+    torch_dtype=torch.bfloat16,
+    device_map="cuda",
+    safety_checker=MyCustomSafetyChecker(),
+)
+```
+
 ## Cosmos3OmniDiffusersPipeline
 
 [[autodoc]] Cosmos3OmniDiffusersPipeline

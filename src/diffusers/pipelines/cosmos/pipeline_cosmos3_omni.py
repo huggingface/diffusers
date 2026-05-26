@@ -17,7 +17,9 @@ import math
 from dataclasses import dataclass
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
+import numpy as np
 import torch
+from PIL import Image
 from transformers import AutoTokenizer, BatchEncoding
 
 from ...callbacks import MultiPipelineCallbacks, PipelineCallback
@@ -27,10 +29,21 @@ from ...models.transformers.transformer_cosmos3 import (
     Cosmos3OmniTransformer,
 )
 from ...schedulers import UniPCMultistepScheduler
-from ...utils import BaseOutput
+from ...utils import BaseOutput, is_cosmos_guardrail_available
 from ...utils.torch_utils import randn_tensor
 from ...video_processor import VideoProcessor
 from ..pipeline_utils import DiffusionPipeline
+
+
+if is_cosmos_guardrail_available():
+    from cosmos_guardrail import CosmosSafetyChecker
+else:
+
+    class CosmosSafetyChecker:
+        def __init__(self, *args, **kwargs):
+            raise ImportError(
+                "`cosmos_guardrail` is not installed. Please install it to use the safety checker for Cosmos: `pip install cosmos_guardrail`."
+            )
 
 
 # ============================================================================
@@ -174,7 +187,8 @@ def retrieve_latents(
 
 
 class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
-    _optional_components = ["sound_tokenizer"]
+    _optional_components = ["sound_tokenizer", "safety_checker"]
+    _exclude_from_cpu_offload = ["safety_checker"]
     model_cpu_offload_seq = "transformer->vae->sound_tokenizer"
     _callback_tensor_inputs = ["latents"]
 
@@ -185,14 +199,22 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
         vae: AutoencoderKLWan,
         scheduler: UniPCMultistepScheduler,
         sound_tokenizer: Optional[Cosmos3AVAEAudioTokenizer] = None,
+        safety_checker: Optional[CosmosSafetyChecker] = None,
+        enable_safety_checker: bool = True,
     ):
         super().__init__()
+        if enable_safety_checker:
+            if safety_checker is None:
+                safety_checker = CosmosSafetyChecker()
+        else:
+            safety_checker = None
         self.register_modules(
             transformer=transformer,
             text_tokenizer=text_tokenizer,
             vae=vae,
             scheduler=scheduler,
             sound_tokenizer=sound_tokenizer,
+            safety_checker=safety_checker,
         )
         # VAE latent normalization stats — precomputed in bfloat16 so `1/std` is
         # done in bfloat16 (matches Wan2pt2VAEInterface bit-for-bit).
@@ -726,6 +748,43 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
         video = self.video_processor.postprocess_video(decoded, output_type=output_type)[0]
         return video, sound
 
+    def _apply_video_safety_check(self, video: Any, output_type: str, device: torch.device) -> Any:
+        """Run the Cosmos video guardrail on a postprocessed video and return it in the same format.
+
+        The guardrail (``CosmosSafetyChecker.check_video_safety``) expects ``np.uint8`` frames
+        in ``[T, H, W, C]`` layout. This helper handles the round-trip from the requested
+        ``output_type`` (``"pil"`` / ``"np"`` / ``"pt"``) into that format and back. The
+        checker may pixelate detected faces; if the content is blocked it returns ``None``
+        and we raise ``ValueError``. ``output_type="latent"`` should be filtered out by the
+        caller.
+        """
+        if output_type == "pil":
+            frames_uint8 = np.stack([np.array(frame) for frame in video], axis=0)
+        elif output_type == "np":
+            frames_uint8 = (video * 255).astype(np.uint8)
+        elif output_type == "pt":
+            frames_uint8 = (video.permute(0, 2, 3, 1).cpu().numpy() * 255).astype(np.uint8)
+        else:
+            raise ValueError(f"Unsupported output_type for safety check: {output_type}")
+
+        self.safety_checker.to(device)
+        try:
+            checked = self.safety_checker.check_video_safety(frames_uint8)
+        finally:
+            self.safety_checker.to("cpu")
+        if checked is None:
+            raise ValueError(
+                "Cosmos Guardrail detected unsafe content in the generated video. "
+                "Please ensure that the generation abides by the NVIDIA Open Model License Agreement."
+            )
+
+        if output_type == "pil":
+            return [Image.fromarray(frame) for frame in checked]
+        if output_type == "np":
+            return checked.astype(np.float32) / 255.0
+        # output_type == "pt"
+        return torch.from_numpy(checked.astype(np.float32) / 255.0).permute(0, 3, 1, 2)
+
     @property
     def current_timestep(self):
         return self._current_timestep
@@ -759,6 +818,7 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
         callback_on_step_end_tensor_inputs: List[str] = ["latents"],
         add_resolution_template: bool = True,
         add_duration_template: bool = True,
+        enable_safety_check: bool = True,
     ) -> Cosmos3OmniPipelineOutput:
         if isinstance(callback_on_step_end, (PipelineCallback, MultiPipelineCallbacks)):
             callback_on_step_end_tensor_inputs = callback_on_step_end.tensor_inputs
@@ -782,6 +842,17 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
 
         device = self._execution_device
         dtype = self.transformer.dtype
+
+        if enable_safety_check and isinstance(self.safety_checker, CosmosSafetyChecker):
+            self.safety_checker.to(device)
+            try:
+                if not self.safety_checker.check_text_safety(prompt):
+                    raise ValueError(
+                        f"Cosmos Guardrail detected unsafe text in the prompt: {prompt}. "
+                        f"Please ensure that the prompt abides by the NVIDIA Open Model License Agreement."
+                    )
+            finally:
+                self.safety_checker.to("cpu")
 
         # 2. Tokenize prompt (applies metadata templates and selects mode-specific default negative prompt)
         cond_input_ids, uncond_input_ids = self.tokenize_prompt(
@@ -899,6 +970,13 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
             sound_latents=sound_latents,
             output_type=output_type,
         )
+
+        if (
+            enable_safety_check
+            and isinstance(self.safety_checker, CosmosSafetyChecker)
+            and output_type != "latent"
+        ):
+            video = self._apply_video_safety_check(video, output_type=output_type, device=device)
 
         self.maybe_free_model_hooks()
 
