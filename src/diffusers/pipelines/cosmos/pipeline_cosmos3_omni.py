@@ -361,7 +361,6 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
             "vision_sequence_indexes": torch.arange(curr, curr + num_vision_tokens, dtype=torch.long, device=device),
             "vision_mse_loss_indexes": torch.tensor(mse_loss_indexes, dtype=torch.long, device=device),
             "vision_noisy_frame_indexes": [noisy_frame_indexes],
-            "vision_condition_mask": [condition_mask],
             # Assembly helpers (consumed inline before the transformer call).
             "vision_mrope_ids": vision_mrope_ids.to(device),
             "num_vision_tokens": num_vision_tokens,
