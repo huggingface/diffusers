@@ -513,7 +513,6 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
         height: int = 720,
         width: int = 1280,
         fps: float = 24.0,
-        condition_frame_indexes: Optional[List[int]] = None,
         latents: Optional[torch.Tensor] = None,
         generator: Optional[torch.Generator] = None,
         device: str = "cuda",
@@ -545,18 +544,14 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
             )
             condition_frame_indexes_vision: List[int] = []
         else:
-            cond_indexes = (
-                condition_frame_indexes
-                if condition_frame_indexes is not None
-                else ([0] if conditioning_frame_2d is not None else [])
-            )
             vision_tensor = torch.zeros(1, 3, num_frames, height, width, dtype=dtype, device=device)
+            condition_frame_indexes_vision = []
             if conditioning_frame_2d is not None:
                 # Single conditioning frame at t=0, repeat-pad the rest with that same frame.
                 vision_tensor[:, :, 0] = conditioning_frame_2d
                 if num_frames > 1:
                     vision_tensor[:, :, 1:] = conditioning_frame_2d.unsqueeze(2).expand(-1, -1, num_frames - 1, -1, -1)
-            condition_frame_indexes_vision = list(cond_indexes)
+                condition_frame_indexes_vision = [0]
 
         num_vision_items = 1
         x0_tokens_vision = [self._encode_video(vision_tensor).contiguous().float()]
@@ -773,7 +768,6 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
         fps: float = 24.0,
         num_inference_steps: int = 35,
         guidance_scale: float = 6.0,
-        condition_frame_indexes: Optional[List[int]] = None,
         enable_sound: bool = False,
         generator: Optional[torch.Generator] = None,
         latents: Optional[torch.Tensor] = None,
@@ -828,7 +822,6 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
             height=height,
             width=width,
             fps=fps,
-            condition_frame_indexes=condition_frame_indexes,
             latents=latents,
             generator=generator,
             device=device,
