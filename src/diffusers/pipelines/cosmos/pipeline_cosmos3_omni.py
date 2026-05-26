@@ -20,7 +20,7 @@ from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 import numpy as np
 import torch
 from PIL import Image
-from transformers import AutoTokenizer, BatchEncoding
+from transformers import AutoTokenizer
 
 from ...callbacks import MultiPipelineCallbacks, PipelineCallback
 from ...models.autoencoders.autoencoder_cosmos3_audio import Cosmos3AVAEAudioTokenizer
@@ -122,7 +122,10 @@ def get_3d_mrope_ids_vae_tokens(
     return mrope_ids, next_temporal_offset
 
 
-# Subset of keys returned by :meth:`Cosmos3OmniDiffusersPipeline.pack_input_sequence` passed to the transformer.
+# Transformer-facing subset of the per-step packed dict. The pipeline merges
+# `_pack_text_tokens` (pre-packed once per prompt) with per-step `_pack_vision_tokens`
+# / `_pack_sound_tokens` outputs and uses this filter to strip assembly helpers
+# (mrope id segments, segment lengths, condition masks) before invoking the transformer.
 _COSMOS3_TRANSFORMER_FORWARD_KEYS = frozenset(
     {
         "input_ids",
@@ -293,8 +296,9 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
         return waveform.squeeze(0)  # [audio_ch, N]
 
     # ------------------------------------------------------------------
-    # Joint-sequence packing — each segment is built by a small method
-    # that returns its own data; pack_input_sequence stitches them together.
+    # Joint-sequence packing — text is packed once per prompt (it is invariant
+    # across denoising steps); vision and sound are repacked each step. The
+    # per-step assembly happens inline in the denoising loop in __call__.
     # ------------------------------------------------------------------
 
     @staticmethod
@@ -319,25 +323,39 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
         """Per-frame sound conditioning mask of shape ``[sound_len, 1]`` (always zero)."""
         return torch.zeros((sound_len, 1), device=device, dtype=dtype)
 
-    def _pack_input_ids(
+    def _pack_text_tokens(
         self,
         input_ids: List[int],
-        mrope_offset: int | float,
+        device: torch.device | str,
     ) -> Dict[str, Any]:
-        """Build the text segment of the joint sequence."""
+        """Build the text segment of the joint sequence.
+
+        Text packing is invariant across denoising steps and across cond/uncond passes
+        for a given prompt, so this is called once per prompt right after tokenization
+        and the result is reused inside the denoising loop. The returned dict carries
+        transformer-facing fields (``input_ids``, ``text_indexes``, ``und_len``) along
+        with the assembly helpers needed by the per-step vision/sound packing —
+        ``text_mrope_ids`` for the joint mRoPE concat, and ``vision_start_temporal_offset``
+        which both vision and sound mRoPE consume as their temporal offset (the two
+        modalities are temporal siblings, not sequential).
+        """
+        config = self.transformer.config
         packed_input_ids = list(input_ids) + [
             self.llm_special_tokens["eos_token_id"],
             self.llm_special_tokens["start_of_generation"],
         ]
+        und_len = len(packed_input_ids)
         text_mrope_ids, next_mrope_offset = get_3d_mrope_ids_text_tokens(
-            num_tokens=len(packed_input_ids),
-            temporal_offset=mrope_offset,
-            use_float_positions=self.transformer.config.enable_fps_modulation,
+            num_tokens=und_len,
+            temporal_offset=0,
+            use_float_positions=config.enable_fps_modulation,
         )
         return {
-            "input_ids": packed_input_ids,
-            "text_mrope_ids": text_mrope_ids,
-            "next_mrope_offset": next_mrope_offset,
+            "input_ids": torch.tensor(packed_input_ids, dtype=torch.long, device=device),
+            "text_indexes": torch.arange(und_len, dtype=torch.long, device=device),
+            "und_len": und_len,
+            "text_mrope_ids": text_mrope_ids.to(device),
+            "vision_start_temporal_offset": next_mrope_offset + config.unified_3d_mrope_temporal_modality_margin,
         }
 
     def _pack_vision_tokens(
@@ -374,7 +392,7 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
             timesteps.extend([input_timestep] * frame_token_stride)
 
         effective_fps = vision_fps if config.enable_fps_modulation else None
-        vision_mrope_ids, next_mrope_offset = get_3d_mrope_ids_vae_tokens(
+        vision_mrope_ids, _ = get_3d_mrope_ids_vae_tokens(
             grid_t=latent_t,
             grid_h=patch_h,
             grid_w=patch_w,
@@ -386,15 +404,16 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
         )
 
         return {
-            "tokens": [input_vision_tokens],
-            "token_shapes": [(latent_t, patch_h, patch_w)],
-            "sequence_indexes": torch.arange(curr, curr + num_vision_tokens, dtype=torch.long, device=device),
-            "mse_loss_indexes": torch.tensor(mse_loss_indexes, dtype=torch.long, device=device),
-            "timesteps": torch.tensor(timesteps, device=device),
-            "noisy_frame_indexes": [noisy_frame_indexes],
-            "condition_mask": [condition_mask],
-            "vision_mrope_ids": vision_mrope_ids,
-            "next_mrope_offset": next_mrope_offset,
+            # Transformer-facing fields.
+            "vision_tokens": [input_vision_tokens],
+            "vision_token_shapes": [(latent_t, patch_h, patch_w)],
+            "vision_sequence_indexes": torch.arange(curr, curr + num_vision_tokens, dtype=torch.long, device=device),
+            "vision_mse_loss_indexes": torch.tensor(mse_loss_indexes, dtype=torch.long, device=device),
+            "vision_timesteps": torch.tensor(timesteps, device=device),
+            "vision_noisy_frame_indexes": [noisy_frame_indexes],
+            "vision_condition_mask": [condition_mask],
+            # Assembly helpers (consumed inline before the transformer call).
+            "vision_mrope_ids": vision_mrope_ids.to(device),
             "num_vision_tokens": num_vision_tokens,
         }
 
@@ -425,116 +444,18 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
 
         sequence_indexes = torch.arange(curr, curr + sound_len, dtype=torch.long, device=device)
         return {
-            "tokens": [input_sound_tokens],
-            "token_shapes": [(sound_len, 1, 1)],
-            "sequence_indexes": sequence_indexes,
-            "mse_loss_indexes": sequence_indexes.clone(),
-            "timesteps": torch.full((sound_len,), float(input_timestep), device=device),
-            "noisy_frame_indexes": [torch.arange(sound_len, device=device, dtype=torch.long)],
-            "condition_mask": [self._build_sound_condition_mask(sound_len, device, input_sound_tokens.dtype)],
-            "sound_mrope_ids": sound_mrope_ids,
+            # Transformer-facing fields.
+            "sound_tokens": [input_sound_tokens],
+            "sound_token_shapes": [(sound_len, 1, 1)],
+            "sound_sequence_indexes": sequence_indexes,
+            "sound_mse_loss_indexes": sequence_indexes.clone(),
+            "sound_timesteps": torch.full((sound_len,), float(input_timestep), device=device),
+            "sound_noisy_frame_indexes": [torch.arange(sound_len, device=device, dtype=torch.long)],
+            "sound_condition_mask": [self._build_sound_condition_mask(sound_len, device, input_sound_tokens.dtype)],
+            # Assembly helpers (consumed inline before the transformer call).
+            "sound_mrope_ids": sound_mrope_ids.to(device),
             "sound_len": sound_len,
         }
-
-    def pack_input_sequence(
-        self,
-        input_ids: BatchEncoding,
-        input_timestep: float,
-        vision_tokens: torch.Tensor,
-        fps_vision: float,
-        has_image_condition: bool,
-        sound_tokens: Optional[torch.Tensor] = None,
-        fps_sound: Optional[float] = None,
-        device: torch.device | str = "cuda",
-    ) -> Dict[str, Any]:
-        """Assemble the joint text + vision + (optional) sound sequence for the transformer.
-
-        Returns a flat dict whose keys match :meth:`~diffusers.Cosmos3OmniTransformer.forward`
-        (``vision_*`` / ``sound_*`` prefixes), plus ``vision_condition_mask`` and optional
-        ``sound_condition_mask`` for the denoising loop. Pass
-        ``{k: packed[k] for k in _COSMOS3_TRANSFORMER_FORWARD_KEYS if k in packed}`` to the transformer.
-
-        ``input_ids`` is the :class:`~transformers.BatchEncoding` from :meth:`tokenize_caption` /
-        :meth:`encode_prompt`. ``vision_tokens`` / ``sound_tokens`` carry the per-step token tensors
-        (noisy at each denoising step, encoded conditioning when extracting condition masks); the rest
-        of the per-sample metadata lives on ``condition``.
-        """
-        config = self.transformer.config
-        has_sound = sound_tokens is not None
-
-        curr = 0
-        mrope_offset: int | float = 0
-        position_ids_segments: list[torch.Tensor] = []
-
-        # Text segment.
-        text_packed = self._pack_input_ids(input_ids["input_ids"], mrope_offset)
-        packed_input_ids = text_packed["input_ids"]
-        und_len = len(packed_input_ids)
-        text_indexes = list(range(curr, curr + und_len))
-        curr += und_len
-        position_ids_segments.append(text_packed["text_mrope_ids"].to(device))
-        mrope_offset = text_packed["next_mrope_offset"]
-
-        mrope_offset += config.unified_3d_mrope_temporal_modality_margin
-        vision_start_temporal_offset = mrope_offset
-
-        # Vision segment.
-        vision_fps = fps_vision if config.enable_fps_modulation else None
-        vision_packed = self._pack_vision_tokens(
-            input_vision_tokens=vision_tokens,
-            has_image_condition=has_image_condition,
-            input_timestep=input_timestep,
-            mrope_offset=mrope_offset,
-            vision_fps=vision_fps,
-            curr=curr,
-            device=device,
-        )
-        curr += vision_packed["num_vision_tokens"]
-        position_ids_segments.append(vision_packed["vision_mrope_ids"].to(device))
-        mrope_offset = vision_packed["next_mrope_offset"]
-
-        # Sound segment (optional).
-        sound_packed: Optional[Dict[str, Any]] = None
-        if has_sound:
-            sound_fps_value = fps_sound if config.enable_fps_modulation else None
-            sound_packed = self._pack_sound_tokens(
-                input_sound_tokens=sound_tokens,
-                input_timestep=input_timestep,
-                mrope_offset=vision_start_temporal_offset,
-                sound_fps=sound_fps_value,
-                curr=curr,
-                device=device,
-            )
-            curr += sound_packed["sound_len"]
-            position_ids_segments.append(sound_packed["sound_mrope_ids"].to(device))
-
-        packed: Dict[str, Any] = {
-            "sequence_length": curr,
-            "und_len": und_len,
-            "input_ids": torch.tensor(packed_input_ids, dtype=torch.long, device=device),
-            "text_indexes": torch.tensor(text_indexes, dtype=torch.long, device=device),
-            "position_ids": torch.cat(position_ids_segments, dim=1),
-            "vision_tokens": vision_packed["tokens"],
-            "vision_token_shapes": vision_packed["token_shapes"],
-            "vision_sequence_indexes": vision_packed["sequence_indexes"],
-            "vision_mse_loss_indexes": vision_packed["mse_loss_indexes"],
-            "vision_timesteps": vision_packed["timesteps"],
-            "vision_noisy_frame_indexes": vision_packed["noisy_frame_indexes"],
-            "vision_condition_mask": vision_packed["condition_mask"],
-        }
-        if sound_packed is not None:
-            packed.update(
-                {
-                    "sound_tokens": sound_packed["tokens"],
-                    "sound_token_shapes": sound_packed["token_shapes"],
-                    "sound_sequence_indexes": sound_packed["sequence_indexes"],
-                    "sound_mse_loss_indexes": sound_packed["mse_loss_indexes"],
-                    "sound_timesteps": sound_packed["timesteps"],
-                    "sound_noisy_frame_indexes": sound_packed["noisy_frame_indexes"],
-                    "sound_condition_mask": sound_packed["condition_mask"],
-                }
-            )
-        return packed
 
     def prepare_latents(
         self,
@@ -561,7 +482,8 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
             ``(vision_latents, sound_latents, fps_vision, fps_sound)``.
             ``vision_latents`` is the noisy vision tensor; ``sound_latents`` is the
             noisy sound tensor (``None`` unless ``enable_sound`` was set). The FPS
-            scalars are passed into :meth:`pack_input_sequence`.
+            scalars feed the per-step :meth:`_pack_vision_tokens` /
+            :meth:`_pack_sound_tokens` calls in the denoising loop.
         """
         is_image = num_frames == 1
         has_image_condition = image is not None and not is_image
@@ -681,7 +603,7 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
         templates are appended to the negative prompt, when enabled.
 
         Returns:
-            ``(cond_input_ids, uncond_input_ids)`` — :class:`~transformers.BatchEncoding` objects for this sample.
+            ``(cond_input_ids, uncond_input_ids)`` — token-id lists for this sample.
         """
         is_image = num_frames == 1
 
@@ -869,6 +791,11 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
             add_duration_template=add_duration_template,
         )
 
+        # 3. Pre-pack the text segment for each prompt — text packing is invariant
+        # across denoising steps, so we do it once here and reuse inside the loop.
+        cond_text_packed = self._pack_text_tokens(cond_input_ids, device=device)
+        uncond_text_packed = self._pack_text_tokens(uncond_input_ids, device=device)
+
         # 4. Prepare latents (initial noise per modality + pack metadata)
         has_image_condition = image is not None and num_frames > 1
         latents, sound_latents, fps_vision, fps_sound = self.prepare_latents(
@@ -908,33 +835,74 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
                 sound_tokens = sound_latents.to(device=device, dtype=dtype) if sound_latents is not None else None
 
                 # --- Conditional pass ---
-                packed = self.pack_input_sequence(
-                    input_ids=cond_input_ids,
-                    input_timestep=timestep,
-                    vision_tokens=vision_tokens,
-                    fps_vision=fps_vision,
+                vision_packed = self._pack_vision_tokens(
+                    input_vision_tokens=vision_tokens,
                     has_image_condition=has_image_condition,
-                    sound_tokens=sound_tokens,
-                    fps_sound=fps_sound,
+                    input_timestep=timestep,
+                    mrope_offset=cond_text_packed["vision_start_temporal_offset"],
+                    vision_fps=fps_vision,
+                    curr=cond_text_packed["und_len"],
                     device=device,
                 )
+                sound_packed: Dict[str, Any] = {}
+                if sound_tokens is not None:
+                    sound_packed = self._pack_sound_tokens(
+                        input_sound_tokens=sound_tokens,
+                        input_timestep=timestep,
+                        mrope_offset=cond_text_packed["vision_start_temporal_offset"],
+                        sound_fps=fps_sound,
+                        curr=cond_text_packed["und_len"] + vision_packed["num_vision_tokens"],
+                        device=device,
+                    )
+                mrope_segments = [cond_text_packed["text_mrope_ids"], vision_packed["vision_mrope_ids"]]
+                if sound_packed:
+                    mrope_segments.append(sound_packed["sound_mrope_ids"])
+                packed = {
+                    **cond_text_packed,
+                    **vision_packed,
+                    **sound_packed,
+                    "position_ids": torch.cat(mrope_segments, dim=1),
+                    "sequence_length": cond_text_packed["und_len"]
+                    + vision_packed["num_vision_tokens"]
+                    + sound_packed.get("sound_len", 0),
+                }
                 preds_vision, preds_sound = self.transformer(
                     **{k: packed[k] for k in _COSMOS3_TRANSFORMER_FORWARD_KEYS if k in packed}
                 )
                 cond_v_vision, cond_v_sound = self._mask_velocity_predictions(preds_vision, preds_sound, packed)
 
-
                 # --- Unconditional pass ---
-                packed = self.pack_input_sequence(
-                    input_ids=uncond_input_ids,
-                    input_timestep=timestep,
-                    vision_tokens=vision_tokens,
-                    fps_vision=fps_vision,
+                vision_packed = self._pack_vision_tokens(
+                    input_vision_tokens=vision_tokens,
                     has_image_condition=has_image_condition,
-                    sound_tokens=sound_tokens,
-                    fps_sound=fps_sound,
+                    input_timestep=timestep,
+                    mrope_offset=uncond_text_packed["vision_start_temporal_offset"],
+                    vision_fps=fps_vision,
+                    curr=uncond_text_packed["und_len"],
                     device=device,
                 )
+                sound_packed = {}
+                if sound_tokens is not None:
+                    sound_packed = self._pack_sound_tokens(
+                        input_sound_tokens=sound_tokens,
+                        input_timestep=timestep,
+                        mrope_offset=uncond_text_packed["vision_start_temporal_offset"],
+                        sound_fps=fps_sound,
+                        curr=uncond_text_packed["und_len"] + vision_packed["num_vision_tokens"],
+                        device=device,
+                    )
+                mrope_segments = [uncond_text_packed["text_mrope_ids"], vision_packed["vision_mrope_ids"]]
+                if sound_packed:
+                    mrope_segments.append(sound_packed["sound_mrope_ids"])
+                packed = {
+                    **uncond_text_packed,
+                    **vision_packed,
+                    **sound_packed,
+                    "position_ids": torch.cat(mrope_segments, dim=1),
+                    "sequence_length": uncond_text_packed["und_len"]
+                    + vision_packed["num_vision_tokens"]
+                    + sound_packed.get("sound_len", 0),
+                }
                 preds_vision, preds_sound = self.transformer(
                     **{k: packed[k] for k in _COSMOS3_TRANSFORMER_FORWARD_KEYS if k in packed}
                 )
