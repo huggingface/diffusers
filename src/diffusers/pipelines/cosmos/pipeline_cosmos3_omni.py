@@ -243,6 +243,37 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
         # Recommended quality-control negative prompts are documented in the Cosmos3 docs
         # page (text2video / image2video). When the caller passes None we fall back to "".
 
+    def _get_execution_device(self) -> torch.device:
+        # `self._execution_device` walks `self.components` and ultimately falls back to
+        # `self.device`, which iterates modules in sorted order and ignores
+        # `_exclude_from_cpu_offload`. With `safety_checker` registered, that fallback
+        # touches `CosmosSafetyChecker.device`, which raises `AttributeError` on
+        # `Qwen3Guard.device` (plain `nn.Module` has no `.device`). The exception is
+        # silently caught by Python's descriptor protocol and re-raised as
+        # "no attribute `_execution_device`". Catch it here and pick the device from
+        # the actual compute modules.
+        try:
+            return self._execution_device
+        except AttributeError:
+            pass
+
+        for component in (self.transformer, self.vae, self.sound_tokenizer):
+            if not isinstance(component, torch.nn.Module):
+                continue
+
+            for module in component.modules():
+                hook = getattr(module, "_hf_hook", None)
+                execution_device = getattr(hook, "execution_device", None)
+                if execution_device is not None:
+                    return torch.device(execution_device)
+
+            try:
+                return next(component.parameters()).device
+            except StopIteration:
+                continue
+
+        return torch.device("cpu")
+
     def _encode_video(self, x: torch.Tensor) -> torch.Tensor:
         """[B,3,T,H,W] → normalized latents [B,z_dim,T//4,H//16,W//16]. Bit-for-bit
         matches Wan2pt2VAEInterface; no autocast (WanVAE was trained with is_amp=False)."""
@@ -840,7 +871,7 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
         if isinstance(negative_prompt, list):
             negative_prompt = negative_prompt[0]
 
-        device = self._execution_device
+        device = self._get_execution_device()
         dtype = self.transformer.dtype
 
         if enable_safety_check and isinstance(self.safety_checker, CosmosSafetyChecker):
