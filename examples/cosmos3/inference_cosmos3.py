@@ -32,12 +32,21 @@ from diffusers import Cosmos3OmniDiffusersPipeline
 from diffusers.utils import encode_video, export_to_video, load_image
 
 
-HF_REPO = "nvidia/Cosmos3-Nano"
+HF_REPOS = {
+    "nano": "nvidia/Cosmos3-Nano",
+    "super": "nvidia/Cosmos3-Super",
+}
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--prompt", required=True, help="Text prompt.")
+    parser.add_argument(
+        "--model",
+        choices=sorted(HF_REPOS),
+        default="nano",
+        help="Which Cosmos3 checkpoint to load (maps to the corresponding nvidia/Cosmos3-* repo).",
+    )
     parser.add_argument(
         "--vision-path",
         default=None,
@@ -87,8 +96,9 @@ def main():
     )
     args = parser.parse_args()
 
-    print(f"Downloading pipeline from {HF_REPO}")
-    pipeline_path = pathlib.Path(snapshot_download(repo_id=HF_REPO))
+    hf_repo = HF_REPOS[args.model]
+    print(f"Downloading pipeline from {hf_repo}")
+    pipeline_path = pathlib.Path(snapshot_download(repo_id=hf_repo))
     print(f"Loading pipeline from {pipeline_path} …")
     pipeline = Cosmos3OmniDiffusersPipeline.from_pretrained(
         str(pipeline_path),
