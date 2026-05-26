@@ -59,6 +59,20 @@ def main():
         default=False,
         help="Generate sound alongside video (requires a sound-capable checkpoint).",
     )
+    parser.add_argument(
+        "--no-duration-template",
+        dest="add_duration_template",
+        action="store_false",
+        default=True,
+        help="Skip the duration metadata sentence appended to the prompt and negative prompt (video only).",
+    )
+    parser.add_argument(
+        "--no-resolution-template",
+        dest="add_resolution_template",
+        action="store_false",
+        default=True,
+        help="Skip the resolution metadata sentence appended to the prompt and negative prompt.",
+    )
     args = parser.parse_args()
 
     print(f"Downloading pipeline from {HF_REPO}")
@@ -84,6 +98,8 @@ def main():
         width=args.width,
         fps=args.fps,
         enable_sound=args.enable_sound,
+        add_resolution_template=args.add_resolution_template,
+        add_duration_template=args.add_duration_template,
     )
 
     if args.num_frames == 1:

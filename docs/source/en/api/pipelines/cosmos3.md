@@ -220,6 +220,27 @@ encode_video(
 )
 ```
 
+## Metadata templates
+
+`tokenize_prompt` appends short metadata sentences inside the user message so the LLM sees the conditioning the model was trained with. The positive prompt gets sentences like *"The video is 7.9 seconds long and is of 24 FPS."* and *"This video is of 720x1280 resolution."*; the negative prompt gets the inverse (*"… is not …"*).
+
+Both are on by default. Disable either pair through `__call__`:
+
+```python
+result = pipe(
+    prompt=prompt,
+    negative_prompt=negative_prompt,
+    num_frames=189,
+    height=720,
+    width=1280,
+    fps=24.0,
+    add_duration_template=False,    # skip the duration sentence on both prompts
+    add_resolution_template=False,  # skip the resolution sentence on both prompts
+)
+```
+
+`add_duration_template` has no effect when `num_frames == 1` (image mode); only the resolution sentence is appended in that case.
+
 ## Cosmos3OmniDiffusersPipeline
 
 [[autodoc]] Cosmos3OmniDiffusersPipeline
