@@ -333,11 +333,6 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
         patch_w = math.ceil(latent_w / latent_patch_size)
         num_vision_tokens = latent_t * patch_h * patch_w
 
-        # Per-frame vision conditioning mask of shape [latent_t, 1, 1]: frame 0 is the
-        # supplied conditioning image (mask=1) when present, all other frames are noisy.
-        condition_mask = torch.zeros((latent_t, 1, 1), device=device, dtype=input_vision_tokens.dtype)
-        if has_image_condition:
-            condition_mask[0, 0, 0] = 1.0
 
         noisy_start = 1 if has_image_condition else 0
         noisy_frame_indexes = torch.arange(noisy_start, latent_t, device=device, dtype=torch.long)
