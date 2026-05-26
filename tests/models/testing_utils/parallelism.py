@@ -393,6 +393,10 @@ class ContextParallelAttentionBackendsTesterMixin:
                 "_flash_3_hub",
                 marks=pytest.mark.skipif(not is_kernels_available(), reason="`kernels` is not available."),
             ),
+            pytest.param(
+                "_flash_3_varlen_hub",
+                marks=pytest.mark.skipif(not is_kernels_available(), reason="`kernels` is not available."),
+            ),
         ],
     )
     @pytest.mark.parametrize("ulysses_anything", [True, False])
@@ -410,7 +414,7 @@ class ContextParallelAttentionBackendsTesterMixin:
         if cp_type == "ring_degree":
             if attention_backend == AttentionBackendName.NATIVE:
                 pytest.skip("Skipping test because ring isn't supported with native attention backend.")
-            elif attention_backend in ("flash_varlen_hub"):
+            elif attention_backend in ("flash_varlen_hub", "_flash_3_varlen_hub"):
                 pytest.skip("`ring_degree` is not yet supported for varlen attention hub kernels.")
 
         if ulysses_anything and "ulysses" not in cp_type:
