@@ -655,7 +655,7 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
         height: int = 720,
         width: int = 1280,
         fps: float = 24.0,
-        use_system_prompt: bool = False,
+        use_system_prompt: bool = True,
     ) -> tuple[list[int], list[int]]:
         """Apply prompt-augmentation templates and tokenize cond/uncond prompts via the Qwen2 chat template.
 
@@ -691,7 +691,8 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
         def _tokenize(text: str) -> list[int]:
             conversations = []
             if use_system_prompt:
-                conversations.append({"role": "system", "content": _SYSTEM_PROMPT_IMAGE})
+                system_prompt = _SYSTEM_PROMPT_IMAGE if is_image else _SYSTEM_PROMPT_VIDEO
+                conversations.append({"role": "system", "content": system_prompt})
             conversations.append({"role": "user", "content": text})
             return self.text_tokenizer.apply_chat_template(
                 conversations,
@@ -778,7 +779,7 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
         latents: Optional[torch.Tensor] = None,
         output_type: str = "pil",
         return_dict: bool = True,
-        use_system_prompt: bool = False,
+        use_system_prompt: bool = True,
         callback_on_step_end: Optional[
             Union[Callable[[int, int, Dict[str, Any]], None], PipelineCallback, MultiPipelineCallbacks]
         ] = None,
