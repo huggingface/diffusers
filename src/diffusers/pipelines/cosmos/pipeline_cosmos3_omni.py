@@ -321,7 +321,7 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
         self,
         input_vision_tokens: torch.Tensor,
         has_image_condition: bool,
-        input_timestep: float | torch.Tensor,
+        input_timestep: float,
         mrope_offset: int | float,
         vision_fps: float | None,
         curr: int,
@@ -348,8 +348,7 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
         for frame_idx in range(noisy_start, latent_t):
             frame_start = curr + frame_idx * frame_token_stride
             mse_loss_indexes.extend(range(frame_start, frame_start + frame_token_stride))
-            frame_ts = input_timestep[frame_idx].item() if isinstance(input_timestep, torch.Tensor) else input_timestep
-            timesteps.extend([frame_ts] * frame_token_stride)
+            timesteps.extend([input_timestep] * frame_token_stride)
 
         effective_fps = vision_fps if config.enable_fps_modulation else None
         vision_mrope_ids, next_mrope_offset = get_3d_mrope_ids_vae_tokens(
@@ -417,7 +416,7 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
     def pack_input_sequence(
         self,
         input_ids: BatchEncoding,
-        input_timestep: torch.Tensor,
+        input_timestep: float,
         vision_tokens: torch.Tensor,
         fps_vision: float,
         has_image_condition: bool,
@@ -437,14 +436,8 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
         (noisy at each denoising step, encoded conditioning when extracting condition masks); the rest
         of the per-sample metadata lives on ``condition``.
         """
-        if input_timestep.is_cuda:
-            raise ValueError("input_timestep must be on CPU, not CUDA")
-
         config = self.transformer.config
         has_sound = sound_tokens is not None
-
-        _ts = input_timestep.flatten()
-        input_timestep_val = _ts[0].item() if _ts.numel() == 1 else _ts
 
         curr = 0
         mrope_offset: int | float = 0
@@ -467,7 +460,7 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
         vision_packed = self._pack_vision_tokens(
             input_vision_tokens=vision_tokens,
             has_image_condition=has_image_condition,
-            input_timestep=input_timestep_val,
+            input_timestep=input_timestep,
             mrope_offset=mrope_offset,
             vision_fps=vision_fps,
             curr=curr,
@@ -483,7 +476,7 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
             sound_fps_value = fps_sound if config.enable_fps_modulation else None
             sound_packed = self._pack_sound_tokens(
                 input_sound_tokens=sound_tokens,
-                input_timestep=input_timestep_val,
+                input_timestep=input_timestep,
                 mrope_offset=vision_start_temporal_offset,
                 sound_fps=sound_fps_value,
                 curr=curr,
@@ -587,10 +580,9 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
             x0_tokens_sound = torch.zeros(sound_dim, T_sound, device=device, dtype=dtype)
 
         # Run pack_input_sequence with a dummy timestep to extract the condition_mask used for noise blending.
-        mask_timestep = torch.zeros((1,), dtype=torch.float32)
         packed = self.pack_input_sequence(
             input_ids=input_ids,
-            input_timestep=mask_timestep,
+            input_timestep=0.0,
             vision_tokens=x0_tokens_vision,
             fps_vision=fps,
             has_image_condition=has_image_condition,
@@ -928,7 +920,7 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
                     continue
 
                 self._current_timestep = t
-                timestep = t.reshape(1, 1)
+                timestep = t.item()
 
                 # The transformer projections (proj_in / audio_proj_in) are bf16; cast the per-step
                 # noisy tokens before packing so the modality tokens enter the model in the right dtype.
@@ -938,7 +930,7 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
                 # --- Conditional pass ---
                 packed = self.pack_input_sequence(
                     input_ids=cond_input_ids,
-                    input_timestep=timestep.cpu(),
+                    input_timestep=timestep,
                     vision_tokens=vision_tokens,
                     fps_vision=fps_vision,
                     has_image_condition=has_image_condition,
@@ -950,12 +942,12 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
                     **{k: packed[k] for k in _COSMOS3_TRANSFORMER_FORWARD_KEYS if k in packed}
                 )
                 cond_v_vision, cond_v_sound = self._mask_velocity_predictions(preds_vision, preds_sound, packed)
-        
+
 
                 # --- Unconditional pass ---
                 packed = self.pack_input_sequence(
                     input_ids=uncond_input_ids,
-                    input_timestep=timestep.cpu(),
+                    input_timestep=timestep,
                     vision_tokens=vision_tokens,
                     fps_vision=fps_vision,
                     has_image_condition=has_image_condition,
