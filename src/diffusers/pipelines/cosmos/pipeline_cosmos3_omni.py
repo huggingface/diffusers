@@ -122,32 +122,6 @@ def get_3d_mrope_ids_vae_tokens(
     return mrope_ids, next_temporal_offset
 
 
-# Transformer-facing subset of the per-step packed dict. The pipeline merges
-# `_pack_text_tokens` (pre-packed once per prompt) with per-step `_pack_vision_tokens`
-# / `_pack_sound_tokens` outputs and uses this filter to strip assembly helpers
-# (mrope id segments, segment lengths, condition masks) before invoking the transformer.
-_COSMOS3_TRANSFORMER_FORWARD_KEYS = frozenset(
-    {
-        "input_ids",
-        "text_indexes",
-        "position_ids",
-        "und_len",
-        "sequence_length",
-        "vision_tokens",
-        "vision_token_shapes",
-        "vision_sequence_indexes",
-        "vision_mse_loss_indexes",
-        "vision_timesteps",
-        "vision_noisy_frame_indexes",
-        "sound_tokens",
-        "sound_token_shapes",
-        "sound_sequence_indexes",
-        "sound_mse_loss_indexes",
-        "sound_timesteps",
-        "sound_noisy_frame_indexes",
-    }
-)
-
 # ============================================================================
 # Pipeline output + IO helpers
 # ============================================================================
@@ -636,7 +610,8 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
     def _mask_velocity_predictions(
         preds_vision: List[torch.Tensor],
         preds_sound: Optional[List[torch.Tensor]],
-        packed: Dict[str, Any],
+        vision_condition_mask: List[torch.Tensor],
+        sound_condition_mask: Optional[List[torch.Tensor]] = None,
     ) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
         """Zero out conditioning positions in the transformer's velocity predictions.
 
@@ -645,14 +620,14 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
         to keep only the noisy positions where the model produces meaningful velocity.
         """
         pred_v = preds_vision[0]
-        m_v = packed["vision_condition_mask"][0]
+        m_v = vision_condition_mask[0]
         noisy_mask_v = (1.0 - m_v).to(dtype=pred_v.dtype, device=pred_v.device)
         velocity_vision = pred_v * noisy_mask_v if noisy_mask_v.sum() > 0 else torch.zeros_like(pred_v)
 
         velocity_sound: Optional[torch.Tensor] = None
-        if preds_sound is not None and "sound_condition_mask" in packed:
+        if preds_sound is not None and sound_condition_mask is not None:
             pred_s = preds_sound[0]
-            cond_mask_s = packed["sound_condition_mask"][0]
+            cond_mask_s = sound_condition_mask[0]
             noisy_mask_s = (1.0 - cond_mask_s).T.to(dtype=pred_s.dtype, device=pred_s.device)
             velocity_sound = pred_s * noisy_mask_s if noisy_mask_s.sum() > 0 else torch.zeros_like(pred_s)
 
@@ -895,32 +870,58 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
                 )
 
                 # --- Conditional pass ---
-                packed = {
-                    **cond_packed_static,
-                    "vision_tokens": [vision_tokens],
-                    "vision_timesteps": vision_timesteps,
-                }
-                if sound_tokens is not None:
-                    packed["sound_tokens"] = [sound_tokens]
-                    packed["sound_timesteps"] = sound_timesteps
                 preds_vision, preds_sound = self.transformer(
-                    **{k: packed[k] for k in _COSMOS3_TRANSFORMER_FORWARD_KEYS if k in packed}
+                    input_ids=cond_packed_static["input_ids"],
+                    text_indexes=cond_packed_static["text_indexes"],
+                    position_ids=cond_packed_static["position_ids"],
+                    und_len=cond_packed_static["und_len"],
+                    sequence_length=cond_packed_static["sequence_length"],
+                    vision_tokens=[vision_tokens],
+                    vision_token_shapes=cond_packed_static["vision_token_shapes"],
+                    vision_sequence_indexes=cond_packed_static["vision_sequence_indexes"],
+                    vision_mse_loss_indexes=cond_packed_static["vision_mse_loss_indexes"],
+                    vision_timesteps=vision_timesteps,
+                    vision_noisy_frame_indexes=cond_packed_static["vision_noisy_frame_indexes"],
+                    sound_tokens=[sound_tokens] if sound_tokens is not None else None,
+                    sound_token_shapes=cond_packed_static.get("sound_token_shapes"),
+                    sound_sequence_indexes=cond_packed_static.get("sound_sequence_indexes"),
+                    sound_mse_loss_indexes=cond_packed_static.get("sound_mse_loss_indexes"),
+                    sound_timesteps=sound_timesteps,
+                    sound_noisy_frame_indexes=cond_packed_static.get("sound_noisy_frame_indexes"),
                 )
-                cond_v_vision, cond_v_sound = self._mask_velocity_predictions(preds_vision, preds_sound, packed)
+                cond_v_vision, cond_v_sound = self._mask_velocity_predictions(
+                    preds_vision,
+                    preds_sound,
+                    vision_condition_mask=cond_packed_static["vision_condition_mask"],
+                    sound_condition_mask=cond_packed_static.get("sound_condition_mask"),
+                )
 
                 # --- Unconditional pass ---
-                packed = {
-                    **uncond_packed_static,
-                    "vision_tokens": [vision_tokens],
-                    "vision_timesteps": vision_timesteps,
-                }
-                if sound_tokens is not None:
-                    packed["sound_tokens"] = [sound_tokens]
-                    packed["sound_timesteps"] = sound_timesteps
                 preds_vision, preds_sound = self.transformer(
-                    **{k: packed[k] for k in _COSMOS3_TRANSFORMER_FORWARD_KEYS if k in packed}
+                    input_ids=uncond_packed_static["input_ids"],
+                    text_indexes=uncond_packed_static["text_indexes"],
+                    position_ids=uncond_packed_static["position_ids"],
+                    und_len=uncond_packed_static["und_len"],
+                    sequence_length=uncond_packed_static["sequence_length"],
+                    vision_tokens=[vision_tokens],
+                    vision_token_shapes=uncond_packed_static["vision_token_shapes"],
+                    vision_sequence_indexes=uncond_packed_static["vision_sequence_indexes"],
+                    vision_mse_loss_indexes=uncond_packed_static["vision_mse_loss_indexes"],
+                    vision_timesteps=vision_timesteps,
+                    vision_noisy_frame_indexes=uncond_packed_static["vision_noisy_frame_indexes"],
+                    sound_tokens=[sound_tokens] if sound_tokens is not None else None,
+                    sound_token_shapes=uncond_packed_static.get("sound_token_shapes"),
+                    sound_sequence_indexes=uncond_packed_static.get("sound_sequence_indexes"),
+                    sound_mse_loss_indexes=uncond_packed_static.get("sound_mse_loss_indexes"),
+                    sound_timesteps=sound_timesteps,
+                    sound_noisy_frame_indexes=uncond_packed_static.get("sound_noisy_frame_indexes"),
                 )
-                uncond_v_vision, uncond_v_sound = self._mask_velocity_predictions(preds_vision, preds_sound, packed)
+                uncond_v_vision, uncond_v_sound = self._mask_velocity_predictions(
+                    preds_vision,
+                    preds_sound,
+                    vision_condition_mask=uncond_packed_static["vision_condition_mask"],
+                    sound_condition_mask=uncond_packed_static.get("sound_condition_mask"),
+                )
 
                 # --- CFG combine + per-modality scheduler step ---
                 # UniPC's multistep_uni_p_bh_update einsum ("k,bkc...->bc...") requires sample
