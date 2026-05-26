@@ -8,7 +8,6 @@ Linked from `AGENTS.md`, `skills/model-integration/SKILL.md`, and `review-rules.
 - All layer calls should be visible directly in `forward` — avoid helper functions that hide `nn.Module` calls.
 - Avoid graph breaks for `torch.compile` compatibility — do not insert NumPy operations in forward implementations and any other patterns that can break `torch.compile` compatibility with `fullgraph=True`.
 - No new mandatory dependency without discussion (e.g. `einops`). Optional deps guarded with `is_X_available()` and a dummy in `utils/dummy_*.py`.
-- Do not use `torch.empty` to initialize parameters. Use `torch.zeros` or `torch.ones`, instead.
 
 ## Common model conventions
 
@@ -173,3 +172,5 @@ Boolean gate. If `False` (default), calling that method raises `ValueError`. All
       freqs_dtype = torch.float32 if (is_mps or is_npu) else torch.float64
       ```
       See `transformer_flux.py`, `transformer_flux2.py`, `transformer_wan.py`, `unet_2d_condition.py` for reference usages. Never leave an unconditional `torch.float64` in the model.
+
+6. **Using `torch.empty`.** - Do not use `torch.empty` to initialize parameters. Use `torch.zeros` or `torch.ones`, instead.
