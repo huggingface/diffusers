@@ -26,7 +26,7 @@ from ..embeddings import TimestepEmbedding, Timesteps
 from ..modeling_utils import ModelMixin
 
 
-class CosmosAttnProcessor3_0:
+class Cosmos3AttnProcessor:
     """Dual-pathway attention processor for Cosmos3.
 
     Projects, normalizes, applies rotary position embeddings, then runs separate
@@ -39,10 +39,10 @@ class CosmosAttnProcessor3_0:
 
     def __call__(
         self,
-        attn: "PackedAttentionMoT",
+        attn: "Cosmos3PackedMoTAttention",
         und_seq: torch.Tensor,
         gen_seq: torch.Tensor,
-        position_embeddings: Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor],
+        rotary_emb: Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor],
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         # Per-pathway projections
         q_und = attn.to_q(und_seq).view(-1, attn.num_attention_heads, attn.head_dim)
@@ -58,7 +58,7 @@ class CosmosAttnProcessor3_0:
         k_gen = attn.norm_added_k(k_gen)
 
         # Apply rotary position embeddings per pathway
-        cos_und, sin_und, cos_gen, sin_gen = position_embeddings
+        cos_und, sin_und, cos_gen, sin_gen = rotary_emb
         cos_und = cos_und.unsqueeze(1)
         sin_und = sin_und.unsqueeze(1)
         q_und = q_und * cos_und + _rotate_half(q_und) * sin_und
@@ -69,36 +69,30 @@ class CosmosAttnProcessor3_0:
         k_gen = k_gen * cos_gen + _rotate_half(k_gen) * sin_gen
 
         # Causal pathway (understanding): und tokens self-attend with causal masking.
-        causal_out = (
-            dispatch_attention_fn(
-                q_und.unsqueeze(0),
-                k_und.unsqueeze(0),
-                v_und.unsqueeze(0),
-                is_causal=True,
-                enable_gqa=True,
-                backend=self._attention_backend,
-                parallel_config=self._parallel_config,
-            )
-            .squeeze(0)
-            .flatten(-2, -1)
+        causal_out = dispatch_attention_fn(
+            q_und.unsqueeze(0),
+            k_und.unsqueeze(0),
+            v_und.unsqueeze(0),
+            is_causal=True,
+            enable_gqa=True,
+            backend=self._attention_backend,
+            parallel_config=self._parallel_config,
         )
+        causal_out = causal_out.squeeze(0).flatten(-2, -1)
 
         # Full pathway (generation): gen tokens cross-attend to all (und + gen) keys/values.
         all_k = torch.cat([k_und, k_gen], dim=0)
         all_v = torch.cat([v_und, v_gen], dim=0)
-        full_out = (
-            dispatch_attention_fn(
-                q_gen.unsqueeze(0),
-                all_k.unsqueeze(0),
-                all_v.unsqueeze(0),
-                is_causal=False,
-                enable_gqa=True,
-                backend=self._attention_backend,
-                parallel_config=self._parallel_config,
-            )
-            .squeeze(0)
-            .flatten(-2, -1)
+        full_out = dispatch_attention_fn(
+            q_gen.unsqueeze(0),
+            all_k.unsqueeze(0),
+            all_v.unsqueeze(0),
+            is_causal=False,
+            enable_gqa=True,
+            backend=self._attention_backend,
+            parallel_config=self._parallel_config,
         )
+        full_out = full_out.squeeze(0).flatten(-2, -1)
 
         # Per-pathway output projection
         und_out = attn.to_out(causal_out)
@@ -137,7 +131,7 @@ class Cosmos3VLTextRotaryEmbedding(nn.Module):
             self.inv_freq[None, None, :, None].float().expand(3, position_ids.shape[1], -1, 1).to(x.device)
         )  # [3,B,head_dim//2,1]
         position_ids_expanded = position_ids[:, :, None, :].float()  # [3,B,1,N]
-        freqs = (inv_freq_expanded.float() @ position_ids_expanded.float()).transpose(2, 3)  # [3,B,N,head_dim//2]
+        freqs = (inv_freq_expanded @ position_ids_expanded).transpose(2, 3)  # [3,B,N,head_dim//2]
         freqs = self.apply_interleaved_mrope(freqs, self.mrope_section)  # [B,N,head_dim//2]
         emb = torch.cat((freqs, freqs), dim=-1)  # [B,N,head_dim]
         return emb.cos().to(dtype=x.dtype), emb.sin().to(dtype=x.dtype)  # each: [B,N,head_dim]
@@ -169,12 +163,12 @@ class Cosmos3VLTextMLP(nn.Module):
         return self.down_proj(self.act_fn(self.gate_proj(x)) * self.up_proj(x))
 
 
-class PackedAttentionMoT(nn.Module, AttentionModuleMixin):
+class Cosmos3PackedMoTAttention(nn.Module, AttentionModuleMixin):
     """Dual-pathway packed attention for Qwen3VL MoT — separate projections for
     understanding (causal) and generation (full) token streams."""
 
-    _default_processor_cls = CosmosAttnProcessor3_0
-    _available_processors = [CosmosAttnProcessor3_0]
+    _default_processor_cls = Cosmos3AttnProcessor
+    _available_processors = [Cosmos3AttnProcessor]
 
     def __init__(
         self,
@@ -213,15 +207,15 @@ class PackedAttentionMoT(nn.Module, AttentionModuleMixin):
         self.norm_added_q = Cosmos3VLTextRMSNorm(head_dim, eps=rms_norm_eps)
         self.norm_added_k = Cosmos3VLTextRMSNorm(head_dim, eps=rms_norm_eps)
 
-        self.set_processor(CosmosAttnProcessor3_0())
+        self.set_processor(Cosmos3AttnProcessor())
 
     def forward(
         self,
         und_seq: torch.Tensor,
         gen_seq: torch.Tensor,
-        position_embeddings: Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor],
+        rotary_emb: Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor],
     ) -> Tuple[torch.Tensor, torch.Tensor]:
-        return self.processor(self, und_seq, gen_seq, position_embeddings)
+        return self.processor(self, und_seq, gen_seq, rotary_emb)
 
 
 class Cosmos3VLTextMoTDecoderLayer(nn.Module):
@@ -245,7 +239,7 @@ class Cosmos3VLTextMoTDecoderLayer(nn.Module):
     ):
         super().__init__()
         self.hidden_size = hidden_size
-        self.self_attn = PackedAttentionMoT(
+        self.self_attn = Cosmos3PackedMoTAttention(
             hidden_size=hidden_size,
             head_dim=head_dim,
             num_attention_heads=num_attention_heads,
@@ -267,12 +261,12 @@ class Cosmos3VLTextMoTDecoderLayer(nn.Module):
         self,
         und_seq: torch.Tensor,
         gen_seq: torch.Tensor,
-        position_embeddings: Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor],
+        rotary_emb: Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor],
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         und_norm = self.input_layernorm(und_seq)
         gen_norm = self.input_layernorm_moe_gen(gen_seq)
 
-        und_attn_out, gen_attn_out = self.self_attn(und_norm, gen_norm, position_embeddings)
+        und_attn_out, gen_attn_out = self.self_attn(und_norm, gen_norm, rotary_emb)
         residual_und = und_seq + und_attn_out
         residual_gen = gen_seq + gen_attn_out
 
@@ -560,14 +554,14 @@ class Cosmos3OmniTransformer(ModelMixin, ConfigMixin, PeftAdapterMixin, Attentio
         und_len = packed_seq.und_len
         und_seq = hidden_states[:und_len]
         gen_seq = hidden_states[und_len:]
-        position_embeddings = (cos[:und_len], sin[:und_len], cos[und_len:], sin[und_len:])
+        rotary_emb = (cos[:und_len], sin[:und_len], cos[und_len:], sin[und_len:])
         for decoder_layer in self.layers:
             if torch.is_grad_enabled() and self.gradient_checkpointing:
                 und_seq, gen_seq = self._gradient_checkpointing_func(
-                    decoder_layer.__call__, und_seq, gen_seq, position_embeddings
+                    decoder_layer.__call__, und_seq, gen_seq, rotary_emb
                 )
             else:
-                und_seq, gen_seq = decoder_layer(und_seq, gen_seq, position_embeddings)
+                und_seq, gen_seq = decoder_layer(und_seq, gen_seq, rotary_emb)
         und_out = self.norm(und_seq)
         gen_out = self.norm_moe_gen(gen_seq)
         last_hidden_state = torch.cat([und_out, gen_out], dim=0)
