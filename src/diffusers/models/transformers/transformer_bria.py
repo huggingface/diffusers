@@ -608,8 +608,16 @@ class BriaTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrig
                 from the embeddings of input conditions.
             timestep ( `torch.LongTensor`):
                 Used to indicate denoising step.
-            block_controlnet_hidden_states: (`list` of `torch.Tensor`):
+            img_ids (`torch.Tensor`):
+                Image position ids used to compute the rotary positional embeddings.
+            txt_ids (`torch.Tensor`):
+                Text position ids used to compute the rotary positional embeddings.
+            guidance (`torch.Tensor`, *optional*):
+                Guidance scale embedding used for guidance-distilled variants of the model.
+            controlnet_block_samples (`list` of `torch.Tensor`, *optional*):
                 A list of tensors that if specified are added to the residuals of transformer blocks.
+            controlnet_single_block_samples (`list` of `torch.Tensor`, *optional*):
+                A list of tensors that if specified are added to the residuals of single transformer blocks.
             attention_kwargs (`dict`, *optional*):
                 A kwargs dictionary that if specified is passed along to the `AttentionProcessor` as defined under
                 `self.processor` in

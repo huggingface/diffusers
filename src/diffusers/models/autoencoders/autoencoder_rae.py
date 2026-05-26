@@ -682,6 +682,15 @@ class AutoencoderRAE(ModelMixin, AttentionMixin, AutoencoderMixin, ConfigMixin):
     def forward(
         self, sample: torch.Tensor, return_dict: bool = True, generator: torch.Generator | None = None
     ) -> DecoderOutput | tuple[torch.Tensor]:
+        r"""
+        Args:
+            sample (`torch.Tensor`): Input sample.
+            return_dict (`bool`, *optional*, defaults to `True`):
+                Whether or not to return a [`DecoderOutput`] instead of a plain tuple.
+            generator (`torch.Generator`, *optional*):
+                A [`torch.Generator`](https://pytorch.org/docs/stable/generated/torch.Generator.html) to make sampling
+                deterministic.
+        """
         latents = self.encode(sample, return_dict=False, generator=generator)[0]
         decoded = self.decode(latents, return_dict=False)[0]
         if not return_dict:

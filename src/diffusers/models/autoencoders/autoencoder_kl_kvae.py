@@ -787,6 +787,9 @@ class AutoencoderKLKVAE(ModelMixin, AutoencoderMixin, ConfigMixin):
                 Whether to sample from the posterior.
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`DecoderOutput`] instead of a plain tuple.
+            generator (`torch.Generator`, *optional*):
+                A [`torch.Generator`](https://pytorch.org/docs/stable/generated/torch.Generator.html) to make sampling
+                deterministic.
         """
         x = sample
         posterior = self.encode(x).latent_dist

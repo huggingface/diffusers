@@ -164,6 +164,10 @@ else:
         "AnimateDiffVideoToVideoPipeline",
         "AnimateDiffVideoToVideoControlNetPipeline",
     ]
+    _import_structure["anyflow"] = [
+        "AnyFlowPipeline",
+        "AnyFlowFARPipeline",
+    ]
     _import_structure["bria"] = ["BriaPipeline"]
     _import_structure["bria_fibo"] = ["BriaFiboPipeline", "BriaFiboEditPipeline"]
     _import_structure["flux2"] = [
@@ -603,6 +607,10 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             AnimateDiffSparseControlNetPipeline,
             AnimateDiffVideoToVideoControlNetPipeline,
             AnimateDiffVideoToVideoPipeline,
+        )
+        from .anyflow import (
+            AnyFlowFARPipeline,
+            AnyFlowPipeline,
         )
         from .audioldm2 import (
             AudioLDM2Pipeline,
