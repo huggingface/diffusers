@@ -340,13 +340,18 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
         self,
         input_vision_tokens: torch.Tensor,
         has_image_condition: bool,
-        input_timestep: float,
         mrope_offset: int | float,
         vision_fps: float | None,
         curr: int,
         device: torch.device | str,
     ) -> Dict[str, Any]:
-        """Build the vision segment of the joint sequence."""
+        """Build the static portion of the vision segment of the joint sequence.
+
+        Step-varying fields (``vision_tokens`` and ``vision_timesteps``) are NOT
+        included here — the caller splices them in inside the denoising loop. The
+        method is called once per (cond/uncond) prompt before the loop, since
+        everything else only depends on the prompt length and the vision shape.
+        """
         config = self.transformer.config
         latent_patch_size = config.latent_patch_size
         _, _, latent_t, latent_h, latent_w = input_vision_tokens.shape
@@ -365,11 +370,9 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
 
         frame_token_stride = patch_h * patch_w
         mse_loss_indexes: list[int] = []
-        timesteps: list[float] = []
         for frame_idx in range(noisy_start, latent_t):
             frame_start = curr + frame_idx * frame_token_stride
             mse_loss_indexes.extend(range(frame_start, frame_start + frame_token_stride))
-            timesteps.extend([input_timestep] * frame_token_stride)
 
         effective_fps = vision_fps if config.enable_fps_modulation else None
         vision_mrope_ids, _ = get_3d_mrope_ids_vae_tokens(
@@ -384,29 +387,32 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
         )
 
         return {
-            # Transformer-facing fields.
-            "vision_tokens": [input_vision_tokens],
+            # Transformer-facing fields (vision_tokens and vision_timesteps spliced per step).
             "vision_token_shapes": [(latent_t, patch_h, patch_w)],
             "vision_sequence_indexes": torch.arange(curr, curr + num_vision_tokens, dtype=torch.long, device=device),
             "vision_mse_loss_indexes": torch.tensor(mse_loss_indexes, dtype=torch.long, device=device),
-            "vision_timesteps": torch.tensor(timesteps, device=device),
             "vision_noisy_frame_indexes": [noisy_frame_indexes],
             "vision_condition_mask": [condition_mask],
             # Assembly helpers (consumed inline before the transformer call).
             "vision_mrope_ids": vision_mrope_ids.to(device),
             "num_vision_tokens": num_vision_tokens,
+            "num_noisy_vision_tokens": (latent_t - noisy_start) * frame_token_stride,
         }
 
     def _pack_sound_tokens(
         self,
         input_sound_tokens: torch.Tensor,
-        input_timestep: float,
         mrope_offset: int | float,
         sound_fps: float | None,
         curr: int,
         device: torch.device | str,
     ) -> Dict[str, Any]:
-        """Build the sound segment of the joint sequence. All sound frames are noisy."""
+        """Build the static portion of the sound segment of the joint sequence.
+
+        Step-varying fields (``sound_tokens`` and ``sound_timesteps``) are spliced
+        in by the caller inside the denoising loop; everything here depends only on
+        the prompt length and the sound shape. All sound frames are noisy.
+        """
         config = self.transformer.config
         _, sound_len = input_sound_tokens.shape
 
@@ -424,12 +430,10 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
 
         sequence_indexes = torch.arange(curr, curr + sound_len, dtype=torch.long, device=device)
         return {
-            # Transformer-facing fields.
-            "sound_tokens": [input_sound_tokens],
+            # Transformer-facing fields (sound_tokens and sound_timesteps spliced per step).
             "sound_token_shapes": [(sound_len, 1, 1)],
             "sound_sequence_indexes": sequence_indexes,
             "sound_mse_loss_indexes": sequence_indexes.clone(),
-            "sound_timesteps": torch.full((sound_len,), float(input_timestep), device=device),
             "sound_noisy_frame_indexes": [torch.arange(sound_len, device=device, dtype=torch.long)],
             # All sound frames are noisy, so the per-frame conditioning mask is always zero.
             "sound_condition_mask": [torch.zeros((sound_len, 1), device=device, dtype=input_sound_tokens.dtype)],
@@ -795,13 +799,80 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
             enable_sound=enable_sound,
         )
 
-        # 5. Set timesteps. UniPCMultistepScheduler keeps per-step state (_step_index,
+        # 5. Pre-pack the static per-prompt vision / sound sequence segments. The only
+        # fields that vary across denoising steps are the modality token tensors and the
+        # per-modality timestep tensors; everything else only depends on prompt length
+        # and modality shape, so we hoist it out of the loop and splice the step-varying
+        # fields back in below.
+        cond_vision_packed = self._pack_vision_tokens(
+            input_vision_tokens=latents,
+            has_image_condition=has_image_condition,
+            mrope_offset=cond_text_packed["vision_start_temporal_offset"],
+            vision_fps=fps_vision,
+            curr=cond_text_packed["und_len"],
+            device=device,
+        )
+        cond_sound_packed: Dict[str, Any] = {}
+        if sound_latents is not None:
+            cond_sound_packed = self._pack_sound_tokens(
+                input_sound_tokens=sound_latents,
+                mrope_offset=cond_text_packed["vision_start_temporal_offset"],
+                sound_fps=fps_sound,
+                curr=cond_text_packed["und_len"] + cond_vision_packed["num_vision_tokens"],
+                device=device,
+            )
+        cond_mrope_segments = [cond_text_packed["text_mrope_ids"], cond_vision_packed["vision_mrope_ids"]]
+        if cond_sound_packed:
+            cond_mrope_segments.append(cond_sound_packed["sound_mrope_ids"])
+        cond_packed_static = {
+            **cond_text_packed,
+            **cond_vision_packed,
+            **cond_sound_packed,
+            "position_ids": torch.cat(cond_mrope_segments, dim=1),
+            "sequence_length": cond_text_packed["und_len"]
+            + cond_vision_packed["num_vision_tokens"]
+            + cond_sound_packed.get("sound_len", 0),
+        }
+
+        uncond_vision_packed = self._pack_vision_tokens(
+            input_vision_tokens=latents,
+            has_image_condition=has_image_condition,
+            mrope_offset=uncond_text_packed["vision_start_temporal_offset"],
+            vision_fps=fps_vision,
+            curr=uncond_text_packed["und_len"],
+            device=device,
+        )
+        uncond_sound_packed: Dict[str, Any] = {}
+        if sound_latents is not None:
+            uncond_sound_packed = self._pack_sound_tokens(
+                input_sound_tokens=sound_latents,
+                mrope_offset=uncond_text_packed["vision_start_temporal_offset"],
+                sound_fps=fps_sound,
+                curr=uncond_text_packed["und_len"] + uncond_vision_packed["num_vision_tokens"],
+                device=device,
+            )
+        uncond_mrope_segments = [uncond_text_packed["text_mrope_ids"], uncond_vision_packed["vision_mrope_ids"]]
+        if uncond_sound_packed:
+            uncond_mrope_segments.append(uncond_sound_packed["sound_mrope_ids"])
+        uncond_packed_static = {
+            **uncond_text_packed,
+            **uncond_vision_packed,
+            **uncond_sound_packed,
+            "position_ids": torch.cat(uncond_mrope_segments, dim=1),
+            "sequence_length": uncond_text_packed["und_len"]
+            + uncond_vision_packed["num_vision_tokens"]
+            + uncond_sound_packed.get("sound_len", 0),
+        }
+        num_noisy_vision_tokens = cond_vision_packed["num_noisy_vision_tokens"]
+        sound_len = cond_sound_packed.get("sound_len")
+
+        # 6. Set timesteps. UniPCMultistepScheduler keeps per-step state (_step_index,
         # model_outputs history) on the instance, so audio gets its own copy.
         self.scheduler.set_timesteps(num_inference_steps, device=device)
         timesteps = self.scheduler.timesteps
         sound_scheduler = copy.deepcopy(self.scheduler) if sound_latents is not None else None
 
-        # 6. Denoising loop
+        # 7. Denoising loop
         num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
         self._num_timesteps = len(timesteps)
         with self.progress_bar(total=num_inference_steps) as progress_bar:
@@ -816,76 +887,36 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
                 # noisy tokens before packing so the modality tokens enter the model in the right dtype.
                 vision_tokens = latents.to(device=device, dtype=dtype)
                 sound_tokens = sound_latents.to(device=device, dtype=dtype) if sound_latents is not None else None
+                # The static packs both report the same num_noisy_vision_tokens / sound_len, so a
+                # single per-step timestep tensor per modality is shared by the cond / uncond passes.
+                vision_timesteps = torch.full((num_noisy_vision_tokens,), timestep, device=device)
+                sound_timesteps = (
+                    torch.full((sound_len,), timestep, device=device) if sound_tokens is not None else None
+                )
 
                 # --- Conditional pass ---
-                vision_packed = self._pack_vision_tokens(
-                    input_vision_tokens=vision_tokens,
-                    has_image_condition=has_image_condition,
-                    input_timestep=timestep,
-                    mrope_offset=cond_text_packed["vision_start_temporal_offset"],
-                    vision_fps=fps_vision,
-                    curr=cond_text_packed["und_len"],
-                    device=device,
-                )
-                sound_packed: Dict[str, Any] = {}
-                if sound_tokens is not None:
-                    sound_packed = self._pack_sound_tokens(
-                        input_sound_tokens=sound_tokens,
-                        input_timestep=timestep,
-                        mrope_offset=cond_text_packed["vision_start_temporal_offset"],
-                        sound_fps=fps_sound,
-                        curr=cond_text_packed["und_len"] + vision_packed["num_vision_tokens"],
-                        device=device,
-                    )
-                mrope_segments = [cond_text_packed["text_mrope_ids"], vision_packed["vision_mrope_ids"]]
-                if sound_packed:
-                    mrope_segments.append(sound_packed["sound_mrope_ids"])
                 packed = {
-                    **cond_text_packed,
-                    **vision_packed,
-                    **sound_packed,
-                    "position_ids": torch.cat(mrope_segments, dim=1),
-                    "sequence_length": cond_text_packed["und_len"]
-                    + vision_packed["num_vision_tokens"]
-                    + sound_packed.get("sound_len", 0),
+                    **cond_packed_static,
+                    "vision_tokens": [vision_tokens],
+                    "vision_timesteps": vision_timesteps,
                 }
+                if sound_tokens is not None:
+                    packed["sound_tokens"] = [sound_tokens]
+                    packed["sound_timesteps"] = sound_timesteps
                 preds_vision, preds_sound = self.transformer(
                     **{k: packed[k] for k in _COSMOS3_TRANSFORMER_FORWARD_KEYS if k in packed}
                 )
                 cond_v_vision, cond_v_sound = self._mask_velocity_predictions(preds_vision, preds_sound, packed)
 
                 # --- Unconditional pass ---
-                vision_packed = self._pack_vision_tokens(
-                    input_vision_tokens=vision_tokens,
-                    has_image_condition=has_image_condition,
-                    input_timestep=timestep,
-                    mrope_offset=uncond_text_packed["vision_start_temporal_offset"],
-                    vision_fps=fps_vision,
-                    curr=uncond_text_packed["und_len"],
-                    device=device,
-                )
-                sound_packed = {}
-                if sound_tokens is not None:
-                    sound_packed = self._pack_sound_tokens(
-                        input_sound_tokens=sound_tokens,
-                        input_timestep=timestep,
-                        mrope_offset=uncond_text_packed["vision_start_temporal_offset"],
-                        sound_fps=fps_sound,
-                        curr=uncond_text_packed["und_len"] + vision_packed["num_vision_tokens"],
-                        device=device,
-                    )
-                mrope_segments = [uncond_text_packed["text_mrope_ids"], vision_packed["vision_mrope_ids"]]
-                if sound_packed:
-                    mrope_segments.append(sound_packed["sound_mrope_ids"])
                 packed = {
-                    **uncond_text_packed,
-                    **vision_packed,
-                    **sound_packed,
-                    "position_ids": torch.cat(mrope_segments, dim=1),
-                    "sequence_length": uncond_text_packed["und_len"]
-                    + vision_packed["num_vision_tokens"]
-                    + sound_packed.get("sound_len", 0),
+                    **uncond_packed_static,
+                    "vision_tokens": [vision_tokens],
+                    "vision_timesteps": vision_timesteps,
                 }
+                if sound_tokens is not None:
+                    packed["sound_tokens"] = [sound_tokens]
+                    packed["sound_timesteps"] = sound_timesteps
                 preds_vision, preds_sound = self.transformer(
                     **{k: packed[k] for k in _COSMOS3_TRANSFORMER_FORWARD_KEYS if k in packed}
                 )
