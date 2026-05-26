@@ -28,7 +28,6 @@ Single-frame generation. The model is conditioned only on the text prompt; pass 
 ```python
 import torch
 from diffusers import Cosmos3OmniDiffusersPipeline
-from diffusers.pipelines.cosmos.export_utils import save_img_or_video
 
 pipe = Cosmos3OmniDiffusersPipeline.from_pretrained(
     "nvidia/Cosmos3-Nano", torch_dtype=torch.bfloat16, device_map="cuda"
@@ -43,7 +42,7 @@ prompt = (
 )
 
 result = pipe(prompt=prompt, num_frames=1, height=720, width=1280)
-save_img_or_video(result.video[0], "cosmos3_t2i")  # writes cosmos3_t2i.jpg
+result.video[0][0].save("cosmos3_t2i.jpg", format="JPEG", quality=85)
 ```
 
 ## Text-to-video
@@ -53,7 +52,7 @@ Multi-frame generation conditioned on text alone. Pick `num_frames` based on the
 ```python
 import torch
 from diffusers import Cosmos3OmniDiffusersPipeline
-from diffusers.pipelines.cosmos.export_utils import save_img_or_video
+from diffusers.utils import export_to_video
 
 pipe = Cosmos3OmniDiffusersPipeline.from_pretrained(
     "nvidia/Cosmos3-Nano", torch_dtype=torch.bfloat16, device_map="cuda"
@@ -76,7 +75,8 @@ prompt = (
 )
 
 result = pipe(prompt=prompt, num_frames=189, height=720, width=1280, fps=24.0)
-save_img_or_video(result.video[0], "cosmos3_t2v", fps=24)  # writes cosmos3_t2v.mp4
+# macro_block_size=1 allows arbitrary frame sizes (Cosmos3 outputs are not always divisible by 16).
+export_to_video(result.video[0], "cosmos3_t2v.mp4", fps=24, macro_block_size=1)
 ```
 
 ## Image-to-video
@@ -86,8 +86,7 @@ Pass a conditioning image via `image=`. The pipeline anchors frame 0 to the supp
 ```python
 import torch
 from diffusers import Cosmos3OmniDiffusersPipeline
-from diffusers.pipelines.cosmos.export_utils import save_img_or_video
-from diffusers.utils import load_image
+from diffusers.utils import export_to_video, load_image
 
 pipe = Cosmos3OmniDiffusersPipeline.from_pretrained(
     "nvidia/Cosmos3-Nano", torch_dtype=torch.bfloat16, device_map="cuda"
@@ -116,7 +115,8 @@ prompt = (
 )
 
 result = pipe(prompt=prompt, image=image, num_frames=189, height=720, width=1280, fps=24.0)
-save_img_or_video(result.video[0], "cosmos3_i2v", fps=24)  # writes cosmos3_i2v.mp4
+# macro_block_size=1 allows arbitrary frame sizes (Cosmos3 outputs are not always divisible by 16).
+export_to_video(result.video[0], "cosmos3_i2v.mp4", fps=24, macro_block_size=1)
 ```
 
 ## Text-to-video with sound
@@ -128,7 +128,8 @@ This is the same call as the text-to-video example above with `enable_sound=True
 ```python
 import torch
 from diffusers import Cosmos3OmniDiffusersPipeline
-from diffusers.pipelines.cosmos.export_utils import save_img_or_video, save_wav
+from diffusers.pipelines.cosmos.export_utils import save_wav
+from diffusers.utils import export_to_video
 
 pipe = Cosmos3OmniDiffusersPipeline.from_pretrained(
     "nvidia/Cosmos3-Nano", torch_dtype=torch.bfloat16, device_map="cuda"
@@ -159,7 +160,8 @@ result = pipe(
     enable_sound=True,
 )
 
-save_img_or_video(result.video[0], "cosmos3_with_sound", fps=24)
+# macro_block_size=1 allows arbitrary frame sizes (Cosmos3 outputs are not always divisible by 16).
+export_to_video(result.video[0], "cosmos3_with_sound.mp4", fps=24, macro_block_size=1)
 save_wav(result.sound[0], "cosmos3_with_sound.wav", pipe.sound_tokenizer.sample_rate)
 ```
 

@@ -179,6 +179,9 @@ class Cosmos3AVAEAudioTokenizer(ModelMixin, ConfigMixin):
     (Audio VAE) component of the Cosmos3 omni model. Provides the interface
     expected by ``Cosmos3OmniDiffusersPipeline`` when ``enable_sound=True``.
 
+    For now encoder part of the Tokenizer is not supported.
+    The encoder support will be added in the future.
+
     Parameters:
         sampling_rate (`int`, defaults to `48000`): Audio sample rate in Hz.
         vocoder_input_dim (`int`, defaults to `64`): Latent channel count fed into the decoder

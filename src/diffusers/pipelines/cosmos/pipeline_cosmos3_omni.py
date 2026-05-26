@@ -154,9 +154,11 @@ class Cosmos3OmniPipelineOutput(BaseOutput):
     """Output dataclass for :class:`Cosmos3OmniDiffusersPipeline`.
 
     Attributes:
-        video: List of decoded video tensors, one per generated sample,
-            each of shape ``[C, T, H, W]`` in ``[0, 1]`` (or raw latents when
-            ``output_type="latent"``).
+        video: List with one entry per generated sample. The contents depend on
+            ``output_type`` passed to the pipeline: a list of PIL frames for
+            ``"pil"`` (default), an ``np.ndarray``/``torch.Tensor`` of shape
+            ``[T, H, W, C]``/``[T, C, H, W]`` for ``"np"``/``"pt"``, or raw
+            latents when ``output_type="latent"``.
         sound: List of decoded audio waveforms of shape ``[C, N]``, one per
             sample.  ``None`` when ``enable_sound=False``.
     """
@@ -717,11 +719,11 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
         return cond_tokens, uncond_tokens
 
     def decode_latents(self, vision_list: list[torch.Tensor]) -> list[torch.Tensor]:
-        """Decode latents to pixel tensors of shape [C, T, H, W] in [0, 1]."""
+        """Decode latents to pixel tensors of shape [C, T, H, W] in [-1, 1]."""
         frames = []
         for vision_latent in vision_list:
             vision = self._decode_video(vision_latent.cuda())  # [1, C, T, H, W]
-            frames.append(((1.0 + vision) / 2).clamp(0, 1).squeeze(0))
+            frames.append(vision.squeeze(0))
         return frames
 
     def _postprocess_latents(
@@ -730,12 +732,13 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
         condition: "Cosmos3Condition",
         enable_sound: bool,
         output_type: str,
-    ) -> tuple[list[torch.Tensor], Optional[list[torch.Tensor]]]:
+    ) -> tuple[list, Optional[list[torch.Tensor]]]:
         """Extract vision/sound slices from the flat denoised latent, then decode.
 
-        Returns ``(video, sound)``: ``video`` is a list of ``[C, T, H, W]`` pixel
-        tensors in ``[0, 1]`` (or raw latents when ``output_type == "latent"``);
-        ``sound`` is ``None`` unless ``enable_sound`` was set.
+        Returns ``(video, sound)``. ``video`` is a list with one entry per generated
+        sample: raw latents when ``output_type == "latent"``, otherwise the output of
+        :meth:`VideoProcessor.postprocess_video` (e.g. a list of PIL frames for
+        ``output_type="pil"``). ``sound`` is ``None`` unless ``enable_sound`` was set.
         """
         result_vision: list[torch.Tensor] = []
         offset = 0
@@ -755,7 +758,13 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
 
         if output_type == "latent":
             return result_vision, result_sound
-        return self.decode_latents(result_vision), result_sound
+
+        decoded = self.decode_latents(result_vision)  # list of [C, T, H, W] in [-1, 1]
+        video = [
+            self.video_processor.postprocess_video(v.unsqueeze(0), output_type=output_type)[0]
+            for v in decoded
+        ]
+        return video, result_sound
 
     @property
     def current_timestep(self):
@@ -781,7 +790,7 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
         enable_sound: bool = False,
         generator: Optional[torch.Generator] = None,
         latents: Optional[torch.Tensor] = None,
-        output_type: str = "video",
+        output_type: str = "pil",
         return_dict: bool = True,
         use_system_prompt: bool = False,
         callback_on_step_end: Optional[

@@ -29,8 +29,8 @@ import torch
 from huggingface_hub import snapshot_download
 
 from diffusers import Cosmos3OmniDiffusersPipeline
-from diffusers.pipelines.cosmos.export_utils import save_img_or_video, save_wav
-from diffusers.utils import load_image
+from diffusers.pipelines.cosmos.export_utils import save_wav
+from diffusers.utils import export_to_video, load_image
 
 
 HF_REPO = "nvidia/Cosmos3-Nano"
@@ -87,11 +87,15 @@ def main():
         enable_sound=args.enable_sound,
     )
 
-    ext = "jpg" if args.num_frames == 1 else "mp4"
     for i, frames in enumerate(result.video):
-        save_path = str(output_dir / f"sample-{i}")
-        save_img_or_video(frames, save_path, fps=int(args.fps))
-        print(f"Saved: {save_path}.{ext}")
+        if args.num_frames == 1:
+            save_path = output_dir / f"sample-{i}.jpg"
+            frames[0].save(save_path, format="JPEG", quality=85)
+        else:
+            save_path = output_dir / f"sample-{i}.mp4"
+            # macro_block_size=1 allows arbitrary frame sizes (Cosmos3 outputs are not always divisible by 16).
+            export_to_video(frames, str(save_path), fps=int(args.fps), quality=10, macro_block_size=1)
+        print(f"Saved: {save_path}")
 
     if result.sound is not None:
         assert pipeline.sound_tokenizer is not None
