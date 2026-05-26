@@ -15,6 +15,7 @@
 
 import gc
 import unittest
+from unittest import mock
 
 import numpy as np
 import torch
@@ -53,6 +54,15 @@ enable_full_determinism()
 class IPAdapterNightlyTestsMixin(unittest.TestCase):
     dtype = torch.float16
 
+    _SD_PIPELINE_RANDN_TENSOR_TARGETS = {
+        StableDiffusionPipeline: "diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.randn_tensor",
+        StableDiffusionImg2ImgPipeline: "diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_img2img.randn_tensor",
+        StableDiffusionInpaintPipeline: "diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_inpaint.randn_tensor",
+        StableDiffusionXLPipeline: "diffusers.pipelines.stable_diffusion_xl.pipeline_stable_diffusion_xl.randn_tensor",
+        StableDiffusionXLImg2ImgPipeline: "diffusers.pipelines.stable_diffusion_xl.pipeline_stable_diffusion_xl_img2img.randn_tensor",
+        StableDiffusionXLInpaintPipeline: "diffusers.pipelines.stable_diffusion_xl.pipeline_stable_diffusion_xl_inpaint.randn_tensor",
+    }
+
     def setUp(self):
         # clean up the VRAM before each test
         super().setUp()
@@ -64,6 +74,22 @@ class IPAdapterNightlyTestsMixin(unittest.TestCase):
         super().tearDown()
         gc.collect()
         backend_empty_cache(torch_device)
+
+    def get_fixed_noise(self, shape=(1, 4, 64, 64), seed=33):
+        return torch.from_numpy(np.random.RandomState(seed).standard_normal(shape)).to(torch.float32)
+
+    def get_fixed_randn_tensor_patch(self, pipeline, shape=(1, 4, 64, 64), seed=33):
+        fixed_noise = self.get_fixed_noise(shape=shape, seed=seed)
+
+        def fake_randn_tensor(requested_shape, generator=None, device=None, dtype=None, layout=None):
+            self.assertEqual(tuple(requested_shape), tuple(fixed_noise.shape))
+            return fixed_noise.to(device=device, dtype=dtype)
+
+        for pipeline_cls, target in self._SD_PIPELINE_RANDN_TENSOR_TARGETS.items():
+            if isinstance(pipeline, pipeline_cls):
+                return mock.patch(target, side_effect=fake_randn_tensor)
+
+        self.fail(f"No fixed randn_tensor patch target configured for pipeline type {type(pipeline)}")
 
     def get_image_encoder(self, repo_id, subfolder):
         image_encoder = CLIPVisionModelWithProjection.from_pretrained(
@@ -182,10 +208,11 @@ class IPAdapterSDIntegrationTests(IPAdapterNightlyTestsMixin):
         pipeline.load_ip_adapter("h94/IP-Adapter", subfolder="models", weight_name="ip-adapter_sd15.bin")
 
         inputs = self.get_dummy_inputs()
-        images = pipeline(**inputs).images
+        with self.get_fixed_randn_tensor_patch(pipeline):
+            images = pipeline(**inputs).images
         image_slice = images[0, :3, :3, -1].flatten()
 
-        expected_slice = np.array([0.80810547, 0.88183594, 0.9296875, 0.9189453, 0.9848633, 1.0, 0.97021484, 1.0, 1.0])
+        expected_slice = np.array([0.3291, 0.2964, 0.2742, 0.3010, 0.2698, 0.2507, 0.2917, 0.2671, 0.2478])
 
         max_diff = numpy_cosine_similarity_distance(image_slice, expected_slice)
         assert max_diff < 5e-4
@@ -193,12 +220,11 @@ class IPAdapterSDIntegrationTests(IPAdapterNightlyTestsMixin):
         pipeline.load_ip_adapter("h94/IP-Adapter", subfolder="models", weight_name="ip-adapter-plus_sd15.bin")
 
         inputs = self.get_dummy_inputs()
-        images = pipeline(**inputs).images
+        with self.get_fixed_randn_tensor_patch(pipeline):
+            images = pipeline(**inputs).images
         image_slice = images[0, :3, :3, -1].flatten()
 
-        expected_slice = np.array(
-            [0.30444336, 0.26513672, 0.22436523, 0.2758789, 0.25585938, 0.20751953, 0.25390625, 0.24633789, 0.21923828]
-        )
+        expected_slice = np.array([0.1238, 0.0579, 0.0312, 0.0493, 0.0010, 0.0, 0.0188, 0.0, 0.0])
 
         max_diff = numpy_cosine_similarity_distance(image_slice, expected_slice)
         assert max_diff < 5e-4
@@ -214,26 +240,30 @@ class IPAdapterSDIntegrationTests(IPAdapterNightlyTestsMixin):
         pipeline.to(torch_device)
         pipeline.load_ip_adapter("h94/IP-Adapter", subfolder="models", weight_name="ip-adapter_sd15.bin")
 
-        inputs = self.get_dummy_inputs(for_image_to_image=True)
-        images = pipeline(**inputs).images
-        image_slice = images[0, :3, :3, -1].flatten()
+        with self.get_fixed_randn_tensor_patch(pipeline):
+            inputs = self.get_dummy_inputs(for_image_to_image=True)
+            images = pipeline(**inputs).images
+            image_slice = images[0, :3, :3, -1].flatten()
 
-        expected_slice = np.array(
-            [0.22167969, 0.21875, 0.21728516, 0.22607422, 0.21948242, 0.23925781, 0.22387695, 0.25268555, 0.2722168]
-        )
+        expected_slice = np.array([0.1492, 0.1294, 0.1123, 0.1504, 0.1328, 0.0923, 0.1428, 0.1479, 0.1370])
 
         max_diff = numpy_cosine_similarity_distance(image_slice, expected_slice)
         assert max_diff < 5e-4
 
         pipeline.load_ip_adapter("h94/IP-Adapter", subfolder="models", weight_name="ip-adapter-plus_sd15.bin")
 
-        inputs = self.get_dummy_inputs(for_image_to_image=True)
-        images = pipeline(**inputs).images
-        image_slice = images[0, :3, :3, -1].flatten()
+        with self.get_fixed_randn_tensor_patch(pipeline):
+            inputs = self.get_dummy_inputs(for_image_to_image=True)
+            images = pipeline(**inputs).images
+            image_slice = images[0, :3, :3, -1].flatten()
 
-        expected_slice = np.array(
-            [0.35913086, 0.265625, 0.26367188, 0.24658203, 0.19750977, 0.39990234, 0.15258789, 0.20336914, 0.5517578]
-        )
+        expected_slice = Expectations(
+            {
+                ("cuda", None): np.array([0.0493, 0.0059, 0.0, 0.0166, 0.0056, 0.0027, 0.0139, 0.0090, 0.0129]),
+                ("xpu", None): np.array([0.0513, 0.0083, 0.0, 0.0183, 0.0073, 0.0039, 0.0159, 0.0100, 0.0142]),
+                (None, None): np.array([0.0493, 0.0059, 0.0, 0.0166, 0.0056, 0.0027, 0.0139, 0.0090, 0.0129]),
+            }
+        ).get_expectation()
 
         max_diff = numpy_cosine_similarity_distance(image_slice, expected_slice)
         assert max_diff < 5e-4
@@ -250,12 +280,11 @@ class IPAdapterSDIntegrationTests(IPAdapterNightlyTestsMixin):
         pipeline.load_ip_adapter("h94/IP-Adapter", subfolder="models", weight_name="ip-adapter_sd15.bin")
 
         inputs = self.get_dummy_inputs(for_inpainting=True)
-        images = pipeline(**inputs).images
+        with self.get_fixed_randn_tensor_patch(pipeline):
+            images = pipeline(**inputs).images
         image_slice = images[0, :3, :3, -1].flatten()
 
-        expected_slice = np.array(
-            [0.27148438, 0.24047852, 0.22167969, 0.23217773, 0.21118164, 0.21142578, 0.21875, 0.20751953, 0.20019531]
-        )
+        expected_slice = np.array([0.2766, 0.2437, 0.2246, 0.2354, 0.2126, 0.2119, 0.2207, 0.2075, 0.1992])
 
         max_diff = numpy_cosine_similarity_distance(image_slice, expected_slice)
         assert max_diff < 5e-4
@@ -263,8 +292,11 @@ class IPAdapterSDIntegrationTests(IPAdapterNightlyTestsMixin):
         pipeline.load_ip_adapter("h94/IP-Adapter", subfolder="models", weight_name="ip-adapter-plus_sd15.bin")
 
         inputs = self.get_dummy_inputs(for_inpainting=True)
-        images = pipeline(**inputs).images
+        with self.get_fixed_randn_tensor_patch(pipeline):
+            images = pipeline(**inputs).images
         image_slice = images[0, :3, :3, -1].flatten()
+
+        expected_slice = np.array([0.3042, 0.2739, 0.2532, 0.2666, 0.2434, 0.2351, 0.2507, 0.2358, 0.2217])
 
         max_diff = numpy_cosine_similarity_distance(image_slice, expected_slice)
         assert max_diff < 5e-4
@@ -281,11 +313,13 @@ class IPAdapterSDIntegrationTests(IPAdapterNightlyTestsMixin):
         pipeline.to(torch_device)
 
         inputs = self.get_dummy_inputs()
-        output_without_offload = pipeline(**inputs).images
+        with self.get_fixed_randn_tensor_patch(pipeline):
+            output_without_offload = pipeline(**inputs).images
 
         pipeline.enable_model_cpu_offload(device=torch_device)
         inputs = self.get_dummy_inputs()
-        output_with_offload = pipeline(**inputs).images
+        with self.get_fixed_randn_tensor_patch(pipeline):
+            output_with_offload = pipeline(**inputs).images
         max_diff = np.abs(output_with_offload - output_without_offload).max()
         self.assertLess(max_diff, 1e-3, "CPU offloading should not affect the inference results")
 
@@ -312,9 +346,10 @@ class IPAdapterSDIntegrationTests(IPAdapterNightlyTestsMixin):
         pipeline.set_ip_adapter_scale(0.7)
 
         inputs = self.get_dummy_inputs()
-        images = pipeline(**inputs).images
+        with self.get_fixed_randn_tensor_patch(pipeline):
+            images = pipeline(**inputs).images
         image_slice = images[0, :3, :3, -1].flatten()
-        expected_slice = np.array([0.1704, 0.1296, 0.1272, 0.2212, 0.1514, 0.1479, 0.4172, 0.4263, 0.4360])
+        expected_slice = np.array([0.4033, 0.3989, 0.3992, 0.4006, 0.3879, 0.4355, 0.4192, 0.4333, 0.4753])
 
         max_diff = numpy_cosine_similarity_distance(image_slice, expected_slice)
         assert max_diff < 5e-4
@@ -358,9 +393,10 @@ class IPAdapterSDIntegrationTests(IPAdapterNightlyTestsMixin):
         inputs = self.get_dummy_inputs()
         ip_adapter_image = inputs["ip_adapter_image"]
         inputs["ip_adapter_image"] = [ip_adapter_image, [ip_adapter_image] * 2]
-        images = pipeline(**inputs).images
+        with self.get_fixed_randn_tensor_patch(pipeline):
+            images = pipeline(**inputs).images
         image_slice = images[0, :3, :3, -1].flatten()
-        expected_slice = np.array([0.5234, 0.5352, 0.5625, 0.5713, 0.5947, 0.6206, 0.5786, 0.6187, 0.6494])
+        expected_slice = np.array([0.2783, 0.2302, 0.1921, 0.2354, 0.1934, 0.1528, 0.2207, 0.1902, 0.1526])
 
         max_diff = numpy_cosine_similarity_distance(image_slice, expected_slice)
         assert max_diff < 5e-4
@@ -386,10 +422,10 @@ class IPAdapterSDIntegrationTests(IPAdapterNightlyTestsMixin):
         id_embeds = id_embeds.reshape((2, 1, 1, 512))
         inputs["ip_adapter_image_embeds"] = [id_embeds]
         inputs["ip_adapter_image"] = None
-        images = pipeline(**inputs).images
+        with self.get_fixed_randn_tensor_patch(pipeline):
+            images = pipeline(**inputs).images
         image_slice = images[0, :3, :3, -1].flatten()
-
-        expected_slice = np.array([0.3237, 0.3186, 0.3406, 0.3154, 0.2942, 0.3220, 0.3188, 0.3528, 0.3242])
+        expected_slice = np.array([0.4780, 0.5117, 0.5103, 0.5044, 0.4922, 0.4932, 0.5029, 0.4954, 0.4802])
         max_diff = numpy_cosine_similarity_distance(image_slice, expected_slice)
         assert max_diff < 5e-4
 
@@ -411,23 +447,23 @@ class IPAdapterSDXLIntegrationTests(IPAdapterNightlyTestsMixin):
         pipeline.load_ip_adapter("h94/IP-Adapter", subfolder="sdxl_models", weight_name="ip-adapter_sdxl.bin")
 
         inputs = self.get_dummy_inputs()
-        images = pipeline(**inputs).images
+        with self.get_fixed_randn_tensor_patch(pipeline, shape=(1, 4, 128, 128)):
+            images = pipeline(**inputs).images
         image_slice = images[0, :3, :3, -1].flatten()
 
         expected_slice = np.array(
             [
-                0.09630299,
-                0.09551358,
-                0.08480701,
-                0.09070173,
-                0.09437338,
-                0.09264627,
-                0.08883232,
-                0.09287417,
-                0.09197289,
+                0.15138859,
+                0.15170279,
+                0.14246401,
+                0.15483627,
+                0.15317351,
+                0.15564519,
+                0.14952978,
+                0.15584505,
+                0.14940351,
             ]
         )
-
         max_diff = numpy_cosine_similarity_distance(image_slice, expected_slice)
         assert max_diff < 5e-4
 
@@ -447,11 +483,23 @@ class IPAdapterSDXLIntegrationTests(IPAdapterNightlyTestsMixin):
         )
 
         inputs = self.get_dummy_inputs()
-        images = pipeline(**inputs).images
+        with self.get_fixed_randn_tensor_patch(pipeline, shape=(1, 4, 128, 128)):
+            images = pipeline(**inputs).images
         image_slice = images[0, :3, :3, -1].flatten()
 
-        expected_slice = np.array([0.0596, 0.0539, 0.0459, 0.0580, 0.0560, 0.0548, 0.0501, 0.0563, 0.0500])
-
+        expected_slice = np.array(
+            [
+                0.09022659,
+                0.08629113,
+                0.07586601,
+                0.09006533,
+                0.08684656,
+                0.08665657,
+                0.08367643,
+                0.08839294,
+                0.08377907,
+            ]
+        )
         max_diff = numpy_cosine_similarity_distance(image_slice, expected_slice)
         assert max_diff < 5e-4
 
@@ -469,23 +517,13 @@ class IPAdapterSDXLIntegrationTests(IPAdapterNightlyTestsMixin):
         pipeline.load_ip_adapter("h94/IP-Adapter", subfolder="sdxl_models", weight_name="ip-adapter_sdxl.bin")
 
         inputs = self.get_dummy_inputs(for_image_to_image=True)
-        images = pipeline(**inputs).images
+        with self.get_fixed_randn_tensor_patch(pipeline, shape=(1, 4, 64, 64)):
+            images = pipeline(**inputs).images
         image_slice = images[0, :3, :3, -1].flatten()
 
         expected_slice = np.array(
-            [
-                0.06513795,
-                0.07009393,
-                0.07234055,
-                0.07426041,
-                0.07002589,
-                0.06415862,
-                0.07827643,
-                0.07962808,
-                0.07411247,
-            ]
+            [0.05107406, 0.05074775, 0.00099546, 0.05845362, 0.05587912, 0.0, 0.06056768, 0.05724522, 0.0648115]
         )
-
         assert np.allclose(image_slice, expected_slice, atol=1e-3)
 
         image_encoder = self.get_image_encoder(repo_id="h94/IP-Adapter", subfolder="models/image_encoder")
@@ -505,21 +543,11 @@ class IPAdapterSDXLIntegrationTests(IPAdapterNightlyTestsMixin):
         )
 
         inputs = self.get_dummy_inputs(for_image_to_image=True)
-        images = pipeline(**inputs).images
+        with self.get_fixed_randn_tensor_patch(pipeline, shape=(1, 4, 64, 64)):
+            images = pipeline(**inputs).images
         image_slice = images[0, :3, :3, -1].flatten()
-
         expected_slice = np.array(
-            [
-                0.07126552,
-                0.07025367,
-                0.07348302,
-                0.07580167,
-                0.07467338,
-                0.06918576,
-                0.07480252,
-                0.08279955,
-                0.08547315,
-            ]
+            [0.05652112, 0.05557555, 0.00392720, 0.06261870, 0.06117940, 0.0, 0.05906063, 0.06035855, 0.06263199]
         )
 
         assert np.allclose(image_slice, expected_slice, atol=1e-3)
@@ -538,12 +566,21 @@ class IPAdapterSDXLIntegrationTests(IPAdapterNightlyTestsMixin):
         pipeline.load_ip_adapter("h94/IP-Adapter", subfolder="sdxl_models", weight_name="ip-adapter_sdxl.bin")
 
         inputs = self.get_dummy_inputs(for_inpainting=True)
-        images = pipeline(**inputs).images
+        with self.get_fixed_randn_tensor_patch(pipeline, shape=(1, 4, 128, 128)):
+            images = pipeline(**inputs).images
         image_slice = images[0, :3, :3, -1].flatten()
-        image_slice.tolist()
-
         expected_slice = np.array(
-            [0.14181179, 0.1493012, 0.14283323, 0.14602411, 0.14915377, 0.15015268, 0.14725655, 0.15009224, 0.15164584]
+            [
+                0.14227295,
+                0.14525282,
+                0.14307272,
+                0.15040666,
+                0.14928216,
+                0.14794737,
+                0.14742243,
+                0.15273672,
+                0.15166444,
+            ]
         )
 
         max_diff = numpy_cosine_similarity_distance(image_slice, expected_slice)
@@ -566,11 +603,22 @@ class IPAdapterSDXLIntegrationTests(IPAdapterNightlyTestsMixin):
         )
 
         inputs = self.get_dummy_inputs(for_inpainting=True)
-        images = pipeline(**inputs).images
+        with self.get_fixed_randn_tensor_patch(pipeline, shape=(1, 4, 128, 128)):
+            images = pipeline(**inputs).images
         image_slice = images[0, :3, :3, -1].flatten()
-        image_slice.tolist()
-
-        expected_slice = np.array([0.1398, 0.1476, 0.1407, 0.1442, 0.1470, 0.1480, 0.1449, 0.1481, 0.1494])
+        expected_slice = np.array(
+            [
+                0.14031684,
+                0.14346808,
+                0.14132470,
+                0.14918229,
+                0.14789128,
+                0.14650577,
+                0.14599693,
+                0.15143514,
+                0.15061957,
+            ]
+        )
 
         max_diff = numpy_cosine_similarity_distance(image_slice, expected_slice)
         assert max_diff < 5e-4
@@ -594,12 +642,22 @@ class IPAdapterSDXLIntegrationTests(IPAdapterNightlyTestsMixin):
         mask = processor.preprocess(mask)
         inputs["cross_attention_kwargs"]["ip_adapter_masks"] = mask
         inputs["ip_adapter_image"] = inputs["ip_adapter_image"][0]
-        images = pipeline(**inputs).images
+        with self.get_fixed_randn_tensor_patch(pipeline, shape=(1, 4, 128, 128)):
+            images = pipeline(**inputs).images
         image_slice = images[0, :3, :3, -1].flatten()
         expected_slice = np.array(
-            [0.7307304, 0.73450166, 0.73731124, 0.7377061, 0.7318013, 0.73720926, 0.74746597, 0.7409929, 0.74074936]
+            [
+                0.47833657,
+                0.50273246,
+                0.49865803,
+                0.46196738,
+                0.51376355,
+                0.49931064,
+                0.45902768,
+                0.55391037,
+                0.50260746,
+            ]
         )
-
         max_diff = numpy_cosine_similarity_distance(image_slice, expected_slice)
         assert max_diff < 5e-4
 
@@ -621,10 +679,11 @@ class IPAdapterSDXLIntegrationTests(IPAdapterNightlyTestsMixin):
         processor = IPAdapterMaskProcessor()
         masks = processor.preprocess(masks)
         inputs["cross_attention_kwargs"]["ip_adapter_masks"] = masks
-        images = pipeline(**inputs).images
+        with self.get_fixed_randn_tensor_patch(pipeline, shape=(1, 4, 128, 128)):
+            images = pipeline(**inputs).images
         image_slice = images[0, :3, :3, -1].flatten()
         expected_slice = np.array(
-            [0.79474676, 0.7977683, 0.8013954, 0.7988008, 0.7970615, 0.8029355, 0.80614823, 0.8050743, 0.80627424]
+            [0.3578991, 0.39458388, 0.43545875, 0.35710996, 0.3885604, 0.43619853, 0.37826842, 0.39264038, 0.45008034]
         )
 
         max_diff = numpy_cosine_similarity_distance(image_slice, expected_slice)
@@ -663,54 +722,23 @@ class IPAdapterSDXLIntegrationTests(IPAdapterNightlyTestsMixin):
         masks2 = processor.preprocess(masks2, height=1024, width=1024)
         masks2 = masks2.reshape(1, masks2.shape[0], masks2.shape[2], masks2.shape[3])
         inputs["cross_attention_kwargs"]["ip_adapter_masks"] = [masks1, masks2]
-        images = pipeline(**inputs).images
+        with self.get_fixed_randn_tensor_patch(pipeline, shape=(1, 4, 128, 128)):
+            images = pipeline(**inputs).images
         image_slice = images[0, :3, :3, -1].flatten()
 
-        expected_slices = Expectations(
-            {
-                ("xpu", 3): np.array(
-                    [
-                        0.2520,
-                        0.1050,
-                        0.1510,
-                        0.0997,
-                        0.0893,
-                        0.0019,
-                        0.0000,
-                        0.0000,
-                        0.0210,
-                    ]
-                ),
-                ("cuda", 7): np.array(
-                    [
-                        0.2323,
-                        0.1026,
-                        0.1338,
-                        0.0638,
-                        0.0662,
-                        0.0000,
-                        0.0000,
-                        0.0000,
-                        0.0199,
-                    ]
-                ),
-                ("cuda", 8): np.array(
-                    [
-                        0.2518,
-                        0.1059,
-                        0.1553,
-                        0.0977,
-                        0.0852,
-                        0.0000,
-                        0.0000,
-                        0.0000,
-                        0.0220,
-                    ]
-                ),
-            }
+        expected_slice = np.array(
+            [
+                0.0271,
+                0.0004,
+                0.0000,
+                0.0011,
+                0.0000,
+                0.0000,
+                0.0000,
+                0.0000,
+                0.0037,
+            ]
         )
-        expected_slice = expected_slices.get_expectation()
-
         max_diff = numpy_cosine_similarity_distance(image_slice, expected_slice)
         assert max_diff < 5e-4
 
@@ -735,11 +763,11 @@ class IPAdapterSDXLIntegrationTests(IPAdapterNightlyTestsMixin):
         inputs["cross_attention_kwargs"]["ip_adapter_masks"] = [masks]
         ip_images = inputs["ip_adapter_image"]
         inputs["ip_adapter_image"] = [[image[0] for image in ip_images]]
-        images = pipeline(**inputs).images
+        with self.get_fixed_randn_tensor_patch(pipeline, shape=(1, 4, 128, 128)):
+            images = pipeline(**inputs).images
         image_slice = images[0, :3, :3, -1].flatten()
         expected_slice = np.array(
-            [0.79474676, 0.7977683, 0.8013954, 0.7988008, 0.7970615, 0.8029355, 0.80614823, 0.8050743, 0.80627424]
+            [0.35761628, 0.39357206, 0.43524706, 0.3571607, 0.38741112, 0.43580052, 0.37814528, 0.3915079, 0.44959208]
         )
-
         max_diff = numpy_cosine_similarity_distance(image_slice, expected_slice)
         assert max_diff < 5e-4
