@@ -218,11 +218,14 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
             "eos_token_id": text_tokenizer.eos_token_id,
         }
 
-        # Prompt-augmentation templates: appended to the user-supplied prompt and negative prompt
-        # inside `tokenize_prompt` so the LLM sees the same metadata the model was trained with.
+        # Prompt-augmentation templates: appended inside `tokenize_prompt` so the LLM sees
+        # the same metadata the model was trained with. Negative prompts use inverse templates.
         self.duration_template = "The video is {duration:.1f} seconds long and is of {fps:.0f} FPS."
         self.image_resolution_template = "This image is of {height}x{width} resolution."
         self.video_resolution_template = "This video is of {height}x{width} resolution."
+        self.inverse_duration_template = "The video is not {duration:.1f} seconds long and is not of {fps:.0f} FPS."
+        self.inverse_image_resolution_template = "This image is not of {height}x{width} resolution."
+        self.inverse_video_resolution_template = "This video is not of {height}x{width} resolution."
 
         # Recommended quality-control negative prompts are documented in the Cosmos3 docs
         # page (text2video / image2video). When the caller passes None we fall back to "".
@@ -599,6 +602,8 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
         width: int = 1280,
         fps: float = 24.0,
         use_system_prompt: bool = True,
+        add_resolution_template: bool = True,
+        add_duration_template: bool = True,
     ) -> tuple[list[int], list[int]]:
         """Apply prompt-augmentation templates and tokenize cond/uncond prompts via the Qwen2 chat template.
 
@@ -608,7 +613,8 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
         When ``negative_prompt`` is ``None``, an empty string is used; the
         Cosmos3 docs page documents recommended quality-control negative
         prompts to pass explicitly for text2video / image2video. The duration
-        and resolution templates are then appended to both prompts.
+        and resolution templates are appended to the prompt, and inverse
+        templates are appended to the negative prompt, when enabled.
 
         Returns:
             ``(cond_text_tokens, uncond_text_tokens)`` — token-ID lists for this sample.
@@ -619,11 +625,21 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
             negative_prompt = ""
 
         resolution_template = self.image_resolution_template if is_image else self.video_resolution_template
+        inverse_resolution_template = (
+            self.inverse_image_resolution_template if is_image else self.inverse_video_resolution_template
+        )
 
-        def _apply_templates(text: str) -> str:
-            if not is_image:
-                text = text.rstrip(".") + ". " + self.duration_template.format(duration=num_frames / fps, fps=fps)
-            text = text.rstrip(".") + ". " + resolution_template.format(height=height, width=width)
+        def _append(base: str, addition: str) -> str:
+            base = base.rstrip(".")
+            return f"{base}. {addition}" if base else addition
+
+        def _apply_templates(text: str, is_negative: bool = False) -> str:
+            if not is_image and add_duration_template:
+                duration_template = self.inverse_duration_template if is_negative else self.duration_template
+                text = _append(text, duration_template.format(duration=num_frames / fps, fps=fps))
+            if add_resolution_template:
+                template = inverse_resolution_template if is_negative else resolution_template
+                text = _append(text, template.format(height=height, width=width))
             return text
 
         def _tokenize(text: str) -> list[int]:
@@ -640,7 +656,7 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
             )
 
         cond_tokens = _tokenize(_apply_templates(prompt))
-        uncond_tokens = _tokenize(_apply_templates(negative_prompt))
+        uncond_tokens = _tokenize(_apply_templates(negative_prompt, is_negative=True))
         return cond_tokens, uncond_tokens
 
     @staticmethod
@@ -731,6 +747,8 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
             Union[Callable[[int, int, Dict[str, Any]], None], PipelineCallback, MultiPipelineCallbacks]
         ] = None,
         callback_on_step_end_tensor_inputs: List[str] = ["latents"],
+        add_resolution_template: bool = True,
+        add_duration_template: bool = True,
     ) -> Cosmos3OmniPipelineOutput:
         if isinstance(callback_on_step_end, (PipelineCallback, MultiPipelineCallbacks)):
             callback_on_step_end_tensor_inputs = callback_on_step_end.tensor_inputs
@@ -765,6 +783,8 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
             width=width,
             fps=fps,
             use_system_prompt=use_system_prompt,
+            add_resolution_template=add_resolution_template,
+            add_duration_template=add_duration_template,
         )
 
         # 4. Prepare latents (initial noise per modality + pack metadata)
