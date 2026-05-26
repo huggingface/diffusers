@@ -127,7 +127,7 @@ def main():
                 result.video,
                 fps=int(args.fps),
                 audio=result.sound,
-                audio_sample_rate=pipeline.sound_tokenizer.sample_rate,
+                audio_sample_rate=pipeline.sound_tokenizer.config.sampling_rate,
                 output_path=str(save_path),
             )
         else:

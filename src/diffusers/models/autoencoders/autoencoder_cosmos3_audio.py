@@ -223,11 +223,6 @@ class Cosmos3AVAEAudioTokenizer(ModelMixin, ConfigMixin):
 
         self._hop_size: int = math.prod(dec_strides)
 
-    @property
-    def sample_rate(self) -> int:
-        """Audio sample rate in Hz."""
-        return self.config.sampling_rate
-
     @apply_forward_hook
     def decode(self, latents: torch.Tensor) -> torch.Tensor:
         """Decode sound latents into an audio waveform.

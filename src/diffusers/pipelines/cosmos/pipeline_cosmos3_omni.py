@@ -518,7 +518,7 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
         if enable_sound:
             sound_dim = self.transformer.config.sound_dim
             fps_sound = float(self.transformer.config.sound_latent_fps)
-            n_audio_samples = int(num_frames / fps * self.sound_tokenizer.sample_rate)
+            n_audio_samples = int(num_frames / fps * self.sound_tokenizer.config.sampling_rate)
             hop_size = self.sound_tokenizer._hop_size
             T_sound = (n_audio_samples + hop_size - 1) // hop_size
             x0_tokens_sound = torch.zeros(sound_dim, T_sound, device=device, dtype=dtype)

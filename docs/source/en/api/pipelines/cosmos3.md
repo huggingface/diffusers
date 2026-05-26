@@ -215,7 +215,7 @@ encode_video(
     result.video,
     fps=24,
     audio=result.sound,
-    audio_sample_rate=pipe.sound_tokenizer.sample_rate,
+    audio_sample_rate=pipe.sound_tokenizer.config.sampling_rate,
     output_path="cosmos3_with_sound.mp4",
 )
 ```
