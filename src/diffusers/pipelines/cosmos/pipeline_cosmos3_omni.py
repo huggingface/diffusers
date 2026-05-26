@@ -233,7 +233,7 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
         }
 
         # Prompt-augmentation templates: appended to the user-supplied prompt and negative prompt
-        # inside `encode_prompt` so the LLM sees the same metadata the model was trained with.
+        # inside `tokenize_prompt` so the LLM sees the same metadata the model was trained with.
         self.duration_template = "The video is {duration:.1f} seconds long and is of {fps:.0f} FPS."
         self.image_resolution_template = "This image is of {height}x{width} resolution."
         self.video_resolution_template = "This video is of {height}x{width} resolution."
@@ -279,32 +279,6 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
         inv_std = self._vae_latents_inv_std.to(device=z.device, dtype=dtype)
         z_raw = z.to(dtype) / inv_std.view(1, -1, 1, 1, 1) + mean.view(1, -1, 1, 1, 1)
         return self.vae.decode(z_raw).sample.to(in_dtype)
-
-    def tokenize_caption(
-        self,
-        caption: str,
-        is_video: bool = False,
-        use_system_prompt: bool = False,
-    ) -> list[int]:
-        """Tokenize a text caption into token IDs using the Qwen2 chat template.
-        Returns:
-            List of token IDs representing the full chat-formatted caption.
-        """
-        conversations = []
-        # Optionally prepend a system prompt that tells the model whether it is generating
-        # an image or a video. This changes the conditioning context for the LLM.
-        if use_system_prompt:
-            _system_prompt = _SYSTEM_PROMPT_VIDEO if is_video else _SYSTEM_PROMPT_IMAGE
-            conversations.append({"role": "system", "content": _system_prompt})
-        conversations.append({"role": "user", "content": caption})
-
-        tokenizer_output = self.text_tokenizer.apply_chat_template(
-            conversations,
-            tokenize=True,
-            add_generation_prompt=True,
-            add_vision_id=False,
-        )
-        return tokenizer_output
 
     def decode_sound(self, latent: torch.Tensor) -> torch.Tensor:
         """Decode a sound latent ``[C, T]`` to a waveform ``[audio_ch, N]``.
@@ -672,7 +646,7 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
             if not getattr(self.transformer.config, "sound_gen", False):
                 raise ValueError("`enable_sound=True` but the transformer was not trained with `sound_gen=True`.")
 
-    def encode_prompt(
+    def tokenize_prompt(
         self,
         prompt: str,
         negative_prompt: Optional[str] = None,
@@ -684,6 +658,9 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
         use_system_prompt: bool = False,
     ) -> tuple[list[int], list[int]]:
         """Apply prompt-augmentation templates and tokenize cond/uncond prompts via the Qwen2 chat template.
+
+        This pipeline does not run a separate text encoder: the joint Cosmos3 transformer
+        consumes raw Qwen2 token IDs alongside vision (and optionally sound) tokens.
 
         When ``negative_prompt`` is ``None``, a mode-specific default is chosen
         (text2image / text2video / image2video). The duration and resolution
@@ -711,11 +688,20 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
             text = text.rstrip(".") + ". " + resolution_template.format(height=height, width=width)
             return text
 
-        prompt = _apply_templates(prompt)
-        negative_prompt = _apply_templates(negative_prompt)
+        def _tokenize(text: str) -> list[int]:
+            conversations = []
+            if use_system_prompt:
+                conversations.append({"role": "system", "content": _SYSTEM_PROMPT_IMAGE})
+            conversations.append({"role": "user", "content": text})
+            return self.text_tokenizer.apply_chat_template(
+                conversations,
+                tokenize=True,
+                add_generation_prompt=True,
+                add_vision_id=False,
+            )
 
-        cond_tokens = self.tokenize_caption(prompt, is_video=False, use_system_prompt=use_system_prompt)
-        uncond_tokens = self.tokenize_caption(negative_prompt, is_video=False, use_system_prompt=use_system_prompt)
+        cond_tokens = _tokenize(_apply_templates(prompt))
+        uncond_tokens = _tokenize(_apply_templates(negative_prompt))
         return cond_tokens, uncond_tokens
 
     def decode_latents(self, vision_list: list[torch.Tensor]) -> list[torch.Tensor]:
@@ -821,8 +807,8 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
         device = self._execution_device
         dtype = self.transformer.dtype
 
-        # 2. Encode prompt (applies metadata templates and selects mode-specific default negative prompt)
-        cond_tokens, uncond_tokens = self.encode_prompt(
+        # 2. Tokenize prompt (applies metadata templates and selects mode-specific default negative prompt)
+        cond_tokens, uncond_tokens = self.tokenize_prompt(
             prompt,
             negative_prompt,
             image=image,
