@@ -41,11 +41,13 @@ better target alignment. Recommended pipeline (mirrors SpecForge's
      improves acceptance length. A concurrency of 64-128 saturates one SGLang
      server. Tooling options:
 
+     * ``examples/discrete_diffusion/regenerate_dflash_data.py`` (this repo)
      * ``nemo_automodel.components.speculative.regenerate``
      * SpecForge ``scripts/regenerate_train_data.py``
-     * a 30-line ``asyncio`` + ``openai.AsyncOpenAI`` loop against ``/v1/chat/completions``
 
-  4. Point ``--dataset_name`` at the regenerated jsonl/parquet.
+  4. Point ``--dataset_name`` at the regenerated jsonl/parquet (this script
+     auto-detects ``.json`` / ``.jsonl`` paths and routes through
+     ``load_dataset('json', data_files=...)``).
 
 Skipping this step trains the draft on a different distribution than the
 target produces at inference, which reduces acceptance length.
@@ -352,7 +354,11 @@ def main():
             raise ValueError("Draft model must expose `target_layer_ids` or `num_target_layers` in config.")
         layer_ids = build_target_layer_ids(int(num_target_layers), int(num_hidden_layers))
 
-    raw_datasets = load_dataset(cfg.dataset_name, cfg.dataset_config_name)
+    # Allow `--dataset_name path/to/file.jsonl` for locally-regenerated training data.
+    if cfg.dataset_name.endswith((".json", ".jsonl")):
+        raw_datasets = load_dataset("json", data_files=cfg.dataset_name)
+    else:
+        raw_datasets = load_dataset(cfg.dataset_name, cfg.dataset_config_name)
     if "train" not in raw_datasets:
         raise ValueError(f"Dataset {cfg.dataset_name} has no 'train' split.")
 
