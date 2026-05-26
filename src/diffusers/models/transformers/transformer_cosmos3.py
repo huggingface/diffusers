@@ -24,6 +24,7 @@ from ..attention import AttentionMixin, AttentionModuleMixin
 from ..attention_dispatch import dispatch_attention_fn
 from ..embeddings import TimestepEmbedding, Timesteps
 from ..modeling_utils import ModelMixin
+from ..normalization import RMSNorm
 
 
 class Cosmos3AttnProcessor:
@@ -137,20 +138,6 @@ class Cosmos3VLTextRotaryEmbedding(nn.Module):
         return emb.cos().to(dtype=x.dtype), emb.sin().to(dtype=x.dtype)  # each: [B,N,head_dim]
 
 
-class Cosmos3VLTextRMSNorm(nn.Module):
-    def __init__(self, hidden_size: int, eps: float = 1e-6) -> None:
-        super().__init__()
-        self.weight = nn.Parameter(torch.ones(hidden_size))
-        self.variance_epsilon = eps
-
-    def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
-        input_dtype = hidden_states.dtype
-        hidden_states = hidden_states.to(torch.float32)
-        variance = hidden_states.pow(2).mean(-1, keepdim=True)
-        hidden_states = hidden_states * torch.rsqrt(variance + self.variance_epsilon)
-        return self.weight * hidden_states.to(input_dtype)
-
-
 class Cosmos3VLTextMLP(nn.Module):
     def __init__(self, hidden_size: int, intermediate_size: int):
         super().__init__()
@@ -196,16 +183,16 @@ class Cosmos3PackedMoTAttention(nn.Module, AttentionModuleMixin):
         self.to_k = nn.Linear(hidden_size, num_key_value_heads * head_dim, bias=attention_bias)
         self.to_v = nn.Linear(hidden_size, num_key_value_heads * head_dim, bias=attention_bias)
         self.to_out = nn.Linear(num_attention_heads * head_dim, hidden_size, bias=attention_bias)
-        self.norm_q = Cosmos3VLTextRMSNorm(head_dim, eps=rms_norm_eps)
-        self.norm_k = Cosmos3VLTextRMSNorm(head_dim, eps=rms_norm_eps)
+        self.norm_q = RMSNorm(head_dim, eps=rms_norm_eps, elementwise_affine=True, bias=False)
+        self.norm_k = RMSNorm(head_dim, eps=rms_norm_eps, elementwise_affine=True, bias=False)
 
         # Generation pathway
         self.add_q_proj = nn.Linear(hidden_size, num_attention_heads * head_dim, bias=attention_bias)
         self.add_k_proj = nn.Linear(hidden_size, num_key_value_heads * head_dim, bias=attention_bias)
         self.add_v_proj = nn.Linear(hidden_size, num_key_value_heads * head_dim, bias=attention_bias)
         self.to_add_out = nn.Linear(num_attention_heads * head_dim, hidden_size, bias=attention_bias)
-        self.norm_added_q = Cosmos3VLTextRMSNorm(head_dim, eps=rms_norm_eps)
-        self.norm_added_k = Cosmos3VLTextRMSNorm(head_dim, eps=rms_norm_eps)
+        self.norm_added_q = RMSNorm(head_dim, eps=rms_norm_eps, elementwise_affine=True, bias=False)
+        self.norm_added_k = RMSNorm(head_dim, eps=rms_norm_eps, elementwise_affine=True, bias=False)
 
         self.set_processor(Cosmos3AttnProcessor())
 
@@ -252,10 +239,12 @@ class Cosmos3VLTextMoTDecoderLayer(nn.Module):
         self.mlp = Cosmos3VLTextMLP(hidden_size=hidden_size, intermediate_size=intermediate_size)
         self.mlp_moe_gen = Cosmos3VLTextMLP(hidden_size=hidden_size, intermediate_size=intermediate_size)
 
-        self.input_layernorm = Cosmos3VLTextRMSNorm(hidden_size, eps=rms_norm_eps)
-        self.input_layernorm_moe_gen = Cosmos3VLTextRMSNorm(hidden_size, eps=rms_norm_eps)
-        self.post_attention_layernorm = Cosmos3VLTextRMSNorm(hidden_size, eps=rms_norm_eps)
-        self.post_attention_layernorm_moe_gen = Cosmos3VLTextRMSNorm(hidden_size, eps=rms_norm_eps)
+        self.input_layernorm = RMSNorm(hidden_size, eps=rms_norm_eps, elementwise_affine=True, bias=False)
+        self.input_layernorm_moe_gen = RMSNorm(hidden_size, eps=rms_norm_eps, elementwise_affine=True, bias=False)
+        self.post_attention_layernorm = RMSNorm(hidden_size, eps=rms_norm_eps, elementwise_affine=True, bias=False)
+        self.post_attention_layernorm_moe_gen = RMSNorm(
+            hidden_size, eps=rms_norm_eps, elementwise_affine=True, bias=False
+        )
 
     def forward(
         self,
@@ -340,8 +329,8 @@ class Cosmos3OmniTransformer(ModelMixin, ConfigMixin, PeftAdapterMixin, Attentio
                 for _ in range(num_hidden_layers)
             ]
         )
-        self.norm = Cosmos3VLTextRMSNorm(hidden_size, eps=rms_norm_eps)
-        self.norm_moe_gen = Cosmos3VLTextRMSNorm(hidden_size, eps=rms_norm_eps)
+        self.norm = RMSNorm(hidden_size, eps=rms_norm_eps, elementwise_affine=True, bias=False)
+        self.norm_moe_gen = RMSNorm(hidden_size, eps=rms_norm_eps, elementwise_affine=True, bias=False)
         self.rotary_emb = Cosmos3VLTextRotaryEmbedding(
             head_dim=head_dim, rope_theta=rope_theta, rope_scaling=rope_scaling
         )
