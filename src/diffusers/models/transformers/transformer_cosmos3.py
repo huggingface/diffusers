@@ -387,23 +387,22 @@ class Cosmos3OmniTransformer(ModelMixin, ConfigMixin, PeftAdapterMixin, Attentio
         for noisy_indexes_i, token_shape_i in zip(noisy_frame_indexes, token_shapes):
             spatial_numel_i = math.prod(token_shape_i[1:])
             spatial_indexes_i = torch.arange(spatial_numel_i, device=packed_tokens.device)
-            noisy_indexes_i = (noisy_indexes_i * spatial_numel_i).unsqueeze(-1).expand(-1, spatial_numel_i)
-            noisy_indexes_i = noisy_indexes_i.clone() + spatial_indexes_i + start_noisy_index
-            flattened_noisy_frame_indexes.append(noisy_indexes_i.flatten())
-            start_noisy_index += math.prod(token_shape_i)
+            # Broadcast [N, 1] + [spatial_numel_i] → [N, spatial_numel_i]
+            frame_offsets = (noisy_indexes_i * spatial_numel_i).unsqueeze(-1) + spatial_indexes_i + start_noisy_index
+            flattened_noisy_frame_indexes.append(frame_offsets.flatten())
+            start_noisy_index += token_shape_i[0] * spatial_numel_i
         flattened = torch.cat(flattened_noisy_frame_indexes, dim=0).unsqueeze(-1).expand(-1, packed_tokens.shape[1])
         return packed_tokens.scatter_add(dim=0, index=flattened, src=packed_timestep_embeds)
 
     def _patchify_and_pack_latents(
         self,
         tokens_vision: List[torch.Tensor],
-        token_shapes_vision: List[Tuple[int, int, int]],
     ) -> Tuple[torch.Tensor, List[Tuple[int, int, int]]]:
         p = self.config.latent_patch_size
         latent_channel = self.config.latent_channel
         packed_latent: List[torch.Tensor] = []
         original_latent_shapes: List[Tuple[int, int, int]] = []
-        for latent, (t, h, w) in zip(tokens_vision, token_shapes_vision):
+        for latent in tokens_vision:
             latent = latent.squeeze(0)  # [C, T, H, W]
             _, t_actual, h_actual, w_actual = latent.shape
             original_latent_shapes.append((t_actual, h_actual, w_actual))
@@ -429,23 +428,21 @@ class Cosmos3OmniTransformer(ModelMixin, ConfigMixin, PeftAdapterMixin, Attentio
         packed_mse_preds: torch.Tensor,
         token_shapes_vision: List[Tuple[int, int, int]],
         noisy_frame_indexes_vision: List[torch.Tensor],
-        original_latent_shapes: Optional[List[Tuple[int, int, int]]] = None,
+        original_latent_shapes: List[Tuple[int, int, int]],
     ) -> List[torch.Tensor]:
         p = self.config.latent_patch_size
         latent_channel = self.config.latent_channel
         unpatchified_latents: List[torch.Tensor] = []
         start_idx = 0
-        for i, (t_c, h_c, w_c) in enumerate(token_shapes_vision):
-            if original_latent_shapes is not None:
-                _, h_orig, w_orig = original_latent_shapes[i]
-                h_padded = ((h_orig + p - 1) // p) * p
-                w_padded = ((w_orig + p - 1) // p) * p
-                h_patches = h_padded // p
-                w_patches = w_padded // p
-            else:
-                h_orig, w_orig = h_c * p, w_c * p
-                h_patches, w_patches = h_c, w_c
-            noisy_frame_indexes = noisy_frame_indexes_vision[i]
+        for token_shape, noisy_frame_indexes, original_shape in zip(
+            token_shapes_vision, noisy_frame_indexes_vision, original_latent_shapes
+        ):
+            t_c = token_shape[0]
+            _, h_orig, w_orig = original_shape
+            h_padded = ((h_orig + p - 1) // p) * p
+            w_padded = ((w_orig + p - 1) // p) * p
+            h_patches = h_padded // p
+            w_patches = w_padded // p
             t_n = len(noisy_frame_indexes)
             output_tensor = torch.zeros(
                 (latent_channel, t_c, h_orig, w_orig),
@@ -471,11 +468,10 @@ class Cosmos3OmniTransformer(ModelMixin, ConfigMixin, PeftAdapterMixin, Attentio
         token_shapes_sound: List[Tuple[int, int, int]],
     ) -> torch.Tensor:
         """List of ``[C, T]`` tensors → packed ``[total_T, C]`` tensor."""
-        packed: List[torch.Tensor] = []
-        for sound, shape in zip(tokens_sound, token_shapes_sound):
-            T = shape[0]
-            packed.append(sound[:, :T].permute(1, 0))  # [C, T] → [T, C]
-        return torch.cat(packed, dim=0)
+        return torch.cat(
+            [sound[:, : shape[0]].permute(1, 0) for sound, shape in zip(tokens_sound, token_shapes_sound)],
+            dim=0,
+        )
 
     def _unpack_sound_latents(
         self,
@@ -525,9 +521,7 @@ class Cosmos3OmniTransformer(ModelMixin, ConfigMixin, PeftAdapterMixin, Attentio
         hidden_states[packed_seq.text_indexes] = packed_text_embedding
 
         # Patchify + project vision latents, then add timestep embeddings to noisy frames.
-        packed_tokens_vision, original_latent_shapes = self._patchify_and_pack_latents(
-            vision.tokens, vision.token_shapes
-        )
+        packed_tokens_vision, original_latent_shapes = self._patchify_and_pack_latents(vision.tokens)
         packed_tokens_vision = self.proj_in(packed_tokens_vision)
         timesteps_vision = vision.timesteps * self.config.timestep_scale
         packed_timestep_embeds_vision = self.time_embedder(self.time_proj(timesteps_vision))
