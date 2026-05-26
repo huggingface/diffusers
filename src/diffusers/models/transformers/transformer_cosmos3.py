@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import math
-from typing import Any, List, Optional, Tuple
+from typing import List, Optional, Tuple
 
 import torch
 import torch.nn as nn
@@ -475,59 +475,92 @@ class Cosmos3OmniTransformer(ModelMixin, ConfigMixin, PeftAdapterMixin, Attentio
     # decode vision/sound. Pipeline calls this once per CFG pass.
     # -------------------------------------------------------------------------
 
-    def forward(self, packed_seq: Any) -> Tuple[List[torch.Tensor], Optional[List[torch.Tensor]]]:
+    def forward(
+        self,
+        input_ids: torch.Tensor,
+        text_indexes: torch.Tensor,
+        position_ids: torch.Tensor,
+        und_len: int,
+        sequence_length: int,
+        vision_tokens: List[torch.Tensor],
+        vision_token_shapes: List[Tuple[int, int, int]],
+        vision_sequence_indexes: torch.Tensor,
+        vision_mse_loss_indexes: torch.Tensor,
+        vision_timesteps: torch.Tensor,
+        vision_noisy_frame_indexes: List[torch.Tensor],
+        sound_tokens: Optional[List[torch.Tensor]] = None,
+        sound_token_shapes: Optional[List[Tuple[int, int, int]]] = None,
+        sound_sequence_indexes: Optional[torch.Tensor] = None,
+        sound_mse_loss_indexes: Optional[torch.Tensor] = None,
+        sound_timesteps: Optional[torch.Tensor] = None,
+        sound_noisy_frame_indexes: Optional[List[torch.Tensor]] = None,
+    ) -> Tuple[List[torch.Tensor], Optional[List[torch.Tensor]]]:
         """Run a full denoising-step forward pass.
 
         Args:
-            packed_seq: ``Cosmos3PackedSequence`` from ``Cosmos3OmniDiffusersPipeline.pack_input_sequence``
-                — carries text/vision/sound
-                token data + position_ids + the und/gen split point.
+            input_ids: Text token IDs placed at ``text_indexes`` in the joint sequence.
+            text_indexes: Indices of text tokens in the joint sequence.
+            position_ids: ``[3, sequence_length]`` mRoPE position IDs for the full joint sequence.
+            und_len: Length of the causal text (understanding) prefix; generation tokens follow.
+            sequence_length: Total length of the joint packed sequence.
+            vision_tokens: Per-item vision latent tensors before patchify.
+            vision_token_shapes: Patch grid shapes ``(T, H, W)`` per vision item.
+            vision_sequence_indexes: Indices of vision tokens in the joint sequence.
+            vision_mse_loss_indexes: Indices used to read vision predictions after the backbone.
+            vision_timesteps: Per-patch diffusion timesteps for vision tokens.
+            vision_noisy_frame_indexes: Noisy frame indices per vision item.
+            sound_tokens: Optional sound latent tensors before packing.
+            sound_token_shapes: Optional patch grid shapes for sound items.
+            sound_sequence_indexes: Optional indices of sound tokens in the joint sequence.
+            sound_mse_loss_indexes: Optional indices used to read sound predictions.
+            sound_timesteps: Optional per-token diffusion timesteps for sound.
+            sound_noisy_frame_indexes: Optional noisy frame indices per sound item.
 
         Returns:
             ``(preds_vision, preds_sound)`` — list of per-modality latents (``preds_sound`` is
-            ``None`` when the model has no sound branch or the packed sequence has no sound tokens).
+            ``None`` when the model has no sound branch or sound inputs are omitted).
         """
-        vision = packed_seq.vision
-        sound = packed_seq.sound
-        has_sound = sound is not None and sound.tokens is not None
+        has_sound = sound_tokens is not None and sound_sequence_indexes is not None
 
         # Embed text tokens into the joint hidden_states buffer at their sequence positions.
-        packed_text_embedding = self.embed_tokens(packed_seq.text_ids)
+        packed_text_embedding = self.embed_tokens(input_ids)
         target_dtype = packed_text_embedding.dtype
-        hidden_states = packed_text_embedding.new_zeros(size=(packed_seq.sequence_length, self.config.hidden_size))
-        hidden_states[packed_seq.text_indexes] = packed_text_embedding
+        hidden_states = packed_text_embedding.new_zeros(size=(sequence_length, self.config.hidden_size))
+        hidden_states[text_indexes] = packed_text_embedding
 
         # Patchify + project vision latents, then add timestep embeddings to noisy frames.
-        packed_tokens_vision, original_latent_shapes = self._patchify_and_pack_latents(vision.tokens)
+        packed_tokens_vision, original_latent_shapes = self._patchify_and_pack_latents(vision_tokens)
         packed_tokens_vision = self.proj_in(packed_tokens_vision)
-        timesteps_vision = vision.timesteps * self.config.timestep_scale
-        packed_timestep_embeds_vision = self.time_embedder(self.time_proj(timesteps_vision))
+        timesteps_vision = vision_timesteps * self.config.timestep_scale
+        with torch.autocast("cuda", enabled=True, dtype=torch.float32):
+            packed_timestep_embeds_vision = self.time_embedder(self.time_proj(timesteps_vision))
         packed_timestep_embeds_vision = packed_timestep_embeds_vision.to(target_dtype)
         packed_tokens_vision = self._apply_timestep_embeds_to_noisy_tokens(
             packed_tokens=packed_tokens_vision,
             packed_timestep_embeds=packed_timestep_embeds_vision,
-            noisy_frame_indexes=vision.noisy_frame_indexes,
-            token_shapes=vision.token_shapes,
+            noisy_frame_indexes=vision_noisy_frame_indexes,
+            token_shapes=vision_token_shapes,
         )
-        hidden_states[vision.sequence_indexes] = packed_tokens_vision
+        hidden_states[vision_sequence_indexes] = packed_tokens_vision
 
         # Pack + project sound latents (when present); all sound frames are noisy.
         if has_sound:
-            packed_tokens_sound = self._pack_sound_latents(sound.tokens, sound.token_shapes).to(target_dtype)
+            packed_tokens_sound = self._pack_sound_latents(sound_tokens, sound_token_shapes).to(target_dtype)
             packed_tokens_sound = self.audio_proj_in(packed_tokens_sound) + self.audio_modality_embed
-            timesteps_sound = sound.timesteps * self.config.timestep_scale
-            packed_timestep_embeds_sound = self.time_embedder(self.time_proj(timesteps_sound))
+            timesteps_sound = sound_timesteps * self.config.timestep_scale
+            with torch.autocast("cuda", enabled=True, dtype=torch.float32):
+                packed_timestep_embeds_sound = self.time_embedder(self.time_proj(timesteps_sound))
             packed_timestep_embeds_sound = packed_timestep_embeds_sound.to(target_dtype)
             packed_tokens_sound = self._apply_timestep_embeds_to_noisy_tokens(
                 packed_tokens=packed_tokens_sound,
                 packed_timestep_embeds=packed_timestep_embeds_sound,
-                noisy_frame_indexes=sound.noisy_frame_indexes,
-                token_shapes=sound.token_shapes,
+                noisy_frame_indexes=sound_noisy_frame_indexes,
+                token_shapes=sound_token_shapes,
             )
-            hidden_states[sound.sequence_indexes] = packed_tokens_sound
+            hidden_states[sound_sequence_indexes] = packed_tokens_sound
 
         # Compute rotary embeddings once for the joint sequence, then slice into und/gen halves.
-        position_ids = packed_seq.position_ids
+        _meta_tensor = torch.tensor([], dtype=hidden_states.dtype, device=hidden_states.device)
         cos, sin = self.rotary_emb(
             position_ids=position_ids.unsqueeze(0) if position_ids.ndim == 1 else position_ids.unsqueeze(1),
             device=hidden_states.device,
@@ -537,7 +570,6 @@ class Cosmos3OmniTransformer(ModelMixin, ConfigMixin, PeftAdapterMixin, Attentio
         cos = cos.squeeze(0)
         sin = sin.squeeze(0)
 
-        und_len = packed_seq.und_len
         und_seq = hidden_states[:und_len]
         gen_seq = hidden_states[und_len:]
         rotary_emb = (cos[:und_len], sin[:und_len], cos[und_len:], sin[und_len:])
@@ -553,17 +585,19 @@ class Cosmos3OmniTransformer(ModelMixin, ConfigMixin, PeftAdapterMixin, Attentio
         last_hidden_state = torch.cat([und_out, gen_out], dim=0)
 
         # Decode vision predictions from the joint hidden state.
-        preds_vision_packed = self.proj_out(last_hidden_state[vision.mse_loss_indexes])
+        preds_vision_packed = self.proj_out(last_hidden_state[vision_mse_loss_indexes])
         preds_vision = self._unpatchify_and_unpack_latents(
             preds_vision_packed,
-            token_shapes_vision=vision.token_shapes,
-            noisy_frame_indexes_vision=vision.noisy_frame_indexes,
+            token_shapes_vision=vision_token_shapes,
+            noisy_frame_indexes_vision=vision_noisy_frame_indexes,
             original_latent_shapes=original_latent_shapes,
         )
 
         preds_sound: Optional[List[torch.Tensor]] = None
         if has_sound:
-            preds_sound_packed = self.audio_proj_out(last_hidden_state[sound.mse_loss_indexes])
-            preds_sound = self._unpack_sound_latents(preds_sound_packed, sound.token_shapes, sound.noisy_frame_indexes)
+            preds_sound_packed = self.audio_proj_out(last_hidden_state[sound_mse_loss_indexes])
+            preds_sound = self._unpack_sound_latents(
+                preds_sound_packed, sound_token_shapes, sound_noisy_frame_indexes
+            )
 
         return preds_vision, preds_sound
