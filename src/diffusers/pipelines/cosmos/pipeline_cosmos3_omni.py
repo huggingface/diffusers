@@ -403,8 +403,6 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
             "sound_sequence_indexes": sequence_indexes,
             "sound_mse_loss_indexes": sequence_indexes.clone(),
             "sound_noisy_frame_indexes": [torch.arange(sound_len, device=device, dtype=torch.long)],
-            # All sound frames are noisy, so the per-frame conditioning mask is always zero.
-            "sound_condition_mask": [torch.zeros((sound_len, 1), device=device, dtype=input_sound_tokens.dtype)],
             # Assembly helpers (consumed inline before the transformer call).
             "sound_mrope_ids": sound_mrope_ids.to(device),
             "sound_len": sound_len,
@@ -500,7 +498,7 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
             else:
                 sound_latents = sound_latents.to(device=device, dtype=dtype)
 
-        return latents, sound_latents, fps, fps_sound
+        return latents, sound_latents, fps, fps_sound, vision_condition_mask, sound_condition_mask
 
     def check_inputs(
         self,
@@ -754,7 +752,7 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
 
         # 4. Prepare latents (initial noise per modality + pack metadata)
         has_image_condition = image is not None and num_frames > 1
-        latents, sound_latents, fps_vision, fps_sound = self.prepare_latents(
+        latents, sound_latents, fps_vision, fps_sound, cond_mask, cond_mask_vision = self.prepare_latents(
             image=image,
             num_frames=num_frames,
             height=height,
