@@ -42,7 +42,7 @@ prompt = (
 )
 
 result = pipe(prompt=prompt, num_frames=1, height=720, width=1280)
-result.video[0][0].save("cosmos3_t2i.jpg", format="JPEG", quality=85)
+result.video[0].save("cosmos3_t2i.jpg", format="JPEG", quality=85)
 ```
 
 ## Text-to-video
@@ -93,7 +93,7 @@ result = pipe(
     fps=24.0,
 )
 # macro_block_size=1 allows arbitrary frame sizes (Cosmos3 outputs are not always divisible by 16).
-export_to_video(result.video[0], "cosmos3_t2v.mp4", fps=24, macro_block_size=1)
+export_to_video(result.video, "cosmos3_t2v.mp4", fps=24, macro_block_size=1)
 ```
 
 ## Image-to-video
@@ -155,7 +155,7 @@ result = pipe(
     fps=24.0,
 )
 # macro_block_size=1 allows arbitrary frame sizes (Cosmos3 outputs are not always divisible by 16).
-export_to_video(result.video[0], "cosmos3_i2v.mp4", fps=24, macro_block_size=1)
+export_to_video(result.video, "cosmos3_i2v.mp4", fps=24, macro_block_size=1)
 ```
 
 ## Text-to-video with sound
@@ -211,8 +211,8 @@ result = pipe(
 )
 
 # macro_block_size=1 allows arbitrary frame sizes (Cosmos3 outputs are not always divisible by 16).
-export_to_video(result.video[0], "cosmos3_with_sound.mp4", fps=24, macro_block_size=1)
-save_wav(result.sound[0], "cosmos3_with_sound.wav", pipe.sound_tokenizer.sample_rate)
+export_to_video(result.video, "cosmos3_with_sound.mp4", fps=24, macro_block_size=1)
+save_wav(result.sound, "cosmos3_with_sound.wav", pipe.sound_tokenizer.sample_rate)
 ```
 
 ## Cosmos3OmniDiffusersPipeline

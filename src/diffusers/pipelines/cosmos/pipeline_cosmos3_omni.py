@@ -154,17 +154,17 @@ class Cosmos3OmniPipelineOutput(BaseOutput):
     """Output dataclass for :class:`Cosmos3OmniDiffusersPipeline`.
 
     Attributes:
-        video: List with one entry per generated sample. The contents depend on
-            ``output_type`` passed to the pipeline: a list of PIL frames for
-            ``"pil"`` (default), an ``np.ndarray``/``torch.Tensor`` of shape
-            ``[T, H, W, C]``/``[T, C, H, W]`` for ``"np"``/``"pt"``, or raw
-            latents when ``output_type="latent"``.
-        sound: List of decoded audio waveforms of shape ``[C, N]``, one per
-            sample.  ``None`` when ``enable_sound=False``.
+        video: The generated video. The exact type depends on ``output_type``
+            passed to the pipeline: a list of PIL frames for ``"pil"`` (default),
+            an ``np.ndarray`` of shape ``[T, H, W, C]`` for ``"np"``, a
+            ``torch.Tensor`` of shape ``[T, C, H, W]`` for ``"pt"``, or a raw
+            latent tensor when ``output_type="latent"``.
+        sound: Decoded audio waveform of shape ``[C, N]``. ``None`` when
+            ``enable_sound=False``.
     """
 
-    video: list
-    sound: Optional[list] = None
+    video: Any
+    sound: Optional[torch.Tensor] = None
 
 
 # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_img2img.retrieve_latents
@@ -235,15 +235,6 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
         inv_std = self._vae_latents_inv_std.to(device=x.device, dtype=dtype)
         raw_mu = retrieve_latents(self.vae.encode(x.to(dtype)), sample_mode="argmax")
         return ((raw_mu - mean.view(1, -1, 1, 1, 1)) * inv_std.view(1, -1, 1, 1, 1)).to(in_dtype)
-
-    def _decode_video(self, z: torch.Tensor) -> torch.Tensor:
-        """[B,z_dim,T_lat,H_lat,W_lat] → raw pixels [B,3,T,H,W]."""
-        in_dtype = z.dtype
-        dtype = self._vae_dtype
-        mean = self._vae_latents_mean.to(device=z.device, dtype=dtype)
-        inv_std = self._vae_latents_inv_std.to(device=z.device, dtype=dtype)
-        z_raw = z.to(dtype) / inv_std.view(1, -1, 1, 1, 1) + mean.view(1, -1, 1, 1, 1)
-        return self.vae.decode(z_raw).sample.to(in_dtype)
 
     def decode_sound(self, latent: torch.Tensor) -> torch.Tensor:
         """Decode a sound latent ``[C, T]`` to a waveform ``[audio_ch, N]``.
@@ -658,14 +649,6 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
         uncond_tokens = _tokenize(_apply_templates(negative_prompt))
         return cond_tokens, uncond_tokens
 
-    def decode_latents(self, vision_list: list[torch.Tensor]) -> list[torch.Tensor]:
-        """Decode latents to pixel tensors of shape [C, T, H, W] in [-1, 1]."""
-        frames = []
-        for vision_latent in vision_list:
-            vision = self._decode_video(vision_latent.cuda())  # [1, C, T, H, W]
-            frames.append(vision.squeeze(0))
-        return frames
-
     def _postprocess_latents(
         self,
         latents: torch.Tensor,
@@ -673,32 +656,36 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
         sound_shape: Optional[Tuple[int, ...]],
         enable_sound: bool,
         output_type: str,
-    ) -> tuple[list, Optional[list[torch.Tensor]]]:
+    ) -> tuple[Any, Optional[torch.Tensor]]:
         """Extract vision/sound slices from the flat denoised latent, then decode.
 
-        Returns ``(video, sound)``. ``video`` is a list with one entry per generated
-        sample: raw latents when ``output_type == "latent"``, otherwise the output of
+        Returns ``(video, sound)``. ``video`` is a raw latent tensor when
+        ``output_type == "latent"``, otherwise the output of
         :meth:`VideoProcessor.postprocess_video` (e.g. a list of PIL frames for
         ``output_type="pil"``). ``sound`` is ``None`` unless ``enable_sound`` was set.
         """
         vision_dim = math.prod(vision_shape)
-        result_vision = [latents[:vision_dim].reshape(vision_shape)]
+        vision_latent = latents[:vision_dim].reshape(vision_shape)
 
-        result_sound: Optional[list] = None
+        sound: Optional[torch.Tensor] = None
         if enable_sound and sound_shape is not None:
             sound_dim_flat = math.prod(sound_shape)
             sound_latent = latents[vision_dim : vision_dim + sound_dim_flat].reshape(sound_shape)
-            result_sound = [self.decode_sound(sound_latent)]
+            sound = self.decode_sound(sound_latent)
 
         if output_type == "latent":
-            return result_vision, result_sound
+            return vision_latent, sound
 
-        decoded = self.decode_latents(result_vision)  # list of [C, T, H, W] in [-1, 1]
-        video = [
-            self.video_processor.postprocess_video(v.unsqueeze(0), output_type=output_type)[0]
-            for v in decoded
-        ]
-        return video, result_sound
+        # VAE denormalize → decode → postprocess. Inputs are [1, z_dim, T, H, W];
+        # postprocess_video handles the [-1, 1] → output_type conversion (denorm + clamp).
+        in_dtype = vision_latent.dtype
+        dtype = self._vae_dtype
+        mean = self._vae_latents_mean.to(device=vision_latent.device, dtype=dtype)
+        inv_std = self._vae_latents_inv_std.to(device=vision_latent.device, dtype=dtype)
+        z_raw = vision_latent.to(dtype) / inv_std.view(1, -1, 1, 1, 1) + mean.view(1, -1, 1, 1, 1)
+        decoded = self.vae.decode(z_raw).sample.to(in_dtype)
+        video = self.video_processor.postprocess_video(decoded, output_type=output_type)[0]
+        return video, sound
 
     @property
     def current_timestep(self):

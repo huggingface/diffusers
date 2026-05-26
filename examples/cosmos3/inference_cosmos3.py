@@ -87,23 +87,20 @@ def main():
         enable_sound=args.enable_sound,
     )
 
-    for i, frames in enumerate(result.video):
-        if args.num_frames == 1:
-            save_path = output_dir / f"sample-{i}.jpg"
-            frames[0].save(save_path, format="JPEG", quality=85)
-        else:
-            save_path = output_dir / f"sample-{i}.mp4"
-            # macro_block_size=1 allows arbitrary frame sizes (Cosmos3 outputs are not always divisible by 16).
-            export_to_video(frames, str(save_path), fps=int(args.fps), quality=10, macro_block_size=1)
-        print(f"Saved: {save_path}")
+    if args.num_frames == 1:
+        save_path = output_dir / "sample.jpg"
+        result.video[0].save(save_path, format="JPEG", quality=85)
+    else:
+        save_path = output_dir / "sample.mp4"
+        # macro_block_size=1 allows arbitrary frame sizes (Cosmos3 outputs are not always divisible by 16).
+        export_to_video(result.video, str(save_path), fps=int(args.fps), quality=10, macro_block_size=1)
+    print(f"Saved: {save_path}")
 
     if result.sound is not None:
         assert pipeline.sound_tokenizer is not None
-        sample_rate = pipeline.sound_tokenizer.sample_rate
-        for i, waveform in enumerate(result.sound):
-            wav_path = output_dir / f"sample-{i}.wav"
-            save_wav(waveform, wav_path, sample_rate)
-            print(f"Saved: {wav_path}")
+        wav_path = output_dir / "sample.wav"
+        save_wav(result.sound, wav_path, pipeline.sound_tokenizer.sample_rate)
+        print(f"Saved: {wav_path}")
 
 
 if __name__ == "__main__":
