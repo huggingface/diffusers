@@ -530,8 +530,7 @@ class Cosmos3OmniTransformer(ModelMixin, ConfigMixin, PeftAdapterMixin, Attentio
         )
         packed_tokens_vision = self.proj_in(packed_tokens_vision)
         timesteps_vision = vision.timesteps * self.config.timestep_scale
-        with torch.autocast("cuda", enabled=True, dtype=torch.float32):
-            packed_timestep_embeds_vision = self.time_embedder(self.time_proj(timesteps_vision))
+        packed_timestep_embeds_vision = self.time_embedder(self.time_proj(timesteps_vision))
         packed_timestep_embeds_vision = packed_timestep_embeds_vision.to(target_dtype)
         packed_tokens_vision = self._apply_timestep_embeds_to_noisy_tokens(
             packed_tokens=packed_tokens_vision,
@@ -546,8 +545,7 @@ class Cosmos3OmniTransformer(ModelMixin, ConfigMixin, PeftAdapterMixin, Attentio
             packed_tokens_sound = self._pack_sound_latents(sound.tokens, sound.token_shapes).to(target_dtype)
             packed_tokens_sound = self.audio_proj_in(packed_tokens_sound) + self.audio_modality_embed
             timesteps_sound = sound.timesteps * self.config.timestep_scale
-            with torch.autocast("cuda", enabled=True, dtype=torch.float32):
-                packed_timestep_embeds_sound = self.time_embedder(self.time_proj(timesteps_sound))
+            packed_timestep_embeds_sound = self.time_embedder(self.time_proj(timesteps_sound))
             packed_timestep_embeds_sound = packed_timestep_embeds_sound.to(target_dtype)
             packed_tokens_sound = self._apply_timestep_embeds_to_noisy_tokens(
                 packed_tokens=packed_tokens_sound,
