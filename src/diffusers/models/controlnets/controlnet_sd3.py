@@ -402,6 +402,27 @@ class SD3MultiControlNetModel(ModelMixin):
         joint_attention_kwargs: dict[str, Any] | None = None,
         return_dict: bool = True,
     ) -> SD3ControlNetOutput | tuple:
+        r"""
+        Args:
+            hidden_states (`torch.Tensor`):
+                Input `hidden_states`.
+            controlnet_cond (`list` of `torch.Tensor`):
+                A list of conditional input tensors, one per ControlNet.
+            conditioning_scale (`list` of `float`):
+                A list of scale factors applied to the ControlNet outputs.
+            pooled_projections (`torch.Tensor`):
+                Embeddings projected from the embeddings of input conditions.
+            encoder_hidden_states (`torch.Tensor`, *optional*):
+                Conditional embeddings (embeddings computed from the input conditions such as prompts) to use.
+            timestep (`torch.LongTensor`, *optional*):
+                Used to indicate denoising step.
+            joint_attention_kwargs (`dict`, *optional*):
+                A kwargs dictionary that if specified is passed along to the `AttentionProcessor` as defined under
+                `self.processor` in
+                [diffusers.models.attention_processor](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/attention_processor.py).
+            return_dict (`bool`, *optional*, defaults to `True`):
+                Whether or not to return a [`SD3ControlNetOutput`] instead of a plain tuple.
+        """
         for i, (image, scale, controlnet) in enumerate(zip(controlnet_cond, conditioning_scale, self.nets)):
             block_samples = controlnet(
                 hidden_states=hidden_states,
