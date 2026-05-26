@@ -238,28 +238,8 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
         self.image_resolution_template = "This image is of {height}x{width} resolution."
         self.video_resolution_template = "This video is of {height}x{width} resolution."
 
-        # Default negative prompts used when the caller doesn't supply one.
-        self.text2image_negative_prompt = ""
-        self.text2video_negative_prompt = (
-            "The video captures a series of frames showing ugly scenes, static with no motion, motion blur, "
-            "over-saturation, shaky footage, low resolution, grainy texture, pixelated images, poorly lit areas, "
-            "underexposed and overexposed scenes, poor color balance, washed out colors, choppy sequences, jerky "
-            "movements, low frame rate, artifacting, color banding, unnatural transitions, outdated special effects, "
-            "fake elements, unconvincing visuals, poorly edited content, jump cuts, visual noise, and flickering. "
-            "Overall, the video is of poor quality."
-        )
-        self.image2video_negative_prompt = (
-            "The video captures a series of frames showing macroblocking artifacts, chromatic aberration, "
-            "high-frequency noise, and rolling shutter distortion. It includes static with no motion, motion blur, "
-            "over-saturation, shaky footage, low resolution, grainy texture, pixelated images, poorly lit areas, "
-            "underexposed and overexposed scenes, poor color balance, washed out colors, choppy sequences, jerky "
-            "movements, low frame rate, bit-depth compression artifacts, color banding, unnatural transitions, "
-            "outdated special effects, fake elements, unconvincing visuals, poorly edited content, jump cuts, visual "
-            "noise, and flickering. Avoid moiré patterns, edge halos, and temporal aliasing. Furthermore, the content "
-            "defies common sense, generating illogical scenarios, nonsensical entities, absurd character behaviors, "
-            "and conceptual paradoxes that violate basic human reasoning and everyday reality. The video looks like a "
-            "surreal or glitchy hallucination. Overall, the video is of poor quality."
-        )
+        # Recommended quality-control negative prompts are documented in the Cosmos3 docs
+        # page (text2video / image2video). When the caller passes None we fall back to "".
 
     def _encode_video(self, x: torch.Tensor) -> torch.Tensor:
         """[B,3,T,H,W] → normalized latents [B,z_dim,T//4,H//16,W//16]. Bit-for-bit
@@ -657,10 +637,10 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
         This pipeline does not run a separate text encoder: the joint Cosmos3 transformer
         consumes raw Qwen2 token IDs alongside vision (and optionally sound) tokens.
 
-        When ``negative_prompt`` is ``None``, a mode-specific default is chosen
-        (text2image / text2video / image2video). The duration and resolution
-        templates are then appended to both prompts so the LLM sees the same
-        metadata it was trained with.
+        When ``negative_prompt`` is ``None``, an empty string is used; the
+        Cosmos3 docs page documents recommended quality-control negative
+        prompts to pass explicitly for text2video / image2video. The duration
+        and resolution templates are then appended to both prompts.
 
         Returns:
             ``(cond_text_tokens, uncond_text_tokens)`` — token-ID lists for this sample.
@@ -668,12 +648,7 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
         is_image = num_frames == 1
 
         if negative_prompt is None:
-            if image is not None:
-                negative_prompt = self.image2video_negative_prompt
-            elif is_image:
-                negative_prompt = self.text2image_negative_prompt
-            else:
-                negative_prompt = self.text2video_negative_prompt
+            negative_prompt = ""
 
         resolution_template = self.image_resolution_template if is_image else self.video_resolution_template
 

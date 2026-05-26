@@ -74,7 +74,24 @@ prompt = (
     "of modern robotics in a retail setting."
 )
 
-result = pipe(prompt=prompt, num_frames=189, height=720, width=1280, fps=24.0)
+# Recommended quality-control negative prompt for text-to-video.
+negative_prompt = (
+    "The video captures a series of frames showing ugly scenes, static with no motion, motion blur, "
+    "over-saturation, shaky footage, low resolution, grainy texture, pixelated images, poorly lit areas, "
+    "underexposed and overexposed scenes, poor color balance, washed out colors, choppy sequences, jerky "
+    "movements, low frame rate, artifacting, color banding, unnatural transitions, outdated special effects, "
+    "fake elements, unconvincing visuals, poorly edited content, jump cuts, visual noise, and flickering. "
+    "Overall, the video is of poor quality."
+)
+
+result = pipe(
+    prompt=prompt,
+    negative_prompt=negative_prompt,
+    num_frames=189,
+    height=720,
+    width=1280,
+    fps=24.0,
+)
 # macro_block_size=1 allows arbitrary frame sizes (Cosmos3 outputs are not always divisible by 16).
 export_to_video(result.video[0], "cosmos3_t2v.mp4", fps=24, macro_block_size=1)
 ```
@@ -114,7 +131,29 @@ prompt = (
     "robotic hands and the wooden block, highlighting precise control during the demonstration."
 )
 
-result = pipe(prompt=prompt, image=image, num_frames=189, height=720, width=1280, fps=24.0)
+# Recommended quality-control negative prompt for image-to-video.
+negative_prompt = (
+    "The video captures a series of frames showing macroblocking artifacts, chromatic aberration, "
+    "high-frequency noise, and rolling shutter distortion. It includes static with no motion, motion blur, "
+    "over-saturation, shaky footage, low resolution, grainy texture, pixelated images, poorly lit areas, "
+    "underexposed and overexposed scenes, poor color balance, washed out colors, choppy sequences, jerky "
+    "movements, low frame rate, bit-depth compression artifacts, color banding, unnatural transitions, "
+    "outdated special effects, fake elements, unconvincing visuals, poorly edited content, jump cuts, visual "
+    "noise, and flickering. Avoid moiré patterns, edge halos, and temporal aliasing. Furthermore, the content "
+    "defies common sense, generating illogical scenarios, nonsensical entities, absurd character behaviors, "
+    "and conceptual paradoxes that violate basic human reasoning and everyday reality. The video looks like a "
+    "surreal or glitchy hallucination. Overall, the video is of poor quality."
+)
+
+result = pipe(
+    prompt=prompt,
+    negative_prompt=negative_prompt,
+    image=image,
+    num_frames=189,
+    height=720,
+    width=1280,
+    fps=24.0,
+)
 # macro_block_size=1 allows arbitrary frame sizes (Cosmos3 outputs are not always divisible by 16).
 export_to_video(result.video[0], "cosmos3_i2v.mp4", fps=24, macro_block_size=1)
 ```
@@ -151,8 +190,19 @@ prompt = (
     "of modern robotics in a retail setting."
 )
 
+# Recommended quality-control negative prompt (same as text-to-video).
+negative_prompt = (
+    "The video captures a series of frames showing ugly scenes, static with no motion, motion blur, "
+    "over-saturation, shaky footage, low resolution, grainy texture, pixelated images, poorly lit areas, "
+    "underexposed and overexposed scenes, poor color balance, washed out colors, choppy sequences, jerky "
+    "movements, low frame rate, artifacting, color banding, unnatural transitions, outdated special effects, "
+    "fake elements, unconvincing visuals, poorly edited content, jump cuts, visual noise, and flickering. "
+    "Overall, the video is of poor quality."
+)
+
 result = pipe(
     prompt=prompt,
+    negative_prompt=negative_prompt,
     num_frames=189,
     height=720,
     width=1280,
