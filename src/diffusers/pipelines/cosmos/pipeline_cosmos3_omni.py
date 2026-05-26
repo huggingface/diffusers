@@ -387,11 +387,11 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
         self,
         text_tokens: List[int],
         input_timestep: torch.Tensor,
-        vision_tokens: List[torch.Tensor],
-        fps_vision: torch.Tensor,
+        vision_tokens: torch.Tensor,
+        fps_vision: float,
         has_image_condition: bool,
-        sound_tokens: Optional[List[torch.Tensor]] = None,
-        fps_sound: Optional[torch.Tensor] = None,
+        sound_tokens: Optional[torch.Tensor] = None,
+        fps_sound: Optional[float] = None,
         device: torch.device | str = "cuda",
     ) -> Cosmos3PackedSequence:
         """Assemble the joint text + vision + (optional) sound sequence consumed by the transformer.
@@ -427,11 +427,9 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
         vision_start_temporal_offset = mrope_offset
 
         # Vision segment.
-        vision_fps: float | None = None
-        if config.enable_fps_modulation and len(fps_vision) > 0:
-            vision_fps = float(fps_vision[0].item())
+        vision_fps = fps_vision if config.enable_fps_modulation else None
         vision_data, vision_mrope_ids, mrope_offset, num_vision_tokens = self._pack_vision_tokens(
-            input_vision_tokens=vision_tokens[0],
+            input_vision_tokens=vision_tokens,
             has_image_condition=has_image_condition,
             input_timestep=input_timestep_val,
             mrope_offset=mrope_offset,
@@ -445,11 +443,9 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
         # Sound segment (optional).
         sound_data: Optional[_ModalityData] = None
         if has_sound:
-            sound_fps_value: float | None = None
-            if config.enable_fps_modulation and fps_sound is not None and len(fps_sound) > 0:
-                sound_fps_value = float(fps_sound[0].item())
+            sound_fps_value = fps_sound if config.enable_fps_modulation else None
             sound_data, sound_mrope_ids, sound_len = self._pack_sound_tokens(
-                input_sound_tokens=sound_tokens[0],
+                input_sound_tokens=sound_tokens,
                 input_timestep=input_timestep_val,
                 mrope_offset=vision_start_temporal_offset,
                 sound_fps=sound_fps_value,
@@ -486,8 +482,8 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
         torch.Tensor,
         Tuple[int, ...],
         Optional[Tuple[int, ...]],
-        torch.Tensor,
-        Optional[torch.Tensor],
+        float,
+        Optional[float],
     ]:
         """Build conditioning + initial noise for a single sample.
 
@@ -496,7 +492,7 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
             ``initial_noise`` is the flat noise tensor consumed by the denoiser.
             ``vision_shape`` / ``sound_shape`` are the per-modality latent shapes used to
             slice the flat tensor at each step (``sound_shape`` is ``None`` unless
-            ``enable_sound`` was set). The FPS tensors are passed into
+            ``enable_sound`` was set). The FPS scalars are passed into
             :meth:`pack_input_sequence`.
         """
         is_image = num_frames == 1
@@ -526,30 +522,28 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
 
         x0_tokens_vision = self._encode_video(vision_tensor).contiguous().float()
         vision_shape = tuple(x0_tokens_vision.shape)
-        fps_vision = torch.tensor([float(fps)], device=device, dtype=dtype)
 
         x0_tokens_sound: Optional[torch.Tensor] = None
         sound_shape: Optional[Tuple[int, ...]] = None
-        fps_sound: Optional[torch.Tensor] = None
+        fps_sound: Optional[float] = None
         if enable_sound:
             sound_dim = self.transformer.config.sound_dim
-            sound_latent_fps = float(self.transformer.config.sound_latent_fps)
+            fps_sound = float(self.transformer.config.sound_latent_fps)
             n_audio_samples = int(num_frames / fps * self.sound_tokenizer.sample_rate)
             hop_size = self.sound_tokenizer._hop_size
             T_sound = (n_audio_samples + hop_size - 1) // hop_size
             x0_tokens_sound = torch.zeros(sound_dim, T_sound, device=device, dtype=dtype)
             sound_shape = tuple(x0_tokens_sound.shape)
-            fps_sound = torch.tensor([sound_latent_fps], device=device, dtype=dtype)
 
         # Run pack_input_sequence with a dummy timestep to extract the condition_mask used for noise blending.
         mask_timestep = torch.zeros((1,), dtype=torch.float32)
         packed_seq = self.pack_input_sequence(
             text_tokens=cond_tokens,
             input_timestep=mask_timestep,
-            vision_tokens=[x0_tokens_vision],
-            fps_vision=fps_vision,
+            vision_tokens=x0_tokens_vision,
+            fps_vision=fps,
             has_image_condition=has_image_condition,
-            sound_tokens=[x0_tokens_sound] if x0_tokens_sound is not None else None,
+            sound_tokens=x0_tokens_sound,
             fps_sound=fps_sound,
             device=device,
         )
@@ -559,7 +553,7 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
                 latents.to(device=device, dtype=dtype),
                 vision_shape,
                 sound_shape,
-                fps_vision,
+                fps,
                 fps_sound,
             )
 
@@ -577,13 +571,12 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
             noise_sound = cond_mask_sound.T * x0_tokens_sound + (1.0 - cond_mask_sound.T) * pure_noise_sound
             initial_noise = torch.cat([initial_noise, noise_sound.reshape(-1)])
 
-        return initial_noise, vision_shape, sound_shape, fps_vision, fps_sound
+        return initial_noise, vision_shape, sound_shape, fps, fps_sound
 
     def check_inputs(
         self,
         prompt,
         negative_prompt,
-        image,
         height: int,
         width: int,
         num_frames: int,
@@ -742,7 +735,7 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
             callback_on_step_end_tensor_inputs = callback_on_step_end.tensor_inputs
 
         # 1. Check inputs
-        self.check_inputs(prompt, negative_prompt, image, height, width, num_frames, guidance_scale, enable_sound)
+        self.check_inputs(prompt, negative_prompt, height, width, num_frames, guidance_scale, enable_sound)
         if not all(k in self._callback_tensor_inputs for k in callback_on_step_end_tensor_inputs):
             raise ValueError(
                 f"`callback_on_step_end_tensor_inputs` has to be in {self._callback_tensor_inputs}, but found "
@@ -807,17 +800,15 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
                 timestep = t.reshape(1, 1)
 
                 # Split flat latents → per-modality noisy tensors for this step
-                noise_x_vision = [latents[:vision_dim].reshape(vision_shape)]
-                noise_x_sound: Optional[list] = None
+                noise_x_vision = latents[:vision_dim].reshape(vision_shape)
+                noise_x_sound: Optional[torch.Tensor] = None
                 if enable_sound and sound_shape is not None:
-                    noise_x_sound = [latents[vision_dim : vision_dim + sound_dim_flat].reshape(sound_shape)]
+                    noise_x_sound = latents[vision_dim : vision_dim + sound_dim_flat].reshape(sound_shape)
 
                 # The transformer projections (proj_in / audio_proj_in) are bf16; cast the per-step
                 # noisy tokens before packing so the modality tokens enter the model in the right dtype.
-                vision_tokens = [x.to(device=device, dtype=dtype) for x in noise_x_vision]
-                sound_tokens = (
-                    [x.to(device=device, dtype=dtype) for x in noise_x_sound] if noise_x_sound is not None else None
-                )
+                vision_tokens = noise_x_vision.to(device=device, dtype=dtype)
+                sound_tokens = noise_x_sound.to(device=device, dtype=dtype) if noise_x_sound is not None else None
 
                 # --- Conditional pass ---
                 packed_seq = self.pack_input_sequence(
