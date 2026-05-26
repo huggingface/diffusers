@@ -474,27 +474,31 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
             T_sound = (n_audio_samples + hop_size - 1) // hop_size
             x0_tokens_sound = torch.zeros(sound_dim, T_sound, device=device, dtype=dtype)
 
+        # Vision conditioning mask [latent_t, 1, 1]: frame 0 anchored when image-conditioning, rest noisy.
+        vision_condition_mask = torch.zeros((x0_tokens_vision.shape[2], 1, 1), device=device, dtype=dtype)
+        if has_image_condition:
+            vision_condition_mask[0, 0, 0] = 1.0
+
         if latents is None:
-            # Vision conditioning mask [latent_t, 1, 1]: frame 0 anchored when image-conditioning, rest noisy.
-            cond_mask_vision = torch.zeros((x0_tokens_vision.shape[2], 1, 1), device=device, dtype=dtype)
-            if has_image_condition:
-                cond_mask_vision[0, 0, 0] = 1.0
             pure_noise = randn_tensor(vision_shape, generator=generator, device=device, dtype=dtype)
             latents = (
-                cond_mask_vision * x0_tokens_vision.to(device=device, dtype=dtype)
-                + (1.0 - cond_mask_vision) * pure_noise
+                vision_condition_mask * x0_tokens_vision.to(device=device, dtype=dtype)
+                + (1.0 - vision_condition_mask) * pure_noise
             )
         else:
             latents = latents.to(device=device, dtype=dtype)
 
+        sound_condition_mask: Optional[torch.Tensor] = None
         if enable_sound and x0_tokens_sound is not None:
+            # All sound frames are noisy, so the conditioning mask is always zero.
+            sound_condition_mask = torch.zeros((x0_tokens_sound.shape[1], 1), device=device, dtype=dtype)
             if sound_latents is None:
-                # All sound frames are noisy, so the conditioning mask is always zero.
-                cond_mask_sound = torch.zeros((x0_tokens_sound.shape[1], 1), device=device, dtype=dtype)
                 pure_noise_sound = randn_tensor(
                     tuple(x0_tokens_sound.shape), generator=generator, device=device, dtype=dtype
                 )
-                sound_latents = cond_mask_sound.T * x0_tokens_sound + (1.0 - cond_mask_sound.T) * pure_noise_sound
+                sound_latents = (
+                    sound_condition_mask.T * x0_tokens_sound + (1.0 - sound_condition_mask.T) * pure_noise_sound
+                )
             else:
                 sound_latents = sound_latents.to(device=device, dtype=dtype)
 
@@ -752,7 +756,7 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
 
         # 4. Prepare latents (initial noise per modality + pack metadata)
         has_image_condition = image is not None and num_frames > 1
-        latents, sound_latents, fps_vision, fps_sound, cond_mask, cond_mask_vision = self.prepare_latents(
+        latents, sound_latents, fps_vision, fps_sound, vision_condition_mask, sound_condition_mask = self.prepare_latents(
             image=image,
             num_frames=num_frames,
             height=height,
@@ -884,8 +888,8 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
                 cond_v_vision, cond_v_sound = self._mask_velocity_predictions(
                     preds_vision,
                     preds_sound,
-                    vision_condition_mask=cond_packed_static["vision_condition_mask"],
-                    sound_condition_mask=cond_packed_static.get("sound_condition_mask"),
+                    vision_condition_mask=[vision_condition_mask],
+                    sound_condition_mask=[sound_condition_mask] if sound_condition_mask is not None else None,
                 )
 
                 # --- Unconditional pass ---
@@ -911,8 +915,8 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
                 uncond_v_vision, uncond_v_sound = self._mask_velocity_predictions(
                     preds_vision,
                     preds_sound,
-                    vision_condition_mask=uncond_packed_static["vision_condition_mask"],
-                    sound_condition_mask=uncond_packed_static.get("sound_condition_mask"),
+                    vision_condition_mask=[vision_condition_mask],
+                    sound_condition_mask=[sound_condition_mask] if sound_condition_mask is not None else None,
                 )
 
                 # --- CFG combine + per-modality scheduler step ---
