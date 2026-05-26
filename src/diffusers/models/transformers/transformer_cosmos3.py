@@ -304,9 +304,7 @@ class Cosmos3OmniTransformer(ModelMixin, ConfigMixin, PeftAdapterMixin, Attentio
         intermediate_size: int = 12288,
         base_fps: int = 24,
         enable_fps_modulation: bool = True,
-        joint_attn_implementation: str = "two_way",
         latent_channel: int = 48,
-        position_embedding_type: str = "unified_3d_mrope",
         unified_3d_mrope_reset_spatial_ids: bool = True,
         unified_3d_mrope_temporal_modality_margin: int = 15000,
         latent_patch_size: int = 2,
@@ -321,7 +319,6 @@ class Cosmos3OmniTransformer(ModelMixin, ConfigMixin, PeftAdapterMixin, Attentio
         sound_gen: bool = False,
         sound_latent_fps: float = 25.0,
         timestep_scale: float = 0.001,
-        use_moe: bool = True,
         vocab_size: int = 151936,
     ):
         super().__init__()

@@ -350,11 +350,8 @@ def main():
     latent_patch_size = _tmp.net.latent_patch_size
     latent_channel = _tmp.net.latent_channel
     timestep_scale = _tmp.net.timestep_scale
-    use_moe = _tmp.net.use_moe
-    joint_attn_implementation = net_cfg.joint_attn_implementation
     base_fps = int(net_cfg.base_fps)
     enable_fps_modulation = net_cfg.enable_fps_modulation
-    position_embedding_type = net_cfg.position_embedding_type
     unified_3d_mrope_reset_spatial_ids = _tmp.config.diffusion_expert_config.unified_3d_mrope_reset_spatial_ids
     unified_3d_mrope_temporal_modality_margin = (
         _tmp.config.diffusion_expert_config.unified_3d_mrope_temporal_modality_margin
@@ -400,14 +397,12 @@ def main():
             head_dim=head_dim,
             hidden_size=hidden_size,
             intermediate_size=lm_cfg.intermediate_size,
-            joint_attn_implementation=joint_attn_implementation,
             latent_channel=latent_channel,
             latent_patch_size=latent_patch_size,
             num_attention_heads=num_attention_heads,
             num_hidden_layers=num_hidden_layers,
             num_key_value_heads=num_key_value_heads,
             patch_latent_dim=patch_latent_dim,
-            position_embedding_type=position_embedding_type,
             rms_norm_eps=lm_cfg.rms_norm_eps,
             rope_scaling=lm_cfg.rope_scaling,
             rope_theta=lm_cfg.rope_theta,
@@ -417,7 +412,6 @@ def main():
             timestep_scale=timestep_scale,
             unified_3d_mrope_reset_spatial_ids=unified_3d_mrope_reset_spatial_ids,
             unified_3d_mrope_temporal_modality_margin=unified_3d_mrope_temporal_modality_margin,
-            use_moe=use_moe,
             vocab_size=lm_cfg.vocab_size,
         )
     # The source language_model nests its transformer stack under a `model.` attribute
