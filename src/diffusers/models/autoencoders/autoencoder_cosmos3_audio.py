@@ -15,11 +15,9 @@
 
 """Cosmos3 AVAE Audio Tokenizer — decoder-only implementation.
 
-The decoder reuses the Oobleck architecture (Snake1d activations + weight-norm
-convs + residual units), inlined here instead of imported so the audio module
-is self-contained. The corresponding encoder is intentionally not inlined:
-upstream Cosmos3 uses a spec-convnext encoder whose tensor layout doesn't map
-onto Oobleck's encoder.
+The decoder reuses the Oobleck architecture (Snake1d activations + weight-norm convs + residual units), inlined here
+instead of imported so the audio module is self-contained. The corresponding encoder is intentionally not inlined:
+upstream Cosmos3 uses a spec-convnext encoder whose tensor layout doesn't map onto Oobleck's encoder.
 """
 
 import math
@@ -99,9 +97,11 @@ class Cosmos3AudioResidualUnit(nn.Module):
 
 
 """
-Copied from diffusers.models.autoencoders.autoencoder_oobleck.OobleckDecoderBlock with Oobleck->Cosmos3Audio
-with output_padding enabled.
+Copied from diffusers.models.autoencoders.autoencoder_oobleck.OobleckDecoderBlock with Oobleck->Cosmos3Audio with
+output_padding enabled.
 """
+
+
 class Cosmos3AudioDecoderBlock(nn.Module):
     """Decoder block used in Cosmos3Audio decoder."""
 
@@ -134,9 +134,11 @@ class Cosmos3AudioDecoderBlock(nn.Module):
 
 
 """
-Copied from diffusers.models.autoencoders.autoencoder_oobleck.OobleckDecoder with Oobleck->Cosmos3Audio and
-one change of adding "output_padding=stride % 2,"
+Copied from diffusers.models.autoencoders.autoencoder_oobleck.OobleckDecoder with Oobleck->Cosmos3Audio and one change
+of adding "output_padding=stride % 2,"
 """
+
+
 class Cosmos3AudioDecoder(nn.Module):
     """Cosmos3Audio Decoder"""
 
@@ -181,12 +183,10 @@ class Cosmos3AudioDecoder(nn.Module):
 class Cosmos3AVAEAudioTokenizer(ModelMixin, ConfigMixin):
     """Decoder-only audio tokenizer for Cosmos3 sound generation.
 
-    Wraps the Cosmos3Audio decoder (an inlined copy of Oobleck) used in the AVAE
-    (Audio VAE) component of the Cosmos3 omni model. Provides the interface
-    expected by ``Cosmos3OmniDiffusersPipeline`` when ``enable_sound=True``.
+    Wraps the Cosmos3Audio decoder (an inlined copy of Oobleck) used in the AVAE (Audio VAE) component of the Cosmos3
+    omni model. Provides the interface expected by ``Cosmos3OmniDiffusersPipeline`` when ``enable_sound=True``.
 
-    For now encoder part of the Tokenizer is not supported.
-    The encoder support will be added in the future.
+    For now encoder part of the Tokenizer is not supported. The encoder support will be added in the future.
 
     Parameters:
         sampling_rate (`int`, defaults to `48000`): Audio sample rate in Hz.

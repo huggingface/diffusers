@@ -8,6 +8,7 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from fractions import Fraction
 from itertools import chain
+from typing import TYPE_CHECKING
 
 import numpy as np
 import PIL.Image
@@ -15,6 +16,10 @@ import PIL.ImageOps
 
 from .import_utils import BACKENDS_MAPPING, is_imageio_available, is_opencv_available
 from .logging import get_logger
+
+
+if TYPE_CHECKING:
+    import torch
 
 
 global_rng = random.Random()

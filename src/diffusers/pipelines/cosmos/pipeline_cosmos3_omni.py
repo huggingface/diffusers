@@ -58,8 +58,8 @@ def get_3d_mrope_ids_text_tokens(
 ) -> tuple[torch.Tensor, int | float]:
     """Generate 3D mRoPE position IDs for text tokens.
 
-    For text tokens, all three axes (temporal, height, width) share the same
-    monotonically increasing position IDs, starting from ``temporal_offset``.
+    For text tokens, all three axes (temporal, height, width) share the same monotonically increasing position IDs,
+    starting from ``temporal_offset``.
     """
     if use_float_positions:
         ids = torch.arange(num_tokens, dtype=torch.float32) + temporal_offset
@@ -137,10 +137,9 @@ class Cosmos3OmniPipelineOutput(BaseOutput):
 
     Attributes:
         video: The generated video. The exact type depends on ``output_type``
-            passed to the pipeline: a list of PIL frames for ``"pil"`` (default),
-            an ``np.ndarray`` of shape ``[T, H, W, C]`` for ``"np"``, a
-            ``torch.Tensor`` of shape ``[T, C, H, W]`` for ``"pt"``, or a raw
-            latent tensor when ``output_type="latent"``.
+            passed to the pipeline: a list of PIL frames for ``"pil"`` (default), an ``np.ndarray`` of shape ``[T, H,
+            W, C]`` for ``"np"``, a ``torch.Tensor`` of shape ``[T, C, H, W]`` for ``"pt"``, or a raw latent tensor
+            when ``output_type="latent"``.
         sound: Decoded audio waveform of shape ``[C, N]``. ``None`` when
             ``enable_sound=False``.
     """
@@ -220,7 +219,7 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
         # Recommended quality-control negative prompts are documented in the Cosmos3 docs
         # page (text2video / image2video). When the caller passes None we fall back to "".
 
-    # TODO YiYi & Daniel: fix for this use case in the base class 
+    # TODO YiYi & Daniel: fix for this use case in the base class
     def _get_execution_device(self) -> torch.device:
         # `self._execution_device` walks `self.components` and ultimately falls back to
         # `self.device`, which iterates modules in sorted order and ignores
@@ -282,14 +281,12 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
     ) -> Dict[str, Any]:
         """Build the text segment of the joint sequence.
 
-        Text packing is invariant across denoising steps and across cond/uncond passes
-        for a given prompt, so this is called once per prompt right after tokenization
-        and the result is reused inside the denoising loop. The returned dict carries
-        transformer-facing fields (``input_ids``, ``text_indexes``, ``und_len``) along
-        with the assembly helpers needed by the per-step vision/sound packing —
-        ``text_mrope_ids`` for the joint mRoPE concat, and ``vision_start_temporal_offset``
-        which both vision and sound mRoPE consume as their temporal offset (the two
-        modalities are temporal siblings, not sequential).
+        Text packing is invariant across denoising steps and across cond/uncond passes for a given prompt, so this is
+        called once per prompt right after tokenization and the result is reused inside the denoising loop. The
+        returned dict carries transformer-facing fields (``input_ids``, ``text_indexes``, ``und_len``) along with the
+        assembly helpers needed by the per-step vision/sound packing — ``text_mrope_ids`` for the joint mRoPE concat,
+        and ``vision_start_temporal_offset`` which both vision and sound mRoPE consume as their temporal offset (the
+        two modalities are temporal siblings, not sequential).
         """
         config = self.transformer.config
         packed_input_ids = list(input_ids) + [
@@ -321,9 +318,8 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
     ) -> Dict[str, Any]:
         """Build the static portion of the vision segment of the joint sequence.
 
-        Step-varying fields (``vision_tokens`` and ``vision_timesteps``) are NOT
-        included here — the caller splices them in inside the denoising loop. The
-        method is called once per (cond/uncond) prompt before the loop, since
+        Step-varying fields (``vision_tokens`` and ``vision_timesteps``) are NOT included here — the caller splices
+        them in inside the denoising loop. The method is called once per (cond/uncond) prompt before the loop, since
         everything else only depends on the prompt length and the vision shape.
         """
         config = self.transformer.config
@@ -332,7 +328,6 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
         patch_h = math.ceil(latent_h / latent_patch_size)
         patch_w = math.ceil(latent_w / latent_patch_size)
         num_vision_tokens = latent_t * patch_h * patch_w
-
 
         noisy_start = 1 if has_image_condition else 0
         noisy_frame_indexes = torch.arange(noisy_start, latent_t, device=device, dtype=torch.long)
@@ -377,9 +372,9 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
     ) -> Dict[str, Any]:
         """Build the static portion of the sound segment of the joint sequence.
 
-        Step-varying fields (``sound_tokens`` and ``sound_timesteps``) are spliced
-        in by the caller inside the denoising loop; everything here depends only on
-        the prompt length and the sound shape. All sound frames are noisy.
+        Step-varying fields (``sound_tokens`` and ``sound_timesteps``) are spliced in by the caller inside the
+        denoising loop; everything here depends only on the prompt length and the sound shape. All sound frames are
+        noisy.
         """
         config = self.transformer.config
         _, sound_len = input_sound_tokens.shape
@@ -430,11 +425,9 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
         """Build conditioning + initial noise for a single sample.
 
         Returns:
-            ``(vision_latents, sound_latents, fps_vision, fps_sound)``.
-            ``vision_latents`` is the noisy vision tensor; ``sound_latents`` is the
-            noisy sound tensor (``None`` unless ``enable_sound`` was set). The FPS
-            scalars feed the per-step :meth:`_pack_vision_tokens` /
-            :meth:`_pack_sound_tokens` calls in the denoising loop.
+            ``(vision_latents, sound_latents, fps_vision, fps_sound)``. ``vision_latents`` is the noisy vision tensor;
+            ``sound_latents`` is the noisy sound tensor (``None`` unless ``enable_sound`` was set). The FPS scalars
+            feed the per-step :meth:`_pack_vision_tokens` / :meth:`_pack_sound_tokens` calls in the denoising loop.
         """
         is_image = num_frames == 1
         has_image_condition = image is not None and not is_image
@@ -550,14 +543,12 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
     ) -> tuple[list[int], list[int]]:
         """Apply prompt-augmentation templates and tokenize cond/uncond prompts via the Qwen2 chat template.
 
-        This pipeline does not run a separate text encoder: the joint Cosmos3 transformer
-        consumes raw Qwen2 token IDs alongside vision (and optionally sound) tokens.
+        This pipeline does not run a separate text encoder: the joint Cosmos3 transformer consumes raw Qwen2 token IDs
+        alongside vision (and optionally sound) tokens.
 
-        When ``negative_prompt`` is ``None``, an empty string is used; the
-        Cosmos3 docs page documents recommended quality-control negative
-        prompts to pass explicitly for text2video / image2video. The duration
-        and resolution templates are appended to the prompt, and inverse
-        templates are appended to the negative prompt, when enabled.
+        When ``negative_prompt`` is ``None``, an empty string is used; the Cosmos3 docs page documents recommended
+        quality-control negative prompts to pass explicitly for text2video / image2video. The duration and resolution
+        templates are appended to the prompt, and inverse templates are appended to the negative prompt, when enabled.
 
         Returns:
             ``(cond_input_ids, uncond_input_ids)`` — token-id lists for this sample.
@@ -611,9 +602,9 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
     ) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
         """Zero out conditioning positions in the transformer's velocity predictions.
 
-        ``preds_vision`` / ``preds_sound`` are returned per-sample by the transformer;
-        the pipeline runs batch=1, so we take the first entry and apply ``1 - condition_mask``
-        to keep only the noisy positions where the model produces meaningful velocity.
+        ``preds_vision`` / ``preds_sound`` are returned per-sample by the transformer; the pipeline runs batch=1, so we
+        take the first entry and apply ``1 - condition_mask`` to keep only the noisy positions where the model produces
+        meaningful velocity.
         """
         pred_v = preds_vision[0]
         m_v = vision_condition_mask[0]
@@ -632,12 +623,10 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
     def _apply_video_safety_check(self, video: Any, output_type: str, device: torch.device) -> Any:
         """Run the Cosmos video guardrail on a postprocessed video and return it in the same format.
 
-        The guardrail (``CosmosSafetyChecker.check_video_safety``) expects ``np.uint8`` frames
-        in ``[T, H, W, C]`` layout. This helper handles the round-trip from the requested
-        ``output_type`` (``"pil"`` / ``"np"`` / ``"pt"``) into that format and back. The
-        checker may pixelate detected faces; if the content is blocked it returns ``None``
-        and we raise ``ValueError``. ``output_type="latent"`` should be filtered out by the
-        caller.
+        The guardrail (``CosmosSafetyChecker.check_video_safety``) expects ``np.uint8`` frames in ``[T, H, W, C]``
+        layout. This helper handles the round-trip from the requested ``output_type`` (``"pil"`` / ``"np"`` / ``"pt"``)
+        into that format and back. The checker may pixelate detected faces; if the content is blocked it returns
+        ``None`` and we raise ``ValueError``. ``output_type="latent"`` should be filtered out by the caller.
         """
         if output_type == "pil":
             frames_uint8 = np.stack([np.array(frame) for frame in video], axis=0)
@@ -756,18 +745,20 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
 
         # 4. Prepare latents (initial noise per modality + pack metadata)
         has_image_condition = image is not None and num_frames > 1
-        latents, sound_latents, fps_vision, fps_sound, vision_condition_mask, sound_condition_mask = self.prepare_latents(
-            image=image,
-            num_frames=num_frames,
-            height=height,
-            width=width,
-            fps=fps,
-            latents=latents,
-            sound_latents=sound_latents,
-            generator=generator,
-            device=device,
-            dtype=dtype,
-            enable_sound=enable_sound,
+        latents, sound_latents, fps_vision, fps_sound, vision_condition_mask, sound_condition_mask = (
+            self.prepare_latents(
+                image=image,
+                num_frames=num_frames,
+                height=height,
+                width=width,
+                fps=fps,
+                latents=latents,
+                sound_latents=sound_latents,
+                generator=generator,
+                device=device,
+                dtype=dtype,
+                enable_sound=enable_sound,
+            )
         )
 
         # 5. Pre-pack the static per-prompt vision / sound sequence segments. The only
@@ -956,11 +947,7 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
             decoded = self.vae.decode(z_raw).sample.to(in_dtype)
             video = self.video_processor.postprocess_video(decoded, output_type=output_type)[0]
 
-        if (
-            enable_safety_check
-            and isinstance(self.safety_checker, CosmosSafetyChecker)
-            and output_type != "latent"
-        ):
+        if enable_safety_check and isinstance(self.safety_checker, CosmosSafetyChecker) and output_type != "latent":
             video = self._apply_video_safety_check(video, output_type=output_type, device=device)
 
         self.maybe_free_model_hooks()

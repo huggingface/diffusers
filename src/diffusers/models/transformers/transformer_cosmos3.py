@@ -30,9 +30,8 @@ from ..normalization import RMSNorm
 class Cosmos3AttnProcessor:
     """Dual-pathway attention processor for Cosmos3.
 
-    Projects, normalizes, applies rotary position embeddings, then runs separate
-    causal (understanding) and full (generation) attention pathways. The generation
-    pathway cross-attends to both und and gen keys/values.
+    Projects, normalizes, applies rotary position embeddings, then runs separate causal (understanding) and full
+    (generation) attention pathways. The generation pathway cross-attends to both und and gen keys/values.
     """
 
     _attention_backend = None
@@ -205,8 +204,8 @@ class Cosmos3PackedMoTAttention(nn.Module, AttentionModuleMixin):
 
 class Cosmos3VLTextMoTDecoderLayer(nn.Module):
     """
-    Qwen3VL text MoT (Mixture of Tokens) decoder layer.
-    Features dual-pathway attention for understanding vs generation.
+    Qwen3VL text MoT (Mixture of Tokens) decoder layer. Features dual-pathway attention for understanding vs
+    generation.
 
     This is used for both Dense and MoE models.
     """
@@ -517,8 +516,8 @@ class Cosmos3OmniTransformer(ModelMixin, ConfigMixin, PeftAdapterMixin, Attentio
             sound_noisy_frame_indexes: Optional noisy frame indices per sound item.
 
         Returns:
-            ``(preds_vision, preds_sound)`` — list of per-modality latents (``preds_sound`` is
-            ``None`` when the model has no sound branch or sound inputs are omitted).
+            ``(preds_vision, preds_sound)`` — list of per-modality latents (``preds_sound`` is ``None`` when the model
+            has no sound branch or sound inputs are omitted).
         """
         has_sound = sound_tokens is not None and sound_sequence_indexes is not None
 
@@ -594,8 +593,6 @@ class Cosmos3OmniTransformer(ModelMixin, ConfigMixin, PeftAdapterMixin, Attentio
         preds_sound: Optional[List[torch.Tensor]] = None
         if has_sound:
             preds_sound_packed = self.audio_proj_out(last_hidden_state[sound_mse_loss_indexes])
-            preds_sound = self._unpack_sound_latents(
-                preds_sound_packed, sound_token_shapes, sound_noisy_frame_indexes
-            )
+            preds_sound = self._unpack_sound_latents(preds_sound_packed, sound_token_shapes, sound_noisy_frame_indexes)
 
         return preds_vision, preds_sound
