@@ -192,11 +192,9 @@ class Cosmos3OmniPipeline(DiffusionPipeline):
             sound_tokenizer=sound_tokenizer,
             safety_checker=safety_checker,
         )
-        # VAE latent normalization stats — precomputed in bfloat16 so `1/std` is
-        # done in bfloat16 (matches Wan2pt2VAEInterface bit-for-bit in default case).
-        _vae_default_dtype = torch.bfloat16
-        self._vae_latents_mean = torch.tensor(vae.config.latents_mean, dtype=_vae_default_dtype)
-        self._vae_latents_inv_std = 1.0 / torch.tensor(vae.config.latents_std, dtype=_vae_default_dtype)
+        # VAE latent normalization stats
+        self._vae_latents_mean = torch.tensor(vae.config.latents_mean, dtype=vae.dtype)
+        self._vae_latents_inv_std = 1.0 / torch.tensor(vae.config.latents_std, dtype=vae.dtype)
 
         # Image preprocessor for caller-supplied conditioning frames (PIL / tensor / numpy).
         self.vae_scale_factor_spatial = int(self.vae.config.scale_factor_spatial) if getattr(self, "vae", None) else 16
