@@ -585,6 +585,7 @@ class Cosmos3OmniPipeline(DiffusionPipeline):
                 tokenize=True,
                 add_generation_prompt=True,
                 add_vision_id=False,
+                return_dict=True,
             )
 
         def _add_special_tokens(input_ids: list[int]) -> list[int]:
