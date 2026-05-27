@@ -12,9 +12,31 @@
 # See the License for the specific language governing permissions and
 # limitations under the License. -->
 
-# Cosmos3
+# Cosmos 3
 
-Cosmos3 is NVIDIA's joint text + video + sound generation pipeline built on the [Cosmos World Foundation Model Platform](https://huggingface.co/papers/2501.03575). A single Mixture-of-Transformer (`Cosmos3OmniTransformer`) runs a Qwen-style language model in parallel with a diffusion generation pathway: text tokens flow through a causal "understanding" stream while video and sound latents flow through a bi-directionally-attended "generation" stream, joined by a 3D multimodal RoPE.
+NVIDIA Cosmos 3 is a unified world foundation model (WFM) for Physical AI — a single omni-model that combines world generation, physical reasoning, and action generation. It replaces the separate Predict, Reason, and Transfer models from earlier Cosmos releases: whether you're building for robotics, autonomous vehicles, or smart spaces, Cosmos 3 gives you one foundation to simulate and understand the physical world.
+
+What's shipping with this release:
+
+- Models on the Hugging Face Hub with model cards and licensing
+- Cosmos 3 Diffusers integration for generation pipelines (this page)
+- Post-training scripts for fine-tuning Cosmos 3 on your own data
+- Open synthetic data generation (SDG) datasets for Physical AI
+
+## What's new in Cosmos 3
+
+The biggest change from previous Cosmos releases is that Cosmos 3 is an *omni-model*, built on a Mixture-of-Transformers (MoT) architecture. Previously, developers worked with separate models for world generation (Predict), controlled generation (Transfer), scene understanding (Reason), and action-policy generation. Cosmos 3 unifies all of these in one model that reasons and generates across modalities in a single forward pass.
+
+From one model you can:
+
+- Generate physically plausible video worlds from text, images, or action inputs (image-to-video, text-to-video, action-conditioned video generation).
+- Reason about physical properties like motion, causality, and spatial relationships.
+- Predict future video and action sequences from the current state.
+- Transfer scenes across viewpoints and conditions with structural control *(coming soon)*.
+
+Under the hood, a single `Cosmos3OmniTransformer` runs a Qwen-style language model in parallel with a diffusion generation pathway: text tokens flow through a causal "understanding" stream while video and sound latents flow through a bi-directionally-attended "generation" stream, joined by a 3D multimodal RoPE. See the [Cosmos World Foundation Model Platform paper](https://huggingface.co/papers/2501.03575) for the architectural background.
+
+## Available checkpoints
 
 Two checkpoints are released on the Hub — [`nvidia/Cosmos3-Nano`](https://huggingface.co/nvidia/Cosmos3-Nano) (smaller, faster) and [`nvidia/Cosmos3-Super`](https://huggingface.co/nvidia/Cosmos3-Super) (larger, higher quality). The same pipeline class supports text-to-image, text-to-video, image-to-video, and (with a sound-capable checkpoint) text+image-to-video-with-sound — pick a repo and use the per-model tab in each workflow below.
 
