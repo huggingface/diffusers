@@ -30,9 +30,9 @@ Single-frame generation. The model is conditioned only on the text prompt; pass 
 
 ```python
 import torch
-from diffusers import Cosmos3OmniDiffusersPipeline
+from diffusers import Cosmos3OmniPipeline
 
-pipe = Cosmos3OmniDiffusersPipeline.from_pretrained(
+pipe = Cosmos3OmniPipeline.from_pretrained(
     "nvidia/Cosmos3-Nano", torch_dtype=torch.bfloat16, device_map="cuda"
 )
 
@@ -53,9 +53,9 @@ result.video[0].save("cosmos3_t2i.jpg", format="JPEG", quality=85)
 
 ```python
 import torch
-from diffusers import Cosmos3OmniDiffusersPipeline
+from diffusers import Cosmos3OmniPipeline
 
-pipe = Cosmos3OmniDiffusersPipeline.from_pretrained(
+pipe = Cosmos3OmniPipeline.from_pretrained(
     "nvidia/Cosmos3-Super", torch_dtype=torch.bfloat16, device_map="cuda"
 )
 
@@ -83,10 +83,10 @@ Multi-frame generation conditioned on text alone. Pick `num_frames` based on the
 
 ```python
 import torch
-from diffusers import Cosmos3OmniDiffusersPipeline
+from diffusers import Cosmos3OmniPipeline
 from diffusers.utils import export_to_video
 
-pipe = Cosmos3OmniDiffusersPipeline.from_pretrained(
+pipe = Cosmos3OmniPipeline.from_pretrained(
     "nvidia/Cosmos3-Nano", torch_dtype=torch.bfloat16, device_map="cuda"
 )
 
@@ -133,10 +133,10 @@ export_to_video(result.video, "cosmos3_t2v.mp4", fps=24, macro_block_size=1)
 
 ```python
 import torch
-from diffusers import Cosmos3OmniDiffusersPipeline
+from diffusers import Cosmos3OmniPipeline
 from diffusers.utils import export_to_video
 
-pipe = Cosmos3OmniDiffusersPipeline.from_pretrained(
+pipe = Cosmos3OmniPipeline.from_pretrained(
     "nvidia/Cosmos3-Super", torch_dtype=torch.bfloat16, device_map="cuda"
 )
 
@@ -190,10 +190,10 @@ Pass a conditioning image via `image=`. The pipeline anchors frame 0 to the supp
 
 ```python
 import torch
-from diffusers import Cosmos3OmniDiffusersPipeline
+from diffusers import Cosmos3OmniPipeline
 from diffusers.utils import export_to_video, load_image
 
-pipe = Cosmos3OmniDiffusersPipeline.from_pretrained(
+pipe = Cosmos3OmniPipeline.from_pretrained(
     "nvidia/Cosmos3-Nano", torch_dtype=torch.bfloat16, device_map="cuda"
 )
 
@@ -251,10 +251,10 @@ export_to_video(result.video, "cosmos3_i2v.mp4", fps=24, macro_block_size=1)
 
 ```python
 import torch
-from diffusers import Cosmos3OmniDiffusersPipeline
+from diffusers import Cosmos3OmniPipeline
 from diffusers.utils import export_to_video, load_image
 
-pipe = Cosmos3OmniDiffusersPipeline.from_pretrained(
+pipe = Cosmos3OmniPipeline.from_pretrained(
     "nvidia/Cosmos3-Super", torch_dtype=torch.bfloat16, device_map="cuda"
 )
 
@@ -321,10 +321,10 @@ This is the same call as the text-to-video example above with `enable_sound=True
 
 ```python
 import torch
-from diffusers import Cosmos3OmniDiffusersPipeline
+from diffusers import Cosmos3OmniPipeline
 from diffusers.utils import encode_video
 
-pipe = Cosmos3OmniDiffusersPipeline.from_pretrained(
+pipe = Cosmos3OmniPipeline.from_pretrained(
     "nvidia/Cosmos3-Nano", torch_dtype=torch.bfloat16, device_map="cuda"
 )
 
@@ -380,10 +380,10 @@ encode_video(
 
 ```python
 import torch
-from diffusers import Cosmos3OmniDiffusersPipeline
+from diffusers import Cosmos3OmniPipeline
 from diffusers.utils import encode_video
 
-pipe = Cosmos3OmniDiffusersPipeline.from_pretrained(
+pipe = Cosmos3OmniPipeline.from_pretrained(
     "nvidia/Cosmos3-Super", torch_dtype=torch.bfloat16, device_map="cuda"
 )
 
@@ -474,9 +474,9 @@ The checker is mandatory under the NVIDIA Open Model License Agreement. The two 
 
 ```python
 import torch
-from diffusers import Cosmos3OmniDiffusersPipeline
+from diffusers import Cosmos3OmniPipeline
 
-pipe = Cosmos3OmniDiffusersPipeline.from_pretrained(
+pipe = Cosmos3OmniPipeline.from_pretrained(
     "nvidia/Cosmos3-Nano",
     torch_dtype=torch.bfloat16,
     device_map="cuda",
@@ -500,7 +500,7 @@ result = pipe(
 To supply a custom checker (e.g., a no-op subclass for fast tests), pass it as `safety_checker=`:
 
 ```python
-pipe = Cosmos3OmniDiffusersPipeline.from_pretrained(
+pipe = Cosmos3OmniPipeline.from_pretrained(
     "nvidia/Cosmos3-Nano",
     torch_dtype=torch.bfloat16,
     device_map="cuda",
@@ -508,11 +508,12 @@ pipe = Cosmos3OmniDiffusersPipeline.from_pretrained(
 )
 ```
 
-## Cosmos3OmniDiffusersPipeline
+## Cosmos3OmniPipeline
 
-[[autodoc]] Cosmos3OmniDiffusersPipeline
-  - all
-  - __call__
+[[autodoc]] Cosmos3OmniPipeline
+
+- all
+- __call__
 
 ## Cosmos3OmniPipelineOutput
 

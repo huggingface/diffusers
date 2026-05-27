@@ -28,7 +28,7 @@ import pathlib
 import torch
 from huggingface_hub import snapshot_download
 
-from diffusers import Cosmos3OmniDiffusersPipeline
+from diffusers import Cosmos3OmniPipeline
 from diffusers.utils import encode_video, export_to_video, load_image
 
 
@@ -100,7 +100,7 @@ def main():
     print(f"Downloading pipeline from {hf_repo}")
     pipeline_path = pathlib.Path(snapshot_download(repo_id=hf_repo))
     print(f"Loading pipeline from {pipeline_path} …")
-    pipeline = Cosmos3OmniDiffusersPipeline.from_pretrained(
+    pipeline = Cosmos3OmniPipeline.from_pretrained(
         str(pipeline_path),
         torch_dtype=torch.bfloat16,
         device_map="cuda",

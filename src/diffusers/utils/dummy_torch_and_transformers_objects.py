@@ -1322,7 +1322,7 @@ class Cosmos2VideoToWorldPipeline(metaclass=DummyObject):
         requires_backends(cls, ["torch", "transformers"])
 
 
-class Cosmos3OmniDiffusersPipeline(metaclass=DummyObject):
+class Cosmos3OmniPipeline(metaclass=DummyObject):
     _backends = ["torch", "transformers"]
 
     def __init__(self, *args, **kwargs):

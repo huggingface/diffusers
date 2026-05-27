@@ -1,6 +1,6 @@
 # Cosmos3 — smoke-test runner
 
-The canonical reference for `Cosmos3OmniDiffusersPipeline` lives in the diffusers docs:
+The canonical reference for `Cosmos3OmniPipeline` lives in the diffusers docs:
 [`docs/source/en/api/pipelines/cosmos3.md`](../../docs/source/en/api/pipelines/cosmos3.md). Use the
 examples there as the source of truth for application code — they cover text-to-image,
 text-to-video, image-to-video, and text+sound modes.

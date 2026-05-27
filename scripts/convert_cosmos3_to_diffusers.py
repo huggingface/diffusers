@@ -32,7 +32,7 @@ from transformers import AutoTokenizer  # noqa: E402
 from diffusers import AutoencoderKLWan, UniPCMultistepScheduler  # noqa: E402
 from diffusers.models.autoencoders.autoencoder_cosmos3_audio import Cosmos3AVAEAudioTokenizer  # noqa: E402
 from diffusers.models.transformers.transformer_cosmos3 import Cosmos3OmniTransformer  # noqa: E402
-from diffusers.pipelines.cosmos.pipeline_cosmos3_omni import Cosmos3OmniDiffusersPipeline  # noqa: E402
+from diffusers.pipelines.cosmos.pipeline_cosmos3_omni import Cosmos3OmniPipeline  # noqa: E402
 
 
 DEFAULT_SOUND_TOKENIZER_CONFIG = {
@@ -514,7 +514,7 @@ def main():
             sigma_min=0.147,
         )
 
-        pipeline = Cosmos3OmniDiffusersPipeline(
+        pipeline = Cosmos3OmniPipeline(
             transformer=transformer,
             text_tokenizer=text_tokenizer,
             vae=diffusers_vae,

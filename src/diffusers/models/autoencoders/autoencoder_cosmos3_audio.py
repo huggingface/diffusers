@@ -184,7 +184,7 @@ class Cosmos3AVAEAudioTokenizer(ModelMixin, ConfigMixin):
     """Decoder-only audio tokenizer for Cosmos3 sound generation.
 
     Wraps the Cosmos3Audio decoder (an inlined copy of Oobleck) used in the AVAE (Audio VAE) component of the Cosmos3
-    omni model. Provides the interface expected by ``Cosmos3OmniDiffusersPipeline`` when ``enable_sound=True``.
+    omni model. Provides the interface expected by ``Cosmos3OmniPipeline`` when ``enable_sound=True``.
 
     For now encoder part of the Tokenizer is not supported. The encoder support will be added in the future.
 

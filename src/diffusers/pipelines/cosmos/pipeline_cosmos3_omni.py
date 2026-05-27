@@ -20,7 +20,7 @@ from typing import Any, Callable
 import numpy as np
 import torch
 from PIL import Image
-from transformers import AutoTokenizer
+from transformers import AutoTokenizer, BatchEncoding
 
 from ...callbacks import MultiPipelineCallbacks, PipelineCallback
 from ...models.autoencoders.autoencoder_cosmos3_audio import Cosmos3AVAEAudioTokenizer
@@ -133,7 +133,7 @@ _SYSTEM_PROMPT_VIDEO = "You are a helpful assistant who will generate videos fro
 
 @dataclass
 class Cosmos3OmniPipelineOutput(BaseOutput):
-    """Output dataclass for :class:`Cosmos3OmniDiffusersPipeline`.
+    """Output dataclass for :class:`Cosmos3OmniPipeline`.
 
     Attributes:
         video: The generated video. The exact type depends on ``output_type``
@@ -162,7 +162,7 @@ def retrieve_latents(
         raise AttributeError("Could not access latents of provided encoder_output")
 
 
-class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
+class Cosmos3OmniPipeline(DiffusionPipeline):
     _optional_components = ["sound_tokenizer", "safety_checker"]
     _exclude_from_cpu_offload = ["safety_checker"]
     model_cpu_offload_seq = "transformer->vae->sound_tokenizer"
@@ -263,7 +263,6 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
 
         Adds/removes the batch dimension expected by the sound tokenizer decoder.
         """
-        assert self.sound_tokenizer is not None
         decoder_dtype = next(self.sound_tokenizer.parameters()).dtype
         waveform = self.sound_tokenizer.decode(latent.unsqueeze(0).to(decoder_dtype))  # [1, audio_ch, N]
         return waveform.squeeze(0)  # [audio_ch, N]
@@ -417,13 +416,15 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
         torch.Tensor | None,
         float,
         float | None,
+        torch.Tensor,
+        torch.Tensor | None,
     ]:
         """Build conditioning + initial noise for a single sample.
 
         Returns:
             ``(vision_latents, sound_latents, fps_vision, fps_sound)``. ``vision_latents`` is the noisy vision tensor;
             ``sound_latents`` is the noisy sound tensor (``None`` unless ``enable_sound`` was set). The FPS scalars
-            feed the per-step :meth:`_pack_vision_tokens` / :meth:`_pack_sound_tokens` calls in the denoising loop.
+            feed the per-step :meth:`_prepare_vision_segment` / :meth:`_prepare_sound_segment` calls in the denoising loop.
         """
         is_image = num_frames == 1
         has_image_condition = image is not None and not is_image
@@ -500,8 +501,8 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
         height: int,
         width: int,
         num_frames: int,
-        guidance_scale: float,
         enable_sound: bool,
+        callback_on_step_end_tensor_inputs: list[str],
     ) -> None:
         if not isinstance(prompt, (str, list)) or (
             isinstance(prompt, list) and not all(isinstance(p, str) for p in prompt)
@@ -521,6 +522,11 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
                 raise ValueError("`enable_sound=True` requires a sound-capable checkpoint with a `sound_tokenizer`.")
             if not getattr(self.transformer.config, "sound_gen", False):
                 raise ValueError("`enable_sound=True` but the transformer was not trained with `sound_gen=True`.")
+        if not all(k in self._callback_tensor_inputs for k in callback_on_step_end_tensor_inputs):
+            raise ValueError(
+                f"`callback_on_step_end_tensor_inputs` has to be in {self._callback_tensor_inputs}, but found "
+                f"{[k for k in callback_on_step_end_tensor_inputs if k not in self._callback_tensor_inputs]}"
+            )
 
     def tokenize_prompt(
         self,
@@ -569,7 +575,7 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
                 text = _append(text, template.format(height=height, width=width))
             return text
 
-        def _tokenize(text: str) -> list[int]:
+        def _tokenize(text: str) -> BatchEncoding:
             conversations = []
             if use_system_prompt:
                 system_prompt = _SYSTEM_PROMPT_IMAGE if is_image else _SYSTEM_PROMPT_VIDEO
@@ -693,12 +699,7 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
             callback_on_step_end_tensor_inputs = callback_on_step_end.tensor_inputs
 
         # 1. Check inputs
-        self.check_inputs(prompt, negative_prompt, height, width, num_frames, guidance_scale, enable_sound)
-        if not all(k in self._callback_tensor_inputs for k in callback_on_step_end_tensor_inputs):
-            raise ValueError(
-                f"`callback_on_step_end_tensor_inputs` has to be in {self._callback_tensor_inputs}, but found "
-                f"{[k for k in callback_on_step_end_tensor_inputs if k not in self._callback_tensor_inputs]}"
-            )
+        self.check_inputs(prompt, negative_prompt, height, width, num_frames, enable_sound, callback_on_step_end_tensor_inputs)
 
         self._current_timestep = None
         self._interrupt = False
@@ -932,7 +933,7 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
 
         self._current_timestep = None
 
-        # 7. Postprocess + decode
+        # 8. Postprocess + decode
         sound = self.decode_sound(sound_latents) if sound_latents is not None else None
         if output_type == "latent":
             video = latents
