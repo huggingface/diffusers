@@ -6,3 +6,4 @@ diffusers/
 fusion_result.json
 src/diffusers.egg-info/
 __pycache__/
+_update.sh

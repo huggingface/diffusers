@@ -68,3 +68,65 @@ def compare_with_reference(image: Image.Image, ref_path: str) -> dict:
     ssim_val = ssim(ref_arr, img_arr, channel_axis=-1, data_range=255)
 
     return {"psnr": round(psnr, 2), "ssim": round(ssim_val, 4)}
+
+
+def to_uint8_hwc(arr: np.ndarray) -> np.ndarray:
+    if arr.dtype != np.uint8:
+        if np.issubdtype(arr.dtype, np.floating):
+            if arr.max() <= 1.0 and arr.min() >= 0.0:
+                arr = arr * 255.0
+        arr = np.clip(arr, 0, 255).astype(np.uint8)
+
+    if arr.ndim == 3 and arr.shape[0] in (1, 3, 4) and arr.shape[-1] not in (1, 3, 4):
+        arr = np.transpose(arr, (1, 2, 0))
+
+    if arr.ndim == 3 and arr.shape[-1] == 1:
+        arr = arr[..., 0]
+
+    return arr
+
+
+def frame_to_pil(frame):
+    if isinstance(frame, Image.Image):
+        return frame
+    if isinstance(frame, torch.Tensor):
+        frame = frame.detach().cpu().numpy()
+    if isinstance(frame, np.ndarray):
+        frame = to_uint8_hwc(frame)
+        return Image.fromarray(frame)
+    raise TypeError(f"Unsupported frame type: {type(frame)}")
+
+
+def extract_frames_as_pil(result_obj) -> list:
+    frames_data = result_obj.frames
+
+    if isinstance(frames_data, torch.Tensor):
+        frames_data = frames_data.detach().cpu().numpy()
+
+    if isinstance(frames_data, np.ndarray):
+        if frames_data.ndim == 5:
+            video = frames_data[0]
+        elif frames_data.ndim == 4:
+            video = frames_data
+        else:
+            raise ValueError(f"Unexpected ndarray shape for frames: {frames_data.shape}")
+        return [frame_to_pil(f) for f in video]
+
+    if isinstance(frames_data, (list, tuple)):
+        if len(frames_data) == 0:
+            raise ValueError("result.frames is empty")
+        first = frames_data[0]
+        if isinstance(first, (list, tuple, np.ndarray, torch.Tensor, Image.Image)):
+            video = first
+        else:
+            video = frames_data
+        if isinstance(video, torch.Tensor):
+            video = video.detach().cpu().numpy()
+        if isinstance(video, np.ndarray):
+            if video.ndim != 4:
+                raise ValueError(f"Unexpected video ndarray shape: {video.shape}")
+            return [frame_to_pil(f) for f in video]
+        if isinstance(video, (list, tuple)):
+            return [frame_to_pil(f) for f in video]
+
+    raise TypeError(f"Unsupported result.frames type: {type(frames_data)}")

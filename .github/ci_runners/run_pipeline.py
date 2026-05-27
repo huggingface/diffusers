@@ -13,7 +13,7 @@ import torch
 from diffusers import DiffusionPipeline
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__))))
-from runner_utils import detect_device, timer, validate_image, compare_with_reference
+from runner_utils import detect_device, timer, validate_image, compare_with_reference, extract_frames_as_pil
 
 
 def load_yaml(path: str) -> dict:
@@ -24,11 +24,12 @@ def load_yaml(path: str) -> dict:
 def save_image(image, output_dir: str, filename: str) -> str:
     os.makedirs(os.path.join(output_dir, "images"), exist_ok=True)
     filepath = os.path.join(output_dir, "images", filename)
-    if hasattr(image, "save"):
+    if isinstance(image, list) and len(image) > 0 and hasattr(image[0], "save"):
+        image[0].save(filepath, save_all=True, append_images=image[1:], duration=100, loop=0)
+    elif hasattr(image, "save"):
         image.save(filepath)
     elif isinstance(image, list) and len(image) > 0 and hasattr(image[0], "save"):
-        image = image[0]
-        image.save(filepath)
+        image[0].save(filepath)
     else:
         from PIL import Image
         Image.fromarray(image).save(filepath)
@@ -132,14 +133,22 @@ def run_single_config(pipe, kwargs: dict, parallel: str, name: str,
             output = pipe(**kwargs)
 
         inference_time = round(get_elapsed(), 2)
-        image = output.images[0]
 
-        filename = f"{pipeline}_{variant_name}_{name}.png"
-        out_path = save_image(image, output_dir, filename)
+        is_video = hasattr(output, "frames") and output.frames is not None
+        if is_video:
+            frames = extract_frames_as_pil(output)
+            filename = f"{pipeline}_{variant_name}_{name}.gif"
+            out_path = save_image(frames, output_dir, filename)
+            first_frame = frames[0]
+        else:
+            image = output.images[0]
+            filename = f"{pipeline}_{variant_name}_{name}.png"
+            out_path = save_image(image, output_dir, filename)
+            first_frame = image
 
         width = kwargs.get("width", 0)
         height = kwargs.get("height", 0)
-        validation = validate_image(image, width, height)
+        validation = validate_image(first_frame, width, height)
 
         precision = {}
         if ref_image_path and os.path.isfile(ref_image_path):
