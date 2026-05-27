@@ -67,7 +67,7 @@ jobs:
 
     - name: Environment
       run: |
-        python utils/print_env.py
+        diffusers-cli env
 
     - name: Run fast PyTorch CPU tests
       if: ${{ matrix.config.framework == 'pytorch' }}
