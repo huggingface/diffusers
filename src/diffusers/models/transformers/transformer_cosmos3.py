@@ -160,7 +160,6 @@ class Cosmos3PackedMoTAttention(nn.Module, AttentionModuleMixin):
         num_attention_heads: int,
         num_key_value_heads: int,
         attention_bias: bool,
-        attention_dropout: float,
         rms_norm_eps: float,
     ):
         super().__init__()
@@ -214,7 +213,6 @@ class Cosmos3VLTextMoTDecoderLayer(nn.Module):
         num_key_value_heads: int,
         intermediate_size: int,
         attention_bias: bool,
-        attention_dropout: float,
         rms_norm_eps: float,
     ):
         super().__init__()
@@ -225,7 +223,6 @@ class Cosmos3VLTextMoTDecoderLayer(nn.Module):
             num_attention_heads=num_attention_heads,
             num_key_value_heads=num_key_value_heads,
             attention_bias=attention_bias,
-            attention_dropout=attention_dropout,
             rms_norm_eps=rms_norm_eps,
         )
 
@@ -315,7 +312,6 @@ class Cosmos3OmniTransformer(ModelMixin, ConfigMixin, PeftAdapterMixin, Attentio
                     num_key_value_heads=num_key_value_heads,
                     intermediate_size=intermediate_size,
                     attention_bias=attention_bias,
-                    attention_dropout=attention_dropout,
                     rms_norm_eps=rms_norm_eps,
                 )
                 for _ in range(num_hidden_layers)
