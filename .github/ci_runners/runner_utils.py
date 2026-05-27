@@ -180,6 +180,11 @@ def apply_tp2(pipe):
                 return self.proj(x)
         t.proj_out = DeviceAwareProjOut(_orig_proj_out)
 
+    if hasattr(pipe, "vae") and pipe.vae is not None:
+        pipe.vae = pipe.vae.to("npu:0")
+    if hasattr(pipe, "text_encoder") and pipe.text_encoder is not None:
+        pipe.text_encoder = pipe.text_encoder.to("npu:0")
+
     pipe.__class__ = type(
         pipe.__class__.__name__,
         (pipe.__class__,),
