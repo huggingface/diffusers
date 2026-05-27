@@ -225,6 +225,7 @@ def generate_reference_only(config_dir: str, output_dir: str):
     image.save(ref_path)
     print(f"[{pipeline_name}] reference saved to {ref_path}")
 
+    pipe.to("cpu")
     del pipe
     gc.collect()
     if device == "cuda":
@@ -336,7 +337,9 @@ def main():
                 else:
                     print(f"    FAIL")
 
+            pipe.to("cpu")
             del pipe
+            gc.collect()
             if device == "cuda":
                 torch.cuda.empty_cache()
             elif device == "npu":
