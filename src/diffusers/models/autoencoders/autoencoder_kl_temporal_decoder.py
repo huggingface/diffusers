@@ -287,6 +287,11 @@ class AutoencoderKLTemporalDecoder(ModelMixin, AttentionMixin, AutoencoderMixin,
                 Whether to sample from the posterior.
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`DecoderOutput`] instead of a plain tuple.
+            generator (`torch.Generator`, *optional*):
+                A [`torch.Generator`](https://pytorch.org/docs/stable/generated/torch.Generator.html) to make sampling
+                deterministic.
+            num_frames (`int`, *optional*, defaults to 1):
+                The number of frames to decode per batch.
         """
         x = sample
         posterior = self.encode(x).latent_dist
