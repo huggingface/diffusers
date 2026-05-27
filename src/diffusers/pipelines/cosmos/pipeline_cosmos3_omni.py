@@ -709,8 +709,8 @@ class Cosmos3OmniPipeline(DiffusionPipeline):
             negative_prompt (`str` or `List[str]`, *optional*):
                 The negative prompt used for classifier-free guidance. When `None`, the empty string is used.
             image (`torch.Tensor` or `PIL.Image.Image`, *optional*):
-                Optional conditioning frame for image-to-video. The pipeline anchors frame 0 to this image and
-                denoises the remaining frames. Ignored when `num_frames == 1`.
+                Optional conditioning frame for image-to-video. The pipeline anchors frame 0 to this image and denoises
+                the remaining frames. Ignored when `num_frames == 1`.
             num_frames (`int`, *optional*, defaults to `189`):
                 Number of frames to generate. Use `1` for text-to-image; the default produces ≈ 7.9 s at 24 FPS.
             height (`int`, *optional*, defaults to `720`):
@@ -736,8 +736,8 @@ class Cosmos3OmniPipeline(DiffusionPipeline):
                 Pre-generated sound latents to start denoising from. Only consulted when `enable_sound=True`; when
                 `None`, fresh Gaussian noise is sampled.
             output_type (`str`, *optional*, defaults to `"pil"`):
-                Output format for the video. One of `"pil"` (list of `PIL.Image.Image`), `"np"` (`np.ndarray`,
-                `[T, H, W, C]`), `"pt"` (`torch.Tensor`, `[T, C, H, W]`), or `"latent"` (raw vision latents).
+                Output format for the video. One of `"pil"` (list of `PIL.Image.Image`), `"np"` (`np.ndarray`, `[T, H,
+                W, C]`), `"pt"` (`torch.Tensor`, `[T, C, H, W]`), or `"latent"` (raw vision latents).
             return_dict (`bool`, *optional*, defaults to `True`):
                 When `True`, returns a [`Cosmos3OmniPipelineOutput`]; otherwise a plain tuple `(video, sound)`.
             use_system_prompt (`bool`, *optional*, defaults to `True`):
@@ -750,12 +750,12 @@ class Cosmos3OmniPipeline(DiffusionPipeline):
                 Names of tensors to surface to `callback_on_step_end`. Must be a subset of
                 [`~Cosmos3OmniPipeline._callback_tensor_inputs`].
             add_resolution_template (`bool`, *optional*, defaults to `True`):
-                When `True`, appends the resolution metadata sentence (e.g. *"This video is of 720x1280
-                resolution."*) to the positive prompt, and its inverse to the negative prompt.
+                When `True`, appends the resolution metadata sentence (e.g. *"This video is of 720x1280 resolution."*)
+                to the positive prompt, and its inverse to the negative prompt.
             add_duration_template (`bool`, *optional*, defaults to `True`):
-                When `True`, appends the duration metadata sentence (e.g. *"The video is 7.9 seconds long and is of
-                24 FPS."*) to the positive prompt, and its inverse to the negative prompt. Has no effect when
-                `num_frames == 1` (image mode).
+                When `True`, appends the duration metadata sentence (e.g. *"The video is 7.9 seconds long and is of 24
+                FPS."*) to the positive prompt, and its inverse to the negative prompt. Has no effect when `num_frames
+                == 1` (image mode).
             enable_safety_check (`bool`, *optional*, defaults to `True`):
                 When `True` and a `CosmosSafetyChecker` is attached, runs the text guardrail on the prompt before
                 generation and the video guardrail on the decoded frames. Set to `False` to skip both for this call;
