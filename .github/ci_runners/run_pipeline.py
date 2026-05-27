@@ -319,6 +319,8 @@ def main():
                     params_entry, prompt, negative_prompt, device,
                     variant_data.get("extra_params"),
                 )
+                if tp2:
+                    parallel = "tp2"
                 apply_optimizations(pipe, parallel)
 
                 ref_image_path = None
