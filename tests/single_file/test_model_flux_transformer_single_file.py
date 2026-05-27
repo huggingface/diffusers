@@ -15,6 +15,8 @@
 
 import gc
 
+import torch
+
 from diffusers import (
     FluxTransformer2DModel,
 )
@@ -38,9 +40,9 @@ class TestFluxTransformer2DModelSingleFile(SingleFileModelTesterMixin):
     repo_id = "black-forest-labs/FLUX.1-dev"
     subfolder = "transformer"
 
-    def test_device_map_cuda(self):
+    def test_device_map_auto(self):
         backend_empty_cache(torch_device)
-        model = self.model_class.from_single_file(self.ckpt_path, device_map="cuda")
+        model = self.model_class.from_single_file(self.ckpt_path, device_map="auto", torch_dtype=torch.bfloat16)
 
         del model
         gc.collect()
