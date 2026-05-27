@@ -13,7 +13,7 @@ import torch
 from diffusers import DiffusionPipeline
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__))))
-from runner_utils import detect_device, timer, validate_image, compare_with_reference, extract_frames_as_pil
+from runner_utils import detect_device, timer, validate_image, compare_with_reference, extract_frames_as_pil, apply_tp2
 
 
 def load_yaml(path: str) -> dict:
@@ -36,7 +36,7 @@ def save_image(image, output_dir: str, filename: str) -> str:
     return filepath
 
 
-def load_pipeline(pipeline_class_name: str, module_path: str, weight_path: str, model_id: str, backend: str, device: str, torch_dtype: torch.dtype):
+def load_pipeline(pipeline_class_name: str, module_path: str, weight_path: str, model_id: str, backend: str, device: str, torch_dtype: torch.dtype, tp2: bool = False):
     module = importlib.import_module(module_path)
     pipeline_cls = getattr(module, pipeline_class_name)
 
@@ -66,7 +66,8 @@ def load_pipeline(pipeline_class_name: str, module_path: str, weight_path: str, 
             torch_dtype=torch_dtype,
             trust_remote_code=True,
         )
-    pipe = pipe.to(device)
+    if not tp2:
+        pipe = pipe.to(device)
     return pipe
 
 
@@ -204,13 +205,16 @@ def generate_reference_only(config_dir: str, output_dir: str):
     device, torch_dtype = detect_device()
 
     print(f"[{pipeline_name}] loading model ({variant_files[0].stem})...")
+    tp2 = variant_data.get("tp2", False)
     pipe = load_pipeline(
         pipeline_class, module_path,
         variant_data.get("weight_path", variant_data["model_id"]),
         variant_data["model_id"],
         variant_data.get("backend", "local"),
-        device, torch_dtype,
+        device, torch_dtype, tp2=tp2,
     )
+    if tp2:
+        apply_tp2(pipe)
     apply_optimizations(pipe, ref_entry.get("parallel", "single"))
 
     kwargs, _, _ = build_kwargs(ref_entry, prompt, config.get("negative_prompt", ""), device,
@@ -284,13 +288,16 @@ def main():
 
             print(f"[{pipeline_class}] loading model: {variant_name}")
             try:
+                tp2 = variant_data.get("tp2", False)
                 pipe = load_pipeline(
                     pipeline_class, module_path,
                     variant_data.get("weight_path", variant_data["model_id"]),
                     variant_data["model_id"],
                     variant_data.get("backend", "local"),
-                    device, torch_dtype,
+                    device, torch_dtype, tp2=tp2,
                 )
+                if tp2:
+                    apply_tp2(pipe)
             except Exception as e:
                 result = {
                     "pipeline": pipeline_class,

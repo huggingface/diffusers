@@ -130,3 +130,58 @@ def extract_frames_as_pil(result_obj) -> list:
             return [frame_to_pil(f) for f in video]
 
     raise TypeError(f"Unsupported result.frames type: {type(frames_data)}")
+
+
+def apply_tp2(pipe):
+    """Split transformer blocks across 2 NPUs for A14B models."""
+    for tf_name in ("transformer", "transformer_2"):
+        if not hasattr(pipe, tf_name) or getattr(pipe, tf_name) is None:
+            continue
+        t = getattr(pipe, tf_name)
+        blocks = t.blocks
+        total = len(blocks)
+        half = total // 2
+
+        for name, mod in t.named_children():
+            if name == "blocks":
+                continue
+            mod.to("npu:0")
+
+        first_half = blocks[:half]
+        second_half = blocks[half:]
+        for blk in first_half:
+            blk.to("npu:0")
+        for blk in second_half:
+            blk.to("npu:1")
+
+        class DeviceAwareBlock(torch.nn.Module):
+            def __init__(self, block):
+                super().__init__()
+                self.block = block
+            def forward(self, hidden_states, encoder_hidden_states, timestep, rotary_emb):
+                target_device = next(self.block.parameters()).device
+                if hidden_states.device != target_device:
+                    hidden_states = hidden_states.to(target_device)
+                if encoder_hidden_states.device != target_device:
+                    encoder_hidden_states = encoder_hidden_states.to(target_device)
+                return self.block(hidden_states, encoder_hidden_states, timestep, rotary_emb)
+
+        new_blocks = [DeviceAwareBlock(blk) for blk in t.blocks]
+        t.blocks = torch.nn.ModuleList(new_blocks)
+
+        _orig_proj_out = t.proj_out
+        class DeviceAwareProjOut(torch.nn.Module):
+            def __init__(self, proj):
+                super().__init__()
+                self.proj = proj
+            def forward(self, x):
+                if x.device != self.proj.weight.device:
+                    x = x.to(self.proj.weight.device)
+                return self.proj(x)
+        t.proj_out = DeviceAwareProjOut(_orig_proj_out)
+
+    pipe.__class__ = type(
+        pipe.__class__.__name__,
+        (pipe.__class__,),
+        {"_execution_device": property(lambda self: torch.device("npu:0"))}
+    )
