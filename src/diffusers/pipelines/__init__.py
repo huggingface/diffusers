@@ -164,6 +164,10 @@ else:
         "AnimateDiffVideoToVideoPipeline",
         "AnimateDiffVideoToVideoControlNetPipeline",
     ]
+    _import_structure["anyflow"] = [
+        "AnyFlowPipeline",
+        "AnyFlowFARPipeline",
+    ]
     _import_structure["bria"] = ["BriaPipeline"]
     _import_structure["bria_fibo"] = ["BriaFiboPipeline", "BriaFiboEditPipeline"]
     _import_structure["flux2"] = [
@@ -330,6 +334,8 @@ else:
     _import_structure["ltx2"] = [
         "LTX2Pipeline",
         "LTX2ConditionPipeline",
+        "LTX2HDRPipeline",
+        "LTX2InContextPipeline",
         "LTX2ImageToVideoPipeline",
         "LTX2LatentUpsamplePipeline",
     ]
@@ -347,6 +353,11 @@ else:
         ]
     )
     _import_structure["mochi"] = ["MochiPipeline"]
+    _import_structure["motif_video"] = [
+        "MotifVideoPipeline",
+        "MotifVideoImage2VideoPipeline",
+        "MotifVideoPipelineOutput",
+    ]
     _import_structure["omnigen"] = ["OmniGenPipeline"]
     _import_structure["ernie_image"] = ["ErnieImagePipeline"]
     _import_structure["ovis_image"] = ["OvisImagePipeline"]
@@ -596,6 +607,10 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             AnimateDiffVideoToVideoControlNetPipeline,
             AnimateDiffVideoToVideoPipeline,
         )
+        from .anyflow import (
+            AnyFlowFARPipeline,
+            AnyFlowPipeline,
+        )
         from .audioldm2 import (
             AudioLDM2Pipeline,
             AudioLDM2ProjectionModel,
@@ -782,7 +797,14 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             LTXLatentUpsamplePipeline,
             LTXPipeline,
         )
-        from .ltx2 import LTX2ConditionPipeline, LTX2ImageToVideoPipeline, LTX2LatentUpsamplePipeline, LTX2Pipeline
+        from .ltx2 import (
+            LTX2ConditionPipeline,
+            LTX2HDRPipeline,
+            LTX2ImageToVideoPipeline,
+            LTX2InContextPipeline,
+            LTX2LatentUpsamplePipeline,
+            LTX2Pipeline,
+        )
         from .lucy import LucyEditPipeline
         from .lumina import LuminaPipeline, LuminaText2ImgPipeline
         from .lumina2 import Lumina2Pipeline, Lumina2Text2ImgPipeline
@@ -792,6 +814,11 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             MarigoldNormalsPipeline,
         )
         from .mochi import MochiPipeline
+        from .motif_video import (
+            MotifVideoImage2VideoPipeline,
+            MotifVideoPipeline,
+            MotifVideoPipelineOutput,
+        )
         from .nucleusmoe_image import NucleusMoEImagePipeline
         from .omnigen import OmniGenPipeline
         from .ovis_image import OvisImagePipeline

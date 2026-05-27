@@ -948,10 +948,35 @@ class StableDiffusionPAGInpaintPipeline(
         Args:
             prompt (`str` or `list[str]`, *optional*):
                 The prompt or prompts to guide image generation. If not defined, you need to pass `prompt_embeds`.
+            image (`torch.Tensor`, `PIL.Image.Image`, `np.ndarray`, `list[torch.Tensor]`, `list[PIL.Image.Image]`, or `list[np.ndarray]`):
+                `Image`, numpy array or tensor representing an image batch to be inpainted (which parts of the image to
+                be masked out with `mask_image` and repainted according to `prompt`).
+            mask_image (`torch.Tensor`, `PIL.Image.Image`, `np.ndarray`, `list[torch.Tensor]`, `list[PIL.Image.Image]`, or `list[np.ndarray]`):
+                `Image`, numpy array or tensor representing an image batch to mask `image`. White pixels in the mask
+                are repainted while black pixels are preserved. If `mask_image` is a PIL image, it is converted to a
+                single channel (luminance) before use. If it's a numpy array or pytorch tensor, it should contain one
+                color channel (L) instead of 3, so the expected shape for pytorch tensor would be `(B, 1, H, W)`, `(B,
+                H, W)`, `(1, H, W)`, `(H, W)`. And for numpy array would be for `(B, H, W, 1)`, `(B, H, W)`, `(H, W,
+                1)`, or `(H, W)`.
+            masked_image_latents (`torch.Tensor`, *optional*):
+                Pre-encoded latent of the masked image (for inpainting).
             height (`int`, *optional*, defaults to `self.unet.config.sample_size * self.vae_scale_factor`):
                 The height in pixels of the generated image.
             width (`int`, *optional*, defaults to `self.unet.config.sample_size * self.vae_scale_factor`):
                 The width in pixels of the generated image.
+            padding_mask_crop (`int`, *optional*, defaults to `None`):
+                The size of margin in the crop to be applied to the image and masking. If `None`, no crop is applied to
+                image and mask_image. If `padding_mask_crop` is not `None`, it will first find a rectangular region
+                with the same aspect ration of the image and contains all masked area, and then expand that area based
+                on `padding_mask_crop`. The image and mask_image will then be cropped based on the expanded area before
+                resizing to the original image size for inpainting. This is useful when the masked area is small while
+                the image is large and contain information irrelevant for inpainting, such as background.
+            strength (`float`, *optional*, defaults to 0.9999):
+                Indicates extent to transform the reference `image`. Must be between 0 and 1. `image` is used as a
+                starting point and more noise is added the higher the `strength`. The number of denoising steps depends
+                on the amount of noise initially added. When `strength` is 1, added noise is maximum and the denoising
+                process runs for the full number of iterations specified in `num_inference_steps`. A value of 1
+                essentially ignores `image`.
             num_inference_steps (`int`, *optional*, defaults to 50):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
                 expense of slower inference.

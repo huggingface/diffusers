@@ -18,6 +18,8 @@ if is_torch_available():
     from .t5_film_transformer import T5FilmDecoder
     from .transformer_2d import Transformer2DModel
     from .transformer_allegro import AllegroTransformer3DModel
+    from .transformer_anyflow import AnyFlowTransformer3DModel
+    from .transformer_anyflow_far import AnyFlowFARTransformer3DModel
     from .transformer_bria import BriaTransformer2DModel
     from .transformer_bria_fibo import BriaFiboTransformer2DModel
     from .transformer_chroma import ChromaTransformer2DModel
@@ -44,6 +46,7 @@ if is_torch_available():
     from .transformer_ltx2 import LTX2VideoTransformer3DModel
     from .transformer_lumina2 import Lumina2Transformer2DModel
     from .transformer_mochi import MochiTransformer3DModel
+    from .transformer_motif_video import MotifVideoTransformer3DModel
     from .transformer_nucleusmoe_image import NucleusMoEImageTransformer2DModel
     from .transformer_omnigen import OmniGenTransformer2DModel
     from .transformer_ovis_image import OvisImageTransformer2DModel

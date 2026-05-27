@@ -545,6 +545,11 @@ class BriaPipeline(DiffusionPipeline):
                         list will be passed as `callback_kwargs` argument. You will only be able to include variables
                         listed in the `._callback_tensor_inputs` attribute of your pipeline class.
                     max_sequence_length (`int` defaults to 256): Maximum sequence length to use with the `prompt`.
+                    clip_value (`float`, *optional*):
+                        If set, the predicted noise is clipped to the range `[-clip_value, clip_value]` at each
+                        denoising step.
+                    normalize (`bool`, *optional*, defaults to `False`):
+                        Whether to normalize the predicted noise at each denoising step.
 
                 Examples:
 

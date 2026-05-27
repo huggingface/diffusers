@@ -2043,19 +2043,20 @@ class ModelPushToHubTester(unittest.TestCase):
         for p1, p2 in zip(model.parameters(), new_model.parameters()):
             self.assertTrue(torch.equal(p1, p2))
 
-        # Reset repo
-        delete_repo(token=TOKEN, repo_id=self.repo_id)
-
-        # Push to hub via save_pretrained
+        # Push to hub via save_pretrained to a separate repo. Reusing `self.repo_id` after
+        # deleting it makes the staging server's LFS GC reject the next commit with
+        # "LFS pointer pointed to a file that does not exist" when the model bytes are identical.
+        save_repo_id = f"{self.repo_id}-saved"
         with tempfile.TemporaryDirectory() as tmp_dir:
-            model.save_pretrained(tmp_dir, repo_id=self.repo_id, push_to_hub=True, token=TOKEN)
+            model.save_pretrained(tmp_dir, repo_id=save_repo_id, push_to_hub=True, token=TOKEN)
 
-        new_model = UNet2DConditionModel.from_pretrained(f"{USER}/{self.repo_id}")
+        new_model = UNet2DConditionModel.from_pretrained(f"{USER}/{save_repo_id}")
         for p1, p2 in zip(model.parameters(), new_model.parameters()):
             self.assertTrue(torch.equal(p1, p2))
 
-        # Reset repo
-        delete_repo(self.repo_id, token=TOKEN)
+        # Reset repos
+        delete_repo(token=TOKEN, repo_id=self.repo_id)
+        delete_repo(save_repo_id, token=TOKEN)
 
     def test_push_to_hub_in_organization(self):
         model = UNet2DConditionModel(
@@ -2074,19 +2075,20 @@ class ModelPushToHubTester(unittest.TestCase):
         for p1, p2 in zip(model.parameters(), new_model.parameters()):
             self.assertTrue(torch.equal(p1, p2))
 
-        # Reset repo
-        delete_repo(token=TOKEN, repo_id=self.org_repo_id)
-
-        # Push to hub via save_pretrained
+        # Push to hub via save_pretrained to a separate repo. Reusing `self.org_repo_id` after
+        # deleting it makes the staging server's LFS GC reject the next commit with
+        # "LFS pointer pointed to a file that does not exist" when the model bytes are identical.
+        save_org_repo_id = f"{self.org_repo_id}-saved"
         with tempfile.TemporaryDirectory() as tmp_dir:
-            model.save_pretrained(tmp_dir, push_to_hub=True, token=TOKEN, repo_id=self.org_repo_id)
+            model.save_pretrained(tmp_dir, push_to_hub=True, token=TOKEN, repo_id=save_org_repo_id)
 
-        new_model = UNet2DConditionModel.from_pretrained(self.org_repo_id)
+        new_model = UNet2DConditionModel.from_pretrained(save_org_repo_id)
         for p1, p2 in zip(model.parameters(), new_model.parameters()):
             self.assertTrue(torch.equal(p1, p2))
 
-        # Reset repo
-        delete_repo(self.org_repo_id, token=TOKEN)
+        # Reset repos
+        delete_repo(token=TOKEN, repo_id=self.org_repo_id)
+        delete_repo(save_org_repo_id, token=TOKEN)
 
     @unittest.skipIf(
         not is_jinja_available(),
@@ -2103,13 +2105,16 @@ class ModelPushToHubTester(unittest.TestCase):
             up_block_types=("CrossAttnUpBlock2D", "UpBlock2D"),
             cross_attention_dim=32,
         )
-        model.push_to_hub(self.repo_id, token=TOKEN)
+        # Use a method-unique repo to avoid recycling a name that `test_push_to_hub` just deleted,
+        # which the staging server rejects with an LFS pointer error.
+        repo_id = f"test-model-library-name-{uuid.uuid4()}"
+        model.push_to_hub(repo_id, token=TOKEN)
 
-        model_card = ModelCard.load(f"{USER}/{self.repo_id}", token=TOKEN).data
+        model_card = ModelCard.load(f"{USER}/{repo_id}", token=TOKEN).data
         assert model_card.library_name == "diffusers"
 
         # Reset repo
-        delete_repo(self.repo_id, token=TOKEN)
+        delete_repo(repo_id, token=TOKEN)
 
 
 @require_torch_accelerator

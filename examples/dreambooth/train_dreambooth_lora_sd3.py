@@ -1824,10 +1824,11 @@ def main(args):
                     # Chunk the noise and model_pred into two parts and compute the loss on each part separately.
                     model_pred, model_pred_prior = torch.chunk(model_pred, 2, dim=0)
                     target, target_prior = torch.chunk(target, 2, dim=0)
+                    weighting, weighting_prior = torch.chunk(weighting, 2, dim=0)
 
                     # Compute prior loss
                     prior_loss = torch.mean(
-                        (weighting.float() * (model_pred_prior.float() - target_prior.float()) ** 2).reshape(
+                        (weighting_prior.float() * (model_pred_prior.float() - target_prior.float()) ** 2).reshape(
                             target_prior.shape[0], -1
                         ),
                         1,

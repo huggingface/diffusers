@@ -46,7 +46,7 @@ For example, remove the background from this image of a pair of shoes.
   </div>
 </div>
 
-[Stable Diffusion XL (SDXL)](../using-diffusers/sdxl) models work best with 1024x1024 images, but you can resize the image to any size as long as your hardware has enough memory to support it. The transparent background in the image should also be replaced with a white background. Create a function (like the one below) that scales and pastes the image onto a white background.
+[Stable Diffusion XL (SDXL)](../api/pipelines/stable_diffusion/stable_diffusion_xl) models work best with 1024x1024 images, but you can resize the image to any size as long as your hardware has enough memory to support it. The transparent background in the image should also be replaced with a white background. Create a function (like the one below) that scales and pastes the image onto a white background.
 
 ```py
 import random
