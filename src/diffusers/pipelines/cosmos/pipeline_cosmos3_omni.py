@@ -923,7 +923,11 @@ class Cosmos3OmniPipeline(DiffusionPipeline):
                 )[0].squeeze(0)
 
                 if sound_scheduler is not None and cond_v_sound is not None and uncond_v_sound is not None:
-                    velocity_sound = uncond_v_sound + guidance_scale * (cond_v_sound - uncond_v_sound)
+                    # Skip CFG for 1.0 guidance scale
+                    if guidance_scale != 1.0:
+                        velocity_sound = uncond_v_sound + guidance_scale * (cond_v_sound - uncond_v_sound)
+                    else:
+                        velocity_sound = cond_v_sound
                     sound_latents = sound_scheduler.step(
                         velocity_sound.unsqueeze(0), t, sound_latents.unsqueeze(0), return_dict=False
                     )[0].squeeze(0)
