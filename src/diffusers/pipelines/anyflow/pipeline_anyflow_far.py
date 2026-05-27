@@ -708,6 +708,11 @@ class AnyFlowFARPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         )
         outer_progress_bar_config = getattr(self, "_progress_bar_config", {}).copy() or {}
         chunk_progress_bar_config = {**outer_progress_bar_config, "position": 0, "desc": "Chunks"}
+        # Freeze the caller-provided custom schedule before the loop: `timesteps` below is reused per
+        # chunk for the scheduler timesteps (the standard pipeline variable name). Reusing the kwarg
+        # name directly would feed the already-shifted schedule back into `set_timesteps` on the next
+        # chunk and double-shift it.
+        custom_sigmas, custom_timesteps = sigmas, timesteps
         for chunk_idx in tqdm(range(len(chunk_partition)), **chunk_progress_bar_config):
             if chunk_idx >= num_context_chunks:
                 chunk_latents = init_latents[
@@ -715,15 +720,17 @@ class AnyFlowFARPipeline(DiffusionPipeline, WanLoraLoaderMixin):
                 ]
                 this_chunk_partition = chunk_partition[: chunk_idx + 1]
 
-                self.scheduler.set_timesteps(num_inference_steps, device=device, sigmas=sigmas, timesteps=timesteps)
-                scheduler_timesteps = self.scheduler.timesteps
+                self.scheduler.set_timesteps(
+                    num_inference_steps, device=device, sigmas=custom_sigmas, timesteps=custom_timesteps
+                )
+                timesteps = self.scheduler.timesteps
                 inner_progress_bar_config = {
                     **outer_progress_bar_config,
                     "position": 1,
                     "leave": False,
                     "desc": f"Chunk {chunk_idx} Inference Steps",
                 }
-                for i, t in enumerate(tqdm(scheduler_timesteps, **inner_progress_bar_config)):
+                for i, t in enumerate(tqdm(timesteps, **inner_progress_bar_config)):
                     r = self.scheduler.sigmas[i + 1] * self.scheduler.config.num_train_timesteps
                     if t == r:
                         continue

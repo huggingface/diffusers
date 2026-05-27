@@ -1539,8 +1539,9 @@ class AnyFlowFARTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Fr
         }
 
         if attention_mask is None:
-            # Fallback for callers that don't pre-build (e.g. training scripts). Not compile-safe;
-            # use :meth:`build_attention_mask` upstream when wrapping `forward` in `torch.compile`.
+            # Fallback for callers that don't pre-build an attention mask (e.g. training scripts). This will introduce
+            # a graph break, which will cause an error if `torch.compile(fullgraph=True)` is used. In this case,
+            # pre-build the mask using `build_attention_mask` and pass it via the `attention_mask` argument.
             attention_mask = _build_far_block_mask_from_far_cfg(
                 far_cfg, has_clean=clean_hidden_states is not None, device=hidden_states.device
             )
