@@ -1,0 +1,436 @@
+# Copyright (c) 2026 ByteDance Ltd. and/or its affiliates.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+from typing import List, Optional, Union
+
+import numpy as np
+import torch
+from PIL import Image
+from torch.nn.utils.rnn import pad_sequence
+from transformers import AutoTokenizer, Qwen3VLForConditionalGeneration, Qwen3VLProcessor
+
+from ...image_processor import VaeImageProcessor
+from ...loaders import FromSingleFileMixin, TextualInversionLoaderMixin
+from ...models import AutoencoderTiny
+from ...models.unets.unet_dreamlite import DreamLiteUNetModel
+from ...schedulers import FlowMatchEulerDiscreteScheduler
+from ...utils import is_torch_xla_available, logging
+from ...utils.torch_utils import randn_tensor
+from ..pipeline_utils import DiffusionPipeline
+from ..stable_diffusion.pipeline_stable_diffusion_img2img import retrieve_latents
+from .pipeline_dreamlite import calculate_shift, retrieve_timesteps
+from .pipeline_output import DreamLitePipelineOutput
+
+
+if is_torch_xla_available():
+    import torch_xla.core.xla_model as xm
+
+    XLA_AVAILABLE = True
+else:
+    XLA_AVAILABLE = False
+
+
+logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
+
+
+EXAMPLE_DOC_STRING = """
+    Examples:
+        ```py
+        >>> import torch
+        >>> from PIL import Image
+        >>> from diffusers import DreamLiteMobilePipeline
+
+        >>> pipe = DreamLiteMobilePipeline.from_pretrained("path/to/DreamLite-mobile", torch_dtype=torch.float16)
+        >>> pipe.to("cuda")
+
+        >>> # Text-to-image (4 steps, no CFG)
+        >>> image = pipe(prompt="A serene mountain lake at sunrise").images[0]
+
+        >>> # Image-to-image (instruction-based edit, 4 steps)
+        >>> init_image = Image.open("input.png").convert("RGB")
+        >>> edited = pipe(prompt="make it snowy", image=init_image).images[0]
+        ```
+"""
+
+
+class DreamLiteMobilePipeline(DiffusionPipeline, FromSingleFileMixin, TextualInversionLoaderMixin):
+    r"""DreamLite **Mobile** pipeline: a distilled, classifier-free-guidance-free variant of
+    :class:`DreamLitePipeline` for fast few-step inference (default 4 steps).
+
+    The operating mode is auto-detected from inputs (same as the base pipeline):
+
+    * ``image is None`` -> text-to-image.
+    * ``image is not None`` -> image-to-image / instruction edit.
+
+    Because classifier-free guidance is **distilled away**, ``guidance_scale`` and ``image_guidance_scale`` are
+    accepted for API parity with :class:`DreamLitePipeline` but are ignored in the denoising loop. ``negative_prompt``
+    is intentionally absent.
+
+    Components (identical to the base pipeline):
+        text_encoder ([`~transformers.Qwen3VLForConditionalGeneration`]):
+            Multimodal text/vision encoder.
+        tokenizer ([`~transformers.AutoTokenizer`]):
+            Tokenizer for text-only (generate) mode.
+        processor ([`~transformers.Qwen3VLProcessor`]):
+            Multimodal processor for edit mode.
+        vae ([`~diffusers.AutoencoderTiny`]):
+            Mobile-friendly tiny VAE.
+        unet ([`~diffusers.DreamLiteUNetModel`]):
+            DreamLite UNet.
+        scheduler ([`~diffusers.FlowMatchEulerDiscreteScheduler`]):
+            Flow-matching Euler scheduler with dynamic shift.
+
+    Note:
+        ``batch_size`` is currently forced to ``1``; ``num_images_per_prompt`` is supported.
+    """
+
+    model_cpu_offload_seq = "text_encoder->unet->vae"
+    _callback_tensor_inputs = ["latents", "prompt_embeds"]
+
+    def __init__(
+        self,
+        text_encoder: Qwen3VLForConditionalGeneration,
+        tokenizer: AutoTokenizer,
+        processor: Qwen3VLProcessor,
+        vae: AutoencoderTiny,
+        unet: DreamLiteUNetModel,
+        scheduler: FlowMatchEulerDiscreteScheduler,
+    ):
+        super().__init__()
+        self.register_modules(
+            text_encoder=text_encoder,
+            tokenizer=tokenizer,
+            processor=processor,
+            vae=vae,
+            unet=unet,
+            scheduler=scheduler,
+        )
+
+        # Safe VAE scale factor: AutoencoderTiny exposes `encoder_block_out_channels`; fall back to 8.
+        if self.vae is not None and hasattr(self.vae.config, "encoder_block_out_channels"):
+            self.vae_scale_factor = 2 ** (len(self.vae.config.encoder_block_out_channels) - 1)
+        else:
+            self.vae_scale_factor = 8
+
+        self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor * 2)
+        self.default_sample_size = 128
+
+    # ---------------------------------------------------------------------
+    # Helpers (identical to DreamLitePipeline)
+    # ---------------------------------------------------------------------
+    @staticmethod
+    def _extract_masked_hidden(hidden_states: torch.Tensor, mask: torch.Tensor) -> List[torch.Tensor]:
+        bool_mask = mask.bool()
+        valid_lengths = bool_mask.sum(dim=1).tolist()
+        selected = hidden_states[bool_mask]
+        return torch.split(selected, valid_lengths, dim=0)
+
+    def encode_prompt(
+        self,
+        mode: str,
+        prompts: List[str],
+        device: torch.device,
+        dtype: torch.dtype,
+        image: Optional[Image.Image] = None,
+        max_sequence_length: int = 500,
+        text_pad_embedding: Optional[torch.Tensor] = None,
+    ):
+        if mode == "edit":
+            drop_idx = 64
+            template = (
+                "<|im_start|>system\nDescribe the key features of the input image (color, shape, size, "
+                "texture, objects, background), then explain how the user's text instruction should alter "
+                "or modify the image. Generate a new image that meets the user's requirements while maintaining "
+                "consistency with the original input where appropriate.<|im_end|>\n<|im_start|>user\n"
+                "<|vision_start|><|image_pad|><|vision_end|>{}<|im_end|>\n<|im_start|>assistant\n"
+            )
+
+            txts = [template.format(p) for p in prompts]
+            images = [image.resize((512, 512), Image.Resampling.LANCZOS)] * len(prompts)
+
+            tk_out = self.processor(text=txts, images=images, padding=True, return_tensors="pt").to(device)
+
+            outputs = self.text_encoder(
+                input_ids=tk_out.input_ids,
+                attention_mask=tk_out.attention_mask,
+                pixel_values=tk_out.pixel_values,
+                image_grid_thw=tk_out.image_grid_thw,
+                output_hidden_states=True,
+            )
+
+        elif mode == "generate":
+            drop_idx = 34
+            template = (
+                "<|im_start|>system\nDescribe the image by detailing the color, shape, size, texture, "
+                "quantity, text, spatial relationships of the objects and background:<|im_end|>\n"
+                "<|im_start|>user\n{}<|im_end|>\n<|im_start|>assistant\n"
+            )
+
+            txts = [template.format(p) for p in prompts]
+            tk_out = self.tokenizer(text=txts, padding=True, return_tensors="pt").to(device)
+
+            outputs = self.text_encoder(
+                input_ids=tk_out.input_ids,
+                attention_mask=tk_out.attention_mask,
+                output_hidden_states=True,
+            )
+        else:
+            raise ValueError(f"Unknown mode: {mode!r}; expected 'generate' or 'edit'.")
+
+        hidden_states = outputs.hidden_states[-1]
+        split_hidden_states = self._extract_masked_hidden(hidden_states, tk_out.attention_mask)
+        split_hidden_states = [e[drop_idx:] for e in split_hidden_states]
+
+        prompt_embeds = pad_sequence(split_hidden_states, batch_first=True, padding_value=0).to(
+            dtype=dtype, device=device
+        )
+
+        B, L, _ = prompt_embeds.shape
+        prompt_embeds_mask = torch.zeros((B, L), dtype=torch.long, device=device)
+        for i, seq in enumerate(split_hidden_states):
+            prompt_embeds_mask[i, : seq.shape[0]] = 1
+
+        if text_pad_embedding is not None:
+            pad_emb = text_pad_embedding.to(dtype=dtype, device=device)
+            if pad_emb.ndim == 1:
+                pad_emb = pad_emb.unsqueeze(0).unsqueeze(0)
+            elif pad_emb.ndim == 2:
+                pad_emb = pad_emb.unsqueeze(0)
+
+            mask_expanded = prompt_embeds_mask.unsqueeze(-1).to(dtype=dtype)
+            prompt_embeds = prompt_embeds * mask_expanded + pad_emb * (1 - mask_expanded)
+
+        return prompt_embeds, prompt_embeds_mask
+
+    def prepare_latents(
+        self,
+        batch_size: int,
+        num_channels_latents: int,
+        height: int,
+        width: int,
+        dtype: torch.dtype,
+        device: torch.device,
+        generator: Optional[torch.Generator],
+        latents: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
+        height = int(height) // self.vae_scale_factor
+        width = int(width) // self.vae_scale_factor
+        shape = (batch_size, num_channels_latents, height, width)
+
+        if latents is not None:
+            return latents.to(device=device, dtype=dtype)
+
+        if isinstance(generator, list) and len(generator) != batch_size:
+            raise ValueError("Generator list length must match batch size.")
+
+        return randn_tensor(shape, generator=generator, device=device, dtype=dtype)
+
+    def prepare_image_latents(
+        self,
+        image: Union[torch.Tensor, Image.Image, List[Image.Image]],
+        dtype: torch.dtype,
+        device: torch.device,
+        generator: Optional[torch.Generator] = None,
+    ) -> torch.Tensor:
+        if not isinstance(image, (torch.Tensor, Image.Image, list)):
+            raise ValueError(f"`image` must be of type `torch.Tensor`, `PIL.Image.Image` or `list`, got {type(image)}")
+
+        image = image.to(device=device, dtype=dtype)
+
+        if image.shape[1] == 4:
+            image_latents = image
+        else:
+            image_latents = retrieve_latents(self.vae.encode(image), sample_mode="argmax")
+
+        return image_latents
+
+    # ---------------------------------------------------------------------
+    # Main entry
+    # ---------------------------------------------------------------------
+    @torch.no_grad()
+    def __call__(
+        self,
+        prompt: Union[str, List[str]] = None,
+        image: Optional[Image.Image] = None,
+        height: Optional[int] = None,
+        width: Optional[int] = None,
+        num_inference_steps: int = 4,
+        guidance_scale: Optional[float] = None,
+        image_guidance_scale: Optional[float] = None,
+        sigmas: Optional[List[float]] = None,
+        num_images_per_prompt: Optional[int] = 1,
+        generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
+        output_type: Optional[str] = "pil",
+        return_dict: bool = True,
+        max_sequence_length: int = 200,
+        text_pad_embedding: Optional[torch.Tensor] = None,
+    ):
+        r"""Run the distilled DreamLite Mobile pipeline.
+
+        Args:
+            prompt: Text prompt.
+            image: Optional input image. If provided, runs in **edit / image-to-image** mode;
+                otherwise runs in **text-to-image** mode.
+            height / width: Output resolution. Defaults to
+                ``default_sample_size * vae_scale_factor`` (1024x1024).
+            num_inference_steps: Number of denoising steps. Defaults to **4** (distilled).
+            guidance_scale / image_guidance_scale: Accepted for API parity with
+                :class:`DreamLitePipeline`; **ignored** because CFG was distilled away.
+            sigmas: Optional explicit FlowMatch sigmas; defaults to a uniform linspace.
+            num_images_per_prompt: Output images per prompt (note: ``batch_size`` is forced to 1).
+            generator: Random generator(s).
+            output_type: ``"pil"``, ``"np"``, ``"pt"`` or ``"latent"``.
+            return_dict: If True, returns a :class:`DreamLitePipelineOutput`; else ``(images,)``.
+            max_sequence_length: Reserved (passed through to ``encode_prompt``).
+            text_pad_embedding: Optional learned pad embedding for masked positions.
+
+        Returns:
+            :class:`DreamLitePipelineOutput` or ``tuple``.
+        """
+        # 1. Init pipeline parameters
+        height = height or self.default_sample_size * self.vae_scale_factor
+        width = width or self.default_sample_size * self.vae_scale_factor
+
+        task = "generate" if image is None else "edit"
+        device = self._execution_device
+        dtype = self.text_encoder.dtype
+        batch_size = 1  # Note: pipeline currently forces batch_size = 1.
+
+        if guidance_scale is not None or image_guidance_scale is not None:
+            logger.warning(
+                "`guidance_scale` / `image_guidance_scale` are ignored by DreamLiteMobilePipeline "
+                "because classifier-free guidance was distilled away."
+            )
+
+        if sigmas is None:
+            sigmas = np.linspace(1.0, 1 / num_inference_steps, num_inference_steps)
+
+        # 2. Prepare Time IDs
+        original_size = (width, height)
+        add_time_ids = torch.tensor([list(original_size)], device=device, dtype=dtype)
+
+        # 3. Prepare Noise Latents (x_t)
+        num_channels_latents = self.vae.config.latent_channels
+        latents = self.prepare_latents(
+            batch_size * num_images_per_prompt,
+            num_channels_latents,
+            height,
+            width,
+            dtype,
+            device,
+            generator,
+        )
+
+        # 4. Prepare Timesteps (FlowMatch with dynamic shift)
+        image_seq_len = latents.shape[2] * latents.shape[3] // 4
+        mu = calculate_shift(
+            image_seq_len,
+            self.scheduler.config.get("base_image_seq_len", 256),
+            self.scheduler.config.get("max_image_seq_len", 4096),
+            self.scheduler.config.get("base_shift", 0.5),
+            self.scheduler.config.get("max_shift", 1.16),
+        )
+        timesteps, num_inference_steps = retrieve_timesteps(
+            self.scheduler,
+            num_inference_steps,
+            device,
+            sigmas=sigmas,
+            mu=mu,
+        )
+        num_warmup_steps = max(len(timesteps) - num_inference_steps * self.scheduler.order, 0)
+
+        # 5. Prepare Conditions (Text & Image) — no negatives because CFG is distilled away
+        if task == "generate":
+            prompt_str = f"[Generate]: {prompt}"
+            prompt_embeds, text_attention_mask = self.encode_prompt(
+                mode="generate",
+                prompts=[prompt_str],
+                device=device,
+                dtype=dtype,
+                text_pad_embedding=text_pad_embedding,
+            )
+            if num_images_per_prompt > 1:
+                prompt_embeds = prompt_embeds.repeat_interleave(num_images_per_prompt, dim=0)
+                text_attention_mask = text_attention_mask.repeat_interleave(num_images_per_prompt, dim=0)
+            image_latents = torch.zeros_like(latents)
+        else:
+            prompt_str = (
+                f"[Edit]: A diptych with two side-by-side images of the same scene. "
+                f"Compared to the right side, the left one has {prompt}"
+            )
+            prompt_embeds, text_attention_mask = self.encode_prompt(
+                mode="edit",
+                prompts=[prompt_str],
+                image=image,
+                device=device,
+                dtype=dtype,
+            )
+            if num_images_per_prompt > 1:
+                prompt_embeds = prompt_embeds.repeat_interleave(num_images_per_prompt, dim=0)
+                text_attention_mask = text_attention_mask.repeat_interleave(num_images_per_prompt, dim=0)
+            image_processed = self.image_processor.preprocess(image.resize((width, height), Image.Resampling.LANCZOS))
+            image_latents = self.prepare_image_latents(
+                image_processed,
+                dtype=dtype,
+                device=device,
+            )
+
+        # 6. Denoising Loop (no CFG: single forward per step, no cat/chunk)
+        with self.progress_bar(total=num_inference_steps) as progress_bar:
+            for i, t in enumerate(timesteps):
+                model_input = torch.cat([latents, image_latents], dim=3)
+                time_ids_in = add_time_ids
+
+                # UNet Forward
+                noise_pred = self.unet(
+                    model_input,
+                    timestep=t.expand(model_input.shape[0]).to(latents.dtype),
+                    encoder_hidden_states=prompt_embeds,
+                    encoder_attention_mask=text_attention_mask,
+                    added_cond_kwargs={"time_ids": time_ids_in},
+                    return_dict=False,
+                )[0]
+
+                # Drop extra channels (image-conditioning half of the spatial concat)
+                noise_pred = noise_pred[..., : latents.shape[-1]]
+
+                # Scheduler Step
+                latents_dtype = latents.dtype
+                latents = self.scheduler.step(noise_pred, t, latents, return_dict=False)[0]
+
+                if latents.dtype != latents_dtype:
+                    if torch.backends.mps.is_available():
+                        latents = latents.to(latents_dtype)
+
+                if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
+                    progress_bar.update()
+
+                if XLA_AVAILABLE:
+                    xm.mark_step()
+
+        # 7. Decode Latents
+        if output_type == "latent":
+            image_out = latents
+        else:
+            shift_factor = getattr(self.vae.config, "shift_factor", 0.0) or 0.0
+            latents = (latents / self.vae.config.scaling_factor) + shift_factor
+            image_out = self.vae.decode(latents, return_dict=False)[0]
+            image_out = self.image_processor.postprocess(image_out, output_type=output_type)
+
+        self.maybe_free_model_hooks()
+
+        if not return_dict:
+            return (image_out,)
+
+        return DreamLitePipelineOutput(images=image_out)
