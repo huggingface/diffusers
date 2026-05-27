@@ -1,31 +1,24 @@
-name: Fast tests for PRs (always-on extras)
-
-# Quality, repo-consistency, and the fetcher-driven matrix live in `pr_test_fetcher.yml`.
-# This workflow holds always-on jobs that should run on every PR regardless of fetcher selection:
-# staging hub tests and the LoRA-with-PEFT-main suite.
+name: Fast tests for PRs
 
 on:
   pull_request:
     branches: [main]
+    types: [opened, synchronize, reopened, labeled, unlabeled]
     paths:
       - "src/diffusers/**.py"
-      - "benchmarks/**.py"
-      - "examples/**.py"
-      - "scripts/**.py"
       - "tests/**.py"
-      - ".github/**.yml"
       - "utils/**.py"
       - "setup.py"
-  push:
-    branches:
-      - ci-*
+      - ".github/workflows/pr_tests.yml"
+  workflow_dispatch:
+    inputs:
+      force_full_suite:
+        description: "Run the full test suite instead of fetcher selection"
+        type: boolean
+        default: false
 
 permissions:
   contents: read
-
-concurrency:
-  group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
-  cancel-in-progress: true
 
 env:
   DIFFUSERS_IS_CI: yes
@@ -34,120 +27,175 @@ env:
   MKL_NUM_THREADS: 4
   PYTEST_TIMEOUT: 60
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
+  cancel-in-progress: true
+
 jobs:
-  run_staging_tests:
-    strategy:
-      fail-fast: false
-      matrix:
-        config:
-          - name: Hub tests for models, schedulers, and pipelines
-            framework: hub_tests_pytorch
-            runner:
-              group: aws-general-8-plus
-            image: diffusers/diffusers-pytorch-cpu
-            report: torch_hub
-
-    name: ${{ matrix.config.name }}
-
-    runs-on: ${{ matrix.config.runner }}
-
-    container:
-      image: ${{ matrix.config.image }}
-      options: --shm-size "16gb" --ipc host -v /mnt/hf_cache:/mnt/cache/
-
-    defaults:
-      run:
-        shell: bash
-
+  check_code_quality:
+    runs-on: ubuntu-22.04
     steps:
-    - name: Checkout diffusers
-      uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
-      with:
-        fetch-depth: 2
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - name: Set up Python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
+        with:
+          python-version: "3.10"
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install .[quality]
+      - name: Check quality
+        run: make quality
+      - name: Check if failure
+        if: ${{ failure() }}
+        run: |
+          echo "Quality check failed. Please ensure the right dependency versions are installed with 'pip install -e .[quality]' and run 'make style && make quality'" >> $GITHUB_STEP_SUMMARY
 
-    - name: Install dependencies
-      run: |
-        uv pip install -e ".[quality]"
-        uv pip uninstall transformers huggingface_hub && UV_PRERELEASE=allow uv pip install -U transformers@git+https://github.com/huggingface/transformers.git
-        uv pip uninstall tokenizers && uv pip install "tokenizers<=0.23.0"
+  check_repository_consistency:
+    needs: check_code_quality
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - name: Set up Python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
+        with:
+          python-version: "3.10"
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install .[quality]
+      - name: Check repo consistency
+        run: |
+          python utils/check_copies.py
+          python utils/check_dummies.py
+          python utils/check_support_list.py
+          make deps_table_check_updated
+      - name: Check if failure
+        if: ${{ failure() }}
+        run: |
+          echo "Repo consistency check failed. Please ensure the right dependency versions are installed with 'pip install -e .[quality]' and run 'make fix-copies'" >> $GITHUB_STEP_SUMMARY
 
-    - name: Environment
-      run: |
-        diffusers-cli env
-
-    - name: Run Hub tests for models, schedulers, and pipelines on a staging env
-      if: ${{ matrix.config.framework == 'hub_tests_pytorch' }}
-      run: |
-        HUGGINGFACE_CO_STAGING=true pytest \
-          -m "is_staging_test" \
-          --make-reports=tests_${{ matrix.config.report }} \
-          tests
-
-    - name: Failure short reports
-      if: ${{ failure() }}
-      run: cat reports/tests_${{ matrix.config.report }}_failures_short.txt
-
-    - name: Test suite reports artifacts
-      if: ${{ always() }}
-      uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
-      with:
-        name: pr_${{ matrix.config.report }}_test_reports
-        path: reports
-
-  run_lora_tests:
-    name: LoRA tests with PEFT main
-
+  setup_tests:
+    name: Setup Tests
+    needs: [check_code_quality, check_repository_consistency]
     runs-on:
       group: aws-general-8-plus
-
     container:
       image: diffusers/diffusers-pytorch-cpu
       options: --shm-size "16gb" --ipc host -v /mnt/hf_cache:/mnt/cache/
-
     defaults:
       run:
         shell: bash
+    outputs:
+      cpu_matrix: ${{ steps.set_matrix.outputs.cpu_matrix }}
+      test_map: ${{ steps.set_matrix.outputs.test_map }}
+    steps:
+    - name: Checkout diffusers
+      uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      with:
+        fetch-depth: 0
+    - name: Fetch refs/remotes/origin/main
+      # `actions/checkout` only fetches the ref it checks out. The fetcher diffs HEAD against
+      # `origin/main`, so explicitly fetch main and download its objects regardless of dispatch ref.
+      run: |
+        git -c safe.directory="$GITHUB_WORKSPACE" fetch --no-tags origin +refs/heads/main:refs/remotes/origin/main
+    - name: Install dependencies
+      run: |
+        uv pip install -e ".[quality]"
+    - name: Environment
+      run: |
+        diffusers-cli env
+        echo $(git --version)
+    - name: Fetch Tests
+      env:
+        # Trigger full suite when:
+        #   - the PR has the `run-all-tests` label, or
+        #   - the workflow was dispatched with force_full_suite=true.
+        FORCE_FULL_SUITE: ${{ contains(github.event.pull_request.labels.*.name, 'run-all-tests') || (github.event_name == 'workflow_dispatch' && inputs.force_full_suite) }}
+        # Trust the workspace for every git subprocess spawned by gitpython. Without this,
+        # `git cat-file --batch-check` aborts on the container-runner ownership mismatch and
+        # writes nothing to stdout, which surfaces as "SHA could not be resolved" in the fetcher.
+        GIT_CONFIG_COUNT: "1"
+        GIT_CONFIG_KEY_0: "safe.directory"
+        GIT_CONFIG_VALUE_0: ${{ github.workspace }}
+      run: |
+        if [ "$FORCE_FULL_SUITE" = "true" ]; then
+          python utils/tests_fetcher.py --force_full_suite
+        else
+          python utils/tests_fetcher.py
+        fi
+        echo "--- test_map.json ---"
+        if [ -f test_map.json ]; then
+          cat test_map.json
+        else
+          echo "(no test_map.json produced)"
+        fi
+    - id: set_matrix
+      name: Create Test Matrix
+      run: |
+        if [ -f test_map.json ]; then
+            cpu_matrix=$(python3 -c 'import json; m = json.load(open("test_map.json")); k = sorted(m.keys()); print(json.dumps(k if k else ["dummy"]))')
+            test_map=$(python3 -c 'import json; print(json.dumps(json.load(open("test_map.json"))))')
+        else
+            cpu_matrix='["dummy"]'
+            test_map='{"dummy": ""}'
+        fi
 
+        echo "cpu_matrix=$cpu_matrix" >> $GITHUB_OUTPUT
+        echo "test_map=$test_map" >> $GITHUB_OUTPUT
+        echo "CPU matrix: $cpu_matrix"
+
+  run_tests_cpu:
+    name: Run Tests (CPU)
+    needs: setup_tests
+    if: contains(fromJson(needs.setup_tests.outputs.cpu_matrix), 'dummy') != true
+    strategy:
+      fail-fast: false
+      max-parallel: 8
+      matrix:
+        modules: ${{ fromJson(needs.setup_tests.outputs.cpu_matrix) }}
+    runs-on:
+      group: aws-general-8-plus
+    container:
+      image: diffusers/diffusers-pytorch-cpu
+      options: --shm-size "16gb" --ipc host -v /mnt/hf_cache:/mnt/cache/
+    defaults:
+      run:
+        shell: bash
     steps:
     - name: Checkout diffusers
       uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
       with:
         fetch-depth: 2
 
-    - name: Install dependencies
+    - name: Install Dependencies
       run: |
         uv pip install -e ".[quality]"
-        # TODO (sayakpaul, DN6): revisit `--no-deps`
-        uv pip install -U peft@git+https://github.com/huggingface/peft.git --no-deps
-        uv pip install -U tokenizers
-        uv pip uninstall accelerate && uv pip install -U accelerate@git+https://github.com/huggingface/accelerate.git --no-deps
-        uv pip uninstall transformers huggingface_hub && UV_PRERELEASE=allow uv pip install -U transformers@git+https://github.com/huggingface/transformers.git
+        uv pip uninstall transformers huggingface_hub && uv pip install --prerelease allow -U transformers@git+https://github.com/huggingface/transformers.git
         uv pip uninstall tokenizers && uv pip install "tokenizers<=0.23.0"
+        uv pip uninstall accelerate && uv pip install -U accelerate@git+https://github.com/huggingface/accelerate.git --no-deps
 
     - name: Environment
       run: |
         diffusers-cli env
 
-    - name: Run fast PyTorch LoRA tests with PEFT
+    - name: Run selected tests on CPU
       run: |
         pytest -n 4 --max-worker-restart=0 --dist=loadfile \
-          \
-          --make-reports=tests_peft_main \
-          tests/lora/
-        pytest -n 4 --max-worker-restart=0 --dist=loadfile \
-          \
-          --make-reports=tests_models_lora_peft_main \
-          tests/models/ -k "lora"
+          -k "not Flax and not Onnx" \
+          --make-reports=${{ matrix.modules }}_tests_cpu \
+          ${{ fromJson(needs.setup_tests.outputs.test_map)[matrix.modules] }}
 
     - name: Failure short reports
       if: ${{ failure() }}
+      continue-on-error: true
       run: |
-        cat reports/tests_peft_main_failures_short.txt
-        cat reports/tests_models_lora_peft_main_failures_short.txt
+        cat reports/${{ matrix.modules }}_tests_cpu_stats.txt
+        cat reports/${{ matrix.modules }}_tests_cpu_failures_short.txt
 
     - name: Test suite reports artifacts
       if: ${{ always() }}
       uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
       with:
-        name: pr_lora_test_reports
+        name: ${{ matrix.modules }}_cpu_test_reports
         path: reports
