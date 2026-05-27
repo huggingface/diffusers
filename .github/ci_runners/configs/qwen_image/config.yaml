@@ -1,0 +1,14 @@
+pipeline_class: QwenImagePipeline
+module: diffusers.pipelines.qwenimage.pipeline_qwenimage
+
+params_grid:
+  - name: "landscape_50steps_single"
+    width: 1344
+    height: 768
+    num_inference_steps: 50
+    true_cfg_scale: 4.0
+    parallel: "single"
+
+prompt: "A 20-year-old East Asian girl with delicate, charming features and large, bright brown eyes, cheerful expression, wavy long hair tied in twin ponytails, fair skin, light makeup, wearing a modern cute dress in bright soft colors, standing indoors at an anime convention, casual iPhone snapshot style."
+negative_prompt: "低分辨率，低画质，肢体畸形，手指畸形，画面过饱和，蜡像感，人脸无细节，过度光滑，画面具有AI感。构图混乱。文字模糊，扭曲。"
+reference_config: "landscape_50steps_single"

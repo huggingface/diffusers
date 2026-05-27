@@ -1,0 +1,16 @@
+pipeline_class: WanImageToVideoPipeline
+module: diffusers.pipelines.wan.pipeline_wan_i2v
+
+params_grid:
+  - name: "small_30steps_single"
+    width: 480
+    height: 272
+    num_inference_steps: 30
+    guidance_scale: 5.0
+    num_frames: 33
+    parallel: "single"
+    image: ".github/ci_runners/test_data/sample_input.png"
+
+prompt: "A cat walking on a beach at sunset, cinematic quality."
+negative_prompt: "blurry, low quality, distorted."
+reference_config: "small_30steps_single"
