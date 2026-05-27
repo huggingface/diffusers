@@ -46,6 +46,7 @@ else:
         "InsertableDict",
     ]
     _import_structure["stable_diffusion_xl"] = ["StableDiffusionXLAutoBlocks", "StableDiffusionXLModularPipeline"]
+    _import_structure["stable_diffusion_3"] = ["StableDiffusion3AutoBlocks", "StableDiffusion3ModularPipeline"]
     _import_structure["wan"] = [
         "WanBlocks",
         "Wan22Blocks",
@@ -158,6 +159,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             QwenImageLayeredModularPipeline,
             QwenImageModularPipeline,
         )
+        from .stable_diffusion_3 import StableDiffusion3AutoBlocks, StableDiffusion3ModularPipeline
         from .stable_diffusion_xl import StableDiffusionXLAutoBlocks, StableDiffusionXLModularPipeline
         from .wan import (
             Wan22Blocks,
