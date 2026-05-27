@@ -983,7 +983,7 @@ def collate_fn(examples, with_prior_preservation=False):
 
 
 class BucketBatchSampler(BatchSampler):
-    def __init__(self, dataset: DreamBoothDataset, batch_size: int, drop_last: bool = False):
+    def __init__(self, dataset: DreamBoothDataset, batch_size: int, drop_last: bool = False, seed: int = None):
         if not isinstance(batch_size, int) or batch_size <= 0:
             raise ValueError("batch_size should be a positive integer value, but got batch_size={}".format(batch_size))
         if not isinstance(drop_last, bool):
@@ -992,6 +992,7 @@ class BucketBatchSampler(BatchSampler):
         self.dataset = dataset
         self.batch_size = batch_size
         self.drop_last = drop_last
+        self.generator = random.Random(seed) if seed is not None else random
 
         # Group indices by bucket
         self.bucket_indices = [[] for _ in range(len(self.dataset.buckets))]
@@ -1009,14 +1010,14 @@ class BucketBatchSampler(BatchSampler):
         batches = []
         for indices_in_bucket in self.bucket_indices:
             shuffled_indices = indices_in_bucket.copy()
-            random.shuffle(shuffled_indices)
+            self.generator.shuffle(shuffled_indices)
             for i in range(0, len(shuffled_indices), self.batch_size):
                 batch = shuffled_indices[i : i + self.batch_size]
                 if len(batch) < self.batch_size and self.drop_last:
                     continue
                 batches.append(batch)
 
-        random.shuffle(batches)
+        self.generator.shuffle(batches)
         for batch in batches:
             yield batch
 
@@ -1479,7 +1480,7 @@ def main(args):
         buckets=buckets,
     )
     precompute_latents = args.cache_latents or train_dataset.custom_instance_prompts
-    batch_sampler = BucketBatchSampler(train_dataset, batch_size=args.train_batch_size, drop_last=True)
+    batch_sampler = BucketBatchSampler(train_dataset, batch_size=args.train_batch_size, drop_last=True, seed=args.seed)
     train_dataloader = torch.utils.data.DataLoader(
         train_dataset,
         batch_sampler=batch_sampler,
@@ -1605,7 +1606,9 @@ def main(args):
         prompt_embeds_cache = [None] * train_dataset.num_instance_images
         text_ids_cache = [None] * train_dataset.num_instance_images
     if precompute_latents:
-        cache_batch_sampler = BucketBatchSampler(train_dataset, batch_size=args.train_batch_size, drop_last=False)
+        cache_batch_sampler = BucketBatchSampler(
+            train_dataset, batch_size=args.train_batch_size, drop_last=False, seed=args.seed
+        )
         cache_dataloader = torch.utils.data.DataLoader(
             train_dataset,
             batch_sampler=cache_batch_sampler,
