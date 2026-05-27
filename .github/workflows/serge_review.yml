@@ -57,7 +57,7 @@ jobs:
         # are wiped for parity with the hardening in claude_review.yml.
         run: rm -rf .ai/ .claude/ CLAUDE.md
 
-      - uses: tarekziade/ai-reviewer@main
+      - uses: huggingface/ai-reviewer@main
         with:
           llm_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           llm_api_base: https://api.anthropic.com
