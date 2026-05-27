@@ -161,6 +161,7 @@ class Cosmos3PackedMoTAttention(nn.Module, AttentionModuleMixin):
         num_key_value_heads: int,
         attention_bias: bool,
         rms_norm_eps: float,
+        processor=None,
     ):
         super().__init__()
         self.hidden_size = hidden_size
@@ -186,7 +187,9 @@ class Cosmos3PackedMoTAttention(nn.Module, AttentionModuleMixin):
         self.norm_added_q = RMSNorm(head_dim, eps=rms_norm_eps, elementwise_affine=True, bias=False)
         self.norm_added_k = RMSNorm(head_dim, eps=rms_norm_eps, elementwise_affine=True, bias=False)
 
-        self.set_processor(Cosmos3AttnProcessor())
+        if processor is None:
+            processor = self._default_processor_cls()
+        self.set_processor(processor)
 
     def forward(
         self,
