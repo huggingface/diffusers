@@ -516,7 +516,6 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
         sf = int(self.vae.config.scale_factor_spatial)
         if height % sf != 0 or width % sf != 0:
             raise ValueError(f"`height` and `width` must be multiples of {sf}, got ({height}, {width}).")
-
         if enable_sound:
             if self.sound_tokenizer is None:
                 raise ValueError("`enable_sound=True` requires a sound-capable checkpoint with a `sound_tokenizer`.")
