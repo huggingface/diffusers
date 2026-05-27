@@ -289,18 +289,14 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
         two modalities are temporal siblings, not sequential).
         """
         config = self.transformer.config
-        packed_input_ids = list(input_ids) + [
-            self.llm_special_tokens["eos_token_id"],
-            self.llm_special_tokens["start_of_generation"],
-        ]
-        und_len = len(packed_input_ids)
+        und_len = len(input_ids)
         text_mrope_ids, next_mrope_offset = get_3d_mrope_ids_text_tokens(
             num_tokens=und_len,
             temporal_offset=0,
             use_float_positions=config.enable_fps_modulation,
         )
         return {
-            "input_ids": torch.tensor(packed_input_ids, dtype=torch.long, device=device),
+            "input_ids": torch.tensor(input_ids, dtype=torch.long, device=device),
             "text_indexes": torch.arange(und_len, dtype=torch.long, device=device),
             "und_len": und_len,
             "text_mrope_ids": text_mrope_ids.to(device),
@@ -587,9 +583,17 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
                 add_generation_prompt=True,
                 add_vision_id=False,
             )
+        
+        def _add_special_tokens(input_ids: list[int]) -> list[int]:
+            return list(input_ids) + [
+            self.llm_special_tokens["eos_token_id"],
+            self.llm_special_tokens["start_of_generation"],
+        ]
 
-        cond_input_ids = _tokenize(_apply_templates(prompt))
-        uncond_input_ids = _tokenize(_apply_templates(negative_prompt, is_negative=True))
+        cond_encodings = _tokenize(_apply_templates(prompt))
+        cond_input_ids = _add_special_tokens(cond_encodings.input_ids)
+        uncond_encodings = _tokenize(_apply_templates(negative_prompt, is_negative=True))
+        uncond_input_ids = _add_special_tokens(uncond_encodings.input_ids)
         return cond_input_ids, uncond_input_ids
 
     @staticmethod
