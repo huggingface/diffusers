@@ -15,7 +15,7 @@
 import copy
 import math
 from dataclasses import dataclass
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+from typing import Any, Callable
 
 import numpy as np
 import torch
@@ -145,7 +145,7 @@ class Cosmos3OmniPipelineOutput(BaseOutput):
     """
 
     video: Any
-    sound: Optional[torch.Tensor] = None
+    sound: torch.Tensor | None = None
 
 
 # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_img2img.retrieve_latents
@@ -174,8 +174,8 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
         text_tokenizer: AutoTokenizer,
         vae: AutoencoderKLWan,
         scheduler: UniPCMultistepScheduler,
-        sound_tokenizer: Optional[Cosmos3AVAEAudioTokenizer] = None,
-        safety_checker: Optional[CosmosSafetyChecker] = None,
+        sound_tokenizer: Cosmos3AVAEAudioTokenizer | None = None,
+        safety_checker: CosmosSafetyChecker | None = None,
         enable_safety_checker: bool = True,
     ):
         super().__init__()
@@ -276,9 +276,9 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
 
     def _pack_text_tokens(
         self,
-        input_ids: List[int],
+        input_ids: list[int],
         device: torch.device | str,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Build the text segment of the joint sequence.
 
         Text packing is invariant across denoising steps and across cond/uncond passes for a given prompt, so this is
@@ -315,7 +315,7 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
         vision_fps: float | None,
         curr: int,
         device: torch.device | str,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Build the static portion of the vision segment of the joint sequence.
 
         Step-varying fields (``vision_tokens`` and ``vision_timesteps``) are NOT included here — the caller splices
@@ -369,7 +369,7 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
         sound_fps: float | None,
         curr: int,
         device: torch.device | str,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Build the static portion of the sound segment of the joint sequence.
 
         Step-varying fields (``sound_tokens`` and ``sound_timesteps``) are spliced in by the caller inside the
@@ -405,22 +405,22 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
 
     def prepare_latents(
         self,
-        image=None,
+        image: torch.Tensor | None = None,
         num_frames: int = 189,
         height: int = 720,
         width: int = 1280,
         fps: float = 24.0,
-        latents: Optional[torch.Tensor] = None,
-        sound_latents: Optional[torch.Tensor] = None,
-        generator: Optional[torch.Generator] = None,
+        latents: torch.Tensor | None = None,
+        sound_latents: torch.Tensor | None = None,
+        generator: torch.Generator | None = None,
         device: str = "cuda",
         dtype: torch.dtype = torch.bfloat16,
         enable_sound: bool = False,
-    ) -> Tuple[
+    ) -> tuple[
         torch.Tensor,
-        Optional[torch.Tensor],
+        torch.Tensor | None,
         float,
-        Optional[float],
+        float | None,
     ]:
         """Build conditioning + initial noise for a single sample.
 
@@ -457,8 +457,8 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
         x0_tokens_vision = self._encode_video(vision_tensor).contiguous().float()
         vision_shape = tuple(x0_tokens_vision.shape)
 
-        x0_tokens_sound: Optional[torch.Tensor] = None
-        fps_sound: Optional[float] = None
+        x0_tokens_sound: torch.Tensor | None = None
+        fps_sound: float | None = None
         if enable_sound:
             sound_dim = self.transformer.config.sound_dim
             fps_sound = float(self.transformer.config.sound_latent_fps)
@@ -481,7 +481,7 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
         else:
             latents = latents.to(device=device, dtype=dtype)
 
-        sound_condition_mask: Optional[torch.Tensor] = None
+        sound_condition_mask: torch.Tensor | None = None
         if enable_sound and x0_tokens_sound is not None:
             # All sound frames are noisy, so the conditioning mask is always zero.
             sound_condition_mask = torch.zeros((x0_tokens_sound.shape[1], 1), device=device, dtype=dtype)
@@ -531,8 +531,7 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
     def tokenize_prompt(
         self,
         prompt: str,
-        negative_prompt: Optional[str] = None,
-        image=None,
+        negative_prompt: str | None = None,
         num_frames: int = 189,
         height: int = 720,
         width: int = 1280,
@@ -595,11 +594,11 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
 
     @staticmethod
     def _mask_velocity_predictions(
-        preds_vision: List[torch.Tensor],
-        preds_sound: Optional[List[torch.Tensor]],
-        vision_condition_mask: List[torch.Tensor],
-        sound_condition_mask: Optional[List[torch.Tensor]] = None,
-    ) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
+        preds_vision: list[torch.Tensor],
+        preds_sound: list[torch.Tensor] | None,
+        vision_condition_mask: list[torch.Tensor],
+        sound_condition_mask: list[torch.Tensor] | None = None,
+    ) -> tuple[torch.Tensor, torch.Tensor | None]:
         """Zero out conditioning positions in the transformer's velocity predictions.
 
         ``preds_vision`` / ``preds_sound`` are returned per-sample by the transformer; the pipeline runs batch=1, so we
@@ -611,7 +610,7 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
         noisy_mask_v = (1.0 - m_v).to(dtype=pred_v.dtype, device=pred_v.device)
         velocity_vision = pred_v * noisy_mask_v if noisy_mask_v.sum() > 0 else torch.zeros_like(pred_v)
 
-        velocity_sound: Optional[torch.Tensor] = None
+        velocity_sound: torch.Tensor | None = None
         if preds_sound is not None and sound_condition_mask is not None:
             pred_s = preds_sound[0]
             cond_mask_s = sound_condition_mask[0]
@@ -666,9 +665,9 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
     @torch.no_grad()
     def __call__(
         self,
-        prompt: Union[str, List[str]],
-        negative_prompt: Optional[Union[str, List[str]]] = None,
-        image=None,
+        prompt: str | list[str],
+        negative_prompt: str | list[str] | None = None,
+        image: torch.Tensor | None = None,
         num_frames: int = 189,
         height: int = 720,
         width: int = 1280,
@@ -676,16 +675,14 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
         num_inference_steps: int = 35,
         guidance_scale: float = 6.0,
         enable_sound: bool = False,
-        generator: Optional[torch.Generator] = None,
-        latents: Optional[torch.Tensor] = None,
-        sound_latents: Optional[torch.Tensor] = None,
+        generator: torch.Generator | None = None,
+        latents: torch.Tensor | None = None,
+        sound_latents: torch.Tensor | None = None,
         output_type: str = "pil",
         return_dict: bool = True,
         use_system_prompt: bool = True,
-        callback_on_step_end: Optional[
-            Union[Callable[[int, int, Dict[str, Any]], None], PipelineCallback, MultiPipelineCallbacks]
-        ] = None,
-        callback_on_step_end_tensor_inputs: List[str] = ["latents"],
+        callback_on_step_end: Callable[[int, int, dict[str, Any]], None] | PipelineCallback | MultiPipelineCallbacks | None = None,
+        callback_on_step_end_tensor_inputs: list[str] = ["latents"],
         add_resolution_template: bool = True,
         add_duration_template: bool = True,
         enable_safety_check: bool = True,
@@ -728,7 +725,6 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
         cond_input_ids, uncond_input_ids = self.tokenize_prompt(
             prompt,
             negative_prompt,
-            image=image,
             num_frames=num_frames,
             height=height,
             width=width,
@@ -774,7 +770,7 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
             curr=cond_text_packed["und_len"],
             device=device,
         )
-        cond_sound_packed: Dict[str, Any] = {}
+        cond_sound_packed: dict[str, Any] = {}
         if sound_latents is not None:
             cond_sound_packed = self._pack_sound_tokens(
                 input_sound_tokens=sound_latents,
@@ -804,7 +800,7 @@ class Cosmos3OmniDiffusersPipeline(DiffusionPipeline):
             curr=uncond_text_packed["und_len"],
             device=device,
         )
-        uncond_sound_packed: Dict[str, Any] = {}
+        uncond_sound_packed: dict[str, Any] = {}
         if sound_latents is not None:
             uncond_sound_packed = self._pack_sound_tokens(
                 input_sound_tokens=sound_latents,

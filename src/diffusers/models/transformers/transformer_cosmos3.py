@@ -13,7 +13,6 @@
 # limitations under the License.
 
 import math
-from typing import List, Optional, Tuple
 
 import torch
 import torch.nn as nn
@@ -42,8 +41,8 @@ class Cosmos3AttnProcessor:
         attn: "Cosmos3PackedMoTAttention",
         und_seq: torch.Tensor,
         gen_seq: torch.Tensor,
-        rotary_emb: Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor],
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        rotary_emb: tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor],
+    ) -> tuple[torch.Tensor, torch.Tensor]:
         # Per-pathway projections
         q_und = attn.to_q(und_seq).view(-1, attn.num_attention_heads, attn.head_dim)
         k_und = attn.to_k(und_seq).view(-1, attn.num_key_value_heads, attn.head_dim)
@@ -170,9 +169,6 @@ class Cosmos3PackedMoTAttention(nn.Module, AttentionModuleMixin):
         self.num_attention_heads = num_attention_heads
         self.num_key_value_heads = num_key_value_heads
         self.num_key_value_groups = num_attention_heads // num_key_value_heads
-        self.scaling = head_dim**-0.5
-        self.attention_dropout = attention_dropout
-        self.is_causal = True
 
         # Understanding pathway. norm_q / norm_k are applied per-head (only on
         # head_dim), so no reshape is needed after them.
@@ -197,8 +193,8 @@ class Cosmos3PackedMoTAttention(nn.Module, AttentionModuleMixin):
         self,
         und_seq: torch.Tensor,
         gen_seq: torch.Tensor,
-        rotary_emb: Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor],
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        rotary_emb: tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor],
+    ) -> tuple[torch.Tensor, torch.Tensor]:
         return self.processor(self, und_seq, gen_seq, rotary_emb)
 
 
@@ -247,8 +243,8 @@ class Cosmos3VLTextMoTDecoderLayer(nn.Module):
         self,
         und_seq: torch.Tensor,
         gen_seq: torch.Tensor,
-        rotary_emb: Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor],
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        rotary_emb: tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor],
+    ) -> tuple[torch.Tensor, torch.Tensor]:
         und_norm = self.input_layernorm(und_seq)
         gen_norm = self.input_layernorm_moe_gen(gen_seq)
 
@@ -355,11 +351,11 @@ class Cosmos3OmniTransformer(ModelMixin, ConfigMixin, PeftAdapterMixin, Attentio
         self,
         packed_tokens: torch.Tensor,
         packed_timestep_embeds: torch.Tensor,
-        noisy_frame_indexes: List[torch.Tensor],
-        token_shapes: List[Tuple[int, ...]],
+        noisy_frame_indexes: list[torch.Tensor],
+        token_shapes: list[tuple[int, ...]],
     ) -> torch.Tensor:
         start_noisy_index = 0
-        flattened_noisy_frame_indexes: List[torch.Tensor] = []
+        flattened_noisy_frame_indexes: list[torch.Tensor] = []
         for noisy_indexes_i, token_shape_i in zip(noisy_frame_indexes, token_shapes):
             spatial_numel_i = math.prod(token_shape_i[1:])
             spatial_indexes_i = torch.arange(spatial_numel_i, device=packed_tokens.device)
@@ -372,12 +368,12 @@ class Cosmos3OmniTransformer(ModelMixin, ConfigMixin, PeftAdapterMixin, Attentio
 
     def _patchify_and_pack_latents(
         self,
-        tokens_vision: List[torch.Tensor],
-    ) -> Tuple[torch.Tensor, List[Tuple[int, int, int]]]:
+        tokens_vision: list[torch.Tensor],
+    ) -> tuple[torch.Tensor, list[tuple[int, int, int]]]:
         p = self.config.latent_patch_size
         latent_channel = self.config.latent_channel
-        packed_latent: List[torch.Tensor] = []
-        original_latent_shapes: List[Tuple[int, int, int]] = []
+        packed_latent: list[torch.Tensor] = []
+        original_latent_shapes: list[tuple[int, int, int]] = []
         for latent in tokens_vision:
             latent = latent.squeeze(0)  # [C, T, H, W]
             _, t_actual, h_actual, w_actual = latent.shape
@@ -402,13 +398,13 @@ class Cosmos3OmniTransformer(ModelMixin, ConfigMixin, PeftAdapterMixin, Attentio
     def _unpatchify_and_unpack_latents(
         self,
         packed_mse_preds: torch.Tensor,
-        token_shapes_vision: List[Tuple[int, int, int]],
-        noisy_frame_indexes_vision: List[torch.Tensor],
-        original_latent_shapes: List[Tuple[int, int, int]],
-    ) -> List[torch.Tensor]:
+        token_shapes_vision: list[tuple[int, int, int]],
+        noisy_frame_indexes_vision: list[torch.Tensor],
+        original_latent_shapes: list[tuple[int, int, int]],
+    ) -> list[torch.Tensor]:
         p = self.config.latent_patch_size
         latent_channel = self.config.latent_channel
-        unpatchified_latents: List[torch.Tensor] = []
+        unpatchified_latents: list[torch.Tensor] = []
         start_idx = 0
         for token_shape, noisy_frame_indexes, original_shape in zip(
             token_shapes_vision, noisy_frame_indexes_vision, original_latent_shapes
@@ -440,8 +436,8 @@ class Cosmos3OmniTransformer(ModelMixin, ConfigMixin, PeftAdapterMixin, Attentio
 
     def _pack_sound_latents(
         self,
-        tokens_sound: List[torch.Tensor],
-        token_shapes_sound: List[Tuple[int, int, int]],
+        tokens_sound: list[torch.Tensor],
+        token_shapes_sound: list[tuple[int, int, int]],
     ) -> torch.Tensor:
         """List of ``[C, T]`` tensors → packed ``[total_T, C]`` tensor."""
         return torch.cat(
@@ -452,12 +448,12 @@ class Cosmos3OmniTransformer(ModelMixin, ConfigMixin, PeftAdapterMixin, Attentio
     def _unpack_sound_latents(
         self,
         packed_preds: torch.Tensor,
-        token_shapes_sound: List[Tuple[int, int, int]],
-        noisy_frame_indexes_sound: List[torch.Tensor],
-    ) -> List[torch.Tensor]:
+        token_shapes_sound: list[tuple[int, int, int]],
+        noisy_frame_indexes_sound: list[torch.Tensor],
+    ) -> list[torch.Tensor]:
         """Packed ``[total_noisy_T, C]`` predictions → list of ``[C, T]`` tensors (zeros at conditioned positions)."""
         sound_dim = self.config.sound_dim
-        unpacked: List[torch.Tensor] = []
+        unpacked: list[torch.Tensor] = []
         start_idx = 0
         for shape, noisy_idxs in zip(token_shapes_sound, noisy_frame_indexes_sound):
             T = shape[0]
@@ -481,19 +477,19 @@ class Cosmos3OmniTransformer(ModelMixin, ConfigMixin, PeftAdapterMixin, Attentio
         position_ids: torch.Tensor,
         und_len: int,
         sequence_length: int,
-        vision_tokens: List[torch.Tensor],
-        vision_token_shapes: List[Tuple[int, int, int]],
+        vision_tokens: list[torch.Tensor],
+        vision_token_shapes: list[tuple[int, int, int]],
         vision_sequence_indexes: torch.Tensor,
         vision_mse_loss_indexes: torch.Tensor,
         vision_timesteps: torch.Tensor,
-        vision_noisy_frame_indexes: List[torch.Tensor],
-        sound_tokens: Optional[List[torch.Tensor]] = None,
-        sound_token_shapes: Optional[List[Tuple[int, int, int]]] = None,
-        sound_sequence_indexes: Optional[torch.Tensor] = None,
-        sound_mse_loss_indexes: Optional[torch.Tensor] = None,
-        sound_timesteps: Optional[torch.Tensor] = None,
-        sound_noisy_frame_indexes: Optional[List[torch.Tensor]] = None,
-    ) -> Tuple[List[torch.Tensor], Optional[List[torch.Tensor]]]:
+        vision_noisy_frame_indexes: list[torch.Tensor],
+        sound_tokens: list[torch.Tensor] | None = None,
+        sound_token_shapes: list[tuple[int, int, int]] | None = None,
+        sound_sequence_indexes: torch.Tensor | None = None,
+        sound_mse_loss_indexes: torch.Tensor | None = None,
+        sound_timesteps: torch.Tensor | None = None,
+        sound_noisy_frame_indexes: list[torch.Tensor] | None = None,
+    ) -> tuple[list[torch.Tensor], list[torch.Tensor] | None]:
         """Run a full denoising-step forward pass.
 
         Args:
@@ -590,7 +586,7 @@ class Cosmos3OmniTransformer(ModelMixin, ConfigMixin, PeftAdapterMixin, Attentio
             original_latent_shapes=original_latent_shapes,
         )
 
-        preds_sound: Optional[List[torch.Tensor]] = None
+        preds_sound: list[torch.Tensor] | None = None
         if has_sound:
             preds_sound_packed = self.audio_proj_out(last_hidden_state[sound_mse_loss_indexes])
             preds_sound = self._unpack_sound_latents(preds_sound_packed, sound_token_shapes, sound_noisy_frame_indexes)
