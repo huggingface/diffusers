@@ -193,10 +193,10 @@ class Cosmos3OmniPipeline(DiffusionPipeline):
             safety_checker=safety_checker,
         )
         # VAE latent normalization stats — precomputed in bfloat16 so `1/std` is
-        # done in bfloat16 (matches Wan2pt2VAEInterface bit-for-bit).
-        self._vae_dtype = torch.bfloat16
-        self._vae_latents_mean = torch.tensor(vae.config.latents_mean, dtype=self._vae_dtype)
-        self._vae_latents_inv_std = 1.0 / torch.tensor(vae.config.latents_std, dtype=self._vae_dtype)
+        # done in bfloat16 (matches Wan2pt2VAEInterface bit-for-bit in default case).
+        _vae_default_dtype = torch.bfloat16
+        self._vae_latents_mean = torch.tensor(vae.config.latents_mean, dtype=_vae_default_dtype)
+        self._vae_latents_inv_std = 1.0 / torch.tensor(vae.config.latents_std, dtype=_vae_default_dtype)
 
         # Image preprocessor for caller-supplied conditioning frames (PIL / tensor / numpy).
         self.vae_scale_factor_spatial = int(self.vae.config.scale_factor_spatial) if getattr(self, "vae", None) else 16
@@ -252,7 +252,7 @@ class Cosmos3OmniPipeline(DiffusionPipeline):
         """[B,3,T,H,W] → normalized latents [B,z_dim,T//4,H//16,W//16]. Bit-for-bit
         matches Wan2pt2VAEInterface; no autocast (WanVAE was trained with is_amp=False)."""
         in_dtype = x.dtype
-        dtype = self._vae_dtype
+        dtype = self.vae.dtype
         mean = self._vae_latents_mean.to(device=x.device, dtype=dtype)
         inv_std = self._vae_latents_inv_std.to(device=x.device, dtype=dtype)
         raw_mu = retrieve_latents(self.vae.encode(x.to(dtype)), sample_mode="argmax")
@@ -939,7 +939,7 @@ class Cosmos3OmniPipeline(DiffusionPipeline):
             video = latents
         else:
             in_dtype = latents.dtype
-            dtype = self._vae_dtype
+            dtype = self.vae.dtype
             mean = self._vae_latents_mean.to(device=latents.device, dtype=dtype)
             inv_std = self._vae_latents_inv_std.to(device=latents.device, dtype=dtype)
             z_raw = latents.to(dtype) / inv_std.view(1, -1, 1, 1, 1) + mean.view(1, -1, 1, 1, 1)
