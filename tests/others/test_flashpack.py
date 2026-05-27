@@ -17,7 +17,6 @@ import pathlib
 import tempfile
 import unittest
 
-from diffusers import AutoPipelineForText2Image
 from diffusers.models.auto_model import AutoModel
 
 from ..testing_utils import is_torch_available, require_flashpack, require_torch_gpu
@@ -40,6 +39,8 @@ class FlashPackTests(unittest.TestCase):
 
     @require_flashpack
     def test_save_load_pipeline(self):
+        from diffusers import AutoPipelineForText2Image
+
         pipeline = AutoPipelineForText2Image.from_pretrained(self.model_id)
         with tempfile.TemporaryDirectory() as temp_dir:
             pipeline.save_pretrained(temp_dir, use_flashpack=True)
