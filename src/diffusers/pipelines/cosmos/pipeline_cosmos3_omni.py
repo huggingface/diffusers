@@ -422,7 +422,8 @@ class Cosmos3OmniPipeline(DiffusionPipeline):
         Returns:
             ``(vision_latents, sound_latents, fps_vision, fps_sound)``. ``vision_latents`` is the noisy vision tensor;
             ``sound_latents`` is the noisy sound tensor (``None`` unless ``enable_sound`` was set). The FPS scalars
-            feed the per-step :meth:`_prepare_vision_segment` / :meth:`_prepare_sound_segment` calls in the denoising loop.
+            feed the per-step :meth:`_prepare_vision_segment` / :meth:`_prepare_sound_segment` calls in the denoising
+            loop.
         """
         is_image = num_frames == 1
         has_image_condition = image is not None and not is_image
@@ -585,12 +586,12 @@ class Cosmos3OmniPipeline(DiffusionPipeline):
                 add_generation_prompt=True,
                 add_vision_id=False,
             )
-        
+
         def _add_special_tokens(input_ids: list[int]) -> list[int]:
             return list(input_ids) + [
-            self.llm_special_tokens["eos_token_id"],
-            self.llm_special_tokens["start_of_generation"],
-        ]
+                self.llm_special_tokens["eos_token_id"],
+                self.llm_special_tokens["start_of_generation"],
+            ]
 
         cond_encodings = _tokenize(_apply_templates(prompt))
         cond_input_ids = _add_special_tokens(cond_encodings.input_ids)
@@ -687,7 +688,10 @@ class Cosmos3OmniPipeline(DiffusionPipeline):
         output_type: str = "pil",
         return_dict: bool = True,
         use_system_prompt: bool = True,
-        callback_on_step_end: Callable[[int, int, dict[str, Any]], None] | PipelineCallback | MultiPipelineCallbacks | None = None,
+        callback_on_step_end: Callable[[int, int, dict[str, Any]], None]
+        | PipelineCallback
+        | MultiPipelineCallbacks
+        | None = None,
         callback_on_step_end_tensor_inputs: list[str] = ["latents"],
         add_resolution_template: bool = True,
         add_duration_template: bool = True,
@@ -697,7 +701,9 @@ class Cosmos3OmniPipeline(DiffusionPipeline):
             callback_on_step_end_tensor_inputs = callback_on_step_end.tensor_inputs
 
         # 1. Check inputs
-        self.check_inputs(prompt, negative_prompt, height, width, num_frames, enable_sound, callback_on_step_end_tensor_inputs)
+        self.check_inputs(
+            prompt, negative_prompt, height, width, num_frames, enable_sound, callback_on_step_end_tensor_inputs
+        )
 
         self._current_timestep = None
         self._interrupt = False
