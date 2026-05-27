@@ -50,7 +50,9 @@ EXAMPLE_DOC_STRING = """
         >>> from PIL import Image
         >>> from diffusers import DreamLitePipeline
 
-        >>> pipe = DreamLitePipeline.from_pretrained("path/to/DreamLite-base", torch_dtype=torch.float16)
+        >>> pipe = DreamLitePipeline.from_pretrained(
+        ...     "carlofkl/DreamLite-base", revision="diffusers", torch_dtype=torch.float16
+        ... )
         >>> pipe.to("cuda")
 
         >>> # Text-to-image

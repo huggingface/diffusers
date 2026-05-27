@@ -51,7 +51,9 @@ EXAMPLE_DOC_STRING = """
         >>> from PIL import Image
         >>> from diffusers import DreamLiteMobilePipeline
 
-        >>> pipe = DreamLiteMobilePipeline.from_pretrained("path/to/DreamLite-mobile", torch_dtype=torch.float16)
+        >>> pipe = DreamLiteMobilePipeline.from_pretrained(
+        ...     "carlofkl/DreamLite-mobile", revision="diffusers", torch_dtype=torch.float16
+        ... )
         >>> pipe.to("cuda")
 
         >>> # Text-to-image (4 steps, no CFG)

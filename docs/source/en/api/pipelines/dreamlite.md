@@ -44,7 +44,7 @@ Official checkpoints:
 import torch
 from diffusers import DreamLitePipeline
 
-pipe = DreamLitePipeline.from_pretrained("carlofkl/DreamLite-base", torch_dtype=torch.bfloat16)
+pipe = DreamLitePipeline.from_pretrained("carlofkl/DreamLite-base", revision="diffusers", torch_dtype=torch.bfloat16)
 pipe = pipe.to("cuda")
 
 image = pipe(
@@ -69,7 +69,7 @@ import torch
 from diffusers import DreamLitePipeline
 from diffusers.utils import load_image
 
-pipe = DreamLitePipeline.from_pretrained("carlofkl/DreamLite-base", torch_dtype=torch.bfloat16)
+pipe = DreamLitePipeline.from_pretrained("carlofkl/DreamLite-base", revision="diffusers", torch_dtype=torch.bfloat16)
 pipe = pipe.to("cuda")
 
 source = load_image("https://huggingface.co/datasets/diffusers/diffusers-images-docs/resolve/main/cat.png")
@@ -97,7 +97,7 @@ same `prompt` / `height` / `width` / `num_inference_steps` arguments, but **igno
 import torch
 from diffusers import DreamLiteMobilePipeline
 
-pipe = DreamLiteMobilePipeline.from_pretrained("carlofkl/DreamLite-mobile", torch_dtype=torch.bfloat16)
+pipe = DreamLiteMobilePipeline.from_pretrained("carlofkl/DreamLite-mobile", revision="diffusers", torch_dtype=torch.bfloat16)
 pipe = pipe.to("cuda")
 
 image = pipe(
@@ -117,7 +117,7 @@ import torch
 from diffusers import DreamLiteMobilePipeline
 from diffusers.utils import load_image
 
-pipe = DreamLiteMobilePipeline.from_pretrained("carlofkl/DreamLite-mobile", torch_dtype=torch.bfloat16)
+pipe = DreamLiteMobilePipeline.from_pretrained("carlofkl/DreamLite-mobile", revision="diffusers", torch_dtype=torch.bfloat16)
 pipe = pipe.to("cuda")
 
 source = load_image("https://huggingface.co/datasets/diffusers/diffusers-images-docs/resolve/main/cat.png")

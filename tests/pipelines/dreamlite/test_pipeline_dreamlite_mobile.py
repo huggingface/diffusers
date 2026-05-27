@@ -338,12 +338,13 @@ class DreamLiteMobilePipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 class DreamLiteMobilePipelineSlowTests(unittest.TestCase):
     """End-to-end test against the real DreamLite-mobile checkpoint on the Hub.
 
-    By default this loads ``carlofkl/DreamLite-mobile`` from the HF Hub. To run
-    against a local copy during development, set the ``DREAMLITE_MOBILE_PATH``
-    env var to that path.
+    By default this loads ``carlofkl/DreamLite-mobile`` (``diffusers`` branch)
+    from the HF Hub. To run against a local copy during development, set the
+    ``DREAMLITE_MOBILE_PATH`` env var to that path.
     """
 
     repo_id = "carlofkl/DreamLite-mobile"
+    revision = "diffusers"
 
     def setUp(self):
         super().setUp()
@@ -355,12 +356,16 @@ class DreamLiteMobilePipelineSlowTests(unittest.TestCase):
         gc.collect()
         torch.cuda.empty_cache()
 
-    def _model_path(self):
-        return os.getenv("DREAMLITE_MOBILE_PATH", self.repo_id)
+    def _from_pretrained_kwargs(self):
+        local = os.getenv("DREAMLITE_MOBILE_PATH")
+        if local:
+            return {"pretrained_model_name_or_path": local}
+        return {"pretrained_model_name_or_path": self.repo_id, "revision": self.revision}
 
     def test_mobile_t2i_real_checkpoint(self):
-        model_path = self._model_path()
-        pipe = DreamLiteMobilePipeline.from_pretrained(model_path, torch_dtype=torch.bfloat16).to("cuda")
+        pipe = DreamLiteMobilePipeline.from_pretrained(
+            **self._from_pretrained_kwargs(), torch_dtype=torch.bfloat16
+        ).to("cuda")
         out = pipe(
             prompt="a dog running on the grass",
             num_inference_steps=4,
@@ -374,8 +379,9 @@ class DreamLiteMobilePipelineSlowTests(unittest.TestCase):
         self.assertFalse(np.isnan(out).any())
 
     def test_mobile_i2i_real_checkpoint(self):
-        model_path = self._model_path()
-        pipe = DreamLiteMobilePipeline.from_pretrained(model_path, torch_dtype=torch.bfloat16).to("cuda")
+        pipe = DreamLiteMobilePipeline.from_pretrained(
+            **self._from_pretrained_kwargs(), torch_dtype=torch.bfloat16
+        ).to("cuda")
 
         src = Image.fromarray((np.random.RandomState(0).rand(1024, 1024, 3) * 255).astype(np.uint8))
         out = pipe(
