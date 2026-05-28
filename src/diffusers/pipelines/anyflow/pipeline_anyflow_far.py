@@ -92,11 +92,10 @@ def prompt_clean(text):
 class AnyFlowFARPipeline(DiffusionPipeline, WanLoraLoaderMixin):
     r"""
     Causal (FAR-based) text-to-video / image-to-video / video-to-video pipeline for AnyFlow checkpoints, introduced in
-    [AnyFlow](https://huggingface.co/papers/2605.13724) by Yuchao Gu, Guian Fang et al.
+    [AnyFlow](https://huggingface.co/papers/2605.13724).
 
-    The pipeline drives a frame-level autoregressive sampling loop over chunks: each chunk is denoised with flow-map
-    steps while attending only to past chunks via block-sparse causal attention, and intermediate KV cache is reused
-    across chunks.
+    The pipeline drives a chunk-wise autoregressive sampling loop: each chunk is denoised with flow-map steps while
+    attending only to past chunks via block-sparse causal attention, and intermediate KV cache is reused across chunks.
 
     The task mode (T2V / I2V / V2V) is selected by which conditioning argument is passed to ``__call__``:
 
@@ -106,9 +105,9 @@ class AnyFlowFARPipeline(DiffusionPipeline, WanLoraLoaderMixin):
     - ``video_latents=<latent tensor of shape (B, T_latent, C, H_latent, W_latent)>`` — already-encoded latents in the
       FAR layout (skips the VAE encode step).
 
-    The FAR backbone is the causal Wan2.1 variant introduced by FAR (Gu et al., 2025; arXiv:2503.19325). Inference is
-    plain Euler in mean-velocity form per chunk with no re-noising. Joint T2V / I2V / V2V is supported by a single
-    distilled model.
+    The FAR backbone is the causal Wan2.1 variant introduced by [FAR](https://huggingface.co/papers/2503.19325).
+    Inference is plain Euler in mean-velocity form per chunk with no re-noising. Joint T2V / I2V / V2V is supported by
+    a single distilled model.
 
     This model inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods
     implemented for all pipelines (downloading, saving, running on a particular device, etc.).
@@ -128,11 +127,6 @@ class AnyFlowFARPipeline(DiffusionPipeline, WanLoraLoaderMixin):
 
     model_cpu_offload_seq = "text_encoder->transformer->vae"
     _callback_tensor_inputs = ["latents", "prompt_embeds", "negative_prompt_embeds"]
-
-    # Default chunk partition for the released NVIDIA AnyFlow-FAR checkpoints (81 frames at the diffusers
-    # VAE temporal stride of 4 → 21 latent frames split into 1 + 3*6 + 2 = [1, 3, 3, 3, 3, 3, 3, 2]). Override
-    # via the ``chunk_partition`` argument to ``__call__`` for other frame counts.
-    default_chunk_partition: List[int] = [1, 3, 3, 3, 3, 3, 3, 2]
 
     def __init__(
         self,
@@ -423,12 +417,21 @@ class AnyFlowFARPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         r_timestep = torch.tensor([0], device=latents.device).expand(latent_model_input.shape[0]).unsqueeze(-1)
         r_timestep = r_timestep.repeat((1, latent_model_input.shape[1]))
 
+        attention_mask = self.transformer.build_attention_mask(
+            chunk_partition=chunk_partition,
+            height=latent_model_input.shape[-2],
+            width=latent_model_input.shape[-1],
+            device=latent_model_input.device,
+            mode="cache",
+        )
+
         _, kv_cache = self.transformer(
             hidden_states=latent_model_input,
             chunk_partition=chunk_partition,
             timestep=timestep,
             r_timestep=r_timestep,
             encoder_hidden_states=prompt_embeds,
+            attention_mask=attention_mask,
             attention_kwargs=self.attention_kwargs,
             return_dict=False,
             # kv-cache related
@@ -538,9 +541,9 @@ class AnyFlowFARPipeline(DiffusionPipeline, WanLoraLoaderMixin):
             use_kv_cache (`bool`, defaults to `True`):
                 Reuse the FAR attention KV cache across causal chunks. Disable only for debugging.
             chunk_partition (`List[int]`, *optional*):
-                Per-chunk frame counts. Defaults to `default_chunk_partition` (matched to the released 81-frame
-                checkpoints). When you change `num_frames`, supply a `chunk_partition` that sums to `(num_frames - 1)
-                // vae_scale_factor_temporal + 1`.
+                Per-chunk frame counts. Defaults to `self.transformer.config.chunk_partition` (matched to the released
+                81-frame checkpoints). When you change `num_frames`, supply a `chunk_partition` that sums to
+                `(num_frames - 1) // vae_scale_factor_temporal + 1`.
 
         Examples:
 
@@ -629,7 +632,7 @@ class AnyFlowFARPipeline(DiffusionPipeline, WanLoraLoaderMixin):
             video_latents = self.encode_video(video, height=height, width=width)
 
         if chunk_partition is None:
-            chunk_partition = list(self.default_chunk_partition)
+            chunk_partition = list(self.transformer.config.chunk_partition)
         if init_latents.shape[1] != sum(chunk_partition):
             raise ValueError(
                 f"chunk_partition={chunk_partition} sums to {sum(chunk_partition)}, but the input latent "
@@ -705,6 +708,11 @@ class AnyFlowFARPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         )
         outer_progress_bar_config = getattr(self, "_progress_bar_config", {}).copy() or {}
         chunk_progress_bar_config = {**outer_progress_bar_config, "position": 0, "desc": "Chunks"}
+        # Freeze the caller-provided custom schedule before the loop: `timesteps` below is reused per
+        # chunk for the scheduler timesteps (the standard pipeline variable name). Reusing the kwarg
+        # name directly would feed the already-shifted schedule back into `set_timesteps` on the next
+        # chunk and double-shift it.
+        custom_sigmas, custom_timesteps = sigmas, timesteps
         for chunk_idx in tqdm(range(len(chunk_partition)), **chunk_progress_bar_config):
             if chunk_idx >= num_context_chunks:
                 chunk_latents = init_latents[
@@ -712,7 +720,9 @@ class AnyFlowFARPipeline(DiffusionPipeline, WanLoraLoaderMixin):
                 ]
                 this_chunk_partition = chunk_partition[: chunk_idx + 1]
 
-                self.scheduler.set_timesteps(num_inference_steps, device=device, sigmas=sigmas, timesteps=timesteps)
+                self.scheduler.set_timesteps(
+                    num_inference_steps, device=device, sigmas=custom_sigmas, timesteps=custom_timesteps
+                )
                 timesteps = self.scheduler.timesteps
                 inner_progress_bar_config = {
                     **outer_progress_bar_config,
