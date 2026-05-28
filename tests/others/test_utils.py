@@ -247,6 +247,43 @@ class FourierFilterTester(unittest.TestCase):
             assert out.shape == x.shape
 
 
+class RandnTensorTester(unittest.TestCase):
+    """Tests for :func:`diffusers.utils.torch_utils.randn_tensor`."""
+
+    def test_mps_suppresses_cpu_generator_info_log(self):
+        import torch
+
+        from diffusers.utils import logging as diffusers_logging
+        from diffusers.utils import torch_utils
+
+        from ..testing_utils import CaptureLogger
+
+        gen = torch.Generator(device="cpu")
+        diffusers_logging.set_verbosity_info()
+
+        def _capture(target_device):
+            with CaptureLogger(torch_utils.logger) as cl:
+                try:
+                    torch_utils.randn_tensor((1, 2), generator=gen, device=target_device, dtype=torch.float32)
+                except (AssertionError, RuntimeError):
+                    pass
+            return cl.out
+
+        mps_out = _capture("mps")
+        self.assertNotIn(
+            "moved to",
+            mps_out,
+            f"MPS target should not emit the CPU-fallback info log, got: {mps_out}",
+        )
+
+        cuda_out = _capture("cuda")
+        self.assertIn(
+            "moved to",
+            cuda_out,
+            f"Non-MPS target should still emit the CPU-fallback info log, got: {cuda_out}",
+        )
+
+
 # Copied from https://github.com/huggingface/transformers/blob/main/tests/utils/test_expectations.py
 class ExpectationsTester(unittest.TestCase):
     def test_expectations(self):

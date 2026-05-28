@@ -506,6 +506,36 @@ class LTXVideoTransformer3DModel(
         attention_kwargs: dict[str, Any] | None = None,
         return_dict: bool = True,
     ) -> torch.Tensor:
+        """
+        The [`LTXVideoTransformer3DModel`] forward method.
+
+        Args:
+            hidden_states (`torch.Tensor` of shape `(batch_size, sequence_length, in_channels)`):
+                Input `hidden_states`.
+            encoder_hidden_states (`torch.Tensor` of shape `(batch_size, sequence_len, embed_dims)`):
+                Conditional embeddings (embeddings computed from the input conditions such as prompts) to use.
+            timestep (`torch.LongTensor`):
+                Used to indicate denoising step.
+            encoder_attention_mask (`torch.Tensor`):
+                Mask applied to `encoder_hidden_states` during attention.
+            num_frames (`int`, *optional*):
+                Number of frames in the video used to compute the rotary positional embeddings.
+            height (`int`, *optional*):
+                Height of the latent used to compute the rotary positional embeddings.
+            width (`int`, *optional*):
+                Width of the latent used to compute the rotary positional embeddings.
+            rope_interpolation_scale (`tuple` of `float` or `torch.Tensor`, *optional*):
+                Interpolation scale used by the rotary positional embeddings.
+            video_coords (`torch.Tensor`, *optional*):
+                Pre-computed video coordinates used by the rotary positional embeddings.
+            attention_kwargs (`dict`, *optional*):
+                A kwargs dictionary that if specified is passed along to the `AttentionProcessor` as defined under
+                `self.processor` in
+                [diffusers.models.attention_processor](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/attention_processor.py).
+            return_dict (`bool`, *optional*, defaults to `True`):
+                Whether or not to return a [`~models.transformer_2d.Transformer2DModelOutput`] instead of a plain
+                tuple.
+        """
         image_rotary_emb = self.rope(hidden_states, num_frames, height, width, rope_interpolation_scale, video_coords)
 
         # convert encoder_attention_mask to a bias the same way we do for attention_mask

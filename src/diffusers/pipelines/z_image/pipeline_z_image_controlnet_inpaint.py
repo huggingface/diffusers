@@ -444,6 +444,19 @@ class ZImageControlNetInpaintPipeline(DiffusionPipeline, ZImageLoraLoaderMixin, 
                 Paper](https://arxiv.org/pdf/2205.11487.pdf). Guidance scale is enabled by setting `guidance_scale >
                 1`. Higher guidance scale encourages to generate images that are closely linked to the text `prompt`,
                 usually at the expense of lower image quality.
+            image (`PipelineImageInput`):
+                `Image`, numpy array or tensor representing an image batch to be inpainted (which parts of the image to
+                be masked out with `mask_image` and repainted according to `prompt`).
+            mask_image (`PipelineImageInput`):
+                `Image`, numpy array or tensor representing an image batch to mask `image`. White pixels in the mask
+                are repainted while black pixels are preserved.
+            control_image (`PipelineImageInput`):
+                The ControlNet input condition to provide guidance to the `transformer` for generation. If the type is
+                specified as `torch.Tensor`, it is passed to ControlNet as is. `PIL.Image.Image` can also be accepted
+                as an image.
+            controlnet_conditioning_scale (`float` or `list[float]`, *optional*, defaults to 0.75):
+                The outputs of the ControlNet are multiplied by `controlnet_conditioning_scale` before they are added
+                to the residual in the original `transformer`.
             cfg_normalization (`bool`, *optional*, defaults to False):
                 Whether to apply configuration normalization.
             cfg_truncation (`float`, *optional*, defaults to 1.0):
