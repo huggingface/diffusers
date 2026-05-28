@@ -805,16 +805,16 @@ class TorchAoConfigMixin:
     }
 
     @staticmethod
-    def _get_quant_config(config_name):
+    def _get_quant_config(config_name, **config_kwargs):
         config_cls = getattr(_torchao_quantization, config_name)
         # TorchAO int4 quantization requires plain_int32 packing format on Intel XPU
         if config_name == "Int4WeightOnlyConfig" and torch_device == "xpu":
-            return TorchAoConfig(config_cls(int4_packing_format="plain_int32"))
+            config_kwargs.setdefault("int4_packing_format", "plain_int32")
 
-        return TorchAoConfig(config_cls())
+        return TorchAoConfig(config_cls(**config_kwargs))
 
-    def _create_quantized_model(self, config_name, **extra_kwargs):
-        config = self._get_quant_config(config_name)
+    def _create_quantized_model(self, config_name, quant_config_kwargs=None, **extra_kwargs):
+        config = self._get_quant_config(config_name, **(quant_config_kwargs or {}))
         kwargs = getattr(self, "pretrained_model_kwargs", {}).copy()
         kwargs["quantization_config"] = config
         kwargs["device_map"] = str(torch_device)
@@ -905,19 +905,43 @@ class TorchAoTesterMixin(TorchAoConfigMixin, QuantizationTesterMixin):
     def test_torchao_quantization_lora_inference(self, quant_type):
         self._test_quantization_lora_inference(TorchAoConfigMixin.TORCHAO_QUANT_TYPES[quant_type])
 
-    @pytest.mark.parametrize("quant_type", ["int8wo"], ids=["int8wo"])
+    @pytest.mark.parametrize("quant_type", ["int8wo", "int8dq"], ids=["int8wo", "int8dq"])
+    @require_torchao_version_greater_or_equal("0.16.0")
     def test_torchao_quantization_serialization(self, quant_type, tmp_path):
-        """Override to use safe_serialization=False for TorchAO (safetensors not supported)."""
         config_kwargs = TorchAoConfigMixin.TORCHAO_QUANT_TYPES[quant_type]
-        model = self._create_quantized_model(config_kwargs)
+        model = self._create_quantized_model(config_kwargs, quant_config_kwargs={"version": 2})
 
-        model.save_pretrained(str(tmp_path), safe_serialization=False)
+        model.save_pretrained(str(tmp_path), safe_serialization=True)
 
-        model_loaded = self.model_class.from_pretrained(str(tmp_path), device_map=str(torch_device))
+        model_loaded = self.model_class.from_pretrained(
+            str(tmp_path), device_map=str(torch_device), use_safetensors=True
+        )
 
         inputs = self.get_dummy_inputs()
         output = model_loaded(**inputs, return_dict=False)[0]
         assert not torch.isnan(output).any(), "Loaded model output contains NaN"
+
+    @pytest.mark.parametrize("quant_type", ["int8dq"], ids=["int8dq"])
+    @require_torchao_version_greater_or_equal("0.16.0")
+    def test_torchao_quantization_sharded_serialization(self, quant_type, tmp_path):
+        config_kwargs = TorchAoConfigMixin.TORCHAO_QUANT_TYPES[quant_type]
+        model = self._create_quantized_model(config_kwargs, quant_config_kwargs={"version": 2})
+
+        model.save_pretrained(str(tmp_path), safe_serialization=True, max_shard_size="16KB")
+
+        shard_files = list(tmp_path.glob("*.safetensors"))
+        assert len(shard_files) > 1, "Expected a sharded safe-serialization checkpoint."
+        assert any(path.name.endswith(".index.json") for path in tmp_path.iterdir()), (
+            "Expected an index file for sharded safe checkpoint."
+        )
+
+        model_loaded = self.model_class.from_pretrained(
+            str(tmp_path), device_map=str(torch_device), use_safetensors=True
+        )
+
+        inputs = self.get_dummy_inputs()
+        output = model_loaded(**inputs, return_dict=False)[0]
+        assert not torch.isnan(output).any(), "Loaded sharded model output contains NaN"
 
     def test_torchao_modules_to_not_convert(self):
         """Test that modules_to_not_convert parameter works correctly."""
