@@ -572,11 +572,6 @@ class Cosmos3OmniPipeline(DiffusionPipeline):
         content_w_latent = max(content_w // self.vae_scale_factor_spatial, 1)
         return latents[:, :, :, :content_h_latent, :content_w_latent].contiguous()
 
-    def _remove_action_video_padding_from_video(self, video: torch.Tensor, image_size: torch.Tensor) -> torch.Tensor:
-        content_h = int(image_size[2].item())
-        content_w = int(image_size[3].item())
-        return video[:, :, :, :content_h, :content_w].contiguous()
-
     def prepare_latents(
         self,
         image: torch.Tensor | None = None,
