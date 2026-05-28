@@ -148,7 +148,7 @@ def retrieve_timesteps(
 
 # Copied from diffusers.pipelines.z_image.pipeline_z_image.get_default_z_image_sigmas
 def get_default_z_image_sigmas(num_inference_steps: int) -> list[float]:
-    return torch.linspace(1.0, 0.0, num_inference_steps + 1)[:-1].tolist()
+    return torch.linspace(1.0, 1 / num_inference_steps, num_inference_steps).tolist()
 
 
 class ZImageImg2ImgPipeline(DiffusionPipeline, ZImageLoraLoaderMixin, FromSingleFileMixin):
