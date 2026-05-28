@@ -1022,6 +1022,10 @@ class Cosmos3OmniPipeline(DiffusionPipeline):
     def interrupt(self):
         return self._interrupt
 
+    @property
+    def do_classifier_free_guidance(self):
+        return self._guidance_scale != 1.0
+
     @torch.no_grad()
     def __call__(
         self,
@@ -1156,6 +1160,7 @@ class Cosmos3OmniPipeline(DiffusionPipeline):
 
         self._current_timestep = None
         self._interrupt = False
+        self._guidance_scale = guidance_scale
 
         # Pipeline supports a single sample at a time; collapse list-style inputs to a single string.
         if isinstance(prompt, list):
@@ -1419,7 +1424,7 @@ class Cosmos3OmniPipeline(DiffusionPipeline):
 
                 # --- Unconditional pass (Skip if not using CFG) ---
                 uncond_v_vision = uncond_v_sound = uncond_v_action = None
-                if guidance_scale != 1.0:
+                if self.do_classifier_free_guidance:
                     preds_vision, preds_sound, preds_action = self.transformer(
                         input_ids=uncond_packed_static["input_ids"],
                         text_indexes=uncond_packed_static["text_indexes"],
@@ -1461,7 +1466,7 @@ class Cosmos3OmniPipeline(DiffusionPipeline):
                 # to carry a batch dim; per-modality latents have no batch axis, so wrap for the step.
 
                 # Skip CFG for 1.0 guidance scale
-                if guidance_scale != 1.0:
+                if self.do_classifier_free_guidance:
                     velocity_vision = uncond_v_vision + guidance_scale * (cond_v_vision - uncond_v_vision)
                 else:
                     velocity_vision = cond_v_vision
@@ -1472,7 +1477,7 @@ class Cosmos3OmniPipeline(DiffusionPipeline):
 
                 if sound_scheduler is not None and cond_v_sound is not None:
                     # Skip CFG for 1.0 guidance scale
-                    if guidance_scale != 1.0:
+                    if self.do_classifier_free_guidance:
                         velocity_sound = uncond_v_sound + guidance_scale * (cond_v_sound - uncond_v_sound)
                     else:
                         velocity_sound = cond_v_sound
@@ -1484,7 +1489,7 @@ class Cosmos3OmniPipeline(DiffusionPipeline):
                     action_condition_mask is not None and action_condition_mask.sum() < action_condition_mask.numel()
                 )
                 if action_scheduler is not None and has_noisy_action and cond_v_action is not None:
-                    if guidance_scale != 1.0:
+                    if self.do_classifier_free_guidance:
                         velocity_action = uncond_v_action + guidance_scale * (cond_v_action - uncond_v_action)
                     else:
                         velocity_action = cond_v_action
