@@ -212,9 +212,10 @@ else:
         "Cosmos2_5_PredictBasePipeline",
         "Cosmos2_5_TransferPipeline",
         "Cosmos2TextToImagePipeline",
+        "Cosmos2VideoToWorldPipeline",
+        "Cosmos3OmniPipeline",
         "CosmosTextToWorldPipeline",
         "CosmosVideoToWorldPipeline",
-        "Cosmos2VideoToWorldPipeline",
     ]
     _import_structure["controlnet"].extend(
         [
@@ -650,6 +651,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             Cosmos2_5_TransferPipeline,
             Cosmos2TextToImagePipeline,
             Cosmos2VideoToWorldPipeline,
+            Cosmos3OmniPipeline,
             CosmosTextToWorldPipeline,
             CosmosVideoToWorldPipeline,
         )
