@@ -168,8 +168,6 @@ class TorchAoHfQuantizer(DiffusersQuantizer):
 
         self._metadata = {}
         self._pending_flattened_state_dict = {}
-        self._loaded_weight_names = set()
-        self._expected_weight_names = set()
 
     def validate_environment(self, *args, **kwargs):
         if not is_torchao_available():
@@ -267,15 +265,11 @@ class TorchAoHfQuantizer(DiffusersQuantizer):
         return flattened_state_dict, {}
 
     def set_metadata(self, checkpoint_files: list[str]):
-        if not is_safetensors_available() or not is_torchao_version(">=", "0.16.0"):
-            self._metadata = {}
-            return
-
-        if self.metadata is None:
-            self.metadata = {}
+        self._metadata = {}
         self._pending_flattened_state_dict = {}
-        self._loaded_weight_names = set()
-        self._expected_weight_names = set()
+
+        if not is_safetensors_available() or not is_torchao_version(">=", "0.16.0"):
+            return
 
         if len(checkpoint_files) == 0:
             return
@@ -283,7 +277,6 @@ class TorchAoHfQuantizer(DiffusersQuantizer):
         if not all(
             isinstance(checkpoint, str) and checkpoint.endswith(".safetensors") for checkpoint in checkpoint_files
         ):
-            self._metadata = {}
             return
 
         metadata = {}
@@ -292,20 +285,10 @@ class TorchAoHfQuantizer(DiffusersQuantizer):
                 metadata.update(f.metadata() or {})
 
         self._metadata = metadata if is_metadata_torchao(metadata) else {}
-        if is_metadata_torchao(self._metadata):
-            try:
-                self._expected_weight_names = set(json.loads(self._metadata["tensor_names"]))
-            except (TypeError, json.JSONDecodeError, UnicodeDecodeError):
-                self._metadata = {}
-                self._expected_weight_names = set()
 
     @property
     def metadata(self):
         return self._metadata
-
-    @metadata.setter
-    def metadata(self, value: dict):
-        self._metadata = value
 
     def get_reconstructed_state_dict(self, state_dict: dict[str, Any]) -> dict[str, Any]:
         if not self._metadata or not is_torchao_version(">=", "0.16.0") or not is_metadata_torchao(self._metadata):
@@ -316,16 +299,12 @@ class TorchAoHfQuantizer(DiffusersQuantizer):
             merged_state_dict, self._metadata
         )
 
-        self._loaded_weight_names.update(reconstructed_state_dict.keys())
         return reconstructed_state_dict
 
     def get_weight_names(self):
-        return self._expected_weight_names if self._expected_weight_names else set()
-
-    def get_weight_reconstruction_pending_keys(self):
-        if not self._expected_weight_names:
-            return []
-        return sorted(self._expected_weight_names - self._loaded_weight_names)
+        if not self._metadata:
+            return set()
+        return set(json.loads(self._metadata["tensor_names"]))
 
     def check_if_quantized_param(
         self,

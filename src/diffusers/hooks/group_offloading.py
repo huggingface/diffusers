@@ -297,14 +297,9 @@ class ModuleGroup:
 
         metadata = {}
         tensors_for_flatten = {}
-        self._torchao_disk_key_remap = {}
+        self._torchao_disk_key_remap = self._get_torchao_disk_key_remap()
         for key, tensor in tensors_to_save.items():
-            if _is_torchao_tensor(tensor) and "." not in key:
-                flattened_key = f"{key}.weight"
-                self._torchao_disk_key_remap[key] = flattened_key
-                tensors_for_flatten[flattened_key] = tensor
-            else:
-                tensors_for_flatten[key] = tensor
+            tensors_for_flatten[self._torchao_disk_key_remap.get(key, key)] = tensor
 
         flattened_state_dict = flatten_tensor_state_dict(tensors_for_flatten)
         if isinstance(flattened_state_dict, tuple):
@@ -313,6 +308,13 @@ class ModuleGroup:
             tensors_to_save = flattened_state_dict
 
         return tensors_to_save, metadata
+
+    def _get_torchao_disk_key_remap(self):
+        return {
+            key: f"{key}.weight"
+            for tensor, key in self.tensor_to_key.items()
+            if _is_torchao_tensor(tensor) and "." not in key
+        }
 
     def _load_torchao_disk_state_dict(self, device):
         loaded_tensors = safetensors.torch.load_file(self.safetensors_file_path, device=device)
@@ -326,13 +328,11 @@ class ModuleGroup:
                 reconstructed_state_dict, leftover_state_dict = unflatten_tensor_state_dict(loaded_tensors, metadata)
                 loaded_tensors = {**leftover_state_dict, **reconstructed_state_dict}
             except Exception as error:
-                logger.warning(
-                    "Failed to unflatten TorchAO state dict metadata from disk; falling back to raw tensors."
-                )
-                logger.debug(error)
+                raise RuntimeError("Failed to reconstruct TorchAO tensors from disk offload safetensors.") from error
 
         # Support legacy in-memory tensor keys used by GroupOffloading when
         # flattening introduced dot-based names to satisfy TorchAO's safetensors API.
+        self._torchao_disk_key_remap = self._get_torchao_disk_key_remap()
         for original_key, flattened_key in self._torchao_disk_key_remap.items():
             if original_key not in loaded_tensors and flattened_key in loaded_tensors:
                 loaded_tensors[original_key] = loaded_tensors.pop(flattened_key)

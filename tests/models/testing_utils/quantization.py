@@ -910,24 +910,39 @@ class TorchAoTesterMixin(TorchAoConfigMixin, QuantizationTesterMixin):
     def test_torchao_quantization_serialization(self, quant_type, tmp_path):
         config_kwargs = TorchAoConfigMixin.TORCHAO_QUANT_TYPES[quant_type]
         model = self._create_quantized_model(config_kwargs, quant_config_kwargs={"version": 2})
+        inputs = self.get_dummy_inputs()
+
+        with torch.no_grad():
+            expected_output = model(**inputs, return_dict=False)[0].detach().cpu()
 
         model.save_pretrained(str(tmp_path), safe_serialization=True)
+        del model
+        gc.collect()
+        backend_empty_cache(torch_device)
 
         model_loaded = self.model_class.from_pretrained(
             str(tmp_path), device_map=str(torch_device), use_safetensors=True
         )
 
-        inputs = self.get_dummy_inputs()
-        output = model_loaded(**inputs, return_dict=False)[0]
-        assert not torch.isnan(output).any(), "Loaded model output contains NaN"
+        with torch.no_grad():
+            output = model_loaded(**inputs, return_dict=False)[0].detach().cpu()
+
+        torch.testing.assert_close(output, expected_output, rtol=1e-3, atol=1e-3)
 
     @pytest.mark.parametrize("quant_type", ["int8dq"], ids=["int8dq"])
     @require_torchao_version_greater_or_equal("0.16.0")
     def test_torchao_quantization_sharded_serialization(self, quant_type, tmp_path):
         config_kwargs = TorchAoConfigMixin.TORCHAO_QUANT_TYPES[quant_type]
         model = self._create_quantized_model(config_kwargs, quant_config_kwargs={"version": 2})
+        inputs = self.get_dummy_inputs()
+
+        with torch.no_grad():
+            expected_output = model(**inputs, return_dict=False)[0].detach().cpu()
 
         model.save_pretrained(str(tmp_path), safe_serialization=True, max_shard_size="16KB")
+        del model
+        gc.collect()
+        backend_empty_cache(torch_device)
 
         shard_files = list(tmp_path.glob("*.safetensors"))
         assert len(shard_files) > 1, "Expected a sharded safe-serialization checkpoint."
@@ -939,9 +954,10 @@ class TorchAoTesterMixin(TorchAoConfigMixin, QuantizationTesterMixin):
             str(tmp_path), device_map=str(torch_device), use_safetensors=True
         )
 
-        inputs = self.get_dummy_inputs()
-        output = model_loaded(**inputs, return_dict=False)[0]
-        assert not torch.isnan(output).any(), "Loaded sharded model output contains NaN"
+        with torch.no_grad():
+            output = model_loaded(**inputs, return_dict=False)[0].detach().cpu()
+
+        torch.testing.assert_close(output, expected_output, rtol=1e-3, atol=1e-3)
 
     def test_torchao_modules_to_not_convert(self):
         """Test that modules_to_not_convert parameter works correctly."""
