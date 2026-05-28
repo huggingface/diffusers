@@ -525,6 +525,18 @@ class DreamLiteTransformer2DModel(ModelMixin, ConfigMixin):
     ):
         """Forward pass of :class:`DreamLiteTransformer2DModel`.
 
+        Args:
+            hidden_states: Input latent tensor of shape ``(batch, channels, height, width)``.
+            encoder_hidden_states: Cross-attention conditioning embeddings.
+            timestep: Diffusion timestep(s); broadcast to batch if scalar.
+            added_cond_kwargs: Optional extra conditioning (e.g. ``text_embeds``, ``time_ids``).
+            class_labels: Optional class labels for class-conditional generation.
+            cross_attention_kwargs: Optional kwargs forwarded to the cross-attention processor.
+                Note: passing ``scale`` is deprecated and will be ignored.
+            attention_mask: Optional self-attention mask; 2D masks are converted to additive biases.
+            encoder_attention_mask: Optional cross-attention mask; 2D masks are converted to additive biases.
+            return_dict: If ``True``, returns a :class:`Transformer2DModelOutput`; otherwise a 1-tuple ``(sample,)``.
+
         Returns:
             :class:`~diffusers.models.transformers.transformer_2d.Transformer2DModelOutput` (or a 1-tuple of the
             sample) — kept output-compatible with the upstream class so callers don't have to special-case DreamLite.

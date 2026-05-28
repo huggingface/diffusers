@@ -284,11 +284,13 @@ class DreamLiteMobilePipeline(DiffusionPipeline, FromSingleFileMixin, TextualInv
             prompt: Text prompt.
             image: Optional input image. If provided, runs in **edit / image-to-image** mode;
                 otherwise runs in **text-to-image** mode.
-            height / width: Output resolution. Defaults to
-                ``default_sample_size * vae_scale_factor`` (1024x1024).
+            height: Output resolution (height). Defaults to ``default_sample_size * vae_scale_factor`` (1024).
+            width: Output resolution (width). Defaults to ``default_sample_size * vae_scale_factor`` (1024).
             num_inference_steps: Number of denoising steps. Defaults to **4** (distilled).
-            guidance_scale / image_guidance_scale: Accepted for API parity with
-                :class:`DreamLitePipeline`; **ignored** because CFG was distilled away.
+            guidance_scale: Accepted for API parity with :class:`DreamLitePipeline`; **ignored**
+                because CFG was distilled away.
+            image_guidance_scale: Accepted for API parity with :class:`DreamLitePipeline`; **ignored**
+                because CFG was distilled away.
             sigmas: Optional explicit FlowMatch sigmas; defaults to a uniform linspace.
             num_images_per_prompt: Output images per prompt (note: ``batch_size`` is forced to 1).
             generator: Random generator(s).

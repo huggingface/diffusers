@@ -44,6 +44,10 @@ An attention processor is a class for applying different types of attention mech
 
 [[autodoc]] models.attention_processor.FusedCogVideoXAttnProcessor2_0
 
+## DreamLite
+
+[[autodoc]] models.attention_processor.DreamLiteAttnProcessor2_0
+
 ## CrossFrameAttnProcessor
 
 [[autodoc]] pipelines.deprecated.text_to_video_synthesis.pipeline_text_to_video_zero.CrossFrameAttnProcessor

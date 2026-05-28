@@ -365,8 +365,10 @@ class DreamLitePipeline(DiffusionPipeline, FromSingleFileMixin, TextualInversion
             negative_prompt: Negative text prompt (defaults to empty string).
             image: Optional input image. If provided, the pipeline runs in **edit / image-to-image** mode
                 with dual classifier-free guidance; otherwise it runs in **text-to-image** mode.
-            height / width: Output resolution. Defaults to ``default_sample_size * vae_scale_factor``
-                (1024x1024). The same defaults apply in both T2I and I2I; pass explicit values to override.
+            height: Output resolution (height). Defaults to ``default_sample_size * vae_scale_factor`` (1024).
+                The same default applies in both T2I and I2I; pass an explicit value to override.
+            width: Output resolution (width). Defaults to ``default_sample_size * vae_scale_factor`` (1024).
+                The same default applies in both T2I and I2I; pass an explicit value to override.
             guidance_scale: CFG scale on the text branch (both modes).
             image_guidance_scale: Additional CFG scale on the image branch (edit mode only).
             num_inference_steps: Number of denoising steps.
