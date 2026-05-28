@@ -463,6 +463,9 @@ encode_video(
 
 Action policy generation predicts future video and action tokens from the first observation frame, text prompt, and action domain metadata. The example below uses the Bridge robot domain and writes the predicted action chunk to JSON in model-normalized action space.
 
+<hfoptions id="model">
+<hfoption id="Nano">
+
 ```python
 import json
 
@@ -506,6 +509,56 @@ if result.action is not None:
     with open("sample_action.json", "w") as f:
         json.dump(result.action[0].tolist(), f)
 ```
+
+</hfoption>
+<hfoption id="Super">
+
+```python
+import json
+
+import torch
+from diffusers import Cosmos3OmniPipeline
+from diffusers.utils import export_to_video, load_video
+
+pipe = Cosmos3OmniPipeline.from_pretrained(
+    "nvidia/Cosmos3-Super", torch_dtype=torch.bfloat16, device_map="cuda"
+)
+
+prompt = (
+    "Put the pot to the left of the purple item. This video is captured from a first-person perspective looking "
+    "at the scene."
+)
+video = load_video(
+    "https://github.com/nvidia-cosmos/cosmos-dependencies/raw/refs/heads/assets/cosmos3/inputs/action/bridge_0.mp4"
+)
+
+result = pipe(
+    prompt=prompt,
+    video=video,
+    num_frames=17,
+    height=480,
+    width=832,
+    fps=5,
+    num_inference_steps=30,
+    guidance_scale=1.0,
+    flow_shift=5.0,
+    action_mode="policy",
+    action_chunk_size=16,
+    raw_action_dim=10,
+    domain_name="bridge_orig_lerobot",
+    use_system_prompt=False,
+)
+
+# macro_block_size=1 allows arbitrary frame sizes (Cosmos3 outputs are not always divisible by 16).
+export_to_video(result.video, "sample.mp4", fps=5, macro_block_size=1)
+
+if result.action is not None:
+    with open("sample_action.json", "w") as f:
+        json.dump(result.action[0].tolist(), f)
+```
+
+</hfoption>
+</hfoptions>
 
 ## Metadata templates
 
