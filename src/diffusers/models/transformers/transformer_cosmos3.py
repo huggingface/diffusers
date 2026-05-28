@@ -146,6 +146,39 @@ class Cosmos3VLTextMLP(nn.Module):
         return self.down_proj(self.act_fn(self.gate_proj(x)) * self.up_proj(x))
 
 
+class DomainAwareLinear(nn.Module):
+    """Linear projection with one weight/bias pair per embodiment domain."""
+
+    def __init__(self, input_size: int, output_size: int, num_domains: int) -> None:
+        super().__init__()
+        self.input_size = int(input_size)
+        self.output_size = int(output_size)
+        self.num_domains = int(num_domains)
+        self.fc = nn.Embedding(self.num_domains, self.output_size * self.input_size)
+        self.bias = nn.Embedding(self.num_domains, self.output_size)
+        nn.init.xavier_uniform_(self.fc.weight)
+        nn.init.zeros_(self.bias.weight)
+
+    def forward(self, x: torch.Tensor, domain_id: torch.Tensor) -> torch.Tensor:
+        if domain_id.ndim == 0:
+            domain_id = domain_id.unsqueeze(0)
+        domain_id = domain_id.to(device=x.device, dtype=torch.long).reshape(-1)
+        if x.shape[0] != domain_id.shape[0]:
+            raise ValueError(
+                "Cosmos3 action domain_id batch size must match action tokens: "
+                f"tokens={x.shape[0]}, domain_id={domain_id.shape[0]}."
+            )
+        if torch.any((domain_id < 0) | (domain_id >= self.num_domains)):
+            raise ValueError(f"Cosmos3 action domain_id must be in [0, {self.num_domains}), got {domain_id.tolist()}.")
+        weight = self.fc(domain_id).view(domain_id.shape[0], self.input_size, self.output_size)
+        bias = self.bias(domain_id).view(domain_id.shape[0], self.output_size)
+        if x.ndim == 2:
+            return torch.bmm(x.unsqueeze(1), weight).squeeze(1) + bias
+        if x.ndim == 3:
+            return torch.bmm(x, weight) + bias.unsqueeze(1)
+        raise ValueError(f"Cosmos3 DomainAwareLinear expected rank-2 or rank-3 input, got {tuple(x.shape)}.")
+
+
 class Cosmos3PackedMoTAttention(nn.Module, AttentionModuleMixin):
     """Dual-pathway packed attention for Qwen3VL MoT — separate projections for
     understanding (causal) and generation (full) token streams."""
@@ -291,6 +324,9 @@ class Cosmos3OmniTransformer(ModelMixin, ConfigMixin, PeftAdapterMixin, Attentio
         rms_norm_eps: float = 1e-6,
         rope_scaling: dict | None = None,
         rope_theta: float = 5000000.0,
+        action_dim: int | None = None,
+        action_gen: bool = False,
+        num_embodiment_domains: int = 32,
         sound_dim: int | None = None,
         sound_gen: bool = False,
         sound_latent_fps: float = 25.0,
@@ -333,6 +369,13 @@ class Cosmos3OmniTransformer(ModelMixin, ConfigMixin, PeftAdapterMixin, Attentio
         self.proj_out = nn.Linear(hidden_size, patch_latent_dim, bias=True)
         self.time_proj = Timesteps(num_channels=256, flip_sin_to_cos=True, downscale_freq_shift=0)
         self.time_embedder = TimestepEmbedding(in_channels=256, time_embed_dim=hidden_size)
+        self.action_gen = action_gen
+        self.action_dim = int(32 if action_dim is None else action_dim)
+        self.num_embodiment_domains = int(num_embodiment_domains)
+        if action_gen:
+            self.action_proj_in = DomainAwareLinear(self.action_dim, hidden_size, self.num_embodiment_domains)
+            self.action_proj_out = DomainAwareLinear(hidden_size, self.action_dim, self.num_embodiment_domains)
+            self.action_modality_embed = nn.Parameter(torch.zeros(hidden_size))
         if sound_gen:
             if sound_dim is None:
                 raise ValueError("`sound_dim` must be provided when `sound_gen=True`.")
@@ -464,9 +507,43 @@ class Cosmos3OmniTransformer(ModelMixin, ConfigMixin, PeftAdapterMixin, Attentio
             unpacked.append(output)
         return unpacked
 
+    def _pack_action_latents(
+        self,
+        tokens_action: list[torch.Tensor],
+        token_shapes_action: list[tuple[int, int, int]],
+        domain_ids_action: list[torch.Tensor],
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        """List of ``[T, D]`` tensors → packed ``[total_T, D]`` plus per-token domain ids."""
+        packed: list[torch.Tensor] = []
+        domain_ids: list[torch.Tensor] = []
+        for action, shape, domain_id in zip(tokens_action, token_shapes_action, domain_ids_action):
+            token_count = shape[0]
+            packed.append(action[:token_count])
+            domain_ids.append(domain_id.reshape(1).expand(token_count))
+        return torch.cat(packed, dim=0), torch.cat(domain_ids, dim=0)
+
+    def _unpack_action_latents(
+        self,
+        packed_preds: torch.Tensor,
+        token_shapes_action: list[tuple[int, int, int]],
+        noisy_frame_indexes_action: list[torch.Tensor],
+    ) -> list[torch.Tensor]:
+        """Packed ``[total_noisy_T, D]`` predictions → list of ``[T, D]`` tensors."""
+        unpacked: list[torch.Tensor] = []
+        start_idx = 0
+        for shape, noisy_idxs in zip(token_shapes_action, noisy_frame_indexes_action):
+            T = shape[0]
+            output = torch.zeros((T, self.action_dim), device=packed_preds.device, dtype=packed_preds.dtype)
+            t_n = len(noisy_idxs)
+            if t_n > 0:
+                output[noisy_idxs] = packed_preds[start_idx : start_idx + t_n]
+                start_idx += t_n
+            unpacked.append(output)
+        return unpacked
+
     # -------------------------------------------------------------------------
-    # forward: full per-step pass — encode text/vision/sound → run layers →
-    # decode vision/sound. Pipeline calls this once per CFG pass.
+    # forward: full per-step pass — encode text/vision/sound/action → run layers →
+    # decode vision/sound/action. Pipeline calls this once per CFG pass.
     # -------------------------------------------------------------------------
 
     def forward(
@@ -488,7 +565,14 @@ class Cosmos3OmniTransformer(ModelMixin, ConfigMixin, PeftAdapterMixin, Attentio
         sound_mse_loss_indexes: torch.Tensor | None = None,
         sound_timesteps: torch.Tensor | None = None,
         sound_noisy_frame_indexes: list[torch.Tensor] | None = None,
-    ) -> tuple[list[torch.Tensor], list[torch.Tensor] | None]:
+        action_tokens: list[torch.Tensor] | None = None,
+        action_token_shapes: list[tuple[int, int, int]] | None = None,
+        action_sequence_indexes: torch.Tensor | None = None,
+        action_mse_loss_indexes: torch.Tensor | None = None,
+        action_timesteps: torch.Tensor | None = None,
+        action_noisy_frame_indexes: list[torch.Tensor] | None = None,
+        action_domain_ids: list[torch.Tensor] | None = None,
+    ) -> tuple[list[torch.Tensor], list[torch.Tensor] | None, list[torch.Tensor] | None]:
         """Run a full denoising-step forward pass.
 
         Args:
@@ -511,10 +595,11 @@ class Cosmos3OmniTransformer(ModelMixin, ConfigMixin, PeftAdapterMixin, Attentio
             sound_noisy_frame_indexes: Optional noisy frame indices per sound item.
 
         Returns:
-            ``(preds_vision, preds_sound)`` — list of per-modality latents (``preds_sound`` is ``None`` when the model
-            has no sound branch or sound inputs are omitted).
+            ``(preds_vision, preds_sound, preds_action)`` — lists of per-modality predictions. Optional modalities
+            return ``None`` when their inputs are omitted.
         """
         has_sound = sound_tokens is not None and sound_sequence_indexes is not None
+        has_action = action_tokens is not None and action_sequence_indexes is not None
 
         # Embed text tokens into the joint hidden_states buffer at their sequence positions.
         packed_text_embedding = self.embed_tokens(input_ids)
@@ -550,6 +635,27 @@ class Cosmos3OmniTransformer(ModelMixin, ConfigMixin, PeftAdapterMixin, Attentio
                 token_shapes=sound_token_shapes,
             )
             hidden_states[sound_sequence_indexes] = packed_tokens_sound
+
+        # Pack + project action latents (when present). Domain ids select the action head weights.
+        if has_action:
+            packed_tokens_action, per_token_domain_ids = self._pack_action_latents(
+                action_tokens, action_token_shapes, action_domain_ids
+            )
+            packed_tokens_action = packed_tokens_action.to(target_dtype)
+            per_token_domain_ids = per_token_domain_ids.to(device=packed_tokens_action.device)
+            packed_tokens_action = self.action_proj_in(packed_tokens_action, per_token_domain_ids)
+            packed_tokens_action = packed_tokens_action + self.action_modality_embed
+            if action_mse_loss_indexes.numel() > 0:
+                timesteps_action = action_timesteps * self.config.timestep_scale
+                packed_timestep_embeds_action = self.time_embedder(self.time_proj(timesteps_action))
+                packed_timestep_embeds_action = packed_timestep_embeds_action.to(target_dtype)
+                packed_tokens_action = self._apply_timestep_embeds_to_noisy_tokens(
+                    packed_tokens=packed_tokens_action,
+                    packed_timestep_embeds=packed_timestep_embeds_action,
+                    noisy_frame_indexes=action_noisy_frame_indexes,
+                    token_shapes=action_token_shapes,
+                )
+            hidden_states[action_sequence_indexes] = packed_tokens_action
 
         # Compute rotary embeddings once for the joint sequence, then slice into und/gen halves.
         _meta_tensor = torch.tensor([], dtype=hidden_states.dtype, device=hidden_states.device)
@@ -590,4 +696,18 @@ class Cosmos3OmniTransformer(ModelMixin, ConfigMixin, PeftAdapterMixin, Attentio
             preds_sound_packed = self.audio_proj_out(last_hidden_state[sound_mse_loss_indexes])
             preds_sound = self._unpack_sound_latents(preds_sound_packed, sound_token_shapes, sound_noisy_frame_indexes)
 
-        return preds_vision, preds_sound
+        preds_action: list[torch.Tensor] | None = None
+        if has_action:
+            per_noisy_domain_ids = [
+                domain_id.reshape(1).expand(len(noisy_idxs))
+                for domain_id, noisy_idxs in zip(action_domain_ids, action_noisy_frame_indexes)
+            ]
+            per_noisy_domain_ids = torch.cat(per_noisy_domain_ids, dim=0).to(device=last_hidden_state.device)
+            preds_action_packed = self.action_proj_out(
+                last_hidden_state[action_mse_loss_indexes], per_noisy_domain_ids
+            )
+            preds_action = self._unpack_action_latents(
+                preds_action_packed, action_token_shapes, action_noisy_frame_indexes
+            )
+
+        return preds_vision, preds_sound, preds_action
