@@ -172,3 +172,5 @@ Boolean gate. If `False` (default), calling that method raises `ValueError`. All
       freqs_dtype = torch.float32 if (is_mps or is_npu) else torch.float64
       ```
       See `transformer_flux.py`, `transformer_flux2.py`, `transformer_wan.py`, `unet_2d_condition.py` for reference usages. Never leave an unconditional `torch.float64` in the model.
+
+6. **Using `torch.empty`.** - Do not use `torch.empty` to initialize parameters. Use `torch.zeros` or `torch.ones`, instead.

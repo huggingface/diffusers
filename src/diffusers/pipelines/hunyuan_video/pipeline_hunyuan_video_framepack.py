@@ -701,6 +701,8 @@ class HunyuanVideoFramepackPipeline(DiffusionPipeline, HunyuanVideoLoraLoaderMix
                 The width in pixels of the generated image.
             num_frames (`int`, defaults to `129`):
                 The number of frames in the generated video.
+            latent_window_size (`int`, defaults to `9`):
+                Number of latent frames produced per Framepack sampling window.
             num_inference_steps (`int`, defaults to `50`):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
                 expense of slower inference.
@@ -741,6 +743,10 @@ class HunyuanVideoFramepackPipeline(DiffusionPipeline, HunyuanVideoLoraLoaderMix
                 Pre-generated negative pooled text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt
                 weighting. If not provided, pooled negative_prompt_embeds will be generated from `negative_prompt`
                 input argument.
+            prompt_attention_mask (`torch.Tensor`, *optional*):
+                Attention mask for `prompt_embeds`. Required when `prompt_embeds` is passed directly.
+            negative_prompt_attention_mask (`torch.Tensor`, *optional*):
+                Attention mask for `negative_prompt_embeds`. Required when `negative_prompt_embeds` is passed directly.
             output_type (`str`, *optional*, defaults to `"pil"`):
                 The output format of the generated image. Choose between `PIL.Image` or `np.array`.
             return_dict (`bool`, *optional*, defaults to `True`):
@@ -749,9 +755,12 @@ class HunyuanVideoFramepackPipeline(DiffusionPipeline, HunyuanVideoLoraLoaderMix
                 A kwargs dictionary that if specified is passed along to the `AttentionProcessor` as defined under
                 `self.processor` in
                 [diffusers.models.attention_processor](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/attention_processor.py).
-            clip_skip (`int`, *optional*):
-                Number of layers to be skipped from CLIP while computing the prompt embeddings. A value of 1 means that
-                the output of the pre-final layer will be used for computing the prompt embeddings.
+            prompt_template (`dict`, *optional*):
+                Template used to format the prompt before encoding. Defaults to the model's default template.
+            max_sequence_length (`int`, *optional*, defaults to 256):
+                Maximum sequence length to use for the prompt encoder.
+            sampling_type (`FramepackSamplingType`, *optional*):
+                The Framepack sampling strategy to use when iterating over latent windows.
             callback_on_step_end (`Callable`, `PipelineCallback`, `MultiPipelineCallbacks`, *optional*):
                 A function or a subclass of `PipelineCallback` or `MultiPipelineCallbacks` that is called at the end of
                 each denoising step during the inference. with the following arguments: `callback_on_step_end(self:

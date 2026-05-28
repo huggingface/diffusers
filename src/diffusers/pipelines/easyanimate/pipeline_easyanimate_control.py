@@ -699,7 +699,7 @@ class EasyAnimateControlPipeline(DiffusionPipeline):
         r"""
         Generates images or video using the EasyAnimate pipeline based on the provided prompts.
 
-        Examples:
+        Args:
             prompt (`str` or `list[str]`, *optional*):
                 Text prompts to guide the image or video generation. If not provided, use `prompt_embeds` instead.
             num_frames (`int`, *optional*):
@@ -708,6 +708,12 @@ class EasyAnimateControlPipeline(DiffusionPipeline):
                 Height of the generated image in pixels.
             width (`int`, *optional*):
                 Width of the generated image in pixels.
+            control_video (`torch.FloatTensor`, *optional*):
+                Control video used to condition the generation.
+            control_camera_video (`torch.FloatTensor`, *optional*):
+                Control camera video used to condition the generation.
+            ref_image (`torch.FloatTensor`, *optional*):
+                Reference image used to condition the generation.
             num_inference_steps (`int`, *optional*, defaults to 50):
                 Number of denoising steps during generation. More steps generally yield higher quality images but slow
                 down inference.
@@ -741,6 +747,11 @@ class EasyAnimateControlPipeline(DiffusionPipeline):
                 Tensor names to be included in callback function calls.
             guidance_rescale (`float`, *optional*, defaults to 0.0):
                 Adjusts noise levels based on guidance scale.
+            timesteps (`list[int]`, *optional*):
+                Custom timesteps to use for the denoising process. If not defined, the scheduler's default schedule for
+                `num_inference_steps` is used.
+
+        Examples:
 
         Returns:
             [`~pipelines.stable_diffusion.StableDiffusionPipelineOutput`] or `tuple`:
