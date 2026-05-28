@@ -38,7 +38,7 @@ from diffusers import FlowMatchEulerDiscreteScheduler
 from diffusers.pipelines.ltx2 import LTX2Pipeline, LTX2LatentUpsamplePipeline
 from diffusers.pipelines.ltx2.latent_upsampler import LTX2LatentUpsamplerModel
 from diffusers.pipelines.ltx2.utils import STAGE_2_DISTILLED_SIGMA_VALUES
-from diffusers.pipelines.ltx2.export_utils import encode_video
+from diffusers.utils import encode_video
 
 device = "cuda:0"
 width = 768
@@ -124,7 +124,7 @@ import torch
 from diffusers.pipelines.ltx2 import LTX2Pipeline, LTX2LatentUpsamplePipeline
 from diffusers.pipelines.ltx2.latent_upsampler import LTX2LatentUpsamplerModel
 from diffusers.pipelines.ltx2.utils import DISTILLED_SIGMA_VALUES, STAGE_2_DISTILLED_SIGMA_VALUES
-from diffusers.pipelines.ltx2.export_utils import encode_video
+from diffusers.utils import encode_video
 
 device = "cuda"
 width = 768
@@ -203,7 +203,7 @@ from diffusers import LTX2ConditionPipeline, LTX2LatentUpsamplePipeline
 from diffusers.pipelines.ltx2.latent_upsampler import LTX2LatentUpsamplerModel
 from diffusers.pipelines.ltx2.pipeline_ltx2_condition import LTX2VideoCondition
 from diffusers.pipelines.ltx2.utils import DISTILLED_SIGMA_VALUES, STAGE_2_DISTILLED_SIGMA_VALUES
-from diffusers.pipelines.ltx2.export_utils import encode_video
+from diffusers.utils import encode_video
 from diffusers.utils import load_image
 
 device = "cuda"
@@ -292,7 +292,7 @@ You can use both image and video conditions:
 import torch
 from diffusers import LTX2ConditionPipeline
 from diffusers.pipelines.ltx2.pipeline_ltx2_condition import LTX2VideoCondition
-from diffusers.pipelines.ltx2.export_utils import encode_video
+from diffusers.utils import encode_video
 from diffusers.pipelines.ltx2.utils import DEFAULT_NEGATIVE_PROMPT
 from diffusers.utils import load_image, load_video
 
@@ -367,7 +367,7 @@ These are controlled by the `guidance_scale`, `stg_scale`, and `modality_scale` 
 ```py
 import torch
 from diffusers import LTX2ImageToVideoPipeline
-from diffusers.pipelines.ltx2.export_utils import encode_video
+from diffusers.utils import encode_video
 from diffusers.pipelines.ltx2.utils import DEFAULT_NEGATIVE_PROMPT
 from diffusers.utils import load_image
 
@@ -377,7 +377,7 @@ height = 512
 random_seed = 42
 frame_rate = 24.0
 generator = torch.Generator(device).manual_seed(random_seed)
-model_path = "dg845/LTX-2.3-Diffusers"
+model_path = "diffusers/LTX-2.3-Diffusers"
 
 pipe = LTX2ImageToVideoPipeline.from_pretrained(model_path, torch_dtype=torch.bfloat16)
 pipe.enable_sequential_cpu_offload(device=device)
@@ -440,7 +440,7 @@ The LTX-2.X models are sensitive to prompting style. Refer to the [official prom
 import torch
 from transformers import Gemma3Processor
 from diffusers import LTX2Pipeline
-from diffusers.pipelines.ltx2.export_utils import encode_video
+from diffusers.utils import encode_video
 from diffusers.pipelines.ltx2.utils import DEFAULT_NEGATIVE_PROMPT, T2V_DEFAULT_SYSTEM_PROMPT
 
 device = "cuda"
@@ -449,7 +449,7 @@ height = 512
 random_seed = 42
 frame_rate = 24.0
 generator = torch.Generator(device).manual_seed(random_seed)
-model_path = "dg845/LTX-2.3-Diffusers"
+model_path = "diffusers/LTX-2.3-Diffusers"
 
 pipe = LTX2Pipeline.from_pretrained(model_path, torch_dtype=torch.bfloat16)
 pipe.enable_model_cpu_offload(device=device)

@@ -183,7 +183,7 @@ def prepare_decode(
         headers["Accept"] = "image/png"
     elif output_type == "mp4":
         headers["Accept"] = "text/plain"
-    tensor_data = safetensors.torch._tobytes(tensor, "tensor")
+    tensor_data = safetensors.torch._to_ndarray(tensor)[0].tobytes()
     return {"data": tensor_data, "params": parameters, "headers": headers}
 
 
@@ -369,7 +369,7 @@ def prepare_encode(
     if shift_factor is not None:
         parameters["shift_factor"] = shift_factor
     if isinstance(image, torch.Tensor):
-        data = safetensors.torch._tobytes(image.contiguous(), "tensor")
+        data = safetensors.torch._to_ndarray(image.contiguous())[0].tobytes()
         parameters["shape"] = list(image.shape)
         parameters["dtype"] = str(image.dtype).split(".")[-1]
     else:

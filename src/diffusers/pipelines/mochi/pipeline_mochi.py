@@ -527,6 +527,9 @@ class MochiPipeline(DiffusionPipeline, Mochi1LoraLoaderMixin):
             prompt (`str` or `list[str]`, *optional*):
                 The prompt or prompts to guide the image generation. If not defined, one has to pass `prompt_embeds`.
                 instead.
+            negative_prompt (`str` or `list[str]`, *optional*):
+                The prompt or prompts not to guide the image generation. If not defined, one has to pass
+                `negative_prompt_embeds` instead. Ignored when not using guidance (`guidance_scale < 1`).
             height (`int`, *optional*, defaults to `self.default_height`):
                 The height in pixels of the generated image. This is set to 480 by default for the best results.
             width (`int`, *optional*, defaults to `self.default_width`):
