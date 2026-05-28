@@ -1720,9 +1720,7 @@ def main(args):
                 cond_model_input_ids = Flux2Pipeline._prepare_image_ids([cond_model_input[0:1]]).to(
                     device=cond_model_input.device
                 )
-                cond_model_input_ids = cond_model_input_ids.expand(
-                    cond_model_input.shape[0], -1, -1
-                )
+                cond_model_input_ids = cond_model_input_ids.expand(cond_model_input.shape[0], -1, -1)
 
                 # Sample noise that we'll add to the latents
                 noise = torch.randn_like(model_input)
