@@ -14,9 +14,9 @@
 #
 # This file is the FAR causal sibling of `transformer_anyflow.py`. Shared submodules are duplicated
 # via `# Copied from` so `make fix-copies` keeps both files in sync; this keeps each transformer
-# variant readable in isolation. The FAR architecture comes from Gu et al., 2025
+# variant readable in isolation. The FAR architecture comes from FAR
 # (arXiv:2503.19325); the dual-timestep flow-map embedding is AnyFlow's contribution
-# (Yuchao Gu, Guian Fang et al., arXiv:2605.13724).
+# (arXiv:2605.13724).
 
 import math
 from dataclasses import dataclass
@@ -25,7 +25,7 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torch.nn.attention.flex_attention import create_block_mask
+from torch.nn.attention.flex_attention import BlockMask, create_block_mask
 
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...loaders import FromOriginalModelMixin, PeftAdapterMixin
@@ -77,7 +77,7 @@ class AnyFlowCausalAttnProcessor:
     autoregressive read (cache-read step).
 
     Requires the ``flex`` attention backend — the ``BlockMask`` produced by
-    :class:`AnyFlowFARTransformer3DModel._build_causal_mask` is consumed only by the flex backend. A clear
+    :meth:`AnyFlowFARTransformer3DModel.build_attention_mask` is consumed only by the flex backend. A clear
     :class:`ValueError` is raised if a non-flex backend is configured via ``_attention_backend``.
     """
 
@@ -643,8 +643,11 @@ class AnyFlowCausalRotaryPosEmbed(nn.Module):
 
     # Copied from diffusers.models.transformers.transformer_anyflow.AnyFlowRotaryPosEmbed._build_freqs
     def _build_freqs(self, device: torch.device) -> torch.Tensor:
+        # Skip the cache read/write inside torch.compile: mutating ``self._freqs_cache`` between calls
+        # becomes a Dynamo guard and forces recompilation on the second invocation.
+        is_compiling = torch.compiler.is_compiling()
         cache_key = (device.type, str(device))
-        if self._freqs_cache is not None and self._freqs_cache[0] == cache_key:
+        if not is_compiling and self._freqs_cache is not None and self._freqs_cache[0] == cache_key:
             return self._freqs_cache[1]
 
         is_mps = device.type == "mps"
@@ -666,7 +669,8 @@ class AnyFlowCausalRotaryPosEmbed(nn.Module):
             )
             freqs_list.append(f.to(device))
         freqs = torch.cat(freqs_list, dim=1)
-        self._freqs_cache = (cache_key, freqs)
+        if not is_compiling:
+            self._freqs_cache = (cache_key, freqs)
         return freqs
 
     def avg_pool_complex(self, freq: torch.Tensor, kernel_size: int, stride: int):
@@ -774,14 +778,191 @@ class AnyFlowCausalRotaryPosEmbed(nn.Module):
         return {"query": freqs, "key": freqs}
 
 
+def _build_anyflow_far_causal_block_mask(
+    chunk_partition: List[int],
+    height: int,
+    width: int,
+    patch_size: Tuple[int, int, int],
+    compressed_patch_size: Tuple[int, int, int],
+    full_chunk_limit: int,
+    *,
+    mode: str = "train",
+    has_clean_context: bool = False,
+    device: Optional[torch.device] = None,
+) -> BlockMask:
+    r"""Build the causal :class:`~torch.nn.attention.flex_attention.BlockMask` for the FAR transformer.
+
+    Provided as a standalone function so callers can construct the mask *outside* the transformer's compiled region,
+    which is required to wrap the forward in ``torch.compile(fullgraph=True)`` (``flex_attention.create_block_mask``
+    itself uses ``_compile=False`` internally and breaks the graph when invoked inside the compiled scope).
+
+    Two modes are exposed, mirroring the FAR forward paths that actually consume a mask. The autoregressive
+    ``_forward_inference`` path attends through the KV cache and does not use a full BlockMask, so it has no
+    corresponding mode here.
+
+    Args:
+        chunk_partition: per-chunk frame counts; must sum to the number of latent frames.
+        height, width: latent spatial dimensions.
+        patch_size, compressed_patch_size, full_chunk_limit: must match the transformer config.
+        mode: ``"train"`` (strict ``>`` comparison against ``full_chunk_limit``, matches
+            :meth:`AnyFlowFARTransformer3DModel._forward_train`) or ``"cache"`` (``>=`` comparison via the
+            ``full_chunk_limit - 1`` offset used by :meth:`AnyFlowFARTransformer3DModel._forward_cache`).
+        has_clean_context: ``True`` when ``clean_hidden_states`` is being threaded through the
+            transformer (training V2V/I2V).
+        device: device for the resulting BlockMask. Defaults to CPU.
+    """
+    if mode not in {"train", "cache"}:
+        raise ValueError(f"Unknown mode {mode!r}; expected 'train' or 'cache'.")
+    full_token_per_frame = (height // patch_size[1]) * (width // patch_size[2])
+    compressed_token_per_frame = (height // compressed_patch_size[1]) * (width // compressed_patch_size[2])
+
+    # `cache` uses `full_chunk_limit - 1` (an effective `>= full_chunk_limit` comparison); `train` uses a strict `>`.
+    total_chunks = len(chunk_partition)
+    threshold = full_chunk_limit - 1 if mode == "cache" else full_chunk_limit
+    if total_chunks > threshold:
+        num_full_chunk = threshold
+        num_compressed_chunk = total_chunks - threshold
+    else:
+        num_full_chunk, num_compressed_chunk = total_chunks, 0
+
+    far_cfg = {
+        "num_full_chunk": num_full_chunk,
+        "num_compressed_chunk": num_compressed_chunk,
+        "num_full_frames": sum(chunk_partition[num_compressed_chunk:]),
+        "num_compressed_frames": sum(chunk_partition[:num_compressed_chunk]),
+        "full_token_per_frame": full_token_per_frame,
+        "compressed_token_per_frame": compressed_token_per_frame,
+        "chunk_partition": chunk_partition,
+    }
+    return _build_far_block_mask_from_far_cfg(far_cfg, has_clean=has_clean_context, device=device)
+
+
+def _build_far_block_mask_from_far_cfg(far_cfg, has_clean, device):
+    """Internal: build a BlockMask given an already-computed ``far_cfg`` dict.
+
+    Factored out of :class:`AnyFlowFARTransformer3DModel` so it can be shared between
+    :func:`_build_anyflow_far_causal_block_mask` (the user-facing entry point) and the in-forward fallback path used
+    when no pre-built ``attention_mask`` is passed.
+    """
+    chunk_partition = far_cfg["chunk_partition"]
+
+    noise_seq_len = clean_seq_len = far_cfg["num_full_frames"] * far_cfg["full_token_per_frame"]
+    context_seq_len = far_cfg["num_compressed_frames"] * far_cfg["compressed_token_per_frame"]
+
+    noise_start = context_seq_len
+    noise_end = noise_start + noise_seq_len
+
+    clean_start = context_seq_len + noise_seq_len
+    clean_end = clean_start + clean_seq_len
+
+    if has_clean:
+        real_seq_len = context_seq_len + noise_seq_len + clean_seq_len
+    else:
+        real_seq_len = context_seq_len + noise_seq_len
+
+    padded_seq_len = int(math.ceil(real_seq_len / 128.0) * 128.0)
+
+    context_chunk_partition, noise_chunk_partition = (
+        chunk_partition[: far_cfg["num_compressed_chunk"]],
+        chunk_partition[far_cfg["num_compressed_chunk"] :],
+    )
+
+    if len(context_chunk_partition) != 0:
+        context_frame_idx = torch.cat(
+            [
+                torch.ones(chunk_len * far_cfg["compressed_token_per_frame"], device=device) * chunk_idx
+                for chunk_idx, chunk_len in enumerate(context_chunk_partition)
+            ]
+        )
+    else:
+        context_frame_idx = None
+
+    if has_clean:
+        noise_frame_idx = clean_frame_idx = torch.cat(
+            [
+                torch.ones(chunk_len * far_cfg["full_token_per_frame"], device=device)
+                * (chunk_idx + len(context_chunk_partition))
+                for chunk_idx, chunk_len in enumerate(noise_chunk_partition)
+            ]
+        )
+        pad_frame_idx = torch.zeros(padded_seq_len - real_seq_len, device=device)
+
+        if len(context_chunk_partition) != 0:
+            frame_idx = torch.cat([context_frame_idx, noise_frame_idx, clean_frame_idx, pad_frame_idx], dim=0)
+        else:
+            frame_idx = torch.cat([noise_frame_idx, clean_frame_idx, pad_frame_idx], dim=0)
+
+        def mask_mod(b, h, q_idx, kv_idx):
+            # 1) is padding
+            is_padding = (q_idx >= real_seq_len) | (kv_idx >= real_seq_len)
+
+            # 2) chunk causal
+            base = frame_idx[q_idx] >= frame_idx[kv_idx]
+
+            # 3) interval mask
+            q_is_noise = (q_idx >= noise_start) & (q_idx < noise_end)
+            q_is_clean = (q_idx >= clean_start) & (q_idx < clean_end)
+
+            k_is_noise = (kv_idx >= noise_start) & (kv_idx < noise_end)
+            k_is_clean = (kv_idx >= clean_start) & (kv_idx < clean_end)
+
+            # 4) clean -> noise: disallowed
+            is_clean_to_noise = q_is_clean & k_is_noise
+
+            # 5) noise -> noise: only same frame
+            same_frame_idx = frame_idx[q_idx] == frame_idx[kv_idx]
+
+            noise_to_noise = q_is_noise & k_is_noise
+            noise_to_clean = q_is_noise & k_is_clean
+
+            noise_to_noise_allow = noise_to_noise & same_frame_idx
+            noise_to_noise_mask = (~noise_to_noise) | noise_to_noise_allow
+
+            noise_to_clean_same = noise_to_clean & same_frame_idx
+            noise_to_clean_disallow = noise_to_clean_same
+
+            allowed = base & ~is_padding & ~is_clean_to_noise & noise_to_noise_mask & ~noise_to_clean_disallow
+            return allowed
+
+    else:
+        noise_frame_idx = torch.cat(
+            [
+                torch.ones(chunk_len * far_cfg["full_token_per_frame"], device=device)
+                * (chunk_idx + len(context_chunk_partition))
+                for chunk_idx, chunk_len in enumerate(noise_chunk_partition)
+            ]
+        )
+        pad_frame_idx = torch.zeros(padded_seq_len - real_seq_len, device=device)
+
+        if len(context_chunk_partition) != 0:
+            frame_idx = torch.cat([context_frame_idx, noise_frame_idx, pad_frame_idx], dim=0)
+        else:
+            frame_idx = torch.cat([noise_frame_idx, pad_frame_idx], dim=0)
+
+        def mask_mod(b, h, q_idx, kv_idx):
+            is_padding = (q_idx >= real_seq_len) | (kv_idx >= real_seq_len)
+            base = frame_idx[q_idx] >= frame_idx[kv_idx]
+            return base & ~is_padding
+
+    return create_block_mask(
+        mask_mod,
+        B=None,
+        H=None,
+        Q_LEN=padded_seq_len,
+        KV_LEN=padded_seq_len,
+        device=device,
+        _compile=False,
+    )
+
+
 class AnyFlowFARTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOriginalModelMixin):
     r"""
-    Causal (FAR) 3D Transformer for AnyFlow flow-map sampling with frame-level autoregressive generation.
+    Causal (FAR) 3D Transformer for AnyFlow flow-map sampling with chunk-wise autoregressive generation.
 
     Extends the v0.35.1 Wan2.1 backbone with:
 
-    * **FAR causal block-mask** via :func:`torch.nn.attention.flex_attention`, supporting frame-level autoregressive
-      generation (FAR; [Gu et al., 2025](https://arxiv.org/abs/2503.19325)).
+    * **FAR causal block-mask** via :func:`torch.nn.attention.flex_attention`, supporting chunk-wise autoregressive
+      generation ([FAR](https://huggingface.co/papers/2503.19325)).
     * **Compressed-frame patch embedding** ``far_patch_embedding`` for context (already-generated) frames, initialized
       from ``patch_embedding`` via trilinear interpolation so a freshly constructed model is already at a reasonable
       starting point even before LoRA fine-tuning.
@@ -826,11 +1007,11 @@ class AnyFlowFARTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Fr
             Mixing gate between source-timestep and delta-timestep embeddings.
         deltatime_type (`str`, defaults to `'r'`):
             Either ``"r"`` (delta is the target timestep) or ``"t-r"`` (delta is the absolute interval).
-
-    .. note::
-        ``chunk_partition`` is **not** a model config field — it is a per-call argument passed to :meth:`forward`.
-        Different inference setups (varying ``num_frames`` or full-vs-compressed schedules) therefore do not require
-        separate checkpoints.
+        chunk_partition (`Tuple[int, ...]`, defaults to `(1, 3, 3, 3, 3, 3, 3, 2)`):
+            Default per-chunk frame counts used by the pipeline. The released NVIDIA AnyFlow-FAR checkpoints target
+            ``num_frames=81`` (21 latent frames at VAE temporal stride 4) split as ``1 + 3*6 + 2``. A different
+            ``num_frames`` requires a matching ``chunk_partition`` override passed to
+            :meth:`AnyFlowFARPipeline.__call__` (and likewise to :meth:`forward`).
     """
 
     _supports_gradient_checkpointing = True
@@ -859,6 +1040,7 @@ class AnyFlowFARTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Fr
         rope_max_seq_len: int = 1024,
         gate_value: float = 0.25,
         deltatime_type: str = "r",
+        chunk_partition: Tuple[int, ...] = (1, 3, 3, 3, 3, 3, 3, 2),
     ) -> None:
         super().__init__()
 
@@ -923,6 +1105,7 @@ class AnyFlowFARTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Fr
         clean_timestep: Optional[torch.Tensor] = None,
         kv_cache: Optional[List[Dict[str, torch.Tensor]]] = None,
         kv_cache_flag: Optional[Dict[str, Any]] = None,
+        attention_mask: Optional[BlockMask] = None,
         attention_kwargs: Optional[Dict[str, Any]] = None,
         return_dict: bool = True,
     ) -> Union[Transformer2DModelOutput, AnyFlowFARTransformerOutput, Tuple]:
@@ -955,6 +1138,12 @@ class AnyFlowFARTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Fr
                 Per-block KV cache for autoregressive inference. `None` selects the training path.
             kv_cache_flag (`Dict[str, Any]`, *optional*):
                 KV-cache metadata (e.g. ``is_cache_step`` flag and token counts).
+            attention_mask (`BlockMask`, *optional*):
+                Pre-built causal mask, typically constructed via :meth:`build_attention_mask`. Consumed by the train
+                and KV-cache prefill paths; the autoregressive inference path attends through the KV cache and does not
+                use a full mask. When ``None``, the train / cache paths build the mask internally; that fallback is not
+                compile-safe (the underlying ``flex_attention.create_block_mask`` breaks the graph under
+                ``fullgraph=True``), so pass a pre-built mask whenever wrapping ``forward`` in ``torch.compile``.
             attention_kwargs (`dict`, *optional*):
                 Forwarded to the attention processors.
             return_dict (`bool`, *optional*, defaults to `True`):
@@ -978,12 +1167,14 @@ class AnyFlowFARTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Fr
                 return self._forward_cache(
                     clean_hidden_states=clean_hidden_states,
                     clean_timestep=clean_timestep,
+                    attention_mask=attention_mask,
                     **common,
                 )
             return self._forward_inference(**common)
         return self._forward_train(
             clean_hidden_states=clean_hidden_states,
             clean_timestep=clean_timestep,
+            attention_mask=attention_mask,
             **common,
         )
 
@@ -1029,142 +1220,50 @@ class AnyFlowFARTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Fr
         hidden_states = self.patch_embedding(hidden_states).flatten(start_dim=2, end_dim=4).transpose(1, 2)
         return hidden_states
 
-    def _build_causal_mask(self, far_cfg, clean_hidden_states, device, dtype):
-        chunk_partition = far_cfg["chunk_partition"]
+    def build_attention_mask(
+        self,
+        *,
+        chunk_partition: List[int],
+        height: int,
+        width: int,
+        has_clean_context: bool = False,
+        device: Optional[torch.device] = None,
+        mode: str = "train",
+    ) -> BlockMask:
+        r"""Pre-build the causal :class:`~torch.nn.attention.flex_attention.BlockMask` outside ``forward``.
 
-        noise_seq_len = clean_seq_len = far_cfg["num_full_frames"] * far_cfg["full_token_per_frame"]
-        context_seq_len = far_cfg["num_compressed_frames"] * far_cfg["compressed_token_per_frame"]
+        Pass the result via :meth:`forward`'s ``attention_mask`` kwarg to make the whole transformer compatible with
+        ``torch.compile(fullgraph=True)``. Without a pre-built mask, ``forward`` falls back to constructing it
+        internally — that path uses ``flex_attention.create_block_mask(_compile=False)`` and breaks the compile graph.
 
-        noise_start = context_seq_len
-        noise_end = noise_start + noise_seq_len
+        Args:
+            chunk_partition: per-chunk frame counts (must sum to the number of latent frames).
+            height, width: latent spatial dimensions.
+            has_clean_context: ``True`` when ``clean_hidden_states`` will be threaded through :meth:`forward`
+                (training V2V/I2V); only this presence flag affects the mask layout.
+            device: device for the resulting :class:`BlockMask`. The mask is not auto-moved by
+                ``device_map="auto"``; build it on the same device the transformer's inputs will live on.
+            mode: ``"train"`` (matches :meth:`_forward_train`) or ``"cache"`` (matches :meth:`_forward_cache`).
+                The autoregressive ``_forward_inference`` path attends through the KV cache and has no mode here.
 
-        clean_start = context_seq_len + noise_seq_len
-        clean_end = clean_start + clean_seq_len
+        Returns:
+            :class:`~torch.nn.attention.flex_attention.BlockMask`: causal mask spanning the FAR layout, padded to a
+            multiple of 128 along the sequence dimension (the BlockMask block-size requirement).
 
-        if clean_hidden_states is not None:
-            real_seq_len = context_seq_len + noise_seq_len + clean_seq_len
-        else:
-            real_seq_len = context_seq_len + noise_seq_len
-
-        padded_seq_len = int(math.ceil(real_seq_len / 128.0) * 128.0)
-
-        if clean_hidden_states is not None:
-            context_chunk_partition, noise_chunk_partition = (
-                chunk_partition[: far_cfg["num_compressed_chunk"]],
-                chunk_partition[far_cfg["num_compressed_chunk"] :],
-            )  # noqa: E501
-
-            if len(context_chunk_partition) != 0:
-                context_frame_idx = torch.cat(
-                    [
-                        torch.ones(chunk_len * far_cfg["compressed_token_per_frame"], device=device) * chunk_idx
-                        for chunk_idx, chunk_len in enumerate(context_chunk_partition)
-                    ]
-                )  # noqa: E501
-            else:
-                context_frame_idx = None
-            noise_frame_idx = clean_frame_idx = torch.cat(
-                [
-                    torch.ones(chunk_len * far_cfg["full_token_per_frame"], device=device)
-                    * (chunk_idx + len(context_chunk_partition))
-                    for chunk_idx, chunk_len in enumerate(noise_chunk_partition)
-                ]
-            )  # noqa: E501
-            pad_frame_idx = torch.zeros(padded_seq_len - real_seq_len, device=device)
-
-            if len(context_chunk_partition) != 0:
-                frame_idx = torch.cat([context_frame_idx, noise_frame_idx, clean_frame_idx, pad_frame_idx], dim=0)
-            else:
-                frame_idx = torch.cat([noise_frame_idx, clean_frame_idx, pad_frame_idx], dim=0)
-
-            def mask_mod(b, h, q_idx, kv_idx):
-                # q_idx, kv_idx: LongTensor, range: [0, padded_seq_len)
-
-                # 1) whether is padding
-                is_padding = (q_idx >= real_seq_len) | (kv_idx >= real_seq_len)
-
-                # 2) chunk causal
-                base = frame_idx[q_idx] >= frame_idx[kv_idx]
-
-                # 3) interval mask
-                q_is_noise = (q_idx >= noise_start) & (q_idx < noise_end)
-                q_is_clean = (q_idx >= clean_start) & (q_idx < clean_end)
-
-                k_is_noise = (kv_idx >= noise_start) & (kv_idx < noise_end)
-                k_is_clean = (kv_idx >= clean_start) & (kv_idx < clean_end)
-
-                # 4) clean -> noise: disallowed
-                is_clean_to_noise = q_is_clean & k_is_noise
-
-                # 5) noise -> noise: only same frame
-                same_frame_idx = frame_idx[q_idx] == frame_idx[kv_idx]
-
-                noise_to_noise = q_is_noise & k_is_noise
-                noise_to_clean = q_is_noise & k_is_clean
-
-                noise_to_noise_allow = noise_to_noise & same_frame_idx
-                noise_to_noise_mask = (~noise_to_noise) | noise_to_noise_allow
-
-                noise_to_clean_same = noise_to_clean & same_frame_idx
-                noise_to_clean_disallow = noise_to_clean_same
-
-                # attention mask is chunk casual
-                allowed = base & ~is_padding & ~is_clean_to_noise & noise_to_noise_mask & ~noise_to_clean_disallow
-                return allowed
-
-            return create_block_mask(
-                mask_mod,
-                B=None,
-                H=None,
-                Q_LEN=padded_seq_len,
-                KV_LEN=padded_seq_len,
-                device=device,
-                _compile=False,
-            )
-        else:
-            context_chunk_partition, noise_chunk_partition = (
-                chunk_partition[: far_cfg["num_compressed_chunk"]],
-                chunk_partition[far_cfg["num_compressed_chunk"] :],
-            )  # noqa: E501
-
-            if len(context_chunk_partition) != 0:
-                context_frame_idx = torch.cat(
-                    [
-                        torch.ones(chunk_len * far_cfg["compressed_token_per_frame"], device=device) * chunk_idx
-                        for chunk_idx, chunk_len in enumerate(context_chunk_partition)
-                    ]
-                )  # noqa: E501
-            else:
-                context_frame_idx = None
-
-            noise_frame_idx = torch.cat(
-                [
-                    torch.ones(chunk_len * far_cfg["full_token_per_frame"], device=device)
-                    * (chunk_idx + len(context_chunk_partition))
-                    for chunk_idx, chunk_len in enumerate(noise_chunk_partition)
-                ]
-            )  # noqa: E501
-            pad_frame_idx = torch.zeros(padded_seq_len - real_seq_len, device=device)
-
-            if len(context_chunk_partition) != 0:
-                frame_idx = torch.cat([context_frame_idx, noise_frame_idx, pad_frame_idx], dim=0)
-            else:
-                frame_idx = torch.cat([noise_frame_idx, pad_frame_idx], dim=0)
-
-            def mask_mod(b, h, q_idx, kv_idx):
-                is_padding = (q_idx >= real_seq_len) | (kv_idx >= real_seq_len)
-                base = frame_idx[q_idx] >= frame_idx[kv_idx]
-                return base & ~is_padding
-
-            return create_block_mask(
-                mask_mod,
-                B=None,
-                H=None,
-                Q_LEN=padded_seq_len,
-                KV_LEN=padded_seq_len,
-                device=device,
-                _compile=False,
-            )
+        Raises:
+            ValueError: if ``mode`` is neither ``"train"`` nor ``"cache"``.
+        """
+        return _build_anyflow_far_causal_block_mask(
+            chunk_partition=chunk_partition,
+            height=height,
+            width=width,
+            patch_size=self.config.patch_size,
+            compressed_patch_size=self.config.compressed_patch_size,
+            full_chunk_limit=self.config.full_chunk_limit,
+            mode=mode,
+            has_clean_context=has_clean_context,
+            device=device,
+        )
 
     def _forward_inference(
         self,
@@ -1291,6 +1390,7 @@ class AnyFlowFARTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Fr
         r_timestep: torch.LongTensor,
         encoder_hidden_states: torch.Tensor,
         encoder_hidden_states_image: Optional[torch.Tensor] = None,
+        attention_mask: Optional[BlockMask] = None,
         return_dict: bool = True,
         clean_hidden_states=None,
         clean_timestep=None,
@@ -1337,9 +1437,10 @@ class AnyFlowFARTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Fr
             far_cfg["num_compressed_frames"] * far_cfg["compressed_token_per_frame"]
         )
 
-        attention_mask = self._build_causal_mask(
-            far_cfg, clean_hidden_states=clean_hidden_states, device=hidden_states.device, dtype=hidden_states.dtype
-        )
+        if attention_mask is None:
+            attention_mask = _build_far_block_mask_from_far_cfg(
+                far_cfg, has_clean=clean_hidden_states is not None, device=hidden_states.device
+            )
 
         rotary_emb = self.rope(far_cfg=far_cfg, clean_hidden_states=clean_hidden_states, device=hidden_states.device)
         hidden_states = self._forward_far_patchify(
@@ -1396,6 +1497,7 @@ class AnyFlowFARTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Fr
         r_timestep: torch.LongTensor,
         encoder_hidden_states: torch.Tensor,
         encoder_hidden_states_image: Optional[torch.Tensor] = None,
+        attention_mask: Optional[BlockMask] = None,
         return_dict: bool = True,
         clean_hidden_states=None,
         clean_timestep=None,
@@ -1436,9 +1538,13 @@ class AnyFlowFARTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Fr
             "chunk_partition": chunk_partition,
         }
 
-        attention_mask = self._build_causal_mask(
-            far_cfg, clean_hidden_states=clean_hidden_states, device=hidden_states.device, dtype=hidden_states.dtype
-        )
+        if attention_mask is None:
+            # Fallback for callers that don't pre-build an attention mask (e.g. training scripts). This will introduce
+            # a graph break, which will cause an error if `torch.compile(fullgraph=True)` is used. In this case,
+            # pre-build the mask using `build_attention_mask` and pass it via the `attention_mask` argument.
+            attention_mask = _build_far_block_mask_from_far_cfg(
+                far_cfg, has_clean=clean_hidden_states is not None, device=hidden_states.device
+            )
 
         rotary_emb = self.rope(far_cfg=far_cfg, clean_hidden_states=clean_hidden_states, device=hidden_states.device)
 
