@@ -88,7 +88,7 @@ EXAMPLE_DOC_STRING = """
         ...     controlnet_conditioning_scale=0.75,
         ...     height=1728,
         ...     width=992,
-        ...     num_inference_steps=9,
+        ...     num_inference_steps=8,
         ...     guidance_scale=0.0,
         ...     generator=torch.Generator("cuda").manual_seed(43),
         ... ).images[0]

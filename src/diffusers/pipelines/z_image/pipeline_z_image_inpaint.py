@@ -65,7 +65,7 @@ EXAMPLE_DOC_STRING = """
         ...     image=init_image,
         ...     mask_image=mask_image,
         ...     strength=1.0,
-        ...     num_inference_steps=9,
+        ...     num_inference_steps=8,
         ...     guidance_scale=0.0,
         ...     generator=torch.Generator("cuda").manual_seed(42),
         ... ).images[0]

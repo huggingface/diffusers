@@ -513,7 +513,7 @@ class ZImageSetTimestepsStep(ModularPipelineBlocks):
     def inputs(self) -> list[InputParam]:
         return [
             InputParam("latents", required=True),
-            InputParam("num_inference_steps", default=9),
+            InputParam("num_inference_steps", default=8),
             InputParam("sigmas"),
         ]
 

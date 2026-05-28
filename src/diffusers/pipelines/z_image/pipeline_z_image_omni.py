@@ -52,7 +52,7 @@ EXAMPLE_DOC_STRING = """
         ...     prompt,
         ...     height=1024,
         ...     width=1024,
-        ...     num_inference_steps=9,
+        ...     num_inference_steps=8,
         ...     guidance_scale=0.0,
         ...     generator=torch.Generator("cuda").manual_seed(42),
         ... ).images[0]
