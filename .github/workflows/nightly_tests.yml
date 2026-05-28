@@ -78,10 +78,10 @@ jobs:
       - name: Install dependencies
         run: |
           echo 'tokenizers<0.23.0' > "$UV_OVERRIDE"
-          uv pip install -e ".[quality]"
-          uv pip uninstall transformers huggingface_hub && UV_PRERELEASE=allow uv pip install -U transformers@git+https://github.com/huggingface/transformers.git
-          uv pip uninstall accelerate && uv pip install -U accelerate@git+https://github.com/huggingface/accelerate.git
-          uv pip install pytest-reportlog
+          uv pip install --prerelease=allow -e ".[quality]"
+          uv pip uninstall transformers huggingface_hub && UV_PRERELEASE=allow uv pip install --prerelease=allow -U transformers@git+https://github.com/huggingface/transformers.git
+          uv pip uninstall accelerate && uv pip install --prerelease=allow -U accelerate@git+https://github.com/huggingface/accelerate.git
+          uv pip install --prerelease=allow pytest-reportlog
       - name: Environment
         run: |
           diffusers-cli env
@@ -132,11 +132,11 @@ jobs:
     - name: Install dependencies
       run: |
         echo 'tokenizers<0.23.0' > "$UV_OVERRIDE"
-        uv pip install -e ".[quality]"
-        uv pip uninstall transformers huggingface_hub && UV_PRERELEASE=allow uv pip install -U transformers@git+https://github.com/huggingface/transformers.git
-        uv pip install peft@git+https://github.com/huggingface/peft.git
-        uv pip uninstall accelerate && uv pip install -U accelerate@git+https://github.com/huggingface/accelerate.git
-        uv pip install pytest-reportlog
+        uv pip install --prerelease=allow -e ".[quality]"
+        uv pip uninstall transformers huggingface_hub && UV_PRERELEASE=allow uv pip install --prerelease=allow -U transformers@git+https://github.com/huggingface/transformers.git
+        uv pip install --prerelease=allow peft@git+https://github.com/huggingface/peft.git
+        uv pip uninstall accelerate && uv pip install --prerelease=allow -U accelerate@git+https://github.com/huggingface/accelerate.git
+        uv pip install --prerelease=allow pytest-reportlog
     - name: Environment
       run: diffusers-cli env
 
@@ -200,8 +200,8 @@ jobs:
     - name: Install dependencies
       run: |
         echo 'tokenizers<0.23.0' > "$UV_OVERRIDE"
-        uv pip install -e ".[quality,training]"
-        uv pip uninstall transformers huggingface_hub && UV_PRERELEASE=allow uv pip install -U transformers@git+https://github.com/huggingface/transformers.git
+        uv pip install --prerelease=allow -e ".[quality,training]"
+        uv pip uninstall transformers huggingface_hub && UV_PRERELEASE=allow uv pip install --prerelease=allow -U transformers@git+https://github.com/huggingface/transformers.git
     - name: Environment
       run: |
         diffusers-cli env
@@ -242,11 +242,11 @@ jobs:
       - name: Install dependencies
         run: |
           echo 'tokenizers<0.23.0' > "$UV_OVERRIDE"
-          uv pip install -e ".[quality]"
-          uv pip uninstall transformers huggingface_hub && UV_PRERELEASE=allow uv pip install -U transformers@git+https://github.com/huggingface/transformers.git
-          uv pip install peft@git+https://github.com/huggingface/peft.git
-          uv pip uninstall accelerate && uv pip install -U accelerate@git+https://github.com/huggingface/accelerate.git
-          uv pip install pytest-reportlog
+          uv pip install --prerelease=allow -e ".[quality]"
+          uv pip uninstall transformers huggingface_hub && UV_PRERELEASE=allow uv pip install --prerelease=allow -U transformers@git+https://github.com/huggingface/transformers.git
+          uv pip install --prerelease=allow peft@git+https://github.com/huggingface/peft.git
+          uv pip uninstall accelerate && uv pip install --prerelease=allow -U accelerate@git+https://github.com/huggingface/accelerate.git
+          uv pip install --prerelease=allow pytest-reportlog
       - name: Environment
         run: |
           diffusers-cli env
@@ -293,10 +293,10 @@ jobs:
       - name: Install dependencies
         run: |
           echo 'tokenizers<0.23.0' > "$UV_OVERRIDE"
-          uv pip install -e ".[quality]"
-          uv pip uninstall transformers huggingface_hub && UV_PRERELEASE=allow uv pip install -U transformers@git+https://github.com/huggingface/transformers.git
-          uv pip install peft@git+https://github.com/huggingface/peft.git
-          uv pip uninstall accelerate && uv pip install -U accelerate@git+https://github.com/huggingface/accelerate.git
+          uv pip install --prerelease=allow -e ".[quality]"
+          uv pip uninstall transformers huggingface_hub && UV_PRERELEASE=allow uv pip install --prerelease=allow -U transformers@git+https://github.com/huggingface/transformers.git
+          uv pip install --prerelease=allow peft@git+https://github.com/huggingface/peft.git
+          uv pip uninstall accelerate && uv pip install --prerelease=allow -U accelerate@git+https://github.com/huggingface/accelerate.git
 
       - name: Environment
         run: |
@@ -369,13 +369,13 @@ jobs:
       - name: Install dependencies
         run: |
           echo 'tokenizers<0.23.0' > "$UV_OVERRIDE"
-          uv pip install -e ".[quality]"
-          uv pip install -U ${{ matrix.config.backend }}
+          uv pip install --prerelease=allow -e ".[quality]"
+          uv pip install --prerelease=allow -U ${{ matrix.config.backend }}
           if [ "${{ join(matrix.config.additional_deps, ' ') }}" != "" ]; then
-              uv pip install ${{ join(matrix.config.additional_deps, ' ') }}
+              uv pip install --prerelease=allow ${{ join(matrix.config.additional_deps, ' ') }}
           fi
-          uv pip install pytest-reportlog
-          uv pip uninstall transformers huggingface_hub && UV_PRERELEASE=allow uv pip install -U transformers@git+https://github.com/huggingface/transformers.git
+          uv pip install --prerelease=allow pytest-reportlog
+          uv pip uninstall transformers huggingface_hub && UV_PRERELEASE=allow uv pip install --prerelease=allow -U transformers@git+https://github.com/huggingface/transformers.git
       - name: Environment
         run: |
           diffusers-cli env
@@ -422,10 +422,10 @@ jobs:
       - name: Install dependencies
         run: |
           echo 'tokenizers<0.23.0' > "$UV_OVERRIDE"
-          uv pip install -e ".[quality]"
-          uv pip install -U bitsandbytes optimum_quanto
-          uv pip uninstall transformers huggingface_hub && UV_PRERELEASE=allow uv pip install -U transformers@git+https://github.com/huggingface/transformers.git
-          uv pip install pytest-reportlog
+          uv pip install --prerelease=allow -e ".[quality]"
+          uv pip install --prerelease=allow -U bitsandbytes optimum_quanto
+          uv pip uninstall transformers huggingface_hub && UV_PRERELEASE=allow uv pip install --prerelease=allow -U transformers@git+https://github.com/huggingface/transformers.git
+          uv pip install --prerelease=allow pytest-reportlog
       - name: Environment
         run: |
           diffusers-cli env
@@ -537,10 +537,10 @@ jobs:
 #        shell: arch -arch arm64 bash {0}
 #        run: |
 #          ${CONDA_RUN} pip install --upgrade pip uv
-#          ${CONDA_RUN} uv pip install -e ".[quality]"
-#          ${CONDA_RUN} uv pip install torch torchvision torchaudio --extra-index-url https://download.pytorch.org/whl/cpu
-#          ${CONDA_RUN} uv pip install accelerate@git+https://github.com/huggingface/accelerate
-#          ${CONDA_RUN} uv pip install pytest-reportlog
+#          ${CONDA_RUN} uv pip install --prerelease=allow -e ".[quality]"
+#          ${CONDA_RUN} uv pip install --prerelease=allow torch torchvision torchaudio --extra-index-url https://download.pytorch.org/whl/cpu
+#          ${CONDA_RUN} uv pip install --prerelease=allow accelerate@git+https://github.com/huggingface/accelerate
+#          ${CONDA_RUN} uv pip install --prerelease=allow pytest-reportlog
 #      - name: Environment
 #        shell: arch -arch arm64 bash {0}
 #        run: |
@@ -593,10 +593,10 @@ jobs:
 #        shell: arch -arch arm64 bash {0}
 #        run: |
 #          ${CONDA_RUN} pip install --upgrade pip uv
-#          ${CONDA_RUN} uv pip install -e ".[quality]"
-#          ${CONDA_RUN} uv pip install torch torchvision torchaudio --extra-index-url https://download.pytorch.org/whl/cpu
-#          ${CONDA_RUN} uv pip install accelerate@git+https://github.com/huggingface/accelerate
-#          ${CONDA_RUN} uv pip install pytest-reportlog
+#          ${CONDA_RUN} uv pip install --prerelease=allow -e ".[quality]"
+#          ${CONDA_RUN} uv pip install --prerelease=allow torch torchvision torchaudio --extra-index-url https://download.pytorch.org/whl/cpu
+#          ${CONDA_RUN} uv pip install --prerelease=allow accelerate@git+https://github.com/huggingface/accelerate
+#          ${CONDA_RUN} uv pip install --prerelease=allow pytest-reportlog
 #      - name: Environment
 #        shell: arch -arch arm64 bash {0}
 #        run: |
