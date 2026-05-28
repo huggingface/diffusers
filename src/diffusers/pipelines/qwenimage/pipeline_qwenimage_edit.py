@@ -58,6 +58,7 @@ EXAMPLE_DOC_STRING = """
         ... )
         >>> # Depending on the variant being used, the pipeline call will slightly vary.
         >>> # Refer to the pipeline documentation for more details.
+        >>> pipe.vae.to(torch.float32)
         >>> image = pipe(image, prompt, num_inference_steps=50).images[0]
         >>> image.save("qwenimage_edit.png")
         ```
