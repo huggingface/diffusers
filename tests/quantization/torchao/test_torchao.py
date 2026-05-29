@@ -595,9 +595,7 @@ class TorchAoSerializationTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp_dir:
             quantized_model.save_pretrained(tmp_dir, safe_serialization=False)
             loaded_quantized_model = FluxTransformer2DModel.from_pretrained(
-                tmp_dir,
-                torch_dtype=torch.bfloat16,
-                use_safetensors=False,
+                tmp_dir, torch_dtype=torch.bfloat16, use_safetensors=False
             ).to(device=torch_device)
 
         inputs = self.get_dummy_tensor_inputs(torch_device)
