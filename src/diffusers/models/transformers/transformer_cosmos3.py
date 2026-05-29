@@ -151,9 +151,9 @@ class DomainAwareLinear(nn.Module):
 
     def __init__(self, input_size: int, output_size: int, num_domains: int) -> None:
         super().__init__()
-        self.input_size = int(input_size)
-        self.output_size = int(output_size)
-        self.num_domains = int(num_domains)
+        self.input_size = input_size
+        self.output_size = output_size
+        self.num_domains = num_domains
         self.fc = nn.Embedding(self.num_domains, self.output_size * self.input_size)
         self.bias = nn.Embedding(self.num_domains, self.output_size)
         nn.init.xavier_uniform_(self.fc.weight)
@@ -370,8 +370,8 @@ class Cosmos3OmniTransformer(ModelMixin, ConfigMixin, PeftAdapterMixin, Attentio
         self.time_proj = Timesteps(num_channels=256, flip_sin_to_cos=True, downscale_freq_shift=0)
         self.time_embedder = TimestepEmbedding(in_channels=256, time_embed_dim=hidden_size)
         self.action_gen = action_gen
-        self.action_dim = int(32 if action_dim is None else action_dim)
-        self.num_embodiment_domains = int(num_embodiment_domains)
+        self.action_dim = 32 if action_dim is None else action_dim
+        self.num_embodiment_domains = num_embodiment_domains
         if action_gen:
             self.action_proj_in = DomainAwareLinear(self.action_dim, hidden_size, self.num_embodiment_domains)
             self.action_proj_out = DomainAwareLinear(hidden_size, self.action_dim, self.num_embodiment_domains)
