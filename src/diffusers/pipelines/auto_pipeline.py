@@ -20,6 +20,7 @@ from huggingface_hub.utils import validate_hf_hub_args
 from ..configuration_utils import ConfigMixin
 from ..models.controlnets import ControlNetUnionModel
 from ..utils import is_sentencepiece_available
+from .anyflow import AnyFlowFARPipeline, AnyFlowPipeline
 from .audioldm2 import AudioLDM2Pipeline
 from .aura_flow import AuraFlowPipeline
 from .chroma import ChromaPipeline
@@ -260,18 +261,21 @@ AUTO_INPAINT_PIPELINES_MAPPING = OrderedDict(
 
 AUTO_TEXT2VIDEO_PIPELINES_MAPPING = OrderedDict(
     [
+        ("anyflow", AnyFlowPipeline),
         ("wan", WanPipeline),
     ]
 )
 
 AUTO_IMAGE2VIDEO_PIPELINES_MAPPING = OrderedDict(
     [
+        ("anyflow-far", AnyFlowFARPipeline),
         ("wan-i2v", WanImageToVideoPipeline),
     ]
 )
 
 AUTO_VIDEO2VIDEO_PIPELINES_MAPPING = OrderedDict(
     [
+        ("anyflow-far", AnyFlowFARPipeline),
         ("wan", WanVideoToVideoPipeline),
     ]
 )

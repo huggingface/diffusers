@@ -137,7 +137,7 @@ _deps = [
     "requests",
     "tensorboard",
     "tiktoken>=0.7.0",
-    "torch>=1.4",
+    "torch>=2.6",
     "torchvision",
     "transformers>=4.41.2",
     "urllib3<=2.0.0",
