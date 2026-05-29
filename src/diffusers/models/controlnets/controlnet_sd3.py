@@ -425,8 +425,7 @@ class SD3MultiControlNetModel(ModelMixin):
 
         Returns:
             [`SD3ControlNetOutput`] or `tuple`:
-                If `return_dict` is True, a [`SD3ControlNetOutput`] is returned, otherwise a plain `tuple` is
-                returned.
+                If `return_dict` is True, a [`SD3ControlNetOutput`] is returned, otherwise a plain `tuple` is returned.
         """
         for i, (image, scale, controlnet) in enumerate(zip(controlnet_cond, conditioning_scale, self.nets)):
             block_samples = controlnet(
