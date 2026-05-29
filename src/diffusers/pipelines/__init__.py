@@ -324,6 +324,7 @@ else:
         ]
     )
     _import_structure["latte"] = ["LattePipeline"]
+    _import_structure["lens"] = ["LensPipeline"]
     _import_structure["llada2"] = ["LLaDA2Pipeline", "LLaDA2PipelineOutput"]
     _import_structure["ltx"] = [
         "LTXPipeline",
@@ -783,6 +784,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         )
         from .latent_diffusion import LDMTextToImagePipeline
         from .latte import LattePipeline
+        from .lens import LensPipeline
         from .ledits_pp import (
             LEditsPPDiffusionPipelineOutput,
             LEditsPPInversionPipelineOutput,

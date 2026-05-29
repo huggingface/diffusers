@@ -41,6 +41,7 @@ if is_torch_available():
     from .transformer_hunyuanimage import HunyuanImageTransformer2DModel
     from .transformer_joyimage import JoyImageEditTransformer3DModel
     from .transformer_kandinsky import Kandinsky5Transformer3DModel
+    from .transformer_lens import LensTransformer2DModel
     from .transformer_longcat_audio_dit import LongCatAudioDiTTransformer
     from .transformer_longcat_image import LongCatImageTransformer2DModel
     from .transformer_ltx import LTXVideoTransformer3DModel
