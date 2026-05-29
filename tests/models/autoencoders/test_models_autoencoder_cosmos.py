@@ -12,24 +12,38 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import unittest
+import pytest
+import torch
 
 from diffusers import AutoencoderKLCosmos
+from diffusers.utils.torch_utils import randn_tensor
 
-from ...testing_utils import enable_full_determinism, floats_tensor, torch_device
-from ..test_modeling_common import ModelTesterMixin
-from .testing_utils import AutoencoderTesterMixin
+from ...testing_utils import enable_full_determinism, torch_device
+from ..testing_utils import BaseModelTesterConfig, MemoryTesterMixin, ModelTesterMixin, TrainingTesterMixin
+from .testing_utils import NewAutoencoderTesterMixin
 
 
 enable_full_determinism()
 
 
-class AutoencoderKLCosmosTests(ModelTesterMixin, AutoencoderTesterMixin, unittest.TestCase):
-    model_class = AutoencoderKLCosmos
-    main_input_name = "sample"
-    base_precision = 1e-2
+class AutoencoderKLCosmosTesterConfig(BaseModelTesterConfig):
+    @property
+    def model_class(self):
+        return AutoencoderKLCosmos
 
-    def get_autoencoder_kl_cosmos_config(self):
+    @property
+    def main_input_name(self) -> str:
+        return "sample"
+
+    @property
+    def output_shape(self) -> tuple:
+        return (3, 9, 32, 32)
+
+    @property
+    def generator(self):
+        return torch.Generator("cpu").manual_seed(0)
+
+    def get_init_dict(self) -> dict:
         return {
             "in_channels": 3,
             "out_channels": 3,
@@ -46,38 +60,35 @@ class AutoencoderKLCosmosTests(ModelTesterMixin, AutoencoderTesterMixin, unittes
             "temporal_compression_ratio": 4,
         }
 
-    @property
-    def dummy_input(self):
+    def get_dummy_inputs(self) -> dict:
         batch_size = 2
         num_frames = 9
         num_channels = 3
         height = 32
         width = 32
-
-        image = floats_tensor((batch_size, num_channels, num_frames, height, width)).to(torch_device)
-
+        image = randn_tensor(
+            (batch_size, num_channels, num_frames, height, width), generator=self.generator, device=torch_device
+        )
         return {"sample": image}
 
-    @property
-    def input_shape(self):
-        return (3, 9, 32, 32)
 
-    @property
-    def output_shape(self):
-        return (3, 9, 32, 32)
+class TestAutoencoderKLCosmos(AutoencoderKLCosmosTesterConfig, ModelTesterMixin):
+    base_precision = 1e-2
 
-    def prepare_init_args_and_inputs_for_common(self):
-        init_dict = self.get_autoencoder_kl_cosmos_config()
-        inputs_dict = self.dummy_input
-        return init_dict, inputs_dict
 
+class TestAutoencoderKLCosmosTraining(AutoencoderKLCosmosTesterConfig, TrainingTesterMixin):
     def test_gradient_checkpointing_is_applied(self):
-        expected_set = {
-            "CosmosEncoder3d",
-            "CosmosDecoder3d",
-        }
+        expected_set = {"CosmosEncoder3d", "CosmosDecoder3d"}
         super().test_gradient_checkpointing_is_applied(expected_set=expected_set)
 
-    @unittest.skip("Not sure why this test fails. Investigate later.")
-    def test_effective_gradient_checkpointing(self):
-        pass
+    @pytest.mark.skip("Not sure why this test fails. Investigate later.")
+    def test_gradient_checkpointing_equivalence(self):
+        super().test_gradient_checkpointing_equivalence()
+
+
+class TestAutoencoderKLCosmosMemory(AutoencoderKLCosmosTesterConfig, MemoryTesterMixin):
+    pass
+
+
+class TestAutoencoderKLCosmosSlicingTiling(AutoencoderKLCosmosTesterConfig, NewAutoencoderTesterMixin):
+    pass
