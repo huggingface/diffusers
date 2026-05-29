@@ -663,11 +663,14 @@ class SlowBnb8bitFluxTests(Base8bitTests):
             transformer=transformer_8bit,
             torch_dtype=torch.float16,
         )
-        # Use sequential CPU offload to keep peak GPU memory minimal (one layer at a time).
-        # enable_model_cpu_offload moves an entire sub-model to GPU at once, which OOMs on
-        # <=24 GB cards for FLUX.1-dev even with int8 quantization.
-        # This requires the bitsandbytes fix that preserves Int8Params.SCB across .to() calls.
-        self.pipeline_8bit.enable_sequential_cpu_offload()
+        # On devices with <= 24 GB VRAM, enable_model_cpu_offload can OOM because it
+        # moves an entire sub-model to the accelerator at once.  Fall back to
+        # sequential (per-layer) CPU offload in that case.
+        _, total_mem = torch.accelerator.get_memory_info(0)
+        if total_mem <= 25 * (1024**3):
+            self.pipeline_8bit.enable_sequential_cpu_offload()
+        else:
+            self.pipeline_8bit.enable_model_cpu_offload()
 
     def tearDown(self):
         del self.pipeline_8bit
