@@ -959,6 +959,12 @@ class AnyFlowFARTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Fr
                 Forwarded to the attention processors.
             return_dict (`bool`, *optional*, defaults to `True`):
                 If `False`, returns positional tuples instead of an output dataclass.
+
+        Returns:
+            [`~models.transformer_2d.Transformer2DModelOutput`], [`AnyFlowFARTransformerOutput`] or `tuple`:
+                When `return_dict` is `False`, a plain `tuple` is returned. Otherwise, the causal training rollout
+                (`kv_cache is None`) returns a [`~models.transformer_2d.Transformer2DModelOutput`], while the
+                cache-prefill and autoregressive inference paths return an [`AnyFlowFARTransformerOutput`].
         """
         # `attention_kwargs` is consumed by the @apply_lora_scale decorator on this method;
         # it does not need to thread through to the inner _forward_* paths.
