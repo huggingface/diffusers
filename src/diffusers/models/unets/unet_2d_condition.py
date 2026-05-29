@@ -26,6 +26,7 @@ from ...utils import (
     deprecate,
     logging,
 )
+from ...utils.torch_utils import is_compiled_module
 from ..activations import get_activation
 from ..attention import AttentionMixin
 from ..attention_processor import (
@@ -855,10 +856,11 @@ class UNet2DConditionModel(
             # This would be a good case for the `match` statement (Python 3.10+)
             is_mps = sample.device.type == "mps"
             is_npu = sample.device.type == "npu"
+            is_tpu = sample.device.type == "tpu"
             if isinstance(timestep, float):
-                dtype = torch.float32 if (is_mps or is_npu) else torch.float64
+                dtype = torch.float32 if (is_mps or is_npu or is_tpu) else torch.float64
             else:
-                dtype = torch.int32 if (is_mps or is_npu) else torch.int64
+                dtype = torch.int32 if (is_mps or is_npu or is_tpu) else torch.int64
             timesteps = torch.tensor([timesteps], dtype=dtype, device=sample.device)
         elif len(timesteps.shape) == 0:
             timesteps = timesteps[None].to(sample.device)
@@ -866,7 +868,14 @@ class UNet2DConditionModel(
         # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
         timesteps = timesteps.expand(sample.shape[0])
 
-        t_emb = self.time_proj(timesteps)
+        # On TPU in eager/lazy mode, torch.cat([sin, cos], dim=-1) inside time_proj
+        # lands at an unaligned offset in the XLA DUS fusion emitter → crash.
+        # torch.compile with TpuBackend handles this internally, so only wrap for
+        # non-compiled modules.
+        if sample.device.type == "tpu" and not is_compiled_module(self):
+            t_emb = self.time_proj(timesteps.cpu()).to(sample.device)
+        else:
+            t_emb = self.time_proj(timesteps)
         # `Timesteps` does not contain any weights and will always return f32 tensors
         # but time_embedding might actually be running in fp16. so we need to cast here.
         # there might be better ways to encapsulate this.

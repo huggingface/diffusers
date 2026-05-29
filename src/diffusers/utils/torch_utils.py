@@ -33,12 +33,13 @@ if is_torch_available():
     import torch
     from torch.fft import fftn, fftshift, ifftn, ifftshift
 
-    BACKEND_SUPPORTS_TRAINING = {"cuda": True, "xpu": True, "cpu": True, "mps": False, "default": True}
+    BACKEND_SUPPORTS_TRAINING = {"cuda": True, "xpu": True, "cpu": True, "mps": False, "tpu": False, "default": True}
     BACKEND_EMPTY_CACHE = {
         "cuda": torch.cuda.empty_cache,
         "xpu": torch.xpu.empty_cache,
         "cpu": None,
         "mps": torch.mps.empty_cache,
+        "tpu": getattr(getattr(torch, "tpu", None), "empty_cache", None),
         "default": None,
     }
     BACKEND_DEVICE_COUNT = {
@@ -46,6 +47,7 @@ if is_torch_available():
         "xpu": torch.xpu.device_count,
         "cpu": lambda: 0,
         "mps": lambda: 0,
+        "tpu": lambda: getattr(getattr(torch, "tpu", None), "device_count", lambda: 0)(),
         "default": 0,
     }
     BACKEND_MANUAL_SEED = {
@@ -53,6 +55,9 @@ if is_torch_available():
         "xpu": torch.xpu.manual_seed,
         "cpu": torch.manual_seed,
         "mps": torch.mps.manual_seed,
+        # TPU latents are always generated on CPU (TPU RNG has unaligned DUS bug),
+        # so CPU seeding is the correct behaviour here.
+        "tpu": torch.manual_seed,
         "default": torch.manual_seed,
     }
     BACKEND_RESET_PEAK_MEMORY_STATS = {
@@ -60,6 +65,7 @@ if is_torch_available():
         "xpu": getattr(torch.xpu, "reset_peak_memory_stats", None),
         "cpu": None,
         "mps": None,
+        "tpu": None,
         "default": None,
     }
     BACKEND_RESET_MAX_MEMORY_ALLOCATED = {
@@ -67,6 +73,7 @@ if is_torch_available():
         "xpu": getattr(torch.xpu, "reset_peak_memory_stats", None),
         "cpu": None,
         "mps": None,
+        "tpu": None,
         "default": None,
     }
     BACKEND_MAX_MEMORY_ALLOCATED = {
@@ -74,6 +81,7 @@ if is_torch_available():
         "xpu": getattr(torch.xpu, "max_memory_allocated", None),
         "cpu": 0,
         "mps": 0,
+        "tpu": 0,
         "default": 0,
     }
     BACKEND_SYNCHRONIZE = {
@@ -81,6 +89,7 @@ if is_torch_available():
         "xpu": getattr(torch.xpu, "synchronize", None),
         "cpu": None,
         "mps": None,
+        "tpu": getattr(getattr(torch, "tpu", None), "synchronize", None),
         "default": None,
     }
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -165,6 +174,11 @@ def randn_tensor(
         device = torch.device(device)
     rand_device = device
     batch_size = shape[0]
+
+    # TPU RNG has an unaligned DUS (dynamic-update-slice) bug — generate on CPU
+    # and move to TPU via the existing .to(device) call at the end.
+    if device is not None and device.type == "tpu":
+        rand_device = torch.device("cpu")
 
     layout = layout or torch.strided
     device = device or torch.device("cpu")
