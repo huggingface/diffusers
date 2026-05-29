@@ -161,7 +161,7 @@ def main():
             num_inference_steps=args.num_inference_steps,
             flow_shift=args.flow_shift,
             action_mode=args.action_mode,
-            action=action,
+            raw_actions=action,
             action_chunk_size=args.action_chunk_size,
             domain_name=args.domain_name,
             raw_action_dim=args.raw_action_dim,
