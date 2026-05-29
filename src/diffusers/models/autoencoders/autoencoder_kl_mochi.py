@@ -1110,7 +1110,5 @@ class AutoencoderKLMochi(ModelMixin, AutoencoderMixin, ConfigMixin):
             z = posterior.sample(generator=generator)
         else:
             z = posterior.mode()
-        dec = self.decode(z)
-        if not return_dict:
-            return (dec,)
+        dec = self.decode(z, return_dict=return_dict)
         return dec
