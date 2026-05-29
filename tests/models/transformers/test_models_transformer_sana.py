@@ -12,57 +12,55 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import unittest
-
 import torch
 
 from diffusers import SanaTransformer2DModel
+from diffusers.utils.torch_utils import randn_tensor
 
-from ...testing_utils import (
-    enable_full_determinism,
-    torch_device,
+from ...testing_utils import enable_full_determinism, torch_device
+from ..testing_utils import (
+    AttentionTesterMixin,
+    BaseModelTesterConfig,
+    MemoryTesterMixin,
+    ModelTesterMixin,
+    TrainingTesterMixin,
 )
-from ..test_modeling_common import ModelTesterMixin
 
 
 enable_full_determinism()
 
 
-class SanaTransformerTests(ModelTesterMixin, unittest.TestCase):
-    model_class = SanaTransformer2DModel
-    main_input_name = "hidden_states"
-    uses_custom_attn_processor = True
-    model_split_percents = [0.7, 0.7, 0.9]
+class SanaTransformerTesterConfig(BaseModelTesterConfig):
+    @property
+    def model_class(self):
+        return SanaTransformer2DModel
 
     @property
-    def dummy_input(self):
-        batch_size = 2
-        num_channels = 4
-        height = 32
-        width = 32
-        embedding_dim = 8
-        sequence_length = 8
+    def main_input_name(self) -> str:
+        return "hidden_states"
 
-        hidden_states = torch.randn((batch_size, num_channels, height, width)).to(torch_device)
-        encoder_hidden_states = torch.randn((batch_size, sequence_length, embedding_dim)).to(torch_device)
-        timestep = torch.randint(0, 1000, size=(batch_size,)).to(torch_device)
+    @property
+    def uses_custom_attn_processor(self) -> bool:
+        return True
 
+    @property
+    def output_shape(self) -> tuple:
+        return (4, 32, 32)
+
+    @property
+    def input_shape(self) -> tuple:
+        return (4, 32, 32)
+
+    @property
+    def model_split_percents(self) -> list:
+        return [0.7, 0.7, 0.9]
+
+    @property
+    def generator(self):
+        return torch.Generator("cpu").manual_seed(0)
+
+    def get_init_dict(self) -> dict:
         return {
-            "hidden_states": hidden_states,
-            "encoder_hidden_states": encoder_hidden_states,
-            "timestep": timestep,
-        }
-
-    @property
-    def input_shape(self):
-        return (4, 32, 32)
-
-    @property
-    def output_shape(self):
-        return (4, 32, 32)
-
-    def prepare_init_args_and_inputs_for_common(self):
-        init_dict = {
             "patch_size": 1,
             "in_channels": 4,
             "out_channels": 4,
@@ -75,9 +73,43 @@ class SanaTransformerTests(ModelTesterMixin, unittest.TestCase):
             "caption_channels": 8,
             "sample_size": 32,
         }
-        inputs_dict = self.dummy_input
-        return init_dict, inputs_dict
 
+    def get_dummy_inputs(self) -> dict:
+        batch_size = 2
+        num_channels = 4
+        height = 32
+        width = 32
+        embedding_dim = 8
+        sequence_length = 8
+
+        hidden_states = randn_tensor(
+            (batch_size, num_channels, height, width), generator=self.generator, device=torch_device
+        )
+        encoder_hidden_states = randn_tensor(
+            (batch_size, sequence_length, embedding_dim), generator=self.generator, device=torch_device
+        )
+        timestep = torch.randint(0, 1000, size=(batch_size,), generator=self.generator).to(torch_device)
+
+        return {
+            "hidden_states": hidden_states,
+            "encoder_hidden_states": encoder_hidden_states,
+            "timestep": timestep,
+        }
+
+
+class TestSanaTransformer(SanaTransformerTesterConfig, ModelTesterMixin):
+    pass
+
+
+class TestSanaTransformerMemory(SanaTransformerTesterConfig, MemoryTesterMixin):
+    pass
+
+
+class TestSanaTransformerTraining(SanaTransformerTesterConfig, TrainingTesterMixin):
     def test_gradient_checkpointing_is_applied(self):
         expected_set = {"SanaTransformer2DModel"}
         super().test_gradient_checkpointing_is_applied(expected_set=expected_set)
+
+
+class TestSanaTransformerAttention(SanaTransformerTesterConfig, AttentionTesterMixin):
+    pass
