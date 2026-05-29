@@ -71,6 +71,11 @@ class MultiControlNetModel(ModelMixin):
                 all prompts.
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`ControlNetOutput`] instead of a plain tuple.
+
+        Returns:
+            [`~models.controlnets.controlnet.ControlNetOutput`] or `tuple`:
+                If `return_dict` is True, a [`~models.controlnets.controlnet.ControlNetOutput`] is returned, otherwise
+                a plain `tuple` is returned.
         """
         for i, (image, scale, controlnet) in enumerate(zip(controlnet_cond, conditioning_scale, self.nets)):
             down_samples, mid_sample = controlnet(

@@ -19,8 +19,11 @@ env:
   PIPELINE_USAGE_CUTOFF: 0
   SLACK_API_TOKEN: ${{ secrets.SLACK_CIFEEDBACK_BOT_TOKEN }}
   CONSOLIDATED_REPORT_PATH: consolidated_test_report.md
-  # Force tokenizers<0.23.0 across every `uv pip install` in this workflow,
-  # even when transformers@main declares a higher lower-bound.
+  # Force version overrides across every `uv pip install` in this workflow via UV_OVERRIDE:
+  #   - tokenizers<0.23.0, even when transformers@main declares a higher lower-bound.
+  #   - torch/torchvision/torchaudio pinned to the image's baked-in set so `-U` installs
+  #     (e.g. accelerate@main) can't bump torch and break torchvision's C++ ABI
+  #     (torchvision::nms). The pinned set is (re)written into the override file per job below.
   UV_OVERRIDE: /tmp/uv-overrides.txt
 
 jobs:
@@ -77,7 +80,7 @@ jobs:
         run: nvidia-smi
       - name: Install dependencies
         run: |
-          echo 'tokenizers<0.23.0' > "$UV_OVERRIDE"
+          printf 'tokenizers<0.23.0\ntorch==2.10.0\ntorchvision==0.25.0\ntorchaudio==2.10.0\n' > "$UV_OVERRIDE"
           uv pip install -e ".[quality]"
           uv pip uninstall transformers huggingface_hub && UV_PRERELEASE=allow uv pip install -U transformers@git+https://github.com/huggingface/transformers.git
           uv pip uninstall accelerate && uv pip install -U accelerate@git+https://github.com/huggingface/accelerate.git
@@ -131,7 +134,7 @@ jobs:
 
     - name: Install dependencies
       run: |
-        echo 'tokenizers<0.23.0' > "$UV_OVERRIDE"
+        printf 'tokenizers<0.23.0\ntorch==2.10.0\ntorchvision==0.25.0\ntorchaudio==2.10.0\n' > "$UV_OVERRIDE"
         uv pip install -e ".[quality]"
         uv pip uninstall transformers huggingface_hub && UV_PRERELEASE=allow uv pip install -U transformers@git+https://github.com/huggingface/transformers.git
         uv pip install peft@git+https://github.com/huggingface/peft.git
@@ -199,7 +202,7 @@ jobs:
         nvidia-smi
     - name: Install dependencies
       run: |
-        echo 'tokenizers<0.23.0' > "$UV_OVERRIDE"
+        printf 'tokenizers<0.23.0\ntorch==2.10.0\ntorchvision==0.25.0\ntorchaudio==2.10.0\n' > "$UV_OVERRIDE"
         uv pip install -e ".[quality,training]"
         uv pip uninstall transformers huggingface_hub && UV_PRERELEASE=allow uv pip install -U transformers@git+https://github.com/huggingface/transformers.git
     - name: Environment
@@ -241,7 +244,7 @@ jobs:
         run: nvidia-smi
       - name: Install dependencies
         run: |
-          echo 'tokenizers<0.23.0' > "$UV_OVERRIDE"
+          printf 'tokenizers<0.23.0\ntorch==2.10.0\ntorchvision==0.25.0\ntorchaudio==2.10.0\n' > "$UV_OVERRIDE"
           uv pip install -e ".[quality]"
           uv pip uninstall transformers huggingface_hub && UV_PRERELEASE=allow uv pip install -U transformers@git+https://github.com/huggingface/transformers.git
           uv pip install peft@git+https://github.com/huggingface/peft.git
@@ -292,7 +295,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          echo 'tokenizers<0.23.0' > "$UV_OVERRIDE"
+          printf 'tokenizers<0.23.0\ntorch==2.6.0\ntorchvision==0.21.0\ntorchaudio==2.6.0\n' > "$UV_OVERRIDE"
           uv pip install -e ".[quality]"
           uv pip uninstall transformers huggingface_hub && UV_PRERELEASE=allow uv pip install -U transformers@git+https://github.com/huggingface/transformers.git
           uv pip install peft@git+https://github.com/huggingface/peft.git
@@ -368,7 +371,7 @@ jobs:
         run: nvidia-smi
       - name: Install dependencies
         run: |
-          echo 'tokenizers<0.23.0' > "$UV_OVERRIDE"
+          printf 'tokenizers<0.23.0\ntorch==2.10.0\ntorchvision==0.25.0\ntorchaudio==2.10.0\n' > "$UV_OVERRIDE"
           uv pip install -e ".[quality]"
           uv pip install -U ${{ matrix.config.backend }}
           if [ "${{ join(matrix.config.additional_deps, ' ') }}" != "" ]; then
@@ -421,7 +424,7 @@ jobs:
         run: nvidia-smi
       - name: Install dependencies
         run: |
-          echo 'tokenizers<0.23.0' > "$UV_OVERRIDE"
+          printf 'tokenizers<0.23.0\ntorch==2.10.0\ntorchvision==0.25.0\ntorchaudio==2.10.0\n' > "$UV_OVERRIDE"
           uv pip install -e ".[quality]"
           uv pip install -U bitsandbytes optimum_quanto
           uv pip uninstall transformers huggingface_hub && UV_PRERELEASE=allow uv pip install -U transformers@git+https://github.com/huggingface/transformers.git
