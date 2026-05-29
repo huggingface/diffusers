@@ -588,7 +588,7 @@ class Cosmos3OmniPipeline(DiffusionPipeline):
         dtype: torch.dtype = torch.bfloat16,
         enable_sound: bool = False,
         action_mode: str | None = None,
-        action: torch.Tensor | None = None,
+        action_tokens: torch.Tensor | None = None,
         action_chunk_size: int | None = None,
         domain_name: str | None = None,
         raw_action_dim: int | None = None,
@@ -680,29 +680,29 @@ class Cosmos3OmniPipeline(DiffusionPipeline):
             assert action_chunk_size is not None
             action_dim = self.transformer.action_dim
             if action_mode == "forward_dynamics":
-                if action is None:
+                if action_tokens is None:
                     raise ValueError("action_mode='forward_dynamics' requires an action tensor.")
-                action = action.to(device=device, dtype=dtype)
+                action_tokens = action_tokens.to(device=device, dtype=dtype)
 
                 # Action chunks describe transitions, so action length must match action_chunk_size
                 # while the paired video has action_chunk_size + 1 frames. Short inputs repeat the last action.
-                if action.shape[0] < action_chunk_size:
-                    action = torch.cat(
-                        [action, action[-1:].expand(action_chunk_size - action.shape[0], -1)],
+                if action_tokens.shape[0] < action_chunk_size:
+                    action_tokens = torch.cat(
+                        [action_tokens, action_tokens[-1:].expand(action_chunk_size - action_tokens.shape[0], -1)],
                         dim=0,
                     )
-                action = action[:action_chunk_size]
+                action_tokens = action_tokens[:action_chunk_size]
 
                 # The model action head has a fixed action_dim; pad raw domain actions with zeros on the channel axis.
-                if action.shape[-1] < action_dim:
+                if action_tokens.shape[-1] < action_dim:
                     action_padding = torch.zeros(
-                        action.shape[0],
-                        action_dim - action.shape[-1],
-                        dtype=action.dtype,
-                        device=action.device,
+                        action_tokens.shape[0],
+                        action_dim - action_tokens.shape[-1],
+                        dtype=action_tokens.dtype,
+                        device=action_tokens.device,
                     )
-                    action = torch.cat([action, action_padding], dim=-1)
-                x0_tokens_action = action
+                    action_tokens = torch.cat([action_tokens, action_padding], dim=-1)
+                x0_tokens_action = action_tokens
             else:
                 x0_tokens_action = torch.zeros(action_chunk_size, action_dim, device=device, dtype=dtype)
             if domain_name not in _EMBODIMENT_TO_DOMAIN_ID:
@@ -793,7 +793,7 @@ class Cosmos3OmniPipeline(DiffusionPipeline):
         enable_sound: bool,
         callback_on_step_end_tensor_inputs: list[str],
         action_mode: str | None,
-        action: torch.Tensor | None,
+        action_tokens: torch.Tensor | None,
         action_chunk_size: int | None,
         domain_name: str | None,
         raw_action_dim: int | None,
@@ -845,14 +845,14 @@ class Cosmos3OmniPipeline(DiffusionPipeline):
                     f"expected one of {sorted(_EMBODIMENT_TO_DOMAIN_ID)}."
                 )
             if action_mode == "forward_dynamics":
-                if action is None:
+                if action_tokens is None:
                     raise ValueError("action_mode='forward_dynamics' requires an action tensor.")
-                if action.shape[0] == 0:
+                if action_tokens.shape[0] == 0:
                     raise ValueError("action_mode='forward_dynamics' requires at least one action token.")
                 action_dim = self.transformer.action_dim
-                if action.shape[-1] > action_dim:
+                if action_tokens.shape[-1] > action_dim:
                     raise ValueError(
-                        f"Cosmos3 action dimension {action.shape[-1]} exceeds model action_dim={action_dim}."
+                        f"Cosmos3 action dimension {action_tokens.shape[-1]} exceeds model action_dim={action_dim}."
                     )
             if action_mode in {"inverse_dynamics", "policy"} and raw_action_dim is None:
                 raise ValueError(f"action_mode={action_mode!r} requires raw_action_dim for output slicing.")
@@ -1037,7 +1037,7 @@ class Cosmos3OmniPipeline(DiffusionPipeline):
         sound_latents: torch.Tensor | None = None,
         action_latents: torch.Tensor | None = None,
         action_mode: str | None = None,
-        action: torch.Tensor | None = None,
+        action_tokens: torch.Tensor | None = None,
         action_chunk_size: int | None = None,
         domain_name: str | None = None,
         raw_action_dim: int | None = None,
@@ -1096,10 +1096,11 @@ class Cosmos3OmniPipeline(DiffusionPipeline):
             action_mode (`str`, *optional*):
                 Selects the action-conditioned generation task and requires a transformer trained with
                 `action_gen=True`. One of `"forward_dynamics"` (predict the future video from an initial frame and a
-                given `action` sequence), `"inverse_dynamics"` (infer the actions connecting the conditioning frames),
-                or `"policy"` (jointly roll out future video and actions from the first frame). When set, conditioning
-                must be supplied via `video` (not `image`) and `num_frames` is forced to `action_chunk_size + 1`.
-            action (`torch.Tensor`, *optional*):
+                given `action_tokens` sequence), `"inverse_dynamics"` (infer the actions connecting the conditioning
+                frames), or `"policy"` (jointly roll out future video and actions from the first frame). When set,
+                conditioning must be supplied via `video` (not `image`) and `num_frames` is forced to
+                `action_chunk_size + 1`.
+            action_tokens (`torch.Tensor`, *optional*):
                 Raw action tokens of shape `[T, action_dim]` driving `action_mode="forward_dynamics"`. Sequences shorter
                 than `action_chunk_size` repeat the last action; longer ones are truncated. Channels beyond the model's
                 `action_dim` are rejected, and narrower inputs are zero-padded up to `action_dim`.
@@ -1163,7 +1164,7 @@ class Cosmos3OmniPipeline(DiffusionPipeline):
             enable_sound,
             callback_on_step_end_tensor_inputs,
             action_mode,
-            action,
+            action_tokens,
             action_chunk_size,
             domain_name,
             raw_action_dim,
@@ -1241,7 +1242,7 @@ class Cosmos3OmniPipeline(DiffusionPipeline):
             dtype=dtype,
             enable_sound=enable_sound,
             action_mode=action_mode,
-            action=action,
+            action_tokens=action_tokens,
             action_chunk_size=action_chunk_size,
             domain_name=domain_name,
             raw_action_dim=raw_action_dim,
