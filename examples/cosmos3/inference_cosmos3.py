@@ -82,7 +82,6 @@ def main():
     parser.add_argument("--fps", type=float, default=24.0)
     parser.add_argument("--guidance-scale", type=float, default=6.0, help="Classifier-free guidance scale.")
     parser.add_argument("--num-inference-steps", type=int, default=35, help="Number of denoising steps.")
-    parser.add_argument("--flow-shift", type=float, default=None, help="Scheduler flow shift.")
     parser.add_argument("--seed", type=int, default=None, help="Random seed for latent initialization.")
     parser.add_argument(
         "--enable-sound",
@@ -159,7 +158,6 @@ def main():
             width=args.width,
             fps=args.fps,
             num_inference_steps=args.num_inference_steps,
-            flow_shift=args.flow_shift,
             action_mode=args.action_mode,
             raw_actions=action,
             action_chunk_size=args.action_chunk_size,
@@ -182,7 +180,6 @@ def main():
             width=args.width,
             fps=args.fps,
             num_inference_steps=args.num_inference_steps,
-            flow_shift=args.flow_shift,
             enable_sound=args.enable_sound,
             guidance_scale=args.guidance_scale,
             generator=generator,

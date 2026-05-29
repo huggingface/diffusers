@@ -1033,7 +1033,6 @@ class Cosmos3OmniPipeline(DiffusionPipeline):
         fps: float = 24.0,
         num_inference_steps: int = 35,
         guidance_scale: float = 6.0,
-        flow_shift: float | None = None,
         enable_sound: bool = False,
         generator: torch.Generator | None = None,
         latents: torch.Tensor | None = None,
@@ -1363,25 +1362,14 @@ class Cosmos3OmniPipeline(DiffusionPipeline):
         action_noisy_len = cond_action_segment.get("num_noisy_action_tokens")
 
         # 6. Set timesteps. UniPCMultistepScheduler keeps per-step state (_step_index,
-        # model_outputs history) on the instance, so audio/action gets its own copy.
-        inference_scheduler = copy.deepcopy(self.scheduler)
-        if flow_shift is not None:
-            inference_scheduler.register_to_config(
-                use_flow_sigmas=True,
-                use_karras_sigmas=False,
-                use_exponential_sigmas=False,
-                use_beta_sigmas=False,
-                flow_shift=flow_shift,
-                shift_terminal=None,
-                final_sigmas_type="zero",
-            )
-        inference_scheduler.set_timesteps(num_inference_steps, device=device)
-        timesteps = inference_scheduler.timesteps
-        sound_scheduler = copy.deepcopy(inference_scheduler) if sound_latents is not None else None
-        action_scheduler = copy.deepcopy(inference_scheduler) if action_latents is not None else None
+        # model_outputs history) on the instance, so sound/action each get their own copy.
+        self.scheduler.set_timesteps(num_inference_steps, device=device)
+        timesteps = self.scheduler.timesteps
+        sound_scheduler = copy.deepcopy(self.scheduler) if sound_latents is not None else None
+        action_scheduler = copy.deepcopy(self.scheduler) if action_latents is not None else None
 
         # 7. Denoising loop
-        num_warmup_steps = len(timesteps) - num_inference_steps * inference_scheduler.order
+        num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
         self._num_timesteps = len(timesteps)
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
@@ -1492,7 +1480,7 @@ class Cosmos3OmniPipeline(DiffusionPipeline):
                 else:
                     velocity_vision = cond_v_vision
 
-                latents = inference_scheduler.step(
+                latents = self.scheduler.step(
                     velocity_vision.unsqueeze(0), t, latents.unsqueeze(0), return_dict=False
                 )[0].squeeze(0)
 
@@ -1525,9 +1513,7 @@ class Cosmos3OmniPipeline(DiffusionPipeline):
                     callback_outputs = callback_on_step_end(self, i, t, callback_kwargs)
                     latents = callback_outputs.pop("latents", latents)
 
-                if i == len(timesteps) - 1 or (
-                    (i + 1) > num_warmup_steps and (i + 1) % inference_scheduler.order == 0
-                ):
+                if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
                     progress_bar.update()
 
         self._current_timestep = None
