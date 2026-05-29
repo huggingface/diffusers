@@ -449,6 +449,7 @@ except OptionalDependencyNotAvailable:
     ]
 
 else:
+    _import_structure["models"].append("HiDreamO1Transformer2DModel")
     _import_structure["modular_pipelines"].extend(
         [
             "ErnieImageAutoBlocks",
@@ -469,6 +470,8 @@ else:
             "HeliosPyramidDistilledAutoBlocks",
             "HeliosPyramidDistilledModularPipeline",
             "HeliosPyramidModularPipeline",
+            "HiDreamO1AutoBlocks",
+            "HiDreamO1ModularPipeline",
             "HunyuanVideo15AutoBlocks",
             "HunyuanVideo15ModularPipeline",
             "LTXAutoBlocks",
@@ -1265,6 +1268,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     except OptionalDependencyNotAvailable:
         from .utils.dummy_torch_and_transformers_objects import *  # noqa F403
     else:
+        from .models import HiDreamO1Transformer2DModel
         from .modular_pipelines import (
             ErnieImageAutoBlocks,
             ErnieImageModularPipeline,
@@ -1284,6 +1288,8 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             HeliosPyramidDistilledAutoBlocks,
             HeliosPyramidDistilledModularPipeline,
             HeliosPyramidModularPipeline,
+            HiDreamO1AutoBlocks,
+            HiDreamO1ModularPipeline,
             HunyuanVideo15AutoBlocks,
             HunyuanVideo15ModularPipeline,
             LTXAutoBlocks,

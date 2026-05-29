@@ -1,4 +1,4 @@
-from ...utils import is_torch_available
+from ...utils import is_torch_available, is_transformers_available
 
 
 if is_torch_available():
@@ -35,6 +35,8 @@ if is_torch_available():
     from .transformer_glm_image import GlmImageTransformer2DModel
     from .transformer_helios import HeliosTransformer3DModel
     from .transformer_hidream_image import HiDreamImageTransformer2DModel
+    if is_transformers_available():
+        from .transformer_hidream_o1 import HiDreamO1Transformer2DModel
     from .transformer_hunyuan_video import HunyuanVideoTransformer3DModel
     from .transformer_hunyuan_video15 import HunyuanVideo15Transformer3DModel
     from .transformer_hunyuan_video_framepack import HunyuanVideoFramepackTransformer3DModel
