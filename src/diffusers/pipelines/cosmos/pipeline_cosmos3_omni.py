@@ -460,7 +460,7 @@ class Cosmos3OmniPipeline(DiffusionPipeline):
             "sound_len": sound_len,
         }
 
-    def _pack_action_tokens(
+    def _prepare_action_segment(
         self,
         input_action_tokens: torch.Tensor,
         condition_frame_indexes: list[int],
@@ -1259,7 +1259,7 @@ class Cosmos3OmniPipeline(DiffusionPipeline):
             )
         cond_action_segment: dict[str, Any] = {}
         if action_latents is not None:
-            cond_action_segment = self._pack_action_tokens(
+            cond_action_segment = self._prepare_action_segment(
                 input_action_tokens=action_latents,
                 condition_frame_indexes=action_condition_frame_indexes,
                 mrope_offset=cond_text_segment["vision_start_temporal_offset"],
@@ -1306,7 +1306,7 @@ class Cosmos3OmniPipeline(DiffusionPipeline):
             )
         uncond_action_segment: dict[str, Any] = {}
         if action_latents is not None:
-            uncond_action_segment = self._pack_action_tokens(
+            uncond_action_segment = self._prepare_action_segment(
                 input_action_tokens=action_latents,
                 condition_frame_indexes=action_condition_frame_indexes,
                 mrope_offset=uncond_text_segment["vision_start_temporal_offset"],
