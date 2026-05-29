@@ -630,16 +630,8 @@ class Cosmos3OmniPipeline(DiffusionPipeline):
 
         # Build the vision conditioning tensor (always [1, 3, T, H, W], in [-1, 1], on device).
         if action_mode is not None:
-            if action_chunk_size is None:
-                raise ValueError("action_mode requires action_chunk_size.")
-            if video is None:
-                raise ValueError(f"action_mode={action_mode!r} requires loaded video conditioning.")
+            assert action_chunk_size is not None
             target_frames = action_chunk_size + 1
-            if num_frames != target_frames:
-                raise ValueError(
-                    "Action runs require num_frames to equal action_chunk_size + 1; "
-                    f"got num_frames={num_frames}, action_chunk_size={action_chunk_size}."
-                )
             vision_tensor, action_image_size, height, width = self._prepare_action_video_conditioning(
                 video, height, width, target_frames, device=device, dtype=dtype
             )
@@ -691,8 +683,6 @@ class Cosmos3OmniPipeline(DiffusionPipeline):
                 if action is None:
                     raise ValueError("action_mode='forward_dynamics' requires an action tensor.")
                 action = action.to(device=device, dtype=dtype)
-                if action.shape[0] == 0:
-                    raise ValueError("action_mode='forward_dynamics' requires at least one action token.")
 
                 # Action chunks describe transitions, so action length must match action_chunk_size
                 # while the paired video has action_chunk_size + 1 frames. Short inputs repeat the last action.
@@ -704,10 +694,6 @@ class Cosmos3OmniPipeline(DiffusionPipeline):
                 action = action[:action_chunk_size]
 
                 # The model action head has a fixed action_dim; pad raw domain actions with zeros on the channel axis.
-                if action.shape[-1] > action_dim:
-                    raise ValueError(
-                        f"Cosmos3 action dimension {action.shape[-1]} exceeds model action_dim={action_dim}."
-                    )
                 if action.shape[-1] < action_dim:
                     action_padding = torch.zeros(
                         action.shape[0],
@@ -856,8 +842,16 @@ class Cosmos3OmniPipeline(DiffusionPipeline):
                     f"Unknown Cosmos3 action domain_name={domain_name!r}; "
                     f"expected one of {sorted(_EMBODIMENT_TO_DOMAIN_ID)}."
                 )
-            if action_mode == "forward_dynamics" and action is None:
-                raise ValueError("action_mode='forward_dynamics' requires an action tensor.")
+            if action_mode == "forward_dynamics":
+                if action is None:
+                    raise ValueError("action_mode='forward_dynamics' requires an action tensor.")
+                if action.shape[0] == 0:
+                    raise ValueError("action_mode='forward_dynamics' requires at least one action token.")
+                action_dim = self.transformer.action_dim
+                if action.shape[-1] > action_dim:
+                    raise ValueError(
+                        f"Cosmos3 action dimension {action.shape[-1]} exceeds model action_dim={action_dim}."
+                    )
             if action_mode in {"inverse_dynamics", "policy"} and raw_action_dim is None:
                 raise ValueError(f"action_mode={action_mode!r} requires raw_action_dim for output slicing.")
 
