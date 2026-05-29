@@ -340,6 +340,12 @@ class LLaDA2Pipeline(DiffusionPipeline):
                 `editing_transfer_index`, `sampled_tokens`, `sampled_probs`, `active_block`.
 
         Examples:
+
+        Returns:
+            [`~pipelines.llada2.pipeline_llada2.LLaDA2PipelineOutput`] or `tuple`:
+                If `return_dict` is `True`, [`~pipelines.llada2.pipeline_llada2.LLaDA2PipelineOutput`] is returned,
+                otherwise a `tuple` is returned where the first element is the generated token IDs (`torch.LongTensor`)
+                and the second element is the decoded texts (`list[str]`), or `None` when `output_type` is `"seq"`.
         """
         # 1. Check inputs early
         if callback_on_step_end is not None and isinstance(
