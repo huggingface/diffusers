@@ -227,7 +227,9 @@ class FlaxKarrasVeScheduler(FlaxSchedulerMixin, ConfigMixin):
             return_dict (`bool`): option for returning tuple rather than FlaxKarrasVeOutput class
 
         Returns:
-            prev_sample (TODO): updated sample in the diffusion chain. derivative (TODO): TODO
+            [`~schedulers.scheduling_karras_ve_flax.FlaxKarrasVeOutput`] or `tuple`:
+                If return_dict is `True`, [`~schedulers.scheduling_karras_ve_flax.FlaxKarrasVeOutput`] is returned,
+                otherwise a tuple is returned where the first element is the sample tensor.
 
         """
         pred_original_sample = sample_prev + sigma_prev * model_output
