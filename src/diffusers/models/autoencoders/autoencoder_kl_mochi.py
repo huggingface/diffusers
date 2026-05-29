@@ -1092,7 +1092,7 @@ class AutoencoderKLMochi(ModelMixin, AutoencoderMixin, ConfigMixin):
         sample_posterior: bool = False,
         return_dict: bool = True,
         generator: torch.Generator | None = None,
-    ) -> torch.Tensor | torch.Tensor:
+    ) -> DecoderOutput | torch.Tensor:
         r"""
         Args:
             sample (`torch.Tensor`): Input sample.
