@@ -79,7 +79,7 @@ EXAMPLE_DOC_STRING = """
         >>> from diffusers.pipelines.ltx2.utils import DEFAULT_NEGATIVE_PROMPT
         >>> from diffusers.utils import load_video
 
-        >>> pipe = LTX2InContextPipeline.from_pretrained("dg845/LTX-2.3-Diffusers", torch_dtype=torch.bfloat16)
+        >>> pipe = LTX2InContextPipeline.from_pretrained("diffusers/LTX-2.3-Diffusers", torch_dtype=torch.bfloat16)
         >>> pipe.enable_sequential_cpu_offload(device="cuda")
         >>> pipe.load_lora_weights(
         ...     "Lightricks/LTX-2-19b-LoRA-Camera-Control-Dolly-In",

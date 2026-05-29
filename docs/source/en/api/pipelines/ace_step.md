@@ -26,7 +26,7 @@ ACE-Step 1.5 ships three DiT checkpoints that share the same transformer archite
 
 | Variant | CFG | Default steps | Default `guidance_scale` | Default `shift` | HF repo |
 |---------|:---:|:-------------:|:------------------------:|:---------------:|---------|
-| `turbo` (guidance-distilled) | off | 8 | ignored | 3.0 | [`ACE-Step/Ace-Step1.5`](https://huggingface.co/ACE-Step/Ace-Step1.5) |
+| `turbo` (guidance-distilled) | off | 8 | ignored | 3.0 | [`ACE-Step/acestep-v15-xl-turbo-diffusers`](https://huggingface.co/ACE-Step/acestep-v15-xl-turbo-diffusers) |
 | `base` | on | 8 | 7.0 | 3.0 | [`ACE-Step/acestep-v15-base`](https://huggingface.co/ACE-Step/acestep-v15-base) |
 | `sft` | on | 8 | 7.0 | 3.0 | [`ACE-Step/acestep-v15-sft`](https://huggingface.co/ACE-Step/acestep-v15-sft) |
 
@@ -54,7 +54,7 @@ import torch
 import soundfile as sf
 from diffusers import AceStepPipeline
 
-pipe = AceStepPipeline.from_pretrained("ACE-Step/Ace-Step1.5", torch_dtype=torch.bfloat16)
+pipe = AceStepPipeline.from_pretrained("ACE-Step/acestep-v15-xl-turbo-diffusers", torch_dtype=torch.bfloat16)
 pipe = pipe.to("cuda")
 
 audio = pipe(
