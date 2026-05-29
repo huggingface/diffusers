@@ -289,6 +289,20 @@ class AnimaTextConditioner(ModelMixin, ConfigMixin, PeftAdapterMixin):
         target_attention_mask: torch.Tensor | None = None,
         source_attention_mask: torch.Tensor | None = None,
     ) -> torch.Tensor:
+        """
+        Args:
+            source_hidden_states (`torch.Tensor` of shape `(batch_size, source_sequence_length, source_dim)`):
+                Qwen3 text encoder hidden states to condition on.
+            target_input_ids (`torch.Tensor` of shape `(batch_size, target_sequence_length)`):
+                T5 token ids used as learned query tokens.
+            target_attention_mask (`torch.Tensor`, *optional*):
+                Attention mask for the target T5 token ids.
+            source_attention_mask (`torch.Tensor`, *optional*):
+                Attention mask for the source Qwen3 hidden states.
+
+        Returns:
+            `torch.Tensor`: Text conditioning embeddings for the Cosmos transformer.
+        """
         target_attention_mask = self._prepare_attention_mask(target_attention_mask)
         source_attention_mask = self._prepare_attention_mask(source_attention_mask)
 
