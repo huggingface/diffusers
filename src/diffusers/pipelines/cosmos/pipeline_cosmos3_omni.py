@@ -30,10 +30,13 @@ from ...models.transformers.transformer_cosmos3 import (
     Cosmos3OmniTransformer,
 )
 from ...schedulers import UniPCMultistepScheduler
-from ...utils import BaseOutput, is_cosmos_guardrail_available
+from ...utils import BaseOutput, is_cosmos_guardrail_available, logging
 from ...utils.torch_utils import randn_tensor
 from ...video_processor import VideoProcessor
 from ..pipeline_utils import DiffusionPipeline
+
+
+logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
 if is_cosmos_guardrail_available():
@@ -1149,7 +1152,13 @@ class Cosmos3OmniPipeline(DiffusionPipeline):
             callback_on_step_end_tensor_inputs = callback_on_step_end.tensor_inputs
 
         if action_mode is not None and action_chunk_size is not None:
-            num_frames = action_chunk_size + 1
+            target_num_frames = action_chunk_size + 1
+            if num_frames != target_num_frames:
+                logger.warning(
+                    f"`num_frames={num_frames}` is ignored for action runs and overwritten to "
+                    f"`action_chunk_size + 1 = {target_num_frames}`."
+                )
+            num_frames = target_num_frames
 
         # 1. Check inputs
         self.check_inputs(
