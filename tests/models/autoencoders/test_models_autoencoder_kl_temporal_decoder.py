@@ -67,16 +67,18 @@ class TestAutoencoderKLTemporalDecoder(AutoencoderKLTemporalDecoderTesterConfig,
 
 
 class TestAutoencoderKLTemporalDecoderTraining(AutoencoderKLTemporalDecoderTesterConfig, TrainingTesterMixin):
+    """Training tests for AutoencoderKLTemporalDecoder."""
+
     def test_gradient_checkpointing_is_applied(self):
         expected_set = {"Encoder", "TemporalDecoder", "UNetMidBlock2D"}
         super().test_gradient_checkpointing_is_applied(expected_set=expected_set)
 
 
 class TestAutoencoderKLTemporalDecoderMemory(AutoencoderKLTemporalDecoderTesterConfig, MemoryTesterMixin):
-    pass
+    """Memory optimization tests for AutoencoderKLTemporalDecoder."""
 
 
 class TestAutoencoderKLTemporalDecoderSlicingTiling(
     AutoencoderKLTemporalDecoderTesterConfig, NewAutoencoderTesterMixin
 ):
-    pass
+    """Slicing and tiling tests for AutoencoderKLTemporalDecoder."""

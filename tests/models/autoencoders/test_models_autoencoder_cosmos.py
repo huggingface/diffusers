@@ -77,6 +77,8 @@ class TestAutoencoderKLCosmos(AutoencoderKLCosmosTesterConfig, ModelTesterMixin)
 
 
 class TestAutoencoderKLCosmosTraining(AutoencoderKLCosmosTesterConfig, TrainingTesterMixin):
+    """Training tests for AutoencoderKLCosmos."""
+
     def test_gradient_checkpointing_is_applied(self):
         expected_set = {"CosmosEncoder3d", "CosmosDecoder3d"}
         super().test_gradient_checkpointing_is_applied(expected_set=expected_set)
@@ -87,8 +89,8 @@ class TestAutoencoderKLCosmosTraining(AutoencoderKLCosmosTesterConfig, TrainingT
 
 
 class TestAutoencoderKLCosmosMemory(AutoencoderKLCosmosTesterConfig, MemoryTesterMixin):
-    pass
+    """Memory optimization tests for AutoencoderKLCosmos."""
 
 
 class TestAutoencoderKLCosmosSlicingTiling(AutoencoderKLCosmosTesterConfig, NewAutoencoderTesterMixin):
-    pass
+    """Slicing and tiling tests for AutoencoderKLCosmos."""

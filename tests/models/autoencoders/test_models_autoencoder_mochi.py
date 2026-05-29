@@ -80,6 +80,8 @@ class TestAutoencoderKLMochi(AutoencoderKLMochiTesterConfig, ModelTesterMixin):
 
 
 class TestAutoencoderKLMochiTraining(AutoencoderKLMochiTesterConfig, TrainingTesterMixin):
+    """Training tests for AutoencoderKLMochi."""
+
     def test_gradient_checkpointing_is_applied(self):
         expected_set = {
             "MochiDecoder3D",
@@ -92,8 +94,8 @@ class TestAutoencoderKLMochiTraining(AutoencoderKLMochiTesterConfig, TrainingTes
 
 
 class TestAutoencoderKLMochiMemory(AutoencoderKLMochiTesterConfig, MemoryTesterMixin):
-    pass
+    """Memory optimization tests for AutoencoderKLMochi."""
 
 
 class TestAutoencoderKLMochiSlicingTiling(AutoencoderKLMochiTesterConfig, NewAutoencoderTesterMixin):
-    pass
+    """Slicing and tiling tests for AutoencoderKLMochi."""

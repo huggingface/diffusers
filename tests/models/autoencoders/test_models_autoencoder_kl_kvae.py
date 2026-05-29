@@ -68,14 +68,16 @@ class TestAutoencoderKLKVAE(AutoencoderKLKVAETesterConfig, ModelTesterMixin):
 
 
 class TestAutoencoderKLKVAETraining(AutoencoderKLKVAETesterConfig, TrainingTesterMixin):
+    """Training tests for AutoencoderKLKVAE."""
+
     def test_gradient_checkpointing_is_applied(self):
         expected_set = {"KVAEEncoder2D", "KVAEDecoder2D"}
         super().test_gradient_checkpointing_is_applied(expected_set=expected_set)
 
 
 class TestAutoencoderKLKVAEMemory(AutoencoderKLKVAETesterConfig, MemoryTesterMixin):
-    pass
+    """Memory optimization tests for AutoencoderKLKVAE."""
 
 
 class TestAutoencoderKLKVAESlicingTiling(AutoencoderKLKVAETesterConfig, NewAutoencoderTesterMixin):
-    pass
+    """Slicing and tiling tests for AutoencoderKLKVAE."""
