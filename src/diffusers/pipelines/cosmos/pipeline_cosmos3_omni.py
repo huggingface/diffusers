@@ -822,6 +822,8 @@ class Cosmos3OmniPipeline(DiffusionPipeline):
                 f"{[k for k in callback_on_step_end_tensor_inputs if k not in self._callback_tensor_inputs]}"
             )
         if action_mode is not None:
+            if action_mode not in _ACTION_MODES:
+                raise ValueError(f"Unsupported action_mode={action_mode!r}; expected one of {sorted(_ACTION_MODES)}.")
             if not getattr(self.transformer.config, "action_gen", False):
                 raise ValueError("action_mode requires a transformer trained with action_gen=True.")
             if image is not None:
@@ -1145,8 +1147,6 @@ class Cosmos3OmniPipeline(DiffusionPipeline):
         if isinstance(callback_on_step_end, (PipelineCallback, MultiPipelineCallbacks)):
             callback_on_step_end_tensor_inputs = callback_on_step_end.tensor_inputs
 
-        if action_mode is not None and action_mode not in _ACTION_MODES:
-            raise ValueError(f"Unsupported action_mode={action_mode!r}; expected one of {sorted(_ACTION_MODES)}.")
         if action_mode is not None and action_chunk_size is not None:
             num_frames = action_chunk_size + 1
 
