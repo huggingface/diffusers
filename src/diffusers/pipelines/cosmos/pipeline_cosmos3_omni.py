@@ -1088,6 +1088,28 @@ class Cosmos3OmniPipeline(DiffusionPipeline):
             sound_latents (`torch.Tensor`, *optional*):
                 Pre-generated sound latents to start denoising from. Only consulted when `enable_sound=True`; when
                 `None`, fresh Gaussian noise is sampled.
+            action_latents (`torch.Tensor`, *optional*):
+                Pre-generated action latents to start the action stream's denoising from. Only consulted when an action
+                run is configured via `action_mode`; when `None`, fresh Gaussian noise is sampled for the action tokens.
+            action_mode (`str`, *optional*):
+                Selects the action-conditioned generation task and requires a transformer trained with
+                `action_gen=True`. One of `"forward_dynamics"` (predict the future video from an initial frame and a
+                given `action` sequence), `"inverse_dynamics"` (infer the actions connecting the conditioning frames),
+                or `"policy"` (jointly roll out future video and actions from the first frame). When set, conditioning
+                must be supplied via `video` (not `image`) and `num_frames` is forced to `action_chunk_size + 1`.
+            action (`torch.Tensor`, *optional*):
+                Raw action tokens of shape `[T, action_dim]` driving `action_mode="forward_dynamics"`. Sequences shorter
+                than `action_chunk_size` repeat the last action; longer ones are truncated. Channels beyond the model's
+                `action_dim` are rejected, and narrower inputs are zero-padded up to `action_dim`.
+            action_chunk_size (`int`, *optional*):
+                Number of action transition steps in the chunk. Required for every `action_mode`; the paired video has
+                `action_chunk_size + 1` frames and `num_frames` is overwritten accordingly.
+            domain_name (`str`, *optional*):
+                Embodiment domain that selects the domain-aware action projection weights. Required for action runs and
+                must be one of the registered Cosmos 3 embodiment domains.
+            raw_action_dim (`int`, *optional*):
+                Number of meaningful (unpadded) action channels to keep when slicing predicted actions. Required for
+                `action_mode="inverse_dynamics"` and `action_mode="policy"`.
             output_type (`str`, *optional*, defaults to `"pil"`):
                 Output format for the video. One of `"pil"` (list of `PIL.Image.Image`), `"np"` (`np.ndarray`, `[T, H,
                 W, C]`), `"pt"` (`torch.Tensor`, `[T, C, H, W]`), or `"latent"` (raw vision latents).
