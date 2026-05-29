@@ -288,8 +288,10 @@ class OnnxStableDiffusionPipeline(DiffusionPipeline):
             prompt (`str` or `list[str]`, *optional*):
                 The prompt or prompts to guide the image generation. If not defined, one has to pass `prompt_embeds`.
                 instead.
-            image (`PIL.Image.Image` or list[`PIL.Image.Image`] or `torch.Tensor`):
-                `Image`, or tensor representing an image batch which will be upscaled. *
+            height (`int`, *optional*, defaults to 512):
+                The height in pixels of the generated image.
+            width (`int`, *optional*, defaults to 512):
+                The width in pixels of the generated image.
             num_inference_steps (`int`, *optional*, defaults to 50):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
                 expense of slower inference.

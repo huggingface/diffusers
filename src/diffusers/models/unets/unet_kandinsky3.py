@@ -147,6 +147,19 @@ class Kandinsky3UNet(ModelMixin, AttentionMixin, ConfigMixin):
         self.set_attn_processor(AttnProcessor())
 
     def forward(self, sample, timestep, encoder_hidden_states=None, encoder_attention_mask=None, return_dict=True):
+        r"""
+        Args:
+            sample (`torch.Tensor`): Input sample.
+            timestep (`torch.Tensor`, `float`, or `int`):
+                The number of timesteps to denoise an input.
+            encoder_hidden_states (`torch.Tensor`, *optional*):
+                Conditional embeddings (embeddings computed from the input conditions such as prompts) to use.
+            encoder_attention_mask (`torch.Tensor`, *optional*):
+                Attention mask applied to `encoder_hidden_states`.
+            return_dict (`bool`, *optional*, defaults to `True`):
+                Whether or not to return a [`~models.unets.unet_2d_condition.UNet2DConditionOutput`] instead of a plain
+                tuple.
+        """
         if encoder_attention_mask is not None:
             encoder_attention_mask = (1 - encoder_attention_mask.to(sample.dtype)) * -10000.0
             encoder_attention_mask = encoder_attention_mask.unsqueeze(1)

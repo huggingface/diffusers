@@ -408,6 +408,11 @@ class VersatileDiffusionDualGuidedPipeline(DiffusionPipeline):
         Args:
             prompt (`str` or `list[str]`):
                 The prompt or prompts to guide image generation.
+            image (`PIL.Image.Image` or `list[PIL.Image.Image]`):
+                The image or images to condition the generation on alongside `prompt`.
+            text_to_image_strength (`float`, *optional*, defaults to 0.5):
+                Mixing ratio between the text and image conditioning. A value of 1.0 corresponds to pure text-to-image,
+                while 0.0 corresponds to pure image variation.
             height (`int`, *optional*, defaults to `self.image_unet.config.sample_size * self.vae_scale_factor`):
                 The height in pixels of the generated image.
             width (`int`, *optional*, defaults to `self.image_unet.config.sample_size * self.vae_scale_factor`):
@@ -418,9 +423,6 @@ class VersatileDiffusionDualGuidedPipeline(DiffusionPipeline):
             guidance_scale (`float`, *optional*, defaults to 7.5):
                 A higher guidance scale value encourages the model to generate images closely linked to the text
                 `prompt` at the expense of lower image quality. Guidance scale is enabled when `guidance_scale > 1`.
-            negative_prompt (`str` or `list[str]`, *optional*):
-                The prompt or prompts to guide what to not include in image generation. If not defined, you need to
-                pass `negative_prompt_embeds` instead. Ignored when not using guidance (`guidance_scale < 1`).
             num_images_per_prompt (`int`, *optional*, defaults to 1):
                 The number of images to generate per prompt.
             eta (`float`, *optional*, defaults to 0.0):

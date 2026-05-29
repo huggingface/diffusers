@@ -476,6 +476,8 @@ class HunyuanImageRefinerPipeline(DiffusionPipeline):
                 images that are closely linked to the text `prompt`, usually at the expense of lower image quality. For
                 guidance distilled models, this parameter is required. For non-distilled models, this parameter will be
                 ignored.
+            image (`PipelineImageInput`, *optional*):
+                The input image to be refined.
             num_images_per_prompt (`int`, *optional*, defaults to 1):
             height (`int`, *optional*, defaults to self.unet.config.sample_size * self.vae_scale_factor):
                 The height in pixels of the generated image. This is set to 1024 by default for the best results.
@@ -500,10 +502,14 @@ class HunyuanImageRefinerPipeline(DiffusionPipeline):
             prompt_embeds (`torch.Tensor`, *optional*):
                 Pre-generated text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt weighting. If not
                 provided, text embeddings will be generated from `prompt` input argument.
+            prompt_embeds_mask (`torch.Tensor`, *optional*):
+                Attention mask for `prompt_embeds`.
             negative_prompt_embeds (`torch.Tensor`, *optional*):
                 Pre-generated negative text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt
                 weighting. If not provided, negative_prompt_embeds will be generated from `negative_prompt` input
                 argument.
+            negative_prompt_embeds_mask (`torch.Tensor`, *optional*):
+                Attention mask for `negative_prompt_embeds`.
             output_type (`str`, *optional*, defaults to `"pil"`):
                 The output format of the generate image. Choose between
                 [PIL](https://pillow.readthedocs.io/en/stable/): `PIL.Image.Image` or `np.array`.
