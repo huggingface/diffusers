@@ -1387,15 +1387,11 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         )
         has_torchao_safetensors_metadata = False
         checkpoint_files = resolved_model_file
-        if hf_quantizer is not None:
-            if is_torchao_quantized and hasattr(hf_quantizer, "set_metadata"):
-                hf_quantizer.set_metadata(checkpoint_files)
-                has_torchao_safetensors_metadata = bool(getattr(hf_quantizer, "metadata", None))
-            quantized_weight_names = []
-            if is_torchao_quantized and hasattr(hf_quantizer, "get_weight_names"):
-                quantized_weight_names = hf_quantizer.get_weight_names()
-            if quantized_weight_names:
-                loaded_keys = list(quantized_weight_names)
+        if is_torchao_quantized:
+            hf_quantizer.set_metadata(checkpoint_files)
+            has_torchao_safetensors_metadata = bool(hf_quantizer.metadata)
+            if has_torchao_safetensors_metadata:
+                loaded_keys = list(hf_quantizer.get_weight_names())
 
         if hf_quantizer is not None:
             preprocess_kwargs = {
