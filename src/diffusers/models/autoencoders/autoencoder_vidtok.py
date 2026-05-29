@@ -1452,6 +1452,11 @@ class AutoencoderVidTok(ModelMixin, ConfigMixin):
             generator (`torch.Generator`, *optional*):
                 A [`torch.Generator`](https://pytorch.org/docs/stable/generated/torch.Generator.html) to make sampling
                 deterministic.
+
+        Returns:
+            [`~models.vae.DecoderOutput`] or `torch.Tensor`:
+                If `return_dict` is True, a [`~models.vae.DecoderOutput`] is returned, otherwise a plain `torch.Tensor`
+                is returned.
         """
         x = sample
         res = 1 if self.is_causal else 0
