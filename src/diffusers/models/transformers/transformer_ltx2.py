@@ -956,7 +956,7 @@ class LTX2AudioVideoRotaryPosEmbed(nn.Module):
             start=shift, end=num_frames + shift, step=self.patch_size_t, dtype=torch.float32, device=device
         )
 
-        # 2. Calculate start timstamps in seconds with respect to the original spectrogram grid
+        # 2. Calculate start timestamps in seconds with respect to the original spectrogram grid
         audio_scale_factor = self.scale_factors[0]
         # Scale back to mel spectrogram space
         grid_start_mel = grid_f * audio_scale_factor
@@ -965,7 +965,7 @@ class LTX2AudioVideoRotaryPosEmbed(nn.Module):
         # Convert mel bins back into seconds
         grid_start_s = grid_start_mel * self.hop_length / self.sampling_rate
 
-        # 3. Calculate start timstamps in seconds with respect to the original spectrogram grid
+        # 3. Calculate start timestamps in seconds with respect to the original spectrogram grid
         grid_end_mel = (grid_f + self.patch_size_t) * audio_scale_factor
         grid_end_mel = (grid_end_mel + self.causal_offset - audio_scale_factor).clip(min=0)
         grid_end_s = grid_end_mel * self.hop_length / self.sampling_rate

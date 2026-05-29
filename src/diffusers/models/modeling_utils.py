@@ -1723,7 +1723,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         # lot of individual calls to device malloc). We can, however, preallocate the memory required by the
         # tensors using their expected shape and not performing any initialization of the memory (empty data).
         # When the actual device allocations happen, the allocator already has a pool of unused device memory
-        # that it can re-use for faster loading of the model.
+        # that it can reuse for faster loading of the model.
         if device_map is not None:
             expanded_device_map = _expand_device_map(device_map, expected_keys)
             _caching_allocator_warmup(model, expanded_device_map, dtype, hf_quantizer)

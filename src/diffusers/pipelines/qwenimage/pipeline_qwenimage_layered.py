@@ -647,7 +647,7 @@ the image\n<|vision_start|><|image_pad|><|vision_end|><|im_end|>\n<|im_start|>as
                 `._callback_tensor_inputs` attribute of your pipeline class.
             max_sequence_length (`int` defaults to 512): Maximum sequence length to use with the `prompt`.
             resolution (`int`, *optional*, defaults to 640):
-                using different bucket in (640, 1024) to determin the condition and output resolution
+                using different bucket in (640, 1024) to determine the condition and output resolution
             cfg_normalize (`bool`, *optional*, defaults to `False`)
                 whether enable cfg normalization.
             use_en_prompt (`bool`, *optional*, defaults to `False`)

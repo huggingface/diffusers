@@ -44,15 +44,15 @@ class PyramidAttentionBroadcastConfig:
     Args:
         spatial_attention_block_skip_range (`int`, *optional*, defaults to `None`):
             The number of times a specific spatial attention broadcast is skipped before computing the attention states
-            to re-use. If this is set to the value `N`, the attention computation will be skipped `N - 1` times (i.e.,
+            to reuse. If this is set to the value `N`, the attention computation will be skipped `N - 1` times (i.e.,
             old attention states will be reused) before computing the new attention states again.
         temporal_attention_block_skip_range (`int`, *optional*, defaults to `None`):
             The number of times a specific temporal attention broadcast is skipped before computing the attention
-            states to re-use. If this is set to the value `N`, the attention computation will be skipped `N - 1` times
+            states to reuse. If this is set to the value `N`, the attention computation will be skipped `N - 1` times
             (i.e., old attention states will be reused) before computing the new attention states again.
         cross_attention_block_skip_range (`int`, *optional*, defaults to `None`):
             The number of times a specific cross-attention broadcast is skipped before computing the attention states
-            to re-use. If this is set to the value `N`, the attention computation will be skipped `N - 1` times (i.e.,
+            to reuse. If this is set to the value `N`, the attention computation will be skipped `N - 1` times (i.e.,
             old attention states will be reused) before computing the new attention states again.
         spatial_attention_timestep_skip_range (`tuple[int, int]`, defaults to `(100, 800)`):
             The range of timesteps to skip in the spatial attention layer. The attention computations will be
@@ -114,7 +114,7 @@ class PyramidAttentionBroadcastState:
             The current iteration of the Pyramid Attention Broadcast. It is necessary to ensure that `reset_state` is
             called before starting a new inference forward pass for PAB to work correctly.
         cache (`Any`):
-            The cached output from the previous forward pass. This is used to re-use the attention states when the
+            The cached output from the previous forward pass. This is used to reuse the attention states when the
             attention computation is skipped. It is either a tensor or a tuple of tensors, depending on the module.
     """
 
@@ -304,7 +304,7 @@ def _apply_pyramid_attention_broadcast_hook(
             skipped if the current timestep is within the specified range.
         block_skip_range (`int`):
             The number of times a specific attention broadcast is skipped before computing the attention states to
-            re-use. If this is set to the value `N`, the attention computation will be skipped `N - 1` times (i.e., old
+            reuse. If this is set to the value `N`, the attention computation will be skipped `N - 1` times (i.e., old
             attention states will be reused) before computing the new attention states again.
         current_timestep_callback (`Callable[[], int]`):
             A callback function that returns the current inference timestep.
