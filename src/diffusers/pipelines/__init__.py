@@ -558,8 +558,8 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .auto_pipeline import (
             AutoPipelineForImage2Image,
             AutoPipelineForInpainting,
-            AutoPipelineForText2Image,
             AutoPipelineForText2Audio,
+            AutoPipelineForText2Image,
         )
         from .consistency_models import ConsistencyModelPipeline
         from .ddim import DDIMPipeline

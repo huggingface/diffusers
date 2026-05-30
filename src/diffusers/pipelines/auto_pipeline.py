@@ -1251,6 +1251,7 @@ class AutoPipelineForInpainting(ConfigMixin):
 
         return model
 
+
 class AutoPipelineForText2Audio(ConfigMixin):
     r"""
 
@@ -1294,8 +1295,8 @@ class AutoPipelineForText2Audio(ConfigMixin):
             pretrained_model_or_path (`str` or `os.PathLike`, *optional*):
                 Can be either:
 
-                    - A string, the *repo id* (for example `stabilityai/stable-audio-open-1.0`) of a pretrained pipeline
-                      hosted on the Hub.
+                    - A string, the *repo id* (for example `stabilityai/stable-audio-open-1.0`) of a pretrained
+                      pipeline hosted on the Hub.
                     - A path to a *directory* (for example `./my_pipeline_directory/`) containing pipeline weights
                       saved using
                     [`~DiffusionPipeline.save_pretrained`].
@@ -1375,8 +1376,7 @@ class AutoPipelineForText2Audio(ConfigMixin):
         >>> from diffusers import AutoPipelineForText2Audio
 
         >>> pipeline = AutoPipelineForText2Audio.from_pretrained(
-        ...     "stabilityai/stable-audio-open-1.0",
-        ...     torch_dtype=torch.float16
+        ...     "stabilityai/stable-audio-open-1.0", torch_dtype=torch.float16
         ... )
         >>> pipeline = pipeline.to("cuda")
 
@@ -1435,10 +1435,7 @@ class AutoPipelineForText2Audio(ConfigMixin):
         >>> import soundfile as sf
         >>> from diffusers import AutoPipelineForText2Audio, StableAudioPipeline
 
-        >>> pipe = StableAudioPipeline.from_pretrained(
-        ...     "stabilityai/stable-audio-open-1.0",
-        ...     torch_dtype=torch.float16
-        ... )
+        >>> pipe = StableAudioPipeline.from_pretrained("stabilityai/stable-audio-open-1.0", torch_dtype=torch.float16)
 
         >>> pipe_audio = AutoPipelineForText2Audio.from_pipe(pipe)
         >>> output = pipe_audio(
