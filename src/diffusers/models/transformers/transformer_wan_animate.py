@@ -1192,6 +1192,12 @@ class WanAnimateTransformer3DModel(
                 A kwargs dictionary that if specified is passed along to the `AttentionProcessor` as defined under
                 `self.processor` in
                 [diffusers.models.attention_processor](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/attention_processor.py).
+
+        Returns:
+            [`~models.transformer_2d.Transformer2DModelOutput`] or `tuple`:
+                If `return_dict` is True, a [`~models.transformer_2d.Transformer2DModelOutput`] whose `sample` is the
+                denoised video latent is returned, otherwise a plain `tuple` whose first element is that tensor is
+                returned.
         """
 
         # Check that shapes match up

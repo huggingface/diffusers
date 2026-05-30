@@ -170,6 +170,9 @@ tags
 
 # RL pipelines may produce mp4 outputs
 *.mp4
+*.jpg
+*.jepg
+*.wav
 
 # dependencies
 /transformers

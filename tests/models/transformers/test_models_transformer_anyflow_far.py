@@ -21,6 +21,7 @@ from diffusers import AnyFlowFARTransformer3DModel
 from diffusers.models.transformers.transformer_anyflow_far import (
     AnyFlowCausalAttnProcessor,
     AnyFlowFARTransformerOutput,
+    _build_anyflow_far_causal_block_mask,
 )
 from diffusers.utils.torch_utils import randn_tensor
 
@@ -30,6 +31,7 @@ from ..testing_utils import (
     BaseModelTesterConfig,
     MemoryTesterMixin,
     ModelTesterMixin,
+    TorchCompileTesterMixin,
     TrainingTesterMixin,
 )
 
@@ -88,6 +90,9 @@ class AnyFlowFARTransformer3DTesterConfig(BaseModelTesterConfig):
         text_seq_len = 12
         text_dim = 16
 
+        # No `attention_mask` here: the model accepts `attention_mask=None` and builds the mask
+        # internally — exercising that fallback in every non-compile test is the point. The
+        # compile test class overrides this method to inject a pre-built BlockMask.
         return {
             "hidden_states": randn_tensor(
                 (batch_size, num_frames, num_channels, height, width),
@@ -149,11 +154,36 @@ class TestAnyFlowFARTransformer3DAttention(AnyFlowFARTransformer3DTesterConfig, 
     """Attention processor tests for AnyFlow FAR Transformer 3D."""
 
 
-# Torch-compile mixin intentionally skipped: FAR's `_build_causal_mask` uses
-# `flex_attention.create_block_mask(_compile=False)`, which conflicts with the tracer
-# assumptions made by the standard TorchCompileTesterMixin. The bidi transformer test file
-# covers compile behavior; the FAR causal path is bit-exact-validated end-to-end on H200
-# through the pipeline replay rather than per-module compile.
+class TestAnyFlowFARTransformer3DCompile(AnyFlowFARTransformer3DTesterConfig, TorchCompileTesterMixin):
+    """torch.compile tests for AnyFlow FAR Transformer 3D.
+
+    Pre-builds the BlockMask via the standalone helper and injects it as ``attention_mask`` so the
+    transformer forward never calls ``flex_attention.create_block_mask(_compile=False)`` inside the
+    compiled scope.
+    """
+
+    def get_dummy_inputs(self) -> dict[str, "torch.Tensor"]:
+        inputs = super().get_dummy_inputs()
+        init_dict = self.get_init_dict()
+        inputs["attention_mask"] = _build_anyflow_far_causal_block_mask(
+            chunk_partition=inputs["chunk_partition"],
+            height=inputs["hidden_states"].shape[-2],
+            width=inputs["hidden_states"].shape[-1],
+            patch_size=init_dict["patch_size"],
+            compressed_patch_size=init_dict["compressed_patch_size"],
+            full_chunk_limit=init_dict["full_chunk_limit"],
+            mode="train",
+            has_clean_context=False,
+            device=torch_device,
+        )
+        return inputs
+
+    @pytest.mark.skip(reason="torch.export does not accept BlockMask as a pytree input.")
+    def test_compile_works_with_aot(self, tmp_path):
+        # BlockMask is a custom NamedTuple containing tensors plus a Python callable `mask_mod`,
+        # which `torch.export` cannot lift into a pytree. `torch.compile(fullgraph=True)` and
+        # `compile_repeated_blocks` both work; only AOT export is blocked.
+        super().test_compile_works_with_aot(tmp_path)
 
 
 class AnyFlowCausalAttnProcessorTest(unittest.TestCase):
