@@ -1748,7 +1748,9 @@ def create_diffusers_clip_model_from_ldm(
         raise ValueError("The provided checkpoint does not seem to contain a valid CLIP model.")
 
     if not has_text_model_wrapper:
-        diffusers_format_checkpoint = {k.removeprefix("text_model."): v for k, v in diffusers_format_checkpoint.items()}
+        diffusers_format_checkpoint = {
+            k.removeprefix("text_model."): v for k, v in diffusers_format_checkpoint.items()
+        }
 
     if is_accelerate_available():
         load_model_dict_into_meta(model, diffusers_format_checkpoint, dtype=torch_dtype)
