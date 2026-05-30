@@ -353,6 +353,8 @@
         title: JoyImageEditTransformer3DModel
       - local: api/models/latte_transformer3d
         title: LatteTransformer3DModel
+      - local: api/models/lens_transformer2d
+        title: LensTransformer2DModel
       - local: api/models/longcat_image_transformer2d
         title: LongCatImageTransformer2DModel
       - local: api/models/ltx2_video_transformer3d
@@ -553,6 +555,8 @@
         title: Kandinsky 5.0 Image
       - local: api/pipelines/kolors
         title: Kolors
+      - local: api/pipelines/lens
+        title: Lens
       - local: api/pipelines/latent_consistency_models
         title: Latent Consistency Models
       - local: api/pipelines/latent_diffusion

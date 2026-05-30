@@ -12,8 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import inspect
-from typing import Any, Callable, Optional, Sequence, Union
+from typing import Callable, Optional, Sequence, Union
 
 import numpy as np
 import torch
@@ -22,7 +21,7 @@ from transformers import PreTrainedTokenizerBase
 from ...image_processor import VaeImageProcessor
 from ...models import AutoencoderKLFlux2, LensTransformer2DModel
 from ...schedulers import FlowMatchEulerDiscreteScheduler
-from ...utils import is_torch_xla_available, logging, replace_example_docstring
+from ...utils import logging, replace_example_docstring
 from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline
 from .pipeline_output import LensPipelineOutput
@@ -33,12 +32,6 @@ from transformers.masking_utils import (
 from transformers.models.gpt_oss.modeling_gpt_oss import GptOssForCausalLM
 
 
-if is_torch_xla_available():
-    import torch_xla.core.xla_model as xm
-
-    XLA_AVAILABLE = True
-else:
-    XLA_AVAILABLE = False
 
 
 logger = logging.get_logger(__name__)
@@ -89,10 +82,11 @@ class LensGptOssEncoder(GptOssForCausalLM):
             raise RuntimeError("Call set_selected_layers(...) before forward().")
 
         target_device = self.model.embed_tokens.weight.device
-        if input_ids is not None and input_ids.device != target_device:
-            input_ids = input_ids.to(target_device)
-        if attention_mask is not None and attention_mask.device != target_device:
-            attention_mask = attention_mask.to(target_device)
+        if target_device.type != "meta":
+            if input_ids is not None and input_ids.device != target_device:
+                input_ids = input_ids.to(target_device)
+            if attention_mask is not None and attention_mask.device != target_device:
+                attention_mask = attention_mask.to(target_device)
 
         model = self.model
         inputs_embeds = model.embed_tokens(input_ids)
@@ -225,6 +219,14 @@ class LensPipeline(DiffusionPipeline):
     model_cpu_offload_seq = "text_encoder->transformer->vae"
     _callback_tensor_inputs = ["latents", "prompt_embeds"]
 
+    @property
+    def guidance_scale(self) -> float:
+        return self._guidance_scale
+
+    @property
+    def num_timesteps(self) -> int:
+        return self._num_timesteps
+
     def __init__(
         self,
         scheduler: FlowMatchEulerDiscreteScheduler,
@@ -241,15 +243,19 @@ class LensPipeline(DiffusionPipeline):
             tokenizer=tokenizer,
             transformer=transformer,
         )
-        if self.tokenizer.pad_token_id is None:
+        if self.tokenizer is not None and self.tokenizer.pad_token_id is None:
             self.tokenizer.pad_token = self.tokenizer.eos_token
-        self.tokenizer.padding_side = "right"
+        if self.tokenizer is not None:
+            self.tokenizer.padding_side = "right"
         self.vae_scale_factor = 16
-        self.latent_channels = self.transformer.config.in_channels
+        self.latent_channels = self.transformer.config.in_channels if self.transformer is not None else None
         self.txt_offset = DEFAULT_TXT_OFFSET
 
-        if hasattr(self.text_encoder, "set_selected_layers"):
-            selected_layers = list(self.transformer.config.selected_layer_index)
+        if self.text_encoder is not None and hasattr(self.text_encoder, "set_selected_layers"):
+            if self.transformer is not None:
+                selected_layers = list(self.transformer.config.selected_layer_index)
+            else:
+                selected_layers = [0]
             self.text_encoder.set_selected_layers(selected_layers)
         self.default_sample_size = 1024
         self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor)
@@ -280,7 +286,6 @@ class LensPipeline(DiffusionPipeline):
         )
         return encoded["input_ids"].to(device), encoded["attention_mask"].to(device)
 
-    @torch.no_grad()
     def _get_text_embeddings(
         self, prompts: list[str], max_sequence_length: int, device: torch.device
     ):
@@ -311,19 +316,24 @@ class LensPipeline(DiffusionPipeline):
     ):
         device = device or self._execution_device
 
-        prompts = [prompt] if isinstance(prompt, str) else list(prompt)
+        prompts = None
+        if prompt_embeds is None:
+            prompts = [prompt] if isinstance(prompt, str) else list(prompt)
         n = int(num_images_per_prompt)
 
-        if isinstance(negative_prompt, str):
-            negatives = [negative_prompt] * len(prompts)
-        else:
-            negatives = list(negative_prompt)
-            if len(negatives) == 1:
-                negatives = negatives * len(prompts)
-            if len(negatives) != len(prompts):
-                raise ValueError(
-                    "negative_prompt must be a string or a list of the same length as prompt"
-                )
+        negatives = None
+        if negative_prompt_embeds is None:
+            prompt_batch_size = len(prompts) if prompts is not None else prompt_embeds[0].shape[0]
+            if isinstance(negative_prompt, str):
+                negatives = [negative_prompt] * prompt_batch_size
+            else:
+                negatives = list(negative_prompt)
+                if len(negatives) == 1:
+                    negatives = negatives * prompt_batch_size
+                if len(negatives) != prompt_batch_size:
+                    raise ValueError(
+                        "negative_prompt must be a string or a list of the same length as prompt"
+                    )
 
         if prompt_embeds is None:
             prompt_embeds, prompt_mask = self._get_text_embeddings(prompts, max_sequence_length, device)
@@ -444,7 +454,6 @@ class LensPipeline(DiffusionPipeline):
         latents = latents.permute(0, 1, 4, 2, 5, 3)
         return latents.reshape(b, c // 4, h * 2, w * 2)
 
-    @torch.no_grad()
     def _decode(self, latents: torch.Tensor, latent_h: int, latent_w: int):
         b = latents.shape[0]
         p1, p2 = 2, 2
@@ -500,10 +509,72 @@ class LensPipeline(DiffusionPipeline):
         callback_on_step_end_tensor_inputs: list[str] = ["latents"],
         max_sequence_length: int = 512,
     ):
-        """
-        Generate an image from a prompt.
+        r"""
+        Function invoked when calling the pipeline for generation.
+
+        Args:
+            prompt (`str` or `list[str]`, *optional*):
+                The prompt or prompts to guide the image generation. If not defined, one has to pass `prompt_embeds`.
+                instead.
+            negative_prompt (`str` or `list[str]`, *optional*, defaults to `""`):
+                The prompt or prompts not to guide the image generation. If not defined, one has to pass
+                `negative_prompt_embeds` instead. Ignored when not using guidance (i.e., ignored if `guidance_scale` is
+                less than `1`).
+            height (`int`, *optional*, defaults to self.default_sample_size):
+                The height in pixels of the generated image.
+            width (`int`, *optional*, defaults to self.default_sample_size):
+                The width in pixels of the generated image.
+            base_resolution (`int`, *optional*):
+                The base resolution for the resolution bucket. When provided together with `aspect_ratio`, overrides
+                `height` and `width`. Supported values: 1024, 1440.
+            aspect_ratio (`str`, *optional*):
+                The aspect ratio for the resolution bucket. When provided together with `base_resolution`, overrides
+                `height` and `width`. Supported values: "1:2", "9:16", "2:3", "3:4", "1:1", "4:3", "3:2", "16:9",
+                "2:1".
+            num_inference_steps (`int`, *optional*, defaults to 50):
+                The number of denoising steps. More denoising steps usually lead to a higher quality image at the
+                expense of slower inference.
+            guidance_scale (`float`, *optional*, defaults to 4.0):
+                Guidance scale as defined in [Classifier-Free Diffusion Guidance](https://arxiv.org/abs/2207.12598).
+            num_images_per_prompt (`int`, *optional*, defaults to 1):
+                The number of images to generate per prompt.
+            generator (`torch.Generator` or `list[torch.Generator]`, *optional*):
+                One or a list of [torch generator(s)](https://pytorch.org/docs/stable/generated/torch.Generator.html)
+                to make generation deterministic.
+            latents (`torch.Tensor`, *optional*):
+                Pre-generated noisy latents, sampled from a Gaussian distribution, to be used as inputs for image
+                generation. Can be used to tweak the same generation with different prompts. If not provided, a
+                latents tensor will be generated by sampling using the supplied random `generator`.
+            prompt_embeds (`list[torch.Tensor]`, *optional*):
+                Pre-generated text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt weighting. If
+                not provided, text embeddings will be generated from `prompt` input argument. Must be a list of
+                tensors, one per selected text encoder layer.
+            prompt_mask (`torch.Tensor`, *optional*):
+                Boolean mask for the prompt embeddings. Must be provided when passing `prompt_embeds`.
+            negative_prompt_embeds (`list[torch.Tensor]`, *optional*):
+                Pre-generated negative text embeddings. Must be a list of tensors, one per selected text encoder
+                layer.
+            negative_prompt_mask (`torch.Tensor`, *optional*):
+                Boolean mask for the negative prompt embeddings. Must be provided when passing
+                `negative_prompt_embeds`.
+            output_type (`str`, *optional*, defaults to `"pil"`):
+                The output format of the generate image. Choose between: `"pil"` (`PIL.Image.Image`), `"np"`
+                (`np.ndarray`) or `"latent"` (`torch.Tensor`).
+            return_dict (`bool`, *optional*, defaults to `True`):
+                Whether or not to return a [`~pipelines.lens.LensPipelineOutput`] instead of a plain tuple.
+            callback_on_step_end (`Callable`, *optional*):
+                A function that calls at the end of each denoising step during inference.
+            callback_on_step_end_tensor_inputs (`list`, *optional*, defaults to `["latents"]`):
+                The list of tensor inputs for the `callback_on_step_end` function.
+            max_sequence_length (`int`, *optional*, defaults to 512):
+                Maximum sequence length to use with the text encoder.
 
         Examples:
+
+        Returns:
+            [`~pipelines.lens.LensPipelineOutput`] or `tuple`:
+                If `return_dict` is `True`, [`~pipelines.lens.LensPipelineOutput`] is returned, otherwise a `tuple`
+                is returned where the first element is a list of the generated images.
         """
         if base_resolution is not None and aspect_ratio is not None:
             height, width = resolve_resolution(base_resolution, aspect_ratio)
@@ -514,6 +585,7 @@ class LensPipeline(DiffusionPipeline):
 
         device = self._execution_device
         dtype = self.transformer.dtype
+        self._guidance_scale = guidance_scale
 
         prompt_embeds, prompt_mask, negative_prompt_embeds, negative_prompt_mask = self.encode_prompt(
             prompt=prompt,
@@ -549,6 +621,7 @@ class LensPipeline(DiffusionPipeline):
         mu = compute_empirical_mu(seq_len, num_inference_steps)
         sigmas = np.linspace(1.0, 1.0 / num_inference_steps, num_inference_steps)
         self.scheduler.set_timesteps(sigmas=sigmas, device=device, mu=mu)
+        self._num_timesteps = len(self.scheduler.timesteps)
 
         img_shapes = [(1, latent_h, latent_w)]
         with self.progress_bar(total=num_inference_steps) as progress_bar:
@@ -566,7 +639,7 @@ class LensPipeline(DiffusionPipeline):
                 )[0]
 
                 cond, uncond = noise.chunk(2)
-                comb = uncond + guidance_scale * (cond - uncond)
+                comb = uncond + self._guidance_scale * (cond - uncond)
                 cond_norm = torch.norm(cond, dim=-1, keepdim=True)
                 comb_norm = torch.norm(comb, dim=-1, keepdim=True)
                 scale = torch.where(
@@ -595,8 +668,10 @@ class LensPipeline(DiffusionPipeline):
                 decoded = decoded.clamp(-1.0, 1.0)
                 decoded = (decoded + 1.0) * 0.5
                 images = decoded.permute(0, 2, 3, 1).to("cpu", torch.float32).numpy()
+            elif output_type == "pt":
+                images = decoded
             else:
-                raise ValueError(f"output_type must be one of 'pil', 'np', 'latent'; got {output_type!r}.")
+                raise ValueError(f"output_type must be one of 'pil', 'np', 'pt', 'latent'; got {output_type!r}.")
 
         self.maybe_free_model_hooks()
 
