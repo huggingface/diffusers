@@ -16,34 +16,47 @@
 import gc
 import unittest
 
+import pytest
 import torch
 from datasets import load_dataset
 from parameterized import parameterized
 
 from diffusers import AutoencoderOobleck
+from diffusers.utils.torch_utils import randn_tensor
 
 from ...testing_utils import (
     backend_empty_cache,
     enable_full_determinism,
-    floats_tensor,
     slow,
     torch_all_close,
     torch_device,
 )
-from ..test_modeling_common import ModelTesterMixin
-from .testing_utils import AutoencoderTesterMixin
+from ..testing_utils import BaseModelTesterConfig, MemoryTesterMixin, ModelTesterMixin, TrainingTesterMixin
+from .testing_utils import NewAutoencoderTesterMixin
 
 
 enable_full_determinism()
 
 
-class AutoencoderOobleckTests(ModelTesterMixin, AutoencoderTesterMixin, unittest.TestCase):
-    model_class = AutoencoderOobleck
-    main_input_name = "sample"
-    base_precision = 1e-2
+class AutoencoderOobleckTesterConfig(BaseModelTesterConfig):
+    @property
+    def model_class(self):
+        return AutoencoderOobleck
 
-    def get_autoencoder_oobleck_config(self, block_out_channels=None):
-        init_dict = {
+    @property
+    def main_input_name(self) -> str:
+        return "sample"
+
+    @property
+    def output_shape(self) -> tuple:
+        return (2, 24)
+
+    @property
+    def generator(self):
+        return torch.Generator("cpu").manual_seed(0)
+
+    def get_init_dict(self) -> dict:
+        return {
             "encoder_hidden_size": 12,
             "decoder_channels": 12,
             "decoder_input_channels": 6,
@@ -51,33 +64,46 @@ class AutoencoderOobleckTests(ModelTesterMixin, AutoencoderTesterMixin, unittest
             "downsampling_ratios": [2, 4],
             "channel_multiples": [1, 2],
         }
-        return init_dict
 
-    @property
-    def dummy_input(self):
+    def get_dummy_inputs(self) -> dict:
         batch_size = 4
         num_channels = 2
         seq_len = 24
-
-        waveform = floats_tensor((batch_size, num_channels, seq_len)).to(torch_device)
-
+        waveform = randn_tensor((batch_size, num_channels, seq_len), generator=self.generator, device=torch_device)
         return {"sample": waveform, "sample_posterior": False}
 
-    @property
-    def input_shape(self):
-        return (2, 24)
 
-    @property
-    def output_shape(self):
-        return (2, 24)
+class TestAutoencoderOobleck(AutoencoderOobleckTesterConfig, ModelTesterMixin):
+    base_precision = 1e-2
 
-    def prepare_init_args_and_inputs_for_common(self):
-        init_dict = self.get_autoencoder_oobleck_config()
-        inputs_dict = self.dummy_input
-        return init_dict, inputs_dict
+
+class TestAutoencoderOobleckTraining(AutoencoderOobleckTesterConfig, TrainingTesterMixin):
+    """Training tests for AutoencoderOobleck."""
+
+
+class TestAutoencoderOobleckMemory(AutoencoderOobleckTesterConfig, MemoryTesterMixin):
+    """Memory optimization tests for AutoencoderOobleck."""
+
+    @pytest.mark.skip(
+        "Test not supported because of 'weight_norm_fwd_first_dim_kernel' not implemented for 'Float8_e4m3fn'"
+    )
+    def test_layerwise_casting_training(self):
+        super().test_layerwise_casting_training()
+
+    @pytest.mark.skip(
+        "The convolution layers of AutoencoderOobleck are wrapped with torch.nn.utils.weight_norm. "
+        "This causes the hook's pre_forward to not cast the module weights to compute_dtype."
+    )
+    def test_layerwise_casting_memory(self):
+        super().test_layerwise_casting_memory()
+
+
+class TestAutoencoderOobleckSlicingTiling(AutoencoderOobleckTesterConfig, NewAutoencoderTesterMixin):
+    """Slicing and tiling tests for AutoencoderOobleck."""
 
     def test_enable_disable_slicing(self):
-        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+        init_dict = self.get_init_dict()
+        inputs_dict = self.get_dummy_inputs()
 
         torch.manual_seed(0)
         model = self.model_class(**init_dict).to(torch_device)
@@ -91,55 +117,23 @@ class AutoencoderOobleckTests(ModelTesterMixin, AutoencoderTesterMixin, unittest
         model.enable_slicing()
         output_with_slicing = model(**inputs_dict, generator=torch.manual_seed(0))[0]
 
-        self.assertLess(
-            (output_without_slicing.detach().cpu().numpy() - output_with_slicing.detach().cpu().numpy()).max(),
-            0.5,
-            "VAE slicing should not affect the inference results",
-        )
+        assert (
+            output_without_slicing.detach().cpu().numpy() - output_with_slicing.detach().cpu().numpy()
+        ).max() < 0.5, "VAE slicing should not affect the inference results"
 
         torch.manual_seed(0)
         model.disable_slicing()
         output_without_slicing_2 = model(**inputs_dict, generator=torch.manual_seed(0))[0]
 
-        self.assertEqual(
-            output_without_slicing.detach().cpu().numpy().all(),
-            output_without_slicing_2.detach().cpu().numpy().all(),
-            "Without slicing outputs should match with the outputs when slicing is manually disabled.",
-        )
-
-    @unittest.skip("No attention module used in this model")
-    def test_set_attn_processor_for_determinism(self):
-        return
-
-    @unittest.skip(
-        "Test not supported because of 'weight_norm_fwd_first_dim_kernel' not implemented for 'Float8_e4m3fn'"
-    )
-    def test_layerwise_casting_training(self):
-        return super().test_layerwise_casting_training()
-
-    @unittest.skip(
-        "The convolution layers of AutoencoderOobleck are wrapped with torch.nn.utils.weight_norm. This causes the hook's pre_forward to not "
-        "cast the module weights to compute_dtype (as required by forward pass). As a result, forward pass errors out. To fix:\n"
-        "1. Make sure `nn::Module::to` works with `torch.nn.utils.weight_norm` wrapped convolution layer.\n"
-        "2. Unskip this test."
-    )
-    def test_layerwise_casting_inference(self):
-        pass
-
-    @unittest.skip(
-        "The convolution layers of AutoencoderOobleck are wrapped with torch.nn.utils.weight_norm. This causes the hook's pre_forward to not "
-        "cast the module weights to compute_dtype (as required by forward pass). As a result, forward pass errors out. To fix:\n"
-        "1. Make sure `nn::Module::to` works with `torch.nn.utils.weight_norm` wrapped convolution layer.\n"
-        "2. Unskip this test."
-    )
-    def test_layerwise_casting_memory(self):
-        pass
+        assert (
+            output_without_slicing.detach().cpu().numpy().all()
+            == output_without_slicing_2.detach().cpu().numpy().all()
+        ), "Without slicing outputs should match with the outputs when slicing is manually disabled."
 
 
 @slow
 class AutoencoderOobleckIntegrationTests(unittest.TestCase):
     def tearDown(self):
-        # clean up the VRAM after each test
         super().tearDown()
         gc.collect()
         backend_empty_cache(torch_device)
@@ -148,9 +142,7 @@ class AutoencoderOobleckIntegrationTests(unittest.TestCase):
         ds = load_dataset(
             "hf-internal-testing/librispeech_asr_dummy", "clean", split="validation", trust_remote_code=True
         )
-        # automatic decoding with librispeech
         speech_samples = ds.sort("id").select(range(num_samples))[:num_samples]["audio"]
-
         return torch.nn.utils.rnn.pad_sequence(
             [torch.from_numpy(x["array"]) for x in speech_samples], batch_first=True
         )
@@ -158,25 +150,14 @@ class AutoencoderOobleckIntegrationTests(unittest.TestCase):
     def get_audio(self, audio_sample_size=2097152, fp16=False):
         dtype = torch.float16 if fp16 else torch.float32
         audio = self._load_datasamples(2).to(torch_device).to(dtype)
-
-        # pad / crop to audio_sample_size
         audio = torch.nn.functional.pad(audio[:, :audio_sample_size], pad=(0, audio_sample_size - audio.shape[-1]))
-
-        # todo channel
         audio = audio.unsqueeze(1).repeat(1, 2, 1).to(torch_device)
-
         return audio
 
     def get_oobleck_vae_model(self, model_id="stabilityai/stable-audio-open-1.0", fp16=False):
         torch_dtype = torch.float16 if fp16 else torch.float32
-
-        model = AutoencoderOobleck.from_pretrained(
-            model_id,
-            subfolder="vae",
-            torch_dtype=torch_dtype,
-        )
+        model = AutoencoderOobleck.from_pretrained(model_id, subfolder="vae", torch_dtype=torch_dtype)
         model.to(torch_device)
-
         return model
 
     def get_generator(self, seed=0):
@@ -206,7 +187,6 @@ class AutoencoderOobleckIntegrationTests(unittest.TestCase):
 
         output_slice = sample[-1, 1, 5:10].cpu()
         expected_output_slice = torch.tensor(expected_slice)
-
         assert torch_all_close(output_slice, expected_output_slice, atol=1e-5)
 
     def test_stable_diffusion_mode(self):
@@ -237,13 +217,10 @@ class AutoencoderOobleckIntegrationTests(unittest.TestCase):
             z = posterior.sample(generator=generator)
             sample = model.decode(z).sample
 
-        # (batch_size, latent_dim, sequence_length)
         assert posterior.mean.shape == (audio.shape[0], model.config.decoder_input_channels, 1024)
-
         assert sample.shape == audio.shape
         assert ((sample - audio).abs().mean() - expected_mean_absolute_diff).abs() <= 1e-6
 
         output_slice = sample[-1, 1, 5:10].cpu()
         expected_output_slice = torch.tensor(expected_slice)
-
         assert torch_all_close(output_slice, expected_output_slice, atol=1e-5)
