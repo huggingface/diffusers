@@ -12,9 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #
-# This file derives from the FAR architecture (Gu et al., 2025, arXiv:2503.19325) and adds the
-# AnyFlow dual-timestep flow-map embedding (AnyFlowDualTimestepTextImageEmbedding) introduced by
-# Yuchao Gu, Guian Fang et al. (arXiv:2605.13724). The base 3D DiT structure is adapted from the
+# This file derives from the FAR architecture (arXiv:2503.19325) and adds the
+# AnyFlow dual-timestep flow-map embedding (AnyFlowDualTimestepTextImageEmbedding) introduced in
+# AnyFlow (arXiv:2605.13724). The base 3D DiT structure is adapted from the
 # v0.35.1 Wan2.1 transformer (transformer_wan.py); upstream Wan has since been refactored, so
 # this file is intentionally self-contained rather than annotated with `# Copied from`.
 
@@ -334,8 +334,11 @@ class AnyFlowRotaryPosEmbed(nn.Module):
         self._freqs_cache: Optional[Tuple[Any, torch.Tensor]] = None
 
     def _build_freqs(self, device: torch.device) -> torch.Tensor:
+        # Skip the cache read/write inside torch.compile: mutating ``self._freqs_cache`` between calls
+        # becomes a Dynamo guard and forces recompilation on the second invocation.
+        is_compiling = torch.compiler.is_compiling()
         cache_key = (device.type, str(device))
-        if self._freqs_cache is not None and self._freqs_cache[0] == cache_key:
+        if not is_compiling and self._freqs_cache is not None and self._freqs_cache[0] == cache_key:
             return self._freqs_cache[1]
 
         is_mps = device.type == "mps"
@@ -357,7 +360,8 @@ class AnyFlowRotaryPosEmbed(nn.Module):
             )
             freqs_list.append(f.to(device))
         freqs = torch.cat(freqs_list, dim=1)
-        self._freqs_cache = (cache_key, freqs)
+        if not is_compiling:
+            self._freqs_cache = (cache_key, freqs)
         return freqs
 
     def _forward_full_frame(self, num_frames, height, width, device) -> torch.Tensor:
@@ -510,10 +514,9 @@ class AnyFlowTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromO
     The architecture is the v0.35.1 Wan2.1 3D DiT backbone with one structural change: the timestep embedder is
     replaced by ``AnyFlowDualTimestepTextImageEmbedding`` so that every forward call conditions on both the source
     timestep ``t`` and the target timestep ``r``. This is the embedding required to learn the flow map
-    :math:`\Phi_{r\leftarrow t}` introduced in [AnyFlow](https://huggingface.co/papers/2605.13724) by Yuchao Gu, Guian
-    Fang et al.
+    :math:`\Phi_{r\leftarrow t}` introduced in [AnyFlow](https://huggingface.co/papers/2605.13724).
 
-    For frame-level autoregressive (FAR causal) generation, use ``AnyFlowFARTransformer3DModel`` instead; that variant
+    For chunk-wise autoregressive (FAR causal) generation, use ``AnyFlowFARTransformer3DModel`` instead; that variant
     adds the FAR causal block-mask and a compressed-frame patch embedding on top of the same backbone.
 
     Args:

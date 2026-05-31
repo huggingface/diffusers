@@ -90,6 +90,7 @@ class AnyFlowFARPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             rope_max_seq_len=32,
             gate_value=0.25,
             deltatime_type="r",
+            chunk_partition=(1, 1, 1),
         )
 
         components = {
@@ -106,8 +107,8 @@ class AnyFlowFARPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             generator = torch.manual_seed(seed)
         else:
             generator = torch.Generator(device=device).manual_seed(seed)
-        # num_frames=9 -> 3 latent frames (VAE temporal stride 4); use a matching
-        # chunk_partition so the FAR pipeline's pre-flight assertion passes.
+        # num_frames=9 -> 3 latent frames (VAE temporal stride 4); the transformer config above
+        # has chunk_partition=(1, 1, 1) (sum 3) baked in, so __call__ picks it up automatically.
         inputs = {
             "prompt": "dance monkey",
             "negative_prompt": "negative",
@@ -119,7 +120,6 @@ class AnyFlowFARPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             "num_frames": 9,
             "max_sequence_length": 16,
             "output_type": "pt",
-            "chunk_partition": [1, 1, 1],
         }
         return inputs
 

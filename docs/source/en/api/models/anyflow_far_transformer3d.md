@@ -13,19 +13,22 @@ specific language governing permissions and limitations under the License.
 # AnyFlowFARTransformer3DModel
 
 The causal (FAR) 3D Transformer used by [`AnyFlowFARPipeline`](../pipelines/anyflow#anyflowfarpipeline) —
-the FAR variant of [AnyFlow](https://huggingface.co/papers/2605.13724) (Yuchao Gu, Guian Fang et al., NUS
-ShowLab × NVIDIA). It extends the v0.35.1 Wan2.1 backbone with three additions:
+the FAR variant of [AnyFlow](https://huggingface.co/papers/2605.13724). See the
+[`AnyFlowFARPipeline`](../pipelines/anyflow) page for paper, authors, and released checkpoints. It extends
+the v0.35.1 Wan2.1 backbone with three additions:
 
-1. **FAR causal block-mask** via `torch.nn.attention.flex_attention`, supporting frame-level autoregressive
-   generation as introduced in [FAR (Gu et al., 2025)](https://arxiv.org/abs/2503.19325).
+1. **FAR causal block-mask** via `torch.nn.attention.flex_attention`, supporting chunk-wise autoregressive
+   generation as introduced in [FAR](https://huggingface.co/papers/2503.19325).
 2. **Compressed-frame patch embedding** (`far_patch_embedding`) for context (already-generated) frames,
    warm-started from the full-resolution `patch_embedding` at construction time via trilinear interpolation.
 3. **Dual-timestep flow-map embedding** (same as
    [`AnyFlowTransformer3DModel`](anyflow_transformer3d)) — every forward call conditions on both the source
    timestep ``t`` and the target timestep ``r``.
 
-The chunk schedule (`chunk_partition`) is **not** baked into the model config. It is a per-call argument to
-`forward`, so the same checkpoint handles different `num_frames` configurations without retraining.
+The default chunk schedule (`chunk_partition`) is stored in the model config; the released NVIDIA AnyFlow-FAR
+checkpoints use `[1, 3, 3, 3, 3, 3, 3, 2]` for the canonical 81-frame setting. `forward` accepts a per-call
+`chunk_partition` override, so the same checkpoint also handles other `num_frames` configurations without
+retraining.
 
 ```python
 from diffusers import AnyFlowFARTransformer3DModel

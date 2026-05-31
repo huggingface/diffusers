@@ -191,6 +191,7 @@ else:
         [
             "AceStepTransformer1DModel",
             "AllegroTransformer3DModel",
+            "AnimaTextConditioner",
             "AnyFlowFARTransformer3DModel",
             "AnyFlowTransformer3DModel",
             "AsymmetricAutoencoderKL",
@@ -235,6 +236,8 @@ else:
             "ControlNetModel",
             "ControlNetUnionModel",
             "ControlNetXSAdapter",
+            "Cosmos3AVAEAudioTokenizer",
+            "Cosmos3OmniTransformer",
             "CosmosControlNetModel",
             "CosmosTransformer3DModel",
             "DiTTransformer2DModel",
@@ -342,6 +345,7 @@ else:
             "AudioPipelineOutput",
             "AutoPipelineForImage2Image",
             "AutoPipelineForInpainting",
+            "AutoPipelineForText2Audio",
             "AutoPipelineForText2Image",
             "ConsistencyModelPipeline",
             "DanceDiffusionPipeline",
@@ -451,6 +455,8 @@ except OptionalDependencyNotAvailable:
 else:
     _import_structure["modular_pipelines"].extend(
         [
+            "AnimaAutoBlocks",
+            "AnimaModularPipeline",
             "ErnieImageAutoBlocks",
             "ErnieImageModularPipeline",
             "Flux2AutoBlocks",
@@ -545,6 +551,7 @@ else:
             "Cosmos2_5_TransferPipeline",
             "Cosmos2TextToImagePipeline",
             "Cosmos2VideoToWorldPipeline",
+            "Cosmos3OmniPipeline",
             "CosmosTextToWorldPipeline",
             "CosmosVideoToWorldPipeline",
             "CycleDiffusionPipeline",
@@ -1028,6 +1035,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .models import (
             AceStepTransformer1DModel,
             AllegroTransformer3DModel,
+            AnimaTextConditioner,
             AnyFlowFARTransformer3DModel,
             AnyFlowTransformer3DModel,
             AsymmetricAutoencoderKL,
@@ -1072,6 +1080,8 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             ControlNetModel,
             ControlNetUnionModel,
             ControlNetXSAdapter,
+            Cosmos3AVAEAudioTokenizer,
+            Cosmos3OmniTransformer,
             CosmosControlNetModel,
             CosmosTransformer3DModel,
             DiTTransformer2DModel,
@@ -1174,6 +1184,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             AudioPipelineOutput,
             AutoPipelineForImage2Image,
             AutoPipelineForInpainting,
+            AutoPipelineForText2Audio,
             AutoPipelineForText2Image,
             BlipDiffusionControlNetPipeline,
             BlipDiffusionPipeline,
@@ -1267,6 +1278,8 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .utils.dummy_torch_and_transformers_objects import *  # noqa F403
     else:
         from .modular_pipelines import (
+            AnimaAutoBlocks,
+            AnimaModularPipeline,
             ErnieImageAutoBlocks,
             ErnieImageModularPipeline,
             Flux2AutoBlocks,
@@ -1357,6 +1370,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             Cosmos2_5_TransferPipeline,
             Cosmos2TextToImagePipeline,
             Cosmos2VideoToWorldPipeline,
+            Cosmos3OmniPipeline,
             CosmosTextToWorldPipeline,
             CosmosVideoToWorldPipeline,
             CycleDiffusionPipeline,

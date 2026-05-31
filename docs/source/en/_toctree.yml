@@ -321,6 +321,8 @@
         title: CogView4Transformer2DModel
       - local: api/models/consisid_transformer3d
         title: ConsisIDTransformer3DModel
+      - local: api/models/cosmos3_omni_transformer
+        title: Cosmos3OmniTransformer
       - local: api/models/cosmos_transformer3d
         title: CosmosTransformer3DModel
       - local: api/models/dit_transformer2d
@@ -479,6 +481,8 @@
         title: Stable Audio
       title: Audio
     - sections:
+      - local: api/pipelines/anima
+        title: Anima
       - local: api/pipelines/animatediff
         title: AnimateDiff
       - local: api/pipelines/aura_flow
@@ -647,6 +651,8 @@
         title: ConsisID
       - local: api/pipelines/cosmos
         title: Cosmos
+      - local: api/pipelines/cosmos3
+        title: Cosmos3
       - local: api/pipelines/framepack
         title: Framepack
       - local: api/pipelines/helios
