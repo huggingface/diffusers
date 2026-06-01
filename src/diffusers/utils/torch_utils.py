@@ -103,6 +103,12 @@ if is_torch_available():
         "neuron": getattr(getattr(torch, "neuron", None), "synchronize", None),
         "default": None,
     }
+
+    _FP64_UNSUPPORTED_DEVICES = frozenset({"mps", "npu", "neuron"})
+    _INT64_UNSUPPORTED_DEVICES = frozenset({"mps", "npu", "neuron"})
+    _DTYPE_DOWNCAST = {torch.float64: torch.float32, torch.int64: torch.int32}
+    _DTYPE_UNSUPPORTED_DEVICES = {torch.float64: _FP64_UNSUPPORTED_DEVICES, torch.int64: _INT64_UNSUPPORTED_DEVICES}
+
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 try:
@@ -167,12 +173,6 @@ def backend_supports_training(device: str):
         device = "default"
 
     return BACKEND_SUPPORTS_TRAINING[device]
-
-
-_FP64_UNSUPPORTED_DEVICES = frozenset({"mps", "npu", "neuron"})
-_INT64_UNSUPPORTED_DEVICES = frozenset({"mps", "npu", "neuron"})
-_DTYPE_DOWNCAST = {torch.float64: torch.float32, torch.int64: torch.int32}
-_DTYPE_UNSUPPORTED_DEVICES = {torch.float64: _FP64_UNSUPPORTED_DEVICES, torch.int64: _INT64_UNSUPPORTED_DEVICES}
 
 
 def maybe_adjust_dtype_for_device(dtype: "torch.dtype", device: "torch.device") -> "torch.dtype":
