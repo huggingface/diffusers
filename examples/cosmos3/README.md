@@ -59,7 +59,7 @@ python examples/cosmos3/inference_cosmos3.py \
     --action-path "https://github.com/nvidia-cosmos/cosmos-dependencies/raw/refs/heads/assets/cosmos3/inputs/action/bridge_0.json" \
     --action-chunk-size 16 \
     --domain-name bridge_orig_lerobot \
-    --height 480 --width 832 --fps 5 \
+    --resolution-tier 480 --fps 5 \
     --num-inference-steps 30 --guidance-scale 1.0 --flow-shift 5.0 --seed 0 \
     --output results/cosmos3_forward_dynamics_robot
 ```
@@ -75,7 +75,7 @@ python examples/cosmos3/inference_cosmos3.py \
     --action-path "https://github.com/nvidia-cosmos/cosmos-dependencies/raw/refs/heads/assets/cosmos3/inputs/action/av_action_25.json" \
     --action-chunk-size 60 \
     --domain-name av \
-    --height 480 --width 832 --fps 10 \
+    --resolution-tier 480 --fps 10 \
     --num-inference-steps 30 --guidance-scale 1.0 --flow-shift 5.0 --seed 0 \
     --output results/cosmos3_forward_dynamics_av
 ```
@@ -91,7 +91,7 @@ python examples/cosmos3/inference_cosmos3.py \
     --action-chunk-size 16 \
     --raw-action-dim 10 \
     --domain-name bridge_orig_lerobot \
-    --height 480 --width 832 --fps 5 \
+    --resolution-tier 480 --fps 5 \
     --num-inference-steps 30 --guidance-scale 1.0 --flow-shift 5.0 --seed 0 \
     --output results/cosmos3_inverse_dynamics_robot
 ```
@@ -107,7 +107,7 @@ python examples/cosmos3/inference_cosmos3.py \
     --action-chunk-size 60 \
     --raw-action-dim 9 \
     --domain-name av \
-    --height 480 --width 832 --fps 10 \
+    --resolution-tier 480 --fps 10 \
     --num-inference-steps 30 --guidance-scale 1.0 --flow-shift 5.0 --seed 0 \
     --output results/cosmos3_inverse_dynamics_av
 ```
@@ -123,7 +123,7 @@ python examples/cosmos3/inference_cosmos3.py \
     --action-chunk-size 16 \
     --raw-action-dim 10 \
     --domain-name bridge_orig_lerobot \
-    --height 480 --width 832 --fps 5 \
+    --resolution-tier 480 --fps 5 \
     --num-inference-steps 30 --guidance-scale 1.0 --flow-shift 5.0 --seed 0 \
     --output results/cosmos3_policy_robot
 ```
@@ -139,21 +139,26 @@ python examples/cosmos3/inference_cosmos3.py \
     --action-chunk-size 60 \
     --raw-action-dim 9 \
     --domain-name av \
-    --height 480 --width 832 --fps 10 \
+    --resolution-tier 480 --fps 10 \
     --num-inference-steps 30 --guidance-scale 1.0 --flow-shift 5.0 --seed 0 \
     --output results/cosmos3_policy_av
 ```
 
-Action modes use `action_chunk_size + 1` video frames. `forward_dynamics` consumes `--action-path`; `inverse_dynamics` and `policy` write predicted actions to `sample-*_action.json` in model-normalized action space. The upstream camera-pose forward-dynamics sample uses a still image (`mountain_720.png`), while this wrapper currently expects `--vision-path` to load as video for action modes.
+Action modes use `action_chunk_size + 1` conditioning frames. `forward_dynamics` consumes `--action-path`; `inverse_dynamics` and `policy` write predicted actions to `sample_action.json` in model-normalized action space. This script loads `--vision-path` as a video for all action modes; `policy` and `forward_dynamics` condition only on the first frame, while `inverse_dynamics` uses the whole video.
+
+`--resolution-tier` is a resolution *tier* (`256`/`480`/`704`/`720`). The tier keys a table of predefined aspect-ratio canvases; the one closest to the input aspect ratio becomes the padded conditioning canvas. It is not the output frame size: the input is downscaled (never upscaled) and padded to fill the canvas, then the padding is cropped from the latents so the decoded output follows the downscaled input content. `--height` / `--width` (and `--num-frames`) are ignored for action modes.
+
+Pick the tier that matches the native resolution of your conditioning input (`480` for ~480p, `720` for ~720p). A tier below your input downscales it and discards detail; a tier above your input gains no resolution (content is never upscaled), wastes compute on padding, and is a train/inference distribution mismatch that can degrade quality.
 
 ### Useful flags
 
 | Flag | Default | Description |
 |---|---|---|
 | `--prompt` | (required) | Text prompt. |
-| `--vision-path` | `None` | URL or local path for an image-conditioning frame (image-to-video). |
-| `--num-frames` | `189` | `1` = image, otherwise number of video frames (`189` ≈ 7.9 s @ 24 FPS). |
-| `--height` / `--width` | `720` / `1280` | Output resolution (must be a multiple of the VAE spatial scale factor). |
+| `--vision-path` | `None` | URL or local path for an image-conditioning frame (image-to-video), or the image/video conditioning for action modes. |
+| `--num-frames` | `189` | `1` = image, otherwise number of video frames (`189` ≈ 7.9 s @ 24 FPS). Ignored for action modes (derived from `--action-chunk-size`). |
+| `--height` / `--width` | `720` / `1280` | Output resolution (must be a multiple of the VAE spatial scale factor). Ignored for action modes; use `--resolution-tier`. |
+| `--resolution-tier` | `480` | Action resolution tier (`256`/`480`/`704`/`720`): selects the aspect bin / padded conditioning canvas, not the output size. |
 | `--fps` | `24.0` | Frame rate of the generated video. |
 | `--enable-sound` | off | Generate a synchronized audio track. |
 | `--action-mode` | `None` | Enable action conditioning/generation. One of `forward_dynamics`, `inverse_dynamics`, or `policy`. |

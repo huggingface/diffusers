@@ -459,7 +459,11 @@ encode_video(
 </hfoption>
 </hfoptions>
 
-## Action policy
+## Action-conditioned generation
+
+Action runs group every action-specific input into a [`CosmosActionCondition`] passed via the `action` argument instead of the top-level `image` / `video` / `height` / `width` arguments. Set `resolution_tier` (`256`/`480`/`704`/`720`) close to the input video's native resolution; it selects the conditioning canvas. Cosmos 3 supports three action modes — `policy`, `forward_dynamics`, and `inverse_dynamics`. `policy` and `forward_dynamics` condition only on the first frame (so an `image` or a `video` both work), while `inverse_dynamics` requires a `video`. The conditioning video for an action run is set on `action.video` (or `action.image`), not on the pipeline's top-level `video` argument.
+
+### Action policy
 
 Action policy generation predicts future video and action tokens from the first observation frame, text prompt, and action domain metadata. The example below uses the Bridge robot domain and writes the predicted action chunk to JSON in model-normalized action space.
 
@@ -470,7 +474,7 @@ Action policy generation predicts future video and action tokens from the first 
 import json
 
 import torch
-from diffusers import Cosmos3OmniPipeline
+from diffusers import Cosmos3OmniPipeline, CosmosActionCondition
 from diffusers.utils import export_to_video, load_video
 
 pipe = Cosmos3OmniPipeline.from_pretrained(
@@ -487,17 +491,17 @@ video = load_video(
 
 result = pipe(
     prompt=prompt,
-    video=video,
-    num_frames=17,
-    height=480,
-    width=832,
+    action=CosmosActionCondition(
+        mode="policy",
+        chunk_size=16,
+        domain_name="bridge_orig_lerobot",
+        raw_action_dim=10,
+        resolution_tier=480,
+        video=video,
+    ),
     fps=5,
     num_inference_steps=30,
     guidance_scale=1.0,
-    action_mode="policy",
-    action_chunk_size=16,
-    raw_action_dim=10,
-    domain_name="bridge_orig_lerobot",
     use_system_prompt=False,
 )
 
@@ -516,7 +520,7 @@ if result.action is not None:
 import json
 
 import torch
-from diffusers import Cosmos3OmniPipeline
+from diffusers import Cosmos3OmniPipeline, CosmosActionCondition
 from diffusers.utils import export_to_video, load_video
 
 pipe = Cosmos3OmniPipeline.from_pretrained(
@@ -533,17 +537,17 @@ video = load_video(
 
 result = pipe(
     prompt=prompt,
-    video=video,
-    num_frames=17,
-    height=480,
-    width=832,
+    action=CosmosActionCondition(
+        mode="policy",
+        chunk_size=16,
+        domain_name="bridge_orig_lerobot",
+        raw_action_dim=10,
+        resolution_tier=480,
+        video=video,
+    ),
     fps=5,
     num_inference_steps=30,
     guidance_scale=1.0,
-    action_mode="policy",
-    action_chunk_size=16,
-    raw_action_dim=10,
-    domain_name="bridge_orig_lerobot",
     use_system_prompt=False,
 )
 
@@ -635,6 +639,10 @@ pipe = Cosmos3OmniPipeline.from_pretrained(
 
 - all
 - __call__
+
+## CosmosActionCondition
+
+[[autodoc]] CosmosActionCondition
 
 ## Cosmos3OmniPipelineOutput
 

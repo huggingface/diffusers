@@ -30,7 +30,7 @@ import urllib.request
 import torch
 from huggingface_hub import snapshot_download
 
-from diffusers import Cosmos3OmniPipeline
+from diffusers import Cosmos3OmniPipeline, CosmosActionCondition
 from diffusers.utils import encode_video, export_to_video, load_image, load_video
 
 
@@ -71,8 +71,18 @@ def main():
         help="Optional URL or local path for an image-conditioning frame, or an action conditioning video.",
     )
     parser.add_argument("--output", default=".", help="Directory to save generated video/image/audio files.")
-    parser.add_argument("--height", type=int, default=720)
-    parser.add_argument("--width", type=int, default=1280)
+    parser.add_argument(
+        "--height",
+        type=int,
+        default=None,
+        help="Output height in pixels (default 720). Ignored for action modes; use --resolution-tier instead.",
+    )
+    parser.add_argument(
+        "--width",
+        type=int,
+        default=None,
+        help="Output width in pixels (default 1280). Ignored for action modes; use --resolution-tier instead.",
+    )
     parser.add_argument(
         "--num-frames",
         type=int,
@@ -99,6 +109,16 @@ def main():
     parser.add_argument("--action-chunk-size", type=int, default=None, help="Number of action tokens to generate/use.")
     parser.add_argument("--domain-name", default=None, help="Cosmos3 action embodiment domain name.")
     parser.add_argument("--raw-action-dim", type=int, default=None, help="Slice predicted action output to this size.")
+    parser.add_argument(
+        "--resolution-tier",
+        type=int,
+        default=480,
+        choices=[256, 480, 704, 720],
+        help=(
+            "Action resolution tier (256/480/704/720). Selects the aspect bin / padded conditioning canvas, "
+            "not the output frame size."
+        ),
+    )
     parser.add_argument(
         "--no-duration-template",
         dest="add_duration_template",
@@ -145,24 +165,24 @@ def main():
 
     if args.action_mode is not None:
         if args.vision_path is None:
-            raise ValueError("--vision-path must point to a video for action modes.")
+            raise ValueError("--vision-path must point to a conditioning video for action modes.")
         if args.action_chunk_size is None:
             raise ValueError("--action-chunk-size is required for action modes.")
         video = load_video(args.vision_path)
-        action = _load_action(args.action_path) if args.action_mode == "forward_dynamics" else None
+        raw_actions = _load_action(args.action_path) if args.action_mode == "forward_dynamics" else None
         result = pipeline(
             prompt=args.prompt,
-            video=video,
-            num_frames=args.action_chunk_size + 1,
-            height=args.height,
-            width=args.width,
+            action=CosmosActionCondition(
+                mode=args.action_mode,
+                chunk_size=args.action_chunk_size,
+                domain_name=args.domain_name,
+                raw_action_dim=args.raw_action_dim,
+                resolution_tier=args.resolution_tier,
+                raw_actions=raw_actions,
+                video=video,
+            ),
             fps=args.fps,
             num_inference_steps=args.num_inference_steps,
-            action_mode=args.action_mode,
-            raw_actions=action,
-            action_chunk_size=args.action_chunk_size,
-            domain_name=args.domain_name,
-            raw_action_dim=args.raw_action_dim,
             guidance_scale=args.guidance_scale,
             generator=generator,
             use_system_prompt=False,
