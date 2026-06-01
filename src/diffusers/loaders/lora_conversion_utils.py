@@ -2317,6 +2317,52 @@ def _convert_non_diffusers_qwen_lora_to_diffusers(state_dict):
     return converted_state_dict
 
 
+def _convert_non_diffusers_anima_lora_to_diffusers(state_dict):
+    rename_dict = {
+        "blocks.": "transformer_blocks.",
+        "adaln_modulation_self_attn.1": "norm1.linear_1",
+        "adaln_modulation_self_attn.2": "norm1.linear_2",
+        "adaln_modulation_cross_attn.1": "norm2.linear_1",
+        "adaln_modulation_cross_attn.2": "norm2.linear_2",
+        "adaln_modulation_mlp.1": "norm3.linear_1",
+        "adaln_modulation_mlp.2": "norm3.linear_2",
+        "self_attn.q_proj": "attn1.to_q",
+        "self_attn.k_proj": "attn1.to_k",
+        "self_attn.v_proj": "attn1.to_v",
+        "self_attn.output_proj": "attn1.to_out.0",
+        "cross_attn.q_proj": "attn2.to_q",
+        "cross_attn.k_proj": "attn2.to_k",
+        "cross_attn.v_proj": "attn2.to_v",
+        "cross_attn.output_proj": "attn2.to_out.0",
+        "mlp.layer1": "ff.net.0.proj",
+        "mlp.layer2": "ff.net.2",
+        "final_layer.adaln_modulation.1": "norm_out.linear_1",
+        "final_layer.adaln_modulation.2": "norm_out.linear_2",
+        "final_layer.linear": "proj_out",
+        "t_embedder.1": "time_embed.t_embedder",
+        "t_embedding_norm": "time_embed.norm",
+        "x_embedder.proj.1": "patch_embed.proj",
+    }
+
+    converted_state_dict = {}
+    for key, value in state_dict.items():
+        if not key.startswith("diffusion_model."):
+            converted_state_dict[key] = value
+            continue
+
+        new_key = key.removeprefix("diffusion_model.")
+        if new_key.startswith("llm_adapter."):
+            new_key = f"text_conditioner.{new_key.removeprefix('llm_adapter.')}"
+        else:
+            for old_key, new_key_part in rename_dict.items():
+                new_key = new_key.replace(old_key, new_key_part)
+            new_key = f"transformer.{new_key}"
+
+        converted_state_dict[new_key] = value
+
+    return converted_state_dict
+
+
 def _convert_non_diffusers_flux2_lora_to_diffusers(state_dict):
     converted_state_dict = {}
 

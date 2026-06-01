@@ -89,6 +89,10 @@ else:
         "QwenImageLayeredModularPipeline",
         "QwenImageLayeredAutoBlocks",
     ]
+    _import_structure["anima"] = [
+        "AnimaAutoBlocks",
+        "AnimaModularPipeline",
+    ]
     _import_structure["ernie_image"] = [
         "ErnieImageAutoBlocks",
         "ErnieImageModularPipeline",
@@ -114,6 +118,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     except OptionalDependencyNotAvailable:
         from ..utils.dummy_pt_objects import *  # noqa F403
     else:
+        from .anima import AnimaAutoBlocks, AnimaModularPipeline
         from .components_manager import ComponentsManager
         from .ernie_image import ErnieImageAutoBlocks, ErnieImageModularPipeline
         from .flux import FluxAutoBlocks, FluxKontextAutoBlocks, FluxKontextModularPipeline, FluxModularPipeline

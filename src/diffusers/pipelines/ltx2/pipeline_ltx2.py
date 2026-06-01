@@ -48,7 +48,7 @@ EXAMPLE_DOC_STRING = """
         ```py
         >>> import torch
         >>> from diffusers import LTX2Pipeline
-        >>> from diffusers.pipelines.ltx2.export_utils import encode_video
+        >>> from diffusers.utils import encode_video
 
         >>> pipe = LTX2Pipeline.from_pretrained("Lightricks/LTX-2", torch_dtype=torch.bfloat16)
         >>> pipe.enable_model_cpu_offload()
