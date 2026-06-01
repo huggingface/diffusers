@@ -352,7 +352,14 @@ def default_output_paths(task: str, num: int, explicit: Optional[str], ext: str 
 # pin. ``--dependencies "diffusers @ git+..."`` on the local command appends
 # additional dependencies but does not replace this default install.
 DIFFUSERS_SOURCE = "diffusers @ git+https://github.com/huggingface/diffusers@diffuser-cli-for-agent"
-_DEFAULT_REMOTE_DEPS = (DIFFUSERS_SOURCE, "accelerate", "transformers", "safetensors")
+_DEFAULT_REMOTE_DEPS = (
+    DIFFUSERS_SOURCE,
+    "accelerate",
+    "transformers",
+    "safetensors",
+    "torch==2.10.*",
+    "torchvision",
+)
 
 # Entry point for ``uv run`` inside the container. ``uv run`` accepts a file path,
 # URL, or *command*; passing the ``diffusers-cli`` console script name makes UV
@@ -459,9 +466,7 @@ def maybe_submit_remote(args: Namespace, task: str) -> bool:
     )
     if Volume is not None and not Path(args.model).exists():
         mount_path = "/model"
-        run_uv_job_kwargs["volumes"] = [
-            Volume(type="model", source=args.model, mount_path=mount_path)
-        ]
+        run_uv_job_kwargs["volumes"] = [Volume(type="model", source=args.model, mount_path=mount_path)]
         run_uv_job_kwargs["script_args"] = _rewrite_model_arg(forwarded, mount_path)
 
     job = run_uv_job(**run_uv_job_kwargs)
