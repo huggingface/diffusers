@@ -23,9 +23,23 @@ from diffusers import AutoencoderKL
 from diffusers.hooks import HookRegistry, ModelHook
 from diffusers.models import ModelMixin
 from diffusers.pipelines.pipeline_utils import DiffusionPipeline
+from diffusers.utils import logging as diffusers_logging
 from diffusers.utils.import_utils import compare_versions
 
-from ..testing_utils import (
+
+@contextlib.contextmanager
+def _propagate_diffusers_logs():
+    # The diffusers root logger sets `propagate = False`, so its records never reach the root
+    # logger that pytest's `caplog` fixture hooks into. Temporarily enable propagation so the
+    # emitted warnings can be captured, then restore the default.
+    diffusers_logging.enable_propagation()
+    try:
+        yield
+    finally:
+        diffusers_logging.disable_propagation()
+
+
+from ..testing_utils import (  # noqa: E402
     backend_empty_cache,
     backend_max_memory_allocated,
     backend_reset_peak_memory_stats,
@@ -303,7 +317,7 @@ class TestGroupOffload:
         if torch.device(torch_device).type not in ["cuda", "xpu"]:
             return
         self.model.enable_group_offload(torch_device, offload_type="block_level", num_blocks_per_group=3)
-        with caplog.at_level(logging.WARNING, logger="diffusers.models.modeling_utils"):
+        with _propagate_diffusers_logs(), caplog.at_level(logging.WARNING, logger="diffusers.models.modeling_utils"):
             self.model.to(torch_device)
         assert f"The module '{self.model.__class__.__name__}' is group offloaded" in caplog.text
 
@@ -312,7 +326,10 @@ class TestGroupOffload:
             return
         pipe = DummyPipeline(self.model)
         self.model.enable_group_offload(torch_device, offload_type="block_level", num_blocks_per_group=3)
-        with caplog.at_level(logging.WARNING, logger="diffusers.pipelines.pipeline_utils"):
+        with (
+            _propagate_diffusers_logs(),
+            caplog.at_level(logging.WARNING, logger="diffusers.pipelines.pipeline_utils"),
+        ):
             pipe.to(torch_device)
         assert f"The module '{self.model.__class__.__name__}' is group offloaded" in caplog.text
 
