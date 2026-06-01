@@ -218,6 +218,36 @@ class ModelUtilsTest(unittest.TestCase):
     def tearDown(self):
         super().tearDown()
 
+    def _get_dummy_unet(self):
+        return UNet2DConditionModel(
+            block_out_channels=(4, 8),
+            layers_per_block=1,
+            sample_size=16,
+            in_channels=4,
+            out_channels=4,
+            down_block_types=("DownBlock2D", "CrossAttnDownBlock2D"),
+            up_block_types=("CrossAttnUpBlock2D", "UpBlock2D"),
+            cross_attention_dim=8,
+            norm_num_groups=4,
+        )
+
+    def test_dtype_cache_reflects_to_and_half(self):
+        # `dtype` is cached and invalidated through `_apply`, which `.to()` / `.half()` flow through.
+        model = self._get_dummy_unet()
+        assert model.dtype == torch.float32
+        model.half()
+        assert model.dtype == torch.float16
+        model.to(torch.float32)
+        assert model.dtype == torch.float32
+
+    def test_dtype_cache_invalidated_by_layerwise_casting(self):
+        # Layerwise casting reports `compute_dtype` via a hook without flowing through `_apply`,
+        # so the cached dtype must be invalidated when it is enabled.
+        model = self._get_dummy_unet()
+        assert model.dtype == torch.float32  # populate the cache
+        model.enable_layerwise_casting(storage_dtype=torch.float8_e4m3fn, compute_dtype=torch.float16)
+        assert model.dtype == torch.float16
+
     def test_missing_key_loading_warning_message(self):
         with self.assertLogs("diffusers.models.modeling_utils", level="WARNING") as logs:
             UNet2DConditionModel.from_pretrained("hf-internal-testing/stable-diffusion-broken", subfolder="unet")

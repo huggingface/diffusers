@@ -516,6 +516,8 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         apply_layerwise_casting(
             self, storage_dtype, compute_dtype, skip_modules_pattern, skip_modules_classes, non_blocking
         )
+        # Casting hooks change the reported dtype without flowing through `_apply`, so invalidate the cache here.
+        self.__dict__.pop("_cached_dtype", None)
 
     def enable_group_offload(
         self,
