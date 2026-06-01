@@ -369,6 +369,16 @@ HF_JOBS_KEYS = frozenset(
 )
 
 
+def _rewrite_model_arg(forwarded: list[str], new_path: str) -> list[str]:
+    """Return a copy of ``forwarded`` with the ``--model`` value replaced by ``new_path``."""
+    out = list(forwarded)
+    for i, token in enumerate(out):
+        if token in ("--model", "-m") and i + 1 < len(out):
+            out[i + 1] = new_path
+            return out
+    return out
+
+
 def _forward_args(args: Namespace, task: str) -> list[str]:
     """Reconstruct argv for the remote container from a parsed Namespace.
 
@@ -409,6 +419,11 @@ def maybe_submit_remote(args: Namespace, task: str) -> bool:
 
     from huggingface_hub import HfApi, get_token, run_uv_job
 
+    try:
+        from huggingface_hub import Volume
+    except ImportError:
+        Volume = None
+
     hf_token = args.token or get_token()
     api = HfApi(token=hf_token)
 
@@ -423,9 +438,15 @@ def maybe_submit_remote(args: Namespace, task: str) -> bool:
         dependencies.extend(args.dependencies)
 
     secrets = {"HF_TOKEN": hf_token} if hf_token else None
-    env = {RUN_ID_ENV: run_id}
+    env = {
+        RUN_ID_ENV: run_id,
+        "HF_ENABLE_PARALLEL_LOADING": "1",  # thread-pool the safetensors load step
+    }
 
-    job = run_uv_job(
+    # Mount the model repo into the job's filesystem so the container reads it
+    # from local disk instead of downloading on every run. Requires
+    # huggingface_hub >= 1.16. Falls back to the download path otherwise.
+    run_uv_job_kwargs: dict[str, Any] = dict(
         script=_UV_RUNNER_SCRIPT,
         script_args=forwarded,
         dependencies=dependencies,
@@ -436,6 +457,14 @@ def maybe_submit_remote(args: Namespace, task: str) -> bool:
         env=env,
         token=hf_token,
     )
+    if Volume is not None and not Path(args.model).exists():
+        mount_path = "/model"
+        run_uv_job_kwargs["volumes"] = [
+            Volume(type="model", source=args.model, mount_path=mount_path)
+        ]
+        run_uv_job_kwargs["script_args"] = _rewrite_model_arg(forwarded, mount_path)
+
+    job = run_uv_job(**run_uv_job_kwargs)
 
     payload: dict[str, Any] = {
         "task": "remote-submit",
@@ -450,6 +479,12 @@ def maybe_submit_remote(args: Namespace, task: str) -> bool:
         format_result(args, payload)
         return True
 
+    print(
+        f"[diffusers-cli] submitted job {job.id} (run_id={run_id}); "
+        f"watch at {getattr(job, 'url', 'https://huggingface.co/jobs')}",
+        file=sys.stderr,
+        flush=True,
+    )
     final_status = _wait_for_job(api, job.id, args.namespace, args.poll_interval)
     payload["job_status"] = final_status
     payload["outputs"] = _download_job_artifacts(api, args.push_to, run_id, args.output)
@@ -458,14 +493,28 @@ def maybe_submit_remote(args: Namespace, task: str) -> bool:
 
 
 def _wait_for_job(api: Any, job_id: str, namespace: Optional[str], poll_interval: float) -> str:
-    """Poll ``inspect_job`` until the job reaches a terminal stage; return that stage as a string."""
+    """Poll ``inspect_job`` until the job reaches a terminal stage; return that stage as a string.
+
+    Prints a heartbeat each poll and a labelled line on every stage transition so
+    the local terminal isn't silent for the multi-minute install/download/run
+    window of a remote inference job.
+    """
     import time
 
     terminal = {"COMPLETED", "CANCELED", "ERROR", "DELETED"}
+    last_stage: Optional[str] = None
     while True:
         info = api.inspect_job(job_id=job_id, namespace=namespace)
         stage = str(info.status.stage) if info.status else "UNKNOWN"
+        if stage != last_stage:
+            if last_stage is not None:
+                print("", file=sys.stderr, flush=True)
+            print(f"[diffusers-cli] job {job_id}: {stage}", file=sys.stderr, flush=True)
+            last_stage = stage
+        else:
+            print(".", end="", file=sys.stderr, flush=True)
         if stage in terminal:
+            print("", file=sys.stderr, flush=True)
             return stage
         time.sleep(poll_interval)
 
