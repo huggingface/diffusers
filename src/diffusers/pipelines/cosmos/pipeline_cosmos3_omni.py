@@ -648,9 +648,9 @@ class Cosmos3OmniPipeline(DiffusionPipeline):
         self,
         image: torch.Tensor | None = None,
         video: Any | None = None,
-        num_frames: int = 189,
-        height: int = 720,
-        width: int = 1280,
+        num_frames: int | None = None,
+        height: int | None = None,
+        width: int | None = None,
         fps: float = 24.0,
         latents: torch.Tensor | None = None,
         sound_latents: torch.Tensor | None = None,
@@ -858,9 +858,9 @@ class Cosmos3OmniPipeline(DiffusionPipeline):
         negative_prompt,
         image,
         video,
-        height: int,
-        width: int,
-        num_frames: int,
+        height: int | None,
+        width: int | None,
+        num_frames: int | None,
         guidance_scale: float,
         enable_sound: bool,
         callback_on_step_end_tensor_inputs: list[str],
@@ -874,8 +874,6 @@ class Cosmos3OmniPipeline(DiffusionPipeline):
             raise ValueError(
                 f"`negative_prompt` must be a str, list of str, or None, got {type(negative_prompt).__name__}."
             )
-        if num_frames < 1:
-            raise ValueError(f"`num_frames` must be >= 1, got {num_frames}.")
         if enable_sound:
             if self.sound_tokenizer is None:
                 raise ValueError("`enable_sound=True` requires a sound-capable checkpoint with a `sound_tokenizer`.")
@@ -889,6 +887,10 @@ class Cosmos3OmniPipeline(DiffusionPipeline):
 
         if action is not None:
             # API-conflict + model-dependent checks live here.
+            if num_frames is not None:
+                raise ValueError("`num_frames` has to be None if action is not None")
+            if height is not None or width is not None:
+                raise ValueError("`height` and `width` have to be None if action is not None")
             if image is not None or video is not None:
                 raise ValueError(
                     "Pass action conditioning via `action.image` / `action.video`, not the top-level "
@@ -903,6 +905,12 @@ class Cosmos3OmniPipeline(DiffusionPipeline):
                         f"{self.transformer.config.action_dim}."
                     )
         else:
+            if num_frames is None:
+                raise ValueError("`num_frames` must be provided when `action` is None.")
+            if height is None or width is None:
+                raise ValueError("`height` and `width` must be provided when `action` is None.")
+            if num_frames < 1:
+                raise ValueError(f"`num_frames` must be >= 1, got {num_frames}.")
             sf = int(self.vae.config.scale_factor_spatial)
             if height % sf != 0 or width % sf != 0:
                 raise ValueError(f"`height` and `width` must be multiples of {sf}, got ({height}, {width}).")
@@ -1115,15 +1123,16 @@ class Cosmos3OmniPipeline(DiffusionPipeline):
                 Reserved for video-to-video conditioning. Video-to-video is not yet supported, so this argument is
                 currently accepted but unused. Action conditioning video is provided through `action` (see
                 [`CosmosActionCondition`]), not this argument.
-            num_frames (`int`, *optional*, defaults to `189`):
-                Number of frames to generate. Use `1` for text-to-image; the default produces ≈ 7.9 s at 24 FPS.
-                Ignored for action runs, where it is derived from `action.chunk_size + 1`.
-            height (`int`, *optional*, defaults to `720`):
-                Output height in pixels. Ignored for action runs, which size via
-                `action.resolution_tier`.
-            width (`int`, *optional*, defaults to `1280`):
-                Output width in pixels. Ignored for action runs, which size via
-                `action.resolution_tier`.
+            num_frames (`int`, *optional*, defaults to `None`):
+                Number of frames to generate. Use `1` for text-to-image. Defaults to `189` (≈ 7.9 s at 24 FPS) for
+                non-action modes when omitted (`None`). Must be `None` for action runs, where frame count is derived
+                from `action.chunk_size + 1`.
+            height (`int`, *optional*, defaults to `None`):
+                Output height in pixels. Defaults to `720` for non-action modes when omitted (`None`). Must be `None`
+                for action runs, which size via `action.resolution_tier`.
+            width (`int`, *optional*, defaults to `None`):
+                Output width in pixels. Defaults to `1280` for non-action modes when omitted (`None`). Must be
+                `None` for action runs, which size via `action.resolution_tier`.
             fps (`float`, *optional*, defaults to `24.0`):
                 Target frame rate, also injected into the mRoPE temporal modulation and into the duration metadata
                 template.
@@ -1149,8 +1158,8 @@ class Cosmos3OmniPipeline(DiffusionPipeline):
                 Bundles every input for an action-conditioned run (mode, chunk size, embodiment domain, resolution
                 tier, raw actions, and the conditioning image/video), and requires a transformer trained with
                 `action_gen=True`. When set, passing the top-level `image` / `video` arguments raises; `height` /
-                `width` / `num_frames` are ignored (a warning is logged) since resolution comes from
-                `action.resolution_tier` and the frame count from `action.chunk_size`. See [`CosmosActionCondition`].
+                `width` / `num_frames` must be `None`, since resolution comes from `action.resolution_tier` and
+                frame count from `action.chunk_size`. See [`CosmosActionCondition`].
             output_type (`str`, *optional*, defaults to `"pil"`):
                 Output format for the video. One of `"pil"` (list of `PIL.Image.Image`), `"np"` (`np.ndarray`, `[T, H,
                 W, C]`), `"pt"` (`torch.Tensor`, `[T, C, H, W]`), or `"latent"` (raw vision latents).
@@ -1186,24 +1195,13 @@ class Cosmos3OmniPipeline(DiffusionPipeline):
         if isinstance(callback_on_step_end, (PipelineCallback, MultiPipelineCallbacks)):
             callback_on_step_end_tensor_inputs = callback_on_step_end.tensor_inputs
 
-        # Action runs size via `action.resolution_tier` and derive their frame count from `action.chunk_size`, so
-        # `height` / `width` / `num_frames` are ignored. Warn (rather than fail) when the caller passed non-default
-        # values so a shared config can still be reused across action and non-action runs.
-        if action is not None:
-            ignored = [
-                name
-                for name, value, default in (
-                    ("num_frames", num_frames, 189),
-                    ("height", height, 720),
-                    ("width", width, 1280),
-                )
-                if value != default
-            ]
-            if ignored:
-                logger.warning(
-                    "Action runs derive resolution from `action.resolution_tier` and frame count from "
-                    f"`action.chunk_size`; ignoring {', '.join(ignored)}."
-                )
+        if action is None:
+            if num_frames is None:
+                num_frames = 189
+            if height is None:
+                height = 720
+            if width is None:
+                width = 1280
 
         # 1. Check inputs
         self.check_inputs(
