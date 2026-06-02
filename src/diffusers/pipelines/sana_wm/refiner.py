@@ -36,6 +36,7 @@ from __future__ import annotations
 
 import gc
 import json
+import os
 from pathlib import Path
 from typing import Any
 
@@ -157,6 +158,7 @@ class SanaWMLTX2Refiner(ModelMixin, ConfigMixin):
         block_size: int | None = 3,
         kv_max_frames: int = 11,
         sigmas: tuple[float, ...] = STAGE_2_DISTILLED_SIGMA_VALUES,
+        checkpoint_dir: str | Path | None = None,
     ) -> torch.Tensor:
         """Run the LTX-2 refiner and return refined VAE latents.
 
@@ -184,6 +186,11 @@ class SanaWMLTX2Refiner(ModelMixin, ConfigMixin):
                 1 sink + 10 recent).
             sigmas: descending Euler schedule terminating at 0.0 (canonical
                 3-step distilled: ``(0.909375, 0.725, 0.421875, 0.0)``).
+            checkpoint_dir: if provided (and AR mode is on), the AR loop
+                writes a ``state.pt`` after every completed block (atomic
+                replace) and resumes from there if it already exists. Lets a
+                refinement survive SLURM preemption — the run resumes from
+                the last completed block instead of recomputing from scratch.
         """
         if sana_latent.shape[2] <= sink_size:
             raise ValueError(f"Stage-1 latent has {sana_latent.shape[2]} frames but sink_size={sink_size}.")
@@ -215,6 +222,7 @@ class SanaWMLTX2Refiner(ModelMixin, ConfigMixin):
                 progress=bool(progress),
                 dtype=dtype,
                 device=device,
+                checkpoint_dir=Path(checkpoint_dir) if checkpoint_dir is not None else None,
             )
 
         sink = z[:, :, :sink_size].contiguous()
@@ -272,6 +280,7 @@ class SanaWMLTX2Refiner(ModelMixin, ConfigMixin):
         progress: bool,
         dtype: torch.dtype,
         device: torch.device,
+        checkpoint_dir: Path | None = None,
     ) -> torch.Tensor:
         """Chunk-causal AR refinement — thin wrapper around ``_RefinerChunkRunner``.
 
@@ -318,9 +327,44 @@ class SanaWMLTX2Refiner(ModelMixin, ConfigMixin):
         output = z.clone()
         n_active = max(T_full - sink_size, 0)
         n_blocks = (n_active + block_size - 1) // block_size if n_active > 0 else 0
-        iterator = range(n_blocks)
+
+        # Resume from a previous run if a checkpoint exists.
+        start_block_idx = 0
+        if checkpoint_dir is not None:
+            checkpoint_dir.mkdir(parents=True, exist_ok=True)
+            state_path = checkpoint_dir / "state.pt"
+            if state_path.is_file():
+                ckpt = torch.load(state_path, map_location=device, weights_only=False)
+                ckpt_blocks = int(ckpt.get("n_blocks", n_blocks))
+                ckpt_sink_size = int(ckpt.get("sink_size", sink_size))
+                ckpt_block_size = int(ckpt.get("block_size", block_size))
+                if (
+                    ckpt_blocks != n_blocks
+                    or ckpt_sink_size != sink_size
+                    or ckpt_block_size != block_size
+                    or ckpt["output_shape"] != tuple(output.shape)
+                ):
+                    raise RuntimeError(
+                        f"Checkpoint at {state_path} is incompatible with the current run; "
+                        f"delete it to start fresh. (saved n_blocks={ckpt_blocks} sink={ckpt_sink_size} "
+                        f"block_size={ckpt_block_size}; current n_blocks={n_blocks} sink={sink_size} "
+                        f"block_size={block_size})."
+                    )
+                output = ckpt["output"].to(device=device, dtype=output.dtype)
+                runner._restore_state(ckpt["runner_state"], device=device, dtype=dtype)
+                start_block_idx = int(ckpt["block_idx_done"]) + 1
+                if start_block_idx >= n_blocks:
+                    return output
+
+        iterator = range(start_block_idx, n_blocks)
         if progress:
-            iterator = tqdm(iterator, desc="refiner-ar", unit="block")
+            iterator = tqdm(
+                iterator,
+                desc="refiner-ar",
+                unit="block",
+                total=n_blocks,
+                initial=start_block_idx,
+            )
 
         for block_idx in iterator:
             block_start = sink_size + block_idx * block_size
@@ -334,6 +378,17 @@ class SanaWMLTX2Refiner(ModelMixin, ConfigMixin):
                 sink_seed_frames=(z[:, :, :sink_size] if block_idx == 0 else None),
             )
             output[:, :, block_start:block_end] = refined
+
+            if checkpoint_dir is not None:
+                _atomic_save_state(
+                    state_path=checkpoint_dir / "state.pt",
+                    output=output,
+                    runner=runner,
+                    block_idx_done=block_idx,
+                    n_blocks=n_blocks,
+                    sink_size=sink_size,
+                    block_size=block_size,
+                )
 
         return output
 
@@ -711,6 +766,44 @@ class _RefinerChunkRunner:
         self._sink_kv_pre: list[tuple[torch.Tensor, torch.Tensor]] | None = None
         self._history_kv_post: list[tuple[torch.Tensor, torch.Tensor] | None] = [None] * self._n_layers
         self._history_frames: int = 0
+
+    def _capture_state(self) -> dict[str, object]:
+        """Snapshot the runner's KV state and RNG for checkpoint persistence."""
+        return {
+            "sink_kv_pre": (
+                None
+                if self._sink_kv_pre is None
+                else [(k.detach().cpu(), v.detach().cpu()) for k, v in self._sink_kv_pre]
+            ),
+            "history_kv_post": [
+                None if hk is None else (hk[0].detach().cpu(), hk[1].detach().cpu())
+                for hk in self._history_kv_post
+            ],
+            "history_frames": int(self._history_frames),
+            "generator_state": self._generator.get_state(),
+        }
+
+    def _restore_state(
+        self, state: dict[str, object], *, device: torch.device, dtype: torch.dtype
+    ) -> None:
+        sink = state.get("sink_kv_pre")
+        if sink is None:
+            self._sink_kv_pre = None
+        else:
+            self._sink_kv_pre = [
+                (k.to(device=device, dtype=dtype), v.to(device=device, dtype=dtype)) for k, v in sink
+            ]
+        history = state["history_kv_post"]
+        if len(history) != self._n_layers:
+            raise RuntimeError(
+                f"Checkpoint history has {len(history)} layers but transformer has {self._n_layers}."
+            )
+        self._history_kv_post = [
+            None if hk is None else (hk[0].to(device=device, dtype=dtype), hk[1].to(device=device, dtype=dtype))
+            for hk in history
+        ]
+        self._history_frames = int(state["history_frames"])
+        self._generator.set_state(state["generator_state"])
 
     @torch.inference_mode()
     def refine_block(
@@ -1202,6 +1295,36 @@ def _unpack_latents(
     batch_size = latents.size(0)
     latents = latents.reshape(batch_size, num_frames, height, width, -1, patch_size_t, patch_size, patch_size)
     return latents.permute(0, 4, 1, 5, 2, 6, 3, 7).flatten(6, 7).flatten(4, 5).flatten(2, 3)
+
+
+def _atomic_save_state(
+    *,
+    state_path: Path,
+    output: torch.Tensor,
+    runner: _RefinerChunkRunner,
+    block_idx_done: int,
+    n_blocks: int,
+    sink_size: int,
+    block_size: int,
+) -> None:
+    """Persist refinement state atomically — write to a tmp sibling, then rename.
+
+    The state lets a preempted SLURM job resume from the last completed AR
+    block instead of recomputing from scratch.
+    """
+    state_path.parent.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "block_idx_done": int(block_idx_done),
+        "n_blocks": int(n_blocks),
+        "sink_size": int(sink_size),
+        "block_size": int(block_size),
+        "output_shape": tuple(output.shape),
+        "output": output.detach().cpu(),
+        "runner_state": runner._capture_state(),
+    }
+    tmp_path = state_path.with_suffix(state_path.suffix + ".tmp")
+    torch.save(payload, tmp_path)
+    os.replace(tmp_path, state_path)
 
 
 def _empty_cuda_cache() -> None:

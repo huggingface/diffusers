@@ -465,6 +465,7 @@ class SanaWMPipeline(DiffusionPipeline):
         use_refiner: bool = True,
         sink_size: int = 1,
         refiner_seed: int = 42,
+        refiner_checkpoint_dir: str | Path | None = None,
         max_sequence_length: int = 300,
         chi_prompt: list[str] | None = None,
         output_type: Literal["np", "pil", "latent"] = "np",
@@ -510,6 +511,10 @@ class SanaWMPipeline(DiffusionPipeline):
                 Refiner sink-anchor frame count.
             refiner_seed (`int`, defaults to 42):
                 Refiner sampling seed.
+            refiner_checkpoint_dir (`str` or `pathlib.Path`, *optional*):
+                If provided, the AR refiner writes a ``state.pt`` after every
+                completed block and resumes from there on the next call. Lets
+                a refinement survive job preemption.
             max_sequence_length (`int`, defaults to 300):
                 Max prompt tokens.
             chi_prompt (`list[str]`, *optional*):
@@ -614,7 +619,12 @@ class SanaWMPipeline(DiffusionPipeline):
 
         if use_refiner and self.refiner is not None:
             refined = self.refiner.refine_latents(
-                latents, prompt, fps=float(fps), sink_size=sink_size, seed=refiner_seed
+                latents,
+                prompt,
+                fps=float(fps),
+                sink_size=sink_size,
+                seed=refiner_seed,
+                checkpoint_dir=refiner_checkpoint_dir,
             )
             video = self._decode_latents(refined)
             video = video[1:]  # refiner drops the sink anchor frame
