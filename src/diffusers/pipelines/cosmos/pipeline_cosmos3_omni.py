@@ -137,7 +137,7 @@ _SYSTEM_PROMPT_VIDEO = "You are a helpful assistant who will generate videos fro
 _ACTION_MODE_FORWARD_DYNAMICS = "forward_dynamics"
 _ACTION_MODE_INVERSE_DYNAMICS = "inverse_dynamics"
 _ACTION_MODE_POLICY = "policy"
-_ACTION_MODES = {_ACTION_MODE_FORWARD_DYNAMICS, _ACTION_MODE_INVERSE_DYNAMICS, _ACTION_MODE_POLICY}
+_ACTION_MODES = {"forward_dynamics", "inverse_dynamics", "policy"}
 
 _ACTION_RESOLUTION_BINS = {
     "256": {
@@ -291,7 +291,7 @@ class CosmosActionCondition:
             action_dim (`int`, *optional*):
                 The model's action head width. When provided, `raw_actions` channels are checked against it.
         """
-        if self.mode not in _ACTION_MODES:
+        if self.mode not in ["policy", "forward_dynamics", "inverse_dynamics"]:
             raise ValueError(f"Unsupported action mode={self.mode!r}; expected one of {sorted(_ACTION_MODES)}.")
         if self.chunk_size is None or self.chunk_size < 1:
             raise ValueError(f"action `chunk_size` must be >= 1, got {self.chunk_size}.")
@@ -307,7 +307,7 @@ class CosmosActionCondition:
             )
         if self.image is not None and self.video is not None:
             raise ValueError("Provide either `image` or `video` for the action condition, not both.")
-        if self.mode == _ACTION_MODE_INVERSE_DYNAMICS:
+        if self.mode == "inverse_dynamics":
             if self.video is None:
                 raise ValueError("action mode='inverse_dynamics' requires `video` conditioning.")
         else:
@@ -315,7 +315,7 @@ class CosmosActionCondition:
                 raise ValueError(f"action mode={self.mode!r} requires `image` or `video` conditioning.")
         if self.mode in {_ACTION_MODE_POLICY, _ACTION_MODE_INVERSE_DYNAMICS} and self.raw_action_dim is None:
             raise ValueError(f"action mode={self.mode!r} requires `raw_action_dim` for output slicing.")
-        if self.mode == _ACTION_MODE_FORWARD_DYNAMICS:
+        if self.mode == "forward_dynamics":
             if self.raw_actions is None:
                 raise ValueError("action mode='forward_dynamics' requires `raw_actions`.")
             if self.raw_actions.ndim != 2:
