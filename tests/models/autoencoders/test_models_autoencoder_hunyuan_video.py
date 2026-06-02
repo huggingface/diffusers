@@ -13,7 +13,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import pytest
 import torch
 
 from diffusers import AutoencoderKLHunyuanVideo
@@ -84,12 +83,6 @@ class AutoencoderKLHunyuanVideoTesterConfig(BaseModelTesterConfig):
 
 
 class TestAutoencoderKLHunyuanVideo(AutoencoderKLHunyuanVideoTesterConfig, ModelTesterMixin):
-    base_precision = 1e-2
-
-    @pytest.mark.skip("Unsupported test.")
-    def test_outputs_equivalence(self):
-        super().test_outputs_equivalence()
-
     def test_prepare_causal_attention_mask(self):
         def prepare_causal_attention_mask_orig(
             num_frames: int, height_width: int, dtype: torch.dtype, device: torch.device, batch_size: int = None
