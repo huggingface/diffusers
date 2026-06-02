@@ -16,17 +16,18 @@
 import gc
 import unittest
 
+import pytest
 import torch
 from parameterized import parameterized
 
 from diffusers import AsymmetricAutoencoderKL
 from diffusers.utils.import_utils import is_xformers_available
+from diffusers.utils.torch_utils import randn_tensor
 
 from ...testing_utils import (
     Expectations,
     backend_empty_cache,
     enable_full_determinism,
-    floats_tensor,
     load_hf_numpy,
     require_torch_accelerator,
     require_torch_gpu,
@@ -35,22 +36,33 @@ from ...testing_utils import (
     torch_all_close,
     torch_device,
 )
-from ..test_modeling_common import ModelTesterMixin
-from .testing_utils import AutoencoderTesterMixin
+from ..testing_utils import BaseModelTesterConfig, MemoryTesterMixin, ModelTesterMixin, TrainingTesterMixin
+from .testing_utils import NewAutoencoderTesterMixin
 
 
 enable_full_determinism()
 
 
-class AsymmetricAutoencoderKLTests(ModelTesterMixin, AutoencoderTesterMixin, unittest.TestCase):
-    model_class = AsymmetricAutoencoderKL
-    main_input_name = "sample"
-    base_precision = 1e-2
+class AsymmetricAutoencoderKLTesterConfig(BaseModelTesterConfig):
+    @property
+    def model_class(self):
+        return AsymmetricAutoencoderKL
 
-    def get_asym_autoencoder_kl_config(self, block_out_channels=None, norm_num_groups=None):
-        block_out_channels = block_out_channels or [2, 4]
-        norm_num_groups = norm_num_groups or 2
-        init_dict = {
+    @property
+    def main_input_name(self) -> str:
+        return "sample"
+
+    @property
+    def output_shape(self) -> tuple:
+        return (3, 32, 32)
+
+    @property
+    def generator(self):
+        return torch.Generator("cpu").manual_seed(0)
+
+    def get_init_dict(self) -> dict:
+        block_out_channels = [2, 4]
+        return {
             "in_channels": 3,
             "out_channels": 3,
             "down_block_types": ["DownEncoderBlock2D"] * len(block_out_channels),
@@ -61,39 +73,38 @@ class AsymmetricAutoencoderKLTests(ModelTesterMixin, AutoencoderTesterMixin, uni
             "layers_per_up_block": 1,
             "act_fn": "silu",
             "latent_channels": 4,
-            "norm_num_groups": norm_num_groups,
+            "norm_num_groups": 2,
             "sample_size": 32,
             "scaling_factor": 0.18215,
         }
-        return init_dict
 
-    @property
-    def dummy_input(self):
+    def get_dummy_inputs(self) -> dict:
         batch_size = 4
         num_channels = 3
         sizes = (32, 32)
-
-        image = floats_tensor((batch_size, num_channels) + sizes).to(torch_device)
-        mask = torch.ones((batch_size, 1) + sizes).to(torch_device)
-
+        image = randn_tensor((batch_size, num_channels, *sizes), generator=self.generator, device=torch_device)
+        mask = torch.ones((batch_size, 1, *sizes)).to(torch_device)
         return {"sample": image, "mask": mask}
 
-    @property
-    def input_shape(self):
-        return (3, 32, 32)
 
-    @property
-    def output_shape(self):
-        return (3, 32, 32)
+class TestAsymmetricAutoencoderKL(AsymmetricAutoencoderKLTesterConfig, ModelTesterMixin):
+    base_precision = 1e-2
 
-    def prepare_init_args_and_inputs_for_common(self):
-        init_dict = self.get_asym_autoencoder_kl_config()
-        inputs_dict = self.dummy_input
-        return init_dict, inputs_dict
 
-    @unittest.skip("Unsupported test.")
+class TestAsymmetricAutoencoderKLTraining(AsymmetricAutoencoderKLTesterConfig, TrainingTesterMixin):
+    """Training tests for AsymmetricAutoencoderKL."""
+
+
+class TestAsymmetricAutoencoderKLMemory(AsymmetricAutoencoderKLTesterConfig, MemoryTesterMixin):
+    """Memory optimization tests for AsymmetricAutoencoderKL."""
+
+
+class TestAsymmetricAutoencoderKLSlicingTiling(AsymmetricAutoencoderKLTesterConfig, NewAutoencoderTesterMixin):
+    """Slicing and tiling tests for AsymmetricAutoencoderKL."""
+
+    @pytest.mark.skip("Unsupported test.")
     def test_forward_with_norm_groups(self):
-        pass
+        super().test_forward_with_norm_groups()
 
 
 @slow
