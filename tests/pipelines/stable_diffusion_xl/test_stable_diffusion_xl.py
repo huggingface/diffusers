@@ -974,3 +974,42 @@ class StableDiffusionXLPipelineIntegrationTests(unittest.TestCase):
         max_diff = numpy_cosine_similarity_distance(image.flatten(), expected_image.flatten())
 
         assert max_diff < 1e-2
+
+    def test_encode_prompt_clip_skip_applied_to_negative(self):
+        # Regression test: clip_skip must be applied symmetrically to both
+        # positive and negative prompt embeddings. Previously the negative path
+        # always used hidden_states[-2] regardless of clip_skip, causing a layer
+        # mismatch that corrupts classifier-free guidance.
+        device = "cpu"
+        components = self.get_dummy_components()
+        sd_pipe = StableDiffusionXLPipeline(**components)
+        sd_pipe = sd_pipe.to(device)
+
+        # Embeddings without clip_skip — both sides use hidden_states[-2]
+        pos_no_skip, neg_no_skip, _, _ = sd_pipe.encode_prompt(
+            prompt="a cat",
+            negative_prompt="blurry",
+            device=device,
+            num_images_per_prompt=1,
+            do_classifier_free_guidance=True,
+            clip_skip=None,
+        )
+
+        # Embeddings with clip_skip=1 — both sides must use hidden_states[-3]
+        pos_skip, neg_skip, _, _ = sd_pipe.encode_prompt(
+            prompt="a cat",
+            negative_prompt="blurry",
+            device=device,
+            num_images_per_prompt=1,
+            do_classifier_free_guidance=True,
+            clip_skip=1,
+        )
+
+        # clip_skip must change the negative embeddings, not leave them identical
+        self.assertFalse(
+            torch.allclose(neg_no_skip, neg_skip),
+            "Negative prompt embeddings must differ when clip_skip changes the hidden layer",
+        )
+
+        # Positive and negative must shift by the same amount — shapes must match
+        self.assertEqual(pos_skip.shape, neg_skip.shape)
