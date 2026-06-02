@@ -224,7 +224,7 @@ class CosmosActionCondition:
             `"policy"` (jointly roll out future video and actions from the first frame).
         chunk_size (`int`):
             Number of action transition steps in the chunk. The paired conditioning video spans `chunk_size + 1`
-            frames (see [`~CosmosActionCondition.num_frames`]).
+            frames.
         domain_name (`str`):
             Embodiment domain selecting the domain-aware action projection weights. Must be one of the registered
             Cosmos 3 embodiment domains.
@@ -258,32 +258,6 @@ class CosmosActionCondition:
     image: Image.Image | np.ndarray | torch.Tensor | None = None
     video: list | np.ndarray | torch.Tensor | None = None
 
-    @property
-    def num_frames(self) -> int:
-        """Number of conditioning frames the paired video must provide (`chunk_size + 1`)."""
-        return self.chunk_size + 1
-
-    @property
-    def conditioning_clip(self) -> Any:
-        """Conditioning clip as a single source: `image` wrapped as a one-frame clip, else `video`."""
-        return [self.image] if self.image is not None else self.video
-
-    def target_size(self, source_height: int, source_width: int) -> tuple[int, int]:
-        """Padded conditioning canvas `(height, width)` for this `resolution_tier` and the source frame size.
-
-        The tier selects a set of predefined aspect-ratio canvases; the one closest to the source aspect ratio is
-        returned. The source content is later downscaled (never upscaled) and padded into this canvas.
-        """
-        resolution_key = str(self.resolution_tier)
-        if resolution_key not in _ACTION_RESOLUTION_BINS:
-            raise ValueError(
-                f"Unsupported action resolution_tier={self.resolution_tier!r}; "
-                f"expected one of {sorted(int(k) for k in _ACTION_RESOLUTION_BINS)}."
-            )
-        return VideoProcessor.classify_height_width_bin(
-            source_height, source_width, ratios=_ACTION_RESOLUTION_BINS[resolution_key]
-        )
-
     def validate(self, *, action_dim: int | None = None) -> None:
         """Validate every action-specific field. Called by [`Cosmos3OmniPipeline.check_inputs`].
 
@@ -293,7 +267,7 @@ class CosmosActionCondition:
         """
         if self.mode not in ["policy", "forward_dynamics", "inverse_dynamics"]:
             raise ValueError(f"Unsupported action mode={self.mode!r}; expected one of {sorted(_ACTION_MODES)}.")
-        if self.chunk_size is None or self.chunk_size < 1:
+        if self.chunk_size < 1:
             raise ValueError(f"action `chunk_size` must be >= 1, got {self.chunk_size}.")
         if self.domain_name not in _EMBODIMENT_TO_DOMAIN_ID:
             raise ValueError(
@@ -307,13 +281,11 @@ class CosmosActionCondition:
             )
         if self.image is not None and self.video is not None:
             raise ValueError("Provide either `image` or `video` for the action condition, not both.")
-        if self.mode == "inverse_dynamics":
-            if self.video is None:
-                raise ValueError("action mode='inverse_dynamics' requires `video` conditioning.")
-        else:
-            if self.image is None and self.video is None:
-                raise ValueError(f"action mode={self.mode!r} requires `image` or `video` conditioning.")
-        if self.mode in {_ACTION_MODE_POLICY, _ACTION_MODE_INVERSE_DYNAMICS} and self.raw_action_dim is None:
+        elif self.image is None and self.video is None:
+            raise ValueError("`image` and `video` cannot both be None")
+        if self.mode == "inverse_dynamics" and self.video is None:
+            raise ValueError("action mode='inverse_dynamics' requires `video` conditioning.")
+        if self.mode in {"policy", "inverse_dynamics"} and self.raw_action_dim is None:
             raise ValueError(f"action mode={self.mode!r} requires `raw_action_dim` for output slicing.")
         if self.mode == "forward_dynamics":
             if self.raw_actions is None:
@@ -624,14 +596,23 @@ class Cosmos3OmniPipeline(DiffusionPipeline):
 
     def _prepare_action_video_conditioning(
         self,
-        action: "CosmosActionCondition",
+        conditioning_clip: Any,
+        resolution_tier: int,
         num_frames: int,
         device: torch.device | str,
         dtype: torch.dtype,
     ) -> tuple[torch.Tensor, torch.Tensor, int, int]:
-        frames = self.video_processor.preprocess_video(action.conditioning_clip).to(device=device, dtype=dtype)
+        frames = self.video_processor.preprocess_video(conditioning_clip).to(device=device, dtype=dtype)
         source_h, source_w = frames.shape[-2:]
-        target_h, target_w = action.target_size(source_h, source_w)
+        resolution_key = str(resolution_tier)
+        if resolution_key not in _ACTION_RESOLUTION_BINS:
+            raise ValueError(
+                f"Unsupported action resolution_tier={resolution_tier!r}; "
+                f"expected one of {sorted(int(k) for k in _ACTION_RESOLUTION_BINS)}."
+            )
+        target_h, target_w = VideoProcessor.classify_height_width_bin(
+            source_h, source_w, ratios=_ACTION_RESOLUTION_BINS[resolution_key]
+        )
 
         if frames.shape[2] < num_frames:
             frames = torch.cat([frames, frames[:, :, -1:].expand(-1, -1, num_frames - frames.shape[2], -1, -1)], dim=2)
@@ -730,8 +711,9 @@ class Cosmos3OmniPipeline(DiffusionPipeline):
         # Build the vision conditioning tensor (always [1, 3, T, H, W], in [-1, 1], on device).
         if action is not None:
             target_frames = action.chunk_size + 1
+            conditioning_clip = [action.image] if action.image is not None else action.video
             vision_tensor, action_image_size, height, width = self._prepare_action_video_conditioning(
-                action, target_frames, device=device, dtype=dtype
+                conditioning_clip, action.resolution_tier, target_frames, device=device, dtype=dtype
             )
             if action_mode == _ACTION_MODE_FORWARD_DYNAMICS:
                 vision_condition_frames = [0]
@@ -1139,7 +1121,7 @@ class Cosmos3OmniPipeline(DiffusionPipeline):
                 [`CosmosActionCondition`]), not this argument.
             num_frames (`int`, *optional*, defaults to `189`):
                 Number of frames to generate. Use `1` for text-to-image; the default produces ≈ 7.9 s at 24 FPS.
-                Ignored for action runs, where it is derived from `action.num_frames`.
+                Ignored for action runs, where it is derived from `action.chunk_size + 1`.
             height (`int`, *optional*, defaults to `720`):
                 Output height in pixels. Ignored for action runs, which size via
                 `action.resolution_tier`.
@@ -1247,11 +1229,16 @@ class Cosmos3OmniPipeline(DiffusionPipeline):
         action_mode = action.mode if action is not None else None
 
         if action is not None:
-            num_frames = action.num_frames
+            num_frames = action.chunk_size + 1
             # Resolve the padded conditioning canvas from the tier + input aspect *before* tokenization, so the
             # resolution prompt template matches the canvas the model is actually conditioned on.
-            probe = self.video_processor.preprocess_video(action.conditioning_clip)
-            height, width = action.target_size(int(probe.shape[-2]), int(probe.shape[-1]))
+            conditioning_clip = [action.image] if action.image is not None else action.video
+            probe = self.video_processor.preprocess_video(conditioning_clip)
+            source_h, source_w = int(probe.shape[-2]), int(probe.shape[-1])
+            resolution_key = str(action.resolution_tier)
+            height, width = VideoProcessor.classify_height_width_bin(
+                source_h, source_w, ratios=_ACTION_RESOLUTION_BINS[resolution_key]
+            )
 
         self._current_timestep = None
         self._interrupt = False
