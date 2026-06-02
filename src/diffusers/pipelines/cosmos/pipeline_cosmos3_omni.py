@@ -258,13 +258,8 @@ class CosmosActionCondition:
     image: Image.Image | np.ndarray | torch.Tensor | None = None
     video: list | np.ndarray | torch.Tensor | None = None
 
-    def validate(self, *, action_dim: int | None = None) -> None:
-        """Validate every action-specific field. Called by [`Cosmos3OmniPipeline.check_inputs`].
-
-        Args:
-            action_dim (`int`, *optional*):
-                The model's action head width. When provided, `raw_actions` channels are checked against it.
-        """
+    def __post_init__(self) -> None:
+        """Validate self-contained action fields at construction time."""
         if self.mode not in ["policy", "forward_dynamics", "inverse_dynamics"]:
             raise ValueError(f"Unsupported action mode={self.mode!r}; expected one of {sorted(_ACTION_MODES)}.")
         if self.chunk_size < 1:
@@ -294,10 +289,6 @@ class CosmosActionCondition:
                 raise ValueError(f"`raw_actions` must have shape [T, D], got {tuple(self.raw_actions.shape)}.")
             if self.raw_actions.shape[0] < 1:
                 raise ValueError("action mode='forward_dynamics' requires at least one action token.")
-            if action_dim is not None and self.raw_actions.shape[-1] > action_dim:
-                raise ValueError(
-                    f"Cosmos3 action dimension {self.raw_actions.shape[-1]} exceeds model action_dim={action_dim}."
-                )
 
 
 # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_img2img.retrieve_latents
@@ -897,7 +888,7 @@ class Cosmos3OmniPipeline(DiffusionPipeline):
             )
 
         if action is not None:
-            # API-conflict checks live here; all action-field validation is delegated to action.validate().
+            # API-conflict + model-dependent checks live here.
             if image is not None or video is not None:
                 raise ValueError(
                     "Pass action conditioning via `action.image` / `action.video`, not the top-level "
@@ -905,7 +896,12 @@ class Cosmos3OmniPipeline(DiffusionPipeline):
                 )
             if not getattr(self.transformer.config, "action_gen", False):
                 raise ValueError("`action` requires a transformer trained with action_gen=True.")
-            action.validate(action_dim=self.transformer.action_dim)
+            if action.mode == "forward_dynamics" and action.raw_actions is not None:
+                if action.raw_actions.shape[-1] > self.transformer.config.action_dim:
+                    raise ValueError(
+                        f"Cosmos3 action dimension {action.raw_actions.shape[-1]} exceeds model action_dim="
+                        f"{self.transformer.config.action_dim}."
+                    )
         else:
             sf = int(self.vae.config.scale_factor_spatial)
             if height % sf != 0 or width % sf != 0:
