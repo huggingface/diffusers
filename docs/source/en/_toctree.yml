@@ -379,6 +379,8 @@
         title: SanaTransformer2DModel
       - local: api/models/sana_video_transformer3d
         title: SanaVideoTransformer3DModel
+      - local: api/models/sana_wm_transformer3d
+        title: SanaWMTransformer3DModel
       - local: api/models/sd3_transformer2d
         title: SD3Transformer2DModel
       - local: api/models/skyreels_v2_transformer_3d
@@ -587,6 +589,8 @@
         title: Sana Sprint
       - local: api/pipelines/sana_video
         title: Sana Video
+      - local: api/pipelines/sana_wm
+        title: SANA-WM
       - local: api/pipelines/shap_e
         title: Shap-E
       - local: api/pipelines/stable_cascade

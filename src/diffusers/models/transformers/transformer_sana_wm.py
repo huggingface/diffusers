@@ -1,10 +1,10 @@
-# Copyright 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# Copyright 2025 The HuggingFace Team and SANA-WM Authors. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
 # You may obtain a copy of the License at
 #
-#      http://www.apache.org/licenses/LICENSE-2.0
+#     http://www.apache.org/licenses/LICENSE-2.0
 #
 # Unless required by applicable law or agreed to in writing, software
 # distributed under the License is distributed on an "AS IS" BASIS,
@@ -13,15 +13,35 @@
 # limitations under the License.
 
 from __future__ import annotations
+
 import copy
-import logging
 import math
-import numpy as np
 import os
 import re
+from collections.abc import Iterable
+from copy import deepcopy
+from functools import lru_cache, partial
+from itertools import repeat as _itertools_repeat
+from typing import Any, Callable, Dict, List, Optional, Tuple, Type, Union
+
+import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from einops import rearrange, repeat
+from fla.modules import ShortConvolution
+from termcolor import colored
+from timm.models.layers import DropPath
+from timm.models.vision_transformer import Attention as Attention_, Mlp
+from torch.nn.attention.flex_attention import create_block_mask
+from torch.nn.modules.batchnorm import _BatchNorm
+from torch.utils.checkpoint import checkpoint
+from transformers import AutoModelForCausalLM
+
+from ...configuration_utils import ConfigMixin, register_to_config
+from ...utils import logging
+from ..modeling_outputs import Transformer2DModelOutput
+from ..modeling_utils import ModelMixin
 from .transformer_sana_wm_kernels import (
     _prepare_ucpe_rope_tables,
     _process_camera_conditions_raymats_only,
@@ -35,24 +55,9 @@ from .transformer_sana_wm_kernels import (
     ucm_unproject_grid_fov,
     world_to_ray_mats,
 )
-from collections.abc import Iterable
-from copy import deepcopy
-from einops import rearrange, repeat
-from fla.modules import ShortConvolution
-from functools import lru_cache, partial
-from itertools import repeat as _itertools_repeat
-from termcolor import colored
-from timm.models.layers import DropPath
-from timm.models.vision_transformer import Attention as Attention_, Mlp
-from torch.nn.attention.flex_attention import create_block_mask
-from torch.nn.modules.batchnorm import _BatchNorm
-from torch.utils.checkpoint import checkpoint
-from transformers import AutoModelForCausalLM
-from typing import Any, Callable, Dict, List, Optional, Tuple, Type, Union
 
-from ...configuration_utils import ConfigMixin, register_to_config
-from ..modeling_outputs import Transformer2DModelOutput
-from ..modeling_utils import ModelMixin
+
+logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
 # ============================================================================
@@ -61,11 +66,9 @@ from ..modeling_utils import ModelMixin
 
 # ============================================================================
 
-__all__ = ["build_act", "get_act_name"]
-
 # register activation function here
 #   name: module, kwargs with default values
-REGISTERED_ACT_DICT: dict[str, tuple[type, dict[str, any]]] = {
+REGISTERED_ACT_DICT: dict[str, tuple[type, dict[str, Any]]] = {
     "relu": (nn.ReLU, {"inplace": True}),
     "relu6": (nn.ReLU6, {"inplace": True}),
     "hswish": (nn.Hardswish, {"inplace": True}),
@@ -80,7 +83,7 @@ REGISTERED_ACT_DICT: dict[str, tuple[type, dict[str, any]]] = {
 }
 
 
-def build_act(name: str or None, **kwargs) -> nn.Module or None:
+def build_act(name: Optional[str], **kwargs) -> Optional[nn.Module]:
     if name in REGISTERED_ACT_DICT:
         act_cls, default_args = copy.deepcopy(REGISTERED_ACT_DICT[name])
         for key in default_args:
@@ -93,16 +96,13 @@ def build_act(name: str or None, **kwargs) -> nn.Module or None:
         raise ValueError(f"do not support: {name}")
 
 
-def get_act_name(act: nn.Module or None) -> str or None:
+def get_act_name(act: Optional[nn.Module]) -> Optional[str]:
     if act is None:
         return None
     module2name = {}
     for key, config in REGISTERED_ACT_DICT.items():
         module2name[config[0].__name__] = key
     return module2name.get(type(act).__name__, "unknown")
-
-
-__all__ = ["LayerNorm2d", "build_norm", "get_norm_name", "reset_bn", "remove_bn", "set_norm_eps"]
 
 
 class LayerNorm2d(nn.LayerNorm):
@@ -121,7 +121,7 @@ class LayerNorm2d(nn.LayerNorm):
 
 # register normalization function here
 #   name: module, kwargs with default values
-REGISTERED_NORMALIZATION_DICT: dict[str, tuple[type, dict[str, any]]] = {
+REGISTERED_NORMALIZATION_DICT: dict[str, tuple[type, dict[str, Any]]] = {
     "bn2d": (nn.BatchNorm2d, {"num_features": None, "eps": 1e-5, "momentum": 0.1, "affine": True}),
     "syncbn": (nn.SyncBatchNorm, {"num_features": None, "eps": 1e-5, "momentum": 0.1, "affine": True}),
     "ln": (nn.LayerNorm, {"normalized_shape": None, "eps": 1e-5, "elementwise_affine": True}),
@@ -129,7 +129,7 @@ REGISTERED_NORMALIZATION_DICT: dict[str, tuple[type, dict[str, any]]] = {
 }
 
 
-def build_norm(name="bn2d", num_features=None, affine=True, **kwargs) -> nn.Module or None:
+def build_norm(name="bn2d", num_features=None, affine=True, **kwargs) -> Optional[nn.Module]:
     if name in ["ln", "ln2d"]:
         kwargs["normalized_shape"] = num_features
         kwargs["elementwise_affine"] = affine
@@ -148,101 +148,13 @@ def build_norm(name="bn2d", num_features=None, affine=True, **kwargs) -> nn.Modu
         raise ValueError("do not support: %s" % name)
 
 
-def get_norm_name(norm: nn.Module or None) -> str or None:
+def get_norm_name(norm: Optional[nn.Module]) -> Optional[str]:
     if norm is None:
         return None
     module2name = {}
     for key, config in REGISTERED_NORMALIZATION_DICT.items():
         module2name[config[0].__name__] = key
     return module2name.get(type(norm).__name__, "unknown")
-
-
-def reset_bn(
-    model: nn.Module,
-    data_loader: list,
-    sync=True,
-    progress_bar=False,
-) -> None:
-    import copy
-
-    import torch.nn.functional as F
-    from packages.apps.utils import AverageMeter, is_master, sync_tensor
-    from packages.models.utils import get_device, list_join
-    from tqdm import tqdm
-
-    bn_mean = {}
-    bn_var = {}
-
-    tmp_model = copy.deepcopy(model)
-    for name, m in tmp_model.named_modules():
-        if isinstance(m, _BatchNorm):
-            bn_mean[name] = AverageMeter(is_distributed=False)
-            bn_var[name] = AverageMeter(is_distributed=False)
-
-            def new_forward(bn, mean_est, var_est):
-                def lambda_forward(x):
-                    x = x.contiguous()
-                    if sync:
-                        batch_mean = x.mean(0, keepdim=True).mean(2, keepdim=True).mean(3, keepdim=True)  # 1, C, 1, 1
-                        batch_mean = sync_tensor(batch_mean, reduce="cat")
-                        batch_mean = torch.mean(batch_mean, dim=0, keepdim=True)
-
-                        batch_var = (x - batch_mean) * (x - batch_mean)
-                        batch_var = batch_var.mean(0, keepdim=True).mean(2, keepdim=True).mean(3, keepdim=True)
-                        batch_var = sync_tensor(batch_var, reduce="cat")
-                        batch_var = torch.mean(batch_var, dim=0, keepdim=True)
-                    else:
-                        batch_mean = x.mean(0, keepdim=True).mean(2, keepdim=True).mean(3, keepdim=True)  # 1, C, 1, 1
-                        batch_var = (x - batch_mean) * (x - batch_mean)
-                        batch_var = batch_var.mean(0, keepdim=True).mean(2, keepdim=True).mean(3, keepdim=True)
-
-                    batch_mean = torch.squeeze(batch_mean)
-                    batch_var = torch.squeeze(batch_var)
-
-                    mean_est.update(batch_mean.data, x.size(0))
-                    var_est.update(batch_var.data, x.size(0))
-
-                    # bn forward using calculated mean & var
-                    _feature_dim = batch_mean.shape[0]
-                    return F.batch_norm(
-                        x,
-                        batch_mean,
-                        batch_var,
-                        bn.weight[:_feature_dim],
-                        bn.bias[:_feature_dim],
-                        False,
-                        0.0,
-                        bn.eps,
-                    )
-
-                return lambda_forward
-
-            m.forward = new_forward(m, bn_mean[name], bn_var[name])
-
-    # skip if there is no batch normalization layers in the network
-    if len(bn_mean) == 0:
-        return
-
-    tmp_model.eval()
-    with torch.inference_mode():
-        with tqdm(total=len(data_loader), desc="reset bn", disable=not progress_bar or not is_master()) as t:
-            for images in data_loader:
-                images = images.to(get_device(tmp_model))
-                tmp_model(images)
-                t.set_postfix(
-                    {
-                        "bs": images.size(0),
-                        "res": list_join(images.shape[-2:], "x"),
-                    }
-                )
-                t.update()
-
-    for name, m in model.named_modules():
-        if name in bn_mean and bn_mean[name].count > 0:
-            feature_dim = bn_mean[name].avg.size(0)
-            assert isinstance(m, _BatchNorm)
-            m.running_mean.data[:feature_dim].copy_(bn_mean[name].avg)
-            m.running_var.data[:feature_dim].copy_(bn_var[name].avg)
 
 
 def remove_bn(model: nn.Module) -> None:
@@ -252,7 +164,7 @@ def remove_bn(model: nn.Module) -> None:
             m.forward = lambda x: x
 
 
-def set_norm_eps(model: nn.Module, eps: float or None = None, momentum: float or None = None) -> None:
+def set_norm_eps(model: nn.Module, eps: Optional[float] = None, momentum: Optional[float] = None) -> None:
     for m in model.modules():
         if isinstance(m, (nn.GroupNorm, nn.LayerNorm, _BatchNorm)):
             if eps is not None:
@@ -311,9 +223,6 @@ class RMSNorm(torch.nn.Module):
         weight_shape[self.norm_dim] = -1
         weight = self.weight.view(*weight_shape)
         return (weight * self._norm(x.float())).type_as(x)
-
-
-logger = logging.getLogger(__name__)
 
 
 def _ntuple(n):
@@ -969,7 +878,7 @@ class ConvLayer(nn.Module):
         stride=1,
         dilation=1,
         groups=1,
-        padding: int or None = None,
+        padding: Optional[int] = None,
         use_bias=False,
         dropout=0.0,
         conv_type="2d",
@@ -1047,7 +956,7 @@ class GLUMBConv(nn.Module):
         out_feature=None,
         kernel_size=3,
         stride=1,
-        padding: int or None = None,
+        padding: Optional[int] = None,
         use_bias=False,
         norm=(None, None, None),
         act=("silu", "silu", None),
@@ -1138,7 +1047,7 @@ class GLUMBConvTemp(GLUMBConv):
         out_feature=None,
         kernel_size=3,
         stride=1,
-        padding: int or None = None,
+        padding: Optional[int] = None,
         use_bias=False,
         norm=(None, None, None),
         act=("silu", "silu", None),
@@ -1320,7 +1229,7 @@ class MBConvPreGLU(nn.Module):
         stride=1,
         mid_dim=None,
         expand=6,
-        padding: int or None = None,
+        padding: Optional[int] = None,
         use_bias=False,
         norm=(None, None, "ln2d"),
         act=("silu", "silu", None),
@@ -2683,8 +2592,8 @@ class PatchEmbed(nn.Module):
 
     def forward(self, x):
         B, C, H, W = x.shape
-        assert (H == self.img_size[0], f"Input image height ({H}) doesn't match model ({self.img_size[0]}).")
-        assert (W == self.img_size[1], f"Input image width ({W}) doesn't match model ({self.img_size[1]}).")
+        assert H == self.img_size[0], f"Input image height ({H}) doesn't match model ({self.img_size[0]})."
+        assert W == self.img_size[1], f"Input image width ({W}) doesn't match model ({self.img_size[1]})."
         x = self.proj(x)
         if self.flatten:
             x = x.flatten(2).transpose(1, 2)  # BCHW -> BNC

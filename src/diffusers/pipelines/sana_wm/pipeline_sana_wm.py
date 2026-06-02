@@ -1,10 +1,10 @@
-# Copyright 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# Copyright 2025 The HuggingFace Team and SANA-WM Authors. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
 # You may obtain a copy of the License at
 #
-#      http://www.apache.org/licenses/LICENSE-2.0
+#     http://www.apache.org/licenses/LICENSE-2.0
 #
 # Unless required by applicable law or agreed to in writing, software
 # distributed under the License is distributed on an "AS IS" BASIS,
@@ -14,6 +14,7 @@
 
 from __future__ import annotations
 
+import inspect
 import os
 from pathlib import Path
 from typing import Literal
@@ -29,7 +30,6 @@ from ...models import AutoencoderKLLTX2Video, SanaWMTransformer3DModel
 from ...schedulers import FlowMatchEulerDiscreteScheduler
 from ...utils import logging, replace_example_docstring
 from ..pipeline_utils import DiffusionPipeline
-from ..stable_diffusion_3.pipeline_stable_diffusion_3 import retrieve_timesteps
 from .cam_utils import (
     TARGET_HEIGHT,
     TARGET_WIDTH,
@@ -44,6 +44,66 @@ from .refiner import SanaWMLTX2Refiner
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
+
+
+# Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.retrieve_timesteps
+def retrieve_timesteps(
+    scheduler,
+    num_inference_steps: int | None = None,
+    device: str | torch.device | None = None,
+    timesteps: list[int] | None = None,
+    sigmas: list[float] | None = None,
+    **kwargs,
+):
+    r"""
+    Calls the scheduler's `set_timesteps` method and retrieves timesteps from the scheduler after the call. Handles
+    custom timesteps. Any kwargs will be supplied to `scheduler.set_timesteps`.
+
+    Args:
+        scheduler (`SchedulerMixin`):
+            The scheduler to get timesteps from.
+        num_inference_steps (`int`):
+            The number of diffusion steps used when generating samples with a pre-trained model. If used, `timesteps`
+            must be `None`.
+        device (`str` or `torch.device`, *optional*):
+            The device to which the timesteps should be moved to. If `None`, the timesteps are not moved.
+        timesteps (`list[int]`, *optional*):
+            Custom timesteps used to override the timestep spacing strategy of the scheduler. If `timesteps` is passed,
+            `num_inference_steps` and `sigmas` must be `None`.
+        sigmas (`list[float]`, *optional*):
+            Custom sigmas used to override the timestep spacing strategy of the scheduler. If `sigmas` is passed,
+            `num_inference_steps` and `timesteps` must be `None`.
+
+    Returns:
+        `tuple[torch.Tensor, int]`: A tuple where the first element is the timestep schedule from the scheduler and the
+        second element is the number of inference steps.
+    """
+    if timesteps is not None and sigmas is not None:
+        raise ValueError("Only one of `timesteps` or `sigmas` can be passed. Please choose one to set custom values")
+    if timesteps is not None:
+        accepts_timesteps = "timesteps" in set(inspect.signature(scheduler.set_timesteps).parameters.keys())
+        if not accepts_timesteps:
+            raise ValueError(
+                f"The current scheduler class {scheduler.__class__}'s `set_timesteps` does not support custom"
+                f" timestep schedules. Please check whether you are using the correct scheduler."
+            )
+        scheduler.set_timesteps(timesteps=timesteps, device=device, **kwargs)
+        timesteps = scheduler.timesteps
+        num_inference_steps = len(timesteps)
+    elif sigmas is not None:
+        accept_sigmas = "sigmas" in set(inspect.signature(scheduler.set_timesteps).parameters.keys())
+        if not accept_sigmas:
+            raise ValueError(
+                f"The current scheduler class {scheduler.__class__}'s `set_timesteps` does not support custom"
+                f" sigmas schedules. Please check whether you are using the correct scheduler."
+            )
+        scheduler.set_timesteps(sigmas=sigmas, device=device, **kwargs)
+        timesteps = scheduler.timesteps
+        num_inference_steps = len(timesteps)
+    else:
+        scheduler.set_timesteps(num_inference_steps, device=device, **kwargs)
+        timesteps = scheduler.timesteps
+    return timesteps, num_inference_steps
 
 
 EXAMPLE_DOC_STRING = """
@@ -64,7 +124,7 @@ EXAMPLE_DOC_STRING = """
         ...     intrinsics=[800.0, 800.0, 845.0, 464.0],  # fx, fy, cx, cy in original-image pixels
         ...     num_inference_steps=60,
         ... )
-        >>> # output.frames is (T, H, W, 3) uint8 numpy.
+        >>> # output.frames is (T, H, W, 3) float np.ndarray in [0, 1] (diffusers convention).
         ```
 """
 
@@ -238,18 +298,21 @@ class SanaWMPipeline(DiffusionPipeline):
         z = (z - latents_mean) * self.vae.config.scaling_factor / latents_std
         return z.to(dtype)
 
-    def _decode_latents(self, latents: torch.Tensor) -> np.ndarray:
+    def _decode_latents(self, latents: torch.Tensor) -> torch.Tensor:
+        """Decode latents into a `(T, H, W, 3)` float tensor in `[0, 1]`.
+
+        Returning float `[0, 1]` matches the diffusers convention used by
+        `SanaImageToVideoPipeline` / `VideoProcessor` — `export_to_video` and
+        other downstream utilities assume that range for `np.ndarray` frames
+        and silently corrupt uint8 input via an overflow multiply by 255.
+        """
         latents = latents.to(self.vae.device, dtype=self.vae.dtype)
         latents_mean = self.vae.latents_mean.view(1, -1, 1, 1, 1).to(latents)
         latents_std = self.vae.latents_std.view(1, -1, 1, 1, 1).to(latents)
         latents = latents / self.vae.config.scaling_factor * latents_std + latents_mean
         decoded = self.vae.decode(latents, return_dict=False)[0]
-        return (
-            torch.clamp(127.5 * decoded + 127.5, 0, 255)
-            .permute(0, 2, 3, 4, 1)
-            .to("cpu", dtype=torch.uint8)
-            .numpy()[0]
-        )
+        # VAE outputs in [-1, 1]; rescale to [0, 1] and clamp.
+        return torch.clamp(0.5 * decoded + 0.5, 0.0, 1.0).permute(0, 2, 3, 4, 1).to("cpu", dtype=torch.float32)[0]
 
     # ------------------------------------------------------------------
     # Camera conditioning packing
@@ -457,8 +520,10 @@ class SanaWMPipeline(DiffusionPipeline):
                 Return [`SanaWMPipelineOutput`] vs tuple.
 
         Returns:
-            [`SanaWMPipelineOutput`] with `.frames` ``(T, H, W, 3)`` uint8 (or
-            list of PIL or latent tensor depending on `output_type`).
+            [`SanaWMPipelineOutput`] with `.frames` of shape ``(T, H, W, 3)``,
+            float ``np.ndarray`` in ``[0, 1]`` for `output_type="np"`, a list of
+            ``PIL.Image.Image`` of length ``T`` for `"pil"`, or the raw latent
+            tensor for `"latent"`.
 
         Examples:
         """
@@ -479,15 +544,28 @@ class SanaWMPipeline(DiffusionPipeline):
 
         if intrinsics is None:
             raise ValueError(
-                "Pass `intrinsics=[fx, fy, cx, cy]` in original-image pixel coordinates. "
-                "Use `diffusers.pipelines.sana_wm.cam_utils.estimate_intrinsics_with_pi3x(image)` "
+                "Pass `intrinsics` as either `[fx, fy, cx, cy]`, a 3x3 K matrix, "
+                "an `(F, 4)` per-frame [fx,fy,cx,cy], or `(F, 3, 3)` per-frame K — "
+                "all in original-image pixel coordinates. Use "
+                "`diffusers.pipelines.sana_wm.cam_utils.estimate_intrinsics_with_pi3x(image)` "
                 "for an automatic estimate if pi3 is installed."
             )
         intr = np.asarray(intrinsics, dtype=np.float32)
+        # Accept (3, 3), (F, 3, 3), (4,) and (F, 4) — normalize to (F, 4).
+        if intr.shape == (3, 3):
+            intr = np.array([intr[0, 0], intr[1, 1], intr[0, 2], intr[1, 2]], dtype=np.float32)
+        elif intr.ndim == 3 and intr.shape[-2:] == (3, 3):
+            intr = np.stack([intr[:, 0, 0], intr[:, 1, 1], intr[:, 0, 2], intr[:, 1, 2]], axis=-1)
         if intr.shape == (4,):
             intr = np.broadcast_to(intr, (num_frames, 4)).copy()
+        if intr.ndim == 2 and intr.shape[1] == 4 and intr.shape[0] >= num_frames:
+            # Caller may pass a full-trajectory intrinsics array; trim to match.
+            intr = intr[:num_frames]
         if intr.shape != (num_frames, 4):
-            raise ValueError(f"`intrinsics` must be (4,) or ({num_frames}, 4); got {intr.shape}.")
+            raise ValueError(
+                f"`intrinsics` must be `(4,)`, `(F>={num_frames}, 4)`, `(3, 3)`, or "
+                f"`(F>={num_frames}, 3, 3)`; got shape {np.asarray(intrinsics).shape}."
+            )
 
         cropped, src_size, resized_size, crop_offset = resize_and_center_crop(image, height, width)
         intr = transform_intrinsics_for_crop(intr, src_size, resized_size, crop_offset)
@@ -545,8 +623,14 @@ class SanaWMPipeline(DiffusionPipeline):
             video = self._decode_latents(latents)
             video_c2w = c2w[:num_frames]
 
+        # ``video`` is a (T, H, W, 3) float tensor in [0, 1]. Convert to the
+        # requested output format; "np" matches the diffusers convention used
+        # by ``export_to_video`` (float [0, 1] np.ndarray).
         if output_type == "pil":
-            frames: list | np.ndarray = [PIL.Image.fromarray(f) for f in video]
+            video_uint8 = (video.numpy() * 255.0).round().clip(0, 255).astype(np.uint8)
+            frames: list | np.ndarray = [PIL.Image.fromarray(f) for f in video_uint8]
+        elif output_type == "np":
+            frames = video.numpy()
         else:
             frames = video
 

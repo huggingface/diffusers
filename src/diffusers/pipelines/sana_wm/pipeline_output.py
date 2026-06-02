@@ -13,9 +13,10 @@ class SanaWMPipelineOutput(BaseOutput):
     Output class for SANA-WM image-to-video pipeline.
 
     Args:
-        frames (`torch.Tensor`, `np.ndarray`, or `list[list[PIL.Image.Image]]`):
-            Generated video as a list of frame batches per prompt. Shape ``(B, T, H, W, C)`` when
-            returned as tensor / numpy array; uint8 frames.
+        frames (`torch.Tensor`, `np.ndarray`, or `list[PIL.Image.Image]`):
+            Generated video. Shape ``(T, H, W, 3)`` as a float ``np.ndarray`` /
+            ``torch.Tensor`` in ``[0, 1]`` when ``output_type="np"`` / ``"latent"``,
+            or a list of ``PIL.Image`` of length ``T`` when ``output_type="pil"``.
         c2w (`np.ndarray`):
             Camera-to-world poses ``(T, 4, 4)`` aligned with ``frames`` (the refiner drops the
             sink anchor frame; this array is realigned accordingly when the refiner ran).
