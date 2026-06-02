@@ -73,7 +73,7 @@ class AutoencoderKLCosmosTesterConfig(BaseModelTesterConfig):
 
 
 class TestAutoencoderKLCosmos(AutoencoderKLCosmosTesterConfig, ModelTesterMixin):
-    base_precision = 1e-2
+    pass
 
 
 class TestAutoencoderKLCosmosTraining(AutoencoderKLCosmosTesterConfig, TrainingTesterMixin):

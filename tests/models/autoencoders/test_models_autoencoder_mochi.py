@@ -68,15 +68,9 @@ class AutoencoderKLMochiTesterConfig(BaseModelTesterConfig):
 
 
 class TestAutoencoderKLMochi(AutoencoderKLMochiTesterConfig, ModelTesterMixin):
-    base_precision = 1e-2
-
     @pytest.mark.skip("Unsupported test.")
     def test_model_parallelism(self):
         super().test_model_parallelism()
-
-    @pytest.mark.skip("RuntimeError: values expected sparse tensor layout but got Strided")
-    def test_outputs_equivalence(self):
-        super().test_outputs_equivalence()
 
 
 class TestAutoencoderKLMochiTraining(AutoencoderKLMochiTesterConfig, TrainingTesterMixin):

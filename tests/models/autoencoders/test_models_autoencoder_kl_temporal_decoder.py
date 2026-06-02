@@ -63,7 +63,7 @@ class AutoencoderKLTemporalDecoderTesterConfig(BaseModelTesterConfig):
 
 
 class TestAutoencoderKLTemporalDecoder(AutoencoderKLTemporalDecoderTesterConfig, ModelTesterMixin):
-    base_precision = 1e-2
+    pass
 
 
 class TestAutoencoderKLTemporalDecoderTraining(AutoencoderKLTemporalDecoderTesterConfig, TrainingTesterMixin):

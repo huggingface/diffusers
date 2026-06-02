@@ -64,7 +64,7 @@ class AutoencoderKLKVAETesterConfig(BaseModelTesterConfig):
 
 
 class TestAutoencoderKLKVAE(AutoencoderKLKVAETesterConfig, ModelTesterMixin):
-    base_precision = 1e-2
+    pass
 
 
 class TestAutoencoderKLKVAETraining(AutoencoderKLKVAETesterConfig, TrainingTesterMixin):
