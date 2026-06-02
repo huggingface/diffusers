@@ -80,7 +80,7 @@ class AutoencoderKLMagvitTesterConfig(BaseModelTesterConfig):
 
 
 class TestAutoencoderKLMagvit(AutoencoderKLMagvitTesterConfig, ModelTesterMixin):
-    base_precision = 1e-2
+    pass
 
 
 class TestAutoencoderKLMagvitTraining(AutoencoderKLMagvitTesterConfig, TrainingTesterMixin):
