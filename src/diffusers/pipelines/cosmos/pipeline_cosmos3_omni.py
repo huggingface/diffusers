@@ -214,8 +214,8 @@ class Cosmos3OmniPipelineOutput(BaseOutput):
 class CosmosActionCondition:
     """Groups every input required for a Cosmos 3 action-conditioned generation task.
 
-    Pass this to [`Cosmos3OmniPipeline.__call__`] via the `action` argument instead of the top-level `image` / `video`
-    / `height` / `width` arguments, which are reserved for t2v, i2v runs.
+    Pass this to [`Cosmos3OmniPipeline.__call__`] via the `action` argument instead of the top-level `image` /
+    `height` / `width` arguments, which are reserved for t2v, i2v runs.
 
     Attributes:
         mode (`str`):
@@ -647,7 +647,6 @@ class Cosmos3OmniPipeline(DiffusionPipeline):
     def prepare_latents(
         self,
         image: torch.Tensor | None = None,
-        video: Any | None = None,
         num_frames: int | None = None,
         height: int | None = None,
         width: int | None = None,
@@ -857,7 +856,6 @@ class Cosmos3OmniPipeline(DiffusionPipeline):
         prompt,
         negative_prompt,
         image,
-        video,
         height: int | None,
         width: int | None,
         num_frames: int | None,
@@ -891,10 +889,9 @@ class Cosmos3OmniPipeline(DiffusionPipeline):
                 raise ValueError("`num_frames` has to be None if action is not None")
             if height is not None or width is not None:
                 raise ValueError("`height` and `width` have to be None if action is not None")
-            if image is not None or video is not None:
+            if image is not None:
                 raise ValueError(
-                    "Pass action conditioning via `action.image` / `action.video`, not the top-level "
-                    "`image` / `video` arguments."
+                    "Pass action conditioning via `action.image` / `action.video`, not the top-level `image` argument."
                 )
             if not getattr(self.transformer.config, "action_gen", False):
                 raise ValueError("`action` requires a transformer trained with action_gen=True.")
@@ -1081,7 +1078,6 @@ class Cosmos3OmniPipeline(DiffusionPipeline):
         prompt: str | list[str],
         negative_prompt: str | list[str] | None = None,
         image: torch.Tensor | None = None,
-        video: Any | None = None,
         num_frames: int = 189,
         height: int = 720,
         width: int = 1280,
@@ -1119,10 +1115,6 @@ class Cosmos3OmniPipeline(DiffusionPipeline):
             image (`torch.Tensor` or `PIL.Image.Image`, *optional*):
                 Optional conditioning frame for image-to-video. The pipeline anchors frame 0 to this image and denoises
                 the remaining frames. Ignored when `num_frames == 1`. Not used for action runs (pass `action` instead).
-            video (`list`, `np.ndarray`, or `torch.Tensor`, *optional*):
-                Reserved for video-to-video conditioning. Video-to-video is not yet supported, so this argument is
-                currently accepted but unused. Action conditioning video is provided through `action` (see
-                [`CosmosActionCondition`]), not this argument.
             num_frames (`int`, *optional*, defaults to `None`):
                 Number of frames to generate. Use `1` for text-to-image. Defaults to `189` (≈ 7.9 s at 24 FPS) for
                 non-action modes when omitted (`None`). Must be `None` for action runs, where frame count is derived
@@ -1157,7 +1149,7 @@ class Cosmos3OmniPipeline(DiffusionPipeline):
             action (`CosmosActionCondition`, *optional*):
                 Bundles every input for an action-conditioned run (mode, chunk size, embodiment domain, resolution
                 tier, raw actions, and the conditioning image/video), and requires a transformer trained with
-                `action_gen=True`. When set, passing the top-level `image` / `video` arguments raises; `height` /
+                `action_gen=True`. When set, passing the top-level `image` argument raises; `height` /
                 `width` / `num_frames` must be `None`, since resolution comes from `action.resolution_tier` and
                 frame count from `action.chunk_size`. See [`CosmosActionCondition`].
             output_type (`str`, *optional*, defaults to `"pil"`):
@@ -1208,7 +1200,6 @@ class Cosmos3OmniPipeline(DiffusionPipeline):
             prompt,
             negative_prompt,
             image,
-            video,
             height,
             width,
             num_frames,
@@ -1293,7 +1284,6 @@ class Cosmos3OmniPipeline(DiffusionPipeline):
             action_condition_frame_indexes,
         ) = self.prepare_latents(
             image=image,
-            video=video,
             num_frames=num_frames,
             height=height,
             width=width,
