@@ -70,9 +70,7 @@ class AutoencoderVidTokTesterConfig(BaseModelTesterConfig):
 
 
 class TestAutoencoderVidTok(AutoencoderVidTokTesterConfig, ModelTesterMixin):
-    base_precision = 1e-2
-
-    @pytest.mark.skip("Unsupported test.")
+    @pytest.mark.skip("VidTok output structure not compatible with recursive output check.")
     def test_outputs_equivalence(self):
         super().test_outputs_equivalence()
 

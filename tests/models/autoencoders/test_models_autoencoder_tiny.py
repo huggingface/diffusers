@@ -76,11 +76,7 @@ class AutoencoderTinyTesterConfig(BaseModelTesterConfig):
 
 
 class TestAutoencoderTiny(AutoencoderTinyTesterConfig, ModelTesterMixin):
-    base_precision = 1e-2
-
-    @pytest.mark.skip("Test not supported.")
-    def test_outputs_equivalence(self):
-        super().test_outputs_equivalence()
+    pass
 
 
 class TestAutoencoderTinyTraining(AutoencoderTinyTesterConfig, TrainingTesterMixin):

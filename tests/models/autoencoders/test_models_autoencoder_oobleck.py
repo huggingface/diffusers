@@ -74,7 +74,7 @@ class AutoencoderOobleckTesterConfig(BaseModelTesterConfig):
 
 
 class TestAutoencoderOobleck(AutoencoderOobleckTesterConfig, ModelTesterMixin):
-    base_precision = 1e-2
+    pass
 
 
 class TestAutoencoderOobleckTraining(AutoencoderOobleckTesterConfig, TrainingTesterMixin):

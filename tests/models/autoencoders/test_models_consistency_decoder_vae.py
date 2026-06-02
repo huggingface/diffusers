@@ -87,7 +87,7 @@ class ConsistencyDecoderVAETesterConfig(BaseModelTesterConfig):
 
 
 class TestConsistencyDecoderVAE(ConsistencyDecoderVAETesterConfig, ModelTesterMixin):
-    base_precision = 1e-2
+    pass
 
 
 class TestConsistencyDecoderVAETraining(ConsistencyDecoderVAETesterConfig, TrainingTesterMixin):

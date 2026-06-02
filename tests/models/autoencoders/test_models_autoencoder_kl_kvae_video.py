@@ -77,12 +77,6 @@ class AutoencoderKLKVAEVideoTesterConfig(BaseModelTesterConfig):
 
 
 class TestAutoencoderKLKVAEVideo(AutoencoderKLKVAEVideoTesterConfig, ModelTesterMixin):
-    base_precision = 1e-2
-
-    @pytest.mark.skip("Unsupported test.")
-    def test_outputs_equivalence(self):
-        super().test_outputs_equivalence()
-
     @pytest.mark.skip(
         "Multi-GPU inference is not supported due to the stateful cache_dict passing through the forward pass."
     )
