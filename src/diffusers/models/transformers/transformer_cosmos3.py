@@ -322,7 +322,7 @@ class Cosmos3OmniTransformer(ModelMixin, ConfigMixin, PeftAdapterMixin, Attentio
         rms_norm_eps: float = 1e-6,
         rope_scaling: dict | None = None,
         rope_theta: float = 5000000.0,
-        action_dim: int = 32,
+        action_dim: int | None = None,
         action_gen: bool = False,
         num_embodiment_domains: int = 32,
         sound_dim: int | None = None,
@@ -371,6 +371,8 @@ class Cosmos3OmniTransformer(ModelMixin, ConfigMixin, PeftAdapterMixin, Attentio
         self.action_dim = action_dim
         self.num_embodiment_domains = num_embodiment_domains
         if action_gen:
+            if self.action_dim is None:
+                raise ValueError("`action_dim` must be provided when `action_gen=True`.")
             self.action_proj_in = DomainAwareLinear(self.action_dim, hidden_size, self.num_embodiment_domains)
             self.action_proj_out = DomainAwareLinear(hidden_size, self.action_dim, self.num_embodiment_domains)
             self.action_modality_embed = nn.Parameter(torch.zeros(hidden_size))
