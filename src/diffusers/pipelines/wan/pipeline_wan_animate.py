@@ -259,7 +259,8 @@ class WanAnimatePipeline(DiffusionPipeline, WanLoraLoaderMixin):
         text_input_ids, mask = text_inputs.input_ids, text_inputs.attention_mask
         seq_lens = mask.gt(0).sum(dim=1).long()
 
-        prompt_embeds = self.text_encoder(text_input_ids.to(device), mask.to(device)).last_hidden_state
+        model_device = self.text_encoder.device
+        prompt_embeds = self.text_encoder(text_input_ids.to(model_device), mask.to(model_device)).last_hidden_state
         prompt_embeds = prompt_embeds.to(dtype=dtype, device=device)
         prompt_embeds = [u[:v] for u, v in zip(prompt_embeds, seq_lens)]
         prompt_embeds = torch.stack(

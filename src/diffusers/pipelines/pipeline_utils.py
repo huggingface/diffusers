@@ -1164,11 +1164,13 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             except ValueError:
                 pass
 
-        # For TPU pipelines, text encoders stay on CPU while denoising components
-        # (transformer, unet, vae) live on TPU. The standard self.device check below
-        # would return CPU (first component). Detect any TPU component and prefer it.
+        # When text encoders are offloaded to CPU while the denoising backbone
+        # (unet, transformer, vae) runs on an accelerator, self.device returns CPU
+        # (first component). Prefer any non-CPU, non-meta component device so that
+        # scheduler and latent tensors land on the accelerator. This covers TPU,
+        # NPU (npu), Intel GPU (xpu), Habana (hpu), and any other backend.
         for name, model in self.components.items():
-            if isinstance(model, torch.nn.Module) and model.device.type == "tpu":
+            if isinstance(model, torch.nn.Module) and model.device.type not in ("cpu", "meta"):
                 return model.device
 
         for name, model in self.components.items():
