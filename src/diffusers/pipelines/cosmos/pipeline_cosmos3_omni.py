@@ -190,6 +190,38 @@ _EMBODIMENT_TO_DOMAIN_ID = {
     "fractal": 20,
 }
 
+# Canonical (unpadded) action width per embodiment. The width is fixed per embodiment and resolved from
+# `domain_name` via this table.
+#
+# Widths come from the Cosmos 3 unified action representation (paper Fig. 3), which composes a few shared geometric
+# building blocks: a 9D pose (3D translation + 6D rotation, the over-parameterized rotation of Zhou et al. 2019), a
+# 1D grasp state (gripper open/close), and a 15D grasp state (fingertip positions, 3D x 5 fingers). Each embodiment
+# concatenates these blocks, so its width is just their sum. For example:
+#   * av / camera_pose -> 9   : a single ego/effector 9D pose.
+#   * bridge / droid / fractal / umi -> 10 : one arm = 9D effector pose + 1D gripper.
+#   * robomind-franka-dual -> 20 : two arms = 2 x (9D + 1D).
+#   * agibotworld / agibot_gear_gripper -> 29 : humanoid = 9D ego + 2 x (9D arm + 1D gripper).
+#   * galbot -> 30 : humanoid-style stack with an extra pose block.
+#
+# TODO: support the configuration-dependent domains (`libero`, `hand_pose`), whose width is not fixed per embodiment
+# (it depends on the dataset's rotation/keypoint configuration) and so is absent here.
+_EMBODIMENT_TO_RAW_ACTION_DIM = {
+    "av": 9,
+    "camera_pose": 9,
+    "pusht": 2,
+    "umi": 10,
+    "bridge_orig_lerobot": 10,
+    "droid_lerobot": 10,
+    "robomind-franka": 10,
+    "robomind-franka-dual": 20,
+    "robomind-ur": 10,
+    "galbot": 30,
+    "agibotworld": 29,
+    "agibot_gear_gripper": 29,
+    "agibot_gear_gripper_ext": 29,
+    "fractal": 10,
+}
+
 
 @dataclass
 class Cosmos3OmniPipelineOutput(BaseOutput):
@@ -227,7 +259,8 @@ class CosmosActionCondition:
             frames.
         domain_name (`str`):
             Embodiment domain selecting the domain-aware action projection weights. Must be one of the registered
-            Cosmos 3 embodiment domains.
+            Cosmos 3 embodiment domains. It also fixes the unpadded action width used to slice predicted actions,
+            resolved internally from this name (see `_EMBODIMENT_TO_RAW_ACTION_DIM`).
         resolution_tier (`int`, defaults to `480`):
             Action conditioning resolution *tier* (one of `256`, `480`, `704`, `720`). The tier picks a predefined
             canvas whose aspect ratio is closest to the input; the input is downscaled (never upscaled) and padded
@@ -235,9 +268,6 @@ class CosmosActionCondition:
             tier to the input's native resolution: a lower tier discards detail, while a higher tier adds no
             resolution (no upscaling), wastes compute on padding, and is a train/inference mismatch that can hurt
             quality.
-        raw_action_dim (`int`, *optional*):
-            Number of meaningful (unpadded) action channels to keep when slicing predicted actions. Required for
-            `"policy"` and `"inverse_dynamics"`.
         raw_actions (`torch.Tensor`, *optional*):
             Raw domain action vectors of shape `[T, raw_action_dim]` driving `"forward_dynamics"`. Sequences shorter
             than `chunk_size` repeat the last action; longer ones are truncated. Channels beyond the model's
@@ -253,10 +283,10 @@ class CosmosActionCondition:
     chunk_size: int
     domain_name: str
     resolution_tier: int = 480
-    raw_action_dim: int | None = None
     raw_actions: torch.Tensor | None = None
     image: Image.Image | np.ndarray | torch.Tensor | None = None
     video: list | np.ndarray | torch.Tensor | None = None
+
 
     def __post_init__(self) -> None:
         """Validate self-contained action fields at construction time."""
@@ -280,8 +310,15 @@ class CosmosActionCondition:
             raise ValueError("`image` and `video` cannot both be None")
         if self.mode == "inverse_dynamics" and self.video is None:
             raise ValueError("action mode='inverse_dynamics' requires `video` conditioning.")
-        if self.mode in {"policy", "inverse_dynamics"} and self.raw_action_dim is None:
-            raise ValueError(f"action mode={self.mode!r} requires `raw_action_dim` for output slicing.")
+        # Resolve the unpadded action width from the embodiment: the width is fixed per embodiment and looked up from
+        # the table. Domains absent from the table are unsupported for action inference in all modes.
+        # TODO: support the configuration-dependent domains (libero, hand_pose), whose width is set per-dataset.
+        if self.domain_name not in _EMBODIMENT_TO_RAW_ACTION_DIM:
+            raise ValueError(
+                f"domain_name={self.domain_name!r} is not supported for action inference: it has no canonical action "
+                f"width. Supported domains: {sorted(_EMBODIMENT_TO_RAW_ACTION_DIM)}."
+            )
+        self.raw_action_dim = _EMBODIMENT_TO_RAW_ACTION_DIM[self.domain_name]
         if self.mode == "forward_dynamics":
             if self.raw_actions is None:
                 raise ValueError("action mode='forward_dynamics' requires `raw_actions`.")
@@ -289,6 +326,12 @@ class CosmosActionCondition:
                 raise ValueError(f"`raw_actions` must have shape [T, D], got {tuple(self.raw_actions.shape)}.")
             if self.raw_actions.shape[0] < 1:
                 raise ValueError("action mode='forward_dynamics' requires at least one action token.")
+            # The supplied action width must match the embodiment's expected width.
+            if self.raw_actions.shape[1] != self.raw_action_dim:
+                raise ValueError(
+                    f"`raw_actions` width ({self.raw_actions.shape[1]}) does not match the expected action width "
+                    f"({self.raw_action_dim}) for domain_name={self.domain_name!r}."
+                )
 
 
 # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_img2img.retrieve_latents
@@ -693,6 +736,11 @@ class Cosmos3OmniPipeline(DiffusionPipeline):
         raw_action_dim_resolved: int | None = (
             int(action.raw_action_dim) if action is not None and action.raw_action_dim is not None else None
         )
+        if raw_action_dim_resolved is not None and raw_action_dim_resolved > self.transformer.config.action_dim:
+            raise ValueError(
+                f"raw_action_dim={raw_action_dim_resolved} exceeds the model's trained action_dim="
+                f"{self.transformer.config.action_dim}; this checkpoint cannot represent that action width."
+            )
         action_condition_frames: list[int] = []
         action_condition_frame_indexes: list[int] = []
         action_image_size: torch.Tensor | None = None

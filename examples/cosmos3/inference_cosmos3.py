@@ -114,7 +114,6 @@ def main():
     parser.add_argument("--action-path", default=None, help="JSON action path for forward_dynamics mode.")
     parser.add_argument("--action-chunk-size", type=int, default=None, help="Number of action tokens to generate/use.")
     parser.add_argument("--domain-name", default=None, help="Cosmos3 action embodiment domain name.")
-    parser.add_argument("--raw-action-dim", type=int, default=None, help="Slice predicted action output to this size.")
     parser.add_argument(
         "--resolution-tier",
         type=int,
@@ -186,7 +185,6 @@ def main():
                 mode=args.action_mode,
                 chunk_size=args.action_chunk_size,
                 domain_name=args.domain_name,
-                raw_action_dim=args.raw_action_dim,
                 resolution_tier=args.resolution_tier,
                 raw_actions=raw_actions,
                 video=video,
