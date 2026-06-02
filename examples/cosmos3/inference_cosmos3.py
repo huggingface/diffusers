@@ -30,7 +30,7 @@ import urllib.request
 import torch
 from huggingface_hub import snapshot_download
 
-from diffusers import Cosmos3OmniPipeline, CosmosActionCondition
+from diffusers import Cosmos3OmniPipeline, CosmosActionCondition, UniPCMultistepScheduler
 from diffusers.utils import encode_video, export_to_video, load_image, load_video
 
 
@@ -92,6 +92,12 @@ def main():
     parser.add_argument("--fps", type=float, default=24.0)
     parser.add_argument("--guidance-scale", type=float, default=6.0, help="Classifier-free guidance scale.")
     parser.add_argument("--num-inference-steps", type=int, default=35, help="Number of denoising steps.")
+    parser.add_argument(
+        "--flow-shift",
+        type=float,
+        default=None,
+        help="Override the scheduler's flow-matching shift (UniPCMultistepScheduler.flow_shift).",
+    )
     parser.add_argument("--seed", type=int, default=None, help="Random seed for latent initialization.")
     parser.add_argument(
         "--enable-sound",
@@ -158,6 +164,10 @@ def main():
         enable_safety_checker=not args.disable_safety_checker,
     )
     print("Pipeline loaded successfully.")
+
+    if args.flow_shift is not None:
+        pipeline.scheduler = UniPCMultistepScheduler.from_config(pipeline.scheduler.config, flow_shift=args.flow_shift)
+        print(f"Scheduler flow_shift set to {args.flow_shift}.")
 
     output_dir = pathlib.Path(args.output)
     output_dir.mkdir(parents=True, exist_ok=True)
