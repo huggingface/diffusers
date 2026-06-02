@@ -18,6 +18,8 @@ import unittest
 import torch
 
 from diffusers.hooks import HookRegistry, ModelHook
+from diffusers.hooks.hooks import BaseState, StateManager
+from diffusers.models.cache_utils import CacheMixin
 from diffusers.training_utils import free_memory
 from diffusers.utils.logging import get_logger
 
@@ -112,6 +114,27 @@ class StatefulAddHook(ModelHook):
 
     def reset_state(self, module):
         self.increment = 0
+
+
+class CacheTestState(BaseState):
+    def reset(self):
+        pass
+
+
+class CacheTestHook(ModelHook):
+    _is_stateful = True
+
+    def __init__(self):
+        super().__init__()
+        self.state_manager = StateManager(CacheTestState)
+
+    def reset_state(self, module):
+        self.state_manager.reset()
+
+
+class CacheContextModel(torch.nn.Module, CacheMixin):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return x
 
 
 class SkipLayerHook(ModelHook):
@@ -337,6 +360,20 @@ class HookTests(unittest.TestCase):
             ("MultiplyHook pre_forward\nMultiplyHook post_forward\n").replace(" ", "").replace("\n", "")
         )
         self.assertEqual(output, expected_invocation_order_log)
+
+    def test_cache_context_clears_stateful_hook_context_after_exception(self):
+        model = CacheContextModel()
+        hook = CacheTestHook()
+        HookRegistry.check_if_exists_or_initialize(model).register_hook(hook, "cache_test")
+
+        with self.assertRaisesRegex(RuntimeError, "interrupted"):
+            with model.cache_context("failed-call"):
+                hook.state_manager.get_state()
+                raise RuntimeError("interrupted")
+
+        self.assertIsNone(hook.state_manager._current_context)
+        with self.assertRaisesRegex(ValueError, "No context is set"):
+            hook.state_manager.get_state()
 
     def test_invocation_order_stateful_last(self):
         registry = HookRegistry.check_if_exists_or_initialize(self.model)

@@ -1,6 +1,7 @@
 import importlib.metadata
 import tempfile
 import unittest
+from unittest.mock import patch
 
 import numpy as np
 import pytest
@@ -9,6 +10,7 @@ from packaging import version
 
 from diffusers import DiffusionPipeline
 from diffusers.models.attention_processor import Attention, AttnAddedKVProcessor
+from diffusers.utils import import_utils
 
 from ..testing_utils import torch_device
 
@@ -81,6 +83,23 @@ class AttnAddedKVProcessorTests(unittest.TestCase):
         only_cross_attn_out = attn(**forward_args)
 
         self.assertTrue((only_cross_attn_out != self_and_cross_attn_out).all())
+
+
+class AttentionXLAFlashAttentionTests(unittest.TestCase):
+    def test_set_use_xla_flash_attention_raises_import_error_without_torch_xla(self):
+        attn = Attention(query_dim=4, heads=1, dim_head=4)
+
+        with patch("diffusers.models.attention_processor.is_torch_xla_available", return_value=False):
+            with self.assertRaisesRegex(ImportError, "torch_xla is not available"):
+                attn.set_use_xla_flash_attention(True)
+
+    def test_is_torch_xla_version_returns_false_without_torch_xla(self):
+        import_utils.is_torch_xla_version.cache_clear()
+        try:
+            with patch("diffusers.utils.import_utils.is_torch_xla_available", return_value=False):
+                self.assertFalse(import_utils.is_torch_xla_version("<", "2.3"))
+        finally:
+            import_utils.is_torch_xla_version.cache_clear()
 
 
 class DeprecatedAttentionBlockTests(unittest.TestCase):
