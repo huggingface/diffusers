@@ -315,6 +315,11 @@ class LuminaNextDiT2DModel(ModelMixin, ConfigMixin):
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`~models.transformer_2d.Transformer2DModelOutput`] instead of a plain
                 tuple.
+
+        Returns:
+            [`~models.transformer_2d.Transformer2DModelOutput`] or `tuple`:
+                If `return_dict` is True, a [`~models.transformer_2d.Transformer2DModelOutput`] is returned, otherwise
+                a plain `tuple` is returned.
         """
         hidden_states, mask, img_size, image_rotary_emb = self.patch_embedder(hidden_states, image_rotary_emb)
         image_rotary_emb = image_rotary_emb.to(hidden_states.device)
