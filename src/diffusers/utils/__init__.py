@@ -44,7 +44,7 @@ from .constants import (
 from .deprecation_utils import _maybe_remap_transformers_class, deprecate
 from .doc_utils import replace_example_docstring
 from .dynamic_modules_utils import get_class_from_dynamic_module
-from .export_utils import export_to_gif, export_to_obj, export_to_ply, export_to_video
+from .export_utils import encode_video, export_to_gif, export_to_obj, export_to_ply, export_to_video
 from .hub_utils import (
     PushToHubMixin,
     _add_variant,
@@ -113,6 +113,7 @@ from .import_utils import (
     is_timm_available,
     is_torch_available,
     is_torch_mlu_available,
+    is_torch_neuronx_available,
     is_torch_npu_available,
     is_torch_version,
     is_torch_xla_available,

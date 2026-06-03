@@ -435,6 +435,51 @@ class AllegroTransformer3DModel(metaclass=DummyObject):
         requires_backends(cls, ["torch"])
 
 
+class AnimaTextConditioner(metaclass=DummyObject):
+    _backends = ["torch"]
+
+    def __init__(self, *args, **kwargs):
+        requires_backends(self, ["torch"])
+
+    @classmethod
+    def from_config(cls, *args, **kwargs):
+        requires_backends(cls, ["torch"])
+
+    @classmethod
+    def from_pretrained(cls, *args, **kwargs):
+        requires_backends(cls, ["torch"])
+
+
+class AnyFlowFARTransformer3DModel(metaclass=DummyObject):
+    _backends = ["torch"]
+
+    def __init__(self, *args, **kwargs):
+        requires_backends(self, ["torch"])
+
+    @classmethod
+    def from_config(cls, *args, **kwargs):
+        requires_backends(cls, ["torch"])
+
+    @classmethod
+    def from_pretrained(cls, *args, **kwargs):
+        requires_backends(cls, ["torch"])
+
+
+class AnyFlowTransformer3DModel(metaclass=DummyObject):
+    _backends = ["torch"]
+
+    def __init__(self, *args, **kwargs):
+        requires_backends(self, ["torch"])
+
+    @classmethod
+    def from_config(cls, *args, **kwargs):
+        requires_backends(cls, ["torch"])
+
+    @classmethod
+    def from_pretrained(cls, *args, **kwargs):
+        requires_backends(cls, ["torch"])
+
+
 class AsymmetricAutoencoderKL(metaclass=DummyObject):
     _backends = ["torch"]
 
@@ -1051,6 +1096,36 @@ class ControlNetUnionModel(metaclass=DummyObject):
 
 
 class ControlNetXSAdapter(metaclass=DummyObject):
+    _backends = ["torch"]
+
+    def __init__(self, *args, **kwargs):
+        requires_backends(self, ["torch"])
+
+    @classmethod
+    def from_config(cls, *args, **kwargs):
+        requires_backends(cls, ["torch"])
+
+    @classmethod
+    def from_pretrained(cls, *args, **kwargs):
+        requires_backends(cls, ["torch"])
+
+
+class Cosmos3AVAEAudioTokenizer(metaclass=DummyObject):
+    _backends = ["torch"]
+
+    def __init__(self, *args, **kwargs):
+        requires_backends(self, ["torch"])
+
+    @classmethod
+    def from_config(cls, *args, **kwargs):
+        requires_backends(cls, ["torch"])
+
+    @classmethod
+    def from_pretrained(cls, *args, **kwargs):
+        requires_backends(cls, ["torch"])
+
+
+class Cosmos3OmniTransformer(metaclass=DummyObject):
     _backends = ["torch"]
 
     def __init__(self, *args, **kwargs):
@@ -2417,6 +2492,21 @@ class AutoPipelineForInpainting(metaclass=DummyObject):
         requires_backends(cls, ["torch"])
 
 
+class AutoPipelineForText2Audio(metaclass=DummyObject):
+    _backends = ["torch"]
+
+    def __init__(self, *args, **kwargs):
+        requires_backends(self, ["torch"])
+
+    @classmethod
+    def from_config(cls, *args, **kwargs):
+        requires_backends(cls, ["torch"])
+
+    @classmethod
+    def from_pretrained(cls, *args, **kwargs):
+        requires_backends(cls, ["torch"])
+
+
 class AutoPipelineForText2Image(metaclass=DummyObject):
     _backends = ["torch"]
 
@@ -2988,6 +3078,21 @@ class EulerAncestralDiscreteScheduler(metaclass=DummyObject):
 
 
 class EulerDiscreteScheduler(metaclass=DummyObject):
+    _backends = ["torch"]
+
+    def __init__(self, *args, **kwargs):
+        requires_backends(self, ["torch"])
+
+    @classmethod
+    def from_config(cls, *args, **kwargs):
+        requires_backends(cls, ["torch"])
+
+    @classmethod
+    def from_pretrained(cls, *args, **kwargs):
+        requires_backends(cls, ["torch"])
+
+
+class FlowMapEulerDiscreteScheduler(metaclass=DummyObject):
     _backends = ["torch"]
 
     def __init__(self, *args, **kwargs):

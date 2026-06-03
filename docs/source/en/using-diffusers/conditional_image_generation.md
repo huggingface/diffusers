@@ -69,7 +69,7 @@ image
 
 ### Stable Diffusion XL
 
-SDXL is a much larger version of the previous Stable Diffusion models, and involves a two-stage model process that adds even more details to an image. It also includes some additional *micro-conditionings* to generate high-quality images centered subjects. Take a look at the more comprehensive [SDXL](sdxl) guide to learn more about how to use it. In general, you can use SDXL like:
+SDXL is a much larger version of the previous Stable Diffusion models, and involves a two-stage model process that adds even more details to an image. It also includes some additional *micro-conditionings* to generate high-quality images centered subjects. Take a look at the more comprehensive [SDXL](../api/pipelines/stable_diffusion/stable_diffusion_xl) guide to learn more about how to use it. In general, you can use SDXL like:
 
 ```py
 from diffusers import AutoPipelineForText2Image
