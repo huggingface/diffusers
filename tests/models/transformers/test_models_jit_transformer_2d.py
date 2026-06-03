@@ -84,3 +84,7 @@ class JiTTransformer2DModelTests(ModelTesterMixin, unittest.TestCase):
 
     def test_effective_gradient_checkpointing(self):
         super().test_effective_gradient_checkpointing(loss_tolerance=1e-4)
+
+    def test_set_attn_processor_for_determinism(self):
+        # JiT uses a custom fused-QKV attention processor, not the generic `AttnProcessor2_0`.
+        pass

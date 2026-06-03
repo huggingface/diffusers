@@ -21,6 +21,8 @@ import torch.nn.functional as F
 
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...utils import logging
+from ..attention import AttentionMixin, AttentionModuleMixin
+from ..attention_dispatch import dispatch_attention_fn
 from ..modeling_outputs import Transformer2DModelOutput
 from ..modeling_utils import ModelMixin
 from ..normalization import RMSNorm
@@ -58,29 +60,9 @@ def rotate_half(x):
 
 
 class JiTRotaryEmbedding(nn.Module):
-    def __init__(
-        self,
-        dim,
-        pt_seq_len=16,
-        ft_seq_len=None,
-        custom_freqs=None,
-        freqs_for="lang",
-        theta=10000,
-        max_freq=10,
-        num_freqs=1,
-        num_cls_token=0,
-    ):
+    def __init__(self, dim, pt_seq_len=16, ft_seq_len=None, theta=10000, num_cls_token=0):
         super().__init__()
-        if custom_freqs:
-            freqs = custom_freqs
-        elif freqs_for == "lang":
-            freqs = 1.0 / (theta ** (torch.arange(0, dim, 2)[: (dim // 2)].float() / dim))
-        elif freqs_for == "pixel":
-            freqs = torch.linspace(1.0, max_freq / 2, dim // 2) * math.pi
-        elif freqs_for == "constant":
-            freqs = torch.ones(num_freqs).float()
-        else:
-            raise ValueError(f"unknown modality {freqs_for}")
+        freqs = 1.0 / (theta ** (torch.arange(0, dim, 2)[: (dim // 2)].float() / dim))
 
         if ft_seq_len is None:
             ft_seq_len = pt_seq_len
@@ -157,9 +139,9 @@ class JiTTimestepEmbedder(nn.Module):
         Create sinusoidal timestep embeddings.
         """
         half = dim // 2
-        freqs = torch.exp(
-            -math.log(max_period) * torch.arange(start=0, end=half, dtype=torch.float32) / half
-        ).to(device=t.device)
+        freqs = torch.exp(-math.log(max_period) * torch.arange(start=0, end=half, dtype=torch.float32) / half).to(
+            device=t.device
+        )
         args = t[:, None].float() * freqs[None]
         embedding = torch.cat([torch.cos(args), torch.sin(args)], dim=-1)
         if dim % 2:
@@ -189,45 +171,67 @@ class JiTLabelEmbedder(nn.Module):
         return embeddings
 
 
-class JiTAttention(nn.Module):
-    def __init__(self, dim, num_heads=8, qkv_bias=True, qk_norm=True, attn_drop=0.0, proj_drop=0.0, eps=1e-6):
+class JiTAttnProcessor:
+    _attention_backend = None
+    _parallel_config = None
+
+    def __init__(self):
+        if not hasattr(F, "scaled_dot_product_attention"):
+            raise ImportError("JiTAttnProcessor requires PyTorch 2.0. Please upgrade your PyTorch version.")
+
+    def __call__(self, attn: "JiTAttention", hidden_states: torch.Tensor, rope=None) -> torch.Tensor:
+        batch_size, seq_len, _ = hidden_states.shape
+        qkv = attn.qkv(hidden_states).reshape(batch_size, seq_len, 3, attn.num_heads, attn.head_dim)
+        query, key, value = qkv.unbind(2)
+
+        query = attn.q_norm(query)
+        key = attn.k_norm(key)
+
+        if rope is not None:
+            query = rope(query)
+            key = rope(key)
+
+        hidden_states = dispatch_attention_fn(
+            query,
+            key,
+            value,
+            dropout_p=attn.attn_drop if attn.training else 0.0,
+            is_causal=False,
+            backend=self._attention_backend,
+            parallel_config=self._parallel_config,
+        )
+        hidden_states = hidden_states.flatten(2, 3)
+        hidden_states = attn.proj(hidden_states)
+        hidden_states = attn.proj_drop(hidden_states)
+        return hidden_states
+
+
+class JiTAttention(nn.Module, AttentionModuleMixin):
+    _default_processor_cls = JiTAttnProcessor
+    _available_processors = [JiTAttnProcessor]
+
+    def __init__(
+        self, dim, num_heads=8, qkv_bias=True, qk_norm=True, attn_drop=0.0, proj_drop=0.0, eps=1e-6, processor=None
+    ):
         super().__init__()
         self.num_heads = num_heads
-        head_dim = dim // num_heads
-        self.scale = head_dim**-0.5
+        self.heads = num_heads
+        self.head_dim = dim // num_heads
+        self.attn_drop = attn_drop
 
-        self.q_norm = RMSNorm(head_dim, eps=eps) if qk_norm else nn.Identity()
-        self.k_norm = RMSNorm(head_dim, eps=eps) if qk_norm else nn.Identity()
+        self.q_norm = RMSNorm(self.head_dim, eps=eps) if qk_norm else nn.Identity()
+        self.k_norm = RMSNorm(self.head_dim, eps=eps) if qk_norm else nn.Identity()
 
         self.qkv = nn.Linear(dim, dim * 3, bias=qkv_bias)
-        self.attn_drop = nn.Dropout(attn_drop)
         self.proj = nn.Linear(dim, dim)
         self.proj_drop = nn.Dropout(proj_drop)
 
+        if processor is None:
+            processor = self._default_processor_cls()
+        self.set_processor(processor)
+
     def forward(self, x, rope=None):
-        B, N, C = x.shape
-        qkv = self.qkv(x).reshape(B, N, 3, self.num_heads, C // self.num_heads).permute(2, 0, 3, 1, 4)
-        q, k, v = qkv[0], qkv[1], qkv[2]
-
-        q = self.q_norm(q)
-        k = self.k_norm(k)
-
-        if rope is not None:
-            q = q.transpose(1, 2)
-            k = k.transpose(1, 2)
-            q = rope(q)
-            k = rope(k)
-            q = q.transpose(1, 2)
-            k = k.transpose(1, 2)
-
-        attn = (q @ k.transpose(-2, -1)) * self.scale
-        attn = attn.softmax(dim=-1)
-        attn = self.attn_drop(attn)
-
-        x = (attn @ v).transpose(1, 2).reshape(B, N, C)
-        x = self.proj(x)
-        x = self.proj_drop(x)
-        return x
+        return self.processor(self, x, rope=rope)
 
 
 class JiTSwiGLUFFN(nn.Module):
@@ -326,7 +330,27 @@ def get_1d_sincos_pos_embed_from_grid(embed_dim, pos):
     return emb
 
 
-class JiTTransformer2DModel(ModelMixin, ConfigMixin):
+class JiTTransformer2DModel(ModelMixin, ConfigMixin, AttentionMixin):
+    r"""
+    A 2D Transformer for pixel-space, class-conditional image generation, as introduced in
+    [JiT](https://github.com/LTH14/JiT). It operates directly on image patches (no VAE), predicts the clean image, and
+    is trained with flow matching.
+
+    Parameters:
+        sample_size (`int`, defaults to `256`): Input image resolution.
+        patch_size (`int`, defaults to `16`): Patch size of the bottleneck patch embedder.
+        in_channels (`int`, defaults to `3`): Number of input/output image channels.
+        hidden_size (`int`, defaults to `768`): Transformer hidden dimension.
+        num_layers (`int`, defaults to `12`): Number of transformer blocks.
+        num_attention_heads (`int`, defaults to `12`): Number of attention heads.
+        mlp_ratio (`float`, defaults to `4.0`): SwiGLU feed-forward expansion ratio.
+        num_classes (`int`, defaults to `1000`): Number of class labels (an extra null class is added for CFG).
+        bottleneck_dim (`int`, defaults to `128`): Channel dimension of the patch-embedding bottleneck.
+        in_context_len (`int`, defaults to `32`): Number of in-context conditioning tokens.
+        in_context_start (`int`, defaults to `4`): Block index at which in-context tokens are injected.
+        norm_eps (`float`, defaults to `1e-6`): Epsilon for the RMSNorm layers.
+    """
+
     _supports_gradient_checkpointing = True
     _skip_layerwise_casting_patterns = ["pos_embed", "norm"]
 
@@ -420,7 +444,6 @@ class JiTTransformer2DModel(ModelMixin, ConfigMixin):
         class_labels: torch.LongTensor,
         return_dict: bool = True,
     ):
-
         t_emb = self.t_embedder(timestep, dtype=hidden_states.dtype)
         y_emb = self.y_embedder(class_labels)
 
@@ -443,20 +466,7 @@ class JiTTransformer2DModel(ModelMixin, ConfigMixin):
             rope = self.feat_rope if i < self.in_context_start else self.feat_rope_incontext
 
             if self.training and self.gradient_checkpointing:
-
-                def create_custom_forward(module):
-                    def custom_forward(*inputs):
-                        return module(*inputs)
-
-                    return custom_forward
-
-                x = torch.utils.checkpoint.checkpoint(
-                    create_custom_forward(block),
-                    x,
-                    c,
-                    rope,
-                    use_reentrant=False,
-                )
+                x = self._gradient_checkpointing_func(block, x, c, rope)
             else:
                 x = block(x, c, feat_rope=rope)
 
