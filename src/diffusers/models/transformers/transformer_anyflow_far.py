@@ -121,6 +121,9 @@ class AnyFlowCausalAttnProcessor:
         if attn.norm_k is not None:
             key = attn.norm_k(key)
 
+        # Make layerwise upcasting work.
+        value = value.to(query.dtype)
+
         # Layout (B, H, L, D) is required by KV-cache slicing and rotary application.
         query = query.unflatten(2, (attn.heads, -1)).transpose(1, 2)
         key = key.unflatten(2, (attn.heads, -1)).transpose(1, 2)
