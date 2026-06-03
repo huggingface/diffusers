@@ -246,8 +246,8 @@ class Cosmos3OmniPipelineOutput(BaseOutput):
 class CosmosActionCondition:
     """Groups every input required for a Cosmos 3 action-conditioned generation task.
 
-    Pass this to [`Cosmos3OmniPipeline.__call__`] via the `action` argument instead of the top-level `image` /
-    `height` / `width` arguments, which are reserved for t2v, i2v runs.
+    Pass this to [`Cosmos3OmniPipeline.__call__`] via the `action` argument instead of the top-level `image` / `height`
+    / `width` arguments, which are reserved for t2v, i2v runs.
 
     Attributes:
         mode (`str`):
@@ -263,11 +263,10 @@ class CosmosActionCondition:
             resolved internally from this name (see `_EMBODIMENT_TO_RAW_ACTION_DIM`).
         resolution_tier (`int`, defaults to `480`):
             Action conditioning resolution *tier* (one of `256`, `480`, `704`, `720`). The tier picks a predefined
-            canvas whose aspect ratio is closest to the input; the input is downscaled (never upscaled) and padded
-            into it for conditioning. This is not the output frame size, which tracks the input content. Match the
-            tier to the input's native resolution: a lower tier discards detail, while a higher tier adds no
-            resolution (no upscaling), wastes compute on padding, and is a train/inference mismatch that can hurt
-            quality.
+            canvas whose aspect ratio is closest to the input; the input is downscaled (never upscaled) and padded into
+            it for conditioning. This is not the output frame size, which tracks the input content. Match the tier to
+            the input's native resolution: a lower tier discards detail, while a higher tier adds no resolution (no
+            upscaling), wastes compute on padding, and is a train/inference mismatch that can hurt quality.
         raw_actions (`torch.Tensor`, *optional*):
             Raw domain action vectors of shape `[T, raw_action_dim]` driving `"forward_dynamics"`. Sequences shorter
             than `chunk_size` repeat the last action; longer ones are truncated. Channels beyond the model's
@@ -275,8 +274,8 @@ class CosmosActionCondition:
         image (`PIL.Image.Image`, `np.ndarray`, or `torch.Tensor`, *optional*):
             Conditioning frame for `"policy"` / `"forward_dynamics"`. Mutually exclusive with `video`.
         video (`list`, `np.ndarray`, or `torch.Tensor`, *optional*):
-            Conditioning video, required for `"inverse_dynamics"`. For `"policy"` / `"forward_dynamics"` only its
-            first frame is used. Mutually exclusive with `image`.
+            Conditioning video, required for `"inverse_dynamics"`. For `"policy"` / `"forward_dynamics"` only its first
+            frame is used. Mutually exclusive with `image`.
     """
 
     mode: Literal["policy", "forward_dynamics", "inverse_dynamics"]
@@ -286,7 +285,6 @@ class CosmosActionCondition:
     raw_actions: torch.Tensor | None = None
     image: Image.Image | np.ndarray | torch.Tensor | None = None
     video: list | np.ndarray | torch.Tensor | None = None
-
 
     def __post_init__(self) -> None:
         """Validate self-contained action fields at construction time."""
@@ -1171,8 +1169,8 @@ class Cosmos3OmniPipeline(DiffusionPipeline):
                 Output height in pixels. Defaults to `720` for non-action modes when omitted (`None`). Must be `None`
                 for action runs, which size via `action.resolution_tier`.
             width (`int`, *optional*, defaults to `None`):
-                Output width in pixels. Defaults to `1280` for non-action modes when omitted (`None`). Must be
-                `None` for action runs, which size via `action.resolution_tier`.
+                Output width in pixels. Defaults to `1280` for non-action modes when omitted (`None`). Must be `None`
+                for action runs, which size via `action.resolution_tier`.
             fps (`float`, *optional*, defaults to `24.0`):
                 Target frame rate, also injected into the mRoPE temporal modulation and into the duration metadata
                 template.
@@ -1197,9 +1195,9 @@ class Cosmos3OmniPipeline(DiffusionPipeline):
             action (`CosmosActionCondition`, *optional*):
                 Bundles every input for an action-conditioned run (mode, chunk size, embodiment domain, resolution
                 tier, raw actions, and the conditioning image/video), and requires a transformer trained with
-                `action_gen=True`. When set, passing the top-level `image` argument raises; `height` /
-                `width` / `num_frames` must be `None`, since resolution comes from `action.resolution_tier` and
-                frame count from `action.chunk_size`. See [`CosmosActionCondition`].
+                `action_gen=True`. When set, passing the top-level `image` argument raises; `height` / `width` /
+                `num_frames` must be `None`, since resolution comes from `action.resolution_tier` and frame count from
+                `action.chunk_size`. See [`CosmosActionCondition`].
             output_type (`str`, *optional*, defaults to `"pil"`):
                 Output format for the video. One of `"pil"` (list of `PIL.Image.Image`), `"np"` (`np.ndarray`, `[T, H,
                 W, C]`), `"pt"` (`torch.Tensor`, `[T, C, H, W]`), or `"latent"` (raw vision latents).
