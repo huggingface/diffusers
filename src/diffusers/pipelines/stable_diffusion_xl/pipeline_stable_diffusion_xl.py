@@ -986,6 +986,9 @@ class StableDiffusionXLPipeline(
                 as the `target_size` for most cases. Part of SDXL's micro-conditioning as explained in section 2.2 of
                 [https://huggingface.co/papers/2307.01952](https://huggingface.co/papers/2307.01952). For more
                 information, refer to this issue thread: https://github.com/huggingface/diffusers/issues/4208.
+            clip_skip (`int`, *optional*):
+                Number of layers to be skipped from CLIP while computing the prompt embeddings. A value of 1 means that
+                the output of the pre-final layer will be used for computing the prompt embeddings.
             callback_on_step_end (`Callable`, `PipelineCallback`, `MultiPipelineCallbacks`, *optional*):
                 A function or a subclass of `PipelineCallback` or `MultiPipelineCallbacks` that is called at the end of
                 each denoising step during the inference. with the following arguments: `callback_on_step_end(self:
@@ -1092,7 +1095,8 @@ class StableDiffusionXLPipeline(
         )
 
         # 4. Prepare timesteps
-        if XLA_AVAILABLE:
+        is_neuron_device = device.type == "neuron"
+        if XLA_AVAILABLE or is_neuron_device:
             timestep_device = "cpu"
         else:
             timestep_device = device
@@ -1187,6 +1191,8 @@ class StableDiffusionXLPipeline(
             ).to(device=device, dtype=latents.dtype)
 
         self._num_timesteps = len(timesteps)
+        if hasattr(self.scheduler, "set_begin_index"):
+            self.scheduler.set_begin_index(0)
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
                 if self.interrupt:
@@ -1194,16 +1200,18 @@ class StableDiffusionXLPipeline(
 
                 # expand the latents if we are doing classifier free guidance
                 latent_model_input = torch.cat([latents] * 2) if self.do_classifier_free_guidance else latents
-
                 latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
 
                 # predict the noise residual
                 added_cond_kwargs = {"text_embeds": add_text_embeds, "time_ids": add_time_ids}
                 if ip_adapter_image is not None or ip_adapter_image_embeds is not None:
                     added_cond_kwargs["image_embeds"] = image_embeds
+                # [Neuron] pre-cast timestep to float32 on device. Neuron XLA does not support
+                # int64 ops; the compiled UNet graph requires a float32 timestep input on-device.
+                t_unet = t.to(torch.float32).to(device) if is_neuron_device else t
                 noise_pred = self.unet(
                     latent_model_input,
-                    t,
+                    t_unet,
                     encoder_hidden_states=prompt_embeds,
                     timestep_cond=timestep_cond,
                     cross_attention_kwargs=self.cross_attention_kwargs,

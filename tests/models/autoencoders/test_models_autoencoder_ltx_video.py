@@ -13,30 +13,47 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import unittest
-
+import pytest
 import torch
 
 from diffusers import AutoencoderKLLTXVideo
+from diffusers.utils.torch_utils import randn_tensor
 
-from ...testing_utils import (
-    enable_full_determinism,
-    floats_tensor,
-    torch_device,
-)
-from ..test_modeling_common import ModelTesterMixin
-from .testing_utils import AutoencoderTesterMixin
+from ...testing_utils import enable_full_determinism, torch_device
+from ..testing_utils import BaseModelTesterConfig, MemoryTesterMixin, ModelTesterMixin, TrainingTesterMixin
+from .testing_utils import NewAutoencoderTesterMixin
 
 
 enable_full_determinism()
 
 
-class AutoencoderKLLTXVideo090Tests(ModelTesterMixin, AutoencoderTesterMixin, unittest.TestCase):
-    model_class = AutoencoderKLLTXVideo
-    main_input_name = "sample"
-    base_precision = 1e-2
+_LTX_VIDEO_GRADIENT_CKPT_EXPECTED = {
+    "LTXVideoEncoder3d",
+    "LTXVideoDecoder3d",
+    "LTXVideoDownBlock3D",
+    "LTXVideoMidBlock3d",
+    "LTXVideoUpBlock3d",
+}
 
-    def get_autoencoder_kl_ltx_video_config(self):
+
+class AutoencoderKLLTXVideo090TesterConfig(BaseModelTesterConfig):
+    @property
+    def model_class(self):
+        return AutoencoderKLLTXVideo
+
+    @property
+    def main_input_name(self) -> str:
+        return "sample"
+
+    @property
+    def output_shape(self) -> tuple:
+        return (3, 9, 16, 16)
+
+    @property
+    def generator(self):
+        return torch.Generator("cpu").manual_seed(0)
+
+    def get_init_dict(self) -> dict:
         return {
             "in_channels": 3,
             "out_channels": 3,
@@ -57,55 +74,62 @@ class AutoencoderKLLTXVideo090Tests(ModelTesterMixin, AutoencoderTesterMixin, un
             "decoder_causal": False,
         }
 
-    @property
-    def dummy_input(self):
+    def get_dummy_inputs(self) -> dict:
         batch_size = 2
         num_frames = 9
         num_channels = 3
         sizes = (16, 16)
-
-        image = floats_tensor((batch_size, num_channels, num_frames) + sizes).to(torch_device)
-
+        image = randn_tensor(
+            (batch_size, num_channels, num_frames, *sizes), generator=self.generator, device=torch_device
+        )
         return {"sample": image}
 
-    @property
-    def input_shape(self):
-        return (3, 9, 16, 16)
 
-    @property
-    def output_shape(self):
-        return (3, 9, 16, 16)
-
-    def prepare_init_args_and_inputs_for_common(self):
-        init_dict = self.get_autoencoder_kl_ltx_video_config()
-        inputs_dict = self.dummy_input
-        return init_dict, inputs_dict
-
-    def test_gradient_checkpointing_is_applied(self):
-        expected_set = {
-            "LTXVideoEncoder3d",
-            "LTXVideoDecoder3d",
-            "LTXVideoDownBlock3D",
-            "LTXVideoMidBlock3d",
-            "LTXVideoUpBlock3d",
-        }
-        super().test_gradient_checkpointing_is_applied(expected_set=expected_set)
-
-    @unittest.skip("Unsupported test.")
-    def test_outputs_equivalence(self):
-        pass
-
-    @unittest.skip("AutoencoderKLLTXVideo does not support `norm_num_groups` because it does not use GroupNorm.")
-    def test_forward_with_norm_groups(self):
-        pass
-
-
-class AutoencoderKLLTXVideo091Tests(ModelTesterMixin, unittest.TestCase):
-    model_class = AutoencoderKLLTXVideo
-    main_input_name = "sample"
+class TestAutoencoderKLLTXVideo090(AutoencoderKLLTXVideo090TesterConfig, ModelTesterMixin):
     base_precision = 1e-2
 
-    def get_autoencoder_kl_ltx_video_config(self):
+    @pytest.mark.skip("Unsupported test.")
+    def test_outputs_equivalence(self):
+        super().test_outputs_equivalence()
+
+
+class TestAutoencoderKLLTXVideo090Training(AutoencoderKLLTXVideo090TesterConfig, TrainingTesterMixin):
+    """Training tests for AutoencoderKLLTXVideo (0.9.0 config)."""
+
+    def test_gradient_checkpointing_is_applied(self):
+        super().test_gradient_checkpointing_is_applied(expected_set=_LTX_VIDEO_GRADIENT_CKPT_EXPECTED)
+
+
+class TestAutoencoderKLLTXVideo090Memory(AutoencoderKLLTXVideo090TesterConfig, MemoryTesterMixin):
+    """Memory optimization tests for AutoencoderKLLTXVideo (0.9.0 config)."""
+
+
+class TestAutoencoderKLLTXVideo090SlicingTiling(AutoencoderKLLTXVideo090TesterConfig, NewAutoencoderTesterMixin):
+    """Slicing and tiling tests for AutoencoderKLLTXVideo (0.9.0 config)."""
+
+    @pytest.mark.skip("AutoencoderKLLTXVideo does not support `norm_num_groups` because it does not use GroupNorm.")
+    def test_forward_with_norm_groups(self):
+        super().test_forward_with_norm_groups()
+
+
+class AutoencoderKLLTXVideo091TesterConfig(BaseModelTesterConfig):
+    @property
+    def model_class(self):
+        return AutoencoderKLLTXVideo
+
+    @property
+    def main_input_name(self) -> str:
+        return "sample"
+
+    @property
+    def output_shape(self) -> tuple:
+        return (3, 9, 16, 16)
+
+    @property
+    def generator(self):
+        return torch.Generator("cpu").manual_seed(0)
+
+    def get_init_dict(self) -> dict:
         return {
             "in_channels": 3,
             "out_channels": 3,
@@ -126,45 +150,32 @@ class AutoencoderKLLTXVideo091Tests(ModelTesterMixin, unittest.TestCase):
             "decoder_causal": False,
         }
 
-    @property
-    def dummy_input(self):
+    def get_dummy_inputs(self) -> dict:
         batch_size = 2
         num_frames = 9
         num_channels = 3
         sizes = (16, 16)
-
-        image = floats_tensor((batch_size, num_channels, num_frames) + sizes).to(torch_device)
+        image = randn_tensor(
+            (batch_size, num_channels, num_frames, *sizes), generator=self.generator, device=torch_device
+        )
         timestep = torch.tensor([0.05] * batch_size, device=torch_device)
-
         return {"sample": image, "temb": timestep}
 
-    @property
-    def input_shape(self):
-        return (3, 9, 16, 16)
 
-    @property
-    def output_shape(self):
-        return (3, 9, 16, 16)
+class TestAutoencoderKLLTXVideo091(AutoencoderKLLTXVideo091TesterConfig, ModelTesterMixin):
+    base_precision = 1e-2
 
-    def prepare_init_args_and_inputs_for_common(self):
-        init_dict = self.get_autoencoder_kl_ltx_video_config()
-        inputs_dict = self.dummy_input
-        return init_dict, inputs_dict
+    @pytest.mark.skip("Unsupported test.")
+    def test_outputs_equivalence(self):
+        super().test_outputs_equivalence()
+
+
+class TestAutoencoderKLLTXVideo091Training(AutoencoderKLLTXVideo091TesterConfig, TrainingTesterMixin):
+    """Training tests for AutoencoderKLLTXVideo (0.9.1 config)."""
 
     def test_gradient_checkpointing_is_applied(self):
-        expected_set = {
-            "LTXVideoEncoder3d",
-            "LTXVideoDecoder3d",
-            "LTXVideoDownBlock3D",
-            "LTXVideoMidBlock3d",
-            "LTXVideoUpBlock3d",
-        }
-        super().test_gradient_checkpointing_is_applied(expected_set=expected_set)
+        super().test_gradient_checkpointing_is_applied(expected_set=_LTX_VIDEO_GRADIENT_CKPT_EXPECTED)
 
-    @unittest.skip("Unsupported test.")
-    def test_outputs_equivalence(self):
-        pass
 
-    @unittest.skip("AutoencoderKLLTXVideo does not support `norm_num_groups` because it does not use GroupNorm.")
-    def test_forward_with_norm_groups(self):
-        pass
+class TestAutoencoderKLLTXVideo091Memory(AutoencoderKLLTXVideo091TesterConfig, MemoryTesterMixin):
+    """Memory optimization tests for AutoencoderKLLTXVideo (0.9.1 config)."""

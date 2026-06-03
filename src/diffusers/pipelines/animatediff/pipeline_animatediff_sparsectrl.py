@@ -761,6 +761,8 @@ class AnimateDiffSparseControlNetPipeline(
             negative_prompt (`str` or `list[str]`, *optional*):
                 The prompt or prompts to guide what to not include in image generation. If not defined, you need to
                 pass `negative_prompt_embeds` instead. Ignored when not using guidance (`guidance_scale < 1`).
+            num_videos_per_prompt (`int`, *optional*, defaults to 1):
+                The number of videos to generate per prompt.
             eta (`float`, *optional*, defaults to 0.0):
                 Corresponds to parameter eta (η) from the [DDIM](https://huggingface.co/papers/2010.02502) paper. Only
                 applies to the [`~schedulers.DDIMScheduler`], and is ignored in other schedulers.
@@ -804,6 +806,9 @@ class AnimateDiffSparseControlNetPipeline(
                 provided to guide the model to generate similar structure outputs, where the `unet` can
                 "fill-in-the-gaps" for interpolation videos, or a single frame could be provided for general expected
                 structure. Must have the same length as `conditioning_frames`.
+            guess_mode (`bool`, *optional*, defaults to `False`):
+                The ControlNet encoder tries to recognize the content of the input image even if you remove all
+                prompts. A `guidance_scale` value between 3.0 and 5.0 is recommended.
             clip_skip (`int`, *optional*):
                 Number of layers to be skipped from CLIP while computing the prompt embeddings. A value of 1 means that
                 the output of the pre-final layer will be used for computing the prompt embeddings.
