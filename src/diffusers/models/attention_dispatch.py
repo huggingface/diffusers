@@ -1678,37 +1678,37 @@ def _flash_attention_3_varlen_hub_forward_op(
         query_packed,
         key_packed,
         value_packed,
-        None,
-        None,
-        None,
-        None,
+        None,  # k_new
+        None,  # v_new
+        None,  # qv
+        None,  # out_
         cu_seqlens_q,
         cu_seqlens_k,
-        None,
-        None,
-        None,
+        None,  # cu_seqlens_k_new
+        None,  # seqused_q
+        None,  # seqused_k
         max_seqlen_q,
         max_seqlen_k,
-        None,
-        None,
-        None,
-        None,
-        None,
-        None,
-        None,
-        None,
-        None,
+        None,  # page_table
+        None,  # kv_batch_idx
+        None,  # leftpad_k
+        None,  # rotary_cos
+        None,  # rotary_sin
+        None,  # seqlens_rotary
+        None,  # q_descale
+        None,  # k_descale
+        None,  # v_descale
         scale,
-        is_causal,
-        window_size[0],
-        window_size[1],
-        0,
-        softcap,
-        True,
-        None,
-        num_splits,
-        pack_gqa,
-        sm_margin,
+        causal=is_causal,
+        window_size_left=window_size[0],
+        window_size_right=window_size[1],
+        attention_chunk=0,
+        softcap=softcap,
+        rotary_interleaved=True,
+        scheduler_metadata=None,
+        num_splits=num_splits,
+        pack_gqa=pack_gqa,
+        sm_margin=sm_margin,
     )
 
     out = out_packed.view(batch_size, seq_len_q, *out_packed.shape[1:])
