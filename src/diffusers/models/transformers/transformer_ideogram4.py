@@ -97,10 +97,9 @@ class Ideogram4AttnProcessor:
         attention_mask: torch.Tensor,
         image_rotary_emb: tuple[torch.Tensor, torch.Tensor],
     ) -> torch.Tensor:
-        batch_size, seq_len, _ = hidden_states.shape
-
-        qkv = attn.qkv(hidden_states).view(batch_size, seq_len, 3, attn.num_heads, attn.head_dim)
-        query, key, value = qkv.unbind(dim=2)
+        query = attn.to_q(hidden_states).unflatten(-1, (attn.num_heads, attn.head_dim))
+        key = attn.to_k(hidden_states).unflatten(-1, (attn.num_heads, attn.head_dim))
+        value = attn.to_v(hidden_states).unflatten(-1, (attn.num_heads, attn.head_dim))
 
         query = attn.norm_q(query)
         key = attn.norm_k(key)
@@ -121,11 +120,11 @@ class Ideogram4AttnProcessor:
             parallel_config=self._parallel_config,
         )
         hidden_states = hidden_states.flatten(2, 3)
-        return attn.o(hidden_states)
+        return attn.to_out[0](hidden_states)
 
 
 class Ideogram4Attention(nn.Module, AttentionModuleMixin):
-    """Self-attention with merged QKV, q/k RMSNorm, MRoPE and a block-diagonal segment mask."""
+    """Self-attention with split Q/K/V, q/k RMSNorm, MRoPE and a block-diagonal segment mask."""
 
     _default_processor_cls = Ideogram4AttnProcessor
     _available_processors = [Ideogram4AttnProcessor]
@@ -138,10 +137,12 @@ class Ideogram4Attention(nn.Module, AttentionModuleMixin):
         self.num_heads = num_heads
         self.head_dim = hidden_size // num_heads
 
-        self.qkv = nn.Linear(hidden_size, hidden_size * 3, bias=False)
+        self.to_q = nn.Linear(hidden_size, hidden_size, bias=False)
+        self.to_k = nn.Linear(hidden_size, hidden_size, bias=False)
+        self.to_v = nn.Linear(hidden_size, hidden_size, bias=False)
         self.norm_q = RMSNorm(self.head_dim, eps=eps, elementwise_affine=True)
         self.norm_k = RMSNorm(self.head_dim, eps=eps, elementwise_affine=True)
-        self.o = nn.Linear(hidden_size, hidden_size, bias=False)
+        self.to_out = nn.ModuleList([nn.Linear(hidden_size, hidden_size, bias=False), nn.Dropout(0.0)])
 
         self.set_processor(self._default_processor_cls())
 
@@ -361,19 +362,6 @@ class Ideogram4Transformer2DModel(ModelMixin, ConfigMixin, AttentionMixin, PeftA
             hidden_size=hidden_size,
             out_channels=in_channels,
             adaln_dim=adaln_dim,
-        )
-
-    def fuse_qkv_projections(self):
-        # The attention already uses a single fused `qkv` projection, so there is nothing to fuse.
-        raise NotImplementedError(
-            "Ideogram4Transformer2DModel already uses a fused QKV projection (`attention.qkv`), "
-            "so `fuse_qkv_projections()` is not applicable."
-        )
-
-    def unfuse_qkv_projections(self):
-        raise NotImplementedError(
-            "Ideogram4Transformer2DModel uses a fused QKV projection that cannot be split, "
-            "so `unfuse_qkv_projections()` is not applicable."
         )
 
     def forward(
