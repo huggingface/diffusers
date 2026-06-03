@@ -84,6 +84,11 @@ class MultiAdapter(ModelMixin):
             adapter_weights (`list[float]`, *optional*, defaults to None):
                 A list of floats representing the weights which will be multiplied by each adapter's output before
                 summing them together. If `None`, equal weights will be used for all adapters.
+
+        Returns:
+            `list[torch.Tensor]`:
+                A list of feature tensors, one per scale, obtained by summing the per-scale features of each adapter
+                weighted by `adapter_weights`.
         """
         if adapter_weights is None:
             adapter_weights = torch.tensor([1 / self.num_adapter] * self.num_adapter)
@@ -273,6 +278,11 @@ class T2IAdapter(ModelMixin, ConfigMixin):
         Args:
             x (`torch.Tensor`):
                 The input tensor to process through the adapter model.
+
+        Returns:
+            `list[torch.Tensor]`:
+                A list of feature tensors, each representing information extracted at a different scale from the input.
+                The length of the list equals the number of downsample blocks in the adapter.
         """
         return self.adapter(x)
 

@@ -19,6 +19,7 @@ from torch import nn
 
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...utils import logging
+from ...utils.torch_utils import maybe_adjust_dtype_for_device
 from ..attention import AttentionMixin, AttentionModuleMixin
 from ..attention_dispatch import dispatch_attention_fn
 from ..embeddings import get_timestep_embedding
@@ -275,9 +276,7 @@ class PRXEmbedND(nn.Module):
     def rope(self, pos: torch.Tensor, dim: int, theta: int) -> torch.Tensor:
         assert dim % 2 == 0
 
-        is_mps = pos.device.type == "mps"
-        is_npu = pos.device.type == "npu"
-        dtype = torch.float32 if (is_mps or is_npu) else torch.float64
+        dtype = maybe_adjust_dtype_for_device(torch.float64, pos.device)
 
         scale = torch.arange(0, dim, 2, dtype=dtype, device=pos.device) / dim
         omega = 1.0 / (theta**scale)
