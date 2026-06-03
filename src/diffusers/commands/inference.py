@@ -698,6 +698,12 @@ def _maybe_submit_remote(args: Namespace, task: str) -> bool:
     if not args.remote:
         return False
 
+    print(
+        f"[diffusers-cli] preparing remote {task!r} job on flavor={args.flavor!r}...",
+        file=sys.stderr,
+        flush=True,
+    )
+
     import uuid
 
     from huggingface_hub import HfApi, get_token, run_uv_job
