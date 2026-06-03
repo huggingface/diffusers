@@ -29,7 +29,6 @@ from ...utils import (
     deprecate,
     is_bs4_available,
     is_ftfy_available,
-    is_torch_neuronx_available,
     is_torch_xla_available,
     logging,
     replace_example_docstring,
@@ -863,7 +862,7 @@ class PixArtAlphaPipeline(DiffusionPipeline):
             prompt_attention_mask = torch.cat([negative_prompt_attention_mask, prompt_attention_mask], dim=0)
 
         # Neuron compile backend does not support int64; downcast mask to int32.
-        if is_torch_neuronx_available() and prompt_attention_mask.dtype == torch.int64:
+        if prompt_attention_mask.device.type == "neuron" and prompt_attention_mask.dtype == torch.int64:
             prompt_attention_mask = prompt_attention_mask.to(torch.int32)
 
         # 4. Prepare timesteps
