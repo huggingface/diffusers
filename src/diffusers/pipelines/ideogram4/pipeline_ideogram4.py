@@ -29,10 +29,15 @@ from ...models.transformers.transformer_ideogram4 import (
     Ideogram4Transformer2DModel,
 )
 from ...schedulers import FlowMatchEulerDiscreteScheduler
-from ...utils import logging, replace_example_docstring
+from ...utils import is_outlines_available, logging, replace_example_docstring
 from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline
 from .pipeline_output import Ideogram4PipelineOutput
+from .prompt_enhancer import (
+    PROMPT_UPSAMPLE_TEMPERATURE,
+    build_caption_logits_processor,
+    generate_captions,
+)
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -186,6 +191,56 @@ class Ideogram4Pipeline(DiffusionPipeline):
         self.patch_size = 2
         self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor * self.patch_size)
 
+        # Outlines logits processor for schema-constrained captions; built lazily on first upsample.
+        self._caption_logits_processor = None
+
+    def upsample_prompt(
+        self,
+        prompt: str | list[str],
+        height: int = 2048,
+        width: int = 2048,
+        temperature: float = PROMPT_UPSAMPLE_TEMPERATURE,
+        max_new_tokens: int = 1024,
+        generator: torch.Generator | list[torch.Generator] | None = None,
+        device: torch.device | None = None,
+    ) -> list[str]:
+        """Rewrite each prompt into Ideogram4's native structured JSON caption.
+
+        Requires a generative `text_encoder` — a `Qwen3VLForConditionalGeneration`, which carries the LM head.
+        The default head-less `Qwen3VLModel` encoder cannot generate; see the error below for how to load one.
+        Generation is schema-constrained when `outlines` is installed, otherwise it runs unconstrained. Pass
+        `generator` (the same one accepted by `__call__`) to make sampling reproducible.
+        """
+        if not self.text_encoder.can_generate():
+            raise ValueError(
+                "Prompt upsampling requires a generative `text_encoder`, but the loaded one has no LM head and "
+                "cannot generate. Load the text encoder as `Qwen3VLForConditionalGeneration` (which includes the "
+                "head) and pass it in, e.g.:\n"
+                "    from transformers import Qwen3VLForConditionalGeneration\n"
+                "    text_encoder = Qwen3VLForConditionalGeneration.from_pretrained(model_id, subfolder='text_encoder')\n"
+                "    pipe = Ideogram4Pipeline.from_pretrained(model_id, text_encoder=text_encoder)"
+            )
+        if self._caption_logits_processor is None and is_outlines_available():
+            self._caption_logits_processor = build_caption_logits_processor(self.text_encoder, self.tokenizer)
+        if self._caption_logits_processor is None:
+            logger.warning_once(
+                "`outlines` is not installed; prompt upsampling runs unconstrained and may not return schema-valid "
+                "JSON. Install with `pip install outlines` for structured captions."
+            )
+
+        return generate_captions(
+            self.text_encoder,
+            self.tokenizer,
+            self._caption_logits_processor,
+            prompt,
+            height,
+            width,
+            temperature=temperature,
+            max_new_tokens=max_new_tokens,
+            generator=generator,
+            device=device,
+        )
+
     @staticmethod
     def _prepare_ids(
         text_lengths: list[int],
@@ -237,7 +292,11 @@ class Ideogram4Pipeline(DiffusionPipeline):
     ) -> list[torch.Tensor]:
         """Run the text encoder's decoder layers, returning the hidden states tapped at each activation layer."""
 
-        language_model = text_encoder.language_model
+        language_model = (
+            text_encoder.language_model
+            if hasattr(text_encoder, "language_model")
+            else text_encoder.model.language_model
+        )
 
         inputs_embeds = language_model.embed_tokens(token_ids)
 
@@ -416,6 +475,8 @@ class Ideogram4Pipeline(DiffusionPipeline):
         guidance_schedule: list[float] | torch.Tensor | None = (7.0,) * 45 + (3.0,) * 3,
         mu: float = 0.0,
         std: float = 1.5,
+        prompt_upsampling: bool = False,
+        prompt_upsampling_temperature: float = PROMPT_UPSAMPLE_TEMPERATURE,
         max_sequence_length: int = 2048,
         num_images_per_prompt: int = 1,
         generator: torch.Generator | list[torch.Generator] | None = None,
@@ -451,6 +512,13 @@ class Ideogram4Pipeline(DiffusionPipeline):
                 the resolution ratio relative to 512x512.
             std (`float`, *optional*, defaults to 1.5):
                 Standard deviation of the logit-normal flow-matching schedule.
+            prompt_upsampling (`bool`, *optional*, defaults to `False`):
+                If `True`, rewrite `prompt` into Ideogram4's native structured JSON caption via
+                [`~Ideogram4Pipeline.upsample_prompt`] before encoding. Requires a generative `text_encoder`
+                (a `Qwen3VLForConditionalGeneration`, which carries the LM head); install `outlines` for
+                schema-constrained captions. `generator` is reused to make the upsampling reproducible.
+            prompt_upsampling_temperature (`float`, *optional*, defaults to 1.0):
+                Sampling temperature for prompt upsampling when `prompt_upsampling=True`.
             max_sequence_length (`int`, *optional*, defaults to 2048):
                 Maximum number of text tokens per prompt.
             num_images_per_prompt (`int`, *optional*, defaults to 1):
@@ -491,6 +559,17 @@ class Ideogram4Pipeline(DiffusionPipeline):
         device = self._execution_device
         self._guidance_scale = guidance_scale
         self._interrupt = False
+
+        # 0. Optionally rewrite the prompt(s) into Ideogram4's native structured JSON caption.
+        if prompt_upsampling:
+            prompt = self.upsample_prompt(
+                prompt,
+                height=height,
+                width=width,
+                temperature=prompt_upsampling_temperature,
+                generator=generator,
+                device=device,
+            )
 
         # 1. Image grid (drives both the packed layout and the latent shape).
         grid_h, grid_w = (
