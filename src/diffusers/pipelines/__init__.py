@@ -45,6 +45,7 @@ else:
         "AutoPipelineForImage2Image",
         "AutoPipelineForInpainting",
         "AutoPipelineForText2Image",
+        "AutoPipelineForText2Audio",
     ]
     _import_structure["consistency_models"] = ["ConsistencyModelPipeline"]
     _import_structure["ddim"] = ["DDIMPipeline"]
@@ -559,6 +560,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .auto_pipeline import (
             AutoPipelineForImage2Image,
             AutoPipelineForInpainting,
+            AutoPipelineForText2Audio,
             AutoPipelineForText2Image,
         )
         from .consistency_models import ConsistencyModelPipeline
