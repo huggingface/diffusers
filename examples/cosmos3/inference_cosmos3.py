@@ -115,6 +115,12 @@ def main():
     parser.add_argument("--action-chunk-size", type=int, default=None, help="Number of action tokens to generate/use.")
     parser.add_argument("--domain-name", default=None, help="Cosmos3 action embodiment domain name.")
     parser.add_argument(
+        "--view-point",
+        choices=["ego_view", "third_person_view", "wrist_view", "concat_view"],
+        default="ego_view",
+        help="Camera perspective for the action caption's cinematography.framing field (default: ego_view).",
+    )
+    parser.add_argument(
         "--resolution-tier",
         type=int,
         default=480,
@@ -165,8 +171,9 @@ def main():
     print("Pipeline loaded successfully.")
 
     if args.flow_shift is not None:
-        pipeline.scheduler = UniPCMultistepScheduler.from_config(pipeline.scheduler.config, flow_shift=args.flow_shift)
-        print(f"Scheduler flow_shift set to {args.flow_shift}.")
+        pipeline.scheduler = UniPCMultistepScheduler.from_config(
+            pipeline.scheduler.config, flow_shift=args.flow_shift, use_karras_sigmas=False
+        )
 
     output_dir = pathlib.Path(args.output)
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -188,6 +195,7 @@ def main():
                 resolution_tier=args.resolution_tier,
                 raw_actions=raw_actions,
                 video=video,
+                view_point=args.view_point,
             ),
             fps=args.fps,
             num_inference_steps=args.num_inference_steps,

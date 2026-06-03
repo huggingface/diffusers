@@ -13,6 +13,7 @@
 # limitations under the License.
 
 import copy
+import json
 import math
 from dataclasses import dataclass
 from typing import Any, Callable, Literal
@@ -134,11 +135,6 @@ def get_3d_mrope_ids_vae_tokens(
 _SYSTEM_PROMPT_IMAGE = "You are a helpful assistant who will generate images from a give prompt."
 _SYSTEM_PROMPT_VIDEO = "You are a helpful assistant who will generate videos from a give prompt."
 
-_ACTION_MODE_FORWARD_DYNAMICS = "forward_dynamics"
-_ACTION_MODE_INVERSE_DYNAMICS = "inverse_dynamics"
-_ACTION_MODE_POLICY = "policy"
-_ACTION_MODES = {"forward_dynamics", "inverse_dynamics", "policy"}
-
 _ACTION_RESOLUTION_BINS = {
     "256": {
         "1.0": (256, 256),
@@ -168,6 +164,15 @@ _ACTION_RESOLUTION_BINS = {
         "0.5625": (720, 1280),
         "1.7777777777777777": (1280, 720),
     },
+}
+
+# Viewpoint -> framing sentence, used to fill the action JSON `cinematography.framing` field. The action model was
+# trained with these exact sentences; `"ego_view"` is the default when no viewpoint is supplied.
+_ACTION_VIEWPOINT_TEMPLATES = {
+    "ego_view": "This video is captured from a first-person perspective looking at the scene.",
+    "third_person_view": "This video is captured from a third-person perspective looking towards the agent from the front.",
+    "wrist_view": "This video is captured from a wrist-mounted camera.",
+    "concat_view": "This video contains concatenated views from multiple camera perspectives.",
 }
 
 _EMBODIMENT_TO_DOMAIN_ID = {
@@ -276,6 +281,11 @@ class CosmosActionCondition:
         video (`list`, `np.ndarray`, or `torch.Tensor`, *optional*):
             Conditioning video, required for `"inverse_dynamics"`. For `"policy"` / `"forward_dynamics"` only its first
             frame is used. Mutually exclusive with `image`.
+        view_point (`str`, defaults to `"ego_view"`):
+            Camera perspective label used to populate the action caption's `cinematography.framing` field. One of
+            `"ego_view"`, `"third_person_view"`, `"wrist_view"`, or `"concat_view"`. The action model was trained on
+            structured JSON captions that carry this viewpoint sentence; an unrecognized label drops the framing field
+            (with a warning).
     """
 
     mode: Literal["policy", "forward_dynamics", "inverse_dynamics"]
@@ -285,11 +295,14 @@ class CosmosActionCondition:
     raw_actions: torch.Tensor | None = None
     image: Image.Image | np.ndarray | torch.Tensor | None = None
     video: list | np.ndarray | torch.Tensor | None = None
+    view_point: str = "ego_view"
 
     def __post_init__(self) -> None:
         """Validate self-contained action fields at construction time."""
         if self.mode not in ["policy", "forward_dynamics", "inverse_dynamics"]:
-            raise ValueError(f"Unsupported action mode={self.mode!r}; expected one of {sorted(_ACTION_MODES)}.")
+            raise ValueError(
+                f"Unsupported action mode={self.mode!r}; expected one of ['forward_dynamics', 'inverse_dynamics', 'policy']."
+            )
         if self.chunk_size < 1:
             raise ValueError(f"action `chunk_size` must be >= 1, got {self.chunk_size}.")
         if self.domain_name not in _EMBODIMENT_TO_DOMAIN_ID:
@@ -752,16 +765,19 @@ class Cosmos3OmniPipeline(DiffusionPipeline):
             vision_tensor, action_image_size, height, width = self._prepare_action_video_conditioning(
                 conditioning_clip, action.resolution_tier, target_frames, device=device, dtype=dtype
             )
-            if action_mode == _ACTION_MODE_FORWARD_DYNAMICS:
+            if action_mode == "forward_dynamics":
                 vision_condition_frames = [0]
                 action_condition_frames = list(range(action.chunk_size))
-            elif action_mode == _ACTION_MODE_POLICY:
+            elif action_mode == "policy":
                 vision_condition_frames = [0]
-            elif action_mode == _ACTION_MODE_INVERSE_DYNAMICS:
+            elif action_mode == "inverse_dynamics":
                 latent_frames = (target_frames - 1) // self.vae.config.scale_factor_temporal + 1
                 vision_condition_frames = list(range(latent_frames))
             else:
-                raise ValueError(f"Unsupported action_mode={action_mode!r}; expected one of {sorted(_ACTION_MODES)}.")
+                raise ValueError(
+                    f"Unsupported action_mode={action_mode!r}; expected one of "
+                    "['forward_dynamics', 'inverse_dynamics', 'policy']."
+                )
             action_condition_frame_indexes = action_condition_frames
         elif is_image:
             vision_tensor = (
@@ -959,6 +975,47 @@ class Cosmos3OmniPipeline(DiffusionPipeline):
             if height % sf != 0 or width % sf != 0:
                 raise ValueError(f"`height` and `width` must be multiples of {sf}, got ({height}, {width}).")
 
+    @staticmethod
+    def _build_action_json_prompt(
+        description: str,
+        *,
+        view_point: str | None,
+        num_frames: int,
+        fps: float,
+        height: int,
+        width: int,
+    ) -> str:
+        """Build the structured action caption the model was trained on, then serialize it to a JSON string."""
+        duration_seconds = num_frames / fps if fps > 0 else 0.0
+        duration = int(duration_seconds) if duration_seconds >= 0 and math.isfinite(duration_seconds) else 0
+        action_end = round(duration_seconds) if duration_seconds >= 0 and math.isfinite(duration_seconds) else 0
+        minutes, seconds = divmod(action_end, 60)
+
+        desc = description.strip()
+        if desc and not desc.endswith((".", "!", "?")):
+            desc = f"{desc}."
+
+        prompt: dict[str, Any] = {}
+        framing = _ACTION_VIEWPOINT_TEMPLATES.get(view_point) if view_point is not None else None
+        if view_point is not None and framing is None:
+            logger.warning(
+                f"Unrecognized action view_point={view_point!r}; known viewpoints: "
+                f"{sorted(_ACTION_VIEWPOINT_TEMPLATES)}. Dropping the cinematography.framing field."
+            )
+        if framing:
+            prompt["cinematography"] = {"framing": framing}
+        ratio = width / height if height > 0 else 1.0
+        aspect_ratio = min(
+            ("1,1", "4,3", "3,4", "16,9", "9,16"),
+            key=lambda r: abs(int(r.split(",")[0]) / int(r.split(",")[1]) - ratio),
+        )
+        prompt["actions"] = [{"time": f"0:00-{minutes}:{seconds:02d}", "description": desc}]
+        prompt["duration"] = f"{duration}s"
+        prompt["fps"] = float(fps)
+        prompt["resolution"] = {"H": int(height), "W": int(width)}
+        prompt["aspect_ratio"] = aspect_ratio
+        return json.dumps(prompt)
+
     def tokenize_prompt(
         self,
         prompt: str,
@@ -971,6 +1028,7 @@ class Cosmos3OmniPipeline(DiffusionPipeline):
         add_resolution_template: bool = True,
         add_duration_template: bool = True,
         action_mode: str | None = None,
+        action_view_point: str | None = None,
     ) -> tuple[list[int], list[int]]:
         """Apply prompt-augmentation templates and tokenize cond/uncond prompts via the Qwen2 chat template.
 
@@ -980,6 +1038,10 @@ class Cosmos3OmniPipeline(DiffusionPipeline):
         When ``negative_prompt`` is ``None``, an empty string is used; the Cosmos3 docs page documents recommended
         quality-control negative prompts to pass explicitly for text2video / image2video. The duration and resolution
         templates are appended to the prompt, and inverse templates are appended to the negative prompt, when enabled.
+
+        When ``action_mode`` is set, the prompt is instead converted to the structured action JSON caption the model
+        was trained on (see :meth:`_build_action_json_prompt`), using ``action_view_point`` for the framing field; the
+        flat metadata templates are skipped because the JSON already carries duration/fps/resolution/aspect_ratio.
 
         Returns:
             ``(cond_input_ids, uncond_input_ids)`` — token-id lists for this sample.
@@ -1027,9 +1089,18 @@ class Cosmos3OmniPipeline(DiffusionPipeline):
                 self.llm_special_tokens["start_of_generation"],
             ]
 
-        cond_encodings = _tokenize(_apply_templates(prompt))
+        if action_mode is not None:
+            cond_text = self._build_action_json_prompt(
+                prompt, view_point=action_view_point, num_frames=num_frames, fps=fps, height=height, width=width
+            )
+            uncond_text = negative_prompt
+        else:
+            cond_text = _apply_templates(prompt)
+            uncond_text = _apply_templates(negative_prompt, is_negative=True)
+
+        cond_encodings = _tokenize(cond_text)
         cond_input_ids = _add_special_tokens(cond_encodings.input_ids)
-        uncond_encodings = _tokenize(_apply_templates(negative_prompt, is_negative=True))
+        uncond_encodings = _tokenize(uncond_text)
         uncond_input_ids = _add_special_tokens(uncond_encodings.input_ids)
         return cond_input_ids, uncond_input_ids
 
@@ -1308,6 +1379,7 @@ class Cosmos3OmniPipeline(DiffusionPipeline):
             add_resolution_template=add_resolution_template,
             add_duration_template=add_duration_template,
             action_mode=action_mode,
+            action_view_point=action.view_point if action is not None else None,
         )
 
         # 3. Pre-pack the text segment for each prompt — text packing is invariant

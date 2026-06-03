@@ -100,7 +100,9 @@ negative_prompt = json.load(open("assets/negative_prompt.json"))
 pipe = Cosmos3OmniPipeline.from_pretrained(
     "nvidia/Cosmos3-Nano", torch_dtype=torch.bfloat16, device_map="cuda"
 )
-pipe.scheduler = UniPCMultistepScheduler.from_config(pipe.scheduler.config, flow_shift=10.0)
+pipe.scheduler = UniPCMultistepScheduler.from_config(
+    pipe.scheduler.config, flow_shift=10.0, use_karras_sigmas=False
+)
 
 result = pipe(
     prompt=json.dumps(json_prompt),
@@ -133,7 +135,9 @@ negative_prompt = json.load(open("assets/negative_prompt.json"))
 pipe = Cosmos3OmniPipeline.from_pretrained(
     "nvidia/Cosmos3-Super", torch_dtype=torch.bfloat16, device_map="cuda"
 )
-pipe.scheduler = UniPCMultistepScheduler.from_config(pipe.scheduler.config, flow_shift=10.0)
+pipe.scheduler = UniPCMultistepScheduler.from_config(
+    pipe.scheduler.config, flow_shift=10.0, use_karras_sigmas=False
+)
 
 result = pipe(
     prompt=json.dumps(json_prompt),
@@ -357,6 +361,8 @@ encode_video(
 
 Action runs group every action-specific input into a [`CosmosActionCondition`] passed via the `action` argument instead of the top-level `image` / `video` / `height` / `width` arguments. Set `resolution_tier` (`256`/`480`/`704`/`720`) close to the input video's native resolution; it selects the conditioning canvas. Cosmos 3 supports three action modes — `policy`, `forward_dynamics`, and `inverse_dynamics`. `policy` and `forward_dynamics` condition only on the first frame (so an `image` or a `video` both work), while `inverse_dynamics` requires a `video`. The conditioning video for an action run is set on `action.video` (or `action.image`), not on the pipeline's top-level `video` argument.
 
+Pass a plain task description as `prompt` and pick the camera with `action.view_point` (default `"ego_view"`; also `"third_person_view"`, `"wrist_view"`, `"concat_view"`). The pipeline turns these into the structured JSON caption the model was trained on, so action prompts should not be LLM-upsampled.
+
 ### Action policy
 
 Action policy generation predicts future video and action tokens from the first observation frame, text prompt, and action domain metadata. The example below uses the Bridge robot domain and writes the predicted action chunk to JSON in model-normalized action space.
@@ -369,18 +375,19 @@ import json
 
 import torch
 from diffusers import Cosmos3OmniPipeline, CosmosActionCondition
+from diffusers.schedulers.scheduling_unipc_multistep import UniPCMultistepScheduler
 from diffusers.utils import export_to_video, load_video
 
 pipe = Cosmos3OmniPipeline.from_pretrained(
     "nvidia/Cosmos3-Nano", torch_dtype=torch.bfloat16, device_map="cuda"
 )
-
-prompt = (
-    "Put the pot to the left of the purple item. This video is captured from a first-person perspective looking "
-    "at the scene."
+pipe.scheduler = UniPCMultistepScheduler.from_config(
+    pipe.scheduler.config, flow_shift=10.0, use_karras_sigmas=False
 )
+
+prompt = "Put the pot to the left of the purple item."
 video = load_video(
-    "https://github.com/nvidia-cosmos/cosmos-dependencies/raw/refs/heads/assets/cosmos3/inputs/action/bridge_0.mp4"
+    "https://github.com/nvidia-cosmos/cosmos-dependencies/raw/refs/heads/assets/cosmos3/inputs/action/bridge_20260501_0.mp4"
 )
 
 result = pipe(
@@ -391,6 +398,7 @@ result = pipe(
         domain_name="bridge_orig_lerobot",
         resolution_tier=480,
         video=video,
+        view_point="ego_view",
     ),
     fps=5,
     num_inference_steps=30,
@@ -414,18 +422,19 @@ import json
 
 import torch
 from diffusers import Cosmos3OmniPipeline, CosmosActionCondition
+from diffusers.schedulers.scheduling_unipc_multistep import UniPCMultistepScheduler
 from diffusers.utils import export_to_video, load_video
 
 pipe = Cosmos3OmniPipeline.from_pretrained(
     "nvidia/Cosmos3-Super", torch_dtype=torch.bfloat16, device_map="cuda"
 )
-
-prompt = (
-    "Put the pot to the left of the purple item. This video is captured from a first-person perspective looking "
-    "at the scene."
+pipe.scheduler = UniPCMultistepScheduler.from_config(
+    pipe.scheduler.config, flow_shift=10.0, use_karras_sigmas=False
 )
+
+prompt = "Put the pot to the left of the purple item."
 video = load_video(
-    "https://github.com/nvidia-cosmos/cosmos-dependencies/raw/refs/heads/assets/cosmos3/inputs/action/bridge_0.mp4"
+    "https://github.com/nvidia-cosmos/cosmos-dependencies/raw/refs/heads/assets/cosmos3/inputs/action/bridge_20260501_0.mp4"
 )
 
 result = pipe(
@@ -436,6 +445,7 @@ result = pipe(
         domain_name="bridge_orig_lerobot",
         resolution_tier=480,
         video=video,
+        view_point="ego_view",
     ),
     fps=5,
     num_inference_steps=30,
