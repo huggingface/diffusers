@@ -206,10 +206,10 @@ class Ideogram4Pipeline(DiffusionPipeline):
     ) -> list[str]:
         """Rewrite each prompt into Ideogram4's native structured JSON caption.
 
-        Requires a generative `text_encoder` — a `Qwen3VLForConditionalGeneration`, which carries the LM head.
-        The default head-less `Qwen3VLModel` encoder cannot generate; see the error below for how to load one.
-        Generation is schema-constrained when `outlines` is installed, otherwise it runs unconstrained. Pass
-        `generator` (the same one accepted by `__call__`) to make sampling reproducible.
+        Requires a generative `text_encoder` — a `Qwen3VLForConditionalGeneration`, which carries the LM head. The
+        default head-less `Qwen3VLModel` encoder cannot generate; see the error below for how to load one. Generation
+        is schema-constrained when `outlines` is installed, otherwise it runs unconstrained. Pass `generator` (the same
+        one accepted by `__call__`) to make sampling reproducible.
         """
         if not self.text_encoder.can_generate():
             raise ValueError(
@@ -514,8 +514,8 @@ class Ideogram4Pipeline(DiffusionPipeline):
                 Standard deviation of the logit-normal flow-matching schedule.
             prompt_upsampling (`bool`, *optional*, defaults to `False`):
                 If `True`, rewrite `prompt` into Ideogram4's native structured JSON caption via
-                [`~Ideogram4Pipeline.upsample_prompt`] before encoding. Requires a generative `text_encoder`
-                (a `Qwen3VLForConditionalGeneration`, which carries the LM head); install `outlines` for
+                [`~Ideogram4Pipeline.upsample_prompt`] before encoding. Requires a generative `text_encoder` (a
+                `Qwen3VLForConditionalGeneration`, which carries the LM head); install `outlines` for
                 schema-constrained captions. `generator` is reused to make the upsampling reproducible.
             prompt_upsampling_temperature (`float`, *optional*, defaults to 1.0):
                 Sampling temperature for prompt upsampling when `prompt_upsampling=True`.

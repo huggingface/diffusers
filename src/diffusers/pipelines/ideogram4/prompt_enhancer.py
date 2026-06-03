@@ -14,12 +14,12 @@
 
 """Prompt-enhancement assets for Ideogram4.
 
-Ideogram4 is trained on a *structured JSON caption* rather than a free-form prompt. The optional prompt
-enhancer rewrites a short user idea into that native caption schema, using a generative Qwen3-VL text
-encoder (a `Qwen3VLForConditionalGeneration`, which carries the LM head).
+Ideogram4 is trained on a *structured JSON caption* rather than a free-form prompt. The optional prompt enhancer
+rewrites a short user idea into that native caption schema, using a generative Qwen3-VL text encoder (a
+`Qwen3VLForConditionalGeneration`, which carries the LM head).
 
-This mirrors the role of Flux2's `system_messages.py`, but the target is a constrained JSON object instead of
-free text, so `outlines` (an optional dependency) is used to guarantee a schema-valid result when available.
+This mirrors the role of Flux2's `system_messages.py`, but the target is a constrained JSON object instead of free
+text, so `outlines` (an optional dependency) is used to guarantee a schema-valid result when available.
 
 The caption helpers here are shared by `Ideogram4Pipeline` and the modular `Ideogram4PromptUpsampleStep`.
 """
@@ -37,6 +37,7 @@ PROMPT_UPSAMPLE_TEMPERATURE = 1.0
 
 
 # System message that instructs the encoder to emit Ideogram4's native single-line JSON caption.
+# docstyle-ignore
 CAPTION_SYSTEM_MESSAGE = """You convert a short user idea into a structured JSON caption for an image renderer. Output ONE minified single-line JSON object and NOTHING else (no markdown, no commentary).
 
 SCHEMA — keys in this exact order:
@@ -85,6 +86,7 @@ User idea: a minimalist poster for a jazz festival
 Output: {"high_level_description":"A minimalist jazz festival poster, flat graphic design with bold typography and a single abstract saxophone motif on a deep teal background.","compositional_deconstruction":{"background":"Solid deep teal background filling the entire frame with a subtle fine paper-grain texture and a thin mustard-yellow keyline border just inside the edges, no scene and no depth.","elements":[{"type":"obj","desc":"A large flat geometric saxophone in mustard yellow and cream, centered in the upper two-thirds, built from simple bold shapes with no shading, angled diagonally from lower-left to upper-right."},{"type":"text","text":"JAZZ\\nFESTIVAL","desc":"Large bold condensed sans-serif headline in cream, stacked on two lines across the center of the poster, slightly overlapping the saxophone motif."},{"type":"text","text":"NOV 15 · CITY HALL","desc":"Small uppercase mustard-yellow caption centered near the bottom edge with wide letter spacing."}]}}"""
 
 # User turn. `{aspect_ratio}` and `{original_prompt}` are filled in by `Ideogram4Pipeline.upsample_prompt`.
+# docstyle-ignore
 CAPTION_USER_TEMPLATE = """TARGET IMAGE ASPECT RATIO: {aspect_ratio} (width:height).
 User idea: {original_prompt}"""
 
@@ -93,9 +95,9 @@ def build_caption_logits_processor(model, tokenizer):
     """Build an `outlines` logits processor that constrains generation to the Ideogram4 caption schema.
 
     Returns a logits processor compatible with `transformers` `generate(logits_processor=[...])`. The caller is
-    responsible for checking `is_outlines_available()` first; `outlines` (and its `pydantic` dependency) are
-    imported lazily here so they remain optional. The schema mirrors Ideogram's native caption /
-    caption_verifier: a high-level description plus a compositional deconstruction of background + typed elements.
+    responsible for checking `is_outlines_available()` first; `outlines` (and its `pydantic` dependency) are imported
+    lazily here so they remain optional. The schema mirrors Ideogram's native caption / caption_verifier: a high-level
+    description plus a compositional deconstruction of background + typed elements.
     """
     from typing import List, Literal, Union
 

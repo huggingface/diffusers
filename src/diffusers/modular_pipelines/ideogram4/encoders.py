@@ -39,14 +39,14 @@ QWEN3_VL_ACTIVATION_LAYERS = (0, 3, 6, 9, 12, 15, 18, 21, 24, 27, 30, 33, 35)
 # auto_docstring
 class Ideogram4PromptUpsampleStep(ModularPipelineBlocks):
     """
-    Optional step that rewrites the prompt(s) into Ideogram4's native structured JSON caption (the format the model
-    is trained on) when ``prompt_upsampling=True``. Requires a generative ``text_encoder``
-    (a ``Qwen3VLForConditionalGeneration``, which carries the LM head); install ``outlines`` for
-    schema-constrained captions.
+    Optional step that rewrites the prompt(s) into Ideogram4's native structured JSON caption (the format the model is
+    trained on) when ``prompt_upsampling=True``. Requires a generative ``text_encoder`` (a
+    ``Qwen3VLForConditionalGeneration``, which carries the LM head); install ``outlines`` for schema-constrained
+    captions.
 
       Components:
-          text_encoder (`Qwen3VLModel`): The Qwen3-VL text encoder. tokenizer (`Qwen2Tokenizer`): The tokenizer
-          paired with the text encoder.
+          text_encoder (`Qwen3VLModel`): The Qwen3-VL text encoder. tokenizer (`Qwen2Tokenizer`): The tokenizer paired
+          with the text encoder.
 
       Inputs:
           prompt (`str`):
