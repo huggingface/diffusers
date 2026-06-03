@@ -14,10 +14,9 @@
 
 """``diffusers-cli inference`` — single agentic entry point.
 
-Runs any diffusers pipeline (standard or modular) by forwarding
-``--pipeline-kwargs`` verbatim, saves the output by sniffing its runtime
-type, and can submit the same call to HF Jobs via ``--remote`` (with the
-model repo volume-mounted and the results downloaded back).
+Runs any diffusers pipeline (standard or modular) by forwarding ``--pipeline-kwargs`` verbatim, saves the output by
+sniffing its runtime type, and can submit the same call to HF Jobs via ``--remote`` (with the model repo volume-mounted
+and the results downloaded back).
 """
 
 from __future__ import annotations
@@ -48,8 +47,6 @@ ATTENTION_BACKEND_CHOICES = (
     "flash_4_hub",
     "sage_hub",
 )
-
-_MODULAR_INDEX = "modular_model_index.json"
 
 # Keys whose string value should be resolved via ``diffusers.utils.load_image``
 # before being passed to the pipeline call.
@@ -313,55 +310,170 @@ def _load_pipeline(args: Namespace, modular: bool) -> Any:
 # ---------------------------------------------------------------------------
 
 
-def _is_modular_repo(args: Namespace) -> bool:
+def _try_fetch_config(args: Namespace, filename: str) -> Optional[str]:
+    """Try to resolve ``filename`` for ``args.model`` (local path or Hub repo). None if absent."""
     local = Path(args.model)
     if local.exists():
-        return (local / _MODULAR_INDEX).exists()
+        candidate = local / filename
+        return str(candidate) if candidate.exists() else None
 
-    from huggingface_hub import HfApi
-    from huggingface_hub.utils import HfHubHTTPError, RepositoryNotFoundError
+    from huggingface_hub import hf_hub_download
+    from huggingface_hub.utils import EntryNotFoundError, HfHubHTTPError, RepositoryNotFoundError
 
     try:
-        files = set(HfApi(token=args.token).list_repo_files(args.model, revision=args.revision))
-    except (RepositoryNotFoundError, HfHubHTTPError):
-        return False
-    return _MODULAR_INDEX in files
+        return hf_hub_download(args.model, filename, revision=args.revision, token=args.token)
+    except (EntryNotFoundError, HfHubHTTPError, RepositoryNotFoundError):
+        return None
 
 
-def _describe_modular(args: Namespace) -> None:
-    """Load just the block definitions and print the input schema."""
-    from diffusers import ModularPipelineBlocks
+def _is_modular_repo(args: Namespace) -> bool:
+    """Detect by trying ``DiffusionPipeline.config_name`` first; modular iff that's absent."""
+    from diffusers import DiffusionPipeline
 
-    kwargs: dict[str, Any] = {"trust_remote_code": args.trust_remote_code}
-    if args.revision:
-        kwargs["revision"] = args.revision
-    if args.token:
-        kwargs["token"] = args.token
+    return _try_fetch_config(args, DiffusionPipeline.config_name) is None
 
-    blocks = ModularPipelineBlocks.from_pretrained(args.model, **kwargs)
-    schema = [
-        {
-            "name": p.name,
-            "type_hint": str(p.type_hint) if p.type_hint is not None else None,
-            "default": p.default,
-            "required": p.required,
-            "description": p.description,
-        }
-        for p in blocks.inputs
-    ]
-    payload = {
-        "task": "inference-describe",
-        "model": args.model,
-        "blocks_class": type(blocks).__name__,
-        "inputs": schema,
-    }
+
+def _describe(args: Namespace) -> None:
+    """Print the pipeline's input schema.
+
+    Tries ``DiffusionPipeline.config_name`` (= ``model_index.json``) first; if present, introspects the declared
+    pipeline class's ``__call__`` signature. Otherwise falls back to ``ModularPipelineBlocks.from_pretrained`` and
+    reads the block-declared ``inputs``. No weights downloaded either way.
+    """
+    import inspect
+
+    import diffusers
+
+    standard_index = _try_fetch_config(args, diffusers.DiffusionPipeline.config_name)
+
+    if standard_index is not None:
+        with open(standard_index) as f:
+            index = json.load(f)
+        class_name = index.get("_class_name")
+        pipeline_cls = getattr(diffusers, class_name, None)
+        if pipeline_cls is None:
+            raise SystemExit(
+                f"Pipeline class {class_name!r} declared in {diffusers.DiffusionPipeline.config_name} "
+                "is not exported by the installed diffusers."
+            )
+        sig = inspect.signature(pipeline_cls.__call__)
+        descriptions = _parse_docstring_args(pipeline_cls.__call__.__doc__) if getattr(args, "verbose", False) else {}
+        schema: list[dict[str, Any]] = []
+        for name, param in sig.parameters.items():
+            if name == "self":
+                continue
+            if param.kind in (inspect.Parameter.VAR_POSITIONAL, inspect.Parameter.VAR_KEYWORD):
+                continue
+            has_default = param.default is not inspect.Parameter.empty
+            schema.append(
+                {
+                    "name": name,
+                    "type_hint": str(param.annotation) if param.annotation is not inspect.Parameter.empty else None,
+                    "default": param.default if has_default else None,
+                    "required": not has_default,
+                    "description": descriptions.get(name, ""),
+                }
+            )
+    else:
+        kwargs: dict[str, Any] = {"trust_remote_code": args.trust_remote_code}
+        if args.revision:
+            kwargs["revision"] = args.revision
+        if args.token:
+            kwargs["token"] = args.token
+        try:
+            blocks = diffusers.ModularPipelineBlocks.from_pretrained(args.model, **kwargs)
+        except Exception as e:
+            raise SystemExit(
+                f"Could not describe {args.model!r}: no {diffusers.DiffusionPipeline.config_name} and "
+                f"loading as a modular pipeline failed ({type(e).__name__}: {e}). "
+                "Is this a diffusers pipeline repo? Pass --trust-remote-code if it ships custom block code."
+            ) from e
+        class_name = type(blocks).__name__
+        schema = [
+            {
+                "name": p.name,
+                "type_hint": str(p.type_hint) if p.type_hint is not None else None,
+                "default": p.default,
+                "required": p.required,
+                "description": p.description,
+            }
+            for p in blocks.inputs
+        ]
 
     if args.json:
+        payload = {
+            "task": "inference-describe",
+            "model": args.model,
+            "pipeline_class": class_name,
+            "inputs": schema,
+        }
         json.dump(payload, sys.stdout, default=str)
         sys.stdout.write("\n")
         return
 
-    print(f"{type(blocks).__name__} ({args.model}) inputs:")
+    _print_schema(class_name, args.model, schema)
+
+
+def _parse_docstring_args(docstring: Optional[str]) -> dict[str, str]:
+    """Extract per-argument descriptions from a Google-style ``Args:`` block.
+
+    Returns a ``{name: description}`` mapping. Best-effort — unrecognised formats just yield an empty dict rather than
+    raising.
+    """
+    if not docstring:
+        return {}
+
+    import re
+
+    lines = docstring.expandtabs().splitlines()
+    start = None
+    section_indent = 0
+    for i, line in enumerate(lines):
+        if line.strip() in ("Args:", "Arguments:", "Parameters:"):
+            start = i + 1
+            section_indent = len(line) - len(line.lstrip())
+            break
+    if start is None:
+        return {}
+
+    descriptions: dict[str, str] = {}
+    current_name: Optional[str] = None
+    current_lines: list[str] = []
+    arg_indent: Optional[int] = None
+    name_pattern = re.compile(r"^(\w+)\s*(?:\([^)]*\))?\s*:?\s*(.*)$")
+
+    def _flush() -> None:
+        if current_name and current_lines:
+            descriptions[current_name] = " ".join(s.strip() for s in current_lines).strip()
+
+    for line in lines[start:]:
+        if not line.strip():
+            continue
+        indent = len(line) - len(line.lstrip())
+        # A new top-level section ends the Args block.
+        if indent <= section_indent and line.strip().endswith(":"):
+            break
+        if arg_indent is None:
+            arg_indent = indent
+        if indent == arg_indent:
+            _flush()
+            current_lines = []
+            match = name_pattern.match(line.strip())
+            if match:
+                current_name = match.group(1)
+                tail = match.group(2).strip()
+                if tail:
+                    current_lines.append(tail)
+            else:
+                current_name = None
+        elif current_name is not None and indent > arg_indent:
+            current_lines.append(line.strip())
+    _flush()
+    return descriptions
+
+
+def _print_schema(class_name: str, model: str, schema: list[dict[str, Any]]) -> None:
+    print(f"{class_name} ({model}) inputs:")
     for entry in schema:
         tag = "required" if entry["required"] else f"optional, default={entry['default']!r}"
         print(f"  {entry['name']}  ({tag})")
@@ -502,7 +614,7 @@ def _save_audio_arrays(audios, sampling_rate: int, args: Namespace, task: str) -
     return saved
 
 
-def _save_auto(value: Any, args: Namespace, task: str) -> list[str]:
+def _save_output(value: Any, args: Namespace, task: str) -> list[str]:
     """Save ``value`` by sniffing its runtime type."""
     pil_images = _as_pil_list(value)
     if pil_images is not None:
@@ -768,14 +880,6 @@ class InferenceCommand(BaseDiffusersCLICommand):
             default=None,
             help="For modular pipelines: name of the intermediate to extract (passed as `output=` to the call).",
         )
-        parser.add_argument(
-            "--describe",
-            action="store_true",
-            help=(
-                "For modular pipelines: print the input schema from block definitions and exit. "
-                "Weights are NOT downloaded. Errors on standard (non-modular) pipelines."
-            ),
-        )
         parser.add_argument("--seed", type=int, default=None, help="Random seed for reproducibility.")
         parser.add_argument(
             "--fps",
@@ -799,14 +903,6 @@ class InferenceCommand(BaseDiffusersCLICommand):
     def run(self) -> None:
         is_modular = _is_modular_repo(self.args)
 
-        if self.args.describe:
-            if not is_modular:
-                raise SystemExit(
-                    "--describe only works for modular pipeline repos " "(those that ship modular_model_index.json)."
-                )
-            _describe_modular(self.args)
-            return
-
         if _maybe_submit_remote(self.args, self.task):
             return
 
@@ -824,7 +920,7 @@ class InferenceCommand(BaseDiffusersCLICommand):
 
         result = pipeline(**call_kwargs)
         savable = result if is_modular else _result_to_savable(result)
-        saved = _save_auto(savable, self.args, self.task)
+        saved = _save_output(savable, self.args, self.task)
         pushed = _push_outputs(self.args, saved, self.task)
 
         _format_result(

@@ -16,6 +16,7 @@
 from argparse import ArgumentParser
 
 from .custom_blocks import CustomBlocksCommand
+from .describe import DescribeCommand
 from .env import EnvironmentCommand
 from .fp16_safetensors import FP16SafetensorsCommand
 from .inference import InferenceCommand
@@ -30,6 +31,7 @@ def main():
     FP16SafetensorsCommand.register_subcommand(commands_parser)
     CustomBlocksCommand.register_subcommand(commands_parser)
     InferenceCommand.register_subcommand(commands_parser)
+    DescribeCommand.register_subcommand(commands_parser)
 
     # Let's go
     args = parser.parse_args()
