@@ -65,13 +65,14 @@ class JiTPipeline(DiffusionPipeline):
                 )
         return [self.labels[l] for l in label]
 
-    @torch.no_grad()
+    @torch.inference_mode()
     def __call__(
         self,
         class_labels: List[int],
         guidance_scale: float = 4.0,
-        generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
         num_inference_steps: int = 50,
+        noise_scale: float = 1.0,
+        generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
     ) -> Union[ImagePipelineOutput, Tuple]:
@@ -89,74 +90,60 @@ class JiTPipeline(DiffusionPipeline):
                 generation deterministic.
             num_inference_steps (`int`, *optional*, defaults to 50):
                 The number of denoising steps.
+            noise_scale (`float`, *optional*, defaults to 1.0):
+                Standard deviation of the initial pixel-space noise. JiT scales this with resolution to keep the
+                signal-to-noise ratio constant (`1.0` at 256, `2.0` at 512, `4.0` at 1024).
             output_type (`str`, *optional*, defaults to `"pil"`):
                 The output format of the generated image. Choose between `PIL.Image` or `np.array`.
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`ImagePipelineOutput`] instead of a plain tuple.
         """
 
+        do_classifier_free_guidance = guidance_scale > 1.0
         batch_size = len(class_labels)
         image_size = self.transformer.config.sample_size
         channels = self.transformer.config.in_channels
 
-        # Prepare latents (pixel space noise)
-        latents = randn_tensor(
+        # Pixel-space noise. The sample is kept in fp32 across the ODE integration and only the
+        # transformer forward runs in `transformer.dtype` (same pattern as Flux/SD3): JiT predicts
+        # clean `x` and the `(x - z) / (1 - t)` velocity is precision-sensitive, so accumulating the
+        # sample in fp16/bf16 degrades into noise over many steps.
+        sample = noise_scale * randn_tensor(
             shape=(batch_size, channels, image_size, image_size),
             generator=generator,
             device=self._execution_device,
-            dtype=self.transformer.dtype,
+            dtype=torch.float32,
         )
 
-        # Prepare conditions
         class_labels = torch.tensor(class_labels, device=self._execution_device).reshape(-1)
-        null_class_val = self.transformer.config.num_classes
-        class_null = torch.tensor([null_class_val] * batch_size, device=self._execution_device)
-        class_labels_input = torch.cat([class_labels, class_null], 0) if guidance_scale > 1 else class_labels
+        null_class = torch.full_like(class_labels, self.transformer.config.num_classes)
+        class_labels_input = torch.cat([class_labels, null_class], 0) if do_classifier_free_guidance else class_labels
 
-
-        latent_model_input = latents
-
-        # Denoising loop
-        self.scheduler.set_timesteps(num_inference_steps)
+        self.scheduler.set_timesteps(num_inference_steps, device=self._execution_device)
+        sigmas = self.scheduler.sigmas.to(device=self._execution_device, dtype=torch.float32)
 
         for i, t in enumerate(self.progress_bar(self.scheduler.timesteps)):
-            # Expand latents for CFG if needed
-            if guidance_scale > 1:
-                model_input = torch.cat([latent_model_input] * 2)
-            else:
-                model_input = latent_model_input
+            model_input = torch.cat([sample] * 2) if do_classifier_free_guidance else sample
 
-            # Map scheduler sigma (1->0) to JiT timestep (0->1)
-            sigma = self.scheduler.sigmas[i]
-            jit_t = 1.0 - sigma
+            # diffusers FlowMatch sigma (1 -> 0) maps to the JiT timestep (0 -> 1)
+            sigma = sigmas[i].to(torch.float32)
+            timestep = (1.0 - sigma).to(self.transformer.dtype).reshape(1).expand(model_input.shape[0])
 
-            # Prepare inputs for model
-            timesteps_tensor = torch.tensor(
-                [jit_t] * model_input.shape[0], device=self._execution_device, dtype=latent_model_input.dtype
-            )
-
-            # Predict x
-            noise_pred_x = self.transformer(
-                model_input, timestep=timesteps_tensor, class_labels=class_labels_input
+            x_pred = self.transformer(
+                model_input.to(self.transformer.dtype), timestep=timestep, class_labels=class_labels_input
             ).sample
 
-            # Compute velocity v = (x - z) / (1 - t) = (x - z) / sigma
-            sigma_clamped = max(sigma.item(), 1e-5)
+            # velocity in fp32; clamp the 1 / (1 - t) denominator at JiT's `t_eps` (0.05).
+            # the scheduler integrates with a negative step, so we pass (z - x) / (1 - t).
+            v = (model_input - x_pred.float()) / torch.clamp(sigma, min=0.05)
 
-            # The scheduler expects (z - x) / sigma to move towards x when integrating with negative dt
-            v_pred_all = (model_input - noise_pred_x) / sigma_clamped
+            if do_classifier_free_guidance:
+                v_cond, v_uncond = v.chunk(2, dim=0)
+                v = v_uncond + guidance_scale * (v_cond - v_uncond)
 
-            if guidance_scale > 1:
-                v_cond, v_uncond = v_pred_all.chunk(2, dim=0)
-                model_output = v_uncond + guidance_scale * (v_cond - v_uncond)
-            else:
-                model_output = v_pred_all
+            sample = self.scheduler.step(v, t, sample).prev_sample
 
-            # Step
-            latent_model_input = self.scheduler.step(model_output, t, latent_model_input).prev_sample
-
-        samples = latent_model_input
-        samples = (samples / 2 + 0.5).clamp(0, 1)
+        samples = (sample / 2 + 0.5).clamp(0, 1)
         samples = samples.cpu().permute(0, 2, 3, 1).float().numpy()
 
         if output_type == "pil":
