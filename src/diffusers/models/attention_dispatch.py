@@ -1771,7 +1771,7 @@ def _flash_attention_3_varlen_hub_backward_op(
         cu_seqlens_q,
         cu_seqlens_k,
         None,
-        None,
+        None,  # seqused_q, seqused_k
         ctx.max_seqlen_q,
         ctx.max_seqlen_k,
         grad_query,
