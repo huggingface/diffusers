@@ -1,4 +1,4 @@
-# Copyright 2025 The HuggingFace Team. All rights reserved.
+# Copyright 2026 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -802,8 +802,7 @@ class InferenceCommand(BaseDiffusersCLICommand):
         if self.args.describe:
             if not is_modular:
                 raise SystemExit(
-                    "--describe only works for modular pipeline repos "
-                    "(those that ship modular_model_index.json)."
+                    "--describe only works for modular pipeline repos " "(those that ship modular_model_index.json)."
                 )
             _describe_modular(self.args)
             return
@@ -842,5 +841,3 @@ class InferenceCommand(BaseDiffusersCLICommand):
                 "output_key": self.args.output_key,
             },
         )
-
-
