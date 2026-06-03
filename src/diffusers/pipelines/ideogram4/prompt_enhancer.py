@@ -15,26 +15,24 @@
 """Prompt-enhancement assets for Ideogram4.
 
 Ideogram4 is trained on a *structured JSON caption* rather than a free-form prompt. The optional prompt
-enhancer rewrites a short user idea into that native caption schema, using the pipeline's own (frozen)
-Qwen3-VL text encoder grafted with a generative head (see `Ideogram4Pipeline.load_prompt_enhancer`).
+enhancer rewrites a short user idea into that native caption schema, using a generative Qwen3-VL text
+encoder (a `Qwen3VLForConditionalGeneration`, which carries the LM head).
 
 This mirrors the role of Flux2's `system_messages.py`, but the target is a constrained JSON object instead of
 free text, so `outlines` (an optional dependency) is used to guarantee a schema-valid result when available.
 
-The graft/generate helpers here are shared by `Ideogram4Pipeline` and the modular `Ideogram4PromptUpsampleStep`.
+The caption helpers here are shared by `Ideogram4Pipeline` and the modular `Ideogram4PromptUpsampleStep`.
 """
 
 import math
 
 import torch
 
-from ...utils import is_outlines_available, logging
+from ...utils import logging
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
-# Qwen3-VL LM head grafted onto the (head-less) text encoder for prompt upsampling.
-DEFAULT_PROMPT_ENHANCER_LM_HEAD_REPO = "diffusers/qwen3-vl-8b-instruct-lm-head"
 PROMPT_UPSAMPLE_TEMPERATURE = 1.0
 
 
@@ -123,47 +121,6 @@ def build_caption_logits_processor(model, tokenizer):
 
     outlines_model = outlines.from_transformers(model, tokenizer)
     return outlines.Generator(outlines_model, Caption).logits_processor
-
-
-def graft_lm_head(
-    text_encoder,
-    tokenizer,
-    lm_head_repo_id: str = DEFAULT_PROMPT_ENHANCER_LM_HEAD_REPO,
-    lm_head_filename: str = "lm_head.safetensors",
-    torch_dtype: torch.dtype | None = None,
-):
-    """Graft a hosted LM head onto the (head-less) Qwen3-VL `text_encoder` to make it generative.
-
-    Returns `(prompt_enhancer, logits_processor)`. The encoder body is shared (only the head is loaded). The
-    logits processor constrains generation to the caption JSON schema when `outlines` is installed; otherwise it
-    is `None` and generation runs unconstrained (a warning is logged).
-    """
-    from accelerate import init_empty_weights
-    from huggingface_hub import hf_hub_download
-    from safetensors.torch import load_file
-    from transformers import Qwen3VLForConditionalGeneration
-
-    dtype = torch_dtype or text_encoder.dtype
-    head_weight = load_file(hf_hub_download(lm_head_repo_id, lm_head_filename))["lm_head.weight"].to(dtype)
-
-    with init_empty_weights():
-        prompt_enhancer = Qwen3VLForConditionalGeneration(text_encoder.config)
-    prompt_enhancer.model = text_encoder  # reuse the loaded encoder body
-    lm_head = torch.nn.Linear(head_weight.shape[1], head_weight.shape[0], bias=False)
-    with torch.no_grad():
-        lm_head.weight.copy_(head_weight)
-    prompt_enhancer.lm_head = lm_head.to(device=text_encoder.device, dtype=dtype)
-    prompt_enhancer.eval()
-
-    if is_outlines_available():
-        logits_processor = build_caption_logits_processor(prompt_enhancer, tokenizer)
-    else:
-        logits_processor = None
-        logger.warning(
-            "`outlines` is not installed; prompt upsampling will run unconstrained and may not return "
-            "schema-valid JSON. Install with `pip install outlines` for structured captions."
-        )
-    return prompt_enhancer, logits_processor
 
 
 def generate_captions(
