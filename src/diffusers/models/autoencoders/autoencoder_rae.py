@@ -119,8 +119,7 @@ def _build_encoder(
             num_attention_heads=num_attention_heads,
             num_hidden_layers=num_hidden_layers,
         )
-        with _preserve_init_return_tensors():
-            model = Dinov2WithRegistersModel(config)
+        model = Dinov2WithRegistersModel(config)
         # RAE strips the final layernorm affine params (identity LN). Remove them from
         # the architecture so `from_pretrained` doesn't leave them on the meta device.
         model.layernorm.weight = None
@@ -133,8 +132,7 @@ def _build_encoder(
             num_attention_heads=num_attention_heads,
             num_hidden_layers=num_hidden_layers,
         )
-        with _preserve_init_return_tensors():
-            model = SiglipVisionModel(config)
+        model = SiglipVisionModel(config)
         # See dinov2 comment above.
         model.vision_model.post_layernorm.weight = None
         model.vision_model.post_layernorm.bias = None
@@ -147,8 +145,7 @@ def _build_encoder(
             num_hidden_layers=num_hidden_layers,
             mask_ratio=0.0,
         )
-        with _preserve_init_return_tensors():
-            model = ViTMAEModel(config)
+        model = ViTMAEModel(config)
         # See dinov2 comment above.
         model.layernorm.weight = None
         model.layernorm.bias = None
@@ -539,13 +536,15 @@ class AutoencoderRAE(ModelMixin, AttentionMixin, AutoencoderMixin, ConfigMixin):
         if decoder_patch_size <= 0:
             raise ValueError("patch_size must be a positive integer (this is decoder_patch_size).")
 
-        # Frozen representation encoder (built from config, no downloads)
-        self.encoder: nn.Module = _build_encoder(
-            encoder_type=encoder_type,
-            hidden_size=encoder_hidden_size,
-            patch_size=encoder_patch_size,
-            num_hidden_layers=encoder_num_hidden_layers,
-        )
+        # Frozen representation encoder (built from config, no downloads).
+        # Wrap so nested encoders relying on torch.nn.init return values survive no_init_weights.
+        with _preserve_init_return_tensors():
+            self.encoder: nn.Module = _build_encoder(
+                encoder_type=encoder_type,
+                hidden_size=encoder_hidden_size,
+                patch_size=encoder_patch_size,
+                num_hidden_layers=encoder_num_hidden_layers,
+            )
         self._encoder_forward_fn = _ENCODER_FORWARD_FNS[encoder_type]
         num_patches = (self.encoder_input_size // encoder_patch_size) ** 2
 
