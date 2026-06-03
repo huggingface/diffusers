@@ -238,23 +238,32 @@ class QwenImageEditPlusPipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
 
         prompt = [prompt] if isinstance(prompt, str) else prompt
         img_prompt_template = "Picture {}: <|vision_start|><|image_pad|><|vision_end|>"
-        if isinstance(image, list):
-            base_img_prompt = ""
-            for i, img in enumerate(image):
-                base_img_prompt += img_prompt_template.format(i + 1)
+
+        # Normalize to a per-prompt list of image lists: nested `[[img1], [img2]]` (batched),
+        # flat `[img1, img2]` (single prompt), a single image, or None.
+        if isinstance(image, list) and len(image) > 0 and isinstance(image[0], list):
+            image_lists = image
+        elif isinstance(image, list):
+            image_lists = [image]
         elif image is not None:
-            base_img_prompt = img_prompt_template.format(1)
+            image_lists = [[image]]
         else:
-            base_img_prompt = ""
+            image_lists = [[] for _ in prompt]
+
+        flat_images = [img for imgs in image_lists for img in imgs] or None
 
         template = self.prompt_template_encode
-
         drop_idx = self.prompt_template_encode_start_idx
-        txt = [template.format(base_img_prompt + e) for e in prompt]
+        txt = []
+        for e, imgs in zip(prompt, image_lists):
+            base_img_prompt = ""
+            for i in range(len(imgs)):
+                base_img_prompt += img_prompt_template.format(i + 1)
+            txt.append(template.format(base_img_prompt + e))
 
         model_inputs = self.processor(
             text=txt,
-            images=image,
+            images=flat_images,
             padding=True,
             return_tensors="pt",
         ).to(device)
