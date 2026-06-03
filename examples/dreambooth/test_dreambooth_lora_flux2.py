@@ -111,6 +111,33 @@ class DreamBoothLoRAFlux2(ExamplesTestsAccelerate):
             starts_with_transformer = all(key.startswith("transformer") for key in lora_state_dict.keys())
             self.assertTrue(starts_with_transformer)
 
+    def test_dreambooth_lora_flux2_prior_preservation_batch_size_two(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            test_args = f"""
+                {self.script_path}
+                --pretrained_model_name_or_path {self.pretrained_model_name_or_path}
+                --instance_data_dir {self.instance_data_dir}
+                --instance_prompt {self.instance_prompt}
+                --with_prior_preservation
+                --class_data_dir {self.instance_data_dir}
+                --class_prompt dog
+                --num_class_images 2
+                --resolution 64
+                --train_batch_size 2
+                --gradient_accumulation_steps 1
+                --max_train_steps 1
+                --learning_rate 5.0e-04
+                --scale_lr
+                --lr_scheduler constant
+                --lr_warmup_steps 0
+                --max_sequence_length 8
+                --text_encoder_out_layers 1
+                --output_dir {tmpdir}
+                """.split()
+
+            run_command(self._launch_args + test_args)
+            self.assertTrue(os.path.isfile(os.path.join(tmpdir, "pytorch_lora_weights.safetensors")))
+
     def test_dreambooth_lora_layers(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             test_args = f"""
