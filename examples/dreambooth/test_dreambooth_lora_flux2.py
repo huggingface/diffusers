@@ -16,6 +16,7 @@
 import json
 import logging
 import os
+import shutil
 import sys
 import tempfile
 
@@ -113,13 +114,18 @@ class DreamBoothLoRAFlux2(ExamplesTestsAccelerate):
 
     def test_dreambooth_lora_flux2_prior_preservation_batch_size_two(self):
         with tempfile.TemporaryDirectory() as tmpdir:
+            class_data_dir = os.path.join(tmpdir, "class_data")
+            os.makedirs(class_data_dir)
+            for image_name in os.listdir(self.instance_data_dir)[:2]:
+                shutil.copy(os.path.join(self.instance_data_dir, image_name), class_data_dir)
+
             test_args = f"""
                 {self.script_path}
                 --pretrained_model_name_or_path {self.pretrained_model_name_or_path}
                 --instance_data_dir {self.instance_data_dir}
                 --instance_prompt {self.instance_prompt}
                 --with_prior_preservation
-                --class_data_dir {self.instance_data_dir}
+                --class_data_dir {class_data_dir}
                 --class_prompt dog
                 --num_class_images 2
                 --resolution 64
