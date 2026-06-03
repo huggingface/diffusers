@@ -612,6 +612,7 @@ class Cosmos3OmniPipeline(DiffusionPipeline):
             fps=effective_fps,
             base_fps=float(config.base_fps),
             temporal_compression_factor=1,
+            base_temporal_compression_factor=self.vae.config.scale_factor_temporal,
             start_frame_offset=1,
         )
 
