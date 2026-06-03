@@ -34,7 +34,7 @@ from ...utils import (
     logging,
     replace_example_docstring,
 )
-from ...utils.torch_utils import randn_tensor
+from ...utils.torch_utils import maybe_adjust_dtype_for_device, randn_tensor
 from ..pipeline_utils import DiffusionPipeline, ImagePipelineOutput
 
 
@@ -867,7 +867,8 @@ class PixArtAlphaPipeline(DiffusionPipeline):
             prompt_attention_mask = prompt_attention_mask.to(torch.int32)
 
         # 4. Prepare timesteps
-        if XLA_AVAILABLE or is_torch_neuronx_available():
+        is_neuron_device = device.type == "neuron"
+        if XLA_AVAILABLE or is_neuron_device:
             timestep_device = "cpu"
         else:
             timestep_device = device
@@ -917,13 +918,10 @@ class PixArtAlphaPipeline(DiffusionPipeline):
                 if not torch.is_tensor(current_timestep):
                     # TODO: this requires sync between CPU and GPU. So try to pass timesteps as tensors if you can
                     # This would be a good case for the `match` statement (Python 3.10+)
-                    is_mps = latent_model_input.device.type == "mps"
-                    is_npu = latent_model_input.device.type == "npu"
-                    is_neuron = latent_model_input.device.type == "neuron"
                     if isinstance(current_timestep, float):
-                        dtype = torch.float32 if (is_mps or is_npu or is_neuron) else torch.float64
+                        dtype = maybe_adjust_dtype_for_device(torch.float64, latent_model_input.device)
                     else:
-                        dtype = torch.int32 if (is_mps or is_npu or is_neuron) else torch.int64
+                        dtype = maybe_adjust_dtype_for_device(torch.int64, latent_model_input.device)
                     current_timestep = torch.tensor([current_timestep], dtype=dtype, device=latent_model_input.device)
                 elif len(current_timestep.shape) == 0:
                     current_timestep = current_timestep[None].to(latent_model_input.device)
