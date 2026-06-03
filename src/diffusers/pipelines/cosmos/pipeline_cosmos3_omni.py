@@ -207,8 +207,9 @@ _EMBODIMENT_TO_DOMAIN_ID = {
 #   * robomind-franka-dual -> 20 : two arms = 2 x (9D + 1D).
 #   * agibotworld / agibot_gear_gripper -> 29 : humanoid = 9D ego + 2 x (9D arm + 1D gripper).
 #   * galbot -> 30 : humanoid-style stack with an extra pose block.
+#   * hand_pose -> 57 : egocentric two-hand motion = 9D ego + 2 x (9D wrist + 15D fingertips).
 #
-# TODO: support the configuration-dependent domains (`libero`, `hand_pose`), whose width is not fixed per embodiment
+# TODO: support the configuration-dependent domains `libero`, whose width is not fixed per embodiment
 # (it depends on the dataset's rotation/keypoint configuration) and so is absent here.
 _EMBODIMENT_TO_RAW_ACTION_DIM = {
     "av": 9,
@@ -225,6 +226,7 @@ _EMBODIMENT_TO_RAW_ACTION_DIM = {
     "agibot_gear_gripper": 29,
     "agibot_gear_gripper_ext": 29,
     "fractal": 10,
+    "hand_pose": 57,
 }
 
 
