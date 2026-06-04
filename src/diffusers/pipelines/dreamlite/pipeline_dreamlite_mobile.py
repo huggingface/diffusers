@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import inspect
 from typing import List, Optional, Union
 
 import numpy as np
@@ -28,8 +29,6 @@ from ...schedulers import FlowMatchEulerDiscreteScheduler
 from ...utils import is_torch_xla_available, logging
 from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline
-from ..stable_diffusion.pipeline_stable_diffusion_img2img import retrieve_latents
-from .pipeline_dreamlite import calculate_shift, retrieve_timesteps
 from .pipeline_output import DreamLitePipelineOutput
 
 
@@ -42,6 +41,94 @@ else:
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
+
+
+# Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_img2img.retrieve_latents
+def retrieve_latents(
+    encoder_output: torch.Tensor, generator: torch.Generator | None = None, sample_mode: str = "sample"
+):
+    if hasattr(encoder_output, "latent_dist") and sample_mode == "sample":
+        return encoder_output.latent_dist.sample(generator)
+    elif hasattr(encoder_output, "latent_dist") and sample_mode == "argmax":
+        return encoder_output.latent_dist.mode()
+    elif hasattr(encoder_output, "latents"):
+        return encoder_output.latents
+    else:
+        raise AttributeError("Could not access latents of provided encoder_output")
+
+
+# Copied from diffusers.pipelines.dreamlite.pipeline_dreamlite.calculate_shift
+def calculate_shift(
+    image_seq_len: int,
+    base_seq_len: int = 256,
+    max_seq_len: int = 4096,
+    base_shift: float = 0.5,
+    max_shift: float = 1.16,
+) -> float:
+    m = (max_shift - base_shift) / (max_seq_len - base_seq_len)
+    b = base_shift - m * base_seq_len
+    mu = image_seq_len * m + b
+    return mu
+
+
+# Copied from diffusers.pipelines.flux.pipeline_flux.retrieve_timesteps
+def retrieve_timesteps(
+    scheduler,
+    num_inference_steps: int | None = None,
+    device: str | torch.device | None = None,
+    timesteps: list[int] | None = None,
+    sigmas: list[float] | None = None,
+    **kwargs,
+):
+    r"""
+    Calls the scheduler's `set_timesteps` method and retrieves timesteps from the scheduler after the call. Handles
+    custom timesteps. Any kwargs will be supplied to `scheduler.set_timesteps`.
+
+    Args:
+        scheduler (`SchedulerMixin`):
+            The scheduler to get timesteps from.
+        num_inference_steps (`int`):
+            The number of diffusion steps used when generating samples with a pre-trained model. If used, `timesteps`
+            must be `None`.
+        device (`str` or `torch.device`, *optional*):
+            The device to which the timesteps should be moved to. If `None`, the timesteps are not moved.
+        timesteps (`list[int]`, *optional*):
+            Custom timesteps used to override the timestep spacing strategy of the scheduler. If `timesteps` is passed,
+            `num_inference_steps` and `sigmas` must be `None`.
+        sigmas (`list[float]`, *optional*):
+            Custom sigmas used to override the timestep spacing strategy of the scheduler. If `sigmas` is passed,
+            `num_inference_steps` and `timesteps` must be `None`.
+
+    Returns:
+        `tuple[torch.Tensor, int]`: A tuple where the first element is the timestep schedule from the scheduler and the
+        second element is the number of inference steps.
+    """
+    if timesteps is not None and sigmas is not None:
+        raise ValueError("Only one of `timesteps` or `sigmas` can be passed. Please choose one to set custom values")
+    if timesteps is not None:
+        accepts_timesteps = "timesteps" in set(inspect.signature(scheduler.set_timesteps).parameters.keys())
+        if not accepts_timesteps:
+            raise ValueError(
+                f"The current scheduler class {scheduler.__class__}'s `set_timesteps` does not support custom"
+                f" timestep schedules. Please check whether you are using the correct scheduler."
+            )
+        scheduler.set_timesteps(timesteps=timesteps, device=device, **kwargs)
+        timesteps = scheduler.timesteps
+        num_inference_steps = len(timesteps)
+    elif sigmas is not None:
+        accept_sigmas = "sigmas" in set(inspect.signature(scheduler.set_timesteps).parameters.keys())
+        if not accept_sigmas:
+            raise ValueError(
+                f"The current scheduler class {scheduler.__class__}'s `set_timesteps` does not support custom"
+                f" sigmas schedules. Please check whether you are using the correct scheduler."
+            )
+        scheduler.set_timesteps(sigmas=sigmas, device=device, **kwargs)
+        timesteps = scheduler.timesteps
+        num_inference_steps = len(timesteps)
+    else:
+        scheduler.set_timesteps(num_inference_steps, device=device, **kwargs)
+        timesteps = scheduler.timesteps
+    return timesteps, num_inference_steps
 
 
 EXAMPLE_DOC_STRING = """
@@ -128,16 +215,36 @@ class DreamLiteMobilePipeline(DiffusionPipeline, FromSingleFileMixin, TextualInv
         self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor * 2)
         self.default_sample_size = 128
 
+        # ----- Prompt encoding templates -----
+        # See ``DreamLitePipeline.__init__`` for the meaning of these template strings and their associated
+        # ``*_start_idx`` token-prefix offsets.
+        self.prompt_template_encode_generate = (
+            "<|im_start|>system\nDescribe the image by detailing the color, shape, size, texture, "
+            "quantity, text, spatial relationships of the objects and background:<|im_end|>\n"
+            "<|im_start|>user\n{}<|im_end|>\n<|im_start|>assistant\n"
+        )
+        self.prompt_template_encode_generate_start_idx = 34
+        self.prompt_template_encode_edit = (
+            "<|im_start|>system\nDescribe the key features of the input image (color, shape, size, "
+            "texture, objects, background), then explain how the user's text instruction should alter "
+            "or modify the image. Generate a new image that meets the user's requirements while maintaining "
+            "consistency with the original input where appropriate.<|im_end|>\n<|im_start|>user\n"
+            "<|vision_start|><|image_pad|><|vision_end|>{}<|im_end|>\n<|im_start|>assistant\n"
+        )
+        self.prompt_template_encode_edit_start_idx = 64
+
     # ---------------------------------------------------------------------
     # Helpers (identical to DreamLitePipeline)
     # ---------------------------------------------------------------------
     @staticmethod
+    # Copied from diffusers.pipelines.dreamlite.pipeline_dreamlite.DreamLitePipeline._extract_masked_hidden
     def _extract_masked_hidden(hidden_states: torch.Tensor, mask: torch.Tensor) -> List[torch.Tensor]:
         bool_mask = mask.bool()
         valid_lengths = bool_mask.sum(dim=1).tolist()
         selected = hidden_states[bool_mask]
         return torch.split(selected, valid_lengths, dim=0)
 
+    # Copied from diffusers.pipelines.dreamlite.pipeline_dreamlite.DreamLitePipeline.encode_prompt
     def encode_prompt(
         self,
         mode: str,
@@ -149,17 +256,14 @@ class DreamLiteMobilePipeline(DiffusionPipeline, FromSingleFileMixin, TextualInv
         text_pad_embedding: Optional[torch.Tensor] = None,
     ):
         if mode == "edit":
-            drop_idx = 64
-            template = (
-                "<|im_start|>system\nDescribe the key features of the input image (color, shape, size, "
-                "texture, objects, background), then explain how the user's text instruction should alter "
-                "or modify the image. Generate a new image that meets the user's requirements while maintaining "
-                "consistency with the original input where appropriate.<|im_end|>\n<|im_start|>user\n"
-                "<|vision_start|><|image_pad|><|vision_end|>{}<|im_end|>\n<|im_start|>assistant\n"
-            )
+            template = self.prompt_template_encode_edit
+            drop_idx = self.prompt_template_encode_edit_start_idx
 
             txts = [template.format(p) for p in prompts]
-            images = [image.resize((512, 512), Image.Resampling.LANCZOS)] * len(prompts)
+            # ``VaeImageProcessor.resize`` defaults to LANCZOS resampling, matching the reference preprocessing
+            # exactly while avoiding a bespoke ``Image.resize`` call.
+            cond_image = self.image_processor.resize(image, height=512, width=512)
+            images = [cond_image] * len(prompts)
 
             tk_out = self.processor(text=txts, images=images, padding=True, return_tensors="pt").to(device)
 
@@ -172,15 +276,17 @@ class DreamLiteMobilePipeline(DiffusionPipeline, FromSingleFileMixin, TextualInv
             )
 
         elif mode == "generate":
-            drop_idx = 34
-            template = (
-                "<|im_start|>system\nDescribe the image by detailing the color, shape, size, texture, "
-                "quantity, text, spatial relationships of the objects and background:<|im_end|>\n"
-                "<|im_start|>user\n{}<|im_end|>\n<|im_start|>assistant\n"
-            )
+            template = self.prompt_template_encode_generate
+            drop_idx = self.prompt_template_encode_generate_start_idx
 
             txts = [template.format(p) for p in prompts]
-            tk_out = self.tokenizer(text=txts, padding=True, return_tensors="pt").to(device)
+            tk_out = self.tokenizer(
+                text=txts,
+                max_length=max_sequence_length + drop_idx,
+                padding=True,
+                truncation=True,
+                return_tensors="pt",
+            ).to(device)
 
             outputs = self.text_encoder(
                 input_ids=tk_out.input_ids,
@@ -215,6 +321,7 @@ class DreamLiteMobilePipeline(DiffusionPipeline, FromSingleFileMixin, TextualInv
 
         return prompt_embeds, prompt_embeds_mask
 
+    # Copied from diffusers.pipelines.dreamlite.pipeline_dreamlite.DreamLitePipeline.prepare_latents
     def prepare_latents(
         self,
         batch_size: int,
@@ -238,6 +345,7 @@ class DreamLiteMobilePipeline(DiffusionPipeline, FromSingleFileMixin, TextualInv
 
         return randn_tensor(shape, generator=generator, device=device, dtype=dtype)
 
+    # Copied from diffusers.pipelines.dreamlite.pipeline_dreamlite.DreamLitePipeline.prepare_image_latents
     def prepare_image_latents(
         self,
         image: Union[torch.Tensor, Image.Image, List[Image.Image]],
@@ -296,13 +404,19 @@ class DreamLiteMobilePipeline(DiffusionPipeline, FromSingleFileMixin, TextualInv
             generator: Random generator(s).
             output_type: ``"pil"``, ``"np"``, ``"pt"`` or ``"latent"``.
             return_dict: If True, returns a :class:`DreamLitePipelineOutput`; else ``(images,)``.
-            max_sequence_length: Reserved (passed through to ``encode_prompt``).
+            max_sequence_length: Maximum number of user-prompt tokens kept after dropping the chat-template
+                prefix. Only applies to ``generate`` mode (the ``edit`` mode uses the multimodal processor's native
+                padding).
             text_pad_embedding: Optional learned pad embedding for masked positions.
 
         Returns:
             :class:`DreamLitePipelineOutput` or ``tuple``.
         """
         # 1. Init pipeline parameters
+        if height is None and width is None and image is not None:
+            w, h = image.size
+            width = (w // self.vae_scale_factor) * self.vae_scale_factor
+            height = (h // self.vae_scale_factor) * self.vae_scale_factor
         height = height or self.default_sample_size * self.vae_scale_factor
         width = width or self.default_sample_size * self.vae_scale_factor
 
@@ -362,6 +476,7 @@ class DreamLiteMobilePipeline(DiffusionPipeline, FromSingleFileMixin, TextualInv
                 prompts=[prompt_str],
                 device=device,
                 dtype=dtype,
+                max_sequence_length=max_sequence_length,
                 text_pad_embedding=text_pad_embedding,
             )
             if num_images_per_prompt > 1:
@@ -383,7 +498,7 @@ class DreamLiteMobilePipeline(DiffusionPipeline, FromSingleFileMixin, TextualInv
             if num_images_per_prompt > 1:
                 prompt_embeds = prompt_embeds.repeat_interleave(num_images_per_prompt, dim=0)
                 text_attention_mask = text_attention_mask.repeat_interleave(num_images_per_prompt, dim=0)
-            image_processed = self.image_processor.preprocess(image.resize((width, height), Image.Resampling.LANCZOS))
+            image_processed = self.image_processor.preprocess(image, height=height, width=width)
             image_latents = self.prepare_image_latents(
                 image_processed,
                 dtype=dtype,

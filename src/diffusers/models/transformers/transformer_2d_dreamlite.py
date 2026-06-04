@@ -56,8 +56,8 @@ class BasicTransformerBlockDreamLite(nn.Module):
 
     * ``use_self_attention`` — when ``False``, ``attn1`` is *not* instantiated and the self-attention residual branch
       in ``forward`` is replaced by ``norm1``'s output (no add-residual). This implements DreamLite's "Remove
-      self-attention" trick used inside ``CrossAttnDownRemoveSelfAttnBlock2DDreamLite`` /
-      ``CrossAttnUpRemoveSelfAttnBlock2DV1DreamLite``.
+      self-attention" trick used inside ``DreamLiteCrossAttnNoSelfAttnDownBlock2D`` /
+      ``DreamLiteCrossAttnNoSelfAttnUpBlock2D``.
     * ``qk_norm`` — propagated to both attention layers' ``qk_norm``.
     * ``num_kv_heads`` — propagated to both attention layers' ``kv_heads`` (enables Grouped-Query Attention).
     * ``ff_mult`` — propagated to :class:`FeedForward.mult` (DreamLite uses a non-default expansion factor).

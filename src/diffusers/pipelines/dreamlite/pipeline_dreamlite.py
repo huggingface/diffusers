@@ -196,6 +196,28 @@ class DreamLitePipeline(DiffusionPipeline, FromSingleFileMixin, TextualInversion
         self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor * 2)
         self.default_sample_size = 128
 
+        # ----- Prompt encoding templates -----
+        # ``prompt_template_encode_*`` is the chat template wrapped around the user prompt before tokenisation.
+        # ``prompt_template_encode_*_start_idx`` is the number of tokens occupied by the template prefix
+        # (system + chat-template scaffolding) that must be dropped from the encoder hidden states so the cross-
+        # attention only attends to the **user prompt** content. The values come from running each template (with
+        # an empty prompt) through the matching tokenizer / processor and recording the resulting prefix length;
+        # they are pinned here for reproducibility, mirroring the pattern used by Qwen-Image pipelines.
+        self.prompt_template_encode_generate = (
+            "<|im_start|>system\nDescribe the image by detailing the color, shape, size, texture, "
+            "quantity, text, spatial relationships of the objects and background:<|im_end|>\n"
+            "<|im_start|>user\n{}<|im_end|>\n<|im_start|>assistant\n"
+        )
+        self.prompt_template_encode_generate_start_idx = 34
+        self.prompt_template_encode_edit = (
+            "<|im_start|>system\nDescribe the key features of the input image (color, shape, size, "
+            "texture, objects, background), then explain how the user's text instruction should alter "
+            "or modify the image. Generate a new image that meets the user's requirements while maintaining "
+            "consistency with the original input where appropriate.<|im_end|>\n<|im_start|>user\n"
+            "<|vision_start|><|image_pad|><|vision_end|>{}<|im_end|>\n<|im_start|>assistant\n"
+        )
+        self.prompt_template_encode_edit_start_idx = 64
+
     # ---------------------------------------------------------------------
     # Helpers
     # ---------------------------------------------------------------------
@@ -217,17 +239,14 @@ class DreamLitePipeline(DiffusionPipeline, FromSingleFileMixin, TextualInversion
         text_pad_embedding: Optional[torch.Tensor] = None,
     ):
         if mode == "edit":
-            drop_idx = 64
-            template = (
-                "<|im_start|>system\nDescribe the key features of the input image (color, shape, size, "
-                "texture, objects, background), then explain how the user's text instruction should alter "
-                "or modify the image. Generate a new image that meets the user's requirements while maintaining "
-                "consistency with the original input where appropriate.<|im_end|>\n<|im_start|>user\n"
-                "<|vision_start|><|image_pad|><|vision_end|>{}<|im_end|>\n<|im_start|>assistant\n"
-            )
+            template = self.prompt_template_encode_edit
+            drop_idx = self.prompt_template_encode_edit_start_idx
 
             txts = [template.format(p) for p in prompts]
-            images = [image.resize((512, 512), Image.Resampling.LANCZOS)] * len(prompts)
+            # ``VaeImageProcessor.resize`` defaults to LANCZOS resampling, matching the reference preprocessing
+            # exactly while avoiding a bespoke ``Image.resize`` call.
+            cond_image = self.image_processor.resize(image, height=512, width=512)
+            images = [cond_image] * len(prompts)
 
             tk_out = self.processor(text=txts, images=images, padding=True, return_tensors="pt").to(device)
 
@@ -240,15 +259,17 @@ class DreamLitePipeline(DiffusionPipeline, FromSingleFileMixin, TextualInversion
             )
 
         elif mode == "generate":
-            drop_idx = 34
-            template = (
-                "<|im_start|>system\nDescribe the image by detailing the color, shape, size, texture, "
-                "quantity, text, spatial relationships of the objects and background:<|im_end|>\n"
-                "<|im_start|>user\n{}<|im_end|>\n<|im_start|>assistant\n"
-            )
+            template = self.prompt_template_encode_generate
+            drop_idx = self.prompt_template_encode_generate_start_idx
 
             txts = [template.format(p) for p in prompts]
-            tk_out = self.tokenizer(text=txts, padding=True, return_tensors="pt").to(device)
+            tk_out = self.tokenizer(
+                text=txts,
+                max_length=max_sequence_length + drop_idx,
+                padding=True,
+                truncation=True,
+                return_tensors="pt",
+            ).to(device)
 
             outputs = self.text_encoder(
                 input_ids=tk_out.input_ids,
@@ -377,13 +398,19 @@ class DreamLitePipeline(DiffusionPipeline, FromSingleFileMixin, TextualInversion
             generator: Random generator(s).
             output_type: ``"pil"``, ``"np"``, ``"pt"`` or ``"latent"``.
             return_dict: If True, returns a :class:`DreamLitePipelineOutput`; else a tuple ``(images,)``.
-            max_sequence_length: Reserved (passed through to ``encode_prompt``).
+            max_sequence_length: Maximum number of user-prompt tokens kept after dropping the chat-template
+                prefix. Only applies to ``generate`` mode (the ``edit`` mode uses the multimodal processor's native
+                padding).
             text_pad_embedding: Optional learned pad embedding for masked positions.
 
         Returns:
             :class:`DreamLitePipelineOutput` or ``tuple``.
         """
         # 1. Init pipeline parameters
+        if height is None and width is None and image is not None:
+            w, h = image.size
+            width = (w // self.vae_scale_factor) * self.vae_scale_factor
+            height = (h // self.vae_scale_factor) * self.vae_scale_factor
         height = height or self.default_sample_size * self.vae_scale_factor
         width = width or self.default_sample_size * self.vae_scale_factor
         self._guidance_scale = guidance_scale
@@ -440,6 +467,7 @@ class DreamLitePipeline(DiffusionPipeline, FromSingleFileMixin, TextualInversion
                 prompts=[negative_prompt, prompt_str],
                 device=device,
                 dtype=dtype,
+                max_sequence_length=max_sequence_length,
                 text_pad_embedding=text_pad_embedding,
             )
             if num_images_per_prompt > 1:
@@ -461,7 +489,7 @@ class DreamLitePipeline(DiffusionPipeline, FromSingleFileMixin, TextualInversion
             if num_images_per_prompt > 1:
                 prompt_embeds = prompt_embeds.repeat_interleave(num_images_per_prompt, dim=0)
                 text_attention_mask = text_attention_mask.repeat_interleave(num_images_per_prompt, dim=0)
-            image_processed = self.image_processor.preprocess(image.resize((width, height), Image.Resampling.LANCZOS))
+            image_processed = self.image_processor.preprocess(image, height=height, width=width)
             image_latents = self.prepare_image_latents(
                 image_processed,
                 dtype=dtype,
@@ -498,13 +526,13 @@ class DreamLitePipeline(DiffusionPipeline, FromSingleFileMixin, TextualInversion
                 noise_pred = noise_pred[..., : latents.shape[-1]]
                 if task == "generate":
                     noise_pred_uncond, noise_pred_cond = noise_pred.chunk(2)
-                    noise_pred = noise_pred_uncond + self._guidance_scale * (noise_pred_cond - noise_pred_uncond)
+                    noise_pred = noise_pred_uncond + self.guidance_scale * (noise_pred_cond - noise_pred_uncond)
                 else:  # edit
                     noise_pred_uncond, noise_pred_image, noise_pred_text = noise_pred.chunk(3)
                     noise_pred = (
                         noise_pred_uncond
-                        + self._guidance_scale * (noise_pred_text - noise_pred_image)
-                        + self._image_guidance_scale * (noise_pred_image - noise_pred_uncond)
+                        + self.guidance_scale * (noise_pred_text - noise_pred_image)
+                        + self.image_guidance_scale * (noise_pred_image - noise_pred_uncond)
                     )
 
                 # Scheduler Step
