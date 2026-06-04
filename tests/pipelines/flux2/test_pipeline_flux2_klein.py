@@ -13,10 +13,9 @@ from diffusers import (
     Flux2KleinPipeline,
     Flux2Transformer2DModel,
 )
-from diffusers.utils.import_utils import is_torch_neuronx_available
-
 from ...testing_utils import (
     backend_empty_cache,
+    backend_synchronize,
     require_torch_neuron,
     torch_device,
 )
@@ -198,13 +197,12 @@ class Flux2KleinPipelineIntegrationTests(unittest.TestCase):
     def setUp(self):
         super().setUp()
         self._saved_env = {}
-        if is_torch_neuronx_available():
-            neff_cache_dir = "/tmp/neff_cache"
-            os.makedirs(neff_cache_dir, exist_ok=True)
-            for key in ("TORCH_NEURONX_NEFF_CACHE_DIR", "TORCH_NEURONX_ENABLE_NKI_SDPA"):
-                self._saved_env[key] = os.environ.get(key)
-            os.environ["TORCH_NEURONX_NEFF_CACHE_DIR"] = neff_cache_dir
-            os.environ.setdefault("TORCH_NEURONX_ENABLE_NKI_SDPA", "0")
+        neff_cache_dir = "/tmp/neff_cache"
+        os.makedirs(neff_cache_dir, exist_ok=True)
+        for key in ("TORCH_NEURONX_NEFF_CACHE_DIR", "TORCH_NEURONX_ENABLE_NKI_SDPA"):
+            self._saved_env[key] = os.environ.get(key)
+        os.environ["TORCH_NEURONX_NEFF_CACHE_DIR"] = neff_cache_dir
+        os.environ.setdefault("TORCH_NEURONX_ENABLE_NKI_SDPA", "0")
         gc.collect()
         backend_empty_cache(torch_device)
 
@@ -223,8 +221,7 @@ class Flux2KleinPipelineIntegrationTests(unittest.TestCase):
 
         pipe = Flux2KleinPipeline.from_pretrained(self.ckpt_id, torch_dtype=torch.bfloat16)
         pipe.to(torch_device)
-        if is_torch_neuronx_available():
-            torch.neuron.synchronize()
+        backend_synchronize(torch_device)
         pipe.set_progress_bar_config(disable=None)
 
         image = pipe(
@@ -243,9 +240,8 @@ class Flux2KleinPipelineIntegrationTests(unittest.TestCase):
         expected_slice = np.array([0.3652, 0.3574, 0.3633, 0.4102, 0.4062, 0.4043, 0.4453, 0.4355, 0.4570])
         self.assertLess(np.abs(image_slice.flatten() - expected_slice).max(), 5e-2)
 
-    @unittest.skipUnless(is_torch_neuronx_available(), "torch_neuronx not available")
+    @require_torch_neuron
     def test_flux2_klein_neuron_compile_128(self):
-        import torch_neuronx  # noqa: F401 — registers torch.neuron
         from torch_neuronx.neuron_dynamo_backend import set_model_name
         from transformers.utils.output_capturing import install_all_output_capturing_hooks
 
@@ -254,7 +250,7 @@ class Flux2KleinPipelineIntegrationTests(unittest.TestCase):
 
         pipe = Flux2KleinPipeline.from_pretrained(self.ckpt_id, torch_dtype=torch.bfloat16)
         pipe = pipe.to(device)
-        torch.neuron.synchronize()
+        backend_synchronize(torch_device)
 
         pipe.transformer.eval()
         pipe.vae.eval()

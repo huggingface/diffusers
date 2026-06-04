@@ -861,9 +861,9 @@ class PixArtAlphaPipeline(DiffusionPipeline):
             prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds], dim=0)
             prompt_attention_mask = torch.cat([negative_prompt_attention_mask, prompt_attention_mask], dim=0)
 
-        # Neuron compile backend does not support int64; downcast mask to int32.
-        if prompt_attention_mask.device.type == "neuron" and prompt_attention_mask.dtype == torch.int64:
-            prompt_attention_mask = prompt_attention_mask.to(torch.int32)
+        prompt_attention_mask = prompt_attention_mask.to(
+            maybe_adjust_dtype_for_device(prompt_attention_mask.dtype, prompt_attention_mask.device)
+        )
 
         # 4. Prepare timesteps
         is_neuron_device = device.type == "neuron"

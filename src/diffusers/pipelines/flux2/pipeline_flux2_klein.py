@@ -24,7 +24,7 @@ from ...loaders import Flux2LoraLoaderMixin
 from ...models import AutoencoderKLFlux2, Flux2Transformer2DModel
 from ...schedulers import FlowMatchEulerDiscreteScheduler
 from ...utils import is_torch_xla_available, logging, replace_example_docstring
-from ...utils.torch_utils import randn_tensor
+from ...utils.torch_utils import maybe_adjust_dtype_for_device, randn_tensor
 from ..pipeline_utils import DiffusionPipeline
 from .image_processor import Flux2ImageProcessor
 from .pipeline_output import Flux2PipelineOutput
@@ -405,8 +405,9 @@ class Flux2KleinPipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
         x_list = []
         for data, pos in zip(x, x_ids):
             _, ch = data.shape  # noqa: F841
-            h_ids = pos[:, 1].to(torch.int64)
-            w_ids = pos[:, 2].to(torch.int64)
+            idx_dtype = maybe_adjust_dtype_for_device(torch.int64, data.device)
+            h_ids = pos[:, 1].to(idx_dtype)
+            w_ids = pos[:, 2].to(idx_dtype)
 
             # Use provided height/width to avoid DtoH sync from torch.max().item()
             h = height if height is not None else torch.max(h_ids) + 1
@@ -826,7 +827,8 @@ class Flux2KleinPipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
         # 7. Denoising loop
         # We set the index here to remove DtoH sync, helpful especially during compilation.
         # Check out more details here: https://github.com/huggingface/diffusers/pull/11696
-        self.scheduler.set_begin_index(0)
+        if hasattr(self.scheduler, "set_begin_index"):
+            self.scheduler.set_begin_index(0)
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
                 if self.interrupt:
@@ -902,13 +904,7 @@ class Flux2KleinPipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
         # Pass pre-computed latent height/width to avoid DtoH sync from torch.max().item()
         latent_height = 2 * (int(height) // (self.vae_scale_factor * 2))
         latent_width = 2 * (int(width) // (self.vae_scale_factor * 2))
-        latent_device = latents.device
-        if latent_device.type == "neuron":
-            latents = latents.cpu()
-            latent_ids = latent_ids.cpu()
         latents = self._unpack_latents_with_ids(latents, latent_ids, latent_height // 2, latent_width // 2)
-        if latent_device.type == "neuron":
-            latents = latents.to(latent_device)
 
         latents_bn_mean = self.vae.bn.running_mean.view(1, -1, 1, 1).to(latents.device, latents.dtype)
         latents_bn_std = torch.sqrt(self.vae.bn.running_var.view(1, -1, 1, 1) + self.vae.config.batch_norm_eps).to(
