@@ -5,8 +5,12 @@ from .cache import (
     FasterCacheTesterMixin,
     FirstBlockCacheConfigMixin,
     FirstBlockCacheTesterMixin,
+    MagCacheConfigMixin,
+    MagCacheTesterMixin,
     PyramidAttentionBroadcastConfigMixin,
     PyramidAttentionBroadcastTesterMixin,
+    TaylorSeerCacheConfigMixin,
+    TaylorSeerCacheTesterMixin,
 )
 from .common import BaseModelTesterConfig, ModelTesterMixin
 from .compile import TorchCompileTesterMixin
@@ -52,6 +56,8 @@ __all__ = [
     "FasterCacheTesterMixin",
     "FirstBlockCacheConfigMixin",
     "FirstBlockCacheTesterMixin",
+    "MagCacheConfigMixin",
+    "MagCacheTesterMixin",
     "GGUFCompileTesterMixin",
     "GGUFConfigMixin",
     "GGUFTesterMixin",
@@ -67,6 +73,8 @@ __all__ = [
     "ModelTesterMixin",
     "PyramidAttentionBroadcastConfigMixin",
     "PyramidAttentionBroadcastTesterMixin",
+    "TaylorSeerCacheConfigMixin",
+    "TaylorSeerCacheTesterMixin",
     "QuantizationCompileTesterMixin",
     "QuantizationTesterMixin",
     "QuantoCompileTesterMixin",
