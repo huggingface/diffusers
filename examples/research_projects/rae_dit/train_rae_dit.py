@@ -328,7 +328,9 @@ def resolve_pretrained_stage2_paths(
         transformer_dir = os.path.join(model_root, "transformer")
         if os.path.isdir(transformer_dir):
             scheduler_spec = (
-                (model_root, {"subfolder": "scheduler"}) if os.path.isdir(os.path.join(model_root, "scheduler")) else None
+                (model_root, {"subfolder": "scheduler"})
+                if os.path.isdir(os.path.join(model_root, "scheduler"))
+                else None
             )
             return (model_root, {"subfolder": "transformer"}), scheduler_spec, True
 
@@ -450,9 +452,7 @@ def validate_args(args):
     if args.validation_steps is not None and args.validation_steps < 1:
         raise ValueError(f"`--validation_steps` must be >= 1, but got {args.validation_steps}.")
     if args.validation_class_label is not None and args.validation_class_label < 0:
-        raise ValueError(
-            f"`--validation_class_label` must be >= 0, but got {args.validation_class_label}."
-        )
+        raise ValueError(f"`--validation_class_label` must be >= 0, but got {args.validation_class_label}.")
     if args.num_validation_images < 1:
         raise ValueError(f"`--num_validation_images` must be >= 1, but got {args.num_validation_images}.")
     if args.validation_num_inference_steps < 1:
@@ -460,9 +460,7 @@ def validate_args(args):
             f"`--validation_num_inference_steps` must be >= 1, but got {args.validation_num_inference_steps}."
         )
     if args.validation_guidance_scale < 1.0:
-        raise ValueError(
-            f"`--validation_guidance_scale` must be >= 1.0, but got {args.validation_guidance_scale}."
-        )
+        raise ValueError(f"`--validation_guidance_scale` must be >= 1.0, but got {args.validation_guidance_scale}.")
 
 
 def validate_transformer_validation_args(args, transformer: RAEDiT2DModel):

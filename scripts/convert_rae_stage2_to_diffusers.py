@@ -237,7 +237,9 @@ def translate_transformer_state_dict(state_dict: dict[str, Any]) -> dict[str, An
             new_key = key.replace(".mlp.fc2.", ".mlp.net.2.")
         elif ".attn.qkv." in key:
             if not isinstance(value, torch.Tensor) or value.shape[0] % 3 != 0:
-                raise ValueError(f"Cannot split malformed QKV tensor for `{key}` with shape {getattr(value, 'shape', None)}.")
+                raise ValueError(
+                    f"Cannot split malformed QKV tensor for `{key}` with shape {getattr(value, 'shape', None)}."
+                )
             query, key_tensor, value_tensor = value.chunk(3, dim=0)
             translated[key.replace(".attn.qkv.", ".attn.to_q.")] = query
             translated[key.replace(".attn.qkv.", ".attn.to_k.")] = key_tensor

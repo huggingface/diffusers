@@ -18,9 +18,9 @@ import math
 import os
 import sys
 import tempfile
-from unittest import mock
 from pathlib import Path
 from types import SimpleNamespace
+from unittest import mock
 
 from accelerate import Accelerator
 from accelerate.utils import set_seed
@@ -367,7 +367,9 @@ class RAEDiT(ExamplesTestsAccelerate):
 
         self.assertIs(loaded, mock.sentinel.transformer)
         self.assertFalse(expects_scheduler)
-        self.assertEqual(from_pretrained.call_args_list, [mock.call("org/repo", subfolder="transformer"), mock.call("org/repo")])
+        self.assertEqual(
+            from_pretrained.call_args_list, [mock.call("org/repo", subfolder="transformer"), mock.call("org/repo")]
+        )
 
     def test_maybe_load_pretrained_scheduler_prefers_stage2_config(self):
         args = SimpleNamespace(num_train_timesteps=999, flow_shift=2.5)
@@ -437,7 +439,9 @@ class RAEDiT(ExamplesTestsAccelerate):
     def test_maybe_load_pretrained_scheduler_rejects_remote_stage2_root_without_scheduler(self):
         args = SimpleNamespace(num_train_timesteps=999, flow_shift=2.5)
 
-        with mock.patch("train_rae_dit.FlowMatchEulerDiscreteScheduler.from_pretrained", side_effect=OSError("missing scheduler")):
+        with mock.patch(
+            "train_rae_dit.FlowMatchEulerDiscreteScheduler.from_pretrained", side_effect=OSError("missing scheduler")
+        ):
             with self.assertRaises(ValueError):
                 maybe_load_pretrained_scheduler(
                     args=args,

@@ -378,10 +378,8 @@ class RAEDiT2DModel(ModelMixin, ConfigMixin, AttentionMixin):
     r"""
     Stage-2 latent diffusion transformer used by the RAE paper.
 
-    The architecture mirrors the upstream two-stream `DiTwDDTHead` design:
-    an encoder path first builds conditioning tokens from the latent input,
-    then a decoder path denoises the latent tokens conditioned on those
-    encoded tokens.
+    The architecture mirrors the upstream two-stream `DiTwDDTHead` design: an encoder path first builds conditioning
+    tokens from the latent input, then a decoder path denoises the latent tokens conditioned on those encoded tokens.
     """
 
     _supports_gradient_checkpointing = True
@@ -547,6 +545,28 @@ class RAEDiT2DModel(ModelMixin, ConfigMixin, AttentionMixin):
         conditioning_hidden_states: torch.Tensor | None = None,
         return_dict: bool = True,
     ) -> Transformer2DModelOutput | tuple[torch.Tensor]:
+        """
+        The [`RAEDiT2DModel`] forward method.
+
+        Args:
+            hidden_states (`torch.Tensor` of shape `(batch_size, channels, height, width)`):
+                Input latent sample to denoise.
+            timestep (`torch.Tensor`, *optional*):
+                Current denoising timestep.
+            class_labels (`torch.LongTensor`, *optional*):
+                ImageNet class labels used for class conditioning.
+            conditioning_hidden_states (`torch.Tensor`, *optional*):
+                Precomputed encoder-stream conditioning tokens. If not provided, they are computed from
+                `hidden_states`.
+            return_dict (`bool`, *optional*, defaults to `True`):
+                Whether or not to return a [`~models.transformer_2d.Transformer2DModelOutput`] instead of a plain
+                tuple.
+
+        Returns:
+            [`~models.transformer_2d.Transformer2DModelOutput`] or `tuple`:
+                If `return_dict` is `True`, a [`~models.transformer_2d.Transformer2DModelOutput`] is returned,
+                otherwise a tuple with the denoised sample is returned.
+        """
         if timestep is None:
             raise ValueError("`timestep` must be provided.")
         if class_labels is None:

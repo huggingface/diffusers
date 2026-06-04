@@ -170,6 +170,11 @@ class RAEDiTPipeline(DiffusionPipeline):
                 Output format. Choose from `"pil"`, `"np"`, `"pt"`, or `"latent"`.
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether to return an [`RAEDiTPipelineOutput`] instead of a tuple.
+
+        Returns:
+            [`RAEDiTPipelineOutput`] or `tuple`:
+                If `return_dict` is `True`, [`RAEDiTPipelineOutput`] is returned, otherwise a tuple containing the
+                generated images is returned.
         """
 
         if num_images_per_prompt < 1:

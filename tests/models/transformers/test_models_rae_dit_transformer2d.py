@@ -171,7 +171,9 @@ class TestRAEDiT2DModel(RAEDiT2DTesterConfig, ModelTesterMixin):
 
         assert not attn.fused_projections
         assert not hasattr(attn, "to_qkv")
-        assert torch.allclose(output_before_fusion, attn(hidden_states, rope=model.enc_feat_rope), atol=1e-6, rtol=1e-5)
+        assert torch.allclose(
+            output_before_fusion, attn(hidden_states, rope=model.enc_feat_rope), atol=1e-6, rtol=1e-5
+        )
 
     def test_model_fuse_unfuse_qkv_projections_preserves_output(self):
         model = self.model_class(**self.get_init_dict()).to(torch_device).eval()

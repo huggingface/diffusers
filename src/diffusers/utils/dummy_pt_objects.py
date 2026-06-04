@@ -2783,6 +2783,14 @@ class RAEDiTPipelineOutput(metaclass=DummyObject):
     def __init__(self, *args, **kwargs):
         requires_backends(self, ["torch"])
 
+    @classmethod
+    def from_config(cls, *args, **kwargs):
+        requires_backends(cls, ["torch"])
+
+    @classmethod
+    def from_pretrained(cls, *args, **kwargs):
+        requires_backends(cls, ["torch"])
+
 
 class RePaintPipeline(metaclass=DummyObject):
     _backends = ["torch"]
