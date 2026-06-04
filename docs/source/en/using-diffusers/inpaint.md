@@ -142,7 +142,7 @@ make_image_grid([init_image, mask_image, image], rows=1, cols=3)
 
 ### Stable Diffusion XL (SDXL) Inpainting
 
-SDXL is a larger and more powerful version of Stable Diffusion v1.5. This model can follow a two-stage model process (though each model can also be used alone); the base model generates an image, and a refiner model takes that image and further enhances its details and quality. Take a look at the [SDXL](sdxl) guide for a more comprehensive guide on how to use SDXL and configure it's parameters.
+SDXL is a larger and more powerful version of Stable Diffusion v1.5. This model can follow a two-stage model process (though each model can also be used alone); the base model generates an image, and a refiner model takes that image and further enhances its details and quality. Take a look at the [SDXL](../api/pipelines/stable_diffusion/stable_diffusion_xl) guide for a more comprehensive guide on how to use SDXL and configure it's parameters.
 
 ```py
 import torch

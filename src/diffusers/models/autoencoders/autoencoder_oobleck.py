@@ -528,6 +528,14 @@ class AutoencoderOobleck(ModelMixin, AutoencoderMixin, ConfigMixin):
                 Whether to sample from the posterior.
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`OobleckDecoderOutput`] instead of a plain tuple.
+            generator (`torch.Generator`, *optional*):
+                A [`torch.Generator`](https://pytorch.org/docs/stable/generated/torch.Generator.html) to make sampling
+                deterministic.
+
+        Returns:
+            [`~models.vae.OobleckDecoderOutput`] or `tuple`:
+                If `return_dict` is True, a [`~models.vae.OobleckDecoderOutput`] is returned, otherwise a plain `tuple`
+                is returned.
         """
         x = sample
         posterior = self.encode(x).latent_dist

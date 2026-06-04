@@ -362,7 +362,7 @@ _HUB_KERNELS_REGISTRY: dict["AttentionBackendName", _HubKernelConfig] = {
         version=1,
     ),
     AttentionBackendName.FLASH_4_HUB: _HubKernelConfig(
-        repo_id="kernels-staging/flash-attn4",
+        repo_id="kernels-community/flash-attn4",
         function_attr="flash_attn_func",
         version=0,
     ),
