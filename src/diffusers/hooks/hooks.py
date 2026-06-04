@@ -271,12 +271,31 @@ class HookRegistry:
             if hook._is_stateful:
                 hook._set_context(self._module_ref, name)
 
+        for registry in self._get_child_registries():
+            registry._set_context(name)
+
+    def _get_child_registries(self) -> list["HookRegistry"]:
+        """Return registries of child modules, using a cached list when available.
+
+        The cache is built on first call and reused for subsequent calls. This avoids the cost of walking the full
+        module tree via named_modules() on every _set_context call, which is significant for large models (e.g. ~2.7ms
+        per call on Flux2).
+        """
+        if not hasattr(self, "_child_registries_cache"):
+            self._child_registries_cache = None
+
+        if self._child_registries_cache is not None:
+            return self._child_registries_cache
+
+        registries = []
         for module_name, module in unwrap_module(self._module_ref).named_modules():
             if module_name == "":
                 continue
             module = unwrap_module(module)
             if hasattr(module, "_diffusers_hook"):
-                module._diffusers_hook._set_context(name)
+                registries.append(module._diffusers_hook)
+        self._child_registries_cache = registries
+        return registries
 
     def __repr__(self) -> str:
         registry_repr = ""

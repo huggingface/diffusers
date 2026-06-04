@@ -91,6 +91,7 @@ class AutoencoderKLFlux2(
             512,
             512,
         ),
+        decoder_block_out_channels: tuple[int, ...] | None = None,
         layers_per_block: int = 2,
         act_fn: str = "silu",
         latent_channels: int = 32,
@@ -124,7 +125,7 @@ class AutoencoderKLFlux2(
             in_channels=latent_channels,
             out_channels=out_channels,
             up_block_types=up_block_types,
-            block_out_channels=block_out_channels,
+            block_out_channels=decoder_block_out_channels or block_out_channels,
             layers_per_block=layers_per_block,
             norm_num_groups=norm_num_groups,
             act_fn=act_fn,
@@ -440,6 +441,14 @@ class AutoencoderKLFlux2(
                 Whether to sample from the posterior.
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`DecoderOutput`] instead of a plain tuple.
+            generator (`torch.Generator`, *optional*):
+                A [`torch.Generator`](https://pytorch.org/docs/stable/generated/torch.Generator.html) to make sampling
+                deterministic.
+
+        Returns:
+            [`~models.vae.DecoderOutput`] or `tuple`:
+                If `return_dict` is True, a [`~models.vae.DecoderOutput`] is returned, otherwise a plain `tuple` is
+                returned.
         """
         x = sample
         posterior = self.encode(x).latent_dist

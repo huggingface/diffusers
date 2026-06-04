@@ -312,6 +312,30 @@ class AllegroTransformer3DModel(ModelMixin, ConfigMixin, CacheMixin):
         image_rotary_emb: tuple[torch.Tensor, torch.Tensor] | None = None,
         return_dict: bool = True,
     ):
+        """
+        The [`AllegroTransformer3DModel`] forward method.
+
+        Args:
+            hidden_states (`torch.Tensor` of shape `(batch_size, num_channels, num_frames, height, width)`):
+                Input `hidden_states`.
+            encoder_hidden_states (`torch.Tensor` of shape `(batch_size, sequence_len, embed_dims)`):
+                Conditional embeddings (embeddings computed from the input conditions such as prompts) to use.
+            timestep (`torch.LongTensor`):
+                Used to indicate denoising step.
+            attention_mask (`torch.Tensor`, *optional*):
+                Self-attention mask applied to `hidden_states`.
+            encoder_attention_mask (`torch.Tensor`, *optional*):
+                Cross-attention mask applied to `encoder_hidden_states`.
+            image_rotary_emb (`tuple` of `torch.Tensor`, *optional*):
+                Pre-computed rotary positional embeddings.
+            return_dict (`bool`, *optional*, defaults to `True`):
+                Whether or not to return a [`~models.transformer_2d.Transformer2DModelOutput`] instead of a plain
+                tuple.
+
+        Returns:
+            If `return_dict` is True, an [`~models.transformer_2d.Transformer2DModelOutput`] is returned, otherwise a
+            `tuple` where the first element is the sample tensor.
+        """
         batch_size, num_channels, num_frames, height, width = hidden_states.shape
         p_t = self.config.patch_size_t
         p = self.config.patch_size

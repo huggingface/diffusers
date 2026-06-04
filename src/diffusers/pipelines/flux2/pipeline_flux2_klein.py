@@ -396,8 +396,9 @@ class Flux2KleinPipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
         return latents
 
     @staticmethod
-    # Copied from diffusers.pipelines.flux2.pipeline_flux2.Flux2Pipeline._unpack_latents_with_ids
-    def _unpack_latents_with_ids(x: torch.Tensor, x_ids: torch.Tensor) -> list[torch.Tensor]:
+    def _unpack_latents_with_ids(
+        x: torch.Tensor, x_ids: torch.Tensor, height: int | None = None, width: int | None = None
+    ) -> list[torch.Tensor]:
         """
         using position ids to scatter tokens into place
         """
@@ -407,8 +408,9 @@ class Flux2KleinPipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
             h_ids = pos[:, 1].to(torch.int64)
             w_ids = pos[:, 2].to(torch.int64)
 
-            h = torch.max(h_ids) + 1
-            w = torch.max(w_ids) + 1
+            # Use provided height/width to avoid DtoH sync from torch.max().item()
+            h = height if height is not None else torch.max(h_ids) + 1
+            w = width if width is not None else torch.max(w_ids) + 1
 
             flat_ids = h_ids * w + w_ids
 
@@ -465,7 +467,9 @@ class Flux2KleinPipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
         image_latents = self._patchify_latents(image_latents)
 
         latents_bn_mean = self.vae.bn.running_mean.view(1, -1, 1, 1).to(image_latents.device, image_latents.dtype)
-        latents_bn_std = torch.sqrt(self.vae.bn.running_var.view(1, -1, 1, 1) + self.vae.config.batch_norm_eps)
+        latents_bn_std = torch.sqrt(self.vae.bn.running_var.view(1, -1, 1, 1) + self.vae.config.batch_norm_eps).to(
+            image_latents.device, image_latents.dtype
+        )
         image_latents = (image_latents - latents_bn_mean) / latents_bn_std
 
         return image_latents
@@ -895,7 +899,10 @@ class Flux2KleinPipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
 
         self._current_timestep = None
 
-        latents = self._unpack_latents_with_ids(latents, latent_ids)
+        # Pass pre-computed latent height/width to avoid DtoH sync from torch.max().item()
+        latent_height = 2 * (int(height) // (self.vae_scale_factor * 2))
+        latent_width = 2 * (int(width) // (self.vae_scale_factor * 2))
+        latents = self._unpack_latents_with_ids(latents, latent_ids, latent_height // 2, latent_width // 2)
 
         latents_bn_mean = self.vae.bn.running_mean.view(1, -1, 1, 1).to(latents.device, latents.dtype)
         latents_bn_std = torch.sqrt(self.vae.bn.running_var.view(1, -1, 1, 1) + self.vae.config.batch_norm_eps).to(

@@ -173,7 +173,7 @@ class StableDiffusion3ControlNetPipelineFastTests(unittest.TestCase, PipelineTes
             (1, 3, 32, 32),
             generator=generator,
             device=torch.device(device),
-            dtype=torch.float16,
+            dtype=torch.float32,
         )
 
         controlnet_conditioning_scale = 0.5
@@ -192,7 +192,7 @@ class StableDiffusion3ControlNetPipelineFastTests(unittest.TestCase, PipelineTes
 
     def run_pipe(self, components, use_sd35=False):
         sd_pipe = StableDiffusion3ControlNetPipeline(**components)
-        sd_pipe = sd_pipe.to(torch_device, dtype=torch.float16)
+        sd_pipe = sd_pipe.to(torch_device, dtype=torch.float32)
         sd_pipe.set_progress_bar_config(disable=None)
 
         inputs = self.get_dummy_inputs(torch_device)
@@ -204,9 +204,9 @@ class StableDiffusion3ControlNetPipelineFastTests(unittest.TestCase, PipelineTes
         assert image.shape == (1, 32, 32, 3)
 
         if not use_sd35:
-            expected_slice = np.array([0.5767, 0.7100, 0.5981, 0.5674, 0.5952, 0.4102, 0.5093, 0.5044, 0.6030])
+            expected_slice = np.array([0.4578, 0.3582, 0.4046, 0.0953, 0.6878, 0.5821, 0.5541, 0.5888, 0.4651])
         else:
-            expected_slice = np.array([1.0000, 0.9072, 0.4209, 0.2744, 0.5737, 0.3840, 0.6113, 0.6250, 0.6328])
+            expected_slice = np.array([0.3721, 0.5626, 0.4657, 0.2845, 0.5241, 0.5917, 0.6265, 0.6955, 0.3969])
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2, (
             f"Expected: {expected_slice}, got: {image_slice.flatten()}"

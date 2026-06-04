@@ -118,8 +118,6 @@ pipe.transformer.enable_cache(config)
 
 MagCache relies on **Magnitude Ratios** (`mag_ratios`), which describe this decay curve. These ratios are specific to the model checkpoint and scheduler.
 
-### Usage
-
 To use MagCache, you typically follow a two-step process: **Calibration** and **Inference**.
 
 1.  **Calibration**: Run inference once with `calibrate=True`. The hook will measure the residual magnitudes and print the calculated ratios to the console.

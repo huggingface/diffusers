@@ -568,6 +568,9 @@ class HeliosPyramidPipeline(DiffusionPipeline, HeliosLoraLoaderMixin):
                 The width in pixels of the generated image.
             num_frames (`int`, defaults to `132`):
                 The number of frames in the generated video.
+            sigmas (`list[float]`, *optional*):
+                Custom sigmas to use for the denoising process. If not defined, the scheduler's default schedule is
+                used.
             guidance_scale (`float`, defaults to `5.0`):
                 Guidance scale as defined in [Classifier-Free Diffusion
                 Guidance](https://huggingface.co/papers/2207.12598). `guidance_scale` is defined as `w` of equation 2.
@@ -586,6 +589,8 @@ class HeliosPyramidPipeline(DiffusionPipeline, HeliosLoraLoaderMixin):
             prompt_embeds (`torch.Tensor`, *optional*):
                 Pre-generated text embeddings. Can be used to easily tweak text inputs (prompt weighting). If not
                 provided, text embeddings are generated from the `prompt` input argument.
+            negative_prompt_embeds (`torch.Tensor`, *optional*):
+                Pre-generated negative text embeddings. If not provided, they are generated from `negative_prompt`.
             output_type (`str`, *optional*, defaults to `"np"`):
                 The output format of the generated image. Choose between `PIL.Image` or `np.array`.
             return_dict (`bool`, *optional*, defaults to `True`):
@@ -606,6 +611,44 @@ class HeliosPyramidPipeline(DiffusionPipeline, HeliosLoraLoaderMixin):
             max_sequence_length (`int`, defaults to `512`):
                 The maximum sequence length of the text encoder. If the prompt is longer than this, it will be
                 truncated. If the prompt is shorter, it will be padded to this length.
+            image (`PipelineImageInput`, *optional*):
+                Input image used for image-to-video conditioning.
+            image_latents (`torch.Tensor`, *optional*):
+                Pre-encoded image latents to use instead of `image`.
+            fake_image_latents (`torch.Tensor`, *optional*):
+                Optional fake image latents used during conditioning.
+            add_noise_to_image_latents (`bool`, *optional*, defaults to `True`):
+                Whether to add noise to the image latents prior to denoising.
+            image_noise_sigma_min (`float`, *optional*, defaults to `0.111`):
+                Minimum sigma value for noise added to image latents.
+            image_noise_sigma_max (`float`, *optional*, defaults to `0.135`):
+                Maximum sigma value for noise added to image latents.
+            video (`PipelineImageInput`, *optional*):
+                Input video used for video-to-video conditioning.
+            video_latents (`torch.Tensor`, *optional*):
+                Pre-encoded video latents to use instead of `video`.
+            add_noise_to_video_latents (`bool`, *optional*, defaults to `True`):
+                Whether to add noise to the video latents prior to denoising.
+            video_noise_sigma_min (`float`, *optional*, defaults to `0.111`):
+                Minimum sigma value for noise added to video latents.
+            video_noise_sigma_max (`float`, *optional*, defaults to `0.135`):
+                Maximum sigma value for noise added to video latents.
+            history_sizes (`list`, *optional*, defaults to `[16, 2, 1]`):
+                History window sizes used for autoregressive chunked generation.
+            num_latent_frames_per_chunk (`int`, *optional*, defaults to `9`):
+                Number of latent frames produced per chunk during autoregressive generation.
+            keep_first_frame (`bool`, *optional*, defaults to `True`):
+                Whether to retain the first frame across chunks.
+            is_skip_first_chunk (`bool`, *optional*, defaults to `False`):
+                Whether to skip generation of the first chunk.
+            pyramid_num_inference_steps_list (`list`, *optional*, defaults to `[10, 10, 10]`):
+                Number of inference steps for each pyramid stage during Stage 2 generation.
+            use_zero_init (`bool`, *optional*, defaults to `True`):
+                Whether to apply CFG zero-init at the start of denoising.
+            zero_steps (`int`, *optional*, defaults to `1`):
+                Number of initial steps that use CFG zero-init.
+            is_amplify_first_chunk (`bool`, *optional*, defaults to `False`):
+                Whether to amplify guidance on the first chunk (DMD-related).
 
         Examples:
 
