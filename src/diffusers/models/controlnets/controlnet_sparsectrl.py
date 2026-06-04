@@ -22,6 +22,7 @@ from torch.nn import functional as F
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...loaders import FromOriginalModelMixin
 from ...utils import BaseOutput, logging
+from ...utils.torch_utils import maybe_adjust_dtype_for_device
 from ..attention import AttentionMixin
 from ..attention_processor import (
     ADDED_KV_ATTENTION_PROCESSORS,
@@ -558,8 +559,6 @@ class SparseControlNetModel(ModelMixin, AttentionMixin, ConfigMixin, FromOrigina
                 The conditional input tensor of shape `(batch_size, sequence_length, hidden_size)`.
             conditioning_scale (`float`, defaults to `1.0`):
                 The scale factor for ControlNet outputs.
-            class_labels (`torch.Tensor`, *optional*, defaults to `None`):
-                Optional class labels for conditioning. Their embeddings will be summed with the timestep embeddings.
             timestep_cond (`torch.Tensor`, *optional*, defaults to `None`):
                 Additional conditional embeddings for timestep. If provided, the embeddings will be summed with the
                 timestep_embedding passed through the `self.time_embedding` layer to obtain the final timestep
@@ -568,8 +567,8 @@ class SparseControlNetModel(ModelMixin, AttentionMixin, ConfigMixin, FromOrigina
                 An attention mask of shape `(batch, key_tokens)` is applied to `encoder_hidden_states`. If `1` the mask
                 is kept, otherwise if `0` it is discarded. Mask will be converted into a bias, which adds large
                 negative values to the attention scores corresponding to "discard" tokens.
-            added_cond_kwargs (`dict`):
-                Additional conditions for the Stable Diffusion XL UNet.
+            conditioning_mask (`torch.Tensor`, *optional*, defaults to `None`):
+                Optional mask indicating which frames in `controlnet_cond` are valid conditioning frames.
             cross_attention_kwargs (`dict[str]`, *optional*, defaults to `None`):
                 A kwargs dictionary that if specified is passed along to the `AttnProcessor`.
             guess_mode (`bool`, defaults to `False`):
@@ -606,12 +605,9 @@ class SparseControlNetModel(ModelMixin, AttentionMixin, ConfigMixin, FromOrigina
         if not torch.is_tensor(timesteps):
             # TODO: this requires sync between CPU and GPU. So try to pass timesteps as tensors if you can
             # This would be a good case for the `match` statement (Python 3.10+)
-            is_mps = sample.device.type == "mps"
-            is_npu = sample.device.type == "npu"
-            if isinstance(timestep, float):
-                dtype = torch.float32 if (is_mps or is_npu) else torch.float64
-            else:
-                dtype = torch.int32 if (is_mps or is_npu) else torch.int64
+            dtype = maybe_adjust_dtype_for_device(
+                torch.float64 if isinstance(timestep, float) else torch.int64, sample.device
+            )
             timesteps = torch.tensor([timesteps], dtype=dtype, device=sample.device)
         elif len(timesteps.shape) == 0:
             timesteps = timesteps[None].to(sample.device)

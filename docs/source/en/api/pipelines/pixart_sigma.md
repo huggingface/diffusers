@@ -35,7 +35,7 @@ Some notes about this pipeline:
 > Make sure to check out the Schedulers [guide](../../using-diffusers/schedulers) to learn how to explore the tradeoff between scheduler speed and quality, and see the [reuse components across pipelines](../../using-diffusers/loading#reuse-a-pipeline) section to learn how to efficiently load the same components into multiple pipelines.
 
 > [!TIP]
-> You can further improve generation quality by passing the generated image from [`PixArtSigmaPipeline`] to the [SDXL refiner](../../using-diffusers/sdxl#base-to-refiner-model) model.
+> You can further improve generation quality by passing the generated image from [`PixArtSigmaPipeline`] to the [SDXL refiner](./stable_diffusion/stable_diffusion_xl#base-to-refiner-model) model.
 
 ## Inference with under 8GB GPU VRAM
 

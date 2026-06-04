@@ -545,6 +545,8 @@ class SkyReelsV2ImageToVideoPipeline(DiffusionPipeline, SkyReelsV2LoraLoaderMixi
             image_embeds (`torch.Tensor`, *optional*):
                 Pre-generated image embeddings. Can be used to easily tweak image inputs (weighting). If not provided,
                 image embeddings are generated from the `image` input argument.
+            last_image (`torch.Tensor`, *optional*):
+                Optional last image for image-to-video conditioning that anchors the end of the generated video.
             output_type (`str`, *optional*, defaults to `"np"`):
                 The output format of the generated image. Choose between `PIL.Image` or `np.array`.
             return_dict (`bool`, *optional*, defaults to `True`):

@@ -1,0 +1,97 @@
+# https://github.com/actions/labeler
+pipelines:
+    - changed-files:
+        - any-glob-to-any-file:
+            - src/diffusers/pipelines/**
+
+models:
+    - changed-files:
+        - any-glob-to-any-file:
+            - src/diffusers/models/**
+
+schedulers:
+    - changed-files:
+        - any-glob-to-any-file:
+            - src/diffusers/schedulers/**
+
+single-file:
+    - changed-files:
+        - any-glob-to-any-file:
+            - src/diffusers/loaders/single_file.py
+            - src/diffusers/loaders/single_file_model.py
+            - src/diffusers/loaders/single_file_utils.py
+
+ip-adapter:
+    - changed-files:
+        - any-glob-to-any-file:
+            - src/diffusers/loaders/ip_adapter.py
+
+lora:
+    - changed-files:
+        - any-glob-to-any-file:
+            - src/diffusers/loaders/lora_base.py
+            - src/diffusers/loaders/lora_conversion_utils.py
+            - src/diffusers/loaders/lora_pipeline.py
+            - src/diffusers/loaders/peft.py
+
+loaders:
+    - changed-files:
+        - any-glob-to-any-file:
+            - src/diffusers/loaders/textual_inversion.py
+            - src/diffusers/loaders/transformer_flux.py
+            - src/diffusers/loaders/transformer_sd3.py
+            - src/diffusers/loaders/unet.py
+            - src/diffusers/loaders/unet_loader_utils.py
+            - src/diffusers/loaders/utils.py
+            - src/diffusers/loaders/__init__.py
+
+quantization:
+    - changed-files:
+        - any-glob-to-any-file:
+            - src/diffusers/quantizers/**
+
+hooks:
+    - changed-files:
+        - any-glob-to-any-file:
+            - src/diffusers/hooks/**
+
+guiders:
+    - changed-files:
+        - any-glob-to-any-file:
+            - src/diffusers/guiders/**
+
+modular-pipelines:
+    - changed-files:
+        - any-glob-to-any-file:
+            - src/diffusers/modular_pipelines/**
+
+experimental:
+    - changed-files:
+        - any-glob-to-any-file:
+            - src/diffusers/experimental/**
+
+documentation:
+    - changed-files:
+        - any-glob-to-any-file:
+            - docs/**
+
+tests:
+    - changed-files:
+        - any-glob-to-any-file:
+            - tests/**
+
+examples:
+    - changed-files:
+        - any-glob-to-any-file:
+            - examples/**
+
+CI:
+    - changed-files:
+        - any-glob-to-any-file:
+            - .github/**
+
+utils:
+    - changed-files:
+        - any-glob-to-any-file:
+            - src/diffusers/utils/**
+            - src/diffusers/commands/**
