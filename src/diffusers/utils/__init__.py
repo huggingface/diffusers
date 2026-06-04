@@ -24,6 +24,8 @@ from .constants import (
     DEPRECATED_REVISION_ARGS,
     DIFFUSERS_DYNAMIC_MODULE_NAME,
     DIFFUSERS_LOAD_ID_FIELDS,
+    FLASHPACK_FILE_EXTENSION,
+    FLASHPACK_WEIGHTS_NAME,
     FLAX_WEIGHTS_NAME,
     GGUF_FILE_EXTENSION,
     HF_ENABLE_PARALLEL_LOADING,
@@ -42,7 +44,7 @@ from .constants import (
 from .deprecation_utils import _maybe_remap_transformers_class, deprecate
 from .doc_utils import replace_example_docstring
 from .dynamic_modules_utils import get_class_from_dynamic_module
-from .export_utils import export_to_gif, export_to_obj, export_to_ply, export_to_video
+from .export_utils import encode_video, export_to_gif, export_to_obj, export_to_ply, export_to_video
 from .hub_utils import (
     PushToHubMixin,
     _add_variant,
@@ -76,6 +78,7 @@ from .import_utils import (
     is_flash_attn_3_available,
     is_flash_attn_available,
     is_flash_attn_version,
+    is_flashpack_available,
     is_flax_available,
     is_ftfy_available,
     is_gguf_available,
@@ -98,6 +101,7 @@ from .import_utils import (
     is_opencv_available,
     is_optimum_quanto_available,
     is_optimum_quanto_version,
+    is_outlines_available,
     is_peft_available,
     is_peft_version,
     is_pytorch_retinaface_available,
@@ -110,6 +114,7 @@ from .import_utils import (
     is_timm_available,
     is_torch_available,
     is_torch_mlu_available,
+    is_torch_neuronx_available,
     is_torch_npu_available,
     is_torch_version,
     is_torch_xla_available,
@@ -119,6 +124,7 @@ from .import_utils import (
     is_torchsde_available,
     is_torchvision_available,
     is_transformers_available,
+    is_transformers_flax_compatible,
     is_transformers_version,
     is_unidecode_available,
     is_wandb_available,

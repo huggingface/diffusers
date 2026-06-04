@@ -13,16 +13,14 @@
 # limitations under the License.
 
 import inspect
-import unittest
 from importlib import import_module
 
+import pytest
 
-class DependencyTester(unittest.TestCase):
+
+class TestDependencies:
     def test_diffusers_import(self):
-        try:
-            import diffusers  # noqa: F401
-        except ImportError:
-            assert False
+        import diffusers  # noqa: F401
 
     def test_backend_registration(self):
         import diffusers
@@ -52,3 +50,36 @@ class DependencyTester(unittest.TestCase):
             if hasattr(diffusers.pipelines, cls_name):
                 pipeline_folder_module = ".".join(str(cls_module.__module__).split(".")[:3])
                 _ = import_module(pipeline_folder_module, str(cls_name))
+
+    def test_pipeline_module_imports(self):
+        """Import every pipeline submodule whose dependencies are satisfied,
+        to catch unguarded optional-dep imports (e.g., torchvision).
+
+        Uses inspect.getmembers to discover classes that the lazy loader can
+        actually resolve (same self-filtering as test_pipeline_imports), then
+        imports the full module path instead of truncating to the folder level.
+        """
+        import diffusers
+        import diffusers.pipelines
+
+        failures = []
+        all_classes = inspect.getmembers(diffusers, inspect.isclass)
+
+        for cls_name, cls_module in all_classes:
+            if not hasattr(diffusers.pipelines, cls_name):
+                continue
+            if "dummy_" in cls_module.__module__:
+                continue
+
+            full_module_path = cls_module.__module__
+            try:
+                import_module(full_module_path)
+            except ImportError as e:
+                failures.append(f"{full_module_path}: {e}")
+            except Exception:
+                # Non-import errors (e.g., missing config) are fine; we only
+                # care about unguarded import statements.
+                pass
+
+        if failures:
+            pytest.fail("Unguarded optional-dependency imports found:\n" + "\n".join(failures))
