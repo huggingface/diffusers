@@ -569,6 +569,7 @@ class Ideogram4Pipeline(DiffusionPipeline):
                 height=height,
                 width=width,
                 temperature=prompt_upsampling_temperature,
+                max_new_tokens=max_sequence_length,
                 generator=generator,
                 device=device,
             )
