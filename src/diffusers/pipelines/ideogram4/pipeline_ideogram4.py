@@ -35,7 +35,9 @@ from ..pipeline_utils import DiffusionPipeline
 from .pipeline_output import Ideogram4PipelineOutput
 from .prompt_enhancer import (
     PROMPT_UPSAMPLE_TEMPERATURE,
+    Ideogram4PromptEnhancerHead,
     build_caption_logits_processor,
+    build_prompt_enhancer,
     generate_captions,
 )
 
@@ -161,7 +163,7 @@ class Ideogram4Pipeline(DiffusionPipeline):
     """
 
     model_cpu_offload_seq = "text_encoder->transformer->unconditional_transformer->vae"
-    _optional_components = []
+    _optional_components = ["prompt_enhancer_head"]
     _callback_tensor_inputs = ["latents"]
 
     def __init__(
@@ -172,6 +174,7 @@ class Ideogram4Pipeline(DiffusionPipeline):
         tokenizer: AutoTokenizer,
         transformer: Ideogram4Transformer2DModel,
         unconditional_transformer: Ideogram4Transformer2DModel,
+        prompt_enhancer_head: Ideogram4PromptEnhancerHead | None = None,
     ) -> None:
         super().__init__()
 
@@ -182,6 +185,7 @@ class Ideogram4Pipeline(DiffusionPipeline):
             tokenizer=tokenizer,
             transformer=transformer,
             unconditional_transformer=unconditional_transformer,
+            prompt_enhancer_head=prompt_enhancer_head,
         )
 
         self.vae_scale_factor = (
@@ -191,6 +195,8 @@ class Ideogram4Pipeline(DiffusionPipeline):
         self.patch_size = 2
         self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor * self.patch_size)
 
+        # Built lazily on first upsample: the head-less encoder body + `prompt_enhancer_head`, combined.
+        self._prompt_enhancer = None
         # Outlines logits processor for schema-constrained captions; built lazily on first upsample.
         self._caption_logits_processor = None
 
@@ -206,22 +212,22 @@ class Ideogram4Pipeline(DiffusionPipeline):
     ) -> list[str]:
         """Rewrite each prompt into Ideogram4's native structured JSON caption.
 
-        Requires a generative `text_encoder` — a `Qwen3VLForConditionalGeneration`, which carries the LM head. The
-        default head-less `Qwen3VLModel` encoder cannot generate; see the error below for how to load one. Generation
-        is schema-constrained when `outlines` is installed, otherwise it runs unconstrained. Pass `generator` (the same
-        one accepted by `__call__`) to make sampling reproducible.
+        Requires the optional `prompt_enhancer_head` component, which is grafted onto the shared `text_encoder` body to
+        make it generative. Generation is schema-constrained when `outlines` is installed, otherwise it runs
+        unconstrained. Pass `generator` (the same one accepted by `__call__`) to make sampling reproducible.
         """
-        if not self.text_encoder.can_generate():
+        if self.prompt_enhancer_head is None:
             raise ValueError(
-                "Prompt upsampling requires a generative `text_encoder`, but the loaded one has no LM head and "
-                "cannot generate. Load the text encoder as `Qwen3VLForConditionalGeneration` (which includes the "
-                "head) and pass it in, e.g.:\n"
-                "    from transformers import Qwen3VLForConditionalGeneration\n"
-                "    text_encoder = Qwen3VLForConditionalGeneration.from_pretrained(model_id, subfolder='text_encoder')\n"
-                "    pipe = Ideogram4Pipeline.from_pretrained(model_id, text_encoder=text_encoder)"
+                "Prompt upsampling requires the `prompt_enhancer_head` component, which is not loaded. Load it and "
+                "pass it in, e.g.:\n"
+                "    from diffusers import Ideogram4PromptEnhancerHead\n"
+                "    head = Ideogram4PromptEnhancerHead.from_pretrained('diffusers/qwen3-vl-8b-instruct-lm-head')\n"
+                "    pipe = Ideogram4Pipeline.from_pretrained(model_id, prompt_enhancer_head=head)"
             )
+        if self._prompt_enhancer is None:
+            self._prompt_enhancer = build_prompt_enhancer(self.text_encoder, self.prompt_enhancer_head)
         if self._caption_logits_processor is None and is_outlines_available():
-            self._caption_logits_processor = build_caption_logits_processor(self.text_encoder, self.tokenizer)
+            self._caption_logits_processor = build_caption_logits_processor(self._prompt_enhancer, self.tokenizer)
         if self._caption_logits_processor is None:
             logger.warning_once(
                 "`outlines` is not installed; prompt upsampling runs unconstrained and may not return schema-valid "
@@ -229,7 +235,7 @@ class Ideogram4Pipeline(DiffusionPipeline):
             )
 
         return generate_captions(
-            self.text_encoder,
+            self._prompt_enhancer,
             self.tokenizer,
             self._caption_logits_processor,
             prompt,
@@ -292,11 +298,7 @@ class Ideogram4Pipeline(DiffusionPipeline):
     ) -> list[torch.Tensor]:
         """Run the text encoder's decoder layers, returning the hidden states tapped at each activation layer."""
 
-        language_model = (
-            text_encoder.language_model
-            if hasattr(text_encoder, "language_model")
-            else text_encoder.model.language_model
-        )
+        language_model = text_encoder.language_model
 
         inputs_embeds = language_model.embed_tokens(token_ids)
 
@@ -514,9 +516,9 @@ class Ideogram4Pipeline(DiffusionPipeline):
                 Standard deviation of the logit-normal flow-matching schedule.
             prompt_upsampling (`bool`, *optional*, defaults to `False`):
                 If `True`, rewrite `prompt` into Ideogram4's native structured JSON caption via
-                [`~Ideogram4Pipeline.upsample_prompt`] before encoding. Requires a generative `text_encoder` (a
-                `Qwen3VLForConditionalGeneration`, which carries the LM head); install `outlines` for
-                schema-constrained captions. `generator` is reused to make the upsampling reproducible.
+                [`~Ideogram4Pipeline.upsample_prompt`] before encoding. Requires the optional `prompt_enhancer_head`
+                component; install `outlines` for schema-constrained captions. `generator` is reused to make the
+                upsampling reproducible.
             prompt_upsampling_temperature (`float`, *optional*, defaults to 1.0):
                 Sampling temperature for prompt upsampling when `prompt_upsampling=True`.
             max_sequence_length (`int`, *optional*, defaults to 2048):

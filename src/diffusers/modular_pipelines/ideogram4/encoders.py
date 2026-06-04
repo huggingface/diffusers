@@ -19,7 +19,9 @@ from transformers.masking_utils import create_causal_mask
 
 from ...pipelines.ideogram4.prompt_enhancer import (
     PROMPT_UPSAMPLE_TEMPERATURE,
+    Ideogram4PromptEnhancerHead,
     build_caption_logits_processor,
+    build_prompt_enhancer,
     generate_captions,
 )
 from ...utils import is_outlines_available, logging
@@ -40,13 +42,14 @@ QWEN3_VL_ACTIVATION_LAYERS = (0, 3, 6, 9, 12, 15, 18, 21, 24, 27, 30, 33, 35)
 class Ideogram4PromptUpsampleStep(ModularPipelineBlocks):
     """
     Optional step that rewrites the prompt(s) into Ideogram4's native structured JSON caption (the format the model is
-    trained on) when ``prompt_upsampling=True``. Requires a generative ``text_encoder`` (a
-    ``Qwen3VLForConditionalGeneration``, which carries the LM head); install ``outlines`` for schema-constrained
+    trained on) when ``prompt_upsampling=True``. Requires the optional ``prompt_enhancer_head`` component, which is
+    grafted onto the shared ``text_encoder`` body to make it generative; install ``outlines`` for schema-constrained
     captions.
 
       Components:
           text_encoder (`Qwen3VLModel`): The Qwen3-VL text encoder. tokenizer (`Qwen2Tokenizer`): The tokenizer paired
-          with the text encoder.
+          with the text encoder. prompt_enhancer_head (`Ideogram4PromptEnhancerHead`): The LM head grafted onto the
+          text encoder for upsampling.
 
       Inputs:
           prompt (`str`):
@@ -70,6 +73,8 @@ class Ideogram4PromptUpsampleStep(ModularPipelineBlocks):
     model_name = "ideogram4"
 
     def __init__(self):
+        # Built lazily on first upsample: the head-less encoder body + `prompt_enhancer_head`, combined.
+        self._prompt_enhancer = None
         # Outlines logits processor for schema-constrained captions; built lazily on first upsample.
         self._caption_logits_processor = None
         super().__init__()
@@ -87,6 +92,11 @@ class Ideogram4PromptUpsampleStep(ModularPipelineBlocks):
         return [
             ComponentSpec("text_encoder", Qwen3VLModel, description="The Qwen3-VL text encoder."),
             ComponentSpec("tokenizer", Qwen2Tokenizer, description="The tokenizer paired with the text encoder."),
+            ComponentSpec(
+                "prompt_enhancer_head",
+                Ideogram4PromptEnhancerHead,
+                description="LM head grafted onto the text encoder for prompt upsampling.",
+            ),
         ]
 
     @property
@@ -125,15 +135,17 @@ class Ideogram4PromptUpsampleStep(ModularPipelineBlocks):
         block_state = self.get_block_state(state)
 
         if block_state.prompt_upsampling:
-            text_encoder = components.text_encoder
-            if not text_encoder.can_generate():
+            if components.prompt_enhancer_head is None:
                 raise ValueError(
-                    "Prompt upsampling requires a generative `text_encoder`, but the loaded one has no LM head "
-                    "and cannot generate. Load the text encoder as `Qwen3VLForConditionalGeneration`, which "
-                    "carries the LM head."
+                    "Prompt upsampling requires the `prompt_enhancer_head` component, which is not loaded. Load an "
+                    "`Ideogram4PromptEnhancerHead` and add it to the pipeline."
                 )
+            if self._prompt_enhancer is None:
+                self._prompt_enhancer = build_prompt_enhancer(components.text_encoder, components.prompt_enhancer_head)
             if self._caption_logits_processor is None and is_outlines_available():
-                self._caption_logits_processor = build_caption_logits_processor(text_encoder, components.tokenizer)
+                self._caption_logits_processor = build_caption_logits_processor(
+                    self._prompt_enhancer, components.tokenizer
+                )
             if self._caption_logits_processor is None:
                 logger.warning_once(
                     "`outlines` is not installed; prompt upsampling runs unconstrained and may not return "
@@ -142,7 +154,7 @@ class Ideogram4PromptUpsampleStep(ModularPipelineBlocks):
             height = block_state.height or components.default_height
             width = block_state.width or components.default_width
             block_state.prompt = generate_captions(
-                text_encoder,
+                self._prompt_enhancer,
                 components.tokenizer,
                 self._caption_logits_processor,
                 block_state.prompt,
@@ -231,11 +243,7 @@ class Ideogram4TextEncoderStep(ModularPipelineBlocks):
     ) -> list[torch.Tensor]:
         """Run the text encoder's decoder layers, returning the hidden states tapped at each activation layer."""
 
-        language_model = (
-            text_encoder.language_model
-            if hasattr(text_encoder, "language_model")
-            else text_encoder.model.language_model
-        )
+        language_model = text_encoder.language_model
 
         inputs_embeds = language_model.embed_tokens(token_ids)
 

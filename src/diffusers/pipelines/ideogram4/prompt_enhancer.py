@@ -15,8 +15,8 @@
 """Prompt-enhancement assets for Ideogram4.
 
 Ideogram4 is trained on a *structured JSON caption* rather than a free-form prompt. The optional prompt enhancer
-rewrites a short user idea into that native caption schema, using a generative Qwen3-VL text encoder (a
-`Qwen3VLForConditionalGeneration`, which carries the LM head).
+rewrites a short user idea into that native caption schema by combining the head-less Qwen3-VL text encoder with the
+optional `Ideogram4PromptEnhancerHead` component to form a generative model.
 
 This mirrors the role of Flux2's `system_messages.py`, but the target is a constrained JSON object instead of free
 text, so `outlines` (an optional dependency) is used to guarantee a schema-valid result when available.
@@ -27,13 +27,48 @@ The caption helpers here are shared by `Ideogram4Pipeline` and the modular `Ideo
 import math
 
 import torch
+from torch import nn
 
+from ...configuration_utils import ConfigMixin, register_to_config
+from ...models.modeling_utils import ModelMixin
 from ...utils import logging
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 PROMPT_UPSAMPLE_TEMPERATURE = 1.0
+
+
+class Ideogram4PromptEnhancerHead(ModelMixin, ConfigMixin):
+    """LM head that makes the head-less Qwen3-VL `text_encoder` generative for prompt upsampling.
+
+    An optional pipeline component (`prompt_enhancer_head`): its weights load via a normal `from_pretrained` (its own
+    small repo, or bundled in the model repo) rather than an in-pipeline download. At upsample time the pipeline
+    combines it with the shared `text_encoder` body to form the generative model.
+    """
+
+    @register_to_config
+    def __init__(self, hidden_size: int = 4096, vocab_size: int = 151936):
+        super().__init__()
+        self.lm_head = nn.Linear(hidden_size, vocab_size, bias=False)
+
+    def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
+        return self.lm_head(hidden_states)
+
+
+def build_prompt_enhancer(text_encoder, prompt_enhancer_head):
+    """Combine the head-less Qwen3-VL `text_encoder` body with `prompt_enhancer_head` into a generative model.
+
+    The body is shared by reference (no second copy in memory); only the small head is extra.
+    """
+    from accelerate import init_empty_weights
+    from transformers import Qwen3VLForConditionalGeneration
+
+    with init_empty_weights():
+        enhancer = Qwen3VLForConditionalGeneration(text_encoder.config)
+    enhancer.model = text_encoder
+    enhancer.lm_head = prompt_enhancer_head.lm_head
+    return enhancer.eval()
 
 
 # System message that instructs the encoder to emit Ideogram4's native single-line JSON caption.
