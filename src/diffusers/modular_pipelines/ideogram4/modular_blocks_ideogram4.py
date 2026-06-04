@@ -24,7 +24,7 @@ from .before_denoise import (
 )
 from .decoders import Ideogram4DecodeStep
 from .denoise import Ideogram4AfterDenoiseStep, Ideogram4DenoiseStep
-from .encoders import Ideogram4TextEncoderStep
+from .encoders import Ideogram4PromptUpsampleStep, Ideogram4TextEncoderStep
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -123,6 +123,10 @@ class Ideogram4AutoBlocks(SequentialPipelineBlocks):
       Inputs:
           prompt (`str`):
               The prompt or prompts to guide image generation.
+          prompt_upsampling (`bool`, *optional*, defaults to False):
+              Rewrite the prompt into Ideogram4's native structured JSON caption before encoding.
+          prompt_upsampling_temperature (`float`, *optional*, defaults to 1.0):
+              Sampling temperature for prompt upsampling.
           max_sequence_length (`int`, *optional*, defaults to 2048):
               Maximum sequence length for prompt encoding.
           num_images_per_prompt (`int`, *optional*, defaults to 1):
@@ -154,8 +158,13 @@ class Ideogram4AutoBlocks(SequentialPipelineBlocks):
     """
 
     model_name = "ideogram4"
-    block_classes = [Ideogram4TextEncoderStep(), Ideogram4CoreDenoiseStep(), Ideogram4DecodeStep()]
-    block_names = ["text_encoder", "denoise", "decode"]
+    block_classes = [
+        Ideogram4PromptUpsampleStep(),
+        Ideogram4TextEncoderStep(),
+        Ideogram4CoreDenoiseStep(),
+        Ideogram4DecodeStep(),
+    ]
+    block_names = ["prompt_upsample", "text_encoder", "denoise", "decode"]
 
     # Workflow map declaring the trigger conditions for each supported workflow.
     # `True` means the workflow triggers when the input is not None.
@@ -166,8 +175,8 @@ class Ideogram4AutoBlocks(SequentialPipelineBlocks):
     @property
     def description(self) -> str:
         return (
-            "Auto Modular pipeline for text-to-image generation using Ideogram4: encode text -> core denoise "
-            "(asymmetric CFG over two transformers) -> decode."
+            "Auto Modular pipeline for text-to-image generation using Ideogram4: (optional) prompt upsampling -> "
+            "encode text -> core denoise (asymmetric CFG over two transformers) -> decode."
         )
 
     @property
