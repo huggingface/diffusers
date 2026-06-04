@@ -26,6 +26,10 @@ latent space.
 > [`RAEDiTPipeline`] expects a Stage-2 checkpoint converted to Diffusers format together with a compatible
 > [`AutoencoderRAE`] checkpoint.
 
+> [!NOTE]
+> This pipeline implements the ImageNet class-conditioned RAE DiT path with plain classifier-free guidance. Upstream
+> AutoGuidance and follow-up internal-guidance variants are out of scope for this pipeline.
+
 ## Loading a converted pipeline
 
 ```python

@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from contextlib import contextmanager
 from dataclasses import dataclass
 from math import sqrt
 from typing import Any
@@ -42,34 +41,11 @@ from ..activations import get_activation
 from ..attention import AttentionMixin
 from ..attention_processor import Attention
 from ..embeddings import get_2d_sincos_pos_embed
-from ..modeling_utils import TORCH_INIT_FUNCTIONS, ModelMixin
+from ..modeling_utils import ModelMixin, _preserve_init_return_tensors
 from .vae import AutoencoderMixin, DecoderOutput, EncoderOutput
 
 
 logger = logging.get_logger(__name__)
-
-
-@contextmanager
-def _preserve_init_return_tensors():
-    original_init_fns = {}
-
-    def _wrap_init(init_fn):
-        def _wrapped_init(tensor, *args, **kwargs):
-            result = init_fn(tensor, *args, **kwargs)
-            return tensor if result is None else result
-
-        return _wrapped_init
-
-    for name in TORCH_INIT_FUNCTIONS:
-        init_fn = getattr(torch.nn.init, name)
-        original_init_fns[name] = init_fn
-        setattr(torch.nn.init, name, _wrap_init(init_fn))
-
-    try:
-        yield
-    finally:
-        for name, init_fn in original_init_fns.items():
-            setattr(torch.nn.init, name, init_fn)
 
 
 # ---------------------------------------------------------------------------

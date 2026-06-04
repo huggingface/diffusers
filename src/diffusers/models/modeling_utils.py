@@ -229,6 +229,29 @@ def no_init_weights():
             setattr(torch.nn.init, name, init_func)
 
 
+@contextmanager
+def _preserve_init_return_tensors():
+    original_init_fns = {}
+
+    def _wrap_init(init_fn):
+        def _wrapped_init(tensor, *args, **kwargs):
+            result = init_fn(tensor, *args, **kwargs)
+            return tensor if result is None else result
+
+        return _wrapped_init
+
+    for name in TORCH_INIT_FUNCTIONS:
+        init_fn = getattr(torch.nn.init, name)
+        original_init_fns[name] = init_fn
+        setattr(torch.nn.init, name, _wrap_init(init_fn))
+
+    try:
+        yield
+    finally:
+        for name, init_fn in original_init_fns.items():
+            setattr(torch.nn.init, name, init_fn)
+
+
 class ModelMixin(torch.nn.Module, PushToHubMixin):
     r"""
     Base class for all models.

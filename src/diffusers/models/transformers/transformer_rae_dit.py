@@ -71,6 +71,7 @@ def _to_pair(value: int | tuple[int, int] | list[int], name: str) -> tuple[int, 
 
 
 def _swap_swiglu_projection_halves(feedforward: FeedForward) -> None:
+    # Upstream RAEDiT stores SwiGLU gate/value halves in the opposite order from Diffusers FeedForward.
     projection = feedforward.net[0].proj
     projection.weight.data = torch.cat(
         projection.weight.data.chunk(2, dim=0)[::-1],
@@ -322,25 +323,28 @@ class RAEDiTBlock(nn.Module):
                 6, dim=-1
             )
 
-        if shift_msa is None:
-            shift_msa = torch.zeros_like(scale_msa)
-        if shift_mlp is None:
-            shift_mlp = torch.zeros_like(scale_mlp)
-
-        if shift_msa.shape[1] != hidden_states.shape[1]:
-            shift_msa = _expand_conditioning_tokens(shift_msa, hidden_states.shape[1])
+        if scale_msa.shape[1] != hidden_states.shape[1]:
             scale_msa = _expand_conditioning_tokens(scale_msa, hidden_states.shape[1])
             gate_msa = _expand_conditioning_tokens(gate_msa, hidden_states.shape[1])
-        if shift_mlp.shape[1] != hidden_states.shape[1]:
-            shift_mlp = _expand_conditioning_tokens(shift_mlp, hidden_states.shape[1])
+            if shift_msa is not None:
+                shift_msa = _expand_conditioning_tokens(shift_msa, hidden_states.shape[1])
+        if scale_mlp.shape[1] != hidden_states.shape[1]:
             scale_mlp = _expand_conditioning_tokens(scale_mlp, hidden_states.shape[1])
             gate_mlp = _expand_conditioning_tokens(gate_mlp, hidden_states.shape[1])
+            if shift_mlp is not None:
+                shift_mlp = _expand_conditioning_tokens(shift_mlp, hidden_states.shape[1])
 
         norm_hidden_states = self.norm1(hidden_states)
-        hidden_states = hidden_states + self.attn(norm_hidden_states * (1 + scale_msa) + shift_msa, rope=feat_rope) * gate_msa
+        norm_hidden_states = norm_hidden_states * (1 + scale_msa)
+        if shift_msa is not None:
+            norm_hidden_states = norm_hidden_states + shift_msa
+        hidden_states = hidden_states + self.attn(norm_hidden_states, rope=feat_rope) * gate_msa
 
         norm_hidden_states = self.norm2(hidden_states)
-        hidden_states = hidden_states + self.mlp(norm_hidden_states * (1 + scale_mlp) + shift_mlp) * gate_mlp
+        norm_hidden_states = norm_hidden_states * (1 + scale_mlp)
+        if shift_mlp is not None:
+            norm_hidden_states = norm_hidden_states + shift_mlp
+        hidden_states = hidden_states + self.mlp(norm_hidden_states) * gate_mlp
         return hidden_states
 
 
@@ -463,10 +467,8 @@ class RAEDiT2DModel(ModelMixin, ConfigMixin, AttentionMixin):
             grid_size = int(num_patches**0.5)
             pos_embed = get_2d_sincos_pos_embed(encoder_hidden_size, grid_size, output_type="pt")
             self.register_buffer("pos_embed", pos_embed.unsqueeze(0).float())
-            self.x_pos_embed = None
         else:
             self.register_buffer("pos_embed", None, persistent=False)
-            self.x_pos_embed = None
 
         if use_rope:
             encoder_rope_dim = encoder_hidden_size // encoder_num_attention_heads // 2
@@ -594,8 +596,6 @@ class RAEDiT2DModel(ModelMixin, ConfigMixin, AttentionMixin):
         conditioning_hidden_states = self.s_projector(conditioning_hidden_states)
 
         hidden_states = self.x_embedder(hidden_states)
-        if self.use_pos_embed and self.x_pos_embed is not None:
-            hidden_states = hidden_states + self.x_pos_embed.to(device=hidden_states.device, dtype=hidden_states.dtype)
 
         for block_idx in range(self.num_encoder_blocks, self.num_blocks):
             block = self.blocks[block_idx]

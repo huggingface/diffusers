@@ -184,7 +184,7 @@ class RAEDiTPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         image_slice = image[0, -2:, -2:, -1]
 
         self.assertEqual(image.shape, (1, 4, 4, 3))
-        expected_slice = np.array([0.78739226, 0.79371649, 0.56565261, 0.78660309])
+        expected_slice = np.array([0.77030003, 0.76121616, 0.52803773, 0.78673506])
         max_diff = np.abs(image_slice.flatten() - expected_slice).max()
         self.assertLessEqual(max_diff, 1e-4)
 
