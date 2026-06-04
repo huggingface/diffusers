@@ -206,6 +206,7 @@ class DiffusersQuantizer(ABC):
 
         # Delete quantizer and quantization config
         del model.hf_quantizer
+        model.is_quantized = False
 
         return model
 

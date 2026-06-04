@@ -1,19 +1,23 @@
-from .attention import AttentionTesterMixin
+from .attention import AttentionBackendTesterMixin, AttentionTesterMixin
 from .cache import (
     CacheTesterMixin,
     FasterCacheConfigMixin,
     FasterCacheTesterMixin,
     FirstBlockCacheConfigMixin,
     FirstBlockCacheTesterMixin,
+    MagCacheConfigMixin,
+    MagCacheTesterMixin,
     PyramidAttentionBroadcastConfigMixin,
     PyramidAttentionBroadcastTesterMixin,
+    TaylorSeerCacheConfigMixin,
+    TaylorSeerCacheTesterMixin,
 )
 from .common import BaseModelTesterConfig, ModelTesterMixin
 from .compile import TorchCompileTesterMixin
 from .ip_adapter import IPAdapterTesterMixin
 from .lora import LoraHotSwappingForModelTesterMixin, LoraTesterMixin
 from .memory import CPUOffloadTesterMixin, GroupOffloadTesterMixin, LayerwiseCastingTesterMixin, MemoryTesterMixin
-from .parallelism import ContextParallelTesterMixin
+from .parallelism import ContextParallelAttentionBackendsTesterMixin, ContextParallelTesterMixin
 from .quantization import (
     BitsAndBytesCompileTesterMixin,
     BitsAndBytesConfigMixin,
@@ -38,6 +42,7 @@ from .training import TrainingTesterMixin
 
 
 __all__ = [
+    "AttentionBackendTesterMixin",
     "AttentionTesterMixin",
     "BaseModelTesterConfig",
     "BitsAndBytesCompileTesterMixin",
@@ -45,11 +50,14 @@ __all__ = [
     "BitsAndBytesTesterMixin",
     "CacheTesterMixin",
     "ContextParallelTesterMixin",
+    "ContextParallelAttentionBackendsTesterMixin",
     "CPUOffloadTesterMixin",
     "FasterCacheConfigMixin",
     "FasterCacheTesterMixin",
     "FirstBlockCacheConfigMixin",
     "FirstBlockCacheTesterMixin",
+    "MagCacheConfigMixin",
+    "MagCacheTesterMixin",
     "GGUFCompileTesterMixin",
     "GGUFConfigMixin",
     "GGUFTesterMixin",
@@ -65,6 +73,8 @@ __all__ = [
     "ModelTesterMixin",
     "PyramidAttentionBroadcastConfigMixin",
     "PyramidAttentionBroadcastTesterMixin",
+    "TaylorSeerCacheConfigMixin",
+    "TaylorSeerCacheTesterMixin",
     "QuantizationCompileTesterMixin",
     "QuantizationTesterMixin",
     "QuantoCompileTesterMixin",

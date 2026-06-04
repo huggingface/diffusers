@@ -286,6 +286,37 @@ class QwenImageMultiControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin, F
         joint_attention_kwargs: dict[str, Any] | None = None,
         return_dict: bool = True,
     ) -> QwenImageControlNetOutput | tuple:
+        r"""
+        Args:
+            hidden_states (`torch.FloatTensor`):
+                Input `hidden_states`.
+            controlnet_cond (`list` of `torch.Tensor`):
+                A list of conditional input tensors, one per ControlNet.
+            conditioning_scale (`list` of `float`):
+                A list of scale factors applied to the ControlNet outputs.
+            encoder_hidden_states (`torch.Tensor`, *optional*):
+                Conditional embeddings (embeddings computed from the input conditions such as prompts).
+            encoder_hidden_states_mask (`torch.Tensor`, *optional*):
+                Mask for the encoder hidden states.
+            timestep (`torch.LongTensor`, *optional*):
+                Used to indicate denoising step.
+            img_shapes (`list` of `tuple[int, int, int]`, *optional*):
+                Per-sample image shapes used to construct positional encodings.
+            txt_seq_lens (`list` of `int`, *optional*):
+                Deprecated. The text sequence length is now inferred from `encoder_hidden_states` and
+                `encoder_hidden_states_mask`.
+            joint_attention_kwargs (`dict`, *optional*):
+                A kwargs dictionary that if specified is passed along to the `AttentionProcessor` as defined under
+                `self.processor` in
+                [diffusers.models.attention_processor](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/attention_processor.py).
+            return_dict (`bool`, *optional*, defaults to `True`):
+                Whether or not to return a [`QwenImageControlNetOutput`] instead of a plain tuple.
+
+        Returns:
+            [`QwenImageControlNetOutput`] or `tuple`:
+                If `return_dict` is True, a [`QwenImageControlNetOutput`] is returned, otherwise a plain `tuple` is
+                returned.
+        """
         if txt_seq_lens is not None:
             deprecate(
                 "txt_seq_lens",
