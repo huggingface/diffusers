@@ -13,6 +13,7 @@ from diffusers import (
     Flux2KleinPipeline,
     Flux2Transformer2DModel,
 )
+
 from ...testing_utils import (
     backend_empty_cache,
     backend_synchronize,

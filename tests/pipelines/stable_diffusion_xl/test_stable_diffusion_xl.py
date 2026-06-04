@@ -36,6 +36,7 @@ from diffusers import (
     UNet2DConditionModel,
     UniPCMultistepScheduler,
 )
+
 from ...testing_utils import (
     backend_empty_cache,
     backend_synchronize,
