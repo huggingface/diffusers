@@ -17,7 +17,14 @@ import torch
 from transformers import Qwen2Tokenizer, Qwen3VLModel
 from transformers.masking_utils import create_causal_mask
 
-from ...utils import logging
+from ...pipelines.ideogram4.prompt_enhancer import (
+    PROMPT_UPSAMPLE_TEMPERATURE,
+    Ideogram4PromptEnhancerHead,
+    build_caption_logits_processor,
+    build_prompt_enhancer,
+    generate_captions,
+)
+from ...utils import is_outlines_available, logging
 from ..modular_pipeline import ModularPipelineBlocks, PipelineState
 from ..modular_pipeline_utils import ComponentSpec, InputParam, OutputParam
 from .modular_pipeline import Ideogram4ModularPipeline
@@ -29,6 +36,139 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 # Hidden states of these Qwen3-VL decoder layers are concatenated to form the per-token
 # text conditioning consumed by the Ideogram4 transformer.
 QWEN3_VL_ACTIVATION_LAYERS = (0, 3, 6, 9, 12, 15, 18, 21, 24, 27, 30, 33, 35)
+
+
+# auto_docstring
+class Ideogram4PromptUpsampleStep(ModularPipelineBlocks):
+    """
+    Optional step that rewrites the prompt(s) into Ideogram4's native structured JSON caption (the format the model is
+    trained on) when ``prompt_upsampling=True``. Requires the optional ``prompt_enhancer_head`` component, which is
+    grafted onto the shared ``text_encoder`` body to make it generative; install ``outlines`` for schema-constrained
+    captions.
+
+      Components:
+          text_encoder (`Qwen3VLModel`): The Qwen3-VL text encoder. tokenizer (`Qwen2Tokenizer`): The tokenizer paired
+          with the text encoder. prompt_enhancer_head (`Ideogram4PromptEnhancerHead`): The LM head grafted onto the
+          text encoder for upsampling.
+
+      Inputs:
+          prompt (`str`):
+              The prompt or prompts to guide image generation.
+          prompt_upsampling (`bool`, *optional*, defaults to False):
+              If True, rewrite the prompt into the native JSON caption before encoding.
+          prompt_upsampling_temperature (`float`, *optional*, defaults to 1.0):
+              Sampling temperature for prompt upsampling.
+          height (`int`, *optional*):
+              Together with width, sets the caption's target aspect ratio.
+          width (`int`, *optional*):
+              Together with height, sets the caption's target aspect ratio.
+          generator (`Generator`, *optional*):
+              Reused to make the upsampling reproducible.
+
+      Outputs:
+          prompt (`str`):
+              The (possibly upsampled) prompt forwarded to the text encoder.
+    """
+
+    model_name = "ideogram4"
+
+    def __init__(self):
+        # Built lazily on first upsample: the head-less encoder body + `prompt_enhancer_head`, combined.
+        self._prompt_enhancer = None
+        # Outlines logits processor for schema-constrained captions; built lazily on first upsample.
+        self._caption_logits_processor = None
+        super().__init__()
+
+    @property
+    def description(self) -> str:
+        return (
+            "Optional step that rewrites the prompt(s) into Ideogram4's native structured JSON caption when "
+            "`prompt_upsampling=True` (the format the model is trained on). Requires a generative `text_encoder` "
+            "(a `Qwen3VLForConditionalGeneration`); install `outlines` for schema-constrained captions."
+        )
+
+    @property
+    def expected_components(self) -> list[ComponentSpec]:
+        return [
+            ComponentSpec("text_encoder", Qwen3VLModel, description="The Qwen3-VL text encoder."),
+            ComponentSpec("tokenizer", Qwen2Tokenizer, description="The tokenizer paired with the text encoder."),
+            ComponentSpec(
+                "prompt_enhancer_head",
+                Ideogram4PromptEnhancerHead,
+                description="LM head grafted onto the text encoder for prompt upsampling.",
+            ),
+        ]
+
+    @property
+    def inputs(self) -> list[InputParam]:
+        return [
+            InputParam.template("prompt", required=True),
+            InputParam(
+                name="prompt_upsampling",
+                type_hint=bool,
+                default=False,
+                description="If True, rewrite the prompt into Ideogram4's native JSON caption before encoding.",
+            ),
+            InputParam(
+                name="prompt_upsampling_temperature",
+                type_hint=float,
+                default=PROMPT_UPSAMPLE_TEMPERATURE,
+                description="Sampling temperature for prompt upsampling.",
+            ),
+            InputParam.template("height"),
+            InputParam.template("width"),
+            InputParam.template("max_sequence_length", default=2048),
+            InputParam.template("generator"),
+        ]
+
+    @property
+    def intermediate_outputs(self) -> list[OutputParam]:
+        return [
+            OutputParam(
+                name="prompt",
+                type_hint=list,
+                description="The (possibly upsampled) prompt forwarded to the text encoder.",
+            ),
+        ]
+
+    @torch.no_grad()
+    def __call__(self, components: Ideogram4ModularPipeline, state: PipelineState) -> PipelineState:
+        block_state = self.get_block_state(state)
+
+        if block_state.prompt_upsampling:
+            if components.prompt_enhancer_head is None:
+                raise ValueError(
+                    "Prompt upsampling requires the `prompt_enhancer_head` component, which is not loaded. Load an "
+                    "`Ideogram4PromptEnhancerHead` and add it to the pipeline."
+                )
+            if self._prompt_enhancer is None:
+                self._prompt_enhancer = build_prompt_enhancer(components.text_encoder, components.prompt_enhancer_head)
+            if self._caption_logits_processor is None and is_outlines_available():
+                self._caption_logits_processor = build_caption_logits_processor(
+                    self._prompt_enhancer, components.tokenizer
+                )
+            if self._caption_logits_processor is None:
+                logger.warning_once(
+                    "`outlines` is not installed; prompt upsampling runs unconstrained and may not return "
+                    "schema-valid JSON. Install with `pip install outlines` for structured captions."
+                )
+            height = block_state.height or components.default_height
+            width = block_state.width or components.default_width
+            block_state.prompt = generate_captions(
+                self._prompt_enhancer,
+                components.tokenizer,
+                self._caption_logits_processor,
+                block_state.prompt,
+                height,
+                width,
+                temperature=block_state.prompt_upsampling_temperature,
+                max_new_tokens=block_state.max_sequence_length,
+                generator=block_state.generator,
+                device=components._execution_device,
+            )
+
+        self.set_block_state(state, block_state)
+        return components, state
 
 
 # auto_docstring
