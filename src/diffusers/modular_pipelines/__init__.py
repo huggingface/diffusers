@@ -79,6 +79,10 @@ else:
         "Flux2KleinModularPipeline",
         "Flux2KleinBaseModularPipeline",
     ]
+    _import_structure["ideogram4"] = [
+        "Ideogram4AutoBlocks",
+        "Ideogram4ModularPipeline",
+    ]
     _import_structure["qwenimage"] = [
         "QwenImageAutoBlocks",
         "QwenImageModularPipeline",
@@ -141,6 +145,10 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .hunyuan_video1_5 import (
             HunyuanVideo15AutoBlocks,
             HunyuanVideo15ModularPipeline,
+        )
+        from .ideogram4 import (
+            Ideogram4AutoBlocks,
+            Ideogram4ModularPipeline,
         )
         from .ltx import LTXAutoBlocks, LTXModularPipeline
         from .modular_pipeline import (

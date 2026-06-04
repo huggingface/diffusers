@@ -268,11 +268,9 @@ class ModuleGroup:
         current_stream = self._torch_accelerator_module.current_stream() if self.record_stream else None
 
         with context:
-            # Load to CPU (if using streams) or directly to target device, pin, and async copy to device
-            device = str(self.onload_device) if self.stream is None else "cpu"
-            loaded_tensors = safetensors.torch.load_file(self.safetensors_file_path, device=device)
-
             if self.stream is not None:
+                # Load to CPU first, pin memory, then async copy to the target device
+                loaded_tensors = safetensors.torch.load_file(self.safetensors_file_path, device="cpu")
                 for key, tensor_obj in self.key_to_tensor.items():
                     pinned_tensor = loaded_tensors[key].pin_memory()
                     moved = pinned_tensor.to(self.onload_device, non_blocking=self.non_blocking)
@@ -280,6 +278,7 @@ class ModuleGroup:
                     if self.record_stream:
                         tensor_obj.data.record_stream(current_stream)
             else:
+                # Load directly to the target device
                 onload_device = (
                     self.onload_device.type if isinstance(self.onload_device, torch.device) else self.onload_device
                 )

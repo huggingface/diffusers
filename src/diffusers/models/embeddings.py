@@ -19,6 +19,7 @@ import torch.nn.functional as F
 from torch import nn
 
 from ..utils import deprecate
+from ..utils.torch_utils import maybe_adjust_dtype_for_device
 from .activations import FP32SiLU, get_activation
 from .attention_processor import Attention
 
@@ -346,7 +347,7 @@ def get_1d_sincos_pos_embed_from_grid(embed_dim, pos, output_type="np", flip_sin
 
     # Auto-detect appropriate dtype if not specified
     if dtype is None:
-        dtype = torch.float32 if pos.device.type == "mps" else torch.float64
+        dtype = maybe_adjust_dtype_for_device(torch.float64, pos.device)
 
     omega = torch.arange(embed_dim // 2, device=pos.device, dtype=dtype)
     omega /= embed_dim / 2.0
