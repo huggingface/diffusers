@@ -39,7 +39,7 @@ The Modular Diffusers docs are organized as shown below.
 
 - [ModularPipeline](./modular_pipeline) shows you how to create and convert pipeline blocks into an executable [`ModularPipeline`].
 - [ComponentsManager](./components_manager) shows you how to manage and reuse components across multiple pipelines.
-- [Guiders](./guiders) shows you how to use different guidance methods in the pipeline.
+- [Guiders](../using-diffusers/guiders) shows you how to use different guidance methods in the pipeline.
 
 ## Mellon Integration
 

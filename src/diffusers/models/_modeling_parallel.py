@@ -60,6 +60,19 @@ class ContextParallelConfig:
         rotate_method (`str`, *optional*, defaults to `"allgather"`):
             Method to use for rotating key/value states across devices in ring attention. Currently, only `"allgather"`
             is supported.
+        ulysses_anything (`bool`, *optional*, defaults to `False`):
+            Whether to enable "Ulysses Anything" mode, which supports arbitrary sequence lengths and head counts that
+            are not evenly divisible by `ulysses_degree`. When enabled, `ulysses_degree` must be greater than 1 and
+            `ring_degree` must be 1.
+        ring_anything (`bool`, *optional*, defaults to `False`):
+            Whether to enable "Ring Anything" mode, which supports arbitrary sequence lengths. When enabled,
+            `ring_degree` must be greater than 1 and `ulysses_degree` must be 1.
+        mesh (`torch.distributed.device_mesh.DeviceMesh`, *optional*):
+            A custom device mesh to use for context parallelism. If provided, this mesh will be used instead of
+            creating a new one. This is useful when combining context parallelism with other parallelism strategies
+            (e.g., FSDP, tensor parallelism) that share the same device mesh. The mesh must have both "ring" and
+            "ulysses" dimensions. Use size 1 for dimensions not being used (e.g., `mesh_shape=(2, 1, 4)` with
+            `mesh_dim_names=("ring", "ulysses", "fsdp")` for ring attention only with FSDP).
 
     """
 
@@ -68,9 +81,12 @@ class ContextParallelConfig:
     convert_to_fp32: bool = True
     # TODO: support alltoall
     rotate_method: Literal["allgather", "alltoall"] = "allgather"
+    mesh: torch.distributed.device_mesh.DeviceMesh | None = None
     # Whether to enable ulysses anything attention to support
     # any sequence lengths and any head numbers.
     ulysses_anything: bool = False
+    # Whether to enable ring anything attention to support any sequence lengths.
+    ring_anything: bool = False
 
     _rank: int = None
     _world_size: int = None
@@ -103,6 +119,13 @@ class ContextParallelConfig:
                 raise ValueError("ulysses_degree must be greater than 1 for ulysses_anything to be enabled.")
             if self.ring_degree > 1:
                 raise ValueError("ulysses_anything cannot be enabled when ring_degree > 1.")
+        if self.ring_anything:
+            if self.ring_degree == 1:
+                raise ValueError("ring_degree must be greater than 1 for ring_anything to be enabled.")
+            if self.ulysses_degree > 1:
+                raise ValueError("ring_anything cannot be enabled when ulysses_degree > 1.")
+        if self.ulysses_anything and self.ring_anything:
+            raise ValueError("ulysses_anything and ring_anything cannot both be enabled.")
 
     @property
     def mesh_shape(self) -> tuple[int, int]:
@@ -124,7 +147,7 @@ class ContextParallelConfig:
                 f"The product of `ring_degree` ({self.ring_degree}) and `ulysses_degree` ({self.ulysses_degree}) must not exceed the world size ({world_size})."
             )
 
-        self._flattened_mesh = self._mesh._flatten()
+        self._flattened_mesh = self._mesh["ring", "ulysses"]._flatten()
         self._ring_mesh = self._mesh["ring"]
         self._ulysses_mesh = self._mesh["ulysses"]
         self._ring_local_rank = self._ring_mesh.get_local_rank()

@@ -26,7 +26,7 @@ from ..attention_processor import Attention
 from ..modeling_utils import ModelMixin
 
 
-# Copied from diffusers.pipelines.wuerstchen.modeling_wuerstchen_common.WuerstchenLayerNorm with WuerstchenLayerNorm -> SDCascadeLayerNorm
+# Copied from diffusers.pipelines.deprecated.wuerstchen.modeling_wuerstchen_common.WuerstchenLayerNorm with WuerstchenLayerNorm -> SDCascadeLayerNorm
 class SDCascadeLayerNorm(nn.LayerNorm):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -548,6 +548,28 @@ class StableCascadeUNet(ModelMixin, ConfigMixin, FromOriginalModelMixin):
         crp=None,
         return_dict=True,
     ):
+        r"""
+        Args:
+            sample (`torch.Tensor`): The noisy input sample.
+            timestep_ratio (`torch.Tensor`):
+                Timestep ratio used to compute the timestep embedding.
+            clip_text_pooled (`torch.Tensor`):
+                Pooled CLIP text embeddings.
+            clip_text (`torch.Tensor`, *optional*):
+                Sequence-level CLIP text embeddings.
+            clip_img (`torch.Tensor`, *optional*):
+                CLIP image embeddings.
+            effnet (`torch.Tensor`, *optional*):
+                EfficientNet feature map used as additional conditioning.
+            pixels (`torch.Tensor`, *optional*):
+                Pixel-level conditioning tensor. If `None`, a tensor of zeros is used.
+            sca (`torch.Tensor`, *optional*):
+                Optional `sca` conditioning value used to build the timestep embedding.
+            crp (`torch.Tensor`, *optional*):
+                Optional `crp` conditioning value used to build the timestep embedding.
+            return_dict (`bool`, *optional*, defaults to `True`):
+                Whether or not to return a [`StableCascadeUNetOutput`] instead of a plain tuple.
+        """
         if pixels is None:
             pixels = sample.new_zeros(sample.size(0), 3, 8, 8)
 

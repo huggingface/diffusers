@@ -36,12 +36,12 @@ from ..utils import (
     BaseOutput,
     PushToHubMixin,
     http_user_agent,
-    is_transformers_available,
+    is_transformers_flax_compatible,
     logging,
 )
 
 
-if is_transformers_available():
+if is_transformers_flax_compatible():
     from transformers import FlaxPreTrainedModel
 
 INDEX_FILE = "diffusion_flax_model.bin"
@@ -309,7 +309,7 @@ class FlaxDiffusionPipeline(ConfigMixin, PushToHubMixin):
         ```
         """
         logger.warning(
-            "Flax classes are deprecated and will be removed in Diffusers v1.0.0. We "
+            "Flax classes are deprecated and will be removed in Diffusers v0.40.0. We "
             "recommend migrating to PyTorch classes or pinning your version of Diffusers."
         )
 
@@ -501,7 +501,7 @@ class FlaxDiffusionPipeline(ConfigMixin, PushToHubMixin):
                         dtype=dtype,
                     )
                     params[name] = loaded_params
-                elif is_transformers_available() and issubclass(class_obj, FlaxPreTrainedModel):
+                elif is_transformers_flax_compatible() and issubclass(class_obj, FlaxPreTrainedModel):
                     if from_pt:
                         # TODO(Suraj): Fix this in Transformers. We should be able to use `_do_init=False` here
                         loaded_sub_model = load_method(loadable_folder, from_pt=from_pt)

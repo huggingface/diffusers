@@ -566,3 +566,33 @@ $ git push --set-upstream origin your-branch-for-syncing
 ### Style guide
 
 For documentation strings, 🧨 Diffusers follows the [Google style](https://google.github.io/styleguide/pyguide.html).
+
+
+## Coding with AI agents
+
+The repository keeps AI-agent configuration in [`.ai/`](https://github.com/huggingface/diffusers/tree/main/.ai) and exposes local agent files via symlinks. If you use a coding agent (Claude Code, OpenAI Codex, etc.) to help with a contribution, point it at this directory — it contains the project conventions and on-demand task knowledge maintainers expect contributors to follow.
+
+- **Read-only for contributors** — `.ai/` is maintained by the core maintainers. Please do not edit files under `.ai/` (or the generated root-level `AGENTS.md`, `CLAUDE.md`, `.agents/skills`, `.claude/skills`, which are symlinks) in your PR. If you find something missing or wrong, open an issue or flag it on the PR and a maintainer will update it.
+- **Guidelines** (loaded into every agent session):
+  - [`.ai/AGENTS.md`](https://github.com/huggingface/diffusers/blob/main/.ai/AGENTS.md) — top-level coding guidelines
+  - [`.ai/models.md`](https://github.com/huggingface/diffusers/blob/main/.ai/models.md) — attention pattern, model implementation rules, common conventions
+  - [`.ai/pipelines.md`](https://github.com/huggingface/diffusers/blob/main/.ai/pipelines.md) — pipeline conventions
+  - [`.ai/modular.md`](https://github.com/huggingface/diffusers/blob/main/.ai/modular.md) — modular pipeline conventions and conversion checklist
+  - [`.ai/review-rules.md`](https://github.com/huggingface/diffusers/blob/main/.ai/review-rules.md) — what reviewers look for
+- **Skills** (under [`.ai/skills/`](https://github.com/huggingface/diffusers/tree/main/.ai/skills), loaded on demand for specific tasks):
+  - `model-integration` — adding a new model or pipeline to diffusers end-to-end (file structure, integration checklist, testing layout, weight conversion)
+  - `parity-testing` — verifying numerical parity between the diffusers implementation and a reference implementation
+- **Setup commands**:
+  - `make codex` — symlink guidelines + skills for OpenAI Codex
+  - `make claude` — symlink guidelines + skills for Claude Code
+  - `make clean-ai` — remove all generated symlinks
+
+### AI-assisted and agentic contributions
+
+AI-assisted contributions are welcome, but they must be coordinated, scoped, and verified to keep review load manageable. PRs that do not follow these guidelines may be closed without detailed review.
+
+- **Coordinate before opening a PR.** Find or open an issue, review similar PRs (open and recently closed), and wait for an explicit acknowledgment from a maintainer on that issue before opening a PR. This gives us a chance to discuss scope, avoid duplicate work, and confirm the approach.
+- **Fix patterns, not one-offs.** If you spot an recurring issue, search the codebase for similar instances and open a *single* issue with a clear, systematic scope (e.g. "fix mutable defaults across all schedulers") rather than many issues or PRs for individual instances. 
+- **Include in the PR description:**
+  - A **coordination link** to the issue or discussion where a maintainer acknowledged the work.
+  - The **test commands you ran** and their results (paste relevant output, not just "tests pass").

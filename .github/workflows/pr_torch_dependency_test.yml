@@ -6,6 +6,7 @@ on:
       - main
     paths:
       - "src/diffusers/**.py"
+      - "tests/**.py"
   push:
     branches:
       - main
@@ -13,6 +14,9 @@ on:
 concurrency:
   group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
   cancel-in-progress: true
+
+permissions:
+  contents: read
 
 jobs:
   check_torch_dependencies:
@@ -26,7 +30,7 @@ jobs:
       - name: Install dependencies
         run: |
           pip install -e .
-          pip install torch torchvision torchaudio pytest
+          pip install torch pytest
       - name: Check for soft dependencies
         run: |
             pytest tests/others/test_dependencies.py

@@ -452,7 +452,7 @@ class AnimateDiffPAGPipeline(
             extra_step_kwargs["generator"] = generator
         return extra_step_kwargs
 
-    # Copied from diffusers.pipelines.pia.pipeline_pia.PIAPipeline.check_inputs
+    # Copied from diffusers.pipelines.deprecated.pia.pipeline_pia.PIAPipeline.check_inputs
     def check_inputs(
         self,
         prompt,
@@ -623,6 +623,8 @@ class AnimateDiffPAGPipeline(
             negative_prompt (`str` or `list[str]`, *optional*):
                 The prompt or prompts to guide what to not include in image generation. If not defined, you need to
                 pass `negative_prompt_embeds` instead. Ignored when not using guidance (`guidance_scale < 1`).
+            num_videos_per_prompt (`int`, *optional*, defaults to 1):
+                The number of videos to generate per prompt.
             eta (`float`, *optional*, defaults to 0.0):
                 Corresponds to parameter eta (η) from the [DDIM](https://huggingface.co/papers/2010.02502) paper. Only
                 applies to the [`~schedulers.DDIMScheduler`], and is ignored in other schedulers.
@@ -667,6 +669,8 @@ class AnimateDiffPAGPipeline(
                 The list of tensor inputs for the `callback_on_step_end` function. The tensors specified in the list
                 will be passed as `callback_kwargs` argument. You will only be able to include variables listed in the
                 `._callback_tensor_inputs` attribute of your pipeline class.
+            decode_chunk_size (`int`, *optional*, defaults to 16):
+                The number of frames to decode at a time when calling `decode_latents` method.
             pag_scale (`float`, *optional*, defaults to 3.0):
                 The scale factor for the perturbed attention guidance. If it is set to 0.0, the perturbed attention
                 guidance will not be used.

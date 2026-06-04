@@ -1,4 +1,5 @@
 from .autoencoder_asym_kl import AsymmetricAutoencoderKL
+from .autoencoder_cosmos3_audio import Cosmos3AVAEAudioTokenizer
 from .autoencoder_dc import AutoencoderDC
 from .autoencoder_kl import AutoencoderKL
 from .autoencoder_kl_allegro import AutoencoderKLAllegro
@@ -9,6 +10,8 @@ from .autoencoder_kl_hunyuan_video import AutoencoderKLHunyuanVideo
 from .autoencoder_kl_hunyuanimage import AutoencoderKLHunyuanImage
 from .autoencoder_kl_hunyuanimage_refiner import AutoencoderKLHunyuanImageRefiner
 from .autoencoder_kl_hunyuanvideo15 import AutoencoderKLHunyuanVideo15
+from .autoencoder_kl_kvae import AutoencoderKLKVAE
+from .autoencoder_kl_kvae_video import AutoencoderKLKVAEVideo
 from .autoencoder_kl_ltx import AutoencoderKLLTXVideo
 from .autoencoder_kl_ltx2 import AutoencoderKLLTX2Video
 from .autoencoder_kl_ltx2_audio import AutoencoderKLLTX2Audio
@@ -17,6 +20,7 @@ from .autoencoder_kl_mochi import AutoencoderKLMochi
 from .autoencoder_kl_qwenimage import AutoencoderKLQwenImage
 from .autoencoder_kl_temporal_decoder import AutoencoderKLTemporalDecoder
 from .autoencoder_kl_wan import AutoencoderKLWan
+from .autoencoder_longcat_audio_dit import LongCatAudioDiTVae
 from .autoencoder_oobleck import AutoencoderOobleck
 from .autoencoder_rae import AutoencoderRAE
 from .autoencoder_tiny import AutoencoderTiny

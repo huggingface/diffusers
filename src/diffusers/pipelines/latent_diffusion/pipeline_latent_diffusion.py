@@ -102,6 +102,9 @@ class LDMTextToImagePipeline(DiffusionPipeline):
             guidance_scale (`float`, *optional*, defaults to 1.0):
                 A higher guidance scale value encourages the model to generate images closely linked to the text
                 `prompt` at the expense of lower image quality. Guidance scale is enabled when `guidance_scale > 1`.
+            eta (`float`, *optional*, defaults to 0.0):
+                Corresponds to parameter eta (η) from the [DDIM](https://huggingface.co/papers/2010.02502) paper. Only
+                applies to the [`~schedulers.DDIMScheduler`], and is ignored in other schedulers.
             generator (`torch.Generator`, *optional*):
                 A [`torch.Generator`](https://pytorch.org/docs/stable/generated/torch.Generator.html) to make
                 generation deterministic.
@@ -720,6 +723,7 @@ class LDMBertModel(LDMBertPreTrainedModel):
         super().__init__(config)
         self.model = LDMBertEncoder(config)
         self.to_logits = nn.Linear(config.hidden_size, config.vocab_size)
+        self.post_init()
 
     def forward(
         self,

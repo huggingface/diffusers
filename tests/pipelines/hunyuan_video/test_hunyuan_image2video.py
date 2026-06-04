@@ -139,7 +139,9 @@ class HunyuanVideoImageToVideoPipelineFastTests(
             num_hidden_layers=2,
             image_size=224,
         )
-        llava_text_encoder_config = LlavaConfig(vision_config, text_config, pad_token_id=100, image_token_index=101)
+        llava_text_encoder_config = LlavaConfig(
+            vision_config=vision_config, text_config=text_config, pad_token_id=100, image_token_index=101
+        )
 
         clip_text_encoder_config = CLIPTextConfig(
             bos_token_id=0,
@@ -205,7 +207,6 @@ class HunyuanVideoImageToVideoPipelineFastTests(
                 "image_emb_len": 49,
                 "image_emb_start": 5,
                 "image_emb_end": 54,
-                "double_return_token_id": 0,
             },
             "generator": generator,
             "num_inference_steps": 2,

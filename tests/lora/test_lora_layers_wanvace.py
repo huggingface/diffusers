@@ -28,7 +28,6 @@ from diffusers.utils.import_utils import is_peft_available
 
 from ..testing_utils import (
     floats_tensor,
-    is_flaky,
     require_peft_backend,
     require_peft_version_greater,
     skip_mps,
@@ -46,7 +45,6 @@ from .utils import PeftLoraLoaderMixinTests  # noqa: E402
 
 @require_peft_backend
 @skip_mps
-@is_flaky(max_attempts=10, description="very flaky class")
 class WanVACELoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
     pipeline_class = WanVACEPipeline
     scheduler_cls = FlowMatchEulerDiscreteScheduler
@@ -73,8 +71,8 @@ class WanVACELoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
         "base_dim": 3,
         "z_dim": 4,
         "dim_mult": [1, 1, 1, 1],
-        "latents_mean": torch.randn(4).numpy().tolist(),
-        "latents_std": torch.randn(4).numpy().tolist(),
+        "latents_mean": [-0.7571, -0.7089, -0.9113, -0.7245],
+        "latents_std": [2.8184, 1.4541, 2.3275, 2.6558],
         "num_res_blocks": 1,
         "temperal_downsample": [False, True, True],
     }
