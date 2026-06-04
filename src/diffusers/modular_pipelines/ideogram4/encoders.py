@@ -117,6 +117,7 @@ class Ideogram4PromptUpsampleStep(ModularPipelineBlocks):
             ),
             InputParam.template("height"),
             InputParam.template("width"),
+            InputParam.template("max_sequence_length"),
             InputParam.template("generator"),
         ]
 
