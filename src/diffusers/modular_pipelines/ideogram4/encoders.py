@@ -161,6 +161,7 @@ class Ideogram4PromptUpsampleStep(ModularPipelineBlocks):
                 height,
                 width,
                 temperature=block_state.prompt_upsampling_temperature,
+                max_new_tokens=block_state.max_sequence_length, 
                 generator=block_state.generator,
                 device=components._execution_device,
             )
