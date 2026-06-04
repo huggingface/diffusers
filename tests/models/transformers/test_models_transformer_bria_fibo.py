@@ -47,10 +47,6 @@ class BriaFiboTransformerTesterConfig(BaseModelTesterConfig):
         return (256, 48)
 
     @property
-    def input_shape(self) -> tuple:
-        return (16, 16)
-
-    @property
     def generator(self):
         return torch.Generator("cpu").manual_seed(0)
 
