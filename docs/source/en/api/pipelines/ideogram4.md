@@ -40,11 +40,77 @@ image = pipe(prompt, height=1024, width=1024, generator=torch.Generator("cuda").
 image.save("ideogram4.png")
 ```
 
+## Prompt upsampling
+
+Ideogram 4 is trained on a structured JSON caption rather than a free-form prompt, so a short prompt is best
+expanded into that native schema before generation. There are two ways to produce the caption.
+
+### Remote (Ideogram API)
+
+For the best results, expand the prompt with Ideogram's hosted magic-prompt API and pass the returned caption
+straight to the pipeline (get a key at [developer.ideogram.ai](https://developer.ideogram.ai/)):
+
+```python
+import json
+import requests
+import torch
+from diffusers import Ideogram4Pipeline
+
+pipe = Ideogram4Pipeline.from_pretrained("ideogram-ai/ideogram-4-nf4", torch_dtype=torch.bfloat16)
+pipe.to("cuda")
+
+# Expand the prompt into a structured JSON caption with Ideogram's hosted magic-prompt API.
+response = requests.post(
+    "https://api.ideogram.ai/v1/ideogram-v4/magic-prompt",
+    headers={"Api-Key": "your_ideogram_api_key"},
+    json={"text_prompt": "A photo of a cat holding a sign that says hello world", "aspect_ratio": "1x1"},
+).json()
+caption = json.dumps(response["json_prompt"])
+
+# The caption is already upsampled, so pass it directly (no prompt_upsampling).
+image = pipe(caption, height=1024, width=1024, generator=torch.Generator("cuda").manual_seed(0)).images[0]
+image.save("ideogram4_upsampled.png")
+```
+
+### Local (on-device)
+
+For a fully local pipeline, load a small [`Ideogram4PromptEnhancerHead`] (the Qwen3-VL LM head) as the optional
+`prompt_enhancer_head` component and pass `prompt_upsampling=True`. The head is grafted onto the shared
+`text_encoder`, so no second text encoder is loaded. Install `outlines` for schema-constrained captions (the nf4
+checkpoint also needs `bitsandbytes`):
+
+```python
+import torch
+from diffusers import Ideogram4Pipeline, Ideogram4PromptEnhancerHead
+
+prompt_enhancer_head = Ideogram4PromptEnhancerHead.from_pretrained(
+    "diffusers/qwen3-vl-8b-instruct-lm-head", torch_dtype=torch.bfloat16
+)
+pipe = Ideogram4Pipeline.from_pretrained(
+    "ideogram-ai/ideogram-4-nf4", prompt_enhancer_head=prompt_enhancer_head, torch_dtype=torch.bfloat16
+)
+pipe.to("cuda")
+
+prompt = "A photo of a cat holding a sign that says hello world"
+image = pipe(
+    prompt,
+    height=1024,
+    width=1024,
+    prompt_upsampling=True,
+    generator=torch.Generator("cuda").manual_seed(0),
+).images[0]
+image.save("ideogram4_upsampled.png")
+```
+
 ## Ideogram4Pipeline
 
 [[autodoc]] Ideogram4Pipeline
 	- all
 	- __call__
+
+## Ideogram4PromptEnhancerHead
+
+[[autodoc]] Ideogram4PromptEnhancerHead
 
 ## Ideogram4PipelineOutput
 

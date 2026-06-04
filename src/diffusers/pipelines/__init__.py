@@ -290,7 +290,7 @@ else:
     ]
     _import_structure["hunyuan_video1_5"] = ["HunyuanVideo15Pipeline", "HunyuanVideo15ImageToVideoPipeline"]
     _import_structure["hunyuan_image"] = ["HunyuanImagePipeline", "HunyuanImageRefinerPipeline"]
-    _import_structure["ideogram4"] = ["Ideogram4Pipeline"]
+    _import_structure["ideogram4"] = ["Ideogram4Pipeline", "Ideogram4PromptEnhancerHead"]
     _import_structure["kandinsky"] = [
         "KandinskyCombinedPipeline",
         "KandinskyImg2ImgCombinedPipeline",
@@ -750,7 +750,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         )
         from .hunyuan_video1_5 import HunyuanVideo15ImageToVideoPipeline, HunyuanVideo15Pipeline
         from .hunyuandit import HunyuanDiTPipeline
-        from .ideogram4 import Ideogram4Pipeline
+        from .ideogram4 import Ideogram4Pipeline, Ideogram4PromptEnhancerHead
         from .joyimage import JoyImageEditPipeline, JoyImageEditPipelineOutput
         from .kandinsky import (
             KandinskyCombinedPipeline,
