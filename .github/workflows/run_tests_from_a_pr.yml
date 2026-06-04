@@ -14,6 +14,9 @@ on:
         description: 'Tests to run (e.g.: `tests/models`).'
         required: true
 
+permissions:
+  contents: read
+
 env:
   DIFFUSERS_IS_CI: yes
   IS_GITHUB_CI: "1"

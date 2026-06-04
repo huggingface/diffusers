@@ -133,19 +133,10 @@ def fuzzy_match_size(config_name: str) -> str | None:
     return None
 
 
-def _quantization_type(weight):
-    from torchao.dtypes import AffineQuantizedTensor
-    from torchao.quantization.linear_activation_quantized_tensor import LinearActivationQuantizedTensor
-
-    if isinstance(weight, AffineQuantizedTensor):
-        return f"{weight.__class__.__name__}({weight._quantization_type()})"
-
-    if isinstance(weight, LinearActivationQuantizedTensor):
-        return f"{weight.__class__.__name__}(activation={weight.input_quant_func}, weight={_quantization_type(weight.original_weight_tensor)})"
-
-
 def _linear_extra_repr(self):
-    weight = _quantization_type(self.weight)
+    from torchao.utils import TorchAOBaseTensor
+
+    weight = self.weight.__class__.__name__ if isinstance(self.weight, TorchAOBaseTensor) else None
     if weight is None:
         return f"in_features={self.weight.shape[1]}, out_features={self.weight.shape[0]}, weight=None"
     else:
@@ -283,12 +274,12 @@ class TorchAoHfQuantizer(DiffusersQuantizer):
 
         if self.pre_quantized:
             # If we're loading pre-quantized weights, replace the repr of linear layers for pretty printing info
-            # about AffineQuantizedTensor
+            # about the quantized tensor type
             module._parameters[tensor_name] = torch.nn.Parameter(param_value.to(device=target_device))
             if isinstance(module, nn.Linear):
                 module.extra_repr = types.MethodType(_linear_extra_repr, module)
         else:
-            # As we perform quantization here, the repr of linear layers is that of AQT, so we don't have to do it ourselves
+            # As we perform quantization here, the repr of linear layers is set by TorchAO, so we don't have to do it ourselves
             module._parameters[tensor_name] = torch.nn.Parameter(param_value).to(device=target_device)
             quantize_(module, self.quantization_config.get_apply_tensor_subclass())
 
@@ -385,3 +376,22 @@ class TorchAoHfQuantizer(DiffusersQuantizer):
     @property
     def is_compileable(self) -> bool:
         return True
+
+    def _dequantize(self, model):
+        from torchao.utils import TorchAOBaseTensor
+
+        for name, module in model.named_modules():
+            if isinstance(module, nn.Linear) and isinstance(module.weight, TorchAOBaseTensor):
+                if not hasattr(module.weight, "dequantize"):
+                    raise NotImplementedError(
+                        f"Dequantization is not supported for {type(module.weight).__name__} "
+                        f"(module: {name}). Please use a quantization type that supports dequantization."
+                    )
+                device = module.weight.device
+                dequantized_weight = module.weight.dequantize().to(device)
+                module.weight = nn.Parameter(dequantized_weight)
+                # Reset extra_repr if it was overridden
+                if hasattr(module.extra_repr, "__func__") and module.extra_repr.__func__ is not nn.Linear.extra_repr:
+                    module.extra_repr = types.MethodType(nn.Linear.extra_repr, module)
+
+        return model

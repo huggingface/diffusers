@@ -368,6 +368,12 @@ class DownloadTests(unittest.TestCase):
             assert any((f.endswith(".onnx")) for f in files)
             assert any((f.endswith(".pb")) for f in files)
 
+    @pytest.mark.xfail(
+        condition=is_transformers_version(">", "4.56.2"),
+        reason="CLIPTextModel architecture was flattened in transformers>4.56.2 without backward-compat key mapping. "
+        "See https://github.com/huggingface/transformers/issues/45390",
+        strict=False,
+    )
     def test_download_no_safety_checker(self):
         prompt = "hello"
         pipe = StableDiffusionPipeline.from_pretrained(
@@ -423,6 +429,12 @@ class DownloadTests(unittest.TestCase):
 
         assert np.max(np.abs(out - out_2)) < 1e-3
 
+    @pytest.mark.xfail(
+        condition=is_transformers_version(">", "4.56.2"),
+        reason="CLIPTextModel architecture was flattened in transformers>4.56.2 without backward-compat key mapping. "
+        "See https://github.com/huggingface/transformers/issues/45390",
+        strict=False,
+    )
     def test_cached_files_are_used_when_no_internet(self):
         # A mock response for an HTTP head request to emulate server down
         response_mock = mock.Mock()
@@ -450,6 +462,12 @@ class DownloadTests(unittest.TestCase):
                 if p1.data.ne(p2.data).sum() > 0:
                     assert False, "Parameters not the same!"
 
+    @pytest.mark.xfail(
+        condition=is_transformers_version(">", "4.56.2"),
+        reason="CLIPTextModel architecture was flattened in transformers>4.56.2 without backward-compat key mapping. "
+        "See https://github.com/huggingface/transformers/issues/45390",
+        strict=False,
+    )
     def test_local_files_only_are_used_when_no_internet(self):
         # A mock response for an HTTP head request to emulate server down
         response_mock = mock.Mock()
@@ -1011,13 +1029,39 @@ class DownloadTests(unittest.TestCase):
 
 class CustomPipelineTests(unittest.TestCase):
     def test_load_custom_pipeline(self):
+        with self.assertRaises(ValueError) as cm:
+            pipeline = DiffusionPipeline.from_pretrained(
+                "google/ddpm-cifar10-32", custom_pipeline="hf-internal-testing/diffusers-dummy-pipeline"
+            )
+        self.assertIn(
+            "Pass `trust_remote_code=True` to allow loading remote code modules.",
+            str(cm.exception),
+        )
+
         pipeline = DiffusionPipeline.from_pretrained(
-            "google/ddpm-cifar10-32", custom_pipeline="hf-internal-testing/diffusers-dummy-pipeline"
+            "google/ddpm-cifar10-32",
+            custom_pipeline="hf-internal-testing/diffusers-dummy-pipeline",
+            trust_remote_code=True,
         )
         pipeline = pipeline.to(torch_device)
         # NOTE that `"CustomPipeline"` is not a class that is defined in this library, but solely on the Hub
         # under https://huggingface.co/hf-internal-testing/diffusers-dummy-pipeline/blob/main/pipeline.py#L24
         assert pipeline.__class__.__name__ == "CustomPipeline"
+
+    def test_global_disable_remote_code(self):
+        with (
+            mock.patch("diffusers.utils.dynamic_modules_utils.DIFFUSERS_DISABLE_REMOTE_CODE", True),
+            self.assertRaises(ValueError) as cm,
+        ):
+            DiffusionPipeline.from_pretrained(
+                "google/ddpm-cifar10-32",
+                custom_pipeline="one_step_unet",
+                custom_revision="main",
+            )
+        self.assertIn(
+            "Downloading remote code is disabled globally via the DIFFUSERS_DISABLE_REMOTE_CODE environment variable.",
+            str(cm.exception),
+        )
 
     def test_load_custom_github(self):
         pipeline = DiffusionPipeline.from_pretrained(
@@ -1045,8 +1089,19 @@ class CustomPipelineTests(unittest.TestCase):
         assert pipeline.__class__.__name__ == "UnetSchedulerOneForwardPipeline"
 
     def test_run_custom_pipeline(self):
+        with self.assertRaises(ValueError) as cm:
+            pipeline = DiffusionPipeline.from_pretrained(
+                "google/ddpm-cifar10-32", custom_pipeline="hf-internal-testing/diffusers-dummy-pipeline"
+            )
+        self.assertIn(
+            "Pass `trust_remote_code=True` to allow loading remote code modules.",
+            str(cm.exception),
+        )
+
         pipeline = DiffusionPipeline.from_pretrained(
-            "google/ddpm-cifar10-32", custom_pipeline="hf-internal-testing/diffusers-dummy-pipeline"
+            "google/ddpm-cifar10-32",
+            custom_pipeline="hf-internal-testing/diffusers-dummy-pipeline",
+            trust_remote_code=True,
         )
         pipeline = pipeline.to(torch_device)
         images, output_str = pipeline(num_inference_steps=2, output_type="np")
@@ -1058,8 +1113,12 @@ class CustomPipelineTests(unittest.TestCase):
 
     def test_remote_components(self):
         # make sure that trust remote code has to be passed
-        with self.assertRaises(ValueError):
+        with self.assertRaises(ValueError) as cm:
             pipeline = DiffusionPipeline.from_pretrained("hf-internal-testing/tiny-sdxl-custom-components")
+        self.assertIn(
+            "Pass `trust_remote_code=True` to allow loading remote code modules.",
+            str(cm.exception),
+        )
 
         # Check that only loading custom components "my_unet", "my_scheduler" works
         pipeline = DiffusionPipeline.from_pretrained(
@@ -1089,10 +1148,49 @@ class CustomPipelineTests(unittest.TestCase):
 
         assert images.shape == (1, 64, 64, 3)
 
+    def test_custom_components_from_local_dir(self):
+        with tempfile.TemporaryDirectory() as tmpdirname:
+            path = snapshot_download("hf-internal-testing/tiny-sdxl-custom-components", cache_dir=tmpdirname)
+            # make sure that trust remote code has to be passed
+            with self.assertRaises(ValueError) as cm:
+                pipeline = DiffusionPipeline.from_pretrained(path)
+            self.assertIn(
+                "Pass `trust_remote_code=True` to allow loading remote code modules.",
+                str(cm.exception),
+            )
+
+            # Check that only loading custom components "my_unet", "my_scheduler" works
+            pipeline = DiffusionPipeline.from_pretrained(path, trust_remote_code=True)
+
+            assert pipeline.config.unet == ("diffusers_modules.local.my_unet_model", "MyUNetModel")
+            assert pipeline.config.scheduler == ("diffusers_modules.local.my_scheduler", "MyScheduler")
+            assert pipeline.__class__.__name__ == "StableDiffusionXLPipeline"
+
+            pipeline = pipeline.to(torch_device)
+            images = pipeline("test", num_inference_steps=2, output_type="np")[0]
+
+            assert images.shape == (1, 64, 64, 3)
+
+            # Check that only loading custom components "my_unet", "my_scheduler" and explicit custom pipeline works
+            pipeline = DiffusionPipeline.from_pretrained(path, custom_pipeline="my_pipeline", trust_remote_code=True)
+
+            assert pipeline.config.unet == ("diffusers_modules.local.my_unet_model", "MyUNetModel")
+            assert pipeline.config.scheduler == ("diffusers_modules.local.my_scheduler", "MyScheduler")
+            assert pipeline.__class__.__name__ == "MyPipeline"
+
+            pipeline = pipeline.to(torch_device)
+            images = pipeline("test", num_inference_steps=2, output_type="np")[0]
+
+            assert images.shape == (1, 64, 64, 3)
+
     def test_remote_auto_custom_pipe(self):
         # make sure that trust remote code has to be passed
-        with self.assertRaises(ValueError):
+        with self.assertRaises(ValueError) as cm:
             pipeline = DiffusionPipeline.from_pretrained("hf-internal-testing/tiny-sdxl-custom-all")
+        self.assertIn(
+            "Pass `trust_remote_code=True` to allow loading remote code modules.",
+            str(cm.exception),
+        )
 
         # Check that only loading custom components "my_unet", "my_scheduler" and auto custom pipeline works
         pipeline = DiffusionPipeline.from_pretrained(
@@ -1110,8 +1208,12 @@ class CustomPipelineTests(unittest.TestCase):
 
     def test_remote_custom_pipe_with_dot_in_name(self):
         # make sure that trust remote code has to be passed
-        with self.assertRaises(ValueError):
+        with self.assertRaises(ValueError) as cm:
             pipeline = DiffusionPipeline.from_pretrained("akasharidas/ddpm-cifar10-32-dot.in.name")
+        self.assertIn(
+            "Pass `trust_remote_code=True` to allow loading remote code modules.",
+            str(cm.exception),
+        )
 
         pipeline = DiffusionPipeline.from_pretrained("akasharidas/ddpm-cifar10-32-dot.in.name", trust_remote_code=True)
 
@@ -1125,8 +1227,17 @@ class CustomPipelineTests(unittest.TestCase):
 
     def test_local_custom_pipeline_repo(self):
         local_custom_pipeline_path = get_tests_dir("fixtures/custom_pipeline")
+        with self.assertRaises(ValueError) as cm:
+            pipeline = DiffusionPipeline.from_pretrained(
+                "google/ddpm-cifar10-32", custom_pipeline=local_custom_pipeline_path
+            )
+        self.assertIn(
+            "Pass `trust_remote_code=True` to allow loading remote code modules.",
+            str(cm.exception),
+        )
+
         pipeline = DiffusionPipeline.from_pretrained(
-            "google/ddpm-cifar10-32", custom_pipeline=local_custom_pipeline_path
+            "google/ddpm-cifar10-32", custom_pipeline=local_custom_pipeline_path, trust_remote_code=True
         )
         pipeline = pipeline.to(torch_device)
         images, output_str = pipeline(num_inference_steps=2, output_type="np")
@@ -1139,8 +1250,19 @@ class CustomPipelineTests(unittest.TestCase):
     def test_local_custom_pipeline_file(self):
         local_custom_pipeline_path = get_tests_dir("fixtures/custom_pipeline")
         local_custom_pipeline_path = os.path.join(local_custom_pipeline_path, "what_ever.py")
+        with self.assertRaises(ValueError) as cm:
+            pipeline = DiffusionPipeline.from_pretrained(
+                "google/ddpm-cifar10-32", custom_pipeline=local_custom_pipeline_path
+            )
+        self.assertIn(
+            "Pass `trust_remote_code=True` to allow loading remote code modules.",
+            str(cm.exception),
+        )
+
         pipeline = DiffusionPipeline.from_pretrained(
-            "google/ddpm-cifar10-32", custom_pipeline=local_custom_pipeline_path
+            "google/ddpm-cifar10-32",
+            custom_pipeline=local_custom_pipeline_path,
+            trust_remote_code=True,
         )
         pipeline = pipeline.to(torch_device)
         images, output_str = pipeline(num_inference_steps=2, output_type="np")

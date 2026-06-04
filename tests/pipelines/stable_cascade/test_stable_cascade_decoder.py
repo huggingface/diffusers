@@ -22,7 +22,7 @@ from transformers import CLIPTextConfig, CLIPTextModelWithProjection, CLIPTokeni
 
 from diffusers import DDPMWuerstchenScheduler, StableCascadeDecoderPipeline
 from diffusers.models import StableCascadeUNet
-from diffusers.pipelines.wuerstchen import PaellaVQModel
+from diffusers.pipelines.deprecated.wuerstchen import PaellaVQModel
 from diffusers.utils.torch_utils import randn_tensor
 
 from ...testing_utils import (

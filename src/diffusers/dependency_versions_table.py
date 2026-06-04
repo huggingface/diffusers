@@ -4,7 +4,6 @@
 deps = {
     "Pillow": "Pillow",
     "accelerate": "accelerate>=0.31.0",
-    "compel": "compel==0.1.8",
     "datasets": "datasets",
     "filelock": "filelock",
     "flax": "flax>=0.4.1",
@@ -31,7 +30,7 @@ deps = {
     "pytest-xdist": "pytest-xdist",
     "python": "python>=3.10.0",
     "ruff": "ruff==0.9.10",
-    "safetensors": "safetensors>=0.3.1",
+    "safetensors": "safetensors>=0.8.0-rc.0",
     "sentencepiece": "sentencepiece>=0.1.91,!=0.1.92",
     "GitPython": "GitPython<3.1.19",
     "scipy": "scipy",
@@ -45,7 +44,7 @@ deps = {
     "requests": "requests",
     "tensorboard": "tensorboard",
     "tiktoken": "tiktoken>=0.7.0",
-    "torch": "torch>=1.4",
+    "torch": "torch>=2.6",
     "torchvision": "torchvision",
     "transformers": "transformers>=4.41.2",
     "urllib3": "urllib3<=2.0.0",
@@ -53,4 +52,5 @@ deps = {
     "phonemizer": "phonemizer",
     "opencv-python": "opencv-python",
     "timm": "timm",
+    "flashpack": "flashpack",
 }
