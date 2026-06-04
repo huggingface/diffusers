@@ -162,7 +162,7 @@ class Ideogram4Pipeline(DiffusionPipeline):
             Unconditional (asymmetric-CFG) flow-matching transformer.
     """
 
-    model_cpu_offload_seq = "text_encoder->transformer->unconditional_transformer->vae"
+    model_cpu_offload_seq = "prompt_enhancer_head->text_encoder->transformer->unconditional_transformer->vae"
     _optional_components = ["prompt_enhancer_head"]
     _callback_tensor_inputs = ["latents"]
 
