@@ -593,6 +593,13 @@ class Cosmos3OmniTransformer(ModelMixin, ConfigMixin, PeftAdapterMixin, Attentio
             sound_mse_loss_indexes: Optional indices used to read sound predictions.
             sound_timesteps: Optional per-token diffusion timesteps for sound.
             sound_noisy_frame_indexes: Optional noisy frame indices per sound item.
+            action_tokens: Optional action latent tensors before packing.
+            action_token_shapes: Optional patch grid shapes ``(T, H, W)`` per action item.
+            action_sequence_indexes: Optional indices of action tokens in the joint sequence.
+            action_mse_loss_indexes: Optional indices used to read action predictions after the backbone.
+            action_timesteps: Optional per-token diffusion timesteps for action tokens.
+            action_noisy_frame_indexes: Optional noisy frame indices per action item.
+            action_domain_ids: Optional per-item domain IDs selecting the action head weights.
 
         Returns:
             ``(preds_vision, preds_sound, preds_action)`` — lists of per-modality predictions. Optional modalities
