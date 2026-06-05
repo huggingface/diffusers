@@ -51,7 +51,16 @@ def _find_free_port():
 
 
 def _context_parallel_worker(
-    rank, world_size, master_port, model_class, init_dict, cp_dict, inputs_dict, return_dict, attention_backend=None
+    rank,
+    world_size,
+    master_port,
+    model_class,
+    init_dict,
+    cp_dict,
+    inputs_dict,
+    return_dict,
+    attention_backend=None,
+    state_dict=None,
 ):
     """Worker function for context parallel testing."""
     try:
@@ -75,6 +84,8 @@ def _context_parallel_worker(
 
         # Create model
         model = model_class(**init_dict)
+        if state_dict is not None:
+            model.load_state_dict(state_dict)
         model.to(device)
         model.eval()
 
@@ -100,6 +111,9 @@ def _context_parallel_worker(
         if rank == 0:
             return_dict["status"] = "success"
             return_dict["output_shape"] = list(output.shape)
+            if state_dict is not None:
+                # Serialise via nested list so the manager dict can transport it across processes.
+                return_dict["output"] = output.cpu().tolist()
 
     except Exception as e:
         if rank == 0:
@@ -217,51 +231,6 @@ def _custom_mesh_worker(
         if rank == 0:
             return_dict["status"] = "success"
             return_dict["output_shape"] = list(output.shape)
-
-    except Exception as e:
-        if rank == 0:
-            return_dict["status"] = "error"
-            return_dict["error"] = str(e)
-    finally:
-        if dist.is_initialized():
-            dist.destroy_process_group()
-
-
-def _context_parallel_correctness_worker(
-    rank, world_size, master_port, model_class, init_dict, state_dict, cp_dict, inputs_dict, return_dict
-):
-    """Worker that runs a CP forward pass and returns the output tensor for numerical comparison."""
-    try:
-        os.environ["MASTER_ADDR"] = "localhost"
-        os.environ["MASTER_PORT"] = str(master_port)
-        os.environ["RANK"] = str(rank)
-        os.environ["WORLD_SIZE"] = str(world_size)
-
-        device_config = DEVICE_CONFIG.get(torch_device, DEVICE_CONFIG["cuda"])
-        backend = device_config["backend"]
-        device_module = device_config["module"]
-
-        dist.init_process_group(backend=backend, rank=rank, world_size=world_size)
-        device_module.set_device(rank)
-        device = torch.device(f"{torch_device}:{rank}")
-
-        model = model_class(**init_dict)
-        model.load_state_dict(state_dict)
-        model.to(device)
-        model.eval()
-
-        inputs_on_device = {k: v.to(device) if isinstance(v, torch.Tensor) else v for k, v in inputs_dict.items()}
-
-        cp_config = ContextParallelConfig(**cp_dict)
-        model.enable_parallelism(config=cp_config)
-
-        with torch.no_grad():
-            output = model(**inputs_on_device, return_dict=False)[0]
-
-        if rank == 0:
-            return_dict["status"] = "success"
-            # Serialise via nested list so the manager dict can transport it across processes.
-            return_dict["output"] = output.cpu().tolist()
 
     except Exception as e:
         if rank == 0:
@@ -447,8 +416,18 @@ class ContextParallelTesterMixin:
         return_dict = manager.dict()
 
         mp.spawn(
-            _context_parallel_correctness_worker,
-            args=(world_size, master_port, self.model_class, init_dict, state_dict, cp_dict, inputs_cpu, return_dict),
+            _context_parallel_worker,
+            args=(
+                world_size,
+                master_port,
+                self.model_class,
+                init_dict,
+                cp_dict,
+                inputs_cpu,
+                return_dict,
+                None,
+                state_dict,
+            ),
             nprocs=world_size,
             join=True,
         )
