@@ -956,6 +956,12 @@ def _fetch_class_library_tuple(module):
     diffusers_module = importlib.import_module(__name__.split(".")[0])
     pipelines = getattr(diffusers_module, "pipelines")
 
+    # ADDED ERROR HANDLING:
+    # Intercept primitive types (like bool) passed accidentally by legacy
+    # community pipelines due to shifted positional arguments in __init__.
+    if isinstance(module, (bool, int, float, str)):
+        return None, None
+
     # register the config from the original module, not the dynamo compiled one
     not_compiled_module = _unwrap_model(module)
     library = not_compiled_module.__module__.split(".")[0]
