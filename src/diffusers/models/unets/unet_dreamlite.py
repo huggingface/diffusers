@@ -335,12 +335,14 @@ class DreamLiteAttnProcessor2_0:
         value = attn.to_v(encoder_hidden_states)
 
         # --- GQA-aware reshape (the only real difference vs AttnProcessor2_0) ---
+        # ``dispatch_attention_fn`` expects (batch, seq, heads, head_dim) — keep Q/K/V in that layout
+        # and let the dispatched backend handle the transpose internally.
         head_dim = query.shape[-1] // attn.heads
         kv_heads = key.shape[-1] // head_dim
 
-        query = query.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
-        key = key.view(batch_size, -1, kv_heads, head_dim).transpose(1, 2)
-        value = value.view(batch_size, -1, kv_heads, head_dim).transpose(1, 2)
+        query = query.view(batch_size, -1, attn.heads, head_dim)
+        key = key.view(batch_size, -1, kv_heads, head_dim)
+        value = value.view(batch_size, -1, kv_heads, head_dim)
 
         if attn.norm_q is not None:
             query = attn.norm_q(query)
@@ -350,13 +352,13 @@ class DreamLiteAttnProcessor2_0:
         if kv_heads != attn.heads:
             # GQA / MQA: repeat K/V heads up to query heads for SDPA.
             heads_per_kv_head = attn.heads // kv_heads
-            key = torch.repeat_interleave(key, heads_per_kv_head, dim=1, output_size=key.shape[1] * heads_per_kv_head)
+            key = torch.repeat_interleave(key, heads_per_kv_head, dim=2, output_size=key.shape[2] * heads_per_kv_head)
             value = torch.repeat_interleave(
-                value, heads_per_kv_head, dim=1, output_size=value.shape[1] * heads_per_kv_head
+                value, heads_per_kv_head, dim=2, output_size=value.shape[2] * heads_per_kv_head
             )
         # ------------------------------------------------------------------------
 
-        # the output of sdp = (batch, num_heads, seq_len, head_dim)
+        # the output of sdp = (batch, seq_len, num_heads, head_dim)
         hidden_states = dispatch_attention_fn(
             query,
             key,
@@ -366,7 +368,7 @@ class DreamLiteAttnProcessor2_0:
             parallel_config=self._parallel_config,
         )
 
-        hidden_states = hidden_states.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim)
+        hidden_states = hidden_states.flatten(2, 3)
         hidden_states = hidden_states.to(query.dtype)
 
         # linear proj
