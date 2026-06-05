@@ -154,8 +154,7 @@ jobs:
           # quotes/special characters in a legitimate command.
           PYTEST_ARGS: ${{ needs.gate.outputs.pytest_args }}
         run: |
-          # Intentionally unquoted so flags/paths in the command word-split as argv.
-          pytest -n 1 --max-worker-restart=0 --dist=loadfile --make-reports=tests_bot_gpu $PYTEST_ARGS
+          eval "pytest --make-reports=tests_bot_gpu $PYTEST_ARGS"
 
       - name: Failure short reports
         if: ${{ failure() }}
