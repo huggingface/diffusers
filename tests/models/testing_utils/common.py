@@ -469,6 +469,28 @@ class ModelTesterMixin:
             else:
                 assert param.dtype == torch.float16, f"Parameter {name} should be float16 but got {param.dtype}"
 
+    def test_to_keep_in_fp32_modules_warns(self, caplog):
+        fp32_modules = self.model_class._keep_in_fp32_modules
+        if fp32_modules is None or len(fp32_modules) == 0:
+            pytest.skip("Model does not have _keep_in_fp32_modules defined.")
+
+        model = self.model_class(**self.get_init_dict())
+
+        logger_name = "diffusers.models.modeling_utils"
+        logging.enable_propagation()
+        try:
+            with caplog.at_level(logging.DEBUG, logger=logger_name):
+                caplog.clear()
+                model.to(torch_device)
+        finally:
+            logging.disable_propagation()
+
+        expected_message = (
+            f"There are modules in {model.__class__.__name__} that should be kept in float32. "
+            "A bare `to()` might lead to inconsistent results."
+        )
+        assert expected_message in caplog.text
+
     @require_accelerator
     @pytest.mark.skipif(
         torch_device not in ["cuda", "xpu"],
