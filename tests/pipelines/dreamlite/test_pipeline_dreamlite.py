@@ -123,10 +123,10 @@ class DreamLitePipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             in_channels=4,
             out_channels=4,
             down_block_types=(
-                "CrossAttnDownRemoveSelfAttnBlock2D",
-                "CrossAttnDownBlock2D",
+                "DreamLiteCrossAttnNoSelfAttnDownBlock2D",
+                "DreamLiteCrossAttnDownBlock2D",
             ),
-            up_block_types=("CrossAttnUpBlock2D", "UpBlock2D"),
+            up_block_types=("DreamLiteCrossAttnUpBlock2D", "DreamLiteUpBlock2D"),
             block_out_channels=(32, 64),
             cross_attention_dim=_CROSS_ATTN_DIM,
             attention_head_dim=8,

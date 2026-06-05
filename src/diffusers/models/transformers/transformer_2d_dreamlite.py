@@ -28,7 +28,7 @@ Keeping everything here means the DreamLite integration never touches the upstre
 The numerical behaviour mirrors the original DreamLite reference implementation at ``dreamlite/models/{attention.py,
 transformers/transformer_2d.py}`` — specifically, when ``use_self_attention=False`` the block keeps ``norm1``'s output
 as the post-self-attn hidden state instead of running ``attn1``, matching the "Remove self-attention" path used by
-DreamLite's ``CrossAttnDownRemoveSelfAttnBlock2D`` and ``CrossAttnUpRemoveSelfAttnBlock2DV1``.
+DreamLite's ``DreamLiteCrossAttnNoSelfAttnDownBlock2D`` and ``DreamLiteCrossAttnNoSelfAttnUpBlock2D``.
 """
 
 from typing import Any

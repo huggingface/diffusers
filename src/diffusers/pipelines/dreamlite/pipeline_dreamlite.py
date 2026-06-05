@@ -29,7 +29,6 @@ from ...schedulers import FlowMatchEulerDiscreteScheduler
 from ...utils import is_torch_xla_available, logging
 from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline
-from ..stable_diffusion.pipeline_stable_diffusion_img2img import retrieve_latents
 from .pipeline_output import DreamLitePipelineOutput
 
 
@@ -64,6 +63,20 @@ EXAMPLE_DOC_STRING = """
         >>> edited = pipe(prompt="make it snowy", image=init_image).images[0]
         ```
 """
+
+
+# Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_img2img.retrieve_latents
+def retrieve_latents(
+    encoder_output: torch.Tensor, generator: torch.Generator | None = None, sample_mode: str = "sample"
+):
+    if hasattr(encoder_output, "latent_dist") and sample_mode == "sample":
+        return encoder_output.latent_dist.sample(generator)
+    elif hasattr(encoder_output, "latent_dist") and sample_mode == "argmax":
+        return encoder_output.latent_dist.mode()
+    elif hasattr(encoder_output, "latents"):
+        return encoder_output.latents
+    else:
+        raise AttributeError("Could not access latents of provided encoder_output")
 
 
 def calculate_shift(
@@ -334,9 +347,6 @@ class DreamLitePipeline(DiffusionPipeline, FromSingleFileMixin, TextualInversion
         device: torch.device,
         generator: Optional[torch.Generator] = None,
     ) -> torch.Tensor:
-        if not isinstance(image, (torch.Tensor, Image.Image, list)):
-            raise ValueError(f"`image` must be of type `torch.Tensor`, `PIL.Image.Image` or `list`, got {type(image)}")
-
         image = image.to(device=device, dtype=dtype)
 
         if image.shape[1] == 4:
@@ -345,6 +355,30 @@ class DreamLitePipeline(DiffusionPipeline, FromSingleFileMixin, TextualInversion
             image_latents = retrieve_latents(self.vae.encode(image), sample_mode="argmax")
 
         return image_latents
+
+    def check_inputs(
+        self,
+        prompt: Optional[str],
+        image: Optional[Union[torch.Tensor, Image.Image, List[Image.Image]]],
+        height: Optional[int],
+        width: Optional[int],
+    ):
+        if prompt is not None and not isinstance(prompt, str):
+            raise ValueError(f"`prompt` has to be of type `str` but is {type(prompt)}")
+
+        if image is not None and not isinstance(image, (torch.Tensor, Image.Image, list)):
+            raise ValueError(f"`image` must be of type `torch.Tensor`, `PIL.Image.Image` or `list`, got {type(image)}")
+
+        if (
+            height is not None
+            and height % self.vae_scale_factor != 0
+            or width is not None
+            and width % self.vae_scale_factor != 0
+        ):
+            logger.warning(
+                f"`height` and `width` have to be divisible by {self.vae_scale_factor} but are {height} and {width}. "
+                "Dimensions will be resized accordingly."
+            )
 
     # ---------------------------------------------------------------------
     # Properties
@@ -407,6 +441,7 @@ class DreamLitePipeline(DiffusionPipeline, FromSingleFileMixin, TextualInversion
             :class:`DreamLitePipelineOutput` or ``tuple``.
         """
         # 1. Init pipeline parameters
+        self.check_inputs(prompt, image, height, width)
         if height is None and width is None and image is not None:
             w, h = image.size
             width = (w // self.vae_scale_factor) * self.vae_scale_factor

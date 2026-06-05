@@ -353,9 +353,6 @@ class DreamLiteMobilePipeline(DiffusionPipeline, FromSingleFileMixin, TextualInv
         device: torch.device,
         generator: Optional[torch.Generator] = None,
     ) -> torch.Tensor:
-        if not isinstance(image, (torch.Tensor, Image.Image, list)):
-            raise ValueError(f"`image` must be of type `torch.Tensor`, `PIL.Image.Image` or `list`, got {type(image)}")
-
         image = image.to(device=device, dtype=dtype)
 
         if image.shape[1] == 4:
@@ -364,6 +361,31 @@ class DreamLiteMobilePipeline(DiffusionPipeline, FromSingleFileMixin, TextualInv
             image_latents = retrieve_latents(self.vae.encode(image), sample_mode="argmax")
 
         return image_latents
+
+    # Copied from diffusers.pipelines.dreamlite.pipeline_dreamlite.DreamLitePipeline.check_inputs
+    def check_inputs(
+        self,
+        prompt: Optional[str],
+        image: Optional[Union[torch.Tensor, Image.Image, List[Image.Image]]],
+        height: Optional[int],
+        width: Optional[int],
+    ):
+        if prompt is not None and not isinstance(prompt, str):
+            raise ValueError(f"`prompt` has to be of type `str` but is {type(prompt)}")
+
+        if image is not None and not isinstance(image, (torch.Tensor, Image.Image, list)):
+            raise ValueError(f"`image` must be of type `torch.Tensor`, `PIL.Image.Image` or `list`, got {type(image)}")
+
+        if (
+            height is not None
+            and height % self.vae_scale_factor != 0
+            or width is not None
+            and width % self.vae_scale_factor != 0
+        ):
+            logger.warning(
+                f"`height` and `width` have to be divisible by {self.vae_scale_factor} but are {height} and {width}. "
+                "Dimensions will be resized accordingly."
+            )
 
     # ---------------------------------------------------------------------
     # Main entry
@@ -413,6 +435,7 @@ class DreamLiteMobilePipeline(DiffusionPipeline, FromSingleFileMixin, TextualInv
             :class:`DreamLitePipelineOutput` or ``tuple``.
         """
         # 1. Init pipeline parameters
+        self.check_inputs(prompt, image, height, width)
         if height is None and width is None and image is not None:
             w, h = image.size
             width = (w // self.vae_scale_factor) * self.vae_scale_factor

@@ -46,7 +46,7 @@ An attention processor is a class for applying different types of attention mech
 
 ## DreamLite
 
-[[autodoc]] models.attention_processor.DreamLiteAttnProcessor2_0
+[[autodoc]] models.unets.unet_dreamlite.DreamLiteAttnProcessor2_0
 
 ## CrossFrameAttnProcessor
 
