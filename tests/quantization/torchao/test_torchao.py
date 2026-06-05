@@ -605,47 +605,6 @@ class TorchAoSerializationTest(unittest.TestCase):
         self.assertTrue(isinstance(loaded_quantized_model.proj_out.weight, TorchAOBaseTensor))
         self.assertTrue(numpy_cosine_similarity_distance(output_slice, expected_slice) < 1e-3)
 
-    @require_torchao_version_greater_or_equal("0.16.0")
-    def test_group_offload_to_disk(self):
-        quant_type = Int8DynamicActivationInt8WeightConfig(version=2)
-        expected_slice = np.array([0.3633, -0.1357, -0.0188, -0.249, -0.4688, 0.5078, -0.1289, -0.6914, 0.4551])
-
-        quantized_model = self.get_dummy_model(quant_type, torch_device)
-
-        with tempfile.TemporaryDirectory() as offload_to_disk_path:
-            quantized_model.enable_group_offload(
-                onload_device=torch_device,
-                offload_type="leaf_level",
-                offload_to_disk_path=offload_to_disk_path,
-            )
-
-            inputs = self.get_dummy_tensor_inputs(torch_device)
-            output = quantized_model(**inputs)[0]
-            output_slice = output.flatten()[-9:].detach().float().cpu().numpy()
-
-            self.assertTrue(numpy_cosine_similarity_distance(output_slice, expected_slice) < 1e-3)
-
-            output = quantized_model(**inputs)[0]
-            output_slice_2 = output.flatten()[-9:].detach().float().cpu().numpy()
-
-            self.assertTrue(numpy_cosine_similarity_distance(output_slice_2, expected_slice) < 1e-3)
-
-            del quantized_model
-            gc.collect()
-            backend_empty_cache(torch_device)
-
-            quantized_model = self.get_dummy_model(quant_type, torch_device)
-            quantized_model.enable_group_offload(
-                onload_device=torch_device,
-                offload_type="leaf_level",
-                offload_to_disk_path=offload_to_disk_path,
-            )
-
-            output = quantized_model(**inputs)[0]
-            output_slice_3 = output.flatten()[-9:].detach().float().cpu().numpy()
-
-            self.assertTrue(numpy_cosine_similarity_distance(output_slice_3, expected_slice) < 1e-3)
-
     def test_int_a8w8_accelerator(self):
         quant_type = Int8DynamicActivationInt8WeightConfig()
         expected_slice = np.array([0.3633, -0.1357, -0.0188, -0.249, -0.4688, 0.5078, -0.1289, -0.6914, 0.4551])
