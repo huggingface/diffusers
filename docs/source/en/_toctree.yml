@@ -198,35 +198,6 @@
   title: Model accelerators and hardware
 - isExpanded: false
   sections:
-  - local: using-diffusers/helios
-    title: Helios
-  - local: using-diffusers/consisid
-    title: ConsisID
-  - local: using-diffusers/sdxl
-    title: Stable Diffusion XL
-  - local: using-diffusers/sdxl_turbo
-    title: SDXL Turbo
-  - local: using-diffusers/kandinsky
-    title: Kandinsky
-  - local: using-diffusers/omnigen
-    title: OmniGen
-  - local: using-diffusers/pag
-    title: PAG
-  - local: using-diffusers/inference_with_lcm
-    title: Latent Consistency Model
-  - local: using-diffusers/shap-e
-    title: Shap-E
-  - local: using-diffusers/diffedit
-    title: DiffEdit
-  - local: using-diffusers/inference_with_tcd_lora
-    title: Trajectory Consistency Distillation-LoRA
-  - local: using-diffusers/svd
-    title: Stable Video Diffusion
-  - local: using-diffusers/marigold_usage
-    title: Marigold Computer Vision
-  title: Specific pipeline examples
-- isExpanded: false
-  sections:
   - sections:
     - local: using-diffusers/unconditional_image_generation
       title: Unconditional image generation
@@ -328,6 +299,10 @@
         title: AceStepTransformer1DModel
       - local: api/models/allegro_transformer3d
         title: AllegroTransformer3DModel
+      - local: api/models/anyflow_far_transformer3d
+        title: AnyFlowFARTransformer3DModel
+      - local: api/models/anyflow_transformer3d
+        title: AnyFlowTransformer3DModel
       - local: api/models/aura_flow_transformer2d
         title: AuraFlowTransformer2DModel
       - local: api/models/transformer_bria_fibo
@@ -346,6 +321,8 @@
         title: CogView4Transformer2DModel
       - local: api/models/consisid_transformer3d
         title: ConsisIDTransformer3DModel
+      - local: api/models/cosmos3_omni_transformer
+        title: Cosmos3OmniTransformer
       - local: api/models/cosmos_transformer3d
         title: CosmosTransformer3DModel
       - local: api/models/dit_transformer2d
@@ -372,6 +349,8 @@
         title: HunyuanVideo15Transformer3DModel
       - local: api/models/hunyuan_video_transformer_3d
         title: HunyuanVideoTransformer3DModel
+      - local: api/models/ideogram4_transformer2d
+        title: Ideogram4Transformer2DModel
       - local: api/models/transformer_joyimage
         title: JoyImageEditTransformer3DModel
       - local: api/models/latte_transformer3d
@@ -504,6 +483,8 @@
         title: Stable Audio
       title: Audio
     - sections:
+      - local: api/pipelines/anima
+        title: Anima
       - local: api/pipelines/animatediff
         title: AnimateDiff
       - local: api/pipelines/aura_flow
@@ -570,6 +551,8 @@
         title: Hybrid Token Diffusion
       - local: api/pipelines/idlm
         title: I-DLM
+      - local: api/pipelines/ideogram4
+        title: Ideogram 4
       - local: api/pipelines/pix2pix
         title: InstructPix2Pix
       - local: api/pipelines/joyimage_edit
@@ -672,6 +655,8 @@
     - sections:
       - local: api/pipelines/allegro
         title: Allegro
+      - local: api/pipelines/anyflow
+        title: AnyFlow
       - local: api/pipelines/chronoedit
         title: ChronoEdit
       - local: api/pipelines/cogvideox
@@ -680,6 +665,8 @@
         title: ConsisID
       - local: api/pipelines/cosmos
         title: Cosmos
+      - local: api/pipelines/cosmos3
+        title: Cosmos3
       - local: api/pipelines/framepack
         title: Framepack
       - local: api/pipelines/helios
@@ -753,6 +740,8 @@
       title: EulerAncestralDiscreteScheduler
     - local: api/schedulers/euler
       title: EulerDiscreteScheduler
+    - local: api/schedulers/flow_map_euler_discrete
+      title: FlowMapEulerDiscreteScheduler
     - local: api/schedulers/flow_match_euler_discrete
       title: FlowMatchEulerDiscreteScheduler
     - local: api/schedulers/flow_match_heun_discrete
