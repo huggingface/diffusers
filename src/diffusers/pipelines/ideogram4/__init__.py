@@ -25,6 +25,8 @@ else:
 
     _import_structure["pipeline_output"] = ["Ideogram4PipelineOutput"]
 
+    _import_structure["prompt_enhancer"] = ["Ideogram4PromptEnhancerHead"]
+
 if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     try:
         if not (is_transformers_available() and is_torch_available()):
@@ -34,6 +36,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     else:
         from .pipeline_ideogram4 import Ideogram4Pipeline
         from .pipeline_output import Ideogram4PipelineOutput
+        from .prompt_enhancer import Ideogram4PromptEnhancerHead
 else:
     import sys
 

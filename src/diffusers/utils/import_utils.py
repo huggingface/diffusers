@@ -205,6 +205,7 @@ _wandb_available, _wandb_version = _is_package_available("wandb")
 _tensorboard_available, _tensorboard_version = _is_package_available("tensorboard")
 _compel_available, _compel_version = _is_package_available("compel")
 _sentencepiece_available, _sentencepiece_version = _is_package_available("sentencepiece")
+_outlines_available, _outlines_version = _is_package_available("outlines")
 _torchsde_available, _torchsde_version = _is_package_available("torchsde")
 _peft_available, _peft_version = _is_package_available("peft")
 _torchvision_available, _torchvision_version = _is_package_available("torchvision")
@@ -373,6 +374,10 @@ def is_google_colab():
 
 def is_sentencepiece_available():
     return _sentencepiece_available
+
+
+def is_outlines_available():
+    return _outlines_available
 
 
 def is_imageio_available():

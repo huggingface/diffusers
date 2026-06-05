@@ -111,6 +111,7 @@ class AnyFlowCausalAttnProcessor:
 
         if encoder_hidden_states is None:
             encoder_hidden_states = hidden_states
+        target_dtype = hidden_states.dtype  # Effective compute dtype
 
         query = attn.to_q(hidden_states)
         key = attn.to_k(encoder_hidden_states)
@@ -120,6 +121,11 @@ class AnyFlowCausalAttnProcessor:
             query = attn.norm_q(query)
         if attn.norm_k is not None:
             key = attn.norm_k(key)
+
+        # norm_q and norm_k upcast query and key to FP32 due to the use of RMSNorm, so cast them back to the effective
+        # compute dtype.
+        query = query.to(target_dtype)
+        key = key.to(target_dtype)
 
         # Layout (B, H, L, D) is required by KV-cache slicing and rotary application.
         query = query.unflatten(2, (attn.heads, -1)).transpose(1, 2)

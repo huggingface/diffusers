@@ -29,10 +29,17 @@ from ...models.transformers.transformer_ideogram4 import (
     Ideogram4Transformer2DModel,
 )
 from ...schedulers import FlowMatchEulerDiscreteScheduler
-from ...utils import logging, replace_example_docstring
+from ...utils import is_outlines_available, logging, replace_example_docstring
 from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline
 from .pipeline_output import Ideogram4PipelineOutput
+from .prompt_enhancer import (
+    PROMPT_UPSAMPLE_TEMPERATURE,
+    Ideogram4PromptEnhancerHead,
+    build_caption_logits_processor,
+    build_prompt_enhancer,
+    generate_captions,
+)
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -155,8 +162,8 @@ class Ideogram4Pipeline(DiffusionPipeline):
             Unconditional (asymmetric-CFG) flow-matching transformer.
     """
 
-    model_cpu_offload_seq = "text_encoder->transformer->unconditional_transformer->vae"
-    _optional_components = []
+    model_cpu_offload_seq = "prompt_enhancer_head->text_encoder->transformer->unconditional_transformer->vae"
+    _optional_components = ["prompt_enhancer_head"]
     _callback_tensor_inputs = ["latents"]
 
     def __init__(
@@ -167,6 +174,7 @@ class Ideogram4Pipeline(DiffusionPipeline):
         tokenizer: AutoTokenizer,
         transformer: Ideogram4Transformer2DModel,
         unconditional_transformer: Ideogram4Transformer2DModel,
+        prompt_enhancer_head: Ideogram4PromptEnhancerHead | None = None,
     ) -> None:
         super().__init__()
 
@@ -177,6 +185,7 @@ class Ideogram4Pipeline(DiffusionPipeline):
             tokenizer=tokenizer,
             transformer=transformer,
             unconditional_transformer=unconditional_transformer,
+            prompt_enhancer_head=prompt_enhancer_head,
         )
 
         self.vae_scale_factor = (
@@ -185,6 +194,58 @@ class Ideogram4Pipeline(DiffusionPipeline):
         # Ideogram4 patchifies the VAE output by a factor of 2 before feeding into the transformer.
         self.patch_size = 2
         self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor * self.patch_size)
+
+        # Built lazily on first upsample: the head-less encoder body + `prompt_enhancer_head`, combined.
+        self._prompt_enhancer = None
+        # Outlines logits processor for schema-constrained captions; built lazily on first upsample.
+        self._caption_logits_processor = None
+
+    def upsample_prompt(
+        self,
+        prompt: str | list[str],
+        height: int = 2048,
+        width: int = 2048,
+        temperature: float = PROMPT_UPSAMPLE_TEMPERATURE,
+        max_new_tokens: int = 1024,
+        generator: torch.Generator | list[torch.Generator] | None = None,
+        device: torch.device | None = None,
+    ) -> list[str]:
+        """Rewrite each prompt into Ideogram4's native structured JSON caption.
+
+        Requires the optional `prompt_enhancer_head` component, which is grafted onto the shared `text_encoder` body to
+        make it generative. Generation is schema-constrained when `outlines` is installed, otherwise it runs
+        unconstrained. Pass `generator` (the same one accepted by `__call__`) to make sampling reproducible.
+        """
+        if self.prompt_enhancer_head is None:
+            raise ValueError(
+                "Prompt upsampling requires the `prompt_enhancer_head` component, which is not loaded. Load it and "
+                "pass it in, e.g.:\n"
+                "    from diffusers import Ideogram4PromptEnhancerHead\n"
+                "    head = Ideogram4PromptEnhancerHead.from_pretrained('diffusers/qwen3-vl-8b-instruct-lm-head')\n"
+                "    pipe = Ideogram4Pipeline.from_pretrained(model_id, prompt_enhancer_head=head)"
+            )
+        if self._prompt_enhancer is None:
+            self._prompt_enhancer = build_prompt_enhancer(self.text_encoder, self.prompt_enhancer_head)
+        if self._caption_logits_processor is None and is_outlines_available():
+            self._caption_logits_processor = build_caption_logits_processor(self._prompt_enhancer, self.tokenizer)
+        if self._caption_logits_processor is None:
+            logger.warning_once(
+                "`outlines` is not installed; prompt upsampling runs unconstrained and may not return schema-valid "
+                "JSON. Install with `pip install outlines` for structured captions."
+            )
+
+        return generate_captions(
+            self._prompt_enhancer,
+            self.tokenizer,
+            self._caption_logits_processor,
+            prompt,
+            height,
+            width,
+            temperature=temperature,
+            max_new_tokens=max_new_tokens,
+            generator=generator,
+            device=device,
+        )
 
     @staticmethod
     def _prepare_ids(
@@ -416,6 +477,8 @@ class Ideogram4Pipeline(DiffusionPipeline):
         guidance_schedule: list[float] | torch.Tensor | None = (7.0,) * 45 + (3.0,) * 3,
         mu: float = 0.0,
         std: float = 1.5,
+        prompt_upsampling: bool = False,
+        prompt_upsampling_temperature: float = PROMPT_UPSAMPLE_TEMPERATURE,
         max_sequence_length: int = 2048,
         num_images_per_prompt: int = 1,
         generator: torch.Generator | list[torch.Generator] | None = None,
@@ -451,6 +514,13 @@ class Ideogram4Pipeline(DiffusionPipeline):
                 the resolution ratio relative to 512x512.
             std (`float`, *optional*, defaults to 1.5):
                 Standard deviation of the logit-normal flow-matching schedule.
+            prompt_upsampling (`bool`, *optional*, defaults to `False`):
+                If `True`, rewrite `prompt` into Ideogram4's native structured JSON caption via
+                [`~Ideogram4Pipeline.upsample_prompt`] before encoding. Requires the optional `prompt_enhancer_head`
+                component; install `outlines` for schema-constrained captions. `generator` is reused to make the
+                upsampling reproducible.
+            prompt_upsampling_temperature (`float`, *optional*, defaults to 1.0):
+                Sampling temperature for prompt upsampling when `prompt_upsampling=True`.
             max_sequence_length (`int`, *optional*, defaults to 2048):
                 Maximum number of text tokens per prompt.
             num_images_per_prompt (`int`, *optional*, defaults to 1):
@@ -491,6 +561,18 @@ class Ideogram4Pipeline(DiffusionPipeline):
         device = self._execution_device
         self._guidance_scale = guidance_scale
         self._interrupt = False
+
+        # 0. Optionally rewrite the prompt(s) into Ideogram4's native structured JSON caption.
+        if prompt_upsampling:
+            prompt = self.upsample_prompt(
+                prompt,
+                height=height,
+                width=width,
+                temperature=prompt_upsampling_temperature,
+                max_new_tokens=max_sequence_length,
+                generator=generator,
+                device=device,
+            )
 
         # 1. Image grid (drives both the packed layout and the latent shape).
         grid_h, grid_w = (
