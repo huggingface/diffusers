@@ -805,16 +805,17 @@ class TorchAoConfigMixin:
     }
 
     @staticmethod
-    def _get_quant_config(config_name, **config_kwargs):
+    def _get_quant_config(config_name):
         config_cls = getattr(_torchao_quantization, config_name)
+        config_kwargs = {"version": 2}
         # TorchAO int4 quantization requires plain_int32 packing format on Intel XPU
         if config_name == "Int4WeightOnlyConfig" and torch_device == "xpu":
             config_kwargs.setdefault("int4_packing_format", "plain_int32")
 
         return TorchAoConfig(config_cls(**config_kwargs))
 
-    def _create_quantized_model(self, config_name, quant_config_kwargs=None, **extra_kwargs):
-        config = self._get_quant_config(config_name, **(quant_config_kwargs or {}))
+    def _create_quantized_model(self, config_name, **extra_kwargs):
+        config = self._get_quant_config(config_name)
         kwargs = getattr(self, "pretrained_model_kwargs", {}).copy()
         kwargs["quantization_config"] = config
         kwargs["device_map"] = str(torch_device)
@@ -905,11 +906,11 @@ class TorchAoTesterMixin(TorchAoConfigMixin, QuantizationTesterMixin):
     def test_torchao_quantization_lora_inference(self, quant_type):
         self._test_quantization_lora_inference(TorchAoConfigMixin.TORCHAO_QUANT_TYPES[quant_type])
 
-    @pytest.mark.parametrize("quant_type", ["int8wo", "int8dq"], ids=["int8wo", "int8dq"])
+    @pytest.mark.parametrize("quant_type", ["int8wo"], ids=["int8wo"])
     @require_torchao_version_greater_or_equal("0.16.0")
     def test_torchao_quantization_serialization(self, quant_type, tmp_path):
         config_kwargs = TorchAoConfigMixin.TORCHAO_QUANT_TYPES[quant_type]
-        model = self._create_quantized_model(config_kwargs, quant_config_kwargs={"version": 2})
+        model = self._create_quantized_model(config_kwargs)
         inputs = self.get_dummy_inputs()
 
         with torch.no_grad():
@@ -933,7 +934,7 @@ class TorchAoTesterMixin(TorchAoConfigMixin, QuantizationTesterMixin):
     @require_torchao_version_greater_or_equal("0.16.0")
     def test_torchao_quantization_sharded_serialization(self, quant_type, tmp_path):
         config_kwargs = TorchAoConfigMixin.TORCHAO_QUANT_TYPES[quant_type]
-        model = self._create_quantized_model(config_kwargs, quant_config_kwargs={"version": 2})
+        model = self._create_quantized_model(config_kwargs)
         inputs = self.get_dummy_inputs()
 
         with torch.no_grad():

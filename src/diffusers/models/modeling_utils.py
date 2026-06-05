@@ -1394,14 +1394,11 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                 loaded_keys = list(hf_quantizer.get_weight_names())
 
         if hf_quantizer is not None:
-            preprocess_kwargs = {
-                "model": model,
-                "device_map": device_map,
-                "keep_in_fp32_modules": keep_in_fp32_modules,
-            }
-            if is_torchao_quantized:
-                preprocess_kwargs["checkpoint_files"] = checkpoint_files
-            hf_quantizer.preprocess_model(**preprocess_kwargs)
+            hf_quantizer.preprocess_model(
+                model=model,
+                device_map=device_map,
+                keep_in_fp32_modules=keep_in_fp32_modules,
+            )
 
         if has_torchao_safetensors_metadata:
             # TorchAO safetensors reconstruction carries incomplete tensor subclass pieces from one shard to the next.
