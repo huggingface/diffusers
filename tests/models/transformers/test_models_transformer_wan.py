@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import pytest
 import torch
 
 from diffusers import WanTransformer3DModel
@@ -105,12 +104,6 @@ class WanTransformer3DTesterConfig(BaseModelTesterConfig):
 
 class TestWanTransformer3D(WanTransformer3DTesterConfig, ModelTesterMixin):
     """Core model tests for Wan Transformer 3D."""
-
-    @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16], ids=["fp16", "bf16"])
-    def test_from_save_pretrained_dtype_inference(self, tmp_path, dtype):
-        # Skip: fp16/bf16 require very high atol to pass, providing little signal.
-        # Dtype preservation is already tested by test_from_save_pretrained_dtype and test_keep_in_fp32_modules.
-        pytest.skip("Tolerance requirements too high for meaningful test")
 
 
 class TestWanTransformer3DMemory(WanTransformer3DTesterConfig, MemoryTesterMixin):

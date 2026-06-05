@@ -481,8 +481,22 @@ class ModelTesterMixin:
         model.to(torch_device)
         fp32_modules = model._keep_in_fp32_modules or []
 
-        model.to(dtype).save_pretrained(tmp_path)
+        # Save in fp32 and reload at `dtype`. `from_pretrained` enforces the model's dtype policy, e.g. it
+        # keeps `_keep_in_fp32_modules` in fp32 and regenerates non-persistent fp32 buffers (such as RoPE
+        # `inv_freq`) in fp32. A naive `model.to(dtype)` on the reference would instead truncate those to
+        # `dtype`, so the two forward passes would diverge well beyond any meaningful tolerance.
+        model.save_pretrained(tmp_path)
         model_loaded = self.model_class.from_pretrained(tmp_path, torch_dtype=dtype).to(torch_device)
+
+        # Cast the reference model to the exact per-tensor dtype layout produced by `from_pretrained` so the
+        # comparison isolates save/load fidelity rather than a dtype mismatch we introduced ourselves.
+        loaded_dtypes = {name: tensor.dtype for name, tensor in model_loaded.named_parameters()}
+        loaded_dtypes.update({name: tensor.dtype for name, tensor in model_loaded.named_buffers()})
+        for name, param in model.named_parameters():
+            param.data = param.data.to(loaded_dtypes[name])
+        for name, buf in model.named_buffers():
+            if name in loaded_dtypes:
+                buf.data = buf.data.to(loaded_dtypes[name])
 
         for name, param in model_loaded.named_parameters():
             if fp32_modules and any(

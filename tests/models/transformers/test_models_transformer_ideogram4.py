@@ -13,7 +13,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import pytest
 import torch
 
 from diffusers import Ideogram4Transformer2DModel
@@ -140,14 +139,6 @@ class Ideogram4TransformerTesterConfig(BaseModelTesterConfig):
 
 class TestIdeogram4Transformer(Ideogram4TransformerTesterConfig, ModelTesterMixin):
     """Core model tests for Ideogram 4 Transformer."""
-
-    @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16], ids=["fp16", "bf16"])
-    def test_from_save_pretrained_dtype_inference(self, tmp_path, dtype):
-        # Skip: the non-persistent fp32 RoPE inv_freq buffer is truncated to fp16 by the in-memory
-        # .to(dtype) path but kept fp32 by from_pretrained, so the two outputs diverge well beyond any
-        # meaningful tolerance. Dtype preservation is already covered by test_from_save_pretrained_dtype
-        # and test_keep_in_fp32_modules.
-        pytest.skip("Tolerance requirements too high for meaningful test")
 
 
 class TestIdeogram4TransformerMemory(Ideogram4TransformerTesterConfig, MemoryTesterMixin):
