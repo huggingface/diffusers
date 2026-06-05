@@ -159,7 +159,7 @@ class TestHooks:
         }
 
     def get_generator(self):
-        return torch.manual_seed(0)
+        return torch.Generator(device=torch_device).manual_seed(0)
 
     def test_hook_registry(self):
         registry = HookRegistry.check_if_exists_or_initialize(self.model)
