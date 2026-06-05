@@ -58,7 +58,7 @@ Now, let's look a bit into the nitty-gritty details of the design philosophy. Di
 
 ### Pipelines
 
-Pipelines are intended **only** for inference. Pipelines are designed to be easy to use (therefore do not follow [*Simple over easy*](#simple-over-easy) 100%) — they should be readable, self-explanatory, easy to tweak, and loosely seen as examples of how to use [models](#models) and [schedulers](#schedulers). Pipelines are not feature complete, to build feature-complete user interfaces on top of Diffusers, consider using [Modular Diffusers](../modular_diffusers/overview).
+Pipelines, standard or modular, are intended only for inference. They're designed to be easy to use (so they don't follow [Simple over easy](#simple-over-easy) 100%): readable, self-explanatory, easy to tweak, and best seen as examples of how to use [models](#models) and [schedulers](#schedulers). They aren't feature complete. To build feature-complete user interfaces on top of Diffusers, use [Modular Diffusers](../modular_diffusers/overview).
 
 The following design principles are followed:
 - Pipelines follow the single-file policy. All pipelines can be found in individual directories under src/diffusers/pipelines. One pipeline folder corresponds to one diffusion paper/project/release. Multiple pipeline files can be gathered in one pipeline folder, as it’s done for [`src/diffusers/pipelines/stable-diffusion`](https://github.com/huggingface/diffusers/tree/main/src/diffusers/pipelines/stable_diffusion). If pipelines share similar functionality, one can make use of the [# Copied from mechanism](https://github.com/huggingface/diffusers/blob/125d783076e5bd9785beb05367a2d2566843a271/src/diffusers/pipelines/stable_diffusion/pipeline_stable_diffusion_img2img.py#L251).
