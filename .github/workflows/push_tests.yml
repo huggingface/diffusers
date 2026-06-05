@@ -44,7 +44,7 @@ jobs:
       - name: Install dependencies
         run: |
           printf 'tokenizers<0.23.0\ntorch==2.10.0\ntorchvision==0.25.0\ntorchaudio==2.10.0\n' > "$UV_OVERRIDE"
-          uv pip install -e ".[quality]"
+          uv pip install --prerelease=allow -e ".[quality]"
       - name: Environment
         run: |
           diffusers-cli env
@@ -85,9 +85,9 @@ jobs:
       - name: Install dependencies
         run: |
           printf 'tokenizers<0.23.0\ntorch==2.10.0\ntorchvision==0.25.0\ntorchaudio==2.10.0\n' > "$UV_OVERRIDE"
-          uv pip install -e ".[quality]"
-          uv pip uninstall accelerate && uv pip install -U accelerate@git+https://github.com/huggingface/accelerate.git
-          uv pip uninstall transformers huggingface_hub && UV_PRERELEASE=allow uv pip install -U transformers@git+https://github.com/huggingface/transformers.git
+          uv pip install --prerelease=allow -e ".[quality]"
+          uv pip uninstall accelerate && uv pip install --prerelease=allow -U accelerate@git+https://github.com/huggingface/accelerate.git
+          uv pip uninstall transformers huggingface_hub && UV_PRERELEASE=allow uv pip install --prerelease=allow -U transformers@git+https://github.com/huggingface/transformers.git
       - name: Environment
         run: |
           diffusers-cli env
@@ -137,10 +137,10 @@ jobs:
     - name: Install dependencies
       run: |
         printf 'tokenizers<0.23.0\ntorch==2.10.0\ntorchvision==0.25.0\ntorchaudio==2.10.0\n' > "$UV_OVERRIDE"
-        uv pip install -e ".[quality]"
-        uv pip install peft@git+https://github.com/huggingface/peft.git
-        uv pip uninstall accelerate && uv pip install -U accelerate@git+https://github.com/huggingface/accelerate.git
-        uv pip uninstall transformers huggingface_hub && UV_PRERELEASE=allow uv pip install -U transformers@git+https://github.com/huggingface/transformers.git
+        uv pip install --prerelease=allow -e ".[quality]"
+        uv pip install --prerelease=allow peft@git+https://github.com/huggingface/peft.git
+        uv pip uninstall accelerate && uv pip install --prerelease=allow -U accelerate@git+https://github.com/huggingface/accelerate.git
+        uv pip uninstall transformers huggingface_hub && UV_PRERELEASE=allow uv pip install --prerelease=allow -U transformers@git+https://github.com/huggingface/transformers.git
 
     - name: Environment
       run: |
@@ -192,8 +192,8 @@ jobs:
     - name: Install dependencies
       run: |
         printf 'tokenizers<0.23.0\ntorch==2.10.0\ntorchvision==0.25.0\ntorchaudio==2.10.0\n' > "$UV_OVERRIDE"
-        uv pip install -e ".[quality,training]"
-        uv pip uninstall transformers huggingface_hub && UV_PRERELEASE=allow uv pip install -U transformers@git+https://github.com/huggingface/transformers.git
+        uv pip install --prerelease=allow -e ".[quality,training]"
+        uv pip uninstall transformers huggingface_hub && UV_PRERELEASE=allow uv pip install --prerelease=allow -U transformers@git+https://github.com/huggingface/transformers.git
     - name: Environment
       run: |
         diffusers-cli env
@@ -236,7 +236,7 @@ jobs:
     - name: Install dependencies
       run: |
         printf 'tokenizers<0.23.0\ntorch==2.10.0\ntorchvision==0.25.0\ntorchaudio==2.10.0\n' > "$UV_OVERRIDE"
-        uv pip install -e ".[quality,training]"
+        uv pip install --prerelease=allow -e ".[quality,training]"
     - name: Environment
       run: |
         diffusers-cli env
@@ -277,7 +277,7 @@ jobs:
     - name: Install dependencies
       run: |
         printf 'tokenizers<0.23.0\ntorch==2.10.0\ntorchvision==0.25.0\ntorchaudio==2.10.0\n' > "$UV_OVERRIDE"
-        uv pip install -e ".[quality,training]"
+        uv pip install --prerelease=allow -e ".[quality,training]"
 
     - name: Environment
       run: |
@@ -287,7 +287,7 @@ jobs:
       env:
         HF_TOKEN: ${{ secrets.DIFFUSERS_HF_HUB_READ_TOKEN }}
       run: |
-        uv pip install ".[training]"
+        uv pip install --prerelease=allow ".[training]"
         pytest -n 1 --max-worker-restart=0 --dist=loadfile --make-reports=examples_torch_cuda examples/
 
     - name: Failure short reports
