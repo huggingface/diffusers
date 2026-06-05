@@ -26,6 +26,7 @@ from ...utils import (
     deprecate,
     logging,
 )
+from ...utils.torch_utils import maybe_adjust_dtype_for_device
 from ..activations import get_activation
 from ..attention import AttentionMixin
 from ..attention_processor import (
@@ -853,12 +854,9 @@ class UNet2DConditionModel(
         if not torch.is_tensor(timesteps):
             # TODO: this requires sync between CPU and GPU. So try to pass timesteps as tensors if you can
             # This would be a good case for the `match` statement (Python 3.10+)
-            is_mps = sample.device.type == "mps"
-            is_npu = sample.device.type == "npu"
-            if isinstance(timestep, float):
-                dtype = torch.float32 if (is_mps or is_npu) else torch.float64
-            else:
-                dtype = torch.int32 if (is_mps or is_npu) else torch.int64
+            dtype = maybe_adjust_dtype_for_device(
+                torch.float64 if isinstance(timestep, float) else torch.int64, sample.device
+            )
             timesteps = torch.tensor([timesteps], dtype=dtype, device=sample.device)
         elif len(timesteps.shape) == 0:
             timesteps = timesteps[None].to(sample.device)

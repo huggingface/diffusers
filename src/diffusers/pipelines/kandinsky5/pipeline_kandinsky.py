@@ -730,10 +730,19 @@ class Kandinsky5T2VPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
                 A torch generator to make generation deterministic.
             latents (`torch.Tensor`, *optional*):
                 Pre-generated noisy latents.
-            prompt_embeds (`torch.Tensor`, *optional*):
-                Pre-generated text embeddings.
-            negative_prompt_embeds (`torch.Tensor`, *optional*):
-                Pre-generated negative text embeddings.
+            prompt_embeds_qwen (`torch.Tensor`, *optional*):
+                Pre-generated text embeddings from the Qwen text encoder.
+            prompt_embeds_clip (`torch.Tensor`, *optional*):
+                Pre-generated text embeddings from the CLIP text encoder.
+            negative_prompt_embeds_qwen (`torch.Tensor`, *optional*):
+                Pre-generated negative text embeddings from the Qwen text encoder.
+            negative_prompt_embeds_clip (`torch.Tensor`, *optional*):
+                Pre-generated negative text embeddings from the CLIP text encoder.
+            prompt_cu_seqlens (`torch.Tensor`, *optional*):
+                Cumulative sequence lengths for the Qwen prompt embeddings, used for variable-length attention.
+            negative_prompt_cu_seqlens (`torch.Tensor`, *optional*):
+                Cumulative sequence lengths for the Qwen negative prompt embeddings, used for variable-length
+                attention.
             output_type (`str`, *optional*, defaults to `"pil"`):
                 The output format of the generated video.
             return_dict (`bool`, *optional*, defaults to `True`):
