@@ -261,6 +261,12 @@ class ContextParallelTesterMixin:
         init_dict = self.get_init_dict()
         inputs_dict = self.get_dummy_inputs(batch_size=batch_size)
 
+        # Single-GPU reference
+        model = self.model_class(**init_dict).eval().to(torch_device)
+        state_dict = {k: v.cpu() for k, v in model.state_dict().items()}
+        with torch.no_grad():
+            ref_output = model(**inputs_dict, return_dict=False)[0].cpu()
+
         # Move all tensors to CPU for multiprocessing
         inputs_dict = {k: v.cpu() if isinstance(v, torch.Tensor) else v for k, v in inputs_dict.items()}
         cp_dict = {cp_type: world_size}
@@ -275,7 +281,7 @@ class ContextParallelTesterMixin:
         # Spawn worker processes
         mp.spawn(
             _context_parallel_worker,
-            args=(world_size, master_port, self.model_class, init_dict, cp_dict, inputs_dict, return_dict),
+            args=(world_size, master_port, self.model_class, init_dict, cp_dict, inputs_dict, return_dict, None, state_dict),
             nprocs=world_size,
             join=True,
         )
@@ -283,6 +289,9 @@ class ContextParallelTesterMixin:
         assert return_dict.get("status") == "success", (
             f"Context parallel inference failed: {return_dict.get('error', 'Unknown error')}"
         )
+
+        cp_output = torch.tensor(return_dict["output"])
+        torch.testing.assert_close(ref_output, cp_output, atol=1e-4, rtol=1e-4)
 
     @pytest.mark.parametrize("cp_type", ["ulysses_degree", "ring_degree"], ids=["ulysses", "ring"])
     def test_context_parallel_batch_inputs(self, cp_type):
@@ -382,62 +391,6 @@ class ContextParallelTesterMixin:
         assert return_dict.get("status") == "success", (
             f"Custom mesh context parallel inference failed: {return_dict.get('error', 'Unknown error')}"
         )
-
-    @pytest.mark.parametrize("cp_type", ["ulysses_degree", "ring_degree"], ids=["ulysses", "ring"])
-    def test_context_parallel_output_correctness(self, cp_type, batch_size: int = 1):
-        """Verify that CP output is numerically identical to a single-GPU reference forward pass."""
-        if not torch.distributed.is_available():
-            pytest.skip("torch.distributed is not available.")
-
-        if not hasattr(self.model_class, "_cp_plan") or self.model_class._cp_plan is None:
-            pytest.skip("Model does not have a _cp_plan defined for context parallel inference.")
-
-        if cp_type == "ring_degree":
-            active_backend, _ = _AttentionBackendRegistry.get_active_backend()
-            if active_backend == AttentionBackendName.NATIVE:
-                pytest.skip("Ring attention is not supported with the native attention backend.")
-
-        world_size = 2
-        init_dict = self.get_init_dict()
-        inputs_dict = self.get_dummy_inputs(batch_size=batch_size)
-
-        # Single-GPU reference
-        model = self.model_class(**init_dict).eval().to(torch_device)
-        state_dict = {k: v.cpu() for k, v in model.state_dict().items()}
-        with torch.no_grad():
-            ref_output = model(**inputs_dict, return_dict=False)[0].cpu()
-
-        # Context-parallel run with the same weights
-        inputs_cpu = {k: v.cpu() if isinstance(v, torch.Tensor) else v for k, v in inputs_dict.items()}
-        cp_dict = {cp_type: world_size}
-
-        master_port = _find_free_port()
-        manager = mp.Manager()
-        return_dict = manager.dict()
-
-        mp.spawn(
-            _context_parallel_worker,
-            args=(
-                world_size,
-                master_port,
-                self.model_class,
-                init_dict,
-                cp_dict,
-                inputs_cpu,
-                return_dict,
-                None,
-                state_dict,
-            ),
-            nprocs=world_size,
-            join=True,
-        )
-
-        assert return_dict.get("status") == "success", (
-            f"Context parallel correctness check failed: {return_dict.get('error', 'Unknown error')}"
-        )
-
-        cp_output = torch.tensor(return_dict["output"])
-        torch.testing.assert_close(ref_output, cp_output, atol=1e-4, rtol=1e-4)
 
 
 @is_attention
