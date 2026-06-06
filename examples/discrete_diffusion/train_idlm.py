@@ -16,14 +16,17 @@
 """
 Reference training script for converting an AR causal LM into an I-DLM checkpoint.
 
-I-DLM's training objective (Yu et al., 2026) is *all-masked* finetuning: the input is the concatenation of a
-fully-masked copy `x_t` and the clean copy `x_0` under strict causal attention, with two CE losses:
+I-DLM's training objective (Yu et al., 2026) is *all-masked* finetuning. Each forward concatenates a
+fully-masked copy `x_t` and the clean copy `x_0` into a length-`2L` sequence run under the block-diffusion
+attention mask (causal within the noisy blocks, cross-attention from `x_t` to the clean prefix, strict-causal
+`x_0`), with a Dream next-token shift (`logits[:, i, :]` predicts token `i+1`). Two CE losses, both on the
+response tokens:
 
-    L = CE_noisy(predict clean tokens from masked positions) + alpha * CE_clean(next-token on clean region,
-                                                                                with Dream shift)
+    L = CE_noisy(decode q: masked tokens conditioned on the clean prefix)
+        + alpha * CE_clean(verify p: clean response copy, strict causal)
 
-Each forward is a single pass over `[prompt | MASK * gen_len | prompt | x_0_gen]` with strict causal masking.
-Under the Dream shift, `logits[:, i, :]` predicts the token at input position `i+1`.
+`block_length` is the diffusion block size; the paper trains a b1 -> b2 -> b3 curriculum (one epoch each),
+enabling `--auto_balance` (alpha = CE_noisy / CE_clean, detached) at the b3 stage.
 
 This script is intentionally minimal — enough to demonstrate the loss construction and integrate with
 `accelerate`. Real I-DLM training requires a larger dataloader, gradient checkpointing, and packing logic; see
@@ -79,7 +82,9 @@ class TrainConfig:
 
     max_seq_length: int
     prompt_length: int
+    block_length: int  # diffusion block size (paper curriculum b1 -> b2 -> b3)
     clean_loss_weight: float  # `alpha` in L = CE_noisy + alpha * CE_clean
+    auto_balance: bool  # replace alpha with (CE_noisy / CE_clean).detach() (paper Eq. 2, b3)
     mask_token: str
 
 
@@ -105,7 +110,9 @@ def parse_args() -> TrainConfig:
 
     p.add_argument("--max_seq_length", type=int, default=2048)
     p.add_argument("--prompt_length", type=int, default=256)
-    p.add_argument("--clean_loss_weight", type=float, default=1.0)
+    p.add_argument("--block_length", type=int, default=1)
+    p.add_argument("--clean_loss_weight", type=float, default=0.2)
+    p.add_argument("--auto_balance", action="store_true")
     p.add_argument("--mask_token", type=str, default="<|MASK|>")
 
     args = p.parse_args()
@@ -139,6 +146,39 @@ def collate(batch):
     }
 
 
+def build_block_diffusion_mask(
+    seq_len: int,
+    block_size: int,
+    valid_mask: torch.LongTensor,
+    *,
+    dtype: torch.dtype,
+    device: torch.device,
+) -> torch.Tensor:
+    """Additive ``[x_t | x_0]`` block-diffusion attention mask (paper Appendix E).
+
+    Built over the concatenated length-``2L`` sequence (noisy copy then clean copy):
+      * ``M_BD``  — causal self-attention within each noisy ``x_t`` block,
+      * ``M_OBC`` — each ``x_t`` token cross-attends clean ``x_0`` tokens in strictly
+        earlier blocks (the clean ground-truth prefix the decode is conditioned on),
+      * ``M_BC``  — strict token-causal attention within the clean ``x_0`` copy.
+
+    Returns a ``[B, 1, 2L, 2L]`` float mask (``0`` attend, ``-inf`` block).
+    """
+    q = torch.arange(2 * seq_len, device=device).view(1, 1, -1, 1)
+    kv = torch.arange(2 * seq_len, device=device).view(1, 1, 1, -1)
+    x0_q, x0_kv = q >= seq_len, kv >= seq_len
+    block_q = torch.where(x0_q, (q - seq_len) // block_size, q // block_size)
+    block_kv = torch.where(x0_kv, (kv - seq_len) // block_size, kv // block_size)
+
+    m_bd = (block_q == block_kv) & (~x0_q) & (~x0_kv) & (q >= kv)
+    m_obc = (block_q > block_kv) & x0_kv & (~x0_q)
+    m_bc = (q >= kv) & x0_q & x0_kv
+
+    key_valid = torch.cat([valid_mask.bool(), valid_mask.bool()], dim=1).view(valid_mask.size(0), 1, 1, 2 * seq_len)
+    allow = (m_bd | m_obc | m_bc) & key_valid
+    return torch.where(allow, torch.tensor(0.0, device=device, dtype=dtype), torch.tensor(float("-inf"), device=device, dtype=dtype))
+
+
 def compute_idlm_loss(
     model,
     input_ids: torch.LongTensor,
@@ -146,18 +186,19 @@ def compute_idlm_loss(
     *,
     mask_token_id: int,
     prompt_length: int,
+    block_length: int,
     clean_loss_weight: float,
+    auto_balance: bool,
     scheduler: IDLMBlockDiffusionScheduler,
 ):
     """
-    Single-pass all-masked I-DLM loss.
+    I-DLM block-diffusion loss (matches the official trainer).
 
-    Constructs a fully-masked `x_t` by replacing tokens after `prompt_length` with `mask_token_id`, forwards
-    through the model with standard causal attention, and computes:
-      * `ce_noisy` — CE on the model's logits at masked positions against the *original* token
-        (predicting the clean token from the masked input).
-      * `ce_clean` — CE on the model's logits at clean (non-masked) positions against the *next* token
-        (Dream shift: logits[:, i, :] predicts token at position i+1).
+    Concatenates the fully-masked copy ``x_t`` and the clean copy ``x_0`` into a length-``2L``
+    sequence, runs one forward under the block-diffusion attention mask, and applies a Dream
+    next-token shift. Both cross-entropy terms are supervised on the response tokens:
+      * ``ce_noisy`` — decode CE on the ``x_t`` half (each masked token conditioned on the clean prefix),
+      * ``ce_clean`` — verify CE on the ``x_0`` half (clean response copy, strict causal).
     """
     labels = input_ids.clone()
     noisy, _clean, noisy_mask = scheduler.add_noise(
@@ -166,26 +207,36 @@ def compute_idlm_loss(
         prompt_length=prompt_length,
         mask_token_id=mask_token_id,
     )
-    out = model(input_ids=noisy, attention_mask=attention_mask, use_cache=False)
-    logits = out.logits  # [B, T, V]
+    bsz, L = input_ids.shape
+    device = input_ids.device
 
-    # Dream shift: logits[:, i, :] predicts token i+1. Align predictions with shifted labels.
-    shift_logits = logits[:, :-1, :].contiguous()
-    shift_labels = labels[:, 1:].contiguous()
-    shift_valid = attention_mask[:, 1:].to(dtype=torch.bool)
-    shift_noisy = noisy_mask[:, 1:]  # label at pos i+1 was masked in the input
-    shift_clean = (~shift_noisy) & shift_valid
+    concat_ids = torch.cat([noisy, input_ids], dim=1)  # [x_t | x_0], length 2L
+    pos = torch.arange(L, device=device)
+    concat_pos = torch.cat([pos, pos]).unsqueeze(0).expand(bsz, -1)
+    block_mask = build_block_diffusion_mask(
+        L, block_length, attention_mask, dtype=next(model.parameters()).dtype, device=device
+    )
 
+    out = model(input_ids=concat_ids, attention_mask=block_mask, position_ids=concat_pos, use_cache=False)
+    logits = out.logits  # [B, 2L, V]
+    noisy_logits, clean_logits = logits[:, :L, :], logits[:, L : 2 * L, :]
+
+    # Dream shift: logits[:, i] predicts token i+1. Both copies supervise the response.
+    shift_target = labels[:, 1:]
+    supervise = noisy_mask[:, 1:].bool() & attention_mask[:, 1:].bool()
+    weight = supervise.float()
+    denom = weight.sum().clamp_min(1)
     loss_fct = torch.nn.CrossEntropyLoss(reduction="none")
-    flat_logits = shift_logits.view(-1, shift_logits.size(-1))
-    flat_labels = shift_labels.view(-1)
-    per_token_ce = loss_fct(flat_logits.float(), flat_labels).view(shift_labels.shape)
 
-    noisy_mask_flat = shift_noisy & shift_valid
-    ce_noisy = (per_token_ce * noisy_mask_flat).sum() / noisy_mask_flat.sum().clamp_min(1)
-    ce_clean = (per_token_ce * shift_clean).sum() / shift_clean.sum().clamp_min(1)
+    def ce(half):
+        per_token = loss_fct(
+            half[:, :-1, :].reshape(-1, half.size(-1)).float(), shift_target.reshape(-1)
+        ).view(shift_target.shape)
+        return (per_token * weight).sum() / denom
 
-    loss = ce_noisy + clean_loss_weight * ce_clean
+    ce_noisy, ce_clean = ce(noisy_logits), ce(clean_logits)
+    alpha = (ce_noisy / ce_clean.clamp_min(1e-6)).detach() if auto_balance else clean_loss_weight
+    loss = ce_noisy + alpha * ce_clean
     return loss, {"ce_noisy": ce_noisy.detach(), "ce_clean": ce_clean.detach()}
 
 
@@ -202,7 +253,10 @@ def main():
     os.makedirs(cfg.output_dir, exist_ok=True)
 
     tokenizer = build_tokenizer(cfg)
-    model = AutoModelForCausalLM.from_pretrained(cfg.model_name_or_path, trust_remote_code=True)
+    # sdpa honours the 4D block-diffusion mask; FlashAttention-2 would ignore it.
+    model = AutoModelForCausalLM.from_pretrained(
+        cfg.model_name_or_path, trust_remote_code=True, attn_implementation="sdpa"
+    )
     if len(tokenizer) != model.config.vocab_size:
         model.resize_token_embeddings(len(tokenizer))
     mask_token_id = tokenizer.mask_token_id
@@ -248,7 +302,9 @@ def main():
                     batch["attention_mask"],
                     mask_token_id=mask_token_id,
                     prompt_length=cfg.prompt_length,
+                    block_length=cfg.block_length,
                     clean_loss_weight=cfg.clean_loss_weight,
+                    auto_balance=cfg.auto_balance,
                     scheduler=diffusion_scheduler,
                 )
                 accelerator.backward(loss)
