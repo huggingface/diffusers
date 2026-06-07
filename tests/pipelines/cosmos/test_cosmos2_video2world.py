@@ -354,3 +354,37 @@ class Cosmos2VideoToWorldPipelineFastTests(PipelineTesterMixin, unittest.TestCas
     )
     def test_encode_prompt_works_in_isolation(self):
         pass
+
+    def test_pipeline_init_does_not_leak_grad_state(self):
+        # The real `CosmosSafetyChecker` (from `cosmos_guardrail`) toggles
+        # `torch.is_grad_enabled()` during __init__. Loading a Cosmos pipeline must
+        # not leak that toggle into the caller's scope. See issue #13790.
+        import importlib
+        from unittest.mock import patch
+
+        components = self.get_dummy_components()
+        components.pop("safety_checker")
+
+        cosmos_module = importlib.import_module("diffusers.pipelines.cosmos.pipeline_cosmos2_video2world")
+        leaky_checker_cls = type(
+            "LeakyCosmosSafetyChecker",
+            (DummyCosmosSafetyChecker,),
+            {"__init__": lambda self, *a, **kw: torch.set_grad_enabled(False)},
+        )
+        with patch.object(cosmos_module, "CosmosSafetyChecker", leaky_checker_cls):
+            try:
+                torch.set_grad_enabled(True)
+                self.pipeline_class(**components)
+                self.assertTrue(
+                    torch.is_grad_enabled(),
+                    "Pipeline __init__ must not leak `torch.set_grad_enabled(False)` into the caller's scope",
+                )
+
+                torch.set_grad_enabled(False)
+                self.pipeline_class(**components)
+                self.assertFalse(
+                    torch.is_grad_enabled(),
+                    "Pipeline __init__ must restore the caller's prior grad state (disabled)",
+                )
+            finally:
+                torch.set_grad_enabled(True)
