@@ -161,7 +161,7 @@ class EulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
             Pass an array of betas directly to the constructor to bypass `beta_start` and `beta_end`.
         prediction_type (`Literal["epsilon", "sample", "v_prediction"]`, defaults to `"epsilon"`, *optional*):
             Prediction type of the scheduler function; can be `"epsilon"` (predicts the noise of the diffusion
-            process), `"sample"` (directly predicts the noisy sample`) or `"v_prediction"` (see section 2.4 of [Imagen
+            process), `"sample"` (directly predicts the noisy sample) or `"v_prediction"` (see section 2.4 of [Imagen
             Video](https://huggingface.co/papers/2210.02303) paper).
         interpolation_type (`Literal["linear", "log_linear"]`, defaults to `"linear"`, *optional*):
             The interpolation type to compute intermediate sigmas for the scheduler denoising steps. Should be one of
