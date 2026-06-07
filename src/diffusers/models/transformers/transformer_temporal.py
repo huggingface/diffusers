@@ -94,6 +94,9 @@ class TransformerTemporalModel(ModelMixin, ConfigMixin):
         inner_dim = num_attention_heads * attention_head_dim
 
         self.in_channels = in_channels
+        self.out_channels = in_channels if out_channels is None else out_channels
+        if self.out_channels != in_channels:
+            raise ValueError("`out_channels` must be `None` or equal to `in_channels` for TransformerTemporalModel.")
 
         self.norm = torch.nn.GroupNorm(num_groups=norm_num_groups, num_channels=in_channels, eps=1e-6, affine=True)
         self.proj_in = nn.Linear(in_channels, inner_dim)
@@ -118,7 +121,7 @@ class TransformerTemporalModel(ModelMixin, ConfigMixin):
             ]
         )
 
-        self.proj_out = nn.Linear(inner_dim, in_channels)
+        self.proj_out = nn.Linear(inner_dim, self.out_channels)
 
     def forward(
         self,
@@ -272,8 +275,11 @@ class TransformerSpatioTemporalModel(nn.Module):
 
         # 4. Define output layers
         self.out_channels = in_channels if out_channels is None else out_channels
-        # TODO: should use out_channels for continuous projections
-        self.proj_out = nn.Linear(inner_dim, in_channels)
+        if self.out_channels != in_channels:
+            raise ValueError(
+                "`out_channels` must be `None` or equal to `in_channels` for TransformerSpatioTemporalModel."
+            )
+        self.proj_out = nn.Linear(inner_dim, self.out_channels)
 
         self.gradient_checkpointing = False
 
