@@ -1633,6 +1633,16 @@ def _sage_attention_forward_op(
     if enable_gqa:
         raise ValueError("`enable_gqa` is not yet supported for Sage attention.")
 
+    # Sage attention kernels call `tensor.data_ptr()` internally and assume the
+    # tensor's `storage_offset == 0`. Ring attention (and other context-parallel
+    # code paths) pass chunked views produced by `funcol.all_gather_tensor(...).chunk(...)`
+    # which carry a non-zero `storage_offset`, leading to illegal memory accesses
+    # inside the kernel. Materializing contiguous copies here is a no-op when the
+    # tensors are already contiguous (i.e. the non-CP path).
+    query = query.contiguous()
+    key = key.contiguous()
+    value = value.contiguous()
+
     out = sageattn(
         q=query,
         k=key,
@@ -1670,6 +1680,15 @@ def _sage_attention_hub_forward_op(
         raise ValueError("`dropout_p` is not yet supported for Sage attention.")
     if enable_gqa:
         raise ValueError("`enable_gqa` is not yet supported for Sage attention.")
+
+    # See `_sage_attention_forward_op` for context: Sage hub kernels (e.g.
+    # `sageattn_qk_int8_pv_fp8_cuda`) also rely on `storage_offset == 0`.
+    # Ring attention produces non-contiguous chunked views that crash these
+    # kernels; force contiguous copies here so the rest of the CP pipeline
+    # works unchanged.
+    query = query.contiguous()
+    key = key.contiguous()
+    value = value.contiguous()
 
     func = _HUB_KERNELS_REGISTRY[AttentionBackendName.SAGE_HUB].kernel_fn
     out = func(
