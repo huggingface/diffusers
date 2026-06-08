@@ -1,4 +1,4 @@
-# Copyright 2025 The HuggingFace Inc. team. All rights reserved.
+# Copyright 2025 The Intel and The HuggingFace Inc. teams. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -14,20 +14,13 @@
 
 from typing import TYPE_CHECKING
 
-from ...utils import (
-    is_auto_round_available,
-    is_torch_available,
-    logging,
-)
+from ...utils import is_auto_round_available, logging
 from ..base import DiffusersQuantizer
 
 
 if TYPE_CHECKING:
     from ...models.modeling_utils import ModelMixin
 
-
-if is_torch_available():
-    pass
 
 logger = logging.get_logger(__name__)
 
@@ -91,10 +84,9 @@ class AutoRoundQuantizer(DiffusersQuantizer):
         """
         from auto_round.inference.convert_model import convert_hf_model, infer_target_device
 
-        if self.pre_quantized:
-            target_device = infer_target_device(self.device_map)
-            model, used_backends = convert_hf_model(model, target_device)
-            self.used_backends = used_backends
+        target_device = infer_target_device(self.device_map)
+        model, used_backends = convert_hf_model(model, target_device)
+        self.used_backends = used_backends
 
     def _process_model_after_weight_loading(self, model, **kwargs):
         """
@@ -103,22 +95,15 @@ class AutoRoundQuantizer(DiffusersQuantizer):
 
         Uses `auto_round.inference.convert_model.post_init` which:
         - Performs backend-specific finalization (e.g. repacking weights into the kernel's expected memory layout,
-          moving buffers to the correct device).
+        moving buffers to the correct device).
         - Freezes quantized parameters (requires_grad=False).
         - Prepares the model for inference.
 
-        Raises ValueError if the model is not pre-quantized, since AutoRound does not support on-the-fly quantization
-        through this loading path.
         """
-        if self.pre_quantized:
-            from auto_round.inference.convert_model import post_init
+        from auto_round.inference.convert_model import post_init
 
-            post_init(model, self.used_backends)
-        else:
-            raise ValueError(
-                "AutoRound quantizer in diffusers only supports pre-quantized models. "
-                "Please provide a model that has already been quantized with AutoRound."
-            )
+        post_init(model, self.used_backends)
+
         return model
 
     @property
