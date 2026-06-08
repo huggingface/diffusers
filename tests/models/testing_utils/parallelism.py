@@ -281,7 +281,17 @@ class ContextParallelTesterMixin:
         # Spawn worker processes
         mp.spawn(
             _context_parallel_worker,
-            args=(world_size, master_port, self.model_class, init_dict, cp_dict, inputs_dict, return_dict, None, state_dict),
+            args=(
+                world_size,
+                master_port,
+                self.model_class,
+                init_dict,
+                cp_dict,
+                inputs_dict,
+                return_dict,
+                None,
+                state_dict,
+            ),
             nprocs=world_size,
             join=True,
         )
