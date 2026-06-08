@@ -14,4 +14,4 @@ jobs:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
 
       - name: typos-action
-        uses: crate-ci/typos@65120634e79d8374d1aa2f27e54baa0c364fff5a  # v1.42.1
+        uses: crate-ci/typos@f8a58b6b53f2279f71eb605f03a4ae4d10608f45  # v1.47.0

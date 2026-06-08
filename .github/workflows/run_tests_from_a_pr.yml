@@ -60,7 +60,7 @@ jobs:
         shell: bash -e {0}
 
       - name: Checkout PR branch
-        uses: actions/checkout@v6
+        uses: actions/checkout@v6.0.2
         with:
           ref: refs/pull/${{ inputs.pr_number }}/head
 
