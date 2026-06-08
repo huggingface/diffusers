@@ -130,6 +130,35 @@ class SanaControlNetModel(ModelMixin, AttentionMixin, ConfigMixin, PeftAdapterMi
         attention_kwargs: dict[str, Any] | None = None,
         return_dict: bool = True,
     ) -> tuple[torch.Tensor, ...] | Transformer2DModelOutput:
+        r"""
+        Args:
+            hidden_states (`torch.Tensor` of shape `(batch_size, channel, height, width)`):
+                Input `hidden_states`.
+            encoder_hidden_states (`torch.Tensor`):
+                Conditional embeddings (embeddings computed from the input conditions such as prompts) to use.
+            timestep (`torch.LongTensor`):
+                Used to indicate denoising step.
+            controlnet_cond (`torch.Tensor`):
+                The conditional input tensor for the ControlNet.
+            conditioning_scale (`float`, *optional*, defaults to `1.0`):
+                The scale factor for ControlNet outputs.
+            encoder_attention_mask (`torch.Tensor`, *optional*):
+                Attention mask applied to `encoder_hidden_states`.
+            attention_mask (`torch.Tensor`, *optional*):
+                Attention mask applied to `hidden_states`.
+            attention_kwargs (`dict`, *optional*):
+                A kwargs dictionary that if specified is passed along to the `AttentionProcessor` as defined under
+                `self.processor` in
+                [diffusers.models.attention_processor](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/attention_processor.py).
+            return_dict (`bool`, *optional*, defaults to `True`):
+                Whether or not to return a [`~models.transformer_2d.Transformer2DModelOutput`] instead of a plain
+                tuple.
+
+        Returns:
+            [`~models.transformer_2d.Transformer2DModelOutput`] or `tuple`:
+                If `return_dict` is True, a [`~models.transformer_2d.Transformer2DModelOutput`] is returned, otherwise
+                a plain `tuple` is returned.
+        """
         # ensure attention_mask is a bias, and give it a singleton query_tokens dimension.
         #   we may have done this conversion already, e.g. if we came here via UNet2DConditionModel#forward.
         #   we can tell by counting dims; if ndim == 2: it's a mask rather than a bias.

@@ -393,6 +393,22 @@ class LongCatAudioDiTVae(ModelMixin, AutoencoderMixin, ConfigMixin):
         return_dict: bool = True,
         generator: torch.Generator | None = None,
     ) -> LongCatAudioDiTVaeDecoderOutput | tuple[torch.Tensor]:
+        r"""
+        Args:
+            sample (`torch.Tensor`): Input sample.
+            sample_posterior (`bool`, *optional*, defaults to `False`):
+                Whether to sample from the posterior.
+            return_dict (`bool`, *optional*, defaults to `True`):
+                Whether or not to return a [`LongCatAudioDiTVaeDecoderOutput`] instead of a plain tuple.
+            generator (`torch.Generator`, *optional*):
+                A [`torch.Generator`](https://pytorch.org/docs/stable/generated/torch.Generator.html) to make sampling
+                deterministic.
+
+        Returns:
+            [`LongCatAudioDiTVaeDecoderOutput`] or `tuple`:
+                If `return_dict` is True, a [`LongCatAudioDiTVaeDecoderOutput`] is returned, otherwise a plain `tuple`
+                is returned.
+        """
         latents = self.encode(sample, sample_posterior=sample_posterior, return_dict=True, generator=generator).latents
         decoded = self.decode(latents, return_dict=True).sample
         if not return_dict:

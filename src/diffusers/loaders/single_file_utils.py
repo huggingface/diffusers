@@ -1702,7 +1702,10 @@ def create_diffusers_clip_model_from_ldm(
     with ctx():
         model = cls(model_config)
 
-    position_embedding_dim = model.text_model.embeddings.position_embedding.weight.shape[-1]
+    # `CLIPTextModel` was flattened in transformers >=5.6; `CLIPTextModelWithProjection` still wraps via `text_model`.
+    has_text_model_wrapper = hasattr(model, "text_model")
+    text_model = model.text_model if has_text_model_wrapper else model
+    position_embedding_dim = text_model.embeddings.position_embedding.weight.shape[-1]
 
     if is_clip_model(checkpoint):
         diffusers_format_checkpoint = convert_ldm_clip_checkpoint(checkpoint)
@@ -1743,6 +1746,11 @@ def create_diffusers_clip_model_from_ldm(
 
     else:
         raise ValueError("The provided checkpoint does not seem to contain a valid CLIP model.")
+
+    if not has_text_model_wrapper:
+        diffusers_format_checkpoint = {
+            k.removeprefix("text_model."): v for k, v in diffusers_format_checkpoint.items()
+        }
 
     if is_accelerate_available():
         load_model_dict_into_meta(model, diffusers_format_checkpoint, dtype=torch_dtype)

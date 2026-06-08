@@ -47,6 +47,7 @@ from diffusers.utils.import_utils import (
     is_peft_available,
     is_timm_available,
     is_torch_available,
+    is_torch_neuronx_available,
     is_torch_version,
     is_torchao_available,
     is_torchsde_available,
@@ -111,6 +112,8 @@ if is_torch_available():
             torch_device = "cuda"
         elif torch.xpu.is_available():
             torch_device = "xpu"
+        elif is_torch_neuronx_available() and hasattr(torch, "neuron") and torch.neuron.is_available():
+            torch_device = torch.neuron.current_device()
         else:
             torch_device = "cpu"
         is_torch_higher_equal_than_1_12 = version.parse(
@@ -143,8 +146,8 @@ def assert_tensors_close(
     """
     Assert that two tensors are close within tolerance.
 
-    Uses the same formula as torch.allclose: |actual - expected| <= atol + rtol * |expected|
-    Provides concise, actionable error messages without dumping full tensors.
+    Uses the same formula as torch.allclose: |actual - expected| <= atol + rtol * |expected| Provides concise,
+    actionable error messages without dumping full tensors.
 
     Args:
         actual: The actual tensor from the computation.
@@ -338,8 +341,7 @@ def nightly(test_case):
 def is_torch_compile(test_case):
     """
     Decorator marking a test as a torch.compile test. These tests can be filtered using:
-        pytest -m "not compile" to skip
-        pytest -m compile to run only these tests
+        pytest -m "not compile" to skip pytest -m compile to run only these tests
     """
     return pytest.mark.compile(test_case)
 
@@ -347,8 +349,7 @@ def is_torch_compile(test_case):
 def is_single_file(test_case):
     """
     Decorator marking a test as a single file loading test. These tests can be filtered using:
-        pytest -m "not single_file" to skip
-        pytest -m single_file to run only these tests
+        pytest -m "not single_file" to skip pytest -m single_file to run only these tests
     """
     return pytest.mark.single_file(test_case)
 
@@ -356,8 +357,7 @@ def is_single_file(test_case):
 def is_lora(test_case):
     """
     Decorator marking a test as a LoRA test. These tests can be filtered using:
-        pytest -m "not lora" to skip
-        pytest -m lora to run only these tests
+        pytest -m "not lora" to skip pytest -m lora to run only these tests
     """
     return pytest.mark.lora(test_case)
 
@@ -365,8 +365,7 @@ def is_lora(test_case):
 def is_ip_adapter(test_case):
     """
     Decorator marking a test as an IP Adapter test. These tests can be filtered using:
-        pytest -m "not ip_adapter" to skip
-        pytest -m ip_adapter to run only these tests
+        pytest -m "not ip_adapter" to skip pytest -m ip_adapter to run only these tests
     """
     return pytest.mark.ip_adapter(test_case)
 
@@ -374,8 +373,7 @@ def is_ip_adapter(test_case):
 def is_training(test_case):
     """
     Decorator marking a test as a training test. These tests can be filtered using:
-        pytest -m "not training" to skip
-        pytest -m training to run only these tests
+        pytest -m "not training" to skip pytest -m training to run only these tests
     """
     return pytest.mark.training(test_case)
 
@@ -383,8 +381,7 @@ def is_training(test_case):
 def is_attention(test_case):
     """
     Decorator marking a test as an attention test. These tests can be filtered using:
-        pytest -m "not attention" to skip
-        pytest -m attention to run only these tests
+        pytest -m "not attention" to skip pytest -m attention to run only these tests
     """
     return pytest.mark.attention(test_case)
 
@@ -392,8 +389,7 @@ def is_attention(test_case):
 def is_memory(test_case):
     """
     Decorator marking a test as a memory optimization test. These tests can be filtered using:
-        pytest -m "not memory" to skip
-        pytest -m memory to run only these tests
+        pytest -m "not memory" to skip pytest -m memory to run only these tests
     """
     return pytest.mark.memory(test_case)
 
@@ -401,8 +397,7 @@ def is_memory(test_case):
 def is_cpu_offload(test_case):
     """
     Decorator marking a test as a CPU offload test. These tests can be filtered using:
-        pytest -m "not cpu_offload" to skip
-        pytest -m cpu_offload to run only these tests
+        pytest -m "not cpu_offload" to skip pytest -m cpu_offload to run only these tests
     """
     return pytest.mark.cpu_offload(test_case)
 
@@ -410,8 +405,7 @@ def is_cpu_offload(test_case):
 def is_group_offload(test_case):
     """
     Decorator marking a test as a group offload test. These tests can be filtered using:
-        pytest -m "not group_offload" to skip
-        pytest -m group_offload to run only these tests
+        pytest -m "not group_offload" to skip pytest -m group_offload to run only these tests
     """
     return pytest.mark.group_offload(test_case)
 
@@ -419,8 +413,7 @@ def is_group_offload(test_case):
 def is_quantization(test_case):
     """
     Decorator marking a test as a quantization test. These tests can be filtered using:
-        pytest -m "not quantization" to skip
-        pytest -m quantization to run only these tests
+        pytest -m "not quantization" to skip pytest -m quantization to run only these tests
     """
     return pytest.mark.quantization(test_case)
 
@@ -428,8 +421,7 @@ def is_quantization(test_case):
 def is_bitsandbytes(test_case):
     """
     Decorator marking a test as a BitsAndBytes quantization test. These tests can be filtered using:
-        pytest -m "not bitsandbytes" to skip
-        pytest -m bitsandbytes to run only these tests
+        pytest -m "not bitsandbytes" to skip pytest -m bitsandbytes to run only these tests
     """
     return pytest.mark.bitsandbytes(test_case)
 
@@ -437,8 +429,7 @@ def is_bitsandbytes(test_case):
 def is_quanto(test_case):
     """
     Decorator marking a test as a Quanto quantization test. These tests can be filtered using:
-        pytest -m "not quanto" to skip
-        pytest -m quanto to run only these tests
+        pytest -m "not quanto" to skip pytest -m quanto to run only these tests
     """
     return pytest.mark.quanto(test_case)
 
@@ -446,8 +437,7 @@ def is_quanto(test_case):
 def is_torchao(test_case):
     """
     Decorator marking a test as a TorchAO quantization test. These tests can be filtered using:
-        pytest -m "not torchao" to skip
-        pytest -m torchao to run only these tests
+        pytest -m "not torchao" to skip pytest -m torchao to run only these tests
     """
     return pytest.mark.torchao(test_case)
 
@@ -455,8 +445,7 @@ def is_torchao(test_case):
 def is_gguf(test_case):
     """
     Decorator marking a test as a GGUF quantization test. These tests can be filtered using:
-        pytest -m "not gguf" to skip
-        pytest -m gguf to run only these tests
+        pytest -m "not gguf" to skip pytest -m gguf to run only these tests
     """
     return pytest.mark.gguf(test_case)
 
@@ -473,8 +462,7 @@ def is_autoround(test_case):
 def is_modelopt(test_case):
     """
     Decorator marking a test as a NVIDIA ModelOpt quantization test. These tests can be filtered using:
-        pytest -m "not modelopt" to skip
-        pytest -m modelopt to run only these tests
+        pytest -m "not modelopt" to skip pytest -m modelopt to run only these tests
     """
     return pytest.mark.modelopt(test_case)
 
@@ -482,8 +470,7 @@ def is_modelopt(test_case):
 def is_context_parallel(test_case):
     """
     Decorator marking a test as a context parallel inference test. These tests can be filtered using:
-        pytest -m "not context_parallel" to skip
-        pytest -m context_parallel to run only these tests
+        pytest -m "not context_parallel" to skip pytest -m context_parallel to run only these tests
     """
     return pytest.mark.context_parallel(test_case)
 
@@ -491,8 +478,7 @@ def is_context_parallel(test_case):
 def is_cache(test_case):
     """
     Decorator marking a test as a cache test. These tests can be filtered using:
-        pytest -m "not cache" to skip
-        pytest -m cache to run only these tests
+        pytest -m "not cache" to skip pytest -m cache to run only these tests
     """
     return pytest.mark.cache(test_case)
 
@@ -560,6 +546,14 @@ def require_torch_cuda_compatibility(expected_compute_capability):
 def require_torch_accelerator(test_case):
     """Decorator marking a test that requires an accelerator backend and PyTorch."""
     return pytest.mark.skipif(torch_device == "cpu", reason="test requires accelerator+PyTorch")(test_case)
+
+
+def require_torch_neuron(test_case):
+    """Decorator marking a test that requires a Neuron device (Trainium/Inferentia)."""
+    return pytest.mark.skipif(
+        not (is_torch_neuronx_available() and hasattr(torch, "neuron") and torch.neuron.is_available()),
+        reason="test requires Neuron device",
+    )(test_case)
 
 
 def require_torch_multi_gpu(test_case):
@@ -1350,7 +1344,7 @@ class CaptureLogger:
     Example:
     ```python
     >>> from diffusers import logging
-    >>> from diffusers..testing_utils import CaptureLogger
+    >>> from diffusers.utils.testing_utils import CaptureLogger
 
     >>> msg = "Testing 1, 2, 3"
     >>> logging.set_verbosity_info()
@@ -1458,6 +1452,15 @@ if is_torch_available():
     # Behaviour flags
     BACKEND_SUPPORTS_TRAINING = {"cuda": True, "xpu": True, "cpu": True, "mps": False, "default": True}
 
+    # Neuron device key: torch.neuron.current_device() returns an int (e.g. 0).
+    # We capture it once at import time if torch_neuronx is available so we can add it
+    # to all dispatch tables using the same key that torch_device is set to.
+    _neuron_device = (
+        torch.neuron.current_device()
+        if (is_torch_neuronx_available() and hasattr(torch, "neuron") and torch.neuron.is_available())
+        else None
+    )
+
     # Function definitions
     BACKEND_EMPTY_CACHE = {
         "cuda": torch.cuda.empty_cache,
@@ -1509,13 +1512,20 @@ if is_torch_available():
         "default": None,
     }
 
+    if _neuron_device is not None:
+        BACKEND_EMPTY_CACHE[_neuron_device] = None
+        BACKEND_DEVICE_COUNT[_neuron_device] = torch.neuron.device_count
+        BACKEND_MANUAL_SEED[_neuron_device] = torch.manual_seed
+        BACKEND_RESET_PEAK_MEMORY_STATS[_neuron_device] = None
+        BACKEND_RESET_MAX_MEMORY_ALLOCATED[_neuron_device] = None
+        BACKEND_MAX_MEMORY_ALLOCATED[_neuron_device] = 0
+        BACKEND_SYNCHRONIZE[_neuron_device] = torch.neuron.synchronize
+        BACKEND_SUPPORTS_TRAINING[_neuron_device] = False
+
 
 # This dispatches a defined function according to the accelerator from the function definitions.
 def _device_agnostic_dispatch(device: str, dispatch_table: dict[str, Callable], *args, **kwargs):
-    if device not in dispatch_table:
-        return dispatch_table["default"](*args, **kwargs)
-
-    fn = dispatch_table[device]
+    fn = dispatch_table[device] if device in dispatch_table else dispatch_table["default"]
 
     # Some device agnostic functions return values. Need to guard against 'None' instead at
     # user level
