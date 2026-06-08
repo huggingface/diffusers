@@ -1925,6 +1925,12 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         self.__dict__.pop("_cached_dtype", None)
         return super()._apply(fn, *args, **kwargs)
 
+    def register_parameter(self, name, param):
+        # Some modules change dtype by reassigning parameters (e.g. a custom `.to()`) instead of going through
+        # `_apply`, so invalidate here too.
+        self.__dict__.pop("_cached_dtype", None)
+        return super().register_parameter(name, param)
+
     def num_parameters(self, only_trainable: bool = False, exclude_embeddings: bool = False) -> int:
         """
         Get number of (trainable or non-embedding) parameters in the module.
