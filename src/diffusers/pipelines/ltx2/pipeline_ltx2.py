@@ -48,7 +48,7 @@ EXAMPLE_DOC_STRING = """
         ```py
         >>> import torch
         >>> from diffusers import LTX2Pipeline
-        >>> from diffusers.pipelines.ltx2.export_utils import encode_video
+        >>> from diffusers.utils import encode_video
 
         >>> pipe = LTX2Pipeline.from_pretrained("Lightricks/LTX-2", torch_dtype=torch.bfloat16)
         >>> pipe.enable_model_cpu_offload()
@@ -857,6 +857,9 @@ class LTX2Pipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoaderMixin):
             prompt (`str` or `list[str]`, *optional*):
                 The prompt or prompts to guide the image generation. If not defined, one has to pass `prompt_embeds`.
                 instead.
+            negative_prompt (`str` or `list[str]`, *optional*):
+                The prompt or prompts not to guide the image generation. If not defined, one has to pass
+                `negative_prompt_embeds` instead. Ignored when not using guidance (`guidance_scale < 1`).
             height (`int`, *optional*, defaults to `512`):
                 The height in pixels of the generated image. This is set to 480 by default for the best results.
             width (`int`, *optional*, defaults to `768`):

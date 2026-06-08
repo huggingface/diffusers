@@ -47,50 +47,50 @@ Functions, long code blocks, and even classes can be copied across multiple file
 At Hugging Face, we call this design the **single-file policy** which means that almost all of the code of a certain class should be written in a single, self-contained file. To read more about the philosophy, you can have a look
 at [this blog post](https://huggingface.co/blog/transformers-design-philosophy).
 
-In Diffusers, we follow this philosophy for both pipelines and schedulers, but only partly for diffusion models. The reason we don't follow this design fully for diffusion models is because almost all diffusion pipelines, such
-as [DDPM](https://huggingface.co/docs/diffusers/api/pipelines/ddpm), [Stable Diffusion](https://huggingface.co/docs/diffusers/api/pipelines/stable_diffusion/overview#stable-diffusion-pipelines), [unCLIP (DALL·E 2)](https://huggingface.co/docs/diffusers/api/pipelines/unclip) and [Imagen](https://imagen.research.google/) all rely on the same diffusion model, the [UNet](https://huggingface.co/docs/diffusers/api/models/unet2d-cond).
+In Diffusers, we follow this philosophy for pipelines, schedulers, and models alike. Some older models predate this convention and are kept as-is; all new model architectures live in their own self-contained files. See the [Models](#models) section below for details.
 
 Great, now you should have generally understood why 🧨 Diffusers is designed the way it is 🤗.
 We try to apply these design principles consistently across the library. Nevertheless, there are some minor exceptions to the philosophy or some unlucky design choices. If you have feedback regarding the design, we would ❤️  to hear it [directly on GitHub](https://github.com/huggingface/diffusers/issues/new?assignees=&labels=&template=feedback.md&title=).
 
 ## Design Philosophy in Details
 
-Now, let's look a bit into the nitty-gritty details of the design philosophy. Diffusers essentially consists of three major classes: [pipelines](https://github.com/huggingface/diffusers/tree/main/src/diffusers/pipelines), [models](https://github.com/huggingface/diffusers/tree/main/src/diffusers/models), and [schedulers](https://github.com/huggingface/diffusers/tree/main/src/diffusers/schedulers).
-Let's walk through more in-detail design decisions for each class.
+Now for the nitty-gritty details of the design philosophy. Diffusers gives you two ways to compose [models](https://github.com/huggingface/diffusers/tree/main/src/diffusers/models) and [schedulers](https://github.com/huggingface/diffusers/tree/main/src/diffusers/schedulers) into a runnable workflow: standard [pipelines](https://github.com/huggingface/diffusers/tree/main/src/diffusers/pipelines), which are monolithic with one task per pipeline class, and Modular Diffusers, which is composable and block-based. The sections below cover pipelines, modular pipelines, models, and schedulers in turn.
 
 ### Pipelines
 
-Pipelines are designed to be easy to use (therefore do not follow [*Simple over easy*](#simple-over-easy) 100%), are not feature complete, and should loosely be seen as examples of how to use [models](#models) and [schedulers](#schedulers) for inference.
+Pipelines, standard or modular, are intended only for inference. They're designed to be easy to use (so they don't follow [Simple over easy](#simple-over-easy) 100%): readable, self-explanatory, easy to tweak, and best seen as examples of how to use [models](#models) and [schedulers](#schedulers). They aren't feature complete. To build feature-complete user interfaces on top of Diffusers, use [Modular Diffusers](../modular_diffusers/overview).
 
 The following design principles are followed:
 - Pipelines follow the single-file policy. All pipelines can be found in individual directories under src/diffusers/pipelines. One pipeline folder corresponds to one diffusion paper/project/release. Multiple pipeline files can be gathered in one pipeline folder, as it’s done for [`src/diffusers/pipelines/stable-diffusion`](https://github.com/huggingface/diffusers/tree/main/src/diffusers/pipelines/stable_diffusion). If pipelines share similar functionality, one can make use of the [# Copied from mechanism](https://github.com/huggingface/diffusers/blob/125d783076e5bd9785beb05367a2d2566843a271/src/diffusers/pipelines/stable_diffusion/pipeline_stable_diffusion_img2img.py#L251).
 - Pipelines all inherit from [`DiffusionPipeline`].
 - Every pipeline consists of different model and scheduler components, that are documented in the [`model_index.json` file](https://huggingface.co/stable-diffusion-v1-5/stable-diffusion-v1-5/blob/main/model_index.json), are accessible under the same name as attributes of the pipeline and can be shared between pipelines with [`DiffusionPipeline.components`](https://huggingface.co/docs/diffusers/main/en/api/diffusion_pipeline#diffusers.DiffusionPipeline.components) function.
 - Every pipeline should be loadable via the [`DiffusionPipeline.from_pretrained`](https://huggingface.co/docs/diffusers/main/en/api/diffusion_pipeline#diffusers.DiffusionPipeline.from_pretrained) function.
-- Pipelines should be used **only** for inference.
-- Pipelines should be very readable, self-explanatory, and easy to tweak.
-- Pipelines should be designed to build on top of each other and be easy to integrate into higher-level APIs.
-- Pipelines are **not** intended to be feature-complete user interfaces. For feature-complete user interfaces one should rather have a look at [InvokeAI](https://github.com/invoke-ai/InvokeAI), [Diffuzers](https://github.com/abhishekkrthakur/diffuzers), and [lama-cleaner](https://github.com/Sanster/lama-cleaner).
-- Every pipeline should have one and only one way to run it via a `__call__` method. The naming of the `__call__` arguments should be shared across all pipelines.
+- Every pipeline should have one and only one way to run it via a `__call__` method. The naming of the `__call__` arguments should be consistent across all pipelines.
 - Pipelines should be named after the task they are intended to solve.
-- In almost all cases, novel diffusion pipelines shall be implemented in a new pipeline folder/file.
+
+### Modular Diffusers
+
+Modular Diffusers is the composable alternative to standard pipelines. You build a workflow from reusable *pipeline blocks* that you can mix, match, swap, and share. Standard pipelines are loose reference examples of how to use models and schedulers. Modular Diffusers is the recommended path for building feature-complete user interfaces on top of Diffusers, and for the community to build and share new pipelines in a decentralized way.
+
+The following design principles are followed:
+- Modular pipelines follow the single-file policy. Each one lives in its own folder under [src/diffusers/modular_pipelines/](https://github.com/huggingface/diffusers/tree/main/src/diffusers/modular_pipelines), and the folder splits the workflow across one file per stage: `encoders.py`, `before_denoise.py`, `denoise.py`, and `decoders.py`. Two more files complete the pipeline. `modular_blocks_<model>.py` assembles the stages, and `modular_pipeline.py` defines the per-model [`ModularPipeline`] subclass. Modular pipelines don't cross-import each other.
+- Each modular pipeline is defined as a set of [`ModularPipelineBlocks`]. Leaf blocks live in the stage files (`encoders.py`, `before_denoise.py`, `denoise.py`, `decoders.py`), and `modular_blocks_<model>.py` assembles them into the full workflow with container classes like [`SequentialPipelineBlocks`] and [`AutoPipelineBlocks`]. This splits apart two concepts that [`DiffusionPipeline combines`]. A block is a pure definition. It declares inputs, outputs, and component dependencies, but holds no weights and can't run. A [`ModularPipeline`], created with `.init_pipeline(repo_id)`, is the runnable counterpart. Keeping blocks stateless and weight-free is what makes them freely composable, swappable, and shareable across workflows.
+- To support a new task, write the task-specific blocks, compose them with existing ones, and register the workflow in `_workflow_map` on the top-level block assembly. A single `ModularPipeline` can support many workflows, such as text-to-image, image-to-image, and inpainting, whereas a `DiffusionPipeline` runs only one.
+
+See the [Modular Diffusers documentation](../modular_diffusers/overview) for the full design and usage guide.
 
 ### Models
 
-Models are designed as configurable toolboxes that are natural extensions of [PyTorch's Module class](https://pytorch.org/docs/stable/generated/torch.nn.Module.html). They only partly follow the **single-file policy**.
+Models are designed as configurable toolboxes that are natural extensions of [PyTorch's Module class](https://pytorch.org/docs/stable/generated/torch.nn.Module.html). They should follow the *single-file policy*. Some older models predate this convention and are kept as-is. Treat them as legacy exceptions, not patterns to follow for new models. For example, the original [`UNet2DConditionModel`] class was used for several UNet variations.
 
 The following design principles are followed:
-- Models correspond to **a type of model architecture**. *E.g.* the [`UNet2DConditionModel`] class is used for all UNet variations that expect 2D image inputs and are conditioned on some context.
-- All models can be found in [`src/diffusers/models`](https://github.com/huggingface/diffusers/tree/main/src/diffusers/models) and every model architecture shall be defined in its file, e.g. [`unets/unet_2d_condition.py`](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/unets/unet_2d_condition.py), [`transformers/transformer_2d.py`](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/transformers/transformer_2d.py), etc...
-- Models **do not** follow the single-file policy and should make use of smaller model building blocks, such as [`attention.py`](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/attention.py), [`resnet.py`](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/resnet.py), [`embeddings.py`](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/embeddings.py), etc... **Note**: This is in stark contrast to Transformers' modeling files and shows that models do not really follow the single-file policy.
+- Each model architecture type lives in its own folder under [src/diffusers/models](https://github.com/huggingface/diffusers/tree/main/src/diffusers/models), for example [transformers/](https://github.com/huggingface/diffusers/tree/main/src/diffusers/models/transformers), [autoencoders/](https://github.com/huggingface/diffusers/tree/main/src/diffusers/models/autoencoders), or [unets/](https://github.com/huggingface/diffusers/tree/main/src/diffusers/models/unets). Each model family has its own file within that folder, such as [transformer_flux.py](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/transformers/transformer_flux.py) and [transformer_wan.py](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/transformers/transformer_wan.py).
+- Models follow the single-file policy. Each model file should be self-contained, except for a small number of standard modules that every model uses identically, such as timestep embeddings and normalization layers. Import those from [embeddings.py](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/embeddings.py) and [normalization.py](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/normalization.py).
 - Models intend to expose complexity, just like PyTorch's `Module` class, and give clear error messages.
 - Models all inherit from `ModelMixin` and `ConfigMixin`.
 - Models can be optimized for performance when it doesn’t demand major code changes, keeps backward compatibility, and gives significant memory or compute gain.
 - Models should by default have the highest precision and lowest performance setting.
-- To integrate new model checkpoints whose general architecture can be classified as an architecture that already exists in Diffusers, the existing model architecture shall be adapted to make it work with the new checkpoint. One should only create a new file if the model architecture is fundamentally different.
-- Models should be designed to be easily extendable to future changes. This can be achieved by limiting public function arguments, configuration arguments, and "foreseeing" future changes, *e.g.* it is usually better to add `string` "...type" arguments that can easily be extended to new future types instead of boolean `is_..._type` arguments. Only the minimum amount of changes shall be made to existing architectures to make a new model checkpoint work.
-- The model design is a difficult trade-off between keeping code readable and concise and supporting many model checkpoints. For most parts of the modeling code, classes shall be adapted for new model checkpoints, while there are some exceptions where it is preferred to add new classes to make sure the code is kept concise and
-readable long-term, such as [UNet blocks](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/unets/unet_2d_blocks.py) and [Attention processors](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/attention_processor.py).
+- To integrate a new model architecture that's similar to an existing one, copy the existing file as a starting point and adapt it. Use [`# Copied from`](./contribution#copied-from-mechanism) annotations on layers that remain identical so `make fix-copies` keeps them in sync.
 
 ### Schedulers
 

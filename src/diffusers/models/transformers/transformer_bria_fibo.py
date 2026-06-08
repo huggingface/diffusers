@@ -25,7 +25,7 @@ from ...utils import (
     apply_lora_scale,
     logging,
 )
-from ...utils.torch_utils import maybe_allow_in_graph
+from ...utils.torch_utils import maybe_adjust_dtype_for_device, maybe_allow_in_graph
 from ..attention import AttentionModuleMixin, FeedForward
 from ..attention_dispatch import dispatch_attention_fn
 from ..normalization import AdaLayerNormContinuous, AdaLayerNormZero, AdaLayerNormZeroSingle
@@ -222,8 +222,7 @@ class BriaFiboEmbedND(torch.nn.Module):
         cos_out = []
         sin_out = []
         pos = ids.float()
-        is_mps = ids.device.type == "mps"
-        freqs_dtype = torch.float32 if is_mps else torch.float64
+        freqs_dtype = maybe_adjust_dtype_for_device(torch.float64, ids.device)
         for i in range(n_axes):
             cos, sin = get_1d_rotary_pos_embed(
                 self.axes_dim[i],
@@ -529,10 +528,18 @@ class BriaFiboTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, From
                 Input `hidden_states`.
             encoder_hidden_states (`torch.FloatTensor` of shape `(batch size, sequence_len, embed_dims)`):
                 Conditional embeddings (embeddings computed from the input conditions such as prompts) to use.
+            text_encoder_layers (`list` of `torch.Tensor`):
+                Per-block text encoder hidden states, one tensor per transformer block.
             pooled_projections (`torch.FloatTensor` of shape `(batch_size, projection_dim)`): Embeddings projected
                 from the embeddings of input conditions.
             timestep ( `torch.LongTensor`):
                 Used to indicate denoising step.
+            img_ids (`torch.Tensor`):
+                Image position ids used to compute the rotary positional embeddings.
+            txt_ids (`torch.Tensor`):
+                Text position ids used to compute the rotary positional embeddings.
+            guidance (`torch.Tensor`, *optional*):
+                Guidance scale embedding used for guidance-distilled variants of the model.
             joint_attention_kwargs (`dict`, *optional*):
                 A kwargs dictionary that if specified is passed along to the `AttentionProcessor` as defined under
                 `self.processor` in

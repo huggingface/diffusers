@@ -22,7 +22,7 @@ import torch.nn.functional as F
 from ...configuration_utils import ConfigMixin, FrozenDict, register_to_config
 from ...loaders import FromOriginalModelMixin, PeftAdapterMixin, UNet2DConditionLoadersMixin
 from ...utils import BaseOutput, apply_lora_scale, deprecate, logging
-from ...utils.torch_utils import apply_freeu
+from ...utils.torch_utils import apply_freeu, maybe_adjust_dtype_for_device
 from ..attention import AttentionMixin, BasicTransformerBlock
 from ..attention_processor import (
     ADDED_KV_ATTENTION_PROCESSORS,
@@ -1191,6 +1191,10 @@ class MotionAdapter(ModelMixin, ConfigMixin, FromOriginalModelMixin):
         self.up_blocks = nn.ModuleList(up_blocks)
 
     def forward(self, sample):
+        r"""
+        Args:
+            sample (`torch.Tensor`): Input sample.
+        """
         pass
 
 
@@ -1909,6 +1913,8 @@ class UNetMotionModel(ModelMixin, AttentionMixin, ConfigMixin, UNet2DConditionLo
                 A kwargs dictionary that if specified is passed along to the `AttentionProcessor` as defined under
                 `self.processor` in
                 [diffusers.models.attention_processor](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/attention_processor.py).
+            added_cond_kwargs (`dict`, *optional*):
+                A dictionary of additional embeddings (e.g. text and time embeddings) used to condition the model.
             down_block_additional_residuals: (`tuple` of `torch.Tensor`, *optional*):
                 A tuple of tensors that if specified are added to the residuals of down unet blocks.
             mid_block_additional_residual: (`torch.Tensor`, *optional*):
@@ -1946,12 +1952,9 @@ class UNetMotionModel(ModelMixin, AttentionMixin, ConfigMixin, UNet2DConditionLo
         if not torch.is_tensor(timesteps):
             # TODO: this requires sync between CPU and GPU. So try to pass timesteps as tensors if you can
             # This would be a good case for the `match` statement (Python 3.10+)
-            is_mps = sample.device.type == "mps"
-            is_npu = sample.device.type == "npu"
-            if isinstance(timestep, float):
-                dtype = torch.float32 if (is_mps or is_npu) else torch.float64
-            else:
-                dtype = torch.int32 if (is_mps or is_npu) else torch.int64
+            dtype = maybe_adjust_dtype_for_device(
+                torch.float64 if isinstance(timestep, float) else torch.int64, sample.device
+            )
             timesteps = torch.tensor([timesteps], dtype=dtype, device=sample.device)
         elif len(timesteps.shape) == 0:
             timesteps = timesteps[None].to(sample.device)
