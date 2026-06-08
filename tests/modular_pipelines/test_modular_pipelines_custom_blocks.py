@@ -229,6 +229,17 @@ class TestModularCustomBlocks:
         assert len(pipe.components) == 1
         assert pipe.component_names[0] == "transformer"
 
+    def test_custom_block_mellon_config_preserves_required_inputs(self):
+        from diffusers.modular_pipelines.mellon_node_utils import MellonPipelineConfig
+
+        custom_block = DummyCustomBlockSimple()
+
+        mellon_config = MellonPipelineConfig.from_custom_block(custom_block)
+        custom_node = mellon_config.node_params["custom"]
+
+        assert custom_node["required_inputs"] == ["prompt"]
+        assert custom_node["params"]["prompt"]["label"].endswith(" *")
+
     def test_trust_remote_code_not_propagated_to_external_repo(self):
         """When a modular pipeline repo references a component from an external repo that has custom
         code (auto_map in config), calling load_components(trust_remote_code=True) should NOT
