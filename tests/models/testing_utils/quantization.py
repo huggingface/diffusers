@@ -28,6 +28,7 @@ from diffusers.utils.import_utils import (
 )
 
 from ...testing_utils import (
+    assert_tensors_close,
     backend_empty_cache,
     backend_max_memory_allocated,
     backend_reset_peak_memory_stats,
@@ -928,7 +929,7 @@ class TorchAoTesterMixin(TorchAoConfigMixin, QuantizationTesterMixin):
         with torch.no_grad():
             output = model_loaded(**inputs, return_dict=False)[0].detach().cpu()
 
-        torch.testing.assert_close(output, expected_output, rtol=1e-3, atol=1e-3)
+        assert_tensors_close(output, expected_output, rtol=1e-3, atol=1e-3)
 
     @pytest.mark.parametrize("quant_type", ["int8dq"], ids=["int8dq"])
     @require_torchao_version_greater_or_equal("0.16.0")
@@ -958,7 +959,7 @@ class TorchAoTesterMixin(TorchAoConfigMixin, QuantizationTesterMixin):
         with torch.no_grad():
             output = model_loaded(**inputs, return_dict=False)[0].detach().cpu()
 
-        torch.testing.assert_close(output, expected_output, rtol=1e-3, atol=1e-3)
+        assert_tensors_close(output, expected_output, rtol=1e-3, atol=1e-3)
 
     def test_torchao_modules_to_not_convert(self):
         """Test that modules_to_not_convert parameter works correctly."""
