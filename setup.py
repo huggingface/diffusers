@@ -130,6 +130,7 @@ _deps = [
     "onnx",
     "optimum_quanto>=0.2.6",
     "gguf>=0.10.0",
+    "auto-round>=0.13.0",
     "torchao>=0.7.0",
     "bitsandbytes>=0.43.3",
     "nvidia_modelopt[hf]>=0.33.1",
