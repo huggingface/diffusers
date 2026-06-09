@@ -17,6 +17,7 @@ import gc
 import unittest
 
 import numpy as np
+import pytest
 import torch
 
 from diffusers import ConsistencyDecoderVAE, StableDiffusionPipeline
@@ -87,7 +88,12 @@ class ConsistencyDecoderVAETesterConfig(BaseModelTesterConfig):
 
 
 class TestConsistencyDecoderVAE(ConsistencyDecoderVAETesterConfig, ModelTesterMixin):
-    pass
+    @pytest.mark.skip(
+        reason="The consistency decoder samples noise (`randn_tensor`) during `decode`, so two forward passes "
+        "diverge regardless of dtype. This makes a save/load output comparison non-deterministic."
+    )
+    def test_from_save_pretrained_dtype_inference(self, *args, **kwargs):
+        pass
 
 
 class TestConsistencyDecoderVAETraining(ConsistencyDecoderVAETesterConfig, TrainingTesterMixin):

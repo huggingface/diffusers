@@ -76,7 +76,13 @@ class AutoencoderTinyTesterConfig(BaseModelTesterConfig):
 
 
 class TestAutoencoderTiny(AutoencoderTinyTesterConfig, ModelTesterMixin):
-    pass
+    @pytest.mark.skip(
+        reason="`forward` round-trips latents through a uint8 quantization (to simulate storing them as an RGBA "
+        "image), which upcasts them to fp32 and breaks the half-precision decoder. This is intrinsic to the model "
+        "and unrelated to save/load fidelity."
+    )
+    def test_from_save_pretrained_dtype_inference(self, *args, **kwargs):
+        pass
 
 
 class TestAutoencoderTinyTraining(AutoencoderTinyTesterConfig, TrainingTesterMixin):
