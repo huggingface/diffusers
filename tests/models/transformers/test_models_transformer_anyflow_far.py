@@ -12,8 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import unittest
-
 import pytest
 import torch
 
@@ -46,7 +44,7 @@ class AnyFlowFARTransformer3DTesterConfig(BaseModelTesterConfig):
 
     @property
     def output_shape(self) -> tuple[int, ...]:
-        return (1, 2, 4, 16, 16)
+        return (4, 4, 16, 16)
 
     @property
     def input_shape(self) -> tuple[int, ...]:
@@ -137,15 +135,12 @@ class TestAnyFlowFARTransformer3DTraining(AnyFlowFARTransformer3DTesterConfig, T
     # GPU-only (`torch.nn.attention.flex_attention` raises NotImplementedError on CPU). The
     # bidi transformer test file covers training on the SDPA path; FAR training correctness
     # is exercised end-to-end on H200 via the pipeline replay (L2=0 against NVlabs/AnyFlow).
-    @unittest.skipIf(torch_device == "cpu", "FlexAttention has no CPU backward kernel.")
     def test_training(self):
         super().test_training()
 
-    @unittest.skipIf(torch_device == "cpu", "FlexAttention has no CPU backward kernel.")
     def test_training_with_ema(self):
         super().test_training_with_ema()
 
-    @unittest.skipIf(torch_device == "cpu", "FlexAttention has no CPU backward kernel.")
     def test_gradient_checkpointing_equivalence(self, loss_tolerance=1e-5, param_grad_tol=5e-5, skip=None):
         super().test_gradient_checkpointing_equivalence(loss_tolerance, param_grad_tol, skip)
 
@@ -186,7 +181,7 @@ class TestAnyFlowFARTransformer3DCompile(AnyFlowFARTransformer3DTesterConfig, To
         super().test_compile_works_with_aot(tmp_path)
 
 
-class AnyFlowCausalAttnProcessorTest(unittest.TestCase):
+class TestAnyFlowCausalAttnProcessor:
     """Stand-alone smoke tests for the FAR causal attention processor.
 
     These cover behaviors not reached by the generated model mixins:
@@ -196,7 +191,7 @@ class AnyFlowCausalAttnProcessorTest(unittest.TestCase):
 
     def test_default_backend_is_flex(self):
         processor = AnyFlowCausalAttnProcessor()
-        self.assertEqual(processor._attention_backend, "flex")
+        assert processor._attention_backend == "flex"
 
     def test_unsupported_backend_raises(self):
         processor = AnyFlowCausalAttnProcessor()
@@ -217,10 +212,10 @@ class AnyFlowCausalAttnProcessorTest(unittest.TestCase):
 
             to_out = [lambda x: x, lambda x: x]
 
-        with self.assertRaises(ValueError):
+        with pytest.raises(ValueError):
             processor(_DummyAttn(), torch.zeros(1, 4, 4))
 
     def test_output_dataclass_exposed(self):
         # Downstream type-checking + autodoc rely on these attributes existing.
-        self.assertTrue(hasattr(AnyFlowFARTransformerOutput, "sample"))
-        self.assertTrue(hasattr(AnyFlowFARTransformerOutput, "kv_cache"))
+        assert hasattr(AnyFlowFARTransformerOutput, "sample")
+        assert hasattr(AnyFlowFARTransformerOutput, "kv_cache")

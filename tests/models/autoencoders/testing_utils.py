@@ -5,7 +5,8 @@ import pytest
 import torch
 
 from diffusers.models.autoencoders.vae import DecoderOutput
-from diffusers.utils.torch_utils import torch_device
+
+from ...testing_utils import torch_device
 
 
 class AutoencoderTesterMixin:
