@@ -69,8 +69,8 @@ class DFlashTokenDiffusionScheduler(SchedulerMixin, ConfigMixin):
         if temperature < 1e-5:
             return torch.argmax(logits, dim=-1)
         bsz, seq_len, vocab_size = logits.shape
-        flat = logits.view(-1, vocab_size) / float(temperature)
-        probs = torch.softmax(flat, dim=-1)
+        flat = logits.reshape(-1, vocab_size) / float(temperature)
+        probs = torch.softmax(flat.float(), dim=-1)
         return torch.multinomial(probs, num_samples=1).view(bsz, seq_len)
 
     def step(
@@ -103,7 +103,7 @@ class DFlashTokenDiffusionScheduler(SchedulerMixin, ConfigMixin):
         posterior = self.sample(model_output, temperature=temperature)
         if sample.shape[1] > 1:
             matches = sample[:, 1:] == posterior[:, :-1]
-            accepted_length = matches.int().cumprod(dim=1).sum(dim=1)
+            accepted_length = matches.long().cumprod(dim=1).sum(dim=1)
         else:
             accepted_length = torch.zeros((sample.shape[0],), device=sample.device, dtype=torch.long)
 

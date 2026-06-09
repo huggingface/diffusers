@@ -21,9 +21,8 @@ The abstract from the paper is:
 `DFlashPipeline` ties the two models together: prefill on the target, draft a block, verify against the target's
 posterior via [`DFlashTokenDiffusionScheduler`], commit the accepted prefix and the next-token resample, and repeat
 until `max_new_tokens` or a stop token. Pretrained draft/target pairs are available in the
-[z-lab/dflash collection](https://huggingface.co/collections/z-lab/dflash); compatible pairs include
-`z-lab/Qwen3-8B-DFlash-b16` with `Qwen/Qwen3-8B`, and `z-lab/Qwen3.5-4B-DFlash` with `Qwen/Qwen3.5-4B` (the latter is
-a hybrid-attention target — see the rollback note below).
+[z-lab/dflash collection](https://huggingface.co/collections/z-lab/dflash); the canonical pair is
+`z-lab/Qwen3-8B-DFlash-b16` with `Qwen/Qwen3-8B`.
 
 ## Usage
 
@@ -35,32 +34,33 @@ from diffusers import DFlashPipeline
 
 # Draft ships custom modeling code via `auto_map` — `trust_remote_code=True` is required.
 draft = AutoModel.from_pretrained(
-    "z-lab/Qwen3.5-4B-DFlash", trust_remote_code=True, dtype=torch.bfloat16, device_map="auto"
+    "z-lab/Qwen3-8B-DFlash-b16", trust_remote_code=True, dtype=torch.bfloat16, device_map="auto"
 )
-target = AutoModelForCausalLM.from_pretrained("Qwen/Qwen3.5-4B", dtype=torch.bfloat16, device_map="auto")
-tokenizer = AutoTokenizer.from_pretrained("Qwen/Qwen3.5-4B")
+target = AutoModelForCausalLM.from_pretrained("Qwen/Qwen3-8B", dtype=torch.bfloat16, device_map="auto")
+tokenizer = AutoTokenizer.from_pretrained("Qwen/Qwen3-8B")
 
 pipe = DFlashPipeline(draft_model=draft, target_model=target, tokenizer=tokenizer)
 output = pipe(
     prompt="What is 2 + 2? Answer in one sentence.",
-    max_new_tokens=128,
+    max_new_tokens=256,
     temperature=0.0,
     chat_template_kwargs={"enable_thinking": False},
 )
 print(output.texts[0])
 ```
 
+> **Note:** Qwen3 is a reasoning model and generates a `<think>...</think>` block before the answer. Pass
+> `chat_template_kwargs={"enable_thinking": False}` to suppress thinking mode, or increase `max_new_tokens`
+> (e.g. `8192`) when you want the full reasoning trace.
+
 `DFlashPipeline` currently runs `batch_size=1` only. Multi-prompt batching requires per-row partial-accept tracking
 and is not yet supported.
 
 ## Hybrid-attention targets
 
-For target models with linear-attention layers (e.g. Qwen3.5's gated-delta-net), `DynamicCache.crop()` is a
-documented no-op on those layers (see `transformers.cache_utils.LinearAttentionCacheLayerMixin.crop`), so a
-partial-accept block would otherwise leak rejected speculative tokens into the recurrent state. The pipeline
-detects linear-attention caches via [`DFlashTokenDiffusionScheduler.cache_has_linear_attention`] and uses a
-snapshot/restore + accepted-prefix re-forward pattern to advance both layer types cleanly. This adds one extra
-target forward per partial-accept block on hybrid targets; full-attention targets use a plain `cache.crop()`.
+Target models with linear-attention layers (e.g. Qwen3.5's gated-delta-net) are not yet supported. For those
+targets, `DynamicCache.crop()` silently no-ops on linear-attention layers, which would leak rejected speculative
+tokens into the recurrent state. The current pipeline targets full-attention models only (e.g. `Qwen/Qwen3-8B`).
 
 ## Callbacks
 
