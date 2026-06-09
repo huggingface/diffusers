@@ -40,6 +40,7 @@ from ..testing_utils import (
     IPAdapterTesterMixin,
     LoraHotSwappingForModelTesterMixin,
     LoraTesterMixin,
+    MagCacheTesterMixin,
     MemoryTesterMixin,
     ModelOptCompileTesterMixin,
     ModelOptTesterMixin,
@@ -47,6 +48,7 @@ from ..testing_utils import (
     QuantoCompileTesterMixin,
     QuantoTesterMixin,
     SingleFileTesterMixin,
+    TaylorSeerCacheTesterMixin,
     TorchAoCompileTesterMixin,
     TorchAoTesterMixin,
     TorchCompileTesterMixin,
@@ -368,6 +370,10 @@ class TestFluxTransformerQuanto(FluxTransformerTesterConfig, QuantoTesterMixin):
 class TestFluxTransformerTorchAo(FluxTransformerTesterConfig, TorchAoTesterMixin):
     """TorchAO quantization tests for Flux Transformer."""
 
+    @property
+    def torch_dtype(self):
+        return torch.bfloat16
+
 
 class TestFluxTransformerGGUF(FluxTransformerTesterConfig, GGUFTesterMixin):
     @property
@@ -403,6 +409,10 @@ class TestFluxTransformerQuantoCompile(FluxTransformerTesterConfig, QuantoCompil
 
 class TestFluxTransformerTorchAoCompile(FluxTransformerTesterConfig, TorchAoCompileTesterMixin):
     """TorchAO + compile tests for Flux Transformer."""
+
+    @property
+    def torch_dtype(self):
+        return torch.bfloat16
 
 
 class TestFluxTransformerGGUFCompile(FluxTransformerTesterConfig, GGUFCompileTesterMixin):
@@ -507,3 +517,11 @@ class TestFluxTransformerFasterCache(FluxTransformerTesterConfig, FasterCacheTes
         "tensor_format": "BCHW",
         "is_guidance_distilled": True,
     }
+
+
+class TestFluxTransformerMagCache(FluxTransformerTesterConfig, MagCacheTesterMixin):
+    """MagCache tests for Flux Transformer."""
+
+
+class TestFluxTransformerTaylorSeerCache(FluxTransformerTesterConfig, TaylorSeerCacheTesterMixin):
+    """TaylorSeerCache tests for Flux Transformer."""

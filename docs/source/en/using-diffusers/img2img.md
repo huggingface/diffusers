@@ -105,7 +105,7 @@ make_image_grid([init_image, image], rows=1, cols=2)
 
 ### Stable Diffusion XL (SDXL)
 
-SDXL is a more powerful version of the Stable Diffusion model. It uses a larger base model, and an additional refiner model to increase the quality of the base model's output. Read the [SDXL](sdxl) guide for a more detailed walkthrough of how to use this model, and other techniques it uses to produce high quality images.
+SDXL is a more powerful version of the Stable Diffusion model. It uses a larger base model, and an additional refiner model to increase the quality of the base model's output. Read the [SDXL](../api/pipelines/stable_diffusion/stable_diffusion_xl) guide for a more detailed walkthrough of how to use this model, and other techniques it uses to produce high quality images.
 
 ```py
 import torch

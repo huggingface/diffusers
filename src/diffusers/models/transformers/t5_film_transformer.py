@@ -90,6 +90,18 @@ class T5FilmDecoder(ModelMixin, ConfigMixin):
         return mask.unsqueeze(-3)
 
     def forward(self, encodings_and_masks, decoder_input_tokens, decoder_noise_time):
+        """
+        The [`T5FilmDecoder`] forward method.
+
+        Args:
+            encodings_and_masks (`list` of `tuple` of `torch.Tensor`):
+                A list of `(encoding, mask)` tuples produced by upstream encoders. The encodings are concatenated and
+                cross-attended to by the decoder.
+            decoder_input_tokens (`torch.Tensor` of shape `(batch_size, seq_length, input_dims)`):
+                Input tokens for the decoder.
+            decoder_noise_time (`torch.Tensor` of shape `(batch_size,)`):
+                Diffusion timesteps in `[0, 1)` used to condition the decoder.
+        """
         batch, _, _ = decoder_input_tokens.shape
         assert decoder_noise_time.shape == (batch,)
 

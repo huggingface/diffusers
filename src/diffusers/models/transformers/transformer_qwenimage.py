@@ -497,6 +497,18 @@ class QwenDoubleStreamAttnProcessor2_0:
         if encoder_hidden_states is None:
             raise ValueError("QwenDoubleStreamAttnProcessor2_0 requires encoder_hidden_states (text stream)")
 
+        if attention_mask is not None:
+            raise ValueError(
+                "QwenDoubleStreamAttnProcessor2_0 does not accept an external attention_mask. "
+                "Pass encoder_hidden_states_mask to let the processor build the joint mask."
+            )
+
+        if encoder_hidden_states_mask is not None:
+            seq_img = hidden_states.shape[1]
+            image_mask = torch.ones((hidden_states.shape[0], seq_img), dtype=torch.bool, device=hidden_states.device)
+            attention_mask = torch.cat([encoder_hidden_states_mask, image_mask], dim=1)
+            attention_mask = attention_mask[:, None, None, :]
+
         seq_txt = encoder_hidden_states.shape[1]
 
         # Compute QKV for image stream (sample projections)
@@ -770,6 +782,7 @@ class QwenImageTransformer2DModel(
         },
         "transformer_blocks.*": {
             "modulate_index": ContextParallelInput(split_dim=1, expected_dims=2, split_output=False),
+            "encoder_hidden_states_mask": ContextParallelInput(split_dim=1, expected_dims=2, split_output=False),
         },
         "pos_embed": {
             0: ContextParallelInput(split_dim=0, expected_dims=2, split_output=True),
@@ -868,6 +881,8 @@ class QwenImageTransformer2DModel(
                 [diffusers.models.attention_processor](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/attention_processor.py).
             controlnet_block_samples (*optional*):
                 ControlNet block samples to add to the transformer blocks.
+            additional_t_cond (`torch.Tensor`, *optional*):
+                Additional timestep conditioning added to the timestep embedding.
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`~models.transformer_2d.Transformer2DModelOutput`] instead of a plain
                 tuple.
@@ -909,27 +924,16 @@ class QwenImageTransformer2DModel(
 
         image_rotary_emb = self.pos_embed(img_shapes, max_txt_seq_len=text_seq_len, device=hidden_states.device)
 
-        # Construct joint attention mask once to avoid reconstructing in every block
-        # This eliminates 60 GPU syncs during training while maintaining torch.compile compatibility
-        block_attention_kwargs = attention_kwargs.copy() if attention_kwargs is not None else {}
-        if encoder_hidden_states_mask is not None:
-            # Build joint mask: [text_mask, all_ones_for_image]
-            batch_size, image_seq_len = hidden_states.shape[:2]
-            image_mask = torch.ones((batch_size, image_seq_len), dtype=torch.bool, device=hidden_states.device)
-            joint_attention_mask = torch.cat([encoder_hidden_states_mask, image_mask], dim=1)
-            joint_attention_mask = joint_attention_mask[:, None, None, :]
-            block_attention_kwargs["attention_mask"] = joint_attention_mask
-
         for index_block, block in enumerate(self.transformer_blocks):
             if torch.is_grad_enabled() and self.gradient_checkpointing:
                 encoder_hidden_states, hidden_states = self._gradient_checkpointing_func(
                     block,
                     hidden_states,
                     encoder_hidden_states,
-                    None,  # Don't pass encoder_hidden_states_mask (using attention_mask instead)
+                    encoder_hidden_states_mask,
                     temb,
                     image_rotary_emb,
-                    block_attention_kwargs,
+                    attention_kwargs,
                     modulate_index,
                 )
 
@@ -937,10 +941,10 @@ class QwenImageTransformer2DModel(
                 encoder_hidden_states, hidden_states = block(
                     hidden_states=hidden_states,
                     encoder_hidden_states=encoder_hidden_states,
-                    encoder_hidden_states_mask=None,  # Don't pass (using attention_mask instead)
+                    encoder_hidden_states_mask=encoder_hidden_states_mask,
                     temb=temb,
                     image_rotary_emb=image_rotary_emb,
-                    joint_attention_kwargs=block_attention_kwargs,
+                    joint_attention_kwargs=attention_kwargs,
                     modulate_index=modulate_index,
                 )
 
