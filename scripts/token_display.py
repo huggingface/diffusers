@@ -133,6 +133,7 @@ class TokenDisplay:
         gen_tokens: list[int],
         new_indices: set[int],
         draft_indices: set[int] | None = None,
+        refining_indices: set[int] | None = None,
         subtitle_extra: str = "",
     ) -> None:
         elapsed = time.time() - self._t0
@@ -154,7 +155,13 @@ class TokenDisplay:
                     text.append("░ ", style="dim")
                 else:
                     is_draft = draft_indices is not None and i in draft_indices
-                    style = "dim blue" if is_draft else self._style_for(tok_id, i in new_indices)
+                    is_refining = refining_indices is not None and i in refining_indices
+                    if is_draft:
+                        style = "dim blue"
+                    elif is_refining:
+                        style = "dim"
+                    else:
+                        style = self._style_for(tok_id, i in new_indices)
                     word = self.tokenizer.decode([tok_id], skip_special_tokens=False)
                     text.append(word + " ", style=style)
             self._live.update(
@@ -231,24 +238,31 @@ class TokenDisplay:
         if self._num_prompt_tokens is None:
             self._discover_mask_token(tokens_full)
 
+        # block_x = x[:, :current_window_end] -- naturally grows one block at a time.
+        # gen_full is exactly: committed previous blocks + current block being refined.
+        # No trimming needed; the pipeline already gives us the right window.
         gen_full = tokens_full[self._num_prompt_tokens :]
 
         if transfer_index is not None:
-            transferred = transfer_index[0, self._num_prompt_tokens :].tolist()
-            new = {i for i, v in enumerate(transferred) if v}
+            # transfer_index shape: (batch, block_length) -- ONLY the current block.
+            # Map its indices into gen_full, skipping any prompt-straddle at block 0.
+            block_size = transfer_index.shape[1]
+            ti_offset = max(0, block_size - len(gen_full))  # prompt straddle on first block
+            gen_in_block = block_size - ti_offset
+            block_start = len(gen_full) - gen_in_block
+            new = {block_start + j for j, v in enumerate(transfer_index[0, ti_offset:].tolist()) if v}
             self._prev_committed |= new
+            # tokens in the current block that are non-mask but not yet committed = still being refined
+            refining = {
+                block_start + j
+                for j, t in enumerate(gen_full[block_start:])
+                if t != self.mask_token_id and (block_start + j) not in self._prev_committed
+            }
         else:
             cur = {i for i, t in enumerate(gen_full) if t != self.mask_token_id}
             new = cur - self._prev_committed
             self._prev_committed = cur
+            refining = None
 
-        # only render committed + one active block (if block_size was given)
-        if self.block_size:
-            committed_end = max(self._prev_committed, default=-1) + 1 if self._prev_committed else 0
-            visible_end = committed_end + self.block_size
-            gen = gen_full[:visible_end]
-        else:
-            gen = gen_full
-
-        self._render(gen, new)
+        self._render(gen_full, new, refining_indices=refining)
         return {}
