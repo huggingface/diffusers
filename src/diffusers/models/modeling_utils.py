@@ -723,7 +723,9 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                 and hf_quantizer.is_serializable
             )
             if safe_serialization and quantization_serializable:
-                quantization_serializable = quantization_serializable and hf_quantizer.supports_safetensors_serialization
+                quantization_serializable = (
+                    quantization_serializable and hf_quantizer.supports_safetensors_serialization
+                )
             if not quantization_serializable:
                 raise ValueError(
                     f"The model is quantized with {hf_quantizer.quantization_config.quant_method} and is not serializable - check out the warnings from"
