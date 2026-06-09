@@ -46,13 +46,11 @@ class TokenDisplay:
         mask_token_id: int | None,
         title: str = "Diffusion",
         draft_pause: float = 0.15,
-        block_size: int | None = None,
     ):
         self.tokenizer = tokenizer
         self.mask_token_id = mask_token_id
         self.title = title
         self.draft_pause = draft_pause  # seconds to hold draft frame before snapping to verified
-        self.block_size = block_size  # if set, only show committed + one block ahead
         self._rich = _try_import_rich()
         self._live = None
         self._is_tty: bool = False

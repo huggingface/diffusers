@@ -54,7 +54,7 @@ def main() -> int:
     before_cfg = dict(pipe._progress_bar_config)
 
     mask_token_id = pipe.mask_token_id
-    display = TokenDisplay(tokenizer, mask_token_id, title="LLaDA2", block_size=args.block_length) if args.visualize else None
+    display = TokenDisplay(tokenizer, mask_token_id, title="LLaDA2") if args.visualize else None
 
     print(f"[info] prompt: {args.prompt!r}", flush=True)
 
