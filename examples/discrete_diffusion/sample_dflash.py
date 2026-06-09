@@ -25,11 +25,18 @@ Example:
 """
 
 import argparse
+from contextlib import contextmanager
 
 import torch
 from transformers import AutoModel, AutoModelForCausalLM, AutoTokenizer
 
 from diffusers import DFlashPipeline
+from token_display import TokenDisplay
+
+
+@contextmanager
+def _noop():
+    yield
 
 
 def main():
@@ -98,6 +105,17 @@ def main():
         choices=["auto", "float32", "float16", "bfloat16"],
         help="Model dtype.",
     )
+    parser.add_argument(
+        "--visualize",
+        action="store_true",
+        help="Live token-grid display showing tokens materializing block-by-block.",
+    )
+    parser.add_argument(
+        "--draft_pause",
+        type=float,
+        default=0.15,
+        help="Seconds to hold draft frame before snapping to verified state.",
+    )
 
     args = parser.parse_args()
 
@@ -124,17 +142,25 @@ def main():
         tokenizer.add_special_tokens({"mask_token": args.mask_token})
     pipe = DFlashPipeline(draft_model=draft_model, target_model=target_model, tokenizer=tokenizer)
 
+    # mask_token_id lives in the draft model config when not on the tokenizer
+    dflash_cfg = getattr(getattr(pipe.draft_model, "config", None), "dflash_config", {}) or {}
+    mask_token_id = tokenizer.mask_token_id or dflash_cfg.get("mask_token_id")
+    display = TokenDisplay(tokenizer, mask_token_id, title="DFlash", draft_pause=args.draft_pause) if args.visualize else None
+
     chat_kwargs = {"enable_thinking": args.enable_thinking}
 
     print(f"\nPrompt: {args.prompt}")
-    output = pipe(
-        prompt=args.prompt,
-        max_new_tokens=args.max_new_tokens,
-        temperature=args.temperature,
-        use_chat_template=args.use_chat_template,
-        add_generation_prompt=args.add_generation_prompt,
-        chat_template_kwargs=chat_kwargs,
-    )
+    with display or _noop():
+        output = pipe(
+            prompt=args.prompt,
+            max_new_tokens=args.max_new_tokens,
+            temperature=args.temperature,
+            use_chat_template=args.use_chat_template,
+            add_generation_prompt=args.add_generation_prompt,
+            chat_template_kwargs=chat_kwargs,
+            callback_on_step_end=display,
+            callback_on_step_end_tensor_inputs=["output_ids", "block_output_ids", "accepted_length"] if display else None,
+        )
 
     print("\nGenerated text:")
     print(output.texts[0])

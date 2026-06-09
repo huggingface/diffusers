@@ -25,12 +25,19 @@ Example usage:
 """
 
 import argparse
+from contextlib import contextmanager
 
 import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
 from diffusers import BlockRefinementScheduler, LLaDA2Pipeline
 from diffusers.hooks import apply_group_offloading
+from token_display import TokenDisplay
+
+
+@contextmanager
+def _noop():
+    yield
 
 
 def main():
@@ -157,6 +164,11 @@ def main():
         default=None,
         help="Model revision (branch, tag, or commit hash) to load from the Hub.",
     )
+    parser.add_argument(
+        "--visualize",
+        action="store_true",
+        help="Live token-grid display showing tokens materializing block-by-block.",
+    )
 
     args = parser.parse_args()
 
@@ -218,6 +230,7 @@ def main():
     # Create pipeline
     scheduler = BlockRefinementScheduler()
     pipe = LLaDA2Pipeline(model=model, scheduler=scheduler, tokenizer=tokenizer)
+    display = TokenDisplay(tokenizer, pipe.mask_token_id, title="LLaDA2") if args.visualize else None
 
     # Apply sequential CPU offload if requested
     if args.offload == "sequential":
@@ -235,23 +248,26 @@ def main():
     print("-" * 50)
 
     # Generate
-    output = pipe(
-        prompt=args.prompt,
-        use_chat_template=args.use_chat_template,
-        add_generation_prompt=args.add_generation_prompt,
-        gen_length=args.gen_length,
-        block_length=args.block_length,
-        num_inference_steps=args.num_inference_steps,
-        temperature=args.temperature,
-        top_p=args.top_p,
-        top_k=args.top_k,
-        threshold=args.threshold,
-        editing_threshold=args.editing_threshold,
-        max_post_steps=args.max_post_steps,
-        sampling_method=args.sampling_method,
-        eos_early_stop=args.eos_early_stop,
-        generator=generator,
-    )
+    with display or _noop():
+        output = pipe(
+            prompt=args.prompt,
+            use_chat_template=args.use_chat_template,
+            add_generation_prompt=args.add_generation_prompt,
+            gen_length=args.gen_length,
+            block_length=args.block_length,
+            num_inference_steps=args.num_inference_steps,
+            temperature=args.temperature,
+            top_p=args.top_p,
+            top_k=args.top_k,
+            threshold=args.threshold,
+            editing_threshold=args.editing_threshold,
+            max_post_steps=args.max_post_steps,
+            sampling_method=args.sampling_method,
+            eos_early_stop=args.eos_early_stop,
+            generator=generator,
+            callback_on_step_end=display,
+            callback_on_step_end_tensor_inputs=["block_x", "transfer_index"] if display else None,
+        )
 
     print("\nGenerated text:")
     print(output.texts[0])
