@@ -481,13 +481,13 @@ class ModelTesterMixin:
         try:
             with caplog.at_level(logging.DEBUG, logger=logger_name):
                 caplog.clear()
-                model.to(torch_device)
+                model.to(torch.float16)
         finally:
             logging.disable_propagation()
 
         expected_message = (
-            f"There are modules in {model.__class__.__name__} that should be kept in float32. "
-            "A bare `to()` might lead to inconsistent results."
+            f"There are modules in {model.__class__.__name__} that should be kept in float32: "
+            f"{fp32_modules}. A bare `to()` might lead to inconsistent results."
         )
         assert expected_message in caplog.text
 
