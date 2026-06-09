@@ -13,6 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import pytest
 import torch
 
 from diffusers import AutoencoderKLTemporalDecoder
@@ -63,7 +64,12 @@ class AutoencoderKLTemporalDecoderTesterConfig(BaseModelTesterConfig):
 
 
 class TestAutoencoderKLTemporalDecoder(AutoencoderKLTemporalDecoderTesterConfig, ModelTesterMixin):
-    pass
+    @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16], ids=["fp16", "bf16"])
+    def test_from_save_pretrained_dtype_inference(self, tmp_path, dtype):
+        # The reference and reloaded models hold identical weights, so any output difference is
+        # half-precision kernel nondeterminism between the two module instances rather than a save/load
+        # fidelity issue. The default 1e-4 tolerance is too tight for that fp16/bf16 noise on some GPUs.
+        super().test_from_save_pretrained_dtype_inference(tmp_path, dtype, atol=3e-3)
 
 
 class TestAutoencoderKLTemporalDecoderTraining(AutoencoderKLTemporalDecoderTesterConfig, TrainingTesterMixin):

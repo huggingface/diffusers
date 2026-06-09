@@ -64,6 +64,13 @@ class VQModelTesterConfig(BaseModelTesterConfig):
 
 
 class TestVQModel(VQModelTesterConfig, ModelTesterMixin):
+    @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16], ids=["fp16", "bf16"])
+    def test_from_save_pretrained_dtype_inference(self, tmp_path, dtype):
+        # The reference and reloaded models hold identical weights, so any output difference is
+        # half-precision kernel nondeterminism between the two module instances rather than a save/load
+        # fidelity issue. The default 1e-4 tolerance is too tight for that fp16/bf16 noise on some GPUs.
+        super().test_from_save_pretrained_dtype_inference(tmp_path, dtype, atol=1e-3)
+
     def test_from_pretrained_hub(self):
         model, loading_info = VQModel.from_pretrained("fusing/vqgan-dummy", output_loading_info=True)
         assert model is not None
