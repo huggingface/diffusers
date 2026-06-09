@@ -217,6 +217,7 @@ else:
         "Cosmos2TextToImagePipeline",
         "Cosmos2VideoToWorldPipeline",
         "Cosmos3OmniPipeline",
+        "CosmosActionCondition",
         "CosmosTextToWorldPipeline",
         "CosmosVideoToWorldPipeline",
     ]
@@ -657,6 +658,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             Cosmos2TextToImagePipeline,
             Cosmos2VideoToWorldPipeline,
             Cosmos3OmniPipeline,
+            CosmosActionCondition,
             CosmosTextToWorldPipeline,
             CosmosVideoToWorldPipeline,
         )
