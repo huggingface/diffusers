@@ -13,24 +13,38 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import unittest
+import pytest
+import torch
 
 from diffusers import AutoencoderKLMochi
+from diffusers.utils.torch_utils import randn_tensor
 
-from ...testing_utils import enable_full_determinism, floats_tensor, torch_device
-from ..test_modeling_common import ModelTesterMixin
-from .testing_utils import AutoencoderTesterMixin
+from ...testing_utils import enable_full_determinism, torch_device
+from ..testing_utils import BaseModelTesterConfig, MemoryTesterMixin, ModelTesterMixin, TrainingTesterMixin
+from .testing_utils import NewAutoencoderTesterMixin
 
 
 enable_full_determinism()
 
 
-class AutoencoderKLMochiTests(ModelTesterMixin, AutoencoderTesterMixin, unittest.TestCase):
-    model_class = AutoencoderKLMochi
-    main_input_name = "sample"
-    base_precision = 1e-2
+class AutoencoderKLMochiTesterConfig(BaseModelTesterConfig):
+    @property
+    def model_class(self):
+        return AutoencoderKLMochi
 
-    def get_autoencoder_kl_mochi_config(self):
+    @property
+    def main_input_name(self) -> str:
+        return "sample"
+
+    @property
+    def output_shape(self) -> tuple:
+        return (3, 7, 16, 16)
+
+    @property
+    def generator(self):
+        return torch.Generator("cpu").manual_seed(0)
+
+    def get_init_dict(self) -> dict:
         return {
             "in_channels": 15,
             "out_channels": 3,
@@ -42,29 +56,25 @@ class AutoencoderKLMochiTests(ModelTesterMixin, AutoencoderTesterMixin, unittest
             "scaling_factor": 1,
         }
 
-    @property
-    def dummy_input(self):
+    def get_dummy_inputs(self) -> dict:
         batch_size = 2
         num_frames = 7
         num_channels = 3
         sizes = (16, 16)
-
-        image = floats_tensor((batch_size, num_channels, num_frames) + sizes).to(torch_device)
-
+        image = randn_tensor(
+            (batch_size, num_channels, num_frames, *sizes), generator=self.generator, device=torch_device
+        )
         return {"sample": image}
 
-    @property
-    def input_shape(self):
-        return (3, 7, 16, 16)
 
-    @property
-    def output_shape(self):
-        return (3, 7, 16, 16)
+class TestAutoencoderKLMochi(AutoencoderKLMochiTesterConfig, ModelTesterMixin):
+    @pytest.mark.skip("Unsupported test.")
+    def test_model_parallelism(self):
+        super().test_model_parallelism()
 
-    def prepare_init_args_and_inputs_for_common(self):
-        init_dict = self.get_autoencoder_kl_mochi_config()
-        inputs_dict = self.dummy_input
-        return init_dict, inputs_dict
+
+class TestAutoencoderKLMochiTraining(AutoencoderKLMochiTesterConfig, TrainingTesterMixin):
+    """Training tests for AutoencoderKLMochi."""
 
     def test_gradient_checkpointing_is_applied(self):
         expected_set = {
@@ -76,25 +86,10 @@ class AutoencoderKLMochiTests(ModelTesterMixin, AutoencoderTesterMixin, unittest
         }
         super().test_gradient_checkpointing_is_applied(expected_set=expected_set)
 
-    @unittest.skip("Unsupported test.")
-    def test_model_parallelism(self):
-        """
-        tests/models/autoencoders/test_models_autoencoder_mochi.py::AutoencoderKLMochiTests::test_outputs_equivalence -
-        RuntimeError: values expected sparse tensor layout but got Strided
-        """
-        pass
 
-    @unittest.skip("Unsupported test.")
-    def test_outputs_equivalence(self):
-        """
-        tests/models/autoencoders/test_models_autoencoder_mochi.py::AutoencoderKLMochiTests::test_outputs_equivalence -
-        RuntimeError: values expected sparse tensor layout but got Strided
-        """
-        pass
+class TestAutoencoderKLMochiMemory(AutoencoderKLMochiTesterConfig, MemoryTesterMixin):
+    """Memory optimization tests for AutoencoderKLMochi."""
 
-    @unittest.skip("Unsupported test.")
-    def test_sharded_checkpoints_device_map(self):
-        """
-        tests/models/autoencoders/test_models_autoencoder_mochi.py::AutoencoderKLMochiTests::test_sharded_checkpoints_device_map -
-        RuntimeError: Expected all tensors to be on the same device, but found at least two devices, cuda:0 and cuda:5!
-        """
+
+class TestAutoencoderKLMochiSlicingTiling(AutoencoderKLMochiTesterConfig, NewAutoencoderTesterMixin):
+    """Slicing and tiling tests for AutoencoderKLMochi."""
