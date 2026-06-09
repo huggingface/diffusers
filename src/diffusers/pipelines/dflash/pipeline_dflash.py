@@ -275,10 +275,10 @@ class DFlashPipeline(DiffusionPipeline):
 
         Returns:
             [`~pipelines.dflash.DFlashPipelineOutput`] or `tuple`:
-                If `return_dict` is `True`, a [`~pipelines.dflash.DFlashPipelineOutput`] is returned;
-                otherwise a `tuple` of `(sequences, texts)` is returned, where `sequences` is the
-                generated token IDs (`torch.LongTensor` of shape `(batch, seq_len)`) and `texts` is
-                the list of decoded strings (or `None` when `output_type="seq"`).
+                If `return_dict` is `True`, a [`~pipelines.dflash.DFlashPipelineOutput`] is returned; otherwise a
+                `tuple` of `(sequences, texts)` is returned, where `sequences` is the generated token IDs
+                (`torch.LongTensor` of shape `(batch, seq_len)`) and `texts` is the list of decoded strings (or `None`
+                when `output_type="seq"`).
 
         Examples:
         """
