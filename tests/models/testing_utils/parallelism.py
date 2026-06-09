@@ -51,7 +51,16 @@ def _find_free_port():
 
 
 def _context_parallel_worker(
-    rank, world_size, master_port, model_class, init_dict, cp_dict, inputs_dict, return_dict, attention_backend=None
+    rank,
+    world_size,
+    master_port,
+    model_class,
+    init_dict,
+    cp_dict,
+    inputs_dict,
+    return_dict,
+    attention_backend=None,
+    state_dict=None,
 ):
     """Worker function for context parallel testing."""
     try:
@@ -75,6 +84,8 @@ def _context_parallel_worker(
 
         # Create model
         model = model_class(**init_dict)
+        if state_dict is not None:
+            model.load_state_dict(state_dict)
         model.to(device)
         model.eval()
 
@@ -100,6 +111,9 @@ def _context_parallel_worker(
         if rank == 0:
             return_dict["status"] = "success"
             return_dict["output_shape"] = list(output.shape)
+            if state_dict is not None:
+                # Serialise via nested list so the manager dict can transport it across processes.
+                return_dict["output"] = output.cpu().tolist()
 
     except Exception as e:
         if rank == 0:
@@ -247,6 +261,12 @@ class ContextParallelTesterMixin:
         init_dict = self.get_init_dict()
         inputs_dict = self.get_dummy_inputs(batch_size=batch_size)
 
+        # Single-GPU reference
+        model = self.model_class(**init_dict).eval().to(torch_device)
+        state_dict = {k: v.cpu() for k, v in model.state_dict().items()}
+        with torch.no_grad():
+            ref_output = model(**inputs_dict, return_dict=False)[0].cpu()
+
         # Move all tensors to CPU for multiprocessing
         inputs_dict = {k: v.cpu() if isinstance(v, torch.Tensor) else v for k, v in inputs_dict.items()}
         cp_dict = {cp_type: world_size}
@@ -261,7 +281,17 @@ class ContextParallelTesterMixin:
         # Spawn worker processes
         mp.spawn(
             _context_parallel_worker,
-            args=(world_size, master_port, self.model_class, init_dict, cp_dict, inputs_dict, return_dict),
+            args=(
+                world_size,
+                master_port,
+                self.model_class,
+                init_dict,
+                cp_dict,
+                inputs_dict,
+                return_dict,
+                None,
+                state_dict,
+            ),
             nprocs=world_size,
             join=True,
         )
@@ -269,6 +299,9 @@ class ContextParallelTesterMixin:
         assert return_dict.get("status") == "success", (
             f"Context parallel inference failed: {return_dict.get('error', 'Unknown error')}"
         )
+
+        cp_output = torch.tensor(return_dict["output"])
+        torch.testing.assert_close(ref_output, cp_output, atol=1e-4, rtol=1e-4)
 
     @pytest.mark.parametrize("cp_type", ["ulysses_degree", "ring_degree"], ids=["ulysses", "ring"])
     def test_context_parallel_batch_inputs(self, cp_type):
