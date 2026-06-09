@@ -4,7 +4,7 @@ name: Claude AI Review with inline comments
 # a thin, VPN-side relay to the Serge GitHub App hosted at
 # https://serge.huggingface.tech/. The App's /webhook endpoint sits behind a VPN
 # that GitHub's own webhook delivery cannot reach, so a runner inside the VPN
-# (group: aws-general-8-plus) re-delivers the triggering comment event to the App.
+# re-delivers the triggering comment event to the App.
 #
 # The relay reproduces a genuine GitHub App webhook delivery:
 #   - body: the original event payload with `installation.id` injected (the App
@@ -46,10 +46,20 @@ jobs:
     concurrency:
       group: claude-ai-review-${{ github.event.issue.number || github.event.pull_request.number }}
       cancel-in-progress: false
-    # Must run inside the VPN so https://serge.huggingface.tech/ is reachable.
-    runs-on:
-      group: aws-general-8-plus
+    # A clean GitHub-hosted runner (not the self-hosted VPN group, whose
+    # pre-existing tailscaled collided with the action's own daemon). The
+    # Tailscale step below joins this runner to the tailnet so
+    # https://serge.huggingface.tech/ is reachable.
+    runs-on: ubuntu-latest
     steps:
+      - name: Connect to Tailscale
+        uses: tailscale/github-action@v4
+        with:
+          oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID_AI_REVIEW }}
+          oauth-secret: ${{ secrets.TS_AUDIENCE_AI_REVIEW }}
+          tags: tag:ci
+          args: --accept-dns=false
+
       - name: Relay event to the Serge GitHub App
         env:
           WEBHOOK_URL: https://serge.huggingface.tech/webhook
@@ -83,6 +93,7 @@ jobs:
 
           HTTP_CODE=$(curl --silent --show-error --fail-with-body \
             --output response.txt --write-out '%{http_code}' \
+            --connect-timeout 10 --max-time 60 \
             --request POST "${WEBHOOK_URL}" \
             --header "Content-Type: application/json" \
             --header "X-GitHub-Event: ${EVENT_NAME}" \
