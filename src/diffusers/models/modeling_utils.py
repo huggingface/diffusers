@@ -1504,7 +1504,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                     break
 
         if dtype_present_in_args and fp32_modules is not None:
-            logger.debug(
+            logger.warning(
                 f"There are modules in {self.__class__.__name__} that should be kept in float32: {fp32_modules}. A bare `to()` might lead to inconsistent results."
             )
 

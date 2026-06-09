@@ -479,7 +479,7 @@ class ModelTesterMixin:
         logger_name = "diffusers.models.modeling_utils"
         logging.enable_propagation()
         try:
-            with caplog.at_level(logging.DEBUG, logger=logger_name):
+            with caplog.at_level(logging.WARNING, logger=logger_name):
                 caplog.clear()
                 model.to(torch.float16)
         finally:
