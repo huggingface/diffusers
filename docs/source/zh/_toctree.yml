@@ -130,6 +130,8 @@
 - title: Specific pipeline examples
   isExpanded: false
   sections:
+  - local: using-diffusers/anyflow
+    title: AnyFlow
   - local: using-diffusers/consisid
     title: ConsisID
   - local: using-diffusers/helios

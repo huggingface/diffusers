@@ -51,7 +51,7 @@ EXAMPLE_DOC_STRING = """
         ...     prompt,
         ...     height=1024,
         ...     width=1024,
-        ...     num_inference_steps=9,
+        ...     num_inference_steps=8,
         ...     guidance_scale=0.0,
         ...     generator=torch.Generator("cuda").manual_seed(42),
         ... ).images[0]
@@ -132,6 +132,10 @@ def retrieve_timesteps(
         scheduler.set_timesteps(num_inference_steps, device=device, **kwargs)
         timesteps = scheduler.timesteps
     return timesteps, num_inference_steps
+
+
+def get_default_z_image_sigmas(num_inference_steps: int) -> list[float]:
+    return torch.linspace(1.0, 1 / num_inference_steps, num_inference_steps).tolist()
 
 
 class ZImagePipeline(DiffusionPipeline, ZImageLoraLoaderMixin, FromSingleFileMixin):
@@ -474,7 +478,8 @@ class ZImagePipeline(DiffusionPipeline, ZImageLoraLoaderMixin, FromSingleFileMix
             self.scheduler.config.get("base_shift", 0.5),
             self.scheduler.config.get("max_shift", 1.15),
         )
-        self.scheduler.sigma_min = 0.0
+        if sigmas is None:
+            sigmas = get_default_z_image_sigmas(num_inference_steps)
         scheduler_kwargs = {"mu": mu}
         timesteps, num_inference_steps = retrieve_timesteps(
             self.scheduler,
@@ -486,6 +491,15 @@ class ZImagePipeline(DiffusionPipeline, ZImageLoraLoaderMixin, FromSingleFileMix
         num_warmup_steps = max(len(timesteps) - num_inference_steps * self.scheduler.order, 0)
         self._num_timesteps = len(timesteps)
 
+        # We set the index here to remove DtoH sync, helpful especially during compilation.
+        # Check out more details here: https://github.com/huggingface/diffusers/pull/11696
+        self.scheduler.set_begin_index(0)
+
+        if self.do_classifier_free_guidance and self._cfg_truncation is not None and float(self._cfg_truncation) <= 1:
+            _precomputed_t_norms = ((1000 - timesteps.float()) / 1000).tolist()
+        else:
+            _precomputed_t_norms = None
+
         # 6. Denoising loop
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
@@ -495,17 +509,9 @@ class ZImagePipeline(DiffusionPipeline, ZImageLoraLoaderMixin, FromSingleFileMix
                 # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
                 timestep = t.expand(latents.shape[0])
                 timestep = (1000 - timestep) / 1000
-                # Normalized time for time-aware config (0 at start, 1 at end)
-                t_norm = timestep[0].item()
-
-                # Handle cfg truncation
                 current_guidance_scale = self.guidance_scale
-                if (
-                    self.do_classifier_free_guidance
-                    and self._cfg_truncation is not None
-                    and float(self._cfg_truncation) <= 1
-                ):
-                    if t_norm > self._cfg_truncation:
+                if _precomputed_t_norms is not None:
+                    if _precomputed_t_norms[i] > self._cfg_truncation:
                         current_guidance_scale = 0.0
 
                 # Run CFG only if configured AND scale is non-zero

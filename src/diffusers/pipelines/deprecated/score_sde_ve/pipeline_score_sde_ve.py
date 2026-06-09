@@ -57,6 +57,9 @@ class ScoreSdeVePipeline(DiffusionPipeline):
         Args:
             batch_size (`int`, *optional*, defaults to 1):
                 The number of images to generate.
+            num_inference_steps (`int`, *optional*, defaults to 2000):
+                The number of denoising steps. More denoising steps usually lead to a higher quality image at the
+                expense of slower inference.
             generator (`torch.Generator`, `optional`):
                 A [`torch.Generator`](https://pytorch.org/docs/stable/generated/torch.Generator.html) to make
                 generation deterministic.
