@@ -97,7 +97,6 @@ from setuptools import Command, find_packages, setup
 _deps = [
     "Pillow",  # keep the PIL.Image.Resampling deprecation away
     "accelerate>=0.31.0",
-    "compel==0.1.8",
     "datasets",
     "filelock",
     "flax>=0.4.1",
@@ -138,7 +137,7 @@ _deps = [
     "requests",
     "tensorboard",
     "tiktoken>=0.7.0",
-    "torch>=1.4",
+    "torch>=2.6",
     "torchvision",
     "transformers>=4.41.2",
     "urllib3<=2.0.0",
@@ -222,7 +221,6 @@ extras["quality"] = deps_list("urllib3", "isort", "ruff", "hf-doc-builder")
 extras["docs"] = deps_list("hf-doc-builder")
 extras["training"] = deps_list("accelerate", "datasets", "protobuf", "tensorboard", "Jinja2", "peft", "timm")
 extras["test"] = deps_list(
-    "compel",
     "ftfy",
     "GitPython",
     "datasets",
@@ -278,7 +276,7 @@ version_range_max = max(sys.version_info[1], 10) + 1
 
 setup(
     name="diffusers",
-    version="0.38.0.dev0",  # expected format is one of x.y.z.dev0, or x.y.z.rc1 or x.y.z (no to dashes, yes to dots)
+    version="0.39.0.dev0",  # expected format is one of x.y.z.dev0, or x.y.z.rc1 or x.y.z (no to dashes, yes to dots)
     description="State-of-the-art diffusion in PyTorch and JAX.",
     long_description=open("README.md", "r", encoding="utf-8").read(),
     long_description_content_type="text/markdown",

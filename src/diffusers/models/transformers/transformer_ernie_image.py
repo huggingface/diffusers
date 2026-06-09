@@ -25,6 +25,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from ...configuration_utils import ConfigMixin, register_to_config
+from ...loaders import FromOriginalModelMixin, PeftAdapterMixin
 from ...utils import BaseOutput, logging
 from ..attention import AttentionModuleMixin
 from ..attention_dispatch import dispatch_attention_fn
@@ -288,7 +289,7 @@ class ErnieImageAdaLNContinuous(nn.Module):
         return x
 
 
-class ErnieImageTransformer2DModel(ModelMixin, ConfigMixin):
+class ErnieImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOriginalModelMixin):
     _supports_gradient_checkpointing = True
     _repeated_blocks = ["ErnieImageSharedAdaLNBlock"]
 
@@ -349,6 +350,23 @@ class ErnieImageTransformer2DModel(ModelMixin, ConfigMixin):
         text_lens: torch.Tensor,
         return_dict: bool = True,
     ):
+        """
+        The [`ErnieImageTransformer2DModel`] forward method.
+
+        Args:
+            hidden_states (`torch.Tensor` of shape `(batch_size, in_channels, height, width)`):
+                Input `hidden_states`.
+            timestep (`torch.LongTensor`):
+                Used to indicate denoising step.
+            text_bth (`torch.Tensor`):
+                Conditional text embeddings (embeddings computed from the input conditions such as prompts) to use,
+                shaped `(batch_size, text_length, embed_dims)`.
+            text_lens (`torch.Tensor`):
+                Per-sample text sequence lengths used to build the attention mask.
+            return_dict (`bool`, *optional*, defaults to `True`):
+                Whether or not to return a [`~models.transformer_2d.Transformer2DModelOutput`] instead of a plain
+                tuple.
+        """
         device, dtype = hidden_states.device, hidden_states.dtype
         B, C, H, W = hidden_states.shape
         p, Hp, Wp = self.patch_size, H // self.patch_size, W // self.patch_size
