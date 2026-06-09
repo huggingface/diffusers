@@ -27,6 +27,7 @@ if is_torch_available():
     from .transformer_cogview3plus import CogView3PlusTransformer2DModel
     from .transformer_cogview4 import CogView4Transformer2DModel
     from .transformer_cosmos import CosmosTransformer3DModel
+    from .transformer_cosmos3 import Cosmos3OmniTransformer
     from .transformer_easyanimate import EasyAnimateTransformer3DModel
     from .transformer_ernie_image import ErnieImageTransformer2DModel
     from .transformer_flux import FluxTransformer2DModel
@@ -38,6 +39,7 @@ if is_torch_available():
     from .transformer_hunyuan_video15 import HunyuanVideo15Transformer3DModel
     from .transformer_hunyuan_video_framepack import HunyuanVideoFramepackTransformer3DModel
     from .transformer_hunyuanimage import HunyuanImageTransformer2DModel
+    from .transformer_ideogram4 import Ideogram4Transformer2DModel
     from .transformer_joyimage import JoyImageEditTransformer3DModel
     from .transformer_kandinsky import Kandinsky5Transformer3DModel
     from .transformer_longcat_audio_dit import LongCatAudioDiTTransformer

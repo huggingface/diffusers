@@ -1,5 +1,21 @@
 name: Claude AI Review with inline comments
 
+# Instead of running the ai-reviewer GitHub Action inline, this workflow acts as
+# a thin, VPN-side relay to the Serge GitHub App hosted at
+# https://serge.huggingface.tech/. The App's /webhook endpoint sits behind a VPN
+# that GitHub's own webhook delivery cannot reach, so a runner inside the VPN
+# re-delivers the triggering comment event to the App.
+#
+# The relay reproduces a genuine GitHub App webhook delivery:
+#   - body: the original event payload with `installation.id` injected (the App
+#     needs it to mint an installation token; Actions payloads omit it)
+#   - X-Hub-Signature-256: HMAC-SHA256 of that exact body using the App's
+#     webhook secret (verified at webapp.py:_verify_webhook_signature)
+#   - X-GitHub-Event: the original event name (issue_comment / pull_request_review_comment)
+#
+# All reviewing, diff fetching and comment posting happens server-side under the
+# App identity, so this job needs no checkout and no write permissions.
+
 on:
   issue_comment:
     types: [created]
@@ -8,23 +24,21 @@ on:
 
 permissions:
   contents: read
-  pull-requests: write
-  issues: read
 
 jobs:
-  claude-ai-review:
+  forward-to-serge-app:
     if: |
       (
         github.event_name == 'issue_comment' &&
         github.event.issue.pull_request &&
         github.event.issue.state == 'open' &&
-        contains(github.event.comment.body, '@claude-2-serge') &&
+        contains(github.event.comment.body, '@askserge') &&
         (github.event.comment.author_association == 'MEMBER' ||
         github.event.comment.author_association == 'OWNER' ||
         github.event.comment.author_association == 'COLLABORATOR')
       ) || (
         github.event_name == 'pull_request_review_comment' &&
-        contains(github.event.comment.body, '@claude-2-serge') &&
+        contains(github.event.comment.body, '@askserge') &&
         (github.event.comment.author_association == 'MEMBER' ||
         github.event.comment.author_association == 'OWNER' ||
         github.event.comment.author_association == 'COLLABORATOR')
@@ -32,35 +46,64 @@ jobs:
     concurrency:
       group: claude-ai-review-${{ github.event.issue.number || github.event.pull_request.number }}
       cancel-in-progress: false
+    # A clean GitHub-hosted runner (not the self-hosted VPN group, whose
+    # pre-existing tailscaled collided with the action's own daemon). The
+    # Tailscale step below joins this runner to the tailnet so
+    # https://serge.huggingface.tech/ is reachable.
     runs-on: ubuntu-latest
     steps:
-      - name: Resolve PR number
-        id: pr
+      - name: Connect to Tailscale
+        uses: tailscale/github-action@v4
+        with:
+          oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID_AI_REVIEW }}
+          oauth-secret: ${{ secrets.TS_AUDIENCE_AI_REVIEW }}
+          tags: tag:ci
+          args: --accept-dns=false
+
+      - name: Relay event to the Serge GitHub App
+        env:
+          WEBHOOK_URL: https://serge.huggingface.tech/webhook
+          # App webhook secret — must match the App's GITHUB_WEBHOOK_SECRET.
+          WEBHOOK_SECRET: ${{ secrets.SERGE_WEBHOOK_SECRET }}
+          # Installation id of the Serge App on this repo. Not sensitive, but the
+          # App requires it in the payload to obtain an installation token.
+          INSTALLATION_ID: ${{ secrets.SERGE_INSTALLATION_ID }}
+          EVENT_NAME: ${{ github.event_name }}
+          DELIVERY_ID: ${{ github.run_id }}-${{ github.run_attempt }}
         run: |
-          NUM="${{ github.event.issue.number || github.event.pull_request.number }}"
-          echo "number=${NUM}" >> "$GITHUB_OUTPUT"
+          set -euo pipefail
 
-      - name: Check out PR head (shallow)
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
-        with:
-          ref: refs/pull/${{ steps.pr.outputs.number }}/head
-          fetch-depth: 1
+          if [ -z "${WEBHOOK_SECRET}" ]; then
+            echo "::error::SERGE_WEBHOOK_SECRET secret is not set" >&2
+            exit 1
+          fi
+          if [ -z "${INSTALLATION_ID}" ]; then
+            echo "::error::SERGE_INSTALLATION_ID secret is not set" >&2
+            exit 1
+          fi
 
-      - name: Strip fork-supplied reviewer/agent config
-        # ai-reviewer fetches its config (.ai/review-rules.md, .ai/review-tools.json,
-        # .ai/context-script) from the base repo's default branch via the GitHub
-        # Contents API, so wiping the fork's local copies does not affect rule
-        # loading. The wipe matters because the action also exposes read-only
-        # browse tools (read_file/list_dir/grep) rooted at the PR-head checkout —
-        # without this step a fork could ship its own .ai/review-tools.json or
-        # .ai/context-script and surface them to the LLM. .claude/ + CLAUDE.md
-        # are wiped for parity with the hardening in claude_review.yml.
-        run: rm -rf .ai/ .claude/ CLAUDE.md
+          # Inject installation.id into the original event payload, compact form.
+          # The signed bytes and the POSTed bytes must be byte-identical, so we
+          # write the body to a file and reuse it for both the HMAC and the POST.
+          jq -c --argjson iid "${INSTALLATION_ID}" \
+            '. + {installation: {id: $iid}}' \
+            "${GITHUB_EVENT_PATH}" > payload.json
 
-      - uses: tarekziade/ai-reviewer@main
-        with:
-          llm_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
-          llm_api_base: https://api.anthropic.com
-          llm_model: claude-opus-4-6
-          llm_stream: 'true'
-          mention_trigger: '@claude-2-serge'
+          SIG="sha256=$(openssl dgst -sha256 -hmac "${WEBHOOK_SECRET}" payload.json | awk '{print $NF}')"
+
+          HTTP_CODE=$(curl --silent --show-error --fail-with-body \
+            --output response.txt --write-out '%{http_code}' \
+            --connect-timeout 10 --max-time 60 \
+            --request POST "${WEBHOOK_URL}" \
+            --header "Content-Type: application/json" \
+            --header "X-GitHub-Event: ${EVENT_NAME}" \
+            --header "X-GitHub-Delivery: ${DELIVERY_ID}" \
+            --header "X-Hub-Signature-256: ${SIG}" \
+            --data-binary @payload.json) || {
+              echo "::error::Failed to deliver event to Serge App (HTTP ${HTTP_CODE:-000})" >&2
+              cat response.txt >&2 || true
+              exit 1
+            }
+
+          echo "Serge App responded with HTTP ${HTTP_CODE}"
+          cat response.txt
