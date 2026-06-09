@@ -253,6 +253,15 @@ class TestQwenImageTransformerAttention(QwenImageTransformerTesterConfig, Attent
 class TestQwenImageTransformerContextParallel(QwenImageTransformerTesterConfig, ContextParallelTesterMixin):
     """Context Parallel inference tests for QwenImage Transformer."""
 
+    def get_dummy_inputs(self, batch_size: int = 1) -> dict[str, torch.Tensor]:
+        inputs = super().get_dummy_inputs(batch_size=batch_size)
+        encoder_hidden_states_mask = inputs["encoder_hidden_states_mask"]
+        encoder_hidden_states_mask[:, 1] = 0
+        encoder_hidden_states_mask[:, 3] = 0
+        encoder_hidden_states_mask[:, 5:] = 0
+        inputs["encoder_hidden_states_mask"] = encoder_hidden_states_mask
+        return inputs
+
 
 class TestQwenImageTransformerContextParallelAttnBackends(
     QwenImageTransformerTesterConfig, ContextParallelAttentionBackendsTesterMixin
