@@ -28,11 +28,11 @@ import argparse
 from contextlib import contextmanager
 
 import torch
+from token_display import TokenDisplay
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
 from diffusers import BlockRefinementScheduler, LLaDA2Pipeline
 from diffusers.hooks import apply_group_offloading
-from token_display import TokenDisplay
 
 
 @contextmanager

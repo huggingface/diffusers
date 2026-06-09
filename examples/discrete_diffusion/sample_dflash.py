@@ -28,10 +28,10 @@ import argparse
 from contextlib import contextmanager
 
 import torch
+from token_display import TokenDisplay
 from transformers import AutoModel, AutoModelForCausalLM, AutoTokenizer
 
 from diffusers import DFlashPipeline
-from token_display import TokenDisplay
 
 
 @contextmanager
@@ -145,7 +145,11 @@ def main():
     # mask_token_id lives in the draft model config when not on the tokenizer
     dflash_cfg = getattr(getattr(pipe.draft_model, "config", None), "dflash_config", {}) or {}
     mask_token_id = tokenizer.mask_token_id or dflash_cfg.get("mask_token_id")
-    display = TokenDisplay(tokenizer, mask_token_id, title="DFlash", draft_pause=args.draft_pause) if args.visualize else None
+    display = (
+        TokenDisplay(tokenizer, mask_token_id, title="DFlash", draft_pause=args.draft_pause)
+        if args.visualize
+        else None
+    )
 
     chat_kwargs = {"enable_thinking": args.enable_thinking}
 
@@ -159,7 +163,9 @@ def main():
             add_generation_prompt=args.add_generation_prompt,
             chat_template_kwargs=chat_kwargs,
             callback_on_step_end=display,
-            callback_on_step_end_tensor_inputs=["output_ids", "block_output_ids", "accepted_length"] if display else None,
+            callback_on_step_end_tensor_inputs=["output_ids", "block_output_ids", "accepted_length"]
+            if display
+            else None,
         )
 
     print("\nGenerated text:")

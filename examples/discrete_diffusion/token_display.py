@@ -164,10 +164,8 @@ class TokenDisplay:
         elapsed = time.time() - self._t0
         ops = self._step / elapsed if elapsed > 0 else 0.0
         committed = sum(1 for t in gen_tokens if t != self.mask_token_id)
-        stats = (
-            f"step {self._step} | {elapsed:.1f}s | {ops:.1f} OPS"
-            f" | +{len(new_indices)} | {committed} committed"
-            + (f" | {subtitle_extra}" if subtitle_extra else "")
+        stats = f"step {self._step} | {elapsed:.1f}s | {ops:.1f} OPS | +{len(new_indices)} | {committed} committed" + (
+            f" | {subtitle_extra}" if subtitle_extra else ""
         )
 
         if self._rich and self._is_tty and self._live is not None:
@@ -189,9 +187,7 @@ class TokenDisplay:
                         style = self._style_for(tok_id, i in new_indices)
                     word = self.tokenizer.decode([tok_id], skip_special_tokens=False)
                     text.append(word + " ", style=style)
-            self._live.update(
-                Panel(text, title=f"[cyan bold]{self.title}[/]", subtitle=f"[dim]{stats}[/]")
-            )
+            self._live.update(Panel(text, title=f"[cyan bold]{self.title}[/]", subtitle=f"[dim]{stats}[/]"))
             self._live.refresh()
         else:
             if new_indices:
