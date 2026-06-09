@@ -655,7 +655,7 @@ class WanPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         self._current_timestep = None
 
         if not output_type == "latent":
-            latents = latents.to(self.vae.dtype)
+            latents = latents.to(self.vae.device, dtype=self.vae.dtype)
             latents_mean = (
                 torch.tensor(self.vae.config.latents_mean)
                 .view(1, self.vae.config.z_dim, 1, 1, 1)

@@ -870,9 +870,9 @@ class UNet2DConditionModel(
 
         # On TPU in eager/lazy mode, torch.cat([sin, cos], dim=-1) inside time_proj
         # lands at an unaligned offset in the XLA DUS fusion emitter → crash.
-        # torch.compile with TpuBackend handles this internally, so only wrap for
-        # non-compiled modules.
-        if sample.device.type == "tpu" and not is_compiled_module(self):
+        # torch.compile with TpuBackend handles this internally, so skip the CPU
+        # workaround when we're inside a compiled graph.
+        if sample.device.type == "tpu" and not torch.compiler.is_compiling():
             t_emb = self.time_proj(timesteps.cpu()).to(sample.device)
         else:
             t_emb = self.time_proj(timesteps)
