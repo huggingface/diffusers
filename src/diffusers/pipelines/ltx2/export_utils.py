@@ -13,19 +13,19 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from collections.abc import Iterator
+# `encode_video` moved to `diffusers.utils.export_utils` so other pipelines (Cosmos3)
+# can share it. This module remains as a deprecation shim for existing user code that
+# does `from diffusers.pipelines.ltx2.export_utils import encode_video`.
+
 from fractions import Fraction
-from itertools import chain
+from pathlib import Path
+from typing import Callable
 
 import numpy as np
-import PIL.Image
 import torch
-from tqdm import tqdm
 
-from ...utils import get_logger, is_av_available
-
-
-logger = get_logger(__name__)  # pylint: disable=invalid-name
+from ...utils import deprecate, is_av_available
+from ...utils.export_utils import encode_video as _encode_video
 
 
 _CAN_USE_AV = is_av_available()
@@ -37,155 +37,89 @@ else:
     )
 
 
-def _prepare_audio_stream(container: av.container.Container, audio_sample_rate: int) -> av.audio.AudioStream:
-    """
-    Prepare the audio stream for writing.
-    """
-    audio_stream = container.add_stream("aac", rate=audio_sample_rate)
-    audio_stream.codec_context.sample_rate = audio_sample_rate
-    audio_stream.codec_context.layout = "stereo"
-    audio_stream.codec_context.time_base = Fraction(1, audio_sample_rate)
-    return audio_stream
-
-
-def _resample_audio(
-    container: av.container.Container, audio_stream: av.audio.AudioStream, frame_in: av.AudioFrame
-) -> None:
-    cc = audio_stream.codec_context
-
-    # Use the encoder's format/layout/rate as the *target*
-    target_format = cc.format or "fltp"  # AAC → usually fltp
-    target_layout = cc.layout or "stereo"
-    target_rate = cc.sample_rate or frame_in.sample_rate
-
-    audio_resampler = av.audio.resampler.AudioResampler(
-        format=target_format,
-        layout=target_layout,
-        rate=target_rate,
+def encode_video(*args, **kwargs):
+    deprecate(
+        "encode_video",
+        "0.40.0",
+        "`encode_video` has moved to `diffusers.utils`. Import it with "
+        "`from diffusers.utils import encode_video` instead.",
     )
-
-    audio_next_pts = 0
-    for rframe in audio_resampler.resample(frame_in):
-        if rframe.pts is None:
-            rframe.pts = audio_next_pts
-        audio_next_pts += rframe.samples
-        rframe.sample_rate = frame_in.sample_rate
-        container.mux(audio_stream.encode(rframe))
-
-    # flush audio encoder
-    for packet in audio_stream.encode():
-        container.mux(packet)
+    return _encode_video(*args, **kwargs)
 
 
-def _write_audio(
-    container: av.container.Container,
-    audio_stream: av.audio.AudioStream,
-    samples: torch.Tensor,
-    audio_sample_rate: int,
-) -> None:
-    if samples.ndim == 1:
-        samples = samples[:, None]
-
-    if samples.shape[1] != 2 and samples.shape[0] == 2:
-        samples = samples.T
-
-    if samples.shape[1] != 2:
-        raise ValueError(f"Expected samples with 2 channels; got shape {samples.shape}.")
-
-    # Convert to int16 packed for ingestion; resampler converts to encoder fmt.
-    if samples.dtype != torch.int16:
-        samples = torch.clip(samples, -1.0, 1.0)
-        samples = (samples * 32767.0).to(torch.int16)
-
-    frame_in = av.AudioFrame.from_ndarray(
-        samples.contiguous().reshape(1, -1).cpu().numpy(),
-        format="s16",
-        layout="stereo",
-    )
-    frame_in.sample_rate = audio_sample_rate
-
-    _resample_audio(container, audio_stream, frame_in)
-
-
-def encode_video(
-    video: list[PIL.Image.Image] | np.ndarray | torch.Tensor | Iterator[torch.Tensor],
-    fps: int,
-    audio: torch.Tensor,
-    audio_sample_rate: int,
-    output_path: str,
-    video_chunks_number: int = 1,
+def encode_hdr_tensor_to_mp4(
+    frames: torch.Tensor | np.ndarray,
+    output_mp4: str | Path,
+    frame_rate: float,
+    tone_mapping_fn: Callable[[np.ndarray], np.ndarray] | None = None,
+    tone_map_in_rgb: bool = True,
+    crf: int = 18,
 ) -> None:
     """
-    Encodes a video with audio using the PyAV library. Based on code from the original LTX-2 repo:
-    https://github.com/Lightricks/LTX-2/blob/4f410820b198e05074a1e92de793e3b59e9ab5a0/packages/ltx-pipelines/src/ltx_pipelines/utils/media_io.py#L182
+    Converts a linear HDR tensor (for example, as outputted by `LTX2HDRPipeline`) to a SDR `.mp4` file (specifically, a
+    sRGB-tonemapped H.264 `.mp4`).
 
     Args:
-        video (`List[PIL.Image.Image]` or `np.ndarray` or `torch.Tensor`):
-            A video tensor of shape [frames, height, width, channels] with integer pixel values in [0, 255]. If the
-            input is a `np.ndarray`, it is expected to be a float array with values in [0, 1] (which is what pipelines
-            usually return with `output_type="np"`).
-        fps (`int`)
-            The frames per second (FPS) of the encoded video.
-        audio (`torch.Tensor`, *optional*):
-            An audio waveform of shape [audio_channels, samples].
-        audio_sample_rate: (`int`, *optional*):
-            The sampling rate of the audio waveform. For LTX 2, this is typically 24000 (24 kHz).
-        output_path (`str`):
-            The path to save the encoded video to.
-        video_chunks_number (`int`, *optional*, defaults to `1`):
-            The number of chunks to split the video into for encoding. Each chunk will be encoded separately. The
-            number of chunks to use often depends on the tiling config for the video VAE.
+        frames (`torch.Tensor` or `np.ndarray`):
+            A linear HDR tensors with RGB values in `[0, ∞)` of shape `(F, H, W, 3)`.
+        output_mp4 (`str` or `pathlib.Path`):
+            Output MP4 path.
+        frame_rate (`float`):
+            Frame rate for the output video.
+        tone_mapping_fn (`Callable[[np.ndarray], np.ndarray]`, *optional*, defaults to `None`):
+            An optional tone mapping function which takes a float32 NumPy array of shape `(H, W, 3)` containing linear
+            HDR values in `[0, ∞)` and returns tone-mapped linear values in `[0, 1]`. The sRGB transfer function (OETF)
+            is applied afterwards — do **not** pre-apply gamma inside this function. If `None`, defaults to
+            [`simple_tone_map`], which clips values above `1.0`. The channel ordering of the input array is controlled
+            by `tone_map_in_rgb`: RGB by default (matching the `LTX2HDRPipeline` output), or BGR when
+            `tone_map_in_rgb=False`. This is the opposite default to `encode_exr_sequence_to_mp4`.
+        tone_map_in_rgb (`bool`, *optional*, defaults to `True`):
+            When `True` (default), frames are passed as RGB to `tone_mapping_fn`, and the output frame is tagged as
+            `rgb24`. Use this when `tone_mapping_fn` expects RGB input (e.g. operators from `colour-science`). When
+            `False`, the frames first have their channels flipped to BGR, which is the native format for
+            `opencv-python` tone mappers (e.g. `cv2.createTonemapReinhard().process`). Note that this is the opposite
+            default to `encode_exr_sequence_to_mp4`.
+        crf (`int`, *optional*, defaults to `18`):
+            libx264 CRF quality factor. Lower values produce higher quality.
     """
-    if isinstance(video, list) and isinstance(video[0], PIL.Image.Image):
-        # Pipeline output_type="pil"; assumes each image is in "RGB" mode
-        video_frames = [np.array(frame) for frame in video]
-        video = np.stack(video_frames, axis=0)
-        video = torch.from_numpy(video)
-    elif isinstance(video, np.ndarray):
-        # Pipeline output_type="np"
-        is_denormalized = np.logical_and(np.zeros_like(video) <= video, video <= np.ones_like(video))
-        if np.all(is_denormalized):
-            video = (video * 255).round().astype("uint8")
-        else:
-            logger.warning(
-                "Supplied `numpy.ndarray` does not have values in [0, 1]. The values will be assumed to be pixel "
-                "values in [0, ..., 255] and will be used as is."
-            )
-        video = torch.from_numpy(video)
+    if isinstance(frames, torch.Tensor):
+        frames = frames.cpu().float().numpy()
 
-    if isinstance(video, torch.Tensor):
-        # Split into video_chunks_number along the frame dimension
-        video = torch.tensor_split(video, video_chunks_number, dim=0)
-        video = iter(video)
-
-    first_chunk = next(video)
-
-    _, height, width, _ = first_chunk.shape
-
-    container = av.open(output_path, mode="w")
-    stream = container.add_stream("libx264", rate=int(fps))
-    stream.width = width
-    stream.height = height
+    container = av.open(str(output_mp4), mode="w")
+    stream = container.add_stream("libx264", rate=Fraction(frame_rate).limit_denominator(1000))
     stream.pix_fmt = "yuv420p"
+    stream.options = {"crf": str(crf), "movflags": "+faststart"}
 
-    if audio is not None:
-        if audio_sample_rate is None:
-            raise ValueError("audio_sample_rate is required when audio is provided")
+    pix_fmt = "rgb24" if tone_map_in_rgb else "bgr24"
+    if tone_mapping_fn is None:
+        # Default to simple tone mapping function which clips values above 1.0 to 1.0. This is what the original
+        # LTX-2.X code does, but you may want to do some non-trivial tone-mapping to make the sample look better.
+        def simple_tone_map(x: np.ndarray) -> np.ndarray:
+            return np.clip(x, 0.0, 1.0)
 
-        audio_stream = _prepare_audio_stream(container, audio_sample_rate)
+        tone_mapping_fn = simple_tone_map
 
-    for video_chunk in tqdm(chain([first_chunk], video), total=video_chunks_number, desc="Encoding video chunks"):
-        video_chunk_cpu = video_chunk.to("cpu").numpy()
-        for frame_array in video_chunk_cpu:
-            frame = av.VideoFrame.from_ndarray(frame_array, format="rgb24")
+    try:
+        for i, hdr in enumerate(frames):
+            if not tone_map_in_rgb:
+                hdr = hdr[..., ::-1]
+            hdr_mapped = tone_mapping_fn(hdr)
+
+            hdr_mapped = np.clip(hdr_mapped, 0.0, 1.0)  # Clamp to [0, 1] in case tone mapper does not
+            # Apply the sRBG (Rec.709 OETF) transfer function to linear light in [0, 1]
+            sdr = np.where(
+                hdr_mapped <= 0.0031308, hdr_mapped * 12.92, 1.055 * np.power(hdr_mapped, 1.0 / 2.4) - 0.055
+            )
+            out8 = (sdr * 255.0 + 0.5).astype(np.uint8)
+
+            if i == 0:
+                stream.height, stream.width = out8.shape[:2]
+
+            frame = av.VideoFrame.from_ndarray(out8, format=pix_fmt)
             for packet in stream.encode(frame):
                 container.mux(packet)
 
-    # Flush encoder
-    for packet in stream.encode():
-        container.mux(packet)
-
-    if audio is not None:
-        _write_audio(container, audio_stream, audio, audio_sample_rate)
-
-    container.close()
+        for packet in stream.encode():
+            container.mux(packet)
+    finally:
+        container.close()

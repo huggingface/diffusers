@@ -20,9 +20,9 @@ from ...models import AutoencoderKL, ControlNetModel, UNet2DConditionModel
 from ...schedulers import PNDMScheduler
 from ...utils import is_torch_xla_available, logging, replace_example_docstring
 from ...utils.torch_utils import randn_tensor
-from ..blip_diffusion.blip_image_processing import BlipImageProcessor
-from ..blip_diffusion.modeling_blip2 import Blip2QFormerModel
-from ..blip_diffusion.modeling_ctx_clip import ContextCLIPTextModel
+from ..deprecated.blip_diffusion.blip_image_processing import BlipImageProcessor
+from ..deprecated.blip_diffusion.modeling_blip2 import Blip2QFormerModel
+from ..deprecated.blip_diffusion.modeling_ctx_clip import ContextCLIPTextModel
 from ..pipeline_utils import DeprecatedPipelineMixin, DiffusionPipeline, ImagePipelineOutput
 
 
@@ -284,8 +284,6 @@ class BlipDiffusionControlNetPipeline(DeprecatedPipelineMixin, DiffusionPipeline
                 The height of the generated image.
             width (`int`, *optional*, defaults to 512):
                 The width of the generated image.
-            seed (`int`, *optional*, defaults to 42):
-                The seed to use for random generation.
             num_inference_steps (`int`, *optional*, defaults to 50):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
                 expense of slower inference.
@@ -300,6 +298,10 @@ class BlipDiffusionControlNetPipeline(DeprecatedPipelineMixin, DiffusionPipeline
                 to amplify the prompt.
             prompt_reps (`int`, *optional*, defaults to 20):
                 The number of times the prompt is repeated along with prompt_strength to amplify the prompt.
+            output_type (`str`, *optional*, defaults to `"pil"`):
+                The output format of the generated image. Choose between `PIL.Image` or `np.array`.
+            return_dict (`bool`, *optional*, defaults to `True`):
+                Whether or not to return a [`~pipelines.ImagePipelineOutput`] instead of a plain tuple.
         Examples:
 
         Returns:

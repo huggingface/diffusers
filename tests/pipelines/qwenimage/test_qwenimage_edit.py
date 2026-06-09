@@ -241,3 +241,30 @@ class QwenImageEditPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     @pytest.mark.xfail(condition=True, reason="Preconfigured embeddings need to be revisited.", strict=True)
     def test_encode_prompt_works_in_isolation(self, extra_required_param_value_dict=None, atol=1e-4, rtol=1e-4):
         super().test_encode_prompt_works_in_isolation(extra_required_param_value_dict, atol, rtol)
+
+    def test_true_cfg_without_negative_prompt_embeds_mask(self):
+        components = self.get_dummy_components()
+        pipe = self.pipeline_class(**components)
+        pipe.to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_dummy_inputs(torch_device)
+        prompt = inputs.pop("prompt")
+
+        prompt_embeds, prompt_embeds_mask = pipe.encode_prompt(
+            prompt=prompt,
+            image=inputs.get("image"),
+            device=torch_device,
+            num_images_per_prompt=1,
+            max_sequence_length=inputs.get("max_sequence_length", 16),
+        )
+
+        inputs["prompt_embeds"] = prompt_embeds
+        inputs["prompt_embeds_mask"] = prompt_embeds_mask
+        inputs["negative_prompt_embeds"] = prompt_embeds
+        inputs.pop("negative_prompt", None)
+        inputs.pop("negative_prompt_embeds_mask", None)
+        inputs["true_cfg_scale"] = 2.0
+
+        image = pipe(**inputs).images
+        self.assertIsNotNone(image)

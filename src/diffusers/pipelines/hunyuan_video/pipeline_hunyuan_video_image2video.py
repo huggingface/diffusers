@@ -96,7 +96,6 @@ DEFAULT_PROMPT_TEMPLATE = {
     "image_emb_start": 5,
     "image_emb_end": 581,
     "image_emb_len": 576,
-    "double_return_token_id": 271,
 }
 
 
@@ -299,7 +298,6 @@ class HunyuanVideoImageToVideoPipeline(DiffusionPipeline, HunyuanVideoLoraLoader
         image_emb_len = prompt_template.get("image_emb_len", 576)
         image_emb_start = prompt_template.get("image_emb_start", 5)
         image_emb_end = prompt_template.get("image_emb_end", 581)
-        double_return_token_id = prompt_template.get("double_return_token_id", 271)
 
         if crop_start is None:
             prompt_template_input = self.tokenizer(
@@ -351,23 +349,30 @@ class HunyuanVideoImageToVideoPipeline(DiffusionPipeline, HunyuanVideoLoraLoader
 
         if crop_start is not None and crop_start > 0:
             text_crop_start = crop_start - 1 + image_emb_len
-            batch_indices, last_double_return_token_indices = torch.where(text_input_ids == double_return_token_id)
 
-            if last_double_return_token_indices.shape[0] == 3:
+            # Find assistant section marker using <|end_header_id|> token (works across all transformers versions)
+            end_header_token_id = self.tokenizer.convert_tokens_to_ids("<|end_header_id|>")
+            batch_indices, end_header_indices = torch.where(text_input_ids == end_header_token_id)
+
+            # Expected: 3 <|end_header_id|> per prompt (system, user, assistant)
+            # If truncated (only 2 found for batch_size=1), add text length as fallback position
+            if end_header_indices.shape[0] == 2:
                 # in case the prompt is too long
-                last_double_return_token_indices = torch.cat(
-                    (last_double_return_token_indices, torch.tensor([text_input_ids.shape[-1]]))
+                end_header_indices = torch.cat(
+                    (
+                        end_header_indices,
+                        torch.tensor([text_input_ids.shape[-1] - 1], device=end_header_indices.device),
+                    )
                 )
-                batch_indices = torch.cat((batch_indices, torch.tensor([0])))
+                batch_indices = torch.cat((batch_indices, torch.tensor([0], device=batch_indices.device)))
 
-            last_double_return_token_indices = last_double_return_token_indices.reshape(text_input_ids.shape[0], -1)[
-                :, -1
-            ]
+            # Get the last <|end_header_id|> position per batch, then +1 to get the position after it
+            assistant_start_indices = end_header_indices.reshape(text_input_ids.shape[0], -1)[:, -1] + 1
             batch_indices = batch_indices.reshape(text_input_ids.shape[0], -1)[:, -1]
-            assistant_crop_start = last_double_return_token_indices - 1 + image_emb_len - 4
-            assistant_crop_end = last_double_return_token_indices - 1 + image_emb_len
-            attention_mask_assistant_crop_start = last_double_return_token_indices - 4
-            attention_mask_assistant_crop_end = last_double_return_token_indices
+            assistant_crop_start = assistant_start_indices - 1 + image_emb_len - 4
+            assistant_crop_end = assistant_start_indices - 1 + image_emb_len
+            attention_mask_assistant_crop_start = assistant_start_indices - 4
+            attention_mask_assistant_crop_end = assistant_start_indices
 
             prompt_embed_list = []
             prompt_attention_mask_list = []
@@ -704,6 +709,8 @@ class HunyuanVideoImageToVideoPipeline(DiffusionPipeline, HunyuanVideoLoraLoader
         The call function to the pipeline for generation.
 
         Args:
+            image (`PIL.Image.Image`):
+                The input image to condition the video generation on.
             prompt (`str` or `list[str]`, *optional*):
                 The prompt or prompts to guide the image generation. If not defined, one has to pass `prompt_embeds`.
                 instead.
@@ -763,6 +770,10 @@ class HunyuanVideoImageToVideoPipeline(DiffusionPipeline, HunyuanVideoLoraLoader
                 Pre-generated negative pooled text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt
                 weighting. If not provided, pooled negative_prompt_embeds will be generated from `negative_prompt`
                 input argument.
+            prompt_attention_mask (`torch.Tensor`, *optional*):
+                Attention mask for `prompt_embeds`. Required when `prompt_embeds` is passed directly.
+            negative_prompt_attention_mask (`torch.Tensor`, *optional*):
+                Attention mask for `negative_prompt_embeds`. Required when `negative_prompt_embeds` is passed directly.
             output_type (`str`, *optional*, defaults to `"pil"`):
                 The output format of the generated image. Choose between `PIL.Image` or `np.array`.
             return_dict (`bool`, *optional*, defaults to `True`):
@@ -771,9 +782,13 @@ class HunyuanVideoImageToVideoPipeline(DiffusionPipeline, HunyuanVideoLoraLoader
                 A kwargs dictionary that if specified is passed along to the `AttentionProcessor` as defined under
                 `self.processor` in
                 [diffusers.models.attention_processor](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/attention_processor.py).
-            clip_skip (`int`, *optional*):
-                Number of layers to be skipped from CLIP while computing the prompt embeddings. A value of 1 means that
-                the output of the pre-final layer will be used for computing the prompt embeddings.
+            prompt_template (`dict`, *optional*):
+                Template used to format the prompt before encoding. Defaults to the model's default template.
+            max_sequence_length (`int`, *optional*, defaults to 256):
+                Maximum sequence length to use for the prompt encoder.
+            image_embed_interleave (`int`, *optional*):
+                Number of image embedding tokens to interleave with text tokens. If not provided, a sensible default is
+                chosen based on the transformer's `image_condition_type`.
             callback_on_step_end (`Callable`, `PipelineCallback`, `MultiPipelineCallbacks`, *optional*):
                 A function or a subclass of `PipelineCallback` or `MultiPipelineCallbacks` that is called at the end of
                 each denoising step during the inference. with the following arguments: `callback_on_step_end(self:

@@ -29,6 +29,7 @@ from numpy.linalg import norm
 from packaging import version
 
 from .constants import DIFFUSERS_REQUEST_TIMEOUT
+from .deprecation_utils import deprecate
 from .import_utils import (
     BACKENDS_MAPPING,
     is_accelerate_available,
@@ -45,6 +46,7 @@ from .import_utils import (
     is_peft_available,
     is_timm_available,
     is_torch_available,
+    is_torch_neuronx_available,
     is_torch_version,
     is_torchao_available,
     is_torchsde_available,
@@ -67,9 +69,11 @@ else:
 global_rng = random.Random()
 
 logger = get_logger(__name__)
-logger.warning(
-    "diffusers.utils.testing_utils' is deprecated and will be removed in a future version. "
-    "Determinism and device backend utilities have been moved to `diffusers.utils.torch_utils`. "
+deprecate(
+    "diffusers.utils.testing_utils",
+    "1.0.0",
+    "diffusers.utils.testing_utils is deprecated and will be removed in a future version. "
+    "Determinism and device backend utilities have been moved to `diffusers.utils.torch_utils`. ",
 )
 _required_peft_version = is_peft_available() and version.parse(
     version.parse(importlib.metadata.version("peft")).base_version
@@ -110,6 +114,8 @@ if is_torch_available():
             torch_device = "cuda"
         elif torch.xpu.is_available():
             torch_device = "xpu"
+        elif is_torch_neuronx_available() and hasattr(torch, "neuron") and torch.neuron.is_available():
+            torch_device = torch.neuron.current_device()
         else:
             torch_device = "cpu"
         is_torch_higher_equal_than_1_12 = version.parse(

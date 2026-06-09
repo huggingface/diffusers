@@ -338,7 +338,7 @@ guider = ClassifierFreeGuidance(guidance_scale=5.0)
 pipeline.update_components(guider=guider)
 ```
 
-See the [Guiders](./guiders) guide for more details on available guiders and how to configure them.
+See the [Guiders](../using-diffusers/guiders) guide for more details on available guiders and how to configure them.
 
 ## Splitting a pipeline into stages
 

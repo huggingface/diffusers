@@ -97,7 +97,6 @@ from setuptools import Command, find_packages, setup
 _deps = [
     "Pillow",  # keep the PIL.Image.Resampling deprecation away
     "accelerate>=0.31.0",
-    "compel==0.1.8",
     "datasets",
     "filelock",
     "flax>=0.4.1",
@@ -124,7 +123,7 @@ _deps = [
     "pytest-xdist",
     "python>=3.10.0",
     "ruff==0.9.10",
-    "safetensors>=0.3.1",
+    "safetensors>=0.8.0-rc.0",
     "sentencepiece>=0.1.91,!=0.1.92",
     "GitPython<3.1.19",
     "scipy",
@@ -138,7 +137,7 @@ _deps = [
     "requests",
     "tensorboard",
     "tiktoken>=0.7.0",
-    "torch>=1.4",
+    "torch>=2.6",
     "torchvision",
     "transformers>=4.41.2",
     "urllib3<=2.0.0",
@@ -146,6 +145,7 @@ _deps = [
     "phonemizer",
     "opencv-python",
     "timm",
+    "flashpack",
 ]
 
 # this is a lookup table with items like:
@@ -221,7 +221,6 @@ extras["quality"] = deps_list("urllib3", "isort", "ruff", "hf-doc-builder")
 extras["docs"] = deps_list("hf-doc-builder")
 extras["training"] = deps_list("accelerate", "datasets", "protobuf", "tensorboard", "Jinja2", "peft", "timm")
 extras["test"] = deps_list(
-    "compel",
     "ftfy",
     "GitPython",
     "datasets",
@@ -250,6 +249,7 @@ extras["gguf"] = deps_list("gguf", "accelerate")
 extras["optimum_quanto"] = deps_list("optimum_quanto", "accelerate")
 extras["torchao"] = deps_list("torchao", "accelerate")
 extras["nvidia_modelopt"] = deps_list("nvidia_modelopt[hf]")
+extras["flashpack"] = deps_list("flashpack")
 
 if os.name == "nt":  # windows
     extras["flax"] = []  # jax is not supported on windows
@@ -276,7 +276,7 @@ version_range_max = max(sys.version_info[1], 10) + 1
 
 setup(
     name="diffusers",
-    version="0.38.0.dev0",  # expected format is one of x.y.z.dev0, or x.y.z.rc1 or x.y.z (no to dashes, yes to dots)
+    version="0.39.0.dev0",  # expected format is one of x.y.z.dev0, or x.y.z.rc1 or x.y.z (no to dashes, yes to dots)
     description="State-of-the-art diffusion in PyTorch and JAX.",
     long_description=open("README.md", "r", encoding="utf-8").read(),
     long_description_content_type="text/markdown",

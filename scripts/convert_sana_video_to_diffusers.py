@@ -12,6 +12,7 @@ from termcolor import colored
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
 from diffusers import (
+    AutoencoderKLLTX2Video,
     AutoencoderKLWan,
     DPMSolverMultistepScheduler,
     FlowMatchEulerDiscreteScheduler,
@@ -24,7 +25,10 @@ from diffusers.utils.import_utils import is_accelerate_available
 
 CTX = init_empty_weights if is_accelerate_available else nullcontext
 
-ckpt_ids = ["Efficient-Large-Model/SANA-Video_2B_480p/checkpoints/SANA_Video_2B_480p.pth"]
+ckpt_ids = [
+    "Efficient-Large-Model/SANA-Video_2B_480p/checkpoints/SANA_Video_2B_480p.pth",
+    "Efficient-Large-Model/SANA-Video_2B_720p/checkpoints/SANA_Video_2B_720p_LTXVAE.pth",
+]
 # https://github.com/NVlabs/Sana/blob/main/inference_video_scripts/inference_sana_video.py
 
 
@@ -92,11 +96,21 @@ def main(args):
     if args.video_size == 480:
         sample_size = 30  # Wan-VAE: 8xp2 downsample factor
         patch_size = (1, 2, 2)
+        in_channels = 16
+        out_channels = 16
     elif args.video_size == 720:
-        sample_size = 22  # Wan-VAE: 32xp1 downsample factor
+        sample_size = 22  # DC-AE-V: 32xp1 downsample factor
         patch_size = (1, 1, 1)
+        in_channels = 32
+        out_channels = 32
     else:
         raise ValueError(f"Video size {args.video_size} is not supported.")
+
+    if args.vae_type == "ltx2":
+        sample_size = 22
+        patch_size = (1, 1, 1)
+        in_channels = 128
+        out_channels = 128
 
     for depth in range(layer_num):
         # Transformer blocks.
@@ -182,8 +196,8 @@ def main(args):
     # Transformer
     with CTX():
         transformer_kwargs = {
-            "in_channels": 16,
-            "out_channels": 16,
+            "in_channels": in_channels,
+            "out_channels": out_channels,
             "num_attention_heads": 20,
             "attention_head_dim": 112,
             "num_layers": 20,
@@ -235,9 +249,12 @@ def main(args):
     else:
         print(colored(f"Saving the whole Pipeline containing {args.model_type}", "green", attrs=["bold"]))
         # VAE
-        vae = AutoencoderKLWan.from_pretrained(
-            "Wan-AI/Wan2.1-T2V-1.3B-Diffusers", subfolder="vae", torch_dtype=torch.float32
-        )
+        if args.vae_type == "ltx2":
+            vae_path = args.vae_path or "Lightricks/LTX-2"
+            vae = AutoencoderKLLTX2Video.from_pretrained(vae_path, subfolder="vae", torch_dtype=torch.float32)
+        else:
+            vae_path = args.vae_path or "Wan-AI/Wan2.1-T2V-1.3B-Diffusers"
+            vae = AutoencoderKLWan.from_pretrained(vae_path, subfolder="vae", torch_dtype=torch.float32)
 
         # Text Encoder
         text_encoder_model_path = "Efficient-Large-Model/gemma-2-2b-it"
@@ -314,7 +331,23 @@ if __name__ == "__main__":
         choices=["flow-dpm_solver", "flow-euler", "uni-pc"],
         help="Scheduler type to use.",
     )
-    parser.add_argument("--task", default="t2v", type=str, required=True, help="Task to convert, t2v or i2v.")
+    parser.add_argument(
+        "--vae_type",
+        default="wan",
+        type=str,
+        choices=["wan", "ltx2"],
+        help="VAE type to use for saving full pipeline (ltx2 uses patchify 1x1x1).",
+    )
+    parser.add_argument(
+        "--vae_path",
+        default=None,
+        type=str,
+        required=False,
+        help="Optional VAE path or repo id. If not set, a default is used per VAE type.",
+    )
+    parser.add_argument(
+        "--task", default="t2v", type=str, required=True, choices=["t2v", "i2v"], help="Task to convert, t2v or i2v."
+    )
     parser.add_argument("--dump_path", default=None, type=str, required=True, help="Path to the output pipeline.")
     parser.add_argument("--save_full_pipeline", action="store_true", help="save all the pipeline elements in one.")
     parser.add_argument("--dtype", default="fp32", type=str, choices=["fp32", "fp16", "bf16"], help="Weight dtype.")
