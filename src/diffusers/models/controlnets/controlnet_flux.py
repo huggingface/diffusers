@@ -387,6 +387,11 @@ class FluxMultiControlNetModel(ModelMixin):
                 [diffusers.models.attention_processor](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/attention_processor.py).
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`FluxControlNetOutput`] instead of a plain tuple.
+
+        Returns:
+            [`FluxControlNetOutput`] or `tuple`:
+                If `return_dict` is True, a [`FluxControlNetOutput`] is returned, otherwise a plain `tuple` is
+                returned.
         """
         # ControlNet-Union with multiple conditions
         # only load one ControlNet for saving memories
