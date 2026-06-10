@@ -15,7 +15,7 @@
 
 import torch
 
-from diffusers import ChronoEditTransformer3DModel
+from diffusers import LongCatImageTransformer2DModel
 from diffusers.utils.torch_utils import randn_tensor
 
 from ...testing_utils import enable_full_determinism, torch_device
@@ -29,10 +29,10 @@ from ..testing_utils import (
 enable_full_determinism()
 
 
-class ChronoEditTransformerTesterConfig(BaseModelTesterConfig):
+class LongCatImageTransformerTesterConfig(BaseModelTesterConfig):
     @property
     def model_class(self):
-        return ChronoEditTransformer3DModel
+        return LongCatImageTransformer2DModel
 
     @property
     def main_input_name(self) -> str:
@@ -40,11 +40,11 @@ class ChronoEditTransformerTesterConfig(BaseModelTesterConfig):
 
     @property
     def output_shape(self) -> tuple:
-        return (16, 2, 8, 8)
+        return (16, 4)
 
     @property
     def input_shape(self) -> tuple:
-        return (16, 2, 8, 8)
+        return (16, 4)
 
     @property
     def generator(self):
@@ -52,50 +52,47 @@ class ChronoEditTransformerTesterConfig(BaseModelTesterConfig):
 
     def get_init_dict(self) -> dict:
         return {
-            "patch_size": (1, 2, 2),
+            "patch_size": 1,
+            "in_channels": 4,
+            "num_layers": 1,
+            "num_single_layers": 1,
+            "attention_head_dim": 16,
             "num_attention_heads": 2,
-            "attention_head_dim": 8,
-            "in_channels": 16,
-            "out_channels": 16,
-            "text_dim": 32,
-            "freq_dim": 16,
-            "ffn_dim": 32,
-            "num_layers": 2,
-            "cross_attn_norm": True,
-            "qk_norm": "rms_norm_across_heads",
-            "eps": 1e-06,
-            "image_dim": None,
-            "added_kv_proj_dim": None,
-            "rope_max_seq_len": 64,
-            "pos_embed_seq_len": None,
-            "rope_temporal_skip_len": 8,
+            "joint_attention_dim": 32,
+            "pooled_projection_dim": 32,
+            "axes_dims_rope": [4, 4, 8],
         }
 
     def get_dummy_inputs(self, batch_size: int = 1) -> dict[str, torch.Tensor]:
-        num_channels = 16
-        num_frames = 2
-        height = 8
-        width = 8
+        num_latent_channels = 4
+        num_image_channels = 3
+        height = width = 4
+        sequence_length = 48
         embedding_dim = 32
-        sequence_length = 12
 
         return {
             "hidden_states": randn_tensor(
-                (batch_size, num_channels, num_frames, height, width), generator=self.generator, device=torch_device
+                (batch_size, height * width, num_latent_channels), generator=self.generator, device=torch_device
             ),
-            "timestep": torch.randint(0, 1000, size=(batch_size,), generator=self.generator).to(torch_device),
             "encoder_hidden_states": randn_tensor(
                 (batch_size, sequence_length, embedding_dim), generator=self.generator, device=torch_device
             ),
-            "encoder_hidden_states_image": None,
+            "img_ids": randn_tensor(
+                (height * width, num_image_channels), generator=self.generator, device=torch_device
+            ),
+            "txt_ids": randn_tensor(
+                (sequence_length, num_image_channels), generator=self.generator, device=torch_device
+            ),
+            "timestep": torch.tensor([1.0]).to(torch_device).expand(batch_size),
+            "guidance": torch.tensor([3.5]).to(torch_device).expand(batch_size),
         }
 
 
-class TestChronoEditTransformer(ChronoEditTransformerTesterConfig, ModelTesterMixin):
+class TestLongCatImageTransformer(LongCatImageTransformerTesterConfig, ModelTesterMixin):
     pass
 
 
-class TestChronoEditTransformerTraining(ChronoEditTransformerTesterConfig, TrainingTesterMixin):
+class TestLongCatImageTransformerTraining(LongCatImageTransformerTesterConfig, TrainingTesterMixin):
     def test_gradient_checkpointing_is_applied(self):
-        expected_set = {"ChronoEditTransformer3DModel"}
+        expected_set = {"LongCatImageTransformer2DModel"}
         super().test_gradient_checkpointing_is_applied(expected_set=expected_set)
