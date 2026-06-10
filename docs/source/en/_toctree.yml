@@ -549,6 +549,8 @@
         title: Ideogram 4
       - local: api/pipelines/pix2pix
         title: InstructPix2Pix
+      - local: api/pipelines/joyai_echo
+        title: JoyAI Echo
       - local: api/pipelines/joyimage_edit
         title: JoyImage Edit
       - local: api/pipelines/kandinsky

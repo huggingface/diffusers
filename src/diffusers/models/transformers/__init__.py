@@ -40,6 +40,7 @@ if is_torch_available():
     from .transformer_hunyuan_video_framepack import HunyuanVideoFramepackTransformer3DModel
     from .transformer_hunyuanimage import HunyuanImageTransformer2DModel
     from .transformer_ideogram4 import Ideogram4Transformer2DModel
+    from .transformer_joyai_echo import JoyAIEchoTransformer3DModel
     from .transformer_joyimage import JoyImageEditTransformer3DModel
     from .transformer_kandinsky import Kandinsky5Transformer3DModel
     from .transformer_longcat_audio_dit import LongCatAudioDiTTransformer
