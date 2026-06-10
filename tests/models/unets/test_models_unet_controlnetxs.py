@@ -13,17 +13,17 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import numpy as np
-import pytest
 import torch
 from torch import nn
 
 from diffusers import ControlNetXSAdapter, UNet2DConditionModel, UNetControlNetXSModel
+from diffusers.utils.torch_utils import randn_tensor
 
-from ...testing_utils import enable_full_determinism, floats_tensor, is_flaky, torch_device
-from ..test_modeling_common import UNetTesterMixin
+from ...testing_utils import enable_full_determinism, is_flaky, torch_device
 from ..testing_utils import (
+    AttentionTesterMixin,
     BaseModelTesterConfig,
+    MemoryTesterMixin,
     ModelTesterMixin,
     TrainingTesterMixin,
 )
@@ -32,22 +32,24 @@ from ..testing_utils import (
 enable_full_determinism()
 
 
-class UNetControlNetXSTesterConfig(BaseModelTesterConfig):
-    """Base configuration for UNetControlNetXSModel testing."""
-
+class UNetControlNetXSModelTesterConfig(BaseModelTesterConfig):
     @property
     def model_class(self):
         return UNetControlNetXSModel
 
     @property
-    def output_shape(self):
+    def main_input_name(self) -> str:
+        return "sample"
+
+    @property
+    def output_shape(self) -> tuple:
         return (4, 16, 16)
 
     @property
-    def main_input_name(self):
-        return "sample"
+    def generator(self):
+        return torch.Generator("cpu").manual_seed(0)
 
-    def get_init_dict(self):
+    def get_init_dict(self) -> dict:
         return {
             "sample_size": 16,
             "down_block_types": ("DownBlock2D", "CrossAttnDownBlock2D"),
@@ -64,22 +66,26 @@ class UNetControlNetXSTesterConfig(BaseModelTesterConfig):
             "ctrl_conditioning_embedding_out_channels": (2, 2),
         }
 
-    def get_dummy_inputs(self):
+    def get_dummy_inputs(self) -> dict:
         batch_size = 4
         num_channels = 4
         sizes = (16, 16)
-        conditioning_image_size = (3, 32, 32)
-
+        noise = randn_tensor((batch_size, num_channels, *sizes), generator=self.generator, device=torch_device)
+        timestep = torch.tensor([10], device=torch_device)
+        encoder_hidden_states = randn_tensor((batch_size, 4, 8), generator=self.generator, device=torch_device)
+        controlnet_cond = randn_tensor((batch_size, 3, 32, 32), generator=self.generator, device=torch_device)
         return {
-            "sample": floats_tensor((batch_size, num_channels) + sizes).to(torch_device),
-            "timestep": torch.tensor([10]).to(torch_device),
-            "encoder_hidden_states": floats_tensor((batch_size, 4, 8)).to(torch_device),
-            "controlnet_cond": floats_tensor((batch_size, *conditioning_image_size)).to(torch_device),
+            "sample": noise,
+            "timestep": timestep,
+            "encoder_hidden_states": encoder_hidden_states,
+            "controlnet_cond": controlnet_cond,
             "conditioning_scale": 1,
         }
 
+
+class TestUNetControlNetXSModel(UNetControlNetXSModelTesterConfig, ModelTesterMixin):
     def get_dummy_unet(self):
-        """Build the underlying UNet for tests that construct UNetControlNetXSModel from UNet + Adapter."""
+        """The underlying UNet, used to build the UNetControlNetXSModel from a UNet and a ControlNetXS-Adapter."""
         return UNet2DConditionModel(
             block_out_channels=(4, 8),
             layers_per_block=2,
@@ -94,15 +100,8 @@ class UNetControlNetXSTesterConfig(BaseModelTesterConfig):
         )
 
     def get_dummy_controlnet_from_unet(self, unet, **kwargs):
-        """Build the ControlNetXS-Adapter from a UNet."""
+        """The underlying ControlNetXS-Adapter. size_ratio and conditioning_embedding_out_channels keep the model small."""
         return ControlNetXSAdapter.from_unet(unet, size_ratio=1, conditioning_embedding_out_channels=(2, 2), **kwargs)
-
-
-class TestUNetControlNetXS(UNetControlNetXSTesterConfig, ModelTesterMixin, UNetTesterMixin):
-    @pytest.mark.skip("Test not supported.")
-    def test_forward_with_norm_groups(self):
-        # UNetControlNetXSModel only supports SD/SDXL with norm_num_groups=32
-        pass
 
     def test_from_unet(self):
         unet = self.get_dummy_unet()
@@ -115,21 +114,11 @@ class TestUNetControlNetXS(UNetControlNetXSTesterConfig, ModelTesterMixin, UNetT
             for param_name, param_value in module.named_parameters():
                 assert torch.equal(model_state_dict[weight_dict_prefix + "." + param_name], param_value)
 
-        # # check unet
-        # everything except down,mid,up blocks
-        modules_from_unet = [
-            "time_embedding",
-            "conv_in",
-            "conv_norm_out",
-            "conv_out",
-        ]
+        # check unet: everything except down, mid, up blocks
+        modules_from_unet = ["time_embedding", "conv_in", "conv_norm_out", "conv_out"]
         for p in modules_from_unet:
             assert_equal_weights(getattr(unet, p), "base_" + p)
-        optional_modules_from_unet = [
-            "class_embedding",
-            "add_time_proj",
-            "add_embedding",
-        ]
+        optional_modules_from_unet = ["class_embedding", "add_time_proj", "add_embedding"]
         for p in optional_modules_from_unet:
             if hasattr(unet, p) and getattr(unet, p) is not None:
                 assert_equal_weights(getattr(unet, p), "base_" + p)
@@ -152,8 +141,7 @@ class TestUNetControlNetXS(UNetControlNetXSTesterConfig, ModelTesterMixin, UNetT
             if hasattr(u, "upsamplers") and getattr(u, "upsamplers") is not None:
                 assert_equal_weights(u.upsamplers[0], f"up_blocks.{i}.upsamplers")
 
-        # # check controlnet
-        # everything except down,mid,up blocks
+        # check controlnet: everything except down, mid, up blocks
         modules_from_controlnet = {
             "controlnet_cond_embedding": "controlnet_cond_embedding",
             "conv_in": "ctrl_conv_in",
@@ -162,7 +150,6 @@ class TestUNetControlNetXS(UNetControlNetXSTesterConfig, ModelTesterMixin, UNetT
         optional_modules_from_controlnet = {"time_embedding": "ctrl_time_embedding"}
         for name_in_controlnet, name_in_unetcnxs in modules_from_controlnet.items():
             assert_equal_weights(getattr(controlnet, name_in_controlnet), name_in_unetcnxs)
-
         for name_in_controlnet, name_in_unetcnxs in optional_modules_from_controlnet.items():
             if hasattr(controlnet, name_in_controlnet) and getattr(controlnet, name_in_controlnet) is not None:
                 assert_equal_weights(getattr(controlnet, name_in_controlnet), name_in_unetcnxs)
@@ -194,12 +181,10 @@ class TestUNetControlNetXS(UNetControlNetXSTesterConfig, ModelTesterMixin, UNetT
             for p in module.parameters():
                 assert p.requires_grad
 
-        init_dict = self.get_init_dict()
-        model = UNetControlNetXSModel(**init_dict)
+        model = UNetControlNetXSModel(**self.get_init_dict())
         model.freeze_unet_params()
 
-        # # check unet
-        # everything except down,mid,up blocks
+        # check unet: everything except down, mid, up blocks
         modules_from_unet = [
             model.base_time_embedding,
             model.base_conv_in,
@@ -208,49 +193,39 @@ class TestUNetControlNetXS(UNetControlNetXSTesterConfig, ModelTesterMixin, UNetT
         ]
         for m in modules_from_unet:
             assert_frozen(m)
-
-        optional_modules_from_unet = [
-            model.base_add_time_proj,
-            model.base_add_embedding,
-        ]
+        optional_modules_from_unet = [model.base_add_time_proj, model.base_add_embedding]
         for m in optional_modules_from_unet:
             if m is not None:
                 assert_frozen(m)
-
         # down blocks
-        for i, d in enumerate(model.down_blocks):
+        for d in model.down_blocks:
             assert_frozen(d.base_resnets)
             if isinstance(d.base_attentions, nn.ModuleList):  # attentions can be list of Nones
                 assert_frozen(d.base_attentions)
             if d.base_downsamplers is not None:
                 assert_frozen(d.base_downsamplers)
-
         # mid block
         assert_frozen(model.mid_block.base_midblock)
-
         # up blocks
-        for i, u in enumerate(model.up_blocks):
+        for u in model.up_blocks:
             assert_frozen(u.resnets)
             if isinstance(u.attentions, nn.ModuleList):  # attentions can be list of Nones
                 assert_frozen(u.attentions)
             if u.upsamplers is not None:
                 assert_frozen(u.upsamplers)
 
-        # # check controlnet
-        # everything except down,mid,up blocks
+        # check controlnet: everything except down, mid, up blocks
         modules_from_controlnet = [
             model.controlnet_cond_embedding,
             model.ctrl_conv_in,
             model.control_to_base_for_conv_in,
         ]
         optional_modules_from_controlnet = [model.ctrl_time_embedding]
-
         for m in modules_from_controlnet:
             assert_unfrozen(m)
         for m in optional_modules_from_controlnet:
             if m is not None:
                 assert_unfrozen(m)
-
         # down blocks
         for d in model.down_blocks:
             assert_unfrozen(d.ctrl_resnets)
@@ -274,20 +249,18 @@ class TestUNetControlNetXS(UNetControlNetXSTesterConfig, ModelTesterMixin, UNetT
         controlnet = self.get_dummy_controlnet_from_unet(unet)
 
         model = UNetControlNetXSModel.from_unet(unet, controlnet)
-
         unet = unet.to(torch_device)
         model = model.to(torch_device)
 
-        input_ = self.get_dummy_inputs()
-
+        inputs = self.get_dummy_inputs()
         control_specific_input = ["controlnet_cond", "conditioning_scale"]
-        input_for_unet = {k: v for k, v in input_.items() if k not in control_specific_input}
+        input_for_unet = {k: v for k, v in inputs.items() if k not in control_specific_input}
 
         with torch.no_grad():
             unet_output = unet(**input_for_unet).sample.cpu()
-            unet_controlnet_output = model(**input_, apply_control=False).sample.cpu()
+            unet_controlnet_output = model(**inputs, apply_control=False).sample.cpu()
 
-        assert np.abs(unet_output.flatten() - unet_controlnet_output.flatten()).max() < 3e-4
+        assert (unet_output.flatten() - unet_controlnet_output.flatten()).abs().max() < 3e-4
 
     def test_time_embedding_mixing(self):
         unet = self.get_dummy_unet()
@@ -296,23 +269,20 @@ class TestUNetControlNetXS(UNetControlNetXSTesterConfig, ModelTesterMixin, UNetT
             unet, time_embedding_mix=0.5, learn_time_embedding=True
         )
 
-        model = UNetControlNetXSModel.from_unet(unet, controlnet)
-        model_mix_time = UNetControlNetXSModel.from_unet(unet, controlnet_mix_time)
+        model = UNetControlNetXSModel.from_unet(unet, controlnet).to(torch_device)
+        model_mix_time = UNetControlNetXSModel.from_unet(unet, controlnet_mix_time).to(torch_device)
 
-        unet = unet.to(torch_device)
-        model = model.to(torch_device)
-        model_mix_time = model_mix_time.to(torch_device)
-
-        input_ = self.get_dummy_inputs()
-
+        inputs = self.get_dummy_inputs()
         with torch.no_grad():
-            output = model(**input_).sample
-            output_mix_time = model_mix_time(**input_).sample
+            output = model(**inputs).sample
+            output_mix_time = model_mix_time(**inputs).sample
 
         assert output.shape == output_mix_time.shape
 
 
-class TestUNetControlNetXSTraining(UNetControlNetXSTesterConfig, TrainingTesterMixin):
+class TestUNetControlNetXSModelTraining(UNetControlNetXSModelTesterConfig, TrainingTesterMixin):
+    """Training tests for UNetControlNetXSModel."""
+
     def test_gradient_checkpointing_is_applied(self):
         expected_set = {
             "Transformer2DModel",
@@ -322,3 +292,11 @@ class TestUNetControlNetXSTraining(UNetControlNetXSTesterConfig, TrainingTesterM
             "ControlNetXSCrossAttnUpBlock2D",
         }
         super().test_gradient_checkpointing_is_applied(expected_set=expected_set)
+
+
+class TestUNetControlNetXSModelMemory(UNetControlNetXSModelTesterConfig, MemoryTesterMixin):
+    """Memory optimization tests for UNetControlNetXSModel."""
+
+
+class TestUNetControlNetXSModelAttention(UNetControlNetXSModelTesterConfig, AttentionTesterMixin):
+    """Attention processor tests for UNetControlNetXSModel."""

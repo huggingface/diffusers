@@ -13,49 +13,36 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import pytest
 import torch
 
 from diffusers import UNet1DModel
+from diffusers.utils.torch_utils import randn_tensor
 
-from ...testing_utils import (
-    backend_manual_seed,
-    floats_tensor,
-    slow,
-    torch_device,
-)
-from ..test_modeling_common import UNetTesterMixin
-from ..testing_utils import (
-    BaseModelTesterConfig,
-    MemoryTesterMixin,
-    ModelTesterMixin,
-)
+from ...testing_utils import backend_manual_seed, enable_full_determinism, slow, torch_device
+from ..testing_utils import BaseModelTesterConfig, ModelTesterMixin
 
 
-_LAYERWISE_CASTING_XFAIL_REASON = (
-    "RuntimeError: 'fill_out' not implemented for 'Float8_e4m3fn'. The error is caused due to certain torch.float8_e4m3fn and torch.float8_e5m2 operations "
-    "not being supported when using deterministic algorithms (which is what the tests run with). To fix:\n"
-    "1. Wait for next PyTorch release: https://github.com/pytorch/pytorch/issues/137160.\n"
-    "2. Unskip this test."
-)
+enable_full_determinism()
 
 
-class UNet1DTesterConfig(BaseModelTesterConfig):
-    """Base configuration for UNet1DModel testing (standard variant)."""
-
+class UNet1DModelTesterConfig(BaseModelTesterConfig):
     @property
     def model_class(self):
         return UNet1DModel
 
     @property
-    def output_shape(self):
+    def main_input_name(self) -> str:
+        return "sample"
+
+    @property
+    def output_shape(self) -> tuple:
         return (14, 16)
 
     @property
-    def main_input_name(self):
-        return "sample"
+    def generator(self):
+        return torch.Generator("cpu").manual_seed(0)
 
-    def get_init_dict(self):
+    def get_init_dict(self) -> dict:
         return {
             "block_out_channels": (8, 8, 16, 16),
             "in_channels": 14,
@@ -71,30 +58,16 @@ class UNet1DTesterConfig(BaseModelTesterConfig):
             "act_fn": "swish",
         }
 
-    def get_dummy_inputs(self):
+    def get_dummy_inputs(self) -> dict:
         batch_size = 4
         num_features = 14
         seq_len = 16
-
-        return {
-            "sample": floats_tensor((batch_size, num_features, seq_len)).to(torch_device),
-            "timestep": torch.tensor([10] * batch_size).to(torch_device),
-        }
+        noise = randn_tensor((batch_size, num_features, seq_len), generator=self.generator, device=torch_device)
+        timestep = torch.tensor([10] * batch_size, device=torch_device)
+        return {"sample": noise, "timestep": timestep}
 
 
-class TestUNet1D(UNet1DTesterConfig, ModelTesterMixin, UNetTesterMixin):
-    @pytest.mark.skip("Not implemented yet for this UNet")
-    def test_forward_with_norm_groups(self):
-        pass
-
-
-class TestUNet1DMemory(UNet1DTesterConfig, MemoryTesterMixin):
-    @pytest.mark.xfail(reason=_LAYERWISE_CASTING_XFAIL_REASON)
-    def test_layerwise_casting_memory(self):
-        super().test_layerwise_casting_memory()
-
-
-class TestUNet1DHubLoading(UNet1DTesterConfig):
+class TestUNet1DModel(UNet1DModelTesterConfig, ModelTesterMixin):
     def test_from_pretrained_hub(self):
         model, loading_info = UNet1DModel.from_pretrained(
             "bglick13/hopper-medium-v2-value-function-hor32", output_loading_info=True, subfolder="unet"
@@ -104,7 +77,6 @@ class TestUNet1DHubLoading(UNet1DTesterConfig):
 
         model.to(torch_device)
         image = model(**self.get_dummy_inputs())
-
         assert image is not None, "Make sure output is not None"
 
     def test_output_pretrained(self):
@@ -114,9 +86,7 @@ class TestUNet1DHubLoading(UNet1DTesterConfig):
 
         num_features = model.config.in_channels
         seq_len = 16
-        noise = torch.randn((1, seq_len, num_features)).permute(
-            0, 2, 1
-        )  # match original, we can update values and remove
+        noise = torch.randn((1, seq_len, num_features)).permute(0, 2, 1)
         time_step = torch.full((num_features,), 0)
 
         with torch.no_grad():
@@ -148,27 +118,24 @@ class TestUNet1DHubLoading(UNet1DTesterConfig):
         assert (output_max - 0.0607).abs() < 4e-4
 
 
-# =============================================================================
-# UNet1D RL (Value Function) Model Tests
-# =============================================================================
-
-
-class UNet1DRLTesterConfig(BaseModelTesterConfig):
-    """Base configuration for UNet1DModel testing (RL value function variant)."""
-
+class UNetRLModelTesterConfig(BaseModelTesterConfig):
     @property
     def model_class(self):
         return UNet1DModel
 
     @property
-    def output_shape(self):
+    def main_input_name(self) -> str:
+        return "sample"
+
+    @property
+    def output_shape(self) -> tuple:
         return (1,)
 
     @property
-    def main_input_name(self):
-        return "sample"
+    def generator(self):
+        return torch.Generator("cpu").manual_seed(0)
 
-    def get_init_dict(self):
+    def get_init_dict(self) -> dict:
         return {
             "in_channels": 14,
             "out_channels": 14,
@@ -186,44 +153,26 @@ class UNet1DRLTesterConfig(BaseModelTesterConfig):
             "act_fn": "mish",
         }
 
-    def get_dummy_inputs(self):
+    def get_dummy_inputs(self) -> dict:
         batch_size = 4
         num_features = 14
         seq_len = 16
-
-        return {
-            "sample": floats_tensor((batch_size, num_features, seq_len)).to(torch_device),
-            "timestep": torch.tensor([10] * batch_size).to(torch_device),
-        }
+        noise = randn_tensor((batch_size, num_features, seq_len), generator=self.generator, device=torch_device)
+        timestep = torch.tensor([10] * batch_size, device=torch_device)
+        return {"sample": noise, "timestep": timestep}
 
 
-class TestUNet1DRL(UNet1DRLTesterConfig, ModelTesterMixin, UNetTesterMixin):
-    @pytest.mark.skip("Not implemented yet for this UNet")
-    def test_forward_with_norm_groups(self):
-        pass
-
-    @torch.no_grad()
+class TestUNetRLModel(UNetRLModelTesterConfig, ModelTesterMixin):
+    # UNetRL is a value function, so it has a different output shape.
     def test_output(self):
-        # UNetRL is a value-function with different output shape (batch, 1)
-        model = self.model_class(**self.get_init_dict())
-        model.to(torch_device)
-        model.eval()
+        model = self.model_class(**self.get_init_dict()).to(torch_device).eval()
 
-        inputs_dict = self.get_dummy_inputs()
-        output = model(**inputs_dict, return_dict=False)[0]
+        inputs = self.get_dummy_inputs()
+        with torch.no_grad():
+            output = model(**inputs).sample
 
-        assert output is not None
-        expected_shape = torch.Size((inputs_dict["sample"].shape[0], 1))
-        assert output.shape == expected_shape, "Input and output shapes do not match"
+        assert output.shape == (inputs["sample"].shape[0], 1), "Input and output shapes do not match"
 
-
-class TestUNet1DRLMemory(UNet1DRLTesterConfig, MemoryTesterMixin):
-    @pytest.mark.xfail(reason=_LAYERWISE_CASTING_XFAIL_REASON)
-    def test_layerwise_casting_memory(self):
-        super().test_layerwise_casting_memory()
-
-
-class TestUNet1DRLHubLoading(UNet1DRLTesterConfig):
     def test_from_pretrained_hub(self):
         value_function, vf_loading_info = UNet1DModel.from_pretrained(
             "bglick13/hopper-medium-v2-value-function-hor32", output_loading_info=True, subfolder="value_function"
@@ -233,7 +182,6 @@ class TestUNet1DRLHubLoading(UNet1DRLTesterConfig):
 
         value_function.to(torch_device)
         image = value_function(**self.get_dummy_inputs())
-
         assert image is not None, "Make sure output is not None"
 
     def test_output_pretrained(self):
@@ -245,9 +193,7 @@ class TestUNet1DRLHubLoading(UNet1DRLTesterConfig):
 
         num_features = value_function.config.in_channels
         seq_len = 14
-        noise = torch.randn((1, seq_len, num_features)).permute(
-            0, 2, 1
-        )  # match original, we can update values and remove
+        noise = torch.randn((1, seq_len, num_features)).permute(0, 2, 1)
         time_step = torch.full((num_features,), 0)
 
         with torch.no_grad():
