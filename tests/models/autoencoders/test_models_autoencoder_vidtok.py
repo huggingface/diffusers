@@ -100,7 +100,7 @@ class TestAutoencoderVidTokTraining(AutoencoderVidTokTesterConfig, TrainingTeste
 
     def test_mixed_precision_training(self):
         _run_nondeterministic(super().test_mixed_precision_training)
-    
+
     def test_gradient_checkpointing_equivalence(self):
         _run_nondeterministic(super().test_gradient_checkpointing_equivalence)
 
