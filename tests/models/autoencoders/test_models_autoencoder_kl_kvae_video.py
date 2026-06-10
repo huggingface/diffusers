@@ -105,12 +105,11 @@ class TestAutoencoderKLKVAEVideoTraining(AutoencoderKLKVAEVideoTesterConfig, Tra
     def test_gradient_checkpointing_equivalence(self):
         super().test_gradient_checkpointing_equivalence()
 
-    def test_layerwise_casting_training(self):
-        _run_nondeterministic(super().test_layerwise_casting_training)
-
-
 class TestAutoencoderKLKVAEVideoMemory(AutoencoderKLKVAEVideoTesterConfig, MemoryTesterMixin):
     """Memory optimization tests for AutoencoderKLKVAEVideo."""
+
+    def test_layerwise_casting_training(self):
+        _run_nondeterministic(super().test_layerwise_casting_training)
 
 
 class TestAutoencoderKLKVAEVideoSlicingTiling(AutoencoderKLKVAEVideoTesterConfig, NewAutoencoderTesterMixin):
