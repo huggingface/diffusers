@@ -19,6 +19,9 @@ from .lora import LoraHotSwappingForModelTesterMixin, LoraTesterMixin
 from .memory import CPUOffloadTesterMixin, GroupOffloadTesterMixin, LayerwiseCastingTesterMixin, MemoryTesterMixin
 from .parallelism import ContextParallelAttentionBackendsTesterMixin, ContextParallelTesterMixin
 from .quantization import (
+    AutoRoundCompileTesterMixin,
+    AutoRoundConfigMixin,
+    AutoRoundTesterMixin,
     BitsAndBytesCompileTesterMixin,
     BitsAndBytesConfigMixin,
     BitsAndBytesTesterMixin,
@@ -44,6 +47,8 @@ from .training import TrainingTesterMixin
 __all__ = [
     "AttentionBackendTesterMixin",
     "AttentionTesterMixin",
+    "AutoRoundConfigMixin",
+    "AutoRoundTesterMixin",
     "BaseModelTesterConfig",
     "BitsAndBytesCompileTesterMixin",
     "BitsAndBytesConfigMixin",
