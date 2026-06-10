@@ -36,7 +36,7 @@ class UNet1DModelTesterConfig(BaseModelTesterConfig):
 
     @property
     def output_shape(self) -> tuple:
-        return (4, 14, 16)
+        return (14, 16)
 
     @property
     def generator(self):
@@ -129,7 +129,7 @@ class UNetRLModelTesterConfig(BaseModelTesterConfig):
 
     @property
     def output_shape(self) -> tuple:
-        return (4, 14, 1)
+        return (1,)
 
     @property
     def generator(self):
@@ -167,10 +167,11 @@ class TestUNetRLModel(UNetRLModelTesterConfig, ModelTesterMixin):
     def test_output(self):
         model = self.model_class(**self.get_init_dict()).to(torch_device).eval()
 
+        inputs = self.get_dummy_inputs()
         with torch.no_grad():
-            output = model(**self.get_dummy_inputs()).sample
+            output = model(**inputs).sample
 
-        assert output.shape == (self.get_dummy_inputs()["sample"].shape[0], 1), "Input and output shapes do not match"
+        assert output.shape == (inputs["sample"].shape[0], 1), "Input and output shapes do not match"
 
     def test_from_pretrained_hub(self):
         value_function, vf_loading_info = UNet1DModel.from_pretrained(
