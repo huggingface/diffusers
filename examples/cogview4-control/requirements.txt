@@ -1,4 +1,4 @@
-transformers==4.47.0
+transformers==5.0.0rc3
 wandb
 torch
 torchvision
