@@ -4170,3 +4170,13 @@ def convert_ltx2_audio_vae_to_diffusers(checkpoint, **kwargs):
         update_state_dict_inplace(converted_state_dict, key, new_key)
 
     return converted_state_dict
+
+
+def convert_ernie_image_transformer_checkpoint_to_diffusers(checkpoint, **kwargs):
+    keys = list(checkpoint.keys())
+
+    for k in keys:
+        if "model.diffusion_model." in k:
+            checkpoint[k.replace("model.diffusion_model.", "")] = checkpoint.pop(k)
+
+    return checkpoint

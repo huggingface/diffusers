@@ -39,6 +39,8 @@ class TestDependencies:
                         backend = "opencv-python"
                     elif backend == "nvidia_modelopt":
                         backend = "nvidia_modelopt[hf]"
+                    elif backend == "auto_round":
+                        backend = "auto-round"
                     assert backend in deps, f"{backend} is not in the deps table!"
 
     def test_pipeline_imports(self):
