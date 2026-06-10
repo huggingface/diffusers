@@ -294,9 +294,6 @@ class ModelTesterMixin:
 
         inputs_dict = self.get_dummy_inputs()
         image = model(**inputs_dict, return_dict=False)[0]
-        # Re-create inputs only if they contain a generator (which needs to be reset)
-        if "generator" in inputs_dict:
-            inputs_dict = self.get_dummy_inputs()
         new_image = new_model(**inputs_dict, return_dict=False)[0]
 
         assert_tensors_close(image, new_image, atol=atol, rtol=rtol, msg="Models give different forward passes.")
@@ -319,9 +316,6 @@ class ModelTesterMixin:
 
         inputs_dict = self.get_dummy_inputs()
         image = model(**inputs_dict, return_dict=False)[0]
-        # Re-create inputs only if they contain a generator (which needs to be reset)
-        if "generator" in inputs_dict:
-            inputs_dict = self.get_dummy_inputs()
         new_image = new_model(**inputs_dict, return_dict=False)[0]
 
         assert_tensors_close(image, new_image, atol=atol, rtol=rtol, msg="Models give different forward passes.")
@@ -352,9 +346,6 @@ class ModelTesterMixin:
 
         inputs_dict = self.get_dummy_inputs()
         first = model(**inputs_dict, return_dict=False)[0]
-        # Re-create inputs only if they contain a generator (which needs to be reset)
-        if "generator" in inputs_dict:
-            inputs_dict = self.get_dummy_inputs()
         second = model(**inputs_dict, return_dict=False)[0]
 
         first_flat = first.flatten()
@@ -414,9 +405,6 @@ class ModelTesterMixin:
 
         inputs_dict = self.get_dummy_inputs()
         outputs_dict = model(**inputs_dict)
-        # Re-create inputs only if they contain a generator (which needs to be reset)
-        if "generator" in inputs_dict:
-            inputs_dict = self.get_dummy_inputs()
         outputs_tuple = model(**inputs_dict, return_dict=False)
 
         recursive_check(outputs_tuple, outputs_dict)
