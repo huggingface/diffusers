@@ -1149,7 +1149,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
 
             # In order to ensure popular quantization methods are supported. Can be disabled with `disable_telemetry`
             user_agent["quant"] = hf_quantizer.quantization_config.quant_method.value
-            user_agent["quant_config"] = json.dumps(quantization_config.to_dict(), sort_keys=True)
+            user_agent["quant_config"] = json.dumps(hf_quantizer.quantization_config.to_dict(), sort_keys=True)
 
             # Force-set to `True` for more mem efficiency
             if low_cpu_mem_usage is None:
