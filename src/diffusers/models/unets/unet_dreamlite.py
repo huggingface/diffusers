@@ -1884,6 +1884,15 @@ class DreamLiteUNetModel(UNet2DConditionModel):
     def default_attn_processor(self):  # type: ignore[override]
         return DreamLiteAttnProcessor2_0()
 
+    def set_default_attn_processor(self):  # type: ignore[override]
+        """Reinstall :class:`DreamLiteAttnProcessor2_0` everywhere.
+
+        The parent implementation only knows about the diffusers stock processor sets and would raise
+        for our GQA-aware processor; override so utilities that round-trip through this method (CPU
+        offload, save/load, layerwise casting, ...) keep working unchanged.
+        """
+        self.set_attn_processor(DreamLiteAttnProcessor2_0())
+
     # ----- DreamLite extension: support `text_proj_rms` encoder_hid_proj -----
     def _set_encoder_hid_proj(  # type: ignore[override]
         self,

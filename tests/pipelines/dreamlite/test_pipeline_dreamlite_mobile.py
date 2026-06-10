@@ -16,18 +16,18 @@
 The mobile pipeline is a distilled, no-CFG sibling of ``DreamLitePipeline``.
 It runs a single UNet forward per step (no 3-way concat) and ignores
 ``guidance_scale`` / ``image_guidance_scale``. Test layout mirrors
-``test_pipeline_dreamlite.py``; see that file for the rationale behind
-mocking ``encode_prompt``.
+``test_pipeline_dreamlite.py``; see that file for the rationale behind the
+tiny Qwen3-VL test fixture.
 """
 
 import gc
 import os
 import unittest
-from unittest.mock import MagicMock, patch
 
 import numpy as np
 import torch
 from PIL import Image
+from transformers import AutoTokenizer, Qwen3VLConfig, Qwen3VLForConditionalGeneration, Qwen3VLProcessor
 
 from diffusers import (
     AutoencoderTiny,
@@ -51,27 +51,52 @@ from ..test_pipelines_common import (
 enable_full_determinism()
 
 
-_CROSS_ATTN_DIM = 32
-_DUMMY_SEQ_LEN = 8
+# Match the tiny text encoder hidden size below; the UNet's cross-attention
+# dimension must match what ``encode_prompt`` returns.
+_CROSS_ATTN_DIM = 16
 
 
-def _make_fake_encode_prompt(cross_attn_dim: int = _CROSS_ATTN_DIM, seq_len: int = _DUMMY_SEQ_LEN):
-    def fake_encode_prompt(
-        self,
-        mode,
-        prompts,
-        device,
-        dtype,
-        image=None,
-        max_sequence_length=500,
-        text_pad_embedding=None,
-    ):
-        batch = len(prompts)
-        prompt_embeds = torch.randn(batch, seq_len, cross_attn_dim, device=device, dtype=dtype)
-        prompt_embeds_mask = torch.ones(batch, seq_len, device=device, dtype=torch.long)
-        return prompt_embeds, prompt_embeds_mask
+def _build_tiny_text_encoder() -> Qwen3VLForConditionalGeneration:
+    """Build a tiny but functional Qwen3-VL model for the fast test fixture.
 
-    return fake_encode_prompt
+    Mirrors the recipe used by ``tests/pipelines/nucleusmoe_image``: small text
+    + vision configs that still go through the real Qwen3-VL forward path, so
+    DreamLite's ``encode_prompt`` (chat template + tokenizer + multimodal
+    processor) is exercised for real.
+    """
+    config = Qwen3VLConfig(
+        text_config={
+            "hidden_size": _CROSS_ATTN_DIM,
+            "intermediate_size": _CROSS_ATTN_DIM,
+            "num_hidden_layers": 2,
+            "num_attention_heads": 2,
+            "num_key_value_heads": 2,
+            "rope_scaling": {
+                "mrope_section": [1, 1, 2],
+                "rope_type": "default",
+                "type": "default",
+            },
+            "rope_theta": 1000000.0,
+            "vocab_size": 151936,
+            "head_dim": 8,
+        },
+        vision_config={
+            "depth": 2,
+            "hidden_size": _CROSS_ATTN_DIM,
+            "intermediate_size": _CROSS_ATTN_DIM,
+            "num_heads": 2,
+            "out_channels": _CROSS_ATTN_DIM,
+            # ``out_hidden_size`` is the dim that vision tokens are projected to before
+            # being merged into the text stream; it must match ``text_config.hidden_size``.
+            "out_hidden_size": _CROSS_ATTN_DIM,
+            # Match the cached ``hf-internal-testing/tiny-random-Qwen2VLForConditionalGeneration``
+            # image processor (``patch_size=14``); otherwise the pixel_values
+            # produced by the processor cannot be reshaped to the model's
+            # vision patch embed.
+            "patch_size": 14,
+        },
+    )
+    return Qwen3VLForConditionalGeneration(config).eval()
 
 
 class DreamLiteMobilePipelineFastTests(PipelineTesterMixin, unittest.TestCase):
@@ -130,13 +155,10 @@ class DreamLiteMobilePipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
         scheduler = FlowMatchEulerDiscreteScheduler(num_train_timesteps=1000)
 
-        text_encoder = MagicMock()
-        text_encoder.dtype = torch.float32
-        text_encoder.to = MagicMock(return_value=text_encoder)
-        text_encoder.eval = MagicMock(return_value=text_encoder)
-
-        tokenizer = MagicMock()
-        processor = MagicMock()
+        torch.manual_seed(0)
+        text_encoder = _build_tiny_text_encoder()
+        tokenizer = AutoTokenizer.from_pretrained("hf-internal-testing/tiny-random-Qwen2VLForConditionalGeneration")
+        processor = Qwen3VLProcessor.from_pretrained("hf-internal-testing/tiny-random-Qwen2VLForConditionalGeneration")
 
         return {
             "text_encoder": text_encoder,
@@ -158,6 +180,7 @@ class DreamLiteMobilePipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             "num_inference_steps": 2,
             "height": 64,
             "width": 64,
+            "max_sequence_length": 16,
             "output_type": "np",
         }
 
@@ -166,84 +189,44 @@ class DreamLiteMobilePipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         inputs["image"] = Image.fromarray((np.random.RandomState(seed).rand(64, 64, 3) * 255).astype(np.uint8))
         return inputs
 
-    # ---- mixin compatibility: auto-patch encode_prompt for ALL tests ------
-    # PipelineTesterMixin tests (test_cfg, test_inference_batch_*, etc.) do
-    # not know about ``_patch_encode_prompt`` and instantiate the pipeline
-    # themselves, then call it. Without a patched ``encode_prompt`` they hit
-    # the real Qwen3-VL code path (``drop_idx=34`` slice on a MagicMock
-    # tokenizer output) and crash inside ``pad_sequence``. Patching at the
-    # class level via ``unittest.mock.patch.object`` covers every pipeline
-    # instance built during a test method, with automatic teardown.
-    def setUp(self):
-        super().setUp()
-        self._encode_prompt_patcher = patch.object(
-            self.pipeline_class,
-            "encode_prompt",
-            _make_fake_encode_prompt(_CROSS_ATTN_DIM, _DUMMY_SEQ_LEN),
-        )
-        self._encode_prompt_patcher.start()
-
-    def tearDown(self):
-        self._encode_prompt_patcher.stop()
-        super().tearDown()
-
-    def _patch_encode_prompt(self, pipe):
-        fake = _make_fake_encode_prompt(_CROSS_ATTN_DIM, _DUMMY_SEQ_LEN)
-        pipe.encode_prompt = fake.__get__(pipe, type(pipe))
-
-    # ---- override mixin tests that don't apply to DreamLite ---------------
-    # The following inherited PipelineTesterMixin tests are skipped because
-    # they make assumptions that don't fit DreamLite's design.
-    # This mirrors what SD3 / Flux do for the same incompatibilities.
-    @unittest.skip("MagicMock text_encoder has no real dtype propagation.")
-    def test_to_dtype(self):
-        pass
-
-    @unittest.skip("MagicMock text_encoder has no real dtype propagation.")
-    def test_torch_dtype_dict(self):
-        pass
-
-    @unittest.skip("MagicMock components cannot be serialised via save_pretrained.")
-    def test_save_load_dduf(self, atol=1e-4, rtol=1e-4):
-        pass
-
-    @unittest.skip("MagicMock components cannot be serialised via save_pretrained.")
-    def test_loading_with_variants(self):
-        pass
-
-    @unittest.skip("MagicMock components cannot be serialised via save_pretrained.")
-    def test_pipeline_with_accelerator_device_map(self):
-        pass
-
+    # ---- skips for mixin tests that genuinely don't apply ----------------
+    # The remaining skips are intrinsic to the mobile pipeline's design:
+    #   * ``encode_prompt`` returns ``(prompt_embeds, prompt_embeds_mask)``;
+    #   * the pipeline forces ``batch_size = 1`` internally.
     @unittest.skip(
-        "DreamLite UNet uses DreamLiteAttnProcessor2_0 which is not in "
-        "UNet2DConditionModel's default processor set; set_default_attn_processor raises."
-    )
-    def test_dict_tuple_outputs_equivalent(self, expected_max_difference=0.0001):
-        pass
-
-    @unittest.skip(
-        "DreamLite encode_prompt returns (embeds, mask) tuple, not a single tensor; "
+        "DreamLiteMobile encode_prompt returns (embeds, mask) tuple, not a single tensor; "
         "the mixin's test_encode_prompt_works_in_isolation assumes single tensor return."
     )
     def test_encode_prompt_works_in_isolation(self, extra_required_param_value_dict=None, atol=1e-4, rtol=1e-4):
         pass
 
     @unittest.skip(
-        "DreamLite intentionally limits ``batch_size`` to 1 (CFG memory blow-up); "
-        "only ``num_images_per_prompt > 1`` is supported. The mixin sweep over "
-        "batch_size=[1, 2] x num_images_per_prompt=[1, 2] would fail on "
-        "batch_size=2 cases."
+        "DreamLiteMobile intentionally limits ``batch_size`` to 1; only ``num_images_per_prompt > 1`` is supported."
     )
     def test_num_images_per_prompt(self):
         pass
 
+    @unittest.skip(
+        "Qwen3VLProcessor save_pretrained does not currently round-trip through DDUF "
+        "(image_processor sub-config is dropped); orthogonal to DreamLiteMobile."
+    )
+    def test_save_load_dduf(self, atol=1e-4, rtol=1e-4):
+        pass
+
+    @unittest.skip("DreamLiteMobile forces batch_size=1 internally.")
+    def test_inference_batch_consistent(self):
+        pass
+
+    @unittest.skip("DreamLiteMobile forces batch_size=1 internally.")
+    def test_inference_batch_single_identical(self):
+        pass
+
+    # ---- actual tests ------------------------------------------------------
     def test_mobile_t2i_default_case(self):
         device = torch_device
         components = self.get_dummy_components()
         pipe = self.pipeline_class(**components).to(device)
         pipe.set_progress_bar_config(disable=None)
-        self._patch_encode_prompt(pipe)
 
         inputs = self.get_dummy_inputs(device)
         out = pipe(**inputs).images
@@ -257,7 +240,6 @@ class DreamLiteMobilePipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         components = self.get_dummy_components()
         pipe = self.pipeline_class(**components).to(device)
         pipe.set_progress_bar_config(disable=None)
-        self._patch_encode_prompt(pipe)
 
         inputs = self.get_dummy_i2i_inputs(device)
         out = pipe(**inputs).images
@@ -272,7 +254,6 @@ class DreamLiteMobilePipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         components = self.get_dummy_components()
         pipe = self.pipeline_class(**components).to(device)
         pipe.set_progress_bar_config(disable=None)
-        self._patch_encode_prompt(pipe)
 
         original_forward = pipe.unet.forward
         seen_batches = []
@@ -296,41 +277,12 @@ class DreamLiteMobilePipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         components = self.get_dummy_components()
         pipe = self.pipeline_class(**components).to(device)
         pipe.set_progress_bar_config(disable=None)
-        self._patch_encode_prompt(pipe)
 
         inputs = self.get_dummy_inputs(device)
         inputs["guidance_scale"] = 7.5  # should not raise
         inputs["image_guidance_scale"] = 1.5  # should not raise
         out = pipe(**inputs).images
         self.assertEqual(to_np(out).shape, (1, 64, 64, 3))
-
-    @unittest.skip("DreamLiteMobile uses mocked text_encoder; save/load round-trip is N/A.")
-    def test_save_load_local(self):
-        pass
-
-    @unittest.skip("DreamLiteMobile uses mocked text_encoder; save/load round-trip is N/A.")
-    def test_save_load_optional_components(self):
-        pass
-
-    @unittest.skip("DreamLiteMobile uses mocked text_encoder; save/load round-trip is N/A.")
-    def test_save_load_float16(self):
-        pass
-
-    @unittest.skip("DreamLiteMobile uses mocked text_encoder; from_pretrained round-trip is N/A.")
-    def test_from_pipe_consistent_config(self):
-        pass
-
-    @unittest.skip("DreamLiteMobile uses mocked text_encoder; serialization is N/A.")
-    def test_serialization(self):
-        pass
-
-    @unittest.skip("DreamLiteMobile forces batch_size=1 internally.")
-    def test_inference_batch_consistent(self):
-        pass
-
-    @unittest.skip("DreamLiteMobile forces batch_size=1 internally.")
-    def test_inference_batch_single_identical(self):
-        pass
 
 
 @nightly
