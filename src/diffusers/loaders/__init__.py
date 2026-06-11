@@ -86,6 +86,7 @@ if is_torch_available():
             "QwenImageLoraLoaderMixin",
             "ZImageLoraLoaderMixin",
             "Flux2LoraLoaderMixin",
+            "Ideogram4LoraLoaderMixin",
             "ErnieImageLoraLoaderMixin",
             "CosmosLoraLoaderMixin",
         ]
@@ -128,6 +129,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
                 HeliosLoraLoaderMixin,
                 HiDreamImageLoraLoaderMixin,
                 HunyuanVideoLoraLoaderMixin,
+                Ideogram4LoraLoaderMixin,
                 KandinskyLoraLoaderMixin,
                 LoraLoaderMixin,
                 LTX2LoraLoaderMixin,

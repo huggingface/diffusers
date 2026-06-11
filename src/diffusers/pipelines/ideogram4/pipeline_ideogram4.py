@@ -20,6 +20,7 @@ from transformers import AutoTokenizer, PreTrainedModel
 from transformers.masking_utils import create_causal_mask
 
 from ...image_processor import VaeImageProcessor
+from ...loaders import Ideogram4LoraLoaderMixin
 from ...models.autoencoders import AutoencoderKLFlux2
 from ...models.transformers.transformer_ideogram4 import (
     IMAGE_POSITION_OFFSET,
@@ -137,7 +138,7 @@ def _expand_tensor_to_effective_batch(
     return torch.repeat_interleave(tensor, repeats=repeat_by, dim=0, output_size=tensor.shape[0] * repeat_by)
 
 
-class Ideogram4Pipeline(DiffusionPipeline):
+class Ideogram4Pipeline(DiffusionPipeline, Ideogram4LoraLoaderMixin):
     r"""
     Text-to-image pipeline for Ideogram4.
 
