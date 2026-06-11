@@ -13,71 +13,78 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import unittest
-
 import torch
 
 from diffusers.models.transformers.transformer_prx import PRXTransformer2DModel
+from diffusers.utils.torch_utils import randn_tensor
 
 from ...testing_utils import enable_full_determinism, torch_device
-from ..test_modeling_common import ModelTesterMixin
+from ..testing_utils import (
+    BaseModelTesterConfig,
+    ModelTesterMixin,
+    TrainingTesterMixin,
+)
 
 
 enable_full_determinism()
 
 
-class PRXTransformerTests(ModelTesterMixin, unittest.TestCase):
-    model_class = PRXTransformer2DModel
-    main_input_name = "hidden_states"
-    uses_custom_attn_processor = True
+class PRXTransformerTesterConfig(BaseModelTesterConfig):
+    @property
+    def model_class(self):
+        return PRXTransformer2DModel
 
     @property
-    def dummy_input(self):
-        return self.prepare_dummy_input()
+    def main_input_name(self) -> str:
+        return "hidden_states"
 
     @property
-    def input_shape(self):
+    def output_shape(self) -> tuple:
         return (16, 16, 16)
 
     @property
-    def output_shape(self):
+    def input_shape(self) -> tuple:
         return (16, 16, 16)
 
-    def prepare_dummy_input(self, height=16, width=16):
-        batch_size = 1
-        num_latent_channels = 16
-        sequence_length = 16
-        embedding_dim = 1792
+    @property
+    def generator(self):
+        return torch.Generator("cpu").manual_seed(0)
 
-        hidden_states = torch.randn((batch_size, num_latent_channels, height, width)).to(torch_device)
-        encoder_hidden_states = torch.randn((batch_size, sequence_length, embedding_dim)).to(torch_device)
-        timestep = torch.tensor([1.0]).to(torch_device).expand(batch_size)
-
+    def get_init_dict(self) -> dict:
         return {
-            "hidden_states": hidden_states,
-            "timestep": timestep,
-            "encoder_hidden_states": encoder_hidden_states,
-        }
-
-    def prepare_init_args_and_inputs_for_common(self):
-        init_dict = {
             "in_channels": 16,
             "patch_size": 2,
             "context_in_dim": 1792,
             "hidden_size": 1792,
             "mlp_ratio": 3.5,
             "num_heads": 28,
-            "depth": 4,  # Smaller depth for testing
+            "depth": 4,
             "axes_dim": [32, 32],
             "theta": 10_000,
         }
-        inputs_dict = self.prepare_dummy_input()
-        return init_dict, inputs_dict
 
+    def get_dummy_inputs(self, batch_size: int = 1) -> dict[str, torch.Tensor]:
+        num_latent_channels = 16
+        height = width = 16
+        sequence_length = 16
+        embedding_dim = 1792
+
+        return {
+            "hidden_states": randn_tensor(
+                (batch_size, num_latent_channels, height, width), generator=self.generator, device=torch_device
+            ),
+            "encoder_hidden_states": randn_tensor(
+                (batch_size, sequence_length, embedding_dim), generator=self.generator, device=torch_device
+            ),
+            "timestep": torch.tensor([1.0]).to(torch_device).expand(batch_size),
+        }
+
+
+class TestPRXTransformer(PRXTransformerTesterConfig, ModelTesterMixin):
+    pass
+
+
+class TestPRXTransformerTraining(PRXTransformerTesterConfig, TrainingTesterMixin):
     def test_gradient_checkpointing_is_applied(self):
         expected_set = {"PRXTransformer2DModel"}
         super().test_gradient_checkpointing_is_applied(expected_set=expected_set)
-
-
-if __name__ == "__main__":
-    unittest.main()

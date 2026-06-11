@@ -2390,6 +2390,12 @@ class TemplatedUlyssesAttention(torch.autograd.Function):
         query, key, value = (_all_to_all_single(x, group) for x in (query, key, value))
         query, key, value = (x.flatten(0, 1).permute(1, 0, 2, 3).contiguous() for x in (query, key, value))
 
+        if attn_mask is not None and attn_mask.shape[-1] == S_KV_LOCAL:
+            # All-gather a local mask so its layout matches the QKV layout after all-to-all.
+            mask_list = [torch.empty_like(attn_mask) for _ in range(world_size)]
+            dist.all_gather(mask_list, attn_mask, group=group)
+            attn_mask = torch.cat(mask_list, dim=-1)
+
         out = forward_op(
             ctx,
             query,
@@ -2589,6 +2595,8 @@ class TemplatedUlyssesAnythingAttention(torch.autograd.Function):
         ctx.backward_op = backward_op
         ctx._parallel_config = _parallel_config
 
+        _, S_KV_LOCAL, _, _ = key.shape
+
         metadata = ulysses_anything_metadata(query)
         query_wait = all_to_all_single_any_qkv_async(query, group, **metadata)
         key_wait = all_to_all_single_any_qkv_async(key, group, **metadata)
@@ -2597,6 +2605,19 @@ class TemplatedUlyssesAnythingAttention(torch.autograd.Function):
         query = query_wait()  # type: torch.Tensor
         key = key_wait()  # type: torch.Tensor
         value = value_wait()  # type: torch.Tensor
+
+        if attn_mask is not None and attn_mask.shape[-1] == S_KV_LOCAL:
+            # All-gather a local mask to match the post-all-to-all global sequence.
+            # The "anything" path allows unequal local sizes, so we pad to the
+            # maximum across ranks before all-gathering, then trim back.
+            mask_local_sizes = gather_size_by_comm(attn_mask.shape[-1], group)
+            max_local = max(mask_local_sizes)
+            if attn_mask.shape[-1] < max_local:
+                attn_mask = F.pad(attn_mask, (0, max_local - attn_mask.shape[-1]))
+            mask_list = [torch.empty_like(attn_mask) for _ in range(dist.get_world_size(group=group))]
+            dist.all_gather(mask_list, attn_mask, group=group)
+            attn_mask = torch.cat(mask_list, dim=-1)
+            attn_mask = attn_mask[..., : sum(mask_local_sizes)]
 
         out = forward_op(
             ctx,

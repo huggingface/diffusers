@@ -346,6 +346,10 @@ class TestFluxSingleFile(FluxTransformerTesterConfig, SingleFileTesterMixin):
     def pretrained_model_name_or_path(self):
         return "black-forest-labs/FLUX.1-dev"
 
+    @property
+    def torch_dtype(self):
+        return torch.bfloat16
+
 
 class TestFluxTransformerBitsAndBytes(FluxTransformerTesterConfig, BitsAndBytesTesterMixin):
     """BitsAndBytes quantization tests for Flux Transformer."""
