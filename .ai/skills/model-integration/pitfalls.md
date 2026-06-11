@@ -46,7 +46,7 @@ latent_dtype = self.transformer.dtype  # e.g. bfloat16
 latents = self.prepare_latents(..., dtype=latent_dtype, ...)
 ```
 
-**Detection**: Encode stage test shows initial latent max_diff of exactly ~1.5e-02. This specific magnitude is the signature of float32->bfloat16 quantization error.
+**Detection**: The encoded latents show an initial max_diff of exactly ~1.5e-02 — this specific magnitude is the signature of float32->bfloat16 quantization error.
 
 ## 11. RoPE position dtype
 
@@ -103,7 +103,3 @@ The upstream model config may have wrong values for decoder-specific parameters 
 ## 15. bf16 connector/encoder divergence -- don't chase it
 
 When running on GPU/bfloat16, multi-layer encoders (e.g. 8-layer connector transformers) accumulate bf16 rounding noise that looks alarming (max_diff 0.3-2.7). Before investigating, re-run the component test on CPU/float32. If it passes (max_diff < 1e-4), the divergence is pure precision noise, not a code bug. Don't spend hours tracing through layers -- confirm on CPU/float32 and move on.
-
-## 16. Stale test fixtures
-
-When using saved tensors for cross-pipeline comparison, always ensure both sets of tensors were captured from the same run configuration (same seed, same config, same code version). Mixing fixtures from different runs (e.g. reference tensors from yesterday, diffusers tensors from today after a code change) creates phantom divergence that wastes debugging time. Regenerate both sides in a single test script execution.
