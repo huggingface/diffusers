@@ -377,10 +377,8 @@ class DreamLiteMobilePipeline(DiffusionPipeline, FromSingleFileMixin, TextualInv
             raise ValueError(f"`image` must be of type `torch.Tensor`, `PIL.Image.Image` or `list`, got {type(image)}")
 
         if (
-            height is not None
-            and height % self.vae_scale_factor != 0
-            or width is not None
-            and width % self.vae_scale_factor != 0
+            (height is not None and height % self.vae_scale_factor != 0)
+            or (width is not None and width % self.vae_scale_factor != 0)
         ):
             logger.warning(
                 f"`height` and `width` have to be divisible by {self.vae_scale_factor} but are {height} and {width}. "

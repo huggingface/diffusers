@@ -43,6 +43,7 @@ import torch.nn.functional as F
 from torch import nn
 
 from ...configuration_utils import register_to_config
+from ..modeling_utils import ModelMixin
 from ..activations import get_activation
 from ..attention_dispatch import dispatch_attention_fn
 from ..attention_processor import Attention
@@ -1567,6 +1568,13 @@ class DreamLiteUNetModel(UNet2DConditionModel):
     """
 
     _supports_gradient_checkpointing = True
+    _no_split_modules = [
+        "BasicTransformerBlockDreamLite",
+        "ResnetBlock2DDreamLite",
+        "DreamLiteCrossAttnUpBlock2D",
+        "DreamLiteUpBlock2D",
+    ]
+    _repeated_blocks = ["BasicTransformerBlockDreamLite"]
 
     @register_to_config
     def __init__(
@@ -1634,9 +1642,10 @@ class DreamLiteUNetModel(UNet2DConditionModel):
         num_kv_heads: int | None = 1,
         num_mid_layers: int = 1,
     ):
-        # NOTE: deliberately skip UNet2DConditionModel.__init__ and call nn.Module directly,
-        # because we replicate the body with DreamLite block dispatch.
-        nn.Module.__init__(self)
+        # NOTE: deliberately skip UNet2DConditionModel.__init__ because we replicate
+        # the body with DreamLite block dispatch, but call ModelMixin.__init__ so that
+        # mixin state (e.g. _gradient_checkpointing_func) is properly initialised.
+        ModelMixin.__init__(self)
 
         self.sample_size = sample_size
 

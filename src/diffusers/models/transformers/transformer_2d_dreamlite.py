@@ -545,14 +545,13 @@ class DreamLiteTransformer2DModel(ModelMixin, ConfigMixin):
             if cross_attention_kwargs.get("scale", None) is not None:
                 logger.warning("Passing `scale` to `cross_attention_kwargs` is deprecated. `scale` will be ignored.")
 
-        # Convert masks to additive biases (broadcast-friendly).
+        # Keep masks as bool tensors — dispatch_attention_fn handles per-backend conversion
+        # internally. Dense additive float masks would hard-raise on flash / sage backends.
         if attention_mask is not None and attention_mask.ndim == 2:
-            attention_mask = (1 - attention_mask.to(hidden_states.dtype)) * -10000.0
-            attention_mask = attention_mask.unsqueeze(1)
+            attention_mask = attention_mask.bool()
 
         if encoder_attention_mask is not None and encoder_attention_mask.ndim == 2:
-            encoder_attention_mask = (1 - encoder_attention_mask.to(hidden_states.dtype)) * -10000.0
-            encoder_attention_mask = encoder_attention_mask.unsqueeze(1)
+            encoder_attention_mask = encoder_attention_mask.bool()
 
         # 1. Input
         batch_size, _, height, width = hidden_states.shape
