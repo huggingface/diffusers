@@ -74,7 +74,7 @@ Convert the original checkpoint into diffusers format with a standalone script u
 
 1. Map the original state-dict keys to the diffusers module names (renames + any tensor surgery — see patterns below).
 2. Instantiate the diffusers model from its config and load the converted state dict.
-3. `save_pretrained(...)` to a **persistent** path (never `/tmp/` — see [pitfalls.md](pitfalls.md) #10), then load it back with `from_pretrained` to confirm it round-trips.
+3. `save_pretrained(...)` to a local path, then load it back with `from_pretrained` to confirm it round-trips.
 
 All weights load through the standard paths — `from_pretrained`, or `from_single_file` (add `FromSingleFileMixin` + a weight-mapping) for an original-format single checkpoint. No custom `from_pretrained`, no manual runtime loading. See the loading rule in [models.md](../../models.md).
 

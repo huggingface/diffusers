@@ -2,19 +2,19 @@
 name: self-review
 description: >
   Use before opening a PR, or whenever asked to self-review a diffusers
-  contribution. Runs the same review the `@claude` CI runs: checks the diff
-  against .ai/review-rules.md, traces call paths for dead code, and reports
-  findings grouped by severity — flagging what to fix before submitting (blocking
-  issues + dead code) vs what to leave for the actual review. Report-only — does
-  not edit files.
+  contribution. Applies the same rubric as the `@claude` CI (checks the diff
+  against .ai/review-rules.md, traces call paths for dead code). Reports findings grouped by
+  severity, flagging what to fix before submitting (blocking issues + dead code)
+  vs what to leave for the actual review. Report-only — does not edit files.
 ---
 
 # Self-review
 
-The same pass the `@claude` CI reviewer runs, so you can catch issues before a
-maintainer does. You're already on the branch with the conventions loaded, so:
-get the diff → review it against the rubric → report. **Review only changes under
-`src/diffusers/` and `.ai/`** (skip everything else, like the CI does).
+Runs the same rubric as the `@claude` CI reviewer, so you catch issues before a
+maintainer does — but over your **whole** PR diff. (The CI scopes itself to
+`src/diffusers/` and `.ai/`; for your own PR, also review your tests, docs, and
+scripts.) You're already on the branch with the conventions loaded, so: get the
+diff → review it against the rubric → report.
 
 ## 1. Get the diff
 
@@ -44,5 +44,5 @@ touched, also read `.ai/models.md`, `.ai/pipelines.md`, or `.ai/modular.md`.
   - **Leave for the actual review** — non-blocking issues that aren't obviously
     correct; raise these with the reviewer rather than guessing at them now.
 
-Report only — do not edit files. Be concrete, cite the rule, review only the diff
-under `src/diffusers/` and `.ai/`, and don't invent issues or flag pure style.
+Report only — do not edit files. Be concrete, cite the rule, review the whole
+diff, and don't invent issues or flag pure style.
