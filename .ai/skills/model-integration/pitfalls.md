@@ -1,4 +1,6 @@
-# Complete Pitfalls Reference
+# Numerical Discrepancy Pitfalls
+
+Known pitfalls that cause numerical discrepancies between the original/reference implementation and the diffusers port. Check these when the diffusers outputs don't match the reference.
 
 ## 1. Global CPU RNG
 `MultivariateNormal.sample()` uses the global CPU RNG, not `torch.Generator`. Must call `torch.manual_seed(seed)` before each pipeline run. A `generator=` kwarg won't help.
@@ -99,7 +101,7 @@ The upstream model config may have wrong values for decoder-specific parameters 
 
 **Detection**: Feed identical post-loop latents through both decoders. If max pixel diff is large (PSNR < 40 dB) on CPU/float32, it's a real bug, not precision noise. Trace through decoder blocks (conv_in -> mid_block -> up_blocks) to find where divergence starts.
 
-**Fix**: Correct the config value. Don't edit cached files in `~/.cache/huggingface/` -- either save to a local model directory or open a PR on the upstream repo (see Testing Rule #7).
+**Fix**: Correct the config value. Don't edit cached files in `~/.cache/huggingface/` -- either save to a local model directory or open a PR on the upstream repo.
 
 ## 16. Incomplete injection tests -- inject ALL variables or the test is invalid
 
