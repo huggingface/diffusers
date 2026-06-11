@@ -205,6 +205,7 @@ _wandb_available, _wandb_version = _is_package_available("wandb")
 _tensorboard_available, _tensorboard_version = _is_package_available("tensorboard")
 _compel_available, _compel_version = _is_package_available("compel")
 _sentencepiece_available, _sentencepiece_version = _is_package_available("sentencepiece")
+_outlines_available, _outlines_version = _is_package_available("outlines")
 _torchsde_available, _torchsde_version = _is_package_available("torchsde")
 _peft_available, _peft_version = _is_package_available("peft")
 _torchvision_available, _torchvision_version = _is_package_available("torchvision")
@@ -231,6 +232,7 @@ _flash_attn_3_available, _flash_attn_3_version = _is_package_available("flash_at
 _aiter_available, _aiter_version = _is_package_available("aiter", get_dist_name=True)
 _kornia_available, _kornia_version = _is_package_available("kornia")
 _nvidia_modelopt_available, _nvidia_modelopt_version = _is_package_available("modelopt", get_dist_name=True)
+_auto_round_available, _auto_round_version = _is_package_available("auto_round")
 _flashpack_available, _flashpack_version = _is_package_available("flashpack")
 _av_available, _av_version = _is_package_available("av")
 
@@ -375,6 +377,10 @@ def is_sentencepiece_available():
     return _sentencepiece_available
 
 
+def is_outlines_available():
+    return _outlines_available
+
+
 def is_imageio_available():
     return _imageio_available
 
@@ -397,6 +403,10 @@ def is_optimum_quanto_available():
 
 def is_nvidia_modelopt_available():
     return _nvidia_modelopt_available
+
+
+def is_auto_round_available():
+    return _auto_round_available
 
 
 def is_timm_available():

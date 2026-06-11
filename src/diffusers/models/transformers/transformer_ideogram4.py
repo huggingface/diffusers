@@ -136,6 +136,7 @@ class Ideogram4Attention(nn.Module, AttentionModuleMixin):
         self.hidden_size = hidden_size
         self.num_heads = num_heads
         self.head_dim = hidden_size // num_heads
+        self.use_bias = False
 
         self.to_q = nn.Linear(hidden_size, hidden_size, bias=False)
         self.to_k = nn.Linear(hidden_size, hidden_size, bias=False)

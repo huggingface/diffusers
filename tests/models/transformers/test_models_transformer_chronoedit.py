@@ -15,7 +15,7 @@
 
 import torch
 
-from diffusers import Lumina2Transformer2DModel
+from diffusers import ChronoEditTransformer3DModel
 from diffusers.utils.torch_utils import randn_tensor
 
 from ...testing_utils import enable_full_determinism, torch_device
@@ -29,10 +29,10 @@ from ..testing_utils import (
 enable_full_determinism()
 
 
-class Lumina2TransformerTesterConfig(BaseModelTesterConfig):
+class ChronoEditTransformerTesterConfig(BaseModelTesterConfig):
     @property
     def model_class(self):
-        return Lumina2Transformer2DModel
+        return ChronoEditTransformer3DModel
 
     @property
     def main_input_name(self) -> str:
@@ -40,11 +40,11 @@ class Lumina2TransformerTesterConfig(BaseModelTesterConfig):
 
     @property
     def output_shape(self) -> tuple:
-        return (4, 16, 16)
+        return (16, 2, 8, 8)
 
     @property
     def input_shape(self) -> tuple:
-        return (4, 16, 16)
+        return (16, 2, 8, 8)
 
     @property
     def generator(self):
@@ -52,46 +52,50 @@ class Lumina2TransformerTesterConfig(BaseModelTesterConfig):
 
     def get_init_dict(self) -> dict:
         return {
-            "sample_size": 16,
-            "patch_size": 2,
-            "in_channels": 4,
-            "hidden_size": 24,
+            "patch_size": (1, 2, 2),
+            "num_attention_heads": 2,
+            "attention_head_dim": 8,
+            "in_channels": 16,
+            "out_channels": 16,
+            "text_dim": 32,
+            "freq_dim": 16,
+            "ffn_dim": 32,
             "num_layers": 2,
-            "num_refiner_layers": 1,
-            "num_attention_heads": 3,
-            "num_kv_heads": 1,
-            "multiple_of": 2,
-            "ffn_dim_multiplier": None,
-            "norm_eps": 1e-5,
-            "scaling_factor": 1.0,
-            "axes_dim_rope": (4, 2, 2),
-            "axes_lens": (128, 128, 128),
-            "cap_feat_dim": 32,
+            "cross_attn_norm": True,
+            "qk_norm": "rms_norm_across_heads",
+            "eps": 1e-06,
+            "image_dim": None,
+            "added_kv_proj_dim": None,
+            "rope_max_seq_len": 64,
+            "pos_embed_seq_len": None,
+            "rope_temporal_skip_len": 8,
         }
 
-    def get_dummy_inputs(self, batch_size: int = 2) -> dict[str, torch.Tensor]:
-        num_channels = 4
-        height = width = 16
+    def get_dummy_inputs(self, batch_size: int = 1) -> dict[str, torch.Tensor]:
+        num_channels = 16
+        num_frames = 2
+        height = 8
+        width = 8
         embedding_dim = 32
-        sequence_length = 16
+        sequence_length = 12
 
         return {
             "hidden_states": randn_tensor(
-                (batch_size, num_channels, height, width), generator=self.generator, device=torch_device
+                (batch_size, num_channels, num_frames, height, width), generator=self.generator, device=torch_device
             ),
+            "timestep": torch.randint(0, 1000, size=(batch_size,), generator=self.generator).to(torch_device),
             "encoder_hidden_states": randn_tensor(
                 (batch_size, sequence_length, embedding_dim), generator=self.generator, device=torch_device
             ),
-            "timestep": torch.rand(size=(batch_size,), generator=self.generator).to(torch_device),
-            "encoder_attention_mask": torch.ones((batch_size, sequence_length), dtype=torch.bool, device=torch_device),
+            "encoder_hidden_states_image": None,
         }
 
 
-class TestLumina2Transformer(Lumina2TransformerTesterConfig, ModelTesterMixin):
+class TestChronoEditTransformer(ChronoEditTransformerTesterConfig, ModelTesterMixin):
     pass
 
 
-class TestLumina2TransformerTraining(Lumina2TransformerTesterConfig, TrainingTesterMixin):
+class TestChronoEditTransformerTraining(ChronoEditTransformerTesterConfig, TrainingTesterMixin):
     def test_gradient_checkpointing_is_applied(self):
-        expected_set = {"Lumina2Transformer2DModel"}
+        expected_set = {"ChronoEditTransformer3DModel"}
         super().test_gradient_checkpointing_is_applied(expected_set=expected_set)
