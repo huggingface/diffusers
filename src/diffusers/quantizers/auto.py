@@ -18,10 +18,12 @@ https://github.com/huggingface/transformers/blob/c409cd81777fb27aadc043ed3d8339d
 
 import warnings
 
+from .autoround import AutoRoundQuantizer
 from .bitsandbytes import BnB4BitDiffusersQuantizer, BnB8BitDiffusersQuantizer
 from .gguf import GGUFQuantizer
 from .modelopt import NVIDIAModelOptQuantizer
 from .quantization_config import (
+    AutoRoundConfig,
     BitsAndBytesConfig,
     GGUFQuantizationConfig,
     NVIDIAModelOptConfig,
@@ -41,6 +43,7 @@ AUTO_QUANTIZER_MAPPING = {
     "quanto": QuantoQuantizer,
     "torchao": TorchAoHfQuantizer,
     "modelopt": NVIDIAModelOptQuantizer,
+    "auto-round": AutoRoundQuantizer,
 }
 
 AUTO_QUANTIZATION_CONFIG_MAPPING = {
@@ -50,6 +53,7 @@ AUTO_QUANTIZATION_CONFIG_MAPPING = {
     "quanto": QuantoConfig,
     "torchao": TorchAoConfig,
     "modelopt": NVIDIAModelOptConfig,
+    "auto-round": AutoRoundConfig,
 }
 
 
@@ -142,6 +146,19 @@ class DiffusersAutoQuantizer:
 
         if isinstance(quantization_config, NVIDIAModelOptConfig):
             quantization_config.check_model_patching()
+
+        if quantization_config_from_args is not None and isinstance(quantization_config, AutoRoundConfig):
+            # For AutoRound, allow overriding fields like `backend` from user args,
+            # since the model config may store a default value (e.g. backend="auto").
+            for key, value in quantization_config_from_args.__dict__.items():
+                if key in ("quant_method",):
+                    continue
+                if hasattr(quantization_config, key) and getattr(quantization_config, key) != value:
+                    warnings.warn(
+                        f"Overriding `{key}` in the model's quantization_config with value {value!r} "
+                        f"from the user-provided `quantization_config`."
+                    )
+                    setattr(quantization_config, key, value)
 
         if warning_msg != "":
             warnings.warn(warning_msg)
