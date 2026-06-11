@@ -457,6 +457,18 @@ class ContextParallelAttentionBackendsTesterMixin:
         init_dict = self.get_init_dict()
         inputs_dict = self.get_dummy_inputs()
 
+        # Single-GPU reference with the same attention backend (no context parallel)
+        model = self.model_class(**init_dict).eval().to(torch_device)
+        if attention_backend:
+            model.set_attention_backend(attention_backend)
+
+        # Copy inputs and cast model + inputs as needed
+        ref_inputs = inputs_dict.copy()
+        model, ref_inputs = _maybe_cast_to_bf16(attention_backend, model, ref_inputs)
+        state_dict = {k: v.cpu() for k, v in model.state_dict().items()}
+        with torch.no_grad():
+            ref_output = model(**ref_inputs, return_dict=False)[0].cpu()
+
         # Move all tensors to CPU for multiprocessing
         inputs_dict = {k: v.cpu() if isinstance(v, torch.Tensor) else v for k, v in inputs_dict.items()}
         cp_dict = {cp_type: world_size}
@@ -482,6 +494,7 @@ class ContextParallelAttentionBackendsTesterMixin:
                 inputs_dict,
                 return_dict,
                 attention_backend,
+                state_dict,
             ),
             nprocs=world_size,
             join=True,
@@ -490,3 +503,6 @@ class ContextParallelAttentionBackendsTesterMixin:
         assert return_dict.get("status") == "success", (
             f"Context parallel inference failed: {return_dict.get('error', 'Unknown error')}"
         )
+
+        cp_output = torch.tensor(return_dict["output"])
+        torch.testing.assert_close(ref_output, cp_output, atol=1e-4, rtol=1e-4)
