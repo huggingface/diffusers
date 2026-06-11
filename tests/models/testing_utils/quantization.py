@@ -18,7 +18,14 @@ import gc
 import pytest
 import torch
 
-from diffusers import BitsAndBytesConfig, GGUFQuantizationConfig, NVIDIAModelOptConfig, QuantoConfig, TorchAoConfig
+from diffusers import (
+    AutoRoundConfig,
+    BitsAndBytesConfig,
+    GGUFQuantizationConfig,
+    NVIDIAModelOptConfig,
+    QuantoConfig,
+    TorchAoConfig,
+)
 from diffusers.utils.import_utils import (
     is_bitsandbytes_available,
     is_gguf_available,
@@ -31,6 +38,7 @@ from ...testing_utils import (
     backend_empty_cache,
     backend_max_memory_allocated,
     backend_reset_peak_memory_stats,
+    is_autoround,
     is_bitsandbytes,
     is_gguf,
     is_modelopt,
@@ -40,6 +48,7 @@ from ...testing_utils import (
     is_torchao,
     require_accelerate,
     require_accelerator,
+    require_auto_round_version_greater_or_equal,
     require_bitsandbytes_version_greater,
     require_gguf_version_greater_or_equal,
     require_modelopt_version_greater_or_equal,
@@ -1183,7 +1192,7 @@ class QuantizationCompileTesterMixin:
         torch.compiler.reset()
 
     @torch.no_grad()
-    def _test_torch_compile(self, config_kwargs):
+    def _test_torch_compile(self, config_kwargs, fullgraph=True, error_on_recompile=True):
         """
         Test that torch.compile works correctly with a quantized model.
 
@@ -1196,7 +1205,7 @@ class QuantizationCompileTesterMixin:
 
         model.compile(fullgraph=True)
 
-        with torch._dynamo.config.patch(error_on_recompile=True):
+        with torch._dynamo.config.patch(error_on_recompile=error_on_recompile):
             inputs = self.get_dummy_inputs()
             output = model(**inputs, return_dict=False)[0]
             assert output is not None, "Model output is None"
@@ -1375,3 +1384,115 @@ class ModelOptCompileTesterMixin(ModelOptConfigMixin, QuantizationCompileTesterM
     @pytest.mark.parametrize("config_name", ["fp8"], ids=["fp8"])
     def test_modelopt_torch_compile_with_group_offload(self, config_name):
         self._test_torch_compile_with_group_offload(ModelOptConfigMixin.MODELOPT_CONFIGS[config_name])
+
+
+@is_quantization
+@is_autoround
+@require_accelerator
+@require_accelerate
+@require_auto_round_version_greater_or_equal("0.13.0")
+class AutoRoundConfigMixin:
+    """
+    Base mixin providing AutoRound quantization config and model creation.
+
+    AutoRound is a weight-only quantization method (W4A16). It supports multiple inference
+
+    When `backend="auto"`, AutoRound selects the best available backend automatically.
+
+    Expected class attributes:
+        - model_class: The model class to test
+        - pretrained_model_name_or_path: Hub repository ID for the pretrained model
+        - quantized_model_name_or_path: Hub repository ID for the quantized model
+        - pretrained_model_kwargs: (Optional) Dict of kwargs to pass to from_pretrained
+    """
+
+    config_dict = {"backend": "auto"}
+
+    def _load_unquantized_model(self):
+        kwargs = getattr(self, "pretrained_model_kwargs", {})
+        return self.model_class.from_pretrained(self.pretrained_model_name_or_path, **kwargs)
+
+    def _create_quantized_model(self, config_kwargs, **extra_kwargs):
+        config = AutoRoundConfig(**config_kwargs)
+        kwargs = getattr(self, "pretrained_model_kwargs", {}).copy()
+        kwargs["quantization_config"] = config
+        kwargs["torch_dtype"] = torch.bfloat16
+        if "device_map" not in kwargs:
+            kwargs["device_map"] = torch_device
+        kwargs.update(extra_kwargs)
+        return self.model_class.from_pretrained(self.quantized_model_name_or_path, **kwargs)
+
+    def _verify_if_layer_quantized(self, name, module, config_kwargs):
+        # AutoRound replaces linear layers with quantized linear layers
+        assert isinstance(module, torch.nn.Linear), f"Layer {name} is not Linear, got {type(module)}"
+
+
+@is_autoround
+@require_accelerator
+@require_accelerate
+@require_auto_round_version_greater_or_equal("0.13.0")
+class AutoRoundTesterMixin(AutoRoundConfigMixin, QuantizationTesterMixin):
+    """
+    Mixin class for testing AutoRound quantization on models.
+
+    Expected class attributes:
+        - model_class: The model class to test
+        - pretrained_model_name_or_path: Hub repository ID for the pretrained model
+        - quantized_model_name_or_path: Hub repository ID for the quantized model
+        - pretrained_model_kwargs: (Optional) Dict of kwargs to pass to from_pretrained (e.g., {"subfolder": "transformer"})
+
+    Expected methods to be implemented by subclasses:
+        - get_dummy_inputs(): Returns dict of inputs to pass to the model forward pass
+
+    Optional class attributes:
+        - AUTOROUND_CONFIGS: Dict of config name -> AutoRoundConfig kwargs to test
+
+    Pytest mark: autoround
+        Use `pytest -m "not autoround"` to skip these tests
+    """
+
+    config_dict = {"backend": "auto"}
+
+    def test_autoround_quantization_memory_footprint(self):
+        expected = 1.5  # AutoRound is a W4A16 method, so we expect around 1.5x memory reduction
+        self._test_quantization_memory_footprint(self.config_dict, expected_memory_reduction=expected)
+
+    def test_autoround_quantization_inference(self):
+        self._test_quantization_inference(self.config_dict)
+
+    def test_autoround_device_map(self):
+        """Test that device_map='auto' works correctly with quantization."""
+        self._test_quantization_device_map(self.config_dict)
+
+
+@is_autoround
+@require_accelerator
+@require_accelerate
+@require_auto_round_version_greater_or_equal("0.13.0")
+class AutoRoundCompileTesterMixin(AutoRoundConfigMixin, QuantizationCompileTesterMixin):
+    """
+    Mixin class for testing `torch.compile` with AutoRound-quantized models.
+
+    This mixin provides tests that verify `torch.compile` works correctly with models
+    quantized using AutoRound. Subclasses are expected to inherit from
+    `AutoRoundConfigMixin` (which defines `config_dict`) and to provide the
+    following class attributes: `model_class`, `pretrained_model_name_or_path`, and
+    `quantized_model_name_or_path`.
+
+    The mixin uses `config_dict` (defaults to {"backend": "auto"}) as the
+    quantization configuration passed into `_create_quantized_model` when
+    invoking the compile-related tests.
+
+    Provided tests:
+        - `test_autoround_torch_compile`: Ensures `torch.compile` runs and produces
+          valid, non-NaN outputs for an AutoRound-quantized model.
+        - `test_autoround_torch_compile_with_group_offload`: Ensures `torch.compile`
+          works together with group offloading when supported by the quantized
+          model implementation.
+    """
+
+    def test_autoround_torch_compile(self):
+        self._test_torch_compile(self.config_dict, fullgraph=False, error_on_recompile=False)
+
+    def test_autoround_torch_compile_with_group_offload(self):
+        self._test_torch_compile_with_group_offload(self.config_dict)
