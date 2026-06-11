@@ -26,7 +26,7 @@ Standard: `self.transformer`. Modular: `components.transformer`. Missing this ca
 ## 8. Guider state across stages
 In multi-stage denoising, the guider's internal state (e.g. `zero_init_steps`) may need save/restore between stages.
 
-## 9. Noise dtype mismatch (causes washed-out output)
+## 9. Noise dtype mismatch
 
 Reference code often generates noise in float32 then casts to model dtype (bfloat16) before storing:
 
