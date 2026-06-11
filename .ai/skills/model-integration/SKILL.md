@@ -26,6 +26,8 @@ Then work through the **Integration checklist** below
 
 ## Integration checklist
 
+A pipeline in Diffusers (be it standard or modular) will have multiple components. These components can be models, schedulers, processors, etc.
+
 - [ ] **Transformer model**
   - [ ] Implement the model with `from_pretrained` support (conventions: [models.md](../../models.md))
   - [ ] Convert weights (see **Weight / Checkpoint Conversion**)
@@ -76,7 +78,7 @@ Convert the original checkpoint into diffusers format with a standalone script u
 
 All weights load through the standard paths — `from_pretrained`, or `from_single_file` (add `FromSingleFileMixin` + a weight-mapping) for an original-format single checkpoint. No custom `from_pretrained`, no manual runtime loading. See the loading rule in [models.md](../../models.md).
 
-Common conversion patterns to watch for:
+Common conversion patterns to watch for model-level components:
 - Fused QKV weights that need splitting into separate Q, K, V
 - Scale/shift ordering differences (reference stores `[shift, scale]`, diffusers expects `[scale, shift]`)
 - Weight transpositions (linear stored as transposed conv, or vice versa)
