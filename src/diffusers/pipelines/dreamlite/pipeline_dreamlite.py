@@ -263,13 +263,11 @@ class DreamLitePipeline(DiffusionPipeline, FromSingleFileMixin, TextualInversion
 
             tk_out = self.processor(text=txts, images=images, padding=True, return_tensors="pt").to(device)
 
-            outputs = self.text_encoder(
-                input_ids=tk_out.input_ids,
-                attention_mask=tk_out.attention_mask,
-                pixel_values=tk_out.pixel_values,
-                image_grid_thw=tk_out.image_grid_thw,
-                output_hidden_states=True,
-            )
+            # Pass all processor outputs (input_ids, attention_mask, pixel_values,
+            # image_grid_thw, mm_token_type_ids, …) to the text encoder so that
+            # newly-added fields (e.g. mm_token_type_ids for M-RoPE) are forwarded
+            # automatically.
+            outputs = self.text_encoder(**tk_out, output_hidden_states=True)
 
         elif mode == "generate":
             template = self.prompt_template_encode_generate
@@ -284,11 +282,7 @@ class DreamLitePipeline(DiffusionPipeline, FromSingleFileMixin, TextualInversion
                 return_tensors="pt",
             ).to(device)
 
-            outputs = self.text_encoder(
-                input_ids=tk_out.input_ids,
-                attention_mask=tk_out.attention_mask,
-                output_hidden_states=True,
-            )
+            outputs = self.text_encoder(**tk_out, output_hidden_states=True)
         else:
             raise ValueError(f"Unknown mode: {mode!r}; expected 'generate' or 'edit'.")
 
