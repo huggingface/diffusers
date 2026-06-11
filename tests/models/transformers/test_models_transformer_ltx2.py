@@ -115,6 +115,31 @@ class LTX2TransformerTesterConfig(BaseModelTesterConfig):
 class TestLTX2Transformer(LTX2TransformerTesterConfig, ModelTesterMixin):
     """Core model tests for LTX2 Video Transformer."""
 
+    def test_fp32_scale_shift_tables_match_uniform_dtype(self):
+        # Published LTX-2 checkpoints store the AdaLN scale_shift tables in fp32
+        # alongside bf16 weights. The tables are cast to the activation dtype at
+        # the use site (as in the original implementation), so a natively loaded
+        # mixed-dtype model must run and produce the same outputs as one whose
+        # tables were flattened to the weight dtype at load time.
+        torch.manual_seed(0)
+        model = self.model_class(**self.get_init_dict()).to(torch.bfloat16).to(torch_device).eval()
+        inputs = {
+            key: value.to(torch.bfloat16) if isinstance(value, torch.Tensor) and value.is_floating_point() else value
+            for key, value in self.get_dummy_inputs().items()
+        }
+
+        with torch.no_grad():
+            reference = model(**inputs)
+
+        for name, param in model.named_parameters():
+            if "scale_shift_table" in name:
+                param.data = param.data.float()
+        with torch.no_grad():
+            mixed = model(**inputs)
+
+        assert torch.equal(reference[0], mixed[0])
+        assert torch.equal(reference[1], mixed[1])
+
 
 class TestLTX2TransformerMemory(LTX2TransformerTesterConfig, MemoryTesterMixin):
     """Memory optimization tests for LTX2 Video Transformer."""

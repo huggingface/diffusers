@@ -586,7 +586,11 @@ class LTX2VideoTransformerBlock(nn.Module):
         scale_shift_table: torch.Tensor, temb: torch.Tensor, batch_size: int
     ) -> tuple[torch.Tensor, ...]:
         num_ada_params = scale_shift_table.shape[0]
-        ada_values = scale_shift_table[None, None].to(temb.device) + temb.reshape(
+        # Cast to temb's dtype at the use site (matching the original implementation):
+        # checkpoints store the scale_shift tables in fp32 alongside bf16 weights, so
+        # without the cast the fp32 tables promote the modulated hidden states and the
+        # following linear layers fail on mixed dtypes.
+        ada_values = scale_shift_table[None, None].to(device=temb.device, dtype=temb.dtype) + temb.reshape(
             batch_size, temb.shape[1], num_ada_params, -1
         )
         ada_params = ada_values.unbind(dim=2)
@@ -1620,14 +1624,19 @@ class LTX2VideoTransformer3DModel(
                 )
 
         # 6. Output layers (including unpatchification)
-        scale_shift_values = self.scale_shift_table[None, None] + embedded_timestep[:, :, None]
+        scale_shift_values = (
+            self.scale_shift_table[None, None].to(embedded_timestep.dtype) + embedded_timestep[:, :, None]
+        )
         shift, scale = scale_shift_values[:, :, 0], scale_shift_values[:, :, 1]
 
         hidden_states = self.norm_out(hidden_states)
         hidden_states = hidden_states * (1 + scale) + shift
         output = self.proj_out(hidden_states)
 
-        audio_scale_shift_values = self.audio_scale_shift_table[None, None] + audio_embedded_timestep[:, :, None]
+        audio_scale_shift_values = (
+            self.audio_scale_shift_table[None, None].to(audio_embedded_timestep.dtype)
+            + audio_embedded_timestep[:, :, None]
+        )
         audio_shift, audio_scale = audio_scale_shift_values[:, :, 0], audio_scale_shift_values[:, :, 1]
 
         audio_hidden_states = self.audio_norm_out(audio_hidden_states)
