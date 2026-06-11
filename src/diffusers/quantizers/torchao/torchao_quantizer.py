@@ -72,6 +72,38 @@ if is_torch_available():
 if is_torchao_available():
     from torchao.quantization import quantize_
 
+if is_torchao_available() and is_torchao_version(">=", "0.15.0"):
+    from torchao.prototype.safetensors.safetensors_support import (
+        flatten_tensor_state_dict,
+        unflatten_tensor_state_dict,
+    )
+    from torchao.prototype.safetensors.safetensors_utils import is_metadata_torchao
+else:
+    flatten_tensor_state_dict = None
+    unflatten_tensor_state_dict = None
+    is_metadata_torchao = None
+
+
+_SAFETENSORS_SUPPORTED_CONFIGS = (
+    "Float8DynamicActivationFloat8WeightConfig",
+    "Float8WeightOnlyConfig",
+    "Int4WeightOnlyConfig",
+    "Int8DynamicActivationInt8WeightConfig",
+    "Int8DynamicActivationIntxWeightConfig",
+    "Int8WeightOnlyConfig",
+    "IntxWeightOnlyConfig",
+)
+
+# Longest first so `_weight_scale_and_zero` matches before `_weight_scale`.
+_TORCHAO_FLAT_SUFFIXES = (
+    "_weight_scale_and_zero",
+    "_weight_per_tensor_scale",
+    "_weight_act_pre_scale",
+    "_weight_zero_point",
+    "_weight_qdata",
+    "_weight_scale",
+)
+
 
 def _update_torch_safe_globals():
     safe_globals = [
@@ -337,20 +369,89 @@ class TorchAoHfQuantizer(DiffusersQuantizer):
     def _process_model_after_weight_loading(self, model: "ModelMixin"):
         return model
 
-    def is_serializable(self, safe_serialization=None):
-        # TODO(aryan): needs to be tested
-        if safe_serialization:
-            logger.warning(
-                "torchao quantized model does not support safe serialization, please set `safe_serialization` to False."
-            )
-            return False
+    def set_metadata(self, checkpoint_files: list[str]) -> None:
+        """Collect torchao's flatten metadata from each safetensors shard header."""
+        self.metadata = {}
+        self._pending_flat = {}
+        if not checkpoint_files:
+            return
+        from safetensors import safe_open
 
+        for checkpoint_file in checkpoint_files:
+            if not isinstance(checkpoint_file, str) or not checkpoint_file.endswith(".safetensors"):
+                continue
+            try:
+                with safe_open(checkpoint_file, framework="pt") as f:
+                    shard_metadata = f.metadata() or {}
+            except Exception as e:
+                logger.debug(f"Could not read safetensors metadata from {checkpoint_file}: {e}")
+                continue
+            self.metadata.update(shard_metadata)
+
+    def update_loaded_keys(self, loaded_keys: list[str]) -> list[str]:
+        """Collapse `<prefix>._weight_*` flat-suffix names back to `<prefix>.weight`."""
+        metadata = getattr(self, "metadata", None)
+        if not metadata or is_metadata_torchao is None or not is_metadata_torchao(metadata):
+            return loaded_keys
+        rewritten = []
+        seen = set()
+        for key in loaded_keys:
+            target = key
+            for suffix in _TORCHAO_FLAT_SUFFIXES:
+                if key.endswith(suffix):
+                    target = key[: -len(suffix)] + "weight"
+                    break
+            if target not in seen:
+                seen.add(target)
+                rewritten.append(target)
+        return rewritten
+
+    def update_state_dict_with_metadata(
+        self, state_dict: dict[str, "torch.Tensor"], metadata: dict[str, str]
+    ) -> dict[str, "torch.Tensor"]:
+        """Per-shard unflatten with a `_pending_flat` buffer for layers split across shards."""
+        if (
+            unflatten_tensor_state_dict is None
+            or is_metadata_torchao is None
+            or not metadata
+            or not is_metadata_torchao(metadata)
+        ):
+            return state_dict
+
+        # Carve out dot-less keys (top-level plain params like PixArt's `scale_shift_table`).
+        # torchao's unflatten does `tensor_name.rsplit(".", 1)` on every entry in metadata's
+        # `tensor_names` list and crashes on names without a dot. Also strip them from a copy
+        # of the metadata so torchao's loop never touches them.
+        import json
+
+        try:
+            tensor_names = json.loads(metadata.get("tensor_names", "[]"))
+        except (ValueError, TypeError):
+            tensor_names = []
+        dotless = [n for n in tensor_names if "." not in n]
+        if dotless:
+            metadata = {k: v for k, v in metadata.items() if k not in dotless}
+            metadata["tensor_names"] = json.dumps([n for n in tensor_names if "." in n])
+
+        passthrough = {k: state_dict[k] for k in dotless if k in state_dict}
+        to_unflatten = {k: v for k, v in state_dict.items() if k not in passthrough}
+
+        pending = getattr(self, "_pending_flat", None) or {}
+        if pending:
+            to_unflatten = {**pending, **to_unflatten}
+        unflattened, leftover = unflatten_tensor_state_dict(to_unflatten, metadata)
+        self._pending_flat = leftover or {}
+        return {**passthrough, **unflattened}
+
+    @property
+    def is_serializable(self):
         _is_torchao_serializable = version.parse(importlib.metadata.version("huggingface_hub")) >= version.parse(
             "0.25.0"
         )
 
         if not _is_torchao_serializable:
             logger.warning("torchao quantized model is only serializable after huggingface_hub >= 0.25.0 ")
+            return False
 
         if self.offload and self.quantization_config.modules_to_not_convert is None:
             logger.warning(
@@ -360,6 +461,34 @@ class TorchAoHfQuantizer(DiffusersQuantizer):
             return False
 
         return _is_torchao_serializable
+
+    def get_state_dict_and_metadata(
+        self, model: "ModelMixin", safe_serialization: bool = False
+    ) -> tuple[dict[str, "torch.Tensor"], dict[str, str]]:
+        """Flatten torchao tensor subclasses; raises if config is unsupported or v1."""
+        if not safe_serialization or flatten_tensor_state_dict is None:
+            return model.state_dict(), {}
+
+        if not is_torchao_version(">=", "0.15.0"):
+            raise ValueError(
+                "Saving a torchao quantized model with `safe_serialization=True` requires torchao>=0.15.0. "
+                "Either upgrade torchao or pass `safe_serialization=False`."
+            )
+        quant_type = self.quantization_config.quant_type
+        cfg_name = quant_type.__class__.__name__
+        if cfg_name not in _SAFETENSORS_SUPPORTED_CONFIGS:
+            raise ValueError(
+                f"torchao config `{cfg_name}` does not support safetensors serialization yet. "
+                f"Supported configs: {_SAFETENSORS_SUPPORTED_CONFIGS}. "
+                "Pass `safe_serialization=False` to save with pickle instead."
+            )
+        if getattr(quant_type, "version", 2) != 2:
+            raise ValueError(
+                f"torchao config `{cfg_name}` was constructed with `version=1`, which produces the deprecated "
+                "`AffineQuantizedTensor` subclass that cannot be serialized to safetensors. Reconstruct it as "
+                f"`{cfg_name}(version=2, ...)` or pass `safe_serialization=False`."
+            )
+        return flatten_tensor_state_dict(model.state_dict())
 
     _TRAINABLE_QUANTIZATION_CONFIGS = (
         "Int8WeightOnlyConfig",

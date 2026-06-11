@@ -758,7 +758,14 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             model_to_save.save_config(save_directory)
 
         # Save the model
-        state_dict = model_to_save.state_dict()
+        safetensors_metadata = {"format": "pt"}
+        if hf_quantizer is not None:
+            state_dict, quantizer_metadata = hf_quantizer.get_state_dict_and_metadata(
+                model_to_save, safe_serialization=safe_serialization
+            )
+            safetensors_metadata.update(quantizer_metadata)
+        else:
+            state_dict = model_to_save.state_dict()
 
         if use_flashpack:
             if is_flashpack_available():
@@ -805,7 +812,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                 if safe_serialization:
                     # At some point we will need to deal better with save_function (used for TPU and other distributed
                     # joyfulness), but for now this enough.
-                    safetensors.torch.save_file(shard, filepath, metadata={"format": "pt"})
+                    safetensors.torch.save_file(shard, filepath, metadata=safetensors_metadata)
                 else:
                     torch.save(shard, filepath)
 
@@ -1370,6 +1377,8 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             loaded_keys = list(state_dict.keys())
 
         if hf_quantizer is not None:
+            hf_quantizer.set_metadata(resolved_model_file)
+            loaded_keys = hf_quantizer.update_loaded_keys(loaded_keys)
             hf_quantizer.preprocess_model(
                 model=model, device_map=device_map, keep_in_fp32_modules=keep_in_fp32_modules
             )

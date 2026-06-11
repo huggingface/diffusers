@@ -22,7 +22,7 @@ from typing import Set
 import safetensors.torch
 import torch
 
-from ..utils import get_logger, is_accelerate_available, is_torchao_available
+from ..utils import get_logger, is_accelerate_available, is_torchao_available, is_torchao_version
 from ._common import _GO_LC_SUPPORTED_PYTORCH_LAYERS
 from .hooks import HookRegistry, ModelHook
 
@@ -30,6 +30,15 @@ from .hooks import HookRegistry, ModelHook
 if is_accelerate_available():
     from accelerate.hooks import AlignDevicesHook, CpuOffload
     from accelerate.utils import send_to_device
+
+if is_torchao_available() and is_torchao_version(">=", "0.15.0"):
+    from torchao.prototype.safetensors.safetensors_support import (
+        flatten_tensor_state_dict,
+        unflatten_tensor_state_dict,
+    )
+else:
+    flatten_tensor_state_dict = None
+    unflatten_tensor_state_dict = None
 
 
 logger = get_logger(__name__)  # pylint: disable=invalid-name
@@ -162,8 +171,15 @@ class ModuleGroup:
 
             self.tensor_to_key = {tensor: f"tensor_{i}" for i, tensor in enumerate(all_tensors)}
             self.key_to_tensor = {v: k for k, v in self.tensor_to_key.items()}
+            self._has_torchao = any(_is_torchao_tensor(t) for t in all_tensors)
+            if self._has_torchao and flatten_tensor_state_dict is None:
+                raise ImportError(
+                    "Disk offloading of TorchAO-quantized tensors requires torchao>=0.15.0. Either "
+                    "upgrade torchao or run group offloading without `offload_to_disk_path`."
+                )
             self.cpu_param_dict = {}
         else:
+            self._has_torchao = False
             self.cpu_param_dict = self._init_cpu_param_dict()
 
         self._torch_accelerator_module = (
@@ -238,18 +254,9 @@ class ModuleGroup:
             source = pinned_memory[buffer] if pinned_memory else buffer.data
             self._transfer_tensor_to_device(buffer, source, default_stream)
 
-    def _check_disk_offload_torchao(self):
-        all_tensors = list(self.tensor_to_key.keys())
-        has_torchao = any(_is_torchao_tensor(t) for t in all_tensors)
-        if has_torchao:
-            raise ValueError(
-                "Disk offloading is not supported for TorchAO quantized tensors because safetensors "
-                "cannot serialize TorchAO subclass tensors. Use memory offloading instead by not "
-                "setting `offload_to_disk_path`."
-            )
-
     def _onload_from_disk(self):
-        self._check_disk_offload_torchao()
+        if self._has_torchao:
+            return self._onload_from_disk_torchao()
 
         if self.stream is not None:
             # Wait for previous Host->Device transfer to complete
@@ -276,6 +283,25 @@ class ModuleGroup:
                 for key, tensor_obj in self.key_to_tensor.items():
                     tensor_obj.data = loaded_tensors[key]
 
+    def _onload_from_disk_torchao(self):
+        """Synchronous direct-to-device load for groups containing TorchAO subclass tensors."""
+        with safetensors.safe_open(self.safetensors_file_path, framework="pt") as f:
+            metadata = f.metadata() or {}
+        flat = safetensors.torch.load_file(self.safetensors_file_path, device=str(self.onload_device))
+        unflattened, leftover = unflatten_tensor_state_dict(flat, metadata)
+        if leftover:
+            raise ValueError(
+                f"Group offload unflatten left unprocessed entries: {sorted(leftover.keys())[:10]}"
+            )
+        # Strip the `.weight` suffix we added before flatten on the save side.
+        for full_key, tensor in unflattened.items():
+            key = full_key[: -len(".weight")] if full_key.endswith(".weight") else full_key
+            tensor_obj = self.key_to_tensor[key]
+            if _is_torchao_tensor(tensor_obj):
+                _swap_torchao_tensor(tensor_obj, tensor)
+            else:
+                tensor_obj.data = tensor
+
     def _onload_from_memory(self):
         if self.stream is not None:
             # Wait for previous Host->Device transfer to complete
@@ -292,8 +318,6 @@ class ModuleGroup:
                 self._process_tensors_from_modules(None)
 
     def _offload_to_disk(self):
-        self._check_disk_offload_torchao()
-
         # TODO: we can potentially optimize this code path by checking if the _all_ the desired
         # safetensor files exist on the disk and if so, skip this step entirely, reducing IO
         # overhead. Currently, we just check if the given `safetensors_file_path` exists and if not
@@ -301,15 +325,34 @@ class ModuleGroup:
         # Check if the file has been saved in this session or if it already exists on disk.
         if not self._is_offloaded_to_disk and not os.path.exists(self.safetensors_file_path):
             os.makedirs(os.path.dirname(self.safetensors_file_path), exist_ok=True)
-            tensors_to_save = {key: tensor.data.to(self.offload_device) for tensor, key in self.tensor_to_key.items()}
-            safetensors.torch.save_file(tensors_to_save, self.safetensors_file_path)
+            if self._has_torchao:
+                # Append `.weight` so torchao's flatten helper sees the subclass boundary.
+                state = {
+                    f"{key}.weight": (tensor.cpu() if _is_torchao_tensor(tensor) else tensor.data.cpu())
+                    for tensor, key in self.tensor_to_key.items()
+                }
+                flat, metadata = flatten_tensor_state_dict(state)
+                safetensors.torch.save_file(flat, self.safetensors_file_path, metadata=metadata)
+            else:
+                tensors_to_save = {
+                    key: tensor.data.to(self.offload_device) for tensor, key in self.tensor_to_key.items()
+                }
+                safetensors.torch.save_file(tensors_to_save, self.safetensors_file_path)
 
         # The group is now considered offloaded to disk for the rest of the session.
         self._is_offloaded_to_disk = True
 
-        # We do this to free up the RAM which is still holding the up tensor data.
+        # Free GPU memory. Torchao subclasses need `_swap_torchao_tensor` because `.data =` is a no-op
+        # on their inner storages.
+        offload_device = (
+            torch.device(self.offload_device) if isinstance(self.offload_device, str) else self.offload_device
+        )
         for tensor_obj in self.tensor_to_key.keys():
-            tensor_obj.data = torch.empty_like(tensor_obj.data, device=self.offload_device)
+            if _is_torchao_tensor(tensor_obj):
+                if tensor_obj.device != offload_device:
+                    _swap_torchao_tensor(tensor_obj, tensor_obj.to(offload_device))
+            else:
+                tensor_obj.data = torch.empty_like(tensor_obj.data, device=self.offload_device)
 
     def _offload_to_memory(self):
         if self.stream is not None:

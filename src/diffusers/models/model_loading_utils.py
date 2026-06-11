@@ -357,6 +357,8 @@ def _load_shard_file(
     disable_mmap=False,
 ):
     state_dict = load_state_dict(shard_file, dduf_entries=dduf_entries, disable_mmap=disable_mmap)
+    if hf_quantizer is not None and getattr(hf_quantizer, "metadata", None):
+        state_dict = hf_quantizer.update_state_dict_with_metadata(state_dict, hf_quantizer.metadata)
     mismatched_keys = _find_mismatched_keys(
         state_dict,
         model_state_dict,
