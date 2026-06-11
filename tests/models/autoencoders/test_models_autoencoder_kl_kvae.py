@@ -13,24 +13,37 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import unittest
+import torch
 
 from diffusers import AutoencoderKLKVAE
+from diffusers.utils.torch_utils import randn_tensor
 
-from ...testing_utils import enable_full_determinism, floats_tensor, torch_device
-from ..test_modeling_common import ModelTesterMixin
-from .testing_utils import AutoencoderTesterMixin
+from ...testing_utils import enable_full_determinism, torch_device
+from ..testing_utils import BaseModelTesterConfig, MemoryTesterMixin, ModelTesterMixin, TrainingTesterMixin
+from .testing_utils import NewAutoencoderTesterMixin
 
 
 enable_full_determinism()
 
 
-class AutoencoderKLKVAETests(ModelTesterMixin, AutoencoderTesterMixin, unittest.TestCase):
-    model_class = AutoencoderKLKVAE
-    main_input_name = "sample"
-    base_precision = 1e-2
+class AutoencoderKLKVAETesterConfig(BaseModelTesterConfig):
+    @property
+    def model_class(self):
+        return AutoencoderKLKVAE
 
-    def get_autoencoder_kl_kvae_config(self):
+    @property
+    def main_input_name(self) -> str:
+        return "sample"
+
+    @property
+    def output_shape(self) -> tuple:
+        return (3, 32, 32)
+
+    @property
+    def generator(self):
+        return torch.Generator("cpu").manual_seed(0)
+
+    def get_init_dict(self) -> dict:
         return {
             "in_channels": 3,
             "channels": 32,
@@ -42,32 +55,29 @@ class AutoencoderKLKVAETests(ModelTesterMixin, AutoencoderTesterMixin, unittest.
             "sample_size": 32,
         }
 
-    @property
-    def dummy_input(self):
+    def get_dummy_inputs(self) -> dict:
         batch_size = 2
         num_channels = 3
         sizes = (32, 32)
-
-        image = floats_tensor((batch_size, num_channels) + sizes).to(torch_device)
-
+        image = randn_tensor((batch_size, num_channels, *sizes), generator=self.generator, device=torch_device)
         return {"sample": image}
 
-    @property
-    def input_shape(self):
-        return (3, 32, 32)
 
-    @property
-    def output_shape(self):
-        return (3, 32, 32)
+class TestAutoencoderKLKVAE(AutoencoderKLKVAETesterConfig, ModelTesterMixin):
+    pass
 
-    def prepare_init_args_and_inputs_for_common(self):
-        init_dict = self.get_autoencoder_kl_kvae_config()
-        inputs_dict = self.dummy_input
-        return init_dict, inputs_dict
+
+class TestAutoencoderKLKVAETraining(AutoencoderKLKVAETesterConfig, TrainingTesterMixin):
+    """Training tests for AutoencoderKLKVAE."""
 
     def test_gradient_checkpointing_is_applied(self):
-        expected_set = {
-            "KVAEEncoder2D",
-            "KVAEDecoder2D",
-        }
+        expected_set = {"KVAEEncoder2D", "KVAEDecoder2D"}
         super().test_gradient_checkpointing_is_applied(expected_set=expected_set)
+
+
+class TestAutoencoderKLKVAEMemory(AutoencoderKLKVAETesterConfig, MemoryTesterMixin):
+    """Memory optimization tests for AutoencoderKLKVAE."""
+
+
+class TestAutoencoderKLKVAESlicingTiling(AutoencoderKLKVAETesterConfig, NewAutoencoderTesterMixin):
+    """Slicing and tiling tests for AutoencoderKLKVAE."""
