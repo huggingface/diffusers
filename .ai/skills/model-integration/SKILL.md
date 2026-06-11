@@ -22,7 +22,7 @@ Ask step 3 as an `AskUserQuestion`, with modular marked as the recommended defau
 
 Once you have everything, **confirm the plan** with the user before implementing — state exactly what you'll do, e.g. "I'll integrate model X with pipeline Y based on your script, and verify the model matches the reference before considering it done."
 
-Then work through the **Integration checklist** below — it covers both standard and modular; only the pipeline step differs.
+Then work through the **Integration checklist** below
 
 ## Integration checklist
 
