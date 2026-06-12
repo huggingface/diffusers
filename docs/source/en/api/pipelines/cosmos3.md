@@ -43,161 +43,159 @@ Two checkpoints are released on the Hub — [`nvidia/Cosmos3-Nano`](https://hugg
 > [!TIP]
 > Make sure to check out the Schedulers [guide](../../using-diffusers/schedulers) to learn how to explore the tradeoff between scheduler speed and quality, and see the [reuse components across pipelines](../../using-diffusers/loading#reuse-a-pipeline) section to learn how to efficiently load the same components into multiple pipelines.
 
-## Text-to-image
+## Prompt upsampling
 
-Single-frame generation. The model is conditioned only on the text prompt; pass `num_frames=1`.
+Cosmos 3 was trained on long, highly descriptive captions. For optimal quality, short text prompts should be **upsampled into a specific JSON structure** before they are passed to the pipeline. The upsampler lives in the [cosmos-framework](https://github.com/NVIDIA/cosmos-framework) package.
+
+Start from a short, plain-text prompt and save it to `assets/prompt.txt`. For the text-to-video example below, the original prompt is *"A robotic arm is cleaning a plate in a kitchen"*:
+
+```bash
+mkdir -p assets
+echo "A robotic arm is cleaning a plate in a kitchen" > assets/prompt.txt
+```
+
+Then install the framework and run the upsampler. The example below upsamples for text-to-video using Opus-4.6:
+
+```bash
+git clone https://github.com/NVIDIA/cosmos-framework.git packages/cosmos-framework
+pip install -e packages/cosmos-framework
+
+export PROMPT_UPSAMPLER_ENDPOINT_URL="https://api.anthropic.com/v1/"
+export PROMPT_UPSAMPLER_MODEL_NAME="claude-opus-4-6"
+export PROMPT_UPSAMPLER_API_TOKEN="<your_token>"
+
+python -m cosmos_framework.inference.prompt_upsampling \
+    --input assets/prompt.txt \
+    --output assets/example_t2v_prompt.json \
+    --mode text2video \
+    --endpoint-url "${PROMPT_UPSAMPLER_ENDPOINT_URL}" \
+    --model "${PROMPT_UPSAMPLER_MODEL_NAME}" \
+    --api-token "${PROMPT_UPSAMPLER_API_TOKEN}" \
+    --resolution 720 \
+    --aspect-ratio "16,9"
+```
+
+Switch `--mode` to match the workflow you are targeting (`text2image`, `text2video`, `image2video`). The command writes the upsampled prompt(s) to the `--output` file as a JSON array (one object per non-empty line in `--input`); pass a `.jsonl` path instead to get one JSON object per line. For `image2video`, you must also supply the conditioning image via `--image-url` (a URL or local path) or `--image-list` (one image per prompt).
+
+A pre-upsampled positive prompt (`assets/example_t2v_prompt.json`) and negative prompt (`assets/negative_prompt.json`) are provided for convenience, and are used by the generation examples below. The examples load these JSON files and pass them to the pipeline as JSON strings via `json.dumps(...)`.
+
+## Text-to-video
+
+Multi-frame generation conditioned on text alone. Pick `num_frames` based on the target duration — the default `num_frames=189` produces ≈ 7.9 s at 24 FPS. The prompt and negative prompt are read from the JSON-upsampled files described in [Prompt upsampling](#prompt-upsampling).
 
 <hfoptions id="model">
 <hfoption id="Nano">
 
 ```python
+import json
 import torch
 from diffusers import Cosmos3OmniPipeline
+from diffusers.schedulers.scheduling_unipc_multistep import UniPCMultistepScheduler
+from diffusers.utils import export_to_video
+
+# JSON-upsampled positive and negative prompts (see "Prompt upsampling" above).
+json_prompt = json.load(open("assets/example_t2v_prompt.json"))
+negative_prompt = json.load(open("assets/negative_prompt.json"))
 
 pipe = Cosmos3OmniPipeline.from_pretrained(
     "nvidia/Cosmos3-Nano", torch_dtype=torch.bfloat16, device_map="cuda"
 )
-
-prompt = (
-    "A medium shot of a modern robotics research laboratory with white walls and a gray floor. "
-    "A robotic arm with a metallic finish is mounted on a clean white workbench, its gripper positioned "
-    "above a row of small colored objects. A laptop and neatly arranged tools sit beside the robot. "
-    "A large monitor on the wall behind displays a software interface. The scene is brightly lit by "
-    "overhead fluorescent lights."
+pipe.scheduler = UniPCMultistepScheduler.from_config(
+    pipe.scheduler.config, flow_shift=10.0, use_karras_sigmas=False
 )
 
-result = pipe(prompt=prompt, num_frames=1, height=720, width=1280)
-result.video[0].save("cosmos3_t2i.jpg", format="JPEG", quality=85)
+result = pipe(
+    prompt=json.dumps(json_prompt),
+    negative_prompt=json.dumps(negative_prompt),
+    num_frames=189,
+    height=720,
+    width=1280,
+    num_inference_steps=35,
+    guidance_scale=6.0,
+    fps=24.0,
+)
+# macro_block_size=1 allows arbitrary frame sizes (Cosmos3 outputs are not always divisible by 16).
+export_to_video(result.video, "cosmos3_t2v.mp4", fps=24, macro_block_size=1)
 ```
 
 </hfoption>
 <hfoption id="Super">
 
 ```python
+import json
 import torch
 from diffusers import Cosmos3OmniPipeline
+from diffusers.schedulers.scheduling_unipc_multistep import UniPCMultistepScheduler
+from diffusers.utils import export_to_video
+
+# JSON-upsampled positive and negative prompts (see "Prompt upsampling" above).
+json_prompt = json.load(open("assets/example_t2v_prompt.json"))
+negative_prompt = json.load(open("assets/negative_prompt.json"))
 
 pipe = Cosmos3OmniPipeline.from_pretrained(
     "nvidia/Cosmos3-Super", torch_dtype=torch.bfloat16, device_map="cuda"
 )
-
-prompt = (
-    "A medium shot of a modern robotics research laboratory with white walls and a gray floor. "
-    "A robotic arm with a metallic finish is mounted on a clean white workbench, its gripper positioned "
-    "above a row of small colored objects. A laptop and neatly arranged tools sit beside the robot. "
-    "A large monitor on the wall behind displays a software interface. The scene is brightly lit by "
-    "overhead fluorescent lights."
+pipe.scheduler = UniPCMultistepScheduler.from_config(
+    pipe.scheduler.config, flow_shift=10.0, use_karras_sigmas=False
 )
 
-result = pipe(prompt=prompt, num_frames=1, height=720, width=1280)
-result.video[0].save("cosmos3_t2i.jpg", format="JPEG", quality=85)
+result = pipe(
+    prompt=json.dumps(json_prompt),
+    negative_prompt=json.dumps(negative_prompt),
+    num_frames=189,
+    height=720,
+    width=1280,
+    num_inference_steps=35,
+    guidance_scale=6.0,
+    fps=24.0,
+)
+# macro_block_size=1 allows arbitrary frame sizes (Cosmos3 outputs are not always divisible by 16).
+export_to_video(result.video, "cosmos3_t2v.mp4", fps=24, macro_block_size=1)
 ```
 
 </hfoption>
 </hfoptions>
 
-## Text-to-video
+## Text-to-image
 
-Multi-frame generation conditioned on text alone. Pick `num_frames` based on the target duration — the default `num_frames=189` produces ≈ 7.9 s at 24 FPS.
+Single-frame generation. The model is conditioned only on the text prompt; pass `num_frames=1`. Upsample with `--mode text2image` to produce the JSON prompt.
 
 <hfoptions id="model">
 <hfoption id="Nano">
 
 ```python
+import json
 import torch
 from diffusers import Cosmos3OmniPipeline
-from diffusers.utils import export_to_video
+
+# JSON-upsampled prompt (see "Prompt upsampling" above).
+json_prompt = json.load(open("assets/example_t2i_prompt.json"))
 
 pipe = Cosmos3OmniPipeline.from_pretrained(
     "nvidia/Cosmos3-Nano", torch_dtype=torch.bfloat16, device_map="cuda"
 )
 
-prompt = (
-    "The video opens with a view of a well-lit indoor space featuring a wooden display case with "
-    "compartments filled with various fruits, including bananas, apples, pears, oranges, and carambolas. "
-    "The bananas are neatly arranged in the middle compartment, while apples are in the left and a mix "
-    "of pears, oranges, and carambolas are in the right. Two robotic arms with grippers are positioned "
-    "at the bottom of the frame, with the one on the left remaining stationary, partially obscuring the "
-    "apples. The robotic arm on the right begins its action, extending towards the right side of the "
-    "display case. It carefully picks up a pear from the fruit section, placing it into a plastic bag "
-    "in the shopping cart nearby, which has red handles. After securing the pear, the arm retracts back "
-    "to its original position. The process repeats as the robotic arm picks up an orange and places it "
-    "in the bag, followed by a carambola. The final frame captures the robotic arm returning to its "
-    "initial position, leaving the display case and surrounding area unchanged. The video showcases a "
-    "seamless and efficient automated fruit-picking process, highlighting the precision and efficiency "
-    "of modern robotics in a retail setting."
-)
-
-# Recommended quality-control negative prompt for text-to-video.
-negative_prompt = (
-    "The video captures a series of frames showing ugly scenes, static with no motion, motion blur, "
-    "over-saturation, shaky footage, low resolution, grainy texture, pixelated images, poorly lit areas, "
-    "underexposed and overexposed scenes, poor color balance, washed out colors, choppy sequences, jerky "
-    "movements, low frame rate, artifacting, color banding, unnatural transitions, outdated special effects, "
-    "fake elements, unconvincing visuals, poorly edited content, jump cuts, visual noise, and flickering. "
-    "Overall, the video is of poor quality."
-)
-
-result = pipe(
-    prompt=prompt,
-    negative_prompt=negative_prompt,
-    num_frames=189,
-    height=720,
-    width=1280,
-    fps=24.0,
-)
-# macro_block_size=1 allows arbitrary frame sizes (Cosmos3 outputs are not always divisible by 16).
-export_to_video(result.video, "cosmos3_t2v.mp4", fps=24, macro_block_size=1)
+result = pipe(prompt=json.dumps(json_prompt), num_frames=1, height=720, width=1280)
+result.video[0].save("cosmos3_t2i.jpg", format="JPEG", quality=85)
 ```
 
 </hfoption>
 <hfoption id="Super">
 
 ```python
+import json
 import torch
 from diffusers import Cosmos3OmniPipeline
-from diffusers.utils import export_to_video
+
+# JSON-upsampled prompt (see "Prompt upsampling" above).
+json_prompt = json.load(open("assets/example_t2i_prompt.json"))
 
 pipe = Cosmos3OmniPipeline.from_pretrained(
     "nvidia/Cosmos3-Super", torch_dtype=torch.bfloat16, device_map="cuda"
 )
 
-prompt = (
-    "The video opens with a view of a well-lit indoor space featuring a wooden display case with "
-    "compartments filled with various fruits, including bananas, apples, pears, oranges, and carambolas. "
-    "The bananas are neatly arranged in the middle compartment, while apples are in the left and a mix "
-    "of pears, oranges, and carambolas are in the right. Two robotic arms with grippers are positioned "
-    "at the bottom of the frame, with the one on the left remaining stationary, partially obscuring the "
-    "apples. The robotic arm on the right begins its action, extending towards the right side of the "
-    "display case. It carefully picks up a pear from the fruit section, placing it into a plastic bag "
-    "in the shopping cart nearby, which has red handles. After securing the pear, the arm retracts back "
-    "to its original position. The process repeats as the robotic arm picks up an orange and places it "
-    "in the bag, followed by a carambola. The final frame captures the robotic arm returning to its "
-    "initial position, leaving the display case and surrounding area unchanged. The video showcases a "
-    "seamless and efficient automated fruit-picking process, highlighting the precision and efficiency "
-    "of modern robotics in a retail setting."
-)
-
-# Recommended quality-control negative prompt for text-to-video.
-negative_prompt = (
-    "The video captures a series of frames showing ugly scenes, static with no motion, motion blur, "
-    "over-saturation, shaky footage, low resolution, grainy texture, pixelated images, poorly lit areas, "
-    "underexposed and overexposed scenes, poor color balance, washed out colors, choppy sequences, jerky "
-    "movements, low frame rate, artifacting, color banding, unnatural transitions, outdated special effects, "
-    "fake elements, unconvincing visuals, poorly edited content, jump cuts, visual noise, and flickering. "
-    "Overall, the video is of poor quality."
-)
-
-result = pipe(
-    prompt=prompt,
-    negative_prompt=negative_prompt,
-    num_frames=189,
-    height=720,
-    width=1280,
-    fps=24.0,
-)
-# macro_block_size=1 allows arbitrary frame sizes (Cosmos3 outputs are not always divisible by 16).
-export_to_video(result.video, "cosmos3_t2v.mp4", fps=24, macro_block_size=1)
+result = pipe(prompt=json.dumps(json_prompt), num_frames=1, height=720, width=1280)
+result.video[0].save("cosmos3_t2i.jpg", format="JPEG", quality=85)
 ```
 
 </hfoption>
@@ -205,15 +203,20 @@ export_to_video(result.video, "cosmos3_t2v.mp4", fps=24, macro_block_size=1)
 
 ## Image-to-video
 
-Pass a conditioning image via `image=`. The pipeline anchors frame 0 to the supplied image and denoises the rest.
+Pass a conditioning image via `image=`. The pipeline anchors frame 0 to the supplied image and denoises the rest. Upsample with `--mode image2video` to produce the JSON prompt.
 
 <hfoptions id="model">
 <hfoption id="Nano">
 
 ```python
+import json
 import torch
 from diffusers import Cosmos3OmniPipeline
 from diffusers.utils import export_to_video, load_image
+
+# JSON-upsampled positive and negative prompts (see "Prompt upsampling" above).
+json_prompt = json.load(open("assets/example_i2v_prompt.json"))
+negative_prompt = json.load(open("assets/negative_prompt_i2v.json"))
 
 pipe = Cosmos3OmniPipeline.from_pretrained(
     "nvidia/Cosmos3-Nano", torch_dtype=torch.bfloat16, device_map="cuda"
@@ -222,42 +225,10 @@ pipe = Cosmos3OmniPipeline.from_pretrained(
 image = load_image(
     "https://github.com/nvidia-cosmos/cosmos-dependencies/releases/download/assets/robot_153.jpg"
 )
-prompt = (
-    "The video opens with a view of a testing environment, characterized by a large wooden table at the "
-    "center. On this table, two robot arms are positioned at opposite ends, with the left arm closer to "
-    "the camera and the right arm further away. Between the hands lies a dark wooden shelf with a red "
-    "spherical object on its top rack, likely serving as a platform or obstacle. In the background, "
-    "various pieces of equipment, including a tripod, a chair, are visible. A person wearing a blue "
-    "jacket and black pants stands near the center of the room, observing the experiment, with a static "
-    "hand position throughout. The floor is tiled with a patterned design, and additional items like a "
-    "small robot figure and some cables can be seen scattered around the space. As the video progresses, "
-    "the right robotic hand extends outward, moving from its initial position towards the red spherical "
-    "object on the shelf. The hand then picks up the object and places it on the lowest rack of the "
-    "shelf, completing a smooth, deliberate manipulation. The left robotic hand remains stationary "
-    "throughout the sequence. No new objects appear in the video; all existing elements maintain their "
-    "positions except for the movement of the right robotic hand. The scene concludes with the right "
-    "robotic hand returning to its initial position, while the left hand continues to rest on the table. "
-    "The overall environment remains unchanged, with the focus remaining on the interaction between the "
-    "robotic hands and the wooden block, highlighting precise control during the demonstration."
-)
-
-# Recommended quality-control negative prompt for image-to-video.
-negative_prompt = (
-    "The video captures a series of frames showing macroblocking artifacts, chromatic aberration, "
-    "high-frequency noise, and rolling shutter distortion. It includes static with no motion, motion blur, "
-    "over-saturation, shaky footage, low resolution, grainy texture, pixelated images, poorly lit areas, "
-    "underexposed and overexposed scenes, poor color balance, washed out colors, choppy sequences, jerky "
-    "movements, low frame rate, bit-depth compression artifacts, color banding, unnatural transitions, "
-    "outdated special effects, fake elements, unconvincing visuals, poorly edited content, jump cuts, visual "
-    "noise, and flickering. Avoid moiré patterns, edge halos, and temporal aliasing. Furthermore, the content "
-    "defies common sense, generating illogical scenarios, nonsensical entities, absurd character behaviors, "
-    "and conceptual paradoxes that violate basic human reasoning and everyday reality. The video looks like a "
-    "surreal or glitchy hallucination. Overall, the video is of poor quality."
-)
 
 result = pipe(
-    prompt=prompt,
-    negative_prompt=negative_prompt,
+    prompt=json.dumps(json_prompt),
+    negative_prompt=json.dumps(negative_prompt),
     image=image,
     num_frames=189,
     height=720,
@@ -272,9 +243,14 @@ export_to_video(result.video, "cosmos3_i2v.mp4", fps=24, macro_block_size=1)
 <hfoption id="Super">
 
 ```python
+import json
 import torch
 from diffusers import Cosmos3OmniPipeline
 from diffusers.utils import export_to_video, load_image
+
+# JSON-upsampled positive and negative prompts (see "Prompt upsampling" above).
+json_prompt = json.load(open("assets/example_i2v_prompt.json"))
+negative_prompt = json.load(open("assets/negative_prompt_i2v.json"))
 
 pipe = Cosmos3OmniPipeline.from_pretrained(
     "nvidia/Cosmos3-Super", torch_dtype=torch.bfloat16, device_map="cuda"
@@ -283,42 +259,10 @@ pipe = Cosmos3OmniPipeline.from_pretrained(
 image = load_image(
     "https://github.com/nvidia-cosmos/cosmos-dependencies/releases/download/assets/robot_153.jpg"
 )
-prompt = (
-    "The video opens with a view of a testing environment, characterized by a large wooden table at the "
-    "center. On this table, two robot arms are positioned at opposite ends, with the left arm closer to "
-    "the camera and the right arm further away. Between the hands lies a dark wooden shelf with a red "
-    "spherical object on its top rack, likely serving as a platform or obstacle. In the background, "
-    "various pieces of equipment, including a tripod, a chair, are visible. A person wearing a blue "
-    "jacket and black pants stands near the center of the room, observing the experiment, with a static "
-    "hand position throughout. The floor is tiled with a patterned design, and additional items like a "
-    "small robot figure and some cables can be seen scattered around the space. As the video progresses, "
-    "the right robotic hand extends outward, moving from its initial position towards the red spherical "
-    "object on the shelf. The hand then picks up the object and places it on the lowest rack of the "
-    "shelf, completing a smooth, deliberate manipulation. The left robotic hand remains stationary "
-    "throughout the sequence. No new objects appear in the video; all existing elements maintain their "
-    "positions except for the movement of the right robotic hand. The scene concludes with the right "
-    "robotic hand returning to its initial position, while the left hand continues to rest on the table. "
-    "The overall environment remains unchanged, with the focus remaining on the interaction between the "
-    "robotic hands and the wooden block, highlighting precise control during the demonstration."
-)
-
-# Recommended quality-control negative prompt for image-to-video.
-negative_prompt = (
-    "The video captures a series of frames showing macroblocking artifacts, chromatic aberration, "
-    "high-frequency noise, and rolling shutter distortion. It includes static with no motion, motion blur, "
-    "over-saturation, shaky footage, low resolution, grainy texture, pixelated images, poorly lit areas, "
-    "underexposed and overexposed scenes, poor color balance, washed out colors, choppy sequences, jerky "
-    "movements, low frame rate, bit-depth compression artifacts, color banding, unnatural transitions, "
-    "outdated special effects, fake elements, unconvincing visuals, poorly edited content, jump cuts, visual "
-    "noise, and flickering. Avoid moiré patterns, edge halos, and temporal aliasing. Furthermore, the content "
-    "defies common sense, generating illogical scenarios, nonsensical entities, absurd character behaviors, "
-    "and conceptual paradoxes that violate basic human reasoning and everyday reality. The video looks like a "
-    "surreal or glitchy hallucination. Overall, the video is of poor quality."
-)
 
 result = pipe(
-    prompt=prompt,
-    negative_prompt=negative_prompt,
+    prompt=json.dumps(json_prompt),
+    negative_prompt=json.dumps(negative_prompt),
     image=image,
     num_frames=189,
     height=720,
@@ -342,45 +286,22 @@ This is the same call as the text-to-video example above with `enable_sound=True
 <hfoption id="Nano">
 
 ```python
+import json
 import torch
 from diffusers import Cosmos3OmniPipeline
 from diffusers.utils import encode_video
+
+# JSON-upsampled positive and negative prompts (see "Prompt upsampling" above).
+json_prompt = json.load(open("assets/example_t2v_sound_prompt.json"))
+negative_prompt = json.load(open("assets/negative_prompt.json"))
 
 pipe = Cosmos3OmniPipeline.from_pretrained(
     "nvidia/Cosmos3-Nano", torch_dtype=torch.bfloat16, device_map="cuda"
 )
 
-prompt = (
-    "The video opens with a view of a well-lit indoor space featuring a wooden display case with "
-    "compartments filled with various fruits, including bananas, apples, pears, oranges, and carambolas. "
-    "The bananas are neatly arranged in the middle compartment, while apples are in the left and a mix "
-    "of pears, oranges, and carambolas are in the right. Two robotic arms with grippers are positioned "
-    "at the bottom of the frame, with the one on the left remaining stationary, partially obscuring the "
-    "apples. The robotic arm on the right begins its action, extending towards the right side of the "
-    "display case. It carefully picks up a pear from the fruit section, placing it into a plastic bag "
-    "in the shopping cart nearby, which has red handles. After securing the pear, the arm retracts back "
-    "to its original position. The process repeats as the robotic arm picks up an orange and places it "
-    "in the bag, followed by a carambola. The final frame captures the robotic arm returning to its "
-    "initial position, leaving the display case and surrounding area unchanged. The video showcases a "
-    "seamless and efficient automated fruit-picking process, highlighting the precision and efficiency "
-    "of modern robotics in a retail setting. Audio description: the soft whir of servo motors, gentle " 
-    "thuds as fruits land in the plastic bag, the rustle of the bag settling in the shopping cart, and "
-    "a faint refrigeration hum in the background."
-)
-
-# Recommended quality-control negative prompt (same as text-to-video).
-negative_prompt = (
-    "The video captures a series of frames showing ugly scenes, static with no motion, motion blur, "
-    "over-saturation, shaky footage, low resolution, grainy texture, pixelated images, poorly lit areas, "
-    "underexposed and overexposed scenes, poor color balance, washed out colors, choppy sequences, jerky "
-    "movements, low frame rate, artifacting, color banding, unnatural transitions, outdated special effects, "
-    "fake elements, unconvincing visuals, poorly edited content, jump cuts, visual noise, and flickering. "
-    "Overall, the video is of poor quality."
-)
-
 result = pipe(
-    prompt=prompt,
-    negative_prompt=negative_prompt,
+    prompt=json.dumps(json_prompt),
+    negative_prompt=json.dumps(negative_prompt),
     num_frames=189,
     height=720,
     width=1280,
@@ -401,45 +322,22 @@ encode_video(
 <hfoption id="Super">
 
 ```python
+import json
 import torch
 from diffusers import Cosmos3OmniPipeline
 from diffusers.utils import encode_video
+
+# JSON-upsampled positive and negative prompts (see "Prompt upsampling" above).
+json_prompt = json.load(open("assets/example_t2v_sound_prompt.json"))
+negative_prompt = json.load(open("assets/negative_prompt.json"))
 
 pipe = Cosmos3OmniPipeline.from_pretrained(
     "nvidia/Cosmos3-Super", torch_dtype=torch.bfloat16, device_map="cuda"
 )
 
-prompt = (
-    "The video opens with a view of a well-lit indoor space featuring a wooden display case with "
-    "compartments filled with various fruits, including bananas, apples, pears, oranges, and carambolas. "
-    "The bananas are neatly arranged in the middle compartment, while apples are in the left and a mix "
-    "of pears, oranges, and carambolas are in the right. Two robotic arms with grippers are positioned "
-    "at the bottom of the frame, with the one on the left remaining stationary, partially obscuring the "
-    "apples. The robotic arm on the right begins its action, extending towards the right side of the "
-    "display case. It carefully picks up a pear from the fruit section, placing it into a plastic bag "
-    "in the shopping cart nearby, which has red handles. After securing the pear, the arm retracts back "
-    "to its original position. The process repeats as the robotic arm picks up an orange and places it "
-    "in the bag, followed by a carambola. The final frame captures the robotic arm returning to its "
-    "initial position, leaving the display case and surrounding area unchanged. The video showcases a "
-    "seamless and efficient automated fruit-picking process, highlighting the precision and efficiency "
-    "of modern robotics in a retail setting. Audio description: the soft whir of servo motors, gentle " 
-    "thuds as fruits land in the plastic bag, the rustle of the bag settling in the shopping cart, and "
-    "a faint refrigeration hum in the background."
-)
-
-# Recommended quality-control negative prompt (same as text-to-video).
-negative_prompt = (
-    "The video captures a series of frames showing ugly scenes, static with no motion, motion blur, "
-    "over-saturation, shaky footage, low resolution, grainy texture, pixelated images, poorly lit areas, "
-    "underexposed and overexposed scenes, poor color balance, washed out colors, choppy sequences, jerky "
-    "movements, low frame rate, artifacting, color banding, unnatural transitions, outdated special effects, "
-    "fake elements, unconvincing visuals, poorly edited content, jump cuts, visual noise, and flickering. "
-    "Overall, the video is of poor quality."
-)
-
 result = pipe(
-    prompt=prompt,
-    negative_prompt=negative_prompt,
+    prompt=json.dumps(json_prompt),
+    negative_prompt=json.dumps(negative_prompt),
     num_frames=189,
     height=720,
     width=1280,
@@ -454,6 +352,113 @@ encode_video(
     audio_sample_rate=pipe.sound_tokenizer.config.sampling_rate,
     output_path="cosmos3_with_sound.mp4",
 )
+```
+
+</hfoption>
+</hfoptions>
+
+## Action-conditioned generation
+
+Action runs group every action-specific input into a [`CosmosActionCondition`] passed via the `action` argument instead of the top-level `image` / `video` / `height` / `width` arguments. Set `resolution_tier` (`256`/`480`/`704`/`720`) close to the input video's native resolution; it selects the conditioning canvas. Cosmos 3 supports three action modes — `policy`, `forward_dynamics`, and `inverse_dynamics`. `policy` and `forward_dynamics` condition only on the first frame (so an `image` or a `video` both work), while `inverse_dynamics` requires a `video`. The conditioning video for an action run is set on `action.video` (or `action.image`), not on the pipeline's top-level `video` argument.
+
+Pass a plain task description as `prompt` and pick the camera with `action.view_point` (default `"ego_view"`; also `"third_person_view"`, `"wrist_view"`, `"concat_view"`). The pipeline turns these into the structured JSON caption the model was trained on, so action prompts should not be LLM-upsampled.
+
+### Action policy
+
+Action policy generation predicts future video and action tokens from the first observation frame, text prompt, and action domain metadata. The example below uses the Bridge robot domain and writes the predicted action chunk to JSON in model-normalized action space.
+
+<hfoptions id="model">
+<hfoption id="Nano">
+
+```python
+import json
+
+import torch
+from diffusers import Cosmos3OmniPipeline, CosmosActionCondition
+from diffusers.schedulers.scheduling_unipc_multistep import UniPCMultistepScheduler
+from diffusers.utils import export_to_video, load_video
+
+pipe = Cosmos3OmniPipeline.from_pretrained(
+    "nvidia/Cosmos3-Nano", torch_dtype=torch.bfloat16, device_map="cuda"
+)
+pipe.scheduler = UniPCMultistepScheduler.from_config(
+    pipe.scheduler.config, flow_shift=10.0, use_karras_sigmas=False
+)
+
+prompt = "Put the pot to the left of the purple item."
+video = load_video(
+    "https://github.com/nvidia-cosmos/cosmos-dependencies/raw/refs/heads/assets/cosmos3/inputs/action/bridge_20260501_0.mp4"
+)
+
+result = pipe(
+    prompt=prompt,
+    action=CosmosActionCondition(
+        mode="policy",
+        chunk_size=16,
+        domain_name="bridge_orig_lerobot",
+        resolution_tier=480,
+        video=video,
+        view_point="ego_view",
+    ),
+    fps=5,
+    num_inference_steps=30,
+    guidance_scale=1.0,
+    use_system_prompt=False,
+)
+
+# macro_block_size=1 allows arbitrary frame sizes (Cosmos3 outputs are not always divisible by 16).
+export_to_video(result.video, "sample.mp4", fps=5, macro_block_size=1)
+
+if result.action is not None:
+    with open("sample_action.json", "w") as f:
+        json.dump(result.action[0].tolist(), f)
+```
+
+</hfoption>
+<hfoption id="Super">
+
+```python
+import json
+
+import torch
+from diffusers import Cosmos3OmniPipeline, CosmosActionCondition
+from diffusers.schedulers.scheduling_unipc_multistep import UniPCMultistepScheduler
+from diffusers.utils import export_to_video, load_video
+
+pipe = Cosmos3OmniPipeline.from_pretrained(
+    "nvidia/Cosmos3-Super", torch_dtype=torch.bfloat16, device_map="cuda"
+)
+pipe.scheduler = UniPCMultistepScheduler.from_config(
+    pipe.scheduler.config, flow_shift=10.0, use_karras_sigmas=False
+)
+
+prompt = "Put the pot to the left of the purple item."
+video = load_video(
+    "https://github.com/nvidia-cosmos/cosmos-dependencies/raw/refs/heads/assets/cosmos3/inputs/action/bridge_20260501_0.mp4"
+)
+
+result = pipe(
+    prompt=prompt,
+    action=CosmosActionCondition(
+        mode="policy",
+        chunk_size=16,
+        domain_name="bridge_orig_lerobot",
+        resolution_tier=480,
+        video=video,
+        view_point="ego_view",
+    ),
+    fps=5,
+    num_inference_steps=30,
+    guidance_scale=1.0,
+    use_system_prompt=False,
+)
+
+# macro_block_size=1 allows arbitrary frame sizes (Cosmos3 outputs are not always divisible by 16).
+export_to_video(result.video, "sample.mp4", fps=5, macro_block_size=1)
+
+if result.action is not None:
+    with open("sample_action.json", "w") as f:
+        json.dump(result.action[0].tolist(), f)
 ```
 
 </hfoption>
@@ -536,6 +541,10 @@ pipe = Cosmos3OmniPipeline.from_pretrained(
 
 - all
 - __call__
+
+## CosmosActionCondition
+
+[[autodoc]] CosmosActionCondition
 
 ## Cosmos3OmniPipelineOutput
 

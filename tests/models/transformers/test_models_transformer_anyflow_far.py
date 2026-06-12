@@ -12,8 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import unittest
-
 import pytest
 import torch
 
@@ -21,6 +19,7 @@ from diffusers import AnyFlowFARTransformer3DModel
 from diffusers.models.transformers.transformer_anyflow_far import (
     AnyFlowCausalAttnProcessor,
     AnyFlowFARTransformerOutput,
+    _build_anyflow_far_causal_block_mask,
 )
 from diffusers.utils.torch_utils import randn_tensor
 
@@ -30,6 +29,7 @@ from ..testing_utils import (
     BaseModelTesterConfig,
     MemoryTesterMixin,
     ModelTesterMixin,
+    TorchCompileTesterMixin,
     TrainingTesterMixin,
 )
 
@@ -44,7 +44,7 @@ class AnyFlowFARTransformer3DTesterConfig(BaseModelTesterConfig):
 
     @property
     def output_shape(self) -> tuple[int, ...]:
-        return (1, 2, 4, 16, 16)
+        return (4, 4, 16, 16)
 
     @property
     def input_shape(self) -> tuple[int, ...]:
@@ -88,6 +88,9 @@ class AnyFlowFARTransformer3DTesterConfig(BaseModelTesterConfig):
         text_seq_len = 12
         text_dim = 16
 
+        # No `attention_mask` here: the model accepts `attention_mask=None` and builds the mask
+        # internally — exercising that fallback in every non-compile test is the point. The
+        # compile test class overrides this method to inject a pre-built BlockMask.
         return {
             "hidden_states": randn_tensor(
                 (batch_size, num_frames, num_channels, height, width),
@@ -132,15 +135,12 @@ class TestAnyFlowFARTransformer3DTraining(AnyFlowFARTransformer3DTesterConfig, T
     # GPU-only (`torch.nn.attention.flex_attention` raises NotImplementedError on CPU). The
     # bidi transformer test file covers training on the SDPA path; FAR training correctness
     # is exercised end-to-end on H200 via the pipeline replay (L2=0 against NVlabs/AnyFlow).
-    @unittest.skipIf(torch_device == "cpu", "FlexAttention has no CPU backward kernel.")
     def test_training(self):
         super().test_training()
 
-    @unittest.skipIf(torch_device == "cpu", "FlexAttention has no CPU backward kernel.")
     def test_training_with_ema(self):
         super().test_training_with_ema()
 
-    @unittest.skipIf(torch_device == "cpu", "FlexAttention has no CPU backward kernel.")
     def test_gradient_checkpointing_equivalence(self, loss_tolerance=1e-5, param_grad_tol=5e-5, skip=None):
         super().test_gradient_checkpointing_equivalence(loss_tolerance, param_grad_tol, skip)
 
@@ -149,14 +149,39 @@ class TestAnyFlowFARTransformer3DAttention(AnyFlowFARTransformer3DTesterConfig, 
     """Attention processor tests for AnyFlow FAR Transformer 3D."""
 
 
-# Torch-compile mixin intentionally skipped: FAR's `_build_causal_mask` uses
-# `flex_attention.create_block_mask(_compile=False)`, which conflicts with the tracer
-# assumptions made by the standard TorchCompileTesterMixin. The bidi transformer test file
-# covers compile behavior; the FAR causal path is bit-exact-validated end-to-end on H200
-# through the pipeline replay rather than per-module compile.
+class TestAnyFlowFARTransformer3DCompile(AnyFlowFARTransformer3DTesterConfig, TorchCompileTesterMixin):
+    """torch.compile tests for AnyFlow FAR Transformer 3D.
+
+    Pre-builds the BlockMask via the standalone helper and injects it as ``attention_mask`` so the
+    transformer forward never calls ``flex_attention.create_block_mask(_compile=False)`` inside the
+    compiled scope.
+    """
+
+    def get_dummy_inputs(self) -> dict[str, "torch.Tensor"]:
+        inputs = super().get_dummy_inputs()
+        init_dict = self.get_init_dict()
+        inputs["attention_mask"] = _build_anyflow_far_causal_block_mask(
+            chunk_partition=inputs["chunk_partition"],
+            height=inputs["hidden_states"].shape[-2],
+            width=inputs["hidden_states"].shape[-1],
+            patch_size=init_dict["patch_size"],
+            compressed_patch_size=init_dict["compressed_patch_size"],
+            full_chunk_limit=init_dict["full_chunk_limit"],
+            mode="train",
+            has_clean_context=False,
+            device=torch_device,
+        )
+        return inputs
+
+    @pytest.mark.skip(reason="torch.export does not accept BlockMask as a pytree input.")
+    def test_compile_works_with_aot(self, tmp_path):
+        # BlockMask is a custom NamedTuple containing tensors plus a Python callable `mask_mod`,
+        # which `torch.export` cannot lift into a pytree. `torch.compile(fullgraph=True)` and
+        # `compile_repeated_blocks` both work; only AOT export is blocked.
+        super().test_compile_works_with_aot(tmp_path)
 
 
-class AnyFlowCausalAttnProcessorTest(unittest.TestCase):
+class TestAnyFlowCausalAttnProcessor:
     """Stand-alone smoke tests for the FAR causal attention processor.
 
     These cover behaviors not reached by the generated model mixins:
@@ -166,7 +191,7 @@ class AnyFlowCausalAttnProcessorTest(unittest.TestCase):
 
     def test_default_backend_is_flex(self):
         processor = AnyFlowCausalAttnProcessor()
-        self.assertEqual(processor._attention_backend, "flex")
+        assert processor._attention_backend == "flex"
 
     def test_unsupported_backend_raises(self):
         processor = AnyFlowCausalAttnProcessor()
@@ -187,10 +212,10 @@ class AnyFlowCausalAttnProcessorTest(unittest.TestCase):
 
             to_out = [lambda x: x, lambda x: x]
 
-        with self.assertRaises(ValueError):
+        with pytest.raises(ValueError):
             processor(_DummyAttn(), torch.zeros(1, 4, 4))
 
     def test_output_dataclass_exposed(self):
         # Downstream type-checking + autodoc rely on these attributes existing.
-        self.assertTrue(hasattr(AnyFlowFARTransformerOutput, "sample"))
-        self.assertTrue(hasattr(AnyFlowFARTransformerOutput, "kv_cache"))
+        assert hasattr(AnyFlowFARTransformerOutput, "sample")
+        assert hasattr(AnyFlowFARTransformerOutput, "kv_cache")

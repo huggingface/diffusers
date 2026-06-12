@@ -40,6 +40,7 @@ from ..testing_utils import (
     IPAdapterTesterMixin,
     LoraHotSwappingForModelTesterMixin,
     LoraTesterMixin,
+    MagCacheTesterMixin,
     MemoryTesterMixin,
     ModelOptCompileTesterMixin,
     ModelOptTesterMixin,
@@ -47,6 +48,7 @@ from ..testing_utils import (
     QuantoCompileTesterMixin,
     QuantoTesterMixin,
     SingleFileTesterMixin,
+    TaylorSeerCacheTesterMixin,
     TorchAoCompileTesterMixin,
     TorchAoTesterMixin,
     TorchCompileTesterMixin,
@@ -344,6 +346,10 @@ class TestFluxSingleFile(FluxTransformerTesterConfig, SingleFileTesterMixin):
     def pretrained_model_name_or_path(self):
         return "black-forest-labs/FLUX.1-dev"
 
+    @property
+    def torch_dtype(self):
+        return torch.bfloat16
+
 
 class TestFluxTransformerBitsAndBytes(FluxTransformerTesterConfig, BitsAndBytesTesterMixin):
     """BitsAndBytes quantization tests for Flux Transformer."""
@@ -515,3 +521,11 @@ class TestFluxTransformerFasterCache(FluxTransformerTesterConfig, FasterCacheTes
         "tensor_format": "BCHW",
         "is_guidance_distilled": True,
     }
+
+
+class TestFluxTransformerMagCache(FluxTransformerTesterConfig, MagCacheTesterMixin):
+    """MagCache tests for Flux Transformer."""
+
+
+class TestFluxTransformerTaylorSeerCache(FluxTransformerTesterConfig, TaylorSeerCacheTesterMixin):
+    """TaylorSeerCache tests for Flux Transformer."""

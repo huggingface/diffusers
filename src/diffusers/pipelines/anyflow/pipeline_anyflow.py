@@ -80,11 +80,11 @@ def prompt_clean(text):
 class AnyFlowPipeline(DiffusionPipeline, WanLoraLoaderMixin):
     r"""
     Bidirectional text-to-video generation pipeline for AnyFlow flow-map-distilled checkpoints, introduced in
-    [AnyFlow](https://huggingface.co/papers/2605.13724) by Yuchao Gu, Guian Fang et al.
+    [AnyFlow](https://huggingface.co/papers/2605.13724).
 
     AnyFlow learns arbitrary-interval transitions :math:`z_t \to z_r` rather than the fixed :math:`z_t \to z_0` mapping
     of consistency models, so a single distilled checkpoint can be evaluated at 1, 2, 4, 8, 16... NFE without
-    retraining. This pipeline operates over the full video tensor in one bidirectional pass; for frame-level
+    retraining. This pipeline operates over the full video tensor in one bidirectional pass; for chunk-wise
     autoregressive (causal) generation use ``AnyFlowFARPipeline``.
 
     Sampling is plain Euler in mean-velocity form (``z_r = z_t - (t - r) * u``) with no re-noising. The released NVIDIA
