@@ -346,6 +346,11 @@ class AceStepAudioTokenDetokenizer(ModelMixin, ConfigMixin):
             hidden_states (`torch.Tensor`):
                 Input audio tokens of shape `(batch_size, num_tokens, hidden_size)` to be unpooled back to the 25 Hz
                 acoustic-latent rate.
+
+        Returns:
+            `torch.Tensor`:
+                Acoustic conditioning of shape `(batch_size, num_tokens * pool_window_size,
+                audio_acoustic_hidden_dim)`.
         """
         batch_size, num_tokens, _ = hidden_states.shape
         hidden_states = self.embed_tokens(hidden_states)
@@ -447,6 +452,10 @@ class AceStepAudioTokenizer(ModelMixin, ConfigMixin):
             hidden_states (`torch.Tensor`):
                 Input acoustic latents of shape `(batch_size, latent_length, audio_acoustic_hidden_dim)` to be
                 quantized into ACE-Step 5 Hz audio tokens.
+
+        Returns:
+            `Tuple[torch.Tensor, torch.Tensor]`:
+                The quantized audio tokens and their corresponding FSQ codebook indices.
         """
         input_dtype = hidden_states.dtype
         hidden_states = self.audio_acoustic_proj(hidden_states)

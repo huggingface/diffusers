@@ -576,6 +576,10 @@ class LTX2VocoderWithBWE(ModelMixin, ConfigMixin):
         Args:
             mel_spec (`torch.Tensor`):
                 Input mel spectrogram of shape `(batch_size, num_channels, num_frames, num_mel_bins)`.
+
+        Returns:
+            `torch.Tensor`:
+                The synthesized, bandwidth-extended audio waveform.
         """
         # 1. Run stage 1 vocoder to get low sampling rate waveform
         x = self.vocoder(mel_spec)

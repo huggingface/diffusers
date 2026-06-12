@@ -248,6 +248,10 @@ class LTX2LatentUpsamplerModel(ModelMixin, ConfigMixin):
             hidden_states (`torch.Tensor`):
                 Input latents of shape `(batch_size, num_channels, num_frames, height, width)` to spatially or
                 temporally upsample.
+
+        Returns:
+            `torch.Tensor`:
+                The upsampled latents.
         """
         batch_size, num_channels, num_frames, height, width = hidden_states.shape
 

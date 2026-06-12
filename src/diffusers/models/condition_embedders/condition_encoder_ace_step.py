@@ -184,6 +184,10 @@ class AceStepLyricEncoder(ModelMixin, ConfigMixin):
                 Lyric token ids of shape `(batch_size, sequence_length)` to embed and encode.
             attention_mask (`torch.Tensor`):
                 Attention mask of shape `(batch_size, sequence_length)` indicating which tokens are valid.
+
+        Returns:
+            `torch.Tensor`:
+                The encoded lyric hidden states.
         """
         inputs_embeds = self.embed_tokens(inputs_embeds)
 
@@ -332,6 +336,10 @@ class AceStepTimbreEncoder(ModelMixin, ConfigMixin):
             refer_audio_order_mask (`torch.LongTensor`):
                 Batch-index assignment of shape `(total_tokens,)` indicating which reference sample each packed token
                 belongs to.
+
+        Returns:
+            `Tuple[torch.Tensor, torch.Tensor]`:
+                The per-sample timbre embeddings and their corresponding attention mask.
         """
         inputs_embeds = self.embed_tokens(refer_audio_acoustic_hidden_states_packed)
 
@@ -478,6 +486,10 @@ class AceStepConditionEncoder(ModelMixin, ConfigMixin):
             refer_audio_order_mask (`torch.LongTensor`):
                 Batch-index assignment of shape `(total_tokens,)` indicating which reference sample each packed token
                 belongs to.
+
+        Returns:
+            `Tuple[torch.Tensor, torch.Tensor]`:
+                The fused conditioning hidden states and their corresponding attention mask.
         """
         text_hidden_states = self.text_projector(text_hidden_states)
 
