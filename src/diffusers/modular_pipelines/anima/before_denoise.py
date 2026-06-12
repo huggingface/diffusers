@@ -370,6 +370,19 @@ class AnimaPrepareLatentsStep(ModularPipelineBlocks):
         return components, state
 
 
+# Copied from diffusers.modular_pipelines.qwenimage.before_denoise.get_timesteps
+def get_timesteps(scheduler, num_inference_steps, strength):
+    # get the original timestep using init_timestep
+    init_timestep = min(num_inference_steps * strength, num_inference_steps)
+
+    t_start = int(max(num_inference_steps - init_timestep, 0))
+    timesteps = scheduler.timesteps[t_start * scheduler.order :]
+    if hasattr(scheduler, "set_begin_index"):
+        scheduler.set_begin_index(t_start * scheduler.order)
+
+    return timesteps, num_inference_steps - t_start
+
+
 class AnimaSetTimestepsStep(ModularPipelineBlocks):
     model_name = "anima"
 
@@ -411,6 +424,80 @@ class AnimaSetTimestepsStep(ModularPipelineBlocks):
             sigmas=sigmas,
         )
         components.scheduler.set_begin_index(0)
+
+        self.set_block_state(state, block_state)
+        return components, state
+
+
+# Copied from diffusers.modular_pipelines.anima.before_denoise.AnimaSetTimestepsStep
+class AnimaImg2ImgSetTimestepsStep(ModularPipelineBlocks):
+    """Set the scheduler timesteps for Anima image-to-image inference.
+
+    This step computes the full timestep schedule and stores it in state. It does **not** set
+    ``scheduler.set_begin_index`` — that is handled downstream by
+    ``AnimaImg2ImgVaeEncoderStep``, which slices the schedule based on ``strength``.
+
+    Components:
+        scheduler (`FlowMatchEulerDiscreteScheduler`)
+
+    Inputs:
+        num_inference_steps (`int`, *optional*, defaults to 50):
+            The number of denoising steps.
+        sigmas (`list`, *optional*):
+            Custom sigmas for the denoising process.
+
+    Outputs:
+        timesteps (`Tensor`):
+            Full timestep schedule for the denoising loop.
+        num_inference_steps (`int`):
+            Number of denoising steps (may be updated by ``retrieve_timesteps``).
+    """
+
+    model_name = "anima"
+
+    @property
+    def expected_components(self) -> list[ComponentSpec]:
+        return [ComponentSpec("scheduler", FlowMatchEulerDiscreteScheduler)]
+
+    @property
+    def description(self) -> str:
+        return "Set the scheduler timesteps for Anima image-to-image inference."
+
+    @property
+    def inputs(self) -> list[InputParam]:
+        return [
+            InputParam.template("num_inference_steps"),
+            InputParam.template("sigmas"),
+        ]
+
+    @property
+    def intermediate_outputs(self) -> list[OutputParam]:
+        return [
+            OutputParam(
+                "timesteps",
+                type_hint=torch.Tensor,
+                description="Full timestep schedule for the denoising loop.",
+            ),
+            OutputParam("num_inference_steps", type_hint=int, description="Number of denoising steps."),
+        ]
+
+    @torch.no_grad()
+    def __call__(self, components: AnimaModularPipeline, state: PipelineState) -> PipelineState:
+        block_state = self.get_block_state(state)
+        device = components._execution_device
+
+        sigmas = (
+            np.linspace(1.0, 1 / block_state.num_inference_steps, block_state.num_inference_steps)
+            if block_state.sigmas is None
+            else block_state.sigmas
+        )
+        block_state.timesteps, block_state.num_inference_steps = retrieve_timesteps(
+            components.scheduler,
+            device=device,
+            sigmas=sigmas,
+        )
+        # set_begin_index is omitted: get_timesteps() in AnimaImg2ImgVaeEncoderStep
+        # slices the schedule and sets the correct offset based on strength.
 
         self.set_block_state(state, block_state)
         return components, state
