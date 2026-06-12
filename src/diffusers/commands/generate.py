@@ -12,11 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""``diffusers-cli inference`` — single agentic entry point.
+"""``diffusers-cli generate`` — single agentic entry point.
 
 Runs any diffusers pipeline (standard or modular) by forwarding ``--pipeline-kwargs`` verbatim, saves the output by
-sniffing its runtime type, and can submit the same call to HF Jobs via ``--remote`` (with the model repo volume-mounted
-and the results downloaded back).
+sniffing its runtime type, and can submit the same call to HF Jobs via ``--remote``.
 """
 
 from __future__ import annotations
@@ -59,10 +58,13 @@ _IMAGE_INPUT_KEYS = (
 )
 
 # Source for the diffusers install used by --remote jobs. While iterating on a
-# feature branch, point at the branch URL; once merged, switch back to a release
-# pin. ``--dependencies "diffusers @ git+..."`` on the local command appends
-# additional dependencies but does not replace this default install.
-DIFFUSERS_SOURCE = "diffusers @ git+https://github.com/huggingface/diffusers@diffuser-cli-for-agent"
+# feature branch, point at the GitHub tarball URL — uv installs it over plain
+# HTTP and the container doesn't need ``git``. Once merged, switch back to a
+# PyPI release pin. ``--dependencies "diffusers @ ..."`` on the local command
+# appends additional dependencies but does not replace this default install.
+DIFFUSERS_SOURCE = (
+    "diffusers @ https://github.com/huggingface/diffusers/archive/refs/heads/diffuser-cli-for-agent.tar.gz"
+)
 _DEFAULT_REMOTE_DEPS = (
     DIFFUSERS_SOURCE,
     "accelerate",
@@ -250,7 +252,7 @@ def _enable_context_parallel(pipeline: Any) -> None:
         raise SystemExit(
             "--context-parallel requires torch.distributed to be initialized. "
             "Launch the CLI under torchrun, e.g.: "
-            "`torchrun --nproc-per-node=N -m diffusers.commands.diffusers_cli inference ...`."
+            "`torchrun --nproc-per-node=N -m diffusers.commands.diffusers_cli generate ...`."
         )
 
     from diffusers import ContextParallelConfig
@@ -281,7 +283,9 @@ def _apply_optimizations(pipeline: Any, args: Namespace) -> None:
 
 def _from_pretrained_kwargs(args: Namespace) -> dict[str, Any]:
     dtype = _resolve_dtype(args.dtype)
-    kwargs: dict[str, Any] = {"trust_remote_code": args.trust_remote_code}
+    # disable_mmap: mmap-faults over a network-mounted volume trigger one round-trip per page;
+    # a sequential read is dramatically faster than the random-access mmap pattern.
+    kwargs: dict[str, Any] = {"trust_remote_code": args.trust_remote_code, "disable_mmap": True}
     if dtype != "auto":
         kwargs["torch_dtype"] = dtype
     if args.variant:
@@ -357,7 +361,7 @@ def _describe(args: Namespace) -> None:
                 "is not exported by the installed diffusers."
             )
         sig = inspect.signature(pipeline_cls.__call__)
-        descriptions = _parse_docstring_args(pipeline_cls.__call__.__doc__) if getattr(args, "verbose", False) else {}
+        descriptions = _parse_docstring_args(pipeline_cls.__call__.__doc__) if args.verbose else {}
         schema: list[dict[str, Any]] = []
         for name, param in sig.parameters.items():
             if name == "self":
@@ -402,7 +406,7 @@ def _describe(args: Namespace) -> None:
 
     if args.json:
         payload = {
-            "task": "inference-describe",
+            "task": "describe",
             "model": args.model,
             "pipeline_class": class_name,
             "inputs": schema,
@@ -628,12 +632,12 @@ def _save_output(value: Any, args: Namespace, task: str) -> list[str]:
         from diffusers.utils import export_to_video
 
         path = _default_output_paths(task, 1, args.output, ext="mp4")[0]
-        export_to_video(frames, str(path), fps=getattr(args, "fps", 8))
+        export_to_video(frames, str(path), fps=args.fps)
         return [str(path)]
 
     audios = _as_audio_arrays(value)
     if audios is not None:
-        return _save_audio_arrays(audios, getattr(args, "sampling_rate", None) or 16000, args, task)
+        return _save_audio_arrays(audios, args.sampling_rate or 16000, args, task)
 
     path = _default_output_paths(task, 1, args.output, ext="json")[0]
     Path(path).write_text(json.dumps(value, default=str, indent=2))
@@ -708,11 +712,6 @@ def _maybe_submit_remote(args: Namespace, task: str) -> bool:
 
     from huggingface_hub import HfApi, get_token, run_uv_job
 
-    try:
-        from huggingface_hub import Volume
-    except ImportError:
-        Volume = None
-
     hf_token = args.token or get_token()
     api = HfApi(token=hf_token)
 
@@ -732,29 +731,25 @@ def _maybe_submit_remote(args: Namespace, task: str) -> bool:
         "HF_ENABLE_PARALLEL_LOADING": "1",  # thread-pool the safetensors load step
     }
 
-    # Mount the model repo into the job's filesystem so the container reads it
-    # from local disk instead of downloading. Requires huggingface_hub >= 1.16.
-    volumes = None
-    if Volume is not None and not Path(args.model).exists():
-        mount_path = "/model"
-        volumes = [Volume(type="model", source=args.model, mount_path=mount_path)]
-        task_kwargs["model"] = mount_path
+    if Path(args.model).exists():
+        print(
+            f"[diffusers-cli] WARNING: --model {args.model!r} is a local path; the container can't see it. "
+            "Pass a Hub repo id so the job can download it.",
+            file=sys.stderr,
+            flush=True,
+        )
 
-    run_uv_job_kwargs: dict[str, Any] = {
-        "script": _UV_RUNNER_SCRIPT,
-        "script_args": _kwargs_to_argv(task, task_kwargs),
-        "dependencies": dependencies,
-        "flavor": args.flavor,
-        "timeout": args.timeout,
-        "namespace": args.namespace,
-        "secrets": secrets,
-        "env": env,
-        "token": hf_token,
-    }
-    if volumes is not None:
-        run_uv_job_kwargs["volumes"] = volumes
-
-    job = run_uv_job(**run_uv_job_kwargs)
+    job = run_uv_job(
+        script=_UV_RUNNER_SCRIPT,
+        script_args=_kwargs_to_argv(task, task_kwargs),
+        dependencies=dependencies,
+        flavor=args.flavor,
+        timeout=args.timeout,
+        namespace=args.namespace,
+        secrets=secrets,
+        env=env,
+        token=hf_token,
+    )
 
     payload: dict[str, Any] = {
         "task": "remote-submit",
@@ -858,19 +853,21 @@ def _format_result(args: Namespace, payload: dict[str, Any]) -> None:
 
 
 # ---------------------------------------------------------------------------
-# The one and only agentic subcommand
+# Subcommand
 # ---------------------------------------------------------------------------
 
 
-class InferenceCommand(BaseDiffusersCLICommand):
-    task = "inference"
+class GenerateCommand(BaseDiffusersCLICommand):
+    task = "generate"
 
     @staticmethod
     def register_subcommand(subparsers: _SubParsersAction) -> None:
         parser: ArgumentParser = subparsers.add_parser(
-            "inference",
+            "generate",
             help="Run any diffusers pipeline (standard or modular) by forwarding --pipeline-kwargs verbatim.",
+            usage="\n  diffusers-cli generate [options]",
         )
+        parser._optionals.title = "Options"
         _add_loading_arguments(parser)
         _add_optimization_arguments(parser)
         parser.add_argument(
@@ -901,7 +898,7 @@ class InferenceCommand(BaseDiffusersCLICommand):
         )
         _add_remote_arguments(parser)
         _add_output_arguments(parser)
-        parser.set_defaults(func=InferenceCommand)
+        parser.set_defaults(func=GenerateCommand)
 
     def __init__(self, args: Namespace):
         self.args = args
@@ -920,7 +917,8 @@ class InferenceCommand(BaseDiffusersCLICommand):
         if self.args.output_key is not None:
             call_kwargs["output"] = self.args.output_key
 
-        generator = _get_generator(self.args.seed, getattr(pipeline, "device", None) and pipeline.device.type or "cpu")
+        device = pipeline.device.type if hasattr(pipeline, "device") else "cpu"
+        generator = _get_generator(self.args.seed, device)
         if generator is not None:
             call_kwargs["generator"] = generator
 

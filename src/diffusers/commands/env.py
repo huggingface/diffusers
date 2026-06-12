@@ -40,7 +40,12 @@ def info_command_factory(_):
 class EnvironmentCommand(BaseDiffusersCLICommand):
     @staticmethod
     def register_subcommand(parser: ArgumentParser) -> None:
-        download_parser = parser.add_parser("env")
+        download_parser = parser.add_parser(
+            "env",
+            help="Print versions of diffusers and its dependencies (for bug reports).",
+            usage="\n  diffusers-cli env",
+        )
+        download_parser._optionals.title = "Options"
         download_parser.set_defaults(func=info_command_factory)
 
     def run(self) -> dict:

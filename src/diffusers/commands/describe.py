@@ -24,7 +24,7 @@ from __future__ import annotations
 from argparse import ArgumentParser, Namespace, _SubParsersAction
 
 from . import BaseDiffusersCLICommand
-from .inference import _describe
+from .generate import _describe
 
 
 class DescribeCommand(BaseDiffusersCLICommand):
@@ -35,7 +35,9 @@ class DescribeCommand(BaseDiffusersCLICommand):
         parser: ArgumentParser = subparsers.add_parser(
             "describe",
             help="Print the input schema for a diffusers pipeline repo. No weights downloaded.",
+            usage="\n  diffusers-cli describe [options]",
         )
+        parser._optionals.title = "Options"
         parser.add_argument(
             "--model",
             "-m",

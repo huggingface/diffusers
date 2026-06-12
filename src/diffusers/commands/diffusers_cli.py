@@ -19,18 +19,22 @@ from .custom_blocks import CustomBlocksCommand
 from .describe import DescribeCommand
 from .env import EnvironmentCommand
 from .fp16_safetensors import FP16SafetensorsCommand
-from .inference import InferenceCommand
+from .generate import GenerateCommand
 
 
 def main():
-    parser = ArgumentParser("Diffusers CLI tool", usage="diffusers-cli <command> [<args>]")
-    commands_parser = parser.add_subparsers(help="diffusers-cli command helpers")
+    parser = ArgumentParser(
+        prog="diffusers-cli",
+        usage="\n  diffusers-cli <command> [options]",
+    )
+    parser._optionals.title = "General Options"
+    commands_parser = parser.add_subparsers(title="Commands", metavar="<command>")
 
     # Register commands
     EnvironmentCommand.register_subcommand(commands_parser)
     FP16SafetensorsCommand.register_subcommand(commands_parser)
     CustomBlocksCommand.register_subcommand(commands_parser)
-    InferenceCommand.register_subcommand(commands_parser)
+    GenerateCommand.register_subcommand(commands_parser)
     DescribeCommand.register_subcommand(commands_parser)
 
     # Let's go
