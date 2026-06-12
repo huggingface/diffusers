@@ -433,6 +433,10 @@ class MochiTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOri
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`~models.transformer_2d.Transformer2DModelOutput`] instead of a plain
                 tuple.
+
+        Returns:
+            `torch.Tensor`:
+                The denoised output tensor of shape `(batch_size, out_channels, num_frames, height, width)`.
         """
         batch_size, num_channels, num_frames, height, width = hidden_states.shape
         p = self.config.patch_size

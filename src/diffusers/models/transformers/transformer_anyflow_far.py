@@ -30,6 +30,7 @@ from torch.nn.attention.flex_attention import BlockMask, create_block_mask
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...loaders import FromOriginalModelMixin, PeftAdapterMixin
 from ...utils import BaseOutput, apply_lora_scale, logging
+from ...utils.torch_utils import maybe_adjust_dtype_for_device
 from ..attention import AttentionModuleMixin, FeedForward
 from ..attention_dispatch import dispatch_attention_fn
 from ..embeddings import PixArtAlphaTextProjection, TimestepEmbedding, Timesteps, get_1d_rotary_pos_embed
@@ -44,9 +45,7 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 # Copied from diffusers.models.transformers.transformer_anyflow.apply_rotary_emb
 def apply_rotary_emb(hidden_states: torch.Tensor, freqs: torch.Tensor):
     # MPS / NPU backends do not support complex128 / float64; fall back to float32 on those devices.
-    is_mps = hidden_states.device.type == "mps"
-    is_npu = hidden_states.device.type == "npu"
-    rotary_dtype = torch.float32 if (is_mps or is_npu) else torch.float64
+    rotary_dtype = maybe_adjust_dtype_for_device(torch.float64, hidden_states.device)
     x_rotated = torch.view_as_complex(hidden_states.to(rotary_dtype).unflatten(3, (-1, 2)))
     x_out = torch.view_as_real(x_rotated * freqs).flatten(3, 4)
     return x_out.type_as(hidden_states)
@@ -112,6 +111,7 @@ class AnyFlowCausalAttnProcessor:
 
         if encoder_hidden_states is None:
             encoder_hidden_states = hidden_states
+        target_dtype = hidden_states.dtype  # Effective compute dtype
 
         query = attn.to_q(hidden_states)
         key = attn.to_k(encoder_hidden_states)
@@ -121,6 +121,11 @@ class AnyFlowCausalAttnProcessor:
             query = attn.norm_q(query)
         if attn.norm_k is not None:
             key = attn.norm_k(key)
+
+        # norm_q and norm_k upcast query and key to FP32 due to the use of RMSNorm, so cast them back to the effective
+        # compute dtype.
+        query = query.to(target_dtype)
+        key = key.to(target_dtype)
 
         # Layout (B, H, L, D) is required by KV-cache slicing and rotary application.
         query = query.unflatten(2, (attn.heads, -1)).transpose(1, 2)
@@ -650,9 +655,7 @@ class AnyFlowCausalRotaryPosEmbed(nn.Module):
         if not is_compiling and self._freqs_cache is not None and self._freqs_cache[0] == cache_key:
             return self._freqs_cache[1]
 
-        is_mps = device.type == "mps"
-        is_npu = device.type == "npu"
-        freqs_dtype = torch.float32 if (is_mps or is_npu) else torch.float64
+        freqs_dtype = maybe_adjust_dtype_for_device(torch.float64, device)
 
         h_dim = w_dim = 2 * (self.attention_head_dim // 6)
         t_dim = self.attention_head_dim - h_dim - w_dim
@@ -1148,6 +1151,12 @@ class AnyFlowFARTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Fr
                 Forwarded to the attention processors.
             return_dict (`bool`, *optional*, defaults to `True`):
                 If `False`, returns positional tuples instead of an output dataclass.
+
+        Returns:
+            [`~models.transformer_2d.Transformer2DModelOutput`], [`AnyFlowFARTransformerOutput`] or `tuple`:
+                When `return_dict` is `False`, a plain `tuple` is returned. Otherwise, the causal training rollout
+                (`kv_cache is None`) returns a [`~models.transformer_2d.Transformer2DModelOutput`], while the
+                cache-prefill and autoregressive inference paths return an [`AnyFlowFARTransformerOutput`].
         """
         # `attention_kwargs` is consumed by the @apply_lora_scale decorator on this method;
         # it does not need to thread through to the inner _forward_* paths.
