@@ -70,25 +70,24 @@ class Ideogram4MRoPE(nn.Module):
             raise ValueError(f"`position_ids` must have shape (B, L, 3), got {tuple(position_ids.shape)}.")
         batch_size, seq_len, _ = position_ids.shape
 
-        # Rotary frequencies must be computed in float32: Ideogram4's image positions start at
-        # IMAGE_POSITION_OFFSET (65536), so an ambient autocast would otherwise run the matmul and
-        # cos/sin in bfloat16, rounding every image position to the same value and collapsing the
-        # rotary embeddings (all spatial information is lost).
-        with torch.autocast(device_type=position_ids.device.type, enabled=False):
-            pos = position_ids.permute(2, 0, 1).to(dtype=torch.float32)
-            inv_freq = self.inv_freq.to(dtype=torch.float32)[None, None, :, None].expand(3, batch_size, -1, 1)
-            freqs = inv_freq @ pos.unsqueeze(2)
-            freqs = freqs.transpose(2, 3)  # (3, B, L, inv_freq_size)
+        # Rotary frequencies are computed in float64: Ideogram4's image positions start at
+        # IMAGE_POSITION_OFFSET (65536), which float32 cannot represent distinctly once an ambient
+        # autocast runs the matmul/cos/sin in bfloat16, collapsing every image position to the same
+        # embedding. float64 is not downcast by autocast, matching the float64 rope path Flux uses.
+        pos = position_ids.permute(2, 0, 1).to(dtype=torch.float64)
+        inv_freq = self.inv_freq.to(dtype=torch.float64)[None, None, :, None].expand(3, batch_size, -1, 1)
+        freqs = inv_freq @ pos.unsqueeze(2)
+        freqs = freqs.transpose(2, 3)  # (3, B, L, inv_freq_size)
 
-            # Interleaved mrope: pull H freqs into idx 1 mod 3, W freqs into idx 2 mod 3.
-            freqs_t = freqs[0].clone()
-            for axis, offset in ((1, 1), (2, 2)):
-                length = self.mrope_section[axis] * 3
-                idx = torch.arange(offset, length, 3, device=freqs_t.device)
-                freqs_t[..., idx] = freqs[axis][..., idx]
+        # Interleaved mrope: pull H freqs into idx 1 mod 3, W freqs into idx 2 mod 3.
+        freqs_t = freqs[0].clone()
+        for axis, offset in ((1, 1), (2, 2)):
+            length = self.mrope_section[axis] * 3
+            idx = torch.arange(offset, length, 3, device=freqs_t.device)
+            freqs_t[..., idx] = freqs[axis][..., idx]
 
-            emb = torch.cat((freqs_t, freqs_t), dim=-1)
-            return emb.cos(), emb.sin()
+        emb = torch.cat((freqs_t, freqs_t), dim=-1)
+        return emb.cos().float(), emb.sin().float()
 
 
 class Ideogram4AttnProcessor:
