@@ -395,8 +395,18 @@ _RELOCATED_PIPELINE_CLASSES: dict[tuple[str, str], tuple[str, str]] = {
     ("audioldm2", "AudioLDM2UNet2DConditionModel"): ("diffusers", "AudioLDM2UNet2DConditionModel"),
     ("stable_audio", "StableAudioProjectionModel"): ("diffusers", "StableAudioProjectionModel"),
     ("deepfloyd_if", "IFWatermarker"): ("diffusers", "IFWatermarker"),
+    ("ltx", "LTXLatentUpsamplerModel"): ("diffusers", "LTXLatentUpsamplerModel"),
     ("ltx2", "LTX2TextConnectors"): ("diffusers", "LTX2TextConnectors"),
     ("ltx2", "LTX2Vocoder"): ("diffusers", "LTX2Vocoder"),
+    ("ltx2", "LTX2VocoderWithBWE"): ("diffusers", "LTX2VocoderWithBWE"),
+    ("ltx2", "LTX2LatentUpsamplerModel"): ("diffusers", "LTX2LatentUpsamplerModel"),
+    ("flux", "ReduxImageEncoder"): ("diffusers", "ReduxImageEncoder"),
+    ("shap_e", "ShapERenderer"): ("diffusers", "ShapERenderer"),
+    ("ace_step", "AceStepAudioTokenizer"): ("diffusers", "AceStepAudioTokenizer"),
+    ("ace_step", "AceStepAudioTokenDetokenizer"): ("diffusers", "AceStepAudioTokenDetokenizer"),
+    ("ace_step", "AceStepConditionEncoder"): ("diffusers", "AceStepConditionEncoder"),
+    ("stable_diffusion", "CLIPImageProjection"): ("diffusers", "CLIPImageProjection"),
+    ("stable_diffusion", "StableUnCLIPImageNormalizer"): ("diffusers", "StableUnCLIPImageNormalizer"),
 }
 
 
