@@ -90,7 +90,7 @@ def main():
     repo = g.get_repo(REPO)
     owner, name = REPO.split("/", 1)
     cutoff = datetime.now(timezone.utc) - timedelta(days=LOOKBACK_DAYS)
-    
+
     try:
         pulls = repo.get_pulls(state="open", sort="created", direction="desc")
         for pr in pulls:
