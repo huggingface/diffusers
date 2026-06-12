@@ -1215,7 +1215,7 @@ def _flash_attention_hub_forward_op(
     wrapped_backward_fn = config.wrapped_backward_fn
     if wrapped_forward_fn is None or wrapped_backward_fn is None:
         raise RuntimeError(
-            "Flash attention hub kernels must expose `_wrapped_flash_attn_forward` and `_wrapped_flash_attn_backward` "
+            "Flash attention hub kernels must expose `_flash_attn_forward` and `_flash_attn_backward` "
             "for context parallel execution."
         )
 
@@ -1269,7 +1269,7 @@ def _flash_attention_hub_backward_op(
     wrapped_backward_fn = config.wrapped_backward_fn
     if wrapped_backward_fn is None:
         raise RuntimeError(
-            "Flash attention hub kernels must expose `_wrapped_flash_attn_backward` for context parallel execution."
+            "Flash attention hub kernels must expose `_flash_attn_backward` for context parallel execution."
         )
 
     query, key, value, out, lse, rng_state = ctx.saved_tensors
@@ -1327,8 +1327,8 @@ def _flash_varlen_attention_hub_forward_op(
     wrapped_backward_fn = config.wrapped_backward_fn
     if wrapped_forward_fn is None or wrapped_backward_fn is None:
         raise RuntimeError(
-            "Flash attention varlen hub kernels must expose `_wrapped_flash_attn_varlen_forward` and "
-            "`_wrapped_flash_attn_varlen_backward` for context parallel execution."
+            "Flash attention varlen hub kernels must expose `_flash_attn_varlen_forward` and "
+            "`_flash_attn_varlen_backward` for context parallel execution."
         )
 
     if scale is None:
@@ -1421,7 +1421,7 @@ def _flash_varlen_attention_hub_backward_op(
     wrapped_backward_fn = config.wrapped_backward_fn
     if wrapped_backward_fn is None:
         raise RuntimeError(
-            "Flash attention varlen hub kernels must expose `_wrapped_flash_attn_varlen_backward` "
+            "Flash attention varlen hub kernels must expose `_flash_attn_varlen_backward` "
             "for context parallel execution."
         )
 
