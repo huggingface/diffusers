@@ -33,14 +33,9 @@ from torch.nn.utils import weight_norm
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...utils import BaseOutput
 from ...utils.accelerate_utils import apply_forward_hook
-from ...utils.torch_utils import randn_tensor
-from ..modeling_utils import ModelMixin
-
-
-def _zero_module(module: nn.Module) -> nn.Module:
-    for parameter in module.parameters():
-        parameter.detach().zero_()
-    return module
+from ..modeling_utils import ModelMixin, get_parameter_dtype
+from ..normalization import FP32LayerNorm
+from .autoencoder_oobleck import OobleckDiagonalGaussianDistribution
 
 
 # Copied from diffusers.models.autoencoders.autoencoder_oobleck.Snake1d
@@ -59,11 +54,14 @@ class Snake1d(nn.Module):
         self.logscale = logscale
 
     def forward(self, hidden_states):
+        return self._forward(hidden_states, self.alpha, self.beta, self.logscale)
+
+    @staticmethod
+    def _forward(hidden_states, alpha, beta, logscale):
         shape = hidden_states.shape
 
-        alpha = self.alpha if not self.logscale else torch.exp(self.alpha)
-        beta = self.beta if not self.logscale else torch.exp(self.beta)
-
+        alpha = alpha if not logscale else torch.exp(alpha)
+        beta = beta if not logscale else torch.exp(beta)
         hidden_states = hidden_states.reshape(shape[0], shape[1], -1)
         hidden_states = hidden_states + (beta + 1e-9).reciprocal() * torch.sin(alpha * hidden_states).pow(2)
         hidden_states = hidden_states.reshape(shape)
@@ -80,28 +78,7 @@ class Cosmos3AudioSnakeBeta(nn.Module):
         self.logscale = logscale
 
     def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
-        alpha = self.alpha[None, :, None]
-        beta = self.beta[None, :, None]
-        if self.logscale:
-            alpha = torch.exp(alpha)
-            beta = torch.exp(beta)
-        return hidden_states + (beta + 1e-9).reciprocal() * torch.sin(alpha * hidden_states).pow(2)
-
-
-class Cosmos3AudioLayerNorm(nn.Module):
-    """LayerNorm over the channel dimension for `[B, T, C]` tensors."""
-
-    def __init__(self, hidden_dim: int, eps: float = 1e-5, use_bias: bool = False):
-        super().__init__()
-        self.weight = nn.Parameter(torch.ones(hidden_dim))
-        self.bias = nn.Parameter(torch.zeros(hidden_dim)) if use_bias else None
-        self.eps = eps
-
-    def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
-        dtype = hidden_states.dtype
-        bias = self.bias.float() if self.bias is not None else None
-        hidden_states = F.layer_norm(hidden_states.float(), self.weight.shape, self.weight.float(), bias, self.eps)
-        return hidden_states.to(dtype)
+        return Snake1d._forward(hidden_states, self.alpha[None, :, None], self.beta[None, :, None], self.logscale)
 
 
 class Cosmos3AudioConvNeXtBlock(nn.Module):
@@ -129,14 +106,14 @@ class Cosmos3AudioConvNeXtBlock(nn.Module):
                 nn.Conv1d(hidden_dim, hidden_dim, kernel_size=7, groups=hidden_dim),
             )
 
-        self.norm = Cosmos3AudioLayerNorm(hidden_dim)
+        self.norm = FP32LayerNorm(hidden_dim, eps=1e-5, bias=False)
         self.pwconv1 = nn.Conv1d(hidden_dim, intermediate_dim, kernel_size=1)
         self.act = Cosmos3AudioSnakeBeta(intermediate_dim) if use_snake else nn.GELU()
-        self.pwconv2 = (
-            _zero_module(nn.Conv1d(intermediate_dim, hidden_dim, kernel_size=1))
-            if identity_init
-            else nn.Conv1d(intermediate_dim, hidden_dim, kernel_size=1)
-        )
+        self.pwconv2 = nn.Conv1d(intermediate_dim, hidden_dim, kernel_size=1)
+        if identity_init:
+            nn.init.zeros_(self.pwconv2.weight)
+            if self.pwconv2.bias is not None:
+                nn.init.zeros_(self.pwconv2.bias)
 
     def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
         residual = hidden_states
@@ -262,10 +239,9 @@ class Cosmos3AudioSpectrogramConvNeXtEncoder(nn.Module):
         if num_channels > 1:
             audio = audio.reshape(batch_size * num_channels, 1, num_samples)
 
-        with torch.autocast(device_type=audio.device.type, enabled=False):
-            spectrogram = self._spectrogram(audio.float().squeeze(1))
-            real, imaginary = torch.view_as_real(spectrogram).chunk(2, dim=-1)
-            spectrogram = torch.cat([real, imaginary], dim=1).squeeze(-1)
+        spectrogram = self._spectrogram(audio.squeeze(1))
+        real, imaginary = torch.view_as_real(spectrogram).chunk(2, dim=-1)
+        spectrogram = torch.cat([real, imaginary], dim=1).squeeze(-1)
 
         spectrogram = spectrogram.to(audio.dtype)
         if num_channels > 1:
@@ -397,44 +373,11 @@ class Cosmos3AudioDecoder(nn.Module):
         return hidden_state
 
 
-class Cosmos3AudioDiagonalGaussianDistribution:
-    def __init__(self, parameters: torch.Tensor, deterministic: bool = False):
-        self.parameters = parameters
-        self.mean, self.scale = parameters.chunk(2, dim=1)
-        self.std = F.softplus(self.scale) + 1e-4
-        self.var = self.std * self.std
-        self.logvar = torch.log(self.var)
-        self.deterministic = deterministic
-
-    def sample(self, generator: torch.Generator | None = None) -> torch.Tensor:
-        sample = randn_tensor(
-            self.mean.shape,
-            generator=generator,
-            device=self.parameters.device,
-            dtype=self.parameters.dtype,
-        )
-        return self.mean + self.std * sample
-
-    def kl(self, other: "Cosmos3AudioDiagonalGaussianDistribution" = None) -> torch.Tensor:
-        if self.deterministic:
-            return torch.Tensor([0.0]).to(device=self.parameters.device, dtype=self.parameters.dtype)
-        if other is None:
-            return (self.mean * self.mean + self.var - self.logvar - 1.0).sum(1).mean()
-
-        normalized_diff = torch.pow(self.mean - other.mean, 2) / other.var
-        var_ratio = self.var / other.var
-        logvar_diff = self.logvar - other.logvar
-        return (normalized_diff + var_ratio + logvar_diff - 1).sum(1).mean()
-
-    def mode(self) -> torch.Tensor:
-        return self.mean
-
-
 @dataclass
 class Cosmos3AudioEncoderOutput(BaseOutput):
     """Output of `Cosmos3AVAEAudioTokenizer.encode`."""
 
-    latent_dist: Cosmos3AudioDiagonalGaussianDistribution
+    latent_dist: OobleckDiagonalGaussianDistribution
 
 
 @dataclass
@@ -625,11 +568,6 @@ class Cosmos3AVAEAudioTokenizer(ModelMixin, ConfigMixin):
             self._disable_encoder()
 
     def _encode(self, sample: torch.Tensor) -> torch.Tensor:
-        if self.encoder is None or not self._encoder_available:
-            raise ValueError(
-                "This Cosmos3 AVAE sound tokenizer was loaded from decoder-only weights and cannot encode audio. "
-                "Re-convert the AVAE checkpoint with encoder weights to use `encode()`."
-            )
         return self.encoder(sample).transpose(1, 2)
 
     @apply_forward_hook
@@ -638,7 +576,7 @@ class Cosmos3AVAEAudioTokenizer(ModelMixin, ConfigMixin):
         sample: torch.Tensor,
         return_dict: bool = True,
         force_pad: bool = False,
-    ) -> Cosmos3AudioEncoderOutput | tuple[Cosmos3AudioDiagonalGaussianDistribution]:
+    ) -> Cosmos3AudioEncoderOutput | tuple[OobleckDiagonalGaussianDistribution]:
         """Encode a waveform into a VAE latent distribution.
 
         Args:
@@ -648,6 +586,12 @@ class Cosmos3AVAEAudioTokenizer(ModelMixin, ConfigMixin):
         """
         if sample.ndim != 3:
             raise ValueError(f"`sample` must have shape [B, C, T], got {tuple(sample.shape)}.")
+
+        if self.encoder is None or not self._encoder_available:
+            raise ValueError(
+                "This Cosmos3 AVAE sound tokenizer was loaded from decoder-only weights and cannot encode audio. "
+                "Re-convert the AVAE checkpoint with encoder weights to use `encode()`."
+            )
 
         hidden_states = sample
         if self.config.normalize_volume:
@@ -659,9 +603,9 @@ class Cosmos3AVAEAudioTokenizer(ModelMixin, ConfigMixin):
             if padding > 0:
                 hidden_states = F.pad(hidden_states, (0, padding), mode="constant", value=0)
 
-        encoder_dtype = next(self.encoder.parameters()).dtype if self.encoder is not None else hidden_states.dtype
+        encoder_dtype = get_parameter_dtype(self.encoder)
         moments = self._encode(hidden_states.to(dtype=encoder_dtype))
-        posterior = Cosmos3AudioDiagonalGaussianDistribution(moments)
+        posterior = OobleckDiagonalGaussianDistribution(moments)
 
         if not return_dict:
             return (posterior,)

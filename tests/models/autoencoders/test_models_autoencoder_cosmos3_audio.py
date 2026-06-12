@@ -20,9 +20,11 @@ import pytest
 import torch
 
 from diffusers.models.autoencoders.autoencoder_cosmos3_audio import (
-    Cosmos3AudioDiagonalGaussianDistribution,
+    Cosmos3AudioSnakeBeta,
     Cosmos3AVAEAudioTokenizer,
+    Snake1d,
 )
+from diffusers.models.autoencoders.autoencoder_oobleck import OobleckDiagonalGaussianDistribution
 
 
 def _get_tiny_cosmos3_audio_tokenizer() -> Cosmos3AVAEAudioTokenizer:
@@ -50,10 +52,14 @@ def _get_tiny_cosmos3_audio_tokenizer() -> Cosmos3AVAEAudioTokenizer:
 def test_cosmos3_audio_tokenizer_encode_decode_forward_shapes():
     torch.manual_seed(0)
     model = _get_tiny_cosmos3_audio_tokenizer().eval()
+    state_dict = model.state_dict()
+    assert "encoder.layers.1.norm.weight" in state_dict
+    assert "encoder.layers.1.norm.bias" not in state_dict
+
     audio = torch.randn(2, 2, 15)
 
     encoded = model.encode(audio)
-    assert isinstance(encoded.latent_dist, Cosmos3AudioDiagonalGaussianDistribution)
+    assert isinstance(encoded.latent_dist, OobleckDiagonalGaussianDistribution)
     assert encoded.latent_dist.mean.shape == (2, 4, 4)
     assert encoded.latent_dist.scale.shape == (2, 4, 4)
 
@@ -82,6 +88,18 @@ def test_cosmos3_audio_tokenizer_encode_tuple_and_seeded_sample():
     assert torch.allclose(sample_a, sample_b)
     assert sample_a.shape == (1, 4, 4)
     assert posterior.kl().ndim == 0
+
+
+def test_cosmos3_audio_snake_beta_matches_snake1d_with_1d_state():
+    torch.manual_seed(0)
+    snake = Snake1d(4)
+    snake_beta = Cosmos3AudioSnakeBeta(4)
+    snake_beta.alpha.data.copy_(snake.alpha.flatten())
+    snake_beta.beta.data.copy_(snake.beta.flatten())
+    hidden_states = torch.randn(2, 4, 8)
+
+    assert snake_beta.state_dict()["alpha"].shape == (4,)
+    assert torch.allclose(snake_beta(hidden_states), snake(hidden_states))
 
 
 def test_cosmos3_audio_tokenizer_decoder_only_state_disables_encode():
