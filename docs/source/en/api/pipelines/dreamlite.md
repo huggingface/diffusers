@@ -53,7 +53,6 @@ image = pipe(
     height=1024,
     width=1024,
     num_inference_steps=28,
-    guidance_scale=3.5,
     generator=torch.Generator("cpu").manual_seed(42),
 ).images[0]
 image.save("dreamlite_t2i.png")
@@ -72,7 +71,7 @@ from diffusers.utils import load_image
 pipe = DreamLitePipeline.from_pretrained("carlofkl/DreamLite-base", revision="diffusers", torch_dtype=torch.bfloat16)
 pipe = pipe.to("cuda")
 
-source = load_image("https://huggingface.co/datasets/diffusers/diffusers-images-docs/resolve/main/cat.png")
+source = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/cat.png")
 
 image = pipe(
     prompt="turn the cat into a corgi",
@@ -80,8 +79,6 @@ image = pipe(
     height=1024,
     width=1024,
     num_inference_steps=28,
-    guidance_scale=3.5,
-    image_guidance_scale=1.5,
     generator=torch.Generator("cpu").manual_seed(42),
 ).images[0]
 image.save("dreamlite_edit.png")
@@ -120,7 +117,7 @@ from diffusers.utils import load_image
 pipe = DreamLiteMobilePipeline.from_pretrained("carlofkl/DreamLite-mobile", revision="diffusers", torch_dtype=torch.bfloat16)
 pipe = pipe.to("cuda")
 
-source = load_image("https://huggingface.co/datasets/diffusers/diffusers-images-docs/resolve/main/cat.png")
+source = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/cat.png")
 
 image = pipe(
     prompt="turn the cat into a corgi",

@@ -51,7 +51,7 @@ EXAMPLE_DOC_STRING = """
         >>> from diffusers import DreamLitePipeline
 
         >>> pipe = DreamLitePipeline.from_pretrained(
-        ...     "carlofkl/DreamLite-base", revision="diffusers", torch_dtype=torch.float16
+        ...     "carlofkl/DreamLite-base", revision="diffusers", torch_dtype=torch.bfloat16
         ... )
         >>> pipe.to("cuda")
 
@@ -393,8 +393,8 @@ class DreamLitePipeline(DiffusionPipeline, FromSingleFileMixin, TextualInversion
         image: Optional[Image.Image] = None,
         height: Optional[int] = None,
         width: Optional[int] = None,
-        guidance_scale: float = 7.5,
-        image_guidance_scale: float = 1.0,
+        guidance_scale: float = 3.5,
+        image_guidance_scale: float = 1.5,
         num_inference_steps: int = 30,
         sigmas: Optional[List[float]] = None,
         num_images_per_prompt: Optional[int] = 1,
