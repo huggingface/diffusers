@@ -200,7 +200,14 @@ def _resolve_dtype(name: Optional[str]):
         return "auto"
     import torch
 
-    mapping = {"fp32": torch.float32, "fp16": torch.float16, "bf16": torch.bfloat16}
+    mapping = {
+        "fp32": torch.float32,
+        "float32": torch.float32,
+        "fp16": torch.float16,
+        "float16": torch.float16,
+        "bf16": torch.bfloat16,
+        "bfloat16": torch.bfloat16,
+    }
     if name not in mapping:
         raise ValueError(f"Unknown dtype: {name}")
     return mapping[name]
@@ -284,8 +291,6 @@ def _apply_optimizations(pipeline: Any, args: Namespace) -> None:
 
 def _from_pretrained_kwargs(args: Namespace) -> dict[str, Any]:
     dtype = _resolve_dtype(args.dtype)
-    # disable_mmap: mmap-faults over a network-mounted volume trigger one round-trip per page;
-    # a sequential read is dramatically faster than the random-access mmap pattern.
     kwargs: dict[str, Any] = {"trust_remote_code": args.trust_remote_code, "disable_mmap": True}
     if dtype != "auto":
         kwargs["torch_dtype"] = dtype
@@ -355,6 +360,10 @@ def _describe(args: Namespace) -> None:
         with open(standard_index) as f:
             index = json.load(f)
         class_name = index.get("_class_name")
+        if class_name is None:
+            raise SystemExit(
+                f"{diffusers.DiffusionPipeline.config_name} for {args.model!r} has no `_class_name` field."
+            )
         pipeline_cls = getattr(diffusers, class_name, None)
         if pipeline_cls is None:
             raise SystemExit(
@@ -781,9 +790,28 @@ def _maybe_submit_remote(args: Namespace, task: str) -> bool:
     )
     final_status = _wait_for_job(api, job.id, args.namespace, args.poll_interval)
     payload["job_status"] = final_status
+    payload["timing"] = _job_timing(api, job.id, args.namespace)
     payload["outputs"] = _download_job_artifacts(api, args.push_to, run_id, args.output)
     _format_result(args, payload)
     return True
+
+
+def _job_timing(api: Any, job_id: str, namespace: Optional[str]) -> dict[str, Optional[float]]:
+    """Return queue/run/total wallclock seconds for ``job_id`` from inspect_job timestamps."""
+    info = api.inspect_job(job_id=job_id, namespace=namespace)
+
+    def _delta(start, end) -> Optional[float]:
+        return (end - start).total_seconds() if (start is not None and end is not None) else None
+
+    timing = {
+        "queued_seconds": _delta(info.created_at, info.started_at),
+        "run_seconds": _delta(info.started_at, info.finished_at),
+        "total_seconds": _delta(info.created_at, info.finished_at),
+    }
+    parts = [f"{k.replace('_seconds', '')}={v:.1f}s" for k, v in timing.items() if v is not None]
+    if parts:
+        print(f"[diffusers-cli] timing: {' '.join(parts)}", file=sys.stderr, flush=True)
+    return timing
 
 
 def _wait_for_job(api: Any, job_id: str, namespace: Optional[str], poll_interval: float) -> str:
@@ -873,7 +901,7 @@ class GenerateCommand(BaseDiffusersCLICommand):
     def register_subcommand(subparsers: _SubParsersAction) -> None:
         parser: ArgumentParser = subparsers.add_parser(
             "generate",
-            help="Run any diffusers pipeline (standard or modular) by forwarding --pipeline-kwargs verbatim.",
+            help="Run any diffusers pipeline locally or remotely on HF Jobs.",
             usage="\n  diffusers-cli generate [options]",
         )
         parser._optionals.title = "Options"
@@ -941,7 +969,7 @@ class GenerateCommand(BaseDiffusersCLICommand):
             {
                 "task": self.task,
                 "model": self.args.model,
-                "device": pipeline.device.type if hasattr(pipeline, "device") else None,
+                "device": device,
                 "pipeline_class": type(pipeline).__name__,
                 "modular": is_modular,
                 "outputs": saved,
