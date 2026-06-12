@@ -25,6 +25,7 @@ Behavior:
 
 import logging
 import os
+from datetime import datetime, timedelta, timezone
 
 import requests
 from github import Github
@@ -35,6 +36,7 @@ logger = logging.getLogger(__name__)
 REPO = "huggingface/diffusers"
 REMINDER_MARKER = "<!-- pr-link-issue-reminder -->"
 BYPASS_LABELS = {"no-issue-needed"}
+LOOKBACK_DAYS = 2
 CONTRIBUTION_GUIDE_URL = "https://huggingface.co/docs/diffusers/main/en/conceptual/contribution#coding-with-ai-agents"
 
 GRAPHQL_URL = "https://api.github.com/graphql"
@@ -87,11 +89,19 @@ def main():
     g = Github(token)
     repo = g.get_repo(REPO)
     owner, name = REPO.split("/", 1)
-
+    cutoff = datetime.now(timezone.utc) - timedelta(days=LOOKBACK_DAYS)
+    
     try:
-        pulls = repo.get_pulls(state="open")
+        pulls = repo.get_pulls(state="open", sort="created", direction="desc")
         for pr in pulls:
             try:
+                created_at = pr.created_at
+                if created_at.tzinfo is None:
+                    created_at = created_at.replace(tzinfo=timezone.utc)
+                # PRs are sorted newest-first, so once we cross the cutoff every
+                # remaining PR is older too and we can stop paginating.
+                if created_at < cutoff:
+                    break
                 if pr.draft:
                     continue
                 if pr.user is None:
