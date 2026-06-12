@@ -1116,6 +1116,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             "diffusers": __version__,
             "file_type": "model",
             "framework": "pytorch",
+            "model_class": str(cls.__name__),
         }
         unused_kwargs = {}
 
@@ -1162,8 +1163,9 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             torch_dtype = hf_quantizer.update_torch_dtype(torch_dtype)
             device_map = hf_quantizer.update_device_map(device_map)
 
-            # In order to ensure popular quantization methods are supported. Can be disable with `disable_telemetry`
+            # In order to ensure popular quantization methods are supported. Can be disabled with `disable_telemetry`
             user_agent["quant"] = hf_quantizer.quantization_config.quant_method.value
+            user_agent["quant_config"] = json.dumps(hf_quantizer.quantization_config.to_dict(), sort_keys=True)
 
             # Force-set to `True` for more mem efficiency
             if low_cpu_mem_usage is None:
