@@ -70,9 +70,12 @@ _DEFAULT_REMOTE_DEPS = (
     "accelerate",
     "transformers",
     "safetensors",
-    "torch==2.10.*",
-    "torchvision",
 )
+
+# Base container image — provides torch + CUDA so uv doesn't reinstall the ~3GB nvidia-*
+# wheels per cold start. cuda12.8 is the highest cuda12.x tag below the HF Jobs host
+# driver's CUDA 12.9 max; cuda13.x tags fail with "driver too old".
+_DEFAULT_REMOTE_IMAGE = "pytorch/pytorch:2.10.0-cuda12.8-cudnn9-runtime"
 
 # Entry point for ``uv run`` inside the container. ``uv run`` accepts a file
 # path, URL, or command; passing the installed console script name makes UV
@@ -743,6 +746,7 @@ def _maybe_submit_remote(args: Namespace, task: str) -> bool:
         script=_UV_RUNNER_SCRIPT,
         script_args=_kwargs_to_argv(task, task_kwargs),
         dependencies=dependencies,
+        image=_DEFAULT_REMOTE_IMAGE,
         flavor=args.flavor,
         timeout=args.timeout,
         namespace=args.namespace,
