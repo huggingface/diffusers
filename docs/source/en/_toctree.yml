@@ -180,6 +180,8 @@
     title: quanto
   - local: quantization/modelopt
     title: NVIDIA ModelOpt
+  - local: quantization/autoround
+    title: AutoRound
   title: Quantization
 - isExpanded: false
   sections:
@@ -349,6 +351,8 @@
         title: HunyuanVideo15Transformer3DModel
       - local: api/models/hunyuan_video_transformer_3d
         title: HunyuanVideoTransformer3DModel
+      - local: api/models/ideogram4_transformer2d
+        title: Ideogram4Transformer2DModel
       - local: api/models/transformer_joyimage
         title: JoyImageEditTransformer3DModel
       - local: api/models/latte_transformer3d
@@ -481,6 +485,8 @@
         title: Stable Audio
       title: Audio
     - sections:
+      - local: api/pipelines/anima
+        title: Anima
       - local: api/pipelines/animatediff
         title: AnimateDiff
       - local: api/pipelines/aura_flow
@@ -521,6 +527,8 @@
         title: DeepFloyd IF
       - local: api/pipelines/dit
         title: DiT
+      - local: api/pipelines/dreamlite
+        title: DreamLite
       - local: api/pipelines/easyanimate
         title: EasyAnimate
       - local: api/pipelines/ernie_image
@@ -539,6 +547,8 @@
         title: Hunyuan-DiT
       - local: api/pipelines/hunyuanimage21
         title: HunyuanImage2.1
+      - local: api/pipelines/ideogram4
+        title: Ideogram 4
       - local: api/pipelines/pix2pix
         title: InstructPix2Pix
       - local: api/pipelines/joyimage_edit

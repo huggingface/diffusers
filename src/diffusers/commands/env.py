@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import importlib.metadata
 import platform
 import subprocess
 from argparse import ArgumentParser
@@ -23,14 +24,28 @@ from ..utils import (
     is_accelerate_available,
     is_bitsandbytes_available,
     is_flax_available,
+    is_gguf_available,
     is_google_colab,
+    is_nvidia_modelopt_available,
+    is_optimum_quanto_available,
     is_peft_available,
     is_safetensors_available,
     is_torch_available,
+    is_torchao_available,
     is_transformers_available,
     is_xformers_available,
 )
 from . import BaseDiffusersCLICommand
+
+
+# (display name, availability_fn, pypi distribution name for importlib.metadata.version)
+_QUANTIZATION_BACKENDS = (
+    ("bitsandbytes", is_bitsandbytes_available, "bitsandbytes"),
+    ("gguf", is_gguf_available, "gguf"),
+    ("optimum-quanto", is_optimum_quanto_available, "optimum-quanto"),
+    ("torchao", is_torchao_available, "torchao"),
+    ("nvidia-modelopt", is_nvidia_modelopt_available, "nvidia-modelopt"),
+)
 
 
 def info_command_factory(_):
@@ -97,11 +112,14 @@ class EnvironmentCommand(BaseDiffusersCLICommand):
 
             peft_version = peft.__version__
 
-        bitsandbytes_version = "not installed"
-        if is_bitsandbytes_available():
-            import bitsandbytes
-
-            bitsandbytes_version = bitsandbytes.__version__
+        quantization_versions = {}
+        for backend_name, is_available_fn, dist_name in _QUANTIZATION_BACKENDS:
+            if not is_available_fn():
+                continue
+            try:
+                quantization_versions[backend_name] = importlib.metadata.version(dist_name)
+            except importlib.metadata.PackageNotFoundError:
+                quantization_versions[backend_name] = "N/A"
 
         xformers_version = "not installed"
         if is_xformers_available():
@@ -167,7 +185,7 @@ class EnvironmentCommand(BaseDiffusersCLICommand):
             "Transformers version": transformers_version,
             "Accelerate version": accelerate_version,
             "PEFT version": peft_version,
-            "Bitsandbytes version": bitsandbytes_version,
+            **{f"{name} version": ver for name, ver in quantization_versions.items()},
             "Safetensors version": safetensors_version,
             "xFormers version": xformers_version,
             "Accelerator": accelerator,
