@@ -72,15 +72,13 @@ _DEFAULT_REMOTE_DEPS = (
     "safetensors",
 )
 
-# Base container image — provides torch + CUDA so uv doesn't reinstall the ~3GB nvidia-*
-# wheels per cold start. cuda12.8 is the highest cuda12.x tag below the HF Jobs host
-# driver's CUDA 12.9 max; cuda13.x tags fail with "driver too old".
+# Base container image — provides torch + CUDA so ``uv pip install --system``
+# only has to add the small Python deps. cuda12.8 is the highest cuda12.x tag
+# below the HF Jobs host driver's CUDA 12.9 max.
 _DEFAULT_REMOTE_IMAGE = "pytorch/pytorch:2.10.0-cuda12.8-cudnn9-runtime"
 
-# Entry point for ``uv run`` inside the container. ``uv run`` accepts a file
-# path, URL, or command; passing the installed console script name makes UV
-# install the deps above (which register the entry point) and exec the CLI.
-_UV_RUNNER_SCRIPT = "diffusers-cli"
+# Installed console-script name invoked inside the container after the deps land.
+_CONTAINER_CLI_BINARY = "diffusers-cli"
 
 RUN_ID_ENV = "DIFFUSERS_CLI_RUN_ID"
 
@@ -711,9 +709,10 @@ def _maybe_submit_remote(args: Namespace, task: str) -> bool:
         flush=True,
     )
 
+    import shlex
     import uuid
 
-    from huggingface_hub import HfApi, get_token, run_uv_job
+    from huggingface_hub import HfApi, get_token, run_job
 
     hf_token = args.token or get_token()
     api = HfApi(token=hf_token)
@@ -742,11 +741,17 @@ def _maybe_submit_remote(args: Namespace, task: str) -> bool:
             flush=True,
         )
 
-    job = run_uv_job(
-        script=_UV_RUNNER_SCRIPT,
-        script_args=_kwargs_to_argv(task, task_kwargs),
-        dependencies=dependencies,
+    # Build the in-container shell command: install the small Python deps into the
+    # image's system Python (where torch + CUDA already live) via ``uv pip install
+    # --system``, then exec the CLI with the same argv. --break-system-packages
+    # bypasses PEP 668; safe here because the container is ephemeral.
+    install_cmd = shlex.join(["uv", "pip", "install", "--system", "--break-system-packages", *dependencies])
+    cli_cmd = shlex.join([_CONTAINER_CLI_BINARY, *_kwargs_to_argv(task, task_kwargs)])
+    container_cmd = ["sh", "-c", f"{install_cmd} && {cli_cmd}"]
+
+    job = run_job(
         image=_DEFAULT_REMOTE_IMAGE,
+        command=container_cmd,
         flavor=args.flavor,
         timeout=args.timeout,
         namespace=args.namespace,
