@@ -23,11 +23,14 @@ Behavior:
 - PRs labeled `no-issue-needed` and bot-authored PRs are skipped.
 """
 
+import logging
 import os
 
 import requests
 from github import Github
 
+
+logger = logging.getLogger(__name__)
 
 REPO = "huggingface/diffusers"
 REMINDER_MARKER = "<!-- pr-link-issue-reminder -->"
@@ -85,23 +88,33 @@ def main():
     repo = g.get_repo(REPO)
     owner, name = REPO.split("/", 1)
 
-    for pr in repo.get_pulls(state="open"):
-        if pr.draft:
-            continue
-        if pr.user is None:
-            continue
-        author = pr.user.login
-        if not author or author.endswith("[bot]") or pr.user.type == "Bot":
-            continue
-        labels = {label.name for label in pr.labels}
-        if labels & BYPASS_LABELS:
-            continue
-        if has_linked_issue(token, owner, name, pr.number):
-            continue
-        if has_existing_reminder(pr):
-            continue
-        pr.create_issue_comment(reminder_body(author))
+    try:
+        pulls = repo.get_pulls(state="open")
+        for pr in pulls:
+            try:
+                if pr.draft:
+                    continue
+                if pr.user is None:
+                    continue
+                author = pr.user.login
+                if not author or author.endswith("[bot]") or pr.user.type == "Bot":
+                    continue
+                labels = {label.name for label in pr.labels}
+                if labels & BYPASS_LABELS:
+                    continue
+                if has_linked_issue(token, owner, name, pr.number):
+                    continue
+                if has_existing_reminder(pr):
+                    continue
+                pr.create_issue_comment(reminder_body(author))
+            except Exception as e:
+                logger.warning("Skipping PR #%s: %s", getattr(pr, "number", "?"), e)
+                continue
+    except Exception as e:
+        logger.error("Failed to fetch open PRs: %s", e)
+        raise
 
 
 if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     main()
