@@ -504,5 +504,5 @@ class ContextParallelAttentionBackendsTesterMixin:
             f"Context parallel inference failed: {return_dict.get('error', 'Unknown error')}"
         )
 
-        cp_output = torch.tensor(return_dict["output"])
+        cp_output = torch.tensor(return_dict["output"], dtype=ref_output.dtype)
         torch.testing.assert_close(ref_output, cp_output, atol=1e-4, rtol=1e-4)
