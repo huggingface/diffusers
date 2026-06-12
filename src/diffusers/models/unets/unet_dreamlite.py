@@ -43,12 +43,12 @@ import torch.nn.functional as F
 from torch import nn
 
 from ...configuration_utils import register_to_config
-from ..modeling_utils import ModelMixin
 from ..activations import get_activation
 from ..attention_dispatch import dispatch_attention_fn
 from ..attention_processor import Attention
 from ..downsampling import Downsample2D as _CoreDownsample2D
 from ..downsampling import downsample_2d
+from ..modeling_utils import ModelMixin
 from ..normalization import RMSNorm
 from ..transformers.dual_transformer_2d import DualTransformer2DModel
 from ..transformers.transformer_2d_dreamlite import DreamLiteTransformer2DModel
