@@ -57,7 +57,10 @@ def has_linked_issue(token, owner, name, number):
     )
     response.raise_for_status()
     payload = response.json()
-    return payload["data"]["repository"]["pullRequest"]["closingIssuesReferences"]["totalCount"] > 0
+    data = payload.get("data")
+    if not data:
+        return False
+    return data["repository"]["pullRequest"]["closingIssuesReferences"]["totalCount"] > 0
 
 
 def has_existing_reminder(pr):
