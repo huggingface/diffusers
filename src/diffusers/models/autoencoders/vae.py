@@ -17,7 +17,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 
-from ...utils import BaseOutput
+from ...utils import BaseOutput, logging
 from ...utils.torch_utils import randn_tensor
 from ..activations import get_activation
 from ..attention_processor import SpatialNorm
@@ -27,6 +27,8 @@ from ..unets.unet_2d_blocks import (
     get_down_block,
     get_up_block,
 )
+
+logger = logging.get_logger(__name__)
 
 
 @dataclass
@@ -599,7 +601,7 @@ class VectorQuantizer(nn.Module):
             if self.unknown_index == "extra":
                 self.unknown_index = self.re_embed
                 self.re_embed = self.re_embed + 1
-            print(
+            logger.info(
                 f"Remapping {self.n_e} indices to {self.re_embed} indices. "
                 f"Using {self.unknown_index} for unknown indices."
             )
