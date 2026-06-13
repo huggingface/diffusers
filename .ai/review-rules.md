@@ -7,8 +7,7 @@ Before reviewing, read and apply the guidelines in:
 - [models.md](models.md) — model conventions, attention pattern, implementation rules, dependencies, gotchas
 - [pipelines.md](pipelines.md) — pipeline conventions, coding style, gotchas
 - [modular.md](modular.md) — modular pipeline conventions, patterns, common mistakes
-- [skills/parity-testing/SKILL.md](skills/parity-testing/SKILL.md) — testing rules, comparison utilities
-- [skills/parity-testing/pitfalls.md](skills/parity-testing/pitfalls.md) — known pitfalls (dtype mismatches, config assumptions, etc.)
+- [skills/model-integration/pitfalls.md](skills/model-integration/pitfalls.md) — known pitfalls causing numerical discrepancies between the reference implementation and the diffusers port (dtype mismatches, config assumptions, etc.)
 
 ## Common mistakes
 
