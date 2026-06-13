@@ -398,6 +398,109 @@ def _maybe_raise_error_for_ambiguous_keys(config):
                 )
 
 
+def _get_lora_base_module(module):
+    if hasattr(module, "base_layer"):
+        return module.base_layer
+    return module
+
+
+def _get_lora_base_layer_info(module):
+    base = _get_lora_base_module(module)
+    if isinstance(base, torch.nn.Linear):
+        return "linear", base.in_features, base.out_features, base.weight.ndim
+    if isinstance(base, torch.nn.Conv2d):
+        return "conv2d", base.in_channels, base.out_channels, base.weight.ndim
+    return None, None, None, None
+
+
+def _validate_lora_weight_compatibility(model, state_dict, adapter_name=None, max_mismatches=5):
+    """
+    Validate that LoRA checkpoint tensors match the target model's base layer shapes before adapter injection.
+
+    Raises:
+        ValueError: If any LoRA weight has incompatible rank, feature dimensions, or tensor rank (ndim) with the
+            corresponding base module (e.g. SD 1.5 Conv LoRA loaded into an SDXL Linear target).
+    """
+    mismatches = []
+
+    for key, tensor in state_dict.items():
+        if ".lora_A." not in key and ".lora_B." not in key:
+            continue
+        if not key.endswith(".weight"):
+            continue
+
+        if ".lora_A." in key:
+            module_name = key.split(".lora_A.")[0]
+            lora_side = "lora_A"
+        else:
+            module_name = key.split(".lora_B.")[0]
+            lora_side = "lora_B"
+
+        try:
+            module = model.get_submodule(module_name)
+        except AttributeError:
+            continue
+
+        layer_type, in_dim, out_dim, expected_ndim = _get_lora_base_layer_info(module)
+        if layer_type is None:
+            continue
+
+        if lora_side == "lora_A":
+            if tensor.ndim != expected_ndim:
+                mismatches.append(
+                    (
+                        key,
+                        f"checkpoint ndim={tensor.ndim} {tuple(tensor.shape)} vs model expects "
+                        f"{layer_type} ndim={expected_ndim}",
+                    )
+                )
+                continue
+            checkpoint_in_dim = tensor.shape[1]
+            if checkpoint_in_dim != in_dim:
+                mismatches.append(
+                    (
+                        key,
+                        f"checkpoint in-dim={checkpoint_in_dim} {tuple(tensor.shape)} vs model expects "
+                        f"{layer_type} in-dim={in_dim}",
+                    )
+                )
+        else:
+            if tensor.ndim != expected_ndim:
+                mismatches.append(
+                    (
+                        key,
+                        f"checkpoint ndim={tensor.ndim} {tuple(tensor.shape)} vs model expects "
+                        f"{layer_type} ndim={expected_ndim}",
+                    )
+                )
+                continue
+            checkpoint_out_dim = tensor.shape[0]
+            if checkpoint_out_dim != out_dim:
+                mismatches.append(
+                    (
+                        key,
+                        f"checkpoint out-dim={checkpoint_out_dim} {tuple(tensor.shape)} vs model expects "
+                        f"{layer_type} out-dim={out_dim}",
+                    )
+                )
+
+        if len(mismatches) >= max_mismatches:
+            break
+
+    if mismatches:
+        details = "\n".join(f"  - {key}: {reason}" for key, reason in mismatches)
+        extra = ""
+        if len(mismatches) >= max_mismatches:
+            extra = f"\n  ... (showing first {max_mismatches} mismatches)"
+        adapter_msg = f" for adapter '{adapter_name}'" if adapter_name is not None else ""
+        raise ValueError(
+            "The loaded LoRA weights are incompatible with the current model dimensions"
+            f"{adapter_msg}. Please check the model architecture version "
+            "(for example, an SD 1.5 LoRA cannot be loaded into an SDXL pipeline).\n"
+            f"Found shape mismatch(es):\n{details}{extra}"
+        )
+
+
 def _maybe_warn_for_unhandled_keys(incompatible_keys, adapter_name):
     warn_msg = ""
     if incompatible_keys is not None:

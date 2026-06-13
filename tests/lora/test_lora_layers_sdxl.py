@@ -21,6 +21,7 @@ import unittest
 
 import numpy as np
 import torch
+import torch.nn as nn
 from packaging import version
 from transformers import CLIPTextModel, CLIPTextModelWithProjection, CLIPTokenizer
 
@@ -53,6 +54,34 @@ from ..testing_utils import (
 sys.path.append(".")
 
 from .utils import PeftLoraLoaderMixinTests, check_if_lora_correctly_set, state_dicts_almost_equal  # noqa: E402
+
+
+def _build_sd15_incompatible_lora_state_dict(unet, rank=32):
+    """
+    Build a minimal LoRA state dict that mimics SD 1.5 checkpoint shapes when loaded into an SDXL UNet.
+
+    Includes:
+    - 4D Conv-style LoRA tensors targeting a Linear `proj_in` layer (ndim mismatch).
+    - 768-dim cross-attention LoRA tensors targeting SDXL's `attn2.to_k` (feature dim mismatch).
+    """
+    state_dict = {}
+
+    for name, module in unet.named_modules():
+        if name.endswith("proj_in") and isinstance(module, nn.Linear):
+            state_dict[f"unet.{name}.lora_A.weight"] = torch.zeros(rank, 640, 1, 1)
+            state_dict[f"unet.{name}.lora_B.weight"] = torch.zeros(module.out_features, rank, 1, 1)
+            break
+
+    for name, module in unet.named_modules():
+        if name.endswith("attn2.to_k") and isinstance(module, nn.Linear):
+            state_dict[f"unet.{name}.lora_A.weight"] = torch.zeros(rank, 768)
+            state_dict[f"unet.{name}.lora_B.weight"] = torch.zeros(module.out_features, rank)
+            break
+
+    if len(state_dict) < 4:
+        raise RuntimeError("Could not find SDXL UNet modules needed for incompatible LoRA regression test.")
+
+    return state_dict
 
 
 if is_accelerate_available():
@@ -151,6 +180,34 @@ class StableDiffusionXLLoRATests(PeftLoraLoaderMixinTests, unittest.TestCase):
             expected_rtol = 1e-3
 
         super().test_lora_scale_kwargs_match_fusion(expected_atol=expected_atol, expected_rtol=expected_rtol)
+
+    def test_load_sd15_lora_into_sdxl_raises_incompatibility_error(self):
+        """
+        Regression test for https://github.com/huggingface/diffusers/issues/11286
+
+        Loading an SD 1.5 LoRA into an SDXL pipeline must fail early with a clear ValueError before PEFT injects
+        adapter shells into the UNet.
+        """
+        components, _, _ = self.get_dummy_components()
+        pipe = self.pipeline_class(**components)
+
+        incompatible_lora_state_dict = _build_sd15_incompatible_lora_state_dict(pipe.unet)
+
+        with self.assertRaises(ValueError) as err_context:
+            pipe.load_lora_weights(incompatible_lora_state_dict)
+
+        error_message = str(err_context.exception)
+        self.assertIn(
+            "The loaded LoRA weights are incompatible with the current model dimensions",
+            error_message,
+        )
+        self.assertIn("Please check the model architecture version", error_message)
+        self.assertIn("Found shape mismatch(es):", error_message)
+        self.assertIn("proj_in.lora_A.weight", error_message)
+        self.assertIn("attn2.to_k.lora_A.weight", error_message)
+
+        self.assertFalse(check_if_lora_correctly_set(pipe.unet))
+        self.assertFalse(getattr(pipe.unet, "_hf_peft_config_loaded", False))
 
 
 @slow

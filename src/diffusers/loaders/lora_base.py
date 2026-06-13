@@ -46,7 +46,7 @@ from ..utils import (
     set_adapter_layers,
     set_weights_and_activate_adapters,
 )
-from ..utils.peft_utils import _create_lora_config
+from ..utils.peft_utils import _create_lora_config, _validate_lora_weight_compatibility
 from ..utils.state_dict_utils import _load_sft_state_dict_metadata
 
 
@@ -392,6 +392,8 @@ def _load_lora_into_text_encoder(
         # adapter_name
         if adapter_name is None:
             adapter_name = get_adapter_name(text_encoder)
+
+        _validate_lora_weight_compatibility(text_encoder, state_dict, adapter_name=adapter_name)
 
         # <Unsafe code
         is_model_cpu_offload, is_sequential_cpu_offload, is_group_offload = _func_optionally_disable_offloading(

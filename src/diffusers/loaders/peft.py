@@ -38,7 +38,11 @@ from ..utils import (
     set_adapter_layers,
     set_weights_and_activate_adapters,
 )
-from ..utils.peft_utils import _create_lora_config, _maybe_warn_for_unhandled_keys
+from ..utils.peft_utils import (
+    _create_lora_config,
+    _maybe_warn_for_unhandled_keys,
+    _validate_lora_weight_compatibility,
+)
 from .lora_base import _fetch_state_dict, _func_optionally_disable_offloading
 from .unet_loader_utils import _maybe_expand_lora_scales
 
@@ -263,6 +267,8 @@ class PeftAdapterMixin:
                 lora_config.bias = "all"
                 lora_config.modules_to_save = lora_config.exclude_modules
                 lora_config.exclude_modules = None
+
+            _validate_lora_weight_compatibility(self, state_dict, adapter_name=adapter_name)
 
             # <Unsafe code
             # We can be sure that the following works as it just sets attention processors, lora layers and puts all in the same dtype
