@@ -238,29 +238,14 @@ class OvisImagePipeline(
 
         return prompt_embeds
 
-    def encode_prompt(
+    def _prepare_prompt_embeds(
         self,
         prompt: str | list[str],
-        device: torch.device | None = None,
-        num_images_per_prompt: int = 1,
-        max_sequence_length: int = 256,
-        prompt_embeds: torch.FloatTensor | None = None,
+        prompt_embeds: torch.FloatTensor | None,
+        num_images_per_prompt: int,
+        max_sequence_length: int,
+        device: torch.device,
     ):
-        r"""
-
-        Args:
-            prompt (`str`, *optional*):
-                prompt to be encoded
-            device: (`torch.device`):
-                torch device
-            num_images_per_prompt (`int`):
-                number of images that should be generated per prompt
-            prompt_embeds (`torch.FloatTensor`, *optional*):
-                Pre-generated text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt weighting. If not
-                provided, text embeddings will be generated from `prompt` input argument.
-        """
-        device = device or self._execution_device
-
         if prompt_embeds is None:
             prompt_embeds = self._get_ovis_prompt_embeds(
                 prompt=prompt,
@@ -281,6 +266,58 @@ class OvisImagePipeline(
         text_ids[..., 2] = text_ids[..., 2] + torch.arange(prompt_embeds.shape[1])[None, :]
         text_ids = text_ids.to(device=device, dtype=dtype)
         return prompt_embeds, text_ids
+
+    def encode_prompt(
+        self,
+        prompt: str | list[str],
+        negative_prompt: str | list[str] | None = None,
+        do_classifier_free_guidance: bool = True,
+        device: torch.device | None = None,
+        num_images_per_prompt: int = 1,
+        max_sequence_length: int = 256,
+        prompt_embeds: torch.FloatTensor | None = None,
+        negative_prompt_embeds: torch.FloatTensor | None = None,
+    ):
+        r"""
+
+        Args:
+            prompt (`str` or `list[str]`, *optional*):
+                prompt to be encoded
+            negative_prompt (`str` or `list[str]`, *optional*):
+                The prompt or prompts not to guide the image generation. Used only when `do_classifier_free_guidance`
+                is `True`. If not defined, an empty string is used.
+            do_classifier_free_guidance (`bool`, *optional*, defaults to `True`):
+                Whether to also encode the `negative_prompt` for classifier-free guidance.
+            device: (`torch.device`):
+                torch device
+            num_images_per_prompt (`int`):
+                number of images that should be generated per prompt
+            max_sequence_length (`int`, *optional*, defaults to 256):
+                Maximum sequence length to use for the `prompt`.
+            prompt_embeds (`torch.FloatTensor`, *optional*):
+                Pre-generated text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt weighting. If not
+                provided, text embeddings will be generated from `prompt` input argument.
+            negative_prompt_embeds (`torch.FloatTensor`, *optional*):
+                Pre-generated negative text embeddings. If not provided, they are generated from `negative_prompt`.
+        """
+        device = device or self._execution_device
+
+        prompt_embeds, text_ids = self._prepare_prompt_embeds(
+            prompt, prompt_embeds, num_images_per_prompt, max_sequence_length, device
+        )
+
+        negative_text_ids = None
+        if do_classifier_free_guidance:
+            if negative_prompt is None:
+                negative_prompt = ""
+            if isinstance(negative_prompt, str):
+                batch_size = prompt_embeds.shape[0] // num_images_per_prompt
+                negative_prompt = batch_size * [negative_prompt]
+            negative_prompt_embeds, negative_text_ids = self._prepare_prompt_embeds(
+                negative_prompt, negative_prompt_embeds, num_images_per_prompt, max_sequence_length, device
+            )
+
+        return prompt_embeds, negative_prompt_embeds, text_ids, negative_text_ids
 
     def check_inputs(
         self,
@@ -543,27 +580,19 @@ class OvisImagePipeline(
         do_classifier_free_guidance = guidance_scale > 1
         (
             prompt_embeds,
+            negative_prompt_embeds,
             text_ids,
+            negative_text_ids,
         ) = self.encode_prompt(
             prompt=prompt,
+            negative_prompt=negative_prompt,
+            do_classifier_free_guidance=do_classifier_free_guidance,
             prompt_embeds=prompt_embeds,
+            negative_prompt_embeds=negative_prompt_embeds,
             device=device,
             num_images_per_prompt=num_images_per_prompt,
             max_sequence_length=max_sequence_length,
         )
-        if do_classifier_free_guidance:
-            if negative_prompt is not None and isinstance(negative_prompt, str):
-                negative_prompt = batch_size * [negative_prompt]
-            (
-                negative_prompt_embeds,
-                negative_text_ids,
-            ) = self.encode_prompt(
-                prompt=negative_prompt,
-                prompt_embeds=negative_prompt_embeds,
-                device=device,
-                num_images_per_prompt=num_images_per_prompt,
-                max_sequence_length=max_sequence_length,
-            )
 
         # 4. Prepare latent variables
         num_channels_latents = self.transformer.config.in_channels // 4
@@ -623,6 +652,7 @@ class OvisImagePipeline(
                         encoder_hidden_states=prompt_embeds,
                         txt_ids=text_ids,
                         img_ids=latent_image_ids,
+                        joint_attention_kwargs=self.joint_attention_kwargs,
                         return_dict=False,
                     )[0]
 
@@ -634,6 +664,7 @@ class OvisImagePipeline(
                             encoder_hidden_states=negative_prompt_embeds,
                             txt_ids=negative_text_ids,
                             img_ids=latent_image_ids,
+                            joint_attention_kwargs=self.joint_attention_kwargs,
                             return_dict=False,
                         )[0]
                     noise_pred = neg_noise_pred + guidance_scale * (noise_pred - neg_noise_pred)

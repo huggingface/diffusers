@@ -17,7 +17,7 @@ import unittest
 
 import numpy as np
 import torch
-from transformers import AutoTokenizer, Qwen3Config, Qwen3Model
+from transformers import Qwen2Tokenizer, Qwen3Config, Qwen3Model
 
 from diffusers import (
     AutoencoderKL,
@@ -27,10 +27,30 @@ from diffusers import (
 )
 
 from ...testing_utils import torch_device
+from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_IMAGE_PARAMS, TEXT_TO_IMAGE_PARAMS
+from ..test_pipelines_common import PipelineTesterMixin
 
 
-class OvisImagePipelineFastTests(unittest.TestCase):
+class OvisImagePipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     pipeline_class = OvisImagePipeline
+    params = TEXT_TO_IMAGE_PARAMS - {"cross_attention_kwargs"}
+    batch_params = TEXT_TO_IMAGE_BATCH_PARAMS
+    image_params = TEXT_TO_IMAGE_IMAGE_PARAMS
+    image_latents_params = TEXT_TO_IMAGE_IMAGE_PARAMS
+    required_optional_params = frozenset(
+        [
+            "num_inference_steps",
+            "generator",
+            "latents",
+            "return_dict",
+            "callback_on_step_end",
+            "callback_on_step_end_tensor_inputs",
+        ]
+    )
+    supports_dduf = False
+    test_xformers_attention = False
+    test_layerwise_casting = True
+    test_group_offloading = True
 
     def get_dummy_components(self):
         torch.manual_seed(0)
@@ -60,7 +80,7 @@ class OvisImagePipelineFastTests(unittest.TestCase):
             scaling_factor=1.5035,
         )
         scheduler = FlowMatchEulerDiscreteScheduler()
-        tokenizer = AutoTokenizer.from_pretrained("hf-internal-testing/tiny-random-Qwen2VLForConditionalGeneration")
+        tokenizer = Qwen2Tokenizer.from_pretrained("hf-internal-testing/tiny-random-Qwen2VLForConditionalGeneration")
         torch.manual_seed(0)
         text_encoder = Qwen3Model(
             Qwen3Config(
@@ -82,49 +102,52 @@ class OvisImagePipelineFastTests(unittest.TestCase):
             "transformer": transformer,
         }
 
-    def get_dummy_inputs(self, seed=0):
+    def get_dummy_inputs(self, device, seed=0):
+        if str(device).startswith("mps"):
+            generator = torch.manual_seed(seed)
+        else:
+            generator = torch.Generator(device=device).manual_seed(seed)
+
         return {
             "prompt": "a cat",
-            "generator": torch.Generator(device="cpu").manual_seed(seed),
+            "negative_prompt": "bad quality",
+            "generator": generator,
             "num_inference_steps": 2,
             "guidance_scale": 2.0,
             "height": 16,
             "width": 16,
+            "max_sequence_length": 32,
             "output_type": "np",
         }
 
     def test_inference(self):
-        pipe = self.pipeline_class(**self.get_dummy_components()).to(torch_device)
-        image = pipe(**self.get_dummy_inputs()).images
-        assert image.shape == (1, 16, 16, 3)
-        assert np.isfinite(image).all()
+        device = "cpu"
+        components = self.get_dummy_components()
+        pipe = self.pipeline_class(**components)
+        pipe.to(device)
+        pipe.set_progress_bar_config(disable=None)
 
-    def test_guidance_scale_property_is_set(self):
-        # The guidance_scale property reads self._guidance_scale, which __call__ must initialize.
+        inputs = self.get_dummy_inputs(device)
+        image = pipe(**inputs).images
+        generated_image = image[0]
+        self.assertEqual(generated_image.shape, (16, 16, 3))
+        self.assertTrue(np.isfinite(image).all())
+
+    def test_guidance_scale_is_set(self):
+        # The `guidance_scale` property reads `self._guidance_scale`, which `__call__` must initialize.
         pipe = self.pipeline_class(**self.get_dummy_components()).to(torch_device)
-        inputs = self.get_dummy_inputs()
+        inputs = self.get_dummy_inputs(torch_device)
         pipe(**inputs)
         assert pipe.guidance_scale == inputs["guidance_scale"]
 
     def test_max_sequence_length_is_used(self):
-        # max_sequence_length should actually bound the encoded prompt length.
+        # `max_sequence_length` should bound the encoded prompt length.
         pipe = self.pipeline_class(**self.get_dummy_components()).to(torch_device)
-        embeds_64, _ = pipe.encode_prompt("a cat", device=torch_device, max_sequence_length=64)
-        embeds_128, _ = pipe.encode_prompt("a cat", device=torch_device, max_sequence_length=128)
-        assert embeds_64.shape[1] == 64
-        assert embeds_128.shape[1] == 128
-
-    def test_num_images_per_prompt(self):
-        pipe = self.pipeline_class(**self.get_dummy_components()).to(torch_device)
-        inputs = self.get_dummy_inputs()
-        image = pipe(**inputs, num_images_per_prompt=2).images
-        assert image.shape[0] == 2
-
-    def test_batched_inference_with_default_negative_prompt(self):
-        # Batched prompts with the default ("") negative prompt under CFG should not raise.
-        pipe = self.pipeline_class(**self.get_dummy_components()).to(torch_device)
-        inputs = self.get_dummy_inputs()
-        inputs["prompt"] = ["a cat", "a dog"]
-        image = pipe(**inputs).images
-        assert image.shape[0] == 2
-        assert np.isfinite(image).all()
+        embeds_16 = pipe.encode_prompt(
+            "a cat", do_classifier_free_guidance=False, device=torch_device, max_sequence_length=16
+        )[0]
+        embeds_32 = pipe.encode_prompt(
+            "a cat", do_classifier_free_guidance=False, device=torch_device, max_sequence_length=32
+        )[0]
+        assert embeds_16.shape[1] == 16
+        assert embeds_32.shape[1] == 32
