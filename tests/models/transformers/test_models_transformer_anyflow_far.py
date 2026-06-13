@@ -111,6 +111,11 @@ class AnyFlowFARTransformer3DTesterConfig(BaseModelTesterConfig):
 
 
 class TestAnyFlowFARTransformer3D(AnyFlowFARTransformer3DTesterConfig, ModelTesterMixin):
+    def test_attention_processor_api(self):
+        model = self.model_class(**self.get_init_dict())
+        assert len(model.attn_processors) > 0
+        model.set_attn_processor(model.attn_processors)
+
     """Core model tests for AnyFlow FAR causal Transformer 3D."""
 
     @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16], ids=["fp16", "bf16"])

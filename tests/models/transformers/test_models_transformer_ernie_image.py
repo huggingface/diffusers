@@ -101,7 +101,10 @@ class ErnieImageTransformerTesterConfig(BaseModelTesterConfig):
 
 
 class TestErnieImageTransformer(ErnieImageTransformerTesterConfig, ModelTesterMixin):
-    pass
+    def test_attention_processor_api(self):
+        model = self.model_class(**self.get_init_dict())
+        assert len(model.attn_processors) > 0
+        model.set_attn_processor(model.attn_processors)
 
 
 class TestErnieImageTransformerTraining(ErnieImageTransformerTesterConfig, TrainingTesterMixin):

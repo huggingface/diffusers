@@ -31,7 +31,7 @@ from ...configuration_utils import ConfigMixin, register_to_config
 from ...loaders import FromOriginalModelMixin, PeftAdapterMixin
 from ...utils import BaseOutput, apply_lora_scale, logging
 from ...utils.torch_utils import maybe_adjust_dtype_for_device
-from ..attention import AttentionModuleMixin, FeedForward
+from ..attention import AttentionMixin, AttentionModuleMixin, FeedForward
 from ..attention_dispatch import dispatch_attention_fn
 from ..embeddings import PixArtAlphaTextProjection, TimestepEmbedding, Timesteps, get_1d_rotary_pos_embed
 from ..modeling_outputs import Transformer2DModelOutput
@@ -958,7 +958,7 @@ def _build_far_block_mask_from_far_cfg(far_cfg, has_clean, device):
     )
 
 
-class AnyFlowFARTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOriginalModelMixin):
+class AnyFlowFARTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOriginalModelMixin, AttentionMixin):
     r"""
     Causal (FAR) 3D Transformer for AnyFlow flow-map sampling with chunk-wise autoregressive generation.
 
