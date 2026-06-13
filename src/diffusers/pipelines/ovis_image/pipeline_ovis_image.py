@@ -202,11 +202,12 @@ class OvisImagePipeline(
         self,
         prompt: str | list[str] = None,
         num_images_per_prompt: int = 1,
+        max_sequence_length: int = 256,
         device: torch.device | None = None,
         dtype: torch.dtype | None = None,
     ):
         device = device or self._execution_device
-        dtype = dtype or self.text_encoder.dtype
+        dtype = dtype or (self.text_encoder.dtype if self.text_encoder is not None else self.transformer.dtype)
 
         messages = self._get_messages(prompt)
         batch_size = len(messages)
@@ -215,7 +216,7 @@ class OvisImagePipeline(
             messages,
             padding="max_length",
             truncation=True,
-            max_length=self.tokenizer_max_length,
+            max_length=max_sequence_length + self.user_prompt_begin_id,
             return_tensors="pt",
             add_special_tokens=False,
         )
@@ -242,6 +243,7 @@ class OvisImagePipeline(
         prompt: str | list[str],
         device: torch.device | None = None,
         num_images_per_prompt: int = 1,
+        max_sequence_length: int = 256,
         prompt_embeds: torch.FloatTensor | None = None,
     ):
         r"""
@@ -264,7 +266,14 @@ class OvisImagePipeline(
                 prompt=prompt,
                 device=device,
                 num_images_per_prompt=num_images_per_prompt,
+                max_sequence_length=max_sequence_length,
             )
+        else:
+            dtype = self.text_encoder.dtype if self.text_encoder is not None else self.transformer.dtype
+            prompt_embeds = prompt_embeds.to(device=device, dtype=dtype)
+            batch_size, seq_len, _ = prompt_embeds.shape
+            prompt_embeds = prompt_embeds.repeat(1, num_images_per_prompt, 1)
+            prompt_embeds = prompt_embeds.view(batch_size * num_images_per_prompt, seq_len, -1)
 
         dtype = self.text_encoder.dtype if self.text_encoder is not None else self.transformer.dtype
         text_ids = torch.zeros(prompt_embeds.shape[1], 3)
@@ -516,6 +525,7 @@ class OvisImagePipeline(
             max_sequence_length=max_sequence_length,
         )
 
+        self._guidance_scale = guidance_scale
         self._joint_attention_kwargs = joint_attention_kwargs
         self._current_timestep = None
         self._interrupt = False
@@ -539,8 +549,11 @@ class OvisImagePipeline(
             prompt_embeds=prompt_embeds,
             device=device,
             num_images_per_prompt=num_images_per_prompt,
+            max_sequence_length=max_sequence_length,
         )
         if do_classifier_free_guidance:
+            if negative_prompt is not None and isinstance(negative_prompt, str):
+                negative_prompt = batch_size * [negative_prompt]
             (
                 negative_prompt_embeds,
                 negative_text_ids,
@@ -549,6 +562,7 @@ class OvisImagePipeline(
                 prompt_embeds=negative_prompt_embeds,
                 device=device,
                 num_images_per_prompt=num_images_per_prompt,
+                max_sequence_length=max_sequence_length,
             )
 
         # 4. Prepare latent variables
