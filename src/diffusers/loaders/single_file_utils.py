@@ -4304,3 +4304,23 @@ def convert_ernie_image_transformer_checkpoint_to_diffusers(checkpoint, **kwargs
             checkpoint[k.replace("model.diffusion_model.", "")] = checkpoint.pop(k)
 
     return checkpoint
+
+
+def convert_ideogram4_transformer_checkpoint_to_diffusers(checkpoint, **kwargs):
+    # Original/GGUF Ideogram 4 checkpoints fuse the attention projection as `attention.qkv` and name
+    # the output projection `attention.o`; diffusers uses split to_q/to_k/to_v and to_out.0. Every
+    # other key already matches the diffusers layout.
+    if not any(k.endswith("attention.qkv.weight") for k in checkpoint):
+        return checkpoint
+    converted_state_dict = {}
+    num_layers = max(int(k.split(".")[1]) for k in checkpoint if k.startswith("layers.")) + 1
+    for i in range(num_layers):
+        q, k, v = torch.chunk(checkpoint.pop(f"layers.{i}.attention.qkv.weight"), 3, dim=0)
+        converted_state_dict[f"layers.{i}.attention.to_q.weight"] = q
+        converted_state_dict[f"layers.{i}.attention.to_k.weight"] = k
+        converted_state_dict[f"layers.{i}.attention.to_v.weight"] = v
+        converted_state_dict[f"layers.{i}.attention.to_out.0.weight"] = checkpoint.pop(
+            f"layers.{i}.attention.o.weight"
+        )
+    converted_state_dict.update(checkpoint)
+    return converted_state_dict
