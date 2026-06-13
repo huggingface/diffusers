@@ -1284,8 +1284,8 @@ class Cosmos3OmniPipeline(DiffusionPipeline):
         (optional) sound latents jointly, and decode them back into a video and audio waveform.
 
         The generation mode is selected from the inputs: text-to-image when `num_frames == 1`, image-to-video when
-        `image` is supplied, video-to-video (generation) when `video` is supplied (without `action`), action-conditioned generation
-        when `action` is supplied, and text-to-video otherwise.
+        `image` is supplied, video-to-video (generation) when `video` is supplied (without `action`),
+        action-conditioned generation when `action` is supplied, and text-to-video otherwise.
 
         Args:
             prompt (`str` or `List[str]`):
