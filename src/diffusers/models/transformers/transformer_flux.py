@@ -190,6 +190,10 @@ class FluxIPAdapterAttnProcessor(torch.nn.Module):
         ip_hidden_states: list[torch.Tensor] | None = None,
         ip_adapter_masks: torch.Tensor | None = None,
     ) -> torch.Tensor:
+        if ip_adapter_masks is not None:
+            logger.warning_once(
+                "`ip_adapter_masks` is not supported by the Flux IP-Adapter and will be ignored."
+            )
         batch_size = hidden_states.shape[0]
 
         query, key, value, encoder_query, encoder_key, encoder_value = _get_qkv_projections(
