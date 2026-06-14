@@ -74,6 +74,8 @@ class BlockRefinementScheduler(SchedulerMixin, ConfigMixin):
         self.num_inference_steps = num_inference_steps
         self.timesteps = torch.arange(self.num_inference_steps - 1, -1, -1, dtype=torch.long)
         self._transfer_schedule: torch.LongTensor | None = None
+        # committed positions for the uniform corruption mode (no mask token); reset at the start of each block
+        self._committed: torch.BoolTensor | None = None
 
     def set_timesteps(
         self,
@@ -92,6 +94,7 @@ class BlockRefinementScheduler(SchedulerMixin, ConfigMixin):
         self._transfer_schedule = self.get_num_transfer_tokens(block_length, self.num_inference_steps).to(
             device=device if device is not None else "cpu"
         )
+        self._committed = None
 
     def get_num_transfer_tokens(self, block_length: int, num_inference_steps: int) -> torch.LongTensor:
         """Evenly distribute `block_length` token commits across `num_inference_steps` steps."""
@@ -178,7 +181,7 @@ class BlockRefinementScheduler(SchedulerMixin, ConfigMixin):
         timestep: int | torch.Tensor,
         sample: torch.LongTensor,
         *,
-        mask_token_id: int,
+        mask_token_id: int | None = None,
         temperature: float = 0.0,
         top_p: float | None = None,
         top_k: int | None = None,
@@ -203,9 +206,11 @@ class BlockRefinementScheduler(SchedulerMixin, ConfigMixin):
             timestep (`int` or `torch.Tensor`):
                 Current step index within the block's refinement schedule.
             sample (`torch.LongTensor` of shape `(batch_size, block_length)`):
-                Current block token IDs (contains mask tokens for uncommitted positions).
-            mask_token_id (`int`):
-                Token ID used for masked positions.
+                Current block token IDs (contains mask tokens for uncommitted positions in the mask-based mode).
+            mask_token_id (`int`, *optional*):
+                Token ID used for masked positions. When `None`, the scheduler runs in uniform corruption mode: it
+                tracks committed positions internally (resetting at `timestep == 0`) and renoises the uncommitted
+                ones with uniformly random tokens, matching DiffusionGemma's block refinement sampler.
             temperature (`float`):
                 Sampling temperature.
             top_p (`float`, *optional*):
@@ -247,13 +252,53 @@ class BlockRefinementScheduler(SchedulerMixin, ConfigMixin):
         )
 
         batch_size, block_length = sample.shape
-        active_block = sample == mask_token_id
-        masks_remaining = active_block.any()
 
         if isinstance(timestep, torch.Tensor):
             step_index = int(timestep.item())
         else:
             step_index = int(timestep)
+
+        # --- Uniform corruption mode (DiffusionGemma): no mask token, committed positions tracked as state ---
+        if mask_token_id is None:
+            if step_index == 0 or self._committed is None or self._committed.shape != sample.shape:
+                self._committed = torch.zeros_like(sample, dtype=torch.bool)
+            committed = self._committed
+            confidence = sampled_probs.to(dtype=torch.float32)
+
+            # Cumulative quota: evenly distribute the block across the steps, commit what is still owed
+            steps_done = step_index + 1
+            target = (steps_done * block_length + self.num_inference_steps - 1) // self.num_inference_steps
+            needed = (target - committed.sum(dim=-1)).clamp(min=0)
+
+            masked_confidence = confidence.masked_fill(committed, float("-inf"))
+            ranks = masked_confidence.argsort(dim=-1, descending=True).argsort(dim=-1)
+            transfer_index = ~committed & ((ranks < needed[:, None]) | (confidence > threshold))
+
+            editing_transfer_index = torch.zeros_like(transfer_index)
+            if editing_threshold is not None:
+                editing_transfer_index = (
+                    committed & (sampled_tokens != sample) & (confidence > float(editing_threshold))
+                )
+
+            prev_sample = torch.where(transfer_index | editing_transfer_index, sampled_tokens, sample)
+            self._committed = committed | transfer_index
+            random_tokens = torch.randint(
+                low=0, high=model_output.shape[-1], size=sample.shape, device=sample.device, generator=generator
+            )
+            prev_sample = torch.where(self._committed, prev_sample, random_tokens)
+
+            if not return_dict:
+                return prev_sample, transfer_index, editing_transfer_index, sampled_tokens, sampled_probs
+            return BlockRefinementSchedulerOutput(
+                prev_sample=prev_sample,
+                transfer_index=transfer_index,
+                editing_transfer_index=editing_transfer_index,
+                sampled_tokens=sampled_tokens,
+                sampled_probs=sampled_probs,
+            )
+
+        active_block = sample == mask_token_id
+        masks_remaining = active_block.any()
 
         # --- Mask-filling transfer ---
         transfer_index = torch.zeros_like(sampled_tokens, dtype=torch.bool)
