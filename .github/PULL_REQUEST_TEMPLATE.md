@@ -19,7 +19,7 @@ Fixes # (issue)
 - [ ] Did you use an AI agent (Claude Code, Codex, Cursor, etc.) to help with this PR? If so:
   - [ ] Did you point it at the project conventions in [`.ai/`](https://github.com/huggingface/diffusers/tree/main/.ai) (e.g. via `make claude` / `make codex`)? See [Coding with AI agents](https://huggingface.co/docs/diffusers/main/en/conceptual/contribution#coding-with-ai-agents).
   - [ ] Did you self-review the diff against [`.ai/review-rules.md`](https://github.com/huggingface/diffusers/blob/main/.ai/review-rules.md)?
-- [ ] Did you read the [contributor guideline](https://github.com/huggingface/diffusers/blob/main/CONTRIBUTING.md)?
+- [ ] Did you read the [contributor guideline](https://huggingface.co/docs/diffusers/main/en/conceptual/contribution)?
 - [ ] Did you read our [philosophy doc](https://huggingface.co/docs/diffusers/main/en/conceptual/philosophy)? (important for complex PRs)
 - [ ] Was this discussed/approved via a GitHub issue or the [forum](https://discuss.huggingface.co/c/discussion-related-to-httpsgithubcomhuggingfacediffusers/63)? Please add a link to it if that's the case.
 - [ ] Did you make sure to update the documentation with your changes? Here are the
