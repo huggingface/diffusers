@@ -1259,6 +1259,14 @@ def apply_rotary_emb_allegro(x: torch.Tensor, freqs_cis, positions):
     return x
 
 
+def _unstack_doubled_features(tensor: torch.Tensor, expected_features: int) -> torch.Tensor:
+    """Convert `[B, 2 * F]` tensors to `[2 * B, F]` when features were concatenated horizontally."""
+    if tensor.shape[-1] == expected_features * 2:
+        first, second = tensor.chunk(2, dim=-1)
+        return torch.cat([first, second], dim=0)
+    return tensor
+
+
 class TimestepEmbedding(nn.Module):
     def __init__(
         self,
@@ -1293,7 +1301,9 @@ class TimestepEmbedding(nn.Module):
             self.post_act = get_activation(post_act_fn)
 
     def forward(self, sample, condition=None):
+        sample = _unstack_doubled_features(sample, self.linear_1.in_features)
         if condition is not None:
+            condition = _unstack_doubled_features(condition, self.cond_proj.in_features)
             sample = sample + self.cond_proj(condition)
         sample = self.linear_1(sample)
 
@@ -2212,6 +2222,7 @@ class PixArtAlphaTextProjection(nn.Module):
         self.linear_2 = nn.Linear(in_features=hidden_size, out_features=out_features, bias=True)
 
     def forward(self, caption):
+        caption = _unstack_doubled_features(caption, self.linear_1.in_features)
         hidden_states = self.linear_1(caption)
         hidden_states = self.act_1(hidden_states)
         hidden_states = self.linear_2(hidden_states)
