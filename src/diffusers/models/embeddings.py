@@ -1259,6 +1259,7 @@ def apply_rotary_emb_allegro(x: torch.Tensor, freqs_cis, positions):
     return x
 
 
+# Trigger CI
 def _unstack_doubled_features(tensor: torch.Tensor, expected_features: int) -> torch.Tensor:
     """Convert `[B, 2 * F]` tensors to `[2 * B, F]` when features were concatenated horizontally."""
     if tensor.shape[-1] == expected_features * 2:
