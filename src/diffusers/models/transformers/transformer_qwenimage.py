@@ -23,7 +23,7 @@ import torch.nn.functional as F
 
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...loaders import FromOriginalModelMixin, PeftAdapterMixin
-from ...utils import apply_lora_scale, deprecate, logging
+from ...utils import apply_lora_scale, logging
 from ...utils.torch_utils import lru_cache_unless_export, maybe_allow_in_graph
 from .._modeling_parallel import ContextParallelInput, ContextParallelOutput
 from ..attention import AttentionMixin, FeedForward
@@ -241,7 +241,6 @@ class QwenEmbedRope(nn.Module):
     def forward(
         self,
         video_fhw: tuple[int, int, int, list[tuple[int, int, int]]],
-        txt_seq_lens: list[int] | None = None,
         device: torch.device = None,
         max_txt_seq_len: int | torch.Tensor | None = None,
     ) -> tuple[torch.Tensor, torch.Tensor]:
@@ -249,30 +248,14 @@ class QwenEmbedRope(nn.Module):
         Args:
             video_fhw (`tuple[int, int, int]` or `list[tuple[int, int, int]]`):
                 A list of 3 integers [frame, height, width] representing the shape of the video.
-            txt_seq_lens (`list[int]`, *optional*, **Deprecated**):
-                Deprecated parameter. Use `max_txt_seq_len` instead. If provided, the maximum value will be used.
             device: (`torch.device`, *optional*):
                 The device on which to perform the RoPE computation.
             max_txt_seq_len (`int` or `torch.Tensor`, *optional*):
                 The maximum text sequence length for RoPE computation. This should match the encoder hidden states
                 sequence length. Can be either an int or a scalar tensor (for torch.compile compatibility).
         """
-        # Handle deprecated txt_seq_lens parameter
-        if txt_seq_lens is not None:
-            deprecate(
-                "txt_seq_lens",
-                "0.39.0",
-                "Passing `txt_seq_lens` is deprecated and will be removed in version 0.39.0. "
-                "Please use `max_txt_seq_len` instead. "
-                "The new parameter accepts a single int or tensor value representing the maximum text sequence length.",
-                standard_warn=False,
-            )
-            if max_txt_seq_len is None:
-                # Use max of txt_seq_lens for backward compatibility
-                max_txt_seq_len = max(txt_seq_lens) if isinstance(txt_seq_lens, list) else txt_seq_lens
-
         if max_txt_seq_len is None:
-            raise ValueError("Either `max_txt_seq_len` or `txt_seq_lens` (deprecated) must be provided.")
+            raise ValueError("`max_txt_seq_len` must be provided.")
 
         # Validate batch inference with variable-sized images
         if isinstance(video_fhw, list) and len(video_fhw) > 1:
@@ -513,6 +496,18 @@ class QwenDoubleStreamAttnProcessor2_0:
     ) -> torch.FloatTensor:
         if encoder_hidden_states is None:
             raise ValueError("QwenDoubleStreamAttnProcessor2_0 requires encoder_hidden_states (text stream)")
+
+        if attention_mask is not None:
+            raise ValueError(
+                "QwenDoubleStreamAttnProcessor2_0 does not accept an external attention_mask. "
+                "Pass encoder_hidden_states_mask to let the processor build the joint mask."
+            )
+
+        if encoder_hidden_states_mask is not None:
+            seq_img = hidden_states.shape[1]
+            image_mask = torch.ones((hidden_states.shape[0], seq_img), dtype=torch.bool, device=hidden_states.device)
+            attention_mask = torch.cat([encoder_hidden_states_mask, image_mask], dim=1)
+            attention_mask = attention_mask[:, None, None, :]
 
         seq_txt = encoder_hidden_states.shape[1]
 
@@ -787,6 +782,7 @@ class QwenImageTransformer2DModel(
         },
         "transformer_blocks.*": {
             "modulate_index": ContextParallelInput(split_dim=1, expected_dims=2, split_output=False),
+            "encoder_hidden_states_mask": ContextParallelInput(split_dim=1, expected_dims=2, split_output=False),
         },
         "pos_embed": {
             0: ContextParallelInput(split_dim=0, expected_dims=2, split_output=True),
@@ -855,7 +851,6 @@ class QwenImageTransformer2DModel(
         encoder_hidden_states_mask: torch.Tensor = None,
         timestep: torch.LongTensor = None,
         img_shapes: list[tuple[int, int, int]] | None = None,
-        txt_seq_lens: list[int] | None = None,
         guidance: torch.Tensor = None,  # TODO: this should probably be removed
         attention_kwargs: dict[str, Any] | None = None,
         controlnet_block_samples=None,
@@ -878,9 +873,6 @@ class QwenImageTransformer2DModel(
                 Used to indicate denoising step.
             img_shapes (`list[tuple[int, int, int]]`, *optional*):
                 Image shapes for RoPE computation.
-            txt_seq_lens (`list[int]`, *optional*, **Deprecated**):
-                Deprecated parameter. Use `encoder_hidden_states_mask` instead. If provided, the maximum value will be
-                used to compute RoPE sequence length.
             guidance (`torch.Tensor`, *optional*):
                 Guidance tensor for conditional generation.
             attention_kwargs (`dict`, *optional*):
@@ -889,6 +881,8 @@ class QwenImageTransformer2DModel(
                 [diffusers.models.attention_processor](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/attention_processor.py).
             controlnet_block_samples (*optional*):
                 ControlNet block samples to add to the transformer blocks.
+            additional_t_cond (`torch.Tensor`, *optional*):
+                Additional timestep conditioning added to the timestep embedding.
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`~models.transformer_2d.Transformer2DModelOutput`] instead of a plain
                 tuple.
@@ -897,16 +891,6 @@ class QwenImageTransformer2DModel(
             If `return_dict` is True, an [`~models.transformer_2d.Transformer2DModelOutput`] is returned, otherwise a
             `tuple` where the first element is the sample tensor.
         """
-        if txt_seq_lens is not None:
-            deprecate(
-                "txt_seq_lens",
-                "0.39.0",
-                "Passing `txt_seq_lens` is deprecated and will be removed in version 0.39.0. "
-                "Please use `encoder_hidden_states_mask` instead. "
-                "The mask-based approach is more flexible and supports variable-length sequences.",
-                standard_warn=False,
-            )
-
         hidden_states = self.img_in(hidden_states)
 
         timestep = timestep.to(hidden_states.dtype)
@@ -940,27 +924,16 @@ class QwenImageTransformer2DModel(
 
         image_rotary_emb = self.pos_embed(img_shapes, max_txt_seq_len=text_seq_len, device=hidden_states.device)
 
-        # Construct joint attention mask once to avoid reconstructing in every block
-        # This eliminates 60 GPU syncs during training while maintaining torch.compile compatibility
-        block_attention_kwargs = attention_kwargs.copy() if attention_kwargs is not None else {}
-        if encoder_hidden_states_mask is not None:
-            # Build joint mask: [text_mask, all_ones_for_image]
-            batch_size, image_seq_len = hidden_states.shape[:2]
-            image_mask = torch.ones((batch_size, image_seq_len), dtype=torch.bool, device=hidden_states.device)
-            joint_attention_mask = torch.cat([encoder_hidden_states_mask, image_mask], dim=1)
-            joint_attention_mask = joint_attention_mask[:, None, None, :]
-            block_attention_kwargs["attention_mask"] = joint_attention_mask
-
         for index_block, block in enumerate(self.transformer_blocks):
             if torch.is_grad_enabled() and self.gradient_checkpointing:
                 encoder_hidden_states, hidden_states = self._gradient_checkpointing_func(
                     block,
                     hidden_states,
                     encoder_hidden_states,
-                    None,  # Don't pass encoder_hidden_states_mask (using attention_mask instead)
+                    encoder_hidden_states_mask,
                     temb,
                     image_rotary_emb,
-                    block_attention_kwargs,
+                    attention_kwargs,
                     modulate_index,
                 )
 
@@ -968,10 +941,10 @@ class QwenImageTransformer2DModel(
                 encoder_hidden_states, hidden_states = block(
                     hidden_states=hidden_states,
                     encoder_hidden_states=encoder_hidden_states,
-                    encoder_hidden_states_mask=None,  # Don't pass (using attention_mask instead)
+                    encoder_hidden_states_mask=encoder_hidden_states_mask,
                     temb=temb,
                     image_rotary_emb=image_rotary_emb,
-                    joint_attention_kwargs=block_attention_kwargs,
+                    joint_attention_kwargs=attention_kwargs,
                     modulate_index=modulate_index,
                 )
 

@@ -75,12 +75,21 @@ class BlockRefinementScheduler(SchedulerMixin, ConfigMixin):
         self.timesteps = torch.arange(self.num_inference_steps - 1, -1, -1, dtype=torch.long)
         self._transfer_schedule: torch.LongTensor | None = None
 
-    def set_timesteps(self, num_inference_steps: int, device: str | torch.device | None = None) -> None:
+    def set_timesteps(
+        self,
+        num_inference_steps: int,
+        device: str | torch.device | None = None,
+        block_length: int | None = None,
+    ) -> None:
         if num_inference_steps <= 0:
             raise ValueError(f"`num_inference_steps` must be > 0, got {num_inference_steps}.")
+        if block_length is None:
+            block_length = self.config.block_length
+        elif block_length <= 0:
+            raise ValueError(f"`block_length` must be > 0, got {block_length}.")
         self.num_inference_steps = num_inference_steps
         self.timesteps = torch.arange(self.num_inference_steps - 1, -1, -1, device=device, dtype=torch.long)
-        self._transfer_schedule = self.get_num_transfer_tokens(self.config.block_length, self.num_inference_steps).to(
+        self._transfer_schedule = self.get_num_transfer_tokens(block_length, self.num_inference_steps).to(
             device=device if device is not None else "cpu"
         )
 
@@ -343,7 +352,8 @@ class BlockRefinementScheduler(SchedulerMixin, ConfigMixin):
             if len(eos_pos[0]) == 0:
                 continue
             eos_pos = int(eos_pos[0][0].item())
-            if prompt_length >= eos_pos:
+            # The first generated token sits at index `prompt_length`; allow EOS there.
+            if eos_pos < prompt_length:
                 continue
             if (cur_x[b, prompt_length:eos_pos] != mask_token_id).all().item():
                 finished[b] = True

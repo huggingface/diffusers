@@ -46,6 +46,7 @@ else:
         "InsertableDict",
     ]
     _import_structure["stable_diffusion_xl"] = ["StableDiffusionXLAutoBlocks", "StableDiffusionXLModularPipeline"]
+    _import_structure["stable_diffusion_3"] = ["StableDiffusion3AutoBlocks", "StableDiffusion3ModularPipeline"]
     _import_structure["wan"] = [
         "WanBlocks",
         "Wan22Blocks",
@@ -78,6 +79,10 @@ else:
         "Flux2KleinModularPipeline",
         "Flux2KleinBaseModularPipeline",
     ]
+    _import_structure["ideogram4"] = [
+        "Ideogram4AutoBlocks",
+        "Ideogram4ModularPipeline",
+    ]
     _import_structure["qwenimage"] = [
         "QwenImageAutoBlocks",
         "QwenImageModularPipeline",
@@ -87,6 +92,10 @@ else:
         "QwenImageEditPlusAutoBlocks",
         "QwenImageLayeredModularPipeline",
         "QwenImageLayeredAutoBlocks",
+    ]
+    _import_structure["anima"] = [
+        "AnimaAutoBlocks",
+        "AnimaModularPipeline",
     ]
     _import_structure["ernie_image"] = [
         "ErnieImageAutoBlocks",
@@ -113,6 +122,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     except OptionalDependencyNotAvailable:
         from ..utils.dummy_pt_objects import *  # noqa F403
     else:
+        from .anima import AnimaAutoBlocks, AnimaModularPipeline
         from .components_manager import ComponentsManager
         from .ernie_image import ErnieImageAutoBlocks, ErnieImageModularPipeline
         from .flux import FluxAutoBlocks, FluxKontextAutoBlocks, FluxKontextModularPipeline, FluxModularPipeline
@@ -136,6 +146,10 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             HunyuanVideo15AutoBlocks,
             HunyuanVideo15ModularPipeline,
         )
+        from .ideogram4 import (
+            Ideogram4AutoBlocks,
+            Ideogram4ModularPipeline,
+        )
         from .ltx import LTXAutoBlocks, LTXModularPipeline
         from .modular_pipeline import (
             AutoPipelineBlocks,
@@ -158,6 +172,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             QwenImageLayeredModularPipeline,
             QwenImageModularPipeline,
         )
+        from .stable_diffusion_3 import StableDiffusion3AutoBlocks, StableDiffusion3ModularPipeline
         from .stable_diffusion_xl import StableDiffusionXLAutoBlocks, StableDiffusionXLModularPipeline
         from .wan import (
             Wan22Blocks,

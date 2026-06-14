@@ -29,6 +29,12 @@ env:
   OMP_NUM_THREADS: 4
   MKL_NUM_THREADS: 4
   PYTEST_TIMEOUT: 60
+  # Force version overrides across every `uv pip install` in this workflow via UV_OVERRIDE:
+  #   - tokenizers<0.23.0, even when transformers@main declares a higher lower-bound.
+  #   - torch/torchvision/torchaudio pinned to the image's baked-in set so `-U` installs
+  #     (e.g. accelerate@main) can't bump torch and break torchvision's C++ ABI
+  #     (torchvision::nms). The pinned set is (re)written into the override file per job below.
+  UV_OVERRIDE: /tmp/uv-overrides.txt
 
 jobs:
   check_code_quality:
@@ -68,6 +74,7 @@ jobs:
           python utils/check_copies.py
           python utils/check_dummies.py
           python utils/check_support_list.py
+          python utils/check_forward_call_docstrings.py
           make deps_table_check_updated
       - name: Check if failure
         if: ${{ failure() }}
@@ -116,14 +123,14 @@ jobs:
 
     - name: Install dependencies
       run: |
+        printf 'tokenizers<0.23.0\ntorch==2.10.0\ntorchvision==0.25.0\ntorchaudio==2.10.0\n' > "$UV_OVERRIDE"
         uv pip install -e ".[quality]"
-        uv pip uninstall transformers huggingface_hub && uv pip install --prerelease allow -U transformers@git+https://github.com/huggingface/transformers.git
-        uv pip uninstall tokenizers && uv pip install "tokenizers<=0.23.0"
+        uv pip uninstall transformers huggingface_hub && UV_PRERELEASE=allow uv pip install -U transformers@git+https://github.com/huggingface/transformers.git
         uv pip uninstall accelerate && uv pip install -U accelerate@git+https://github.com/huggingface/accelerate.git --no-deps
 
     - name: Environment
       run: |
-        python utils/print_env.py
+        diffusers-cli env
 
     - name: Run fast PyTorch Pipeline CPU tests
       if: ${{ matrix.config.framework == 'pytorch_pipelines' }}
@@ -139,7 +146,7 @@ jobs:
         pytest -n 4 --max-worker-restart=0 --dist=loadfile \
           -k "not Flax and not Onnx and not Dependency" \
           --make-reports=tests_${{ matrix.config.report }} \
-          tests/models tests/schedulers tests/others
+          tests/models tests/schedulers tests/hooks tests/others
 
     - name: Run example PyTorch CPU tests
       if: ${{ matrix.config.framework == 'pytorch_examples' }}
@@ -193,11 +200,13 @@ jobs:
 
     - name: Install dependencies
       run: |
+        printf 'tokenizers<0.23.0\ntorch==2.10.0\ntorchvision==0.25.0\ntorchaudio==2.10.0\n' > "$UV_OVERRIDE"
         uv pip install -e ".[quality]"
+        uv pip uninstall transformers huggingface_hub && UV_PRERELEASE=allow uv pip install -U transformers@git+https://github.com/huggingface/transformers.git
 
     - name: Environment
       run: |
-        python utils/print_env.py
+        diffusers-cli env
 
     - name: Run Hub tests for models, schedulers, and pipelines on a staging env
       if: ${{ matrix.config.framework == 'hub_tests_pytorch' }}
@@ -242,17 +251,16 @@ jobs:
 
     - name: Install dependencies
       run: |
+        printf 'tokenizers<0.23.0\ntorch==2.10.0\ntorchvision==0.25.0\ntorchaudio==2.10.0\n' > "$UV_OVERRIDE"
         uv pip install -e ".[quality]"
         # TODO (sayakpaul, DN6): revisit `--no-deps`
         uv pip install -U peft@git+https://github.com/huggingface/peft.git --no-deps
-        uv pip install -U tokenizers
         uv pip uninstall accelerate && uv pip install -U accelerate@git+https://github.com/huggingface/accelerate.git --no-deps
-        uv pip uninstall transformers huggingface_hub && uv pip install --prerelease allow -U transformers@git+https://github.com/huggingface/transformers.git
-        uv pip uninstall tokenizers && uv pip install "tokenizers<=0.23.0"
+        uv pip uninstall transformers huggingface_hub && UV_PRERELEASE=allow uv pip install -U transformers@git+https://github.com/huggingface/transformers.git
 
     - name: Environment
       run: |
-        python utils/print_env.py
+        diffusers-cli env
 
     - name: Run fast PyTorch LoRA tests with PEFT
       run: |

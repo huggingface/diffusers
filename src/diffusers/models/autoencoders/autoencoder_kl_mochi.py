@@ -1092,14 +1092,28 @@ class AutoencoderKLMochi(ModelMixin, AutoencoderMixin, ConfigMixin):
         sample_posterior: bool = False,
         return_dict: bool = True,
         generator: torch.Generator | None = None,
-    ) -> torch.Tensor | torch.Tensor:
+    ) -> DecoderOutput | torch.Tensor:
+        r"""
+        Args:
+            sample (`torch.Tensor`): Input sample.
+            sample_posterior (`bool`, *optional*, defaults to `False`):
+                Whether to sample from the posterior.
+            return_dict (`bool`, *optional*, defaults to `True`):
+                Whether or not to return a [`DecoderOutput`] instead of a plain tuple.
+            generator (`torch.Generator`, *optional*):
+                A [`torch.Generator`](https://pytorch.org/docs/stable/generated/torch.Generator.html) to make sampling
+                deterministic.
+
+        Returns:
+            [`~models.vae.DecoderOutput`] or `tuple`:
+                If `return_dict` is True, a [`~models.vae.DecoderOutput`] is returned, otherwise a plain `tuple` is
+                returned.
+        """
         x = sample
         posterior = self.encode(x).latent_dist
         if sample_posterior:
             z = posterior.sample(generator=generator)
         else:
             z = posterior.mode()
-        dec = self.decode(z)
-        if not return_dict:
-            return (dec,)
+        dec = self.decode(z, return_dict=return_dict)
         return dec

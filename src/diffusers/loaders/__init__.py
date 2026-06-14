@@ -63,6 +63,7 @@ if is_torch_available():
         _import_structure["single_file"] = ["FromSingleFileMixin"]
         _import_structure["lora_pipeline"] = [
             "AmusedLoraLoaderMixin",
+            "AnimaLoraLoaderMixin",
             "StableDiffusionLoraLoaderMixin",
             "SD3LoraLoaderMixin",
             "AuraFlowLoraLoaderMixin",
@@ -86,6 +87,7 @@ if is_torch_available():
             "ZImageLoraLoaderMixin",
             "Flux2LoraLoaderMixin",
             "ErnieImageLoraLoaderMixin",
+            "CosmosLoraLoaderMixin",
         ]
         _import_structure["textual_inversion"] = ["TextualInversionLoaderMixin"]
         _import_structure["ip_adapter"] = [
@@ -115,9 +117,11 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             )
             from .lora_pipeline import (
                 AmusedLoraLoaderMixin,
+                AnimaLoraLoaderMixin,
                 AuraFlowLoraLoaderMixin,
                 CogVideoXLoraLoaderMixin,
                 CogView4LoraLoaderMixin,
+                CosmosLoraLoaderMixin,
                 ErnieImageLoraLoaderMixin,
                 Flux2LoraLoaderMixin,
                 FluxLoraLoaderMixin,

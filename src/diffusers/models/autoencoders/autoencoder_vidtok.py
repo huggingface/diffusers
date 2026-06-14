@@ -1440,6 +1440,24 @@ class AutoencoderVidTok(ModelMixin, ConfigMixin):
         return_dict: bool = True,
         generator: Optional[torch.Generator] = None,
     ) -> Union[torch.Tensor, DecoderOutput]:
+        r"""
+        Args:
+            sample (`torch.Tensor`): Input sample.
+            sample_posterior (`bool`, *optional*, defaults to `True`):
+                Whether to sample from the posterior.
+            encoder_mode (`bool`, *optional*, defaults to `False`):
+                If `True`, only run the encoder and return the encoded latent without decoding.
+            return_dict (`bool`, *optional*, defaults to `True`):
+                Whether or not to return a [`DecoderOutput`] instead of a plain tuple.
+            generator (`torch.Generator`, *optional*):
+                A [`torch.Generator`](https://pytorch.org/docs/stable/generated/torch.Generator.html) to make sampling
+                deterministic.
+
+        Returns:
+            [`~models.vae.DecoderOutput`] or `torch.Tensor`:
+                If `return_dict` is True, a [`~models.vae.DecoderOutput`] is returned, otherwise a plain `torch.Tensor`
+                is returned.
+        """
         x = sample
         res = 1 if self.is_causal else 0
         if self.is_causal:

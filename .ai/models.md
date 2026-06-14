@@ -13,6 +13,7 @@ Linked from `AGENTS.md`, `skills/model-integration/SKILL.md`, and `review-rules.
 
 * Models use `ModelMixin` with `register_to_config` for config serialization. 
 * When adding a new transformer (or reviewing one), skim `src/diffusers/models/transformers/transformer_flux.py`, `src/diffusers/models/transformers/transformer_flux2.py`, `src/diffusers/models/transformers/transformer_qwenimage.py`, and `src/diffusers/models/transformers/transformer_wan.py` first to establish the pattern. Most conventions (mixin set, file structure, naming, gradient-checkpointing implementation, `_no_split_modules` settings, etc.) are easiest to internalize by comparison rather than from a fixed list.
+* **Loading goes through `from_pretrained` / `from_single_file`.** Weights and configs load through the standard paths — never fetched or imported out-of-band at runtime. Don't override or add a custom `from_pretrained`, and don't load weights manually (`load_file(...)`, `hf_hub_download(...)`, or `sys.path.insert(...)` to import a reference repo). For an original-format single checkpoint, add `from_single_file` support (mixin + weight-mapping).
 
 ## Attention pattern
 
@@ -163,12 +164,14 @@ Boolean gate. If `False` (default), calling that method raises `ValueError`. All
 3. **Capability flags without matching implementation.** for example, `_supports_gradient_checkpointing = True` only takes effect if `forward` actually has `if self.gradient_checkpointing:` branches calling `self._gradient_checkpointing_func` on each block. Setting the flag without those branches means training code silently no-ops the checkpoint and runs a normal forward.
 4. **Hardcoded dtype in model forward.** Don't hardcode `torch.float32` or `torch.bfloat16`, and don't cast activations by reading a weight's dtype (`self.linear.weight.dtype`) — the stored weight dtype isn't the compute dtype under gguf / quantized loading. Always derive the cast target from the input tensor's dtype or `self.dtype`.
 
-5. **`torch.float64` anywhere in the model.** MPS and several NPU backends don't support float64 -- ops will either error out or silently fall back. Reference repos commonly reach for float64 in RoPE frequency bases, timestep embeddings, sinusoidal position encodings, and similar "precision-sensitive" precompute code (`torch.arange(..., dtype=torch.float64)`, `.double()`, `torch.float64` literals). When porting a model, grep for `float64` / `double()` up front and resolve as follows:
+5. **`torch.float64` anywhere in the model.** MPS, NPU, and Neuron backends don't support float64 -- ops will either error out or silently fall back. Reference repos commonly reach for float64 in RoPE frequency bases, timestep embeddings, sinusoidal position encodings, and similar "precision-sensitive" precompute code (`torch.arange(..., dtype=torch.float64)`, `.double()`, `torch.float64` literals). When porting a model, grep for `float64` / `double()` up front and resolve as follows:
     - **Default: just use `torch.float32`.** For inference it is almost always sufficient -- the precision difference in RoPE angles, timestep embeddings, etc. is immaterial to image/video quality. Flip it and move on.
-    - **Only if float32 visibly degrades output, fall back to the device-gated pattern** we use in the repo:
+    - **Only if float32 visibly degrades output, use the `maybe_adjust_dtype_for_device` helper** from `diffusers.utils.torch_utils`. It centralizes the device-specific dtype downcast (float64→float32, int64→int32) for all restricted backends (mps, npu, neuron):
       ```python
-      is_mps = hidden_states.device.type == "mps"
-      is_npu = hidden_states.device.type == "npu"
-      freqs_dtype = torch.float32 if (is_mps or is_npu) else torch.float64
+      from diffusers.utils.torch_utils import maybe_adjust_dtype_for_device
+
+      freqs_dtype = maybe_adjust_dtype_for_device(torch.float64, hidden_states.device)
       ```
-      See `transformer_flux.py`, `transformer_flux2.py`, `transformer_wan.py`, `unet_2d_condition.py` for reference usages. Never leave an unconditional `torch.float64` in the model.
+      See `transformer_flux.py`, `transformer_flux2.py`, `transformer_wan.py`, `unet_2d_condition.py`, and `pipeline_pixart_alpha.py` for reference usages. Never leave an unconditional `torch.float64` in the model.
+
+6. **Using `torch.empty`.** - Do not use `torch.empty` to initialize parameters. Use `torch.zeros` or `torch.ones`, instead.
