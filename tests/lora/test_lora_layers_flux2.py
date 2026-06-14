@@ -21,7 +21,7 @@ from transformers import AutoProcessor, Mistral3ForConditionalGeneration
 
 from diffusers import AutoencoderKLFlux2, FlowMatchEulerDiscreteScheduler, Flux2Pipeline, Flux2Transformer2DModel
 
-from ..testing_utils import floats_tensor, require_peft_backend, torch_device
+from ..testing_utils import CaptureLogger, floats_tensor, require_peft_backend, torch_device
 
 
 sys.path.append(".")
@@ -148,3 +148,33 @@ class Flux2LoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
     @unittest.skip("Not supported in Flux2.")
     def test_modify_padding_mode(self):
         pass
+
+
+@require_peft_backend
+class Flux2LoRAModularPipelineTests(unittest.TestCase):
+    """Regression tests for https://github.com/huggingface/diffusers/issues/13487.
+
+    Loading a transformer-only LoRA onto a modular sub-pipeline that does not contain the
+    transformer (for example a text-encoder-only sub-pipeline) should warn and skip instead
+    of raising an ``AttributeError``.
+    """
+
+    def test_load_lora_weights_without_transformer_warns_and_skips(self):
+        from diffusers.loaders.lora_pipeline import Flux2LoraLoaderMixin
+        from diffusers.utils import logging
+
+        # A text-encoder-only sub-pipeline has no `transformer` component.
+        class DummyTextEncoderPipeline(Flux2LoraLoaderMixin):
+            pass
+
+        pipe = DummyTextEncoderPipeline()
+        state_dict = {"transformer.single_transformer_blocks.0.attn.to_q.lora_A.weight": torch.zeros((4, 4))}
+
+        logger = logging.get_logger("diffusers.loaders.lora_pipeline")
+        logger.setLevel(logging.WARNING)
+        with CaptureLogger(logger) as cap_logger:
+            result = pipe.load_lora_weights(state_dict)
+
+        # The call returns without raising and emits a warning explaining the skip.
+        self.assertIsNone(result)
+        self.assertTrue("no LoRA weights will be" in cap_logger.out)
