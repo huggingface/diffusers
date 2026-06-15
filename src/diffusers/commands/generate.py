@@ -87,7 +87,17 @@ RUN_ID_ENV = "DIFFUSERS_CLI_RUN_ID"
 # Namespace keys that control *how* a remote job runs locally, not what runs
 # inside the container. They are stripped when forwarding argv to the container.
 HF_JOBS_KEYS = frozenset(
-    {"remote", "flavor", "timeout", "dependencies", "namespace", "no_wait", "poll_interval", "func"}
+    {
+        "remote",
+        "flavor",
+        "timeout",
+        "dependencies",
+        "namespace",
+        "no_wait",
+        "poll_interval",
+        "func",
+        "format",  # top-level --format is a local rendering flag; never forward to the container
+    }
 )
 
 
