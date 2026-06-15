@@ -15,17 +15,98 @@
 
 import torch
 
-from ...pipelines import FluxPipeline
 from ...utils import logging
 from ..modular_pipeline import ModularPipelineBlocks, PipelineState
 from ..modular_pipeline_utils import InputParam, OutputParam
-
-# TODO: consider making these common utilities for modular if they are not pipeline-specific.
-from ..qwenimage.inputs import calculate_dimension_from_latents, repeat_tensor_to_batch_size
 from .modular_pipeline import FluxModularPipeline
 
 
 logger = logging.get_logger(__name__)
+
+
+def _pack_latents(latents, batch_size, num_channels_latents, height, width):
+    latents = latents.view(batch_size, num_channels_latents, height // 2, 2, width // 2, 2)
+    latents = latents.permute(0, 2, 4, 1, 3, 5)
+    latents = latents.reshape(batch_size, (height // 2) * (width // 2), num_channels_latents * 4)
+
+    return latents
+
+
+def repeat_tensor_to_batch_size(
+    input_name: str,
+    input_tensor: torch.Tensor,
+    batch_size: int,
+    num_images_per_prompt: int = 1,
+) -> torch.Tensor:
+    """Repeat tensor elements to match the final batch size.
+
+    This function expands a tensor's batch dimension to match the final batch size (batch_size * num_images_per_prompt)
+    by repeating each element along dimension 0.
+
+    The input tensor must have batch size 1 or batch_size. The function will:
+    - If batch size is 1: repeat each element (batch_size * num_images_per_prompt) times
+    - If batch size equals batch_size: repeat each element num_images_per_prompt times
+
+    Args:
+        input_name (str): Name of the input tensor (used for error messages)
+        input_tensor (torch.Tensor): The tensor to repeat. Must have batch size 1 or batch_size.
+        batch_size (int): The base batch size (number of prompts)
+        num_images_per_prompt (int, optional): Number of images to generate per prompt. Defaults to 1.
+
+    Returns:
+        torch.Tensor: The repeated tensor with final batch size (batch_size * num_images_per_prompt)
+
+    Raises:
+        ValueError: If input_tensor is not a torch.Tensor or has invalid batch size
+    """
+    # make sure input is a tensor
+    if not isinstance(input_tensor, torch.Tensor):
+        raise ValueError(f"`{input_name}` must be a tensor")
+
+    # make sure input tensor e.g. image_latents has batch size 1 or batch_size same as prompts
+    if input_tensor.shape[0] == 1:
+        repeat_by = batch_size * num_images_per_prompt
+    elif input_tensor.shape[0] == batch_size:
+        repeat_by = num_images_per_prompt
+    else:
+        raise ValueError(
+            f"`{input_name}` must have have batch size 1 or {batch_size}, but got {input_tensor.shape[0]}"
+        )
+
+    # expand the tensor to match the batch_size * num_images_per_prompt
+    input_tensor = input_tensor.repeat_interleave(repeat_by, dim=0)
+
+    return input_tensor
+
+
+def calculate_dimension_from_latents(latents: torch.Tensor, vae_scale_factor: int) -> tuple[int, int]:
+    """Calculate image dimensions from latent tensor dimensions.
+
+    This function converts latent space dimensions to image space dimensions by multiplying the latent height and width
+    by the VAE scale factor.
+
+    Args:
+        latents (torch.Tensor): The latent tensor. Must have 4 or 5 dimensions.
+            Expected shapes: [batch, channels, height, width] or [batch, channels, frames, height, width]
+        vae_scale_factor (int): The scale factor used by the VAE to compress images.
+            Typically 8 for most VAEs (image is 8x larger than latents in each dimension)
+
+    Returns:
+        tuple[int, int]: The calculated image dimensions as (height, width)
+
+    Raises:
+        ValueError: If latents tensor doesn't have 4 or 5 dimensions
+    """
+    # make sure the latents are not packed
+    if latents.ndim != 4 and latents.ndim != 5:
+        raise ValueError(f"unpacked latents must have 4 or 5 dimensions, but got {latents.ndim}")
+
+    latent_height, latent_width = latents.shape[-2:]
+
+    height = latent_height * vae_scale_factor
+    width = latent_width * vae_scale_factor
+
+    return height, width
 
 
 class FluxTextInputStep(ModularPipelineBlocks):
@@ -209,7 +290,7 @@ class FluxAdditionalInputsStep(ModularPipelineBlocks):
             # 2. Patchify the image latent tensor
             # TODO: Implement patchifier for Flux.
             latent_height, latent_width = image_latent_tensor.shape[2:]
-            image_latent_tensor = FluxPipeline._pack_latents(
+            image_latent_tensor = _pack_latents(
                 image_latent_tensor, block_state.batch_size, image_latent_tensor.shape[1], latent_height, latent_width
             )
 
@@ -266,7 +347,7 @@ class FluxKontextAdditionalInputsStep(FluxAdditionalInputsStep):
             # 2. Patchify the image latent tensor
             # TODO: Implement patchifier for Flux.
             latent_height, latent_width = image_latent_tensor.shape[2:]
-            image_latent_tensor = FluxPipeline._pack_latents(
+            image_latent_tensor = _pack_latents(
                 image_latent_tensor, block_state.batch_size, image_latent_tensor.shape[1], latent_height, latent_width
             )
 
