@@ -87,9 +87,9 @@ def test_cosmos3_audio_tokenizer_encode_decode_forward_shapes():
     state_dict = model.state_dict()
     assert "encoder.layers.1.norm.weight" in state_dict
     assert "encoder.layers.1.norm.bias" not in state_dict
-    assert "encoder.layers.1.dwconv.1.weight_g" in state_dict
-    assert "encoder.layers.1.pwconv1.weight_g" in state_dict
-    assert "encoder.layers.1.pwconv2.weight_g" in state_dict
+    assert "encoder.layers.1.dwconv.1.weight" in state_dict
+    assert "encoder.layers.1.pwconv1.weight" in state_dict
+    assert "encoder.layers.1.pwconv2.weight" in state_dict
 
     audio = torch.randn(2, 2, 15)
 
