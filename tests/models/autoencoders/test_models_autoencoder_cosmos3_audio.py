@@ -24,36 +24,72 @@ from diffusers.models.autoencoders.autoencoder_cosmos3_audio import (
     Snake1d,
 )
 from diffusers.models.autoencoders.autoencoder_oobleck import OobleckDiagonalGaussianDistribution
+from diffusers.utils.torch_utils import randn_tensor
+
+from ...testing_utils import torch_device
+from ..testing_utils import BaseModelTesterConfig, ModelTesterMixin, TrainingTesterMixin
 
 
-def _get_tiny_cosmos3_audio_tokenizer() -> Cosmos3AVAEAudioTokenizer:
-    return Cosmos3AVAEAudioTokenizer(
-        sampling_rate=16,
-        hop_size=4,
-        input_channels=1,
-        stereo=True,
-        normalize_volume=True,
-        enc_dim=4,
-        enc_num_blocks=1,
-        enc_n_fft=8,
-        enc_hop_length=2,
-        enc_latent_dim=8,
-        enc_c_mults=(1,),
-        enc_strides=(2,),
-        vocoder_input_dim=4,
-        dec_dim=4,
-        dec_c_mults=(1, 2),
-        dec_strides=(2, 2),
-        dec_out_channels=2,
-    )
+class Cosmos3AVAEAudioTokenizerTesterConfig(BaseModelTesterConfig):
+    @property
+    def main_input_name(self):
+        return "sample"
+
+    @property
+    def model_class(self):
+        return Cosmos3AVAEAudioTokenizer
+
+    @property
+    def output_shape(self):
+        return (2, 16)
+
+    @property
+    def generator(self):
+        return torch.Generator("cpu").manual_seed(0)
+
+    def get_init_dict(self):
+        return {
+            "sampling_rate": 16,
+            "hop_size": 4,
+            "input_channels": 1,
+            "stereo": True,
+            "normalize_volume": True,
+            "enc_dim": 4,
+            "enc_num_blocks": 1,
+            "enc_n_fft": 8,
+            "enc_hop_length": 2,
+            "enc_latent_dim": 8,
+            "enc_c_mults": (1,),
+            "enc_strides": (2,),
+            "vocoder_input_dim": 4,
+            "dec_dim": 4,
+            "dec_c_mults": (1, 2),
+            "dec_strides": (2, 2),
+            "dec_out_channels": 2,
+        }
+
+    def get_dummy_inputs(self):
+        audio = randn_tensor((2, 2, 16), generator=self.generator, device=torch_device)
+        return {"sample": audio}
+
+
+class TestCosmos3AVAEAudioTokenizer(Cosmos3AVAEAudioTokenizerTesterConfig, ModelTesterMixin):
+    base_precision = 1e-2
+
+
+class TestCosmos3AVAEAudioTokenizerTraining(Cosmos3AVAEAudioTokenizerTesterConfig, TrainingTesterMixin):
+    """Training tests for Cosmos3AVAEAudioTokenizer."""
 
 
 def test_cosmos3_audio_tokenizer_encode_decode_forward_shapes():
     torch.manual_seed(0)
-    model = _get_tiny_cosmos3_audio_tokenizer().eval()
+    model = Cosmos3AVAEAudioTokenizer(**Cosmos3AVAEAudioTokenizerTesterConfig().get_init_dict()).eval()
     state_dict = model.state_dict()
     assert "encoder.layers.1.norm.weight" in state_dict
     assert "encoder.layers.1.norm.bias" not in state_dict
+    assert "encoder.layers.1.dwconv.1.weight_g" in state_dict
+    assert "encoder.layers.1.pwconv1.weight_g" in state_dict
+    assert "encoder.layers.1.pwconv2.weight_g" in state_dict
 
     audio = torch.randn(2, 2, 15)
 
@@ -77,7 +113,7 @@ def test_cosmos3_audio_tokenizer_encode_decode_forward_shapes():
 
 def test_cosmos3_audio_tokenizer_encode_tuple_and_seeded_sample():
     torch.manual_seed(0)
-    model = _get_tiny_cosmos3_audio_tokenizer().eval()
+    model = Cosmos3AVAEAudioTokenizer(**Cosmos3AVAEAudioTokenizerTesterConfig().get_init_dict()).eval()
     audio = torch.randn(1, 2, 16)
 
     posterior = model.encode(audio, return_dict=False)[0]
@@ -90,7 +126,7 @@ def test_cosmos3_audio_tokenizer_encode_tuple_and_seeded_sample():
 
 
 def test_cosmos3_audio_encoder_reuses_snake1d():
-    model = _get_tiny_cosmos3_audio_tokenizer()
+    model = Cosmos3AVAEAudioTokenizer(**Cosmos3AVAEAudioTokenizerTesterConfig().get_init_dict())
     act = model.encoder.layers[1].act
 
     assert isinstance(act, Snake1d)
@@ -98,10 +134,10 @@ def test_cosmos3_audio_encoder_reuses_snake1d():
 
 
 def test_cosmos3_audio_tokenizer_decoder_only_state_disables_encode():
-    model = _get_tiny_cosmos3_audio_tokenizer()
+    model = Cosmos3AVAEAudioTokenizer(**Cosmos3AVAEAudioTokenizerTesterConfig().get_init_dict())
     decoder_only_state_dict = {key: value for key, value in model.state_dict().items() if key.startswith("decoder.")}
 
-    decoder_only_model = _get_tiny_cosmos3_audio_tokenizer()
+    decoder_only_model = Cosmos3AVAEAudioTokenizer(**Cosmos3AVAEAudioTokenizerTesterConfig().get_init_dict())
     decoder_only_model._fix_state_dict_keys_on_load(decoder_only_state_dict)
     decoder_only_model.load_state_dict(decoder_only_state_dict, strict=True)
 
