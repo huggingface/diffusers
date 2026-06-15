@@ -284,7 +284,9 @@ def _enable_context_parallel(pipeline: Any) -> None:
                 "Launch the CLI under torchrun, e.g.: "
                 "`torchrun --nproc-per-node=N -m diffusers.commands.diffusers_cli generate ...`."
             )
-        torch.distributed.init_process_group(backend="nccl")
+        # Hybrid backend: ulysses_anything's per-rank size coordination wants Gloo on CPU
+        # (avoids H2D/D2H for a tiny int tensor); the main attention all-to-all stays on NCCL.
+        torch.distributed.init_process_group(backend="cpu:gloo,cuda:nccl")
 
     transformer = getattr(pipeline, "transformer", None)
     if transformer is None or not hasattr(transformer, "enable_parallelism"):
@@ -831,8 +833,19 @@ def _maybe_submit_remote(args: Namespace, task: str) -> bool:
 
 
 def _job_timing(api: Any, job_id: str, namespace: Optional[str]) -> dict[str, Optional[float]]:
-    """Return queue/run/total wallclock seconds for ``job_id`` from inspect_job timestamps."""
+    """Return queue/run/total wallclock seconds for ``job_id`` from inspect_job timestamps.
+
+    inspect_job sometimes returns finished_at=None for a few seconds after the container exits
+    while HF Jobs propagates the terminal state; retry briefly so we don't miss run/total.
+    """
+    import time
+
     info = api.inspect_job(job_id=job_id, namespace=namespace)
+    for _ in range(5):
+        if info.finished_at is not None:
+            break
+        time.sleep(1.0)
+        info = api.inspect_job(job_id=job_id, namespace=namespace)
 
     def _delta(start, end) -> Optional[float]:
         return (end - start).total_seconds() if (start is not None and end is not None) else None
@@ -993,22 +1006,33 @@ class GenerateCommand(BaseDiffusersCLICommand):
         if generator is not None:
             call_kwargs["generator"] = generator
 
-        result = pipeline(**call_kwargs)
-        savable = result if is_modular else _result_to_savable(result)
-        saved = _save_output(savable, self.args, self.task)
-        pushed = _push_outputs(self.args, saved, self.task)
+        try:
+            result = pipeline(**call_kwargs)
 
-        _format_result(
-            self.args,
-            {
-                "task": self.task,
-                "model": self.args.model,
-                "device": device,
-                "pipeline_class": type(pipeline).__name__,
-                "modular": is_modular,
-                "outputs": saved,
-                "pushed": pushed,
-                "seed": self.args.seed,
-                "output_key": self.args.output_key,
-            },
-        )
+            # Under torchrun, ranks > 0 produce identical output to rank 0 (CP shards the
+            # transformer compute but ranks reduce to the same final tensors). Save/push/print
+            # from rank 0 only to avoid clobbering bucket files 4x and printing 4x.
+            if os.environ.get("RANK", "0") == "0":
+                savable = result if is_modular else _result_to_savable(result)
+                saved = _save_output(savable, self.args, self.task)
+                pushed = _push_outputs(self.args, saved, self.task)
+
+                _format_result(
+                    self.args,
+                    {
+                        "task": self.task,
+                        "model": self.args.model,
+                        "device": device,
+                        "pipeline_class": type(pipeline).__name__,
+                        "modular": is_modular,
+                        "outputs": saved,
+                        "pushed": pushed,
+                        "seed": self.args.seed,
+                        "output_key": self.args.output_key,
+                    },
+                )
+        finally:
+            import torch
+
+            if torch.distributed.is_available() and torch.distributed.is_initialized():
+                torch.distributed.destroy_process_group()
