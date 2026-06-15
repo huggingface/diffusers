@@ -219,6 +219,13 @@ def _resolve_device(name: Optional[str]) -> str:
     import torch
 
     if torch.cuda.is_available():
+        # Under torchrun, LOCAL_RANK identifies this process's assigned GPU.
+        # Without this pin every rank falls back to cuda:0 and OOMs because the
+        # whole pipeline gets replicated onto a single device.
+        local_rank = os.environ.get("LOCAL_RANK")
+        if local_rank is not None:
+            torch.cuda.set_device(int(local_rank))
+            return f"cuda:{local_rank}"
         return "cuda"
     if hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
         return "mps"
