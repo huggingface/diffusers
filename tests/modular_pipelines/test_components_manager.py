@@ -79,15 +79,8 @@ def _patch_free_memory(free_bytes: int, total_bytes: int = 80 * UNIT):
 
 @require_accelerate
 class ComponentsManagerTesterMixin:
-    """Common tests for `ComponentsManager` and its auto-offload strategy.
-
-    The whole suite requires accelerate (the offload machinery is built on it), hence
-    the class-level `require_accelerate`. Tests are ordered so the hardware-independent
-    ones (strategy unit tests, which mock `mem_get_info`) come first, and the few that
-    need a real accelerator are grouped together at the end behind `require_accelerator`.
-
-    Subclasses may override `get_dummy_model` to drive the same offload logic with a
-    different `ModelMixin` type.
+    """
+    Common tests for `ComponentsManager` and its auto-offload strategy.
     """
 
     # A `cuda:0` device descriptor is enough to drive the strategy's device-type and
@@ -336,14 +329,8 @@ _AMPLE_FREE_BYTES = 1024**4
 
 
 class ModularPipelineOffloadTesterMixin:
-    """Auto-CPU-offload tests for a *real* modular pipeline's components.
-
-    Designed to be mixed into a pipeline test class alongside
-    `ModularPipelineTesterMixin`, whose `get_pipeline`, `get_dummy_inputs` and
-    `output_name` it relies on. It registers the pipeline's real components in a
-    `ComponentsManager` and mocks `mem_get_info` to control the *simulated* free memory,
-    so the offloading path can be exercised on any hardware (on an 80GB GPU with tiny
-    test checkpoints nothing would otherwise ever get offloaded).
+    """
+    Auto-CPU-offload tests for a modular pipeline's components.
     """
 
     @staticmethod
