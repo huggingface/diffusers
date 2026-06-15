@@ -198,15 +198,21 @@ def get_parameter_dtype(parameter: torch.nn.Module) -> torch.dtype:
         return tuples
 
     gen = parameter._named_members(get_members_fn=find_tensor_attributes)
-    last_tuple = None
-    for tuple in gen:
-        last_tuple = tuple
-        if tuple[1].is_floating_point():
-            return tuple[1].dtype
+    last_t = None
+    for t in gen:
+        last_t = t
+        if t[1].is_floating_point():
+            return t[1].dtype
 
-    if last_tuple is not None:
-        # fallback to the last dtype
-        return last_tuple[1].dtype
+    if last_t is not None:
+        # fallback to the last dtype found via __dict__ inspection
+        return last_t[1].dtype
+
+    raise ValueError(
+        f"Could not determine the dtype of {parameter.__class__.__name__}: no parameters, buffers, or tensor "
+        "attributes were found. If you are using nn.DataParallel, make sure the module is moved to a device "
+        "before wrapping it (e.g. model.to('cuda') before DataParallel(model))."
+    )
 
 
 @contextmanager
