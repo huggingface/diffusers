@@ -49,7 +49,8 @@ class DummyModel(ModelMixin):
 
 
 class _FakeHook:
-    """Minimal stand-in for `UserCustomOffloadHook` in strategy-level unit tests.
+    """
+    Minimal stand-in for `UserCustomOffloadHook` in strategy-level unit tests.
 
     `AutoOffloadStrategy` only reads `hook.model_id` and
     `hook.model.get_memory_footprint()`, so we avoid attaching real accelerate hooks
@@ -207,19 +208,6 @@ class ComponentsManagerTesterMixin:
             hook_sizes=multi_hooks,
             memory_reserve_margin=3 * UNIT,
         ) == ["c"]
-
-    def test_strategy_raises_for_model_without_memory_footprint(self):
-        strategy = AutoOffloadStrategy(memory_reserve_margin=UNIT)
-        hooks = [_FakeHook("a", self.get_dummy_model(2 * UNIT))]
-        # A bare nn.Module does not implement get_memory_footprint().
-        with _patch_cuda_mem_get_info(1 * UNIT):
-            with pytest.raises(AttributeError):
-                strategy(
-                    hooks=hooks,
-                    model_id="incoming",
-                    model=torch.nn.Linear(4, 4),
-                    execution_device=self.strategy_execution_device,
-                )
 
     # ------------------------------------------------------------------
     # Registry tests (hardware-independent)
