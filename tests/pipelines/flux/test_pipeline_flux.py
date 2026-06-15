@@ -234,6 +234,25 @@ class FluxPipelineFastTests(
             np.allclose(no_true_cfg_out, true_cfg_out), "Outputs should be different when true_cfg_scale is set."
         )
 
+    def test_flux_negative_embeds_shape_check(self):
+        pipe = self.pipeline_class(**self.get_dummy_components()).to(torch_device)
+
+        base_inputs = {
+            "prompt_embeds": torch.randn(1, 4, 32, device=torch_device),
+            "pooled_prompt_embeds": torch.randn(1, 32, device=torch_device),
+            "negative_prompt_embeds": torch.randn(1, 5, 32, device=torch_device),
+            "negative_pooled_prompt_embeds": torch.randn(1, 32, device=torch_device),
+            "height": 16,
+            "width": 16,
+            "num_inference_steps": 1,
+            "output_type": "latent",
+        }
+
+        with self.assertRaises(ValueError):
+            pipe(**base_inputs, true_cfg_scale=2.0, generator=torch.manual_seed(0))
+
+        pipe(**base_inputs, true_cfg_scale=1.0, generator=torch.manual_seed(0))
+
 
 @nightly
 @require_big_accelerator
