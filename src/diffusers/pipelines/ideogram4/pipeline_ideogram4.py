@@ -539,6 +539,9 @@ class Ideogram4Pipeline(DiffusionPipeline, Ideogram4LoraLoaderMixin):
                 One of `"pil"`, `"np"`, `"pt"`, or `"latent"`.
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether to return an [`~pipelines.ideogram4.Ideogram4PipelineOutput`].
+            attention_kwargs (`dict`, *optional*):
+                A kwargs dictionary passed along to the attention processor of each transformer. A `"scale"`
+                entry scales the loaded LoRA weights (e.g. `{"scale": 0.7}`) when the PEFT backend is active.
             callback_on_step_end (`Callable`, *optional*):
                 Callback invoked at the end of every denoising step.
             callback_on_step_end_tensor_inputs (`list[str]`, *optional*):
