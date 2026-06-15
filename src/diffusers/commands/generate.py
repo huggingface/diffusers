@@ -131,7 +131,7 @@ def _add_optimization_arguments(parser: ArgumentParser) -> None:
         action="store_true",
         help=(
             "Enable Ulysses-style context parallelism (ulysses_anything mode). "
-            "Requires launching the CLI under torchrun with ≥2 GPUs."
+            "Requires a DiT-based pipeline and launching the CLI under torchrun with ≥2 GPUs."
         ),
     )
 
@@ -242,15 +242,23 @@ def _map_to_device(pipeline: Any, args: Namespace, device: str) -> Any:
     return pipeline
 
 
-def _set_attention_backend(pipeline: Any, backend: str) -> None:
+def _denoiser(pipeline: Any) -> Optional[Any]:
+    """Return the pipeline's denoiser submodule (transformer or unet) or None."""
     for attr in ("transformer", "unet"):
         module = getattr(pipeline, attr, None)
-        if module is not None and hasattr(module, "set_attention_backend"):
-            try:
-                module.set_attention_backend(backend)
-            except (ValueError, ImportError, RuntimeError):
-                pass
-            return
+        if module is not None:
+            return module
+    return None
+
+
+def _set_attention_backend(pipeline: Any, backend: str) -> None:
+    module = _denoiser(pipeline)
+    if module is None or not hasattr(module, "set_attention_backend"):
+        return
+    try:
+        module.set_attention_backend(backend)
+    except (ValueError, ImportError, RuntimeError):
+        pass
 
 
 def _enable_context_parallel(pipeline: Any) -> None:
@@ -263,18 +271,22 @@ def _enable_context_parallel(pipeline: Any) -> None:
             "`torchrun --nproc-per-node=N -m diffusers.commands.diffusers_cli generate ...`."
         )
 
+    transformer = getattr(pipeline, "transformer", None)
+    if transformer is None or not hasattr(transformer, "enable_parallelism"):
+        raise SystemExit(
+            "--context-parallel requires a DiT-based pipeline. "
+            f"{type(pipeline).__name__} does not expose a `transformer` with `enable_parallelism`."
+        )
+
     from diffusers import ContextParallelConfig
 
-    cfg = ContextParallelConfig(
-        ulysses_degree=torch.distributed.get_world_size(),
-        ring_degree=1,
-        ulysses_anything=True,
+    transformer.enable_parallelism(
+        config=ContextParallelConfig(
+            ulysses_degree=torch.distributed.get_world_size(),
+            ring_degree=1,
+            ulysses_anything=True,
+        )
     )
-    for attr in ("transformer", "unet"):
-        module = getattr(pipeline, attr, None)
-        if module is not None and hasattr(module, "enable_parallelism"):
-            module.enable_parallelism(config=cfg)
-            return
 
 
 def _apply_optimizations(pipeline: Any, args: Namespace) -> None:
@@ -754,8 +766,15 @@ def _maybe_submit_remote(args: Namespace, task: str) -> bool:
     # image's system Python (where torch + CUDA already live) via ``uv pip install
     # --system``, then exec the CLI with the same argv. --break-system-packages
     # bypasses PEP 668; safe here because the container is ephemeral.
+    # For --context-parallel, wrap with torchrun so torch.distributed initializes
+    # across every visible GPU before our generate command runs.
     install_cmd = shlex.join(["uv", "pip", "install", "--system", "--break-system-packages", *dependencies])
-    cli_cmd = shlex.join([_CONTAINER_CLI_BINARY, *_kwargs_to_argv(task, task_kwargs)])
+    cli_argv = _kwargs_to_argv(task, task_kwargs)
+    if args.context_parallel:
+        cli_argv = ["torchrun", "--nproc-per-node=gpu", "-m", "diffusers.commands.diffusers_cli", *cli_argv]
+    else:
+        cli_argv = [_CONTAINER_CLI_BINARY, *cli_argv]
+    cli_cmd = shlex.join(cli_argv)
     container_cmd = ["sh", "-c", f"{install_cmd} && {cli_cmd}"]
 
     job = run_job(
@@ -901,7 +920,7 @@ class GenerateCommand(BaseDiffusersCLICommand):
     def register_subcommand(subparsers: _SubParsersAction) -> None:
         parser: ArgumentParser = subparsers.add_parser(
             "generate",
-            help="Run any diffusers pipeline locally or remotely on HF Jobs.",
+            help="Run any diffusers pipeline locally or remotely with HF Jobs.",
             usage="\n  diffusers-cli generate [options]",
         )
         parser._optionals.title = "Options"
