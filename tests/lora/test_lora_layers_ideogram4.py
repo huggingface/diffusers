@@ -136,7 +136,7 @@ class Ideogram4LoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
         text_lora_config = LoraConfig(
             r=rank,
             lora_alpha=lora_alpha,
-            target_modules=["to_q", "to_k", "to_v"],
+            target_modules=["q_proj", "k_proj", "v_proj", "o_proj"],
             init_lora_weights=False,
             use_dora=use_dora,
         )
@@ -183,22 +183,8 @@ class Ideogram4LoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
 
         return noise, input_ids, pipeline_inputs
 
-    # The Ideogram4 pipeline does not thread `attention_kwargs` through `__call__`, so call-time LoRA scaling
-    # (and the fusion-vs-scale equivalence checks) cannot be exercised. `set_adapters` weighting is still covered
-    # by the multi-adapter tests.
-    @unittest.skip("Ideogram4 does not support call-time LoRA scaling via attention_kwargs.")
-    def test_lora_scale_kwargs_match_fusion(self):
-        pass
-
-    @unittest.skip("Ideogram4 does not support call-time LoRA scaling via attention_kwargs.")
-    def test_set_adapters_match_attention_kwargs(self):
-        pass
-
-    @unittest.skip("Ideogram4 does not support call-time LoRA scaling via attention_kwargs.")
-    def test_simple_inference_with_text_denoiser_lora_and_scale(self):
-        pass
-
-    # Overridden to drop the `attention_kwargs` dependency in the base test (unsupported by this pipeline).
+    # Overridden because the base test's rank-pattern module finder doesn't resolve a module on Ideogram4's
+    # attention naming; this mirrors the same override other DiT LoRA tests use (e.g. Z-Image).
     def test_correct_lora_configs_with_different_ranks(self):
         components, _, denoiser_lora_config = self.get_dummy_components()
         pipe = self.pipeline_class(**components)
