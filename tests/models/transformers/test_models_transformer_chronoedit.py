@@ -44,7 +44,7 @@ class ChronoEditTransformerTesterConfig(BaseModelTesterConfig):
 
     @property
     def input_shape(self) -> tuple:
-        return (16, 8, 8)
+        return (16, 2, 8, 8)
 
     @property
     def generator(self):

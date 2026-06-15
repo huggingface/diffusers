@@ -97,6 +97,9 @@ class TestAutoencoderKLKVAEVideoTraining(AutoencoderKLKVAEVideoTesterConfig, Tra
     def test_training_with_ema(self):
         _run_nondeterministic(super().test_training_with_ema)
 
+    def test_mixed_precision_training(self):
+        _run_nondeterministic(super().test_mixed_precision_training)
+
     @pytest.mark.skip(
         "Gradient checkpointing recomputes the forward pass, but the model uses a stateful cache_dict "
         "that is mutated during the first forward. On recomputation the cache is already populated, "
@@ -104,6 +107,7 @@ class TestAutoencoderKLKVAEVideoTraining(AutoencoderKLKVAEVideoTesterConfig, Tra
     )
     def test_gradient_checkpointing_equivalence(self):
         super().test_gradient_checkpointing_equivalence()
+
 
 class TestAutoencoderKLKVAEVideoMemory(AutoencoderKLKVAEVideoTesterConfig, MemoryTesterMixin):
     """Memory optimization tests for AutoencoderKLKVAEVideo."""
