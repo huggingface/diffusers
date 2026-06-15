@@ -54,31 +54,15 @@ class Snake1d(nn.Module):
         self.logscale = logscale
 
     def forward(self, hidden_states):
-        return self._forward(hidden_states, self.alpha, self.beta, self.logscale)
-
-    @staticmethod
-    def _forward(hidden_states, alpha, beta, logscale):
         shape = hidden_states.shape
 
-        alpha = alpha if not logscale else torch.exp(alpha)
-        beta = beta if not logscale else torch.exp(beta)
+        alpha = self.alpha if not self.logscale else torch.exp(self.alpha)
+        beta = self.beta if not self.logscale else torch.exp(self.beta)
+
         hidden_states = hidden_states.reshape(shape[0], shape[1], -1)
         hidden_states = hidden_states + (beta + 1e-9).reciprocal() * torch.sin(alpha * hidden_states).pow(2)
         hidden_states = hidden_states.reshape(shape)
         return hidden_states
-
-
-class Cosmos3AudioSnakeBeta(nn.Module):
-    """SnakeBeta activation used by the Cosmos3 SpecConvNeXt encoder."""
-
-    def __init__(self, hidden_dim: int, logscale: bool = True):
-        super().__init__()
-        self.alpha = nn.Parameter(torch.zeros(hidden_dim))
-        self.beta = nn.Parameter(torch.zeros(hidden_dim))
-        self.logscale = logscale
-
-    def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
-        return Snake1d._forward(hidden_states, self.alpha[None, :, None], self.beta[None, :, None], self.logscale)
 
 
 class Cosmos3AudioConvNeXtBlock(nn.Module):
@@ -108,7 +92,7 @@ class Cosmos3AudioConvNeXtBlock(nn.Module):
 
         self.norm = FP32LayerNorm(hidden_dim, eps=1e-5, bias=False)
         self.pwconv1 = nn.Conv1d(hidden_dim, intermediate_dim, kernel_size=1)
-        self.act = Cosmos3AudioSnakeBeta(intermediate_dim) if use_snake else nn.GELU()
+        self.act = Snake1d(intermediate_dim) if use_snake else nn.GELU()
         self.pwconv2 = nn.Conv1d(intermediate_dim, hidden_dim, kernel_size=1)
         if identity_init:
             nn.init.zeros_(self.pwconv2.weight)

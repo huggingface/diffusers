@@ -206,7 +206,11 @@ def _sound_tokenizer_remap_flat_layout(state_dict: dict[str, torch.Tensor]) -> d
 def _sound_tokenizer_reshape_snake_params(state_dict: dict[str, torch.Tensor]) -> dict[str, torch.Tensor]:
     out: dict[str, torch.Tensor] = {}
     for key, value in state_dict.items():
-        if key.startswith("decoder.") and (key.endswith(".alpha") or key.endswith(".beta")) and value.ndim == 1:
+        if (
+            key.startswith(("encoder.", "decoder."))
+            and (key.endswith(".alpha") or key.endswith(".beta"))
+            and value.ndim == 1
+        ):
             value = value.unsqueeze(0).unsqueeze(-1).contiguous()
         out[key] = value
     return out

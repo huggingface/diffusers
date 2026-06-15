@@ -20,7 +20,6 @@ import pytest
 import torch
 
 from diffusers.models.autoencoders.autoencoder_cosmos3_audio import (
-    Cosmos3AudioSnakeBeta,
     Cosmos3AVAEAudioTokenizer,
     Snake1d,
 )
@@ -90,16 +89,12 @@ def test_cosmos3_audio_tokenizer_encode_tuple_and_seeded_sample():
     assert posterior.kl().ndim == 0
 
 
-def test_cosmos3_audio_snake_beta_matches_snake1d_with_1d_state():
-    torch.manual_seed(0)
-    snake = Snake1d(4)
-    snake_beta = Cosmos3AudioSnakeBeta(4)
-    snake_beta.alpha.data.copy_(snake.alpha.flatten())
-    snake_beta.beta.data.copy_(snake.beta.flatten())
-    hidden_states = torch.randn(2, 4, 8)
+def test_cosmos3_audio_encoder_reuses_snake1d():
+    model = _get_tiny_cosmos3_audio_tokenizer()
+    act = model.encoder.layers[1].act
 
-    assert snake_beta.state_dict()["alpha"].shape == (4,)
-    assert torch.allclose(snake_beta(hidden_states), snake(hidden_states))
+    assert isinstance(act, Snake1d)
+    assert act.state_dict()["alpha"].shape == (1, 16, 1)
 
 
 def test_cosmos3_audio_tokenizer_decoder_only_state_disables_encode():
@@ -145,7 +140,7 @@ def test_cosmos3_audio_converter_keeps_encoder_and_remaps_decoder():
     assert "encoder.layers.0.weight" not in remapped
     assert "encoder.layers.0.weight_g" in remapped
     assert "encoder.layers.0.weight_v" in remapped
-    assert remapped["encoder.layers.1.act.alpha"].shape == (16,)
+    assert remapped["encoder.layers.1.act.alpha"].shape == (1, 16, 1)
     assert remapped["decoder.conv1.weight_g"].shape == (8, 1, 1)
     assert remapped["decoder.block.0.snake1.alpha"].shape == (1, 8, 1)
     assert remapped["decoder.block.0.res_unit1.snake1.alpha"].shape == (1, 4, 1)
