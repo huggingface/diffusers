@@ -1082,14 +1082,14 @@ class ChromaInpaintPipeline(
                 ip_adapter_image,
                 ip_adapter_image_embeds,
                 device,
-                batch_size * num_images_per_prompt,
+                num_images_per_prompt,
             )
         if negative_ip_adapter_image is not None or negative_ip_adapter_image_embeds is not None:
             negative_image_embeds = self.prepare_ip_adapter_image_embeds(
                 negative_ip_adapter_image,
                 negative_ip_adapter_image_embeds,
                 device,
-                batch_size * num_images_per_prompt,
+                num_images_per_prompt,
             )
 
         attention_mask = self._prepare_attention_mask(

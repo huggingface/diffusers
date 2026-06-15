@@ -1286,7 +1286,7 @@ class StableDiffusionXLControlNetUnionPipeline(
                 ip_adapter_image,
                 ip_adapter_image_embeds,
                 device,
-                batch_size * num_images_per_prompt,
+                num_images_per_prompt,
                 self.do_classifier_free_guidance,
             )
 

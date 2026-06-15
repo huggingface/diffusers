@@ -754,7 +754,7 @@ class AnimateDiffPAGPipeline(
                 ip_adapter_image,
                 ip_adapter_image_embeds,
                 device,
-                batch_size * num_videos_per_prompt,
+                num_videos_per_prompt,
                 self.do_classifier_free_guidance,
             )
 
