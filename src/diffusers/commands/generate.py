@@ -186,7 +186,11 @@ def _add_remote_arguments(parser: ArgumentParser) -> None:
         default="a10g-small",
         help="HF Jobs hardware flavor for --remote (e.g. a10g-small, a100-large, cpu-basic).",
     )
-    parser.add_argument("--timeout", default=None, help="HF Jobs timeout for --remote (e.g. 30m, 2h).")
+    parser.add_argument(
+        "--timeout",
+        default="10m",
+        help="HF Jobs timeout for --remote (e.g. 30m, 2h). Defaults to 10m.",
+    )
     parser.add_argument(
         "--dependencies",
         action="append",
@@ -247,9 +251,12 @@ def _resolve_device(name: Optional[str]) -> str:
         if local_rank is not None:
             torch.cuda.set_device(int(local_rank))
             return f"cuda:{local_rank}"
+
         return "cuda"
+
     if hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
         return "mps"
+
     return "cpu"
 
 
