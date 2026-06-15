@@ -244,7 +244,6 @@ class Flux2KleinPipelineIntegrationTests(unittest.TestCase):
     @require_torch_neuron
     def test_flux2_klein_neuron_compile_128(self):
         from torch_neuronx.neuron_dynamo_backend import set_model_name
-        from transformers.utils.output_capturing import install_all_output_capturing_hooks
 
         device = torch.neuron.current_device()
         generator = torch.Generator("cpu").manual_seed(0)
@@ -257,10 +256,9 @@ class Flux2KleinPipelineIntegrationTests(unittest.TestCase):
         pipe.vae.eval()
         pipe.text_encoder.eval()
 
-        install_all_output_capturing_hooks(pipe.text_encoder)
-        set_model_name("flux2_klein_text_encoder")
-        pipe.text_encoder = torch.compile(pipe.text_encoder, backend="neuron", fullgraph=True)
-
+        # Keep the text encoder eager: it reads intermediate hidden_states, which
+        # transformers only materializes outside of torch.compile(fullgraph=True).
+        # It runs once per generation, so leaving it uncompiled is negligible.
         set_model_name("flux2_klein_transformer")
         pipe.transformer = torch.compile(pipe.transformer, backend="neuron", fullgraph=True)
 
