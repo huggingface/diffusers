@@ -12,6 +12,7 @@ from diffusers import (
     AnimateDiffVideoToVideoPipeline,
     AutoencoderKL,
     DDIMScheduler,
+    DiffusionPipeline,
     MotionAdapter,
     StableDiffusionImg2ImgPipeline,
     StableDiffusionInpaintPipeline,
@@ -19,6 +20,7 @@ from diffusers import (
     UNet2DConditionModel,
 )
 from diffusers.pipelines.pipeline_loading_utils import is_safetensors_compatible, variant_compatible_siblings
+from diffusers.models.modeling_utils import ModelMixin
 
 from ..testing_utils import require_torch_accelerator, torch_device
 
@@ -950,3 +952,41 @@ class PipelineDeviceAndDtypeStabilityTests(unittest.TestCase):
             pipe_dtype,
             f"Wrong expected dtype. Expected {self.expected_pipe_dtype}. Got {pipe_dtype}.",
         )
+
+
+class FromPipeDtypeTests(unittest.TestCase):
+    def test_from_pipe_preserves_dtype_by_default(self):
+        class DummyComponent(ModelMixin):
+            def __init__(self):
+                super().__init__()
+                self.linear = torch.nn.Linear(4, 4)
+
+        class SourcePipeline(DiffusionPipeline):
+            def __init__(self, unet: DummyComponent, vae: DummyComponent):
+                super().__init__()
+                self.register_modules(unet=unet, vae=vae)
+
+        class TargetPipeline(DiffusionPipeline):
+            def __init__(self, unet: DummyComponent, vae: DummyComponent):
+                super().__init__()
+                self.register_modules(unet=unet, vae=vae)
+
+        unet = DummyComponent().to(dtype=torch.float16)
+        vae = DummyComponent().to(dtype=torch.float16)
+        pipe = SourcePipeline(unet=unet, vae=vae)
+
+        new_pipe = TargetPipeline.from_pipe(pipe)
+
+        self.assertEqual(new_pipe.dtype, torch.float16)
+        for name, component in new_pipe.components.items():
+            if isinstance(component, torch.nn.Module):
+                self.assertEqual(
+                    component.dtype,
+                    torch.float16,
+                    f"Component {name} dtype was not preserved after from_pipe.",
+                )
+
+        # components are shared with the original pipeline and must not be cast to float32
+        self.assertEqual(pipe.dtype, torch.float16)
+        self.assertIs(new_pipe.unet, pipe.unet)
+        self.assertIs(new_pipe.vae, pipe.vae)
