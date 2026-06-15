@@ -15,6 +15,7 @@
 
 from argparse import ArgumentParser
 
+from ._output import OutputFormat, out
 from .custom_blocks import CustomBlocksCommand
 from .describe import DescribeCommand
 from .env import EnvironmentCommand
@@ -25,9 +26,19 @@ from .generate import GenerateCommand
 def main():
     parser = ArgumentParser(
         prog="diffusers-cli",
-        usage="\n  diffusers-cli <command> [options]",
+        usage="\n  diffusers-cli [--format <fmt>] <command> [options]",
     )
     parser._optionals.title = "General Options"
+    parser.add_argument(
+        "--format",
+        choices=[m.value for m in OutputFormat],
+        default=OutputFormat.AUTO.value,
+        help=(
+            "Output format. 'auto' (default) picks 'agent' when an AI coding agent is detected "
+            "(via CLAUDECODE/CURSOR_AI/AIDER_AI_CONTEXT/... env vars) and 'human' otherwise. "
+            "Must appear before the subcommand."
+        ),
+    )
     commands_parser = parser.add_subparsers(title="Commands", metavar="<command>")
 
     # Register commands
@@ -39,6 +50,8 @@ def main():
 
     # Let's go
     args = parser.parse_args()
+
+    out.set_mode(OutputFormat(args.format))
 
     if not hasattr(args, "func"):
         parser.print_help()

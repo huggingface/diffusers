@@ -30,6 +30,8 @@ from typing import Any, Optional
 from diffusers.utils import load_image
 
 from . import BaseDiffusersCLICommand
+from ._common import try_fetch_config
+from ._output import OutputFormat, out
 
 
 # ---------------------------------------------------------------------------
@@ -102,6 +104,15 @@ def _add_loading_arguments(parser: ArgumentParser) -> None:
     parser.add_argument("--revision", default=None, help="Model revision (branch, tag, or commit SHA).")
     parser.add_argument("--token", default=None, help="Hugging Face token for gated/private models.")
     parser.add_argument("--trust-remote-code", action="store_true", help="Allow custom code from the Hub.")
+    parser.add_argument(
+        "--lora",
+        default=None,
+        help=(
+            "JSON object describing a LoRA adapter to attach after the pipeline loads. "
+            'Shape: {"lora_id": "<hub-id-or-path>", "lora_scale": <float>}. '
+            'Example: \'{"lora_id": "alvdansen/littletinies", "lora_scale": 0.8}\'.'
+        ),
+    )
 
 
 def _add_optimization_arguments(parser: ArgumentParser) -> None:
@@ -244,7 +255,7 @@ def _map_to_device(pipeline: Any, args: Namespace, device: str) -> Any:
         pipeline.enable_group_offload(
             onload_device=torch.device(device),
             offload_type="leaf_level",
-            use_stream=device.startswith("cuda"),
+            use_stream=True,
         )
     return pipeline
 
@@ -264,8 +275,11 @@ def _set_attention_backend(pipeline: Any, backend: str) -> None:
         return
     try:
         module.set_attention_backend(backend)
-    except (ValueError, ImportError, RuntimeError):
-        pass
+    except (ValueError, ImportError, RuntimeError) as e:
+        raise SystemExit(
+            f"Failed to set attention backend {backend!r}: {type(e).__name__}: {e}. "
+            f"Allowed backends: {', '.join(ATTENTION_BACKEND_CHOICES)}."
+        ) from e
 
 
 def _enable_context_parallel(pipeline: Any) -> None:
@@ -275,15 +289,6 @@ def _enable_context_parallel(pipeline: Any) -> None:
         raise SystemExit("--context-parallel requires a torch build with distributed support.")
 
     if not torch.distributed.is_initialized():
-        # torchrun sets RANK/WORLD_SIZE/LOCAL_RANK/MASTER_* env vars but does not call
-        # init_process_group on our behalf — do it here. If those env vars are absent the
-        # process wasn't launched under torchrun, so point the user at the right command.
-        if "LOCAL_RANK" not in os.environ:
-            raise SystemExit(
-                "--context-parallel requires torch.distributed to be initialized. "
-                "Launch the CLI under torchrun, e.g.: "
-                "`torchrun --nproc-per-node=N -m diffusers.commands.diffusers_cli generate ...`."
-            )
         # Hybrid backend: ulysses_anything's per-rank size coordination wants Gloo on CPU
         # (avoids H2D/D2H for a tiny int tensor); the main attention all-to-all stays on NCCL.
         torch.distributed.init_process_group(backend="cpu:gloo,cuda:nccl")
@@ -341,7 +346,30 @@ def _load_pipeline(args: Namespace, modular: bool) -> Any:
         return pipeline
     pipeline = _map_to_device(pipeline, args, _resolve_device(args.device))
     _apply_optimizations(pipeline, args)
+    _load_lora(pipeline, args)
     return pipeline
+
+
+def _load_lora(pipeline: Any, args: Namespace) -> None:
+    """Attach a LoRA adapter from a JSON spec like ``{"lora_id": "...", "lora_scale": 0.8}``."""
+    if not args.lora:
+        return
+    try:
+        spec = json.loads(args.lora)
+    except json.JSONDecodeError as e:
+        raise SystemExit(f"--lora must be valid JSON: {e}") from e
+    if not isinstance(spec, dict):
+        raise SystemExit("--lora must decode to a JSON object.")
+    lora_id = spec.get("lora_id")
+    if not lora_id:
+        raise SystemExit("--lora must include a 'lora_id' field.")
+    if not hasattr(pipeline, "load_lora_weights"):
+        raise SystemExit(f"{type(pipeline).__name__} does not support LoRA loading.")
+
+    pipeline.load_lora_weights(lora_id, adapter_name="default")
+    scale = spec.get("lora_scale")
+    if scale is not None and hasattr(pipeline, "set_adapters"):
+        pipeline.set_adapters(["default"], adapter_weights=[float(scale)])
 
 
 # ---------------------------------------------------------------------------
@@ -349,181 +377,11 @@ def _load_pipeline(args: Namespace, modular: bool) -> Any:
 # ---------------------------------------------------------------------------
 
 
-def _try_fetch_config(args: Namespace, filename: str) -> Optional[str]:
-    """Try to resolve ``filename`` for ``args.model`` (local path or Hub repo). None if absent."""
-    local = Path(args.model)
-    if local.exists():
-        candidate = local / filename
-        return str(candidate) if candidate.exists() else None
-
-    from huggingface_hub import hf_hub_download
-    from huggingface_hub.utils import EntryNotFoundError, HfHubHTTPError, RepositoryNotFoundError
-
-    try:
-        return hf_hub_download(args.model, filename, revision=args.revision, token=args.token)
-    except (EntryNotFoundError, HfHubHTTPError, RepositoryNotFoundError):
-        return None
-
-
 def _is_modular_repo(args: Namespace) -> bool:
     """Detect by trying ``DiffusionPipeline.config_name`` first; modular iff that's absent."""
     from diffusers import DiffusionPipeline
 
-    return _try_fetch_config(args, DiffusionPipeline.config_name) is None
-
-
-def _describe(args: Namespace) -> None:
-    """Print the pipeline's input schema.
-
-    Tries ``DiffusionPipeline.config_name`` (= ``model_index.json``) first; if present, introspects the declared
-    pipeline class's ``__call__`` signature. Otherwise falls back to ``ModularPipelineBlocks.from_pretrained`` and
-    reads the block-declared ``inputs``. No weights downloaded either way.
-    """
-    import inspect
-
-    import diffusers
-
-    standard_index = _try_fetch_config(args, diffusers.DiffusionPipeline.config_name)
-
-    if standard_index is not None:
-        with open(standard_index) as f:
-            index = json.load(f)
-        class_name = index.get("_class_name")
-        if class_name is None:
-            raise SystemExit(
-                f"{diffusers.DiffusionPipeline.config_name} for {args.model!r} has no `_class_name` field."
-            )
-        pipeline_cls = getattr(diffusers, class_name, None)
-        if pipeline_cls is None:
-            raise SystemExit(
-                f"Pipeline class {class_name!r} declared in {diffusers.DiffusionPipeline.config_name} "
-                "is not exported by the installed diffusers."
-            )
-        sig = inspect.signature(pipeline_cls.__call__)
-        descriptions = _parse_docstring_args(pipeline_cls.__call__.__doc__) if args.verbose else {}
-        schema: list[dict[str, Any]] = []
-        for name, param in sig.parameters.items():
-            if name == "self":
-                continue
-            if param.kind in (inspect.Parameter.VAR_POSITIONAL, inspect.Parameter.VAR_KEYWORD):
-                continue
-            has_default = param.default is not inspect.Parameter.empty
-            schema.append(
-                {
-                    "name": name,
-                    "type_hint": str(param.annotation) if param.annotation is not inspect.Parameter.empty else None,
-                    "default": param.default if has_default else None,
-                    "required": not has_default,
-                    "description": descriptions.get(name, ""),
-                }
-            )
-    else:
-        kwargs: dict[str, Any] = {"trust_remote_code": args.trust_remote_code}
-        if args.revision:
-            kwargs["revision"] = args.revision
-        if args.token:
-            kwargs["token"] = args.token
-        try:
-            blocks = diffusers.ModularPipelineBlocks.from_pretrained(args.model, **kwargs)
-        except Exception as e:
-            raise SystemExit(
-                f"Could not describe {args.model!r}: no {diffusers.DiffusionPipeline.config_name} and "
-                f"loading as a modular pipeline failed ({type(e).__name__}: {e}). "
-                "Is this a diffusers pipeline repo? Pass --trust-remote-code if it ships custom block code."
-            ) from e
-        class_name = type(blocks).__name__
-        schema = [
-            {
-                "name": p.name,
-                "type_hint": str(p.type_hint) if p.type_hint is not None else None,
-                "default": p.default,
-                "required": p.required,
-                "description": p.description,
-            }
-            for p in blocks.inputs
-        ]
-
-    if args.json:
-        payload = {
-            "task": "describe",
-            "model": args.model,
-            "pipeline_class": class_name,
-            "inputs": schema,
-        }
-        json.dump(payload, sys.stdout, default=str)
-        sys.stdout.write("\n")
-        return
-
-    _print_schema(class_name, args.model, schema)
-
-
-def _parse_docstring_args(docstring: Optional[str]) -> dict[str, str]:
-    """Extract per-argument descriptions from a Google-style ``Args:`` block.
-
-    Returns a ``{name: description}`` mapping. Best-effort — unrecognised formats just yield an empty dict rather than
-    raising.
-    """
-    if not docstring:
-        return {}
-
-    import re
-
-    lines = docstring.expandtabs().splitlines()
-    start = None
-    section_indent = 0
-    for i, line in enumerate(lines):
-        if line.strip() in ("Args:", "Arguments:", "Parameters:"):
-            start = i + 1
-            section_indent = len(line) - len(line.lstrip())
-            break
-    if start is None:
-        return {}
-
-    descriptions: dict[str, str] = {}
-    current_name: Optional[str] = None
-    current_lines: list[str] = []
-    arg_indent: Optional[int] = None
-    name_pattern = re.compile(r"^(\w+)\s*(?:\([^)]*\))?\s*:?\s*(.*)$")
-
-    def _flush() -> None:
-        if current_name and current_lines:
-            descriptions[current_name] = " ".join(s.strip() for s in current_lines).strip()
-
-    for line in lines[start:]:
-        if not line.strip():
-            continue
-        indent = len(line) - len(line.lstrip())
-        # A new top-level section ends the Args block.
-        if indent <= section_indent and line.strip().endswith(":"):
-            break
-        if arg_indent is None:
-            arg_indent = indent
-        if indent == arg_indent:
-            _flush()
-            current_lines = []
-            match = name_pattern.match(line.strip())
-            if match:
-                current_name = match.group(1)
-                tail = match.group(2).strip()
-                if tail:
-                    current_lines.append(tail)
-            else:
-                current_name = None
-        elif current_name is not None and indent > arg_indent:
-            current_lines.append(line.strip())
-    _flush()
-    return descriptions
-
-
-def _print_schema(class_name: str, model: str, schema: list[dict[str, Any]]) -> None:
-    print(f"{class_name} ({model}) inputs:")
-    for entry in schema:
-        tag = "required" if entry["required"] else f"optional, default={entry['default']!r}"
-        print(f"  {entry['name']}  ({tag})")
-        if entry["type_hint"]:
-            print(f"    type: {entry['type_hint']}")
-        if entry["description"]:
-            print(f"    desc: {entry['description']}")
+    return try_fetch_config(args, DiffusionPipeline.config_name) is None
 
 
 # ---------------------------------------------------------------------------
@@ -835,8 +693,8 @@ def _maybe_submit_remote(args: Namespace, task: str) -> bool:
 def _job_timing(api: Any, job_id: str, namespace: Optional[str]) -> dict[str, Optional[float]]:
     """Return queue/run/total wallclock seconds for ``job_id`` from inspect_job timestamps.
 
-    inspect_job sometimes returns finished_at=None for a few seconds after the container exits
-    while HF Jobs propagates the terminal state; retry briefly so we don't miss run/total.
+    inspect_job sometimes returns finished_at=None for a few seconds after the container exits while HF Jobs propagates
+    the terminal state; retry briefly so we don't miss run/total.
     """
     import time
 
@@ -922,18 +780,10 @@ def _download_job_artifacts(api: Any, bucket_id: str, run_id: str, output: Optio
 
 
 def _format_result(args: Namespace, payload: dict[str, Any]) -> None:
-    """Print either a human-friendly summary or JSON, depending on --json."""
+    """Route the result payload through ``out``. ``--json`` escalates the mode regardless of --format."""
     if args.json:
-        json.dump(payload, sys.stdout, default=str)
-        sys.stdout.write("\n")
-        return
-
-    outputs = payload.get("outputs", [])
-    if outputs:
-        for path in outputs:
-            print(path)
-    else:
-        print(payload)
+        out.set_mode(OutputFormat.JSON)
+    out.result(payload.get("task", "done"), **payload)
 
 
 # ---------------------------------------------------------------------------
