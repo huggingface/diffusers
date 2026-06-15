@@ -112,7 +112,7 @@ Check out the [Quickstart](https://huggingface.co/docs/diffusers/quicktour) to l
 
 We ❤️  contributions from the open-source community!
 If you want to contribute to this library, please check out our [Contribution guide](https://github.com/huggingface/diffusers/blob/main/CONTRIBUTING.md).
-If you are using an AI agent, please point it at the project conventions in [`.ai/`](https://github.com/huggingface/diffusers/tree/main/.ai) first (run `make claude` or `make codex`) — see [Coding with AI agents](https://github.com/huggingface/diffusers/blob/main/CONTRIBUTING.md#coding-with-ai-agents).
+If you are using an AI agent, please point it at the project conventions in [`.ai/`](https://github.com/huggingface/diffusers/tree/main/.ai) first (run `make claude` or `make codex`) — see [Coding with AI agents](https://huggingface.co/docs/diffusers/main/en/conceptual/contribution#coding-with-ai-agents).
 You can look out for [issues](https://github.com/huggingface/diffusers/issues) you'd like to tackle to contribute to the library.
 - See [Good first issues](https://github.com/huggingface/diffusers/issues?q=is%3Aopen+is%3Aissue+label%3A%22good+first+issue%22) for general opportunities to contribute
 - See [New model/pipeline](https://github.com/huggingface/diffusers/issues?q=is%3Aopen+is%3Aissue+label%3A%22New+pipeline%2Fmodel%22) to contribute exciting new diffusion models / diffusion pipelines
