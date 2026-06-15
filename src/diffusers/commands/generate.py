@@ -271,12 +271,20 @@ def _set_attention_backend(pipeline: Any, backend: str) -> None:
 def _enable_context_parallel(pipeline: Any) -> None:
     import torch
 
-    if not torch.distributed.is_available() or not torch.distributed.is_initialized():
-        raise SystemExit(
-            "--context-parallel requires torch.distributed to be initialized. "
-            "Launch the CLI under torchrun, e.g.: "
-            "`torchrun --nproc-per-node=N -m diffusers.commands.diffusers_cli generate ...`."
-        )
+    if not torch.distributed.is_available():
+        raise SystemExit("--context-parallel requires a torch build with distributed support.")
+
+    if not torch.distributed.is_initialized():
+        # torchrun sets RANK/WORLD_SIZE/LOCAL_RANK/MASTER_* env vars but does not call
+        # init_process_group on our behalf — do it here. If those env vars are absent the
+        # process wasn't launched under torchrun, so point the user at the right command.
+        if "LOCAL_RANK" not in os.environ:
+            raise SystemExit(
+                "--context-parallel requires torch.distributed to be initialized. "
+                "Launch the CLI under torchrun, e.g.: "
+                "`torchrun --nproc-per-node=N -m diffusers.commands.diffusers_cli generate ...`."
+            )
+        torch.distributed.init_process_group(backend="nccl")
 
     transformer = getattr(pipeline, "transformer", None)
     if transformer is None or not hasattr(transformer, "enable_parallelism"):
