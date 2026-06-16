@@ -248,7 +248,7 @@ class FluxPipelineFastTests(
             "output_type": "latent",
         }
 
-        with self.assertRaises(ValueError):
+        with self.assertRaisesRegex(ValueError, "must have the same shape when passed directly"):
             pipe(**base_inputs, true_cfg_scale=2.0, generator=torch.manual_seed(0))
 
         pipe(**base_inputs, true_cfg_scale=1.0, generator=torch.manual_seed(0))
