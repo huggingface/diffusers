@@ -624,9 +624,29 @@ class Cosmos3AVAEAudioTokenizer(ModelMixin, ConfigMixin):
         generator: torch.Generator | None = None,
         force_pad: bool = False,
     ) -> Cosmos3AudioDecoderOutput | tuple[torch.Tensor]:
-        """Encode then decode a waveform; ``sample_posterior=False`` (default) decodes the distribution mode (mean),
-        whereas the upstream Cosmos3 AVAE always samples — pass ``sample_posterior=True`` for reference-equivalent
-        behavior."""
+        r"""
+        Encode then decode a waveform. `sample_posterior=False` (default) decodes the distribution mode (mean), whereas
+        the upstream Cosmos3 AVAE always samples; pass `sample_posterior=True` for reference-equivalent behavior.
+
+        Args:
+            sample (`torch.Tensor`):
+                Input waveform sample with shape `(batch_size, audio_channels, num_samples)`.
+            sample_posterior (`bool`, *optional*, defaults to `False`):
+                Whether to sample from the posterior instead of decoding the distribution mode.
+            return_dict (`bool`, *optional*, defaults to `True`):
+                Whether or not to return a [`Cosmos3AudioDecoderOutput`] instead of a plain tuple.
+            generator (`torch.Generator`, *optional*):
+                A [`torch.Generator`](https://pytorch.org/docs/stable/generated/torch.Generator.html) to make sampling
+                deterministic.
+            force_pad (`bool`, *optional*, defaults to `False`):
+                Whether to right-pad the waveform to `hop_size` before encoding even when the model is in training
+                mode.
+
+        Returns:
+            [`Cosmos3AudioDecoderOutput`] or `tuple`:
+                If `return_dict` is True, a [`Cosmos3AudioDecoderOutput`] is returned, otherwise a plain `tuple` is
+                returned.
+        """
         posterior = self.encode(sample, force_pad=force_pad).latent_dist
         latents = posterior.sample(generator=generator) if sample_posterior else posterior.mode()
         decoded = self.decode(latents)
