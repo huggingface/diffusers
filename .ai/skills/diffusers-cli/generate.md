@@ -173,7 +173,7 @@ The CLI auto-detects when running under an AI coding agent (Claude Code, Cursor,
 `CLAUDECODE`, `CLAUDE_CODE`, `CURSOR_AI`, `AIDER_AI_CONTEXT`, `GH_COPILOT_AGENT`) and switches output to **agent
 mode** automatically — TSV tables, `key=value` results, compact JSON dicts, no progress bars.
 
-Override explicitly with `--format {auto, human, agent, json, quiet}` placed **before** the subcommand:
+Override explicitly with `--format {auto, human, agent, json}` placed **before** the subcommand:
 
 ```bash
 diffusers-cli --format json generate --model <id> --pipeline-kwargs '...'

@@ -19,8 +19,6 @@ description: >
 | `custom_blocks` | Package a local `ModularPipelineBlocks` subclass for the Hub.                                                                                                                                 |
 | `env`           | Print versions of diffusers + torch + transformers + accelerate + safetensors + CUDA + GPU info. Use when investigating environment issues, dtype/precision support, or building bug reports. |
 
-`fp16_safetensors` is also shipped but deprecated and not relevant to inference.
-
 ## When to read which file
 
 Most agentic work goes through `generate`. Read the matching reference file before constructing a command:
@@ -53,7 +51,18 @@ The console entry point is registered in `pyproject.toml` (`diffusers-cli =
 with `pip install -e . --force-reinstall --no-deps` and check `which diffusers-cli`. If the installed binary is
 missing recent features (e.g. you see `unrecognized arguments: --lora`), reinstall.
 
-## Full user guide
+## Output formats
 
-For a non-agent overview with troubleshooting and tips, see [`DIFFUSERS_CLI.md`](../../../DIFFUSERS_CLI.md) at
-the repo root.
+`--format {auto, human, agent, json}` (top-level flag, must appear before the subcommand):
+
+- **`human`** — plain-text indented output for terminals (default when not running under an agent harness). No ANSI color.
+- **`agent`** — TSV tables and `key=value` lines. Auto-selected when an agent env var is present
+  (`CLAUDECODE`, `CLAUDE_CODE`, `CODEX_SANDBOX`, `CURSOR_AI`, `AIDER_AI_CONTEXT`, `GH_COPILOT_AGENT`,
+  `AI_AGENT`). Token-cheap for LLM agents to read.
+- **`json`** — compact JSON. Use for programmatic parsing (scripts, services) where type fidelity and nested
+  structures matter.
+
+`stdout` carries data; `stderr` carries hints/warnings/progress — parseable output is never polluted.
+
+Rule of thumb: `--format json` for scripts that will `json.loads()` the output, otherwise leave it on
+auto-detect (`agent` for LLMs, `human` for terminals).

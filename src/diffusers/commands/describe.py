@@ -102,18 +102,19 @@ def _describe(args: Namespace) -> None:
             for p in blocks.inputs
         ]
 
-    if args.json:
-        out.set_mode(OutputFormat.JSON)
-
-    if out.mode in (OutputFormat.JSON, OutputFormat.AGENT):
-        # Agents get the structured schema (full payload for JSON, the inputs table for AGENT).
-        if out.mode == OutputFormat.JSON:
-            out.dict({"task": "describe", "model": args.model, "pipeline_class": class_name, "inputs": schema})
-        else:
-            out.table(schema, headers=["name", "required", "type_hint", "default", "description"])
-        return
-
-    _print_schema(class_name, args.model, schema)
+    if out.mode == OutputFormat.JSON:
+        out.dict({"task": "describe", "model": args.model, "pipeline_class": class_name, "inputs": schema})
+    elif out.mode == OutputFormat.AGENT:
+        out.table(schema, headers=["name", "required", "type_hint", "default", "description"])
+    else:
+        out.text(f"{class_name} ({args.model}) inputs:")
+        for entry in schema:
+            tag = "required" if entry["required"] else f"optional, default={entry['default']!r}"
+            out.text(f"  {entry['name']}  ({tag})")
+            if entry["type_hint"]:
+                out.text(f"    type: {entry['type_hint']}")
+            if entry["description"]:
+                out.text(f"    desc: {entry['description']}")
 
 
 def _parse_docstring_args(docstring: Optional[str]) -> dict[str, str]:
@@ -174,17 +175,6 @@ def _parse_docstring_args(docstring: Optional[str]) -> dict[str, str]:
     return descriptions
 
 
-def _print_schema(class_name: str, model: str, schema: list[dict[str, Any]]) -> None:
-    print(f"{class_name} ({model}) inputs:")
-    for entry in schema:
-        tag = "required" if entry["required"] else f"optional, default={entry['default']!r}"
-        print(f"  {entry['name']}  ({tag})")
-        if entry["type_hint"]:
-            print(f"    type: {entry['type_hint']}")
-        if entry["description"]:
-            print(f"    desc: {entry['description']}")
-
-
 class DescribeCommand(BaseDiffusersCLICommand):
     task = "describe"
 
@@ -226,11 +216,6 @@ class DescribeCommand(BaseDiffusersCLICommand):
                 "Modular pipelines always include block-declared descriptions; --verbose populates "
                 "the equivalent field for standard pipelines by parsing the Google-style Args: block."
             ),
-        )
-        parser.add_argument(
-            "--json",
-            action="store_true",
-            help="Emit a machine-readable JSON summary on stdout.",
         )
         parser.set_defaults(func=DescribeCommand)
 

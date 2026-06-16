@@ -31,7 +31,7 @@ from diffusers.utils import load_image
 
 from . import BaseDiffusersCLICommand
 from ._common import try_fetch_config
-from ._output import OutputFormat, out
+from ._output import out
 
 
 # ---------------------------------------------------------------------------
@@ -41,13 +41,19 @@ from ._output import OutputFormat, out
 DEFAULT_OUTPUT_DIR = "outputs"
 DTYPE_CHOICES = ("auto", "float16", "fp16", "bfloat16", "bf16", "float32", "fp32")
 CPU_OFFLOAD_CHOICES = ("model", "group")
-ATTENTION_BACKEND_CHOICES = (
-    "default",
-    "flash_hub",
-    "flash_varlen_hub",
-    "flash_4_hub",
-    "sage_hub",
-)
+
+
+def _hub_attention_backends() -> tuple[str, ...]:
+    """Hub-hosted attention backends sourced from ``_HUB_KERNELS_REGISTRY``.
+
+    Single source of truth: if the registry grows or shrinks, the CLI choices follow.
+    """
+    from diffusers.models.attention_dispatch import _HUB_KERNELS_REGISTRY
+
+    return tuple(sorted(backend.value for backend in _HUB_KERNELS_REGISTRY))
+
+
+ATTENTION_BACKEND_CHOICES = ("default", *_hub_attention_backends())
 
 # Keys whose string value should be resolved via ``diffusers.utils.load_image``
 # before being passed to the pipeline call.
@@ -72,6 +78,8 @@ _DEFAULT_REMOTE_DEPS = (
     "accelerate",
     "transformers",
     "safetensors",
+    "sentencepiece",  # required by several text-encoder tokenizers (T5, LLaMA, …)
+    "ftfy",  # required by older CLIP text-encoder paths
 )
 
 # Base container image — provides torch + CUDA so ``uv pip install --system``
@@ -172,7 +180,6 @@ def _add_output_arguments(parser: ArgumentParser) -> None:
             "When --remote is set, defaults to <user>/jobs-artifacts."
         ),
     )
-    parser.add_argument("--json", action="store_true", help="Emit a machine-readable JSON summary on stdout.")
 
 
 def _add_remote_arguments(parser: ArgumentParser) -> None:
@@ -241,23 +248,20 @@ def _resolve_dtype(name: Optional[str]):
 def _resolve_device(name: Optional[str]) -> str:
     if name:
         return name
-    import torch
 
-    if torch.cuda.is_available():
-        # Under torchrun, LOCAL_RANK identifies this process's assigned GPU.
-        # Without this pin every rank falls back to cuda:0 and OOMs because the
-        # whole pipeline gets replicated onto a single device.
+    from diffusers.utils.torch_utils import torch_device
+
+    # Under torchrun, LOCAL_RANK identifies this process's assigned GPU. Without this
+    # pin every rank falls back to cuda:0 and OOMs as the pipeline replicates onto a
+    # single device. Only applies to cuda — torch_device already handles npu/xpu/mps/etc.
+    if torch_device == "cuda":
         local_rank = os.environ.get("LOCAL_RANK")
         if local_rank is not None:
+            import torch
+
             torch.cuda.set_device(int(local_rank))
             return f"cuda:{local_rank}"
-
-        return "cuda"
-
-    if hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
-        return "mps"
-
-    return "cpu"
+    return torch_device
 
 
 def _map_to_device(pipeline: Any, args: Namespace, device: str) -> Any:
@@ -515,9 +519,13 @@ def _as_audio_arrays(value: Any):
 
 
 def _save_audio_arrays(audios, sampling_rate: int, args: Namespace, task: str) -> list[str]:
-    """Write each numpy audio array to a 16-bit PCM WAV at ``sampling_rate`` Hz."""
+    """Write each numpy audio array to a 16-bit PCM WAV at ``sampling_rate`` Hz.
+
+    Uses the stdlib ``wave`` module so no scipy dependency is required.
+    """
+    import wave
+
     import numpy as np
-    from scipy.io.wavfile import write as wavfile_write
 
     paths = _default_output_paths(task, len(audios), args.output, ext="wav")
     saved: list[str] = []
@@ -525,9 +533,21 @@ def _save_audio_arrays(audios, sampling_rate: int, args: Namespace, task: str) -
         data = np.asarray(audio)
         if data.dtype.kind == "f":
             data = (np.clip(data, -1.0, 1.0) * 32767).astype(np.int16)
-        if data.ndim > 1 and data.shape[0] < data.shape[-1]:
-            data = data.T  # (channels, samples) → (samples, channels) for scipy.
-        wavfile_write(str(path), sampling_rate, data)
+        else:
+            data = data.astype(np.int16)
+        if data.ndim == 1:
+            n_channels = 1
+        else:
+            # Heuristic: shorter axis is channels (interleaved layout for `wave` is
+            # samples × channels, so transpose if needed).
+            if data.shape[0] < data.shape[-1]:
+                data = data.T
+            n_channels = data.shape[1]
+        with wave.open(str(path), "wb") as w:
+            w.setnchannels(n_channels)
+            w.setsampwidth(2)  # 16-bit PCM
+            w.setframerate(sampling_rate)
+            w.writeframes(data.tobytes())
         saved.append(str(path))
     return saved
 
@@ -690,7 +710,7 @@ def _maybe_submit_remote(args: Namespace, task: str) -> bool:
     }
 
     if args.no_wait:
-        _format_result(args, payload)
+        _format_result(payload)
         return True
 
     print(
@@ -703,7 +723,7 @@ def _maybe_submit_remote(args: Namespace, task: str) -> bool:
     payload["job_status"] = final_status
     payload["timing"] = _job_timing(api, job.id, args.namespace)
     payload["outputs"] = _download_job_artifacts(api, args.push_to, run_id, args.output)
-    _format_result(args, payload)
+    _format_result(payload)
     return True
 
 
@@ -796,10 +816,8 @@ def _download_job_artifacts(api: Any, bucket_id: str, run_id: str, output: Optio
 # ---------------------------------------------------------------------------
 
 
-def _format_result(args: Namespace, payload: dict[str, Any]) -> None:
-    """Route the result payload through ``out``. ``--json`` escalates the mode regardless of --format."""
-    if args.json:
-        out.set_mode(OutputFormat.JSON)
+def _format_result(payload: dict[str, Any]) -> None:
+    """Route the result payload through the output sink."""
     out.result(payload.get("task", "done"), **payload)
 
 
@@ -885,7 +903,6 @@ class GenerateCommand(BaseDiffusersCLICommand):
                 pushed = _push_outputs(self.args, saved, self.task)
 
                 _format_result(
-                    self.args,
                     {
                         "task": self.task,
                         "model": self.args.model,

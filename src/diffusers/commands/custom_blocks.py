@@ -82,6 +82,8 @@ class CustomBlocksCommand(BaseDiffusersCLICommand):
             )
             child_class, parent_class = out[0][0], out[0][1]
 
+        # dynamically get the custom block and initialize it to call `save_pretrained` in the current directory.
+        # the user is responsible for running it, so I guess that is safe?
         module_name = f"__dynamic__{self.block_module_name.stem}"
         spec = importlib.util.spec_from_file_location(module_name, str(self.block_module_name))
         module = importlib.util.module_from_spec(spec)

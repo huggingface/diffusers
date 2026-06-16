@@ -14,10 +14,9 @@
 """Dual-audience output sink for ``diffusers-cli``.
 
 Every subcommand routes user-visible output through the singleton ``out``. The mode is one of ``human`` (default for
-terminals), ``agent`` (auto-selected when an AI coding agent is detected), ``json`` (machine-parseable), or ``quiet``
-(first value per record). The set of methods on ``out`` covers the shapes our commands actually produce — free-form
-text, key/value results, structured dicts, and tabular schemas — so leaf commands never branch on ``args.json``
-themselves.
+terminals), ``agent`` (auto-selected when an AI coding agent is detected), or ``json`` (machine-parseable). The set of
+methods on ``out`` covers the shapes our commands actually produce — free-form text, key/value results, structured
+dicts, and tabular schemas — so leaf commands never branch on ``args.json`` themselves.
 """
 
 from __future__ import annotations
@@ -30,10 +29,11 @@ from typing import Any, Optional, Sequence
 
 
 # Environment variables set by known AI coding agents. Presence of any one triggers AGENT mode
-# under `--format auto`. Subset of the huggingface_hub harness registry — extend as needed.
+# under `--format auto`.
 _AGENT_ENV_VARS = (
     "CLAUDECODE",  # Claude Code
     "CLAUDE_CODE",  # alt spelling
+    "CODEX_SANDBOX",  # Codex
     "CURSOR_AI",  # Cursor
     "AIDER_AI_CONTEXT",  # Aider
     "GH_COPILOT_AGENT",  # GitHub Copilot Agent
@@ -50,7 +50,6 @@ class OutputFormat(str, Enum):
     HUMAN = "human"
     AGENT = "agent"
     JSON = "json"
-    QUIET = "quiet"
 
 
 class Output:
@@ -70,9 +69,7 @@ class Output:
     # ------------------------------------------------------------------ stdout
 
     def text(self, msg: str) -> None:
-        """Free-form line. Suppressed in QUIET; printed plain in every other mode."""
-        if self.mode == OutputFormat.QUIET:
-            return
+        """Free-form line. Printed plain in every mode."""
         print(msg)
 
     def dict(self, data: dict[str, Any]) -> None:
@@ -80,8 +77,6 @@ class Output:
 
         Use for payloads that don't decompose cleanly into key/value pairs (e.g. describe schemas).
         """
-        if self.mode == OutputFormat.QUIET:
-            return
         indent = 2 if self.mode == OutputFormat.HUMAN else None
         print(json.dumps(data, indent=indent, default=str))
 
@@ -91,7 +86,6 @@ class Output:
         - HUMAN: ``message`` followed by `` key: value`` lines.
         - AGENT: ``key=value`` pairs space-separated on one line (TSV-ish, parser-friendly).
         - JSON: compact JSON of ``data``.
-        - QUIET: first non-None value.
         """
         if self.mode == OutputFormat.HUMAN:
             print(message)
@@ -103,20 +97,14 @@ class Output:
             print(" ".join(parts) if parts else message)
         elif self.mode == OutputFormat.JSON:
             print(json.dumps(data, default=str))
-        elif self.mode == OutputFormat.QUIET:
-            for v in data.values():
-                if v is not None:
-                    print(v)
-                    return
 
     def table(
         self,
         items: Sequence[dict[str, Any]],
         *,
         headers: Optional[list[str]] = None,
-        id_key: Optional[str] = None,
     ) -> None:
-        """Tabular data — HUMAN gets padded columns, AGENT gets TSV, JSON gets the list, QUIET gets id_key.
+        """Tabular data — HUMAN gets padded columns, AGENT gets TSV, JSON gets the list.
 
         Headers default to the keys of the first item.
         """
@@ -132,14 +120,6 @@ class Output:
 
         if self.mode == OutputFormat.JSON:
             print(json.dumps(list(items), default=str))
-            return
-
-        if self.mode == OutputFormat.QUIET:
-            key = id_key or headers[0]
-            for item in items:
-                value = item.get(key)
-                if value is not None:
-                    print(value)
             return
 
         rows = [[_cell(item.get(h)) for h in headers] for item in items]
@@ -159,8 +139,6 @@ class Output:
 
     def hint(self, message: str) -> None:
         """Next-step suggestion. Always goes to stderr so it never pollutes parseable stdout."""
-        if self.mode == OutputFormat.QUIET:
-            return
         print(f"Hint: {message}", file=sys.stderr)
 
     def warning(self, message: str) -> None:

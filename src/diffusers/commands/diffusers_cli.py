@@ -28,7 +28,7 @@ def main():
         prog="diffusers-cli",
         usage="\n  diffusers-cli [--format <fmt>] <command> [options]",
     )
-    parser._optionals.title = "General Options"
+    parser._optionals.title = "Options"
     parser.add_argument(
         "--format",
         choices=[m.value for m in OutputFormat],
