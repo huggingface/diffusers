@@ -295,9 +295,8 @@ class ModelTesterMixin:
                 f"Parameter shape mismatch for {param_name}. Original: {param_1.shape}, loaded: {param_2.shape}"
             )
 
-        inputs_dict = self.get_dummy_inputs()
-        image = model(**inputs_dict, return_dict=False)[0]
-        new_image = new_model(**inputs_dict, return_dict=False)[0]
+        image = model(**self.get_dummy_inputs(), return_dict=False)[0]
+        new_image = new_model(**self.get_dummy_inputs(), return_dict=False)[0]
 
         assert_tensors_close(image, new_image, atol=atol, rtol=rtol, msg="Models give different forward passes.")
 
@@ -317,9 +316,8 @@ class ModelTesterMixin:
 
         new_model.to(torch_device)
 
-        inputs_dict = self.get_dummy_inputs()
-        image = model(**inputs_dict, return_dict=False)[0]
-        new_image = new_model(**inputs_dict, return_dict=False)[0]
+        image = model(**self.get_dummy_inputs(), return_dict=False)[0]
+        new_image = new_model(**self.get_dummy_inputs(), return_dict=False)[0]
 
         assert_tensors_close(image, new_image, atol=atol, rtol=rtol, msg="Models give different forward passes.")
 
@@ -347,9 +345,8 @@ class ModelTesterMixin:
         model.to(torch_device)
         model.eval()
 
-        inputs_dict = self.get_dummy_inputs()
-        first = model(**inputs_dict, return_dict=False)[0]
-        second = model(**inputs_dict, return_dict=False)[0]
+        first = model(**self.get_dummy_inputs(), return_dict=False)[0]
+        second = model(**self.get_dummy_inputs(), return_dict=False)[0]
 
         first_flat = first.flatten()
         second_flat = second.flatten()
@@ -406,9 +403,8 @@ class ModelTesterMixin:
         model.to(torch_device)
         model.eval()
 
-        inputs_dict = self.get_dummy_inputs()
-        outputs_dict = model(**inputs_dict)
-        outputs_tuple = model(**inputs_dict, return_dict=False)
+        outputs_dict = model(**self.get_dummy_inputs())
+        outputs_tuple = model(**self.get_dummy_inputs(), return_dict=False)
 
         recursive_check(outputs_tuple, outputs_dict)
 
