@@ -107,8 +107,8 @@ class SingleFileTesterMixin:
         backend_empty_cache(torch_device)
 
     def test_single_file_model_config(self):
-        pretrained_kwargs = {"device": torch_device, **self.pretrained_model_kwargs}
-        single_file_kwargs = {"device": torch_device}
+        pretrained_kwargs = {"device_map": "auto", **self.pretrained_model_kwargs}
+        single_file_kwargs = {"device_map": "auto"}
 
         if self.torch_dtype:
             pretrained_kwargs["torch_dtype"] = self.torch_dtype
@@ -127,8 +127,8 @@ class SingleFileTesterMixin:
             )
 
     def test_single_file_model_parameters(self):
-        pretrained_kwargs = {"device_map": str(torch_device), **self.pretrained_model_kwargs}
-        single_file_kwargs = {"device": torch_device}
+        pretrained_kwargs = {"device_map": "auto", **self.pretrained_model_kwargs}
+        single_file_kwargs = {"device_map": "auto"}
 
         if self.torch_dtype:
             pretrained_kwargs["torch_dtype"] = self.torch_dtype
@@ -259,7 +259,7 @@ class SingleFileTesterMixin:
             backend_empty_cache(torch_device)
 
     def test_single_file_loading_with_device_map(self):
-        single_file_kwargs = {"device_map": torch_device}
+        single_file_kwargs = {"device_map": "auto"}
 
         if self.torch_dtype:
             single_file_kwargs["torch_dtype"] = self.torch_dtype

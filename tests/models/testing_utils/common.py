@@ -242,6 +242,9 @@ class BaseModelTesterConfig:
         """
         Returns dict of inputs to pass to the model forward pass.
 
+        Implementations must be deterministic: every call must return identical inputs (seed any random
+        tensors and generators), since tests call this once per forward pass to compare outputs.
+
         Returns:
             Dict[str, Any]: Input tensors/values for model.forward().
 
@@ -509,11 +512,10 @@ class ModelTesterMixin:
     def test_sharded_checkpoints(self, tmp_path, atol=1e-5, rtol=0):
         torch.manual_seed(0)
         config = self.get_init_dict()
-        inputs_dict = self.get_dummy_inputs()
         model = self.model_class(**config).eval()
         model = model.to(torch_device)
 
-        base_output = model(**inputs_dict, return_dict=False)[0]
+        base_output = model(**self.get_dummy_inputs(), return_dict=False)[0]
 
         model_size = compute_module_persistent_sizes(model)[""]
         max_shard_size = int((model_size * 0.75) / (2**10))  # Convert to KB as these test models are small
@@ -532,10 +534,7 @@ class ModelTesterMixin:
         new_model = new_model.to(torch_device)
 
         torch.manual_seed(0)
-        # Re-create inputs only if they contain a generator (which needs to be reset)
-        if "generator" in inputs_dict:
-            inputs_dict = self.get_dummy_inputs()
-        new_output = new_model(**inputs_dict, return_dict=False)[0]
+        new_output = new_model(**self.get_dummy_inputs(), return_dict=False)[0]
 
         assert_tensors_close(
             base_output, new_output, atol=atol, rtol=rtol, msg="Output should match after sharded save/load"
@@ -546,11 +545,10 @@ class ModelTesterMixin:
     def test_sharded_checkpoints_with_variant(self, tmp_path, atol=1e-5, rtol=0):
         torch.manual_seed(0)
         config = self.get_init_dict()
-        inputs_dict = self.get_dummy_inputs()
         model = self.model_class(**config).eval()
         model = model.to(torch_device)
 
-        base_output = model(**inputs_dict, return_dict=False)[0]
+        base_output = model(**self.get_dummy_inputs(), return_dict=False)[0]
 
         model_size = compute_module_persistent_sizes(model)[""]
         max_shard_size = int((model_size * 0.75) / (2**10))  # Convert to KB as these test models are small
@@ -574,10 +572,7 @@ class ModelTesterMixin:
         new_model = new_model.to(torch_device)
 
         torch.manual_seed(0)
-        # Re-create inputs only if they contain a generator (which needs to be reset)
-        if "generator" in inputs_dict:
-            inputs_dict = self.get_dummy_inputs()
-        new_output = new_model(**inputs_dict, return_dict=False)[0]
+        new_output = new_model(**self.get_dummy_inputs(), return_dict=False)[0]
 
         assert_tensors_close(
             base_output, new_output, atol=atol, rtol=rtol, msg="Output should match after variant sharded save/load"
@@ -589,11 +584,10 @@ class ModelTesterMixin:
 
         torch.manual_seed(0)
         config = self.get_init_dict()
-        inputs_dict = self.get_dummy_inputs()
         model = self.model_class(**config).eval()
         model = model.to(torch_device)
 
-        base_output = model(**inputs_dict, return_dict=False)[0]
+        base_output = model(**self.get_dummy_inputs(), return_dict=False)[0]
 
         model_size = compute_module_persistent_sizes(model)[""]
         max_shard_size = int((model_size * 0.75) / (2**10))  # Convert to KB as these test models are small
@@ -627,10 +621,7 @@ class ModelTesterMixin:
             model_parallel = model_parallel.to(torch_device)
 
             torch.manual_seed(0)
-            # Re-create inputs only if they contain a generator (which needs to be reset)
-            if "generator" in inputs_dict:
-                inputs_dict = self.get_dummy_inputs()
-            output_parallel = model_parallel(**inputs_dict, return_dict=False)[0]
+            output_parallel = model_parallel(**self.get_dummy_inputs(), return_dict=False)[0]
 
             assert_tensors_close(
                 base_output, output_parallel, atol=atol, rtol=rtol, msg="Output should match with parallel loading"
