@@ -32,6 +32,7 @@ def _pack_latents(latents, batch_size, num_channels_latents, height, width):
     return latents
 
 
+# Copied from diffusers.modular_pipelines.qwenimage.inputs.repeat_tensor_to_batch_size
 def repeat_tensor_to_batch_size(
     input_name: str,
     input_tensor: torch.Tensor,
@@ -58,6 +59,15 @@ def repeat_tensor_to_batch_size(
 
     Raises:
         ValueError: If input_tensor is not a torch.Tensor or has invalid batch size
+
+    Examples:
+        tensor = torch.tensor([[1, 2, 3]]) # shape: [1, 3] repeated = repeat_tensor_to_batch_size("image", tensor,
+        batch_size=2, num_images_per_prompt=2) repeated # tensor([[1, 2, 3], [1, 2, 3], [1, 2, 3], [1, 2, 3]]) - shape:
+        [4, 3]
+
+        tensor = torch.tensor([[1, 2, 3], [4, 5, 6]]) # shape: [2, 3] repeated = repeat_tensor_to_batch_size("image",
+        tensor, batch_size=2, num_images_per_prompt=2) repeated # tensor([[1, 2, 3], [1, 2, 3], [4, 5, 6], [4, 5, 6]])
+        - shape: [4, 3]
     """
     # make sure input is a tensor
     if not isinstance(input_tensor, torch.Tensor):
@@ -79,6 +89,7 @@ def repeat_tensor_to_batch_size(
     return input_tensor
 
 
+# Copied from diffusers.modular_pipelines.qwenimage.inputs.calculate_dimension_from_latents
 def calculate_dimension_from_latents(latents: torch.Tensor, vae_scale_factor: int) -> tuple[int, int]:
     """Calculate image dimensions from latent tensor dimensions.
 
@@ -96,6 +107,7 @@ def calculate_dimension_from_latents(latents: torch.Tensor, vae_scale_factor: in
 
     Raises:
         ValueError: If latents tensor doesn't have 4 or 5 dimensions
+
     """
     # make sure the latents are not packed
     if latents.ndim != 4 and latents.ndim != 5:
