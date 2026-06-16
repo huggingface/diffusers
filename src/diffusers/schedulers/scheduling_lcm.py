@@ -523,6 +523,7 @@ class LCMScheduler(SchedulerMixin, ConfigMixin):
             timesteps = lcm_origin_timesteps[inference_indices]
 
         self.timesteps = torch.from_numpy(timesteps).to(device=device, dtype=torch.long)
+        self.cpu_timesteps = self.timesteps.to("cpu")
 
         self._step_index = None
         self._begin_index = None
@@ -573,20 +574,23 @@ class LCMScheduler(SchedulerMixin, ConfigMixin):
 
         # 1. get previous step value
         prev_step_index = self.step_index + 1
-        if prev_step_index < len(self.timesteps):
-            prev_timestep = self.timesteps[prev_step_index]
+        current_cpu_timestep = self.cpu_timesteps[self.step_index]
+        if prev_step_index < len(self.cpu_timesteps):
+            prev_cpu_timestep = self.cpu_timesteps[prev_step_index]
         else:
-            prev_timestep = timestep
+            prev_cpu_timestep = current_cpu_timestep
 
         # 2. compute alphas, betas
-        alpha_prod_t = self.alphas_cumprod[timestep]
-        alpha_prod_t_prev = self.alphas_cumprod[prev_timestep] if prev_timestep >= 0 else self.final_alpha_cumprod
+        alpha_prod_t = self.alphas_cumprod[current_cpu_timestep]
+        alpha_prod_t_prev = (
+            self.alphas_cumprod[prev_cpu_timestep] if prev_cpu_timestep >= 0 else self.final_alpha_cumprod
+        )
 
         beta_prod_t = 1 - alpha_prod_t
         beta_prod_t_prev = 1 - alpha_prod_t_prev
 
         # 3. Get scalings for boundary conditions
-        c_skip, c_out = self.get_scalings_for_boundary_condition_discrete(timestep)
+        c_skip, c_out = self.get_scalings_for_boundary_condition_discrete(current_cpu_timestep)
 
         # 4. Compute the predicted original sample x_0 based on the model parameterization
         if self.config.prediction_type == "epsilon":  # noise-prediction
