@@ -14,7 +14,6 @@
 # limitations under the License.
 
 import gc
-import unittest
 
 import numpy as np
 import torch
@@ -103,14 +102,12 @@ class TestConsistencyDecoderVAESlicingTiling(ConsistencyDecoderVAETesterConfig, 
 
 
 @slow
-class ConsistencyDecoderVAEIntegrationTests(unittest.TestCase):
-    def setUp(self):
-        super().setUp()
+class TestConsistencyDecoderVAEIntegration:
+    def setup_method(self):
         gc.collect()
         backend_empty_cache(torch_device)
 
-    def tearDown(self):
-        super().tearDown()
+    def teardown_method(self):
         gc.collect()
         backend_empty_cache(torch_device)
 
