@@ -866,6 +866,53 @@ def _register_block(name: str | None = None):
     return deco
 
 
+def _resolve_attention_block(name: str, *, role: str) -> type:
+    """Look up an attention class with automatic Triton -> pure-PyTorch fallback.
+
+    The ``*Triton`` attention classes (``BidirectionalGDNTriton``,
+    ``BidirectionalGDNUCPESinglePathLiteLATriton``,
+    ``BidirectionalGDNUCPESinglePathLiteLABothTriton``) wrap pure-PyTorch
+    ancestor classes and only differ in the fused-kernel fast path. When
+    Triton isn't usable (CPU-only systems, ROCm without Triton, etc.), we
+    walk the MRO to find the closest registered non-``Triton`` ancestor and
+    use that instead, with a one-shot log line.
+    """
+    cls = ATTENTION_BLOCKS.get(name)
+    if cls is None:
+        raise ValueError(f"Unknown {role}: {name!r}. Available: {sorted(ATTENTION_BLOCKS)}")
+    if not name.endswith("Triton") or _is_triton_kernels_usable():
+        return cls
+
+    for ancestor in cls.__mro__[1:]:
+        anc_name = ancestor.__name__
+        if anc_name.endswith("Triton"):
+            continue
+        if ATTENTION_BLOCKS.get(anc_name) is ancestor:
+            _warn_triton_fallback_once(name, anc_name, role)
+            return ancestor
+    # No registered non-Triton ancestor — return the original. The Triton entry
+    # points each call ``_require_triton`` and will raise a clear error if
+    # actually invoked.
+    return cls
+
+
+@lru_cache(maxsize=1)
+def _is_triton_kernels_usable() -> bool:
+    """``triton`` is importable AND the current device can launch its kernels."""
+    from .transformer_sana_wm_kernels import is_triton_available  # noqa: PLC0415
+
+    return bool(is_triton_available() and torch.cuda.is_available())
+
+
+@lru_cache(maxsize=None)
+def _warn_triton_fallback_once(requested: str, fallback: str, role: str) -> None:
+    logger.warning(
+        f"Triton isn't usable on this device — falling back from {role}={requested!r} "
+        f"to its pure-PyTorch parent {role}={fallback!r}. Install Triton and run on "
+        f"CUDA to use the fused-kernel fast path."
+    )
+
+
 # This file is modified from https://github.com/PixArt-alpha/PixArt-sigma
 
 
@@ -5933,6 +5980,7 @@ class BidirectionalGDNUCPELiteLAPostUCPERenorm(BidirectionalGDNUCPELiteLA):
         return q_cam_trans, k_cam_trans, v_cam_trans
 
 
+@_register_block()
 class BidirectionalGDNUCPESinglePathLiteLA(BidirectionalGDNUCPELiteLAPostUCPERenorm):
     """Bidirectional UCPE camera branch with numerator-only delta-rule updates.
 
@@ -7527,14 +7575,18 @@ class SanaVideoMSCamCtrlBlock(nn.Module):
             self.norm1 = FP32LayerNorm(hidden_size, elementwise_affine=False, eps=1e-6)
         else:
             self.norm1 = nn.LayerNorm(hidden_size, elementwise_affine=False, eps=1e-6)
-        if camctrl_type == "BidirectionalGDNUCPESinglePathLiteLABothTriton":
-            # Both main and camera branches route through fused Triton kernels
-            # (``fused_bigdn_func`` for main, ``cam_prep_func`` +
-            # ``cam_scan_func`` for camera).  Module shapes and state-dict
-            # keys are identical -- inference-only, no CP, no frame_valid_mask,
-            # requires ``k_conv_only=True``.
+        # Camera-branch attention. The ``*Triton`` variants share the constructor
+        # signature with their pure-PyTorch parents (``BidirectionalGDNUCPESinglePathLiteLA``)
+        # so we can route them through ``_resolve_attention_block`` and get an
+        # automatic fallback to the parent class when Triton isn't usable.
+        if camctrl_type in (
+            "BidirectionalGDNUCPESinglePathLiteLABothTriton",
+            "BidirectionalGDNUCPESinglePathLiteLATriton",
+            "BidirectionalGDNUCPESinglePathLiteLA",
+        ):
             self_num_heads = hidden_size // linear_head_dim
-            self.attn = BidirectionalGDNUCPESinglePathLiteLABothTriton(
+            cam_cls = _resolve_attention_block(camctrl_type, role="camctrl_type")
+            self.attn = cam_cls(
                 hidden_size,
                 hidden_size,
                 heads=self_num_heads,
@@ -7559,10 +7611,9 @@ class SanaVideoMSCamCtrlBlock(nn.Module):
                 **block_kwargs,
             )
         else:
-            # attn_type registered via ATTENTION_BLOCKS (e.g. "BidirectionalGDNTriton").
-            attn_cls = ATTENTION_BLOCKS.get(attn_type)
-            if attn_cls is None:
-                raise ValueError(f"Unknown attn_type: {attn_type}")
+            # Main attention (no camera branch). Auto-falls-back ``*Triton`` to
+            # the non-Triton parent when Triton isn't usable.
+            attn_cls = _resolve_attention_block(attn_type, role="attn_type")
             self.attn = attn_cls(
                 hidden_size,
                 hidden_size,

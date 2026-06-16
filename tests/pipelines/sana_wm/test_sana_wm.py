@@ -173,6 +173,95 @@ class SanaWMRegistrationTests(unittest.TestCase):
         self.assertIn("use_refiner", params)
 
 
+class SanaWMTritonFallbackTests(unittest.TestCase):
+    """When Triton isn't usable, ``*Triton`` attention classes should auto-fall-back
+    to their non-Triton parents at dispatch time so the model works on CPU /
+    ROCm-without-Triton without users having to know the variant names.
+    """
+
+    def test_kernels_module_imports_with_triton_hidden(self):
+        # Simulate a Triton-less environment and reload the kernels module from
+        # scratch — it must still import (definitions of @triton.jit kernels
+        # become no-op shims) and the pure-torch helpers must still work.
+        import importlib
+        import sys
+
+        # Make sure diffusers is loaded first (its loaders module hard-imports triton).
+        import diffusers  # noqa: F401
+
+        orig_triton = sys.modules.get("triton")
+        sys.modules["triton"] = None
+        sys.modules.pop("diffusers.models.transformers.transformer_sana_wm_kernels", None)
+        try:
+            kernels = importlib.import_module("diffusers.models.transformers.transformer_sana_wm_kernels")
+            self.assertFalse(kernels.is_triton_available())
+            # Pure-torch helpers must still be callable.
+            self.assertTrue(callable(kernels.prepare_rope_tables))
+            self.assertTrue(callable(kernels.compute_fov_from_fx_xi))
+        finally:
+            sys.modules.pop("diffusers.models.transformers.transformer_sana_wm_kernels", None)
+            if orig_triton is not None:
+                sys.modules["triton"] = orig_triton
+            else:
+                sys.modules.pop("triton", None)
+            # Restore the real kernels module for downstream tests.
+            importlib.import_module("diffusers.models.transformers.transformer_sana_wm_kernels")
+
+    def test_resolve_attention_block_cpu_fallback(self):
+        # On a CPU-only test host, _is_triton_kernels_usable() returns False and
+        # ``*Triton`` attn types should resolve to their non-Triton ancestors.
+        import torch
+
+        from diffusers.models.transformers.transformer_sana_wm import (
+            _is_triton_kernels_usable,
+            _resolve_attention_block,
+        )
+
+        if torch.cuda.is_available() and _is_triton_kernels_usable():
+            self.skipTest("Triton is usable on this host; fallback path not exercised.")
+
+        expected = {
+            "BidirectionalGDNTriton": "BidirectionalGDN",
+            "BidirectionalGDNUCPESinglePathLiteLATriton": "BidirectionalGDNUCPESinglePathLiteLA",
+            "BidirectionalGDNUCPESinglePathLiteLABothTriton": "BidirectionalGDNUCPESinglePathLiteLA",
+            # Already non-Triton: should resolve to itself.
+            "BidirectionalGDN": "BidirectionalGDN",
+            "BidirectionalGDNUCPESinglePathLiteLA": "BidirectionalGDNUCPESinglePathLiteLA",
+        }
+        for requested, expected_name in expected.items():
+            cls = _resolve_attention_block(requested, role="attn_type")
+            self.assertEqual(
+                cls.__name__,
+                expected_name,
+                msg=f"_resolve_attention_block({requested!r}) -> {cls.__name__}, expected {expected_name}",
+            )
+
+    def test_triton_entry_point_raises_clean_error_without_triton(self):
+        # ``_require_triton`` should raise a clear RuntimeError when invoked on
+        # a Triton-less host (regardless of CUDA availability — the kernels
+        # need both).
+        import importlib
+        import sys
+
+        import diffusers  # noqa: F401
+
+        orig_triton = sys.modules.get("triton")
+        sys.modules["triton"] = None
+        sys.modules.pop("diffusers.models.transformers.transformer_sana_wm_kernels", None)
+        try:
+            kernels = importlib.import_module("diffusers.models.transformers.transformer_sana_wm_kernels")
+            with self.assertRaises(RuntimeError) as ctx:
+                kernels._require_triton("test_entry_point")
+            self.assertIn("triton", str(ctx.exception).lower())
+        finally:
+            sys.modules.pop("diffusers.models.transformers.transformer_sana_wm_kernels", None)
+            if orig_triton is not None:
+                sys.modules["triton"] = orig_triton
+            else:
+                sys.modules.pop("triton", None)
+            importlib.import_module("diffusers.models.transformers.transformer_sana_wm_kernels")
+
+
 @slow
 @require_torch_accelerator
 class SanaWMPipelineIntegrationTests(unittest.TestCase):

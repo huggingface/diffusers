@@ -21,9 +21,65 @@ from dataclasses import dataclass
 
 import torch
 import torch.nn.functional as F
-import triton
-import triton.language as tl
 from einops import rearrange, repeat
+
+
+# Optional Triton import. The kernels below are the fast path on CUDA + Triton
+# >= 3.x, but they are not correctness-essential: SanaWMTransformer3DModel has
+# pure-PyTorch attention variants for every ``*Triton`` class (the dispatcher
+# in ``transformer_sana_wm.py`` auto-falls-back when Triton isn't usable). On
+# a Triton-less system, ``@triton.jit`` becomes a no-op so the kernel function
+# *definitions* still load (so the module can be imported anywhere), but
+# calling any of the Triton-backed entry points raises a clear error.
+try:
+    import triton
+    import triton.language as tl
+
+    _TRITON_AVAILABLE = True
+except ImportError:
+    _TRITON_AVAILABLE = False
+
+    class _TritonShim:
+        """No-op stand-in for ``triton`` / ``triton.language`` on systems without Triton.
+
+        ``@triton.jit`` becomes a pass-through so the @-decorated kernel
+        functions are still defined as plain Python (and never called on the
+        torch fallback path). Any attribute access returns the same shim so
+        ``tl.constexpr``, ``tl.load`` etc. evaluate to a harmless sentinel —
+        which is fine as long as no kernel body actually executes.
+        """
+
+        def __getattr__(self, name):
+            return self
+
+        def __call__(self, *args, **kwargs):
+            if args and callable(args[0]) and not kwargs:
+                return args[0]
+            return self
+
+        def jit(self, fn=None, **kwargs):
+            if fn is None:
+                return lambda f: f
+            return fn
+
+    triton = _TritonShim()
+    tl = _TritonShim()
+
+
+def is_triton_available() -> bool:
+    """Whether ``triton`` was importable and the kernels in this module can be launched."""
+    return _TRITON_AVAILABLE
+
+
+def _require_triton(entry_point: str) -> None:
+    if not _TRITON_AVAILABLE:
+        raise RuntimeError(
+            f"{entry_point} requires the `triton` package to run. Install Triton "
+            f"or switch to the pure-PyTorch attention variant (e.g. drop the "
+            f"`Triton` suffix from `attn_type` / `camctrl_type` on "
+            f"SanaWMTransformer3DModel — the dispatcher does this automatically "
+            f"when Triton isn't usable)."
+        )
 
 
 
@@ -194,6 +250,7 @@ def fused_qk_inv_rms(
     Returns:
       (q_inv_rms, k_inv_rms), each (B, N) float32 contiguous.
     """
+    _require_triton("fused_qk_inv_rms")
     assert qkv.is_contiguous(), "qkv must be contiguous (B, N, 3, H, D)"
     assert qkv.dim() == 5 and qkv.shape[2] == 3, f"expected (B, N, 3, H, D), got {tuple(qkv.shape)}"
     B, N, _, H, D = qkv.shape
@@ -238,7 +295,7 @@ def fused_bigdn_func(
     Thin entry point kept for call-site stability; delegates to
     :func:`fused_bigdn_bidi_chunkwise` from ``fused_gdn_chunkwise``.
     """
-
+    _require_triton("fused_bigdn_func")
     return fused_bigdn_bidi_chunkwise(
         qkv,
         q_inv_rms,
@@ -254,14 +311,6 @@ def fused_bigdn_func(
         k_scale=k_scale,
         eps=eps,
     )
-
-
-# ruff: noqa: E501
-
-
-import torch
-import triton
-import triton.language as tl
 
 
 # =============================================================================
@@ -596,6 +645,7 @@ def cam_prep_func(
         inflation_sq: ``(B, H, N)`` fp32, ratio
             ``(||k_post_ucpe|| / ||k_pre_ucpe||)^2`` per token/head.
     """
+    _require_triton("cam_prep_func")
     B, N, H, D = q_raw.shape
     assert k_raw.shape == q_raw.shape and v_raw.shape == q_raw.shape
     assert D % 2 == 0 and (D // 2) % 4 == 0, f"D={D} must be 2x and (D/2) % 4 == 0"
@@ -2687,6 +2737,7 @@ def cam_scan_bidi_chunkwise(
     but it packs QKV once, runs Phase A once, combines forward/reverse histories
     inside Phase B, and runs Phase C once on the summed state.
     """
+    _require_triton("cam_scan_bidi_chunkwise")
     assert q.shape == k.shape == v.shape, f"q/k/v shape mismatch: {q.shape} {k.shape} {v.shape}"
     assert q.is_contiguous() and k.is_contiguous() and v.is_contiguous()
     assert beta.is_contiguous() and decay.is_contiguous()
