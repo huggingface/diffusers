@@ -101,6 +101,20 @@ class PixArtTransformer2DModelTests(ModelTesterMixin, unittest.TestCase):
         model = Transformer2DModel.from_config(init_dict)
         assert isinstance(model, PixArtTransformer2DModel)
 
+    def test_exclusive_self_attention_config(self):
+        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+        init_dict["exclusive_self_attention"] = True
+        model = self.model_class(**init_dict).to(torch_device)
+
+        assert model.config.exclusive_self_attention
+        assert model.transformer_blocks[0].attn1.exclusive_self_attention
+        assert not model.transformer_blocks[0].attn2.exclusive_self_attention
+
+        with torch.no_grad():
+            output = model(**inputs_dict).sample
+
+        assert output.shape == (inputs_dict[self.main_input_name].shape[0],) + self.output_shape
+
     def test_correct_class_remapping_from_pretrained_config(self):
         config = PixArtTransformer2DModel.load_config("PixArt-alpha/PixArt-XL-2-1024-MS", subfolder="transformer")
         model = Transformer2DModel.from_config(config)

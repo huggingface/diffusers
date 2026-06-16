@@ -105,6 +105,7 @@ class PixArtTransformer2DModel(ModelMixin, AttentionMixin, ConfigMixin):
         use_additional_conditions: bool | None = None,
         caption_channels: int | None = None,
         attention_type: str | None = "default",
+        exclusive_self_attention: bool = False,
     ):
         super().__init__()
 
@@ -165,6 +166,7 @@ class PixArtTransformer2DModel(ModelMixin, AttentionMixin, ConfigMixin):
                     norm_elementwise_affine=self.config.norm_elementwise_affine,
                     norm_eps=self.config.norm_eps,
                     attention_type=self.config.attention_type,
+                    exclusive_self_attention=self.config.exclusive_self_attention,
                 )
                 for _ in range(self.config.num_layers)
             ]

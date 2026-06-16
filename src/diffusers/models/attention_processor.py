@@ -48,6 +48,15 @@ else:
     XLA_AVAILABLE = False
 
 
+def _apply_exclusive_self_attention(hidden_states: torch.Tensor, value: torch.Tensor) -> torch.Tensor:
+    if hidden_states.shape != value.shape:
+        return hidden_states
+
+    eps = 1e-6 if value.dtype in (torch.float16, torch.bfloat16) else 1e-12
+    value_normalized = F.normalize(value, p=2, dim=-1, eps=eps)
+    return hidden_states - (hidden_states * value_normalized).sum(dim=-1, keepdim=True) * value_normalized
+
+
 @maybe_allow_in_graph
 class Attention(nn.Module):
     r"""
@@ -97,6 +106,8 @@ class Attention(nn.Module):
             A factor to rescale the output by dividing it with this value.
         residual_connection (`bool`, *optional*, defaults to `False`):
             Set to `True` to add the residual connection to the output.
+        exclusive_self_attention (`bool`, *optional*, defaults to `False`):
+            Whether to remove the value-vector component from self-attention outputs.
         _from_deprecated_attn_block (`bool`, *optional*, defaults to `False`):
             Set to `True` if the attention block is loaded from a deprecated state dict.
         processor (`AttnProcessor`, *optional*, defaults to `None`):
@@ -136,6 +147,7 @@ class Attention(nn.Module):
         pre_only=False,
         elementwise_affine: bool = True,
         is_causal: bool = False,
+        exclusive_self_attention: bool = False,
     ):
         super().__init__()
 
@@ -159,6 +171,7 @@ class Attention(nn.Module):
         self.context_pre_only = context_pre_only
         self.pre_only = pre_only
         self.is_causal = is_causal
+        self.exclusive_self_attention = exclusive_self_attention
 
         # we make use of this private variable to know whether this class is loaded
         # with an deprecated state dict so that we can convert it on the fly
@@ -1120,6 +1133,7 @@ class AttnProcessor:
             deprecate("scale", "1.0.0", deprecation_message)
 
         residual = hidden_states
+        is_self_attention = encoder_hidden_states is None
 
         if attn.spatial_norm is not None:
             hidden_states = attn.spatial_norm(hidden_states, temb)
@@ -1154,6 +1168,8 @@ class AttnProcessor:
 
         attention_probs = attn.get_attention_scores(query, key, attention_mask)
         hidden_states = torch.bmm(attention_probs, value)
+        if attn.exclusive_self_attention and is_self_attention:
+            hidden_states = _apply_exclusive_self_attention(hidden_states, value)
         hidden_states = attn.batch_to_head_dim(hidden_states)
 
         # linear proj
@@ -2515,6 +2531,7 @@ class XFormersAttnProcessor:
             deprecate("scale", "1.0.0", deprecation_message)
 
         residual = hidden_states
+        is_self_attention = encoder_hidden_states is None
 
         if attn.spatial_norm is not None:
             hidden_states = attn.spatial_norm(hidden_states, temb)
@@ -2561,6 +2578,8 @@ class XFormersAttnProcessor:
             query, key, value, attn_bias=attention_mask, op=self.attention_op, scale=attn.scale
         )
         hidden_states = hidden_states.to(query.dtype)
+        if attn.exclusive_self_attention and is_self_attention:
+            hidden_states = _apply_exclusive_self_attention(hidden_states, value)
         hidden_states = attn.batch_to_head_dim(hidden_states)
 
         # linear proj
@@ -2606,6 +2625,7 @@ class AttnProcessorNPU:
             deprecate("scale", "1.0.0", deprecation_message)
 
         residual = hidden_states
+        is_self_attention = encoder_hidden_states is None
         if attn.spatial_norm is not None:
             hidden_states = attn.spatial_norm(hidden_states, temb)
 
@@ -2674,6 +2694,9 @@ class AttnProcessorNPU:
                 query, key, value, attn_mask=attention_mask, dropout_p=0.0, is_causal=False
             )
 
+        if attn.exclusive_self_attention and is_self_attention:
+            hidden_states = _apply_exclusive_self_attention(hidden_states, value)
+
         hidden_states = hidden_states.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim)
         hidden_states = hidden_states.to(query.dtype)
 
@@ -2717,6 +2740,7 @@ class AttnProcessor2_0:
             deprecate("scale", "1.0.0", deprecation_message)
 
         residual = hidden_states
+        is_self_attention = encoder_hidden_states is None
         if attn.spatial_norm is not None:
             hidden_states = attn.spatial_norm(hidden_states, temb)
 
@@ -2768,6 +2792,9 @@ class AttnProcessor2_0:
             query, key, value, attn_mask=attention_mask, dropout_p=0.0, is_causal=False
         )
 
+        if attn.exclusive_self_attention and is_self_attention:
+            hidden_states = _apply_exclusive_self_attention(hidden_states, value)
+
         hidden_states = hidden_states.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim)
         hidden_states = hidden_states.to(query.dtype)
 
@@ -2814,6 +2841,7 @@ class XLAFlashAttnProcessor2_0:
         **kwargs,
     ) -> torch.Tensor:
         residual = hidden_states
+        is_self_attention = encoder_hidden_states is None
         if attn.spatial_norm is not None:
             hidden_states = attn.spatial_norm(hidden_states, temb)
 
@@ -2883,6 +2911,9 @@ class XLAFlashAttnProcessor2_0:
             hidden_states = F.scaled_dot_product_attention(
                 query, key, value, attn_mask=attention_mask, dropout_p=0.0, is_causal=False
             )
+
+        if attn.exclusive_self_attention and is_self_attention:
+            hidden_states = _apply_exclusive_self_attention(hidden_states, value)
 
         hidden_states = hidden_states.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim)
         hidden_states = hidden_states.to(query.dtype)
@@ -3695,6 +3726,7 @@ class FusedAttnProcessor2_0:
             deprecate("scale", "1.0.0", deprecation_message)
 
         residual = hidden_states
+        is_self_attention = encoder_hidden_states is None
         if attn.spatial_norm is not None:
             hidden_states = attn.spatial_norm(hidden_states, temb)
 
@@ -3747,6 +3779,9 @@ class FusedAttnProcessor2_0:
         hidden_states = F.scaled_dot_product_attention(
             query, key, value, attn_mask=attention_mask, dropout_p=0.0, is_causal=False
         )
+
+        if attn.exclusive_self_attention and is_self_attention:
+            hidden_states = _apply_exclusive_self_attention(hidden_states, value)
 
         hidden_states = hidden_states.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim)
         hidden_states = hidden_states.to(query.dtype)
@@ -4018,6 +4053,7 @@ class SlicedAttnProcessor:
         attention_mask: torch.Tensor | None = None,
     ) -> torch.Tensor:
         residual = hidden_states
+        is_self_attention = encoder_hidden_states is None
 
         input_ndim = hidden_states.ndim
 
@@ -4065,6 +4101,9 @@ class SlicedAttnProcessor:
             attn_slice = torch.bmm(attn_slice, value[start_idx:end_idx])
 
             hidden_states[start_idx:end_idx] = attn_slice
+
+        if attn.exclusive_self_attention and is_self_attention:
+            hidden_states = _apply_exclusive_self_attention(hidden_states, value)
 
         hidden_states = attn.batch_to_head_dim(hidden_states)
 

@@ -87,6 +87,7 @@ class DiTTransformer2DModel(ModelMixin, ConfigMixin):
         norm_type: str = "ada_norm_zero",
         norm_elementwise_affine: bool = False,
         norm_eps: float = 1e-5,
+        exclusive_self_attention: bool = False,
     ):
         super().__init__()
 
@@ -133,6 +134,7 @@ class DiTTransformer2DModel(ModelMixin, ConfigMixin):
                     norm_type=norm_type,
                     norm_elementwise_affine=self.config.norm_elementwise_affine,
                     norm_eps=self.config.norm_eps,
+                    exclusive_self_attention=self.config.exclusive_self_attention,
                 )
                 for _ in range(self.config.num_layers)
             ]

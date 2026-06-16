@@ -782,6 +782,8 @@ class BasicTransformerBlock(nn.Module):
             The type of positional embeddings to apply to.
         num_positional_embeddings (`int`, *optional*, defaults to `None`):
             The maximum number of positional embeddings to apply.
+        exclusive_self_attention (`bool`, *optional*, defaults to `False`):
+            Whether to remove the value-vector component from self-attention outputs.
     """
 
     def __init__(
@@ -809,6 +811,7 @@ class BasicTransformerBlock(nn.Module):
         ff_inner_dim: int | None = None,
         ff_bias: bool = True,
         attention_out_bias: bool = True,
+        exclusive_self_attention: bool = False,
     ):
         super().__init__()
         self.dim = dim
@@ -877,6 +880,7 @@ class BasicTransformerBlock(nn.Module):
             cross_attention_dim=cross_attention_dim if only_cross_attention else None,
             upcast_attention=upcast_attention,
             out_bias=attention_out_bias,
+            exclusive_self_attention=exclusive_self_attention and not only_cross_attention,
         )
 
         # 2. Cross-Attn
@@ -907,6 +911,7 @@ class BasicTransformerBlock(nn.Module):
                 bias=attention_bias,
                 upcast_attention=upcast_attention,
                 out_bias=attention_out_bias,
+                exclusive_self_attention=exclusive_self_attention and double_self_attention,
             )  # is self-attn if encoder_hidden_states is none
         else:
             if norm_type == "ada_norm_single":  # For Latte
