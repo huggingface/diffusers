@@ -516,6 +516,8 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         apply_layerwise_casting(
             self, storage_dtype, compute_dtype, skip_modules_pattern, skip_modules_classes, non_blocking
         )
+        # Casting hooks change the reported dtype without flowing through `_apply`, so invalidate the cache here.
+        self.__dict__.pop("_cached_dtype", None)
 
     def enable_group_offload(
         self,
@@ -1930,6 +1932,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         `torch.device`: The device on which the module is (assuming that all the module parameters are on the same
         device).
         """
+        # Not cached: with group offloading, the effective device changes per-forward as groups onload/offload.
         return get_parameter_device(self)
 
     @property
@@ -1937,7 +1940,23 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         """
         `torch.dtype`: The dtype of the module (assuming that all the module parameters have the same dtype).
         """
-        return get_parameter_dtype(self)
+        cached = self.__dict__.get("_cached_dtype")
+        if cached is not None:
+            return cached
+        cached = get_parameter_dtype(self)
+        self.__dict__["_cached_dtype"] = cached
+        return cached
+
+    def _apply(self, fn, *args, **kwargs):
+        # Invalidate cached dtype since `.to()`, `.cpu()`, `.cuda()`, `.half()`, etc. all flow through `_apply`.
+        self.__dict__.pop("_cached_dtype", None)
+        return super()._apply(fn, *args, **kwargs)
+
+    def register_parameter(self, name, param):
+        # Some modules change dtype by reassigning parameters (e.g. a custom `.to()`) instead of going through
+        # `_apply`, so invalidate here too.
+        self.__dict__.pop("_cached_dtype", None)
+        return super().register_parameter(name, param)
 
     def num_parameters(self, only_trainable: bool = False, exclude_embeddings: bool = False) -> int:
         """
