@@ -180,6 +180,8 @@
     title: quanto
   - local: quantization/modelopt
     title: NVIDIA ModelOpt
+  - local: quantization/autoround
+    title: AutoRound
   title: Quantization
 - isExpanded: false
   sections:
@@ -525,6 +527,8 @@
         title: DeepFloyd IF
       - local: api/pipelines/dit
         title: DiT
+      - local: api/pipelines/dreamlite
+        title: DreamLite
       - local: api/pipelines/easyanimate
         title: EasyAnimate
       - local: api/pipelines/ernie_image
