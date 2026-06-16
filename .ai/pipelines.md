@@ -3,9 +3,21 @@
 Shared reference for pipeline-related conventions, patterns, and gotchas.
 Linked from `AGENTS.md`, `skills/model-integration/SKILL.md`, and `review-rules.md`.
 
+> **Prefer modular for new pipelines.** [Modular Diffusers](modular.md) is the preferred way to add a new pipeline; the standard `DiffusionPipeline` covered below is still supported but is no longer the default. We prefer modular especially for models that don't fit a fixed task-based structure (e.g. modality baked into the checkpoint) or that are actively evolving. The conventions below apply when you do build or review a standard pipeline.
+
 ## Common pipeline conventions
 
 When adding a new pipeline (or reviewing one), skim `pipeline_flux.py`, `pipeline_flux2.py`, `pipeline_qwenimage.py`, `pipeline_wan.py` first to establish the pattern. Most conventions (class structure, mixin set, `__call__` shape — input validation → encode prompt → timesteps → latent prep → denoise loop → decode — `encode_prompt` / `prepare_latents` shape, `output_type` / `generator` / `progress_bar` plumbing, `@torch.no_grad()` on `__call__`, LoRA mixin, `from_single_file` support, etc.) are easiest to internalize by comparison rather than from a fixed list.
+
+## File structure
+
+```
+src/diffusers/pipelines/<model>/
+  __init__.py                          # Lazy imports
+  pipeline_<model>.py                  # Main pipeline (with __call__)
+  pipeline_<model>_<variant>.py        # Variant pipelines (e.g. img2img, inpaint) — one file/class each
+  pipeline_output.py                   # Output dataclass
+```
 
 ## Gotchas
 

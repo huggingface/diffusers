@@ -7,6 +7,7 @@ if is_torch_available():
     from .unet_2d_condition import UNet2DConditionModel
     from .unet_2d_condition_audioldm2 import AudioLDM2UNet2DConditionModel
     from .unet_3d_condition import UNet3DConditionModel
+    from .unet_dreamlite import DreamLiteUNetModel
     from .unet_i2vgen_xl import I2VGenXLUNet
     from .unet_kandinsky3 import Kandinsky3UNet
     from .unet_motion_model import MotionAdapter, UNetMotionModel
