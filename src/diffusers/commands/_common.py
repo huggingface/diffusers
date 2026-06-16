@@ -21,10 +21,9 @@ from __future__ import annotations
 
 from argparse import Namespace
 from pathlib import Path
-from typing import Optional
 
 
-def try_fetch_config(args: Namespace, filename: str) -> Optional[str]:
+def try_fetch_config(args: Namespace, filename: str) -> str | None:
     """Resolve ``filename`` for ``args.model`` (local path or Hub repo). Return None if absent.
 
     Used by ``generate`` (to detect modular vs standard pipelines) and ``describe`` (to read the pipeline class for

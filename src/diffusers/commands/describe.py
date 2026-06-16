@@ -21,9 +21,11 @@ file (and any custom block code if ``--trust-remote-code`` is set).
 
 from __future__ import annotations
 
+import inspect
 import json
+import re
 from argparse import ArgumentParser, Namespace, _SubParsersAction
-from typing import Any, Optional
+from typing import Any
 
 from . import BaseDiffusersCLICommand
 from ._common import try_fetch_config
@@ -37,8 +39,6 @@ def _describe(args: Namespace) -> None:
     pipeline class's ``__call__`` signature. Otherwise falls back to ``ModularPipelineBlocks.from_pretrained`` and
     reads the block-declared ``inputs``. No weights downloaded either way.
     """
-    import inspect
-
     import diffusers
 
     model_index = try_fetch_config(args, diffusers.DiffusionPipeline.config_name)
@@ -117,7 +117,7 @@ def _describe(args: Namespace) -> None:
                 out.text(f"    desc: {entry['description']}")
 
 
-def _parse_docstring_args(docstring: Optional[str]) -> dict[str, str]:
+def _parse_docstring_args(docstring: str | None) -> dict[str, str]:
     """Extract per-argument descriptions from a Google-style ``Args:`` block.
 
     Returns a ``{name: description}`` mapping. Best-effort — unrecognised formats just yield an empty dict rather than
@@ -125,8 +125,6 @@ def _parse_docstring_args(docstring: Optional[str]) -> dict[str, str]:
     """
     if not docstring:
         return {}
-
-    import re
 
     lines = docstring.expandtabs().splitlines()
     start = None
@@ -140,9 +138,9 @@ def _parse_docstring_args(docstring: Optional[str]) -> dict[str, str]:
         return {}
 
     descriptions: dict[str, str] = {}
-    current_name: Optional[str] = None
+    current_name: str | None = None
     current_lines: list[str] = []
-    arg_indent: Optional[int] = None
+    arg_indent: int | None = None
     name_pattern = re.compile(r"^(\w+)\s*(?:\([^)]*\))?\s*:?\s*(.*)$")
 
     def _flush() -> None:

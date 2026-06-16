@@ -25,7 +25,7 @@ import json
 import os
 import sys
 from enum import Enum
-from typing import Any, Optional, Sequence
+from typing import Any, Sequence
 
 
 # Environment variables set by known AI coding agents. Presence of any one triggers AGENT mode
@@ -102,7 +102,7 @@ class Output:
         self,
         items: Sequence[dict[str, Any]],
         *,
-        headers: Optional[list[str]] = None,
+        headers: list[str] | None = None,
     ) -> None:
         """Tabular data — HUMAN gets padded columns, AGENT gets TSV, JSON gets the list.
 

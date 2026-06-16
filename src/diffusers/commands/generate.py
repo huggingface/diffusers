@@ -25,7 +25,7 @@ import os
 import sys
 from argparse import ArgumentParser, Namespace, _SubParsersAction
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 from diffusers.utils import load_image
 
@@ -80,6 +80,7 @@ _DEFAULT_REMOTE_DEPS = (
     "safetensors",
     "sentencepiece",  # required by several text-encoder tokenizers (T5, LLaMA, …)
     "ftfy",  # required by older CLIP text-encoder paths
+    "kernels",  # required by hub-hosted attention backends (flash_hub, sage_hub, …)
 )
 
 # Base container image — provides torch + CUDA so ``uv pip install --system``
@@ -105,6 +106,7 @@ HF_JOBS_KEYS = frozenset(
         "poll_interval",
         "func",
         "format",  # top-level --format is a local rendering flag; never forward to the container
+        "device",  # local device pin; container auto-detects its own (cuda:0 or LOCAL_RANK)
     }
 )
 
@@ -227,7 +229,7 @@ def _add_remote_arguments(parser: ArgumentParser) -> None:
 # ---------------------------------------------------------------------------
 
 
-def _resolve_dtype(name: Optional[str]):
+def _resolve_dtype(name: str | None):
     if name in (None, "auto"):
         return "auto"
     import torch
@@ -245,7 +247,7 @@ def _resolve_dtype(name: Optional[str]):
     return mapping[name]
 
 
-def _resolve_device(name: Optional[str]) -> str:
+def _resolve_device(name: str | None) -> str:
     if name:
         return name
 
@@ -281,7 +283,7 @@ def _map_to_device(pipeline: Any, args: Namespace, device: str) -> Any:
     return pipeline
 
 
-def _denoiser(pipeline: Any) -> Optional[Any]:
+def _denoiser(pipeline: Any) -> Any | None:
     """Return the pipeline's denoiser submodule (transformer or unet) or None."""
     for attr in ("transformer", "unet"):
         module = getattr(pipeline, attr, None)
@@ -410,7 +412,7 @@ def _is_modular_repo(args: Namespace) -> bool:
 # ---------------------------------------------------------------------------
 
 
-def _parse_pipeline_kwargs(raw: Optional[str]) -> dict[str, Any]:
+def _parse_pipeline_kwargs(raw: str | None) -> dict[str, Any]:
     if not raw:
         return {}
     try:
@@ -430,7 +432,7 @@ def _resolve_image_inputs(call_kwargs: dict[str, Any]) -> None:
             call_kwargs[key] = load_image(value)
 
 
-def _get_generator(seed: Optional[int], device: str):
+def _get_generator(seed: int | None, device: str):
     if seed is None:
         return None
     import torch
@@ -456,7 +458,7 @@ def _result_to_savable(result: Any) -> Any:
 # ---------------------------------------------------------------------------
 
 
-def _default_output_paths(task: str, num: int, explicit: Optional[str], ext: str) -> list[Path]:
+def _default_output_paths(task: str, num: int, explicit: str | None, ext: str) -> list[Path]:
     if explicit is None:
         base = Path(DEFAULT_OUTPUT_DIR)
         base.mkdir(parents=True, exist_ok=True)
@@ -583,7 +585,7 @@ def _save_output(value: Any, args: Namespace, task: str) -> list[str]:
 # ---------------------------------------------------------------------------
 
 
-def _push_outputs(args: Namespace, saved_paths: list[str], task: str) -> Optional[dict[str, Any]]:
+def _push_outputs(args: Namespace, saved_paths: list[str], task: str) -> dict[str, Any] | None:
     """Upload ``saved_paths`` to the ``--push-to`` bucket. Returns a summary or None."""
     if not args.push_to:
         return None
@@ -635,6 +637,9 @@ def _maybe_submit_remote(args: Namespace, task: str) -> bool:
     """If ``--remote`` was set, submit this invocation to HF Jobs and return True."""
     if not args.remote:
         return False
+
+    if args.device is not None:
+        out.warning(f"--device {args.device!r} is ignored with --remote; the container auto-detects its GPU.")
 
     print(
         f"[diffusers-cli] preparing remote {task!r} job on flavor={args.flavor!r}...",
@@ -727,7 +732,7 @@ def _maybe_submit_remote(args: Namespace, task: str) -> bool:
     return True
 
 
-def _job_timing(api: Any, job_id: str, namespace: Optional[str]) -> dict[str, Optional[float]]:
+def _job_timing(api: Any, job_id: str, namespace: str | None) -> dict[str, float | None]:
     """Return queue/run/total wallclock seconds for ``job_id`` from inspect_job timestamps.
 
     inspect_job sometimes returns finished_at=None for a few seconds after the container exits while HF Jobs propagates
@@ -742,7 +747,7 @@ def _job_timing(api: Any, job_id: str, namespace: Optional[str]) -> dict[str, Op
         time.sleep(1.0)
         info = api.inspect_job(job_id=job_id, namespace=namespace)
 
-    def _delta(start, end) -> Optional[float]:
+    def _delta(start, end) -> float | None:
         return (end - start).total_seconds() if (start is not None and end is not None) else None
 
     timing = {
@@ -756,7 +761,7 @@ def _job_timing(api: Any, job_id: str, namespace: Optional[str]) -> dict[str, Op
     return timing
 
 
-def _wait_for_job(api: Any, job_id: str, namespace: Optional[str], poll_interval: float) -> str:
+def _wait_for_job(api: Any, job_id: str, namespace: str | None, poll_interval: float) -> str:
     """Stream container logs to stderr until the job terminates; return the final stage."""
     fetch = getattr(api, "fetch_job_logs", None)
     if fetch is not None:
@@ -770,12 +775,12 @@ def _wait_for_job(api: Any, job_id: str, namespace: Optional[str], poll_interval
     return _poll_for_job(api, job_id, namespace, poll_interval)
 
 
-def _poll_for_job(api: Any, job_id: str, namespace: Optional[str], poll_interval: float) -> str:
+def _poll_for_job(api: Any, job_id: str, namespace: str | None, poll_interval: float) -> str:
     """Heartbeat-style fallback when ``fetch_job_logs`` isn't available."""
     import time
 
     terminal = {"COMPLETED", "CANCELED", "ERROR", "DELETED"}
-    last_stage: Optional[str] = None
+    last_stage: str | None = None
     while True:
         info = api.inspect_job(job_id=job_id, namespace=namespace)
         stage = str(info.status.stage) if info.status else "UNKNOWN"
@@ -792,7 +797,7 @@ def _poll_for_job(api: Any, job_id: str, namespace: Optional[str], poll_interval
         time.sleep(poll_interval)
 
 
-def _download_job_artifacts(api: Any, bucket_id: str, run_id: str, output: Optional[str]) -> list[str]:
+def _download_job_artifacts(api: Any, bucket_id: str, run_id: str, output: str | None) -> list[str]:
     """Download every file under ``<run_id>/`` from ``bucket_id`` into a local directory."""
     from huggingface_hub import BucketFile
 
