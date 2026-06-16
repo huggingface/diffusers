@@ -1,0 +1,198 @@
+name: GPU Tests from PR Comment
+
+# Lets maintainers (admin / write access) run GPU tests on a PR by commenting:
+#   /diffusers-bot pytest <args>
+# e.g. `/diffusers-bot pytest tests/models/test_modeling_common.py -k "some_test"`.
+
+
+on:
+  issue_comment:
+    types: [created]
+
+# Default to read-only; jobs that comment opt into `pull-requests: write` explicitly.
+permissions:
+  contents: read
+
+concurrency:
+  # A newer command on the same PR supersedes an in-flight one.
+  group: diffusers-bot-${{ github.event.issue.number }}
+  cancel-in-progress: true
+
+env:
+  DIFFUSERS_IS_CI: yes
+  OMP_NUM_THREADS: 8
+  MKL_NUM_THREADS: 8
+  HF_XET_HIGH_PERFORMANCE: 1
+  PYTEST_TIMEOUT: 600
+  # Force version overrides across every `uv pip install`: pin tokenizers and the
+  # torch/torchvision/torchaudio set baked into the image so `-U` installs can't bump
+  # torch and break torchvision's C++ ABI. Re-written into the file in the install step.
+  UV_OVERRIDE: /tmp/uv-overrides.txt
+
+jobs:
+  gate:
+    name: Authorize & launch
+    # Only react to `/diffusers-bot pytest …` comments on open PRs.
+    if: |
+      github.event.issue.pull_request &&
+      github.event.issue.state == 'open' &&
+      startsWith(github.event.comment.body, '/diffusers-bot pytest')
+    runs-on: ubuntu-22.04
+    permissions:
+      pull-requests: write
+    outputs:
+      pytest_args: ${{ steps.parse.outputs.pytest_args }}
+      comment_id: ${{ steps.comment.outputs.comment_id }}
+    steps:
+      - name: Check commenter permission
+        id: auth
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          COMMENTER: ${{ github.event.comment.user.login }}
+        run: |
+          PERM=$(gh api "repos/${REPO}/collaborators/${COMMENTER}/permission" --jq '.permission' 2>/dev/null || echo "none")
+          echo "Commenter @${COMMENTER} has permission: ${PERM}"
+          if [[ "$PERM" == "admin" || "$PERM" == "write" ]]; then
+            echo "authorized=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "authorized=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Reject unauthorized commenter
+        if: steps.auth.outputs.authorized != 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          PR: ${{ github.event.issue.number }}
+          COMMENTER: ${{ github.event.comment.user.login }}
+        run: |
+          gh api -X POST "repos/${REPO}/issues/${PR}/comments" \
+            -f body="🚫 Sorry @${COMMENTER}, you're not authorized to run \`/diffusers-bot\`. Only maintainers with write or admin access can trigger GPU tests." >/dev/null
+          echo "::error::Only maintainers with write/admin access can run /diffusers-bot."
+          exit 1
+
+      - name: Acknowledge with 👀
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          COMMENT_ID: ${{ github.event.comment.id }}
+        run: |
+          gh api -X POST "repos/${REPO}/issues/comments/${COMMENT_ID}/reactions" -f content="eyes" >/dev/null
+
+      - name: Parse pytest args
+        id: parse
+        env:
+          COMMENT_BODY: ${{ github.event.comment.body }}
+        run: |
+          # Use only the first line of the comment, strip the command prefix.
+          FIRST_LINE=$(printf '%s' "$COMMENT_BODY" | head -n1)
+          ARGS="${FIRST_LINE#/diffusers-bot pytest}"
+          # Trim surrounding whitespace/CR.
+          ARGS="$(printf '%s' "$ARGS" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
+          echo "pytest_args=${ARGS}" >> "$GITHUB_OUTPUT"
+
+      - name: Post "running" comment
+        id: comment
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          PR: ${{ github.event.issue.number }}
+          COMMENTER: ${{ github.event.comment.user.login }}
+          PYTEST_ARGS: ${{ steps.parse.outputs.pytest_args }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          BODY="⏳ Running \`pytest ${PYTEST_ARGS}\` on a GPU runner — [view logs](${RUN_URL}).
+
+          Triggered by @${COMMENTER}."
+          CID=$(gh api -X POST "repos/${REPO}/issues/${PR}/comments" -f body="$BODY" --jq '.id')
+          echo "comment_id=${CID}" >> "$GITHUB_OUTPUT"
+
+  gpu_tests:
+    name: Run pytest on GPU
+    needs: gate
+    runs-on:
+      group: aws-g4dn-2xlarge
+    container:
+      image: diffusers/diffusers-pytorch-cuda
+      options: --gpus all --shm-size "16gb" --ipc host
+    # Least privilege: this job checks out and runs untrusted fork code, so it gets no
+    # write token. Comment writes happen only in `gate`/`report`.
+    permissions:
+      contents: read
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout PR head
+        uses: actions/checkout@v6
+        with:
+          # Works for forks too — no fork credentials needed.
+          ref: refs/pull/${{ github.event.issue.number }}/head
+          fetch-depth: 2
+
+      - name: NVIDIA-SMI
+        run: nvidia-smi
+
+      - name: Install dependencies
+        run: |
+          printf 'tokenizers<0.23.0\ntorch==2.10.0\ntorchvision==0.25.0\ntorchaudio==2.10.0\n' > "$UV_OVERRIDE"
+          uv pip install -e ".[quality,training,test]"
+          uv pip install peft@git+https://github.com/huggingface/peft.git
+          uv pip uninstall accelerate && uv pip install -U accelerate@git+https://github.com/huggingface/accelerate.git
+          uv pip uninstall transformers huggingface_hub && UV_PRERELEASE=allow uv pip install -U transformers@git+https://github.com/huggingface/transformers.git
+
+      - name: Environment
+        run: diffusers-cli env
+
+      - name: Run pytest
+        env:
+          HF_TOKEN: ${{ secrets.DIFFUSERS_HF_HUB_READ_TOKEN }}
+          # https://pytorch.org/docs/stable/notes/randomness.html#avoiding-nondeterministic-algorithms
+          CUBLAS_WORKSPACE_CONFIG: :16:8
+          # Forwarded via env (not interpolated into the script) to avoid breakage on
+          # quotes/special characters in a legitimate command.
+          PYTEST_ARGS: ${{ needs.gate.outputs.pytest_args }}
+        run: |
+          eval "pytest --make-reports=tests_bot_gpu $PYTEST_ARGS"
+
+      - name: Failure short reports
+        if: ${{ failure() }}
+        run: |
+          cat reports/tests_bot_gpu_stats.txt || true
+          cat reports/tests_bot_gpu_failures_short.txt || true
+
+      - name: Test suite reports artifacts
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v6
+        with:
+          name: bot_gpu_test_reports
+          path: reports
+
+  report:
+    name: Report status
+    needs: [gate, gpu_tests]
+    # Always run so the comment is updated on success, failure, or cancellation —
+    # but only if `gate` actually posted a comment to update.
+    if: ${{ always() && needs.gate.outputs.comment_id != '' }}
+    runs-on: ubuntu-22.04
+    permissions:
+      pull-requests: write
+    steps:
+      - name: Update comment with final status
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          CID: ${{ needs.gate.outputs.comment_id }}
+          RESULT: ${{ needs.gpu_tests.result }}
+          PYTEST_ARGS: ${{ needs.gate.outputs.pytest_args }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          case "$RESULT" in
+            success)   EMOJI="✅"; MSG="passed";;
+            failure)   EMOJI="❌"; MSG="failed";;
+            cancelled) EMOJI="⚠️"; MSG="was cancelled";;
+            *)         EMOJI="⚠️"; MSG="did not run (${RESULT})";;
+          esac
+          BODY="${EMOJI} \`pytest ${PYTEST_ARGS}\` ${MSG} on GPU — [view logs](${RUN_URL})."
+          gh api -X PATCH "repos/${REPO}/issues/comments/${CID}" -f body="$BODY"
