@@ -53,7 +53,7 @@ jobs:
 
       - name: Pipeline Tests Artifacts
         if: ${{ always() }}
-        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f  # v6
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
         with:
           name: test-pipelines.json
           path: reports
@@ -106,7 +106,7 @@ jobs:
           cat reports/tests_pipeline_${{ matrix.module }}_cuda_failures_short.txt
       - name: Test suite reports artifacts
         if: ${{ always() }}
-        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f  # v6
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
         with:
           name: pipeline_${{ matrix.module }}_test_reports
           path: reports
@@ -176,7 +176,7 @@ jobs:
 
     - name: Test suite reports artifacts
       if: ${{ always() }}
-      uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f  # v6
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
       with:
         name: torch_${{ matrix.module }}_cuda_test_reports
         path: reports
@@ -220,7 +220,7 @@ jobs:
 
     - name: Test suite reports artifacts
       if: ${{ always() }}
-      uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f  # v6
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
       with:
         name: torch_compile_test_reports
         path: reports
@@ -272,7 +272,7 @@ jobs:
           cat reports/tests_big_gpu_torch_cuda_failures_short.txt
       - name: Test suite reports artifacts
         if: ${{ always() }}
-        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f  # v6
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
         with:
           name: torch_cuda_big_gpu_test_reports
           path: reports
@@ -330,7 +330,7 @@ jobs:
 
       - name: Test suite reports artifacts
         if: ${{ always() }}
-        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f  # v6
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
         with:
           name: torch_minimum_version_cuda_test_reports
           path: reports
@@ -400,7 +400,7 @@ jobs:
           cat reports/tests_${{ matrix.config.backend }}_torch_cuda_failures_short.txt
       - name: Test suite reports artifacts
         if: ${{ always() }}
-        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f  # v6
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
         with:
           name: torch_cuda_${{ matrix.config.backend }}_reports
           path: reports
@@ -450,7 +450,7 @@ jobs:
           cat reports/tests_pipeline_level_quant_torch_cuda_failures_short.txt
       - name: Test suite reports artifacts
         if: ${{ always() }}
-        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f  # v6
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
         with:
           name: torch_cuda_pipeline_level_quant_reports
           path: reports
@@ -483,7 +483,7 @@ jobs:
         run: mkdir -p combined_reports
 
       - name: Download all test reports
-        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131  # v7
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8.0.1
         with:
           path: artifacts
 
@@ -509,7 +509,7 @@ jobs:
           cat $CONSOLIDATED_REPORT_PATH >> $GITHUB_STEP_SUMMARY
 
       - name: Upload consolidated report
-        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f  # v6
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
         with:
           name: consolidated_test_report
           path: ${{ env.CONSOLIDATED_REPORT_PATH }}
@@ -563,7 +563,7 @@ jobs:
 #
 #      - name: Test suite reports artifacts
 #        if: ${{ always() }}
-#        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f  # v6
+#        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
 #        with:
 #          name: torch_mps_test_reports
 #          path: reports
@@ -619,7 +619,7 @@ jobs:
 #
 #      - name: Test suite reports artifacts
 #        if: ${{ always() }}
-#        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f  # v6
+#        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
 #        with:
 #          name: torch_mps_test_reports
 #          path: reports

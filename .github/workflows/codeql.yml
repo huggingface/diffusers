@@ -10,7 +10,7 @@ on:
 jobs:
   codeql:
     name: CodeQL Analysis
-    uses: huggingface/security-workflows/.github/workflows/codeql-reusable.yml@dc6ca34688e6876c2dd18750719b44d177586c17  # v1
+    uses: huggingface/security-workflows/.github/workflows/codeql-reusable.yml@e0d40aaf3c566a5e820787840453f45f909e337f  # v1.2.0
     permissions:
       security-events: write
       packages: read
