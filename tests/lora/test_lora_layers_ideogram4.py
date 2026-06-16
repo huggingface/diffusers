@@ -36,7 +36,7 @@ if is_peft_available():
 
 sys.path.append(".")
 
-from .utils import PeftLoraLoaderMixinTests  # noqa: E402
+from .utils import PeftLoraLoaderMixinTests, check_if_lora_correctly_set  # noqa: E402
 
 
 # The text conditioning concatenates the hidden states of these Qwen3-VL decoder layers, so the dummy text
@@ -245,3 +245,30 @@ class Ideogram4LoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
     @unittest.skip("Not supported in Ideogram4.")
     def test_modify_padding_mode(self):
         pass
+
+    # Overridden because the base test probes for `transformer_blocks`/`blocks`/etc. to corrupt a weight,
+    # but Ideogram4's transformer tower is named `layers` (with `attention.to_q` projections).
+    def test_lora_fuse_nan(self):
+        components, _, denoiser_lora_config = self.get_dummy_components()
+        pipe = self.pipeline_class(**components)
+        pipe = pipe.to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
+        _, _, inputs = self.get_dummy_inputs(with_generator=False)
+
+        denoiser = pipe.transformer if self.unet_kwargs is None else pipe.unet
+        denoiser.add_adapter(denoiser_lora_config, "adapter-1")
+        self.assertTrue(check_if_lora_correctly_set(denoiser), "Lora not correctly set in denoiser.")
+
+        # corrupt one LoRA weight with `inf` values
+        with torch.no_grad():
+            pipe.transformer.layers[0].attention.to_q.lora_A["adapter-1"].weight += float("inf")
+
+        # with `safe_fusing=True` we should see an Error
+        with self.assertRaises(ValueError):
+            pipe.fuse_lora(components=self.pipeline_class._lora_loadable_modules, safe_fusing=True)
+
+        # without we should not see an error, but every image will be black
+        pipe.fuse_lora(components=self.pipeline_class._lora_loadable_modules, safe_fusing=False)
+        out = pipe(**inputs)[0]
+
+        self.assertTrue(np.isnan(out).all())

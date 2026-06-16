@@ -368,9 +368,14 @@ class Ideogram4Pipeline(DiffusionPipeline, Ideogram4LoraLoaderMixin):
             attention_mask[b, offset:] = 1
             text_position_ids[b, offset:] = torch.arange(n)
 
-        token_ids = token_ids.to(device)
-        attention_mask = attention_mask.to(device)
-        text_position_ids = text_position_ids.to(device)
+        # Run the encoder on the device its parameters currently live on, then move the features to the
+        # pipeline device. encode_prompt calls the text encoder's submodules directly, so under
+        # enable_model_cpu_offload the onload hook never fires and the weights stay on CPU; honoring their
+        # actual device avoids a device mismatch on the token embedding.
+        te_device = self.text_encoder.device
+        token_ids = token_ids.to(te_device)
+        attention_mask = attention_mask.to(te_device)
+        text_position_ids = text_position_ids.to(te_device)
 
         # Concatenate the tapped activation-layer hidden states into per-token text features, zeroing padding.
         selected = self._get_text_encoder_hidden_states(
@@ -378,6 +383,7 @@ class Ideogram4Pipeline(DiffusionPipeline, Ideogram4LoraLoaderMixin):
         )
         text_features = torch.stack(selected, dim=0).permute(1, 2, 3, 0).reshape(batch_size, max_sequence_length, -1)
         text_features = (text_features * attention_mask.to(text_features.dtype).unsqueeze(-1)).to(torch.float32)
+        text_features = text_features.to(device)
 
         position_ids, segment_ids, indicator = self._prepare_ids(
             text_lengths, grid_h, grid_w, max_sequence_length, device
