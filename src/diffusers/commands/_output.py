@@ -11,25 +11,22 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""Dual-audience output sink for ``diffusers-cli``.
+"""Output formatting for ``diffusers-cli``.
 
-Every subcommand routes user-visible output through the singleton ``out``. The mode is one of ``human`` (default for
-terminals), ``agent`` (auto-selected when an AI coding agent is detected), or ``json`` (machine-parseable). The set of
-methods on ``out`` covers the shapes our commands actually produce — free-form text, key/value results, structured
-dicts, and tabular schemas — so leaf commands never branch on ``args.json`` themselves.
+Commands print through the singleton ``out`` instead of calling ``print`` directly. ``out`` picks the right format
+(human, agent, or json) based on the top-level ``--format`` flag, so commands don't have to check the mode themselves.
 """
 
 from __future__ import annotations
 
 import json
 import os
-import sys
 from enum import Enum
 from typing import Any, Sequence
 
 
-# Environment variables set by known AI coding agents. Presence of any one triggers AGENT mode
-# under `--format auto`.
+# Environment variables set by known AI coding agents. If any of these is set, `--format auto`
+# picks AGENT mode instead of HUMAN.
 _AGENT_ENV_VARS = (
     "CLAUDECODE",  # Claude Code
     "CLAUDE_CODE",  # alt spelling
@@ -41,7 +38,7 @@ _AGENT_ENV_VARS = (
 
 
 def is_agent() -> bool:
-    """Return True if the process appears to be invoked by an AI coding agent."""
+    """Return True if the CLI is being run by an AI coding agent."""
     return any(os.environ.get(v) for v in _AGENT_ENV_VARS)
 
 
@@ -53,7 +50,7 @@ class OutputFormat(str, Enum):
 
 
 class Output:
-    """Singleton output sink. Resolve mode once at startup, then call ``out.<method>``."""
+    """Picks the print format for each method based on the active mode (human / agent / json)."""
 
     mode: OutputFormat
 
@@ -61,7 +58,7 @@ class Output:
         self.set_mode(OutputFormat.AUTO)
 
     def set_mode(self, mode: OutputFormat) -> None:
-        """Set the active output mode. AUTO resolves to AGENT or HUMAN via ``is_agent()``."""
+        """Set the active output mode. AUTO becomes AGENT or HUMAN based on is_agent()."""
         if mode == OutputFormat.AUTO:
             mode = OutputFormat.AGENT if is_agent() else OutputFormat.HUMAN
         self.mode = mode
@@ -69,23 +66,20 @@ class Output:
     # ------------------------------------------------------------------ stdout
 
     def text(self, msg: str) -> None:
-        """Free-form line. Printed plain in every mode."""
+        """Print a line of text. Same in every mode."""
         print(msg)
 
     def dict(self, data: dict[str, Any]) -> None:
-        """Structured object — JSON in every mode (indented for HUMAN, compact otherwise).
-
-        Use for payloads that don't decompose cleanly into key/value pairs (e.g. describe schemas).
-        """
+        """Print a dict as JSON. Indented for HUMAN, compact for AGENT and JSON."""
         indent = 2 if self.mode == OutputFormat.HUMAN else None
         print(json.dumps(data, indent=indent, default=str))
 
     def result(self, message: str, **data: Any) -> None:
-        """Success summary.
+        """Print a result summary.
 
-        - HUMAN: ``message`` followed by `` key: value`` lines.
-        - AGENT: ``key=value`` pairs space-separated on one line (TSV-ish, parser-friendly).
-        - JSON: compact JSON of ``data``.
+        - HUMAN: the message line followed by `` key: value`` lines.
+        - AGENT: ``key=value`` pairs separated by spaces on one line.
+        - JSON: compact JSON of the data dict.
         """
         if self.mode == OutputFormat.HUMAN:
             print(message)
@@ -104,9 +98,13 @@ class Output:
         *,
         headers: list[str] | None = None,
     ) -> None:
-        """Tabular data — HUMAN gets padded columns, AGENT gets TSV, JSON gets the list.
+        """Print a list of dicts as a table.
 
-        Headers default to the keys of the first item.
+        - HUMAN: columns padded so each column lines up.
+        - AGENT: tab-separated values, one row per line.
+        - JSON: the list itself as a JSON array.
+
+        ``headers`` defaults to the keys of the first item.
         """
         if not items:
             if self.mode in (OutputFormat.HUMAN, OutputFormat.AGENT):
@@ -129,25 +127,11 @@ class Output:
                 print("\t".join(row))
             return
 
-        # HUMAN: pad each column to its widest cell for readable alignment.
+        # HUMAN: pad each column to its widest cell so they line up.
         widths = [max(len(h), *(len(r[i]) for r in rows)) for i, h in enumerate(headers)]
         print("  ".join(h.ljust(widths[i]) for i, h in enumerate(headers)))
         for row in rows:
             print("  ".join(c.ljust(widths[i]) for i, c in enumerate(row)))
-
-    # ------------------------------------------------------------------ stderr
-
-    def hint(self, message: str) -> None:
-        """Next-step suggestion. Always goes to stderr so it never pollutes parseable stdout."""
-        print(f"Hint: {message}", file=sys.stderr)
-
-    def warning(self, message: str) -> None:
-        """Non-fatal warning — stderr, every mode."""
-        print(f"Warning: {message}", file=sys.stderr)
-
-    def error(self, message: str) -> None:
-        """Error — stderr, every mode."""
-        print(f"Error: {message}", file=sys.stderr)
 
 
 def _cell(value: Any) -> str:
@@ -156,5 +140,5 @@ def _cell(value: Any) -> str:
     return str(value)
 
 
-# Module-level singleton imported by every subcommand.
+# Shared instance imported by every subcommand.
 out = Output()

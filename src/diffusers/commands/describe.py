@@ -178,10 +178,25 @@ class DescribeCommand(BaseDiffusersCLICommand):
 
     @staticmethod
     def register_subcommand(subparsers: _SubParsersAction) -> None:
+        from argparse import RawDescriptionHelpFormatter
+
+        epilog = (
+            "Examples\n"
+            "  $ diffusers-cli describe -m stabilityai/stable-diffusion-xl-base-1.0\n"
+            "  $ diffusers-cli describe -m black-forest-labs/FLUX.1-dev --verbose\n"
+            "  $ diffusers-cli --format json describe -m stabilityai/stable-diffusion-xl-base-1.0\n"
+            "\n"
+            "Learn more\n"
+            "  Use `diffusers-cli <command> --help` for more information about a command.\n"
+            "  Read the documentation at https://huggingface.co/docs/diffusers\n"
+        )
+
         parser: ArgumentParser = subparsers.add_parser(
             "describe",
             help="Print the input schema for a diffusers pipeline repo. No weights downloaded.",
             usage="\n  diffusers-cli describe [options]",
+            epilog=epilog,
+            formatter_class=RawDescriptionHelpFormatter,
         )
         parser._optionals.title = "Options"
         parser.add_argument(

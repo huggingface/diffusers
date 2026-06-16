@@ -38,10 +38,25 @@ def conversion_command_factory(args: Namespace):
 class CustomBlocksCommand(BaseDiffusersCLICommand):
     @staticmethod
     def register_subcommand(parser: ArgumentParser):
+        from argparse import RawDescriptionHelpFormatter
+
+        epilog = (
+            "Examples\n"
+            "  $ diffusers-cli custom_blocks\n"
+            "  $ diffusers-cli custom_blocks --block_module_name my_block.py\n"
+            "  $ diffusers-cli custom_blocks --block_module_name my_block.py --block_class_name MyDenoiseBlock\n"
+            "\n"
+            "Learn more\n"
+            "  Use `diffusers-cli <command> --help` for more information about a command.\n"
+            "  Read the documentation at https://huggingface.co/docs/diffusers\n"
+        )
+
         conversion_parser = parser.add_parser(
             "custom_blocks",
             help="Package a local ModularPipelineBlocks subclass for the Hub.",
             usage="\n  diffusers-cli custom_blocks [options]",
+            epilog=epilog,
+            formatter_class=RawDescriptionHelpFormatter,
         )
         conversion_parser._optionals.title = "Options"
         conversion_parser.add_argument(

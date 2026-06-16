@@ -106,7 +106,6 @@ HF_JOBS_KEYS = frozenset(
         "poll_interval",
         "func",
         "format",  # top-level --format is a local rendering flag; never forward to the container
-        "device",  # local device pin; container auto-detects its own (cuda:0 or LOCAL_RANK)
     }
 )
 
@@ -638,9 +637,6 @@ def _maybe_submit_remote(args: Namespace, task: str) -> bool:
     if not args.remote:
         return False
 
-    if args.device is not None:
-        out.warning(f"--device {args.device!r} is ignored with --remote; the container auto-detects its GPU.")
-
     print(
         f"[diffusers-cli] preparing remote {task!r} job on flavor={args.flavor!r}...",
         file=sys.stderr,
@@ -836,10 +832,33 @@ class GenerateCommand(BaseDiffusersCLICommand):
 
     @staticmethod
     def register_subcommand(subparsers: _SubParsersAction) -> None:
+        from argparse import RawDescriptionHelpFormatter
+
+        epilog = (
+            "Examples\n"
+            "  $ diffusers-cli generate -m black-forest-labs/FLUX.1-dev --dtype bf16 \\\n"
+            '      --pipeline-kwargs \'{"prompt": "a cat on the moon"}\'\n'
+            "  $ diffusers-cli generate -m black-forest-labs/FLUX.1-dev --dtype bf16 \\\n"
+            '      --pipeline-kwargs \'{"prompt": "make the fur grey", "image": "https://example.com/cat.png"}\'\n'
+            "  $ diffusers-cli generate -m black-forest-labs/FLUX.1-dev --dtype bf16 \\\n"
+            '      --pipeline-kwargs \'{"prompt": "a tiny cat"}\' \\\n'
+            '      --lora \'{"lora_id": "alvdansen/littletinies", "lora_scale": 0.8}\'\n'
+            "  $ diffusers-cli generate -m black-forest-labs/FLUX.1-dev --dtype bf16 \\\n"
+            '      --pipeline-kwargs \'{"prompt": "a cat"}\' --remote --flavor a100-large\n'
+            "  $ diffusers-cli generate -m black-forest-labs/FLUX.1-dev --dtype bf16 --context-parallel \\\n"
+            '      --pipeline-kwargs \'{"prompt": "a cat"}\' --remote --flavor 4xa100-large\n'
+            "\n"
+            "Learn more\n"
+            "  Use `diffusers-cli <command> --help` for more information about a command.\n"
+            "  Read the documentation at https://huggingface.co/docs/diffusers\n"
+        )
+
         parser: ArgumentParser = subparsers.add_parser(
             "generate",
             help="Run any diffusers pipeline locally or remotely with HF Jobs.",
             usage="\n  diffusers-cli generate [options]",
+            epilog=epilog,
+            formatter_class=RawDescriptionHelpFormatter,
         )
         parser._optionals.title = "Options"
         _add_loading_arguments(parser)

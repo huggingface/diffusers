@@ -105,21 +105,14 @@ diffusers-cli generate \
 
 What happens:
 
-1. Token is read from `args.token` or `huggingface_hub.get_token()`.
-2. A bucket (`<user>/jobs-artifacts` by default) is auto-created.
-3. Job is submitted via `run_job` (not `run_uv_job` — needed to honor the image) with image
-   `pytorch/pytorch:2.10.0-cuda12.8-cudnn9-runtime` (torch 2.10 + CUDA 12.8, matches HF Jobs host driver max of
-   CUDA 12.9).
-4. Container runs:
-   ```
-   sh -c "uv pip install --system --break-system-packages <small-deps> && diffusers-cli generate ..."
-   ```
-   Only `diffusers`-tarball + `accelerate` + `transformers` + `safetensors` are installed inline (~50 MB instead
-   of ~3 GB) because torch+CUDA come from the image. `--break-system-packages` bypasses PEP 668 in the image's
-   system Python.
-5. Container logs stream to stderr; on completion the CLI downloads any files the job uploaded to the bucket
-   under its `run_id` prefix into `./outputs/`.
-6. A timing breakdown (`queued_seconds`, `run_seconds`, `total_seconds`) is printed and included in the JSON
+1. Your HF token is picked up (from `--token` or your login).
+2. A bucket (`<user>/jobs-artifacts` by default) is created if it doesn't exist.
+3. The job runs in a pytorch container that already has torch + CUDA preinstalled. Only the small Python
+   deps (`diffusers`, `accelerate`, `transformers`, `safetensors`) are installed at container start — about
+   50 MB instead of 3 GB.
+4. Container logs stream to your terminal. When the job finishes, the CLI downloads every file the job
+   uploaded to the bucket under its `run_id` prefix into `./outputs/`.
+5. A timing breakdown (`queued_seconds`, `run_seconds`, `total_seconds`) is printed and included in the JSON
    payload.
 
 Flags:
