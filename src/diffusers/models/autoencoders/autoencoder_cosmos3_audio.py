@@ -378,8 +378,8 @@ class Cosmos3AVAEAudioTokenizer(ModelMixin, ConfigMixin):
     API stays tensor-returning because ``Cosmos3OmniPipeline`` calls it directly when ``enable_sound=True``.
 
     Only the shipped AVAE configuration (``model_type="autoencoder_v2"``, waveform input, ``spec_convnext`` encoder,
-    ``vae`` bottleneck, ``oobleck`` decoder, log-scale SnakeBeta, no latent normalization) is supported; any other value
-    raises ``NotImplementedError``.
+    ``vae`` bottleneck, ``oobleck`` decoder, log-scale SnakeBeta, no latent normalization) is supported; any other
+    value raises ``NotImplementedError``.
 
     Parameters:
         model_type (`str`, defaults to `"autoencoder_v2"`): AVAE model variant; only `"autoencoder_v2"` is supported.
@@ -390,7 +390,8 @@ class Cosmos3AVAEAudioTokenizer(ModelMixin, ConfigMixin):
         dec_c_mults (`tuple[int, ...]`, defaults to `(1, 2, 4, 8, 16)`): Decoder channel multipliers.
         dec_strides (`tuple[int, ...]`, defaults to `(2, 4, 5, 6, 8)`): Decoder upsampling strides.
         dec_out_channels (`int`, defaults to `2`): Output audio channels (2 = stereo).
-        stereo (`bool`, defaults to `True`): Whether the audio is stereo; doubles the encoder's effective channel count.
+        stereo (`bool`, defaults to `True`):
+            Whether the audio is stereo; doubles the encoder's effective channel count.
         use_wav_as_input (`bool`, defaults to `True`): Whether the encoder consumes raw waveforms; only `True` is
             supported.
         normalize_volume (`bool`, defaults to `True`): Whether `encode` peak-normalizes the waveform before encoding.
@@ -401,12 +402,14 @@ class Cosmos3AVAEAudioTokenizer(ModelMixin, ConfigMixin):
         enc_dim (`int`, defaults to `192`): Base encoder channel count.
         enc_intermediate_dim (`int`, defaults to `768`): Unused; kept for config fidelity (ConvNeXt blocks use
             ``input_dim * 4``).
-        enc_num_layers (`int`, defaults to `12`): Unused; kept for config fidelity (depth derives from `enc_num_blocks`).
+        enc_num_layers (`int`, defaults to `12`):
+            Unused; kept for config fidelity (depth derives from `enc_num_blocks`).
         enc_num_blocks (`int`, defaults to `2`): ConvNeXt blocks per encoder downsampling stage.
         enc_n_fft (`int`, defaults to `64`): STFT FFT size for the encoder spectrogram front-end.
         enc_hop_length (`int`, defaults to `16`): STFT hop length for the encoder spectrogram front-end.
-        enc_latent_dim (`int`, defaults to `128`): Encoder output channels; split into mean/scale by the VAE bottleneck
-            (so ``enc_latent_dim == 2 * vocoder_input_dim``).
+        enc_latent_dim (`int`, defaults to `128`):
+            Encoder output channels; split into mean/scale by the VAE bottleneck (so ``enc_latent_dim == 2 *
+            vocoder_input_dim``).
         enc_c_mults (`tuple[int, ...]`, defaults to `(1, 2, 4)`): Encoder channel multipliers per stage.
         enc_strides (`tuple[int, ...]`, defaults to `(4, 5, 6)`): Encoder downsampling strides per stage.
         enc_identity_init (`bool`, defaults to `False`): Whether to zero-init the ConvNeXt residual 1x1 convs.
@@ -424,7 +427,8 @@ class Cosmos3AVAEAudioTokenizer(ModelMixin, ConfigMixin):
             supported.
         anti_aliasing (`bool`, defaults to `False`): Global anti-aliasing flag; only `False` is supported.
         use_cuda_kernel (`bool`, defaults to `False`): Whether to use fused CUDA kernels; only `False` is supported.
-        causal (`bool`, defaults to `False`): Whether convolutions are causal; only `False` is supported by the encoder.
+        causal (`bool`, defaults to `False`):
+            Whether convolutions are causal; only `False` is supported by the encoder.
         padding_mode (`str`, defaults to `"zeros"`): Convolution padding mode.
         latent_mean (`float` or `list[float]`, *optional*): Latent normalization mean; latent normalization is not
             implemented, so a non-`None` value raises ``NotImplementedError``.
