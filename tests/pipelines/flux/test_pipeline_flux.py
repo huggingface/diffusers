@@ -23,11 +23,13 @@ from ...testing_utils import (
     slow,
     torch_device,
 )
-from ..test_pipelines_common import (
+from ..testing_utils import (
+    BasePipelineTesterConfig,
     FasterCacheTesterMixin,
     FirstBlockCacheTesterMixin,
     FluxIPAdapterTesterMixin,
     MagCacheTesterMixin,
+    MemoryTesterMixin,
     PipelineTesterMixin,
     PyramidAttentionBroadcastTesterMixin,
     TaylorSeerCacheTesterMixin,
@@ -35,32 +37,26 @@ from ..test_pipelines_common import (
 )
 
 
-class FluxPipelineFastTests(
-    PipelineTesterMixin,
-    FluxIPAdapterTesterMixin,
-    PyramidAttentionBroadcastTesterMixin,
-    FasterCacheTesterMixin,
-    FirstBlockCacheTesterMixin,
-    TaylorSeerCacheTesterMixin,
-    MagCacheTesterMixin,
-    unittest.TestCase,
-):
-    pipeline_class = FluxPipeline
-    params = frozenset(["prompt", "height", "width", "guidance_scale", "prompt_embeds", "pooled_prompt_embeds"])
-    batch_params = frozenset(["prompt"])
+class FluxPipelineTesterConfig(BasePipelineTesterConfig):
+    @property
+    def pipeline_class(self):
+        return FluxPipeline
 
-    # there is no xformers processor for Flux
-    test_xformers_attention = False
-    test_layerwise_casting = True
-    test_group_offloading = True
+    @property
+    def params(self):
+        return frozenset(["prompt", "height", "width", "guidance_scale", "prompt_embeds", "pooled_prompt_embeds"])
 
-    faster_cache_config = FasterCacheConfig(
-        spatial_attention_block_skip_range=2,
-        spatial_attention_timestep_skip_range=(-1, 901),
-        unconditional_batch_skip_range=2,
-        attention_weight_callback=lambda _: 0.5,
-        is_guidance_distilled=True,
-    )
+    @property
+    def batch_params(self):
+        return frozenset(["prompt"])
+
+    @property
+    def test_layerwise_casting(self):
+        return True
+
+    @property
+    def test_group_offloading(self):
+        return True
 
     def get_dummy_components(self, num_layers: int = 1, num_single_layers: int = 1):
         torch.manual_seed(0)
@@ -146,6 +142,8 @@ class FluxPipelineFastTests(
         }
         return inputs
 
+
+class TestFluxPipeline(FluxPipelineTesterConfig, PipelineTesterMixin):
     def test_flux_different_prompts(self):
         pipe = self.pipeline_class(**self.get_dummy_components()).to(torch_device)
 
@@ -160,7 +158,7 @@ class FluxPipelineFastTests(
 
         # Outputs should be different here
         # For some reasons, they don't show large differences
-        self.assertGreater(max_diff, 1e-6, "Outputs should be different for different prompts.")
+        assert max_diff > 1e-6, "Outputs should be different for different prompts."
 
     def test_fused_qkv_projections(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
@@ -176,9 +174,8 @@ class FluxPipelineFastTests(
         # TODO (sayakpaul): will refactor this once `fuse_qkv_projections()` has been added
         # to the pipeline level.
         pipe.transformer.fuse_qkv_projections()
-        self.assertTrue(
-            check_qkv_fused_layers_exist(pipe.transformer, ["to_qkv"]),
-            ("Something wrong with the fused attention layers. Expected all the attention projections to be fused."),
+        assert check_qkv_fused_layers_exist(pipe.transformer, ["to_qkv"]), (
+            "Something wrong with the fused attention layers. Expected all the attention projections to be fused."
         )
 
         inputs = self.get_dummy_inputs(device)
@@ -190,17 +187,14 @@ class FluxPipelineFastTests(
         image = pipe(**inputs).images
         image_slice_disabled = image[0, -3:, -3:, -1]
 
-        self.assertTrue(
-            np.allclose(original_image_slice, image_slice_fused, atol=1e-3, rtol=1e-3),
-            ("Fusion of QKV projections shouldn't affect the outputs."),
+        assert np.allclose(original_image_slice, image_slice_fused, atol=1e-3, rtol=1e-3), (
+            "Fusion of QKV projections shouldn't affect the outputs."
         )
-        self.assertTrue(
-            np.allclose(image_slice_fused, image_slice_disabled, atol=1e-3, rtol=1e-3),
-            ("Outputs, with QKV projection fusion enabled, shouldn't change when fused QKV projections are disabled."),
+        assert np.allclose(image_slice_fused, image_slice_disabled, atol=1e-3, rtol=1e-3), (
+            "Outputs, with QKV projection fusion enabled, shouldn't change when fused QKV projections are disabled."
         )
-        self.assertTrue(
-            np.allclose(original_image_slice, image_slice_disabled, atol=1e-2, rtol=1e-2),
-            ("Original outputs should match when fused QKV projections are disabled."),
+        assert np.allclose(original_image_slice, image_slice_disabled, atol=1e-2, rtol=1e-2), (
+            "Original outputs should match when fused QKV projections are disabled."
         )
 
     def test_flux_image_output_shape(self):
@@ -215,10 +209,8 @@ class FluxPipelineFastTests(
             inputs.update({"height": height, "width": width})
             image = pipe(**inputs).images[0]
             output_height, output_width, _ = image.shape
-            self.assertEqual(
-                (output_height, output_width),
-                (expected_height, expected_width),
-                f"Output shape {image.shape} does not match expected shape {(expected_height, expected_width)}",
+            assert (output_height, output_width) == (expected_height, expected_width), (
+                f"Output shape {image.shape} does not match expected shape {(expected_height, expected_width)}"
             )
 
     def test_flux_true_cfg(self):
@@ -230,9 +222,46 @@ class FluxPipelineFastTests(
         inputs["negative_prompt"] = "bad quality"
         inputs["true_cfg_scale"] = 2.0
         true_cfg_out = pipe(**inputs, generator=torch.manual_seed(0)).images[0]
-        self.assertFalse(
-            np.allclose(no_true_cfg_out, true_cfg_out), "Outputs should be different when true_cfg_scale is set."
+        assert not np.allclose(no_true_cfg_out, true_cfg_out), (
+            "Outputs should be different when true_cfg_scale is set."
         )
+
+
+class TestFluxPipelineMemory(FluxPipelineTesterConfig, MemoryTesterMixin):
+    """Offload / device-map / group-offload / layerwise-casting tests for Flux."""
+
+
+class TestFluxPipelineIPAdapter(FluxPipelineTesterConfig, FluxIPAdapterTesterMixin):
+    """IP-Adapter tests for Flux."""
+
+
+class TestFluxPipelinePAB(FluxPipelineTesterConfig, PyramidAttentionBroadcastTesterMixin):
+    """Pyramid Attention Broadcast cache tests for Flux."""
+
+
+class TestFluxPipelineFasterCache(FluxPipelineTesterConfig, FasterCacheTesterMixin):
+    """FasterCache tests for Flux."""
+
+    # Flux is guidance distilled, so we set `is_guidance_distilled=True`.
+    faster_cache_config = FasterCacheConfig(
+        spatial_attention_block_skip_range=2,
+        spatial_attention_timestep_skip_range=(-1, 901),
+        unconditional_batch_skip_range=2,
+        attention_weight_callback=lambda _: 0.5,
+        is_guidance_distilled=True,
+    )
+
+
+class TestFluxPipelineFirstBlockCache(FluxPipelineTesterConfig, FirstBlockCacheTesterMixin):
+    """FirstBlockCache tests for Flux."""
+
+
+class TestFluxPipelineTaylorSeerCache(FluxPipelineTesterConfig, TaylorSeerCacheTesterMixin):
+    """TaylorSeerCache tests for Flux."""
+
+
+class TestFluxPipelineMagCache(FluxPipelineTesterConfig, MagCacheTesterMixin):
+    """MagCache tests for Flux."""
 
 
 @nightly
@@ -293,9 +322,7 @@ class FluxPipelineSlowTests(unittest.TestCase):
         # fmt: on
 
         max_diff = numpy_cosine_similarity_distance(expected_slice.flatten(), image_slice.flatten())
-        self.assertLess(
-            max_diff, 1e-4, f"Image slice is different from expected slice: {image_slice} != {expected_slice}"
-        )
+        assert max_diff < 1e-4, f"Image slice is different from expected slice: {image_slice} != {expected_slice}"
 
 
 @slow
@@ -373,6 +400,4 @@ class FluxIPAdapterPipelineSlowTests(unittest.TestCase):
         # fmt: on
 
         max_diff = numpy_cosine_similarity_distance(expected_slice.flatten(), image_slice.flatten())
-        self.assertLess(
-            max_diff, 1e-4, f"Image slice is different from expected slice: {image_slice} != {expected_slice}"
-        )
+        assert max_diff < 1e-4, f"Image slice is different from expected slice: {image_slice} != {expected_slice}"
