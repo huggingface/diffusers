@@ -1,5 +1,10 @@
 # Diffusers — Agent Guide
 
+## Setup
+
+- Local Claude Code agents: run `make claude` after cloning to wire the [skills](#skills) under `.claude/`.
+- Local OpenAI Codex agents: run `make codex` after cloning to wire the [skills](#skills) under `.agents/`.
+
 ## Coding style
 
 Strive to write code as simple and explicit as possible.
