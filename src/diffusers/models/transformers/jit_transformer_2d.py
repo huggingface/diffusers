@@ -328,6 +328,7 @@ def get_1d_sincos_pos_embed_from_grid(embed_dim, pos):
     emb = torch.cat([emb_sin, emb_cos], dim=1)
     return emb
 
+
 class JiTTransformer2DModel(ModelMixin, ConfigMixin, AttentionMixin):
     r"""
     A 2D Transformer for pixel-space, class-conditional image generation, as introduced in

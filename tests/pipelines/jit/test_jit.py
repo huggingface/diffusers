@@ -99,5 +99,3 @@ class JiTPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
     def test_cpu_offload_forward_pass_twice(self):
         self.skipTest("Single-model pipeline keeps model on device with enable_model_cpu_offload.")
-
-
