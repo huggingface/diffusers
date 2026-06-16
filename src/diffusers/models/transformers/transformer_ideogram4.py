@@ -394,8 +394,8 @@ class Ideogram4Transformer2DModel(ModelMixin, ConfigMixin, AttentionMixin, PeftA
             indicator (`torch.Tensor` of shape `(batch_size, sequence_length)`):
                 Per-token role: `LLM_TOKEN_INDICATOR` (text) or `OUTPUT_IMAGE_INDICATOR` (image).
             attention_kwargs (`dict`, *optional*):
-                A kwargs dictionary passed along to the attention processor. A `"scale"` entry scales the LoRA
-                weights (when the PEFT backend is active).
+                A kwargs dictionary passed along to the attention processor. A `"scale"` entry scales the LoRA weights
+                (when the PEFT backend is active).
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether to return a [`~models.modeling_outputs.Transformer2DModelOutput`] instead of a plain tuple.
 
