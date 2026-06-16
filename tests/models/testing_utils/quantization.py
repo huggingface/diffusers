@@ -35,6 +35,7 @@ from diffusers.utils.import_utils import (
 )
 
 from ...testing_utils import (
+    assert_tensors_close,
     backend_empty_cache,
     backend_max_memory_allocated,
     backend_reset_peak_memory_stats,
@@ -816,11 +817,12 @@ class TorchAoConfigMixin:
     @staticmethod
     def _get_quant_config(config_name):
         config_cls = getattr(_torchao_quantization, config_name)
+        config_kwargs = {"version": 2}
         # TorchAO int4 quantization requires plain_int32 packing format on Intel XPU
         if config_name == "Int4WeightOnlyConfig" and torch_device == "xpu":
-            return TorchAoConfig(config_cls(int4_packing_format="plain_int32"))
+            config_kwargs.setdefault("int4_packing_format", "plain_int32")
 
-        return TorchAoConfig(config_cls())
+        return TorchAoConfig(config_cls(**config_kwargs))
 
     def _create_quantized_model(self, config_name, **extra_kwargs):
         config = self._get_quant_config(config_name)
@@ -915,18 +917,58 @@ class TorchAoTesterMixin(TorchAoConfigMixin, QuantizationTesterMixin):
         self._test_quantization_lora_inference(TorchAoConfigMixin.TORCHAO_QUANT_TYPES[quant_type])
 
     @pytest.mark.parametrize("quant_type", ["int8wo"], ids=["int8wo"])
+    @require_torchao_version_greater_or_equal("0.16.0")
     def test_torchao_quantization_serialization(self, quant_type, tmp_path):
-        """Override to use safe_serialization=False for TorchAO (safetensors not supported)."""
         config_kwargs = TorchAoConfigMixin.TORCHAO_QUANT_TYPES[quant_type]
         model = self._create_quantized_model(config_kwargs)
-
-        model.save_pretrained(str(tmp_path), safe_serialization=False)
-
-        model_loaded = self.model_class.from_pretrained(str(tmp_path), device_map=str(torch_device))
-
         inputs = self.get_dummy_inputs()
-        output = model_loaded(**inputs, return_dict=False)[0]
-        assert not torch.isnan(output).any(), "Loaded model output contains NaN"
+
+        with torch.no_grad():
+            expected_output = model(**inputs, return_dict=False)[0].detach().cpu()
+
+        model.save_pretrained(str(tmp_path), safe_serialization=True)
+        del model
+        gc.collect()
+        backend_empty_cache(torch_device)
+
+        model_loaded = self.model_class.from_pretrained(
+            str(tmp_path), device_map=str(torch_device), use_safetensors=True
+        )
+
+        with torch.no_grad():
+            output = model_loaded(**inputs, return_dict=False)[0].detach().cpu()
+
+        assert_tensors_close(output, expected_output, rtol=1e-3, atol=1e-3)
+
+    @pytest.mark.parametrize("quant_type", ["int8dq"], ids=["int8dq"])
+    @require_torchao_version_greater_or_equal("0.16.0")
+    def test_torchao_quantization_sharded_serialization(self, quant_type, tmp_path):
+        config_kwargs = TorchAoConfigMixin.TORCHAO_QUANT_TYPES[quant_type]
+        model = self._create_quantized_model(config_kwargs)
+        inputs = self.get_dummy_inputs()
+
+        with torch.no_grad():
+            expected_output = model(**inputs, return_dict=False)[0].detach().cpu()
+
+        model.save_pretrained(str(tmp_path), safe_serialization=True, max_shard_size="16KB")
+        del model
+        gc.collect()
+        backend_empty_cache(torch_device)
+
+        shard_files = list(tmp_path.glob("*.safetensors"))
+        assert len(shard_files) > 1, "Expected a sharded safe-serialization checkpoint."
+        assert any(path.name.endswith(".index.json") for path in tmp_path.iterdir()), (
+            "Expected an index file for sharded safe checkpoint."
+        )
+
+        model_loaded = self.model_class.from_pretrained(
+            str(tmp_path), device_map=str(torch_device), use_safetensors=True
+        )
+
+        with torch.no_grad():
+            output = model_loaded(**inputs, return_dict=False)[0].detach().cpu()
+
+        assert_tensors_close(output, expected_output, rtol=1e-3, atol=1e-3)
 
     def test_torchao_modules_to_not_convert(self):
         """Test that modules_to_not_convert parameter works correctly."""
