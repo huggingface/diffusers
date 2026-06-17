@@ -59,7 +59,7 @@ from .flux2 import Flux2KleinPipeline, Flux2Pipeline
 from .glm_image import GlmImagePipeline
 from .helios import HeliosPipeline, HeliosPyramidPipeline
 from .hunyuandit import HunyuanDiTPipeline
-from .ideogram4 import Ideogram4Pipeline
+from .ideogram4 import Ideogram4Img2ImgPipeline, Ideogram4Pipeline
 from .kandinsky import (
     KandinskyCombinedPipeline,
     KandinskyImg2ImgCombinedPipeline,
@@ -229,6 +229,7 @@ AUTO_IMAGE2IMAGE_PIPELINES_MAPPING = OrderedDict(
         ("flux-kontext", FluxKontextPipeline),
         ("flux2-klein", Flux2KleinPipeline),
         ("flux2", Flux2Pipeline),
+        ("ideogram4", Ideogram4Img2ImgPipeline),
         ("qwenimage", QwenImageImg2ImgPipeline),
         ("qwenimage-edit", QwenImageEditPipeline),
         ("qwenimage-edit-plus", QwenImageEditPlusPipeline),
