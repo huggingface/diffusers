@@ -488,7 +488,11 @@ class StableDiffusionXLImg2ImgPipeline(
                 # We are only ALWAYS interested in the pooled output of the final text encoder
                 if negative_pooled_prompt_embeds is None and negative_prompt_embeds[0].ndim == 2:
                     negative_pooled_prompt_embeds = negative_prompt_embeds[0]
-                negative_prompt_embeds = negative_prompt_embeds.hidden_states[-2]
+                if clip_skip is None:
+                    negative_prompt_embeds = negative_prompt_embeds.hidden_states[-2]
+                else:
+                    # "2" because SDXL always indexes from the penultimate layer.
+                    negative_prompt_embeds = negative_prompt_embeds.hidden_states[-(clip_skip + 2)]
 
                 negative_prompt_embeds_list.append(negative_prompt_embeds)
 
