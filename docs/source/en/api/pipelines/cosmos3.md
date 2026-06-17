@@ -77,6 +77,8 @@ python -m cosmos_framework.inference.prompt_upsampling \
 
 Switch `--mode` to match the workflow you are targeting (`text2image`, `text2video`, `image2video`). The command writes the upsampled prompt(s) to the `--output` file as a JSON array (one object per non-empty line in `--input`); pass a `.jsonl` path instead to get one JSON object per line. For `image2video`, you must also supply the conditioning image via `--image-url` (a URL or local path) or `--image-list` (one image per prompt).
 
+<!-- TODO: Add prompt upsampling support for video inputs (video-to-video) to the upsampler CLI. -->
+
 A pre-upsampled positive prompt (`assets/example_t2v_prompt.json`) and negative prompt (`assets/negative_prompt.json`) are provided for convenience, and are used by the generation examples below. The examples load these JSON files and pass them to the pipeline as JSON strings via `json.dumps(...)`.
 
 ## Text-to-video
@@ -271,6 +273,200 @@ result = pipe(
 )
 # macro_block_size=1 allows arbitrary frame sizes (Cosmos3 outputs are not always divisible by 16).
 export_to_video(result.video, "cosmos3_i2v.mp4", fps=24, macro_block_size=1)
+```
+
+</hfoption>
+</hfoptions>
+
+## Video-to-video
+
+Pass a conditioning clip via `video=` (e.g. from `load_video`). The pipeline anchors the leading latent frames given by `condition_frame_indexes_vision` (default `[0, 1]`) to the clip and denoises the rest. Use `condition_video_keep` (`"first"` or `"last"`) to choose which end of a longer source clip the conditioning frames are taken from. As with the other modes, the prompt should follow the descriptive JSON structure described in [Prompt upsampling](#prompt-upsampling).
+
+<!-- TODO: Add prompt upsampling support for video inputs (video-to-video) to the upsampler CLI. -->
+
+<hfoptions id="model">
+<hfoption id="Nano">
+
+```python
+import json
+import torch
+from diffusers import Cosmos3OmniPipeline
+from diffusers.schedulers.scheduling_unipc_multistep import UniPCMultistepScheduler
+from diffusers.utils import export_to_video, load_video
+
+# JSON-upsampled positive and negative prompts (see "Prompt upsampling" above).
+json_prompt = json.load(open("assets/example_v2v_prompt.json"))
+negative_prompt = json.load(open("assets/negative_prompt_i2v.json"))
+
+pipe = Cosmos3OmniPipeline.from_pretrained(
+    "nvidia/Cosmos3-Nano", torch_dtype=torch.bfloat16, device_map="cuda"
+)
+pipe.scheduler = UniPCMultistepScheduler.from_config(
+    pipe.scheduler.config, flow_shift=10.0, use_karras_sigmas=False
+)
+
+video = load_video(
+    "https://github.com/nvidia-cosmos/cosmos-dependencies/raw/refs/heads/assets/cosmos3/inputs/vision/robot_pouring.mp4"
+)
+
+result = pipe(
+    prompt=json.dumps(json_prompt),
+    negative_prompt=json.dumps(negative_prompt),
+    video=video,
+    condition_frame_indexes_vision=[0, 1],
+    condition_video_keep="first",
+    num_frames=189,
+    height=720,
+    width=1280,
+    num_inference_steps=35,
+    guidance_scale=6.0,
+    fps=24.0,
+)
+# macro_block_size=1 allows arbitrary frame sizes (Cosmos3 outputs are not always divisible by 16).
+export_to_video(result.video, "cosmos3_v2v.mp4", fps=24, macro_block_size=1)
+```
+
+</hfoption>
+<hfoption id="Super">
+
+```python
+import json
+import torch
+from diffusers import Cosmos3OmniPipeline
+from diffusers.schedulers.scheduling_unipc_multistep import UniPCMultistepScheduler
+from diffusers.utils import export_to_video, load_video
+
+# JSON-upsampled positive and negative prompts (see "Prompt upsampling" above).
+json_prompt = json.load(open("assets/example_v2v_prompt.json"))
+negative_prompt = json.load(open("assets/negative_prompt_i2v.json"))
+
+pipe = Cosmos3OmniPipeline.from_pretrained(
+    "nvidia/Cosmos3-Super", torch_dtype=torch.bfloat16, device_map="cuda"
+)
+pipe.scheduler = UniPCMultistepScheduler.from_config(
+    pipe.scheduler.config, flow_shift=10.0, use_karras_sigmas=False
+)
+
+video = load_video(
+    "https://github.com/nvidia-cosmos/cosmos-dependencies/raw/refs/heads/assets/cosmos3/inputs/vision/robot_pouring.mp4"
+)
+
+result = pipe(
+    prompt=json.dumps(json_prompt),
+    negative_prompt=json.dumps(negative_prompt),
+    video=video,
+    condition_frame_indexes_vision=[0, 1],
+    condition_video_keep="first",
+    num_frames=189,
+    height=720,
+    width=1280,
+    num_inference_steps=35,
+    guidance_scale=6.0,
+    fps=24.0,
+)
+# macro_block_size=1 allows arbitrary frame sizes (Cosmos3 outputs are not always divisible by 16).
+export_to_video(result.video, "cosmos3_v2v.mp4", fps=24, macro_block_size=1)
+```
+
+</hfoption>
+</hfoptions>
+
+## Video-to-video with sound
+
+When the checkpoint carries a `sound_tokenizer`, add `enable_sound=True` to the video-to-video call to jointly generate a synchronized audio track. The waveform is returned alongside the video and can be muxed into the MP4 with [`~utils.encode_video`].
+
+<hfoptions id="model">
+<hfoption id="Nano">
+
+```python
+import json
+import torch
+from diffusers import Cosmos3OmniPipeline
+from diffusers.schedulers.scheduling_unipc_multistep import UniPCMultistepScheduler
+from diffusers.utils import encode_video, load_video
+
+# JSON-upsampled positive and negative prompts (see "Prompt upsampling" above).
+json_prompt = json.load(open("assets/example_v2v_prompt.json"))
+negative_prompt = json.load(open("assets/negative_prompt_i2v.json"))
+
+pipe = Cosmos3OmniPipeline.from_pretrained(
+    "nvidia/Cosmos3-Nano", torch_dtype=torch.bfloat16, device_map="cuda"
+)
+pipe.scheduler = UniPCMultistepScheduler.from_config(
+    pipe.scheduler.config, flow_shift=10.0, use_karras_sigmas=False
+)
+
+video = load_video(
+    "https://github.com/nvidia-cosmos/cosmos-dependencies/raw/refs/heads/assets/cosmos3/inputs/vision/robot_pouring.mp4"
+)
+
+result = pipe(
+    prompt=json.dumps(json_prompt),
+    negative_prompt=json.dumps(negative_prompt),
+    video=video,
+    condition_frame_indexes_vision=[0, 1],
+    condition_video_keep="first",
+    num_frames=189,
+    height=720,
+    width=1280,
+    fps=24.0,
+    enable_sound=True,
+)
+
+encode_video(
+    result.video,
+    fps=24,
+    audio=result.sound,
+    audio_sample_rate=pipe.sound_tokenizer.config.sampling_rate,
+    output_path="cosmos3_v2v_with_sound.mp4",
+)
+```
+
+</hfoption>
+<hfoption id="Super">
+
+```python
+import json
+import torch
+from diffusers import Cosmos3OmniPipeline
+from diffusers.schedulers.scheduling_unipc_multistep import UniPCMultistepScheduler
+from diffusers.utils import encode_video, load_video
+
+# JSON-upsampled positive and negative prompts (see "Prompt upsampling" above).
+json_prompt = json.load(open("assets/example_v2v_prompt.json"))
+negative_prompt = json.load(open("assets/negative_prompt_i2v.json"))
+
+pipe = Cosmos3OmniPipeline.from_pretrained(
+    "nvidia/Cosmos3-Super", torch_dtype=torch.bfloat16, device_map="cuda"
+)
+pipe.scheduler = UniPCMultistepScheduler.from_config(
+    pipe.scheduler.config, flow_shift=10.0, use_karras_sigmas=False
+)
+
+video = load_video(
+    "https://github.com/nvidia-cosmos/cosmos-dependencies/raw/refs/heads/assets/cosmos3/inputs/vision/robot_pouring.mp4"
+)
+
+result = pipe(
+    prompt=json.dumps(json_prompt),
+    negative_prompt=json.dumps(negative_prompt),
+    video=video,
+    condition_frame_indexes_vision=[0, 1],
+    condition_video_keep="first",
+    num_frames=189,
+    height=720,
+    width=1280,
+    fps=24.0,
+    enable_sound=True,
+)
+
+encode_video(
+    result.video,
+    fps=24,
+    audio=result.sound,
+    audio_sample_rate=pipe.sound_tokenizer.config.sampling_rate,
+    output_path="cosmos3_v2v_with_sound.mp4",
+)
 ```
 
 </hfoption>
