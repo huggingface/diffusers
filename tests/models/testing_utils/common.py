@@ -480,11 +480,7 @@ class ModelTesterMixin:
     )
     @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16], ids=["fp16", "bf16"])
     @torch.no_grad()
-    def test_from_save_pretrained_dtype_inference(self, tmp_path, dtype):
-        # Low-precision inference is inherently lossy, and models that keep some modules in fp32 diverge further from
-        # the fully-cast reference. Tolerances reflect the dtype's precision rather than a tight fp32-style threshold.
-        atol = 3e-2 if dtype == torch.bfloat16 else 1e-2
-        rtol = 0
+    def test_from_save_pretrained_dtype_inference(self, tmp_path, dtype, atol=1e-4, rtol=0):
         model = self.model_class(**self.get_init_dict())
         model.to(torch_device)
         fp32_modules = model._keep_in_fp32_modules or []
@@ -500,9 +496,12 @@ class ModelTesterMixin:
             else:
                 assert param.data.dtype == dtype
 
-        inputs = cast_inputs_to_dtype(self.get_dummy_inputs(), torch.float32, dtype)
-        output = model(**inputs, return_dict=False)[0]
-        output_loaded = model_loaded(**inputs, return_dict=False)[0]
+        # Fetch inputs separately for each forward so that models consuming a generator (e.g. stochastic decoders)
+        # see the same, freshly-seeded RNG state in both passes instead of sharing a single advancing generator.
+        output = model(**cast_inputs_to_dtype(self.get_dummy_inputs(), torch.float32, dtype), return_dict=False)[0]
+        output_loaded = model_loaded(
+            **cast_inputs_to_dtype(self.get_dummy_inputs(), torch.float32, dtype), return_dict=False
+        )[0]
 
         assert_tensors_close(
             output, output_loaded, atol=atol, rtol=rtol, msg=f"Loaded model output differs for {dtype}"
