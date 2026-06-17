@@ -19,10 +19,10 @@ from diffusers import MotifVideoTransformer3DModel
 from diffusers.utils.torch_utils import randn_tensor
 
 from ...testing_utils import enable_full_determinism, torch_device
+from ..test_modeling_common import LoraHotSwappingForModelTesterMixin
 from ..testing_utils import (
     AttentionTesterMixin,
     BaseModelTesterConfig,
-    LoraHotSwappingForModelTesterMixin,
     LoraTesterMixin,
     MemoryTesterMixin,
     ModelTesterMixin,

@@ -13,46 +13,61 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import unittest
+
 import torch
 
 from diffusers import ConsisIDTransformer3DModel
-from diffusers.utils.torch_utils import randn_tensor
 
-from ...testing_utils import enable_full_determinism, torch_device
-from ..testing_utils import (
-    BaseModelTesterConfig,
-    MemoryTesterMixin,
-    ModelTesterMixin,
-    TrainingTesterMixin,
+from ...testing_utils import (
+    enable_full_determinism,
+    torch_device,
 )
+from ..test_modeling_common import ModelTesterMixin
 
 
 enable_full_determinism()
 
 
-class ConsisIDTransformerTesterConfig(BaseModelTesterConfig):
-    @property
-    def model_class(self):
-        return ConsisIDTransformer3DModel
+class ConsisIDTransformerTests(ModelTesterMixin, unittest.TestCase):
+    model_class = ConsisIDTransformer3DModel
+    main_input_name = "hidden_states"
+    uses_custom_attn_processor = True
 
     @property
-    def main_input_name(self) -> str:
-        return "hidden_states"
+    def dummy_input(self):
+        batch_size = 2
+        num_channels = 4
+        num_frames = 1
+        height = 8
+        width = 8
+        embedding_dim = 8
+        sequence_length = 8
 
-    @property
-    def input_shape(self) -> tuple:
-        return (1, 4, 8, 8)
+        hidden_states = torch.randn((batch_size, num_frames, num_channels, height, width)).to(torch_device)
+        encoder_hidden_states = torch.randn((batch_size, sequence_length, embedding_dim)).to(torch_device)
+        timestep = torch.randint(0, 1000, size=(batch_size,)).to(torch_device)
+        id_vit_hidden = [torch.ones([batch_size, 2, 2]).to(torch_device)] * 1
+        id_cond = torch.ones(batch_size, 2).to(torch_device)
 
-    @property
-    def output_shape(self) -> tuple:
-        return (1, 4, 8, 8)
-
-    @property
-    def generator(self):
-        return torch.Generator("cpu").manual_seed(0)
-
-    def get_init_dict(self) -> dict:
         return {
+            "hidden_states": hidden_states,
+            "encoder_hidden_states": encoder_hidden_states,
+            "timestep": timestep,
+            "id_vit_hidden": id_vit_hidden,
+            "id_cond": id_cond,
+        }
+
+    @property
+    def input_shape(self):
+        return (1, 4, 8, 8)
+
+    @property
+    def output_shape(self):
+        return (1, 4, 8, 8)
+
+    def prepare_init_args_and_inputs_for_common(self):
+        init_dict = {
             "num_attention_heads": 2,
             "attention_head_dim": 8,
             "in_channels": 4,
@@ -82,36 +97,9 @@ class ConsisIDTransformerTesterConfig(BaseModelTesterConfig):
             "LFE_ff_mult": 1,
             "LFE_num_scale": 1,
         }
+        inputs_dict = self.dummy_input
+        return init_dict, inputs_dict
 
-    def get_dummy_inputs(self, batch_size: int = 2) -> dict[str, torch.Tensor]:
-        num_channels = 4
-        num_frames = 1
-        height = width = 8
-        embedding_dim = 8
-        sequence_length = 8
-
-        return {
-            "hidden_states": randn_tensor(
-                (batch_size, num_frames, num_channels, height, width), generator=self.generator, device=torch_device
-            ),
-            "encoder_hidden_states": randn_tensor(
-                (batch_size, sequence_length, embedding_dim), generator=self.generator, device=torch_device
-            ),
-            "timestep": torch.randint(0, 1000, size=(batch_size,), generator=self.generator).to(torch_device),
-            "id_vit_hidden": [torch.ones([batch_size, 2, 2]).to(torch_device)] * 1,
-            "id_cond": torch.ones(batch_size, 2).to(torch_device),
-        }
-
-
-class TestConsisIDTransformer(ConsisIDTransformerTesterConfig, ModelTesterMixin):
-    pass
-
-
-class TestConsisIDTransformerMemory(ConsisIDTransformerTesterConfig, MemoryTesterMixin):
-    pass
-
-
-class TestConsisIDTransformerTraining(ConsisIDTransformerTesterConfig, TrainingTesterMixin):
     def test_gradient_checkpointing_is_applied(self):
         expected_set = {"ConsisIDTransformer3DModel"}
         super().test_gradient_checkpointing_is_applied(expected_set=expected_set)
