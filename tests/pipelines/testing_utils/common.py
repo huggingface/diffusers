@@ -36,7 +36,7 @@ from ...testing_utils import (
     require_accelerator,
     torch_device,
 )
-from .utils import assert_mean_pixel_difference, assert_outputs_close, to_np
+from .utils import assert_outputs_close, to_np
 
 
 class BasePipelineTesterConfig:
@@ -49,7 +49,9 @@ class BasePipelineTesterConfig:
 
     The class also exposes the shared pytest fixtures used across the tester mixins, most notably
     `base_pipe_output` which holds the output of a freshly constructed pipeline run on the standard dummy inputs
-    (computed once per test class and reused by comparison tests).
+    (computed once per test class and reused by comparison tests). Comparison tests construct their own pipeline
+    inline (mirroring the model-level testers) so the only difference from `base_pipe_output` is the behavior
+    under test.
     """
 
     # Canonical parameters that are passed to `__call__` regardless of the type of pipeline. They are always
@@ -120,31 +122,6 @@ class BasePipelineTesterConfig:
     def get_generator(self, seed):
         return torch.Generator("cpu").manual_seed(seed)
 
-    def build_pipe(self):
-        """
-        Build a pipeline with the canonical preamble used by `base_pipe_output`: text encoders in eval mode,
-        default attention processors, moved to `torch_device`. Tests that compare against `base_pipe_output`
-        should construct their pipeline through this helper so the only difference is the behavior under test.
-        """
-        components = self.get_dummy_components()
-        for key in components:
-            if "text_encoder" in key and hasattr(components[key], "eval"):
-                components[key].eval()
-        pipe = self.pipeline_class(**components)
-        for component in pipe.components.values():
-            if hasattr(component, "set_default_attn_processor"):
-                component.set_default_attn_processor()
-        pipe.to(torch_device)
-        pipe.set_progress_bar_config(disable=None)
-        return pipe
-
-    def _compute_base_pipe_output(self):
-        """Construct a vanilla pipeline and run it on the standard dummy inputs (used by `base_pipe_output`)."""
-        pipe = self.build_pipe()
-        inputs = self.get_dummy_inputs(torch_device)
-        torch.manual_seed(0)
-        return pipe(**inputs)[0]
-
     # ==================== Fixtures ====================
 
     @pytest.fixture(autouse=True)
@@ -167,7 +144,20 @@ class BasePipelineTesterConfig:
     def base_pipe_output(self, request):
         """Output of a freshly constructed pipeline on the standard dummy inputs, computed once per test class."""
         cfg = request.cls()
-        return cfg._compute_base_pipe_output()
+        components = cfg.get_dummy_components()
+        for key in components:
+            if "text_encoder" in key and hasattr(components[key], "eval"):
+                components[key].eval()
+        pipe = cfg.pipeline_class(**components)
+        for component in pipe.components.values():
+            if hasattr(component, "set_default_attn_processor"):
+                component.set_default_attn_processor()
+        pipe.to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
+
+        inputs = cfg.get_dummy_inputs(torch_device)
+        torch.manual_seed(0)
+        return pipe(**inputs)[0]
 
 
 class PipelineTesterMixin:
@@ -180,7 +170,16 @@ class PipelineTesterMixin:
     """
 
     def test_save_load_local(self, tmp_path, base_pipe_output, expected_max_difference=5e-4):
-        pipe = self.build_pipe()
+        components = self.get_dummy_components()
+        for key in components:
+            if "text_encoder" in key and hasattr(components[key], "eval"):
+                components[key].eval()
+        pipe = self.pipeline_class(**components)
+        for component in pipe.components.values():
+            if hasattr(component, "set_default_attn_processor"):
+                component.set_default_attn_processor()
+        pipe.to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
 
         logger = logging.get_logger("diffusers.pipelines.pipeline_utils")
         logger.setLevel(diffusers.logging.INFO)
@@ -362,10 +361,12 @@ class PipelineTesterMixin:
             )
         else:
             if output_tuple.ndim != 5:
-                max_diff = np.abs(to_np(output) - to_np(output_tuple)[0, -3:, -3:, -1].flatten()).max()
+                output_tuple_slice = to_np(output_tuple)[0, -3:, -3:, -1].flatten()
             else:
-                max_diff = np.abs(to_np(output) - to_np(output_tuple)[0, -3:, -3:, -1, -1].flatten()).max()
-            assert max_diff < expected_max_difference, "Dict and tuple outputs are not equal."
+                output_tuple_slice = to_np(output_tuple)[0, -3:, -3:, -1, -1].flatten()
+            assert_outputs_close(
+                output_tuple_slice, output, atol=expected_max_difference, msg="Dict and tuple outputs are not equal."
+            )
 
     def test_components_function(self):
         init_components = self.get_dummy_components()
@@ -562,9 +563,7 @@ class PipelineTesterMixin:
         model_dtypes = [component.dtype for component in components.values() if getattr(component, "dtype", None)]
         assert all(dtype == torch.float16 for dtype in model_dtypes)
 
-    def test_attention_slicing_forward_pass(
-        self, test_max_difference=True, test_mean_pixel_difference=True, expected_max_diff=1e-3
-    ):
+    def test_attention_slicing_forward_pass(self, expected_max_diff=1e-3):
         if not self.test_attention_slicing:
             return
 
@@ -591,23 +590,18 @@ class PipelineTesterMixin:
         inputs = self.get_dummy_inputs(generator_device)
         output_with_slicing2 = pipe(**inputs)[0]
 
-        if test_max_difference:
-            assert_outputs_close(
-                output_with_slicing1,
-                output_without_slicing,
-                atol=expected_max_diff,
-                msg="Attention slicing (slice_size=1) should not affect the inference results",
-            )
-            assert_outputs_close(
-                output_with_slicing2,
-                output_without_slicing,
-                atol=expected_max_diff,
-                msg="Attention slicing (slice_size=2) should not affect the inference results",
-            )
-
-        if test_mean_pixel_difference:
-            assert_mean_pixel_difference(to_np(output_with_slicing1[0]), to_np(output_without_slicing[0]))
-            assert_mean_pixel_difference(to_np(output_with_slicing2[0]), to_np(output_without_slicing[0]))
+        assert_outputs_close(
+            output_with_slicing1,
+            output_without_slicing,
+            atol=expected_max_diff,
+            msg="Attention slicing (slice_size=1) should not affect the inference results",
+        )
+        assert_outputs_close(
+            output_with_slicing2,
+            output_without_slicing,
+            atol=expected_max_diff,
+            msg="Attention slicing (slice_size=2) should not affect the inference results",
+        )
 
     def test_num_images_per_prompt(self):
         sig = inspect.signature(self.pipeline_class.__call__)
@@ -935,10 +929,9 @@ class PipelineTesterMixin:
         inputs = self.get_dummy_inputs(torch_device)
         pipe_out_2 = full_pipe(**inputs)[0]
 
-        if isinstance(pipe_out, np.ndarray) and isinstance(pipe_out_2, np.ndarray):
-            assert np.allclose(pipe_out, pipe_out_2, atol=atol, rtol=rtol)
-        elif isinstance(pipe_out, torch.Tensor) and isinstance(pipe_out_2, torch.Tensor):
-            assert torch.allclose(pipe_out, pipe_out_2, atol=atol, rtol=rtol)
+        assert_outputs_close(
+            pipe_out, pipe_out_2, atol=atol, rtol=rtol, msg="`encode_prompt` in isolation changed the output."
+        )
 
     def test_torch_dtype_dict(self, tmp_path):
         components = self.get_dummy_components()

@@ -1,7 +1,7 @@
 import gc
-import unittest
 
 import numpy as np
+import pytest
 import torch
 from huggingface_hub import hf_hub_download
 from transformers import AutoConfig, AutoTokenizer, CLIPTextConfig, CLIPTextModel, CLIPTokenizer, T5EncoderModel
@@ -266,17 +266,15 @@ class TestFluxPipelineMagCache(FluxPipelineTesterConfig, MagCacheTesterMixin):
 
 @nightly
 @require_big_accelerator
-class FluxPipelineSlowTests(unittest.TestCase):
+class TestFluxPipelineSlow:
     pipeline_class = FluxPipeline
     repo_id = "black-forest-labs/FLUX.1-schnell"
 
-    def setUp(self):
-        super().setUp()
+    @pytest.fixture(autouse=True)
+    def cleanup(self):
         gc.collect()
         backend_empty_cache(torch_device)
-
-    def tearDown(self):
-        super().tearDown()
+        yield
         gc.collect()
         backend_empty_cache(torch_device)
 
@@ -327,20 +325,18 @@ class FluxPipelineSlowTests(unittest.TestCase):
 
 @slow
 @require_big_accelerator
-class FluxIPAdapterPipelineSlowTests(unittest.TestCase):
+class TestFluxIPAdapterPipelineSlow:
     pipeline_class = FluxPipeline
     repo_id = "black-forest-labs/FLUX.1-dev"
     image_encoder_pretrained_model_name_or_path = "openai/clip-vit-large-patch14"
     weight_name = "ip_adapter.safetensors"
     ip_adapter_repo_id = "XLabs-AI/flux-ip-adapter"
 
-    def setUp(self):
-        super().setUp()
+    @pytest.fixture(autouse=True)
+    def cleanup(self):
         gc.collect()
         backend_empty_cache(torch_device)
-
-    def tearDown(self):
-        super().tearDown()
+        yield
         gc.collect()
         backend_empty_cache(torch_device)
 

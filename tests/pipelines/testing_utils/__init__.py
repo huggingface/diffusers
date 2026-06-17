@@ -15,7 +15,6 @@ from .memory import (
     PipelineOffloadTesterMixin,
 )
 from .utils import (
-    assert_mean_pixel_difference,
     assert_outputs_close,
     check_qkv_fused_layers_exist,
     check_qkv_fusion_matches_attn_procs_length,
@@ -39,7 +38,6 @@ __all__ = [
     "TaylorSeerCacheTesterMixin",
     "MagCacheTesterMixin",
     "FluxIPAdapterTesterMixin",
-    "assert_mean_pixel_difference",
     "assert_outputs_close",
     "check_qkv_fused_layers_exist",
     "check_qkv_fusion_matches_attn_procs_length",

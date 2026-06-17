@@ -20,6 +20,7 @@ from diffusers import DiffusionPipeline
 from diffusers.hooks import apply_group_offloading
 
 from ...testing_utils import (
+    is_accelerate_available,
     is_cpu_offload,
     is_group_offload,
     is_memory,
@@ -31,6 +32,10 @@ from ...testing_utils import (
 from .utils import assert_outputs_close
 
 
+if is_accelerate_available():
+    import accelerate
+
+
 @is_cpu_offload
 class PipelineOffloadTesterMixin:
     """CPU/sequential offload and accelerate `device_map` loading for pipelines."""
@@ -38,9 +43,16 @@ class PipelineOffloadTesterMixin:
     @require_accelerator
     @require_accelerate_version_greater("0.14.0")
     def test_sequential_cpu_offload_forward_pass(self, base_pipe_output, expected_max_diff=1e-4):
-        import accelerate
-
-        pipe = self.build_pipe()
+        components = self.get_dummy_components()
+        for key in components:
+            if "text_encoder" in key and hasattr(components[key], "eval"):
+                components[key].eval()
+        pipe = self.pipeline_class(**components)
+        for component in pipe.components.values():
+            if hasattr(component, "set_default_attn_processor"):
+                component.set_default_attn_processor()
+        pipe.to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
 
         pipe.enable_sequential_cpu_offload(device=torch_device)
         assert pipe._execution_device.type == torch_device
@@ -90,9 +102,16 @@ class PipelineOffloadTesterMixin:
     @require_accelerator
     @require_accelerate_version_greater("0.17.0")
     def test_model_cpu_offload_forward_pass(self, base_pipe_output, expected_max_diff=2e-4):
-        import accelerate
-
-        pipe = self.build_pipe()
+        components = self.get_dummy_components()
+        for key in components:
+            if "text_encoder" in key and hasattr(components[key], "eval"):
+                components[key].eval()
+        pipe = self.pipeline_class(**components)
+        for component in pipe.components.values():
+            if hasattr(component, "set_default_attn_processor"):
+                component.set_default_attn_processor()
+        pipe.to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
 
         pipe.enable_model_cpu_offload(device=torch_device)
         assert pipe._execution_device.type == torch_device
@@ -134,8 +153,6 @@ class PipelineOffloadTesterMixin:
     @require_accelerator
     @require_accelerate_version_greater("0.17.0")
     def test_cpu_offload_forward_pass_twice(self, expected_max_diff=2e-4):
-        import accelerate
-
         generator_device = "cpu"
         components = self.get_dummy_components()
         pipe = self.pipeline_class(**components)
@@ -187,8 +204,6 @@ class PipelineOffloadTesterMixin:
     @require_accelerator
     @require_accelerate_version_greater("0.14.0")
     def test_sequential_offload_forward_pass_twice(self, expected_max_diff=2e-4):
-        import accelerate
-
         generator_device = "cpu"
         components = self.get_dummy_components()
         pipe = self.pipeline_class(**components)
@@ -245,7 +260,17 @@ class PipelineOffloadTesterMixin:
         )
 
     def test_pipeline_with_accelerator_device_map(self, tmp_path, base_pipe_output, expected_max_difference=1e-4):
-        pipe = self.build_pipe()
+        components = self.get_dummy_components()
+        for key in components:
+            if "text_encoder" in key and hasattr(components[key], "eval"):
+                components[key].eval()
+        pipe = self.pipeline_class(**components)
+        for component in pipe.components.values():
+            if hasattr(component, "set_default_attn_processor"):
+                component.set_default_attn_processor()
+        pipe.to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
+
         pipe.save_pretrained(tmp_path)
 
         loaded_pipe = self.pipeline_class.from_pretrained(tmp_path, device_map=torch_device)
