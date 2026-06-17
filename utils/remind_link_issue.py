@@ -25,6 +25,7 @@ Behavior:
 
 import logging
 import os
+import re
 from datetime import datetime, timedelta, timezone
 
 import requests
@@ -37,6 +38,11 @@ REPO = "huggingface/diffusers"
 REMINDER_MARKER = "<!-- pr-link-issue-reminder -->"
 BYPASS_LABELS = {"no-issue-needed"}
 LOOKBACK_DAYS = 2
+# A PR authored by the model/pipeline's own team does not need to link an issue.
+# Matches a checked task-list item for the corresponding PR template checkbox.
+AUTHOR_CHECKBOX_PATTERN = re.compile(
+    r"-\s*\[\s*[xX]\s*\]\s*Are you the author \(or part of the team\) of the model/pipeline"
+)
 CONTRIBUTION_GUIDE_URL = "https://huggingface.co/docs/diffusers/main/en/conceptual/contribution#coding-with-ai-agents"
 
 GRAPHQL_URL = "https://api.github.com/graphql"
@@ -66,6 +72,10 @@ def has_linked_issue(token, owner, name, number):
     if not data:
         return False
     return data["repository"]["pullRequest"]["closingIssuesReferences"]["totalCount"] > 0
+
+
+def author_checkbox_checked(pr):
+    return bool(AUTHOR_CHECKBOX_PATTERN.search(pr.body or ""))
 
 
 def has_existing_reminder(pr):
@@ -111,6 +121,8 @@ def main():
                     continue
                 labels = {label.name for label in pr.labels}
                 if labels & BYPASS_LABELS:
+                    continue
+                if author_checkbox_checked(pr):
                     continue
                 if has_linked_issue(token, owner, name, pr.number):
                     continue
