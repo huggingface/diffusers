@@ -16,6 +16,7 @@
 import gc
 
 import numpy as np
+import pytest
 import torch
 
 from diffusers import ConsistencyDecoderVAE, StableDiffusionPipeline
@@ -86,7 +87,13 @@ class ConsistencyDecoderVAETesterConfig(BaseModelTesterConfig):
 
 
 class TestConsistencyDecoderVAE(ConsistencyDecoderVAETesterConfig, ModelTesterMixin):
-    pass
+    @pytest.mark.skip(
+        "`forward` decodes through an iterative, RNG-driven consistency-decoding loop whose output is not "
+        "reproducible across two model instances and amplifies fp16/bf16 nondeterminism, so a low-precision "
+        "output-equivalence check is not meaningful."
+    )
+    def test_from_save_pretrained_dtype_inference(self):
+        pass
 
 
 class TestConsistencyDecoderVAETraining(ConsistencyDecoderVAETesterConfig, TrainingTesterMixin):

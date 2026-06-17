@@ -135,8 +135,9 @@ def cast_inputs_to_dtype(inputs, current_dtype, target_dtype):
         return inputs.to(target_dtype) if inputs.dtype == current_dtype else inputs
     if isinstance(inputs, dict):
         return {k: cast_inputs_to_dtype(v, current_dtype, target_dtype) for k, v in inputs.items()}
-    if isinstance(inputs, list):
-        return [cast_inputs_to_dtype(v, current_dtype, target_dtype) for v in inputs]
+    if isinstance(inputs, (list, tuple)):
+        # Preserve the container type so models that branch on it (e.g. `isinstance(..., tuple)`) still see a tuple.
+        return type(inputs)(cast_inputs_to_dtype(v, current_dtype, target_dtype) for v in inputs)
 
     return inputs
 
@@ -479,7 +480,11 @@ class ModelTesterMixin:
     )
     @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16], ids=["fp16", "bf16"])
     @torch.no_grad()
-    def test_from_save_pretrained_dtype_inference(self, tmp_path, dtype, atol=1e-4, rtol=0):
+    def test_from_save_pretrained_dtype_inference(self, tmp_path, dtype):
+        # Low-precision inference is inherently lossy, and models that keep some modules in fp32 diverge further from
+        # the fully-cast reference. Tolerances reflect the dtype's precision rather than a tight fp32-style threshold.
+        atol = 3e-2 if dtype == torch.bfloat16 else 1e-2
+        rtol = 0
         model = self.model_class(**self.get_init_dict())
         model.to(torch_device)
         fp32_modules = model._keep_in_fp32_modules or []

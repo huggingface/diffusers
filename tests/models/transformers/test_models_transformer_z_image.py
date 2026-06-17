@@ -250,6 +250,10 @@ class TestZImageTransformerTraining(ZImageTransformerTesterConfig, TrainingTeste
     def test_training_with_ema(self):
         pass
 
+    @pytest.mark.skip("Model output `sample` is a list of tensors; mixed-precision training computes MSE loss on it.")
+    def test_mixed_precision_training(self):
+        pass
+
     @pytest.mark.skip("Test is not supported for handling main inputs that are lists.")
     def test_gradient_checkpointing_equivalence(self, loss_tolerance=1e-5, param_grad_tol=5e-5, skip=None):
         pass
