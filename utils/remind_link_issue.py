@@ -27,6 +27,7 @@ Behavior:
 
 import logging
 import os
+import re
 from datetime import datetime, timedelta, timezone
 
 import requests
@@ -43,9 +44,16 @@ LOOKBACK_DAYS = 2
 # collaborator. Authors with any of these are skipped (the reminder is only for
 # external contributors).
 PRIVILEGED_PERMISSIONS = {"admin", "write", "maintain", "triage"}
+
 # `author_association` values that mark the author as a maintainer / collaborator.
 # These are available on the PR payload without needing extra token scopes.
 PRIVILEGED_ASSOCIATIONS = {"OWNER", "MEMBER", "COLLABORATOR"}
+
+# A PR authored by the model/pipeline's own team does not need to link an issue.
+# Matches a checked task-list item for the corresponding PR template checkbox.
+AUTHOR_CHECKBOX_PATTERN = re.compile(
+    r"-\s*\[\s*[xX]\s*\]\s*Are you the author \(or part of the team\) of the model/pipeline"
+)
 CONTRIBUTION_GUIDE_URL = "https://huggingface.co/docs/diffusers/main/en/conceptual/contribution#coding-with-ai-agents"
 
 GRAPHQL_URL = "https://api.github.com/graphql"
@@ -75,6 +83,10 @@ def has_linked_issue(token, owner, name, number):
     if not data:
         return False
     return data["repository"]["pullRequest"]["closingIssuesReferences"]["totalCount"] > 0
+
+
+def author_checkbox_checked(pr):
+    return bool(AUTHOR_CHECKBOX_PATTERN.search(pr.body or ""))
 
 
 def has_existing_reminder(pr):
@@ -139,6 +151,8 @@ def main():
                     continue
                 labels = {label.name for label in pr.labels}
                 if labels & BYPASS_LABELS:
+                    continue
+                if author_checkbox_checked(pr):
                     continue
                 if has_linked_issue(token, owner, name, pr.number):
                     continue
