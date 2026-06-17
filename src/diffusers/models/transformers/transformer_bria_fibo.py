@@ -470,7 +470,7 @@ class BriaFiboTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, From
         self.time_embed = BriaFiboTimestepProjEmbeddings(embedding_dim=self.inner_dim, time_theta=time_theta)
 
         if guidance_embeds:
-            self.guidance_embed = BriaFiboTimestepProjEmbeddings(embedding_dim=self.inner_dim)
+            self.guidance_embed = BriaFiboTimestepProjEmbeddings(embedding_dim=self.inner_dim, time_theta=time_theta)
 
         self.context_embedder = nn.Linear(self.config.joint_attention_dim, self.inner_dim)
         self.x_embedder = torch.nn.Linear(self.config.in_channels, self.inner_dim)
@@ -555,7 +555,7 @@ class BriaFiboTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, From
 
         temb = self.time_embed(timestep, dtype=hidden_states.dtype)
 
-        if guidance:
+        if guidance is not None:
             temb += self.guidance_embed(guidance, dtype=hidden_states.dtype)
 
         encoder_hidden_states = self.context_embedder(encoder_hidden_states)

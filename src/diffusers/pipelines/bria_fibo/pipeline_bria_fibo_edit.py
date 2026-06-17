@@ -418,6 +418,11 @@ class BriaFiboEditPipeline(DiffusionPipeline, FluxLoraLoaderMixin):
             )
             prompt_embeds = prompt_embeds.to(dtype=self.transformer.dtype)
             prompt_layers = [tensor.to(dtype=self.transformer.dtype) for tensor in prompt_layers]
+        else:
+            raise ValueError(
+                "`prompt_embeds` cannot be passed on its own; this pipeline also needs the per-layer embeddings "
+                "computed from `prompt`. Please pass `prompt` instead."
+            )
 
         if guidance_scale > 1:
             if isinstance(negative_prompt, list) and negative_prompt[0] is None:
@@ -807,7 +812,7 @@ class BriaFiboEditPipeline(DiffusionPipeline, FluxLoraLoaderMixin):
             prompt_layers = prompt_layers + [prompt_layers[-1]] * (total_num_layers_transformer - len(prompt_layers))
 
         # Preprocess image
-        if image is not None and not (isinstance(image, torch.Tensor) and image.size(1) == self.latent_channels):
+        if image is not None:
             image = self.image_processor.resize(image, height, width)
             image = self.image_processor.preprocess(image, height, width)
 
@@ -996,10 +1001,11 @@ class BriaFiboEditPipeline(DiffusionPipeline, FluxLoraLoaderMixin):
             for scaled_latent in latents_scaled:
                 curr_image = self.vae.decode(scaled_latent.unsqueeze(0), return_dict=False)[0]
                 curr_image = self.image_processor.postprocess(curr_image.squeeze(dim=2), output_type=output_type)
-                image.append(curr_image)
-            if len(image) == 1:
-                image = image[0]
-            else:
+                if output_type == "np":
+                    image.append(curr_image[0])
+                else:
+                    image.extend(curr_image)
+            if output_type == "np":
                 image = np.stack(image, axis=0)
 
         # Offload all models
