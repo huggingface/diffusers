@@ -12,7 +12,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-import sys
 import unittest
 
 import numpy as np
@@ -33,8 +32,6 @@ from ..testing_utils import floats_tensor, is_peft_available, require_peft_backe
 if is_peft_available():
     from peft import LoraConfig
 
-
-sys.path.append(".")
 
 from .utils import PeftLoraLoaderMixinTests, check_if_lora_correctly_set  # noqa: E402
 

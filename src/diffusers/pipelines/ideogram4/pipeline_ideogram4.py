@@ -368,10 +368,12 @@ class Ideogram4Pipeline(DiffusionPipeline, Ideogram4LoraLoaderMixin):
             attention_mask[b, offset:] = 1
             text_position_ids[b, offset:] = torch.arange(n)
 
-        # Run the encoder on the device its parameters currently live on, then move the features to the
-        # pipeline device. encode_prompt calls the text encoder's submodules directly, so under
-        # enable_model_cpu_offload the onload hook never fires and the weights stay on CPU; honoring their
-        # actual device avoids a device mismatch on the token embedding.
+        # To support enable_model_cpu_offload, we need to move the text_encoder inputs to the text encoder's actual
+        # device te_device. This is necessary because the `CpuOffload` model offload hook attaches to a component's
+        # `forward` method, but we call text_encoder's submodules directly below, so the hook never fires to onload the
+        # model to the execution device. Other offloading techniques (group, sequential) would work without te_device
+        # because they hook submodules, not just the top-level component module. Note that in the
+        # enable_model_cpu_offload case te_device will actually be the offload device (e.g. CPU).
         te_device = self.text_encoder.device
         token_ids = token_ids.to(te_device)
         attention_mask = attention_mask.to(te_device)
