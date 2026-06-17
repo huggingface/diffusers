@@ -844,6 +844,39 @@ class StableDiffusionXLPipelineFastTests(
         # ensure the results are not equal
         assert np.abs(image_slice_1.flatten() - image_slice_3.flatten()).max() > 1e-4
 
+    def test_encode_prompt_clip_skip_applies_to_negative_embeds(self):
+        device = "cpu"
+        components = self.get_dummy_components()
+        sd_pipe = StableDiffusionXLPipeline(**components).to(device)
+
+        prompt = "A painting of a squirrel eating a burger"
+        negative_prompt = "blurry, low quality"
+
+        # encode without clip_skip
+        prompt_embeds_no_skip, negative_embeds_no_skip, _, _ = sd_pipe.encode_prompt(
+            prompt=prompt,
+            device=device,
+            num_images_per_prompt=1,
+            do_classifier_free_guidance=True,
+            negative_prompt=negative_prompt,
+            clip_skip=None,
+        )
+
+        # encode with clip_skip=1
+        prompt_embeds_skip, negative_embeds_skip, _, _ = sd_pipe.encode_prompt(
+            prompt=prompt,
+            device=device,
+            num_images_per_prompt=1,
+            do_classifier_free_guidance=True,
+            negative_prompt=negative_prompt,
+            clip_skip=1,
+        )
+
+        # positive embeds already respected clip_skip (sanity check)
+        assert not torch.allclose(prompt_embeds_no_skip, prompt_embeds_skip)
+        # negative embeds must also change with clip_skip (this is the bug fix)
+        assert not torch.allclose(negative_embeds_no_skip, negative_embeds_skip)
+
     def test_stable_diffusion_xl_negative_conditions(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
         components = self.get_dummy_components()
