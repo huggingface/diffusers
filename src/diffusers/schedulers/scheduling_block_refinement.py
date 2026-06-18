@@ -209,8 +209,8 @@ class BlockRefinementScheduler(SchedulerMixin, ConfigMixin):
                 Current block token IDs (contains mask tokens for uncommitted positions in the mask-based mode).
             mask_token_id (`int`, *optional*):
                 Token ID used for masked positions. When `None`, the scheduler runs in uniform corruption mode: it
-                tracks committed positions internally (resetting at `timestep == 0`) and renoises the uncommitted
-                ones with uniformly random tokens, matching DiffusionGemma's block refinement sampler.
+                tracks committed positions internally (resetting at `timestep == 0`) and renoises the uncommitted ones
+                with uniformly random tokens, matching DiffusionGemma's block refinement sampler.
             temperature (`float`):
                 Sampling temperature.
             top_p (`float`, *optional*):

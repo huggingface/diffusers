@@ -49,9 +49,9 @@ class DiscreteDDIMScheduler(SchedulerMixin, ConfigMixin):
 
     On the linear schedule the survival probability of a clean token at time `t` is `alpha(t) = 1 - t`. One denoising
     step from time `t` to `s < t` samples every block position from the exact posterior `q(x_s | x_t, x0)`, which for
-    the uniform kernel decomposes into three routes: jump to the predicted clean token `x0`, stay on the current
-    token, or jump to a uniformly random token. Unlike masked diffusion, there is no mask token; uncommitted positions
-    carry random tokens.
+    the uniform kernel decomposes into three routes: jump to the predicted clean token `x0`, stay on the current token,
+    or jump to a uniformly random token. Unlike masked diffusion, there is no mask token; uncommitted positions carry
+    random tokens.
 
     Args:
         num_inference_steps (`int`, defaults to 32):
@@ -111,7 +111,7 @@ class DiscreteDDIMScheduler(SchedulerMixin, ConfigMixin):
         With `a = alpha_t / alpha_s` (survival probability from `s` to `t`) and `b = alpha_s`, the posterior mass of
         each route is
 
-            clean: `b * (1 - a) / K + a * b * 1[x_t = x0]`,  stay: `a * (1 - b) / K`,  noise: `(1 - a) * (1 - b) / K`,
+            clean: `b * (1 - a) / K + a * b * 1[x_t = x0]`, stay: `a * (1 - b) / K`, noise: `(1 - a) * (1 - b) / K`,
 
         so the last step (`b = 1`) deterministically commits the predicted clean tokens.
 

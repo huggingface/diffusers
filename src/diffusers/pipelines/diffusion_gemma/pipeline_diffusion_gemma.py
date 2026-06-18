@@ -251,9 +251,9 @@ class DiffusionGemmaPipeline(DiffusionPipeline):
                 Confidence threshold for re-editing already committed tokens. Defaults to the scheduler's value.
             cache_implementation (`str`, *optional*):
                 Set to `"static"` to prefill the encoder once per block into a persistent `StaticCache` and run the
-                decoder against it with fixed shapes, instead of re-encoding the full sequence on every step. The
-                fixed shapes also let you compile the decoder, e.g.
-                `pipe.model.model.decoder = torch.compile(pipe.model.model.decoder, fullgraph=True)`.
+                decoder against it with fixed shapes, instead of re-encoding the full sequence on every step. The fixed
+                shapes also let you compile the decoder, e.g. `pipe.model.model.decoder =
+                torch.compile(pipe.model.model.decoder, fullgraph=True)`.
             eos_early_stop (`bool`, defaults to `True`):
                 Whether to stop generating further canvases once every sequence has emitted EOS.
             eos_token_id (`int`, *optional*):

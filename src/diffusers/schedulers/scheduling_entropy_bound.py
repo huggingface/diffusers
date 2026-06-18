@@ -49,9 +49,9 @@ class EntropyBoundScheduler(SchedulerMixin, ConfigMixin):
     """
     Entropy bound scheduler for the uniform corruption process.
 
-    At each step the scheduler samples a candidate token per position and accepts the `k` lowest-entropy positions
-    such that `sum_i^k entropy_i - max(entropy_1, ..., entropy_k) <= entropy_bound`. The left-hand side upper-bounds
-    the joint mutual information between the accepted tokens, so they are approximately independent. Accepted positions
+    At each step the scheduler samples a candidate token per position and accepts the `k` lowest-entropy positions such
+    that `sum_i^k entropy_i - max(entropy_1, ..., entropy_k) <= entropy_bound`. The left-hand side upper-bounds the
+    joint mutual information between the accepted tokens, so they are approximately independent. Accepted positions
     keep their sampled token; the rest are renoised with uniformly random tokens (there is no mask token).
 
     Proposed in "Beyond Next-Token Prediction" (https://huggingface.co/papers/2505.24857).
