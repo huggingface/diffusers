@@ -20,7 +20,7 @@ from typing import Any, Callable
 import torch
 import torch.nn.functional as F
 from tqdm.auto import tqdm
-from transformers import StaticCache
+from transformers import DynamicCache, StaticCache
 
 from ...callbacks import MultiPipelineCallbacks, PipelineCallback
 from ...schedulers import BlockRefinementScheduler
@@ -178,7 +178,7 @@ class DiffusionGemmaPipeline(DiffusionPipeline):
         attention_mask: torch.LongTensor | None = None,
         add_generation_prompt: bool = True,
         gen_length: int = 256,
-        num_inference_steps: int = 32,
+        num_inference_steps: int = 48,
         temperature: float = 0.0,
         top_p: float | None = None,
         top_k: int | None = None,
@@ -213,7 +213,7 @@ class DiffusionGemmaPipeline(DiffusionPipeline):
                 Whether to add the generation prompt when applying the chat template.
             gen_length (`int`, defaults to `256`):
                 Number of tokens to generate, rounded up to a multiple of the model's `canvas_length`.
-            num_inference_steps (`int`, defaults to `32`):
+            num_inference_steps (`int`, defaults to `48`):
                 Number of denoising steps per canvas.
             temperature (`float`, defaults to `0.0`):
                 Sampling temperature. `0.0` is greedy.
@@ -295,72 +295,59 @@ class DiffusionGemmaPipeline(DiffusionPipeline):
         finished = torch.zeros(batch_size, dtype=torch.bool, device=device)
         global_step = 0
 
-        # With `cache_implementation="static"` the encoder prefills a persistent `StaticCache` once per block and the
-        # decoder runs with fixed shapes against it (instead of re-encoding the full sequence every step). The fixed
-        # shapes also let a user `torch.compile` the decoder module fullgraph.
+        # Encode each block of context once into a reusable KV cache and run the decoder against it, rather than
+        # re-encoding the whole sequence on every denoising step. The default `DynamicCache` grows with the context;
+        # `cache_implementation="static"` uses a fixed-shape `StaticCache` so the decoder can be `torch.compile`-d.
         use_static_cache = cache_implementation == "static"
-        past_key_values = None
-        text_config = None
-        max_cache_len = None
+        text_config = self.model.config.get_text_config(decoder=True)
+        max_cache_len = prompt_length + num_canvases * canvas_length
         if use_static_cache:
-            text_config = self.model.config.get_text_config(decoder=True)
-            max_cache_len = prompt_length + num_canvases * canvas_length
             past_key_values = StaticCache(config=text_config, max_cache_len=max_cache_len)
+        else:
+            past_key_values = DynamicCache(config=text_config)
 
         progress_bar = tqdm(range(num_canvases), **getattr(self, "_progress_bar_config", {}))
         for _ in progress_bar:
             cur_len = cur_input_ids.shape[1]
             decoder_position_ids = torch.arange(cur_len, cur_len + canvas_length, device=device).unsqueeze(0)
 
-            mask_mapping = None
-            if use_static_cache:
-                # Encode the tokens not yet in the cache (the whole prompt on the first block, the last committed
-                # canvas afterwards), then build the fixed-size 4D decoder mask once for this block (outside any
-                # compiled region, so the compiled decoder never constructs masks).
-                cached_len = past_key_values.get_seq_length()
-                new_tokens = cur_input_ids[:, cached_len:]
-                self.model.model.encoder(
-                    input_ids=new_tokens,
-                    attention_mask=cur_attention_mask,
-                    past_key_values=past_key_values,
-                    position_ids=torch.arange(cached_len, cur_len, device=device).unsqueeze(0),
-                )
-                decoder_attention_mask = torch.zeros(
-                    (batch_size, max_cache_len + canvas_length), dtype=torch.bool, device=device
-                )
-                decoder_attention_mask[:, :cur_len] = cur_attention_mask.bool()
-                decoder_attention_mask[:, -canvas_length:] = True
-                mask_mapping = self.model.model.decoder.create_diffusion_decoder_attention_mask(
-                    config=text_config,
-                    inputs_embeds=torch.empty((batch_size, canvas_length, 0), device=device),
-                    past_key_values=past_key_values,
-                    decoder_attention_mask=decoder_attention_mask,
-                )
-            else:
-                decoder_attention_mask = F.pad(cur_attention_mask.bool(), (0, canvas_length), value=True)
+            # Encode the tokens not yet in the cache (the whole prompt on the first block, the last committed canvas
+            # afterwards), so the decoder reuses the encoder KV cache instead of re-encoding the full sequence.
+            cached_len = past_key_values.get_seq_length()
+            self.model.model.encoder(
+                input_ids=cur_input_ids[:, cached_len:],
+                attention_mask=cur_attention_mask,
+                past_key_values=past_key_values,
+                position_ids=torch.arange(cached_len, cur_len, device=device).unsqueeze(0),
+            )
+
+            # Build the 4D decoder mask once per block (outside any compiled region). A static cache spans its full
+            # buffer; a dynamic cache spans only the populated length.
+            cache_buffer_len = max_cache_len if use_static_cache else cur_len
+            decoder_attention_mask = torch.zeros(
+                (batch_size, cache_buffer_len + canvas_length), dtype=torch.bool, device=device
+            )
+            decoder_attention_mask[:, :cur_len] = cur_attention_mask.bool()
+            decoder_attention_mask[:, -canvas_length:] = True
+            mask_mapping = self.model.model.decoder.create_diffusion_decoder_attention_mask(
+                config=text_config,
+                inputs_embeds=torch.empty((batch_size, canvas_length, 0), device=device),
+                past_key_values=past_key_values,
+                decoder_attention_mask=decoder_attention_mask,
+            )
 
             # Start from a fully random canvas and denoise it; the scheduler resets its committed state at step 0.
             canvas = torch.randint(0, self.vocab_size, (batch_size, canvas_length), device=device, generator=generator)
             self_conditioning_logits = None
 
             for step_idx in range(num_inference_steps):
-                if use_static_cache:
-                    logits = self.model(
-                        decoder_input_ids=canvas,
-                        past_key_values=past_key_values,
-                        self_conditioning_logits=self_conditioning_logits,
-                        decoder_attention_mask=mask_mapping,
-                        decoder_position_ids=decoder_position_ids,
-                    ).logits
-                else:
-                    logits = self.model(
-                        input_ids=cur_input_ids,
-                        attention_mask=cur_attention_mask,
-                        decoder_input_ids=canvas,
-                        decoder_position_ids=decoder_position_ids,
-                        decoder_attention_mask=decoder_attention_mask,
-                        self_conditioning_logits=self_conditioning_logits,
-                    ).logits
+                logits = self.model(
+                    decoder_input_ids=canvas,
+                    past_key_values=past_key_values,
+                    self_conditioning_logits=self_conditioning_logits,
+                    decoder_attention_mask=mask_mapping,
+                    decoder_position_ids=decoder_position_ids,
+                ).logits
                 self_conditioning_logits = logits
 
                 scheduler_output = self.scheduler.step(
