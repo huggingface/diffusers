@@ -206,6 +206,32 @@ class FluxControlNetPipelineFastTests(unittest.TestCase, PipelineTesterMixin, Fl
             output_height, output_width, _ = image.shape
             assert (output_height, output_width) == (expected_height, expected_width)
 
+    def test_true_cfg_with_negative_prompt_embeds(self):
+        pipe = self.pipeline_class(**self.get_dummy_components()).to(torch_device, dtype=torch.float16)
+
+        prompt_embeds = torch.zeros(1, 48, 32, device=torch_device, dtype=torch.float16)
+        pooled_prompt_embeds = torch.zeros(1, 32, device=torch_device, dtype=torch.float16)
+
+        inputs = self.get_dummy_inputs(torch_device)
+        inputs.pop("prompt")
+        inputs.pop("generator")
+        inputs.update(
+            {
+                "prompt_embeds": prompt_embeds,
+                "pooled_prompt_embeds": pooled_prompt_embeds,
+                "negative_prompt_embeds": torch.zeros_like(prompt_embeds),
+                "negative_pooled_prompt_embeds": torch.zeros_like(pooled_prompt_embeds),
+                "true_cfg_scale": 2.0,
+            }
+        )
+        output_with_zero_negative = pipe(**inputs, generator=torch.manual_seed(0)).images[0]
+
+        inputs["negative_prompt_embeds"] = torch.ones_like(prompt_embeds)
+        inputs["negative_pooled_prompt_embeds"] = torch.ones_like(pooled_prompt_embeds)
+        output_with_one_negative = pipe(**inputs, generator=torch.manual_seed(0)).images[0]
+
+        assert not np.allclose(output_with_zero_negative, output_with_one_negative)
+
 
 @nightly
 @require_big_accelerator

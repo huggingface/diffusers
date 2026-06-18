@@ -13,6 +13,7 @@
 # limitations under the License.
 
 
+import numpy as np
 import torch
 from PIL import Image
 from transformers import (
@@ -46,6 +47,17 @@ else:
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
+
+
+def _get_image_batch_size(image):
+    if isinstance(image, Image.Image):
+        return 1
+    if isinstance(image, list):
+        return len(image)
+    if isinstance(image, (np.ndarray, torch.Tensor)):
+        return image.shape[0] if image.ndim == 4 else 1
+    return 1
+
 
 EXAMPLE_DOC_STRING = """
     Examples:
@@ -164,19 +176,39 @@ class FluxPriorReduxPipeline(DiffusionPipeline):
             raise ValueError(f"`prompt` has to be of type `str` or `list` but is {type(prompt)}")
         elif prompt_2 is not None and (not isinstance(prompt_2, str) and not isinstance(prompt_2, list)):
             raise ValueError(f"`prompt_2` has to be of type `str` or `list` but is {type(prompt_2)}")
-        if prompt is not None and (isinstance(prompt, list) and isinstance(image, list) and len(prompt) != len(image)):
+
+        image_batch_size = _get_image_batch_size(image)
+        if isinstance(prompt, list) and len(prompt) != image_batch_size:
             raise ValueError(
-                f"number of prompts must be equal to number of images, but {len(prompt)} prompts were provided and {len(image)} images"
+                f"number of prompts must be equal to number of images, but {len(prompt)} prompts were provided and {image_batch_size} images"
+            )
+        if isinstance(prompt_2, list) and len(prompt_2) != image_batch_size:
+            raise ValueError(
+                f"number of prompt_2 prompts must be equal to number of images, but {len(prompt_2)} prompts were provided and {image_batch_size} images"
             )
         if prompt_embeds is not None and pooled_prompt_embeds is None:
             raise ValueError(
                 "If `prompt_embeds` are provided, `pooled_prompt_embeds` also have to be passed. Make sure to generate `pooled_prompt_embeds` from the same text encoder that was used to generate `prompt_embeds`."
             )
-        if isinstance(prompt_embeds_scale, list) and (
-            isinstance(image, list) and len(prompt_embeds_scale) != len(image)
+        if prompt_embeds is not None and prompt_embeds.shape[0] != image_batch_size:
+            raise ValueError(
+                f"`prompt_embeds` batch size must be equal to number of images, but {prompt_embeds.shape[0]} prompt embeds were provided and {image_batch_size} images"
+            )
+        if (
+            prompt_embeds is not None
+            and pooled_prompt_embeds is not None
+            and pooled_prompt_embeds.shape[0] != image_batch_size
         ):
             raise ValueError(
-                f"number of weights must be equal to number of images, but {len(prompt_embeds_scale)} weights were provided and {len(image)} images"
+                f"`pooled_prompt_embeds` batch size must be equal to number of images, but {pooled_prompt_embeds.shape[0]} pooled prompt embeds were provided and {image_batch_size} images"
+            )
+        if isinstance(prompt_embeds_scale, list) and len(prompt_embeds_scale) != image_batch_size:
+            raise ValueError(
+                f"number of weights must be equal to number of images, but {len(prompt_embeds_scale)} weights were provided and {image_batch_size} images"
+            )
+        if isinstance(pooled_prompt_embeds_scale, list) and len(pooled_prompt_embeds_scale) != image_batch_size:
+            raise ValueError(
+                f"number of pooled weights must be equal to number of images, but {len(pooled_prompt_embeds_scale)} weights were provided and {image_batch_size} images"
             )
 
     def encode_image(self, image, device, num_images_per_prompt):
@@ -427,12 +459,7 @@ class FluxPriorReduxPipeline(DiffusionPipeline):
         )
 
         # 2. Define call parameters
-        if image is not None and isinstance(image, Image.Image):
-            batch_size = 1
-        elif image is not None and isinstance(image, list):
-            batch_size = len(image)
-        else:
-            batch_size = image.shape[0]
+        batch_size = _get_image_batch_size(image)
         if prompt is not None and isinstance(prompt, str):
             prompt = batch_size * [prompt]
         if isinstance(prompt_embeds_scale, float):

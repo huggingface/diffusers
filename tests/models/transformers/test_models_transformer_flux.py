@@ -21,7 +21,7 @@ import torch
 
 from diffusers import BitsAndBytesConfig, FluxTransformer2DModel
 from diffusers.models.embeddings import ImageProjection
-from diffusers.models.transformers.transformer_flux import FluxIPAdapterAttnProcessor
+from diffusers.models.transformers.transformer_flux import FluxAttention, FluxIPAdapterAttnProcessor
 from diffusers.utils.torch_utils import randn_tensor
 
 from ...testing_utils import enable_full_determinism, torch_device
@@ -279,6 +279,83 @@ class TestFluxTransformerIPAdapter(FluxTransformerTesterConfig, IPAdapterTesterM
 
     def create_ip_adapter_state_dict(self, model: Any) -> dict[str, dict[str, Any]]:
         return create_flux_ip_adapter_state_dict(model)
+
+    def test_ip_adapter_masks_are_applied(self):
+        torch.manual_seed(0)
+        attn = FluxAttention(
+            query_dim=4,
+            heads=1,
+            dim_head=4,
+            added_kv_proj_dim=4,
+            processor=FluxIPAdapterAttnProcessor(hidden_size=4, cross_attention_dim=4, num_tokens=(2,), scale=10.0),
+        ).to(torch_device)
+
+        hidden_states = torch.randn(1, 4, 4, device=torch_device)
+        encoder_hidden_states = torch.randn(1, 2, 4, device=torch_device)
+        ip_hidden_states = [torch.randn(1, 1, 2, 4, device=torch_device)]
+        zero_mask = [torch.zeros(1, 1, 2, 2, device=torch_device)]
+        one_mask = [torch.ones(1, 1, 2, 2, device=torch_device)]
+
+        zero_mask_ip_output = attn(
+            hidden_states,
+            encoder_hidden_states=encoder_hidden_states,
+            ip_hidden_states=ip_hidden_states,
+            ip_adapter_masks=zero_mask,
+        )[2]
+        one_mask_ip_output = attn(
+            hidden_states,
+            encoder_hidden_states=encoder_hidden_states,
+            ip_hidden_states=ip_hidden_states,
+            ip_adapter_masks=one_mask,
+        )[2]
+
+        assert torch.allclose(zero_mask_ip_output, torch.zeros_like(zero_mask_ip_output), atol=1e-6)
+        assert not torch.allclose(zero_mask_ip_output, one_mask_ip_output)
+
+    def test_ip_adapter_masks_validate_num_images(self):
+        torch.manual_seed(0)
+        attn = FluxAttention(
+            query_dim=4,
+            heads=1,
+            dim_head=4,
+            added_kv_proj_dim=4,
+            processor=FluxIPAdapterAttnProcessor(hidden_size=4, cross_attention_dim=4, num_tokens=(2,), scale=10.0),
+        ).to(torch_device)
+
+        hidden_states = torch.randn(1, 4, 4, device=torch_device)
+        encoder_hidden_states = torch.randn(1, 2, 4, device=torch_device)
+        ip_hidden_states = [torch.randn(1, 1, 2, 4, device=torch_device)]
+        mismatched_mask = [torch.ones(1, 2, 2, 2, device=torch_device)]
+
+        with pytest.raises(ValueError, match="Number of masks"):
+            attn(
+                hidden_states,
+                encoder_hidden_states=encoder_hidden_states,
+                ip_hidden_states=ip_hidden_states,
+                ip_adapter_masks=mismatched_mask,
+            )
+
+    def test_ip_adapter_no_mask_keeps_3d_hidden_state_support(self):
+        torch.manual_seed(0)
+        attn = FluxAttention(
+            query_dim=4,
+            heads=1,
+            dim_head=4,
+            added_kv_proj_dim=4,
+            processor=FluxIPAdapterAttnProcessor(hidden_size=4, cross_attention_dim=4, num_tokens=(2,), scale=10.0),
+        ).to(torch_device)
+
+        hidden_states = torch.randn(1, 4, 4, device=torch_device)
+        encoder_hidden_states = torch.randn(1, 2, 4, device=torch_device)
+        ip_hidden_states = [torch.randn(1, 2, 4, device=torch_device)]
+
+        ip_output = attn(
+            hidden_states,
+            encoder_hidden_states=encoder_hidden_states,
+            ip_hidden_states=ip_hidden_states,
+        )[2]
+
+        assert ip_output.shape == hidden_states.shape
 
 
 class TestFluxTransformerLoRA(FluxTransformerTesterConfig, LoraTesterMixin):

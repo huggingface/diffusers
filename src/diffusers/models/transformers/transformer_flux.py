@@ -21,6 +21,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from ...configuration_utils import ConfigMixin, register_to_config
+from ...image_processor import IPAdapterMaskProcessor
 from ...loaders import FluxTransformer2DLoadersMixin, FromOriginalModelMixin, PeftAdapterMixin
 from ...utils import apply_lora_scale, logging
 from ...utils.torch_utils import maybe_adjust_dtype_for_device, maybe_allow_in_graph
@@ -244,28 +245,100 @@ class FluxIPAdapterAttnProcessor(torch.nn.Module):
             # IP-adapter
             ip_attn_output = torch.zeros_like(hidden_states)
 
-            for current_ip_hidden_states, scale, to_k_ip, to_v_ip in zip(
-                ip_hidden_states, self.scale, self.to_k_ip, self.to_v_ip
+            if ip_adapter_masks is not None:
+                if not isinstance(ip_adapter_masks, list):
+                    ip_adapter_masks = list(ip_adapter_masks.unsqueeze(1))
+                if not (len(ip_adapter_masks) == len(self.scale) == len(ip_hidden_states)):
+                    raise ValueError(
+                        f"Length of ip_adapter_masks array ({len(ip_adapter_masks)}) must match "
+                        f"length of self.scale array ({len(self.scale)}) and number of ip_hidden_states "
+                        f"({len(ip_hidden_states)})"
+                    )
+                for index, (mask, scale, ip_state) in enumerate(zip(ip_adapter_masks, self.scale, ip_hidden_states)):
+                    if mask is None:
+                        continue
+                    if not isinstance(mask, torch.Tensor) or mask.ndim != 4:
+                        raise ValueError(
+                            "Each element of the ip_adapter_masks array should be a tensor with shape "
+                            "[1, num_images_for_ip_adapter, height, width]."
+                            " Please use `IPAdapterMaskProcessor` to preprocess your mask"
+                        )
+                    num_ip_images = 1 if ip_state.ndim == 3 else ip_state.shape[1]
+                    if mask.shape[1] != num_ip_images:
+                        raise ValueError(
+                            f"Number of masks ({mask.shape[1]}) does not match "
+                            f"number of ip images ({num_ip_images}) at index {index}"
+                        )
+                    if isinstance(scale, list) and not len(scale) == mask.shape[1]:
+                        raise ValueError(
+                            f"Number of masks ({mask.shape[1]}) does not match "
+                            f"number of scales ({len(scale)}) at index {index}"
+                        )
+            else:
+                ip_adapter_masks = [None] * len(self.scale)
+
+            for current_ip_hidden_states, scale, to_k_ip, to_v_ip, mask in zip(
+                ip_hidden_states, self.scale, self.to_k_ip, self.to_v_ip, ip_adapter_masks
             ):
-                ip_key = to_k_ip(current_ip_hidden_states)
-                ip_value = to_v_ip(current_ip_hidden_states)
+                if mask is not None:
+                    if current_ip_hidden_states.ndim == 3:
+                        current_ip_hidden_states = current_ip_hidden_states[:, None, :, :]
+                    if not isinstance(scale, list):
+                        scale = [scale] * mask.shape[1]
 
-                ip_key = ip_key.view(batch_size, -1, attn.heads, attn.head_dim)
-                ip_value = ip_value.view(batch_size, -1, attn.heads, attn.head_dim)
+                    for i in range(mask.shape[1]):
+                        ip_key = to_k_ip(current_ip_hidden_states[:, i, :, :])
+                        ip_value = to_v_ip(current_ip_hidden_states[:, i, :, :])
 
-                current_ip_hidden_states = dispatch_attention_fn(
-                    ip_query,
-                    ip_key,
-                    ip_value,
-                    attn_mask=None,
-                    dropout_p=0.0,
-                    is_causal=False,
-                    backend=self._attention_backend,
-                    parallel_config=self._parallel_config,
-                )
-                current_ip_hidden_states = current_ip_hidden_states.reshape(batch_size, -1, attn.heads * attn.head_dim)
-                current_ip_hidden_states = current_ip_hidden_states.to(ip_query.dtype)
-                ip_attn_output += scale * current_ip_hidden_states
+                        ip_key = ip_key.view(batch_size, -1, attn.heads, attn.head_dim)
+                        ip_value = ip_value.view(batch_size, -1, attn.heads, attn.head_dim)
+
+                        _current_ip_hidden_states = dispatch_attention_fn(
+                            ip_query,
+                            ip_key,
+                            ip_value,
+                            attn_mask=None,
+                            dropout_p=0.0,
+                            is_causal=False,
+                            backend=self._attention_backend,
+                            parallel_config=self._parallel_config,
+                        )
+                        _current_ip_hidden_states = _current_ip_hidden_states.reshape(
+                            batch_size, -1, attn.heads * attn.head_dim
+                        )
+                        _current_ip_hidden_states = _current_ip_hidden_states.to(ip_query.dtype)
+
+                        mask_downsample = IPAdapterMaskProcessor.downsample(
+                            mask[:, i, :, :],
+                            batch_size,
+                            _current_ip_hidden_states.shape[1],
+                            _current_ip_hidden_states.shape[2],
+                        )
+                        mask_downsample = mask_downsample.to(dtype=ip_query.dtype, device=ip_query.device)
+
+                        ip_attn_output += scale[i] * (_current_ip_hidden_states * mask_downsample)
+                else:
+                    ip_key = to_k_ip(current_ip_hidden_states)
+                    ip_value = to_v_ip(current_ip_hidden_states)
+
+                    ip_key = ip_key.view(batch_size, -1, attn.heads, attn.head_dim)
+                    ip_value = ip_value.view(batch_size, -1, attn.heads, attn.head_dim)
+
+                    current_ip_hidden_states = dispatch_attention_fn(
+                        ip_query,
+                        ip_key,
+                        ip_value,
+                        attn_mask=None,
+                        dropout_p=0.0,
+                        is_causal=False,
+                        backend=self._attention_backend,
+                        parallel_config=self._parallel_config,
+                    )
+                    current_ip_hidden_states = current_ip_hidden_states.reshape(
+                        batch_size, -1, attn.heads * attn.head_dim
+                    )
+                    current_ip_hidden_states = current_ip_hidden_states.to(ip_query.dtype)
+                    ip_attn_output += scale * current_ip_hidden_states
 
             return hidden_states, encoder_hidden_states, ip_attn_output
         else:
