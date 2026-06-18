@@ -36,6 +36,7 @@ from diffusers import (
     StableDiffusionXLControlNetInpaintPipeline,
     UNet2DConditionModel,
 )
+from diffusers.pipelines.controlnet.pipeline_controlnet import MultiControlNetModel
 from diffusers.utils.import_utils import is_xformers_available
 
 from ...testing_utils import (
@@ -354,3 +355,203 @@ class ControlNetPipelineSDXLFastTests(
 
     def test_float16_inference(self):
         super().test_float16_inference(expected_max_diff=5e-1)
+
+
+class StableDiffusionXLMultiControlNetInpaintPipelineFastTests(
+    PipelineTesterMixin, PipelineKarrasSchedulerTesterMixin, unittest.TestCase
+):
+    pipeline_class = StableDiffusionXLControlNetInpaintPipeline
+    params = TEXT_TO_IMAGE_PARAMS
+    batch_params = TEXT_TO_IMAGE_BATCH_PARAMS
+    image_params = frozenset([])
+    supports_dduf = False
+
+    def get_dummy_components(self):
+        torch.manual_seed(0)
+        unet = UNet2DConditionModel(
+            block_out_channels=(32, 64),
+            layers_per_block=2,
+            sample_size=32,
+            in_channels=4,
+            out_channels=4,
+            down_block_types=("DownBlock2D", "CrossAttnDownBlock2D"),
+            up_block_types=("CrossAttnUpBlock2D", "UpBlock2D"),
+            # SD2-specific config below
+            attention_head_dim=(2, 4),
+            use_linear_projection=True,
+            addition_embed_type="text_time",
+            addition_time_embed_dim=8,
+            transformer_layers_per_block=(1, 2),
+            projection_class_embeddings_input_dim=80,  # 6 * 8 + 32
+            cross_attention_dim=64,
+        )
+        torch.manual_seed(0)
+
+        def init_weights(m):
+            if isinstance(m, torch.nn.Conv2d):
+                torch.nn.init.normal_(m.weight)
+                m.bias.data.fill_(1.0)
+
+        controlnet1 = ControlNetModel(
+            block_out_channels=(32, 64),
+            layers_per_block=2,
+            in_channels=4,
+            down_block_types=("DownBlock2D", "CrossAttnDownBlock2D"),
+            conditioning_embedding_out_channels=(16, 32),
+            # SD2-specific config below
+            attention_head_dim=(2, 4),
+            use_linear_projection=True,
+            addition_embed_type="text_time",
+            addition_time_embed_dim=8,
+            transformer_layers_per_block=(1, 2),
+            projection_class_embeddings_input_dim=80,  # 6 * 8 + 32
+            cross_attention_dim=64,
+        )
+        controlnet1.controlnet_down_blocks.apply(init_weights)
+
+        torch.manual_seed(0)
+        controlnet2 = ControlNetModel(
+            block_out_channels=(32, 64),
+            layers_per_block=2,
+            in_channels=4,
+            down_block_types=("DownBlock2D", "CrossAttnDownBlock2D"),
+            conditioning_embedding_out_channels=(16, 32),
+            # SD2-specific config below
+            attention_head_dim=(2, 4),
+            use_linear_projection=True,
+            addition_embed_type="text_time",
+            addition_time_embed_dim=8,
+            transformer_layers_per_block=(1, 2),
+            projection_class_embeddings_input_dim=80,  # 6 * 8 + 32
+            cross_attention_dim=64,
+        )
+        controlnet2.controlnet_down_blocks.apply(init_weights)
+
+        scheduler = EulerDiscreteScheduler(
+            beta_start=0.00085,
+            beta_end=0.012,
+            steps_offset=1,
+            beta_schedule="scaled_linear",
+            timestep_spacing="leading",
+        )
+        torch.manual_seed(0)
+        vae = AutoencoderKL(
+            block_out_channels=[32, 64],
+            in_channels=3,
+            out_channels=3,
+            down_block_types=["DownEncoderBlock2D", "DownEncoderBlock2D"],
+            up_block_types=["UpDecoderBlock2D", "UpDecoderBlock2D"],
+            latent_channels=4,
+        )
+        torch.manual_seed(0)
+        text_encoder_config = CLIPTextConfig(
+            bos_token_id=0,
+            eos_token_id=2,
+            hidden_size=32,
+            intermediate_size=37,
+            layer_norm_eps=1e-05,
+            num_attention_heads=4,
+            num_hidden_layers=5,
+            pad_token_id=1,
+            vocab_size=1000,
+            # SD2-specific config below
+            hidden_act="gelu",
+            projection_dim=32,
+        )
+        text_encoder = CLIPTextModel(text_encoder_config)
+        tokenizer = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip")
+
+        torch.manual_seed(0)
+        text_encoder_2 = CLIPTextModelWithProjection(text_encoder_config)
+        tokenizer_2 = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip")
+
+        controlnet = MultiControlNetModel([controlnet1, controlnet2])
+
+        components = {
+            "unet": unet,
+            "controlnet": controlnet,
+            "scheduler": scheduler,
+            "vae": vae,
+            "text_encoder": text_encoder,
+            "tokenizer": tokenizer,
+            "text_encoder_2": text_encoder_2,
+            "tokenizer_2": tokenizer_2,
+            "image_encoder": None,
+            "feature_extractor": None,
+        }
+        return components
+
+    def get_dummy_inputs(self, device, seed=0, img_res=64):
+        if str(device).startswith("mps"):
+            generator = torch.manual_seed(seed)
+        else:
+            generator = torch.Generator(device=device).manual_seed(seed)
+
+        # Get random floats in [0, 1] as image
+        image = floats_tensor((1, 3, 32, 32), rng=random.Random(seed)).to(device)
+        image = image.cpu().permute(0, 2, 3, 1)[0]
+        mask_image = torch.ones_like(image)
+
+        controlnet_embedder_scale_factor = 2
+        # One conditioning image per ControlNet
+        control_images = []
+        for i in range(2):
+            control_image = (
+                floats_tensor(
+                    (1, 3, 32 * controlnet_embedder_scale_factor, 32 * controlnet_embedder_scale_factor),
+                    rng=random.Random(seed + i),
+                )
+                .to(device)
+                .cpu()
+                .permute(0, 2, 3, 1)[0]
+            )
+            control_image = 255 * control_image
+            control_images.append(Image.fromarray(np.uint8(control_image)).convert("RGB").resize((img_res, img_res)))
+
+        # Convert image and mask_image to [0, 255]
+        image = 255 * image
+        mask_image = 255 * mask_image
+        # Convert to PIL image
+        init_image = Image.fromarray(np.uint8(image)).convert("RGB").resize((img_res, img_res))
+        mask_image = Image.fromarray(np.uint8(mask_image)).convert("L").resize((img_res, img_res))
+
+        inputs = {
+            "prompt": "A painting of a squirrel eating a burger",
+            "generator": generator,
+            "num_inference_steps": 2,
+            "guidance_scale": 6.0,
+            "output_type": "np",
+            "image": init_image,
+            "mask_image": mask_image,
+            "control_image": control_images,
+        }
+        return inputs
+
+    def test_inference_multiple_prompt_input(self):
+        device = "cpu"
+        components = self.get_dummy_components()
+        sd_pipe = StableDiffusionXLControlNetInpaintPipeline(**components)
+        sd_pipe = sd_pipe.to(torch_device)
+        sd_pipe.set_progress_bar_config(disable=None)
+
+        # batched conditioning: two prompts, each carrying one conditioning image per ControlNet
+        inputs = self.get_dummy_inputs(device)
+        inputs["prompt"] = [inputs["prompt"], inputs["prompt"]]
+        inputs["control_image"] = [inputs["control_image"], inputs["control_image"]]
+        output = sd_pipe(**inputs)
+        image = output.images
+        assert image.shape == (2, 64, 64, 3)
+
+        image_1, image_2 = image
+        # the two batch items use different initial noise, so the outputs should differ
+        assert np.sum(np.abs(image_1 - image_2)) > 1e-3
+
+        # a single set of conditioning images is broadcast across multiple prompts
+        inputs = self.get_dummy_inputs(device)
+        inputs["prompt"] = [inputs["prompt"], inputs["prompt"]]
+        output_1 = sd_pipe(**inputs)
+        assert np.abs(image - output_1.images).max() < 1e-3
+
+    # TODO(Patrick, Sayak) - skip for now as this requires more refiner tests
+    def test_save_load_optional_components(self):
+        pass
