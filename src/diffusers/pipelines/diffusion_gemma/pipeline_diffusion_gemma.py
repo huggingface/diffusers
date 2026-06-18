@@ -20,6 +20,7 @@ from typing import Any, Callable
 import torch
 import torch.nn.functional as F
 from tqdm.auto import tqdm
+from transformers import StaticCache
 
 from ...callbacks import MultiPipelineCallbacks, PipelineCallback
 from ...schedulers import BlockRefinementScheduler
@@ -183,6 +184,8 @@ class DiffusionGemmaPipeline(DiffusionPipeline):
         top_k: int | None = None,
         threshold: float | None = None,
         editing_threshold: float | None = None,
+        cache_implementation: str | None = None,
+        compile_decoder: bool = False,
         eos_early_stop: bool = True,
         eos_token_id: int | None = None,
         generator: torch.Generator | None = None,
@@ -223,6 +226,13 @@ class DiffusionGemmaPipeline(DiffusionPipeline):
                 Confidence threshold for committing tokens. Defaults to the scheduler's configured value.
             editing_threshold (`float`, *optional*):
                 Confidence threshold for re-editing already committed tokens. Defaults to the scheduler's value.
+            cache_implementation (`str`, *optional*):
+                Set to `"static"` to prefill the encoder once per block into a persistent `StaticCache` and run the
+                decoder against it with fixed shapes, instead of re-encoding the full sequence on every step. Required
+                for `compile_decoder`.
+            compile_decoder (`bool`, defaults to `False`):
+                Whether to `torch.compile(fullgraph=True)` the decoder forward. Only takes effect with
+                `cache_implementation="static"`, whose fixed shapes make the decoder graph-break free.
             eos_early_stop (`bool`, defaults to `True`):
                 Whether to stop generating further canvases once every sequence has emitted EOS.
             eos_token_id (`int`, *optional*):
@@ -288,26 +298,77 @@ class DiffusionGemmaPipeline(DiffusionPipeline):
         finished = torch.zeros(batch_size, dtype=torch.bool, device=device)
         global_step = 0
 
+        # With `cache_implementation="static"` the encoder prefills a persistent `StaticCache` once per block and the
+        # decoder runs with fixed shapes against it (instead of re-encoding the full sequence every step), which also
+        # lets the decoder forward be `torch.compile(fullgraph=True)`-d when `compile_decoder=True`.
+        use_static_cache = cache_implementation == "static"
+        past_key_values = None
+        decoder_logits = None
+        if use_static_cache:
+            text_config = self.model.config.get_text_config(decoder=True)
+            max_cache_len = prompt_length + num_canvases * canvas_length
+            past_key_values = StaticCache(config=text_config, max_cache_len=max_cache_len)
+
+            def decoder_logits(canvas, self_cond, mask_mapping, dec_pos):
+                return self.model(
+                    decoder_input_ids=canvas,
+                    past_key_values=past_key_values,
+                    self_conditioning_logits=self_cond,
+                    decoder_attention_mask=mask_mapping,
+                    decoder_position_ids=dec_pos,
+                ).logits
+
+            if compile_decoder:
+                decoder_logits = torch.compile(decoder_logits, fullgraph=True)
+
         progress_bar = tqdm(range(num_canvases), **getattr(self, "_progress_bar_config", {}))
         for _ in progress_bar:
             cur_len = cur_input_ids.shape[1]
             decoder_position_ids = torch.arange(cur_len, cur_len + canvas_length, device=device).unsqueeze(0)
-            decoder_attention_mask = F.pad(cur_attention_mask.bool(), (0, canvas_length), value=True)
+
+            mask_mapping = None
+            if use_static_cache:
+                # Encode the tokens not yet in the cache (the whole prompt on the first block, the last committed
+                # canvas afterwards), then build the fixed-size 4D decoder mask once for this block (outside any
+                # compiled region, so the compiled decoder never constructs masks).
+                cached_len = past_key_values.get_seq_length()
+                new_tokens = cur_input_ids[:, cached_len:]
+                self.model.model.encoder(
+                    input_ids=new_tokens,
+                    attention_mask=cur_attention_mask,
+                    past_key_values=past_key_values,
+                    position_ids=torch.arange(cached_len, cur_len, device=device).unsqueeze(0),
+                )
+                decoder_attention_mask = torch.zeros(
+                    (batch_size, max_cache_len + canvas_length), dtype=torch.bool, device=device
+                )
+                decoder_attention_mask[:, :cur_len] = cur_attention_mask.bool()
+                decoder_attention_mask[:, -canvas_length:] = True
+                mask_mapping = self.model.model.decoder.create_diffusion_decoder_attention_mask(
+                    config=text_config,
+                    inputs_embeds=torch.empty((batch_size, canvas_length, 0), device=device),
+                    past_key_values=past_key_values,
+                    decoder_attention_mask=decoder_attention_mask,
+                )
+            else:
+                decoder_attention_mask = F.pad(cur_attention_mask.bool(), (0, canvas_length), value=True)
 
             # Start from a fully random canvas and denoise it; the scheduler resets its committed state at step 0.
             canvas = torch.randint(0, self.vocab_size, (batch_size, canvas_length), device=device, generator=generator)
             self_conditioning_logits = None
 
             for step_idx in range(num_inference_steps):
-                outputs = self.model(
-                    input_ids=cur_input_ids,
-                    attention_mask=cur_attention_mask,
-                    decoder_input_ids=canvas,
-                    decoder_position_ids=decoder_position_ids,
-                    decoder_attention_mask=decoder_attention_mask,
-                    self_conditioning_logits=self_conditioning_logits,
-                )
-                logits = outputs.logits
+                if use_static_cache:
+                    logits = decoder_logits(canvas, self_conditioning_logits, mask_mapping, decoder_position_ids)
+                else:
+                    logits = self.model(
+                        input_ids=cur_input_ids,
+                        attention_mask=cur_attention_mask,
+                        decoder_input_ids=canvas,
+                        decoder_position_ids=decoder_position_ids,
+                        decoder_attention_mask=decoder_attention_mask,
+                        self_conditioning_logits=self_conditioning_logits,
+                    ).logits
                 self_conditioning_logits = logits
 
                 scheduler_output = self.scheduler.step(

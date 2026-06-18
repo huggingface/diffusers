@@ -167,5 +167,40 @@ class DiffusionGemmaPipelineTest(unittest.TestCase):
         self.assertEqual(pipe._progress_bar_config, before)
 
 
+class DiffusionGemmaStaticCacheTest(unittest.TestCase):
+    """The static-cache path uses the real model internals (encoder prefill + `StaticCache`), so it needs the tiny
+    checkpoint rather than a stand-in. Skips when the model can't be fetched (e.g. offline CI)."""
+
+    def _load_pipeline(self):
+        try:
+            from transformers import AutoProcessor, DiffusionGemmaForBlockDiffusion
+        except ImportError as e:
+            self.skipTest(f"transformers without DiffusionGemma: {e}")
+        model_id = "trl-internal-testing/tiny-DiffusionGemmaForBlockDiffusion"
+        try:
+            model = DiffusionGemmaForBlockDiffusion.from_pretrained(model_id, dtype=torch.float32).eval()
+            processor = AutoProcessor.from_pretrained(model_id)
+        except Exception as e:  # noqa: BLE001 - offline / hub errors should skip, not fail
+            self.skipTest(f"tiny DiffusionGemma checkpoint unavailable: {e}")
+        pipe = DiffusionGemmaPipeline(model=model, scheduler=BlockRefinementScheduler(), processor=processor)
+        pipe.set_progress_bar_config(disable=True)
+        return pipe, model.config.canvas_length
+
+    def test_static_cache_matches_dynamic(self):
+        pipe, canvas_length = self._load_pipeline()
+        kwargs = dict(
+            messages=[{"role": "user", "content": "Name a color."}],
+            gen_length=canvas_length * 2,  # two canvases -> exercises the cache extension between blocks
+            num_inference_steps=4,
+            temperature=0.0,
+            eos_early_stop=False,
+            output_type="seq",
+        )
+        dynamic = pipe(generator=torch.Generator().manual_seed(0), **kwargs).sequences
+        static = pipe(generator=torch.Generator().manual_seed(0), cache_implementation="static", **kwargs).sequences
+        self.assertEqual(dynamic.shape, (1, canvas_length * 2))
+        self.assertTrue(torch.equal(dynamic, static))
+
+
 if __name__ == "__main__":
     unittest.main()
