@@ -1,3 +1,5 @@
 accelerate>=0.16.0
 torchvision
 datasets
+torchmetrics
+torch-fidelity
