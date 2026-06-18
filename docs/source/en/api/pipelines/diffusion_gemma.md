@@ -36,17 +36,42 @@ pipe = DiffusionGemmaPipeline(model=model, scheduler=scheduler, processor=proces
 output = pipe(
     prompt="Why is the sky blue?",
     gen_length=256,
-    num_inference_steps=32,
+    num_inference_steps=48,
     temperature=0.0,
 )
 print(output.texts[0])
 ```
 
+`num_inference_steps` is the number of denoising steps per canvas (48 matches the released checkpoint); fewer steps are
+faster but lower quality. For multimodal prompts, pass image content in `messages` and the processor's `pixel_values`
+are forwarded to the model automatically.
+
+## Schedulers
+
+The scheduler is the sampler that denoises each canvas, and it is interchangeable: swap it to change the sampling
+strategy without touching anything else. Three schedulers are available:
+
+- `BlockRefinementScheduler` (default): commits the most confident tokens each step (above `threshold`, plus an even
+  per-step quota) and renoises the rest. `editing_threshold` additionally lets it re-edit already committed tokens.
+- `DiscreteDDIMScheduler`: samples each position from the exact discrete posterior of the uniform corruption process
+  (D3PM). It is parameter free, and the final step deterministically commits the predicted tokens.
+- `EntropyBoundScheduler`: commits the lowest-entropy positions whose joint entropy stays under `entropy_bound`, so
+  roughly independent tokens are accepted together.
+
+```py
+from diffusers import DiscreteDDIMScheduler, EntropyBoundScheduler
+
+pipe.scheduler = DiscreteDDIMScheduler()
+# or: pipe.scheduler = EntropyBoundScheduler(entropy_bound=0.1)
+output = pipe(prompt="Why is the sky blue?", gen_length=256, num_inference_steps=48)
+print(output.texts[0])
+```
+
 ## Static cache and compilation
 
-By default the pipeline re-encodes the prompt on every denoising step. Pass `cache_implementation="static"` to instead
-prefill the encoder once per block into a persistent `StaticCache` and run the decoder against it with fixed shapes.
-The fixed shapes let you `torch.compile` the decoder for a further speedup:
+The pipeline prefills the encoder once per block into a reusable cache (a `DynamicCache` by default). Pass
+`cache_implementation="static"` to use a fixed-shape `StaticCache` instead, whose shapes let you `torch.compile` the
+decoder for a further speedup:
 
 ```py
 pipe.model.model.decoder = torch.compile(pipe.model.model.decoder, fullgraph=True)
