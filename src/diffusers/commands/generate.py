@@ -166,15 +166,16 @@ def _add_optimization_arguments(parser: ArgumentParser) -> None:
     parser.add_argument(
         "--compile",
         nargs="?",
-        const="{}",
+        const='{"mode": "max-autotune-no-cudagraphs"}',
         default=None,
         metavar="JSON",
         help=(
             "torch.compile every denoiser submodule on the pipeline. Accepts an optional JSON "
             'object of kwargs forwarded to ``torch.compile``, e.g. \'{"mode": "max-autotune", '
-            '"fullgraph": true}\'. Bare ``--compile`` uses torch defaults. Adds a one-time compilation '
-            "cost on the first step but speeds up every subsequent step — worth it for multi-step "
-            "generation (50+ steps)."
+            '"fullgraph": true}\'. Bare ``--compile`` uses ``mode=max-autotune-no-cudagraphs`` — '
+            "CUDA Graphs break with regional/repeated-block compile because sequential blocks "
+            "overwrite each other's output buffers. Adds a one-time compilation cost on the first "
+            "step but speeds up every subsequent step — worth it for multi-step generation (50+ steps)."
         ),
     )
 
