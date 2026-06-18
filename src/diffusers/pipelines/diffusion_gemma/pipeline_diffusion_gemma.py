@@ -14,6 +14,7 @@
 
 from __future__ import annotations
 
+import inspect
 from dataclasses import dataclass
 from typing import Any, Callable
 
@@ -23,7 +24,7 @@ from tqdm.auto import tqdm
 from transformers import DynamicCache, StaticCache
 
 from ...callbacks import MultiPipelineCallbacks, PipelineCallback
-from ...schedulers import BlockRefinementScheduler
+from ...schedulers import BlockRefinementScheduler, DiscreteDDIMScheduler, EntropyBoundScheduler
 from ...utils import BaseOutput, logging, replace_example_docstring
 from ..pipeline_utils import DiffusionPipeline
 
@@ -72,7 +73,7 @@ class DiffusionGemmaPipeline(DiffusionPipeline):
     """
 
     model: Any
-    scheduler: BlockRefinementScheduler
+    scheduler: BlockRefinementScheduler | DiscreteDDIMScheduler | EntropyBoundScheduler
     processor: Any
 
     _callback_tensor_inputs = ["canvas", "logits"]
@@ -80,7 +81,7 @@ class DiffusionGemmaPipeline(DiffusionPipeline):
     def __init__(
         self,
         model: Any,
-        scheduler: BlockRefinementScheduler,
+        scheduler: BlockRefinementScheduler | DiscreteDDIMScheduler | EntropyBoundScheduler,
         processor: Any | None = None,
     ):
         super().__init__()
@@ -315,7 +316,13 @@ class DiffusionGemmaPipeline(DiffusionPipeline):
 
         canvas_length = self.canvas_length
         num_canvases = (gen_length + canvas_length - 1) // canvas_length
-        self.scheduler.set_timesteps(num_inference_steps, device=device, block_length=canvas_length)
+        # Only `BlockRefinementScheduler` takes a per-call `block_length`; the DiscreteDDIM/EntropyBound schedulers do
+        # not, so we pass scheduler-specific kwargs by signature.
+        set_timesteps_kwargs = {"device": device}
+        if "block_length" in inspect.signature(self.scheduler.set_timesteps).parameters:
+            set_timesteps_kwargs["block_length"] = canvas_length
+        self.scheduler.set_timesteps(num_inference_steps, **set_timesteps_kwargs)
+        step_param_names = set(inspect.signature(self.scheduler.step).parameters)
         self._num_timesteps = num_inference_steps * num_canvases
 
         cur_input_ids = prompt_ids
@@ -380,18 +387,20 @@ class DiffusionGemmaPipeline(DiffusionPipeline):
                 ).logits
                 self_conditioning_logits = logits
 
+                # Forward only the knobs the chosen scheduler accepts (block refinement takes thresholds/top-k,
+                # discrete DDIM and entropy bound do not), so any of the schedulers can drive the pipeline.
+                step_kwargs = {
+                    "mask_token_id": None,
+                    "temperature": temperature,
+                    "top_p": top_p,
+                    "top_k": top_k,
+                    "threshold": threshold,
+                    "editing_threshold": editing_threshold,
+                    "generator": generator,
+                }
+                step_kwargs = {k: v for k, v in step_kwargs.items() if k in step_param_names}
                 scheduler_output = self.scheduler.step(
-                    model_output=logits,
-                    timestep=step_idx,
-                    sample=canvas,
-                    mask_token_id=None,
-                    temperature=temperature,
-                    top_p=top_p,
-                    top_k=top_k,
-                    threshold=threshold,
-                    editing_threshold=editing_threshold,
-                    generator=generator,
-                    return_dict=True,
+                    model_output=logits, timestep=step_idx, sample=canvas, return_dict=True, **step_kwargs
                 )
                 canvas = scheduler_output.prev_sample
 

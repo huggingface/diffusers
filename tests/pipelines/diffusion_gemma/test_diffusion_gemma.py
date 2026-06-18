@@ -152,6 +152,21 @@ class DiffusionGemmaPipelineTest(unittest.TestCase):
         )
         self.assertEqual(out.sequences.shape, (1, self.canvas_length))
 
+    def test_schedulers_are_interchangeable(self):
+        from diffusers import DiscreteDDIMScheduler, EntropyBoundScheduler
+
+        for scheduler in (DiscreteDDIMScheduler(), EntropyBoundScheduler(entropy_bound=0.1)):
+            self.pipe.scheduler = scheduler
+            out = self.pipe(
+                messages=self.messages,
+                gen_length=self.canvas_length,
+                num_inference_steps=4,
+                temperature=0.0,
+                eos_early_stop=False,
+                output_type="seq",
+            )
+            self.assertEqual(out.sequences.shape, (1, self.canvas_length))
+
     def test_static_cache_matches_dynamic(self):
         kwargs = {
             "messages": self.messages,
