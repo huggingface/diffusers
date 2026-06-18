@@ -525,8 +525,6 @@
         title: DDPM
       - local: api/pipelines/deepfloyd_if
         title: DeepFloyd IF
-      - local: api/pipelines/diffusion_gemma
-        title: DiffusionGemma
       - local: api/pipelines/dit
         title: DiT
       - local: api/pipelines/dreamlite
@@ -645,6 +643,8 @@
         title: Z-Image
       title: Image
     - sections:
+      - local: api/pipelines/diffusion_gemma
+        title: DiffusionGemma
       - local: api/pipelines/llada2
         title: LLaDA2
       title: Text
