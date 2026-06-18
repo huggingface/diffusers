@@ -67,7 +67,7 @@ class LongCatAudioDiTPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             strides=[2],
             latent_dim=8,
             encoder_latent_dim=16,
-            downsampling_ratio=2,
+            downsampling_ratio=4,
             sample_rate=24000,
         )
 
@@ -158,6 +158,60 @@ class LongCatAudioDiTPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     def test_encode_prompt_works_in_isolation(self):
         self.skipTest("LongCatAudioDiTPipeline.encode_prompt has a custom signature.")
 
+    def test_encode_prompt_returns_grad_bearing_embeds(self):
+        device = "cpu"
+        pipe = self.pipeline_class(**self.get_dummy_components())
+        pipe.to(device)
+
+        with torch.enable_grad():
+            prompt_embeds, _ = pipe.encode_prompt("soft ocean ambience", torch.device(device))
+            loss = prompt_embeds.float().sum()
+
+        self.assertTrue(prompt_embeds.requires_grad)
+        loss.backward()
+        self.assertTrue(any(param.grad is not None for param in pipe.text_encoder.parameters()))
+
+    def test_transformer_inputs_use_transformer_dtype(self):
+        device = "cpu"
+        pipe = self.pipeline_class(**self.get_dummy_components())
+        pipe.to(device)
+        pipe.transformer.to(dtype=torch.bfloat16)
+
+        observed_dtypes = []
+
+        def record_transformer_inputs(module, args, kwargs):
+            observed_dtypes.append(
+                {
+                    "hidden_states": kwargs["hidden_states"].dtype,
+                    "encoder_hidden_states": kwargs["encoder_hidden_states"].dtype,
+                    "timestep": kwargs["timestep"].dtype,
+                    "latent_cond": kwargs["latent_cond"].dtype,
+                }
+            )
+
+        hook = pipe.transformer.register_forward_pre_hook(record_transformer_inputs, with_kwargs=True)
+        inputs = self.get_dummy_inputs(device)
+        inputs.update(
+            {
+                "negative_prompt": "noise",
+                "guidance_scale": 4.0,
+                "output_type": "latent",
+            }
+        )
+
+        try:
+            output = pipe(**inputs).audios
+        finally:
+            hook.remove()
+
+        self.assertEqual(output.dtype, torch.bfloat16)
+        self.assertGreaterEqual(len(observed_dtypes), 2)
+        for dtypes in observed_dtypes:
+            self.assertEqual(dtypes["hidden_states"], torch.bfloat16)
+            self.assertEqual(dtypes["encoder_hidden_states"], torch.bfloat16)
+            self.assertEqual(dtypes["timestep"], torch.bfloat16)
+            self.assertEqual(dtypes["latent_cond"], torch.bfloat16)
+
     def test_uniform_flow_match_scheduler_grid_matches_manual_updates(self):
         num_inference_steps = 6
         scheduler = FlowMatchEulerDiscreteScheduler(shift=1.0, invert_sigmas=True)
@@ -203,9 +257,10 @@ class LongCatAudioDiTPipelineSlowTests(unittest.TestCase):
         if not tokenizer_path.exists():
             raise unittest.SkipTest(f"LongCat-AudioDiT tokenizer path not found: {tokenizer_path}")
 
+        tokenizer = AutoTokenizer.from_pretrained(tokenizer_path, local_files_only=True)
         pipe = LongCatAudioDiTPipeline.from_pretrained(
             model_path,
-            tokenizer=tokenizer_path,
+            tokenizer=tokenizer,
             torch_dtype=torch.float16,
             local_files_only=True,
         )
