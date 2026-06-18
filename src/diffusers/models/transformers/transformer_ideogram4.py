@@ -21,7 +21,7 @@ import torch.nn.functional as F
 
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...loaders import FromOriginalModelMixin, PeftAdapterMixin
-from ...utils import logging
+from ...utils import apply_lora_scale, logging
 from ...utils.torch_utils import maybe_allow_in_graph
 from ..attention import AttentionMixin, AttentionModuleMixin
 from ..attention_dispatch import dispatch_attention_fn
@@ -365,6 +365,7 @@ class Ideogram4Transformer2DModel(ModelMixin, ConfigMixin, AttentionMixin, PeftA
             adaln_dim=adaln_dim,
         )
 
+    @apply_lora_scale("attention_kwargs")
     def forward(
         self,
         hidden_states: torch.Tensor,
@@ -373,6 +374,7 @@ class Ideogram4Transformer2DModel(ModelMixin, ConfigMixin, AttentionMixin, PeftA
         position_ids: torch.Tensor,
         segment_ids: torch.Tensor,
         indicator: torch.Tensor,
+        attention_kwargs: dict | None = None,
         return_dict: bool = True,
     ) -> Transformer2DModelOutput | tuple[torch.Tensor]:
         r"""
@@ -391,6 +393,9 @@ class Ideogram4Transformer2DModel(ModelMixin, ConfigMixin, AttentionMixin, PeftA
                 Per-token sample id within a packed batch. Positions sharing a `segment_id` attend to each other.
             indicator (`torch.Tensor` of shape `(batch_size, sequence_length)`):
                 Per-token role: `LLM_TOKEN_INDICATOR` (text) or `OUTPUT_IMAGE_INDICATOR` (image).
+            attention_kwargs (`dict`, *optional*):
+                A kwargs dictionary passed along to the attention processor. A `"scale"` entry scales the LoRA weights
+                (when the PEFT backend is active).
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether to return a [`~models.modeling_outputs.Transformer2DModelOutput`] instead of a plain tuple.
 

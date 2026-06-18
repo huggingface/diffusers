@@ -7,14 +7,20 @@ Before reviewing, read and apply the guidelines in:
 - [models.md](models.md) — model conventions, attention pattern, implementation rules, dependencies, gotchas
 - [pipelines.md](pipelines.md) — pipeline conventions, coding style, gotchas
 - [modular.md](modular.md) — modular pipeline conventions, patterns, common mistakes
-- [skills/parity-testing/SKILL.md](skills/parity-testing/SKILL.md) — testing rules, comparison utilities
-- [skills/parity-testing/pitfalls.md](skills/parity-testing/pitfalls.md) — known pitfalls (dtype mismatches, config assumptions, etc.)
+- [skills/model-integration/pitfalls.md](skills/model-integration/pitfalls.md) — known pitfalls causing numerical discrepancies between the reference implementation and the diffusers port (dtype mismatches, config assumptions, etc.)
 
 ## Common mistakes
 
 Common mistakes are covered in the common-mistakes / gotcha sections in [AGENTS.md](AGENTS.md), [models.md](models.md), [pipelines.md](pipelines.md), and [modular.md](modular.md). Additionally, watch for below patterns that aren't covered there:
 
 - **Ephemeral context.** Comments, docstrings, and files that only made sense to the current PR's author or reviewer don't help a future reader/user/developer. Examples: `# per reviewer comment on PR #NNNN`, `# as discussed in review`, `# TODO from offline chat`, debug printouts. Same for files: parity harnesses, comparison scripts, anything in `scripts/` with hardcoded developer paths or imports from the reference repo. State the *reason* so the comment stands alone, or drop it.
+
+## Documentation impact
+
+A PR can leave existing docs stale or surface a pattern worth recording. Scan the docs related to what the PR touches and flag updates as a **suggestions / additional info** section (not blocking):
+
+- **Usage docs.** New or changed public behavior — a new pipeline/model, a new argument, changed defaults, a renamed API — should have matching updates in `docs/`, docstrings, and examples. Flag any that now describe outdated behavior or that are missing for the new surface.
+- **Agent docs.** If the review turns up a rule, pattern, or common gotcha that isn't written down yet — especially one the author got wrong or that you had to reason out — propose adding it to the relevant agent guide ([AGENTS.md](AGENTS.md), [models.md](models.md), [pipelines.md](pipelines.md), [modular.md](modular.md), a skill, or this file) so the next contributor/agent gets it for free instead of repeating the mistake.
 
 ## Dead code analysis (new models)
 

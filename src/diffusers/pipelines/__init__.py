@@ -193,7 +193,7 @@ else:
         "FluxKontextPipeline",
         "FluxKontextInpaintPipeline",
     ]
-    _import_structure["prx"] = ["PRXPipeline"]
+    _import_structure["prx"] = ["PRXPipeline", "PRXPixelPipeline"]
     _import_structure["audioldm2"] = [
         "AudioLDM2Pipeline",
         "AudioLDM2ProjectionModel",
@@ -273,6 +273,7 @@ else:
         "IFPipeline",
         "IFSuperResolutionPipeline",
     ]
+    _import_structure["dreamlite"] = ["DreamLitePipeline", "DreamLiteMobilePipeline", "DreamLitePipelineOutput"]
     _import_structure["easyanimate"] = [
         "EasyAnimatePipeline",
         "EasyAnimateInpaintPipeline",
@@ -717,6 +718,11 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             WuerstchenPriorPipeline,
         )
         from .dflash import DFlashPipeline, DFlashPipelineOutput
+        from .dreamlite import (
+            DreamLiteMobilePipeline,
+            DreamLitePipeline,
+            DreamLitePipelineOutput,
+        )
         from .easyanimate import (
             EasyAnimateControlPipeline,
             EasyAnimateInpaintPipeline,
@@ -852,7 +858,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             StableDiffusionXLPAGPipeline,
         )
         from .pixart_alpha import PixArtAlphaPipeline, PixArtSigmaPipeline
-        from .prx import PRXPipeline
+        from .prx import PRXPipeline, PRXPixelPipeline
         from .qwenimage import (
             QwenImageControlNetInpaintPipeline,
             QwenImageControlNetPipeline,
