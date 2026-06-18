@@ -50,7 +50,6 @@ PipelineMaskInput = Union[
     torch.FloatTensor, Image.Image, List[Image.Image], List[torch.FloatTensor], np.ndarray, List[np.ndarray]
 ]
 
-# TODO: Update example docstring
 EXAMPLE_DOC_STRING = """
     Example:
     ```python
@@ -59,7 +58,7 @@ EXAMPLE_DOC_STRING = """
     from diffusers.modular_pipelines import ModularPipeline
 
     torch.set_grad_enabled(False)
-    vlm_pipe = ModularPipelineBlocks.from_pretrained("briaai/FIBO-VLM-prompt-to-JSON", trust_remote_code=True)
+    vlm_pipe = ModularPipeline.from_pretrained("briaai/FIBO-VLM-prompt-to-JSON", trust_remote_code=True)
     vlm_pipe = vlm_pipe.init_pipeline()
 
     pipe = BriaFiboEditPipeline.from_pretrained(
@@ -877,7 +876,7 @@ class BriaFiboEditPipeline(DiffusionPipeline, FluxLoraLoaderMixin):
         else:
             seq_len = (height // self.vae_scale_factor) * (width // self.vae_scale_factor)
 
-        sigmas = np.linspace(1.0, 1 / num_inference_steps, num_inference_steps)
+        sigmas = None if timesteps is not None else np.linspace(1.0, 1 / num_inference_steps, num_inference_steps)
 
         mu = calculate_shift(
             seq_len,
@@ -893,7 +892,7 @@ class BriaFiboEditPipeline(DiffusionPipeline, FluxLoraLoaderMixin):
             self.scheduler,
             num_inference_steps=num_inference_steps,
             device=device,
-            timesteps=None,
+            timesteps=timesteps,
             sigmas=sigmas,
             mu=mu,
         )
@@ -1038,6 +1037,9 @@ class BriaFiboEditPipeline(DiffusionPipeline, FluxLoraLoaderMixin):
         latents_scaled = [(latent - latents_mean) * latents_std for latent in image_latents_cthw]
         image_latents_cthw = torch.concat(latents_scaled, dim=0)
         image_latents_bchw = image_latents_cthw[:, :, 0, :, :]
+
+        repeat_by = batch_size // image_latents_bchw.shape[0]
+        image_latents_bchw = image_latents_bchw.repeat_interleave(repeat_by, dim=0)
 
         image_latent_height, image_latent_width = image_latents_bchw.shape[2:]
         image_latents_bsd = self._pack_latents_no_patch(
