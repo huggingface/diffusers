@@ -14,3 +14,11 @@ class JoyImageEditPipelineOutput(BaseOutput):
     """
 
     images: Union[List[PIL.Image.Image], np.ndarray]
+
+@dataclass
+class JoyImageEditPlusPipelineOutput(BaseOutput):
+    """
+    Output class for JoyImage Edit Plus multi-image editing pipelines.
+    """
+
+    images: Union[List[PIL.Image.Image], np.ndarray]

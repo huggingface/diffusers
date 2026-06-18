@@ -283,6 +283,7 @@ class JoyImageTransformerBlock(nn.Module):
         encoder_hidden_states: torch.Tensor,
         temb: torch.Tensor,
         image_rotary_emb: Tuple[torch.Tensor, torch.Tensor] | None = None,
+        attention_mask: torch.Tensor | None = None,
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         # modulation
         (
@@ -312,6 +313,7 @@ class JoyImageTransformerBlock(nn.Module):
             hidden_states=img_modulated,
             encoder_hidden_states=txt_modulated,
             image_rotary_emb=image_rotary_emb,
+            attention_mask=attention_mask,
         )
 
         hidden_states = hidden_states + img_attn * img_mod1_gate.unsqueeze(1)
