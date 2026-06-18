@@ -861,6 +861,10 @@ class PixArtAlphaPipeline(DiffusionPipeline):
             prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds], dim=0)
             prompt_attention_mask = torch.cat([negative_prompt_attention_mask, prompt_attention_mask], dim=0)
 
+        prompt_attention_mask = prompt_attention_mask.to(
+            maybe_adjust_dtype_for_device(prompt_attention_mask.dtype, prompt_attention_mask.device)
+        )
+
         # 4. Prepare timesteps
         is_neuron_device = device.type == "neuron"
         if XLA_AVAILABLE or is_neuron_device:
@@ -903,7 +907,8 @@ class PixArtAlphaPipeline(DiffusionPipeline):
 
         # 7. Denoising loop
         num_warmup_steps = max(len(timesteps) - num_inference_steps * self.scheduler.order, 0)
-
+        if hasattr(self.scheduler, "set_begin_index"):
+            self.scheduler.set_begin_index(0)
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
                 latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents

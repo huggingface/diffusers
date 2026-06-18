@@ -46,20 +46,9 @@ jobs:
     concurrency:
       group: claude-ai-review-${{ github.event.issue.number || github.event.pull_request.number }}
       cancel-in-progress: false
-    # A clean GitHub-hosted runner (not the self-hosted VPN group, whose
-    # pre-existing tailscaled collided with the action's own daemon). The
-    # Tailscale step below joins this runner to the tailnet so
-    # https://serge.huggingface.tech/ is reachable.
-    runs-on: ubuntu-latest
+    runs-on:
+      group: aws-general-8-plus
     steps:
-      - name: Connect to Tailscale
-        uses: tailscale/github-action@v4
-        with:
-          oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID_AI_REVIEW }}
-          oauth-secret: ${{ secrets.TS_AUDIENCE_AI_REVIEW }}
-          tags: tag:ci
-          args: --accept-dns=false
-
       - name: Relay event to the Serge GitHub App
         env:
           WEBHOOK_URL: https://serge.huggingface.tech/webhook
