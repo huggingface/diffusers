@@ -464,6 +464,7 @@ else:
     ]
     _import_structure["chronoedit"] = ["ChronoEditPipeline"]
     _import_structure["glm_image"] = ["GlmImagePipeline"]
+    _import_structure["boogu"] = ["BooguImagePipeline", "BooguImageTurboPipeline"]
 
 try:
     if not is_onnx_available():
@@ -623,6 +624,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             AudioLDM2UNet2DConditionModel,
         )
         from .aura_flow import AuraFlowPipeline
+        from .boogu import BooguImagePipeline, BooguImageTurboPipeline
         from .bria import BriaPipeline
         from .bria_fibo import BriaFiboEditPipeline, BriaFiboPipeline
         from .chroma import ChromaImg2ImgPipeline, ChromaInpaintPipeline, ChromaPipeline

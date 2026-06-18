@@ -142,6 +142,7 @@ if is_torch_available():
     _import_structure["transformers.transformer_wan_animate"] = ["WanAnimateTransformer3DModel"]
     _import_structure["transformers.transformer_wan_vace"] = ["WanVACETransformer3DModel"]
     _import_structure["transformers.transformer_z_image"] = ["ZImageTransformer2DModel"]
+    _import_structure["transformers.transformer_boogu"] = ["BooguImageTransformer2DModel", "PromptEmbedding"]
     _import_structure["unets.unet_1d"] = ["UNet1DModel"]
     _import_structure["unets.unet_2d"] = ["UNet2DModel"]
     _import_structure["unets.unet_2d_condition"] = ["UNet2DConditionModel"]
@@ -227,6 +228,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             AnyFlowFARTransformer3DModel,
             AnyFlowTransformer3DModel,
             AuraFlowTransformer2DModel,
+            BooguImageTransformer2DModel,
             BriaFiboTransformer2DModel,
             BriaTransformer2DModel,
             ChromaTransformer2DModel,
@@ -269,6 +271,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             OvisImageTransformer2DModel,
             PixArtTransformer2DModel,
             PriorTransformer,
+            PromptEmbedding,
             PRXTransformer2DModel,
             QwenImageTransformer2DModel,
             SanaTransformer2DModel,

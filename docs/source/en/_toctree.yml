@@ -491,6 +491,8 @@
         title: AnimateDiff
       - local: api/pipelines/aura_flow
         title: AuraFlow
+      - local: api/pipelines/boogu
+        title: Boogu-Image
       - local: api/pipelines/bria_3_2
         title: Bria 3.2
       - local: api/pipelines/bria_fibo

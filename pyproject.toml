@@ -13,6 +13,8 @@ select = ["C", "E", "F", "I", "W"]
 [tool.ruff.lint.per-file-ignores]
 "__init__.py" = ["E402", "F401", "F403", "F811"]
 "src/diffusers/utils/dummy_*.py" = ["F401"]
+# Trailing whitespace inside the Boogu prompt-template strings is intentional content.
+"src/diffusers/pipelines/boogu/instruct_reasoner_static_skills.py" = ["W291", "W293", "F403", "F405"]
 
 [tool.ruff.lint.isort]
 lines-after-imports = 2
