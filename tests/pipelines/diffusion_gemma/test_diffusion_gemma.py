@@ -188,14 +188,14 @@ class DiffusionGemmaStaticCacheTest(unittest.TestCase):
 
     def test_static_cache_matches_dynamic(self):
         pipe, canvas_length = self._load_pipeline()
-        kwargs = dict(
-            messages=[{"role": "user", "content": "Name a color."}],
-            gen_length=canvas_length * 2,  # two canvases -> exercises the cache extension between blocks
-            num_inference_steps=4,
-            temperature=0.0,
-            eos_early_stop=False,
-            output_type="seq",
-        )
+        kwargs = {
+            "messages": [{"role": "user", "content": "Name a color."}],
+            "gen_length": canvas_length * 2,  # two canvases -> exercises the cache extension between blocks
+            "num_inference_steps": 4,
+            "temperature": 0.0,
+            "eos_early_stop": False,
+            "output_type": "seq",
+        }
         dynamic = pipe(generator=torch.Generator().manual_seed(0), **kwargs).sequences
         static = pipe(generator=torch.Generator().manual_seed(0), cache_implementation="static", **kwargs).sequences
         self.assertEqual(dynamic.shape, (1, canvas_length * 2))

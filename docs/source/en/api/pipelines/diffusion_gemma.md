@@ -42,6 +42,17 @@ output = pipe(
 print(output.texts[0])
 ```
 
+## Static cache and compilation
+
+By default the pipeline re-encodes the prompt on every denoising step. Pass `cache_implementation="static"` to instead
+prefill the encoder once per block into a persistent `StaticCache` and run the decoder against it with fixed shapes.
+The fixed shapes let you `torch.compile` the decoder for a further speedup:
+
+```py
+pipe.model.model.decoder = torch.compile(pipe.model.model.decoder, fullgraph=True)
+output = pipe(prompt="Why is the sky blue?", gen_length=256, cache_implementation="static")
+```
+
 ## Callbacks
 
 Callbacks run after each denoising step. Pass `callback_on_step_end_tensor_inputs` to select which tensors are

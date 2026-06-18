@@ -185,7 +185,6 @@ class DiffusionGemmaPipeline(DiffusionPipeline):
         threshold: float | None = None,
         editing_threshold: float | None = None,
         cache_implementation: str | None = None,
-        compile_decoder: bool = False,
         eos_early_stop: bool = True,
         eos_token_id: int | None = None,
         generator: torch.Generator | None = None,
@@ -228,11 +227,9 @@ class DiffusionGemmaPipeline(DiffusionPipeline):
                 Confidence threshold for re-editing already committed tokens. Defaults to the scheduler's value.
             cache_implementation (`str`, *optional*):
                 Set to `"static"` to prefill the encoder once per block into a persistent `StaticCache` and run the
-                decoder against it with fixed shapes, instead of re-encoding the full sequence on every step. Required
-                for `compile_decoder`.
-            compile_decoder (`bool`, defaults to `False`):
-                Whether to `torch.compile(fullgraph=True)` the decoder forward. Only takes effect with
-                `cache_implementation="static"`, whose fixed shapes make the decoder graph-break free.
+                decoder against it with fixed shapes, instead of re-encoding the full sequence on every step. The
+                fixed shapes also let you compile the decoder, e.g.
+                `pipe.model.model.decoder = torch.compile(pipe.model.model.decoder, fullgraph=True)`.
             eos_early_stop (`bool`, defaults to `True`):
                 Whether to stop generating further canvases once every sequence has emitted EOS.
             eos_token_id (`int`, *optional*):
@@ -299,27 +296,16 @@ class DiffusionGemmaPipeline(DiffusionPipeline):
         global_step = 0
 
         # With `cache_implementation="static"` the encoder prefills a persistent `StaticCache` once per block and the
-        # decoder runs with fixed shapes against it (instead of re-encoding the full sequence every step), which also
-        # lets the decoder forward be `torch.compile(fullgraph=True)`-d when `compile_decoder=True`.
+        # decoder runs with fixed shapes against it (instead of re-encoding the full sequence every step). The fixed
+        # shapes also let a user `torch.compile` the decoder module fullgraph.
         use_static_cache = cache_implementation == "static"
         past_key_values = None
-        decoder_logits = None
+        text_config = None
+        max_cache_len = None
         if use_static_cache:
             text_config = self.model.config.get_text_config(decoder=True)
             max_cache_len = prompt_length + num_canvases * canvas_length
             past_key_values = StaticCache(config=text_config, max_cache_len=max_cache_len)
-
-            def decoder_logits(canvas, self_cond, mask_mapping, dec_pos):
-                return self.model(
-                    decoder_input_ids=canvas,
-                    past_key_values=past_key_values,
-                    self_conditioning_logits=self_cond,
-                    decoder_attention_mask=mask_mapping,
-                    decoder_position_ids=dec_pos,
-                ).logits
-
-            if compile_decoder:
-                decoder_logits = torch.compile(decoder_logits, fullgraph=True)
 
         progress_bar = tqdm(range(num_canvases), **getattr(self, "_progress_bar_config", {}))
         for _ in progress_bar:
@@ -359,7 +345,13 @@ class DiffusionGemmaPipeline(DiffusionPipeline):
 
             for step_idx in range(num_inference_steps):
                 if use_static_cache:
-                    logits = decoder_logits(canvas, self_conditioning_logits, mask_mapping, decoder_position_ids)
+                    logits = self.model(
+                        decoder_input_ids=canvas,
+                        past_key_values=past_key_values,
+                        self_conditioning_logits=self_conditioning_logits,
+                        decoder_attention_mask=mask_mapping,
+                        decoder_position_ids=decoder_position_ids,
+                    ).logits
                 else:
                     logits = self.model(
                         input_ids=cur_input_ids,
