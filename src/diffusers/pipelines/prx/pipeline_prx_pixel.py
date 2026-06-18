@@ -14,60 +14,33 @@
 
 import html
 import inspect
-import re
-import urllib.parse as ul
 from typing import Callable
 
 import torch
-from transformers import (
-    AutoTokenizer,
-    GemmaTokenizerFast,
-    T5TokenizerFast,
-)
-from transformers.models.t5gemma.modeling_t5gemma import T5GemmaEncoder
+from transformers import AutoTokenizer, PreTrainedModel, PreTrainedTokenizerBase
 
-from diffusers.image_processor import PixArtImageProcessor
-from diffusers.loaders import FromSingleFileMixin, LoraLoaderMixin, TextualInversionLoaderMixin
-from diffusers.models import AutoencoderDC, AutoencoderKL
-from diffusers.models.transformers.transformer_prx import PRXTransformer2DModel
-from diffusers.pipelines.pipeline_utils import DiffusionPipeline
-from diffusers.pipelines.prx.pipeline_output import PRXPipelineOutput
-from diffusers.schedulers import FlowMatchEulerDiscreteScheduler
-from diffusers.utils import is_ftfy_available, logging, replace_example_docstring
-from diffusers.utils.torch_utils import randn_tensor
+from ...image_processor import PixArtImageProcessor
+from ...models.transformers.transformer_prx import PRXTransformer2DModel
+from ...pipelines.pipeline_utils import DiffusionPipeline
+from ...schedulers import FlowMatchEulerDiscreteScheduler
+from ...utils import is_ftfy_available, logging, replace_example_docstring
+from ...utils.torch_utils import randn_tensor
+from .pipeline_output import PRXPipelineOutput
+from .pipeline_prx import TextPreprocessor
 
 
 if is_ftfy_available():
     import ftfy
 
-DEFAULT_RESOLUTION = 512
 
-ASPECT_RATIO_256_BIN = {
-    "0.46": [160, 352],
-    "0.6": [192, 320],
-    "0.78": [224, 288],
-    "1.0": [256, 256],
-    "1.29": [288, 224],
-    "1.67": [320, 192],
-    "2.2": [352, 160],
-}
+logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
-ASPECT_RATIO_512_BIN = {
-    "0.5": [352, 704],
-    "0.57": [384, 672],
-    "0.6": [384, 640],
-    "0.68": [416, 608],
-    "0.78": [448, 576],
-    "0.88": [480, 544],
-    "1.0": [512, 512],
-    "1.13": [544, 480],
-    "1.29": [576, 448],
-    "1.46": [608, 416],
-    "1.67": [640, 384],
-    "1.75": [672, 384],
-    "2.0": [704, 352],
-}
+# PRXPixel is a 1024px model.
+PRX_PIXEL_DEFAULT_RESOLUTION = 1024
+# Number of text tokens used at training time (the Qwen tokenizer's own ``model_max_length`` is far larger).
+PRX_PIXEL_DEFAULT_MAX_TOKENS = 256
 
+# Predefined aspect-ratio bins for 1024px generation (mirrors ASPECT_RATIO_1024_BIN in pipeline_prx).
 ASPECT_RATIO_1024_BIN = {
     "0.49": [704, 1440],
     "0.52": [736, 1408],
@@ -96,212 +69,95 @@ ASPECT_RATIO_1024_BIN = {
 }
 
 ASPECT_RATIO_BINS = {
-    256: ASPECT_RATIO_256_BIN,
-    512: ASPECT_RATIO_512_BIN,
     1024: ASPECT_RATIO_1024_BIN,
 }
 
-logger = logging.get_logger(__name__)
 
-
-class TextPreprocessor:
-    """Text preprocessing utility for PRXPipeline."""
-
-    def __init__(self):
-        """Initialize text preprocessor."""
-        self.bad_punct_regex = re.compile(
-            r"["
-            + "#®•©™&@·º½¾¿¡§~"
-            + r"\)"
-            + r"\("
-            + r"\]"
-            + r"\["
-            + r"\}"
-            + r"\{"
-            + r"\|"
-            + r"\\"
-            + r"\/"
-            + r"\*"
-            + r"]{1,}"
-        )
-
-    def clean_text(self, text: str) -> str:
-        """Clean text using comprehensive text processing logic."""
-        # See Deepfloyd https://github.com/deep-floyd/IF/blob/develop/deepfloyd_if/modules/t5.py
-        text = str(text)
-        text = ul.unquote_plus(text)
-        text = text.strip().lower()
-        text = re.sub("<person>", "person", text)
-
-        # Remove all urls:
-        text = re.sub(
-            r"\b((?:https?|www):(?:\/{1,3}|[a-zA-Z0-9%])|[a-zA-Z0-9.\-]+[.](?:com|co|ru|net|org|edu|gov|it)[\w/-]*\b\/?(?!@))",
-            "",
-            text,
-        )  # regex for urls
-
-        # @<nickname>
-        text = re.sub(r"@[\w\d]+\b", "", text)
-
-        # 31C0—31EF CJK Strokes through 4E00—9FFF CJK Unified Ideographs
-        text = re.sub(r"[\u31c0-\u31ef]+", "", text)
-        text = re.sub(r"[\u31f0-\u31ff]+", "", text)
-        text = re.sub(r"[\u3200-\u32ff]+", "", text)
-        text = re.sub(r"[\u3300-\u33ff]+", "", text)
-        text = re.sub(r"[\u3400-\u4dbf]+", "", text)
-        text = re.sub(r"[\u4dc0-\u4dff]+", "", text)
-        text = re.sub(r"[\u4e00-\u9fff]+", "", text)
-
-        # все виды тире / all types of dash --> "-"
-        text = re.sub(
-            r"[\u002D\u058A\u05BE\u1400\u1806\u2010-\u2015\u2E17\u2E1A\u2E3A\u2E3B\u2E40\u301C\u3030\u30A0\uFE31\uFE32\uFE58\uFE63\uFF0D]+",
-            "-",
-            text,
-        )
-
-        # кавычки к одному стандарту
-        text = re.sub(r"[`´«»" "¨]", '"', text)
-        text = re.sub(r"['']", "'", text)
-
-        # &quot; and &amp
-        text = re.sub(r"&quot;?", "", text)
-        text = re.sub(r"&amp", "", text)
-
-        # ip addresses:
-        text = re.sub(r"\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}", " ", text)
-
-        # article ids:
-        text = re.sub(r"\d:\d\d\s+$", "", text)
-
-        # \n
-        text = re.sub(r"\\n", " ", text)
-
-        # "#123", "#12345..", "123456.."
-        text = re.sub(r"#\d{1,3}\b", "", text)
-        text = re.sub(r"#\d{5,}\b", "", text)
-        text = re.sub(r"\b\d{6,}\b", "", text)
-
-        # filenames:
-        text = re.sub(r"[\S]+\.(?:png|jpg|jpeg|bmp|webp|eps|pdf|apk|mp4)", "", text)
-
-        # Clean punctuation
-        text = re.sub(r"[\"\']{2,}", r'"', text)  # """AUSVERKAUFT"""
-        text = re.sub(r"[\.]{2,}", r" ", text)
-
-        text = re.sub(self.bad_punct_regex, r" ", text)  # ***AUSVERKAUFT***, #AUSVERKAUFT
-        text = re.sub(r"\s+\.\s+", r" ", text)  # " . "
-
-        # this-is-my-cute-cat / this_is_my_cute_cat
-        regex2 = re.compile(r"(?:\-|\_)")
-        if len(re.findall(regex2, text)) > 3:
-            text = re.sub(regex2, " ", text)
-
-        # Basic cleaning
-        text = ftfy.fix_text(text)
-        text = html.unescape(html.unescape(text))
-        text = text.strip()
-
-        # Clean alphanumeric patterns
-        text = re.sub(r"\b[a-zA-Z]{1,3}\d{3,15}\b", "", text)  # jc6640
-        text = re.sub(r"\b[a-zA-Z]+\d+[a-zA-Z]+\b", "", text)  # jc6640vc
-        text = re.sub(r"\b\d+[a-zA-Z]+\d+\b", "", text)  # 6640vc231
-
-        # Common spam patterns
-        text = re.sub(r"(worldwide\s+)?(free\s+)?shipping", "", text)
-        text = re.sub(r"(free\s)?download(\sfree)?", "", text)
-        text = re.sub(r"\bclick\b\s(?:for|on)\s\w+", "", text)
-        text = re.sub(r"\b(?:png|jpg|jpeg|bmp|webp|eps|pdf|apk|mp4)(\simage[s]?)?", "", text)
-        text = re.sub(r"\bpage\s+\d+\b", "", text)
-
-        text = re.sub(r"\b\d*[a-zA-Z]+\d+[a-zA-Z]+\d+[a-zA-Z\d]*\b", r" ", text)  # j2d1a2a...
-        text = re.sub(r"\b\d+\.?\d*[xх×]\d+\.?\d*\b", "", text)
-
-        # Final cleanup
-        text = re.sub(r"\b\s+\:\s+", r": ", text)
-        text = re.sub(r"(\D[,\./])\b", r"\1 ", text)
-        text = re.sub(r"\s+", " ", text)
-
-        text.strip()
-
-        text = re.sub(r"^[\"\']([\w\W]+)[\"\']$", r"\1", text)
-        text = re.sub(r"^[\'\_,\-\:;]", r"", text)
-        text = re.sub(r"[\'\_,\-\:\-\+]$", r"", text)
-        text = re.sub(r"^\.\S+$", "", text)
-
-        return text.strip()
-
-    def basic_clean(self, text: str) -> str:
-        """Light cleaning: fix mojibake and unescape HTML. Used when skip_text_cleaning=True."""
-        text = ftfy.fix_text(text)
-        text = html.unescape(html.unescape(text))
-        return text.strip()
+def _basic_clean(text: str) -> str:
+    text = ftfy.fix_text(text)
+    text = html.unescape(html.unescape(text))
+    return text.strip()
 
 
 EXAMPLE_DOC_STRING = """
     Examples:
         ```py
         >>> import torch
-        >>> from diffusers import PRXPipeline
+        >>> from diffusers import PRXPixelPipeline
 
-        >>> # Load pipeline with from_pretrained
-        >>> pipe = PRXPipeline.from_pretrained("Photoroom/prx-512-t2i-sft")
+        >>> pipe = PRXPixelPipeline.from_pretrained("Photoroom/prxpixel-t2i", torch_dtype=torch.bfloat16)
         >>> pipe.to("cuda")
 
-        >>> prompt = "A digital painting of a rusty, vintage tram on a sandy beach"
+        >>> prompt = "A front-facing portrait of a lion in the golden savanna at sunset."
         >>> image = pipe(prompt, num_inference_steps=28, guidance_scale=5.0).images[0]
-        >>> image.save("prx_output.png")
+        >>> image.save("prxpixel_output.png")
         ```
 """
 
 
-class PRXPipeline(
-    DiffusionPipeline,
-    LoraLoaderMixin,
-    FromSingleFileMixin,
-    TextualInversionLoaderMixin,
-):
+class PRXPixelPipeline(DiffusionPipeline):
     r"""
-    Pipeline for text-to-image generation using PRX Transformer.
+    Pipeline for text-to-image generation with the PRXPixel model.
+
+    PRXPixel is a standalone, pixel-space text-to-image pipeline. It denoises raw RGB directly with a ~7B-parameter
+    [`PRXTransformer2DModel`] and has no VAE (generation happens entirely in pixel space, so the denoised output *is*
+    the image). Prompts are encoded with a Qwen3-VL text encoder (the vision tower is discarded). Unlike
+    [`PRXPipeline`] the transformer is trained with x-prediction: at every step it predicts the clean image `x0`, which
+    is converted to a flow-matching velocity before the scheduler step. Sampling starts from `randn * noise_scale`
+    (`noise_scale=2.0` by default) and the default resolution is 1024px.
 
     This model inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods the
     library implements for all the pipelines (such as downloading or saving, running on a particular device, etc.)
 
+    Examples:
+        ```py
+        >>> import torch
+        >>> from diffusers import PRXPixelPipeline
+
+        >>> pipe = PRXPixelPipeline.from_pretrained("Photoroom/prxpixel-t2i", torch_dtype=torch.bfloat16)
+        >>> pipe.to("cuda")
+
+        >>> prompt = "A front-facing portrait of a lion in the golden savanna at sunset."
+        >>> image = pipe(prompt, num_inference_steps=28, guidance_scale=5.0).images[0]
+        >>> image.save("prxpixel_output.png")
+        ```
+
     Args:
         transformer ([`PRXTransformer2DModel`]):
-            The PRX transformer model to denoise the encoded image latents.
+            The ~7B-parameter PRX denoiser. For PRXPixel this is built with `in_channels=3`, a bottleneck `img_in`, and
+            `resolution_embeds=True`, and it is trained to predict the clean image `x0`.
         scheduler ([`FlowMatchEulerDiscreteScheduler`]):
-            A scheduler to be used in combination with `transformer` to denoise the encoded image latents.
-        text_encoder ([`T5GemmaEncoder`]):
-            Text encoder model for encoding prompts.
-        tokenizer ([`T5TokenizerFast` or `GemmaTokenizerFast`]):
-            Tokenizer for the text encoder.
-        vae ([`AutoencoderKL`] or [`AutoencoderDC`]):
-            Variational Auto-Encoder (VAE) Model to encode and decode images to and from latent representations.
-            Supports both AutoencoderKL (8x compression) and AutoencoderDC (32x compression).
+            Flow-matching scheduler used to denoise the (pixel-space) latents.
+        text_encoder ([`PreTrainedModel`]):
+            The Qwen3-VL text backbone used to encode prompts (the vision tower is discarded). Must return a
+            `last_hidden_state`.
+        tokenizer ([`PreTrainedTokenizerBase`]):
+            Tokenizer for `text_encoder` (typically loaded via `AutoTokenizer`).
+        default_sample_size (`int`, *optional*, defaults to 1024):
+            Default height/width used when none is provided to `__call__`.
+        prompt_max_tokens (`int`, *optional*, defaults to 256):
+            Number of text tokens the prompt is padded/truncated to before encoding.
+        noise_scale (`float`, *optional*, defaults to 2.0):
+            Scale applied to the initial Gaussian noise. PRXPixel trains with a non-unit initial-noise scale, so
+            sampling must start from `randn * noise_scale`.
     """
 
-    model_cpu_offload_seq = "text_encoder->transformer->vae"
+    model_cpu_offload_seq = "text_encoder->transformer"
     _callback_tensor_inputs = ["latents", "prompt_embeds"]
-    _optional_components = ["vae"]
 
     def __init__(
         self,
         transformer: PRXTransformer2DModel,
         scheduler: FlowMatchEulerDiscreteScheduler,
-        text_encoder: T5GemmaEncoder,
-        tokenizer: T5TokenizerFast | GemmaTokenizerFast | AutoTokenizer,
-        vae: AutoencoderKL | AutoencoderDC | None = None,
-        default_sample_size: int | None = DEFAULT_RESOLUTION,
+        text_encoder: PreTrainedModel,
+        tokenizer: AutoTokenizer | PreTrainedTokenizerBase,
+        default_sample_size: int | None = PRX_PIXEL_DEFAULT_RESOLUTION,
+        prompt_max_tokens: int = PRX_PIXEL_DEFAULT_MAX_TOKENS,
+        noise_scale: float = 2.0,
     ):
         super().__init__()
 
-        if PRXTransformer2DModel is None:
-            raise ImportError(
-                "PRXTransformer2DModel is not available. Please ensure the transformer_prx module is properly installed."
-            )
-
         self.text_preprocessor = TextPreprocessor()
-        self.default_sample_size = default_sample_size
         self._guidance_scale = 1.0
 
         self.register_modules(
@@ -309,70 +165,101 @@ class PRXPipeline(
             scheduler=scheduler,
             text_encoder=text_encoder,
             tokenizer=tokenizer,
-            vae=vae,
+        )
+        self.register_to_config(
+            default_sample_size=default_sample_size,
+            prompt_max_tokens=prompt_max_tokens,
+            noise_scale=noise_scale,
         )
 
-        self.register_to_config(default_sample_size=self.default_sample_size)
-
-        if vae is not None:
-            self.image_processor = PixArtImageProcessor(vae_scale_factor=self.vae_scale_factor)
-        else:
-            self.image_processor = None
+        # Pixel pipeline always has an image_processor (vae_scale_factor=1)
+        # so that output_type="pil"/"np" work without a VAE.
+        self.image_processor = PixArtImageProcessor(vae_scale_factor=self.vae_scale_factor)
 
     @property
     def vae_scale_factor(self):
-        if self.vae is None:
-            return 8
-        if hasattr(self.vae, "spatial_compression_ratio"):
-            return self.vae.spatial_compression_ratio
-        else:  # Flux VAE
-            return 2 ** (len(self.vae.config.block_out_channels) - 1)
+        # PRXPixel operates directly in RGB pixel space: no VAE, no spatial compression.
+        return 1
 
     @property
+    # Copied from diffusers.pipelines.prx.pipeline_prx.PRXPipeline.do_classifier_free_guidance
     def do_classifier_free_guidance(self):
         """Check if classifier-free guidance is enabled based on guidance scale."""
         return self._guidance_scale > 1.0
 
     @property
+    # Copied from diffusers.pipelines.prx.pipeline_prx.PRXPipeline.guidance_scale
     def guidance_scale(self):
         return self._guidance_scale
 
-    def get_default_resolution(self):
-        """Determine the default resolution based on the loaded VAE and config.
-
-        Returns:
-            int: The default sample size (height/width) to use for generation.
-        """
-        default_from_config = getattr(self.config, "default_sample_size", None)
-        if default_from_config is not None:
-            return default_from_config
-
-        return DEFAULT_RESOLUTION
-
-    def prepare_latents(
+    def _tokenize_prompts(
         self,
-        batch_size: int,
-        num_channels_latents: int,
-        height: int,
-        width: int,
-        dtype: torch.dtype,
+        prompts: list[str],
         device: torch.device,
-        generator: torch.Generator | None = None,
-        latents: torch.Tensor | None = None,
-    ):
-        """Prepare initial latents for the diffusion process."""
-        if latents is None:
-            spatial_compression = self.vae_scale_factor
-            latent_height, latent_width = (
-                height // spatial_compression,
-                width // spatial_compression,
-            )
-            shape = (batch_size, num_channels_latents, latent_height, latent_width)
-            latents = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
-        else:
-            latents = latents.to(device)
-        return latents
+        tokenizer_max_length: int | None = None,
+        skip_text_cleaning: bool = False,
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        """Tokenize and (lightly) clean prompts.
 
+        PRXPixel always uses light cleaning (`_basic_clean`) and the training-time token budget
+        (`self.config.prompt_max_tokens`). The `tokenizer_max_length` and `skip_text_cleaning` arguments are accepted
+        for API compatibility with the copied callers but are ignored.
+        """
+        cleaned = [_basic_clean(text) for text in prompts]
+        tokens = self.tokenizer(
+            cleaned,
+            padding="max_length",
+            max_length=self.config.prompt_max_tokens,
+            truncation=True,
+            return_attention_mask=True,
+            return_tensors="pt",
+        )
+        return tokens["input_ids"].to(device), tokens["attention_mask"].bool().to(device)
+
+    # Copied from diffusers.pipelines.prx.pipeline_prx.PRXPipeline._encode_prompt_standard
+    def _encode_prompt_standard(
+        self,
+        prompt: list[str],
+        device: torch.device,
+        do_classifier_free_guidance: bool = True,
+        negative_prompt: str = "",
+        tokenizer_max_length: int | None = None,
+        skip_text_cleaning: bool = False,
+    ):
+        """Encode prompt using standard text encoder and tokenizer with batch processing."""
+        batch_size = len(prompt)
+
+        if do_classifier_free_guidance:
+            if isinstance(negative_prompt, str):
+                negative_prompt = [negative_prompt] * batch_size
+
+            prompts_to_encode = negative_prompt + prompt
+        else:
+            prompts_to_encode = prompt
+
+        input_ids, attention_mask = self._tokenize_prompts(
+            prompts_to_encode, device, tokenizer_max_length=tokenizer_max_length, skip_text_cleaning=skip_text_cleaning
+        )
+
+        with torch.no_grad():
+            embeddings = self.text_encoder(
+                input_ids=input_ids,
+                attention_mask=attention_mask,
+                output_hidden_states=True,
+            )["last_hidden_state"]
+
+        if do_classifier_free_guidance:
+            uncond_text_embeddings, text_embeddings = embeddings.split(batch_size, dim=0)
+            uncond_cross_attn_mask, cross_attn_mask = attention_mask.split(batch_size, dim=0)
+        else:
+            text_embeddings = embeddings
+            cross_attn_mask = attention_mask
+            uncond_text_embeddings = None
+            uncond_cross_attn_mask = None
+
+        return text_embeddings, cross_attn_mask, uncond_text_embeddings, uncond_cross_attn_mask
+
+    # Copied from diffusers.pipelines.prx.pipeline_prx.PRXPipeline.encode_prompt
     def encode_prompt(
         self,
         prompt: str | list[str],
@@ -434,69 +321,6 @@ class PRXPipeline(
             negative_prompt_attention_mask if do_classifier_free_guidance else None,
         )
 
-    def _tokenize_prompts(
-        self,
-        prompts: list[str],
-        device: torch.device,
-        tokenizer_max_length: int | None = None,
-        skip_text_cleaning: bool = False,
-    ):
-        """Tokenize and clean prompts."""
-        clean_fn = self.text_preprocessor.basic_clean if skip_text_cleaning else self.text_preprocessor.clean_text
-        cleaned = [clean_fn(text) for text in prompts]
-        max_length = tokenizer_max_length or self.tokenizer.model_max_length
-        tokens = self.tokenizer(
-            cleaned,
-            padding="max_length",
-            max_length=max_length,
-            truncation=True,
-            return_attention_mask=True,
-            return_tensors="pt",
-        )
-        return tokens["input_ids"].to(device), tokens["attention_mask"].bool().to(device)
-
-    def _encode_prompt_standard(
-        self,
-        prompt: list[str],
-        device: torch.device,
-        do_classifier_free_guidance: bool = True,
-        negative_prompt: str = "",
-        tokenizer_max_length: int | None = None,
-        skip_text_cleaning: bool = False,
-    ):
-        """Encode prompt using standard text encoder and tokenizer with batch processing."""
-        batch_size = len(prompt)
-
-        if do_classifier_free_guidance:
-            if isinstance(negative_prompt, str):
-                negative_prompt = [negative_prompt] * batch_size
-
-            prompts_to_encode = negative_prompt + prompt
-        else:
-            prompts_to_encode = prompt
-
-        input_ids, attention_mask = self._tokenize_prompts(
-            prompts_to_encode, device, tokenizer_max_length=tokenizer_max_length, skip_text_cleaning=skip_text_cleaning
-        )
-
-        with torch.no_grad():
-            embeddings = self.text_encoder(
-                input_ids=input_ids,
-                attention_mask=attention_mask,
-                output_hidden_states=True,
-            )["last_hidden_state"]
-
-        if do_classifier_free_guidance:
-            uncond_text_embeddings, text_embeddings = embeddings.split(batch_size, dim=0)
-            uncond_cross_attn_mask, cross_attn_mask = attention_mask.split(batch_size, dim=0)
-        else:
-            text_embeddings = embeddings
-            cross_attn_mask = attention_mask
-            uncond_text_embeddings = None
-            uncond_cross_attn_mask = None
-
-        return text_embeddings, cross_attn_mask, uncond_text_embeddings, uncond_cross_attn_mask
-
     def check_inputs(
         self,
         prompt: str | list[str],
@@ -551,6 +375,34 @@ class PRXPipeline(
                 f"`callback_on_step_end_tensor_inputs` has to be in {self._callback_tensor_inputs}, but found {[k for k in callback_on_step_end_tensor_inputs if k not in self._callback_tensor_inputs]}"
             )
 
+    def prepare_latents(
+        self,
+        batch_size: int,
+        num_channels_latents: int,
+        height: int,
+        width: int,
+        dtype: torch.dtype,
+        device: torch.device,
+        generator: torch.Generator | None = None,
+        latents: torch.Tensor | None = None,
+    ):
+        """Prepare initial latents for the diffusion process.
+
+        PRXPixel trains with a non-unit initial-noise scale, so the sampled noise is multiplied by
+        `self.config.noise_scale`.
+        """
+        if latents is None:
+            spatial_compression = self.vae_scale_factor
+            latent_height, latent_width = (
+                height // spatial_compression,
+                width // spatial_compression,
+            )
+            shape = (batch_size, num_channels_latents, latent_height, latent_width)
+            latents = randn_tensor(shape, generator=generator, device=device, dtype=dtype) * self.config.noise_scale
+        else:
+            latents = latents.to(device)
+        return latents
+
     @torch.no_grad()
     @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
@@ -574,8 +426,6 @@ class PRXPipeline(
         use_resolution_binning: bool = True,
         callback_on_step_end: Callable[[int, int], None] | None = None,
         callback_on_step_end_tensor_inputs: list[str] = ["latents"],
-        tokenizer_max_length: int | None = None,
-        skip_text_cleaning: bool = False,
     ):
         """
         Function invoked when calling the pipeline for generation.
@@ -587,9 +437,9 @@ class PRXPipeline(
             negative_prompt (`str`, *optional*, defaults to `""`):
                 The prompt or prompts not to guide the image generation. Ignored when not using guidance (i.e., ignored
                 if `guidance_scale` is less than `1`).
-            height (`int`, *optional*, defaults to self.transformer.config.sample_size * self.vae_scale_factor):
+            height (`int`, *optional*, defaults to `default_sample_size`):
                 The height in pixels of the generated image.
-            width (`int`, *optional*, defaults to self.transformer.config.sample_size * self.vae_scale_factor):
+            width (`int`, *optional*, defaults to `default_sample_size`):
                 The width in pixels of the generated image.
             num_inference_steps (`int`, *optional*, defaults to 28):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
@@ -629,12 +479,6 @@ class PRXPipeline(
             output_type (`str`, *optional*, defaults to `"pil"`):
                 The output format of the generate image. Choose between
                 [PIL](https://pillow.readthedocs.io/en/stable/): `PIL.Image.Image` or `np.array`.
-            tokenizer_max_length (`int`, *optional*):
-                Override the maximum number of tokens used when tokenizing the prompt. Defaults to the tokenizer's own
-                ``model_max_length`` when not set.
-            skip_text_cleaning (`bool`, *optional*, defaults to `False`):
-                If `True`, uses only light prompt cleaning (fix encoding + unescape HTML) instead of the full DeepFloyd
-                cleaning pipeline.
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`~pipelines.prx.PRXPipelineOutput`] instead of a plain tuple.
             use_resolution_binning (`bool`, *optional*, defaults to `True`):
@@ -659,17 +503,17 @@ class PRXPipeline(
         """
 
         # 0. Set height and width
-        default_resolution = self.get_default_resolution()
+        default_resolution = getattr(self.config, "default_sample_size", None) or PRX_PIXEL_DEFAULT_RESOLUTION
         height = height or default_resolution
         width = width or default_resolution
 
         if use_resolution_binning:
-            if self.default_sample_size not in ASPECT_RATIO_BINS:
+            if self.config.default_sample_size not in ASPECT_RATIO_BINS:
                 raise ValueError(
                     f"Resolution binning is only supported for default_sample_size in {list(ASPECT_RATIO_BINS.keys())}, "
-                    f"but got {self.default_sample_size}. Set use_resolution_binning=False to disable aspect ratio binning."
+                    f"but got {self.config.default_sample_size}. Set use_resolution_binning=False to disable aspect ratio binning."
                 )
-            aspect_ratio_bin = ASPECT_RATIO_BINS[self.default_sample_size]
+            aspect_ratio_bin = ASPECT_RATIO_BINS[self.config.default_sample_size]
 
             # Store original dimensions
             orig_height, orig_width = height, width
@@ -686,12 +530,6 @@ class PRXPipeline(
             prompt_embeds,
             negative_prompt_embeds,
         )
-
-        if self.vae is None and output_type not in ["latent", "pt"]:
-            raise ValueError(
-                f"VAE is required for output_type='{output_type}' but it is not available. "
-                "Either provide a VAE or set output_type='latent' or 'pt' to get latent outputs."
-            )
 
         if prompt is not None and isinstance(prompt, str):
             batch_size = 1
@@ -716,8 +554,6 @@ class PRXPipeline(
             negative_prompt_embeds=negative_prompt_embeds,
             prompt_attention_mask=prompt_attention_mask,
             negative_prompt_attention_mask=negative_prompt_attention_mask,
-            tokenizer_max_length=tokenizer_max_length,
-            skip_text_cleaning=skip_text_cleaning,
         )
         # Expose standard names for callbacks parity
         prompt_embeds = text_embeddings
@@ -734,12 +570,8 @@ class PRXPipeline(
 
         self.num_timesteps = len(timesteps)
 
-        # 4. Prepare latent variables
-        if self.vae is not None:
-            num_channels_latents = self.vae.config.latent_channels
-        else:
-            # When vae is None, get latent channels from transformer
-            num_channels_latents = self.transformer.config.in_channels
+        # 4. Prepare latent variables (pixel space: in_channels RGB tensors, no VAE)
+        num_channels_latents = self.transformer.config.in_channels
         latents = self.prepare_latents(
             batch_size * num_images_per_prompt,
             num_channels_latents,
@@ -796,6 +628,10 @@ class PRXPipeline(
                     noise_uncond, noise_text = noise_pred.chunk(2, dim=0)
                     noise_pred = noise_uncond + guidance_scale * (noise_text - noise_uncond)
 
+                # PRXPixel predicts x0; convert to flow-matching velocity before the scheduler step.
+                t_x = torch.clamp(t.float() / self.scheduler.config.num_train_timesteps, min=0.05)
+                noise_pred = (latents - noise_pred) / t_x
+
                 # Compute the previous noisy sample x_t -> x_t-1
                 latents = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs).prev_sample
 
@@ -809,16 +645,11 @@ class PRXPipeline(
                 if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
                     progress_bar.update()
 
-        # 8. Post-processing
-        if output_type == "latent" or (output_type == "pt" and self.vae is None):
+        # 8. Post-processing (pixel space: the denoised output IS the image in [-1, 1]; no VAE decode).
+        if output_type in ["latent", "pt"]:
             image = latents
         else:
-            # Unscale latents for VAE (supports both AutoencoderKL and AutoencoderDC)
-            scaling_factor = getattr(self.vae.config, "scaling_factor", 0.18215)
-            shift_factor = getattr(self.vae.config, "shift_factor", 0.0)
-            latents = (latents / scaling_factor) + shift_factor
-            # Decode using VAE (AutoencoderKL or AutoencoderDC)
-            image = self.vae.decode(latents, return_dict=False)[0]
+            image = latents
             # Resize back to original resolution if using binning
             if use_resolution_binning:
                 image = self.image_processor.resize_and_crop_tensor(image, orig_width, orig_height)
