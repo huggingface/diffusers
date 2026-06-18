@@ -264,7 +264,7 @@ class BriaFiboEditPipeline(DiffusionPipeline, FluxLoraLoaderMixin):
             scheduler=scheduler,
         )
 
-        self.vae_scale_factor = 16
+        self.vae_scale_factor = self.vae.config.scale_factor_spatial if getattr(self, "vae", None) else 16
         self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor)  # * 2)
         self.default_sample_size = 32  # 64
 
