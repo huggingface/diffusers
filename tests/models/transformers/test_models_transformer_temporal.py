@@ -13,55 +13,77 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import unittest
-
 import torch
 
 from diffusers.models.transformers import TransformerTemporalModel
+from diffusers.utils.torch_utils import randn_tensor
 
-from ...testing_utils import (
-    enable_full_determinism,
-    torch_device,
+from ...testing_utils import enable_full_determinism, torch_device
+from ..testing_utils import (
+    AttentionTesterMixin,
+    BaseModelTesterConfig,
+    MemoryTesterMixin,
+    ModelTesterMixin,
+    TrainingTesterMixin,
 )
-from ..test_modeling_common import ModelTesterMixin
 
 
 enable_full_determinism()
 
 
-class TemporalTransformerTests(ModelTesterMixin, unittest.TestCase):
-    model_class = TransformerTemporalModel
-    main_input_name = "hidden_states"
+class TemporalTransformerTesterConfig(BaseModelTesterConfig):
+    @property
+    def model_class(self):
+        return TransformerTemporalModel
 
     @property
-    def dummy_input(self):
-        batch_size = 2
-        num_channels = 4
-        height = width = 32
+    def main_input_name(self) -> str:
+        return "hidden_states"
 
-        hidden_states = torch.randn((batch_size, num_channels, height, width)).to(torch_device)
-        timestep = torch.randint(0, 1000, size=(batch_size,)).to(torch_device)
+    @property
+    def input_shape(self) -> tuple:
+        return (4, 32, 32)
 
+    @property
+    def output_shape(self) -> tuple:
+        return (4, 32, 32)
+
+    @property
+    def generator(self):
+        return torch.Generator("cpu").manual_seed(0)
+
+    def get_init_dict(self) -> dict:
         return {
-            "hidden_states": hidden_states,
-            "timestep": timestep,
-        }
-
-    @property
-    def input_shape(self):
-        return (4, 32, 32)
-
-    @property
-    def output_shape(self):
-        return (4, 32, 32)
-
-    def prepare_init_args_and_inputs_for_common(self):
-        init_dict = {
             "num_attention_heads": 8,
             "attention_head_dim": 4,
             "in_channels": 4,
             "num_layers": 1,
             "norm_num_groups": 1,
         }
-        inputs_dict = self.dummy_input
-        return init_dict, inputs_dict
+
+    def get_dummy_inputs(self, batch_size: int = 2) -> dict[str, torch.Tensor]:
+        num_channels = 4
+        height = width = 32
+
+        return {
+            "hidden_states": randn_tensor(
+                (batch_size, num_channels, height, width), generator=self.generator, device=torch_device
+            ),
+            "timestep": torch.randint(0, 1000, size=(batch_size,), generator=self.generator).to(torch_device),
+        }
+
+
+class TestTemporalTransformer(TemporalTransformerTesterConfig, ModelTesterMixin):
+    pass
+
+
+class TestTemporalTransformerMemory(TemporalTransformerTesterConfig, MemoryTesterMixin):
+    pass
+
+
+class TestTemporalTransformerAttention(TemporalTransformerTesterConfig, AttentionTesterMixin):
+    pass
+
+
+class TestTemporalTransformerTraining(TemporalTransformerTesterConfig, TrainingTesterMixin):
+    pass
