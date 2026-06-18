@@ -150,8 +150,6 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .deprecated import KarrasVeScheduler, ScoreSdeVpScheduler
         from .scheduling_amused import AmusedScheduler
         from .scheduling_block_refinement import BlockRefinementScheduler, BlockRefinementSchedulerOutput
-        from .scheduling_discrete_ddim import DiscreteDDIMScheduler, DiscreteDDIMSchedulerOutput
-        from .scheduling_entropy_bound import EntropyBoundScheduler, EntropyBoundSchedulerOutput
         from .scheduling_consistency_decoder import ConsistencyDecoderScheduler
         from .scheduling_consistency_models import CMStochasticIterativeScheduler
         from .scheduling_ddim import DDIMScheduler
@@ -162,12 +160,14 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .scheduling_ddpm_parallel import DDPMParallelScheduler
         from .scheduling_ddpm_wuerstchen import DDPMWuerstchenScheduler
         from .scheduling_deis_multistep import DEISMultistepScheduler
+        from .scheduling_discrete_ddim import DiscreteDDIMScheduler, DiscreteDDIMSchedulerOutput
         from .scheduling_dpm_cogvideox import CogVideoXDPMScheduler
         from .scheduling_dpmsolver_multistep import DPMSolverMultistepScheduler
         from .scheduling_dpmsolver_multistep_inverse import DPMSolverMultistepInverseScheduler
         from .scheduling_dpmsolver_singlestep import DPMSolverSinglestepScheduler
         from .scheduling_edm_dpmsolver_multistep import EDMDPMSolverMultistepScheduler
         from .scheduling_edm_euler import EDMEulerScheduler
+        from .scheduling_entropy_bound import EntropyBoundScheduler, EntropyBoundSchedulerOutput
         from .scheduling_euler_ancestral_discrete import EulerAncestralDiscreteScheduler
         from .scheduling_euler_discrete import EulerDiscreteScheduler
         from .scheduling_flow_map_euler_discrete import FlowMapEulerDiscreteScheduler
