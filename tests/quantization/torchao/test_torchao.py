@@ -29,6 +29,7 @@ from diffusers import (
     FluxTransformer2DModel,
     TorchAoConfig,
 )
+from diffusers.models.attention import AttentionModuleMixin
 from diffusers.models.attention_processor import Attention
 from diffusers.quantizers import PipelineQuantizationConfig
 
@@ -231,8 +232,8 @@ class TorchAoTest(unittest.TestCase):
                 (Int8DynamicActivationIntxWeightConfig(version=2), np.array([0.4688, 0.5195, 0.5547, 0.418, 0.4414, 0.6406, 0.4336, 0.4531, 0.5625])),
                 (Int8WeightOnlyConfig(version=2), np.array([0.4648, 0.5195, 0.5547, 0.4199, 0.4414, 0.6445, 0.4316, 0.4531, 0.5625])),
                 (Int8DynamicActivationInt8WeightConfig(version=2), np.array([0.4648, 0.5195, 0.5547, 0.4199, 0.4414, 0.6445, 0.4316, 0.4531, 0.5625])),
-                (IntxWeightOnlyConfig(dtype=torch.uint4, group_size=16, version=2), np.array([0.4609, 0.5234, 0.5508, 0.4199, 0.4336, 0.6406, 0.4316, 0.4531, 0.5625])),
-                (IntxWeightOnlyConfig(dtype=torch.uint7, group_size=16, version=2), np.array([0.4648, 0.5195, 0.5547, 0.4219, 0.4414, 0.6445, 0.4316, 0.4531, 0.5625])),
+                (IntxWeightOnlyConfig(weight_dtype=torch.int4, version=2), np.array([0.4609, 0.5234, 0.5508, 0.4199, 0.4336, 0.6406, 0.4316, 0.4531, 0.5625])),
+                (IntxWeightOnlyConfig(weight_dtype=torch.int7, version=2), np.array([0.4648, 0.5195, 0.5547, 0.4219, 0.4414, 0.6445, 0.4316, 0.4531, 0.5625])),
             ]
 
             if _is_xpu_or_cuda_capability_atleast_8_9():
@@ -393,7 +394,7 @@ class TorchAoTest(unittest.TestCase):
                 param.data = param.data.to(torch.float32)
 
         for _, module in quantized_model.named_modules():
-            if isinstance(module, Attention):
+            if isinstance(module, (Attention, AttentionModuleMixin)):
                 module.to_q = LoRALayer(module.to_q, rank=4)
                 module.to_k = LoRALayer(module.to_k, rank=4)
                 module.to_v = LoRALayer(module.to_v, rank=4)
@@ -457,7 +458,7 @@ class TorchAoTest(unittest.TestCase):
             # Will quantize all the linear layers
             for module in transformer_int8wo.modules():
                 if isinstance(module, nn.Linear):
-                    self.assertTrue(isinstance(module.weight, Int8Tensor))
+                    self.assertTrue(isinstance(module.weight, TorchAOBaseTensor))
 
             total_int4wo = get_model_size_in_bytes(transformer_int4wo)
             total_int4wo_gs32 = get_model_size_in_bytes(transformer_int4wo_gs32)
