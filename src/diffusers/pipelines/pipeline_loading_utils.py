@@ -388,9 +388,35 @@ def maybe_raise_or_warn(
         )
 
 
+# Reroutes pretrained loads past pipeline-local deprecation shims onto the canonical
+# top-level diffusers export.
+_RELOCATED_PIPELINE_CLASSES: dict[tuple[str, str], tuple[str, str]] = {
+    ("audioldm2", "AudioLDM2ProjectionModel"): ("diffusers", "AudioLDM2ProjectionModel"),
+    ("audioldm2", "AudioLDM2UNet2DConditionModel"): ("diffusers", "AudioLDM2UNet2DConditionModel"),
+    ("stable_audio", "StableAudioProjectionModel"): ("diffusers", "StableAudioProjectionModel"),
+    ("deepfloyd_if", "IFWatermarker"): ("diffusers", "IFWatermarker"),
+    ("ltx", "LTXLatentUpsamplerModel"): ("diffusers", "LTXLatentUpsamplerModel"),
+    ("ltx2", "LTX2TextConnectors"): ("diffusers", "LTX2TextConnectors"),
+    ("ltx2", "LTX2Vocoder"): ("diffusers", "LTX2Vocoder"),
+    ("ltx2", "LTX2VocoderWithBWE"): ("diffusers", "LTX2VocoderWithBWE"),
+    ("ltx2", "LTX2LatentUpsamplerModel"): ("diffusers", "LTX2LatentUpsamplerModel"),
+    ("flux", "ReduxImageEncoder"): ("diffusers", "ReduxImageEncoder"),
+    ("shap_e", "ShapERenderer"): ("diffusers", "ShapERenderer"),
+    ("ace_step", "AceStepAudioTokenizer"): ("diffusers", "AceStepAudioTokenizer"),
+    ("ace_step", "AceStepAudioTokenDetokenizer"): ("diffusers", "AceStepAudioTokenDetokenizer"),
+    ("ace_step", "AceStepConditionEncoder"): ("diffusers", "AceStepConditionEncoder"),
+    ("stable_diffusion", "CLIPImageProjection"): ("diffusers", "CLIPImageProjection"),
+    ("stable_diffusion", "StableUnCLIPImageNormalizer"): ("diffusers", "StableUnCLIPImageNormalizer"),
+}
+
+
 # a simpler version of get_class_obj_and_candidates, it won't work with custom code
 def simple_get_class_obj(library_name, class_name):
     from diffusers import pipelines
+
+    remapped = _RELOCATED_PIPELINE_CLASSES.get((library_name, class_name))
+    if remapped is not None:
+        library_name, class_name = remapped
 
     is_pipeline_module = hasattr(pipelines, library_name)
 
@@ -424,6 +450,11 @@ def get_class_obj_and_candidates(
 
     if class_name.startswith("FlashPack"):
         class_name = class_name.removeprefix("FlashPack")
+
+    remapped = _RELOCATED_PIPELINE_CLASSES.get((library_name, class_name))
+    if remapped is not None:
+        library_name, class_name = remapped
+        is_pipeline_module = False
 
     if is_pipeline_module:
         pipeline_module = getattr(pipelines, library_name)

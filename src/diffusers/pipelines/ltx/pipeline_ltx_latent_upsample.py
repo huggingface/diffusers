@@ -16,11 +16,11 @@ import torch
 
 from ...image_processor import PipelineImageInput
 from ...models import AutoencoderKLLTXVideo
+from ...models.autoencoders import LTXLatentUpsamplerModel
 from ...utils import deprecate, get_logger
 from ...utils.torch_utils import randn_tensor
 from ...video_processor import VideoProcessor
 from ..pipeline_utils import DiffusionPipeline
-from .modeling_latent_upsampler import LTXLatentUpsamplerModel
 from .pipeline_output import LTXPipelineOutput
 
 

@@ -27,9 +27,8 @@ from diffusers import (
     LTX2HDRPipeline,
     LTX2VideoTransformer3DModel,
 )
+from diffusers.models.autoencoders import LTX2LatentUpsamplerModel, LTX2Vocoder
 from diffusers.pipelines.ltx2 import LTX2HDRReferenceCondition, LTX2TextConnectors
-from diffusers.pipelines.ltx2.latent_upsampler import LTX2LatentUpsamplerModel
-from diffusers.pipelines.ltx2.vocoder import LTX2Vocoder
 from diffusers.utils import logging
 
 from ...testing_utils import enable_full_determinism, require_accelerator, torch_device
