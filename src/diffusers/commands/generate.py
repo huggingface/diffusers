@@ -164,6 +164,20 @@ def _add_optimization_arguments(parser: ArgumentParser) -> None:
             "Requires a DiT-based pipeline and launching the CLI under torchrun with ≥2 GPUs."
         ),
     )
+    parser.add_argument(
+        "--compile",
+        nargs="?",
+        const="{}",
+        default=None,
+        metavar="JSON",
+        help=(
+            "torch.compile every denoiser submodule on the pipeline. Accepts an optional JSON "
+            'object of kwargs forwarded to ``torch.compile``, e.g. \'{"mode": "max-autotune", '
+            '"fullgraph": true}\'. Bare ``--compile`` uses torch defaults. Adds a one-time compilation '
+            "cost on the first step but speeds up every subsequent step — worth it for multi-step "
+            "generation (50+ steps)."
+        ),
+    )
 
 
 def _add_output_arguments(parser: ArgumentParser) -> None:
@@ -334,15 +348,52 @@ def _enable_context_parallel(pipeline: Any) -> None:
 
 
 def _apply_optimizations(pipeline: Any, args: Namespace) -> None:
-    """Apply VAE tiling/slicing, attention backend, and context-parallel toggles."""
-    if args.vae_tiling and hasattr(pipeline, "enable_vae_tiling"):
-        pipeline.enable_vae_tiling()
-    if args.vae_slicing and hasattr(pipeline, "enable_vae_slicing"):
-        pipeline.enable_vae_slicing()
+    """Apply VAE tiling/slicing, attention backend, context-parallel, and torch.compile toggles."""
+    vae = getattr(pipeline, "vae", None)
+    if args.vae_tiling and vae is not None and hasattr(vae, "enable_tiling"):
+        vae.enable_tiling()
+    if args.vae_slicing and vae is not None and hasattr(vae, "enable_slicing"):
+        vae.enable_slicing()
     if args.attention_backend != "default":
         _set_attention_backend(pipeline, args.attention_backend)
     if args.context_parallel:
         _enable_context_parallel(pipeline)
+    if args.compile is not None:
+        _compile_denoiser(pipeline, args.compile)
+
+
+def _compile_denoiser(pipeline: Any, compile_spec: str) -> None:
+    """Compile every ``transformer*`` and ``unet*`` submodule on the pipeline.
+
+    ``compile_spec`` is the raw JSON string from ``--compile`` (``"{}"`` for bare flag). Decoded into kwargs and
+    forwarded verbatim to the compile call.
+
+    Prefers regional compilation via ``module.compile_repeated_blocks(**kwargs)`` — only compiles the repeated inner
+    blocks (the bulk of the compute), much faster first-step latency than compiling the whole module. Falls back to
+    full ``torch.compile`` if the model doesn't expose ``_repeated_blocks``.
+    """
+    import torch
+
+    try:
+        compile_kwargs = json.loads(compile_spec)
+    except json.JSONDecodeError as e:
+        raise SystemExit(f"--compile must be valid JSON: {e}") from e
+    if not isinstance(compile_kwargs, dict):
+        raise SystemExit("--compile must decode to a JSON object.")
+
+    for attr in dir(pipeline):
+        if not (attr.startswith("transformer") or attr.startswith("unet")):
+            continue
+        module = getattr(pipeline, attr, None)
+        if not isinstance(module, torch.nn.Module):
+            continue
+
+        if getattr(module, "_repeated_blocks", None):
+            # Regional compile — only the repeated blocks. Mutates `module` in place.
+            module.compile_repeated_blocks(**compile_kwargs)
+        else:
+            # No regional metadata declared; fall back to compiling the whole module.
+            setattr(pipeline, attr, torch.compile(module, **compile_kwargs))
 
 
 def _from_pretrained_kwargs(args: Namespace) -> dict[str, Any]:
