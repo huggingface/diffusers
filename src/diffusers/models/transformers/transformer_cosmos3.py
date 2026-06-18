@@ -128,7 +128,11 @@ class Cosmos3VLTextRotaryEmbedding(nn.Module):
             self.inv_freq[None, None, :, None].float().expand(3, position_ids.shape[1], -1, 1).to(device)
         )  # [3,B,head_dim//2,1]
         position_ids_expanded = position_ids[:, :, None, :].float()  # [3,B,1,N]
-        freqs = (inv_freq_expanded @ position_ids_expanded).transpose(2, 3)  # [3,B,N,head_dim//2]
+        # Disable autocast so the position-id matmul runs in float32: under an ambient autocast it would run in
+        # bfloat16, which cannot represent consecutive integers past 256, collapsing positions onto the same
+        # frequency and degrading the rotary embedding.
+        with torch.autocast(device_type=position_ids.device.type, enabled=False):
+            freqs = (inv_freq_expanded @ position_ids_expanded).transpose(2, 3)  # [3,B,N,head_dim//2]
         freqs = self.apply_interleaved_mrope(freqs, self.rope_axes_dim)  # [B,N,head_dim//2]
         emb = torch.cat((freqs, freqs), dim=-1)  # [B,N,head_dim]
         return emb.cos().to(dtype=dtype), emb.sin().to(dtype=dtype)  # each: [B,N,head_dim]
