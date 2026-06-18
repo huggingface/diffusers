@@ -55,12 +55,13 @@ class DiffusionGemmaPipelineInputTest(unittest.TestCase):
     def test_prepare_input_ids_from_1d_tensor(self):
         pipe = _make_dummy_pipeline()
         ids = torch.tensor([1, 2, 3], dtype=torch.long)
-        result_ids, result_mask = pipe._prepare_input_ids(
+        result_ids, result_mask, multimodal = pipe._prepare_input_ids(
             prompt=None, messages=None, input_ids=ids, attention_mask=None, add_generation_prompt=False
         )
         self.assertEqual(result_ids.shape, (1, 3))
         self.assertEqual(result_mask.shape, (1, 3))
         self.assertTrue((result_mask == 1).all().item())
+        self.assertEqual(multimodal, {})
 
 
 # --- End-to-end generation: the prefill-once path drives the real encoder/decoder, so it needs the tiny model ---
@@ -132,6 +133,24 @@ class DiffusionGemmaPipelineTest(unittest.TestCase):
             callback_on_step_end_tensor_inputs=keys,
         )
         self.assertEqual(set(observed), set(keys))
+
+    def test_generate_with_image(self):
+        import numpy as np
+        from PIL import Image
+
+        image = Image.fromarray((np.random.rand(64, 64, 3) * 255).astype("uint8"))
+        messages = [
+            {"role": "user", "content": [{"type": "image", "image": image}, {"type": "text", "text": "What?"}]}
+        ]
+        out = self.pipe(
+            messages=messages,
+            gen_length=self.canvas_length,
+            num_inference_steps=2,
+            temperature=0.0,
+            eos_early_stop=False,
+            output_type="seq",
+        )
+        self.assertEqual(out.sequences.shape, (1, self.canvas_length))
 
     def test_static_cache_matches_dynamic(self):
         kwargs = {

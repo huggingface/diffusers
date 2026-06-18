@@ -105,8 +105,14 @@ class DiffusionGemmaPipeline(DiffusionPipeline):
         input_ids: torch.LongTensor | None,
         attention_mask: torch.LongTensor | None,
         add_generation_prompt: bool,
-    ) -> tuple[torch.LongTensor, torch.LongTensor]:
-        """Convert prompt/messages/input_ids to `(input_ids, attention_mask)` tensors of shape `[batch, seq]`."""
+        pixel_values: torch.FloatTensor | None = None,
+        image_position_ids: torch.LongTensor | None = None,
+        mm_token_type_ids: torch.LongTensor | None = None,
+    ) -> tuple[torch.LongTensor, torch.LongTensor, dict[str, torch.Tensor]]:
+        """Convert prompt/messages/input_ids to `(input_ids, attention_mask, multimodal_inputs)`, where
+        `multimodal_inputs` holds any image tensors (`pixel_values`, `image_position_ids`, `mm_token_type_ids`) to
+        forward to the encoder prefill."""
+        multimodal_keys = ("pixel_values", "image_position_ids", "mm_token_type_ids")
         if input_ids is not None:
             if input_ids.ndim == 1:
                 input_ids = input_ids.unsqueeze(0)
@@ -114,7 +120,13 @@ class DiffusionGemmaPipeline(DiffusionPipeline):
                 attention_mask = torch.ones_like(input_ids, dtype=torch.long)
             elif attention_mask.ndim == 1:
                 attention_mask = attention_mask.unsqueeze(0)
-            return input_ids, attention_mask.to(dtype=torch.long)
+            multimodal_inputs = {
+                "pixel_values": pixel_values,
+                "image_position_ids": image_position_ids,
+                "mm_token_type_ids": mm_token_type_ids,
+            }
+            multimodal_inputs = {k: v for k, v in multimodal_inputs.items() if v is not None}
+            return input_ids, attention_mask.to(dtype=torch.long), multimodal_inputs
 
         if self.processor is None:
             raise ValueError("`processor` is required when `input_ids` is not provided.")
@@ -136,7 +148,8 @@ class DiffusionGemmaPipeline(DiffusionPipeline):
         mask = encoded.get("attention_mask")
         if mask is None:
             mask = torch.ones_like(ids, dtype=torch.long)
-        return ids, mask.to(dtype=torch.long)
+        multimodal_inputs = {k: encoded[k] for k in multimodal_keys if k in encoded}
+        return ids, mask.to(dtype=torch.long), multimodal_inputs
 
     def check_inputs(
         self,
@@ -176,6 +189,9 @@ class DiffusionGemmaPipeline(DiffusionPipeline):
         messages: list[dict[str, str]] | None = None,
         input_ids: torch.LongTensor | None = None,
         attention_mask: torch.LongTensor | None = None,
+        pixel_values: torch.FloatTensor | None = None,
+        image_position_ids: torch.LongTensor | None = None,
+        mm_token_type_ids: torch.LongTensor | None = None,
         add_generation_prompt: bool = True,
         gen_length: int = 256,
         num_inference_steps: int = 48,
@@ -209,6 +225,14 @@ class DiffusionGemmaPipeline(DiffusionPipeline):
                 Pre-tokenized prompt IDs. Takes precedence over `prompt` and `messages`.
             attention_mask (`torch.LongTensor`, *optional*):
                 Per-token mask matching `input_ids`. Only used when `input_ids` is provided.
+            pixel_values (`torch.FloatTensor`, *optional*):
+                Image features for multimodal prompts, forwarded to the encoder prefill. When the prompt is built from
+                `messages` with image content, the processor produces these (and `image_position_ids` /
+                `mm_token_type_ids`) automatically; pass them explicitly only alongside pre-tokenized `input_ids`.
+            image_position_ids (`torch.LongTensor`, *optional*):
+                Patch position coordinates for `pixel_values`.
+            mm_token_type_ids (`torch.LongTensor`, *optional*):
+                Per-token modality ids marking image vs text positions for `pixel_values`.
             add_generation_prompt (`bool`, defaults to `True`):
                 Whether to add the generation prompt when applying the chat template.
             gen_length (`int`, defaults to `256`):
@@ -269,17 +293,21 @@ class DiffusionGemmaPipeline(DiffusionPipeline):
             callback_on_step_end_tensor_inputs=callback_on_step_end_tensor_inputs,
         )
 
-        prompt_ids, prompt_attention_mask = self._prepare_input_ids(
+        prompt_ids, prompt_attention_mask, multimodal_inputs = self._prepare_input_ids(
             prompt=prompt,
             messages=messages,
             input_ids=input_ids,
             attention_mask=attention_mask,
             add_generation_prompt=add_generation_prompt,
+            pixel_values=pixel_values,
+            image_position_ids=image_position_ids,
+            mm_token_type_ids=mm_token_type_ids,
         )
 
         device = self._execution_device
         prompt_ids = prompt_ids.to(device=device)
         prompt_attention_mask = prompt_attention_mask.to(device=device)
+        multimodal_inputs = {k: v.to(device=device) for k, v in multimodal_inputs.items()}
         batch_size, prompt_length = prompt_ids.shape
 
         if eos_token_id is None:
@@ -319,6 +347,8 @@ class DiffusionGemmaPipeline(DiffusionPipeline):
                 attention_mask=cur_attention_mask,
                 past_key_values=past_key_values,
                 position_ids=torch.arange(cached_len, cur_len, device=device).unsqueeze(0),
+                # Image tensors are consumed by the prompt prefill only; later blocks encode text-only canvases.
+                **(multimodal_inputs if cached_len == 0 else {}),
             )
 
             # Build the 4D decoder mask once per block (outside any compiled region). A static cache spans its full
