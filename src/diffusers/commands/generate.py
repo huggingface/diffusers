@@ -80,7 +80,6 @@ _DEFAULT_REMOTE_DEPS = (
     "safetensors",
     "sentencepiece",  # required by several text-encoder tokenizers (T5, LLaMA, …)
     "ftfy",  # required by older CLIP text-encoder paths
-    "kernels",  # required by hub-hosted attention backends (flash_hub, sage_hub, …)
 )
 
 # Base container image — provides torch + CUDA so ``uv pip install --system``
