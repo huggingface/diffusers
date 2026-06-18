@@ -527,6 +527,8 @@
         title: DeepFloyd IF
       - local: api/pipelines/dit
         title: DiT
+      - local: api/pipelines/dreamlite
+        title: DreamLite
       - local: api/pipelines/easyanimate
         title: EasyAnimate
       - local: api/pipelines/ernie_image
@@ -589,6 +591,8 @@
         title: PixArt-Σ
       - local: api/pipelines/prx
         title: PRX
+      - local: api/pipelines/prx_pixel
+        title: PRX Pixel
       - local: api/pipelines/qwenimage
         title: QwenImage
       - local: api/pipelines/sana
