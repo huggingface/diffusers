@@ -4,7 +4,7 @@ import torch
 import torch.nn as nn
 
 from ...configuration_utils import ConfigMixin, register_to_config
-from ...loaders import UNet2DConditionLoadersMixin
+from ...loaders import UNet2DConditionLoadersMixin, PeftAdapterMixin
 from ...utils import BaseOutput, logging
 from ...utils.torch_utils import maybe_adjust_dtype_for_device
 from ..attention import AttentionMixin
