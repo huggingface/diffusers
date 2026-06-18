@@ -1,9 +1,9 @@
 import math
 import os
-import urllib
 import warnings
 from argparse import ArgumentParser
 
+import requests
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -57,21 +57,26 @@ def _download(url: str, root: str):
         else:
             warnings.warn(f"{download_target} exists, but the SHA256 checksum does not match; re-downloading the file")
 
-    with urllib.request.urlopen(url) as source, open(download_target, "wb") as output:
-        with tqdm(
-            total=int(source.info().get("Content-Length")),
-            ncols=80,
-            unit="iB",
-            unit_scale=True,
-            unit_divisor=1024,
-        ) as loop:
-            while True:
-                buffer = source.read(8192)
-                if not buffer:
-                    break
-
-                output.write(buffer)
-                loop.update(len(buffer))
+    with requests.get(url, stream=True) as response:
+        response.raise_for_status()
+        # Content-Length may be absent; tqdm handles total=None gracefully.
+        total = response.headers.get("Content-Length")
+        total = int(total) if total is not None else None
+        with (
+            open(download_target, "wb") as output,
+            tqdm(
+                total=total,
+                ncols=80,
+                unit="iB",
+                unit_scale=True,
+                unit_divisor=1024,
+            ) as loop,
+        ):
+            for chunk in response.iter_content(chunk_size=8192):
+                if not chunk:
+                    continue
+                output.write(chunk)
+                loop.update(len(chunk))
 
     if insecure_hashlib.sha256(open(download_target, "rb").read()).hexdigest() != expected_sha256:
         raise RuntimeError("Model has been downloaded but the SHA256 checksum does not match")
