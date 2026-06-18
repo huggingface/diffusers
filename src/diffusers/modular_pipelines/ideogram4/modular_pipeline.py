@@ -12,11 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-
+from ...loaders import Ideogram4LoraLoaderMixin
 from ..modular_pipeline import ModularPipeline
 
 
-class Ideogram4ModularPipeline(ModularPipeline):
+class Ideogram4ModularPipeline(ModularPipeline, Ideogram4LoraLoaderMixin):
     """
     A ModularPipeline for Ideogram4.
 
