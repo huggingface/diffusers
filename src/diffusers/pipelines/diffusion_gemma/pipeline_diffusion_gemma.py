@@ -98,45 +98,29 @@ class DiffusionGemmaPipeline(DiffusionPipeline):
 
     # --- Prompt encoding ---
 
-    def _prepare_input_ids(
+    def _prepare_inputs(
         self,
         *,
         prompt: str | list[str] | None,
-        messages: list[dict[str, str]] | None,
-        input_ids: torch.LongTensor | None,
-        attention_mask: torch.LongTensor | None,
+        messages: list[dict] | None,
+        image: Any | list[Any] | None,
         add_generation_prompt: bool,
-        pixel_values: torch.FloatTensor | None = None,
-        image_position_ids: torch.LongTensor | None = None,
-        mm_token_type_ids: torch.LongTensor | None = None,
     ) -> tuple[torch.LongTensor, torch.LongTensor, dict[str, torch.Tensor]]:
-        """Convert prompt/messages/input_ids to `(input_ids, attention_mask, multimodal_inputs)`, where
-        `multimodal_inputs` holds any image tensors (`pixel_values`, `image_position_ids`, `mm_token_type_ids`) to
-        forward to the encoder prefill."""
-        multimodal_keys = ("pixel_values", "image_position_ids", "mm_token_type_ids")
-        if input_ids is not None:
-            if input_ids.ndim == 1:
-                input_ids = input_ids.unsqueeze(0)
-            if attention_mask is None:
-                attention_mask = torch.ones_like(input_ids, dtype=torch.long)
-            elif attention_mask.ndim == 1:
-                attention_mask = attention_mask.unsqueeze(0)
-            multimodal_inputs = {
-                "pixel_values": pixel_values,
-                "image_position_ids": image_position_ids,
-                "mm_token_type_ids": mm_token_type_ids,
-            }
-            multimodal_inputs = {k: v for k, v in multimodal_inputs.items() if v is not None}
-            return input_ids, attention_mask.to(dtype=torch.long), multimodal_inputs
+        """Tokenize a raw `prompt` (optionally with an `image`) or a raw `messages` conversation into
+        `(input_ids, attention_mask, multimodal_inputs)`, where `multimodal_inputs` holds the image tensors the
+        processor produced for the encoder prefill."""
 
-        if self.processor is None:
-            raise ValueError("`processor` is required when `input_ids` is not provided.")
+        def build_content(text, img):
+            if img is None:
+                return text
+            return [{"type": "image", "image": img}, {"type": "text", "text": text}]
 
         if messages is None:
             if isinstance(prompt, list):
-                messages = [[{"role": "user", "content": p}] for p in prompt]
+                images = image if isinstance(image, list) else [image] * len(prompt)
+                messages = [[{"role": "user", "content": build_content(p, im)}] for p, im in zip(prompt, images)]
             else:
-                messages = [{"role": "user", "content": prompt}]
+                messages = [{"role": "user", "content": build_content(prompt, image)}]
 
         encoded = self.processor.apply_chat_template(
             messages,
@@ -149,31 +133,31 @@ class DiffusionGemmaPipeline(DiffusionPipeline):
         mask = encoded.get("attention_mask")
         if mask is None:
             mask = torch.ones_like(ids, dtype=torch.long)
+        multimodal_keys = ("pixel_values", "image_position_ids", "mm_token_type_ids")
         multimodal_inputs = {k: encoded[k] for k in multimodal_keys if k in encoded}
         return ids, mask.to(dtype=torch.long), multimodal_inputs
 
     def check_inputs(
         self,
         prompt: str | list[str] | None,
-        messages: list[dict[str, str]] | None,
-        input_ids: torch.LongTensor | None,
+        messages: list[dict] | None,
         gen_length: int,
         num_inference_steps: int,
         output_type: str,
         callback_on_step_end_tensor_inputs: list[str] | None,
     ):
-        if prompt is None and messages is None and input_ids is None:
-            raise ValueError("Provide one of `prompt`, `messages`, or `input_ids`.")
-        if prompt is not None and messages is not None:
-            raise ValueError("Provide either `prompt` or `messages`, not both.")
-        if (prompt is not None or messages is not None) and input_ids is None and self.processor is None:
-            raise ValueError("`processor` is required when `input_ids` is not provided.")
+        if output_type not in {"seq", "text"}:
+            raise ValueError(f"`output_type` must be 'seq' or 'text', got {output_type!r}.")
         if gen_length <= 0:
             raise ValueError(f"`gen_length` must be > 0, got {gen_length}.")
         if num_inference_steps <= 0:
             raise ValueError(f"`num_inference_steps` must be > 0, got {num_inference_steps}.")
-        if output_type not in {"seq", "text"}:
-            raise ValueError(f"`output_type` must be 'seq' or 'text', got {output_type!r}.")
+        if prompt is None and messages is None:
+            raise ValueError("Provide either `prompt` or `messages`.")
+        if prompt is not None and messages is not None:
+            raise ValueError("Provide either `prompt` or `messages`, not both.")
+        if self.processor is None:
+            raise ValueError("`processor` is required to encode the prompt.")
         if callback_on_step_end_tensor_inputs is not None and not all(
             k in self._callback_tensor_inputs for k in callback_on_step_end_tensor_inputs
         ):
@@ -187,12 +171,8 @@ class DiffusionGemmaPipeline(DiffusionPipeline):
     def __call__(
         self,
         prompt: str | list[str] | None = None,
-        messages: list[dict[str, str]] | None = None,
-        input_ids: torch.LongTensor | None = None,
-        attention_mask: torch.LongTensor | None = None,
-        pixel_values: torch.FloatTensor | None = None,
-        image_position_ids: torch.LongTensor | None = None,
-        mm_token_type_ids: torch.LongTensor | None = None,
+        messages: list[dict] | None = None,
+        image: Any | list[Any] | None = None,
         add_generation_prompt: bool = True,
         gen_length: int = 256,
         num_inference_steps: int = 48,
@@ -214,22 +194,14 @@ class DiffusionGemmaPipeline(DiffusionPipeline):
 
         Args:
             prompt (`str` or `List[str]`, *optional*):
-                Prompt text, wrapped in a chat template and tokenized by the processor.
-            messages (`List[Dict[str, str]]`, *optional*):
-                Chat messages to encode (e.g. `[{"role": "user", "content": "Hello"}]`). Takes precedence over
-                `prompt`. Requires a processor with `apply_chat_template`.
-            input_ids (`torch.LongTensor`, *optional*):
-                Pre-tokenized prompt IDs. Takes precedence over `prompt` and `messages`.
-            attention_mask (`torch.LongTensor`, *optional*):
-                Per-token mask matching `input_ids`. Only used when `input_ids` is provided.
-            pixel_values (`torch.FloatTensor`, *optional*):
-                Image features for multimodal prompts, forwarded to the encoder prefill. When the prompt is built from
-                `messages` with image content, the processor produces these (and `image_position_ids` /
-                `mm_token_type_ids`) automatically; pass them explicitly only alongside pre-tokenized `input_ids`.
-            image_position_ids (`torch.LongTensor`, *optional*):
-                Patch position coordinates for `pixel_values`.
-            mm_token_type_ids (`torch.LongTensor`, *optional*):
-                Per-token modality ids marking image vs text positions for `pixel_values`.
+                Prompt text, wrapped in a chat template and tokenized by the processor. Provide either this or
+                `messages`.
+            messages (`List[Dict]`, *optional*):
+                A raw chat conversation to encode, e.g. `[{"role": "user", "content": "Hello"}]` or a multi-turn /
+                multimodal conversation. Use this instead of `prompt` for anything beyond a single user turn.
+            image (`PIL.Image.Image` or `List`, *optional*):
+                Image(s) to pair with `prompt` for multimodal generation; the processor turns them into the model's
+                image inputs. For richer layouts, put the image content directly in `messages`.
             add_generation_prompt (`bool`, defaults to `True`):
                 Whether to add the generation prompt when applying the chat template.
             gen_length (`int`, defaults to `256`):
@@ -277,22 +249,17 @@ class DiffusionGemmaPipeline(DiffusionPipeline):
         self.check_inputs(
             prompt=prompt,
             messages=messages,
-            input_ids=input_ids,
             gen_length=gen_length,
             num_inference_steps=num_inference_steps,
             output_type=output_type,
             callback_on_step_end_tensor_inputs=callback_on_step_end_tensor_inputs,
         )
 
-        prompt_ids, prompt_attention_mask, multimodal_inputs = self._prepare_input_ids(
+        prompt_ids, prompt_attention_mask, multimodal_inputs = self._prepare_inputs(
             prompt=prompt,
             messages=messages,
-            input_ids=input_ids,
-            attention_mask=attention_mask,
+            image=image,
             add_generation_prompt=add_generation_prompt,
-            pixel_values=pixel_values,
-            image_position_ids=image_position_ids,
-            mm_token_type_ids=mm_token_type_ids,
         )
 
         device = self._execution_device

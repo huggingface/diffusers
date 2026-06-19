@@ -45,23 +45,12 @@ class DiffusionGemmaPipelineInputTest(unittest.TestCase):
     def test_output_type_invalid_raises(self):
         pipe = _make_dummy_pipeline()
         with self.assertRaises(ValueError):
-            pipe(input_ids=torch.tensor([[1, 2, 3]], dtype=torch.long), gen_length=8, output_type="invalid")
+            pipe(prompt="hi", gen_length=8, output_type="invalid")
 
     def test_prompt_and_messages_together_raises(self):
         pipe = _make_dummy_pipeline()
         with self.assertRaises(ValueError):
             pipe(prompt="hi", messages=[{"role": "user", "content": "hi"}], gen_length=8, output_type="seq")
-
-    def test_prepare_input_ids_from_1d_tensor(self):
-        pipe = _make_dummy_pipeline()
-        ids = torch.tensor([1, 2, 3], dtype=torch.long)
-        result_ids, result_mask, multimodal = pipe._prepare_input_ids(
-            prompt=None, messages=None, input_ids=ids, attention_mask=None, add_generation_prompt=False
-        )
-        self.assertEqual(result_ids.shape, (1, 3))
-        self.assertEqual(result_mask.shape, (1, 3))
-        self.assertTrue((result_mask == 1).all().item())
-        self.assertEqual(multimodal, {})
 
 
 # --- End-to-end generation: the prefill-once path drives the real encoder/decoder, so it needs the tiny model ---
@@ -87,11 +76,11 @@ def _load_pipeline(test):
 class DiffusionGemmaPipelineTest(unittest.TestCase):
     def setUp(self):
         self.pipe, self.canvas_length = _load_pipeline(self)
-        self.messages = [{"role": "user", "content": "Name a color."}]
+        self.prompt = "Name a color."
 
     def test_generate_seq_shape(self):
         out = self.pipe(
-            messages=self.messages,
+            prompt=self.prompt,
             gen_length=self.canvas_length * 2,
             num_inference_steps=4,
             temperature=0.0,
@@ -103,7 +92,7 @@ class DiffusionGemmaPipelineTest(unittest.TestCase):
 
     def test_generate_text_and_return_tuple(self):
         sequences, texts = self.pipe(
-            messages=self.messages,
+            prompt=self.prompt,
             gen_length=self.canvas_length,
             num_inference_steps=4,
             temperature=0.0,
@@ -123,7 +112,7 @@ class DiffusionGemmaPipelineTest(unittest.TestCase):
 
         keys = list(self.pipe._callback_tensor_inputs)
         self.pipe(
-            messages=self.messages,
+            prompt=self.prompt,
             gen_length=self.canvas_length,
             num_inference_steps=2,
             temperature=0.0,
@@ -139,11 +128,9 @@ class DiffusionGemmaPipelineTest(unittest.TestCase):
         from PIL import Image
 
         image = Image.fromarray((np.random.rand(64, 64, 3) * 255).astype("uint8"))
-        messages = [
-            {"role": "user", "content": [{"type": "image", "image": image}, {"type": "text", "text": "What?"}]}
-        ]
         out = self.pipe(
-            messages=messages,
+            prompt="What?",
+            image=image,
             gen_length=self.canvas_length,
             num_inference_steps=2,
             temperature=0.0,
@@ -158,7 +145,7 @@ class DiffusionGemmaPipelineTest(unittest.TestCase):
         for scheduler in (DiscreteDDIMScheduler(), EntropyBoundScheduler(entropy_bound=0.1)):
             self.pipe.scheduler = scheduler
             out = self.pipe(
-                messages=self.messages,
+                prompt=self.prompt,
                 gen_length=self.canvas_length,
                 num_inference_steps=4,
                 temperature=0.0,
@@ -169,7 +156,7 @@ class DiffusionGemmaPipelineTest(unittest.TestCase):
 
     def test_static_cache_matches_dynamic(self):
         kwargs = {
-            "messages": self.messages,
+            "prompt": self.prompt,
             "gen_length": self.canvas_length * 2,  # two canvases -> exercises the cache extension between blocks
             "num_inference_steps": 4,
             "temperature": 0.0,

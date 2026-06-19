@@ -43,8 +43,8 @@ print(output.texts[0])
 ```
 
 `num_inference_steps` is the number of denoising steps per canvas (48 matches the released checkpoint); fewer steps are
-faster but lower quality. For multimodal prompts, pass image content in `messages` and the processor's `pixel_values`
-are forwarded to the model automatically.
+faster but lower quality. For multimodal prompts, pass an `image` alongside the `prompt` (or put the image content in a
+raw `messages` conversation), and the processor turns it into the model's image inputs automatically.
 
 ## Schedulers
 
