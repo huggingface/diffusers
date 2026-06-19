@@ -27,6 +27,7 @@ from ...pipelines.pipeline_utils import DiffusionPipeline
 from ...schedulers import FlowMatchEulerDiscreteScheduler, KarrasDiffusionSchedulers
 from ...utils import (
     USE_PEFT_BACKEND,
+    deprecate,
     is_torch_xla_available,
     logging,
     replace_example_docstring,
@@ -876,7 +877,13 @@ class BriaFiboEditPipeline(DiffusionPipeline, FluxLoraLoaderMixin):
         else:
             seq_len = (height // self.vae_scale_factor) * (width // self.vae_scale_factor)
 
-        sigmas = None if timesteps is not None else np.linspace(1.0, 1 / num_inference_steps, num_inference_steps)
+        if timesteps is not None:
+            deprecate(
+                "timesteps",
+                "1.0.0",
+                "Passing `timesteps` to `__call__` is deprecated and has no effect; it will be removed in a future version.",
+            )
+        sigmas = np.linspace(1.0, 1 / num_inference_steps, num_inference_steps)
 
         mu = calculate_shift(
             seq_len,
@@ -892,7 +899,7 @@ class BriaFiboEditPipeline(DiffusionPipeline, FluxLoraLoaderMixin):
             self.scheduler,
             num_inference_steps=num_inference_steps,
             device=device,
-            timesteps=timesteps,
+            timesteps=None,
             sigmas=sigmas,
             mu=mu,
         )
