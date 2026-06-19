@@ -470,7 +470,6 @@ else:
     _import_structure["modular_pipelines"].extend(
         [
             "AnimaAutoBlocks",
-            "AnimaImg2ImgAutoBlocks",
             "AnimaModularPipeline",
             "ErnieImageAutoBlocks",
             "ErnieImageModularPipeline",
@@ -1309,7 +1308,6 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     else:
         from .modular_pipelines import (
             AnimaAutoBlocks,
-            AnimaImg2ImgAutoBlocks,
             AnimaModularPipeline,
             ErnieImageAutoBlocks,
             ErnieImageModularPipeline,

@@ -35,10 +35,6 @@ image = pipe(prompt="masterpiece, best quality, 1girl, solo, city lights").image
 
 [[autodoc]] AnimaAutoBlocks
 
-## AnimaImg2ImgAutoBlocks
-
-[[autodoc]] AnimaImg2ImgAutoBlocks
-
 ## AnimaTextConditioner
 
 [[autodoc]] AnimaTextConditioner

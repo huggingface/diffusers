@@ -20,7 +20,7 @@ import torch
 from transformers import Qwen2Tokenizer, Qwen3Config, Qwen3Model, T5TokenizerFast
 
 from diffusers import (
-    AnimaImg2ImgAutoBlocks,
+    AnimaAutoBlocks,
     AnimaModularPipeline,
     AnimaTextConditioner,
     AutoencoderKLQwenImage,
@@ -38,11 +38,11 @@ enable_full_determinism()
 ANIMA_IMG2IMG_WORKFLOWS = {
     "img2img": [
         ("text_encoder", "AnimaTextEncoderStep"),
-        ("set_timesteps", "AnimaImg2ImgSetTimestepsStep"),
-        ("denoise.text_conditioning", "AnimaTextConditioningStep"),
-        ("denoise.input", "AnimaTextInputStep"),
-        ("denoise.vae_encoder", "AnimaImg2ImgVaeEncoderStep"),
-        ("denoise.denoise", "AnimaDenoiseStep"),
+        ("denoise.set_timesteps", "AnimaImg2ImgSetTimestepsStep"),
+        ("denoise.denoise.text_conditioning", "AnimaTextConditioningStep"),
+        ("denoise.denoise.input", "AnimaTextInputStep"),
+        ("denoise.denoise.vae_encoder", "AnimaImg2ImgVaeEncoderStep"),
+        ("denoise.denoise.denoise", "AnimaDenoiseStep"),
         ("decode.decode", "AnimaVaeDecoderStep"),
         ("decode.postprocess", "AnimaProcessImagesOutputStep"),
     ],
@@ -126,7 +126,7 @@ def get_dummy_image(height=32, width=32):
 
 class TestAnimaImg2ImgModularPipelineFast(ModularPipelineTesterMixin):
     pipeline_class = AnimaModularPipeline
-    pipeline_blocks_class = AnimaImg2ImgAutoBlocks
+    pipeline_blocks_class = AnimaAutoBlocks
     pretrained_model_name_or_path = "hf-internal-testing/tiny-anima-modular-pipe"
     params = frozenset(["prompt", "image", "strength", "height", "width", "negative_prompt"])
     batch_params = frozenset(["prompt", "negative_prompt"])

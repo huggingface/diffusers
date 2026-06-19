@@ -429,7 +429,6 @@ class AnimaSetTimestepsStep(ModularPipelineBlocks):
         return components, state
 
 
-# Copied from diffusers.modular_pipelines.anima.before_denoise.AnimaSetTimestepsStep
 class AnimaImg2ImgSetTimestepsStep(ModularPipelineBlocks):
     """Set the scheduler timesteps for Anima image-to-image inference.
 
