@@ -67,6 +67,15 @@ output = pipe(prompt="Why is the sky blue?", gen_length=256, num_inference_steps
 print(output.texts[0])
 ```
 
+Scheduler-specific sampling knobs (the block-refinement `threshold`/`top_k`, the entropy bound, ...) are set on the
+scheduler config:
+
+```py
+from diffusers import BlockRefinementScheduler
+
+pipe.scheduler = BlockRefinementScheduler.from_config(pipe.scheduler.config, threshold=0.9)
+```
+
 ## Static cache and compilation
 
 The pipeline prefills the encoder once per block into a reusable cache (a `DynamicCache` by default). Pass

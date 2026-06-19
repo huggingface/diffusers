@@ -197,10 +197,6 @@ class DiffusionGemmaPipeline(DiffusionPipeline):
         gen_length: int = 256,
         num_inference_steps: int = 48,
         temperature: float = 0.0,
-        top_p: float | None = None,
-        top_k: int | None = None,
-        threshold: float | None = None,
-        editing_threshold: float | None = None,
         cache_implementation: str | None = None,
         eos_early_stop: bool = True,
         eos_token_id: int | None = None,
@@ -241,15 +237,9 @@ class DiffusionGemmaPipeline(DiffusionPipeline):
             num_inference_steps (`int`, defaults to `48`):
                 Number of denoising steps per canvas.
             temperature (`float`, defaults to `0.0`):
-                Sampling temperature. `0.0` is greedy.
-            top_p (`float`, *optional*):
-                Nucleus sampling cutoff.
-            top_k (`int`, *optional*):
-                Top-k sampling cutoff.
-            threshold (`float`, *optional*):
-                Confidence threshold for committing tokens. Defaults to the scheduler's configured value.
-            editing_threshold (`float`, *optional*):
-                Confidence threshold for re-editing already committed tokens. Defaults to the scheduler's value.
+                Sampling temperature. `0.0` is greedy. Other sampling knobs (e.g. `top_k`, `threshold`) are scheduler
+                config; set them on the scheduler, e.g. `pipe.scheduler =
+                BlockRefinementScheduler.from_config(pipe.scheduler.config, top_k=...)`.
             cache_implementation (`str`, *optional*):
                 Set to `"static"` to prefill the encoder once per block into a persistent `StaticCache` and run the
                 decoder against it with fixed shapes, instead of re-encoding the full sequence on every step. The fixed
@@ -387,17 +377,9 @@ class DiffusionGemmaPipeline(DiffusionPipeline):
                 ).logits
                 self_conditioning_logits = logits
 
-                # Forward only the knobs the chosen scheduler accepts (block refinement takes thresholds/top-k,
-                # discrete DDIM and entropy bound do not), so any of the schedulers can drive the pipeline.
-                step_kwargs = {
-                    "mask_token_id": None,
-                    "temperature": temperature,
-                    "top_p": top_p,
-                    "top_k": top_k,
-                    "threshold": threshold,
-                    "editing_threshold": editing_threshold,
-                    "generator": generator,
-                }
+                # Pass only the kwargs the chosen scheduler accepts, so any of the schedulers can drive the pipeline.
+                # Per-scheduler sampling knobs (thresholds, top-k, ...) live on the scheduler config, not here.
+                step_kwargs = {"mask_token_id": None, "temperature": temperature, "generator": generator}
                 step_kwargs = {k: v for k, v in step_kwargs.items() if k in step_param_names}
                 scheduler_output = self.scheduler.step(
                     model_output=logits, timestep=step_idx, sample=canvas, return_dict=True, **step_kwargs
