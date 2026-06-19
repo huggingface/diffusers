@@ -2377,6 +2377,18 @@ def _convert_non_diffusers_flux2_lora_to_diffusers(state_dict):
             temp_state_dict[new_key] = v
         original_state_dict = temp_state_dict
 
+    # LoKr format: uses lokr_w1 / lokr_w2 instead of lora_A / lora_B, with an alpha key.
+    # Rename to standard ai-toolkit naming so the rest of the conversion pipeline handles them.
+    has_lokr = any("lokr_w1" in k or "lokr_w2" in k for k in original_state_dict.keys())
+    if has_lokr:
+        temp_state_dict = {}
+        for k, v in original_state_dict.items():
+            new_key = k.replace("lokr_w1", "lora_A").replace("lokr_w2", "lora_B")
+            # Drop standalone alpha keys — ai-toolkit pre-scales the weights.
+            if new_key != k or "alpha" not in k:
+                temp_state_dict[new_key] = v
+        original_state_dict = temp_state_dict
+
     # Some Flux2 checkpoints skip the ai-toolkit `single_blocks` / `double_blocks`
     # layout and already store expanded diffusers block names. Accept those
     # directly, and normalize the legacy `sformer_blocks` alias used by some exports.
