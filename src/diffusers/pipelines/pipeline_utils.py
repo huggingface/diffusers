@@ -244,6 +244,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         variant: str | None = None,
         max_shard_size: int | str | None = None,
         push_to_hub: bool = False,
+        use_flashpack: bool = False,
         **kwargs,
     ):
         """
@@ -341,6 +342,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             save_method_accept_safe = "safe_serialization" in save_method_signature.parameters
             save_method_accept_variant = "variant" in save_method_signature.parameters
             save_method_accept_max_shard_size = "max_shard_size" in save_method_signature.parameters
+            save_method_accept_flashpack = "use_flashpack" in save_method_signature.parameters
             save_method_accept_peft_format = "save_peft_format" in save_method_signature.parameters
 
             save_kwargs = {}
@@ -351,6 +353,8 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             if save_method_accept_max_shard_size and max_shard_size is not None:
                 # max_shard_size is expected to not be None in ModelMixin
                 save_kwargs["max_shard_size"] = max_shard_size
+            if save_method_accept_flashpack:
+                save_kwargs["use_flashpack"] = use_flashpack
             if save_method_accept_peft_format:
                 # Set save_peft_format=False for transformers>=5.0.0 compatibility
                 # In transformers 5.0.0+, the default save_peft_format=True adds "base_model.model" prefix
@@ -781,7 +785,9 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         use_onnx = kwargs.pop("use_onnx", None)
         load_connected_pipeline = kwargs.pop("load_connected_pipeline", False)
         quantization_config = kwargs.pop("quantization_config", None)
+        use_flashpack = kwargs.pop("use_flashpack", False)
         disable_mmap = kwargs.pop("disable_mmap", False)
+        trust_remote_code = kwargs.pop("trust_remote_code", False)
 
         if torch_dtype is not None and not isinstance(torch_dtype, dict) and not isinstance(torch_dtype, torch.dtype):
             torch_dtype = torch.float32
@@ -866,6 +872,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 variant=variant,
                 dduf_file=dduf_file,
                 load_connected_pipeline=load_connected_pipeline,
+                trust_remote_code=trust_remote_code,
                 **kwargs,
             )
         else:
@@ -923,6 +930,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             class_name=custom_class_name,
             cache_dir=cache_dir,
             revision=custom_revision,
+            trust_remote_code=trust_remote_code,
         )
 
         if device_map is not None and pipeline_class._load_connected_pipes:
@@ -1071,6 +1079,8 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                     provider_options=provider_options,
                     disable_mmap=disable_mmap,
                     quantization_config=quantization_config,
+                    use_flashpack=use_flashpack,
+                    trust_remote_code=trust_remote_code,
                 )
                 logger.info(
                     f"Loaded {name} as {class_name} from `{name}` subfolder of {pretrained_model_name_or_path}."
@@ -1576,6 +1586,9 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 Whether or not to allow for custom pipelines and components defined on the Hub in their own files. This
                 option should only be set to `True` for repositories you trust and in which you have read the code, as
                 it will execute code present on the Hub on your local machine.
+            use_flashpack (`bool`, *optional*, defaults to `False`):
+                If set to `True`, FlashPack weights will always be downloaded if present. If set to `False`, FlashPack
+                weights will never be downloaded.
 
         Returns:
             `os.PathLike`:
@@ -1600,6 +1613,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         load_connected_pipeline = kwargs.pop("load_connected_pipeline", False)
         trust_remote_code = kwargs.pop("trust_remote_code", False)
         dduf_file: dict[str, DDUFEntry] | None = kwargs.pop("dduf_file", None)
+        use_flashpack = kwargs.pop("use_flashpack", False)
 
         if dduf_file:
             if custom_pipeline:
@@ -1674,21 +1688,6 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 custom_class_name = config_dict["_class_name"][1]
 
             load_pipe_from_hub = custom_pipeline is not None and f"{custom_pipeline}.py" in filenames
-            load_components_from_hub = len(custom_components) > 0
-
-            if load_pipe_from_hub and not trust_remote_code:
-                raise ValueError(
-                    f"The repository for {pretrained_model_name} contains custom code in {custom_pipeline}.py which must be executed to correctly "
-                    f"load the model. You can inspect the repository content at https://hf.co/{pretrained_model_name}/blob/main/{custom_pipeline}.py.\n"
-                    f"Please pass the argument `trust_remote_code=True` to allow custom code to be run."
-                )
-
-            if load_components_from_hub and not trust_remote_code:
-                raise ValueError(
-                    f"The repository for {pretrained_model_name} contains custom code in {'.py, '.join([os.path.join(k, v) for k, v in custom_components.items()])} which must be executed to correctly "
-                    f"load the model. You can inspect the repository content at {', '.join([f'https://hf.co/{pretrained_model_name}/{k}/{v}.py' for k, v in custom_components.items()])}.\n"
-                    f"Please pass the argument `trust_remote_code=True` to allow custom code to be run."
-                )
 
             # retrieve passed components that should not be downloaded
             pipeline_class = _get_pipeline_class(
@@ -1701,6 +1700,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 class_name=custom_class_name,
                 cache_dir=cache_dir,
                 revision=custom_revision,
+                trust_remote_code=trust_remote_code,
             )
             expected_components, _ = cls._get_signature_keys(pipeline_class)
             passed_components = [k for k in expected_components if k in kwargs]
@@ -1719,6 +1719,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 allow_pickle,
                 use_onnx,
                 pipeline_class._is_onnx,
+                use_flashpack,
                 variant,
             )
 
@@ -2116,13 +2117,16 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
 
         original_config = dict(pipeline.config)
         torch_dtype = kwargs.pop("torch_dtype", torch.float32)
+        trust_remote_code = kwargs.pop("trust_remote_code", False)
 
         # derive the pipeline class to instantiate
         custom_pipeline = kwargs.pop("custom_pipeline", None)
         custom_revision = kwargs.pop("custom_revision", None)
 
         if custom_pipeline is not None:
-            pipeline_class = _get_custom_pipeline_class(custom_pipeline, revision=custom_revision)
+            pipeline_class = _get_custom_pipeline_class(
+                custom_pipeline, revision=custom_revision, trust_remote_code=trust_remote_code
+            )
         else:
             pipeline_class = cls
 

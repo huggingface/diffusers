@@ -52,7 +52,7 @@ EXAMPLE_DOC_STRING = """
         ...     prompt,
         ...     height=1024,
         ...     width=1024,
-        ...     num_inference_steps=9,
+        ...     num_inference_steps=8,
         ...     guidance_scale=0.0,
         ...     generator=torch.Generator("cuda").manual_seed(42),
         ... ).images[0]
@@ -133,6 +133,11 @@ def retrieve_timesteps(
         scheduler.set_timesteps(num_inference_steps, device=device, **kwargs)
         timesteps = scheduler.timesteps
     return timesteps, num_inference_steps
+
+
+# Copied from diffusers.pipelines.z_image.pipeline_z_image.get_default_z_image_sigmas
+def get_default_z_image_sigmas(num_inference_steps: int) -> list[float]:
+    return torch.linspace(1.0, 1 / num_inference_steps, num_inference_steps).tolist()
 
 
 class ZImageOmniPipeline(DiffusionPipeline, ZImageLoraLoaderMixin, FromSingleFileMixin):
@@ -588,9 +593,10 @@ class ZImageOmniPipeline(DiffusionPipeline, ZImageLoraLoaderMixin, FromSingleFil
                 negative_prompt_embeds = [npe for npe in negative_prompt_embeds for _ in range(num_images_per_prompt)]
 
         condition_siglip_embeds = [None if sels == [] else sels + [None] for sels in condition_siglip_embeds]
-        negative_condition_siglip_embeds = [
-            None if sels == [] else sels + [None] for sels in negative_condition_siglip_embeds
-        ]
+        if self.do_classifier_free_guidance:
+            negative_condition_siglip_embeds = [
+                None if sels == [] else sels + [None] for sels in negative_condition_siglip_embeds
+            ]
 
         actual_batch_size = batch_size * num_images_per_prompt
         image_seq_len = (latents.shape[2] // 2) * (latents.shape[3] // 2)
@@ -603,7 +609,8 @@ class ZImageOmniPipeline(DiffusionPipeline, ZImageLoraLoaderMixin, FromSingleFil
             self.scheduler.config.get("base_shift", 0.5),
             self.scheduler.config.get("max_shift", 1.15),
         )
-        self.scheduler.sigma_min = 0.0
+        if sigmas is None:
+            sigmas = get_default_z_image_sigmas(num_inference_steps)
         scheduler_kwargs = {"mu": mu}
         timesteps, num_inference_steps = retrieve_timesteps(
             self.scheduler,

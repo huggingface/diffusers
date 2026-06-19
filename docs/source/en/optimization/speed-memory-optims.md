@@ -33,6 +33,8 @@ The table below provides a comparison of optimization strategy combinations and 
 
 This guide will show you how to compile and offload a quantized model with [bitsandbytes](../quantization/bitsandbytes#torchcompile). Make sure you are using [PyTorch nightly](https://pytorch.org/get-started/locally/) and the latest version of bitsandbytes.
 
+While we use bitsandbytes in this example, other quantization backends such as [TorchAO](../quantization/torchao.md) also support these features.
+
 ```bash
 pip install -U bitsandbytes
 ```

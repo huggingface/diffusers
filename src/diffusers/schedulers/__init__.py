@@ -40,6 +40,7 @@ except OptionalDependencyNotAvailable:
 else:
     _import_structure["deprecated"] = ["KarrasVeScheduler", "ScoreSdeVpScheduler"]
     _import_structure["scheduling_amused"] = ["AmusedScheduler"]
+    _import_structure["scheduling_block_refinement"] = ["BlockRefinementScheduler", "BlockRefinementSchedulerOutput"]
     _import_structure["scheduling_consistency_decoder"] = ["ConsistencyDecoderScheduler"]
     _import_structure["scheduling_consistency_models"] = ["CMStochasticIterativeScheduler"]
     _import_structure["scheduling_ddim"] = ["DDIMScheduler"]
@@ -58,6 +59,7 @@ else:
     _import_structure["scheduling_edm_euler"] = ["EDMEulerScheduler"]
     _import_structure["scheduling_euler_ancestral_discrete"] = ["EulerAncestralDiscreteScheduler"]
     _import_structure["scheduling_euler_discrete"] = ["EulerDiscreteScheduler"]
+    _import_structure["scheduling_flow_map_euler_discrete"] = ["FlowMapEulerDiscreteScheduler"]
     _import_structure["scheduling_flow_match_euler_discrete"] = ["FlowMatchEulerDiscreteScheduler"]
     _import_structure["scheduling_flow_match_heun_discrete"] = ["FlowMatchHeunDiscreteScheduler"]
     _import_structure["scheduling_flow_match_lcm"] = ["FlowMatchLCMScheduler"]
@@ -145,6 +147,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     else:
         from .deprecated import KarrasVeScheduler, ScoreSdeVpScheduler
         from .scheduling_amused import AmusedScheduler
+        from .scheduling_block_refinement import BlockRefinementScheduler, BlockRefinementSchedulerOutput
         from .scheduling_consistency_decoder import ConsistencyDecoderScheduler
         from .scheduling_consistency_models import CMStochasticIterativeScheduler
         from .scheduling_ddim import DDIMScheduler
@@ -163,6 +166,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .scheduling_edm_euler import EDMEulerScheduler
         from .scheduling_euler_ancestral_discrete import EulerAncestralDiscreteScheduler
         from .scheduling_euler_discrete import EulerDiscreteScheduler
+        from .scheduling_flow_map_euler_discrete import FlowMapEulerDiscreteScheduler
         from .scheduling_flow_match_euler_discrete import FlowMatchEulerDiscreteScheduler
         from .scheduling_flow_match_heun_discrete import FlowMatchHeunDiscreteScheduler
         from .scheduling_flow_match_lcm import FlowMatchLCMScheduler

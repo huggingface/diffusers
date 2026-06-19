@@ -8,15 +8,7 @@ description: >
 
 ## Goal
 
-Integrate a new model into diffusers end-to-end. The overall flow:
-
-1. **Gather info** — ask the user for the reference repo, setup guide, a runnable inference script, and other objectives such as standard vs modular.
-2. **Confirm the plan** — once you have everything, tell the user exactly what you'll do: e.g. "I'll integrate model X with pipeline Y into diffusers based on your script. I'll run parity tests (model-level and pipeline-level) using the `parity-testing` skill to verify numerical correctness against the reference."
-3. **Implement** — write the diffusers code (model, pipeline, scheduler if needed), convert weights, register in `__init__.py`.
-4. **Parity test** — use the `parity-testing` skill to verify component and e2e parity against the reference implementation.
-5. **Deliver a unit test** — provide a self-contained test script that runs the diffusers implementation, checks numerical output (np allclose), and saves an image/video for visual verification. This is what the user runs to confirm everything works.
-
-Work one workflow at a time — get it to full parity before moving on.
+Integrate a new model into diffusers end-to-end, to full numerical parity with the reference implementation — one workflow at a time.
 
 ## Setup — gather before starting
 
@@ -24,144 +16,136 @@ Before writing any code, gather info in this order:
 
 1. **Reference repo** — ask for the github link. If they've already set it up locally, ask for the path. Otherwise, ask what setup steps are needed (install deps, download checkpoints, set env vars, etc.) and run through them before proceeding.
 2. **Inference script** — ask for a runnable end-to-end script for a basic workflow first (e.g. T2V). Then ask what other workflows they want to support (I2V, V2V, etc.) and agree on the full implementation order together.
-3. **Standard vs modular** — standard pipelines, modular, or both?
+3. **Standard vs modular** — **default to modular.** [Modular Diffusers](../../modular.md) is the preferred implementation for new pipelines; the standard `DiffusionPipeline` is still supported but no longer the default. We prefer modular especially for models that don't fit a fixed task-based structure (modality baked into the checkpoint) or that are actively evolving.
 
-Use `AskUserQuestion` with structured choices for step 3 when the options are known.
+Ask step 3 as an `AskUserQuestion`, with modular marked as the recommended default.
 
-## Standard Pipeline Integration
+Once you have everything, **confirm the plan** with the user before implementing — state exactly what you'll do, e.g. "I'll integrate model X with pipeline Y based on your script, and verify the model matches the reference before considering it done."
 
-### File structure for a new model
+Then work through the **Integration checklist** below
+
+## Integration checklist
+
+A pipeline in Diffusers (be it standard or modular) will have multiple components. These components can be models, schedulers, processors, etc.
+
+- [ ] **Transformer model**
+  - [ ] Implement the model with `from_pretrained` support (conventions: [models.md](../../models.md))
+  - [ ] Convert weights (see **Weight / Checkpoint Conversion**)
+  - [ ] Parity test against the reference (internal, not shipped — see **Model parity test**)
+  - [ ] Register in the relevant `__init__.py` files (lazy imports)
+  - [ ] Model-level tests (see **Testing**)
+- [ ] **VAE** (if applicable) — reuse an existing `AutoencoderKL*` if possible; if a new one is needed, follow the same sub-steps as the transformer
+- [ ] **Scheduler** — reuse an existing scheduler, or add a custom one
+- [ ] **Pipeline**
+  - [ ] Implement the pipeline — see [modular.md](../../modular.md) for modular pipeline, or [pipelines.md](../../pipelines.md) for standard pipeline
+  - [ ] Add a LoRA mixin if applicable
+  - [ ] Register in the relevant `__init__.py` files (lazy imports)
+  - [ ] Pipeline-level tests (see **Testing**)
+- [ ] **Docs** — see **File structure**
+- [ ] **Style** — `make style` and `make quality`
+
+## File structure
+
+A new model PR roughly lands these files (the contents of `pipelines/<model>/` and `modular_pipelines/<model>/` live in their guides):
 
 ```
 src/diffusers/
-  models/transformers/transformer_<model>.py     # The core model
-  schedulers/scheduling_<model>.py               # If model needs a custom scheduler
-  pipelines/<model>/
-    __init__.py
-    pipeline_<model>.py                          # Main pipeline
-    pipeline_<model>_<variant>.py                # Variant pipelines (e.g. pyramid, distilled)
-    pipeline_output.py                           # Output dataclass
-  loaders/lora_pipeline.py                       # LoRA mixin (add to existing file)
-
+  models/transformers/transformer_<model>.py   # the model (or models/autoencoders/, models/unets/)
+  schedulers/scheduling_<model>.py              # only if a custom scheduler is needed
+  loaders/lora_pipeline.py                      # LoRA mixin — add to the existing file
+  pipelines/<model>/                            # standard pipeline — see pipelines.md
+  modular_pipelines/<model>/                    # modular pipeline — see modular.md
 tests/
   models/transformers/test_models_transformer_<model>.py
   pipelines/<model>/test_<model>.py
-  lora/test_lora_layers_<model>.py
-
-docs/source/en/api/
-  pipelines/<model>.md
-  models/<model>_transformer3d.md                # or appropriate name
+docs/source/en/
+  _toctree.yml                                  # register the new pages in the docs index
+  api/models/<model>.md
+  api/pipelines/<model>.md
 ```
 
-### Integration checklist
+## Model integration specific rules
 
-- [ ] Implement transformer model with `from_pretrained` support
-- [ ] Implement or reuse scheduler
-- [ ] Implement pipeline(s) with `__call__` method
-- [ ] Add LoRA support if applicable
-- [ ] Register all classes in `__init__.py` files (lazy imports)
-- [ ] Write unit tests (model, pipeline, LoRA)
-- [ ] Write docs
-- [ ] Run `make style` and `make quality`
-- [ ] Test parity with reference implementation (see `parity-testing` skill)
+**Match the reference's numerical logic.** Restructuring code to fit diffusers APIs (`ModelMixin`, `ConfigMixin`, blocks for modular, etc.) is expected, and required diffusers conventions (e.g. the attention pattern in [models.md](../../models.md)) take precedence. Beyond those, keep the actual computation as close to the reference as possible — don't reorder operations, change the math, or rename internals for aesthetics, even if it looks unclean. Small deviations make output mismatches very hard to track down.
 
-### Attention pattern
+## Weight / Checkpoint Conversion
 
-Attention must follow the diffusers pattern: both the `Attention` class and its processor are defined in the model file. The processor's `__call__` handles the actual compute and must use `dispatch_attention_fn` rather than calling `F.scaled_dot_product_attention` directly. The attention class inherits `AttentionModuleMixin` and declares `_default_processor_cls` and `_available_processors`.
+Convert the original checkpoint into diffusers format with a standalone script under `scripts/` (e.g. `scripts/convert_<model>_to_diffusers.py`). The flow:
+
+1. Map the original state-dict keys to the diffusers module names (renames + any tensor surgery — see patterns below).
+2. Instantiate the diffusers model from its config and load the converted state dict.
+3. `save_pretrained(...)` to a local path, then load it back with `from_pretrained` to confirm it round-trips.
+
+All weights load through the standard paths — `from_pretrained`, or `from_single_file` (add `FromSingleFileMixin` + a weight-mapping) for an original-format single checkpoint. No custom `from_pretrained`, no manual runtime loading. See the loading rule in [models.md](../../models.md).
+
+Common conversion patterns to watch for model-level components:
+- Fused QKV weights that need splitting into separate Q, K, V
+- Scale/shift ordering differences (reference stores `[shift, scale]`, diffusers expects `[scale, shift]`)
+- Weight transpositions (linear stored as transposed conv, or vice versa)
+- Interleaved head dimensions that need reshaping
+- Bias terms absorbed into different layers
+
+## Testing
+
+Two test layers must be added for any new pipeline: pipeline-level tests, and (if a new model is introduced) model-level tests. Integration/slow tests and LoRA tests are **not** added in the initial PR — they come later, after discussion with maintainers.
+
+**General rules (apply to both layers):**
+- Keep component sizes tiny so the suite runs fast — small `num_layers`, small hidden/attention dims, low resolution, few frames. Reference `tests/pipelines/wan/test_wan.py` (`get_dummy_components` and `get_dummy_inputs`) for the size scale to target.
+- No LoRA tests in the initial PR (no `LoraTesterMixin`, no `tests/lora/test_lora_layers_<model>.py`).
+- No integration / slow tests in the initial PR — don't add anything gated on `@slow` / `RUN_SLOW=1` yet.
+
+### Pipeline-level tests
+
+- Location: `tests/pipelines/<model>/test_<model>.py` (one file per pipeline variant, e.g. T2V, I2V).
+- Subclass both `PipelineTesterMixin` (from `..test_pipelines_common`) and `unittest.TestCase`.
+- Set `pipeline_class`, `params`, `batch_params`, `image_params` from `..pipeline_params`, and any `required_optional_params` / capability flags (`test_xformers_attention`, `supports_dduf`, etc.) that apply.
+- Implement `get_dummy_components()` (build all sub-modules with tiny configs and a fixed `torch.manual_seed(0)` before each) and `get_dummy_inputs(device, seed=0)`.
+- Skip any inherited tests that don't apply with `@unittest.skip("Test not supported")` rather than deleting them.
+- Reference: `tests/pipelines/wan/test_wan.py`.
+
+### Model-level tests
+
+Only required if the pipeline introduces a new model class (transformer, VAE, etc.). Don't write these by hand — generate them (example command below):
+
+```bash
+python utils/generate_model_tests.py src/diffusers/models/transformers/transformer_<model>.py
+```
+
+- Run with **no `--include` flags** initially. The generator auto-detects mixins/attributes and emits the always-on testers (`ModelTesterMixin`, `MemoryTesterMixin`, `TorchCompileTesterMixin`, plus `AttentionTesterMixin` / `ContextParallelTesterMixin` / `TrainingTesterMixin` as applicable). Optional testers (quantization, caching, single-file, IP adapter, etc.) are added later, after maintainer discussion.
+- The generator writes to `tests/models/transformers/test_models_transformer_<model>.py` (or the matching `unets/` / `autoencoders/` subdir).
+- Fill in the `TODO`s in the generated `<Model>TesterConfig`: `pretrained_model_name_or_path`, `get_init_dict()` (tiny config), `get_dummy_inputs()`, `input_shape`, `output_shape`. Keep init dims small for speed.
+- Do **not** add `LoraTesterMixin` at the start, even if the model subclasses `PeftAdapterMixin` — strip it from the generated file for the initial PR.
+- Reference: `tests/models/transformers/test_models_transformer_flux.py`.
+
+## Model parity test
+
+Confirm the diffusers implementation matches the reference. Test each component on **CPU/float32** with a strict tolerance (`max_diff < 1e-3`), comparing the **freshly converted** weights against the reference in a single script — both sides side by side, nothing saved to disk in between. See [pitfalls.md](pitfalls.md) for the common sources of numerical discrepancy.
+
+This is an **internal verification tool for integration — it should not be shipped in the PR** (it imports the reference repo). The tests that ship with the PR are the model-level and pipeline-level tests in **Testing**.
+
+The example below is schematic (placeholder names). `ReferenceModel` is the component **imported from the original repo**, and `convert_my_component` is **the same conversion function you wrote for the conversion script for the component**. You should make sure both load the *same* checkpoint weights and run the *same* input, so any difference is a conversion or implementation bug — not a difference in inputs.
 
 ```python
-# transformer_mymodel.py
+@torch.inference_mode()
+def test_my_component():
+    # deterministic input — use the same shape & dtype the real model receives at this stage
+    gen = torch.Generator().manual_seed(42)
+    x = torch.randn(1, 16, 32, 32, generator=gen, dtype=torch.float32)  # adjust to the real input shape
 
-class MyModelAttnProcessor:
-    _attention_backend = None
-    _parallel_config = None
+    original_state_dict = load_original_weights(...)  # the original checkpoint — both sides load these same weights
 
-    def __call__(self, attn, hidden_states, attention_mask=None, ...):
-        query = attn.to_q(hidden_states)
-        key = attn.to_k(hidden_states)
-        value = attn.to_v(hidden_states)
-        # reshape, apply rope, etc.
-        hidden_states = dispatch_attention_fn(
-            query, key, value,
-            attn_mask=attention_mask,
-            backend=self._attention_backend,
-            parallel_config=self._parallel_config,
-        )
-        hidden_states = hidden_states.flatten(2, 3)
-        return attn.to_out[0](hidden_states)
+    # reference: the original repo's implementation (load one model at a time to fit in CPU RAM)
+    ref_model = ReferenceModel(config)                # ReferenceModel: imported from the original repo
+    ref_model.load_state_dict(original_state_dict, strict=True)
+    ref_model = ref_model.float().eval()
+    ref_out = ref_model(x).clone()                    # clone before freeing the model
+    del ref_model
 
+    # diffusers: convert those same weights with your conversion-script function, then run
+    diff_model = convert_my_component(original_state_dict)  # convert_my_component: the fn from convert_<model>_to_diffusers.py
+    diff_model = diff_model.float().eval()
+    diff_out = diff_model(x)
 
-class MyModelAttention(nn.Module, AttentionModuleMixin):
-    _default_processor_cls = MyModelAttnProcessor
-    _available_processors = [MyModelAttnProcessor]
-
-    def __init__(self, query_dim, heads=8, dim_head=64, ...):
-        super().__init__()
-        self.to_q = nn.Linear(query_dim, heads * dim_head, bias=False)
-        self.to_k = nn.Linear(query_dim, heads * dim_head, bias=False)
-        self.to_v = nn.Linear(query_dim, heads * dim_head, bias=False)
-        self.to_out = nn.ModuleList([nn.Linear(heads * dim_head, query_dim), nn.Dropout(0.0)])
-        self.set_processor(MyModelAttnProcessor())
-
-    def forward(self, hidden_states, attention_mask=None, **kwargs):
-        return self.processor(self, hidden_states, attention_mask, **kwargs)
+    max_diff = (ref_out - diff_out).abs().max().item()
+    assert max_diff < 1e-3, f"FAIL: max_diff={max_diff:.2e}"
 ```
-
-Consult the implementations in `src/diffusers/models/transformers/` if you need further references.
-
-### Implementation rules
-
-1. **Don't combine structural changes with behavioral changes.** Restructuring code to fit diffusers APIs (ModelMixin, ConfigMixin, etc.) is unavoidable. But don't also "improve" the algorithm, refactor computation order, or rename internal variables for aesthetics. Keep numerical logic as close to the reference as possible, even if it looks unclean. For standard → modular, this is stricter: copy loop logic verbatim and only restructure into blocks. Clean up in a separate commit after parity is confirmed.
-2. **Pipelines must inherit from `DiffusionPipeline`.** Consult implementations in `src/diffusers/pipelines` in case you need references.
-3. **Don't subclass an existing pipeline for a variant.** DO NOT use an existing pipeline class (e.g., `FluxPipeline`) to override another pipeline (e.g., `FluxImg2ImgPipeline`) which will be a part of the core codebase (`src`).
-
-### Test setup
-
-- Slow tests gated with `@slow` and `RUN_SLOW=1`
-- All model-level tests must use the `BaseModelTesterConfig`, `ModelTesterMixin`, `MemoryTesterMixin`, `AttentionTesterMixin`, `LoraTesterMixin`, and `TrainingTesterMixin` classes initially to write the tests. Any additional tests should be added after discussions with the maintainers. Use `tests/models/transformers/test_models_transformer_flux.py` as a reference.
-
-### Common diffusers conventions
-
-- Pipelines inherit from `DiffusionPipeline`
-- Models use `ModelMixin` with `register_to_config` for config serialization
-- Schedulers use `SchedulerMixin` with `ConfigMixin`
-- Use `@torch.no_grad()` on pipeline `__call__`
-- Support `output_type="latent"` for skipping VAE decode
-- Support `generator` parameter for reproducibility
-- Use `self.progress_bar(timesteps)` for progress tracking
-
-## Gotchas
-
-1. **Forgetting `__init__.py` lazy imports.** Every new class must be registered in the appropriate `__init__.py` with lazy imports. Missing this causes `ImportError` that only shows up when users try `from diffusers import YourNewClass`.
-
-2. **Using `einops` or other non-PyTorch deps.** Reference implementations often use `einops.rearrange`. Always rewrite with native PyTorch (`reshape`, `permute`, `unflatten`). Don't add the dependency. If a dependency is truly unavoidable, guard its import: `if is_my_dependency_available(): import my_dependency`.
-
-3. **Missing `make fix-copies` after `# Copied from`.** If you add `# Copied from` annotations, you must run `make fix-copies` to propagate them. CI will fail otherwise.
-
-4. **Wrong `_supports_cache_class` / `_no_split_modules`.** These class attributes control KV cache and device placement. Copy from a similar model and verify -- wrong values cause silent correctness bugs or OOM errors.
-
-5. **Missing `@torch.no_grad()` on pipeline `__call__`.** Forgetting this causes GPU OOM from gradient accumulation during inference.
-
-6. **Config serialization gaps.** Every `__init__` parameter in a `ModelMixin` subclass must be captured by `register_to_config`. If you add a new param but forget to register it, `from_pretrained` will silently use the default instead of the saved value.
-
-7. **Forgetting to update `_import_structure` and `_lazy_modules`.** The top-level `src/diffusers/__init__.py` has both -- missing either one causes partial import failures.
-
-8. **Hardcoded dtype in model forward.** Don't hardcode `torch.float32` or `torch.bfloat16` in the model's forward pass. Use the dtype of the input tensors or `self.dtype` so the model works with any precision.
-
----
-
-## Modular Pipeline Conversion
-
-See [modular-conversion.md](modular-conversion.md) for the full guide on converting standard pipelines to modular format, including block types, build order, guider abstraction, and conversion checklist.
-
----
-
-## Weight Conversion Tips
-
-<!-- TODO: Add concrete examples as we encounter them. Common patterns to watch for:
-  - Fused QKV weights that need splitting into separate Q, K, V
-  - Scale/shift ordering differences (reference stores [shift, scale], diffusers expects [scale, shift])
-  - Weight transpositions (linear stored as transposed conv, or vice versa)
-  - Interleaved head dimensions that need reshaping
-  - Bias terms absorbed into different layers
-  Add each with a before/after code snippet showing the conversion. -->

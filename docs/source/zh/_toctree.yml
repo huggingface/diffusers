@@ -14,8 +14,16 @@
   sections:
   - local: using-diffusers/schedulers
     title: Load schedulers and models
+  - local: tutorials/autopipeline
+    title: AutoPipeline
   - local: using-diffusers/guiders
     title: Guiders
+
+- title: Adapters
+  isExpanded: false
+  sections:
+  - local: tutorials/using_peft_for_inference
+    title: LoRA
 
 - title: Inference
   isExpanded: false
@@ -90,6 +98,8 @@
     title: Overview
   - local: training/adapt_a_model
     title: Adapt a model to a new task
+  - local: tutorials/basic_training
+    title: 训练扩散模型
   - title: Models
     sections:
     - local: training/text2image
@@ -130,6 +140,8 @@
 - title: Specific pipeline examples
   isExpanded: false
   sections:
+  - local: using-diffusers/anyflow
+    title: AnyFlow
   - local: using-diffusers/consisid
     title: ConsisID
   - local: using-diffusers/helios

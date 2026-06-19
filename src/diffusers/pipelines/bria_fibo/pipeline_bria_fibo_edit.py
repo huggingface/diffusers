@@ -651,6 +651,9 @@ class BriaFiboEditPipeline(DiffusionPipeline, FluxLoraLoaderMixin):
             image (`PIL.Image.Image` or `torch.FloatTensor`, *optional*):
                 The image to guide the image generation. If not defined, the pipeline will generate an image from
                 scratch.
+            mask (`PipelineMaskInput`, *optional*):
+                Optional mask defining the region of `image` to be edited. Pixels covered by the mask are regenerated
+                while the rest of the image is preserved.
             height (`int`, *optional*, defaults to self.unet.config.sample_size * self.vae_scale_factor):
                 The height in pixels of the generated image. This is set to 1024 by default for the best results.
             width (`int`, *optional*, defaults to self.unet.config.sample_size * self.vae_scale_factor):
@@ -711,6 +714,8 @@ class BriaFiboEditPipeline(DiffusionPipeline, FluxLoraLoaderMixin):
                 `._callback_tensor_inputs` attribute of your pipeline class.
             max_sequence_length (`int` defaults to 3000): Maximum sequence length to use with the `prompt`.
             do_patching (`bool`, *optional*, defaults to `False`): Whether to use patching.
+            _auto_resize (`bool`, *optional*, defaults to `True`):
+                Whether to automatically resize the input image to the preferred resolutions.
         Examples:
           Returns:
             [`~pipelines.flux.BriaFiboPipelineOutput`] or `tuple`: [`~pipelines.flux.BriaFiboPipelineOutput`] if

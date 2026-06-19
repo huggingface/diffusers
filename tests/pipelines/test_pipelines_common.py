@@ -1443,9 +1443,23 @@ class PipelineTesterMixin:
                         param.data = param.data.to(torch_device).to(torch.float32)
                     else:
                         param.data = param.data.to(torch_device).to(torch.float16)
+                for name, buf in module.named_buffers():
+                    if not buf.is_floating_point():
+                        buf.data = buf.data.to(torch_device)
+                    elif any(
+                        module_to_keep_in_fp32 in name.split(".")
+                        for module_to_keep_in_fp32 in module._keep_in_fp32_modules
+                    ):
+                        buf.data = buf.data.to(torch_device).to(torch.float32)
+                    else:
+                        buf.data = buf.data.to(torch_device).to(torch.float16)
 
             elif hasattr(module, "half"):
                 components[name] = module.to(torch_device).half()
+
+        for key, component in components.items():
+            if hasattr(component, "eval"):
+                component.eval()
 
         pipe = self.pipeline_class(**components)
         for component in pipe.components.values():
@@ -1534,14 +1548,18 @@ class PipelineTesterMixin:
         pipe.set_progress_bar_config(disable=None)
 
         pipe.to("cpu")
-        model_devices = [component.device.type for component in components.values() if hasattr(component, "device")]
+        model_devices = [
+            component.device.type for component in components.values() if getattr(component, "device", None)
+        ]
         self.assertTrue(all(device == "cpu" for device in model_devices))
 
         output_cpu = pipe(**self.get_dummy_inputs("cpu"))[0]
         self.assertTrue(np.isnan(output_cpu).sum() == 0)
 
         pipe.to(torch_device)
-        model_devices = [component.device.type for component in components.values() if hasattr(component, "device")]
+        model_devices = [
+            component.device.type for component in components.values() if getattr(component, "device", None)
+        ]
         self.assertTrue(all(device == torch_device for device in model_devices))
 
         output_device = pipe(**self.get_dummy_inputs(torch_device))[0]
@@ -1552,11 +1570,11 @@ class PipelineTesterMixin:
         pipe = self.pipeline_class(**components)
         pipe.set_progress_bar_config(disable=None)
 
-        model_dtypes = [component.dtype for component in components.values() if hasattr(component, "dtype")]
+        model_dtypes = [component.dtype for component in components.values() if getattr(component, "dtype", None)]
         self.assertTrue(all(dtype == torch.float32 for dtype in model_dtypes))
 
         pipe.to(dtype=torch.float16)
-        model_dtypes = [component.dtype for component in components.values() if hasattr(component, "dtype")]
+        model_dtypes = [component.dtype for component in components.values() if getattr(component, "dtype", None)]
         self.assertTrue(all(dtype == torch.float16 for dtype in model_dtypes))
 
     def test_attention_slicing_forward_pass(self, expected_max_diff=1e-3):
@@ -2565,19 +2583,20 @@ class PipelinePushToHubTester(unittest.TestCase):
         for p1, p2 in zip(unet.parameters(), new_model.parameters()):
             self.assertTrue(torch.equal(p1, p2))
 
-        # Reset repo
-        delete_repo(token=TOKEN, repo_id=self.repo_id)
-
-        # Push to hub via save_pretrained
+        # Push to hub via save_pretrained to a separate repo. Reusing `self.repo_id` after
+        # deleting it makes the staging server's LFS GC reject the next commit with
+        # "LFS pointer pointed to a file that does not exist" when the model bytes are identical.
+        save_repo_id = f"{self.repo_id}-saved"
         with tempfile.TemporaryDirectory() as tmp_dir:
-            pipeline.save_pretrained(tmp_dir, repo_id=self.repo_id, push_to_hub=True, token=TOKEN)
+            pipeline.save_pretrained(tmp_dir, repo_id=save_repo_id, push_to_hub=True, token=TOKEN)
 
-        new_model = UNet2DConditionModel.from_pretrained(f"{USER}/{self.repo_id}", subfolder="unet")
+        new_model = UNet2DConditionModel.from_pretrained(f"{USER}/{save_repo_id}", subfolder="unet")
         for p1, p2 in zip(unet.parameters(), new_model.parameters()):
             self.assertTrue(torch.equal(p1, p2))
 
-        # Reset repo
-        delete_repo(self.repo_id, token=TOKEN)
+        # Reset repos
+        delete_repo(token=TOKEN, repo_id=self.repo_id)
+        delete_repo(save_repo_id, token=TOKEN)
 
     def test_push_to_hub_in_organization(self):
         components = self.get_pipeline_components()
@@ -2589,19 +2608,20 @@ class PipelinePushToHubTester(unittest.TestCase):
         for p1, p2 in zip(unet.parameters(), new_model.parameters()):
             self.assertTrue(torch.equal(p1, p2))
 
-        # Reset repo
-        delete_repo(token=TOKEN, repo_id=self.org_repo_id)
-
-        # Push to hub via save_pretrained
+        # Push to hub via save_pretrained to a separate repo. Reusing `self.org_repo_id` after
+        # deleting it makes the staging server's LFS GC reject the next commit with
+        # "LFS pointer pointed to a file that does not exist" when the model bytes are identical.
+        save_org_repo_id = f"{self.org_repo_id}-saved"
         with tempfile.TemporaryDirectory() as tmp_dir:
-            pipeline.save_pretrained(tmp_dir, push_to_hub=True, token=TOKEN, repo_id=self.org_repo_id)
+            pipeline.save_pretrained(tmp_dir, push_to_hub=True, token=TOKEN, repo_id=save_org_repo_id)
 
-        new_model = UNet2DConditionModel.from_pretrained(self.org_repo_id, subfolder="unet")
+        new_model = UNet2DConditionModel.from_pretrained(save_org_repo_id, subfolder="unet")
         for p1, p2 in zip(unet.parameters(), new_model.parameters()):
             self.assertTrue(torch.equal(p1, p2))
 
-        # Reset repo
-        delete_repo(self.org_repo_id, token=TOKEN)
+        # Reset repos
+        delete_repo(token=TOKEN, repo_id=self.org_repo_id)
+        delete_repo(save_org_repo_id, token=TOKEN)
 
     @unittest.skipIf(
         not is_jinja_available(),
@@ -2610,13 +2630,16 @@ class PipelinePushToHubTester(unittest.TestCase):
     def test_push_to_hub_library_name(self):
         components = self.get_pipeline_components()
         pipeline = StableDiffusionPipeline(**components)
-        pipeline.push_to_hub(self.repo_id, token=TOKEN)
+        # Use a method-unique repo to avoid recycling a name that `test_push_to_hub` just deleted,
+        # which the staging server rejects with an LFS pointer error.
+        repo_id = f"test-pipeline-library-name-{uuid.uuid4()}"
+        pipeline.push_to_hub(repo_id, token=TOKEN)
 
-        model_card = ModelCard.load(f"{USER}/{self.repo_id}", token=TOKEN).data
+        model_card = ModelCard.load(f"{USER}/{repo_id}", token=TOKEN).data
         assert model_card.library_name == "diffusers"
 
         # Reset repo
-        delete_repo(self.repo_id, token=TOKEN)
+        delete_repo(repo_id, token=TOKEN)
 
 
 class PyramidAttentionBroadcastTesterMixin:

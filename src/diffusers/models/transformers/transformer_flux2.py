@@ -23,6 +23,7 @@ import torch.nn.functional as F
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...loaders import FluxTransformer2DLoadersMixin, FromOriginalModelMixin, PeftAdapterMixin
 from ...utils import BaseOutput, apply_lora_scale, logging
+from ...utils.torch_utils import maybe_adjust_dtype_for_device
 from .._modeling_parallel import ContextParallelInput, ContextParallelOutput
 from ..attention import AttentionMixin, AttentionModuleMixin
 from ..attention_dispatch import dispatch_attention_fn
@@ -291,8 +292,8 @@ class Flux2SwiGLU(nn.Module):
         self.gate_fn = nn.SiLU()
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        x1, x2 = x.chunk(2, dim=-1)
-        x = self.gate_fn(x1) * x2
+        half = x.shape[-1] // 2
+        x = self.gate_fn(x[..., :half]) * x[..., half:]
         return x
 
 
@@ -959,9 +960,7 @@ class Flux2PosEmbed(nn.Module):
         cos_out = []
         sin_out = []
         pos = ids.float()
-        is_mps = ids.device.type == "mps"
-        is_npu = ids.device.type == "npu"
-        freqs_dtype = torch.float32 if (is_mps or is_npu) else torch.float64
+        freqs_dtype = maybe_adjust_dtype_for_device(torch.float64, ids.device)
         # Unlike Flux 1, loop over len(self.axes_dim) rather than ids.shape[-1]
         for i in range(len(self.axes_dim)):
             cos, sin = get_1d_rotary_pos_embed(
@@ -1201,6 +1200,12 @@ class Flux2Transformer2DModel(
                 Conditional embeddings (embeddings computed from the input conditions such as prompts) to use.
             timestep (`torch.LongTensor`):
                 Used to indicate denoising step.
+            img_ids (`torch.Tensor`):
+                Image position ids used to compute the rotary positional embeddings.
+            txt_ids (`torch.Tensor`):
+                Text position ids used to compute the rotary positional embeddings.
+            guidance (`torch.Tensor`, *optional*):
+                Guidance scale embedding used for guidance-distilled variants of the model.
             joint_attention_kwargs (`dict`, *optional*):
                 A kwargs dictionary that if specified is passed along to the `AttentionProcessor` as defined under
                 `self.processor` in

@@ -120,6 +120,7 @@ class AutoModel(ConfigMixin):
                 subfolder=subfolder,
                 module_file=module_file,
                 class_name=class_name,
+                trust_remote_code=trust_remote_code,
                 **hub_kwargs,
             )
         else:
@@ -143,6 +144,7 @@ class AutoModel(ConfigMixin):
                 importable_classes=ALL_IMPORTABLE_CLASSES,
                 pipelines=None,
                 is_pipeline_module=False,
+                trust_remote_code=trust_remote_code,
             )
 
         if model_cls is None:
@@ -306,7 +308,7 @@ class AutoModel(ConfigMixin):
         trust_remote_code = resolve_trust_remote_code(trust_remote_code, pretrained_model_or_path, has_remote_code)
         if not has_remote_code and trust_remote_code:
             raise ValueError(
-                "Selected model repository does not happear to have any custom code or does not have a valid `config.json` file."
+                "Selected model repository does not appear to have any custom code or does not have a valid `config.json` file."
             )
 
         if has_remote_code and trust_remote_code:
@@ -318,6 +320,7 @@ class AutoModel(ConfigMixin):
                 subfolder=subfolder,
                 module_file=module_file,
                 class_name=class_name,
+                trust_remote_code=trust_remote_code,
                 **hub_kwargs,
             )
         else:
