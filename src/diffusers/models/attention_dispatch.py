@@ -3042,7 +3042,7 @@ def _flash_attention_3_varlen_hub(
     value_packed = torch.cat(value_valid, dim=0)
 
     func = _HUB_KERNELS_REGISTRY[AttentionBackendName._FLASH_3_VARLEN_HUB].kernel_fn
-    out, lse, *_ = func(
+    out = func(
         q=query_packed,
         k=key_packed,
         v=value_packed,
@@ -3053,6 +3053,9 @@ def _flash_attention_3_varlen_hub(
         softmax_scale=scale,
         causal=is_causal,
     )
+    lse = None
+    if isinstance(out, tuple):
+        out, lse, *_ = out
     out = out.unflatten(0, (batch_size, -1))
 
     return (out, lse) if return_lse else out
