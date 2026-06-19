@@ -132,7 +132,8 @@ class Cosmos3VLTextRotaryEmbedding(nn.Module):
         # bfloat16, which cannot represent consecutive integers past 256, collapsing positions onto the same
         # frequency and degrading the rotary embedding.
         with torch.autocast(device_type=position_ids.device.type, enabled=False):
-            freqs = (inv_freq_expanded @ position_ids_expanded).transpose(2, 3)  # [3,B,N,head_dim//2]
+            freqs = inv_freq_expanded @ position_ids_expanded
+        freqs = freqs.transpose(2, 3)  # [3,B,N,head_dim//2]
         freqs = self.apply_interleaved_mrope(freqs, self.rope_axes_dim)  # [B,N,head_dim//2]
         emb = torch.cat((freqs, freqs), dim=-1)  # [B,N,head_dim]
         return emb.cos().to(dtype=dtype), emb.sin().to(dtype=dtype)  # each: [B,N,head_dim]
