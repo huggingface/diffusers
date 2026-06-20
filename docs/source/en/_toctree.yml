@@ -643,6 +643,8 @@
         title: Z-Image
       title: Image
     - sections:
+      - local: api/pipelines/dflash
+        title: DFlash
       - local: api/pipelines/llada2
         title: LLaDA2
       title: Text
@@ -712,6 +714,8 @@
       title: DDPMScheduler
     - local: api/schedulers/deis
       title: DEISMultistepScheduler
+    - local: api/schedulers/dflash_token_diffusion
+      title: DFlashTokenDiffusionScheduler
     - local: api/schedulers/multistep_dpm_solver_inverse
       title: DPMSolverMultistepInverse
     - local: api/schedulers/multistep_dpm_solver

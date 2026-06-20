@@ -1457,6 +1457,7 @@ class CycleDiffusionPipeline(metaclass=DummyObject):
         requires_backends(cls, ["torch", "transformers"])
 
 
+class DFlashPipeline(metaclass=DummyObject):
 class DreamLiteMobilePipeline(metaclass=DummyObject):
     _backends = ["torch", "transformers"]
 
@@ -1472,6 +1473,7 @@ class DreamLiteMobilePipeline(metaclass=DummyObject):
         requires_backends(cls, ["torch", "transformers"])
 
 
+class DFlashPipelineOutput(metaclass=DummyObject):
 class DreamLitePipeline(metaclass=DummyObject):
     _backends = ["torch", "transformers"]
 

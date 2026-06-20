@@ -51,6 +51,10 @@ else:
     _import_structure["scheduling_ddpm_parallel"] = ["DDPMParallelScheduler"]
     _import_structure["scheduling_ddpm_wuerstchen"] = ["DDPMWuerstchenScheduler"]
     _import_structure["scheduling_deis_multistep"] = ["DEISMultistepScheduler"]
+    _import_structure["scheduling_dflash_token_diffusion"] = [
+        "DFlashTokenDiffusionScheduler",
+        "DFlashTokenDiffusionSchedulerOutput",
+    ]
     _import_structure["scheduling_dpm_cogvideox"] = ["CogVideoXDPMScheduler"]
     _import_structure["scheduling_dpmsolver_multistep"] = ["DPMSolverMultistepScheduler"]
     _import_structure["scheduling_dpmsolver_multistep_inverse"] = ["DPMSolverMultistepInverseScheduler"]
@@ -158,6 +162,10 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .scheduling_ddpm_parallel import DDPMParallelScheduler
         from .scheduling_ddpm_wuerstchen import DDPMWuerstchenScheduler
         from .scheduling_deis_multistep import DEISMultistepScheduler
+        from .scheduling_dflash_token_diffusion import (
+            DFlashTokenDiffusionScheduler,
+            DFlashTokenDiffusionSchedulerOutput,
+        )
         from .scheduling_dpm_cogvideox import CogVideoXDPMScheduler
         from .scheduling_dpmsolver_multistep import DPMSolverMultistepScheduler
         from .scheduling_dpmsolver_multistep_inverse import DPMSolverMultistepInverseScheduler
