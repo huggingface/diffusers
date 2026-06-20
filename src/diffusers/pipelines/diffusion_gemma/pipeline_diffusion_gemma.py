@@ -353,6 +353,24 @@ class DiffusionGemmaPipeline(DiffusionPipeline):
                 )
                 canvas = scheduler_output.prev_sample
 
+                # Predictor-corrector (https://huggingface.co/papers/2605.22765): each Gibbs sweep needs fresh logits on
+                # the updated canvas, so the model is recomputed here. Skipped on the final step.
+                corrector_steps = (
+                    self.scheduler.config.corrector_steps if isinstance(self.scheduler, DiscreteDDIMScheduler) else 0
+                )
+                if corrector_steps and step_idx + 1 < num_inference_steps:
+                    for _ in range(corrector_steps):
+                        corrector_logits = self.model(
+                            decoder_input_ids=canvas,
+                            past_key_values=past_key_values,
+                            self_conditioning_logits=self_conditioning_logits,
+                            decoder_attention_mask=mask_mapping,
+                            decoder_position_ids=decoder_position_ids,
+                        ).logits
+                        canvas = self.scheduler.step_correct(
+                            model_output=corrector_logits, timestep=step_idx, sample=canvas, generator=generator
+                        ).prev_sample
+
                 if callback_on_step_end is not None:
                     callback_kwargs = {k: locals()[k] for k in callback_on_step_end_tensor_inputs}
                     callback_outputs = callback_on_step_end(self, global_step, step_idx, callback_kwargs)

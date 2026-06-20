@@ -65,3 +65,42 @@ class DiscreteDDIMSchedulerTest(unittest.TestCase):
         out = scheduler.step(logits, timestep=2, sample=sample, return_dict=False)
         self.assertIsInstance(out, tuple)
         self.assertEqual(len(out), 3)
+
+    def test_to_loo_only_shifts_observed_token(self):
+        # The denoiser->LOO conversion moves only the observed token's logit at each position (eq. 13).
+        scheduler = self.get_scheduler()
+        sample = torch.randint(0, 100, (2, 16))
+        logits = torch.randn(2, 16, 100)
+        loo = scheduler._to_loo_logits(logits, sample, alpha=0.4)
+        diff = loo - logits
+        moved = diff.abs() > 0
+        self.assertTrue(torch.equal(moved.sum(dim=-1), torch.ones(2, 16, dtype=torch.long)))
+
+    def test_step_correct_output_shapes(self):
+        scheduler = self.get_scheduler(corrector_steps=1, corrector_k=4)
+        scheduler.set_timesteps(8)
+        sample = torch.randint(0, 100, (3, 16))
+        logits = torch.randn(3, 16, 100)
+        out = scheduler.step_correct(logits, timestep=2, sample=sample)
+        self.assertEqual(out.prev_sample.shape, sample.shape)
+        self.assertEqual(out.prev_sample.dtype, sample.dtype)
+
+    def test_step_correct_resamples_at_most_k(self):
+        # A corrector sweep holds all but `corrector_k` positions per row fixed.
+        k = 3
+        scheduler = self.get_scheduler(corrector_steps=1, corrector_k=k)
+        scheduler.set_timesteps(8)
+        sample = torch.randint(0, 100, (4, 16))
+        logits = torch.randn(4, 16, 100)
+        out = scheduler.step_correct(logits, timestep=2, sample=sample)
+        changed = (out.prev_sample != sample).sum(dim=-1)
+        self.assertTrue(torch.all(changed <= k))
+
+    def test_step_correct_return_tuple(self):
+        scheduler = self.get_scheduler(corrector_steps=1)
+        scheduler.set_timesteps(8)
+        sample = torch.randint(0, 100, (1, 16))
+        logits = torch.randn(1, 16, 100)
+        out = scheduler.step_correct(logits, timestep=2, sample=sample, return_dict=False)
+        self.assertIsInstance(out, tuple)
+        self.assertEqual(len(out), 3)
