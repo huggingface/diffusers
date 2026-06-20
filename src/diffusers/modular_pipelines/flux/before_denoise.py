@@ -619,9 +619,7 @@ class FluxKontextRoPEInputsStep(ModularPipelineBlocks):
         ):
             image_latent_height = 2 * (int(block_state.image_height) // (components.vae_scale_factor * 2))
             image_latent_width = 2 * (int(block_state.image_width) // (components.vae_scale_factor * 2))
-            img_ids = _prepare_latent_image_ids(
-                None, image_latent_height // 2, image_latent_width // 2, device, dtype
-            )
+            img_ids = _prepare_latent_image_ids(None, image_latent_height // 2, image_latent_width // 2, device, dtype)
             # image ids are the same as latent ids with the first dimension set to 1 instead of 0
             img_ids[..., 0] = 1
 
