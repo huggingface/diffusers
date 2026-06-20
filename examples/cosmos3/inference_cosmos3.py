@@ -18,6 +18,9 @@ Text-to-video:
 Image-to-video:
     python inference_cosmos3.py --prompt "..." --vision-path /path/to/image.jpg
 
+Video-to-video:
+    python inference_cosmos3.py --prompt "..." --video-path /path/to/video.mp4
+
 Text-to-video-with-sound (requires a sound-capable checkpoint):
     python inference_cosmos3.py --prompt "..." --enable-sound
 """
@@ -69,6 +72,22 @@ def main():
         "--vision-path",
         default=None,
         help="Optional URL or local path for an image-conditioning frame, or an action conditioning video.",
+    )
+    parser.add_argument(
+        "--video-path",
+        default=None,
+        help="Optional URL or local path to a conditioning video for video-to-video generation.",
+    )
+    parser.add_argument(
+        "--condition-frame-indexes-vision",
+        default=None,
+        help="Comma-separated latent frame indexes kept clean for video-to-video (default: 0,1).",
+    )
+    parser.add_argument(
+        "--condition-video-keep",
+        choices=["first", "last"],
+        default="first",
+        help="Take the video-to-video conditioning frames from the first or last of the source clip (default: first).",
     )
     parser.add_argument("--output", default=".", help="Directory to save generated video/image/audio files.")
     parser.add_argument(
@@ -202,6 +221,30 @@ def main():
             guidance_scale=args.guidance_scale,
             generator=generator,
             use_system_prompt=False,
+            add_resolution_template=args.add_resolution_template,
+            add_duration_template=args.add_duration_template,
+            enable_safety_check=not args.no_safety_check,
+        )
+    elif args.video_path is not None:
+        video = load_video(args.video_path)
+        condition_frame_indexes_vision = (
+            [int(i) for i in args.condition_frame_indexes_vision.split(",") if i.strip()]
+            if args.condition_frame_indexes_vision is not None
+            else [0, 1]
+        )
+        result = pipeline(
+            prompt=args.prompt,
+            video=video,
+            condition_frame_indexes_vision=condition_frame_indexes_vision,
+            condition_video_keep=args.condition_video_keep,
+            num_frames=args.num_frames,
+            height=args.height,
+            width=args.width,
+            fps=args.fps,
+            num_inference_steps=args.num_inference_steps,
+            enable_sound=args.enable_sound,
+            guidance_scale=args.guidance_scale,
+            generator=generator,
             add_resolution_template=args.add_resolution_template,
             add_duration_template=args.add_duration_template,
             enable_safety_check=not args.no_safety_check,

@@ -21,6 +21,7 @@ from diffusers.models.transformers.transformer_ideogram4 import (
     IMAGE_POSITION_OFFSET,
     LLM_TOKEN_INDICATOR,
     OUTPUT_IMAGE_INDICATOR,
+    Ideogram4MRoPE,
 )
 from diffusers.utils.torch_utils import randn_tensor
 
@@ -164,3 +165,20 @@ class TestIdeogram4TransformerTraining(Ideogram4TransformerTesterConfig, Trainin
 
 class TestIdeogram4TransformerAttention(Ideogram4TransformerTesterConfig, AttentionTesterMixin):
     """Attention processor tests for Ideogram 4 Transformer."""
+
+
+def test_ideogram4_mrope_is_autocast_invariant():
+    # Ideogram4's image positions start at IMAGE_POSITION_OFFSET (65536), so the rotary matmul must
+    # run in float32: under an ambient autocast it would otherwise execute in bfloat16 and round every
+    # image position to the same value, collapsing all spatial information (the decoded image goes flat).
+    rope = Ideogram4MRoPE(head_dim=256, base=5_000_000, mrope_section=(24, 20, 20)).to(torch_device)
+    position_ids = torch.tensor([[[0, 0, 0], [0, 0, 1], [0, 63, 63]]], device=torch_device) + IMAGE_POSITION_OFFSET
+
+    cos_ref, sin_ref = rope(position_ids)
+    with torch.autocast(device_type=torch.device(torch_device).type, dtype=torch.bfloat16):
+        cos_ac, sin_ac = rope(position_ids)
+
+    # Distinct image positions must keep distinct embeddings, identical to the float32 computation.
+    assert not torch.equal(cos_ac[0, 0], cos_ac[0, 1])
+    assert torch.equal(cos_ac, cos_ref)
+    assert torch.equal(sin_ac, sin_ref)

@@ -34,7 +34,7 @@ specific language governing permissions and limitations under the License.
 6. [Community Pipeline](https://github.com/huggingface/diffusers/issues?q=is%3Aopen+is%3Aissue+label%3Acommunity-examples)에 기여할 수 있습니다.
 7. [예제](https://github.com/huggingface/diffusers/tree/main/examples)에 기여할 수 있습니다.
 8. "Good second issue" 라벨이 지정된 어려운 이슈를 수정할 수 있습니다. [여기](https://github.com/huggingface/diffusers/issues?q=is%3Aopen+is%3Aissue+label%3A%22Good+second+issue%22)를 참조하세요.
-9. 새로운 파이프라인, 모델 또는 스케줄러를 추가할 수 있습니다. ["새로운 파이프라인/모델"](https://github.com/huggingface/diffusers/issues?q=is%3Aopen+is%3Aissue+label%3A%22New+pipeline%2Fmodel%22) 및 ["새로운 스케줄러"](https://github.com/huggingface/diffusers/issues?q=is%3Aopen+is%3Aissue+label%3A%22New+scheduler%22) 이슈를 참조하세요. 이 기여에 대해서는 [디자인 철학](https://github.com/huggingface/diffusers/blob/main/PHILOSOPHY.md)을 확인해주세요.
+9. 새로운 파이프라인, 모델 또는 스케줄러를 추가할 수 있습니다. ["새로운 파이프라인/모델"](https://github.com/huggingface/diffusers/issues?q=is%3Aopen+is%3Aissue+label%3A%22New+pipeline%2Fmodel%22) 및 ["새로운 스케줄러"](https://github.com/huggingface/diffusers/issues?q=is%3Aopen+is%3Aissue+label%3A%22New+scheduler%22) 이슈를 참조하세요. 이 기여에 대해서는 [디자인 철학](https://huggingface.co/docs/diffusers/main/ko/conceptual/philosophy)을 확인해주세요.
 
 앞서 말한 대로, **모든 기여는 커뮤니티에게 가치가 있습니다**. 이어지는 부분에서 각 기여에 대해 조금 더 자세히 설명하겠습니다.
 

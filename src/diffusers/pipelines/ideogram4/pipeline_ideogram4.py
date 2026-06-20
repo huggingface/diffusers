@@ -20,6 +20,7 @@ from transformers import AutoTokenizer, PreTrainedModel
 from transformers.masking_utils import create_causal_mask
 
 from ...image_processor import VaeImageProcessor
+from ...loaders import Ideogram4LoraLoaderMixin
 from ...models.autoencoders import AutoencoderKLFlux2
 from ...models.transformers.transformer_ideogram4 import (
     IMAGE_POSITION_OFFSET,
@@ -137,7 +138,7 @@ def _expand_tensor_to_effective_batch(
     return torch.repeat_interleave(tensor, repeats=repeat_by, dim=0, output_size=tensor.shape[0] * repeat_by)
 
 
-class Ideogram4Pipeline(DiffusionPipeline):
+class Ideogram4Pipeline(DiffusionPipeline, Ideogram4LoraLoaderMixin):
     r"""
     Text-to-image pipeline for Ideogram4.
 
@@ -367,9 +368,16 @@ class Ideogram4Pipeline(DiffusionPipeline):
             attention_mask[b, offset:] = 1
             text_position_ids[b, offset:] = torch.arange(n)
 
-        token_ids = token_ids.to(device)
-        attention_mask = attention_mask.to(device)
-        text_position_ids = text_position_ids.to(device)
+        # To support enable_model_cpu_offload, we need to move the text_encoder inputs to the text encoder's actual
+        # device te_device. This is necessary because the `CpuOffload` model offload hook attaches to a component's
+        # `forward` method, but we call text_encoder's submodules directly below, so the hook never fires to onload the
+        # model to the execution device. Other offloading techniques (group, sequential) would work without te_device
+        # because they hook submodules, not just the top-level component module. Note that in the
+        # enable_model_cpu_offload case te_device will actually be the offload device (e.g. CPU).
+        te_device = self.text_encoder.device
+        token_ids = token_ids.to(te_device)
+        attention_mask = attention_mask.to(te_device)
+        text_position_ids = text_position_ids.to(te_device)
 
         # Concatenate the tapped activation-layer hidden states into per-token text features, zeroing padding.
         selected = self._get_text_encoder_hidden_states(
@@ -377,6 +385,7 @@ class Ideogram4Pipeline(DiffusionPipeline):
         )
         text_features = torch.stack(selected, dim=0).permute(1, 2, 3, 0).reshape(batch_size, max_sequence_length, -1)
         text_features = (text_features * attention_mask.to(text_features.dtype).unsqueeze(-1)).to(torch.float32)
+        text_features = text_features.to(device)
 
         position_ids, segment_ids, indicator = self._prepare_ids(
             text_lengths, grid_h, grid_w, max_sequence_length, device
@@ -416,6 +425,10 @@ class Ideogram4Pipeline(DiffusionPipeline):
     @property
     def num_timesteps(self) -> int:
         return self._num_timesteps
+
+    @property
+    def attention_kwargs(self) -> dict[str, Any] | None:
+        return self._attention_kwargs
 
     @property
     def interrupt(self) -> bool:
@@ -485,6 +498,7 @@ class Ideogram4Pipeline(DiffusionPipeline):
         latents: torch.Tensor | None = None,
         output_type: str = "pil",
         return_dict: bool = True,
+        attention_kwargs: dict[str, Any] | None = None,
         callback_on_step_end: Callable[["Ideogram4Pipeline", int, int, dict[str, Any]], dict[str, Any]] | None = None,
         callback_on_step_end_tensor_inputs: list[str] = ["latents"],
     ) -> Ideogram4PipelineOutput | tuple[Any]:
@@ -533,6 +547,9 @@ class Ideogram4Pipeline(DiffusionPipeline):
                 One of `"pil"`, `"np"`, `"pt"`, or `"latent"`.
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether to return an [`~pipelines.ideogram4.Ideogram4PipelineOutput`].
+            attention_kwargs (`dict`, *optional*):
+                A kwargs dictionary passed along to the attention processor of each transformer. A `"scale"` entry
+                scales the loaded LoRA weights (e.g. `{"scale": 0.7}`) when the PEFT backend is active.
             callback_on_step_end (`Callable`, *optional*):
                 Callback invoked at the end of every denoising step.
             callback_on_step_end_tensor_inputs (`list[str]`, *optional*):
@@ -560,6 +577,7 @@ class Ideogram4Pipeline(DiffusionPipeline):
 
         device = self._execution_device
         self._guidance_scale = guidance_scale
+        self._attention_kwargs = attention_kwargs
         self._interrupt = False
 
         # 0. Optionally rewrite the prompt(s) into Ideogram4's native structured JSON caption.
@@ -669,6 +687,7 @@ class Ideogram4Pipeline(DiffusionPipeline):
                     position_ids=position_ids,
                     segment_ids=segment_ids,
                     indicator=indicator,
+                    attention_kwargs=self.attention_kwargs,
                     return_dict=False,
                 )[0]
                 # Velocity (and guidance) is computed in float32 for scheduler precision; the transformers
@@ -683,6 +702,7 @@ class Ideogram4Pipeline(DiffusionPipeline):
                     position_ids=neg_position_ids,
                     segment_ids=neg_segment_ids,
                     indicator=neg_indicator,
+                    attention_kwargs=self.attention_kwargs,
                     return_dict=False,
                 )[0].to(torch.float32)
 
