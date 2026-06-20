@@ -291,7 +291,10 @@ class LongCatAudioDiTPipeline(DiffusionPipeline):
                 negative_prompt = [negative_prompt] * batch_size
             else:
                 negative_prompt = list(negative_prompt)
-            negative_prompt_embeds, negative_prompt_embeds_len = self.encode_prompt(negative_prompt, device)
+            normalized_negative_prompts = [_normalize_text(text) for text in negative_prompt]
+            negative_prompt_embeds, negative_prompt_embeds_len = self.encode_prompt(
+                normalized_negative_prompts, device
+            )
             negative_prompt_embeds_mask = _lens_to_mask(
                 negative_prompt_embeds_len, length=negative_prompt_embeds.shape[1]
             )
