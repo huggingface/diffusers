@@ -35,6 +35,7 @@ from diffusers.models.attention_processor import (
 from diffusers.models.embeddings import ImageProjection, IPAdapterFaceIDImageProjection, IPAdapterPlusImageProjection
 from diffusers.utils import logging
 from diffusers.utils.import_utils import is_xformers_available
+from diffusers.utils.torch_utils import randn_tensor
 
 from ...testing_utils import (
     backend_empty_cache,
@@ -391,11 +392,13 @@ class UNet2DConditionTesterConfig(BaseModelTesterConfig):
         batch_size = 4
         num_channels = 4
         sizes = (16, 16)
+        # Seed locally so repeated calls (e.g. one per forward pass in the mixins) yield identical inputs.
+        generator = torch.Generator("cpu").manual_seed(0)
 
         return {
-            "sample": floats_tensor((batch_size, num_channels) + sizes).to(torch_device),
+            "sample": randn_tensor((batch_size, num_channels) + sizes, generator=generator, device=torch_device),
             "timestep": torch.tensor([10]).to(torch_device),
-            "encoder_hidden_states": floats_tensor((batch_size, 4, 8)).to(torch_device),
+            "encoder_hidden_states": randn_tensor((batch_size, 4, 8), generator=generator, device=torch_device),
         }
 
 
