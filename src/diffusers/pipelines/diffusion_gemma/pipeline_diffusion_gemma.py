@@ -409,7 +409,9 @@ class DiffusionGemmaPipeline(DiffusionPipeline):
                         ).prev_sample
 
                 if callback_on_step_end is not None:
-                    callback_kwargs = {k: locals()[k] for k in callback_on_step_end_tensor_inputs}
+                    callback_kwargs = {}
+                    for k in callback_on_step_end_tensor_inputs:
+                        callback_kwargs[k] = locals()[k]
                     callback_outputs = callback_on_step_end(self, global_step, step_idx, callback_kwargs)
                     canvas = callback_outputs.pop("canvas", canvas)
                 global_step += 1
