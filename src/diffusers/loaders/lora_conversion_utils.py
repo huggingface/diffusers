@@ -278,6 +278,10 @@ def _convert_unet_lora_key(key):
     diffusers_name = diffusers_name.replace("proj.in", "proj_in")
     diffusers_name = diffusers_name.replace("proj.out", "proj_out")
     diffusers_name = diffusers_name.replace("emb.layers", "time_emb_proj")
+    diffusers_name = diffusers_name.replace("conv.in", "conv_in")
+    diffusers_name = diffusers_name.replace("conv.out", "conv_out")
+    diffusers_name = diffusers_name.replace("time.embed.0", "time_embedding.linear_1")
+    diffusers_name = diffusers_name.replace("time.embed.2", "time_embedding.linear_2")
 
     # SDXL specific conversions.
     if "emb" in diffusers_name and "time.emb.proj" not in diffusers_name:
