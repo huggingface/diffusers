@@ -757,6 +757,27 @@ def _convert_kohya_flux_lora_to_diffusers(state_dict):
                 elif any(add_qkv in k for add_qkv in ["add_q_proj", "add_k_proj", "add_v_proj"]):
                     remaining = k.split("attn_")[-1]
                     diffusers_key += f".attn.{remaining}"
+            elif k.startswith(("lora_transformer_single_transformer_blocks_", "lora_transformer_transformer_blocks_")):
+                # Non-attention sublayers of a transformer block. Without an explicit mapping here,
+                # `diffusers_key` stays at the bare block path (e.g. "transformer_blocks.0"), which is a
+                # container module, not a leaf parameter, and later lookups against it raise KeyError.
+                non_attn_block_mapping = {
+                    "_norm1_context_linear": ".norm1_context.linear",
+                    "_norm1_linear": ".norm1.linear",
+                    "_norm_linear": ".norm.linear",
+                    "_proj_mlp": ".proj_mlp",
+                    "_proj_out": ".proj_out",
+                    "_ff_context_net_0_proj": ".ff_context.net.0.proj",
+                    "_ff_context_net_2": ".ff_context.net.2",
+                    "_ff_net_0_proj": ".ff.net.0.proj",
+                    "_ff_net_2": ".ff.net.2",
+                }
+                for suffix, mapped in non_attn_block_mapping.items():
+                    if k.endswith(suffix):
+                        diffusers_key += mapped
+                        break
+                else:
+                    raise NotImplementedError(f"Handling for key ({k}) is not implemented.")
 
             _convert(k, diffusers_key, state_dict, new_state_dict)
 
