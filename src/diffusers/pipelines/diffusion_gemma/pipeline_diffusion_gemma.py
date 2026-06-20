@@ -96,6 +96,44 @@ class DiffusionGemmaPipeline(DiffusionPipeline):
     def num_timesteps(self):
         return self._num_timesteps
 
+    # --- PEFT adapters ---
+    #
+    # The denoiser is a 🤗 Transformers model (a `PeftAdapterMixin`), not a diffusers `ModelMixin`, so the diffusers
+    # `LoraLoaderMixin` (which targets diffusers components and fuses kohya-format LoRA) does not apply. We instead
+    # forward the model's native, adapter-type-agnostic PEFT API, so LoRA, DoRA, and other PEFT adapters all load the
+    # same way. Adapters stay active and unmerged: DiffusionGemma ties the encoder and decoder base weights, so fusing
+    # would corrupt them.
+
+    def load_adapter(self, *args, **kwargs):
+        """
+        Load a PEFT adapter (LoRA, DoRA, ...) into the underlying model.
+
+        Forwards to [`~transformers.integrations.PeftAdapterMixin.load_adapter`]; the first argument is the path or Hub
+        id of the adapter (a directory with `adapter_config.json` and the adapter weights, e.g. the output of
+        [`SFTTrainer`]).
+        """
+        return self.model.load_adapter(*args, **kwargs)
+
+    def set_adapter(self, adapter_name: str | list[str]):
+        """Activate one or more loaded adapters by name."""
+        self.model.set_adapter(adapter_name)
+
+    def enable_adapters(self):
+        """Enable the attached adapters."""
+        self.model.enable_adapters()
+
+    def disable_adapters(self):
+        """Disable all adapters and run the base model."""
+        self.model.disable_adapters()
+
+    def delete_adapter(self, adapter_name: str | list[str]):
+        """Delete one or more loaded adapters."""
+        self.model.delete_adapter(adapter_name)
+
+    def active_adapters(self) -> list[str]:
+        """Names of the currently active adapters."""
+        return self.model.active_adapters() if getattr(self.model, "peft_config", None) else []
+
     # --- Prompt encoding ---
 
     def _prepare_inputs(
@@ -353,11 +391,10 @@ class DiffusionGemmaPipeline(DiffusionPipeline):
                 )
                 canvas = scheduler_output.prev_sample
 
-                # Predictor-corrector (https://huggingface.co/papers/2605.22765): each Gibbs sweep needs fresh logits on
-                # the updated canvas, so the model is recomputed here. Skipped on the final step.
-                corrector_steps = (
-                    self.scheduler.config.corrector_steps if isinstance(self.scheduler, DiscreteDDIMScheduler) else 0
-                )
+                # Predictor-corrector (https://huggingface.co/papers/2605.22765): a scheduler may expose extra corrector
+                # sweeps via a `corrector_steps` config and a `step_correct` method. Each sweep needs fresh logits on the
+                # updated canvas, so the model is recomputed here. Skipped on the final step.
+                corrector_steps = getattr(self.scheduler.config, "corrector_steps", 0)
                 if corrector_steps and step_idx + 1 < num_inference_steps:
                     for _ in range(corrector_steps):
                         corrector_logits = self.model(

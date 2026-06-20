@@ -3,6 +3,7 @@ import unittest
 import torch
 
 from diffusers import BlockRefinementScheduler, DiffusionGemmaPipeline
+from diffusers.utils.testing_utils import require_peft_backend, require_peft_version_greater
 
 
 # --- Lightweight stand-in for input-validation tests that never reach the model ---
@@ -167,6 +168,36 @@ class DiffusionGemmaPipelineTest(unittest.TestCase):
             output_type="seq",
         )
         self.assertEqual(out.sequences.shape, (1, self.canvas_length))
+
+    @require_peft_backend
+    @require_peft_version_greater("0.18.9")
+    def test_peft_adapter_api(self):
+        from peft import LoraConfig
+
+        self.assertEqual(self.pipe.active_adapters(), [])
+
+        # The forwarded API is adapter-type-agnostic; LoRA stands in for any PEFT adapter (DoRA, IA3, ...).
+        self.pipe.model.add_adapter(
+            LoraConfig(r=4, lora_alpha=8, lora_dropout=0.0, target_modules="all-linear"),
+            adapter_name="test",
+        )
+        self.pipe.set_adapter("test")
+        self.assertIn("test", self.pipe.active_adapters())
+
+        out = self.pipe(
+            prompt=self.prompt,
+            gen_length=self.canvas_length,
+            num_inference_steps=2,
+            temperature=0.0,
+            eos_early_stop=False,
+            output_type="seq",
+        )
+        self.assertEqual(out.sequences.shape, (1, self.canvas_length))
+
+        self.pipe.disable_adapters()
+        self.pipe.enable_adapters()
+        self.pipe.delete_adapter("test")
+        self.assertEqual(self.pipe.active_adapters(), [])
 
     def test_static_cache_matches_dynamic(self):
         kwargs = {
