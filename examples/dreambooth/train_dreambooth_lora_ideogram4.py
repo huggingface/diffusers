@@ -125,7 +125,11 @@ def save_model_card(
             )
 
     # Only mention quantization when the base was actually trained quantized.
-    quant_note = f"\nThis LoRA was trained with **{quant_training}** quantization of the base model.\n" if quant_training else ""
+    quant_note = (
+        f"\nThis LoRA was trained with **{quant_training}** quantization of the base model.\n"
+        if quant_training
+        else ""
+    )
     # An SDNQ fp8 base can't run plain inference; flag the extra step for that case.
     inference_note = (
         "\n> **Note:** the base is an SDNQ fp8 checkpoint. For inference, install `sdnq` and dequantize the "
@@ -1149,9 +1153,10 @@ def main(args):
     _transformer_quant_config = Ideogram4Transformer2DModel.load_config(
         args.pretrained_model_name_or_path, subfolder="transformer", revision=args.revision
     ).get("quantization_config")
-    fp8_is_sdnq = _transformer_quant_config is not None and "sdnq" in str(
-        _transformer_quant_config.get("quant_method", "")
-    ).lower()
+    fp8_is_sdnq = (
+        _transformer_quant_config is not None
+        and "sdnq" in str(_transformer_quant_config.get("quant_method", "")).lower()
+    )
     if fp8_is_sdnq:
         # SDNQ registers its quantization backend on import; required to load the SDNQ checkpoint.
         try:
