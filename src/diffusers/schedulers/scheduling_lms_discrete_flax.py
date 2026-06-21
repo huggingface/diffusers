@@ -15,8 +15,8 @@
 from dataclasses import dataclass
 
 import flax
+import jax
 import jax.numpy as jnp
-from scipy import integrate
 
 from ..configuration_utils import ConfigMixin, register_to_config
 from ..utils import logging
@@ -151,9 +151,7 @@ class FlaxLMSDiscreteScheduler(FlaxSchedulerMixin, ConfigMixin):
         Returns:
             `jnp.ndarray`: scaled input sample
         """
-        (step_index,) = jnp.where(state.timesteps == timestep, size=1)
-        step_index = step_index[0]
-
+        step_index = jnp.where(state.timesteps == timestep, jnp.arange(state.timesteps.shape[0]), 0).sum()
         sigma = state.sigmas[step_index]
         sample = sample / ((sigma**2 + 1) ** 0.5)
         return sample
@@ -163,28 +161,42 @@ class FlaxLMSDiscreteScheduler(FlaxSchedulerMixin, ConfigMixin):
         Compute a linear multistep coefficient.
 
         Args:
-            order (TODO):
-            t (TODO):
-            current_order (TODO):
+            order (`int`):
+                The order of the linear multistep method.
+            t (`int`):
+                The current step index in the inference schedule.
+            current_order (`int`):
+                The current order for which to compute the coefficient.
         """
+        num_sigmas = state.sigmas.shape[0]
+        num_integration_steps = 10
 
         def lms_derivative(tau):
-            prod = 1.0
-            for k in range(order):
-                if current_order == k:
-                    continue
-                prod *= (tau - state.sigmas[t - k]) / (state.sigmas[t - current_order] - state.sigmas[t - k])
-            return prod
+            num_tau = tau.shape[0]
+            mask_indices = jnp.broadcast_to(
+                jnp.arange(num_sigmas).reshape(1, -1),
+                (num_tau, num_sigmas),
+            )
+            greater_than = t - order + 1 <= mask_indices
+            lower_than = mask_indices < t + 1
+            not_same_value = mask_indices != t - current_order
+            mask = greater_than & lower_than & not_same_value
 
-        integrated_coeff = integrate.quad(lms_derivative, state.sigmas[t], state.sigmas[t + 1], epsrel=1e-4)[0]
+            correct_coeffs = (tau.reshape(-1, 1) - state.sigmas.reshape(1, -1)) / (
+                state.sigmas[t - current_order] - state.sigmas.reshape(1, -1) + 1e-5
+            )
+            coeffs = jnp.where(mask, correct_coeffs, jnp.ones_like(mask))
+            return jnp.prod(coeffs, axis=1)
 
-        return integrated_coeff
+        x = jnp.linspace(state.sigmas[t], state.sigmas[t + 1], num_integration_steps)
+        return jnp.trapezoid(lms_derivative(x), x=x, axis=0)
 
     def set_timesteps(
         self,
         state: LMSDiscreteSchedulerState,
         num_inference_steps: int,
         shape: tuple = (),
+        max_order: int = 4,
     ) -> LMSDiscreteSchedulerState:
         """
         Sets the timesteps used for the diffusion chain. Supporting function to be run before inference.
@@ -194,6 +206,8 @@ class FlaxLMSDiscreteScheduler(FlaxSchedulerMixin, ConfigMixin):
                 the `FlaxLMSDiscreteScheduler` state data class instance.
             num_inference_steps (`int`):
                 the number of diffusion steps used when generating samples with a pre-trained model.
+            max_order (`int`, defaults to `4`):
+                The maximum multistep order. Used to pre-allocate the derivatives buffer for jittable inference.
         """
 
         timesteps = jnp.linspace(
@@ -215,7 +229,7 @@ class FlaxLMSDiscreteScheduler(FlaxSchedulerMixin, ConfigMixin):
         timesteps = timesteps.astype(jnp.int32)
 
         # initial running values
-        derivatives = jnp.zeros((0,) + shape, dtype=self.dtype)
+        derivatives = jnp.zeros((max_order,) + shape, dtype=self.dtype)
 
         return state.replace(
             timesteps=timesteps,
@@ -256,7 +270,8 @@ class FlaxLMSDiscreteScheduler(FlaxSchedulerMixin, ConfigMixin):
                 "Number of inference steps is 'None', you need to run 'set_timesteps' after creating the scheduler"
             )
 
-        sigma = state.sigmas[timestep]
+        step_index = jnp.where(state.timesteps == timestep, jnp.arange(state.timesteps.shape[0]), 0).sum()
+        sigma = state.sigmas[step_index] + 1e-5
 
         # 1. compute predicted original sample (x_0) from sigma-scaled predicted noise
         if self.config.prediction_type == "epsilon":
@@ -269,19 +284,22 @@ class FlaxLMSDiscreteScheduler(FlaxSchedulerMixin, ConfigMixin):
                 f"prediction_type given as {self.config.prediction_type} must be one of `epsilon`, or `v_prediction`"
             )
 
-        # 2. Convert to an ODE derivative
+        # 2. Convert to an ODE derivative and maintain a fixed-size rolling buffer
         derivative = (sample - pred_original_sample) / sigma
-        state = state.replace(derivatives=jnp.append(state.derivatives, derivative))
-        if len(state.derivatives) > order:
-            state = state.replace(derivatives=jnp.delete(state.derivatives, 0))
+        derivative = derivative.reshape(1, *derivative.shape).astype(self.dtype)
+        state = state.replace(derivatives=jnp.concatenate([state.derivatives[1:], derivative], axis=0))
 
-        # 3. Compute linear multistep coefficients
-        order = min(timestep + 1, order)
-        lms_coeffs = [self.get_lms_coefficient(state, order, timestep, curr_order) for curr_order in range(order)]
-
-        # 4. Compute previous sample based on the derivatives path
-        prev_sample = sample + sum(
-            coeff * derivative for coeff, derivative in zip(lms_coeffs, reversed(state.derivatives))
+        # 3. Compute linear multistep coefficients and the previous sample based on the derivatives path
+        effective_order = jnp.minimum(step_index + 1, order)
+        prev_sample = jax.lax.fori_loop(
+            0,
+            order,
+            lambda i, val: jnp.where(
+                i < effective_order,
+                val + self.get_lms_coefficient(state, effective_order, step_index, i) * state.derivatives[-(i + 1)],
+                val,
+            ),
+            sample,
         )
 
         if not return_dict:
