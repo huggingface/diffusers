@@ -18,7 +18,12 @@ from diffusers import (
     StableDiffusionPipeline,
     UNet2DConditionModel,
 )
-from diffusers.pipelines.pipeline_loading_utils import is_safetensors_compatible, variant_compatible_siblings
+from diffusers.pipelines.pipeline_loading_utils import (
+    _get_custom_components_and_folders,
+    _is_deprecated_pipeline_module,
+    is_safetensors_compatible,
+    variant_compatible_siblings,
+)
 
 from ..testing_utils import require_torch_accelerator, torch_device
 
@@ -231,6 +236,51 @@ class IsSafetensorsCompatibleTests(unittest.TestCase):
             "vae/diffusion_pytorch_model.bin",
         ]
         self.assertFalse(is_safetensors_compatible(filenames, variant="fp16"))
+
+
+class GetCustomComponentsAndFoldersTests(unittest.TestCase):
+    def test_deprecated_pipeline_module_is_recognized(self):
+        # Pipelines relocated under `diffusers.pipelines.deprecated` (e.g. Wuerstchen) are no longer
+        # attributes of `diffusers.pipelines`. They must still resolve instead of being mistaken for
+        # a missing custom module. Regression test for loading repos like `warp-ai/wuerstchen-prior`.
+        config_dict = {
+            "_class_name": "WuerstchenPriorPipeline",
+            "prior": ["wuerstchen", "WuerstchenPrior"],
+        }
+        custom_components, folder_names = _get_custom_components_and_folders(
+            "warp-ai/wuerstchen-prior", config_dict, filenames=[]
+        )
+        self.assertEqual(custom_components, {})
+        self.assertEqual(folder_names, ["prior"])
+
+    def test_missing_custom_module_still_raises(self):
+        # A component that is neither a loadable class, a known pipeline module, a deprecated module,
+        # nor an actual custom file on the Hub must still raise.
+        config_dict = {
+            "_class_name": "FooPipeline",
+            "foo": ["totally_made_up_module", "FooModel"],
+        }
+        with self.assertRaises(ValueError):
+            _get_custom_components_and_folders("some/repo", config_dict, filenames=[])
+
+    def test_custom_component_file_is_detected(self):
+        # When the custom module file is actually present on the Hub it is recorded as a custom component.
+        config_dict = {
+            "_class_name": "FooPipeline",
+            "foo": ["my_pipeline", "FooModel"],
+        }
+        custom_components, folder_names = _get_custom_components_and_folders(
+            "some/repo", config_dict, filenames=["foo/my_pipeline.py"]
+        )
+        self.assertEqual(custom_components, {"foo": "my_pipeline"})
+
+    def test_is_deprecated_pipeline_module(self):
+        self.assertTrue(_is_deprecated_pipeline_module("wuerstchen"))
+        self.assertFalse(_is_deprecated_pipeline_module("totally_made_up_module"))
+        # A non-deprecated (current) pipeline module is not under the deprecated namespace.
+        self.assertFalse(_is_deprecated_pipeline_module("stable_diffusion"))
+        # Malformed candidate names must not raise.
+        self.assertFalse(_is_deprecated_pipeline_module("weird/name"))
 
 
 class VariantCompatibleSiblingsTest(unittest.TestCase):

@@ -13,6 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import importlib
+import importlib.util
 import os
 import re
 import warnings
@@ -1073,6 +1074,22 @@ def _update_init_kwargs_with_connected_pipeline(
     return init_kwargs
 
 
+def _is_deprecated_pipeline_module(module_candidate: str) -> bool:
+    """Return whether ``module_candidate`` is a pipeline module relocated under
+    ``diffusers.pipelines.deprecated``.
+
+    Deprecated pipelines (e.g. Wuerstchen) are no longer attributes of ``diffusers.pipelines``, so a
+    plain ``hasattr(diffusers.pipelines, module_candidate)`` check fails for them even though the
+    module still ships with diffusers. We resolve the spec without importing the module to avoid
+    triggering its (potentially heavy) import side effects.
+    """
+    try:
+        return importlib.util.find_spec(f"diffusers.pipelines.deprecated.{module_candidate}") is not None
+    except (ImportError, ModuleNotFoundError, ValueError):
+        # ValueError covers malformed candidate names (e.g. containing path separators).
+        return False
+
+
 def _get_custom_components_and_folders(
     pretrained_model_name: str,
     config_dict: dict[str, Any],
@@ -1101,7 +1118,14 @@ def _get_custom_components_and_folders(
 
         if candidate_file in filenames:
             custom_components[component] = module_candidate
-        elif module_candidate not in LOADABLE_CLASSES and not hasattr(pipelines, module_candidate):
+        elif (
+            module_candidate not in LOADABLE_CLASSES
+            and not hasattr(pipelines, module_candidate)
+            # Pipelines moved under `diffusers.pipelines.deprecated` are no longer attributes of
+            # `diffusers.pipelines`, so `hasattr` above misses them. Check the deprecated namespace
+            # too before treating the component as a missing custom module.
+            and not _is_deprecated_pipeline_module(module_candidate)
+        ):
             raise ValueError(
                 f"{candidate_file} as defined in `model_index.json` does not exist in {pretrained_model_name} and is not a module in 'diffusers/pipelines'."
             )
