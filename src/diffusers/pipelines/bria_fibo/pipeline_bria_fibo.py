@@ -99,6 +99,8 @@ class BriaFiboPipeline(DiffusionPipeline, FluxLoraLoaderMixin):
         text_encoder: SmolLM3ForCausalLM,
         tokenizer: AutoTokenizer,
     ):
+
+        super().__init__()
         self.register_modules(
             vae=vae,
             text_encoder=text_encoder,

@@ -1155,6 +1155,17 @@ class PipelineTesterMixin:
         gc.collect()
         backend_empty_cache(torch_device)
 
+    def test_pipeline_call_state_before_call(self):
+        components = self.get_dummy_components()
+        pipe = self.pipeline_class(**components)
+
+        if hasattr(type(pipe), "interrupt"):
+            self.assertFalse(pipe.interrupt)
+        if hasattr(type(pipe), "guidance_scale"):
+            self.assertEqual(pipe.guidance_scale, 1.0)
+        if hasattr(type(pipe), "num_timesteps"):
+            self.assertEqual(pipe.num_timesteps, 0)
+
     def test_save_load_local(self, expected_max_difference=5e-4):
         components = self.get_dummy_components()
         for key in components:

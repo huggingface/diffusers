@@ -207,6 +207,30 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
     _load_connected_pipes = False
     _is_onnx = False
 
+    def __init__(self):
+        # Per-call pipeline state exposed via @property; defaults are overwritten in __call__.
+        # See https://github.com/huggingface/diffusers/issues/11002
+        self._guidance_scale = 1.0
+        self._clip_skip = None
+        self._interrupt = False
+        self._cross_attention_kwargs = None
+        self._num_timesteps = 0
+        self._attention_kwargs = None
+        self._guidance_rescale = 0.0
+        self._denoising_start = None
+        self._denoising_end = None
+        self._joint_attention_kwargs = None
+        self._pag_scale = 0.0
+        self._pag_adaptive_scale = 0.0
+        self._current_timestep = None
+        self._image_guidance_scale = 1.0
+        self._stg_scale = 0.0
+        self._modality_scale = 1.0
+        self._audio_guidance_scale = 1.0
+        self._audio_guidance_rescale = 0.0
+        self._audio_stg_scale = 0.0
+        self._audio_modality_scale = 1.0
+
     def register_modules(self, **kwargs):
         for name, module in kwargs.items():
             # retrieve library

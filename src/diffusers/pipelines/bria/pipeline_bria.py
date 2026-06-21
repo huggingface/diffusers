@@ -123,6 +123,7 @@ class BriaPipeline(DiffusionPipeline):
         image_encoder: CLIPVisionModelWithProjection = None,
         feature_extractor: CLIPImageProcessor = None,
     ):
+        super().__init__()
         self.register_modules(
             vae=vae,
             text_encoder=text_encoder,
