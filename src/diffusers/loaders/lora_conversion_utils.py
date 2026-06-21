@@ -551,10 +551,18 @@ def _convert_kohya_flux_lora_to_diffusers(state_dict):
                 for target_fmt, source_fmt, transform in assignments:
                     target_key = target_fmt.format(lora_key=lora_key)
                     source_key = source_fmt.format(orig_lora_key=orig_lora_key)
-                    value = source.pop(source_key)
-                    if transform:
+                    value = source.pop(source_key, None)
+                    if value is None:
+                        continue
+                    if transform and lora_key == "lora_B":
                         value = transform(value)
                     ait_sd[target_key] = value
+
+            # Consume any leftover final_layer alpha keys so they don't
+            # reach the remaining_keys guard and cause a false "Incompatible keys" error.
+            for key in list(source.keys()):
+                if "final_layer" in key and key.endswith(".alpha"):
+                    source.pop(key)
 
         if any("guidance_in" in k for k in sds_sd):
             _convert_to_ai_toolkit(
