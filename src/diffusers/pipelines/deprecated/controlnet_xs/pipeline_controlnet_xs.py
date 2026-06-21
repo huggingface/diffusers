@@ -24,7 +24,13 @@ from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer
 from ....callbacks import MultiPipelineCallbacks, PipelineCallback
 from ....image_processor import PipelineImageInput, VaeImageProcessor
 from ....loaders import FromSingleFileMixin, StableDiffusionLoraLoaderMixin, TextualInversionLoaderMixin
-from ....models import AutoencoderKL, ControlNetXSAdapter, UNet2DConditionModel, UNetControlNetXSModel
+from ....models import (
+    AutoencoderKL,
+    ControlNetXSAdapter,
+    UNet2DConditionModel,
+    UNetControlNetXSModel,
+    UNetMultiControlNetXSModel,
+)
 from ....models.lora import adjust_lora_scale_text_encoder
 from ....schedulers import KarrasDiffusionSchedulers
 from ....utils import (
@@ -151,7 +157,7 @@ class StableDiffusionControlNetXSPipeline(
         text_encoder: CLIPTextModel,
         tokenizer: CLIPTokenizer,
         unet: UNet2DConditionModel | UNetControlNetXSModel,
-        controlnet: ControlNetXSAdapter,
+        controlnet: ControlNetXSAdapter | list[ControlNetXSAdapter],
         scheduler: KarrasDiffusionSchedulers,
         safety_checker: StableDiffusionSafetyChecker,
         feature_extractor: CLIPImageProcessor,
@@ -160,7 +166,10 @@ class StableDiffusionControlNetXSPipeline(
         super().__init__()
 
         if isinstance(unet, UNet2DConditionModel):
-            unet = UNetControlNetXSModel.from_unet(unet, controlnet)
+            if isinstance(controlnet, (list, tuple)):
+                unet = UNetMultiControlNetXSModel.from_unet(unet, list(controlnet))
+            else:
+                unet = UNetControlNetXSModel.from_unet(unet, controlnet)
 
         if safety_checker is None and requires_safety_checker:
             logger.warning(
@@ -507,12 +516,26 @@ class StableDiffusionControlNetXSPipeline(
         )
         if (
             isinstance(self.unet, UNetControlNetXSModel)
+            or isinstance(self.unet, UNetMultiControlNetXSModel)
             or is_compiled
-            and isinstance(self.unet._orig_mod, UNetControlNetXSModel)
+            and isinstance(self.unet._orig_mod, (UNetControlNetXSModel, UNetMultiControlNetXSModel))
         ):
             self.check_image(image, prompt, prompt_embeds)
-            if not isinstance(controlnet_conditioning_scale, float):
+            if isinstance(self.unet, UNetControlNetXSModel) and not isinstance(controlnet_conditioning_scale, float):
                 raise TypeError("For single controlnet: `controlnet_conditioning_scale` must be type `float`.")
+            if isinstance(self.unet, UNetMultiControlNetXSModel):
+                if isinstance(controlnet_conditioning_scale, float):
+                    controlnet_conditioning_scale = [controlnet_conditioning_scale] * self.unet.num_of_controlnets()
+                elif isinstance(controlnet_conditioning_scale, list):
+                    if len(controlnet_conditioning_scale) != self.unet.num_of_controlnets():
+                        raise ValueError(
+                            f"For multiple controlnets: `controlnet_conditioning_scale` must have length"
+                            f" {self.unet.num_of_controlnets()}, got {len(controlnet_conditioning_scale)}."
+                        )
+                else:
+                    raise TypeError(
+                        "For multiple controlnets: `controlnet_conditioning_scale` must be type `float` or `list[float]`."
+                    )
         else:
             assert False
 
@@ -558,10 +581,24 @@ class StableDiffusionControlNetXSPipeline(
         elif prompt_embeds is not None:
             prompt_batch_size = prompt_embeds.shape[0]
 
-        if image_batch_size != 1 and image_batch_size != prompt_batch_size:
+        unet_is_with_single_controlnet = isinstance(self.unet, UNetControlNetXSModel)
+        unet_is_with_multiple_controlnets = isinstance(self.unet, UNetMultiControlNetXSModel)
+
+        if unet_is_with_single_controlnet and image_batch_size != 1 and image_batch_size != prompt_batch_size:
             raise ValueError(
                 f"If image batch size is not 1, image batch size must be same as prompt batch size. image batch size: {image_batch_size}, prompt batch size: {prompt_batch_size}"
             )
+
+        if unet_is_with_multiple_controlnets:
+            if not (image_is_pil_list or image_is_tensor_list or image_is_np_list):
+                raise TypeError(
+                    "For multiple controlnets: `image` must be a list of PIL images, numpy arrays, or torch tensors."
+                )
+            if len(image) != self.unet.num_of_controlnets():
+                raise ValueError(
+                    f"For multiple controlnets: `image` list length must match number of controlnets"
+                    f" ({self.unet.num_of_controlnets()}), got {len(image)}."
+                )
 
     def prepare_image(
         self,
@@ -591,6 +628,35 @@ class StableDiffusionControlNetXSPipeline(
             image = torch.cat([image] * 2)
 
         return image
+
+    def prepare_image_list(
+        self,
+        images,
+        width,
+        height,
+        batch_size,
+        num_images_per_prompt,
+        device,
+        dtype,
+        do_classifier_free_guidance=False,
+    ):
+        image_list = []
+        for image in images:
+            image = self.control_image_processor.preprocess(image, height=height, width=width).to(dtype=torch.float32)
+            image_list.append(image)
+        image_batch_size = len(image_list)
+
+        if image_batch_size == 1:
+            repeat_by = batch_size
+        else:
+            repeat_by = num_images_per_prompt
+
+        for index in range(len(image_list)):
+            image_list[index] = image_list[index].repeat_interleave(repeat_by, dim=0)
+            image_list[index] = image_list[index].to(device=device, dtype=dtype)
+            if do_classifier_free_guidance:
+                image_list[index] = torch.cat([image_list[index]] * 2)
+        return image_list
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.prepare_latents
     def prepare_latents(self, batch_size, num_channels_latents, height, width, dtype, device, generator, latents=None):

@@ -16,7 +16,7 @@
 import torch
 from torch import nn
 
-from diffusers import ControlNetXSAdapter, UNet2DConditionModel, UNetControlNetXSModel
+from diffusers import ControlNetXSAdapter, UNet2DConditionModel, UNetControlNetXSModel, UNetMultiControlNetXSModel
 from diffusers.utils.torch_utils import randn_tensor
 
 from ...testing_utils import enable_full_determinism, is_flaky, torch_device
@@ -278,6 +278,42 @@ class TestUNetControlNetXSModel(UNetControlNetXSModelTesterConfig, ModelTesterMi
             output_mix_time = model_mix_time(**inputs).sample
 
         assert output.shape == output_mix_time.shape
+
+
+class TestUNetMultiControlNetXSModel(UNetControlNetXSModelTesterConfig, ModelTesterMixin):
+    @property
+    def model_class(self):
+        return UNetMultiControlNetXSModel
+
+    def get_dummy_inputs(self) -> dict:
+        inputs = super().get_dummy_inputs()
+        inputs["controlnet_cond"] = [
+            inputs["controlnet_cond"],
+            inputs["controlnet_cond"],
+        ]
+        inputs["conditioning_scale"] = [1.0, 0.5]
+        return inputs
+
+    def test_from_unet_multi_controlnet(self):
+        unet = self.get_dummy_unet()
+        controlnet_a = self.get_dummy_controlnet_from_unet(unet)
+        controlnet_b = self.get_dummy_controlnet_from_unet(unet)
+
+        model = UNetMultiControlNetXSModel.from_unet(unet, [controlnet_a, controlnet_b])
+        assert model.num_of_controlnets() == 2
+
+    def test_forward_multi_controlnet(self):
+        unet = self.get_dummy_unet()
+        controlnet_a = self.get_dummy_controlnet_from_unet(unet)
+        controlnet_b = self.get_dummy_controlnet_from_unet(unet)
+
+        model = UNetMultiControlNetXSModel.from_unet(unet, [controlnet_a, controlnet_b]).to(torch_device)
+        inputs = self.get_dummy_inputs()
+
+        with torch.no_grad():
+            output = model(**inputs).sample
+
+        assert output.shape == (4, 4, 16, 16)
 
 
 class TestUNetControlNetXSModelTraining(UNetControlNetXSModelTesterConfig, TrainingTesterMixin):

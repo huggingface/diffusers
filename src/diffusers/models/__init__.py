@@ -75,7 +75,11 @@ if is_torch_available():
     _import_structure["controlnets.controlnet_sd3"] = ["SD3ControlNetModel", "SD3MultiControlNetModel"]
     _import_structure["controlnets.controlnet_sparsectrl"] = ["SparseControlNetModel"]
     _import_structure["controlnets.controlnet_union"] = ["ControlNetUnionModel"]
-    _import_structure["controlnets.controlnet_xs"] = ["ControlNetXSAdapter", "UNetControlNetXSModel"]
+    _import_structure["controlnets.controlnet_xs"] = [
+        "ControlNetXSAdapter",
+        "UNetControlNetXSModel",
+        "UNetMultiControlNetXSModel",
+    ]
     _import_structure["controlnets.controlnet_z_image"] = ["ZImageControlNetModel"]
     _import_structure["controlnets.multicontrolnet"] = ["MultiControlNetModel"]
     _import_structure["controlnets.multicontrolnet_union"] = ["MultiControlNetUnionModel"]
