@@ -376,6 +376,14 @@ def _load_lora_into_text_encoder(
         # convert state dict
         state_dict = convert_state_dict_to_peft(state_dict)
 
+        # Under transformers>=5, CLIPTextModel was flattened and no longer has the
+        # `text_model.` wrapper module, so named_modules() returns unprefixed names
+        # like "encoder.layers.0.self_attn.q_proj". Kohya-sourced LoRA state dict
+        # keys still carry the "text_model." prefix from the old module layout.
+        # Strip it so that rank-key matching works regardless of the transformers version.
+        if not hasattr(text_encoder, "text_model"):
+            state_dict = {k.removeprefix("text_model."): v for k, v in state_dict.items()}
+
         for name, _ in text_encoder.named_modules():
             if name.endswith((".q_proj", ".k_proj", ".v_proj", ".out_proj", ".fc1", ".fc2")):
                 rank_key = f"{name}.lora_B.weight"
