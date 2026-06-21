@@ -219,7 +219,9 @@ class FlowMatchEulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
 
         # self.begin_index is None when scheduler is used for training, or pipeline does not implement set_begin_index
         if self.begin_index is None:
-            step_indices = [self.index_for_timestep(t, schedule_timesteps) for t in timestep]
+            step_indices = self.index_for_timestep(timestep, schedule_timesteps)
+            if not torch.is_tensor(step_indices):
+                step_indices = torch.tensor([step_indices], device=sample.device, dtype=torch.long)
         elif self.step_index is not None:
             # add_noise is called after first denoising step (for inpainting)
             step_indices = [self.step_index] * timestep.shape[0]
@@ -388,32 +390,48 @@ class FlowMatchEulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
         self,
         timestep: Union[float, torch.FloatTensor],
         schedule_timesteps: Optional[torch.FloatTensor] = None,
-    ) -> int:
+    ) -> Union[int, torch.LongTensor]:
         """
         Get the index for the given timestep.
 
         Args:
             timestep (`float` or `torch.FloatTensor`):
-                The timestep to find the index for.
+                The timestep to find the index for. When a 1-D tensor is passed, indices are computed in batch
+                without per-element ``nonzero()`` calls.
             schedule_timesteps (`torch.FloatTensor`, *optional*):
                 The schedule timesteps to validate against. If `None`, the scheduler's timesteps are used.
 
         Returns:
-            `int`:
-                The index of the timestep.
+            `int` or `torch.LongTensor`:
+                The index (or indices) of the timestep in the schedule.
         """
         if schedule_timesteps is None:
             schedule_timesteps = self.timesteps
 
-        indices = (schedule_timesteps == timestep).nonzero()
+        return_scalar = not torch.is_tensor(timestep) or timestep.ndim == 0
+        if not torch.is_tensor(timestep):
+            timestep = torch.tensor(timestep, device=schedule_timesteps.device, dtype=schedule_timesteps.dtype)
+        elif timestep.ndim == 0:
+            timestep = timestep.reshape(1)
+
+        matches = schedule_timesteps.unsqueeze(0) == timestep.unsqueeze(1)
+        first_idx = matches.int().argmax(dim=1)
+        num_matches = matches.sum(dim=1)
 
         # The sigma index that is taken for the **very** first `step`
         # is always the second index (or the last index if there is only 1)
         # This way we can ensure we don't accidentally skip a sigma in
         # case we start in the middle of the denoising schedule (e.g. for image-to-image)
-        pos = 1 if len(indices) > 1 else 0
+        matches_after_first = matches.clone()
+        batch_idx = torch.arange(matches.shape[0], device=matches.device)
+        matches_after_first[batch_idx, first_idx] = False
+        second_idx = matches_after_first.int().argmax(dim=1)
+        has_second = matches_after_first.any(dim=1)
+        indices = torch.where((num_matches > 1) & has_second, second_idx, first_idx)
 
-        return indices[pos].item()
+        if return_scalar:
+            return indices[0].item()
+        return indices
 
     def _init_step_index(self, timestep: Union[float, torch.FloatTensor]) -> None:
         if self.begin_index is None:
