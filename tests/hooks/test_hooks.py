@@ -13,11 +13,14 @@
 # limitations under the License.
 
 import gc
+import unittest
+from unittest.mock import patch
 
 import pytest
 import torch
 
 from diffusers.hooks import HookRegistry, ModelHook
+from diffusers.hooks.context_parallel import ContextParallelGatherHook, ContextParallelSplitHook
 from diffusers.training_utils import free_memory
 from diffusers.utils.logging import get_logger
 
@@ -372,3 +375,82 @@ class TestHooks:
             .replace("\n", "")
         )
         assert output == expected_invocation_order_log
+
+
+class _DummyMesh:
+    def __init__(self, size: int):
+        self._size = size
+
+    def size(self):
+        return self._size
+
+
+class _DummyParallelConfig:
+    def __init__(self, mesh_size: int):
+        self._flattened_mesh = _DummyMesh(mesh_size)
+        self.ulysses_anything = False
+        self.ring_anything = False
+
+
+class _DummyCPInput:
+    def __init__(self, split_dim: int, expected_dims: int | None = None, split_output: bool = False):
+        self.split_dim = split_dim
+        self.expected_dims = expected_dims
+        self.split_output = split_output
+
+
+class _DummyCPOutput:
+    def __init__(self, gather_dim: int, expected_dims: int | None = None):
+        self.gather_dim = gather_dim
+        self.expected_dims = expected_dims
+
+
+class ContextParallelHooksTests(unittest.TestCase):
+    def setUp(self):
+        self.parallel_config = _DummyParallelConfig(mesh_size=3)
+        self.hook = ContextParallelSplitHook(metadata={}, parallel_config=self.parallel_config)
+        self.module = DummyModel(in_features=1, hidden_features=1, out_features=1, num_layers=1)
+        self.hook.initialize_hook(self.module)
+
+    def test_prepare_cp_input_pads_hidden_states_and_stores_original(self):
+        x = torch.randn(1, 7, 16)
+        cp_input = _DummyCPInput(split_dim=1, expected_dims=3, split_output=False)
+
+        with patch.object(self.EquipartitionSharder, "shard", side_effect=lambda t, dim, mesh: t):
+            out = self.hook._prepare_cp_input(x, cp_input, name="hidden_states")
+
+        self.assertEqual(out.shape[1], 9)
+        self.assertEqual(self.parallel_config._cp_pad_state[1], 7)
+
+    def test_prepare_cp_input_pads_mask_with_zeros(self):
+        mask = torch.ones(1, 7, dtype=torch.long)
+        cp_input = _DummyCPInput(split_dim=1, expected_dims=2, split_output=False)
+
+        with patch.object(self.EquipartitionSharder, "shard", side_effect=lambda t, dim, mesh: t):
+            out_mask = self.hook._prepare_cp_input(mask, cp_input, name="encoder_hidden_states_mask")
+
+        self.assertEqual(out_mask.shape[1], 9)
+        self.assertTrue(torch.equal(out_mask[:, -2:], torch.zeros(1, 2, dtype=torch.long)))
+
+    def test_prepare_cp_input_no_pad_when_divisible(self):
+        x = torch.randn(1, 6, 16)
+        cp_input = _DummyCPInput(split_dim=1, expected_dims=3, split_output=False)
+
+        with patch.object(self.EquipartitionSharder, "shard", side_effect=lambda t, dim, mesh: t):
+            out = self.hook._prepare_cp_input(x, cp_input, name="hidden_states")
+
+        self.assertEqual(out.shape[1], 6)
+        self.assertNotIn(1, getattr(self.parallel_config, "_cp_pad_state", {}))
+
+    def test_gather_hook_trims_padded_output(self):
+        gather_hook = ContextParallelGatherHook(
+            metadata=[_DummyCPOutput(gather_dim=1, expected_dims=3)], parallel_config=self.parallel_config
+        )
+        self.parallel_config._cp_pad_state = {1: 7}
+
+        padded_output = torch.randn(1, 9, 16)
+        with patch.object(self.EquipartitionSharder, "unshard", side_effect=lambda t, dim, mesh: t):
+            result = gather_hook.post_forward(self.module, padded_output)
+
+        self.assertEqual(result.shape[1], 7)
+        self.assertNotIn(1, self.parallel_config._cp_pad_state)
