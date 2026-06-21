@@ -345,15 +345,15 @@ _HUB_KERNELS_REGISTRY: dict["AttentionBackendName", _HubKernelConfig] = {
     AttentionBackendName.FLASH_HUB: _HubKernelConfig(
         repo_id="kernels-community/flash-attn2",
         function_attr="flash_attn_func",
-        wrapped_forward_attr="flash_attn_interface._wrapped_flash_attn_forward",
-        wrapped_backward_attr="flash_attn_interface._wrapped_flash_attn_backward",
+        wrapped_forward_attr="flash_attn_interface._flash_attn_forward",
+        wrapped_backward_attr="flash_attn_interface._flash_attn_backward",
         version=1,
     ),
     AttentionBackendName.FLASH_VARLEN_HUB: _HubKernelConfig(
         repo_id="kernels-community/flash-attn2",
         function_attr="flash_attn_varlen_func",
-        wrapped_forward_attr="flash_attn_interface._wrapped_flash_attn_varlen_forward",
-        wrapped_backward_attr="flash_attn_interface._wrapped_flash_attn_varlen_backward",
+        wrapped_forward_attr="flash_attn_interface._flash_attn_varlen_forward",
+        wrapped_backward_attr="flash_attn_interface._flash_attn_varlen_backward",
         version=1,
     ),
     AttentionBackendName.SAGE_HUB: _HubKernelConfig(
