@@ -45,6 +45,7 @@ else:
         "AutoPipelineForImage2Image",
         "AutoPipelineForInpainting",
         "AutoPipelineForText2Image",
+        "AutoPipelineForText2Audio",
     ]
     _import_structure["consistency_models"] = ["ConsistencyModelPipeline"]
     _import_structure["ddim"] = ["DDIMPipeline"]
@@ -164,6 +165,10 @@ else:
         "AnimateDiffVideoToVideoPipeline",
         "AnimateDiffVideoToVideoControlNetPipeline",
     ]
+    _import_structure["anyflow"] = [
+        "AnyFlowPipeline",
+        "AnyFlowFARPipeline",
+    ]
     _import_structure["bria"] = ["BriaPipeline"]
     _import_structure["bria_fibo"] = ["BriaFiboPipeline", "BriaFiboEditPipeline"]
     _import_structure["flux2"] = [
@@ -188,7 +193,7 @@ else:
         "FluxKontextPipeline",
         "FluxKontextInpaintPipeline",
     ]
-    _import_structure["prx"] = ["PRXPipeline"]
+    _import_structure["prx"] = ["PRXPipeline", "PRXPixelPipeline"]
     _import_structure["audioldm2"] = [
         "AudioLDM2Pipeline",
         "AudioLDM2ProjectionModel",
@@ -208,9 +213,11 @@ else:
         "Cosmos2_5_PredictBasePipeline",
         "Cosmos2_5_TransferPipeline",
         "Cosmos2TextToImagePipeline",
+        "Cosmos2VideoToWorldPipeline",
+        "Cosmos3OmniPipeline",
+        "CosmosActionCondition",
         "CosmosTextToWorldPipeline",
         "CosmosVideoToWorldPipeline",
-        "Cosmos2VideoToWorldPipeline",
     ]
     _import_structure["controlnet"].extend(
         [
@@ -266,6 +273,7 @@ else:
         "IFPipeline",
         "IFSuperResolutionPipeline",
     ]
+    _import_structure["dreamlite"] = ["DreamLitePipeline", "DreamLiteMobilePipeline", "DreamLitePipelineOutput"]
     _import_structure["easyanimate"] = [
         "EasyAnimatePipeline",
         "EasyAnimateInpaintPipeline",
@@ -282,6 +290,7 @@ else:
     ]
     _import_structure["hunyuan_video1_5"] = ["HunyuanVideo15Pipeline", "HunyuanVideo15ImageToVideoPipeline"]
     _import_structure["hunyuan_image"] = ["HunyuanImagePipeline", "HunyuanImageRefinerPipeline"]
+    _import_structure["ideogram4"] = ["Ideogram4Pipeline", "Ideogram4PromptEnhancerHead"]
     _import_structure["kandinsky"] = [
         "KandinskyCombinedPipeline",
         "KandinskyImg2ImgCombinedPipeline",
@@ -552,6 +561,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .auto_pipeline import (
             AutoPipelineForImage2Image,
             AutoPipelineForInpainting,
+            AutoPipelineForText2Audio,
             AutoPipelineForText2Image,
         )
         from .consistency_models import ConsistencyModelPipeline
@@ -603,6 +613,10 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             AnimateDiffVideoToVideoControlNetPipeline,
             AnimateDiffVideoToVideoPipeline,
         )
+        from .anyflow import (
+            AnyFlowFARPipeline,
+            AnyFlowPipeline,
+        )
         from .audioldm2 import (
             AudioLDM2Pipeline,
             AudioLDM2ProjectionModel,
@@ -642,6 +656,8 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             Cosmos2_5_TransferPipeline,
             Cosmos2TextToImagePipeline,
             Cosmos2VideoToWorldPipeline,
+            Cosmos3OmniPipeline,
+            CosmosActionCondition,
             CosmosTextToWorldPipeline,
             CosmosVideoToWorldPipeline,
         )
@@ -700,6 +716,11 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             WuerstchenDecoderPipeline,
             WuerstchenPriorPipeline,
         )
+        from .dreamlite import (
+            DreamLiteMobilePipeline,
+            DreamLitePipeline,
+            DreamLitePipelineOutput,
+        )
         from .easyanimate import (
             EasyAnimateControlPipeline,
             EasyAnimateInpaintPipeline,
@@ -735,6 +756,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         )
         from .hunyuan_video1_5 import HunyuanVideo15ImageToVideoPipeline, HunyuanVideo15Pipeline
         from .hunyuandit import HunyuanDiTPipeline
+        from .ideogram4 import Ideogram4Pipeline, Ideogram4PromptEnhancerHead
         from .joyimage import JoyImageEditPipeline, JoyImageEditPipelineOutput
         from .kandinsky import (
             KandinskyCombinedPipeline,
@@ -834,7 +856,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             StableDiffusionXLPAGPipeline,
         )
         from .pixart_alpha import PixArtAlphaPipeline, PixArtSigmaPipeline
-        from .prx import PRXPipeline
+        from .prx import PRXPipeline, PRXPixelPipeline
         from .qwenimage import (
             QwenImageControlNetInpaintPipeline,
             QwenImageControlNetPipeline,

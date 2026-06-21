@@ -3,9 +3,21 @@
 Shared reference for pipeline-related conventions, patterns, and gotchas.
 Linked from `AGENTS.md`, `skills/model-integration/SKILL.md`, and `review-rules.md`.
 
+> **Prefer modular for new pipelines.** [Modular Diffusers](modular.md) is the preferred way to add a new pipeline; the standard `DiffusionPipeline` covered below is still supported but is no longer the default. We prefer modular especially for models that don't fit a fixed task-based structure (e.g. modality baked into the checkpoint) or that are actively evolving. The conventions below apply when you do build or review a standard pipeline.
+
 ## Common pipeline conventions
 
 When adding a new pipeline (or reviewing one), skim `pipeline_flux.py`, `pipeline_flux2.py`, `pipeline_qwenimage.py`, `pipeline_wan.py` first to establish the pattern. Most conventions (class structure, mixin set, `__call__` shape — input validation → encode prompt → timesteps → latent prep → denoise loop → decode — `encode_prompt` / `prepare_latents` shape, `output_type` / `generator` / `progress_bar` plumbing, `@torch.no_grad()` on `__call__`, LoRA mixin, `from_single_file` support, etc.) are easiest to internalize by comparison rather than from a fixed list.
+
+## File structure
+
+```
+src/diffusers/pipelines/<model>/
+  __init__.py                          # Lazy imports
+  pipeline_<model>.py                  # Main pipeline (with __call__)
+  pipeline_<model>_<variant>.py        # Variant pipelines (e.g. img2img, inpaint) — one file/class each
+  pipeline_output.py                   # Output dataclass
+```
 
 ## Gotchas
 
@@ -60,3 +72,7 @@ When adding a new pipeline (or reviewing one), skim `pipeline_flux.py`, `pipelin
 4. **Subclassing an existing pipeline for a variant.** Don't use an existing pipeline class (e.g. `FluxPipeline`) to override another (e.g. `FluxImg2ImgPipeline`) inside the core `src/` codebase. Each pipeline lives in its own file with its own class, even if it shares 90% of `__call__` with a sibling. Convention across diffusers — flux, sdxl, wan, qwenimage — is duplicated `__call__` between img2img / text2img / inpaint variants, not subclassing. Reuse private utilities (shared schedulers, prep functions) but not the pipeline class itself.
 
 5. **Copying a method from another pipeline without `# Copied from`.** When you reuse a method like `encode_prompt`, `prepare_latents`, `check_inputs`, or `_prepare_latent_image_ids` from another pipeline, add a `# Copied from` annotation so `make fix-copies` keeps the two in sync. Forgetting it means future refactors to the source drift away from your copy silently — and reviewers waste time spotting near-identical code that should have been linked. The annotation grammar (decorator placement, rename syntax with `with old->new`, etc.) is implemented in [`utils/check_copies.py`](../utils/check_copies.py) — read it for the exact rules.
+
+6. **Be deliberate about methods on the pipeline.** `__call__` is the user's mental model. The methods on the class are how they navigate it. Diffusers convention (flux, sdxl, wan, qwenimage) is a flat class body of public lifecycle methods (`__init__`, `check_inputs`, `encode_prompt`, `prepare_latents`, `__call__`). Two principles, not strict rules — use judgment:
+    - **If a method is called from `__call__`, and it's a step in the pipeline lifecycle, make it public.** Each call from `__call__` should correspond to a step a user can identify: either a standard one (`encode_prompt`, `prepare_latents`, `set_timesteps`, …) or a pipeline-specific one (`prepare_src_latents`, `prepare_reference_audio_latents`, …). Don't gate these behind a `_`; they're part of the pipeline's API surface alongside their standard siblings.
+    - **If a method is only used by another method, make it private (`_foo`) or lift it to a module-level function — and keep the count down.** Before adding one, see if the logic can be absorbed into its caller. Unless you expect the helper to be reused by another method (or another task pipeline), absorbing is usually the better call — especially when the body is small. Avoid a pipeline class littered with private helpers that bury the lifecycle..

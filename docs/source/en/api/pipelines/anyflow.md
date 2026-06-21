@@ -1,0 +1,192 @@
+<!-- Copyright 2026 The AnyFlow Team, NVIDIA Corp., and The HuggingFace Team. All rights reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the
+License. You may obtain a copy of the License at
+
+http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an
+"AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the
+specific language governing permissions and limitations under the License.
+-->
+
+<div style="float: right;">
+    <div class="flex flex-wrap space-x-1">
+        <a href="https://github.com/huggingface/diffusers/blob/main/src/diffusers/loaders/lora_pipeline.py">
+            <img alt="LoRA" src="https://img.shields.io/badge/LoRA-supported-green">
+        </a>
+    </div>
+</div>
+
+# AnyFlow
+
+[AnyFlow: Any-Step Video Diffusion Model with On-Policy Flow Map Distillation](https://huggingface.co/papers/2605.13724) from NVIDIA, National University of Singapore, and Massachusetts Institute of Technology, by Yuchao Gu, Guian Fang, Yuxin Jiang, Weijia Mao, Song Han, Han Cai, Mike Zheng Shou.
+
+> **TL;DR:** AnyFlow is the first any-step video diffusion framework built on flow maps, which enables a single model (bidirectional or causal) to adapt to arbitrary inference budgets.
+
+*Few-step video generation has been significantly advanced by consistency models. However, their performance often degrades in any-step video diffusion models due to the fixed-point formulation. To address this limitation, we present AnyFlow, the first any-step video diffusion distillation framework built on flow maps. Instead of learning only the mapping z_t → z_0, AnyFlow learns transitions z_t → z_r over arbitrary time intervals, enabling a single model to adapt to different inference budgets. We design an improved forward flow map training recipe that fine-tunes pretrained video diffusion models into flow map models, and introduce Flow Map Backward Simulation to enable on-policy distillation for flow map models. Extensive experiments across both bidirectional and causal architectures, at scales ranging from 1.3B to 14B, on text-to-video and image-to-video tasks demonstrate that AnyFlow outperforms consistency-based baselines while preserving high fidelity and flexible sampling under varying step budgets.*
+
+The AnyFlow pipelines were contributed by the AnyFlow Team. The original code is available on [GitHub](https://github.com/NVlabs/AnyFlow), the project page is at [nvlabs.github.io/AnyFlow](https://nvlabs.github.io/AnyFlow), and pretrained models can be found in the [nvidia/anyflow](https://huggingface.co/collections/nvidia/anyflow) collection on Hugging Face.
+
+Available Models:
+
+| Checkpoint | Backbone | Description |
+|---|---|---|
+| [`nvidia/AnyFlow-Wan2.1-T2V-1.3B-Diffusers`](https://huggingface.co/nvidia/AnyFlow-Wan2.1-T2V-1.3B-Diffusers) | Wan2.1 1.3B | Bidirectional T2V |
+| [`nvidia/AnyFlow-Wan2.1-T2V-14B-Diffusers`](https://huggingface.co/nvidia/AnyFlow-Wan2.1-T2V-14B-Diffusers) | Wan2.1 14B | Bidirectional T2V |
+| [`nvidia/AnyFlow-FAR-Wan2.1-1.3B-Diffusers`](https://huggingface.co/nvidia/AnyFlow-FAR-Wan2.1-1.3B-Diffusers) | FAR + Wan2.1 1.3B | Causal T2V / I2V / V2V |
+| [`nvidia/AnyFlow-FAR-Wan2.1-14B-Diffusers`](https://huggingface.co/nvidia/AnyFlow-FAR-Wan2.1-14B-Diffusers) | FAR + Wan2.1 14B | Causal T2V / I2V / V2V |
+
+> [!TIP]
+> `AnyFlowPipeline` is designed for bidirectional diffusion models in text-to-video (T2V) generation. `AnyFlowFARPipeline` is a chunk-wise causal diffusion model that supports text-to-video (T2V) generation, image-to-video (I2V) generation, and video continuation (V2V).
+
+### Generation with AnyFlow (Bidirectional T2V)
+
+```py
+import torch
+from diffusers import AnyFlowPipeline
+from diffusers.utils import export_to_video
+
+pipe = AnyFlowPipeline.from_pretrained(
+    "nvidia/AnyFlow-Wan2.1-T2V-1.3B-Diffusers", torch_dtype=torch.bfloat16
+).to("cuda")
+
+prompt = (
+    "An astronaut runs smoothly and appears almost weightless on the lunar surface, "
+    "as seen from a low-angle shot that highlights the vast, desolate background of the moon. "
+    "The moon's craters and rocky terrain are clearly visible, creating a stark contrast against "
+    "the running astronaut who moves with graceful, fluid motions."
+)
+video = pipe(prompt, num_inference_steps=4, num_frames=81).frames[0]
+export_to_video(video, "anyflow_t2v.mp4", fps=16)
+```
+
+### Generation with AnyFlow (FAR Causal)
+
+The causal pipeline selects between T2V / I2V / V2V via the ``video`` (or ``video_latents``) argument:
+omit both for plain text-to-video, or pass ``video=<tensor>`` of shape ``(B, T, C, H, W)`` in ``[0, 1]``
+with ``T = 4n + 1`` to condition on existing frames. Use a single conditioning frame for I2V and a longer
+clip for V2V continuation. If you already have pre-encoded latents in the model layout, pass them via
+``video_latents=<tensor>`` to skip VAE encoding. ``video`` and ``video_latents`` are mutually exclusive.
+
+> [!IMPORTANT]
+> The released checkpoints bake `chunk_partition=[1, 3, 3, 3, 3, 3, 3, 2]` (sum 21) into the transformer
+> config, matched to the canonical 81 raw frames (21 latent frames at the VAE temporal stride of 4). When
+> you change `num_frames`, pass a matching `chunk_partition` summing to `(num_frames - 1) // 4 + 1`,
+> otherwise the pipeline raises a `ValueError`.
+
+<hfoptions id="anyflow-far">
+<hfoption id="t2v">
+
+```py
+import torch
+from diffusers import AnyFlowFARPipeline
+from diffusers.utils import export_to_video
+
+pipe = AnyFlowFARPipeline.from_pretrained(
+    "nvidia/AnyFlow-FAR-Wan2.1-1.3B-Diffusers", torch_dtype=torch.bfloat16
+).to("cuda")
+
+prompt = (
+    "An astronaut runs smoothly and appears almost weightless on the lunar surface, "
+    "as seen from a low-angle shot that highlights the vast, desolate background of the moon."
+)
+video = pipe(prompt, num_inference_steps=4, num_frames=81).frames[0]
+export_to_video(video, "anyflow_far_t2v.mp4", fps=16)
+```
+
+</hfoption>
+<hfoption id="i2v">
+
+```py
+import numpy as np
+import torch
+from diffusers import AnyFlowFARPipeline
+from diffusers.utils import export_to_video, load_image
+
+pipe = AnyFlowFARPipeline.from_pretrained(
+    "nvidia/AnyFlow-FAR-Wan2.1-1.3B-Diffusers", torch_dtype=torch.bfloat16
+).to("cuda")
+
+# Example conditioning image from the AnyFlow repo.
+first_frame = load_image(
+    "https://raw.githubusercontent.com/NVlabs/AnyFlow/main/assets/evaluation/example/images/1.jpg"
+).resize((832, 480))
+arr = np.asarray(first_frame).astype("float32") / 255.0  # (480, 832, 3)
+context_tensor = torch.from_numpy(arr).permute(2, 0, 1).unsqueeze(0).unsqueeze(1).to("cuda")  # (1, 1, 3, 480, 832)
+
+prompt = (
+    "A towering, battle-scarred humanoid robot, reminiscent of a Transformer with powerful, segmented armor "
+    "and glowing red optics, walking through the skeletal remains of a city ruin. Twisted metal and shattered "
+    "concrete crunch under its heavy steps, as the robot scans the desolate, dust-choked skyline under an dark sky."
+)
+video = pipe(
+    prompt=prompt,
+    video=context_tensor,
+    num_inference_steps=4,
+    num_frames=81,
+).frames[0]
+export_to_video(video, "anyflow_far_i2v.mp4", fps=16)
+```
+
+</hfoption>
+<hfoption id="v2v">
+
+```py
+import numpy as np
+import torch
+from diffusers import AnyFlowFARPipeline
+from diffusers.utils import export_to_video, load_video
+
+pipe = AnyFlowFARPipeline.from_pretrained(
+    "nvidia/AnyFlow-FAR-Wan2.1-1.3B-Diffusers", torch_dtype=torch.bfloat16
+).to("cuda")
+
+# Example conditioning clip from the AnyFlow repo — take the first 9 frames (3 latent frames at VAE temporal stride 4).
+context_frames = load_video(
+    "https://raw.githubusercontent.com/NVlabs/AnyFlow/main/assets/evaluation/example/videos/2.mp4"
+)[:9]
+arr = np.stack([np.asarray(f.resize((832, 480))) for f in context_frames]).astype("float32") / 255.0
+context_tensor = torch.from_numpy(arr).permute(0, 3, 1, 2).unsqueeze(0).to("cuda")  # (1, 9, 3, 480, 832)
+
+prompt = (
+    "A focused trail runner's powerful strides through a dense, sun-dappled forest. "
+    "The camera tracks alongside, highlighting muscular exertion, sweat, and determined facial expression."
+)
+video = pipe(
+    prompt=prompt,
+    video=context_tensor,
+    num_inference_steps=4,
+    num_frames=81,
+    # Override chunk_partition so the first chunk covers exactly the 3 latent context frames.
+    chunk_partition=[3, 3, 3, 3, 3, 3, 3],
+).frames[0]
+export_to_video(video, "anyflow_far_v2v.mp4", fps=16)
+```
+
+</hfoption>
+</hfoptions>
+
+## Notes
+
+- Classifier-free guidance is fused into the released checkpoints, so inference does not run a second guided forward pass. Keep the default `guidance_scale=1.0` unless your own checkpoint requires otherwise.
+- `FlowMapEulerDiscreteScheduler` is general-purpose. You can attach it to any flow-map-distilled checkpoint via `from_pretrained(..., scheduler=FlowMapEulerDiscreteScheduler.from_config(...))`.
+- `AnyFlowPipeline` uses [`AnyFlowTransformer3DModel`](../models/anyflow_transformer3d) (bidirectional). `AnyFlowFARPipeline` uses [`AnyFlowFARTransformer3DModel`](../models/anyflow_far_transformer3d), which adds a compressed-frame patch embedding and the FAR causal block-mask.
+- LoRA loading is supported via `WanLoraLoaderMixin`, the same mixin used by the upstream Wan pipelines.
+- For training recipes (forward flow-map training and on-policy distillation), refer to the original AnyFlow training framework at [`NVlabs/AnyFlow`](https://github.com/NVlabs/AnyFlow); training is out of scope for diffusers.
+
+## AnyFlowPipeline
+
+[[autodoc]] AnyFlowPipeline
+  - all
+  - __call__
+
+## AnyFlowFARPipeline
+
+[[autodoc]] AnyFlowFARPipeline
+  - all
+  - __call__
+
+## AnyFlowPipelineOutput
+
+[[autodoc]] pipelines.anyflow.pipeline_output.AnyFlowPipelineOutput

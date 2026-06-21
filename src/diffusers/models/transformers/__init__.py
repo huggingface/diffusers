@@ -17,7 +17,10 @@ if is_torch_available():
     from .stable_audio_transformer import StableAudioDiTModel
     from .t5_film_transformer import T5FilmDecoder
     from .transformer_2d import Transformer2DModel
+    from .transformer_2d_dreamlite import DreamLiteTransformer2DModel
     from .transformer_allegro import AllegroTransformer3DModel
+    from .transformer_anyflow import AnyFlowTransformer3DModel
+    from .transformer_anyflow_far import AnyFlowFARTransformer3DModel
     from .transformer_bria import BriaTransformer2DModel
     from .transformer_bria_fibo import BriaFiboTransformer2DModel
     from .transformer_chroma import ChromaTransformer2DModel
@@ -25,6 +28,7 @@ if is_torch_available():
     from .transformer_cogview3plus import CogView3PlusTransformer2DModel
     from .transformer_cogview4 import CogView4Transformer2DModel
     from .transformer_cosmos import CosmosTransformer3DModel
+    from .transformer_cosmos3 import Cosmos3OmniTransformer
     from .transformer_easyanimate import EasyAnimateTransformer3DModel
     from .transformer_ernie_image import ErnieImageTransformer2DModel
     from .transformer_flux import FluxTransformer2DModel
@@ -36,6 +40,7 @@ if is_torch_available():
     from .transformer_hunyuan_video15 import HunyuanVideo15Transformer3DModel
     from .transformer_hunyuan_video_framepack import HunyuanVideoFramepackTransformer3DModel
     from .transformer_hunyuanimage import HunyuanImageTransformer2DModel
+    from .transformer_ideogram4 import Ideogram4Transformer2DModel
     from .transformer_joyimage import JoyImageEditTransformer3DModel
     from .transformer_kandinsky import Kandinsky5Transformer3DModel
     from .transformer_longcat_audio_dit import LongCatAudioDiTTransformer

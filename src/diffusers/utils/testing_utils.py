@@ -46,6 +46,7 @@ from .import_utils import (
     is_peft_available,
     is_timm_available,
     is_torch_available,
+    is_torch_neuronx_available,
     is_torch_version,
     is_torchao_available,
     is_torchsde_available,
@@ -113,6 +114,8 @@ if is_torch_available():
             torch_device = "cuda"
         elif torch.xpu.is_available():
             torch_device = "xpu"
+        elif is_torch_neuronx_available() and hasattr(torch, "neuron") and torch.neuron.is_available():
+            torch_device = torch.neuron.current_device()
         else:
             torch_device = "cpu"
         is_torch_higher_equal_than_1_12 = version.parse(

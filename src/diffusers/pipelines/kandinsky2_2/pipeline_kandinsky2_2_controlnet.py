@@ -179,17 +179,12 @@ class KandinskyV22ControlnetPipeline(DiffusionPipeline):
         Function invoked when calling the pipeline for generation.
 
         Args:
-            prompt (`str` or `list[str]`):
-                The prompt or prompts to guide the image generation.
             hint (`torch.Tensor`):
                 The controlnet condition.
             image_embeds (`torch.Tensor` or `list[torch.Tensor]`):
                 The clip image embeddings for text prompt, that will be used to condition the image generation.
             negative_image_embeds (`torch.Tensor` or `list[torch.Tensor]`):
                 The clip image embeddings for negative text prompt, will be used to condition the image generation.
-            negative_prompt (`str` or `list[str]`, *optional*):
-                The prompt or prompts not to guide the image generation. Ignored when not using guidance (i.e., ignored
-                if `guidance_scale` is less than `1`).
             height (`int`, *optional*, defaults to 512):
                 The height in pixels of the generated image.
             width (`int`, *optional*, defaults to 512):

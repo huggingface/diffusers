@@ -36,6 +36,7 @@ repo-consistency:
 	python utils/check_dummies.py
 	python utils/check_repo.py
 	python utils/check_inits.py
+	python utils/check_forward_call_docstrings.py
 
 # this target runs checks on all files
 
@@ -74,6 +75,10 @@ fix-copies:
 modular-autodoctrings:
 	python utils/modular_auto_docstring.py
 
+# Verify forward() / __call__() arguments are documented in their docstrings
+check-forward-call-docstrings:
+	python utils/check_forward_call_docstrings.py
+
 # Run tests for the library
 
 test:
@@ -102,17 +107,14 @@ post-patch:
 # AI agent symlinks
 
 codex:
-	ln -snf .ai/AGENTS.md AGENTS.md
 	mkdir -p .agents
 	rm -rf .agents/skills
 	ln -snf ../.ai/skills .agents/skills
 
 claude:
-	ln -snf .ai/AGENTS.md CLAUDE.md
 	mkdir -p .claude
 	rm -rf .claude/skills
 	ln -snf ../.ai/skills .claude/skills
 
 clean-ai:
-	rm -f AGENTS.md CLAUDE.md
 	rm -rf .agents/skills .claude/skills
