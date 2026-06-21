@@ -224,3 +224,46 @@ class TestSD35TransformerBitsAndBytes(SD35TransformerTesterConfig, BitsAndBytesT
 
 class TestSD35TransformerTorchAo(SD35TransformerTesterConfig, TorchAoTesterMixin):
     """TorchAO quantization tests for SD3.5 Transformer."""
+
+
+class TestSD3JointAttentionMask(SD3TransformerTesterConfig):
+    def test_joint_attention_mask_makes_padding_invariant(self):
+        init_dict = self.get_init_dict()
+        model = SD3Transformer2DModel(**init_dict).to(torch_device)
+        model.eval()
+
+        inputs = self.get_dummy_inputs(batch_size=1)
+        hidden_states = inputs["hidden_states"]
+        pooled_projections = inputs["pooled_projections"]
+        timestep = inputs["timestep"]
+
+        content_length = 80
+        padded_length = 154
+        embedding_dim = init_dict["joint_attention_dim"]
+
+        content = torch.randn(1, content_length, embedding_dim, generator=self.generator, device=torch_device)
+        padded = torch.zeros(1, padded_length, embedding_dim, device=torch_device, dtype=content.dtype)
+        padded[:, :content_length] = content
+
+        attention_mask = torch.zeros(1, padded_length, device=torch_device)
+        attention_mask[:, :content_length] = 1.0
+
+        with torch.no_grad():
+            out_padded = model(
+                hidden_states=hidden_states,
+                encoder_hidden_states=padded,
+                pooled_projections=pooled_projections,
+                timestep=timestep,
+                joint_attention_kwargs={"attention_mask": attention_mask},
+                return_dict=False,
+            )[0]
+
+            out_trimmed = model(
+                hidden_states=hidden_states,
+                encoder_hidden_states=content,
+                pooled_projections=pooled_projections,
+                timestep=timestep,
+                return_dict=False,
+            )[0]
+
+        assert torch.allclose(out_padded, out_trimmed, atol=1e-5, rtol=1e-4)
