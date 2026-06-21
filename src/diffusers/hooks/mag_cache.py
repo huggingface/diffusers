@@ -130,6 +130,8 @@ class MagCacheConfig:
             if not torch.is_tensor(self.mag_ratios):
                 self.mag_ratios = torch.tensor(self.mag_ratios)
 
+            self._original_mag_ratios = self.mag_ratios.clone()
+
             if len(self.mag_ratios) != self.num_inference_steps:
                 logger.debug(
                     f"Interpolating mag_ratios from length {len(self.mag_ratios)} to {self.num_inference_steps}"
@@ -407,6 +409,7 @@ def apply_mag_cache(module: torch.nn.Module, config: MagCacheConfig) -> None:
     # Initialize registry on the root module so the Pipeline can set context.
     HookRegistry.check_if_exists_or_initialize(module)
 
+    module._mag_cache_config = config
     state_manager = StateManager(MagCacheState, (), {})
     remaining_blocks = []
 
@@ -466,3 +469,12 @@ def _apply_mag_cache_block_hook(
 
     hook = MagCacheBlockHook(state_manager, is_tail, config)
     registry.register_hook(hook, _MAG_CACHE_BLOCK_HOOK)
+
+def update_mag_cache_num_steps(module: torch.nn.Module, num_steps: int) -> None:
+    config: MagCacheConfig = getattr(module, "_mag_cache_config", None)
+    if config is None:
+        return
+    original_ratios = getattr(config, "_original_mag_ratios", config.mag_ratios)
+    config.num_inference_steps = num_steps
+    if original_ratios is not None:
+        config.mag_ratios = nearest_interp(original_ratios, num_steps)
