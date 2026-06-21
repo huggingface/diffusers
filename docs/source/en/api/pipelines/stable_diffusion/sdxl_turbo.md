@@ -75,14 +75,14 @@ import torch
 pipeline_text2image = AutoPipelineForText2Image.from_pretrained("stabilityai/sdxl-turbo", torch_dtype=torch.float16, variant="fp16")
 pipeline_text2image = pipeline_text2image.to("cuda")
 
-prompt = "A cinematic shot of a baby racoon wearing an intricate italian priest robe."
+prompt = "A cinematic shot of a baby raccoon wearing an intricate italian priest robe."
 
 image = pipeline_text2image(prompt=prompt, guidance_scale=0.0, num_inference_steps=1).images[0]
 image
 ```
 
 <div class="flex justify-center">
-    <img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/sdxl-turbo-text2img.png" alt="generated image of a racoon in a robe"/>
+    <img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/sdxl-turbo-text2img.png" alt="generated image of a raccoon in a robe"/>
 </div>
 
 ## Image-to-image

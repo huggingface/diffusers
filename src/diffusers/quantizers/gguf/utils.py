@@ -518,7 +518,7 @@ def dequantize_gguf_tensor(tensor):
 
     block_size, type_size = GGML_QUANT_SIZES[quant_type]
 
-    # Conver to plain tensor to avoid unnecessary __torch_function__ overhead.
+    # Convert to plain tensor to avoid unnecessary __torch_function__ overhead.
     tensor = tensor.as_tensor()
 
     tensor = tensor.view(torch.uint8)
