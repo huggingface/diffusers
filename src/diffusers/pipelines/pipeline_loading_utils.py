@@ -958,6 +958,11 @@ def _fetch_class_library_tuple(module):
 
     # register the config from the original module, not the dynamo compiled one
     not_compiled_module = _unwrap_model(module)
+    if isinstance(not_compiled_module, (bool, int, float, str)) or not hasattr(not_compiled_module, "__module__"):
+        raise TypeError(
+            f"Cannot fetch library tuple for object of type {type(not_compiled_module).__name__}. "
+            "Expected a model, scheduler, tokenizer, or pipeline module."
+        )
     library = not_compiled_module.__module__.split(".")[0]
 
     # check if the module is a pipeline module

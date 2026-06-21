@@ -212,6 +212,12 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             # retrieve library
             if module is None or isinstance(module, (tuple, list)) and module[0] is None:
                 register_dict = {name: (None, None)}
+            elif isinstance(module, (bool, int, float, str)):
+                # Non-module scalar (e.g. misaligned positional args from legacy subclasses that omit
+                # newly added init parameters). Register as a config value instead of a library tuple.
+                self.register_to_config(**{name: module})
+                setattr(self, name, module)
+                continue
             else:
                 library, class_name = _fetch_class_library_tuple(module)
                 register_dict = {name: (library, class_name)}
@@ -226,8 +232,16 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         if name in self.__dict__ and hasattr(self.config, name):
             # We need to overwrite the config if name exists in config
             if isinstance(getattr(self.config, name), (tuple, list)):
-                if value is not None and self.config[name][0] is not None:
+                if (
+                    value is not None
+                    and self.config[name][0] is not None
+                    and not isinstance(value, (bool, int, float, str))
+                ):
                     class_library_tuple = _fetch_class_library_tuple(value)
+                elif isinstance(value, (bool, int, float, str)):
+                    self.register_to_config(**{name: value})
+                    super().__setattr__(name, value)
+                    return
                 else:
                     class_library_tuple = (None, None)
 
