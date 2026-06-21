@@ -65,18 +65,16 @@ write_basic_config()
 ```
 
 When running `accelerate config`, if we specify torch compile mode to True there can be dramatic speedups.
-Note also that we use PEFT library as backend for LoRA training, make sure to have `peft>=0.6.0` installed in your environment.
+Note also that we use PEFT library as backend for LoRA training, make sure to have `peft>=0.13.0` installed in your environment.
 
-Lastly, we recommend logging into your HF account so that your trained LoRA is automatically uploaded to the hub:
-```bash
-hf auth login
-```
-This command will prompt you for a token. Copy-paste yours from your [settings/tokens](https://huggingface.co/settings/tokens),and press Enter.
+The `requirements.txt` in this folder also installs `datasets`, `prodigyopt`, and `wandb`, which the advanced SDXL example below uses for custom captions, the Prodigy optimizer, and experiment tracking.
 
 > [!NOTE]
-> In the examples below we use `wandb` to document the training runs. To do the same, make sure to install `wandb`:
-> `pip install wandb`
-> Alternatively, you can use other tools / train without reporting by modifying the flag  `--report_to="wandb"`.
+> **Optional logins (only if you use the matching flags)**
+> - **`--push_to_hub`**: run `hf auth login` once and paste a token from settings/tokens on huggingface.co.
+> - **`--report_to="wandb"`**: run `wandb login` (or set `WANDB_API_KEY`) before training.
+>
+> You can train locally and save weights without either login by omitting `--push_to_hub` and using e.g. `--report_to="tensorboard"` instead of `--report_to="wandb"`.
 
 ### Pivotal Tuning
 **Training with text encoder(s)**
@@ -111,13 +109,7 @@ snapshot_download(
 ```
 
 Let's review some of the advanced features we're going to be using for this example:
-- **custom captions**:
-To use custom captioning, first ensure that you have the datasets library installed, otherwise you can install it by
-```bash
-pip install datasets
-```
-
-Now we'll simply specify the name of the dataset and caption column (in this case it's "prompt")
+- **custom captions**: the `datasets` library is included in `requirements.txt`. Specify the dataset path and caption column (in this case it's "prompt")
 
 ```
 --dataset_name=./3d_icon
@@ -127,8 +119,7 @@ Now we'll simply specify the name of the dataset and caption column (in this cas
 You can also load a dataset straight from by specifying it's name in `dataset_name`.
 Look [here](https://huggingface.co/blog/sdxl_lora_advanced_script#custom-captioning) for more info on creating/loading your own caption dataset.
 
-- **optimizer**: for this example, we'll use [prodigy](https://huggingface.co/blog/sdxl_lora_advanced_script#adaptive-optimizers) - an adaptive optimizer
-  - To use Prodigy, please make sure to install the prodigyopt library: `pip install prodigyopt`
+- **optimizer**: for this example, we'll use [prodigy](https://huggingface.co/blog/sdxl_lora_advanced_script#adaptive-optimizers) - an adaptive optimizer (via `prodigyopt` in `requirements.txt`)
 - **pivotal tuning**
 - **min SNR gamma**
 
@@ -172,7 +163,7 @@ accelerate launch train_dreambooth_lora_sdxl_advanced.py \
 
 To better track our training experiments, we're using the following flags in the command above:
 
-* `report_to="wandb` will ensure the training runs are tracked on Weights and Biases. To use it, be sure to install `wandb` with `pip install wandb`.
+* `report_to="wandb"` will ensure the training runs are tracked on Weights and Biases. Requires `wandb login` (see install note above).
 * `validation_prompt` and `validation_epochs` to allow the script to do a few validation inference runs. This allows us to qualitatively check if the training is progressing as expected.
 
 Our experiments were conducted on a single 40GB A100 GPU.
