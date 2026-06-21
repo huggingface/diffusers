@@ -317,7 +317,7 @@ class AttentionModuleMixin:
                 self.to_kv.bias.copy_(concatenated_bias)
 
             if inplace:
-                # Keep the necessary K,v dims so that the individual projections can be reconstructed.
+                # Keep the necessary K,V dims so that the individual projections can be reconstructed.
                 self._qkv_split_dims = (
                     self.to_k.weight.shape[0],
                     self.to_v.weight.shape[0],
@@ -531,6 +531,11 @@ class AttentionModuleMixin:
         hidden_states: torch.Tensor,
         encoder_hidden_states: torch.Tensor | None = None,
     ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        """
+        Get the added query, key, and value from added Q,K,V projections (for example, second stream projections in a
+        MM-DiT-style model like Flux). Note that for models with only `add_k_proj`/`add_v_proj` such as Wan, Q comes
+        from the normal `to_q` projection.
+        """
         if self.fused_projections:
             if hasattr(self, "to_added_kv"):
                 query = self.to_q(hidden_states)
