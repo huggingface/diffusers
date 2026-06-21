@@ -273,6 +273,30 @@ class FluxTransformerQuantoMixin(QuantoBaseTesterMixin):
         pipe.enable_model_cpu_offload(device=torch_device)
         _ = pipe("a cat holding a sign that says hello", num_inference_steps=2)
 
+    def test_group_offloading(self):
+        inputs = self.get_dummy_inputs()
+        model = self.model_cls.from_pretrained(**self.get_dummy_model_init_kwargs()).to(torch_device)
+        with torch.no_grad():
+            output_without_offloading = model(**inputs).sample
+        model.to("cpu")
+        del model
+        backend_empty_cache(torch_device)
+        gc.collect()
+
+        for offload_kwargs in (
+            {"offload_type": "leaf_level"},
+            {"offload_type": "leaf_level", "use_stream": True},
+            {"offload_type": "block_level", "num_blocks_per_group": 1, "use_stream": True},
+        ):
+            model = self.model_cls.from_pretrained(**self.get_dummy_model_init_kwargs())
+            model.enable_group_offload(torch_device, **offload_kwargs)
+            with torch.no_grad():
+                output = model(**inputs).sample
+            assert torch.allclose(output_without_offloading, output, atol=1e-3, rtol=1e-3)
+            del model
+            backend_empty_cache(torch_device)
+            gc.collect()
+
     def test_training(self):
         quantization_config = QuantoConfig(**self.get_dummy_init_kwargs())
         quantized_model = self.model_cls.from_pretrained(
