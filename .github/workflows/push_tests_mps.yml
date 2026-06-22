@@ -29,7 +29,7 @@ jobs:
 
     steps:
     - name: Checkout diffusers
-      uses: actions/checkout@v6
+      uses: actions/checkout@v6.0.3
       with:
         fetch-depth: 2
 
@@ -72,7 +72,7 @@ jobs:
 
     - name: Test suite reports artifacts
       if: ${{ always() }}
-      uses: actions/upload-artifact@v6
+      uses: actions/upload-artifact@v7.0.1
       with:
         name: pr_torch_mps_test_reports
         path: reports

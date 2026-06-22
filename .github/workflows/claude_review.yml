@@ -34,7 +34,7 @@ jobs:
       cancel-in-progress: false
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd #v6.0.2
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 #v6.0.3
         with:
           fetch-depth: 1
 
@@ -84,7 +84,7 @@ jobs:
           git clone --local --bare . /tmp/local-origin.git
           git config url."file:///tmp/local-origin.git".insteadOf "$(git remote get-url origin)"
 
-      - uses: anthropics/claude-code-action@2ff1acb3ee319fa302837dad6e17c2f36c0d98ea  # v1
+      - uses: anthropics/claude-code-action@4d7e1f0cd85743fdc93b1c8040ab54395da024e2  # v1
         env:
           CLAUDE_SYSTEM_PROMPT: |
             You are a strict code reviewer for the diffusers library (huggingface/diffusers).
