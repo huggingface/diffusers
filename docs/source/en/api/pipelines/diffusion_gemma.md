@@ -78,7 +78,9 @@ pipe.scheduler = BlockRefinementScheduler.from_config(pipe.scheduler.config, thr
 
 ### Predictor-corrector sampling
 
-`DiscreteDDIMScheduler` supports the leave-one-out predictor-corrector of [Reparameterizing Uniform Diffusion Models](https://huggingface.co/papers/2605.22765). After each predictor step the pipeline runs `corrector_steps` Gibbs sweeps that resample the least-confident positions from the one-coordinate conditional of the noisy marginal, which leaves that marginal invariant and improves generation at no extra training cost. It works directly on the released checkpoint: for uniform diffusion the denoiser and the leave-one-out posterior are interchangeable in closed form, so the corrector recovers the leave-one-out quantities it needs without any retraining.
+`DiscreteDDIMScheduler` supports the leave-one-out predictor-corrector of [Reparameterizing Uniform Diffusion Models](https://huggingface.co/papers/2605.22765). It refines the canvas with `corrector_steps` Gibbs sweeps that resample the least-confident positions from the one-coordinate conditional of the noisy marginal, which leaves that marginal invariant and improves generation at no extra training cost. It works directly on the released checkpoint: for uniform diffusion the denoiser and the leave-one-out posterior are interchangeable in closed form, so the corrector recovers the leave-one-out quantities it needs without any retraining.
+
+The corrector sweeps are folded into the `num_inference_steps` budget rather than added on top: the pipeline runs fewer predictor steps and spends the freed forwards on correctors, so the total number of model forwards stays `num_inference_steps` and the predictor-corrector costs the same as plain ancestral sampling.
 
 ```py
 from diffusers import DiscreteDDIMScheduler

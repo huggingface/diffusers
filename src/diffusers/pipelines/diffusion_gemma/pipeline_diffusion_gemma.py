@@ -320,14 +320,26 @@ class DiffusionGemmaPipeline(DiffusionPipeline):
 
         canvas_length = self.canvas_length
         num_canvases = (gen_length + canvas_length - 1) // canvas_length
+        # `num_inference_steps` is the per-block budget of model forwards. With a corrector, fold its sweeps into that
+        # budget (as in https://huggingface.co/papers/2605.22765) instead of adding them on top: the first
+        # `corrected_steps` predictor steps each run `corrector_steps` extra forwards, so the total stays
+        # `num_inference_steps` and the predictor-corrector costs the same as plain ancestral sampling.
+        corrector_steps = getattr(self.scheduler.config, "corrector_steps", 0)
+        if corrector_steps > 0:
+            corrected_steps = (num_inference_steps - 1) // (1 + corrector_steps)
+            predictor_steps = num_inference_steps - corrected_steps * corrector_steps
+        else:
+            corrected_steps = 0
+            predictor_steps = num_inference_steps
+
         # Only `BlockRefinementScheduler` takes a per-call `block_length`; the DiscreteDDIM/EntropyBound schedulers do
         # not, so we pass scheduler-specific kwargs by signature.
         set_timesteps_kwargs = {"device": device}
         if "block_length" in inspect.signature(self.scheduler.set_timesteps).parameters:
             set_timesteps_kwargs["block_length"] = canvas_length
-        self.scheduler.set_timesteps(num_inference_steps, **set_timesteps_kwargs)
+        self.scheduler.set_timesteps(predictor_steps, **set_timesteps_kwargs)
         step_param_names = set(inspect.signature(self.scheduler.step).parameters)
-        self._num_timesteps = num_inference_steps * num_canvases
+        self._num_timesteps = predictor_steps * num_canvases
 
         cur_input_ids = prompt_ids
         cur_attention_mask = prompt_attention_mask
@@ -391,7 +403,7 @@ class DiffusionGemmaPipeline(DiffusionPipeline):
                 (max(stability_threshold, 1), batch_size, canvas_length), -1, dtype=torch.long, device=device
             )
 
-            for step_idx in range(num_inference_steps):
+            for step_idx in range(predictor_steps):
                 # Mark a fresh step and clone the logits so a cudagraph-compiled decoder (`mode="reduce-overhead"`)
                 # does not overwrite the tensors that self-conditioning and the scheduler read next. Both are no-ops
                 # when the decoder is not cudagraph-compiled.
@@ -414,11 +426,10 @@ class DiffusionGemmaPipeline(DiffusionPipeline):
                 )
                 canvas = scheduler_output.prev_sample
 
-                # Predictor-corrector (https://huggingface.co/papers/2605.22765): a scheduler may expose extra corrector
-                # sweeps via a `corrector_steps` config and a `step_correct` method. Each sweep needs fresh logits on the
-                # updated canvas, so the model is recomputed here. Skipped on the final step.
-                corrector_steps = getattr(self.scheduler.config, "corrector_steps", 0)
-                if corrector_steps and step_idx + 1 < num_inference_steps:
+                # Predictor-corrector (https://huggingface.co/papers/2605.22765): a scheduler exposing `corrector_steps`
+                # + `step_correct` refines the canvas with extra Gibbs sweeps on the first `corrected_steps` predictor
+                # steps (the budget split computed above). Each sweep needs fresh logits on the updated canvas.
+                if step_idx < corrected_steps:
                     for _ in range(corrector_steps):
                         torch.compiler.cudagraph_mark_step_begin()
                         corrector_logits = self.model(
