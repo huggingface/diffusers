@@ -1,3 +1,5 @@
+import os
+
 import torch
 from PIL import Image
 
@@ -13,6 +15,9 @@ NEGATIVE_INSTRUCTION = (
     "mutation, mutated, (extra_limb), (ugly), (poorly drawn hands), fused fingers, messy drawing, "
     "broken legs censor, censored, censor_bar"
 )
+
+if not os.path.exists("base.png"):
+    raise FileNotFoundError("base.png not found — run inference_base.py first to generate the reference image.")
 
 pipe = BooguImagePipeline.from_pretrained(MODEL_PATH, torch_dtype=torch.bfloat16)
 pipe = pipe.to("cuda")

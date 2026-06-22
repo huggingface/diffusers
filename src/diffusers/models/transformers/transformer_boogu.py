@@ -860,7 +860,11 @@ class BooguImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Fr
         if isinstance(raw_instruction_hidden_states, torch.Tensor):
             instruction_hidden_states = raw_instruction_hidden_states
         elif isinstance(raw_instruction_hidden_states, (list, tuple)):
-            assert len(raw_instruction_hidden_states) == num_instruction_feat_layers
+            if len(raw_instruction_hidden_states) != num_instruction_feat_layers:
+                raise ValueError(
+                    f"Expected {num_instruction_feat_layers} instruction-feature layers, "
+                    f"got {len(raw_instruction_hidden_states)}."
+                )
             if "cat" in reduce_type.lower():
                 instruction_hidden_states = torch.cat(raw_instruction_hidden_states, dim=-1)
             elif "mean" in reduce_type.lower():
@@ -872,7 +876,11 @@ class BooguImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Fr
                 f"Invalid type of raw_instruction_hidden_states, expected torch.Tensor or list, but got {type(raw_instruction_hidden_states)}"
             )
 
-        assert self.preprocessed_instruction_feat_dim == instruction_hidden_states.shape[-1]
+        if self.preprocessed_instruction_feat_dim != instruction_hidden_states.shape[-1]:
+            raise ValueError(
+                f"Instruction feature dim mismatch: expected {self.preprocessed_instruction_feat_dim}, "
+                f"got {instruction_hidden_states.shape[-1]}."
+            )
 
         return instruction_hidden_states
 
@@ -915,7 +923,8 @@ class BooguImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Fr
         is_hidden_states_tensor = isinstance(hidden_states, torch.Tensor)
 
         if is_hidden_states_tensor:
-            assert hidden_states.ndim == 4
+            if hidden_states.ndim != 4:
+                raise ValueError(f"Expected hidden_states with 4 dims [B, C, H, W], got ndim={hidden_states.ndim}.")
             hidden_states = list(hidden_states)
 
         device = hidden_states[0].device

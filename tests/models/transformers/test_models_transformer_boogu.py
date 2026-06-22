@@ -21,6 +21,7 @@ from diffusers.utils.torch_utils import randn_tensor
 
 from ...testing_utils import enable_full_determinism, torch_device
 from ..testing_utils import (
+    BaseModelTesterConfig,
     MemoryTesterMixin,
     ModelTesterMixin,
     TorchCompileTesterMixin,
@@ -39,7 +40,7 @@ _INSTRUCTION_FEAT_DIM = 8
 _THETA = 10000
 
 
-class BooguImageTransformerTesterConfig:
+class BooguImageTransformerTesterConfig(BaseModelTesterConfig):
     @property
     def model_class(self):
         return BooguImageTransformer2DModel

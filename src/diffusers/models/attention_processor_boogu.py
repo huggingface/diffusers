@@ -1,4 +1,3 @@
-import math
 from typing import List, Optional, Tuple
 
 import torch
@@ -121,9 +120,11 @@ class BooguImageDoubleStreamSelfAttnProcessor(nn.Module):
         Returns:
             List of concatenated tensors [query, key, value]
         """
-        assert len(img_hidden_states_list) == len(instruct_hidden_states_list), (
-            f"Length mismatch: img_list={len(img_hidden_states_list)}, instruct_list={len(instruct_hidden_states_list)}"
-        )
+        if len(img_hidden_states_list) != len(instruct_hidden_states_list):
+            raise ValueError(
+                f"Length mismatch: img_list={len(img_hidden_states_list)}, "
+                f"instruct_list={len(instruct_hidden_states_list)}"
+            )
 
         batch_size = img_hidden_states_list[0].shape[0]
         max_seq_len = max(seq_lengths)
@@ -207,7 +208,6 @@ class BooguImageDoubleStreamSelfAttnProcessor(nn.Module):
         rotary_emb: Optional[torch.Tensor] = None,
         encoder_seq_lengths: List[int] = None,  # [B] - Instruction sequence lengths for each sample
         seq_lengths: List[int] = None,  # [B] - Total sequence lengths for each sample
-        base_sequence_length: Optional[int] = None,
     ) -> torch.Tensor:
         """
         Process double-stream self-attention.
@@ -220,7 +220,6 @@ class BooguImageDoubleStreamSelfAttnProcessor(nn.Module):
             rotary_emb: Rotary embeddings for the joint sequence
             encoder_seq_lengths: Instruction sequence lengths for each sample [B]
             seq_lengths: Total sequence lengths for each sample [B]
-            base_sequence_length: Optional base sequence length for proportional attention
 
         Returns:
             torch.Tensor: Processed hidden states after attention computation
@@ -243,7 +242,6 @@ class BooguImageDoubleStreamSelfAttnProcessor(nn.Module):
             img_list, instruct_list, encoder_seq_lengths, seq_lengths
         )  # [B, max_seq_len, feature_dim] each
 
-        sequence_length = max(seq_lengths)
         head_dim = query.shape[-1] // attn.heads
         kv_heads = key.shape[-1] // head_dim
         dtype = query.dtype
@@ -264,17 +262,12 @@ class BooguImageDoubleStreamSelfAttnProcessor(nn.Module):
 
         query, key = query.to(dtype), key.to(dtype)
 
-        if base_sequence_length is not None:
-            softmax_scale = math.sqrt(math.log(sequence_length, base_sequence_length)) * attn.scale
-        else:
-            softmax_scale = attn.scale
-
         hidden_states = dispatch_attention_fn(
             query,
             key,
             value,
             attn_mask=_prepare_attn_mask(joint_attention_mask, batch_size),
-            scale=softmax_scale,
+            scale=attn.scale,
             enable_gqa=kv_heads < attn.heads,
             backend=self._attention_backend,
             parallel_config=self._parallel_config,
@@ -318,7 +311,6 @@ class BooguImageAttnProcessor:
         encoder_hidden_states: torch.Tensor,
         attention_mask: Optional[torch.Tensor] = None,
         image_rotary_emb: Optional[torch.Tensor] = None,
-        base_sequence_length: Optional[int] = None,
     ) -> torch.Tensor:
         """
         Process single-stream self-attention.
@@ -329,12 +321,11 @@ class BooguImageAttnProcessor:
             encoder_hidden_states: Encoder hidden states tensor (same as hidden_states for self-attention)
             attention_mask: Optional bool padding mask [B, L]
             image_rotary_emb: Optional rotary embeddings
-            base_sequence_length: Optional base sequence length for proportional attention
 
         Returns:
             torch.Tensor: Processed hidden states after attention computation
         """
-        batch_size, sequence_length, _ = hidden_states.shape
+        batch_size = hidden_states.shape[0]
 
         query = attn.to_q(hidden_states)
         key = attn.to_k(encoder_hidden_states)
@@ -360,17 +351,12 @@ class BooguImageAttnProcessor:
 
         query, key = query.to(dtype), key.to(dtype)
 
-        if base_sequence_length is not None:
-            softmax_scale = math.sqrt(math.log(sequence_length, base_sequence_length)) * attn.scale
-        else:
-            softmax_scale = attn.scale
-
         hidden_states = dispatch_attention_fn(
             query,
             key,
             value,
             attn_mask=_prepare_attn_mask(attention_mask, batch_size),
-            scale=softmax_scale,
+            scale=attn.scale,
             enable_gqa=kv_heads < attn.heads,
             backend=self._attention_backend,
             parallel_config=self._parallel_config,

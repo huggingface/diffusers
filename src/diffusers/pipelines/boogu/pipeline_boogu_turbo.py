@@ -97,9 +97,6 @@ class BooguImageTurboPipeline(DiffusionPipeline):
         self.image_processor = BooguImageProcessor(vae_scale_factor=self.vae_scale_factor * 2, do_resize=True)
         self.default_sample_size = 128
 
-        self.MASK_VISION_TOKENS_FEATURE: bool = False
-        self.VISION_TOKEN_IDs: List[int] = []
-
         # System prompts matching dataset logic (specific to this pipeline)
 
         self.SYSTEM_PROMPT_4_TI2I_UNIFIED = "Describe the key features of the input image (color, shape, size, texture, objects, background), then explain how the user's text instruction should alter or modify the image. Generate a new image that meets the user's requirements while maintaining consistency with the original input where appropriate."
@@ -201,11 +198,8 @@ class BooguImageTurboPipeline(DiffusionPipeline):
         self,
         device: Literal[None, "cpu", "cuda", "cuda:x"] = "cpu",
     ):
-        device = device.lower() if isinstance(device, str) else device
-
-        device_validator = get_device_validator()
-
-        return device == device_validator(device)
+        # get_device_validator() raises on an unsupported device string (e.g. "gpu", "cuda:x").
+        get_device_validator()(device.lower() if isinstance(device, str) else device)
 
     # Copied from diffusers.pipelines.boogu.pipeline_boogu.BooguImagePipeline._check_device_strategy_validity
     def _check_device_strategy_validity(
@@ -438,8 +432,8 @@ class BooguImageTurboPipeline(DiffusionPipeline):
         crops_coords: List[Tuple[int, int, int, int]] = None,
     ) -> List[PIL.Image.Image]:
         """
-        Resize input PIL images for VLM encoding, matching dataset behavior exactly as in
-        BOOGUTrainTorchIterableTI2IDataset.preprocess_vlm_input_pil_images.
+        Resize input PIL images for VLM encoding. For each image, the target height/width is computed
+        from the pixel budget (max_pixels / max_side_length) and the image is resized to fit.
         max_pixels is an int or None; per-image selection is handled by caller before passing here.
         """
 
@@ -530,9 +524,6 @@ class BooguImageTurboPipeline(DiffusionPipeline):
             - List[List[PIL.Image.Image]]  or
             - List[List[str]]              (each str is an image path)
             - Allowed per-sample "empty" markers: [] or None
-
-        ***This function may not be actually used for singe generation tasks (i.e., [text,[image,...]] -> image),
-            but it might be useful for batch generation.***
 
         Rules:
             - If input_images is None or []:
@@ -804,7 +795,6 @@ class BooguImageTurboPipeline(DiffusionPipeline):
             if isinstance(vlm_inputs[k], torch.Tensor):
                 vlm_inputs[k] = vlm_inputs[k].to(device)
 
-        input_ids = vlm_inputs["input_ids"]
         instruction_mask = vlm_inputs["attention_mask"]
 
         num_instruction_feature_layers = self.transformer.instruction_feature_configs.get(
@@ -823,38 +813,6 @@ class BooguImageTurboPipeline(DiffusionPipeline):
                 ]  # Convert to list for model processing
             else:
                 instruction_feats = self.mllm(**vlm_inputs).last_hidden_state
-
-        # Optionally remove vision-token features by truncation
-        if self.MASK_VISION_TOKENS_FEATURE and (self.VISION_TOKEN_IDs is not None) and len(self.VISION_TOKEN_IDs) > 0:
-            mask_device = input_ids.device
-            vision_ids = torch.as_tensor(self.VISION_TOKEN_IDs, device=mask_device, dtype=input_ids.dtype)
-            vision_mask_core = torch.isin(input_ids, vision_ids)  # [B, L_core]
-            keep_core_mask = instruction_mask.to(dtype=torch.bool) & (~vision_mask_core)  # [B, L_core]
-            keep_mask = keep_core_mask
-            kept_lengths = keep_mask.sum(dim=1)
-            max_kept_len = int(kept_lengths.max().item()) if kept_lengths.numel() > 0 else 0
-
-            def compress_features(feats: torch.Tensor, keep_m: torch.Tensor, max_len: int) -> torch.Tensor:
-                keep_m = keep_m.to(feats.device)
-                B, L, D = feats.shape
-                out = feats.new_zeros((B, max_len, D))
-                for b in range(B):
-                    idx = torch.nonzero(keep_m[b], as_tuple=False).squeeze(-1)
-                    if idx.numel() > 0:
-                        cur = feats[b].index_select(dim=0, index=idx)
-                        out[b, : idx.numel()] = cur
-                return out
-
-            new_mask = final_instruction_mask.new_zeros((batch_size, max_kept_len))
-            for b in range(batch_size):
-                kept_len_b = int(kept_lengths[b].item())
-                if kept_len_b > 0:
-                    new_mask[b, :kept_len_b] = 1
-            if isinstance(instruction_feats, list):
-                instruction_feats = [compress_features(feat, keep_mask, max_kept_len) for feat in instruction_feats]
-            else:
-                instruction_feats = compress_features(instruction_feats, keep_mask, max_kept_len)
-            final_instruction_mask = new_mask
 
         if self.mllm is not None:
             dtype = self.mllm.dtype
@@ -989,7 +947,7 @@ class BooguImageTurboPipeline(DiffusionPipeline):
         truncate_instruction_sequence: bool = False,
         system_prompt_follows_task_type: bool = False,
         task_type: str = "ti2i",
-    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+    ) -> Tuple[torch.Tensor, ...]:
         r"""
         Encodes the instruction into text encoder hidden states.
 

@@ -39,6 +39,9 @@ NEGATIVE_INSTRUCTION = (
     "broken legs censor, censored, censor_bar"
 )
 
+if not os.path.exists("base.png"):
+    raise FileNotFoundError("base.png not found — run inference_base.py first to generate the reference image.")
+
 transformer = BooguImageTransformer2DModel.from_pretrained(
     MODEL_PATH,
     subfolder="transformer",
