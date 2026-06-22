@@ -43,95 +43,10 @@ from .block_lumina2 import (
     LuminaLayerNormContinuous,
     LuminaRMSNormZero,
 )
-from .rope_boogu import BooguImageDoubleStreamRotaryPosEmbed, BooguImagePromptTuningRotaryPosEmbed
+from .rope_boogu import BooguImageDoubleStreamRotaryPosEmbed
 
 
 logger = logging.get_logger(__name__)
-
-
-class PromptEmbedding(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOriginalModelMixin):
-    _supports_gradient_checkpointing = True
-    _no_split_modules = ["BooguImageTransformerBlock"]
-    _skip_layerwise_casting_patterns = ["prompt_token_embedding", "norm"]
-
-    @register_to_config
-    def __init__(
-        self,
-        num_trainable_prompt_tokens: int = 32,
-        hidden_size: int = 2048,
-        num_attention_heads: int = 32,
-        num_kv_heads: int = 8,
-        multiple_of: int = 256,
-        ffn_dim_multiplier: Optional[float] = None,
-        norm_eps: float = 1e-5,
-        num_layers: int = 2,
-        theta: int = 10000,
-    ):
-        super().__init__()
-
-        prompt_emb_head_dim = self.config.hidden_size // self.config.num_attention_heads
-
-        self.prompt_token_embedding = nn.Embedding(
-            num_embeddings=self.config.num_trainable_prompt_tokens,
-            embedding_dim=self.config.hidden_size,
-        )
-
-        # Rotary embedding for prompt tokens.
-        self.prompt_rope_embedder = BooguImagePromptTuningRotaryPosEmbed(
-            theta=self.config.theta,
-            dim=prompt_emb_head_dim,
-            num_trainable_prompt_tokens=self.config.num_trainable_prompt_tokens,
-        )
-
-        self.prompt_tuning_layers = nn.ModuleList(
-            [
-                BooguImageTransformerBlock(
-                    dim=self.config.hidden_size,
-                    num_attention_heads=self.config.num_attention_heads,
-                    num_kv_heads=self.config.num_kv_heads,
-                    multiple_of=self.config.multiple_of,
-                    ffn_dim_multiplier=self.config.ffn_dim_multiplier,
-                    norm_eps=self.config.norm_eps,
-                    modulation=False,
-                )
-                for _ in range(self.config.num_layers)
-            ]
-        )
-
-        self.gradient_checkpointing = False
-
-        self.initialize_weights()
-
-    def initialize_weights(self) -> None:
-        # Small std keeps prompt tuning stable at init.
-        nn.init.normal_(self.prompt_token_embedding.weight, mean=0.0, std=0.02)
-
-    def forward(self, idx=None, batch_size=1, device=None, use_causal_mask=True):
-        if idx is None:
-            prompt_embeddings = self.prompt_token_embedding.weight
-        else:
-            prompt_embeddings = self.prompt_token_embedding(idx)
-
-        # Expand to [B, num_tokens, hidden_dim].
-        hidden_states = prompt_embeddings.unsqueeze(0).expand(batch_size, -1, -1)
-
-        rotary_emb, attention_mask = self.prompt_rope_embedder(batch_size, device, use_causal_mask)
-
-        for i, layer in enumerate(self.prompt_tuning_layers):
-            if torch.is_grad_enabled() and self.gradient_checkpointing:
-                hidden_states = self._gradient_checkpointing_func(
-                    layer,
-                    hidden_states,
-                    attention_mask,
-                    rotary_emb,
-                )
-            else:
-                hidden_states = layer(
-                    hidden_states,
-                    attention_mask,
-                    rotary_emb,
-                )
-        return hidden_states
 
 
 class BooguImageTransformerBlock(nn.Module):
@@ -539,7 +454,6 @@ class BooguImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Fr
     _no_split_modules = [
         "BooguImageTransformerBlock",
         "BooguImageDoubleStreamTransformerBlock",
-        "PromptEmbedding",
     ]
     _repeated_blocks = [
         "BooguImageTransformerBlock",
@@ -569,7 +483,6 @@ class BooguImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Fr
             "reduce_type": "mean",
             "num_instruction_feat_layers": 1,
         },
-        prompt_tuning_configs: Dict[str, Any] = {"use_prompt_tuning": False},
         timestep_scale: float = 1.0,
     ) -> None:
         """Initialize the Boogu-Image mixed single-double stream transformer model."""
@@ -592,7 +505,6 @@ class BooguImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Fr
         self.num_double_stream_layers = num_double_stream_layers
         self.num_single_stream_layers = num_layers - num_double_stream_layers
         self.instruction_feature_configs = instruction_feature_configs
-        self.prompt_tuning_configs = prompt_tuning_configs
         self.preprocessed_instruction_feat_dim = self.cal_preprocessed_instruction_feat_dim(
             instruction_feature_configs
         )

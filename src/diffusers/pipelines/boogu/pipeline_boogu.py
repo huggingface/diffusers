@@ -23,10 +23,7 @@ from diffusers.utils.teacache_util import TeaCacheParams
 from diffusers.utils.torch_utils import randn_tensor
 from diffusers.utils.validator_utils import get_device_validator
 
-from ...models.transformers import (
-    BooguImageTransformer2DModel,
-    PromptEmbedding,
-)
+from ...models.transformers import BooguImageTransformer2DModel
 from .image_processor import BooguImageProcessor
 
 
@@ -234,7 +231,6 @@ class BooguImagePipeline(DiffusionPipeline):
             mllm=mllm,
             processor=processor,
         )
-        self.prompt_embedding = None
 
         # Now it is safe to set additional attributes
         self.vae_scale_factor = (
@@ -428,39 +424,6 @@ class BooguImagePipeline(DiffusionPipeline):
         if device is not None:
             self.transformer.to(device)
             logger.info("`self.transformer` has been moved to the requested device. device=%r.", device)
-
-    def set_prompt_embedding(self, prompt_embedding=None, device=None):
-        """Set or clear the prompt-tuning embedding module."""
-        if prompt_embedding is None:
-            self.prompt_embedding = None
-            warnings.warn(
-                "[Setter Warning]: `set_prompt_embedding(...)` received None. Prompt tuning will be disabled. "
-                "If prompt tuning is expected, please call `self.set_prompt_embedding(...)` with a valid "
-                "prompt embedding model.",
-                UserWarning,
-            )
-            return
-
-        # Re-register the prompt embedding so both the instance attribute and pipeline config stay in sync.
-        self.register_modules(prompt_embedding=prompt_embedding)
-        logger.info("`self.prompt_embedding` has been registered.")
-
-        if (
-            self.enable_model_cpu_offload_flag
-            or self.enable_sequential_cpu_offload_flag
-            or self.enable_group_offload_flag
-            or getattr(self, "_all_hooks", None)
-        ):
-            warnings.warn(
-                "[Setter Warning]: `set_prompt_embedding(...)` is being called after this pipeline may have enabled "
-                "device/offload hooks. Re-registering or moving `prompt_embedding` at this point can leave stale "
-                "hook state. Prefer setting prompt embedding before enabling CPU/group offload or running inference.",
-                UserWarning,
-            )
-
-        if device is not None:
-            self.prompt_embedding.to(device)
-            logger.info("`self.prompt_embedding` has been moved to the requested device. device=%r.", device)
 
     def prepare_latents(
         self,
@@ -793,7 +756,6 @@ class BooguImagePipeline(DiffusionPipeline):
         device: Optional[torch.device] = None,
         max_sequence_length: int = 256,
         truncate_instruction_sequence: bool = False,
-        use_prompt_tuning_embedding: bool = False,
         max_vlm_input_pil_pixels: Optional[Union[int, List[int]]] = None,
         max_vlm_input_pil_side_length: Optional[int] = None,
         system_prompt_follows_task_type: bool = False,
@@ -802,7 +764,6 @@ class BooguImagePipeline(DiffusionPipeline):
         """
         Get interleaved instruction embeddings from VLM (self.mllm), aligned with training:
         - Build VLM inputs via processor.apply_chat_template (images + text)
-        - Optionally prepend trainable prompt embeddings
         - Optionally remove vision-token features by truncation
         - Return last layer or last-N layers and the corresponding attention mask
 
@@ -811,7 +772,6 @@ class BooguImagePipeline(DiffusionPipeline):
             input_pil_images: A list of PIL images to be included in the prompt (TI2I/I2I).
             device: The device to place the embeddings on. If None, uses the pipeline's device.
             max_sequence_length: Maximum sequence length for tokenization.
-            use_prompt_tuning_embedding: Whether to prepend trainable prompt embeddings.
 
         Returns:
             Tuple[torch.Tensor, torch.Tensor]: A tuple containing:
@@ -824,24 +784,6 @@ class BooguImagePipeline(DiffusionPipeline):
         device = device or self._execution_device
         instruction = [instruction] if isinstance(instruction, str) else instruction
         batch_size = len(instruction)
-        has_offload_strategy = (
-            bool(getattr(self, "enable_model_cpu_offload_flag", False))
-            or bool(getattr(self, "enable_sequential_cpu_offload_flag", False))
-            or bool(getattr(self, "enable_group_offload_flag", False))
-        )
-
-        def _module_execution_device(module, fallback_device):
-            """Return the best execution device for a possibly offloaded module."""
-            hook = getattr(module, "_hf_hook", None)
-            hook_device = getattr(hook, "execution_device", None)
-            if hook_device is not None:
-                return torch.device(hook_device)
-
-            for tensor in list(module.parameters(recurse=True)) + list(module.buffers(recurse=True)):
-                if tensor.device.type != "meta":
-                    return tensor.device
-
-            return torch.device(fallback_device)
 
         # Build prompts with images+text.
         # input_pil_images: Optional[List[List[PIL.Image.Image]]], outer length == batch_size,
@@ -909,103 +851,29 @@ class BooguImagePipeline(DiffusionPipeline):
             tokenize=True,
             return_dict=True,
         )
-        move_vlm_inputs_to_device = not (use_prompt_tuning_embedding and has_offload_strategy)
         for k in vlm_inputs.keys():
-            if isinstance(vlm_inputs[k], torch.Tensor) and move_vlm_inputs_to_device:
+            if isinstance(vlm_inputs[k], torch.Tensor):
                 vlm_inputs[k] = vlm_inputs[k].to(device)
 
         input_ids = vlm_inputs["input_ids"]
         instruction_mask = vlm_inputs["attention_mask"]
 
-        if use_prompt_tuning_embedding:
-            num_instruction_feature_layers = self.transformer.instruction_feature_configs.get(
-                "num_instruction_feature_layers", 1
-            )
-            num_trainable_prompt_tokens = self.prompt_embedding.config.get("num_trainable_prompt_tokens", 32)
-            use_causal_mask = self.prompt_embedding.config.get("use_causal_mask", True)
+        num_instruction_feature_layers = self.transformer.instruction_feature_configs.get(
+            "num_instruction_feature_layers", 1
+        )
+        final_instruction_mask = instruction_mask
 
-            assert self.prompt_embedding is not None, (
-                "When `use_prompt_tuning_embedding=True`, `self.prompt_embedding` must be well set and should not be None."
-            )
-            logger.info("Using prompt tuning enhanced text feature extraction")
-
-            # Step 1: Get input embeddings from the text encoder.
-            # In CPU/group offload mode, calling the embedding layer directly can
-            # bypass the parent MLLM offload hook. Keep token ids on the embedding
-            # layer's real device, then let the full MLLM forward own later moves.
-            input_embedding_layer = self.mllm.get_input_embeddings()
-            input_embedding_device = _module_execution_device(
-                input_embedding_layer,
-                "cpu" if has_offload_strategy else device,
-            )
-            with torch.no_grad():
-                input_embeds = input_embedding_layer(
-                    input_ids.to(input_embedding_device)
-                )  # [B, seq_len, text_hidden_dim]
-
-            # Step 2: Get trainable prompt embeddings
-            prompt_embedding_device = _module_execution_device(
-                self.prompt_embedding,
-                device,
-            )
-            token_indices = torch.arange(
-                num_trainable_prompt_tokens,
-                device=prompt_embedding_device,
-                dtype=torch.long,
-            )  # [num_tokens]
-            trainable_prompt_embeds = self.prompt_embedding(
-                token_indices,
-                1,
-                device=prompt_embedding_device,
-                use_causal_mask=use_causal_mask,
-            )  # Use batch_size=1 to pass this forward network.
-            trainable_prompt_embeds = trainable_prompt_embeds.expand(
-                batch_size, -1, -1
-            )  # [1, seq_len, text_hidden_dim] -> [B, seq_len, text_hidden_dim]
-
-            num_prompt_tokens = trainable_prompt_embeds.shape[1]
-            assert num_trainable_prompt_tokens == num_prompt_tokens  # shape check
-
-            # Step 3: Concatenate prompt embeddings to the front of input embeddings
-            # [B, num_prompt_tokens + seq_len, text_hidden_dim]
-            trainable_prompt_embeds = trainable_prompt_embeds.to(device=input_embeds.device, dtype=input_embeds.dtype)
-            combined_embeds = torch.cat([trainable_prompt_embeds, input_embeds], dim=1)
-
-            # Step 4: Create extended attention mask for prompt tokens
-            # Create all-ones mask for prompt tokens: [B, num_prompt_tokens]
-            instruction_mask = instruction_mask.to(input_embeds.device)
-            prompt_mask = torch.ones(
-                batch_size,
-                num_prompt_tokens,
-                dtype=instruction_mask.dtype,
-                device=input_embeds.device,
-            )
-            # Concatenate with original text mask: [B, num_prompt_tokens + seq_len]
-            final_instruction_mask = torch.cat([prompt_mask, instruction_mask], dim=1)
-
-            # Step 5: Pass combined embeddings through text encoder to get all layer outputs
-            # Note: The prompt part has gradients, the original text part is frozen
-
+        with torch.no_grad():
             if num_instruction_feature_layers > 1:
-                vlm_inputs["inputs_embeds"] = combined_embeds
-                vlm_inputs["attention_mask"] = final_instruction_mask
-                if "input_ids" in vlm_inputs:
-                    del vlm_inputs["input_ids"]
                 text_encoder_outputs = self.mllm(**vlm_inputs, output_hidden_states=True, return_dict=True)
-
-                # Get all hidden states from all layers
                 all_hidden_states = (
                     text_encoder_outputs.hidden_states
                 )  # Tuple of [B, extended_seq_len, text_hidden_dim]
-
-                # Convert to list for model processing
-                instruction_feats = list(all_hidden_states)[-num_instruction_feature_layers:]
+                instruction_feats = list(all_hidden_states)[
+                    -num_instruction_feature_layers:
+                ]  # Convert to list for model processing
             else:
                 try:
-                    vlm_inputs["inputs_embeds"] = combined_embeds
-                    vlm_inputs["attention_mask"] = final_instruction_mask
-                    if "input_ids" in vlm_inputs:
-                        del vlm_inputs["input_ids"]
                     instruction_feats = self.mllm(**vlm_inputs, output_hidden_states=False).last_hidden_state
                 except Exception as e:
                     text_encoder_outputs = self.mllm(**vlm_inputs, output_hidden_states=True, return_dict=True)
@@ -1019,49 +887,13 @@ class BooguImagePipeline(DiffusionPipeline):
                     instruction_feats = all_hidden_states[-1]
                     warnings.warn(f"{type(e).__name__}: {e}", UserWarning)
 
-            logger.info("Prompt tuning: %d trainable tokens added", num_prompt_tokens)
-
-        else:
-            num_instruction_feature_layers = self.transformer.instruction_feature_configs.get(
-                "num_instruction_feature_layers", 1
-            )
-            final_instruction_mask = instruction_mask
-
-            with torch.no_grad():
-                if num_instruction_feature_layers > 1:
-                    text_encoder_outputs = self.mllm(**vlm_inputs, output_hidden_states=True, return_dict=True)
-                    all_hidden_states = (
-                        text_encoder_outputs.hidden_states
-                    )  # Tuple of [B, extended_seq_len, text_hidden_dim]
-                    instruction_feats = list(all_hidden_states)[
-                        -num_instruction_feature_layers:
-                    ]  # Convert to list for model processing
-                else:
-                    try:
-                        instruction_feats = self.mllm(**vlm_inputs, output_hidden_states=False).last_hidden_state
-                    except Exception as e:
-                        text_encoder_outputs = self.mllm(**vlm_inputs, output_hidden_states=True, return_dict=True)
-
-                        # Get all hidden states from all layers
-                        all_hidden_states = (
-                            text_encoder_outputs.hidden_states
-                        )  # Tuple of [B, extended_seq_len, text_hidden_dim]
-
-                        # Get last layer's feature for model processing
-                        instruction_feats = all_hidden_states[-1]
-                        warnings.warn(f"{type(e).__name__}: {e}", UserWarning)
-
         # Optionally remove vision-token features by truncation
         if self.MASK_VISION_TOKENS_FEATURE and (self.VISION_TOKEN_IDs is not None) and len(self.VISION_TOKEN_IDs) > 0:
             mask_device = input_ids.device
             vision_ids = torch.as_tensor(self.VISION_TOKEN_IDs, device=mask_device, dtype=input_ids.dtype)
             vision_mask_core = torch.isin(input_ids, vision_ids)  # [B, L_core]
             keep_core_mask = instruction_mask.to(dtype=torch.bool) & (~vision_mask_core)  # [B, L_core]
-            if use_prompt_tuning_embedding:
-                prefix_keep = torch.ones(batch_size, num_prompt_tokens, dtype=torch.bool, device=mask_device)
-                keep_mask = torch.cat([prefix_keep, keep_core_mask], dim=1)
-            else:
-                keep_mask = keep_core_mask
+            keep_mask = keep_core_mask
             kept_lengths = keep_mask.sum(dim=1)
             max_kept_len = int(kept_lengths.max().item()) if kept_lengths.numel() > 0 else 0
 
@@ -1254,7 +1086,6 @@ class BooguImagePipeline(DiffusionPipeline):
                 device=device,
                 max_sequence_length=max_sequence_length,
                 truncate_instruction_sequence=truncate_instruction_sequence,
-                use_prompt_tuning_embedding=self.prompt_embedding is not None,
                 max_vlm_input_pil_pixels=max_vlm_input_pil_pixels,
                 max_vlm_input_pil_side_length=max_vlm_input_pil_side_length,
                 system_prompt_follows_task_type=system_prompt_follows_task_type,
@@ -1297,7 +1128,6 @@ class BooguImagePipeline(DiffusionPipeline):
                 device=device,
                 max_sequence_length=max_sequence_length,
                 truncate_instruction_sequence=truncate_instruction_sequence,
-                use_prompt_tuning_embedding=self.prompt_embedding is not None,
                 max_vlm_input_pil_pixels=max_vlm_input_pil_pixels if use_input_images_4_neg_instruct else None,
                 max_vlm_input_pil_side_length=max_vlm_input_pil_side_length
                 if use_input_images_4_neg_instruct
@@ -1347,7 +1177,6 @@ class BooguImagePipeline(DiffusionPipeline):
                     device=device,
                     max_sequence_length=max_sequence_length,
                     truncate_instruction_sequence=truncate_instruction_sequence,
-                    use_prompt_tuning_embedding=self.prompt_embedding is not None,
                     max_vlm_input_pil_pixels=max_vlm_input_pil_pixels if use_input_images_4_empty_instruct else None,
                     max_vlm_input_pil_side_length=max_vlm_input_pil_side_length
                     if use_input_images_4_empty_instruct
@@ -2167,366 +1996,3 @@ class BooguImagePipeline(DiffusionPipeline):
             **optional_kwargs,
         )
         return model_pred
-
-
-class BooguImagePromptTuningPipeline(BooguImagePipeline):
-    """
-    Boogu-Image pipeline variant with prompt-tuning support.
-
-    This class keeps the generation behavior of `BooguImagePipeline` while
-    adding a learnable `PromptEmbedding` module as an extra conditioning source.
-    It is intended for Boogu-Image T2I/TI2I inference runs that use prompt-tuning
-    checkpoints or prompt-embedding LoRA weights in addition to the standard
-    MLLM instruction encoder, Boogu-Image transformer denoiser, VAE, and scheduler.
-    """
-
-    model_cpu_offload_seq = "prompt_embedding->mllm->transformer->vae"
-
-    def __init__(
-        self,
-        transformer: BooguImageTransformer2DModel,
-        vae: AutoencoderKL,
-        scheduler: FlowMatchEulerDiscreteScheduler,
-        mllm: Qwen3VLForConditionalGeneration,
-        processor: Qwen3VLProcessor,
-        prompt_embedding: PromptEmbedding,
-    ) -> None:
-        """
-        Initialize the BooguImagePromptTuningPipeline.
-
-        Args:
-            transformer: Boogu-Image single/dual-stream transformer used as the
-                diffusion denoiser.
-            vae: Autoencoder used for latent/image encoding and decoding.
-            scheduler: Diffusion scheduler that controls the denoising steps.
-            mllm: Multimodal language model used to encode instructions.
-            processor: Processor paired with the MLLM for text/image inputs.
-            prompt_embedding: Learnable prompt-tuning embedding module.
-        """
-
-        super().__init__(
-            transformer=transformer,
-            vae=vae,
-            scheduler=scheduler,
-            mllm=mllm,
-            processor=processor,
-        )
-        self.register_modules(prompt_embedding=prompt_embedding)
-
-    def _get_instruction_feature_embeds(
-        self,
-        instruction: Union[str, List[str]],
-        input_pil_images: Optional[List[List[PIL.Image.Image]]],
-        device: Optional[torch.device] = None,
-        max_sequence_length: int = 256,
-        truncate_instruction_sequence: bool = False,
-        use_prompt_tuning_embedding: bool = False,
-        max_vlm_input_pil_pixels: Optional[Union[int, List[int]]] = None,
-        max_vlm_input_pil_side_length: Optional[int] = None,
-        system_prompt_follows_task_type: bool = False,
-        task_type: str = "ti2i",
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
-        """
-        Get interleaved instruction embeddings from VLM (self.mllm), aligned with training:
-        - Build VLM inputs via processor.apply_chat_template (images + text)
-        - Optionally prepend trainable prompt embeddings
-        - Optionally remove vision-token features by truncation
-        - Return last layer or last-N layers and the corresponding attention mask
-
-        Args:
-            instruction: The instruction or list of instructions to encode.
-            input_pil_images: A list of PIL images to be included in the prompt (TI2I/I2I).
-            device: The device to place the embeddings on. If None, uses the pipeline's device.
-            max_sequence_length: Maximum sequence length for tokenization.
-            use_prompt_tuning_embedding: Whether to prepend trainable prompt embeddings.
-
-        Returns:
-            Tuple[torch.Tensor, torch.Tensor]: A tuple containing:
-                - The instruction embeddings tensor (or list of last-N layers)
-                - The attention mask tensor
-
-        Raises:
-            Warning: If the input text is truncated due to sequence length limitations.
-        """
-        device = device or self._execution_device
-        instruction = [instruction] if isinstance(instruction, str) else instruction
-        batch_size = len(instruction)
-        has_offload_strategy = (
-            bool(getattr(self, "enable_model_cpu_offload_flag", False))
-            or bool(getattr(self, "enable_sequential_cpu_offload_flag", False))
-            or bool(getattr(self, "enable_group_offload_flag", False))
-        )
-
-        def _module_execution_device(module, fallback_device):
-            """Return the best execution device for a possibly offloaded module."""
-            hook = getattr(module, "_hf_hook", None)
-            hook_device = getattr(hook, "execution_device", None)
-            if hook_device is not None:
-                return torch.device(hook_device)
-
-            for tensor in list(module.parameters(recurse=True)) + list(module.buffers(recurse=True)):
-                if tensor.device.type != "meta":
-                    return tensor.device
-
-            return torch.device(fallback_device)
-
-        # Build prompts with images+text.
-        # input_pil_images: Optional[List[List[PIL.Image.Image]]], outer length == batch_size,
-        # inner list contains K_i images for sample i.
-        prompts: List[list] = []
-        processed_samples: List[Optional[List[PIL.Image.Image]]] = []
-
-        if input_pil_images is None or len(input_pil_images) == 0:
-            # No images for any sample -> pass None per sample
-            processed_samples = [None for _ in range(batch_size)]  # type: List[Optional[List[PIL.Image.Image]]]
-        else:
-            # Validate shape: outer length must match batch_size
-            assert isinstance(input_pil_images, list) and len(input_pil_images) == batch_size, (
-                "When provided, `input_pil_images` must be a List[List[PIL.Image.Image]] with len == batch size."
-            )
-            for imgs in input_pil_images:
-                if imgs and len(imgs) > 0:
-                    # Determine per-sample max_pixels as in dataset logic:
-                    # - If max_vlm_input_pil_pixels is a list/tuple, require len >= K_i and take index K_i-1
-                    # - If it's an int, use it for all images in this sample
-                    # - If None, do not constrain by pixels
-                    max_pixels_i: Optional[int] = None
-                    if isinstance(max_vlm_input_pil_pixels, (list, tuple)):
-                        assert len(max_vlm_input_pil_pixels) >= len(imgs), (
-                            "`max_vlm_input_pil_pixels` length must be >= number of images in each sample"
-                        )
-                        max_pixels_i = int(max_vlm_input_pil_pixels[len(imgs) - 1])
-                    elif isinstance(max_vlm_input_pil_pixels, int):
-                        max_pixels_i = max_vlm_input_pil_pixels
-                    else:
-                        max_pixels_i = None
-                    proc = self.preprocess_vlm_input_pil_images(
-                        imgs,  # List[PIL.Image.Image] for this sample
-                        max_pixels=max_pixels_i,
-                        max_side_length=max_vlm_input_pil_side_length,
-                    )
-                    processed_samples.append(proc)
-                else:
-                    # Empty inner list -> treat as no images for this sample
-                    processed_samples.append(None)
-
-        # Build the batched prompts; for each sample i, pass instruction[i] and its image list (or None)
-        for i in range(batch_size):
-            sample_imgs: Optional[List[PIL.Image.Image]] = None
-            if processed_samples and i < len(processed_samples):
-                sample_imgs = processed_samples[i]
-            # _apply_chat_template expects (instruction: str, input_pil_images: Optional[List[PIL.Image.Image]])
-            prompts.append(
-                self._apply_chat_template(
-                    instruction[i],
-                    sample_imgs,
-                    system_prompt_follows_task_type=system_prompt_follows_task_type,
-                    task_type=task_type,
-                )
-            )
-
-        # Processor produces dict with 'input_ids', 'attention_mask', 'pixel_values', 'image_grid_thw'
-        vlm_inputs = self.processor.apply_chat_template(
-            prompts,
-            padding="longest",
-            max_length=max_sequence_length,
-            truncation=truncate_instruction_sequence,
-            padding_side="right",
-            return_tensors="pt",
-            tokenize=True,
-            return_dict=True,
-        )
-        move_vlm_inputs_to_device = not (use_prompt_tuning_embedding and has_offload_strategy)
-        for k in vlm_inputs.keys():
-            if isinstance(vlm_inputs[k], torch.Tensor) and move_vlm_inputs_to_device:
-                vlm_inputs[k] = vlm_inputs[k].to(device)
-
-        input_ids = vlm_inputs["input_ids"]
-        instruction_mask = vlm_inputs["attention_mask"]
-
-        if use_prompt_tuning_embedding:
-            num_instruction_feature_layers = self.transformer.instruction_feature_configs.get(
-                "num_instruction_feature_layers", 1
-            )
-            num_trainable_prompt_tokens = self.prompt_embedding.config.get("num_trainable_prompt_tokens", 32)
-            use_causal_mask = self.prompt_embedding.config.get("use_causal_mask", True)
-
-            assert self.prompt_embedding is not None, (
-                "When `use_prompt_tuning_embedding=True`, `self.prompt_embedding` must be well set and should not be None."
-            )
-            logger.info("Using prompt tuning enhanced text feature extraction")
-
-            # Step 1: Get input embeddings from the text encoder.
-            # In CPU/group offload mode, calling the embedding layer directly can
-            # bypass the parent MLLM offload hook. Keep token ids on the embedding
-            # layer's real device, then let the full MLLM forward own later moves.
-            input_embedding_layer = self.mllm.get_input_embeddings()
-            input_embedding_device = _module_execution_device(
-                input_embedding_layer,
-                "cpu" if has_offload_strategy else device,
-            )
-            with torch.no_grad():
-                input_embeds = input_embedding_layer(
-                    input_ids.to(input_embedding_device)
-                )  # [B, seq_len, text_hidden_dim]
-
-            # Step 2: Get trainable prompt embeddings
-            prompt_embedding_device = _module_execution_device(
-                self.prompt_embedding,
-                device,
-            )
-            token_indices = torch.arange(
-                num_trainable_prompt_tokens,
-                device=prompt_embedding_device,
-                dtype=torch.long,
-            )  # [num_tokens]
-            trainable_prompt_embeds = self.prompt_embedding(
-                token_indices,
-                1,
-                device=prompt_embedding_device,
-                use_causal_mask=use_causal_mask,
-            )  # Use batch_size=1 to pass this forward network.
-            trainable_prompt_embeds = trainable_prompt_embeds.expand(
-                batch_size, -1, -1
-            )  # [1, seq_len, text_hidden_dim] -> [B, seq_len, text_hidden_dim]
-
-            num_prompt_tokens = trainable_prompt_embeds.shape[1]
-            assert num_trainable_prompt_tokens == num_prompt_tokens  # shape check
-
-            # Step 3: Concatenate prompt embeddings to the front of input embeddings
-            # [B, num_prompt_tokens + seq_len, text_hidden_dim]
-            trainable_prompt_embeds = trainable_prompt_embeds.to(device=input_embeds.device, dtype=input_embeds.dtype)
-            combined_embeds = torch.cat([trainable_prompt_embeds, input_embeds], dim=1)
-
-            # Step 4: Create extended attention mask for prompt tokens
-            # Create all-ones mask for prompt tokens: [B, num_prompt_tokens]
-            instruction_mask = instruction_mask.to(input_embeds.device)
-            prompt_mask = torch.ones(
-                batch_size,
-                num_prompt_tokens,
-                dtype=instruction_mask.dtype,
-                device=input_embeds.device,
-            )
-            # Concatenate with original text mask: [B, num_prompt_tokens + seq_len]
-            final_instruction_mask = torch.cat([prompt_mask, instruction_mask], dim=1)
-
-            # Step 5: Pass combined embeddings through text encoder to get all layer outputs
-            # Note: The prompt part has gradients, the original text part is frozen
-
-            if num_instruction_feature_layers > 1:
-                vlm_inputs["inputs_embeds"] = combined_embeds
-                vlm_inputs["attention_mask"] = final_instruction_mask
-                if "input_ids" in vlm_inputs:
-                    del vlm_inputs["input_ids"]
-                text_encoder_outputs = self.mllm(**vlm_inputs, output_hidden_states=True, return_dict=True)
-
-                # Get all hidden states from all layers
-                all_hidden_states = (
-                    text_encoder_outputs.hidden_states
-                )  # Tuple of [B, extended_seq_len, text_hidden_dim]
-
-                # Convert to list for model processing
-                instruction_feats = list(all_hidden_states)[-num_instruction_feature_layers:]
-            else:
-                try:
-                    vlm_inputs["inputs_embeds"] = combined_embeds
-                    vlm_inputs["attention_mask"] = final_instruction_mask
-                    if "input_ids" in vlm_inputs:
-                        del vlm_inputs["input_ids"]
-                    instruction_feats = self.mllm(**vlm_inputs, output_hidden_states=False).last_hidden_state
-                except Exception as e:
-                    text_encoder_outputs = self.mllm(**vlm_inputs, output_hidden_states=True, return_dict=True)
-
-                    # Get all hidden states from all layers
-                    all_hidden_states = (
-                        text_encoder_outputs.hidden_states
-                    )  # Tuple of [B, extended_seq_len, text_hidden_dim]
-
-                    # Get last layer's feature for model processing
-                    instruction_feats = all_hidden_states[-1]
-                    warnings.warn(f"{type(e).__name__}: {e}", UserWarning)
-
-            logger.info("Prompt tuning: %d trainable tokens added", num_prompt_tokens)
-
-        else:
-            num_instruction_feature_layers = self.transformer.instruction_feature_configs.get(
-                "num_instruction_feature_layers", 1
-            )
-            final_instruction_mask = instruction_mask
-
-            with torch.no_grad():
-                if num_instruction_feature_layers > 1:
-                    text_encoder_outputs = self.mllm(**vlm_inputs, output_hidden_states=True, return_dict=True)
-                    all_hidden_states = (
-                        text_encoder_outputs.hidden_states
-                    )  # Tuple of [B, extended_seq_len, text_hidden_dim]
-                    instruction_feats = list(all_hidden_states)[
-                        -num_instruction_feature_layers:
-                    ]  # Convert to list for model processing
-                else:
-                    try:
-                        instruction_feats = self.mllm(**vlm_inputs, output_hidden_states=False).last_hidden_state
-                    except Exception as e:
-                        text_encoder_outputs = self.mllm(**vlm_inputs, output_hidden_states=True, return_dict=True)
-
-                        # Get all hidden states from all layers
-                        all_hidden_states = (
-                            text_encoder_outputs.hidden_states
-                        )  # Tuple of [B, extended_seq_len, text_hidden_dim]
-
-                        # Get last layer's feature for model processing
-                        instruction_feats = all_hidden_states[-1]
-                        warnings.warn(f"{type(e).__name__}: {e}", UserWarning)
-
-        # Optionally remove vision-token features by truncation
-        if self.MASK_VISION_TOKENS_FEATURE and (self.VISION_TOKEN_IDs is not None) and len(self.VISION_TOKEN_IDs) > 0:
-            mask_device = input_ids.device
-            vision_ids = torch.as_tensor(self.VISION_TOKEN_IDs, device=mask_device, dtype=input_ids.dtype)
-            vision_mask_core = torch.isin(input_ids, vision_ids)  # [B, L_core]
-            keep_core_mask = instruction_mask.to(dtype=torch.bool) & (~vision_mask_core)  # [B, L_core]
-            if use_prompt_tuning_embedding:
-                prefix_keep = torch.ones(batch_size, num_prompt_tokens, dtype=torch.bool, device=mask_device)
-                keep_mask = torch.cat([prefix_keep, keep_core_mask], dim=1)
-            else:
-                keep_mask = keep_core_mask
-            kept_lengths = keep_mask.sum(dim=1)
-            max_kept_len = int(kept_lengths.max().item()) if kept_lengths.numel() > 0 else 0
-
-            def compress_features(feats: torch.Tensor, keep_m: torch.Tensor, max_len: int) -> torch.Tensor:
-                keep_m = keep_m.to(feats.device)
-                B, L, D = feats.shape
-                out = feats.new_zeros((B, max_len, D))
-                for b in range(B):
-                    idx = torch.nonzero(keep_m[b], as_tuple=False).squeeze(-1)
-                    if idx.numel() > 0:
-                        cur = feats[b].index_select(dim=0, index=idx)
-                        out[b, : idx.numel()] = cur
-                return out
-
-            new_mask = final_instruction_mask.new_zeros((batch_size, max_kept_len))
-            for b in range(batch_size):
-                kept_len_b = int(kept_lengths[b].item())
-                if kept_len_b > 0:
-                    new_mask[b, :kept_len_b] = 1
-            if isinstance(instruction_feats, list):
-                instruction_feats = [compress_features(feat, keep_mask, max_kept_len) for feat in instruction_feats]
-            else:
-                instruction_feats = compress_features(instruction_feats, keep_mask, max_kept_len)
-            final_instruction_mask = new_mask
-
-        if self.mllm is not None:
-            dtype = self.mllm.dtype
-        elif self.transformer is not None:
-            dtype = self.transformer.dtype
-        else:
-            dtype = None
-
-        if isinstance(instruction_feats, (list, tuple)):
-            final_instruction_feats = [feat.to(dtype=dtype, device=device) for feat in instruction_feats]
-        else:
-            final_instruction_feats = instruction_feats.to(dtype=dtype, device=device)
-        # Keep the attention mask on the same execution device as the features
-        # before passing both into the diffusion transformer.
-        final_instruction_mask = final_instruction_mask.to(device=device)
-
-        return final_instruction_feats, final_instruction_mask
