@@ -443,7 +443,7 @@ class VisualClozeGenerationPipeline(
                     f"got {type(task_prompt)} and {type(content_prompt)}"
                 )
             if len(content_prompt) != len(task_prompt):
-                raise ValueError("`task_prompt` and `content_prompt` must have the same length whe they are lists.")
+                raise ValueError("`task_prompt` and `content_prompt` must have the same length when they are lists.")
 
             for sample in image:
                 if not isinstance(sample, list) or not isinstance(sample[0], list):
