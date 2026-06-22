@@ -215,6 +215,8 @@ class DiffusionGemmaPipeline(DiffusionPipeline):
         gen_length: int = 256,
         num_inference_steps: int = 48,
         temperature: float = 0.0,
+        t_min: float | None = 0.4,
+        t_max: float | None = 0.8,
         cache_implementation: str | None = None,
         eos_early_stop: bool = True,
         eos_token_id: int | None = None,
@@ -252,6 +254,12 @@ class DiffusionGemmaPipeline(DiffusionPipeline):
                 Sampling temperature. `0.0` is greedy. Other sampling knobs (e.g. `top_k`, `threshold`) are scheduler
                 config; set them on the scheduler, e.g. `pipe.scheduler =
                 BlockRefinementScheduler.from_config(pipe.scheduler.config, top_k=...)`.
+            t_min (`float`, *optional*, defaults to `0.4`):
+                Temperature on the last denoising step. The temperature is annealed linearly from `t_max` down to
+                `t_min` over the steps, matching the released checkpoint's sampler. Set both `t_min` and `t_max` to
+                `None` to use a flat `temperature` instead.
+            t_max (`float`, *optional*, defaults to `0.8`):
+                Temperature on the first denoising step (see `t_min`).
             cache_implementation (`str`, *optional*):
                 Set to `"static"` to prefill the encoder once per block into a persistent `StaticCache` and run the
                 decoder against it with fixed shapes, instead of re-encoding the full sequence on every step. The fixed
@@ -375,21 +383,12 @@ class DiffusionGemmaPipeline(DiffusionPipeline):
                 **(multimodal_inputs if cached_len == 0 else {}),
             )
 
-            # Build the 4D decoder mask once per block (outside any compiled region). The canvas is always fully
-            # visible (padded with `True`). A static cache needs its full fixed-size buffer (unused slots masked out);
-            # a dynamic cache spans only the populated length, so the live attention mask is simply padded.
-            if use_static_cache:
-                decoder_attention_mask = torch.zeros(
-                    (batch_size, max_cache_len + canvas_length), dtype=torch.bool, device=device
-                )
-                decoder_attention_mask[:, :cur_len] = cur_attention_mask.bool()
-                decoder_attention_mask[:, -canvas_length:] = True
-            else:
-                decoder_attention_mask = torch.nn.functional.pad(
-                    cur_attention_mask.bool(), (0, canvas_length), value=True
-                )
+            # Build the 4D decoder mask once per block (outside any compiled region), the same way the model does for
+            # generation: pass the live padding mask (canvas always visible) and let the mask builder size it to the
+            # cache. For a static cache it pads out to the fixed buffer and masks the unused slots internally.
+            decoder_attention_mask = torch.nn.functional.pad(cur_attention_mask.bool(), (0, canvas_length), value=True)
             mask_mapping = self.model.model.decoder.create_diffusion_decoder_attention_mask(
-                config=text_config,
+                config=self.model.config,
                 inputs_embeds=torch.empty((batch_size, canvas_length, 0), device=device),
                 past_key_values=past_key_values,
                 decoder_attention_mask=decoder_attention_mask,
@@ -417,9 +416,17 @@ class DiffusionGemmaPipeline(DiffusionPipeline):
                 ).logits.clone()
                 self_conditioning_logits = logits
 
+                # Anneal the temperature from t_max on the first step down to t_min on the last, like the released
+                # checkpoint's sampler. Set both to None for a flat temperature.
+                if t_min is not None and t_max is not None:
+                    cur_step = predictor_steps - step_idx
+                    step_temperature = t_min + (t_max - t_min) * cur_step / predictor_steps
+                else:
+                    step_temperature = temperature
+
                 # Pass only the kwargs the chosen scheduler accepts, so any of the schedulers can drive the pipeline.
                 # Per-scheduler sampling knobs (thresholds, top-k, ...) live on the scheduler config, not here.
-                step_kwargs = {"mask_token_id": None, "temperature": temperature, "generator": generator}
+                step_kwargs = {"mask_token_id": None, "temperature": step_temperature, "generator": generator}
                 step_kwargs = {k: v for k, v in step_kwargs.items() if k in step_param_names}
                 scheduler_output = self.scheduler.step(
                     model_output=logits, timestep=step_idx, sample=canvas, return_dict=True, **step_kwargs

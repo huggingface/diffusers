@@ -200,11 +200,15 @@ class DiffusionGemmaPipelineTest(unittest.TestCase):
         self.assertEqual(self.pipe.active_adapters(), [])
 
     def test_static_cache_matches_dynamic(self):
+        # Greedy and no adaptive stopping, so the only difference between the two runs is the cache path itself.
         kwargs = {
             "prompt": self.prompt,
             "gen_length": self.canvas_length * 2,  # two canvases -> exercises the cache extension between blocks
             "num_inference_steps": 4,
             "temperature": 0.0,
+            "t_min": None,
+            "t_max": None,
+            "confidence_threshold": None,
             "eos_early_stop": False,
             "output_type": "seq",
         }
@@ -212,7 +216,8 @@ class DiffusionGemmaPipelineTest(unittest.TestCase):
         static = self.pipe(
             generator=torch.Generator().manual_seed(0), cache_implementation="static", **kwargs
         ).sequences
-        self.assertTrue(torch.equal(dynamic, static))
+        ndiff = (dynamic != static).sum().item()
+        self.assertEqual(ndiff, 0, f"static/dynamic agree on only ndiff={ndiff}/{dynamic.numel()} tokens")
 
 
 if __name__ == "__main__":

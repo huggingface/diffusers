@@ -76,6 +76,19 @@ from diffusers import BlockRefinementScheduler
 pipe.scheduler = BlockRefinementScheduler.from_config(pipe.scheduler.config, threshold=0.9)
 ```
 
+### Temperature annealing
+
+By default the pipeline anneals the sampling temperature linearly from `t_max` (`0.8`) on the first denoising step
+down to `t_min` (`0.4`), matching the sampler the released checkpoint was tuned with (sharper sampling as it
+denoises). It matters most for stochastic schedulers like `EntropyBoundScheduler` at a loose `entropy_bound`, where
+flat high-temperature sampling can degrade. Set both `t_min` and `t_max` to `None` to instead use a flat `temperature`
+(`0.0` for greedy):
+
+```py
+output = pipe(prompt="Why is the sky blue?", gen_length=256)                       # annealed 0.8 -> 0.4 (default)
+output = pipe(prompt="Why is the sky blue?", gen_length=256, t_min=None, t_max=None, temperature=0.0)  # greedy
+```
+
 ### Predictor-corrector sampling
 
 `DiscreteDDIMScheduler` supports the leave-one-out predictor-corrector of [Reparameterizing Uniform Diffusion Models](https://huggingface.co/papers/2605.22765). It refines the canvas with `corrector_steps` Gibbs sweeps that resample the least-confident positions from the one-coordinate conditional of the noisy marginal, which leaves that marginal invariant and improves generation at no extra training cost. It works directly on the released checkpoint: for uniform diffusion the denoiser and the leave-one-out posterior are interchangeable in closed form, so the corrector recovers the leave-one-out quantities it needs without any retraining.
