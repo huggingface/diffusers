@@ -4,6 +4,9 @@
 
 This directory contains minimal inference scripts for the released checkpoints.
 
+## Environment installation
+[Boogu-Image-quick-start](https://github.com/boogu-project/Boogu-Image/blob/main/quick_start.sh)
+
 ## Pipelines
 
 | Pipeline | Class | Use case |

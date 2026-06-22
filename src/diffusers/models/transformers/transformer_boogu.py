@@ -19,6 +19,7 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 import numpy as np
 import torch
 import torch.nn as nn
+from torch.nn import RMSNorm
 
 from diffusers.configuration_utils import ConfigMixin, register_to_config
 from diffusers.loaders import PeftAdapterMixin
@@ -32,7 +33,6 @@ from diffusers.utils import (
     scale_lora_layers,
     unscale_lora_layers,
 )
-from diffusers.utils.import_utils import is_triton_available
 from diffusers.utils.teacache_util import TeaCacheParams
 
 from ..attention_processor_boogu import (
@@ -48,21 +48,6 @@ from .block_lumina2 import (
     LuminaRMSNormZero,
 )
 from .rope_boogu import BooguImageDoubleStreamRotaryPosEmbed, BooguImagePromptTuningRotaryPosEmbed
-
-
-if is_triton_available() and ("cuda" in os.getenv("device", "cpu")):
-    from ...ops.triton.layer_norm import RMSNorm
-else:
-    from torch.nn import RMSNorm
-
-from ...cache_functions import cal_type
-from ...taylorseer_utils import (
-    derivative_approximation,
-    derivative_approximation_4_double_stream,
-    taylor_cache_init,
-    taylor_formula,
-    taylor_formula_4_double_stream,
-)
 
 
 logger = logging.get_logger(__name__)
@@ -276,75 +261,31 @@ class BooguImageTransformerBlock(nn.Module):
         Returns:
             torch.Tensor: Output hidden states after transformer block processing
         """
+        if self.modulation:
+            if temb is None:
+                raise ValueError("temb must be provided when modulation is enabled")
+            norm_hidden_states, gate_msa, scale_mlp, gate_mlp = self.norm1(hidden_states, temb)
 
-        enable_taylorseer = getattr(self, "enable_taylorseer", False)
-
-        if enable_taylorseer:
-            if self.modulation:
-                if temb is None:
-                    raise ValueError("temb must be provided when modulation is enabled")
-
-                if self.current["type"] == "full":
-                    self.current["module"] = "total"
-                    taylor_cache_init(cache_dic=self.cache_dic, current=self.current)
-
-                    norm_hidden_states, gate_msa, scale_mlp, gate_mlp = self.norm1(hidden_states, temb)
-                    attn_output = self.attn(
-                        hidden_states=norm_hidden_states,
-                        encoder_hidden_states=norm_hidden_states,
-                        attention_mask=attention_mask,
-                        image_rotary_emb=image_rotary_emb,
-                    )
-                    hidden_states = hidden_states + gate_msa.unsqueeze(1).tanh() * self.norm2(attn_output)
-                    mlp_output = self.feed_forward(self.ffn_norm1(hidden_states) * (1 + scale_mlp.unsqueeze(1)))
-                    hidden_states = hidden_states + gate_mlp.unsqueeze(1).tanh() * self.ffn_norm2(mlp_output)
-
-                    derivative_approximation(
-                        cache_dic=self.cache_dic,
-                        current=self.current,
-                        feature=hidden_states,
-                    )
-
-                elif self.current["type"] == "Taylor":
-                    self.current["module"] = "total"
-                    hidden_states = taylor_formula(cache_dic=self.cache_dic, current=self.current)
-            else:
-                norm_hidden_states = self.norm1(hidden_states)
-                attn_output = self.attn(
-                    hidden_states=norm_hidden_states,
-                    encoder_hidden_states=norm_hidden_states,
-                    attention_mask=attention_mask,
-                    image_rotary_emb=image_rotary_emb,
-                )
-                hidden_states = hidden_states + self.norm2(attn_output)
-                mlp_output = self.feed_forward(self.ffn_norm1(hidden_states))
-                hidden_states = hidden_states + self.ffn_norm2(mlp_output)
+            attn_output = self.attn(
+                hidden_states=norm_hidden_states,
+                encoder_hidden_states=norm_hidden_states,
+                attention_mask=attention_mask,
+                image_rotary_emb=image_rotary_emb,
+            )
+            hidden_states = hidden_states + gate_msa.unsqueeze(1).tanh() * self.norm2(attn_output)
+            mlp_output = self.feed_forward(self.ffn_norm1(hidden_states) * (1 + scale_mlp.unsqueeze(1)))
+            hidden_states = hidden_states + gate_mlp.unsqueeze(1).tanh() * self.ffn_norm2(mlp_output)
         else:
-            if self.modulation:
-                if temb is None:
-                    raise ValueError("temb must be provided when modulation is enabled")
-                norm_hidden_states, gate_msa, scale_mlp, gate_mlp = self.norm1(hidden_states, temb)
-
-                attn_output = self.attn(
-                    hidden_states=norm_hidden_states,
-                    encoder_hidden_states=norm_hidden_states,
-                    attention_mask=attention_mask,
-                    image_rotary_emb=image_rotary_emb,
-                )
-                hidden_states = hidden_states + gate_msa.unsqueeze(1).tanh() * self.norm2(attn_output)
-                mlp_output = self.feed_forward(self.ffn_norm1(hidden_states) * (1 + scale_mlp.unsqueeze(1)))
-                hidden_states = hidden_states + gate_mlp.unsqueeze(1).tanh() * self.ffn_norm2(mlp_output)
-            else:
-                norm_hidden_states = self.norm1(hidden_states)
-                attn_output = self.attn(
-                    hidden_states=norm_hidden_states,
-                    encoder_hidden_states=norm_hidden_states,
-                    attention_mask=attention_mask,
-                    image_rotary_emb=image_rotary_emb,
-                )
-                hidden_states = hidden_states + self.norm2(attn_output)
-                mlp_output = self.feed_forward(self.ffn_norm1(hidden_states))
-                hidden_states = hidden_states + self.ffn_norm2(mlp_output)
+            norm_hidden_states = self.norm1(hidden_states)
+            attn_output = self.attn(
+                hidden_states=norm_hidden_states,
+                encoder_hidden_states=norm_hidden_states,
+                attention_mask=attention_mask,
+                image_rotary_emb=image_rotary_emb,
+            )
+            hidden_states = hidden_states + self.norm2(attn_output)
+            mlp_output = self.feed_forward(self.ffn_norm1(hidden_states))
+            hidden_states = hidden_states + self.ffn_norm2(mlp_output)
 
         return hidden_states
 
@@ -538,14 +479,6 @@ class BooguImageDoubleStreamTransformerBlock(nn.Module):
         if self.modulation and temb is None:
             raise ValueError("temb must be provided when modulation is enabled")
 
-        enable_taylorseer = getattr(self, "enable_taylorseer", False)
-        if enable_taylorseer:
-            self.current["module"] = "total"
-            if self.current["type"] == "Taylor":
-                return taylor_formula_4_double_stream(cache_dic=self.cache_dic, current=self.current)
-            if self.current["type"] == "full":
-                taylor_cache_init(cache_dic=self.cache_dic, current=self.current)
-
         # Extract dimensions
         batch_size = img_hidden_states.shape[0]
         L_instruct = instruct_hidden_states.shape[1]  # Instruction sequence length
@@ -654,13 +587,6 @@ class BooguImageDoubleStreamTransformerBlock(nn.Module):
             instruct_norm2_out = self.instruct_norm2(instruct_hidden_states)
             instruct_mlp_out = self.instruct_feed_forward(self.instruct_ffn_norm1(instruct_norm2_out))
             instruct_hidden_states = instruct_hidden_states + self.instruct_ffn_norm2(instruct_mlp_out)
-
-        if enable_taylorseer and self.current["type"] == "full":
-            derivative_approximation_4_double_stream(
-                cache_dic=self.cache_dic,
-                current=self.current,
-                feature=(img_hidden_states, instruct_hidden_states),
-            )
 
         return img_hidden_states, instruct_hidden_states
 
@@ -864,9 +790,7 @@ class BooguImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Fr
 
         # TeaCache settings
         self.enable_teacache = False
-        self.enable_taylorseer = False
         self.enable_teacache_for_all_layers = False
-        self.enable_taylorseer_for_all_layers = False
         self.teacache_rel_l1_thresh = 0.05
         self.teacache_params = TeaCacheParams()
 
@@ -1133,10 +1057,6 @@ class BooguImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Fr
             instruction_hidden_states, self.instruction_feature_configs
         )
 
-        enable_taylorseer = getattr(self, "enable_taylorseer", False)
-        if enable_taylorseer:
-            cal_type(self.cache_dic, self.current)
-
         if attention_kwargs is not None:
             attention_kwargs = attention_kwargs.copy()
             lora_scale = attention_kwargs.pop("scale", 1.0)
@@ -1238,91 +1158,31 @@ class BooguImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Fr
             for i, img_seq_len in enumerate(combined_img_seq_lengths):
                 img_attention_mask[i, :img_seq_len] = True
 
-            enable_double_stream_taylorseer = enable_taylorseer and self.enable_taylorseer_for_all_layers
-            enable_double_stream_teacache = self.enable_teacache and self.enable_teacache_for_all_layers
-
-            if enable_double_stream_teacache:
-                first_double_stream_layer = self.double_stream_layers[0]
-                img_modulated_inp, _, _, _ = first_double_stream_layer.img_norm1(img_hidden_states.clone(), temb)
-                instruct_modulated_inp, _, _, _ = first_double_stream_layer.instruct_norm1(
-                    instruct_hidden_states.clone(), temb
-                )
-                previous_double_modulated_inp = getattr(self.teacache_params, "previous_double_modulated_inp", None)
-                if self.teacache_params.is_first_or_last_step or previous_double_modulated_inp is None:
-                    should_calc_double_stream = True
-                    self.teacache_params.double_accumulated_rel_l1_distance = 0
+            for layer in self.double_stream_layers:
+                if torch.is_grad_enabled() and self.gradient_checkpointing:
+                    img_hidden_states, instruct_hidden_states = self._gradient_checkpointing_func(
+                        layer,
+                        img_hidden_states,
+                        instruct_hidden_states,
+                        img_attention_mask,
+                        joint_attention_mask,
+                        combined_img_rotary_emb,
+                        rotary_emb,
+                        temb,
+                        encoder_seq_lengths,
+                        seq_lengths,
+                    )
                 else:
-                    img_rel_l1 = (
-                        img_modulated_inp - previous_double_modulated_inp[0]
-                    ).abs().mean() / previous_double_modulated_inp[0].abs().mean()
-                    instruct_rel_l1 = (
-                        instruct_modulated_inp - previous_double_modulated_inp[1]
-                    ).abs().mean() / previous_double_modulated_inp[1].abs().mean()
-                    rel_l1 = (img_rel_l1 + instruct_rel_l1) * 0.5
-                    self.teacache_params.double_accumulated_rel_l1_distance += self.rescale_func(rel_l1.cpu().item())
-                    if self.teacache_params.double_accumulated_rel_l1_distance < self.teacache_rel_l1_thresh:
-                        should_calc_double_stream = False
-                    else:
-                        should_calc_double_stream = True
-                        self.teacache_params.double_accumulated_rel_l1_distance = 0
-                self.teacache_params.previous_double_modulated_inp = (
-                    img_modulated_inp,
-                    instruct_modulated_inp,
-                )
-            else:
-                should_calc_double_stream = True
-
-            if enable_double_stream_teacache and not should_calc_double_stream:
-                img_residual, instruct_residual = self.teacache_params.previous_double_residual
-                img_hidden_states = img_hidden_states + img_residual
-                instruct_hidden_states = instruct_hidden_states + instruct_residual
-            else:
-                if enable_double_stream_taylorseer:
-                    self.current["stream"] = "double_stream_layers"
-
-                if enable_double_stream_teacache:
-                    ori_img_hidden_states = img_hidden_states.clone()
-                    ori_instruct_hidden_states = instruct_hidden_states.clone()
-
-                for layer_idx, layer in enumerate(self.double_stream_layers):
-                    if enable_double_stream_taylorseer:
-                        layer.current = self.current
-                        layer.cache_dic = self.cache_dic
-                        layer.enable_taylorseer = True
-                        self.current["layer"] = layer_idx
-                    else:
-                        layer.enable_taylorseer = False
-
-                    if torch.is_grad_enabled() and self.gradient_checkpointing:
-                        img_hidden_states, instruct_hidden_states = self._gradient_checkpointing_func(
-                            layer,
-                            img_hidden_states,
-                            instruct_hidden_states,
-                            img_attention_mask,
-                            joint_attention_mask,
-                            combined_img_rotary_emb,
-                            rotary_emb,
-                            temb,
-                            encoder_seq_lengths,
-                            seq_lengths,
-                        )
-                    else:
-                        img_hidden_states, instruct_hidden_states = layer(
-                            img_hidden_states,
-                            instruct_hidden_states,
-                            img_attention_mask,
-                            joint_attention_mask,
-                            combined_img_rotary_emb,
-                            rotary_emb,
-                            temb,
-                            encoder_seq_lengths,
-                            seq_lengths,
-                        )
-
-                if enable_double_stream_teacache:
-                    self.teacache_params.previous_double_residual = (
-                        img_hidden_states - ori_img_hidden_states,
-                        instruct_hidden_states - ori_instruct_hidden_states,
+                    img_hidden_states, instruct_hidden_states = layer(
+                        img_hidden_states,
+                        instruct_hidden_states,
+                        img_attention_mask,
+                        joint_attention_mask,
+                        combined_img_rotary_emb,
+                        rotary_emb,
+                        temb,
+                        encoder_seq_lengths,
+                        seq_lengths,
                     )
 
         # Fuse streams to joint sequence.
@@ -1363,19 +1223,10 @@ class BooguImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Fr
         if self.enable_teacache and not should_calc:
             hidden_states += self.teacache_params.previous_residual
         else:
-            if enable_taylorseer:
-                self.current["stream"] = "single_stream_layers"
-
             if self.enable_teacache:
                 ori_hidden_states = hidden_states.clone()
 
-            for layer_idx, layer in enumerate(self.single_stream_layers):
-                if enable_taylorseer:
-                    layer.current = self.current
-                    layer.cache_dic = self.cache_dic
-                    layer.enable_taylorseer = True
-                    self.current["layer"] = self.num_double_stream_layers + layer_idx
-
+            for layer in self.single_stream_layers:
                 if torch.is_grad_enabled() and self.gradient_checkpointing:
                     hidden_states = self._gradient_checkpointing_func(
                         layer, hidden_states, joint_attention_mask, rotary_emb, temb
@@ -1409,10 +1260,6 @@ class BooguImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Fr
         # Reset LoRA scaling.
         if USE_PEFT_BACKEND:
             unscale_lora_layers(self, lora_scale)
-
-        # TaylorSeer step counter.
-        if enable_taylorseer:
-            self.current["step"] += 1
 
         if not return_dict:
             return output

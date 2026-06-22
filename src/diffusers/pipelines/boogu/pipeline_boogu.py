@@ -28,7 +28,6 @@ from diffusers.utils.teacache_util import TeaCacheParams
 from diffusers.utils.torch_utils import randn_tensor
 from diffusers.utils.validator_utils import get_device_validator
 
-from ...cache_functions import cache_init
 from ...models.transformers import (
     BooguImageTransformer2DModel,
     PromptEmbedding,
@@ -3020,40 +3019,18 @@ class BooguImagePipeline(DiffusionPipeline, BooguImageLoraLoaderMixin):
 
         # NOTE: Declare optional per-condition caches upfront for static analyzers.
         # They are populated below depending on which acceleration path is enabled.
-        model_pred_drop_image_cache_dic = None
-        model_pred_drop_image_current = None
         teacache_params_drop_ref = None
-        model_pred_drop_text_empty_instruct_cache_dic = None
-        model_pred_drop_text_empty_instruct_current = None
         teacache_params_ref_empty_instruct = None
         use_ref_empty_instruct_pred = (
             use_empty_neg_instruct_4_ref_img_pred_at_image_guide_in_double_guide
             or use_empty_neg_instruct_4_ref_img_pred_at_text_guide_in_double_guide
         )
 
-        enable_taylorseer = getattr(self, "enable_taylorseer", False) or getattr(
-            self.transformer, "enable_taylorseer_for_all_layers", False
+        enable_teacache = self.transformer.enable_teacache or getattr(
+            self.transformer, "enable_teacache_for_all_layers", False
         )
-        enable_teacache = (
-            self.transformer.enable_teacache or getattr(self.transformer, "enable_teacache_for_all_layers", False)
-        ) and not enable_taylorseer
         self.transformer.enable_teacache = enable_teacache
-        if enable_taylorseer:
-            model_pred_cache_dic, model_pred_current = cache_init(self, num_inference_steps)
-            model_pred_drop_text_cache_dic, model_pred_drop_text_current = cache_init(self, num_inference_steps)
-            model_pred_drop_all_cache_dic, model_pred_drop_all_current = cache_init(self, num_inference_steps)
-            if use_ref_empty_instruct_pred:
-                # For double-guidance variants that use an "empty" instruction embedding when predicting ref-image condition.
-                # Keep a dedicated TaylorSeer cache/state for this condition to avoid mixing trajectories.
-                (
-                    model_pred_drop_text_empty_instruct_cache_dic,
-                    model_pred_drop_text_empty_instruct_current,
-                ) = cache_init(self, num_inference_steps)
-            # For TI2I image-only guidance branch (drop reference image, keep text condition).
-            # Keep a dedicated TaylorSeer cache/state for this condition to avoid mixing trajectories.
-            model_pred_drop_image_cache_dic, model_pred_drop_image_current = cache_init(self, num_inference_steps)
-            self.transformer.enable_taylorseer = True
-        elif enable_teacache:
+        if enable_teacache:
             # Use different TeaCacheParams for different conditions
             teacache_params = TeaCacheParams()
             teacache_params_uncond = TeaCacheParams()
@@ -3068,10 +3045,7 @@ class BooguImagePipeline(DiffusionPipeline, BooguImageLoraLoaderMixin):
 
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
-                if enable_taylorseer:
-                    self.transformer.cache_dic = model_pred_cache_dic
-                    self.transformer.current = model_pred_current
-                elif enable_teacache:
+                if enable_teacache:
                     teacache_params.is_first_or_last_step = i == 0 or i == len(timesteps) - 1
                     self.transformer.teacache_params = teacache_params
 
@@ -3097,10 +3071,7 @@ class BooguImagePipeline(DiffusionPipeline, BooguImageLoraLoaderMixin):
                 )
 
                 if (task_type == "ti2i") and (text_guidance_scale > 1.0) and (image_guidance_scale > 1.0):  # Checked
-                    if enable_taylorseer:
-                        self.transformer.cache_dic = model_pred_drop_text_cache_dic
-                        self.transformer.current = model_pred_drop_text_current
-                    elif enable_teacache:
+                    if enable_teacache:
                         teacache_params_ref.is_first_or_last_step = i == 0 or i == len(timesteps) - 1
                         self.transformer.teacache_params = teacache_params_ref
 
@@ -3113,10 +3084,7 @@ class BooguImagePipeline(DiffusionPipeline, BooguImageLoraLoaderMixin):
                         ref_image_hidden_states=ref_latents,
                     )
 
-                    if enable_taylorseer:
-                        self.transformer.cache_dic = model_pred_drop_all_cache_dic
-                        self.transformer.current = model_pred_drop_all_current
-                    elif enable_teacache:
+                    if enable_teacache:
                         teacache_params_uncond.is_first_or_last_step = i == 0 or i == len(timesteps) - 1
                         self.transformer.teacache_params = teacache_params_uncond
 
@@ -3135,15 +3103,8 @@ class BooguImagePipeline(DiffusionPipeline, BooguImageLoraLoaderMixin):
                     ):
                         # Predict ref-image condition using an "empty" instruction embedding.
                         # IMPORTANT: This is a distinct condition from `model_pred_drop_text` (neg-text + ref),
-                        # so we must keep TaylorSeer / TeaCache states isolated to avoid cache pollution.
-                        if enable_taylorseer:
-                            assert (
-                                model_pred_drop_text_empty_instruct_cache_dic is not None
-                                and model_pred_drop_text_empty_instruct_current is not None
-                            )
-                            self.transformer.cache_dic = model_pred_drop_text_empty_instruct_cache_dic
-                            self.transformer.current = model_pred_drop_text_empty_instruct_current
-                        elif enable_teacache:
+                        # so we must keep TeaCache state isolated to avoid cache pollution.
+                        if enable_teacache:
                             assert teacache_params_ref_empty_instruct is not None
                             teacache_params_ref_empty_instruct.is_first_or_last_step = (
                                 i == 0 or i == len(timesteps) - 1
@@ -3226,11 +3187,7 @@ class BooguImagePipeline(DiffusionPipeline, BooguImageLoraLoaderMixin):
                 elif (task_type == "ti2i") and (text_guidance_scale > 1.0):  # checked
                     # TI2I text-only guidance (keep reference-image condition, guide only by text):
 
-                    if enable_taylorseer:
-                        # Keep TaylorSeer cache/state isolated per condition to avoid mixing features.
-                        self.transformer.cache_dic = model_pred_drop_text_cache_dic
-                        self.transformer.current = model_pred_drop_text_current
-                    elif enable_teacache:
+                    if enable_teacache:
                         # Keep TeaCache state isolated per condition (ref-only here).
                         teacache_params_ref.is_first_or_last_step = i == 0 or i == len(timesteps) - 1
                         self.transformer.teacache_params = teacache_params_ref
@@ -3265,15 +3222,8 @@ class BooguImagePipeline(DiffusionPipeline, BooguImageLoraLoaderMixin):
                     #
                     # IMPORTANT:
                     # - TeaCache caches previous residuals per condition; we must not reuse the drop_all/drop_text TeaCache state here.
-                    # - TaylorSeer also maintains per-condition cache/state; we must not reuse the drop_all/drop_text cache for drop_image.
 
-                    if enable_taylorseer:
-                        assert (
-                            model_pred_drop_image_cache_dic is not None and model_pred_drop_image_current is not None
-                        )
-                        self.transformer.cache_dic = model_pred_drop_image_cache_dic
-                        self.transformer.current = model_pred_drop_image_current
-                    elif enable_teacache:
+                    if enable_teacache:
                         assert teacache_params_drop_ref is not None
                         teacache_params_drop_ref.is_first_or_last_step = i == 0 or i == len(timesteps) - 1
                         self.transformer.teacache_params = teacache_params_drop_ref
@@ -3304,10 +3254,7 @@ class BooguImagePipeline(DiffusionPipeline, BooguImageLoraLoaderMixin):
                     model_pred = model_pred + (image_guidance_scale - 1) * delta_image
 
                 elif text_guidance_scale > 1.0:  # Checked
-                    if enable_taylorseer:
-                        self.transformer.cache_dic = model_pred_drop_all_cache_dic
-                        self.transformer.current = model_pred_drop_all_current
-                    elif enable_teacache:
+                    if enable_teacache:
                         teacache_params_uncond.is_first_or_last_step = i == 0 or i == len(timesteps) - 1
                         self.transformer.teacache_params = teacache_params_uncond
 
@@ -3346,22 +3293,6 @@ class BooguImagePipeline(DiffusionPipeline, BooguImageLoraLoaderMixin):
 
                 if step_func is not None:
                     step_func(i, self._num_timesteps)
-
-        if enable_taylorseer:
-            del (
-                model_pred_cache_dic,
-                model_pred_drop_text_cache_dic,
-                model_pred_drop_all_cache_dic,
-                model_pred_drop_image_cache_dic,
-                model_pred_drop_text_empty_instruct_cache_dic,
-            )
-            del (
-                model_pred_current,
-                model_pred_drop_text_current,
-                model_pred_drop_all_current,
-                model_pred_drop_image_current,
-                model_pred_drop_text_empty_instruct_current,
-            )
 
         latents = latents.to(dtype=dtype)
         if self.vae.config.scaling_factor is not None:
