@@ -506,10 +506,8 @@ class JoyImageEditPlusPipeline(DiffusionPipeline):
                 max_sequence_length=max_sequence_length,
             )
 
-        torch.save(prompt_embeds, "prompt_embeds.pt")
         # Encode negative prompt for CFG
         if self.do_classifier_free_guidance:
-            print(f"negative_prompt: {negative_prompt}")
             if negative_prompt is None and negative_prompt_embeds is None:
                 neg_prompts = []
                 for i in range(batch_size):
@@ -547,7 +545,6 @@ class JoyImageEditPlusPipeline(DiffusionPipeline):
                     self._pad_sequence(negative_prompt_embeds_mask, max_seq_len),
                     self._pad_sequence(prompt_embeds_mask, max_seq_len),
                 ])
-        torch.save(prompt_embeds, 'prompt_embeds_2.pt')
 
         # Prepare timesteps — compute sigmas with single shift to match original scheduler
         if timesteps is None and sigmas is None:
@@ -579,9 +576,6 @@ class JoyImageEditPlusPipeline(DiffusionPipeline):
             reference_images=images,
             enable_denormalization=enable_denormalization,
         )
-        torch.save(padded_latents, "padded_latents.pt")
-        torch.save(target_mask, "target_mask.pt")
-        # exit(0)
 
         # Zero out padding text tokens to prevent them from corrupting attention
         # (original uses explicit attention masking; here we neutralize padding values)
