@@ -21,10 +21,13 @@ Behavior:
 - If a PR is not linked and no prior reminder is present, the script posts a single
   friendly reminder comment.
 - PRs labeled `no-issue-needed` and bot-authored PRs are skipped.
+- PRs authored by maintainers, users with write (or admin) access, and collaborators
+  are skipped; the reminder only targets external contributors.
 """
 
 import logging
 import os
+import re
 from datetime import datetime, timedelta, timezone
 
 import requests
@@ -37,6 +40,20 @@ REPO = "huggingface/diffusers"
 REMINDER_MARKER = "<!-- pr-link-issue-reminder -->"
 BYPASS_LABELS = {"no-issue-needed"}
 LOOKBACK_DAYS = 2
+# Collaborator permission levels that mark a PR author as a maintainer / writer /
+# collaborator. Authors with any of these are skipped (the reminder is only for
+# external contributors).
+PRIVILEGED_PERMISSIONS = {"admin", "write", "maintain", "triage"}
+
+# `author_association` values that mark the author as a maintainer / collaborator.
+# These are available on the PR payload without needing extra token scopes.
+PRIVILEGED_ASSOCIATIONS = {"OWNER", "MEMBER", "COLLABORATOR"}
+
+# A PR authored by the model/pipeline's own team does not need to link an issue.
+# Matches a checked task-list item for the corresponding PR template checkbox.
+AUTHOR_CHECKBOX_PATTERN = re.compile(
+    r"-\s*\[\s*[xX]\s*\]\s*Are you the author \(or part of the team\) of the model/pipeline"
+)
 CONTRIBUTION_GUIDE_URL = "https://huggingface.co/docs/diffusers/main/en/conceptual/contribution#coding-with-ai-agents"
 
 GRAPHQL_URL = "https://api.github.com/graphql"
@@ -68,8 +85,29 @@ def has_linked_issue(token, owner, name, number):
     return data["repository"]["pullRequest"]["closingIssuesReferences"]["totalCount"] > 0
 
 
+def author_checkbox_checked(pr):
+    return bool(AUTHOR_CHECKBOX_PATTERN.search(pr.body or ""))
+
+
 def has_existing_reminder(pr):
     return any(REMINDER_MARKER in (c.body or "") for c in pr.get_issue_comments())
+
+
+def is_privileged_author(repo, pr, author):
+    """Return True if the author is a maintainer, has write/admin access, or is a collaborator."""
+    # `author_association` is on the PR payload and needs no extra token scope.
+    association = (pr.raw_data or {}).get("author_association")
+    if association in PRIVILEGED_ASSOCIATIONS:
+        return True
+    # Fall back to the collaborator-permission API to catch writers/collaborators
+    # whose association is reported as CONTRIBUTOR/NONE on this particular PR.
+    try:
+        permission = repo.get_collaborator_permission(author)
+    except Exception as e:
+        # A 404 here means the user is not a collaborator at all (external contributor).
+        logger.info("Could not resolve permission for @%s, treating as external: %s", author, e)
+        return False
+    return permission in PRIVILEGED_PERMISSIONS
 
 
 def reminder_body(author):
@@ -109,8 +147,12 @@ def main():
                 author = pr.user.login
                 if not author or author.endswith("[bot]") or pr.user.type == "Bot":
                     continue
+                if is_privileged_author(repo, pr, author):
+                    continue
                 labels = {label.name for label in pr.labels}
                 if labels & BYPASS_LABELS:
+                    continue
+                if author_checkbox_checked(pr):
                     continue
                 if has_linked_issue(token, owner, name, pr.number):
                     continue
