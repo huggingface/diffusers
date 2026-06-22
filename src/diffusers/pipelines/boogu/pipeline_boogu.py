@@ -16,9 +16,7 @@ from transformers import Qwen3VLForConditionalGeneration, Qwen3VLProcessor
 from diffusers.models.autoencoders import AutoencoderKL
 from diffusers.models.transformers.rope_boogu import BooguImageRotaryPosEmbed
 from diffusers.pipelines.pipeline_utils import DiffusionPipeline
-from diffusers.schedulers.scheduling_flow_match_euler_discrete_time_shifting import (
-    BooguFlowMatchEulerDiscreteScheduler,
-)
+from diffusers.schedulers import FlowMatchEulerDiscreteScheduler
 from diffusers.utils import (
     BaseOutput,
     is_torch_xla_available,
@@ -32,6 +30,7 @@ from ...models.transformers import (
     BooguImageTransformer2DModel,
     PromptEmbedding,
 )
+from .flow_match_boogu import set_flow_match_timesteps
 from .image_processor import BooguImageProcessor
 from .instruct_reasoner_static_skills import (
     InstructionReasonerStaticRewriteSkills,
@@ -62,7 +61,8 @@ class FMPipelineOutput(BaseOutput):
     images: Union[List[PIL.Image.Image], np.ndarray]
 
 
-# Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.retrieve_timesteps
+# Adapted from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.retrieve_timesteps;
+# the default branch routes the official flow-match scheduler through Boogu's 0->1 time-shift adapter.
 def retrieve_timesteps(
     scheduler,
     num_inference_steps: int | None = None,
@@ -117,8 +117,15 @@ def retrieve_timesteps(
         timesteps = scheduler.timesteps
         num_inference_steps = len(timesteps)
     else:
-        scheduler.set_timesteps(num_inference_steps, device=device, **kwargs)
-        timesteps = scheduler.timesteps
+        if isinstance(scheduler, FlowMatchEulerDiscreteScheduler):
+            # Boogu uses the official flow-match scheduler with a training-aligned
+            # 0->1 sigma schedule; the adapter overwrites timesteps/sigmas to it.
+            timesteps, num_inference_steps = set_flow_match_timesteps(
+                scheduler, num_inference_steps, device=device
+            )
+        else:
+            scheduler.set_timesteps(num_inference_steps, device=device, **kwargs)
+            timesteps = scheduler.timesteps
     return timesteps, num_inference_steps
 
 
@@ -160,7 +167,7 @@ class BooguImagePipeline(DiffusionPipeline, BooguImageLoraLoaderMixin):
             denoiser used for T2I and TI2I latent prediction.
         vae (AutoencoderKL): Autoencoder used to encode input/reference images
             into latents and decode generated latents back to images.
-        scheduler (BooguFlowMatchEulerDiscreteScheduler): Scheduler that provides
+        scheduler (FlowMatchEulerDiscreteScheduler): Scheduler that provides
             diffusion timesteps and controls the denoising trajectory.
         mllm (Qwen3VLForConditionalGeneration): Multimodal language model used
             as the instruction encoder.
@@ -174,7 +181,7 @@ class BooguImagePipeline(DiffusionPipeline, BooguImageLoraLoaderMixin):
         self,
         transformer: BooguImageTransformer2DModel,
         vae: AutoencoderKL,
-        scheduler: BooguFlowMatchEulerDiscreteScheduler,
+        scheduler: FlowMatchEulerDiscreteScheduler,
         mllm: Qwen3VLForConditionalGeneration,
         processor: Qwen3VLProcessor,
     ) -> None:
@@ -3011,7 +3018,6 @@ class BooguImagePipeline(DiffusionPipeline, BooguImageLoraLoaderMixin):
             num_inference_steps,
             device,
             timesteps,
-            num_tokens=latents.shape[-2] * latents.shape[-1],
         )
 
         num_warmup_steps = max(len(timesteps) - num_inference_steps * self.scheduler.order, 0)
@@ -3349,7 +3355,7 @@ class BooguImagePromptTuningPipeline(BooguImagePipeline):
         self,
         transformer: BooguImageTransformer2DModel,
         vae: AutoencoderKL,
-        scheduler: BooguFlowMatchEulerDiscreteScheduler,
+        scheduler: FlowMatchEulerDiscreteScheduler,
         mllm: Qwen3VLForConditionalGeneration,
         processor: Qwen3VLProcessor,
         prompt_embedding: PromptEmbedding,

@@ -19,9 +19,11 @@ import numpy as np
 import torch
 from transformers import Qwen3VLConfig, Qwen3VLForConditionalGeneration, Qwen3VLProcessor
 
-from diffusers import AutoencoderKL, BooguImagePipeline, BooguImageTransformer2DModel
-from diffusers.schedulers.scheduling_flow_match_euler_discrete_time_shifting import (
-    BooguFlowMatchEulerDiscreteScheduler,
+from diffusers import (
+    AutoencoderKL,
+    BooguImagePipeline,
+    BooguImageTransformer2DModel,
+    FlowMatchEulerDiscreteScheduler,
 )
 
 from ...testing_utils import enable_full_determinism, torch_device
@@ -86,7 +88,9 @@ class BooguImagePipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             sample_size=32,
         )
 
-        scheduler = BooguFlowMatchEulerDiscreteScheduler()
+        scheduler = FlowMatchEulerDiscreteScheduler(num_train_timesteps=1000)
+        # Boogu's released configs carry `seq_len`, used for the static v1 time shift.
+        scheduler.register_to_config(seq_len=4096)
 
         torch.manual_seed(0)
         mllm_config = Qwen3VLConfig(
