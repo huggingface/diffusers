@@ -102,10 +102,10 @@ from diffusers import DiffusionPipeline
 import torch
 
 pipeline = AutoPipelineForText2Image.from_pretrained(
-                "{args.pretrained_decoder_model_name_or_path}", torch_dtype={args.weight_dtype}
+                "{args.pretrained_decoder_model_name_or_path}", torch_dtype=torch.float16
             )
 # load lora weights from folder:
-pipeline.prior_pipe.load_lora_weights("{repo_id}", torch_dtype={args.weight_dtype})
+pipeline.prior_pipe.load_lora_weights("{repo_id}", torch_dtype=torch.float16)
 
 image = pipeline(prompt=prompt).images[0]
 image.save("my_image.png")
