@@ -86,7 +86,6 @@ class BooguImageDoubleStreamSelfAttnProcessorFlash2Varlen(nn.Module):
 
         # Initialize weights
         self.initialize_weights()
-        # rank, world_size, worker, num_workers = pytorch_worker_info(None)
 
     def initialize_weights(self) -> None:
         """
@@ -314,27 +313,6 @@ class BooguImageDoubleStreamSelfAttnProcessorFlash2Varlen(nn.Module):
             torch.Tensor: Processed hidden states after attention computation
         """
         batch_size = img_hidden_states.shape[0]
-        instruct_hidden_states.shape[1]
-        img_hidden_states.shape[1]
-
-        # Ensure Q, K, V linear layers are on the same device as input tensors
-        device = img_hidden_states.device
-        for layer in [
-            self.img_to_q,
-            self.img_to_k,
-            self.img_to_v,
-            self.instruct_to_q,
-            self.instruct_to_k,
-            self.instruct_to_v,
-            self.instruct_out,
-            self.img_out,
-        ]:
-            if (
-                (layer.weight.device != device)
-                and (str(layer.weight.device).lower() != "meta")
-                and (str(device).lower() not in {"meta", "auto"})
-            ):
-                layer = layer.to(device)
 
         # Generate Q, K, V for image and instruction streams (NO head reshaping yet)
         img_query = self.img_to_q(img_hidden_states)  # [B, L_img, query_dim]
@@ -674,27 +652,6 @@ class BooguImageDoubleStreamSelfAttnProcessor(nn.Module):
             torch.Tensor: Processed hidden states after attention computation
         """
         batch_size = img_hidden_states.shape[0]
-        instruct_hidden_states.shape[1]
-        img_hidden_states.shape[1]
-
-        # Ensure Q, K, V linear layers are on the same device as input tensors
-        device = img_hidden_states.device
-        for layer in [
-            self.img_to_q,
-            self.img_to_k,
-            self.img_to_v,
-            self.instruct_to_q,
-            self.instruct_to_k,
-            self.instruct_to_v,
-            self.instruct_out,
-            self.img_out,
-        ]:
-            if (
-                (layer.weight.device != device)
-                and (str(layer.weight.device).lower() != "meta")
-                and (str(device).lower() not in {"meta", "auto"})
-            ):
-                layer = layer.to(device)
 
         # Generate Q, K, V for image and instruction streams (NO head reshaping yet)
         img_query = self.img_to_q(img_hidden_states)  # [B, L_img, query_dim]

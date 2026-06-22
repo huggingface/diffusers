@@ -34,9 +34,13 @@ from typing import List, Optional, Union
 
 import torch
 
+from diffusers.utils import logging
 from diffusers.utils.torch_utils import randn_tensor
 
 from .pipeline_boogu import BooguImagePipeline
+
+
+logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
 class BooguImageTurboPipeline(BooguImagePipeline):
@@ -179,7 +183,7 @@ class BooguImageTurboPipeline(BooguImagePipeline):
                 "image_guidance_scale=1.0, and empty_instruction_guidance_scale=0.0."
             )
 
-        print("[Turbo Pipeline Processing]: DMD student few-step T2I inference.")
+        logger.info("[Turbo Pipeline Processing]: DMD student few-step T2I inference.")
 
         generator = getattr(self, "_dmd_generator", None)
         dmd_sigmas = self._build_dmd_student_sigmas(

@@ -13,10 +13,8 @@ limitations under the License.
 """
 
 import itertools
-import os
 from typing import Any, Dict, List, Optional, Tuple, Union
 
-import numpy as np
 import torch
 import torch.nn as nn
 from torch.nn import RMSNorm
@@ -37,9 +35,7 @@ from diffusers.utils.teacache_util import TeaCacheParams
 
 from ..attention_processor_boogu import (
     BooguImageAttnProcessor,
-    BooguImageAttnProcessorFlash2Varlen,
     BooguImageDoubleStreamSelfAttnProcessor,
-    BooguImageDoubleStreamSelfAttnProcessorFlash2Varlen,
 )
 from .block_lumina2 import (
     Lumina2CombinedTimestepCaptionEmbedding,
@@ -52,40 +48,26 @@ from .rope_boogu import BooguImageDoubleStreamRotaryPosEmbed, BooguImagePromptTu
 
 logger = logging.get_logger(__name__)
 
-# Local runtime utilities.
-
 
 class PromptEmbedding(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOriginalModelMixin):
     _supports_gradient_checkpointing = True
     _no_split_modules = ["BooguImageTransformerBlock"]
     _skip_layerwise_casting_patterns = ["prompt_token_embedding", "norm"]
 
-    def __init__(self, prompt_tuning_configs):
+    @register_to_config
+    def __init__(
+        self,
+        num_trainable_prompt_tokens: int = 32,
+        hidden_size: int = 2048,
+        num_attention_heads: int = 32,
+        num_kv_heads: int = 8,
+        multiple_of: int = 256,
+        ffn_dim_multiplier: Optional[float] = None,
+        norm_eps: float = 1e-5,
+        num_layers: int = 2,
+        theta: int = 10000,
+    ):
         super().__init__()
-
-        num_trainable_prompt_tokens = prompt_tuning_configs.get("num_trainable_prompt_tokens", 32)
-        hidden_size = prompt_tuning_configs.get("hidden_size", 2048)
-        num_attention_heads = prompt_tuning_configs.get("num_attention_heads", 32)
-        num_kv_heads = prompt_tuning_configs.get("num_kv_heads", 8)
-        multiple_of = prompt_tuning_configs.get("multiple_of", 256)
-        ffn_dim_multiplier = prompt_tuning_configs.get("ffn_dim_multiplier", None)
-        norm_eps = prompt_tuning_configs.get("norm_eps", 1e-5)
-        num_layers = prompt_tuning_configs.get("num_layers", 2)
-        theta = prompt_tuning_configs.get("theta", 10000)
-
-        self.register_to_config(
-            num_trainable_prompt_tokens=num_trainable_prompt_tokens,
-            hidden_size=hidden_size,
-            num_attention_heads=num_attention_heads,
-            num_kv_heads=num_kv_heads,
-            multiple_of=multiple_of,
-            ffn_dim_multiplier=ffn_dim_multiplier,
-            norm_eps=norm_eps,
-            num_layers=num_layers,
-            theta=theta,
-        )
-
-        self.prompt_tuning_configs = prompt_tuning_configs
 
         prompt_emb_head_dim = self.config.hidden_size // self.config.num_attention_heads
 
@@ -151,18 +133,6 @@ class PromptEmbedding(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOriginalMod
                 )
         return hidden_states
 
-    @classmethod
-    def from_config(cls, config, **kwargs):
-        # `config` is loaded from config.json.
-        instance = cls(prompt_tuning_configs=config)
-
-        weight_dtype = kwargs.get("weight_dtype", None)
-        if weight_dtype is not None:
-            for p in instance.parameters():
-                p.data = p.data.to(dtype=weight_dtype)
-
-        return instance
-
 
 class BooguImageTransformerBlock(nn.Module):
     """
@@ -184,15 +154,6 @@ class BooguImageTransformerBlock(nn.Module):
         self.head_dim = dim // num_attention_heads
         self.modulation = modulation
 
-        if "cpu" in os.getenv("device", "cpu"):
-            processor = BooguImageAttnProcessor()
-
-        else:
-            try:
-                processor = BooguImageAttnProcessorFlash2Varlen()
-            except ImportError:
-                processor = BooguImageAttnProcessor()
-
         # Initialize attention layer
         self.attn = Attention(
             query_dim=dim,
@@ -204,7 +165,7 @@ class BooguImageTransformerBlock(nn.Module):
             eps=1e-5,
             bias=False,
             out_bias=False,
-            processor=processor,
+            processor=BooguImageAttnProcessor(),
         )
 
         # Initialize feed-forward network
@@ -314,36 +275,12 @@ class BooguImageDoubleStreamTransformerBlock(nn.Module):
         self.modulation = modulation
         self.hidden_size = dim
 
-        if "cpu" in os.getenv("device", "cpu"):
-            processor = BooguImageAttnProcessor()
-        else:
-            try:
-                processor = BooguImageAttnProcessorFlash2Varlen()
-            except ImportError:
-                processor = BooguImageAttnProcessor()
-
-        if "cpu" in os.getenv("device", "cpu"):
-            double_stream_processor = BooguImageDoubleStreamSelfAttnProcessor(
-                head_dim=self.head_dim,
-                num_attention_heads=num_attention_heads,
-                num_kv_heads=num_kv_heads,
-                qkv_bias=False,
-            )
-        else:
-            try:
-                double_stream_processor = BooguImageDoubleStreamSelfAttnProcessorFlash2Varlen(
-                    head_dim=self.head_dim,
-                    num_attention_heads=num_attention_heads,
-                    num_kv_heads=num_kv_heads,
-                    qkv_bias=False,
-                )
-            except ImportError:
-                double_stream_processor = BooguImageDoubleStreamSelfAttnProcessor(
-                    head_dim=self.head_dim,
-                    num_attention_heads=num_attention_heads,
-                    num_kv_heads=num_kv_heads,
-                    qkv_bias=False,
-                )
+        double_stream_processor = BooguImageDoubleStreamSelfAttnProcessor(
+            head_dim=self.head_dim,
+            num_attention_heads=num_attention_heads,
+            num_kv_heads=num_kv_heads,
+            qkv_bias=False,
+        )
 
         # Image stream components.
         self.img_instruct_attn = Attention(
@@ -369,7 +306,7 @@ class BooguImageDoubleStreamTransformerBlock(nn.Module):
             eps=1e-5,
             bias=False,
             out_bias=False,
-            processor=processor,
+            processor=BooguImageAttnProcessor(),
         )
 
         self.img_feed_forward = LuminaFeedForward(
@@ -591,9 +528,6 @@ class BooguImageDoubleStreamTransformerBlock(nn.Module):
         return img_hidden_states, instruct_hidden_states
 
 
-BooguImageSingleStreamTransformerBlock = BooguImageTransformerBlock
-
-
 class BooguImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOriginalModelMixin):
     """
     Boogu-Image transformer with mixed stream topology.
@@ -604,14 +538,11 @@ class BooguImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Fr
     _supports_gradient_checkpointing = True
     _no_split_modules = [
         "BooguImageTransformerBlock",
-        "BooguImageSingleStreamTransformerBlock",
         "BooguImageDoubleStreamTransformerBlock",
         "PromptEmbedding",
-        "nn.Embedding",
     ]
     _repeated_blocks = [
         "BooguImageTransformerBlock",
-        "BooguImageSingleStreamTransformerBlock",
         "BooguImageDoubleStreamTransformerBlock",
     ]
     _skip_layerwise_casting_patterns = ["x_embedder", "norm", "embedding"]
@@ -633,7 +564,6 @@ class BooguImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Fr
         norm_eps: float = 1e-5,
         axes_dim_rope: Tuple[int, int, int] = (40, 40, 40),
         axes_lens: Tuple[int, int, int] = (2048, 1664, 1664),
-        # instruction_feat_dim: int = 1024,
         instruction_feature_configs: Dict[str, Any] = {
             "instruction_feat_dim": 1024,
             "reduce_type": "mean",
@@ -755,10 +685,10 @@ class BooguImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Fr
             ]
         )
 
-        # Single-stream layers process the fused sequence.
+        # Single-stream layers process the fused sequence; they reuse BooguImageTransformerBlock.
         self.single_stream_layers = nn.ModuleList(
             [
-                BooguImageSingleStreamTransformerBlock(
+                BooguImageTransformerBlock(
                     hidden_size,
                     num_attention_heads,
                     num_kv_heads,
@@ -790,14 +720,11 @@ class BooguImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Fr
 
         # TeaCache settings
         self.enable_teacache = False
-        self.enable_teacache_for_all_layers = False
         self.teacache_rel_l1_thresh = 0.05
         self.teacache_params = TeaCacheParams()
 
-        coefficients = [-5.48259225, 11.48772289, -4.47407401, 2.47730926, -0.03316487]
-        self.rescale_func = np.poly1d(coefficients)
-
-        self.layers = list(self.double_stream_layers) + list(self.single_stream_layers)
+        # Polynomial (highest-degree first) rescaling the relative L1 distance used by TeaCache.
+        self.teacache_rescale_coefficients = [-5.48259225, 11.48772289, -4.47407401, 2.47730926, -0.03316487]
 
     def initialize_weights(self) -> None:
         """
@@ -1015,7 +942,6 @@ class BooguImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Fr
         self, raw_instruction_hidden_states, instruction_feature_configs: Dict[str, Any]
     ):
         num_instruction_feat_layers = max(instruction_feature_configs.get("num_instruction_feat_layers", 1), 1)
-        instruction_feature_configs.get("instruction_feat_dim", 4096)
         reduce_type = instruction_feature_configs.get("reduce_type", "concat")
 
         instruction_hidden_states = None
@@ -1203,7 +1129,7 @@ class BooguImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Fr
                 should_calc = True
                 self.teacache_params.accumulated_rel_l1_distance = 0
             else:
-                self.teacache_params.accumulated_rel_l1_distance += self.rescale_func(
+                rel_l1 = (
                     (
                         (modulated_inp - self.teacache_params.previous_modulated_inp).abs().mean()
                         / self.teacache_params.previous_modulated_inp.abs().mean()
@@ -1211,6 +1137,10 @@ class BooguImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Fr
                     .cpu()
                     .item()
                 )
+                rescaled = 0.0
+                for coefficient in self.teacache_rescale_coefficients:
+                    rescaled = rescaled * rel_l1 + coefficient
+                self.teacache_params.accumulated_rel_l1_distance += rescaled
                 if self.teacache_params.accumulated_rel_l1_distance < self.teacache_rel_l1_thresh:
                     should_calc = False
                 else:

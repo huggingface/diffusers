@@ -40,16 +40,18 @@ class BooguImageProcessor(VaeImageProcessor):
         do_resize (`bool`, *optional*, defaults to `True`):
             Whether to downscale the image's (height, width) dimensions to multiples of `vae_scale_factor`. Can accept
             `height` and `width` arguments from [`image_processor.VaeImageProcessor.preprocess`] method.
-        vae_scale_factor (`int`, *optional*, defaults to `8`):
+        vae_scale_factor (`int`, *optional*, defaults to `16`):
             VAE scale factor. If `do_resize` is `True`, the image is automatically resized to multiples of this factor.
         resample (`str`, *optional*, defaults to `lanczos`):
             Resampling filter to use when resizing the image.
+        max_pixels (`int`, *optional*):
+            Maximum number of pixels; the image is downscaled to fit when set.
+        max_side_length (`int`, *optional*):
+            Maximum side length; the image is downscaled to fit when set.
         do_normalize (`bool`, *optional*, defaults to `True`):
             Whether to normalize the image to [-1,1].
         do_binarize (`bool`, *optional*, defaults to `False`):
             Whether to binarize the image to 0/1.
-        do_convert_rgb (`bool`, *optional*, defaults to be `False`):
-            Whether to convert the images to RGB format.
         do_convert_grayscale (`bool`, *optional*, defaults to be `False`):
             Whether to convert the images to grayscale format.
     """
@@ -128,17 +130,13 @@ class BooguImageProcessor(VaeImageProcessor):
         if max_pixels is None:
             max_pixels = self.max_pixels
 
+        # Clamp ratio to <=1 to avoid upscaling input images in preprocessing.
         ratio = 1.0
         if max_side_length is not None:
-            if height > width:
-                max_side_length_ratio = max_side_length / height
-            else:
-                max_side_length_ratio = max_side_length / width
-
-        cur_pixels = height * width
-        max_pixels_ratio = (max_pixels / cur_pixels) ** 0.5
-        # Clamp ratio to <=1 to avoid upscaling input images in preprocessing.
-        ratio = min(max_pixels_ratio, max_side_length_ratio, 1.0)
+            longest_side = height if height > width else width
+            ratio = min(ratio, max_side_length / longest_side)
+        if max_pixels is not None:
+            ratio = min(ratio, (max_pixels / (height * width)) ** 0.5)
 
         new_height, new_width = (
             int(height * ratio) // self.config.vae_scale_factor * self.config.vae_scale_factor,

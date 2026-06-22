@@ -1,7 +1,6 @@
 import inspect
 import warnings
 from dataclasses import dataclass
-from pathlib import Path
 from typing import Any, Dict, List, Literal, Optional, Tuple, Union
 
 import numpy as np
@@ -171,14 +170,6 @@ class MomentumRollingSum:
     def update(self, current_step: torch.Tensor):
         self.rolling_sum = self.current_weight * current_step + self.momentum_weight * self.rolling_sum
         return self.rolling_sum
-
-    @staticmethod
-    def _append_and_save(path: str, buffer: List[torch.Tensor], value: torch.Tensor) -> None:
-        """Append a tensor to list and persist it to disk."""
-        save_path = Path(path)
-        save_path.parent.mkdir(parents=True, exist_ok=True)
-        buffer.append(value.detach().cpu())
-        torch.save(buffer, save_path)
 
 
 class BooguImagePipeline(DiffusionPipeline):
@@ -352,9 +343,10 @@ class BooguImagePipeline(DiffusionPipeline):
             if auto_offload_strategy_num == 0:
                 self.to(instant_device_2_use.lower())
             else:
-                print(
-                    "[Device Manager]: An offload strategy is enabled, so the user-requested "
-                    f"device move to `instant_device_2_use={instant_device_2_use!r}` will be ignored."
+                logger.info(
+                    "An offload strategy is enabled, so the user-requested device move to "
+                    "`instant_device_2_use=%r` will be ignored.",
+                    instant_device_2_use,
                 )
 
     def set_mllm(self, mllm, device=None):
@@ -363,19 +355,6 @@ class BooguImagePipeline(DiffusionPipeline):
             my_new_mllm = mllm.model
         else:
             my_new_mllm = mllm
-
-        ########################default###########################
-        # # 1. Replace the instance attribute so inference and `.to("cuda")` work correctly.
-        # self.mllm = my_new_mllm
-
-        # # 2. Manually update the underlying config dict so `save_pretrained` works correctly.
-        # # Get the new model library name (for example, 'transformers') and class name.
-        # library_name = my_new_mllm.__module__.split(".")[0]
-        # class_name = my_new_mllm.__class__.__name__
-
-        # # Update the pipeline internal registry.
-        # self._internal_dict["mllm"] = (library_name, class_name)
-        ##########################################################
 
         # Re-register the module so both the instance attribute and pipeline config stay in sync.
         self.register_modules(mllm=my_new_mllm)
@@ -430,7 +409,7 @@ class BooguImagePipeline(DiffusionPipeline):
 
         # Re-register the transformer so both the instance attribute and pipeline config stay in sync.
         self.register_modules(transformer=transformer)
-        print("[Setter Info]: `self.transformer` has been registered.")
+        logger.info("`self.transformer` has been registered.")
 
         if (
             self.enable_model_cpu_offload_flag
@@ -448,7 +427,7 @@ class BooguImagePipeline(DiffusionPipeline):
 
         if device is not None:
             self.transformer.to(device)
-            print(f"[Setter Info]: `self.transformer` has been moved to the requested device. device={device!r}.")
+            logger.info("`self.transformer` has been moved to the requested device. device=%r.", device)
 
     def set_prompt_embedding(self, prompt_embedding=None, device=None):
         """Set or clear the prompt-tuning embedding module."""
@@ -464,7 +443,7 @@ class BooguImagePipeline(DiffusionPipeline):
 
         # Re-register the prompt embedding so both the instance attribute and pipeline config stay in sync.
         self.register_modules(prompt_embedding=prompt_embedding)
-        print("[Setter Info]: `self.prompt_embedding` has been registered.")
+        logger.info("`self.prompt_embedding` has been registered.")
 
         if (
             self.enable_model_cpu_offload_flag
@@ -481,7 +460,7 @@ class BooguImagePipeline(DiffusionPipeline):
 
         if device is not None:
             self.prompt_embedding.to(device)
-            print(f"[Setter Info]: `self.prompt_embedding` has been moved to the requested device. device={device!r}.")
+            logger.info("`self.prompt_embedding` has been moved to the requested device. device=%r.", device)
 
     def prepare_latents(
         self,
@@ -948,7 +927,7 @@ class BooguImagePipeline(DiffusionPipeline):
             assert self.prompt_embedding is not None, (
                 "When `use_prompt_tuning_embedding=True`, `self.prompt_embedding` must be well set and should not be None."
             )
-            print("Using prompt tuning enhanced text feature extraction")
+            logger.info("Using prompt tuning enhanced text feature extraction")
 
             # Step 1: Get input embeddings from the text encoder.
             # In CPU/group offload mode, calling the embedding layer directly can
@@ -1038,16 +1017,9 @@ class BooguImagePipeline(DiffusionPipeline):
 
                     # Get last layer's feature for model processing
                     instruction_feats = all_hidden_states[-1]
-                    # # #################verbose ###################
-                    # print("Exception Type:", repr(e))
-                    # print("Exception:", str(e))
-                    # traceback.print_exc()
-                    # # ###########################################
                     warnings.warn(f"{type(e).__name__}: {e}", UserWarning)
 
-            print(f"✅ Prompt tuning: {num_prompt_tokens} trainable tokens added")
-            print()
-            print()
+            logger.info("Prompt tuning: %d trainable tokens added", num_prompt_tokens)
 
         else:
             num_instruction_feature_layers = self.transformer.instruction_feature_configs.get(
@@ -1077,16 +1049,7 @@ class BooguImagePipeline(DiffusionPipeline):
 
                         # Get last layer's feature for model processing
                         instruction_feats = all_hidden_states[-1]
-
-                        # #################verbose ###################
-                        # print("Exception Type:", repr(e))
-                        # print("Exception:", str(e))
-                        # traceback.print_exc()
-                        # ###########################################
                         warnings.warn(f"{type(e).__name__}: {e}", UserWarning)
-
-            print()
-            print()
 
         # Optionally remove vision-token features by truncation
         if self.MASK_VISION_TOKENS_FEATURE and (self.VISION_TOKEN_IDs is not None) and len(self.VISION_TOKEN_IDs) > 0:
@@ -1299,7 +1262,6 @@ class BooguImagePipeline(DiffusionPipeline):
             )
 
         batch_size, seq_len, _ = instruction_embeds.shape
-        # # duplicate text embeddings and attention mask for each generation per instruction, using mps friendly method
 
         batch_size, seq_len, instruction_embeds, instruction_attention_mask = self._reshape_embeds_and_mask(
             instruction_embeds,
@@ -1343,11 +1305,6 @@ class BooguImagePipeline(DiffusionPipeline):
                 system_prompt_follows_task_type=system_prompt_follows_task_type,
                 task_type=task_type,
             )
-
-            # batch_size, seq_len, _ = negative_instruction_embeds.shape
-            # # duplicate text embeddings and attention mask for each generation per instruction, using mps friendly method
-            #     batch_size * num_images_per_instruction, -1
-            # )
 
             (
                 batch_size,
@@ -1455,7 +1412,6 @@ class BooguImagePipeline(DiffusionPipeline):
         use_empty_neg_instruct_4_ref_img_pred_at_text_guide_in_double_guide: bool = False,
         max_sequence_length: int = 1280,
         truncate_instruction_sequence: bool = False,
-        callback_on_step_end_tensor_inputs: Optional[List[str]] = None,
         input_images: Optional[Union[List[List[PIL.Image.Image]], List[PIL.Image.Image]]] = None,
         use_input_images_4_neg_instruct: bool = False,
         use_input_images_4_empty_instruct: bool = False,
@@ -1490,7 +1446,6 @@ class BooguImagePipeline(DiffusionPipeline):
         latents: Optional[torch.FloatTensor] = None,
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
-        verbose: bool = False,
         step_func=None,
         device: Literal[None, "cpu", "cuda", "cuda:x"] = "cuda",
     ):
@@ -1530,7 +1485,6 @@ class BooguImagePipeline(DiffusionPipeline):
         if input_images:
             success, max_images_per_sample, input_images = self._check_and_wrap_input_images(input_images)
 
-        # task_type = self._get_task_type_by_ref_latents(ref_latents)
         task_type = self._get_task_type_by_input_images(input_images)
 
         # 2. Encode input instruction
@@ -1627,7 +1581,6 @@ class BooguImagePipeline(DiffusionPipeline):
             timesteps=timesteps,
             device=self.user_set_pipe_device,
             dtype=dtype,
-            verbose=verbose,
             step_func=step_func,
             # For double guidance
             empty_instruction_embeds=empty_instruction_embeds,
@@ -1730,46 +1683,6 @@ class BooguImagePipeline(DiffusionPipeline):
                     return "ti2i"
         return "t2i"
 
-    def _sigmoid_kernel(self, x: torch.Tensor) -> torch.Tensor:
-        """
-        x: [N]
-        return: kernel of x
-        """
-        return torch.sigmoid(x)
-
-    def _softmax_kernel(
-        self,
-        x: torch.Tensor,
-        tau: float = 1.0,
-        lam: float | None = None,
-        eps: float = 1e-8,
-    ) -> torch.Tensor:
-        """
-        x: [N] or [B, N]
-        return: lambda * softmax(x / tau)
-        """
-        if tau <= 0:
-            raise ValueError("tau must be > 0")
-        delta = torch.softmax(x / tau, dim=-1)
-        if lam is None:
-            # lambda ~ (mean(delta_i))^{-1}
-            lam_eff = 1.0 / delta.mean(dim=-1, keepdim=True).clamp_min(eps)
-        else:
-            lam_eff = torch.full_like(delta[..., :1], float(lam))
-        return lam_eff * delta
-
-    def _project(
-        self,
-        v0: torch.Tensor,  # [B, C, H, W] # The delta: model_pred - model_pred_uncond
-        v1: torch.Tensor,  # [B, C, H, W] # The conditional pred
-    ):
-        dtype = v0.dtype
-        v0, v1 = v0.double(), v1.double()
-        v1 = torch.nn.functional.normalize(v1, dim=[-1, -2, -3])
-        v0_parallel = (v0 * v1).sum(dim=[-1, -2, -3], keepdim=True) * v1
-        v0_orthogonal = v0 - v0_parallel
-        return v0_parallel.to(dtype), v0_orthogonal.to(dtype)
-
     def _project_matrix(
         self,
         m0: torch.Tensor,  # [B, C, H, W]  # The delta: model_pred - model_pred_uncond
@@ -1860,53 +1773,14 @@ class BooguImagePipeline(DiffusionPipeline):
             return X.reshape(out_shape)
         return X
 
-    def bog_norm(
-        self,
-        G: torch.Tensor,
-        kernel_method: str = "newton-schulz",
-        tau: float = 1.0,
-        lam: float | None = None,
-    ):
+    def bog_norm(self, G: torch.Tensor) -> torch.Tensor:
         """
         G: [..., H, W]
         return: normalized tensor with same shape
         """
         if G.dim() < 2:
             raise ValueError("G must have at least 2 dims, got shape {}".format(tuple(G.shape)))
-
-        if kernel_method == "newton-schulz":
-            return self._newtonschulz5_batched(G)
-
-        ori_dtype = G.dtype
-        original_shape = G.shape
-        H, W = original_shape[-2], original_shape[-1]
-        leading_shape = original_shape[:-2]
-
-        # 合并成 N 个矩阵：N = prod(leading_shape)
-        A = G.reshape(-1, H, W)
-
-        U, S, Vh = torch.linalg.svd(A.to(torch.float32), full_matrices=False)
-
-        if kernel_method == "orthogonal":
-            # norm(sigma_i, i) = 1
-            A_hat = U @ Vh
-
-        elif kernel_method == "sigmoid":
-            # norm(sigma_i, i) = sigmoid(sigma_i)
-            S_prime = self._sigmoid_kernel(S)
-            A_hat = (U * S_prime.unsqueeze(-2)) @ Vh
-
-        elif kernel_method == "softmax":
-            # norm(sigma_i, i) = lambda * softmax(sigma_i / tau)
-            S_prime = self._softmax_kernel(S, tau=tau, lam=lam)
-            A_hat = (U * S_prime.unsqueeze(-2)) @ Vh
-
-        else:
-            raise ValueError(f"Invalid kernel method: {kernel_method}")
-
-        G_hat = A_hat.reshape(*leading_shape, H, W)
-        G_hat = G_hat.to(ori_dtype)
-        return G_hat
+        return self._newtonschulz5_batched(G)
 
     def calculate_boosted_orthogonal_guidance(
         self,
@@ -1951,7 +1825,6 @@ class BooguImagePipeline(DiffusionPipeline):
         timesteps,
         device,
         dtype,
-        verbose,
         step_func=None,
         # For double guidance
         empty_instruction_embeds=None,
@@ -1967,10 +1840,9 @@ class BooguImagePipeline(DiffusionPipeline):
         bog_range=[0.0, 1.0],
         bog_interval: int = 3,
     ):
-        latents.shape[0]
         task_type = self._get_task_type_by_ref_latents(ref_latents)
 
-        print(f"[Pipeline Processing]: The current task_type: {task_type}.")
+        logger.info("[Pipeline Processing]: The current task_type: %s.", task_type)
 
         timesteps, num_inference_steps = retrieve_timesteps(
             self.scheduler,
@@ -2482,7 +2354,7 @@ class BooguImagePromptTuningPipeline(BooguImagePipeline):
             assert self.prompt_embedding is not None, (
                 "When `use_prompt_tuning_embedding=True`, `self.prompt_embedding` must be well set and should not be None."
             )
-            print("Using prompt tuning enhanced text feature extraction")
+            logger.info("Using prompt tuning enhanced text feature extraction")
 
             # Step 1: Get input embeddings from the text encoder.
             # In CPU/group offload mode, calling the embedding layer directly can
@@ -2572,17 +2444,9 @@ class BooguImagePromptTuningPipeline(BooguImagePipeline):
 
                     # Get last layer's feature for model processing
                     instruction_feats = all_hidden_states[-1]
-
-                    # ###########verbose exception############
-                    # print("Exception Type:", repr(e))
-                    # print("Exception:", str(e))
-                    # traceback.print_exc()
-                    # ########################################
                     warnings.warn(f"{type(e).__name__}: {e}", UserWarning)
 
-            print(f"✅ Prompt tuning: {num_prompt_tokens} trainable tokens added")
-            print()
-            print()
+            logger.info("Prompt tuning: %d trainable tokens added", num_prompt_tokens)
 
         else:
             num_instruction_feature_layers = self.transformer.instruction_feature_configs.get(
@@ -2612,16 +2476,7 @@ class BooguImagePromptTuningPipeline(BooguImagePipeline):
 
                         # Get last layer's feature for model processing
                         instruction_feats = all_hidden_states[-1]
-
-                        # ###########verbose exception############
-                        # print("Exception Type:", repr(e))
-                        # print("Exception:", str(e))
-                        # traceback.print_exc()
-                        # ###########verbose exception############
                         warnings.warn(f"{type(e).__name__}: {e}", UserWarning)
-
-            print()
-            print()
 
         # Optionally remove vision-token features by truncation
         if self.MASK_VISION_TOKENS_FEATURE and (self.VISION_TOKEN_IDs is not None) and len(self.VISION_TOKEN_IDs) > 0:
