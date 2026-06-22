@@ -31,9 +31,11 @@ from diffusers.utils.import_utils import is_torch_neuronx_available
 
 from ...testing_utils import (
     backend_empty_cache,
+    backend_synchronize,
     enable_full_determinism,
     numpy_cosine_similarity_distance,
     require_torch_accelerator,
+    require_torch_neuron,
     slow,
     torch_device,
 )
@@ -382,12 +384,11 @@ class PixArtAlphaPipelineIntegrationTests(unittest.TestCase):
 
         assert not np.allclose(image_slice, no_res_bin_image_slice, atol=1e-4, rtol=1e-4)
 
-    @unittest.skipUnless(is_torch_neuronx_available(), "torch_neuronx not available")
+    @require_torch_neuron
     def test_pixart_512_neuron_compile(self):
         """
         Smoke-test PixArtAlphaPipeline under torch.compile(backend="neuron") at 512×512.
         """
-        import torch_neuronx  # noqa: F401 — registers torch.neuron
         from torch_neuronx.neuron_dynamo_backend import set_model_name
 
         device = torch.neuron.current_device()
@@ -395,8 +396,7 @@ class PixArtAlphaPipelineIntegrationTests(unittest.TestCase):
 
         pipe = PixArtAlphaPipeline.from_pretrained(self.ckpt_id_512, torch_dtype=torch.bfloat16)
         pipe = pipe.to(device)
-        # Flush pending lazy-XLA parameter-copy ops before compiling.
-        torch.neuron.synchronize()
+        backend_synchronize(torch_device)
 
         pipe.transformer.eval()
         pipe.vae.eval()
