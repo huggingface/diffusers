@@ -1509,6 +1509,8 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
     def to(self, *args, **kwargs):
         from ..hooks.group_offloading import _is_group_offload_enabled
 
+        fp32_modules = self._keep_in_fp32_modules or []
+
         device_arg_or_kwarg_present = any(isinstance(arg, torch.device) for arg in args) or "device" in kwargs
         dtype_present_in_args = "dtype" in kwargs
 
@@ -1527,6 +1529,11 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                 if isinstance(arg, torch.dtype):
                     dtype_present_in_args = True
                     break
+
+        if dtype_present_in_args and fp32_modules is not None:
+            logger.warning(
+                f"There are modules in {self.__class__.__name__} that should be kept in float32: {fp32_modules}. A bare `to()` might lead to inconsistent results."
+            )
 
         if getattr(self, "is_quantized", False):
             if dtype_present_in_args:

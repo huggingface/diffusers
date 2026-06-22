@@ -152,12 +152,6 @@ class TestWanAnimateTransformer3D(WanAnimateTransformer3DTesterConfig, ModelTest
         expected_output_shape = (1, 4, 21, 16, 16)
         super().test_output(expected_output_shape=expected_output_shape)
 
-    @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16], ids=["fp16", "bf16"])
-    def test_from_save_pretrained_dtype_inference(self, tmp_path, dtype):
-        # Skip: fp16/bf16 require very high atol (~1e-2) to pass, providing little signal.
-        # Dtype preservation is already tested by test_from_save_pretrained_dtype and test_keep_in_fp32_modules.
-        pytest.skip("Tolerance requirements too high for meaningful test")
-
 
 class TestWanAnimateTransformer3DMemory(WanAnimateTransformer3DTesterConfig, MemoryTesterMixin):
     """Memory optimization tests for Wan Animate Transformer 3D."""
