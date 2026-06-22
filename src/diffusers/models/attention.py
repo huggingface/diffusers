@@ -350,10 +350,7 @@ class AttentionModuleMixin:
                 delattr(self, "to_v")
 
         # Handle added projections for models like SD3, Flux, etc.
-        if (
-            getattr(self, "add_k_proj", None) is not None
-            and getattr(self, "add_v_proj", None) is not None
-        ):
+        if getattr(self, "add_k_proj", None) is not None and getattr(self, "add_v_proj", None) is not None:
             if getattr(self, "add_q_proj", None) is not None:
                 # Added Self Attention (e.g. Flux)
                 concatenated_weights = torch.cat(
@@ -446,12 +443,12 @@ class AttentionModuleMixin:
                 self.to_v = nn.Linear(d_in, d_v, bias=has_bias)
                 # Avoid copying by using a view which shares storage with the fused projection
                 self.to_q.weight = nn.Parameter(self.to_qkv.weight[:d_q])
-                self.to_k.weight = nn.Parameter(self.to_qkv.weight[d_q:d_q+d_k])
-                self.to_v.weight = nn.Parameter(self.to_qkv.weight[d_q+d_k:])
+                self.to_k.weight = nn.Parameter(self.to_qkv.weight[d_q : d_q + d_k])
+                self.to_v.weight = nn.Parameter(self.to_qkv.weight[d_q + d_k :])
                 if has_bias:
                     self.to_q.bias = nn.Parameter(self.to_qkv.bias[:d_q])
-                    self.to_k.bias = nn.Parameter(self.to_qkv.bias[d_q:d_q+d_k])
-                    self.to_v.bias = nn.Parameter(self.to_qkv.bias[d_q+d_k:])
+                    self.to_k.bias = nn.Parameter(self.to_qkv.bias[d_q : d_q + d_k])
+                    self.to_v.bias = nn.Parameter(self.to_qkv.bias[d_q + d_k :])
             delattr(self, "to_qkv")
 
         if hasattr(self, "to_kv"):
@@ -476,12 +473,12 @@ class AttentionModuleMixin:
                 self.add_v_proj = nn.Linear(d_in, d_v, bias=has_bias)
                 # Avoid copying by using a view which shares storage with the fused projection
                 self.add_q_proj.weight = nn.Parameter(self.to_added_qkv.weight[:d_q])
-                self.add_k_proj.weight = nn.Parameter(self.to_added_qkv.weight[d_q:d_q+d_k])
-                self.add_v_proj.weight = nn.Parameter(self.to_added_qkv.weight[d_q+d_k:])
+                self.add_k_proj.weight = nn.Parameter(self.to_added_qkv.weight[d_q : d_q + d_k])
+                self.add_v_proj.weight = nn.Parameter(self.to_added_qkv.weight[d_q + d_k :])
                 if has_bias:
                     self.add_q_proj.bias = nn.Parameter(self.to_added_qkv.bias[:d_q])
-                    self.add_k_proj.bias = nn.Parameter(self.to_added_qkv.bias[d_q:d_q+d_k])
-                    self.add_v_proj.bias = nn.Parameter(self.to_added_qkv.bias[d_q+d_k:])
+                    self.add_k_proj.bias = nn.Parameter(self.to_added_qkv.bias[d_q : d_q + d_k])
+                    self.add_v_proj.bias = nn.Parameter(self.to_added_qkv.bias[d_q + d_k :])
             delattr(self, "to_added_qkv")
 
         if hasattr(self, "to_added_kv"):

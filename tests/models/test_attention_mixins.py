@@ -15,8 +15,10 @@ enable_full_determinism()
 # to operate on, without pulling in real model complexity.
 # self.processor = None so that AttentionMixin.attn_processors can enumerate them safely.
 
+
 class _MinimalSelfAttn(nn.Module, AttentionModuleMixin):
     """Self-attention: fuses to_q/to_k/to_v → to_qkv."""
+
     def __init__(self, d_model: int = 64, bias: bool = True):
         nn.Module.__init__(self)
         self.processor = None
@@ -29,6 +31,7 @@ class _MinimalSelfAttn(nn.Module, AttentionModuleMixin):
 
 class _MinimalCrossAttn(nn.Module, AttentionModuleMixin):
     """Cross-attention: fuses to_k/to_v → to_kv, leaves to_q split."""
+
     def __init__(self, d_model: int = 64, d_cross: int = 32, bias: bool = True):
         nn.Module.__init__(self)
         self.processor = None
@@ -44,6 +47,7 @@ class _MinimalAddedKVAttn(nn.Module, AttentionModuleMixin):
     """Wan-style: self-attention QKV + added cross-attention KV (no add_q_proj).
     fuse_projections creates both to_qkv (main) and to_added_kv (added).
     """
+
     def __init__(self, d_model: int = 64, d_added: int = 32, bias: bool = True):
         nn.Module.__init__(self)
         self.processor = None
@@ -60,6 +64,7 @@ class _MinimalAddedQKVAttn(nn.Module, AttentionModuleMixin):
     """Flux-style: self-attention QKV + added context QKV (all three add projections).
     fuse_projections creates both to_qkv (main) and to_added_qkv (added).
     """
+
     def __init__(self, d_model: int = 64, d_context: int = 64, bias: bool = True):
         nn.Module.__init__(self)
         self.processor = None
@@ -76,6 +81,7 @@ class _MinimalAddedQKVAttn(nn.Module, AttentionModuleMixin):
 
 class _AttentionMixinModel(nn.Module, AttentionMixin):
     """Two-block model used in TestAttentionMixin: a self-attn block and a cross-attn block."""
+
     def __init__(self):
         nn.Module.__init__(self)
         self.block1 = _MinimalSelfAttn(d_model=64)
@@ -442,7 +448,6 @@ class TestAttentionModuleMixin:
         assert added_qkv_attn.add_q_proj.weight.untyped_storage().data_ptr() == storage_ptr
         assert added_qkv_attn.add_k_proj.weight.untyped_storage().data_ptr() == storage_ptr
         assert added_qkv_attn.add_v_proj.weight.untyped_storage().data_ptr() == storage_ptr
-
 
     # -------------------------------------------------------------------------
     # get_qkv / get_added_qkv
