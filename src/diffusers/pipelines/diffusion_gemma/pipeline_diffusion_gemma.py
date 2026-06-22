@@ -462,6 +462,10 @@ class DiffusionGemmaPipeline(DiffusionPipeline):
                         confidence_threshold
                     )
                     if bool((stable & confident).all()):
+                        # Commit the converged prediction. Ancestral schedulers (e.g. DiscreteDDIM) only clean the
+                        # canvas on their final step, so the in-progress canvas may still hold noise tokens; the
+                        # denoiser argmax is the converged answer (and equals the canvas for commit-style schedulers).
+                        canvas = argmax_canvas
                         break
 
             # Append the denoised canvas and extend the context for the next block.
