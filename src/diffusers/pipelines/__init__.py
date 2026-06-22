@@ -5,7 +5,6 @@ from ..utils import (
     OptionalDependencyNotAvailable,
     _LazyModule,
     get_objects_from_module,
-    is_flax_available,
     is_librosa_available,
     is_note_seq_available,
     is_onnx_available,
@@ -14,6 +13,7 @@ from ..utils import (
     is_torch_available,
     is_torch_npu_available,
     is_transformers_available,
+    is_transformers_flax_compatible,
     is_transformers_version,
 )
 
@@ -45,6 +45,7 @@ else:
         "AutoPipelineForImage2Image",
         "AutoPipelineForInpainting",
         "AutoPipelineForText2Image",
+        "AutoPipelineForText2Audio",
     ]
     _import_structure["consistency_models"] = ["ConsistencyModelPipeline"]
     _import_structure["ddim"] = ["DDIMPipeline"]
@@ -164,6 +165,10 @@ else:
         "AnimateDiffVideoToVideoPipeline",
         "AnimateDiffVideoToVideoControlNetPipeline",
     ]
+    _import_structure["anyflow"] = [
+        "AnyFlowPipeline",
+        "AnyFlowFARPipeline",
+    ]
     _import_structure["bria"] = ["BriaPipeline"]
     _import_structure["bria_fibo"] = ["BriaFiboPipeline", "BriaFiboEditPipeline"]
     _import_structure["flux2"] = [
@@ -208,9 +213,10 @@ else:
         "Cosmos2_5_PredictBasePipeline",
         "Cosmos2_5_TransferPipeline",
         "Cosmos2TextToImagePipeline",
+        "Cosmos2VideoToWorldPipeline",
+        "Cosmos3OmniPipeline",
         "CosmosTextToWorldPipeline",
         "CosmosVideoToWorldPipeline",
-        "Cosmos2VideoToWorldPipeline",
     ]
     _import_structure["controlnet"].extend(
         [
@@ -330,6 +336,8 @@ else:
     _import_structure["ltx2"] = [
         "LTX2Pipeline",
         "LTX2ConditionPipeline",
+        "LTX2HDRPipeline",
+        "LTX2InContextPipeline",
         "LTX2ImageToVideoPipeline",
         "LTX2LatentUpsamplePipeline",
     ]
@@ -347,6 +355,11 @@ else:
         ]
     )
     _import_structure["mochi"] = ["MochiPipeline"]
+    _import_structure["motif_video"] = [
+        "MotifVideoPipeline",
+        "MotifVideoImage2VideoPipeline",
+        "MotifVideoPipelineOutput",
+    ]
     _import_structure["omnigen"] = ["OmniGenPipeline"]
     _import_structure["ernie_image"] = ["ErnieImagePipeline"]
     _import_structure["ovis_image"] = ["OvisImagePipeline"]
@@ -504,7 +517,7 @@ else:
     _import_structure["consisid"] = ["ConsisIDPipeline"]
 
 try:
-    if not is_flax_available():
+    if not is_transformers_flax_compatible():
         raise OptionalDependencyNotAvailable()
 except OptionalDependencyNotAvailable:
     from ..utils import dummy_flax_objects  # noqa F403
@@ -513,7 +526,7 @@ except OptionalDependencyNotAvailable:
 else:
     _import_structure["pipeline_flax_utils"] = ["FlaxDiffusionPipeline"]
 try:
-    if not (is_flax_available() and is_transformers_available()):
+    if not is_transformers_flax_compatible():
         raise OptionalDependencyNotAvailable()
 except OptionalDependencyNotAvailable:
     from ..utils import dummy_flax_and_transformers_objects  # noqa F403
@@ -545,6 +558,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .auto_pipeline import (
             AutoPipelineForImage2Image,
             AutoPipelineForInpainting,
+            AutoPipelineForText2Audio,
             AutoPipelineForText2Image,
         )
         from .consistency_models import ConsistencyModelPipeline
@@ -596,6 +610,10 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             AnimateDiffVideoToVideoControlNetPipeline,
             AnimateDiffVideoToVideoPipeline,
         )
+        from .anyflow import (
+            AnyFlowFARPipeline,
+            AnyFlowPipeline,
+        )
         from .audioldm2 import (
             AudioLDM2Pipeline,
             AudioLDM2ProjectionModel,
@@ -635,6 +653,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             Cosmos2_5_TransferPipeline,
             Cosmos2TextToImagePipeline,
             Cosmos2VideoToWorldPipeline,
+            Cosmos3OmniPipeline,
             CosmosTextToWorldPipeline,
             CosmosVideoToWorldPipeline,
         )
@@ -782,7 +801,14 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             LTXLatentUpsamplePipeline,
             LTXPipeline,
         )
-        from .ltx2 import LTX2ConditionPipeline, LTX2ImageToVideoPipeline, LTX2LatentUpsamplePipeline, LTX2Pipeline
+        from .ltx2 import (
+            LTX2ConditionPipeline,
+            LTX2HDRPipeline,
+            LTX2ImageToVideoPipeline,
+            LTX2InContextPipeline,
+            LTX2LatentUpsamplePipeline,
+            LTX2Pipeline,
+        )
         from .lucy import LucyEditPipeline
         from .lumina import LuminaPipeline, LuminaText2ImgPipeline
         from .lumina2 import Lumina2Pipeline, Lumina2Text2ImgPipeline
@@ -792,6 +818,11 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             MarigoldNormalsPipeline,
         )
         from .mochi import MochiPipeline
+        from .motif_video import (
+            MotifVideoImage2VideoPipeline,
+            MotifVideoPipeline,
+            MotifVideoPipelineOutput,
+        )
         from .nucleusmoe_image import NucleusMoEImagePipeline
         from .omnigen import OmniGenPipeline
         from .ovis_image import OvisImagePipeline
@@ -930,7 +961,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             from .consisid import ConsisIDPipeline
 
         try:
-            if not is_flax_available():
+            if not is_transformers_flax_compatible():
                 raise OptionalDependencyNotAvailable()
         except OptionalDependencyNotAvailable:
             from ..utils.dummy_flax_objects import *  # noqa F403
@@ -938,7 +969,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             from .pipeline_flax_utils import FlaxDiffusionPipeline
 
         try:
-            if not (is_flax_available() and is_transformers_available()):
+            if not is_transformers_flax_compatible():
                 raise OptionalDependencyNotAvailable()
         except OptionalDependencyNotAvailable:
             from ..utils.dummy_flax_and_transformers_objects import *

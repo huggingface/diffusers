@@ -22,6 +22,7 @@ from .utils import (
     is_torchao_available,
     is_torchsde_available,
     is_transformers_available,
+    is_transformers_flax_compatible,
     is_transformers_version,
 )
 
@@ -190,6 +191,9 @@ else:
         [
             "AceStepTransformer1DModel",
             "AllegroTransformer3DModel",
+            "AnimaTextConditioner",
+            "AnyFlowFARTransformer3DModel",
+            "AnyFlowTransformer3DModel",
             "AsymmetricAutoencoderKL",
             "AttentionBackendName",
             "AuraFlowTransformer2DModel",
@@ -232,6 +236,8 @@ else:
             "ControlNetModel",
             "ControlNetUnionModel",
             "ControlNetXSAdapter",
+            "Cosmos3AVAEAudioTokenizer",
+            "Cosmos3OmniTransformer",
             "CosmosControlNetModel",
             "CosmosTransformer3DModel",
             "DiTTransformer2DModel",
@@ -265,6 +271,7 @@ else:
             "LuminaNextDiT2DModel",
             "MochiTransformer3DModel",
             "ModelMixin",
+            "MotifVideoTransformer3DModel",
             "MotionAdapter",
             "MultiAdapter",
             "MultiControlNetModel",
@@ -338,6 +345,7 @@ else:
             "AudioPipelineOutput",
             "AutoPipelineForImage2Image",
             "AutoPipelineForInpainting",
+            "AutoPipelineForText2Audio",
             "AutoPipelineForText2Image",
             "ConsistencyModelPipeline",
             "DanceDiffusionPipeline",
@@ -378,6 +386,7 @@ else:
             "EDMEulerScheduler",
             "EulerAncestralDiscreteScheduler",
             "EulerDiscreteScheduler",
+            "FlowMapEulerDiscreteScheduler",
             "FlowMatchEulerDiscreteScheduler",
             "FlowMatchHeunDiscreteScheduler",
             "FlowMatchLCMScheduler",
@@ -444,6 +453,8 @@ except OptionalDependencyNotAvailable:
 else:
     _import_structure["modular_pipelines"].extend(
         [
+            "AnimaAutoBlocks",
+            "AnimaModularPipeline",
             "ErnieImageAutoBlocks",
             "ErnieImageModularPipeline",
             "Flux2AutoBlocks",
@@ -509,6 +520,8 @@ else:
             "AnimateDiffSparseControlNetPipeline",
             "AnimateDiffVideoToVideoControlNetPipeline",
             "AnimateDiffVideoToVideoPipeline",
+            "AnyFlowFARPipeline",
+            "AnyFlowPipeline",
             "AudioLDM2Pipeline",
             "AudioLDM2ProjectionModel",
             "AudioLDM2UNet2DConditionModel",
@@ -536,6 +549,7 @@ else:
             "Cosmos2_5_TransferPipeline",
             "Cosmos2TextToImagePipeline",
             "Cosmos2VideoToWorldPipeline",
+            "Cosmos3OmniPipeline",
             "CosmosTextToWorldPipeline",
             "CosmosVideoToWorldPipeline",
             "CycleDiffusionPipeline",
@@ -620,7 +634,9 @@ else:
             "LongCatImageEditPipeline",
             "LongCatImagePipeline",
             "LTX2ConditionPipeline",
+            "LTX2HDRPipeline",
             "LTX2ImageToVideoPipeline",
+            "LTX2InContextPipeline",
             "LTX2LatentUpsamplePipeline",
             "LTX2Pipeline",
             "LTXConditionPipeline",
@@ -637,6 +653,9 @@ else:
             "MarigoldIntrinsicsPipeline",
             "MarigoldNormalsPipeline",
             "MochiPipeline",
+            "MotifVideoImage2VideoPipeline",
+            "MotifVideoPipeline",
+            "MotifVideoPipelineOutput",
             "MusicLDMPipeline",
             "NucleusMoEImagePipeline",
             "OmniGenPipeline",
@@ -861,7 +880,6 @@ else:
     _import_structure["models.modeling_flax_utils"] = ["FlaxModelMixin"]
     _import_structure["models.unets.unet_2d_condition_flax"] = ["FlaxUNet2DConditionModel"]
     _import_structure["models.vae_flax"] = ["FlaxAutoencoderKL"]
-    _import_structure["pipelines"].extend(["FlaxDiffusionPipeline"])
     _import_structure["schedulers"].extend(
         [
             "FlaxDDIMScheduler",
@@ -878,7 +896,7 @@ else:
 
 
 try:
-    if not (is_flax_available() and is_transformers_available()):
+    if not (is_flax_available() and is_transformers_available() and is_transformers_flax_compatible()):
         raise OptionalDependencyNotAvailable()
 except OptionalDependencyNotAvailable:
     from .utils import dummy_flax_and_transformers_objects  # noqa F403
@@ -891,6 +909,7 @@ except OptionalDependencyNotAvailable:
 else:
     _import_structure["pipelines"].extend(
         [
+            "FlaxDiffusionPipeline",
             "FlaxStableDiffusionControlNetPipeline",
             "FlaxStableDiffusionImg2ImgPipeline",
             "FlaxStableDiffusionInpaintPipeline",
@@ -1012,6 +1031,9 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .models import (
             AceStepTransformer1DModel,
             AllegroTransformer3DModel,
+            AnimaTextConditioner,
+            AnyFlowFARTransformer3DModel,
+            AnyFlowTransformer3DModel,
             AsymmetricAutoencoderKL,
             AttentionBackendName,
             AuraFlowTransformer2DModel,
@@ -1054,6 +1076,8 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             ControlNetModel,
             ControlNetUnionModel,
             ControlNetXSAdapter,
+            Cosmos3AVAEAudioTokenizer,
+            Cosmos3OmniTransformer,
             CosmosControlNetModel,
             CosmosTransformer3DModel,
             DiTTransformer2DModel,
@@ -1087,6 +1111,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             LuminaNextDiT2DModel,
             MochiTransformer3DModel,
             ModelMixin,
+            MotifVideoTransformer3DModel,
             MotionAdapter,
             MultiAdapter,
             MultiControlNetModel,
@@ -1155,6 +1180,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             AudioPipelineOutput,
             AutoPipelineForImage2Image,
             AutoPipelineForInpainting,
+            AutoPipelineForText2Audio,
             AutoPipelineForText2Image,
             BlipDiffusionControlNetPipeline,
             BlipDiffusionPipeline,
@@ -1196,6 +1222,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             EDMEulerScheduler,
             EulerAncestralDiscreteScheduler,
             EulerDiscreteScheduler,
+            FlowMapEulerDiscreteScheduler,
             FlowMatchEulerDiscreteScheduler,
             FlowMatchHeunDiscreteScheduler,
             FlowMatchLCMScheduler,
@@ -1245,6 +1272,8 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .utils.dummy_torch_and_transformers_objects import *  # noqa F403
     else:
         from .modular_pipelines import (
+            AnimaAutoBlocks,
+            AnimaModularPipeline,
             ErnieImageAutoBlocks,
             ErnieImageModularPipeline,
             Flux2AutoBlocks,
@@ -1308,6 +1337,8 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             AnimateDiffSparseControlNetPipeline,
             AnimateDiffVideoToVideoControlNetPipeline,
             AnimateDiffVideoToVideoPipeline,
+            AnyFlowFARPipeline,
+            AnyFlowPipeline,
             AudioLDM2Pipeline,
             AudioLDM2ProjectionModel,
             AudioLDM2UNet2DConditionModel,
@@ -1333,6 +1364,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             Cosmos2_5_TransferPipeline,
             Cosmos2TextToImagePipeline,
             Cosmos2VideoToWorldPipeline,
+            Cosmos3OmniPipeline,
             CosmosTextToWorldPipeline,
             CosmosVideoToWorldPipeline,
             CycleDiffusionPipeline,
@@ -1417,7 +1449,9 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             LongCatImageEditPipeline,
             LongCatImagePipeline,
             LTX2ConditionPipeline,
+            LTX2HDRPipeline,
             LTX2ImageToVideoPipeline,
+            LTX2InContextPipeline,
             LTX2LatentUpsamplePipeline,
             LTX2Pipeline,
             LTXConditionPipeline,
@@ -1434,6 +1468,9 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             MarigoldIntrinsicsPipeline,
             MarigoldNormalsPipeline,
             MochiPipeline,
+            MotifVideoImage2VideoPipeline,
+            MotifVideoPipeline,
+            MotifVideoPipelineOutput,
             MusicLDMPipeline,
             NucleusMoEImagePipeline,
             OmniGenPipeline,
@@ -1620,7 +1657,6 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .models.modeling_flax_utils import FlaxModelMixin
         from .models.unets.unet_2d_condition_flax import FlaxUNet2DConditionModel
         from .models.vae_flax import FlaxAutoencoderKL
-        from .pipelines import FlaxDiffusionPipeline
         from .schedulers import (
             FlaxDDIMScheduler,
             FlaxDDPMScheduler,
@@ -1634,12 +1670,13 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         )
 
     try:
-        if not (is_flax_available() and is_transformers_available()):
+        if not (is_flax_available() and is_transformers_available() and is_transformers_flax_compatible()):
             raise OptionalDependencyNotAvailable()
     except OptionalDependencyNotAvailable:
         from .utils.dummy_flax_and_transformers_objects import *  # noqa F403
     else:
         from .pipelines import (
+            FlaxDiffusionPipeline,
             FlaxStableDiffusionControlNetPipeline,
             FlaxStableDiffusionImg2ImgPipeline,
             FlaxStableDiffusionInpaintPipeline,

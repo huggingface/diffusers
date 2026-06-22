@@ -263,6 +263,22 @@ def is_transformers_available():
     return _transformers_available
 
 
+def is_transformers_flax_compatible():
+    # Flax classes (e.g. FlaxCLIPTextModel, FlaxPreTrainedModel) were removed from
+    # transformers main on the path to its v5 release. Gate Flax pipeline registration
+    # on transformers still shipping them so `import diffusers` doesn't crash.
+    # Name avoids the `is_*_available()` pattern so utils/check_dummies.py keeps
+    # generating the `flax_and_transformers` backend group when this is combined with
+    # the legacy is_flax_available()/is_transformers_available() pair.
+    if not (_transformers_available and _flax_available):
+        return False
+    try:
+        import transformers
+    except ImportError:
+        return False
+    return hasattr(transformers, "FlaxPreTrainedModel")
+
+
 def is_inflect_available():
     return _inflect_available
 
@@ -590,7 +606,8 @@ NLTK_IMPORT_ERROR = """
 
 
 TORCH_NEURONX_IMPORT_ERROR = """
-{0} requires the torch_neuronx library (AWS Neuron SDK) but it was not found in your environment. Please install it following the AWS Neuron documentation: https://awsdocs-neuron.readthedocs-hosted.com/en/latest/
+{0} requires the torch_neuronx library (AWS Neuron SDK) but it was not found in your environment. Please install it
+following the AWS Neuron documentation: https://awsdocs-neuron.readthedocs-hosted.com/en/latest/
 """
 
 BACKENDS_MAPPING = OrderedDict(

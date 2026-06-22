@@ -1603,17 +1603,24 @@ def main(args):
             free_memory()
 
     # Scheduler and math around the number of training steps.
+    # Check the PR https://github.com/huggingface/diffusers/pull/8312 for detailed explanation.
     overrode_max_train_steps = False
-    num_update_steps_per_epoch = math.ceil(len(train_dataloader) / args.gradient_accumulation_steps)
+    num_warmup_steps_for_scheduler = args.lr_warmup_steps * accelerator.num_processes
     if args.max_train_steps is None:
-        args.max_train_steps = args.num_train_epochs * num_update_steps_per_epoch
+        len_train_dataloader_after_sharding = math.ceil(len(train_dataloader) / accelerator.num_processes)
+        num_update_steps_per_epoch = math.ceil(len_train_dataloader_after_sharding / args.gradient_accumulation_steps)
+        num_training_steps_for_scheduler = (
+            args.num_train_epochs * accelerator.num_processes * num_update_steps_per_epoch
+        )
         overrode_max_train_steps = True
+    else:
+        num_training_steps_for_scheduler = args.max_train_steps * accelerator.num_processes
 
     lr_scheduler = get_scheduler(
         args.lr_scheduler,
         optimizer=optimizer,
-        num_warmup_steps=args.lr_warmup_steps * accelerator.num_processes,
-        num_training_steps=args.max_train_steps * accelerator.num_processes,
+        num_warmup_steps=num_warmup_steps_for_scheduler,
+        num_training_steps=num_training_steps_for_scheduler,
         num_cycles=args.lr_num_cycles,
         power=args.lr_power,
     )
@@ -1817,10 +1824,11 @@ def main(args):
                     # Chunk the noise and model_pred into two parts and compute the loss on each part separately.
                     model_pred, model_pred_prior = torch.chunk(model_pred, 2, dim=0)
                     target, target_prior = torch.chunk(target, 2, dim=0)
+                    weighting, weighting_prior = torch.chunk(weighting, 2, dim=0)
 
                     # Compute prior loss
                     prior_loss = torch.mean(
-                        (weighting.float() * (model_pred_prior.float() - target_prior.float()) ** 2).reshape(
+                        (weighting_prior.float() * (model_pred_prior.float() - target_prior.float()) ** 2).reshape(
                             target_prior.shape[0], -1
                         ),
                         1,

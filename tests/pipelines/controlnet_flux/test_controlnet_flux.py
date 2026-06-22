@@ -143,7 +143,7 @@ class FluxControlNetPipelineFastTests(unittest.TestCase, PipelineTesterMixin, Fl
             (1, 3, 32, 32),
             generator=generator,
             device=torch.device(device),
-            dtype=torch.float16,
+            dtype=torch.float32,
         )
 
         controlnet_conditioning_scale = 0.5
@@ -163,7 +163,7 @@ class FluxControlNetPipelineFastTests(unittest.TestCase, PipelineTesterMixin, Fl
     def test_controlnet_flux(self):
         components = self.get_dummy_components()
         flux_pipe = FluxControlNetPipeline(**components)
-        flux_pipe = flux_pipe.to(torch_device, dtype=torch.float16)
+        flux_pipe = flux_pipe.to(torch_device, dtype=torch.float32)
         flux_pipe.set_progress_bar_config(disable=None)
 
         inputs = self.get_dummy_inputs(torch_device)
@@ -174,9 +174,7 @@ class FluxControlNetPipelineFastTests(unittest.TestCase, PipelineTesterMixin, Fl
 
         assert image.shape == (1, 32, 32, 3)
 
-        expected_slice = np.array(
-            [0.47387695, 0.63134766, 0.5605469, 0.61621094, 0.7207031, 0.7089844, 0.70410156, 0.6113281, 0.64160156]
-        )
+        expected_slice = np.array([0.6677, 0.6138, 0.5296, 0.6109, 0.5672, 0.6373, 0.5463, 0.6068, 0.5569])
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2, (
             f"Expected: {expected_slice}, got: {image_slice.flatten()}"

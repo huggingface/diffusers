@@ -38,6 +38,10 @@ Utility and helper functions for working with 🤗 Diffusers.
 
 [[autodoc]] utils.export_to_video
 
+## encode_video
+
+[[autodoc]] utils.encode_video
+
 ## make_image_grid
 
 [[autodoc]] utils.make_image_grid
