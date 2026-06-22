@@ -13,6 +13,7 @@ Linked from `AGENTS.md`, `skills/model-integration/SKILL.md`, and `review-rules.
 
 * Models use `ModelMixin` with `register_to_config` for config serialization. 
 * When adding a new transformer (or reviewing one), skim `src/diffusers/models/transformers/transformer_flux.py`, `src/diffusers/models/transformers/transformer_flux2.py`, `src/diffusers/models/transformers/transformer_qwenimage.py`, and `src/diffusers/models/transformers/transformer_wan.py` first to establish the pattern. Most conventions (mixin set, file structure, naming, gradient-checkpointing implementation, `_no_split_modules` settings, etc.) are easiest to internalize by comparison rather than from a fixed list.
+* **Loading goes through `from_pretrained` / `from_single_file`.** Weights and configs load through the standard paths — never fetched or imported out-of-band at runtime. Don't override or add a custom `from_pretrained`, and don't load weights manually (`load_file(...)`, `hf_hub_download(...)`, or `sys.path.insert(...)` to import a reference repo). For an original-format single checkpoint, add `from_single_file` support (mixin + weight-mapping).
 
 ## Attention pattern
 
