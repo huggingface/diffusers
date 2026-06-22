@@ -381,6 +381,12 @@ def _load_lora_into_text_encoder(
                 rank_key = f"{name}.lora_B.weight"
                 if rank_key in state_dict:
                     rank[rank_key] = state_dict[rank_key].shape[1]
+                else:
+                    # Handle transformers>=5 where CLIPTextModel was flattened and no longer
+                    # includes the `text_model.` wrapper prefix in named_modules().
+                    alt_rank_key = f"text_model.{name}.lora_B.weight"
+                    if alt_rank_key in state_dict:
+                        rank[alt_rank_key] = state_dict[alt_rank_key].shape[1]
 
         if network_alphas is not None:
             alpha_keys = [k for k in network_alphas.keys() if k.startswith(prefix) and k.split(".")[0] == prefix]
