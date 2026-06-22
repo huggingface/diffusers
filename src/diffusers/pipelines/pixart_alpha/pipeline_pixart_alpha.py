@@ -867,12 +867,8 @@ class PixArtAlphaPipeline(DiffusionPipeline):
             prompt_attention_mask = prompt_attention_mask.to(torch.int32)
 
         # 4. Prepare timesteps
-<<<<<<< HEAD
-        if XLA_AVAILABLE or is_torch_neuronx_available():
-=======
         is_neuron_device = device.type == "neuron"
         if XLA_AVAILABLE or is_neuron_device:
->>>>>>> main
             timestep_device = "cpu"
         else:
             timestep_device = device
