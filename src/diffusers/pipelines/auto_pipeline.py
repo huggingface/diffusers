@@ -77,6 +77,7 @@ from .kandinsky2_2 import (
     KandinskyV22Pipeline,
 )
 from .kandinsky3 import Kandinsky3Img2ImgPipeline, Kandinsky3Pipeline
+from .krea2 import Krea2Pipeline
 from .latent_consistency_models import LatentConsistencyModelImg2ImgPipeline, LatentConsistencyModelPipeline
 from .longcat_audio_dit import LongCatAudioDiTPipeline
 from .lumina import LuminaPipeline
@@ -177,6 +178,7 @@ AUTO_TEXT2IMAGE_PIPELINES_MAPPING = OrderedDict(
         ("flux2-klein", Flux2KleinPipeline),
         ("flux2", Flux2Pipeline),
         ("ideogram4", Ideogram4Pipeline),
+        ("krea2", Krea2Pipeline),
         ("lumina", LuminaPipeline),
         ("lumina2", Lumina2Pipeline),
         ("chroma", ChromaPipeline),
