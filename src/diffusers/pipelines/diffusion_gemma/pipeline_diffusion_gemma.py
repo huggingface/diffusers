@@ -218,6 +218,8 @@ class DiffusionGemmaPipeline(DiffusionPipeline):
         cache_implementation: str | None = None,
         eos_early_stop: bool = True,
         eos_token_id: int | None = None,
+        stability_threshold: int = 1,
+        confidence_threshold: float | None = None,
         generator: torch.Generator | None = None,
         output_type: str = "text",
         return_dict: bool = True,
@@ -259,6 +261,13 @@ class DiffusionGemmaPipeline(DiffusionPipeline):
                 Whether to stop generating further canvases once every sequence has emitted EOS.
             eos_token_id (`int`, *optional*):
                 EOS token ID for early stopping. Falls back to the processor's tokenizer.
+            stability_threshold (`int`, defaults to `1`):
+                Number of consecutive steps the argmax prediction must be unchanged for a block to count as stable.
+                Only used when `confidence_threshold` is set.
+            confidence_threshold (`float`, *optional*):
+                If set, leave a block's denoising loop early once every example is stable (see `stability_threshold`)
+                and the mean per-token entropy of the prediction is below this value. Speeds up generation at matched
+                quality; `None` runs all `num_inference_steps`.
             generator (`torch.Generator`, *optional*):
                 RNG for sampling.
             output_type (`str`, defaults to `"text"`):
@@ -344,6 +353,7 @@ class DiffusionGemmaPipeline(DiffusionPipeline):
             # Encode the tokens not yet in the cache (the whole prompt on the first block, the last committed canvas
             # afterwards), so the decoder reuses the encoder KV cache instead of re-encoding the full sequence.
             cached_len = past_key_values.get_seq_length()
+            torch.compiler.cudagraph_mark_step_begin()
             self.model.model.encoder(
                 input_ids=cur_input_ids[:, cached_len:],
                 attention_mask=cur_attention_mask,
@@ -353,14 +363,19 @@ class DiffusionGemmaPipeline(DiffusionPipeline):
                 **(multimodal_inputs if cached_len == 0 else {}),
             )
 
-            # Build the 4D decoder mask once per block (outside any compiled region). A static cache spans its full
-            # buffer; a dynamic cache spans only the populated length.
-            cache_buffer_len = max_cache_len if use_static_cache else cur_len
-            decoder_attention_mask = torch.zeros(
-                (batch_size, cache_buffer_len + canvas_length), dtype=torch.bool, device=device
-            )
-            decoder_attention_mask[:, :cur_len] = cur_attention_mask.bool()
-            decoder_attention_mask[:, -canvas_length:] = True
+            # Build the 4D decoder mask once per block (outside any compiled region). The canvas is always fully
+            # visible (padded with `True`). A static cache needs its full fixed-size buffer (unused slots masked out);
+            # a dynamic cache spans only the populated length, so the live attention mask is simply padded.
+            if use_static_cache:
+                decoder_attention_mask = torch.zeros(
+                    (batch_size, max_cache_len + canvas_length), dtype=torch.bool, device=device
+                )
+                decoder_attention_mask[:, :cur_len] = cur_attention_mask.bool()
+                decoder_attention_mask[:, -canvas_length:] = True
+            else:
+                decoder_attention_mask = torch.nn.functional.pad(
+                    cur_attention_mask.bool(), (0, canvas_length), value=True
+                )
             mask_mapping = self.model.model.decoder.create_diffusion_decoder_attention_mask(
                 config=text_config,
                 inputs_embeds=torch.empty((batch_size, canvas_length, 0), device=device),
@@ -371,15 +386,23 @@ class DiffusionGemmaPipeline(DiffusionPipeline):
             # Start from a fully random canvas and denoise it; the scheduler resets its committed state at step 0.
             canvas = torch.randint(0, self.vocab_size, (batch_size, canvas_length), device=device, generator=generator)
             self_conditioning_logits = None
+            # Adaptive stopping history: the last `stability_threshold` argmax predictions of this block's canvas.
+            argmax_history = torch.full(
+                (max(stability_threshold, 1), batch_size, canvas_length), -1, dtype=torch.long, device=device
+            )
 
             for step_idx in range(num_inference_steps):
+                # Mark a fresh step and clone the logits so a cudagraph-compiled decoder (`mode="reduce-overhead"`)
+                # does not overwrite the tensors that self-conditioning and the scheduler read next. Both are no-ops
+                # when the decoder is not cudagraph-compiled.
+                torch.compiler.cudagraph_mark_step_begin()
                 logits = self.model(
                     decoder_input_ids=canvas,
                     past_key_values=past_key_values,
                     self_conditioning_logits=self_conditioning_logits,
                     decoder_attention_mask=mask_mapping,
                     decoder_position_ids=decoder_position_ids,
-                ).logits
+                ).logits.clone()
                 self_conditioning_logits = logits
 
                 # Pass only the kwargs the chosen scheduler accepts, so any of the schedulers can drive the pipeline.
@@ -397,13 +420,14 @@ class DiffusionGemmaPipeline(DiffusionPipeline):
                 corrector_steps = getattr(self.scheduler.config, "corrector_steps", 0)
                 if corrector_steps and step_idx + 1 < num_inference_steps:
                     for _ in range(corrector_steps):
+                        torch.compiler.cudagraph_mark_step_begin()
                         corrector_logits = self.model(
                             decoder_input_ids=canvas,
                             past_key_values=past_key_values,
                             self_conditioning_logits=self_conditioning_logits,
                             decoder_attention_mask=mask_mapping,
                             decoder_position_ids=decoder_position_ids,
-                        ).logits
+                        ).logits.clone()
                         canvas = self.scheduler.step_correct(
                             model_output=corrector_logits, timestep=step_idx, sample=canvas, generator=generator
                         ).prev_sample
@@ -415,6 +439,19 @@ class DiffusionGemmaPipeline(DiffusionPipeline):
                     callback_outputs = callback_on_step_end(self, global_step, step_idx, callback_kwargs)
                     canvas = callback_outputs.pop("canvas", canvas)
                 global_step += 1
+
+                # Adaptive stopping: leave this block early once every example's argmax prediction is stable across
+                # `stability_threshold` steps and confident (mean per-token entropy below `confidence_threshold`).
+                if confidence_threshold is not None:
+                    argmax_canvas = logits.argmax(dim=-1)
+                    stable = (argmax_history == argmax_canvas[None]).all(dim=-1).all(dim=0)
+                    argmax_history = torch.roll(argmax_history, shifts=-1, dims=0)
+                    argmax_history[-1] = argmax_canvas
+                    confident = torch.distributions.Categorical(logits=logits.float()).entropy().mean(-1) < (
+                        confidence_threshold
+                    )
+                    if bool((stable & confident).all()):
+                        break
 
             # Append the denoised canvas and extend the context for the next block.
             cur_input_ids = torch.cat([cur_input_ids, canvas], dim=-1)

@@ -107,11 +107,23 @@ Adapters stay active and unmerged: DiffusionGemma ties the encoder and decoder b
 
 The pipeline prefills the encoder once per block into a reusable cache (a `DynamicCache` by default). Pass
 `cache_implementation="static"` to use a fixed-shape `StaticCache` instead, whose shapes let you `torch.compile` the
-decoder for a further speedup:
+decoder with cudagraphs for a further speedup (the pipeline marks each step and clones the logits so cudagraph memory
+is not overwritten):
 
 ```py
-pipe.model.model.decoder = torch.compile(pipe.model.model.decoder, fullgraph=True)
+pipe.model.model.decoder = torch.compile(pipe.model.model.decoder, mode="reduce-overhead", fullgraph=True)
 output = pipe(prompt="Why is the sky blue?", gen_length=256, cache_implementation="static")
+```
+
+## Adaptive stopping
+
+A block usually converges before all `num_inference_steps` are spent. Set `confidence_threshold` (and optionally
+`stability_threshold`) to leave a block's denoising loop early once every example's argmax prediction is stable for
+`stability_threshold` steps and the mean per-token entropy falls below `confidence_threshold`. This roughly halves the
+number of decoder forwards at matched quality, and is the largest single throughput lever:
+
+```py
+output = pipe(prompt="Why is the sky blue?", gen_length=256, confidence_threshold=0.005, stability_threshold=1)
 ```
 
 ## Callbacks
