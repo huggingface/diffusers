@@ -149,9 +149,7 @@ def retrieve_timesteps(
         if isinstance(scheduler, FlowMatchEulerDiscreteScheduler):
             # Boogu uses the official flow-match scheduler with a training-aligned
             # 0->1 sigma schedule; the adapter overwrites timesteps/sigmas to it.
-            timesteps, num_inference_steps = set_flow_match_timesteps(
-                scheduler, num_inference_steps, device=device
-            )
+            timesteps, num_inference_steps = set_flow_match_timesteps(scheduler, num_inference_steps, device=device)
         else:
             scheduler.set_timesteps(num_inference_steps, device=device, **kwargs)
             timesteps = scheduler.timesteps

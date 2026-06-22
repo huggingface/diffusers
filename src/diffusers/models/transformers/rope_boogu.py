@@ -150,9 +150,7 @@ class BooguImageDoubleStreamRotaryPosEmbed(nn.Module):
             H, W = img_sizes[i]
             H_tokens, W_tokens = H // p, W // p
             if H_tokens * W_tokens != l_effective_img_len[i]:
-                raise ValueError(
-                    f"Image token count mismatch: {H_tokens * W_tokens} != {l_effective_img_len[i]}."
-                )
+                raise ValueError(f"Image token count mismatch: {H_tokens * W_tokens} != {l_effective_img_len[i]}.")
 
             row_ids = (
                 torch.arange(H_tokens, dtype=torch.int32, device=device)
