@@ -1,6 +1,4 @@
-import gc
 import inspect
-import json
 import warnings
 from dataclasses import dataclass
 from pathlib import Path
@@ -30,12 +28,7 @@ from ...models.transformers import (
     BooguImageTransformer2DModel,
     PromptEmbedding,
 )
-from .flow_match_boogu import set_flow_match_timesteps
 from .image_processor import BooguImageProcessor
-from .instruct_reasoner_static_skills import (
-    InstructionReasonerStaticRewriteSkills,
-)
-from .lora_pipeline import BooguImageLoraLoaderMixin
 
 
 if is_torch_xla_available():
@@ -59,6 +52,46 @@ class FMPipelineOutput(BaseOutput):
     """
 
     images: Union[List[PIL.Image.Image], np.ndarray]
+
+
+def set_flow_match_timesteps(
+    scheduler: FlowMatchEulerDiscreteScheduler,
+    num_inference_steps: int,
+    device: str | torch.device | None = None,
+    seq_len: int | None = None,
+) -> tuple[torch.Tensor, int]:
+    """Set Boogu's training-aligned timesteps on the official flow-match scheduler.
+
+    Boogu trains with a static ``v1`` time shift and a sigma schedule that runs
+    ``0 -> 1``, feeding that sigma to the transformer as the timestep directly
+    (unlike the built-in scheduler, whose timesteps run ``1000 -> 0``). The shift
+    amount ``mu`` is a fixed function of ``seq_len`` (resolution-independent), and
+    the shift itself reuses the parent's exponential formula. This overwrites the
+    scheduler's ``timesteps`` / ``sigmas`` to that convention; ``step`` is the
+    official one and works unchanged on the resulting schedule.
+    """
+    if seq_len is None:
+        seq_len = scheduler.config.seq_len
+
+    # Static v1 shift: mu is a linear function of seq_len between (base_image_seq_len,
+    # base_shift) and (max_image_seq_len, max_shift).
+    slope = (scheduler.config.max_shift - scheduler.config.base_shift) / (
+        scheduler.config.max_image_seq_len - scheduler.config.base_image_seq_len
+    )
+    mu = scheduler.config.base_shift + slope * (seq_len - scheduler.config.base_image_seq_len)
+
+    t = np.linspace(0.0, 1.0, num_inference_steps + 1, dtype=np.float32)[:-1]
+    # Boogu v1 == 1 - exponential_shift(mu, 1, 1 - t); reuse the parent's formula.
+    t = (1.0 - scheduler._time_shift_exponential(mu, 1.0, 1.0 - torch.from_numpy(t))).numpy()
+
+    timesteps = torch.from_numpy(t).to(dtype=torch.float32, device=device)
+    scheduler.timesteps = timesteps  # 0-1 sigma, fed to the transformer as the timestep
+    scheduler.sigmas = torch.cat([timesteps, torch.ones(1, device=timesteps.device)])
+    scheduler.num_inference_steps = num_inference_steps
+    scheduler._step_index = None
+    scheduler._begin_index = None
+
+    return scheduler.timesteps, num_inference_steps
 
 
 # Adapted from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.retrieve_timesteps;
@@ -148,7 +181,7 @@ class MomentumRollingSum:
         torch.save(buffer, save_path)
 
 
-class BooguImagePipeline(DiffusionPipeline, BooguImageLoraLoaderMixin):
+class BooguImagePipeline(DiffusionPipeline):
     """
     Base pipeline for Boogu text-to-image and image-editing inference.
 
@@ -158,7 +191,7 @@ class BooguImagePipeline(DiffusionPipeline, BooguImageLoraLoaderMixin):
     the denoising process, the VAE maps between image space and latent space,
     and the scheduler defines the diffusion timesteps.
 
-    It also owns the runtime orchestration around prompt rewriting, classifier
+    It also owns the runtime orchestration around classifier
     guidance variants, boosted orthogonal guidance, LoRA loading, device
     placement, and optional CPU/group offload strategies.
 
@@ -197,12 +230,8 @@ class BooguImagePipeline(DiffusionPipeline, BooguImageLoraLoaderMixin):
         """
         # Defer setting pipeline attributes until after super().__init__,
         # to avoid accessing self.config before it's created by Diffusers base class.
-        _rewriter_processor = None
-        _text_rewriter_model = None
         if hasattr(mllm, "lm_head"):
-            _rewriter_processor = processor
-            _text_rewriter_model = mllm
-            # Reuse the instruction encoder model as text instruction rewriter; use its inner model as encoder.
+            # Use the inner model of the instruction encoder as the encoder backbone.
             mllm = mllm.model
 
         super().__init__()
@@ -217,8 +246,6 @@ class BooguImagePipeline(DiffusionPipeline, BooguImageLoraLoaderMixin):
         self.prompt_embedding = None
 
         # Now it is safe to set additional attributes
-        self.text_instruction_rewriter = _text_rewriter_model
-        self.instruction_rewriter_processor = _rewriter_processor if _rewriter_processor is not None else None
         self.vae_scale_factor = (
             2 ** (len(self.vae.config.block_out_channels) - 1) if hasattr(self, "vae") and self.vae is not None else 8
         )
@@ -240,59 +267,30 @@ class BooguImagePipeline(DiffusionPipeline, BooguImageLoraLoaderMixin):
         self.SYSTEM_PROMPT_4_TI2I = self.SYSTEM_PROMPT_4_TI2I_UNIFIED
         self.SYSTEM_PROMPT_4_I2I = self.SYSTEM_PROMPT_4_TI2I_UNIFIED
 
-        self.static_rewrite_skills = InstructionReasonerStaticRewriteSkills()
-        self.REWRITE_SYSTEM_PROMPT_ZH = self.static_rewrite_skills.get_default_rewrite_system_prompt(
-            task_type="image-generation", language="zh"
-        )
-        self.REWRITE_SYSTEM_PROMPT_EN = self.static_rewrite_skills.get_default_rewrite_system_prompt(
-            task_type="image-generation", language="en"
-        )
-        self.REWRITE_SYSTEM_PROMPT_4_EDIT_ZH = self.static_rewrite_skills.get_default_rewrite_system_prompt(
-            task_type="image-editing", language="zh"
-        )
-        self.REWRITE_SYSTEM_PROMPT_4_EDIT_EN = self.static_rewrite_skills.get_default_rewrite_system_prompt(
-            task_type="image-editing", language="en"
-        )
-
         self.user_set_pipe_device = None
-        self.user_set_rewriter_device = None
-        # self.execution_device = cpu
-        self.unload_rewriter_level = "destroy"
 
         self.enable_model_cpu_offload_flag = False
         self.enable_sequential_cpu_offload_flag = False
         self.enable_group_offload_flag = False
 
-        self.enable_inner_devices_manager = False
-
     def _validate_device_format(
         self,
         device: Literal[None, "cpu", "cuda", "cuda:x"] = "cpu",
-        rewriter_device: Literal[None, "cpu", "cuda", "cuda:x", "auto"] = "cpu",
     ):
         device = device.lower() if isinstance(device, str) else device
-        rewriter_device = rewriter_device.lower() if isinstance(rewriter_device, str) else rewriter_device
 
         device_validator = get_device_validator()
-        rewriter_device_validator = get_device_validator(["auto"])
 
-        dev_flag = device == device_validator(device)
-        rew_dev_flag = rewriter_device == rewriter_device_validator(rewriter_device)
-
-        return dev_flag, rew_dev_flag
+        return device == device_validator(device)
 
     def _check_device_strategy_validity(
         self,
         enable_model_cpu_offload_flag: bool = None,
         enable_sequential_cpu_offload_flag: bool = None,
         enable_group_offload_flag: bool = None,
-        rewriter_device: Literal[None, "cpu", "cuda", "cuda:x", "auto"] = None,
         device: Literal[None, "cpu", "cuda", "cuda:x"] = None,
-        use_rewrite_text_instruction: bool = False,
-        use_dashscope_remote_rewriting: bool = False,
-        dashscope_api_key: str = None,
     ):
-        self._validate_device_format(device, rewriter_device)
+        self._validate_device_format(device)
 
         enable_model_cpu_offload_flag = bool(enable_model_cpu_offload_flag)
         enable_sequential_cpu_offload_flag = bool(enable_sequential_cpu_offload_flag)
@@ -311,83 +309,23 @@ class BooguImagePipeline(DiffusionPipeline, BooguImageLoraLoaderMixin):
             f"enable_group_offload_flag={enable_group_offload_flag}."
         )
 
-        if use_dashscope_remote_rewriting:
-            assert dashscope_api_key is not None and "xxxxxxxxxxxxxxxxxxxxxxxxxx" not in str(dashscope_api_key), (
-                "When use_dashscope_remote_rewriting=True, dashscope_api_key must be a valid key and must not be "
-                "the placeholder value. "
-                f"Got dashscope_api_key={dashscope_api_key!r}."
-            )
-
-        share_rewriter_and_mllm = self._is_encoder_equals_reasoner()
-        has_any_offload_strategy = num_enabled_offload_flags > 0
-
-        if use_rewrite_text_instruction and has_any_offload_strategy:
-            assert (not share_rewriter_and_mllm) or use_dashscope_remote_rewriting, (
-                "Local prompt rewriting with a shared instruction encoder/rewriter is not compatible with pipeline "
-                "offload strategies. Please either set a custom local instruction rewriter via "
-                "`set_custom_local_instruction_rewriter_model(...)`, or enable remote rewriting with "
-                "`use_dashscope_remote_rewriting=True`. "
-                f"Got share_rewriter_and_mllm={share_rewriter_and_mllm}, "
-                f"use_dashscope_remote_rewriting={use_dashscope_remote_rewriting}, "
-                f"enable_model_cpu_offload_flag={enable_model_cpu_offload_flag}, "
-                f"enable_sequential_cpu_offload_flag={enable_sequential_cpu_offload_flag}, "
-                f"enable_group_offload_flag={enable_group_offload_flag}, "
-                f"device={device!r}, rewriter_device={rewriter_device!r}."
-            )
-
-        def _normalize_device_name(device_name):
-            if device_name is None:
-                return None
-            device_name = str(device_name).lower()
-            return "cuda:0" if device_name == "cuda" else device_name
-
-        if (
-            use_rewrite_text_instruction
-            and not has_any_offload_strategy
-            and not use_dashscope_remote_rewriting
-            and share_rewriter_and_mllm
-        ):
-            normalized_device = _normalize_device_name(device)
-            normalized_rewriter_device = _normalize_device_name(rewriter_device)
-            if (
-                normalized_device is not None
-                and normalized_rewriter_device is not None
-                and normalized_device != normalized_rewriter_device
-            ):
-                warnings.warn(
-                    "When local prompt rewriting reuses the instruction encoder as the rewriter, it is strongly "
-                    "recommended to keep device and rewriter_device the same. This avoids moving the shared MLLM "
-                    "between devices during rewriting. "
-                    f"Got device={device!r}, rewriter_device={rewriter_device!r}, "
-                    f"normalized_device={normalized_device!r}, "
-                    f"normalized_rewriter_device={normalized_rewriter_device!r}.",
-                    UserWarning,
-                )
-
     def devices_manager(
         self,
         instant_device_2_use: Literal[None, "cpu", "cuda", "cuda:x"] = None,
-        instant_rewriter_device: Literal[None, "cpu", "cuda", "cuda:x", "auto"] = None,
         user_set_pipe_device: Literal[None, "cpu", "cuda", "cuda:x"] = None,
-        user_set_rewriter_device: Literal[None, "cpu", "cuda", "cuda:x", "auto"] = None,
         execution_device: Literal[None, "cpu", "cuda", "cuda:x"] = None,
-        unload_rewriter_level: Literal["keep", "cpu", "destroy"] = "destroy",
         enable_model_cpu_offload_flag: bool = None,
         enable_sequential_cpu_offload_flag: bool = None,
         enable_group_offload_flag: bool = None,
     ):
 
-        self._validate_device_format(instant_device_2_use, instant_rewriter_device)
-        self._validate_device_format(user_set_pipe_device, user_set_rewriter_device)
+        self._validate_device_format(instant_device_2_use)
+        self._validate_device_format(user_set_pipe_device)
 
         if user_set_pipe_device:
             self.user_set_pipe_device = user_set_pipe_device
-        if user_set_rewriter_device:
-            self.user_set_rewriter_device = user_set_rewriter_device
         if execution_device:
             self.execution_device = execution_device
-        if unload_rewriter_level:
-            self.unload_rewriter_level = unload_rewriter_level
 
         if enable_model_cpu_offload_flag is not None:
             self.enable_model_cpu_offload_flag = enable_model_cpu_offload_flag
@@ -419,50 +357,6 @@ class BooguImagePipeline(DiffusionPipeline, BooguImageLoraLoaderMixin):
                     f"device move to `instant_device_2_use={instant_device_2_use!r}` will be ignored."
                 )
 
-        if instant_rewriter_device is not None:
-            if self.text_instruction_rewriter is not None:
-                current_rewriter_device = str(self.text_instruction_rewriter.device).lower()
-                if current_rewriter_device in {"meta", "auto"} and instant_rewriter_device == "auto":
-                    print(
-                        "[Device Manager Info]: The instruction rewriter is already managed by an auto/meta "
-                        f"device strategy, so no rewriter device move is needed. "
-                        f"current_rewriter_device={current_rewriter_device!r}, "
-                        f"instant_rewriter_device={instant_rewriter_device!r}."
-                    )
-                    instant_rewriter_device = None
-
-                elif current_rewriter_device in {"meta", "auto"} and instant_rewriter_device != "auto":
-                    warnings.warn(
-                        "[Device Manager Warning]: The instruction rewriter is currently managed by an auto/meta "
-                        "device strategy and cannot be moved to a specific device with `.to(...)`. "
-                        "The requested rewriter device move will be ignored. "
-                        f"current_rewriter_device={current_rewriter_device!r}, "
-                        f"instant_rewriter_device={instant_rewriter_device!r}.",
-                        UserWarning,
-                    )
-                    instant_rewriter_device = None
-
-                elif current_rewriter_device not in {"meta", "auto"} and instant_rewriter_device == "auto":
-                    warnings.warn(
-                        "[Device Manager Warning]: The instruction rewriter is currently on a concrete device and "
-                        "cannot be moved to `auto` after initialization. If multi-GPU auto placement is needed, "
-                        "load the custom local instruction rewriter with an auto device map at initialization time. "
-                        "The requested rewriter device move will be ignored. "
-                        f"current_rewriter_device={current_rewriter_device!r}, "
-                        f"instant_rewriter_device={instant_rewriter_device!r}.",
-                        UserWarning,
-                    )
-                    instant_rewriter_device = None
-                else:
-                    print(
-                        "[Device Manager Info]: Moving the instruction rewriter to the requested device. "
-                        f"current_rewriter_device={current_rewriter_device!r}, "
-                        f"target_rewriter_device={instant_rewriter_device!r}."
-                    )
-
-                if instant_rewriter_device is not None:
-                    self.text_instruction_rewriter.to(instant_rewriter_device)
-
     def set_mllm(self, mllm, device=None):
         """mllm's setter"""
         if hasattr(mllm, "lm_head"):
@@ -483,34 +377,8 @@ class BooguImagePipeline(DiffusionPipeline, BooguImageLoraLoaderMixin):
         # self._internal_dict["mllm"] = (library_name, class_name)
         ##########################################################
 
-        share_rewriter_and_mllm = self._is_encoder_equals_reasoner()
         # Re-register the module so both the instance attribute and pipeline config stay in sync.
         self.register_modules(mllm=my_new_mllm)
-
-        if share_rewriter_and_mllm:
-            if hasattr(mllm, "lm_head"):
-                self.text_instruction_rewriter = mllm
-                warnings.warn(
-                    "[Setter Warning]: `set_mllm(...)` is being called while the instruction rewriter and encoder "
-                    "MLLM are shared. Replacing the encoder MLLM will also replace `self.text_instruction_rewriter` "
-                    "with the provided generation-capable MLLM. However, `self.instruction_rewriter_processor` is "
-                    "not updated by `set_mllm(...)`; please call `self.set_instruction_rewriter_processor(...)` "
-                    "explicitly to set the processor that matches the new rewriter.",
-                    UserWarning,
-                )
-            else:
-                self.text_instruction_rewriter = None
-                warnings.warn(
-                    "[Setter Warning]: `set_mllm(...)` is being called while the instruction rewriter and encoder "
-                    "MLLM are shared, so the pipeline tried to update the local rewriter together with the encoder. "
-                    "The provided MLLM is an inner model without `lm_head`/generation capability, so it cannot be "
-                    "used as a local instruction rewriter and `self.text_instruction_rewriter` has been set to None. "
-                    "If local rewriting is still needed, explicitly call "
-                    "`self.set_custom_local_instruction_rewriter_model(...)` and "
-                    "`self.set_instruction_rewriter_processor(...)` with a generation-capable rewriter and its "
-                    "matching processor.",
-                    UserWarning,
-                )
 
         if (
             self.enable_model_cpu_offload_flag
@@ -520,15 +388,14 @@ class BooguImagePipeline(DiffusionPipeline, BooguImageLoraLoaderMixin):
         ):
             warnings.warn(
                 "[Setter Warning]: `set_mllm(...)` is being called after this pipeline may have enabled "
-                "device/offload hooks. Re-registering `mllm` at this point can leave old Accelerate/Diffusers hooks, "
-                "CPU/GPU offload state, or shared rewriter references attached to the previous module. Prefer calling "
+                "device/offload hooks. Re-registering `mllm` at this point can leave old Accelerate/Diffusers hooks "
+                "or CPU/GPU offload state attached to the previous module. Prefer calling "
                 "`set_mllm(...)` immediately after `from_pretrained(...)` and before enabling model CPU offload, "
                 "sequential CPU offload, group offload, or running inference. If replacing `mllm` after hooks were "
                 "installed, remove/recreate the hooks or rebuild the pipeline to avoid stale device state. "
                 f"enable_model_cpu_offload_flag={self.enable_model_cpu_offload_flag}, "
                 f"enable_sequential_cpu_offload_flag={self.enable_sequential_cpu_offload_flag}, "
-                f"enable_group_offload_flag={self.enable_group_offload_flag}, "
-                f"share_rewriter_and_mllm={share_rewriter_and_mllm}.",
+                f"enable_group_offload_flag={self.enable_group_offload_flag}.",
                 UserWarning,
             )
 
@@ -541,41 +408,14 @@ class BooguImagePipeline(DiffusionPipeline, BooguImageLoraLoaderMixin):
         )
 
         if device is not None:
-            if (
-                share_rewriter_and_mllm
-                and hasattr(self, "text_instruction_rewriter")
-                and self.text_instruction_rewriter is not None
-            ):
-                self.text_instruction_rewriter.to(device)
             self.mllm.to(device)
 
     def set_processor(self, processor):
         """processor's setter"""
         assert processor is not None, "`processor` must not be None."
 
-        share_rewriter_and_base_processor = getattr(self, "instruction_rewriter_processor", None) is getattr(
-            self, "processor", None
-        )
-
         # Re-register the processor so both the instance attribute and pipeline config stay in sync.
         self.register_modules(processor=processor)
-
-        if share_rewriter_and_base_processor:
-            self.instruction_rewriter_processor = processor
-            warnings.warn(
-                "[Setter Warning]: `set_processor(...)` is being called while the instruction rewriter processor "
-                "and the base MLLM processor are shared. Replacing the base processor will also replace "
-                "`self.instruction_rewriter_processor`. This is expected for the default shared rewriter setup.",
-                UserWarning,
-            )
-        else:
-            warnings.warn(
-                "[Setter Warning]: `set_processor(...)` only updates the registered base MLLM processor. "
-                "`self.instruction_rewriter_processor` is not shared with `self.processor` and has not been "
-                "updated. If the local instruction rewriter also needs a new processor, please call "
-                "`self.set_instruction_rewriter_processor(...)` explicitly.",
-                UserWarning,
-            )
 
     def set_scheduler(self, scheduler):
         """scheduler's setter"""
@@ -610,38 +450,6 @@ class BooguImagePipeline(DiffusionPipeline, BooguImageLoraLoaderMixin):
             self.transformer.to(device)
             print(f"[Setter Info]: `self.transformer` has been moved to the requested device. device={device!r}.")
 
-    def set_custom_local_instruction_rewriter_model(self, custom_local_instruction_rewriter_model, device=None):
-        assert (
-            hasattr(custom_local_instruction_rewriter_model, "lm_head")
-            and hasattr(custom_local_instruction_rewriter_model, "generate")
-            and callable(getattr(custom_local_instruction_rewriter_model, "generate"))
-        ), "`custom_local_instruction_rewriter_model` must be a model for generation."
-
-        self.text_instruction_rewriter = custom_local_instruction_rewriter_model
-        if device is not None:
-            self.text_instruction_rewriter.to(device)
-
-        # The rewriter processor is model-specific and must be updated separately.
-        warnings.warn(
-            "[Setter Warning]: `set_custom_local_instruction_rewriter_model(...)` updated the local instruction "
-            "rewriter model, but it does not update `self.instruction_rewriter_processor`. Please call "
-            "`self.set_instruction_rewriter_processor(...)` with the processor that matches this rewriter. "
-            "A mismatched rewriter processor can produce incorrect tokenization, chat templates, image "
-            "preprocessing, or generation special-token IDs.",
-            UserWarning,
-        )
-
-    def set_instruction_rewriter_processor(self, instruction_rewriter_processor):
-        """Set the processor used by the local instruction rewriter."""
-        assert instruction_rewriter_processor is not None, "`instruction_rewriter_processor` must not be None."
-
-        # Processors are CPU-side tokenization/template/image-preprocessing objects, not device modules.
-        self.instruction_rewriter_processor = instruction_rewriter_processor
-        print(
-            "[Setter Info]: `self.instruction_rewriter_processor` has been updated. "
-            "Please make sure it matches `self.text_instruction_rewriter`."
-        )
-
     def set_prompt_embedding(self, prompt_embedding=None, device=None):
         """Set or clear the prompt-tuning embedding module."""
         if prompt_embedding is None:
@@ -674,115 +482,6 @@ class BooguImagePipeline(DiffusionPipeline, BooguImageLoraLoaderMixin):
         if device is not None:
             self.prompt_embedding.to(device)
             print(f"[Setter Info]: `self.prompt_embedding` has been moved to the requested device. device={device!r}.")
-
-    def set_rewrite_system_prompts_for_step(
-        self, step: int, rewrite_system_prompts_list: List[Dict[Tuple[str, str], str]]
-    ):
-        assert isinstance(rewrite_system_prompts_list, list) and len(rewrite_system_prompts_list) > 0, (
-            "`rewrite_system_prompts_list` should be a list and not empty."
-        )
-        assert step >= 0 and step < len(rewrite_system_prompts_list), (
-            f"`step` should be an integer between 0 and {len(rewrite_system_prompts_list) - 1}."
-        )
-
-        self.REWRITE_SYSTEM_PROMPT_ZH = rewrite_system_prompts_list[step][("zh", "image-generation")]
-        self.REWRITE_SYSTEM_PROMPT_EN = rewrite_system_prompts_list[step][("en", "image-generation")]
-        self.REWRITE_SYSTEM_PROMPT_4_EDIT_ZH = rewrite_system_prompts_list[step][("zh", "image-editing")]
-        self.REWRITE_SYSTEM_PROMPT_4_EDIT_EN = rewrite_system_prompts_list[step][("en", "image-editing")]
-
-    def _is_encoder_equals_reasoner(self):
-        def _collect_candidates(obj):
-            candidates = []
-            if obj is not None:
-                candidates.append(obj)
-                model_obj = getattr(obj, "model", None)
-                if model_obj is not None:
-                    candidates.append(model_obj)
-            return candidates
-
-        rewriter_candidates = _collect_candidates(getattr(self, "text_instruction_rewriter", None))
-        mllm_candidates = _collect_candidates(getattr(self, "mllm", None))
-
-        return any(rw_obj is mm_obj for rw_obj in rewriter_candidates for mm_obj in mllm_candidates)
-
-    def unload_instruction_rewriter_resources(self):
-        """
-        Unload optional instruction rewriter model/processor references.
-
-        Safety rules:
-        1) If `text_instruction_rewriter` (or its `.model`) points to the same
-           object as `mllm` (or its `.model`), do not unload the rewriter model.
-        2) If `instruction_rewriter_processor` is the same object as `processor`,
-           do not unload the rewriter processor.
-        """
-        return_flags = ("keep", "keep")
-
-        share_rewriter_and_mllm = self._is_encoder_equals_reasoner()
-
-        # For the instruction reasoner, i.e., the rewriter
-        if not share_rewriter_and_mllm:
-            # self.text_instruction_rewriter.to('cpu')
-            if getattr(self, "text_instruction_rewriter", None) is not None:
-                if self.unload_rewriter_level == "destroy":
-                    for p in self.text_instruction_rewriter.parameters():
-                        p.data = torch.tensor([])
-                    for b in self.text_instruction_rewriter.buffers():
-                        b.data = torch.tensor([])
-
-                    # 2. Try to remove hooks attached by Accelerate (defensive programming).
-                    try:
-                        from accelerate.hooks import remove_hook_from_module
-
-                        remove_hook_from_module(self.text_instruction_rewriter, recurse=True)
-                    except Exception:
-                        pass
-
-                    # 3. Delete the object reference.
-                    del self.text_instruction_rewriter
-                    self.text_instruction_rewriter = None
-                    return_flags = ("destroy", return_flags[1])
-
-                elif self.unload_rewriter_level == "cpu":
-                    if self.user_set_rewriter_device == "auto":
-                        warnings.warn(
-                            ">>> Warning: When `user_set_rewriter_device=auto`, you cannot offload the instruction reasoner (rewriter) to cpu."
-                        )
-                        return_flags = ("keep", return_flags[1])
-                    else:
-                        self.text_instruction_rewriter.to("cpu")
-                        return_flags = ("cpu", return_flags[1])
-                else:
-                    return_flags = ("keep", return_flags[1])
-
-            gc.collect()
-            if torch.cuda.is_available():
-                torch.cuda.empty_cache()
-        else:
-            if getattr(self, "text_instruction_rewriter", None) is not None:
-                self.text_instruction_rewriter.to(self.user_set_pipe_device)
-                if self.user_set_pipe_device:
-                    if "cpu" in self.user_set_pipe_device:
-                        return_flags = ("cpu", return_flags[1])
-                    else:
-                        return_flags = ("keep", return_flags[1])
-
-        rewriter_processor = getattr(self, "instruction_rewriter_processor", None)
-        base_processor = getattr(self, "processor", None)
-
-        # For the the rewriter's processor
-        if rewriter_processor is not base_processor:
-            if self.unload_rewriter_level == "destroy":
-                del self.instruction_rewriter_processor
-                self.instruction_rewriter_processor = None
-                return_flags = (return_flags[0], "destroy")
-            else:
-                return_flags = (return_flags[0], "keep")
-
-        gc.collect()
-        if torch.cuda.is_available():
-            torch.cuda.empty_cache()
-
-        return return_flags
 
     def prepare_latents(
         self,
@@ -1489,85 +1188,6 @@ class BooguImagePipeline(DiffusionPipeline, BooguImageLoraLoaderMixin):
             ]
         return prompt
 
-    def _apply_edit_instruct_rewrite_template(
-        self,
-        system_prompt: str,
-        instruction: str,
-        input_images: List[Union[PIL.Image.Image, str]],
-        language: str = "en",
-    ):
-        """
-        Format the instruction with the system prompt.
-        `input_images` could be List[str] or List[PIL.Image.Image]. `List[str]` means a list of paths to the images.
-        """
-
-        if language.lower() == "en":
-            user_text_content = [{"type": "text", "text": f"{instruction}\n\nRewritten Prompt:"}]
-            system_role = {
-                "role": "system",
-                "content": [{"type": "text", "text": system_prompt}],
-            }
-            images_content = [{"type": "image", "image": img} for img in input_images]
-            prompt = [
-                system_role,
-                {"role": "user", "content": images_content + user_text_content},
-            ]
-        else:
-            user_text_content = [{"type": "text", "text": f"{instruction}\n\n重写的图片编辑提示指令："}]
-            system_role = {
-                "role": "system",
-                "content": [{"type": "text", "text": system_prompt}],
-            }
-            images_content = [{"type": "image", "image": img} for img in input_images]
-            prompt = [
-                system_role,
-                {"role": "user", "content": images_content + user_text_content},
-            ]
-
-        return prompt
-
-    def _apply_text_instruct_rewrite_template(
-        self,
-        system_prompt: str,
-        instruction: str,
-        return_str: bool = True,
-        tokenize: bool = False,
-        add_generation_prompt: bool = True,
-        language: str = "en",
-    ):
-        """
-        Format the instruction with the system prompt.
-        If `return_str` is True, it will call `self.instruction_rewriter_processor.tokenizer.apply_chat_template` and return a str.
-
-        """
-        if language.lower() == "en":
-            user_text_content = [
-                {
-                    "type": "text",
-                    "text": f"{instruction}\n\nProvide the rewritten and polished instruction directly:",
-                }
-            ]
-            system_role = {
-                "role": "system",
-                "content": [{"type": "text", "text": system_prompt}],
-            }
-            prompt = [system_role, {"role": "user", "content": user_text_content}]
-        else:
-            user_text_content = [{"type": "text", "text": f"{instruction}\n\n请直接给出改写后的内容："}]
-            system_role = {
-                "role": "system",
-                "content": [{"type": "text", "text": system_prompt}],
-            }
-            prompt = [system_role, {"role": "user", "content": user_text_content}]
-
-        if return_str:
-            return self.instruction_rewriter_processor.tokenizer.apply_chat_template(
-                prompt, tokenize=tokenize, add_generation_prompt=add_generation_prompt
-            )
-            # return self.instruction_rewriter_processor.apply_chat_template(prompt, tokenize=tokenize, add_generation_prompt=add_generation_prompt, return_tensors=return_tensors, return_dict=return_dict) ## Not in use now;
-        else:
-            return prompt
-
     def _reshape_embeds_and_mask(self, embeds, mask, num_images_per_instruction):
         """
         To duplicate text embeddings and attention mask for each generation per instruction, using mps friendly method
@@ -1607,468 +1227,6 @@ class BooguImagePipeline(DiffusionPipeline, BooguImageLoraLoaderMixin):
 
         return max_pixels
 
-    def _get_txt_language(self, text):
-        ranges = [
-            ("\u4e00", "\u9fff"),  # CJK Unified Ideographs
-            # ('\u3400', '\u4dbf'),  # CJK Unified Ideographs Extension A
-            # ('\u20000', '\u2a6df'), # CJK Unified Ideographs Extension B
-        ]
-        for char in text:
-            if any(start <= char <= end for start, end in ranges):
-                return "zh"
-        return "en"
-
-    def _get_polish_text_system_prompts(
-        self,
-        ori_text: Union[str, List[str]],
-        return_template_as_str: bool = True,
-        use_magic_prompt: bool = False,
-    ) -> Tuple[List[str], List[str]]:
-        """
-        Get system text prompts for rewriting text instructions.
-        Returns a tuple of lists: (rewrite_text_prompts, magic_prompts)
-        """
-        rewrite_text_prompts = []
-        magic_prompts = []
-
-        if not isinstance(ori_text, (list, tuple)):
-            ori_text = [ori_text]
-
-        for text in ori_text:
-            text = text.strip()
-            txt_lang = self._get_txt_language(text)
-            if txt_lang == "zh":
-                rewrite_text_prompts.append(
-                    self._apply_text_instruct_rewrite_template(
-                        system_prompt=self.REWRITE_SYSTEM_PROMPT_ZH,
-                        instruction=text,
-                        return_str=return_template_as_str,
-                        language=txt_lang,
-                    )
-                )
-                if use_magic_prompt:
-                    magic_prompts.append(" 超清，4K，电影级构图")
-                else:
-                    magic_prompts.append("")
-            else:
-                rewrite_text_prompts.append(
-                    self._apply_text_instruct_rewrite_template(
-                        system_prompt=self.REWRITE_SYSTEM_PROMPT_EN,
-                        instruction=text,
-                        return_str=return_template_as_str,
-                        language=txt_lang,
-                    )
-                )
-                if use_magic_prompt:
-                    magic_prompts.append(" Ultra HD, 4K, cinematic composition")
-                else:
-                    magic_prompts.append("")
-
-        return rewrite_text_prompts, magic_prompts
-
-    def _get_polish_text_image_system_prompts(
-        self,
-        ori_text: Union[str, List[str]],
-        input_images: Union[List[Union[PIL.Image.Image, str]], List[List[Union[PIL.Image.Image, str]]]] = None,
-        use_magic_prompt: bool = False,
-    ) -> List[List[str]]:
-
-        rewrite_prompts = []
-        magic_prompts = []
-
-        if not isinstance(ori_text, (list, tuple)):
-            ori_text = [ori_text]
-
-        assert isinstance(input_images, (list, tuple)) and len(input_images) > 0, (
-            f"For image-editing tasks, input images must be provided but got `input_images={input_images}`."
-        )
-        if not all(isinstance(x, (list, tuple, type(None))) for x in input_images):
-            # If the contents of `input_images` are not lists or tuples (normally they are PIL.Image.Image or str), it means batch_size=1,
-            # and we use a list to wrap it.
-            # assert isinstance(input_images[0], (PIL.Image.Image, str)), f"For image-editing tasks, input images must be a list or tuple of PIL.Image.Image or str (paths to the images) but got `input_images={input_images}`."
-            assert all(isinstance(x, (PIL.Image.Image, str)) for x in input_images), (
-                f"For image-editing tasks, input images must be a list or tuple of lists or tuples of PIL.Image.Image or str (paths to the images) but got `input_images={input_images}`."
-            )
-            input_images = [input_images]
-
-        assert len(input_images) == len(ori_text), (
-            f"The length of `input_images` must be the same as that of `ori_text` (i.e., the batch size) but got `input_images={input_images}` and `ori_text={ori_text}`."
-        )
-        for i, text in enumerate(ori_text):
-            txt_lang = self._get_txt_language(text)
-            if input_images[i]:
-                if txt_lang == "zh":
-                    system_prompt = self.REWRITE_SYSTEM_PROMPT_4_EDIT_ZH
-                else:
-                    system_prompt = self.REWRITE_SYSTEM_PROMPT_4_EDIT_EN
-
-                rewrite_prompts.append(
-                    self._apply_edit_instruct_rewrite_template(system_prompt, text, input_images[i], language=txt_lang)
-                )
-                magic_prompts.append("")
-            else:
-                if txt_lang == "zh":
-                    system_prompt = self.REWRITE_SYSTEM_PROMPT_ZH
-                    if use_magic_prompt:
-                        magic_prompts.append(" 超清，4K，电影级构图")
-                    else:
-                        magic_prompts.append("")
-                else:
-                    system_prompt = self.REWRITE_SYSTEM_PROMPT_EN
-                    if use_magic_prompt:
-                        magic_prompts.append(" Ultra HD, 4K, cinematic composition")
-                    else:
-                        magic_prompts.append("")
-
-                rewrite_prompts.append(
-                    self._apply_text_instruct_rewrite_template(
-                        system_prompt=system_prompt,
-                        instruction=text,
-                        return_str=False,
-                        language=txt_lang,
-                    )
-                )
-
-        return rewrite_prompts, magic_prompts
-
-    def _polish_text_instructions(
-        self,
-        ori_text: Union[str, List[str]],
-        rewriter_max_new_tokens: int = 256,
-        do_sample_for_local_rewriter: bool = True,
-    ) -> List[str]:
-        """
-        Rewrite input text instructions using self.text_instruction_rewriter.
-        Supports batch inputs (list[str]). Returns a list[str] where each element is
-        the polished prompt concatenated with its corresponding magic prompt.
-        """
-        # Fallback when no rewriter is provided
-        if self.text_instruction_rewriter is None:
-            texts = ori_text if isinstance(ori_text, (list, tuple)) else [ori_text]
-            # Build magic prompts aligned with helper (language-aware)
-            _, magic_prompts = self._get_polish_text_system_prompts(texts, return_template_as_str=True)
-            results = []
-            for i, t in enumerate(texts):
-                magic = magic_prompts[i] if i < len(magic_prompts) else ""
-                combined = f"{t.strip()} {magic}".strip()
-                results.append(combined if combined else t)
-            return results if len(results) > 0 else [""]
-
-        # Build rewrite prompts and magic prompts
-        rewrite_text_prompts, magic_prompts = self._get_polish_text_system_prompts(
-            ori_text, return_template_as_str=True
-        )
-        device = next(self.text_instruction_rewriter.parameters()).device
-
-        # Tokenize prompts
-        text_inputs = self.instruction_rewriter_processor.tokenizer(
-            rewrite_text_prompts,
-            padding="longest",
-            padding_side="left",
-            truncation=False,
-            return_tensors="pt",
-        )
-
-        text_inputs = {k: v.to(device) for k, v in text_inputs.items()}
-
-        # Prepare generation kwargs
-        gen_kwargs = {
-            "max_new_tokens": rewriter_max_new_tokens,
-            "return_dict_in_generate": True,
-            "output_hidden_states": False,
-            "do_sample": do_sample_for_local_rewriter,
-        }
-        # Ensure eos/pad ids are available
-        if (
-            hasattr(self.instruction_rewriter_processor.tokenizer, "eos_token_id")
-            and self.instruction_rewriter_processor.tokenizer.eos_token_id is not None
-        ):
-            gen_kwargs["eos_token_id"] = self.instruction_rewriter_processor.tokenizer.eos_token_id
-        if (
-            hasattr(self.instruction_rewriter_processor.tokenizer, "pad_token_id")
-            and self.instruction_rewriter_processor.tokenizer.pad_token_id is not None
-        ):
-            gen_kwargs["pad_token_id"] = self.instruction_rewriter_processor.tokenizer.pad_token_id
-
-        generated = self.text_instruction_rewriter.generate(**text_inputs, **gen_kwargs)
-
-        # Extract only newly generated tokens per sample
-        sequences = generated.sequences  # [B, L_total] including prompt
-        input_ids = text_inputs["input_ids"]
-        # input_ids = text_inputs[0]["input_ids"]
-        pad_id = (
-            self.instruction_rewriter_processor.tokenizer.pad_token_id
-            if hasattr(self.instruction_rewriter_processor.tokenizer, "pad_token_id")
-            else 0
-        )
-        input_lengths = (input_ids != pad_id).sum(dim=1)  # [B]
-
-        polished_list: List[str] = []
-        for i in range(sequences.size(0)):
-            start = int(input_lengths[i].item())
-            new_tokens = sequences[i, start:]
-            text = self.instruction_rewriter_processor.tokenizer.decode(new_tokens, skip_special_tokens=True)
-            text = text.strip()
-            # Fallback if empty
-            if not text:
-                # If generation failed to add content, decode full and strip prompt
-                full = self.instruction_rewriter_processor.tokenizer.decode(
-                    sequences[i], skip_special_tokens=True
-                ).strip()
-                text = full if full else ""
-            magic = magic_prompts[i] if i < len(magic_prompts) else ""
-            combined = f"{text} {magic}".strip() if text or magic else text
-            polished_list.append(combined if combined else magic)
-
-        return polished_list if len(polished_list) > 0 else ori_text
-
-    def _polish_text_image_instructions(
-        self,
-        ori_text: Union[str, List[str]],
-        input_images: Optional[List[List[PIL.Image.Image]]] = None,
-        rewriter_max_new_tokens: int = 256,
-        do_sample_for_local_rewriter: bool = True,
-    ) -> List[str]:
-        """
-        Rewrite input text instructions with input images using self.text_instruction_rewriter.
-        Supports batch inputs (list[str]). Returns a list[str] where each element is
-        the polished rewritten instruction text.
-        """
-
-        # Fallback when no rewriter is provided
-        if self.text_instruction_rewriter is None:
-            texts = ori_text if isinstance(ori_text, (list, tuple)) else [ori_text]
-            return [t if isinstance(t, str) else "" for t in texts]
-
-        # Build rewrite prompts with images
-        rewrite_prompts, magic_prompts = self._get_polish_text_image_system_prompts(ori_text, input_images)
-
-        # Tokenize prompts for VLM (includes images)
-        vlm_inputs = self.instruction_rewriter_processor.apply_chat_template(
-            rewrite_prompts,
-            padding="longest",
-            truncation=False,
-            padding_side="left",
-            return_tensors="pt",
-            tokenize=True,
-            return_dict=True,
-            add_generation_prompt=True,
-            # max_length=1024,
-        )
-
-        device = next(self.text_instruction_rewriter.parameters()).device
-        for k in vlm_inputs.keys():
-            if isinstance(vlm_inputs[k], torch.Tensor):
-                vlm_inputs[k] = vlm_inputs[k].to(device)
-
-        # Prepare generation kwargs
-        gen_kwargs = {
-            "max_new_tokens": rewriter_max_new_tokens,
-            "return_dict_in_generate": True,
-            "output_hidden_states": False,
-            "do_sample": do_sample_for_local_rewriter,
-        }
-        if (
-            hasattr(self.instruction_rewriter_processor.tokenizer, "eos_token_id")
-            and self.instruction_rewriter_processor.tokenizer.eos_token_id is not None
-        ):
-            gen_kwargs["eos_token_id"] = self.instruction_rewriter_processor.tokenizer.eos_token_id
-        if (
-            hasattr(self.instruction_rewriter_processor.tokenizer, "pad_token_id")
-            and self.instruction_rewriter_processor.tokenizer.pad_token_id is not None
-        ):
-            gen_kwargs["pad_token_id"] = self.instruction_rewriter_processor.tokenizer.pad_token_id
-
-        generated = self.text_instruction_rewriter.generate(**vlm_inputs, **gen_kwargs)
-
-        # Extract only newly generated tokens per sample
-        sequences = generated.sequences  # [B, L_total]
-        input_ids = vlm_inputs["input_ids"]
-        (
-            self.instruction_rewriter_processor.tokenizer.pad_token_id
-            if hasattr(self.instruction_rewriter_processor.tokenizer, "pad_token_id")
-            else 0
-        )
-
-        input_lengths = torch.tensor([input_ids.shape[-1]] * input_ids.shape[0]).int()  # [B]
-
-        rewritten_list: List[str] = []
-        for i in range(sequences.size(0)):
-            start = int(input_lengths[i].item())
-            new_tokens = sequences[i, start:]
-            text = self.instruction_rewriter_processor.tokenizer.decode(new_tokens, skip_special_tokens=True).strip()
-            if not text:
-                full = self.instruction_rewriter_processor.tokenizer.decode(
-                    sequences[i], skip_special_tokens=True
-                ).strip()
-                text = full if full else ""
-
-            if magic_prompts[i]:
-                text = text + magic_prompts[i]
-
-            rewritten_list.append(text if text else "")
-
-        return rewritten_list if len(rewritten_list) > 0 else ori_text
-
-    def _polish_instructions_with_remote_rewriter(
-        self,
-        ori_text: Union[str, List[str]],
-        input_image_paths: Optional[Union[List[List[str]], List[str]]] = None,
-        dashscope_base_http_api_url: str = "https://dashscope.aliyuncs.com/api/v1",
-        dashscope_api_key: str = "sk-xxxxxxxxxxxxxxxxxxxxxxxxxx",
-        remote_model: str = "qwen-vl-max-latest",
-        MAX_TRIES: int = 3,
-    ) -> List[str]:
-        import dashscope
-
-        dashscope.base_http_api_url = dashscope_base_http_api_url
-
-        magic_prompts = []
-        messages = []
-
-        if not isinstance(ori_text, (list, tuple)):
-            ori_text = [ori_text]
-
-        if input_image_paths is None or len(input_image_paths) == 0:
-            messages, magic_prompts = self._get_polish_text_system_prompts(ori_text, return_template_as_str=False)
-        else:
-            messages, magic_prompts = self._get_polish_text_image_system_prompts(ori_text, input_image_paths)
-
-        assert len(messages) == len(ori_text), (
-            "The length of `messages` to be passed to dashscope should be the same as that of `ori_text`."
-        )
-
-        rewritten_texts = []
-        for i, msg in enumerate(messages):
-            for try_idx in range(MAX_TRIES):
-                try:
-                    response = dashscope.MultiModalConversation.call(
-                        api_key=dashscope_api_key,
-                        model=remote_model,
-                        messages=msg,
-                    )
-                    rewritten_texts.append(response.output.choices[0].message.content[0]["text"])
-                except Exception as e:
-                    print(f"Error: {e}, Retrying... (Try {try_idx + 1} of {MAX_TRIES}) for message {i}")
-                    if try_idx == MAX_TRIES - 1:
-                        print(
-                            f"Failed to rewrite the text instruction after {MAX_TRIES} tries for message {i}. Use the original text instruction."
-                        )
-                        rewritten_texts.append(ori_text[i])
-                        break
-                    continue
-                break
-
-        polished_list: List[str] = []
-        for i in range(len(rewritten_texts)):
-            text = rewritten_texts[i]
-            magic = magic_prompts[i] if i < len(magic_prompts) else ""
-            combined = f"{text} {magic}".strip() if text or magic else text
-            polished_list.append(combined if combined else magic)
-
-        return polished_list if len(polished_list) == len(ori_text) else ori_text
-
-    def _rewrite_text_instruction(
-        self,
-        instruction: Union[str, List[str]],
-        input_images: Optional[List[List[PIL.Image.Image]]] = None,
-        input_image_paths: Optional[Union[List[List[str]], List[str]]] = None,
-        rewriter_max_new_tokens: int = 256,
-        resize_rewriter_ref_images: bool = True,
-        rewriter_ref_images_max_pixels: Optional[Union[int, List[int]]] = 2048 * 2048,
-        rewriter_ref_images_max_side_length: Optional[int] = 2560,
-        do_sample_for_local_rewriter: bool = True,
-        use_dashscope_remote_rewriting: bool = False,
-        dashscope_remote_rewriting_model: str = "qwen-vl-max-latest",
-        dashscope_base_http_api_url: str = "https://dashscope.aliyuncs.com/api/v1",
-        dashscope_api_key: str = "sk-xxxxxxxxxxxxxxxxxxxxxxxxxx",
-    ):
-
-        max_images_per_sample = 0
-        if input_images:
-            success, max_images_per_sample, input_images = self._check_and_wrap_input_images(input_images)
-
-        if input_image_paths:
-            success, max_image_paths_per_sample, input_image_paths = self._check_and_wrap_input_images(
-                input_image_paths
-            )
-            assert (
-                max_image_paths_per_sample == max_images_per_sample
-            ), """The size of `input_image_paths` must be equal to that of `input_images`.
-                    `input_image_paths` contains the paths to `input_images`, so they correspond to each other.
-                    """
-
-        if (
-            resize_rewriter_ref_images
-            and (input_images is not None)
-            and (len(input_images) > 0)
-            and (max_images_per_sample > 0)
-        ):
-            resized_input_images = []
-            for imgs in input_images:
-                if imgs:
-                    max_pixels = self._get_max_image_pixels(
-                        num_images=len(imgs),
-                        max_input_image_pixels=rewriter_ref_images_max_pixels,
-                    )
-                    resized_input_images.append(
-                        self.preprocess_vlm_input_pil_images(
-                            imgs,
-                            max_pixels=max_pixels,
-                            max_side_length=rewriter_ref_images_max_side_length,
-                        )
-                    )
-                else:
-                    resized_input_images.append(None)
-            input_images = resized_input_images
-
-        if use_dashscope_remote_rewriting:
-            if not isinstance(instruction, (list, tuple)):
-                instruction = [instruction]
-
-            instruction = self._polish_instructions_with_remote_rewriter(
-                instruction,
-                input_image_paths,
-                dashscope_base_http_api_url=dashscope_base_http_api_url,
-                dashscope_api_key=dashscope_api_key,
-                remote_model=dashscope_remote_rewriting_model,
-            )
-        else:
-            if self.text_instruction_rewriter is None:
-                print("⚠️ Please set the text instruction rewriter model if you want to polish the text instruction !")
-                print("⚠️ Use the user instruction by default.")
-                return instruction
-            else:
-                if not isinstance(instruction, (list, tuple)):
-                    instruction = [instruction]
-                if self.text_instruction_rewriter.model == self.mllm:
-                    print("Reuse the instruction encoder model as text instruction rewriter")
-                    assert self.instruction_rewriter_processor == self.processor, (
-                        "The instruction_rewriter_processor must be the same as the processor when using the same model as the text instruction rewriter."
-                    )
-
-                if input_images is None or len(input_images) == 0:
-                    instruction = self._polish_text_instructions(
-                        instruction,
-                        rewriter_max_new_tokens=rewriter_max_new_tokens,
-                        do_sample_for_local_rewriter=do_sample_for_local_rewriter,
-                    )
-                else:
-                    instruction = self._polish_text_image_instructions(
-                        instruction,
-                        input_images,
-                        rewriter_max_new_tokens=rewriter_max_new_tokens,
-                        do_sample_for_local_rewriter=do_sample_for_local_rewriter,
-                    )
-
-        return instruction
-
-    def _merge_instructions(self, instructs_list: List[str], batch_size: int):
-        res = []
-        for bat in range(batch_size):
-            res.append(f"{instructs_list[-2][bat]} " + f"{instructs_list[-1][bat]}")
-        return res
-
     def encode_instruction(
         self,
         instruction: Union[str, List[str]],
@@ -2093,22 +1251,6 @@ class BooguImagePipeline(DiffusionPipeline, BooguImageLoraLoaderMixin):
         use_empty_neg_instruct_4_ref_img_pred_at_text_guide_in_double_guide: bool = False,
         max_sequence_length: int = 256,
         truncate_instruction_sequence: bool = False,
-        use_rewrite_text_instruction: bool = False,
-        rewriter_max_new_tokens: int = 256,
-        resize_rewriter_ref_images: bool = True,
-        save_rewritten_instruction: bool = False,
-        save_rewritten_instruction_path: Optional[str] = None,
-        rewriter_ref_images_max_pixels: Optional[Union[int, List[int]]] = 2048 * 2048,
-        rewriter_ref_images_max_side_length: Optional[int] = 2560,
-        rewriter_system_prompt_type: str = "default",
-        custom_rewriter_system_prompts_list: List[str] = None,
-        merge_original_and_rewritten_instructions: bool = True,
-        do_sample_for_local_rewriter: bool = True,
-        input_image_paths: Optional[Union[List[List[str]], List[str]]] = None,
-        use_dashscope_remote_rewriting: bool = False,
-        dashscope_remote_rewriting_model: str = "qwen-vl-max-latest",
-        dashscope_base_http_api_url: str = "https://dashscope.aliyuncs.com/api/v1",
-        dashscope_api_key: str = "sk-xxxxxxxxxxxxxxxxxxxxxxxxxx",
         system_prompt_follows_task_type: bool = False,
         task_type: str = "ti2i",
     ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
@@ -2141,117 +1283,6 @@ class BooguImagePipeline(DiffusionPipeline, BooguImageLoraLoaderMixin):
         instruction = [instruction] if isinstance(instruction, str) else instruction
         # Chat template with images is handled inside _get_instruction_feature_embeds
         batch_size = len(instruction)
-
-        if use_rewrite_text_instruction:
-            if self.enable_inner_devices_manager:
-                # Only use the inner manager to stage the local rewriter on demand.
-                self.devices_manager(
-                    instant_rewriter_device=self.user_set_rewriter_device,
-                )
-
-            if save_rewritten_instruction:
-                assert save_rewritten_instruction_path is not None, (
-                    "Please provide the path to save the rewritten instruction."
-                )
-                ori_and_rewritten_instructions = {"ori_instruction": instruction, "rewritten_instruction": None}
-
-            print(
-                "**************************************The user text instruction is:   ******************************************\n\n"
-            )
-            print(f"{instruction}\n\n")
-            print(
-                "----------------------------------------------------------------------------------------------------------------\n\n"
-            )
-
-            if rewriter_system_prompt_type.lower() == "custom":
-                assert (
-                    custom_rewriter_system_prompts_list is not None and len(custom_rewriter_system_prompts_list) > 0
-                ), "`custom_rewriter_system_prompts_list` should be a list and not empty."
-                self.static_rewrite_skills.set_custom_rewrite_system_prompts(custom_rewriter_system_prompts_list)
-
-            rewrite_system_prompts_list = self.static_rewrite_skills.get_rewrite_system_prompts_list(
-                rewriter_system_prompt_type
-            )
-            merge_instructs_list = [instruction]
-            instructs_history = [instruction]
-            for step in range(len(rewrite_system_prompts_list)):
-                self.set_rewrite_system_prompts_for_step(step, rewrite_system_prompts_list)
-
-                instruction = self._rewrite_text_instruction(
-                    instruction,
-                    input_images=input_images,
-                    input_image_paths=input_image_paths,
-                    rewriter_max_new_tokens=rewriter_max_new_tokens,
-                    resize_rewriter_ref_images=resize_rewriter_ref_images,
-                    rewriter_ref_images_max_pixels=rewriter_ref_images_max_pixels,
-                    rewriter_ref_images_max_side_length=rewriter_ref_images_max_side_length,
-                    do_sample_for_local_rewriter=do_sample_for_local_rewriter,
-                    use_dashscope_remote_rewriting=use_dashscope_remote_rewriting,
-                    dashscope_remote_rewriting_model=dashscope_remote_rewriting_model,
-                    dashscope_base_http_api_url=dashscope_base_http_api_url,
-                    dashscope_api_key=dashscope_api_key,
-                )
-                print(
-                    f"*************************************The step-{step} rewritten text instruction is: *************************************\n\n"
-                )
-                print(f"{step}-th rewritten text instruction: {instruction}\n\n")
-                merge_instructs_list.append(instruction)
-                instructs_history.append(instruction)
-
-                if merge_original_and_rewritten_instructions:
-                    instruction = self._merge_instructions(merge_instructs_list, batch_size)
-                merge_instructs_list = [instruction]
-
-                # print(f"{step}-th rewritten text instruction after merging: {instruction}\n\n")
-
-            print(
-                "*************************************The final rewritten text instruction is: *************************************\n\n"
-            )
-            if merge_original_and_rewritten_instructions:
-                instruction = self._merge_instructions([instructs_history[0], instructs_history[-1]], batch_size)
-
-            print(f"{instruction}\n\n")
-            print(
-                "================================================================================================================\n\n"
-            )
-
-            share_rewriter_and_mllm = self._is_encoder_equals_reasoner()
-            unload_flags = self.unload_instruction_rewriter_resources()
-            if unload_flags[0] == "cpu":
-                print("[Instruction Reasoner] Offloaded the text instruction rewriter model to cpu.")
-            elif unload_flags[0] == "destroy":
-                print(
-                    "[Instruction Reasoner] Destroyed the text instruction rewriter model after usage to release resources."
-                )
-            else:
-                kept_device = self.user_set_pipe_device if share_rewriter_and_mllm else self.user_set_rewriter_device
-                print(f"[Instruction Reasoner] Keep the text instruction rewriter model in {kept_device}.")
-
-            if unload_flags[1] == "destroy":
-                print(
-                    "[Instruction Reasoner] Destroyed the text instruction rewriter processor after usage to release resources."
-                )
-            else:
-                print("[Instruction Reasoner] Keep the text instruction rewriter processor.")
-
-            if save_rewritten_instruction:
-                ori_and_rewritten_instructions["rewritten_instruction"] = instruction
-                if save_rewritten_instruction_path:
-                    path = Path(save_rewritten_instruction_path)
-                    path.parent.mkdir(parents=True, exist_ok=True)
-
-                    with path.open("w", encoding="utf-8") as f:
-                        json.dump(ori_and_rewritten_instructions, f)
-                else:
-                    print("⚠️ Please provide the path to save the rewritten instruction.")
-
-        if self.enable_inner_devices_manager:
-            # Bring the pipeline back to the requested execution device after
-            # local rewriting has finished.
-            self.devices_manager(
-                instant_device_2_use=self.user_set_pipe_device,
-                execution_device=self.user_set_pipe_device,
-            )
 
         if instruction_embeds is None:
             instruction_embeds, instruction_attention_mask = self._get_instruction_feature_embeds(
@@ -2441,22 +1472,6 @@ class BooguImagePipeline(DiffusionPipeline, BooguImageLoraLoaderMixin):
         image_guidance_scale: float = 1.0,
         empty_instruction_guidance_scale: float = 0.0,
         cfg_range: Tuple[float, float] = (0.0, 1.0),
-        use_rewrite_text_instruction: bool = False,
-        rewriter_max_new_tokens: int = 512,
-        resize_rewriter_ref_images: bool = True,
-        rewriter_ref_images_max_pixels: Optional[Union[int, List[int]]] = 768 * 768,
-        rewriter_ref_images_max_side_length: Optional[int] = 1664,
-        rewriter_system_prompt_type: str = "default",
-        custom_rewriter_system_prompts_list: List[str] = None,
-        merge_original_and_rewritten_instructions: bool = True,
-        do_sample_for_local_rewriter: bool = True,
-        save_rewritten_instruction: bool = False,
-        save_rewritten_instruction_path: Optional[str] = None,
-        input_image_paths: Optional[Union[List[List[str]], List[str]]] = None,
-        use_dashscope_remote_rewriting: bool = False,
-        dashscope_remote_rewriting_model: str = "qwen-vl-max-latest",
-        dashscope_base_http_api_url: str = "https://dashscope.aliyuncs.com/api/v1",
-        dashscope_api_key: str = "sk-xxxxxxxxxxxxxxxxxxxxxxxxxx",
         system_prompt_follows_task_type: bool = False,
         ### Momentum Config
         use_boosted_orthogonal_guidance: bool = False,
@@ -2478,13 +1493,7 @@ class BooguImagePipeline(DiffusionPipeline, BooguImageLoraLoaderMixin):
         verbose: bool = False,
         step_func=None,
         device: Literal[None, "cpu", "cuda", "cuda:x"] = "cuda",
-        rewriter_device: Literal[None, "cpu", "cuda", "cuda:x", "auto"] = "cpu",
-        unload_rewriter_level: Literal["keep", "cpu", "destroy"] = "destroy",
-        enable_inner_devices_manager: bool = False,
     ):
-
-        if enable_inner_devices_manager is not None:
-            self.enable_inner_devices_manager = enable_inner_devices_manager
 
         height = height or self.default_sample_size * self.vae_scale_factor
         width = width or self.default_sample_size * self.vae_scale_factor
@@ -2509,44 +1518,17 @@ class BooguImagePipeline(DiffusionPipeline, BooguImageLoraLoaderMixin):
             enable_model_cpu_offload_flag=self.enable_model_cpu_offload_flag,
             enable_sequential_cpu_offload_flag=self.enable_sequential_cpu_offload_flag,
             enable_group_offload_flag=self.enable_group_offload_flag,
-            rewriter_device=rewriter_device,
             device=device,
-            use_rewrite_text_instruction=use_rewrite_text_instruction,
-            use_dashscope_remote_rewriting=use_dashscope_remote_rewriting,
-            dashscope_api_key=dashscope_api_key,
         )
 
-        if self.enable_inner_devices_manager:
-            # Stage the pipeline on CPU first so the local rewriter can free or
-            # offload memory before the main execution device is restored.
-            self.devices_manager(
-                instant_device_2_use="cpu",  # Lazy loading for the registered moudules of this pipeline.
-                user_set_pipe_device=device,
-                user_set_rewriter_device=rewriter_device,
-                execution_device="cpu",
-                unload_rewriter_level=unload_rewriter_level,
-            )
-        else:
-            self.devices_manager(
-                user_set_pipe_device=device,
-                user_set_rewriter_device=rewriter_device,
-                execution_device=device,
-                unload_rewriter_level=unload_rewriter_level,
-            )
+        self.devices_manager(
+            user_set_pipe_device=device,
+            execution_device=device,
+        )
 
         max_images_per_sample = 0
         if input_images:
             success, max_images_per_sample, input_images = self._check_and_wrap_input_images(input_images)
-
-        if input_image_paths:
-            success, max_image_paths_per_sample, input_image_paths = self._check_and_wrap_input_images(
-                input_image_paths
-            )
-            assert (
-                max_image_paths_per_sample == max_images_per_sample
-            ), """The size of `input_image_paths` must be equal to that of `input_images`.
-                    `input_image_paths` contains the paths to `input_images`, so they correspond to each other.
-                    """
 
         # task_type = self._get_task_type_by_ref_latents(ref_latents)
         task_type = self._get_task_type_by_input_images(input_images)
@@ -2582,32 +1564,9 @@ class BooguImagePipeline(DiffusionPipeline, BooguImageLoraLoaderMixin):
             use_empty_neg_instruct_4_ref_img_pred_at_text_guide_in_double_guide=use_empty_neg_instruct_4_ref_img_pred_at_text_guide_in_double_guide,
             max_sequence_length=max_sequence_length,
             truncate_instruction_sequence=truncate_instruction_sequence,
-            use_rewrite_text_instruction=use_rewrite_text_instruction,
-            rewriter_max_new_tokens=rewriter_max_new_tokens,
-            resize_rewriter_ref_images=resize_rewriter_ref_images,
-            rewriter_ref_images_max_pixels=rewriter_ref_images_max_pixels,
-            rewriter_ref_images_max_side_length=rewriter_ref_images_max_side_length,
-            rewriter_system_prompt_type=rewriter_system_prompt_type,
-            custom_rewriter_system_prompts_list=custom_rewriter_system_prompts_list,
-            merge_original_and_rewritten_instructions=merge_original_and_rewritten_instructions,
-            do_sample_for_local_rewriter=do_sample_for_local_rewriter,
-            save_rewritten_instruction=save_rewritten_instruction,
-            save_rewritten_instruction_path=save_rewritten_instruction_path,
-            input_image_paths=input_image_paths,
-            use_dashscope_remote_rewriting=use_dashscope_remote_rewriting,
-            dashscope_remote_rewriting_model=dashscope_remote_rewriting_model,
-            dashscope_base_http_api_url=dashscope_base_http_api_url,
-            dashscope_api_key=dashscope_api_key,
             system_prompt_follows_task_type=system_prompt_follows_task_type,
             task_type=task_type,
         )
-
-        if self.enable_inner_devices_manager:
-            # Restore the pipeline execution device after the rewriting phase.
-            self.devices_manager(
-                instant_device_2_use=self.user_set_pipe_device,
-                execution_device=self.user_set_pipe_device,
-            )
 
         # Put ref_latents here before encoding instruction.
         dtype = self.vae.dtype

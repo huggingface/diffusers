@@ -15,7 +15,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import warnings
 from typing import Optional, Tuple, Union
 
 import numpy as np
@@ -26,7 +25,6 @@ from ...configuration_utils import register_to_config
 from ...image_processor import (
     PipelineImageInput,
     VaeImageProcessor,
-    is_valid_image_imagelist,
 )
 
 
@@ -161,125 +159,33 @@ class BooguImageProcessor(VaeImageProcessor):
         """
         Preprocess the image input.
 
+        Identical to [`VaeImageProcessor.preprocess`], except the target size is derived from Boogu's
+        `max_pixels` / `max_side_length` downscaling (via [`get_new_height_width`]) instead of a fixed
+        default, before delegating the format handling, resize, and normalization to the parent.
+
         Args:
             image (`PipelineImageInput`):
-                The image input, accepted formats are PIL images, NumPy arrays, PyTorch tensors; Also accept list of
-                supported formats.
+                The image input, accepted formats are PIL images, NumPy arrays, PyTorch tensors; also a list thereof.
             height (`int`, *optional*):
-                The height in preprocessed image. If `None`, will use the `get_default_height_width()` to get default
-                height.
+                Target height. If `None`, derived from the image and the pixel / side-length constraints.
             width (`int`, *optional*):
-                The width in preprocessed. If `None`, will use get_default_height_width()` to get the default width.
+                Target width. If `None`, derived from the image and the pixel / side-length constraints.
+            max_pixels (`int`, *optional*):
+                Maximum number of pixels; the image is downscaled to fit. Defaults to `self.max_pixels`.
+            max_side_length (`int`, *optional*):
+                Maximum side length; the image is downscaled to fit. Defaults to `self.max_side_length`.
             resize_mode (`str`, *optional*, defaults to `default`):
-                The resize mode, can be one of `default` or `fill`. If `default`, will resize the image to fit within
-                the specified width and height, and it may not maintaining the original aspect ratio. If `fill`, will
-                resize the image to fit within the specified width and height, maintaining the aspect ratio, and then
-                center the image within the dimensions, filling empty with data from image. If `crop`, will resize the
-                image to fit within the specified width and height, maintaining the aspect ratio, and then center the
-                image within the dimensions, cropping the excess. Note that resize_mode `fill` and `crop` are only
-                supported for PIL image input.
-            crops_coords (`List[Tuple[int, int, int, int]]`, *optional*, defaults to `None`):
-                The crop coordinates for each image in the batch. If `None`, will not crop the image.
+                One of `default`, `fill`, or `crop`; see [`VaeImageProcessor.preprocess`].
+            crops_coords (`Tuple[int, int, int, int]`, *optional*):
+                The crop coordinates. If `None`, the image is not cropped.
 
         Returns:
             `torch.Tensor`:
                 The preprocessed image tensor with shape `[B, C, H, W]`.
         """
-
-        supported_formats = (PIL.Image.Image, np.ndarray, torch.Tensor)
-
-        # Expand the missing dimension for 3-dimensional pytorch tensor or numpy array that represents grayscale image
-        if self.config.do_convert_grayscale and isinstance(image, (torch.Tensor, np.ndarray)) and image.ndim == 3:
-            if isinstance(image, torch.Tensor):
-                # if image is a pytorch tensor could have 2 possible shapes:
-                #    1. batch x height x width: we should insert the channel dimension at position 1
-                #    2. channel x height x width: we should insert batch dimension at position 0,
-                #       however, since both channel and batch dimension has same size 1, it is same to insert at position 1
-                #    for simplicity, we insert a dimension of size 1 at position 1 for both cases
-                image = image.unsqueeze(1)
-            else:
-                # if it is a numpy array, it could have 2 possible shapes:
-                #   1. batch x height x width: insert channel dimension on last position
-                #   2. height x width x channel: insert batch dimension on first position
-                if image.shape[-1] == 1:
-                    image = np.expand_dims(image, axis=0)
-                else:
-                    image = np.expand_dims(image, axis=-1)
-
-        if isinstance(image, list) and isinstance(image[0], np.ndarray) and image[0].ndim == 4:
-            warnings.warn(
-                "Passing `image` as a list of 4d np.ndarray is deprecated."
-                "Please concatenate the list along the batch dimension and pass it as a single 4d np.ndarray",
-                FutureWarning,
-            )
-            image = np.concatenate(image, axis=0)
-        if isinstance(image, list) and isinstance(image[0], torch.Tensor) and image[0].ndim == 4:
-            warnings.warn(
-                "Passing `image` as a list of 4d torch.Tensor is deprecated."
-                "Please concatenate the list along the batch dimension and pass it as a single 4d torch.Tensor",
-                FutureWarning,
-            )
-            image = torch.cat(image, axis=0)
-
-        if not is_valid_image_imagelist(image):
-            raise ValueError(
-                f"Input is in incorrect format. Currently, we only support {', '.join(str(x) for x in supported_formats)}"
-            )
-
-        # Normalize to a list so the downstream path handles all input types uniformly.
-        if not isinstance(image, list):
-            image = [image]
-
-        if isinstance(image[0], PIL.Image.Image):
-            if crops_coords is not None:
-                image = [i.crop(crops_coords) for i in image]
-            if self.config.do_resize:
-                height, width = self.get_new_height_width(image[0], height, width, max_pixels, max_side_length)
-                image = [self.resize(i, height, width, resize_mode=resize_mode) for i in image]
-            if self.config.do_convert_rgb:
-                image = [self.convert_to_rgb(i) for i in image]
-            elif self.config.do_convert_grayscale:
-                image = [self.convert_to_grayscale(i) for i in image]
-            image = self.pil_to_numpy(image)  # to np
-            image = self.numpy_to_pt(image)  # to pt
-
-        elif isinstance(image[0], np.ndarray):
-            image = np.concatenate(image, axis=0) if image[0].ndim == 4 else np.stack(image, axis=0)
-
-            image = self.numpy_to_pt(image)
-
-            height, width = self.get_new_height_width(image, height, width, max_pixels, max_side_length)
-            if self.config.do_resize:
-                image = self.resize(image, height, width)
-
-        elif isinstance(image[0], torch.Tensor):
-            image = torch.cat(image, axis=0) if image[0].ndim == 4 else torch.stack(image, axis=0)
-
-            if self.config.do_convert_grayscale and image.ndim == 3:
-                image = image.unsqueeze(1)
-
-            channel = image.shape[1]
-            # don't need any preprocess if the image is latents
-            if channel == self.config.vae_latent_channels:
-                return image
-
-            height, width = self.get_new_height_width(image, height, width, max_pixels, max_side_length)
-            if self.config.do_resize:
-                image = self.resize(image, height, width)
-
-        # expected range [0,1], normalize to [-1,1]
-        do_normalize = self.config.do_normalize
-        if do_normalize and image.min() < 0:
-            warnings.warn(
-                "Passing `image` as torch tensor with value range in [-1,1] is deprecated. The expected value range for image tensor is [0,1] "
-                f"when passing as pytorch tensor or numpy Array. You passed `image` with value range [{image.min()},{image.max()}]",
-                FutureWarning,
-            )
-            do_normalize = False
-        if do_normalize:
-            image = self.normalize(image)
-
-        if self.config.do_binarize:
-            image = self.binarize(image)
-
-        return image
+        if self.config.do_resize:
+            representative = image[0] if isinstance(image, list) else image
+            height, width = self.get_new_height_width(representative, height, width, max_pixels, max_side_length)
+        return super().preprocess(
+            image, height=height, width=width, resize_mode=resize_mode, crops_coords=crops_coords
+        )

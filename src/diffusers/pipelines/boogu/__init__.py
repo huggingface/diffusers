@@ -1,4 +1,3 @@
 from .image_processor import BooguImageProcessor
-from .lora_pipeline import BooguImageLoraLoaderMixin
 from .pipeline_boogu import BooguImagePipeline
 from .pipeline_boogu_turbo import BooguImageTurboPipeline
