@@ -56,7 +56,8 @@ strategy without touching anything else. Three schedulers are available:
 - `DiscreteDDIMScheduler`: samples each position from the exact discrete posterior of the uniform corruption process
   (D3PM). It is parameter free, and the final step deterministically commits the predicted tokens.
 - `EntropyBoundScheduler`: commits the lowest-entropy positions whose joint entropy stays under `entropy_bound`, so
-  roughly independent tokens are accepted together.
+  roughly independent tokens are accepted together. It anneals its sampling temperature from `t_max` (`0.8`) on the
+  first step down to `t_min` (`0.4`) on the last, matching the released checkpoint's sampler.
 
 ```py
 from diffusers import DiscreteDDIMScheduler, EntropyBoundScheduler
@@ -76,18 +77,9 @@ from diffusers import BlockRefinementScheduler
 pipe.scheduler = BlockRefinementScheduler.from_config(pipe.scheduler.config, threshold=0.9)
 ```
 
-### Temperature annealing
-
-By default the pipeline anneals the sampling temperature linearly from `t_max` (`0.8`) on the first denoising step
-down to `t_min` (`0.4`), matching the sampler the released checkpoint was tuned with (sharper sampling as it
-denoises). It matters most for stochastic schedulers like `EntropyBoundScheduler` at a loose `entropy_bound`, where
-flat high-temperature sampling can degrade. Set both `t_min` and `t_max` to `None` to instead use a flat `temperature`
-(`0.0` for greedy):
-
-```py
-output = pipe(prompt="Why is the sky blue?", gen_length=256)                       # annealed 0.8 -> 0.4 (default)
-output = pipe(prompt="Why is the sky blue?", gen_length=256, t_min=None, t_max=None, temperature=0.0)  # greedy
-```
+`EntropyBoundScheduler` anneals its sampling temperature (`t_max`/`t_min`) internally over the denoising steps;
+`DiscreteDDIMScheduler` and `BlockRefinementScheduler` use the flat `temperature` passed to the pipeline (`0.0` for
+greedy).
 
 ### Predictor-corrector sampling
 

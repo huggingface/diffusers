@@ -56,9 +56,17 @@ class EntropyBoundScheduler(SchedulerMixin, ConfigMixin):
 
     Proposed in "Beyond Next-Token Prediction" (https://huggingface.co/papers/2505.24857).
 
+    The sampling temperature is annealed from `t_max` on the first step down to `t_min` on the last, matching the
+    released checkpoint's sampler (sharper sampling as denoising advances). It is applied to the logits before both the
+    candidate sampling and the entropy that drives acceptance.
+
     Args:
         entropy_bound (`float`, defaults to 0.1):
             The maximum tolerated joint entropy of the accepted tokens. Larger values accept more tokens per step.
+        t_max (`float`, defaults to 0.8):
+            Sampling temperature on the first denoising step.
+        t_min (`float`, defaults to 0.4):
+            Sampling temperature on the last denoising step.
         num_inference_steps (`int`, defaults to 32):
             The maximum number of denoising steps.
     """
@@ -66,7 +74,9 @@ class EntropyBoundScheduler(SchedulerMixin, ConfigMixin):
     order = 1
 
     @register_to_config
-    def __init__(self, entropy_bound: float = 0.1, num_inference_steps: int = 32):
+    def __init__(
+        self, entropy_bound: float = 0.1, t_max: float = 0.8, t_min: float = 0.4, num_inference_steps: int = 32
+    ):
         self.num_inference_steps = num_inference_steps
         self.timesteps = torch.arange(num_inference_steps, dtype=torch.long)
 
@@ -108,7 +118,6 @@ class EntropyBoundScheduler(SchedulerMixin, ConfigMixin):
         sample: torch.LongTensor,
         *,
         entropy_bound: float | None = None,
-        temperature: float = 1.0,
         generator: torch.Generator | None = None,
         return_dict: bool = True,
     ) -> EntropyBoundSchedulerOutput | tuple[torch.LongTensor, torch.BoolTensor, torch.LongTensor, torch.Tensor]:
@@ -119,13 +128,11 @@ class EntropyBoundScheduler(SchedulerMixin, ConfigMixin):
             model_output (`torch.Tensor` of shape `(batch_size, block_length, vocab_size)`):
                 Raw logits from the model for the current block.
             timestep (`int` or `torch.Tensor`):
-                Current step index within the denoising schedule. Unused; kept for API consistency.
+                Current step index within the denoising schedule; sets the annealed sampling temperature.
             sample (`torch.LongTensor` of shape `(batch_size, block_length)`):
                 Current block token IDs.
             entropy_bound (`float`, *optional*):
                 Overrides the configured entropy bound for this step.
-            temperature (`float`):
-                Sampling temperature applied to the logits when drawing the candidate tokens.
             generator (`torch.Generator`, *optional*):
                 RNG for sampling.
             return_dict (`bool`):
@@ -134,13 +141,12 @@ class EntropyBoundScheduler(SchedulerMixin, ConfigMixin):
         if entropy_bound is None:
             entropy_bound = float(self.config.entropy_bound)
 
-        # Scale the logits by temperature once, so the acceptance entropy is measured on the same distribution the
-        # candidates are drawn from (greedy at temperature 0); scaling only the sampling underweights the entropy.
-        if temperature > 0:
-            model_output = model_output / temperature
-        sampled_tokens, sampled_probs = self._sample_from_logits(
-            model_output, temperature=0.0 if temperature == 0 else 1.0, generator=generator
-        )
+        # Anneal the temperature from `t_max` to `t_min` over the schedule and scale the logits by it once, so the
+        # acceptance entropy is measured on the same distribution the candidates are drawn from.
+        fraction = (self.num_inference_steps - int(timestep)) / self.num_inference_steps
+        temperature = self.config.t_min + (self.config.t_max - self.config.t_min) * fraction
+        model_output = model_output / temperature
+        sampled_tokens, sampled_probs = self._sample_from_logits(model_output, temperature=1.0, generator=generator)
 
         token_entropy = torch.distributions.Categorical(logits=model_output).entropy()  # (batch, block_length)
         sorted_token_entropy, sorted_indices = torch.sort(token_entropy, dim=-1, descending=False)

@@ -79,7 +79,7 @@ class DiffusionGemmaPipelineTest(unittest.TestCase):
         self.pipe, self.canvas_length = _load_pipeline(self)
         self.prompt = "Name a color."
 
-    def test_generate_seq_shape(self):
+    def test_generate(self):
         out = self.pipe(
             prompt=self.prompt,
             gen_length=self.canvas_length * 2,
@@ -91,7 +91,6 @@ class DiffusionGemmaPipelineTest(unittest.TestCase):
         self.assertEqual(out.sequences.shape, (1, self.canvas_length * 2))
         self.assertIsNone(out.texts)
 
-    def test_generate_text_and_return_tuple(self):
         sequences, texts = self.pipe(
             prompt=self.prompt,
             gen_length=self.canvas_length,
@@ -204,8 +203,6 @@ class DiffusionGemmaPipelineTest(unittest.TestCase):
             "gen_length": self.canvas_length * 2,  # two canvases -> exercises the cache extension between blocks
             "num_inference_steps": 4,
             "temperature": 0.0,
-            "t_min": None,
-            "t_max": None,
             "confidence_threshold": None,
             "eos_early_stop": False,
             "output_type": "seq",
