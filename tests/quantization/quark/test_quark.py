@@ -27,7 +27,8 @@ import unittest
 import pytest
 
 from diffusers.utils import is_quark_available, is_torch_available
-from diffusers.utils.testing_utils import (
+
+from ...testing_utils import (
     backend_empty_cache,
     enable_full_determinism,
     nightly,
