@@ -65,7 +65,7 @@ def get_closest_ratio(height: float, width: float, ratios: list, buckets: list):
 
 class HunyuanVideo15ImageProcessor(VideoProcessor):
     r"""
-    Image/video processor to preproces/postprocess the reference image/generatedvideo for the HunyuanVideo1.5 model.
+    Image/video processor to preprocess/postprocess the reference image/generatedvideo for the HunyuanVideo1.5 model.
 
     Args:
         do_resize (`bool`, *optional*, defaults to `True`):

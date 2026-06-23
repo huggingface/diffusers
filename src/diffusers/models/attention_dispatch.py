@@ -1888,7 +1888,7 @@ class SeqAllToAllDim(torch.autograd.Function):
         return (None, grad_input, None, None)
 
 
-# Below are helper functions to handle abritrary head num and abritrary sequence length for Ulysses Anything Attention.
+# Below are helper functions to handle arbitrary head num and arbitrary sequence length for Ulysses Anything Attention.
 def _maybe_pad_qkv_head(x: torch.Tensor, H: int, group: dist.ProcessGroup) -> tuple[torch.Tensor, int]:
     r"""Maybe pad the head dimension to be divisible by world_size.
     x: torch.Tensor, shape (B, S_LOCAL, H, D) H: int, original global head num return: tuple[torch.Tensor, int], padded
