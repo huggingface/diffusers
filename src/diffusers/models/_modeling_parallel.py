@@ -209,6 +209,10 @@ class TensorParallelConfig:
             device_type = str(device).split(":")[0]
             self._mesh = init_device_mesh(device_type, (self.tp_degree,), mesh_dim_names=("tp",))
 
+        # Keep ``tp_degree`` consistent with the mesh actually used (a custom mesh wins). The
+        # attention processors read ``tp_degree`` at runtime to compute their per-rank sizes.
+        self.tp_degree = self._mesh.size()
+
 
 @dataclass
 class ParallelConfig:
@@ -246,6 +250,18 @@ class ParallelConfig:
             self.context_parallel_config.setup(rank, world_size, device, mesh)
         if self.tensor_parallel_config is not None:
             self.tensor_parallel_config.setup(rank, world_size, device, mesh)
+
+    @property
+    def _cp_world_size(self) -> int:
+        """Context-parallel world size, or 1 when context parallelism is not enabled.
+
+        Lets attention backends branch on context parallelism without dereferencing a possibly
+        ``None`` ``context_parallel_config`` (e.g. when only tensor parallelism is active).
+        """
+        cp = self.context_parallel_config
+        if cp is None or cp._world_size is None:
+            return 1
+        return cp._world_size
 
 
 @dataclass(frozen=True)

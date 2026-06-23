@@ -58,13 +58,19 @@ from ..utils import (
     is_bitsandbytes_version,
     is_flashpack_available,
     is_peft_available,
+    is_torch_neuronx_available,
     is_torch_version,
     logging,
 )
 from ..utils.distributed_utils import is_torch_dist_rank_zero
 from ..utils.hub_utils import PushToHubMixin, load_or_create_model_card, populate_model_card
 from ..utils.torch_utils import empty_device_cache
-from ._modeling_parallel import ContextParallelConfig, ContextParallelModelPlan, ParallelConfig
+from ._modeling_parallel import (
+    ContextParallelConfig,
+    ContextParallelModelPlan,
+    ParallelConfig,
+    TensorParallelConfig,
+)
 from .model_loading_utils import (
     _caching_allocator_warmup,
     _determine_device_map,
@@ -250,6 +256,8 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
     _repeated_blocks = []
     _parallel_config = None
     _cp_plan = None
+    _tp_plan = None
+    _tp_fused_block_permuters = None
     _skip_keys = None
 
     def __init__(self):
@@ -1585,7 +1593,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
     def enable_parallelism(
         self,
         *,
-        config: ParallelConfig | ContextParallelConfig,
+        config: ParallelConfig | ContextParallelConfig | TensorParallelConfig,
         cp_plan: dict[str, ContextParallelModelPlan] | None = None,
     ):
         logger.warning(
@@ -1604,6 +1612,14 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
 
         if isinstance(config, ContextParallelConfig):
             config = ParallelConfig(context_parallel_config=config)
+        elif isinstance(config, TensorParallelConfig):
+            config = ParallelConfig(tensor_parallel_config=config)
+
+        if config.context_parallel_config is not None and config.tensor_parallel_config is not None:
+            raise ValueError(
+                "Combining context parallelism and tensor parallelism in a single "
+                "`enable_parallelism()` call is not yet supported. Please enable only one at a time."
+            )
 
         rank = torch.distributed.get_rank()
         world_size = torch.distributed.get_world_size()
@@ -1649,7 +1665,16 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                 mesh_shape=cp_config.mesh_shape,
                 mesh_dim_names=cp_config.mesh_dim_names,
             )
+        elif config.tensor_parallel_config is not None:
+            tp_config = config.tensor_parallel_config
+            mesh = tp_config.mesh or torch.distributed.device_mesh.init_device_mesh(
+                device_type=device_type,
+                mesh_shape=(tp_config.tp_degree,),
+                mesh_dim_names=("tp",),
+            )
 
+        # `config.setup()` is the single place the CP/TP mesh is recorded onto the config (and,
+        # for TP, `tp_degree` is synced to the actual mesh size); see `ParallelConfig.setup`.
         config.setup(rank, world_size, device, mesh=mesh)
         self._parallel_config = config
 
@@ -1668,6 +1693,28 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                 )
             cp_plan = cp_plan if cp_plan is not None else self._cp_plan
             apply_context_parallel(self, config.context_parallel_config, cp_plan)
+
+        if config.tensor_parallel_config is not None:
+            if self._tp_plan is None:
+                raise ValueError(
+                    "`_tp_plan` must be set on the model class to use tensor parallelism. "
+                    f"'{self.__class__.__name__}' does not define one."
+                )
+            tp_degree = config.tensor_parallel_config.tp_degree
+            num_heads = getattr(self.config, "num_attention_heads", None)
+            if num_heads is not None and num_heads % tp_degree != 0:
+                raise ValueError(f"`tp_degree` ({tp_degree}) must divide the number of attention heads ({num_heads}).")
+
+            from ..hooks.tensor_parallel import apply_tensor_parallel
+
+            # The Neuron pre-shard path works around the NRT consecutive-reduce-scatter bug. Neuron
+            # does not surface as the torch accelerator (`torch._C._get_accelerator().type` is
+            # "cpu"), so detect it from the TP mesh's device type instead — on Neuron the mesh is a
+            # `DeviceMesh("neuron", ...)`.
+            tp_mesh = config.tensor_parallel_config._mesh
+            mesh_device_type = tp_mesh.device_type if tp_mesh is not None else device_type
+            backend = "neuron" if (is_torch_neuronx_available() and mesh_device_type == "neuron") else "default"
+            apply_tensor_parallel(self, config.tensor_parallel_config, self._tp_plan, backend=backend)
 
     @classmethod
     def _load_pretrained_model(

@@ -37,94 +37,17 @@ Entry points:
         sync automatically if the plan changes upstream.
 """
 
+from typing import TYPE_CHECKING
+
 import torch
 import torch.distributed as dist
 import torch.nn as nn
 
 
-def _permute_swiglu_for_tp(weight: torch.Tensor, tp_size: int) -> torch.Tensor:
-    """Interleave gate/linear chunks of a SwiGLU FFN weight for column-wise TP.
+if TYPE_CHECKING:
+    from transformers import Qwen3ForCausalLM
 
-    ``ff.linear_in`` in Flux2 double-stream blocks stores
-    ``[gate_0…gate_N, linear_0…linear_N]`` (two halves concatenated).
-    After ``ColwiseParallel``, rank *r* takes rows
-    ``[r*chunk : (r+1)*chunk]`` from the full weight — but that would give
-    rank *r* only gate rows, not the paired gate+linear rows it needs.
-    This function re-orders to ``[gate_0, linear_0, gate_1, linear_1, …]``
-    so that slicing is consistent.
-    """
-    with torch.no_grad():
-        total = weight.shape[0]
-        inner = total // 2
-        chunk = inner // tp_size
-        gate = weight[:inner]
-        linear = weight[inner:]
-        parts = []
-        for i in range(tp_size):
-            parts.append(gate[i * chunk : (i + 1) * chunk])
-            parts.append(linear[i * chunk : (i + 1) * chunk])
-        return torch.cat(parts, dim=0)
-
-
-def _permute_qkv_mlp_for_tp(
-    weight: torch.Tensor,
-    tp_size: int,
-    inner_dim: int,
-    mlp_hidden_dim: int,
-) -> torch.Tensor:
-    """Interleave Q/K/V/gate/linear chunks of the fused ``to_qkv_mlp_proj`` weight.
-
-    ``to_qkv_mlp_proj`` in single-stream blocks concatenates
-    ``[Q, K, V, mlp_gate, mlp_linear]`` along the output dimension.
-    Re-order so that rank *r* receives a contiguous slice containing its
-    proportional share of each component.
-    """
-    with torch.no_grad():
-        q = weight[:inner_dim]
-        k = weight[inner_dim : 2 * inner_dim]
-        v = weight[2 * inner_dim : 3 * inner_dim]
-        mlp_gate = weight[3 * inner_dim : 3 * inner_dim + mlp_hidden_dim]
-        mlp_lin = weight[3 * inner_dim + mlp_hidden_dim :]
-
-        qkv_chunk = inner_dim // tp_size
-        mlp_chunk = mlp_hidden_dim // tp_size
-
-        parts = []
-        for i in range(tp_size):
-            parts += [
-                q[i * qkv_chunk : (i + 1) * qkv_chunk],
-                k[i * qkv_chunk : (i + 1) * qkv_chunk],
-                v[i * qkv_chunk : (i + 1) * qkv_chunk],
-                mlp_gate[i * mlp_chunk : (i + 1) * mlp_chunk],
-                mlp_lin[i * mlp_chunk : (i + 1) * mlp_chunk],
-            ]
-        return torch.cat(parts, dim=0)
-
-
-def _permute_out_for_tp(
-    weight: torch.Tensor,
-    tp_size: int,
-    attn_dim: int,
-    mlp_dim: int,
-) -> torch.Tensor:
-    """Interleave attn/mlp output columns of the fused ``to_out`` weight.
-
-    ``to_out`` in single-stream blocks accepts ``[attn_out, mlp_out]``
-    concatenated along the input (column) dimension.  Re-order columns so
-    that rank *r* receives a contiguous slice of paired attn+mlp columns.
-    """
-    with torch.no_grad():
-        attn_part = weight[:, :attn_dim]
-        mlp_part = weight[:, attn_dim:]
-
-        attn_chunk = attn_dim // tp_size
-        mlp_chunk = mlp_dim // tp_size
-
-        parts = []
-        for i in range(tp_size):
-            parts.append(attn_part[:, i * attn_chunk : (i + 1) * attn_chunk])
-            parts.append(mlp_part[:, i * mlp_chunk : (i + 1) * mlp_chunk])
-        return torch.cat(parts, dim=1)
+    from .transformer_flux2 import Flux2Transformer2DModel
 
 
 def _pre_shard_and_tp(
@@ -180,24 +103,52 @@ def _pre_shard_and_tp(
     parallelize_module(module, tp_mesh, plan)
 
 
+def _apply_tp_neuron(
+    model: nn.Module,
+    tp_mesh: "torch.distributed.device_mesh.DeviceMesh",
+    groups: list,
+) -> None:
+    """Apply tensor parallelism on Neuron from resolved ``_tp_plan`` groups.
+
+    ``groups`` is produced by ``diffusers.hooks.tensor_parallel._resolve_tp_plan`` — the same
+    source of truth used by the generic path, so the two backends shard identical layers. For
+    each ``(block, relative_plan)`` group this:
+    1. permutes the model's fused weights (via ``model._tp_fused_block_permuters``, the same
+       backend-agnostic permuters the generic path uses) so column/row slicing gives each rank a
+       correct chunk,
+    2. pre-shards the weights via ``DTensor.from_local`` (Neuron NRT consecutive-reduce-scatter
+       workaround), then calls ``parallelize_module`` to register the forward hooks.
+
+    The attention processors derive their per-rank sizes from ``_parallel_config`` at runtime, so
+    no processor swap is performed here. Model weights must be on CPU when this is called.
+    """
+    from ...hooks.tensor_parallel import _styles
+
+    rank = dist.get_rank()
+    tp_size = tp_mesh.size()
+    permuters = getattr(model, "_tp_fused_block_permuters", None) or {}
+
+    for block, relative_plan in groups:
+        permuter = permuters.get(block.__class__.__name__)
+        if permuter is not None:
+            permuter(block, tp_size)
+        _pre_shard_and_tp(block, tp_mesh, _styles(relative_plan), rank, tp_size)
+
+
 def apply_tp_flux2_transformer_neuron(
     model: "Flux2Transformer2DModel",
     tp_mesh: "torch.distributed.device_mesh.DeviceMesh",
 ) -> "Flux2Transformer2DModel":
     """Apply tensor parallelism to a ``Flux2Transformer2DModel`` on Neuron.
 
-    Steps for each block type:
-    1. Permute fused weights so that column-wise slicing gives each rank a
-       correct paired chunk (SwiGLU gate+linear, or Q/K/V/MLP).
-    2. Pre-shard weights via ``DTensor.from_local`` (Neuron NRT workaround).
-    3. Call ``parallelize_module`` to register input/output hooks.
-    4. Replace the attention processor with the TP-aware variant.
-
-    The model weights must still be on CPU when this function is called.
-    Move the model to the Neuron device *after* this call::
+    Thin wrapper kept for direct/standalone use. The model weights must still be on CPU when this
+    is called; move the model to the Neuron device *after*::
 
         apply_tp_flux2_transformer_neuron(pipe.transformer, tp_mesh)
         pipe.transformer = pipe.transformer.to(device)
+
+    Prefer the public API ``model.enable_parallelism(config=TensorParallelConfig(...))``, which
+    dispatches here automatically on Neuron.
 
     Args:
         model: ``Flux2Transformer2DModel`` with weights on CPU.
@@ -206,41 +157,9 @@ def apply_tp_flux2_transformer_neuron(
     Returns:
         The same ``model`` instance, modified in-place.
     """
-    from .transformer_flux2 import Flux2AttnProcessorTP, Flux2ParallelSelfAttnProcessorTP
+    from ...hooks.tensor_parallel import _resolve_tp_plan
 
-    rank = dist.get_rank()
-    tp_size = tp_mesh.size()
-
-    double_plan = model._get_tp_double_block_plan()
-    single_plan = model._get_tp_single_block_plan()
-
-    # ── Double-stream blocks (cross-attn + FFN) ────────────────────────────
-    for block in model.transformer_blocks:
-        # Permute SwiGLU weights before sharding
-        block.ff.linear_in.weight.data = _permute_swiglu_for_tp(
-            block.ff.linear_in.weight.data, tp_size
-        )
-        block.ff_context.linear_in.weight.data = _permute_swiglu_for_tp(
-            block.ff_context.linear_in.weight.data, tp_size
-        )
-        _pre_shard_and_tp(block, tp_mesh, double_plan, rank, tp_size)
-        block.attn.set_processor(Flux2AttnProcessorTP(tp_size))
-
-    # ── Single-stream blocks (parallel self-attn + fused MLP) ──────────────
-    for block in model.single_transformer_blocks:
-        attn = block.attn
-        inner_dim = attn.inner_dim
-        mlp_hidden = attn.mlp_hidden_dim
-
-        attn.to_qkv_mlp_proj.weight.data = _permute_qkv_mlp_for_tp(
-            attn.to_qkv_mlp_proj.weight.data, tp_size, inner_dim, mlp_hidden
-        )
-        attn.to_out.weight.data = _permute_out_for_tp(
-            attn.to_out.weight.data, tp_size, inner_dim, mlp_hidden
-        )
-        _pre_shard_and_tp(block, tp_mesh, single_plan, rank, tp_size)
-        block.attn.set_processor(Flux2ParallelSelfAttnProcessorTP(tp_size))
-
+    _apply_tp_neuron(model, tp_mesh, _resolve_tp_plan(model, model._tp_plan))
     return model
 
 

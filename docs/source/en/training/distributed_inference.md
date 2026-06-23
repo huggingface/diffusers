@@ -431,3 +431,73 @@ pipeline = DiffusionPipeline.from_pretrained(
     CKPT_ID, transformer=transformer, torch_dtype=torch.bfloat16,
 ).to(device)
 ```
+
+## Tensor parallelism
+
+[Tensor parallelism](https://huggingface.co/spaces/nanotron/ultrascale-playbook?section=tensor_parallelism) shards the weight matrices of a model across devices. Each device holds a column-wise (`"colwise"`) or row-wise (`"rowwise"`) slice of each layer, computes a partial result, and an `AllReduce`/`AllGather` at the layer boundary reconstructs the full output. Unlike context parallelism, it reduces the per-device *weight* memory, which is useful for models that do not fit on a single device.
+
+Pass a [`TensorParallelConfig`] to [`~ModelMixin.enable_parallelism`]. `tp_degree` is the number of devices to shard across and must divide the model's number of attention heads. The model must define a `_tp_plan` (a flat mapping of module-name globs to a `"colwise"`/`"rowwise"` style); [`Flux2Transformer2DModel`] ships one.
+
+```py
+import torch
+from torch import distributed as dist
+from diffusers import DiffusionPipeline, TensorParallelConfig
+
+def setup_distributed():
+    if not dist.is_initialized():
+        dist.init_process_group(backend="nccl")
+    rank = dist.get_rank()
+    device = torch.device(f"cuda:{rank}")
+    torch.cuda.set_device(device)
+    return device
+
+def main():
+    device = setup_distributed()
+    world_size = dist.get_world_size()
+
+    pipeline = DiffusionPipeline.from_pretrained(
+        "black-forest-labs/FLUX.2-dev", torch_dtype=torch.bfloat16
+    ).to(device)
+
+    pipeline.transformer.enable_parallelism(config=TensorParallelConfig(tp_degree=world_size))
+
+    generator = torch.Generator().manual_seed(42)
+    image = pipeline("a cat holding a sign that says hello", generator=generator).images[0]
+    if dist.get_rank() == 0:
+        image.save("output.png")
+    if dist.is_initialized():
+        dist.destroy_process_group()
+
+if __name__ == "__main__":
+    main()
+```
+
+```shell
+torchrun --nproc-per-node 2 above_script.py
+```
+
+### Custom device mesh (combining with context parallelism)
+
+`TensorParallelConfig` (and `ContextParallelConfig`) accept a custom `mesh`. This lets you carve a multi-dimensional [device mesh](https://docs.pytorch.org/docs/stable/distributed.tensor.parallel.html) and pass the relevant sub-mesh to each strategy. For example, a `tp × ring × ulysses` layout:
+
+```py
+from torch.distributed.device_mesh import init_device_mesh
+
+mesh = init_device_mesh("cuda", (2, 2, 2), mesh_dim_names=("tp", "ring", "ulysses"))
+
+tp_config = TensorParallelConfig(mesh=mesh["tp"])
+```
+
+When a custom `mesh` is supplied, `tp_degree` is inferred from `mesh.size()`.
+
+> [!WARNING]
+> Combining context parallelism and tensor parallelism in a single `enable_parallelism()` call is not yet supported — passing both a `context_parallel_config` and a `tensor_parallel_config` raises an error. Enable one strategy at a time for now.
+
+### Neuron (AWS Trainium/Inferentia)
+
+On AWS Neuron, `enable_parallelism` automatically selects a pre-shard path that works around an NRT consecutive-reduce-scatter limitation on large weights. Because the weights are sharded on CPU before being placed on the device, **call `enable_parallelism` while the transformer is still on CPU, then move the pipeline to the Neuron device**:
+
+```py
+pipeline.transformer.enable_parallelism(config=TensorParallelConfig(tp_degree=8))
+pipeline.transformer = pipeline.transformer.to("xla")
+```
