@@ -226,7 +226,7 @@ class WanAttention(torch.nn.Module, AttentionModuleMixin):
 
         self.set_processor(processor)
 
-    def fuse_projections(self):
+    def fuse_projections(self, inplace: bool = True):
         if getattr(self, "fused_projections", False):
             return
 
