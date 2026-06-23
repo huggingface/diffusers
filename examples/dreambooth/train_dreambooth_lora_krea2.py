@@ -1677,13 +1677,17 @@ def main(args):
 
                 # Predict the noise residual.
                 # Pack the latents into 2x2 patches: (B, C, 1, H, W) -> (B, (H/2)*(W/2), C*4).
+                # Inlined from `Krea2Pipeline._pack_latents` (patch_size=2): that pipeline method is an
+                # instance method (uses `self.patch_size`), so it can't be invoked at the class level here.
                 noisy_model_input = noisy_model_input.permute(0, 2, 1, 3, 4)
-                packed_noisy_model_input = Krea2Pipeline._pack_latents(
-                    noisy_model_input,
-                    batch_size=model_input.shape[0],
-                    num_channels_latents=model_input.shape[1],
-                    height=model_input.shape[3],
-                    width=model_input.shape[4],
+                bsz_pack, c_pack = model_input.shape[0], model_input.shape[1]
+                h_pack, w_pack, p_pack = model_input.shape[3], model_input.shape[4], 2
+                packed_noisy_model_input = noisy_model_input.view(
+                    bsz_pack, c_pack, h_pack // p_pack, p_pack, w_pack // p_pack, p_pack
+                )
+                packed_noisy_model_input = packed_noisy_model_input.permute(0, 2, 4, 1, 3, 5)
+                packed_noisy_model_input = packed_noisy_model_input.reshape(
+                    bsz_pack, (h_pack // p_pack) * (w_pack // p_pack), c_pack * p_pack * p_pack
                 )
                 # Rotary coordinates for the combined [text, image] sequence. All images in a batch share a
                 # resolution, so a single set of position ids is reused for the whole batch.
@@ -1700,9 +1704,16 @@ def main(args):
                     encoder_attention_mask=prompt_embeds_mask,
                     return_dict=False,
                 )[0]
-                model_pred = Krea2Pipeline._unpack_latents(
-                    model_pred, args.resolution, args.resolution, vae_scale_factor
-                )
+                # Unpack the predicted patches back to a latent grid. Inlined from
+                # `Krea2Pipeline._unpack_latents` (patch_size=2): that pipeline method is an instance method
+                # (uses `self.patch_size`/`self.vae_scale_factor`), so it can't be invoked at the class level here.
+                p_un = 2
+                bsz_un, _, ch_un = model_pred.shape
+                h_un = p_un * (int(args.resolution) // (vae_scale_factor * p_un))
+                w_un = p_un * (int(args.resolution) // (vae_scale_factor * p_un))
+                model_pred = model_pred.view(bsz_un, h_un // p_un, w_un // p_un, ch_un // (p_un * p_un), p_un, p_un)
+                model_pred = model_pred.permute(0, 3, 1, 4, 2, 5)
+                model_pred = model_pred.reshape(bsz_un, ch_un // (p_un * p_un), 1, h_un, w_un)
 
                 # these weighting schemes use a uniform timestep sampling
                 # and instead post-weight the loss
