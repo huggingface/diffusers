@@ -100,6 +100,14 @@ class QuarkDiffusersQuantizer(DiffusersQuantizer):
                 "or refer to https://quark.docs.amd.com/latest/install.html."
             )
 
+    def _uses_fake_quantized_state_dict(self) -> bool:
+        if not self.pre_quantized:
+            return False
+        if getattr(self.quantization_config, "legacy", False):
+            return True
+        export_config = getattr(self.quantization_config, "json_export_config", None)
+        return getattr(export_config, "weight_format", None) == "fake_quantized"
+
     def _process_model_before_weight_loading(
         self,
         model: "ModelMixin",
@@ -107,20 +115,20 @@ class QuarkDiffusersQuantizer(DiffusersQuantizer):
         **kwargs: Any,
     ) -> None:
         if self.pre_quantized:
-            # Mirror the Transformers Quark integration: swap nn.Linear
-            # / nn.Conv2d for QParamsLinear here, so the saved QParams-
-            # format state dict loads directly into the right modules
-            # and ``QParamsLinear.forward`` can dispatch to native
-            # kernels (FP8 scaled_mm today; MXFP4 / NVFP4 once the
-            # native-inference roadmap lands).
-            from quark.torch.export.api import _map_to_quark
+            if self._uses_fake_quantized_state_dict():
+                from quark.torch.quantization.model_transformation import process_model_transformation
 
-            _map_to_quark(
-                model,
-                self.quantization_config.quant_config,
-                pack_method=self.quantization_config.json_export_config.pack_method,
-                custom_mode=self.quantization_config.custom_mode,
-            )
+                process_model_transformation(model, self.quantization_config.quant_config)
+                model.quant_config = self.quantization_config.quant_config  # type: ignore[attr-defined]
+            else:
+                from quark.torch.export.api import _map_to_quark
+
+                _map_to_quark(
+                    model,
+                    self.quantization_config.quant_config,
+                    pack_method=self.quantization_config.json_export_config.pack_method,
+                    custom_mode=self.quantization_config.custom_mode,
+                )
         else:
             # On-the-fly: weights load into the original nn.Linear /
             # nn.Conv2d and we quantize after loading.  Reject configs
@@ -153,14 +161,18 @@ class QuarkDiffusersQuantizer(DiffusersQuantizer):
             # quantization happens in _process_model_after_weight_loading.
             return False
 
-        # `QparamsOperator` is the marker base class shared by `QParamsLinear`
-        # (and `QParamsLinearWithRotation`) inside amd-quark>=0.10.  In older
-        # quark releases this lived under a different name; if upstream renames
-        # it again, broaden the fallback below rather than tightening the import.
+        if self._uses_fake_quantized_state_dict():
+            from quark.torch.quantization.nn.modules.mixin import QuantMixin
+            from quark.torch.quantization.tensor_quantize import FakeQuantizeBase
+
+            module, _ = get_module_from_name(model, param_name)
+            return isinstance(module, QuantMixin | FakeQuantizeBase)
+
         from quark.torch.export.nn.modules.qparamslinear import QparamsOperator
+        from quark.torch.export.nn.modules.realquantizer import RealQuantizerBase, SequentialRealQuantizer
 
         module, _ = get_module_from_name(model, param_name)
-        return isinstance(module, QparamsOperator)
+        return isinstance(module, QparamsOperator | RealQuantizerBase | SequentialRealQuantizer)
 
     def create_quantized_param(
         self,
@@ -198,10 +210,10 @@ class QuarkDiffusersQuantizer(DiffusersQuantizer):
             ModelQuantizer(qconfig).quantize_model(model, dataloader=None)
             ModelQuantizer.freeze(model, quantize=True)
         else:
-            # Pre-quantized: modules are already QParamsLinear and the
-            # state dict has populated their weights.  Nothing else to
-            # do -- ``QParamsLinear.forward`` dispatches to native
-            # kernels when applicable.
+            if self._uses_fake_quantized_state_dict():
+                from quark.torch import ModelQuantizer
+
+                ModelQuantizer.freeze(model, quantize=False)
 
             # Non-persistent buffers absent from the saved state dict
             # remain on the meta device under low_cpu_mem_usage.
