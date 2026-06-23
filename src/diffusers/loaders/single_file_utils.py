@@ -204,6 +204,8 @@ DIFFUSERS_DEFAULT_PIPELINE_PATHS = {
     "flux-depth": {"pretrained_model_name_or_path": "black-forest-labs/FLUX.1-Depth-dev"},
     "flux-schnell": {"pretrained_model_name_or_path": "black-forest-labs/FLUX.1-schnell"},
     "flux-2-dev": {"pretrained_model_name_or_path": "black-forest-labs/FLUX.2-dev"},
+    "flux-2-klein-4b": {"pretrained_model_name_or_path": "black-forest-labs/FLUX.2-klein-4B"},
+    "flux-2-klein-9b": {"pretrained_model_name_or_path": "black-forest-labs/FLUX.2-klein-9B"},
     "ltx-video": {"pretrained_model_name_or_path": "diffusers/LTX-Video-0.9.0"},
     "ltx-video-0.9.1": {"pretrained_model_name_or_path": "diffusers/LTX-Video-0.9.1"},
     "ltx-video-0.9.5": {"pretrained_model_name_or_path": "Lightricks/LTX-Video-0.9.5"},
@@ -681,7 +683,17 @@ def infer_diffusers_model_type(checkpoint):
             model_type = "animatediff_v3"
 
     elif any(key in checkpoint for key in CHECKPOINT_KEY_NAMES["flux2"]):
-        model_type = "flux-2-dev"
+        if "single_stream_modulation.lin.weight" in checkpoint:
+            key = "single_stream_modulation.lin.weight"
+        else:
+            key = "model.diffusion_model.single_stream_modulation.lin.weight"
+
+        if checkpoint[key].shape[0] == 9216:
+            model_type = "flux-2-klein-4b"
+        elif checkpoint[key].shape[0] == 12288:
+            model_type = "flux-2-klein-9b"
+        else:
+            model_type = "flux-2-dev"
 
     elif any(key in checkpoint for key in CHECKPOINT_KEY_NAMES["flux"]):
         if any(
