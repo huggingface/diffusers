@@ -22,3 +22,4 @@ class JoyImageEditPlusPipelineOutput(BaseOutput):
     """
 
     images: Union[List[PIL.Image.Image], np.ndarray]
+
