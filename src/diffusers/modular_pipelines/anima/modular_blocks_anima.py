@@ -14,15 +14,18 @@
 
 from ..modular_pipeline import SequentialPipelineBlocks
 from ..modular_pipeline_utils import OutputParam
+from .inputs import AnimaProcessImagesInputStep
+from .encoders import AnimaTextEncoderStep, AnimaVaeEncoderStep
 from .before_denoise import (
     AnimaPrepareLatentsStep,
     AnimaSetTimestepsStep,
+    AnimaImg2ImgSetTimestepsStep,
+    AnimaImg2ImgPrepareLatentsStep,
     AnimaTextConditioningStep,
     AnimaTextInputStep,
 )
 from .decoders import AnimaProcessImagesOutputStep, AnimaVaeDecoderStep
 from .denoise import AnimaDenoiseStep
-from .encoders import AnimaTextEncoderStep
 
 
 # auto_docstring
@@ -78,6 +81,8 @@ class AnimaCoreDenoiseStep(SequentialPipelineBlocks):
         AnimaTextInputStep,
         AnimaPrepareLatentsStep,
         AnimaSetTimestepsStep,
+    AnimaImg2ImgSetTimestepsStep,
+    AnimaImg2ImgPrepareLatentsStep,
         AnimaDenoiseStep,
     ]
     block_names = ["text_conditioning", "input", "prepare_latents", "set_timesteps", "denoise"]
@@ -177,6 +182,54 @@ class AnimaAutoBlocks(SequentialPipelineBlocks):
     @property
     def description(self) -> str:
         return "Auto Modular pipeline for text-to-image generation using Anima."
+
+    @property
+    def outputs(self):
+        return [OutputParam.template("images")]
+
+
+class AnimaImg2ImgCoreDenoiseStep(SequentialPipelineBlocks):
+    """
+    Denoise block that takes encoded Anima text inputs and image latents and runs the denoising process for img2img.
+    """
+
+    block_classes = [
+        AnimaTextConditioningStep,
+        AnimaTextInputStep,
+        AnimaImg2ImgSetTimestepsStep,
+        AnimaPrepareLatentsStep,
+        AnimaImg2ImgPrepareLatentsStep,
+        AnimaDenoiseStep,
+    ]
+    block_names = ["text_conditioning", "input", "set_timesteps", "prepare_latents", "prepare_img2img_latents", "denoise"]
+
+    @property
+    def description(self) -> str:
+        return "Denoise block that takes encoded Anima text inputs and image latents and runs the denoising process."
+
+    @property
+    def outputs(self):
+        return [OutputParam.template("latents")]
+
+
+class AnimaImg2ImgAutoBlocks(SequentialPipelineBlocks):
+    """
+    Auto Modular pipeline for image-to-image generation using Anima.
+    """
+
+    block_classes = [
+        AnimaProcessImagesInputStep,
+        AnimaVaeEncoderStep,
+        AnimaTextEncoderStep,
+        AnimaImg2ImgCoreDenoiseStep,
+        AnimaDecodeStep,
+    ]
+    block_names = ["image_input", "vae_encoder", "text_encoder", "denoise", "decode"]
+    _workflow_map = {"img2img": {"prompt": True, "image": True, "strength": True}}
+
+    @property
+    def description(self) -> str:
+        return "Auto Modular pipeline for image-to-image generation using Anima."
 
     @property
     def outputs(self):

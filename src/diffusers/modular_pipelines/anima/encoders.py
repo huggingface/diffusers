@@ -251,3 +251,62 @@ class AnimaTextEncoderStep(ModularPipelineBlocks):
 
         self.set_block_state(state, block_state)
         return components, state
+
+class AnimaVaeEncoderStep(ModularPipelineBlocks):
+    model_name = "anima"
+
+    @property
+    def description(self) -> str:
+        return "VAE Encoder step that converts image into latent representations."
+
+    @property
+    def expected_components(self) -> list[ComponentSpec]:
+        from ...models import AutoencoderKLQwenImage
+        return [ComponentSpec("vae", AutoencoderKLQwenImage)]
+
+    @property
+    def inputs(self) -> list[InputParam]:
+        return [InputParam("processed_image"), InputParam("generator")]
+
+    @property
+    def intermediate_outputs(self) -> list[OutputParam]:
+        return [
+            OutputParam(
+                "image_latents",
+                type_hint=torch.Tensor,
+                description="The latents representing the reference image",
+            )
+        ]
+
+    @torch.no_grad()
+    def __call__(self, components: AnimaModularPipeline, state: PipelineState) -> PipelineState:
+        block_state = self.get_block_state(state)
+
+        if block_state.processed_image is None:
+            block_state.image_latents = None
+        else:
+            device = components._execution_device
+            dtype = components.vae.dtype
+            image = block_state.processed_image.to(device=device, dtype=dtype)
+            
+            from ...utils.torch_utils import retrieve_latents
+            latents = retrieve_latents(components.vae.encode(image), generator=block_state.generator, sample_mode="sample")
+            
+            latents_mean = (
+                torch.tensor(components.vae.config.latents_mean)
+                .view(1, components.vae.config.z_dim, 1, 1)
+                .to(latents.device, latents.dtype)
+            )
+            latents_std = 1.0 / torch.tensor(components.vae.config.latents_std).view(
+                1, components.vae.config.z_dim, 1, 1
+            ).to(latents.device, latents.dtype)
+            
+            image_latents = (latents - latents_mean) * latents_std
+            
+            image_latents = image_latents.unsqueeze(2)
+            
+            block_state.image_latents = image_latents
+
+        self.set_block_state(state, block_state)
+
+        return components, state

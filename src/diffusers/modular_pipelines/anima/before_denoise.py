@@ -414,3 +414,150 @@ class AnimaSetTimestepsStep(ModularPipelineBlocks):
 
         self.set_block_state(state, block_state)
         return components, state
+
+
+class AnimaImg2ImgSetTimestepsStep(ModularPipelineBlocks):
+    model_name = "anima"
+
+    @property
+    def expected_components(self) -> list[ComponentSpec]:
+        from ...schedulers import FlowMatchEulerDiscreteScheduler
+        return [ComponentSpec("scheduler", FlowMatchEulerDiscreteScheduler)]
+
+    @property
+    def description(self) -> str:
+        return "Step that sets the scheduler's timesteps for image-to-image inference"
+
+    @property
+    def inputs(self) -> list[InputParam]:
+        return [
+            InputParam("num_inference_steps", default=50),
+            InputParam("timesteps"),
+            InputParam("sigmas"),
+            InputParam("strength", default=0.8),
+            InputParam("num_images_per_prompt", default=1),
+            InputParam(
+                "batch_size",
+                required=True,
+                type_hint=int,
+                description="Number of prompts",
+            ),
+        ]
+
+    @property
+    def intermediate_outputs(self) -> list[OutputParam]:
+        return [
+            OutputParam("timesteps", type_hint=torch.Tensor, description="The timesteps to use for inference"),
+            OutputParam(
+                "num_inference_steps",
+                type_hint=int,
+                description="The number of denoising steps to perform at inference time",
+            ),
+        ]
+
+    @staticmethod
+    def get_timesteps(scheduler, num_inference_steps, strength, device):
+        init_timestep = min(num_inference_steps * strength, num_inference_steps)
+
+        t_start = int(max(num_inference_steps - init_timestep, 0))
+        timesteps = scheduler.timesteps[t_start * scheduler.order :]
+        if hasattr(scheduler, "set_begin_index"):
+            scheduler.set_begin_index(t_start * scheduler.order)
+
+        return timesteps, num_inference_steps - t_start
+
+    @torch.no_grad()
+    def __call__(self, components: AnimaModularPipeline, state: PipelineState) -> PipelineState:
+        block_state = self.get_block_state(state)
+        device = components._execution_device
+        
+        sigmas = (
+            np.linspace(1.0, 1 / block_state.num_inference_steps, block_state.num_inference_steps)
+            if block_state.sigmas is None
+            else block_state.sigmas
+        )
+        timesteps, num_inference_steps = retrieve_timesteps(
+            components.scheduler,
+            device=device,
+            sigmas=sigmas,
+        )
+
+        timesteps, num_inference_steps = self.get_timesteps(
+            components.scheduler, num_inference_steps, block_state.strength, device
+        )
+        block_state.timesteps = timesteps
+        block_state.num_inference_steps = num_inference_steps
+
+        self.set_block_state(state, block_state)
+        return components, state
+
+
+class AnimaImg2ImgPrepareLatentsStep(ModularPipelineBlocks):
+    model_name = "anima"
+
+    @property
+    def description(self) -> str:
+        return "Step that adds noise to image latents for image-to-image in Anima."
+
+    @property
+    def expected_components(self) -> list[ComponentSpec]:
+        from ...schedulers import FlowMatchEulerDiscreteScheduler
+        return [ComponentSpec("scheduler", FlowMatchEulerDiscreteScheduler)]
+
+    @property
+    def inputs(self) -> list[InputParam]:
+        return [
+            InputParam(
+                name="latents",
+                required=True,
+                type_hint=torch.Tensor,
+                description="The initial random noise, generated in prepare latent step.",
+            ),
+            InputParam(
+                name="image_latents",
+                required=True,
+                type_hint=torch.Tensor,
+                description="The image latents to use for the denoising process. Generated in vae encoder step.",
+            ),
+            InputParam(
+                name="timesteps",
+                required=True,
+                type_hint=torch.Tensor,
+                description="The timesteps to use for the denoising process.",
+            ),
+        ]
+
+    @property
+    def intermediate_outputs(self) -> list[OutputParam]:
+        return [
+            OutputParam(
+                name="initial_noise",
+                type_hint=torch.Tensor,
+                description="The initial random noise.",
+            ),
+        ]
+
+    @staticmethod
+    def check_inputs(image_latents, latents):
+        if image_latents.shape[0] != latents.shape[0]:
+            raise ValueError(
+                f"`image_latents` must have same batch size as `latents`, but got {image_latents.shape[0]} and {latents.shape[0]}"
+            )
+
+    @torch.no_grad()
+    def __call__(self, components: AnimaModularPipeline, state: PipelineState) -> PipelineState:
+        block_state = self.get_block_state(state)
+
+        self.check_inputs(image_latents=block_state.image_latents, latents=block_state.latents)
+
+        latent_timestep = block_state.timesteps[:1].repeat(block_state.latents.shape[0])
+
+        block_state.initial_noise = block_state.latents
+
+        block_state.latents = components.scheduler.scale_noise(
+            block_state.image_latents, latent_timestep, block_state.latents
+        )
+
+        self.set_block_state(state, block_state)
+
+        return components, state
