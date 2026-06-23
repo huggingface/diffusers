@@ -1,7 +1,6 @@
 import inspect
-import warnings
 from dataclasses import dataclass
-from typing import Any, Dict, List, Literal, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import numpy as np
 import PIL.Image
@@ -21,7 +20,6 @@ from diffusers.utils import (
 )
 from diffusers.utils.teacache_util import TeaCacheParams
 from diffusers.utils.torch_utils import randn_tensor
-from diffusers.utils.validator_utils import get_device_validator
 
 from ...models.transformers import BooguImageTransformer2DModel
 from .image_processor import BooguImageProcessor
@@ -248,174 +246,6 @@ class BooguImagePipeline(DiffusionPipeline):
         )  # This is for empty negative instruction for image guidance in double guidance.
         self.SYSTEM_PROMPT_4_TI2I = self.SYSTEM_PROMPT_4_TI2I_UNIFIED
         self.SYSTEM_PROMPT_4_I2I = self.SYSTEM_PROMPT_4_TI2I_UNIFIED
-
-        self.user_set_pipe_device = None
-
-        self.enable_model_cpu_offload_flag = False
-        self.enable_sequential_cpu_offload_flag = False
-        self.enable_group_offload_flag = False
-
-    def _validate_device_format(
-        self,
-        device: Literal[None, "cpu", "cuda", "cuda:x"] = "cpu",
-    ):
-        # get_device_validator() raises on an unsupported device string (e.g. "gpu", "cuda:x").
-        get_device_validator()(device.lower() if isinstance(device, str) else device)
-
-    def _check_device_strategy_validity(
-        self,
-        enable_model_cpu_offload_flag: bool = None,
-        enable_sequential_cpu_offload_flag: bool = None,
-        enable_group_offload_flag: bool = None,
-        device: Literal[None, "cpu", "cuda", "cuda:x"] = None,
-    ):
-        self._validate_device_format(device)
-
-        enable_model_cpu_offload_flag = bool(enable_model_cpu_offload_flag)
-        enable_sequential_cpu_offload_flag = bool(enable_sequential_cpu_offload_flag)
-        enable_group_offload_flag = bool(enable_group_offload_flag)
-
-        enabled_offload_flags = [
-            enable_model_cpu_offload_flag,
-            enable_sequential_cpu_offload_flag,
-            enable_group_offload_flag,
-        ]
-        num_enabled_offload_flags = sum(int(x) for x in enabled_offload_flags)
-        assert num_enabled_offload_flags <= 1, (
-            "At most one pipeline offload strategy can be enabled at a time. "
-            f"Got enable_model_cpu_offload_flag={enable_model_cpu_offload_flag}, "
-            f"enable_sequential_cpu_offload_flag={enable_sequential_cpu_offload_flag}, "
-            f"enable_group_offload_flag={enable_group_offload_flag}."
-        )
-
-    def devices_manager(
-        self,
-        instant_device_2_use: Literal[None, "cpu", "cuda", "cuda:x"] = None,
-        user_set_pipe_device: Literal[None, "cpu", "cuda", "cuda:x"] = None,
-        execution_device: Literal[None, "cpu", "cuda", "cuda:x"] = None,
-        enable_model_cpu_offload_flag: bool = None,
-        enable_sequential_cpu_offload_flag: bool = None,
-        enable_group_offload_flag: bool = None,
-    ):
-
-        self._validate_device_format(instant_device_2_use)
-        self._validate_device_format(user_set_pipe_device)
-
-        if user_set_pipe_device:
-            self.user_set_pipe_device = user_set_pipe_device
-        if execution_device:
-            self.execution_device = execution_device
-
-        if enable_model_cpu_offload_flag is not None:
-            self.enable_model_cpu_offload_flag = enable_model_cpu_offload_flag
-        if enable_sequential_cpu_offload_flag is not None:
-            self.enable_sequential_cpu_offload_flag = enable_sequential_cpu_offload_flag
-        if enable_group_offload_flag is not None:
-            self.enable_group_offload_flag = enable_group_offload_flag
-
-        auto_offload_strategy_num = (
-            int(self.enable_model_cpu_offload_flag)
-            + int(self.enable_sequential_cpu_offload_flag)
-            + int(self.enable_group_offload_flag)
-        )
-
-        assert auto_offload_strategy_num <= 1, (
-            f"At most one offload strategy can be enabled at a time. "
-            f"Current values: "
-            f"enable_model_cpu_offload_flag={self.enable_model_cpu_offload_flag}, "
-            f"enable_sequential_cpu_offload_flag={self.enable_sequential_cpu_offload_flag}, "
-            f"enable_group_offload_flag={self.enable_group_offload_flag}."
-        )
-
-        if instant_device_2_use is not None:
-            if auto_offload_strategy_num == 0:
-                self.to(instant_device_2_use.lower())
-            else:
-                logger.info(
-                    "An offload strategy is enabled, so the user-requested device move to "
-                    "`instant_device_2_use=%r` will be ignored.",
-                    instant_device_2_use,
-                )
-
-    def set_mllm(self, mllm, device=None):
-        """mllm's setter"""
-        if hasattr(mllm, "lm_head"):
-            my_new_mllm = mllm.model
-        else:
-            my_new_mllm = mllm
-
-        # Re-register the module so both the instance attribute and pipeline config stay in sync.
-        self.register_modules(mllm=my_new_mllm)
-
-        if (
-            self.enable_model_cpu_offload_flag
-            or self.enable_sequential_cpu_offload_flag
-            or self.enable_group_offload_flag
-            or getattr(self, "_all_hooks", None)
-        ):
-            warnings.warn(
-                "[Setter Warning]: `set_mllm(...)` is being called after this pipeline may have enabled "
-                "device/offload hooks. Re-registering `mllm` at this point can leave old Accelerate/Diffusers hooks "
-                "or CPU/GPU offload state attached to the previous module. Prefer calling "
-                "`set_mllm(...)` immediately after `from_pretrained(...)` and before enabling model CPU offload, "
-                "sequential CPU offload, group offload, or running inference. If replacing `mllm` after hooks were "
-                "installed, remove/recreate the hooks or rebuild the pipeline to avoid stale device state. "
-                f"enable_model_cpu_offload_flag={self.enable_model_cpu_offload_flag}, "
-                f"enable_sequential_cpu_offload_flag={self.enable_sequential_cpu_offload_flag}, "
-                f"enable_group_offload_flag={self.enable_group_offload_flag}.",
-                UserWarning,
-            )
-
-        # The processor is model-specific and must be updated separately.
-        warnings.warn(
-            "[Setter Warning]: After calling `set_mllm(...)`, please call the processor setter `set_processor(...)` to set the "
-            "processor that matches the new MLLM. A mismatched processor can produce incorrect tokenization, "
-            "chat templates, image preprocessing, or vision-token IDs.",
-            UserWarning,
-        )
-
-        if device is not None:
-            self.mllm.to(device)
-
-    def set_processor(self, processor):
-        """processor's setter"""
-        assert processor is not None, "`processor` must not be None."
-
-        # Re-register the processor so both the instance attribute and pipeline config stay in sync.
-        self.register_modules(processor=processor)
-
-    def set_scheduler(self, scheduler):
-        """scheduler's setter"""
-        assert scheduler is not None, "`scheduler` must not be None."
-
-        # Re-register the scheduler so both the instance attribute and pipeline config stay in sync.
-        self.register_modules(scheduler=scheduler)
-
-    def set_transformer(self, transformer, device=None):
-        """transformer's setter"""
-        assert transformer is not None, "`transformer` must not be None."
-
-        # Re-register the transformer so both the instance attribute and pipeline config stay in sync.
-        self.register_modules(transformer=transformer)
-        logger.info("`self.transformer` has been registered.")
-
-        if (
-            self.enable_model_cpu_offload_flag
-            or self.enable_sequential_cpu_offload_flag
-            or self.enable_group_offload_flag
-            or getattr(self, "_all_hooks", None)
-        ):
-            warnings.warn(
-                "[Setter Warning]: `set_transformer(...)` is being called after this pipeline may have enabled "
-                "device/offload hooks. Re-registering `transformer` at this point can leave stale Accelerate/"
-                "Diffusers hook state. Prefer setting the transformer before enabling CPU/group offload or "
-                "running inference.",
-                UserWarning,
-            )
-
-        if device is not None:
-            self.transformer.to(device)
-            logger.info("`self.transformer` has been moved to the requested device. device=%r.", device)
 
     def prepare_latents(
         self,
@@ -1220,7 +1050,6 @@ class BooguImagePipeline(DiffusionPipeline):
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
         step_func=None,
-        device: Literal[None, "cpu", "cuda", "cuda:x"] = "cuda",
     ):
 
         height = height or self.default_sample_size * self.vae_scale_factor
@@ -1242,17 +1071,9 @@ class BooguImagePipeline(DiffusionPipeline):
         else:
             batch_size = instruction_embeds.shape[0]
 
-        self._check_device_strategy_validity(
-            enable_model_cpu_offload_flag=self.enable_model_cpu_offload_flag,
-            enable_sequential_cpu_offload_flag=self.enable_sequential_cpu_offload_flag,
-            enable_group_offload_flag=self.enable_group_offload_flag,
-            device=device,
-        )
-
-        self.devices_manager(
-            user_set_pipe_device=device,
-            execution_device=device,
-        )
+        # Resolve the device the pipeline's modules live on. With offloading enabled the base
+        # class returns the right execution device; otherwise it reflects the last `.to(...)`.
+        device = self._execution_device
 
         max_images_per_sample = 0
         if input_images:
@@ -1278,7 +1099,7 @@ class BooguImagePipeline(DiffusionPipeline):
             max_vlm_input_pil_pixels=max_vlm_input_pil_pixels,
             max_vlm_input_pil_side_length=max_vlm_input_pil_side_length,
             num_images_per_instruction=num_images_per_instruction,
-            device=self.user_set_pipe_device,
+            device=device,
             instruction_embeds=instruction_embeds,
             negative_instruction_embeds=negative_instruction_embeds,
             instruction_attention_mask=instruction_attention_mask,
@@ -1305,7 +1126,7 @@ class BooguImagePipeline(DiffusionPipeline):
             num_images_per_instruction=num_images_per_instruction,
             max_input_image_pixels=max_input_image_pixels,
             max_side_length=max_input_image_side_length,
-            device=self.user_set_pipe_device,
+            device=device,
             dtype=dtype,
         )
 
@@ -1331,7 +1152,7 @@ class BooguImagePipeline(DiffusionPipeline):
             height,
             width,
             instruction_embeds.dtype,
-            self.user_set_pipe_device,
+            device,
             generator,
             latents,
         )
@@ -1352,7 +1173,7 @@ class BooguImagePipeline(DiffusionPipeline):
             negative_instruction_attention_mask=negative_instruction_attention_mask,
             num_inference_steps=num_inference_steps,
             timesteps=timesteps,
-            device=self.user_set_pipe_device,
+            device=device,
             dtype=dtype,
             step_func=step_func,
             # For double guidance

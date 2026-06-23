@@ -46,8 +46,8 @@ class BooguImagePipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     batch_params = frozenset(["instruction"])
     required_optional_params = frozenset(["num_inference_steps", "generator", "output_type", "return_dict"])
 
-    # Boogu owns its own device placement (`device=` kwarg + devices_manager), so the
-    # generic offload / casting / xformers paths do not apply.
+    # Boogu uses the base-class device placement (`.to(...)` / `_execution_device`), but the
+    # generic offload / casting / xformers paths do not apply to its instruction-encoder design.
     test_xformers_attention = False
     test_attention_slicing = False
     test_layerwise_casting = False
@@ -136,7 +136,6 @@ class BooguImagePipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             "text_guidance_scale": 1.0,
             "image_guidance_scale": 1.0,
             "empty_instruction_guidance_scale": 0.0,
-            "device": "cpu",
             "output_type": "np",
         }
 
