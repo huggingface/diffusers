@@ -342,15 +342,11 @@ class DiffusionGemmaPipeline(DiffusionPipeline):
                 **(multimodal_inputs if cached_len == 0 else {}),
             )
 
-            # The decoder mask spans the cache key length plus the always-visible canvas. A static cache reports its
-            # fixed buffer length, so the unpopulated buffer slots past the live padding mask are masked out (`False`).
-            cache_kv_length = past_key_values.max_cache_len if use_static_cache else past_key_values.get_seq_length()
-            decoder_attention_mask = torch.nn.functional.pad(
-                cur_attention_mask.bool(), (0, cache_kv_length - cur_attention_mask.shape[1]), value=False
-            )
-            decoder_attention_mask = torch.nn.functional.pad(decoder_attention_mask, (0, canvas_length), value=True)
+            # Decoder attends bidirectionally over the populated cache (the live padding mask) plus the always-visible
+            # canvas; the mask builder sizes this to the cache internally, including the static buffer for a StaticCache.
+            decoder_attention_mask = torch.nn.functional.pad(cur_attention_mask.bool(), (0, canvas_length), value=True)
             mask_mapping = self.model.model.decoder.create_diffusion_decoder_attention_mask(
-                config=text_config,
+                config=self.model.config,
                 inputs_embeds=torch.empty((batch_size, canvas_length, 0), device=device),
                 past_key_values=past_key_values,
                 decoder_attention_mask=decoder_attention_mask,
