@@ -82,7 +82,7 @@ class DiffusionGemmaPipeline(DiffusionPipeline):
         self,
         model: Any,
         scheduler: BlockRefinementScheduler | DiscreteDDIMScheduler | EntropyBoundScheduler,
-        processor: Any | None = None,
+        processor: Any,
     ):
         super().__init__()
         self.register_modules(model=model, scheduler=scheduler, processor=processor)
