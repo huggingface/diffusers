@@ -33,18 +33,21 @@ processor = AutoProcessor.from_pretrained(model_id)
 scheduler = BlockRefinementScheduler()
 
 pipe = DiffusionGemmaPipeline(model=model, scheduler=scheduler, processor=processor)
+pipe.model.model.decoder = torch.compile(pipe.model.model.decoder, mode="reduce-overhead", fullgraph=True)
 output = pipe(
     prompt="Why is the sky blue?",
     gen_length=256,
     num_inference_steps=48,
-    temperature=0.0,
+    cache_implementation="static",
 )
 print(output.texts[0])
 ```
 
 `num_inference_steps` is the number of denoising steps per canvas (48 matches the released checkpoint); fewer steps are
-faster but lower quality. For multimodal prompts, pass an `image` alongside the `prompt` (or put the image content in a
-raw `messages` conversation), and the processor turns it into the model's image inputs automatically.
+faster but lower quality. `cache_implementation="static"` lets the decoder be `torch.compile`-d with cudagraphs (see
+[Static cache and compilation](#static-cache-and-compilation)); drop both for a simpler dynamic-cache run. For
+multimodal prompts, pass an `image` alongside the `prompt` (or put the image content in a raw `messages` conversation),
+and the processor turns it into the model's image inputs automatically.
 
 ## Schedulers
 
@@ -112,15 +115,11 @@ Adapters stay active and unmerged: DiffusionGemma ties the encoder and decoder b
 
 ## Static cache and compilation
 
-The pipeline prefills the encoder once per block into a reusable cache (a `DynamicCache` by default). Pass
-`cache_implementation="static"` to use a fixed-shape `StaticCache` instead, whose shapes let you `torch.compile` the
+The pipeline prefills the encoder once per block into a reusable cache (a `DynamicCache` by default). Passing
+`cache_implementation="static"` uses a fixed-shape `StaticCache` instead, whose shapes let you `torch.compile` the
 decoder with cudagraphs for a further speedup (the pipeline marks each step and clones the logits so cudagraph memory
-is not overwritten):
-
-```py
-pipe.model.model.decoder = torch.compile(pipe.model.model.decoder, mode="reduce-overhead", fullgraph=True)
-output = pipe(prompt="Why is the sky blue?", gen_length=256, cache_implementation="static")
-```
+is not overwritten); this is the setup shown in [Usage](#usage). Drop both the `torch.compile` call and
+`cache_implementation="static"` for a simpler dynamic-cache run.
 
 ## Adaptive stopping
 
