@@ -17,7 +17,7 @@ Linked from `AGENTS.md`, `skills/model-integration/SKILL.md`, and `review-rules.
 
 ## Single-file model layout
 
-A model follows the **single-file policy**: its full implementation lives in one `transformer_<name>.py` (or `unet_<name>.py`) — attention (the `Attention` class and its processor), transformer blocks, RoPE, and any model-specific layers all in that file. Don't split it into per-model companion modules (`attention_processor_<name>.py`, `block_<name>.py`, `rope_<name>.py`); multi-file layouts are a research-repo habit, not the diffusers one.
+A model follows the **single-file policy**: its full implementation lives in one `transformer_<name>.py` (or `unet_<name>.py`) — attention (the `Attention` class and its processor), transformer blocks, RoPE, and any model-specific layers all in that file.
 
 For shared building blocks, either:
 - **import** a common layer from `normalization.py`, `attention.py`, or `embeddings.py`, or
