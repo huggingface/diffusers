@@ -37,12 +37,15 @@ class EntropyBoundSchedulerOutput(BaseOutput):
             Token IDs sampled from the model logits.
         sampled_probs (`torch.Tensor` of shape `(batch_size, block_length)`):
             Probabilities of the sampled tokens.
+        pred_logits (`torch.Tensor` of shape `(batch_size, block_length, vocab_size)`):
+            The temperature-scaled logits the candidates were drawn from, for self-conditioning the next step.
     """
 
     prev_sample: torch.LongTensor
     accepted_index: torch.BoolTensor
     sampled_tokens: torch.LongTensor
     sampled_probs: torch.Tensor
+    pred_logits: torch.Tensor
 
 
 class EntropyBoundScheduler(SchedulerMixin, ConfigMixin):
@@ -120,7 +123,10 @@ class EntropyBoundScheduler(SchedulerMixin, ConfigMixin):
         entropy_bound: float | None = None,
         generator: torch.Generator | None = None,
         return_dict: bool = True,
-    ) -> EntropyBoundSchedulerOutput | tuple[torch.LongTensor, torch.BoolTensor, torch.LongTensor, torch.Tensor]:
+    ) -> (
+        EntropyBoundSchedulerOutput
+        | tuple[torch.LongTensor, torch.BoolTensor, torch.LongTensor, torch.Tensor, torch.Tensor]
+    ):
         """
         Accept the lowest-entropy positions under the entropy bound and renoise the rest.
 
@@ -165,12 +171,13 @@ class EntropyBoundScheduler(SchedulerMixin, ConfigMixin):
         prev_sample = torch.where(accepted_index, sampled_tokens, random_tokens)
 
         if not return_dict:
-            return prev_sample, accepted_index, sampled_tokens, sampled_probs
+            return prev_sample, accepted_index, sampled_tokens, sampled_probs, model_output
         return EntropyBoundSchedulerOutput(
             prev_sample=prev_sample,
             accepted_index=accepted_index,
             sampled_tokens=sampled_tokens,
             sampled_probs=sampled_probs,
+            pred_logits=model_output,
         )
 
 
