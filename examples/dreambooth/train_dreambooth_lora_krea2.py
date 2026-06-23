@@ -163,8 +163,8 @@ You should use `{instance_prompt}` to trigger the image generation.
 >>> pipe = Krea2Pipeline.from_pretrained("{inference_model}", torch_dtype=torch.bfloat16).to("cuda")
 >>> pipe.load_lora_weights("{repo_id}")
 
->>> # Turbo recipe: 8 steps, no classifier-free guidance, fixed mu
->>> image = pipe("{instance_prompt}", num_inference_steps=8, guidance_scale=0.0, mu=1.15).images[0]
+>>> # Turbo recipe: 8 steps, no classifier-free guidance
+>>> image = pipe("{instance_prompt}", num_inference_steps=8, guidance_scale=0.0).images[0]
 >>> image.save("output.png")
 ```
 
@@ -250,13 +250,12 @@ def log_validation(
 
 def _validation_call_kwargs(args):
     # When validating on a dedicated inference checkpoint (e.g. Krea 2 Turbo), use its recipe
-    # (few-step, no CFG, fixed mu). When validating on the training checkpoint, use pipeline defaults.
+    # (few-step, no CFG). When validating on the training checkpoint, use pipeline defaults.
     if args.validation_model_path is None:
         return {}
     return {
         "num_inference_steps": args.validation_num_inference_steps,
         "guidance_scale": args.validation_guidance_scale,
-        "mu": args.validation_mu,
     }
 
 
@@ -348,12 +347,6 @@ def parse_args(input_args=None):
         type=float,
         default=0.0,
         help="guidance_scale for validation on --validation_model_path (Krea 2 Turbo runs without CFG).",
-    )
-    parser.add_argument(
-        "--validation_mu",
-        type=float,
-        default=1.15,
-        help="Fixed `mu` for validation timestep shift on --validation_model_path (Krea 2 Turbo uses a fixed mu).",
     )
     parser.add_argument(
         "--revision",
