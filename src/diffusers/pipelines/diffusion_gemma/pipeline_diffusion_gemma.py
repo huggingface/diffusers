@@ -326,7 +326,7 @@ class DiffusionGemmaPipeline(DiffusionPipeline):
         if eos_token_id is None:
             eos_token_id = self.eos_token_id
 
-        canvas_length = self.canvas_length
+        canvas_length = self.model.config.canvas_length
         num_canvases = (gen_length + canvas_length - 1) // canvas_length
         # `num_inference_steps` is the per-block budget of model forwards. With a corrector, fold its sweeps into that
         # budget (as in https://huggingface.co/papers/2605.22765) instead of adding them on top: the first
