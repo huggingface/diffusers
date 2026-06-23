@@ -77,6 +77,7 @@ class EntropyBoundScheduler(SchedulerMixin, ConfigMixin):
         self.timesteps = torch.arange(num_inference_steps, device=device, dtype=torch.long)
 
     @staticmethod
+    # Copied from diffusers.schedulers.scheduling_discrete_ddim.DiscreteDDIMScheduler._sample_from_logits
     def _sample_from_logits(
         logits: torch.Tensor,
         *,
