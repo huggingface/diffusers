@@ -77,9 +77,4 @@ src/diffusers/pipelines/<model>/
     - **If a method is called from `__call__`, and it's a step in the pipeline lifecycle, make it public.** Each call from `__call__` should correspond to a step a user can identify: either a standard one (`encode_prompt`, `prepare_latents`, `set_timesteps`, …) or a pipeline-specific one (`prepare_src_latents`, `prepare_reference_audio_latents`, …). Don't gate these behind a `_`; they're part of the pipeline's API surface alongside their standard siblings.
     - **If a method is only used by another method, make it private (`_foo`) or lift it to a module-level function — and keep the count down.** Before adding one, see if the logic can be absorbed into its caller. Unless you expect the helper to be reused by another method (or another task pipeline), absorbing is usually the better call — especially when the body is small. Avoid a pipeline class littered with private helpers that bury the lifecycle..
 
-7. **Don't reimplement `DiffusionPipeline`.** A pipeline subclass adds only *pipeline-specific* steps (`__call__`, `check_inputs`, `encode_prompt`, `prepare_latents`, …). Device handling, offloading, execution-device resolution, and component registration already live on the base class — use them rather than adding a parallel implementation on the subclass:
-    - **Device placement** — `pipe.to(device)`; `__call__` reads `self._execution_device`.
-    - **Offloading** — `enable_model_cpu_offload()` / `enable_sequential_cpu_offload()` / `enable_group_offload()`.
-    - **Components** — registered once via `register_modules(...)` in `__init__` and accessed as attributes.
-
-    If you find yourself writing device, offload, or module-registration plumbing on a pipeline, it almost certainly already exists on `DiffusionPipeline` — reuse it.
+7. **Don't reimplement `DiffusionPipeline`.** A pipeline subclass adds only *pipeline-specific* steps (`__call__`, `check_inputs`, `encode_prompt`, `prepare_latents`, …). Device placement, offloading, and component loading/registration already live on the base class — don't add your own; use what's there.
