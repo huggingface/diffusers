@@ -146,7 +146,7 @@ jobs:
         pytest -n 4 --max-worker-restart=0 --dist=loadfile \
           -k "not Flax and not Onnx and not Dependency" \
           --make-reports=tests_${{ matrix.config.report }} \
-          tests/models tests/schedulers tests/others
+          tests/models tests/schedulers tests/hooks tests/others
 
     - name: Run example PyTorch CPU tests
       if: ${{ matrix.config.framework == 'pytorch_examples' }}

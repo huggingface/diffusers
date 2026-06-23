@@ -321,6 +321,48 @@ class MLPEmbedder(nn.Module):
         return self.out_layer(self.silu(self.in_layer(x)))
 
 
+class PRXResolutionEmbedder(nn.Module):
+    r"""
+    Embeds the spatial resolution `(height, width)` of the latent into a vector that is added to the timestep
+    embedding, so the model can condition its modulation on the generation resolution.
+
+    A sinusoidal embedding of dimension 128 is built for the height and the width separately and concatenated into a
+    256-dim vector, which is then projected to `hidden_size` by a 2-layer MLP. This matches the `"vec"` mode of the
+    resolution-aware conditioning used during PRX-7B training.
+
+    Args:
+        hidden_size (`int`):
+            Dimension of the output embedding (must match the timestep embedding dimension).
+        max_period (`int`, *optional*, defaults to 10000):
+            Maximum frequency period for the sinusoidal resolution embedding.
+    """
+
+    def __init__(self, hidden_size: int, max_period: int = 10000):
+        super().__init__()
+        self.max_period = max_period
+        self.mlp = MLPEmbedder(in_dim=256, hidden_dim=hidden_size)
+
+    def forward(self, height: torch.Tensor, width: torch.Tensor, dtype: torch.dtype) -> torch.Tensor:
+        h_emb = get_timestep_embedding(
+            timesteps=height,
+            embedding_dim=128,
+            max_period=self.max_period,
+            scale=1.0,
+            flip_sin_to_cos=True,
+            downscale_freq_shift=0.0,
+        )
+        w_emb = get_timestep_embedding(
+            timesteps=width,
+            embedding_dim=128,
+            max_period=self.max_period,
+            scale=1.0,
+            flip_sin_to_cos=True,
+            downscale_freq_shift=0.0,
+        )
+        hw_emb = torch.cat([h_emb, w_emb], dim=-1).to(dtype)
+        return self.mlp(hw_emb)
+
+
 class Modulation(nn.Module):
     r"""
     Modulation network that generates scale, shift, and gating parameters.
@@ -613,12 +655,19 @@ class PRXTransformer2DModel(ModelMixin, ConfigMixin, AttentionMixin):
             Scaling factor applied in timestep embeddings.
         time_max_period (`int`, *optional*, defaults to 10000):
             Maximum frequency period for timestep embeddings.
+        bottleneck_size (`int`, *optional*):
+            If set, the image patch projection (`img_in`) uses a two-layer bottleneck (`patch_dim -> bottleneck_size ->
+            hidden_size`) instead of a single linear layer. Used by the pixel-space PRX-7B variant where the patch
+            dimension is large.
+        resolution_embeds (`bool`, *optional*, defaults to `False`):
+            Whether to condition the timestep modulation on the latent resolution `(H, W)` via a
+            `PRXResolutionEmbedder`. Used by the PRX-7B variant.
 
     Attributes:
         pe_embedder (`EmbedND`):
             Multi-axis rotary embedding generator for positional encodings.
-        img_in (`nn.Linear`):
-            Projection layer for image patch tokens.
+        img_in (`nn.Linear` or `nn.Sequential`):
+            Projection layer for image patch tokens (a two-layer bottleneck when `bottleneck_size` is set).
         time_in (`MLPEmbedder`):
             Embedding layer for timestep embeddings.
         txt_in (`nn.Linear`):
@@ -666,6 +715,8 @@ class PRXTransformer2DModel(ModelMixin, ConfigMixin, AttentionMixin):
         theta: int = 10000,
         time_factor: float = 1000.0,
         time_max_period: int = 10000,
+        bottleneck_size: int | None = None,
+        resolution_embeds: bool = False,
     ):
         super().__init__()
 
@@ -691,9 +742,21 @@ class PRXTransformer2DModel(ModelMixin, ConfigMixin, AttentionMixin):
         self.hidden_size = hidden_size
         self.num_heads = num_heads
         self.pe_embedder = PRXEmbedND(dim=pe_dim, theta=theta, axes_dim=axes_dim)
-        self.img_in = nn.Linear(self.in_channels * self.patch_size**2, self.hidden_size, bias=True)
+        patch_dim = self.in_channels * self.patch_size**2
+        if bottleneck_size is not None:
+            # Two-layer bottleneck projection (used by pixel-space PRX where the patch dimension is large).
+            self.img_in = nn.Sequential(
+                nn.Linear(patch_dim, bottleneck_size, bias=True),
+                nn.Linear(bottleneck_size, self.hidden_size, bias=True),
+            )
+        else:
+            self.img_in = nn.Linear(patch_dim, self.hidden_size, bias=True)
         self.time_in = MLPEmbedder(in_dim=256, hidden_dim=self.hidden_size)
         self.txt_in = nn.Linear(context_in_dim, self.hidden_size)
+
+        self.resolution_embedder = (
+            PRXResolutionEmbedder(self.hidden_size, max_period=time_max_period) if resolution_embeds else None
+        )
 
         self.blocks = nn.ModuleList(
             [
@@ -770,6 +833,13 @@ class PRXTransformer2DModel(ModelMixin, ConfigMixin, AttentionMixin):
 
         # Compute time embedding
         vec = self._compute_timestep_embedding(timestep, dtype=img.dtype)
+
+        # Add resolution conditioning (PRX-7B "vec" mode): embed the latent (H, W) and add it to the timestep vector
+        # so every block's modulation is resolution-aware.
+        if self.resolution_embedder is not None:
+            height = torch.full((bs,), h, device=hidden_states.device, dtype=torch.float32)
+            width = torch.full((bs,), w, device=hidden_states.device, dtype=torch.float32)
+            vec = vec + self.resolution_embedder(height, width, dtype=vec.dtype)
 
         # Apply transformer blocks
         for block in self.blocks:

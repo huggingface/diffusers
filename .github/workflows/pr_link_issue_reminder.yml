@@ -1,0 +1,35 @@
+name: PR Issue Link Reminder
+
+on:
+  schedule:
+    - cron: "30 7 * * *"
+  workflow_dispatch:
+
+jobs:
+  remind:
+    # Reminds external contributors to link an issue. PRs from maintainers, users
+    # with write/admin access, and collaborators are skipped by the script.
+    name: Remind external contributors to link an issue
+    if: github.repository == 'huggingface/diffusers'
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: write
+    env:
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+
+      - name: Setup Python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405  # v6
+        with:
+          python-version: "3.10"
+
+      - name: Install requirements
+        run: |
+          pip install PyGithub requests
+
+      - name: Run reminder script
+        run: |
+          python utils/remind_link_issue.py

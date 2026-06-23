@@ -96,6 +96,7 @@ if is_torch_available():
     _import_structure["transformers.stable_audio_transformer"] = ["StableAudioDiTModel"]
     _import_structure["transformers.t5_film_transformer"] = ["T5FilmDecoder"]
     _import_structure["transformers.transformer_2d"] = ["Transformer2DModel"]
+    _import_structure["transformers.transformer_2d_dreamlite"] = ["DreamLiteTransformer2DModel"]
     _import_structure["transformers.transformer_allegro"] = ["AllegroTransformer3DModel"]
     _import_structure["transformers.transformer_anyflow"] = ["AnyFlowTransformer3DModel"]
     _import_structure["transformers.transformer_anyflow_far"] = ["AnyFlowFARTransformer3DModel"]
@@ -118,6 +119,7 @@ if is_torch_available():
     _import_structure["transformers.transformer_hunyuan_video15"] = ["HunyuanVideo15Transformer3DModel"]
     _import_structure["transformers.transformer_hunyuan_video_framepack"] = ["HunyuanVideoFramepackTransformer3DModel"]
     _import_structure["transformers.transformer_hunyuanimage"] = ["HunyuanImageTransformer2DModel"]
+    _import_structure["transformers.transformer_ideogram4"] = ["Ideogram4Transformer2DModel"]
     _import_structure["transformers.transformer_joyimage"] = ["JoyImageEditTransformer3DModel"]
     _import_structure["transformers.transformer_kandinsky"] = ["Kandinsky5Transformer3DModel"]
     _import_structure["transformers.transformer_longcat_audio_dit"] = ["LongCatAudioDiTTransformer"]
@@ -144,6 +146,7 @@ if is_torch_available():
     _import_structure["unets.unet_2d"] = ["UNet2DModel"]
     _import_structure["unets.unet_2d_condition"] = ["UNet2DConditionModel"]
     _import_structure["unets.unet_3d_condition"] = ["UNet3DConditionModel"]
+    _import_structure["unets.unet_dreamlite"] = ["DreamLiteUNetModel"]
     _import_structure["unets.unet_i2vgen_xl"] = ["I2VGenXLUNet"]
     _import_structure["unets.unet_kandinsky3"] = ["Kandinsky3UNet"]
     _import_structure["unets.unet_motion_model"] = ["MotionAdapter", "UNetMotionModel"]
@@ -235,6 +238,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             Cosmos3OmniTransformer,
             CosmosTransformer3DModel,
             DiTTransformer2DModel,
+            DreamLiteTransformer2DModel,
             DualTransformer2DModel,
             EasyAnimateTransformer3DModel,
             ErnieImageTransformer2DModel,
@@ -248,6 +252,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             HunyuanVideo15Transformer3DModel,
             HunyuanVideoFramepackTransformer3DModel,
             HunyuanVideoTransformer3DModel,
+            Ideogram4Transformer2DModel,
             JoyImageEditTransformer3DModel,
             Kandinsky5Transformer3DModel,
             LatteTransformer3DModel,
@@ -280,6 +285,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             ZImageTransformer2DModel,
         )
         from .unets import (
+            DreamLiteUNetModel,
             I2VGenXLUNet,
             Kandinsky3UNet,
             MotionAdapter,
