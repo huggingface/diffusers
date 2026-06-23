@@ -86,53 +86,12 @@ class DiffusionGemmaPipeline(DiffusionPipeline):
     ):
         super().__init__()
         self.register_modules(model=model, scheduler=scheduler, processor=processor)
-        text_config = model.config.get_text_config()
-        self.canvas_length = model.config.canvas_length
-        self.vocab_size = text_config.vocab_size
         tokenizer = getattr(processor, "tokenizer", processor)
         self.eos_token_id = getattr(tokenizer, "eos_token_id", None) if tokenizer is not None else None
 
     @property
     def num_timesteps(self):
         return self._num_timesteps
-
-    # --- PEFT adapters ---
-    #
-    # The denoiser is a 🤗 Transformers model (a `PeftAdapterMixin`), not a diffusers `ModelMixin`, so the diffusers
-    # `LoraLoaderMixin` (which targets diffusers components and fuses kohya-format LoRA) does not apply. We instead
-    # forward the model's native, adapter-type-agnostic PEFT API, so LoRA, DoRA, and other PEFT adapters all load the
-    # same way. Adapters stay active and unmerged: DiffusionGemma ties the encoder and decoder base weights, so fusing
-    # would corrupt them.
-
-    def load_adapter(self, *args, **kwargs):
-        """
-        Load a PEFT adapter (LoRA, DoRA, ...) into the underlying model.
-
-        Forwards to [`~transformers.integrations.PeftAdapterMixin.load_adapter`]; the first argument is the path or Hub
-        id of the adapter (a directory with `adapter_config.json` and the adapter weights, e.g. the output of
-        [`SFTTrainer`]).
-        """
-        return self.model.load_adapter(*args, **kwargs)
-
-    def set_adapter(self, adapter_name: str | list[str]):
-        """Activate one or more loaded adapters by name."""
-        self.model.set_adapter(adapter_name)
-
-    def enable_adapters(self):
-        """Enable the attached adapters."""
-        self.model.enable_adapters()
-
-    def disable_adapters(self):
-        """Disable all adapters and run the base model."""
-        self.model.disable_adapters()
-
-    def delete_adapter(self, adapter_name: str | list[str]):
-        """Delete one or more loaded adapters."""
-        self.model.delete_adapter(adapter_name)
-
-    def active_adapters(self) -> list[str]:
-        """Names of the currently active adapters."""
-        return self.model.active_adapters() if getattr(self.model, "peft_config", None) else []
 
     # --- Prompt encoding ---
 
@@ -383,26 +342,37 @@ class DiffusionGemmaPipeline(DiffusionPipeline):
                 **(multimodal_inputs if cached_len == 0 else {}),
             )
 
-            # Build the 4D decoder mask once per block (outside any compiled region), the same way the model does for
-            # generation: pass the live padding mask (canvas always visible) and let the mask builder size it to the
-            # cache. For a static cache it pads out to the fixed buffer and masks the unused slots internally.
-            decoder_attention_mask = torch.nn.functional.pad(cur_attention_mask.bool(), (0, canvas_length), value=True)
+            # The decoder mask spans the cache key length plus the always-visible canvas. A static cache reports its
+            # fixed buffer length, so the unpopulated buffer slots past the live padding mask are masked out (`False`).
+            cache_kv_length = past_key_values.max_cache_len if use_static_cache else past_key_values.get_seq_length()
+            decoder_attention_mask = torch.nn.functional.pad(
+                cur_attention_mask.bool(), (0, cache_kv_length - cur_attention_mask.shape[1]), value=False
+            )
+            decoder_attention_mask = torch.nn.functional.pad(decoder_attention_mask, (0, canvas_length), value=True)
             mask_mapping = self.model.model.decoder.create_diffusion_decoder_attention_mask(
-                config=self.model.config,
+                config=text_config,
                 inputs_embeds=torch.empty((batch_size, canvas_length, 0), device=device),
                 past_key_values=past_key_values,
                 decoder_attention_mask=decoder_attention_mask,
             )
 
             # Start from a fully random canvas and denoise it; the scheduler resets its committed state at step 0.
-            canvas = torch.randint(0, self.vocab_size, (batch_size, canvas_length), device=device, generator=generator)
+            canvas = torch.randint(
+                0, text_config.vocab_size, (batch_size, canvas_length), device=device, generator=generator
+            )
             self_conditioning_logits = None
             # Adaptive stopping history: the last `stability_threshold` argmax predictions of this block's canvas.
             argmax_history = torch.full(
                 (max(stability_threshold, 1), batch_size, canvas_length), -1, dtype=torch.long, device=device
             )
 
-            for step_idx in range(predictor_steps):
+            # Inner bar over the predictor steps of this canvas; the first `corrected_steps` also run corrector sweeps.
+            step_bar = tqdm(
+                range(predictor_steps), desc="denoising", leave=False, **getattr(self, "_progress_bar_config", {})
+            )
+            for step_idx in step_bar:
+                if corrected_steps:
+                    step_bar.set_description("denoising (corrector)" if step_idx < corrected_steps else "denoising")
                 # Mark a fresh step and clone the logits so a cudagraph-compiled decoder (`mode="reduce-overhead"`)
                 # does not overwrite the tensors that self-conditioning and the scheduler read next. Both are no-ops
                 # when the decoder is not cudagraph-compiled.

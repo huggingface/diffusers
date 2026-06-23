@@ -174,15 +174,14 @@ class DiffusionGemmaPipelineTest(unittest.TestCase):
     def test_peft_adapter_api(self):
         from peft import LoraConfig
 
-        self.assertEqual(self.pipe.active_adapters(), [])
-
-        # The forwarded API is adapter-type-agnostic; LoRA stands in for any PEFT adapter (DoRA, IA3, ...).
+        # Adapters are managed on the model component directly (the adapter API is adapter-type-agnostic; LoRA stands
+        # in for any PEFT adapter: DoRA, IA3, ...).
         self.pipe.model.add_adapter(
             LoraConfig(r=4, lora_alpha=8, lora_dropout=0.0, target_modules="all-linear"),
             adapter_name="test",
         )
-        self.pipe.set_adapter("test")
-        self.assertIn("test", self.pipe.active_adapters())
+        self.pipe.model.set_adapter("test")
+        self.assertIn("test", self.pipe.model.active_adapters())
 
         out = self.pipe(
             prompt=self.prompt,
@@ -194,10 +193,9 @@ class DiffusionGemmaPipelineTest(unittest.TestCase):
         )
         self.assertEqual(out.sequences.shape, (1, self.canvas_length))
 
-        self.pipe.disable_adapters()
-        self.pipe.enable_adapters()
-        self.pipe.delete_adapter("test")
-        self.assertEqual(self.pipe.active_adapters(), [])
+        self.pipe.model.disable_adapters()
+        self.pipe.model.enable_adapters()
+        self.pipe.model.delete_adapter("test")
 
     def test_static_cache_matches_dynamic(self):
         # Greedy and no adaptive stopping, so the only difference between the two runs is the cache path itself.

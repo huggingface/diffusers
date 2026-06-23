@@ -105,15 +105,15 @@ print(output.texts[0])
 
 ## PEFT adapters
 
-The denoiser is a 🤗 Transformers model, so adapters are loaded through its native [PEFT](https://huggingface.co/docs/peft) integration rather than the diffusers `load_lora_weights` API. Because that integration is adapter-type-agnostic, the same calls load LoRA, DoRA, or any other PEFT adapter (e.g. the output of TRL's `SFTTrainer`). The pipeline forwards the PEFT API so you can manage adapters from the pipeline directly:
+The denoiser is a 🤗 Transformers model, so adapters are loaded through its native [PEFT](https://huggingface.co/docs/peft) integration rather than the diffusers `load_lora_weights` API. Because that integration is adapter-type-agnostic, the same calls load LoRA, DoRA, or any other PEFT adapter (e.g. the output of TRL's `SFTTrainer`). Manage adapters on the model component directly:
 
 ```py
-pipe.load_adapter("path/to/adapter", adapter_name="sft")  # LoRA, DoRA, ...
-pipe.set_adapter("sft")
+pipe.model.load_adapter("path/to/adapter", adapter_name="sft")  # LoRA, DoRA, ...
+pipe.model.set_adapter("sft")
 output = pipe(prompt="Why is the sky blue?", gen_length=256)
 
-pipe.disable_adapters()  # run the base model
-pipe.delete_adapter("sft")
+pipe.model.disable_adapters()  # run the base model
+pipe.model.delete_adapter("sft")
 ```
 
 Adapters stay active and unmerged: DiffusionGemma ties the encoder and decoder base weights, so fusing an adapter into them would corrupt both branches.
