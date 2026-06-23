@@ -208,6 +208,33 @@ class WanAnimatePipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         video = pipe(**inputs).frames[0]
         self.assertEqual(video.shape, (17, 3, 16, 16))
 
+    def test_prepare_prev_segment_cond_latents_logs_interpolation_warning(self):
+        components = self.get_dummy_components()
+        pipe = self.pipeline_class(**components)
+        pipe.to("cpu")
+
+        prev_segment_cond_video = torch.zeros((1, 3, 1, 8, 8), dtype=torch.float32)
+
+        with self.assertLogs("diffusers.pipelines.wan.pipeline_wan_animate", level="WARNING") as warning_logs:
+            pipe.prepare_prev_segment_cond_latents(
+                prev_segment_cond_video=prev_segment_cond_video,
+                batch_size=1,
+                segment_frame_length=5,
+                height=16,
+                width=16,
+                prev_segment_cond_frames=1,
+                task="animate",
+                dtype=torch.float32,
+                device=torch.device("cpu"),
+            )
+
+        self.assertTrue(
+            any(
+                "Interpolating prev segment cond video from (8, 8) to (16, 16)" in message
+                for message in warning_logs.output
+            )
+        )
+
     @unittest.skip("Test not supported")
     def test_attention_slicing_forward_pass(self):
         pass
