@@ -5,9 +5,14 @@ The canonical reference for `Cosmos3OmniPipeline` lives in the diffusers docs:
 examples there as the source of truth for application code — they cover text-to-image,
 text-to-video, image-to-video, and text+sound modes.
 
-This directory provides a small CLI wrapper (`inference_cosmos3.py`) that exercises the full
-load → encode → denoise → decode path against either the Hub release or a local checkpoint
-during development.
+This directory provides two files:
+
+- `inference_cosmos3.py` — the runnable CLI (text-to-image/video, image-to-video, sound, action
+  modes). Single-GPU by default; pass `--tp-degree` / `--cp-degree` and launch with `torchrun`
+  to run any modality multi-GPU (see [Multi-GPU inference](#multi-gpu-inference-context-parallelism)
+  below).
+- `cosmos_parallel.py` — the importable multi-GPU helpers (context + tensor parallelism). No
+  `main`; the CLI imports from it. Read it to understand or adapt the sharding.
 
 ## Setup
 
@@ -178,3 +183,57 @@ Pick the tier that matches the native resolution of your conditioning input (`48
 | `--no-duration-template` | off | Skip the duration metadata sentence appended to the prompt and negative prompt. Ignored for `--num-frames 1` and for action modes (which build a structured caption instead). |
 | `--no-resolution-template` | off | Skip the resolution metadata sentence appended to the prompt and negative prompt. Ignored for action modes. |
 | `--output` | `.` | Directory to write `sample.jpg` or `sample.mp4`. |
+
+## Multi-GPU inference (context parallelism)
+
+Cosmos 3 can be sharded across GPUs on two orthogonal axes (implemented in `cosmos_parallel.py`):
+
+- **Context parallelism (CP)** — `enable_cosmos3_context_parallel`. The *sequence* is sharded
+  across GPUs and attention runs with two Ulysses all-to-all collectives per layer, cutting
+  per-step latency for long videos / high resolutions. Weights are replicated, so this is for
+  models that already fit one GPU (`Nano`).
+- **Tensor parallelism (TP)** — `enable_cosmos3_tensor_parallel`. The attention and MLP *weight*
+  matrices are sharded across GPUs (Megatron-style), so a checkpoint that doesn't fit one GPU
+  (`Super`, ~120 GB) loads. The sequence is not sharded.
+- **TP + CP** — both at once on a 2-D `(tp, cp)` mesh: a large model *and* latency.
+
+The model itself carries no parallelism logic — it exposes small no-op shard/gather seams, and
+`cosmos_parallel.py` implements the entire path (collectives, GQA KV-head handling, ragged-length
+padding, the dual-pathway attention, weight sharding) behind those two helpers. It is meant to be
+read end to end and adapted.
+
+The CLI imports these helpers, so you run **any modality** (text-to-image/video, image-to-video,
+sound, action modes) multi-GPU by adding `--tp-degree` / `--cp-degree` and launching with
+[torchrun](https://docs.pytorch.org/docs/stable/elastic/run.html) — `--tp-degree * --cp-degree`
+must equal `--nproc_per_node`:
+
+```bash
+# CP only (Nano): CP degree must divide the 32 query heads.
+torchrun --nproc_per_node 4 examples/cosmos3/inference_cosmos3.py --model nano --cp-degree 4 --prompt "..."
+
+# TP only (Super): TP degree must divide the 64 query heads and 8 KV heads.
+torchrun --nproc_per_node 4 examples/cosmos3/inference_cosmos3.py --model super --tp-degree 4 --prompt "..."
+
+# TP + CP (Super), 4 GPUs as 2 x 2, with sound:
+torchrun --nproc_per_node 4 examples/cosmos3/inference_cosmos3.py \
+    --model super --tp-degree 2 --cp-degree 2 --enable-sound --prompt "A waterfall in a forest."
+```
+
+Notes:
+
+- The helpers use the `native` attention backend (the only one that supports GQA's `enable_gqa`),
+  and expand the KV heads to the query-head count so SDPA picks the flash kernel — passing
+  `enable_gqa=True` forces the math kernel, which materializes the full `[S, S]` scores and OOMs
+  on long sequences.
+- Only Ulysses is supported (not ring attention).
+- The CP/Ulysses degree must divide the query heads (32 for `Nano`, 64 for `Super`). For TP,
+  `tp` must divide the KV heads (8), and `tp * cp` must divide the query heads.
+- TP all-reduces on every block, so it's bandwidth-heavy — use the smallest TP degree that makes
+  the weights fit and put the remaining GPUs into CP.
+- Generation size is set with the usual CLI flags (`--num-frames` / `--height` / `--width`), and
+  multi-GPU runs require a seed for reproducibility across ranks (the CLI sets one if you omit `--seed`).
+- On some multi-GPU topologies the first NCCL all-to-all can hang; if a run stalls at the first
+  denoising step, set `NCCL_P2P_DISABLE=1` before launching.
+
+See the [pipeline docs](../../docs/source/en/api/pipelines/cosmos3.md#context-parallelism) for how
+to enable CP and TP from your own pipeline code.
