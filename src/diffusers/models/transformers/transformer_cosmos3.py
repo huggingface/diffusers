@@ -67,6 +67,21 @@ class Cosmos3AttnProcessor:
         q_gen = q_gen * cos_gen + _rotate_half(q_gen) * sin_gen
         k_gen = k_gen * cos_gen + _rotate_half(k_gen) * sin_gen
 
+        causal_out, full_out = self._run_attention(attn, q_und, k_und, v_und, q_gen, k_gen, v_gen)
+
+        # Per-pathway output projection
+        und_out = attn.to_out(causal_out)
+        gen_out = attn.to_add_out(full_out)
+        return und_out, gen_out
+
+    def _run_attention(self, attn, q_und, k_und, v_und, q_gen, k_gen, v_gen):
+        """Run the two attention pathways and return ``(causal_out, full_out)``, each
+        flattened to ``[seq, num_attention_heads * head_dim]``.
+
+        This is an override seam: subclasses can change how attention is computed while reusing the shared projection
+        and rotary code in ``__call__``. The context-parallel processor in ``examples/cosmos3`` overrides it to bracket
+        the two pathways with Ulysses all-to-all collectives.
+        """
         # Causal pathway (understanding): und tokens self-attend with causal masking.
         causal_out = dispatch_attention_fn(
             q_und.unsqueeze(0),
@@ -92,11 +107,7 @@ class Cosmos3AttnProcessor:
             parallel_config=self._parallel_config,
         )
         full_out = full_out.squeeze(0).flatten(-2, -1)
-
-        # Per-pathway output projection
-        und_out = attn.to_out(causal_out)
-        gen_out = attn.to_add_out(full_out)
-        return und_out, gen_out
+        return causal_out, full_out
 
 
 def _rotate_half(x: torch.Tensor) -> torch.Tensor:
@@ -300,6 +311,16 @@ class Cosmos3OmniTransformer(ModelMixin, ConfigMixin, PeftAdapterMixin, Attentio
     _repeated_blocks = ["Cosmos3VLTextMoTDecoderLayer"]
     _skip_layerwise_casting_patterns = ["embed_tokens", "time_embedder", "norm"]
     _keep_in_fp32_modules = ["time_embedder"]
+    # Optional context-parallelism seams. They default to ``None`` (no-op) so the
+    # model itself carries no CP logic. `forward` applies `_cp_shard_fn` to the
+    # per-pathway hidden states + rotary embeddings before the decoder layers, and
+    # `_cp_gather_fn` to the per-pathway outputs after the final norm. An external
+    # helper (see `examples/cosmos3/cosmos_parallel.py`) sets these to
+    # shard/gather across a device mesh and installs a context-parallel attention
+    # processor — the packed dual-pathway + GQA + ragged-length structure cannot be
+    # expressed as diffusers' declarative `_cp_plan`, so CP lives outside the model.
+    _cp_shard_fn = None
+    _cp_gather_fn = None
     # `dtype` is injected into init_dict by ModelMixin.from_pretrained (configuration_utils.py:289),
     # so __init__ must accept it. Excluding it here keeps save_pretrained from writing it into
     # config.json — the value is a load-time runtime hint, not part of the model architecture.
@@ -683,6 +704,14 @@ class Cosmos3OmniTransformer(ModelMixin, ConfigMixin, PeftAdapterMixin, Attentio
         und_seq = hidden_states[:und_len]
         gen_seq = hidden_states[und_len:]
         rotary_emb = (cos[:und_len], sin[:und_len], cos[und_len:], sin[und_len:])
+
+        # Optional context-parallelism shard seam (no-op unless set by an external
+        # helper, e.g. `examples/cosmos3/cosmos_parallel.py`). When set, it
+        # shards each pathway's sequence and rotary embeddings across a device mesh, so
+        # the decoder layers below run on local sequence shards.
+        if self._cp_shard_fn is not None:
+            und_seq, gen_seq, rotary_emb = self._cp_shard_fn(und_seq, gen_seq, rotary_emb)
+
         for decoder_layer in self.layers:
             if torch.is_grad_enabled() and self.gradient_checkpointing:
                 und_seq, gen_seq = self._gradient_checkpointing_func(
@@ -692,6 +721,14 @@ class Cosmos3OmniTransformer(ModelMixin, ConfigMixin, PeftAdapterMixin, Attentio
                 und_seq, gen_seq = decoder_layer(und_seq, gen_seq, rotary_emb)
         und_out = self.norm(und_seq)
         gen_out = self.norm_moe_gen(gen_seq)
+
+        # Optional context-parallelism gather seam: re-gather the full per-pathway
+        # sequence on every rank (and drop the padding) before the global-index decode
+        # below, since the downstream indexes address positions in the unpadded joint
+        # sequence. No-op unless `_cp_shard_fn`'s counterpart is set.
+        if self._cp_gather_fn is not None:
+            und_out, gen_out = self._cp_gather_fn(und_out, gen_out)
+
         last_hidden_state = torch.cat([und_out, gen_out], dim=0)
 
         # Decode vision predictions from the joint hidden state.
