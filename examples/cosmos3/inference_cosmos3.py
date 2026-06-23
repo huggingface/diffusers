@@ -21,6 +21,13 @@ Image-to-video:
 Video-to-video:
     python inference_cosmos3.py --prompt "..." --video-path /path/to/video.mp4
 
+Transfer (ready-made control_*.mp4 + prompt.json are hosted in the Cosmos cookbook; --control-path / --prompt
+accept URLs or local paths: https://github.com/NVIDIA/cosmos/tree/main/cookbooks/cosmos3/generator/transfer/assets):
+    base=https://github.com/NVIDIA/cosmos/raw/refs/heads/main/cookbooks/cosmos3/generator/transfer/assets
+    python inference_cosmos3.py --prompt "$(curl -sL $base/edge/prompt.json)" \
+        --transfer-hint edge --control-path $base/edge/control_edge.mp4 \
+        --guidance-scale 3.0 --control-guidance 1.5 --flow-shift 10.0 --num-frames 121 --fps 30
+
 Text-to-video-with-sound (requires a sound-capable checkpoint):
     python inference_cosmos3.py --prompt "..." --enable-sound
 """
@@ -63,6 +70,11 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--prompt", required=True, help="Text prompt.")
     parser.add_argument(
+        "--negative-prompt",
+        default=None,
+        help="Optional negative prompt text.",
+    )
+    parser.add_argument(
         "--model",
         choices=sorted(HF_REPOS),
         default="nano",
@@ -88,6 +100,60 @@ def main():
         choices=["first", "last"],
         default="first",
         help="Take the video-to-video conditioning frames from the first or last of the source clip (default: first).",
+    )
+    parser.add_argument(
+        "--transfer-hint",
+        action="append",
+        choices=["edge", "blur", "depth", "seg", "wsm"],
+        default=None,
+        help="Enable transfer with a control hint. Repeat (paired with --control-path) to combine multiple hints.",
+    )
+    parser.add_argument(
+        "--control-path",
+        action="append",
+        default=None,
+        help="URL or local path to a precomputed control video, paired in order with each --transfer-hint.",
+    )
+    parser.add_argument(
+        "--control-guidance",
+        type=float,
+        default=1.0,
+        help="Transfer control-CFG scale (recommended 1.5 for edge/blur/depth, 2.0 for seg, 3.0 for wsm).",
+    )
+    parser.add_argument(
+        "--control-guidance-interval",
+        default=None,
+        help="Comma-separated [lo,hi] timestep window for control guidance (default: applied at every step).",
+    )
+    parser.add_argument(
+        "--guidance-interval",
+        default=None,
+        help="Comma-separated [lo,hi] timestep window for text guidance in transfer (default: every step).",
+    )
+    parser.add_argument(
+        "--num-conditional-frames",
+        type=int,
+        default=1,
+        help="Frames carried over from the previous chunk as conditioning (transfer multi-chunk).",
+    )
+    parser.add_argument(
+        "--num-first-chunk-conditional-frames",
+        type=int,
+        default=0,
+        help="Leading frames of --video-path used to condition the first transfer chunk (requires --video-path).",
+    )
+    parser.add_argument(
+        "--num-video-frames-per-chunk",
+        type=int,
+        default=None,
+        help="Max frames generated per autoregressive transfer chunk (default: whole clip in one chunk).",
+    )
+    parser.add_argument(
+        "--no-share-vision-temporal-positions",
+        dest="share_vision_temporal_positions",
+        action="store_false",
+        default=True,
+        help="Give control maps and the target distinct temporal mRoPE positions instead of sharing them (transfer).",
     )
     parser.add_argument("--output", default=".", help="Directory to save generated video/image/audio files.")
     parser.add_argument(
@@ -198,7 +264,52 @@ def main():
     output_dir.mkdir(parents=True, exist_ok=True)
     generator = torch.Generator().manual_seed(args.seed) if args.seed is not None else None
 
-    if args.action_mode is not None:
+    def _parse_interval(value):
+        if value is None:
+            return None
+        parts = [float(v) for v in value.split(",") if v.strip()]
+        if len(parts) != 2:
+            raise ValueError(f"Expected a comma-separated [lo,hi] interval, got {value!r}.")
+        return (parts[0], parts[1])
+
+    if args.transfer_hint is not None:
+        control_paths = args.control_path or []
+        if len(control_paths) != len(args.transfer_hint):
+            raise ValueError("Pass one --control-path per --transfer-hint, in matching order.")
+        control_videos = {hint: load_video(path) for hint, path in zip(args.transfer_hint, control_paths)}
+        # `--video-path` is an OPTIONAL RGB prefix that only seeds the first chunk, and is consulted solely when
+        # --num-first-chunk-conditional-frames > 0. It is unrelated to the control hints (which always drive transfer).
+        conditioning_video = None
+        if args.num_first_chunk_conditional_frames > 0:
+            if args.video_path is None:
+                raise ValueError(
+                    "--num-first-chunk-conditional-frames > 0 requires --video-path (an RGB prefix clip)."
+                )
+            conditioning_video = load_video(args.video_path)
+        elif args.video_path is not None:
+            print("Ignoring --video-path: it only applies when --num-first-chunk-conditional-frames > 0.")
+        result = pipeline(
+            prompt=args.prompt,
+            negative_prompt=args.negative_prompt,
+            control_videos=control_videos,
+            video=conditioning_video,
+            num_frames=args.num_frames if args.num_frames != 189 else None,
+            height=args.height,
+            width=args.width,
+            fps=args.fps,
+            num_inference_steps=args.num_inference_steps,
+            guidance_scale=args.guidance_scale,
+            control_guidance=args.control_guidance,
+            control_guidance_interval=_parse_interval(args.control_guidance_interval),
+            guidance_interval=_parse_interval(args.guidance_interval),
+            num_conditional_frames=args.num_conditional_frames,
+            num_first_chunk_conditional_frames=args.num_first_chunk_conditional_frames,
+            num_video_frames_per_chunk=args.num_video_frames_per_chunk,
+            share_vision_temporal_positions=args.share_vision_temporal_positions,
+            generator=generator,
+            enable_safety_check=not args.no_safety_check,
+        )
+    elif args.action_mode is not None:
         if args.vision_path is None:
             raise ValueError("--vision-path must point to a conditioning video for action modes.")
         if args.action_chunk_size is None:
@@ -207,6 +318,7 @@ def main():
         raw_actions = _load_action(args.action_path) if args.action_mode == "forward_dynamics" else None
         result = pipeline(
             prompt=args.prompt,
+            negative_prompt=args.negative_prompt,
             action=CosmosActionCondition(
                 mode=args.action_mode,
                 chunk_size=args.action_chunk_size,
@@ -234,6 +346,7 @@ def main():
         )
         result = pipeline(
             prompt=args.prompt,
+            negative_prompt=args.negative_prompt,
             video=video,
             condition_frame_indexes_vision=condition_frame_indexes_vision,
             condition_video_keep=args.condition_video_keep,
@@ -253,6 +366,7 @@ def main():
         image = load_image(args.vision_path) if args.vision_path is not None else None
         result = pipeline(
             prompt=args.prompt,
+            negative_prompt=args.negative_prompt,
             image=image,
             num_frames=args.num_frames,
             height=args.height,
