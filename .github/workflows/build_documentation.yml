@@ -23,7 +23,7 @@ jobs:
       install_libgl1: true
       package: diffusers
       notebook_folder: diffusers_doc
-      languages: en ko zh ja pt
+      languages: en ko zh ja pt es
       custom_container: diffusers/diffusers-doc-builder
       pre_command: uv pip uninstall transformers huggingface_hub && UV_PRERELEASE=allow uv pip install -U transformers@git+https://github.com/huggingface/transformers.git
     secrets:
