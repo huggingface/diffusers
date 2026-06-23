@@ -134,8 +134,12 @@ class EntropyBoundScheduler(SchedulerMixin, ConfigMixin):
         if entropy_bound is None:
             entropy_bound = float(self.config.entropy_bound)
 
+        # Scale the logits by temperature once, so the acceptance entropy is measured on the same distribution the
+        # candidates are drawn from (greedy at temperature 0); scaling only the sampling underweights the entropy.
+        if temperature > 0:
+            model_output = model_output / temperature
         sampled_tokens, sampled_probs = self._sample_from_logits(
-            model_output, temperature=temperature, generator=generator
+            model_output, temperature=0.0 if temperature == 0 else 1.0, generator=generator
         )
 
         token_entropy = torch.distributions.Categorical(logits=model_output).entropy()  # (batch, block_length)
