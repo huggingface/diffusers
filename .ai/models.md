@@ -17,13 +17,11 @@ Linked from `AGENTS.md`, `skills/model-integration/SKILL.md`, and `review-rules.
 
 ## Single-file model layout
 
-A model's implementation is **self-contained in one file** — `transformer_<name>.py` (or `unet_<name>.py`). Don't split it into per-model companion modules; multi-file layouts are a research-repo habit, not the diffusers one. There is no precedent in `src/diffusers/models/` for `attention_processor_<name>.py`, `block_<name>.py`, or `rope_<name>.py`.
+A model follows the **single-file policy**: its full implementation lives in one `transformer_<name>.py` (or `unet_<name>.py`) — attention (the `Attention` class and its processor), transformer blocks, RoPE, and any model-specific layers all in that file. Don't split it into per-model companion modules (`attention_processor_<name>.py`, `block_<name>.py`, `rope_<name>.py`); multi-file layouts are a research-repo habit, not the diffusers one.
 
-- **Attention** — the `Attention` class and its processor live in the model file (see [Attention pattern](#attention-pattern)), never a separate `attention_processor_<name>.py`.
-- **Blocks / norms / FFNs** — reuse the canonical shared classes from `normalization.py`, `attention.py`, and `embeddings.py` (e.g. `LuminaRMSNormZero` and `LuminaLayerNormContinuous` live in `normalization.py`, `LuminaFeedForward` in `attention.py`). If you need a model-specific variant, define it **inline in the model file** with a `# Copied from ...` header — don't fork the class into a new `block_<name>.py` module.
-- **RoPE** — define the rotary-embedding class inline in `transformer_<name>.py` (see `transformer_cogview4.py`, `transformer_hunyuan_video.py`, `transformer_cosmos.py`), reusing the shared `embeddings.py` helpers.
-
-This does mean some duplication across model files — that's the deliberate diffusers tradeoff, and `# Copied from` keeps the copies in sync (see [AGENTS.md](AGENTS.md)). A reader should be able to understand a model from its single file without chasing per-model side modules.
+For shared building blocks, either:
+- **import** a common layer from `normalization.py`, `attention.py`, or `embeddings.py`, or
+- **`# Copied from`** a class in another model and rename (`# Copied from ...transformer_other.OtherBlock with Other->This`), so `make fix-copies` keeps the copies in sync.
 
 ## Attention pattern
 
