@@ -317,6 +317,7 @@ else:
         "Kandinsky3Img2ImgPipeline",
         "Kandinsky3Pipeline",
     ]
+    _import_structure["krea2"] = ["Krea2Pipeline"]
     _import_structure["latent_consistency_models"] = [
         "LatentConsistencyModelImg2ImgPipeline",
         "LatentConsistencyModelPipeline",
@@ -791,6 +792,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             Kandinsky5T2IPipeline,
             Kandinsky5T2VPipeline,
         )
+        from .krea2 import Krea2Pipeline
         from .latent_consistency_models import (
             LatentConsistencyModelImg2ImgPipeline,
             LatentConsistencyModelPipeline,
