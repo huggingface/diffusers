@@ -230,6 +230,12 @@ class TextPreprocessor:
 
         return text.strip()
 
+    def basic_clean(self, text: str) -> str:
+        """Light cleaning: fix mojibake and unescape HTML. Used when skip_text_cleaning=True."""
+        text = ftfy.fix_text(text)
+        text = html.unescape(html.unescape(text))
+        return text.strip()
+
 
 EXAMPLE_DOC_STRING = """
     Examples:
@@ -378,6 +384,8 @@ class PRXPipeline(
         negative_prompt_embeds: torch.FloatTensor | None = None,
         prompt_attention_mask: torch.BoolTensor | None = None,
         negative_prompt_attention_mask: torch.BoolTensor | None = None,
+        tokenizer_max_length: int | None = None,
+        skip_text_cleaning: bool = False,
     ):
         """Encode text prompt using standard text encoder and tokenizer, or use precomputed embeddings."""
         if device is None:
@@ -388,7 +396,14 @@ class PRXPipeline(
                 prompt = [prompt]
             # Encode the prompts
             prompt_embeds, prompt_attention_mask, negative_prompt_embeds, negative_prompt_attention_mask = (
-                self._encode_prompt_standard(prompt, device, do_classifier_free_guidance, negative_prompt)
+                self._encode_prompt_standard(
+                    prompt,
+                    device,
+                    do_classifier_free_guidance,
+                    negative_prompt,
+                    tokenizer_max_length=tokenizer_max_length,
+                    skip_text_cleaning=skip_text_cleaning,
+                )
             )
 
         # Duplicate embeddings for each generation per prompt
@@ -419,13 +434,21 @@ class PRXPipeline(
             negative_prompt_attention_mask if do_classifier_free_guidance else None,
         )
 
-    def _tokenize_prompts(self, prompts: list[str], device: torch.device):
+    def _tokenize_prompts(
+        self,
+        prompts: list[str],
+        device: torch.device,
+        tokenizer_max_length: int | None = None,
+        skip_text_cleaning: bool = False,
+    ):
         """Tokenize and clean prompts."""
-        cleaned = [self.text_preprocessor.clean_text(text) for text in prompts]
+        clean_fn = self.text_preprocessor.basic_clean if skip_text_cleaning else self.text_preprocessor.clean_text
+        cleaned = [clean_fn(text) for text in prompts]
+        max_length = tokenizer_max_length or self.tokenizer.model_max_length
         tokens = self.tokenizer(
             cleaned,
             padding="max_length",
-            max_length=self.tokenizer.model_max_length,
+            max_length=max_length,
             truncation=True,
             return_attention_mask=True,
             return_tensors="pt",
@@ -438,6 +461,8 @@ class PRXPipeline(
         device: torch.device,
         do_classifier_free_guidance: bool = True,
         negative_prompt: str = "",
+        tokenizer_max_length: int | None = None,
+        skip_text_cleaning: bool = False,
     ):
         """Encode prompt using standard text encoder and tokenizer with batch processing."""
         batch_size = len(prompt)
@@ -450,7 +475,9 @@ class PRXPipeline(
         else:
             prompts_to_encode = prompt
 
-        input_ids, attention_mask = self._tokenize_prompts(prompts_to_encode, device)
+        input_ids, attention_mask = self._tokenize_prompts(
+            prompts_to_encode, device, tokenizer_max_length=tokenizer_max_length, skip_text_cleaning=skip_text_cleaning
+        )
 
         with torch.no_grad():
             embeddings = self.text_encoder(
@@ -501,10 +528,12 @@ class PRXPipeline(
                 "`negative_prompt_embeds` must also be provided for classifier-free guidance."
             )
 
-        spatial_compression = self.vae_scale_factor
-        if height % spatial_compression != 0 or width % spatial_compression != 0:
+        # The latents must be divisible by the transformer's patch size after VAE compression.
+        dimension_multiple = self.vae_scale_factor * self.transformer.config.patch_size
+        if height % dimension_multiple != 0 or width % dimension_multiple != 0:
             raise ValueError(
-                f"`height` and `width` have to be divisible by {spatial_compression} but are {height} and {width}."
+                f"`height` and `width` have to be divisible by {dimension_multiple} (vae_scale_factor *"
+                f" transformer patch_size) but are {height} and {width}."
             )
 
         if guidance_scale < 1.0:
@@ -545,6 +574,8 @@ class PRXPipeline(
         use_resolution_binning: bool = True,
         callback_on_step_end: Callable[[int, int], None] | None = None,
         callback_on_step_end_tensor_inputs: list[str] = ["latents"],
+        tokenizer_max_length: int | None = None,
+        skip_text_cleaning: bool = False,
     ):
         """
         Function invoked when calling the pipeline for generation.
@@ -598,6 +629,12 @@ class PRXPipeline(
             output_type (`str`, *optional*, defaults to `"pil"`):
                 The output format of the generate image. Choose between
                 [PIL](https://pillow.readthedocs.io/en/stable/): `PIL.Image.Image` or `np.array`.
+            tokenizer_max_length (`int`, *optional*):
+                Override the maximum number of tokens used when tokenizing the prompt. Defaults to the tokenizer's own
+                ``model_max_length`` when not set.
+            skip_text_cleaning (`bool`, *optional*, defaults to `False`):
+                If `True`, uses only light prompt cleaning (fix encoding + unescape HTML) instead of the full DeepFloyd
+                cleaning pipeline.
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`~pipelines.prx.PRXPipelineOutput`] instead of a plain tuple.
             use_resolution_binning (`bool`, *optional*, defaults to `True`):
@@ -627,11 +664,6 @@ class PRXPipeline(
         width = width or default_resolution
 
         if use_resolution_binning:
-            if self.image_processor is None:
-                raise ValueError(
-                    "Resolution binning requires a VAE with image_processor, but VAE is not available. "
-                    "Set use_resolution_binning=False or provide a VAE."
-                )
             if self.default_sample_size not in ASPECT_RATIO_BINS:
                 raise ValueError(
                     f"Resolution binning is only supported for default_sample_size in {list(ASPECT_RATIO_BINS.keys())}, "
@@ -684,6 +716,8 @@ class PRXPipeline(
             negative_prompt_embeds=negative_prompt_embeds,
             prompt_attention_mask=prompt_attention_mask,
             negative_prompt_attention_mask=negative_prompt_attention_mask,
+            tokenizer_max_length=tokenizer_max_length,
+            skip_text_cleaning=skip_text_cleaning,
         )
         # Expose standard names for callbacks parity
         prompt_embeds = text_embeddings
