@@ -14,6 +14,7 @@
 
 import inspect
 import math
+from typing import Any
 
 import torch
 import torch.nn as nn
@@ -21,7 +22,7 @@ import torch.nn.functional as F
 
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...loaders import PeftAdapterMixin
-from ...utils import logging
+from ...utils import apply_lora_scale, logging
 from ...utils.torch_utils import maybe_adjust_dtype_for_device
 from ..attention import AttentionMixin, AttentionModuleMixin
 from ..attention_dispatch import dispatch_attention_fn
@@ -443,6 +444,7 @@ class Krea2Transformer2DModel(ModelMixin, ConfigMixin, AttentionMixin, PeftAdapt
 
         self.final_layer = Krea2FinalLayer(hidden_size, out_channels=in_channels, eps=norm_eps)
 
+    @apply_lora_scale("attention_kwargs")
     def forward(
         self,
         hidden_states: torch.Tensor,
@@ -450,6 +452,7 @@ class Krea2Transformer2DModel(ModelMixin, ConfigMixin, AttentionMixin, PeftAdapt
         timestep: torch.Tensor,
         position_ids: torch.Tensor,
         encoder_attention_mask: torch.Tensor | None = None,
+        attention_kwargs: dict[str, Any] | None = None,
         return_dict: bool = True,
     ) -> Transformer2DModelOutput | tuple[torch.Tensor]:
         r"""
@@ -467,6 +470,9 @@ class Krea2Transformer2DModel(ModelMixin, ConfigMixin, AttentionMixin, PeftAdapt
                 latent-grid coordinates.
             encoder_attention_mask (`torch.Tensor` of shape `(batch_size, text_seq_len)`, *optional*):
                 Boolean mask marking valid text tokens. Pass `None` when every text token is valid.
+            attention_kwargs (`dict`, *optional*):
+                A kwargs dictionary that, when it contains a `scale` entry, sets the LoRA scale applied to this
+                transformer's adapters for the duration of the forward pass.
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether to return a [`~models.modeling_outputs.Transformer2DModelOutput`] instead of a plain tuple.
 

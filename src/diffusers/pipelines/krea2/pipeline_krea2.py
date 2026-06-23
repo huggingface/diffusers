@@ -13,13 +13,14 @@
 # limitations under the License.
 
 import inspect
-from typing import Callable
+from typing import Any, Callable
 
 import numpy as np
 import torch
 from transformers import AutoTokenizer, Qwen3VLModel
 
 from ...image_processor import VaeImageProcessor
+from ...loaders import Krea2LoraLoaderMixin
 from ...models import AutoencoderKLQwenImage, Krea2Transformer2DModel
 from ...schedulers import FlowMatchEulerDiscreteScheduler
 from ...utils import is_torch_xla_available, logging, replace_example_docstring
@@ -130,7 +131,7 @@ def retrieve_timesteps(
     return timesteps, num_inference_steps
 
 
-class Krea2Pipeline(DiffusionPipeline):
+class Krea2Pipeline(DiffusionPipeline, Krea2LoraLoaderMixin):
     r"""
     The Krea 2 pipeline for text-to-image generation.
 
@@ -426,6 +427,10 @@ class Krea2Pipeline(DiffusionPipeline):
         return self._guidance_scale > 0
 
     @property
+    def attention_kwargs(self):
+        return self._attention_kwargs
+
+    @property
     def num_timesteps(self):
         return self._num_timesteps
 
@@ -459,6 +464,7 @@ class Krea2Pipeline(DiffusionPipeline):
         return_dict: bool = True,
         callback_on_step_end: Callable[[int, int, dict], None] | None = None,
         callback_on_step_end_tensor_inputs: list[str] = ["latents"],
+        attention_kwargs: dict[str, Any] | None = None,
         max_sequence_length: int = 512,
     ):
         r"""
@@ -512,6 +518,10 @@ class Krea2Pipeline(DiffusionPipeline):
             callback_on_step_end_tensor_inputs (`list[str]`, *optional*, defaults to `["latents"]`):
                 The list of tensor inputs for the `callback_on_step_end` function. Must be a subset of
                 `._callback_tensor_inputs`.
+            attention_kwargs (`dict`, *optional*):
+                A kwargs dictionary that if specified is passed along to the `AttentionProcessor` as defined under
+                `self.processor` in
+                [diffusers.models.attention_processor](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/attention_processor.py).
             max_sequence_length (`int`, defaults to 512):
                 Fixed text sequence length consumed by the transformer; prompts are padded or truncated to it.
 
@@ -546,6 +556,7 @@ class Krea2Pipeline(DiffusionPipeline):
         )
 
         self._guidance_scale = guidance_scale
+        self._attention_kwargs = attention_kwargs
         self._current_timestep = None
         self._interrupt = False
 
@@ -638,6 +649,7 @@ class Krea2Pipeline(DiffusionPipeline):
                     timestep=timestep,
                     position_ids=position_ids,
                     encoder_attention_mask=prompt_embeds_mask,
+                    attention_kwargs=self.attention_kwargs,
                     return_dict=False,
                 )[0]
 
@@ -648,6 +660,7 @@ class Krea2Pipeline(DiffusionPipeline):
                         timestep=timestep,
                         position_ids=position_ids,
                         encoder_attention_mask=negative_prompt_embeds_mask,
+                        attention_kwargs=self.attention_kwargs,
                         return_dict=False,
                     )[0]
                     noise_pred = noise_pred + guidance_scale * (noise_pred - neg_noise_pred)
