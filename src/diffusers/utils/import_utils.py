@@ -441,13 +441,6 @@ def is_flash_attn_available():
     return _flash_attn_available
 
 
-_triton_available, _triton_version = _is_package_available("triton")
-
-
-def is_triton_available():
-    return _triton_available
-
-
 def is_flash_attn_3_available():
     return _flash_attn_3_available
 

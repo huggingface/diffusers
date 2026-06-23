@@ -1,14 +1,12 @@
-import os
-import warnings
 from typing import Optional, Tuple
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from torch.nn import RMSNorm
 
 from diffusers.models.embeddings import Timesteps
 
-from ...utils.import_utils import is_flash_attn_available, is_triton_available
 from ..embeddings import TimestepEmbedding
 
 
@@ -16,27 +14,8 @@ def _torch_swiglu(x, y):
     return F.silu(x.float(), inplace=False).to(x.dtype) * y
 
 
-if is_triton_available() and ("cuda" in os.getenv("device", "cpu")):
-    from ...ops.triton.layer_norm import RMSNorm
-else:
-    from torch.nn import RMSNorm
-
-    warnings.warn("Cannot import triton, install triton to use fused RMSNorm for better performance")
-
-if is_flash_attn_available() and ("cuda" in os.getenv("device", "cpu")):
-    from flash_attn.ops.activations import swiglu
-
-    torch_swiglu = _torch_swiglu
-else:
-    swiglu = _torch_swiglu
-    torch_swiglu = _torch_swiglu
-
-    warnings.warn("Cannot import flash_attn, install flash_attn to use fused SwiGLU for better performance")
-
-# try:
-# except ImportError:
-
-#     warnings.warn("Cannot import apex RMSNorm, switch to vanilla implementation")
+swiglu = _torch_swiglu
+torch_swiglu = _torch_swiglu
 
 
 class LuminaRMSNormZero(nn.Module):
