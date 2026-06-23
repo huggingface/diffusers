@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import inspect
 import math
 from typing import List, Tuple, Union
 
@@ -255,7 +254,7 @@ class JoyImageEditPlusTransformer3DModel(ModelMixin, ConfigMixin, AttentionMixin
         encoder_hidden_states: torch.Tensor,
         encoder_hidden_states_mask: torch.Tensor | None = None,
         shape_list: List[List[Tuple[int, int, int]]] | None = None,
-        return_dict: bool = False,
+        return_dict: bool = True,
     ) -> Union[torch.Tensor, Tuple]:
         """
         Args:
@@ -269,22 +268,6 @@ class JoyImageEditPlusTransformer3DModel(ModelMixin, ConfigMixin, AttentionMixin
         batch_size, max_num_patches, channels, pt, ph, pw = hidden_states.shape
         device = hidden_states.device
 
-        # Unwrap list inputs (SglangXvideo passes these as lists from CFG branches)
-        if not isinstance(encoder_hidden_states, torch.Tensor):
-            encoder_hidden_states = encoder_hidden_states[0]
-        if isinstance(encoder_hidden_states_mask, list):
-            encoder_hidden_states_mask = encoder_hidden_states_mask[0]
-
-        # Resolve shape_list from forward context if not explicitly provided
-        if shape_list is None:
-            try:
-                from sglang.multimodal_gen.runtime.managers.forward_context import get_forward_context
-
-                forward_batch = get_forward_context().forward_batch
-                if forward_batch is not None and forward_batch.vae_image_sizes is not None:
-                    shape_list = [list(forward_batch.vae_image_sizes)] * batch_size
-            except (ImportError, AttributeError):
-                pass
         if shape_list is None:
             raise ValueError(
                 "shape_list must be provided either as an argument or via forward_batch.vae_image_sizes"

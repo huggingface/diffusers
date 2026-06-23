@@ -18,7 +18,6 @@ from typing import Callable, Dict, List, Optional, Tuple, Union
 
 import numpy as np
 import torch
-from einops import rearrange
 from PIL import Image
 from transformers import (
     Qwen2Tokenizer,
@@ -282,7 +281,6 @@ class JoyImageEditPlusPipeline(DiffusionPipeline):
         device: torch.device,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]],
         reference_images: Optional[List[List[Image.Image]]] = None,
-        enable_denormalization: bool = True,
     ) -> Tuple[torch.Tensor, torch.Tensor, List[List[Tuple[int, int, int]]]]:
         """Prepare 6D padded latent tensor with target noise + reference image latents.
 
@@ -319,7 +317,7 @@ class JoyImageEditPlusPipeline(DiffusionPipeline):
                     ref_tensor = torch.from_numpy(np.array(ref_img_pil.convert("RGB"))).to(device=device, dtype=dtype)
                     ref_tensor = (ref_tensor / 127.5 - 1.0).permute(2, 0, 1).unsqueeze(1).unsqueeze(0)
 
-                    with torch.autocast(device_type="cuda", dtype=torch.float32):
+                    with torch.autocast(device_type=device.type, dtype=torch.float32):
                         ref_latent = self.vae.encode(ref_tensor.float()).latent_dist.mode()
                     ref_latent = ref_latent.to(dtype)
                     ref_latent = self.normalize_latents(ref_latent)
@@ -336,7 +334,8 @@ class JoyImageEditPlusPipeline(DiffusionPipeline):
                 l_t, l_h, l_w = t // pt, h // ph, w // pw
                 sample_shapes.append((l_t, l_h, l_w))
 
-                patches = rearrange(item, "c (t pt) (h ph) (w pw) -> (t h w) c pt ph pw", pt=pt, ph=ph, pw=pw)
+                patches = item.reshape(c, l_t, pt, l_h, ph, l_w, pw)
+                patches = patches.permute(1, 3, 5, 0, 2, 4, 6).reshape(-1, c, pt, ph, pw)
                 sample_patches.append(patches)
                 sample_masks.append(torch.full((patches.shape[0],), j == 0, device=device, dtype=torch.bool))
 
@@ -411,7 +410,6 @@ class JoyImageEditPlusPipeline(DiffusionPipeline):
         ] = None,
         callback_on_step_end_tensor_inputs: List[str] = ["latents"],
         max_sequence_length: int = 4096,
-        enable_denormalization: bool = True,
     ):
         r"""
         Generate an edited image from multiple reference images and a text prompt.
@@ -434,8 +432,6 @@ class JoyImageEditPlusPipeline(DiffusionPipeline):
                 Negative prompt for CFG.
             generator (`torch.Generator`, *optional*):
                 RNG generator for reproducibility.
-            enable_denormalization (`bool`, defaults to True):
-                Whether to denormalize latents before VAE decoding.
 
         Examples:
 
@@ -546,22 +542,10 @@ class JoyImageEditPlusPipeline(DiffusionPipeline):
                     self._pad_sequence(prompt_embeds_mask, max_seq_len),
                 ])
 
-        # Prepare timesteps — compute sigmas with single shift to match original scheduler
-        if timesteps is None and sigmas is None:
-            shift = getattr(self.scheduler.config, "shift", 1.0)
-            raw_sigmas = torch.linspace(1, 0, num_inference_steps + 1)
-            shifted_sigmas = shift * raw_sigmas / (1 + (shift - 1) * raw_sigmas)
-            sigmas = shifted_sigmas[:-1].tolist()
-            original_shift = self.scheduler.shift
-            self.scheduler.set_shift(1.0)
-            timesteps, num_inference_steps = retrieve_timesteps(
-                self.scheduler, num_inference_steps, device, timesteps, sigmas
-            )
-            self.scheduler.set_shift(original_shift)
-        else:
-            timesteps, num_inference_steps = retrieve_timesteps(
-                self.scheduler, num_inference_steps, device, timesteps, sigmas
-            )
+        # Prepare timesteps
+        timesteps, num_inference_steps = retrieve_timesteps(
+            self.scheduler, num_inference_steps, device, timesteps, sigmas
+        )
 
         # Prepare latents (patchified)
         num_channels_latents = self.transformer.config.in_channels
@@ -574,7 +558,6 @@ class JoyImageEditPlusPipeline(DiffusionPipeline):
             device=device,
             generator=generator,
             reference_images=images,
-            enable_denormalization=enable_denormalization,
         )
 
         # Zero out padding text tokens to prevent them from corrupting attention
@@ -631,6 +614,7 @@ class JoyImageEditPlusPipeline(DiffusionPipeline):
                 )
 
                 if callback_on_step_end is not None:
+                    latents = padded_latents
                     callback_kwargs = {}
                     for k in callback_on_step_end_tensor_inputs:
                         callback_kwargs[k] = locals()[k]
@@ -653,15 +637,13 @@ class JoyImageEditPlusPipeline(DiffusionPipeline):
                 target_len = l_t * l_h * l_w
 
                 target_patches = padded_latents[b_idx, :target_len]
-                video_latent = rearrange(
-                    target_patches,
-                    "(t h w) c pt ph pw -> 1 c (t pt) (h ph) (w pw)",
-                    t=l_t, h=l_h, w=l_w,
-                )
+                c_lat = target_patches.shape[1]
+                video_latent = target_patches.reshape(l_t, l_h, l_w, c_lat, pt, ph, pw)
+                video_latent = video_latent.permute(3, 0, 4, 1, 5, 2, 6).reshape(1, c_lat, l_t * pt, l_h * ph, l_w * pw)
 
                 video_latent = self.denormalize_latents(video_latent)
 
-                with torch.autocast(device_type="cuda", dtype=torch.float32):
+                with torch.autocast(device_type=device.type, dtype=torch.float32):
                     sample_image = self.vae.decode(video_latent.float(), return_dict=False)[0]
                 sample_image = (sample_image / 2 + 0.5).clamp(0, 1).squeeze(0).cpu().float()
                 image_list.append(sample_image)
@@ -671,15 +653,19 @@ class JoyImageEditPlusPipeline(DiffusionPipeline):
             for img_tensor in image_list:
                 # img_tensor: [C, T, H, W] -> [C, H, W] (T=1)
                 img_tensor = img_tensor[:, 0]
-                img_np = (img_tensor.permute(1, 2, 0).numpy() * 255).clip(0, 255).astype(np.uint8)
                 if output_type == "pil":
+                    img_np = (img_tensor.permute(1, 2, 0).cpu().float().numpy() * 255).clip(0, 255).astype(np.uint8)
                     output_images.append(Image.fromarray(img_np))
                 elif output_type == "np":
+                    img_np = (img_tensor.permute(1, 2, 0).cpu().float().numpy() * 255).clip(0, 255).astype(np.uint8)
                     output_images.append(img_np)
                 else:
                     output_images.append(img_tensor)
 
-            image = output_images
+            if output_type == "pt":
+                image = torch.stack(output_images)
+            else:
+                image = output_images
         else:
             image = padded_latents
 
