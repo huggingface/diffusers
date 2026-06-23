@@ -380,7 +380,6 @@ class DiffusionGemmaPipeline(DiffusionPipeline):
                     decoder_attention_mask=mask_mapping,
                     decoder_position_ids=decoder_position_ids,
                 ).logits.clone()
-                self_conditioning_logits = logits
 
                 # Anneal the temperature from t_max on the first step down to t_min on the last, like the released
                 # checkpoint's sampler. Set both to None for a flat temperature.
@@ -389,6 +388,9 @@ class DiffusionGemmaPipeline(DiffusionPipeline):
                     step_temperature = t_min + (t_max - t_min) * cur_step / predictor_steps
                 else:
                     step_temperature = temperature
+
+                # Self-condition on the temperature-shaped logits the scheduler also samples from (reference sampler).
+                self_conditioning_logits = logits if step_temperature == 0 else logits / step_temperature
 
                 # Pass only the kwargs the chosen scheduler accepts, so any of the schedulers can drive the pipeline.
                 # Per-scheduler sampling knobs (thresholds, top-k, ...) live on the scheduler config, not here.
