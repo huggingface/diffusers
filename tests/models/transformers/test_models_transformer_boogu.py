@@ -16,7 +16,7 @@
 import torch
 
 from diffusers import BooguImageTransformer2DModel
-from diffusers.models.transformers.rope_boogu import BooguImageRotaryPosEmbed
+from diffusers.models.transformers.transformer_boogu import BooguImageRotaryPosEmbed
 from diffusers.utils.torch_utils import randn_tensor
 
 from ...testing_utils import enable_full_determinism, torch_device

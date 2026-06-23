@@ -11,7 +11,7 @@ from PIL import Image
 from transformers import Qwen3VLForConditionalGeneration, Qwen3VLProcessor
 
 from diffusers.models.autoencoders import AutoencoderKL
-from diffusers.models.transformers.rope_boogu import BooguImageRotaryPosEmbed
+from diffusers.models.transformers.transformer_boogu import BooguImageRotaryPosEmbed
 from diffusers.pipelines.pipeline_utils import DiffusionPipeline
 from diffusers.schedulers import FlowMatchEulerDiscreteScheduler
 from diffusers.utils import (

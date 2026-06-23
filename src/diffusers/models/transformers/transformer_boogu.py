@@ -17,12 +17,15 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 from torch.nn import RMSNorm
 
 from diffusers.configuration_utils import ConfigMixin, register_to_config
 from diffusers.loaders import PeftAdapterMixin
 from diffusers.loaders.single_file_model import FromOriginalModelMixin
+from diffusers.models.attention_dispatch import dispatch_attention_fn
 from diffusers.models.attention_processor import Attention
+from diffusers.models.embeddings import TimestepEmbedding, Timesteps, get_1d_rotary_pos_embed
 from diffusers.models.modeling_outputs import Transformer2DModelOutput
 from diffusers.models.modeling_utils import ModelMixin
 from diffusers.utils import (
@@ -33,20 +36,785 @@ from diffusers.utils import (
 )
 from diffusers.utils.teacache_util import TeaCacheParams
 
-from ..attention_processor_boogu import (
-    BooguImageAttnProcessor,
-    BooguImageDoubleStreamSelfAttnProcessor,
-)
-from .block_lumina2 import (
-    Lumina2CombinedTimestepCaptionEmbedding,
-    LuminaFeedForward,
-    LuminaLayerNormContinuous,
-    LuminaRMSNormZero,
-)
-from .rope_boogu import BooguImageDoubleStreamRotaryPosEmbed
-
 
 logger = logging.get_logger(__name__)
+
+
+# ----------------------------- RoPE -----------------------------
+class BooguImageRotaryPosEmbed:
+    """Namespace for Boogu's rotary-position-embedding frequency table.
+
+    Only the static `get_freqs_cis` is used (by the pipeline and the transformer's
+    internal double-stream RoPE); it does not hold any state.
+    """
+
+    @staticmethod
+    def get_freqs_cis(
+        axes_dim: Tuple[int, int, int], axes_lens: Tuple[int, int, int], theta: int
+    ) -> List[torch.Tensor]:
+        freqs_cis = []
+        freqs_dtype = torch.float32
+        for d, e in zip(axes_dim, axes_lens):
+            emb = get_1d_rotary_pos_embed(d, e, theta=theta, freqs_dtype=freqs_dtype)
+            freqs_cis.append(emb)
+        return freqs_cis
+
+
+class BooguImageDoubleStreamRotaryPosEmbed(nn.Module):
+    def __init__(
+        self,
+        theta: int,
+        axes_dim: Tuple[int, int, int],
+        axes_lens: Tuple[int, int, int] = (300, 512, 512),
+        patch_size: int = 2,
+    ):
+        super().__init__()
+        self.theta = theta
+        self.axes_dim = axes_dim
+        self.axes_lens = axes_lens
+        self.patch_size = patch_size
+
+    @staticmethod
+    def get_freqs_cis(
+        axes_dim: Tuple[int, int, int], axes_lens: Tuple[int, int, int], theta: int
+    ) -> List[torch.Tensor]:
+        freqs_cis = []
+        freqs_dtype = torch.float32
+        for i, (d, e) in enumerate(zip(axes_dim, axes_lens)):
+            emb = get_1d_rotary_pos_embed(d, e, theta=theta, freqs_dtype=freqs_dtype)
+            freqs_cis.append(emb)
+        return freqs_cis
+
+    def _get_freqs_cis(self, freqs_cis, ids: torch.Tensor) -> torch.Tensor:
+        device = ids.device
+        if ids.device.type == "mps":
+            ids = ids.to("cpu")
+
+        result = []
+        for i in range(len(self.axes_dim)):
+            freqs = freqs_cis[i].to(ids.device)
+            index = ids[:, :, i : i + 1].repeat(1, 1, freqs.shape[-1]).to(torch.int64)
+            result.append(torch.gather(freqs.unsqueeze(0).repeat(index.shape[0], 1, 1), dim=1, index=index))
+        return torch.cat(result, dim=-1).to(device)
+
+    def forward(
+        self,
+        freqs_cis,
+        attention_mask,
+        l_effective_ref_img_len,
+        l_effective_img_len,
+        ref_img_sizes,
+        img_sizes,
+        device,
+    ):
+        batch_size = len(attention_mask)
+        p = self.patch_size
+
+        encoder_seq_len = attention_mask.shape[1]
+        l_effective_cap_len = attention_mask.sum(dim=1).tolist()
+
+        seq_lengths = [
+            cap_len + sum(ref_img_len) + img_len
+            for cap_len, ref_img_len, img_len in zip(l_effective_cap_len, l_effective_ref_img_len, l_effective_img_len)
+        ]
+
+        max_seq_len = max(seq_lengths)
+        max_ref_img_len = max([sum(ref_img_len) for ref_img_len in l_effective_ref_img_len])
+        max_img_len = max(l_effective_img_len)
+
+        # Create position IDs
+        position_ids = torch.zeros(batch_size, max_seq_len, 3, dtype=torch.int32, device=device)
+
+        for i, (cap_seq_len, seq_len) in enumerate(zip(l_effective_cap_len, seq_lengths)):
+            # add text position ids
+            position_ids[i, :cap_seq_len] = (
+                torch.arange(cap_seq_len, dtype=torch.int32, device=device).unsqueeze(1).expand(-1, 3)
+            )
+
+            pe_shift = cap_seq_len
+            pe_shift_len = cap_seq_len
+
+            if ref_img_sizes[i] is not None:
+                for ref_img_size, ref_img_len in zip(ref_img_sizes[i], l_effective_ref_img_len[i]):
+                    H, W = ref_img_size
+                    ref_H_tokens, ref_W_tokens = H // p, W // p
+                    if ref_H_tokens * ref_W_tokens != ref_img_len:
+                        raise ValueError(
+                            f"Reference image token count mismatch: {ref_H_tokens * ref_W_tokens} != {ref_img_len}."
+                        )
+                    # add image position ids
+
+                    row_ids = (
+                        torch.arange(ref_H_tokens, dtype=torch.int32, device=device)
+                        .unsqueeze(1)
+                        .expand(ref_H_tokens, ref_W_tokens)
+                        .flatten()
+                    )
+                    col_ids = (
+                        torch.arange(ref_W_tokens, dtype=torch.int32, device=device)
+                        .unsqueeze(0)
+                        .expand(ref_H_tokens, ref_W_tokens)
+                        .flatten()
+                    )
+                    position_ids[i, pe_shift_len : pe_shift_len + ref_img_len, 0] = pe_shift
+                    position_ids[i, pe_shift_len : pe_shift_len + ref_img_len, 1] = row_ids
+                    position_ids[i, pe_shift_len : pe_shift_len + ref_img_len, 2] = col_ids
+
+                    pe_shift += max(ref_H_tokens, ref_W_tokens)
+                    pe_shift_len += ref_img_len
+
+            H, W = img_sizes[i]
+            H_tokens, W_tokens = H // p, W // p
+            if H_tokens * W_tokens != l_effective_img_len[i]:
+                raise ValueError(f"Image token count mismatch: {H_tokens * W_tokens} != {l_effective_img_len[i]}.")
+
+            row_ids = (
+                torch.arange(H_tokens, dtype=torch.int32, device=device)
+                .unsqueeze(1)
+                .expand(H_tokens, W_tokens)
+                .flatten()
+            )
+            col_ids = (
+                torch.arange(W_tokens, dtype=torch.int32, device=device)
+                .unsqueeze(0)
+                .expand(H_tokens, W_tokens)
+                .flatten()
+            )
+
+            if pe_shift_len + l_effective_img_len[i] != seq_len:
+                raise ValueError(
+                    f"RoPE position length mismatch: {pe_shift_len + l_effective_img_len[i]} != {seq_len}."
+                )
+            position_ids[i, pe_shift_len:seq_len, 0] = pe_shift
+            position_ids[i, pe_shift_len:seq_len, 1] = row_ids
+            position_ids[i, pe_shift_len:seq_len, 2] = col_ids
+
+        # Get combined rotary embeddings
+        freqs_cis = self._get_freqs_cis(freqs_cis, position_ids)
+
+        # create separate rotary embeddings for captions and images
+        cap_freqs_cis = torch.zeros(
+            batch_size,
+            encoder_seq_len,
+            freqs_cis.shape[-1],
+            device=device,
+            dtype=freqs_cis.dtype,
+        )
+        ref_img_freqs_cis = torch.zeros(
+            batch_size,
+            max_ref_img_len,
+            freqs_cis.shape[-1],
+            device=device,
+            dtype=freqs_cis.dtype,
+        )
+        img_freqs_cis = torch.zeros(
+            batch_size,
+            max_img_len,
+            freqs_cis.shape[-1],
+            device=device,
+            dtype=freqs_cis.dtype,
+        )
+
+        # Calculate combined image sequence lengths (ref_img + img) for each sample
+        combined_img_seq_lengths = [
+            sum(ref_img_len) + img_len for ref_img_len, img_len in zip(l_effective_ref_img_len, l_effective_img_len)
+        ]
+        max_combined_img_len = max(combined_img_seq_lengths)
+
+        # Create combined image rotary embeddings
+        combined_img_freqs_cis = torch.zeros(
+            batch_size,
+            max_combined_img_len,
+            freqs_cis.shape[-1],
+            device=device,
+            dtype=freqs_cis.dtype,
+        )
+
+        for i, (cap_seq_len, ref_img_len, img_len, seq_len) in enumerate(
+            zip(
+                l_effective_cap_len,
+                l_effective_ref_img_len,
+                l_effective_img_len,
+                seq_lengths,
+            )
+        ):
+            cap_freqs_cis[i, :cap_seq_len] = freqs_cis[i, :cap_seq_len]
+            ref_img_freqs_cis[i, : sum(ref_img_len)] = freqs_cis[i, cap_seq_len : cap_seq_len + sum(ref_img_len)]
+            img_freqs_cis[i, :img_len] = freqs_cis[
+                i,
+                cap_seq_len + sum(ref_img_len) : cap_seq_len + sum(ref_img_len) + img_len,
+            ]
+
+            # Combined image rotary embeddings: ref_img + img (same order as img_patch_embed_and_refine)
+            combined_img_freqs_cis[i, : sum(ref_img_len)] = freqs_cis[i, cap_seq_len : cap_seq_len + sum(ref_img_len)]
+            combined_img_freqs_cis[i, sum(ref_img_len) : sum(ref_img_len) + img_len] = freqs_cis[
+                i,
+                cap_seq_len + sum(ref_img_len) : cap_seq_len + sum(ref_img_len) + img_len,
+            ]
+
+        return (
+            cap_freqs_cis,
+            ref_img_freqs_cis,
+            img_freqs_cis,
+            freqs_cis,
+            l_effective_cap_len,
+            seq_lengths,
+            combined_img_freqs_cis,
+            combined_img_seq_lengths,
+        )
+
+
+# --------------- Norm / FeedForward / Embedding ----------------
+def _torch_swiglu(x, y):
+    return F.silu(x.float(), inplace=False).to(x.dtype) * y
+
+
+swiglu = _torch_swiglu
+torch_swiglu = _torch_swiglu
+
+
+class LuminaRMSNormZero(nn.Module):
+    """
+    Norm layer adaptive RMS normalization zero.
+
+    Parameters:
+        embedding_dim (`int`): The size of each embedding vector.
+    """
+
+    def __init__(
+        self,
+        embedding_dim: int,
+        norm_eps: float,
+        norm_elementwise_affine: bool,
+    ):
+        super().__init__()
+        self.silu = nn.SiLU()
+        self.linear = nn.Linear(
+            min(embedding_dim, 1024),
+            4 * embedding_dim,
+            bias=True,
+        )
+
+        self.norm = RMSNorm(embedding_dim, eps=norm_eps)
+
+    def forward(
+        self,
+        x: torch.Tensor,
+        emb: Optional[torch.Tensor] = None,
+    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+        emb = self.linear(self.silu(emb))
+        scale_msa, gate_msa, scale_mlp, gate_mlp = emb.chunk(4, dim=1)
+        x = self.norm(x) * (1 + scale_msa[:, None])
+        return x, gate_msa, scale_mlp, gate_mlp
+
+
+class LuminaLayerNormContinuous(nn.Module):
+    def __init__(
+        self,
+        embedding_dim: int,
+        conditioning_embedding_dim: int,
+        # NOTE: It is a bit weird that the norm layer can be configured to have scale and shift parameters
+        # because the output is immediately scaled and shifted by the projected conditioning embeddings.
+        # Note that AdaLayerNorm does not let the norm layer have scale and shift parameters.
+        # However, this is how it was implemented in the original code, and it's rather likely you should
+        # set `elementwise_affine` to False.
+        elementwise_affine=True,
+        eps=1e-5,
+        bias=True,
+        norm_type="layer_norm",
+        out_dim: Optional[int] = None,
+    ):
+        super().__init__()
+
+        # AdaLN
+        self.silu = nn.SiLU()
+        self.linear_1 = nn.Linear(conditioning_embedding_dim, embedding_dim, bias=bias)
+
+        if norm_type == "layer_norm":
+            self.norm = nn.LayerNorm(embedding_dim, eps, elementwise_affine, bias)
+        elif norm_type == "rms_norm":
+            self.norm = RMSNorm(embedding_dim, eps=eps, elementwise_affine=elementwise_affine)
+        else:
+            raise ValueError(f"unknown norm_type {norm_type}")
+
+        self.linear_2 = None
+        if out_dim is not None:
+            self.linear_2 = nn.Linear(embedding_dim, out_dim, bias=bias)
+
+    def forward(
+        self,
+        x: torch.Tensor,
+        conditioning_embedding: torch.Tensor,
+    ) -> torch.Tensor:
+        # convert back to the original dtype in case `conditioning_embedding`` is upcasted to float32 (needed for hunyuanDiT)
+        emb = self.linear_1(self.silu(conditioning_embedding).to(x.dtype))
+        scale = emb
+        x = self.norm(x) * (1 + scale)[:, None, :]
+
+        if self.linear_2 is not None:
+            x = self.linear_2(x)
+
+        return x
+
+
+class LuminaFeedForward(nn.Module):
+    r"""
+    A feed-forward layer.
+
+    Parameters:
+        hidden_size (`int`):
+            The dimensionality of the hidden layers in the model. This parameter determines the width of the model's
+            hidden representations.
+        intermediate_size (`int`): The intermediate dimension of the feedforward layer.
+        multiple_of (`int`, *optional*): Value to ensure hidden dimension is a multiple
+            of this value.
+        ffn_dim_multiplier (float, *optional*): Custom multiplier for hidden
+            dimension. Defaults to None.
+    """
+
+    def __init__(
+        self,
+        dim: int,
+        inner_dim: int,
+        multiple_of: Optional[int] = 256,
+        ffn_dim_multiplier: Optional[float] = None,
+    ):
+        super().__init__()
+        self.swiglu = swiglu
+
+        # custom hidden_size factor multiplier
+        if ffn_dim_multiplier is not None:
+            inner_dim = int(ffn_dim_multiplier * inner_dim)
+        inner_dim = multiple_of * ((inner_dim + multiple_of - 1) // multiple_of)
+
+        self.linear_1 = nn.Linear(
+            dim,
+            inner_dim,
+            bias=False,
+        )
+        self.linear_2 = nn.Linear(
+            inner_dim,
+            dim,
+            bias=False,
+        )
+        self.linear_3 = nn.Linear(
+            dim,
+            inner_dim,
+            bias=False,
+        )
+
+    def forward(self, x):
+        h1, h2 = self.linear_1(x), self.linear_3(x)
+        swiglu_fn = torch_swiglu if torch.compiler.is_compiling() else self.swiglu
+        return self.linear_2(swiglu_fn(h1, h2))
+
+
+class Lumina2CombinedTimestepCaptionEmbedding(nn.Module):
+    def __init__(
+        self,
+        hidden_size: int = 4096,
+        instruction_feat_dim: int = 2048,
+        frequency_embedding_size: int = 256,
+        norm_eps: float = 1e-5,
+        timestep_scale: float = 1.0,
+    ) -> None:
+        super().__init__()
+
+        self.time_proj = Timesteps(
+            num_channels=frequency_embedding_size,
+            flip_sin_to_cos=True,
+            downscale_freq_shift=0.0,
+            scale=timestep_scale,
+        )
+
+        self.timestep_embedder = TimestepEmbedding(
+            in_channels=frequency_embedding_size, time_embed_dim=min(hidden_size, 1024)
+        )
+
+        self.caption_embedder = nn.Sequential(
+            RMSNorm(instruction_feat_dim, eps=norm_eps),
+            nn.Linear(instruction_feat_dim, hidden_size, bias=True),
+        )
+
+        self._initialize_weights()
+
+    def _initialize_weights(self):
+        nn.init.trunc_normal_(self.caption_embedder[1].weight, std=0.02)
+        nn.init.zeros_(self.caption_embedder[1].bias)
+
+    def forward(
+        self,
+        timestep: torch.Tensor,
+        instruction_hidden_states: torch.Tensor,
+        dtype: torch.dtype,
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        timestep_proj = self.time_proj(timestep).to(dtype=dtype)
+        time_embed = self.timestep_embedder(timestep_proj)
+        caption_embed = self.caption_embedder(instruction_hidden_states)
+        return time_embed, caption_embed
+
+
+# ----------------------- Attention processors ------------------
+def apply_rotary_emb(x, freqs_cis, use_real=True, **kwargs):
+    # use_real=True path delegates to the shared diffusers implementation.
+    # use_real=False (Lumina-style) uses explicit dim to handle 0-element tensors.
+    if use_real:
+        from diffusers.models.embeddings import apply_rotary_emb as _apply
+
+        return _apply(x, freqs_cis, use_real=True, **kwargs)
+    x_rotated = torch.view_as_complex(x.float().reshape(*x.shape[:-1], x.shape[-1] // 2, 2))
+    freqs_cis = freqs_cis.unsqueeze(2)
+    return torch.view_as_real(x_rotated * freqs_cis).flatten(3).type_as(x)
+
+
+def _prepare_attn_mask(attention_mask: Optional[torch.Tensor], batch_size: int) -> Optional[torch.Tensor]:
+    """Reshape a bool padding mask ``[B, L]`` to the ``[B, 1, 1, L]`` form `dispatch_attention_fn` expects.
+
+    The mask is always materialized (not dropped to ``None`` when no token is masked):
+    the native backend rounds bf16 differently on its masked vs no-mask paths, and the
+    Boogu checkpoints were trained with the mask applied.
+    """
+    if attention_mask is None:
+        return None
+    return attention_mask.bool().view(batch_size, 1, 1, -1)
+
+
+class BooguImageDoubleStreamSelfAttnProcessor(nn.Module):
+    """
+    Double-stream self-attention processor.
+
+    Instruction and image features are projected separately, concatenated
+    (instruction first, then image) into a joint sequence, attended jointly via
+    [`dispatch_attention_fn`], then split back so each stream gets its own output
+    projection. The QKV / output projections live on this processor module, so the
+    checkpoint keys are ``...processor.img_to_q`` / ``...processor.instruct_to_q`` /
+    ``...processor.img_out`` / ``...processor.instruct_out``.
+
+    Args:
+        head_dim: Dimension of each attention head
+        num_attention_heads: Number of attention heads for queries
+        num_kv_heads: Number of key-value heads
+        qkv_bias: Whether to use bias in QKV linear layers
+    """
+
+    _attention_backend = None
+    _parallel_config = None
+
+    def __init__(
+        self,
+        head_dim: int,
+        num_attention_heads: int,
+        num_kv_heads: int,
+        qkv_bias: bool = False,
+    ) -> None:
+        """Initialize the double-stream attention processor."""
+        super().__init__()
+
+        self.head_dim = head_dim
+        self.num_attention_heads = num_attention_heads
+        self.num_kv_heads = num_kv_heads
+
+        query_dim = head_dim * num_attention_heads
+        kv_dim = head_dim * num_kv_heads
+
+        # Separate Q/K/V projections for instruction and image streams.
+        # Query uses num_attention_heads, Key/Value use num_kv_heads.
+        self.img_to_q = nn.Linear(query_dim, query_dim, bias=qkv_bias)
+        self.img_to_k = nn.Linear(query_dim, kv_dim, bias=qkv_bias)
+        self.img_to_v = nn.Linear(query_dim, kv_dim, bias=qkv_bias)
+
+        self.instruct_to_q = nn.Linear(query_dim, query_dim, bias=qkv_bias)
+        self.instruct_to_k = nn.Linear(query_dim, kv_dim, bias=qkv_bias)
+        self.instruct_to_v = nn.Linear(query_dim, kv_dim, bias=qkv_bias)
+
+        # Separate output projections for instruction and image streams.
+        self.instruct_out = nn.Linear(query_dim, query_dim, bias=qkv_bias)
+        self.img_out = nn.Linear(query_dim, query_dim, bias=qkv_bias)
+
+        self.initialize_weights()
+
+    def initialize_weights(self) -> None:
+        """Xavier-uniform init for the projection weights, zeros for any biases."""
+        for proj in (
+            self.img_to_q,
+            self.img_to_k,
+            self.img_to_v,
+            self.instruct_to_q,
+            self.instruct_to_k,
+            self.instruct_to_v,
+            self.instruct_out,
+            self.img_out,
+        ):
+            nn.init.xavier_uniform_(proj.weight)
+            if proj.bias is not None:
+                nn.init.zeros_(proj.bias)
+
+    def _concat_instruction_image_features(
+        self,
+        img_hidden_states_list: List[torch.Tensor],
+        instruct_hidden_states_list: List[torch.Tensor],
+        encoder_seq_lengths: List[int],
+        seq_lengths: List[int],
+    ) -> List[torch.Tensor]:
+        """
+        Concatenate instruction (text & image) and reference image features (instruction first, then image).
+
+        Args:
+            img_hidden_states_list: List of image tensors [img_query, img_key, img_value]
+            instruct_hidden_states_list: List of instruction tensors [instruct_query, instruct_key, instruct_value]
+            encoder_seq_lengths: Instruction sequence lengths for each sample [B]
+            seq_lengths: Total sequence lengths for each sample [B]
+
+        Returns:
+            List of concatenated tensors [query, key, value]
+        """
+        if len(img_hidden_states_list) != len(instruct_hidden_states_list):
+            raise ValueError(
+                f"Length mismatch: img_list={len(img_hidden_states_list)}, "
+                f"instruct_list={len(instruct_hidden_states_list)}"
+            )
+
+        batch_size = img_hidden_states_list[0].shape[0]
+        max_seq_len = max(seq_lengths)
+
+        concatenated_list = []
+
+        for img_tensor, instruct_tensor in zip(img_hidden_states_list, instruct_hidden_states_list):
+            # Ensure tensors are on the same device
+            device = img_tensor.device
+            if instruct_tensor.device != device:
+                instruct_tensor = instruct_tensor.to(device)
+
+            # Create output tensor with proper shape [B, max_seq_len, feature_dim]
+            feature_dim = img_tensor.shape[-1]
+            concatenated = img_tensor.new_zeros(batch_size, max_seq_len, feature_dim)
+
+            # Concatenate instruction first, then image for each sample
+            for i, (encoder_seq_len, seq_len) in enumerate(zip(encoder_seq_lengths, seq_lengths)):
+                # Place instruction tokens first
+                concatenated[i, :encoder_seq_len] = instruct_tensor[i, :encoder_seq_len]
+                # Place image tokens after instruction
+                concatenated[i, encoder_seq_len:seq_len] = img_tensor[i, : seq_len - encoder_seq_len]
+
+            concatenated_list.append(concatenated)
+
+        return concatenated_list
+
+    def _split_instruction_image_features(
+        self,
+        hidden_states_list: List[torch.Tensor],
+        encoder_seq_lengths: List[int],
+        seq_lengths: List[int],
+    ) -> List[Tuple[torch.Tensor, torch.Tensor]]:
+        """
+        Split concatenated features back to instruction and image features.
+        Inverse operation of _concat_instruction_image_features.
+
+        Args:
+            hidden_states_list: List of concatenated tensors (usually just one element)
+            encoder_seq_lengths: Instruction sequence lengths for each sample [B]
+            seq_lengths: Total sequence lengths for each sample [B]
+
+        Returns:
+            List of tuples, each containing (instruct_hidden_states, img_hidden_states)
+        """
+        result_list = []
+
+        for hidden_states in hidden_states_list:
+            batch_size = hidden_states.shape[0]
+            feature_dim = hidden_states.shape[-1]
+
+            # Get maximum lengths for instruction and image
+            max_instruct_len = max(encoder_seq_lengths)
+            max_img_len = max(
+                seq_len - encoder_seq_len for seq_len, encoder_seq_len in zip(seq_lengths, encoder_seq_lengths)
+            )
+
+            # Create output tensors [B, max_len, feature_dim]
+            instruct_hidden_states = hidden_states.new_zeros(batch_size, max_instruct_len, feature_dim)
+            img_hidden_states = hidden_states.new_zeros(batch_size, max_img_len, feature_dim)
+
+            # Split each sample back to instruction and image
+            for i, (encoder_seq_len, seq_len) in enumerate(zip(encoder_seq_lengths, seq_lengths)):
+                img_len = seq_len - encoder_seq_len
+
+                # Extract instruction portion
+                instruct_hidden_states[i, :encoder_seq_len] = hidden_states[i, :encoder_seq_len]
+                # Extract image portion
+                img_hidden_states[i, :img_len] = hidden_states[i, encoder_seq_len:seq_len]
+
+            result_list.append((instruct_hidden_states, img_hidden_states))
+
+        return result_list
+
+    def __call__(
+        self,
+        attn: Attention,
+        img_hidden_states: torch.Tensor,
+        instruct_hidden_states: torch.Tensor,
+        joint_attention_mask: Optional[torch.Tensor] = None,
+        rotary_emb: Optional[torch.Tensor] = None,
+        encoder_seq_lengths: List[int] = None,  # [B] - Instruction sequence lengths for each sample
+        seq_lengths: List[int] = None,  # [B] - Total sequence lengths for each sample
+    ) -> torch.Tensor:
+        """
+        Process double-stream self-attention.
+
+        Args:
+            attn: Attention module
+            img_hidden_states: Image hidden states tensor [B, L_img, D]
+            instruct_hidden_states: Instruction hidden states tensor [B, L_instruct, D]
+            joint_attention_mask: Combined padding mask [B, L_total]
+            rotary_emb: Rotary embeddings for the joint sequence
+            encoder_seq_lengths: Instruction sequence lengths for each sample [B]
+            seq_lengths: Total sequence lengths for each sample [B]
+
+        Returns:
+            torch.Tensor: Processed hidden states after attention computation
+        """
+        batch_size = img_hidden_states.shape[0]
+
+        # Generate Q, K, V for image and instruction streams (NO head reshaping yet)
+        img_query = self.img_to_q(img_hidden_states)  # [B, L_img, query_dim]
+        img_key = self.img_to_k(img_hidden_states)  # [B, L_img, kv_dim]
+        img_value = self.img_to_v(img_hidden_states)  # [B, L_img, kv_dim]
+
+        instruct_query = self.instruct_to_q(instruct_hidden_states)  # [B, L_instruct, query_dim]
+        instruct_key = self.instruct_to_k(instruct_hidden_states)  # [B, L_instruct, kv_dim]
+        instruct_value = self.instruct_to_v(instruct_hidden_states)  # [B, L_instruct, kv_dim]
+
+        # Concatenate QKV across streams (instruction first, then image)
+        img_list = [img_query, img_key, img_value]  # [B, L_img, feature_dim] each
+        instruct_list = [instruct_query, instruct_key, instruct_value]  # [B, L_instruct, feature_dim] each
+        query, key, value = self._concat_instruction_image_features(
+            img_list, instruct_list, encoder_seq_lengths, seq_lengths
+        )  # [B, max_seq_len, feature_dim] each
+
+        head_dim = query.shape[-1] // attn.heads
+        kv_heads = key.shape[-1] // head_dim
+        dtype = query.dtype
+
+        # Reshape to [B, L, H, head_dim] (the layout dispatch_attention_fn expects)
+        query = query.view(batch_size, -1, attn.heads, head_dim)
+        key = key.view(batch_size, -1, kv_heads, head_dim)
+        value = value.view(batch_size, -1, kv_heads, head_dim)
+
+        if attn.norm_q is not None:
+            query = attn.norm_q(query)
+        if attn.norm_k is not None:
+            key = attn.norm_k(key)
+
+        if rotary_emb is not None:
+            query = apply_rotary_emb(query, rotary_emb, use_real=False)
+            key = apply_rotary_emb(key, rotary_emb, use_real=False)
+
+        query, key = query.to(dtype), key.to(dtype)
+
+        hidden_states = dispatch_attention_fn(
+            query,
+            key,
+            value,
+            attn_mask=_prepare_attn_mask(joint_attention_mask, batch_size),
+            scale=attn.scale,
+            enable_gqa=kv_heads < attn.heads,
+            backend=self._attention_backend,
+            parallel_config=self._parallel_config,
+        )
+        hidden_states = hidden_states.flatten(2, 3).type_as(query)
+
+        # Split back to instruction / image, apply separate output projections, then merge.
+        split_results = self._split_instruction_image_features([hidden_states], encoder_seq_lengths, seq_lengths)
+        instruct_hidden_states, img_hidden_states = split_results[0]
+
+        instruct_projected = self.instruct_out(instruct_hidden_states)  # [B, max_instruct_len, feature_dim]
+        img_projected = self.img_out(img_hidden_states)  # [B, max_img_len, feature_dim]
+
+        merged_list = self._concat_instruction_image_features(
+            [img_projected], [instruct_projected], encoder_seq_lengths, seq_lengths
+        )
+        hidden_states = merged_list[0]  # [B, max_seq_len, feature_dim]
+
+        hidden_states = attn.to_out[0](hidden_states)
+        hidden_states = attn.to_out[1](hidden_states)
+
+        return hidden_states
+
+
+class BooguImageAttnProcessor:
+    """
+    Single-stream self-attention processor.
+
+    Projects Q/K/V from the (shared) `Attention` module, applies QK-norm and RoPE,
+    and attends via [`dispatch_attention_fn`]. Used for the refiner / single-stream
+    blocks and the image self-attention of the double-stream block.
+    """
+
+    _attention_backend = None
+    _parallel_config = None
+
+    def __call__(
+        self,
+        attn: Attention,
+        hidden_states: torch.Tensor,
+        encoder_hidden_states: torch.Tensor,
+        attention_mask: Optional[torch.Tensor] = None,
+        image_rotary_emb: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
+        """
+        Process single-stream self-attention.
+
+        Args:
+            attn: Attention module
+            hidden_states: Hidden states tensor of shape (batch_size, seq_len, hidden_dim)
+            encoder_hidden_states: Encoder hidden states tensor (same as hidden_states for self-attention)
+            attention_mask: Optional bool padding mask [B, L]
+            image_rotary_emb: Optional rotary embeddings
+
+        Returns:
+            torch.Tensor: Processed hidden states after attention computation
+        """
+        batch_size = hidden_states.shape[0]
+
+        query = attn.to_q(hidden_states)
+        key = attn.to_k(encoder_hidden_states)
+        value = attn.to_v(encoder_hidden_states)
+
+        head_dim = query.shape[-1] // attn.heads
+        kv_heads = key.shape[-1] // head_dim
+        dtype = query.dtype
+
+        # Reshape to [B, L, H, head_dim] (the layout dispatch_attention_fn expects)
+        query = query.view(batch_size, -1, attn.heads, head_dim)
+        key = key.view(batch_size, -1, kv_heads, head_dim)
+        value = value.view(batch_size, -1, kv_heads, head_dim)
+
+        if attn.norm_q is not None:
+            query = attn.norm_q(query)
+        if attn.norm_k is not None:
+            key = attn.norm_k(key)
+
+        if image_rotary_emb is not None:
+            query = apply_rotary_emb(query, image_rotary_emb, use_real=False)
+            key = apply_rotary_emb(key, image_rotary_emb, use_real=False)
+
+        query, key = query.to(dtype), key.to(dtype)
+
+        hidden_states = dispatch_attention_fn(
+            query,
+            key,
+            value,
+            attn_mask=_prepare_attn_mask(attention_mask, batch_size),
+            scale=attn.scale,
+            enable_gqa=kv_heads < attn.heads,
+            backend=self._attention_backend,
+            parallel_config=self._parallel_config,
+        )
+        hidden_states = hidden_states.flatten(2, 3).type_as(query)
+
+        hidden_states = attn.to_out[0](hidden_states)
+        hidden_states = attn.to_out[1](hidden_states)
+
+        return hidden_states
 
 
 class BooguImageTransformerBlock(nn.Module):
