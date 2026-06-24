@@ -363,8 +363,6 @@ class BriaFiboEditPipeline(DiffusionPipeline, FluxLoraLoaderMixin):
         num_images_per_prompt: int = 1,
         guidance_scale: float = 5,
         negative_prompt: Optional[Union[str, List[str]]] = None,
-        prompt_embeds: Optional[torch.FloatTensor] = None,
-        negative_prompt_embeds: Optional[torch.FloatTensor] = None,
         max_sequence_length: int = 3000,
         lora_scale: bool | None = None,
     ):
@@ -379,16 +377,8 @@ class BriaFiboEditPipeline(DiffusionPipeline, FluxLoraLoaderMixin):
             guidance_scale (`float`):
                 Guidance scale for classifier free guidance.
             negative_prompt (`str` or `List[str]`, *optional*):
-                The prompt or prompts not to guide the image generation. If not defined, one has to pass
-                `negative_prompt_embeds` instead. Ignored when not using guidance (i.e., ignored if `guidance_scale` is
-                less than `1`).
-            prompt_embeds (`torch.FloatTensor`, *optional*):
-                Pre-generated text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt weighting. If not
-                provided, text embeddings will be generated from `prompt` input argument.
-            negative_prompt_embeds (`torch.FloatTensor`, *optional*):
-                Pre-generated negative text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt
-                weighting. If not provided, negative_prompt_embeds will be generated from `negative_prompt` input
-                argument.
+                The prompt or prompts not to guide the image generation. Ignored when not using guidance (i.e., ignored
+                if `guidance_scale` is less than `1`).
         """
         device = device or self._execution_device
 
@@ -402,27 +392,19 @@ class BriaFiboEditPipeline(DiffusionPipeline, FluxLoraLoaderMixin):
                 scale_lora_layers(self.text_encoder, lora_scale)
 
         prompt = [prompt] if isinstance(prompt, str) else prompt
-        if prompt is not None:
-            batch_size = len(prompt)
-        else:
-            batch_size = prompt_embeds.shape[0]
+        batch_size = len(prompt)
 
         prompt_attention_mask = None
         negative_prompt_attention_mask = None
-        if prompt_embeds is None:
-            prompt_embeds, prompt_layers, prompt_attention_mask = self.get_prompt_embeds(
-                prompt=prompt,
-                num_images_per_prompt=num_images_per_prompt,
-                max_sequence_length=max_sequence_length,
-                device=device,
-            )
-            prompt_embeds = prompt_embeds.to(dtype=self.transformer.dtype)
-            prompt_layers = [tensor.to(dtype=self.transformer.dtype) for tensor in prompt_layers]
-        else:
-            raise ValueError(
-                "`prompt_embeds` cannot be passed on its own; this pipeline also needs the per-layer embeddings "
-                "computed from `prompt`. Please pass `prompt` instead."
-            )
+        negative_prompt_embeds = None
+        prompt_embeds, prompt_layers, prompt_attention_mask = self.get_prompt_embeds(
+            prompt=prompt,
+            num_images_per_prompt=num_images_per_prompt,
+            max_sequence_length=max_sequence_length,
+            device=device,
+        )
+        prompt_embeds = prompt_embeds.to(dtype=self.transformer.dtype)
+        prompt_layers = [tensor.to(dtype=self.transformer.dtype) for tensor in prompt_layers]
 
         if guidance_scale > 1:
             if isinstance(negative_prompt, list) and negative_prompt[0] is None:
@@ -635,8 +617,6 @@ class BriaFiboEditPipeline(DiffusionPipeline, FluxLoraLoaderMixin):
         num_images_per_prompt: Optional[int] = 1,
         generator: torch.Generator | list[torch.Generator] | None = None,
         latents: Optional[torch.FloatTensor] = None,
-        prompt_embeds: Optional[torch.FloatTensor] = None,
-        negative_prompt_embeds: Optional[torch.FloatTensor] = None,
         output_type: str = "pil",
         return_dict: bool = True,
         joint_attention_kwargs: Optional[Dict[str, Any]] = None,
@@ -650,9 +630,8 @@ class BriaFiboEditPipeline(DiffusionPipeline, FluxLoraLoaderMixin):
         Function invoked when calling the pipeline for generation.
 
         Args:
-            prompt (`str` or `List[str]`, *optional*):
-                The prompt or prompts to guide the image generation. If not defined, one has to pass `prompt_embeds`.
-                instead.
+            prompt (`str` or `List[str]`):
+                The prompt or prompts to guide the image generation.
             image (`PIL.Image.Image` or `torch.FloatTensor`, *optional*):
                 The image to guide the image generation. If not defined, the pipeline will generate an image from
                 scratch.
@@ -676,9 +655,8 @@ class BriaFiboEditPipeline(DiffusionPipeline, FluxLoraLoaderMixin):
                 `guidance_scale > 1`. Higher guidance scale encourages to generate images that are closely linked to
                 the text `prompt`, usually at the expense of lower image quality.
             negative_prompt (`str` or `List[str]`, *optional*):
-                The prompt or prompts not to guide the image generation. If not defined, one has to pass
-                `negative_prompt_embeds` instead. Ignored when not using guidance (i.e., ignored if `guidance_scale` is
-                less than `1`).
+                The prompt or prompts not to guide the image generation. Ignored when not using guidance (i.e., ignored
+                if `guidance_scale` is less than `1`).
             num_images_per_prompt (`int`, *optional*, defaults to 1):
                 The number of images to generate per prompt.
             generator (`torch.Generator` or `List[torch.Generator]`, *optional*):
@@ -688,13 +666,6 @@ class BriaFiboEditPipeline(DiffusionPipeline, FluxLoraLoaderMixin):
                 Pre-generated noisy latents, sampled from a Gaussian distribution, to be used as inputs for image
                 generation. Can be used to tweak the same generation with different prompts. If not provided, a latents
                 tensor will ge generated by sampling using the supplied random `generator`.
-            prompt_embeds (`torch.FloatTensor`, *optional*):
-                Pre-generated text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt weighting. If not
-                provided, text embeddings will be generated from `prompt` input argument.
-            negative_prompt_embeds (`torch.FloatTensor`, *optional*):
-                Pre-generated negative text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt
-                weighting. If not provided, negative_prompt_embeds will be generated from `negative_prompt` input
-                argument.
             output_type (`str`, *optional*, defaults to `"pil"`):
                 The output format of the generate image. Choose between
                 [PIL](https://pillow.readthedocs.io/en/stable/): `PIL.Image.Image` or `np.array`.
@@ -743,7 +714,6 @@ class BriaFiboEditPipeline(DiffusionPipeline, FluxLoraLoaderMixin):
             prompt=prompt,
             height=height,
             width=width,
-            prompt_embeds=prompt_embeds,
             callback_on_step_end_tensor_inputs=callback_on_step_end_tensor_inputs,
             max_sequence_length=max_sequence_length,
         )
@@ -759,12 +729,10 @@ class BriaFiboEditPipeline(DiffusionPipeline, FluxLoraLoaderMixin):
 
         if prompt is not None and is_valid_edit_json(prompt):
             prompt = json.dumps(prompt)
-        if prompt is not None and isinstance(prompt, str):
+        if isinstance(prompt, str):
             batch_size = 1
-        elif prompt is not None and isinstance(prompt, list):
-            batch_size = len(prompt)
         else:
-            batch_size = prompt_embeds.shape[0]
+            batch_size = len(prompt)
 
         device = self._execution_device
         if generator is None and seed is not None:
@@ -785,8 +753,6 @@ class BriaFiboEditPipeline(DiffusionPipeline, FluxLoraLoaderMixin):
             prompt=prompt,
             negative_prompt=negative_prompt,
             guidance_scale=guidance_scale,
-            prompt_embeds=prompt_embeds,
-            negative_prompt_embeds=negative_prompt_embeds,
             device=device,
             max_sequence_length=max_sequence_length,
             num_images_per_prompt=num_images_per_prompt,
@@ -995,18 +961,9 @@ class BriaFiboEditPipeline(DiffusionPipeline, FluxLoraLoaderMixin):
             latents_std = 1.0 / torch.tensor(self.vae.config.latents_std).view(1, self.vae.config.z_dim, 1, 1, 1).to(
                 latents_device, latents_dtype
             )
-            latents_scaled = [latent / latents_std + latents_mean for latent in latents]
-            latents_scaled = torch.cat(latents_scaled, dim=0)
-            image = []
-            for scaled_latent in latents_scaled:
-                curr_image = self.vae.decode(scaled_latent.unsqueeze(0), return_dict=False)[0]
-                curr_image = self.image_processor.postprocess(curr_image.squeeze(dim=2), output_type=output_type)
-                if output_type == "np":
-                    image.append(curr_image[0])
-                else:
-                    image.extend(curr_image)
-            if output_type == "np":
-                image = np.stack(image, axis=0)
+            latents_scaled = torch.cat([latent / latents_std + latents_mean for latent in latents], dim=0)
+            image = self.vae.decode(latents_scaled, return_dict=False)[0]
+            image = self.image_processor.postprocess(image.squeeze(dim=2), output_type=output_type)
 
         # Offload all models
         self.maybe_free_model_hooks()
@@ -1069,9 +1026,6 @@ class BriaFiboEditPipeline(DiffusionPipeline, FluxLoraLoaderMixin):
         mask,
         height,
         width,
-        negative_prompt=None,
-        prompt_embeds=None,
-        negative_prompt_embeds=None,
         callback_on_step_end_tensor_inputs=None,
         max_sequence_length=None,
     ):
@@ -1100,31 +1054,10 @@ class BriaFiboEditPipeline(DiffusionPipeline, FluxLoraLoaderMixin):
                 f"`callback_on_step_end_tensor_inputs` has to be in {self._callback_tensor_inputs}, but found {[k for k in callback_on_step_end_tensor_inputs if k not in self._callback_tensor_inputs]}"
             )
 
-        if prompt is not None and prompt_embeds is not None:
-            raise ValueError(
-                f"Cannot forward both `prompt`: {prompt} and `prompt_embeds`: {prompt_embeds}. Please make sure to"
-                " only forward one of the two."
-            )
-        elif prompt is None and prompt_embeds is None:
-            raise ValueError(
-                "Provide either `prompt` or `prompt_embeds`. Cannot leave both `prompt` and `prompt_embeds` undefined."
-            )
-        elif prompt is not None and not is_valid_edit_json(prompt):
+        if prompt is None:
+            raise ValueError("`prompt` must be provided.")
+        elif not is_valid_edit_json(prompt):
             raise ValueError(f"`prompt` has to be a valid JSON string or dict but is {type(prompt)}")
-
-        if negative_prompt is not None and negative_prompt_embeds is not None:
-            raise ValueError(
-                f"Cannot forward both `negative_prompt`: {negative_prompt} and `negative_prompt_embeds`:"
-                f" {negative_prompt_embeds}. Please make sure to only forward one of the two."
-            )
-
-        if prompt_embeds is not None and negative_prompt_embeds is not None:
-            if prompt_embeds.shape != negative_prompt_embeds.shape:
-                raise ValueError(
-                    "`prompt_embeds` and `negative_prompt_embeds` must have the same shape when passed directly, but"
-                    f" got: `prompt_embeds` {prompt_embeds.shape} != `negative_prompt_embeds`"
-                    f" {negative_prompt_embeds.shape}."
-                )
 
         if max_sequence_length is not None and max_sequence_length > 3000:
             raise ValueError(f"`max_sequence_length` cannot be greater than 3000 but is {max_sequence_length}")
