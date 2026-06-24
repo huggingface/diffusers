@@ -22,7 +22,8 @@ except OptionalDependencyNotAvailable:
 
     _dummy_objects.update(get_objects_from_module(dummy_torch_and_transformers_objects))
 else:
-    _import_structure["pipeline_diffusion_gemma"] = ["DiffusionGemmaPipeline", "DiffusionGemmaPipelineOutput"]
+    _import_structure["pipeline_diffusion_gemma"] = ["DiffusionGemmaPipeline"]
+    _import_structure["pipeline_output"] = ["DiffusionGemmaPipelineOutput"]
 
 if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     try:
@@ -32,7 +33,8 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     except OptionalDependencyNotAvailable:
         from ...utils.dummy_torch_and_transformers_objects import *  # noqa F403
     else:
-        from .pipeline_diffusion_gemma import DiffusionGemmaPipeline, DiffusionGemmaPipelineOutput
+        from .pipeline_diffusion_gemma import DiffusionGemmaPipeline
+        from .pipeline_output import DiffusionGemmaPipelineOutput
 else:
     import sys
 

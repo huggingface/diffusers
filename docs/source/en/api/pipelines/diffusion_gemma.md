@@ -1,4 +1,4 @@
-<!--Copyright 2025 The HuggingFace Team. All rights reserved.
+<!--Copyright 2025 The Google and HuggingFace Teams. All rights reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 the License. You may obtain a copy of the License at
@@ -17,7 +17,8 @@ previously generated blocks) into a KV cache, and a bidirectional decoder denois
 `canvas_length` tokens by cross-attending to that cache. Generation alternates an outer autoregressive loop over
 canvases with an inner denoising loop, where each step samples candidate tokens, commits the most confident ones via
 [`BlockRefinementScheduler`] in uniform corruption mode, and renoises the rest. The model itself lives in
-`transformers` as `DiffusionGemmaForBlockDiffusion`.
+`transformers` as `DiffusionGemmaForBlockDiffusion`; the released checkpoint is
+[`google/diffusiongemma-26B-A4B-it`](https://huggingface.co/google/diffusiongemma-26B-A4B-it).
 
 ## Usage
 
@@ -45,9 +46,30 @@ print(output.texts[0])
 
 `num_inference_steps` is the number of denoising steps per canvas (48 matches the released checkpoint); fewer steps are
 faster but lower quality. `cache_implementation="static"` lets the decoder be `torch.compile`-d with cudagraphs (see
-[Static cache and compilation](#static-cache-and-compilation)); drop both for a simpler dynamic-cache run. For
-multimodal prompts, pass an `image` alongside the `prompt` (or put the image content in a raw `messages` conversation),
-and the processor turns it into the model's image inputs automatically.
+[Static cache and compilation](#static-cache-and-compilation)); drop both for a simpler dynamic-cache run.
+
+For multi-turn or multimodal inputs, pass a raw `messages` conversation instead of `prompt`. It is a list of
+`{"role", "content"}` dicts in the usual chat format, which the processor runs through its chat template:
+
+```py
+messages = [
+    {"role": "user", "content": "Why is the sky blue?"},
+]
+# or with an image:
+messages = [
+    {
+        "role": "user",
+        "content": [
+            {"type": "image", "image": image},
+            {"type": "text", "text": "Describe this image."},
+        ],
+    },
+]
+output = pipe(messages=messages, gen_length=256)
+```
+
+For a single user turn you can skip `messages` and pass an `image` alongside the `prompt`; the processor turns it into
+the model's image inputs automatically.
 
 ## Schedulers
 

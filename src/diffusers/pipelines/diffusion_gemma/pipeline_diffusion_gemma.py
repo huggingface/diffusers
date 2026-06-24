@@ -15,18 +15,17 @@
 from __future__ import annotations
 
 import inspect
-from dataclasses import dataclass
 from typing import Any, Callable
 
 import torch
 import torch.nn.functional as F
-from tqdm.auto import tqdm
 from transformers import DynamicCache, StaticCache
 
 from ...callbacks import MultiPipelineCallbacks, PipelineCallback
 from ...schedulers import BlockRefinementScheduler, DiscreteDDIMScheduler, EntropyBoundScheduler
-from ...utils import BaseOutput, logging, replace_example_docstring
+from ...utils import logging, replace_example_docstring
 from ..pipeline_utils import DiffusionPipeline
+from .pipeline_output import DiffusionGemmaPipelineOutput
 
 
 logger = logging.get_logger(__name__)
@@ -51,12 +50,6 @@ EXAMPLE_DOC_STRING = """
 """
 
 
-@dataclass
-class DiffusionGemmaPipelineOutput(BaseOutput):
-    sequences: torch.LongTensor
-    texts: list[str] | None = None
-
-
 class DiffusionGemmaPipeline(DiffusionPipeline):
     r"""
     Pipeline for DiffusionGemma block-diffusion text generation.
@@ -69,12 +62,16 @@ class DiffusionGemmaPipeline(DiffusionPipeline):
 
     The model is expected to be a `DiffusionGemmaForBlockDiffusion` instance exposing `forward(input_ids,
     decoder_input_ids=..., self_conditioning_logits=..., ...)` and returning logits of shape `[batch, canvas_length,
-    vocab_size]` over the canvas.
-    """
+    vocab_size]` over the canvas. See the model card at https://huggingface.co/google/diffusiongemma-26B-A4B-it.
 
-    model: Any
-    scheduler: BlockRefinementScheduler | DiscreteDDIMScheduler | EntropyBoundScheduler
-    processor: Any
+    Args:
+        model ([`~transformers.DiffusionGemmaForBlockDiffusion`]):
+            The block-diffusion denoiser (causal encoder + bidirectional decoder with tied weights).
+        scheduler ([`BlockRefinementScheduler`], [`DiscreteDDIMScheduler`] or [`EntropyBoundScheduler`]):
+            The sampler that commits and renoises canvas tokens each denoising step.
+        processor ([`~transformers.ProcessorMixin`]):
+            The processor used to apply the chat template and decode the generated tokens.
+    """
 
     _callback_tensor_inputs = ["canvas", "logits"]
 
@@ -317,8 +314,8 @@ class DiffusionGemmaPipeline(DiffusionPipeline):
         else:
             past_key_values = DynamicCache(config=text_config)
 
-        progress_bar = tqdm(range(num_canvases), **getattr(self, "_progress_bar_config", {}))
-        for _ in progress_bar:
+        progress_bar = self.progress_bar(total=self._num_timesteps)
+        for _ in range(num_canvases):
             cur_len = cur_input_ids.shape[1]
             decoder_position_ids = torch.arange(cur_len, cur_len + canvas_length, device=device).unsqueeze(0)
 
@@ -355,13 +352,12 @@ class DiffusionGemmaPipeline(DiffusionPipeline):
                 (max(stability_threshold, 1), batch_size, canvas_length), -1, dtype=torch.long, device=device
             )
 
-            # Inner bar over the predictor steps of this canvas; the first `corrected_steps` also run corrector sweeps.
-            step_bar = tqdm(
-                range(predictor_steps), desc="denoising", leave=False, **getattr(self, "_progress_bar_config", {})
-            )
-            for step_idx in step_bar:
+            # Denoise the predictor steps of this canvas; the first `corrected_steps` also run corrector sweeps.
+            for step_idx in range(predictor_steps):
                 if corrected_steps:
-                    step_bar.set_description("denoising (corrector)" if step_idx < corrected_steps else "denoising")
+                    progress_bar.set_description(
+                        "denoising (corrector)" if step_idx < corrected_steps else "denoising"
+                    )
                 # Mark a fresh step and clone the logits so a cudagraph-compiled decoder (`mode="reduce-overhead"`)
                 # does not overwrite the tensors that self-conditioning and the scheduler read next. Both are no-ops
                 # when the decoder is not cudagraph-compiled.
@@ -410,6 +406,7 @@ class DiffusionGemmaPipeline(DiffusionPipeline):
                     callback_outputs = callback_on_step_end(self, global_step, step_idx, callback_kwargs)
                     canvas = callback_outputs.pop("canvas", canvas)
                 global_step += 1
+                progress_bar.update()
 
                 # Adaptive stopping: leave this block early once every example's argmax prediction is stable across
                 # `stability_threshold` steps and confident (mean per-token entropy below `confidence_threshold`).
