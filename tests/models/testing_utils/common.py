@@ -135,8 +135,9 @@ def cast_inputs_to_dtype(inputs, current_dtype, target_dtype):
         return inputs.to(target_dtype) if inputs.dtype == current_dtype else inputs
     if isinstance(inputs, dict):
         return {k: cast_inputs_to_dtype(v, current_dtype, target_dtype) for k, v in inputs.items()}
-    if isinstance(inputs, list):
-        return [cast_inputs_to_dtype(v, current_dtype, target_dtype) for v in inputs]
+    if isinstance(inputs, (list, tuple)):
+        # Preserve the container type so models that branch on it (e.g. `isinstance(..., tuple)`) still see a tuple.
+        return type(inputs)(cast_inputs_to_dtype(v, current_dtype, target_dtype) for v in inputs)
 
     return inputs
 
@@ -495,9 +496,12 @@ class ModelTesterMixin:
             else:
                 assert param.data.dtype == dtype
 
-        inputs = cast_inputs_to_dtype(self.get_dummy_inputs(), torch.float32, dtype)
-        output = model(**inputs, return_dict=False)[0]
-        output_loaded = model_loaded(**inputs, return_dict=False)[0]
+        # Fetch inputs separately for each forward so that models consuming a generator (e.g. stochastic decoders)
+        # see the same, freshly-seeded RNG state in both passes instead of sharing a single advancing generator.
+        output = model(**cast_inputs_to_dtype(self.get_dummy_inputs(), torch.float32, dtype), return_dict=False)[0]
+        output_loaded = model_loaded(
+            **cast_inputs_to_dtype(self.get_dummy_inputs(), torch.float32, dtype), return_dict=False
+        )[0]
 
         assert_tensors_close(
             output, output_loaded, atol=atol, rtol=rtol, msg=f"Loaded model output differs for {dtype}"
