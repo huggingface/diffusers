@@ -235,7 +235,7 @@ def rescale_noise_cfg(noise_cfg, noise_pred_text, guidance_rescale=0.0):
 
 class LTX2ConditionPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoaderMixin):
     r"""
-    Pipeline for video generation which allows image conditions to be inserted at arbitary parts of the video.
+    Pipeline for video generation which allows image conditions to be inserted at arbitrary parts of the video.
 
     Reference: https://github.com/Lightricks/LTX-Video
 
