@@ -23,7 +23,7 @@ from tqdm.auto import tqdm
 from ...callbacks import MultiPipelineCallbacks, PipelineCallback
 from ...schedulers import BlockRefinementScheduler
 from ...utils import BaseOutput, logging, replace_example_docstring
-from ..pipeline_utils import DiffusionPipeline
+from ..pipeline_utils import DiffusionPipeline, DiscreteDiffusionPipelineMixin
 
 
 logger = logging.get_logger(__name__)
@@ -56,7 +56,7 @@ class LLaDA2PipelineOutput(BaseOutput):
     texts: list[str] | None = None
 
 
-class LLaDA2Pipeline(DiffusionPipeline):
+class LLaDA2Pipeline(DiffusionPipeline, DiscreteDiffusionPipelineMixin):
     r"""
     Pipeline for LLaDA2-style discrete diffusion text generation via block-wise iterative refinement.
 
@@ -96,7 +96,6 @@ class LLaDA2Pipeline(DiffusionPipeline):
         return self._num_timesteps
 
     # --- Prompt encoding ---
-
     def _prepare_input_ids(
         self,
         *,
