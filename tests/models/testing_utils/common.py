@@ -262,7 +262,39 @@ class BaseModelTesterConfig:
         raise NotImplementedError("Subclasses must implement `get_dummy_inputs()`.")
 
 
-class ModelTesterMixin:
+class BaseModelOutputMixin:
+    """Provides the class-scoped `base_model_output` fixture shared across tester mixins.
+
+    Kept separate from `BaseModelTesterConfig` — which only declares the testing contract and performs no
+    computation — so any mixin that needs the cached reference output (`ModelTesterMixin`, the memory
+    offload mixins, ...) can inherit it without duplicating the build-and-forward.
+    """
+
+    @pytest.fixture(scope="class")
+    def base_model_output(self):
+        """Class-scoped reference forward output, built once and reused across the class.
+
+        Building the model and running its forward pass is fully deterministic (`torch.manual_seed(0)`
+        plus the deterministic `get_dummy_inputs` contract), so the reference ("base") output is
+        identical for every test in the class. The save/load, parallelism, and memory-offload tests
+        compare a reloaded/offloaded model against this output; computing it a single time here — instead
+        of rebuilding the model and re-running the forward in each test — removes that redundant work and
+        speeds up the suite.
+
+        The hardware-gated tests that consume this fixture use `pytest.mark.skipif` (via the `require_*`
+        decorators), which pytest evaluates before fixture setup, so skipping on a machine without the
+        required accelerators never triggers this forward.
+
+        Tests that still need a live model (e.g. to save or offload it) build their own with the same
+        seed, so the reloaded model's weights match this cached output.
+        """
+        torch.manual_seed(0)
+        model = self.model_class(**self.get_init_dict()).eval().to(torch_device)
+        with torch.no_grad():
+            return model(**self.get_dummy_inputs(), return_dict=False)[0]
+
+
+class ModelTesterMixin(BaseModelOutputMixin):
     """
     Base mixin class for model testing with common test methods.
 
@@ -281,28 +313,6 @@ class ModelTesterMixin:
         class TestMyModel(MyModelTestConfig, ModelTesterMixin):
             pass
     """
-
-    @pytest.fixture(scope="class")
-    def base_model_output(self):
-        """Class-scoped reference forward output, built once and reused across the class.
-
-        Building the model and running its forward pass is fully deterministic (`torch.manual_seed(0)`
-        plus the deterministic `get_dummy_inputs` contract), so the reference ("base") output is
-        identical for every test in the class. The save/load and parallelism tests compare a reloaded
-        model against this output; computing it a single time here — instead of rebuilding the model and
-        re-running the forward in each test — removes that redundant work and speeds up the suite.
-
-        The hardware-gated tests that consume this fixture use `pytest.mark.skipif` (via the
-        `require_*` decorators), which pytest evaluates before fixture setup, so skipping on a machine
-        without the required accelerators never triggers this forward.
-
-        Tests that still need a live model (e.g. to save it) build their own with the same seed, so the
-        reloaded model's weights match this cached output.
-        """
-        torch.manual_seed(0)
-        model = self.model_class(**self.get_init_dict()).eval().to(torch_device)
-        with torch.no_grad():
-            return model(**self.get_dummy_inputs(), return_dict=False)[0]
 
     @torch.no_grad()
     def test_from_save_pretrained(self, base_model_output, tmp_path, atol=5e-5, rtol=5e-5):
