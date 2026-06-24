@@ -158,23 +158,20 @@ class TensorParallelConfig:
     """
     Configuration for tensor parallelism.
 
-    Tensor parallelism shards weight matrices (column-wise and row-wise) across devices.
-    Each device computes a partial result; an AllReduce/AllGather at layer boundaries
-    reconstructs the full output. Uses ``torch.distributed.tensor.parallelize_module``
-    with ``ColwiseParallel`` / ``RowwiseParallel`` sharding styles.
+    Tensor parallelism shards weight matrices (column-wise and row-wise) across devices. Each device computes a partial
+    result; an AllReduce/AllGather at layer boundaries reconstructs the full output. Uses
+    ``torch.distributed.tensor.parallelize_module`` with ``ColwiseParallel`` / ``RowwiseParallel`` sharding styles.
 
-    On Neuron, use the ``_pre_shard_and_tp`` workaround from
-    ``transformer_flux2_neuron_tp`` to avoid the NRT consecutive-reduce-scatter bug
-    on large tensors (>= 5120x5120).
+    On Neuron, use the ``_pre_shard_and_tp`` workaround from ``transformer_flux2_neuron_tp`` to avoid the NRT
+    consecutive-reduce-scatter bug on large tensors (>= 5120x5120).
 
     Args:
         tp_degree (`int`, defaults to `1`):
-            Number of devices to shard across. Must be a divisor of the number of
-            attention heads (and FFN hidden dimensions) of the model being parallelised.
+            Number of devices to shard across. Must be a divisor of the number of attention heads (and FFN hidden
+            dimensions) of the model being parallelised.
         mesh (`torch.distributed.device_mesh.DeviceMesh`, *optional*):
-            A custom device mesh to use. If provided, ``tp_degree`` is inferred from
-            ``mesh.size()`` and the argument is ignored. Useful when combining TP with
-            other parallelism strategies (e.g. CP) that share the same mesh.
+            A custom device mesh to use. If provided, ``tp_degree`` is inferred from ``mesh.size()`` and the argument
+            is ignored. Useful when combining TP with other parallelism strategies (e.g. CP) that share the same mesh.
     """
 
     tp_degree: int = 1
@@ -255,8 +252,8 @@ class ParallelConfig:
     def _cp_world_size(self) -> int:
         """Context-parallel world size, or 1 when context parallelism is not enabled.
 
-        Lets attention backends branch on context parallelism without dereferencing a possibly
-        ``None`` ``context_parallel_config`` (e.g. when only tensor parallelism is active).
+        Lets attention backends branch on context parallelism without dereferencing a possibly ``None``
+        ``context_parallel_config`` (e.g. when only tensor parallelism is active).
         """
         cp = self.context_parallel_config
         if cp is None or cp._world_size is None:

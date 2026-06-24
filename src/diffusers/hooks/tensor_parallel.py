@@ -36,11 +36,10 @@ def _resolve_tp_plan(model: torch.nn.Module, tp_plan: dict) -> list:
     """Group a flat ``_tp_plan`` into per-module ``parallelize_module`` plans.
 
     ``tp_plan`` maps module-name globs (relative to ``model``) to a style string, e.g.
-    ``{"transformer_blocks.*.attn.to_q": "colwise"}``. Each glob is split at its single ``*``:
-    the prefix must resolve to a ``ModuleList`` and the suffix becomes the per-element relative
-    key. Entries are grouped by the repeated block instance so the caller issues one
-    ``parallelize_module`` call per block (required so ``RowwiseParallel`` attaches its input
-    redistribution at the block boundary). Keys without a ``*`` are grouped under the model itself.
+    ``{"transformer_blocks.*.attn.to_q": "colwise"}``. Each glob is split at its single ``*``: the prefix must resolve
+    to a ``ModuleList`` and the suffix becomes the per-element relative key. Entries are grouped by the repeated block
+    instance so the caller issues one ``parallelize_module`` call per block (required so ``RowwiseParallel`` attaches
+    its input redistribution at the block boundary). Keys without a ``*`` are grouped under the model itself.
 
     Returns:
         A list of ``(submodule, {relative_path: style_str})`` tuples, in plan order.
@@ -101,22 +100,20 @@ def apply_tensor_parallel(
     """Apply tensor parallelism to a model from its flat ``_tp_plan``.
 
     This is model-agnostic: it only relies on ``tp_plan`` (a flat mapping of module-name globs to
-    ``"colwise"``/``"rowwise"`` styles) and on the device mesh stored on ``config``. The attention
-    processors derive their per-rank head/inner sizes from ``config`` at runtime, so no processor
-    swap is needed.
+    ``"colwise"``/``"rowwise"`` styles) and on the device mesh stored on ``config``. The attention processors derive
+    their per-rank head/inner sizes from ``config`` at runtime, so no processor swap is needed.
 
     Args:
         model (`torch.nn.Module`):
             The model to shard (e.g. a ``Flux2Transformer2DModel``).
         config (`TensorParallelConfig`):
-            TP configuration. ``config.setup()`` must have been called so that ``config._mesh`` is
-            populated.
+            TP configuration. ``config.setup()`` must have been called so that ``config._mesh`` is populated.
         tp_plan (`dict`):
             The model's ``_tp_plan`` (see :class:`~diffusers.models.transformers.Flux2Transformer2DModel`).
         backend (`str`, *optional*, defaults to `"default"`):
-            ``"default"`` uses ``torch.distributed.tensor.parallel.parallelize_module`` directly.
-            ``"neuron"`` routes to the Neuron pre-shard path, which works around the Neuron NRT
-            consecutive-reduce-scatter bug and applies the Flux2 fused-weight permutations.
+            ``"default"`` uses ``torch.distributed.tensor.parallel.parallelize_module`` directly. ``"neuron"`` routes
+            to the Neuron pre-shard path, which works around the Neuron NRT consecutive-reduce-scatter bug and applies
+            the Flux2 fused-weight permutations.
     """
     if not torch.distributed.is_available() or not torch.distributed.is_initialized():
         raise RuntimeError("apply_tensor_parallel requires an initialised torch.distributed process group.")

@@ -284,9 +284,9 @@ def _get_qkv_projections(attn: "Flux2Attention", hidden_states, encoder_hidden_s
 def _get_tp_degree(parallel_config) -> int:
     """Return the tensor-parallel degree from a processor's ``_parallel_config`` (1 if TP is off).
 
-    When tensor parallelism is enabled, each rank holds ``attn.heads // tp_degree`` heads (and a
-    proportionally smaller slice of the fused inner / MLP dims), so the attention processors derive
-    their local sizes from this value at runtime. ``tp_degree == 1`` recovers the non-TP behavior.
+    When tensor parallelism is enabled, each rank holds ``attn.heads // tp_degree`` heads (and a proportionally smaller
+    slice of the fused inner / MLP dims), so the attention processors derive their local sizes from this value at
+    runtime. ``tp_degree == 1`` recovers the non-TP behavior.
     """
     if parallel_config is not None and getattr(parallel_config, "tensor_parallel_config", None) is not None:
         return parallel_config.tensor_parallel_config.tp_degree
@@ -1070,8 +1070,8 @@ class Flux2Modulation(nn.Module):
 def _permute_swiglu_for_tp(weight: torch.Tensor, tp_size: int) -> torch.Tensor:
     """Interleave gate/linear chunks of a SwiGLU FFN weight (``ff.linear_in``) for column-wise TP.
 
-    Re-orders ``[gate_0…gate_N, linear_0…linear_N]`` to ``[gate_0, linear_0, gate_1, linear_1, …]``
-    so a contiguous row slice gives each rank paired gate+linear rows.
+    Re-orders ``[gate_0…gate_N, linear_0…linear_N]`` to ``[gate_0, linear_0, gate_1, linear_1, …]`` so a contiguous row
+    slice gives each rank paired gate+linear rows.
     """
     with torch.no_grad():
         total = weight.shape[0]
@@ -1089,8 +1089,8 @@ def _permute_swiglu_for_tp(weight: torch.Tensor, tp_size: int) -> torch.Tensor:
 def _permute_qkv_mlp_for_tp(weight: torch.Tensor, tp_size: int, inner_dim: int, mlp_hidden_dim: int) -> torch.Tensor:
     """Interleave Q/K/V/gate/linear chunks of the fused ``to_qkv_mlp_proj`` weight for column-wise TP.
 
-    Re-orders ``[Q, K, V, mlp_gate, mlp_linear]`` so rank *r* receives a contiguous slice with its
-    proportional share of each component.
+    Re-orders ``[Q, K, V, mlp_gate, mlp_linear]`` so rank *r* receives a contiguous slice with its proportional share
+    of each component.
     """
     with torch.no_grad():
         q = weight[:inner_dim]
@@ -1117,8 +1117,8 @@ def _permute_qkv_mlp_for_tp(weight: torch.Tensor, tp_size: int, inner_dim: int, 
 def _permute_out_for_tp(weight: torch.Tensor, tp_size: int, attn_dim: int, mlp_dim: int) -> torch.Tensor:
     """Interleave attn/mlp input columns of the fused ``to_out`` weight for row-wise TP.
 
-    Re-orders the ``[attn_out, mlp_out]`` input columns so rank *r* receives a contiguous slice of
-    paired attn+mlp columns.
+    Re-orders the ``[attn_out, mlp_out]`` input columns so rank *r* receives a contiguous slice of paired attn+mlp
+    columns.
     """
     with torch.no_grad():
         attn_part = weight[:, :attn_dim]

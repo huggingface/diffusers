@@ -24,7 +24,7 @@ from ...loaders import Flux2LoraLoaderMixin
 from ...models import AutoencoderKLFlux2, Flux2Transformer2DModel
 from ...schedulers import FlowMatchEulerDiscreteScheduler
 from ...utils import is_torch_xla_available, logging, replace_example_docstring
-from ...utils.torch_utils import maybe_adjust_dtype_for_device, randn_tensor
+from ...utils.torch_utils import get_device, maybe_adjust_dtype_for_device, randn_tensor
 from ..pipeline_utils import DiffusionPipeline
 from .image_processor import Flux2ImageProcessor
 from .pipeline_output import Flux2PipelineOutput
@@ -917,12 +917,15 @@ class Flux2KleinPipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
         # Pass pre-computed latent height/width to avoid DtoH sync from torch.max().item()
         latent_height = 2 * (int(height) // (self.vae_scale_factor * 2))
         latent_width = 2 * (int(width) // (self.vae_scale_factor * 2))
+        # On Neuron, run the index-heavy `_unpack_latents_with_ids` on CPU to avoid expensive
+        # device<->host syncs from the gather/scatter arithmetic, then move the result back.
         latent_device = latents.device
-        if torch_device == "neuron":
+        on_neuron = get_device() == "neuron"
+        if on_neuron:
             latents = latents.cpu()
             latent_ids = latent_ids.cpu()
         latents = self._unpack_latents_with_ids(latents, latent_ids, latent_height // 2, latent_width // 2)
-        if torch_device == "neuron":
+        if on_neuron:
             latents = latents.to(latent_device)
 
         latents_bn_mean = self.vae.bn.running_mean.view(1, -1, 1, 1).to(latents.device, latents.dtype)

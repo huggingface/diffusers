@@ -14,27 +14,22 @@
 
 """Neuron-specific Tensor Parallelism utilities for Flux2 and Qwen3.
 
-This module provides the functions needed to apply tensor parallelism on AWS
-Neuron hardware.  The key difference from the generic ``apply_tensor_parallel``
-path is a workaround for a Neuron NRT bug: consecutive ``reduce_scatter``
-collectives for large weight tensors (≥ 5120×5120) can fail when all layers
-are distributed in a single ``parallelize_module`` call.  The fix is to
-pre-shard each weight locally on CPU via ``DTensor.from_local`` *before*
-calling ``parallelize_module``; the latter then sees already-placed DTensors,
-skips the collective for weights, but still registers the required
-input/output hooks for the forward pass.
+This module provides the functions needed to apply tensor parallelism on AWS Neuron hardware. The key difference from
+the generic ``apply_tensor_parallel`` path is a workaround for a Neuron NRT bug: consecutive ``reduce_scatter``
+collectives for large weight tensors (≥ 5120×5120) can fail when all layers are distributed in a single
+``parallelize_module`` call. The fix is to pre-shard each weight locally on CPU via ``DTensor.from_local`` *before*
+calling ``parallelize_module``; the latter then sees already-placed DTensors, skips the collective for weights, but
+still registers the required input/output hooks for the forward pass.
 
 Entry points:
     ``apply_tp_flux2_transformer_neuron(model, tp_mesh)``
-        Apply TP to a ``Flux2Transformer2DModel``.  Includes the weight
-        permutations required by Flux2's SwiGLU FFN and fused QKV+MLP
-        projections.
+        Apply TP to a ``Flux2Transformer2DModel``. Includes the weight permutations required by Flux2's SwiGLU FFN and
+        fused QKV+MLP projections.
 
     ``apply_tp_qwen3_neuron(model, tp_mesh)``
-        Apply TP to a ``Qwen3ForCausalLM`` text encoder.  The sharding plan is
-        derived from ``model.config.base_model_tp_plan`` — the same plan used
-        by ``from_pretrained(tp_plan="auto")`` in transformers — so it stays in
-        sync automatically if the plan changes upstream.
+        Apply TP to a ``Qwen3ForCausalLM`` text encoder. The sharding plan is derived from
+        ``model.config.base_model_tp_plan`` — the same plan used by ``from_pretrained(tp_plan="auto")`` in transformers
+        — so it stays in sync automatically if the plan changes upstream.
 """
 
 from typing import TYPE_CHECKING
@@ -59,12 +54,10 @@ def _pre_shard_and_tp(
 ) -> None:
     """Pre-shard Linear weights via ``DTensor.from_local``, then call ``parallelize_module``.
 
-    Workaround for a Neuron NRT bug where consecutive ``reduce_scatter`` calls
-    for large weight tensors (≥ 5120×5120) fail when all layers are distributed
-    in a single ``parallelize_module`` call.  By pre-sharding each weight on CPU
-    before the call, ``distribute_tensor`` inside ``parallelize_module`` sees an
-    already-placed DTensor and skips the collective, while the module hooks
-    (input/output specs) are still registered correctly.
+    Workaround for a Neuron NRT bug where consecutive ``reduce_scatter`` calls for large weight tensors (≥ 5120×5120)
+    fail when all layers are distributed in a single ``parallelize_module`` call. By pre-sharding each weight on CPU
+    before the call, ``distribute_tensor`` inside ``parallelize_module`` sees an already-placed DTensor and skips the
+    collective, while the module hooks (input/output specs) are still registered correctly.
 
     Args:
         module: The block whose Linear sub-modules are being sharded.
@@ -110,17 +103,15 @@ def _apply_tp_neuron(
 ) -> None:
     """Apply tensor parallelism on Neuron from resolved ``_tp_plan`` groups.
 
-    ``groups`` is produced by ``diffusers.hooks.tensor_parallel._resolve_tp_plan`` — the same
-    source of truth used by the generic path, so the two backends shard identical layers. For
-    each ``(block, relative_plan)`` group this:
-    1. permutes the model's fused weights (via ``model._tp_fused_block_permuters``, the same
-       backend-agnostic permuters the generic path uses) so column/row slicing gives each rank a
-       correct chunk,
-    2. pre-shards the weights via ``DTensor.from_local`` (Neuron NRT consecutive-reduce-scatter
-       workaround), then calls ``parallelize_module`` to register the forward hooks.
+    ``groups`` is produced by ``diffusers.hooks.tensor_parallel._resolve_tp_plan`` — the same source of truth used by
+    the generic path, so the two backends shard identical layers. For each ``(block, relative_plan)`` group this:
+    1. permutes the model's fused weights (via ``model._tp_fused_block_permuters``, the same backend-agnostic permuters
+       the generic path uses) so column/row slicing gives each rank a correct chunk,
+    2. pre-shards the weights via ``DTensor.from_local`` (Neuron NRT consecutive-reduce-scatter workaround), then calls
+       ``parallelize_module`` to register the forward hooks.
 
-    The attention processors derive their per-rank sizes from ``_parallel_config`` at runtime, so
-    no processor swap is performed here. Model weights must be on CPU when this is called.
+    The attention processors derive their per-rank sizes from ``_parallel_config`` at runtime, so no processor swap is
+    performed here. Model weights must be on CPU when this is called.
     """
     from ...hooks.tensor_parallel import _styles
 
@@ -141,14 +132,13 @@ def apply_tp_flux2_transformer_neuron(
 ) -> "Flux2Transformer2DModel":
     """Apply tensor parallelism to a ``Flux2Transformer2DModel`` on Neuron.
 
-    Thin wrapper kept for direct/standalone use. The model weights must still be on CPU when this
-    is called; move the model to the Neuron device *after*::
+    Thin wrapper kept for direct/standalone use. The model weights must still be on CPU when this is called; move the
+    model to the Neuron device *after*::
 
-        apply_tp_flux2_transformer_neuron(pipe.transformer, tp_mesh)
-        pipe.transformer = pipe.transformer.to(device)
+        apply_tp_flux2_transformer_neuron(pipe.transformer, tp_mesh) pipe.transformer = pipe.transformer.to(device)
 
-    Prefer the public API ``model.enable_parallelism(config=TensorParallelConfig(...))``, which
-    dispatches here automatically on Neuron.
+    Prefer the public API ``model.enable_parallelism(config=TensorParallelConfig(...))``, which dispatches here
+    automatically on Neuron.
 
     Args:
         model: ``Flux2Transformer2DModel`` with weights on CPU.
@@ -169,26 +159,23 @@ def apply_tp_qwen3_neuron(
 ) -> "Qwen3ForCausalLM":
     """Apply tensor parallelism to a ``Qwen3ForCausalLM`` text encoder on Neuron.
 
-    The sharding plan is derived from ``model.config.base_model_tp_plan`` —
-    the same plan used by ``from_pretrained(tp_plan="auto")`` in transformers —
-    so it stays in sync automatically if the plan changes upstream.
+    The sharding plan is derived from ``model.config.base_model_tp_plan`` — the same plan used by
+    ``from_pretrained(tp_plan="auto")`` in transformers — so it stays in sync automatically if the plan changes
+    upstream.
 
-    ``"replicated_with_grad_allreduce"`` entries (Q/K norm layers) are skipped:
-    those layers require gradient all-reduce in training but need no weight
-    sharding for inference.
+    ``"replicated_with_grad_allreduce"`` entries (Q/K norm layers) are skipped: those layers require gradient
+    all-reduce in training but need no weight sharding for inference.
 
-    Qwen3's separate ``gate_proj`` / ``up_proj`` projections require no weight
-    permutations (unlike Flux2's fused SwiGLU).
+    Qwen3's separate ``gate_proj`` / ``up_proj`` projections require no weight permutations (unlike Flux2's fused
+    SwiGLU).
 
     The model weights must still be on CPU when this function is called::
 
-        apply_tp_qwen3_neuron(pipe.text_encoder, tp_mesh)
-        pipe.text_encoder = pipe.text_encoder.to(device)
+        apply_tp_qwen3_neuron(pipe.text_encoder, tp_mesh) pipe.text_encoder = pipe.text_encoder.to(device)
 
-    **Primary path**: try ``Qwen3ForCausalLM.from_pretrained(model_id, tp_plan="auto")``
-    first — transformers' native TP may work on Neuron directly since its hook
-    mechanism does not use DTensor reduce_scatter.  Fall back to this function if
-    the NRT bug is triggered.
+    **Primary path**: try ``Qwen3ForCausalLM.from_pretrained(model_id, tp_plan="auto")`` first — transformers' native
+    TP may work on Neuron directly since its hook mechanism does not use DTensor reduce_scatter. Fall back to this
+    function if the NRT bug is triggered.
 
     Args:
         model: ``Qwen3ForCausalLM`` with weights on CPU.
