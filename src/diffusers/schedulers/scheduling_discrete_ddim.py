@@ -36,11 +36,14 @@ class DiscreteDDIMSchedulerOutput(BaseOutput):
             Token IDs sampled from the model logits, i.e. the predicted clean tokens `x0`.
         sampled_probs (`torch.Tensor` of shape `(batch_size, block_length)`):
             Probabilities of the sampled tokens.
+        pred_logits (`torch.Tensor` of shape `(batch_size, block_length, vocab_size)`):
+            The denoiser logits, passed through for self-conditioning the next step.
     """
 
     prev_sample: torch.LongTensor
     sampled_tokens: torch.LongTensor
     sampled_probs: torch.Tensor
+    pred_logits: torch.Tensor
 
 
 class DiscreteDDIMScheduler(SchedulerMixin, ConfigMixin):
@@ -205,11 +208,12 @@ class DiscreteDDIMScheduler(SchedulerMixin, ConfigMixin):
         prev_sample = torch.where(routes == 2, random_tokens, prev_sample)
 
         if not return_dict:
-            return prev_sample, sampled_tokens, sampled_probs
+            return prev_sample, sampled_tokens, sampled_probs, model_output
         return DiscreteDDIMSchedulerOutput(
             prev_sample=prev_sample,
             sampled_tokens=sampled_tokens,
             sampled_probs=sampled_probs,
+            pred_logits=model_output,
         )
 
     def _select_positions(
@@ -299,11 +303,12 @@ class DiscreteDDIMScheduler(SchedulerMixin, ConfigMixin):
         sampled_probs = torch.gather(chosen_probs, -1, resampled.unsqueeze(-1)).squeeze(-1)
 
         if not return_dict:
-            return prev_sample, resampled, sampled_probs
+            return prev_sample, resampled, sampled_probs, model_output
         return DiscreteDDIMSchedulerOutput(
             prev_sample=prev_sample,
             sampled_tokens=resampled,
             sampled_probs=sampled_probs,
+            pred_logits=model_output,
         )
 
 

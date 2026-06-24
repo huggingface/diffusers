@@ -39,6 +39,8 @@ class BlockRefinementSchedulerOutput(BaseOutput):
             Sampled token IDs from the model logits.
         sampled_probs (`torch.Tensor` of shape `(batch_size, block_length)`):
             Probabilities of the sampled tokens.
+        pred_logits (`torch.Tensor` of shape `(batch_size, block_length, vocab_size)`):
+            The denoiser logits, passed through for self-conditioning the next step.
     """
 
     prev_sample: torch.LongTensor
@@ -46,6 +48,7 @@ class BlockRefinementSchedulerOutput(BaseOutput):
     editing_transfer_index: torch.BoolTensor
     sampled_tokens: torch.LongTensor
     sampled_probs: torch.Tensor
+    pred_logits: torch.Tensor
 
 
 class BlockRefinementScheduler(SchedulerMixin, ConfigMixin):
@@ -288,13 +291,14 @@ class BlockRefinementScheduler(SchedulerMixin, ConfigMixin):
             prev_sample = torch.where(self._committed, prev_sample, random_tokens)
 
             if not return_dict:
-                return prev_sample, transfer_index, editing_transfer_index, sampled_tokens, sampled_probs
+                return prev_sample, transfer_index, editing_transfer_index, sampled_tokens, sampled_probs, model_output
             return BlockRefinementSchedulerOutput(
                 prev_sample=prev_sample,
                 transfer_index=transfer_index,
                 editing_transfer_index=editing_transfer_index,
                 sampled_tokens=sampled_tokens,
                 sampled_probs=sampled_probs,
+                pred_logits=model_output,
             )
 
         active_block = sample == mask_token_id
@@ -345,13 +349,14 @@ class BlockRefinementScheduler(SchedulerMixin, ConfigMixin):
             prev_sample[final_transfer] = sampled_tokens[final_transfer]
 
         if not return_dict:
-            return prev_sample, transfer_index, editing_transfer_index, sampled_tokens, sampled_probs
+            return prev_sample, transfer_index, editing_transfer_index, sampled_tokens, sampled_probs, model_output
         return BlockRefinementSchedulerOutput(
             prev_sample=prev_sample,
             transfer_index=transfer_index,
             editing_transfer_index=editing_transfer_index,
             sampled_tokens=sampled_tokens,
             sampled_probs=sampled_probs,
+            pred_logits=model_output,
         )
 
     @staticmethod

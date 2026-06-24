@@ -209,7 +209,7 @@ class BlockRefinementSchedulerTest(unittest.TestCase):
         )
 
         self.assertIsInstance(result, tuple)
-        self.assertEqual(len(result), 5)
+        self.assertEqual(len(result), 6)
 
     def test_step_batched(self):
         """Verify step works with batch_size > 1."""

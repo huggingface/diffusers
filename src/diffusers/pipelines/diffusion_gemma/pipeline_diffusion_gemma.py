@@ -378,9 +378,9 @@ class DiffusionGemmaPipeline(DiffusionPipeline):
                     model_output=logits, timestep=step_idx, sample=canvas, return_dict=True, **step_kwargs
                 )
                 canvas = scheduler_output.prev_sample
-                # Self-condition on the temperature-shaped logits when the scheduler shapes them (the reference
-                # sampler), else the raw logits.
-                self_conditioning_logits = scheduler_output.get("pred_logits", logits)
+                # Self-condition on the logits the scheduler sampled from: temperature-shaped for the reference
+                # EntropyBound sampler, the raw denoiser logits for the others.
+                self_conditioning_logits = scheduler_output.pred_logits
 
                 # Predictor-corrector (https://huggingface.co/papers/2605.22765): a scheduler exposing `corrector_steps`
                 # + `step_correct` refines the canvas with extra Gibbs sweeps on the first `corrected_steps` predictor

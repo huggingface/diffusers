@@ -64,7 +64,7 @@ class DiscreteDDIMSchedulerTest(unittest.TestCase):
         logits = torch.randn(1, 16, 100)
         out = scheduler.step(logits, timestep=2, sample=sample, return_dict=False)
         self.assertIsInstance(out, tuple)
-        self.assertEqual(len(out), 3)
+        self.assertEqual(len(out), 4)
 
     def test_to_loo_only_shifts_observed_token(self):
         # The denoiser->LOO conversion moves only the observed token's logit at each position (eq. 13).
@@ -103,4 +103,4 @@ class DiscreteDDIMSchedulerTest(unittest.TestCase):
         logits = torch.randn(1, 16, 100)
         out = scheduler.step_correct(logits, timestep=2, sample=sample, return_dict=False)
         self.assertIsInstance(out, tuple)
-        self.assertEqual(len(out), 3)
+        self.assertEqual(len(out), 4)
