@@ -475,6 +475,14 @@ def is_context_parallel(test_case):
     return pytest.mark.context_parallel(test_case)
 
 
+def is_tensor_parallel(test_case):
+    """
+    Decorator marking a test as a tensor parallel inference test. These tests can be filtered using:
+        pytest -m "not tensor_parallel" to skip pytest -m tensor_parallel to run only these tests
+    """
+    return pytest.mark.tensor_parallel(test_case)
+
+
 def is_cache(test_case):
     """
     Decorator marking a test as a cache test. These tests can be filtered using:

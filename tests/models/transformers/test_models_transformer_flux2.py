@@ -13,6 +13,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import os
+import subprocess
+import sys
+
 import torch
 
 from diffusers import Flux2Transformer2DModel
@@ -24,7 +28,7 @@ from diffusers.models.transformers.transformer_flux2 import (
 )
 from diffusers.utils.torch_utils import randn_tensor
 
-from ...testing_utils import enable_full_determinism, torch_device
+from ...testing_utils import enable_full_determinism, is_tensor_parallel, require_torch_neuron, torch_device
 from ..testing_utils import (
     AttentionTesterMixin,
     BaseModelTesterConfig,
@@ -36,6 +40,7 @@ from ..testing_utils import (
     LoraTesterMixin,
     MemoryTesterMixin,
     ModelTesterMixin,
+    TensorParallelTesterMixin,
     TorchAoCompileTesterMixin,
     TorchAoTesterMixin,
     TorchCompileTesterMixin,
@@ -151,6 +156,31 @@ class TestFlux2TransformerAttention(Flux2TransformerTesterConfig, AttentionTeste
 
 class TestFlux2TransformerContextParallel(Flux2TransformerTesterConfig, ContextParallelTesterMixin):
     """Context Parallel inference tests for Flux2 Transformer."""
+
+
+class TestFlux2TransformerTensorParallel(Flux2TransformerTesterConfig, TensorParallelTesterMixin):
+    """Tensor Parallel inference tests for Flux2 Transformer (CUDA/XPU multi-accelerator)."""
+
+
+@is_tensor_parallel
+@require_torch_neuron
+class TestFlux2TransformerTensorParallelNeuron:
+    """Tensor Parallel inference test for Flux2 Transformer on AWS Neuron.
+
+    Neuron TP runs through ``torchrun`` with the ``"neuron"`` distributed backend and an XLA runtime, so it cannot use
+    the ``torch.multiprocessing``/NCCL spawn path of ``TensorParallelTesterMixin``. This launches the worker (which
+    asserts the sharded output matches a single-device reference) as a ``torchrun`` subprocess and checks its exit
+    code.
+    """
+
+    def test_tensor_parallel_neuron_inference(self):
+        worker = os.path.join(os.path.dirname(__file__), "_flux2_neuron_tp_worker.py")
+        cmd = [sys.executable, "-m", "torch.distributed.run", "--nproc_per_node=2", worker]
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        assert result.returncode == 0, (
+            f"Neuron tensor-parallel worker failed (exit {result.returncode}).\n"
+            f"--- stdout ---\n{result.stdout}\n--- stderr ---\n{result.stderr}"
+        )
 
 
 class TestFlux2TransformerLoRA(Flux2TransformerTesterConfig, LoraTesterMixin):

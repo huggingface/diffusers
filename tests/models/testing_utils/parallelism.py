@@ -21,13 +21,14 @@ import torch
 import torch.distributed as dist
 import torch.multiprocessing as mp
 
-from diffusers.models._modeling_parallel import ContextParallelConfig
+from diffusers.models._modeling_parallel import ContextParallelConfig, TensorParallelConfig
 from diffusers.models.attention_dispatch import AttentionBackendName, _AttentionBackendRegistry
 
 from ...testing_utils import (
     is_attention,
     is_context_parallel,
     is_kernels_available,
+    is_tensor_parallel,
     require_torch_multi_accelerator,
     torch_device,
 )
@@ -239,6 +240,109 @@ def _custom_mesh_worker(
     finally:
         if dist.is_initialized():
             dist.destroy_process_group()
+
+
+def _tensor_parallel_worker(
+    rank, world_size, master_port, model_class, init_dict, inputs_dict, return_dict, state_dict
+):
+    """Worker function for tensor parallel inference testing.
+
+    Each rank builds the (identical, ``state_dict``-loaded) model, sets up the accelerator device, shards the model
+    with ``enable_parallelism(config=TensorParallelConfig(tp_degree=world_size))`` and runs a forward pass. Rank 0
+    reports its output so the caller can compare it against a single-device reference (TP is mathematically equivalent
+    to the unsharded model up to floating-point reduction order).
+    """
+    try:
+        os.environ["MASTER_ADDR"] = "localhost"
+        os.environ["MASTER_PORT"] = str(master_port)
+        os.environ["RANK"] = str(rank)
+        os.environ["WORLD_SIZE"] = str(world_size)
+
+        device_config = DEVICE_CONFIG.get(torch_device, DEVICE_CONFIG["cuda"])
+        backend = device_config["backend"]
+        device_module = device_config["module"]
+
+        dist.init_process_group(backend=backend, rank=rank, world_size=world_size)
+
+        device_module.set_device(rank)
+        device = torch.device(f"{torch_device}:{rank}")
+
+        model = model_class(**init_dict)
+        model.load_state_dict(state_dict)
+        model.to(device)
+        model.eval()
+
+        inputs_on_device = {k: v.to(device) if isinstance(v, torch.Tensor) else v for k, v in inputs_dict.items()}
+
+        # Shard the model across all ranks; the device mesh is built from `tp_degree` on the active accelerator.
+        model.enable_parallelism(config=TensorParallelConfig(tp_degree=world_size))
+
+        with torch.no_grad():
+            output = model(**inputs_on_device, return_dict=False)[0]
+
+        if rank == 0:
+            return_dict["status"] = "success"
+            return_dict["output_shape"] = list(output.shape)
+            # Serialise via nested list so the manager dict can transport it across processes.
+            return_dict["output"] = output.float().cpu().tolist()
+
+    except Exception as e:
+        if rank == 0:
+            return_dict["status"] = "error"
+            return_dict["error"] = str(e)
+    finally:
+        if dist.is_initialized():
+            dist.destroy_process_group()
+
+
+@is_tensor_parallel
+@require_torch_multi_accelerator
+class TensorParallelTesterMixin:
+    def test_tensor_parallel_inference(self, batch_size: int = 1):
+        if not torch.distributed.is_available():
+            pytest.skip("torch.distributed is not available.")
+
+        if getattr(self.model_class, "_tp_plan", None) is None:
+            pytest.skip("Model does not define a `_tp_plan` for tensor parallel inference.")
+
+        world_size = 2
+        init_dict = self.get_init_dict()
+        num_heads = init_dict.get("num_attention_heads")
+        if num_heads is not None and num_heads % world_size != 0:
+            pytest.skip(f"`num_attention_heads` ({num_heads}) is not divisible by tp_degree ({world_size}).")
+
+        inputs_dict = self.get_dummy_inputs(batch_size=batch_size)
+
+        # Single-device reference
+        model = self.model_class(**init_dict).eval().to(torch_device)
+        state_dict = {k: v.cpu() for k, v in model.state_dict().items()}
+        with torch.no_grad():
+            ref_output = model(**inputs_dict, return_dict=False)[0].float().cpu()
+
+        # Move all tensors to CPU for multiprocessing
+        inputs_dict = {k: v.cpu() if isinstance(v, torch.Tensor) else v for k, v in inputs_dict.items()}
+
+        master_port = _find_free_port()
+        manager = mp.Manager()
+        return_dict = manager.dict()
+
+        mp.spawn(
+            _tensor_parallel_worker,
+            args=(world_size, master_port, self.model_class, init_dict, inputs_dict, return_dict, state_dict),
+            nprocs=world_size,
+            join=True,
+        )
+
+        assert return_dict.get("status") == "success", (
+            f"Tensor parallel inference failed: {return_dict.get('error', 'Unknown error')}"
+        )
+
+        tp_output = torch.tensor(return_dict["output"])
+        # Sharded matmuls + all-reduce reorder the summation, so allow a small tolerance over the reference.
+        torch.testing.assert_close(ref_output, tp_output, atol=1e-3, rtol=1e-3)
+
+    def test_tensor_parallel_batch_inputs(self):
+        self.test_tensor_parallel_inference(batch_size=2)
 
 
 @is_context_parallel

@@ -231,6 +231,13 @@ class ParallelConfig:
     _device: torch.device = None
     _mesh: torch.distributed.device_mesh.DeviceMesh = None
 
+    def __post_init__(self):
+        if self.context_parallel_config is not None and self.tensor_parallel_config is not None:
+            raise ValueError(
+                "Combining context parallelism and tensor parallelism in a single `ParallelConfig` is not supported. "
+                "Please specify only one of `context_parallel_config` or `tensor_parallel_config`."
+            )
+
     def setup(
         self,
         rank: int,
