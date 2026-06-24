@@ -14,7 +14,7 @@
 
 import inspect
 import math
-from typing import Callable, Dict, List, Optional, Tuple, Union
+from typing import Callable
 
 import numpy as np
 import torch
@@ -30,11 +30,14 @@ from ...image_processor import VaeImageProcessor
 from ...models import AutoencoderKLWan
 from ...models.transformers.transformer_joyimage_edit_plus import JoyImageEditPlusTransformer3DModel
 from ...schedulers import FlowMatchEulerDiscreteScheduler
-from ...utils import replace_example_docstring
+from ...utils import logging, replace_example_docstring
 from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline
 from .image_processor import JoyImageEditImageProcessor, find_best_bucket
 from .pipeline_output import JoyImageEditPlusPipelineOutput
+
+
+logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
 EXAMPLE_DOC_STRING = """
@@ -68,12 +71,35 @@ Examples:
 
 def retrieve_timesteps(
     scheduler,
-    num_inference_steps: Optional[int] = None,
-    device: Optional[Union[str, torch.device]] = None,
-    timesteps: Optional[List[int]] = None,
-    sigmas: Optional[List[float]] = None,
+    num_inference_steps: int | None = None,
+    device: str | torch.device | None = None,
+    timesteps: list[int] | None = None,
+    sigmas: list[float] | None = None,
     **kwargs,
 ):
+    r"""
+    Calls the scheduler's `set_timesteps` method and retrieves timesteps from the scheduler after the call. Handles
+    custom timesteps. Any kwargs will be supplied to `scheduler.set_timesteps`.
+
+    Args:
+        scheduler (`SchedulerMixin`):
+            The scheduler to get timesteps from.
+        num_inference_steps (`int`):
+            The number of diffusion steps used when generating samples with a pre-trained model. If used, `timesteps`
+            must be `None`.
+        device (`str` or `torch.device`, *optional*):
+            The device to which the timesteps should be moved to. If `None`, the timesteps are not moved.
+        timesteps (`list[int]`, *optional*):
+            Custom timesteps used to override the timestep spacing strategy of the scheduler. If `timesteps` is passed,
+            `num_inference_steps` and `sigmas` must be `None`.
+        sigmas (`list[float]`, *optional*):
+            Custom sigmas used to override the timestep spacing strategy of the scheduler. If `sigmas` is passed,
+            `num_inference_steps` and `timesteps` must be `None`.
+
+    Returns:
+        `tuple[torch.Tensor, int]`: A tuple where the first element is the timestep schedule from the scheduler and
+        the second element is the number of inference steps.
+    """
     if timesteps is not None and sigmas is not None:
         raise ValueError("Only one of `timesteps` or `sigmas` can be passed.")
 
@@ -97,12 +123,27 @@ def retrieve_timesteps(
 
 
 class JoyImageEditPlusPipeline(DiffusionPipeline):
-    """Diffusion pipeline for multi-image editing using JoyImage Edit Plus.
+    r"""
+    Diffusion pipeline for multi-image instruction-guided editing using JoyImage Edit Plus.
 
     Supports multiple reference images with different resolutions. Each reference image is independently
     VAE-encoded and patchified, then concatenated with the target noise patches for joint denoising.
 
-    Model offloading order: text_encoder -> transformer -> vae.
+    Args:
+        scheduler ([`FlowMatchEulerDiscreteScheduler`]):
+            A scheduler to be used in combination with `transformer` to denoise the encoded image latents.
+        vae ([`AutoencoderKLWan`]):
+            Variational Auto-Encoder (VAE) model to encode and decode images to and from latent representations.
+        text_encoder ([`Qwen3VLForConditionalGeneration`]):
+            Multimodal text encoder for prompt encoding with inline image understanding.
+        tokenizer ([`Qwen2Tokenizer`]):
+            Tokenizer for text processing.
+        transformer ([`JoyImageEditPlusTransformer3DModel`]):
+            Conditional Transformer (MMDiT) architecture to denoise the encoded image latents.
+        processor ([`Qwen3VLProcessor`]):
+            Processor for multimodal inputs (text + images).
+        text_token_max_length (`int`, defaults to `2048`):
+            Maximum token length for text encoding.
     """
 
     model_cpu_offload_seq = "text_encoder->transformer->vae"
@@ -186,11 +227,11 @@ class JoyImageEditPlusPipeline(DiffusionPipeline):
 
     def encode_prompt_multiple_images(
         self,
-        prompt: Union[str, List[str]],
-        device: Optional[torch.device] = None,
-        images: Optional[List[Image.Image]] = None,
-        max_sequence_length: Optional[int] = None,
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        prompt: str | list[str],
+        device: torch.device | None = None,
+        images: list[Image.Image] | None = None,
+        max_sequence_length: int | None = None,
+    ) -> tuple[torch.Tensor, torch.Tensor]:
         """Encode prompts with inline <image> tokens via the Qwen3-VL processor."""
         device = device or self._execution_device
         template = self.prompt_template_encode["multiple_images"]
@@ -257,7 +298,7 @@ class JoyImageEditPlusPipeline(DiffusionPipeline):
             latent = latent / self.vae.config.scaling_factor
         return latent
 
-    def _resize_center_crop(self, img: Image.Image, target_size: Tuple[int, int]) -> Image.Image:
+    def _resize_center_crop(self, img: Image.Image, target_size: tuple[int, int]) -> Image.Image:
         w, h = img.size
         bh, bw = target_size
         scale = max(bh / h, bw / w)
@@ -268,7 +309,7 @@ class JoyImageEditPlusPipeline(DiffusionPipeline):
         img = img.crop((left, top, left + bw, top + bh))
         return img
 
-    def _get_bucket_size(self, img: Image.Image) -> Tuple[int, int]:
+    def _get_bucket_size(self, img: Image.Image) -> tuple[int, int]:
         return find_best_bucket(img.size[1], img.size[0], self.vae_image_processor.config.basesize)
 
     def prepare_latents(
@@ -279,9 +320,9 @@ class JoyImageEditPlusPipeline(DiffusionPipeline):
         width: int,
         dtype: torch.dtype,
         device: torch.device,
-        generator: Optional[Union[torch.Generator, List[torch.Generator]]],
-        reference_images: Optional[List[List[Image.Image]]] = None,
-    ) -> Tuple[torch.Tensor, torch.Tensor, List[List[Tuple[int, int, int]]]]:
+        generator: torch.Generator | list[torch.Generator] | None,
+        reference_images: list[list[Image.Image]] | None = None,
+    ) -> tuple[torch.Tensor, torch.Tensor, list[list[tuple[int, int, int]]]]:
         """Prepare 6D padded latent tensor with target noise + reference image latents.
 
         Returns:
@@ -388,55 +429,86 @@ class JoyImageEditPlusPipeline(DiffusionPipeline):
     @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
         self,
-        images: List[Image.Image] | List[List[Image.Image]] | None = None,
-        prompt: str | List[str] = None,
+        images: list[Image.Image] | list[list[Image.Image]] | None = None,
+        prompt: str | list[str] = None,
         height: int | None = None,
         width: int | None = None,
         num_inference_steps: int = 30,
-        timesteps: List[int] = None,
-        sigmas: List[float] = None,
+        timesteps: list[int] = None,
+        sigmas: list[float] = None,
         guidance_scale: float = 4.0,
-        negative_prompt: Optional[Union[str, List[str]]] = None,
-        generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
-        latents: Optional[torch.Tensor] = None,
-        prompt_embeds: Optional[torch.Tensor] = None,
-        prompt_embeds_mask: Optional[torch.Tensor] = None,
-        negative_prompt_embeds: Optional[torch.Tensor] = None,
-        negative_prompt_embeds_mask: Optional[torch.Tensor] = None,
-        output_type: Optional[str] = "pil",
+        negative_prompt: str | list[str] | None = None,
+        generator: torch.Generator | list[torch.Generator] | None = None,
+        latents: torch.Tensor | None = None,
+        prompt_embeds: torch.Tensor | None = None,
+        prompt_embeds_mask: torch.Tensor | None = None,
+        negative_prompt_embeds: torch.Tensor | None = None,
+        negative_prompt_embeds_mask: torch.Tensor | None = None,
+        output_type: str | None = "pil",
         return_dict: bool = True,
-        callback_on_step_end: Optional[
-            Union[Callable[[int, int, Dict], None], PipelineCallback, MultiPipelineCallbacks]
-        ] = None,
-        callback_on_step_end_tensor_inputs: List[str] = ["latents"],
+        callback_on_step_end: Callable[[int, int, dict], None] | PipelineCallback | MultiPipelineCallbacks | None = None,
+        callback_on_step_end_tensor_inputs: list[str] = ["latents"],
         max_sequence_length: int = 4096,
     ):
         r"""
-        Generate an edited image from multiple reference images and a text prompt.
+        Function invoked when calling the pipeline for generation.
 
         Args:
-            images (`List[Image.Image]` or `List[List[Image.Image]]`):
-                Reference images for editing. Each image can have a different resolution.
-                If a flat list is provided, it's treated as one sample with multiple references.
-            prompt (`str` or `List[str]`):
-                Text prompt describing the desired edit.
+            images (`list[Image.Image]` or `list[list[Image.Image]]`, *optional*):
+                Reference images for editing. Each image can have a different resolution. If a flat list is provided,
+                it is treated as one sample with multiple references.
+            prompt (`str` or `list[str]`, *optional*):
+                The prompt or prompts to guide the image generation. If not defined, one has to pass `prompt_embeds`
+                instead.
             height (`int`, *optional*):
-                Output height in pixels. If None, determined from the last reference image's bucket.
+                The height in pixels of the generated image. If `None`, determined from the last reference image.
             width (`int`, *optional*):
-                Output width in pixels. If None, determined from the last reference image's bucket.
-            num_inference_steps (`int`, defaults to 30):
-                Number of denoising steps.
-            guidance_scale (`float`, defaults to 4.0):
-                Classifier-free guidance scale.
-            negative_prompt (`str` or `List[str]`, *optional*):
-                Negative prompt for CFG.
-            generator (`torch.Generator`, *optional*):
-                RNG generator for reproducibility.
+                The width in pixels of the generated image. If `None`, determined from the last reference image.
+            num_inference_steps (`int`, *optional*, defaults to `30`):
+                The number of denoising steps. More denoising steps usually lead to a higher quality image at the
+                expense of slower inference.
+            timesteps (`list[int]`, *optional*):
+                Custom timesteps to use for the denoising process. If not defined, equal spacing is used.
+            sigmas (`list[float]`, *optional*):
+                Custom sigmas to use for the denoising process.
+            guidance_scale (`float`, *optional*, defaults to `4.0`):
+                Classifier-free guidance scale. Higher values encourage the model to generate images more aligned
+                with the `prompt` at the expense of lower image quality.
+            negative_prompt (`str` or `list[str]`, *optional*):
+                The prompt or prompts not to guide the image generation. If not defined, a blank prompt is used
+                for classifier-free guidance.
+            generator (`torch.Generator` or `list[torch.Generator]`, *optional*):
+                One or a list of [torch generator(s)](https://pytorch.org/docs/stable/generated/torch.Generator.html)
+                to make generation deterministic.
+            latents (`torch.Tensor`, *optional*):
+                Pre-generated noisy latents to be used as inputs for image generation.
+            prompt_embeds (`torch.Tensor`, *optional*):
+                Pre-generated text embeddings. Can be used to easily tweak text inputs.
+            prompt_embeds_mask (`torch.Tensor`, *optional*):
+                Attention mask for pre-generated text embeddings.
+            negative_prompt_embeds (`torch.Tensor`, *optional*):
+                Pre-generated negative text embeddings.
+            negative_prompt_embeds_mask (`torch.Tensor`, *optional*):
+                Attention mask for pre-generated negative text embeddings.
+            output_type (`str`, *optional*, defaults to `"pil"`):
+                The output format of the generated image. Choose between `"pil"` (`PIL.Image.Image`), `"np"`
+                (`np.ndarray`), `"pt"` (`torch.Tensor`), or `"latent"` for raw latent output.
+            return_dict (`bool`, *optional*, defaults to `True`):
+                Whether or not to return a [`JoyImageEditPlusPipelineOutput`] instead of a plain tuple.
+            callback_on_step_end (`Callable`, *optional*):
+                A function called at the end of each denoising step with arguments: the pipeline, step index,
+                timestep, and a dict of callback tensor inputs.
+            callback_on_step_end_tensor_inputs (`list[str]`, *optional*, defaults to `["latents"]`):
+                The list of tensor inputs for the `callback_on_step_end` function.
+            max_sequence_length (`int`, *optional*, defaults to `4096`):
+                Maximum sequence length for the text encoder.
 
         Examples:
 
         Returns:
-            [`JoyImageEditPlusPipelineOutput`] or `tuple`.
+            [`JoyImageEditPlusPipelineOutput`] or `tuple`:
+                If `return_dict` is `True`, [`JoyImageEditPlusPipelineOutput`] is returned, otherwise a `tuple` is
+                returned where the first element is a list of generated images.
         """
         # Normalize images input to List[List[Image]]
         if images is not None:

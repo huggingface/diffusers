@@ -13,7 +13,6 @@
 # limitations under the License.
 
 import math
-from typing import List, Tuple, Union
 
 import torch
 import torch.nn as nn
@@ -40,8 +39,8 @@ logger = logging.get_logger(__name__)
 def _apply_rotary_emb_batched(
     xq: torch.Tensor,
     xk: torch.Tensor,
-    freqs_cis: Tuple[torch.Tensor, torch.Tensor],
-) -> Tuple[torch.Tensor, torch.Tensor]:
+    freqs_cis: tuple[torch.Tensor, torch.Tensor],
+) -> tuple[torch.Tensor, torch.Tensor]:
     """RoPE that handles both batched [B, S, D] and unbatched [S, D] freqs."""
     cos, sin = freqs_cis[0].to(xq.device), freqs_cis[1].to(xq.device)
 
@@ -77,10 +76,10 @@ class JoyImageEditPlusAttnProcessor:
         attn: "JoyImageAttention",
         hidden_states: torch.Tensor,
         encoder_hidden_states: torch.Tensor = None,
-        image_rotary_emb: Tuple[torch.Tensor, torch.Tensor] | None = None,
+        image_rotary_emb: tuple[torch.Tensor, torch.Tensor] | None = None,
         attention_mask: torch.Tensor | None = None,
         **kwargs,
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
+    ) -> tuple[torch.Tensor, torch.Tensor]:
         if encoder_hidden_states is None:
             raise ValueError("JoyImageEditPlusAttnProcessor requires encoder_hidden_states")
 
@@ -140,12 +139,37 @@ class JoyImageEditPlusAttnProcessor:
 
 
 class JoyImageEditPlusTransformer3DModel(ModelMixin, ConfigMixin, AttentionMixin):
-    """JoyImage Edit Plus Transformer for multi-image editing.
+    r"""
+    JoyImage Edit Plus Transformer for multi-image editing.
 
     Uses a patchify+padding approach where each reference image and the target noise are independently
     patchified and concatenated into a flat patch sequence. Supports variable-resolution reference images.
 
-    Input format: [B, max_patches, C, pt, ph, pw] (6D padded patches)
+    Input format: `[B, max_patches, C, pt, ph, pw]` (6D padded patches).
+
+    Args:
+        patch_size (`list`, defaults to `[1, 2, 2]`):
+            Patch size for patchifying the latent input along `(t, h, w)` dimensions.
+        in_channels (`int`, defaults to `16`):
+            The number of channels in the input latent.
+        out_channels (`int`, *optional*, defaults to `None`):
+            The number of channels in the output. If not specified, it defaults to `in_channels`.
+        hidden_size (`int`, defaults to `3072`):
+            The dimensionality of the hidden representations.
+        num_attention_heads (`int`, defaults to `24`):
+            The number of attention heads.
+        text_dim (`int`, defaults to `4096`):
+            The dimensionality of the text encoder output.
+        mlp_width_ratio (`float`, defaults to `4.0`):
+            The ratio of MLP hidden dimension to `hidden_size`.
+        num_layers (`int`, defaults to `20`):
+            The number of double-stream transformer blocks.
+        rope_dim_list (`list[int]`, defaults to `[16, 56, 56]`):
+            The dimensions for 3D rotary positional embeddings along `(t, h, w)`.
+        rope_type (`str`, defaults to `"rope"`):
+            The type of rotary positional embedding.
+        theta (`int`, defaults to `256`):
+            The base frequency for rotary embeddings.
     """
 
     _skip_layerwise_casting_patterns = ["img_in", "condition_embedder", "norm"]
@@ -222,9 +246,9 @@ class JoyImageEditPlusTransformer3DModel(ModelMixin, ConfigMixin, AttentionMixin
 
     def _get_rotary_pos_embed_for_range(
         self,
-        start: Tuple[int, int, int],
-        stop: Tuple[int, int, int],
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        start: tuple[int, int, int],
+        stop: tuple[int, int, int],
+    ) -> tuple[torch.Tensor, torch.Tensor]:
         """Generate 3D RoPE for a spatial range [start, stop)."""
         head_dim = self.hidden_size // self.num_attention_heads
         rope_dim_list = self.rope_dim_list
@@ -253,9 +277,9 @@ class JoyImageEditPlusTransformer3DModel(ModelMixin, ConfigMixin, AttentionMixin
         timestep: torch.Tensor,
         encoder_hidden_states: torch.Tensor,
         encoder_hidden_states_mask: torch.Tensor | None = None,
-        shape_list: List[List[Tuple[int, int, int]]] | None = None,
+        shape_list: list[list[tuple[int, int, int]]] | None = None,
         return_dict: bool = True,
-    ) -> Union[torch.Tensor, Tuple]:
+    ) -> torch.Tensor | tuple:
         """
         Args:
             hidden_states: [B, max_patches, C, pt, ph, pw] - patchified latent input.
