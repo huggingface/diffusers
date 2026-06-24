@@ -98,12 +98,12 @@ class AnyFlowTransformer3DTesterConfig(BaseModelTesterConfig):
 
 
 class TestAnyFlowTransformer3D(AnyFlowTransformer3DTesterConfig, ModelTesterMixin):
+    """Core model tests for AnyFlow Transformer 3D (bidirectional variant)."""
+
     def test_attention_processor_api(self):
         model = self.model_class(**self.get_init_dict())
         assert len(model.attn_processors) > 0
         model.set_attn_processor(model.attn_processors)
-
-    """Core model tests for AnyFlow Transformer 3D (bidirectional variant)."""
 
     @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16], ids=["fp16", "bf16"])
     def test_from_save_pretrained_dtype_inference(self, tmp_path, dtype):
