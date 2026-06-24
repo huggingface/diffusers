@@ -1717,12 +1717,14 @@ def main(args):
                 cond_model_input = (cond_model_input - latents_bn_mean) / latents_bn_std
 
                 model_input_ids = Flux2Pipeline._prepare_latent_ids(model_input).to(device=model_input.device)
-                cond_model_input_list = [cond_model_input[i].unsqueeze(0) for i in range(cond_model_input.shape[0])]
-                cond_model_input_ids = Flux2Pipeline._prepare_image_ids(cond_model_input_list).to(
-                    device=cond_model_input.device
-                )
-                cond_model_input_ids = cond_model_input_ids.view(
-                    cond_model_input.shape[0], -1, model_input_ids.shape[-1]
+                # Each batch element is an independent training sample with a single
+                # conditional image. Generate temporal IDs for one sample and expand
+                # across the batch, avoiding incorrect cross-sample temporal offsets.
+                cond_model_input_ids = Flux2Pipeline._prepare_image_ids(
+                    [cond_model_input[0:1]]
+                ).to(device=cond_model_input.device)
+                cond_model_input_ids = cond_model_input_ids.expand(
+                    cond_model_input.shape[0], -1, -1
                 )
 
                 # Sample noise that we'll add to the latents
