@@ -286,14 +286,14 @@ class ModelTesterMixin:
     def base_model_output(self):
         """Class-scoped reference forward output, built once and reused across the class.
 
-        Building the model and running its forward pass is fully deterministic (``torch.manual_seed(0)``
-        plus the deterministic ``get_dummy_inputs`` contract), so the reference ("base") output is
+        Building the model and running its forward pass is fully deterministic (`torch.manual_seed(0)`
+        plus the deterministic `get_dummy_inputs` contract), so the reference ("base") output is
         identical for every test in the class. The save/load and parallelism tests compare a reloaded
         model against this output; computing it a single time here — instead of rebuilding the model and
         re-running the forward in each test — removes that redundant work and speeds up the suite.
 
-        The hardware-gated tests that consume this fixture use ``pytest.mark.skipif`` (via the
-        ``require_*`` decorators), which pytest evaluates before fixture setup, so skipping on a machine
+        The hardware-gated tests that consume this fixture use `pytest.mark.skipif` (via the
+        `require_*` decorators), which pytest evaluates before fixture setup, so skipping on a machine
         without the required accelerators never triggers this forward.
 
         Tests that still need a live model (e.g. to save it) build their own with the same seed, so the
