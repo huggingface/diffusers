@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2025 HuggingFace Inc.
+# Copyright 2026 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -13,78 +13,52 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Torchrun worker for the Flux2 transformer Neuron tensor-parallel functional test.
+"""Generic torchrun worker: assert a model's Neuron tensor-parallel output matches its single-device reference.
 
-Launched as a subprocess by ``TestFlux2TransformerTensorParallelNeuron`` (and runnable directly for debugging)::
+Model-agnostic. The model under test is supplied as a ``module:function`` spec reference on the command line; the
+referenced factory returns ``(model_class, init_dict, inputs)`` with CPU tensors, so all model-specific test data
+lives with the launching test rather than here.
 
-    torchrun --nproc_per_node=2 tests/models/transformers/_flux2_neuron_tp_worker.py
+Launched as a subprocess by a ``@require_torch_neuron`` test (and runnable directly for debugging)::
 
-Each rank builds an identical (seeded) tiny ``Flux2Transformer2DModel`` on CPU, computes a single-device reference,
-then shards the model with ``enable_parallelism(TensorParallelConfig(mesh=neuron_mesh))`` — which auto-selects the
-Neuron pre-shard backend — runs a forward pass on the Neuron device, and asserts the gathered output matches the
-reference. Exit code 0 means the TP path is numerically equivalent to the unsharded model; non-zero means failure.
+    torchrun --nproc_per_node=2 _neuron_tp_worker.py \\
+        tests.models.transformers.test_models_transformer_flux2:make_neuron_tp_spec
+
+Each rank builds an identical (seeded) model on CPU, computes a single-device reference, then shards it with
+``enable_parallelism(TensorParallelConfig(mesh=neuron_mesh))`` — which auto-selects the Neuron pre-shard backend —
+runs a forward pass on the Neuron device, and asserts the gathered output matches the reference. Exit code 0 means
+the TP path is numerically equivalent to the unsharded model; non-zero means failure.
 """
 
+import argparse
+import importlib
 import os
 import sys
 import traceback
 
 
-# Make the in-repo `diffusers` importable when run via torchrun from an arbitrary CWD.
+# Make the in-repo `diffusers` and `tests` packages importable when run via torchrun from an arbitrary CWD.
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "..", "src"))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", ".."))
 
 import torch
 import torch.distributed as dist
 import torch_neuronx  # noqa: F401 — registers torch.neuron
 from torch.distributed.device_mesh import DeviceMesh
 
-from diffusers import Flux2Transformer2DModel, TensorParallelConfig
-
-
-# Tiny config — mirrors `Flux2TransformerTesterConfig.get_init_dict()` in the model test file.
-INIT_DICT = {
-    "patch_size": 1,
-    "in_channels": 4,
-    "num_layers": 1,
-    "num_single_layers": 1,
-    "attention_head_dim": 16,
-    "num_attention_heads": 2,
-    "joint_attention_dim": 32,
-    "timestep_guidance_channels": 256,
-    "axes_dims_rope": [4, 4, 4, 4],
-}
-
-
-def _build_inputs(height=4, width=4, batch_size=1):
-    """Deterministic dummy inputs — same construction as the model test's `get_dummy_inputs`."""
-    generator = torch.Generator("cpu").manual_seed(0)
-    num_latent_channels = 4
-    sequence_length = 48
-    embedding_dim = 32
-
-    hidden_states = torch.randn((batch_size, height * width, num_latent_channels), generator=generator)
-    encoder_hidden_states = torch.randn((batch_size, sequence_length, embedding_dim), generator=generator)
-
-    image_ids = torch.cartesian_prod(torch.arange(1), torch.arange(height), torch.arange(width), torch.arange(1))
-    image_ids = image_ids.unsqueeze(0).expand(batch_size, -1, -1)
-
-    text_ids = torch.cartesian_prod(torch.arange(1), torch.arange(1), torch.arange(1), torch.arange(sequence_length))
-    text_ids = text_ids.unsqueeze(0).expand(batch_size, -1, -1)
-
-    timestep = torch.tensor([1.0]).expand(batch_size)
-    guidance = torch.tensor([1.0]).expand(batch_size)
-
-    return {
-        "hidden_states": hidden_states,
-        "encoder_hidden_states": encoder_hidden_states,
-        "img_ids": image_ids,
-        "txt_ids": text_ids,
-        "timestep": timestep,
-        "guidance": guidance,
-    }
+from diffusers import TensorParallelConfig
 
 
 def main():
+    parser = argparse.ArgumentParser(description="Neuron tensor-parallel correctness worker.")
+    parser.add_argument(
+        "spec",
+        help="`module:function` reference returning (model_class, init_dict, cpu_inputs) for the model under test.",
+    )
+    args = parser.parse_args()
+    module_name, _, fn_name = args.spec.partition(":")
+    model_class, init_dict, inputs = getattr(importlib.import_module(module_name), fn_name)()
+
     dist.init_process_group(backend="neuron")
     rank = dist.get_rank()
     tp_size = dist.get_world_size()
@@ -93,8 +67,7 @@ def main():
 
     # Identical weights on every rank (same seed), kept on CPU as the Neuron pre-shard backend requires.
     torch.manual_seed(0)
-    model = Flux2Transformer2DModel(**INIT_DICT).eval()
-    inputs = _build_inputs()
+    model = model_class(**init_dict).eval()
 
     # Single-device (unsharded) reference on CPU, computed before TP mutates the weights in place.
     with torch.no_grad():

@@ -476,28 +476,13 @@ if __name__ == "__main__":
 torchrun --nproc-per-node 2 above_script.py
 ```
 
-### Custom device mesh (combining with context parallelism)
-
-`TensorParallelConfig` (and `ContextParallelConfig`) accept a custom `mesh`. This lets you carve a multi-dimensional [device mesh](https://docs.pytorch.org/docs/stable/distributed.tensor.parallel.html) and pass the relevant sub-mesh to each strategy. For example, a `tp × ring × ulysses` layout:
-
-```py
-from torch.distributed.device_mesh import init_device_mesh
-
-mesh = init_device_mesh("cuda", (2, 2, 2), mesh_dim_names=("tp", "ring", "ulysses"))
-
-tp_config = TensorParallelConfig(mesh=mesh["tp"])
-```
-
-When a custom `mesh` is supplied, `tp_degree` is inferred from `mesh.size()`.
-
-> [!WARNING]
-> Combining context parallelism and tensor parallelism in a single `enable_parallelism()` call is not yet supported — passing both a `context_parallel_config` and a `tensor_parallel_config` raises an error. Enable one strategy at a time for now.
-
 ### Neuron (AWS Trainium/Inferentia)
 
 On AWS Neuron, `enable_parallelism` automatically selects a pre-shard path that works around an NRT consecutive-reduce-scatter limitation on large weights. Because the weights are sharded on CPU before being placed on the device, **call `enable_parallelism` while the transformer is still on CPU, then move the pipeline to the Neuron device**:
 
 ```py
+device = torch.neuron.current_device()
 pipeline.transformer.enable_parallelism(config=TensorParallelConfig(tp_degree=8))
-pipeline.transformer = pipeline.transformer.to("xla")
+pipeline.transformer = pipeline.transformer.to(device)
+torch.neuron.synchronize()
 ```

@@ -1060,19 +1060,14 @@ class Flux2Modulation(nn.Module):
 
 # ─── Tensor-parallel fused-weight permutations ──────────────────────────────────────────────────
 # Flux2 fuses several projections into single Linear layers (SwiGLU gate+linear in the FFN, and
-# Q/K/V + MLP in the single-stream ``to_qkv_mlp_proj`` / ``to_out``). Column/row sharding slices a
-# weight contiguously and has no knowledge of that internal layout, so each rank would receive an
-# unpaired slice (e.g. all-gate / no-linear). These helpers re-order the weight rows/columns so the
-# contiguous slice each rank receives is the correct paired chunk. This is a property of Flux2's
-# fused layers, not of any device backend, so it is applied on both the generic and Neuron paths.
+# Q/K/V + MLP in the single-stream ``to_qkv_mlp_proj`` / ``to_out``). Contiguous column/row sharding
+# is blind to that internal layout, so each rank would receive an unpaired slice (e.g. all-gate /
+# no-linear). These helpers re-order the weight rows/columns so each rank's contiguous slice is the
+# correct paired chunk.
 
 
 def _permute_swiglu_for_tp(weight: torch.Tensor, tp_size: int) -> torch.Tensor:
-    """Interleave gate/linear chunks of a SwiGLU FFN weight (``ff.linear_in``) for column-wise TP.
-
-    Re-orders ``[gate_0…gate_N, linear_0…linear_N]`` to ``[gate_0, linear_0, gate_1, linear_1, …]`` so a contiguous row
-    slice gives each rank paired gate+linear rows.
-    """
+    """Interleave gate/linear chunks of a SwiGLU FFN weight (``ff.linear_in``) for column-wise TP."""
     with torch.no_grad():
         total = weight.shape[0]
         inner = total // 2
@@ -1087,11 +1082,7 @@ def _permute_swiglu_for_tp(weight: torch.Tensor, tp_size: int) -> torch.Tensor:
 
 
 def _permute_qkv_mlp_for_tp(weight: torch.Tensor, tp_size: int, inner_dim: int, mlp_hidden_dim: int) -> torch.Tensor:
-    """Interleave Q/K/V/gate/linear chunks of the fused ``to_qkv_mlp_proj`` weight for column-wise TP.
-
-    Re-orders ``[Q, K, V, mlp_gate, mlp_linear]`` so rank *r* receives a contiguous slice with its proportional share
-    of each component.
-    """
+    """Interleave Q/K/V/gate/linear chunks of the fused ``to_qkv_mlp_proj`` weight for column-wise TP."""
     with torch.no_grad():
         q = weight[:inner_dim]
         k = weight[inner_dim : 2 * inner_dim]
@@ -1115,11 +1106,7 @@ def _permute_qkv_mlp_for_tp(weight: torch.Tensor, tp_size: int, inner_dim: int, 
 
 
 def _permute_out_for_tp(weight: torch.Tensor, tp_size: int, attn_dim: int, mlp_dim: int) -> torch.Tensor:
-    """Interleave attn/mlp input columns of the fused ``to_out`` weight for row-wise TP.
-
-    Re-orders the ``[attn_out, mlp_out]`` input columns so rank *r* receives a contiguous slice of paired attn+mlp
-    columns.
-    """
+    """Interleave attn/mlp input columns of the fused ``to_out`` weight for row-wise TP."""
     with torch.no_grad():
         attn_part = weight[:, :attn_dim]
         mlp_part = weight[:, attn_dim:]
@@ -1151,8 +1138,7 @@ def _permute_flux2_single_block(block: nn.Module, tp_size: int) -> None:
     )
 
 
-# Maps block class name -> in-place fused-weight permuter. Consumed by ``apply_tensor_parallel``
-# (both the generic and Neuron backends) before the weights are sharded.
+# Maps block class name -> in-place fused-weight permuter, applied by ``apply_tensor_parallel`` before sharding.
 _FLUX2_TP_FUSED_PERMUTERS = {
     "Flux2TransformerBlock": _permute_flux2_double_block,
     "Flux2SingleTransformerBlock": _permute_flux2_single_block,
@@ -1213,13 +1199,10 @@ class Flux2Transformer2DModel(
         "proj_out": ContextParallelOutput(gather_dim=1, expected_dims=3),
     }
 
-    # Tensor-parallel sharding plan: a flat mapping of fully-qualified module-name globs
-    # (relative to the model) to a parallel style string ("colwise" / "rowwise"). This is
-    # the same shape as ``_cp_plan`` and as ``transformers`` ``base_model_tp_plan``; it is
-    # consumed generically by ``apply_tensor_parallel`` (and its Neuron backend, which also
-    # applies weight permutations for Flux2's fused layers). Strings are mapped to
-    # ColwiseParallel/RowwiseParallel inside the hook to keep torch.distributed.tensor out
-    # of module import time.
+    # Tensor-parallel sharding plan: a flat mapping of module-name globs (relative to the model) to a
+    # parallel style string ("colwise" / "rowwise"), the same shape as ``_cp_plan`` and as ``transformers``
+    # ``base_model_tp_plan``. ``apply_tensor_parallel`` maps the strings to ColwiseParallel/RowwiseParallel
+    # inside the hook, keeping torch.distributed.tensor out of module import time.
     _tp_plan = {
         # double-stream (cross-attention + FFN) blocks
         "transformer_blocks.*.attn.to_q": "colwise",
@@ -1238,8 +1221,7 @@ class Flux2Transformer2DModel(
         "single_transformer_blocks.*.attn.to_qkv_mlp_proj": "colwise",
         "single_transformer_blocks.*.attn.to_out": "rowwise",
     }
-    # Per-block fused-weight permuters applied before sharding (Flux2 fuses gate+linear and
-    # Q/K/V+MLP into single Linears). Backend-agnostic: required on both generic and Neuron paths.
+    # Per-block fused-weight permuters applied before sharding (Flux2 fuses gate+linear and Q/K/V+MLP into single Linears).
     _tp_fused_block_permuters = _FLUX2_TP_FUSED_PERMUTERS
 
     @register_to_config

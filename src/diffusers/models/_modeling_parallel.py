@@ -162,9 +162,6 @@ class TensorParallelConfig:
     result; an AllReduce/AllGather at layer boundaries reconstructs the full output. Uses
     ``torch.distributed.tensor.parallelize_module`` with ``ColwiseParallel`` / ``RowwiseParallel`` sharding styles.
 
-    On Neuron, use the ``_pre_shard_and_tp`` workaround from ``transformer_flux2_neuron_tp`` to avoid the NRT
-    consecutive-reduce-scatter bug on large tensors (>= 5120x5120).
-
     Args:
         tp_degree (`int`, defaults to `1`):
             Number of devices to shard across. Must be a divisor of the number of attention heads (and FFN hidden
