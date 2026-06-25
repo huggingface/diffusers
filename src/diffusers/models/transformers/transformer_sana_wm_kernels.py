@@ -18,10 +18,25 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
+from typing import Optional, Union
 
 import torch
 import torch.nn.functional as F
-from einops import rearrange, repeat
+
+
+# Optional ``einops`` import. Only a handful of kernel-prep helpers in this
+# file use ``rearrange`` / ``repeat``; keep the dep optional so that
+# ``import diffusers.models.transformers.transformer_sana_wm_kernels`` works
+# on minimal-deps installs and we only error out if those helpers are called.
+try:
+    from einops import rearrange, repeat
+except ImportError:
+
+    def rearrange(*args, **kwargs):
+        raise ImportError("`einops` is required to run SANA-WM kernels. Install with `pip install einops`.")
+
+    def repeat(*args, **kwargs):
+        raise ImportError("`einops` is required to run SANA-WM kernels. Install with `pip install einops`.")
 
 
 # Optional Triton import. The kernels below are the fast path on CUDA + Triton
@@ -80,7 +95,6 @@ def _require_triton(entry_point: str) -> None:
             f"SanaWMTransformer3DModel — the dispatcher does this automatically "
             f"when Triton isn't usable)."
         )
-
 
 
 # =====================================================================
@@ -1073,7 +1087,9 @@ def _phase_a_kv_kernel(
         beta_V = beta_t[:, None] * V_raw
 
         K_rot_T = tl.trans(K_rot)
-        P_kv_acc += tl.dot(K_rot_T.to(dot_dtype), beta_Krot.to(dot_dtype), out_dtype=tl.float32, input_precision=dot_ip)
+        P_kv_acc += tl.dot(
+            K_rot_T.to(dot_dtype), beta_Krot.to(dot_dtype), out_dtype=tl.float32, input_precision=dot_ip
+        )
         A_acc += tl.dot(K_rot_T.to(dot_dtype), beta_V.to(dot_dtype), out_dtype=tl.float32, input_precision=dot_ip)
 
     # Store bf16 outputs. Padded positions are 0 by construction (K_rot is 0 outside D).
@@ -1510,8 +1526,13 @@ def phase_b_triton(
 
     load_init = init_state_kv is not None
     dummy = torch.empty(1, device=device, dtype=fdtype)
-    full_M = lambda: torch.empty(BH, F, BLOCK_D, BLOCK_D, device=device, dtype=fdtype)
-    full_z = lambda: torch.empty(BH, F, BLOCK_D, device=device, dtype=fdtype)
+
+    def full_M():
+        return torch.empty(BH, F, BLOCK_D, BLOCK_D, device=device, dtype=fdtype)
+
+    def full_z():
+        return torch.empty(BH, F, BLOCK_D, device=device, dtype=fdtype)
+
     M_fwd = dummy if direction == 2 else full_M()
     z_fwd = dummy if (direction == 2 or skip_z) else full_z()
     # Combined-history mode reuses M_fwd/z_fwd as M_hist/z_hist; rev outputs
@@ -2939,6 +2960,7 @@ def cam_scan_pair_chunkwise(
 
 # ===== camera utility helpers (used by both kernels and the transformer) =====
 
+
 def compute_fov_from_fx_xi(
     fx: Union[torch.Tensor, float],
     xi: Union[torch.Tensor, float],
@@ -2965,6 +2987,7 @@ def compute_fov_from_fx_xi(
     theta = torch.asin(ratio) + phi
     x_fov = torch.rad2deg(2.0 * theta)
     return x_fov
+
 
 def ucm_unproject_grid_fov(
     x_fov: Union[float, torch.Tensor],
@@ -2996,6 +3019,7 @@ def ucm_unproject_grid_fov(
     if not is_batched:
         d_cam = d_cam[0]
     return d_cam
+
 
 def world_to_ray_mats(
     d_cam: torch.Tensor,  # [H, W, 3], [B, H, W, 3], or [B, T, H, W, 3]
@@ -3037,6 +3061,7 @@ def world_to_ray_mats(
     raymats[mask] = torch.eye(4, device=device, dtype=dtype)
     return raymats
 
+
 def create_grid(
     height: int,
     width: int,
@@ -3047,7 +3072,7 @@ def create_grid(
     """Create a pixel coordinate grid of shape ``(H, W, 3)`` or ``(B, H, W, 3)``."""
     if device.type == "cpu":
         assert dtype in (torch.float32, torch.float64), (
-            f"ERR: {dtype} is not supported by {device.type}\n" "If device is `cpu`, use float32 or float64"
+            f"ERR: {dtype} is not supported by {device.type}\nIf device is `cpu`, use float32 or float64"
         )
     _xs = torch.linspace(0, width - 1, width, dtype=dtype, device=device)
     _ys = torch.linspace(0, height - 1, height, dtype=dtype, device=device)
@@ -3057,6 +3082,7 @@ def create_grid(
     if batch is not None:
         grid = repeat(grid, "... -> b ...", b=batch)
     return grid
+
 
 def ucm_unproject_grid(
     height: int,
@@ -3111,6 +3137,7 @@ def ucm_unproject_grid(
     else:
         return d_cam
 
+
 def compute_fx_from_fov_xi(
     x_fov: Union[torch.Tensor, float],
     xi: Union[torch.Tensor, float],
@@ -3135,6 +3162,7 @@ def compute_fx_from_fov_xi(
     denom = torch.sin(theta).clamp_min(eps)
     fx = (width * 0.5) * (torch.cos(theta) + xi) / denom
     return fx
+
 
 def project_ucm_points(X, Y, Z, fx, fy, cx, cy, xi):
     """Project 3D points in camera frame to UCM image plane."""
@@ -3161,11 +3189,13 @@ def project_ucm_points(X, Y, Z, fx, fy, cx, cy, xi):
     dv = fy * (Y / alpha) + cy
     return du, dv
 
+
 def project_ucm_points_fov(X, Y, Z, x_fov, y_fov, xi, height, width, cx, cy):
     """Project 3D points in camera frame to UCM image plane using FoV-based intrinsics."""
     fx = compute_fx_from_fov_xi(x_fov, xi, width, X.device, X.dtype)
     fy = compute_fx_from_fov_xi(y_fov, xi, height, X.device, X.dtype)
     return project_ucm_points(X, Y, Z, fx, fy, cx, cy, xi)
+
 
 def compute_up_lat_map(
     R: torch.Tensor,
@@ -3255,4 +3285,3 @@ def compute_up_lat_map(
     up_map = up_map.masked_fill(mask_exp, 0.0)
     lat_map = lat_map.masked_fill(mask_exp, 0.0)
     return up_map, lat_map
-

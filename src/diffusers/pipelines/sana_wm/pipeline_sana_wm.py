@@ -132,7 +132,7 @@ EXAMPLE_DOC_STRING = """
 # Public SANA-WM chi-prompt — saved with the pipeline config so users get the
 # correct prefix automatically on ``from_pretrained``.
 DEFAULT_CHI_PROMPT: list[str] = [
-    "Given a user prompt, generate an \"Enhanced prompt\" that provides detailed visual descriptions suitable for image generation. Evaluate the level of detail in the user prompt:",
+    'Given a user prompt, generate an "Enhanced prompt" that provides detailed visual descriptions suitable for image generation. Evaluate the level of detail in the user prompt:',
     "- If the prompt is simple, focus on adding specifics about colors, shapes, sizes, textures, and spatial relationships to create vivid and concrete scenes.",
     "- If the prompt is already detailed, refine and enhance the existing details slightly without overcomplicating.",
     "Here are examples of how to transform or refine prompts:",
@@ -288,9 +288,7 @@ class SanaWMPipeline(DiffusionPipeline):
     # First-frame VAE encode (deterministic — uses posterior mode)
     # ------------------------------------------------------------------
 
-    def _encode_first_frame(
-        self, image: PIL.Image.Image, device: torch.device, dtype: torch.dtype
-    ) -> torch.Tensor:
+    def _encode_first_frame(self, image: PIL.Image.Image, device: torch.device, dtype: torch.dtype) -> torch.Tensor:
         img = (T.ToTensor()(image) * 2.0 - 1.0).unsqueeze(0).unsqueeze(2).to(device, dtype=self.vae.dtype)
         z = self.vae.encode(img).latent_dist.mode()
         latents_mean = self.vae.latents_mean.view(1, -1, 1, 1, 1).to(z)
@@ -384,8 +382,14 @@ class SanaWMPipeline(DiffusionPipeline):
         timesteps, _ = retrieve_timesteps(scheduler, num_inference_steps, device, None)
 
         latents = torch.randn(
-            1, latent_channels, latent_T, latent_h, latent_w,
-            dtype=dtype, device=device, generator=generator,
+            1,
+            latent_channels,
+            latent_T,
+            latent_h,
+            latent_w,
+            dtype=dtype,
+            device=device,
+            generator=generator,
         )
         latents[:, :, :1] = first_latent
 

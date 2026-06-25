@@ -107,9 +107,10 @@ class SanaWMLTX2Refiner(ModelMixin, ConfigMixin):
             "low_cpu_mem_usage",
         ):
             kwargs.pop(k, None)
+        from transformers import AutoTokenizer, Gemma3ForConditionalGeneration  # noqa: PLC0415
+
         from ...models.transformers.transformer_ltx2 import LTX2VideoTransformer3DModel  # noqa: PLC0415
         from ..ltx2 import LTX2TextConnectors  # noqa: PLC0415
-        from transformers import AutoTokenizer, Gemma3ForConditionalGeneration  # noqa: PLC0415
 
         root = Path(pretrained_model_name_or_path)
         cfg_path = root / cls.config_name
@@ -776,28 +777,21 @@ class _RefinerChunkRunner:
                 else [(k.detach().cpu(), v.detach().cpu()) for k, v in self._sink_kv_pre]
             ),
             "history_kv_post": [
-                None if hk is None else (hk[0].detach().cpu(), hk[1].detach().cpu())
-                for hk in self._history_kv_post
+                None if hk is None else (hk[0].detach().cpu(), hk[1].detach().cpu()) for hk in self._history_kv_post
             ],
             "history_frames": int(self._history_frames),
             "generator_state": self._generator.get_state(),
         }
 
-    def _restore_state(
-        self, state: dict[str, object], *, device: torch.device, dtype: torch.dtype
-    ) -> None:
+    def _restore_state(self, state: dict[str, object], *, device: torch.device, dtype: torch.dtype) -> None:
         sink = state.get("sink_kv_pre")
         if sink is None:
             self._sink_kv_pre = None
         else:
-            self._sink_kv_pre = [
-                (k.to(device=device, dtype=dtype), v.to(device=device, dtype=dtype)) for k, v in sink
-            ]
+            self._sink_kv_pre = [(k.to(device=device, dtype=dtype), v.to(device=device, dtype=dtype)) for k, v in sink]
         history = state["history_kv_post"]
         if len(history) != self._n_layers:
-            raise RuntimeError(
-                f"Checkpoint history has {len(history)} layers but transformer has {self._n_layers}."
-            )
+            raise RuntimeError(f"Checkpoint history has {len(history)} layers but transformer has {self._n_layers}.")
         self._history_kv_post = [
             None if hk is None else (hk[0].to(device=device, dtype=dtype), hk[1].to(device=device, dtype=dtype))
             for hk in history
@@ -836,8 +830,7 @@ class _RefinerChunkRunner:
         active_len = block_end - block_start
         if block_start < self._source_sink_frames:
             raise ValueError(
-                f"block_start={block_start} overlaps the source sink "
-                f"(source_sink_frames={self._source_sink_frames})."
+                f"block_start={block_start} overlaps the source sink (source_sink_frames={self._source_sink_frames})."
             )
 
         # 1) On the first call: pre-capture PRE-RoPE sink K/V from the supplied

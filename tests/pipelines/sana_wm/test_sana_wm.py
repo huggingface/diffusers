@@ -32,7 +32,7 @@ import unittest
 import numpy as np
 from PIL import Image
 
-from diffusers import SanaWMPipeline, SanaWMPipelineOutput, SanaWMTransformer3DModel
+from diffusers import SanaWMPipeline, SanaWMPipelineOutput
 from diffusers.pipelines.sana_wm import SanaWMLTX2Refiner
 from diffusers.pipelines.sana_wm.cam_utils import (
     TARGET_HEIGHT,
@@ -99,7 +99,9 @@ class SanaWMCamUtilsTests(unittest.TestCase):
     def test_transform_intrinsics_for_crop_with_offset(self):
         intr = np.array([800.0, 800.0, 500.0, 250.0], dtype=np.float32)
         # After resize, an extra crop offset shifts the principal point.
-        out = transform_intrinsics_for_crop(intr, src_size=(1000, 500), resized_size=(2000, 1000), crop_offset=(360, 148))
+        out = transform_intrinsics_for_crop(
+            intr, src_size=(1000, 500), resized_size=(2000, 1000), crop_offset=(360, 148)
+        )
         self.assertAlmostEqual(float(out[2]), 500.0 * 2.0 - 360.0, places=4)
         self.assertAlmostEqual(float(out[3]), 250.0 * 2.0 - 148.0, places=4)
 

@@ -22,21 +22,64 @@ from collections.abc import Iterable
 from copy import deepcopy
 from functools import lru_cache, partial
 from itertools import repeat as _itertools_repeat
-from typing import Any, Callable, Dict, List, Optional, Tuple, Type, Union
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from einops import rearrange, repeat
-from fla.modules import ShortConvolution
-from termcolor import colored
-from timm.models.layers import DropPath
-from timm.models.vision_transformer import Attention as Attention_, Mlp
 from torch.nn.attention.flex_attention import create_block_mask
 from torch.nn.modules.batchnorm import _BatchNorm
 from torch.utils.checkpoint import checkpoint
 from transformers import AutoModelForCausalLM
+
+
+# Optional third-party deps. These are kept optional so that `import diffusers`
+# (and `from diffusers import SanaWMPipeline`) succeed in environments without
+# `einops` / `fla` / `timm` / `termcolor`. Each shim raises a clear error if
+# anyone actually constructs the SANA-WM transformer without the real package
+# installed; class-body definitions that subclass these stand-ins still parse
+# fine at module load time.
+try:
+    from einops import rearrange
+except ImportError:
+
+    def rearrange(*args, **kwargs):
+        raise ImportError("`einops` is required to run SANA-WM. Install with `pip install einops`.")
+
+
+try:
+    from fla.modules import ShortConvolution
+except ImportError:
+
+    class ShortConvolution(nn.Module):
+        def __init__(self, *args, **kwargs):
+            raise ImportError(
+                "`fla` (flash-linear-attention) is required to run SANA-WM. Install with `pip install fla-core`."
+            )
+
+
+try:
+    from termcolor import colored
+except ImportError:
+
+    def colored(text, *args, **kwargs):
+        return text  # log-only helper; plain text is a fine fallback
+
+
+try:
+    from timm.models.layers import DropPath
+    from timm.models.vision_transformer import Attention as Attention_
+    from timm.models.vision_transformer import Mlp
+except ImportError:
+
+    class _MissingTimm(nn.Module):
+        def __init__(self, *args, **kwargs):
+            raise ImportError("`timm` is required to run SANA-WM. Install with `pip install timm`.")
+
+    DropPath = _MissingTimm  # type: ignore[assignment]
+    Attention_ = _MissingTimm  # type: ignore[assignment]
+    Mlp = _MissingTimm  # type: ignore[assignment]
 
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...utils import logging
@@ -268,7 +311,6 @@ def auto_grad_checkpoint(module, *args, **kwargs):
 
 
 def checkpoint_sequential(functions, step, input, *args, **kwargs):
-
     # Hack for keyword-only parameter in a python 2.7-compliant way
     preserve = kwargs.pop("preserve_rng_state", True)
     if kwargs:
@@ -395,7 +437,11 @@ def create_block_mask_cached(score_mod, B, H, M, N, device="cuda", _compile=Fals
 
 
 def generate_temporal_head_mask_mod(
-    context_length: int = 226, prompt_length: int = 226, num_frames: int = 13, token_per_frame: int = 1350, mul: int = 2
+    context_length: int = 226,
+    prompt_length: int = 226,
+    num_frames: int = 13,
+    token_per_frame: int = 1350,
+    mul: int = 2,
 ):
     def round_to_multiple(idx):
         return math.ceil(idx / 128) * 128
@@ -838,17 +884,6 @@ def normalize_chunk_index(
     return chunk_index_gen, is_uniform
 
 
-
-
-
-
-
-
-
-
-
-
-
 # ============================================================================
 # Attention blocks (sana / sana-camctrl / GDN / GDN-camctrl / softmax variants)
 # ============================================================================
@@ -863,6 +898,7 @@ def _register_block(name: str | None = None):
     def deco(cls):
         ATTENTION_BLOCKS[name or cls.__name__] = cls
         return cls
+
     return deco
 
 
@@ -1497,8 +1533,8 @@ class MultiHeadCrossAttention(nn.Module):
         if _xformers_available:
             attn_bias = None
             if mask is not None:
-                attn_bias = xformers.ops.fmha.BlockDiagonalMask.from_seqlens([N] * B, mask)
-            x = xformers.ops.memory_efficient_attention(q, k, v, p=self.attn_drop.p, attn_bias=attn_bias)
+                attn_bias = xformers.ops.fmha.BlockDiagonalMask.from_seqlens([N] * B, mask)  # noqa: F821
+            x = xformers.ops.memory_efficient_attention(q, k, v, p=self.attn_drop.p, attn_bias=attn_bias)  # noqa: F821
         else:
             q, k, v = q.transpose(1, 2), k.transpose(1, 2), v.transpose(1, 2)
             if mask is not None and mask.ndim == 2:
@@ -1773,7 +1809,9 @@ class LiteLAReLURope(Attention_):
         k = self.kernel_func(k)
 
         def apply_rotary_emb(hidden_states: torch.Tensor, freqs: torch.Tensor):
-            x_rotated = torch.view_as_complex(hidden_states.permute(0, 1, 3, 2).to(torch.float64).unflatten(3, (-1, 2)))
+            x_rotated = torch.view_as_complex(
+                hidden_states.permute(0, 1, 3, 2).to(torch.float64).unflatten(3, (-1, 2))
+            )
             x_out = torch.view_as_real(x_rotated * freqs).flatten(3, 4).permute(0, 1, 3, 2)
             return x_out.type_as(hidden_states)
 
@@ -1843,7 +1881,9 @@ class ChunkCausalAttention(LiteLAReLURope):
         k = self.kernel_func(k)
 
         def apply_rotary_emb(hidden_states: torch.Tensor, freqs: torch.Tensor):
-            x_rotated = torch.view_as_complex(hidden_states.permute(0, 1, 3, 2).to(torch.float64).unflatten(3, (-1, 2)))
+            x_rotated = torch.view_as_complex(
+                hidden_states.permute(0, 1, 3, 2).to(torch.float64).unflatten(3, (-1, 2))
+            )
             x_out = torch.view_as_real(x_rotated * freqs).flatten(3, 4).permute(0, 1, 3, 2)
             return x_out.type_as(hidden_states)
 
@@ -1926,7 +1966,6 @@ class CachedCausalAttention(LiteLAReLURope):
         kv_cache=None,
         **kwargs,
     ) -> torch.Tensor:
-
         B, N, C = x.shape
 
         qkv = self.qkv(x).reshape(B, N, 3, C)
@@ -1946,7 +1985,9 @@ class CachedCausalAttention(LiteLAReLURope):
         k = self.kernel_func(k)
 
         def apply_rotary_emb(hidden_states: torch.Tensor, freqs: torch.Tensor):
-            x_rotated = torch.view_as_complex(hidden_states.permute(0, 1, 3, 2).to(torch.float64).unflatten(3, (-1, 2)))
+            x_rotated = torch.view_as_complex(
+                hidden_states.permute(0, 1, 3, 2).to(torch.float64).unflatten(3, (-1, 2))
+            )
             x_out = torch.view_as_real(x_rotated * freqs).flatten(3, 4).permute(0, 1, 3, 2)
             return x_out.type_as(hidden_states)
 
@@ -1962,7 +2003,6 @@ class CachedCausalAttention(LiteLAReLURope):
 
         # Use internal cache with the same logic as before
         if kv_cache is not None:
-
             cusum_vk, cumsum_k_sum = kv_cache[0], kv_cache[1]
 
             if save_kv_cache:
@@ -2161,7 +2201,9 @@ class SelfAttnProcessorLiteLAReLURope:
         k = self.attn.kernel_func(k)
 
         def apply_rotary_emb(hidden_states: torch.Tensor, freqs: torch.Tensor):
-            x_rotated = torch.view_as_complex(hidden_states.permute(0, 1, 3, 2).to(torch.float64).unflatten(3, (-1, 2)))
+            x_rotated = torch.view_as_complex(
+                hidden_states.permute(0, 1, 3, 2).to(torch.float64).unflatten(3, (-1, 2))
+            )
             x_out = torch.view_as_real(x_rotated * freqs).flatten(3, 4).permute(0, 1, 3, 2)
             return x_out.type_as(hidden_states)
 
@@ -2247,7 +2289,7 @@ class FlashAttention(Attention_):
             self.qkv_store_buffer["v"] = v[0].cpu()  # b, n, h, h_d
 
         if _xformers_available:
-            x = xformers.ops.memory_efficient_attention(q, k, v, p=self.attn_drop.p, attn_bias=attn_bias)
+            x = xformers.ops.memory_efficient_attention(q, k, v, p=self.attn_drop.p, attn_bias=attn_bias)  # noqa: F821
         else:
             q, k, v = q.transpose(1, 2), k.transpose(1, 2), v.transpose(1, 2)
             if mask is not None and mask.ndim == 2:
@@ -2542,9 +2584,9 @@ class CaptionEmbedder(nn.Module):
             if caption.shape[-2] < self.y_embedding.shape[-2]:
                 y_embedding = self.y_embedding[: caption.shape[-2], :]
             else:
-                assert (
-                    caption.shape[2:] == self.y_embedding.shape
-                ), f"caption.shape: {caption.shape}, self.y_embedding.shape: {self.y_embedding.shape}"
+                assert caption.shape[2:] == self.y_embedding.shape, (
+                    f"caption.shape: {caption.shape}, self.y_embedding.shape: {self.y_embedding.shape}"
+                )
         use_dropout = self.uncond_prob > 0
         if (train and use_dropout) or (force_drop_ids is not None):
             caption = self.token_drop(caption, force_drop_ids, y_embedding)
@@ -2790,9 +2832,9 @@ class WanRotaryPosEmbed(nn.Module):
         self.max_seq_len = max_seq_len
 
         if fhw_dim is not None:
-            assert attention_head_dim == sum(
-                fhw_dim
-            ), f"attention_head_dim {attention_head_dim} must match sum(fhw_dim) {sum(fhw_dim)}"
+            assert attention_head_dim == sum(fhw_dim), (
+                f"attention_head_dim {attention_head_dim} must match sum(fhw_dim) {sum(fhw_dim)}"
+            )
             t_dim, h_dim, w_dim = fhw_dim
         else:
             h_dim = w_dim = 2 * (attention_head_dim // 6)
@@ -3222,7 +3264,9 @@ class ChunkedLiteLAReLURope(LiteLAReLURope):
         k = self.kernel_func(k)
 
         def apply_rotary_emb(hidden_states: torch.Tensor, freqs: torch.Tensor):
-            x_rotated = torch.view_as_complex(hidden_states.permute(0, 1, 3, 2).to(torch.float64).unflatten(3, (-1, 2)))
+            x_rotated = torch.view_as_complex(
+                hidden_states.permute(0, 1, 3, 2).to(torch.float64).unflatten(3, (-1, 2))
+            )
             x_out = torch.view_as_real(x_rotated * freqs).flatten(3, 4).permute(0, 1, 3, 2)
             return x_out.type_as(hidden_states)
 
@@ -3345,27 +3389,9 @@ def _maybe_drop_cam_branch(camera_conditions, cam_branch_drop_prob, training, de
 # ---------------------------------------------------------------------------
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 # ---------------------------------------------------------------------------
 # Per-pixel ray transformation (world <-> ray) used by UCPE
 # ---------------------------------------------------------------------------
-
-
-
-
 
 
 def _process_camera_conditions_ucpe(camera_conditions, B, HW, patch_size):
@@ -3533,8 +3559,12 @@ def _prepare_ray_apply_fns(
         rope_fn = partial(_apply_complex_rope, freqs=rotary_emb, inverse=False)
         rope_fn_inv = partial(_apply_complex_rope, freqs=rotary_emb, inverse=True)
     else:
-        rope_fn = lambda x: x
-        rope_fn_inv = lambda x: x
+
+        def rope_fn(x):
+            return x
+
+        def rope_fn_inv(x):
+            return x
 
     transforms_q = [
         (partial(_apply_ray_projmat, matrix=P_T), head_dim // 2),
@@ -3550,7 +3580,9 @@ def _prepare_ray_apply_fns(
             (rope_fn_inv, head_dim // 2),
         ]
     else:
-        transforms_o = lambda x: x
+
+        def transforms_o(x):
+            return x
 
     apply_fn_q = partial(_apply_block_diagonal, func_size_pairs=transforms_q)
     apply_fn_kv = partial(_apply_block_diagonal, func_size_pairs=transforms_kv)
@@ -4388,7 +4420,9 @@ class GDN(Attention_):
                 q = self._apply_temporal_short_conv(q.reshape(B, N, C), self.conv_q, HW).reshape(
                     B, N, self.heads, self.dim
                 )
-            k = self._apply_temporal_short_conv(k.reshape(B, N, C), self.conv_k, HW).reshape(B, N, self.heads, self.dim)
+            k = self._apply_temporal_short_conv(k.reshape(B, N, C), self.conv_k, HW).reshape(
+                B, N, self.heads, self.dim
+            )
             if self.conv_v is not None:
                 v = self._apply_temporal_short_conv(v.reshape(B, N, C), self.conv_v, HW).reshape(
                     B, N, self.heads, self.dim
@@ -4565,7 +4599,9 @@ class BidirectionalGDN(GDN):
                 q = self._apply_temporal_short_conv(q.reshape(B, N, C), self.conv_q, HW).reshape(
                     B, N, self.heads, self.dim
                 )
-            k = self._apply_temporal_short_conv(k.reshape(B, N, C), self.conv_k, HW).reshape(B, N, self.heads, self.dim)
+            k = self._apply_temporal_short_conv(k.reshape(B, N, C), self.conv_k, HW).reshape(
+                B, N, self.heads, self.dim
+            )
             if self.conv_v is not None:
                 v = self._apply_temporal_short_conv(v.reshape(B, N, C), self.conv_v, HW).reshape(
                     B, N, self.heads, self.dim
@@ -5040,7 +5076,9 @@ def torch_chunk_cam_single_path_delta_rule(
     S_kv = torch.zeros(B, H, D, D, device=q_rot.device, dtype=q_rot.dtype)
     out_S_kv: list[torch.Tensor] = []
 
-    def _chunk_scan_kv(w_kv: torch.Tensor, u_kv: torch.Tensor, s_kv: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+    def _chunk_scan_kv(
+        w_kv: torch.Tensor, u_kv: torch.Tensor, s_kv: torch.Tensor
+    ) -> tuple[torch.Tensor, torch.Tensor]:
         c_len = w_kv.shape[2]
         s_kv_list: list[torch.Tensor] = []
         for t in range(c_len):
@@ -5123,12 +5161,10 @@ class _GDNUCPEBase(GDN):
             raise ValueError(f"Unsupported cam_update_rule_func: {cam_update_rule_func}")
 
         if cam_dim != in_dim:
-            raise ValueError(
-                f"Parameter sharing requires cam_dim == in_dim, " f"got cam_dim={cam_dim}, in_dim={in_dim}."
-            )
+            raise ValueError(f"Parameter sharing requires cam_dim == in_dim, got cam_dim={cam_dim}, in_dim={in_dim}.")
         if cam_heads != self.heads:
             raise ValueError(
-                f"Parameter sharing requires cam_heads == heads, " f"got cam_heads={cam_heads}, heads={self.heads}."
+                f"Parameter sharing requires cam_heads == heads, got cam_heads={cam_heads}, heads={self.heads}."
             )
         if self.cam_head_dim % 4 != 0:
             raise ValueError(
@@ -6727,6 +6763,7 @@ class BidirectionalGDNUCPESinglePathLiteLABothTriton(BidirectionalGDNUCPESingleP
 # DiT base + SANA-WM camera-controlled transformer + public wrapper
 # ============================================================================
 
+
 class SanaBlock(nn.Module):
     """
     A Sana block with global shared adaptive layer norm (adaLN-single) conditioning.
@@ -6772,13 +6809,18 @@ class SanaBlock(nn.Module):
         if cross_attn_type in ["flash", "linear"]:
             self.cross_attn = MultiHeadCrossAttention(hidden_size, num_heads, qk_norm=cross_norm, **block_kwargs)
         elif cross_attn_type == "vanilla":
-            self.cross_attn = MultiHeadCrossVallinaAttention(hidden_size, num_heads, qk_norm=cross_norm, **block_kwargs)
+            self.cross_attn = MultiHeadCrossVallinaAttention(
+                hidden_size, num_heads, qk_norm=cross_norm, **block_kwargs
+            )
         else:
             raise ValueError(f"{cross_attn_type} type is not defined.")
         self.norm2 = nn.LayerNorm(hidden_size, elementwise_affine=False, eps=1e-6)
         # to be compatible with lower version pytorch
         if ffn_type == "dwmlp":
-            approx_gelu = lambda: nn.GELU(approximate="tanh")
+
+            def approx_gelu():
+                return nn.GELU(approximate="tanh")
+
             self.mlp = DWMlp(
                 in_features=hidden_size, hidden_features=int(hidden_size * mlp_ratio), act_layer=approx_gelu, drop=0
             )
@@ -6800,7 +6842,10 @@ class SanaBlock(nn.Module):
                 dilation=2,
             )
         elif ffn_type == "mlp":
-            approx_gelu = lambda: nn.GELU(approximate="tanh")
+
+            def approx_gelu():
+                return nn.GELU(approximate="tanh")
+
             self.mlp = Mlp(
                 in_features=hidden_size, hidden_features=int(hidden_size * mlp_ratio), act_layer=approx_gelu, drop=0
             )
@@ -6816,7 +6861,9 @@ class SanaBlock(nn.Module):
         shift_msa, scale_msa, gate_msa, shift_mlp, scale_mlp, gate_mlp = (
             self.scale_shift_table[None] + t.reshape(B, 6, -1)
         ).chunk(6, dim=1)
-        x = x + self.drop_path(gate_msa * self.attn(t2i_modulate(self.norm1(x), shift_msa, scale_msa)).reshape(B, N, C))
+        x = x + self.drop_path(
+            gate_msa * self.attn(t2i_modulate(self.norm1(x), shift_msa, scale_msa)).reshape(B, N, C)
+        )
         x = x + self.cross_attn(x, y, mask)
         x = x + self.drop_path(gate_mlp * self.mlp(t2i_modulate(self.norm2(x), shift_mlp, scale_mlp)))
 
@@ -6893,7 +6940,9 @@ class Sana(nn.Module):
         # Will use fixed sin-cos embedding:
         self.register_buffer("pos_embed", torch.zeros(1, num_patches, hidden_size))
 
-        approx_gelu = lambda: nn.GELU(approximate="tanh")
+        def approx_gelu():
+            return nn.GELU(approximate="tanh")
+
         self.t_block = nn.Sequential(nn.SiLU(), nn.Linear(hidden_size, 6 * hidden_size, bias=True))
         self.y_embedder = CaptionEmbedder(
             in_channels=caption_channels,
@@ -6906,9 +6955,9 @@ class Sana(nn.Module):
             self.attention_y_norm = RMSNorm(hidden_size, scale_factor=y_norm_scale_factor, eps=norm_eps)
         drop_path = [x.item() for x in torch.linspace(0, drop_path, depth)]  # stochastic depth decay rule
         if attn_type == "flash":
-            attention_head_dim = hidden_size // num_heads
+            hidden_size // num_heads
         else:
-            attention_head_dim = linear_head_dim
+            pass
         self.blocks = nn.ModuleList(
             [
                 SanaBlock(
@@ -7157,13 +7206,18 @@ class SanaMSBlock(nn.Module):
         if cross_attn_type in ["flash", "linear"]:
             self.cross_attn = MultiHeadCrossAttention(hidden_size, num_heads, qk_norm=cross_norm, **block_kwargs)
         elif cross_attn_type == "vanilla":
-            self.cross_attn = MultiHeadCrossVallinaAttention(hidden_size, num_heads, qk_norm=cross_norm, **block_kwargs)
+            self.cross_attn = MultiHeadCrossVallinaAttention(
+                hidden_size, num_heads, qk_norm=cross_norm, **block_kwargs
+            )
         else:
             raise ValueError(f"{cross_attn_type} type is not defined.")
         self.norm2 = nn.LayerNorm(hidden_size, elementwise_affine=False, eps=1e-6)
 
         if ffn_type == "dwmlp":
-            approx_gelu = lambda: nn.GELU(approximate="tanh")
+
+            def approx_gelu():
+                return nn.GELU(approximate="tanh")
+
             self.mlp = DWMlp(
                 in_features=hidden_size, hidden_features=int(hidden_size * mlp_ratio), act_layer=approx_gelu, drop=0
             )
@@ -7176,7 +7230,10 @@ class SanaMSBlock(nn.Module):
                 act=mlp_acts,
             )
         elif ffn_type == "mlp":
-            approx_gelu = lambda: nn.GELU(approximate="tanh")
+
+            def approx_gelu():
+                return nn.GELU(approximate="tanh")
+
             self.mlp = Mlp(
                 in_features=hidden_size, hidden_features=int(hidden_size * mlp_ratio), act_layer=approx_gelu, drop=0
             )
@@ -7276,7 +7333,10 @@ class SanaMS(Sana):
             **kwargs,
         )
         self.h = self.w = 0
-        approx_gelu = lambda: nn.GELU(approximate="tanh")
+
+        def approx_gelu():
+            return nn.GELU(approximate="tanh")
+
         self.t_block = nn.Sequential(nn.SiLU(), nn.Linear(hidden_size, 6 * hidden_size, bias=True))
         self.pos_embed_ms = None
         self.cfg_embed_scale = cfg_embed_scale
@@ -7687,7 +7747,10 @@ class SanaVideoMSCamCtrlBlock(nn.Module):
                 t_kernel_size=t_kernel_size,
             )
         elif ffn_type == "mlp":
-            approx_gelu = lambda: nn.GELU(approximate="tanh")
+
+            def approx_gelu():
+                return nn.GELU(approximate="tanh")
+
             self.mlp = Mlp(
                 in_features=hidden_size, hidden_features=int(hidden_size * mlp_ratio), act_layer=approx_gelu, drop=0
             )
@@ -7696,7 +7759,7 @@ class SanaVideoMSCamCtrlBlock(nn.Module):
 
         self.drop_path = DropPath(drop_path) if drop_path > 0.0 else nn.Identity()
         self.scale_shift_table = nn.Parameter(torch.randn(6, hidden_size) / hidden_size**0.5)
-        self.block_hook: Optional[BlockHook] = None
+        self.block_hook: Optional[Callable] = None
 
     @staticmethod
     def _build_frame_token_mask(
@@ -7752,9 +7815,7 @@ class SanaVideoMSCamCtrlBlock(nn.Module):
         # scale_shift_table: 6, hidden_size -> 1,1,6,hidden_size
         shift_msa, scale_msa, gate_msa, shift_mlp, scale_mlp, gate_mlp = (
             self.scale_shift_table[None, None, :, :] + t
-        ).chunk(
-            6, dim=-2
-        )  # each chunk: B,F,1,D
+        ).chunk(6, dim=-2)  # each chunk: B,F,1,D
         self_attn_kwargs = {
             "HW": THW,
             "rotary_emb": rotary_emb,
@@ -7907,9 +7968,9 @@ class SanaVideoMSCamCtrlBlock(nn.Module):
             self_attn_kwargs["chunk_size"] = chunk_size
 
         if frame_token_mask is not None:
-            x_sa = x_sa * frame_token_mask
+            x_sa = x_sa * frame_token_mask  # noqa: F821  (dead path; x_sa assigned in subclasses' forward)
 
-        intermediate_feats["x_self_attn"] = x_sa
+        intermediate_feats["x_self_attn"] = x_sa  # noqa: F821  (see above)
 
         if self.flash_attn_additional:
             x_sa = x_sa + self.learnable_fa_scale * self.flash_attn_additional(x_sa_in, rotary_emb=rotary_emb, HW=THW)
@@ -7956,8 +8017,8 @@ class SanaVideoMSCamCtrlBlock(nn.Module):
             mlp_kwargs["chunk_size"] = chunk_size
 
         if frame_token_mask is not None:
-            mlp_out = mlp_out * frame_token_mask
-        x = x + self.drop_path(gate_mlp * mlp_out)
+            mlp_out = mlp_out * frame_token_mask  # noqa: F821  (dead path; mlp_out assigned in subclasses' forward)
+        x = x + self.drop_path(gate_mlp * mlp_out)  # noqa: F821  (see above)
         if frame_token_mask is not None:
             x = x * frame_token_mask
 
@@ -8095,7 +8156,10 @@ class SanaMSVideoCamCtrl(Sana):
         self.chunk_split_strategy = chunk_split_strategy
         self.patch_size = patch_size
         self.h = self.w = 0
-        approx_gelu = lambda: nn.GELU(approximate="tanh")
+
+        def approx_gelu():
+            return nn.GELU(approximate="tanh")
+
         self.t_block = nn.Sequential(nn.SiLU(), nn.Linear(hidden_size, 6 * hidden_size, bias=True))
         self.pos_embed_ms = None
         self.pack_latents = pack_latents
@@ -8532,7 +8596,7 @@ class SanaMSVideoCamCtrl(Sana):
         if _fsdp2_block_timing:
             torch.cuda.synchronize()
             _t_pre_blocks = _time_fwd.perf_counter()
-            print(f"[FSDP2-BT] embeddings+prep: {(_t_pre_blocks - _t_embed_start)*1000:.1f}ms", flush=True)
+            print(f"[FSDP2-BT] embeddings+prep: {(_t_pre_blocks - _t_embed_start) * 1000:.1f}ms", flush=True)
 
         for i, block in enumerate(self.blocks):
             if self.save_qkv:
@@ -8573,7 +8637,7 @@ class SanaMSVideoCamCtrl(Sana):
         if _fsdp2_block_timing:
             torch.cuda.synchronize()
             _t_post_blocks = _time_fwd.perf_counter()
-            print(f"[FSDP2-BT] all blocks: {(_t_post_blocks - _t_pre_blocks)*1000:.1f}ms", flush=True)
+            print(f"[FSDP2-BT] all blocks: {(_t_post_blocks - _t_pre_blocks) * 1000:.1f}ms", flush=True)
 
         if _delta_t_emb is not None:
             if t.ndim == 2:
@@ -8702,9 +8766,9 @@ class SanaMSVideoCamCtrl(Sana):
                     for i in range(3):
                         start_idx = i * old_hidden_size
                         new_start_idx = i * new_hidden_size
-                        new_param[new_start_idx : new_start_idx + old_hidden_size, :old_hidden_size] = checkpoint_param[
-                            start_idx : start_idx + old_hidden_size
-                        ]
+                        new_param[new_start_idx : new_start_idx + old_hidden_size, :old_hidden_size] = (
+                            checkpoint_param[start_idx : start_idx + old_hidden_size]
+                        )
                 elif "attn.qkv.bias" in key:
                     old_hidden_size = checkpoint_param.shape[0] // 3
                     new_hidden_size = current_param.shape[0] // 3
@@ -8761,9 +8825,9 @@ class SanaMSVideoCamCtrl(Sana):
                     for i in range(6):
                         start_idx = i * old_hidden_size
                         new_start_idx = i * new_hidden_size
-                        new_param[new_start_idx : new_start_idx + old_hidden_size, :old_hidden_size] = checkpoint_param[
-                            start_idx : start_idx + old_hidden_size
-                        ]
+                        new_param[new_start_idx : new_start_idx + old_hidden_size, :old_hidden_size] = (
+                            checkpoint_param[start_idx : start_idx + old_hidden_size]
+                        )
                 elif "t_block.1.bias" in key:
                     # t_block.1.bias shape: [6 * hidden_size]
                     old_hidden_size = checkpoint_param.shape[0] // 6
@@ -8864,8 +8928,6 @@ class SanaMSVideoCamCtrl(Sana):
         for i, block in enumerate(self.blocks):
             if hasattr(block.attn, "init_cam_branch_weights"):
                 block.attn.init_cam_branch_weights()
-
-
 
 
 # ---------------------------------------------------------------------------

@@ -23,7 +23,6 @@
 from __future__ import annotations
 
 import math
-from pathlib import Path
 
 import numpy as np
 import torch
@@ -165,9 +164,7 @@ def transform_intrinsics_for_crop(
     return out
 
 
-def estimate_intrinsics_with_pi3x(
-    image: Image.Image, device: torch.device | str = "cuda"
-) -> np.ndarray:
+def estimate_intrinsics_with_pi3x(image: Image.Image, device: torch.device | str = "cuda") -> np.ndarray:
     """Estimate ``[fx, fy, cx, cy]`` for ``image`` using Pi3X.
 
     Optional helper — requires ``pip install pi3-vision``. The result is in
@@ -179,8 +176,7 @@ def estimate_intrinsics_with_pi3x(
         from pi3.utils.geometry import recover_intrinsic_from_rays_d  # type: ignore
     except ImportError as e:  # pragma: no cover
         raise RuntimeError(
-            "pi3 is required for intrinsics estimation. Pass `intrinsics` "
-            "explicitly or `pip install pi3-vision`."
+            "pi3 is required for intrinsics estimation. Pass `intrinsics` explicitly or `pip install pi3-vision`."
         ) from e
 
     from torchvision import transforms as T  # noqa: PLC0415
@@ -201,9 +197,7 @@ def estimate_intrinsics_with_pi3x(
     tensor = T.ToTensor()(resized).unsqueeze(0).unsqueeze(0).to(device_t)
 
     dtype = (
-        torch.bfloat16
-        if torch.cuda.is_available() and torch.cuda.get_device_capability()[0] >= 8
-        else torch.float16
+        torch.bfloat16 if torch.cuda.is_available() and torch.cuda.get_device_capability()[0] >= 8 else torch.float16
     )
     model = Pi3X.from_pretrained("yyfz233/Pi3X").to(device_t).eval()
     model.disable_multimodal()
@@ -214,9 +208,7 @@ def estimate_intrinsics_with_pi3x(
     K = recover_intrinsic_from_rays_d(rays_d, force_center_principal_point=True)[0, 0]
     K = K.detach().cpu().float().numpy()
     sx, sy = W_orig / W_model, H_orig / H_model
-    return np.array(
-        [K[0, 0] * sx, K[1, 1] * sy, K[0, 2] * sx, K[1, 2] * sy], dtype=np.float32
-    )
+    return np.array([K[0, 0] * sx, K[1, 1] * sy, K[0, 2] * sx, K[1, 2] * sy], dtype=np.float32)
 
 
 # ---------------------------------------------------------------------------
