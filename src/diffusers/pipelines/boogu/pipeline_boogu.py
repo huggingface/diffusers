@@ -169,17 +169,6 @@ def retrieve_timesteps(
     return timesteps, num_inference_steps
 
 
-class MomentumRollingSum:
-    def __init__(self, momentum_weight: float = 0.1, current_weight: float = 0.9):
-        self.momentum_weight = momentum_weight
-        self.current_weight = current_weight
-        self.rolling_sum = 0
-
-    def update(self, current_step: torch.Tensor):
-        self.rolling_sum = self.current_weight * current_step + self.momentum_weight * self.rolling_sum
-        return self.rolling_sum
-
-
 class BooguImagePipeline(DiffusionPipeline):
     """
     Base pipeline for Boogu text-to-image and image-editing inference.
@@ -190,9 +179,8 @@ class BooguImagePipeline(DiffusionPipeline):
     the denoising process, the VAE maps between image space and latent space,
     and the scheduler defines the diffusion timesteps.
 
-    It also owns the runtime orchestration around classifier
-    guidance variants, boosted orthogonal guidance, device
-    placement, and optional CPU/group offload strategies.
+    It also owns the runtime orchestration around classifier-free
+    guidance, device placement, and optional CPU/group offload strategies.
 
     Args:
         transformer (BooguImageTransformer2DModel): Boogu transformer
@@ -1047,17 +1035,6 @@ class BooguImagePipeline(DiffusionPipeline):
         empty_instruction_guidance_scale: float = 0.0,
         cfg_range: Tuple[float, float] = (0.0, 1.0),
         system_prompt_follows_task_type: bool = False,
-        ### Momentum Config
-        use_boosted_orthogonal_guidance: bool = False,
-        text_momentum_rolling_sum_momentum_weight: float = 0.1,
-        text_momentum_rolling_sum_current_weight: float = 0.9,
-        image_momentum_rolling_sum_momentum_weight: float = 0.1,
-        image_momentum_rolling_sum_current_weight: float = 0.9,
-        empty_momentum_rolling_sum_momentum_weight: float = 0.1,
-        empty_momentum_rolling_sum_current_weight: float = 0.9,
-        bog_mu: float = 0.1,
-        bog_range=[0.0, 1.0],
-        bog_interval: int = 3,
         attention_kwargs: Optional[Dict[str, Any]] = None,
         timesteps: List[int] = None,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
@@ -1196,28 +1173,6 @@ class BooguImagePipeline(DiffusionPipeline):
             empty_instruction_attention_mask=empty_instruction_attention_mask,
             use_empty_neg_instruct_4_ref_img_pred_at_image_guide_in_double_guide=use_empty_neg_instruct_4_ref_img_pred_at_image_guide_in_double_guide,
             use_empty_neg_instruct_4_ref_img_pred_at_text_guide_in_double_guide=use_empty_neg_instruct_4_ref_img_pred_at_text_guide_in_double_guide,
-            use_boosted_orthogonal_guidance=use_boosted_orthogonal_guidance,
-            tg_momentum_state=MomentumRollingSum(
-                momentum_weight=text_momentum_rolling_sum_momentum_weight,
-                current_weight=text_momentum_rolling_sum_current_weight,
-            )
-            if use_boosted_orthogonal_guidance
-            else None,
-            ig_momentum_state=MomentumRollingSum(
-                momentum_weight=image_momentum_rolling_sum_momentum_weight,
-                current_weight=image_momentum_rolling_sum_current_weight,
-            )
-            if use_boosted_orthogonal_guidance
-            else None,
-            eg_momentum_state=MomentumRollingSum(
-                momentum_weight=empty_momentum_rolling_sum_momentum_weight,
-                current_weight=empty_momentum_rolling_sum_current_weight,
-            )
-            if use_boosted_orthogonal_guidance
-            else None,
-            bog_mu=bog_mu,
-            bog_range=bog_range,
-            bog_interval=bog_interval,
         )
 
         image = F.interpolate(image, size=(ori_height, ori_width), mode="bilinear")
@@ -1298,135 +1253,6 @@ class BooguImagePipeline(DiffusionPipeline):
                     return "ti2i"
         return "t2i"
 
-    def _project_matrix(
-        self,
-        m0: torch.Tensor,  # [B, C, H, W]  # The delta: model_pred - model_pred_uncond
-        m1: torch.Tensor,  # [B, C, H, W]  # The conditional pred
-        dim: int = -2,
-    ):
-        """
-        Project m0 onto m1 by treating each [H, W] slice as a matrix.
-        Args:
-            m0: Input tensor to be decomposed, shape [B, C, H, W].
-            m1: Reference tensor that provides projection directions, shape [B, C, H, W].
-            dim: Vector dimension to project along within each [H, W] matrix.
-                dim = -2 projects column vectors (along H), dim = -1 projects row vectors (along W).
-        Returns:
-            A tuple (m0_parallel, m0_orthogonal), both with shape [B, C, H, W].
-        """
-        dtype = m0.dtype
-        m0, m1 = m0.double(), m1.double()
-        b, c, h, w = m0.shape
-        # Only support projecting column vectors (dim=-2) or row vectors (dim=-1).
-        assert dim in (-1, -2), "dim must be -1 (rows) or -2 (columns)"
-        # Treat as a batch of matrices: [B*C, H, W]
-        m0_mat = m0.reshape(b * c, h, w)
-        m1_mat = m1.reshape(b * c, h, w)
-        # Normalize along the vector dimension selected by dim.
-        m1_unit = torch.nn.functional.normalize(m1_mat, dim=dim)
-        # Project each row/column vector of m0 onto the corresponding vector of m1.
-        m0_parallel = (m0_mat * m1_unit).sum(dim=dim, keepdim=True) * m1_unit
-        m0_orthogonal = m0_mat - m0_parallel
-        return m0_parallel.reshape(b, c, h, w).to(dtype), m0_orthogonal.reshape(b, c, h, w).to(dtype)
-
-    def _newtonschulz5_batched(self, G: torch.Tensor, steps: int = 5, eps: float = 1e-7):
-        """
-        Batched Newton-Schulz iteration.
-
-        Accepts:
-        - (H, W)          -> returns (H, W)
-        - (N, H, W)       -> returns (N, H, W)
-        - (B, C, H, W)    -> returns (B, C, H, W)
-        """
-        a, b, c = (3.4445, -4.7750, 2.0315)
-
-        orig_ndim = G.ndim
-        if orig_ndim == 2:
-            G3 = G.unsqueeze(0)  # (1, H, W)
-            out_shape = None
-        elif orig_ndim == 3:
-            G3 = G  # (N, H, W)
-            out_shape = None
-        elif orig_ndim == 4:
-            B, C, H, W = G.shape
-            G3 = G.reshape(B * C, H, W)  # (N, H, W)
-            out_shape = (B, C, H, W)
-        else:
-            raise ValueError(f"Expected 2D/3D/4D tensor, got ndim={G.ndim}")
-
-        # Match the original behavior: decide whether to transpose based on H/W
-        H, W = G3.shape[-2], G3.shape[-1]
-
-        # Compute in bfloat16 (keeps the original logic)
-        X = G3.to(torch.bfloat16)
-
-        # Normalize each matrix by its Frobenius norm: X /= (||X||_F + eps)
-        # Frobenius norm = sqrt(sum_ij X^2)
-        nrm = torch.linalg.norm(X, ord="fro", dim=(-2, -1))  # (N,)
-        X = X / (nrm.unsqueeze(-1).unsqueeze(-1) + eps)
-
-        transposed = False
-        if H > W:
-            # Transpose the last two dims so we iterate on the "shorter" dimension first
-            X = X.transpose(-2, -1)  # (N, W, H)
-            transposed = True
-
-        # Newton–Schulz iterations (batched GEMMs)
-        for _ in range(steps):
-            A = X @ X.transpose(-2, -1)  # (N, m, m)
-            Bm = b * A + c * (A @ A)  # (N, m, m)
-            X = a * X + (Bm @ X)  # (N, m, n)
-
-        # Transpose back if we transposed at the beginning
-        if transposed:
-            X = X.transpose(-2, -1)
-
-        # Restore original shape
-        if orig_ndim == 2:
-            return X.squeeze(0)
-        if out_shape is not None:
-            return X.reshape(out_shape)
-        return X
-
-    def bog_norm(self, G: torch.Tensor) -> torch.Tensor:
-        """
-        G: [..., H, W]
-        return: normalized tensor with same shape
-        """
-        if G.dim() < 2:
-            raise ValueError("G must have at least 2 dims, got shape {}".format(tuple(G.shape)))
-        return self._newtonschulz5_batched(G)
-
-    def calculate_boosted_orthogonal_guidance(
-        self,
-        model_pred: torch.Tensor,  # [B, C, H, W]
-        model_pred_uncond: torch.Tensor,  # [B, C, H, W]
-        momentum_state: MomentumRollingSum = None,
-        mu: float = 0.1,
-    ) -> torch.Tensor:
-        delta = model_pred - model_pred_uncond
-
-        if momentum_state is not None:
-            delta = momentum_state.update(delta)
-
-        ## Norm: Newton-Schulz Estimation.
-
-        delta = self.bog_norm(delta)
-
-        r = delta.shape[-2] * 1.0
-        c = delta.shape[-1] * 1.0
-        r_wei = r / (r + c + 1.0)
-        c_wei = c / (r + c + 1.0)
-
-        delta_parallel_col, delta_orthogonal_col = self._project_matrix(delta, model_pred, dim=-2)
-        delta_parallel_row, delta_orthogonal_row = self._project_matrix(delta, model_pred, dim=-1)
-
-        delta_bog = r_wei * (delta_orthogonal_row + mu * delta_parallel_row) + c_wei * (
-            delta_orthogonal_col + mu * delta_parallel_col
-        )
-
-        return delta_bog
-
     def processing(
         self,
         latents,
@@ -1446,14 +1272,6 @@ class BooguImagePipeline(DiffusionPipeline):
         empty_instruction_attention_mask=None,
         use_empty_neg_instruct_4_ref_img_pred_at_image_guide_in_double_guide=False,
         use_empty_neg_instruct_4_ref_img_pred_at_text_guide_in_double_guide=False,
-        use_boosted_orthogonal_guidance: bool = False,
-        # Boosted Orthogonal Guidance Momentum State
-        tg_momentum_state: MomentumRollingSum = None,
-        ig_momentum_state: MomentumRollingSum = None,
-        eg_momentum_state: MomentumRollingSum = None,
-        bog_mu: float = 0.1,
-        bog_range=[0.0, 1.0],
-        bog_interval: int = 3,
     ):
         task_type = self._get_task_type_by_ref_latents(ref_latents)
 
@@ -1533,44 +1351,14 @@ class BooguImagePipeline(DiffusionPipeline):
                     if use_empty_neg_instruct_4_ref_img_pred_at_text_guide_in_double_guide:
                         model_pred_drop_text_neg = model_pred_drop_text_empty_instruct
 
-                    if (
-                        use_boosted_orthogonal_guidance
-                        and (bog_range[0] <= t <= bog_range[1])
-                        and (i % bog_interval == 0)
-                    ):
-                        delta_text = self.calculate_boosted_orthogonal_guidance(
-                            model_pred=model_pred,
-                            model_pred_uncond=model_pred_drop_text,
-                            momentum_state=tg_momentum_state,
-                            mu=bog_mu,
-                        )
-                        delta_image = self.calculate_boosted_orthogonal_guidance(
-                            model_pred=model_pred_drop_text,
-                            model_pred_uncond=model_pred_drop_all,
-                            momentum_state=ig_momentum_state,
-                            mu=bog_mu,
-                        )
-                    else:
-                        delta_text = model_pred - model_pred_drop_text
-                        delta_image = model_pred_drop_text - model_pred_drop_all
+                    delta_text = model_pred - model_pred_drop_text
+                    delta_image = model_pred_drop_text - model_pred_drop_all
 
                     if (empty_instruction_guidance_scale != 0.0) and (
                         use_empty_neg_instruct_4_ref_img_pred_at_image_guide_in_double_guide
                         != use_empty_neg_instruct_4_ref_img_pred_at_text_guide_in_double_guide
                     ):
-                        if (
-                            use_boosted_orthogonal_guidance
-                            and (bog_range[0] <= t <= bog_range[1])
-                            and (i % bog_interval == 0)
-                        ):
-                            delta_empty_instruct = self.calculate_boosted_orthogonal_guidance(
-                                model_pred=model_pred_drop_text_pos,
-                                model_pred_uncond=model_pred_drop_text_neg,
-                                momentum_state=eg_momentum_state,
-                                mu=bog_mu,
-                            )
-                        else:
-                            delta_empty_instruct = model_pred_drop_text_pos - model_pred_drop_text_neg
+                        delta_empty_instruct = model_pred_drop_text_pos - model_pred_drop_text_neg
 
                         model_pred = (
                             model_pred
@@ -1596,19 +1384,7 @@ class BooguImagePipeline(DiffusionPipeline):
                         instruction_attention_mask=negative_instruction_attention_mask,
                         ref_image_hidden_states=ref_latents,
                     )
-                    if (
-                        use_boosted_orthogonal_guidance
-                        and (bog_range[0] <= t <= bog_range[1])
-                        and (i % bog_interval == 0)
-                    ):
-                        delta_text = self.calculate_boosted_orthogonal_guidance(
-                            model_pred=model_pred,
-                            model_pred_uncond=model_pred_drop_text,
-                            momentum_state=tg_momentum_state,
-                            mu=bog_mu,
-                        )
-                    else:
-                        delta_text = model_pred - model_pred_drop_text
+                    delta_text = model_pred - model_pred_drop_text
 
                     # Equivalent:  model_pred = model_pred_drop_text + text_guidance_scale * (model_pred - model_pred_drop_text)
                     model_pred = model_pred + (text_guidance_scale - 1) * delta_text
@@ -1623,19 +1399,7 @@ class BooguImagePipeline(DiffusionPipeline):
                         instruction_attention_mask=instruction_attention_mask,
                         ref_image_hidden_states=None,
                     )
-                    if (
-                        use_boosted_orthogonal_guidance
-                        and (bog_range[0] <= t <= bog_range[1])
-                        and (i % bog_interval == 0)
-                    ):
-                        delta_image = self.calculate_boosted_orthogonal_guidance(
-                            model_pred=model_pred,
-                            model_pred_uncond=model_pred_drop_image,
-                            momentum_state=ig_momentum_state,
-                            mu=bog_mu,
-                        )
-                    else:
-                        delta_image = model_pred - model_pred_drop_image
+                    delta_image = model_pred - model_pred_drop_image
 
                     # Equivalent: model_pred = model_pred_drop_image + image_guidance_scale * (model_pred - model_pred_drop_image)
                     model_pred = model_pred + (image_guidance_scale - 1) * delta_image
@@ -1650,19 +1414,7 @@ class BooguImagePipeline(DiffusionPipeline):
                         ref_image_hidden_states=None,
                     )
 
-                    if (
-                        use_boosted_orthogonal_guidance
-                        and (bog_range[0] <= t <= bog_range[1])
-                        and (i % bog_interval == 0)
-                    ):
-                        delta_text = self.calculate_boosted_orthogonal_guidance(
-                            model_pred=model_pred,
-                            model_pred_uncond=model_pred_drop_all,
-                            momentum_state=tg_momentum_state,
-                            mu=bog_mu,
-                        )
-                    else:
-                        delta_text = model_pred - model_pred_drop_all
+                    delta_text = model_pred - model_pred_drop_all
 
                     # Equivalent:  model_pred = model_pred_drop_all + text_guidance_scale * (model_pred - model_pred_drop_all)
                     model_pred = model_pred + (text_guidance_scale - 1) * delta_text
