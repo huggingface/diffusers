@@ -165,6 +165,17 @@ def assert_tensors_close(
     if not is_torch_available():
         raise ValueError("PyTorch needs to be installed to use this function.")
 
+    # Some models (e.g. Z-Image, Cosmos ControlNet) return a list/tuple of tensors as their output. Compare these
+    # element-wise so the same helper works regardless of whether the output is a single tensor or a sequence.
+    if isinstance(actual, (list, tuple)) or isinstance(expected, (list, tuple)):
+        if not (isinstance(actual, (list, tuple)) and isinstance(expected, (list, tuple))):
+            raise AssertionError(f"{msg} Type mismatch: actual {type(actual)} vs expected {type(expected)}")
+        if len(actual) != len(expected):
+            raise AssertionError(f"{msg} Length mismatch: actual {len(actual)} vs expected {len(expected)}")
+        for i, (a, e) in enumerate(zip(actual, expected)):
+            assert_tensors_close(a, e, atol=atol, rtol=rtol, msg=f"{msg} [element {i}]")
+        return
+
     if actual.shape != expected.shape:
         raise AssertionError(f"{msg} Shape mismatch: actual {actual.shape} vs expected {expected.shape}")
 
