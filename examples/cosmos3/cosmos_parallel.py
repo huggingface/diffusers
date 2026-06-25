@@ -27,10 +27,11 @@ sharding axes are provided, composable on a 2-D ``(tp, cp)`` device mesh:
     (Cosmos3-Super, ~120 GB) loads across several. Attention stays dense; pair it with
     ``enable_cosmos3_flash_attention`` (or with CP) so GQA uses the flash kernel.
 
-The model carries no parallelism logic — it exposes small no-op seams:
-``transformer._cp_shard_fn`` / ``_cp_gather_fn`` (sequence shard/gather around the
-decoder stack) and ``Cosmos3AttnProcessor._run_attention`` (an override seam for the
-attention core). The helpers below wire those up.
+The model carries no parallelism logic — it exposes small no-op seams on the transformer
+(``_cp_shard_fn`` / ``_cp_gather_fn``, sequence shard/gather around the decoder stack) and
+runs whatever attention processor is installed. Attention parallelism lives entirely in the
+standalone processors below (each a self-contained ``__call__``, installed via
+``set_processor``), so the model file needs no attention seam. The helpers below wire those up.
 
 Why Cosmos 3 needs a custom CP path (not diffusers' declarative ``_cp_plan``):
   1. grouped-query attention — K/V heads must be repeated to match the query heads;
@@ -48,7 +49,7 @@ count and call SDPA with ``enable_gqa=False``, so it dispatches to flash (O(S) m
 import torch
 
 from diffusers.models.attention_dispatch import AttentionBackendName, dispatch_attention_fn
-from diffusers.models.transformers.transformer_cosmos3 import Cosmos3AttnProcessor
+from diffusers.models.transformers.transformer_cosmos3 import _rotate_half
 
 
 try:  # torch >= 2.4
@@ -68,6 +69,39 @@ def _repeat_kv_heads(x, repeats):
     seq_len, num_kv_heads, head_dim = x.shape
     x = x[:, :, None, :].expand(seq_len, num_kv_heads, repeats, head_dim)
     return x.reshape(seq_len, num_kv_heads * repeats, head_dim)
+
+
+def _project_qkv_with_rope(attn, und_seq, gen_seq, rotary_emb):
+    """Shared processor prologue: project both pathways to q/k/v, RMS-norm q/k, and apply
+    rotary embeddings. Returns ``(q_und, k_und, v_und, q_gen, k_gen, v_gen)``, each shaped
+    ``[seq, heads, head_dim]``.
+
+    Mirrors the projection + RoPE code in ``Cosmos3AttnProcessor.__call__`` so the parallel
+    processors below stay standalone (each writes its own ``__call__``) without the model file
+    needing an override seam.
+    """
+    q_und = attn.to_q(und_seq).view(-1, attn.num_attention_heads, attn.head_dim)
+    k_und = attn.to_k(und_seq).view(-1, attn.num_key_value_heads, attn.head_dim)
+    v_und = attn.to_v(und_seq).view(-1, attn.num_key_value_heads, attn.head_dim)
+    q_gen = attn.add_q_proj(gen_seq).view(-1, attn.num_attention_heads, attn.head_dim)
+    k_gen = attn.add_k_proj(gen_seq).view(-1, attn.num_key_value_heads, attn.head_dim)
+    v_gen = attn.add_v_proj(gen_seq).view(-1, attn.num_key_value_heads, attn.head_dim)
+
+    q_und = attn.norm_q(q_und)
+    k_und = attn.norm_k(k_und)
+    q_gen = attn.norm_added_q(q_gen)
+    k_gen = attn.norm_added_k(k_gen)
+
+    cos_und, sin_und, cos_gen, sin_gen = rotary_emb
+    cos_und = cos_und.unsqueeze(1)
+    sin_und = sin_und.unsqueeze(1)
+    q_und = q_und * cos_und + _rotate_half(q_und) * sin_und
+    k_und = k_und * cos_und + _rotate_half(k_und) * sin_und
+    cos_gen = cos_gen.unsqueeze(1)
+    sin_gen = sin_gen.unsqueeze(1)
+    q_gen = q_gen * cos_gen + _rotate_half(q_gen) * sin_gen
+    k_gen = k_gen * cos_gen + _rotate_half(k_gen) * sin_gen
+    return q_und, k_und, v_und, q_gen, k_gen, v_gen
 
 
 # =============================================================================
@@ -253,20 +287,21 @@ def cosmos3_cp_attention(cp_mesh, q_und, k_und, v_und, q_gen, k_gen, v_gen, gen_
     return causal_out.flatten(-2, -1), full_out.flatten(-2, -1)
 
 
-class Cosmos3CPAttnProcessor(Cosmos3AttnProcessor):
+class Cosmos3CPAttnProcessor:
     """Cosmos 3 attention processor whose attention core runs Ulysses CP.
 
-    It reuses the base processor's projection + rotary code (``__call__``) and overrides
-    only ``_run_attention`` to bracket the two pathways with all-to-all collectives. The
-    Ulysses mesh is read from ``self.cp_mesh``; the per-call generation key mask is read
-    from the attention module (stamped each forward by the shard seam).
+    Standalone processor: its ``__call__`` projects + applies RoPE via the shared prologue,
+    then brackets the two pathways with all-to-all collectives. The Ulysses mesh is read from
+    ``self.cp_mesh``; the per-call generation key mask is read from the attention module
+    (stamped each forward by the shard seam).
     """
 
     def __init__(self, cp_mesh):
         self.cp_mesh = cp_mesh
 
-    def _run_attention(self, attn, q_und, k_und, v_und, q_gen, k_gen, v_gen):
-        return cosmos3_cp_attention(
+    def __call__(self, attn, und_seq, gen_seq, rotary_emb):
+        q_und, k_und, v_und, q_gen, k_gen, v_gen = _project_qkv_with_rope(attn, und_seq, gen_seq, rotary_emb)
+        causal_out, full_out = cosmos3_cp_attention(
             self.cp_mesh,
             q_und,
             k_und,
@@ -276,6 +311,9 @@ class Cosmos3CPAttnProcessor(Cosmos3AttnProcessor):
             v_gen,
             gen_key_mask=getattr(attn, "_cp_gen_key_mask", None),
         )
+        und_out = attn.to_out(causal_out)
+        gen_out = attn.to_add_out(full_out)
+        return und_out, gen_out
 
 
 def enable_cosmos3_context_parallel(transformer, cp_mesh):
@@ -311,18 +349,19 @@ def enable_cosmos3_context_parallel(transformer, cp_mesh):
 # =============================================================================
 # Dense flash attention (GQA-safe; for TP without CP)
 # =============================================================================
-class Cosmos3FlashAttnProcessor(Cosmos3AttnProcessor):
+class Cosmos3FlashAttnProcessor:
     """Dense attention that expands the GQA KV heads to the query-head count so SDPA
     uses the flash kernel (``enable_gqa=False``) instead of the math fallback, which
     materializes the full ``[S, S]`` score matrix and OOMs on long sequences.
 
-    No collectives: attention is computed locally over the full sequence (the head
-    counts on the attention module are the rank-local values set by
+    Standalone processor: no collectives — attention is computed locally over the full
+    sequence (the head counts on the attention module are the rank-local values set by
     ``enable_cosmos3_tensor_parallel``). Use this with TP-only; CP installs its own
     processor that already handles the flash dispatch.
     """
 
-    def _run_attention(self, attn, q_und, k_und, v_und, q_gen, k_gen, v_gen):
+    def __call__(self, attn, und_seq, gen_seq, rotary_emb):
+        q_und, k_und, v_und, q_gen, k_gen, v_gen = _project_qkv_with_rope(attn, und_seq, gen_seq, rotary_emb)
         repeats = attn.num_attention_heads // attn.num_key_value_heads
         k_und, v_und = _repeat_kv_heads(k_und, repeats), _repeat_kv_heads(v_und, repeats)
         k_gen, v_gen = _repeat_kv_heads(k_gen, repeats), _repeat_kv_heads(v_gen, repeats)
@@ -350,7 +389,9 @@ class Cosmos3FlashAttnProcessor(Cosmos3AttnProcessor):
             backend=AttentionBackendName.NATIVE,
             parallel_config=None,
         ).squeeze(0)
-        return causal_out.flatten(-2, -1), full_out.flatten(-2, -1)
+        und_out = attn.to_out(causal_out.flatten(-2, -1))
+        gen_out = attn.to_add_out(full_out.flatten(-2, -1))
+        return und_out, gen_out
 
 
 def enable_cosmos3_flash_attention(transformer):
@@ -378,8 +419,9 @@ def enable_cosmos3_tensor_parallel(transformer, tp_mesh):
     Each rank then owns ``num_attention_heads / tp`` query heads and
     ``num_key_value_heads / tp`` KV heads, so the per-layer head counts on every
     attention module are rewritten to their local values — the projection + reshape
-    code in ``Cosmos3AttnProcessor`` reads these. The embeddings, final norms, lm_head
-    and modality projections stay replicated (they're a small fraction of the weights).
+    code in ``_project_qkv_with_rope`` (used by the installed processor) reads these.
+    The embeddings, final norms, lm_head and modality projections stay replicated
+    (they're a small fraction of the weights).
 
     Memory note: weights are loaded to CPU first, then each layer is moved to its GPU
     and sharded in place, so the full model is never materialized on one device.
