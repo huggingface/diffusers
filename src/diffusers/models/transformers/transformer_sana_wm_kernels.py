@@ -57,11 +57,9 @@ except ImportError:
     class _TritonShim:
         """No-op stand-in for ``triton`` / ``triton.language`` on systems without Triton.
 
-        ``@triton.jit`` becomes a pass-through so the @-decorated kernel
-        functions are still defined as plain Python (and never called on the
-        torch fallback path). Any attribute access returns the same shim so
-        ``tl.constexpr``, ``tl.load`` etc. evaluate to a harmless sentinel —
-        which is fine as long as no kernel body actually executes.
+        ``@triton.jit`` becomes a pass-through so the @-decorated kernel functions are still defined as plain Python
+        (and never called on the torch fallback path). Any attribute access returns the same shim so ``tl.constexpr``,
+        ``tl.load`` etc. evaluate to a harmless sentinel — which is fine as long as no kernel body actually executes.
         """
 
         def __getattr__(self, name):
@@ -148,9 +146,8 @@ PRECISION_OVERRIDE: int | None = int(_env_prec) if _env_prec is not None else No
 def _resolve_launch_config() -> tuple:
     """Returns (prec, dot_prec, state_fp32, num_warps).
 
-    Uses ``PRECISION_OVERRIDE`` when set; otherwise falls back to ``_kcfg()``
-    (which picks ``STATE_FP32`` based on per-GPU SRAM). ``num_warps`` is
-    clamped to 4 when dots run on fp32 operands (more registers needed).
+    Uses ``PRECISION_OVERRIDE`` when set; otherwise falls back to ``_kcfg()`` (which picks ``STATE_FP32`` based on
+    per-GPU SRAM). ``num_warps`` is clamped to 4 when dots run on fp32 operands (more registers needed).
     """
     cfg = _kcfg()
     prec = PRECISION_OVERRIDE if PRECISION_OVERRIDE is not None else 2
@@ -167,10 +164,8 @@ def prepare_rope_tables(rotary_emb, N: int, D: int, device) -> tuple[torch.Tenso
     """Complex rotary_emb `(1, 1, N, D//2)` → expanded (N, D) cos/sin tables.
 
     Encodes the interleaved-pair rotation
-        y[2i]   = x[2i]*cos[i] - x[2i+1]*sin[i]
-        y[2i+1] = x[2i]*sin[i] + x[2i+1]*cos[i]
-    as  y[d] = x[d]*cos_exp[d] + x[d^1]*sin_exp[d]
-    where sin_exp[2i] = -sin[i], sin_exp[2i+1] = +sin[i].
+        y[2i] = x[2i]*cos[i] - x[2i+1]*sin[i] y[2i+1] = x[2i]*sin[i] + x[2i+1]*cos[i]
+    as y[d] = x[d]*cos_exp[d] + x[d^1]*sin_exp[d] where sin_exp[2i] = -sin[i], sin_exp[2i+1] = +sin[i].
 
     Returns (cos_exp, sin_exp) both (N, D) float32, contiguous.
     """
@@ -254,8 +249,8 @@ def fused_qk_inv_rms(
 ) -> tuple[torch.Tensor, torch.Tensor]:
     """Single-pass Triton fused Q+K inverse-RMS.
 
-    Replaces ``(_precompute_inv_rms(qkv, 0, C, eps), _precompute_inv_rms(qkv, 1, C, eps))``
-    with one launch that reads each ``(b, n)`` row of ``qkv`` exactly once.
+    Replaces ``(_precompute_inv_rms(qkv, 0, C, eps), _precompute_inv_rms(qkv, 1, C, eps))`` with one launch that reads
+    each ``(b, n)`` row of ``qkv`` exactly once.
 
     Args:
       qkv: (B, N, 3, H, D) contiguous tensor, any fp dtype.
@@ -306,8 +301,8 @@ def fused_bigdn_func(
 ) -> torch.Tensor:
     """Bidirectional fused GDN. Returns ``(B, N, H, D)``.
 
-    Thin entry point kept for call-site stability; delegates to
-    :func:`fused_bigdn_bidi_chunkwise` from ``fused_gdn_chunkwise``.
+    Thin entry point kept for call-site stability; delegates to :func:`fused_bigdn_bidi_chunkwise` from
+    ``fused_gdn_chunkwise``.
     """
     _require_triton("fused_bigdn_func")
     return fused_bigdn_bidi_chunkwise(
@@ -335,8 +330,7 @@ def fused_bigdn_func(
 def _invert_SE3(transforms: torch.Tensor) -> torch.Tensor:
     """Invert a 4x4 SE(3) matrix batch (closed-form).
 
-    Mirrors the production ``_invert_SE3`` in ``sana_camctrl_blocks.py``;
-    inlined to keep this module dependency-light.
+    Mirrors the production ``_invert_SE3`` in ``sana_camctrl_blocks.py``; inlined to keep this module dependency-light.
     """
     assert transforms.shape[-2:] == (4, 4)
     Rinv = transforms[..., :3, :3].transpose(-1, -2)
@@ -355,9 +349,8 @@ def _process_camera_conditions_raymats_only(
 ) -> torch.Tensor:
     """Lightweight variant of ``_process_camera_conditions_ucpe`` — raymats only.
 
-    Computes *only* the per-ray ``world -> ray_local`` SE(3) transforms used
-    by UCPE single-path.  Skips the ``compute_up_lat_map`` path (absmap) that
-    the cam branch never consumes — that saves ~1 ms per block on H100.
+    Computes *only* the per-ray ``world -> ray_local`` SE(3) transforms used by UCPE single-path. Skips the
+    ``compute_up_lat_map`` path (absmap) that the cam branch never consumes — that saves ~1 ms per block on H100.
 
     Args:
         camera_conditions: ``(B, F, 20)`` — ``[c2w_16 | fx | fy | cx | cy]``.
@@ -443,9 +436,8 @@ def _prepare_ucpe_rope_tables(
     """Convert complex RoPE ``(1, 1, N, D_half//2)`` to interleaved ``(N, D_half)`` cos/sin.
 
     Uses the interleaved-pair convention:
-        y[2i]   = x[2i]*cos[i] - x[2i+1]*sin[i]
-        y[2i+1] = x[2i]*sin[i] + x[2i+1]*cos[i]
-    encoded as  ``y[d] = x[d]*cos_exp[d] + x[d^1]*sin_exp[d]`` with
+        y[2i] = x[2i]*cos[i] - x[2i+1]*sin[i] y[2i+1] = x[2i]*sin[i] + x[2i+1]*cos[i]
+    encoded as ``y[d] = x[d]*cos_exp[d] + x[d^1]*sin_exp[d]`` with
         sin_exp[2i] = -sin[i], sin_exp[2i+1] = +sin[i].
     """
     del device  # all outputs inherit device from freqs
@@ -497,9 +489,8 @@ def _cam_prep_kernel(
 ):
     """One program per (b, n, h) — processes a single (Q, K, V) head slice.
 
-    Loads the first D_HALF dims as a (N_GROUPS, 4) tile (for the UCPE
-    block-diagonal 4x4 projmat), and the second D_HALF dims as a
-    (D_HALF,) vector (for RoPE). No redundant loads.
+    Loads the first D_HALF dims as a (N_GROUPS, 4) tile (for the UCPE block-diagonal 4x4 projmat), and the second
+    D_HALF dims as a (D_HALF,) vector (for RoPE). No redundant loads.
     """
     pid = tl.program_id(0)
     h_idx = pid % H
@@ -655,8 +646,7 @@ def cam_prep_func(
         norm_eps: RMSNorm epsilon.
 
     Returns:
-        q_trans, k_trans, v_trans: ``(B, H, D, N)`` same dtype as ``q_raw``.
-        inflation_sq: ``(B, H, N)`` fp32, ratio
+        q_trans, k_trans, v_trans: ``(B, H, D, N)`` same dtype as ``q_raw``. inflation_sq: ``(B, H, N)`` fp32, ratio
             ``(||k_post_ucpe|| / ||k_pre_ucpe||)^2`` per token/head.
     """
     _require_triton("cam_prep_func")
@@ -905,9 +895,8 @@ _ARCH_OVERRIDES: dict = {}
 def _arch_key(cap: tuple) -> str:
     """Map compute capability → named arch bucket in `_CHUNKWISE_TUNING`.
 
-    Blackwell (cap[0] >= 10) is split into "blackwell_dc" and "blackwell_spark"
-    by SRAM size (≥150 KB vs less). Without CUDA or for unknown archs we
-    default to the conservative "ampere" bucket.
+    Blackwell (cap[0] >= 10) is split into "blackwell_dc" and "blackwell_spark" by SRAM size (≥150 KB vs less). Without
+    CUDA or for unknown archs we default to the conservative "ampere" bucket.
     """
     if cap[0] == 8:
         return "ampere"
@@ -936,8 +925,8 @@ def _auto_config(dot_prec: int, cap: tuple, shape_hint: str | None = None) -> tu
       3. `_CHUNKWISE_TUNING[(arch, prec)]` — primary per-(arch, prec) table.
       4. Fallback to ("ampere", prec) if the arch is unrecognised.
 
-    Returns the legacy 8-tuple `(a_nw, a_BS, b_nw, b_ns, b_use_acc, c_nw, c_BS, c_ns)`
-    for backward compatibility with `_get_arch_config` callers.
+    Returns the legacy 8-tuple `(a_nw, a_BS, b_nw, b_ns, b_use_acc, c_nw, c_BS, c_ns)` for backward compatibility with
+    `_get_arch_config` callers.
     """
     arch = _arch_key(cap)
     prec = _prec_key(dot_prec)
@@ -959,13 +948,10 @@ def _get_arch_config(
     """Returns (a_warps, a_BLOCK_S, b_warps, b_stages, b_use_acc_fusion,
                 c_warps, c_BLOCK_S, c_stages).
 
-    dot_precision: 0=bf16 TC, 1=TF32 TC, 2=IEEE fp32.
-    shape_hint:    optional string key for `_CHUNKWISE_SHAPE_OVERRIDES`.
-    device:        device whose capability drives the lookup. Defaults to the
-                   current CUDA device — pass ``qkv.device`` (or any input
-                   tensor's device) when launching kernels in heterogeneous
-                   or multi-GPU single-process setups so the right tuning
-                   bucket is chosen.
+    dot_precision: 0=bf16 TC, 1=TF32 TC, 2=IEEE fp32. shape_hint: optional string key for `_CHUNKWISE_SHAPE_OVERRIDES`.
+    device: device whose capability drives the lookup. Defaults to the
+                   current CUDA device — pass ``qkv.device`` (or any input tensor's device) when launching kernels in
+                   heterogeneous or multi-GPU single-process setups so the right tuning bucket is chosen.
     """
     if not torch.cuda.is_available():
         cap = (9, 0)  # assume modern when querying from CPU
@@ -1215,15 +1201,12 @@ def phase_a(
 ):
     """Compute (I-P_kv), A, (I-P_z), B for all (B, H, F) via 2 kernels (KV + Z).
 
-    `skip_relu=True` makes the K-stream prep a pure linear chain (no ReLU on
-    K_normed * k_scale). Used by the camera-branch chunkwise wrapper, where K
-    has already been ReLU'd by the cam_prep kernel and subsequently rotated
-    by UCPE+RoPE — re-applying ReLU on the rotated values would clobber
-    legitimate negatives.
+    `skip_relu=True` makes the K-stream prep a pure linear chain (no ReLU on K_normed * k_scale). Used by the
+    camera-branch chunkwise wrapper, where K has already been ReLU'd by the cam_prep kernel and subsequently rotated by
+    UCPE+RoPE — re-applying ReLU on the rotated values would clobber legitimate negatives.
 
-    `skip_z=True` skips the Phase A Z kernel entirely and returns placeholder
-    tensors for I_P_z and B_z. Used by NUM_ONLY callers (camera branch) to
-    avoid wasted Z-stream prep when the denominator scan won't be used.
+    `skip_z=True` skips the Phase A Z kernel entirely and returns placeholder tensors for I_P_z and B_z. Used by
+    NUM_ONLY callers (camera branch) to avoid wasted Z-stream prep when the denominator scan won't be used.
     """
     # Auto-pick (num_warps, BLOCK_S) per arch+precision unless overridden
     if num_warps is None or BLOCK_S is None:
@@ -1478,30 +1461,24 @@ def phase_b_triton(
 ):
     """Phase B serial-F scan over (B*H,).
 
-    Forward scan can be seeded with `init_state_kv`/`init_state_z` (autoregressive
-    sampling chunk > 0) and can write the terminal `M_{F-1}`/`z_{F-1}` to caller-
-    provided buffers when `return_final_state=True`.
+    Forward scan can be seeded with `init_state_kv`/`init_state_z` (autoregressive sampling chunk > 0) and can write
+    the terminal `M_{F-1}`/`z_{F-1}` to caller- provided buffers when `return_final_state=True`.
 
-    `direction`: 0=both (default), 1=forward-only, 2=reverse-only. Forward-only
-    skips reverse scan + reverse output buffers; reverse-only skips forward scan
-    + state load/save. Used by single-direction state-cached entry points.
+    `direction`: 0=both (default), 1=forward-only, 2=reverse-only. Forward-only skips reverse scan + reverse output
+    buffers; reverse-only skips forward scan + state load/save. Used by single-direction state-cached entry points.
 
-    `combined_history` (only meaningful with direction=0): the rev branch
-    read-add-stores into the fwd buffer so its contents become
-    M_hist[f] = M_fwd[f] + M_rev[f] (and same for z). Lets the caller run
-    Phase C exactly once on the combined history, since Phase C is linear in
-    M and z (`Q @ (M_fwd + M_rev) = Q @ M_fwd + Q @ M_rev`). When set,
+    `combined_history` (only meaningful with direction=0): the rev branch read-add-stores into the fwd buffer so its
+    contents become M_hist[f] = M_fwd[f] + M_rev[f] (and same for z). Lets the caller run Phase C exactly once on the
+    combined history, since Phase C is linear in M and z (`Q @ (M_fwd + M_rev) = Q @ M_fwd + Q @ M_rev`). When set,
     M_rev/z_rev outputs are placeholder dummies; only M_fwd/z_fwd carry data.
 
-    `skip_z`: skip the denominator/Z recurrence entirely. Used by camera
-    numerator-only scans where Phase C runs with `num_only=True`.
+    `skip_z`: skip the denominator/Z recurrence entirely. Used by camera numerator-only scans where Phase C runs with
+    `num_only=True`.
 
-    Returns (M_fwd, z_fwd, M_rev, z_rev) — and additionally (final_kv, final_z)
-    when return_final_state=True. Skipped-direction outputs are returned as a
-    1-element placeholder tensor (kernel never touches them when DIRECTION
-    gates them off); callers should always discard the slot they didn't ask
-    for. Reverse scan is always seeded with zeros (per upstream's bidi
-    state-cache convention — only forward state is cached).
+    Returns (M_fwd, z_fwd, M_rev, z_rev) — and additionally (final_kv, final_z) when return_final_state=True.
+    Skipped-direction outputs are returned as a 1-element placeholder tensor (kernel never touches them when DIRECTION
+    gates them off); callers should always discard the slot they didn't ask for. Reverse scan is always seeded with
+    zeros (per upstream's bidi state-cache convention — only forward state is cached).
     """
     BH = I_P_kv.shape[0]
     _, _, BLOCK_D, _ = A.shape  # A is always full [BH, F, BLOCK_D, BLOCK_D]
@@ -1773,10 +1750,9 @@ _PHASE_B_DTILE_ARCH_CACHE: dict = {}  # (dev, dot_prec) -> (d_splits, nw, ns, ac
 def _pick_phase_b_d_splits(BLOCK_D: int, dot_precision: int = 0):
     """Returns (d_splits, nw_override, ns_override, acc_override).
 
-    `d_splits=1` → use baseline `_phase_b_kernel` with `_CHUNKWISE_TUNING` config.
-    `d_splits>1` → use `_phase_b_dtile_kernel` with overrides for nw/ns/acc.
-    Override via env: PHASE_B_D_SPLITS, PHASE_B_DTILE_NW, PHASE_B_DTILE_NS,
-    PHASE_B_DTILE_ACC (1=True / 0=False).
+    `d_splits=1` → use baseline `_phase_b_kernel` with `_CHUNKWISE_TUNING` config. `d_splits>1` → use
+    `_phase_b_dtile_kernel` with overrides for nw/ns/acc. Override via env: PHASE_B_D_SPLITS, PHASE_B_DTILE_NW,
+    PHASE_B_DTILE_NS, PHASE_B_DTILE_ACC (1=True / 0=False).
     """
     import os
 
@@ -1998,21 +1974,18 @@ def phase_c(
     num_only: bool = False,
 ):
     """Phase C Pass-2 output. Optionally accumulates into caller-provided
-    ``num_out``/``den_out`` buffers (used to fuse reverse-direction output into
-    forward-direction buffer without allocating a separate one — saves ~45 MB
-    at B=1 bf16, ~180 MB at B=4).
+    ``num_out``/``den_out`` buffers (used to fuse reverse-direction output into forward-direction buffer without
+    allocating a separate one — saves ~45 MB at B=1 bf16, ~180 MB at B=4).
 
-    ``skip_last_frame=True`` early-returns the f=F-1 programs. Valid for the
-    reverse-accumulate call only, where M[F-1]/z[F-1] are guaranteed zero.
+    ``skip_last_frame=True`` early-returns the f=F-1 programs. Valid for the reverse-accumulate call only, where
+    M[F-1]/z[F-1] are guaranteed zero.
 
-    ``skip_relu=True`` matches Phase A KV's flag — used by the camera-branch
-    chunkwise wrapper where Q has already been ReLU'd by cam_prep before
-    being rotated by UCPE+RoPE; re-applying ReLU on the rotated Q would
-    clobber legitimate negatives.
+    ``skip_relu=True`` matches Phase A KV's flag — used by the camera-branch chunkwise wrapper where Q has already been
+    ReLU'd by cam_prep before being rotated by UCPE+RoPE; re-applying ReLU on the rotated Q would clobber legitimate
+    negatives.
 
-    ``num_only=True`` skips the denominator computation and store entirely
-    (kernel writes only ``num_out``; ``den_out`` is allowed to be None /
-    unallocated). Used by the camera-branch which has no Z scan.
+    ``num_only=True`` skips the denominator computation and store entirely (kernel writes only ``num_out``; ``den_out``
+    is allowed to be None / unallocated). Used by the camera-branch which has no Z scan.
     """
     if num_warps is None or num_stages is None or BLOCK_S is None:
         *_, c_w, c_bs, c_s = _get_arch_config(dot_precision, device=qkv.device)
@@ -2090,18 +2063,16 @@ def fused_bigdn_bidi_chunkwise(
     return_final_state=False,
 ):
     """Bidi chunkwise GDN forward, optionally with state-cache for autoregressive
-    sampling (chunk 0 = full bidi with state save; chunks > 0 seed forward scan
-    from saved state). Reverse always seeds from zero per upstream convention.
+    sampling (chunk 0 = full bidi with state save; chunks > 0 seed forward scan from saved state). Reverse always seeds
+    from zero per upstream convention.
 
-    Pipeline (2026-04-25 restructure): Phase A once → Phase B direction=0 with
-    combined_history=True (fwd seeded with init_state and saves final state;
-    rev zero-seeded; rev output summed into fwd buffer in-kernel via read-
-    add-store so on exit M_hist[f] = M_fwd[f] + M_rev[f]) → Phase C ONCE on
-    M_hist. Phase C linearity `Q @ (M_fwd + M_rev) = Q @ M_fwd + Q @ M_rev`
-    makes the in-kernel sum exact.
+    Pipeline (2026-04-25 restructure): Phase A once → Phase B direction=0 with combined_history=True (fwd seeded with
+    init_state and saves final state; rev zero-seeded; rev output summed into fwd buffer in-kernel via read- add-store
+    so on exit M_hist[f] = M_fwd[f] + M_rev[f]) → Phase C ONCE on M_hist. Phase C linearity `Q @ (M_fwd + M_rev) = Q @
+    M_fwd + Q @ M_rev` makes the in-kernel sum exact.
 
-    Replaces the prior 2× Phase B + 2× Phase C pattern. Saves one Phase C
-    launch + one Q+RoPE HBM pass and one M-shape buffer per call.
+    Replaces the prior 2× Phase B + 2× Phase C pattern. Saves one Phase C launch + one Q+RoPE HBM pass and one M-shape
+    buffer per call.
     """
     I_P_kv, A, I_P_z, B_z = phase_a(
         qkv,
@@ -2204,9 +2175,8 @@ def fused_gdn_func_chunkwise(
 ):
     """Single-direction chunkwise GDN — drop-in for `fused_gdn.fused_gdn_func`.
 
-    Computes only one scan direction (Phase B + Phase C × 1) and returns
-    `(num, den)` shape-compatible with the upstream function. dot_precision
-    defaults to whatever `_resolve_launch_config` returns (honors module-level
+    Computes only one scan direction (Phase B + Phase C × 1) and returns `(num, den)` shape-compatible with the
+    upstream function. dot_precision defaults to whatever `_resolve_launch_config` returns (honors module-level
     `PRECISION_OVERRIDE`).
     """
     if dot_precision is None:
@@ -2265,9 +2235,8 @@ def fused_gdn_stateful_chunkwise(
     dot_precision=None,
 ):
     """Single-direction chunkwise GDN with optional state cache — drop-in for
-    `fused_gdn.fused_gdn_stateful`. Forward direction supports state load/save
-    (used for autoregressive sampling); reverse direction always runs fresh
-    (per upstream's bidi state-cache convention).
+    `fused_gdn.fused_gdn_stateful`. Forward direction supports state load/save (used for autoregressive sampling);
+    reverse direction always runs fresh (per upstream's bidi state-cache convention).
     """
     if dot_precision is None:
         dot_precision = _default_dot_prec()
@@ -2378,30 +2347,22 @@ def fused_bidi_stateful_chunkwise_shared_phase_a(
     Phase B. Default chunkwise path for ``_fused_statecached_forward``.
 
     Pipeline (per layer per step):
-      1. Phase A once over qkv  — K/V/RoPE pre-norm; was previously duplicated
-         across two streams.
-      2. Phase B with direction=0 + combined_history=True — single program does
-         fwd then rev; fwd writes M_hist; rev read-add-stores into the same
-         buffer so on exit M_hist[f] = M_fwd[f] + M_rev[f] (same for z).
-         Forward branch loads init_state and saves final state.
-      3. Phase C ONCE on M_hist/z_hist  — Phase C is linear in M/z so
-         `Q @ (M_fwd + M_rev) = Q @ M_fwd + Q @ M_rev`.
+      1. Phase A once over qkv — K/V/RoPE pre-norm; was previously duplicated across two streams.
+      2. Phase B with direction=0 + combined_history=True — single program does fwd then rev; fwd writes M_hist; rev
+         read-add-stores into the same buffer so on exit M_hist[f] = M_fwd[f] + M_rev[f] (same for z). Forward branch
+         loads init_state and saves final state.
+      3. Phase C ONCE on M_hist/z_hist — Phase C is linear in M/z so `Q @ (M_fwd + M_rev) = Q @ M_fwd + Q @ M_rev`.
 
-    Returns ``(num_combined, den_combined, state_kv, state_z)`` — caller hands
-    the num/den pair to ``fused_bidi_merge(num, None, den, None, eps, gate)``
-    in PRE_SUMMED mode.
+    Returns ``(num_combined, den_combined, state_kv, state_z)`` — caller hands the num/den pair to
+    ``fused_bidi_merge(num, None, den, None, eps, gate)`` in PRE_SUMMED mode.
 
     HBM-traffic delta vs the prior 2× Phase C version (per call, B=1 prod):
-      saved : 1× Phase C Q+RoPE pass (~90 MB)
-      saved : one (B,N,H,D) num and (B,H,N) den allocation
-      cost  : Phase B rev does read-add of M_hist (~14 MB extra per layer)
-      net   : ~76 MB saved + 1 fewer kernel launch
+      saved : 1× Phase C Q+RoPE pass (~90 MB) saved : one (B,N,H,D) num and (B,H,N) den allocation cost : Phase B rev
+      does read-add of M_hist (~14 MB extra per layer) net : ~76 MB saved + 1 fewer kernel launch
 
-    Measured speed on GB10 (sm_121) at H=20, S=920, D=112, vs the prior
-    shared-Phase-A-with-2×-Phase-C path, across production F values:
-      P0 IEEE fp32     : 1.26-1.42× (F=3,6,11; B=1,2)
-      P2 bf16+fp32-st  : 1.57-1.80×
-      P3 bf16+bf16-st  : 1.63-1.96×
+    Measured speed on GB10 (sm_121) at H=20, S=920, D=112, vs the prior shared-Phase-A-with-2×-Phase-C path, across
+    production F values:
+      P0 IEEE fp32 : 1.26-1.42× (F=3,6,11; B=1,2) P2 bf16+fp32-st : 1.57-1.80× P3 bf16+bf16-st : 1.63-1.96×
     Correctness cos ≥ 0.999997 across all cells, state_kv exact.
     """
     if dot_precision is None:
@@ -2592,15 +2553,13 @@ def cam_scan_chunkwise(
     """Drop-in chunkwise replacement for `cam_scan_func`.
 
     Args mirror `cam_scan_func` exactly:
-      q, k, v: ``(B, H, D, N)`` fp32 contiguous (cam-prep'd: RMSNorm+ReLU+UCPE+RoPE)
-      beta:    ``(B, H, F, S)`` fp32 contiguous
-      decay:   ``(B, H, F)`` fp32 contiguous
-      reverse: bwd flip-and-shift semantics (autograd path); not yet supported.
-      init_state:       optional ``(B*H, BLOCK_D, BLOCK_D)`` fp32 — cross-chunk AR state.
-      save_final_state: when True, also returns ``(out, final_state)``.
+      q, k, v: ``(B, H, D, N)`` fp32 contiguous (cam-prep'd: RMSNorm+ReLU+UCPE+RoPE) beta: ``(B, H, F, S)`` fp32
+      contiguous decay: ``(B, H, F)`` fp32 contiguous reverse: bwd flip-and-shift semantics (autograd path); not yet
+      supported. init_state: optional ``(B*H, BLOCK_D, BLOCK_D)`` fp32 — cross-chunk AR state. save_final_state: when
+      True, also returns ``(out, final_state)``.
 
-    Returns ``out`` of shape ``(B, H, D, N)`` fp32, or
-    ``(out, final_state: (B*H, BLOCK_D, BLOCK_D))`` if save_final_state=True.
+    Returns ``out`` of shape ``(B, H, D, N)`` fp32, or ``(out, final_state: (B*H, BLOCK_D, BLOCK_D))`` if
+    save_final_state=True.
     """
     assert q.shape == k.shape == v.shape, f"q/k/v shape mismatch: {q.shape} {k.shape} {v.shape}"
     assert q.is_contiguous() and k.is_contiguous() and v.is_contiguous()
@@ -2753,10 +2712,9 @@ def cam_scan_bidi_chunkwise(
 ) -> torch.Tensor:
     """Bidirectional camera scan using shared chunkwise phases.
 
-    This is equivalent to ``cam_scan_chunkwise(..., reverse=False) +
-    cam_scan_chunkwise(..., reverse=True)`` for full bidirectional attention,
-    but it packs QKV once, runs Phase A once, combines forward/reverse histories
-    inside Phase B, and runs Phase C once on the summed state.
+    This is equivalent to ``cam_scan_chunkwise(..., reverse=False) + cam_scan_chunkwise(..., reverse=True)`` for full
+    bidirectional attention, but it packs QKV once, runs Phase A once, combines forward/reverse histories inside Phase
+    B, and runs Phase C once on the summed state.
     """
     _require_triton("cam_scan_bidi_chunkwise")
     assert q.shape == k.shape == v.shape, f"q/k/v shape mismatch: {q.shape} {k.shape} {v.shape}"
@@ -2839,9 +2797,8 @@ def cam_scan_pair_chunkwise(
 ) -> torch.Tensor:
     """Sum a forward camera scan and a separately-gated reverse scan.
 
-    Chunk-causal camera attention needs the reverse branch to use boundary-masked
-    gates while the forward branch uses the original gates. This wrapper keeps
-    that exact behavior but shares QKV packing, identity tables, and the final
+    Chunk-causal camera attention needs the reverse branch to use boundary-masked gates while the forward branch uses
+    the original gates. This wrapper keeps that exact behavior but shares QKV packing, identity tables, and the final
     output layout conversion across the two scans.
     """
     assert q.shape == k.shape == v.shape, f"q/k/v shape mismatch: {q.shape} {k.shape} {v.shape}"
@@ -3211,9 +3168,8 @@ def compute_up_lat_map(
 ):
     """Compute UCPE absolute embedding maps ``(up_map, lat_map)``.
 
-    ``up_map`` is a 2-channel projected up-direction; ``lat_map`` is a 1-channel
-    latitude. Concatenated they form the 3-channel absmap consumed by the
-    camera branch.
+    ``up_map`` is a 2-channel projected up-direction; ``lat_map`` is a 1-channel latitude. Concatenated they form the
+    3-channel absmap consumed by the camera branch.
     """
     B, T, _, _ = R.shape
     dtype = R.dtype

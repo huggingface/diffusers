@@ -466,35 +466,29 @@ def is_chunk_causal_request(
     """Decide whether a layer should run in chunk-causal (vs. fully bidirectional) mode.
 
     Chunk-causal mode applies when EITHER:
-      1. ``chunk_size`` is set and strictly less than ``T_effective`` (the
-         standard rule used by training and most inference paths), OR
+      1. ``chunk_size`` is set and strictly less than ``T_effective`` (the standard rule used by training and most
+         inference paths), OR
       2. ``chunk_index`` is explicitly provided by the caller.
 
-    Case (2) is required for the staircase cold-start at AR step 0
-    phases 0 / 1, where ``T_effective`` (= ``K + G_eff``, with G_eff in
-    {1, 2}) can be smaller than the model's pretrained ``chunk_size``
-    (typically 3) but the caller still wants strict frame-causal cond
-    boundaries via ``chunk_index = [0, 1]``.  Without this branch, the
-    bidirectional fallback would silently leak gen-frame information
-    into cond positions.
+    Case (2) is required for the staircase cold-start at AR step 0 phases 0 / 1, where ``T_effective`` (= ``K +
+    G_eff``, with G_eff in {1, 2}) can be smaller than the model's pretrained ``chunk_size`` (typically 3) but the
+    caller still wants strict frame-causal cond boundaries via ``chunk_index = [0, 1]``. Without this branch, the
+    bidirectional fallback would silently leak gen-frame information into cond positions.
 
-    The bidirectional fallback should be taken ONLY when both
-    ``chunk_size`` is missing/non-restrictive AND ``chunk_index`` is
-    not provided — i.e. the caller has not asked for any chunk
-    structure at all.
+    The bidirectional fallback should be taken ONLY when both ``chunk_size`` is missing/non-restrictive AND
+    ``chunk_index`` is not provided — i.e. the caller has not asked for any chunk structure at all.
 
     Args:
         chunk_size: Base chunk size from model config (typically 3 for
             Sana-WM); ``None`` if unset.
         T_effective: Total number of frames after CP all-gather (where
-            applicable).  Use the local ``T`` for non-CP paths.
+            applicable). Use the local ``T`` for non-CP paths.
         chunk_index: Optional explicit chunk-start indices.  Anything
-            non-``None`` is treated as the caller asking for chunk-
-            causal semantics, regardless of ``chunk_size``.
+            non-``None`` is treated as the caller asking for chunk- causal semantics, regardless of ``chunk_size``.
 
     Returns:
-        ``True`` if chunk-causal logic should run, ``False`` if the
-        layer should fall back to fully bidirectional behavior.
+        ``True`` if chunk-causal logic should run, ``False`` if the layer should fall back to fully bidirectional
+        behavior.
     """
     if chunk_size is not None and chunk_size < T_effective:
         return True
@@ -514,12 +508,12 @@ def chunk_index_from_chunk_size(
         T: Number of latent frames.
         chunk_size: Base chunk size for the temporal dimension.
         strategy: Chunk split strategy. Supported values:
-            - "uniform" (default): uniform chunks with optional remainder
-              Example: T=21, chunk_size=4 → [0,4,8,12,16,20] → sizes [4,4,4,4,4,1]
-            - "first_frame": first chunk is 1 frame, then uniform chunk_size
-              Example: T=21, chunk_size=4 → [0,1,5,9,13,17] → sizes [1,4,4,4,4,4]
-            - "first_plus_one": first chunk is chunk_size + 1, then uniform chunk_size
-              Example: T=21, chunk_size=4 → [0,5,9,13,17] → sizes [5,4,4,4,4]
+            - "uniform" (default): uniform chunks with optional remainder Example: T=21, chunk_size=4 →
+              [0,4,8,12,16,20] → sizes [4,4,4,4,4,1]
+            - "first_frame": first chunk is 1 frame, then uniform chunk_size Example: T=21, chunk_size=4 →
+              [0,1,5,9,13,17] → sizes [1,4,4,4,4,4]
+            - "first_plus_one": first chunk is chunk_size + 1, then uniform chunk_size Example: T=21, chunk_size=4 →
+              [0,5,9,13,17] → sizes [5,4,4,4,4]
 
     Returns:
         List of chunk start indices (not including the final T).
@@ -570,9 +564,8 @@ def get_chunk_index_from_config(config: Any, num_frames: Optional[int] = None) -
     """Resolve chunk_index from a config, supporting chunk_size and strategy.
 
     Priority:
-      1) config.model.chunk_index (explicit list)
-      2) config.model.chunk_size (compute with chunk_split_strategy)
-      3) None (no chunking)
+      1) config.model.chunk_index (explicit list) 2) config.model.chunk_size (compute with chunk_split_strategy) 3)
+      None (no chunking)
 
     Args:
         config: Config object or dict with a "model" field.
@@ -623,10 +616,8 @@ def compute_chunk_sizes(chunk_index: List[int], T: int) -> List[int]:
         List of chunk sizes (e.g., [4, 4, 4, 1] if T=13).
 
     Example:
-        >>> compute_chunk_sizes([0, 4, 8, 12], T=13)
-        [4, 4, 4, 1]
-        >>> compute_chunk_sizes([0, 1, 5, 9], T=13)
-        [1, 4, 4, 4]
+        >>> compute_chunk_sizes([0, 4, 8, 12], T=13) [4, 4, 4, 1] >>> compute_chunk_sizes([0, 1, 5, 9], T=13) [1, 4, 4,
+        4]
     """
     if not chunk_index:
         return []
@@ -648,27 +639,21 @@ def compute_chunk_sizes(chunk_index: List[int], T: int) -> List[int]:
 def size1_chunk_position_indices(chunk_index: List[int]) -> List[int]:
     """Return frame-time positions belonging to size-1 (singleton) chunks.
 
-    A size-1 chunk has no intra-chunk lookahead, so the anti-causal
-    branch (backward GDN scan and the per-chunk backward conv path)
-    contributes nothing for these positions in a chunk-causal layer.
-    This helper exposes those positions so downstream code can skip
-    the reverse-direction compute (and zero-out the contribution).
+    A size-1 chunk has no intra-chunk lookahead, so the anti-causal branch (backward GDN scan and the per-chunk
+    backward conv path) contributes nothing for these positions in a chunk-causal layer. This helper exposes those
+    positions so downstream code can skip the reverse-direction compute (and zero-out the contribution).
 
     Args:
         chunk_index: Normalized chunk indices, including the trailing
-            ``T`` boundary, e.g. ``[0, 1, 2, ..., K, K+G]`` for the
-            ``cond_chunk_mode='frame_causal'`` layout.
+            ``T`` boundary, e.g. ``[0, 1, 2, ..., K, K+G]`` for the ``cond_chunk_mode='frame_causal'`` layout.
 
     Returns:
-        List of frame-time positions ``p`` for which ``[p, p+1)`` is a
-        chunk of size 1.  Returns ``[]`` when no size-1 chunks exist
-        (e.g. uniform ``chunk_size=3`` patterns).
+        List of frame-time positions ``p`` for which ``[p, p+1)`` is a chunk of size 1. Returns ``[]`` when no size-1
+        chunks exist (e.g. uniform ``chunk_size=3`` patterns).
 
     Examples:
-        >>> size1_chunk_position_indices([0, 3, 6, 9])  # uniform size 3
-        []
-        >>> size1_chunk_position_indices([0, 1, 2, 3, 4, 7])  # frame_causal, K=4, G=3
-        [0, 1, 2, 3]
+        >>> size1_chunk_position_indices([0, 3, 6, 9]) # uniform size 3 [] >>> size1_chunk_position_indices([0, 1, 2,
+        3, 4, 7]) # frame_causal, K=4, G=3 [0, 1, 2, 3]
     """
     return [s for s, e in zip(chunk_index[:-1], chunk_index[1:]) if e - s == 1]
 
@@ -680,9 +665,8 @@ def is_uniform_chunking(
 ) -> bool:
     """Check if chunk_index represents uniform chunking.
 
-    Returns True if all chunks are equal to chunk_size except possibly the last
-    chunk which may be smaller (the remainder). This is the pattern that allows
-    safe vectorized padding with: pad_t = chunk_size - (T % chunk_size).
+    Returns True if all chunks are equal to chunk_size except possibly the last chunk which may be smaller (the
+    remainder). This is the pattern that allows safe vectorized padding with: pad_t = chunk_size - (T % chunk_size).
 
     Uniform patterns (return True):
         - [0,4,8,12,16,20] with T=21, chunk_size=4 → sizes [4,4,4,4,4,1] ✓
@@ -745,8 +729,8 @@ def analyze_chunk_pattern(
 
     Returns:
         (pattern_type, metadata) where:
-            pattern_type: "uniform", "first_frame", "first_plus_one", or "arbitrary"
-            metadata: Dict with vectorization hints:
+            pattern_type: "uniform", "first_frame", "first_plus_one", or "arbitrary" metadata: Dict with vectorization
+            hints:
                 - vectorizable: bool (True if optimization available)
                 - first_chunk_size: int (size of first special chunk)
                 - tail_start_index: int (where uniform tail begins in chunk_index)
@@ -754,12 +738,8 @@ def analyze_chunk_pattern(
                 - tail_is_uniform: bool (whether tail is vectorizable)
 
     Example:
-        >>> analyze_chunk_pattern([0, 1, 5, 9, 13, 17], T=21, chunk_size=4)
-        ("first_frame", {
-            "vectorizable": True,
-            "first_chunk_size": 1,
-            "tail_start_index": 1,
-            "tail_chunk_size": 4,
+        >>> analyze_chunk_pattern([0, 1, 5, 9, 13, 17], T=21, chunk_size=4) ("first_frame", {
+            "vectorizable": True, "first_chunk_size": 1, "tail_start_index": 1, "tail_chunk_size": 4,
             "tail_is_uniform": True,
         })
     """
@@ -905,13 +885,10 @@ def _register_block(name: str | None = None):
 def _resolve_attention_block(name: str, *, role: str) -> type:
     """Look up an attention class with automatic Triton -> pure-PyTorch fallback.
 
-    The ``*Triton`` attention classes (``BidirectionalGDNTriton``,
-    ``BidirectionalGDNUCPESinglePathLiteLATriton``,
-    ``BidirectionalGDNUCPESinglePathLiteLABothTriton``) wrap pure-PyTorch
-    ancestor classes and only differ in the fused-kernel fast path. When
-    Triton isn't usable (CPU-only systems, ROCm without Triton, etc.), we
-    walk the MRO to find the closest registered non-``Triton`` ancestor and
-    use that instead, with a one-shot log line.
+    The ``*Triton`` attention classes (``BidirectionalGDNTriton``, ``BidirectionalGDNUCPESinglePathLiteLATriton``,
+    ``BidirectionalGDNUCPESinglePathLiteLABothTriton``) wrap pure-PyTorch ancestor classes and only differ in the
+    fused-kernel fast path. When Triton isn't usable (CPU-only systems, ROCm without Triton, etc.), we walk the MRO to
+    find the closest registered non-``Triton`` ancestor and use that instead, with a one-shot log line.
     """
     cls = ATTENTION_BLOCKS.get(name)
     if cls is None:
@@ -2439,11 +2416,9 @@ class TimestepEmbedder(nn.Module):
     @staticmethod
     def timestep_embedding(t, dim, max_period=10000):
         """
-        Create sinusoidal timestep embeddings.
-        :param t: a 1-D Tensor of N indices, one per batch element.
+        Create sinusoidal timestep embeddings. :param t: a 1-D Tensor of N indices, one per batch element.
                           These may be fractional.
-        :param dim: the dimension of the output.
-        :param max_period: controls the minimum frequency of the embeddings.
+        :param dim: the dimension of the output. :param max_period: controls the minimum frequency of the embeddings.
         :return: an (N, D) Tensor of positional embeddings.
         """
         # https://github.com/openai/glide-text2im/blob/main/glide_text2im/nn.py
@@ -3045,9 +3020,8 @@ def apply_rotary_emb(
 class WindowAttention(FlashAttention):
     """Window Attention based on Flash Attention for temporal-spatial windows.
 
-    Computes attention within dynamic HWT windows. For window_count=(2, 2, 1), creates
-    2x2=4 spatial windows across 1 temporal group, with window sizes dynamically
-    calculated based on input dimensions.
+    Computes attention within dynamic HWT windows. For window_count=(2, 2, 1), creates 2x2=4 spatial windows across 1
+    temporal group, with window sizes dynamically calculated based on input dimensions.
     """
 
     def __init__(
@@ -3398,8 +3372,8 @@ def _process_camera_conditions_ucpe(camera_conditions, B, HW, patch_size):
     """Convert ``(B, F, 20)`` camera conditions (C2W flat + fx,fy,cx,cy) into
     ``(raymats, absmap)``.
 
-    ``raymats`` is ``(B, F, H, W, 4, 4)`` ``ray<-world`` transforms; ``absmap``
-    is ``(B, F, H, W, 3)`` (up_map 2-ch + lat_map 1-ch).
+    ``raymats`` is ``(B, F, H, W, 4, 4)`` ``ray<-world`` transforms; ``absmap`` is ``(B, F, H, W, 3)`` (up_map 2-ch +
+    lat_map 1-ch).
     """
     F_dim = camera_conditions.shape[1]
     c2w_flat = camera_conditions[..., :16]
@@ -3621,9 +3595,8 @@ def prepare_prope_fns(
 ) -> Tuple[Callable, Callable, Callable]:
     """Precompute UCPE apply functions once for a batch (shared across all blocks).
 
-    Only ``camctrl_type == "UCPE"`` is supported.  Accepts either precomputed
-    matrices (``cam_pos_embeds`` dict with ``P``, ``P_inv``, ``pos_embeds_cam``)
-    or raw camera conditions + optional raymats.
+    Only ``camctrl_type == "UCPE"`` is supported. Accepts either precomputed matrices (``cam_pos_embeds`` dict with
+    ``P``, ``P_inv``, ``pos_embeds_cam``) or raw camera conditions + optional raymats.
     """
     if camctrl_type != "UCPE":
         raise ValueError(f"Unsupported camctrl_type for prepare_prope_fns: {camctrl_type}")
@@ -3684,8 +3657,7 @@ def l2norm(x: torch.FloatTensor, dim: int = -1, eps: float = 1e-6):
 def flip_and_shift(x, dim=2, shift_val=0.0):
     """Flip a sequence and shift it right by one step.
 
-    The operation reverses the sequence, drops the last element, and pads the
-    front with ``shift_val``.
+    The operation reverses the sequence, drops the last element, and pads the front with ``shift_val``.
 
     Example:
         [x0, x1, x2, x3] -> flip [x3, x2, x1, x0] -> shift [v, x3, x2, x1]
@@ -3726,8 +3698,7 @@ def _contiguous_backward(x: torch.Tensor) -> torch.Tensor:
 def torch_recurrent_sana_gdn(q, k, v, q_rot, k_rot, beta, decay, recall_gate, eps=1e-6, return_components=False):
     """Apply the frame-wise Gated Delta Rule.
 
-    The update uses full spatial frames per time step while maintaining
-    recurrent KV and Z states.
+    The update uses full spatial frames per time step while maintaining recurrent KV and Z states.
 
     Args:
         q: Query tensor of shape (B, H, D, T*S).
@@ -4002,13 +3973,12 @@ def _apply_output_gate(
 class GDN(Attention_):
     """Frame-wise Gated Delta Net attention for Sana video.
 
-    This block follows Sana's vanilla linear attention strategy but upgrades it
-    with a Gated Delta Network mechanism:
+    This block follows Sana's vanilla linear attention strategy but upgrades it with a Gated Delta Network mechanism:
     - Apply ReLU kernel to q/k.
     - Apply RoPE only on the numerator (q_rot, k_rot).
     - Denominator (Z stream) uses unrotated q/k to maintain mass conservation.
-    - Gated delta rule is applied across time (T). Gates are computed per-frame
-      (shared spatially), but states are maintained per-pixel.
+    - Gated delta rule is applied across time (T). Gates are computed per-frame (shared spatially), but states are
+      maintained per-pixel.
     """
 
     def __init__(
@@ -4220,24 +4190,21 @@ class GDN(Attention_):
     ) -> torch.Tensor:
         """Simulate non-causal conv by combining forward + backward causal passes.
 
-        A causal depthwise Conv1d with kernel ``[w_0, w_1, ..., w_{k-1}]``
-        computes at time *t*:
+        A causal depthwise Conv1d with kernel ``[w_0, w_1, ..., w_{k-1}]`` computes at time *t*:
 
             ``y_fwd[t] = w_0 * x[t-k+1] + ... + w_{k-1} * x[t]``
 
-        Running the same kernel on the time-flipped input and flipping back
-        gives:
+        Running the same kernel on the time-flipped input and flipping back gives:
 
             ``y_bwd[t] = w_{k-1} * x[t] + ... + w_0 * x[t+k-1]``
 
-        Both passes include the current timestep ``x[t]`` with the center
-        weight ``w_{k-1}``.  To avoid double-counting we subtract one copy
-        of the center contribution:
+        Both passes include the current timestep ``x[t]`` with the center weight ``w_{k-1}``. To avoid double-counting
+        we subtract one copy of the center contribution:
 
             ``y = y_fwd + y_bwd - w_{k-1} * x``
 
-        The result is a symmetric temporal filter where every position in
-        the window ``[t-k+1, t+k-1]`` is counted exactly once.
+        The result is a symmetric temporal filter where every position in the window ``[t-k+1, t+k-1]`` is counted
+        exactly once.
 
         Args:
             x: Tensor of shape ``(batch, seq_len, channels)``.
@@ -4272,9 +4239,8 @@ class GDN(Attention_):
     ) -> torch.Tensor:
         """Apply causal ShortConvolution along T, with S merged into batch.
 
-        Under CP, a causal conv of kernel size K needs K-1 left-context
-        frames from the previous rank at each boundary.  We use a halo
-        exchange (O(K) communication) instead of a full gather (O(T)).
+        Under CP, a causal conv of kernel size K needs K-1 left-context frames from the previous rank at each boundary.
+        We use a halo exchange (O(K) communication) instead of a full gather (O(T)).
 
         Args:
             x: Input tensor of shape (B, N, C) where N = T * S.
@@ -4522,9 +4488,8 @@ class BidirectionalGDN(GDN):
     ) -> torch.Tensor:
         """Apply bidirectional (non-causal) ShortConvolution along T.
 
-        Uses the forward+backward causal trick: run the causal conv in
-        both directions and average, yielding a symmetric temporal filter
-        with a single set of weights.
+        Uses the forward+backward causal trick: run the causal conv in both directions and average, yielding a
+        symmetric temporal filter with a single set of weights.
 
         Args:
             x: Input tensor of shape (B, N, C) where N = T * S.
@@ -4755,8 +4720,7 @@ def _get_frame_causal_mask(T: int, S: int, device: torch.device) -> torch.Tensor
     """Frame-wise block-causal mask: full attention within each frame,
     causal across frames.
 
-    Returns a boolean tensor of shape ``(1, 1, T*S, T*S)`` where ``True``
-    indicates positions that may attend.
+    Returns a boolean tensor of shape ``(1, 1, T*S, T*S)`` where ``True`` indicates positions that may attend.
     """
     key = (T, S, device)
     if key not in _frame_causal_mask_cache:
@@ -4777,9 +4741,8 @@ def _forward_softmax_attn(
 ) -> torch.Tensor:
     """Softmax attention (SDPA) reusing GDN parameters.
 
-    Used by the hybrid GDN+Softmax architecture: every Nth block runs
-    softmax attention instead of the gated-delta recurrence. Reuses the
-    parent block's QKV/q_norm/k_norm/proj for parameter compatibility.
+    Used by the hybrid GDN+Softmax architecture: every Nth block runs softmax attention instead of the gated-delta
+    recurrence. Reuses the parent block's QKV/q_norm/k_norm/proj for parameter compatibility.
     """
     import torch.nn.functional as F
 
@@ -4861,8 +4824,8 @@ def _prepare_softmax_main_qkv_post_rope(
 ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.dtype]:
     """Project Q/K/V for the softmax main branch, apply norm and RoPE.
 
-    Returns post-norm, post-RoPE, post-bf16 cast tensors without running
-    SDPA, so the caller can either run SDPA itself or stash K/V in a cache.
+    Returns post-norm, post-RoPE, post-bf16 cast tensors without running SDPA, so the caller can either run SDPA itself
+    or stash K/V in a cache.
 
     Args:
         block: A :class:`GDN` (or subclass) that owns the softmax-attn
@@ -4872,8 +4835,8 @@ def _prepare_softmax_main_qkv_post_rope(
         rotary_emb: Optional RoPE table; ``None`` skips RoPE.
 
     Returns:
-        ``(q, k, v, dtype_orig)`` where Q/K/V are shape ``(B, H, N, D)``
-        and ``dtype_orig`` is the original ``x.dtype``.
+        ``(q, k, v, dtype_orig)`` where Q/K/V are shape ``(B, H, N, D)`` and ``dtype_orig`` is the original
+        ``x.dtype``.
     """
     B, N, C = x.shape
     T, H_sp, W_sp = HW
@@ -4930,11 +4893,9 @@ def _sdpa_unmasked_with_pad(
 ) -> torch.Tensor:
     """Run ``F.scaled_dot_product_attention(q, k, v)`` with FA-friendly head_dim padding.
 
-    FlashAttention-2 only supports head_dim in {32, 64, 128, 256}.
-    Other head_dims (e.g. 112) fall back to the math backend. We pad
-    head_dim up to the next supported size, run SDPA, then slice back
-    to the original head_dim. Mirrors the no-mask path in
-    :func:`_forward_softmax_attn` (lines ~3034-3061).
+    FlashAttention-2 only supports head_dim in {32, 64, 128, 256}. Other head_dims (e.g. 112) fall back to the math
+    backend. We pad head_dim up to the next supported size, run SDPA, then slice back to the original head_dim. Mirrors
+    the no-mask path in :func:`_forward_softmax_attn` (lines ~3034-3061).
 
     Args:
         q, k, v: ``(B, H, N_q, D)``, ``(B, H, N_kv, D)``, ``(B, H, N_kv, D)``.
@@ -5016,11 +4977,9 @@ def torch_chunk_cam_single_path_delta_rule(
 ) -> torch.Tensor:
     """Parallel chunk-scan version of the single-path delta-rule recurrence.
 
-    Algebraically equivalent to ``torch_recurrent_cam_single_path_delta_rule``
-    but restructured as a linear recurrence in D x D state space so that
-    Phases 1 (transition-matrix construction) and 3 (output projection) are
-    fully parallel over T, while Phase 2 (the D x D state scan) is chunked
-    and benefits from ``@torch.compile``.
+    Algebraically equivalent to ``torch_recurrent_cam_single_path_delta_rule`` but restructured as a linear recurrence
+    in D x D state space so that Phases 1 (transition-matrix construction) and 3 (output projection) are fully parallel
+    over T, while Phase 2 (the D x D state scan) is chunked and benefits from ``@torch.compile``.
 
     The recurrence:
         state[t] = state[t-1] * g[t] + delta_v[t] @ k_rot[t]^T
@@ -5029,8 +4988,7 @@ def torch_chunk_cam_single_path_delta_rule(
     is equivalent to:
         state[t] = state[t-1] @ W[t] + U[t]
     with:
-        W[t] = g[t] * (I - beta[t] * k_rot[t] @ k_rot[t]^T)
-        U[t] = beta[t] * v[t] @ k_rot[t]^T
+        W[t] = g[t] * (I - beta[t] * k_rot[t] @ k_rot[t]^T) U[t] = beta[t] * v[t] @ k_rot[t]^T
     """
     B, H, D, N = q_rot.shape
     if beta.ndim not in (3, 4):
@@ -5103,23 +5061,19 @@ def torch_chunk_cam_single_path_delta_rule(
 class _GDNUCPEBase(GDN):
     """Shared camera-branch logic for all GDN + UCPE variants.
 
-    Adds a second attention branch whose positional encoding comes from
-    UCPE per-ray camera transforms instead of the standard RoPE used by
-    the main branch.
+    Adds a second attention branch whose positional encoding comes from UCPE per-ray camera transforms instead of the
+    standard RoPE used by the main branch.
 
     **Camera-specific parameters** (4 Linear layers per block):
         ``q_proj_cam``, ``k_proj_cam``, ``v_proj_cam``, ``out_proj_cam``
 
     **Shared with main branch** (no duplication):
-        QK norms, GDN gates (beta/gate/dt_bias/A_log/recall_gate),
-        output gate, output projection.
+        QK norms, GDN gates (beta/gate/dt_bias/A_log/recall_gate), output gate, output projection.
 
-    Requires ``cam_dim == in_dim`` and ``cam_heads == heads`` so that
-    all shared parameters have matching dimensions.
+    Requires ``cam_dim == in_dim`` and ``cam_heads == heads`` so that all shared parameters have matching dimensions.
 
-    Subclasses only need to override ``_forward_cam_branch`` when the
-    camera branch requires a different recurrence pattern (e.g.
-    bidirectional or chunk-causal).
+    Subclasses only need to override ``_forward_cam_branch`` when the camera branch requires a different recurrence
+    pattern (e.g. bidirectional or chunk-causal).
     """
 
     def __init__(
@@ -5466,14 +5420,13 @@ class _GDNUCPEBase(GDN):
 
         Args:
             token_valid_mask: Pre-computed mask of shape ``(B, N)`` from the
-                caller.  Avoids redundant ``_prepare_frame_valid_masks`` calls.
+                caller. Avoids redundant ``_prepare_frame_valid_masks`` calls.
 
         Returns:
             (q_cam, k_cam, v_cam_trans, q_cam_trans, k_cam_trans, apply_fn_o, inflation_sq)
 
-        All tensors are shaped ``(B, cam_heads, cam_head_dim, N)``.
-        ``apply_fn_o`` is the UCPE inverse-output transform closure.
-        ``inflation_sq`` is the energy inflation factor of shape ``(B, cam_heads, 1, N)``.
+        All tensors are shaped ``(B, cam_heads, cam_head_dim, N)``. ``apply_fn_o`` is the UCPE inverse-output transform
+        closure. ``inflation_sq`` is the energy inflation factor of shape ``(B, cam_heads, 1, N)``.
         """
         B, N, C = x.shape
         T, H, W = HW
@@ -5597,8 +5550,7 @@ class _GDNUCPEBase(GDN):
     ) -> torch.Tensor:
         """Run the shared GDN kernel on camera-branch tensors.
 
-        Uses shared ``self.recall_gate``.  Handles FP32 casting.
-        Returns ``num / (den + eps)`` shaped ``(B, H, D, N)``.
+        Uses shared ``self.recall_gate``. Handles FP32 casting. Returns ``num / (den + eps)`` shaped ``(B, H, D, N)``.
         """
         recall_gate = self.recall_gate
         if getattr(self, "fp32_attention", True):
@@ -5668,8 +5620,8 @@ class _GDNUCPEBase(GDN):
     ) -> torch.Tensor:
         """Run the numerator-only camera delta-rule recurrence.
 
-        Dispatches to either the recurrent reference or the parallel chunk
-        scan depending on ``cam_update_rule_func`` set at init time.
+        Dispatches to either the recurrent reference or the parallel chunk scan depending on ``cam_update_rule_func``
+        set at init time.
         """
         if getattr(self, "fp32_attention", True):
             q_rot = q_rot.float()
@@ -5695,8 +5647,8 @@ class _GDNUCPEBase(GDN):
 
         Subclasses override this for bidirectional / chunk-causal variants.
 
-        Returns raw attention output ``(B, N, C)`` -- no output gate or
-        projection applied (those are shared and applied in ``forward()``).
+        Returns raw attention output ``(B, N, C)`` -- no output gate or projection applied (those are shared and
+        applied in ``forward()``).
         """
         B, N, _ = x.shape
         T, H, W = HW
@@ -5796,9 +5748,9 @@ class _GDNUCPEBase(GDN):
 
         Flow:
             1. main_raw = GDN attention (no gate/proj)
-            2. cam_raw  = GDN+UCPE attention (no gate/proj)
-            3. combined = main_raw + out_proj_cam(cam_raw)   [zero at init]
-            4. output   = proj(output_gate(combined))        [shared, once]
+            2. cam_raw = GDN+UCPE attention (no gate/proj)
+            3. combined = main_raw + out_proj_cam(cam_raw) [zero at init]
+            4. output = proj(output_gate(combined)) [shared, once]
         """
         if self.cam_debug_ratios:
             self.reset_cam_debug_stats()
@@ -5860,8 +5812,8 @@ class _GDNUCPEBase(GDN):
 class BidirectionalGDNUCPELiteLA(_GDNUCPEBase, BidirectionalGDN):
     """Bidirectional GDN with UCPE camera conditioning.
 
-    Main branch: bidirectional GDN (inherited from ``BidirectionalGDN``).
-    Camera branch: bidirectional GDN with UCPE transforms.
+    Main branch: bidirectional GDN (inherited from ``BidirectionalGDN``). Camera branch: bidirectional GDN with UCPE
+    transforms.
     """
 
     def _forward_cam_branch(
@@ -5996,9 +5948,8 @@ class BidirectionalGDNUCPELiteLA(_GDNUCPEBase, BidirectionalGDN):
 class BidirectionalGDNUCPELiteLAPostUCPERenorm(BidirectionalGDNUCPELiteLA):
     """Bidirectional GDNUCPE with post-UCPE RMS downscaling.
 
-    The raw UCPE transforms are still measured for debug logging, but the
-    transformed camera tensors are downscaled back to their pre-UCPE RMS
-    envelope before they enter the recurrence.
+    The raw UCPE transforms are still measured for debug logging, but the transformed camera tensors are downscaled
+    back to their pre-UCPE RMS envelope before they enter the recurrence.
     """
 
     def _stabilize_cam_transforms(
@@ -6020,10 +5971,9 @@ class BidirectionalGDNUCPELiteLAPostUCPERenorm(BidirectionalGDNUCPELiteLA):
 class BidirectionalGDNUCPESinglePathLiteLA(BidirectionalGDNUCPELiteLAPostUCPERenorm):
     """Bidirectional UCPE camera branch with numerator-only delta-rule updates.
 
-    This is an experimental ablation that keeps the main branch unchanged,
-    applies UCPE plus post-UCPE RMS downscaling on the camera tensors, and
-    replaces the camera branch's ``num / den`` recurrence with a single-path
-    delta rule over the transformed camera stream only.
+    This is an experimental ablation that keeps the main branch unchanged, applies UCPE plus post-UCPE RMS downscaling
+    on the camera tensors, and replaces the camera branch's ``num / den`` recurrence with a single-path delta rule over
+    the transformed camera stream only.
     """
 
     def _forward_cam_branch(
@@ -6148,9 +6098,8 @@ def _prepare_cam_qkv_softmax(
 ) -> tuple:
     """Camera branch Q/K/V for softmax attention.
 
-    Mirrors ``_GDNUCPEBase._prepare_cam_qkv`` but skips the ReLU kernel and
-    GDN key scaling — standard softmax SDPA provides its own 1/sqrt(d_k).
-    Returns ``(q, k, v, apply_fn_o)`` shaped ``(B, cam_heads, cam_head_dim, N)``.
+    Mirrors ``_GDNUCPEBase._prepare_cam_qkv`` but skips the ReLU kernel and GDN key scaling — standard softmax SDPA
+    provides its own 1/sqrt(d_k). Returns ``(q, k, v, apply_fn_o)`` shaped ``(B, cam_heads, cam_head_dim, N)``.
     """
     B, N, C = x.shape
 
@@ -6299,14 +6248,14 @@ class _SoftmaxUCPESinglePathLiteLA(
 ):
     """Softmax attention with UCPE camera conditioning (single-path).
 
-    Replaces GDN recurrence with ``F.scaled_dot_product_attention``.
-    Automatically selects the correct masking mode based on ``chunk_size``:
+    Replaces GDN recurrence with ``F.scaled_dot_product_attention``. Automatically selects the correct masking mode
+    based on ``chunk_size``:
 
     - ``chunk_size is None`` or ``chunk_size >= T``: full bidirectional (no mask)
     - ``chunk_size < T``: chunk-causal (full within chunks, causal across)
 
-    All parameters match the GDN variants for checkpoint compatibility.
-    GDN-specific parameters are present but unused in forward.
+    All parameters match the GDN variants for checkpoint compatibility. GDN-specific parameters are present but unused
+    in forward.
     """
 
     def __init__(self, *args, conv_kernel_size: int = 0, **kwargs):
@@ -6375,17 +6324,14 @@ ChunkCausalSoftmaxUCPESinglePathLiteLA = _SoftmaxUCPESinglePathLiteLA
 class BidirectionalGDNTriton(BidirectionalGDN):
     """Bidirectional GDN with a fused Triton scan (inference + opt-in autograd).
 
-    Subclasses :class:`BidirectionalGDN` and only overrides :meth:`__init__`
-    (to accept ``use_autograd_kernel``) and :meth:`forward`.  Every learned
-    sub-module (``qkv``, ``proj``, ``q_norm``, ``k_norm``, ``conv_k``,
-    ``beta_proj``, ``gate_proj``, ``A_log``, ``dt_bias``, ``output_gate``)
-    and helper (``_apply_temporal_short_conv``, ``_compute_frame_gates``,
-    ``_apply_output_gate``) is inherited unchanged so existing checkpoints
-    load with zero conversion.
+    Subclasses :class:`BidirectionalGDN` and only overrides :meth:`__init__` (to accept ``use_autograd_kernel``) and
+    :meth:`forward`. Every learned sub-module (``qkv``, ``proj``, ``q_norm``, ``k_norm``, ``conv_k``, ``beta_proj``,
+    ``gate_proj``, ``A_log``, ``dt_bias``, ``output_gate``) and helper (``_apply_temporal_short_conv``,
+    ``_compute_frame_gates``, ``_apply_output_gate``) is inherited unchanged so existing checkpoints load with zero
+    conversion.
 
-    When ``use_autograd_kernel=True`` the fused-kernel call switches to
-    :func:`fused_bigdn_forward_with_grad` (autograd-enabled, identical
-    forward, real Triton backward kernel for the main branch).
+    When ``use_autograd_kernel=True`` the fused-kernel call switches to :func:`fused_bigdn_forward_with_grad`
+    (autograd-enabled, identical forward, real Triton backward kernel for the main branch).
     """
 
     def __init__(self, *args, use_autograd_kernel: bool = False, **kwargs):
@@ -6494,26 +6440,19 @@ class BidirectionalGDNTriton(BidirectionalGDN):
 class BidirectionalGDNUCPESinglePathLiteLATriton(BidirectionalGDNUCPESinglePathLiteLA):
     """Bidirectional UCPE camera-controlled GDN with a Triton main branch.
 
-    Inherits the entire camera branch (``_forward_cam_branch``),
-    ``_prepare_cam_qkv``, every sub-module and every checkpoint key from
-    :class:`BidirectionalGDNUCPESinglePathLiteLA`.  The **only** behavioural
-    delta is that the main-branch GDN scan dispatches through
-    :class:`BidirectionalGDNTriton.forward` instead of the inherited
+    Inherits the entire camera branch (``_forward_cam_branch``), ``_prepare_cam_qkv``, every sub-module and every
+    checkpoint key from :class:`BidirectionalGDNUCPESinglePathLiteLA`. The **only** behavioural delta is that the
+    main-branch GDN scan dispatches through :class:`BidirectionalGDNTriton.forward` instead of the inherited
     :class:`BidirectionalGDN.forward`.
 
-    Because ``_GDNUCPEBase.forward`` routes the main branch via
-    ``super().forward(...)`` — which MRO-resolves to
-    :class:`BidirectionalGDN`, not our Triton variant — we re-implement the
-    dual-branch forward here to explicitly call
-    ``BidirectionalGDNTriton.forward(self, ...)``.  The body is otherwise
-    bit-identical to the parent's ``forward``.
+    Because ``_GDNUCPEBase.forward`` routes the main branch via ``super().forward(...)`` — which MRO-resolves to
+    :class:`BidirectionalGDN`, not our Triton variant — we re-implement the dual-branch forward here to explicitly call
+    ``BidirectionalGDNTriton.forward(self, ...)``. The body is otherwise bit-identical to the parent's ``forward``.
 
-    The ``use_autograd_kernel`` flag is stored on this instance and consulted
-    inside :meth:`BidirectionalGDNTriton.forward` (the dispatch passes
-    ``self``, so the flag is visible to the main-branch forward).  The cam
-    branch is the inherited torch path; use
-    :class:`BidirectionalGDNUCPESinglePathLiteLABothTriton` for a fully
-    Triton + autograd-aware cam branch.
+    The ``use_autograd_kernel`` flag is stored on this instance and consulted inside
+    :meth:`BidirectionalGDNTriton.forward` (the dispatch passes ``self``, so the flag is visible to the main-branch
+    forward). The cam branch is the inherited torch path; use :class:`BidirectionalGDNUCPESinglePathLiteLABothTriton`
+    for a fully Triton + autograd-aware cam branch.
     """
 
     def __init__(self, *args, use_autograd_kernel: bool = False, **kwargs):
@@ -6587,31 +6526,26 @@ class BidirectionalGDNUCPESinglePathLiteLATriton(BidirectionalGDNUCPESinglePathL
 class BidirectionalGDNUCPESinglePathLiteLABothTriton(BidirectionalGDNUCPESinglePathLiteLATriton):
     """Bidirectional UCPE camera-controlled GDN with **both** branches on Triton.
 
-    Subclasses :class:`BidirectionalGDNUCPESinglePathLiteLATriton` (which
-    already rewires the main GDN scan) and replaces
-    :meth:`_forward_cam_branch` with a fused Triton camera pipeline:
+    Subclasses :class:`BidirectionalGDNUCPESinglePathLiteLATriton` (which already rewires the main GDN scan) and
+    replaces :meth:`_forward_cam_branch` with a fused Triton camera pipeline:
 
         1. Torch QKV linear + bidirectional short conv on K.
         2. UCPE ``P / P_T / P_inv`` from ``camera_conditions``.
         3. Sliced cam-branch RoPE → interleaved ``(N, D/2)`` cos/sin tables.
-        4. Fused prep kernel (RMSNorm + ReLU + K-scale + UCPE 4x4 + RoPE),
-           emitting ``inflation_sq`` for Dynamic Beta Discounting.
+        4. Fused prep kernel (RMSNorm + ReLU + K-scale + UCPE 4x4 + RoPE), emitting ``inflation_sq`` for Dynamic Beta
+           Discounting.
         5. Beta discounting via ``inflation_sq`` (mirrors torch path).
         6. Fused forward scan (``reverse=False``) over the full sequence.
-        7. Fused reverse scan (``reverse=True``) over the full sequence —
-           the kernel applies flip-and-shift internally, so no per-chunk
-           loop is needed.
+        7. Fused reverse scan (``reverse=True``) over the full sequence — the kernel applies flip-and-shift internally,
+           so no per-chunk loop is needed.
         8. Inverse UCPE (``apply_fn_o``) in torch.
 
-    State-dict keys are identical to
-    :class:`BidirectionalGDNUCPESinglePathLiteLA`.
+    State-dict keys are identical to :class:`BidirectionalGDNUCPESinglePathLiteLA`.
 
-    Set ``use_autograd_kernel=True`` (inherited from
-    :class:`BidirectionalGDNUCPESinglePathLiteLATriton`) to enable autograd
-    mode for both branches: the main branch goes through
-    :func:`fused_bigdn_forward_with_grad` and the cam branch through
-    :func:`cam_prep_func_with_grad` + :func:`cam_scan_func_with_grad`
-    (torch-recompute backward fallback).  Forward cost is unchanged.
+    Set ``use_autograd_kernel=True`` (inherited from :class:`BidirectionalGDNUCPESinglePathLiteLATriton`) to enable
+    autograd mode for both branches: the main branch goes through :func:`fused_bigdn_forward_with_grad` and the cam
+    branch through :func:`cam_prep_func_with_grad` + :func:`cam_scan_func_with_grad` (torch-recompute backward
+    fallback). Forward cost is unchanged.
     """
 
     def _forward_cam_branch(
@@ -6999,10 +6933,8 @@ class Sana(nn.Module):
 
     def forward(self, x, timestep, y, mask=None, data_info=None, **kwargs):
         """
-        Forward pass of Sana.
-        x: (N, C, H, W) tensor of spatial inputs (images or latent representations of images)
-        t: (N,) tensor of diffusion timesteps
-        y: (N, 1, 120, C) tensor of class labels
+        Forward pass of Sana. x: (N, C, H, W) tensor of spatial inputs (images or latent representations of images) t:
+        (N,) tensor of diffusion timesteps y: (N, 1, 120, C) tensor of class labels
         """
         x = x.to(self.dtype)
         timestep = timestep.to(self.dtype)
@@ -7039,8 +6971,7 @@ class Sana(nn.Module):
 
     def __call__(self, *args, **kwargs):
         """
-        This method allows the object to be called like a function.
-        It simply calls the forward method.
+        This method allows the object to be called like a function. It simply calls the forward method.
         """
         return self.forward(*args, **kwargs)
 
@@ -7054,8 +6985,7 @@ class Sana(nn.Module):
 
     def unpatchify(self, x):
         """
-        x: (N, T, patch_size**2 * C)
-        imgs: (N, H, W, C)
+        x: (N, T, patch_size**2 * C) imgs: (N, H, W, C)
         """
         c = self.out_channels
         p = self.x_embedder.patch_size[0]
@@ -7110,9 +7040,8 @@ class Sana(nn.Module):
 
 def get_2d_sincos_pos_embed(embed_dim, grid_size, cls_token=False, extra_tokens=0, pe_interpolation=1.0, base_size=16):
     """
-    grid_size: int of the grid height and width
-    return:
-    pos_embed: [grid_size*grid_size, embed_dim] or [1+grid_size*grid_size, embed_dim] (w/ or w/o cls_token)
+    grid_size: int of the grid height and width return: pos_embed: [grid_size*grid_size, embed_dim] or
+    [1+grid_size*grid_size, embed_dim] (w/ or w/o cls_token)
     """
     if isinstance(grid_size, int):
         grid_size = to_2tuple(grid_size)
@@ -7141,9 +7070,7 @@ def get_2d_sincos_pos_embed_from_grid(embed_dim, grid):
 
 def get_1d_sincos_pos_embed_from_grid(embed_dim, pos):
     """
-    embed_dim: output dimension for each position
-    pos: a list of positions to be encoded: size (M,)
-    out: (M, D)
+    embed_dim: output dimension for each position pos: a list of positions to be encoded: size (M,) out: (M, D)
     """
     assert embed_dim % 2 == 0
     omega = np.arange(embed_dim // 2, dtype=np.float64)
@@ -7387,8 +7314,7 @@ class SanaMS(Sana):
             bs: Batch size
 
         Returns:
-            x with positional embedding added
-            image_pos_embed for flux_rope type (or None)
+            x with positional embedding added image_pos_embed for flux_rope type (or None)
         """
         image_pos_embed = None
 
@@ -7422,10 +7348,8 @@ class SanaMS(Sana):
 
     def forward(self, x, timestep, y, mask=None, data_info=None, return_logvar=False, jvp=False, **kwargs):
         """
-        Forward pass of Sana.
-        x: (N, C, H, W) tensor of spatial inputs (images or latent representations of images)
-        t: (N,) tensor of diffusion timesteps
-        y: (N, 1, 120, C) tensor of class labels
+        Forward pass of Sana. x: (N, C, H, W) tensor of spatial inputs (images or latent representations of images) t:
+        (N,) tensor of diffusion timesteps y: (N, 1, 120, C) tensor of class labels
         """
         bs = x.shape[0]
         x = x.to(self.dtype)
@@ -7493,8 +7417,7 @@ class SanaMS(Sana):
 
     def __call__(self, *args, **kwargs):
         """
-        This method allows the object to be called like a function.
-        It simply calls the forward method.
+        This method allows the object to be called like a function. It simply calls the forward method.
         """
         return self.forward(*args, **kwargs)
 
@@ -7508,8 +7431,7 @@ class SanaMS(Sana):
 
     def unpatchify(self, x):
         """
-        x: (N, T, patch_size**2 * C)
-        imgs: (N, H, W, C)
+        x: (N, T, patch_size**2 * C) imgs: (N, H, W, C)
         """
         c = self.out_channels
         p = self.x_embedder.patch_size[0]
@@ -8042,9 +7964,8 @@ def _inject_softmax_layers(
 ) -> tuple:
     """Replace every ``softmax_every_n``-th block's camctrl variant with its softmax counterpart.
 
-    Pattern: for ``softmax_every_n=4``, blocks 3, 7, 11, ... (0-indexed at n-1) use
-    softmax attention; the remaining blocks keep GDN. Blocks whose camctrl_type has
-    no softmax mapping are left as-is.
+    Pattern: for ``softmax_every_n=4``, blocks 3, 7, 11, ... (0-indexed at n-1) use softmax attention; the remaining
+    blocks keep GDN. Blocks whose camctrl_type has no softmax mapping are left as-is.
     """
     attn_out = list(attn_type_list)
     camctrl_out = list(camctrl_type_list)
@@ -8365,10 +8286,9 @@ class SanaMSVideoCamCtrl(Sana):
 
     def forward(self, x, timestep, y, mask=None, **kwargs):
         """
-        Forward pass of Sana.
-        x: (N, C, T, H, W) tensor of spatial inputs (images or latent representations of images)
-        t: (N,) tensor of diffusion timesteps or (N, 1, F) tensor of diffusion timesteps
-        y: (N, 1, 120, C) tensor of class labels
+        Forward pass of Sana. x: (N, C, T, H, W) tensor of spatial inputs (images or latent representations of images)
+        t: (N,) tensor of diffusion timesteps or (N, 1, F) tensor of diffusion timesteps y: (N, 1, 120, C) tensor of
+        class labels
         """
 
         bs = x.shape[0]
@@ -8659,8 +8579,7 @@ class SanaMSVideoCamCtrl(Sana):
 
     def unpatchify(self, x):
         """
-        x: (N, T, patch_size**2 * C)
-        imgs: (N, H, W, C)
+        x: (N, T, patch_size**2 * C) imgs: (N, H, W, C)
         """
         c = self.out_channels
         p_f, p_h, p_w = self.x_embedder.patch_size
@@ -8939,11 +8858,9 @@ class SanaWMTransformer3DModel(ModelMixin, ConfigMixin):
     r"""
     SANA-WM 1600M bidirectional camera-controlled DiT.
 
-    Wraps :class:`SanaMSVideoCamCtrl` (depth=20, hidden_size=2240,
-    patch_size=(1,1,1), num_heads=20 — i.e. the public
-    ``Efficient-Large-Model/SANA-WM_bidirectional`` release).
-    ``save_pretrained`` / ``from_pretrained`` work out of the box via
-    :class:`~diffusers.configuration_utils.ConfigMixin`.
+    Wraps :class:`SanaMSVideoCamCtrl` (depth=20, hidden_size=2240, patch_size=(1,1,1), num_heads=20 — i.e. the public
+    ``Efficient-Large-Model/SANA-WM_bidirectional`` release). ``save_pretrained`` / ``from_pretrained`` work out of the
+    box via :class:`~diffusers.configuration_utils.ConfigMixin`.
 
     Args:
         in_channels (`int`, defaults to 128): VAE latent channels (LTX-2).
@@ -8971,8 +8888,8 @@ class SanaWMTransformer3DModel(ModelMixin, ConfigMixin):
         caption_channels (`int`, defaults to 2304): Gemma-2 hidden size.
         model_max_length (`int`, defaults to 300): Max prompt tokens.
 
-    The state-dict is identical to the public sana checkpoint apart from the
-    fixed ``_inner.`` prefix the wrapper adds (see :meth:`add_inner_prefix`).
+    The state-dict is identical to the public sana checkpoint apart from the fixed ``_inner.`` prefix the wrapper adds
+    (see :meth:`add_inner_prefix`).
     """
 
     _supports_gradient_checkpointing = False
@@ -9059,12 +8976,10 @@ class SanaWMTransformer3DModel(ModelMixin, ConfigMixin):
     def add_inner_prefix(state_dict: dict) -> dict:
         """Re-key a public SANA-WM state-dict for loading into this wrapper.
 
-        The public release ships keys like ``blocks.0.attn.qkv.weight``; the
-        diffusers wrapper holds those parameters under the ``_inner.`` prefix.
-        Use this helper before ``load_state_dict``:
+        The public release ships keys like ``blocks.0.attn.qkv.weight``; the diffusers wrapper holds those parameters
+        under the ``_inner.`` prefix. Use this helper before ``load_state_dict``:
 
-            state = load_file(release_safetensors)
-            state.pop("pos_embed", None)
+            state = load_file(release_safetensors) state.pop("pos_embed", None)
             model.load_state_dict(model.add_inner_prefix(state), strict=False)
         """
         return {f"_inner.{k}": v for k, v in state_dict.items()}
@@ -9090,8 +9005,7 @@ class SanaWMTransformer3DModel(ModelMixin, ConfigMixin):
                 ``data_info``, ``camera_conditions``, ``chunk_plucker``.
 
         Returns:
-            :class:`Transformer2DModelOutput` with ``sample`` of shape
-            ``(B, C, T, H, W)``.
+            :class:`Transformer2DModelOutput` with ``sample`` of shape ``(B, C, T, H, W)``.
         """
         # The sana inner DiT names its text mask kwarg ``mask``.
         # Accept both ``mask=`` (sana convention) and ``encoder_attention_mask=``

@@ -147,11 +147,9 @@ class SanaWMPipeline(DiffusionPipeline):
     r"""
     SANA-WM camera-controlled image-to-video pipeline.
 
-    Generates a video from a first-frame image, a text prompt, and a camera
-    trajectory (explicit ``c2w`` poses or a WASD/IJKL action string). Uses the
-    1600M bidirectional SANA DiT for stage-1 sampling and the LTX-2
-    sink-bidirectional Euler refiner for stage-2 polish; both decode through
-    the LTX-2 VAE.
+    Generates a video from a first-frame image, a text prompt, and a camera trajectory (explicit ``c2w`` poses or a
+    WASD/IJKL action string). Uses the 1600M bidirectional SANA DiT for stage-1 sampling and the LTX-2
+    sink-bidirectional Euler refiner for stage-2 polish; both decode through the LTX-2 VAE.
 
     Args:
         tokenizer ([`GemmaTokenizer`] or [`GemmaTokenizerFast`]):
@@ -165,8 +163,8 @@ class SanaWMPipeline(DiffusionPipeline):
         scheduler ([`FlowMatchEulerDiscreteScheduler`]):
             Flow-matching Euler scheduler (LTX-style per-token timesteps).
         refiner ([`SanaWMLTX2Refiner`], *optional*):
-            LTX-2 refiner; if provided, runs 3-step distilled refinement
-            before decoding. If `None`, decode stage-1 latents directly.
+            LTX-2 refiner; if provided, runs 3-step distilled refinement before decoding. If `None`, decode stage-1
+            latents directly.
     """
 
     model_cpu_offload_seq = "text_encoder->transformer->refiner->vae"
@@ -240,14 +238,12 @@ class SanaWMPipeline(DiffusionPipeline):
     ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         """Encode prompt + negative prompt through Gemma-2.
 
-        Mirrors the SANA chi-prompt-prefix trick: the chi prompt is prepended
-        to the user prompt, then a ``select_index = [0, -L+1, ..., -1]`` slice
-        takes the BOS token plus the last ``max_sequence_length - 1`` tokens.
+        Mirrors the SANA chi-prompt-prefix trick: the chi prompt is prepended to the user prompt, then a ``select_index
+        = [0, -L+1, ..., -1]`` slice takes the BOS token plus the last ``max_sequence_length - 1`` tokens.
 
         Returns:
-            ``(cond, cond_mask, neg, neg_mask)`` where ``cond`` and ``neg``
-            are ``(1, 1, L, D)``-shaped Gemma hidden states and the masks are
-            ``(1, L)``.
+            ``(cond, cond_mask, neg, neg_mask)`` where ``cond`` and ``neg`` are ``(1, 1, L, D)``-shaped Gemma hidden
+            states and the masks are ``(1, L)``.
         """
         chi = "\n".join(chi_prompt) if chi_prompt else ""
         if chi:
@@ -299,10 +295,9 @@ class SanaWMPipeline(DiffusionPipeline):
     def _decode_latents(self, latents: torch.Tensor) -> torch.Tensor:
         """Decode latents into a `(T, H, W, 3)` float tensor in `[0, 1]`.
 
-        Returning float `[0, 1]` matches the diffusers convention used by
-        `SanaImageToVideoPipeline` / `VideoProcessor` — `export_to_video` and
-        other downstream utilities assume that range for `np.ndarray` frames
-        and silently corrupt uint8 input via an overflow multiply by 255.
+        Returning float `[0, 1]` matches the diffusers convention used by `SanaImageToVideoPipeline` / `VideoProcessor`
+        — `export_to_video` and other downstream utilities assume that range for `np.ndarray` frames and silently
+        corrupt uint8 input via an overflow multiply by 255.
         """
         latents = latents.to(self.vae.device, dtype=self.vae.dtype)
         latents_mean = self.vae.latents_mean.view(1, -1, 1, 1, 1).to(latents)
@@ -368,9 +363,8 @@ class SanaWMPipeline(DiffusionPipeline):
     ) -> torch.Tensor:
         """Stage-1 denoising — LTX-style flow-matching Euler with per-token timesteps.
 
-        The first latent frame is the conditioning anchor: its per-token
-        timestep is clamped to zero throughout sampling so it never gets
-        denoised away.
+        The first latent frame is the conditioning anchor: its per-token timestep is clamped to zero throughout
+        sampling so it never gets denoised away.
         """
         latent_T = (num_frames - 1) // self.vae_scale_factor_temporal + 1
         latent_h = height // self.vae_scale_factor_spatial
@@ -486,11 +480,10 @@ class SanaWMPipeline(DiffusionPipeline):
             c2w (`np.ndarray`, *optional*):
                 ``(F, 4, 4)`` camera-to-world poses. Mutually exclusive with `action`.
             action (`str`, *optional*):
-                Action-DSL string e.g. ``"w-80,jw-40,w-40"``. Mutually
-                exclusive with `c2w`.
+                Action-DSL string e.g. ``"w-80,jw-40,w-40"``. Mutually exclusive with `c2w`.
             intrinsics (`np.ndarray` or `list[float]`):
-                ``[fx, fy, cx, cy]`` in **original-image** pixel coordinates.
-                The pipeline applies the resize+crop transform internally.
+                ``[fx, fy, cx, cy]`` in **original-image** pixel coordinates. The pipeline applies the resize+crop
+                transform internally.
             height (`int`, defaults to 704):
                 Output frame height (fixed for the public model).
             width (`int`, defaults to 1280):
@@ -516,9 +509,8 @@ class SanaWMPipeline(DiffusionPipeline):
             refiner_seed (`int`, defaults to 42):
                 Refiner sampling seed.
             refiner_checkpoint_dir (`str` or `pathlib.Path`, *optional*):
-                If provided, the AR refiner writes a ``state.pt`` after every
-                completed block and resumes from there on the next call. Lets
-                a refinement survive job preemption.
+                If provided, the AR refiner writes a ``state.pt`` after every completed block and resumes from there on
+                the next call. Lets a refinement survive job preemption.
             max_sequence_length (`int`, defaults to 300):
                 Max prompt tokens.
             chi_prompt (`list[str]`, *optional*):
@@ -529,10 +521,9 @@ class SanaWMPipeline(DiffusionPipeline):
                 Return [`SanaWMPipelineOutput`] vs tuple.
 
         Returns:
-            [`SanaWMPipelineOutput`] with `.frames` of shape ``(T, H, W, 3)``,
-            float ``np.ndarray`` in ``[0, 1]`` for `output_type="np"`, a list of
-            ``PIL.Image.Image`` of length ``T`` for `"pil"`, or the raw latent
-            tensor for `"latent"`.
+            [`SanaWMPipelineOutput`] with `.frames` of shape ``(T, H, W, 3)``, float ``np.ndarray`` in ``[0, 1]`` for
+            `output_type="np"`, a list of ``PIL.Image.Image`` of length ``T`` for `"pil"`, or the raw latent tensor for
+            `"latent"`.
 
         Examples:
         """

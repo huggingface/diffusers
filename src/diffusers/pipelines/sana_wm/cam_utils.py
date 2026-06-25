@@ -89,8 +89,8 @@ def action_string_to_c2w(
 ) -> np.ndarray:
     """Roll out a ``(N+1, 4, 4)`` c2w trajectory from a WASD+IJKL action DSL.
 
-    Coordinate convention: OpenCV (``+X right, +Y down, +Z forward``).
-    WASD translates on the world XZ plane; IJKL applies pitch / yaw.
+    Coordinate convention: OpenCV (``+X right, +Y down, +Z forward``). WASD translates on the world XZ plane; IJKL
+    applies pitch / yaw.
     """
     per_frame = _parse_action_string(action)
     rotate_rad = math.radians(rotation_speed_deg)
@@ -167,9 +167,8 @@ def transform_intrinsics_for_crop(
 def estimate_intrinsics_with_pi3x(image: Image.Image, device: torch.device | str = "cuda") -> np.ndarray:
     """Estimate ``[fx, fy, cx, cy]`` for ``image`` using Pi3X.
 
-    Optional helper — requires ``pip install pi3-vision``. The result is in
-    the **original image** pixel grid (not the cropped one); pass it to
-    [`SanaWMPipeline.__call__`] as ``intrinsics=...``.
+    Optional helper — requires ``pip install pi3-vision``. The result is in the **original image** pixel grid (not the
+    cropped one); pass it to [`SanaWMPipeline.__call__`] as ``intrinsics=...``.
     """
     try:
         from pi3.models.pi3x import Pi3X  # type: ignore
@@ -311,8 +310,7 @@ def prepare_camera(
     Returns a dict with:
 
       * ``raymap`` ``(T_lat, 20)`` — flattened (rel-pose, intrinsics) per latent frame
-      * ``chunk_plucker`` ``(6 * vae_time_stride, T_lat, H_lat, W_lat)`` —
-        Plücker coordinates packed by chunk.
+      * ``chunk_plucker`` ``(6 * vae_time_stride, T_lat, H_lat, W_lat)`` — Plücker coordinates packed by chunk.
     """
     num_frames = poses_c2w.shape[0]
     vae_time_stride, vae_spatial_stride = vae_stride[0], vae_stride[-1]

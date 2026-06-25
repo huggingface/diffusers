@@ -14,22 +14,18 @@
 
 """LTX-2 chunk-causal AR refiner used as SANA-WM stage 2.
 
-Wraps diffusers' own ``LTX2VideoTransformer3DModel`` + ``LTX2TextConnectors``
-plus a Gemma-3 text encoder. The transformer's public forward always runs the
-audio stream and does not expose the streaming sink/current self-attention
-mask this refiner was trained with, so we run a video-only forward in-place
-with a sink/current attention split.
+Wraps diffusers' own ``LTX2VideoTransformer3DModel`` + ``LTX2TextConnectors`` plus a Gemma-3 text encoder. The
+transformer's public forward always runs the audio stream and does not expose the streaming sink/current self-attention
+mask this refiner was trained with, so we run a video-only forward in-place with a sink/current attention split.
 
 Two refinement modes are supported:
 
-* **AR / chunk-causal** (``block_size=3``, ``kv_max_frames=11`` — canonical):
-  processes ``block_size`` latent frames at a time over a sliding window of
-  ``[source_sink + recent_history + active_block]`` K/V. The model was trained
-  with this contract; per-block compute is bounded by the window size so total
-  refinement cost scales linearly with video length.
-* **Single-shot** (``block_size=None``): denoises all current frames jointly
-  in one O(T^2) attention pass. Out-of-distribution for the model and only
-  kept around as a debugging fallback.
+* **AR / chunk-causal** (``block_size=3``, ``kv_max_frames=11`` — canonical): processes ``block_size`` latent frames at
+  a time over a sliding window of ``[source_sink + recent_history + active_block]`` K/V. The model was trained with
+  this contract; per-block compute is bounded by the window size so total refinement cost scales linearly with video
+  length.
+* **Single-shot** (``block_size=None``): denoises all current frames jointly in one O(T^2) attention pass.
+  Out-of-distribution for the model and only kept around as a debugging fallback.
 """
 
 from __future__ import annotations
@@ -56,14 +52,11 @@ class SanaWMLTX2Refiner(ModelMixin, ConfigMixin):
     r"""
     LTX-2 sink-bidirectional Euler refiner used as SANA-WM stage 2.
 
-    Wraps the diffusers LTX-2 components (transformer + text connectors + Gemma-3
-    text encoder + tokenizer). Saved on disk as a directory:
+    Wraps the diffusers LTX-2 components (transformer + text connectors + Gemma-3 text encoder + tokenizer). Saved on
+    disk as a directory:
 
-        refiner/
-        ├── config.json
-        ├── transformer/        # LTX2VideoTransformer3DModel
-        ├── connectors/         # LTX2TextConnectors
-        └── text_encoder/       # Gemma-3 (+ co-located tokenizer files)
+        refiner/ ├── config.json ├── transformer/ # LTX2VideoTransformer3DModel ├── connectors/ # LTX2TextConnectors
+        └── text_encoder/ # Gemma-3 (+ co-located tokenizer files)
 
     Args:
         text_max_sequence_length (`int`, defaults to 1024):
@@ -163,14 +156,11 @@ class SanaWMLTX2Refiner(ModelMixin, ConfigMixin):
     ) -> torch.Tensor:
         """Run the LTX-2 refiner and return refined VAE latents.
 
-        Defaults to the canonical chunk-causal AR recipe (``block_size=3``,
-        ``kv_max_frames=11``): a sliding window of
-        ``[source_sink + recent_history + active_block]`` K/V is fed to the
-        transformer one block at a time. The model was trained on this contract
-        and the per-block compute is bounded, so total refinement cost scales
-        linearly with video length. Pass ``block_size=None`` to fall back to
-        the legacy single-shot path (``O(T^2)``, OOD for the model — only kept
-        for debugging).
+        Defaults to the canonical chunk-causal AR recipe (``block_size=3``, ``kv_max_frames=11``): a sliding window of
+        ``[source_sink + recent_history + active_block]`` K/V is fed to the transformer one block at a time. The model
+        was trained on this contract and the per-block compute is bounded, so total refinement cost scales linearly
+        with video length. Pass ``block_size=None`` to fall back to the legacy single-shot path (``O(T^2)``, OOD for
+        the model — only kept for debugging).
 
         Args:
             sana_latent: ``(B, C, F, H, W)`` stage-1 latent.
@@ -183,15 +173,13 @@ class SanaWMLTX2Refiner(ModelMixin, ConfigMixin):
             block_size: latent frames per AR block (canonical: 3). Set to
                 ``None`` to disable AR mode.
             kv_max_frames: maximum context+active frames retained in the
-                sliding window when AR mode is active (canonical: 11 =
-                1 sink + 10 recent).
+                sliding window when AR mode is active (canonical: 11 = 1 sink + 10 recent).
             sigmas: descending Euler schedule terminating at 0.0 (canonical
                 3-step distilled: ``(0.909375, 0.725, 0.421875, 0.0)``).
             checkpoint_dir: if provided (and AR mode is on), the AR loop
-                writes a ``state.pt`` after every completed block (atomic
-                replace) and resumes from there if it already exists. Lets a
-                refinement survive SLURM preemption — the run resumes from
-                the last completed block instead of recomputing from scratch.
+                writes a ``state.pt`` after every completed block (atomic replace) and resumes from there if it already
+                exists. Lets a refinement survive SLURM preemption — the run resumes from the last completed block
+                instead of recomputing from scratch.
         """
         if sana_latent.shape[2] <= sink_size:
             raise ValueError(f"Stage-1 latent has {sana_latent.shape[2]} frames but sink_size={sink_size}.")
@@ -287,24 +275,18 @@ class SanaWMLTX2Refiner(ModelMixin, ConfigMixin):
 
         Implements the canonical ``rf_shifted_sink`` KV-cache contract end-to-end:
 
-        1. Pre-capture **pre-RoPE** sink K/V from raw ``z_sana[:source_sink_frames]``
-           at σ=0. The sink frames themselves are **never refined** — they sit
-           unchanged in the output volume.
-        2. AR blocks cover frames ``[source_sink_frames, T_full)`` in
-           ``block_size``-frame chunks. For each block:
+        1. Pre-capture **pre-RoPE** sink K/V from raw ``z_sana[:source_sink_frames]`` at σ=0. The sink frames
+           themselves are **never refined** — they sit unchanged in the output volume.
+        2. AR blocks cover frames ``[source_sink_frames, T_full)`` in ``block_size``-frame chunks. For each block:
            - Initialize ``x_t = (1-σ₀)·z_sana_block + σ₀·ε`` (single eps per block).
-           - 3-step deterministic Euler. Each step injects the per-layer prefix
-             ``{sink_k_pre, sink_v, sink_pe, history_k, history_v}`` where
-             ``sink_pe`` is rebuilt at ``sink_rope_offset = active_start -
-             history_frames - source_sink_frames`` so the sink slides to sit
-             immediately before the bounded working cache.
-           - Capture **post-RoPE** K/V from the refined block under the same
-             prefix; append to ``history_kv_post`` and trim to
-             ``kv_max_frames - source_sink_frames``.
+           - 3-step deterministic Euler. Each step injects the per-layer prefix ``{sink_k_pre, sink_v, sink_pe,
+             history_k, history_v}`` where ``sink_pe`` is rebuilt at ``sink_rope_offset = active_start - history_frames
+             - source_sink_frames`` so the sink slides to sit immediately before the bounded working cache.
+           - Capture **post-RoPE** K/V from the refined block under the same prefix; append to ``history_kv_post`` and
+             trim to ``kv_max_frames - source_sink_frames``.
 
-        The returned tensor has the same shape ``(B, C, T_full, H, W)`` as
-        ``z``; the first ``source_sink_frames`` slots carry the raw sink
-        latents unchanged, the rest carry the refined output.
+        The returned tensor has the same shape ``(B, C, T_full, H, W)`` as ``z``; the first ``source_sink_frames``
+        slots carry the raw sink latents unchanged, the rest carry the refined output.
         """
         runner = _RefinerChunkRunner(
             self,
@@ -408,9 +390,8 @@ class SanaWMLTX2Refiner(ModelMixin, ConfigMixin):
     ) -> torch.Tensor:
         """Forward through the transformer on the active block only and return x0.
 
-        The active block's Q attends to ``[prefix, current]`` K/V via the
-        ``_tf_kv_prefix`` hook on every self-attention block. All active tokens
-        carry the same ``sigma_cur``.
+        The active block's Q attends to ``[prefix, current]`` K/V via the ``_tf_kv_prefix`` hook on every
+        self-attention block. All active tokens carry the same ``sigma_cur``.
         """
         latent_tokens = _pack_latents(
             active,
@@ -471,10 +452,8 @@ class SanaWMLTX2Refiner(ModelMixin, ConfigMixin):
     ) -> list[tuple[torch.Tensor, torch.Tensor]]:
         """Run one forward at σ=0 with capture hooks; return per-layer (K, V).
 
-        ``capture_mode='pre_rope'`` saves PRE-RoPE K/V (so a future window can
-        re-RoPE the sink to its shifted offset). ``capture_mode='post_rope'``
-        saves POST-RoPE K/V (ready to concatenate directly into the next
-        window's prefix).
+        ``capture_mode='pre_rope'`` saves PRE-RoPE K/V (so a future window can re-RoPE the sink to its shifted offset).
+        ``capture_mode='post_rope'`` saves POST-RoPE K/V (ready to concatenate directly into the next window's prefix).
         """
         latent_tokens = _pack_latents(
             clean_block,
@@ -614,8 +593,8 @@ class SanaWMLTX2Refiner(ModelMixin, ConfigMixin):
     ) -> torch.Tensor:
         """Shared body of ``_forward_video_only`` that takes a pre-built RoPE.
 
-        Used by the AR refinement path where each block forward needs custom
-        per-frame absolute positions in the source video.
+        Used by the AR refinement path where each block forward needs custom per-frame absolute positions in the source
+        video.
         """
         transformer = self.transformer
         batch_size = hidden_states.size(0)
@@ -711,15 +690,12 @@ class SanaWMLTX2Refiner(ModelMixin, ConfigMixin):
 class _RefinerChunkRunner:
     """Stateful per-AR-block driver for :class:`SanaWMLTX2Refiner`.
 
-    Owns the rolling KV state that the chunk-causal AR recipe accumulates as
-    refiner blocks complete:
+    Owns the rolling KV state that the chunk-causal AR recipe accumulates as refiner blocks complete:
 
-    * ``_sink_kv_pre``: per-layer pre-RoPE K/V captured from the first
-      ``source_sink_frames`` raw stage-1 latents at σ=0. Lazily filled on the
-      first call to :meth:`refine_block`.
-    * ``_history_kv_post``: per-layer post-RoPE K/V of every refined block
-      already produced, trimmed to ``kv_max_frames - source_sink_frames``
-      frames so the sliding window stays bounded.
+    * ``_sink_kv_pre``: per-layer pre-RoPE K/V captured from the first ``source_sink_frames`` raw stage-1 latents at
+      σ=0. Lazily filled on the first call to :meth:`refine_block`.
+    * ``_history_kv_post``: per-layer post-RoPE K/V of every refined block already produced, trimmed to ``kv_max_frames
+      - source_sink_frames`` frames so the sliding window stays bounded.
     * ``_history_frames``: number of frames currently in ``_history_kv_post``.
     """
 
@@ -816,13 +792,11 @@ class _RefinerChunkRunner:
             clean_block: ``(B, C, active_len, H, W)`` clean stage-1 latents
                 covering frames ``[block_start, block_end)``.
             block_start: absolute latent-frame index of the active block's
-                first frame (drives the ``rf_shifted_sink`` RoPE offset).
-                Must be >= ``source_sink_frames``.
+                first frame (drives the ``rf_shifted_sink`` RoPE offset). Must be >= ``source_sink_frames``.
             block_end: absolute latent-frame index just past the active block.
             sink_seed_frames: ``(B, C, source_sink_frames, H, W)`` raw sink
-                latents used once on the first call to pre-capture the
-                pre-RoPE sink K/V at ``sigma=0`` with frame positions
-                ``[0, source_sink_frames)``.
+                latents used once on the first call to pre-capture the pre-RoPE sink K/V at ``sigma=0`` with frame
+                positions ``[0, source_sink_frames)``.
         """
         refiner = self._refiner
         device = self._device
@@ -956,9 +930,8 @@ def _build_rotary_emb_for_absolute_positions(
 ) -> tuple[torch.Tensor, torch.Tensor]:
     """Reimplement ``LTX2VideoRotaryPosEmbed.prepare_video_coords`` with explicit per-frame positions.
 
-    The default helper assumes contiguous ``torch.arange(num_frames)`` which is
-    fine for bidirectional inference; the sliding-window AR refiner needs to
-    keep each frame's absolute index in the source video so RoPE captures the
+    The default helper assumes contiguous ``torch.arange(num_frames)`` which is fine for bidirectional inference; the
+    sliding-window AR refiner needs to keep each frame's absolute index in the source video so RoPE captures the
     correct temporal phase across the sink + recent + active window.
     """
     rope = transformer.rope
@@ -1038,18 +1011,16 @@ def _streaming_self_attention(
 ) -> torch.Tensor:
     """LTX-2 self-attention with sink/current streaming mask + AR KV-cache hooks.
 
-    Two modes layered on top of vanilla diffusers self-attention, selected by
-    ``n_context_tokens`` and per-block hook attributes (set by the AR refiner):
+    Two modes layered on top of vanilla diffusers self-attention, selected by ``n_context_tokens`` and per-block hook
+    attributes (set by the AR refiner):
 
-    * ``n_context_tokens > 0`` (legacy single-shot path): sink queries attend
-      sink only, current queries attend ``[sink + current]`` via two SDPA calls.
+    * ``n_context_tokens > 0`` (legacy single-shot path): sink queries attend sink only, current queries attend ``[sink
+      + current]`` via two SDPA calls.
 
-    * ``n_context_tokens == 0`` (AR mode): Q comes from the active block only;
-      the per-block ``_tf_kv_prefix`` dict (``rf_shifted_sink``) supplies the
-      pre-RoPE sink K/V (re-RoPE'd here with its sliding offset PE) and the
-      post-RoPE recent-history K/V, concatenated before SDPA. The
-      ``_kv_cache_capture`` and ``_tf_capture_kv`` hooks record K/V into the
-      module for the AR orchestrator to read back.
+    * ``n_context_tokens == 0`` (AR mode): Q comes from the active block only; the per-block ``_tf_kv_prefix`` dict
+      (``rf_shifted_sink``) supplies the pre-RoPE sink K/V (re-RoPE'd here with its sliding offset PE) and the
+      post-RoPE recent-history K/V, concatenated before SDPA. The ``_kv_cache_capture`` and ``_tf_capture_kv`` hooks
+      record K/V into the module for the AR orchestrator to read back.
     """
     from ...models.attention_dispatch import dispatch_attention_fn  # noqa: PLC0415
     from ...models.transformers.transformer_ltx2 import (  # noqa: PLC0415
@@ -1302,8 +1273,7 @@ def _atomic_save_state(
 ) -> None:
     """Persist refinement state atomically — write to a tmp sibling, then rename.
 
-    The state lets a preempted SLURM job resume from the last completed AR
-    block instead of recomputing from scratch.
+    The state lets a preempted SLURM job resume from the last completed AR block instead of recomputing from scratch.
     """
     state_path.parent.mkdir(parents=True, exist_ok=True)
     payload = {
