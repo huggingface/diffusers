@@ -13,7 +13,6 @@
 # limitations under the License.
 
 import inspect
-import math
 from typing import Callable
 
 import numpy as np
@@ -33,7 +32,7 @@ from ...schedulers import FlowMatchEulerDiscreteScheduler
 from ...utils import logging, replace_example_docstring
 from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline
-from .image_processor import JoyImageEditImageProcessor, find_best_bucket
+from .image_processor import JoyImageEditImageProcessor
 from .pipeline_output import JoyImageEditPlusPipelineOutput
 
 
@@ -69,6 +68,7 @@ Examples:
 """
 
 
+# Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.retrieve_timesteps
 def retrieve_timesteps(
     scheduler,
     num_inference_steps: int | None = None,
@@ -298,20 +298,6 @@ class JoyImageEditPlusPipeline(DiffusionPipeline):
             latent = latent / self.vae.config.scaling_factor
         return latent
 
-    def _resize_center_crop(self, img: Image.Image, target_size: tuple[int, int]) -> Image.Image:
-        w, h = img.size
-        bh, bw = target_size
-        scale = max(bh / h, bw / w)
-        resize_h, resize_w = math.ceil(h * scale), math.ceil(w * scale)
-        img = img.resize((resize_w, resize_h), Image.LANCZOS)
-        left = (resize_w - bw) // 2
-        top = (resize_h - bh) // 2
-        img = img.crop((left, top, left + bw, top + bh))
-        return img
-
-    def _get_bucket_size(self, img: Image.Image) -> tuple[int, int]:
-        return find_best_bucket(img.size[1], img.size[0], self.vae_image_processor.config.basesize)
-
     def prepare_latents(
         self,
         batch_size: int,
@@ -352,8 +338,8 @@ class JoyImageEditPlusPipeline(DiffusionPipeline):
             # Reference images
             if reference_images is not None and reference_images[i]:
                 for ref_img_pil in reference_images[i]:
-                    ref_h, ref_w = self._get_bucket_size(ref_img_pil)
-                    ref_img_pil = self._resize_center_crop(ref_img_pil, (ref_h, ref_w))
+                    ref_h, ref_w = self.vae_image_processor.get_default_height_width(ref_img_pil)
+                    ref_img_pil = self.vae_image_processor.resize_center_crop(ref_img_pil, (ref_h, ref_w))
 
                     ref_tensor = torch.from_numpy(np.array(ref_img_pil.convert("RGB"))).to(device=device, dtype=dtype)
                     ref_tensor = (ref_tensor / 127.5 - 1.0).permute(2, 0, 1).unsqueeze(1).unsqueeze(0)
@@ -529,7 +515,7 @@ class JoyImageEditPlusPipeline(DiffusionPipeline):
         if height is None or width is None:
             if images is not None and len(images[0]) > 0:
                 last_img = images[0][-1]
-                height, width = self._get_bucket_size(last_img)
+                height, width = self.vae_image_processor.get_default_height_width(last_img)
             else:
                 height = height or 1024
                 width = width or 1024
@@ -542,8 +528,8 @@ class JoyImageEditPlusPipeline(DiffusionPipeline):
             for sample_imgs in images:
                 processed_sample = []
                 for img in sample_imgs:
-                    ref_h, ref_w = self._get_bucket_size(img)
-                    resize_img = self._resize_center_crop(img, (ref_h, ref_w))
+                    ref_h, ref_w = self.vae_image_processor.get_default_height_width(img)
+                    resize_img = self.vae_image_processor.resize_center_crop(img, (ref_h, ref_w))
                     processed_sample.append(resize_img)
                 processed_images.append(processed_sample)
             images = processed_images

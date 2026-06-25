@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import inspect
 import math
 
 import torch
@@ -20,20 +21,15 @@ import torch.nn.functional as F
 
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...utils import logging
-from ..attention import AttentionMixin, FeedForward
+from ..attention import AttentionMixin, AttentionModuleMixin, FeedForward
 from ..attention_dispatch import dispatch_attention_fn
+from ..embeddings import PixArtAlphaTextProjection, TimestepEmbedding, Timesteps
 from ..modeling_outputs import Transformer2DModelOutput
 from ..modeling_utils import ModelMixin
 from ..normalization import FP32LayerNorm
-from .transformer_joyimage import (
-    JoyImageAttention,
-    JoyImageModulate,
-    JoyImageTimeTextImageEmbedding,
-    JoyImageTransformerBlock,
-)
 
 
-logger = logging.get_logger(__name__)
+logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
 def _apply_rotary_emb_batched(
@@ -41,17 +37,12 @@ def _apply_rotary_emb_batched(
     xk: torch.Tensor,
     freqs_cis: tuple[torch.Tensor, torch.Tensor],
 ) -> tuple[torch.Tensor, torch.Tensor]:
-    """RoPE that handles both batched [B, S, D] and unbatched [S, D] freqs."""
+    """RoPE for batched [B, S, D] freqs."""
     cos, sin = freqs_cis[0].to(xq.device), freqs_cis[1].to(xq.device)
 
-    if cos.ndim == 2:
-        # unbatched: [S, D] -> [1, S, 1, D]
-        cos = cos.unsqueeze(0).unsqueeze(2)
-        sin = sin.unsqueeze(0).unsqueeze(2)
-    elif cos.ndim == 3:
-        # batched: [B, S, D] -> [B, S, 1, D]
-        cos = cos.unsqueeze(2)
-        sin = sin.unsqueeze(2)
+    # batched: [B, S, D] -> [B, S, 1, D]
+    cos = cos.unsqueeze(2)
+    sin = sin.unsqueeze(2)
 
     def _rotate_half(x):
         x_real, x_imag = x.float().reshape(*x.shape[:-1], -1, 2).unbind(-1)
@@ -60,6 +51,27 @@ def _apply_rotary_emb_batched(
     xq_out = (xq.float() * cos + _rotate_half(xq) * sin).type_as(xq)
     xk_out = (xk.float() * cos + _rotate_half(xk) * sin).type_as(xk)
     return xq_out, xk_out
+
+
+# Copied from diffusers.models.transformers.transformer_joyimage.JoyImageModulate with JoyImage->JoyImageEditPlus
+class JoyImageEditPlusModulate(nn.Module):
+    """Wan-style learnable modulation table.
+
+    Produces `factor` modulation vectors by adding the conditioning signal to a learnable parameter table.
+    """
+
+    def __init__(self, hidden_size: int, factor: int, dtype=None, device=None):
+        super().__init__()
+        self.factor = factor
+        self.modulate_table = nn.Parameter(
+            torch.zeros(1, factor, hidden_size, dtype=dtype, device=device) / hidden_size**0.5,
+            requires_grad=True,
+        )
+
+    def forward(self, x: torch.Tensor) -> list[torch.Tensor]:
+        if x.ndim != 3:
+            x = x.unsqueeze(1)
+        return [o.squeeze(1) for o in (self.modulate_table + x).chunk(self.factor, dim=1)]
 
 
 class JoyImageEditPlusAttnProcessor:
@@ -73,12 +85,11 @@ class JoyImageEditPlusAttnProcessor:
 
     def __call__(
         self,
-        attn: "JoyImageAttention",
+        attn: "JoyImageEditPlusAttention",
         hidden_states: torch.Tensor,
         encoder_hidden_states: torch.Tensor = None,
         image_rotary_emb: tuple[torch.Tensor, torch.Tensor] | None = None,
         attention_mask: torch.Tensor | None = None,
-        **kwargs,
     ) -> tuple[torch.Tensor, torch.Tensor]:
         if encoder_hidden_states is None:
             raise ValueError("JoyImageEditPlusAttnProcessor requires encoder_hidden_states")
@@ -138,6 +149,180 @@ class JoyImageEditPlusAttnProcessor:
         return img_attn_output, txt_attn_output
 
 
+# Copied from diffusers.models.transformers.transformer_joyimage.JoyImageAttention with JoyImage->JoyImageEditPlus
+class JoyImageEditPlusAttention(nn.Module, AttentionModuleMixin):
+    """Joint attention module for JoyImage Edit Plus double-stream blocks."""
+
+    _default_processor_cls = JoyImageEditPlusAttnProcessor
+    _available_processors = [JoyImageEditPlusAttnProcessor]
+    _supports_qkv_fusion = False
+
+    def __init__(
+        self,
+        dim: int,
+        num_attention_heads: int,
+        attention_head_dim: int,
+        eps: float = 1e-6,
+        processor=None,
+    ):
+        super().__init__()
+
+        self.heads = num_attention_heads
+        self.head_dim = attention_head_dim
+        inner_dim = num_attention_heads * attention_head_dim
+
+        self.img_attn_qkv = nn.Linear(dim, inner_dim * 3, bias=True)
+        self.img_attn_q_norm = nn.RMSNorm(attention_head_dim, eps=eps)
+        self.img_attn_k_norm = nn.RMSNorm(attention_head_dim, eps=eps)
+        self.img_attn_proj = nn.Linear(inner_dim, dim, bias=True)
+
+        self.txt_attn_qkv = nn.Linear(dim, inner_dim * 3, bias=True)
+        self.txt_attn_q_norm = nn.RMSNorm(attention_head_dim, eps=eps)
+        self.txt_attn_k_norm = nn.RMSNorm(attention_head_dim, eps=eps)
+        self.txt_attn_proj = nn.Linear(inner_dim, dim, bias=True)
+
+        if processor is None:
+            processor = self._default_processor_cls()
+        self.set_processor(processor)
+
+    def forward(
+        self,
+        hidden_states: torch.Tensor,
+        encoder_hidden_states: torch.Tensor | None = None,
+        image_rotary_emb: tuple[torch.Tensor, torch.Tensor] | None = None,
+        attention_mask: torch.Tensor | None = None,
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        attn_parameters = set(inspect.signature(self.processor.__call__).parameters.keys())
+        kwargs = {}
+        if "attention_mask" in attn_parameters:
+            kwargs["attention_mask"] = attention_mask
+        return self.processor(self, hidden_states, encoder_hidden_states, image_rotary_emb, **kwargs)
+
+
+# Copied from diffusers.models.transformers.transformer_joyimage.JoyImageTransformerBlock with JoyImage->JoyImageEditPlus
+class JoyImageEditPlusTransformerBlock(nn.Module):
+    """Double-stream transformer block for JoyImage Edit Plus."""
+
+    def __init__(
+        self,
+        dim: int,
+        num_attention_heads: int,
+        attention_head_dim: int,
+        mlp_width_ratio: float = 4.0,
+        eps: float = 1e-6,
+    ):
+        super().__init__()
+
+        self.dim = dim
+        self.num_attention_heads = num_attention_heads
+        self.attention_head_dim = attention_head_dim
+        mlp_hidden_dim = int(dim * mlp_width_ratio)
+
+        # image stream
+        self.img_mod = JoyImageEditPlusModulate(dim, factor=6)
+        self.img_norm1 = FP32LayerNorm(dim, elementwise_affine=False, eps=eps)
+        self.img_norm2 = FP32LayerNorm(dim, elementwise_affine=False, eps=eps)
+        self.img_mlp = FeedForward(dim, inner_dim=mlp_hidden_dim, activation_fn="gelu-approximate")
+
+        # text stream
+        self.txt_mod = JoyImageEditPlusModulate(dim, factor=6)
+        self.txt_norm1 = FP32LayerNorm(dim, elementwise_affine=False, eps=eps)
+        self.txt_norm2 = FP32LayerNorm(dim, elementwise_affine=False, eps=eps)
+        self.txt_mlp = FeedForward(dim, inner_dim=mlp_hidden_dim, activation_fn="gelu-approximate")
+
+        # joint attention
+        self.attn = JoyImageEditPlusAttention(dim, num_attention_heads, attention_head_dim, eps=eps)
+
+    def forward(
+        self,
+        hidden_states: torch.Tensor,
+        encoder_hidden_states: torch.Tensor,
+        temb: torch.Tensor,
+        image_rotary_emb: tuple[torch.Tensor, torch.Tensor] | None = None,
+        attention_mask: torch.Tensor | None = None,
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        # modulation
+        (
+            img_mod1_shift,
+            img_mod1_scale,
+            img_mod1_gate,
+            img_mod2_shift,
+            img_mod2_scale,
+            img_mod2_gate,
+        ) = self.img_mod(temb)
+        (
+            txt_mod1_shift,
+            txt_mod1_scale,
+            txt_mod1_gate,
+            txt_mod2_shift,
+            txt_mod2_scale,
+            txt_mod2_gate,
+        ) = self.txt_mod(temb)
+
+        # --- attention ---
+        img_normed = self.img_norm1(hidden_states)
+        txt_normed = self.txt_norm1(encoder_hidden_states)
+        img_modulated = img_normed * (1 + img_mod1_scale.unsqueeze(1)) + img_mod1_shift.unsqueeze(1)
+        txt_modulated = txt_normed * (1 + txt_mod1_scale.unsqueeze(1)) + txt_mod1_shift.unsqueeze(1)
+
+        img_attn, txt_attn = self.attn(
+            hidden_states=img_modulated,
+            encoder_hidden_states=txt_modulated,
+            image_rotary_emb=image_rotary_emb,
+            attention_mask=attention_mask,
+        )
+
+        hidden_states = hidden_states + img_attn * img_mod1_gate.unsqueeze(1)
+        encoder_hidden_states = encoder_hidden_states + txt_attn * txt_mod1_gate.unsqueeze(1)
+
+        # --- FFN ---
+        img_ffn_normed = self.img_norm2(hidden_states)
+        txt_ffn_normed = self.txt_norm2(encoder_hidden_states)
+        img_ffn_input = img_ffn_normed * (1 + img_mod2_scale.unsqueeze(1)) + img_mod2_shift.unsqueeze(1)
+        txt_ffn_input = txt_ffn_normed * (1 + txt_mod2_scale.unsqueeze(1)) + txt_mod2_shift.unsqueeze(1)
+        img_ffn_output = self.img_mlp(img_ffn_input)
+        txt_ffn_output = self.txt_mlp(txt_ffn_input)
+        hidden_states = hidden_states + img_ffn_output * img_mod2_gate.unsqueeze(1)
+        encoder_hidden_states = encoder_hidden_states + txt_ffn_output * txt_mod2_gate.unsqueeze(1)
+
+        return hidden_states, encoder_hidden_states
+
+
+# Copied from diffusers.models.transformers.transformer_joyimage.JoyImageTimeTextImageEmbedding with JoyImage->JoyImageEditPlus
+class JoyImageEditPlusTimeTextImageEmbedding(nn.Module):
+    def __init__(
+        self,
+        dim: int,
+        time_freq_dim: int,
+        time_proj_dim: int,
+        text_embed_dim: int,
+    ):
+        super().__init__()
+
+        self.timesteps_proj = Timesteps(num_channels=time_freq_dim, flip_sin_to_cos=True, downscale_freq_shift=0)
+        self.time_embedder = TimestepEmbedding(in_channels=time_freq_dim, time_embed_dim=dim)
+        self.act_fn = nn.SiLU()
+        self.time_proj = nn.Linear(dim, time_proj_dim)
+        self.text_embedder = PixArtAlphaTextProjection(text_embed_dim, dim, act_fn="gelu_tanh")
+
+    def forward(
+        self,
+        timestep: torch.Tensor,
+        encoder_hidden_states: torch.Tensor,
+    ):
+        timestep = self.timesteps_proj(timestep)
+
+        time_embedder_dtype = next(iter(self.time_embedder.parameters())).dtype
+        if timestep.dtype != time_embedder_dtype and time_embedder_dtype != torch.int8:
+            timestep = timestep.to(time_embedder_dtype)
+        temb = self.time_embedder(timestep).type_as(encoder_hidden_states)
+        timestep_proj = self.time_proj(self.act_fn(temb))
+
+        encoder_hidden_states = self.text_embedder(encoder_hidden_states)
+
+        return temb, timestep_proj, encoder_hidden_states
+
+
 class JoyImageEditPlusTransformer3DModel(ModelMixin, ConfigMixin, AttentionMixin):
     r"""
     JoyImage Edit Plus Transformer for multi-image editing.
@@ -173,7 +358,7 @@ class JoyImageEditPlusTransformer3DModel(ModelMixin, ConfigMixin, AttentionMixin
     """
 
     _skip_layerwise_casting_patterns = ["img_in", "condition_embedder", "norm"]
-    _no_split_modules = ["JoyImageTransformerBlock"]
+    _no_split_modules = ["JoyImageEditPlusTransformerBlock"]
     _supports_gradient_checkpointing = True
     _keep_in_fp32_modules = [
         "time_embedder",
@@ -181,7 +366,7 @@ class JoyImageEditPlusTransformer3DModel(ModelMixin, ConfigMixin, AttentionMixin
         "norm2",
         "norm_out",
     ]
-    _repeated_blocks = ["JoyImageTransformerBlock"]
+    _repeated_blocks = ["JoyImageEditPlusTransformerBlock"]
 
     @register_to_config
     def __init__(
@@ -216,7 +401,7 @@ class JoyImageEditPlusTransformer3DModel(ModelMixin, ConfigMixin, AttentionMixin
 
         self.img_in = nn.Conv3d(in_channels, hidden_size, kernel_size=patch_size, stride=patch_size)
 
-        self.condition_embedder = JoyImageTimeTextImageEmbedding(
+        self.condition_embedder = JoyImageEditPlusTimeTextImageEmbedding(
             dim=hidden_size,
             time_freq_dim=256,
             time_proj_dim=hidden_size * 6,
@@ -225,7 +410,7 @@ class JoyImageEditPlusTransformer3DModel(ModelMixin, ConfigMixin, AttentionMixin
 
         self.double_blocks = nn.ModuleList(
             [
-                JoyImageTransformerBlock(
+                JoyImageEditPlusTransformerBlock(
                     dim=hidden_size,
                     num_attention_heads=num_attention_heads,
                     attention_head_dim=attention_head_dim,
@@ -277,7 +462,7 @@ class JoyImageEditPlusTransformer3DModel(ModelMixin, ConfigMixin, AttentionMixin
         timestep: torch.Tensor,
         encoder_hidden_states: torch.Tensor,
         encoder_hidden_states_mask: torch.Tensor | None = None,
-        shape_list: list[list[tuple[int, int, int]]] | None = None,
+        shape_list: list[list[tuple[int, int, int]]] = None,
         return_dict: bool = True,
     ) -> torch.Tensor | tuple:
         """
@@ -292,15 +477,9 @@ class JoyImageEditPlusTransformer3DModel(ModelMixin, ConfigMixin, AttentionMixin
         batch_size, max_num_patches, channels, pt, ph, pw = hidden_states.shape
         device = hidden_states.device
 
-        if shape_list is None:
-            raise ValueError(
-                "shape_list must be provided either as an argument or via forward_batch.vae_image_sizes"
-            )
-
         # 1. Condition embeddings
         _, vec, txt = self.condition_embedder(timestep, encoder_hidden_states)
-        if vec.shape[-1] > self.hidden_size:
-            vec = vec.unflatten(1, (6, -1))
+        vec = vec.unflatten(1, (6, -1))
 
         # 2. Patchify via Conv3d: flatten (B, N) -> apply conv -> reshape back
         x = hidden_states.reshape(batch_size * max_num_patches, channels, pt, ph, pw)
@@ -338,7 +517,6 @@ class JoyImageEditPlusTransformer3DModel(ModelMixin, ConfigMixin, AttentionMixin
         vis_freqs = (torch.stack(sample_cos_list), torch.stack(sample_sin_list))
 
         # 4. Build attention mask: [B, 1, 1, img_seq + txt_seq]
-        #    img patches: only actual (non-padding) patches are valid; txt uses encoder_hidden_states_mask
         attention_mask = None
         if encoder_hidden_states_mask is not None:
             img_mask = torch.zeros(batch_size, max_num_patches, device=device, dtype=encoder_hidden_states_mask.dtype)

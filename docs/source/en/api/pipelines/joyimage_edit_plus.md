@@ -35,7 +35,7 @@ images = [
     Image.open("reference_1.png").convert("RGB"),
 ]
 
-target_h, target_w = pipeline._get_bucket_size(images[-1])
+target_h, target_w = pipeline.vae_image_processor.get_default_height_width(images[-1])
 
 output = pipeline(
     images=images,
