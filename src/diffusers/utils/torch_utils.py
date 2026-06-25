@@ -22,7 +22,13 @@ import os
 from typing import Callable, ParamSpec, TypeVar
 
 from . import logging
-from .import_utils import is_torch_available, is_torch_mlu_available, is_torch_npu_available, is_torch_version
+from .import_utils import (
+    is_torch_available,
+    is_torch_mlu_available,
+    is_torch_neuronx_available,
+    is_torch_npu_available,
+    is_torch_version,
+)
 
 
 T = TypeVar("T")
@@ -33,13 +39,22 @@ if is_torch_available():
     import torch
     from torch.fft import fftn, fftshift, ifftn, ifftshift
 
-    BACKEND_SUPPORTS_TRAINING = {"cuda": True, "xpu": True, "cpu": True, "mps": False, "tpu": False, "default": True}
+    BACKEND_SUPPORTS_TRAINING = {
+        "cuda": True,
+        "xpu": True,
+        "cpu": True,
+        "mps": False,
+        "neuron": False,
+        "tpu": False,
+        "default": True,
+    }
     BACKEND_EMPTY_CACHE = {
         "cuda": torch.cuda.empty_cache,
         "xpu": torch.xpu.empty_cache,
         "cpu": None,
         "mps": torch.mps.empty_cache,
         "tpu": getattr(getattr(torch, "tpu", None), "empty_cache", None),
+        "neuron": None,
         "default": None,
     }
     BACKEND_DEVICE_COUNT = {
@@ -48,6 +63,7 @@ if is_torch_available():
         "cpu": lambda: 0,
         "mps": lambda: 0,
         "tpu": lambda: getattr(getattr(torch, "tpu", None), "device_count", lambda: 0)(),
+        "neuron": lambda: getattr(getattr(torch, "neuron", None), "device_count", lambda: 0)(),
         "default": 0,
     }
     BACKEND_MANUAL_SEED = {
@@ -58,6 +74,7 @@ if is_torch_available():
         # TPU latents are always generated on CPU (TPU RNG has unaligned DUS bug),
         # so CPU seeding is the correct behaviour here.
         "tpu": torch.manual_seed,
+        "neuron": torch.manual_seed,
         "default": torch.manual_seed,
     }
     BACKEND_RESET_PEAK_MEMORY_STATS = {
@@ -66,6 +83,7 @@ if is_torch_available():
         "cpu": None,
         "mps": None,
         "tpu": None,
+        "neuron": None,
         "default": None,
     }
     BACKEND_RESET_MAX_MEMORY_ALLOCATED = {
@@ -74,6 +92,7 @@ if is_torch_available():
         "cpu": None,
         "mps": None,
         "tpu": None,
+        "neuron": None,
         "default": None,
     }
     BACKEND_MAX_MEMORY_ALLOCATED = {
@@ -82,6 +101,7 @@ if is_torch_available():
         "cpu": 0,
         "mps": 0,
         "tpu": 0,
+        "neuron": 0,
         "default": 0,
     }
     BACKEND_SYNCHRONIZE = {
@@ -90,8 +110,15 @@ if is_torch_available():
         "cpu": None,
         "mps": None,
         "tpu": getattr(getattr(torch, "tpu", None), "synchronize", None),
+        "neuron": getattr(getattr(torch, "neuron", None), "synchronize", None),
         "default": None,
     }
+
+    _FP64_UNSUPPORTED_DEVICES = frozenset({"mps", "npu", "neuron"})
+    _INT64_UNSUPPORTED_DEVICES = frozenset({"mps", "npu", "neuron"})
+    _DTYPE_DOWNCAST = {torch.float64: torch.float32, torch.int64: torch.int32}
+    _DTYPE_UNSUPPORTED_DEVICES = {torch.float64: _FP64_UNSUPPORTED_DEVICES, torch.int64: _INT64_UNSUPPORTED_DEVICES}
+
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 try:
@@ -158,6 +185,11 @@ def backend_supports_training(device: str):
     return BACKEND_SUPPORTS_TRAINING[device]
 
 
+def maybe_adjust_dtype_for_device(dtype: "torch.dtype", device: "torch.device") -> "torch.dtype":
+    unsupported = _DTYPE_UNSUPPORTED_DEVICES.get(dtype)
+    return _DTYPE_DOWNCAST[dtype] if unsupported and device.type in unsupported else dtype
+
+
 def randn_tensor(
     shape: tuple | list,
     generator: list["torch.Generator"] | "torch.Generator" | None = None,
@@ -183,11 +215,15 @@ def randn_tensor(
     layout = layout or torch.strided
     device = device or torch.device("cpu")
 
+    # Neuron (XLA) does not support creating random tensors directly on device; always use CPU
+    if device.type == "neuron":
+        rand_device = torch.device("cpu")
+
     if generator is not None:
         gen_device_type = generator.device.type if not isinstance(generator, list) else generator[0].device.type
         if gen_device_type != device.type and gen_device_type == "cpu":
             rand_device = "cpu"
-            if device.type != "mps":
+            if device.type not in ("mps", "neuron"):
                 logger.info(
                     f"The passed generator was created on 'cpu' even though a tensor on {device} was expected."
                     f" Tensors will be created on 'cpu' and then moved to {device}. Note that one can probably"
@@ -310,6 +346,8 @@ def get_device():
         return "mps"
     elif is_torch_mlu_available():
         return "mlu"
+    elif is_torch_neuronx_available() and hasattr(torch, "neuron") and torch.neuron.is_available():
+        return "neuron"
     else:
         return "cpu"
 

@@ -13,43 +13,39 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import unittest
-
+import pytest
 import torch
 
 from diffusers import VQModel
+from diffusers.utils.torch_utils import randn_tensor
 
-from ...testing_utils import backend_manual_seed, enable_full_determinism, floats_tensor, torch_device
-from ..test_modeling_common import ModelTesterMixin
-from .testing_utils import AutoencoderTesterMixin
+from ...testing_utils import backend_manual_seed, enable_full_determinism, torch_device
+from ..testing_utils import BaseModelTesterConfig, MemoryTesterMixin, ModelTesterMixin, TrainingTesterMixin
+from .testing_utils import NewAutoencoderTesterMixin
 
 
 enable_full_determinism()
 
 
-class VQModelTests(ModelTesterMixin, AutoencoderTesterMixin, unittest.TestCase):
-    model_class = VQModel
-    main_input_name = "sample"
+class VQModelTesterConfig(BaseModelTesterConfig):
+    @property
+    def model_class(self):
+        return VQModel
 
     @property
-    def dummy_input(self, sizes=(32, 32)):
-        batch_size = 4
-        num_channels = 3
-
-        image = floats_tensor((batch_size, num_channels) + sizes).to(torch_device)
-
-        return {"sample": image}
+    def main_input_name(self) -> str:
+        return "sample"
 
     @property
-    def input_shape(self):
+    def output_shape(self) -> tuple:
         return (3, 32, 32)
 
     @property
-    def output_shape(self):
-        return (3, 32, 32)
+    def generator(self):
+        return torch.Generator("cpu").manual_seed(0)
 
-    def prepare_init_args_and_inputs_for_common(self):
-        init_dict = {
+    def get_init_dict(self) -> dict:
+        return {
             "block_out_channels": [8, 16],
             "norm_num_groups": 8,
             "in_channels": 3,
@@ -58,24 +54,23 @@ class VQModelTests(ModelTesterMixin, AutoencoderTesterMixin, unittest.TestCase):
             "up_block_types": ["UpDecoderBlock2D", "UpDecoderBlock2D"],
             "latent_channels": 3,
         }
-        inputs_dict = self.dummy_input
-        return init_dict, inputs_dict
 
-    @unittest.skip("Test not supported.")
-    def test_forward_signature(self):
-        pass
+    def get_dummy_inputs(self) -> dict:
+        batch_size = 4
+        num_channels = 3
+        sizes = (32, 32)
+        image = randn_tensor((batch_size, num_channels, *sizes), generator=self.generator, device=torch_device)
+        return {"sample": image}
 
-    @unittest.skip("Test not supported.")
-    def test_training(self):
-        pass
 
+class TestVQModel(VQModelTesterConfig, ModelTesterMixin):
     def test_from_pretrained_hub(self):
         model, loading_info = VQModel.from_pretrained("fusing/vqgan-dummy", output_loading_info=True)
-        self.assertIsNotNone(model)
-        self.assertEqual(len(loading_info["missing_keys"]), 0)
+        assert model is not None
+        assert len(loading_info["missing_keys"]) == 0
 
         model.to(torch_device)
-        image = model(**self.dummy_input)
+        image = model(**self.get_dummy_inputs())
 
         assert image is not None, "Make sure output is not None"
 
@@ -95,7 +90,7 @@ class VQModelTests(ModelTesterMixin, AutoencoderTesterMixin, unittest.TestCase):
         # fmt: off
         expected_output_slice = torch.tensor([-0.0153, -0.4044, -0.1880, -0.5161, -0.2418, -0.4072, -0.1612, -0.0633, -0.0143])
         # fmt: on
-        self.assertTrue(torch.allclose(output_slice, expected_output_slice, atol=1e-3))
+        assert torch.allclose(output_slice, expected_output_slice, atol=1e-3)
 
     def test_loss_pretrained(self):
         model = VQModel.from_pretrained("fusing/vqgan-dummy")
@@ -111,4 +106,24 @@ class VQModelTests(ModelTesterMixin, AutoencoderTesterMixin, unittest.TestCase):
         # fmt: off
         expected_output = torch.tensor([0.1936])
         # fmt: on
-        self.assertTrue(torch.allclose(output, expected_output, atol=1e-3))
+        assert torch.allclose(output, expected_output, atol=1e-3)
+
+
+class TestVQModelTraining(VQModelTesterConfig, TrainingTesterMixin):
+    """Training tests for VQModel."""
+
+    @pytest.mark.skip("Test not supported.")
+    def test_training(self):
+        super().test_training()
+
+    @pytest.mark.skip("Test not supported.")
+    def test_training_with_ema(self):
+        super().test_training_with_ema()
+
+
+class TestVQModelMemory(VQModelTesterConfig, MemoryTesterMixin):
+    """Memory optimization tests for VQModel."""
+
+
+class TestVQModelSlicingTiling(VQModelTesterConfig, NewAutoencoderTesterMixin):
+    """Slicing and tiling tests for VQModel."""

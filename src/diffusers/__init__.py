@@ -7,6 +7,7 @@ from .utils import (
     OptionalDependencyNotAvailable,
     _LazyModule,
     is_accelerate_available,
+    is_auto_round_available,
     is_bitsandbytes_available,
     is_flax_available,
     is_gguf_available,
@@ -124,6 +125,18 @@ else:
     _import_structure["quantizers.quantization_config"].append("NVIDIAModelOptConfig")
 
 try:
+    if not is_auto_round_available():
+        raise OptionalDependencyNotAvailable()
+except OptionalDependencyNotAvailable:
+    from .utils import dummy_auto_round_objects
+
+    _import_structure["utils.dummy_auto_round_objects"] = [
+        name for name in dir(dummy_auto_round_objects) if not name.startswith("_")
+    ]
+else:
+    _import_structure["quantizers.quantization_config"].append("AutoRoundConfig")
+
+try:
     if not is_onnx_available():
         raise OptionalDependencyNotAvailable()
 except OptionalDependencyNotAvailable:
@@ -191,6 +204,7 @@ else:
         [
             "AceStepTransformer1DModel",
             "AllegroTransformer3DModel",
+            "AnimaTextConditioner",
             "AnyFlowFARTransformer3DModel",
             "AnyFlowTransformer3DModel",
             "AsymmetricAutoencoderKL",
@@ -240,6 +254,8 @@ else:
             "CosmosControlNetModel",
             "CosmosTransformer3DModel",
             "DiTTransformer2DModel",
+            "DreamLiteTransformer2DModel",
+            "DreamLiteUNetModel",
             "EasyAnimateTransformer3DModel",
             "ErnieImageTransformer2DModel",
             "Flux2Transformer2DModel",
@@ -257,9 +273,11 @@ else:
             "HunyuanVideoFramepackTransformer3DModel",
             "HunyuanVideoTransformer3DModel",
             "I2VGenXLUNet",
+            "Ideogram4Transformer2DModel",
             "JoyImageEditTransformer3DModel",
             "Kandinsky3UNet",
             "Kandinsky5Transformer3DModel",
+            "Krea2Transformer2DModel",
             "LatteTransformer3DModel",
             "LongCatAudioDiTTransformer",
             "LongCatAudioDiTVae",
@@ -344,6 +362,7 @@ else:
             "AudioPipelineOutput",
             "AutoPipelineForImage2Image",
             "AutoPipelineForInpainting",
+            "AutoPipelineForText2Audio",
             "AutoPipelineForText2Image",
             "ConsistencyModelPipeline",
             "DanceDiffusionPipeline",
@@ -377,11 +396,15 @@ else:
             "DDPMScheduler",
             "DDPMWuerstchenScheduler",
             "DEISMultistepScheduler",
+            "DiscreteDDIMScheduler",
+            "DiscreteDDIMSchedulerOutput",
             "DPMSolverMultistepInverseScheduler",
             "DPMSolverMultistepScheduler",
             "DPMSolverSinglestepScheduler",
             "EDMDPMSolverMultistepScheduler",
             "EDMEulerScheduler",
+            "EntropyBoundScheduler",
+            "EntropyBoundSchedulerOutput",
             "EulerAncestralDiscreteScheduler",
             "EulerDiscreteScheduler",
             "FlowMapEulerDiscreteScheduler",
@@ -451,6 +474,8 @@ except OptionalDependencyNotAvailable:
 else:
     _import_structure["modular_pipelines"].extend(
         [
+            "AnimaAutoBlocks",
+            "AnimaModularPipeline",
             "ErnieImageAutoBlocks",
             "ErnieImageModularPipeline",
             "Flux2AutoBlocks",
@@ -471,6 +496,8 @@ else:
             "HeliosPyramidModularPipeline",
             "HunyuanVideo15AutoBlocks",
             "HunyuanVideo15ModularPipeline",
+            "Ideogram4AutoBlocks",
+            "Ideogram4ModularPipeline",
             "LTXAutoBlocks",
             "LTXModularPipeline",
             "QwenImageAutoBlocks",
@@ -546,9 +573,15 @@ else:
             "Cosmos2TextToImagePipeline",
             "Cosmos2VideoToWorldPipeline",
             "Cosmos3OmniPipeline",
+            "CosmosActionCondition",
             "CosmosTextToWorldPipeline",
             "CosmosVideoToWorldPipeline",
             "CycleDiffusionPipeline",
+            "DiffusionGemmaPipeline",
+            "DiffusionGemmaPipelineOutput",
+            "DreamLiteMobilePipeline",
+            "DreamLitePipeline",
+            "DreamLitePipelineOutput",
             "EasyAnimateControlPipeline",
             "EasyAnimateInpaintPipeline",
             "EasyAnimatePipeline",
@@ -586,6 +619,8 @@ else:
             "HunyuanVideoImageToVideoPipeline",
             "HunyuanVideoPipeline",
             "I2VGenXLPipeline",
+            "Ideogram4Pipeline",
+            "Ideogram4PromptEnhancerHead",
             "IFImg2ImgPipeline",
             "IFImg2ImgSuperResolutionPipeline",
             "IFInpaintingPipeline",
@@ -618,6 +653,7 @@ else:
             "KandinskyV22Pipeline",
             "KandinskyV22PriorEmb2EmbPipeline",
             "KandinskyV22PriorPipeline",
+            "Krea2Pipeline",
             "LatentConsistencyModelImg2ImgPipeline",
             "LatentConsistencyModelPipeline",
             "LattePipeline",
@@ -662,6 +698,7 @@ else:
             "PixArtSigmaPAGPipeline",
             "PixArtSigmaPipeline",
             "PRXPipeline",
+            "PRXPixelPipeline",
             "QwenImageControlNetInpaintPipeline",
             "QwenImageControlNetPipeline",
             "QwenImageEditInpaintPipeline",
@@ -973,6 +1010,14 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .quantizers.quantization_config import NVIDIAModelOptConfig
 
     try:
+        if not is_auto_round_available():
+            raise OptionalDependencyNotAvailable()
+    except OptionalDependencyNotAvailable:
+        from .utils.dummy_auto_round_objects import *
+    else:
+        from .quantizers.quantization_config import AutoRoundConfig
+
+    try:
         if not is_onnx_available():
             raise OptionalDependencyNotAvailable()
     except OptionalDependencyNotAvailable:
@@ -1027,6 +1072,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .models import (
             AceStepTransformer1DModel,
             AllegroTransformer3DModel,
+            AnimaTextConditioner,
             AnyFlowFARTransformer3DModel,
             AnyFlowTransformer3DModel,
             AsymmetricAutoencoderKL,
@@ -1076,6 +1122,8 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             CosmosControlNetModel,
             CosmosTransformer3DModel,
             DiTTransformer2DModel,
+            DreamLiteTransformer2DModel,
+            DreamLiteUNetModel,
             EasyAnimateTransformer3DModel,
             ErnieImageTransformer2DModel,
             Flux2Transformer2DModel,
@@ -1093,9 +1141,11 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             HunyuanVideoFramepackTransformer3DModel,
             HunyuanVideoTransformer3DModel,
             I2VGenXLUNet,
+            Ideogram4Transformer2DModel,
             JoyImageEditTransformer3DModel,
             Kandinsky3UNet,
             Kandinsky5Transformer3DModel,
+            Krea2Transformer2DModel,
             LatteTransformer3DModel,
             LongCatAudioDiTTransformer,
             LongCatAudioDiTVae,
@@ -1175,6 +1225,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             AudioPipelineOutput,
             AutoPipelineForImage2Image,
             AutoPipelineForInpainting,
+            AutoPipelineForText2Audio,
             AutoPipelineForText2Image,
             BlipDiffusionControlNetPipeline,
             BlipDiffusionPipeline,
@@ -1209,11 +1260,15 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             DDPMScheduler,
             DDPMWuerstchenScheduler,
             DEISMultistepScheduler,
+            DiscreteDDIMScheduler,
+            DiscreteDDIMSchedulerOutput,
             DPMSolverMultistepInverseScheduler,
             DPMSolverMultistepScheduler,
             DPMSolverSinglestepScheduler,
             EDMDPMSolverMultistepScheduler,
             EDMEulerScheduler,
+            EntropyBoundScheduler,
+            EntropyBoundSchedulerOutput,
             EulerAncestralDiscreteScheduler,
             EulerDiscreteScheduler,
             FlowMapEulerDiscreteScheduler,
@@ -1266,6 +1321,8 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .utils.dummy_torch_and_transformers_objects import *  # noqa F403
     else:
         from .modular_pipelines import (
+            AnimaAutoBlocks,
+            AnimaModularPipeline,
             ErnieImageAutoBlocks,
             ErnieImageModularPipeline,
             Flux2AutoBlocks,
@@ -1286,6 +1343,8 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             HeliosPyramidModularPipeline,
             HunyuanVideo15AutoBlocks,
             HunyuanVideo15ModularPipeline,
+            Ideogram4AutoBlocks,
+            Ideogram4ModularPipeline,
             LTXAutoBlocks,
             LTXModularPipeline,
             QwenImageAutoBlocks,
@@ -1357,9 +1416,15 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             Cosmos2TextToImagePipeline,
             Cosmos2VideoToWorldPipeline,
             Cosmos3OmniPipeline,
+            CosmosActionCondition,
             CosmosTextToWorldPipeline,
             CosmosVideoToWorldPipeline,
             CycleDiffusionPipeline,
+            DiffusionGemmaPipeline,
+            DiffusionGemmaPipelineOutput,
+            DreamLiteMobilePipeline,
+            DreamLitePipeline,
+            DreamLitePipelineOutput,
             EasyAnimateControlPipeline,
             EasyAnimateInpaintPipeline,
             EasyAnimatePipeline,
@@ -1397,6 +1462,8 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             HunyuanVideoImageToVideoPipeline,
             HunyuanVideoPipeline,
             I2VGenXLPipeline,
+            Ideogram4Pipeline,
+            Ideogram4PromptEnhancerHead,
             IFImg2ImgPipeline,
             IFImg2ImgSuperResolutionPipeline,
             IFInpaintingPipeline,
@@ -1429,6 +1496,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             KandinskyV22Pipeline,
             KandinskyV22PriorEmb2EmbPipeline,
             KandinskyV22PriorPipeline,
+            Krea2Pipeline,
             LatentConsistencyModelImg2ImgPipeline,
             LatentConsistencyModelPipeline,
             LattePipeline,
@@ -1473,6 +1541,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             PixArtSigmaPAGPipeline,
             PixArtSigmaPipeline,
             PRXPipeline,
+            PRXPixelPipeline,
             QwenImageControlNetInpaintPipeline,
             QwenImageControlNetPipeline,
             QwenImageEditInpaintPipeline,

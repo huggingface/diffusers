@@ -17,6 +17,7 @@ if is_torch_available():
     from .stable_audio_transformer import StableAudioDiTModel
     from .t5_film_transformer import T5FilmDecoder
     from .transformer_2d import Transformer2DModel
+    from .transformer_2d_dreamlite import DreamLiteTransformer2DModel
     from .transformer_allegro import AllegroTransformer3DModel
     from .transformer_anyflow import AnyFlowTransformer3DModel
     from .transformer_anyflow_far import AnyFlowFARTransformer3DModel
@@ -39,8 +40,10 @@ if is_torch_available():
     from .transformer_hunyuan_video15 import HunyuanVideo15Transformer3DModel
     from .transformer_hunyuan_video_framepack import HunyuanVideoFramepackTransformer3DModel
     from .transformer_hunyuanimage import HunyuanImageTransformer2DModel
+    from .transformer_ideogram4 import Ideogram4Transformer2DModel
     from .transformer_joyimage import JoyImageEditTransformer3DModel
     from .transformer_kandinsky import Kandinsky5Transformer3DModel
+    from .transformer_krea2 import Krea2Transformer2DModel
     from .transformer_longcat_audio_dit import LongCatAudioDiTTransformer
     from .transformer_longcat_image import LongCatImageTransformer2DModel
     from .transformer_ltx import LTXVideoTransformer3DModel

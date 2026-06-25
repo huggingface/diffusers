@@ -13,48 +13,39 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import unittest
+import pytest
+import torch
 
 from diffusers import AutoencoderKLTemporalDecoder
+from diffusers.utils.torch_utils import randn_tensor
 
-from ...testing_utils import (
-    enable_full_determinism,
-    floats_tensor,
-    torch_device,
-)
-from ..test_modeling_common import ModelTesterMixin
-from .testing_utils import AutoencoderTesterMixin
+from ...testing_utils import enable_full_determinism, torch_device
+from ..testing_utils import BaseModelTesterConfig, MemoryTesterMixin, ModelTesterMixin, TrainingTesterMixin
+from .testing_utils import NewAutoencoderTesterMixin
 
 
 enable_full_determinism()
 
 
-class AutoencoderKLTemporalDecoderTests(ModelTesterMixin, AutoencoderTesterMixin, unittest.TestCase):
-    model_class = AutoencoderKLTemporalDecoder
-    main_input_name = "sample"
-    base_precision = 1e-2
+class AutoencoderKLTemporalDecoderTesterConfig(BaseModelTesterConfig):
+    @property
+    def model_class(self):
+        return AutoencoderKLTemporalDecoder
 
     @property
-    def dummy_input(self):
-        batch_size = 3
-        num_channels = 3
-        sizes = (32, 32)
-
-        image = floats_tensor((batch_size, num_channels) + sizes).to(torch_device)
-        num_frames = 3
-
-        return {"sample": image, "num_frames": num_frames}
+    def main_input_name(self) -> str:
+        return "sample"
 
     @property
-    def input_shape(self):
+    def output_shape(self) -> tuple:
         return (3, 32, 32)
 
     @property
-    def output_shape(self):
-        return (3, 32, 32)
+    def generator(self):
+        return torch.Generator("cpu").manual_seed(0)
 
-    def prepare_init_args_and_inputs_for_common(self):
-        init_dict = {
+    def get_init_dict(self) -> dict:
+        return {
             "block_out_channels": [32, 64],
             "in_channels": 3,
             "out_channels": 3,
@@ -62,9 +53,42 @@ class AutoencoderKLTemporalDecoderTests(ModelTesterMixin, AutoencoderTesterMixin
             "latent_channels": 4,
             "layers_per_block": 2,
         }
-        inputs_dict = self.dummy_input
-        return init_dict, inputs_dict
+
+    def get_dummy_inputs(self) -> dict:
+        batch_size = 3
+        num_channels = 3
+        sizes = (32, 32)
+        image = randn_tensor((batch_size, num_channels, *sizes), generator=self.generator, device=torch_device)
+        num_frames = 3
+        return {"sample": image, "num_frames": num_frames}
+
+
+class TestAutoencoderKLTemporalDecoder(AutoencoderKLTemporalDecoderTesterConfig, ModelTesterMixin):
+    @pytest.mark.skipif(
+        torch_device not in ["cuda", "xpu"],
+        reason="float16 and bfloat16 can only be use for inference with an accelerator",
+    )
+    @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16], ids=["fp16", "bf16"])
+    def test_from_save_pretrained_dtype_inference(self, tmp_path, dtype):
+        # fp16/bf16 convolutions are nondeterministic across the two model instances, so relax the tolerance.
+        super().test_from_save_pretrained_dtype_inference(
+            tmp_path, dtype, atol=3e-2 if dtype == torch.bfloat16 else 1e-2
+        )
+
+
+class TestAutoencoderKLTemporalDecoderTraining(AutoencoderKLTemporalDecoderTesterConfig, TrainingTesterMixin):
+    """Training tests for AutoencoderKLTemporalDecoder."""
 
     def test_gradient_checkpointing_is_applied(self):
         expected_set = {"Encoder", "TemporalDecoder", "UNetMidBlock2D"}
         super().test_gradient_checkpointing_is_applied(expected_set=expected_set)
+
+
+class TestAutoencoderKLTemporalDecoderMemory(AutoencoderKLTemporalDecoderTesterConfig, MemoryTesterMixin):
+    """Memory optimization tests for AutoencoderKLTemporalDecoder."""
+
+
+class TestAutoencoderKLTemporalDecoderSlicingTiling(
+    AutoencoderKLTemporalDecoderTesterConfig, NewAutoencoderTesterMixin
+):
+    """Slicing and tiling tests for AutoencoderKLTemporalDecoder."""

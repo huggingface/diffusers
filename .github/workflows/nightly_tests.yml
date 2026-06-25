@@ -125,7 +125,7 @@ jobs:
       fail-fast: false
       max-parallel: 2
       matrix:
-        module: [models, schedulers, lora, others, single_file, examples]
+        module: [models, schedulers, hooks, lora, others, single_file, examples]
     steps:
     - name: Checkout diffusers
       uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2

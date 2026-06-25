@@ -300,14 +300,14 @@ class FirUpsample2D(nn.Module):
 
             output = upfirdn2d_native(
                 inverse_conv,
-                torch.tensor(kernel, device=inverse_conv.device),
+                kernel.to(device=inverse_conv.device, dtype=inverse_conv.dtype),
                 pad=((pad_value + 1) // 2 + factor - 1, pad_value // 2 + 1),
             )
         else:
             pad_value = kernel.shape[0] - factor
             output = upfirdn2d_native(
                 hidden_states,
-                torch.tensor(kernel, device=hidden_states.device),
+                kernel.to(device=hidden_states.device, dtype=hidden_states.dtype),
                 up=factor,
                 pad=((pad_value + 1) // 2 + factor - 1, pad_value // 2),
             )
@@ -508,7 +508,7 @@ def upsample_2d(
     pad_value = kernel.shape[0] - factor
     output = upfirdn2d_native(
         hidden_states,
-        kernel.to(device=hidden_states.device),
+        kernel.to(device=hidden_states.device, dtype=hidden_states.dtype),
         up=factor,
         pad=((pad_value + 1) // 2 + factor - 1, pad_value // 2),
     )
