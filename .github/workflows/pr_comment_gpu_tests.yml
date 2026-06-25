@@ -137,10 +137,10 @@ jobs:
       - name: Install dependencies
         run: |
           printf 'tokenizers<0.23.0\ntorch==2.10.0\ntorchvision==0.25.0\ntorchaudio==2.10.0\n' > "$UV_OVERRIDE"
-          uv pip install -e ".[quality,training,test]"
-          uv pip install peft@git+https://github.com/huggingface/peft.git
-          uv pip uninstall accelerate && uv pip install -U accelerate@git+https://github.com/huggingface/accelerate.git
-          uv pip uninstall transformers huggingface_hub && UV_PRERELEASE=allow uv pip install -U transformers@git+https://github.com/huggingface/transformers.git
+          uv pip install --prerelease=allow -e ".[quality,training,test]"
+          uv pip install --prerelease=allow peft@git+https://github.com/huggingface/peft.git
+          uv pip uninstall accelerate && uv pip install --prerelease=allow -U accelerate@git+https://github.com/huggingface/accelerate.git
+          uv pip uninstall transformers huggingface_hub && UV_PRERELEASE=allow uv pip install --prerelease=allow -U transformers@git+https://github.com/huggingface/transformers.git
 
       - name: Environment
         run: diffusers-cli env
