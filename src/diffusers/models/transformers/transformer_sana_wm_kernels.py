@@ -24,21 +24,6 @@ import torch
 import torch.nn.functional as F
 
 
-# Optional ``einops`` import. Only a handful of kernel-prep helpers in this
-# file use ``rearrange`` / ``repeat``; keep the dep optional so that
-# ``import diffusers.models.transformers.transformer_sana_wm_kernels`` works
-# on minimal-deps installs and we only error out if those helpers are called.
-try:
-    from einops import rearrange, repeat
-except ImportError:
-
-    def rearrange(*args, **kwargs):
-        raise ImportError("`einops` is required to run SANA-WM kernels. Install with `pip install einops`.")
-
-    def repeat(*args, **kwargs):
-        raise ImportError("`einops` is required to run SANA-WM kernels. Install with `pip install einops`.")
-
-
 # Optional Triton import. The kernels below are the fast path on CUDA + Triton
 # >= 3.x, but they are not correctness-essential: SanaWMTransformer3DModel has
 # pure-PyTorch attention variants for every ``*Triton`` class (the dispatcher
@@ -2988,7 +2973,7 @@ def world_to_ray_mats(
     if d_cam.ndim == 4:
         B, H, W, _ = d_cam.shape
         T = c2w.shape[1]
-        d_cam = repeat(d_cam, "b h w c -> b t h w c", t=T)
+        d_cam = d_cam.unsqueeze(1).expand(-1, T, -1, -1, -1)
     elif d_cam.ndim == 5:
         B, T, H, W, _ = d_cam.shape
     else:
@@ -3000,15 +2985,18 @@ def world_to_ray_mats(
     t_cam = c2w[..., :3, 3]
     d_world = torch.einsum("btij,bthwj->bthwi", R_cam, d_cam)
     cam_y = R_cam[..., :, 1]
-    cam_y = repeat(cam_y, "b t c -> b t h w c", h=H, w=W)
+    # (B, T, 3) -> (B, T, H, W, 3)
+    cam_y = cam_y[:, :, None, None, :].expand(-1, -1, H, W, -1)
     z_ray = F.normalize(d_world, dim=-1, eps=1e-6)
     x_ray = torch.cross(cam_y, z_ray, dim=-1)
     x_ray = F.normalize(x_ray, dim=-1, eps=1e-6)
     y_ray = torch.cross(z_ray, x_ray, dim=-1)
     y_ray = F.normalize(y_ray, dim=-1, eps=1e-6)
     R_l2w = torch.stack([x_ray, y_ray, z_ray], dim=-1)
-    R_w2l = rearrange(R_l2w, "b t h w i j -> b t h w j i")
-    t_world = repeat(t_cam, "b t c -> b t h w c", h=H, w=W)
+    # (B, T, H, W, 3, 3) — transpose last two dims for the world->local rotation.
+    R_w2l = R_l2w.transpose(-1, -2)
+    # (B, T, 3) -> (B, T, H, W, 3)
+    t_world = t_cam[:, :, None, None, :].expand(-1, -1, H, W, -1)
     t_w2l = -torch.einsum("bthwij,bthwj->bthwi", R_w2l, t_world)
     raymats = torch.zeros(B, T, H, W, 4, 4, device=device, dtype=dtype)
     raymats[..., :3, :3] = R_w2l
@@ -3037,7 +3025,8 @@ def create_grid(
     zs = torch.ones_like(xs, dtype=dtype, device=device)
     grid = torch.stack((xs, ys, zs), dim=2)
     if batch is not None:
-        grid = repeat(grid, "... -> b ...", b=batch)
+        # Prepend a batch dim and broadcast.
+        grid = grid.unsqueeze(0).expand(batch, *grid.shape)
     return grid
 
 
@@ -3187,12 +3176,14 @@ def compute_up_lat_map(
     )
 
     if d_cam.ndim == 3:
-        d_cam_exp = repeat(d_cam, "H W C -> B T H W C", B=B, T=T)
+        # (H, W, C) -> (B, T, H, W, C)
+        d_cam_exp = d_cam[None, None].expand(B, T, -1, -1, -1)
     elif d_cam.ndim == 4:
         if d_cam.shape[0] == B * T:
             d_cam_exp = d_cam.view(B, T, height, width, 3)
         else:
-            d_cam_exp = repeat(d_cam, "B H W C -> B T H W C", T=T)
+            # (B, H, W, C) -> (B, T, H, W, C)
+            d_cam_exp = d_cam.unsqueeze(1).expand(-1, T, -1, -1, -1)
     else:
         d_cam_exp = d_cam
 

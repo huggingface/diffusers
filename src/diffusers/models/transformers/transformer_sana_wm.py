@@ -36,18 +36,10 @@ from transformers import AutoModelForCausalLM
 
 # Optional third-party deps. These are kept optional so that `import diffusers`
 # (and `from diffusers import SanaWMPipeline`) succeed in environments without
-# `einops` / `fla` / `timm` / `termcolor`. Each shim raises a clear error if
-# anyone actually constructs the SANA-WM transformer without the real package
+# `fla` / `timm` / `termcolor`. Each shim raises a clear error if anyone
+# actually constructs the SANA-WM transformer without the real package
 # installed; class-body definitions that subclass these stand-ins still parse
 # fine at module load time.
-try:
-    from einops import rearrange
-except ImportError:
-
-    def rearrange(*args, **kwargs):
-        raise ImportError("`einops` is required to run SANA-WM. Install with `pip install einops`.")
-
-
 try:
     from fla.modules import ShortConvolution
 except ImportError:
@@ -2468,10 +2460,10 @@ class SizeEmbedder(TimestepEmbedder):
             s = s.repeat(bs // s.shape[0], 1)
             assert s.shape[0] == bs
         b, dims = s.shape[0], s.shape[1]
-        s = rearrange(s, "b d -> (b d)")
+        s = s.reshape(b * dims)
         s_freq = self.timestep_embedding(s, self.frequency_embedding_size).to(self.dtype)
         s_emb = self.mlp(s_freq)
-        s_emb = rearrange(s_emb, "(b d) d2 -> b (d d2)", b=b, d=dims, d2=self.outdim)
+        s_emb = s_emb.reshape(b, dims * self.outdim)
         return s_emb
 
     @property
