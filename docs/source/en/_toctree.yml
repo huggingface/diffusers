@@ -647,6 +647,8 @@
         title: Z-Image
       title: Image
     - sections:
+      - local: api/pipelines/diffusion_gemma
+        title: DiffusionGemma
       - local: api/pipelines/llada2
         title: LLaDA2
       title: Text
