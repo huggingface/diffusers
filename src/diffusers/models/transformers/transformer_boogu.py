@@ -436,12 +436,6 @@ class Lumina2CombinedTimestepCaptionEmbedding(nn.Module):
             nn.Linear(instruction_feat_dim, hidden_size, bias=True),
         )
 
-        self._initialize_weights()
-
-    def _initialize_weights(self):
-        nn.init.trunc_normal_(self.caption_embedder[1].weight, std=0.02)
-        nn.init.zeros_(self.caption_embedder[1].bias)
-
     def forward(
         self,
         timestep: torch.Tensor,
@@ -530,24 +524,6 @@ class BooguImageDoubleStreamSelfAttnProcessor(nn.Module):
         # Separate output projections for instruction and image streams.
         self.instruct_out = nn.Linear(query_dim, query_dim, bias=qkv_bias)
         self.img_out = nn.Linear(query_dim, query_dim, bias=qkv_bias)
-
-        self.initialize_weights()
-
-    def initialize_weights(self) -> None:
-        """Xavier-uniform init for the projection weights, zeros for any biases."""
-        for proj in (
-            self.img_to_q,
-            self.img_to_k,
-            self.img_to_v,
-            self.instruct_to_q,
-            self.instruct_to_k,
-            self.instruct_to_v,
-            self.instruct_out,
-            self.img_out,
-        ):
-            nn.init.xavier_uniform_(proj.weight)
-            if proj.bias is not None:
-                nn.init.zeros_(proj.bias)
 
     def _concat_instruction_image_features(
         self,
@@ -869,23 +845,6 @@ class BooguImageTransformerBlock(nn.Module):
         self.norm2 = RMSNorm(dim, eps=norm_eps)
         self.ffn_norm2 = RMSNorm(dim, eps=norm_eps)
 
-        self.initialize_weights()
-
-    def initialize_weights(self) -> None:
-        """Initialize linear weights and modulation parameters."""
-        nn.init.xavier_uniform_(self.attn.to_q.weight)
-        nn.init.xavier_uniform_(self.attn.to_k.weight)
-        nn.init.xavier_uniform_(self.attn.to_v.weight)
-        nn.init.xavier_uniform_(self.attn.to_out[0].weight)
-
-        nn.init.xavier_uniform_(self.feed_forward.linear_1.weight)
-        nn.init.xavier_uniform_(self.feed_forward.linear_2.weight)
-        nn.init.xavier_uniform_(self.feed_forward.linear_3.weight)
-
-        if self.modulation:
-            nn.init.zeros_(self.norm1.linear.weight)
-            nn.init.zeros_(self.norm1.linear.bias)
-
     def forward(
         self,
         hidden_states: torch.Tensor,
@@ -1034,8 +993,6 @@ class BooguImageDoubleStreamTransformerBlock(nn.Module):
         self.instruct_attn_norm = RMSNorm(dim, eps=norm_eps)
         self.instruct_ffn_norm2 = RMSNorm(dim, eps=norm_eps)
 
-        self.initialize_weights()
-
         # double_stream_processor owns its own q/k/v projections.
         for param in self.img_instruct_attn.to_q.parameters():
             param.requires_grad = False
@@ -1047,38 +1004,6 @@ class BooguImageDoubleStreamTransformerBlock(nn.Module):
         del self.img_instruct_attn.to_k
         del self.img_instruct_attn.to_v
         del self.img_instruct_attn.to_q
-
-    def initialize_weights(self) -> None:
-        """Initialize linear weights and modulation parameters."""
-        nn.init.xavier_uniform_(self.img_instruct_attn.to_out[0].weight)
-
-        # Keep Xavier init consistent across Boogu-Image blocks.
-        nn.init.xavier_uniform_(self.img_self_attn.to_q.weight)
-        nn.init.xavier_uniform_(self.img_self_attn.to_k.weight)
-        nn.init.xavier_uniform_(self.img_self_attn.to_v.weight)
-        nn.init.xavier_uniform_(self.img_self_attn.to_out[0].weight)
-
-        nn.init.xavier_uniform_(self.img_feed_forward.linear_1.weight)
-        nn.init.xavier_uniform_(self.img_feed_forward.linear_2.weight)
-        nn.init.xavier_uniform_(self.img_feed_forward.linear_3.weight)
-
-        nn.init.xavier_uniform_(self.instruct_feed_forward.linear_1.weight)
-        nn.init.xavier_uniform_(self.instruct_feed_forward.linear_2.weight)
-        nn.init.xavier_uniform_(self.instruct_feed_forward.linear_3.weight)
-
-        # Initialize modulation parameters
-        if self.modulation:
-            nn.init.zeros_(self.img_norm1.linear.weight)
-            nn.init.zeros_(self.img_norm1.linear.bias)
-            nn.init.zeros_(self.img_norm2.linear.weight)
-            nn.init.zeros_(self.img_norm2.linear.bias)
-            nn.init.zeros_(self.img_norm3.linear.weight)
-            nn.init.zeros_(self.img_norm3.linear.bias)
-
-            nn.init.zeros_(self.instruct_norm1.linear.weight)
-            nn.init.zeros_(self.instruct_norm1.linear.bias)
-            nn.init.zeros_(self.instruct_norm2.linear.weight)
-            nn.init.zeros_(self.instruct_norm2.linear.bias)
 
     def forward(
         self,
@@ -1396,8 +1321,6 @@ class BooguImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Fr
 
         self.gradient_checkpointing = False
 
-        self.initialize_weights()
-
         # TeaCache settings
         self.enable_teacache = False
         self.teacache_rel_l1_thresh = 0.05
@@ -1405,25 +1328,6 @@ class BooguImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Fr
 
         # Polynomial (highest-degree first) rescaling the relative L1 distance used by TeaCache.
         self.teacache_rescale_coefficients = [-5.48259225, 11.48772289, -4.47407401, 2.47730926, -0.03316487]
-
-    def initialize_weights(self) -> None:
-        """
-        Initialize the weights of the model.
-
-        Uses Xavier uniform initialization for linear layers.
-        """
-        nn.init.xavier_uniform_(self.x_embedder.weight)
-        nn.init.constant_(self.x_embedder.bias, 0.0)
-
-        nn.init.xavier_uniform_(self.ref_image_patch_embedder.weight)
-        nn.init.constant_(self.ref_image_patch_embedder.bias, 0.0)
-
-        nn.init.zeros_(self.norm_out.linear_1.weight)
-        nn.init.zeros_(self.norm_out.linear_1.bias)
-        nn.init.zeros_(self.norm_out.linear_2.weight)
-        nn.init.zeros_(self.norm_out.linear_2.bias)
-
-        nn.init.normal_(self.image_index_embedding, std=0.02)
 
     def img_patch_embed_and_refine(
         self,
