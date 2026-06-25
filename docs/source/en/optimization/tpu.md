@@ -25,23 +25,10 @@ Four execution modes are available:
 
 ## Installation
 
-Follow the [TorchTPU installation guide](https://github.com/pytorch/tpu). After installation,
+Follow the [TorchTPU installation guide](https://github.com/google-pytorch/torch_tpu/). After installation,
 `import torch_tpu` registers the `"tpu"` device automatically.
 
-## Text encoders always stay on CPU
-
-XLA's static graph compiler does not support certain dynamic ops used in text encoders (notably
-`index_select` on large embedding tables). Text encoders must therefore remain on CPU. Their
-output embeddings are moved to the TPU after encoding.
-
-Diffusers handles this transparently:
-- `_execution_device` detects any component on TPU and returns that device.
-- `encode_prompt` runs the text encoder on its own device (`cpu`) and moves the resulting
-  embeddings to the execution device (TPU).
-- `randn_tensor` generates initial noise on CPU and moves it to TPU, avoiding a TPU RNG
-  unaligned DUS (dynamic-update-slice) bug.
-
-## Basic usage (strict eager mode / default)
+## Basic usage (strict eager mode)
 
 ```python
 import torch
