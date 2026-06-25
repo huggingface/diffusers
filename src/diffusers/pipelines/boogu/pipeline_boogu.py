@@ -47,6 +47,20 @@ class FMPipelineOutput(BaseOutput):
     images: Union[List[PIL.Image.Image], np.ndarray]
 
 
+# Copied from diffusers.pipelines.flux.pipeline_flux.calculate_shift
+def calculate_shift(
+    image_seq_len,
+    base_seq_len: int = 256,
+    max_seq_len: int = 4096,
+    base_shift: float = 0.5,
+    max_shift: float = 1.15,
+):
+    m = (max_shift - base_shift) / (max_seq_len - base_seq_len)
+    b = base_shift - m * base_seq_len
+    mu = image_seq_len * m + b
+    return mu
+
+
 def set_flow_match_timesteps(
     scheduler: FlowMatchEulerDiscreteScheduler,
     num_inference_steps: int,
@@ -66,12 +80,14 @@ def set_flow_match_timesteps(
     if seq_len is None:
         seq_len = scheduler.config.seq_len
 
-    # Static v1 shift: mu is a linear function of seq_len between (base_image_seq_len,
-    # base_shift) and (max_image_seq_len, max_shift).
-    slope = (scheduler.config.max_shift - scheduler.config.base_shift) / (
-        scheduler.config.max_image_seq_len - scheduler.config.base_image_seq_len
+    # Static v1 shift: mu is a fixed (resolution-independent) linear function of seq_len.
+    mu = calculate_shift(
+        seq_len,
+        scheduler.config.get("base_image_seq_len", 256),
+        scheduler.config.get("max_image_seq_len", 4096),
+        scheduler.config.get("base_shift", 0.5),
+        scheduler.config.get("max_shift", 1.15),
     )
-    mu = scheduler.config.base_shift + slope * (seq_len - scheduler.config.base_image_seq_len)
 
     t = np.linspace(0.0, 1.0, num_inference_steps + 1, dtype=np.float32)[:-1]
     # Boogu v1 == 1 - exponential_shift(mu, 1, 1 - t); reuse the parent's formula.
