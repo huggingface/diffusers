@@ -67,21 +67,6 @@ class Cosmos3AttnProcessor:
         q_gen = q_gen * cos_gen + _rotate_half(q_gen) * sin_gen
         k_gen = k_gen * cos_gen + _rotate_half(k_gen) * sin_gen
 
-        causal_out, full_out = self._run_attention(attn, q_und, k_und, v_und, q_gen, k_gen, v_gen)
-
-        # Per-pathway output projection
-        und_out = attn.to_out(causal_out)
-        gen_out = attn.to_add_out(full_out)
-        return und_out, gen_out
-
-    def _run_attention(self, attn, q_und, k_und, v_und, q_gen, k_gen, v_gen):
-        """Run the two attention pathways and return ``(causal_out, full_out)``, each
-        flattened to ``[seq, num_attention_heads * head_dim]``.
-
-        This is an override seam: subclasses can change how attention is computed while reusing the shared projection
-        and rotary code in ``__call__``. The context-parallel processor in ``examples/cosmos3`` overrides it to bracket
-        the two pathways with Ulysses all-to-all collectives.
-        """
         # Causal pathway (understanding): und tokens self-attend with causal masking.
         causal_out = dispatch_attention_fn(
             q_und.unsqueeze(0),
@@ -107,7 +92,11 @@ class Cosmos3AttnProcessor:
             parallel_config=self._parallel_config,
         )
         full_out = full_out.squeeze(0).flatten(-2, -1)
-        return causal_out, full_out
+
+        # Per-pathway output projection
+        und_out = attn.to_out(causal_out)
+        gen_out = attn.to_add_out(full_out)
+        return und_out, gen_out
 
 
 def _rotate_half(x: torch.Tensor) -> torch.Tensor:
