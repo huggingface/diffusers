@@ -28,7 +28,7 @@ from PIL import Image
 from transformers import Qwen3VLForConditionalGeneration, Qwen3VLProcessor
 
 from diffusers.models.autoencoders import AutoencoderKL
-from diffusers.models.transformers.transformer_boogu import BooguImageRotaryPosEmbed
+from diffusers.models.transformers.transformer_boogu import get_freqs_cis
 from diffusers.pipelines.pipeline_utils import DiffusionPipeline
 from diffusers.schedulers import FlowMatchEulerDiscreteScheduler
 from diffusers.utils import logging
@@ -1063,7 +1063,7 @@ class BooguImageTurboPipeline(DiffusionPipeline):
             latents,
         )
 
-        freqs_cis = BooguImageRotaryPosEmbed.get_freqs_cis(
+        freqs_cis = get_freqs_cis(
             self.transformer.config.axes_dim_rope,
             self.transformer.config.axes_lens,
             theta=10000,

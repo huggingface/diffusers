@@ -41,23 +41,14 @@ logger = logging.get_logger(__name__)
 
 
 # ----------------------------- RoPE -----------------------------
-class BooguImageRotaryPosEmbed:
-    """Namespace for Boogu's rotary-position-embedding frequency table.
-
-    Only the static `get_freqs_cis` is used (by the pipeline and the transformer's
-    internal double-stream RoPE); it does not hold any state.
-    """
-
-    @staticmethod
-    def get_freqs_cis(
-        axes_dim: Tuple[int, int, int], axes_lens: Tuple[int, int, int], theta: int
-    ) -> List[torch.Tensor]:
-        freqs_cis = []
-        freqs_dtype = torch.float32
-        for d, e in zip(axes_dim, axes_lens):
-            emb = get_1d_rotary_pos_embed(d, e, theta=theta, freqs_dtype=freqs_dtype)
-            freqs_cis.append(emb)
-        return freqs_cis
+def get_freqs_cis(axes_dim: Tuple[int, int, int], axes_lens: Tuple[int, int, int], theta: int) -> List[torch.Tensor]:
+    """Build Boogu's rotary-position-embedding frequency table (one entry per axis)."""
+    freqs_cis = []
+    freqs_dtype = torch.float32
+    for d, e in zip(axes_dim, axes_lens):
+        emb = get_1d_rotary_pos_embed(d, e, theta=theta, freqs_dtype=freqs_dtype)
+        freqs_cis.append(emb)
+    return freqs_cis
 
 
 class BooguImageDoubleStreamRotaryPosEmbed(nn.Module):
@@ -73,17 +64,6 @@ class BooguImageDoubleStreamRotaryPosEmbed(nn.Module):
         self.axes_dim = axes_dim
         self.axes_lens = axes_lens
         self.patch_size = patch_size
-
-    @staticmethod
-    def get_freqs_cis(
-        axes_dim: Tuple[int, int, int], axes_lens: Tuple[int, int, int], theta: int
-    ) -> List[torch.Tensor]:
-        freqs_cis = []
-        freqs_dtype = torch.float32
-        for i, (d, e) in enumerate(zip(axes_dim, axes_lens)):
-            emb = get_1d_rotary_pos_embed(d, e, theta=theta, freqs_dtype=freqs_dtype)
-            freqs_cis.append(emb)
-        return freqs_cis
 
     def _get_freqs_cis(self, freqs_cis, ids: torch.Tensor) -> torch.Tensor:
         device = ids.device

@@ -16,7 +16,7 @@
 import torch
 
 from diffusers import BooguImageTransformer2DModel
-from diffusers.models.transformers.transformer_boogu import BooguImageRotaryPosEmbed
+from diffusers.models.transformers.transformer_boogu import get_freqs_cis
 from diffusers.utils.torch_utils import randn_tensor
 
 from ...testing_utils import enable_full_determinism, torch_device
@@ -89,7 +89,7 @@ class BooguImageTransformerTesterConfig(BaseModelTesterConfig):
             (batch_size, instruction_len, _INSTRUCTION_FEAT_DIM), generator=gen, device=torch.device(torch_device)
         )
         instruction_attention_mask = torch.ones(batch_size, instruction_len, dtype=torch.long, device=torch_device)
-        freqs_cis = BooguImageRotaryPosEmbed.get_freqs_cis(_AXES_DIM_ROPE, _AXES_LENS, theta=_THETA)
+        freqs_cis = get_freqs_cis(_AXES_DIM_ROPE, _AXES_LENS, theta=_THETA)
 
         return {
             "hidden_states": hidden_states,
