@@ -167,9 +167,9 @@ class TestFlux2TransformerTensorParallel(Flux2TransformerTesterConfig, TensorPar
 def make_neuron_tp_spec():
     """Model spec consumed by the generic Neuron TP worker (``_neuron_tp_worker.py``).
 
-    Returns ``(model_class, init_dict, cpu_inputs)``. Defined here so all Flux2-specific test data lives in this
-    file while the worker stays model-agnostic. Reuses the shared tester config so the spec never drifts from the
-    rest of the Flux2 tests.
+    Returns ``(model_class, init_dict, cpu_inputs)``. Defined here so all Flux2-specific test data lives in this file
+    while the worker stays model-agnostic. Reuses the shared tester config so the spec never drifts from the rest of
+    the Flux2 tests.
     """
     config = Flux2TransformerTesterConfig()
     return Flux2Transformer2DModel, config.get_init_dict(), config.get_dummy_inputs(device="cpu")

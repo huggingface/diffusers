@@ -16,8 +16,8 @@
 """Generic torchrun worker: assert a model's Neuron tensor-parallel output matches its single-device reference.
 
 Model-agnostic. The model under test is supplied as a ``module:function`` spec reference on the command line; the
-referenced factory returns ``(model_class, init_dict, inputs)`` with CPU tensors, so all model-specific test data
-lives with the launching test rather than here.
+referenced factory returns ``(model_class, init_dict, inputs)`` with CPU tensors, so all model-specific test data lives
+with the launching test rather than here.
 
 Launched as a subprocess by a ``@require_torch_neuron`` test (and runnable directly for debugging)::
 
@@ -25,9 +25,9 @@ Launched as a subprocess by a ``@require_torch_neuron`` test (and runnable direc
         tests.models.transformers.test_models_transformer_flux2:make_neuron_tp_spec
 
 Each rank builds an identical (seeded) model on CPU, computes a single-device reference, then shards it with
-``enable_parallelism(TensorParallelConfig(mesh=neuron_mesh))`` — which auto-selects the Neuron pre-shard backend —
-runs a forward pass on the Neuron device, and asserts the gathered output matches the reference. Exit code 0 means
-the TP path is numerically equivalent to the unsharded model; non-zero means failure.
+``enable_parallelism(TensorParallelConfig(mesh=neuron_mesh))`` — which auto-selects the Neuron pre-shard backend — runs
+a forward pass on the Neuron device, and asserts the gathered output matches the reference. Exit code 0 means the TP
+path is numerically equivalent to the unsharded model; non-zero means failure.
 """
 
 import argparse

@@ -83,8 +83,8 @@ def apply_tensor_parallel(
 ) -> None:
     """Apply tensor parallel on a model from its flat ``_tp_plan``.
 
-    ``backend="neuron"`` routes to the Neuron pre-shard path (works around the NRT consecutive-reduce-scatter bug
-    and applies the Flux2 fused-weight permutations); ``"default"`` uses ``parallelize_module`` directly.
+    ``backend="neuron"`` routes to the Neuron pre-shard path (works around the NRT consecutive-reduce-scatter bug and
+    applies the Flux2 fused-weight permutations); ``"default"`` uses ``parallelize_module`` directly.
     """
     tp_mesh = config._mesh
     if tp_mesh is None:
