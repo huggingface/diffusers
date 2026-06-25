@@ -23,11 +23,12 @@ from torch.nn import RMSNorm
 from diffusers.configuration_utils import ConfigMixin, register_to_config
 from diffusers.loaders import PeftAdapterMixin
 from diffusers.loaders.single_file_model import FromOriginalModelMixin
+from diffusers.models.attention import AttentionModuleMixin
 from diffusers.models.attention_dispatch import dispatch_attention_fn
-from diffusers.models.attention_processor import Attention
 from diffusers.models.embeddings import TimestepEmbedding, Timesteps, get_1d_rotary_pos_embed
 from diffusers.models.modeling_outputs import Transformer2DModelOutput
 from diffusers.models.modeling_utils import ModelMixin
+from diffusers.models.normalization import RMSNorm as DiffusersRMSNorm
 from diffusers.utils import (
     USE_PEFT_BACKEND,
     logging,
@@ -452,6 +453,64 @@ def _prepare_attn_mask(attention_mask: Optional[torch.Tensor], batch_size: int) 
     return attention_mask.bool().view(batch_size, 1, 1, -1)
 
 
+class BooguImageAttention(torch.nn.Module, AttentionModuleMixin):
+    """
+    Attention module for Boogu-Image. Holds the per-head layers (``to_q`` / ``to_k`` / ``to_v`` / ``norm_q`` /
+    ``norm_k`` / ``to_out``) and defers the computation to a stateless processor.
+
+    Two layouts are supported:
+
+    - Single-stream self-attention (``has_qkv=True``, the default): owns ``to_q`` / ``to_k`` / ``to_v``. Paired with
+      [`BooguImageAttnProcessor`].
+    - Double-stream joint attention (``has_qkv=False``): the per-stream QKV / output projections live on the
+      stateful [`BooguImageDoubleStreamSelfAttnProcessor`] (checkpoint keys ``...processor.img_to_q`` /
+      ``...processor.instruct_to_q`` / ``...processor.img_out`` / ``...processor.instruct_out``), so this module only
+      holds the shared ``norm_q`` / ``norm_k`` / ``to_out``.
+    """
+
+    _default_processor_cls = None
+    _available_processors = []
+
+    def __init__(
+        self,
+        query_dim: int,
+        heads: int,
+        kv_heads: int,
+        dim_head: int,
+        eps: float = 1e-5,
+        bias: bool = False,
+        out_bias: bool = False,
+        has_qkv: bool = True,
+        processor=None,
+    ) -> None:
+        super().__init__()
+
+        self.inner_dim = dim_head * heads
+        self.inner_kv_dim = dim_head * kv_heads
+        self.query_dim = query_dim
+        self.out_dim = query_dim
+        self.heads = heads
+        self.scale = dim_head**-0.5
+
+        if has_qkv:
+            self.to_q = torch.nn.Linear(query_dim, self.inner_dim, bias=bias)
+            self.to_k = torch.nn.Linear(query_dim, self.inner_kv_dim, bias=bias)
+            self.to_v = torch.nn.Linear(query_dim, self.inner_kv_dim, bias=bias)
+
+        # QK norm reproduces ``Attention(qk_norm="rms_norm")`` exactly (diffusers' float32-upcasting RMSNorm).
+        self.norm_q = DiffusersRMSNorm(dim_head, eps=eps, elementwise_affine=True)
+        self.norm_k = DiffusersRMSNorm(dim_head, eps=eps, elementwise_affine=True)
+
+        self.to_out = torch.nn.ModuleList([])
+        self.to_out.append(torch.nn.Linear(self.inner_dim, self.out_dim, bias=out_bias))
+        self.to_out.append(torch.nn.Dropout(0.0))
+
+        self.set_processor(processor)
+
+    def forward(self, *args, **kwargs) -> torch.Tensor:
+        return self.processor(self, *args, **kwargs)
+
+
 class BooguImageDoubleStreamSelfAttnProcessor(nn.Module):
     """
     Double-stream self-attention processor.
@@ -604,7 +663,7 @@ class BooguImageDoubleStreamSelfAttnProcessor(nn.Module):
 
     def __call__(
         self,
-        attn: Attention,
+        attn: "BooguImageAttention",
         img_hidden_states: torch.Tensor,
         instruct_hidden_states: torch.Tensor,
         joint_attention_mask: Optional[torch.Tensor] = None,
@@ -709,7 +768,7 @@ class BooguImageAttnProcessor:
 
     def __call__(
         self,
-        attn: Attention,
+        attn: "BooguImageAttention",
         hidden_states: torch.Tensor,
         encoder_hidden_states: torch.Tensor,
         attention_mask: Optional[torch.Tensor] = None,
@@ -772,6 +831,15 @@ class BooguImageAttnProcessor:
         return hidden_states
 
 
+# Registered here (after both processors are defined) so `BooguImageAttention()` defaults to the single-stream
+# stateless processor, while the double-stream processor remains available.
+BooguImageAttention._default_processor_cls = BooguImageAttnProcessor
+BooguImageAttention._available_processors = [
+    BooguImageAttnProcessor,
+    BooguImageDoubleStreamSelfAttnProcessor,
+]
+
+
 class BooguImageTransformerBlock(nn.Module):
     """
     Basic Boogu-Image transformer block: attention + MLP + RMSNorm.
@@ -793,16 +861,15 @@ class BooguImageTransformerBlock(nn.Module):
         self.modulation = modulation
 
         # Initialize attention layer
-        self.attn = Attention(
+        self.attn = BooguImageAttention(
             query_dim=dim,
-            cross_attention_dim=None,
             dim_head=dim // num_attention_heads,
-            qk_norm="rms_norm",
             heads=num_attention_heads,
             kv_heads=num_kv_heads,
             eps=1e-5,
             bias=False,
             out_bias=False,
+            has_qkv=True,
             processor=BooguImageAttnProcessor(),
         )
 
@@ -904,29 +971,29 @@ class BooguImageDoubleStreamTransformerBlock(nn.Module):
         )
 
         # Image stream components.
-        self.img_instruct_attn = Attention(
+        # Joint instruction<->image attention: the per-stream QKV / output projections live on the processor,
+        # so this module carries only the shared norm_q / norm_k / to_out (has_qkv=False).
+        self.img_instruct_attn = BooguImageAttention(
             query_dim=dim,
-            cross_attention_dim=None,
             dim_head=dim // num_attention_heads,
-            qk_norm="rms_norm",
             heads=num_attention_heads,
             kv_heads=num_kv_heads,
             eps=1e-5,
             bias=False,
             out_bias=False,
+            has_qkv=False,
             processor=double_stream_processor,
         )
 
-        self.img_self_attn = Attention(
+        self.img_self_attn = BooguImageAttention(
             query_dim=dim,
-            cross_attention_dim=None,
             dim_head=dim // num_attention_heads,
-            qk_norm="rms_norm",
             heads=num_attention_heads,
             kv_heads=num_kv_heads,
             eps=1e-5,
             bias=False,
             out_bias=False,
+            has_qkv=True,
             processor=BooguImageAttnProcessor(),
         )
 
@@ -976,18 +1043,6 @@ class BooguImageDoubleStreamTransformerBlock(nn.Module):
         self.instruct_attn_norm = RMSNorm(dim, eps=norm_eps)
         self.instruct_ffn_norm2 = RMSNorm(dim, eps=norm_eps)
 
-        # double_stream_processor owns its own q/k/v projections.
-        for param in self.img_instruct_attn.to_q.parameters():
-            param.requires_grad = False
-        for param in self.img_instruct_attn.to_k.parameters():
-            param.requires_grad = False
-        for param in self.img_instruct_attn.to_v.parameters():
-            param.requires_grad = False
-
-        del self.img_instruct_attn.to_k
-        del self.img_instruct_attn.to_v
-        del self.img_instruct_attn.to_q
-
     def forward(
         self,
         img_hidden_states: torch.Tensor,  # [B, L_img, D] - Image tokens (ref_img + noise_img)
@@ -1026,10 +1081,8 @@ class BooguImageDoubleStreamTransformerBlock(nn.Module):
             ) = self.instruct_norm1(instruct_hidden_states, temb)
             instruct_norm2_out, instruct_shift_mlp, _, _ = self.instruct_norm2(instruct_hidden_states, temb)
 
-            # Step 2: joint attention on [instruct + img].
-            # Call processor directly because Attention.forward does not expose these dual-stream args.
-            joint_attn_out = self.img_instruct_attn.processor(
-                attn=self.img_instruct_attn,
+            # Step 2: joint attention on [instruct + img]. The module dispatches to its double-stream processor.
+            joint_attn_out = self.img_instruct_attn(
                 img_hidden_states=img_norm1_out,
                 instruct_hidden_states=instruct_norm1_out,
                 joint_attention_mask=joint_attention_mask,
@@ -1082,8 +1135,7 @@ class BooguImageDoubleStreamTransformerBlock(nn.Module):
             instruct_norm1_out = self.instruct_norm1(instruct_hidden_states)
 
             # Same processor path as above.
-            joint_attn_out = self.img_instruct_attn.processor(
-                attn=self.img_instruct_attn,
+            joint_attn_out = self.img_instruct_attn(
                 img_hidden_states=img_norm1_out,
                 instruct_hidden_states=instruct_norm1_out,
                 joint_attention_mask=joint_attention_mask,
