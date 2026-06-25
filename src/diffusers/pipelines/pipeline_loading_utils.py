@@ -958,6 +958,16 @@ def _fetch_class_library_tuple(module):
 
     # register the config from the original module, not the dynamo compiled one
     not_compiled_module = _unwrap_model(module)
+
+    # Validate that the module is a valid class instance or type
+    if not hasattr(not_compiled_module, "__module__"):
+        raise TypeError(
+            f"Expected a module or class instance for pipeline component, but received {type(not_compiled_module).__name__}: {not_compiled_module!r}. "
+            "This is likely due to a signature mismatch in a pipeline's __init__ method. "
+            "If you are using a custom pipeline, please ensure it matches the signature of the base pipeline class. "
+            "For example, if inheriting from StableDiffusionPipeline, ensure your __init__ accepts all parameters "
+            "including 'image_encoder' (added in recent versions)."
+        )
     library = not_compiled_module.__module__.split(".")[0]
 
     # check if the module is a pipeline module
