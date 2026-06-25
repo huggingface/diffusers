@@ -273,7 +273,7 @@ swiglu = _torch_swiglu
 torch_swiglu = _torch_swiglu
 
 
-class LuminaRMSNormZero(nn.Module):
+class BooguImageRMSNormZero(nn.Module):
     """
     Norm layer adaptive RMS normalization zero.
 
@@ -308,7 +308,7 @@ class LuminaRMSNormZero(nn.Module):
         return x, gate_msa, scale_mlp, gate_mlp
 
 
-class LuminaLayerNormContinuous(nn.Module):
+class BooguImageLayerNormContinuous(nn.Module):
     def __init__(
         self,
         embedding_dim: int,
@@ -357,7 +357,7 @@ class LuminaLayerNormContinuous(nn.Module):
         return x
 
 
-class LuminaFeedForward(nn.Module):
+class BooguImageFeedForward(nn.Module):
     r"""
     A feed-forward layer.
 
@@ -409,7 +409,7 @@ class LuminaFeedForward(nn.Module):
         return self.linear_2(swiglu_fn(h1, h2))
 
 
-class Lumina2CombinedTimestepCaptionEmbedding(nn.Module):
+class BooguImageCombinedTimestepCaptionEmbedding(nn.Module):
     def __init__(
         self,
         hidden_size: int = 4096,
@@ -828,7 +828,7 @@ class BooguImageTransformerBlock(nn.Module):
         )
 
         # Initialize feed-forward network
-        self.feed_forward = LuminaFeedForward(
+        self.feed_forward = BooguImageFeedForward(
             dim=dim,
             inner_dim=4 * dim,
             multiple_of=multiple_of,
@@ -837,7 +837,7 @@ class BooguImageTransformerBlock(nn.Module):
 
         # Initialize normalization layers
         if modulation:
-            self.norm1 = LuminaRMSNormZero(embedding_dim=dim, norm_eps=norm_eps, norm_elementwise_affine=True)
+            self.norm1 = BooguImageRMSNormZero(embedding_dim=dim, norm_eps=norm_eps, norm_elementwise_affine=True)
         else:
             self.norm1 = RMSNorm(dim, eps=norm_eps)
 
@@ -951,7 +951,7 @@ class BooguImageDoubleStreamTransformerBlock(nn.Module):
             processor=BooguImageAttnProcessor(),
         )
 
-        self.img_feed_forward = LuminaFeedForward(
+        self.img_feed_forward = BooguImageFeedForward(
             dim=dim,
             inner_dim=4 * dim,
             multiple_of=multiple_of,
@@ -960,9 +960,9 @@ class BooguImageDoubleStreamTransformerBlock(nn.Module):
 
         if modulation:
             # Image modulation terms: cross-attn, MLP, self-attn.
-            self.img_norm1 = LuminaRMSNormZero(embedding_dim=dim, norm_eps=norm_eps, norm_elementwise_affine=True)
-            self.img_norm2 = LuminaRMSNormZero(embedding_dim=dim, norm_eps=norm_eps, norm_elementwise_affine=True)
-            self.img_norm3 = LuminaRMSNormZero(embedding_dim=dim, norm_eps=norm_eps, norm_elementwise_affine=True)
+            self.img_norm1 = BooguImageRMSNormZero(embedding_dim=dim, norm_eps=norm_eps, norm_elementwise_affine=True)
+            self.img_norm2 = BooguImageRMSNormZero(embedding_dim=dim, norm_eps=norm_eps, norm_elementwise_affine=True)
+            self.img_norm3 = BooguImageRMSNormZero(embedding_dim=dim, norm_eps=norm_eps, norm_elementwise_affine=True)
         else:
             self.img_norm1 = RMSNorm(dim, eps=norm_eps)
             self.img_norm2 = RMSNorm(dim, eps=norm_eps)
@@ -974,7 +974,7 @@ class BooguImageDoubleStreamTransformerBlock(nn.Module):
         self.img_ffn_norm2 = RMSNorm(dim, eps=norm_eps)
 
         # Instruction stream components.
-        self.instruct_feed_forward = LuminaFeedForward(
+        self.instruct_feed_forward = BooguImageFeedForward(
             dim=dim,
             inner_dim=4 * dim,
             multiple_of=multiple_of,
@@ -983,8 +983,12 @@ class BooguImageDoubleStreamTransformerBlock(nn.Module):
 
         if modulation:
             # Instruction modulation terms: cross-attn, MLP.
-            self.instruct_norm1 = LuminaRMSNormZero(embedding_dim=dim, norm_eps=norm_eps, norm_elementwise_affine=True)
-            self.instruct_norm2 = LuminaRMSNormZero(embedding_dim=dim, norm_eps=norm_eps, norm_elementwise_affine=True)
+            self.instruct_norm1 = BooguImageRMSNormZero(
+                embedding_dim=dim, norm_eps=norm_eps, norm_elementwise_affine=True
+            )
+            self.instruct_norm2 = BooguImageRMSNormZero(
+                embedding_dim=dim, norm_eps=norm_eps, norm_elementwise_affine=True
+            )
         else:
             self.instruct_norm1 = RMSNorm(dim, eps=norm_eps)
             self.instruct_norm2 = RMSNorm(dim, eps=norm_eps)
@@ -1220,7 +1224,7 @@ class BooguImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Fr
             out_features=hidden_size,
         )
 
-        self.time_caption_embed = Lumina2CombinedTimestepCaptionEmbedding(
+        self.time_caption_embed = BooguImageCombinedTimestepCaptionEmbedding(
             hidden_size=hidden_size,
             instruction_feat_dim=self.preprocessed_instruction_feat_dim,
             norm_eps=norm_eps,
@@ -1307,7 +1311,7 @@ class BooguImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Fr
         )
 
         # Output norm and projection.
-        self.norm_out = LuminaLayerNormContinuous(
+        self.norm_out = BooguImageLayerNormContinuous(
             embedding_dim=hidden_size,
             conditioning_embedding_dim=min(hidden_size, 1024),
             elementwise_affine=False,
