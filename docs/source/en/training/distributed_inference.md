@@ -475,14 +475,3 @@ if __name__ == "__main__":
 ```shell
 torchrun --nproc-per-node 2 above_script.py
 ```
-
-### Neuron (AWS Trainium/Inferentia)
-
-On AWS Neuron, `enable_parallelism` automatically selects a pre-shard path that works around an NRT consecutive-reduce-scatter limitation on large weights. Because the weights are sharded on CPU before being placed on the device, **call `enable_parallelism` while the transformer is still on CPU, then move the pipeline to the Neuron device**:
-
-```py
-device = torch.neuron.current_device()
-pipeline.transformer.enable_parallelism(config=TensorParallelConfig(tp_degree=8))
-pipeline.transformer = pipeline.transformer.to(device)
-torch.neuron.synchronize()
-```
