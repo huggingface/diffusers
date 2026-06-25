@@ -1,4 +1,4 @@
-<!--Copyright 2025 The HuggingFace Team. All rights reserved.
+<!--Copyright 2026 The HuggingFace Team. All rights reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 the License. You may obtain a copy of the License at
@@ -12,16 +12,16 @@ specific language governing permissions and limitations under the License.
 
 # TorchTPU
 
-[TorchTPU](https://github.com/pytorch/tpu) registers a `"tpu"` device type with PyTorch, enabling you to run
-diffusers pipelines on Google Cloud TPUs (v4, v5p, v5e, …) with minimal code changes.
+[TorchTPU](https://github.com/google-pytorch/torch_tpu/) provides a PyTorch backend for Google's Tensor Processing Units (TPUs), enabling you to run diffusers pipelines on Google Cloud TPUs (v6e, v5p, …) with minimal code changes.
 
-Three execution modes are available:
+Four execution modes are available:
 
-| Mode | How to activate | Speed | Notes |
+| Mode | Constant | How to activate | Notes |
 |---|---|---|---|
-| **Lazy** (default) | just `import torch_tpu` | baseline | XLA traces the graph lazily |
-| **Eager** | `set_eager_mode(EagerMode.DEFER_NEVER)` | medium | dispatch ops eagerly |
-| **Compile** | `pipe.enable_tpu_compile()` | fastest (~4–6×) | static compilation with `TpuBackend` |
+| **Strict Eager** (default) | `EagerMode.DEFER_NEVER` | just `import torch_tpu` | Operations dispatched one at a time, asynchronous |
+| **Debug Eager** | `EagerMode.DEFER_NEVER_AND_LAUNCH_BLOCKING` | `set_eager_mode(EagerMode.DEFER_NEVER_AND_LAUNCH_BLOCKING)` or `TPU_LAUNCH_BLOCKING=1` | Synchronous execution; useful for pinpointing errors |
+| **Fused Eager** | `EagerMode.DEFER_AND_FUSE` | `set_eager_mode(EagerMode.DEFER_AND_FUSE)` or `TPU_DEFER_AND_FUSE=1` | Groups multiple ops for XLA fusion; best throughput in eager mode |
+| **Compile** | — | `pipe.enable_tpu_compile()` | AOT compilation with `TpuBackend` |
 
 ## Installation
 
@@ -41,7 +41,7 @@ Diffusers handles this transparently:
 - `randn_tensor` generates initial noise on CPU and moves it to TPU, avoiding a TPU RNG
   unaligned DUS (dynamic-update-slice) bug.
 
-## Basic usage (lazy mode)
+## Basic usage (strict eager mode / default)
 
 ```python
 import torch
@@ -72,9 +72,14 @@ image.save("output.png")
 
 ## Compiled mode (recommended for production)
 
-`torch.compile` with `TpuBackend` traces the transformer statically and gives the largest
-speedup. The first call (warmup) is slow because it triggers compilation; subsequent calls
-reuse the compiled graph.
+`torch.compile` with `TpuBackend` traces the transformer statically. The first call (warmup)
+is slow because it triggers compilation; subsequent calls reuse the compiled graph.
+
+> [!IMPORTANT]
+> TorchTPU requires **static shapes** — `torch.compile` is called with `dynamic=False`
+> internally. Every time `height`, `width`, or `num_inference_steps` changes, the graph is
+> recompiled from scratch. Keep these values constant across all calls after warmup, or call
+> `tpu_warmup` again before changing them.
 
 ```python
 import torch
@@ -114,85 +119,51 @@ image = pipe(
 image.save("output.png")
 ```
 
-## SDXL
-
-SDXL uses a UNet instead of a transformer. The same approach applies.
-
-```python
-import torch
-import torch_tpu  # noqa: F401
-
-from diffusers import StableDiffusionXLPipeline
-
-pipe = StableDiffusionXLPipeline.from_pretrained(
-    "stabilityai/stable-diffusion-xl-base-1.0",
-    torch_dtype=torch.bfloat16,
-    use_safetensors=True,
-)
-
-pipe.unet.to("tpu")
-pipe.vae.to("tpu")
-
-pipe.enable_tpu_compile()
-pipe.tpu_warmup(
-    prompt="warmup",
-    height=1024,
-    width=1024,
-    num_inference_steps=20,
-    guidance_scale=7.5,
-)
-
-image = pipe(
-    prompt="a golden retriever surfing a wave, photorealistic",
-    height=1024,
-    width=1024,
-    num_inference_steps=20,
-    guidance_scale=7.5,
-).images[0]
-
-image.save("output.png")
-```
-
-> [!NOTE]
-> In SDXL **lazy/eager mode** (without `enable_tpu_compile`), `time_proj` inside the UNet
-> runs on CPU automatically to avoid an XLA unaligned DUS crash. `enable_tpu_compile` uses
-> `TpuBackend` which handles the layout internally, so no wrapper is needed in compiled mode.
-
 ## Eager mode
 
-Eager mode dispatches ops immediately instead of accumulating a lazy graph. Enter it
-**before loading or moving models** to TPU:
+TorchTPU defaults to **Strict Eager** (`EagerMode.DEFER_NEVER`): operations are dispatched one
+at a time asynchronously, matching standard PyTorch GPU behaviour. Two alternative eager modes
+are available:
+
+**Debug Eager** — synchronous execution; every op blocks until the TPU finishes. Useful for
+pinpointing the exact line that raises an error. Equivalent to `CUDA_LAUNCH_BLOCKING=1` on GPU.
 
 ```python
-import torch
-import torch_tpu  # noqa: F401
-from torch_tpu._internal.execution_mode import EagerMode, set_eager_mode
+from torch_tpu._internal import execution_mode as em
 
-eager_ctx = set_eager_mode(EagerMode.DEFER_NEVER)
-eager_ctx.__enter__()
+# Globally for the session
+em.eager_mode = em.EagerMode.DEFER_NEVER_AND_LAUNCH_BLOCKING
 
-from diffusers import FluxPipeline
-
-pipe = FluxPipeline.from_pretrained("black-forest-labs/FLUX.1-schnell", torch_dtype=torch.bfloat16)
-pipe.transformer.to("tpu")
-pipe.vae.to("tpu")
-
-image = pipe(prompt="a cat", height=1024, width=1024, num_inference_steps=4, guidance_scale=0.0).images[0]
-image.save("output.png")
-
-eager_ctx.__exit__(None, None, None)
+# Or via environment variable (before importing torch_tpu):
+# TPU_LAUNCH_BLOCKING=1
 ```
 
-## Performance benchmarks (v5p, BF16)
+**Fused Eager** — defers ops and lets the XLA compiler fuse across operation boundaries,
+reducing memory traffic and dispatch overhead without full AOT compilation.
 
-| Model | Mode | Steps | Resolution | Time/iter |
-|---|---|---|---|---|
-| FLUX.2-klein-9B | Lazy | 4 | 1024×1024 | 7.82 s |
-| FLUX.2-klein-9B | Compile | 4 | 1024×1024 | 1.94 s |
-| ERNIE-Image-Turbo | Lazy | 8 | 1024×1024 | 5.97 s |
-| ERNIE-Image-Turbo | Compile | 8 | 1024×1024 | 2.24 s |
-| Wan2.2-TI2V (video) | Eager | 50 | 480×832 | 82.2 s |
-| Wan2.2-TI2V (video) | Compile | 50 | 480×832 | 14.2 s |
+```python
+from torch_tpu._internal import execution_mode as em
+
+# Globally for the session
+em.eager_mode = em.EagerMode.DEFER_AND_FUSE
+
+# Or via environment variable (before importing torch_tpu):
+# TPU_DEFER_AND_FUSE=1
+```
+
+Use `set_eager_mode` as a context manager to switch modes for a single block:
+
+```python
+from torch_tpu._internal import execution_mode as em
+
+with em.set_eager_mode(em.EagerMode.DEFER_NEVER_AND_LAUNCH_BLOCKING):
+    # synchronous — pinpoints the exact failing line
+    output = model(input_data)
+```
+
+> [!TIP]
+> For the best production throughput, prefer `torch.compile` via `pipe.enable_tpu_compile()`,
+> which uses an Ahead-of-Time (AOT) strategy more aggressive than Fused Eager.
 
 ## API reference
 
