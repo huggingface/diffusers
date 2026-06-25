@@ -593,6 +593,13 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         modules = [getattr(self, n, None) for n in module_names]
         modules = [m for m in modules if isinstance(m, torch.nn.Module)]
 
+        # Prefer any non-CPU, non-meta component so that when text encoders are
+        # offloaded to CPU the pipeline still reports the accelerator device. This
+        # also handles TP-sharded models whose DTensor params are on CUDA/XPU/etc.
+        for module in modules:
+            if module.device.type not in ("cpu", "meta"):
+                return module.device
+
         for module in modules:
             return module.device
 
@@ -1161,6 +1168,15 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 return _get_group_onload_device(model)
             except ValueError:
                 pass
+
+        # When text encoders are offloaded to CPU while the denoising backbone
+        # (transformer, unet, vae) runs on an accelerator, self.device returns CPU
+        # (first component). Prefer any non-CPU, non-meta component so that
+        # latent tensors land on the accelerator. This covers CUDA, XPU, NPU, HPU,
+        # and any other backend, including TP-sharded models via DTensor.
+        for name, model in self.components.items():
+            if isinstance(model, torch.nn.Module) and model.device.type not in ("cpu", "meta"):
+                return model.device
 
         for name, model in self.components.items():
             if not isinstance(model, torch.nn.Module) or name in self._exclude_from_cpu_offload:
