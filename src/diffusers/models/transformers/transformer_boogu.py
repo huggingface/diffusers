@@ -34,7 +34,6 @@ from diffusers.utils import (
     scale_lora_layers,
     unscale_lora_layers,
 )
-from diffusers.utils.teacache_util import TeaCacheParams
 
 
 logger = logging.get_logger(__name__)
@@ -1305,14 +1304,6 @@ class BooguImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Fr
 
         self.gradient_checkpointing = False
 
-        # TeaCache settings
-        self.enable_teacache = False
-        self.teacache_rel_l1_thresh = 0.05
-        self.teacache_params = TeaCacheParams()
-
-        # Polynomial (highest-degree first) rescaling the relative L1 distance used by TeaCache.
-        self.teacache_rescale_coefficients = [-5.48259225, 11.48772289, -4.47407401, 2.47730926, -0.03316487]
-
     def img_patch_embed_and_refine(
         self,
         hidden_states,
@@ -1697,52 +1688,13 @@ class BooguImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Fr
         # Single-stream stage.
         hidden_states = joint_hidden_states
 
-        # TeaCache optimization.
-        if self.enable_teacache and len(self.single_stream_layers) > 0:
-            teacache_hidden_states = hidden_states.clone()
-            teacache_temb = temb.clone()
-            modulated_inp, _, _, _ = self.single_stream_layers[0].norm1(teacache_hidden_states, teacache_temb)
-            if self.teacache_params.is_first_or_last_step:
-                should_calc = True
-                self.teacache_params.accumulated_rel_l1_distance = 0
-            else:
-                rel_l1 = (
-                    (
-                        (modulated_inp - self.teacache_params.previous_modulated_inp).abs().mean()
-                        / self.teacache_params.previous_modulated_inp.abs().mean()
-                    )
-                    .cpu()
-                    .item()
+        for layer in self.single_stream_layers:
+            if torch.is_grad_enabled() and self.gradient_checkpointing:
+                hidden_states = self._gradient_checkpointing_func(
+                    layer, hidden_states, joint_attention_mask, rotary_emb, temb
                 )
-                rescaled = 0.0
-                for coefficient in self.teacache_rescale_coefficients:
-                    rescaled = rescaled * rel_l1 + coefficient
-                self.teacache_params.accumulated_rel_l1_distance += rescaled
-                if self.teacache_params.accumulated_rel_l1_distance < self.teacache_rel_l1_thresh:
-                    should_calc = False
-                else:
-                    should_calc = True
-                    self.teacache_params.accumulated_rel_l1_distance = 0
-            self.teacache_params.previous_modulated_inp = modulated_inp
-        else:
-            should_calc = True
-
-        if self.enable_teacache and not should_calc:
-            hidden_states += self.teacache_params.previous_residual
-        else:
-            if self.enable_teacache:
-                ori_hidden_states = hidden_states.clone()
-
-            for layer in self.single_stream_layers:
-                if torch.is_grad_enabled() and self.gradient_checkpointing:
-                    hidden_states = self._gradient_checkpointing_func(
-                        layer, hidden_states, joint_attention_mask, rotary_emb, temb
-                    )
-                else:
-                    hidden_states = layer(hidden_states, joint_attention_mask, rotary_emb, temb)
-
-            if self.enable_teacache:
-                self.teacache_params.previous_residual = hidden_states - ori_hidden_states
+            else:
+                hidden_states = layer(hidden_states, joint_attention_mask, rotary_emb, temb)
 
         # Output projection.
         hidden_states = self.norm_out(hidden_states, temb)

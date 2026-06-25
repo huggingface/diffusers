@@ -18,7 +18,6 @@ from diffusers.utils import (
     is_torch_xla_available,
     logging,
 )
-from diffusers.utils.teacache_util import TeaCacheParams
 from diffusers.utils.torch_utils import randn_tensor
 
 from ...models.transformers import BooguImageTransformer2DModel
@@ -1454,38 +1453,8 @@ class BooguImagePipeline(DiffusionPipeline):
         num_warmup_steps = max(len(timesteps) - num_inference_steps * self.scheduler.order, 0)
         self._num_timesteps = len(timesteps)
 
-        # NOTE: Declare optional per-condition caches upfront for static analyzers.
-        # They are populated below depending on which acceleration path is enabled.
-        teacache_params_drop_ref = None
-        teacache_params_ref_empty_instruct = None
-        use_ref_empty_instruct_pred = (
-            use_empty_neg_instruct_4_ref_img_pred_at_image_guide_in_double_guide
-            or use_empty_neg_instruct_4_ref_img_pred_at_text_guide_in_double_guide
-        )
-
-        enable_teacache = self.transformer.enable_teacache or getattr(
-            self.transformer, "enable_teacache_for_all_layers", False
-        )
-        self.transformer.enable_teacache = enable_teacache
-        if enable_teacache:
-            # Use different TeaCacheParams for different conditions
-            teacache_params = TeaCacheParams()
-            teacache_params_uncond = TeaCacheParams()
-            teacache_params_ref = TeaCacheParams()
-            if use_ref_empty_instruct_pred:
-                # For double-guidance variants that use an "empty" instruction embedding when predicting ref-image condition.
-                # Keep TeaCache state isolated per condition; do NOT reuse uncond/ref/cond params here.
-                teacache_params_ref_empty_instruct = TeaCacheParams()
-            # For TI2I image-only guidance branch (drop reference image, keep text condition).
-            # Keep TeaCache state isolated per condition; do NOT reuse uncond/ref/cond params here.
-            teacache_params_drop_ref = TeaCacheParams()
-
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
-                if enable_teacache:
-                    teacache_params.is_first_or_last_step = i == 0 or i == len(timesteps) - 1
-                    self.transformer.teacache_params = teacache_params
-
                 model_pred = self.predict(
                     t=t,
                     latents=latents,
@@ -1508,10 +1477,6 @@ class BooguImagePipeline(DiffusionPipeline):
                 )
 
                 if (task_type == "ti2i") and (text_guidance_scale > 1.0) and (image_guidance_scale > 1.0):  # Checked
-                    if enable_teacache:
-                        teacache_params_ref.is_first_or_last_step = i == 0 or i == len(timesteps) - 1
-                        self.transformer.teacache_params = teacache_params_ref
-
                     model_pred_drop_text = self.predict(
                         t=t,
                         latents=latents,
@@ -1520,10 +1485,6 @@ class BooguImagePipeline(DiffusionPipeline):
                         instruction_attention_mask=negative_instruction_attention_mask,
                         ref_image_hidden_states=ref_latents,
                     )
-
-                    if enable_teacache:
-                        teacache_params_uncond.is_first_or_last_step = i == 0 or i == len(timesteps) - 1
-                        self.transformer.teacache_params = teacache_params_uncond
 
                     model_pred_drop_all = self.predict(
                         t=t,
@@ -1539,15 +1500,6 @@ class BooguImagePipeline(DiffusionPipeline):
                         or use_empty_neg_instruct_4_ref_img_pred_at_text_guide_in_double_guide
                     ):
                         # Predict ref-image condition using an "empty" instruction embedding.
-                        # IMPORTANT: This is a distinct condition from `model_pred_drop_text` (neg-text + ref),
-                        # so we must keep TeaCache state isolated to avoid cache pollution.
-                        if enable_teacache:
-                            assert teacache_params_ref_empty_instruct is not None
-                            teacache_params_ref_empty_instruct.is_first_or_last_step = (
-                                i == 0 or i == len(timesteps) - 1
-                            )
-                            self.transformer.teacache_params = teacache_params_ref_empty_instruct
-
                         model_pred_drop_text_empty_instruct = self.predict(
                             t=t,
                             latents=latents,
@@ -1620,12 +1572,6 @@ class BooguImagePipeline(DiffusionPipeline):
 
                 elif (task_type == "ti2i") and (text_guidance_scale > 1.0):  # checked
                     # TI2I text-only guidance (keep reference-image condition, guide only by text):
-
-                    if enable_teacache:
-                        # Keep TeaCache state isolated per condition (ref-only here).
-                        teacache_params_ref.is_first_or_last_step = i == 0 or i == len(timesteps) - 1
-                        self.transformer.teacache_params = teacache_params_ref
-
                     model_pred_drop_text = self.predict(
                         t=t,
                         latents=latents,
@@ -1653,15 +1599,6 @@ class BooguImagePipeline(DiffusionPipeline):
 
                 elif (task_type == "ti2i") and (image_guidance_scale > 1.0):  # Checked
                     # TI2I image-only guidance (keep text condition, guide only by reference image):
-                    #
-                    # IMPORTANT:
-                    # - TeaCache caches previous residuals per condition; we must not reuse the drop_all/drop_text TeaCache state here.
-
-                    if enable_teacache:
-                        assert teacache_params_drop_ref is not None
-                        teacache_params_drop_ref.is_first_or_last_step = i == 0 or i == len(timesteps) - 1
-                        self.transformer.teacache_params = teacache_params_drop_ref
-
                     model_pred_drop_image = self.predict(
                         t=t,
                         latents=latents,
@@ -1688,10 +1625,6 @@ class BooguImagePipeline(DiffusionPipeline):
                     model_pred = model_pred + (image_guidance_scale - 1) * delta_image
 
                 elif text_guidance_scale > 1.0:  # Checked
-                    if enable_teacache:
-                        teacache_params_uncond.is_first_or_last_step = i == 0 or i == len(timesteps) - 1
-                        self.transformer.teacache_params = teacache_params_uncond
-
                     model_pred_drop_all = self.predict(
                         t=t,
                         latents=latents,
