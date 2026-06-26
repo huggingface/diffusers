@@ -7,6 +7,7 @@ from .utils import (
     OptionalDependencyNotAvailable,
     _LazyModule,
     is_accelerate_available,
+    is_auto_round_available,
     is_bitsandbytes_available,
     is_flax_available,
     is_gguf_available,
@@ -122,6 +123,18 @@ except OptionalDependencyNotAvailable:
     ]
 else:
     _import_structure["quantizers.quantization_config"].append("NVIDIAModelOptConfig")
+
+try:
+    if not is_auto_round_available():
+        raise OptionalDependencyNotAvailable()
+except OptionalDependencyNotAvailable:
+    from .utils import dummy_auto_round_objects
+
+    _import_structure["utils.dummy_auto_round_objects"] = [
+        name for name in dir(dummy_auto_round_objects) if not name.startswith("_")
+    ]
+else:
+    _import_structure["quantizers.quantization_config"].append("AutoRoundConfig")
 
 try:
     if not is_onnx_available():
@@ -241,6 +254,8 @@ else:
             "CosmosControlNetModel",
             "CosmosTransformer3DModel",
             "DiTTransformer2DModel",
+            "DreamLiteTransformer2DModel",
+            "DreamLiteUNetModel",
             "EasyAnimateTransformer3DModel",
             "ErnieImageTransformer2DModel",
             "Flux2Transformer2DModel",
@@ -262,6 +277,7 @@ else:
             "JoyImageEditTransformer3DModel",
             "Kandinsky3UNet",
             "Kandinsky5Transformer3DModel",
+            "Krea2Transformer2DModel",
             "LatteTransformer3DModel",
             "LongCatAudioDiTTransformer",
             "LongCatAudioDiTVae",
@@ -380,11 +396,15 @@ else:
             "DDPMScheduler",
             "DDPMWuerstchenScheduler",
             "DEISMultistepScheduler",
+            "DiscreteDDIMScheduler",
+            "DiscreteDDIMSchedulerOutput",
             "DPMSolverMultistepInverseScheduler",
             "DPMSolverMultistepScheduler",
             "DPMSolverSinglestepScheduler",
             "EDMDPMSolverMultistepScheduler",
             "EDMEulerScheduler",
+            "EntropyBoundScheduler",
+            "EntropyBoundSchedulerOutput",
             "EulerAncestralDiscreteScheduler",
             "EulerDiscreteScheduler",
             "FlowMapEulerDiscreteScheduler",
@@ -557,6 +577,11 @@ else:
             "CosmosTextToWorldPipeline",
             "CosmosVideoToWorldPipeline",
             "CycleDiffusionPipeline",
+            "DiffusionGemmaPipeline",
+            "DiffusionGemmaPipelineOutput",
+            "DreamLiteMobilePipeline",
+            "DreamLitePipeline",
+            "DreamLitePipelineOutput",
             "EasyAnimateControlPipeline",
             "EasyAnimateInpaintPipeline",
             "EasyAnimatePipeline",
@@ -628,6 +653,7 @@ else:
             "KandinskyV22Pipeline",
             "KandinskyV22PriorEmb2EmbPipeline",
             "KandinskyV22PriorPipeline",
+            "Krea2Pipeline",
             "LatentConsistencyModelImg2ImgPipeline",
             "LatentConsistencyModelPipeline",
             "LattePipeline",
@@ -672,6 +698,7 @@ else:
             "PixArtSigmaPAGPipeline",
             "PixArtSigmaPipeline",
             "PRXPipeline",
+            "PRXPixelPipeline",
             "QwenImageControlNetInpaintPipeline",
             "QwenImageControlNetPipeline",
             "QwenImageEditInpaintPipeline",
@@ -983,6 +1010,14 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .quantizers.quantization_config import NVIDIAModelOptConfig
 
     try:
+        if not is_auto_round_available():
+            raise OptionalDependencyNotAvailable()
+    except OptionalDependencyNotAvailable:
+        from .utils.dummy_auto_round_objects import *
+    else:
+        from .quantizers.quantization_config import AutoRoundConfig
+
+    try:
         if not is_onnx_available():
             raise OptionalDependencyNotAvailable()
     except OptionalDependencyNotAvailable:
@@ -1087,6 +1122,8 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             CosmosControlNetModel,
             CosmosTransformer3DModel,
             DiTTransformer2DModel,
+            DreamLiteTransformer2DModel,
+            DreamLiteUNetModel,
             EasyAnimateTransformer3DModel,
             ErnieImageTransformer2DModel,
             Flux2Transformer2DModel,
@@ -1108,6 +1145,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             JoyImageEditTransformer3DModel,
             Kandinsky3UNet,
             Kandinsky5Transformer3DModel,
+            Krea2Transformer2DModel,
             LatteTransformer3DModel,
             LongCatAudioDiTTransformer,
             LongCatAudioDiTVae,
@@ -1222,11 +1260,15 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             DDPMScheduler,
             DDPMWuerstchenScheduler,
             DEISMultistepScheduler,
+            DiscreteDDIMScheduler,
+            DiscreteDDIMSchedulerOutput,
             DPMSolverMultistepInverseScheduler,
             DPMSolverMultistepScheduler,
             DPMSolverSinglestepScheduler,
             EDMDPMSolverMultistepScheduler,
             EDMEulerScheduler,
+            EntropyBoundScheduler,
+            EntropyBoundSchedulerOutput,
             EulerAncestralDiscreteScheduler,
             EulerDiscreteScheduler,
             FlowMapEulerDiscreteScheduler,
@@ -1378,6 +1420,11 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             CosmosTextToWorldPipeline,
             CosmosVideoToWorldPipeline,
             CycleDiffusionPipeline,
+            DiffusionGemmaPipeline,
+            DiffusionGemmaPipelineOutput,
+            DreamLiteMobilePipeline,
+            DreamLitePipeline,
+            DreamLitePipelineOutput,
             EasyAnimateControlPipeline,
             EasyAnimateInpaintPipeline,
             EasyAnimatePipeline,
@@ -1449,6 +1496,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             KandinskyV22Pipeline,
             KandinskyV22PriorEmb2EmbPipeline,
             KandinskyV22PriorPipeline,
+            Krea2Pipeline,
             LatentConsistencyModelImg2ImgPipeline,
             LatentConsistencyModelPipeline,
             LattePipeline,
@@ -1493,6 +1541,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             PixArtSigmaPAGPipeline,
             PixArtSigmaPipeline,
             PRXPipeline,
+            PRXPixelPipeline,
             QwenImageControlNetInpaintPipeline,
             QwenImageControlNetPipeline,
             QwenImageEditInpaintPipeline,

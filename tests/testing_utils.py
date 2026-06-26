@@ -32,6 +32,7 @@ from diffusers.utils.constants import DIFFUSERS_REQUEST_TIMEOUT
 from diffusers.utils.import_utils import (
     BACKENDS_MAPPING,
     is_accelerate_available,
+    is_auto_round_available,
     is_bitsandbytes_available,
     is_compel_available,
     is_flashpack_available,
@@ -163,6 +164,17 @@ def assert_tensors_close(
     """
     if not is_torch_available():
         raise ValueError("PyTorch needs to be installed to use this function.")
+
+    # Some models (e.g. Z-Image, Cosmos ControlNet) return a list/tuple of tensors as their output. Compare these
+    # element-wise so the same helper works regardless of whether the output is a single tensor or a sequence.
+    if isinstance(actual, (list, tuple)) or isinstance(expected, (list, tuple)):
+        if not (isinstance(actual, (list, tuple)) and isinstance(expected, (list, tuple))):
+            raise AssertionError(f"{msg} Type mismatch: actual {type(actual)} vs expected {type(expected)}")
+        if len(actual) != len(expected):
+            raise AssertionError(f"{msg} Length mismatch: actual {len(actual)} vs expected {len(expected)}")
+        for i, (a, e) in enumerate(zip(actual, expected)):
+            assert_tensors_close(a, e, atol=atol, rtol=rtol, msg=f"{msg} [element {i}]")
+        return
 
     if actual.shape != expected.shape:
         raise AssertionError(f"{msg} Shape mismatch: actual {actual.shape} vs expected {expected.shape}")
@@ -447,6 +459,15 @@ def is_gguf(test_case):
         pytest -m "not gguf" to skip pytest -m gguf to run only these tests
     """
     return pytest.mark.gguf(test_case)
+
+
+def is_autoround(test_case):
+    """
+    Decorator marking a test as an AutoRound quantization test. These tests can be filtered using:
+        pytest -m "not autoround" to skip
+        pytest -m autoround to run only these tests
+    """
+    return pytest.mark.autoround(test_case)
 
 
 def is_modelopt(test_case):
@@ -831,6 +852,19 @@ def require_torchao_version_greater_or_equal(torchao_version):
         ) >= version.parse(torchao_version)
         return pytest.mark.skipif(
             not correct_torchao_version, reason=f"Test requires torchao with version greater than {torchao_version}."
+        )(test_case)
+
+    return decorator
+
+
+def require_auto_round_version_greater_or_equal(auto_round_version):
+    def decorator(test_case):
+        correct_auto_round_version = is_auto_round_available() and version.parse(
+            version.parse(importlib.metadata.version("auto_round")).base_version
+        ) >= version.parse(auto_round_version)
+        return pytest.mark.skipif(
+            not correct_auto_round_version,
+            reason=f"Test requires auto-round with version greater than {auto_round_version}.",
         )(test_case)
 
     return decorator
