@@ -1329,284 +1329,77 @@ class Cosmos3OmniPipeline(DiffusionPipeline):
         return torch.from_numpy(checked.astype(np.float32) / 255.0).permute(0, 3, 1, 2)
 
     @torch.no_grad()
-    def _generate_transfer(
+    def _prepare_transfer_latents(
         self,
         *,
-        prompt: str,
-        negative_prompt: str | None,
-        control_videos: dict[str, Any],
-        video: Any,
-        num_frames: int | None,
+        chunk_id: int,
+        chunk_frames: int,
         height: int,
         width: int,
-        fps: float,
-        num_inference_steps: int,
-        guidance_scale: float,
-        control_guidance: float,
-        control_guidance_interval: tuple[float, float] | None,
-        guidance_interval: tuple[float, float] | None,
-        num_conditional_frames: int,
+        chunk_controls: list[torch.Tensor],
+        video: list[Image.Image] | torch.Tensor | np.ndarray | None,
+        previous_output: torch.Tensor | None,
         num_first_chunk_conditional_frames: int,
-        num_video_frames_per_chunk: int | None,
-        share_vision_temporal_positions: bool,
+        num_conditional_frames: int,
+        tcf: int,
         generator: torch.Generator | None,
-        output_type: str,
-        return_dict: bool,
-        use_system_prompt: bool,
-        enable_safety_check: bool,
-        device: torch.device,
+        device: torch.device | str,
         dtype: torch.dtype,
-    ) -> "Cosmos3OmniPipelineOutput | tuple":
-        """Run video transfer: generate a target clip that follows one or more precomputed control hints.
+    ) -> tuple[torch.Tensor, list[torch.Tensor], torch.Tensor, torch.Tensor, list[int], int]:
+        """Build the per-chunk transfer latents: encode the control maps as clean items and the noisy target.
 
-        Control maps are packed as clean (fully conditioned) vision items before the noisy target — sequence layout
-        ``[ctrl_1, ..., ctrl_N, target]`` — and guidance uses a nested control/text classifier-free-guidance blend
-        (see the per-step branch selection below). Long clips are produced autoregressively chunk-by-chunk, with each
-        chunk conditioned on the tail of the previous one, then stitched back together.
+        Seeds the target's conditioning frames (first chunk from the RGB ``video``, later chunks from the previous
+        chunk's tail), repeat-pads the remaining frames, then encodes the (already sliced + padded) control maps and
+        the target. Returns the initial noisy ``latents``, the clean ``control_latents``, the ``velocity_mask`` and
+        ``condition_latents`` used to pin conditioned frames during denoising, the ``target_condition_indexes`` for
+        sequence packing, and the resolved ``current_conditional_frames``.
+
         """
-        if output_type == "latent":
-            raise ValueError(
-                "Transfer decodes and stitches chunks in pixel space; `output_type='latent'` is unsupported."
-            )
-
-        tcf = int(self.vae.config.scale_factor_temporal)
-        sf = int(self.vae.config.scale_factor_spatial)
-        if height % sf != 0 or width % sf != 0:
-            raise ValueError(f"`height` and `width` must be multiples of {sf}, got ({height}, {width}).")
-
-        def _pad_temporal(frames: torch.Tensor, target_t: int) -> torch.Tensor:
-            # frames: [1, 3, T, H, W]. Reflect-pad along time up to target_t, falling back to repeating the last
-            # frame, mirroring the native Cosmos Framework `pad_temporal_frames`. No truncation (callers slice first).
-            if frames.shape[2] >= target_t:
-                return frames
-            while frames.shape[2] < target_t:
-                pad_len = min(frames.shape[2] - 1, target_t - frames.shape[2])
-                if pad_len <= 0:
-                    pad_frame = frames[:, :, -1:].repeat(1, 1, target_t - frames.shape[2], 1, 1)
-                    frames = torch.cat([frames, pad_frame], dim=2)
-                    break
-                frames = torch.cat([frames, frames.flip(dims=[2])[:, :, :pad_len]], dim=2)
-            return frames
-
-        def _decode_to_pixel(latent: torch.Tensor) -> torch.Tensor:
-            vae_dtype = self.vae.dtype
-            mean = self._vae_latents_mean.to(device=latent.device, dtype=vae_dtype)
-            inv_std = self._vae_latents_inv_std.to(device=latent.device, dtype=vae_dtype)
-            z_raw = latent.to(vae_dtype) / inv_std.view(1, -1, 1, 1, 1) + mean.view(1, -1, 1, 1, 1)
-            return self.vae.decode(z_raw).sample.to(torch.float32).clamp(-1, 1)
-
-        def _active_at(t: torch.Tensor, interval: tuple[float, float] | None) -> bool:
-            if interval is None:
-                return True
-            lo, hi = float(interval[0]), float(interval[1])
-            return lo <= float(t.item()) <= hi
-
-        # Canonical hint order, then preprocess every control map to [1, 3, T, H, W] in [-1, 1] at the target geometry.
-        hint_keys = [k for k in ["edge", "blur", "depth", "seg", "wsm"] if k in control_videos]
-        control_frames = {
-            key: self.video_processor.preprocess_video(control_videos[key], height=height, width=width).to(
-                device=device, dtype=dtype
-            )
-            for key in hint_keys
-        }
-        input_frames = None
-        if video is not None:
+        # Seed the target with conditioning frames (first chunk from the input video, later chunks from the
+        # previous chunk's tail), repeat-padding the remaining frames so the whole clip is well-defined.
+        target = torch.zeros(1, 3, chunk_frames, height, width, device=device, dtype=dtype)
+        current_conditional_frames = 0
+        if chunk_id == 0 and num_first_chunk_conditional_frames > 0 and video is not None:
             input_frames = self.video_processor.preprocess_video(video, height=height, width=width).to(
                 device=device, dtype=dtype
             )
-
-        # Output frame count / chunking come from the (first) control video, optionally capped by num_frames.
-        total_frames = next(iter(control_frames.values())).shape[2]
-        if num_frames is not None:
-            total_frames = min(total_frames, num_frames)
-        total_frames = max(1, total_frames)
-
-        per_chunk = num_video_frames_per_chunk if num_video_frames_per_chunk is not None else total_frames
-        chunk_frames = 1 if total_frames == 1 else per_chunk
-        chunk_frames = math.ceil((chunk_frames - 1) / tcf) * tcf + 1
-
-        if total_frames <= chunk_frames:
-            num_chunks, stride = 1, chunk_frames
-        else:
-            stride = chunk_frames - num_conditional_frames
-            if stride <= 0:
-                raise ValueError("`num_conditional_frames` must be smaller than `num_video_frames_per_chunk`.")
-            remaining = total_frames - chunk_frames
-            num_chunks = 1 + (remaining // stride + (1 if remaining % stride else 0))
-
-        padded = max(total_frames, chunk_frames)
-        control_frames = {key: _pad_temporal(frames, padded) for key, frames in control_frames.items()}
-        if input_frames is not None:
-            input_frames = _pad_temporal(input_frames, padded)
-
-        # Text packing is invariant across chunks and denoising steps; build it once. Transfer prompts are passed
-        # through verbatim (pre-upsampled JSON) under the transfer system prompt.
-        cond_input_ids, uncond_input_ids = self.tokenize_prompt(
-            prompt,
-            negative_prompt,
-            num_frames=chunk_frames,
-            height=height,
-            width=width,
-            fps=fps,
-            use_system_prompt=use_system_prompt,
-            transfer_mode=True,
-        )
-        cond_text_segment = self._prepare_text_segment(cond_input_ids, device=device)
-        uncond_text_segment = self._prepare_text_segment(uncond_input_ids, device=device)
-        num_hints = len(hint_keys)
-
-        output_chunks: list[torch.Tensor] = []
-        previous_output: torch.Tensor | None = None
-
-        for chunk_id in range(num_chunks):
-            start_frame = chunk_id * stride
-            end_frame = min(start_frame + chunk_frames, total_frames)
-            chunk_controls = [
-                _pad_temporal(control_frames[key][:, :, start_frame:end_frame], chunk_frames) for key in hint_keys
-            ]
-
-            # Seed the target with conditioning frames (first chunk from the input video, later chunks from the
-            # previous chunk's tail), repeat-padding the remaining frames so the whole clip is well-defined.
-            target = torch.zeros(1, 3, chunk_frames, height, width, device=device, dtype=dtype)
-            current_conditional_frames = 0
-            if chunk_id == 0 and num_first_chunk_conditional_frames > 0 and input_frames is not None:
-                current_conditional_frames = min(
-                    num_first_chunk_conditional_frames, input_frames.shape[2], chunk_frames
-                )
-                if current_conditional_frames > 0:
-                    target[:, :, :current_conditional_frames] = input_frames[:, :, :current_conditional_frames]
-            elif chunk_id > 0 and previous_output is not None:
-                current_conditional_frames = min(num_conditional_frames, previous_output.shape[2], chunk_frames)
-                if current_conditional_frames > 0:
-                    target[:, :, :current_conditional_frames] = previous_output[:, :, -current_conditional_frames:].to(
-                        device=device, dtype=dtype
-                    )
-            if 0 < current_conditional_frames < chunk_frames:
-                fill = target[:, :, current_conditional_frames - 1 : current_conditional_frames]
-                target[:, :, current_conditional_frames:] = fill.expand(
-                    -1, -1, chunk_frames - current_conditional_frames, -1, -1
-                )
-
-            # Encode controls as clean latents and build the noisy target latents + conditioning mask.
-            control_latents = [self._encode_video(ctrl).contiguous().float() for ctrl in chunk_controls]
-            target_x0 = self._encode_video(target).contiguous().float()
-            latent_t = target_x0.shape[2]
-            condition_mask = torch.zeros((latent_t, 1, 1), device=device, dtype=dtype)
-            latent_condition_frames = 0
+            current_conditional_frames = min(num_first_chunk_conditional_frames, input_frames.shape[2], chunk_frames)
             if current_conditional_frames > 0:
-                latent_condition_frames = (current_conditional_frames - 1) // tcf + 1
-                condition_mask[:latent_condition_frames] = 1.0
-            noise = randn_tensor(tuple(target_x0.shape), generator=generator, device=device, dtype=dtype)
-            latents = condition_mask * target_x0 + (1.0 - condition_mask) * noise
-            velocity_mask = 1.0 - condition_mask
-            condition_latents = condition_mask * target_x0
-
-            target_condition_indexes = list(range(latent_condition_frames))
-
-            # Pre-pack the three CFG sequence variants. cond_full / uncond_full carry every control item; the
-            # no-control branch drops them (only [text, target]) so the control axis can be amplified.
-            def _vision_pack(text_segment: dict[str, Any], include_controls: bool) -> dict[str, Any]:
-                if include_controls:
-                    vision_items = [*control_latents, latents]
-                    condition_indexes = [None] * num_hints + [target_condition_indexes]
-                    clean_flags = [True] * num_hints + [False]
-                else:
-                    vision_items = [latents]
-                    condition_indexes = [target_condition_indexes]
-                    clean_flags = [False]
-                vision_segment = self._prepare_vision_segment(
-                    input_vision_tokens=vision_items,
-                    has_image_condition=False,
-                    mrope_offset=text_segment["vision_start_temporal_offset"],
-                    vision_fps=fps,
-                    curr=text_segment["und_len"],
-                    device=device,
-                    condition_frame_indexes=condition_indexes,
-                    clean_item_flags=clean_flags,
-                    share_vision_temporal_positions=share_vision_temporal_positions,
+                target[:, :, :current_conditional_frames] = input_frames[:, :, :current_conditional_frames]
+        elif chunk_id > 0 and previous_output is not None:
+            current_conditional_frames = min(num_conditional_frames, previous_output.shape[2], chunk_frames)
+            if current_conditional_frames > 0:
+                target[:, :, :current_conditional_frames] = previous_output[:, :, -current_conditional_frames:].to(
+                    device=device, dtype=dtype
                 )
-                return {
-                    **text_segment,
-                    **vision_segment,
-                    "position_ids": torch.cat(
-                        [text_segment["text_mrope_ids"], vision_segment["vision_mrope_ids"]], dim=1
-                    ),
-                    "sequence_length": text_segment["und_len"] + vision_segment["num_vision_tokens"],
-                }
+        if 0 < current_conditional_frames < chunk_frames:
+            fill = target[:, :, current_conditional_frames - 1 : current_conditional_frames]
+            target[:, :, current_conditional_frames:] = fill.expand(
+                -1, -1, chunk_frames - current_conditional_frames, -1, -1
+            )
 
-            cond_full_static = _vision_pack(cond_text_segment, include_controls=True)
-            cond_no_control_static = _vision_pack(cond_text_segment, include_controls=False)
-            uncond_full_static = _vision_pack(uncond_text_segment, include_controls=True)
-            num_noisy_vision_tokens = cond_full_static["num_noisy_vision_tokens"]
-
-            def _run(static: dict[str, Any], vision_tokens: list[torch.Tensor], vision_timesteps: torch.Tensor):
-                preds_vision, _, _ = self.transformer(
-                    input_ids=static["input_ids"],
-                    text_indexes=static["text_indexes"],
-                    position_ids=static["position_ids"],
-                    und_len=static["und_len"],
-                    sequence_length=static["sequence_length"],
-                    vision_tokens=vision_tokens,
-                    vision_token_shapes=static["vision_token_shapes"],
-                    vision_sequence_indexes=static["vision_sequence_indexes"],
-                    vision_mse_loss_indexes=static["vision_mse_loss_indexes"],
-                    vision_timesteps=vision_timesteps,
-                    vision_noisy_frame_indexes=static["vision_noisy_frame_indexes"],
-                )
-                # The target is the last vision item; control items return zeros (no MSE positions).
-                return preds_vision[-1]
-
-            self.scheduler.set_timesteps(num_inference_steps, device=device)
-            for t in self.progress_bar(self.scheduler.timesteps):
-                self._current_timestep = t
-                timestep = t.item()
-                vision_tokens_full = [c.to(device=device, dtype=dtype) for c in control_latents] + [
-                    latents.to(device=device, dtype=dtype)
-                ]
-                vision_tokens_target = [latents.to(device=device, dtype=dtype)]
-                vision_timesteps = torch.full((num_noisy_vision_tokens,), timestep, device=device)
-
-                step_guidance = guidance_scale if _active_at(t, guidance_interval) else 1.0
-                step_control = control_guidance if _active_at(t, control_guidance_interval) else 1.0
-                needs_text_cfg = step_guidance > 1.0
-                needs_control_cfg = step_control != 1.0
-
-                cond_full = _run(cond_full_static, vision_tokens_full, vision_timesteps)
-                if needs_control_cfg and needs_text_cfg:
-                    cond_no_control = _run(cond_no_control_static, vision_tokens_target, vision_timesteps)
-                    uncond_full = _run(uncond_full_static, vision_tokens_full, vision_timesteps)
-                    control_cond = cond_no_control + step_control * (cond_full - cond_no_control)
-                    velocity = uncond_full + step_guidance * (control_cond - uncond_full)
-                elif needs_control_cfg:
-                    cond_no_control = _run(cond_no_control_static, vision_tokens_target, vision_timesteps)
-                    velocity = cond_no_control + step_control * (cond_full - cond_no_control)
-                elif needs_text_cfg:
-                    uncond_full = _run(uncond_full_static, vision_tokens_full, vision_timesteps)
-                    velocity = uncond_full + step_guidance * (cond_full - uncond_full)
-                else:
-                    velocity = cond_full
-
-                velocity = velocity * velocity_mask
-                latents = self.scheduler.step(velocity.unsqueeze(0), t, latents.unsqueeze(0), return_dict=False)[
-                    0
-                ].squeeze(0)
-                latents = velocity_mask * latents + (1.0 - velocity_mask) * condition_latents
-
-            output_video = _decode_to_pixel(latents)
-            previous_output = output_video
-            # Chunks after the first overlap the previous chunk by the conditioning frames; drop them when stitching.
-            output_chunks.append(output_video if chunk_id == 0 else output_video[:, :, current_conditional_frames:])
-
-        self._current_timestep = None
-        decoded = torch.cat(output_chunks, dim=2)[:, :, :total_frames]
-        video_out = self.video_processor.postprocess_video(decoded, output_type=output_type)[0]
-        if enable_safety_check and isinstance(self.safety_checker, CosmosSafetyChecker):
-            video_out = self._apply_video_safety_check(video_out, output_type=output_type, device=device)
-
-        self.maybe_free_model_hooks()
-        if not return_dict:
-            return (video_out, None)
-        return Cosmos3OmniPipelineOutput(video=video_out, sound=None, action=None)
+        # Encode controls as clean latents and build the noisy target latents + conditioning mask.
+        control_latents = [self._encode_video(ctrl).contiguous().float() for ctrl in chunk_controls]
+        target_x0 = self._encode_video(target).contiguous().float()
+        latent_t = target_x0.shape[2]
+        condition_mask = torch.zeros((latent_t, 1, 1), device=device, dtype=dtype)
+        latent_condition_frames = 0
+        if current_conditional_frames > 0:
+            latent_condition_frames = (current_conditional_frames - 1) // tcf + 1
+            condition_mask[:latent_condition_frames] = 1.0
+        noise = randn_tensor(tuple(target_x0.shape), generator=generator, device=device, dtype=dtype)
+        latents = condition_mask * target_x0 + (1.0 - condition_mask) * noise
+        velocity_mask = 1.0 - condition_mask
+        condition_latents = condition_mask * target_x0
+        target_condition_indexes = list(range(latent_condition_frames))
+        return (
+            latents,
+            control_latents,
+            velocity_mask,
+            condition_latents,
+            target_condition_indexes,
+            current_conditional_frames,
+        )
 
     @property
     def current_timestep(self):
@@ -1796,8 +1589,8 @@ class Cosmos3OmniPipeline(DiffusionPipeline):
                 height = 720
             if width is None:
                 width = 1280
-            # For transfer, num_frames defaults to the control video length (resolved in _generate_transfer); for the
-            # other modes it falls back to the standard ~7.9s clip.
+            # For transfer, num_frames defaults to the control video length (resolved in the transfer pre-setup
+            # below); for the other modes it falls back to the standard ~7.9s clip.
             if num_frames is None and control_videos is None:
                 num_frames = 189
 
@@ -1860,40 +1653,83 @@ class Cosmos3OmniPipeline(DiffusionPipeline):
                 self.safety_checker.to("cpu")
 
         # Transfer is a distinct mode (autoregressive multi-chunk + nested control/text CFG over multiple vision
-        # items), so it runs through its own self-contained routine rather than the shared single-clip path below.
-        if control_videos is not None:
-            return self._generate_transfer(
-                prompt=prompt,
-                negative_prompt=negative_prompt,
-                control_videos=control_videos,
-                video=video,
-                num_frames=num_frames,
-                height=height,
-                width=width,
-                fps=fps,
-                num_inference_steps=num_inference_steps,
-                guidance_scale=guidance_scale,
-                control_guidance=control_guidance,
-                control_guidance_interval=control_guidance_interval,
-                guidance_interval=guidance_interval,
-                num_conditional_frames=num_conditional_frames,
-                num_first_chunk_conditional_frames=num_first_chunk_conditional_frames,
-                num_video_frames_per_chunk=num_video_frames_per_chunk,
-                share_vision_temporal_positions=share_vision_temporal_positions,
-                generator=generator,
-                output_type=output_type,
-                return_dict=return_dict,
-                use_system_prompt=use_system_prompt,
-                enable_safety_check=enable_safety_check,
-                device=device,
-                dtype=dtype,
-            )
+        # items). It threads through the same numbered steps below, taking the `if transfer:` branch wherever its
+        # control flow differs and reusing the shared steps everywhere else.
+        transfer = control_videos is not None
+        num_chunks = 1
 
-        # 2. Tokenize prompt (applies metadata templates and selects mode-specific default negative prompt)
+        # Transfer pre-setup: preprocess the control maps, resolve the autoregressive chunk geometry, and temporally
+        # pad the controls / optional input video so every chunk window is well-defined. Chunk-invariant, so done once.
+        if transfer:
+            if output_type == "latent":
+                raise ValueError(
+                    "Transfer decodes and stitches chunks in pixel space; `output_type='latent'` is unsupported."
+                )
+            tcf = int(self.vae.config.scale_factor_temporal)
+            sf = int(self.vae.config.scale_factor_spatial)
+            if height % sf != 0 or width % sf != 0:
+                raise ValueError(f"`height` and `width` must be multiples of {sf}, got ({height}, {width}).")
+
+            def _pad_temporal(frames: torch.Tensor, target_t: int) -> torch.Tensor:
+                # frames: [1, 3, T, H, W]. Reflect-pad along time up to target_t, falling back to repeating the last
+                # frame once the clip is too short to keep reflecting. No truncation (callers slice).
+                if frames.shape[2] >= target_t:
+                    return frames
+                while frames.shape[2] < target_t:
+                    pad_len = min(frames.shape[2] - 1, target_t - frames.shape[2])
+                    if pad_len <= 0:
+                        pad_frame = frames[:, :, -1:].repeat(1, 1, target_t - frames.shape[2], 1, 1)
+                        frames = torch.cat([frames, pad_frame], dim=2)
+                        break
+                    frames = torch.cat([frames, frames.flip(dims=[2])[:, :, :pad_len]], dim=2)
+                return frames
+
+            def _active_at(t: torch.Tensor, interval: tuple[float, float] | None) -> bool:
+                if interval is None:
+                    return True
+                lo, hi = float(interval[0]), float(interval[1])
+                return lo <= float(t.item()) <= hi
+
+            # Canonical hint order, then preprocess every control map to [1, 3, T, H, W] in [-1, 1] at target geometry.
+            hint_keys = [k for k in ["edge", "blur", "depth", "seg", "wsm"] if k in control_videos]
+            control_frames = {
+                key: self.video_processor.preprocess_video(control_videos[key], height=height, width=width).to(
+                    device=device, dtype=dtype
+                )
+                for key in hint_keys
+            }
+
+            # Output frame count / chunking come from the (first) control video, optionally capped by num_frames.
+            total_frames = next(iter(control_frames.values())).shape[2]
+            if num_frames is not None:
+                total_frames = min(total_frames, num_frames)
+            total_frames = max(1, total_frames)
+
+            per_chunk = num_video_frames_per_chunk if num_video_frames_per_chunk is not None else total_frames
+            chunk_frames = 1 if total_frames == 1 else per_chunk
+            chunk_frames = math.ceil((chunk_frames - 1) / tcf) * tcf + 1
+
+            if total_frames <= chunk_frames:
+                num_chunks, stride = 1, chunk_frames
+            else:
+                stride = chunk_frames - num_conditional_frames
+                if stride <= 0:
+                    raise ValueError("`num_conditional_frames` must be smaller than `num_video_frames_per_chunk`.")
+                remaining = total_frames - chunk_frames
+                num_chunks = 1 + (remaining // stride + (1 if remaining % stride else 0))
+
+            padded = max(total_frames, chunk_frames)
+            control_frames = {key: _pad_temporal(frames, padded) for key, frames in control_frames.items()}
+            num_hints = len(hint_keys)
+            output_chunks: list[torch.Tensor] = []
+            previous_output: torch.Tensor | None = None
+
+        # 2. Tokenize prompt (applies metadata templates and selects mode-specific default negative prompt). Transfer
+        # passes the per-chunk frame count and its JSON-passthrough system prompt.
         cond_input_ids, uncond_input_ids = self.tokenize_prompt(
             prompt,
             negative_prompt,
-            num_frames=num_frames,
+            num_frames=chunk_frames if transfer else num_frames,
             height=height,
             width=width,
             fps=fps,
@@ -1902,328 +1738,517 @@ class Cosmos3OmniPipeline(DiffusionPipeline):
             add_duration_template=add_duration_template,
             action_mode=action_mode,
             action_view_point=action.view_point if action is not None else None,
+            transfer_mode=transfer,
         )
 
-        # 3. Pre-pack the text segment for each prompt — text packing is invariant
-        # across denoising steps, so we do it once here and reuse inside the loop.
+        # 3. Pre-pack the text segment for each prompt — text packing is invariant across chunks and denoising
+        # steps, so we do it once here and reuse inside the loop.
         cond_text_segment = self._prepare_text_segment(cond_input_ids, device=device)
         uncond_text_segment = self._prepare_text_segment(uncond_input_ids, device=device)
 
-        # 4. Prepare latents (initial noise per modality + pack metadata)
-        (
-            latents,
-            sound_latents,
-            action_latents,
-            fps_vision,
-            fps_sound,
-            vision_condition_mask,
-            sound_condition_mask,
-            action_condition_mask,
-            action_domain_id,
-            action_image_size,
-            raw_action_dim_resolved,
-            action_condition_frame_indexes,
-        ) = self.prepare_latents(
-            image=image,
-            video=video,
-            condition_frame_indexes_vision=condition_frame_indexes_vision,
-            condition_video_keep=condition_video_keep,
-            num_frames=num_frames,
-            height=height,
-            width=width,
-            fps=fps,
-            latents=latents,
-            sound_latents=sound_latents,
-            action_latents=action_latents,
-            generator=generator,
-            device=device,
-            dtype=dtype,
-            enable_sound=enable_sound,
-            action=action,
-        )
-        vision_condition_indexes_for_pack = torch.nonzero(vision_condition_mask[:, 0, 0] > 0, as_tuple=False).flatten()
-        vision_condition_indexes_for_pack = [int(idx.item()) for idx in vision_condition_indexes_for_pack]
-        has_image_condition = bool(vision_condition_indexes_for_pack)
-
-        # 5. Pre-pack the static per-prompt vision / sound sequence segments. The only
-        # fields that vary across denoising steps are the modality token tensors and the
-        # per-modality timestep tensors; everything else only depends on prompt length
-        # and modality shape, so we hoist it out of the loop and splice the step-varying
-        # fields back in below.
-        cond_vision_segment = self._prepare_vision_segment(
-            input_vision_tokens=latents,
-            has_image_condition=has_image_condition,
-            mrope_offset=cond_text_segment["vision_start_temporal_offset"],
-            vision_fps=fps_vision,
-            curr=cond_text_segment["und_len"],
-            device=device,
-            condition_frame_indexes=vision_condition_indexes_for_pack,
-        )
-        cond_sound_segment: dict[str, Any] = {}
-        if sound_latents is not None:
-            cond_sound_segment = self._prepare_sound_segment(
-                input_sound_tokens=sound_latents,
-                mrope_offset=cond_text_segment["vision_start_temporal_offset"],
-                sound_fps=fps_sound,
-                curr=cond_text_segment["und_len"] + cond_vision_segment["num_vision_tokens"],
-                device=device,
-            )
-        cond_action_segment: dict[str, Any] = {}
-        if action_latents is not None:
-            cond_action_segment = self._prepare_action_segment(
-                input_action_tokens=action_latents,
-                condition_frame_indexes=action_condition_frame_indexes,
-                mrope_offset=cond_text_segment["vision_start_temporal_offset"],
-                action_fps=fps_vision,
-                curr=cond_text_segment["und_len"]
-                + cond_vision_segment["num_vision_tokens"]
-                + cond_sound_segment.get("sound_len", 0),
-                device=device,
-            )
-        cond_mrope_segments = [cond_text_segment["text_mrope_ids"], cond_vision_segment["vision_mrope_ids"]]
-        if cond_sound_segment:
-            cond_mrope_segments.append(cond_sound_segment["sound_mrope_ids"])
-        if cond_action_segment:
-            cond_mrope_segments.append(cond_action_segment["action_mrope_ids"])
-        cond_packed_static = {
-            **cond_text_segment,
-            **cond_vision_segment,
-            **cond_sound_segment,
-            **cond_action_segment,
-            "position_ids": torch.cat(cond_mrope_segments, dim=1),
-            "sequence_length": cond_text_segment["und_len"]
-            + cond_vision_segment["num_vision_tokens"]
-            + cond_sound_segment.get("sound_len", 0)
-            + cond_action_segment.get("action_len", 0),
-        }
-
-        uncond_vision_segment = self._prepare_vision_segment(
-            input_vision_tokens=latents,
-            has_image_condition=has_image_condition,
-            mrope_offset=uncond_text_segment["vision_start_temporal_offset"],
-            vision_fps=fps_vision,
-            curr=uncond_text_segment["und_len"],
-            device=device,
-            condition_frame_indexes=vision_condition_indexes_for_pack,
-        )
-        uncond_sound_segment: dict[str, Any] = {}
-        if sound_latents is not None:
-            uncond_sound_segment = self._prepare_sound_segment(
-                input_sound_tokens=sound_latents,
-                mrope_offset=uncond_text_segment["vision_start_temporal_offset"],
-                sound_fps=fps_sound,
-                curr=uncond_text_segment["und_len"] + uncond_vision_segment["num_vision_tokens"],
-                device=device,
-            )
-        uncond_action_segment: dict[str, Any] = {}
-        if action_latents is not None:
-            uncond_action_segment = self._prepare_action_segment(
-                input_action_tokens=action_latents,
-                condition_frame_indexes=action_condition_frame_indexes,
-                mrope_offset=uncond_text_segment["vision_start_temporal_offset"],
-                action_fps=fps_vision,
-                curr=uncond_text_segment["und_len"]
-                + uncond_vision_segment["num_vision_tokens"]
-                + uncond_sound_segment.get("sound_len", 0),
-                device=device,
-            )
-        uncond_mrope_segments = [uncond_text_segment["text_mrope_ids"], uncond_vision_segment["vision_mrope_ids"]]
-        if uncond_sound_segment:
-            uncond_mrope_segments.append(uncond_sound_segment["sound_mrope_ids"])
-        if uncond_action_segment:
-            uncond_mrope_segments.append(uncond_action_segment["action_mrope_ids"])
-        uncond_packed_static = {
-            **uncond_text_segment,
-            **uncond_vision_segment,
-            **uncond_sound_segment,
-            **uncond_action_segment,
-            "position_ids": torch.cat(uncond_mrope_segments, dim=1),
-            "sequence_length": uncond_text_segment["und_len"]
-            + uncond_vision_segment["num_vision_tokens"]
-            + uncond_sound_segment.get("sound_len", 0)
-            + uncond_action_segment.get("action_len", 0),
-        }
-        num_noisy_vision_tokens = cond_vision_segment["num_noisy_vision_tokens"]
-        sound_len = cond_sound_segment.get("sound_len")
-        action_noisy_len = cond_action_segment.get("num_noisy_action_tokens")
-
-        # 6. Set timesteps. UniPCMultistepScheduler keeps per-step state (_step_index,
-        # model_outputs history) on the instance, so sound/action each get their own copy.
-        self.scheduler.set_timesteps(num_inference_steps, device=device)
-        timesteps = self.scheduler.timesteps
-        sound_scheduler = copy.deepcopy(self.scheduler) if sound_latents is not None else None
-        action_scheduler = copy.deepcopy(self.scheduler) if action_latents is not None else None
-
-        # 7. Denoising loop
-        num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
-        self._num_timesteps = len(timesteps)
-        with self.progress_bar(total=num_inference_steps) as progress_bar:
-            for i, t in enumerate(timesteps):
-                if self.interrupt:
-                    continue
-
-                self._current_timestep = t
-                timestep = t.item()
-
-                # The transformer projections (proj_in / audio_proj_in) are bf16; cast the per-step
-                # noisy tokens before packing so the modality tokens enter the model in the right dtype.
-                vision_tokens = latents.to(device=device, dtype=dtype)
-                sound_tokens = sound_latents.to(device=device, dtype=dtype) if sound_latents is not None else None
-                action_tokens = action_latents.to(device=device, dtype=dtype) if action_latents is not None else None
-                # The static packs both report the same num_noisy_vision_tokens / sound_len, so a
-                # single per-step timestep tensor per modality is shared by the cond / uncond passes.
-                vision_timesteps = torch.full((num_noisy_vision_tokens,), timestep, device=device)
-                sound_timesteps = (
-                    torch.full((sound_len,), timestep, device=device) if sound_tokens is not None else None
-                )
-                action_timesteps = (
-                    torch.full((action_noisy_len,), timestep, device=device) if action_tokens is not None else None
-                )
-
-                # --- Conditional pass ---
-                preds_vision, preds_sound, preds_action = self.transformer(
-                    input_ids=cond_packed_static["input_ids"],
-                    text_indexes=cond_packed_static["text_indexes"],
-                    position_ids=cond_packed_static["position_ids"],
-                    und_len=cond_packed_static["und_len"],
-                    sequence_length=cond_packed_static["sequence_length"],
-                    vision_tokens=[vision_tokens],
-                    vision_token_shapes=cond_packed_static["vision_token_shapes"],
-                    vision_sequence_indexes=cond_packed_static["vision_sequence_indexes"],
-                    vision_mse_loss_indexes=cond_packed_static["vision_mse_loss_indexes"],
-                    vision_timesteps=vision_timesteps,
-                    vision_noisy_frame_indexes=cond_packed_static["vision_noisy_frame_indexes"],
-                    sound_tokens=[sound_tokens] if sound_tokens is not None else None,
-                    sound_token_shapes=cond_packed_static.get("sound_token_shapes"),
-                    sound_sequence_indexes=cond_packed_static.get("sound_sequence_indexes"),
-                    sound_mse_loss_indexes=cond_packed_static.get("sound_mse_loss_indexes"),
-                    sound_timesteps=sound_timesteps,
-                    sound_noisy_frame_indexes=cond_packed_static.get("sound_noisy_frame_indexes"),
-                    action_tokens=[action_tokens] if action_tokens is not None else None,
-                    action_token_shapes=cond_packed_static.get("action_token_shapes"),
-                    action_sequence_indexes=cond_packed_static.get("action_sequence_indexes"),
-                    action_mse_loss_indexes=cond_packed_static.get("action_mse_loss_indexes"),
-                    action_timesteps=action_timesteps,
-                    action_noisy_frame_indexes=cond_packed_static.get("action_noisy_frame_indexes"),
-                    action_domain_ids=[action_domain_id] if action_domain_id is not None else None,
-                )
-                cond_v_vision, cond_v_sound, cond_v_action = self._mask_velocity_predictions(
-                    preds_vision,
-                    preds_sound,
-                    vision_condition_mask=[vision_condition_mask],
-                    sound_condition_mask=[sound_condition_mask] if sound_condition_mask is not None else None,
-                    preds_action=preds_action,
-                    action_condition_mask=[action_condition_mask] if action_condition_mask is not None else None,
-                    raw_action_dim=raw_action_dim_resolved,
-                )
-
-                # --- Unconditional pass (Skip if not using CFG) ---
-                uncond_v_vision = uncond_v_sound = uncond_v_action = None
-                if self.do_classifier_free_guidance:
-                    preds_vision, preds_sound, preds_action = self.transformer(
-                        input_ids=uncond_packed_static["input_ids"],
-                        text_indexes=uncond_packed_static["text_indexes"],
-                        position_ids=uncond_packed_static["position_ids"],
-                        und_len=uncond_packed_static["und_len"],
-                        sequence_length=uncond_packed_static["sequence_length"],
-                        vision_tokens=[vision_tokens],
-                        vision_token_shapes=uncond_packed_static["vision_token_shapes"],
-                        vision_sequence_indexes=uncond_packed_static["vision_sequence_indexes"],
-                        vision_mse_loss_indexes=uncond_packed_static["vision_mse_loss_indexes"],
-                        vision_timesteps=vision_timesteps,
-                        vision_noisy_frame_indexes=uncond_packed_static["vision_noisy_frame_indexes"],
-                        sound_tokens=[sound_tokens] if sound_tokens is not None else None,
-                        sound_token_shapes=uncond_packed_static.get("sound_token_shapes"),
-                        sound_sequence_indexes=uncond_packed_static.get("sound_sequence_indexes"),
-                        sound_mse_loss_indexes=uncond_packed_static.get("sound_mse_loss_indexes"),
-                        sound_timesteps=sound_timesteps,
-                        sound_noisy_frame_indexes=uncond_packed_static.get("sound_noisy_frame_indexes"),
-                        action_tokens=[action_tokens] if action_tokens is not None else None,
-                        action_token_shapes=uncond_packed_static.get("action_token_shapes"),
-                        action_sequence_indexes=uncond_packed_static.get("action_sequence_indexes"),
-                        action_mse_loss_indexes=uncond_packed_static.get("action_mse_loss_indexes"),
-                        action_timesteps=action_timesteps,
-                        action_noisy_frame_indexes=uncond_packed_static.get("action_noisy_frame_indexes"),
-                        action_domain_ids=[action_domain_id] if action_domain_id is not None else None,
-                    )
-                    uncond_v_vision, uncond_v_sound, uncond_v_action = self._mask_velocity_predictions(
-                        preds_vision,
-                        preds_sound,
-                        vision_condition_mask=[vision_condition_mask],
-                        sound_condition_mask=[sound_condition_mask] if sound_condition_mask is not None else None,
-                        preds_action=preds_action,
-                        action_condition_mask=[action_condition_mask] if action_condition_mask is not None else None,
-                        raw_action_dim=raw_action_dim_resolved,
-                    )
-
-                # --- CFG combine + per-modality scheduler step ---
-                # UniPC's multistep_uni_p_bh_update einsum ("k,bkc...->bc...") requires sample
-                # to carry a batch dim; per-modality latents have no batch axis, so wrap for the step.
-
-                # Skip CFG for 1.0 guidance scale
-                if self.do_classifier_free_guidance:
-                    velocity_vision = uncond_v_vision + guidance_scale * (cond_v_vision - uncond_v_vision)
-                else:
-                    velocity_vision = cond_v_vision
-
-                latents = self.scheduler.step(
-                    velocity_vision.unsqueeze(0), t, latents.unsqueeze(0), return_dict=False
-                )[0].squeeze(0)
-
-                if sound_scheduler is not None and cond_v_sound is not None:
-                    # Skip CFG for 1.0 guidance scale
-                    if self.do_classifier_free_guidance:
-                        velocity_sound = uncond_v_sound + guidance_scale * (cond_v_sound - uncond_v_sound)
-                    else:
-                        velocity_sound = cond_v_sound
-                    sound_latents = sound_scheduler.step(
-                        velocity_sound.unsqueeze(0), t, sound_latents.unsqueeze(0), return_dict=False
-                    )[0].squeeze(0)
-
-                has_noisy_action = (
-                    action_condition_mask is not None and action_condition_mask.sum() < action_condition_mask.numel()
-                )
-                if action_scheduler is not None and has_noisy_action and cond_v_action is not None:
-                    if self.do_classifier_free_guidance:
-                        velocity_action = uncond_v_action + guidance_scale * (cond_v_action - uncond_v_action)
-                    else:
-                        velocity_action = cond_v_action
-                    action_latents = action_scheduler.step(
-                        velocity_action.unsqueeze(0), t, action_latents.unsqueeze(0), return_dict=False
-                    )[0].squeeze(0)
-                    if raw_action_dim_resolved is not None:
-                        action_latents[:, raw_action_dim_resolved:] = 0
-
-                if callback_on_step_end is not None:
-                    callback_kwargs = {k: locals()[k] for k in callback_on_step_end_tensor_inputs}
-                    callback_outputs = callback_on_step_end(self, i, t, callback_kwargs)
-                    latents = callback_outputs.pop("latents", latents)
-
-                if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
-                    progress_bar.update()
-
-        self._current_timestep = None
-
-        # 8. Postprocess + decode
-        sound = self.decode_sound(sound_latents) if sound_latents is not None else None
+        sound = None
         action_output = None
-        if action_mode in {"inverse_dynamics", "policy"} and action_latents is not None:
-            action_output = action_latents
-            if raw_action_dim_resolved is not None:
-                action_output = action_output[:, :raw_action_dim_resolved]
-            action_output = [action_output.detach().cpu()]
-        if output_type == "latent":
-            video = latents
-        else:
-            in_dtype = latents.dtype
-            dtype = self.vae.dtype
-            mean = self._vae_latents_mean.to(device=latents.device, dtype=dtype)
-            inv_std = self._vae_latents_inv_std.to(device=latents.device, dtype=dtype)
-            z_raw = latents.to(dtype) / inv_std.view(1, -1, 1, 1, 1) + mean.view(1, -1, 1, 1, 1)
-            decoded = self.vae.decode(z_raw).sample.to(in_dtype)
+        # Outer chunk loop. Non-transfer modes always run exactly one iteration (num_chunks == 1).
+        for chunk_id in range(num_chunks):
+            # 4. Prepare latents (initial noise per modality + pack metadata).
+            if transfer:
+                start_frame = chunk_id * stride
+                end_frame = min(start_frame + chunk_frames, total_frames)
+                chunk_controls = [
+                    _pad_temporal(control_frames[key][:, :, start_frame:end_frame], chunk_frames) for key in hint_keys
+                ]
+                (
+                    latents,
+                    control_latents,
+                    velocity_mask,
+                    condition_latents,
+                    target_condition_indexes,
+                    current_conditional_frames,
+                ) = self._prepare_transfer_latents(
+                    chunk_id=chunk_id,
+                    chunk_frames=chunk_frames,
+                    height=height,
+                    width=width,
+                    chunk_controls=chunk_controls,
+                    video=video,
+                    previous_output=previous_output,
+                    num_first_chunk_conditional_frames=num_first_chunk_conditional_frames,
+                    num_conditional_frames=num_conditional_frames,
+                    tcf=tcf,
+                    generator=generator,
+                    device=device,
+                    dtype=dtype,
+                )
+            else:
+                (
+                    latents,
+                    sound_latents,
+                    action_latents,
+                    fps_vision,
+                    fps_sound,
+                    vision_condition_mask,
+                    sound_condition_mask,
+                    action_condition_mask,
+                    action_domain_id,
+                    action_image_size,
+                    raw_action_dim_resolved,
+                    action_condition_frame_indexes,
+                ) = self.prepare_latents(
+                    image=image,
+                    video=video,
+                    condition_frame_indexes_vision=condition_frame_indexes_vision,
+                    condition_video_keep=condition_video_keep,
+                    num_frames=num_frames,
+                    height=height,
+                    width=width,
+                    fps=fps,
+                    latents=latents,
+                    sound_latents=sound_latents,
+                    action_latents=action_latents,
+                    generator=generator,
+                    device=device,
+                    dtype=dtype,
+                    enable_sound=enable_sound,
+                    action=action,
+                )
+                vision_condition_indexes_for_pack = torch.nonzero(
+                    vision_condition_mask[:, 0, 0] > 0, as_tuple=False
+                ).flatten()
+                vision_condition_indexes_for_pack = [int(idx.item()) for idx in vision_condition_indexes_for_pack]
+                has_image_condition = bool(vision_condition_indexes_for_pack)
+
+            # 5. Pre-pack the static per-prompt sequence segments. The only fields that vary across denoising steps
+            # are the modality token tensors and the per-modality timestep tensors; everything else only depends on
+            # prompt length and modality shape, so we hoist it out of the step loop and splice those back in below.
+            if transfer:
+                # Pre-pack the three CFG sequence variants. cond_full / uncond_full carry every control item; the
+                # no-control branch drops them (only [text, target]) so the control axis can be amplified.
+                def _vision_pack(text_segment: dict[str, Any], include_controls: bool) -> dict[str, Any]:
+                    if include_controls:
+                        vision_items = [*control_latents, latents]
+                        condition_indexes = [None] * num_hints + [target_condition_indexes]
+                        clean_flags = [True] * num_hints + [False]
+                    else:
+                        vision_items = [latents]
+                        condition_indexes = [target_condition_indexes]
+                        clean_flags = [False]
+                    vision_segment = self._prepare_vision_segment(
+                        input_vision_tokens=vision_items,
+                        has_image_condition=False,
+                        mrope_offset=text_segment["vision_start_temporal_offset"],
+                        vision_fps=fps,
+                        curr=text_segment["und_len"],
+                        device=device,
+                        condition_frame_indexes=condition_indexes,
+                        clean_item_flags=clean_flags,
+                        share_vision_temporal_positions=share_vision_temporal_positions,
+                    )
+                    return {
+                        **text_segment,
+                        **vision_segment,
+                        "position_ids": torch.cat(
+                            [text_segment["text_mrope_ids"], vision_segment["vision_mrope_ids"]], dim=1
+                        ),
+                        "sequence_length": text_segment["und_len"] + vision_segment["num_vision_tokens"],
+                    }
+
+                cond_full_static = _vision_pack(cond_text_segment, include_controls=True)
+                cond_no_control_static = _vision_pack(cond_text_segment, include_controls=False)
+                uncond_full_static = _vision_pack(uncond_text_segment, include_controls=True)
+                num_noisy_vision_tokens = cond_full_static["num_noisy_vision_tokens"]
+            else:
+                cond_vision_segment = self._prepare_vision_segment(
+                    input_vision_tokens=latents,
+                    has_image_condition=has_image_condition,
+                    mrope_offset=cond_text_segment["vision_start_temporal_offset"],
+                    vision_fps=fps_vision,
+                    curr=cond_text_segment["und_len"],
+                    device=device,
+                    condition_frame_indexes=vision_condition_indexes_for_pack,
+                )
+                cond_sound_segment: dict[str, Any] = {}
+                if sound_latents is not None:
+                    cond_sound_segment = self._prepare_sound_segment(
+                        input_sound_tokens=sound_latents,
+                        mrope_offset=cond_text_segment["vision_start_temporal_offset"],
+                        sound_fps=fps_sound,
+                        curr=cond_text_segment["und_len"] + cond_vision_segment["num_vision_tokens"],
+                        device=device,
+                    )
+                cond_action_segment: dict[str, Any] = {}
+                if action_latents is not None:
+                    cond_action_segment = self._prepare_action_segment(
+                        input_action_tokens=action_latents,
+                        condition_frame_indexes=action_condition_frame_indexes,
+                        mrope_offset=cond_text_segment["vision_start_temporal_offset"],
+                        action_fps=fps_vision,
+                        curr=cond_text_segment["und_len"]
+                        + cond_vision_segment["num_vision_tokens"]
+                        + cond_sound_segment.get("sound_len", 0),
+                        device=device,
+                    )
+                cond_mrope_segments = [cond_text_segment["text_mrope_ids"], cond_vision_segment["vision_mrope_ids"]]
+                if cond_sound_segment:
+                    cond_mrope_segments.append(cond_sound_segment["sound_mrope_ids"])
+                if cond_action_segment:
+                    cond_mrope_segments.append(cond_action_segment["action_mrope_ids"])
+                cond_packed_static = {
+                    **cond_text_segment,
+                    **cond_vision_segment,
+                    **cond_sound_segment,
+                    **cond_action_segment,
+                    "position_ids": torch.cat(cond_mrope_segments, dim=1),
+                    "sequence_length": cond_text_segment["und_len"]
+                    + cond_vision_segment["num_vision_tokens"]
+                    + cond_sound_segment.get("sound_len", 0)
+                    + cond_action_segment.get("action_len", 0),
+                }
+
+                uncond_vision_segment = self._prepare_vision_segment(
+                    input_vision_tokens=latents,
+                    has_image_condition=has_image_condition,
+                    mrope_offset=uncond_text_segment["vision_start_temporal_offset"],
+                    vision_fps=fps_vision,
+                    curr=uncond_text_segment["und_len"],
+                    device=device,
+                    condition_frame_indexes=vision_condition_indexes_for_pack,
+                )
+                uncond_sound_segment: dict[str, Any] = {}
+                if sound_latents is not None:
+                    uncond_sound_segment = self._prepare_sound_segment(
+                        input_sound_tokens=sound_latents,
+                        mrope_offset=uncond_text_segment["vision_start_temporal_offset"],
+                        sound_fps=fps_sound,
+                        curr=uncond_text_segment["und_len"] + uncond_vision_segment["num_vision_tokens"],
+                        device=device,
+                    )
+                uncond_action_segment: dict[str, Any] = {}
+                if action_latents is not None:
+                    uncond_action_segment = self._prepare_action_segment(
+                        input_action_tokens=action_latents,
+                        condition_frame_indexes=action_condition_frame_indexes,
+                        mrope_offset=uncond_text_segment["vision_start_temporal_offset"],
+                        action_fps=fps_vision,
+                        curr=uncond_text_segment["und_len"]
+                        + uncond_vision_segment["num_vision_tokens"]
+                        + uncond_sound_segment.get("sound_len", 0),
+                        device=device,
+                    )
+                uncond_mrope_segments = [
+                    uncond_text_segment["text_mrope_ids"],
+                    uncond_vision_segment["vision_mrope_ids"],
+                ]
+                if uncond_sound_segment:
+                    uncond_mrope_segments.append(uncond_sound_segment["sound_mrope_ids"])
+                if uncond_action_segment:
+                    uncond_mrope_segments.append(uncond_action_segment["action_mrope_ids"])
+                uncond_packed_static = {
+                    **uncond_text_segment,
+                    **uncond_vision_segment,
+                    **uncond_sound_segment,
+                    **uncond_action_segment,
+                    "position_ids": torch.cat(uncond_mrope_segments, dim=1),
+                    "sequence_length": uncond_text_segment["und_len"]
+                    + uncond_vision_segment["num_vision_tokens"]
+                    + uncond_sound_segment.get("sound_len", 0)
+                    + uncond_action_segment.get("action_len", 0),
+                }
+                num_noisy_vision_tokens = cond_vision_segment["num_noisy_vision_tokens"]
+                sound_len = cond_sound_segment.get("sound_len")
+                action_noisy_len = cond_action_segment.get("num_noisy_action_tokens")
+
+            # 6. Set timesteps. UniPCMultistepScheduler keeps per-step state (_step_index, model_outputs history) on
+            # the instance, so it is reset per chunk and sound/action each get their own copy.
+            self.scheduler.set_timesteps(num_inference_steps, device=device)
+            timesteps = self.scheduler.timesteps
+            sound_scheduler = copy.deepcopy(self.scheduler) if (not transfer and sound_latents is not None) else None
+            action_scheduler = copy.deepcopy(self.scheduler) if (not transfer and action_latents is not None) else None
+
+            # 7. Denoising loop
+            num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
+            self._num_timesteps = len(timesteps)
+            with self.progress_bar(total=num_inference_steps) as progress_bar:
+                for i, t in enumerate(timesteps):
+                    if self.interrupt:
+                        continue
+
+                    self._current_timestep = t
+                    timestep = t.item()
+
+                    if transfer:
+                        # Nested control/text CFG over [ctrl_1, ..., ctrl_N, target]. Each branch is gated by its
+                        # interval so out-of-window steps skip the extra forward(s).
+                        vision_tokens_full = [c.to(device=device, dtype=dtype) for c in control_latents] + [
+                            latents.to(device=device, dtype=dtype)
+                        ]
+                        vision_tokens_target = [latents.to(device=device, dtype=dtype)]
+                        vision_timesteps = torch.full((num_noisy_vision_tokens,), timestep, device=device)
+
+                        step_guidance = guidance_scale if _active_at(t, guidance_interval) else 1.0
+                        step_control = control_guidance if _active_at(t, control_guidance_interval) else 1.0
+                        needs_text_cfg = step_guidance > 1.0
+                        needs_control_cfg = step_control != 1.0
+
+                        # The target is the last vision item; control items return zeros (no MSE positions). Each
+                        # branch is run at most once: cond_full always, no-control only when control CFG is active,
+                        # uncond only when text CFG is active.
+                        preds_vision, _, _ = self.transformer(
+                            input_ids=cond_full_static["input_ids"],
+                            text_indexes=cond_full_static["text_indexes"],
+                            position_ids=cond_full_static["position_ids"],
+                            und_len=cond_full_static["und_len"],
+                            sequence_length=cond_full_static["sequence_length"],
+                            vision_tokens=vision_tokens_full,
+                            vision_token_shapes=cond_full_static["vision_token_shapes"],
+                            vision_sequence_indexes=cond_full_static["vision_sequence_indexes"],
+                            vision_mse_loss_indexes=cond_full_static["vision_mse_loss_indexes"],
+                            vision_timesteps=vision_timesteps,
+                            vision_noisy_frame_indexes=cond_full_static["vision_noisy_frame_indexes"],
+                        )
+                        cond_full = preds_vision[-1]
+
+                        cond_no_control = None
+                        if needs_control_cfg:
+                            preds_vision, _, _ = self.transformer(
+                                input_ids=cond_no_control_static["input_ids"],
+                                text_indexes=cond_no_control_static["text_indexes"],
+                                position_ids=cond_no_control_static["position_ids"],
+                                und_len=cond_no_control_static["und_len"],
+                                sequence_length=cond_no_control_static["sequence_length"],
+                                vision_tokens=vision_tokens_target,
+                                vision_token_shapes=cond_no_control_static["vision_token_shapes"],
+                                vision_sequence_indexes=cond_no_control_static["vision_sequence_indexes"],
+                                vision_mse_loss_indexes=cond_no_control_static["vision_mse_loss_indexes"],
+                                vision_timesteps=vision_timesteps,
+                                vision_noisy_frame_indexes=cond_no_control_static["vision_noisy_frame_indexes"],
+                            )
+                            cond_no_control = preds_vision[-1]
+
+                        uncond_full = None
+                        if needs_text_cfg:
+                            preds_vision, _, _ = self.transformer(
+                                input_ids=uncond_full_static["input_ids"],
+                                text_indexes=uncond_full_static["text_indexes"],
+                                position_ids=uncond_full_static["position_ids"],
+                                und_len=uncond_full_static["und_len"],
+                                sequence_length=uncond_full_static["sequence_length"],
+                                vision_tokens=vision_tokens_full,
+                                vision_token_shapes=uncond_full_static["vision_token_shapes"],
+                                vision_sequence_indexes=uncond_full_static["vision_sequence_indexes"],
+                                vision_mse_loss_indexes=uncond_full_static["vision_mse_loss_indexes"],
+                                vision_timesteps=vision_timesteps,
+                                vision_noisy_frame_indexes=uncond_full_static["vision_noisy_frame_indexes"],
+                            )
+                            uncond_full = preds_vision[-1]
+
+                        if needs_control_cfg and needs_text_cfg:
+                            control_cond = cond_no_control + step_control * (cond_full - cond_no_control)
+                            velocity = uncond_full + step_guidance * (control_cond - uncond_full)
+                        elif needs_control_cfg:
+                            velocity = cond_no_control + step_control * (cond_full - cond_no_control)
+                        elif needs_text_cfg:
+                            velocity = uncond_full + step_guidance * (cond_full - uncond_full)
+                        else:
+                            velocity = cond_full
+
+                        velocity = velocity * velocity_mask
+                        latents = self.scheduler.step(
+                            velocity.unsqueeze(0), t, latents.unsqueeze(0), return_dict=False
+                        )[0].squeeze(0)
+                        # Re-pin conditioned frames exactly (the autoregressive seed), guarding multistep drift.
+                        latents = velocity_mask * latents + (1.0 - velocity_mask) * condition_latents
+                    else:
+                        # The transformer projections (proj_in / audio_proj_in) are bf16; cast the per-step
+                        # noisy tokens before packing so the modality tokens enter the model in the right dtype.
+                        vision_tokens = latents.to(device=device, dtype=dtype)
+                        sound_tokens = (
+                            sound_latents.to(device=device, dtype=dtype) if sound_latents is not None else None
+                        )
+                        action_tokens = (
+                            action_latents.to(device=device, dtype=dtype) if action_latents is not None else None
+                        )
+                        # The static packs both report the same num_noisy_vision_tokens / sound_len, so a
+                        # single per-step timestep tensor per modality is shared by the cond / uncond passes.
+                        vision_timesteps = torch.full((num_noisy_vision_tokens,), timestep, device=device)
+                        sound_timesteps = (
+                            torch.full((sound_len,), timestep, device=device) if sound_tokens is not None else None
+                        )
+                        action_timesteps = (
+                            torch.full((action_noisy_len,), timestep, device=device)
+                            if action_tokens is not None
+                            else None
+                        )
+
+                        # --- Conditional pass ---
+                        preds_vision, preds_sound, preds_action = self.transformer(
+                            input_ids=cond_packed_static["input_ids"],
+                            text_indexes=cond_packed_static["text_indexes"],
+                            position_ids=cond_packed_static["position_ids"],
+                            und_len=cond_packed_static["und_len"],
+                            sequence_length=cond_packed_static["sequence_length"],
+                            vision_tokens=[vision_tokens],
+                            vision_token_shapes=cond_packed_static["vision_token_shapes"],
+                            vision_sequence_indexes=cond_packed_static["vision_sequence_indexes"],
+                            vision_mse_loss_indexes=cond_packed_static["vision_mse_loss_indexes"],
+                            vision_timesteps=vision_timesteps,
+                            vision_noisy_frame_indexes=cond_packed_static["vision_noisy_frame_indexes"],
+                            sound_tokens=[sound_tokens] if sound_tokens is not None else None,
+                            sound_token_shapes=cond_packed_static.get("sound_token_shapes"),
+                            sound_sequence_indexes=cond_packed_static.get("sound_sequence_indexes"),
+                            sound_mse_loss_indexes=cond_packed_static.get("sound_mse_loss_indexes"),
+                            sound_timesteps=sound_timesteps,
+                            sound_noisy_frame_indexes=cond_packed_static.get("sound_noisy_frame_indexes"),
+                            action_tokens=[action_tokens] if action_tokens is not None else None,
+                            action_token_shapes=cond_packed_static.get("action_token_shapes"),
+                            action_sequence_indexes=cond_packed_static.get("action_sequence_indexes"),
+                            action_mse_loss_indexes=cond_packed_static.get("action_mse_loss_indexes"),
+                            action_timesteps=action_timesteps,
+                            action_noisy_frame_indexes=cond_packed_static.get("action_noisy_frame_indexes"),
+                            action_domain_ids=[action_domain_id] if action_domain_id is not None else None,
+                        )
+                        cond_v_vision, cond_v_sound, cond_v_action = self._mask_velocity_predictions(
+                            preds_vision,
+                            preds_sound,
+                            vision_condition_mask=[vision_condition_mask],
+                            sound_condition_mask=[sound_condition_mask] if sound_condition_mask is not None else None,
+                            preds_action=preds_action,
+                            action_condition_mask=[action_condition_mask]
+                            if action_condition_mask is not None
+                            else None,
+                            raw_action_dim=raw_action_dim_resolved,
+                        )
+
+                        # --- Unconditional pass (Skip if not using CFG) ---
+                        uncond_v_vision = uncond_v_sound = uncond_v_action = None
+                        if self.do_classifier_free_guidance:
+                            preds_vision, preds_sound, preds_action = self.transformer(
+                                input_ids=uncond_packed_static["input_ids"],
+                                text_indexes=uncond_packed_static["text_indexes"],
+                                position_ids=uncond_packed_static["position_ids"],
+                                und_len=uncond_packed_static["und_len"],
+                                sequence_length=uncond_packed_static["sequence_length"],
+                                vision_tokens=[vision_tokens],
+                                vision_token_shapes=uncond_packed_static["vision_token_shapes"],
+                                vision_sequence_indexes=uncond_packed_static["vision_sequence_indexes"],
+                                vision_mse_loss_indexes=uncond_packed_static["vision_mse_loss_indexes"],
+                                vision_timesteps=vision_timesteps,
+                                vision_noisy_frame_indexes=uncond_packed_static["vision_noisy_frame_indexes"],
+                                sound_tokens=[sound_tokens] if sound_tokens is not None else None,
+                                sound_token_shapes=uncond_packed_static.get("sound_token_shapes"),
+                                sound_sequence_indexes=uncond_packed_static.get("sound_sequence_indexes"),
+                                sound_mse_loss_indexes=uncond_packed_static.get("sound_mse_loss_indexes"),
+                                sound_timesteps=sound_timesteps,
+                                sound_noisy_frame_indexes=uncond_packed_static.get("sound_noisy_frame_indexes"),
+                                action_tokens=[action_tokens] if action_tokens is not None else None,
+                                action_token_shapes=uncond_packed_static.get("action_token_shapes"),
+                                action_sequence_indexes=uncond_packed_static.get("action_sequence_indexes"),
+                                action_mse_loss_indexes=uncond_packed_static.get("action_mse_loss_indexes"),
+                                action_timesteps=action_timesteps,
+                                action_noisy_frame_indexes=uncond_packed_static.get("action_noisy_frame_indexes"),
+                                action_domain_ids=[action_domain_id] if action_domain_id is not None else None,
+                            )
+                            uncond_v_vision, uncond_v_sound, uncond_v_action = self._mask_velocity_predictions(
+                                preds_vision,
+                                preds_sound,
+                                vision_condition_mask=[vision_condition_mask],
+                                sound_condition_mask=(
+                                    [sound_condition_mask] if sound_condition_mask is not None else None
+                                ),
+                                preds_action=preds_action,
+                                action_condition_mask=(
+                                    [action_condition_mask] if action_condition_mask is not None else None
+                                ),
+                                raw_action_dim=raw_action_dim_resolved,
+                            )
+
+                        # --- CFG combine + per-modality scheduler step ---
+                        # UniPC's multistep_uni_p_bh_update einsum ("k,bkc...->bc...") requires sample
+                        # to carry a batch dim; per-modality latents have no batch axis, so wrap for the step.
+
+                        # Skip CFG for 1.0 guidance scale
+                        if self.do_classifier_free_guidance:
+                            velocity_vision = uncond_v_vision + guidance_scale * (cond_v_vision - uncond_v_vision)
+                        else:
+                            velocity_vision = cond_v_vision
+
+                        latents = self.scheduler.step(
+                            velocity_vision.unsqueeze(0), t, latents.unsqueeze(0), return_dict=False
+                        )[0].squeeze(0)
+
+                        if sound_scheduler is not None and cond_v_sound is not None:
+                            # Skip CFG for 1.0 guidance scale
+                            if self.do_classifier_free_guidance:
+                                velocity_sound = uncond_v_sound + guidance_scale * (cond_v_sound - uncond_v_sound)
+                            else:
+                                velocity_sound = cond_v_sound
+                            sound_latents = sound_scheduler.step(
+                                velocity_sound.unsqueeze(0), t, sound_latents.unsqueeze(0), return_dict=False
+                            )[0].squeeze(0)
+
+                        has_noisy_action = (
+                            action_condition_mask is not None
+                            and action_condition_mask.sum() < action_condition_mask.numel()
+                        )
+                        if action_scheduler is not None and has_noisy_action and cond_v_action is not None:
+                            if self.do_classifier_free_guidance:
+                                velocity_action = uncond_v_action + guidance_scale * (cond_v_action - uncond_v_action)
+                            else:
+                                velocity_action = cond_v_action
+                            action_latents = action_scheduler.step(
+                                velocity_action.unsqueeze(0), t, action_latents.unsqueeze(0), return_dict=False
+                            )[0].squeeze(0)
+                            if raw_action_dim_resolved is not None:
+                                action_latents[:, raw_action_dim_resolved:] = 0
+
+                    if callback_on_step_end is not None:
+                        callback_kwargs = {k: locals()[k] for k in callback_on_step_end_tensor_inputs}
+                        callback_outputs = callback_on_step_end(self, i, t, callback_kwargs)
+                        latents = callback_outputs.pop("latents", latents)
+
+                    if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
+                        progress_bar.update()
+
+            self._current_timestep = None
+
+            # 8. Postprocess + decode (per chunk for transfer; once for the other modes).
+            if transfer:
+                vae_dtype = self.vae.dtype
+                mean = self._vae_latents_mean.to(device=latents.device, dtype=vae_dtype)
+                inv_std = self._vae_latents_inv_std.to(device=latents.device, dtype=vae_dtype)
+                z_raw = latents.to(vae_dtype) / inv_std.view(1, -1, 1, 1, 1) + mean.view(1, -1, 1, 1, 1)
+                output_video = self.vae.decode(z_raw).sample.to(torch.float32).clamp(-1, 1)
+                previous_output = output_video
+                # Chunks after the first overlap the previous chunk by the conditioning frames; drop on stitch.
+                output_chunks.append(
+                    output_video if chunk_id == 0 else output_video[:, :, current_conditional_frames:]
+                )
+            else:
+                sound = self.decode_sound(sound_latents) if sound_latents is not None else None
+                if action_mode in {"inverse_dynamics", "policy"} and action_latents is not None:
+                    action_output = action_latents
+                    if raw_action_dim_resolved is not None:
+                        action_output = action_output[:, :raw_action_dim_resolved]
+                    action_output = [action_output.detach().cpu()]
+                if output_type == "latent":
+                    video = latents
+                else:
+                    in_dtype = latents.dtype
+                    vae_dtype = self.vae.dtype
+                    mean = self._vae_latents_mean.to(device=latents.device, dtype=vae_dtype)
+                    inv_std = self._vae_latents_inv_std.to(device=latents.device, dtype=vae_dtype)
+                    z_raw = latents.to(vae_dtype) / inv_std.view(1, -1, 1, 1, 1) + mean.view(1, -1, 1, 1, 1)
+                    decoded = self.vae.decode(z_raw).sample.to(in_dtype)
+                    video = self.video_processor.postprocess_video(decoded, output_type=output_type)[0]
+
+        if transfer:
+            decoded = torch.cat(output_chunks, dim=2)[:, :, :total_frames]
             video = self.video_processor.postprocess_video(decoded, output_type=output_type)[0]
 
-        if enable_safety_check and isinstance(self.safety_checker, CosmosSafetyChecker) and output_type != "latent":
+        if (
+            enable_safety_check
+            and isinstance(self.safety_checker, CosmosSafetyChecker)
+            and (transfer or output_type != "latent")
+        ):
             video = self._apply_video_safety_check(video, output_type=output_type, device=device)
 
         self.maybe_free_model_hooks()

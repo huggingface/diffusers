@@ -385,7 +385,7 @@ curl -sL "$base/edge/prompt.json"      -o assets/edge/prompt.json
 curl -sL "$base/negative_prompt.json"  -o assets/negative_prompt.json
 ```
 
-Guidance uses a nested control/text classifier-free-guidance blend. `guidance_scale` is the usual text CFG; `control_guidance` (`!= 1.0`) additionally amplifies the control signal. Recommended starting values per hint (matching the Cosmos Framework defaults):
+Guidance uses a nested control/text classifier-free-guidance blend. `guidance_scale` is the usual text CFG; `control_guidance` (`!= 1.0`) additionally amplifies the control signal. Recommended starting values per hint:
 
 | Hint | `guidance_scale` | `control_guidance` | `flow_shift` | Geometry |
 | --- | --- | --- | --- | --- |
