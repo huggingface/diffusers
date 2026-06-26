@@ -263,6 +263,12 @@ def _convert_unet_lora_key(key):
     """
     diffusers_name = key.replace("lora_unet_", "").replace("_", ".")
 
+    # kohya-ss trains SDXL on its own sgm/LDM UNet, so conv_in / conv_out arrive as
+    # input_blocks.0.0 / out.2. Map these before the block renames below, otherwise
+    # input_blocks.0.0 would become down_blocks.0.0 instead of conv_in.
+    diffusers_name = diffusers_name.replace("input.blocks.0.0", "conv_in")
+    diffusers_name = diffusers_name.replace("out.2", "conv_out")
+
     # Replace common U-Net naming patterns.
     diffusers_name = diffusers_name.replace("input.blocks", "down_blocks")
     diffusers_name = diffusers_name.replace("down.blocks", "down_blocks")
@@ -282,6 +288,11 @@ def _convert_unet_lora_key(key):
     diffusers_name = diffusers_name.replace("conv.out", "conv_out")
     diffusers_name = diffusers_name.replace("time.embed.0", "time_embedding.linear_1")
     diffusers_name = diffusers_name.replace("time.embed.2", "time_embedding.linear_2")
+    # kohya-ss trains SD 1.x on the diffusers UNet (not the sgm UNet it uses for SDXL),
+    # so the time-embedding MLP keeps the diffusers spelling time_embedding.linear_N
+    # rather than the sgm time_embed.N handled above.
+    diffusers_name = diffusers_name.replace("time.embedding.linear.1", "time_embedding.linear_1")
+    diffusers_name = diffusers_name.replace("time.embedding.linear.2", "time_embedding.linear_2")
 
     # SDXL specific conversions.
     if "emb" in diffusers_name and "time.emb.proj" not in diffusers_name:
