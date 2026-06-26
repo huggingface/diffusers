@@ -20,7 +20,7 @@ from ..utils import get_logger
 
 logger = get_logger(__name__)  # pylint: disable=invalid-name
 
-_SUPPORTED_TP_DEVICES = ("cuda", "neuron")
+_SUPPORTED_TP_DEVICES = ("cuda", "neuron", "tpu")
 
 
 class PackedColwiseParallel:
@@ -257,7 +257,12 @@ def apply_tensor_parallel(
             f"or from the active accelerator when the mesh is built from `tp_degree`."
         )
 
-    backend = "neuron" if tp_mesh.device_type == "neuron" else "default"
+    if tp_mesh.device_type == "neuron":
+        backend = "neuron"
+    elif tp_mesh.device_type == "tpu":
+        backend = "tpu"
+    else:
+        backend = "default"
     groups = _resolve_tp_plan(model, tp_plan)
     logger.debug(f"Applying tensor parallel (backend={backend}) over {len(groups)} module group(s) on mesh {tp_mesh}.")
 
@@ -265,6 +270,12 @@ def apply_tensor_parallel(
         from .tensor_parallel_neuron import _apply_tp_neuron
 
         _apply_tp_neuron(model, tp_mesh, groups)
+        return
+
+    if backend == "tpu":
+        from .tensor_parallel_tpu import _apply_tp_tpu
+
+        _apply_tp_tpu(model, tp_mesh, groups)
         return
 
     from torch.distributed.tensor.parallel import parallelize_module
