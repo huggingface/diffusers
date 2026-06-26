@@ -50,6 +50,7 @@ from .lora_conversion_utils import (
     _convert_non_diffusers_flux2_lora_to_diffusers,
     _convert_non_diffusers_hidream_lora_to_diffusers,
     _convert_non_diffusers_ideogram4_lora_to_diffusers,
+    _convert_non_diffusers_krea2_lora_to_diffusers,
     _convert_non_diffusers_lora_to_diffusers,
     _convert_non_diffusers_ltx2_lora_to_diffusers,
     _convert_non_diffusers_ltxv_lora_to_diffusers,
@@ -5421,7 +5422,6 @@ class Krea2LoraLoaderMixin(LoraBaseMixin):
 
     @classmethod
     @validate_hf_hub_args
-    # Copied from diffusers.loaders.lora_pipeline.CogVideoXLoraLoaderMixin.lora_state_dict
     def lora_state_dict(
         cls,
         pretrained_model_name_or_path_or_dict: str | dict[str, torch.Tensor],
@@ -5470,6 +5470,12 @@ class Krea2LoraLoaderMixin(LoraBaseMixin):
             warn_msg = "It seems like you are using a DoRA checkpoint that is not compatible in Diffusers at the moment. So, we are going to filter out the keys associated to 'dora_scale` from the state dict. If you think this is a mistake please open an issue https://github.com/huggingface/diffusers/issues/new."
             logger.warning(warn_msg)
             state_dict = {k: v for k, v in state_dict.items() if "dora_scale" not in k}
+
+        is_non_diffusers_format = any(
+            k.startswith("diffusion_model.") or k.startswith("base_model.model.") for k in state_dict
+        )
+        if is_non_diffusers_format:
+            state_dict = _convert_non_diffusers_krea2_lora_to_diffusers(state_dict)
 
         out = (state_dict, metadata) if return_lora_metadata else state_dict
         return out
