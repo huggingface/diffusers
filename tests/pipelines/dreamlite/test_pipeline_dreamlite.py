@@ -173,6 +173,37 @@ class DreamLitePipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             ],
         )
 
+        unet_with_non_v1_up_alias = DreamLiteUNetModel(
+            sample_size=8,
+            in_channels=4,
+            out_channels=4,
+            down_block_types=(
+                "CrossAttnDownRemoveSelfAttnBlock2D",
+                "CrossAttnDownRemoveSelfAttnBlock2D",
+                "CrossAttnDownBlock2D",
+            ),
+            mid_block_type="UNetMidBlock2DCrossAttn",
+            up_block_types=(
+                "CrossAttnUpBlock2D",
+                "CrossAttnUpRemoveSelfAttnBlock2D",
+                "UpBlock2D",
+            ),
+            block_out_channels=(16, 32, 64),
+            cross_attention_dim=_CROSS_ATTN_DIM,
+            attention_head_dim=8,
+            layers_per_block=1,
+            norm_num_groups=8,
+            transformer_layers_per_block=1,
+        )
+        self.assertEqual(
+            [block.__class__.__name__ for block in unet_with_non_v1_up_alias.up_blocks],
+            [
+                "DreamLiteCrossAttnUpBlock2D",
+                "DreamLiteCrossAttnNoSelfAttnUpBlock2D",
+                "DreamLiteUpBlock2D",
+            ],
+        )
+
     def get_dummy_components(self):
         torch.manual_seed(0)
         unet = DreamLiteUNetModel(
