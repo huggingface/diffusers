@@ -357,7 +357,10 @@ def _get_alpha_name(lora_name_alpha, diffusers_name, alpha):
 
 # The utilities under `_convert_kohya_flux_lora_to_diffusers()`
 # are adapted from https://github.com/kohya-ss/sd-scripts/blob/a61cf73a5cb5209c3f4d1a3688dd276a4dfd1ecb/networks/convert_flux_lora.py
-def _convert_kohya_flux_lora_to_diffusers(state_dict):
+def _convert_kohya_flux_lora_to_diffusers(
+    state_dict, 
+    version_flux2 = False,
+):
     def _convert_to_ai_toolkit(sds_sd, ait_sd, sds_key, ait_key):
         if sds_key + ".lora_down.weight" not in sds_sd:
             return
@@ -448,7 +451,15 @@ def _convert_kohya_flux_lora_to_diffusers(state_dict):
 
     def _convert_sd_scripts_to_ai_toolkit(sds_sd):
         ait_sd = {}
-        for i in range(19):
+        
+        max_num_double_blocks, max_num_single_blocks = -1, -1
+        for key in list(sds_sd.keys()):
+            if key.startswith("lora_unet_double_blocks_"):
+                max_num_double_blocks = max(max_num_double_blocks, int(key.split("_")[4]))
+            if key.startswith("lora_unet_single_blocks_"):
+                max_num_single_blocks = max(max_num_single_blocks, int(key.split("_")[4]))
+
+        for i in range(max_num_double_blocks+1):
             _convert_to_ai_toolkit(
                 sds_sd,
                 ait_sd,
@@ -469,13 +480,21 @@ def _convert_kohya_flux_lora_to_diffusers(state_dict):
                 sds_sd,
                 ait_sd,
                 f"lora_unet_double_blocks_{i}_img_mlp_0",
-                f"transformer.transformer_blocks.{i}.ff.net.0.proj",
+                (
+                    f"transformer.transformer_blocks.{i}.ff.linear_in"
+                    if version_flux2 else
+                    f"transformer.transformer_blocks.{i}.ff.net.0.proj"
+                ),
             )
             _convert_to_ai_toolkit(
                 sds_sd,
                 ait_sd,
                 f"lora_unet_double_blocks_{i}_img_mlp_2",
-                f"transformer.transformer_blocks.{i}.ff.net.2",
+                (
+                    f"transformer.transformer_blocks.{i}.ff.linear_out"
+                    if version_flux2 else
+                    f"transformer.transformer_blocks.{i}.ff.net.2"
+                ),
             )
             _convert_to_ai_toolkit(
                 sds_sd,
@@ -503,13 +522,21 @@ def _convert_kohya_flux_lora_to_diffusers(state_dict):
                 sds_sd,
                 ait_sd,
                 f"lora_unet_double_blocks_{i}_txt_mlp_0",
-                f"transformer.transformer_blocks.{i}.ff_context.net.0.proj",
+                (
+                    f"transformer.transformer_blocks.{i}.ff_context.linear_in"
+                    if version_flux2 else
+                    f"transformer.transformer_blocks.{i}.ff_context.net.0.proj"
+                ),
             )
             _convert_to_ai_toolkit(
                 sds_sd,
                 ait_sd,
                 f"lora_unet_double_blocks_{i}_txt_mlp_2",
-                f"transformer.transformer_blocks.{i}.ff_context.net.2",
+                (
+                    f"transformer.transformer_blocks.{i}.ff_context.linear_out"
+                    if version_flux2 else
+                    f"transformer.transformer_blocks.{i}.ff_context.net.2"
+                ),
             )
             _convert_to_ai_toolkit(
                 sds_sd,
@@ -518,24 +545,36 @@ def _convert_kohya_flux_lora_to_diffusers(state_dict):
                 f"transformer.transformer_blocks.{i}.norm1_context.linear",
             )
 
-        for i in range(38):
-            _convert_to_ai_toolkit_cat(
-                sds_sd,
-                ait_sd,
-                f"lora_unet_single_blocks_{i}_linear1",
-                [
-                    f"transformer.single_transformer_blocks.{i}.attn.to_q",
-                    f"transformer.single_transformer_blocks.{i}.attn.to_k",
-                    f"transformer.single_transformer_blocks.{i}.attn.to_v",
-                    f"transformer.single_transformer_blocks.{i}.proj_mlp",
-                ],
-                dims=[3072, 3072, 3072, 12288],
-            )
+        for i in range(max_num_single_blocks+1):
+            if version_flux2:
+                _convert_to_ai_toolkit(
+                    sds_sd,
+                    ait_sd,
+                    f"lora_unet_single_blocks_{i}_linear1",
+                    f"transformer.single_transformer_blocks.{i}.attn.to_qkv_mlp_proj",
+                )
+            else:
+                _convert_to_ai_toolkit_cat(
+                    sds_sd,
+                    ait_sd,
+                    f"lora_unet_single_blocks_{i}_linear1",
+                    [
+                        f"transformer.single_transformer_blocks.{i}.attn.to_q",
+                        f"transformer.single_transformer_blocks.{i}.attn.to_k",
+                        f"transformer.single_transformer_blocks.{i}.attn.to_v",
+                        f"transformer.single_transformer_blocks.{i}.proj_mlp",
+                    ],
+                    dims=[3072, 3072, 3072, 12288],
+                )
             _convert_to_ai_toolkit(
                 sds_sd,
                 ait_sd,
                 f"lora_unet_single_blocks_{i}_linear2",
-                f"transformer.single_transformer_blocks.{i}.proj_out",
+                (
+                    f"transformer.single_transformer_blocks.{i}.attn.to_out"
+                    if version_flux2 else
+                    f"transformer.single_transformer_blocks.{i}.proj_out"
+                ),
             )
             _convert_to_ai_toolkit(
                 sds_sd,
