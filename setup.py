@@ -114,6 +114,9 @@ _deps = [
     "torchsde",
     "note_seq",
     "librosa",
+    # librosa pulls in numba/llvmlite; pin to versions that support Python 3.10+
+    "llvmlite>=0.40.0",
+    "numba>=0.57.0",
     "numpy",
     "parameterized",
     "peft>=0.17.0",
@@ -228,6 +231,8 @@ extras["test"] = deps_list(
     "Jinja2",
     "invisible-watermark",
     "librosa",
+    "llvmlite",
+    "numba",
     "parameterized",
     "protobuf",
     "pytest",
