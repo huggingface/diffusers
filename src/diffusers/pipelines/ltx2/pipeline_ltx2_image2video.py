@@ -1278,6 +1278,7 @@ class LTX2ImageToVideoPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraL
             audio_coords = audio_coords.repeat((2,) + (1,) * (audio_coords.ndim - 1))
 
         # 7. Denoising loop
+        self.scheduler.set_begin_index(0)
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
                 if self.interrupt:
