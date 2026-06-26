@@ -281,18 +281,6 @@ def _get_qkv_projections(attn: "Flux2Attention", hidden_states, encoder_hidden_s
     return _get_projections(attn, hidden_states, encoder_hidden_states)
 
 
-def _get_tp_degree(parallel_config) -> int:
-    """Return the tensor-parallel degree from a processor's ``_parallel_config`` (1 if TP is off).
-
-    When tensor parallelism is enabled, each rank holds ``attn.heads // tp_degree`` heads (and a proportionally smaller
-    slice of the fused inner / MLP dims), so the attention processors derive their local sizes from this value at
-    runtime. ``tp_degree == 1`` recovers the non-TP behavior.
-    """
-    if parallel_config is not None and getattr(parallel_config, "tensor_parallel_config", None) is not None:
-        return parallel_config.tensor_parallel_config.tp_degree
-    return 1
-
-
 class Flux2SwiGLU(nn.Module):
     """
     Flux 2 uses a SwiGLU-style activation in the transformer feedforward sub-blocks, but with the linear projection
@@ -351,25 +339,23 @@ class Flux2AttnProcessor:
         attention_mask: torch.Tensor | None = None,
         image_rotary_emb: torch.Tensor | None = None,
     ) -> torch.Tensor:
-        # Under tensor parallelism each rank holds ``attn.heads // tp_degree`` heads after the
-        # column-wise weight sharding; ``tp_degree == 1`` recovers the non-TP behavior.
-        local_heads = attn.heads // _get_tp_degree(self._parallel_config)
-
         query, key, value, encoder_query, encoder_key, encoder_value = _get_qkv_projections(
             attn, hidden_states, encoder_hidden_states
         )
 
-        query = query.unflatten(-1, (local_heads, -1))
-        key = key.unflatten(-1, (local_heads, -1))
-        value = value.unflatten(-1, (local_heads, -1))
+        # Reshape by a fixed ``head_dim`` and let ``-1`` absorb the head count. Under tensor parallelism each rank
+        # holds a column-sharded slice (``attn.heads // tp_degree`` heads); this keeps the processor TP-agnostic.
+        query = query.unflatten(-1, (-1, attn.head_dim))
+        key = key.unflatten(-1, (-1, attn.head_dim))
+        value = value.unflatten(-1, (-1, attn.head_dim))
 
         query = attn.norm_q(query)
         key = attn.norm_k(key)
 
         if attn.added_kv_proj_dim is not None:
-            encoder_query = encoder_query.unflatten(-1, (local_heads, -1))
-            encoder_key = encoder_key.unflatten(-1, (local_heads, -1))
-            encoder_value = encoder_value.unflatten(-1, (local_heads, -1))
+            encoder_query = encoder_query.unflatten(-1, (-1, attn.head_dim))
+            encoder_key = encoder_key.unflatten(-1, (-1, attn.head_dim))
+            encoder_value = encoder_value.unflatten(-1, (-1, attn.head_dim))
 
             encoder_query = attn.norm_added_q(encoder_query)
             encoder_key = attn.norm_added_k(encoder_key)
@@ -439,17 +425,17 @@ class Flux2KVAttnProcessor:
             attn, hidden_states, encoder_hidden_states
         )
 
-        query = query.unflatten(-1, (attn.heads, -1))
-        key = key.unflatten(-1, (attn.heads, -1))
-        value = value.unflatten(-1, (attn.heads, -1))
+        query = query.unflatten(-1, (-1, attn.head_dim))
+        key = key.unflatten(-1, (-1, attn.head_dim))
+        value = value.unflatten(-1, (-1, attn.head_dim))
 
         query = attn.norm_q(query)
         key = attn.norm_k(key)
 
         if attn.added_kv_proj_dim is not None:
-            encoder_query = encoder_query.unflatten(-1, (attn.heads, -1))
-            encoder_key = encoder_key.unflatten(-1, (attn.heads, -1))
-            encoder_value = encoder_value.unflatten(-1, (attn.heads, -1))
+            encoder_query = encoder_query.unflatten(-1, (-1, attn.head_dim))
+            encoder_key = encoder_key.unflatten(-1, (-1, attn.head_dim))
+            encoder_value = encoder_value.unflatten(-1, (-1, attn.head_dim))
 
             encoder_query = attn.norm_added_q(encoder_query)
             encoder_key = attn.norm_added_k(encoder_key)
@@ -597,24 +583,23 @@ class Flux2ParallelSelfAttnProcessor:
         attention_mask: torch.Tensor | None = None,
         image_rotary_emb: torch.Tensor | None = None,
     ) -> torch.Tensor:
-        # Under tensor parallelism the fused ``to_qkv_mlp_proj`` is column-sharded, so each rank
-        # holds a proportionally smaller slice of the Q/K/V (inner) and MLP dims, and ``attn.heads
-        # // tp_degree`` heads. ``tp_degree == 1`` recovers the non-TP behavior.
-        tp_degree = _get_tp_degree(self._parallel_config)
-        local_heads = attn.heads // tp_degree
-        local_inner = attn.inner_dim // tp_degree
-        local_mlp = attn.mlp_hidden_dim * attn.mlp_mult_factor // tp_degree
-
         # Parallel in (QKV + MLP in) projection
         hidden_states = attn.to_qkv_mlp_proj(hidden_states)
-        qkv, mlp_hidden_states = torch.split(hidden_states, [3 * local_inner, local_mlp], dim=-1)
+
+        # Split the fused output into its QKV and MLP halves by their global ratio, so the same code path works
+        # whether or not ``to_qkv_mlp_proj`` is column-sharded (the fused-weight permuter guarantees each rank's
+        # contiguous slice keeps the QKV and MLP chunks proportional). No tensor-parallel state is read here.
+        qkv_dim = 3 * attn.inner_dim
+        mlp_dim = attn.mlp_hidden_dim * attn.mlp_mult_factor
+        local_qkv = hidden_states.shape[-1] * qkv_dim // (qkv_dim + mlp_dim)
+        qkv, mlp_hidden_states = torch.split(hidden_states, [local_qkv, hidden_states.shape[-1] - local_qkv], dim=-1)
 
         # Handle the attention logic
         query, key, value = qkv.chunk(3, dim=-1)
 
-        query = query.unflatten(-1, (local_heads, -1))
-        key = key.unflatten(-1, (local_heads, -1))
-        value = value.unflatten(-1, (local_heads, -1))
+        query = query.unflatten(-1, (-1, attn.head_dim))
+        key = key.unflatten(-1, (-1, attn.head_dim))
+        value = value.unflatten(-1, (-1, attn.head_dim))
 
         query = attn.norm_q(query)
         key = attn.norm_k(key)
@@ -673,15 +658,21 @@ class Flux2KVParallelSelfAttnProcessor:
     ) -> torch.Tensor:
         # Parallel in (QKV + MLP in) projection
         hidden_states_proj = attn.to_qkv_mlp_proj(hidden_states)
+
+        # Split by the global QKV:MLP ratio so the path is identical with or without column sharding (see
+        # ``Flux2ParallelSelfAttnProcessor``). No tensor-parallel state is read here.
+        qkv_dim = 3 * attn.inner_dim
+        mlp_dim = attn.mlp_hidden_dim * attn.mlp_mult_factor
+        local_qkv = hidden_states_proj.shape[-1] * qkv_dim // (qkv_dim + mlp_dim)
         qkv, mlp_hidden_states = torch.split(
-            hidden_states_proj, [3 * attn.inner_dim, attn.mlp_hidden_dim * attn.mlp_mult_factor], dim=-1
+            hidden_states_proj, [local_qkv, hidden_states_proj.shape[-1] - local_qkv], dim=-1
         )
 
         query, key, value = qkv.chunk(3, dim=-1)
 
-        query = query.unflatten(-1, (attn.heads, -1))
-        key = key.unflatten(-1, (attn.heads, -1))
-        value = value.unflatten(-1, (attn.heads, -1))
+        query = query.unflatten(-1, (-1, attn.head_dim))
+        key = key.unflatten(-1, (-1, attn.head_dim))
+        value = value.unflatten(-1, (-1, attn.head_dim))
 
         query = attn.norm_q(query)
         key = attn.norm_k(key)
