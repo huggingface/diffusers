@@ -433,8 +433,8 @@ class AnimaImg2ImgSetTimestepsStep(ModularPipelineBlocks):
     """Set the scheduler timesteps for Anima image-to-image inference.
 
     This step computes the full timestep schedule and stores it in state. It does **not** set
-    ``scheduler.set_begin_index`` — that is handled downstream by
-    ``AnimaImg2ImgVaeEncoderStep``, which slices the schedule based on ``strength``.
+    ``scheduler.set_begin_index`` — that is handled downstream by ``AnimaImg2ImgVaeEncoderStep``, which slices the
+    schedule based on ``strength``.
 
     Components:
         scheduler (`FlowMatchEulerDiscreteScheduler`)

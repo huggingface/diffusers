@@ -319,14 +319,12 @@ def encode_vae_image(
 class AnimaImg2ImgVaeEncoderStep(ModularPipelineBlocks):
     """VAE Encoder step for Anima image-to-image generation.
 
-    Preprocesses the input image, encodes it with the VAE, generates noise, slices the
-    timestep schedule based on ``strength``, and adds noise to the image latents using
-    ``scheduler.scale_noise()``.
+    Preprocesses the input image, encodes it with the VAE, generates noise, slices the timestep schedule based on
+    ``strength``, and adds noise to the image latents using ``scheduler.scale_noise()``.
 
     Components:
-        vae (`AutoencoderKLQwenImage`)
-        scheduler (`FlowMatchEulerDiscreteScheduler`)
-        image_processor (`VaeImageProcessor`)
+        vae (`AutoencoderKLQwenImage`) scheduler (`FlowMatchEulerDiscreteScheduler`) image_processor
+        (`VaeImageProcessor`)
 
     Inputs:
         image (`PIL.Image.Image`):
@@ -336,8 +334,8 @@ class AnimaImg2ImgVaeEncoderStep(ModularPipelineBlocks):
         width (`int`, *optional*):
             Width of the output image. Defaults to pipeline default.
         strength (`float`, *optional*, defaults to 0.9):
-            How much to transform the reference image. ``0`` means no change; ``1`` means
-            fully denoise from random noise.
+            How much to transform the reference image. ``0`` means no change; ``1`` means fully denoise from random
+            noise.
         num_images_per_prompt (`int`, *optional*, defaults to 1):
             Number of images to generate per prompt.
         generator (`Generator`, *optional*):

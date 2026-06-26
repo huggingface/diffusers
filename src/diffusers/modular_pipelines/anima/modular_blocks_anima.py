@@ -266,8 +266,8 @@ class AnimaImg2ImgDenoiseStep(SequentialPipelineBlocks):
 class AnimaAutoDenoiseStep(AutoPipelineBlocks):
     """
     Denoise step that selects between text-to-image and image-to-image denoising based on whether an input image is
-    provided. - `AnimaCoreDenoiseStep` (text2image) is used when no image is provided. -
-    `AnimaImg2ImgDenoiseStep` (img2img) is used when an image is provided.
+    provided. - `AnimaCoreDenoiseStep` (text2image) is used when no image is provided. - `AnimaImg2ImgDenoiseStep`
+    (img2img) is used when an image is provided.
 
       Components:
           text_conditioner (`AnimaTextConditioner`) transformer (`CosmosTransformer3DModel`) vae
