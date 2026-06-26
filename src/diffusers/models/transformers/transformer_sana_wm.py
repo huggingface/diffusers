@@ -30,7 +30,6 @@ import torch.nn.functional as F
 from torch.nn.attention.flex_attention import create_block_mask
 from torch.nn.modules.batchnorm import _BatchNorm
 from torch.utils.checkpoint import checkpoint
-from transformers import AutoModelForCausalLM
 
 
 # Optional third-party deps. These are kept optional so that `import diffusers`
@@ -1604,6 +1603,8 @@ class CaptionEmbedder(nn.Module):
         self.uncond_prob = uncond_prob
 
     def initialize_gemma_params(self, model_name="google/gemma-2b-it"):
+        from transformers import AutoModelForCausalLM  # noqa: PLC0415 — training-only path
+
         num_layers = len(self.custom_gemma_layers)
         text_encoder = AutoModelForCausalLM.from_pretrained(model_name).get_decoder()
         pretrained_layers = text_encoder.layers[-num_layers:]
@@ -7517,7 +7518,11 @@ class SanaWMTransformer3DModel(ModelMixin, ConfigMixin):
             hidden_states: ``(B, C, T, H, W)`` latents.
             timestep: ``(B, 1, T)`` per-frame diffusion timesteps (LTX style).
             encoder_hidden_states: ``(B, 1, L, D_caption)`` text embeddings.
-            encoder_attention_mask: ``(B, L)`` text attention mask.
+            encoder_attention_mask: ``(B, L)`` text attention mask (diffusers convention).
+            mask: Alias for ``encoder_attention_mask`` matching the inner Sana DiT's
+                kwarg name. If both are passed, ``mask`` takes precedence.
+            return_dict: If ``True`` (default), returns a :class:`Transformer2DModelOutput`;
+                otherwise returns a one-tuple ``(sample,)``.
             **kwargs: SANA-WM-specific conditioning — at minimum
                 ``data_info``, ``camera_conditions``, ``chunk_plucker``.
 
