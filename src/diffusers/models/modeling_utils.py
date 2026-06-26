@@ -59,6 +59,7 @@ from ..utils import (
     is_flashpack_available,
     is_peft_available,
     is_torch_neuronx_available,
+    is_torch_tpu_available,
     is_torch_version,
     logging,
 )
@@ -1740,7 +1741,12 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             # `DeviceMesh("neuron", ...)`.
             tp_mesh = config.tensor_parallel_config._mesh
             mesh_device_type = tp_mesh.device_type if tp_mesh is not None else device_type
-            backend = "neuron" if (is_torch_neuronx_available() and mesh_device_type == "neuron") else "default"
+            if is_torch_neuronx_available() and mesh_device_type == "neuron":
+                backend = "neuron"
+            elif is_torch_tpu_available() and mesh_device_type == "tpu":
+                backend = "tpu"
+            else:
+                backend = "default"
             apply_tensor_parallel(self, config.tensor_parallel_config, self._tp_plan, backend=backend)
 
     @classmethod

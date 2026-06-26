@@ -28,7 +28,13 @@ from diffusers.models.transformers.transformer_flux2 import (
 )
 from diffusers.utils.torch_utils import randn_tensor
 
-from ...testing_utils import enable_full_determinism, is_tensor_parallel, require_torch_neuron, torch_device
+from ...testing_utils import (
+    enable_full_determinism,
+    is_tensor_parallel,
+    require_torch_neuron,
+    require_torch_tpu,
+    torch_device,
+)
 from ..testing_utils import (
     AttentionTesterMixin,
     BaseModelTesterConfig,
@@ -173,6 +179,43 @@ def make_neuron_tp_spec():
     """
     config = Flux2TransformerTesterConfig()
     return Flux2Transformer2DModel, config.get_init_dict(), config.get_dummy_inputs(device="cpu")
+
+
+def make_tpu_tp_spec():
+    """Model spec consumed by the generic TPU TP worker (``_tpu_tp_worker.py``).
+
+    Returns ``(model_class, init_dict, cpu_inputs)``. Defined here so all Flux2-specific test data lives in this file
+    while the worker stays model-agnostic. Reuses the shared tester config so the spec never drifts from the rest of
+    the Flux2 tests.
+    """
+    config = Flux2TransformerTesterConfig()
+    return Flux2Transformer2DModel, config.get_init_dict(), config.get_dummy_inputs(device="cpu")
+
+
+@is_tensor_parallel
+@require_torch_tpu
+class TestFlux2TransformerTensorParallelTPU:
+    """Tensor Parallel inference test for Flux2 Transformer on TPU.
+
+    TPU TP runs through ``torchrun`` with the ``"tpu_dist"`` distributed backend, so it cannot use the
+    ``torch.multiprocessing``/NCCL spawn path of ``TensorParallelTesterMixin``. This launches the generic worker with
+    the Flux2 model spec (``make_tpu_tp_spec``); the worker asserts the sharded output matches a single-device
+    reference, and the test checks its exit code.
+
+    Requires ``TORCH_TPU_TOPOLOGY`` and ``TORCH_TPU_SLICEBUILDER_ADDRESSES`` to be set. Source them via::
+
+        eval $(python -m torch_tpu._internal.distributed.launchers.singlehost_wrapper | sed 's/^/export /')
+    """
+
+    def test_tensor_parallel_tpu_inference(self):
+        worker = os.path.join(os.path.dirname(__file__), "_tpu_tp_worker.py")
+        spec = "tests.models.transformers.test_models_transformer_flux2:make_tpu_tp_spec"
+        cmd = [sys.executable, "-m", "torch.distributed.run", "--nproc_per_node=2", worker, spec]
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        assert result.returncode == 0, (
+            f"TPU tensor-parallel worker failed (exit {result.returncode}).\n"
+            f"--- stdout ---\n{result.stdout}\n--- stderr ---\n{result.stderr}"
+        )
 
 
 @is_tensor_parallel

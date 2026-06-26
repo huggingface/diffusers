@@ -99,6 +99,12 @@ def apply_tensor_parallel(
         _apply_tp_neuron(model, tp_mesh, groups)
         return
 
+    if backend == "tpu":
+        from .tensor_parallel_tpu import _apply_tp_tpu
+
+        _apply_tp_tpu(model, tp_mesh, groups)
+        return
+
     from torch.distributed.tensor.parallel import parallelize_module
 
     # Some models fuse projections into single Linear layers (e.g. Flux2's SwiGLU FFN and fused QKV+MLP). Their
