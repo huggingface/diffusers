@@ -2296,6 +2296,11 @@ class PipelineTesterMixin:
         if not self.test_layerwise_casting:
             return
 
+        try:
+            torch.zeros(1, device=torch_device).to(dtype=torch.float8_e4m3fn)
+        except TypeError:
+            self.skipTest(f"Device {torch_device} does not support float8 storage dtype.")
+
         components = self.get_dummy_components()
         pipe = self.pipeline_class(**components)
         pipe.to(torch_device, dtype=torch.bfloat16)

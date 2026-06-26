@@ -2106,6 +2106,11 @@ class PeftLoraLoaderMixinTests:
         self.assertTrue(not np.allclose(lora_output_diff_alpha, lora_output_same_rank, atol=1e-3, rtol=1e-3))
 
     def test_layerwise_casting_inference_denoiser(self):
+        try:
+            torch.zeros(1, device=torch_device).to(dtype=torch.float8_e4m3fn)
+        except TypeError:
+            self.skipTest(f"Device {torch_device} does not support float8 storage dtype.")
+
         from diffusers.hooks._common import _GO_LC_SUPPORTED_PYTORCH_LAYERS
         from diffusers.hooks.layerwise_casting import DEFAULT_SKIP_MODULES_PATTERN
 
@@ -2164,6 +2169,10 @@ class PeftLoraLoaderMixinTests:
 
         See the docstring of [`hooks.layerwise_casting.PeftInputAutocastDisableHook`] for more details.
         """
+        try:
+            torch.zeros(1, device=torch_device).to(dtype=torch.float8_e4m3fn)
+        except TypeError:
+            self.skipTest(f"Device {torch_device} does not support float8 storage dtype.")
 
         from diffusers.hooks._common import _GO_LC_SUPPORTED_PYTORCH_LAYERS
         from diffusers.hooks.layerwise_casting import (
