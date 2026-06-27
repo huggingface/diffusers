@@ -21,6 +21,47 @@ from ..utils import get_logger
 logger = get_logger(__name__)  # pylint: disable=invalid-name
 
 
+class PackedColwiseParallel:
+    """Column-wise sharding for fused projections with heterogeneous block structure.
+
+    ``blocks`` is a list of proportional integers whose sum divides the weight's row count. For example, ``[1, 1]`` for
+    a SwiGLU gate+linear projection (two equal halves) or ``[1, 1, 1, 3, 3]`` for a Q+K+V+gate+linear projection with
+    ``mlp_ratio=3``. If ``blocks`` is ``None``, the Linear module must carry a ``_tp_packed_col_blocks`` attribute set
+    during model ``__init__``.
+    """
+
+    def __init__(self, blocks: "list[int] | None" = None):
+        self.blocks = blocks
+
+
+class PackedRowwiseParallel:
+    """Row-wise sharding for fused projections with heterogeneous block structure.
+
+    ``blocks`` describes the input-column partition of the fused Linear (e.g. ``[1, 3]`` when the input concatenates an
+    attention projection and an MLP projection with ``mlp_ratio=3``). If ``blocks`` is ``None``, the module must carry
+    a ``_tp_packed_row_blocks`` attribute.
+    """
+
+    def __init__(self, blocks: "list[int] | None" = None):
+        self.blocks = blocks
+
+
+def _blocks_to_block_sizes(total_size: int, blocks: "list[int]") -> "list[int]":
+    """Convert proportional block counts to absolute sizes.
+
+    ``blocks`` is a list of positive integers interpreted as proportional weights. Their sum must divide ``total_size``
+    evenly. Returns a list of absolute sizes that sum to ``total_size``.
+    """
+    total = sum(blocks)
+    if total_size % total != 0:
+        raise ValueError(
+            f"Cannot split {total_size} into proportional blocks {blocks}: "
+            f"sum({blocks})={total} does not divide {total_size}."
+        )
+    unit = total_size // total
+    return [b * unit for b in blocks]
+
+
 def _resolve_tp_plan(model: torch.nn.Module, tp_plan: dict) -> list:
     """Group a flat ``_tp_plan`` into per-block ``(submodule, {relative_path: style})`` plans.
 
@@ -60,17 +101,96 @@ def _resolve_tp_plan(model: torch.nn.Module, tp_plan: dict) -> list:
 
 
 def _styles(relative_plan: dict) -> dict:
-    """Map a ``{relative_path: style_str}`` plan to ``parallelize_module`` style instances."""
+    """Map a ``{relative_path: style}`` plan to ``parallelize_module`` style instances.
+
+    Values may be plain strings (``"colwise"`` / ``"rowwise"``) or ``PackedColwiseParallel`` /
+    ``PackedRowwiseParallel`` marker instances.
+    """
+    import torch.nn as nn
+    from torch.distributed.tensor import DTensor, Replicate, Shard, distribute_tensor
     from torch.distributed.tensor.parallel import ColwiseParallel, RowwiseParallel
 
-    mapping = {"colwise": ColwiseParallel, "rowwise": RowwiseParallel}
+    def _make_packed_col(marker: PackedColwiseParallel) -> ColwiseParallel:
+        _blocks = marker.blocks
+
+        class _PackedColwiseImpl(ColwiseParallel):
+            def _partition_linear_fn(self, name, module, device_mesh):
+                blocks = _blocks if _blocks is not None else getattr(module, "_tp_packed_col_blocks")
+                rank = device_mesh.get_local_rank()
+                tp_size = device_mesh.size()
+                for param_name, param in module.named_parameters():
+                    if param_name == "weight":
+                        full = distribute_tensor(
+                            param, device_mesh, [Replicate()], src_data_rank=self.src_data_rank
+                        ).to_local()
+                        block_sizes = _blocks_to_block_sizes(full.shape[0], blocks)
+                        parts, offset = [], 0
+                        for bs in block_sizes:
+                            chunk = bs // tp_size
+                            parts.append(full[offset + rank * chunk : offset + (rank + 1) * chunk].contiguous())
+                            offset += bs
+                        local = torch.cat(parts, dim=0)
+                        dist_param = nn.Parameter(
+                            DTensor.from_local(local, device_mesh, [Shard(0)], run_check=False),
+                            requires_grad=param.requires_grad,
+                        )
+                    else:
+                        dist_param = nn.Parameter(
+                            distribute_tensor(param, device_mesh, [Shard(0)], src_data_rank=self.src_data_rank),
+                            requires_grad=param.requires_grad,
+                        )
+                    module.register_parameter(param_name, dist_param)
+
+        return _PackedColwiseImpl()
+
+    def _make_packed_row(marker: PackedRowwiseParallel) -> RowwiseParallel:
+        _blocks = marker.blocks
+
+        class _PackedRowwiseImpl(RowwiseParallel):
+            def _partition_linear_fn(self, name, module, device_mesh):
+                blocks = _blocks if _blocks is not None else getattr(module, "_tp_packed_row_blocks")
+                rank = device_mesh.get_local_rank()
+                tp_size = device_mesh.size()
+                for param_name, param in module.named_parameters():
+                    if param_name == "weight":
+                        full = distribute_tensor(
+                            param, device_mesh, [Replicate()], src_data_rank=self.src_data_rank
+                        ).to_local()
+                        block_sizes = _blocks_to_block_sizes(full.shape[1], blocks)
+                        parts, offset = [], 0
+                        for bs in block_sizes:
+                            chunk = bs // tp_size
+                            parts.append(full[:, offset + rank * chunk : offset + (rank + 1) * chunk].contiguous())
+                            offset += bs
+                        local = torch.cat(parts, dim=1)
+                        dist_param = nn.Parameter(
+                            DTensor.from_local(local, device_mesh, [Shard(1)], run_check=False),
+                            requires_grad=param.requires_grad,
+                        )
+                    else:
+                        dist_param = nn.Parameter(
+                            distribute_tensor(param, device_mesh, [Replicate()], src_data_rank=self.src_data_rank),
+                            requires_grad=param.requires_grad,
+                        )
+                    module.register_parameter(param_name, dist_param)
+
+        return _PackedRowwiseImpl()
+
     resolved = {}
     for path, style in relative_plan.items():
-        if style not in mapping:
+        if style == "colwise":
+            resolved[path] = ColwiseParallel()
+        elif style == "rowwise":
+            resolved[path] = RowwiseParallel()
+        elif isinstance(style, PackedColwiseParallel):
+            resolved[path] = _make_packed_col(style)
+        elif isinstance(style, PackedRowwiseParallel):
+            resolved[path] = _make_packed_row(style)
+        else:
             raise ValueError(
-                f"Unsupported tensor-parallel style '{style}' for '{path}'. Expected one of {list(mapping)}."
+                f"Unsupported tensor-parallel style '{style}' for '{path}'. "
+                f"Expected 'colwise', 'rowwise', PackedColwiseParallel, or PackedRowwiseParallel."
             )
-        resolved[path] = mapping[style]()
     return resolved
 
 
@@ -101,13 +221,5 @@ def apply_tensor_parallel(
 
     from torch.distributed.tensor.parallel import parallelize_module
 
-    # Some models fuse projections into single Linear layers (e.g. Flux2's SwiGLU FFN and fused QKV+MLP). Their
-    # weights must be re-ordered before contiguous sharding so each rank gets a correct paired slice.
-    permuters = getattr(model, "_tp_fused_block_permuters", None) or {}
-    tp_size = tp_mesh.size()
-
     for submodule, relative_plan in groups:
-        permuter = permuters.get(submodule.__class__.__name__)
-        if permuter is not None:
-            permuter(submodule, tp_size)
         parallelize_module(submodule, tp_mesh, _styles(relative_plan))

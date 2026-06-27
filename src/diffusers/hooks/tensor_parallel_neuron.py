@@ -29,7 +29,8 @@ import torch.nn as nn
 def _pre_shard_and_tp(
     module: nn.Module,
     tp_mesh: "torch.distributed.device_mesh.DeviceMesh",
-    plan: dict,
+    original_plan: dict,
+    resolved_plan: dict,
     rank: int,
     tp_size: int,
 ) -> None:
@@ -40,20 +41,18 @@ def _pre_shard_and_tp(
     before the call, ``distribute_tensor`` inside ``parallelize_module`` sees an already-placed DTensor and skips the
     collective, while the module hooks (input/output specs) are still registered correctly.
 
-    Args:
-        module: The block whose Linear sub-modules are being sharded.
-        tp_mesh: Device mesh for TP (1-D, size == tp_size).
-        plan: ``{relative_path: ColwiseParallel() | RowwiseParallel()}`` dict,
-            as expected by ``parallelize_module``.
-        rank: Current rank (``dist.get_rank()``).
-        tp_size: Total TP degree (``tp_mesh.size()``).
+    ``original_plan`` carries the raw style descriptors (strings or ``PackedColwiseParallel`` /
+    ``PackedRowwiseParallel`` marker objects); ``resolved_plan`` is the result of ``_styles()`` and is passed directly
+    to ``parallelize_module``.
     """
     from torch.distributed.tensor import DTensor, Shard
-    from torch.distributed.tensor.parallel import ColwiseParallel, RowwiseParallel, parallelize_module
+    from torch.distributed.tensor.parallel import parallelize_module
+
+    from .tensor_parallel import PackedColwiseParallel, PackedRowwiseParallel, _blocks_to_block_sizes
 
     device = torch.neuron.current_device()
 
-    for path, style in plan.items():
+    for path, orig_style in original_plan.items():
         # Resolve nested attribute path (e.g. "attn.to_q" or "attn.to_out.0")
         submod = module
         for part in path.split("."):
@@ -63,18 +62,38 @@ def _pre_shard_and_tp(
             continue
 
         w = submod.weight.data  # CPU at this point
-        if isinstance(style, ColwiseParallel):
+        if isinstance(orig_style, PackedColwiseParallel):
+            blocks = orig_style.blocks if orig_style.blocks is not None else getattr(submod, "_tp_packed_col_blocks")
+            block_sizes = _blocks_to_block_sizes(w.shape[0], blocks)
+            parts, offset = [], 0
+            for bs in block_sizes:
+                chunk = bs // tp_size
+                parts.append(w[offset + rank * chunk : offset + (rank + 1) * chunk, :].contiguous())
+                offset += bs
+            shard = torch.cat(parts, dim=0).to(device)
+            submod.weight = nn.Parameter(DTensor.from_local(shard, tp_mesh, [Shard(0)]))
+        elif isinstance(orig_style, PackedRowwiseParallel):
+            blocks = orig_style.blocks if orig_style.blocks is not None else getattr(submod, "_tp_packed_row_blocks")
+            block_sizes = _blocks_to_block_sizes(w.shape[1], blocks)
+            parts, offset = [], 0
+            for bs in block_sizes:
+                chunk = bs // tp_size
+                parts.append(w[:, offset + rank * chunk : offset + (rank + 1) * chunk].contiguous())
+                offset += bs
+            shard = torch.cat(parts, dim=1).to(device)
+            submod.weight = nn.Parameter(DTensor.from_local(shard, tp_mesh, [Shard(1)]))
+        elif orig_style == "colwise":
             rows = w.shape[0] // tp_size
             shard = w[rank * rows : (rank + 1) * rows, :].contiguous().to(device)
             submod.weight = nn.Parameter(DTensor.from_local(shard, tp_mesh, [Shard(0)]))
-        elif isinstance(style, RowwiseParallel):
+        elif orig_style == "rowwise":
             cols = w.shape[1] // tp_size
             shard = w[:, rank * cols : (rank + 1) * cols].contiguous().to(device)
             submod.weight = nn.Parameter(DTensor.from_local(shard, tp_mesh, [Shard(1)]))
 
     # parallelize_module is now a no-op for weight distribution (already DTensors)
     # but still registers the input/output hooks required for the forward pass.
-    parallelize_module(module, tp_mesh, plan)
+    parallelize_module(module, tp_mesh, resolved_plan)
 
 
 def _apply_tp_neuron(
@@ -85,23 +104,16 @@ def _apply_tp_neuron(
     """Apply tensor parallelism on Neuron from resolved ``_tp_plan`` groups.
 
     ``groups`` is produced by ``diffusers.hooks.tensor_parallel._resolve_tp_plan`` — the same source of truth used by
-    the generic path, so the two backends shard identical layers. For each ``(block, relative_plan)`` group this:
-    1. permutes the model's fused weights (via ``model._tp_fused_block_permuters``, the same backend-agnostic permuters
-       the generic path uses) so column/row slicing gives each rank a correct chunk,
-    2. pre-shards the weights via ``DTensor.from_local`` (Neuron NRT consecutive-reduce-scatter workaround), then calls
-       ``parallelize_module`` to register the forward hooks.
+    the generic path, so the two backends shard identical layers. For each ``(block, relative_plan)`` group this
+    pre-shards the weights via ``DTensor.from_local`` (Neuron NRT consecutive-reduce-scatter workaround), then calls
+    ``parallelize_module`` to register the forward hooks.
 
-    The attention processors derive their per-rank sizes from ``_parallel_config`` at runtime, so no processor swap is
-    performed here. Model weights must be on CPU when this is called.
+    Model weights must be on CPU when this is called.
     """
     from .tensor_parallel import _styles
 
     rank = dist.get_rank()
     tp_size = tp_mesh.size()
-    permuters = getattr(model, "_tp_fused_block_permuters", None) or {}
 
     for block, relative_plan in groups:
-        permuter = permuters.get(block.__class__.__name__)
-        if permuter is not None:
-            permuter(block, tp_size)
-        _pre_shard_and_tp(block, tp_mesh, _styles(relative_plan), rank, tp_size)
+        _pre_shard_and_tp(block, tp_mesh, relative_plan, _styles(relative_plan), rank, tp_size)
