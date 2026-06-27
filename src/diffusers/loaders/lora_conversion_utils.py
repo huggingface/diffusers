@@ -2207,8 +2207,26 @@ def _convert_non_diffusers_qwen_lora_to_diffusers(state_dict):
     if has_lora_unet:
         state_dict = {k.removeprefix("lora_unet_"): v for k, v in state_dict.items()}
 
+        # Top-level (non-block) modules: convert_key below assumes every key lives under
+        # transformer_blocks_ and blindly strips/re-prepends that prefix, which collapses
+        # these module names onto each other. Map them explicitly before that logic runs.
+        # The flattened name -> dotted diffusers name is fixed, and the .lora_down/.lora_up/
+        # .alpha suffix is preserved.
+        top_level_modules = {
+            "img_in": "img_in",
+            "txt_in": "txt_in",
+            "proj_out": "proj_out",
+            "norm_out_linear": "norm_out.linear",
+            "time_text_embed_timestep_embedder_linear_1": "time_text_embed.timestep_embedder.linear_1",
+            "time_text_embed_timestep_embedder_linear_2": "time_text_embed.timestep_embedder.linear_2",
+        }
+
         def convert_key(key: str) -> str:
             prefix = "transformer_blocks"
+            for flat, dotted in top_level_modules.items():
+                if key == flat or key.startswith(flat + "."):
+                    return dotted + key[len(flat) :]
+
             if "." in key:
                 base, suffix = key.rsplit(".", 1)
             else:
