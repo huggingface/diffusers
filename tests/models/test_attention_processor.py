@@ -9,7 +9,7 @@ from packaging import version
 from diffusers import DiffusionPipeline
 from diffusers.models.attention_processor import Attention, AttnAddedKVProcessor
 
-from ..testing_utils import torch_device
+from ..testing_utils import is_torch_version, torch_device
 
 
 class TestAttnAddedKVProcessor:
@@ -135,6 +135,10 @@ class TestDeprecatedAttentionBlock:
 
 
 @pytest.mark.skipif(torch_device != "mps", reason="test exercises an MPS-specific code path")
+@pytest.mark.skipif(
+    is_torch_version(">=", "2.14.0"),
+    reason="baddbmm beta=0 NaN fixed upstream in pytorch#187522 (torch>=2.14); MPS workaround no longer applied",
+)
 def test_no_nan_when_attention_mask_is_none_on_mps():
     # Regression test: torch.empty() on MPS can return non-finite values,
     # and MPS' baddbmm does not short-circuit on beta=0, so an unmasked

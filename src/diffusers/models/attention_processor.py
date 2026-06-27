@@ -676,9 +676,10 @@ class Attention(nn.Module):
             key = key.float()
 
         if attention_mask is None:
-            if query.device.type == "mps":
-                # MPS' baddbmm does not short-circuit on beta=0, so an
-                # uninitialized input from torch.empty() can propagate NaN.
+            if query.device.type == "mps" and is_torch_version("<", "2.14.0"):
+                # Before torch 2.14 (pytorch#187522), MPS' baddbmm did not
+                # short-circuit on beta=0, so an uninitialized input from
+                # torch.empty() could propagate NaN. Fixed upstream from 2.14.
                 baddbmm_input = torch.zeros(
                     query.shape[0], query.shape[1], key.shape[1], dtype=query.dtype, device=query.device
                 )
