@@ -10,7 +10,7 @@ from packaging import version
 from diffusers import DiffusionPipeline
 from diffusers.models.attention_processor import Attention, AttnAddedKVProcessor
 
-from ..testing_utils import torch_device
+from ..testing_utils import is_torch_version, torch_device
 
 
 class AttnAddedKVProcessorTests(unittest.TestCase):
@@ -135,30 +135,33 @@ class DeprecatedAttentionBlockTests(unittest.TestCase):
         self.assertTrue(np.allclose(conversion, after_conversion, atol=1e-3))
 
 
-class GetAttentionScoresMPSTests(unittest.TestCase):
-    @pytest.mark.skipif(torch_device != "mps", reason="test exercises an MPS-specific code path")
-    def test_no_nan_when_attention_mask_is_none_on_mps(self):
-        # Regression test: torch.empty() on MPS can return non-finite values,
-        # and MPS' baddbmm does not short-circuit on beta=0, so an unmasked
-        # call to get_attention_scores used to propagate NaN into the output.
-        torch.manual_seed(0)
-        heads, dim_head, seq_len = 4, 32, 256
-        attn = Attention(
-            query_dim=heads * dim_head,
-            heads=heads,
-            dim_head=dim_head,
-            bias=False,
-        ).to(torch_device, torch.float16)
+@pytest.mark.skipif(torch_device != "mps", reason="test exercises an MPS-specific code path")
+@pytest.mark.skipif(
+    is_torch_version(">=", "2.14.0"),
+    reason="baddbmm beta=0 NaN fixed upstream in pytorch#187522 (torch>=2.14); MPS workaround no longer applied",
+)
+def test_no_nan_when_attention_mask_is_none_on_mps():
+    # Regression test: torch.empty() on MPS can return non-finite values,
+    # and MPS' baddbmm does not short-circuit on beta=0, so an unmasked
+    # call to get_attention_scores used to propagate NaN into the output.
+    torch.manual_seed(0)
+    heads, dim_head, seq_len = 4, 32, 256
+    attn = Attention(
+        query_dim=heads * dim_head,
+        heads=heads,
+        dim_head=dim_head,
+        bias=False,
+    ).to(torch_device, torch.float16)
 
-        for _ in range(20):
-            # Pollute the MPS allocator pool with non-finite values so that a
-            # subsequent torch.empty() is likely to return NaN-filled memory.
-            polluter = torch.full((heads, seq_len, seq_len), float("nan"), device=torch_device, dtype=torch.float16)
-            del polluter
+    for _ in range(20):
+        # Pollute the MPS allocator pool with non-finite values so that a
+        # subsequent torch.empty() is likely to return NaN-filled memory.
+        polluter = torch.full((heads, seq_len, seq_len), float("nan"), device=torch_device, dtype=torch.float16)
+        del polluter
 
-            query = torch.randn(1, seq_len, heads * dim_head, device=torch_device, dtype=torch.float16)
-            key = torch.randn(1, seq_len, heads * dim_head, device=torch_device, dtype=torch.float16)
-            scores = attn.get_attention_scores(
-                attn.head_to_batch_dim(query), attn.head_to_batch_dim(key), attention_mask=None
-            )
-            self.assertFalse(torch.isnan(scores).any().item(), "attention scores contain NaN on MPS")
+        query = torch.randn(1, seq_len, heads * dim_head, device=torch_device, dtype=torch.float16)
+        key = torch.randn(1, seq_len, heads * dim_head, device=torch_device, dtype=torch.float16)
+        scores = attn.get_attention_scores(
+            attn.head_to_batch_dim(query), attn.head_to_batch_dim(key), attention_mask=None
+        )
+        assert not torch.isnan(scores).any().item(), "attention scores contain NaN on MPS"
