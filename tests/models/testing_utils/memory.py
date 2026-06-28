@@ -383,13 +383,13 @@ class LayerwiseCastingTesterMixin:
         - get_dummy_inputs(): Returns dict of inputs to pass to the model forward pass
     """
 
+    @pytest.mark.xfail(
+        condition=torch_device == "mps",
+        reason="MPS does not support float8 casting.",
+        strict=True,
+    )
     @torch.no_grad()
     def test_layerwise_casting_memory(self):
-        try:
-            torch.zeros(1, device=torch_device).to(dtype=torch.float8_e4m3fn)
-        except TypeError:
-            pytest.skip(f"Device {torch_device} does not support float8 storage dtype.")
-
         MB_TOLERANCE = 0.2
         LEAST_COMPUTE_CAPABILITY = 8.0
 
@@ -441,12 +441,12 @@ class LayerwiseCastingTesterMixin:
             or abs(fp8_e4m3_fp32_max_memory - fp32_max_memory) < MB_TOLERANCE
         ), "Peak memory should be lower or within tolerance with fp8 storage"
 
+    @pytest.mark.xfail(
+        condition=torch_device == "mps",
+        reason="MPS does not support float8 casting.",
+        strict=True,
+    )
     def test_layerwise_casting_training(self):
-        try:
-            torch.zeros(1, device=torch_device).to(dtype=torch.float8_e4m3fn)
-        except TypeError:
-            pytest.skip(f"Device {torch_device} does not support float8 storage dtype.")
-
         def test_fn(storage_dtype, compute_dtype):
             if torch.device(torch_device).type == "cpu" and compute_dtype == torch.bfloat16:
                 pytest.skip("Skipping test because CPU doesn't go well with bfloat16.")
