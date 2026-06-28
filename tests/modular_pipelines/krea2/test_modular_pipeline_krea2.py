@@ -35,7 +35,8 @@ KREA2_WORKFLOWS = {
 class TestKrea2ModularPipelineFast(ModularPipelineTesterMixin):
     pipeline_class = Krea2ModularPipeline
     pipeline_blocks_class = Krea2AutoBlocks
-    pretrained_model_name_or_path = "CedricPerauer/tiny-krea2-modular-pipe"
+    # TODO: mirror this tiny checkpoint to hf-internal-testing and switch the repo id before merge.
+    pretrained_model_name_or_path = "hf-internal-testing/tiny-krea2-modular-pipe"
 
     params = frozenset(["prompt", "height", "width"])
     batch_params = frozenset(["prompt"])

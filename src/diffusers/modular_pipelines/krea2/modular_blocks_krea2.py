@@ -48,7 +48,37 @@ class Krea2CoreDenoiseStep(SequentialPipelineBlocks):
     then runs the symmetric-CFG denoising loop, producing the denoised packed latents for the decoder.
 
       Components:
-          transformer (`Krea2Transformer2DModel`) scheduler (`FlowMatchEulerDiscreteScheduler`)
+          transformer (`Krea2Transformer2DModel`) scheduler (`FlowMatchEulerDiscreteScheduler`) guider
+          (`ClassifierFreeGuidance`)
+
+      Configs:
+          is_distilled (default: False)
+
+      Inputs:
+          num_images_per_prompt (`int`, *optional*, defaults to 1):
+              The number of images to generate per prompt.
+          prompt_embeds (`Tensor`):
+              Per-prompt stacked text features (B, text_seq_len, num_text_layers, text_hidden_dim).
+          prompt_embeds_mask (`Tensor`):
+              Per-prompt boolean text mask (B, text_seq_len).
+          negative_prompt_embeds (`Tensor`, *optional*):
+              Per-prompt negative text features.
+          negative_prompt_embeds_mask (`Tensor`, *optional*):
+              Per-prompt negative text mask.
+          latents (`Tensor`, *optional*):
+              Pre-generated noisy latents for image generation.
+          height (`int`):
+              The height in pixels of the generated image.
+          width (`int`):
+              The width in pixels of the generated image.
+          generator (`Generator`, *optional*):
+              Torch generator for deterministic generation.
+          num_inference_steps (`int`, *optional*, defaults to 28):
+              The number of denoising steps.
+          sigmas (`list`, *optional*):
+              Custom sigma schedule (defaults to a linear ramp).
+          attention_kwargs (`dict`, *optional*):
+              Additional kwargs for attention processors.
 
       Outputs:
           latents (`Tensor`):
@@ -85,8 +115,8 @@ class Krea2AutoBlocks(SequentialPipelineBlocks):
 
       Components:
           text_encoder (`Qwen3VLModel`): The Qwen3-VL text encoder. tokenizer (`AutoTokenizer`): The tokenizer paired
-          with the text encoder. transformer (`Krea2Transformer2DModel`) scheduler (`FlowMatchEulerDiscreteScheduler`)
-          vae (`AutoencoderKLQwenImage`) image_processor (`VaeImageProcessor`)
+          with the text encoder. guider (`ClassifierFreeGuidance`) transformer (`Krea2Transformer2DModel`) scheduler
+          (`FlowMatchEulerDiscreteScheduler`) vae (`AutoencoderKLQwenImage`) image_processor (`VaeImageProcessor`)
 
       Configs:
           is_distilled (default: False)
@@ -95,15 +125,13 @@ class Krea2AutoBlocks(SequentialPipelineBlocks):
           prompt (`str`):
               The prompt or prompts to guide image generation.
           negative_prompt (`str`, *optional*):
-              The prompt or prompts not to guide generation.
-          guidance_scale (`float`, *optional*, defaults to 4.5):
-              Symmetric CFG scale; guidance (and negative-prompt encoding) is applied when > 0.
+              The negative prompt(s) for CFG.
           max_sequence_length (`int`, *optional*, defaults to 512):
               Maximum sequence length for prompt encoding.
           num_images_per_prompt (`int`, *optional*, defaults to 1):
               The number of images to generate per prompt.
           latents (`Tensor`, *optional*):
-              Pre-generated packed latents for image generation.
+              Pre-generated noisy latents for image generation.
           height (`int`):
               The height in pixels of the generated image.
           width (`int`):
@@ -114,6 +142,8 @@ class Krea2AutoBlocks(SequentialPipelineBlocks):
               The number of denoising steps.
           sigmas (`list`, *optional*):
               Custom sigma schedule (defaults to a linear ramp).
+          attention_kwargs (`dict`, *optional*):
+              Additional kwargs for attention processors.
           output_type (`str`, *optional*, defaults to pil):
               Output format: 'pil', 'np', 'pt'.
 

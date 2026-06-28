@@ -15,6 +15,8 @@
 
 import torch
 
+from ...configuration_utils import FrozenDict
+from ...guiders import ClassifierFreeGuidance
 from ...models.transformers.transformer_krea2 import Krea2Transformer2DModel
 from ...schedulers import FlowMatchEulerDiscreteScheduler
 from ...utils import logging
@@ -65,14 +67,23 @@ class Krea2LoopDenoiser(ModularPipelineBlocks):
     @property
     def description(self) -> str:
         return (
-            "Within the denoising loop: run the `transformer` on the conditional text features and, when "
-            "`guidance_scale > 0`, again on the negative features, then combine with symmetric classifier-free "
-            "guidance. Compose into `Krea2DenoiseStep`."
+            "Within the denoising loop: run the `transformer` on the conditional (and, when the guider enables CFG, "
+            "the negative) text features and combine them through the `guider`. Compose into `Krea2DenoiseStep`."
         )
 
     @property
     def expected_components(self) -> list[ComponentSpec]:
-        return [ComponentSpec("transformer", Krea2Transformer2DModel)]
+        return [
+            ComponentSpec(
+                "guider",
+                ClassifierFreeGuidance,
+                # Krea 2 uses cond-anchored CFG (`cond + scale * (cond - uncond)`), which is the
+                # `use_original_formulation` branch of ClassifierFreeGuidance; scale 0 disables it (distilled TDM).
+                config=FrozenDict({"guidance_scale": 4.5, "use_original_formulation": True}),
+                default_creation_method="from_config",
+            ),
+            ComponentSpec("transformer", Krea2Transformer2DModel),
+        ]
 
     @property
     def inputs(self) -> list[InputParam]:
@@ -97,12 +108,6 @@ class Krea2LoopDenoiser(ModularPipelineBlocks):
                 name="negative_prompt_embeds", type_hint=torch.Tensor, description="Negative stacked text features."
             ),
             InputParam(name="negative_prompt_embeds_mask", type_hint=torch.Tensor, description="Negative text mask."),
-            InputParam(
-                name="guidance_scale",
-                default=4.5,
-                type_hint=float,
-                description="Symmetric CFG scale; guidance is applied when > 0.",
-            ),
         ]
 
     @torch.no_grad()
@@ -112,29 +117,36 @@ class Krea2LoopDenoiser(ModularPipelineBlocks):
         latents = block_state.latents.to(transformer.dtype)
         timestep = block_state.timestep.to(transformer.dtype)
 
-        noise_pred = transformer(
-            hidden_states=latents,
-            encoder_hidden_states=block_state.prompt_embeds.to(transformer.dtype),
-            timestep=timestep,
-            position_ids=block_state.position_ids,
-            encoder_attention_mask=block_state.prompt_embeds_mask,
-            attention_kwargs=block_state.attention_kwargs,
-            return_dict=False,
-        )[0]
+        guider_inputs = {
+            "encoder_hidden_states": (
+                block_state.prompt_embeds.to(transformer.dtype),
+                block_state.negative_prompt_embeds.to(transformer.dtype)
+                if block_state.negative_prompt_embeds is not None
+                else None,
+            ),
+            "encoder_attention_mask": (
+                block_state.prompt_embeds_mask,
+                block_state.negative_prompt_embeds_mask,
+            ),
+        }
 
-        if block_state.guidance_scale > 0 and block_state.negative_prompt_embeds is not None:
-            neg_noise_pred = transformer(
+        components.guider.set_state(step=i, num_inference_steps=block_state.num_inference_steps, timestep=t)
+        guider_state = components.guider.prepare_inputs(guider_inputs)
+
+        for guider_state_batch in guider_state:
+            components.guider.prepare_models(components.transformer)
+            cond_kwargs = {name: getattr(guider_state_batch, name) for name in guider_inputs}
+            guider_state_batch.noise_pred = transformer(
                 hidden_states=latents,
-                encoder_hidden_states=block_state.negative_prompt_embeds.to(transformer.dtype),
                 timestep=timestep,
                 position_ids=block_state.position_ids,
-                encoder_attention_mask=block_state.negative_prompt_embeds_mask,
                 attention_kwargs=block_state.attention_kwargs,
                 return_dict=False,
+                **cond_kwargs,
             )[0]
-            noise_pred = noise_pred + block_state.guidance_scale * (noise_pred - neg_noise_pred)
+            components.guider.cleanup_models(components.transformer)
 
-        block_state.noise_pred = noise_pred
+        block_state.noise_pred = components.guider(guider_state).pred
         return components, block_state
 
 
@@ -167,17 +179,19 @@ class Krea2LoopAfterDenoiser(ModularPipelineBlocks):
 class Krea2DenoiseStep(LoopSequentialPipelineBlocks):
     """
     Denoising loop that iteratively denoises the packed image latents over `timesteps`, running the transformer on the
-    conditional (and, when `guidance_scale > 0`, the negative) text features and combining them with symmetric
-    classifier-free guidance.
+    conditional (and, when the guider enables CFG, the negative) text features and combining them through the `guider`.
 
       Components:
-          scheduler (`FlowMatchEulerDiscreteScheduler`) transformer (`Krea2Transformer2DModel`)
+          scheduler (`FlowMatchEulerDiscreteScheduler`) guider (`ClassifierFreeGuidance`) transformer
+          (`Krea2Transformer2DModel`)
 
       Inputs:
           timesteps (`Tensor`):
               Denoising timesteps from set_timesteps.
           num_inference_steps (`int`, *optional*, defaults to 28):
               The number of denoising steps.
+          attention_kwargs (`dict`, *optional*):
+              Additional kwargs for attention processors.
           latents (`Tensor`):
               Packed image latents.
           batch_size (`int`):
@@ -188,18 +202,14 @@ class Krea2DenoiseStep(LoopSequentialPipelineBlocks):
               Conditional text mask.
           position_ids (`Tensor`):
               Shared rotary coordinates for the [text | image] sequence.
-          negative_prompt_embeds (`Tensor`):
+          negative_prompt_embeds (`Tensor`, *optional*):
               Negative stacked text features.
-          negative_prompt_embeds_mask (`Tensor`):
+          negative_prompt_embeds_mask (`Tensor`, *optional*):
               Negative text mask.
-          guidance_scale (`float`, *optional*, defaults to 4.5):
-              Symmetric CFG scale; guidance is applied when > 0.
-          attention_kwargs (`dict`, *optional*):
-              Forwarded to the transformer's attention processor.
 
       Outputs:
           latents (`Tensor`):
-              The denoised packed latents (B, image_seq_len, in_channels).
+              The denoised latents.
     """
 
     model_name = "krea2"
@@ -210,8 +220,8 @@ class Krea2DenoiseStep(LoopSequentialPipelineBlocks):
     def description(self) -> str:
         return (
             "Denoising loop that iteratively denoises the packed image latents over `timesteps`, running the "
-            "transformer on the conditional (and, when `guidance_scale > 0`, the negative) text features and "
-            "combining them with symmetric classifier-free guidance."
+            "transformer on the conditional (and, when the guider enables CFG, the negative) text features and "
+            "combining them through the `guider`."
         )
 
     @property

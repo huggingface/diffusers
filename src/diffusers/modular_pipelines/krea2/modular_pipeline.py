@@ -43,3 +43,10 @@ class Krea2ModularPipeline(ModularPipeline, Krea2LoraLoaderMixin):
         if getattr(self, "vae", None) is not None:
             vae_scale_factor = 2 ** len(self.vae.temperal_downsample)
         return vae_scale_factor
+
+    @property
+    def requires_unconditional_embeds(self):
+        requires_unconditional_embeds = False
+        if hasattr(self, "guider") and self.guider is not None:
+            requires_unconditional_embeds = self.guider._enabled and self.guider.num_conditions > 1
+        return requires_unconditional_embeds

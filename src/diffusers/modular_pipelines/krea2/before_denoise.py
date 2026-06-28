@@ -46,8 +46,8 @@ def calculate_shift(
 class Krea2TextInputsStep(ModularPipelineBlocks):
     """
     Input step that determines `batch_size`/`dtype` from the per-prompt `prompt_embeds` and replicates the text
-    conditioning (and its mask, plus the optional negative branch) to `batch_size * num_images_per_prompt`. Place after
-    the text encoder.
+    conditioning (and the optional negative branch) to `batch_size * num_images_per_prompt`. Place after the text
+    encoder.
 
       Inputs:
           num_images_per_prompt (`int`, *optional*, defaults to 1):
@@ -57,7 +57,7 @@ class Krea2TextInputsStep(ModularPipelineBlocks):
           prompt_embeds_mask (`Tensor`):
               Per-prompt boolean text mask (B, text_seq_len).
           negative_prompt_embeds (`Tensor`, *optional*):
-              Per-prompt negative text features, same layout as `prompt_embeds`.
+              Per-prompt negative text features.
           negative_prompt_embeds_mask (`Tensor`, *optional*):
               Per-prompt negative text mask.
 
@@ -71,9 +71,9 @@ class Krea2TextInputsStep(ModularPipelineBlocks):
           prompt_embeds_mask (`Tensor`):
               Text mask, batch-expanded.
           negative_prompt_embeds (`Tensor`):
-              Negative text features, batch-expanded (if provided).
+              Negative text features, batch-expanded.
           negative_prompt_embeds_mask (`Tensor`):
-              Negative text mask, batch-expanded (if provided).
+              Negative text mask, batch-expanded.
     """
 
     model_name = "krea2"
@@ -167,7 +167,7 @@ class Krea2TextInputsStep(ModularPipelineBlocks):
 # auto_docstring
 class Krea2PrepareLatentsStep(ModularPipelineBlocks):
     """
-    Step that samples the spatial image latents and patch-packs them into `(B, image_seq_len, in_channels)` for the
+    Step that samples the spatial image latents and patch-packs them into (B, image_seq_len, in_channels) for the
     denoising loop.
 
       Components:
@@ -175,7 +175,7 @@ class Krea2PrepareLatentsStep(ModularPipelineBlocks):
 
       Inputs:
           latents (`Tensor`, *optional*):
-              Pre-generated packed latents (B, image_seq_len, in_channels).
+              Pre-generated noisy latents for image generation.
           height (`int`):
               The height in pixels of the generated image.
           width (`int`):
@@ -185,7 +185,7 @@ class Krea2PrepareLatentsStep(ModularPipelineBlocks):
           batch_size (`int`):
               Effective batch size.
           dtype (`dtype`):
-              The working dtype (from the text features).
+              The working dtype.
 
       Outputs:
           latents (`Tensor`):
@@ -272,14 +272,13 @@ class Krea2SetTimestepsStep(ModularPipelineBlocks):
           scheduler (`FlowMatchEulerDiscreteScheduler`)
 
       Configs:
-          is_distilled (`bool`, *optional*, defaults to False):
-              Whether the few-step distilled checkpoint is used; locks the time shift to `mu = 1.15`.
+          is_distilled (default: False)
 
       Inputs:
           num_inference_steps (`int`, *optional*, defaults to 28):
               The number of denoising steps.
           sigmas (`list`, *optional*):
-              Custom sigma schedule; defaults to `linspace(1.0, 1 / num_inference_steps, num_inference_steps)`.
+              Custom sigma schedule (defaults to a linear ramp).
           image_seq_len (`int`):
               Number of image tokens, used to compute the resolution-aware shift.
 
@@ -358,8 +357,8 @@ class Krea2SetTimestepsStep(ModularPipelineBlocks):
 # auto_docstring
 class Krea2PreparePositionIdsStep(ModularPipelineBlocks):
     """
-    Step that builds the shared rotary position ids for the combined `[text | image]` sequence: text tokens sit at the
-    origin, image tokens carry their `(0, h, w)` latent-grid coordinates. Place after prepare_latents.
+    Step that builds the shared rotary position ids for the combined [text | image] sequence: text at the origin, image
+    tokens at their (0, h, w) latent-grid coordinates. Place after prepare_latents.
 
       Inputs:
           height (`int`):
@@ -367,7 +366,7 @@ class Krea2PreparePositionIdsStep(ModularPipelineBlocks):
           width (`int`):
               The width in pixels of the generated image.
           prompt_embeds (`Tensor`):
-              Batch-expanded text features; only its `text_seq_len` (dim 1) is used.
+              Batch-expanded text features (only text_seq_len is used).
 
       Outputs:
           position_ids (`Tensor`):

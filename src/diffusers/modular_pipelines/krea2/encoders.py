@@ -16,6 +16,8 @@
 import torch
 from transformers import AutoTokenizer, Qwen3VLModel
 
+from ...configuration_utils import FrozenDict
+from ...guiders import ClassifierFreeGuidance
 from ...utils import logging
 from ..modular_pipeline import ModularPipelineBlocks, PipelineState
 from ..modular_pipeline_utils import ComponentSpec, InputParam, OutputParam
@@ -45,22 +47,20 @@ _PROMPT_TEMPLATE_ENCODE_NUM_SUFFIX_TOKENS = 5
 class Krea2TextEncoderStep(ModularPipelineBlocks):
     """
     Text encoder step that tokenizes the prompt(s) with the Krea 2 chat template, runs the Qwen3-VL text encoder, and
-    stacks a fixed set of decoder-layer hidden states per token as the transformer's text conditioning. When
-    `guidance_scale > 0` the negative prompt is encoded the same way for classifier-free guidance.
+    stacks a fixed set of decoder-layer hidden states per token as the transformer's text conditioning. The negative
+    prompt is encoded the same way when the guider enables CFG.
 
       Components:
           text_encoder (`Qwen3VLModel`): The Qwen3-VL text encoder. tokenizer (`AutoTokenizer`): The tokenizer paired
-          with the text encoder.
+          with the text encoder. guider (`ClassifierFreeGuidance`)
 
       Inputs:
           prompt (`str`):
               The prompt or prompts to guide image generation.
           negative_prompt (`str`, *optional*):
-              The prompt or prompts not to guide generation. Defaults to an empty prompt when guidance is enabled.
-          guidance_scale (`float`, *optional*, defaults to 4.5):
-              Classifier-free guidance scale; the negative prompt is only encoded when this is `> 0`.
+              The negative prompt(s) for CFG.
           max_sequence_length (`int`, *optional*, defaults to 512):
-              Fixed text sequence length consumed by the transformer.
+              Maximum sequence length for prompt encoding.
 
       Outputs:
           prompt_embeds (`Tensor`):
@@ -80,7 +80,7 @@ class Krea2TextEncoderStep(ModularPipelineBlocks):
         return (
             "Text encoder step that tokenizes the prompt(s) with the Krea 2 chat template, runs the Qwen3-VL text "
             "encoder, and stacks a fixed set of decoder-layer hidden states per token as the transformer's text "
-            "conditioning. When `guidance_scale > 0` the negative prompt is encoded the same way for CFG."
+            "conditioning. The negative prompt is encoded the same way when the guider enables CFG."
         )
 
     @property
@@ -88,6 +88,12 @@ class Krea2TextEncoderStep(ModularPipelineBlocks):
         return [
             ComponentSpec("text_encoder", Qwen3VLModel, description="The Qwen3-VL text encoder."),
             ComponentSpec("tokenizer", AutoTokenizer, description="The tokenizer paired with the text encoder."),
+            ComponentSpec(
+                "guider",
+                ClassifierFreeGuidance,
+                config=FrozenDict({"guidance_scale": 4.5, "use_original_formulation": True}),
+                default_creation_method="from_config",
+            ),
         ]
 
     @property
@@ -95,12 +101,6 @@ class Krea2TextEncoderStep(ModularPipelineBlocks):
         return [
             InputParam.template("prompt", required=True),
             InputParam(name="negative_prompt", type_hint=str, description="The negative prompt(s) for CFG."),
-            InputParam(
-                name="guidance_scale",
-                default=4.5,
-                type_hint=float,
-                description="CFG scale; the negative prompt is only encoded when this is > 0.",
-            ),
             InputParam.template("max_sequence_length", default=512),
         ]
 
@@ -182,7 +182,7 @@ class Krea2TextEncoderStep(ModularPipelineBlocks):
 
         block_state.negative_prompt_embeds = None
         block_state.negative_prompt_embeds_mask = None
-        if block_state.guidance_scale > 0:
+        if components.requires_unconditional_embeds:
             negative_prompt = block_state.negative_prompt
             if negative_prompt is None:
                 negative_prompt = ""
