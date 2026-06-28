@@ -72,6 +72,7 @@ else:
     _import_structure["scheduling_k_dpm_2_discrete"] = ["KDPM2DiscreteScheduler"]
     _import_structure["scheduling_lcm"] = ["LCMScheduler"]
     _import_structure["scheduling_ltx_euler_ancestral_rf"] = ["LTXEulerAncestralRFScheduler"]
+    _import_structure["scheduling_ping_pong"] = ["PingPongScheduler"]
     _import_structure["scheduling_pndm"] = ["PNDMScheduler"]
     _import_structure["scheduling_repaint"] = ["RePaintScheduler"]
     _import_structure["scheduling_sasolver"] = ["SASolverScheduler"]
@@ -155,6 +156,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .scheduling_k_dpm_2_discrete import KDPM2DiscreteScheduler
         from .scheduling_lcm import LCMScheduler
         from .scheduling_ltx_euler_ancestral_rf import LTXEulerAncestralRFScheduler
+        from .scheduling_ping_pong import PingPongScheduler
         from .scheduling_pndm import PNDMScheduler
         from .scheduling_repaint import RePaintScheduler
         from .scheduling_sasolver import SASolverScheduler

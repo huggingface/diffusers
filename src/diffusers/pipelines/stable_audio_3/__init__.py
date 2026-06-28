@@ -1,0 +1,3 @@
+from .modeling_stable_audio_3 import StableAudio3DurationEmbedder
+from .pipeline_stable_audio_3 import StableAudio3Pipeline
+from .pipeline_stable_audio_3_inpaint import StableAudio3InpaintPipeline
