@@ -199,7 +199,10 @@ class Cosmos2VideoToWorldPipeline(DiffusionPipeline):
         super().__init__()
 
         if safety_checker is None:
-            safety_checker = CosmosSafetyChecker()
+            # `CosmosSafetyChecker()` (from `cosmos_guardrail`) toggles `torch.is_grad_enabled()` during init.
+            # Preserve the caller's grad state so loading a pipeline does not leak into user code.
+            with torch.enable_grad():
+                safety_checker = CosmosSafetyChecker()
 
         self.register_modules(
             vae=vae,
