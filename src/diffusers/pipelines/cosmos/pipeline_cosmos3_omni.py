@@ -451,9 +451,9 @@ class Cosmos3OmniPipeline(DiffusionPipeline):
         matches Wan2pt2VAEInterface; no autocast (WanVAE was trained with is_amp=False)."""
         in_dtype = x.dtype
         dtype = self.vae.dtype
-        mean = self._vae_latents_mean.to(device=x.device, dtype=dtype)
-        inv_std = self._vae_latents_inv_std.to(device=x.device, dtype=dtype)
         raw_mu = retrieve_latents(self.vae.encode(x.to(dtype)), sample_mode="argmax")
+        mean = self._vae_latents_mean.to(device=raw_mu.device, dtype=dtype)
+        inv_std = self._vae_latents_inv_std.to(device=raw_mu.device, dtype=dtype)
         return ((raw_mu - mean.view(1, -1, 1, 1, 1)) * inv_std.view(1, -1, 1, 1, 1)).to(in_dtype)
 
     def decode_sound(self, latent: torch.Tensor) -> torch.Tensor:
