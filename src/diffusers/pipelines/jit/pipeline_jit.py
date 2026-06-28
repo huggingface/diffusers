@@ -70,7 +70,7 @@ class JiTPipeline(DiffusionPipeline):
                 generation deterministic.
             num_inference_steps (`int`, *optional*, defaults to 50):
                 The number of denoising steps.
-            noise_scale (`float`, *optional*, defaults to 1.0):
+            noise_scale (`float`, *optional*, defaults to None):
                 Standard deviation of the initial pixel-space noise. JiT scales this with resolution to keep the
                 signal-to-noise ratio constant (`1.0` at 256, `2.0` at 512, `4.0` at 1024).
             output_type (`str`, *optional*, defaults to `"pil"`):
@@ -129,12 +129,10 @@ class JiTPipeline(DiffusionPipeline):
                 if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
                     progress_bar.update()
 
-        samples = (sample / 2 + 0.5).clamp(0, 1)
-
         if output_type in ["latent", "pt"]:
-            samples = samples
+            samples = sample
         else:
-            samples = self.image_processor.postprocess(samples, output_type=output_type)
+            samples = self.image_processor.postprocess(sample, output_type=output_type)
 
         if not return_dict:
             return (samples,)
