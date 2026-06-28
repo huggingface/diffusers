@@ -147,7 +147,9 @@ jobs:
 
       - name: Run pytest
         env:
-          HF_TOKEN: ${{ secrets.DIFFUSERS_HF_HUB_READ_TOKEN }}
+          # No secrets here: this step runs untrusted fork code (pytest imports the PR's
+          # conftest.py/plugins), so exposing a token would let a malicious PR exfiltrate
+          # it. Public Hub models download without auth; gated-repo tests are unsupported.
           # https://pytorch.org/docs/stable/notes/randomness.html#avoiding-nondeterministic-algorithms
           CUBLAS_WORKSPACE_CONFIG: :16:8
           # Forwarded via env (not interpolated into the script) to avoid breakage on
