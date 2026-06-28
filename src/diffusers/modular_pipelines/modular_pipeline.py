@@ -132,6 +132,7 @@ MODULAR_PIPELINE_MAPPING = OrderedDict(
         ("qwenimage-edit-plus", _create_default_map_fn("QwenImageEditPlusModularPipeline")),
         ("qwenimage-layered", _create_default_map_fn("QwenImageLayeredModularPipeline")),
         ("anima", _create_default_map_fn("AnimaModularPipeline")),
+        ("krea2", _create_default_map_fn("Krea2ModularPipeline")),
         ("z-image", _create_default_map_fn("ZImageModularPipeline")),
         ("helios", _create_default_map_fn("HeliosModularPipeline")),
         ("helios-pyramid", _helios_pyramid_map_fn),
