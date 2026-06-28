@@ -12,10 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Dict, List, Optional, Tuple, Union
+from typing import List, Optional, Tuple, Union
 
 import torch
 
+from ...image_processor import VaeImageProcessor
 from ...models.transformers import JiTTransformer2DModel
 from ...schedulers import FlowMatchEulerDiscreteScheduler
 from ...utils.torch_utils import randn_tensor
@@ -39,39 +40,18 @@ class JiTPipeline(DiffusionPipeline):
         self,
         transformer: JiTTransformer2DModel,
         scheduler: FlowMatchEulerDiscreteScheduler,
-        id2label: Optional[Dict[int, str]] = None,
     ):
         super().__init__()
         self.register_modules(transformer=transformer, scheduler=scheduler)
+        self.image_processor = VaeImageProcessor(vae_scale_factor=1)
 
-        self.labels = {}
-        if id2label is not None:
-            for key, value in id2label.items():
-                for label in value.split(","):
-                    self.labels[label.lstrip().rstrip()] = int(key)
-            self.labels = dict(sorted(self.labels.items()))
-
-    def get_label_ids(self, label: Union[str, List[str]]) -> List[int]:
-        r"""
-        Map label strings from ImageNet to corresponding class ids.
-        """
-        if not isinstance(label, list):
-            label = list(label)
-
-        for l in label:
-            if l not in self.labels:
-                raise ValueError(
-                    f"{l} does not exist. Please make sure to select one of the following labels: \n {self.labels}."
-                )
-        return [self.labels[l] for l in label]
-
-    @torch.inference_mode()
+    @torch.no_grad()
     def __call__(
         self,
-        class_labels: List[int],
+        class_labels: Union[int, List[int]],
         guidance_scale: float = 4.0,
         num_inference_steps: int = 50,
-        noise_scale: float = 1.0,
+        noise_scale: Optional[float] = None,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
@@ -100,14 +80,16 @@ class JiTPipeline(DiffusionPipeline):
         """
 
         do_classifier_free_guidance = guidance_scale > 1.0
+        if not isinstance(class_labels, list):
+            class_labels = [class_labels]
+            
         batch_size = len(class_labels)
         image_size = self.transformer.config.sample_size
         channels = self.transformer.config.in_channels
 
-        # Pixel-space noise. The sample is kept in fp32 across the ODE integration and only the
-        # transformer forward runs in `transformer.dtype` (same pattern as Flux/SD3): JiT predicts
-        # clean `x` and the `(x - z) / (1 - t)` velocity is precision-sensitive, so accumulating the
-        # sample in fp16/bf16 degrades into noise over many steps.
+        noise_scale = noise_scale if noise_scale is not None else (image_size / 256.0)
+
+        # Pixel-space noise.
         sample = noise_scale * randn_tensor(
             shape=(batch_size, channels, image_size, image_size),
             generator=generator,
@@ -120,34 +102,39 @@ class JiTPipeline(DiffusionPipeline):
         class_labels_input = torch.cat([class_labels, null_class], 0) if do_classifier_free_guidance else class_labels
 
         self.scheduler.set_timesteps(num_inference_steps, device=self._execution_device)
-        sigmas = self.scheduler.sigmas.to(device=self._execution_device, dtype=torch.float32)
+        timesteps = self.scheduler.timesteps
+        num_warmup_steps = max(len(timesteps) - num_inference_steps * self.scheduler.order, 0)
 
-        for i, t in enumerate(self.progress_bar(self.scheduler.timesteps)):
-            model_input = torch.cat([sample] * 2) if do_classifier_free_guidance else sample
+        with self.progress_bar(total=num_inference_steps) as progress_bar:
+            for i, t in enumerate(timesteps):
+                model_input = torch.cat([sample] * 2) if do_classifier_free_guidance else sample
 
-            # diffusers FlowMatch sigma (1 -> 0) maps to the JiT timestep (0 -> 1)
-            sigma = sigmas[i].to(torch.float32)
-            timestep = (1.0 - sigma).to(self.transformer.dtype).reshape(1).expand(model_input.shape[0])
+                sigma = t / self.scheduler.config.num_train_timesteps
+                sigma = sigma.to(torch.float32)
+                timestep = (1.0 - sigma).to(self.transformer.dtype).expand(model_input.shape[0])
 
-            x_pred = self.transformer(
-                model_input.to(self.transformer.dtype), timestep=timestep, class_labels=class_labels_input
-            ).sample
+                x_pred = self.transformer(
+                    model_input.to(self.transformer.dtype), timestep=timestep, class_labels=class_labels_input
+                ).sample
 
-            # velocity in fp32; clamp the 1 / (1 - t) denominator at JiT's `t_eps` (0.05).
-            # the scheduler integrates with a negative step, so we pass (z - x) / (1 - t).
-            v = (model_input - x_pred.float()) / torch.clamp(sigma, min=0.05)
+                # velocity in fp32; clamp the 1 / (1 - t) denominator at JiT's `t_eps` (0.05).
+                v = (model_input - x_pred.float()) / torch.clamp(sigma, min=0.05)
 
-            if do_classifier_free_guidance:
-                v_cond, v_uncond = v.chunk(2, dim=0)
-                v = v_uncond + guidance_scale * (v_cond - v_uncond)
+                if do_classifier_free_guidance:
+                    v_cond, v_uncond = v.chunk(2, dim=0)
+                    v = v_uncond + guidance_scale * (v_cond - v_uncond)
 
-            sample = self.scheduler.step(v, t, sample).prev_sample
+                sample = self.scheduler.step(v, t, sample).prev_sample
+
+                if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
+                    progress_bar.update()
 
         samples = (sample / 2 + 0.5).clamp(0, 1)
-        samples = samples.cpu().permute(0, 2, 3, 1).float().numpy()
 
-        if output_type == "pil":
-            samples = self.numpy_to_pil(samples)
+        if output_type in ["latent", "pt"]:
+            samples = samples
+        else:
+            samples = self.image_processor.postprocess(samples, output_type=output_type)
 
         if not return_dict:
             return (samples,)

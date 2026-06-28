@@ -22,6 +22,7 @@ from ...configuration_utils import ConfigMixin, register_to_config
 from ...utils import logging
 from ..attention import AttentionMixin, AttentionModuleMixin
 from ..attention_dispatch import dispatch_attention_fn
+from ..embeddings import get_2d_sincos_pos_embed
 from ..modeling_outputs import Transformer2DModelOutput
 from ..modeling_utils import ModelMixin
 from ..normalization import RMSNorm
@@ -29,26 +30,6 @@ from ..normalization import RMSNorm
 
 logger = logging.get_logger(__name__)
 
-
-def broadcat(tensors, dim=-1):
-    num_tensors = len(tensors)
-    shape_lens = {len(t.shape) for t in tensors}
-    if len(shape_lens) != 1:
-        raise ValueError("tensors must all have the same number of dimensions")
-    shape_len = list(shape_lens)[0]
-    dim = (dim + shape_len) if dim < 0 else dim
-    dims = list(zip(*(list(t.shape) for t in tensors)))
-    expandable_dims = [(i, val) for i, val in enumerate(dims) if i != dim]
-
-    if not all(len(set(t[1])) <= 2 for t in expandable_dims):
-        raise ValueError("invalid dimensions for broadcastable concatenation")
-
-    max_dims = [(t[0], max(t[1])) for t in expandable_dims]
-    expanded_dims = [(t[0], (t[1],) * num_tensors) for t in max_dims]
-    expanded_dims.insert(dim, (dim, dims[dim]))
-    expandable_shapes = list(zip(*(t[1] for t in expanded_dims)))
-    tensors = [t[0].expand(*t[1]) for t in zip(tensors, expandable_shapes)]
-    return torch.cat(tensors, dim=dim)
 
 
 def rotate_half(x):
@@ -69,7 +50,10 @@ class JiTRotaryEmbedding(nn.Module):
 
         freqs = torch.einsum("..., f -> ... f", t, freqs)
         freqs = freqs.repeat_interleave(2, dim=-1)
-        freqs = broadcat((freqs[:, None, :], freqs[None, :, :]), dim=-1)
+        
+        freqs_h = freqs[:, None, :].expand(-1, freqs.shape[0], -1)
+        freqs_w = freqs[None, :, :].expand(freqs.shape[0], -1, -1)
+        freqs = torch.cat((freqs_h, freqs_w), dim=-1)
 
         if num_cls_token > 0:
             freqs_flat = freqs.view(-1, freqs.shape[-1])  # [N_img, D]
@@ -104,11 +88,7 @@ class JiTPatchEmbed(nn.Module):
 
     def __init__(self, img_size=224, patch_size=16, in_chans=3, pca_dim=768, embed_dim=768, bias=True):
         super().__init__()
-        img_size = (img_size, img_size)
-        patch_size = (patch_size, patch_size)
-        self.img_size = img_size
-        self.patch_size = patch_size
-        self.num_patches = (img_size[1] // patch_size[1]) * (img_size[0] // patch_size[0])
+        self.num_patches = (img_size // patch_size) * (img_size // patch_size)
 
         self.proj1 = nn.Conv2d(in_chans, pca_dim, kernel_size=patch_size, stride=patch_size, bias=False)
         self.proj2 = nn.Conv2d(pca_dim, embed_dim, kernel_size=1, stride=1, bias=bias)
@@ -174,17 +154,13 @@ class JiTAttnProcessor:
     _attention_backend = None
     _parallel_config = None
 
-    def __init__(self):
-        if not hasattr(F, "scaled_dot_product_attention"):
-            raise ImportError("JiTAttnProcessor requires PyTorch 2.0. Please upgrade your PyTorch version.")
-
     def __call__(self, attn: "JiTAttention", hidden_states: torch.Tensor, rope=None) -> torch.Tensor:
-        batch_size, seq_len, _ = hidden_states.shape
-        qkv = attn.qkv(hidden_states).reshape(batch_size, seq_len, 3, attn.num_heads, attn.head_dim)
-        query, key, value = qkv.unbind(2)
+        query = attn.to_q(hidden_states).unflatten(2, (attn.num_heads, attn.head_dim))
+        key = attn.to_k(hidden_states).unflatten(2, (attn.num_heads, attn.head_dim))
+        value = attn.to_v(hidden_states).unflatten(2, (attn.num_heads, attn.head_dim))
 
-        query = attn.q_norm(query)
-        key = attn.k_norm(key)
+        query = attn.norm_q(query)
+        key = attn.norm_k(key)
 
         if rope is not None:
             query = rope(query)
@@ -200,8 +176,8 @@ class JiTAttnProcessor:
             parallel_config=self._parallel_config,
         )
         hidden_states = hidden_states.flatten(2, 3)
-        hidden_states = attn.proj(hidden_states)
-        hidden_states = attn.proj_drop(hidden_states)
+        hidden_states = attn.to_out[0](hidden_states)
+        hidden_states = attn.to_out[1](hidden_states)
         return hidden_states
 
 
@@ -218,12 +194,17 @@ class JiTAttention(nn.Module, AttentionModuleMixin):
         self.head_dim = dim // num_heads
         self.attn_drop = attn_drop
 
-        self.q_norm = RMSNorm(self.head_dim, eps=eps) if qk_norm else nn.Identity()
-        self.k_norm = RMSNorm(self.head_dim, eps=eps) if qk_norm else nn.Identity()
+        self.norm_q = RMSNorm(self.head_dim, eps=eps) if qk_norm else nn.Identity()
+        self.norm_k = RMSNorm(self.head_dim, eps=eps) if qk_norm else nn.Identity()
 
-        self.qkv = nn.Linear(dim, dim * 3, bias=qkv_bias)
-        self.proj = nn.Linear(dim, dim)
-        self.proj_drop = nn.Dropout(proj_drop)
+        self.to_q = nn.Linear(dim, dim, bias=qkv_bias)
+        self.to_k = nn.Linear(dim, dim, bias=qkv_bias)
+        self.to_v = nn.Linear(dim, dim, bias=qkv_bias)
+        
+        self.to_out = nn.ModuleList([
+            nn.Linear(dim, dim),
+            nn.Dropout(proj_drop)
+        ])
 
         if processor is None:
             processor = self._default_processor_cls()
@@ -289,44 +270,6 @@ class JiTBlock(nn.Module):
         return x
 
 
-def get_2d_sincos_pos_embed(embed_dim, grid_size, cls_token=False, extra_tokens=0):
-    grid_h = torch.arange(grid_size, dtype=torch.float32)
-    grid_w = torch.arange(grid_size, dtype=torch.float32)
-    grid = torch.meshgrid(grid_w, grid_h, indexing="xy")
-    grid = torch.stack(list(grid), dim=0)
-    grid = grid.reshape(2, 1, grid_size, grid_size)
-    pos_embed = get_2d_sincos_pos_embed_from_grid(embed_dim, grid)
-    if cls_token and extra_tokens > 0:
-        pos_embed = torch.cat([torch.zeros(extra_tokens, embed_dim), pos_embed], dim=0)
-    return pos_embed
-
-
-def get_2d_sincos_pos_embed_from_grid(embed_dim, grid):
-    if embed_dim % 2 != 0:
-        raise ValueError(f"embed_dim must be divisible by 2, but got {embed_dim}")
-
-    emb_h = get_1d_sincos_pos_embed_from_grid(embed_dim // 2, grid[0])
-    emb_w = get_1d_sincos_pos_embed_from_grid(embed_dim // 2, grid[1])
-    emb = torch.cat([emb_h, emb_w], dim=1)
-    return emb
-
-
-def get_1d_sincos_pos_embed_from_grid(embed_dim, pos):
-    if embed_dim % 2 != 0:
-        raise ValueError(f"embed_dim must be divisible by 2, but got {embed_dim}")
-
-    omega = torch.arange(embed_dim // 2, dtype=torch.float64)
-    omega /= embed_dim / 2.0
-    omega = 1.0 / 10000**omega
-
-    pos = pos.reshape(-1)
-    out = torch.einsum("m,d->md", pos, omega)
-
-    emb_sin = torch.sin(out)
-    emb_cos = torch.cos(out)
-
-    emb = torch.cat([emb_sin, emb_cos], dim=1)
-    return emb
 
 
 class JiTTransformer2DModel(ModelMixin, ConfigMixin, AttentionMixin):
@@ -352,6 +295,8 @@ class JiTTransformer2DModel(ModelMixin, ConfigMixin, AttentionMixin):
 
     _supports_gradient_checkpointing = True
     _skip_layerwise_casting_patterns = ["pos_embed", "norm"]
+    _no_split_modules = ["JiTBlock"]
+    _repeated_blocks = ["JiTBlock"]
 
     @register_to_config
     def __init__(
@@ -398,9 +343,14 @@ class JiTTransformer2DModel(ModelMixin, ConfigMixin, AttentionMixin):
             bias=True,
         )
 
-        # Positional Embedding (Fixed Sin-Cos)
         num_patches = self.x_embedder.num_patches
-        pos_embed = get_2d_sincos_pos_embed(hidden_size, int(num_patches**0.5))
+        grid_size = int(num_patches**0.5)
+        pos_embed = get_2d_sincos_pos_embed(
+            embed_dim=hidden_size,
+            grid_size=grid_size,
+            base_size=grid_size,
+            output_type="pt",
+        )
         self.register_buffer("pos_embed", pos_embed.float().unsqueeze(0), persistent=True)
 
         # In-context Embedding
@@ -464,7 +414,7 @@ class JiTTransformer2DModel(ModelMixin, ConfigMixin, AttentionMixin):
 
             rope = self.feat_rope if i < self.in_context_start else self.feat_rope_incontext
 
-            if self.training and self.gradient_checkpointing:
+            if torch.is_grad_enabled() and self.gradient_checkpointing:
                 x = self._gradient_checkpointing_func(block, x, c, rope)
             else:
                 x = block(x, c, feat_rope=rope)
