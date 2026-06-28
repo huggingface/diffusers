@@ -1,0 +1,17 @@
+{
+  "name": "local-diffusers",
+  "owner": {
+    "name": "Hugging Face Diffusers Community"
+  },
+  "plugins": [
+    {
+      "name": "huggingface-diffusers",
+      "source": "./",
+      "description": "Claude Code plugin that helps users navigate Diffusers capabilities and generate correct starting recipes.",
+      "version": "1.0.0",
+      "author": {
+        "name": "Hugging Face Diffusers Community"
+      }
+    }
+  ]
+}
