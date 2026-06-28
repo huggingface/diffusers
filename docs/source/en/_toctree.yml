@@ -355,6 +355,8 @@
         title: Ideogram4Transformer2DModel
       - local: api/models/transformer_joyimage
         title: JoyImageEditTransformer3DModel
+      - local: api/models/krea2_transformer2d
+        title: Krea2Transformer2DModel
       - local: api/models/latte_transformer3d
         title: LatteTransformer3DModel
       - local: api/models/longcat_image_transformer2d
@@ -563,6 +565,8 @@
         title: Kandinsky 5.0 Image
       - local: api/pipelines/kolors
         title: Kolors
+      - local: api/pipelines/krea2
+        title: Krea 2
       - local: api/pipelines/latent_consistency_models
         title: Latent Consistency Models
       - local: api/pipelines/latent_diffusion
@@ -643,6 +647,8 @@
         title: Z-Image
       title: Image
     - sections:
+      - local: api/pipelines/diffusion_gemma
+        title: DiffusionGemma
       - local: api/pipelines/llada2
         title: LLaDA2
       title: Text
