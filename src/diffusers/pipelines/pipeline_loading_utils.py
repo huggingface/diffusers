@@ -364,7 +364,11 @@ def maybe_raise_or_warn(
     library_name, library, class_name, importable_classes, passed_class_obj, name, is_pipeline_module
 ):
     """Simple helper method to raise or warn in case incorrect module has been passed"""
-    if not is_pipeline_module:
+    # Deprecated pipeline modules (e.g. Wuerstchen) behave like current pipeline modules
+    # here: they don't expose the base classes in `importable_classes`, so the type-check
+    # path below would fail (`expected_class_obj` stays None → TypeError on issubclass).
+    # Fall through to the warning branch instead, same as for any pipeline-module component.
+    if not is_pipeline_module and not _is_deprecated_pipeline_module(library_name):
         library = importlib.import_module(library_name)
 
         # Handle deprecated Transformers classes
@@ -402,6 +406,11 @@ def simple_get_class_obj(library_name, class_name):
 
     if is_pipeline_module:
         pipeline_module = getattr(pipelines, library_name)
+        class_obj = getattr(pipeline_module, class_name)
+    elif _is_deprecated_pipeline_module(library_name):
+        # Pipelines relocated under `diffusers.pipelines.deprecated` are no longer
+        # attributes of `diffusers.pipelines`; import from the deprecated namespace.
+        pipeline_module = importlib.import_module(f"diffusers.pipelines.deprecated.{library_name}")
         class_obj = getattr(pipeline_module, class_name)
     else:
         library = importlib.import_module(library_name)
@@ -971,6 +980,16 @@ def _fetch_class_library_tuple(module):
     path = not_compiled_module.__module__.split(".")
     is_pipeline_module = pipeline_dir in path and hasattr(pipelines, pipeline_dir)
 
+    # Deprecated pipeline modules (e.g. Wuerstchen) are no longer attributes of
+    # `diffusers.pipelines`, so the `hasattr` check above returns False for them even
+    # though they still ship with diffusers.  Treat them as pipeline modules so the
+    # returned library is the subpackage name (e.g. "wuerstchen") rather than "diffusers".
+    # That makes `save_pretrained` write ["wuerstchen", "WuerstchenPrior"] to
+    # model_index.json, which round-trips correctly because `get_class_obj_and_candidates`
+    # already resolves deprecated modules.
+    if not is_pipeline_module and pipeline_dir is not None and _is_deprecated_pipeline_module(pipeline_dir):
+        is_pipeline_module = True
+
     # if library is not in LOADABLE_CLASSES, then it is a custom module.
     # Or if it's a pipeline module, then the module is inside the pipeline
     # folder so we set the library to module name.
@@ -1081,10 +1100,10 @@ def _is_deprecated_pipeline_module(module_candidate: str) -> bool:
     """Return whether ``module_candidate`` is a pipeline module relocated under
     ``diffusers.pipelines.deprecated``.
 
-    Deprecated pipelines (e.g. Wuerstchen) are no longer attributes of ``diffusers.pipelines``, so a
-    plain ``hasattr(diffusers.pipelines, module_candidate)`` check fails for them even though the
-    module still ships with diffusers. We resolve the spec without importing the module to avoid
-    triggering its (potentially heavy) import side effects.
+    Deprecated pipelines (e.g. Wuerstchen) are no longer attributes of ``diffusers.pipelines``, so a plain
+    ``hasattr(diffusers.pipelines, module_candidate)`` check fails for them even though the module still ships with
+    diffusers. We resolve the spec without importing the module to avoid triggering its (potentially heavy) import side
+    effects.
     """
     try:
         return importlib.util.find_spec(f"diffusers.pipelines.deprecated.{module_candidate}") is not None
