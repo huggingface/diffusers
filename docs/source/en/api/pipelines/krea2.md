@@ -59,3 +59,11 @@ image.save("krea2.png")
 ## Krea2PipelineOutput
 
 [[autodoc]] pipelines.krea2.pipeline_output.Krea2PipelineOutput
+
+## Krea2ModularPipeline
+
+[[autodoc]] Krea2ModularPipeline
+
+## Krea2AutoBlocks
+
+[[autodoc]] Krea2AutoBlocks
