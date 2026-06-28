@@ -431,6 +431,15 @@ def get_class_obj_and_candidates(
 
         class_obj = getattr(pipeline_module, class_name)
         class_candidates = dict.fromkeys(importable_classes.keys(), class_obj)
+    elif _is_deprecated_pipeline_module(library_name):
+        # Pipelines relocated under `diffusers.pipelines.deprecated` are no longer attributes of
+        # `diffusers.pipelines`, so they reach here with `is_pipeline_module=False`. They are still
+        # pipeline modules: import the relocated module and resolve the class with pipeline-module
+        # semantics (the module does not expose the base classes in `importable_classes`, so the
+        # bare-import branch below would fail to find a load method).
+        pipeline_module = importlib.import_module(f"diffusers.pipelines.deprecated.{library_name}")
+        class_obj = getattr(pipeline_module, class_name)
+        class_candidates = dict.fromkeys(importable_classes.keys(), class_obj)
     elif component_folder and os.path.isfile(os.path.join(component_folder, library_name + ".py")):
         # load custom component
         class_obj = get_class_from_dynamic_module(

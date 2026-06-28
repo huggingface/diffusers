@@ -19,8 +19,10 @@ from diffusers import (
     UNet2DConditionModel,
 )
 from diffusers.pipelines.pipeline_loading_utils import (
+    ALL_IMPORTABLE_CLASSES,
     _get_custom_components_and_folders,
     _is_deprecated_pipeline_module,
+    get_class_obj_and_candidates,
     is_safetensors_compatible,
     variant_compatible_siblings,
 )
@@ -281,6 +283,39 @@ class GetCustomComponentsAndFoldersTests(unittest.TestCase):
         self.assertFalse(_is_deprecated_pipeline_module("stable_diffusion"))
         # Malformed candidate names must not raise.
         self.assertFalse(_is_deprecated_pipeline_module("weird/name"))
+
+
+class GetClassObjAndCandidatesTests(unittest.TestCase):
+    def _resolve_load_method(self, class_obj, class_candidates):
+        # Mirrors the load-method lookup in `load_sub_model`.
+        for class_name, class_candidate in class_candidates.items():
+            if class_candidate is not None and issubclass(class_obj, class_candidate):
+                return ALL_IMPORTABLE_CLASSES[class_name][1]
+        return None
+
+    def test_deprecated_module_resolves_to_class_and_load_method(self):
+        # Regression test for the second half of loading `warp-ai/wuerstchen-prior`: a component
+        # whose `model_index.json` library is a relocated module (`["wuerstchen", "WuerstchenPrior"]`)
+        # arrives here with `is_pipeline_module=False`. It must (1) not raise `ModuleNotFoundError`
+        # from a bare `import_module("wuerstchen")`, and (2) resolve a usable load method, which only
+        # happens with pipeline-module candidate semantics (the relocated module does not expose the
+        # base classes in `ALL_IMPORTABLE_CLASSES`).
+        from diffusers import pipelines
+        from diffusers.pipelines.deprecated.wuerstchen import WuerstchenPrior
+
+        class_obj, class_candidates = get_class_obj_and_candidates(
+            "wuerstchen", "WuerstchenPrior", ALL_IMPORTABLE_CLASSES, pipelines, is_pipeline_module=False
+        )
+        self.assertIs(class_obj, WuerstchenPrior)
+        self.assertEqual(self._resolve_load_method(class_obj, class_candidates), "from_pretrained")
+
+    def test_missing_module_still_raises(self):
+        from diffusers import pipelines
+
+        with self.assertRaises(ModuleNotFoundError):
+            get_class_obj_and_candidates(
+                "totally_made_up_module", "Foo", ALL_IMPORTABLE_CLASSES, pipelines, is_pipeline_module=False
+            )
 
 
 class VariantCompatibleSiblingsTest(unittest.TestCase):
