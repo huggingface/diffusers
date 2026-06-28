@@ -54,7 +54,6 @@ class Krea2LoopBeforeDenoiser(ModularPipelineBlocks):
 
     @torch.no_grad()
     def __call__(self, components: Krea2ModularPipeline, block_state: BlockState, i: int, t: torch.Tensor):
-        # Krea 2 flow time is the sigma-domain timestep normalized to [0, 1] (1 = noise, 0 = clean data).
         num_train_timesteps = components.scheduler.config.num_train_timesteps
         block_state.timestep = (t / num_train_timesteps).expand(block_state.batch_size)
         return components, block_state
@@ -133,7 +132,6 @@ class Krea2LoopDenoiser(ModularPipelineBlocks):
                 attention_kwargs=block_state.attention_kwargs,
                 return_dict=False,
             )[0]
-            # Symmetric CFG: cond + scale * (cond - uncond), i.e. the usual CFG with scale `1 + guidance_scale`.
             noise_pred = noise_pred + block_state.guidance_scale * (noise_pred - neg_noise_pred)
 
         block_state.noise_pred = noise_pred

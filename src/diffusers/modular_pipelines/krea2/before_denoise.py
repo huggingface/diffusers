@@ -147,7 +147,6 @@ class Krea2TextInputsStep(ModularPipelineBlocks):
         block_state.dtype = block_state.prompt_embeds.dtype
         block_state.batch_size = prompt_batch * n
 
-        # Replicate per-prompt text features/mask to the effective batch (mirrors Krea2Pipeline.encode_prompt).
         block_state.prompt_embeds = block_state.prompt_embeds.repeat(1, n, 1, 1).view(
             prompt_batch * n, seq_len, num_layers, dim
         )
@@ -249,7 +248,6 @@ class Krea2PrepareLatentsStep(ModularPipelineBlocks):
                 device=device,
                 dtype=block_state.dtype,
             )
-            # Patch-pack the spatial latents into a token sequence (mirrors Krea2Pipeline._pack_latents).
             latents = latents.view(
                 block_state.batch_size, num_channels_latents, latent_height // p, p, latent_width // p, p
             )

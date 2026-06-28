@@ -99,7 +99,6 @@ class Krea2DecodeStep(ModularPipelineBlocks):
         p = components.patch_size
         latents = block_state.latents
 
-        # Unpack the patchified token sequence back to the spatial latent grid (mirrors Krea2Pipeline._unpack_latents).
         batch_size, _, channels = latents.shape
         height = p * (int(block_state.height) // (components.vae_scale_factor * p))
         width = p * (int(block_state.width) // (components.vae_scale_factor * p))
@@ -107,7 +106,6 @@ class Krea2DecodeStep(ModularPipelineBlocks):
         latents = latents.permute(0, 3, 1, 4, 2, 5)
         latents = latents.reshape(batch_size, channels // (p * p), 1, height, width)
 
-        # De-normalize with the per-channel VAE statistics, then decode (the VAE produces a single-frame video latent).
         latents = latents.to(vae.dtype)
         latents_mean = (
             torch.tensor(vae.config.latents_mean).view(1, vae.config.z_dim, 1, 1, 1).to(latents.device, latents.dtype)

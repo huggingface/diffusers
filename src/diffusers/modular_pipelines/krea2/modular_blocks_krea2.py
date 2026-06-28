@@ -30,8 +30,6 @@ from .encoders import Krea2TextEncoderStep
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
-# Core denoise: consumes the per-prompt text features and produces the denoised packed latents
-# (batch/latents/timesteps/position-ids inputs -> denoising loop).
 CORE_DENOISE_BLOCKS = InsertableDict(
     [
         ("input", Krea2TextInputsStep()),
@@ -71,8 +69,6 @@ class Krea2CoreDenoiseStep(SequentialPipelineBlocks):
 
     @property
     def outputs(self) -> list[OutputParam]:
-        # The only meaningful product of the core step is the denoised packed latents; the batch/timesteps/position-id
-        # inputs prepared along the way are consumed within the loop and are not updated by it.
         return [
             OutputParam.template("latents", description="The denoised packed latents (B, image_seq_len, in_channels).")
         ]
@@ -134,8 +130,6 @@ class Krea2AutoBlocks(SequentialPipelineBlocks):
     ]
     block_names = ["text_encoder", "denoise", "decode"]
 
-    # Workflow map declaring the trigger conditions for each supported workflow.
-    # `True` means the workflow triggers when the input is not None.
     _workflow_map = {
         "text2image": {"prompt": True},
     }

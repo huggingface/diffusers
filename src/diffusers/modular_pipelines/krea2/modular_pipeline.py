@@ -25,7 +25,6 @@ class Krea2ModularPipeline(ModularPipeline, Krea2LoraLoaderMixin):
 
     default_blocks_name = "Krea2AutoBlocks"
 
-    # Krea 2 packs the VAE latents into 2x2 patches before feeding the transformer.
     @property
     def patch_size(self):
         return 2
