@@ -2292,6 +2292,11 @@ class PipelineTesterMixin:
         elif isinstance(pipeline_out, torch.Tensor) and isinstance(loaded_pipeline_out, torch.Tensor):
             assert torch.allclose(pipeline_out, loaded_pipeline_out, atol=atol, rtol=rtol)
 
+    @pytest.mark.xfail(
+        condition=torch_device == "mps",
+        reason="MPS does not support float8 casting.",
+        strict=True,
+    )
     def test_layerwise_casting_inference(self):
         if not self.test_layerwise_casting:
             return
