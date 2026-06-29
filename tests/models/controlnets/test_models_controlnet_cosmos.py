@@ -283,6 +283,10 @@ class TestCosmosControlNetModelTraining(CosmosControlNetModelTesterConfig, Train
     def test_training_with_ema(self):
         super().test_training_with_ema()
 
+    @pytest.mark.skip("ControlNet outputs list of control blocks, not single tensor for MSE loss.")
+    def test_mixed_precision_training(self):
+        super().test_mixed_precision_training()
+
     @pytest.mark.skip("ControlNet output doesn't have .sample attribute.")
     def test_gradient_checkpointing_equivalence(self):
         super().test_gradient_checkpointing_equivalence()
