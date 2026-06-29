@@ -76,11 +76,11 @@ the model's image inputs automatically.
 The scheduler is the sampler that denoises each canvas, and it is interchangeable: swap it to change the sampling
 strategy without touching anything else. Three schedulers are available:
 
-- `BlockRefinementScheduler` (default): commits the most confident tokens each step (above `threshold`, plus an even
+- [`BlockRefinementScheduler`] (default): commits the most confident tokens each step (above `threshold`, plus an even
   per-step quota) and renoises the rest. `editing_threshold` additionally lets it re-edit already committed tokens.
-- `DiscreteDDIMScheduler`: samples each position from the exact discrete posterior of the uniform corruption process
+- [`DiscreteDDIMScheduler`]: samples each position from the exact discrete posterior of the uniform corruption process
   (D3PM). It is parameter free, and the final step deterministically commits the predicted tokens.
-- `EntropyBoundScheduler`: commits the lowest-entropy positions whose joint entropy stays under `entropy_bound`, so
+- [`EntropyBoundScheduler`]: commits the lowest-entropy positions whose joint entropy stays under `entropy_bound`, so
   roughly independent tokens are accepted together. It anneals its sampling temperature from `t_max` (`0.8`) on the
   first step down to `t_min` (`0.4`) on the last, matching the released checkpoint's sampler.
 
