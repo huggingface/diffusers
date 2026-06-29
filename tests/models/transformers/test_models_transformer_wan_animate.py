@@ -146,11 +146,11 @@ class WanAnimateTransformer3DTesterConfig(BaseModelTesterConfig):
 class TestWanAnimateTransformer3D(WanAnimateTransformer3DTesterConfig, ModelTesterMixin):
     """Core model tests for Wan Animate Transformer 3D."""
 
-    def test_output(self):
+    def test_output(self, base_model_output):
         # Override test_output because the transformer output is expected to have less channels
         # than the main transformer input.
         expected_output_shape = (1, 4, 21, 16, 16)
-        super().test_output(expected_output_shape=expected_output_shape)
+        super().test_output(base_model_output, expected_output_shape=expected_output_shape)
 
     @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16], ids=["fp16", "bf16"])
     def test_from_save_pretrained_dtype_inference(self, tmp_path, dtype):
