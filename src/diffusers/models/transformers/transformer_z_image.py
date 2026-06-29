@@ -34,6 +34,27 @@ SEQ_MULTI_OF = 32
 X_PAD_DIM = 64
 
 
+def apply_rotary_emb(
+    x: torch.Tensor,
+    freqs_cis: torch.Tensor | tuple[torch.Tensor],
+    use_real: bool = True,
+) -> torch.Tensor:
+    if use_real:
+        cos, sin = freqs_cis
+        cos = cos.unsqueeze(2).to(x.device)
+        sin = sin.unsqueeze(2).to(x.device)
+        x_real, x_imag = x.float().reshape(*x.shape[:-1], -1, 2).unbind(-1)
+        x_rotated = torch.stack([-x_imag, x_real], dim=-1).flatten(3)
+        out = (x.float() * cos + x_rotated.float() * sin).to(x.dtype)
+        return out
+    else:
+        with torch.autocast(x.device.type, torch.float32):
+            x_complex = torch.view_as_complex(x.float().reshape(*x.shape[:-1], -1, 2))
+            freqs_cis = freqs_cis.unsqueeze(2)
+            x_out = torch.view_as_real(x_complex * freqs_cis).flatten(3)
+            return x_out.type_as(x)
+
+
 class TimestepEmbedder(nn.Module):
     def __init__(self, out_size, mid_size=None, frequency_embedding_size=256):
         super().__init__()
@@ -49,7 +70,7 @@ class TimestepEmbedder(nn.Module):
 
     @staticmethod
     def timestep_embedding(t, dim, max_period=10000):
-        with torch.amp.autocast("cuda", enabled=False):
+        with torch.autocast(t.device.type, torch.float32):
             half = dim // 2
             freqs = torch.exp(
                 -math.log(max_period) * torch.arange(start=0, end=half, dtype=torch.float32, device=t.device) / half
@@ -81,11 +102,12 @@ class ZSingleStreamAttnProcessor:
     _attention_backend = None
     _parallel_config = None
 
-    def __init__(self):
+    def __init__(self, use_real: bool = False):
         if not hasattr(F, "scaled_dot_product_attention"):
             raise ImportError(
                 "ZSingleStreamAttnProcessor requires PyTorch 2.0. To use it, please upgrade PyTorch to version 2.0 or higher."
             )
+        self.use_real = use_real
 
     def __call__(
         self,
@@ -109,17 +131,9 @@ class ZSingleStreamAttnProcessor:
         if attn.norm_k is not None:
             key = attn.norm_k(key)
 
-        # Apply RoPE
-        def apply_rotary_emb(x_in: torch.Tensor, freqs_cis: torch.Tensor) -> torch.Tensor:
-            with torch.amp.autocast("cuda", enabled=False):
-                x = torch.view_as_complex(x_in.float().reshape(*x_in.shape[:-1], -1, 2))
-                freqs_cis = freqs_cis.unsqueeze(2)
-                x_out = torch.view_as_real(x * freqs_cis).flatten(3)
-                return x_out.type_as(x_in)  # todo
-
         if freqs_cis is not None:
-            query = apply_rotary_emb(query, freqs_cis)
-            key = apply_rotary_emb(key, freqs_cis)
+            query = apply_rotary_emb(query, freqs_cis, use_real=self.use_real)
+            key = apply_rotary_emb(key, freqs_cis, use_real=self.use_real)
 
         # Cast to correct dtype
         dtype = query.dtype
@@ -191,6 +205,7 @@ class ZImageTransformerBlock(nn.Module):
         norm_eps: float,
         qk_norm: bool,
         modulation=True,
+        use_real: bool = False,
     ):
         super().__init__()
         self.dim = dim
@@ -207,7 +222,7 @@ class ZImageTransformerBlock(nn.Module):
             eps=1e-5,
             bias=False,
             out_bias=False,
-            processor=ZSingleStreamAttnProcessor(),
+            processor=ZSingleStreamAttnProcessor(use_real=use_real),
         )
 
         self.feed_forward = FeedForward(dim=dim, hidden_dim=int(dim / 3 * 8))
@@ -316,22 +331,29 @@ class RopeEmbedder:
         theta: float = 256.0,
         axes_dims: list[int] = (16, 56, 56),
         axes_lens: list[int] = (64, 128, 128),
+        use_real: bool = False,
     ):
         self.theta = theta
         self.axes_dims = axes_dims
         self.axes_lens = axes_lens
+        self.use_real = use_real
         assert len(axes_dims) == len(axes_lens), "axes_dims and axes_lens must have the same length"
         self.freqs_cis = None
 
     @staticmethod
-    def precompute_freqs_cis(dim: list[int], end: list[int], theta: float = 256.0):
+    def precompute_freqs_cis(dim: list[int], end: list[int], theta: float = 256.0, use_real: bool = False):
         with torch.device("cpu"):
             freqs_cis = []
             for i, (d, e) in enumerate(zip(dim, end)):
                 freqs = 1.0 / (theta ** (torch.arange(0, d, 2, dtype=torch.float64, device="cpu") / d))
                 timestep = torch.arange(e, device=freqs.device, dtype=torch.float64)
                 freqs = torch.outer(timestep, freqs).float()
-                freqs_cis_i = torch.polar(torch.ones_like(freqs), freqs).to(torch.complex64)  # complex64
+                if use_real:
+                    cos = freqs.cos().repeat_interleave(2, dim=-1)
+                    sin = freqs.sin().repeat_interleave(2, dim=-1)
+                    freqs_cis_i = (cos, sin)
+                else:
+                    freqs_cis_i = torch.polar(torch.ones_like(freqs), freqs).to(torch.complex64)
                 freqs_cis.append(freqs_cis_i)
 
             return freqs_cis
@@ -342,18 +364,34 @@ class RopeEmbedder:
         device = ids.device
 
         if self.freqs_cis is None:
-            self.freqs_cis = self.precompute_freqs_cis(self.axes_dims, self.axes_lens, theta=self.theta)
-            self.freqs_cis = [freqs_cis.to(device) for freqs_cis in self.freqs_cis]
+            self.freqs_cis = self.precompute_freqs_cis(self.axes_dims, self.axes_lens, theta=self.theta, use_real=self.use_real)
+            if self.use_real:
+                self.freqs_cis = [(cos.to(device), sin.to(device)) for cos, sin in self.freqs_cis]
+            else:
+                self.freqs_cis = [freqs_cis.to(device) for freqs_cis in self.freqs_cis]
         else:
             # Ensure freqs_cis are on the same device as ids
-            if self.freqs_cis[0].device != device:
-                self.freqs_cis = [freqs_cis.to(device) for freqs_cis in self.freqs_cis]
+            if self.use_real:
+                if self.freqs_cis[0][0].device != device:
+                    self.freqs_cis = [(cos.to(device), sin.to(device)) for cos, sin in self.freqs_cis]
+            else:
+                if self.freqs_cis[0].device != device:
+                    self.freqs_cis = [freqs_cis.to(device) for freqs_cis in self.freqs_cis]
 
-        result = []
-        for i in range(len(self.axes_dims)):
-            index = ids[:, i]
-            result.append(self.freqs_cis[i][index])
-        return torch.cat(result, dim=-1)
+        if self.use_real:
+            cos_result = []
+            sin_result = []
+            for i in range(len(self.axes_dims)):
+                index = ids[:, i]
+                cos_result.append(self.freqs_cis[i][0][index])
+                sin_result.append(self.freqs_cis[i][1][index])
+            return (torch.cat(cos_result, dim=-1), torch.cat(sin_result, dim=-1))
+        else:
+            result = []
+            for i in range(len(self.axes_dims)):
+                index = ids[:, i]
+                result.append(self.freqs_cis[i][index])
+            return torch.cat(result, dim=-1)
 
 
 class ZImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOriginalModelMixin):
@@ -381,6 +419,7 @@ class ZImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOr
         t_scale=1000.0,
         axes_dims=[32, 48, 48],
         axes_lens=[1024, 512, 512],
+        use_real: bool = False,
     ) -> None:
         super().__init__()
         self.in_channels = in_channels
@@ -417,6 +456,7 @@ class ZImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOr
                     norm_eps,
                     qk_norm,
                     modulation=True,
+                    use_real=use_real,
                 )
                 for layer_id in range(n_refiner_layers)
             ]
@@ -431,6 +471,7 @@ class ZImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOr
                     norm_eps,
                     qk_norm,
                     modulation=False,
+                    use_real=use_real,
                 )
                 for layer_id in range(n_refiner_layers)
             ]
@@ -453,6 +494,7 @@ class ZImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOr
                         norm_eps,
                         qk_norm,
                         modulation=False,
+                        use_real=use_real,
                     )
                     for layer_id in range(n_refiner_layers)
                 ]
@@ -468,7 +510,7 @@ class ZImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOr
 
         self.layers = nn.ModuleList(
             [
-                ZImageTransformerBlock(layer_id, dim, n_heads, n_kv_heads, norm_eps, qk_norm)
+                ZImageTransformerBlock(layer_id, dim, n_heads, n_kv_heads, norm_eps, qk_norm, use_real=use_real)
                 for layer_id in range(n_layers)
             ]
         )
@@ -477,7 +519,7 @@ class ZImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOr
         self.axes_dims = axes_dims
         self.axes_lens = axes_lens
 
-        self.rope_embedder = RopeEmbedder(theta=rope_theta, axes_dims=axes_dims, axes_lens=axes_lens)
+        self.rope_embedder = RopeEmbedder(theta=rope_theta, axes_dims=axes_dims, axes_lens=axes_lens, use_real=use_real)
 
     def unpatchify(
         self,
@@ -782,11 +824,20 @@ class ZImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOr
         feats = list(feats_cat.split(item_seqlens, dim=0))
 
         # RoPE
-        freqs_cis = list(self.rope_embedder(torch.cat(pos_ids, dim=0)).split([len(p) for p in pos_ids], dim=0))
+        rope_output = self.rope_embedder(torch.cat(pos_ids, dim=0))
+        split_sizes = [len(p) for p in pos_ids]
+        if isinstance(rope_output, tuple):
+            cos_list = list(rope_output[0].split(split_sizes, dim=0))
+            sin_list = list(rope_output[1].split(split_sizes, dim=0))
+            cos_padded = pad_sequence(cos_list, batch_first=True, padding_value=0.0)[:, :max_seqlen]
+            sin_padded = pad_sequence(sin_list, batch_first=True, padding_value=0.0)[:, :max_seqlen]
+            freqs_cis = (cos_padded, sin_padded)
+        else:
+            freqs_cis_list = list(rope_output.split(split_sizes, dim=0))
+            freqs_cis = pad_sequence(freqs_cis_list, batch_first=True, padding_value=0.0)[:, :max_seqlen]
 
         # Pad to batch
         feats = pad_sequence(feats, batch_first=True, padding_value=0.0)
-        freqs_cis = pad_sequence(freqs_cis, batch_first=True, padding_value=0.0)[:, : feats.shape[1]]
 
         # Attention mask
         if all(seq == max_seqlen for seq in item_seqlens):
@@ -810,15 +861,15 @@ class ZImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOr
     def _build_unified_sequence(
         self,
         x: torch.Tensor,
-        x_freqs: torch.Tensor,
+        x_freqs: torch.Tensor | tuple[torch.Tensor, torch.Tensor],
         x_seqlens: list[int],
         x_noise_mask: list[list[int]] | None,
         cap: torch.Tensor,
-        cap_freqs: torch.Tensor,
+        cap_freqs: torch.Tensor | tuple[torch.Tensor, torch.Tensor],
         cap_seqlens: list[int],
         cap_noise_mask: list[list[int]] | None,
         siglip: torch.Tensor | None,
-        siglip_freqs: torch.Tensor | None,
+        siglip_freqs: torch.Tensor | tuple[torch.Tensor, torch.Tensor] | None,
         siglip_seqlens: list[int] | None,
         siglip_noise_mask: list[list[int]] | None,
         omni_mode: bool,
@@ -828,8 +879,11 @@ class ZImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOr
         Basic mode order: [x, cap]; Omni mode order: [cap, x, siglip]
         """
         bsz = len(x_seqlens)
+        is_real = isinstance(x_freqs, tuple)
         unified = []
-        unified_freqs = []
+        unified_freqs_cos = [] if is_real else None
+        unified_freqs_sin = [] if is_real else None
+        unified_freqs = [] if not is_real else None
         unified_noise_mask = []
 
         for i in range(bsz):
@@ -840,9 +894,17 @@ class ZImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOr
                 if siglip is not None and siglip_seqlens is not None:
                     sig_len = siglip_seqlens[i]
                     unified.append(torch.cat([cap[i][:cap_len], x[i][:x_len], siglip[i][:sig_len]]))
-                    unified_freqs.append(
-                        torch.cat([cap_freqs[i][:cap_len], x_freqs[i][:x_len], siglip_freqs[i][:sig_len]])
-                    )
+                    if is_real:
+                        unified_freqs_cos.append(torch.cat([
+                            cap_freqs[0][i][:cap_len], x_freqs[0][i][:x_len], siglip_freqs[0][i][:sig_len]
+                        ]))
+                        unified_freqs_sin.append(torch.cat([
+                            cap_freqs[1][i][:cap_len], x_freqs[1][i][:x_len], siglip_freqs[1][i][:sig_len]
+                        ]))
+                    else:
+                        unified_freqs.append(torch.cat([
+                            cap_freqs[i][:cap_len], x_freqs[i][:x_len], siglip_freqs[i][:sig_len]
+                        ]))
                     unified_noise_mask.append(
                         torch.tensor(
                             cap_noise_mask[i] + x_noise_mask[i] + siglip_noise_mask[i], dtype=torch.long, device=device
@@ -850,14 +912,22 @@ class ZImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOr
                     )
                 else:
                     unified.append(torch.cat([cap[i][:cap_len], x[i][:x_len]]))
-                    unified_freqs.append(torch.cat([cap_freqs[i][:cap_len], x_freqs[i][:x_len]]))
+                    if is_real:
+                        unified_freqs_cos.append(torch.cat([cap_freqs[0][i][:cap_len], x_freqs[0][i][:x_len]]))
+                        unified_freqs_sin.append(torch.cat([cap_freqs[1][i][:cap_len], x_freqs[1][i][:x_len]]))
+                    else:
+                        unified_freqs.append(torch.cat([cap_freqs[i][:cap_len], x_freqs[i][:x_len]]))
                     unified_noise_mask.append(
                         torch.tensor(cap_noise_mask[i] + x_noise_mask[i], dtype=torch.long, device=device)
                     )
             else:
                 # Basic: [x, cap]
                 unified.append(torch.cat([x[i][:x_len], cap[i][:cap_len]]))
-                unified_freqs.append(torch.cat([x_freqs[i][:x_len], cap_freqs[i][:cap_len]]))
+                if is_real:
+                    unified_freqs_cos.append(torch.cat([x_freqs[0][i][:x_len], cap_freqs[0][i][:cap_len]]))
+                    unified_freqs_sin.append(torch.cat([x_freqs[1][i][:x_len], cap_freqs[1][i][:cap_len]]))
+                else:
+                    unified_freqs.append(torch.cat([x_freqs[i][:x_len], cap_freqs[i][:cap_len]]))
 
         # Compute unified seqlens
         if omni_mode:
@@ -872,7 +942,13 @@ class ZImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOr
 
         # Pad to batch
         unified = pad_sequence(unified, batch_first=True, padding_value=0.0)
-        unified_freqs = pad_sequence(unified_freqs, batch_first=True, padding_value=0.0)
+        if is_real:
+            unified_freqs = (
+                pad_sequence(unified_freqs_cos, batch_first=True, padding_value=0.0),
+                pad_sequence(unified_freqs_sin, batch_first=True, padding_value=0.0),
+            )
+        else:
+            unified_freqs = pad_sequence(unified_freqs, batch_first=True, padding_value=0.0)
 
         # Attention mask
         if all(seq == max_seqlen for seq in unified_seqlens):
