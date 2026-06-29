@@ -3001,3 +3001,63 @@ def _convert_non_diffusers_ideogram4_lora_to_diffusers(state_dict):
         )
 
     return {f"transformer.{k}": v for k, v in converted_state_dict.items()}
+
+
+def _convert_non_diffusers_krea2_lora_to_diffusers(state_dict):
+    """
+    Convert a non-diffusers Krea 2 LoRA state dict to the diffusers format.
+
+    Maps the original `krea-ai/krea-2` module names onto `Krea2Transformer2DModel`. Handles both the `diffusion_model.`
+    prefix (Krea 2 reference trainer / ComfyUI) and the `base_model.model.` prefix (Ostris AI-Toolkit).
+    """
+    state_dict = {
+        k.removeprefix("base_model.model.").removeprefix("diffusion_model."): v for k, v in state_dict.items()
+    }
+
+    attn_map = {"wq": "to_q", "wk": "to_k", "wv": "to_v", "wo": "to_out.0", "gate": "to_gate"}
+    ff_map = {"gate": "ff.gate", "up": "ff.up", "down": "ff.down"}
+    # AI-Toolkit stores these standalone modules under abbreviated `nn.Sequential`-style names.
+    standalone_map = {
+        "first": "img_in",
+        "last.linear": "final_layer.linear",
+        "tmlp.0": "time_embed.linear_1",
+        "tmlp.2": "time_embed.linear_2",
+        "tproj.1": "time_mod_proj",
+        "txtmlp.1": "txt_in.linear_1",
+        "txtmlp.3": "txt_in.linear_2",
+        "txtfusion.projector": "text_fusion.projector",
+    }
+
+    def convert_module(module):
+        m = re.match(r"blocks\.(\d+)\.(attn|mlp)\.(\w+)$", module)
+        if m:
+            idx, kind, sub = m.groups()
+            if kind == "attn" and sub in attn_map:
+                return f"transformer_blocks.{idx}.attn.{attn_map[sub]}"
+            if kind == "mlp" and sub in ff_map:
+                return f"transformer_blocks.{idx}.{ff_map[sub]}"
+            return None
+        m = re.match(r"txtfusion\.(layerwise_blocks|refiner_blocks)\.(\d+)\.(attn|mlp)\.(\w+)$", module)
+        if m:
+            block, idx, kind, sub = m.groups()
+            if kind == "attn" and sub in attn_map:
+                return f"text_fusion.{block}.{idx}.attn.{attn_map[sub]}"
+            if kind == "mlp" and sub in ff_map:
+                return f"text_fusion.{block}.{idx}.{ff_map[sub]}"
+            return None
+        return standalone_map.get(module)
+
+    converted_state_dict = {}
+    for key in list(state_dict):
+        match = re.search(r"\.(?:lora_[AB])\.weight$", key)
+        if match is None:
+            continue
+        diffusers_module = convert_module(key[: match.start()])
+        if diffusers_module is None:
+            continue
+        converted_state_dict[f"transformer.{diffusers_module}{key[match.start() :]}"] = state_dict.pop(key)
+
+    if len(state_dict) > 0:
+        raise ValueError(f"`state_dict` should be empty at this point but has {state_dict.keys()=}")
+
+    return converted_state_dict
