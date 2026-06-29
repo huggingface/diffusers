@@ -465,6 +465,16 @@ def parse_args(input_args=None):
         help="whether to randomly flip images horizontally",
     )
     parser.add_argument(
+        "--caption_dropout",
+        type=float,
+        default=0.0,
+        help=(
+            "Probability of replacing an instance image's caption with an empty string during training, so that"
+            " fraction of samples is trained unconditionally. Improves classifier-free guidance. A common value is"
+            " 0.1. Class/prior-preservation captions are never dropped."
+        ),
+    )
+    parser.add_argument(
         "--train_batch_size", type=int, default=4, help="Batch size (per device) for the training dataloader."
     )
     parser.add_argument(
@@ -885,15 +895,6 @@ class DreamBoothDataset(Dataset):
         else:
             self.class_data_root = None
 
-        self.image_transforms = transforms.Compose(
-            [
-                transforms.Resize(size, interpolation=transforms.InterpolationMode.BILINEAR),
-                transforms.CenterCrop(size) if center_crop else transforms.RandomCrop(size),
-                transforms.ToTensor(),
-                transforms.Normalize([0.5], [0.5]),
-            ]
-        )
-
     def __len__(self):
         return self._length
 
@@ -919,37 +920,32 @@ class DreamBoothDataset(Dataset):
 
             if not class_image.mode == "RGB":
                 class_image = class_image.convert("RGB")
-            example["class_images"] = self.image_transforms(class_image)
+            # Match the class image to the paired instance image's bucket so they can be stacked into one batch.
+            example["class_images"] = self.train_transform(
+                class_image, size=self.buckets[bucket_idx], center_crop=self.center_crop
+            )
             example["class_prompt"] = self.class_prompt
 
         return example
 
-    def train_transform(self, image, size=(224, 224), center_crop=False, random_flip=False):
-        # 1. Resize (deterministic)
-        resize = transforms.Resize(size, interpolation=transforms.InterpolationMode.BILINEAR)
-        image = resize(image)
-
-        # 2. Crop: either center or SAME random crop
+    def train_transform(self, image, size, center_crop=False, random_flip=False):
+        # Resize preserving aspect ratio so the image covers the bucket, then crop to the bucket size.
+        target_height, target_width = size
+        width, height = image.size
+        scale = max(target_height / height, target_width / width)
+        image = TF.resize(
+            image,
+            [round(height * scale), round(width * scale)],
+            interpolation=transforms.InterpolationMode.BILINEAR,
+        )
         if center_crop:
-            crop = transforms.CenterCrop(size)
-            image = crop(image)
+            image = TF.center_crop(image, size)
         else:
-            # get_params returns (i, j, h, w)
             i, j, h, w = transforms.RandomCrop.get_params(image, output_size=size)
             image = TF.crop(image, i, j, h, w)
-
-        # 3. Random horizontal flip with the SAME coin flip
-        if random_flip:
-            do_flip = random.random() < 0.5
-            if do_flip:
-                image = TF.hflip(image)
-
-        # 4. ToTensor + Normalize (deterministic)
-        to_tensor = transforms.ToTensor()
-        normalize = transforms.Normalize([0.5], [0.5])
-        image = normalize(to_tensor(image))
-
-        return image
+        if random_flip and random.random() < 0.5:
+            image = TF.hflip(image)
+        return TF.normalize(TF.to_tensor(image), [0.5], [0.5])
 
 
 def collate_fn(examples, with_prior_preservation=False):
@@ -1505,6 +1501,13 @@ def main(args):
             class_prompt_hidden_states, class_text_ids = compute_text_embeddings(
                 args.class_prompt, text_encoding_pipeline
             )
+
+    # When caption dropout is enabled, we precompute the empty ("") prompt embedding once and swap it in
+    # for randomly selected instance samples at training time (see the training loop below).
+    if args.caption_dropout > 0:
+        with offload_models(text_encoding_pipeline, device=accelerator.device, offload=args.offload):
+            empty_prompt_hidden_states, empty_text_ids = compute_text_embeddings("", text_encoding_pipeline)
+
     validation_embeddings = {}
     if args.validation_prompt is not None:
         with offload_models(text_encoding_pipeline, device=accelerator.device, offload=args.offload):
@@ -1743,6 +1746,18 @@ def main(args):
                     num_repeat_elements = len(prompts) // 2 if args.with_prior_preservation else len(prompts)
                     prompt_embeds = static_prompt_embeds.repeat_interleave(num_repeat_elements, dim=0)
                     text_ids = static_text_ids.repeat_interleave(num_repeat_elements, dim=0)
+
+                # Caption dropout: replace a sample's caption embedding with the empty-prompt embedding so it
+                # trains unconditionally. Both paths order embeddings as [instance..., class...], so only the
+                # leading instance rows are dropped, never class/prior captions.
+                if args.caption_dropout > 0:
+                    n_inst = len(sample_indices)
+                    drop_mask = torch.rand(n_inst, device=prompt_embeds.device) < args.caption_dropout
+                    if drop_mask.any():
+                        prompt_embeds[:n_inst][drop_mask] = empty_prompt_hidden_states.to(
+                            device=prompt_embeds.device, dtype=prompt_embeds.dtype
+                        )
+                        text_ids[:n_inst][drop_mask] = empty_text_ids.to(device=text_ids.device, dtype=text_ids.dtype)
 
                 # Convert images to latent space
                 if args.cache_latents:
