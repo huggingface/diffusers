@@ -71,6 +71,12 @@ def _maybe_map_sgm_blocks_to_diffusers(state_dict, unet_config, delimiter="_", b
     for layer in all_keys:
         if "text" in layer:
             new_state_dict[layer] = state_dict.pop(layer)
+        elif not any(p in layer for p in sgm_patterns) or f"input_blocks{delimiter}0{delimiter}0" in layer:
+            # SDXL's sgm UNet has modules outside the input/middle/output block structure that
+            # _convert_unet_lora_key maps directly: time_embed, label_emb, out (out.2 = conv_out)
+            # and input_blocks.0.0 (= conv_in). Pass these through instead of block-remapping
+            # (conv_in's input_blocks.0 would otherwise be parsed as a down-block) or raising.
+            new_state_dict[layer] = state_dict.pop(layer)
         else:
             layer_id = int(layer.split(delimiter)[:block_slice_pos][-1])
             if sgm_patterns[0] in layer:
@@ -263,6 +269,12 @@ def _convert_unet_lora_key(key):
     """
     diffusers_name = key.replace("lora_unet_", "").replace("_", ".")
 
+    # kohya-ss trains SDXL on its own sgm/LDM UNet, so conv_in / conv_out arrive as
+    # input_blocks.0.0 / out.2. Map these before the block renames below, otherwise
+    # input_blocks.0.0 would become down_blocks.0.0 instead of conv_in.
+    diffusers_name = diffusers_name.replace("input.blocks.0.0", "conv_in")
+    diffusers_name = diffusers_name.replace("out.2", "conv_out")
+
     # Replace common U-Net naming patterns.
     diffusers_name = diffusers_name.replace("input.blocks", "down_blocks")
     diffusers_name = diffusers_name.replace("down.blocks", "down_blocks")
@@ -278,6 +290,19 @@ def _convert_unet_lora_key(key):
     diffusers_name = diffusers_name.replace("proj.in", "proj_in")
     diffusers_name = diffusers_name.replace("proj.out", "proj_out")
     diffusers_name = diffusers_name.replace("emb.layers", "time_emb_proj")
+    diffusers_name = diffusers_name.replace("conv.in", "conv_in")
+    diffusers_name = diffusers_name.replace("conv.out", "conv_out")
+    diffusers_name = diffusers_name.replace("time.embed.0", "time_embedding.linear_1")
+    diffusers_name = diffusers_name.replace("time.embed.2", "time_embedding.linear_2")
+    # sgm label_emb (SDXL added-conditioning MLP) -> diffusers add_embedding. Map before the
+    # SDXL index-strip heuristic below, which would otherwise collapse the layer index.
+    diffusers_name = diffusers_name.replace("label.emb.0.0", "add_embedding.linear_1")
+    diffusers_name = diffusers_name.replace("label.emb.0.2", "add_embedding.linear_2")
+    # kohya-ss trains SD 1.x on the diffusers UNet (not the sgm UNet it uses for SDXL),
+    # so the time-embedding MLP keeps the diffusers spelling time_embedding.linear_N
+    # rather than the sgm time_embed.N handled above.
+    diffusers_name = diffusers_name.replace("time.embedding.linear.1", "time_embedding.linear_1")
+    diffusers_name = diffusers_name.replace("time.embedding.linear.2", "time_embedding.linear_2")
 
     # SDXL specific conversions.
     if "emb" in diffusers_name and "time.emb.proj" not in diffusers_name:
