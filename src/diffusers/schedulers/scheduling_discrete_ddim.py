@@ -57,11 +57,12 @@ class DiscreteDDIMScheduler(SchedulerMixin, ConfigMixin):
     or jump to a uniformly random token. Unlike masked diffusion, there is no mask token; uncommitted positions carry
     random tokens.
 
-    An optional predictor-corrector mode follows "Reparameterizing Uniform Diffusion Models" via the leave-one-out
-    (LOO) denoiser (https://huggingface.co/papers/2605.22765). When `corrector_steps > 0`, the pipeline runs that many
-    Gibbs corrector sweeps after each predictor step (see [`~DiscreteDDIMScheduler.step_correct`]), resampling the
-    least-confident positions from the one-coordinate conditional `Cat(alpha_s * x0_loo + (1 - alpha_s) / K)` while
-    holding the rest fixed, which leaves the marginal `p_s` invariant and improves generation at no training cost.
+    An optional predictor-corrector mode follows "Uniform Diffusion Models Revisited: Leave-One-Out Denoiser and
+    Absorbing State Reformulation" via the leave-one-out (LOO) denoiser (https://huggingface.co/papers/2605.22765).
+    When `corrector_steps > 0`, the pipeline runs that many Gibbs corrector sweeps after each predictor step (see
+    [`~DiscreteDDIMScheduler.step_correct`]), resampling the least-confident positions from the one-coordinate
+    conditional `Cat(alpha_s * x0_loo + (1 - alpha_s) / K)` while holding the rest fixed, which leaves the marginal
+    `p_s` invariant and improves generation at no training cost.
 
     Args:
         num_inference_steps (`int`, defaults to 32):

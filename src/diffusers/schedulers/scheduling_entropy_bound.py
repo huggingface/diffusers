@@ -57,7 +57,8 @@ class EntropyBoundScheduler(SchedulerMixin, ConfigMixin):
     joint mutual information between the accepted tokens, so they are approximately independent. Accepted positions
     keep their sampled token; the rest are renoised with uniformly random tokens (there is no mask token).
 
-    Proposed in "Beyond Next-Token Prediction" (https://huggingface.co/papers/2505.24857).
+    Proposed in "Accelerated Sampling from Masked Diffusion Models via Entropy Bounded Unmasking"
+    (https://huggingface.co/papers/2505.24857).
 
     The sampling temperature is annealed from `t_max` on the first step down to `t_min` on the last, matching the
     released checkpoint's sampler (sharper sampling as denoising advances). It is applied to the logits before both the
