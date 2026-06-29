@@ -358,7 +358,7 @@ def parse_args(input_args=None):
         "--text_encoder_out_layers",
         type=int,
         nargs="+",
-        default=[10, 20, 30],
+        default=[9, 18, 27],
         help="Text encoder hidden layers to compute the final text embeddings.",
     )
     parser.add_argument(
