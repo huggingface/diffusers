@@ -8,6 +8,7 @@ _BF16_REQUIRED_BACKENDS = {
     AttentionBackendName.FLASH_HUB,
     AttentionBackendName.FLASH_VARLEN_HUB,
     AttentionBackendName._FLASH_3_HUB,
+    AttentionBackendName._FLASH_3_VARLEN_HUB,
 }
 
 
