@@ -15,7 +15,7 @@ specific language governing permissions and limitations under the License.
 The `EntropyBoundScheduler` commits the lowest-entropy positions whose joint entropy stays under `entropy_bound`, so
 roughly independent tokens are accepted together and the rest are renoised. It anneals its sampling temperature from
 `t_max` on the first step down to `t_min` on the last, matching the released checkpoint's sampler. Proposed in
-[Beyond Next-Token Prediction](https://huggingface.co/papers/2505.24857).
+[Accelerated Sampling from Masked Diffusion Models via Entropy Bounded Unmasking](https://huggingface.co/papers/2505.24857).
 
 This scheduler is used by [`DiffusionGemmaPipeline`].
 
