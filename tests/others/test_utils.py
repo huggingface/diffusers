@@ -284,6 +284,27 @@ class RandnTensorTester(unittest.TestCase):
         )
 
 
+class ApplyForwardHookTester(unittest.TestCase):
+    """Tests for :func:`diffusers.utils.accelerate_utils.apply_forward_hook`."""
+
+    def test_preserves_wrapped_function_metadata(self):
+        import inspect
+
+        from diffusers.utils.accelerate_utils import apply_forward_hook
+
+        @apply_forward_hook
+        def example(self, x: int, y: int = 0) -> int:
+            """Example method docstring."""
+            return x + y
+
+        assert example.__name__ == "example"
+        assert example.__doc__ == "Example method docstring."
+        assert hasattr(example, "__wrapped__")
+        signature = inspect.signature(example)
+        assert list(signature.parameters) == ["self", "x", "y"]
+        assert signature.parameters["y"].default == 0
+
+
 # Copied from https://github.com/huggingface/transformers/blob/main/tests/utils/test_expectations.py
 class ExpectationsTester(unittest.TestCase):
     def test_expectations(self):
