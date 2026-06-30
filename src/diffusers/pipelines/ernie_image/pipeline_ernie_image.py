@@ -20,7 +20,7 @@ import json
 from typing import Callable, List, Optional, Union
 
 import torch
-from transformers import AutoTokenizer, Mistral3Model
+from transformers import AutoModelForCausalLM, AutoTokenizer, Mistral3Model
 
 from ...image_processor import VaeImageProcessor
 from ...loaders import ErnieImageLoraLoaderMixin
@@ -28,15 +28,8 @@ from ...models import AutoencoderKLFlux2
 from ...models.transformers import ErnieImageTransformer2DModel
 from ...pipelines.pipeline_utils import DiffusionPipeline
 from ...schedulers import FlowMatchEulerDiscreteScheduler
-from ...utils.import_utils import is_transformers_version
 from ...utils.torch_utils import randn_tensor
 from .pipeline_output import ErnieImagePipelineOutput
-
-
-if is_transformers_version("<", "5.0.0"):
-    raise ImportError("`ErnieImagePipeline` requires `transformers>=5.0.0` for `Ministral3ForCausalLM`.")
-
-from transformers import Ministral3ForCausalLM  # noqa: E402
 
 
 class ErnieImagePipeline(DiffusionPipeline, ErnieImageLoraLoaderMixin):
@@ -62,7 +55,7 @@ class ErnieImagePipeline(DiffusionPipeline, ErnieImageLoraLoaderMixin):
         text_encoder: Mistral3Model,
         tokenizer: AutoTokenizer,
         scheduler: FlowMatchEulerDiscreteScheduler,
-        pe: Optional[Ministral3ForCausalLM] = None,
+        pe: Optional[AutoModelForCausalLM] = None,
         pe_tokenizer: Optional[AutoTokenizer] = None,
     ):
         super().__init__()

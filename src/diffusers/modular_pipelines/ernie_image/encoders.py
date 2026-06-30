@@ -15,21 +15,14 @@
 import json
 
 import torch
-from transformers import AutoTokenizer, Mistral3Model
+from transformers import AutoModelForCausalLM, AutoTokenizer, Mistral3Model
 
 from ...configuration_utils import FrozenDict
 from ...guiders import ClassifierFreeGuidance
 from ...utils import logging
-from ...utils.import_utils import is_transformers_version
 from ..modular_pipeline import ModularPipelineBlocks, PipelineState
 from ..modular_pipeline_utils import ComponentSpec, InputParam, OutputParam
 from .modular_pipeline import ErnieImageModularPipeline
-
-
-if is_transformers_version("<", "5.0.0"):
-    raise ImportError("`ErnieImageModularPipeline` requires `transformers>=5.0.0` for `Ministral3ForCausalLM`.")
-
-from transformers import Ministral3ForCausalLM  # noqa: E402
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -45,7 +38,7 @@ class ErnieImagePromptEnhancerStep(ModularPipelineBlocks):
     @property
     def expected_components(self) -> list[ComponentSpec]:
         return [
-            ComponentSpec("pe", Ministral3ForCausalLM),
+            ComponentSpec("pe", AutoModelForCausalLM),
             ComponentSpec("pe_tokenizer", AutoTokenizer),
         ]
 
@@ -90,7 +83,7 @@ class ErnieImagePromptEnhancerStep(ModularPipelineBlocks):
 
     @staticmethod
     def _enhance_prompt(
-        pe: Ministral3ForCausalLM,
+        pe: AutoModelForCausalLM,
         pe_tokenizer: AutoTokenizer,
         prompt: str,
         device: torch.device,
