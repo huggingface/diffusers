@@ -918,40 +918,31 @@ class DreamBoothDataset(Dataset):
         return example
 
     def paired_transform(self, image, dest_image=None, size=(224, 224), center_crop=False, random_flip=False):
-        # 1. Resize (deterministic)
-        resize = transforms.Resize(size, interpolation=transforms.InterpolationMode.BILINEAR)
-        image = resize(image)
+        # Resize preserving aspect ratio so the image covers the bucket, then crop to the bucket size.
+        # The same geometry is applied to the conditioning image so the pair stays aligned.
+        target_height, target_width = size
+        width, height = image.size
+        scale = max(target_height / height, target_width / width)
+        new_size = [round(height * scale), round(width * scale)]
+        image = TF.resize(image, new_size, interpolation=transforms.InterpolationMode.BILINEAR)
         if dest_image is not None:
-            dest_image = resize(dest_image)
-
-        # 2. Crop: either center or SAME random crop
+            dest_image = TF.resize(dest_image, new_size, interpolation=transforms.InterpolationMode.BILINEAR)
         if center_crop:
-            crop = transforms.CenterCrop(size)
-            image = crop(image)
+            image = TF.center_crop(image, size)
             if dest_image is not None:
-                dest_image = crop(dest_image)
+                dest_image = TF.center_crop(dest_image, size)
         else:
-            # get_params returns (i, j, h, w)
             i, j, h, w = transforms.RandomCrop.get_params(image, output_size=size)
             image = TF.crop(image, i, j, h, w)
             if dest_image is not None:
                 dest_image = TF.crop(dest_image, i, j, h, w)
-
-        # 3. Random horizontal flip with the SAME coin flip
-        if random_flip:
-            do_flip = random.random() < 0.5
-            if do_flip:
-                image = TF.hflip(image)
-                if dest_image is not None:
-                    dest_image = TF.hflip(dest_image)
-
-        # 4. ToTensor + Normalize (deterministic)
-        to_tensor = transforms.ToTensor()
-        normalize = transforms.Normalize([0.5], [0.5])
-        image = normalize(to_tensor(image))
+        if random_flip and random.random() < 0.5:
+            image = TF.hflip(image)
+            if dest_image is not None:
+                dest_image = TF.hflip(dest_image)
+        image = TF.normalize(TF.to_tensor(image), [0.5], [0.5])
         if dest_image is not None:
-            dest_image = normalize(to_tensor(dest_image))
-
+            dest_image = TF.normalize(TF.to_tensor(dest_image), [0.5], [0.5])
         return (image, dest_image) if dest_image is not None else (image, None)
 
 

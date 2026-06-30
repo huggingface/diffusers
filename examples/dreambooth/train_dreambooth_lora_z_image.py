@@ -917,32 +917,24 @@ class DreamBoothDataset(Dataset):
 
         return example
 
-    def train_transform(self, image, size=(224, 224), center_crop=False, random_flip=False):
-        # 1. Resize (deterministic)
-        resize = transforms.Resize(size, interpolation=transforms.InterpolationMode.BILINEAR)
-        image = resize(image)
-
-        # 2. Crop: either center or SAME random crop
+    def train_transform(self, image, size, center_crop=False, random_flip=False):
+        # Resize preserving aspect ratio so the image covers the bucket, then crop to the bucket size.
+        target_height, target_width = size
+        width, height = image.size
+        scale = max(target_height / height, target_width / width)
+        image = TF.resize(
+            image,
+            [round(height * scale), round(width * scale)],
+            interpolation=transforms.InterpolationMode.BILINEAR,
+        )
         if center_crop:
-            crop = transforms.CenterCrop(size)
-            image = crop(image)
+            image = TF.center_crop(image, size)
         else:
-            # get_params returns (i, j, h, w)
             i, j, h, w = transforms.RandomCrop.get_params(image, output_size=size)
             image = TF.crop(image, i, j, h, w)
-
-        # 3. Random horizontal flip with the SAME coin flip
-        if random_flip:
-            do_flip = random.random() < 0.5
-            if do_flip:
-                image = TF.hflip(image)
-
-        # 4. ToTensor + Normalize (deterministic)
-        to_tensor = transforms.ToTensor()
-        normalize = transforms.Normalize([0.5], [0.5])
-        image = normalize(to_tensor(image))
-
-        return image
+        if random_flip and random.random() < 0.5:
+            image = TF.hflip(image)
+        return TF.normalize(TF.to_tensor(image), [0.5], [0.5])
 
 
 def collate_fn(examples, with_prior_preservation=False):
