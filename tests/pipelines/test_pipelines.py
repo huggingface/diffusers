@@ -2083,6 +2083,19 @@ class PipelineSlowTests(unittest.TestCase):
             # is not downloaded, but all the expected ones
             assert not os.path.isfile(os.path.join(snapshot_dir, "big_array.npy"))
 
+    def test_download_allow_files(self):
+        # `_allow_files` in model_index.json forces files that the smart-download patterns would otherwise skip.
+        # This repo mirrors `unet-pipeline-dummy` but lists a (tiny stand-in) `big_array.npy` in `_allow_files`,
+        # so it is downloaded here, whereas `test_smart_download` asserts it is skipped without `_allow_files`.
+        model_id = "hf-internal-testing/unet-pipeline-dummy-allow-files"
+        with tempfile.TemporaryDirectory() as tmpdirname:
+            _ = DiffusionPipeline.from_pretrained(model_id, cache_dir=tmpdirname, force_download=True)
+            local_repo_name = "--".join(["models"] + model_id.split("/"))
+            snapshot_dir = os.path.join(tmpdirname, local_repo_name, "snapshots")
+            snapshot_dir = os.path.join(snapshot_dir, os.listdir(snapshot_dir)[0])
+
+            assert os.path.isfile(os.path.join(snapshot_dir, "big_array.npy"))
+
     def test_warning_unused_kwargs(self):
         model_id = "hf-internal-testing/unet-pipeline-dummy"
         logger = logging.get_logger("diffusers.pipelines")
