@@ -1,4 +1,4 @@
-# Copyright 2025 The HuggingFace Team. All rights reserved.
+# Copyright 2026 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -70,6 +70,12 @@ def _maybe_map_sgm_blocks_to_diffusers(state_dict, unet_config, delimiter="_", b
 
     for layer in all_keys:
         if "text" in layer:
+            new_state_dict[layer] = state_dict.pop(layer)
+        elif not any(p in layer for p in sgm_patterns) or f"input_blocks{delimiter}0{delimiter}0" in layer:
+            # SDXL's sgm UNet has modules outside the input/middle/output block structure that
+            # _convert_unet_lora_key maps directly: time_embed, label_emb, out (out.2 = conv_out)
+            # and input_blocks.0.0 (= conv_in). Pass these through instead of block-remapping
+            # (conv_in's input_blocks.0 would otherwise be parsed as a down-block) or raising.
             new_state_dict[layer] = state_dict.pop(layer)
         else:
             layer_id = int(layer.split(delimiter)[:block_slice_pos][-1])
@@ -263,6 +269,12 @@ def _convert_unet_lora_key(key):
     """
     diffusers_name = key.replace("lora_unet_", "").replace("_", ".")
 
+    # kohya-ss trains SDXL on its own sgm/LDM UNet, so conv_in / conv_out arrive as
+    # input_blocks.0.0 / out.2. Map these before the block renames below, otherwise
+    # input_blocks.0.0 would become down_blocks.0.0 instead of conv_in.
+    diffusers_name = diffusers_name.replace("input.blocks.0.0", "conv_in")
+    diffusers_name = diffusers_name.replace("out.2", "conv_out")
+
     # Replace common U-Net naming patterns.
     diffusers_name = diffusers_name.replace("input.blocks", "down_blocks")
     diffusers_name = diffusers_name.replace("down.blocks", "down_blocks")
@@ -278,6 +290,19 @@ def _convert_unet_lora_key(key):
     diffusers_name = diffusers_name.replace("proj.in", "proj_in")
     diffusers_name = diffusers_name.replace("proj.out", "proj_out")
     diffusers_name = diffusers_name.replace("emb.layers", "time_emb_proj")
+    diffusers_name = diffusers_name.replace("conv.in", "conv_in")
+    diffusers_name = diffusers_name.replace("conv.out", "conv_out")
+    diffusers_name = diffusers_name.replace("time.embed.0", "time_embedding.linear_1")
+    diffusers_name = diffusers_name.replace("time.embed.2", "time_embedding.linear_2")
+    # sgm label_emb (SDXL added-conditioning MLP) -> diffusers add_embedding. Map before the
+    # SDXL index-strip heuristic below, which would otherwise collapse the layer index.
+    diffusers_name = diffusers_name.replace("label.emb.0.0", "add_embedding.linear_1")
+    diffusers_name = diffusers_name.replace("label.emb.0.2", "add_embedding.linear_2")
+    # kohya-ss trains SD 1.x on the diffusers UNet (not the sgm UNet it uses for SDXL),
+    # so the time-embedding MLP keeps the diffusers spelling time_embedding.linear_N
+    # rather than the sgm time_embed.N handled above.
+    diffusers_name = diffusers_name.replace("time.embedding.linear.1", "time_embedding.linear_1")
+    diffusers_name = diffusers_name.replace("time.embedding.linear.2", "time_embedding.linear_2")
 
     # SDXL specific conversions.
     if "emb" in diffusers_name and "time.emb.proj" not in diffusers_name:
@@ -2976,3 +3001,63 @@ def _convert_non_diffusers_ideogram4_lora_to_diffusers(state_dict):
         )
 
     return {f"transformer.{k}": v for k, v in converted_state_dict.items()}
+
+
+def _convert_non_diffusers_krea2_lora_to_diffusers(state_dict):
+    """
+    Convert a non-diffusers Krea 2 LoRA state dict to the diffusers format.
+
+    Maps the original `krea-ai/krea-2` module names onto `Krea2Transformer2DModel`. Handles both the `diffusion_model.`
+    prefix (Krea 2 reference trainer / ComfyUI) and the `base_model.model.` prefix (Ostris AI-Toolkit).
+    """
+    state_dict = {
+        k.removeprefix("base_model.model.").removeprefix("diffusion_model."): v for k, v in state_dict.items()
+    }
+
+    attn_map = {"wq": "to_q", "wk": "to_k", "wv": "to_v", "wo": "to_out.0", "gate": "to_gate"}
+    ff_map = {"gate": "ff.gate", "up": "ff.up", "down": "ff.down"}
+    # AI-Toolkit stores these standalone modules under abbreviated `nn.Sequential`-style names.
+    standalone_map = {
+        "first": "img_in",
+        "last.linear": "final_layer.linear",
+        "tmlp.0": "time_embed.linear_1",
+        "tmlp.2": "time_embed.linear_2",
+        "tproj.1": "time_mod_proj",
+        "txtmlp.1": "txt_in.linear_1",
+        "txtmlp.3": "txt_in.linear_2",
+        "txtfusion.projector": "text_fusion.projector",
+    }
+
+    def convert_module(module):
+        m = re.match(r"blocks\.(\d+)\.(attn|mlp)\.(\w+)$", module)
+        if m:
+            idx, kind, sub = m.groups()
+            if kind == "attn" and sub in attn_map:
+                return f"transformer_blocks.{idx}.attn.{attn_map[sub]}"
+            if kind == "mlp" and sub in ff_map:
+                return f"transformer_blocks.{idx}.{ff_map[sub]}"
+            return None
+        m = re.match(r"txtfusion\.(layerwise_blocks|refiner_blocks)\.(\d+)\.(attn|mlp)\.(\w+)$", module)
+        if m:
+            block, idx, kind, sub = m.groups()
+            if kind == "attn" and sub in attn_map:
+                return f"text_fusion.{block}.{idx}.attn.{attn_map[sub]}"
+            if kind == "mlp" and sub in ff_map:
+                return f"text_fusion.{block}.{idx}.{ff_map[sub]}"
+            return None
+        return standalone_map.get(module)
+
+    converted_state_dict = {}
+    for key in list(state_dict):
+        match = re.search(r"\.(?:lora_[AB])\.weight$", key)
+        if match is None:
+            continue
+        diffusers_module = convert_module(key[: match.start()])
+        if diffusers_module is None:
+            continue
+        converted_state_dict[f"transformer.{diffusers_module}{key[match.start() :]}"] = state_dict.pop(key)
+
+    if len(state_dict) > 0:
+        raise ValueError(f"`state_dict` should be empty at this point but has {state_dict.keys()=}")
+
+    return converted_state_dict

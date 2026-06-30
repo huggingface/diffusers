@@ -120,9 +120,9 @@ class HunyuanDiTTesterConfig(BaseModelTesterConfig):
 
 
 class TestHunyuanDiT(HunyuanDiTTesterConfig, ModelTesterMixin):
-    def test_output(self):
+    def test_output(self, base_model_output):
         batch_size = self.get_dummy_inputs()[self.main_input_name].shape[0]
-        super().test_output(expected_output_shape=(batch_size,) + self.output_shape)
+        super().test_output(base_model_output, expected_output_shape=(batch_size,) + self.output_shape)
 
 
 class TestHunyuanDiTTraining(HunyuanDiTTesterConfig, TrainingTesterMixin):
