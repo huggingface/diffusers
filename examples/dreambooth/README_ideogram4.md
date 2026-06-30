@@ -102,7 +102,7 @@ For `--caption_column` / `--instance_prompt` (and at inference):
 For this example we use the [`Norod78/Yarn-art-style`](https://huggingface.co/datasets/Norod78/Yarn-art-style) dataset:
 
 ```bash
-export MODEL_NAME="ideogram-ai/ideogram-v4"
+export MODEL_NAME="ideogram-ai/ideogram-4-nf4-diffusers"
 export OUTPUT_DIR="trained-ideogram4-lora"
 # Ideogram 4 expects a structured JSON caption (see "Prompt format" above).
 export INSTANCE_PROMPT='{"high_level_description":"A puppy in a soft yarn-art style","compositional_deconstruction":{"background":"a plain cream studio backdrop","elements":[{"type":"obj","desc":"a small fluffy puppy crocheted from multicolored yarn, sitting upright and facing the viewer"}]}}'
@@ -158,7 +158,7 @@ After training, load the base pipeline and your LoRA:
 import torch
 from diffusers import Ideogram4Pipeline
 
-pipeline = Ideogram4Pipeline.from_pretrained("ideogram-ai/ideogram-v4", torch_dtype=torch.bfloat16)
+pipeline = Ideogram4Pipeline.from_pretrained("ideogram-ai/ideogram-4-nf4-diffusers", torch_dtype=torch.bfloat16)
 pipeline.to("cuda")
 pipeline.load_lora_weights("trained-ideogram4-lora", weight_name="pytorch_lora_weights.safetensors")
 
