@@ -666,8 +666,8 @@ class SlowBnb8bitFluxTests(Base8bitTests):
         # On devices with <= 24 GB VRAM, enable_model_cpu_offload can OOM because it
         # moves an entire sub-model to the accelerator at once.  Fall back to
         # sequential (per-layer) CPU offload in that case.
-        _, total_mem = torch.accelerator.get_memory_info(0)
-        if total_mem <= 25 * (1024**3):
+        _, total_mem = torch.accelerator.get_memory_info()
+        if total_mem <= 24 * (1024**3):
             self.pipeline_8bit.enable_sequential_cpu_offload()
         else:
             self.pipeline_8bit.enable_model_cpu_offload()
