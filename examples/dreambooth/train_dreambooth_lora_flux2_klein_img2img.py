@@ -436,6 +436,11 @@ def parse_args(input_args=None):
         ),
     )
     parser.add_argument(
+        "--bucket_no_upscale",
+        action="store_true",
+        help="If set, images smaller than their aspect-ratio bucket are padded instead of upscaled.",
+    )
+    parser.add_argument(
         "--center_crop",
         default=False,
         action="store_true",
@@ -880,15 +885,6 @@ class DreamBoothDataset(Dataset):
         self.num_instance_images = len(self.instance_images)
         self._length = self.num_instance_images
 
-        self.image_transforms = transforms.Compose(
-            [
-                transforms.Resize(size, interpolation=transforms.InterpolationMode.BILINEAR),
-                transforms.CenterCrop(size) if center_crop else transforms.RandomCrop(size),
-                transforms.ToTensor(),
-                transforms.Normalize([0.5], [0.5]),
-            ]
-        )
-
     def __len__(self):
         return self._length
 
@@ -919,10 +915,19 @@ class DreamBoothDataset(Dataset):
         target_height, target_width = size
         width, height = image.size
         scale = max(target_height / height, target_width / width)
+        if args.bucket_no_upscale:
+            scale = min(scale, 1.0)
         new_size = [round(height * scale), round(width * scale)]
+        # Pad to the bucket when no-upscale leaves the image smaller, so batched samples share a shape.
+        pad_w, pad_h = max(0, target_width - new_size[1]), max(0, target_height - new_size[0])
+        padding = [pad_w // 2, pad_h // 2, pad_w - pad_w // 2, pad_h - pad_h // 2]
         image = TF.resize(image, new_size, interpolation=transforms.InterpolationMode.BILINEAR)
+        if pad_w or pad_h:
+            image = TF.pad(image, padding)
         if dest_image is not None:
             dest_image = TF.resize(dest_image, new_size, interpolation=transforms.InterpolationMode.BILINEAR)
+            if pad_w or pad_h:
+                dest_image = TF.pad(dest_image, padding)
         if center_crop:
             image = TF.center_crop(image, size)
             if dest_image is not None:

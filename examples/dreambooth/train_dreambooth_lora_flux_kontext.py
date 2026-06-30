@@ -453,6 +453,11 @@ def parse_args(input_args=None):
         ),
     )
     parser.add_argument(
+        "--bucket_no_upscale",
+        action="store_true",
+        help="If set, images smaller than their aspect-ratio bucket are padded instead of upscaled.",
+    )
+    parser.add_argument(
         "--center_crop",
         default=False,
         action="store_true",
@@ -914,15 +919,6 @@ class DreamBoothDataset(Dataset):
         else:
             self.class_data_root = None
 
-        self.image_transforms = transforms.Compose(
-            [
-                transforms.Resize(self.size, interpolation=transforms.InterpolationMode.BILINEAR),
-                transforms.CenterCrop(self.size) if center_crop else transforms.RandomCrop(self.size),
-                transforms.ToTensor(),
-                transforms.Normalize([0.5], [0.5]),
-            ]
-        )
-
     def __len__(self):
         return self._length
 
@@ -951,7 +947,10 @@ class DreamBoothDataset(Dataset):
 
             if not class_image.mode == "RGB":
                 class_image = class_image.convert("RGB")
-            example["class_images"] = self.image_transforms(class_image)
+            # Match the class image to the paired instance image's bucket so they can be stacked into one batch.
+            example["class_images"] = self.paired_transform(
+                class_image, size=self.buckets[bucket_idx], center_crop=self.center_crop
+            )[0]
             example["class_prompt"] = self.class_prompt
 
         return example
@@ -962,10 +961,19 @@ class DreamBoothDataset(Dataset):
         target_height, target_width = size
         width, height = image.size
         scale = max(target_height / height, target_width / width)
+        if args.bucket_no_upscale:
+            scale = min(scale, 1.0)
         new_size = [round(height * scale), round(width * scale)]
+        # Pad to the bucket when no-upscale leaves the image smaller, so batched samples share a shape.
+        pad_w, pad_h = max(0, target_width - new_size[1]), max(0, target_height - new_size[0])
+        padding = [pad_w // 2, pad_h // 2, pad_w - pad_w // 2, pad_h - pad_h // 2]
         image = TF.resize(image, new_size, interpolation=transforms.InterpolationMode.BILINEAR)
+        if pad_w or pad_h:
+            image = TF.pad(image, padding)
         if dest_image is not None:
             dest_image = TF.resize(dest_image, new_size, interpolation=transforms.InterpolationMode.BILINEAR)
+            if pad_w or pad_h:
+                dest_image = TF.pad(dest_image, padding)
         if center_crop:
             image = TF.center_crop(image, size)
             if dest_image is not None:
