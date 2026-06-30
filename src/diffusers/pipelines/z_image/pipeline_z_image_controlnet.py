@@ -431,10 +431,9 @@ class ZImageControlNetPipeline(DiffusionPipeline, ZImageLoraLoaderMixin, FromSin
                 will be used.
             guidance_scale (`float`, *optional*, defaults to 5.0):
                 Guidance scale as defined in [Classifier-Free Diffusion Guidance](https://arxiv.org/abs/2207.12598).
-                `guidance_scale` is defined as `w` of equation 2. of [Imagen
-                Paper](https://arxiv.org/pdf/2205.11487.pdf). Guidance scale is enabled by setting `guidance_scale >
-                1`. Higher guidance scale encourages to generate images that are closely linked to the text `prompt`,
-                usually at the expense of lower image quality.
+                Z-Image uses the formula `pred = pos + guidance_scale * (pos - neg)`, so guidance scale is enabled
+                by setting `guidance_scale > 0`. Higher guidance scale encourages to generate images that are closely
+                linked to the text `prompt`, usually at the expense of lower image quality.
             control_image (`PipelineImageInput`):
                 The ControlNet input condition to provide guidance to the `transformer` for generation. If the type is
                 specified as `torch.Tensor`, it is passed to ControlNet as is. `PIL.Image.Image` can also be accepted
