@@ -6120,9 +6120,19 @@ class Flux2LoraLoaderMixin(LoraBaseMixin):
         if not is_correct_format:
             raise ValueError("Invalid LoRA checkpoint. Make sure all LoRA param names contain `'lora'` substring.")
 
+        try:
+            transformer = getattr(self, self.transformer_name) if not hasattr(self, "transformer") else self.transformer
+        except AttributeError:
+            logger.warning(
+                f"Could not load LoRA weights into {type(self).__name__}. "
+                f"The `{self.transformer_name}` attribute is not available on this sub-pipeline. "
+                "Load LoRA weights on the main pipeline instance instead."
+            )
+            return
+
         self.load_lora_into_transformer(
             state_dict,
-            transformer=getattr(self, self.transformer_name) if not hasattr(self, "transformer") else self.transformer,
+            transformer=transformer,
             adapter_name=adapter_name,
             metadata=metadata,
             _pipeline=self,
