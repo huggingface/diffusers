@@ -128,6 +128,15 @@ class VideoProcessorTest(unittest.TestCase):
 
         return video
 
+    def test_empty_video_list_is_invalid(self):
+        video_processor = VideoProcessor(do_resize=False, do_normalize=False)
+
+        with self.assertRaisesRegex(ValueError, "Input is in incorrect format"):
+            video_processor.preprocess_video([])
+
+        with self.assertRaisesRegex(ValueError, "Input is in incorrect format"):
+            video_processor.preprocess_video([[]])
+
     @parameterized.expand(["list_images", "list_list_images"])
     def test_video_processor_pil(self, input_type):
         video_processor = VideoProcessor(do_resize=False, do_normalize=True)
