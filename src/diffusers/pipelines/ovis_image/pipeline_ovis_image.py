@@ -176,7 +176,6 @@ class OvisImagePipeline(
         self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor * 2)
         self.system_prompt = "Describe the image by detailing the color, quantity, text, shape, size, texture, spatial relationships of the objects and background: "
         self.user_prompt_begin_id = 28
-        self.tokenizer_max_length = 256 + self.user_prompt_begin_id
         self.default_sample_size = 128
 
     def _get_messages(
