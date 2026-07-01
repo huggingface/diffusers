@@ -96,9 +96,9 @@ def prune_with_model(candidates: list[str], diff: str) -> list[str]:
         "directories derived from the changed files.\n"
         "Select the subset most worth running, ordered most relevant first. Choose ONLY from the "
         "candidate list, copy each path verbatim, and drop directories the diff does not "
-        'meaningfully exercise.\n'
+        "meaningfully exercise.\n"
         'Respond with JSON only, of the form {"tests": ["tests/.../", ...]}.\n\n'
-        f"Candidate test directories:\n" + "\n".join(candidates) + f"\n\nDiff:\n{diff}"
+        "Candidate test directories:\n" + "\n".join(candidates) + f"\n\nDiff:\n{diff}"
     )
     client = InferenceClient(api_key=os.environ["HF_TOKEN"])
     completion = client.chat.completions.create(
