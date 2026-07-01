@@ -113,6 +113,11 @@ class AnyFlowFARTransformer3DTesterConfig(BaseModelTesterConfig):
 class TestAnyFlowFARTransformer3D(AnyFlowFARTransformer3DTesterConfig, ModelTesterMixin):
     """Core model tests for AnyFlow FAR causal Transformer 3D."""
 
+    def test_attention_processor_api(self):
+        model = self.model_class(**self.get_init_dict())
+        assert len(model.attn_processors) > 0
+        model.set_attn_processor(model.attn_processors)
+
     @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16], ids=["fp16", "bf16"])
     def test_from_save_pretrained_dtype_inference(self, tmp_path, dtype):
         # Skip: fp16/bf16 require very high atol to pass, providing little signal.

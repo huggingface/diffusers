@@ -10,7 +10,7 @@ from ...configuration_utils import ConfigMixin, register_to_config
 from ...loaders import FromOriginalModelMixin, PeftAdapterMixin
 from ...utils import apply_lora_scale, logging
 from ...utils.torch_utils import maybe_adjust_dtype_for_device, maybe_allow_in_graph
-from ..attention import AttentionModuleMixin, FeedForward
+from ..attention import AttentionMixin, AttentionModuleMixin, FeedForward
 from ..attention_dispatch import dispatch_attention_fn
 from ..cache_utils import CacheMixin
 from ..embeddings import TimestepEmbedding, apply_rotary_emb, get_timestep_embedding
@@ -501,7 +501,9 @@ class BriaSingleTransformerBlock(nn.Module):
         return encoder_hidden_states, hidden_states
 
 
-class BriaTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOriginalModelMixin, CacheMixin):
+class BriaTransformer2DModel(
+    ModelMixin, ConfigMixin, PeftAdapterMixin, FromOriginalModelMixin, CacheMixin, AttentionMixin
+):
     """
     The Transformer model introduced in Flux. Based on FluxPipeline with several changes:
     - no pooled embeddings

@@ -88,6 +88,11 @@ class BriaTransformerTesterConfig(BaseModelTesterConfig):
 
 
 class TestBriaTransformer(BriaTransformerTesterConfig, ModelTesterMixin):
+    def test_attention_processor_api(self):
+        model = self.model_class(**self.get_init_dict())
+        assert len(model.attn_processors) > 0
+        model.set_attn_processor(model.attn_processors)
+
     def test_deprecated_inputs_img_txt_ids_3d(self):
         init_dict = self.get_init_dict()
         inputs_dict = self.get_dummy_inputs()

@@ -88,7 +88,13 @@ class OvisImageTransformerTesterConfig(BaseModelTesterConfig):
 
 
 class TestOvisImageTransformer(OvisImageTransformerTesterConfig, ModelTesterMixin):
-    pass
+    def test_attention_processor_api(self):
+        # OvisImageTransformer2DModel should expose the standard AttentionMixin APIs.
+        model = self.model_class(**self.get_init_dict())
+        assert len(model.attn_processors) > 0
+        model.set_attn_processor(model.attn_processors)
+        model.fuse_qkv_projections()
+        model.unfuse_qkv_projections()
 
 
 class TestOvisImageTransformerTraining(OvisImageTransformerTesterConfig, TrainingTesterMixin):

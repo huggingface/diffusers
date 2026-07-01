@@ -26,7 +26,7 @@ from ...utils import (
     logging,
 )
 from ...utils.torch_utils import maybe_adjust_dtype_for_device, maybe_allow_in_graph
-from ..attention import AttentionModuleMixin, FeedForward
+from ..attention import AttentionMixin, AttentionModuleMixin, FeedForward
 from ..attention_dispatch import dispatch_attention_fn
 from ..normalization import AdaLayerNormContinuous, AdaLayerNormZero, AdaLayerNormZeroSingle
 
@@ -426,7 +426,7 @@ class BriaFiboTimestepProjEmbeddings(nn.Module):
         return timesteps_emb
 
 
-class BriaFiboTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOriginalModelMixin):
+class BriaFiboTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOriginalModelMixin, AttentionMixin):
     """
     Parameters:
         patch_size (`int`): Patch size to turn the input data into small patches.
