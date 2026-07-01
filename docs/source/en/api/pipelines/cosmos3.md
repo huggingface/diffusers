@@ -32,7 +32,7 @@ From one model you can:
 - Generate physically plausible video worlds from text, images, or action inputs (image-to-video, text-to-video, action-conditioned video generation).
 - Reason about physical properties like motion, causality, and spatial relationships.
 - Predict future video and action sequences from the current state.
-- Transfer scenes across viewpoints and conditions with structural control *(coming soon)*.
+- Transfer scenes across viewpoints and conditions with structural control (edge, blur, depth, segmentation, world-scenario maps).
 
 Under the hood, a single `Cosmos3OmniTransformer` runs a Qwen-style language model in parallel with a diffusion generation pathway: text tokens flow through a causal "understanding" stream while video and sound latents flow through a bi-directionally-attended "generation" stream, joined by a 3D multimodal RoPE. See the [Cosmos World Foundation Model Platform paper](https://huggingface.co/papers/2501.03575) for the architectural background.
 
@@ -366,6 +366,109 @@ result = pipe(
 )
 # macro_block_size=1 allows arbitrary frame sizes (Cosmos3 outputs are not always divisible by 16).
 export_to_video(result.video, "cosmos3_v2v.mp4", fps=24, macro_block_size=1)
+```
+
+</hfoption>
+</hfoptions>
+
+## Transfer (structural control)
+
+Transfer generates a target clip that follows a **precomputed control video** (a spatial control signal): edge (Canny), blur, depth, segmentation, or a world-scenario map (WSM). Pass it through `control_videos=` as a mapping from hint name to a loaded video. The control map is resized, temporally padded, normalized, and VAE-encoded into a clean conditioning item placed before the noisy target; the model then generates the target to match it. Transfer is video-only (no `image`, `video`, `action`, or `enable_sound`), and the prompt is a pre-upsampled JSON caption (see [Prompt upsampling](#prompt-upsampling)).
+
+Diffusers does not ship the control assets. Ready-made ones (a control video + matching `prompt.json` per hint, plus a shared `negative_prompt.json`) live in the [Cosmos cookbook](https://github.com/NVIDIA/cosmos/tree/main/cookbooks/cosmos3/generator/transfer/assets). For the edge example below, download them into a local `assets/` folder:
+
+```bash
+base=https://github.com/NVIDIA/cosmos/raw/refs/heads/main/cookbooks/cosmos3/generator/transfer/assets
+mkdir -p assets/edge
+curl -sL "$base/edge/control_edge.mp4" -o assets/edge/control_edge.mp4
+curl -sL "$base/edge/prompt.json"      -o assets/edge/prompt.json
+curl -sL "$base/negative_prompt.json"  -o assets/negative_prompt.json
+```
+
+Guidance uses a nested control/text classifier-free-guidance blend. `guidance_scale` is the usual text CFG; `control_guidance` (`!= 1.0`) additionally amplifies the control signal. Recommended starting values per hint:
+
+| Hint | `guidance_scale` | `control_guidance` | `flow_shift` | Geometry |
+| --- | --- | --- | --- | --- |
+| Edge / Blur / Depth | 3.0 | 1.5 | 10.0 | 121 frames @ 30 FPS |
+| Segmentation | 3.0 | 2.0 | 10.0 | 121 frames @ 30 FPS |
+| World scenario (WSM) | 1.0 | 3.0 | 10.0 | 101 frames @ 10 FPS |
+
+Depth, segmentation, and WSM control maps must be precomputed by external models; edge/blur maps can be produced offline with any Canny/blur tool. The shipped cookbook configs use a single hint each; passing several entries in `control_videos` to combine hints is supported by the pipeline but is not a tuned/validated cookbook path (set `guidance_scale` / `control_guidance` explicitly, since the per-hint defaults above assume a single hint). Long clips are generated autoregressively in chunks of `num_video_frames_per_chunk` and stitched automatically.
+
+<hfoptions id="model">
+<hfoption id="Nano">
+
+```python
+import json
+import torch
+from diffusers import Cosmos3OmniPipeline
+from diffusers.schedulers.scheduling_unipc_multistep import UniPCMultistepScheduler
+from diffusers.utils import export_to_video, load_video
+
+# Downloaded into assets/ from the Cosmos cookbook (see the curl snippet above).
+json_prompt = json.load(open("assets/edge/prompt.json"))
+negative_prompt = json.load(open("assets/negative_prompt.json"))
+control_edge = load_video("assets/edge/control_edge.mp4")
+
+pipe = Cosmos3OmniPipeline.from_pretrained(
+    "nvidia/Cosmos3-Nano", torch_dtype=torch.bfloat16, device_map="cuda"
+)
+pipe.scheduler = UniPCMultistepScheduler.from_config(
+    pipe.scheduler.config, flow_shift=10.0, use_karras_sigmas=False
+)
+
+result = pipe(
+    prompt=json.dumps(json_prompt),
+    negative_prompt=json.dumps(negative_prompt),
+    control_videos={"edge": control_edge},
+    num_frames=121,
+    height=720,
+    width=1280,
+    fps=30.0,
+    num_inference_steps=35,
+    guidance_scale=3.0,
+    control_guidance=1.5,
+)
+# macro_block_size=1 allows arbitrary frame sizes (Cosmos3 outputs are not always divisible by 16).
+export_to_video(result.video, "cosmos3_transfer_edge.mp4", fps=30, macro_block_size=1)
+```
+
+</hfoption>
+<hfoption id="Super">
+
+```python
+import json
+import torch
+from diffusers import Cosmos3OmniPipeline
+from diffusers.schedulers.scheduling_unipc_multistep import UniPCMultistepScheduler
+from diffusers.utils import export_to_video, load_video
+
+# Downloaded into assets/ from the Cosmos cookbook (see the curl snippet above).
+json_prompt = json.load(open("assets/edge/prompt.json"))
+negative_prompt = json.load(open("assets/negative_prompt.json"))
+control_edge = load_video("assets/edge/control_edge.mp4")
+
+pipe = Cosmos3OmniPipeline.from_pretrained(
+    "nvidia/Cosmos3-Super", torch_dtype=torch.bfloat16, device_map="cuda"
+)
+pipe.scheduler = UniPCMultistepScheduler.from_config(
+    pipe.scheduler.config, flow_shift=10.0, use_karras_sigmas=False
+)
+
+result = pipe(
+    prompt=json.dumps(json_prompt),
+    negative_prompt=json.dumps(negative_prompt),
+    control_videos={"edge": control_edge},
+    num_frames=121,
+    height=720,
+    width=1280,
+    fps=30.0,
+    num_inference_steps=35,
+    guidance_scale=3.0,
+    control_guidance=1.5,
+)
+# macro_block_size=1 allows arbitrary frame sizes (Cosmos3 outputs are not always divisible by 16).
+export_to_video(result.video, "cosmos3_transfer_edge.mp4", fps=30, macro_block_size=1)
 ```
 
 </hfoption>
