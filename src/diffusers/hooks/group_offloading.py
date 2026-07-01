@@ -22,7 +22,7 @@ from typing import Set
 import safetensors.torch
 import torch
 
-from ..utils import get_logger, is_accelerate_available, is_torchao_available
+from ..utils import get_logger, is_accelerate_available, is_optimum_quanto_available, is_torchao_available
 from ._common import _GO_LC_SUPPORTED_PYTORCH_LAYERS
 from .hooks import HookRegistry, ModelHook
 
@@ -80,6 +80,31 @@ def _restore_torchao_tensor(param: torch.Tensor, source: torch.Tensor) -> None:
 def _record_stream_torchao_tensor(param: torch.Tensor, stream) -> None:
     """Record stream for all internal tensors of a TorchAO parameter."""
     for attr_name in _get_torchao_inner_tensor_names(param):
+        getattr(param, attr_name).record_stream(stream)
+
+
+def _is_quanto_tensor(tensor: torch.Tensor) -> bool:
+    if not is_optimum_quanto_available():
+        return False
+    from optimum.quanto import QTensor
+
+    return isinstance(tensor, QTensor)
+
+
+def _get_quanto_inner_tensor_names(tensor: torch.Tensor) -> list[str]:
+    """Get names of all internal tensor data attributes from a quanto QTensor (e.g. `_data`, `_scale`)."""
+    return list(tensor.__tensor_flatten__()[0])
+
+
+def _restore_quanto_tensor(param: torch.Tensor, source: torch.Tensor) -> None:
+    """Restore internal tensor data of a quanto QTensor from `source` without mutating `source`."""
+    for attr_name in _get_quanto_inner_tensor_names(source):
+        setattr(param, attr_name, getattr(source, attr_name))
+
+
+def _record_stream_quanto_tensor(param: torch.Tensor, stream) -> None:
+    """Record stream for all internal tensors of a quanto QTensor."""
+    for attr_name in _get_quanto_inner_tensor_names(param):
         getattr(param, attr_name).record_stream(stream)
 
 
@@ -174,10 +199,14 @@ class ModuleGroup:
 
     @staticmethod
     def _to_cpu(tensor, low_cpu_mem_usage):
-        # For TorchAO tensors, `.data` returns an incomplete wrapper without internal attributes
-        # (e.g. `.qdata`, `.scale`), so we must call `.cpu()` on the tensor directly.
-        t = tensor.cpu() if _is_torchao_tensor(tensor) else tensor.data.cpu()
-        return t if low_cpu_mem_usage else t.pin_memory()
+        # For tensor subclasses (TorchAO / quanto), `.data` returns an incomplete wrapper without internal
+        # attributes (e.g. `.qdata`/`.scale`, `._data`/`._scale`), so we must call `.cpu()` on the tensor directly.
+        t = tensor.cpu() if (_is_torchao_tensor(tensor) or _is_quanto_tensor(tensor)) else tensor.data.cpu()
+        # Subclass tensors (quanto / torchao) don't support `pin_memory()`/`is_pinned()` (quanto loses the
+        # subclass, torchao raises on the unimplemented op), so skip pinning for them.
+        if low_cpu_mem_usage or _is_quanto_tensor(tensor) or _is_torchao_tensor(tensor):
+            return t
+        return t.pin_memory()
 
     def _init_cpu_param_dict(self):
         cpu_param_dict = {}
@@ -202,7 +231,9 @@ class ModuleGroup:
     def _pinned_memory_tensors(self):
         try:
             pinned_dict = {
-                param: tensor.pin_memory() if not tensor.is_pinned() else tensor
+                param: tensor
+                if (_is_quanto_tensor(tensor) or _is_torchao_tensor(tensor) or tensor.is_pinned())
+                else tensor.pin_memory()
                 for param, tensor in self.cpu_param_dict.items()
             }
             yield pinned_dict
@@ -213,11 +244,15 @@ class ModuleGroup:
         moved = source_tensor.to(self.onload_device, non_blocking=self.non_blocking)
         if _is_torchao_tensor(tensor):
             _swap_torchao_tensor(tensor, moved)
+        elif _is_quanto_tensor(tensor):
+            torch.utils.swap_tensors(tensor, moved)
         else:
             tensor.data = moved
         if self.record_stream:
             if _is_torchao_tensor(tensor):
                 _record_stream_torchao_tensor(tensor, default_stream)
+            elif _is_quanto_tensor(tensor):
+                _record_stream_quanto_tensor(tensor, default_stream)
             else:
                 tensor.data.record_stream(default_stream)
 
@@ -320,16 +355,22 @@ class ModuleGroup:
                 for param in group_module.parameters():
                     if _is_torchao_tensor(param):
                         _restore_torchao_tensor(param, self.cpu_param_dict[param])
+                    elif _is_quanto_tensor(param):
+                        _restore_quanto_tensor(param, self.cpu_param_dict[param])
                     else:
                         param.data = self.cpu_param_dict[param]
             for param in self.parameters:
                 if _is_torchao_tensor(param):
                     _restore_torchao_tensor(param, self.cpu_param_dict[param])
+                elif _is_quanto_tensor(param):
+                    _restore_quanto_tensor(param, self.cpu_param_dict[param])
                 else:
                     param.data = self.cpu_param_dict[param]
             for buffer in self.buffers:
                 if _is_torchao_tensor(buffer):
                     _restore_torchao_tensor(buffer, self.cpu_param_dict[buffer])
+                elif _is_quanto_tensor(buffer):
+                    _restore_quanto_tensor(buffer, self.cpu_param_dict[buffer])
                 else:
                     buffer.data = self.cpu_param_dict[buffer]
         else:
@@ -339,12 +380,16 @@ class ModuleGroup:
                 if _is_torchao_tensor(param):
                     moved = param.to(self.offload_device, non_blocking=False)
                     _swap_torchao_tensor(param, moved)
+                elif _is_quanto_tensor(param):
+                    torch.utils.swap_tensors(param, param.to(self.offload_device, non_blocking=False))
                 else:
                     param.data = param.data.to(self.offload_device, non_blocking=False)
             for buffer in self.buffers:
                 if _is_torchao_tensor(buffer):
                     moved = buffer.to(self.offload_device, non_blocking=False)
                     _swap_torchao_tensor(buffer, moved)
+                elif _is_quanto_tensor(buffer):
+                    torch.utils.swap_tensors(buffer, buffer.to(self.offload_device, non_blocking=False))
                 else:
                     buffer.data = buffer.data.to(self.offload_device, non_blocking=False)
 

@@ -522,6 +522,33 @@ class TorchAoTest(unittest.TestCase):
         inputs = self.get_dummy_inputs(torch_device)
         _ = pipe(**inputs)
 
+    def test_group_offloading(self):
+        r"""
+        A test that checks if inference runs as expected when group offloading is enabled, including the
+        `use_stream` path that pins tensors, which the quantized subclass tensors do not support.
+        """
+        inputs = self.get_dummy_tensor_inputs(torch_device)
+        transformer = self.get_dummy_components(TorchAoConfig(Int8WeightOnlyConfig()))["transformer"].to(torch_device)
+        with torch.no_grad():
+            output_without_offloading = transformer(**inputs)[0]
+        del transformer
+        backend_empty_cache(torch_device)
+        gc.collect()
+
+        for offload_kwargs in (
+            {"offload_type": "leaf_level"},
+            {"offload_type": "leaf_level", "use_stream": True},
+            {"offload_type": "block_level", "num_blocks_per_group": 1, "use_stream": True},
+        ):
+            transformer = self.get_dummy_components(TorchAoConfig(Int8WeightOnlyConfig()))["transformer"]
+            transformer.enable_group_offload(torch_device, **offload_kwargs)
+            with torch.no_grad():
+                output = transformer(**inputs)[0]
+            assert torch.allclose(output_without_offloading, output, atol=1e-3, rtol=1e-3)
+            del transformer
+            backend_empty_cache(torch_device)
+            gc.collect()
+
     @require_torchao_version_greater_or_equal("0.15.0")
     def test_aobase_config(self):
         quantization_config = TorchAoConfig(Int8WeightOnlyConfig())
