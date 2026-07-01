@@ -29,6 +29,7 @@ from diffusers.modular_pipelines import (
 )
 
 from ...testing_utils import floats_tensor, torch_device
+from ..test_components_manager import ModularPipelineOffloadTesterMixin
 from ..test_modular_pipelines_common import ModularPipelineTesterMixin
 
 
@@ -45,7 +46,7 @@ FLUX_TEXT2IMAGE_WORKFLOWS = {
 }
 
 
-class TestFluxModularPipelineFast(ModularPipelineTesterMixin):
+class TestFluxModularPipelineFast(ModularPipelineOffloadTesterMixin, ModularPipelineTesterMixin):
     pipeline_class = FluxModularPipeline
     pipeline_blocks_class = FluxAutoBlocks
     pretrained_model_name_or_path = "hf-internal-testing/tiny-flux-modular"
