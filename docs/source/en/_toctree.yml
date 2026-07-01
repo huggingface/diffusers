@@ -722,6 +722,8 @@
       title: DDPMScheduler
     - local: api/schedulers/deis
       title: DEISMultistepScheduler
+    - local: api/schedulers/discrete_ddim
+      title: DiscreteDDIMScheduler
     - local: api/schedulers/multistep_dpm_solver_inverse
       title: DPMSolverMultistepInverse
     - local: api/schedulers/multistep_dpm_solver
@@ -734,6 +736,8 @@
       title: EDMDPMSolverMultistepScheduler
     - local: api/schedulers/edm_euler
       title: EDMEulerScheduler
+    - local: api/schedulers/entropy_bound
+      title: EntropyBoundScheduler
     - local: api/schedulers/euler_ancestral
       title: EulerAncestralDiscreteScheduler
     - local: api/schedulers/euler
