@@ -13,7 +13,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import pytest
 import torch
 
 from diffusers import AutoencoderVidTok
@@ -80,7 +79,6 @@ class AutoencoderVidTokTesterConfig(BaseModelTesterConfig):
 
 
 class TestAutoencoderVidTok(AutoencoderVidTokTesterConfig, ModelTesterMixin):
-    @pytest.mark.skip("VidTok output structure not compatible with recursive output check.")
     def test_outputs_equivalence(self):
         super().test_outputs_equivalence()
 
