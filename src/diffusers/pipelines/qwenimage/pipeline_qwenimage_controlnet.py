@@ -203,9 +203,9 @@ class QwenImageControlNetPipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
         text_encoder ([`Qwen2.5-VL-7B-Instruct`]):
             [Qwen2.5-VL-7B-Instruct](https://huggingface.co/Qwen/Qwen2.5-VL-7B-Instruct), specifically the
             [Qwen2.5-VL-7B-Instruct](https://huggingface.co/Qwen/Qwen2.5-VL-7B-Instruct) variant.
-        tokenizer (`QwenTokenizer`):
+        tokenizer (`Qwen2Tokenizer`):
             Tokenizer of class
-            [CLIPTokenizer](https://huggingface.co/docs/transformers/en/model_doc/clip#transformers.CLIPTokenizer).
+            https://huggingface.co/docs/transformers/en/model_doc/qwen2#transformers.Qwen2Tokenizer
     """
 
     model_cpu_offload_seq = "text_encoder->transformer->vae"
