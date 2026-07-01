@@ -25,7 +25,7 @@ Total downsampling ratio = patch_size × ∏(strides). Default production ratio:
 
 import math
 from dataclasses import dataclass
-from typing import List, Union
+from typing import List, Optional, Union
 
 import torch
 import torch.nn as nn
@@ -138,11 +138,17 @@ class _RotaryEmbedding(nn.Module):
 
 
 class _FeedForward(nn.Module):
-    """SwiGLU FFN with zero-initialised output projection."""
+    """
+    GLU FFN with zero-initialised output projection.
 
-    def __init__(self, dim: int, mult: int = 3):
+    The gate activation is SiLU (``sinusoidal=False``, "SwiGLU") or ``sin(pi * gate)`` (``sinusoidal=True``). SAME-L uses
+    sinusoidal activations in the trailing decoder transformer layers.
+    """
+
+    def __init__(self, dim: int, mult: int = 3, sinusoidal: bool = False):
         super().__init__()
         inner = int(dim * mult)
+        self.sinusoidal = sinusoidal
         self.proj_in = nn.Linear(dim, inner * 2, bias=True)
         self.proj_out = nn.Linear(inner, dim, bias=True)
         nn.init.zeros_(self.proj_out.weight)
@@ -150,7 +156,8 @@ class _FeedForward(nn.Module):
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         x, gate = self.proj_in(x).chunk(2, dim=-1)
-        return self.proj_out(x * F.silu(gate))
+        gate = torch.sin(math.pi * gate) if self.sinusoidal else F.silu(gate)
+        return self.proj_out(x * gate)
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -184,7 +191,7 @@ class _Attention(nn.Module):
     def _heads(self, x: torch.Tensor) -> torch.Tensor:
         return x.unflatten(-1, (self.num_heads, self.dim_heads)).transpose(1, 2)
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(self, x: torch.Tensor, attn_mask: Optional[torch.Tensor] = None) -> torch.Tensor:
         B, N, _ = x.shape
         freqs = self.rope(N, x.device)
 
@@ -195,13 +202,15 @@ class _Attention(nn.Module):
             k1, k2 = self.k_norm(k1), self.k_norm(k2)
             q1, q2 = _apply_rotary(q1, freqs), _apply_rotary(q2, freqs)
             k1, k2 = _apply_rotary(k1, freqs), _apply_rotary(k2, freqs)
-            out = F.scaled_dot_product_attention(q1, k1, v) - F.scaled_dot_product_attention(q2, k2, v)
+            out = F.scaled_dot_product_attention(q1, k1, v, attn_mask=attn_mask) - F.scaled_dot_product_attention(
+                q2, k2, v, attn_mask=attn_mask
+            )
         else:
             q, k, v = self.to_qkv(x).chunk(3, dim=-1)
             q, k, v = map(self._heads, (q, k, v))
             q, k = self.q_norm(q), self.k_norm(k)
             q, k = _apply_rotary(q, freqs), _apply_rotary(k, freqs)
-            out = F.scaled_dot_product_attention(q, k, v)
+            out = F.scaled_dot_product_attention(q, k, v, attn_mask=attn_mask)
 
         return self.to_out(out.transpose(1, 2).flatten(-2))
 
@@ -212,15 +221,22 @@ class _Attention(nn.Module):
 
 
 class _TransformerBlock(nn.Module):
-    def __init__(self, dim: int, dim_heads: int = 128, use_differential: bool = True, ff_mult: int = 3):
+    def __init__(
+        self,
+        dim: int,
+        dim_heads: int = 128,
+        use_differential: bool = True,
+        ff_mult: int = 3,
+        sinusoidal: bool = False,
+    ):
         super().__init__()
         self.norm_attn = _DynamicTanh(dim)
         self.attn = _Attention(dim, dim_heads=dim_heads, use_differential=use_differential)
         self.norm_ff = _DynamicTanh(dim)
-        self.ff = _FeedForward(dim, mult=ff_mult)
+        self.ff = _FeedForward(dim, mult=ff_mult, sinusoidal=sinusoidal)
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        x = x + self.attn(self.norm_attn(x))
+    def forward(self, x: torch.Tensor, attn_mask: Optional[torch.Tensor] = None) -> torch.Tensor:
+        x = x + self.attn(self.norm_attn(x), attn_mask=attn_mask)
         x = x + self.ff(self.norm_ff(x))
         return x
 
@@ -230,20 +246,34 @@ class _TransformerBlock(nn.Module):
 # ──────────────────────────────────────────────────────────────────────────────
 
 
+def _band_mask(seq_len: int, window: int, device: torch.device, dtype: torch.dtype) -> torch.Tensor:
+    """
+    Additive sliding-window attention mask of shape ``(seq_len, seq_len)``.
+
+    Position ``i`` attends to position ``j`` iff ``-window <= (j - i) <= window`` (``0`` inside the band, ``-inf``
+    outside).
+    """
+    idx = torch.arange(seq_len, device=device)
+    delta = idx[None, :] - idx[:, None]
+    keep = (delta >= -window) & (delta <= window)
+    return torch.zeros((seq_len, seq_len), dtype=dtype, device=device).masked_fill(~keep, float("-inf"))
+
+
 class SAMETransformerResamplingBlock(nn.Module):
     """
     Core building block of SAME.
 
     **Encoder mode** (stride S):
-      Groups S consecutive input frames into one segment, appends a single learnable output embedding, runs D
-      transformer layers over chunks of these segments, then keeps only the output embedding → downsample by S.
+      Groups S consecutive input frames into one segment, appends a single learnable output embedding, then runs D
+      transformer layers over the full flattened segment sequence and keeps only the output embedding → downsample by S.
 
     **Decoder mode** (stride S):
-      Groups 1 input frame with S learnable output embeddings, runs D transformer layers over chunks, then keeps the S
-      output embeddings → upsample by S.
+      Groups 1 input frame with S learnable output embeddings, runs D transformer layers over the full flattened
+      sequence, then keeps the S output embeddings → upsample by S.
 
-    The chunked attention (``chunk_size`` output latents per forward pass) limits the receptive field and enables
-    processing of long audio sequences.
+    Attention uses an overlapping *sliding-window* band mask over the flattened segment sequence: each token attends to
+    ``sliding_window * (stride + 1)`` neighbours on each side. RoPE is computed over the full sequence length. This
+    matches the reference implementation exactly (a single non-overlapping chunk would only match for one segment).
 
     Args:
         in_channels: Number of input channels.
@@ -253,8 +283,10 @@ class SAMETransformerResamplingBlock(nn.Module):
         transformer_depth: Number of :class:`_TransformerBlock` layers.
         dim_heads: Attention head dimension.
         use_differential: Whether to use differential attention.
-        chunk_size: Output latent frames processed per transformer invocation.
+        chunk_size: Kept for config/back-compat; no longer used by the band-mask attention.
         ff_mult: Feed-forward expansion factor.
+        sliding_window: Sliding-window half-width in latents (band half-width is ``sliding_window * (stride + 1)``).
+        sinusoidal_blocks: Number of trailing transformer layers that use ``sin`` FFN gating instead of SiLU.
     """
 
     def __init__(
@@ -268,18 +300,19 @@ class SAMETransformerResamplingBlock(nn.Module):
         use_differential: bool = True,
         chunk_size: int = 128,
         ff_mult: int = 3,
+        sliding_window: int = 1,
+        sinusoidal_blocks: int = 0,
     ):
         super().__init__()
         if mode not in ("encoder", "decoder"):
             raise ValueError(f"mode must be 'encoder' or 'decoder', got {mode}")
-        if chunk_size % stride != 0:
-            raise ValueError(f"chunk_size ({chunk_size}) must be divisible by stride ({stride})")
 
         self.stride = stride
         self.chunk_size = chunk_size
         self.mode = mode
         self.in_channels = in_channels
         self.out_channels = out_channels
+        self.sliding_window = sliding_window
 
         # Transformer operates at out_channels (enc) or in_channels (dec)
         tdim = out_channels if mode == "encoder" else in_channels
@@ -289,27 +322,33 @@ class SAMETransformerResamplingBlock(nn.Module):
         self.transformers = nn.ModuleList(
             [
                 _TransformerBlock(
-                    tdim, dim_heads=min(dim_heads, tdim), use_differential=use_differential, ff_mult=ff_mult
+                    tdim,
+                    dim_heads=min(dim_heads, tdim),
+                    use_differential=use_differential,
+                    ff_mult=ff_mult,
+                    # The trailing `sinusoidal_blocks` layers use sin gating (matches the reference).
+                    sinusoidal=(transformer_depth - i) < sinusoidal_blocks,
                 )
-                for _ in range(transformer_depth)
+                for i in range(transformer_depth)
             ]
         )
 
-        # Learnable "output" embeddings per segment:
+        # Learnable "output" embeddings per segment. With variable stride a single token is shared across all
+        # stride positions (broadcast), so both encoder and decoder store a single token:
         #   encoder → 1 new token of size out_channels
-        #   decoder → stride new tokens of size in_channels
+        #   decoder → 1 new token of size in_channels (broadcast to `stride` positions at runtime)
         if mode == "encoder":
             self.new_tokens = nn.Parameter(1e-5 * torch.randn(1, 1, out_channels))
         else:
-            self.new_tokens = nn.Parameter(1e-5 * torch.randn(1, stride, in_channels))
+            self.new_tokens = nn.Parameter(1e-5 * torch.randn(1, 1, in_channels))
 
     # ------------------------------------------------------------------
     def _encode(self, x: torch.Tensor) -> torch.Tensor:
         B, _, T = x.shape
         S = self.stride
 
-        # 1. Pad T so every TRB chunk holds exactly chunk_size output latents.
-        x = _pad_to_multiple(x, self.chunk_size, dim=-1)
+        # 1. Pad T to a multiple of the stride so every segment holds exactly S input frames.
+        x = _pad_to_multiple(x, S, dim=-1)
         T_pad = x.shape[-1]
 
         # 2. Channel mapping (in_channels → out_channels) before transformer.
@@ -320,70 +359,50 @@ class SAMETransformerResamplingBlock(nn.Module):
         N = T_pad // S  # number of output latents
         x = x.reshape(B * N, S, self.out_channels)  # (B*N, S, C_out)
 
-        # 4. Append one learnable output token per segment.
+        # 4. Append one learnable output token per segment → (B*N, S+1, C_out).
         new = self.new_tokens.expand(B * N, 1, -1)
-        x = torch.cat([x, new], dim=1)  # (B*N, S+1, C_out)
+        x = torch.cat([x, new], dim=1)
 
-        # 5. Flatten segments back and fold into transformer chunks.
-        #    Each chunk covers (chunk_size//S) segments = chunk_size//S*(S+1) tokens.
+        # 5. Flatten to the full segment sequence and run the band-mask transformer.
         sub = S + 1
-        n_per_chunk = self.chunk_size // S
-        eff_cs = n_per_chunk * sub  # tokens per transformer call
-
         x = x.reshape(B, N * sub, self.out_channels)  # (B, N*(S+1), C_out)
-        # N is guaranteed divisible by n_per_chunk because T_pad is divisible by chunk_size.
-        n_chunks = N // n_per_chunk
-        x = x.reshape(B * n_chunks, eff_cs, self.out_channels)
-
-        # 6. Transformer.
+        mask = _band_mask(x.shape[1], self.sliding_window * sub, x.device, x.dtype)
         for layer in self.transformers:
-            x = layer(x)
+            x = layer(x, attn_mask=mask)
 
-        # 7. Unfold and extract the last token from each segment.
-        x = x.reshape(B, N * sub, self.out_channels)
-        x = x.reshape(B * N, sub, self.out_channels)
-        x = x[:, -1:, :]  # (B*N, 1, C_out) — output latent
-        x = x.reshape(B, N, self.out_channels)
-        return x.transpose(1, 2)  # (B, C_out, N)
+        # 6. Extract the last (output) token from each segment.
+        x = x.reshape(B * N, sub, self.out_channels)[:, -1:, :]  # (B*N, 1, C_out)
+        x = x.reshape(B, N, self.out_channels).transpose(1, 2)  # (B, C_out, N)
+
+        # 7. Crop away padding-derived latents.
+        n_latents = -(-T // S)  # ceil(T / S)
+        return x[..., :n_latents]
 
     # ------------------------------------------------------------------
     def _decode(self, x: torch.Tensor) -> torch.Tensor:
         B, _, T = x.shape
         S = self.stride
 
-        # 1. Pad T to a multiple of (chunk_size // S) input latents.
-        n_per_chunk = max(1, self.chunk_size // S)
-        x = _pad_to_multiple(x, n_per_chunk, dim=-1)
-        T_pad = x.shape[-1]
+        # 1. Each input latent seeds one segment: (B*T, 1, C_in).
+        x = x.transpose(1, 2).reshape(B * T, 1, self.in_channels)
 
-        # 2. Convert to sequence; each input token seeds one segment.
-        x = x.transpose(1, 2)  # (B, T_pad, C_in)
-        x = x.reshape(B * T_pad, 1, self.in_channels)  # (B*T_pad, 1, C_in)
+        # 2. Append S learnable output tokens (broadcast from a single token) → (B*T, 1+S, C_in).
+        new = self.new_tokens.expand(B * T, S, -1)
+        x = torch.cat([x, new], dim=1)
 
-        # 3. Append S learnable output tokens.
-        new = self.new_tokens.expand(B * T_pad, S, -1)
-        x = torch.cat([x, new], dim=1)  # (B*T_pad, 1+S, C_in)
-
-        # 4. Flatten and fold into transformer chunks.
+        # 3. Flatten to the full segment sequence and run the band-mask transformer.
         sub = 1 + S
-        eff_cs = n_per_chunk * sub
-        x = x.reshape(B, T_pad * sub, self.in_channels)
-        n_chunks = T_pad // n_per_chunk
-        x = x.reshape(B * n_chunks, eff_cs, self.in_channels)
-
-        # 5. Transformer.
+        x = x.reshape(B, T * sub, self.in_channels)
+        mask = _band_mask(x.shape[1], self.sliding_window * sub, x.device, x.dtype)
         for layer in self.transformers:
-            x = layer(x)
+            x = layer(x, attn_mask=mask)
 
-        # 6. Unfold and extract the last S tokens from each segment.
-        x = x.reshape(B, T_pad * sub, self.in_channels)
-        x = x.reshape(B * T_pad, sub, self.in_channels)
-        x = x[:, -S:, :]  # (B*T_pad, S, C_in)
-        x = x.reshape(B, T_pad * S, self.in_channels)
-        x = x.transpose(1, 2)  # (B, C_in, T_pad*S)
+        # 4. Extract the last S (output) tokens from each segment.
+        x = x.reshape(B * T, sub, self.in_channels)[:, -S:, :]  # (B*T, S, C_in)
+        x = x.reshape(B, T * S, self.in_channels).transpose(1, 2)  # (B, C_in, T*S)
 
-        # 7. Channel mapping (in_channels → out_channels) after transformer.
-        return self.mapping(x)  # (B, C_out, T_pad*S)
+        # 5. Channel mapping (in_channels → out_channels) after transformer.
+        return self.mapping(x)  # (B, C_out, T*S)
 
     # ------------------------------------------------------------------
     def forward(self, x: torch.Tensor) -> torch.Tensor:
@@ -473,6 +492,8 @@ class SAMEEncoder(nn.Module):
         use_differential: bool = True,
         chunk_size: int = 128,
         ff_mult: int = 3,
+        sliding_window: int = 1,
+        sinusoidal_blocks: List[int] = (0,),
     ):
         super().__init__()
         ch = [in_channels] + [c * channels for c in c_mults]
@@ -488,6 +509,8 @@ class SAMEEncoder(nn.Module):
                     use_differential=use_differential,
                     chunk_size=chunk_size,
                     ff_mult=ff_mult,
+                    sliding_window=sliding_window,
+                    sinusoidal_blocks=sinusoidal_blocks[i],
                 )
                 for i in range(len(strides))
             ]
@@ -520,6 +543,8 @@ class SAMEDecoder(nn.Module):
         use_differential: bool = True,
         chunk_size: int = 128,
         ff_mult: int = 3,
+        sliding_window: int = 1,
+        sinusoidal_blocks: List[int] = (0,),
     ):
         super().__init__()
         ch = [out_channels] + [c * channels for c in c_mults]
@@ -536,6 +561,8 @@ class SAMEDecoder(nn.Module):
                     use_differential=use_differential,
                     chunk_size=chunk_size,
                     ff_mult=ff_mult,
+                    sliding_window=sliding_window,
+                    sinusoidal_blocks=sinusoidal_blocks[i],
                 )
                 for i in range(len(strides) - 1, -1, -1)
             ]
@@ -599,9 +626,15 @@ class AutoencoderSAME(ModelMixin, ConfigMixin):
         use_differential_attention: If ``True``, use differential attention
             inside each TRB transformer block (default on for SAME-S/L).
         dim_heads: Attention head dimension. 64 for production SAME-S/L.
-        encoder_chunk_size: Output latent frames processed per transformer call
-            inside each TRB (controls peak memory). 32 for SAME-S.
+        encoder_chunk_size: Kept for config/back-compat; no longer governs
+            attention (the sliding-window band mask spans the full sequence).
         ff_mult: SwiGLU feed-forward expansion factor.
+        sliding_window: Sliding-window half-width (in latents) for the band-mask
+            attention. Production SAME-S/L use 1.
+        encoder_sinusoidal_blocks: Per-TRB count of trailing transformer layers
+            that use ``sin`` FFN gating in the encoder (SAME-L: ``(0,)``).
+        decoder_sinusoidal_blocks: Per-TRB count of trailing transformer layers
+            that use ``sin`` FFN gating in the decoder (SAME-L: ``(8,)``).
         sampling_rate: Audio sample rate in Hz (e.g. 44100).
     """
 
@@ -619,6 +652,9 @@ class AutoencoderSAME(ModelMixin, ConfigMixin):
         dim_heads: int = 64,
         encoder_chunk_size: int = 32,
         ff_mult: int = 3,
+        sliding_window: int = 1,
+        encoder_sinusoidal_blocks: List[int] = (0,),
+        decoder_sinusoidal_blocks: List[int] = (0,),
         sampling_rate: int = 44100,
     ):
         super().__init__()
@@ -643,6 +679,8 @@ class AutoencoderSAME(ModelMixin, ConfigMixin):
             use_differential=use_differential_attention,
             chunk_size=encoder_chunk_size,
             ff_mult=ff_mult,
+            sliding_window=sliding_window,
+            sinusoidal_blocks=list(encoder_sinusoidal_blocks),
         )
         self.bottleneck = _SoftNormBottleneck(latent_dim)
         self.decoder = SAMEDecoder(
@@ -656,6 +694,8 @@ class AutoencoderSAME(ModelMixin, ConfigMixin):
             use_differential=use_differential_attention,
             chunk_size=encoder_chunk_size,
             ff_mult=ff_mult,
+            sliding_window=sliding_window,
+            sinusoidal_blocks=list(decoder_sinusoidal_blocks),
         )
 
     # ------------------------------------------------------------------

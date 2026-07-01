@@ -47,10 +47,18 @@ Exit code is non-zero if parity fails, so it can gate CI.
 import argparse
 import importlib.util
 import json
+import os
 import sys
 from pathlib import Path
 
-import torch
+
+# The reference autoencoder's attention uses `flex_attention`, which is lowered via `torch.compile`.
+# On CPU that lowering is unsupported and floods stderr with a (non-fatal) InductorError before torch
+# falls back to eager execution. Disabling dynamo forces the eager path directly — the numerics and the
+# parity result are identical either way. Set before importing torch so it takes effect.
+os.environ.setdefault("TORCHDYNAMO_DISABLE", "1")
+
+import torch  # noqa: E402
 
 
 def _load_convert_module(repo_root: Path):
@@ -126,10 +134,18 @@ def main():
     ref_ae_sd = {k[len(prefix) :]: v for k, v in ref_sd.items() if k.startswith(prefix)}
     missing, unexpected = ref_ae.load_state_dict(ref_ae_sd, strict=False)
     print(f"Reference AE: loaded {len(ref_ae_sd)} tensors ({len(missing)} missing, {len(unexpected)} unexpected)")
+    # The reference TRB adds `randn * mask_noise` to its learnable output token on *every* forward — even in eval.
+    # The reference SoftNormBottleneck.decode likewise adds `randn * running_std * 1e-3` when `noise_regularize` is set.
+    # Disable both so the comparison is deterministic (the diffusers port intentionally omits this inference-time noise).
+    for module in ref_ae.modules():
+        if hasattr(module, "mask_noise"):
+            module.mask_noise = 0.0
+        if hasattr(module, "noise_regularize"):
+            module.noise_regularize = False
     ref_ae = ref_ae.to(dtype).eval()
 
     # ── Build the diffusers autoencoder via the conversion script and load ───
-    cfg = convert._infer_vae_config(ref_sd)
+    cfg = convert._infer_vae_config(ref_sd, model_config)
     print(f"Inferred diffusers config: {cfg}")
     diff_sd = convert.convert_vae(ref_sd, differential=cfg["use_differential_attention"])
     diff_ae = AutoencoderSAME(**cfg)
@@ -202,7 +218,16 @@ def parse_args():
     parser.add_argument("--batch_size", type=int, default=1)
     parser.add_argument("--num_latent_frames", type=int, default=16, help="Audio length in latent frames (×ratio).")
     parser.add_argument("--seed", type=int, default=0)
-    parser.add_argument("--dtype", type=str, default="float32", choices=["float32", "float16", "bfloat16"])
+    parser.add_argument(
+        "--dtype",
+        type=str,
+        default="float64",
+        choices=["float64", "float32", "float16", "bfloat16"],
+        help=(
+            "Compute dtype. Defaults to float64: the decoder's trailing sinusoidal FFN layers have gain ~pi and "
+            "amplify float32 rounding noise well past 1e-4, so float32 is not a meaningful parity threshold there."
+        ),
+    )
     return parser.parse_args()
 
 

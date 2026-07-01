@@ -51,8 +51,10 @@ Usage:
 
 import argparse
 import json
+import math
 import sys
 from pathlib import Path
+from typing import Optional
 
 import torch
 from safetensors.torch import load_file
@@ -382,8 +384,15 @@ def extract_text_encoder(ref_sd: dict) -> dict:
 # ──────────────────────────────────────────────────────────────────────────────
 
 
-def _infer_vae_config(ref_sd: dict) -> dict:
-    """Infer AutoencoderSAME config from checkpoint tensor shapes."""
+def _infer_vae_config(ref_sd: dict, model_config: Optional[dict] = None) -> dict:
+    """
+    Infer AutoencoderSAME config from checkpoint tensor shapes.
+
+    Some hyper-parameters (the TRB stride, the sliding-window width and the sinusoidal-FFN layer counts) are NOT
+    recoverable from the weights alone — with ``variable_stride`` the encoder/decoder ``new_tokens`` collapse to a
+    single shared token, so the stride is invisible. When ``model_config`` (the parsed ``model_config.json``) is
+    provided, those values are read directly from it; otherwise production SAME-L/S defaults are used.
+    """
     # Bottleneck scale shape: (1, latent_dim, 1)
     latent_dim = ref_sd.get(
         "pretransform.model.bottleneck.scaling_factor",
@@ -413,14 +422,6 @@ def _infer_vae_config(ref_sd: dict) -> dict:
     else:
         patched_in = 512  # default: 2ch * 256 patch
 
-    # Infer audio_channels and patch_size from patched_in:
-    # production: audio_channels=2, patch_size=256 → patched_in=512
-    audio_channels = 2
-    patch_size = patched_in // audio_channels  # e.g. 512 // 2 = 256
-
-    # c_mults: enc_out_ch / enc_channels_base → we know enc_out_ch and need to infer base
-    # For SAME-S: channels=128, c_mults=[6] → enc_out_ch=768
-    # For SAME-L: channels=256, c_mults=[6] → enc_out_ch=1536
     # Infer transformer depth per TRB:
     trb_trans_depth = sum(
         1
@@ -436,20 +437,43 @@ def _infer_vae_config(ref_sd: dict) -> dict:
     q_norm_key = f"{enc_base}.0.transformers.0.self_attn.q_norm.gamma"
     dim_heads = ref_sd[q_norm_key].shape[0] if q_norm_key in ref_sd else 64
 
-    # Stride: encoder TRB new_tokens shape is (1, 1, out_ch) for all encoder modes
-    # Decoder new_tokens shape: (1, stride, in_ch)
-    dec_base = "pretransform.model.decoder.layers"
-    dec_nt_key = f"{dec_base}.3.new_tokens"
-    dec_nt = ref_sd.get(dec_nt_key)
-    stride = dec_nt.shape[1] if dec_nt is not None else 16
-
     # channels base: choose so that enc_out_ch = channels * c_mults[0]
     # We use c_mults = [6] for both SAME-S/L
     c_mults = [6]
     enc_channels_base = enc_out_ch // c_mults[0]
 
-    # chunk_size: infer from chunk_midpoint_shift logic (we just use defaults)
-    # SAME-S uses chunk_size=32, SAME-L also 32. Use 32 as default.
+    # ── Weight-invisible hyper-parameters ────────────────────────────────────
+    # These come from model_config.json when available (see docstring).
+    audio_channels = 2
+    sliding_window = 1
+    encoder_sinusoidal_blocks = [0] * enc_depth
+    decoder_sinusoidal_blocks = [0] * enc_depth
+
+    if model_config is not None:
+        ae_cfg = model_config["model"]["pretransform"]["config"]
+        enc_cfg = ae_cfg["encoder"]["config"]
+        dec_cfg = ae_cfg["decoder"]["config"]
+        strides = list(enc_cfg["strides"])
+        transformer_depths = list(enc_cfg["transformer_depths"])
+        c_mults = list(enc_cfg["c_mults"])
+        enc_channels_base = enc_cfg["channels"]
+        latent_dim = enc_cfg.get("latent_dim", latent_dim)
+        dim_heads = enc_cfg.get("dim_heads", dim_heads)
+        audio_channels = ae_cfg.get("io_channels", audio_channels)
+        downsampling_ratio = ae_cfg["downsampling_ratio"]
+        patch_size = downsampling_ratio // int(math.prod(strides))
+        # sliding_window in the reference is a per-side list like [1, 1]; take the (symmetric) half-width.
+        sw = enc_cfg.get("sliding_window") or [sliding_window]
+        sliding_window = sw[0]
+        encoder_sinusoidal_blocks = list(enc_cfg.get("sinusoidal_blocks", encoder_sinusoidal_blocks))
+        decoder_sinusoidal_blocks = list(dec_cfg.get("sinusoidal_blocks", decoder_sinusoidal_blocks))
+    else:
+        # Stride is NOT recoverable from weights under variable_stride; assume the production value of 16.
+        strides = [16] * enc_depth
+        transformer_depths = [trb_trans_depth] * enc_depth
+        patch_size = patched_in // audio_channels
+
+    # chunk_size retained for back-compat; unused by the band-mask attention.
     chunk_size = 32
 
     return {
@@ -457,13 +481,16 @@ def _infer_vae_config(ref_sd: dict) -> dict:
         "patch_size": patch_size,
         "encoder_channels": enc_channels_base,
         "encoder_c_mults": c_mults,
-        "encoder_strides": [stride] * enc_depth,
-        "encoder_transformer_depths": [trb_trans_depth] * enc_depth,
+        "encoder_strides": strides,
+        "encoder_transformer_depths": transformer_depths,
         "latent_dim": latent_dim,
         "use_differential_attention": True,
         "dim_heads": dim_heads,
         "encoder_chunk_size": chunk_size,
         "ff_mult": 3,
+        "sliding_window": sliding_window,
+        "encoder_sinusoidal_blocks": encoder_sinusoidal_blocks,
+        "decoder_sinusoidal_blocks": decoder_sinusoidal_blocks,
         "sampling_rate": 44100,
     }
 
@@ -617,16 +644,17 @@ def convert(args):
     )
 
     # ── Parse model_config.json if provided ─────────────────────────────────
+    model_config = None
     if args.model_config_path and Path(args.model_config_path).exists():
         with open(args.model_config_path) as f:
-            json.load(f)  # validate parseable JSON; reserved for future use
+            model_config = json.load(f)
         print(f"Loaded model config: {args.model_config_path}")
 
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     # 1. VAE
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     print("\n── Converting VAE ──────────────────────────────────────────────────")
-    vae_cfg = _infer_vae_config(ref_sd)
+    vae_cfg = _infer_vae_config(ref_sd, model_config)
     print(f"  Inferred VAE config: {vae_cfg}")
 
     vae_sd = convert_vae(ref_sd, differential=vae_cfg["use_differential_attention"])
