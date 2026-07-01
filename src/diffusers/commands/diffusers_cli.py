@@ -15,12 +15,13 @@
 
 from argparse import ArgumentParser
 
-from ._output import OutputFormat, out
+from huggingface_hub.cli._output import OutputFormat, out
 from .custom_blocks import CustomBlocksCommand
-from .describe import DescribeCommand
 from .env import EnvironmentCommand
 from .fp16_safetensors import FP16SafetensorsCommand
-from .generate import GenerateCommand
+from .run import RunCommand
+from .schema import SchemaCommand
+from .skills import SkillsCommand
 
 
 def main():
@@ -32,7 +33,7 @@ def main():
     parser.add_argument(
         "--format",
         choices=[m.value for m in OutputFormat],
-        default=OutputFormat.AUTO.value,
+        default=OutputFormat.auto.value,
         help=(
             "Output format. 'auto' (default) picks 'agent' when an AI coding agent is detected "
             "(via CLAUDECODE/CURSOR_AI/AIDER_AI_CONTEXT/... env vars) and 'human' otherwise. "
@@ -45,8 +46,9 @@ def main():
     EnvironmentCommand.register_subcommand(commands_parser)
     FP16SafetensorsCommand.register_subcommand(commands_parser)
     CustomBlocksCommand.register_subcommand(commands_parser)
-    GenerateCommand.register_subcommand(commands_parser)
-    DescribeCommand.register_subcommand(commands_parser)
+    RunCommand.register_subcommand(commands_parser)
+    SchemaCommand.register_subcommand(commands_parser)
+    SkillsCommand.register_subcommand(commands_parser)
 
     # Let's go
     args = parser.parse_args()

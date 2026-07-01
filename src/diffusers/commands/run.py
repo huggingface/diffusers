@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""``diffusers-cli generate`` — single agentic entry point.
+"""``diffusers-cli run`` — single agentic entry point.
 
 Runs any diffusers pipeline (standard or modular) by forwarding ``--pipeline-kwargs`` verbatim, saves the output by
 sniffing its runtime type, and can submit the same call to HF Jobs via ``--remote``.
@@ -29,9 +29,9 @@ from typing import Any
 
 from diffusers.utils import load_image
 
+from huggingface_hub.cli._output import out
+
 from . import BaseDiffusersCLICommand
-from ._common import try_fetch_config
-from ._output import out
 
 
 # ---------------------------------------------------------------------------
@@ -451,10 +451,14 @@ def _load_lora(pipeline: Any, args: Namespace) -> None:
 
 
 def _is_modular_repo(args: Namespace) -> bool:
-    """Detect by trying ``DiffusionPipeline.config_name`` first; modular iff that's absent."""
+    """Detect by trying ``DiffusionPipeline.load_config`` first; modular iff that raises."""
     from diffusers import DiffusionPipeline
 
-    return try_fetch_config(args, DiffusionPipeline.config_name) is None
+    try:
+        DiffusionPipeline.load_config(args.model, token=args.token, revision=args.revision)
+        return False
+    except OSError:
+        return True
 
 
 # ---------------------------------------------------------------------------
@@ -731,7 +735,7 @@ def _maybe_submit_remote(args: Namespace, task: str) -> bool:
     # --system``, then exec the CLI with the same argv. --break-system-packages
     # bypasses PEP 668; safe here because the container is ephemeral.
     # For --context-parallel, wrap with torchrun so torch.distributed initializes
-    # across every visible GPU before our generate command runs.
+    # across every visible GPU before our run command kicks off.
     install_cmd = shlex.join(["uv", "pip", "install", "--system", "--break-system-packages", *dependencies])
     cli_argv = _kwargs_to_argv(task, task_kwargs)
     if args.context_parallel:
@@ -762,7 +766,7 @@ def _maybe_submit_remote(args: Namespace, task: str) -> bool:
     }
 
     if args.no_wait:
-        _format_result(payload)
+        out.result(payload["task"], **payload)
         return True
 
     print(
@@ -775,7 +779,7 @@ def _maybe_submit_remote(args: Namespace, task: str) -> bool:
     payload["job_status"] = final_status
     payload["timing"] = _job_timing(api, job.id, args.namespace)
     payload["outputs"] = _download_job_artifacts(api, args.push_to, run_id, args.output)
-    _format_result(payload)
+    out.result(payload["task"], **payload)
     return True
 
 
@@ -864,22 +868,12 @@ def _download_job_artifacts(api: Any, bucket_id: str, run_id: str, output: str |
 
 
 # ---------------------------------------------------------------------------
-# Result formatting
-# ---------------------------------------------------------------------------
-
-
-def _format_result(payload: dict[str, Any]) -> None:
-    """Route the result payload through the output sink."""
-    out.result(payload.get("task", "done"), **payload)
-
-
-# ---------------------------------------------------------------------------
 # Subcommand
 # ---------------------------------------------------------------------------
 
 
-class GenerateCommand(BaseDiffusersCLICommand):
-    task = "generate"
+class RunCommand(BaseDiffusersCLICommand):
+    task = "run"
 
     @staticmethod
     def register_subcommand(subparsers: _SubParsersAction) -> None:
@@ -887,16 +881,16 @@ class GenerateCommand(BaseDiffusersCLICommand):
 
         epilog = (
             "Examples\n"
-            "  $ diffusers-cli generate -m black-forest-labs/FLUX.1-dev --dtype bf16 \\\n"
+            "  $ diffusers-cli run -m black-forest-labs/FLUX.1-dev --dtype bf16 \\\n"
             '      --pipeline-kwargs \'{"prompt": "a cat on the moon"}\'\n'
-            "  $ diffusers-cli generate -m black-forest-labs/FLUX.1-dev --dtype bf16 \\\n"
+            "  $ diffusers-cli run -m black-forest-labs/FLUX.1-dev --dtype bf16 \\\n"
             '      --pipeline-kwargs \'{"prompt": "make the fur grey", "image": "https://example.com/cat.png"}\'\n'
-            "  $ diffusers-cli generate -m black-forest-labs/FLUX.1-dev --dtype bf16 \\\n"
+            "  $ diffusers-cli run -m black-forest-labs/FLUX.1-dev --dtype bf16 \\\n"
             '      --pipeline-kwargs \'{"prompt": "a tiny cat"}\' \\\n'
             '      --lora \'{"lora_id": "alvdansen/littletinies", "lora_scale": 0.8}\'\n'
-            "  $ diffusers-cli generate -m black-forest-labs/FLUX.1-dev --dtype bf16 \\\n"
+            "  $ diffusers-cli run -m black-forest-labs/FLUX.1-dev --dtype bf16 \\\n"
             '      --pipeline-kwargs \'{"prompt": "a cat"}\' --remote --flavor a100-large\n'
-            "  $ diffusers-cli generate -m black-forest-labs/FLUX.1-dev --dtype bf16 --context-parallel \\\n"
+            "  $ diffusers-cli run -m black-forest-labs/FLUX.1-dev --dtype bf16 --context-parallel \\\n"
             '      --pipeline-kwargs \'{"prompt": "a cat"}\' --remote --flavor 4xa100-large\n'
             "\n"
             "Learn more\n"
@@ -905,9 +899,9 @@ class GenerateCommand(BaseDiffusersCLICommand):
         )
 
         parser: ArgumentParser = subparsers.add_parser(
-            "generate",
+            "run",
             help="Run any diffusers pipeline locally or remotely with HF Jobs.",
-            usage="\n  diffusers-cli generate [options]",
+            usage="\n  diffusers-cli run [options]",
             epilog=epilog,
             formatter_class=RawDescriptionHelpFormatter,
         )
@@ -942,7 +936,7 @@ class GenerateCommand(BaseDiffusersCLICommand):
         )
         _add_remote_arguments(parser)
         _add_output_arguments(parser)
-        parser.set_defaults(func=GenerateCommand)
+        parser.set_defaults(func=RunCommand)
 
     def __init__(self, args: Namespace):
         self.args = args
@@ -977,18 +971,16 @@ class GenerateCommand(BaseDiffusersCLICommand):
                 saved = _save_output(savable, self.args, self.task)
                 pushed = _push_outputs(self.args, saved, self.task)
 
-                _format_result(
-                    {
-                        "task": self.task,
-                        "model": self.args.model,
-                        "device": device,
-                        "pipeline_class": type(pipeline).__name__,
-                        "modular": is_modular,
-                        "outputs": saved,
-                        "pushed": pushed,
-                        "seed": self.args.seed,
-                        "output_key": self.args.output_key,
-                    },
+                out.result(
+                    self.task,
+                    model=self.args.model,
+                    device=device,
+                    pipeline_class=type(pipeline).__name__,
+                    modular=is_modular,
+                    outputs=saved,
+                    pushed=pushed,
+                    seed=self.args.seed,
+                    output_key=self.args.output_key,
                 )
         finally:
             import torch

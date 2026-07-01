@@ -1,30 +1,30 @@
-# `diffusers-cli generate` — reference
+# `diffusers-cli run` — reference
 
-Full surface for `diffusers-cli generate`. Use this file as the source of truth when constructing a `generate`
+Full surface for `diffusers-cli run`. Use this file as the source of truth when constructing a `run`
 invocation. The top-level [`SKILL.md`](SKILL.md) covers when to use the CLI; this file covers how.
 
-## The describe → generate flow
+## The schema → run flow
 
-For any model you haven't called before, run `describe` first to learn its input contract, then `generate` with
+For any model you haven't called before, run `schema` first to learn its input contract, then `run` with
 the right `--pipeline-kwargs`:
 
 ```bash
 # 1. Discover what kwargs the pipeline takes (no weight download)
-diffusers-cli --format json describe --model black-forest-labs/FLUX.2-klein-9B
+diffusers-cli --format json schema --model black-forest-labs/FLUX.2-klein-9B
 
 # 2. Run it
-diffusers-cli generate \
+diffusers-cli run \
     --model black-forest-labs/FLUX.2-klein-9B \
     --pipeline-kwargs '{"prompt": "Make the cats fur grey", "image": "https://blobcdn.same.energy/a/d0/58/d058b51c2329b0ea4057e9f12cd9a1da36347e34"}' \
     --dtype bf16
 ```
 
-`describe --format json` emits a `{task, model, pipeline_class, inputs[]}` payload where each input is
+`schema --format json` emits a `{task, model, pipeline_class, inputs[]}` payload where each input is
 `{name, type_hint, default, required, description}`.
 
 ## Standard vs modular detection
 
-`generate` auto-detects which kind of pipeline it's calling:
+`run` auto-detects which kind of pipeline it's calling:
 
 1. If `model_index.json` exists on the repo → `DiffusionPipeline.from_pretrained` path.
 2. Otherwise → `ModularPipeline.from_pretrained` path.
@@ -38,7 +38,7 @@ A JSON object passed straight through to `pipeline(**kwargs)`. String values at 
 or local paths directly:
 
 ```bash
-diffusers-cli generate \
+diffusers-cli run \
     --model black-forest-labs/FLUX.2-klein-9B \
     --pipeline-kwargs '{"image": "https://example.com/cat.png", "prompt": "make the fur grey", "strength": 0.6}'
 ```
@@ -51,7 +51,7 @@ single-quoted argument lands as a raw control char inside the string and breaks 
 Attach a LoRA after the pipeline loads via a JSON spec:
 
 ```bash
-diffusers-cli generate \
+diffusers-cli run \
     --model black-forest-labs/FLUX.2-klein-9B \
     --pipeline-kwargs '{"prompt": "a tiny grey cat"}' \
     --lora '{"lora_id": "alvdansen/littletinies", "lora_scale": 0.8}'
@@ -78,11 +78,11 @@ most filesystems.
 
 ## Output handling
 
-`generate` sniffs the pipeline return type and saves accordingly:
+`run` sniffs the pipeline return type and saves accordingly:
 
-- `PIL.Image` / list of them → `outputs/generate-<i>.png`
-- Frame sequence (≥2 PILs or ndarrays) → `outputs/generate-0.mp4` (uses `--fps`, default 8)
-- Numpy audio array → `outputs/generate-0.wav` (uses `--sampling-rate`)
+- `PIL.Image` / list of them → `outputs/run-<i>.png`
+- Frame sequence (≥2 PILs or ndarrays) → `outputs/run-0.mp4` (uses `--fps`, default 8)
+- Numpy audio array → `outputs/run-0.wav` (uses `--sampling-rate`)
 - Anything else → JSON dump
 
 Override the destination with `--output <path>` (file or directory).
@@ -95,7 +95,7 @@ doesn't exist; objects land under `<run_id>/<filename>`.
 Adds `--remote` to submit the same call as a Hugging Face Job:
 
 ```bash
-diffusers-cli generate \
+diffusers-cli run \
     --model black-forest-labs/FLUX.2-klein-9B \
     --pipeline-kwargs '{"prompt": "Make the cats fur grey", "image": "https://blobcdn.same.energy/a/d0/58/d058b51c2329b0ea4057e9f12cd9a1da36347e34"}' \
     --remote --flavor a100-large \
@@ -129,7 +129,7 @@ Flags:
 `--context-parallel` enables Ulysses CP on a DiT-based pipeline. **Locally** the user must launch via torchrun:
 
 ```bash
-torchrun --nproc-per-node=2 -m diffusers.commands.diffusers_cli generate \
+torchrun --nproc-per-node=2 -m diffusers.commands.diffusers_cli run \
     --model black-forest-labs/FLUX.2-klein-9B \
     --pipeline-kwargs '{"prompt": "Make the cats fur grey"}' \
     --dtype bf16 \
@@ -140,7 +140,7 @@ torchrun --nproc-per-node=2 -m diffusers.commands.diffusers_cli generate \
 a multi-GPU flavor:
 
 ```bash
-diffusers-cli generate \
+diffusers-cli run \
     --model black-forest-labs/FLUX.2-klein-9B \
     --pipeline-kwargs '{"prompt": "Make the cats fur grey", "image": "https://blobcdn.same.energy/a/d0/58/d058b51c2329b0ea4057e9f12cd9a1da36347e34"}' \
     --remote --flavor 4xa100-large \
@@ -169,7 +169,7 @@ mode** automatically — TSV tables, `key=value` results, compact JSON dicts, no
 Override explicitly with `--format {auto, human, agent, json}` placed **before** the subcommand:
 
 ```bash
-diffusers-cli --format json generate --model <id> --pipeline-kwargs '...'
+diffusers-cli --format json run --model <id> --pipeline-kwargs '...'
 ```
 
-The legacy `--json` flag on `generate` still works as a shortcut for `--format json`.
+The legacy `--json` flag on `run` still works as a shortcut for `--format json`.

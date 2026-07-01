@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""``diffusers-cli describe`` — print the input schema for any pipeline repo.
+"""``diffusers-cli schema`` — print the input schema for any pipeline repo.
 
 Tries ``DiffusionPipeline.config_name`` first (so standard repos get their ``__call__`` signature introspected); falls
 back to ``ModularPipelineBlocks.from_pretrained`` for modular repos. No weights are downloaded — only the small index
@@ -22,17 +22,16 @@ file (and any custom block code if ``--trust-remote-code`` is set).
 from __future__ import annotations
 
 import inspect
-import json
 import re
 from argparse import ArgumentParser, Namespace, _SubParsersAction
 from typing import Any
 
+from huggingface_hub.cli._output import OutputFormat, out
+
 from . import BaseDiffusersCLICommand
-from ._common import try_fetch_config
-from ._output import OutputFormat, out
 
 
-def _describe(args: Namespace) -> None:
+def _schema(args: Namespace) -> None:
     """Print the pipeline's input schema.
 
     Tries ``DiffusionPipeline.config_name`` (= ``model_index.json``) first; if present, introspects the declared
@@ -41,10 +40,12 @@ def _describe(args: Namespace) -> None:
     """
     import diffusers
 
-    model_index = try_fetch_config(args, diffusers.DiffusionPipeline.config_name)
-    if model_index is not None:
-        with open(model_index) as f:
-            index = json.load(f)
+    try:
+        index = diffusers.DiffusionPipeline.load_config(args.model, token=args.token, revision=args.revision)
+    except OSError:
+        index = None
+
+    if index is not None:
         class_name = index.get("_class_name")
         if class_name is None:
             raise SystemExit(
@@ -85,7 +86,7 @@ def _describe(args: Namespace) -> None:
             blocks = diffusers.ModularPipelineBlocks.from_pretrained(args.model, **kwargs)
         except Exception as e:
             raise SystemExit(
-                f"Could not describe {args.model!r}: no {diffusers.DiffusionPipeline.config_name} and "
+                f"Could not read schema for {args.model!r}: no {diffusers.DiffusionPipeline.config_name} and "
                 f"loading as a modular pipeline failed ({type(e).__name__}: {e}). "
                 "Is this a diffusers pipeline repo? Pass --trust-remote-code if it ships custom block code."
             ) from e
@@ -102,9 +103,9 @@ def _describe(args: Namespace) -> None:
             for p in blocks.inputs
         ]
 
-    if out.mode == OutputFormat.JSON:
-        out.dict({"task": "describe", "model": args.model, "pipeline_class": class_name, "inputs": schema})
-    elif out.mode == OutputFormat.AGENT:
+    if out.mode == OutputFormat.json:
+        out.dict({"task": "schema", "model": args.model, "pipeline_class": class_name, "inputs": schema})
+    elif out.mode == OutputFormat.agent:
         out.table(schema, headers=["name", "required", "type_hint", "default", "description"])
     else:
         out.text(f"{class_name} ({args.model}) inputs:")
@@ -173,8 +174,8 @@ def _parse_docstring_args(docstring: str | None) -> dict[str, str]:
     return descriptions
 
 
-class DescribeCommand(BaseDiffusersCLICommand):
-    task = "describe"
+class SchemaCommand(BaseDiffusersCLICommand):
+    task = "schema"
 
     @staticmethod
     def register_subcommand(subparsers: _SubParsersAction) -> None:
@@ -182,9 +183,9 @@ class DescribeCommand(BaseDiffusersCLICommand):
 
         epilog = (
             "Examples\n"
-            "  $ diffusers-cli describe -m stabilityai/stable-diffusion-xl-base-1.0\n"
-            "  $ diffusers-cli describe -m black-forest-labs/FLUX.1-dev --verbose\n"
-            "  $ diffusers-cli --format json describe -m stabilityai/stable-diffusion-xl-base-1.0\n"
+            "  $ diffusers-cli schema -m stabilityai/stable-diffusion-xl-base-1.0\n"
+            "  $ diffusers-cli schema -m black-forest-labs/FLUX.1-dev --verbose\n"
+            "  $ diffusers-cli --format json schema -m stabilityai/stable-diffusion-xl-base-1.0\n"
             "\n"
             "Learn more\n"
             "  Use `diffusers-cli <command> --help` for more information about a command.\n"
@@ -192,9 +193,9 @@ class DescribeCommand(BaseDiffusersCLICommand):
         )
 
         parser: ArgumentParser = subparsers.add_parser(
-            "describe",
+            "schema",
             help="Print the input schema for a diffusers pipeline repo. No weights downloaded.",
-            usage="\n  diffusers-cli describe [options]",
+            usage="\n  diffusers-cli schema [options]",
             epilog=epilog,
             formatter_class=RawDescriptionHelpFormatter,
         )
@@ -230,10 +231,10 @@ class DescribeCommand(BaseDiffusersCLICommand):
                 "the equivalent field for standard pipelines by parsing the Google-style Args: block."
             ),
         )
-        parser.set_defaults(func=DescribeCommand)
+        parser.set_defaults(func=SchemaCommand)
 
     def __init__(self, args: Namespace):
         self.args = args
 
     def run(self) -> None:
-        _describe(self.args)
+        _schema(self.args)

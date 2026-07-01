@@ -14,16 +14,16 @@ description: >
 
 | Command         | Purpose                                                                                                                                                                                       |
 | --------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `generate`      | Run any `DiffusionPipeline` or `ModularPipeline`. Forwards `--pipeline-kwargs` verbatim, saves output by sniffing its runtime type, optionally runs on HF Jobs via `--remote`.                |
-| `describe`      | Print the input schema for a pipeline repo (kwarg names, types, defaults, descriptions). **No weights downloaded** — only the small index file.                                               |
+| `run`      | Run any `DiffusionPipeline` or `ModularPipeline`. Forwards `--pipeline-kwargs` verbatim, saves output by sniffing its runtime type, optionally runs on HF Jobs via `--remote`.                |
+| `schema`      | Print the input schema for a pipeline repo (kwarg names, types, defaults, descriptions). **No weights downloaded** — only the small index file.                                               |
 | `custom_blocks` | Package a local `ModularPipelineBlocks` subclass for the Hub.                                                                                                                                 |
 | `env`           | Print versions of diffusers + torch + transformers + accelerate + safetensors + CUDA + GPU info. Use when investigating environment issues, dtype/precision support, or building bug reports. |
 
 ## When to read which file
 
-Most agentic work goes through `generate`. Read the matching reference file before constructing a command:
+Most agentic work goes through `run`. Read the matching reference file before constructing a command:
 
-- **[`generate.md`](generate.md)** — full reference for `diffusers-cli generate`. Covers `--pipeline-kwargs`
+- **[`run.md`](run.md)** — full reference for `diffusers-cli run`. Covers `--pipeline-kwargs`
   semantics and the shell-quoting gotcha, LoRA via `--lora`, optimization flags (`--dtype`, `--cpu-offload`,
   `--attention-backend`, `--vae-tiling/slicing`), output handling and `--push-to` bucket uploads, the full
   `--remote` HF Jobs flow (image, container command, log streaming, timing payload, artifact download), and
@@ -32,7 +32,7 @@ Most agentic work goes through `generate`. Read the matching reference file befo
 The other commands are small enough that `diffusers-cli <command> --help` is the canonical reference:
 
 ```bash
-diffusers-cli describe --help
+diffusers-cli schema --help
 diffusers-cli custom_blocks --help
 diffusers-cli env --help
 ```
