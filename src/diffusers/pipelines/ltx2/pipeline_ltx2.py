@@ -195,17 +195,16 @@ class LTX2Pipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoaderMixin):
             A scheduler to be used in combination with `transformer` to denoise the encoded image latents.
         vae ([`AutoencoderKLLTXVideo`]):
             Variational Auto-Encoder (VAE) Model to encode and decode images to and from latent representations.
-        text_encoder ([`T5EncoderModel`]):
-            [T5](https://huggingface.co/docs/transformers/en/model_doc/t5#transformers.T5EncoderModel), specifically
-            the [google/t5-v1_1-xxl](https://huggingface.co/google/t5-v1_1-xxl) variant.
-        tokenizer (`CLIPTokenizer`):
-            Tokenizer of class
-            [CLIPTokenizer](https://huggingface.co/docs/transformers/en/model_doc/clip#transformers.CLIPTokenizer).
-        tokenizer (`T5TokenizerFast`):
-            Second Tokenizer of class
-            [T5TokenizerFast](https://huggingface.co/docs/transformers/en/model_doc/t5#transformers.T5TokenizerFast).
+        audio_vae ([`AutoencoderKLLTX2Audio`]):
+            Variational Auto-Encoder (VAE) model used to encode and decode the generated audio latents.
+        text_encoder ([`Gemma3ForConditionalGeneration`]):
+            Gemma 3 text encoder used to produce prompt embeddings for the video and audio branches.
+        tokenizer (`GemmaTokenizer` or `GemmaTokenizerFast`):
+            Tokenizer paired with the Gemma 3 text encoder.
         connectors ([`LTX2TextConnectors`]):
             Text connector stack used to adapt text encoder hidden states for the video and audio branches.
+        vocoder ([`LTX2Vocoder`] or [`LTX2VocoderWithBWE`]):
+            Vocoder used to decode generated audio latents into waveforms.
     """
 
     model_cpu_offload_seq = "text_encoder->connectors->transformer->vae->audio_vae->vocoder"
@@ -244,7 +243,7 @@ class LTX2Pipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoaderMixin):
         self.vae_temporal_compression_ratio = (
             self.vae.temporal_compression_ratio if getattr(self, "vae", None) is not None else 8
         )
-        # TODO: check whether the MEL compression ratio logic here is corrct
+        # TODO: check whether the MEL compression ratio logic here is correct
         self.audio_vae_mel_compression_ratio = (
             self.audio_vae.mel_compression_ratio if getattr(self, "audio_vae", None) is not None else 4
         )
