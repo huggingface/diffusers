@@ -667,6 +667,19 @@ class AutoencoderSAME(ModelMixin, ConfigMixin):
         self.downsampling_ratio = patch_size * math.prod(encoder_strides)
 
         patched_in = audio_channels * patch_size
+        n_levels = len(encoder_strides)
+
+        # `*_sinusoidal_blocks` is per-TRB-level; accept a single shared value and broadcast it to every level.
+        def _per_level(values, name):
+            values = list(values)
+            if len(values) == 1:
+                values = values * n_levels
+            if len(values) != n_levels:
+                raise ValueError(f"{name} must have length 1 or {n_levels} (len(encoder_strides)), got {len(values)}")
+            return values
+
+        encoder_sinusoidal_blocks = _per_level(encoder_sinusoidal_blocks, "encoder_sinusoidal_blocks")
+        decoder_sinusoidal_blocks = _per_level(decoder_sinusoidal_blocks, "decoder_sinusoidal_blocks")
 
         self.patch_embed = _PatchEmbed(patch_size)
         self.encoder = SAMEEncoder(
