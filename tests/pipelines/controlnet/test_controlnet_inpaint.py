@@ -393,6 +393,40 @@ class MultiControlNetInpaintPipelineFastTests(
 
         return inputs
 
+    def test_multi_controlnet_check_inputs_validates_control_image(self):
+        components = self.get_dummy_components()
+        pipe = self.pipeline_class(**components)
+
+        inputs = self.get_dummy_inputs(torch_device)
+        pipe.check_inputs(
+            prompt=inputs["prompt"],
+            image=inputs["image"],
+            control_image=inputs["control_image"],
+            mask_image=inputs["mask_image"],
+            height=64,
+            width=64,
+            callback_steps=1,
+            output_type="pil",
+            control_guidance_start=[0.0, 0.0],
+            control_guidance_end=[1.0, 1.0],
+            padding_mask_crop=8,
+        )
+
+        with self.assertRaisesRegex(TypeError, "`control_image` must be type `list`"):
+            pipe.check_inputs(
+                prompt=inputs["prompt"],
+                image=inputs["image"],
+                control_image=inputs["control_image"][0],
+                mask_image=inputs["mask_image"],
+                height=64,
+                width=64,
+                callback_steps=1,
+                output_type="pil",
+                control_guidance_start=[0.0, 0.0],
+                control_guidance_end=[1.0, 1.0],
+                padding_mask_crop=8,
+            )
+
     def test_control_guidance_switch(self):
         components = self.get_dummy_components()
         pipe = self.pipeline_class(**components)
