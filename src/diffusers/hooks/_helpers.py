@@ -31,16 +31,6 @@ class TransformerBlockMetadata:
     _cls: Type = None
     _cached_parameter_indices: dict[str, int] = None
 
-    def _register(self, cls):
-        """Attach this metadata to ``cls`` and register it in :class:`TransformerBlockRegistry`.
-
-        Lets ``@register_metadata(TransformerBlockMetadata(...))`` work for block classes that opt into the decorator
-        pattern (e.g. Flux). Models that use the legacy bulk registration in ``_register_transformer_blocks_metadata``
-        are unaffected — both code paths call the same ``TransformerBlockRegistry.register`` underneath.
-        """
-        cls._block_metadata = self
-        TransformerBlockRegistry.register(cls, self)
-
     def _get_parameter_from_args_kwargs(self, identifier: str, args=(), kwargs=None):
         kwargs = kwargs or {}
         if identifier in kwargs:
