@@ -1,0 +1,95 @@
+name: Suggest tests before merging
+
+# Once a PR is approved, if it touches core library code under models/,
+# pipelines/ or modular_pipelines/, post a sticky comment suggesting the GPU
+# tests that the regular (fast, CPU-only) PR CI does not run. Maintainers can
+# then trigger them via `/diffusers-bot pytest ...` (see pr_comment_gpu_tests.yml).
+#
+# `pull_request_review` has no `paths:` filter, so the source-root gating lives
+# in utils/suggest_tests.py, which emits nothing when no relevant files changed.
+
+on:
+  pull_request_review:
+    types: [submitted]
+
+# Only `pull-requests: write` is needed to post the comment. The job never checks
+# out or runs PR code — it reads the changed-file list over the API and runs the
+# base-branch helper — so running in the base context is safe here.
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  suggest-tests:
+    name: Suggest uncovered tests
+    if: github.repository == 'huggingface/diffusers' && github.event.review.state == 'approved'
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout base branch
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+
+      - name: Setup Python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405  # v6
+        with:
+          python-version: "3.10"
+
+      - name: Install huggingface_hub
+        run: pip install huggingface_hub
+
+      - name: Check reviewer is a maintainer
+        id: auth
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          REVIEWER: ${{ github.event.review.user.login }}
+        run: |
+          # Only approvals from maintainers (write/admin access) trigger a suggestion.
+          PERM=$(gh api "repos/${REPO}/collaborators/${REVIEWER}/permission" --jq '.permission' 2>/dev/null || echo "none")
+          echo "Reviewer @${REVIEWER} has permission: ${PERM}"
+          if [[ "$PERM" == "admin" || "$PERM" == "write" ]]; then
+            echo "authorized=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "authorized=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build test suggestion
+        id: build
+        if: steps.auth.outputs.authorized == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Optional: when set, a model prunes the candidate test dirs to the relevant
+          # subset. Unset -> the deterministic full candidate list is used.
+          HF_TOKEN: ${{ secrets.ISSUE_LABELER_HF_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+        run: |
+          gh api --paginate "repos/${REPO}/pulls/${PR_NUMBER}/files" \
+            | python utils/suggest_tests.py > suggestion.md
+          if [ -s suggestion.md ]; then
+            echo "has_suggestion=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_suggestion=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Post comment on first approval
+        if: steps.build.outputs.has_suggestion == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+        run: |
+          # Post once: if we already commented (found by our hidden marker on an
+          # earlier approval), leave it untouched.
+          CID=$(gh api --paginate "repos/${REPO}/issues/${PR_NUMBER}/comments" \
+            --jq '.[] | select(.body | contains("<!-- suggest-tests-bot -->")) | .id' | head -n1)
+          if [ -n "$CID" ]; then
+            echo "Suggestion already posted (comment ${CID}); skipping."
+          else
+            gh api -X POST "repos/${REPO}/issues/${PR_NUMBER}/comments" -f body="$(cat suggestion.md)" >/dev/null
+          fi
