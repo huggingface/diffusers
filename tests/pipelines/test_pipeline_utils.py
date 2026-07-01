@@ -218,6 +218,34 @@ class IsSafetensorsCompatibleTests(unittest.TestCase):
         ]
         self.assertFalse(is_safetensors_compatible(filenames))
 
+    def test_diffusers_is_compatible_no_components_safetensors(self):
+        filenames = [
+            "diffusion_pytorch_model.safetensors",
+        ]
+        self.assertTrue(is_safetensors_compatible(filenames))
+
+    def test_diffusers_is_compatible_no_components_safetensors_only_variants(self):
+        filenames = [
+            "diffusion_pytorch_model.fp16.safetensors",
+        ]
+        self.assertTrue(is_safetensors_compatible(filenames, variant="fp16"))
+
+    def test_diffusers_is_compatible_weightless_subfolder(self):
+        # transformers-style flat layout: safetensors weights at the root + a weight-less subfolder (scheduler/)
+        filenames = [
+            "diffusion_pytorch_model.safetensors",
+            "scheduler/scheduler_config.json",
+        ]
+        self.assertTrue(is_safetensors_compatible(filenames))
+
+    def test_diffusers_is_not_compatible_weightless_subfolder(self):
+        # same flat layout but only .bin weights at the root -> not safetensors compatible
+        filenames = [
+            "diffusion_pytorch_model.bin",
+            "scheduler/scheduler_config.json",
+        ]
+        self.assertFalse(is_safetensors_compatible(filenames))
+
     def test_is_compatible_mixed_variants(self):
         filenames = [
             "unet/diffusion_pytorch_model.fp16.safetensors",

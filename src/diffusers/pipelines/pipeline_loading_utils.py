@@ -136,6 +136,8 @@ def is_safetensors_compatible(filenames, passed_components=None, folder_names=No
     )
 
     passed_components = passed_components or []
+    # only weight files matter for safetensors compatibility
+    filenames = filter_model_files(filenames)
     if folder_names:
         filenames = {f for f in filenames if os.path.split(f)[0] in folder_names}
 
