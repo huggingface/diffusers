@@ -141,8 +141,8 @@ class _FeedForward(nn.Module):
     """
     GLU FFN with zero-initialised output projection.
 
-    The gate activation is SiLU (``sinusoidal=False``, "SwiGLU") or ``sin(pi * gate)`` (``sinusoidal=True``). SAME-L uses
-    sinusoidal activations in the trailing decoder transformer layers.
+    The gate activation is SiLU (``sinusoidal=False``, "SwiGLU") or ``sin(pi * gate)`` (``sinusoidal=True``). SAME-L
+    uses sinusoidal activations in the trailing decoder transformer layers.
     """
 
     def __init__(self, dim: int, mult: int = 3, sinusoidal: bool = False):
@@ -265,7 +265,8 @@ class SAMETransformerResamplingBlock(nn.Module):
 
     **Encoder mode** (stride S):
       Groups S consecutive input frames into one segment, appends a single learnable output embedding, then runs D
-      transformer layers over the full flattened segment sequence and keeps only the output embedding → downsample by S.
+      transformer layers over the full flattened segment sequence and keeps only the output embedding → downsample by
+      S.
 
     **Decoder mode** (stride S):
       Groups 1 input frame with S learnable output embeddings, runs D transformer layers over the full flattened
