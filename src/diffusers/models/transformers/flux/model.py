@@ -564,7 +564,7 @@ class FluxTransformer2DModel(
 
     _supports_gradient_checkpointing = True
     _no_split_modules = ["FluxTransformerBlock", "FluxSingleTransformerBlock"]
-    _skip_layerwise_casting_patterns = ("pos_embed", "norm")
+    _skip_layerwise_casting_patterns = ["pos_embed", "norm"]
     _repeated_blocks = ["FluxTransformerBlock", "FluxSingleTransformerBlock"]
     _cp_plan = {
         "": {
