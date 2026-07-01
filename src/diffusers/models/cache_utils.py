@@ -31,6 +31,21 @@ class CacheMixin:
     """
 
     _cache_config = None
+    _supports_cache = True
+
+    @classmethod
+    def _metadata(cls):
+        """Contribute the ``_supports_cache`` row to :class:`ModelMetadata` for models inheriting :class:`CacheMixin`."""
+        from .modeling_utils import DOCS_BASE
+
+        return {
+            "_supports_cache": (
+                True,
+                "True",
+                "Supports caching techniques (PAB / FasterCache / FirstBlockCache) via `enable_cache`.",
+                f"{DOCS_BASE}/optimization/cache",
+            )
+        }
 
     @property
     def is_cache_enabled(self) -> bool:

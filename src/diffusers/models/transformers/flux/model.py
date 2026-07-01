@@ -20,26 +20,29 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from ...configuration_utils import ConfigMixin, register_to_config
-from ...loaders import FluxTransformer2DLoadersMixin, FromOriginalModelMixin, PeftAdapterMixin
-from ...utils import apply_lora_scale, logging
-from ...utils.torch_utils import maybe_adjust_dtype_for_device, maybe_allow_in_graph
-from .._modeling_parallel import ContextParallelInput, ContextParallelOutput
-from ..attention import AttentionMixin, AttentionModuleMixin, FeedForward
-from ..attention_dispatch import dispatch_attention_fn
-from ..cache_utils import CacheMixin
-from ..embeddings import (
+from ....configuration_utils import register_to_config
+from ....loaders.peft import PeftAdapterMixin
+from ....loaders.weight_mapping import WeightMappingMixin
+from ....utils import apply_lora_scale, logging
+from ....utils.torch_utils import maybe_adjust_dtype_for_device, maybe_allow_in_graph
+from ..._modeling_parallel import ContextParallelInput, ContextParallelOutput
+from ...attention import AttentionMixin, AttentionModuleMixin, FeedForward
+from ...attention_dispatch import dispatch_attention_fn
+from ...cache_utils import CacheMixin
+from ...embeddings import (
     CombinedTimestepGuidanceTextProjEmbeddings,
     CombinedTimestepTextProjEmbeddings,
     apply_rotary_emb,
     get_1d_rotary_pos_embed,
 )
-from ..modeling_outputs import Transformer2DModelOutput
-from ..modeling_utils import ModelMixin
-from ..normalization import AdaLayerNormContinuous, AdaLayerNormZero, AdaLayerNormZeroSingle
+from ...modeling_outputs import Transformer2DModelOutput
+from ...modeling_utils import ModelMixin
+from ...normalization import AdaLayerNormContinuous, AdaLayerNormZero, AdaLayerNormZeroSingle
+from ._ip_adapter import FluxIPAdapterMixin
+from ._weight_mapping import FLUX_WEIGHT_MAPPING
 
 
-logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
+logger = logging.get_logger(__name__)
 
 
 def _get_projections(attn: "FluxAttention", hidden_states, encoder_hidden_states=None):
@@ -522,12 +525,11 @@ class FluxPosEmbed(nn.Module):
 
 class FluxTransformer2DModel(
     ModelMixin,
-    ConfigMixin,
     PeftAdapterMixin,
-    FromOriginalModelMixin,
-    FluxTransformer2DLoadersMixin,
-    CacheMixin,
+    WeightMappingMixin,
     AttentionMixin,
+    CacheMixin,
+    FluxIPAdapterMixin,
 ):
     """
     The Transformer model introduced in Flux.
@@ -562,7 +564,7 @@ class FluxTransformer2DModel(
 
     _supports_gradient_checkpointing = True
     _no_split_modules = ["FluxTransformerBlock", "FluxSingleTransformerBlock"]
-    _skip_layerwise_casting_patterns = ["pos_embed", "norm"]
+    _skip_layerwise_casting_patterns = ("pos_embed", "norm")
     _repeated_blocks = ["FluxTransformerBlock", "FluxSingleTransformerBlock"]
     _cp_plan = {
         "": {
@@ -573,6 +575,8 @@ class FluxTransformer2DModel(
         },
         "proj_out": ContextParallelOutput(gather_dim=1, expected_dims=3),
     }
+
+    _weight_mapping = FLUX_WEIGHT_MAPPING
 
     @register_to_config
     def __init__(
@@ -684,7 +688,6 @@ class FluxTransformer2DModel(
             If `return_dict` is True, an [`~models.transformer_2d.Transformer2DModelOutput`] is returned, otherwise a
             `tuple` where the first element is the sample tensor.
         """
-
         hidden_states = self.x_embedder(hidden_states)
 
         timestep = timestep.to(hidden_states.dtype) * 1000

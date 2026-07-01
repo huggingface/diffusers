@@ -22,6 +22,7 @@ import json
 import os
 import re
 import shutil
+import sys
 import tempfile
 from collections import OrderedDict
 from contextlib import ExitStack, contextmanager
@@ -38,6 +39,7 @@ from torch import Tensor, nn
 from typing_extensions import Self
 
 from .. import __version__
+from ..configuration_utils import ConfigMixin
 from ..quantizers import DiffusersAutoQuantizer, DiffusersQuantizer
 from ..quantizers.quantization_config import QuantizationMethod
 from ..utils import (
@@ -229,33 +231,197 @@ def no_init_weights():
             setattr(torch.nn.init, name, init_func)
 
 
-class ModelMixin(torch.nn.Module, PushToHubMixin):
+# Base URL for the diffusers docs. Used by each mixin's ``_metadata`` classmethod to build per-capability
+# docs links. Adjust as the docs layout evolves — links are reader hints, nothing depends on them
+# programmatically.
+DOCS_BASE = "https://huggingface.co/docs/diffusers/main/en"
+
+
+class ModelMetadata:
+    """Snapshot of a model class's feature attributes.
+
+    Constructed by :meth:`ModelMixin.metadata` — walks ``cls.__mro__`` collecting rows from each mixin's ``_metadata``
+    classmethod and exposes the raw values as attributes:
+
+        >>> meta = FluxTransformer2DModel.metadata() >>> meta._supports_ip_adapter True >>> meta._weight_mapping
+        ['flux-depth', 'flux-dev', 'flux-fill', 'flux-schnell'] >>> '_supports_cache' in meta True
+
+    ``repr(meta)`` (and ``print(meta)``) render a formatted table. Call :meth:`describe` to print the verbose variant
+    with descriptions and docs links.
+    """
+
+    # Internal storage is name-mangled (``self.__rows`` → ``self._ModelMetadata__rows``) so ``dir(meta)`` and
+    # tab-completion show only the feature attributes + ``describe``, not the snapshot's bookkeeping fields.
+    def __init__(self, rows: dict[str, tuple[Any, str, str, str]], cls_name: str):
+        self.__rows = rows
+        self.__cls_name = cls_name
+        for attr, (value, _display, _doc, _link) in rows.items():
+            setattr(self, attr, value)
+
+    def __iter__(self):
+        return iter(self.__rows)
+
+    def __contains__(self, key):
+        return key in self.__rows
+
+    def __len__(self):
+        return len(self.__rows)
+
+    def __dir__(self):
+        return list(self.__rows) + ["describe", "keys", "values", "items"]
+
+    def keys(self):
+        """Names of the feature attributes this snapshot exposes."""
+        return self.__rows.keys()
+
+    def values(self):
+        """Raw values for each feature attribute (same as ``meta.<attr>`` access)."""
+        return (info[0] for info in self.__rows.values())
+
+    def items(self):
+        """Pairs of ``(attribute_name, value)`` for each feature attribute."""
+        return ((attr, info[0]) for attr, info in self.__rows.items())
+
+    def __repr__(self) -> str:
+        return self._render(verbose=False)
+
+    def describe(self, verbose: bool = False) -> None:
+        """Print the formatted capability table. ``verbose=True`` adds descriptions and docs links per row."""
+        print(self._render(verbose=verbose))
+
+    def _render(self, verbose: bool) -> str:
+        if not self.__rows:
+            return f"{self.__cls_name}: no feature attributes declared"
+
+        is_tty = sys.stdout.isatty()
+        bold = "\033[1m" if is_tty else ""
+        dim = "\033[2m" if is_tty else ""
+        cyan = "\033[36m" if is_tty else ""
+        underline = "\033[4m" if is_tty else ""
+        reset = "\033[0m" if is_tty else ""
+
+        attr_w = max(len(attr) for attr in self.__rows)
+        title = f"{self.__cls_name} feature attributes"
+        rule_width = max(len(title), attr_w + 2 + max(len(row[1]) for row in self.__rows.values()))
+        lines = [
+            f"{bold}{title}{reset}",
+            f"{dim}{'─' * rule_width}{reset}",
+        ]
+
+        rows = list(self.__rows.items())
+        for i, (attr, (_value, display, doc, link)) in enumerate(rows):
+            lines.append(f"  {bold}{cyan}{attr:<{attr_w}}{reset}  {display}")
+            if verbose:
+                if doc:
+                    lines.append(f"      {dim}{doc}{reset}")
+                if link:
+                    lines.append(f"      {dim}See {underline}{link}{reset}")
+                if i < len(rows) - 1:
+                    lines.append("")
+        return "\n".join(lines)
+
+
+# Deprecation message reused across the per-backend attention helpers on ``ModelMixin`` (npu / xla / xformers).
+# These have been superseded by the unified ``set_attention_backend(...)`` / ``reset_attention_backend()`` API;
+# each call site supplies its specific replacement call as ``{replacement}``.
+_ATTENTION_API_DEPRECATION_MSG = "`ModelMixin.{name}` is deprecated. Use `{replacement}` instead."
+
+
+class ModelMixin(torch.nn.Module, ConfigMixin, PushToHubMixin):
     r"""
     Base class for all models.
 
     [`ModelMixin`] takes care of storing the model configuration and provides methods for loading, downloading and
     saving models.
-
         - **config_name** ([`str`]) -- Filename to save a model to when calling [`~models.ModelMixin.save_pretrained`].
     """
 
     config_name = CONFIG_NAME
     _automatically_saved_args = ["_diffusers_version", "_class_name", "_name_or_path"]
-    _supports_gradient_checkpointing = False
-    _keys_to_ignore_on_load_unexpected = None
-    _no_split_modules = None
-    _keep_in_fp32_modules = None
-    _skip_layerwise_casting_patterns = None
-    _supports_group_offloading = True
-    _repeated_blocks = []
-    _parallel_config = None
-    _cp_plan = None
     _skip_keys = None
+
+    _supports_gradient_checkpointing: bool = False
+    _no_split_modules: list[str] | None = None
+    _keep_in_fp32_modules: list[str] | None = None
+    _skip_layerwise_casting_patterns: tuple[str, ...] | list[str] | None = None
+    _supports_group_offloading: bool = True
+    _repeated_blocks: list[str] = []
+    _cp_plan: dict[str, Any] | None = None
+    _keys_to_ignore_on_load_unexpected: list[str] | None = None
 
     def __init__(self):
         super().__init__()
 
         self._gradient_checkpointing_func = None
+
+    @classmethod
+    def _metadata(cls) -> dict[str, tuple[Any, str, str, str]]:
+        """Return ``ModelMixin``-level rows for the metadata snapshot."""
+        rows: dict[str, tuple[Any, str, str, str]] = {}
+        if cls._supports_gradient_checkpointing:
+            rows["_supports_gradient_checkpointing"] = (
+                True,
+                "True",
+                "Trades compute for memory by recomputing activations during backward.",
+                "",
+            )
+        if cls._supports_group_offloading:
+            rows["_supports_group_offloading"] = (
+                True,
+                "True",
+                "Stage parameter groups on CPU/disk and stream them to the accelerator for inference.",
+                f"{DOCS_BASE}/optimization/memory#group-offloading",
+            )
+        if cls._no_split_modules:
+            rows["_no_split_modules"] = (
+                list(cls._no_split_modules),
+                ", ".join(cls._no_split_modules),
+                "Block class names that must stay on a single device under `device_map='auto'` sharding.",
+                "",
+            )
+        if cls._keep_in_fp32_modules:
+            rows["_keep_in_fp32_modules"] = (
+                list(cls._keep_in_fp32_modules),
+                ", ".join(cls._keep_in_fp32_modules),
+                "Submodule name patterns that remain in fp32 even when the model is cast to fp16/bf16.",
+                "",
+            )
+        if cls._skip_layerwise_casting_patterns:
+            rows["_skip_layerwise_casting_patterns"] = (
+                tuple(cls._skip_layerwise_casting_patterns),
+                ", ".join(cls._skip_layerwise_casting_patterns),
+                "Parameter name substrings excluded from layerwise dtype casting (embeddings, norms, ...).",
+                f"{DOCS_BASE}/optimization/memory#layerwise-casting",
+            )
+        if cls._repeated_blocks:
+            rows["_repeated_blocks"] = (
+                list(cls._repeated_blocks),
+                ", ".join(cls._repeated_blocks),
+                "Block class names safe to `torch.compile` once and reuse — enables `compile_repeated_blocks`.",
+                f"{DOCS_BASE}/optimization/fp16#regional-compilation",
+            )
+        if cls._cp_plan:
+            rows["_cp_plan"] = (
+                True,
+                "True",
+                "Support context parallel inference.",
+                f"{DOCS_BASE}/training/distributed_inference#context-parallelism",
+            )
+        return rows
+
+    @classmethod
+    def metadata(cls) -> "ModelMetadata":
+        """Return a :class:`ModelMetadata` snapshot of this class's feature attributes."""
+        merged: dict[str, tuple[Any, str, str, str]] = {}
+        for mixin in cls.__mro__:
+            method = mixin.__dict__.get("_metadata")
+            if method is None:
+                continue
+
+            for attr, info in method.__func__(cls).items():
+                merged.setdefault(attr, info)
+
+        return ModelMetadata(merged, cls.__name__)
 
     def __getattr__(self, name: str) -> Any:
         """The only reason we overwrite `getattr` here is to gracefully deprecate accessing
@@ -324,6 +490,14 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         r"""
         Set the switch for the npu flash attention.
         """
+        deprecate(
+            "ModelMixin.set_use_npu_flash_attention",
+            "1.0.0",
+            _ATTENTION_API_DEPRECATION_MSG.format(
+                name="set_use_npu_flash_attention",
+                replacement='set_attention_backend("_native_npu") / reset_attention_backend()',
+            ),
+        )
 
         def fn_recursive_set_npu_flash_attention(module: torch.nn.Module):
             if hasattr(module, "set_use_npu_flash_attention"):
@@ -341,6 +515,14 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         Enable npu flash attention from torch_npu
 
         """
+        deprecate(
+            "ModelMixin.enable_npu_flash_attention",
+            "1.0.0",
+            _ATTENTION_API_DEPRECATION_MSG.format(
+                name="enable_npu_flash_attention",
+                replacement='set_attention_backend("_native_npu")',
+            ),
+        )
         self.set_use_npu_flash_attention(True)
 
     def disable_npu_flash_attention(self) -> None:
@@ -348,11 +530,28 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         disable npu flash attention from torch_npu
 
         """
+        deprecate(
+            "ModelMixin.disable_npu_flash_attention",
+            "1.0.0",
+            _ATTENTION_API_DEPRECATION_MSG.format(
+                name="disable_npu_flash_attention",
+                replacement="reset_attention_backend()",
+            ),
+        )
         self.set_use_npu_flash_attention(False)
 
     def set_use_xla_flash_attention(
         self, use_xla_flash_attention: bool, partition_spec: Callable | None = None, **kwargs
     ) -> None:
+        deprecate(
+            "ModelMixin.set_use_xla_flash_attention",
+            "1.0.0",
+            _ATTENTION_API_DEPRECATION_MSG.format(
+                name="set_use_xla_flash_attention",
+                replacement='set_attention_backend("_native_xla") / reset_attention_backend()',
+            ),
+        )
+
         # Recursively walk through all the children.
         # Any children which exposes the set_use_xla_flash_attention method
         # gets the message
@@ -371,15 +570,40 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         r"""
         Enable the flash attention pallals kernel for torch_xla.
         """
+        deprecate(
+            "ModelMixin.enable_xla_flash_attention",
+            "1.0.0",
+            _ATTENTION_API_DEPRECATION_MSG.format(
+                name="enable_xla_flash_attention",
+                replacement='set_attention_backend("_native_xla")',
+            ),
+        )
         self.set_use_xla_flash_attention(True, partition_spec, **kwargs)
 
     def disable_xla_flash_attention(self):
         r"""
         Disable the flash attention pallals kernel for torch_xla.
         """
+        deprecate(
+            "ModelMixin.disable_xla_flash_attention",
+            "1.0.0",
+            _ATTENTION_API_DEPRECATION_MSG.format(
+                name="disable_xla_flash_attention",
+                replacement="reset_attention_backend()",
+            ),
+        )
         self.set_use_xla_flash_attention(False)
 
     def set_use_memory_efficient_attention_xformers(self, valid: bool, attention_op: Callable | None = None) -> None:
+        deprecate(
+            "ModelMixin.set_use_memory_efficient_attention_xformers",
+            "1.0.0",
+            _ATTENTION_API_DEPRECATION_MSG.format(
+                name="set_use_memory_efficient_attention_xformers",
+                replacement='set_attention_backend("xformers") / reset_attention_backend()',
+            ),
+        )
+
         # Recursively walk through all the children.
         # Any children which exposes the set_use_memory_efficient_attention_xformers method
         # gets the message
@@ -424,12 +648,28 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         >>> model.enable_xformers_memory_efficient_attention(attention_op=MemoryEfficientAttentionFlashAttentionOp)
         ```
         """
+        deprecate(
+            "ModelMixin.enable_xformers_memory_efficient_attention",
+            "1.0.0",
+            _ATTENTION_API_DEPRECATION_MSG.format(
+                name="enable_xformers_memory_efficient_attention",
+                replacement='set_attention_backend("xformers")',
+            ),
+        )
         self.set_use_memory_efficient_attention_xformers(True, attention_op)
 
     def disable_xformers_memory_efficient_attention(self) -> None:
         r"""
         Disable memory efficient attention from [xFormers](https://facebookresearch.github.io/xformers/).
         """
+        deprecate(
+            "ModelMixin.disable_xformers_memory_efficient_attention",
+            "1.0.0",
+            _ATTENTION_API_DEPRECATION_MSG.format(
+                name="disable_xformers_memory_efficient_attention",
+                replacement="reset_attention_backend()",
+            ),
+        )
         self.set_use_memory_efficient_attention_xformers(False)
 
     def enable_layerwise_casting(
@@ -1678,7 +1918,6 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             )
 
         config.setup(rank, world_size, device, mesh=mesh)
-        self._parallel_config = config
 
         for module in self.modules():
             if not isinstance(module, attention_classes):
