@@ -7,3 +7,5 @@ Jinja2
 peft>=0.18.1
 sentencepiece
 bitsandbytes
+prodigyopt
+datasets
