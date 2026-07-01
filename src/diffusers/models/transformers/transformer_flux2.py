@@ -304,8 +304,8 @@ class Flux2SwiGLU(nn.Module):
         self.gate_fn = nn.SiLU()
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        half = x.shape[-1] // 2
-        x = self.gate_fn(x[..., :half]) * x[..., half:]
+        x1, x2 = x.chunk(2, dim=-1)
+        x = self.gate_fn(x1) * x2
         return x
 
 
