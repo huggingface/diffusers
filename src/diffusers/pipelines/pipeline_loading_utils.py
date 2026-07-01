@@ -965,7 +965,10 @@ def _fetch_class_library_tuple(module):
     pipeline_dir = module_path_items[-2] if len(module_path_items) > 2 else None
 
     path = not_compiled_module.__module__.split(".")
-    is_pipeline_module = pipeline_dir in path and hasattr(pipelines, pipeline_dir)
+    # Require "pipelines" in the path so a model living in a subpackage whose name matches a pipeline
+    # directory (e.g. `models.transformers.flux.model` vs the `pipelines.flux` package) isn't
+    # misdetected as a pipeline component.
+    is_pipeline_module = "pipelines" in path and pipeline_dir in path and hasattr(pipelines, pipeline_dir)
 
     # if library is not in LOADABLE_CLASSES, then it is a custom module.
     # Or if it's a pipeline module, then the module is inside the pipeline
