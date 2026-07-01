@@ -31,6 +31,7 @@ from diffusers import (
 )
 
 from ...testing_utils import (
+    Expectations,
     backend_empty_cache,
     enable_full_determinism,
     require_torch_accelerator,
@@ -328,9 +329,14 @@ class StableDiffusionXLPAGPipelineIntegrationTests(unittest.TestCase):
 
         image_slice = image[0, -3:, -3:, -1].flatten()
         assert image.shape == (1, 1024, 1024, 3)
-        expected_slice = np.array(
-            [0.3123679, 0.31725878, 0.32026544, 0.327533, 0.3266391, 0.3303998, 0.33544615, 0.34181812, 0.34102726]
-        )
+        # fmt: off
+        expected_slice = Expectations(
+            {
+                ("cuda", 7): np.array([0.68121016, 0.709187, 0.7076755, 0.6825691, 0.6788969, 0.6774048, 0.6794217, 0.6880745 , 0.6896945]),
+                ("xpu", None): np.array([0.67993283, 0.7091448, 0.70783514, 0.6810594, 0.6776446, 0.6758386, 0.6778576, 0.6865928 , 0.6879399]),
+            }
+        ).get_expectation()
+        # fmt: on
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3, (
             f"output is different from expected, {image_slice.flatten()}"
         )
@@ -345,9 +351,15 @@ class StableDiffusionXLPAGPipelineIntegrationTests(unittest.TestCase):
 
         image_slice = image[0, -3:, -3:, -1].flatten()
         assert image.shape == (1, 1024, 1024, 3)
-        expected_slice = np.array(
-            [0.47400922, 0.48650584, 0.4839625, 0.4724013, 0.4890427, 0.49544555, 0.51707107, 0.54299414, 0.5224372]
-        )
+        # fmt: off
+        expected_slice = Expectations(
+            {
+                ("cuda", 7): np.array([0.5665728, 0.58520794, 0.57458067, 0.4698207, 0.48426265, 0.48946208, 0.46729165, 0.47325698, 0.43762192]),
+                ("xpu", 5): np.array([0.565891, 0.5846026, 0.5738897, 0.46956095, 0.48404077, 0.48921135, 0.4662642, 0.4720734, 0.43678787]),
+                ("xpu", 3): np.array([0.5658767, 0.58458394, 0.57346797, 0.46756423, 0.48198313, 0.48735905, 0.46382266, 0.46961138, 0.43374598]),
+            }
+        ).get_expectation()
+        # fmt: on
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3, (
             f"output is different from expected, {image_slice.flatten()}"
         )
