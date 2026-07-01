@@ -22,6 +22,7 @@ except OptionalDependencyNotAvailable:
     _dummy_objects.update(get_objects_from_module(dummy_torch_and_transformers_objects))
 else:
     _import_structure["pipeline_ideogram4"] = ["Ideogram4Pipeline"]
+    _import_structure["pipeline_ideogram4_img2img"] = ["Ideogram4Img2ImgPipeline"]
     _import_structure["pipeline_output"] = ["Ideogram4PipelineOutput"]
     _import_structure["prompt_enhancer"] = ["Ideogram4PromptEnhancerHead"]
 
@@ -33,6 +34,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from ...utils.dummy_torch_and_transformers_objects import *
     else:
         from .pipeline_ideogram4 import Ideogram4Pipeline
+        from .pipeline_ideogram4_img2img import Ideogram4Img2ImgPipeline
         from .pipeline_output import Ideogram4PipelineOutput
         from .prompt_enhancer import Ideogram4PromptEnhancerHead
 else:
