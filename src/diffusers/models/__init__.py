@@ -120,6 +120,7 @@ if is_torch_available():
     _import_structure["transformers.transformer_hunyuan_video_framepack"] = ["HunyuanVideoFramepackTransformer3DModel"]
     _import_structure["transformers.transformer_hunyuanimage"] = ["HunyuanImageTransformer2DModel"]
     _import_structure["transformers.transformer_ideogram4"] = ["Ideogram4Transformer2DModel"]
+    _import_structure["transformers.transformer_joyai_echo"] = ["JoyAIEchoTransformer3DModel"]
     _import_structure["transformers.transformer_joyimage"] = ["JoyImageEditTransformer3DModel"]
     _import_structure["transformers.transformer_kandinsky"] = ["Kandinsky5Transformer3DModel"]
     _import_structure["transformers.transformer_krea2"] = ["Krea2Transformer2DModel"]
@@ -254,6 +255,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             HunyuanVideoFramepackTransformer3DModel,
             HunyuanVideoTransformer3DModel,
             Ideogram4Transformer2DModel,
+            JoyAIEchoTransformer3DModel,
             JoyImageEditTransformer3DModel,
             Kandinsky5Transformer3DModel,
             Krea2Transformer2DModel,

@@ -346,6 +346,12 @@ else:
         "LTX2ImageToVideoPipeline",
         "LTX2LatentUpsamplePipeline",
     ]
+    _import_structure["joyai_echo"] = [
+        "JoyAIEchoOriginalCheckpointPipeline",
+        "JoyAIEchoPipeline",
+        "JoyAIEchoPipelineOutput",
+        "JoyAIEchoShotOutput",
+    ]
     _import_structure["joyimage"] = ["JoyImageEditPipeline", "JoyImageEditPipelineOutput"]
     _import_structure["lumina"] = ["LuminaPipeline", "LuminaText2ImgPipeline"]
     _import_structure["lumina2"] = ["Lumina2Pipeline", "Lumina2Text2ImgPipeline"]
@@ -760,6 +766,12 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .hunyuan_video1_5 import HunyuanVideo15ImageToVideoPipeline, HunyuanVideo15Pipeline
         from .hunyuandit import HunyuanDiTPipeline
         from .ideogram4 import Ideogram4Pipeline, Ideogram4PromptEnhancerHead
+        from .joyai_echo import (
+            JoyAIEchoOriginalCheckpointPipeline,
+            JoyAIEchoPipeline,
+            JoyAIEchoPipelineOutput,
+            JoyAIEchoShotOutput,
+        )
         from .joyimage import JoyImageEditPipeline, JoyImageEditPipelineOutput
         from .kandinsky import (
             KandinskyCombinedPipeline,
