@@ -45,6 +45,7 @@ logger = logging.get_logger(__name__)
 class QuantizationMethod(str, Enum):
     BITS_AND_BYTES = "bitsandbytes"
     GGUF = "gguf"
+    NUNCHAKU_LITE = "nunchaku_lite"
     TORCHAO = "torchao"
     QUANTO = "quanto"
     MODELOPT = "modelopt"
@@ -427,6 +428,24 @@ class GGUFQuantizationConfig(QuantizationConfigMixin):
 
         if self.compute_dtype is None:
             self.compute_dtype = torch.float32
+
+
+@dataclass
+class NunchakuLiteQuantizationConfig(QuantizationConfigMixin):
+    """Configuration for loading Nunchaku Lite runtime-manifest checkpoints.
+
+    Args:
+        compute_dtype (`torch.dtype`, defaults to `torch.bfloat16`):
+            Runtime dtype used by the floating-point buffers in the quantized modules.
+    """
+
+    def __init__(self, compute_dtype: "torch.dtype" | None = None):
+        self.quant_method = QuantizationMethod.NUNCHAKU_LITE
+        self.compute_dtype = compute_dtype
+        self.pre_quantized = True
+
+        if self.compute_dtype is None:
+            self.compute_dtype = torch.bfloat16
 
 
 @dataclass

@@ -372,10 +372,11 @@ class FromOriginalModelMixin:
                 f"Passed `torch_dtype` {torch_dtype} is not a `torch.dtype`. Defaulting to `torch.float32`."
             )
 
+        checkpoint_metadata = {}
         if isinstance(pretrained_model_link_or_path_or_dict, dict):
             checkpoint = pretrained_model_link_or_path_or_dict
         else:
-            checkpoint = load_single_file_checkpoint(
+            checkpoint, checkpoint_metadata = load_single_file_checkpoint(
                 pretrained_model_link_or_path_or_dict,
                 force_download=force_download,
                 proxies=proxies,
@@ -385,6 +386,7 @@ class FromOriginalModelMixin:
                 revision=revision,
                 disable_mmap=disable_mmap,
                 user_agent=user_agent,
+                return_metadata=True,
             )
         if quantization_config is not None:
             hf_quantizer = DiffusersAutoQuantizer.from_config(quantization_config)
@@ -509,6 +511,7 @@ class FromOriginalModelMixin:
                 model=model,
                 device_map=None,
                 state_dict=diffusers_format_checkpoint,
+                metadata=checkpoint_metadata,
                 keep_in_fp32_modules=keep_in_fp32_modules,
             )
 

@@ -64,6 +64,8 @@ _import_structure = {
     ],
 }
 
+_import_structure["quantizers.quantization_config"].append("NunchakuLiteQuantizationConfig")
+
 try:
     if not is_torch_available() and not is_accelerate_available() and not is_bitsandbytes_available():
         raise OptionalDependencyNotAvailable()
@@ -968,6 +970,7 @@ else:
 if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     from .configuration_utils import ConfigMixin
     from .quantizers import PipelineQuantizationConfig
+    from .quantizers.quantization_config import NunchakuLiteQuantizationConfig
 
     try:
         if not is_bitsandbytes_available():
