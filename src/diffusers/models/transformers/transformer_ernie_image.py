@@ -47,7 +47,11 @@ def rope(pos: torch.Tensor, dim: int, theta: int) -> torch.Tensor:
     assert dim % 2 == 0
     scale = torch.arange(0, dim, 2, dtype=torch.float32, device=pos.device) / dim
     omega = 1.0 / (theta**scale)
-    out = torch.einsum("...n,d->...nd", pos, omega)
+    # Disable autocast so the position-id einsum runs in float32: under an ambient autocast it would run in
+    # bfloat16, which cannot represent consecutive integers past 256, so position ids beyond that point would
+    # collapse onto the same frequency and degrade the rotary embedding.
+    with torch.autocast(device_type=pos.device.type, enabled=False):
+        out = torch.einsum("...n,d->...nd", pos, omega)
     return out.float()
 
 
