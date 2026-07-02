@@ -137,6 +137,7 @@ if is_torch_available():
     _import_structure["transformers.transformer_qwenimage"] = ["QwenImageTransformer2DModel"]
     _import_structure["transformers.transformer_sana_video"] = ["SanaVideoTransformer3DModel"]
     _import_structure["transformers.transformer_sd3"] = ["SD3Transformer2DModel"]
+    _import_structure["transformers.transformer_sefi"] = ["SeFiTransformer2DModel"]
     _import_structure["transformers.transformer_skyreels_v2"] = ["SkyReelsV2Transformer3DModel"]
     _import_structure["transformers.transformer_temporal"] = ["TransformerTemporalModel"]
     _import_structure["transformers.transformer_wan"] = ["WanTransformer3DModel"]
@@ -276,6 +277,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             SanaTransformer2DModel,
             SanaVideoTransformer3DModel,
             SD3Transformer2DModel,
+            SeFiTransformer2DModel,
             SkyReelsV2Transformer3DModel,
             StableAudioDiTModel,
             T5FilmDecoder,
