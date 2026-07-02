@@ -1,63 +1,29 @@
+import gc
 import json
+import os
 import tempfile
 import unittest
 
 import torch
 from safetensors.torch import save_file
 
-from diffusers import NunchakuLiteQuantizationConfig
-from diffusers.loaders.single_file_utils import load_single_file_checkpoint
+from diffusers import ConfigMixin, ModelMixin, NunchakuLiteQuantizationConfig
+from diffusers.configuration_utils import register_to_config
 from diffusers.quantizers import DiffusersAutoQuantizer
 from diffusers.quantizers.nunchaku.utils import AWQW4A16Linear, SVDQW4A4Linear
+from diffusers.utils import is_kernels_available
+
+from ...testing_utils import backend_empty_cache, nightly, require_accelerator, torch_device
 
 
-class TinyManifestModel(torch.nn.Module):
+class TinyPretrainedModel(ModelMixin, ConfigMixin):
+    config_name = "config.json"
+
+    @register_to_config
     def __init__(self):
         super().__init__()
-        self.svdq = torch.nn.Linear(64, 128, bias=False)
+        self.svdq = torch.nn.Linear(64, 128, bias=True)
         self.awq = torch.nn.Linear(64, 128, bias=False)
-
-
-def _target(prefix, op, rank, has_bias, precision="int4", group_size=64):
-    return {
-        "activation": {},
-        "checkpoint_prefix": prefix,
-        "group_size": group_size,
-        "has_bias": has_bias,
-        "kind": "linear",
-        "name": prefix,
-        "nunchaku_op": op,
-        "op_options": {},
-        "precision": precision,
-        "rank": rank,
-        "roles": [],
-        "source_modules": [prefix],
-    }
-
-
-def _metadata(targets, structural_patches=None):
-    return {
-        "quantization_config": json.dumps(
-            {
-                "runtime_manifest": {
-                    "component": "transformer",
-                    "nunchaku_format_version": 1,
-                    "producer": {"name": "test", "version": "0.0.0"},
-                    "requirements": {
-                        "activation_dtype": "int4",
-                        "method": "svdquant",
-                        "precision": "int4",
-                        "rank": 4,
-                        "weight_dtype": "int4",
-                    },
-                    "schema": "nunchaku_lite.runtime_manifest",
-                    "structural_patches": structural_patches or [],
-                    "targets": targets,
-                    "version": 1,
-                }
-            }
-        )
-    }
 
 
 def _state_dict(precision="int4"):
@@ -81,80 +47,113 @@ def _state_dict(precision="int4"):
     return state_dict
 
 
-class NunchakuLiteQuantizerTests(unittest.TestCase):
-    def test_manifest_replaces_svdq_and_awq_linears_for_strict_load(self):
-        model = TinyManifestModel()
-        quantizer = DiffusersAutoQuantizer.from_config(NunchakuLiteQuantizationConfig(compute_dtype=torch.bfloat16))
-        state_dict = _state_dict()
+def _compact_config():
+    return {
+        "svdq_w4a4": {
+            "precision": "fp4",
+            "group_size": 16,
+            "rank": 4,
+            "targets": ["svdq"],
+        },
+        "awq_w4a16": {
+            "precision": "int4",
+            "group_size": 64,
+            "targets": ["awq"],
+        },
+    }
 
-        quantizer.preprocess_model(
-            model,
-            state_dict=state_dict,
-            metadata=_metadata(
-                [
-                    _target("svdq", "svdq_w4a4", rank=4, has_bias=True),
-                    _target("awq", "awq_w4a16", rank=0, has_bias=False),
-                ]
-            ),
+
+@nightly
+@require_accelerator
+class NunchakuLiteCudaKernelsTests(unittest.TestCase):
+    def setUp(self):
+        gc.collect()
+        backend_empty_cache(torch_device)
+
+    def tearDown(self):
+        gc.collect()
+        backend_empty_cache(torch_device)
+
+    def test_awq_cuda_kernels(self):
+        if torch_device != "cuda":
+            self.skipTest("Nunchaku Lite CUDA kernels test requires CUDA device")
+        if not is_kernels_available():
+            self.skipTest("Nunchaku Lite CUDA kernels test requires kernels")
+
+        torch.manual_seed(0)
+        layer = AWQW4A16Linear(64, 128, bias=True, group_size=64, torch_dtype=torch.bfloat16, device=torch_device)
+        layer.qweight.data = torch.randint(-8, 8, layer.qweight.shape, dtype=torch.int32, device=torch_device)
+        layer.wscales.data = torch.rand(layer.wscales.shape, dtype=torch.bfloat16, device=torch_device)
+        layer.wzeros.data = torch.rand(layer.wzeros.shape, dtype=torch.bfloat16, device=torch_device)
+        layer.bias.data.zero_()
+
+        for shape in [(1, 8, 64), (1, 16, 64)]:
+            x = torch.randn(shape, dtype=torch.bfloat16, device=torch_device)
+            with torch.no_grad():
+                output = layer(x)
+
+            self.assertEqual(output.shape, (*shape[:-1], 128))
+            self.assertFalse(torch.isnan(output).any())
+
+
+class NunchakuLiteBasicTests(unittest.TestCase):
+    model_cls = TinyPretrainedModel
+
+    def test_compact_config_round_trips_dtype_and_targets(self):
+        quantization_config = NunchakuLiteQuantizationConfig(compute_dtype=torch.bfloat16, **_compact_config())
+        config_dict = quantization_config.to_dict()
+
+        self.assertEqual(config_dict["compute_dtype"], "bfloat16")
+        self.assertEqual(config_dict["svdq_w4a4"]["precision"], "fp4")
+
+        reloaded_config = NunchakuLiteQuantizationConfig.from_dict(config_dict)
+        self.assertEqual(reloaded_config.compute_dtype, torch.bfloat16)
+        self.assertEqual(reloaded_config.svdq_w4a4["targets"], ["svdq"])
+
+    def test_compact_config_replaces_svdq_and_awq_without_state_dict(self):
+        model = self.model_cls()
+        quantizer = DiffusersAutoQuantizer.from_config(
+            NunchakuLiteQuantizationConfig(compute_dtype=torch.bfloat16, **_compact_config())
         )
+
+        quantizer.preprocess_model(model)
 
         self.assertIsInstance(model.svdq, SVDQW4A4Linear)
         self.assertIsInstance(model.awq, AWQW4A16Linear)
+        self.assertEqual(model.svdq.precision, "nvfp4")
         self.assertEqual(model.svdq.rank, 4)
         self.assertIsNotNone(model.svdq.bias)
         self.assertIsNone(model.awq.bias)
-        model.load_state_dict(state_dict, strict=True)
 
-    def test_fp4_manifest_replaces_svdq_with_wtscale_for_strict_load(self):
-        model = TinyManifestModel()
-        quantizer = DiffusersAutoQuantizer.from_config(NunchakuLiteQuantizationConfig(compute_dtype=torch.bfloat16))
-        state_dict = _state_dict(precision="fp4")
+    @unittest.skipIf(not is_kernels_available(), "Nunchaku Lite from_pretrained requires kernels.")
+    def test_nunchaku_lite_loads_with_from_pretrained(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            model = self.model_cls()
+            model.save_config(tmpdir)
 
-        quantizer.preprocess_model(
-            model,
-            state_dict=state_dict,
-            metadata=_metadata(
-                [
-                    _target("svdq", "svdq_w4a4", rank=4, has_bias=True, precision="fp4", group_size=16),
-                    _target("awq", "awq_w4a16", rank=0, has_bias=False),
-                ]
-            ),
-        )
+            config_path = os.path.join(tmpdir, "config.json")
+            with open(config_path) as handle:
+                config = json.load(handle)
 
-        self.assertIsInstance(model.svdq, SVDQW4A4Linear)
-        self.assertEqual(model.svdq.precision, "nvfp4")
-        model.load_state_dict(state_dict, strict=True)
+            compact_config = _compact_config()
+            config["quantization_config"] = NunchakuLiteQuantizationConfig(
+                compute_dtype=torch.bfloat16, **compact_config
+            ).to_dict()
 
-    def test_missing_manifest_metadata_raises(self):
-        model = TinyManifestModel()
-        quantizer = DiffusersAutoQuantizer.from_config(NunchakuLiteQuantizationConfig())
+            with open(config_path, "w") as handle:
+                json.dump(config, handle)
 
-        with self.assertRaisesRegex(ValueError, "quantization_config"):
-            quantizer.preprocess_model(model, state_dict={}, metadata={})
-
-    def test_structural_patches_raise_clear_error(self):
-        model = TinyManifestModel()
-        quantizer = DiffusersAutoQuantizer.from_config(NunchakuLiteQuantizationConfig())
-
-        with self.assertRaisesRegex(ValueError, "structural patches"):
-            quantizer.preprocess_model(
-                model,
-                state_dict={},
-                metadata=_metadata(
-                    [_target("svdq", "svdq_w4a4", rank=4, has_bias=True)],
-                    structural_patches=[{"type": "split_linear_input", "module": "svdq", "args": {"splits": [32]}}],
-                ),
+            svdq_config = compact_config["svdq_w4a4"]
+            precision = "fp4" if svdq_config["precision"] == "fp4" else "int4"
+            save_file(
+                _state_dict(precision=precision), os.path.join(tmpdir, "diffusion_pytorch_model.safetensors")
             )
 
-    def test_single_file_loader_can_return_safetensors_metadata(self):
-        with tempfile.TemporaryDirectory() as tmpdir:
-            filename = f"{tmpdir}/model.safetensors"
-            save_file({"weight": torch.ones(1)}, filename, metadata=_metadata([]))
+            loaded_model = self.model_cls.from_pretrained(tmpdir)
 
-            checkpoint, metadata = load_single_file_checkpoint(filename, return_metadata=True)
-
-        self.assertEqual(list(checkpoint), ["weight"])
-        self.assertIn("quantization_config", metadata)
+        self.assertIsInstance(loaded_model.svdq, SVDQW4A4Linear)
+        self.assertIsInstance(loaded_model.awq, AWQW4A16Linear)
+        self.assertEqual(loaded_model.svdq.precision, "nvfp4")
 
 
 if __name__ == "__main__":
