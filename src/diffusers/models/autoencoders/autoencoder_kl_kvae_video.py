@@ -858,9 +858,7 @@ class AutoencoderKLKVAEVideo(ModelMixin, AutoencoderMixin, ConfigMixin, FromOrig
 
         latent = []
         for chunk in torch.split(x, split_list, dim=2):
-            l = self.encoder(chunk, cache)
-            sample, _ = torch.chunk(l, 2, dim=1)
-            latent.append(sample)
+            latent.append(self.encoder(chunk, cache))
 
         return torch.cat(latent, dim=2)
 
@@ -885,9 +883,7 @@ class AutoencoderKLKVAEVideo(ModelMixin, AutoencoderMixin, ConfigMixin, FromOrig
         else:
             h = self._encode(x)
 
-        # For cached encoder, we already did the split in _encode
-        h_double = torch.cat([h, torch.zeros_like(h)], dim=1)
-        posterior = DiagonalGaussianDistribution(h_double)
+        posterior = DiagonalGaussianDistribution(h)
 
         if not return_dict:
             return (posterior,)
