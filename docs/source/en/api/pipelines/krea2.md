@@ -59,3 +59,38 @@ image.save("krea2.png")
 ## Krea2PipelineOutput
 
 [[autodoc]] pipelines.krea2.pipeline_output.Krea2PipelineOutput
+
+## Modular
+
+Krea 2 is also available as a [modular pipeline](../../modular_diffusers/overview). Classifier-free guidance is
+configured through the `guider` component rather than a `guidance_scale` call argument. Krea 2 uses cond-anchored CFG,
+which is [`ClassifierFreeGuidance`] with `use_original_formulation=True`; a scale of `0.0` disables guidance (the TDM
+checkpoint).
+
+```python
+import torch
+from diffusers import ClassifierFreeGuidance, ModularPipeline
+
+pipe = ModularPipeline.from_pretrained("path/to/krea2-diffusers")
+pipe.load_components(torch_dtype=torch.bfloat16)
+pipe.to("cuda")
+
+pipe.update_components(guider=ClassifierFreeGuidance(guidance_scale=4.5, use_original_formulation=True))
+
+image = pipe(
+    prompt="a fox in the snow",
+    height=1024,
+    width=1024,
+    num_inference_steps=28,
+    generator=torch.Generator("cuda").manual_seed(0),
+).images[0]
+image.save("krea2.png")
+```
+
+## Krea2ModularPipeline
+
+[[autodoc]] Krea2ModularPipeline
+
+## Krea2AutoBlocks
+
+[[autodoc]] Krea2AutoBlocks
