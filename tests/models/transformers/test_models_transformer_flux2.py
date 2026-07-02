@@ -180,8 +180,8 @@ def make_neuron_tp_spec():
 class TestFlux2TransformerTensorParallelNeuron:
     """Tensor Parallel inference test for Flux2 Transformer on AWS Neuron.
 
-    Neuron TP runs through ``torchrun`` with the ``"neuron"`` distributed backend and an XLA runtime, so it cannot use
-    the ``torch.multiprocessing``/NCCL spawn path of ``TensorParallelTesterMixin``. This launches the generic worker
+    Neuron TP runs through ``torchrun`` with the ``"neuron"`` distributed backend, so it cannot use the
+    ``torch.multiprocessing``/NCCL spawn path of ``TensorParallelTesterMixin``. This launches the generic worker
     with the Flux2 model spec (``make_neuron_tp_spec``); the worker asserts the sharded output matches a single-device
     reference, and the test checks its exit code.
     """
