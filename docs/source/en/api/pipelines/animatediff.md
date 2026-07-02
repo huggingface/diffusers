@@ -172,7 +172,7 @@ Here are some sample outputs:
         <td align="center">
           raccoon playing a guitar
           <br />
-          <img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/animatediff-vid2vid-input-1.gif" alt="racoon playing a guitar" />
+          <img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/animatediff-vid2vid-input-1.gif" alt="raccoon playing a guitar" />
         </td>
         <td align="center">
           a panda, playing a guitar, sitting in a pink boat, in the ocean, mountains in background, realistic, high quality
@@ -491,7 +491,7 @@ Here are some sample outputs:
           raccoon playing a guitar
           <br />
           <img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/animatediff-vid2vid-input-1.gif"
-              alt="racoon playing a guitar"
+              alt="raccoon playing a guitar"
               style="width: 300px;" />
         </td>
         <td align=center>

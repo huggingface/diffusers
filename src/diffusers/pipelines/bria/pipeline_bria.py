@@ -604,7 +604,7 @@ class BriaPipeline(DiffusionPipeline):
             prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds], dim=0)
 
         # 5. Prepare latent variables
-        num_channels_latents = self.transformer.config.in_channels // 4  # due to patch=2, we devide by 4
+        num_channels_latents = self.transformer.config.in_channels // 4  # due to patch=2, we divide by 4
         latents, latent_image_ids = self.prepare_latents(
             batch_size * num_images_per_prompt,
             num_channels_latents,
