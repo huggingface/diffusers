@@ -12,9 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""
-Usage example:
-    TODO
+"""``diffusers-cli custom_blocks`` — package a local ``ModularPipelineBlocks`` subclass for the Hub.
+
+Parses ``block.py`` (or ``--block_module_name``), instantiates the chosen block, and calls ``save_pretrained`` in the
+current working directory.
 """
 
 import ast
@@ -28,7 +29,6 @@ from . import BaseDiffusersCLICommand
 
 
 EXPECTED_PARENT_CLASSES = ["ModularPipelineBlocks"]
-CONFIG = "config.json"
 
 
 def conversion_command_factory(args: Namespace):
@@ -38,7 +38,27 @@ def conversion_command_factory(args: Namespace):
 class CustomBlocksCommand(BaseDiffusersCLICommand):
     @staticmethod
     def register_subcommand(parser: ArgumentParser):
-        conversion_parser = parser.add_parser("custom_blocks")
+        from argparse import RawDescriptionHelpFormatter
+
+        epilog = (
+            "Examples\n"
+            "  $ diffusers-cli custom_blocks\n"
+            "  $ diffusers-cli custom_blocks --block_module_name my_block.py\n"
+            "  $ diffusers-cli custom_blocks --block_module_name my_block.py --block_class_name MyDenoiseBlock\n"
+            "\n"
+            "Learn more\n"
+            "  Use `diffusers-cli <command> --help` for more information about a command.\n"
+            "  Read the documentation at https://huggingface.co/docs/diffusers\n"
+        )
+
+        conversion_parser = parser.add_parser(
+            "custom_blocks",
+            help="Package a local ModularPipelineBlocks subclass for the Hub.",
+            usage="\n  diffusers-cli custom_blocks [options]",
+            epilog=epilog,
+            formatter_class=RawDescriptionHelpFormatter,
+        )
+        conversion_parser._optionals.title = "Options"
         conversion_parser.add_argument(
             "--block_module_name",
             type=str,
@@ -85,11 +105,6 @@ class CustomBlocksCommand(BaseDiffusersCLICommand):
         spec.loader.exec_module(module)
         getattr(module, child_class)().save_pretrained(os.getcwd())
 
-        # or, we could create it manually.
-        # automap = self._create_automap(parent_class=parent_class, child_class=child_class)
-        # with open(CONFIG, "w") as f:
-        #     json.dump(automap, f)
-
     def _choose_block(self, candidates, chosen=None):
         for cls, base in candidates:
             if cls == chosen:
@@ -125,8 +140,3 @@ class CustomBlocksCommand(BaseDiffusersCLICommand):
             val = self._get_base_name(node.value)
             return f"{val}.{node.attr}" if val else node.attr
         return None
-
-    def _create_automap(self, parent_class, child_class):
-        module = str(self.block_module_name).replace(".py", "").rsplit(".", 1)[-1]
-        auto_map = {f"{parent_class}": f"{module}.{child_class}"}
-        return {"auto_map": auto_map}

@@ -15,22 +15,45 @@
 
 from argparse import ArgumentParser
 
+from huggingface_hub.cli._output import OutputFormat, out
 from .custom_blocks import CustomBlocksCommand
 from .env import EnvironmentCommand
 from .fp16_safetensors import FP16SafetensorsCommand
+from .run import RunCommand
+from .schema import SchemaCommand
+from .skills import SkillsCommand
 
 
 def main():
-    parser = ArgumentParser("Diffusers CLI tool", usage="diffusers-cli <command> [<args>]")
-    commands_parser = parser.add_subparsers(help="diffusers-cli command helpers")
+    parser = ArgumentParser(
+        prog="diffusers-cli",
+        usage="\n  diffusers-cli [--format <fmt>] <command> [options]",
+    )
+    parser._optionals.title = "Options"
+    parser.add_argument(
+        "--format",
+        choices=[m.value for m in OutputFormat],
+        default=OutputFormat.auto.value,
+        help=(
+            "Output format. 'auto' (default) picks 'agent' when an AI coding agent is detected "
+            "(via CLAUDECODE/CURSOR_AI/AIDER_AI_CONTEXT/... env vars) and 'human' otherwise. "
+            "Must appear before the subcommand."
+        ),
+    )
+    commands_parser = parser.add_subparsers(title="Commands", metavar="<command>")
 
     # Register commands
     EnvironmentCommand.register_subcommand(commands_parser)
     FP16SafetensorsCommand.register_subcommand(commands_parser)
     CustomBlocksCommand.register_subcommand(commands_parser)
+    RunCommand.register_subcommand(commands_parser)
+    SchemaCommand.register_subcommand(commands_parser)
+    SkillsCommand.register_subcommand(commands_parser)
 
     # Let's go
     args = parser.parse_args()
+
+    out.set_mode(OutputFormat(args.format))
 
     if not hasattr(args, "func"):
         parser.print_help()
