@@ -113,6 +113,7 @@ else:
         "ZImageAutoBlocks",
         "ZImageModularPipeline",
     ]
+    _import_structure["pixart_alpha"] = ["PixArtAlphaAutoBlocks", "PixArtAlphaModularPipeline"]
     _import_structure["components_manager"] = ["ComponentsManager"]
 
 if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
@@ -162,6 +163,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             SequentialPipelineBlocks,
         )
         from .modular_pipeline_utils import ComponentSpec, ConfigSpec, InputParam, InsertableDict, OutputParam
+        from .pixart_alpha import PixArtAlphaAutoBlocks, PixArtAlphaModularPipeline
         from .qwenimage import (
             QwenImageAutoBlocks,
             QwenImageEditAutoBlocks,
