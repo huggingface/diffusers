@@ -22,3 +22,9 @@ Parallelism strategies help speed up diffusion transformers by distributing comp
 [[autodoc]] ContextParallelConfig
 
 [[autodoc]] hooks.apply_context_parallel
+
+## TensorParallelConfig
+
+[[autodoc]] TensorParallelConfig
+
+[[autodoc]] hooks.apply_tensor_parallel

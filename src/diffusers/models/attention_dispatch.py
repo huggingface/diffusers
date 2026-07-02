@@ -1117,7 +1117,7 @@ def _flash_attention_forward_op(
         scale = query.shape[-1] ** (-0.5)
 
     # flash-attn only returns LSE if dropout_p > 0. So, we need to workaround.
-    if grad_enabled or (_parallel_config is not None and _parallel_config.context_parallel_config._world_size > 1):
+    if grad_enabled or (_parallel_config is not None and _parallel_config._cp_world_size > 1):
         dropout_p = dropout_p if dropout_p > 0 else 1e-30
 
     with torch.set_grad_enabled(grad_enabled):
@@ -1225,7 +1225,7 @@ def _flash_attention_hub_forward_op(
     deterministic = False
     grad_enabled = any(x.requires_grad for x in (query, key, value))
 
-    if grad_enabled or (_parallel_config is not None and _parallel_config.context_parallel_config._world_size > 1):
+    if grad_enabled or (_parallel_config is not None and _parallel_config._cp_world_size > 1):
         dropout_p = dropout_p if dropout_p > 0 else 1e-30
 
     with torch.set_grad_enabled(grad_enabled):
@@ -1337,7 +1337,7 @@ def _flash_varlen_attention_hub_forward_op(
     deterministic = False
     grad_enabled = any(x.requires_grad for x in (query, key, value))
 
-    if grad_enabled or (_parallel_config is not None and _parallel_config.context_parallel_config._world_size > 1):
+    if grad_enabled or (_parallel_config is not None and _parallel_config._cp_world_size > 1):
         dropout_p = dropout_p if dropout_p > 0 else 1e-30
 
     batch_size, seq_len_q, num_heads, _ = query.shape
@@ -2664,7 +2664,7 @@ def _flash_attention(
     if attn_mask is not None:
         raise ValueError("`attn_mask` is not supported for flash-attn 2.")
 
-    if _parallel_config is None:
+    if _parallel_config is None or _parallel_config.context_parallel_config is None:
         out = flash_attn_func(
             q=query,
             k=key,
@@ -2721,7 +2721,7 @@ def _flash_attention_hub(
         raise ValueError("`attn_mask` is not supported for flash-attn 2.")
 
     func = _HUB_KERNELS_REGISTRY[AttentionBackendName.FLASH_HUB].kernel_fn
-    if _parallel_config is None:
+    if _parallel_config is None or _parallel_config.context_parallel_config is None:
         out = func(
             q=query,
             k=key,
@@ -2773,14 +2773,18 @@ def _flash_varlen_attention_hub(
     return_lse: bool = False,
     _parallel_config: "ParallelConfig" | None = None,
 ) -> torch.Tensor:
-    if _parallel_config is not None and _parallel_config.context_parallel_config.ring_degree > 1:
+    if (
+        _parallel_config is not None
+        and _parallel_config.context_parallel_config is not None
+        and _parallel_config.context_parallel_config.ring_degree > 1
+    ):
         raise NotImplementedError("`ring_degree > 1` is not yet supported for the FLASH_VARLEN_HUB backend.")
 
     lse = None
     batch_size, seq_len_q, _, _ = query.shape
     _, seq_len_kv, _, _ = key.shape
 
-    if _parallel_config is None:
+    if _parallel_config is None or _parallel_config.context_parallel_config is None:
         if attn_mask is not None:
             attn_mask = _normalize_attn_mask(attn_mask, batch_size, seq_len_kv)
             (_, _), (cu_seqlens_q, cu_seqlens_k), (max_seqlen_q, max_seqlen_k) = (
@@ -2944,7 +2948,7 @@ def _flash_attention_3_hub(
         raise ValueError("`attn_mask` is not supported for flash-attn 3.")
 
     func = _HUB_KERNELS_REGISTRY[AttentionBackendName._FLASH_3_HUB].kernel_fn
-    if _parallel_config is None:
+    if _parallel_config is None or _parallel_config.context_parallel_config is None:
         out = func(
             q=query,
             k=key,
@@ -3324,7 +3328,7 @@ def _native_attention(
         # SDPA handles both boolean and additive masks correctly
         attn_mask = attn_mask.unsqueeze(1).unsqueeze(1)
 
-    if _parallel_config is None:
+    if _parallel_config is None or _parallel_config.context_parallel_config is None:
         query, key, value = (x.permute(0, 2, 1, 3) for x in (query, key, value))
         out = torch.nn.functional.scaled_dot_product_attention(
             query=query,
@@ -3550,7 +3554,7 @@ def _native_npu_attention(
 ) -> torch.Tensor:
     if return_lse:
         raise ValueError("NPU attention backend does not support setting `return_lse=True`.")
-    if _parallel_config is None:
+    if _parallel_config is None or _parallel_config.context_parallel_config is None:
         attn_mask = _maybe_modify_attn_mask_npu(query, key, attn_mask)
 
         out = npu_fusion_attention(
@@ -3634,7 +3638,7 @@ def _sage_attention(
     if attn_mask is not None:
         raise ValueError("`attn_mask` is not supported for sage attention")
     lse = None
-    if _parallel_config is None:
+    if _parallel_config is None or _parallel_config.context_parallel_config is None:
         out = sageattn(
             q=query,
             k=key,
@@ -3686,7 +3690,7 @@ def _sage_attention_hub(
         raise ValueError("`attn_mask` is not supported for sage attention")
     lse = None
     func = _HUB_KERNELS_REGISTRY[AttentionBackendName.SAGE_HUB].kernel_fn
-    if _parallel_config is None:
+    if _parallel_config is None or _parallel_config.context_parallel_config is None:
         out = func(
             q=query,
             k=key,
