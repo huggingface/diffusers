@@ -107,8 +107,8 @@ class TransformerBlockRegistry:
 
 def _register_attention_processors_metadata():
     from ..models.attention_processor import AttnProcessor2_0
+    from ..models.transformers.flux import FluxAttnProcessor
     from ..models.transformers.transformer_cogview4 import CogView4AttnProcessor
-    from ..models.transformers.transformer_flux import FluxAttnProcessor
     from ..models.transformers.transformer_hunyuanimage import HunyuanImageAttnProcessor
     from ..models.transformers.transformer_qwenimage import QwenDoubleStreamAttnProcessor2_0
     from ..models.transformers.transformer_wan import WanAttnProcessor2_0
@@ -172,9 +172,9 @@ def _register_attention_processors_metadata():
 def _register_transformer_blocks_metadata():
     from ..models.attention import BasicTransformerBlock, JointTransformerBlock
     from ..models.transformers.cogvideox_transformer_3d import CogVideoXBlock
+    from ..models.transformers.flux import FluxSingleTransformerBlock, FluxTransformerBlock
     from ..models.transformers.transformer_bria import BriaTransformerBlock
     from ..models.transformers.transformer_cogview4 import CogView4TransformerBlock
-    from ..models.transformers.transformer_flux import FluxSingleTransformerBlock, FluxTransformerBlock
     from ..models.transformers.transformer_hunyuan_video import (
         HunyuanVideoSingleTransformerBlock,
         HunyuanVideoTokenReplaceSingleTransformerBlock,

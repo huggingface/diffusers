@@ -42,6 +42,19 @@ HUGGINGFACE_CO_RESOLVE_ENDPOINT = os.environ.get("HF_ENDPOINT", "https://hugging
 DIFFUSERS_DYNAMIC_MODULE_NAME = "diffusers_modules"
 HF_MODULES_CACHE = os.getenv("HF_MODULES_CACHE", os.path.join(HF_HOME, "modules"))
 DEPRECATED_REVISION_ARGS = ["fp16", "non-ema"]
+
+# Canonical set of hub-download kwargs (with defaults) forwarded to ``_get_model_file`` and
+# related loaders. Use ``{k: kwargs.pop(k, default) for k, default in HUB_KWARGS.items()}`` to
+# extract them from a caller's ``**kwargs`` in one shot.
+HUB_KWARGS = {
+    "cache_dir": None,
+    "force_download": False,
+    "proxies": None,
+    "local_files_only": None,
+    "token": None,
+    "revision": None,
+    "subfolder": None,
+}
 DIFFUSERS_REQUEST_TIMEOUT = 60
 DIFFUSERS_ATTN_BACKEND = os.getenv("DIFFUSERS_ATTN_BACKEND", "native")
 DIFFUSERS_ATTN_CHECKS = os.getenv("DIFFUSERS_ATTN_CHECKS", "0").upper() in ENV_VARS_TRUE_VALUES
