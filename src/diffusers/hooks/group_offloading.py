@@ -199,12 +199,13 @@ class ModuleGroup:
 
     @staticmethod
     def _to_cpu(tensor, low_cpu_mem_usage):
+        is_torchao_tensor = _is_torchao_tensor(tensor)
+        is_quanto_tensor = _is_quanto_tensor(tensor)
         # For tensor subclasses (TorchAO / quanto), `.data` returns an incomplete wrapper without internal
         # attributes (e.g. `.qdata`/`.scale`, `._data`/`._scale`), so we must call `.cpu()` on the tensor directly.
-        t = tensor.cpu() if (_is_torchao_tensor(tensor) or _is_quanto_tensor(tensor)) else tensor.data.cpu()
-        # Subclass tensors (quanto / torchao) don't support `pin_memory()`/`is_pinned()` (quanto loses the
-        # subclass, torchao raises on the unimplemented op), so skip pinning for them.
-        if low_cpu_mem_usage or _is_quanto_tensor(tensor) or _is_torchao_tensor(tensor):
+        t = tensor.cpu() if (is_torchao_tensor or is_quanto_tensor) else tensor.data.cpu()
+        # Quanto tensors do not keep their subclass identity through `pin_memory()`, so skip pinning for them.
+        if low_cpu_mem_usage or is_quanto_tensor:
             return t
         return t.pin_memory()
 
@@ -231,9 +232,7 @@ class ModuleGroup:
     def _pinned_memory_tensors(self):
         try:
             pinned_dict = {
-                param: tensor
-                if (_is_quanto_tensor(tensor) or _is_torchao_tensor(tensor) or tensor.is_pinned())
-                else tensor.pin_memory()
+                param: tensor if (_is_quanto_tensor(tensor) or tensor.is_pinned()) else tensor.pin_memory()
                 for param, tensor in self.cpu_param_dict.items()
             }
             yield pinned_dict
