@@ -274,6 +274,20 @@ class HookRegistry:
         for registry in self._get_child_registries():
             registry._set_context(name)
 
+    def invalidate_child_registries_cache(self) -> None:
+        """Invalidate the cached child-registry list across this module's tree.
+
+        `_get_child_registries` caches the registries it finds by walking `named_modules()`, keyed on the registry that
+        built it. Registering or removing hooks on descendant modules (e.g. block hooks added by `enable_cache`)
+        changes which modules carry a `_diffusers_hook`, which stales that cache. Call this after any operation that
+        adds or removes hooks in the subtree so the list is rebuilt on next use. Clears the cache on every registry in
+        the tree, since the same registries appear in ancestor caches.
+        """
+        for _, module in unwrap_module(self._module_ref).named_modules():
+            module = unwrap_module(module)
+            if hasattr(module, "_diffusers_hook"):
+                module._diffusers_hook._child_registries_cache = None
+
     def _get_child_registries(self) -> list["HookRegistry"]:
         """Return registries of child modules, using a cached list when available.
 
