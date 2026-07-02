@@ -208,8 +208,8 @@ def apply_tensor_parallel(
 
     The backend is read straight off the TP mesh: a `DeviceMesh("neuron", ...)` routes to the Neuron pre-shard path
     (works around the NRT consecutive-reduce-scatter bug); every other device uses `parallelize_module` directly.
-    The mesh device type is the single source of truth — a Neuron mesh only exists when running on Neuron, so no
-    separate availability check is needed, and `torch_device` can't be used (Neuron reports as `"cpu"` there).
+    The mesh device type is the single source of truth — it is exactly the device the model is being sharded onto,
+    so it needs no separate availability check or accelerator probe.
     """
     tp_mesh = config._mesh
     if tp_mesh is None:
