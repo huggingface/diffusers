@@ -203,18 +203,21 @@ def apply_tensor_parallel(
     model: torch.nn.Module,
     config: TensorParallelConfig,
     tp_plan: dict,
-    *,
-    backend: str = "default",
 ) -> None:
     """Apply tensor parallel on a model from its flat `_tp_plan`.
 
-    `backend="neuron"` routes to the Neuron pre-shard path (works around the NRT consecutive-reduce-scatter bug);
-    `"default"` uses `parallelize_module` directly.
+    The backend is derived from the TP mesh's device type: a `DeviceMesh("neuron", ...)` routes to the Neuron
+    pre-shard path (works around the NRT consecutive-reduce-scatter bug); every other device uses
+    `parallelize_module` directly. It cannot be derived from `torch_device`, because Neuron does not surface as the
+    torch accelerator (`torch._C._get_accelerator().type` is `"cpu"` on a Neuron host).
     """
+    from ..utils import is_torch_neuronx_available
+
     tp_mesh = config._mesh
     if tp_mesh is None:
         raise ValueError("`config._mesh` is None. Call `config.setup(rank, world_size, device)` before applying TP.")
 
+    backend = "neuron" if (is_torch_neuronx_available() and tp_mesh.device_type == "neuron") else "default"
     groups = _resolve_tp_plan(model, tp_plan)
     logger.debug(f"Applying tensor parallel (backend={backend}) over {len(groups)} module group(s) on mesh {tp_mesh}.")
 

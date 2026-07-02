@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Neuron backend for tensor parallelism, dispatched from ``apply_tensor_parallel(backend="neuron")``.
+"""Neuron backend for tensor parallelism, dispatched from ``apply_tensor_parallel`` when the TP mesh is on Neuron.
 
 The difference from the generic path is a workaround for a Neuron NRT bug: consecutive ``reduce_scatter`` collectives
 for large weight tensors (≥ 5120×5120) can fail when all layers are distributed in a single ``parallelize_module``

@@ -58,7 +58,6 @@ from ..utils import (
     is_bitsandbytes_version,
     is_flashpack_available,
     is_peft_available,
-    is_torch_neuronx_available,
     is_torch_version,
     logging,
 )
@@ -1733,14 +1732,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
 
             from ..hooks.tensor_parallel import apply_tensor_parallel
 
-            # The Neuron pre-shard path works around the NRT consecutive-reduce-scatter bug. Neuron
-            # does not surface as the torch accelerator (`torch._C._get_accelerator().type` is
-            # "cpu"), so detect it from the TP mesh's device type instead — on Neuron the mesh is a
-            # `DeviceMesh("neuron", ...)`.
-            tp_mesh = config.tensor_parallel_config._mesh
-            mesh_device_type = tp_mesh.device_type if tp_mesh is not None else device_type
-            backend = "neuron" if (is_torch_neuronx_available() and mesh_device_type == "neuron") else "default"
-            apply_tensor_parallel(self, config.tensor_parallel_config, self._tp_plan, backend=backend)
+            apply_tensor_parallel(self, config.tensor_parallel_config, self._tp_plan)
 
     @classmethod
     def _load_pretrained_model(
