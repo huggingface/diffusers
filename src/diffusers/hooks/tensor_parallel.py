@@ -50,8 +50,8 @@ def _blocks_to_block_sizes(total_size: int, blocks: "list[int]") -> "list[int]":
     """Convert proportional block counts to absolute sizes.
 
     `blocks` is a list of positive integers interpreted as proportional weights. Their sum must divide `total_size`
-    evenly. Returns a list of absolute sizes that sum to `total_size`. For example,
-    `_blocks_to_block_sizes(1152, [1, 1, 1, 3, 3])` returns `[128, 128, 128, 384, 384]`.
+    evenly. Returns a list of absolute sizes that sum to `total_size`. For example, `_blocks_to_block_sizes(1152, [1,
+    1, 1, 3, 3])` returns `[128, 128, 128, 384, 384]`.
     """
     total = sum(blocks)
     if total_size % total != 0:
@@ -67,12 +67,12 @@ def _resolve_tp_plan(model: torch.nn.Module, tp_plan: dict) -> list:
     """Group a flat `_tp_plan` into per-block `(submodule, {relative_path: style})` plans.
 
     Each glob is split at its single `*`; the prefix must resolve to a `ModuleList` and the suffix is the per-element
-    key. Grouping by block lets the caller issue one `parallelize_module` call per block, which `RowwiseParallel`
-    needs to attach its input redistribution at the block boundary.
+    key. Grouping by block lets the caller issue one `parallelize_module` call per block, which `RowwiseParallel` needs
+    to attach its input redistribution at the block boundary.
 
-    Example: when `transformer_blocks` is a `ModuleList` of length 2, the input
-    `{"transformer_blocks.*.ff.linear_out": "rowwise"}` returns
-    `[(transformer_blocks[0], {"ff.linear_out": "rowwise"}), (transformer_blocks[1], {"ff.linear_out": "rowwise"})]`.
+    Example: when `transformer_blocks` is a `ModuleList` of length 2, the input `{"transformer_blocks.*.ff.linear_out":
+    "rowwise"}` returns `[(transformer_blocks[0], {"ff.linear_out": "rowwise"}), (transformer_blocks[1],
+    {"ff.linear_out": "rowwise"})]`.
     """
     grouped: dict[int, tuple] = {}
     order: list[int] = []
@@ -108,8 +108,8 @@ def _resolve_tp_plan(model: torch.nn.Module, tp_plan: dict) -> list:
 def _styles(relative_plan: dict) -> dict:
     """Map a `{relative_path: style}` plan to `parallelize_module` style instances.
 
-    Values may be plain strings (`"colwise"` / `"rowwise"`) or `PackedColwiseParallel` / `PackedRowwiseParallel`
-    marker instances. Returns `{relative_path: ColwiseParallel() | RowwiseParallel() | <packed impl>}`.
+    Values may be plain strings (`"colwise"` / `"rowwise"`) or `PackedColwiseParallel` / `PackedRowwiseParallel` marker
+    instances. Returns `{relative_path: ColwiseParallel() | RowwiseParallel() | <packed impl>}`.
     """
     import torch.nn as nn
     from torch.distributed.tensor import DTensor, Replicate, Shard, distribute_tensor
@@ -207,9 +207,9 @@ def apply_tensor_parallel(
     """Apply tensor parallel on a model from its flat `_tp_plan`.
 
     The backend is read straight off the TP mesh: a `DeviceMesh("neuron", ...)` routes to the Neuron pre-shard path
-    (works around the NRT consecutive-reduce-scatter bug); every other device uses `parallelize_module` directly.
-    The mesh device type is the single source of truth — it is exactly the device the model is being sharded onto,
-    so it needs no separate availability check or accelerator probe.
+    (works around the NRT consecutive-reduce-scatter bug); every other device uses `parallelize_module` directly. The
+    mesh device type is the single source of truth — it is exactly the device the model is being sharded onto, so it
+    needs no separate availability check or accelerator probe.
     """
     tp_mesh = config._mesh
     if tp_mesh is None:
