@@ -153,10 +153,16 @@ class SanaWMRegistrationTests(unittest.TestCase):
         self.assertEqual(tuple(out.c2w.shape), (3, 4, 4))
         self.assertEqual(tuple(out.latent.shape), (1, 16, 1, 4, 4))
 
-    def test_refiner_signature_has_ar_defaults(self):
+    def test_refiner_is_pipeline_with_ar_call_defaults(self):
         import inspect
 
-        params = inspect.signature(SanaWMLTX2Refiner.refine_latents).parameters
+        from diffusers import DiffusionPipeline
+
+        # The refiner is a standalone DiffusionPipeline (dg845's review request).
+        self.assertTrue(issubclass(SanaWMLTX2Refiner, DiffusionPipeline))
+
+        # Its denoising entry point is ``__call__`` with the canonical AR defaults.
+        params = inspect.signature(SanaWMLTX2Refiner.__call__).parameters
         self.assertIn("block_size", params)
         self.assertIn("kv_max_frames", params)
         self.assertIn("checkpoint_dir", params)

@@ -31,116 +31,74 @@ Two refinement modes are supported:
 from __future__ import annotations
 
 import gc
-import json
 import os
 from pathlib import Path
-from typing import Any
 
 import torch
 from torch import nn
 from tqdm.auto import tqdm
 
-from ...configuration_utils import ConfigMixin, register_to_config
-from ...models.modeling_utils import ModelMixin
+from ...schedulers import FlowMatchEulerDiscreteScheduler
+from ..pipeline_utils import DiffusionPipeline
 
 
 # Sigma schedule for the 3-step distilled refiner (matches the public release).
 STAGE_2_DISTILLED_SIGMA_VALUES: tuple[float, ...] = (0.909375, 0.725, 0.421875, 0.0)
 
 
-class SanaWMLTX2Refiner(ModelMixin, ConfigMixin):
+class SanaWMLTX2Refiner(DiffusionPipeline):
     r"""
-    LTX-2 sink-bidirectional Euler refiner used as SANA-WM stage 2.
+    LTX-2 sink-bidirectional Euler refiner — SANA-WM stage 2, as a standalone pipeline.
 
-    Wraps the diffusers LTX-2 components (transformer + text connectors + Gemma-3 text encoder + tokenizer). Saved on
-    disk as a directory:
-
-        refiner/ ├── config.json ├── transformer/ # LTX2VideoTransformer3DModel ├── connectors/ # LTX2TextConnectors
-        └── text_encoder/ # Gemma-3 (+ co-located tokenizer files)
+    Wraps the diffusers LTX-2 components (transformer + text connectors + Gemma-3 text encoder + tokenizer) plus a
+    [`FlowMatchEulerDiscreteScheduler`] that carries the distilled sigma schedule and performs the Euler steps. It is
+    registered as an optional component of [`SanaWMPipeline`] and can also be used on its own to refine stage-1
+    latents.
 
     Args:
+        transformer ([`LTX2VideoTransformer3DModel`]):
+            The LTX-2 video DiT.
+        connectors ([`LTX2TextConnectors`]):
+            LTX-2 text connectors.
+        tokenizer:
+            Gemma-3 tokenizer.
+        text_encoder:
+            Gemma-3 text encoder.
+        scheduler ([`FlowMatchEulerDiscreteScheduler`]):
+            Flow-matching Euler scheduler. Constructed with ``shift=1.0`` so the distilled sigmas pass through
+            unmodified.
         text_max_sequence_length (`int`, defaults to 1024):
             Maximum tokens passed to the Gemma-3 tokenizer.
     """
 
-    config_name = "config.json"
-    _supports_gradient_checkpointing = False
+    model_cpu_offload_seq = "text_encoder->connectors->transformer"
 
-    @register_to_config
-    def __init__(self, text_max_sequence_length: int = 1024) -> None:
+    def __init__(
+        self,
+        transformer,
+        connectors,
+        tokenizer,
+        text_encoder,
+        scheduler: FlowMatchEulerDiscreteScheduler,
+        text_max_sequence_length: int = 1024,
+    ) -> None:
         super().__init__()
-        self.text_max_sequence_length = int(text_max_sequence_length)
-        # Sub-modules populated by from_pretrained (or set explicitly).
-        self.transformer = None
-        self.connectors = None
-        self.tokenizer = None
-        self.text_encoder = None
-
-    # ------------------------------------------------------------------
-    # save / load
-    # ------------------------------------------------------------------
-
-    @classmethod
-    def from_pretrained(
-        cls,
-        pretrained_model_name_or_path: str | Path,
-        torch_dtype: torch.dtype = torch.bfloat16,
-        **kwargs: Any,
-    ) -> SanaWMLTX2Refiner:
-        # Drop standard diffusers loader kwargs we don't honor — this refiner is
-        # composed of sub-models that need their own load calls.
-        for k in (
-            "device_map",
-            "max_memory",
-            "offload_folder",
-            "offload_state_dict",
-            "variant",
-            "use_safetensors",
-            "use_flashpack",
-            "low_cpu_mem_usage",
-        ):
-            kwargs.pop(k, None)
-        from transformers import AutoTokenizer, Gemma3ForConditionalGeneration  # noqa: PLC0415
-
-        from ...models.transformers.transformer_ltx2 import LTX2VideoTransformer3DModel  # noqa: PLC0415
-        from ..ltx2 import LTX2TextConnectors  # noqa: PLC0415
-
-        root = Path(pretrained_model_name_or_path)
-        cfg_path = root / cls.config_name
-        cfg: dict[str, Any] = json.loads(cfg_path.read_text()) if cfg_path.is_file() else {}
-
-        self = cls(text_max_sequence_length=int(cfg.get("text_max_sequence_length", 1024)))
-        self.transformer = LTX2VideoTransformer3DModel.from_pretrained(
-            root / "transformer", torch_dtype=torch_dtype
-        ).eval()
-        self.connectors = LTX2TextConnectors.from_pretrained(root / "connectors", torch_dtype=torch_dtype).eval()
-        self.tokenizer = AutoTokenizer.from_pretrained(root / "text_encoder")
-        self.text_encoder = Gemma3ForConditionalGeneration.from_pretrained(
-            root / "text_encoder", torch_dtype=torch_dtype, low_cpu_mem_usage=True
-        ).eval()
-        return self
-
-    def save_pretrained(self, save_directory: str | Path) -> None:
-        root = Path(save_directory)
-        root.mkdir(parents=True, exist_ok=True)
-        (root / self.config_name).write_text(
-            json.dumps({"text_max_sequence_length": self.text_max_sequence_length}, indent=2)
+        self.register_modules(
+            transformer=transformer,
+            connectors=connectors,
+            tokenizer=tokenizer,
+            text_encoder=text_encoder,
+            scheduler=scheduler,
         )
-        if self.transformer is not None:
-            self.transformer.save_pretrained(root / "transformer")
-        if self.connectors is not None:
-            self.connectors.save_pretrained(root / "connectors")
-        if self.text_encoder is not None:
-            self.text_encoder.save_pretrained(root / "text_encoder")
-        if self.tokenizer is not None:
-            self.tokenizer.save_pretrained(root / "text_encoder")
+        self.register_to_config(text_max_sequence_length=int(text_max_sequence_length))
+        self.text_max_sequence_length = int(text_max_sequence_length)
 
     # ------------------------------------------------------------------
     # forward
     # ------------------------------------------------------------------
 
     @torch.inference_mode()
-    def refine_latents(
+    def __call__(
         self,
         sana_latent: torch.Tensor,
         prompt: str,
@@ -153,6 +111,7 @@ class SanaWMLTX2Refiner(ModelMixin, ConfigMixin):
         kv_max_frames: int = 11,
         sigmas: tuple[float, ...] = STAGE_2_DISTILLED_SIGMA_VALUES,
         checkpoint_dir: str | Path | None = None,
+        device: str | torch.device | None = None,
     ) -> torch.Tensor:
         """Run the LTX-2 refiner and return refined VAE latents.
 
@@ -175,17 +134,34 @@ class SanaWMLTX2Refiner(ModelMixin, ConfigMixin):
             kv_max_frames: maximum context+active frames retained in the
                 sliding window when AR mode is active (canonical: 11 = 1 sink + 10 recent).
             sigmas: descending Euler schedule terminating at 0.0 (canonical
-                3-step distilled: ``(0.909375, 0.725, 0.421875, 0.0)``).
+                3-step distilled: ``(0.909375, 0.725, 0.421875, 0.0)``). Fed to ``self.scheduler`` (minus the trailing
+                0.0, which the scheduler appends itself).
             checkpoint_dir: if provided (and AR mode is on), the AR loop
                 writes a ``state.pt`` after every completed block (atomic replace) and resumes from there if it already
                 exists. Lets a refinement survive SLURM preemption — the run resumes from the last completed block
                 instead of recomputing from scratch.
+
+        Returns:
+            `torch.Tensor`: Refined VAE latents of shape ``(B, C, F, H, W)`` — the first ``sink_size`` frames carry the
+            raw stage-1 sink latents unchanged, the rest carry the refined output.
         """
         if sana_latent.shape[2] <= sink_size:
             raise ValueError(f"Stage-1 latent has {sana_latent.shape[2]} frames but sink_size={sink_size}.")
 
         dtype = next(self.transformer.parameters()).dtype
-        device = next(self.transformer.parameters()).device
+        # The refiner moves its own sub-modules on/off ``device`` as it runs (so
+        # peak VRAM ~= the largest single sub-model, not the sum). Callers pass
+        # the execution device explicitly; otherwise fall back to where the
+        # transformer currently lives.
+        if device is None:
+            device = next(self.transformer.parameters()).device
+        device = torch.device(device)
+
+        # Load the distilled sigma schedule into the scheduler. Drop the trailing
+        # 0.0 — ``FlowMatchEulerDiscreteScheduler.set_timesteps`` appends the
+        # terminal 0.0 itself, so ``self.scheduler.sigmas`` reproduces ``sigmas``.
+        self.scheduler.set_timesteps(sigmas=list(sigmas[:-1]), device=device)
+        sigmas_t = self.scheduler.sigmas.to(device=device, dtype=torch.float32)
 
         # Free transformer GPU memory while we run the text encoder.
         self.transformer.to("cpu")
@@ -194,8 +170,6 @@ class SanaWMLTX2Refiner(ModelMixin, ConfigMixin):
 
         self.transformer.to(device)
         z = sana_latent.to(device=device, dtype=dtype)
-        sigmas_t = torch.tensor(sigmas, dtype=torch.float32, device=device)
-        start_sigma = float(sigmas_t[0])
 
         if block_size is not None:
             return self._refine_latents_ar(
@@ -218,16 +192,17 @@ class SanaWMLTX2Refiner(ModelMixin, ConfigMixin):
         current = z[:, :, sink_size:].contiguous()
         generator = torch.Generator(device=device).manual_seed(int(seed))
         eps = torch.randn(current.shape, generator=generator, device=device, dtype=dtype)
-        noisy = (1.0 - start_sigma) * current + start_sigma * eps
-
-        iterator = range(len(sigmas_t) - 1)
-        if progress:
-            iterator = tqdm(iterator, desc="refiner", unit="step")
+        noisy = self.scheduler.scale_noise(current, self.scheduler.timesteps[:1], eps)
 
         patch_size = self.transformer.config.patch_size
         patch_size_t = self.transformer.config.patch_size_t
 
-        for step_index in iterator:
+        timesteps = self.scheduler.timesteps
+        iterator = enumerate(timesteps)
+        if progress:
+            iterator = tqdm(iterator, desc="refiner", unit="step", total=len(timesteps))
+
+        for step_index, t in iterator:
             sigma = sigmas_t[step_index]
             denoised = self._predict_current_x0(
                 sink=sink,
@@ -240,8 +215,10 @@ class SanaWMLTX2Refiner(ModelMixin, ConfigMixin):
                 device=device,
             )
             noisy_tokens = _pack_latents(noisy, patch_size=patch_size, patch_size_t=patch_size_t)
+            # FM velocity from the predicted x0; the scheduler applies the Euler
+            # step ``x_{t+1} = x_t + (σ_next - σ)·v``.
             velocity = (noisy_tokens.float() - denoised.float()) / sigma.float()
-            next_tokens = noisy_tokens.float() + velocity * (sigmas_t[step_index + 1] - sigma).float()
+            next_tokens = self.scheduler.step(velocity, t, noisy_tokens.float(), return_dict=False)[0]
             noisy = _unpack_latents(
                 next_tokens.to(dtype),
                 num_frames=noisy.shape[2],
@@ -858,10 +835,15 @@ class _RefinerChunkRunner:
         eps = torch.randn(clean_block.shape, generator=self._generator, device=device, dtype=self._dtype)
         x_t = ((1.0 - self._sigma_max) * clean_block.float() + self._sigma_max * eps.float()).to(self._dtype)
 
+        # Reset the shared scheduler to step 0 for this block's Euler run (blocks
+        # are processed sequentially, so re-seeding the schedule per block is safe).
+        scheduler = refiner.scheduler
+        scheduler.set_timesteps(sigmas=[float(s) for s in self._sigmas[:-1]], device=device)
+        timesteps = scheduler.timesteps
+
         active_positions = list(range(int(block_start), int(block_end)))
-        for level in range(self._n_steps):
+        for level, t in enumerate(timesteps):
             sigma_cur = float(self._sigmas[level].item())
-            sigma_next = float(self._sigmas[level + 1].item())
             pred_x0 = refiner._predict_x0_active_block(
                 active=x_t,
                 active_positions=active_positions,
@@ -876,8 +858,9 @@ class _RefinerChunkRunner:
             if sigma_cur <= 1.0e-6:
                 x_t = pred_x0.to(self._dtype)
             else:
-                ratio = sigma_next / sigma_cur
-                x_t = (ratio * x_t.float() + (1.0 - ratio) * pred_x0.float()).to(self._dtype)
+                # FM velocity from x0; the scheduler applies the Euler update.
+                velocity = (x_t.float() - pred_x0.float()) / sigma_cur
+                x_t = scheduler.step(velocity, t, x_t.float(), return_dict=False)[0].to(self._dtype)
 
         # 4) Capture POST-RoPE K/V for this refined block under the same prefix.
         block_kv_post = refiner._capture_block_kv(

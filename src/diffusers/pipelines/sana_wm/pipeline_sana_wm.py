@@ -164,9 +164,12 @@ class SanaWMPipeline(DiffusionPipeline):
             latents directly.
     """
 
-    model_cpu_offload_seq = "text_encoder->transformer->refiner->vae"
+    # ``refiner`` is a nested pipeline (not an nn.Module) so it's excluded from
+    # the offload sequence; it manages its own sub-module device placement.
+    model_cpu_offload_seq = "text_encoder->transformer->vae"
     _callback_tensor_inputs = ["latents", "prompt_embeds"]
     _optional_components = ["refiner"]
+    _exclude_from_cpu_offload = ["refiner"]
 
     def __init__(
         self,
@@ -210,8 +213,6 @@ class SanaWMPipeline(DiffusionPipeline):
             vae.eval()
         if text_encoder is not None:
             text_encoder.eval()
-        if refiner is not None:
-            refiner.eval()
 
         # SANA was trained with right-padded prompts; Gemma's default is
         # "left", and the saved tokenizer reverts to "left" on load. Pin it.
@@ -614,14 +615,33 @@ class SanaWMPipeline(DiffusionPipeline):
             return SanaWMPipelineOutput(frames=latents, c2w=c2w, latent=latents) if return_dict else (latents,)
 
         if use_refiner and self.refiner is not None:
-            refined = self.refiner.refine_latents(
+            # Stage-1 is done; free the parent's GPU-resident weights so the
+            # refiner (nested pipeline, manages its own placement) has the device
+            # to itself. Skip when accelerate offload is active — it owns
+            # placement then. The VAE is moved back for decode below.
+            if not getattr(self, "_all_hooks", None):
+                self.text_encoder.to("cpu")
+                self.transformer.to("cpu")
+                self.vae.to("cpu")
+                torch.cuda.empty_cache()
+            # The refiner is a nested pipeline, so it doesn't follow the parent's
+            # ``.to(device)`` / offload hooks. Rather than bulk-moving its (~87 GB)
+            # weights up front, pass the execution device and let it move its own
+            # sub-modules on/off GPU as it runs (peak VRAM ~= largest sub-model).
+            refined = self.refiner(
                 latents,
                 prompt,
                 fps=float(fps),
                 sink_size=sink_size,
                 seed=refiner_seed,
                 checkpoint_dir=refiner_checkpoint_dir,
+                device=device,
             )
+            # Bring the VAE back for decode (moved to CPU above to free the GPU
+            # for the refiner). No-op under accelerate offload.
+            if not getattr(self, "_all_hooks", None):
+                self.vae.to(device)
+                torch.cuda.empty_cache()
             decoded = self._decode_latents(refined)  # (B=1, C=3, F, H, W) in [-1, 1]
             decoded = decoded[:, :, 1:]  # refiner drops the sink anchor frame
             video_c2w = c2w[1:num_frames]

@@ -127,10 +127,13 @@ def main() -> None:
 
     FlowMatchEulerDiscreteScheduler(shift=9.8).save_pretrained(dst / "scheduler")
 
-    # 5. Refiner (LTX-2): copy the four subfolders (already diffusers-format).
+    # 5. Refiner (LTX-2): now a standalone DiffusionPipeline saved in the
+    #    ``refiner/`` subfolder with its own ``model_index.json``. Copy the
+    #    LTX-2 sub-model folders as-is, split out a ``tokenizer/`` folder, add a
+    #    ``scheduler/`` (FlowMatchEulerDiscreteScheduler), and write the manifest.
     if not args.no_refiner:
         print("[convert] refiner …")
-        from diffusers.pipelines.sana_wm.refiner import SanaWMLTX2Refiner
+        from transformers import AutoTokenizer
 
         refiner_src = src_path / "refiner"
         refiner_dst = dst / "refiner"
@@ -138,9 +141,29 @@ def main() -> None:
         for sub in ("transformer", "connectors", "text_encoder"):
             if (refiner_src / sub).is_dir():
                 _copy_subdir(refiner_src / sub, refiner_dst / sub)
-        (refiner_dst / SanaWMLTX2Refiner.config_name).write_text(
-            json.dumps({"text_max_sequence_length": 1024}, indent=2)
-        )
+
+        # Tokenizer lives co-located with the Gemma-3 text encoder in the release;
+        # re-save it into its own subfolder so it registers as a pipeline component.
+        refiner_tokenizer = AutoTokenizer.from_pretrained(refiner_src / "text_encoder")
+        refiner_tokenizer.save_pretrained(refiner_dst / "tokenizer")
+
+        # Scheduler carries the distilled sigma schedule; shift=1.0 leaves the
+        # explicit sigmas passed at inference time unmodified.
+        FlowMatchEulerDiscreteScheduler(shift=1.0).save_pretrained(refiner_dst / "scheduler")
+
+        refiner_index = {
+            "_class_name": "SanaWMLTX2Refiner",
+            "_diffusers_version": "0.38.0",
+            "transformer": ["diffusers", "LTX2VideoTransformer3DModel"],
+            # LTX2TextConnectors lives in diffusers.pipelines.ltx2 (not top-level),
+            # so the loader resolves it via the pipeline-module path ("ltx2", ...).
+            "connectors": ["ltx2", "LTX2TextConnectors"],
+            "tokenizer": ["transformers", type(refiner_tokenizer).__name__],
+            "text_encoder": ["transformers", "Gemma3ForConditionalGeneration"],
+            "scheduler": ["diffusers", "FlowMatchEulerDiscreteScheduler"],
+            "text_max_sequence_length": 1024,
+        }
+        (refiner_dst / "model_index.json").write_text(json.dumps(refiner_index, indent=2))
 
     # 6. model_index.json — the top-level diffusers manifest.
     print("[convert] model_index.json …")
