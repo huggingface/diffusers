@@ -45,6 +45,7 @@ logger = logging.get_logger(__name__)
 class QuantizationMethod(str, Enum):
     BITS_AND_BYTES = "bitsandbytes"
     GGUF = "gguf"
+    NUNCHAKU_LITE = "nunchaku_lite"
     TORCHAO = "torchao"
     QUANTO = "quanto"
     MODELOPT = "modelopt"
@@ -427,6 +428,46 @@ class GGUFQuantizationConfig(QuantizationConfigMixin):
 
         if self.compute_dtype is None:
             self.compute_dtype = torch.float32
+
+
+@dataclass
+class NunchakuLiteQuantizationConfig(QuantizationConfigMixin):
+    """Configuration for loading Nunchaku Lite checkpoints.
+
+    Args:
+        compute_dtype (`torch.dtype`, defaults to `torch.bfloat16`):
+            Runtime dtype used by the floating-point buffers in the quantized modules.
+        svdq_w4a4 (`dict`, *optional*):
+            Explicit SVDQ W4A4 target configuration with `precision`, `group_size`, `rank`, and `targets`.
+        awq_w4a16 (`dict`, *optional*):
+            Explicit AWQ W4A16 target configuration with `precision`, `group_size`, and `targets`.
+    """
+
+    def __init__(
+        self,
+        compute_dtype: "torch.dtype" | str | None = None,
+        svdq_w4a4: dict[str, Any] | None = None,
+        awq_w4a16: dict[str, Any] | None = None,
+        **kwargs,
+    ):
+        self.quant_method = QuantizationMethod.NUNCHAKU_LITE
+        if compute_dtype is None:
+            compute_dtype = torch.bfloat16
+        if isinstance(compute_dtype, str):
+            if not hasattr(torch, compute_dtype):
+                raise ValueError(f"Unsupported Nunchaku compute dtype: {compute_dtype!r}.")
+            compute_dtype = getattr(torch, compute_dtype)
+        if not isinstance(compute_dtype, torch.dtype):
+            raise ValueError("Nunchaku compute_dtype must be a string or a torch.dtype.")
+        self.compute_dtype = compute_dtype
+        self.pre_quantized = True
+        self.svdq_w4a4 = svdq_w4a4
+        self.awq_w4a16 = awq_w4a16
+
+    def to_dict(self) -> dict[str, Any]:
+        output = super().to_dict()
+        output["compute_dtype"] = str(output["compute_dtype"]).split(".")[1]
+        return output
 
 
 @dataclass
