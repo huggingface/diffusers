@@ -25,6 +25,46 @@ transformer = WanTransformer3DModel.from_pretrained("Wan-AI/Wan2.1-T2V-1.3B-Diff
 
 [[autodoc]] WanTransformer3DModel
 
+## Rolling KV cache
+
+For autoregressive video generation that produces one chunk at a time, [`WanTransformer3DModel.forward`] accepts a `WanKVCache` instance via `attention_kwargs={"kv_cache": cache}`. The cache holds post-norm, post-RoPE self-attention K/V tensors from prior chunks so subsequent chunks attend over the full prefix without recomputing it. The chunk's RoPE positions are picked via the `frame_offset` argument on `forward`.
+
+The cache exposes two write modes that the caller toggles between denoising steps:
+
+- `enable_append_mode()` — the next forward pass appends the chunk's K/V to the cache; once the cache reaches `window_size`, the oldest tokens are evicted from the front. Use this for the first denoising step of every new chunk.
+- `enable_overwrite_mode()` — the next forward pass replaces the newest `chunk_size` tokens in place. Use this for subsequent denoising steps within the same chunk so re-running the chunk doesn't grow the cache.
+
+```python
+from diffusers import WanKVCache, WanTransformer3DModel
+
+transformer = WanTransformer3DModel.from_pretrained(...)
+cache = WanKVCache(num_blocks=len(transformer.blocks))
+
+for chunk_idx, latent_chunk in enumerate(chunks):
+    for step_idx, t in enumerate(denoising_steps):
+        if step_idx == 0:
+            cache.enable_append_mode()
+        else:
+            cache.enable_overwrite_mode()
+        transformer(
+            hidden_states=latent_chunk,
+            timestep=t,
+            encoder_hidden_states=prompt_embeds,
+            frame_offset=chunk_idx * patch_frames_per_chunk,
+            attention_kwargs={"kv_cache": cache},
+        )
+
+cache.reset()  # between videos
+```
+
+## WanKVCache
+
+[[autodoc]] WanKVCache
+
+## WanKVBlockCache
+
+[[autodoc]] WanKVBlockCache
+
 ## Transformer2DModelOutput
 
 [[autodoc]] models.modeling_outputs.Transformer2DModelOutput
