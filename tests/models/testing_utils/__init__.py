@@ -17,7 +17,11 @@ from .compile import TorchCompileTesterMixin
 from .ip_adapter import IPAdapterTesterMixin
 from .lora import LoraHotSwappingForModelTesterMixin, LoraTesterMixin
 from .memory import CPUOffloadTesterMixin, GroupOffloadTesterMixin, LayerwiseCastingTesterMixin, MemoryTesterMixin
-from .parallelism import ContextParallelAttentionBackendsTesterMixin, ContextParallelTesterMixin
+from .parallelism import (
+    ContextParallelAttentionBackendsTesterMixin,
+    ContextParallelTesterMixin,
+    TensorParallelTesterMixin,
+)
 from .quantization import (
     AutoRoundCompileTesterMixin,
     AutoRoundConfigMixin,
@@ -56,6 +60,7 @@ __all__ = [
     "CacheTesterMixin",
     "ContextParallelTesterMixin",
     "ContextParallelAttentionBackendsTesterMixin",
+    "TensorParallelTesterMixin",
     "CPUOffloadTesterMixin",
     "FasterCacheConfigMixin",
     "FasterCacheTesterMixin",

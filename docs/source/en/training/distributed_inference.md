@@ -431,3 +431,47 @@ pipeline = DiffusionPipeline.from_pretrained(
     CKPT_ID, transformer=transformer, torch_dtype=torch.bfloat16,
 ).to(device)
 ```
+
+## Tensor parallelism
+
+[Tensor parallelism](https://huggingface.co/spaces/nanotron/ultrascale-playbook?section=tensor_parallelism) shards the weight matrices of a model across devices. Each device holds a column-wise (`"colwise"`) or row-wise (`"rowwise"`) slice of each layer, computes a partial result, and an `AllReduce`/`AllGather` at the layer boundary reconstructs the full output. Unlike context parallelism, it reduces the per-device *weight* memory, which is useful for models that do not fit on a single device.
+
+Pass a [`TensorParallelConfig`] to [`~ModelMixin.enable_parallelism`]. `tp_degree` is the number of devices to shard across and must divide the model's number of attention heads. The model must define a `_tp_plan` (a flat mapping of module-name globs to a `"colwise"`/`"rowwise"` style).
+
+```py
+import torch
+from torch import distributed as dist
+from diffusers import DiffusionPipeline, TensorParallelConfig
+
+def setup_distributed():
+    if not dist.is_initialized():
+        dist.init_process_group(backend="nccl")
+    rank = dist.get_rank()
+    device = torch.device(f"cuda:{rank}")
+    torch.cuda.set_device(device)
+    return device
+
+def main():
+    device = setup_distributed()
+    world_size = dist.get_world_size()
+
+    pipeline = DiffusionPipeline.from_pretrained(
+        "black-forest-labs/FLUX.2-dev", torch_dtype=torch.bfloat16
+    ).to(device)
+
+    pipeline.transformer.enable_parallelism(config=TensorParallelConfig(tp_degree=world_size))
+
+    generator = torch.Generator().manual_seed(42)
+    image = pipeline("a cat holding a sign that says hello", generator=generator).images[0]
+    if dist.get_rank() == 0:
+        image.save("output.png")
+    if dist.is_initialized():
+        dist.destroy_process_group()
+
+if __name__ == "__main__":
+    main()
+```
+
+```shell
+torchrun --nproc-per-node 2 above_script.py
+```
