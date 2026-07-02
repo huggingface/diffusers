@@ -174,10 +174,13 @@ class ModuleGroup:
 
     @staticmethod
     def _to_cpu(tensor, low_cpu_mem_usage):
+        is_torchao_tensor = _is_torchao_tensor(tensor)
         # For TorchAO tensors, `.data` returns an incomplete wrapper without internal attributes
         # (e.g. `.qdata`, `.scale`), so we must call `.cpu()` on the tensor directly.
-        t = tensor.cpu() if _is_torchao_tensor(tensor) else tensor.data.cpu()
-        return t if low_cpu_mem_usage else t.pin_memory()
+        t = tensor.cpu() if is_torchao_tensor else tensor.data.cpu()
+        if low_cpu_mem_usage or is_torchao_tensor:
+            return t
+        return t.pin_memory()
 
     def _init_cpu_param_dict(self):
         cpu_param_dict = {}
@@ -202,7 +205,7 @@ class ModuleGroup:
     def _pinned_memory_tensors(self):
         try:
             pinned_dict = {
-                param: tensor.pin_memory() if not tensor.is_pinned() else tensor
+                param: tensor if (_is_torchao_tensor(tensor) or tensor.is_pinned()) else tensor.pin_memory()
                 for param, tensor in self.cpu_param_dict.items()
             }
             yield pinned_dict
