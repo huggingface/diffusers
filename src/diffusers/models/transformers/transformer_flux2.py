@@ -21,6 +21,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from ...configuration_utils import ConfigMixin, register_to_config
+from ...hooks.tensor_parallel import PackedColwiseParallel, PackedRowwiseParallel
 from ...loaders import FluxTransformer2DLoadersMixin, FromOriginalModelMixin, PeftAdapterMixin
 from ...utils import BaseOutput, apply_lora_scale, logging
 from ...utils.torch_utils import maybe_adjust_dtype_for_device
@@ -281,18 +282,6 @@ def _get_qkv_projections(attn: "Flux2Attention", hidden_states, encoder_hidden_s
     return _get_projections(attn, hidden_states, encoder_hidden_states)
 
 
-def _get_tp_degree(parallel_config) -> int:
-    """Return the tensor-parallel degree from a processor's ``_parallel_config`` (1 if TP is off).
-
-    When tensor parallelism is enabled, each rank holds ``attn.heads // tp_degree`` heads (and a proportionally smaller
-    slice of the fused inner / MLP dims), so the attention processors derive their local sizes from this value at
-    runtime. ``tp_degree == 1`` recovers the non-TP behavior.
-    """
-    if parallel_config is not None and getattr(parallel_config, "tensor_parallel_config", None) is not None:
-        return parallel_config.tensor_parallel_config.tp_degree
-    return 1
-
-
 class Flux2SwiGLU(nn.Module):
     """
     Flux 2 uses a SwiGLU-style activation in the transformer feedforward sub-blocks, but with the linear projection
@@ -351,25 +340,23 @@ class Flux2AttnProcessor:
         attention_mask: torch.Tensor | None = None,
         image_rotary_emb: torch.Tensor | None = None,
     ) -> torch.Tensor:
-        # Under tensor parallelism each rank holds ``attn.heads // tp_degree`` heads after the
-        # column-wise weight sharding; ``tp_degree == 1`` recovers the non-TP behavior.
-        local_heads = attn.heads // _get_tp_degree(self._parallel_config)
-
         query, key, value, encoder_query, encoder_key, encoder_value = _get_qkv_projections(
             attn, hidden_states, encoder_hidden_states
         )
 
-        query = query.unflatten(-1, (local_heads, -1))
-        key = key.unflatten(-1, (local_heads, -1))
-        value = value.unflatten(-1, (local_heads, -1))
+        # Reshape by a fixed ``head_dim`` and let ``-1`` absorb the head count. Under tensor parallelism each rank
+        # holds a column-sharded slice (``attn.heads // tp_degree`` heads); this keeps the processor TP-agnostic.
+        query = query.unflatten(-1, (-1, attn.head_dim))
+        key = key.unflatten(-1, (-1, attn.head_dim))
+        value = value.unflatten(-1, (-1, attn.head_dim))
 
         query = attn.norm_q(query)
         key = attn.norm_k(key)
 
         if attn.added_kv_proj_dim is not None:
-            encoder_query = encoder_query.unflatten(-1, (local_heads, -1))
-            encoder_key = encoder_key.unflatten(-1, (local_heads, -1))
-            encoder_value = encoder_value.unflatten(-1, (local_heads, -1))
+            encoder_query = encoder_query.unflatten(-1, (-1, attn.head_dim))
+            encoder_key = encoder_key.unflatten(-1, (-1, attn.head_dim))
+            encoder_value = encoder_value.unflatten(-1, (-1, attn.head_dim))
 
             encoder_query = attn.norm_added_q(encoder_query)
             encoder_key = attn.norm_added_k(encoder_key)
@@ -439,17 +426,17 @@ class Flux2KVAttnProcessor:
             attn, hidden_states, encoder_hidden_states
         )
 
-        query = query.unflatten(-1, (attn.heads, -1))
-        key = key.unflatten(-1, (attn.heads, -1))
-        value = value.unflatten(-1, (attn.heads, -1))
+        query = query.unflatten(-1, (-1, attn.head_dim))
+        key = key.unflatten(-1, (-1, attn.head_dim))
+        value = value.unflatten(-1, (-1, attn.head_dim))
 
         query = attn.norm_q(query)
         key = attn.norm_k(key)
 
         if attn.added_kv_proj_dim is not None:
-            encoder_query = encoder_query.unflatten(-1, (attn.heads, -1))
-            encoder_key = encoder_key.unflatten(-1, (attn.heads, -1))
-            encoder_value = encoder_value.unflatten(-1, (attn.heads, -1))
+            encoder_query = encoder_query.unflatten(-1, (-1, attn.head_dim))
+            encoder_key = encoder_key.unflatten(-1, (-1, attn.head_dim))
+            encoder_value = encoder_value.unflatten(-1, (-1, attn.head_dim))
 
             encoder_query = attn.norm_added_q(encoder_query)
             encoder_key = attn.norm_added_k(encoder_key)
@@ -597,24 +584,23 @@ class Flux2ParallelSelfAttnProcessor:
         attention_mask: torch.Tensor | None = None,
         image_rotary_emb: torch.Tensor | None = None,
     ) -> torch.Tensor:
-        # Under tensor parallelism the fused ``to_qkv_mlp_proj`` is column-sharded, so each rank
-        # holds a proportionally smaller slice of the Q/K/V (inner) and MLP dims, and ``attn.heads
-        # // tp_degree`` heads. ``tp_degree == 1`` recovers the non-TP behavior.
-        tp_degree = _get_tp_degree(self._parallel_config)
-        local_heads = attn.heads // tp_degree
-        local_inner = attn.inner_dim // tp_degree
-        local_mlp = attn.mlp_hidden_dim * attn.mlp_mult_factor // tp_degree
-
         # Parallel in (QKV + MLP in) projection
         hidden_states = attn.to_qkv_mlp_proj(hidden_states)
-        qkv, mlp_hidden_states = torch.split(hidden_states, [3 * local_inner, local_mlp], dim=-1)
+
+        # Split the fused output into its QKV and MLP halves by their global ratio, so the same code path works
+        # whether or not ``to_qkv_mlp_proj`` is column-sharded (the fused-weight permuter guarantees each rank's
+        # contiguous slice keeps the QKV and MLP chunks proportional). No tensor-parallel state is read here.
+        qkv_dim = 3 * attn.inner_dim
+        mlp_dim = attn.mlp_hidden_dim * attn.mlp_mult_factor
+        local_qkv = hidden_states.shape[-1] * qkv_dim // (qkv_dim + mlp_dim)
+        qkv, mlp_hidden_states = torch.split(hidden_states, [local_qkv, hidden_states.shape[-1] - local_qkv], dim=-1)
 
         # Handle the attention logic
         query, key, value = qkv.chunk(3, dim=-1)
 
-        query = query.unflatten(-1, (local_heads, -1))
-        key = key.unflatten(-1, (local_heads, -1))
-        value = value.unflatten(-1, (local_heads, -1))
+        query = query.unflatten(-1, (-1, attn.head_dim))
+        key = key.unflatten(-1, (-1, attn.head_dim))
+        value = value.unflatten(-1, (-1, attn.head_dim))
 
         query = attn.norm_q(query)
         key = attn.norm_k(key)
@@ -673,15 +659,21 @@ class Flux2KVParallelSelfAttnProcessor:
     ) -> torch.Tensor:
         # Parallel in (QKV + MLP in) projection
         hidden_states_proj = attn.to_qkv_mlp_proj(hidden_states)
+
+        # Split by the global QKV:MLP ratio so the path is identical with or without column sharding (see
+        # ``Flux2ParallelSelfAttnProcessor``). No tensor-parallel state is read here.
+        qkv_dim = 3 * attn.inner_dim
+        mlp_dim = attn.mlp_hidden_dim * attn.mlp_mult_factor
+        local_qkv = hidden_states_proj.shape[-1] * qkv_dim // (qkv_dim + mlp_dim)
         qkv, mlp_hidden_states = torch.split(
-            hidden_states_proj, [3 * attn.inner_dim, attn.mlp_hidden_dim * attn.mlp_mult_factor], dim=-1
+            hidden_states_proj, [local_qkv, hidden_states_proj.shape[-1] - local_qkv], dim=-1
         )
 
         query, key, value = qkv.chunk(3, dim=-1)
 
-        query = query.unflatten(-1, (attn.heads, -1))
-        key = key.unflatten(-1, (attn.heads, -1))
-        value = value.unflatten(-1, (attn.heads, -1))
+        query = query.unflatten(-1, (-1, attn.head_dim))
+        key = key.unflatten(-1, (-1, attn.head_dim))
+        value = value.unflatten(-1, (-1, attn.head_dim))
 
         query = attn.norm_q(query)
         key = attn.norm_k(key)
@@ -776,6 +768,10 @@ class Flux2ParallelSelfAttention(torch.nn.Module, AttentionModuleMixin):
         self.to_qkv_mlp_proj = torch.nn.Linear(
             self.query_dim, self.inner_dim * 3 + self.mlp_hidden_dim * self.mlp_mult_factor, bias=bias
         )
+        # Block structure for tensor-parallel packed sharding: Q, K, V, gate, linear
+        self.to_qkv_mlp_proj._tp_packed_col_blocks = [self.inner_dim] * 3 + [
+            self.mlp_hidden_dim
+        ] * self.mlp_mult_factor
         self.mlp_act_fn = Flux2SwiGLU()
 
         # QK Norm
@@ -784,6 +780,8 @@ class Flux2ParallelSelfAttention(torch.nn.Module, AttentionModuleMixin):
 
         # Fused attention output projection + MLP output projection
         self.to_out = torch.nn.Linear(self.inner_dim + self.mlp_hidden_dim, self.out_dim, bias=out_bias)
+        # Block structure for tensor-parallel packed sharding: attn columns, mlp columns
+        self.to_out._tp_packed_row_blocks = [self.inner_dim, self.mlp_hidden_dim]
 
         if processor is None:
             processor = self._default_processor_cls()
@@ -1058,93 +1056,6 @@ class Flux2Modulation(nn.Module):
         return tuple(mod_params[3 * i : 3 * (i + 1)] for i in range(mod_param_sets))
 
 
-# ─── Tensor-parallel fused-weight permutations ──────────────────────────────────────────────────
-# Flux2 fuses several projections into single Linear layers (SwiGLU gate+linear in the FFN, and
-# Q/K/V + MLP in the single-stream ``to_qkv_mlp_proj`` / ``to_out``). Contiguous column/row sharding
-# is blind to that internal layout, so each rank would receive an unpaired slice (e.g. all-gate /
-# no-linear). These helpers re-order the weight rows/columns so each rank's contiguous slice is the
-# correct paired chunk.
-
-
-def _permute_swiglu_for_tp(weight: torch.Tensor, tp_size: int) -> torch.Tensor:
-    """Interleave gate/linear chunks of a SwiGLU FFN weight (``ff.linear_in``) for column-wise TP."""
-    with torch.no_grad():
-        total = weight.shape[0]
-        inner = total // 2
-        chunk = inner // tp_size
-        gate = weight[:inner]
-        linear = weight[inner:]
-        parts = []
-        for i in range(tp_size):
-            parts.append(gate[i * chunk : (i + 1) * chunk])
-            parts.append(linear[i * chunk : (i + 1) * chunk])
-        return torch.cat(parts, dim=0)
-
-
-def _permute_qkv_mlp_for_tp(weight: torch.Tensor, tp_size: int, inner_dim: int, mlp_hidden_dim: int) -> torch.Tensor:
-    """Interleave Q/K/V/gate/linear chunks of the fused ``to_qkv_mlp_proj`` weight for column-wise TP."""
-    with torch.no_grad():
-        q = weight[:inner_dim]
-        k = weight[inner_dim : 2 * inner_dim]
-        v = weight[2 * inner_dim : 3 * inner_dim]
-        mlp_gate = weight[3 * inner_dim : 3 * inner_dim + mlp_hidden_dim]
-        mlp_lin = weight[3 * inner_dim + mlp_hidden_dim :]
-
-        qkv_chunk = inner_dim // tp_size
-        mlp_chunk = mlp_hidden_dim // tp_size
-
-        parts = []
-        for i in range(tp_size):
-            parts += [
-                q[i * qkv_chunk : (i + 1) * qkv_chunk],
-                k[i * qkv_chunk : (i + 1) * qkv_chunk],
-                v[i * qkv_chunk : (i + 1) * qkv_chunk],
-                mlp_gate[i * mlp_chunk : (i + 1) * mlp_chunk],
-                mlp_lin[i * mlp_chunk : (i + 1) * mlp_chunk],
-            ]
-        return torch.cat(parts, dim=0)
-
-
-def _permute_out_for_tp(weight: torch.Tensor, tp_size: int, attn_dim: int, mlp_dim: int) -> torch.Tensor:
-    """Interleave attn/mlp input columns of the fused ``to_out`` weight for row-wise TP."""
-    with torch.no_grad():
-        attn_part = weight[:, :attn_dim]
-        mlp_part = weight[:, attn_dim:]
-
-        attn_chunk = attn_dim // tp_size
-        mlp_chunk = mlp_dim // tp_size
-
-        parts = []
-        for i in range(tp_size):
-            parts.append(attn_part[:, i * attn_chunk : (i + 1) * attn_chunk])
-            parts.append(mlp_part[:, i * mlp_chunk : (i + 1) * mlp_chunk])
-        return torch.cat(parts, dim=1)
-
-
-def _permute_flux2_double_block(block: nn.Module, tp_size: int) -> None:
-    """Permute the SwiGLU FFN weights of a Flux2 double-stream block in place."""
-    block.ff.linear_in.weight.data = _permute_swiglu_for_tp(block.ff.linear_in.weight.data, tp_size)
-    block.ff_context.linear_in.weight.data = _permute_swiglu_for_tp(block.ff_context.linear_in.weight.data, tp_size)
-
-
-def _permute_flux2_single_block(block: nn.Module, tp_size: int) -> None:
-    """Permute the fused QKV+MLP / output weights of a Flux2 single-stream block in place."""
-    attn = block.attn
-    attn.to_qkv_mlp_proj.weight.data = _permute_qkv_mlp_for_tp(
-        attn.to_qkv_mlp_proj.weight.data, tp_size, attn.inner_dim, attn.mlp_hidden_dim
-    )
-    attn.to_out.weight.data = _permute_out_for_tp(
-        attn.to_out.weight.data, tp_size, attn.inner_dim, attn.mlp_hidden_dim
-    )
-
-
-# Maps block class name -> in-place fused-weight permuter, applied by ``apply_tensor_parallel`` before sharding.
-_FLUX2_TP_FUSED_PERMUTERS = {
-    "Flux2TransformerBlock": _permute_flux2_double_block,
-    "Flux2SingleTransformerBlock": _permute_flux2_single_block,
-}
-
-
 class Flux2Transformer2DModel(
     ModelMixin,
     ConfigMixin,
@@ -1200,9 +1111,10 @@ class Flux2Transformer2DModel(
     }
 
     # Tensor-parallel sharding plan: a flat mapping of module-name globs (relative to the model) to a
-    # parallel style string ("colwise" / "rowwise"), the same shape as ``_cp_plan`` and as ``transformers``
-    # ``base_model_tp_plan``. ``apply_tensor_parallel`` maps the strings to ColwiseParallel/RowwiseParallel
-    # inside the hook, keeping torch.distributed.tensor out of module import time.
+    # parallel style.  Plain strings ("colwise" / "rowwise") map to torch's ColwiseParallel /
+    # RowwiseParallel.  Fused projections use PackedColwiseParallel / PackedRowwiseParallel, which
+    # take the per-block structure from either an explicit ``blocks`` argument or a
+    # ``_tp_packed_col_blocks`` / ``_tp_packed_row_blocks`` attribute stored on the Linear at init.
     _tp_plan = {
         # double-stream (cross-attention + FFN) blocks
         "transformer_blocks.*.attn.to_q": "colwise",
@@ -1213,16 +1125,15 @@ class Flux2Transformer2DModel(
         "transformer_blocks.*.attn.add_k_proj": "colwise",
         "transformer_blocks.*.attn.add_v_proj": "colwise",
         "transformer_blocks.*.attn.to_add_out": "rowwise",
-        "transformer_blocks.*.ff.linear_in": "colwise",
+        # SwiGLU gate+linear are equal halves → blocks=[1,1]
+        "transformer_blocks.*.ff.linear_in": PackedColwiseParallel([1, 1]),
         "transformer_blocks.*.ff.linear_out": "rowwise",
-        "transformer_blocks.*.ff_context.linear_in": "colwise",
+        "transformer_blocks.*.ff_context.linear_in": PackedColwiseParallel([1, 1]),
         "transformer_blocks.*.ff_context.linear_out": "rowwise",
-        # single-stream (parallel self-attn + fused MLP) blocks
-        "single_transformer_blocks.*.attn.to_qkv_mlp_proj": "colwise",
-        "single_transformer_blocks.*.attn.to_out": "rowwise",
+        # single-stream: block structure stored on the Linear by Flux2ParallelSelfAttention.__init__
+        "single_transformer_blocks.*.attn.to_qkv_mlp_proj": PackedColwiseParallel(),
+        "single_transformer_blocks.*.attn.to_out": PackedRowwiseParallel(),
     }
-    # Per-block fused-weight permuters applied before sharding (Flux2 fuses gate+linear and Q/K/V+MLP into single Linears).
-    _tp_fused_block_permuters = _FLUX2_TP_FUSED_PERMUTERS
 
     @register_to_config
     def __init__(

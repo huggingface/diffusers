@@ -257,7 +257,6 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
     _parallel_config = None
     _cp_plan = None
     _tp_plan = None
-    _tp_fused_block_permuters = None
     _skip_keys = None
 
     def __init__(self):
