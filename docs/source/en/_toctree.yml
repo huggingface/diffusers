@@ -182,6 +182,8 @@
     title: NVIDIA ModelOpt
   - local: quantization/autoround
     title: AutoRound
+  - local: quantization/quark
+    title: Quark
   title: Quantization
 - isExpanded: false
   sections:

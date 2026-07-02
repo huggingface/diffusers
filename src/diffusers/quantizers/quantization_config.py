@@ -23,6 +23,7 @@ https://github.com/huggingface/transformers/blob/52cb4034ada381fe1ffe8d428a1076e
 from __future__ import annotations
 
 import copy
+import dataclasses
 import importlib.metadata
 import json
 import os
@@ -33,7 +34,7 @@ from typing import Any, Callable
 
 from packaging import version
 
-from ..utils import deprecate, is_torch_available, is_torchao_version, logging
+from ..utils import deprecate, is_quark_available, is_torch_available, is_torchao_version, logging
 
 
 if is_torch_available():
@@ -49,6 +50,7 @@ class QuantizationMethod(str, Enum):
     QUANTO = "quanto"
     MODELOPT = "modelopt"
     AUTOROUND = "auto-round"
+    QUARK = "quark"
 
 
 @dataclass
@@ -828,3 +830,82 @@ class AutoRoundConfig(QuantizationConfigMixin):
         # (e.g. quant_method is set automatically)
         config_dict = {k: v for k, v in config_dict.items() if k != "quant_method"}
         return super().from_dict(config_dict, return_unused_kwargs=return_unused_kwargs, **kwargs)
+
+
+class QuarkConfig(QuantizationConfigMixin):
+    """Configuration for AMD [Quark](https://quark.docs.amd.com/latest/) quantized diffusion models.
+
+    Mirrors ``transformers.utils.quantization_config.QuarkConfig`` so that a model serialized by
+    ``quark.torch.export_safetensors`` reloads with the same schema in either library.
+
+    The ``quantization_config`` section of ``config.json`` is forwarded to this constructor as keyword arguments. Two
+    on-disk layouts are accepted:
+
+    * **Native.** Produced by ``custom_mode='quark'``. Contains a flat dump of ``QConfig.to_dict()`` together with a
+      top-level ``"export"`` block holding the ``JsonExporterConfig`` fields.
+    * **Custom mode (legacy).** Produced by ``custom_mode='awq'`` or ``custom_mode='fp8'``. ``quant_method`` carries
+      the custom mode tag and the rest of the body matches the AutoAWQ / native-FP8 schemas.
+    """
+
+    def __init__(self, quant_config_dict: dict[str, Any] | None = None, **kwargs):
+        if quant_config_dict is not None:
+            kwargs = {**quant_config_dict, **kwargs}
+
+        if not (is_torch_available() and is_quark_available()):
+            raise ImportError(
+                "Quark is not installed. Install it with `pip install amd-quark` or "
+                "refer to https://quark.docs.amd.com/latest/install.html."
+            )
+
+        from quark import __version__ as quark_version
+        from quark.torch.export.config.config import JsonExporterConfig
+        from quark.torch.export.main_export.quant_config_parser import QuantConfigParser
+        from quark.torch.quantization.config.config import QConfig
+
+        self.custom_mode = kwargs.get("quant_method", QuantizationMethod.QUARK.value)
+        self.legacy = "export" not in kwargs
+
+        if self.custom_mode in ["awq", "fp8"]:
+            self.quant_config = QuantConfigParser.from_custom_config(kwargs, is_bias_quantized=False)
+            self.json_export_config = JsonExporterConfig()
+        else:
+            self.quant_config = QConfig.from_dict(kwargs)
+
+        if "export" in kwargs:
+            export_kwargs = dict(kwargs["export"])
+            # ``min_kv_scale`` is amd-quark>=0.8 only.  Drop with a warning on older versions.
+            if "min_kv_scale" in export_kwargs and version.parse(quark_version) < version.parse("0.8"):
+                min_kv_scale = export_kwargs.pop("min_kv_scale")
+                logger.warning(
+                    "Found `min_kv_scale=%s` in the model config.json's `quantization_config.export` block, but "
+                    "this parameter is supported only for amd-quark>=0.8. Ignoring. Please upgrade `amd-quark`.",
+                    min_kv_scale,
+                )
+            self.json_export_config = JsonExporterConfig(**export_kwargs)
+        elif self.custom_mode == QuantizationMethod.QUARK.value:
+            self.json_export_config = JsonExporterConfig()
+
+        self.quant_method = QuantizationMethod.QUARK
+
+    def to_dict(self) -> dict[str, Any]:
+        """Serialize to the JSON-friendly kwargs form accepted by ``__init__``.
+
+        The default ``QuantizationConfigMixin.to_dict`` does
+        ``copy.deepcopy(self.__dict__)``, which would embed the live Quark
+        ``QConfig`` and ``JsonExporterConfig`` dataclasses (not JSON-serializable
+        through ``json.dumps``).  Mirror what
+        ``quark.torch.export.api.QuarkSafetensorsExporter`` writes into
+        ``config.json``: a flat dump of ``QConfig.to_dict()`` plus a top-level
+        ``"export"`` block holding the ``JsonExporterConfig`` fields.
+        """
+        config_dict: dict[str, Any] = {}
+        if self.quant_config is not None:
+            config_dict.update(self.quant_config.to_dict())
+        config_dict["quant_method"] = self.custom_mode
+        if self.json_export_config is not None:
+            config_dict["export"] = dataclasses.asdict(self.json_export_config)
+        return config_dict
+
+    def to_diff_dict(self) -> dict[str, Any]:
+        """No meaningful "default" QuarkConfig to diff against — return ``to_dict``."""
+        return self.to_dict()
