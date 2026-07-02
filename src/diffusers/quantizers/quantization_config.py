@@ -464,6 +464,56 @@ class NunchakuLiteQuantizationConfig(QuantizationConfigMixin):
         self.svdq_w4a4 = svdq_w4a4
         self.awq_w4a16 = awq_w4a16
 
+        self.post_init()
+
+    def post_init(self):
+        if self.svdq_w4a4 is None and self.awq_w4a16 is None:
+            raise ValueError(
+                "Nunchaku compact quantization config must include `svdq_w4a4.targets` or `awq_w4a16.targets`."
+            )
+
+        for op, raw in (("svdq_w4a4", self.svdq_w4a4), ("awq_w4a16", self.awq_w4a16)):
+            if raw is None:
+                continue
+            if not isinstance(raw, dict):
+                raise ValueError(f"Nunchaku compact config section {op!r} must be a JSON object.")
+
+            for key, expected_type in (("precision", str), ("group_size", int), ("targets", list)):
+                if key not in raw:
+                    raise ValueError(f"Nunchaku compact config section {op!r} is missing required field {key!r}.")
+                if not isinstance(raw[key], expected_type):
+                    raise ValueError(
+                        f"Nunchaku compact config section {op!r} field {key!r} must be {expected_type.__name__}."
+                    )
+
+            precision = raw["precision"]
+            group_size = raw["group_size"]
+            targets = raw["targets"]
+            if precision not in ("int4", "fp4"):
+                raise ValueError(f"Unsupported Nunchaku precision {precision!r} for {op!r}.")
+            if group_size <= 0:
+                raise ValueError(f"Nunchaku compact config section {op!r} must have positive group_size.")
+            if not targets:
+                raise ValueError(f"Nunchaku compact config section {op!r} must contain at least one target.")
+            if not all(isinstance(target, str) for target in targets):
+                raise ValueError(f"Nunchaku compact config section {op!r} targets must be strings.")
+
+            if op == "svdq_w4a4":
+                if "rank" not in raw:
+                    raise ValueError(f"Nunchaku compact config section {op!r} is missing required field 'rank'.")
+                if not isinstance(raw["rank"], int):
+                    raise ValueError(f"Nunchaku compact config section {op!r} field 'rank' must be int.")
+                if raw["rank"] < 0:
+                    raise ValueError(f"Nunchaku compact config section {op!r} must have non-negative rank.")
+                expected_group_size = 16 if precision == "fp4" else 64
+                if group_size != expected_group_size:
+                    raise ValueError(
+                        f"Nunchaku SVDQ config with precision={precision!r} requires "
+                        f"group_size={expected_group_size}, got {group_size}."
+                    )
+            elif precision != "int4":
+                raise ValueError("Nunchaku AWQ target requires precision='int4'.")
+
     def to_dict(self) -> dict[str, Any]:
         output = super().to_dict()
         output["compute_dtype"] = str(output["compute_dtype"]).split(".")[1]

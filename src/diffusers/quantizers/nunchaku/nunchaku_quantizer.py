@@ -5,7 +5,6 @@ from typing import TYPE_CHECKING, Any
 from ..base import DiffusersQuantizer
 from .utils import (
     check_strict_state_dict_match,
-    parse_compact_quantization_config,
     replace_with_nunchaku_linear,
 )
 
@@ -46,12 +45,11 @@ class NunchakuLiteQuantizer(DiffusersQuantizer):
         **kwargs,
     ):
         quantization_config = self.quantization_config.to_dict()
-        target_manifest = parse_compact_quantization_config(model, quantization_config)
+        num_replaced = replace_with_nunchaku_linear(model, quantization_config, self.compute_dtype)
 
-        replace_with_nunchaku_linear(model, target_manifest, self.compute_dtype)
         if state_dict is not None:
             check_strict_state_dict_match(model, state_dict)
-        logger.info(f"Applied Nunchaku quantization config with {len(target_manifest.targets)} targets.")
+        logger.info(f"Applied Nunchaku quantization config with {num_replaced} targets.")
 
     def _process_model_after_weight_loading(self, model: "ModelMixin", **kwargs):
         return model
