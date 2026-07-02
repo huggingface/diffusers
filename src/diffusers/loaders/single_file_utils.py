@@ -22,7 +22,6 @@ from io import BytesIO
 from urllib.parse import urlparse
 
 import requests
-import safetensors
 import torch
 import yaml
 
@@ -38,7 +37,6 @@ from ..schedulers import (
     PNDMScheduler,
 )
 from ..utils import (
-    SAFETENSORS_FILE_EXTENSION,
     SAFETENSORS_WEIGHTS_NAME,
     WEIGHTS_NAME,
     deprecate,
@@ -465,7 +463,6 @@ def load_single_file_checkpoint(
     revision=None,
     disable_mmap=False,
     user_agent=None,
-    return_metadata=False,
 ):
     if user_agent is None:
         user_agent = {"file_type": "single_file", "framework": "pytorch"}
@@ -488,17 +485,9 @@ def load_single_file_checkpoint(
         )
 
     checkpoint = load_state_dict(pretrained_model_link_or_path, disable_mmap=disable_mmap)
-    metadata = {}
-    if return_metadata and os.path.basename(pretrained_model_link_or_path).split(".")[-1] == SAFETENSORS_FILE_EXTENSION:
-        with safetensors.safe_open(pretrained_model_link_or_path, framework="pt", device="cpu") as f:
-            metadata = f.metadata() or {}
-
     # some checkpoints contain the model state dict under a "state_dict" key
     while "state_dict" in checkpoint:
         checkpoint = checkpoint["state_dict"]
-
-    if return_metadata:
-        return checkpoint, metadata
 
     return checkpoint
 

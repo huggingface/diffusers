@@ -1,16 +1,13 @@
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any
 
 import torch
 import torch.nn as nn
 
 
-_SCHEMA = "nunchaku_lite.runtime_manifest"
-_SUPPORTED_VERSION = 1
-_SUPPORTED_FORMAT_VERSION = 1
 _SUPPORTED_OPS = {"svdq_w4a4", "awq_w4a16"}
 _SUPPORTED_PRECISIONS = {"int4", "fp4"}
 _HF_KERNEL_REPO = "rootonchair/nunchaku-lite-kernels"
@@ -30,17 +27,13 @@ def _get_ops():
 
 
 @dataclass(frozen=True)
-class RuntimeManifestTarget:
+class NunchakuTargetSpec:
     checkpoint_prefix: str
-    source_modules: tuple[str, ...]
-    kind: str
     nunchaku_op: str
     precision: str
     group_size: int
     rank: int
     has_bias: bool
-    op_options: dict[str, Any] = field(default_factory=dict)
-    activation: dict[str, Any] = field(default_factory=dict)
 
     @property
     def runtime_precision(self) -> str:
@@ -48,60 +41,11 @@ class RuntimeManifestTarget:
 
 
 @dataclass(frozen=True)
-class RuntimeManifest:
-    schema: str
-    version: int
-    component: str
-    nunchaku_format_version: int
-    requirements: dict[str, Any]
-    structural_patches: tuple[dict[str, Any], ...]
-    targets: tuple[RuntimeManifestTarget, ...]
+class NunchakuTargetManifest:
+    targets: tuple[NunchakuTargetSpec, ...]
 
 
-def parse_runtime_manifest(quantization_config: dict[str, Any]) -> RuntimeManifest:
-    raw = quantization_config.get("runtime_manifest")
-    if raw is None:
-        raise ValueError("Nunchaku checkpoints must include `quantization_config.runtime_manifest` metadata.")
-    if not isinstance(raw, dict):
-        raise ValueError("`quantization_config.runtime_manifest` must be a JSON object.")
-
-    schema = _required(raw, "schema", str)
-    if schema != _SCHEMA:
-        raise ValueError(f"Unsupported Nunchaku runtime manifest schema {schema!r}; expected {_SCHEMA!r}.")
-
-    version = _required(raw, "version", int)
-    if version != _SUPPORTED_VERSION:
-        raise ValueError(
-            f"Unsupported Nunchaku runtime manifest version {version}; expected {_SUPPORTED_VERSION}."
-        )
-
-    nunchaku_format_version = _required(raw, "nunchaku_format_version", int)
-    if nunchaku_format_version != _SUPPORTED_FORMAT_VERSION:
-        raise ValueError(
-            "Unsupported Nunchaku runtime manifest format version "
-            f"{nunchaku_format_version}; expected {_SUPPORTED_FORMAT_VERSION}."
-        )
-
-    structural_patches = _required(raw, "structural_patches", list)
-    if structural_patches:
-        raise ValueError("Nunchaku runtime manifest structural patches are not supported by Diffusers yet.")
-
-    targets = _required(raw, "targets", list)
-    if not targets:
-        raise ValueError("Nunchaku runtime manifest must contain at least one target.")
-
-    return RuntimeManifest(
-        schema=schema,
-        version=version,
-        component=_required(raw, "component", str),
-        nunchaku_format_version=nunchaku_format_version,
-        requirements=_required(raw, "requirements", dict),
-        structural_patches=tuple(structural_patches),
-        targets=tuple(_parse_target(index, target) for index, target in enumerate(targets)),
-    )
-
-
-def parse_compact_quantization_config(model: nn.Module, quantization_config: dict[str, Any]) -> RuntimeManifest:
+def parse_compact_quantization_config(model: nn.Module, quantization_config: dict[str, Any]) -> NunchakuTargetManifest:
     targets = []
     svdq_config = quantization_config.get("svdq_w4a4")
     awq_config = quantization_config.get("awq_w4a16")
@@ -115,18 +59,10 @@ def parse_compact_quantization_config(model: nn.Module, quantization_config: dic
             "Nunchaku compact quantization config must include `svdq_w4a4.targets` or `awq_w4a16.targets`."
         )
 
-    return RuntimeManifest(
-        schema=_SCHEMA,
-        version=_SUPPORTED_VERSION,
-        component="transformer",
-        nunchaku_format_version=_SUPPORTED_FORMAT_VERSION,
-        requirements={},
-        structural_patches=(),
-        targets=tuple(targets),
-    )
+    return NunchakuTargetManifest(targets=tuple(targets))
 
 
-def replace_with_nunchaku_linear(model: nn.Module, manifest: RuntimeManifest, compute_dtype: torch.dtype) -> None:
+def replace_with_nunchaku_linear(model: nn.Module, manifest: NunchakuTargetManifest, compute_dtype: torch.dtype) -> None:
     for target in manifest.targets:
         _replace_target(model, target, compute_dtype)
 
@@ -335,48 +271,7 @@ class AWQW4A16Linear(nn.Module):
         return torch.cat(outputs, dim=0)
 
 
-def _parse_target(index: int, raw: Any) -> RuntimeManifestTarget:
-    if not isinstance(raw, dict):
-        raise ValueError(f"Nunchaku runtime manifest target {index} must be a JSON object.")
-
-    checkpoint_prefix = _required(raw, "checkpoint_prefix", str)
-    kind = _required(raw, "kind", str)
-    nunchaku_op = _required(raw, "nunchaku_op", str)
-    precision = _required(raw, "precision", str)
-    group_size = _required(raw, "group_size", int)
-    rank = _required(raw, "rank", int)
-    has_bias = _required(raw, "has_bias", bool)
-
-    if kind != "linear":
-        raise ValueError(f"Unsupported Nunchaku target kind {kind!r} at {checkpoint_prefix!r}.")
-    if nunchaku_op not in _SUPPORTED_OPS:
-        raise ValueError(f"Unsupported Nunchaku op {nunchaku_op!r} at {checkpoint_prefix!r}.")
-    if precision not in _SUPPORTED_PRECISIONS:
-        raise ValueError(f"Unsupported Nunchaku precision {precision!r} at {checkpoint_prefix!r}.")
-    if group_size <= 0:
-        raise ValueError(f"Nunchaku target {checkpoint_prefix!r} must have positive group_size.")
-    if rank < 0:
-        raise ValueError(f"Nunchaku target {checkpoint_prefix!r} must have non-negative rank.")
-
-    source_modules = _required(raw, "source_modules", list)
-    if not all(isinstance(item, str) for item in source_modules):
-        raise ValueError(f"Nunchaku target {checkpoint_prefix!r} source_modules must be strings.")
-
-    return RuntimeManifestTarget(
-        checkpoint_prefix=checkpoint_prefix,
-        source_modules=tuple(source_modules),
-        kind=kind,
-        nunchaku_op=nunchaku_op,
-        precision=precision,
-        group_size=group_size,
-        rank=rank,
-        has_bias=has_bias,
-        op_options=dict(_required(raw, "op_options", dict)),
-        activation=dict(_required(raw, "activation", dict)),
-    )
-
-
-def _parse_compact_targets(model: nn.Module, op: str, raw: Any) -> list[RuntimeManifestTarget]:
+def _parse_compact_targets(model: nn.Module, op: str, raw: Any) -> list[NunchakuTargetSpec]:
     if not isinstance(raw, dict):
         raise ValueError(f"Nunchaku compact config section {op!r} must be a JSON object.")
     if op not in _SUPPORTED_OPS:
@@ -411,32 +306,20 @@ def _parse_compact_targets(model: nn.Module, op: str, raw: Any) -> list[RuntimeM
 
         bias = getattr(module, "bias", None)
         parsed_targets.append(
-            RuntimeManifestTarget(
+            NunchakuTargetSpec(
                 checkpoint_prefix=target,
-                source_modules=(target,),
-                kind="linear",
                 nunchaku_op=op,
                 precision=precision,
                 group_size=group_size,
                 rank=rank,
                 has_bias=bias is not None,
-                op_options={},
-                activation={},
             )
         )
 
     return parsed_targets
 
 
-def _replace_target(model: nn.Module, target: RuntimeManifestTarget, compute_dtype: torch.dtype) -> None:
-    for source_module in target.source_modules:
-        try:
-            model.get_submodule(source_module)
-        except AttributeError as exc:
-            raise ValueError(
-                f"Nunchaku target {target.checkpoint_prefix!r} source module {source_module!r} does not exist."
-            ) from exc
-
+def _replace_target(model: nn.Module, target: NunchakuTargetSpec, compute_dtype: torch.dtype) -> None:
     try:
         module = model.get_submodule(target.checkpoint_prefix)
     except AttributeError as exc:
@@ -464,7 +347,6 @@ def _replace_target(model: nn.Module, target: RuntimeManifestTarget, compute_dty
             precision=target.runtime_precision,
             torch_dtype=compute_dtype,
             device=_module_device(module),
-            act_unsigned=target.op_options.get("act_unsigned", False),
         )
     elif target.nunchaku_op == "awq_w4a16":
         if target.precision != "int4":

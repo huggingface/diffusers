@@ -1,13 +1,11 @@
 from __future__ import annotations
 
-import json
 from typing import TYPE_CHECKING, Any
 
 from ..base import DiffusersQuantizer
 from .utils import (
     check_strict_state_dict_match,
     parse_compact_quantization_config,
-    parse_runtime_manifest,
     replace_with_nunchaku_linear,
 )
 
@@ -48,30 +46,12 @@ class NunchakuLiteQuantizer(DiffusersQuantizer):
         **kwargs,
     ):
         quantization_config = self.quantization_config.to_dict()
-        if quantization_config.get("svdq_w4a4") is not None or quantization_config.get("awq_w4a16") is not None:
-            runtime_manifest = parse_compact_quantization_config(model, quantization_config)
-        else:
-            if not metadata or "quantization_config" not in metadata:
-                raise ValueError(
-                    "Nunchaku checkpoints must include a compact `quantization_config` in the model config or a JSON "
-                    "`quantization_config` safetensors metadata field."
-                )
-            try:
-                quantization_config = json.loads(metadata["quantization_config"])
-            except json.JSONDecodeError as exc:
-                raise ValueError(
-                    "Nunchaku checkpoint metadata field `quantization_config` is not valid JSON."
-                ) from exc
-            if not isinstance(quantization_config, dict):
-                raise ValueError(
-                    "Nunchaku checkpoint metadata field `quantization_config` must decode to a JSON object."
-                )
-            runtime_manifest = parse_runtime_manifest(quantization_config)
+        target_manifest = parse_compact_quantization_config(model, quantization_config)
 
-        replace_with_nunchaku_linear(model, runtime_manifest, self.compute_dtype)
+        replace_with_nunchaku_linear(model, target_manifest, self.compute_dtype)
         if state_dict is not None:
             check_strict_state_dict_match(model, state_dict)
-        logger.info(f"Applied Nunchaku quantization config with {len(runtime_manifest.targets)} targets.")
+        logger.info(f"Applied Nunchaku quantization config with {len(target_manifest.targets)} targets.")
 
     def _process_model_after_weight_loading(self, model: "ModelMixin", **kwargs):
         return model
@@ -83,3 +63,7 @@ class NunchakuLiteQuantizer(DiffusersQuantizer):
     @property
     def is_trainable(self) -> bool:
         return False
+    
+    @property
+    def is_compileable(self) -> bool:
+        return True
