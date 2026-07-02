@@ -588,8 +588,8 @@ class Flux2ParallelSelfAttnProcessor:
         hidden_states = attn.to_qkv_mlp_proj(hidden_states)
 
         # Split the fused output into its QKV and MLP halves by their global ratio, so the same code path works
-        # whether or not ``to_qkv_mlp_proj`` is column-sharded (the fused-weight permuter guarantees each rank's
-        # contiguous slice keeps the QKV and MLP chunks proportional). No tensor-parallel state is read here.
+        # whether or not ``to_qkv_mlp_proj`` is column-sharded (PackedColwiseParallel shards each block, so every
+        # rank's contiguous slice keeps the QKV and MLP chunks proportional). No tensor-parallel state is read here.
         qkv_dim = 3 * attn.inner_dim
         mlp_dim = attn.mlp_hidden_dim * attn.mlp_mult_factor
         local_qkv = hidden_states.shape[-1] * qkv_dim // (qkv_dim + mlp_dim)
