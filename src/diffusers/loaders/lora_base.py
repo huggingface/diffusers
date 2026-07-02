@@ -536,7 +536,7 @@ class LoraBaseMixin:
 
     def fuse_lora(
         self,
-        components: list[str] = [],
+        components: list[str] | None = None,
         lora_scale: float = 1.0,
         safe_fusing: bool = False,
         adapter_names: list[str] | None = None,
@@ -569,6 +569,9 @@ class LoraBaseMixin:
         pipeline.fuse_lora(lora_scale=0.7)
         ```
         """
+        if components is None:
+            components = []
+
         if "fuse_unet" in kwargs:
             depr_message = "Passing `fuse_unet` to `fuse_lora()` is deprecated and will be ignored. Please use the `components` argument and provide a list of the components whose LoRAs are to be fused. `fuse_unet` will be removed in a future version."
             deprecate(
@@ -620,7 +623,7 @@ class LoraBaseMixin:
 
         self._merged_adapters = self._merged_adapters | merged_adapter_names
 
-    def unfuse_lora(self, components: list[str] = [], **kwargs):
+    def unfuse_lora(self, components: list[str] | None = None, **kwargs):
         r"""
         Reverses the effect of
         [`pipe.fuse_lora()`](https://huggingface.co/docs/diffusers/main/en/api/loaders#diffusers.loaders.LoraBaseMixin.fuse_lora).
@@ -634,6 +637,9 @@ class LoraBaseMixin:
                 Whether to unfuse the text encoder LoRA parameters. If the text encoder wasn't monkey-patched with the
                 LoRA parameters then it won't have any effect.
         """
+        if components is None:
+            components = []
+
         if "unfuse_unet" in kwargs:
             depr_message = "Passing `unfuse_unet` to `unfuse_lora()` is deprecated and will be ignored. Please use the `components` argument. `unfuse_unet` will be removed in a future version."
             deprecate(
