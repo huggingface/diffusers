@@ -370,6 +370,31 @@ class PeftLoraLoaderMixinTests:
                 )
         return pipe, denoiser
 
+    def test_load_lora_weights_without_transformer_warns_and_skips(self):
+        """
+        Regression test for https://github.com/huggingface/diffusers/issues/13487.
+
+        Loading a transformer-targeting LoRA onto a (sub-)pipeline that does not contain the transformer
+        (for example a text-encoder-only sub-pipeline) should warn and skip the transformer LoRA layers
+        instead of raising an ``AttributeError``. The underlying issue is not specific to modular pipelines.
+        """
+        if self.transformer_cls is None:
+            pytest.skip("Only applies to transformer-based LoRA loaders.")
+
+        components, _, _ = self.get_dummy_components()
+        pipe = self.pipeline_class(**components)
+
+        # Emulate a sub-pipeline that carries no transformer component.
+        pipe.transformer = None
+        state_dict = {f"{pipe.transformer_name}.dummy.lora_A.weight": torch.zeros((4, 4))}
+
+        logger = logging.get_logger("diffusers.loaders.lora_pipeline")
+        logger.setLevel(logging.WARNING)
+        with CaptureLogger(logger) as cap_logger:
+            pipe.load_lora_weights(state_dict)
+
+        self.assertIn("will not be loaded", cap_logger.out)
+
     def test_simple_inference(self):
         """
         Tests a simple inference and makes sure it works as expected
