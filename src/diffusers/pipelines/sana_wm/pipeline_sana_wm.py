@@ -15,30 +15,27 @@
 from __future__ import annotations
 
 import inspect
-import os
 from pathlib import Path
 from typing import Literal
 
 import numpy as np
 import PIL.Image
 import torch
-from torchvision import transforms as T
-from tqdm.auto import tqdm
 from transformers import Gemma2PreTrainedModel, GemmaTokenizer, GemmaTokenizerFast
 
 from ...models import AutoencoderKLLTX2Video, SanaWMTransformer3DModel
 from ...schedulers import FlowMatchEulerDiscreteScheduler
 from ...utils import logging, replace_example_docstring
+from ...video_processor import VideoProcessor
 from ..pipeline_utils import DiffusionPipeline
 from .cam_utils import (
     TARGET_HEIGHT,
     TARGET_WIDTH,
     action_string_to_c2w,
     prepare_camera,
-    resize_and_center_crop,
     snap_num_frames,
-    transform_intrinsics_for_crop,
 )
+from .image_processor import SanaWMImageProcessor
 from .pipeline_output import SanaWMPipelineOutput
 from .refiner import SanaWMLTX2Refiner
 
@@ -171,11 +168,6 @@ class SanaWMPipeline(DiffusionPipeline):
     _callback_tensor_inputs = ["latents", "prompt_embeds"]
     _optional_components = ["refiner"]
 
-    # SANA-WM is trained at a fixed (704, 1280) resolution and uses an LTX-2
-    # VAE with spatial stride 32 and temporal stride 8.
-    vae_scale_factor_spatial: int = 32
-    vae_scale_factor_temporal: int = 8
-
     def __init__(
         self,
         tokenizer: GemmaTokenizer | GemmaTokenizerFast,
@@ -194,6 +186,21 @@ class SanaWMPipeline(DiffusionPipeline):
             scheduler=scheduler,
             refiner=refiner,
         )
+        # Read VAE strides from the registered component (LTX2Pipeline pattern).
+        # Fall back to the LTX-2 defaults (32 spatial / 8 temporal) if the VAE
+        # hasn't been registered yet — matches SANA-WM's training config.
+        self.vae_spatial_compression_ratio = (
+            self.vae.spatial_compression_ratio if getattr(self, "vae", None) is not None else 32
+        )
+        self.vae_temporal_compression_ratio = (
+            self.vae.temporal_compression_ratio if getattr(self, "vae", None) is not None else 8
+        )
+        # ``image_processor`` handles first-frame input (resize + center-crop
+        # + [-1, 1] normalization + intrinsics rescale for the crop);
+        # ``video_processor`` handles the decoded [-1, 1] video -> user-chosen
+        # ``output_type`` conversion.
+        self.image_processor = SanaWMImageProcessor(vae_scale_factor=self.vae_spatial_compression_ratio)
+        self.video_processor = VideoProcessor(vae_scale_factor=self.vae_spatial_compression_ratio)
         # The SANA DiT's ``y_embedder`` randomly null-replaces tokens when
         # ``self.training=True``. Force eval mode at construction so inference
         # is deterministic regardless of how the underlying modules were saved.
@@ -284,8 +291,12 @@ class SanaWMPipeline(DiffusionPipeline):
     # First-frame VAE encode (deterministic — uses posterior mode)
     # ------------------------------------------------------------------
 
-    def _encode_first_frame(self, image: PIL.Image.Image, device: torch.device, dtype: torch.dtype) -> torch.Tensor:
-        img = (T.ToTensor()(image) * 2.0 - 1.0).unsqueeze(0).unsqueeze(2).to(device, dtype=self.vae.dtype)
+    def _encode_first_frame(
+        self, pixel_values: torch.Tensor, device: torch.device, dtype: torch.dtype
+    ) -> torch.Tensor:
+        # ``pixel_values`` is ``(1, 3, H, W)`` in [-1, 1] (from ``SanaWMImageProcessor``).
+        # Add the temporal axis to match the LTX-2 VAE input shape ``(B, C, 1, H, W)``.
+        img = pixel_values.unsqueeze(2).to(device, dtype=self.vae.dtype)
         z = self.vae.encode(img).latent_dist.mode()
         latents_mean = self.vae.latents_mean.view(1, -1, 1, 1, 1).to(z)
         latents_std = self.vae.latents_std.view(1, -1, 1, 1, 1).to(z)
@@ -293,19 +304,17 @@ class SanaWMPipeline(DiffusionPipeline):
         return z.to(dtype)
 
     def _decode_latents(self, latents: torch.Tensor) -> torch.Tensor:
-        """Decode latents into a `(T, H, W, 3)` float tensor in `[0, 1]`.
+        """Decode latents to a `(B, C, F, H, W)` tensor in `[-1, 1]` (the VAE's native output range).
 
-        Returning float `[0, 1]` matches the diffusers convention used by `SanaImageToVideoPipeline` / `VideoProcessor`
-        — `export_to_video` and other downstream utilities assume that range for `np.ndarray` frames and silently
-        corrupt uint8 input via an overflow multiply by 255.
+        Post-processing (e.g. `[-1, 1]` → PIL frames / `np.ndarray` in `[0, 1]`) is handled by
+        `self.video_processor.postprocess_video` at the call site so callers get the diffusers convention that the
+        `VideoProcessor` / `export_to_video` helpers assume.
         """
         latents = latents.to(self.vae.device, dtype=self.vae.dtype)
         latents_mean = self.vae.latents_mean.view(1, -1, 1, 1, 1).to(latents)
         latents_std = self.vae.latents_std.view(1, -1, 1, 1, 1).to(latents)
         latents = latents / self.vae.config.scaling_factor * latents_std + latents_mean
-        decoded = self.vae.decode(latents, return_dict=False)[0]
-        # VAE outputs in [-1, 1]; rescale to [0, 1] and clamp.
-        return torch.clamp(0.5 * decoded + 0.5, 0.0, 1.0).permute(0, 2, 3, 4, 1).to("cpu", dtype=torch.float32)[0]
+        return self.vae.decode(latents, return_dict=False)[0]
 
     # ------------------------------------------------------------------
     # Camera conditioning packing
@@ -326,9 +335,9 @@ class SanaWMPipeline(DiffusionPipeline):
             intrinsics_vec4,
             target_size=target_size,
             vae_stride=(
-                self.vae_scale_factor_temporal,
-                self.vae_scale_factor_spatial,
-                self.vae_scale_factor_spatial,
+                self.vae_temporal_compression_ratio,
+                self.vae_spatial_compression_ratio,
+                self.vae_spatial_compression_ratio,
             ),
         )
         raymap = cam["raymap"].unsqueeze(0).to(device, dtype=dtype)
@@ -338,43 +347,79 @@ class SanaWMPipeline(DiffusionPipeline):
             chunk_plucker = torch.cat([chunk_plucker, chunk_plucker], dim=0)
         return {"camera_conditions": raymap, "chunk_plucker": chunk_plucker}
 
-    # ------------------------------------------------------------------
-    # Stage-1 DiT sampling — LTX-style per-token timesteps
-    # ------------------------------------------------------------------
-
-    def _sample_stage1(
+    def check_inputs(
         self,
-        *,
+        image: PIL.Image.Image | str | Path,
+        c2w: np.ndarray | None,
+        action: str | None,
+        intrinsics: np.ndarray | list[float] | None,
+        num_frames: int,
+    ) -> tuple[PIL.Image.Image, np.ndarray, np.ndarray]:
+        """Validate `__call__` inputs and normalize to ``(image_pil, c2w_(F,4,4), intrinsics_(F,4))``.
+
+        Also snaps ``num_frames`` to the VAE-friendly ``8k+1`` and trims the c2w / intrinsics arrays to match. The
+        cropped image + rescaled intrinsics come later once we know the target resolution.
+        """
+        if isinstance(image, (str, Path)):
+            image = PIL.Image.open(image).convert("RGB")
+
+        if (c2w is None) == (action is None):
+            raise ValueError("Provide exactly one of `c2w` or `action`.")
+        if action is not None:
+            c2w = action_string_to_c2w(action)
+        c2w = np.asarray(c2w, dtype=np.float32)
+        if c2w.ndim != 3 or c2w.shape[1:] != (4, 4):
+            raise ValueError(f"`c2w` must be `(F, 4, 4)`; got {c2w.shape}.")
+
+        num_frames = min(num_frames, c2w.shape[0])
+        num_frames = snap_num_frames(num_frames, stride=self.vae_temporal_compression_ratio, upper_bound=c2w.shape[0])
+        c2w = c2w[:num_frames]
+
+        if intrinsics is None:
+            raise ValueError(
+                "Pass `intrinsics` as either `[fx, fy, cx, cy]`, a 3x3 K matrix, "
+                "an `(F, 4)` per-frame [fx,fy,cx,cy], or `(F, 3, 3)` per-frame K — "
+                "all in original-image pixel coordinates. Use "
+                "`diffusers.pipelines.sana_wm.cam_utils.estimate_intrinsics_with_pi3x(image)` "
+                "for an automatic estimate if pi3 is installed."
+            )
+        intr = np.asarray(intrinsics, dtype=np.float32)
+        # Accept (3, 3), (F, 3, 3), (4,) and (F, 4) — normalize to (F, 4).
+        if intr.shape == (3, 3):
+            intr = np.array([intr[0, 0], intr[1, 1], intr[0, 2], intr[1, 2]], dtype=np.float32)
+        elif intr.ndim == 3 and intr.shape[-2:] == (3, 3):
+            intr = np.stack([intr[:, 0, 0], intr[:, 1, 1], intr[:, 0, 2], intr[:, 1, 2]], axis=-1)
+        if intr.shape == (4,):
+            intr = np.broadcast_to(intr, (num_frames, 4)).copy()
+        if intr.ndim == 2 and intr.shape[1] == 4 and intr.shape[0] >= num_frames:
+            # Caller may pass a full-trajectory intrinsics array; trim to match.
+            intr = intr[:num_frames]
+        if intr.shape != (num_frames, 4):
+            raise ValueError(
+                f"`intrinsics` must be `(4,)`, `(F>={num_frames}, 4)`, `(3, 3)`, or "
+                f"`(F>={num_frames}, 3, 3)`; got shape {np.asarray(intrinsics).shape}."
+            )
+        return image, c2w, intr
+
+    def prepare_latents(
+        self,
         first_latent: torch.Tensor,
-        cond: torch.Tensor,
-        neg: torch.Tensor,
-        cond_mask: torch.Tensor,
-        neg_mask: torch.Tensor,
-        cam_kwargs: dict[str, torch.Tensor],
         num_frames: int,
         height: int,
         width: int,
-        num_inference_steps: int,
-        guidance_scale: float,
-        flow_shift: float,
-        generator: torch.Generator,
-        device: torch.device,
         dtype: torch.dtype,
-    ) -> torch.Tensor:
-        """Stage-1 denoising — LTX-style flow-matching Euler with per-token timesteps.
+        device: torch.device,
+        generator: torch.Generator,
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        """Sample initial latents and pin the first frame as the conditioning anchor.
 
-        The first latent frame is the conditioning anchor: its per-token timestep is clamped to zero throughout
-        sampling so it never gets denoised away.
+        Returns ``(latents, condition_mask)`` where ``condition_mask`` has ones on the first frame's tokens (they are
+        held clean throughout sampling) and zeros elsewhere.
         """
-        latent_T = (num_frames - 1) // self.vae_scale_factor_temporal + 1
-        latent_h = height // self.vae_scale_factor_spatial
-        latent_w = width // self.vae_scale_factor_spatial
+        latent_T = (num_frames - 1) // self.vae_temporal_compression_ratio + 1
+        latent_h = height // self.vae_spatial_compression_ratio
+        latent_w = width // self.vae_spatial_compression_ratio
         latent_channels = first_latent.shape[1]
-        do_cfg = guidance_scale > 1.0
-
-        scheduler = FlowMatchEulerDiscreteScheduler(shift=flow_shift)
-        timesteps, _ = retrieve_timesteps(scheduler, num_inference_steps, device, None)
-
         latents = torch.randn(
             1,
             latent_channels,
@@ -386,56 +431,9 @@ class SanaWMPipeline(DiffusionPipeline):
             generator=generator,
         )
         latents[:, :, :1] = first_latent
-
-        # The first frame is the conditioning anchor; mark its tokens as
-        # always-clean by pinning their per-token timestep to 0.
         condition_mask = torch.zeros_like(latents)
         condition_mask[:, :, :1] = 1.0
-
-        prompt_embeds = torch.cat([neg, cond], dim=0) if do_cfg else cond
-        mask_cfg = torch.cat([neg_mask, cond_mask], dim=0) if do_cfg else cond_mask
-        model_kwargs = {
-            "data_info": {
-                "img_hw": torch.tensor([[height, width]], dtype=torch.float, device=device),
-            },
-            "mask": mask_cfg,
-            **cam_kwargs,
-        }
-
-        for t in tqdm(timesteps, disable=os.getenv("DPM_TQDM", "False") == "True"):
-            cond_mask_input = torch.cat([condition_mask] * 2) if do_cfg else condition_mask
-            latent_model_input = torch.cat([latents] * 2) if do_cfg else latents
-            timestep = t.expand(cond_mask_input.shape).float()
-            timestep = torch.min(timestep, (1.0 - cond_mask_input) * 1000.0)
-
-            # The wrapper transformer accepts ``mask=`` and routes through the
-            # CPU-offload hook (vs hitting ._inner directly).
-            noise_pred = self.transformer(
-                latent_model_input,
-                timestep[:, :1, :, 0, 0],  # (B, 1, T)
-                prompt_embeds,
-                return_dict=False,
-                **model_kwargs,
-            )[0]
-
-            if do_cfg:
-                noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
-                noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
-                timestep = timestep.chunk(2)[0]
-
-            B, C, F, H, W = latents.shape
-            denoised = scheduler.step(
-                -noise_pred.reshape(B, C, -1).transpose(1, 2),
-                t,
-                latents.reshape(B, C, -1).transpose(1, 2),
-                per_token_timesteps=timestep.reshape(B, C, -1)[:, 0],
-                return_dict=False,
-            )[0]
-            denoised = denoised.transpose(1, 2).reshape(B, C, F, H, W)
-            keep_clean = t / 1000.0 - 1e-6 < (1.0 - condition_mask)
-            latents = torch.where(keep_clean, denoised, latents).to(dtype)
-
-        return latents.detach()
+        return latents, condition_mask
 
     # ------------------------------------------------------------------
     # __call__
@@ -459,7 +457,8 @@ class SanaWMPipeline(DiffusionPipeline):
         guidance_scale: float = 5.0,
         flow_shift: float = 8.0,
         negative_prompt: str = "",
-        seed: int = 42,
+        generator: torch.Generator | list[torch.Generator] | None = None,
+        seed: int | None = None,
         use_refiner: bool = True,
         sink_size: int = 1,
         refiner_seed: int = 42,
@@ -500,8 +499,13 @@ class SanaWMPipeline(DiffusionPipeline):
                 Scheduler flow shift (LTX flow-matching).
             negative_prompt (`str`, defaults to ""):
                 Optional negative prompt.
-            seed (`int`, defaults to 42):
-                Stage-1 sampling seed.
+            generator (`torch.Generator` or `list[torch.Generator]`, *optional*):
+                One or more torch generators to make the noise sampling deterministic. If both `generator` and `seed`
+                are provided, `generator` takes precedence.
+            seed (`int`, *optional*):
+                Convenience shortcut — used only when `generator` is `None`, in which case a fresh
+                ``torch.Generator(device=execution_device).manual_seed(seed)`` is created. If both are `None`, the
+                sampling is non-deterministic.
             use_refiner (`bool`, defaults to True):
                 Run the LTX-2 refiner (requires `self.refiner` to be set).
             sink_size (`int`, defaults to 1):
@@ -527,48 +531,9 @@ class SanaWMPipeline(DiffusionPipeline):
 
         Examples:
         """
-        if isinstance(image, (str, Path)):
-            image = PIL.Image.open(image).convert("RGB")
-
-        if (c2w is None) == (action is None):
-            raise ValueError("Provide exactly one of `c2w` or `action`.")
-        if action is not None:
-            c2w = action_string_to_c2w(action)
-        c2w = np.asarray(c2w, dtype=np.float32)
-        if c2w.ndim != 3 or c2w.shape[1:] != (4, 4):
-            raise ValueError(f"`c2w` must be `(F, 4, 4)`; got {c2w.shape}.")
-
-        num_frames = min(num_frames, c2w.shape[0])
-        num_frames = snap_num_frames(num_frames, stride=self.vae_scale_factor_temporal, upper_bound=c2w.shape[0])
-        c2w = c2w[:num_frames]
-
-        if intrinsics is None:
-            raise ValueError(
-                "Pass `intrinsics` as either `[fx, fy, cx, cy]`, a 3x3 K matrix, "
-                "an `(F, 4)` per-frame [fx,fy,cx,cy], or `(F, 3, 3)` per-frame K — "
-                "all in original-image pixel coordinates. Use "
-                "`diffusers.pipelines.sana_wm.cam_utils.estimate_intrinsics_with_pi3x(image)` "
-                "for an automatic estimate if pi3 is installed."
-            )
-        intr = np.asarray(intrinsics, dtype=np.float32)
-        # Accept (3, 3), (F, 3, 3), (4,) and (F, 4) — normalize to (F, 4).
-        if intr.shape == (3, 3):
-            intr = np.array([intr[0, 0], intr[1, 1], intr[0, 2], intr[1, 2]], dtype=np.float32)
-        elif intr.ndim == 3 and intr.shape[-2:] == (3, 3):
-            intr = np.stack([intr[:, 0, 0], intr[:, 1, 1], intr[:, 0, 2], intr[:, 1, 2]], axis=-1)
-        if intr.shape == (4,):
-            intr = np.broadcast_to(intr, (num_frames, 4)).copy()
-        if intr.ndim == 2 and intr.shape[1] == 4 and intr.shape[0] >= num_frames:
-            # Caller may pass a full-trajectory intrinsics array; trim to match.
-            intr = intr[:num_frames]
-        if intr.shape != (num_frames, 4):
-            raise ValueError(
-                f"`intrinsics` must be `(4,)`, `(F>={num_frames}, 4)`, `(3, 3)`, or "
-                f"`(F>={num_frames}, 3, 3)`; got shape {np.asarray(intrinsics).shape}."
-            )
-
-        cropped, src_size, resized_size, crop_offset = resize_and_center_crop(image, height, width)
-        intr = transform_intrinsics_for_crop(intr, src_size, resized_size, crop_offset)
+        image, c2w, intr = self.check_inputs(image, c2w, action, intrinsics, num_frames)
+        num_frames = c2w.shape[0]
+        pixel_values, intr = self.image_processor.preprocess_with_intrinsics(image, intr, height, width)
 
         device = self._execution_device
         dtype = self.transformer.dtype
@@ -581,36 +546,72 @@ class SanaWMPipeline(DiffusionPipeline):
             chi_prompt=chi_prompt or DEFAULT_CHI_PROMPT,
         )
 
-        first_latent = self._encode_first_frame(cropped, device, dtype)
+        first_latent = self._encode_first_frame(pixel_values, device, dtype)
         cam_kwargs = self._build_camera_kwargs(
             c2w, intr, (height, width), device=device, dtype=dtype, do_cfg=guidance_scale > 1.0
         )
 
-        generator = torch.Generator(device=device).manual_seed(seed)
-        latents = self._sample_stage1(
-            first_latent=first_latent,
-            cond=cond,
-            neg=neg,
-            cond_mask=cond_mask,
-            neg_mask=neg_mask,
-            cam_kwargs=cam_kwargs,
-            num_frames=num_frames,
-            height=height,
-            width=width,
-            num_inference_steps=num_inference_steps,
-            guidance_scale=guidance_scale,
-            flow_shift=flow_shift,
-            generator=generator,
-            device=device,
-            dtype=dtype,
+        if generator is None and seed is not None:
+            generator = torch.Generator(device=device).manual_seed(seed)
+        do_cfg = guidance_scale > 1.0
+
+        # Stage-1 denoising — LTX-style flow-matching Euler with per-token
+        # timesteps. The first latent frame is the conditioning anchor: its
+        # per-token timestep is pinned to 0 so it is never denoised away.
+        latents, condition_mask = self.prepare_latents(
+            first_latent, num_frames, height, width, dtype, device, generator
         )
+        # Override the scheduler shift with the caller's value for this run;
+        # ``FlowMatchEulerDiscreteScheduler`` reads ``config.shift`` inside
+        # ``set_timesteps`` so this takes effect immediately.
+        self.scheduler.config.shift = flow_shift
+        timesteps, _ = retrieve_timesteps(self.scheduler, num_inference_steps, device, None)
+
+        prompt_embeds = torch.cat([neg, cond], dim=0) if do_cfg else cond
+        mask_cfg = torch.cat([neg_mask, cond_mask], dim=0) if do_cfg else cond_mask
+        model_kwargs = {
+            "data_info": {
+                "img_hw": torch.tensor([[height, width]], dtype=torch.float, device=device),
+            },
+            "mask": mask_cfg,
+            **cam_kwargs,
+        }
+
+        for t in self.progress_bar(timesteps):
+            cond_mask_input = torch.cat([condition_mask] * 2) if do_cfg else condition_mask
+            latent_model_input = torch.cat([latents] * 2) if do_cfg else latents
+            timestep = t.expand(cond_mask_input.shape).float()
+            timestep = torch.min(timestep, (1.0 - cond_mask_input) * 1000.0)
+
+            noise_pred = self.transformer(
+                latent_model_input,
+                timestep[:, :1, :, 0, 0],  # (B, 1, T)
+                prompt_embeds,
+                return_dict=False,
+                **model_kwargs,
+            )[0]
+
+            if do_cfg:
+                noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
+                noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
+                timestep = timestep.chunk(2)[0]
+
+            B, C, F, H, W = latents.shape
+            denoised = self.scheduler.step(
+                -noise_pred.reshape(B, C, -1).transpose(1, 2),
+                t,
+                latents.reshape(B, C, -1).transpose(1, 2),
+                per_token_timesteps=timestep.reshape(B, C, -1)[:, 0],
+                return_dict=False,
+            )[0]
+            denoised = denoised.transpose(1, 2).reshape(B, C, F, H, W)
+            keep_clean = t / 1000.0 - 1e-6 < (1.0 - condition_mask)
+            latents = torch.where(keep_clean, denoised, latents).to(dtype)
+
+        latents = latents.detach()
 
         if output_type == "latent":
-            return (
-                SanaWMPipelineOutput(frames=latents.cpu(), c2w=c2w, latent=latents.cpu())
-                if return_dict
-                else (latents.cpu(),)
-            )
+            return SanaWMPipelineOutput(frames=latents, c2w=c2w, latent=latents) if return_dict else (latents,)
 
         if use_refiner and self.refiner is not None:
             refined = self.refiner.refine_latents(
@@ -621,24 +622,18 @@ class SanaWMPipeline(DiffusionPipeline):
                 seed=refiner_seed,
                 checkpoint_dir=refiner_checkpoint_dir,
             )
-            video = self._decode_latents(refined)
-            video = video[1:]  # refiner drops the sink anchor frame
+            decoded = self._decode_latents(refined)  # (B=1, C=3, F, H, W) in [-1, 1]
+            decoded = decoded[:, :, 1:]  # refiner drops the sink anchor frame
             video_c2w = c2w[1:num_frames]
         else:
-            video = self._decode_latents(latents)
+            decoded = self._decode_latents(latents)
             video_c2w = c2w[:num_frames]
 
-        # ``video`` is a (T, H, W, 3) float tensor in [0, 1]. Convert to the
-        # requested output format; "np" matches the diffusers convention used
-        # by ``export_to_video`` (float [0, 1] np.ndarray).
-        if output_type == "pil":
-            video_uint8 = (video.numpy() * 255.0).round().clip(0, 255).astype(np.uint8)
-            frames: list | np.ndarray = [PIL.Image.fromarray(f) for f in video_uint8]
-        elif output_type == "np":
-            frames = video.numpy()
-        else:
-            frames = video
+        # ``VideoProcessor.postprocess_video`` handles the standard [-1, 1] ->
+        # requested output_type conversion (uint8 PIL frames, float np.ndarray
+        # in [0, 1], or the raw pt tensor).
+        frames = self.video_processor.postprocess_video(decoded, output_type=output_type)[0]
 
         if not return_dict:
             return (frames,)
-        return SanaWMPipelineOutput(frames=frames, c2w=video_c2w, latent=latents.cpu())
+        return SanaWMPipelineOutput(frames=frames, c2w=video_c2w, latent=latents)

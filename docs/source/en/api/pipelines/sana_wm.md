@@ -50,12 +50,11 @@ from diffusers.utils import export_to_video
 pipe = SanaWMPipeline.from_pretrained(
     "Efficient-Large-Model/SANA-WM_bidirectional-diffusers",
     torch_dtype=torch.bfloat16,
-).to("cuda")
-
-image = Image.open("input.png").convert("RGB")
+)
+pipe.enable_model_cpu_offload()  # ~45 GB of weights — offload between stages
 
 output = pipe(
-    image=image,
+    image=Image.open("input.png").convert("RGB"),
     prompt="A car driving across a vast desert plain at golden hour.",
     action="w-80,jw-40,w-40",        # WASD-style action DSL: forward 80f, jump+forward 40f, forward 40f
     intrinsics=[800.0, 800.0, 845.0, 464.0],  # fx, fy, cx, cy in original-image pixels
@@ -70,6 +69,36 @@ export_to_video(list(output.frames), "sana_wm.mp4", fps=16)
 Pass `action=None` and supply your own `c2w` poses (`(F, 4, 4)` numpy array) to drive the camera trajectory
 explicitly. Set `use_refiner=False` to skip stage 2.
 
+If you don't have camera intrinsics, [`pi3-vision`](https://github.com/OliverSFAC/pi3-vision) can estimate them
+from a single frame:
+
+```python
+from diffusers.pipelines.sana_wm.cam_utils import estimate_intrinsics_with_pi3x
+intrinsics = estimate_intrinsics_with_pi3x(image)  # `pip install pi3-vision`
+```
+
+## Converting the released checkpoint
+
+If you have the source SANA-WM release (not the pre-converted diffusers snapshot), run the conversion script once:
+
+```bash
+python scripts/sana_wm/convert_sana_wm_to_diffusers.py \
+    --src Efficient-Large-Model/SANA-WM_bidirectional \
+    --dst ./SANA-WM_bidirectional-diffusers
+```
+
+Then load from the local path as usual.
+
+## Components
+
+- `tokenizer` — [`GemmaTokenizerFast`]
+- `text_encoder` — Gemma-2 (returns decoder hidden states)
+- `vae` — [`AutoencoderKLLTX2Video`] (LTX-2, spatial ×32 / temporal ×8)
+- `transformer` — [`SanaWMTransformer3DModel`], 1.6B-parameter bidirectional DiT
+- `scheduler` — [`FlowMatchEulerDiscreteScheduler`]
+- `refiner` (optional) — [`SanaWMLTX2Refiner`], wraps `LTX2VideoTransformer3DModel`, `LTX2TextConnectors`, and a
+  Gemma-3 text encoder
+
 ## SanaWMPipeline
 
 [[autodoc]] SanaWMPipeline
@@ -78,7 +107,12 @@ explicitly. Set `use_refiner=False` to skip stage 2.
 
 ## SanaWMLTX2Refiner
 
+The optional LTX-2 stage-2 refiner is itself a [`DiffusionPipeline`]. [`SanaWMPipeline`] runs it automatically when
+`use_refiner=True`, but it can also be used standalone on stage-1 latents.
+
 [[autodoc]] SanaWMLTX2Refiner
+  - all
+  - __call__
 
 ## SanaWMPipelineOutput
 
