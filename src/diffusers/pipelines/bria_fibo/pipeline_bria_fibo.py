@@ -25,6 +25,7 @@ from ...pipelines.pipeline_utils import DiffusionPipeline
 from ...schedulers import FlowMatchEulerDiscreteScheduler, KarrasDiffusionSchedulers
 from ...utils import (
     USE_PEFT_BACKEND,
+    deprecate,
     is_torch_xla_available,
     logging,
     replace_example_docstring,
@@ -107,7 +108,7 @@ class BriaFiboPipeline(DiffusionPipeline, FluxLoraLoaderMixin):
             scheduler=scheduler,
         )
 
-        self.vae_scale_factor = 16
+        self.vae_scale_factor = self.vae.config.scale_factor_spatial if getattr(self, "vae", None) else 16
         self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor * 2)
         self.default_sample_size = 64
 
@@ -478,9 +479,7 @@ class BriaFiboPipeline(DiffusionPipeline, FluxLoraLoaderMixin):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
                 expense of slower inference.
             timesteps (`list[int]`, *optional*):
-                Custom timesteps to use for the denoising process with schedulers which support a `timesteps` argument
-                in their `set_timesteps` method. If not defined, the default behavior when `num_inference_steps` is
-                passed will be used. Must be in descending order.
+                Deprecated. Has no effect and will be removed in a future version.
             guidance_scale (`float`, *optional*, defaults to 5.0):
                 Guidance scale as defined in [Classifier-Free Diffusion
                 Guidance](https://huggingface.co/papers/2207.12598). `guidance_scale` is defined as `w` of equation 2.
@@ -630,6 +629,12 @@ class BriaFiboPipeline(DiffusionPipeline, FluxLoraLoaderMixin):
         else:
             seq_len = (height // self.vae_scale_factor) * (width // self.vae_scale_factor)
 
+        if timesteps is not None:
+            deprecate(
+                "timesteps",
+                "1.0.0",
+                "Passing `timesteps` to `__call__` is deprecated and has no effect; it will be removed in a future version.",
+            )
         sigmas = np.linspace(1.0, 1 / num_inference_steps, num_inference_steps)
 
         mu = calculate_shift(
