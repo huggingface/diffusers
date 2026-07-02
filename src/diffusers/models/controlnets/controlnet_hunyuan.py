@@ -189,7 +189,9 @@ class HunyuanDiT2DControlNetModel(ModelMixin, ConfigMixin):
         text_len_t5 = config.text_len_t5
 
         conditioning_channels = conditioning_channels
-        transformer_num_layers = transformer_num_layers or config.transformer_num_layers
+        transformer_num_layers = transformer_num_layers or config.num_layers
+        pooled_projection_dim = config.pooled_projection_dim
+        use_style_cond_and_image_meta_size = config.use_style_cond_and_image_meta_size
 
         controlnet = cls(
             conditioning_channels=conditioning_channels,
@@ -203,9 +205,11 @@ class HunyuanDiT2DControlNetModel(ModelMixin, ConfigMixin):
             mlp_ratio=mlp_ratio,
             num_attention_heads=num_attention_heads,
             patch_size=patch_size,
+            pooled_projection_dim=pooled_projection_dim,
             sample_size=sample_size,
             text_len=text_len,
             text_len_t5=text_len_t5,
+            use_style_cond_and_image_meta_size=use_style_cond_and_image_meta_size,
         )
         if load_weights_from_transformer:
             key = controlnet.load_state_dict(transformer.state_dict(), strict=False)
