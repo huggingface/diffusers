@@ -241,8 +241,9 @@ class Flux2KleinPipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
             all_input_ids.append(inputs["input_ids"])
             all_attention_masks.append(inputs["attention_mask"])
 
-        input_ids = torch.cat(all_input_ids, dim=0).to(device)
-        attention_mask = torch.cat(all_attention_masks, dim=0).to(device)
+        model_device = text_encoder.device
+        input_ids = torch.cat(all_input_ids, dim=0).to(model_device)
+        attention_mask = torch.cat(all_attention_masks, dim=0).to(model_device)
 
         # Forward pass through the model
         output = text_encoder(

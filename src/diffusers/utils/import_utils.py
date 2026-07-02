@@ -193,6 +193,7 @@ except importlib_metadata.PackageNotFoundError:
 _torch_xla_available, _torch_xla_version = _is_package_available("torch_xla")
 _torch_npu_available, _torch_npu_version = _is_package_available("torch_npu")
 _torch_mlu_available, _torch_mlu_version = _is_package_available("torch_mlu")
+_torch_tpu_available, _torch_tpu_version = _is_package_available("torch_tpu")
 _torch_neuronx_available, _torch_neuronx_version = _is_package_available("torch_neuronx")
 _transformers_available, _transformers_version = _is_package_available("transformers")
 _hf_hub_available, _hf_hub_version = _is_package_available("huggingface_hub")
@@ -251,6 +252,10 @@ def is_torch_npu_available():
 
 def is_torch_mlu_available():
     return _torch_mlu_available
+
+
+def is_torch_tpu_available():
+    return _torch_tpu_available
 
 
 def is_torch_neuronx_available():
@@ -594,6 +599,11 @@ TORCHAO_IMPORT_ERROR = """
 torchao`
 """
 
+TORCH_TPU_IMPORT_ERROR = """
+{0} requires the torch_tpu library but it was not found in your environment. Please follow the installation
+instructions at https://github.com/pytorch/tpu
+"""
+
 QUANTO_IMPORT_ERROR = """
 {0} requires the optimum-quanto library but it was not found in your environment. You can install it with pip: `pip
 install optimum-quanto`
@@ -650,6 +660,7 @@ BACKENDS_MAPPING = OrderedDict(
         ("pytorch_retinaface", (is_pytorch_retinaface_available, PYTORCH_RETINAFACE_IMPORT_ERROR)),
         ("better_profanity", (is_better_profanity_available, BETTER_PROFANITY_IMPORT_ERROR)),
         ("nltk", (is_nltk_available, NLTK_IMPORT_ERROR)),
+        ("torch_tpu", (is_torch_tpu_available, TORCH_TPU_IMPORT_ERROR)),
         ("torch_neuronx", (is_torch_neuronx_available, TORCH_NEURONX_IMPORT_ERROR)),
     ]
 )
