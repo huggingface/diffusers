@@ -24,10 +24,10 @@ logger = get_logger(__name__)  # pylint: disable=invalid-name
 class PackedColwiseParallel:
     """Column-wise sharding for fused projections with heterogeneous block structure.
 
-    ``blocks`` is a list of proportional integers whose sum divides the weight's row count. For example, ``[1, 1]`` for
-    a SwiGLU gate+linear projection (two equal halves) or ``[1, 1, 1, 3, 3]`` for a Q+K+V+gate+linear projection with
-    ``mlp_ratio=3``. If ``blocks`` is ``None``, the Linear module must carry a ``_tp_packed_col_blocks`` attribute set
-    during model ``__init__``.
+    `blocks` is a list of proportional integers whose sum divides the weight's row count. For example, `[1, 1]` for a
+    SwiGLU gate+linear projection (two equal halves) or `[1, 1, 1, 3, 3]` for a Q+K+V+gate+linear projection with
+    `mlp_ratio=3`. If `blocks` is `None`, the Linear module must carry a `_tp_packed_col_blocks` attribute set during
+    model `__init__`.
     """
 
     def __init__(self, blocks: "list[int] | None" = None):
@@ -37,9 +37,9 @@ class PackedColwiseParallel:
 class PackedRowwiseParallel:
     """Row-wise sharding for fused projections with heterogeneous block structure.
 
-    ``blocks`` describes the input-column partition of the fused Linear (e.g. ``[1, 3]`` when the input concatenates an
-    attention projection and an MLP projection with ``mlp_ratio=3``). If ``blocks`` is ``None``, the module must carry
-    a ``_tp_packed_row_blocks`` attribute.
+    `blocks` describes the input-column partition of the fused Linear (e.g. `[1, 3]` when the input concatenates an
+    attention projection and an MLP projection with `mlp_ratio=3`). If `blocks` is `None`, the module must carry a
+    `_tp_packed_row_blocks` attribute.
     """
 
     def __init__(self, blocks: "list[int] | None" = None):
@@ -49,8 +49,9 @@ class PackedRowwiseParallel:
 def _blocks_to_block_sizes(total_size: int, blocks: "list[int]") -> "list[int]":
     """Convert proportional block counts to absolute sizes.
 
-    ``blocks`` is a list of positive integers interpreted as proportional weights. Their sum must divide ``total_size``
-    evenly. Returns a list of absolute sizes that sum to ``total_size``.
+    `blocks` is a list of positive integers interpreted as proportional weights. Their sum must divide `total_size`
+    evenly. Returns a list of absolute sizes that sum to `total_size`. For example,
+    `_blocks_to_block_sizes(1152, [1, 1, 1, 3, 3])` returns `[128, 128, 128, 384, 384]`.
     """
     total = sum(blocks)
     if total_size % total != 0:
@@ -63,11 +64,15 @@ def _blocks_to_block_sizes(total_size: int, blocks: "list[int]") -> "list[int]":
 
 
 def _resolve_tp_plan(model: torch.nn.Module, tp_plan: dict) -> list:
-    """Group a flat ``_tp_plan`` into per-block ``(submodule, {relative_path: style})`` plans.
+    """Group a flat `_tp_plan` into per-block `(submodule, {relative_path: style})` plans.
 
-    Each glob is split at its single ``*``; the prefix must resolve to a ``ModuleList`` and the suffix is the
-    per-element key. Grouping by block lets the caller issue one ``parallelize_module`` call per block, which
-    ``RowwiseParallel`` needs to attach its input redistribution at the block boundary.
+    Each glob is split at its single `*`; the prefix must resolve to a `ModuleList` and the suffix is the per-element
+    key. Grouping by block lets the caller issue one `parallelize_module` call per block, which `RowwiseParallel`
+    needs to attach its input redistribution at the block boundary.
+
+    Example: when `transformer_blocks` is a `ModuleList` of length 2, the input
+    `{"transformer_blocks.*.ff.linear_out": "rowwise"}` returns
+    `[(transformer_blocks[0], {"ff.linear_out": "rowwise"}), (transformer_blocks[1], {"ff.linear_out": "rowwise"})]`.
     """
     grouped: dict[int, tuple] = {}
     order: list[int] = []
@@ -101,10 +106,10 @@ def _resolve_tp_plan(model: torch.nn.Module, tp_plan: dict) -> list:
 
 
 def _styles(relative_plan: dict) -> dict:
-    """Map a ``{relative_path: style}`` plan to ``parallelize_module`` style instances.
+    """Map a `{relative_path: style}` plan to `parallelize_module` style instances.
 
-    Values may be plain strings (``"colwise"`` / ``"rowwise"``) or ``PackedColwiseParallel`` /
-    ``PackedRowwiseParallel`` marker instances.
+    Values may be plain strings (`"colwise"` / `"rowwise"`) or `PackedColwiseParallel` / `PackedRowwiseParallel`
+    marker instances. Returns `{relative_path: ColwiseParallel() | RowwiseParallel() | <packed impl>}`.
     """
     import torch.nn as nn
     from torch.distributed.tensor import DTensor, Replicate, Shard, distribute_tensor
@@ -201,10 +206,10 @@ def apply_tensor_parallel(
     *,
     backend: str = "default",
 ) -> None:
-    """Apply tensor parallel on a model from its flat ``_tp_plan``.
+    """Apply tensor parallel on a model from its flat `_tp_plan`.
 
-    ``backend="neuron"`` routes to the Neuron pre-shard path (works around the NRT consecutive-reduce-scatter bug and
-    applies the Flux2 fused-weight permutations); ``"default"`` uses ``parallelize_module`` directly.
+    `backend="neuron"` routes to the Neuron pre-shard path (works around the NRT consecutive-reduce-scatter bug);
+    `"default"` uses `parallelize_module` directly.
     """
     tp_mesh = config._mesh
     if tp_mesh is None:

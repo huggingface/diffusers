@@ -203,8 +203,8 @@ class TensorParallelConfig:
             device_type = str(device).split(":")[0]
             self._mesh = init_device_mesh(device_type, (self.tp_degree,), mesh_dim_names=("tp",))
 
-        # Keep ``tp_degree`` consistent with the mesh actually used (a custom mesh wins). The
-        # attention processors read ``tp_degree`` at runtime to compute their per-rank sizes.
+        # Keep `tp_degree` consistent with the mesh actually used (a custom mesh wins), so the
+        # head-divisibility check in `ModelMixin.enable_parallelism` sees the real shard count.
         self.tp_degree = self._mesh.size()
 
 
