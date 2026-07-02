@@ -669,7 +669,7 @@ class Cosmos2_5_PredictBasePipeline(DiffusionPipeline, CosmosLoraLoaderMixin):
 
         device = self._execution_device
 
-        if self.safety_checker is not None:
+        if isinstance(self.safety_checker, CosmosSafetyChecker):
             self.safety_checker.to(device)
             if prompt is not None:
                 prompt_list = [prompt] if isinstance(prompt, str) else prompt
