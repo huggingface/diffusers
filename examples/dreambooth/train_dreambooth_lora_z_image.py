@@ -445,6 +445,11 @@ def parse_args(input_args=None):
         ),
     )
     parser.add_argument(
+        "--bucket_no_upscale",
+        action="store_true",
+        help="If set, images smaller than their aspect-ratio bucket are padded instead of upscaled.",
+    )
+    parser.add_argument(
         "--center_crop",
         default=False,
         action="store_true",
@@ -879,15 +884,6 @@ class DreamBoothDataset(Dataset):
         else:
             self.class_data_root = None
 
-        self.image_transforms = transforms.Compose(
-            [
-                transforms.Resize(size, interpolation=transforms.InterpolationMode.BILINEAR),
-                transforms.CenterCrop(size) if center_crop else transforms.RandomCrop(size),
-                transforms.ToTensor(),
-                transforms.Normalize([0.5], [0.5]),
-            ]
-        )
-
     def __len__(self):
         return self._length
 
@@ -912,37 +908,35 @@ class DreamBoothDataset(Dataset):
 
             if not class_image.mode == "RGB":
                 class_image = class_image.convert("RGB")
-            example["class_images"] = self.image_transforms(class_image)
+            # Match the class image to the paired instance image's bucket so they can be stacked into one batch.
+            example["class_images"] = self.train_transform(
+                class_image, size=self.buckets[bucket_idx], center_crop=self.center_crop
+            )
             example["class_prompt"] = self.class_prompt
 
         return example
 
-    def train_transform(self, image, size=(224, 224), center_crop=False, random_flip=False):
-        # 1. Resize (deterministic)
-        resize = transforms.Resize(size, interpolation=transforms.InterpolationMode.BILINEAR)
-        image = resize(image)
-
-        # 2. Crop: either center or SAME random crop
+    def train_transform(self, image, size, center_crop=False, random_flip=False):
+        # Resize preserving aspect ratio so the image covers the bucket, then crop to the bucket size.
+        target_height, target_width = size
+        width, height = image.size
+        scale = max(target_height / height, target_width / width)
+        if args.bucket_no_upscale:
+            scale = min(scale, 1.0)
+        new_height, new_width = round(height * scale), round(width * scale)
+        image = TF.resize(image, [new_height, new_width], interpolation=transforms.InterpolationMode.BILINEAR)
+        # Pad to the bucket when no-upscale leaves the image smaller, so batched samples share a shape.
+        pad_w, pad_h = max(0, target_width - new_width), max(0, target_height - new_height)
+        if pad_w or pad_h:
+            image = TF.pad(image, [pad_w // 2, pad_h // 2, pad_w - pad_w // 2, pad_h - pad_h // 2])
         if center_crop:
-            crop = transforms.CenterCrop(size)
-            image = crop(image)
+            image = TF.center_crop(image, size)
         else:
-            # get_params returns (i, j, h, w)
             i, j, h, w = transforms.RandomCrop.get_params(image, output_size=size)
             image = TF.crop(image, i, j, h, w)
-
-        # 3. Random horizontal flip with the SAME coin flip
-        if random_flip:
-            do_flip = random.random() < 0.5
-            if do_flip:
-                image = TF.hflip(image)
-
-        # 4. ToTensor + Normalize (deterministic)
-        to_tensor = transforms.ToTensor()
-        normalize = transforms.Normalize([0.5], [0.5])
-        image = normalize(to_tensor(image))
-
-        return image
+        if random_flip and random.random() < 0.5:
+            image = TF.hflip(image)
+        return TF.normalize(TF.to_tensor(image), [0.5], [0.5])
 
 
 def collate_fn(examples, with_prior_preservation=False):

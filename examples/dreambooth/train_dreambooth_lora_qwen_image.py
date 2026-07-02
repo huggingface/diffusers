@@ -56,9 +56,9 @@ from peft import LoraConfig, prepare_model_for_kbit_training, set_peft_model_sta
 from peft.utils import get_peft_model_state_dict
 from PIL import Image
 from PIL.ImageOps import exif_transpose
-from torch.utils.data import Dataset
+from torch.utils.data import BatchSampler, Dataset
 from torchvision import transforms
-from torchvision.transforms.functional import crop
+from torchvision.transforms import functional as TF
 from tqdm.auto import tqdm
 from transformers import Qwen2_5_VLForConditionalGeneration, Qwen2Tokenizer
 
@@ -76,8 +76,10 @@ from diffusers.training_utils import (
     cast_training_params,
     compute_density_for_timestep_sampling,
     compute_loss_weighting_for_sd3,
+    find_nearest_bucket,
     free_memory,
     offload_models,
+    parse_buckets_string,
 )
 from diffusers.utils import (
     check_min_version,
@@ -425,6 +427,21 @@ def parse_args(input_args=None):
         ),
     )
     parser.add_argument(
+        "--aspect_ratio_buckets",
+        type=str,
+        default=None,
+        help=(
+            "Aspect ratio buckets to use for training. Define as a string of 'h1,w1;h2,w2;...'. "
+            "e.g. '1024,1024;768,1360;1360,768;880,1168;1168,880;1248,832;832,1248'"
+            "Images will be resized and cropped to fit the nearest bucket. If provided, --resolution is ignored."
+        ),
+    )
+    parser.add_argument(
+        "--bucket_no_upscale",
+        action="store_true",
+        help="If set, images smaller than their aspect-ratio bucket are padded instead of upscaled.",
+    )
+    parser.add_argument(
         "--center_crop",
         default=False,
         action="store_true",
@@ -437,6 +454,16 @@ def parse_args(input_args=None):
         "--random_flip",
         action="store_true",
         help="whether to randomly flip images horizontally",
+    )
+    parser.add_argument(
+        "--caption_dropout",
+        type=float,
+        default=0.0,
+        help=(
+            "Probability of replacing an instance image's caption with an empty string during training, so that"
+            " fraction of samples is trained unconditionally. Improves classifier-free guidance. A common value is"
+            " 0.1. Class/prior-preservation captions are never dropped."
+        ),
     )
     parser.add_argument(
         "--train_batch_size", type=int, default=4, help="Batch size (per device) for the training dataloader."
@@ -716,6 +743,7 @@ class DreamBoothDataset(Dataset):
         size=1024,
         repeats=1,
         center_crop=False,
+        buckets=None,
     ):
         self.size = size
         self.center_crop = center_crop
@@ -723,6 +751,8 @@ class DreamBoothDataset(Dataset):
         self.instance_prompt = instance_prompt
         self.custom_instance_prompts = None
         self.class_prompt = class_prompt
+
+        self.buckets = buckets
 
         # if --dataset_name is provided or a metadata jsonl file is provided in the local --instance_data directory,
         # we load the training data using load_dataset
@@ -788,32 +818,26 @@ class DreamBoothDataset(Dataset):
             self.instance_images.extend(itertools.repeat(img, repeats))
 
         self.pixel_values = []
-        train_resize = transforms.Resize(size, interpolation=transforms.InterpolationMode.BILINEAR)
-        train_crop = transforms.CenterCrop(size) if center_crop else transforms.RandomCrop(size)
-        train_flip = transforms.RandomHorizontalFlip(p=1.0)
-        train_transforms = transforms.Compose(
-            [
-                transforms.ToTensor(),
-                transforms.Normalize([0.5], [0.5]),
-            ]
-        )
         for image in self.instance_images:
             image = exif_transpose(image)
             if not image.mode == "RGB":
                 image = image.convert("RGB")
-            image = train_resize(image)
-            if args.random_flip and random.random() < 0.5:
-                # flip
-                image = train_flip(image)
-            if args.center_crop:
-                y1 = max(0, int(round((image.height - args.resolution) / 2.0)))
-                x1 = max(0, int(round((image.width - args.resolution) / 2.0)))
-                image = train_crop(image)
-            else:
-                y1, x1, h, w = train_crop.get_params(image, (args.resolution, args.resolution))
-                image = crop(image, y1, x1, h, w)
-            image = train_transforms(image)
-            self.pixel_values.append(image)
+
+            width, height = image.size
+
+            # Find the closest bucket and use its dimensions as the resize/crop target.
+            bucket_idx = find_nearest_bucket(height, width, self.buckets)
+            target_height, target_width = self.buckets[bucket_idx]
+            self.size = (target_height, target_width)
+
+            # based on the bucket assignment, define the transformations
+            image = self.train_transform(
+                image,
+                size=self.size,
+                center_crop=args.center_crop,
+                random_flip=args.random_flip,
+            )
+            self.pixel_values.append((image, bucket_idx))
 
         self.num_instance_images = len(self.instance_images)
         self._length = self.num_instance_images
@@ -830,23 +854,15 @@ class DreamBoothDataset(Dataset):
         else:
             self.class_data_root = None
 
-        self.image_transforms = transforms.Compose(
-            [
-                transforms.Resize(size, interpolation=transforms.InterpolationMode.BILINEAR),
-                transforms.CenterCrop(size) if center_crop else transforms.RandomCrop(size),
-                transforms.ToTensor(),
-                transforms.Normalize([0.5], [0.5]),
-            ]
-        )
-
     def __len__(self):
         return self._length
 
     def __getitem__(self, index):
         example = {}
-        instance_image = self.pixel_values[index % self.num_instance_images]
+        instance_image, bucket_idx = self.pixel_values[index % self.num_instance_images]
+        example["index"] = index
         example["instance_images"] = instance_image
-
+        example["bucket_idx"] = bucket_idx
         if self.custom_instance_prompts:
             caption = self.custom_instance_prompts[index % self.num_instance_images]
             if caption:
@@ -863,14 +879,42 @@ class DreamBoothDataset(Dataset):
 
             if not class_image.mode == "RGB":
                 class_image = class_image.convert("RGB")
-            example["class_images"] = self.image_transforms(class_image)
+            # Match the class image to the paired instance image's bucket so they can be stacked into one batch.
+            example["class_images"] = self.train_transform(
+                class_image, size=self.buckets[bucket_idx], center_crop=self.center_crop
+            )
             example["class_prompt"] = self.class_prompt
 
         return example
 
+    def train_transform(self, image, size, center_crop=False, random_flip=False):
+        # Resize preserving aspect ratio so the image covers the bucket, then crop to the bucket size.
+        target_height, target_width = size
+        width, height = image.size
+        scale = max(target_height / height, target_width / width)
+        if args.bucket_no_upscale:
+            scale = min(scale, 1.0)
+        new_height, new_width = round(height * scale), round(width * scale)
+        image = TF.resize(image, [new_height, new_width], interpolation=transforms.InterpolationMode.BILINEAR)
+        # Pad to the bucket when no-upscale leaves the image smaller, so batched samples share a shape.
+        pad_w, pad_h = max(0, target_width - new_width), max(0, target_height - new_height)
+        if pad_w or pad_h:
+            image = TF.pad(image, [pad_w // 2, pad_h // 2, pad_w - pad_w // 2, pad_h - pad_h // 2])
+        if center_crop:
+            image = TF.center_crop(image, size)
+        else:
+            i, j, h, w = transforms.RandomCrop.get_params(image, output_size=size)
+            image = TF.crop(image, i, j, h, w)
+        if random_flip and random.random() < 0.5:
+            image = TF.hflip(image)
+        return TF.normalize(TF.to_tensor(image), [0.5], [0.5])
+
 
 def collate_fn(examples, with_prior_preservation=False):
+    indices = [example["index"] for example in examples]
     pixel_values = [example["instance_images"] for example in examples]
+    # Keep instance_prompts unchanged for prompt cache precompute; prompts may be extended with class prompts below.
+    instance_prompts = [example["instance_prompt"] for example in examples]
     prompts = [example["instance_prompt"] for example in examples]
 
     # Concat class and instance examples for prior preservation.
@@ -885,8 +929,56 @@ def collate_fn(examples, with_prior_preservation=False):
         pixel_values = pixel_values.unsqueeze(2)
     pixel_values = pixel_values.to(memory_format=torch.contiguous_format).float()
 
-    batch = {"pixel_values": pixel_values, "prompts": prompts}
+    batch = {
+        "indices": indices,
+        "pixel_values": pixel_values,
+        "instance_prompts": instance_prompts,
+        "prompts": prompts,
+    }
     return batch
+
+
+class BucketBatchSampler(BatchSampler):
+    def __init__(self, dataset: DreamBoothDataset, batch_size: int, drop_last: bool = False, seed: int = None):
+        if not isinstance(batch_size, int) or batch_size <= 0:
+            raise ValueError("batch_size should be a positive integer value, but got batch_size={}".format(batch_size))
+        if not isinstance(drop_last, bool):
+            raise ValueError("drop_last should be a boolean value, but got drop_last={}".format(drop_last))
+
+        self.dataset = dataset
+        self.batch_size = batch_size
+        self.drop_last = drop_last
+        self.generator = random.Random(seed) if seed is not None else random
+
+        # Group indices by bucket
+        self.bucket_indices = [[] for _ in range(len(self.dataset.buckets))]
+        for idx, (_, bucket_idx) in enumerate(self.dataset.pixel_values):
+            self.bucket_indices[bucket_idx].append(idx)
+
+        self.sampler_len = 0
+        for indices_in_bucket in self.bucket_indices:
+            num_batches, remainder = divmod(len(indices_in_bucket), self.batch_size)
+            self.sampler_len += num_batches
+            if remainder > 0 and not self.drop_last:
+                self.sampler_len += 1
+
+    def __iter__(self):
+        batches = []
+        for indices_in_bucket in self.bucket_indices:
+            shuffled_indices = indices_in_bucket.copy()
+            self.generator.shuffle(shuffled_indices)
+            for i in range(0, len(shuffled_indices), self.batch_size):
+                batch = shuffled_indices[i : i + self.batch_size]
+                if len(batch) < self.batch_size and self.drop_last:
+                    continue
+                batches.append(batch)
+
+        self.generator.shuffle(batches)
+        for batch in batches:
+            yield batch
+
+    def __len__(self):
+        return self.sampler_len
 
 
 class PromptDataset(Dataset):
@@ -1325,6 +1417,12 @@ def main(args):
             safeguard_warmup=args.prodigy_safeguard_warmup,
         )
 
+    if args.aspect_ratio_buckets is not None:
+        buckets = parse_buckets_string(args.aspect_ratio_buckets)
+    else:
+        buckets = [(args.resolution, args.resolution)]
+    logger.info(f"Using parsed aspect ratio buckets: {buckets}")
+
     # Dataset and DataLoaders creation:
     train_dataset = DreamBoothDataset(
         instance_data_root=args.instance_data_dir,
@@ -1335,12 +1433,13 @@ def main(args):
         size=args.resolution,
         repeats=args.repeats,
         center_crop=args.center_crop,
+        buckets=buckets,
     )
-
+    precompute_latents = args.cache_latents or train_dataset.custom_instance_prompts
+    batch_sampler = BucketBatchSampler(train_dataset, batch_size=args.train_batch_size, drop_last=True, seed=args.seed)
     train_dataloader = torch.utils.data.DataLoader(
         train_dataset,
-        batch_size=args.train_batch_size,
-        shuffle=True,
+        batch_sampler=batch_sampler,
         collate_fn=lambda examples: collate_fn(examples, args.with_prior_preservation),
         num_workers=args.dataloader_num_workers,
     )
@@ -1368,6 +1467,12 @@ def main(args):
                 args.class_prompt, text_encoding_pipeline
             )
 
+    # When caption dropout is enabled, we precompute the empty ("") prompt embedding once and swap it in
+    # for randomly selected instance samples at training time (see the training loop below).
+    if args.caption_dropout > 0:
+        with offload_models(text_encoding_pipeline, device=accelerator.device, offload=args.offload):
+            empty_prompt_embeds, empty_prompt_embeds_mask = compute_text_embeddings("", text_encoding_pipeline)
+
     validation_embeddings = {}
     if args.validation_prompt is not None:
         with offload_models(text_encoding_pipeline, device=accelerator.device, offload=args.offload):
@@ -1375,41 +1480,62 @@ def main(args):
                 compute_text_embeddings(args.validation_prompt, text_encoding_pipeline)
             )
 
-    # If custom instance prompts are NOT provided (i.e. the instance prompt is used for all images),
-    # pack the statically computed variables appropriately here. This is so that we don't
-    # have to pass them to the dataloader.
-    if not train_dataset.custom_instance_prompts:
-        prompt_embeds = instance_prompt_embeds
-        prompt_embeds_mask = instance_prompt_embeds_mask
-        if args.with_prior_preservation:
-            prompt_embeds, prompt_embeds_mask = concat_prompt_embedding_batches(
-                (instance_prompt_embeds, instance_prompt_embeds_mask),
-                (class_prompt_embeds, class_prompt_embeds_mask),
-            )
-
     # if cache_latents is set to True, we encode images to latents and store them.
     # Similar to pre-encoding in the case of a single instance prompt, if custom prompts are provided
-    # we encode them in advance as well.
-    precompute_latents = args.cache_latents or train_dataset.custom_instance_prompts
+    # we encode them in advance as well. Caches are keyed by dataset index so they stay correct under
+    # aspect-ratio bucketing, where the batch composition differs between the caching pass and training.
+    if args.cache_latents:
+        instance_latents_cache = [None] * train_dataset.num_instance_images
+        class_latents_cache = [None] * train_dataset.num_instance_images if args.with_prior_preservation else None
+    if train_dataset.custom_instance_prompts:
+        prompt_embeds_cache = [None] * train_dataset.num_instance_images
+        prompt_embeds_mask_cache = [None] * train_dataset.num_instance_images
     if precompute_latents:
-        prompt_embeds_cache = []
-        prompt_embeds_mask_cache = []
-        latents_cache = []
-        for batch in tqdm(train_dataloader, desc="Caching latents"):
+        cache_batch_sampler = BucketBatchSampler(
+            train_dataset, batch_size=args.train_batch_size, drop_last=False, seed=args.seed
+        )
+        cache_dataloader = torch.utils.data.DataLoader(
+            train_dataset,
+            batch_sampler=cache_batch_sampler,
+            collate_fn=lambda examples: collate_fn(examples, args.with_prior_preservation),
+            num_workers=args.dataloader_num_workers,
+        )
+        for batch in tqdm(cache_dataloader, desc="Caching latents"):
             with torch.no_grad():
+                sample_indices = batch["indices"]
                 if args.cache_latents:
                     with offload_models(vae, device=accelerator.device, offload=args.offload):
                         batch["pixel_values"] = batch["pixel_values"].to(
                             accelerator.device, non_blocking=True, dtype=vae.dtype
                         )
-                        latents_cache.append(vae.encode(batch["pixel_values"]).latent_dist)
+                        latents = vae.encode(batch["pixel_values"]).latent_dist.sample()
+                    if args.with_prior_preservation:
+                        instance_latents, class_latents = torch.chunk(latents, 2, dim=0)
+                    else:
+                        instance_latents = latents
+                    for i, idx in enumerate(sample_indices):
+                        instance_latents_cache[idx] = instance_latents[i : i + 1]
+                        if args.with_prior_preservation:
+                            class_latents_cache[idx] = class_latents[i : i + 1]
                 if train_dataset.custom_instance_prompts:
                     with offload_models(text_encoding_pipeline, device=accelerator.device, offload=args.offload):
                         prompt_embeds, prompt_embeds_mask = compute_text_embeddings(
-                            batch["prompts"], text_encoding_pipeline
+                            batch["instance_prompts"], text_encoding_pipeline
                         )
-                    prompt_embeds_cache.append(prompt_embeds)
-                    prompt_embeds_mask_cache.append(prompt_embeds_mask)
+                    for i, idx in enumerate(sample_indices):
+                        prompt_embeds_cache[idx] = prompt_embeds[i : i + 1]
+                        prompt_embeds_mask_cache[idx] = prompt_embeds_mask[i : i + 1]
+
+        if args.cache_latents:
+            assert all(latents is not None for latents in instance_latents_cache), "Latent cache has unfilled entries."
+            if args.with_prior_preservation:
+                assert all(latents is not None for latents in class_latents_cache), (
+                    "Class latent cache has unfilled entries."
+                )
+        if train_dataset.custom_instance_prompts:
+            assert all(embeds is not None for embeds in prompt_embeds_cache), (
+                "Prompt embedding cache has unfilled entries."
+            )
 
     # move back to cpu before deleting to ensure memory is freed see: https://github.com/huggingface/diffusers/issues/11376#issue-3008144624
     if args.cache_latents:
@@ -1519,26 +1645,45 @@ def main(args):
     for epoch in range(first_epoch, args.num_train_epochs):
         transformer.train()
 
-        for step, batch in enumerate(train_dataloader):
+        for batch in train_dataloader:
             models_to_accumulate = [transformer]
-            prompts = batch["prompts"]
+            sample_indices = batch["indices"]
+            n_inst = len(sample_indices)
 
             with accelerator.accumulate(models_to_accumulate):
-                # encode batch prompts when custom prompts are provided for each image -
+                # Assemble this batch's instance prompt embeddings as one (embeds, mask) pair per sample,
+                # gathered by dataset index so they stay aligned with the latents under aspect-ratio bucketing.
                 if train_dataset.custom_instance_prompts:
-                    prompt_embeds = prompt_embeds_cache[step]
-                    prompt_embeds_mask = prompt_embeds_mask_cache[step]
+                    instance_pairs = [
+                        (prompt_embeds_cache[idx], prompt_embeds_mask_cache[idx]) for idx in sample_indices
+                    ]
                 else:
-                    # With prior preservation, prompt_embeds already contains [instance, class] embeddings
-                    # from the cat above, but collate_fn also doubles the prompts list. Use half the
-                    # prompts count to avoid a 2x over-repeat that produces more embeddings than latents.
-                    num_repeat_elements = len(prompts) // 2 if args.with_prior_preservation else len(prompts)
-                    prompt_embeds = prompt_embeds.repeat_interleave(num_repeat_elements, dim=0)
-                    if prompt_embeds_mask is not None:
-                        prompt_embeds_mask = prompt_embeds_mask.repeat_interleave(num_repeat_elements, dim=0)
+                    instance_pairs = [(instance_prompt_embeds, instance_prompt_embeds_mask)] * n_inst
+
+                # Caption dropout: replace a sample's caption embedding with the empty-prompt embedding so it
+                # trains unconditionally. Only instance captions are dropped, never class/prior captions.
+                if args.caption_dropout > 0:
+                    instance_pairs = [
+                        (empty_prompt_embeds, empty_prompt_embeds_mask)
+                        if random.random() < args.caption_dropout
+                        else pair
+                        for pair in instance_pairs
+                    ]
+
+                # collate_fn orders batches as [instance..., class...]; keep the prompt embeddings in the same order.
+                prompt_pairs = instance_pairs
+                if args.with_prior_preservation:
+                    prompt_pairs = prompt_pairs + [(class_prompt_embeds, class_prompt_embeds_mask)] * n_inst
+                prompt_embeds, prompt_embeds_mask = concat_prompt_embedding_batches(*prompt_pairs)
+
                 # Convert images to latent space
                 if args.cache_latents:
-                    model_input = latents_cache[step].sample()
+                    model_input = torch.cat([instance_latents_cache[idx] for idx in sample_indices], dim=0)
+                    if args.with_prior_preservation:
+                        model_input = torch.cat(
+                            [model_input, torch.cat([class_latents_cache[idx] for idx in sample_indices], dim=0)],
+                            dim=0,
+                        )
                 else:
                     with offload_models(vae, device=accelerator.device, offload=args.offload):
                         pixel_values = batch["pixel_values"].to(dtype=vae.dtype)
@@ -1568,10 +1713,10 @@ def main(args):
                 sigmas = get_sigmas(timesteps, n_dim=model_input.ndim, dtype=model_input.dtype)
                 noisy_model_input = (1.0 - sigmas) * model_input + sigmas * noise
 
-                # Predict the noise residual
-                img_shapes = [
-                    (1, args.resolution // vae_scale_factor // 2, args.resolution // vae_scale_factor // 2)
-                ] * bsz
+                # Predict the noise residual. A batch is single-bucket, so the latent height/width are shared
+                # across the batch; derive them from the latents to support aspect-ratio buckets.
+                latent_height, latent_width = model_input.shape[3], model_input.shape[4]
+                img_shapes = [(1, latent_height // 2, latent_width // 2)] * bsz
                 # transpose the dimensions
                 noisy_model_input = noisy_model_input.permute(0, 2, 1, 3, 4)
                 packed_noisy_model_input = QwenImagePipeline._pack_latents(
@@ -1590,7 +1735,7 @@ def main(args):
                     return_dict=False,
                 )[0]
                 model_pred = QwenImagePipeline._unpack_latents(
-                    model_pred, args.resolution, args.resolution, vae_scale_factor
+                    model_pred, latent_height * vae_scale_factor, latent_width * vae_scale_factor, vae_scale_factor
                 )
 
                 # these weighting schemes use a uniform timestep sampling

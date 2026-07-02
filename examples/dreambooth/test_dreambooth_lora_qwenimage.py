@@ -246,3 +246,51 @@ class DreamBoothLoRAQwenImage(ExamplesTestsAccelerate):
             self.assertTrue(loaded_lora_alpha == lora_alpha)
             loaded_lora_rank = raw["transformer.r"]
             self.assertTrue(loaded_lora_rank == rank)
+
+    def test_dreambooth_lora_qwen_aspect_ratio_buckets(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            test_args = f"""
+                {self.script_path}
+                --pretrained_model_name_or_path {self.pretrained_model_name_or_path}
+                --instance_data_dir {self.instance_data_dir}
+                --instance_prompt {self.instance_prompt}
+                --aspect_ratio_buckets 64,64;64,128
+                --bucket_no_upscale
+                --cache_latents
+                --train_batch_size 1
+                --gradient_accumulation_steps 1
+                --max_train_steps 2
+                --learning_rate 5.0e-04
+                --lr_scheduler constant
+                --lr_warmup_steps 0
+                --output_dir {tmpdir}
+                """.split()
+
+            run_command(self._launch_args + test_args)
+            self.assertTrue(os.path.isfile(os.path.join(tmpdir, "pytorch_lora_weights.safetensors")))
+            lora_state_dict = safetensors.torch.load_file(os.path.join(tmpdir, "pytorch_lora_weights.safetensors"))
+            self.assertTrue(all("lora" in k for k in lora_state_dict.keys()))
+            self.assertTrue(all(key.startswith("transformer") for key in lora_state_dict.keys()))
+
+    def test_dreambooth_lora_qwen_caption_dropout(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            test_args = f"""
+                {self.script_path}
+                --pretrained_model_name_or_path {self.pretrained_model_name_or_path}
+                --instance_data_dir {self.instance_data_dir}
+                --instance_prompt {self.instance_prompt}
+                --resolution 64
+                --caption_dropout 1.0
+                --train_batch_size 1
+                --gradient_accumulation_steps 1
+                --max_train_steps 2
+                --learning_rate 5.0e-04
+                --lr_scheduler constant
+                --lr_warmup_steps 0
+                --output_dir {tmpdir}
+                """.split()
+
+            run_command(self._launch_args + test_args)
+            self.assertTrue(os.path.isfile(os.path.join(tmpdir, "pytorch_lora_weights.safetensors")))
+            lora_state_dict = safetensors.torch.load_file(os.path.join(tmpdir, "pytorch_lora_weights.safetensors"))
+            self.assertTrue(all("lora" in k for k in lora_state_dict.keys()))
