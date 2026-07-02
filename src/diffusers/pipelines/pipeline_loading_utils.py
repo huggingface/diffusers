@@ -69,6 +69,27 @@ DUMMY_MODULES_FOLDER = "diffusers.utils"
 TRANSFORMERS_DUMMY_MODULES_FOLDER = "transformers.utils"
 CONNECTED_PIPES_KEYS = ["prior"]
 
+# Auxiliary (non-weight) files a transformers component saves next to its weights. Repos with a flat,
+# transformers-style layout host a component's files at the repo root instead of in a subfolder, where the
+# folder-based allow patterns of `DiffusionPipeline.download` would miss them. Root-hosted weights and
+# `config.json` are matched by their own patterns, so only these auxiliary filenames need listing.
+TRANSFORMERS_COMPONENT_AUX_FILES = [
+    "added_tokens.json",
+    "chat_template.jinja",
+    "chat_template.json",
+    "generation_config.json",
+    "merges.txt",
+    "preprocessor_config.json",
+    "processor_config.json",
+    "special_tokens_map.json",
+    "spiece.model",
+    "tokenizer.json",
+    "tokenizer.model",
+    "tokenizer_config.json",
+    "vocab.json",
+    "vocab.txt",
+]
+
 logger = logging.get_logger(__name__)
 
 LOADABLE_CLASSES = {

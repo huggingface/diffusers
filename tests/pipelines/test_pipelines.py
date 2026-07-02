@@ -2083,18 +2083,27 @@ class PipelineSlowTests(unittest.TestCase):
             # is not downloaded, but all the expected ones
             assert not os.path.isfile(os.path.join(snapshot_dir, "big_array.npy"))
 
-    def test_download_allow_files(self):
-        # `_allow_files` in model_index.json forces files that the smart-download patterns would otherwise skip.
-        # This repo mirrors `unet-pipeline-dummy` but lists a (tiny stand-in) `big_array.npy` in `_allow_files`,
-        # so it is downloaded here, whereas `test_smart_download` asserts it is skipped without `_allow_files`.
-        model_id = "hf-internal-testing/unet-pipeline-dummy-allow-files"
+    def test_download_flat_transformers_style_repo(self):
+        # Repos with a flat, transformers-style layout host a component's files at the repo root instead of in a
+        # subfolder (here `model` and `processor`; only `scheduler/` has a folder). The download patterns must
+        # pick up the transformers auxiliary files at the root, while unrelated root files are still skipped.
+        model_id = "hf-internal-testing/tiny-flat-transformers-style-pipe"
         with tempfile.TemporaryDirectory() as tmpdirname:
-            _ = DiffusionPipeline.from_pretrained(model_id, cache_dir=tmpdirname, force_download=True)
-            local_repo_name = "--".join(["models"] + model_id.split("/"))
-            snapshot_dir = os.path.join(tmpdirname, local_repo_name, "snapshots")
-            snapshot_dir = os.path.join(snapshot_dir, os.listdir(snapshot_dir)[0])
+            snapshot_dir = DiffusionPipeline.download(model_id, cache_dir=tmpdirname, force_download=True)
 
-            assert os.path.isfile(os.path.join(snapshot_dir, "big_array.npy"))
+            assert os.path.isfile(os.path.join(snapshot_dir, "model.safetensors"))
+            assert os.path.isfile(os.path.join(snapshot_dir, CONFIG_NAME))
+            for aux_file in [
+                "tokenizer.json",
+                "tokenizer_config.json",
+                "processor_config.json",
+                "chat_template.jinja",
+                "generation_config.json",
+            ]:
+                assert os.path.isfile(os.path.join(snapshot_dir, aux_file))
+            assert os.path.isfile(os.path.join(snapshot_dir, "scheduler", SCHEDULER_CONFIG_NAME))
+            # unrelated root files are still not downloaded
+            assert not os.path.isfile(os.path.join(snapshot_dir, "big_array.npy"))
 
     def test_warning_unused_kwargs(self):
         model_id = "hf-internal-testing/unet-pipeline-dummy"
