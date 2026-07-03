@@ -140,9 +140,6 @@ class SVDQW4A4Linear(nn.Module):
         self.smooth_factor = nn.Parameter(
             torch.empty(in_features, dtype=torch_dtype, device=device), requires_grad=False
         )
-        self.smooth_factor_orig = nn.Parameter(
-            torch.empty(in_features, dtype=torch_dtype, device=device), requires_grad=False
-        )
         self.proj_down = nn.Parameter(torch.empty(in_features, rank, dtype=torch_dtype, device=device), requires_grad=False)
         self.proj_up = nn.Parameter(torch.empty(out_features, rank, dtype=torch_dtype, device=device), requires_grad=False)
 

@@ -33,7 +33,6 @@ def _state_dict(precision="int4"):
         "linear1.proj_up": torch.randn(128, 4, dtype=torch.bfloat16),
         "linear1.qweight": torch.randint(-8, 8, (128, 32), dtype=torch.int8),
         "linear1.smooth_factor": torch.randn(64, dtype=torch.bfloat16),
-        "linear1.smooth_factor_orig": torch.randn(64, dtype=torch.bfloat16),
         "linear2.qweight": torch.randint(-8, 8, (32, 32), dtype=torch.int32),
         "linear2.wscales": torch.randn(1, 128, dtype=torch.bfloat16),
         "linear2.wzeros": torch.randn(1, 128, dtype=torch.bfloat16),
@@ -123,6 +122,7 @@ class NunchakuLiteBasicTests(unittest.TestCase):
         self.assertEqual(model.linear1.precision, "nvfp4")
         self.assertEqual(model.linear1.rank, 4)
         self.assertIsNotNone(model.linear1.bias)
+        self.assertFalse(hasattr(model.linear1, "smooth_factor_orig"))
         self.assertIsNone(model.linear2.bias)
 
     @unittest.skipIf(not is_kernels_available(), "Nunchaku Lite from_pretrained requires kernels.")
