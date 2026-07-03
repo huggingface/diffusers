@@ -107,11 +107,6 @@ class SVDQW4A4Linear(nn.Module):
         if device is None:
             device = torch.device("cpu")
 
-        if precision not in {"int4", "nvfp4"}:
-            raise ValueError(f"Invalid Nunchaku SVDQ precision: {precision!r}.")
-        if group_size <= 0:
-            raise ValueError(f"Nunchaku SVDQ group_size must be positive, got {group_size}.")
-
         self.in_features = in_features
         self.out_features = out_features
         self.rank = rank
@@ -209,8 +204,6 @@ class AWQW4A16Linear(nn.Module):
         super().__init__()
         if device is None:
             device = torch.device("cpu")
-        if group_size != 64:
-            raise ValueError(f"Nunchaku AWQ W4A16 currently supports group_size=64 only, got {group_size}.")
 
         self.in_features = in_features
         self.out_features = out_features

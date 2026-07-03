@@ -64,8 +64,6 @@ _import_structure = {
     ],
 }
 
-_import_structure["quantizers.quantization_config"].append("NunchakuLiteQuantizationConfig")
-
 try:
     if not is_torch_available() and not is_accelerate_available() and not is_bitsandbytes_available():
         raise OptionalDependencyNotAvailable()
@@ -125,6 +123,18 @@ except OptionalDependencyNotAvailable:
     ]
 else:
     _import_structure["quantizers.quantization_config"].append("NVIDIAModelOptConfig")
+
+try:
+    if not is_torch_available():
+        raise OptionalDependencyNotAvailable()
+except OptionalDependencyNotAvailable:
+    from .utils import dummy_nunchaku_lite_objects
+
+    _import_structure["utils.dummy_nunchaku_lite_objects"] = [
+        name for name in dir(dummy_nunchaku_lite_objects) if not name.startswith("_")
+    ]
+else:
+    _import_structure["quantizers.quantization_config"].append("NunchakuLiteQuantizationConfig")
 
 try:
     if not is_auto_round_available():
@@ -970,7 +980,6 @@ else:
 if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     from .configuration_utils import ConfigMixin
     from .quantizers import PipelineQuantizationConfig
-    from .quantizers.quantization_config import NunchakuLiteQuantizationConfig
 
     try:
         if not is_bitsandbytes_available():
@@ -1011,6 +1020,14 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .utils.dummy_nvidia_modelopt_objects import *
     else:
         from .quantizers.quantization_config import NVIDIAModelOptConfig
+
+    try:
+        if not is_torch_available():
+            raise OptionalDependencyNotAvailable()
+    except OptionalDependencyNotAvailable:
+        from .utils.dummy_nunchaku_lite_objects import *
+    else:
+        from .quantizers.quantization_config import NunchakuLiteQuantizationConfig
 
     try:
         if not is_auto_round_available():

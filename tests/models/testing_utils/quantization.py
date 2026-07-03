@@ -1461,16 +1461,16 @@ class NunchakuLiteTesterMixin(NunchakuLiteConfigMixin, QuantizationTesterMixin):
                 self._verify_if_layer_quantized(name, module, config_kwargs)
                 num_quantized_layers += 1
 
-        expected_quantized_layers = num_quantized_layers
-        num_fp32_modules = 0
+        expected_quantized_layers = sum(
+            len(config_kwargs.get(section, {}).get("targets", [])) for section in ("svdq_w4a4", "awq_w4a16")
+        )
 
         assert num_quantized_layers > 0, (
-            f"No quantized layers found in model (expected {expected_quantized_layers} Nunchaku Lite layers, "
-            f"{num_fp32_modules} kept in FP32)"
+            f"No quantized layers found in model (expected {expected_quantized_layers} Nunchaku Lite layers)"
         )
         assert num_quantized_layers == expected_quantized_layers, (
             f"Quantized layer count mismatch: expected {expected_quantized_layers}, got {num_quantized_layers} "
-            f"(total Nunchaku Lite layers: {expected_quantized_layers}, FP32 modules: {num_fp32_modules})"
+            f"(configured Nunchaku Lite targets: {expected_quantized_layers})"
         )
 
     def test_nunchaku_lite_quantized_layers(self):

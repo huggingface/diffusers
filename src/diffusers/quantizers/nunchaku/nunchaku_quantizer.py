@@ -41,7 +41,6 @@ class NunchakuLiteQuantizer(DiffusersQuantizer):
         self,
         model: "ModelMixin",
         state_dict: dict[str, Any] | None = None,
-        metadata: dict[str, str] | None = None,
         **kwargs,
     ):
         quantization_config = self.quantization_config.to_dict()
