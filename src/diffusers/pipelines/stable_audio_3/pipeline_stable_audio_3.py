@@ -323,8 +323,8 @@ class StableAudio3Pipeline(DiffusionPipeline):
                 Number of denoising steps. SA3 Medium is distilled for exactly 8 ping-pong steps.
             silence_padding_duration (`float`, defaults to 6.0):
                 Extra seconds of latent context generated beyond the target content, giving the model headroom at the
-                boundary; the output is trimmed back to `duration`. Matches the reference implementation default of
-                6.0 s. Set to 0.0 to disable (not recommended — the model produces artifacts without headroom).
+                boundary; the output is trimmed back to `duration`. Matches the reference implementation default of 6.0
+                s. Set to 0.0 to disable (not recommended — the model produces artifacts without headroom).
             num_waveforms_per_prompt (`int`, defaults to 1):
                 Number of waveforms to generate per prompt.
             generator (`torch.Generator` or `list[torch.Generator]`, *optional*):
