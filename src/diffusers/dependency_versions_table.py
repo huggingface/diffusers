@@ -21,6 +21,8 @@ deps = {
     "torchsde": "torchsde",
     "note_seq": "note_seq",
     "librosa": "librosa",
+    "llvmlite": "llvmlite>=0.40.0",
+    "numba": "numba>=0.57.0",
     "numpy": "numpy",
     "parameterized": "parameterized",
     "peft": "peft>=0.17.0",
