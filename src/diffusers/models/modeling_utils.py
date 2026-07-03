@@ -1532,7 +1532,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
 
         if dtype_present_in_args and fp32_modules is not None:
             logger.warning(
-                f"There are modules in {self.__class__.__name__} that should be kept in float32: {fp32_modules}. A bare `to()` might lead to inconsistent results."
+                f"There are modules in {self.__class__.__name__} that should be kept in float32: {fp32_modules}. Casting directly with `to()` can lead to inconsistent results; set `torch_dtype` in `from_pretrained()` instead to keep these modules in float32."
             )
 
         if getattr(self, "is_quantized", False):
