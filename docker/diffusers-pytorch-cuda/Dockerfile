@@ -40,11 +40,6 @@ RUN uv pip install --no-cache-dir \
     torchaudio==2.10.0 \
     --index-url https://download.pytorch.org/whl/cu129
 
-# Install compatible versions of numba/llvmlite for Python 3.10+
-RUN uv pip install --no-cache-dir \
-    "llvmlite>=0.40.0" \
-    "numba>=0.57.0"
-
 RUN uv pip install --no-cache-dir "git+https://github.com/huggingface/diffusers.git@main#egg=diffusers[test]"
 
 # Extra dependencies
