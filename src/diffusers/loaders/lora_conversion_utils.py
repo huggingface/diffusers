@@ -2232,8 +2232,26 @@ def _convert_non_diffusers_qwen_lora_to_diffusers(state_dict):
     if has_lora_unet:
         state_dict = {k.removeprefix("lora_unet_"): v for k, v in state_dict.items()}
 
+        # Top-level (non-block) modules: convert_key below assumes every key lives under
+        # transformer_blocks_ and blindly strips/re-prepends that prefix, which collapses
+        # these module names onto each other. Map them explicitly before that logic runs.
+        # The flattened name -> dotted diffusers name is fixed, and the .lora_down/.lora_up/
+        # .alpha suffix is preserved.
+        top_level_modules = {
+            "img_in": "img_in",
+            "txt_in": "txt_in",
+            "proj_out": "proj_out",
+            "norm_out_linear": "norm_out.linear",
+            "time_text_embed_timestep_embedder_linear_1": "time_text_embed.timestep_embedder.linear_1",
+            "time_text_embed_timestep_embedder_linear_2": "time_text_embed.timestep_embedder.linear_2",
+        }
+
         def convert_key(key: str) -> str:
             prefix = "transformer_blocks"
+            for flat, dotted in top_level_modules.items():
+                if key == flat or key.startswith(flat + "."):
+                    return dotted + key[len(flat) :]
+
             if "." in key:
                 base, suffix = key.rsplit(".", 1)
             else:
@@ -2803,11 +2821,26 @@ def _convert_non_diffusers_z_image_lora_to_diffusers(state_dict):
         state_dict = {k.replace("default.", ""): v for k, v in state_dict.items()}
 
     # Normalize ZImage-specific dot-separated module names to underscore form so they
-    # match the diffusers model parameter names (context_refiner, noise_refiner).
-    state_dict = {
-        k.replace("context.refiner.", "context_refiner.").replace("noise.refiner.", "noise_refiner."): v
-        for k, v in state_dict.items()
+    # match the diffusers model parameter names. convert_key blindly split every "_",
+    # so module names whose own names contain underscores (and aren't protected as the
+    # attention/feed_forward n-grams are) come out over-split here. This runs on the full
+    # key (before the weight/alpha handlers below) so it fixes .lora_A/B and .alpha alike.
+    zimage_module_name_fixups = {
+        "context.refiner.": "context_refiner.",
+        "noise.refiner.": "noise_refiner.",
+        "adaLN.modulation.": "adaLN_modulation.",
+        "all.final.layer.": "all_final_layer.",
+        "all.x.embedder.": "all_x_embedder.",
+        "cap.embedder.": "cap_embedder.",
+        "t.embedder.": "t_embedder.",
     }
+
+    def fixup_module_names(k: str) -> str:
+        for dotted, underscored in zimage_module_name_fixups.items():
+            k = k.replace(dotted, underscored)
+        return k
+
+    state_dict = {fixup_module_names(k): v for k, v in state_dict.items()}
 
     converted_state_dict = {}
     all_keys = list(state_dict.keys())

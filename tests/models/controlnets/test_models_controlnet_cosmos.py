@@ -252,6 +252,10 @@ class TestCosmosControlNetModel(CosmosControlNetModelTesterConfig, ModelTesterMi
         super().test_from_save_pretrained()
 
     @pytest.mark.skip("Output is a list of tensors; comparison helper calls .shape on it.")
+    def test_from_save_pretrained_dtype_inference(self, *args, **kwargs):
+        super().test_from_save_pretrained_dtype_inference(*args, **kwargs)
+
+    @pytest.mark.skip("Output is a list of tensors; comparison helper calls .shape on it.")
     def test_from_save_pretrained_variant(self):
         super().test_from_save_pretrained_variant()
 
