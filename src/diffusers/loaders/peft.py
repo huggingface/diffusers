@@ -46,7 +46,7 @@ from .unet_loader_utils import _maybe_expand_lora_scales
 logger = logging.get_logger(__name__)
 
 _SET_ADAPTER_SCALE_FN_MAPPING = defaultdict(
-    lambda: (lambda model_cls, weights: weights),
+    lambda: lambda model_cls, weights: weights,
     {
         "UNet2DConditionModel": _maybe_expand_lora_scales,
         "UNetMotionModel": _maybe_expand_lora_scales,

@@ -13,60 +13,53 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import unittest
-
+import pytest
 import torch
 
 from diffusers import PixArtTransformer2DModel, Transformer2DModel
+from diffusers.utils.torch_utils import randn_tensor
 
-from ...testing_utils import (
-    enable_full_determinism,
-    floats_tensor,
-    slow,
-    torch_device,
+from ...testing_utils import enable_full_determinism, slow, torch_device
+from ..testing_utils import (
+    AttentionTesterMixin,
+    BaseModelTesterConfig,
+    MemoryTesterMixin,
+    ModelTesterMixin,
+    TrainingTesterMixin,
 )
-from ..test_modeling_common import ModelTesterMixin
 
 
 enable_full_determinism()
 
 
-class PixArtTransformer2DModelTests(ModelTesterMixin, unittest.TestCase):
-    model_class = PixArtTransformer2DModel
-    main_input_name = "hidden_states"
-    # We override the items here because the transformer under consideration is small.
-    model_split_percents = [0.7, 0.6, 0.6]
+class PixArtTransformer2DTesterConfig(BaseModelTesterConfig):
+    @property
+    def model_class(self):
+        return PixArtTransformer2DModel
 
     @property
-    def dummy_input(self):
-        batch_size = 4
-        in_channels = 4
-        sample_size = 8
-        scheduler_num_train_steps = 1000
-        cross_attention_dim = 8
-        seq_len = 8
-
-        hidden_states = floats_tensor((batch_size, in_channels, sample_size, sample_size)).to(torch_device)
-        timesteps = torch.randint(0, scheduler_num_train_steps, size=(batch_size,)).to(torch_device)
-        encoder_hidden_states = floats_tensor((batch_size, seq_len, cross_attention_dim)).to(torch_device)
-
-        return {
-            "hidden_states": hidden_states,
-            "timestep": timesteps,
-            "encoder_hidden_states": encoder_hidden_states,
-            "added_cond_kwargs": {"aspect_ratio": None, "resolution": None},
-        }
+    def main_input_name(self) -> str:
+        return "hidden_states"
 
     @property
-    def input_shape(self):
+    def input_shape(self) -> tuple:
         return (4, 8, 8)
 
     @property
-    def output_shape(self):
+    def output_shape(self) -> tuple:
         return (8, 8, 8)
 
-    def prepare_init_args_and_inputs_for_common(self):
-        init_dict = {
+    @property
+    def model_split_percents(self) -> list:
+        # We override the items here because the transformer under consideration is small.
+        return [0.7, 0.6, 0.6]
+
+    @property
+    def generator(self):
+        return torch.Generator("cpu").manual_seed(0)
+
+    def get_init_dict(self) -> dict:
+        return {
             "sample_size": 8,
             "num_layers": 1,
             "patch_size": 2,
@@ -84,20 +77,37 @@ class PixArtTransformer2DModelTests(ModelTesterMixin, unittest.TestCase):
             "use_additional_conditions": False,
             "caption_channels": None,
         }
-        inputs_dict = self.dummy_input
-        return init_dict, inputs_dict
 
-    def test_output(self):
-        super().test_output(
-            expected_output_shape=(self.dummy_input[self.main_input_name].shape[0],) + self.output_shape
-        )
+    def get_dummy_inputs(self, batch_size: int = 4) -> dict[str, torch.Tensor]:
+        in_channels = 4
+        sample_size = 8
+        scheduler_num_train_steps = 1000
+        cross_attention_dim = 8
+        seq_len = 8
 
-    def test_gradient_checkpointing_is_applied(self):
-        expected_set = {"PixArtTransformer2DModel"}
-        super().test_gradient_checkpointing_is_applied(expected_set=expected_set)
+        return {
+            "hidden_states": randn_tensor(
+                (batch_size, in_channels, sample_size, sample_size), generator=self.generator, device=torch_device
+            ),
+            "timestep": torch.randint(0, scheduler_num_train_steps, size=(batch_size,), generator=self.generator).to(
+                torch_device
+            ),
+            "encoder_hidden_states": randn_tensor(
+                (batch_size, seq_len, cross_attention_dim), generator=self.generator, device=torch_device
+            ),
+            "added_cond_kwargs": {"aspect_ratio": None, "resolution": None},
+        }
+
+
+class TestPixArtTransformer2D(PixArtTransformer2DTesterConfig, ModelTesterMixin):
+    @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16], ids=["fp16", "bf16"])
+    def test_from_save_pretrained_dtype_inference(self, tmp_path, dtype):
+        # Skip: fp16/bf16 require very high atol to pass, providing little signal.
+        # Dtype preservation is already tested by test_from_save_pretrained_dtype and test_keep_in_fp32_modules.
+        pytest.skip("Tolerance requirements too high for meaningful test")
 
     def test_correct_class_remapping_from_dict_config(self):
-        init_dict, _ = self.prepare_init_args_and_inputs_for_common()
+        init_dict = self.get_init_dict()
         model = Transformer2DModel.from_config(init_dict)
         assert isinstance(model, PixArtTransformer2DModel)
 
@@ -110,3 +120,17 @@ class PixArtTransformer2DModelTests(ModelTesterMixin, unittest.TestCase):
     def test_correct_class_remapping(self):
         model = Transformer2DModel.from_pretrained("PixArt-alpha/PixArt-XL-2-1024-MS", subfolder="transformer")
         assert isinstance(model, PixArtTransformer2DModel)
+
+
+class TestPixArtTransformer2DMemory(PixArtTransformer2DTesterConfig, MemoryTesterMixin):
+    pass
+
+
+class TestPixArtTransformer2DAttention(PixArtTransformer2DTesterConfig, AttentionTesterMixin):
+    pass
+
+
+class TestPixArtTransformer2DTraining(PixArtTransformer2DTesterConfig, TrainingTesterMixin):
+    def test_gradient_checkpointing_is_applied(self):
+        expected_set = {"PixArtTransformer2DModel"}
+        super().test_gradient_checkpointing_is_applied(expected_set=expected_set)

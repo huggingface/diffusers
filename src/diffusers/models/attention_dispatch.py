@@ -1,4 +1,4 @@
-# Copyright 2025 The HuggingFace Team. All rights reserved.
+# Copyright 2026 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -3219,23 +3219,25 @@ def _flash_attention_3_varlen_hub(
     if _parallel_config is None:
         if attn_mask is not None:
             attn_mask = _normalize_attn_mask(attn_mask, batch_size, seq_len_kv)
-            (_, _), (cu_seqlens_q, cu_seqlens_k), (max_seqlen_q, max_seqlen_k) = (
-                _prepare_for_flash_attn_or_sage_varlen_with_mask(batch_size, seq_len_q, attn_mask, query.device)
+
+        (_, seqlens_k), (cu_seqlens_q, cu_seqlens_k), (max_seqlen_q, max_seqlen_k) = (
+            _prepare_for_flash_attn_or_sage_varlen(
+                batch_size, seq_len_q, seq_len_kv, attn_mask=attn_mask, device=query.device
             )
-            indices_k = attn_mask.flatten().nonzero(as_tuple=False).flatten()
-            key_packed = key.reshape(-1, *key.shape[2:])[indices_k]
-            value_packed = value.reshape(-1, *value.shape[2:])[indices_k]
-        else:
-            (_, _), (cu_seqlens_q, cu_seqlens_k), (max_seqlen_q, max_seqlen_k) = (
-                _prepare_for_flash_attn_or_sage_varlen_without_mask(batch_size, seq_len_q, seq_len_kv, query.device)
-            )
-            key_packed = key.flatten(0, 1)
-            value_packed = value.flatten(0, 1)
+        )
+
+        key_valid, value_valid = [], []
+        for b in range(batch_size):
+            valid_len = seqlens_k[b]
+            key_valid.append(key[b, :valid_len])
+            value_valid.append(value[b, :valid_len])
 
         query_packed = query.flatten(0, 1)
+        key_packed = torch.cat(key_valid, dim=0)
+        value_packed = torch.cat(value_valid, dim=0)
 
         func = _HUB_KERNELS_REGISTRY[AttentionBackendName._FLASH_3_VARLEN_HUB].kernel_fn
-        out = func(
+        result = func(
             q=query_packed,
             k=key_packed,
             v=value_packed,
@@ -3245,10 +3247,12 @@ def _flash_attention_3_varlen_hub(
             max_seqlen_k=max_seqlen_k,
             softmax_scale=scale,
             causal=is_causal,
-            return_attn_probs=return_lse,
         )
-        if return_lse:
-            out, lse, *_ = out
+        if isinstance(result, tuple):
+            out, lse, *_ = result
+        else:
+            out = result
+            lse = None
         out = out.unflatten(0, (batch_size, -1))
     else:
         forward_op = functools.partial(

@@ -36,10 +36,10 @@ from diffusers import (
     UNet2DConditionModel,
     UniPCMultistepScheduler,
 )
-from diffusers.utils.import_utils import is_torch_neuronx_available
 
 from ...testing_utils import (
     backend_empty_cache,
+    backend_synchronize,
     enable_full_determinism,
     load_image,
     numpy_cosine_similarity_distance,
@@ -987,10 +987,8 @@ class StableDiffusionXLTurboPipelineIntegrationTests(unittest.TestCase):
 
     def setUp(self):
         super().setUp()
-        self._saved_env = {}
-        if is_torch_neuronx_available():
-            self._saved_env["TORCH_NEURONX_ENABLE_NKI_SDPA"] = os.environ.get("TORCH_NEURONX_ENABLE_NKI_SDPA")
-            os.environ.setdefault("TORCH_NEURONX_ENABLE_NKI_SDPA", "0")
+        self._saved_env = {"TORCH_NEURONX_ENABLE_NKI_SDPA": os.environ.get("TORCH_NEURONX_ENABLE_NKI_SDPA")}
+        os.environ.setdefault("TORCH_NEURONX_ENABLE_NKI_SDPA", "0")
         gc.collect()
         backend_empty_cache(torch_device)
 
@@ -1009,8 +1007,7 @@ class StableDiffusionXLTurboPipelineIntegrationTests(unittest.TestCase):
 
         pipe = AutoPipelineForText2Image.from_pretrained(self.ckpt_id, torch_dtype=torch.float16, variant="fp16")
         pipe.to(torch_device)
-        if is_torch_neuronx_available():
-            torch.neuron.synchronize()
+        backend_synchronize(torch_device)
         pipe.set_progress_bar_config(disable=None)
 
         image = pipe(
@@ -1026,3 +1023,59 @@ class StableDiffusionXLTurboPipelineIntegrationTests(unittest.TestCase):
         self.assertTrue(np.all((image >= 0.0) & (image <= 1.0)), "Pixel values must be in [0, 1]")
         expected_slice = np.array([0.3524, 0.3160, 0.3652, 0.3316, 0.3376, 0.3315, 0.3042, 0.3102, 0.3449])
         self.assertLess(np.abs(image_slice.flatten() - expected_slice).max(), 5e-2)
+
+    @require_torch_neuron
+    def test_sdxl_turbo_neuron_compile_256(self):
+        from torch_neuronx.neuron_dynamo_backend import set_model_name
+        from transformers.utils.output_capturing import install_all_output_capturing_hooks
+
+        device = torch.neuron.current_device()
+        generator = torch.Generator("cpu").manual_seed(0)
+
+        pipe = AutoPipelineForText2Image.from_pretrained(self.ckpt_id, torch_dtype=torch.bfloat16, variant="fp16")
+        pipe = pipe.to(device)
+        backend_synchronize(torch_device)
+
+        pipe.unet.eval()
+        pipe.vae.eval()
+        pipe.text_encoder.eval()
+        pipe.text_encoder_2.eval()
+
+        install_all_output_capturing_hooks(pipe.text_encoder)
+        set_model_name("sdxl_turbo_text_encoder")
+        pipe.text_encoder = torch.compile(pipe.text_encoder, backend="neuron", fullgraph=True)
+
+        install_all_output_capturing_hooks(pipe.text_encoder_2)
+        set_model_name("sdxl_turbo_text_encoder_2")
+        pipe.text_encoder_2 = torch.compile(pipe.text_encoder_2, backend="neuron", fullgraph=True)
+
+        set_model_name("sdxl_turbo_unet")
+        pipe.unet = torch.compile(pipe.unet, backend="neuron", fullgraph=True)
+
+        # Pre-warm text encoders and copy ops for 256×256 (latent: 32×32).
+        tok_kwargs = {"padding": "max_length", "max_length": 77, "truncation": True, "return_tensors": "pt"}
+        with torch.no_grad():
+            _ids = pipe.tokenizer("warmup", **tok_kwargs).input_ids.to(device)
+            _ = pipe.text_encoder(_ids, output_hidden_states=True)
+            _ids2 = pipe.tokenizer_2("warmup", **tok_kwargs).input_ids.to(device)
+            _ = pipe.text_encoder_2(_ids2, output_hidden_states=True)
+            for _shape, _dtype in [((1, 4, 32, 32), torch.bfloat16), ((1, 6), torch.bfloat16)]:
+                _ = torch.zeros(_shape, dtype=_dtype).to(device)
+        backend_synchronize(torch_device)
+
+        image = pipe(
+            self.prompt,
+            height=256,
+            width=256,
+            num_inference_steps=1,
+            guidance_scale=0.0,
+            generator=generator,
+            output_type="np",
+        ).images
+
+        self.assertEqual(image.shape, (1, 256, 256, 3))
+        self.assertFalse(np.isnan(image).any(), "Output contains NaN values")
+        self.assertTrue(
+            (image >= 0.0).all() and (image <= 1.0).all(),
+            "Output pixel values outside [0, 1]",
+        )
