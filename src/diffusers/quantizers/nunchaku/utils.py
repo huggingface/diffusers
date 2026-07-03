@@ -335,7 +335,6 @@ def _module_device(module: nn.Module) -> torch.device:
 
 
 def check_strict_state_dict_match(model: nn.Module, state_dict: dict[str, Any]) -> None:
-    import itertools
 
     expected_keys = {n for n, _ in itertools.chain(model.named_parameters(), model.named_buffers())}
     loaded_keys = set(state_dict.keys())
