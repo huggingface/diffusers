@@ -373,11 +373,15 @@ def test_cosmos3_modular_workflow_extraction():
     assert list(image2video_blocks.sub_blocks.keys()) == [
         "text_encoder",
         "denoise.prepare_text_segments",
+        "denoise.vae_encoder",
         "denoise.prepare_latents",
         "denoise.pack_sequence",
         "denoise.set_timesteps",
         "denoise.denoise",
-        "decode",
+        "decode.video",
+        "decode.sound",
+        "after_decode.action",
+        "after_decode.assemble",
     ]
 
     with pytest.raises(ValueError):

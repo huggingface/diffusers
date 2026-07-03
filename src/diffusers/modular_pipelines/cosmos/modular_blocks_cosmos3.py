@@ -1,6 +1,7 @@
 from ...utils import logging
 from ..modular_pipeline import SequentialPipelineBlocks
 from ..modular_pipeline_utils import OutputParam
+from .after_decode import Cosmos3AfterDecodeStep
 from .before_denoise import (
     Cosmos3PackSequenceStep,
     Cosmos3PrepareLatentsStep,
@@ -9,7 +10,7 @@ from .before_denoise import (
 )
 from .decoders import Cosmos3DecodeStep
 from .denoise import Cosmos3DenoiseStep
-from .encoders import Cosmos3AutoTextEncoderStep
+from .encoders import Cosmos3AutoTextEncoderStep, Cosmos3AutoVaeEncoderStep
 
 
 logger = logging.get_logger(__name__)
@@ -20,16 +21,26 @@ class Cosmos3CoreDenoiseStep(SequentialPipelineBlocks):
     model_name = "cosmos3-omni"
     block_classes = [
         Cosmos3PrepareTextSegmentsStep,
+        Cosmos3AutoVaeEncoderStep,
         Cosmos3PrepareLatentsStep,
         Cosmos3PackSequenceStep,
         Cosmos3SetTimestepsStep,
         Cosmos3DenoiseStep,
     ]
-    block_names = ["prepare_text_segments", "prepare_latents", "pack_sequence", "set_timesteps", "denoise"]
+    block_names = [
+        "prepare_text_segments",
+        "vae_encoder",
+        "prepare_latents",
+        "pack_sequence",
+        "set_timesteps",
+        "denoise",
+    ]
 
     @property
     def description(self):
-        return "Prepares text segments/modalities, packs sequences, initializes timesteps, and denoises."
+        return (
+            "Prepares text segments/vision latents/modalities, packs sequences, initializes timesteps, and denoises."
+        )
 
     @property
     def outputs(self):
@@ -43,8 +54,8 @@ class Cosmos3CoreDenoiseStep(SequentialPipelineBlocks):
 # auto_docstring
 class Cosmos3OmniBlocks(SequentialPipelineBlocks):
     model_name = "cosmos3-omni"
-    block_classes = [Cosmos3AutoTextEncoderStep, Cosmos3CoreDenoiseStep, Cosmos3DecodeStep]
-    block_names = ["text_encoder", "denoise", "decode"]
+    block_classes = [Cosmos3AutoTextEncoderStep, Cosmos3CoreDenoiseStep, Cosmos3DecodeStep, Cosmos3AfterDecodeStep]
+    block_names = ["text_encoder", "denoise", "decode", "after_decode"]
     _workflow_map = {
         "text2image": {"prompt": True, "num_frames": 1},
         "text2video": {"prompt": True},

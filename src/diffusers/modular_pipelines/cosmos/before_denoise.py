@@ -6,8 +6,10 @@ import torch
 from ...models.autoencoders.autoencoder_cosmos3_audio import Cosmos3AVAEAudioTokenizer
 from ...models.autoencoders.autoencoder_kl_wan import AutoencoderKLWan
 from ...models.transformers.transformer_cosmos3 import Cosmos3OmniTransformer
+from ...pipelines.cosmos.pipeline_cosmos3_omni import _EMBODIMENT_TO_DOMAIN_ID
 from ...schedulers import UniPCMultistepScheduler
 from ...utils import logging
+from ...utils.torch_utils import randn_tensor
 from ..modular_pipeline import ModularPipelineBlocks, PipelineState
 from ..modular_pipeline_utils import ComponentSpec, InputParam, OutputParam
 from .modular_pipeline import Cosmos3OmniModularPipeline
@@ -70,10 +72,7 @@ class Cosmos3PrepareLatentsStep(ModularPipelineBlocks):
 
     @property
     def description(self) -> str:
-        return (
-            "Prepares vision/sound/action latents and conditioning masks. "
-            "TODO: split VAE encoding into standalone Cosmos3VaeEncoderStep and Cosmos3ActionVaeEncoderStep."
-        )
+        return "Prepares noisy vision/sound/action latents and conditioning masks from pre-encoded vision tokens."
 
     @property
     def expected_components(self) -> list[ComponentSpec]:
@@ -86,10 +85,8 @@ class Cosmos3PrepareLatentsStep(ModularPipelineBlocks):
     @property
     def inputs(self) -> list[InputParam]:
         return [
-            InputParam(name="image", default=None),
-            InputParam(name="video", default=None),
-            InputParam(name="condition_frame_indexes_vision", default=(0, 1)),
-            InputParam(name="condition_video_keep", default="first"),
+            InputParam(name="x0_tokens_vision", default=None),
+            InputParam(name="vision_condition_frames", default=None),
             InputParam(name="num_frames", required=True),
             InputParam(name="height", required=True),
             InputParam(name="width", required=True),
@@ -100,6 +97,8 @@ class Cosmos3PrepareLatentsStep(ModularPipelineBlocks):
             InputParam(name="generator", default=None),
             InputParam(name="enable_sound", type_hint=bool, default=False),
             InputParam(name="action", default=None),
+            InputParam(name="action_image_size", default=None),
+            InputParam(name="action_condition_frame_indexes", default=None),
             InputParam(name="device", required=True),
             InputParam(name="dtype", required=True),
         ]
@@ -127,37 +126,169 @@ class Cosmos3PrepareLatentsStep(ModularPipelineBlocks):
     def __call__(self, components: Cosmos3OmniModularPipeline, state: PipelineState) -> PipelineState:
         block_state = self.get_block_state(state)
 
-        (
-            block_state.latents,
-            block_state.sound_latents,
-            block_state.action_latents,
-            block_state.fps_vision,
-            block_state.fps_sound,
-            block_state.vision_condition_mask,
-            block_state.sound_condition_mask,
-            block_state.action_condition_mask,
-            block_state.action_domain_id,
-            block_state.action_image_size,
-            block_state.raw_action_dim_resolved,
-            block_state.action_condition_frame_indexes,
-        ) = components.prepare_latents(
-            image=block_state.image,
-            video=block_state.video,
-            condition_frame_indexes_vision=block_state.condition_frame_indexes_vision,
-            condition_video_keep=block_state.condition_video_keep,
-            num_frames=block_state.num_frames,
-            height=block_state.height,
-            width=block_state.width,
-            fps=block_state.fps,
-            latents=block_state.latents,
-            sound_latents=block_state.sound_latents,
-            action_latents=block_state.action_latents,
-            generator=block_state.generator,
-            device=block_state.device,
-            dtype=block_state.dtype,
-            enable_sound=block_state.enable_sound,
-            action=block_state.action,
+        action = block_state.action
+        action_mode = action.mode if action is not None else None
+        x0_tokens_vision = block_state.x0_tokens_vision
+        if x0_tokens_vision is None:
+            if block_state.num_frames < 1:
+                raise ValueError(f"`num_frames` must be >= 1, got {block_state.num_frames}.")
+            sf_spatial = int(components.vae.config.scale_factor_spatial)
+            if block_state.height % sf_spatial != 0 or block_state.width % sf_spatial != 0:
+                raise ValueError(
+                    f"`height` and `width` must be multiples of {sf_spatial}, got ({block_state.height}, {block_state.width})."
+                )
+
+            # Match the monolithic prepare_latents text-only path exactly:
+            # build a zero vision clip and run VAE encode once to get canonical latent shape/layout.
+            vision_tensor = torch.zeros(
+                1,
+                3,
+                block_state.num_frames,
+                block_state.height,
+                block_state.width,
+                device=block_state.device,
+                dtype=block_state.dtype,
+            )
+            x0_tokens_vision = components._encode_video(vision_tensor).contiguous().float()
+        else:
+            x0_tokens_vision = x0_tokens_vision.to(device=block_state.device, dtype=torch.float32)
+        vision_shape = tuple(x0_tokens_vision.shape)
+
+        block_state.raw_action_dim_resolved = (
+            int(action.raw_action_dim) if action is not None and action.raw_action_dim is not None else None
         )
+        if (
+            block_state.raw_action_dim_resolved is not None
+            and block_state.raw_action_dim_resolved > components.transformer.config.action_dim
+        ):
+            raise ValueError(
+                f"raw_action_dim={block_state.raw_action_dim_resolved} exceeds the model's trained action_dim="
+                f"{components.transformer.config.action_dim}; this checkpoint cannot represent that action width."
+            )
+
+        block_state.fps_vision = float(block_state.fps)
+
+        condition_frames_vision = block_state.vision_condition_frames or []
+        vision_condition_mask = torch.zeros(
+            (x0_tokens_vision.shape[2], 1, 1), device=block_state.device, dtype=block_state.dtype
+        )
+        for frame_idx in condition_frames_vision:
+            if 0 <= frame_idx < vision_condition_mask.shape[0]:
+                vision_condition_mask[frame_idx, 0, 0] = 1.0
+        block_state.vision_condition_mask = vision_condition_mask
+
+        if block_state.latents is None:
+            pure_noise = randn_tensor(
+                vision_shape, generator=block_state.generator, device=block_state.device, dtype=block_state.dtype
+            )
+            block_state.latents = (
+                vision_condition_mask * x0_tokens_vision.to(device=block_state.device, dtype=block_state.dtype)
+                + (1.0 - vision_condition_mask) * pure_noise
+            )
+        else:
+            block_state.latents = block_state.latents.to(device=block_state.device, dtype=block_state.dtype)
+
+        block_state.fps_sound = None
+        block_state.sound_condition_mask = None
+        if block_state.enable_sound:
+            if getattr(components, "sound_tokenizer", None) is None:
+                raise ValueError("`enable_sound=True` requires a sound-capable checkpoint with a `sound_tokenizer`.")
+            if not getattr(components.transformer.config, "sound_gen", False):
+                raise ValueError("`enable_sound=True` but the transformer was not trained with `sound_gen=True`.")
+            sound_dim = components.transformer.config.sound_dim
+            block_state.fps_sound = float(components.transformer.config.sound_latent_fps)
+            n_audio_samples = int(
+                block_state.num_frames / block_state.fps * components.sound_tokenizer.config.sampling_rate
+            )
+            hop_size = components.sound_tokenizer._hop_size
+            t_sound = (n_audio_samples + hop_size - 1) // hop_size
+            x0_tokens_sound = torch.zeros(sound_dim, t_sound, device=block_state.device, dtype=block_state.dtype)
+            block_state.sound_condition_mask = torch.zeros(
+                (x0_tokens_sound.shape[1], 1), device=block_state.device, dtype=block_state.dtype
+            )
+            if block_state.sound_latents is None:
+                pure_noise_sound = randn_tensor(
+                    tuple(x0_tokens_sound.shape),
+                    generator=block_state.generator,
+                    device=block_state.device,
+                    dtype=block_state.dtype,
+                )
+                block_state.sound_latents = (
+                    block_state.sound_condition_mask.T * x0_tokens_sound
+                    + (1.0 - block_state.sound_condition_mask.T) * pure_noise_sound
+                )
+            else:
+                block_state.sound_latents = block_state.sound_latents.to(
+                    device=block_state.device, dtype=block_state.dtype
+                )
+
+        block_state.action_condition_mask = None
+        block_state.action_domain_id = None
+        if action_mode is not None:
+            action_chunk_size = action.chunk_size
+            action_dim = components.transformer.action_dim
+            if action_mode == "forward_dynamics":
+                raw_actions = action.raw_actions
+                if raw_actions is None:
+                    raise ValueError("action_mode='forward_dynamics' requires an action tensor.")
+                raw_actions = raw_actions.to(device=block_state.device, dtype=block_state.dtype)
+                if raw_actions.shape[-1] > action_dim:
+                    raise ValueError(
+                        f"Cosmos3 action dimension {raw_actions.shape[-1]} exceeds model action_dim={action_dim}."
+                    )
+                if raw_actions.shape[0] < action_chunk_size:
+                    raw_actions = torch.cat(
+                        [raw_actions, raw_actions[-1:].expand(action_chunk_size - raw_actions.shape[0], -1)],
+                        dim=0,
+                    )
+                raw_actions = raw_actions[:action_chunk_size]
+                if raw_actions.shape[-1] < action_dim:
+                    action_padding = torch.zeros(
+                        raw_actions.shape[0],
+                        action_dim - raw_actions.shape[-1],
+                        dtype=raw_actions.dtype,
+                        device=raw_actions.device,
+                    )
+                    raw_actions = torch.cat([raw_actions, action_padding], dim=-1)
+                x0_tokens_action = raw_actions
+            else:
+                x0_tokens_action = torch.zeros(
+                    action_chunk_size, action_dim, device=block_state.device, dtype=block_state.dtype
+                )
+
+            if action.domain_name not in _EMBODIMENT_TO_DOMAIN_ID:
+                raise ValueError(
+                    f"Unknown Cosmos3 action domain_name={action.domain_name!r}; expected one of {sorted(_EMBODIMENT_TO_DOMAIN_ID)}."
+                )
+            block_state.action_domain_id = torch.tensor(
+                [_EMBODIMENT_TO_DOMAIN_ID[action.domain_name]],
+                dtype=torch.long,
+                device=block_state.device,
+            )
+            condition_frames = block_state.action_condition_frame_indexes or []
+            block_state.action_condition_mask = torch.zeros(
+                (x0_tokens_action.shape[0], 1), device=block_state.device, dtype=block_state.dtype
+            )
+            for frame_idx in condition_frames:
+                if 0 <= frame_idx < block_state.action_condition_mask.shape[0]:
+                    block_state.action_condition_mask[frame_idx, 0] = 1.0
+            if block_state.action_latents is None:
+                pure_noise_action = randn_tensor(
+                    tuple(x0_tokens_action.shape),
+                    generator=block_state.generator,
+                    device=block_state.device,
+                    dtype=block_state.dtype,
+                )
+                block_state.action_latents = (
+                    block_state.action_condition_mask * x0_tokens_action
+                    + (1.0 - block_state.action_condition_mask) * pure_noise_action
+                )
+                if block_state.raw_action_dim_resolved is not None:
+                    block_state.action_latents[:, block_state.raw_action_dim_resolved :] = 0
+            else:
+                block_state.action_latents = block_state.action_latents.to(
+                    device=block_state.device, dtype=block_state.dtype
+                )
 
         vision_condition_indexes = torch.nonzero(
             block_state.vision_condition_mask[:, 0, 0] > 0, as_tuple=False
