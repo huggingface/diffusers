@@ -47,13 +47,18 @@ class TestPingPongScheduler(unittest.TestCase):
 
     # ------------------------------------------------------------------
     def test_sigmas_match_logsnr_conversion(self):
-        """First and last sigma must equal sigmoid(±logsnr_min/max)."""
+        """Endpoints are pinned to sigma_max=1.0 / 0.0 (matching the reference's LogSNRShift with
+        exact endpoint preservation); interior points follow the logSNR->sigma conversion."""
         logsnr_min, logsnr_max = -6.2, 2.0
-        s = _scheduler(logsnr_min=logsnr_min, logsnr_max=logsnr_max)
-        expected_first = torch.sigmoid(torch.tensor(-logsnr_min))
-        expected_last = torch.sigmoid(torch.tensor(-logsnr_max))
-        self.assertAlmostEqual(s.sigmas[0].item(), expected_first.item(), places=5)
-        self.assertAlmostEqual(s.sigmas[-1].item(), expected_last.item(), places=5)
+        n = 8
+        s = _scheduler(n=n, logsnr_min=logsnr_min, logsnr_max=logsnr_max)
+        # Endpoints are forced so the last ping-pong step fully denoises (sigma=0) and the first
+        # starts from pure noise (sigma=1). Without this the output retains noise.
+        self.assertAlmostEqual(s.sigmas[0].item(), 1.0, places=6)
+        self.assertAlmostEqual(s.sigmas[-1].item(), 0.0, places=6)
+        # Interior matches sigmoid(-linspace(logsnr_min, logsnr_max, n+1)).
+        expected = torch.sigmoid(-torch.linspace(logsnr_min, logsnr_max, n + 1))
+        self.assertTrue(torch.allclose(s.sigmas[1:-1], expected[1:-1], atol=1e-6))
 
     # ------------------------------------------------------------------
     def test_timesteps_are_sigmas_prefix(self):

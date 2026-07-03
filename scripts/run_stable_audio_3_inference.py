@@ -82,6 +82,11 @@ def main():
     args = parse_args()
     device = _pick_device(args.device)
     dtype = getattr(torch, args.dtype)
+    # float16 has almost no CPU kernel coverage in PyTorch; force float32 there so the
+    # run doesn't emit "cannot run with cpu device" warnings (or fail on some ops).
+    if device == "cpu" and dtype == torch.float16:
+        print("Note: float16 is not supported on CPU; using float32 instead.")
+        dtype = torch.float32
     print(f"Device: {device} | dtype: {dtype}")
 
     from diffusers import StableAudio3Pipeline

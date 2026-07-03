@@ -388,6 +388,9 @@ class StableAudio3DiTModel(ModelMixin, ConfigMixin):
             nn.Linear(embed_dim, embed_dim, bias=True),
         )
 
+        # Learned embedding that replaces padded text positions in the cross-attention context.
+        self.prompt_padding_embedding = nn.Parameter(torch.zeros(cond_token_dim))
+
         # Cross-attention context projection (text + duration tokens).
         self.to_cond_embed = nn.Sequential(
             nn.Linear(cond_token_dim, embed_dim, bias=False),
@@ -466,6 +469,16 @@ class StableAudio3DiTModel(ModelMixin, ConfigMixin):
         """
         batch_size = hidden_states.shape[0]
 
+        # Replace padded text positions with the learned padding embedding and then attend to the
+        # full context (the reference SA3 DiT disables the cross-attention mask). This must happen
+        # in the raw `cond_token_dim` space, before `to_cond_embed`, to match the reference
+        # conditioner which applies its learned padding embedding prior to the DiT projection.
+        if encoder_attention_mask is not None:
+            mask = encoder_attention_mask.bool().unsqueeze(-1)
+            pad = self.prompt_padding_embedding.to(encoder_hidden_states.dtype).view(1, 1, -1)
+            encoder_hidden_states = torch.where(mask, encoder_hidden_states, pad)
+            encoder_attention_mask = None
+
         # Conditioning projections.
         context = self.to_cond_embed(encoder_hidden_states)
 
@@ -501,9 +514,6 @@ class StableAudio3DiTModel(ModelMixin, ConfigMixin):
             x = torch.cat([memory, x], dim=1)
 
         rope = self.rotary_pos_emb(x.shape[1], x.device)
-
-        if encoder_attention_mask is not None:
-            encoder_attention_mask = encoder_attention_mask.bool()
 
         for block in self.transformer_blocks:
             if torch.is_grad_enabled() and self.gradient_checkpointing:

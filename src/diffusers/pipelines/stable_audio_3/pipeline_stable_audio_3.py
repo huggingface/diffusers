@@ -29,7 +29,7 @@ import math
 from typing import Callable, List, Optional, Union
 
 import torch
-from transformers import T5EncoderModel, T5Tokenizer, T5TokenizerFast
+from transformers import GemmaTokenizer, GemmaTokenizerFast, T5GemmaEncoderModel
 
 from ...models.autoencoders.autoencoder_same import AutoencoderSAME
 from ...models.transformers.transformer_stable_audio3 import StableAudio3DiTModel
@@ -85,9 +85,9 @@ class StableAudio3Pipeline(DiffusionPipeline):
     Args:
         vae ([`AutoencoderSAME`]):
             SAME autoencoder used to encode and decode audio latents.
-        text_encoder ([`~transformers.T5EncoderModel`]):
+        text_encoder ([`~transformers.T5GemmaEncoderModel`]):
             Frozen T5Gemma text encoder (``google/t5gemma-b-b-ul2``).
-        tokenizer ([`~transformers.T5TokenizerFast`]):
+        tokenizer ([`~transformers.GemmaTokenizerFast`]):
             Tokenizer for the text encoder.
         duration_embedder ([`StableAudio3DurationEmbedder`]):
             Maps ``duration`` in seconds to a global conditioning vector for AdaLN in each DiT block.
@@ -103,8 +103,8 @@ class StableAudio3Pipeline(DiffusionPipeline):
     def __init__(
         self,
         vae: AutoencoderSAME,
-        text_encoder: T5EncoderModel,
-        tokenizer: Union[T5Tokenizer, T5TokenizerFast],
+        text_encoder: T5GemmaEncoderModel,
+        tokenizer: Union[GemmaTokenizer, GemmaTokenizerFast],
         duration_embedder: StableAudio3DurationEmbedder,
         transformer: StableAudio3DiTModel,
         scheduler: Union[PingPongScheduler, FlowMatchEulerDiscreteScheduler],
@@ -180,11 +180,6 @@ class StableAudio3Pipeline(DiffusionPipeline):
         if encoder_attention_mask is None:
             # All-ones mask for pre-computed embeddings with no mask provided
             encoder_attention_mask = torch.ones(prompt_embeds.shape[:2], dtype=torch.long, device=device)
-
-        # Zero out padded positions.  The reference SA3 implementation
-        # replaces these with a learned padding_embedding; zeroing is
-        # equivalent to that embedding being zero (default initialization).
-        prompt_embeds = prompt_embeds * encoder_attention_mask.unsqueeze(-1).to(prompt_embeds.dtype)
 
         # Tile for num_waveforms_per_prompt
         bs, seq_len, hidden_size = prompt_embeds.shape
@@ -305,7 +300,7 @@ class StableAudio3Pipeline(DiffusionPipeline):
         prompt: Optional[Union[str, List[str]]] = None,
         duration: float = 10.0,
         num_inference_steps: int = 8,
-        silence_padding_duration: float = 0.0,
+        silence_padding_duration: float = 6.0,
         num_waveforms_per_prompt: int = 1,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
         latents: Optional[torch.Tensor] = None,
@@ -326,9 +321,10 @@ class StableAudio3Pipeline(DiffusionPipeline):
                 Requested output duration in seconds.
             num_inference_steps (`int`, defaults to 8):
                 Number of denoising steps. SA3 Medium is distilled for exactly 8 ping-pong steps.
-            silence_padding_duration (`float`, defaults to 0.0):
-                Extra seconds of latent context appended after the target content, to give the model headroom at the
-                boundary. The reference implementation uses 6.0 s; set to 0.0 to skip.
+            silence_padding_duration (`float`, defaults to 6.0):
+                Extra seconds of latent context generated beyond the target content, giving the model headroom at the
+                boundary; the output is trimmed back to `duration`. Matches the reference implementation default of
+                6.0 s. Set to 0.0 to disable (not recommended — the model produces artifacts without headroom).
             num_waveforms_per_prompt (`int`, defaults to 1):
                 Number of waveforms to generate per prompt.
             generator (`torch.Generator` or `list[torch.Generator]`, *optional*):

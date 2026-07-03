@@ -361,6 +361,15 @@ def convert_dit(ref_sd: dict, differential: bool = True) -> tuple[dict, list]:
 
             out[new_key] = val
 
+    # The learned text-padding embedding lives on the conditioner in the reference checkpoint,
+    # but the diffusers DiT owns it: it replaces padded cross-attention positions with this vector
+    # and then attends to the full context (the reference disables the cross-attention mask).
+    pad_key = "conditioner.conditioners.prompt.padding_embedding"
+    if pad_key in ref_sd:
+        out["prompt_padding_embedding"] = ref_sd[pad_key]
+    else:
+        print(f"  DiT: padding embedding not found: {pad_key}")
+
     return out, skipped
 
 
@@ -695,11 +704,17 @@ def convert(args):
     te_sd = extract_text_encoder(ref_sd)
 
     text_encoder_repo = args.text_encoder_repo
+    # Concrete class names for model_index.json. diffusers cannot load the
+    # abstract "AutoTokenizer"/"AutoModel" entries, so we record the resolved
+    # concrete classes (e.g. "GemmaTokenizerFast", "T5GemmaEncoderModel").
+    tokenizer_cls_name = "AutoTokenizer"
+    text_encoder_cls_name = "T5GemmaEncoderModel"
     try:
         from transformers import AutoConfig, AutoTokenizer, T5GemmaEncoderModel
 
         print(f"  Loading T5Gemma from: {text_encoder_repo}")
         tokenizer = AutoTokenizer.from_pretrained(text_encoder_repo)
+        tokenizer_cls_name = type(tokenizer).__name__
         te_config = AutoConfig.from_pretrained(text_encoder_repo)
         te_config.is_encoder_decoder = False
         text_encoder = T5GemmaEncoderModel.from_pretrained(text_encoder_repo, config=te_config)
@@ -717,6 +732,7 @@ def convert(args):
             )
 
         text_encoder = text_encoder.to(dtype)
+        text_encoder_cls_name = type(text_encoder).__name__
         text_encoder.save_pretrained(output_dir / "text_encoder")
         tokenizer.save_pretrained(output_dir / "tokenizer")
         print(f"  Saved → {output_dir / 'text_encoder'}, {output_dir / 'tokenizer'}")
@@ -770,8 +786,8 @@ def convert(args):
         "_class_name": "StableAudio3Pipeline",
         "_diffusers_version": "0.0.0.dev0",
         "vae": ["diffusers", "AutoencoderSAME"],
-        "text_encoder": ["transformers", "T5GemmaEncoderModel"],
-        "tokenizer": ["transformers", "AutoTokenizer"],
+        "text_encoder": ["transformers", text_encoder_cls_name],
+        "tokenizer": ["transformers", tokenizer_cls_name],
         "duration_embedder": ["diffusers", "StableAudio3DurationEmbedder"],
         "transformer": ["diffusers", "StableAudio3DiTModel"],
         "scheduler": ["diffusers", "PingPongScheduler"],

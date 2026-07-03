@@ -281,6 +281,8 @@ def _expected_prod_state_dict_shapes() -> dict:
         "proj_out.weight": (256, E),
         "memory_tokens": (64, E),
         "rotary_pos_emb.inv_freq": (H // 4,),
+        # Learned text-padding embedding (checkpoint key: conditioner.conditioners.prompt.padding_embedding).
+        "prompt_padding_embedding": (768,),
     }
     per_block = {
         "pre_norm.gamma": (E,),
@@ -330,8 +332,9 @@ class TestStableAudio3DiTProductionStructure(unittest.TestCase):
         mismatched = {k: (expected[k], actual[k]) for k in expected if expected[k] != actual[k]}
         self.assertEqual(mismatched, {}, f"shape mismatches: {list(mismatched.items())[:10]}")
 
-        # The released SA3 Medium DiT has 522 tensors.
-        self.assertEqual(len(actual), 522)
+        # The released SA3 Medium DiT has 522 tensors, plus the learned text-padding embedding
+        # (relocated from the reference conditioner into the diffusers DiT) → 523.
+        self.assertEqual(len(actual), 523)
 
 
 @require_torch

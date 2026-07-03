@@ -108,11 +108,10 @@ class PingPongScheduler(SchedulerMixin, ConfigMixin):
         n = num_inference_steps if num_inference_steps is not None else self.config.num_inference_steps
         self.num_inference_steps = n
 
-        # N+1 log-SNR values, uniformly from logsnr_min (high noise) to
-        # logsnr_max (low noise).  t = sigmoid(-λ) maps these to a
-        # strictly decreasing sequence of sigma values.
         logsnr = torch.linspace(self.config.logsnr_min, self.config.logsnr_max, n + 1)
         sigmas = torch.sigmoid(-logsnr)  # (N+1,), decreasing
+        sigmas[0] = 1.0  # sigma_max: start from pure noise
+        sigmas[-1] = 0.0  # end fully denoised
 
         if device is not None:
             sigmas = sigmas.to(device)
