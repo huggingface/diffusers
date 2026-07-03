@@ -40,6 +40,16 @@ python examples/cosmos3/inference_cosmos3.py \
     --vision-path https://github.com/nvidia-cosmos/cosmos-dependencies/releases/download/assets/robot_153.jpg
 ```
 
+Video-to-video (condition on the leading frames of a clip and continue it):
+
+```bash
+python examples/cosmos3/inference_cosmos3.py \
+    --prompt "A robotic arm finishes pouring liquid into the glass." \
+    --video-path "https://github.com/nvidia-cosmos/cosmos-dependencies/raw/refs/heads/assets/cosmos3/inputs/vision/robot_pouring.mp4" \
+    --condition-frame-indexes-vision 0,1 \
+    --condition-video-keep first
+```
+
 Text-to-video-with-sound (sound-capable checkpoint only):
 
 ```bash

@@ -31,7 +31,7 @@ http://www.apache.org/licenses/LICENSE-2.0
 * 6. 贡献[社区Pipeline](https://github.com/huggingface/diffusers/issues?q=is%3Aopen+is%3Aissue+label%3Acommunity-examples)
 * 7. 完善[示例代码](https://github.com/huggingface/diffusers/tree/main/examples)
 * 8. 解决标记为"Good second issue"的中等难度问题，详见[此处](https://github.com/huggingface/diffusers/issues?q=is%3Aopen+is%3Aissue+label%3A%22Good+second+issue%22)
-* 9. 添加新pipeline/模型/调度器，参见["New Pipeline/Model"](https://github.com/huggingface/diffusers/issues?q=is%3Aopen+is%3Aissue+label%3A%22New+pipeline%2Fmodel%22)和["New scheduler"](https://github.com/huggingface/diffusers/issues?q=is%3Aopen+is%3Aissue+label%3A%22New+scheduler%22)类issue。此类贡献请先阅读[设计哲学](https://github.com/huggingface/diffusers/blob/main/PHILOSOPHY.md)
+* 9. 添加新pipeline/模型/调度器，参见["New Pipeline/Model"](https://github.com/huggingface/diffusers/issues?q=is%3Aopen+is%3Aissue+label%3A%22New+pipeline%2Fmodel%22)和["New scheduler"](https://github.com/huggingface/diffusers/issues?q=is%3Aopen+is%3Aissue+label%3A%22New+scheduler%22)类issue。此类贡献请先阅读[设计哲学](https://huggingface.co/docs/diffusers/main/zh/conceptual/philosophy)
 
 重申：**所有贡献对社区都具有重要价值。**下文将详细说明各类贡献方式。
 
