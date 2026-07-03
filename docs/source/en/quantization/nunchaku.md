@@ -21,7 +21,7 @@ result as a Diffusers pipeline repository.
 ## Load a quantized pipeline
 
 Load the packaged prequantized pipeline with [`~DiffusionPipeline.from_pretrained`]. Diffusers reads the quantization
-config from `model.json`.
+config from `config.json`.
 
 ```python
 import torch
