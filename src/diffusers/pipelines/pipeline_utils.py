@@ -38,7 +38,12 @@ from huggingface_hub import (
     read_dduf_file,
     snapshot_download,
 )
-from huggingface_hub.utils import HfHubHTTPError, OfflineModeIsEnabled, validate_hf_hub_args
+from huggingface_hub.utils import (
+    HfHubHTTPError,
+    LocalEntryNotFoundError,
+    OfflineModeIsEnabled,
+    validate_hf_hub_args,
+)
 from packaging import version
 from tqdm.auto import tqdm
 from typing_extensions import Self
@@ -1775,6 +1780,27 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 # if the pipeline is cached, we can directly return it
                 # else call snapshot_download
                 return snapshot_folder
+
+        else:
+            # We are offline (either the user asked for `local_files_only` or `model_info` failed above).
+            # diffusers only ever caches a filtered subset of a repo (skipping e.g. `.gitattributes`), but
+            # newer `huggingface_hub` versions make `snapshot_download` validate that the cached snapshot is
+            # complete and raise for the missing files. The resolved config file lives inside the cached
+            # snapshot folder, so return that folder directly. If the config isn't cached, fall through to
+            # `snapshot_download` below, which raises the not-found error handled together with a failed
+            # `model_info` call.
+            try:
+                config_file = hf_hub_download(
+                    pretrained_model_name,
+                    cls.config_name,
+                    cache_dir=cache_dir,
+                    revision=revision,
+                    token=token,
+                    local_files_only=True,
+                )
+                return Path(config_file).parent
+            except LocalEntryNotFoundError:
+                pass
 
         user_agent = {"pipeline_class": cls.__name__}
         if custom_pipeline is not None and not custom_pipeline.endswith(".py"):

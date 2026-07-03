@@ -504,6 +504,29 @@ class DownloadTests(unittest.TestCase):
                 if p1.data.ne(p2.data).sum() > 0:
                     assert False, "Parameters not the same!"
 
+    def test_local_files_only_returns_cached_snapshot_without_snapshot_download(self):
+        # diffusers downloads a filtered subset of a repo (skipping e.g. `.gitattributes`). Newer
+        # `huggingface_hub` versions validate that a cached snapshot is complete under
+        # `local_files_only=True`, so an offline `snapshot_download(allow_patterns=None)` would wrongly
+        # expect the whole repo. The offline path must instead compute `allow_patterns` from the local
+        # cache and return the cached snapshot directly. See
+        # https://github.com/huggingface/diffusers/issues/14117
+        with tempfile.TemporaryDirectory() as tmpdirname:
+            cached_folder = DiffusionPipeline.download(
+                "hf-internal-testing/tiny-stable-diffusion-torch", cache_dir=tmpdirname
+            )
+
+            with mock.patch("diffusers.pipelines.pipeline_utils.snapshot_download") as mock_snapshot_download:
+                offline_folder = DiffusionPipeline.download(
+                    "hf-internal-testing/tiny-stable-diffusion-torch",
+                    cache_dir=tmpdirname,
+                    local_files_only=True,
+                )
+
+            # A fully cached pipeline returns early; `snapshot_download` must not be called at all.
+            mock_snapshot_download.assert_not_called()
+            assert os.path.samefile(offline_folder, cached_folder)
+
     def test_download_from_variant_folder(self):
         for use_safetensors in [False, True]:
             other_format = ".bin" if use_safetensors else ".safetensors"
