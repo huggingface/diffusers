@@ -434,6 +434,37 @@ class GGUFQuantizationConfig(QuantizationConfigMixin):
 class NunchakuLiteQuantizationConfig(QuantizationConfigMixin):
     """Configuration for loading Nunchaku Lite checkpoints.
 
+    Nunchaku Lite support in Diffusers loads prequantized checkpoints. To create a compatible checkpoint, use
+    [`diffuse-compressor`](https://github.com/rootonchair/diffuse-compressor) to choose or adapt a target
+    configuration for the model architecture, quantize and export the transformer, and package it as a Diffusers
+    pipeline with the compact `quantization_config` stored in `model.json`.
+
+    The exported state dict must match the target Diffusers model architecture exactly. Checkpoints quantized with
+    fused QKV projections won't load into a model config that expects separate Q, K, and V projection modules.
+
+    Example compact `model.json` config:
+
+    ```json
+    {
+      "_class_name": "ErnieImageTransformer2DModel",
+      "quantization_config": {
+        "quant_method": "nunchaku_lite",
+        "compute_dtype": "bfloat16",
+        "svdq_w4a4": {
+          "precision": "fp4",
+          "group_size": 16,
+          "rank": 32,
+          "targets": ["layers.0.self_attention.to_q"]
+        },
+        "awq_w4a16": {
+          "precision": "int4",
+          "group_size": 64,
+          "targets": ["final_linear"]
+        }
+      }
+    }
+    ```
+
     Args:
         compute_dtype (`torch.dtype`, defaults to `torch.bfloat16`):
             Runtime dtype used by the floating-point buffers in the quantized modules.

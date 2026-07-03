@@ -22,28 +22,28 @@ class TinyPretrainedModel(ModelMixin, ConfigMixin):
     @register_to_config
     def __init__(self):
         super().__init__()
-        self.svdq = torch.nn.Linear(64, 128, bias=True)
-        self.awq = torch.nn.Linear(64, 128, bias=False)
+        self.linear1 = torch.nn.Linear(64, 128, bias=True)
+        self.linear2 = torch.nn.Linear(64, 128, bias=False)
 
 
 def _state_dict(precision="int4"):
     state_dict = {
-        "svdq.bias": torch.randn(128, dtype=torch.bfloat16),
-        "svdq.proj_down": torch.randn(64, 4, dtype=torch.bfloat16),
-        "svdq.proj_up": torch.randn(128, 4, dtype=torch.bfloat16),
-        "svdq.qweight": torch.randint(-8, 8, (128, 32), dtype=torch.int8),
-        "svdq.smooth_factor": torch.randn(64, dtype=torch.bfloat16),
-        "svdq.smooth_factor_orig": torch.randn(64, dtype=torch.bfloat16),
-        "awq.qweight": torch.randint(-8, 8, (32, 32), dtype=torch.int32),
-        "awq.wscales": torch.randn(1, 128, dtype=torch.bfloat16),
-        "awq.wzeros": torch.randn(1, 128, dtype=torch.bfloat16),
+        "linear1.bias": torch.randn(128, dtype=torch.bfloat16),
+        "linear1.proj_down": torch.randn(64, 4, dtype=torch.bfloat16),
+        "linear1.proj_up": torch.randn(128, 4, dtype=torch.bfloat16),
+        "linear1.qweight": torch.randint(-8, 8, (128, 32), dtype=torch.int8),
+        "linear1.smooth_factor": torch.randn(64, dtype=torch.bfloat16),
+        "linear1.smooth_factor_orig": torch.randn(64, dtype=torch.bfloat16),
+        "linear2.qweight": torch.randint(-8, 8, (32, 32), dtype=torch.int32),
+        "linear2.wscales": torch.randn(1, 128, dtype=torch.bfloat16),
+        "linear2.wzeros": torch.randn(1, 128, dtype=torch.bfloat16),
     }
     if precision == "fp4":
-        state_dict["svdq.wcscales"] = torch.randn(128, dtype=torch.bfloat16)
-        state_dict["svdq.wscales"] = torch.empty(4, 128, dtype=torch.float8_e4m3fn)
-        state_dict["svdq.wtscale"] = torch.randn(1, dtype=torch.bfloat16)
+        state_dict["linear1.wcscales"] = torch.randn(128, dtype=torch.bfloat16)
+        state_dict["linear1.wscales"] = torch.empty(4, 128, dtype=torch.float8_e4m3fn)
+        state_dict["linear1.wtscale"] = torch.randn(1, dtype=torch.bfloat16)
     else:
-        state_dict["svdq.wscales"] = torch.randn(1, 128, dtype=torch.bfloat16)
+        state_dict["linear1.wscales"] = torch.randn(1, 128, dtype=torch.bfloat16)
     return state_dict
 
 
@@ -53,12 +53,12 @@ def _compact_config():
             "precision": "fp4",
             "group_size": 16,
             "rank": 4,
-            "targets": ["svdq"],
+            "targets": ["linear1"],
         },
         "awq_w4a16": {
             "precision": "int4",
             "group_size": 64,
-            "targets": ["awq"],
+            "targets": ["linear2"],
         },
     }
 
@@ -108,7 +108,7 @@ class NunchakuLiteBasicTests(unittest.TestCase):
 
         reloaded_config = NunchakuLiteQuantizationConfig.from_dict(config_dict)
         self.assertEqual(reloaded_config.compute_dtype, torch.bfloat16)
-        self.assertEqual(reloaded_config.svdq_w4a4["targets"], ["svdq"])
+        self.assertEqual(reloaded_config.svdq_w4a4["targets"], ["linear1"])
 
     def test_compact_config_replaces_svdq_and_awq_without_state_dict(self):
         model = self.model_cls()
@@ -118,12 +118,12 @@ class NunchakuLiteBasicTests(unittest.TestCase):
 
         quantizer.preprocess_model(model)
 
-        self.assertIsInstance(model.svdq, SVDQW4A4Linear)
-        self.assertIsInstance(model.awq, AWQW4A16Linear)
-        self.assertEqual(model.svdq.precision, "nvfp4")
-        self.assertEqual(model.svdq.rank, 4)
-        self.assertIsNotNone(model.svdq.bias)
-        self.assertIsNone(model.awq.bias)
+        self.assertIsInstance(model.linear1, SVDQW4A4Linear)
+        self.assertIsInstance(model.linear2, AWQW4A16Linear)
+        self.assertEqual(model.linear1.precision, "nvfp4")
+        self.assertEqual(model.linear1.rank, 4)
+        self.assertIsNotNone(model.linear1.bias)
+        self.assertIsNone(model.linear2.bias)
 
     @unittest.skipIf(not is_kernels_available(), "Nunchaku Lite from_pretrained requires kernels.")
     def test_nunchaku_lite_loads_with_from_pretrained(self):
@@ -151,9 +151,9 @@ class NunchakuLiteBasicTests(unittest.TestCase):
 
             loaded_model = self.model_cls.from_pretrained(tmpdir)
 
-        self.assertIsInstance(loaded_model.svdq, SVDQW4A4Linear)
-        self.assertIsInstance(loaded_model.awq, AWQW4A16Linear)
-        self.assertEqual(loaded_model.svdq.precision, "nvfp4")
+        self.assertIsInstance(loaded_model.linear1, SVDQW4A4Linear)
+        self.assertIsInstance(loaded_model.linear2, AWQW4A16Linear)
+        self.assertEqual(loaded_model.linear1.precision, "nvfp4")
 
 
 if __name__ == "__main__":
