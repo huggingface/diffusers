@@ -2994,6 +2994,31 @@ class FirstBlockCacheTesterMixin:
             "Outputs from normal inference and after disabling cache should not differ."
         )
 
+    def test_first_block_cache_enabled_after_inference(self):
+        # Regression test for https://github.com/huggingface/diffusers/issues/14037. The pipeline
+        # wraps every forward in cache_context(), so running once before enabling the cache builds
+        # the transformer's child-registry cache without the block hooks. enable_cache() then
+        # registers those hooks, and the next run must still reach them rather than a stale cache.
+        device = "cpu"
+
+        torch.manual_seed(0)
+        components = self.get_dummy_components(num_layers=2)
+        pipe = self.pipeline_class(**components).to(device)
+        pipe.set_progress_bar_config(disable=None)
+
+        def run_forward():
+            torch.manual_seed(0)
+            inputs = self.get_dummy_inputs(device)
+            inputs["num_inference_steps"] = 4
+            return pipe(**inputs)[0]
+
+        # First run populates the child-registry cache while caching is disabled.
+        run_forward()
+
+        # Enabling the cache and running again previously raised "No context is set".
+        pipe.transformer.enable_cache(self.first_block_cache_config)
+        run_forward()
+
 
 class TaylorSeerCacheTesterMixin:
     taylorseer_cache_config = TaylorSeerCacheConfig(

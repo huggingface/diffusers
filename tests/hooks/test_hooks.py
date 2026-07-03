@@ -17,7 +17,6 @@ import gc
 import pytest
 import torch
 
-from diffusers import FirstBlockCacheConfig, FluxTransformer2DModel
 from diffusers.hooks import HookRegistry, ModelHook
 from diffusers.training_utils import free_memory
 from diffusers.utils.logging import get_logger
@@ -393,46 +392,3 @@ class TestHooks:
             .replace("\n", "")
         )
         assert output == expected_invocation_order_log
-
-
-def test_cache_context_after_enable_cache_with_prior_context():
-    # End-to-end regression test for https://github.com/huggingface/diffusers/issues/14037. Entering
-    # cache_context() before enable_cache() builds the model's child-registry cache without the block
-    # hooks. enable_cache() then registers FirstBlockCache hooks on the blocks; if the cache is not
-    # invalidated, _set_context() iterates the stale list and the new block hooks never receive a
-    # context, so the next cached forward raises "No context is set".
-    torch.manual_seed(0)
-    heads, head_dim = 2, 16
-    hidden = heads * head_dim
-    model = FluxTransformer2DModel(
-        patch_size=1,
-        in_channels=hidden,
-        num_layers=2,
-        num_single_layers=2,
-        attention_head_dim=head_dim,
-        num_attention_heads=heads,
-        joint_attention_dim=32,
-        pooled_projection_dim=16,
-        guidance_embeds=False,
-        axes_dims_rope=(2, 6, 8),
-    ).eval()
-
-    img_seq_len, txt_seq_len = 8, 4
-    inputs = {
-        "hidden_states": torch.randn(1, img_seq_len, hidden),
-        "encoder_hidden_states": torch.randn(1, txt_seq_len, 32),
-        "pooled_projections": torch.randn(1, 16),
-        "timestep": torch.tensor([1.0]),
-        "img_ids": torch.zeros(img_seq_len, 3),
-        "txt_ids": torch.zeros(txt_seq_len, 3),
-        "return_dict": False,
-    }
-
-    # Warmup pass inside a cache_context() while caching is disabled, then enable caching.
-    with torch.no_grad(), model.cache_context("cond"):
-        model(**inputs)
-    model.enable_cache(FirstBlockCacheConfig(threshold=0.1))
-
-    # Previously raised "No context is set"; the cache invalidation in enable_cache() fixes it.
-    with torch.no_grad(), model.cache_context("cond"):
-        model(**inputs)
