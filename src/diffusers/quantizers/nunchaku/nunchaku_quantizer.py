@@ -61,7 +61,6 @@ class NunchakuLiteQuantizer(DiffusersQuantizer):
     @property
     def is_trainable(self) -> bool:
         return False
-    
     @property
     def is_compileable(self) -> bool:
         return True
