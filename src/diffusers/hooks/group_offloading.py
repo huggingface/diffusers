@@ -96,6 +96,16 @@ def _get_quanto_inner_tensor_names(tensor: torch.Tensor) -> list[str]:
     return list(tensor.__tensor_flatten__()[0])
 
 
+def _swap_quanto_tensor(param: torch.Tensor, source: torch.Tensor) -> None:
+    """Move a quanto QTensor to the device of `source` via `swap_tensors`.
+
+    `param.data = source` does not work for quanto tensor subclasses because it updates only the outer wrapper while
+    leaving the subclass internal tensors (e.g. `._data`, `._scale`) on the original device. `swap_tensors` swaps the
+    full tensor contents in-place, preserving the parameter's identity.
+    """
+    torch.utils.swap_tensors(param, source)
+
+
 def _restore_quanto_tensor(param: torch.Tensor, source: torch.Tensor) -> None:
     """Restore internal tensor data of a quanto QTensor from `source` without mutating `source`."""
     for attr_name in _get_quanto_inner_tensor_names(source):
@@ -244,7 +254,7 @@ class ModuleGroup:
         if _is_torchao_tensor(tensor):
             _swap_torchao_tensor(tensor, moved)
         elif _is_quanto_tensor(tensor):
-            torch.utils.swap_tensors(tensor, moved)
+            _swap_quanto_tensor(tensor, moved)
         else:
             tensor.data = moved
         if self.record_stream:
@@ -272,18 +282,19 @@ class ModuleGroup:
             source = pinned_memory[buffer] if pinned_memory else buffer.data
             self._transfer_tensor_to_device(buffer, source, default_stream)
 
-    def _check_disk_offload_torchao(self):
+    def _check_disk_offload_tensor_subclasses(self):
         all_tensors = list(self.tensor_to_key.keys())
         has_torchao = any(_is_torchao_tensor(t) for t in all_tensors)
-        if has_torchao:
+        has_quanto = any(_is_quanto_tensor(t) for t in all_tensors)
+        if has_torchao or has_quanto:
             raise ValueError(
-                "Disk offloading is not supported for TorchAO quantized tensors because safetensors "
-                "cannot serialize TorchAO subclass tensors. Use memory offloading instead by not "
+                "Disk offloading is not supported for TorchAO or quanto tensor subclasses because saving only "
+                "`.data` would drop the subclass tensor internals. Use memory offloading instead by not "
                 "setting `offload_to_disk_path`."
             )
 
     def _onload_from_disk(self):
-        self._check_disk_offload_torchao()
+        self._check_disk_offload_tensor_subclasses()
 
         if self.stream is not None:
             # Wait for previous Host->Device transfer to complete
@@ -326,7 +337,7 @@ class ModuleGroup:
                 self._process_tensors_from_modules(None)
 
     def _offload_to_disk(self):
-        self._check_disk_offload_torchao()
+        self._check_disk_offload_tensor_subclasses()
 
         # TODO: we can potentially optimize this code path by checking if the _all_ the desired
         # safetensor files exist on the disk and if so, skip this step entirely, reducing IO
@@ -380,7 +391,7 @@ class ModuleGroup:
                     moved = param.to(self.offload_device, non_blocking=False)
                     _swap_torchao_tensor(param, moved)
                 elif _is_quanto_tensor(param):
-                    torch.utils.swap_tensors(param, param.to(self.offload_device, non_blocking=False))
+                    _swap_quanto_tensor(param, param.to(self.offload_device, non_blocking=False))
                 else:
                     param.data = param.data.to(self.offload_device, non_blocking=False)
             for buffer in self.buffers:
@@ -388,7 +399,7 @@ class ModuleGroup:
                     moved = buffer.to(self.offload_device, non_blocking=False)
                     _swap_torchao_tensor(buffer, moved)
                 elif _is_quanto_tensor(buffer):
-                    torch.utils.swap_tensors(buffer, buffer.to(self.offload_device, non_blocking=False))
+                    _swap_quanto_tensor(buffer, buffer.to(self.offload_device, non_blocking=False))
                 else:
                     buffer.data = buffer.data.to(self.offload_device, non_blocking=False)
 

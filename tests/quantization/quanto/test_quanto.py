@@ -297,6 +297,17 @@ class FluxTransformerQuantoMixin(QuantoBaseTesterMixin):
             backend_empty_cache(torch_device)
             gc.collect()
 
+    def test_group_offloading_disk_offload_raises(self):
+        model = self.model_cls.from_pretrained(**self.get_dummy_model_init_kwargs())
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            with self.assertRaisesRegex(ValueError, "Disk offloading is not supported for TorchAO or quanto"):
+                model.enable_group_offload(torch_device, offload_type="leaf_level", offload_to_disk_path=tmp_dir)
+
+        del model
+        backend_empty_cache(torch_device)
+        gc.collect()
+
     def test_training(self):
         quantization_config = QuantoConfig(**self.get_dummy_init_kwargs())
         quantized_model = self.model_cls.from_pretrained(
