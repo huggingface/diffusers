@@ -39,6 +39,7 @@ from ...models import (
     PriorTransformer,
     UNet2DConditionModel,
 )
+from ...models.others import StableUnCLIPImageNormalizer
 from ...schedulers import (
     DDIMScheduler,
     DDPMScheduler,
@@ -57,7 +58,6 @@ from ..deprecated.paint_by_example import PaintByExampleImageEncoder
 from ..latent_diffusion.pipeline_latent_diffusion import LDMBertConfig, LDMBertModel
 from ..pipeline_utils import DiffusionPipeline
 from .safety_checker import StableDiffusionSafetyChecker
-from .stable_unclip_image_normalizer import StableUnCLIPImageNormalizer
 
 
 if is_accelerate_available():

@@ -17,12 +17,12 @@ import torch
 
 from ...image_processor import PipelineImageInput
 from ...models import AutoencoderKLLTX2Video
+from ...models.autoencoders import LTX2LatentUpsamplerModel
 from ...utils import get_logger, replace_example_docstring
 from ...utils.torch_utils import randn_tensor
 from ...video_processor import VideoProcessor
 from ..ltx.pipeline_output import LTXPipelineOutput
 from ..pipeline_utils import DiffusionPipeline
-from .latent_upsampler import LTX2LatentUpsamplerModel
 
 
 logger = get_logger(__name__)  # pylint: disable=invalid-name

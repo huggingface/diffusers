@@ -20,7 +20,7 @@ import torch
 from transformers import CLIPTextConfig, CLIPTextModelWithProjection, CLIPTokenizer
 
 from diffusers import HeunDiscreteScheduler, PriorTransformer, ShapEPipeline
-from diffusers.pipelines.shap_e import ShapERenderer
+from diffusers.models.others import ShapERenderer
 
 from ...testing_utils import (
     backend_empty_cache,

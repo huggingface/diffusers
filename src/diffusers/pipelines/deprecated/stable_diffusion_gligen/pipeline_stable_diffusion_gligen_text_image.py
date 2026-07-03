@@ -30,6 +30,7 @@ from ....image_processor import VaeImageProcessor
 from ....loaders import StableDiffusionLoraLoaderMixin, TextualInversionLoaderMixin
 from ....models import AutoencoderKL, UNet2DConditionModel
 from ....models.attention import GatedSelfAttentionDense
+from ....models.condition_embedders import CLIPImageProjection
 from ....models.lora import adjust_lora_scale_text_encoder
 from ....schedulers import KarrasDiffusionSchedulers
 from ....utils import (
@@ -43,7 +44,6 @@ from ....utils import (
 from ....utils.torch_utils import randn_tensor
 from ...pipeline_utils import DeprecatedPipelineMixin, DiffusionPipeline, StableDiffusionMixin
 from ...stable_diffusion import StableDiffusionPipelineOutput
-from ...stable_diffusion.clip_image_project_model import CLIPImageProjection
 from ...stable_diffusion.safety_checker import StableDiffusionSafetyChecker
 
 

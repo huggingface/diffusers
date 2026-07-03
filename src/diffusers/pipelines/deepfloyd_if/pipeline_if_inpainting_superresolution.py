@@ -12,6 +12,7 @@ from transformers import CLIPImageProcessor, T5EncoderModel, T5Tokenizer
 
 from ...loaders import StableDiffusionLoraLoaderMixin
 from ...models import UNet2DConditionModel
+from ...models.others import IFWatermarker
 from ...schedulers import DDPMScheduler
 from ...utils import (
     BACKENDS_MAPPING,
@@ -25,7 +26,6 @@ from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline
 from .pipeline_output import IFPipelineOutput
 from .safety_checker import IFSafetyChecker
-from .watermark import IFWatermarker
 
 
 if is_bs4_available():

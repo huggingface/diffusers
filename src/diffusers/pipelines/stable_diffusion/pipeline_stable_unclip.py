@@ -24,6 +24,7 @@ from ...loaders import StableDiffusionLoraLoaderMixin, TextualInversionLoaderMix
 from ...models import AutoencoderKL, PriorTransformer, UNet2DConditionModel
 from ...models.embeddings import get_timestep_embedding
 from ...models.lora import adjust_lora_scale_text_encoder
+from ...models.others import StableUnCLIPImageNormalizer
 from ...schedulers import KarrasDiffusionSchedulers
 from ...utils import (
     USE_PEFT_BACKEND,
@@ -36,7 +37,6 @@ from ...utils import (
 )
 from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline, ImagePipelineOutput, StableDiffusionMixin
-from .stable_unclip_image_normalizer import StableUnCLIPImageNormalizer
 
 
 if is_torch_xla_available():
