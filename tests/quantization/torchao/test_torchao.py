@@ -522,9 +522,10 @@ class TorchAoTest(unittest.TestCase):
         inputs = self.get_dummy_inputs(torch_device)
         _ = pipe(**inputs)
 
-    def test_group_offloading(self):
+    def test_group_offloading_torchao_int8wo_v1(self):
+        quantization_config = TorchAoConfig(Int8WeightOnlyConfig(version=1))
         inputs = self.get_dummy_tensor_inputs(torch_device)
-        transformer = self.get_dummy_components(TorchAoConfig(Int8WeightOnlyConfig()))["transformer"].to(torch_device)
+        transformer = self.get_dummy_components(quantization_config)["transformer"].to(torch_device)
         with torch.no_grad():
             output_without_offloading = transformer(**inputs)[0]
         del transformer
@@ -536,7 +537,7 @@ class TorchAoTest(unittest.TestCase):
             {"offload_type": "leaf_level", "use_stream": True},
             {"offload_type": "block_level", "num_blocks_per_group": 1, "use_stream": True},
         ):
-            transformer = self.get_dummy_components(TorchAoConfig(Int8WeightOnlyConfig()))["transformer"]
+            transformer = self.get_dummy_components(quantization_config)["transformer"]
             transformer.enable_group_offload(torch_device, **offload_kwargs)
             with torch.no_grad():
                 output = transformer(**inputs)[0]
