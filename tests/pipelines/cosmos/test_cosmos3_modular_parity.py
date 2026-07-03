@@ -372,6 +372,7 @@ def test_cosmos3_modular_workflow_extraction():
     image2video_blocks = pipe.blocks.get_workflow("image2video")
     assert list(image2video_blocks.sub_blocks.keys()) == [
         "text_encoder",
+        "denoise.prepare_text_segments",
         "denoise.prepare_latents",
         "denoise.pack_sequence",
         "denoise.set_timesteps",

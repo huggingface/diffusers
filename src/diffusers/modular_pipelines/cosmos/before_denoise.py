@@ -16,12 +16,64 @@ from .modular_pipeline import Cosmos3OmniModularPipeline
 logger = logging.get_logger(__name__)
 
 
+class Cosmos3PrepareTextSegmentsStep(ModularPipelineBlocks):
+    model_name = "cosmos3-omni"
+
+    @property
+    def description(self) -> str:
+        return "Builds cond/uncond text segments and runtime device/dtype before denoising."
+
+    @property
+    def expected_components(self) -> list[ComponentSpec]:
+        return [ComponentSpec("transformer", Cosmos3OmniTransformer)]
+
+    @property
+    def inputs(self) -> list[InputParam]:
+        return [
+            InputParam(name="cond_input_ids", required=True),
+            InputParam(name="uncond_input_ids", required=True),
+            InputParam(name="guidance_scale", type_hint=float, default=6.0),
+        ]
+
+    @property
+    def intermediate_outputs(self) -> list[OutputParam]:
+        return [
+            OutputParam("device"),
+            OutputParam("dtype"),
+            OutputParam("cond_text_segment"),
+            OutputParam("uncond_text_segment"),
+        ]
+
+    @torch.no_grad()
+    def __call__(self, components: Cosmos3OmniModularPipeline, state: PipelineState) -> PipelineState:
+        block_state = self.get_block_state(state)
+
+        components._current_timestep = None
+        components._interrupt = False
+        components._guidance_scale = block_state.guidance_scale
+
+        block_state.device = components._get_execution_device()
+        block_state.dtype = components.transformer.dtype
+        block_state.cond_text_segment = components._prepare_text_segment(
+            block_state.cond_input_ids, device=block_state.device
+        )
+        block_state.uncond_text_segment = components._prepare_text_segment(
+            block_state.uncond_input_ids, device=block_state.device
+        )
+
+        self.set_block_state(state, block_state)
+        return components, state
+
+
 class Cosmos3PrepareLatentsStep(ModularPipelineBlocks):
     model_name = "cosmos3-omni"
 
     @property
     def description(self) -> str:
-        return "Prepares vision/sound/action latents and conditioning masks."
+        return (
+            "Prepares vision/sound/action latents and conditioning masks. "
+            "TODO: split VAE encoding into standalone Cosmos3VaeEncoderStep and Cosmos3ActionVaeEncoderStep."
+        )
 
     @property
     def expected_components(self) -> list[ComponentSpec]:
