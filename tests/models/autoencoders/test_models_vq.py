@@ -64,6 +64,10 @@ class VQModelTesterConfig(BaseModelTesterConfig):
 
 
 class TestVQModel(VQModelTesterConfig, ModelTesterMixin):
+    @pytest.mark.skipif(
+        torch_device not in ["cuda", "xpu"],
+        reason="float16 and bfloat16 can only be use for inference with an accelerator",
+    )
     @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16], ids=["fp16", "bf16"])
     def test_from_save_pretrained_dtype_inference(self, tmp_path, dtype):
         # The reference and reloaded models hold identical weights, so any output difference is

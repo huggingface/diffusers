@@ -525,7 +525,8 @@ class ModelTesterMixin(BaseModelOutputMixin):
 
         expected_message = (
             f"There are modules in {model.__class__.__name__} that should be kept in float32: "
-            f"{fp32_modules}. A bare `to()` might lead to inconsistent results."
+            f"{fp32_modules}. Casting directly with `to()` can lead to inconsistent results; set "
+            f"`torch_dtype` in `from_pretrained()` instead to keep these modules in float32."
         )
         assert expected_message in caplog.text
 
