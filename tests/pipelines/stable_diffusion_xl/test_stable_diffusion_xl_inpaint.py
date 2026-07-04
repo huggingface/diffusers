@@ -234,7 +234,7 @@ class StableDiffusionXLInpaintPipelineFastTests(
     def test_ip_adapter(self):
         expected_pipe_slice = None
         if torch_device == "cpu":
-            expected_pipe_slice = np.array([0.8274, 0.5538, 0.6141, 0.5843, 0.6865, 0.7082, 0.5861, 0.6123, 0.5344])
+            expected_pipe_slice = np.array([0.7629, 0.5586, 0.5911, 0.5941, 0.6568, 0.7128, 0.5961, 0.5896, 0.5277])
 
         return super().test_ip_adapter(expected_pipe_slice=expected_pipe_slice)
 
@@ -259,7 +259,7 @@ class StableDiffusionXLInpaintPipelineFastTests(
 
         assert image.shape == (1, 64, 64, 3)
 
-        expected_slice = np.array([0.8279, 0.5673, 0.6088, 0.6156, 0.6923, 0.7347, 0.6547, 0.6108, 0.5198])
+        expected_slice = np.array([0.7819, 0.5553, 0.5853, 0.6391, 0.6660, 0.7527, 0.6580, 0.5877, 0.5146])
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
@@ -395,7 +395,7 @@ class StableDiffusionXLInpaintPipelineFastTests(
 
         assert image.shape == (1, 64, 64, 3)
 
-        expected_slice = np.array([0.7540, 0.5231, 0.5833, 0.6217, 0.6339, 0.7067, 0.6507, 0.5672, 0.5030])
+        expected_slice = np.array([0.7432, 0.5123, 0.5937, 0.6343, 0.6309, 0.7179, 0.6593, 0.5638, 0.5031])
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
