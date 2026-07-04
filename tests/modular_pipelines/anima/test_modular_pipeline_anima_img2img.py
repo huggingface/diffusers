@@ -38,10 +38,11 @@ enable_full_determinism()
 ANIMA_IMG2IMG_WORKFLOWS = {
     "img2img": [
         ("text_encoder", "AnimaTextEncoderStep"),
+        ("vae_encoder", "AnimaImg2ImgVaeEncoderStep"),
         ("denoise.set_timesteps", "AnimaImg2ImgSetTimestepsStep"),
         ("denoise.denoise.text_conditioning", "AnimaTextConditioningStep"),
         ("denoise.denoise.input", "AnimaTextInputStep"),
-        ("denoise.denoise.vae_encoder", "AnimaImg2ImgVaeEncoderStep"),
+        ("denoise.denoise.prepare_latents", "AnimaImg2ImgPrepareLatentsStep"),
         ("denoise.denoise.denoise", "AnimaDenoiseStep"),
         ("decode.decode", "AnimaVaeDecoderStep"),
         ("decode.postprocess", "AnimaProcessImagesOutputStep"),

@@ -19,11 +19,8 @@ from ...configuration_utils import FrozenDict
 from ...guiders import ClassifierFreeGuidance
 from ...image_processor import VaeImageProcessor
 from ...models import AutoencoderKLQwenImage
-from ...schedulers import FlowMatchEulerDiscreteScheduler
-from ...utils.torch_utils import randn_tensor
 from ..modular_pipeline import ModularPipelineBlocks, PipelineState
 from ..modular_pipeline_utils import ComponentSpec, InputParam, OutputParam
-from .before_denoise import get_timesteps
 from .modular_pipeline import AnimaModularPipeline
 
 
@@ -319,49 +316,31 @@ def encode_vae_image(
 class AnimaImg2ImgVaeEncoderStep(ModularPipelineBlocks):
     """VAE Encoder step for Anima image-to-image generation.
 
-    Preprocesses the input image, encodes it with the VAE, generates noise, slices the
-    timestep schedule based on ``strength``, and adds noise to the image latents using
-    ``scheduler.scale_noise()``.
+    Preprocesses the input image and encodes it with the VAE, producing ``image_latents``.
+    Timestep slicing and noise addition are handled downstream by
+    ``AnimaImg2ImgPrepareLatentsStep``.
 
     Components:
         vae (`AutoencoderKLQwenImage`)
-        scheduler (`FlowMatchEulerDiscreteScheduler`)
         image_processor (`VaeImageProcessor`)
 
     Inputs:
         image (`PIL.Image.Image`):
-            Input image to use as starting point.
+            Input image to encode.
         height (`int`, *optional*):
             Height of the output image. Defaults to pipeline default.
         width (`int`, *optional*):
             Width of the output image. Defaults to pipeline default.
-        strength (`float`, *optional*, defaults to 0.9):
-            How much to transform the reference image. ``0`` means no change; ``1`` means
-            fully denoise from random noise.
-        num_images_per_prompt (`int`, *optional*, defaults to 1):
-            Number of images to generate per prompt.
         generator (`Generator`, *optional*):
             Torch generator for deterministic generation.
-        latents (`Tensor`, *optional*):
-            Pre-computed noise tensor. Generated randomly if ``None``.
-        timesteps (`Tensor`):
-            Full timestep schedule produced by ``AnimaImg2ImgSetTimestepsStep``.
-        num_inference_steps (`int`):
-            Total number of inference steps from ``AnimaImg2ImgSetTimestepsStep``.
 
     Outputs:
-        latents (`Tensor`):
-            Noisy image latents to use as the starting point for denoising.
-        timesteps (`Tensor`):
-            Timestep schedule sliced by ``strength``.
-        num_inference_steps (`int`):
-            Number of denoising steps after strength-based slicing.
-        padding_mask (`Tensor`):
-            Cosmos padding mask for the image latents.
+        image_latents (`Tensor`):
+            Encoded image latents.
         height (`int`):
-            Output image height (updated to pipeline default if not provided).
+            Output image height.
         width (`int`):
-            Output image width (updated to pipeline default if not provided).
+            Output image width.
     """
 
     model_name = "anima"
@@ -370,7 +349,6 @@ class AnimaImg2ImgVaeEncoderStep(ModularPipelineBlocks):
     def expected_components(self) -> list[ComponentSpec]:
         return [
             ComponentSpec("vae", AutoencoderKLQwenImage),
-            ComponentSpec("scheduler", FlowMatchEulerDiscreteScheduler),
             ComponentSpec(
                 "image_processor",
                 VaeImageProcessor,
@@ -381,10 +359,7 @@ class AnimaImg2ImgVaeEncoderStep(ModularPipelineBlocks):
 
     @property
     def description(self) -> str:
-        return (
-            "VAE Encoder step for Anima image-to-image generation. Encodes the input image, "
-            "slices the timestep schedule by strength, and adds noise via scheduler.scale_noise()."
-        )
+        return "VAE Encoder step for Anima image-to-image generation. Encodes the input image to produce image_latents."
 
     @property
     def inputs(self) -> list[InputParam]:
@@ -392,37 +367,13 @@ class AnimaImg2ImgVaeEncoderStep(ModularPipelineBlocks):
             InputParam.template("image"),
             InputParam.template("height"),
             InputParam.template("width"),
-            InputParam.template("strength"),
-            InputParam.template("num_images_per_prompt"),
             InputParam.template("generator"),
-            InputParam.template("latents"),
-            InputParam.template("timesteps", required=True),
-            InputParam(
-                "num_inference_steps",
-                required=True,
-                type_hint=int,
-                description="Total number of inference steps from AnimaImg2ImgSetTimestepsStep.",
-            ),
-            InputParam(
-                "batch_size",
-                required=True,
-                type_hint=int,
-                description="Number of prompts, provided by AnimaTextInputStep.",
-            ),
-            InputParam("dtype", type_hint=torch.dtype, description="Dtype used by the Anima denoiser."),
         ]
 
     @property
     def intermediate_outputs(self) -> list[OutputParam]:
         return [
-            OutputParam(
-                "latents", type_hint=torch.Tensor, description="Noisy image latents for the denoising process."
-            ),
-            OutputParam("timesteps", type_hint=torch.Tensor, description="Timestep schedule sliced by strength."),
-            OutputParam(
-                "num_inference_steps", type_hint=int, description="Number of denoising steps after strength slicing."
-            ),
-            OutputParam("padding_mask", type_hint=torch.Tensor, description="Cosmos padding mask for image latents."),
+            OutputParam("image_latents", type_hint=torch.Tensor, description="Encoded image latents."),
             OutputParam("height", type_hint=int, description="Image height used for generation."),
             OutputParam("width", type_hint=int, description="Image width used for generation."),
         ]
@@ -432,60 +383,21 @@ class AnimaImg2ImgVaeEncoderStep(ModularPipelineBlocks):
         block_state = self.get_block_state(state)
 
         device = components._execution_device
-        # dtype is provided by AnimaTextInputStep; fall back to vae dtype if not yet in state
-        dtype = block_state.dtype if block_state.dtype is not None else components.vae.dtype
 
         block_state.height = block_state.height or components.default_height
         block_state.width = block_state.width or components.default_width
 
-        block_state.timesteps, block_state.num_inference_steps = get_timesteps(
-            components.scheduler, block_state.num_inference_steps, block_state.strength
-        )
-
-        # Total batch = prompt batch × images per prompt
-        total_batch = block_state.batch_size * block_state.num_images_per_prompt
-
-        # Preprocess PIL image(s) to tensor
         processed_image = components.image_processor.preprocess(
             image=block_state.image, height=block_state.height, width=block_state.width
         )
 
-        # Encode to image latents; use VAE dtype for encoding
-        image_latents = encode_vae_image(
+        block_state.image_latents = encode_vae_image(
             image=processed_image,
             vae=components.vae,
             generator=block_state.generator,
             device=device,
             dtype=components.vae.dtype,
             latent_channels=components.num_channels_latents,
-        )
-
-        # Expand image_latents to total_batch (handles single image with multiple prompts)
-        if image_latents.shape[0] < total_batch:
-            repeats = total_batch // image_latents.shape[0]
-            image_latents = image_latents.repeat(repeats, 1, 1, 1, 1)
-
-        # Generate initial noise (or use pre-provided latents as noise)
-        if block_state.latents is None:
-            noise = randn_tensor(
-                image_latents.shape,
-                generator=block_state.generator,
-                device=device,
-                dtype=torch.float32,
-            )
-        else:
-            noise = block_state.latents.to(device=device, dtype=torch.float32)
-
-        # Add noise to image latents at the appropriate noise level for this strength
-        latent_timestep = block_state.timesteps[:1].repeat(total_batch)
-        block_state.latents = components.scheduler.scale_noise(
-            image_latents.to(dtype=torch.float32),
-            latent_timestep,
-            noise,
-        )
-
-        block_state.padding_mask = block_state.latents.new_zeros(
-            1, 1, block_state.height, block_state.width, dtype=dtype
         )
 
         self.set_block_state(state, block_state)
