@@ -1,4 +1,4 @@
-# Copyright 2025 The HuggingFace Team. All rights reserved.
+# Copyright 2026 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -3042,7 +3042,7 @@ def _flash_attention_3_varlen_hub(
     value_packed = torch.cat(value_valid, dim=0)
 
     func = _HUB_KERNELS_REGISTRY[AttentionBackendName._FLASH_3_VARLEN_HUB].kernel_fn
-    out, lse, *_ = func(
+    result = func(
         q=query_packed,
         k=key_packed,
         v=value_packed,
@@ -3053,6 +3053,11 @@ def _flash_attention_3_varlen_hub(
         softmax_scale=scale,
         causal=is_causal,
     )
+    if isinstance(result, tuple):
+        out, lse, *_ = result
+    else:
+        out = result
+        lse = None
     out = out.unflatten(0, (batch_size, -1))
 
     return (out, lse) if return_lse else out

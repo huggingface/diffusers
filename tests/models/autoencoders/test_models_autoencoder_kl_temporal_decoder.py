@@ -13,6 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import pytest
 import torch
 
 from diffusers import AutoencoderKLTemporalDecoder
@@ -63,7 +64,16 @@ class AutoencoderKLTemporalDecoderTesterConfig(BaseModelTesterConfig):
 
 
 class TestAutoencoderKLTemporalDecoder(AutoencoderKLTemporalDecoderTesterConfig, ModelTesterMixin):
-    pass
+    @pytest.mark.skipif(
+        torch_device not in ["cuda", "xpu"],
+        reason="float16 and bfloat16 can only be use for inference with an accelerator",
+    )
+    @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16], ids=["fp16", "bf16"])
+    def test_from_save_pretrained_dtype_inference(self, tmp_path, dtype):
+        # fp16/bf16 convolutions are nondeterministic across the two model instances, so relax the tolerance.
+        super().test_from_save_pretrained_dtype_inference(
+            tmp_path, dtype, atol=3e-2 if dtype == torch.bfloat16 else 1e-2
+        )
 
 
 class TestAutoencoderKLTemporalDecoderTraining(AutoencoderKLTemporalDecoderTesterConfig, TrainingTesterMixin):

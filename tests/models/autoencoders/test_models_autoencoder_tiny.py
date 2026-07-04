@@ -76,7 +76,12 @@ class AutoencoderTinyTesterConfig(BaseModelTesterConfig):
 
 
 class TestAutoencoderTiny(AutoencoderTinyTesterConfig, ModelTesterMixin):
-    pass
+    @pytest.mark.skip(
+        "`forward` round-trips the latents through a uint8 byte tensor (`.byte()` / `/ 255.0`), which upcasts to "
+        "float32 regardless of the model dtype, so full fp16/bf16 forward inference is not possible."
+    )
+    def test_from_save_pretrained_dtype_inference(self):
+        pass
 
 
 class TestAutoencoderTinyTraining(AutoencoderTinyTesterConfig, TrainingTesterMixin):

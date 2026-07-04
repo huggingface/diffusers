@@ -31,9 +31,11 @@ from diffusers.utils.import_utils import is_torch_neuronx_available
 
 from ...testing_utils import (
     backend_empty_cache,
+    backend_synchronize,
     enable_full_determinism,
     numpy_cosine_similarity_distance,
     require_torch_accelerator,
+    require_torch_neuron,
     slow,
     torch_device,
 )
@@ -381,3 +383,45 @@ class PixArtAlphaPipelineIntegrationTests(unittest.TestCase):
         no_res_bin_image_slice = no_res_bin_image[0, -3:, -3:, -1]
 
         assert not np.allclose(image_slice, no_res_bin_image_slice, atol=1e-4, rtol=1e-4)
+
+    @require_torch_neuron
+    def test_pixart_512_neuron_compile(self):
+        """
+        Smoke-test PixArtAlphaPipeline under torch.compile(backend="neuron") at 512×512.
+        """
+        from torch_neuronx.neuron_dynamo_backend import set_model_name
+
+        device = torch.neuron.current_device()
+        generator = torch.Generator("cpu").manual_seed(0)
+
+        pipe = PixArtAlphaPipeline.from_pretrained(self.ckpt_id_512, torch_dtype=torch.bfloat16)
+        pipe = pipe.to(device)
+        backend_synchronize(torch_device)
+
+        pipe.transformer.eval()
+        pipe.vae.eval()
+        pipe.text_encoder.eval()
+
+        set_model_name("pixart_text_encoder")
+        pipe.text_encoder = torch.compile(pipe.text_encoder, backend="neuron", fullgraph=True)
+        set_model_name("pixart_transformer")
+        pipe.transformer = torch.compile(pipe.transformer, backend="neuron", fullgraph=True)
+        # VAE must be compiled after pipeline __init__ (which reads vae.config.block_out_channels).
+        set_model_name("pixart_vae")
+        pipe.vae = torch.compile(pipe.vae, backend="neuron", fullgraph=True)
+
+        image = pipe(
+            self.prompt,
+            generator=generator,
+            height=512,
+            width=512,
+            num_inference_steps=2,
+            output_type="np",
+        ).images
+
+        self.assertEqual(image.shape, (1, 512, 512, 3))
+        self.assertFalse(np.isnan(image).any(), "Output contains NaN values")
+        self.assertTrue(
+            (image >= 0.0).all() and (image <= 1.0).all(),
+            "Output pixel values outside [0, 1]",
+        )

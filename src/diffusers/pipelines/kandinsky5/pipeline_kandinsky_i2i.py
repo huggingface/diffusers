@@ -544,6 +544,7 @@ class Kandinsky5I2IPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
 
             # Reshape to match latent dimensions [batch, 1, height, width, channels]
             image_latents = image_latents.permute(0, 2, 3, 4, 1)  # [batch, 1, H, W, C]
+            image_latents = image_latents.to(device=latents.device, dtype=latents.dtype)
             latents = torch.cat([latents, image_latents, torch.ones_like(latents[..., :1])], -1)
 
         return latents
