@@ -408,6 +408,26 @@ def dispatch_attention_fn(
 ) -> torch.Tensor:
     attention_kwargs = attention_kwargs or {}
 
+    # Match the autocast behavior of `torch.nn.functional.scaled_dot_product_attention`: its autocast
+    # registration casts eligible floating-point inputs (autocast skips float64) to the autocast dtype
+    # before running. Under an active autocast context, ops with an fp32 cast policy (such as the
+    # `torch.nn.RMSNorm` QK norms in Flux-family models) return float32 even for bf16/fp16 inputs while
+    # `value` keeps the autocast dtype, and backends that call external kernels (flash-attn, sage,
+    # xformers, ...) bypass autocast's dispatch handling and fail on such inputs. Normalizing here keeps
+    # every backend consistent with the native backend. See https://github.com/huggingface/diffusers/issues/14104.
+    # `is_autocast_available` guards device types without an autocast dispatch key (e.g. "meta"), for
+    # which `is_autocast_enabled` raises. It is skipped when compiling: Dynamo cannot trace it before
+    # torch 2.12, and compiled graphs never run on such devices anyway.
+    device_type = query.device.type
+    if (torch.compiler.is_compiling() or torch.amp.is_autocast_available(device_type)) and torch.is_autocast_enabled(
+        device_type
+    ):
+        autocast_dtype = torch.get_autocast_dtype(device_type)
+        if query.dtype != torch.float64:
+            query, key, value = query.to(autocast_dtype), key.to(autocast_dtype), value.to(autocast_dtype)
+        if attn_mask is not None and torch.is_floating_point(attn_mask) and attn_mask.dtype != torch.float64:
+            attn_mask = attn_mask.to(autocast_dtype)
+
     if backend is None:
         # If no backend is specified, we either use the default backend (set via the DIFFUSERS_ATTN_BACKEND environment
         # variable), or we use a custom backend based on whether user is using the `attention_backend` context manager
