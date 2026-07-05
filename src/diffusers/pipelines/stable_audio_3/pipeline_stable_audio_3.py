@@ -35,6 +35,7 @@ from ...models.autoencoders.autoencoder_same import AutoencoderSAME
 from ...models.transformers.transformer_stable_audio3 import StableAudio3DiTModel
 from ...schedulers.scheduling_flow_match_euler_discrete import FlowMatchEulerDiscreteScheduler
 from ...schedulers.scheduling_ping_pong import PingPongScheduler
+from ...schedulers.scheduling_stable_audio3_euler import StableAudio3EulerScheduler
 from ...utils import is_torch_xla_available, logging
 from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import AudioPipelineOutput, DiffusionPipeline
@@ -64,7 +65,6 @@ EXAMPLE_DOC_STRING = """
         >>> audio = pipe(
         ...     "A gentle piano melody with soft strings in a concert hall",
         ...     duration=10.0,
-        ...     num_inference_steps=8,
         ...     generator=generator,
         ... ).audios
 
@@ -107,7 +107,7 @@ class StableAudio3Pipeline(DiffusionPipeline):
         tokenizer: Union[GemmaTokenizer, GemmaTokenizerFast],
         duration_embedder: StableAudio3DurationEmbedder,
         transformer: StableAudio3DiTModel,
-        scheduler: Union[PingPongScheduler, FlowMatchEulerDiscreteScheduler],
+        scheduler: Union[PingPongScheduler, StableAudio3EulerScheduler, FlowMatchEulerDiscreteScheduler],
     ) -> None:
         super().__init__()
 
@@ -299,8 +299,8 @@ class StableAudio3Pipeline(DiffusionPipeline):
         self,
         prompt: Optional[Union[str, List[str]]] = None,
         duration: float = 10.0,
-        num_inference_steps: int = 8,
-        silence_padding_duration: float = 6.0,
+        num_inference_steps: Optional[int] = None,
+        silence_padding_duration: float = 0.0,
         num_waveforms_per_prompt: int = 1,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
         latents: Optional[torch.Tensor] = None,
@@ -319,12 +319,14 @@ class StableAudio3Pipeline(DiffusionPipeline):
                 Text prompt(s). Pass ``prompt_embeds`` instead to skip tokenization and encoding.
             duration (`float`, defaults to 10.0):
                 Requested output duration in seconds.
-            num_inference_steps (`int`, defaults to 8):
-                Number of denoising steps. SA3 Medium is distilled for exactly 8 ping-pong steps.
-            silence_padding_duration (`float`, defaults to 6.0):
+            num_inference_steps (`int`, *optional*):
+                Number of denoising steps. When ``None`` (default), the step count is taken from the checkpoint's
+                scheduler config: **8** for the distilled model (`PingPongScheduler`) and **100** for the base model
+                (`StableAudio3EulerScheduler`). Pass an explicit value to override.
+            silence_padding_duration (`float`, defaults to 0.0):
                 Extra seconds of latent context generated beyond the target content, giving the model headroom at the
-                boundary; the output is trimmed back to `duration`. Matches the reference implementation default of 6.0
-                s. Set to 0.0 to disable (not recommended — the model produces artifacts without headroom).
+                boundary; the output is trimmed back to `duration`. Defaults to 0.0 (disabled). Increase only if the
+                model is trained/distilled to mask this padding — otherwise the extra frames drain output energy.
             num_waveforms_per_prompt (`int`, defaults to 1):
                 Number of waveforms to generate per prompt.
             generator (`torch.Generator` or `list[torch.Generator]`, *optional*):
@@ -403,7 +405,15 @@ class StableAudio3Pipeline(DiffusionPipeline):
             latents,
         )
 
-        # 5. Set timesteps
+        # 5. Set timesteps: (8 for the distilled PingPong model, 100 for the base Euler model)
+        if num_inference_steps is None:
+            num_inference_steps = getattr(self.scheduler.config, "num_inference_steps", None)
+            if num_inference_steps is None:
+                raise ValueError(
+                    "`num_inference_steps` was not provided and the scheduler "
+                    f"({self.scheduler.__class__.__name__}) does not define a default "
+                    "`num_inference_steps` in its config. Pass `num_inference_steps` explicitly."
+                )
         self.scheduler.set_timesteps(num_inference_steps, device=device)
         timesteps = self.scheduler.timesteps
 

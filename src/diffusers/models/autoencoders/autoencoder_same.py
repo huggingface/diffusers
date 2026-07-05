@@ -639,6 +639,9 @@ class AutoencoderSAME(ModelMixin, ConfigMixin):
         sampling_rate: Audio sample rate in Hz (e.g. 44100).
     """
 
+    _supports_gradient_checkpointing = False
+    _supports_group_offloading = False
+
     @register_to_config
     def __init__(
         self,

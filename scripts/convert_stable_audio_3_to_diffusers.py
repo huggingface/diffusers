@@ -617,16 +617,23 @@ def _check_shapes(converted_sd: dict, model_sd: dict, label: str) -> tuple[int, 
 def convert(args):
     # ── Load checkpoint ──────────────────────────────────────────────────────
     checkpoint_path = args.checkpoint_path
+    hub_model_config_path = None
     if not Path(checkpoint_path).exists():
         # Try to download from HF Hub
         try:
             from huggingface_hub import hf_hub_download
 
             print(f"Downloading checkpoint from HF Hub: {checkpoint_path}")
+            repo_id = checkpoint_path
             checkpoint_path = hf_hub_download(
-                repo_id=checkpoint_path,
+                repo_id=repo_id,
                 filename="model.safetensors",
             )
+            # Also grab model_config.json so we can pick the right scheduler.
+            try:
+                hub_model_config_path = hf_hub_download(repo_id=repo_id, filename="model_config.json")
+            except Exception:
+                hub_model_config_path = None
         except Exception as exc:
             print(f"Could not download checkpoint: {exc}")
             sys.exit(1)
@@ -649,15 +656,17 @@ def convert(args):
         PingPongScheduler,
         StableAudio3DiTModel,
         StableAudio3DurationEmbedder,
+        StableAudio3EulerScheduler,
         StableAudio3Pipeline,
     )
 
     # ── Parse model_config.json if provided ─────────────────────────────────
     model_config = None
-    if args.model_config_path and Path(args.model_config_path).exists():
-        with open(args.model_config_path) as f:
+    model_config_path = args.model_config_path or hub_model_config_path
+    if model_config_path and Path(model_config_path).exists():
+        with open(model_config_path) as f:
             model_config = json.load(f)
-        print(f"Loaded model config: {args.model_config_path}")
+        print(f"Loaded model config: {model_config_path}")
 
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     # 1. VAE
@@ -770,13 +779,33 @@ def convert(args):
     # 5. Scheduler
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     print("\n── Saving scheduler ────────────────────────────────────────────────")
-    scheduler = PingPongScheduler(
-        num_inference_steps=8,
-        logsnr_min=-6.2,
-        logsnr_max=2.0,
-    )
+    # The base model is a (non-distilled) rectified_flow model that samples with deterministic
+    # Euler over many steps; the distilled model (rf_denoiser) uses the 8-step ping-pong sampler.
+    diffusion_objective = None
+    if model_config is not None:
+        diffusion_objective = model_config.get("model", {}).get("diffusion_objective") or model_config.get(
+            "diffusion_objective"
+        )
+
+    if diffusion_objective == "rf_denoiser":
+        scheduler = PingPongScheduler(
+            num_inference_steps=8,
+            logsnr_min=-6.2,
+            logsnr_max=2.0,
+        )
+        scheduler_cls_name = "PingPongScheduler"
+    else:
+        # Default (and explicit "rectified_flow"): base model -> deterministic Euler sampler.
+        if diffusion_objective is None:
+            print("  diffusion_objective not found in model_config; defaulting to Euler (base model).")
+        scheduler = StableAudio3EulerScheduler(
+            num_inference_steps=100,
+            logsnr_min=-6.2,
+            logsnr_max=2.0,
+        )
+        scheduler_cls_name = "StableAudio3EulerScheduler"
     scheduler.save_pretrained(output_dir / "scheduler")
-    print(f"  Saved → {output_dir / 'scheduler'}")
+    print(f"  Saved {scheduler_cls_name} → {output_dir / 'scheduler'}")
 
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     # 6. model_index.json
@@ -790,7 +819,7 @@ def convert(args):
         "tokenizer": ["transformers", tokenizer_cls_name],
         "duration_embedder": ["diffusers", "StableAudio3DurationEmbedder"],
         "transformer": ["diffusers", "StableAudio3DiTModel"],
-        "scheduler": ["diffusers", "PingPongScheduler"],
+        "scheduler": ["diffusers", scheduler_cls_name],
     }
     with open(output_dir / "model_index.json", "w") as f:
         json.dump(model_index, f, indent=2)
