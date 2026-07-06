@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 # coding=utf-8
-# Copyright 2025 HuggingFace Inc.
+# Copyright 2026 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -437,7 +437,7 @@ def generate_test_file(model_info: dict, model_filepath: str, include_optional: 
 
     lines = [
         "# coding=utf-8",
-        "# Copyright 2025 HuggingFace Inc.",
+        "# Copyright 2026 HuggingFace Inc.",
         "#",
         '# Licensed under the Apache License, Version 2.0 (the "License");',
         "# you may not use this file except in compliance with the License.",
