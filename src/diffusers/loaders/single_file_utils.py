@@ -4180,3 +4180,91 @@ def convert_ernie_image_transformer_checkpoint_to_diffusers(checkpoint, **kwargs
             checkpoint[k.replace("model.diffusion_model.", "")] = checkpoint.pop(k)
 
     return checkpoint
+
+
+def convert_ideogram4_transformer_checkpoint_to_diffusers(checkpoint, **kwargs):
+    converted_state_dict = {key: checkpoint.pop(key) for key in list(checkpoint.keys())}
+
+    for prefix in ("diffusion_model.", "conditional_transformer."):
+        if any(k.startswith(prefix) for k in converted_state_dict):
+            converted_state_dict = {k.removeprefix(prefix): v for k, v in converted_state_dict.items()}
+            break
+
+    # attention.o -> attention.to_out.0
+    for key in list(converted_state_dict.keys()):
+        if ".attention.o." in key:
+            new_key = key.replace(".attention.o.", ".attention.to_out.0.")
+            converted_state_dict[new_key] = converted_state_dict.pop(key)
+
+    # Split fused attention.qkv -> to_q / to_k / to_v
+    for key in list(converted_state_dict.keys()):
+        if ".attention.qkv.weight" in key:
+            fused = converted_state_dict.pop(key)
+            q, k, v = torch.chunk(fused, 3, dim=0)
+            base = key[: key.index(".attention.qkv.weight")]
+            converted_state_dict[f"{base}.attention.to_q.weight"] = q.contiguous()
+            converted_state_dict[f"{base}.attention.to_k.weight"] = k.contiguous()
+            converted_state_dict[f"{base}.attention.to_v.weight"] = v.contiguous()
+
+    return converted_state_dict
+
+
+def convert_krea2_transformer_checkpoint_to_diffusers(checkpoint, **kwargs):
+    converted_state_dict = {key: checkpoint.pop(key) for key in list(checkpoint.keys())}
+
+    converted_state_dict = {
+        k.removeprefix("diffusion_model."): v for k, v in converted_state_dict.items()
+    }
+
+    ATTN_MAP = {"wq": "to_q", "wk": "to_k", "wv": "to_v", "wo": "to_out.0", "gate": "to_gate"}
+    FF_MAP = {"gate": "ff.gate", "up": "ff.up", "down": "ff.down"}
+
+    def remap_key(key):
+        # transformer blocks: blocks.{i}.*
+        m = re.match(r"^blocks\.(\d+)\.(.+)$", key)
+        if m:
+            idx, tail = m.groups()
+            if tail.startswith("attn."):
+                sub_m = re.match(r"^attn\.(\w+)(.*)$", tail)
+                if sub_m:
+                    sub, rest = sub_m.groups()
+                    if sub in ATTN_MAP:
+                        return f"transformer_blocks.{idx}.attn.{ATTN_MAP[sub]}{rest}"
+            if tail.startswith("mlp."):
+                sub_m = re.match(r"^mlp\.(\w+)(.*)$", tail)
+                if sub_m:
+                    sub, rest = sub_m.groups()
+                    if sub in FF_MAP:
+                        return f"transformer_blocks.{idx}.{FF_MAP[sub]}{rest}"
+            # norm1, norm2, scale_shift_table and any unmatched sub-keys
+            return f"transformer_blocks.{idx}.{tail}"
+
+        # text fusion blocks: txtfusion.(layerwise_blocks|refiner_blocks).{i}.(attn|mlp).*
+        m = re.match(r"^txtfusion\.(layerwise_blocks|refiner_blocks)\.(\d+)\.(.+)$", key)
+        if m:
+            block_group, idx, tail = m.groups()
+            if tail.startswith("attn."):
+                sub_m = re.match(r"^attn\.(\w+)(.*)$", tail)
+                if sub_m:
+                    sub, rest = sub_m.groups()
+                    if sub in ATTN_MAP:
+                        return f"text_fusion.{block_group}.{idx}.attn.{ATTN_MAP[sub]}{rest}"
+            if tail.startswith("mlp."):
+                sub_m = re.match(r"^mlp\.(\w+)(.*)$", tail)
+                if sub_m:
+                    sub, rest = sub_m.groups()
+                    if sub in FF_MAP:
+                        return f"text_fusion.{block_group}.{idx}.{FF_MAP[sub]}{rest}"
+            return f"text_fusion.{block_group}.{idx}.{tail}"
+
+        # top-level txtfusion.* (e.g. txtfusion.projector)
+        if key.startswith("txtfusion."):
+            return "text_fusion." + key[len("txtfusion."):]
+
+        return key
+
+    result = {}
+    for key, value in converted_state_dict.items():
+        result[remap_key(key)] = value
+
+    return result
