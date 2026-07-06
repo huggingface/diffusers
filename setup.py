@@ -1,4 +1,4 @@
-# Copyright 2025 The HuggingFace Team. All rights reserved.
+# Copyright 2026 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -114,6 +114,9 @@ _deps = [
     "torchsde",
     "note_seq",
     "librosa",
+    # librosa pulls in numba/llvmlite; pin to versions that support Python 3.10+
+    "llvmlite>=0.40.0",
+    "numba>=0.57.0",
     "numpy",
     "parameterized",
     "peft>=0.17.0",
@@ -123,7 +126,7 @@ _deps = [
     "pytest-xdist",
     "python>=3.10.0",
     "ruff==0.9.10",
-    "safetensors>=0.8.0-rc.0",
+    "safetensors>=0.8.0",
     "sentencepiece>=0.1.91,!=0.1.92",
     "GitPython<3.1.19",
     "scipy",
@@ -228,6 +231,8 @@ extras["test"] = deps_list(
     "Jinja2",
     "invisible-watermark",
     "librosa",
+    "llvmlite",
+    "numba",
     "parameterized",
     "protobuf",
     "pytest",

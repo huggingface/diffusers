@@ -223,8 +223,8 @@ class HunyuanVideoI2VTransformerTesterConfig(BaseModelTesterConfig):
 
 
 class TestHunyuanVideoI2VTransformer(HunyuanVideoI2VTransformerTesterConfig, ModelTesterMixin):
-    def test_output(self):
-        super().test_output(expected_output_shape=(1, *self.output_shape))
+    def test_output(self, base_model_output):
+        super().test_output(base_model_output, expected_output_shape=(1, *self.output_shape))
 
 
 # ======================== HunyuanVideo Token Replace Image-to-Video ========================
@@ -299,5 +299,5 @@ class HunyuanVideoTokenReplaceTransformerTesterConfig(BaseModelTesterConfig):
 
 
 class TestHunyuanVideoTokenReplaceTransformer(HunyuanVideoTokenReplaceTransformerTesterConfig, ModelTesterMixin):
-    def test_output(self):
-        super().test_output(expected_output_shape=(1, *self.output_shape))
+    def test_output(self, base_model_output):
+        super().test_output(base_model_output, expected_output_shape=(1, *self.output_shape))

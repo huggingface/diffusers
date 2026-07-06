@@ -15,6 +15,14 @@ Linked from `AGENTS.md`, `skills/model-integration/SKILL.md`, and `review-rules.
 * When adding a new transformer (or reviewing one), skim `src/diffusers/models/transformers/transformer_flux.py`, `src/diffusers/models/transformers/transformer_flux2.py`, `src/diffusers/models/transformers/transformer_qwenimage.py`, and `src/diffusers/models/transformers/transformer_wan.py` first to establish the pattern. Most conventions (mixin set, file structure, naming, gradient-checkpointing implementation, `_no_split_modules` settings, etc.) are easiest to internalize by comparison rather than from a fixed list.
 * **Loading goes through `from_pretrained` / `from_single_file`.** Weights and configs load through the standard paths — never fetched or imported out-of-band at runtime. Don't override or add a custom `from_pretrained`, and don't load weights manually (`load_file(...)`, `hf_hub_download(...)`, or `sys.path.insert(...)` to import a reference repo). For an original-format single checkpoint, add `from_single_file` support (mixin + weight-mapping).
 
+## Single-file model layout
+
+A model follows the **single-file policy**: its full implementation lives in one `transformer_<name>.py` (or `unet_<name>.py`) — attention (the `Attention` class and its processor), transformer blocks, RoPE, and any model-specific layers should all be in that file.
+
+For shared building blocks, either:
+- **import** a common layer from `normalization.py`, `attention.py`, or `embeddings.py`, or
+- **`# Copied from`** a class in another model and rename (`# Copied from ...transformer_other.OtherBlock with Other->This`), so `make fix-copies` keeps the copies in sync.
+
 ## Attention pattern
 
 Attention must follow the diffusers pattern: both the `Attention` class and its processor are defined in the model file. The processor's `__call__` handles the actual compute and must use `dispatch_attention_fn` rather than calling `F.scaled_dot_product_attention` directly. The attention class inherits `AttentionModuleMixin` and declares `_default_processor_cls` and `_available_processors`.

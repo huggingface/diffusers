@@ -82,6 +82,7 @@ from .pipeline_loading_utils import (
     CONNECTED_PIPES_KEYS,
     CUSTOM_PIPELINE_FILE_NAME,
     LOADABLE_CLASSES,
+    TRANSFORMERS_COMPONENT_AUX_FILES,
     _download_dduf_file,
     _fetch_class_library_tuple,
     _get_custom_components_and_folders,
@@ -1750,6 +1751,11 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             allow_patterns = [
                 p for p in allow_patterns if not (len(p.split("/")) == 2 and p.split("/")[0] in passed_components)
             ]
+
+            # Repos with a flat, transformers-style layout host a component's files at the repo root instead of
+            # in a subfolder, where the folder-based allow patterns above miss its auxiliary files (root-hosted
+            # weights are already included via `model_filenames`, root `config.json` via `CONFIG_NAME`).
+            allow_patterns += TRANSFORMERS_COMPONENT_AUX_FILES
 
             if pipeline_class._load_connected_pipes:
                 allow_patterns.append("README.md")
