@@ -31,7 +31,6 @@ from diffusers import Krea2Transformer2DModel
 from diffusers.loaders.single_file_utils import convert_krea2_transformer_checkpoint_to_diffusers
 
 from ..testing_utils import enable_full_determinism
-from .single_file_testing_utils import SingleFileModelTesterMixin
 
 
 enable_full_determinism()
@@ -41,9 +40,10 @@ enable_full_determinism()
 # Helper: build a synthetic "original" Krea2 state dict
 # ---------------------------------------------------------------------------
 
+
 def _make_krea2_original_state_dict(
     num_layers=2,
-    hidden_size=32,      # num_heads * head_dim
+    hidden_size=32,  # num_heads * head_dim
     num_heads=4,
     num_kv_heads=2,
     intermediate_size=32,
@@ -113,8 +113,10 @@ def _make_krea2_original_state_dict(
         sd[f"{b}scale_shift_table"] = torch.randn(6, hidden_size)
 
     # Text fusion blocks (original naming: txtfusion.*)
-    for group, n_blocks in (("layerwise_blocks", num_layerwise_text_blocks),
-                             ("refiner_blocks", num_refiner_text_blocks)):
+    for group, n_blocks in (
+        ("layerwise_blocks", num_layerwise_text_blocks),
+        ("refiner_blocks", num_refiner_text_blocks),
+    ):
         for i in range(n_blocks):
             b = p(f"txtfusion.{group}.{i}.")
             sd[f"{b}attn.wq.weight"] = torch.randn(hidden_size, hidden_size)

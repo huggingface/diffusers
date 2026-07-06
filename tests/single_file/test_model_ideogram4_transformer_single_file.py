@@ -32,7 +32,6 @@ from diffusers import Ideogram4Transformer2DModel
 from diffusers.loaders.single_file_utils import convert_ideogram4_transformer_checkpoint_to_diffusers
 
 from ..testing_utils import enable_full_determinism
-from .single_file_testing_utils import SingleFileModelTesterMixin
 
 
 enable_full_determinism()
@@ -42,10 +41,17 @@ enable_full_determinism()
 # Helper: build a synthetic "original" state dict for a small Ideogram4 model
 # ---------------------------------------------------------------------------
 
-def _make_ideogram4_original_state_dict(num_layers=2, hidden_size=32, num_heads=4,
-                                         intermediate_size=32, adaln_dim=16,
-                                         in_channels=16, llm_features_dim=24,
-                                         prefix="diffusion_model."):
+
+def _make_ideogram4_original_state_dict(
+    num_layers=2,
+    hidden_size=32,
+    num_heads=4,
+    intermediate_size=32,
+    adaln_dim=16,
+    in_channels=16,
+    llm_features_dim=24,
+    prefix="diffusion_model.",
+):
     """
     Produces a synthetic state dict in the pre-diffusers Ideogram4 format:
       - fused attention.qkv   (3 * head_dim * num_heads, hidden_size)
@@ -206,13 +212,18 @@ class TestIdeogram4ConversionFunction(unittest.TestCase):
     def test_top_level_embedding_keys_unchanged(self):
         result = self._convert()
         for key in (
-            "input_proj.weight", "input_proj.bias",
+            "input_proj.weight",
+            "input_proj.bias",
             "llm_cond_norm.weight",
-            "llm_cond_proj.weight", "llm_cond_proj.bias",
+            "llm_cond_proj.weight",
+            "llm_cond_proj.bias",
             # t_embedding is Ideogram4EmbedScalar: two linear layers
-            "t_embedding.mlp_in.weight", "t_embedding.mlp_in.bias",
-            "t_embedding.mlp_out.weight", "t_embedding.mlp_out.bias",
-            "adaln_proj.weight", "adaln_proj.bias",
+            "t_embedding.mlp_in.weight",
+            "t_embedding.mlp_in.bias",
+            "t_embedding.mlp_out.weight",
+            "t_embedding.mlp_out.bias",
+            "adaln_proj.weight",
+            "adaln_proj.bias",
             "embed_image_indicator.weight",
         ):
             self.assertIn(key, result)
@@ -244,7 +255,7 @@ class TestIdeogram4ConversionFunction(unittest.TestCase):
 
         original_sd = _make_ideogram4_original_state_dict(
             num_layers=2,
-            hidden_size=32,   # num_heads * head_dim = 4 * 8
+            hidden_size=32,  # num_heads * head_dim = 4 * 8
             num_heads=4,
             intermediate_size=32,
             adaln_dim=16,

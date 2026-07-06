@@ -4212,9 +4212,7 @@ def convert_ideogram4_transformer_checkpoint_to_diffusers(checkpoint, **kwargs):
 def convert_krea2_transformer_checkpoint_to_diffusers(checkpoint, **kwargs):
     converted_state_dict = {key: checkpoint.pop(key) for key in list(checkpoint.keys())}
 
-    converted_state_dict = {
-        k.removeprefix("diffusion_model."): v for k, v in converted_state_dict.items()
-    }
+    converted_state_dict = {k.removeprefix("diffusion_model."): v for k, v in converted_state_dict.items()}
 
     ATTN_MAP = {"wq": "to_q", "wk": "to_k", "wv": "to_v", "wo": "to_out.0", "gate": "to_gate"}
     FF_MAP = {"gate": "ff.gate", "up": "ff.up", "down": "ff.down"}
@@ -4259,7 +4257,7 @@ def convert_krea2_transformer_checkpoint_to_diffusers(checkpoint, **kwargs):
 
         # top-level txtfusion.* (e.g. txtfusion.projector)
         if key.startswith("txtfusion."):
-            return "text_fusion." + key[len("txtfusion."):]
+            return "text_fusion." + key[len("txtfusion.") :]
 
         return key
 
