@@ -210,11 +210,14 @@ class TrainingTesterMixin:
 
         # Test with bfloat16
         if torch.device(torch_device).type != "cpu":
-            model.zero_grad()
-            with torch.amp.autocast(device_type=torch.device(torch_device).type, dtype=torch.bfloat16):
-                output = model(**inputs_dict, return_dict=False)[0]
+            if torch.device(torch_device).type == "cuda" and not torch.cuda.is_bf16_supported():
+                pytest.skip("bfloat16 training is not supported on this GPU.")
+            else:
+                model.zero_grad()
+                with torch.amp.autocast(device_type=torch.device(torch_device).type, dtype=torch.bfloat16):
+                    output = model(**inputs_dict, return_dict=False)[0]
 
-                noise = torch.randn((output.shape[0],) + self.output_shape).to(torch_device)
-                loss = torch.nn.functional.mse_loss(output, noise)
+                    noise = torch.randn((output.shape[0],) + self.output_shape).to(torch_device)
+                    loss = torch.nn.functional.mse_loss(output, noise)
 
-            loss.backward()
+                loss.backward()
