@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import itertools
 import math
 from typing import Any
 
@@ -135,11 +136,17 @@ class SVDQW4A4Linear(nn.Module):
         self.smooth_factor = nn.Parameter(
             torch.empty(in_features, dtype=torch_dtype, device=device), requires_grad=False
         )
-        self.proj_down = nn.Parameter(torch.empty(in_features, rank, dtype=torch_dtype, device=device), requires_grad=False)
-        self.proj_up = nn.Parameter(torch.empty(out_features, rank, dtype=torch_dtype, device=device), requires_grad=False)
+        self.proj_down = nn.Parameter(
+            torch.empty(in_features, rank, dtype=torch_dtype, device=device), requires_grad=False
+        )
+        self.proj_up = nn.Parameter(
+            torch.empty(out_features, rank, dtype=torch_dtype, device=device), requires_grad=False
+        )
 
         if precision == "nvfp4":
-            self.wcscales = nn.Parameter(torch.ones(out_features, dtype=torch_dtype, device=device), requires_grad=False)
+            self.wcscales = nn.Parameter(
+                torch.ones(out_features, dtype=torch_dtype, device=device), requires_grad=False
+            )
             self.wtscale = nn.Parameter(torch.ones(1, dtype=torch_dtype, device=device), requires_grad=False)
         else:
             self.wcscales = None
@@ -235,8 +242,10 @@ class AWQW4A16Linear(nn.Module):
         if x_flat.shape[0] == 0:
             output = x.new_empty(output_shape)
         elif self._use_gemm(x_flat.shape[0]):
-            output = _get_ops().awq_gemm_w4a16_g64_int32(x_flat, self.qweight, self.wscales, self.wzeros).reshape(
-                output_shape
+            output = (
+                _get_ops()
+                .awq_gemm_w4a16_g64_int32(x_flat, self.qweight, self.wscales, self.wzeros)
+                .reshape(output_shape)
             )
         else:
             output = self._forward_gemv_chunks(x_flat, _get_ops().gemv_awq).reshape(output_shape)
@@ -328,7 +337,6 @@ def _module_device(module: nn.Module) -> torch.device:
 
 
 def check_strict_state_dict_match(model: nn.Module, state_dict: dict[str, Any]) -> None:
-
     expected_keys = {n for n, _ in itertools.chain(model.named_parameters(), model.named_buffers())}
     loaded_keys = set(state_dict.keys())
     missing_keys = sorted(expected_keys - loaded_keys)

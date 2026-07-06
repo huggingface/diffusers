@@ -145,9 +145,7 @@ class NunchakuLiteBasicTests(unittest.TestCase):
 
             svdq_config = compact_config["svdq_w4a4"]
             precision = "fp4" if svdq_config["precision"] == "fp4" else "int4"
-            save_file(
-                _state_dict(precision=precision), os.path.join(tmpdir, "diffusion_pytorch_model.safetensors")
-            )
+            save_file(_state_dict(precision=precision), os.path.join(tmpdir, "diffusion_pytorch_model.safetensors"))
 
             loaded_model = self.model_cls.from_pretrained(tmpdir)
 
