@@ -1662,10 +1662,37 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 force_download=force_download,
                 token=token,
             )
+            filenames = {sibling.rfilename for sibling in info.siblings}
+        else:
+            # We are offline (either the user asked for `local_files_only` or the `model_info` call above
+            # failed), so the repo's file listing needed to compute the allow/ignore patterns below cannot be
+            # fetched. Source the listing from the cached snapshot instead: it holds exactly the (already
+            # filtered) files a previous online call downloaded, so both code paths compute the same patterns
+            # and `snapshot_download` validates the cached snapshot against them (catching e.g. a download
+            # that was interrupted midway). If the config isn't cached, skip straight to `snapshot_download`
+            # below, which raises the appropriate offline not-found error.
+            try:
+                config_file = hf_hub_download(
+                    pretrained_model_name,
+                    cls.config_name,
+                    cache_dir=cache_dir,
+                    revision=revision,
+                    token=token,
+                    local_files_only=True,
+                )
+            except LocalEntryNotFoundError:
+                config_file = None
+
+        if config_file is not None:
+            snapshot_folder = Path(config_file).parent
+            if local_files_only:
+                filenames = {
+                    f.relative_to(snapshot_folder).as_posix() for f in snapshot_folder.rglob("*") if f.is_file()
+                }
+
             config_dict = cls._dict_from_json_file(config_file)
             ignore_filenames = config_dict.pop("_ignore_files", [])
 
-            filenames = {sibling.rfilename for sibling in info.siblings}
             if variant is not None and _check_legacy_sharding_variant_format(filenames=filenames, variant=variant):
                 warn_msg = (
                     f"Warning: The repository contains sharded checkpoints for variant '{variant}' maybe in a deprecated format. "
@@ -1680,9 +1707,11 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 logger.warning(warn_msg)
 
             filenames = set(filenames) - set(ignore_filenames)
-            if revision in DEPRECATED_REVISION_ARGS and version.parse(
-                version.parse(__version__).base_version
-            ) >= version.parse("0.22.0"):
+            if (
+                not local_files_only
+                and revision in DEPRECATED_REVISION_ARGS
+                and version.parse(version.parse(__version__).base_version) >= version.parse("0.22.0")
+            ):
                 warn_deprecated_model_variant(pretrained_model_name, token, variant, revision, filenames)
 
             custom_components, folder_names = _get_custom_components_and_folders(
@@ -1767,40 +1796,20 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
 
             # Don't download index files of forbidden patterns either
             ignore_patterns = ignore_patterns + [f"{i}.index.*json" for i in ignore_patterns]
-            re_ignore_pattern = [re.compile(fnmatch.translate(p)) for p in ignore_patterns]
-            re_allow_pattern = [re.compile(fnmatch.translate(p)) for p in allow_patterns]
 
-            expected_files = [f for f in filenames if not any(p.match(f) for p in re_ignore_pattern)]
-            expected_files = [f for f in expected_files if any(p.match(f) for p in re_allow_pattern)]
+            if not local_files_only:
+                re_ignore_pattern = [re.compile(fnmatch.translate(p)) for p in ignore_patterns]
+                re_allow_pattern = [re.compile(fnmatch.translate(p)) for p in allow_patterns]
 
-            snapshot_folder = Path(config_file).parent
-            pipeline_is_cached = all((snapshot_folder / f).is_file() for f in expected_files)
+                expected_files = [f for f in filenames if not any(p.match(f) for p in re_ignore_pattern)]
+                expected_files = [f for f in expected_files if any(p.match(f) for p in re_allow_pattern)]
 
-            if pipeline_is_cached and not force_download:
-                # if the pipeline is cached, we can directly return it
-                # else call snapshot_download
-                return snapshot_folder
+                pipeline_is_cached = all((snapshot_folder / f).is_file() for f in expected_files)
 
-        else:
-            # We are offline (either the user asked for `local_files_only` or `model_info` failed above).
-            # diffusers only ever caches a filtered subset of a repo (skipping e.g. `.gitattributes`), but
-            # newer `huggingface_hub` versions make `snapshot_download` validate that the cached snapshot is
-            # complete and raise for the missing files. The resolved config file lives inside the cached
-            # snapshot folder, so return that folder directly. If the config isn't cached, fall through to
-            # `snapshot_download` below, which raises the not-found error handled together with a failed
-            # `model_info` call.
-            try:
-                config_file = hf_hub_download(
-                    pretrained_model_name,
-                    cls.config_name,
-                    cache_dir=cache_dir,
-                    revision=revision,
-                    token=token,
-                    local_files_only=True,
-                )
-                return Path(config_file).parent
-            except LocalEntryNotFoundError:
-                pass
+                if pipeline_is_cached and not force_download:
+                    # if the pipeline is cached, we can directly return it
+                    # else call snapshot_download
+                    return snapshot_folder
 
         user_agent = {"pipeline_class": cls.__name__}
         if custom_pipeline is not None and not custom_pipeline.endswith(".py"):
@@ -1843,7 +1852,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
 
             return cached_folder
 
-        except FileNotFoundError:
+        except FileNotFoundError as e:
             # Means we tried to load pipeline with `local_files_only=True` but the files have not been found in local cache.
             # This can happen in two cases:
             # 1. If the user passed `local_files_only=True`                    => we raise the error directly
@@ -1854,9 +1863,9 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             else:
                 # 2. we forced `local_files_only=True` when `model_info` failed
                 raise EnvironmentError(
-                    f"Cannot load model {pretrained_model_name}: model is not cached locally and an error occurred"
-                    " while trying to fetch metadata from the Hub. Please check out the root cause in the stacktrace"
-                    " above."
+                    f"Cannot load model {pretrained_model_name}: the model is not fully cached locally ({e}) and an"
+                    " error occurred while trying to fetch metadata from the Hub. Please check out the root cause in"
+                    " the stacktrace above."
                 ) from model_info_call_error
 
     @classmethod

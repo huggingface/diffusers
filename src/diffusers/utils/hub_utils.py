@@ -416,18 +416,14 @@ def _get_checkpoint_shard_files(
         return shard_filenames, sharded_metadata
 
     # At this stage pretrained_model_name_or_path is a model identifier on the Hub
-    if local_files_only:
-        # We are offline: the index file has already been resolved from the local cache and the shards live
-        # alongside it, so use that folder directly. Skip `snapshot_download`, whose snapshot-completeness
-        # check in newer `huggingface_hub` versions raises a less specific error for a missing shard than
-        # the check below.
-        cached_folder = os.path.dirname(index_filename)
-    else:
-        allow_patterns = original_shard_filenames
-        if subfolder is not None:
-            allow_patterns = [os.path.join(subfolder, p) for p in allow_patterns]
+    allow_patterns = original_shard_filenames
+    if subfolder is not None:
+        allow_patterns = [os.path.join(subfolder, p) for p in allow_patterns]
 
-        # If the repo doesn't have the required shards, error out early even before downloading anything.
+    ignore_patterns = ["*.json", "*.md"]
+
+    # If the repo doesn't have the required shards, error out early even before downloading anything.
+    if not local_files_only:
         model_files_info = model_info(pretrained_model_name_or_path, revision=revision, token=token)
         for shard_file in original_shard_filenames:
             shard_file_present = any(shard_file in k.rfilename for k in model_files_info.siblings)
@@ -437,28 +433,29 @@ def _get_checkpoint_shard_files(
                     "required according to the checkpoint index."
                 )
 
-        try:
-            # Load from URL
-            cached_folder = snapshot_download(
-                pretrained_model_name_or_path,
-                cache_dir=cache_dir,
-                proxies=proxies,
-                token=token,
-                revision=revision,
-                allow_patterns=allow_patterns,
-                ignore_patterns=["*.json", "*.md"],
-                user_agent=user_agent,
-            )
-            if subfolder is not None:
-                cached_folder = os.path.join(cached_folder, subfolder)
+    try:
+        # Load from URL
+        cached_folder = snapshot_download(
+            pretrained_model_name_or_path,
+            cache_dir=cache_dir,
+            proxies=proxies,
+            local_files_only=local_files_only,
+            token=token,
+            revision=revision,
+            allow_patterns=allow_patterns,
+            ignore_patterns=ignore_patterns,
+            user_agent=user_agent,
+        )
+        if subfolder is not None:
+            cached_folder = os.path.join(cached_folder, subfolder)
 
-        # We have already dealt with RepositoryNotFoundError and RevisionNotFoundError when getting the index,
-        # so we don't have to catch them here. We have also dealt with EntryNotFoundError.
-        except HfHubHTTPError as e:
-            raise EnvironmentError(
-                f"We couldn't connect to '{HUGGINGFACE_CO_RESOLVE_ENDPOINT}' to load {pretrained_model_name_or_path}. You should try"
-                " again after checking your internet connection."
-            ) from e
+    # We have already dealt with RepositoryNotFoundError and RevisionNotFoundError when getting the index, so
+    # we don't have to catch them here. We have also dealt with EntryNotFoundError.
+    except HfHubHTTPError as e:
+        raise EnvironmentError(
+            f"We couldn't connect to '{HUGGINGFACE_CO_RESOLVE_ENDPOINT}' to load {pretrained_model_name_or_path}. You should try"
+            " again after checking your internet connection."
+        ) from e
 
     cached_filenames = [os.path.join(cached_folder, f) for f in original_shard_filenames]
     for cached_file in cached_filenames:
