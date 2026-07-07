@@ -24,9 +24,13 @@ import torch.nn as nn
 from accelerate.utils.modeling import _get_proper_dtype, compute_module_sizes, dtype_byte_size
 
 from diffusers.utils import SAFE_WEIGHTS_INDEX_NAME, _add_variant, logging
-from diffusers.utils.testing_utils import require_accelerator, require_torch_multi_accelerator
 
-from ...testing_utils import assert_tensors_close, torch_device
+from ...testing_utils import (
+    assert_tensors_close,
+    require_accelerator,
+    require_torch_multi_accelerator,
+    torch_device,
+)
 
 
 def named_persistent_module_tensors(
@@ -135,8 +139,9 @@ def cast_inputs_to_dtype(inputs, current_dtype, target_dtype):
         return inputs.to(target_dtype) if inputs.dtype == current_dtype else inputs
     if isinstance(inputs, dict):
         return {k: cast_inputs_to_dtype(v, current_dtype, target_dtype) for k, v in inputs.items()}
-    if isinstance(inputs, list):
-        return [cast_inputs_to_dtype(v, current_dtype, target_dtype) for v in inputs]
+    if isinstance(inputs, (list, tuple)):
+        # Preserve the container type so models that branch on it (e.g. `isinstance(..., tuple)`) still see a tuple.
+        return type(inputs)(cast_inputs_to_dtype(v, current_dtype, target_dtype) for v in inputs)
 
     return inputs
 
@@ -257,7 +262,39 @@ class BaseModelTesterConfig:
         raise NotImplementedError("Subclasses must implement `get_dummy_inputs()`.")
 
 
-class ModelTesterMixin:
+class BaseModelOutputMixin:
+    """Provides the class-scoped `base_model_output` fixture shared across tester mixins.
+
+    Kept separate from `BaseModelTesterConfig` — which only declares the testing contract and performs no
+    computation — so any mixin that needs the cached reference output (`ModelTesterMixin`, the memory
+    offload mixins, ...) can inherit it without duplicating the build-and-forward.
+    """
+
+    @pytest.fixture(scope="class")
+    def base_model_output(self):
+        """Class-scoped reference forward output, built once and reused across the class.
+
+        Building the model and running its forward pass is fully deterministic (`torch.manual_seed(0)`
+        plus the deterministic `get_dummy_inputs` contract), so the reference ("base") output is
+        identical for every test in the class. The save/load, parallelism, and memory-offload tests
+        compare a reloaded/offloaded model against this output; computing it a single time here — instead
+        of rebuilding the model and re-running the forward in each test — removes that redundant work and
+        speeds up the suite.
+
+        The hardware-gated tests that consume this fixture use `pytest.mark.skipif` (via the `require_*`
+        decorators), which pytest evaluates before fixture setup, so skipping on a machine without the
+        required accelerators never triggers this forward.
+
+        Tests that still need a live model (e.g. to save or offload it) build their own with the same
+        seed, so the reloaded model's weights match this cached output.
+        """
+        torch.manual_seed(0)
+        model = self.model_class(**self.get_init_dict()).eval().to(torch_device)
+        with torch.no_grad():
+            return model(**self.get_dummy_inputs(), return_dict=False)[0]
+
+
+class ModelTesterMixin(BaseModelOutputMixin):
     """
     Base mixin class for model testing with common test methods.
 
@@ -278,7 +315,7 @@ class ModelTesterMixin:
     """
 
     @torch.no_grad()
-    def test_from_save_pretrained(self, tmp_path, atol=5e-5, rtol=5e-5):
+    def test_from_save_pretrained(self, base_model_output, tmp_path, atol=5e-5, rtol=5e-5):
         torch.manual_seed(0)
         model = self.model_class(**self.get_init_dict())
         model.to(torch_device)
@@ -295,13 +332,15 @@ class ModelTesterMixin:
                 f"Parameter shape mismatch for {param_name}. Original: {param_1.shape}, loaded: {param_2.shape}"
             )
 
-        image = model(**self.get_dummy_inputs(), return_dict=False)[0]
         new_image = new_model(**self.get_dummy_inputs(), return_dict=False)[0]
 
-        assert_tensors_close(image, new_image, atol=atol, rtol=rtol, msg="Models give different forward passes.")
+        assert_tensors_close(
+            base_model_output, new_image, atol=atol, rtol=rtol, msg="Models give different forward passes."
+        )
 
     @torch.no_grad()
-    def test_from_save_pretrained_variant(self, tmp_path, atol=5e-5, rtol=0):
+    def test_from_save_pretrained_variant(self, base_model_output, tmp_path, atol=5e-5, rtol=0):
+        torch.manual_seed(0)
         model = self.model_class(**self.get_init_dict())
         model.to(torch_device)
         model.eval()
@@ -316,10 +355,11 @@ class ModelTesterMixin:
 
         new_model.to(torch_device)
 
-        image = model(**self.get_dummy_inputs(), return_dict=False)[0]
         new_image = new_model(**self.get_dummy_inputs(), return_dict=False)[0]
 
-        assert_tensors_close(image, new_image, atol=atol, rtol=rtol, msg="Models give different forward passes.")
+        assert_tensors_close(
+            base_model_output, new_image, atol=atol, rtol=rtol, msg="Models give different forward passes."
+        )
 
     @pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.bfloat16], ids=["fp32", "fp16", "bf16"])
     def test_from_save_pretrained_dtype(self, tmp_path, dtype):
@@ -359,13 +399,8 @@ class ModelTesterMixin:
         )
 
     @torch.no_grad()
-    def test_output(self, expected_output_shape=None):
-        model = self.model_class(**self.get_init_dict())
-        model.to(torch_device)
-        model.eval()
-
-        inputs_dict = self.get_dummy_inputs()
-        output = model(**inputs_dict, return_dict=False)[0]
+    def test_output(self, base_model_output, expected_output_shape=None):
+        output = base_model_output
 
         assert output is not None, "Model output is None"
         assert output[0].shape == expected_output_shape or self.output_shape, (
@@ -472,6 +507,29 @@ class ModelTesterMixin:
             else:
                 assert param.dtype == torch.float16, f"Parameter {name} should be float16 but got {param.dtype}"
 
+    def test_to_keep_in_fp32_modules_warns(self, caplog):
+        fp32_modules = self.model_class._keep_in_fp32_modules
+        if fp32_modules is None or len(fp32_modules) == 0:
+            pytest.skip("Model does not have _keep_in_fp32_modules defined.")
+
+        model = self.model_class(**self.get_init_dict())
+
+        logger_name = "diffusers.models.modeling_utils"
+        logging.enable_propagation()
+        try:
+            with caplog.at_level(logging.WARNING, logger=logger_name):
+                caplog.clear()
+                model.to(torch.float16)
+        finally:
+            logging.disable_propagation()
+
+        expected_message = (
+            f"There are modules in {model.__class__.__name__} that should be kept in float32: "
+            f"{fp32_modules}. Casting directly with `to()` can lead to inconsistent results; set "
+            f"`torch_dtype` in `from_pretrained()` instead to keep these modules in float32."
+        )
+        assert expected_message in caplog.text
+
     @require_accelerator
     @pytest.mark.skipif(
         torch_device not in ["cuda", "xpu"],
@@ -484,7 +542,25 @@ class ModelTesterMixin:
         model.to(torch_device)
         fp32_modules = model._keep_in_fp32_modules or []
 
-        model.to(dtype).save_pretrained(tmp_path)
+        # Build the reference model with the same mixed-precision layout that `from_pretrained` enforces, so
+        # the comparison reflects real save/load fidelity:
+        #   - `_keep_in_fp32_modules` stay in fp32 while everything else is cast to `dtype`;
+        #   - non-persistent buffers (e.g. fp32 RoPE `inv_freq`) are left untouched, because they are not part
+        #     of the checkpoint and are regenerated by `__init__` on load. Truncating them here would make the
+        #     reference diverge from the reloaded model for reasons unrelated to save/load.
+        persistent_tensor_names = {name for name, _ in named_persistent_module_tensors(model, recurse=True)}
+
+        def keep_in_fp32(name):
+            return any(module_to_keep_in_fp32 in name.split(".") for module_to_keep_in_fp32 in fp32_modules)
+
+        for name, param in model.named_parameters():
+            param.data = param.data.to(torch.float32 if keep_in_fp32(name) else dtype)
+        for name, buf in model.named_buffers():
+            if not buf.is_floating_point() or name not in persistent_tensor_names:
+                continue
+            buf.data = buf.data.to(torch.float32 if keep_in_fp32(name) else dtype)
+
+        model.save_pretrained(tmp_path)
         model_loaded = self.model_class.from_pretrained(tmp_path, torch_dtype=dtype).to(torch_device)
 
         for name, param in model_loaded.named_parameters():
@@ -495,9 +571,12 @@ class ModelTesterMixin:
             else:
                 assert param.data.dtype == dtype
 
-        inputs = cast_inputs_to_dtype(self.get_dummy_inputs(), torch.float32, dtype)
-        output = model(**inputs, return_dict=False)[0]
-        output_loaded = model_loaded(**inputs, return_dict=False)[0]
+        # Fetch inputs separately for each forward so that models consuming a generator (e.g. stochastic decoders)
+        # see the same, freshly-seeded RNG state in both passes instead of sharing a single advancing generator.
+        output = model(**cast_inputs_to_dtype(self.get_dummy_inputs(), torch.float32, dtype), return_dict=False)[0]
+        output_loaded = model_loaded(
+            **cast_inputs_to_dtype(self.get_dummy_inputs(), torch.float32, dtype), return_dict=False
+        )[0]
 
         assert_tensors_close(
             output, output_loaded, atol=atol, rtol=rtol, msg=f"Loaded model output differs for {dtype}"
@@ -505,13 +584,11 @@ class ModelTesterMixin:
 
     @require_accelerator
     @torch.no_grad()
-    def test_sharded_checkpoints(self, tmp_path, atol=1e-5, rtol=0):
+    def test_sharded_checkpoints(self, base_model_output, tmp_path, atol=1e-5, rtol=0):
         torch.manual_seed(0)
         config = self.get_init_dict()
         model = self.model_class(**config).eval()
         model = model.to(torch_device)
-
-        base_output = model(**self.get_dummy_inputs(), return_dict=False)[0]
 
         model_size = compute_module_persistent_sizes(model)[""]
         max_shard_size = int((model_size * 0.75) / (2**10))  # Convert to KB as these test models are small
@@ -533,18 +610,16 @@ class ModelTesterMixin:
         new_output = new_model(**self.get_dummy_inputs(), return_dict=False)[0]
 
         assert_tensors_close(
-            base_output, new_output, atol=atol, rtol=rtol, msg="Output should match after sharded save/load"
+            base_model_output, new_output, atol=atol, rtol=rtol, msg="Output should match after sharded save/load"
         )
 
     @require_accelerator
     @torch.no_grad()
-    def test_sharded_checkpoints_with_variant(self, tmp_path, atol=1e-5, rtol=0):
+    def test_sharded_checkpoints_with_variant(self, base_model_output, tmp_path, atol=1e-5, rtol=0):
         torch.manual_seed(0)
         config = self.get_init_dict()
         model = self.model_class(**config).eval()
         model = model.to(torch_device)
-
-        base_output = model(**self.get_dummy_inputs(), return_dict=False)[0]
 
         model_size = compute_module_persistent_sizes(model)[""]
         max_shard_size = int((model_size * 0.75) / (2**10))  # Convert to KB as these test models are small
@@ -571,19 +646,21 @@ class ModelTesterMixin:
         new_output = new_model(**self.get_dummy_inputs(), return_dict=False)[0]
 
         assert_tensors_close(
-            base_output, new_output, atol=atol, rtol=rtol, msg="Output should match after variant sharded save/load"
+            base_model_output,
+            new_output,
+            atol=atol,
+            rtol=rtol,
+            msg="Output should match after variant sharded save/load",
         )
 
     @torch.no_grad()
-    def test_sharded_checkpoints_with_parallel_loading(self, tmp_path, atol=1e-5, rtol=0):
+    def test_sharded_checkpoints_with_parallel_loading(self, base_model_output, tmp_path, atol=1e-5, rtol=0):
         from diffusers.utils import constants
 
         torch.manual_seed(0)
         config = self.get_init_dict()
         model = self.model_class(**config).eval()
         model = model.to(torch_device)
-
-        base_output = model(**self.get_dummy_inputs(), return_dict=False)[0]
 
         model_size = compute_module_persistent_sizes(model)[""]
         max_shard_size = int((model_size * 0.75) / (2**10))  # Convert to KB as these test models are small
@@ -620,7 +697,11 @@ class ModelTesterMixin:
             output_parallel = model_parallel(**self.get_dummy_inputs(), return_dict=False)[0]
 
             assert_tensors_close(
-                base_output, output_parallel, atol=atol, rtol=rtol, msg="Output should match with parallel loading"
+                base_model_output,
+                output_parallel,
+                atol=atol,
+                rtol=rtol,
+                msg="Output should match with parallel loading",
             )
 
         finally:
@@ -631,18 +712,16 @@ class ModelTesterMixin:
 
     @require_torch_multi_accelerator
     @torch.no_grad()
-    def test_model_parallelism(self, tmp_path, atol=1e-5, rtol=0):
+    def test_model_parallelism(self, base_model_output, tmp_path, atol=1e-5, rtol=0):
         if self.model_class._no_split_modules is None:
             pytest.skip("Test not supported for this model as `_no_split_modules` is not set.")
 
+        torch.manual_seed(0)
         config = self.get_init_dict()
         inputs_dict = self.get_dummy_inputs()
         model = self.model_class(**config).eval()
 
         model = model.to(torch_device)
-
-        torch.manual_seed(0)
-        base_output = model(**inputs_dict, return_dict=False)[0]
 
         model_size = compute_module_sizes(model)[""]
         max_gpu_sizes = [int(p * model_size) for p in self.model_split_percents]
@@ -661,5 +740,5 @@ class ModelTesterMixin:
             new_output = new_model(**inputs_dict, return_dict=False)[0]
 
             assert_tensors_close(
-                base_output, new_output, atol=atol, rtol=rtol, msg="Output should match with model parallelism"
+                base_model_output, new_output, atol=atol, rtol=rtol, msg="Output should match with model parallelism"
             )

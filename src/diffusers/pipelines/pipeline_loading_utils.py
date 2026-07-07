@@ -69,6 +69,19 @@ DUMMY_MODULES_FOLDER = "diffusers.utils"
 TRANSFORMERS_DUMMY_MODULES_FOLDER = "transformers.utils"
 CONNECTED_PIPES_KEYS = ["prior"]
 
+# Auxiliary (non-weight) files a transformers component saves next to its weights. Repos with a flat,
+# transformers-style layout host a component's files at the repo root instead of in a subfolder, where the
+# folder-based allow patterns of `DiffusionPipeline.download` would miss them. Root-hosted weights and
+# `config.json` are matched by their own patterns, so only these auxiliary filenames need listing.
+# Currently the set needed by DiffusionGemma — extend as new flat-layout pipelines require it.
+TRANSFORMERS_COMPONENT_AUX_FILES = [
+    "chat_template.jinja",
+    "generation_config.json",
+    "processor_config.json",
+    "tokenizer.json",
+    "tokenizer_config.json",
+]
+
 logger = logging.get_logger(__name__)
 
 LOADABLE_CLASSES = {
@@ -136,6 +149,8 @@ def is_safetensors_compatible(filenames, passed_components=None, folder_names=No
     )
 
     passed_components = passed_components or []
+    # only weight files matter for safetensors compatibility
+    filenames = filter_model_files(filenames)
     if folder_names:
         filenames = {f for f in filenames if os.path.split(f)[0] in folder_names}
 

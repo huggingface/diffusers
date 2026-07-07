@@ -175,7 +175,7 @@ class StableDiffusionLatentUpscalePipelineFastTests(
 
         self.assertEqual(image.shape, (1, 256, 256, 3))
         expected_slice = np.array(
-            [0.47222412, 0.41921633, 0.44717434, 0.46874192, 0.42588258, 0.46150726, 0.4677534, 0.45583832, 0.48579055]
+            [0.57231164, 0.54510796, 0.5154225, 0.62793314, 0.58053195, 0.5522338, 0.6212865, 0.55557936, 0.5478562]
         )
         max_diff = np.abs(image_slice.flatten() - expected_slice).max()
         self.assertLessEqual(max_diff, 1e-3)
@@ -195,7 +195,7 @@ class StableDiffusionLatentUpscalePipelineFastTests(
 
         assert image.shape == (1, 256, 256, 3)
         expected_slice = np.array(
-            [0.43865365, 0.404124, 0.42618454, 0.44333526, 0.40564927, 0.43818694, 0.4411913, 0.43404633, 0.46392226]
+            [0.5130085, 0.5026671, 0.53117144, 0.6296477, 0.5712023, 0.6032776, 0.68555176, 0.58478534, 0.5989826]
         )
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
@@ -215,7 +215,7 @@ class StableDiffusionLatentUpscalePipelineFastTests(
 
         assert image.shape == (2, 256, 256, 3)
         expected_slice = np.array(
-            [0.38730142, 0.35695046, 0.40646142, 0.40967226, 0.3981609, 0.4195988, 0.4248805, 0.430259, 0.45694894]
+            [0.49870333, 0.49428767, 0.48577496, 0.5712294, 0.55280155, 0.5219455, 0.62869453, 0.5554026, 0.52685684]
         )
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3

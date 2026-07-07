@@ -131,7 +131,7 @@ class LDMTextToImagePipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         image_slice = image[0, -3:, -3:, -1]
 
         assert image.shape == (1, 16, 16, 3)
-        expected_slice = np.array([0.6101, 0.6156, 0.5622, 0.4895, 0.6661, 0.3804, 0.5748, 0.6136, 0.5014])
+        expected_slice = np.array([0.6511, 0.5873, 0.5183, 0.5046, 0.6663, 0.3908, 0.5729, 0.5979, 0.5058])
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
 

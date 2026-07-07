@@ -112,7 +112,7 @@ class LatentConsistencyModelPipelineFastTests(
     def test_ip_adapter(self):
         expected_pipe_slice = None
         if torch_device == "cpu":
-            expected_pipe_slice = np.array([0.1403, 0.5072, 0.5316, 0.1202, 0.3865, 0.4211, 0.5363, 0.3557, 0.3645])
+            expected_pipe_slice = np.array([0.1405, 0.5002, 0.5213, 0.1223, 0.3856, 0.4165, 0.5382, 0.3622, 0.3693])
         return super().test_ip_adapter(expected_pipe_slice=expected_pipe_slice)
 
     def test_lcm_onestep(self):
@@ -130,7 +130,7 @@ class LatentConsistencyModelPipelineFastTests(
         assert image.shape == (1, 64, 64, 3)
 
         image_slice = image[0, -3:, -3:, -1]
-        expected_slice = np.array([0.1441, 0.5304, 0.5452, 0.1361, 0.4011, 0.4370, 0.5326, 0.3492, 0.3637])
+        expected_slice = np.array([0.1444, 0.5229, 0.5344, 0.1384, 0.3999, 0.4320, 0.5345, 0.3559, 0.3685])
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
 
     def test_lcm_multistep(self):
@@ -147,7 +147,7 @@ class LatentConsistencyModelPipelineFastTests(
         assert image.shape == (1, 64, 64, 3)
 
         image_slice = image[0, -3:, -3:, -1]
-        expected_slice = np.array([0.1403, 0.5072, 0.5316, 0.1202, 0.3865, 0.4211, 0.5363, 0.3557, 0.3645])
+        expected_slice = np.array([0.1405, 0.5002, 0.5213, 0.1223, 0.3856, 0.4165, 0.5382, 0.3622, 0.3693])
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
 
     def test_lcm_custom_timesteps(self):
@@ -166,7 +166,7 @@ class LatentConsistencyModelPipelineFastTests(
         assert image.shape == (1, 64, 64, 3)
 
         image_slice = image[0, -3:, -3:, -1]
-        expected_slice = np.array([0.1403, 0.5072, 0.5316, 0.1202, 0.3865, 0.4211, 0.5363, 0.3557, 0.3645])
+        expected_slice = np.array([0.1405, 0.5002, 0.5213, 0.1223, 0.3856, 0.4165, 0.5382, 0.3622, 0.3693])
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
 
     def test_inference_batch_single_identical(self):

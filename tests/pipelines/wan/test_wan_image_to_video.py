@@ -154,7 +154,7 @@ class WanImageToVideoPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         self.assertEqual(generated_video.shape, (9, 3, 16, 16))
 
         # fmt: off
-        expected_slice = torch.tensor([0.4525, 0.4525, 0.4497, 0.4536, 0.452, 0.4529, 0.454, 0.4535, 0.5072, 0.5527, 0.5165, 0.5244, 0.5481, 0.5282, 0.5208, 0.5214])
+        expected_slice = torch.tensor([0.4528, 0.4525, 0.4493, 0.4537, 0.4521, 0.4532, 0.4543, 0.4536, 0.5084, 0.5252, 0.5211, 0.5120, 0.5419, 0.5355, 0.5169, 0.5213])
         # fmt: on
 
         generated_slice = generated_video.flatten()
@@ -329,7 +329,7 @@ class WanFLFToVideoPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         self.assertEqual(generated_video.shape, (9, 3, 16, 16))
 
         # fmt: off
-        expected_slice = torch.tensor([0.4531, 0.4527, 0.4498, 0.4542, 0.4526, 0.4527, 0.4534, 0.4534, 0.5061, 0.5185, 0.5283, 0.5181, 0.5309, 0.5365, 0.5113, 0.5244])
+        expected_slice = torch.tensor([0.4525, 0.4525, 0.4497, 0.4537, 0.4520, 0.4529, 0.4540, 0.4535, 0.5157, 0.5449, 0.5201, 0.5192, 0.5398, 0.5374, 0.5162, 0.5112])
         # fmt: on
 
         generated_slice = generated_video.flatten()

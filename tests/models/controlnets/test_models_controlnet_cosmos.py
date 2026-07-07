@@ -252,6 +252,10 @@ class TestCosmosControlNetModel(CosmosControlNetModelTesterConfig, ModelTesterMi
         super().test_from_save_pretrained()
 
     @pytest.mark.skip("Output is a list of tensors; comparison helper calls .shape on it.")
+    def test_from_save_pretrained_dtype_inference(self, *args, **kwargs):
+        super().test_from_save_pretrained_dtype_inference(*args, **kwargs)
+
+    @pytest.mark.skip("Output is a list of tensors; comparison helper calls .shape on it.")
     def test_from_save_pretrained_variant(self):
         super().test_from_save_pretrained_variant()
 
@@ -282,6 +286,10 @@ class TestCosmosControlNetModelTraining(CosmosControlNetModelTesterConfig, Train
     @pytest.mark.skip("ControlNet outputs list of control blocks, not single tensor for MSE loss.")
     def test_training_with_ema(self):
         super().test_training_with_ema()
+
+    @pytest.mark.skip("ControlNet outputs list of control blocks, not single tensor for MSE loss.")
+    def test_mixed_precision_training(self):
+        super().test_mixed_precision_training()
 
     @pytest.mark.skip("ControlNet output doesn't have .sample attribute.")
     def test_gradient_checkpointing_equivalence(self):
