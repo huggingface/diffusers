@@ -282,8 +282,6 @@ class Cosmos3VaeEncoderStep(ModularPipelineBlocks):
             InputParam(name="num_frames", required=True),
             InputParam(name="height", required=True),
             InputParam(name="width", required=True),
-            InputParam(name="device", required=True),
-            InputParam(name="dtype", required=True),
         ]
 
     @property
@@ -296,6 +294,9 @@ class Cosmos3VaeEncoderStep(ModularPipelineBlocks):
     @torch.no_grad()
     def __call__(self, components: Cosmos3OmniModularPipeline, state: PipelineState) -> PipelineState:
         block_state = self.get_block_state(state)
+
+        block_state.device = components._execution_device
+        block_state.dtype = components.transformer.dtype
 
         if block_state.image is not None and block_state.video is not None:
             raise ValueError("Pass either `image` or `video`, not both.")
@@ -429,8 +430,6 @@ class Cosmos3ActionVisionVaeEncoderStep(ModularPipelineBlocks):
             InputParam(name="num_frames", default=None),
             InputParam(name="height", default=None),
             InputParam(name="width", default=None),
-            InputParam(name="device", required=True),
-            InputParam(name="dtype", required=True),
         ]
 
     @property
@@ -448,6 +447,10 @@ class Cosmos3ActionVisionVaeEncoderStep(ModularPipelineBlocks):
     @torch.no_grad()
     def __call__(self, components: Cosmos3OmniModularPipeline, state: PipelineState) -> PipelineState:
         block_state = self.get_block_state(state)
+
+        block_state.device = components._execution_device
+        block_state.dtype = components.transformer.dtype
+
         action = block_state.action
         if block_state.image is not None or block_state.video is not None:
             raise ValueError(

@@ -44,14 +44,15 @@ class Cosmos3LoopStep(ModularPipelineBlocks):
             InputParam(name="sound_scheduler", default=None),
             InputParam(name="action_scheduler", default=None),
             InputParam(name="guidance_scale", default=6.0),
-            InputParam(name="device", required=True),
-            InputParam(name="dtype", required=True),
         ]
 
     @torch.no_grad()
     def __call__(self, components: Cosmos3OmniModularPipeline, block_state: BlockState, i: int, t: torch.Tensor):
         components._current_timestep = t
         timestep = t.item()
+
+        block_state.device = components._execution_device
+        block_state.dtype = components.transformer.dtype
 
         vision_tokens = block_state.latents.to(device=block_state.device, dtype=block_state.dtype)
         sound_tokens = (

@@ -40,8 +40,6 @@ class Cosmos3PrepareTextSegmentsStep(ModularPipelineBlocks):
     @property
     def intermediate_outputs(self) -> list[OutputParam]:
         return [
-            OutputParam("device"),
-            OutputParam("dtype"),
             OutputParam("cond_text_segment"),
             OutputParam("uncond_text_segment"),
         ]
@@ -54,14 +52,9 @@ class Cosmos3PrepareTextSegmentsStep(ModularPipelineBlocks):
         components._interrupt = False
         components._guidance_scale = block_state.guidance_scale
 
-        block_state.device = components._get_execution_device()
-        block_state.dtype = components.transformer.dtype
-        block_state.cond_text_segment = components._prepare_text_segment(
-            block_state.cond_input_ids, device=block_state.device
-        )
-        block_state.uncond_text_segment = components._prepare_text_segment(
-            block_state.uncond_input_ids, device=block_state.device
-        )
+        device = components._execution_device
+        block_state.cond_text_segment = components._prepare_text_segment(block_state.cond_input_ids, device=device)
+        block_state.uncond_text_segment = components._prepare_text_segment(block_state.uncond_input_ids, device=device)
 
         self.set_block_state(state, block_state)
         return components, state
@@ -99,8 +92,6 @@ class Cosmos3PrepareLatentsStep(ModularPipelineBlocks):
             InputParam(name="action", default=None),
             InputParam(name="action_image_size", default=None),
             InputParam(name="action_condition_frame_indexes", default=None),
-            InputParam(name="device", required=True),
-            InputParam(name="dtype", required=True),
         ]
 
     @property
@@ -125,6 +116,9 @@ class Cosmos3PrepareLatentsStep(ModularPipelineBlocks):
     @torch.no_grad()
     def __call__(self, components: Cosmos3OmniModularPipeline, state: PipelineState) -> PipelineState:
         block_state = self.get_block_state(state)
+
+        block_state.device = components._execution_device
+        block_state.dtype = components.transformer.dtype
 
         action = block_state.action
         action_mode = action.mode if action is not None else None
@@ -320,7 +314,6 @@ class Cosmos3PackSequenceStep(ModularPipelineBlocks):
             InputParam(name="has_image_condition", required=True),
             InputParam(name="vision_condition_indexes_for_pack", required=True),
             InputParam(name="action_condition_frame_indexes", default=None),
-            InputParam(name="device", required=True),
         ]
 
     @property
@@ -336,6 +329,8 @@ class Cosmos3PackSequenceStep(ModularPipelineBlocks):
     @torch.no_grad()
     def __call__(self, components: Cosmos3OmniModularPipeline, state: PipelineState) -> PipelineState:
         block_state = self.get_block_state(state)
+
+        block_state.device = components._execution_device
 
         cond_vision_segment = components._prepare_vision_segment(
             input_vision_tokens=block_state.latents,
@@ -460,7 +455,6 @@ class Cosmos3SetTimestepsStep(ModularPipelineBlocks):
     def inputs(self) -> list[InputParam]:
         return [
             InputParam.template("num_inference_steps", required=True),
-            InputParam(name="device", required=True),
             InputParam(name="sound_latents", default=None),
             InputParam(name="action_latents", default=None),
         ]
@@ -477,6 +471,7 @@ class Cosmos3SetTimestepsStep(ModularPipelineBlocks):
     @torch.no_grad()
     def __call__(self, components: Cosmos3OmniModularPipeline, state: PipelineState) -> PipelineState:
         block_state = self.get_block_state(state)
+        block_state.device = components._execution_device
         components.scheduler.set_timesteps(block_state.num_inference_steps, device=block_state.device)
 
         block_state.timesteps = components.scheduler.timesteps

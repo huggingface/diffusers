@@ -29,7 +29,6 @@ class Cosmos3VideoDecodeStep(ModularPipelineBlocks):
             InputParam(name="latents", required=True),
             InputParam.template("output_type", default="pil"),
             InputParam(name="enable_safety_check", default=True),
-            InputParam(name="device", required=True),
         ]
 
     @property
@@ -39,6 +38,8 @@ class Cosmos3VideoDecodeStep(ModularPipelineBlocks):
     @torch.no_grad()
     def __call__(self, components: Cosmos3OmniModularPipeline, state: PipelineState) -> PipelineState:
         block_state = self.get_block_state(state)
+
+        block_state.device = components._execution_device
 
         if block_state.output_type == "latent":
             block_state.videos = block_state.latents
