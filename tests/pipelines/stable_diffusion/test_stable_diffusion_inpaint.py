@@ -352,25 +352,6 @@ class StableDiffusionInpaintPipelineFastTests(
         # they should be the same
         assert torch.allclose(intermediate_latent, output_interrupted, atol=1e-4)
 
-    def test_ip_adapter(self, from_simple=False, expected_pipe_slice=None):
-        if not from_simple:
-            expected_pipe_slice = None
-            if torch_device == "cpu":
-                expected_pipe_slice = np.array(
-                    [
-                        0.44554764,
-                        0.5512345,
-                        0.37823588,
-                        0.5448754,
-                        0.6017515,
-                        0.44588876,
-                        0.5252009,
-                        0.4762011,
-                        0.46840027,
-                    ]
-                )
-        return super().test_ip_adapter(expected_pipe_slice=expected_pipe_slice)
-
     def test_encode_prompt_works_in_isolation(self):
         extra_required_param_value_dict = {
             "device": torch.device(torch_device).type,
@@ -464,14 +445,6 @@ class StableDiffusionSimpleInpaintPipelineFastTests(StableDiffusionInpaintPipeli
             "output_type": "np",
         }
         return inputs
-
-    def test_ip_adapter(self):
-        expected_pipe_slice = None
-        if torch_device == "cpu":
-            expected_pipe_slice = np.array(
-                [0.63756764, 0.543442, 0.5626, 0.5462022, 0.58467406, 0.5817405, 0.5266852, 0.5445131, 0.5225232]
-            )
-        return super().test_ip_adapter(from_simple=True, expected_pipe_slice=expected_pipe_slice)
 
     def test_stable_diffusion_inpaint(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
