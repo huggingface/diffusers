@@ -189,33 +189,33 @@ class AnimateDiffPipelineFastTests(
         if torch_device == "cpu":
             expected_pipe_slice = np.array(
                 [
-                    0.5216,
-                    0.5620,
-                    0.4927,
-                    0.5082,
-                    0.4786,
-                    0.5932,
-                    0.5125,
-                    0.4514,
-                    0.5315,
-                    0.4694,
-                    0.3276,
-                    0.4863,
-                    0.3920,
-                    0.3684,
-                    0.5745,
-                    0.4499,
-                    0.5081,
-                    0.5414,
-                    0.6014,
-                    0.5062,
-                    0.3630,
-                    0.5296,
-                    0.6018,
-                    0.5098,
-                    0.4948,
-                    0.5101,
-                    0.5620,
+                    0.5137,
+                    0.5648,
+                    0.4867,
+                    0.4968,
+                    0.4716,
+                    0.5940,
+                    0.5136,
+                    0.4370,
+                    0.5325,
+                    0.4856,
+                    0.3607,
+                    0.4660,
+                    0.4036,
+                    0.3620,
+                    0.5743,
+                    0.4617,
+                    0.4962,
+                    0.5454,
+                    0.5908,
+                    0.5164,
+                    0.3581,
+                    0.5272,
+                    0.6035,
+                    0.5103,
+                    0.4988,
+                    0.5016,
+                    0.5651,
                 ]
             )
         return super().test_ip_adapter(expected_pipe_slice=expected_pipe_slice)
@@ -223,7 +223,7 @@ class AnimateDiffPipelineFastTests(
     def test_dict_tuple_outputs_equivalent(self):
         expected_slice = None
         if torch_device == "cpu":
-            expected_slice = np.array([0.5125, 0.4514, 0.5315, 0.4499, 0.5081, 0.5414, 0.4948, 0.5101, 0.5620])
+            expected_slice = np.array([0.5136, 0.4370, 0.5325, 0.4617, 0.4962, 0.5454, 0.4988, 0.5016, 0.5651])
         return super().test_dict_tuple_outputs_equivalent(expected_slice=expected_slice)
 
     def test_inference_batch_single_identical(

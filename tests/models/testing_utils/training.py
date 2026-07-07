@@ -210,7 +210,9 @@ class TrainingTesterMixin:
 
         # Test with bfloat16
         if torch.device(torch_device).type != "cpu":
-            if torch.device(torch_device).type == "cuda" and not torch.cuda.is_bf16_supported():
+            if torch.device(torch_device).type == "cuda" and not torch.cuda.is_bf16_supported(
+                including_emulation=False
+            ):
                 pytest.skip("bfloat16 training is not supported on this GPU.")
             else:
                 model.zero_grad()

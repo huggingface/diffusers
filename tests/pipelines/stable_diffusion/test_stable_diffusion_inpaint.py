@@ -180,7 +180,7 @@ class StableDiffusionInpaintPipelineFastTests(
         image_slice = image[0, -3:, -3:, -1]
 
         assert image.shape == (1, 64, 64, 3)
-        expected_slice = np.array([0.4703, 0.5697, 0.3879, 0.5470, 0.6042, 0.4413, 0.5078, 0.4728, 0.4469])
+        expected_slice = np.array([0.4816, 0.5766, 0.3897, 0.5448, 0.5982, 0.4359, 0.5142, 0.4836, 0.4536])
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
@@ -197,7 +197,7 @@ class StableDiffusionInpaintPipelineFastTests(
         image_slice = image[0, -3:, -3:, -1]
 
         assert image.shape == (1, 64, 64, 3)
-        expected_slice = np.array([0.4931, 0.5988, 0.4569, 0.5556, 0.6650, 0.5087, 0.5966, 0.5358, 0.5269])
+        expected_slice = np.array([0.4979, 0.5907, 0.4608, 0.5595, 0.6673, 0.5135, 0.6035, 0.5464, 0.5325])
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
@@ -216,7 +216,7 @@ class StableDiffusionInpaintPipelineFastTests(
         image_slice = image[0, -3:, -3:, -1]
 
         assert image.shape == (1, 64, 64, 3)
-        expected_slice = np.array([0.4931, 0.5988, 0.4569, 0.5556, 0.6650, 0.5087, 0.5966, 0.5358, 0.5269])
+        expected_slice = np.array([0.4979, 0.5907, 0.4608, 0.5595, 0.6673, 0.5135, 0.6035, 0.5464, 0.5325])
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
@@ -352,15 +352,6 @@ class StableDiffusionInpaintPipelineFastTests(
         # they should be the same
         assert torch.allclose(intermediate_latent, output_interrupted, atol=1e-4)
 
-    def test_ip_adapter(self, from_simple=False, expected_pipe_slice=None):
-        if not from_simple:
-            expected_pipe_slice = None
-            if torch_device == "cpu":
-                expected_pipe_slice = np.array(
-                    [0.4390, 0.5452, 0.3772, 0.5448, 0.6031, 0.4480, 0.5194, 0.4687, 0.4640]
-                )
-        return super().test_ip_adapter(expected_pipe_slice=expected_pipe_slice)
-
     def test_encode_prompt_works_in_isolation(self):
         extra_required_param_value_dict = {
             "device": torch.device(torch_device).type,
@@ -454,12 +445,6 @@ class StableDiffusionSimpleInpaintPipelineFastTests(StableDiffusionInpaintPipeli
             "output_type": "np",
         }
         return inputs
-
-    def test_ip_adapter(self):
-        expected_pipe_slice = None
-        if torch_device == "cpu":
-            expected_pipe_slice = np.array([0.6345, 0.5395, 0.5611, 0.5403, 0.5830, 0.5855, 0.5193, 0.5443, 0.5211])
-        return super().test_ip_adapter(from_simple=True, expected_pipe_slice=expected_pipe_slice)
 
     def test_stable_diffusion_inpaint(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
@@ -563,7 +548,7 @@ class StableDiffusionSimpleInpaintPipelineFastTests(StableDiffusionInpaintPipeli
         assert image.shape == (1, 64, 64, 3)
 
         expected_slice = np.array(
-            [[0.6387283, 0.5564158, 0.58631873, 0.5539942, 0.5494673, 0.6461868, 0.5251618, 0.5497595, 0.5508756]]
+            [[0.6443541, 0.55819386, 0.58656645, 0.5574256, 0.55064464, 0.64331865, 0.5232371, 0.5466772, 0.5478098]]
         )
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-4
 

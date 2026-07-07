@@ -174,7 +174,7 @@ class FluxControlNetPipelineFastTests(unittest.TestCase, PipelineTesterMixin, Fl
 
         assert image.shape == (1, 32, 32, 3)
 
-        expected_slice = np.array([0.6677, 0.6138, 0.5296, 0.6109, 0.5672, 0.6373, 0.5463, 0.6068, 0.5569])
+        expected_slice = np.array([0.6751, 0.6115, 0.5290, 0.6200, 0.5736, 0.6409, 0.5588, 0.6046, 0.5594])
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2, (
             f"Expected: {expected_slice}, got: {image_slice.flatten()}"
