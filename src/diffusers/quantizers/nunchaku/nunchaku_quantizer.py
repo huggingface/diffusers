@@ -35,6 +35,8 @@ class NunchakuLiteQuantizer(DiffusersQuantizer):
     def update_torch_dtype(self, torch_dtype):
         if torch_dtype is None:
             torch_dtype = self.compute_dtype
+        else:
+            self.compute_dtype = torch_dtype
         return torch_dtype
 
     def _process_model_before_weight_loading(
