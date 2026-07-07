@@ -1,6 +1,7 @@
 import torch
 from transformers import AutoTokenizer
 
+from ...configuration_utils import FrozenDict
 from ...models.autoencoders.autoencoder_kl_wan import AutoencoderKLWan
 from ...pipelines.cosmos.pipeline_cosmos3_omni import (
     _ACTION_RESOLUTION_BINS,
@@ -156,6 +157,12 @@ class Cosmos3ActionTextStep(ModularPipelineBlocks):
     def expected_components(self) -> list[ComponentSpec]:
         return [
             ComponentSpec("text_tokenizer", AutoTokenizer),
+            ComponentSpec(
+                "video_processor",
+                VideoProcessor,
+                config=FrozenDict({"vae_scale_factor": 16, "resample": "bilinear"}),
+                default_creation_method="from_config",
+            ),
         ]
 
     @property
@@ -249,7 +256,15 @@ class Cosmos3VaeEncoderStep(ModularPipelineBlocks):
 
     @property
     def expected_components(self) -> list[ComponentSpec]:
-        return [ComponentSpec("vae", AutoencoderKLWan)]
+        return [
+            ComponentSpec("vae", AutoencoderKLWan),
+            ComponentSpec(
+                "video_processor",
+                VideoProcessor,
+                config=FrozenDict({"vae_scale_factor": 16, "resample": "bilinear"}),
+                default_creation_method="from_config",
+            ),
+        ]
 
     @property
     def inputs(self) -> list[InputParam]:
@@ -397,6 +412,12 @@ class Cosmos3ActionVisionVaeEncoderStep(ModularPipelineBlocks):
     def expected_components(self) -> list[ComponentSpec]:
         return [
             ComponentSpec("vae", AutoencoderKLWan),
+            ComponentSpec(
+                "video_processor",
+                VideoProcessor,
+                config=FrozenDict({"vae_scale_factor": 16, "resample": "bilinear"}),
+                default_creation_method="from_config",
+            ),
         ]
 
     @property

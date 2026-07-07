@@ -112,7 +112,7 @@ def _build_tiny_components():
         in_channels=3,
         out_channels=3,
         scale_factor_temporal=4,
-        scale_factor_spatial=8,
+        scale_factor_spatial=16,
         latents_mean=[0.0, 0.0, 0.0, 0.0],
         latents_std=[1.0, 1.0, 1.0, 1.0],
     )

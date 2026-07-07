@@ -48,10 +48,6 @@ class Cosmos3PrepareTextSegmentsStep(ModularPipelineBlocks):
     def __call__(self, components: Cosmos3OmniModularPipeline, state: PipelineState) -> PipelineState:
         block_state = self.get_block_state(state)
 
-        components._current_timestep = None
-        components._interrupt = False
-        components._guidance_scale = block_state.guidance_scale
-
         device = components._execution_device
         block_state.cond_text_segment = components._prepare_text_segment(block_state.cond_input_ids, device=device)
         block_state.uncond_text_segment = components._prepare_text_segment(block_state.uncond_input_ids, device=device)

@@ -2,7 +2,6 @@ import torch
 
 from ...pipelines.cosmos.pipeline_cosmos3_omni import Cosmos3OmniPipeline, CosmosSafetyChecker
 from ...utils import logging
-from ...video_processor import VideoProcessor
 from ..modular_pipeline import ModularPipeline, PipelineState
 
 
@@ -46,10 +45,6 @@ class Cosmos3OmniModularPipeline(ModularPipeline):
             "start_of_generation": self.text_tokenizer.convert_tokens_to_ids("<|vision_start|>"),
             "eos_token_id": self.text_tokenizer.eos_token_id,
         }
-
-    @property
-    def video_processor(self):
-        return VideoProcessor(vae_scale_factor=self.vae_scale_factor_spatial, resample="bilinear")
 
     def enable_safety_checker(self, safety_checker=None):
         if safety_checker is not None:
@@ -118,15 +113,3 @@ class Cosmos3OmniModularPipeline(ModularPipeline):
 
     def _apply_video_safety_check(self, *args, **kwargs):
         return Cosmos3OmniPipeline._apply_video_safety_check(self, *args, **kwargs)
-
-    @property
-    def current_timestep(self):
-        return getattr(self, "_current_timestep", None)
-
-    @property
-    def interrupt(self):
-        return getattr(self, "_interrupt", False)
-
-    @property
-    def do_classifier_free_guidance(self):
-        return getattr(self, "_guidance_scale", 1.0) != 1.0

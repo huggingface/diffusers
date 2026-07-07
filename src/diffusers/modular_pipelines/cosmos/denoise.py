@@ -48,8 +48,8 @@ class Cosmos3LoopStep(ModularPipelineBlocks):
 
     @torch.no_grad()
     def __call__(self, components: Cosmos3OmniModularPipeline, block_state: BlockState, i: int, t: torch.Tensor):
-        components._current_timestep = t
         timestep = t.item()
+        do_cfg = block_state.guidance_scale != 1.0
 
         block_state.device = components._execution_device
         block_state.dtype = components.transformer.dtype
@@ -118,7 +118,7 @@ class Cosmos3LoopStep(ModularPipelineBlocks):
         )
 
         uncond_v_vision = uncond_v_sound = uncond_v_action = None
-        if components.do_classifier_free_guidance:
+        if do_cfg:
             preds_vision, preds_sound, preds_action = components.transformer(
                 input_ids=block_state.uncond_packed_static["input_ids"],
                 text_indexes=block_state.uncond_packed_static["text_indexes"],
@@ -159,7 +159,7 @@ class Cosmos3LoopStep(ModularPipelineBlocks):
                 raw_action_dim=block_state.raw_action_dim_resolved,
             )
 
-        if components.do_classifier_free_guidance:
+        if do_cfg:
             velocity_vision = uncond_v_vision + block_state.guidance_scale * (cond_v_vision - uncond_v_vision)
         else:
             velocity_vision = cond_v_vision
@@ -169,7 +169,7 @@ class Cosmos3LoopStep(ModularPipelineBlocks):
         )[0].squeeze(0)
 
         if block_state.sound_scheduler is not None and cond_v_sound is not None:
-            if components.do_classifier_free_guidance:
+            if do_cfg:
                 velocity_sound = uncond_v_sound + block_state.guidance_scale * (cond_v_sound - uncond_v_sound)
             else:
                 velocity_sound = cond_v_sound
@@ -182,7 +182,7 @@ class Cosmos3LoopStep(ModularPipelineBlocks):
             and block_state.action_condition_mask.sum() < block_state.action_condition_mask.numel()
         )
         if block_state.action_scheduler is not None and has_noisy_action and cond_v_action is not None:
-            if components.do_classifier_free_guidance:
+            if do_cfg:
                 velocity_action = uncond_v_action + block_state.guidance_scale * (cond_v_action - uncond_v_action)
             else:
                 velocity_action = cond_v_action
@@ -220,7 +220,6 @@ class Cosmos3DenoiseLoopWrapper(LoopSequentialPipelineBlocks):
     @torch.no_grad()
     def __call__(self, components: Cosmos3OmniModularPipeline, state: PipelineState) -> PipelineState:
         block_state = self.get_block_state(state)
-        components._num_timesteps = len(block_state.timesteps)
 
         with self.progress_bar(total=block_state.num_inference_steps) as progress_bar:
             for i, t in enumerate(block_state.timesteps):
@@ -231,7 +230,6 @@ class Cosmos3DenoiseLoopWrapper(LoopSequentialPipelineBlocks):
                 ):
                     progress_bar.update()
 
-        components._current_timestep = None
         self.set_block_state(state, block_state)
         return components, state
 
