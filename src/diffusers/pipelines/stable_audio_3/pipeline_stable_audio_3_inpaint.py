@@ -30,12 +30,8 @@ from typing import Callable, List, Optional, Union
 import torch
 import torch.nn.functional as F
 
-from ...utils import logging
 from ..pipeline_utils import AudioPipelineOutput
 from .pipeline_stable_audio_3 import StableAudio3Pipeline
-
-
-logger = logging.get_logger(__name__)
 
 
 class StableAudio3InpaintPipeline(StableAudio3Pipeline):
@@ -122,7 +118,7 @@ class StableAudio3InpaintPipeline(StableAudio3Pipeline):
         mask: Optional[torch.Tensor] = None,
         mask_start_seconds: Optional[Union[float, List[float]]] = None,
         mask_end_seconds: Optional[Union[float, List[float]]] = None,
-        num_inference_steps: int = 8,
+        num_inference_steps: Optional[int] = None,
         silence_padding_duration: float = 0.0,
         num_waveforms_per_prompt: int = 1,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
@@ -130,8 +126,8 @@ class StableAudio3InpaintPipeline(StableAudio3Pipeline):
         prompt_embeds: Optional[torch.Tensor] = None,
         encoder_attention_mask: Optional[torch.LongTensor] = None,
         return_dict: bool = True,
-        callback: Optional[Callable[[int, int, torch.Tensor], None]] = None,
-        callback_steps: int = 1,
+        callback_on_step_end: Optional[Callable[[int, int, dict], dict]] = None,
+        callback_on_step_end_tensor_inputs: List[str] = ["latents"],
         output_type: str = "pt",
     ) -> Union[AudioPipelineOutput, tuple]:
         r"""
@@ -152,8 +148,9 @@ class StableAudio3InpaintPipeline(StableAudio3Pipeline):
                 Start time(s) of the inpaint region in seconds.
             mask_end_seconds (`float` or `list[float]`, *optional*):
                 End time(s) of the inpaint region (must pair with ``mask_start_seconds``).
-            num_inference_steps (`int`, defaults to 8):
-                Number of denoising steps.
+            num_inference_steps (`int`, *optional*):
+                Number of denoising steps. When ``None`` (default), the step count is taken from the checkpoint's
+                scheduler config, matching [`StableAudio3Pipeline`].
             silence_padding_duration (`float`, defaults to 0.0):
                 Extra latent headroom after the target content.
             num_waveforms_per_prompt (`int`, defaults to 1):
@@ -164,43 +161,29 @@ class StableAudio3InpaintPipeline(StableAudio3Pipeline):
             encoder_attention_mask: Mask for pre-computed embeddings.
             return_dict (`bool`, defaults to `True`):
                 Return `AudioPipelineOutput` or tuple.
-            callback: Called every ``callback_steps`` with
-                ``(step_idx, timestep, latents)``.
-            callback_steps (`int`, defaults to 1): Callback frequency.
+            callback_on_step_end (`Callable`, *optional*):
+                Called at the end of each denoising step with `(self, step_idx, timestep, callback_kwargs)`. Must
+                return a dict with the (optionally modified) tensors to use for the rest of the loop.
+            callback_on_step_end_tensor_inputs (`list[str]`, defaults to `["latents"]`):
+                The tensors passed to `callback_on_step_end`. Must be a subset of `self._callback_tensor_inputs`.
             output_type (`str`, defaults to ``"pt"``): ``"pt"`` / ``"np"`` / ``"latent"``.
 
         Returns:
             [`~pipelines.AudioPipelineOutput`] with ``.audios``.
         """
-        if audio is None and mask is None and mask_start_seconds is None:
-            # Fall back to the base text-to-audio pipeline when no audio is supplied
-            logger.warning("No `audio` or `mask` provided — falling back to unconditional text-to-audio generation.")
-            return super().__call__(
-                prompt=prompt,
-                duration=duration,
-                num_inference_steps=num_inference_steps,
-                silence_padding_duration=silence_padding_duration,
-                num_waveforms_per_prompt=num_waveforms_per_prompt,
-                generator=generator,
-                latents=latents,
-                prompt_embeds=prompt_embeds,
-                encoder_attention_mask=encoder_attention_mask,
-                return_dict=return_dict,
-                callback=callback,
-                callback_steps=callback_steps,
-                output_type=output_type,
-            )
-
         # Validate inpaint inputs
         if audio is None:
-            raise ValueError("`audio` (reference waveform) is required for inpainting.")
+            raise ValueError(
+                "`audio` (reference waveform) is required for inpainting. Use `StableAudio3Pipeline` for plain "
+                "text-to-audio generation."
+            )
         if mask is None and (mask_start_seconds is None or mask_end_seconds is None):
             raise ValueError(
                 "Provide either a pre-built `mask` tensor or both `mask_start_seconds` and `mask_end_seconds`."
             )
 
         # 0. Common setup (shared with base class)
-        self.check_inputs(prompt, duration, prompt_embeds, encoder_attention_mask)
+        self.check_inputs(prompt, duration, prompt_embeds, encoder_attention_mask, callback_on_step_end_tensor_inputs)
 
         if prompt is not None and isinstance(prompt, str):
             batch_size = 1
@@ -236,8 +219,8 @@ class StableAudio3InpaintPipeline(StableAudio3Pipeline):
 
         # 4. Build mask tensor in latent space
         if mask is None:
-            starts = [mask_start_seconds] if isinstance(mask_start_seconds, float) else list(mask_start_seconds)
-            ends = [mask_end_seconds] if isinstance(mask_end_seconds, float) else list(mask_end_seconds)
+            starts = [mask_start_seconds] if isinstance(mask_start_seconds, (int, float)) else list(mask_start_seconds)
+            ends = [mask_end_seconds] if isinstance(mask_end_seconds, (int, float)) else list(mask_end_seconds)
             if len(starts) != len(ends):
                 raise ValueError("`mask_start_seconds` and `mask_end_seconds` must have the same length.")
             # Mask in latent frame space (1 = preserve, 0 = inpaint)
@@ -270,9 +253,18 @@ class StableAudio3InpaintPipeline(StableAudio3Pipeline):
             latents,
         )
 
-        # 8. Timesteps
+        # 8. Timesteps: fall back to the checkpoint's scheduler config, matching StableAudio3Pipeline
+        if num_inference_steps is None:
+            num_inference_steps = getattr(self.scheduler.config, "num_inference_steps", None)
+            if num_inference_steps is None:
+                raise ValueError(
+                    "`num_inference_steps` was not provided and the scheduler "
+                    f"({self.scheduler.__class__.__name__}) does not define a default "
+                    "`num_inference_steps` in its config. Pass `num_inference_steps` explicitly."
+                )
         self.scheduler.set_timesteps(num_inference_steps, device=device)
         timesteps = self.scheduler.timesteps
+        self._num_timesteps = len(timesteps)
 
         # 9. Denoising loop with local-additive conditioning
         latents = noise_latents
@@ -293,10 +285,15 @@ class StableAudio3InpaintPipeline(StableAudio3Pipeline):
 
                 latents = self.scheduler.step(velocity, t, latents, generator=generator).prev_sample
 
-                if i == len(timesteps) - 1 or (i + 1) % callback_steps == 0:
-                    progress_bar.update()
-                    if callback is not None and i % callback_steps == 0:
-                        callback(i, t, latents)
+                if callback_on_step_end is not None:
+                    callback_kwargs = {}
+                    for k in callback_on_step_end_tensor_inputs:
+                        callback_kwargs[k] = locals()[k]
+                    callback_outputs = callback_on_step_end(self, i, t, callback_kwargs)
+                    latents = callback_outputs.pop("latents", latents)
+                    prompt_embeds = callback_outputs.pop("prompt_embeds", prompt_embeds)
+
+                progress_bar.update()
 
         # 10. Decode
         if output_type == "latent":

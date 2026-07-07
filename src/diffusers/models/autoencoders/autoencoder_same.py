@@ -460,8 +460,6 @@ class _SoftNormBottleneck(nn.Module):
 
     def encode(self, x: torch.Tensor) -> torch.Tensor:
         x = x * self.scale + self.bias
-        if self.training:
-            self.running_std.data = (self.running_std.data * 0.999 + x.std().detach() * 0.001).clamp(min=1e-4)
         return x / self.running_std
 
     def decode(self, x: torch.Tensor) -> torch.Tensor:
@@ -784,93 +782,3 @@ class AutoencoderSAME(ModelMixin, ConfigMixin):
         """
         latents = self.encode(sample).latents
         return self.decode(latents, return_dict=return_dict)
-
-    # ------------------------------------------------------------------
-    def encode_audio(
-        self,
-        audio: torch.Tensor,
-        chunked: bool = False,
-        chunk_size: int = 128,
-        overlap: int = 32,
-    ) -> torch.Tensor:
-        """
-        Convenience wrapper that optionally encodes in overlapping latent chunks to limit peak memory usage for long
-        audio sequences.
-
-        Args:
-            audio: Preprocessed ``(B, audio_channels, T)`` waveform.
-            chunked: Whether to split long audio into overlapping chunks.
-            chunk_size: Chunk size in latent frames (only used when *chunked*).
-            overlap: Overlap in latent frames between adjacent chunks.
-
-        Returns:
-            Latent tensor ``(B, latent_dim, T_latent)``.
-        """
-        if not chunked or audio.shape[-1] < chunk_size * self.downsampling_ratio:
-            return self.encode(audio).latents
-
-        spl = self.downsampling_ratio
-        hop_samples = (chunk_size - overlap) * spl
-        total = audio.shape[-1]
-
-        starts = list(range(0, total - chunk_size * spl + 1, hop_samples))
-        if starts[-1] != total - chunk_size * spl:
-            starts.append(total - chunk_size * spl)
-
-        chunks = [self.encode(audio[..., s : s + chunk_size * spl]).latents for s in starts]
-
-        total_lat = total // spl
-        half_ov = overlap // 2
-        out = audio.new_zeros(*chunks[0].shape[:-1], total_lat)
-        for i, (s, ch) in enumerate(zip(starts, chunks)):
-            is_first, is_last = i == 0, i == len(starts) - 1
-            lat_start = (total_lat - chunk_size) if is_last else s // spl
-            lo = 0 if is_first else half_ov
-            hi = chunk_size if is_last else chunk_size - half_ov
-            out[..., lat_start + lo : lat_start + hi] = ch[..., lo:hi]
-        return out
-
-    # ------------------------------------------------------------------
-    def decode_audio(
-        self,
-        latents: torch.Tensor,
-        chunked: bool = False,
-        chunk_size: int = 128,
-        overlap: int = 32,
-    ) -> torch.Tensor:
-        """
-        Convenience wrapper that optionally decodes in overlapping latent chunks.
-
-        Args:
-            latents: ``(B, latent_dim, T_latent)`` latent tensor.
-            chunked: Whether to split into overlapping chunks.
-            chunk_size: Chunk size in latent frames.
-            overlap: Overlap in latent frames between adjacent chunks.
-
-        Returns:
-            Waveform tensor ``(B, audio_channels, T)``.
-        """
-        if not chunked or latents.shape[-1] < chunk_size:
-            return self.decode(latents).sample
-
-        spl = self.downsampling_ratio
-        hop = chunk_size - overlap
-        total_lat = latents.shape[-1]
-
-        starts = list(range(0, total_lat - chunk_size + 1, hop))
-        if starts[-1] != total_lat - chunk_size:
-            starts.append(total_lat - chunk_size)
-
-        chunks = [self.decode(latents[..., s : s + chunk_size]).sample for s in starts]
-
-        total_samples = total_lat * spl
-        cs_samples = chunk_size * spl
-        half_ov_s = (overlap // 2) * spl
-        out = latents.new_zeros(*chunks[0].shape[:-1], total_samples)
-        for i, (s, ch) in enumerate(zip(starts, chunks)):
-            is_first, is_last = i == 0, i == len(starts) - 1
-            samp_start = (total_samples - cs_samples) if is_last else s * spl
-            lo = 0 if is_first else half_ov_s
-            hi = cs_samples if is_last else cs_samples - half_ov_s
-            out[..., samp_start + lo : samp_start + hi] = ch[..., lo:hi]
-        return out

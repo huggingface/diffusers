@@ -263,8 +263,6 @@ def convert_vae(ref_sd: dict, differential: bool = True) -> dict:
 
 def convert_duration_embedder(ref_sd: dict, min_freq: float = 0.5, max_freq: float = 10000.0) -> dict:
     """Build diffusers StableAudio3DurationEmbedder state dict."""
-    import math
-
     out = {}
     base = "conditioner.conditioners.seconds_total.embedder.embedding."
     # index 0 = ExpoFourierFeatures (no learnable params)
@@ -294,13 +292,9 @@ def convert_duration_embedder(ref_sd: dict, min_freq: float = 0.5, max_freq: flo
 # ──────────────────────────────────────────────────────────────────────────────
 
 
-def convert_dit(ref_sd: dict, differential: bool = True) -> tuple[dict, list]:
-    """Build diffusers StableAudio3DiTModel state dict.
-
-    Returns (state_dict, list_of_skipped_keys).
-    """
+def convert_dit(ref_sd: dict, differential: bool = True) -> dict:
+    """Build diffusers StableAudio3DiTModel state dict."""
     out = {}
-    skipped = []
 
     # The DiT weights live under the "model.model." prefix in the checkpoint.
     p = "model.model."
@@ -370,7 +364,7 @@ def convert_dit(ref_sd: dict, differential: bool = True) -> tuple[dict, list]:
     else:
         print(f"  DiT: padding embedding not found: {pad_key}")
 
-    return out, skipped
+    return out
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -586,30 +580,6 @@ def _infer_duration_embedder_config(ref_sd: dict) -> dict:
 
 
 # ──────────────────────────────────────────────────────────────────────────────
-# Shape validation helper
-# ──────────────────────────────────────────────────────────────────────────────
-
-
-def _check_shapes(converted_sd: dict, model_sd: dict, label: str) -> tuple[int, int]:
-    """Compare shapes between converted and model state dicts; return (ok, bad)."""
-    ok = bad = missing = 0
-    for k, v in model_sd.items():
-        if k not in converted_sd:
-            missing += 1
-            continue
-        if converted_sd[k].shape != v.shape:
-            print(
-                f"    SHAPE MISMATCH [{label}] {k}: converted {tuple(converted_sd[k].shape)} vs model {tuple(v.shape)}"
-            )
-            bad += 1
-        else:
-            ok += 1
-    if missing:
-        print(f"    {label}: {missing} model keys not found in converted dict")
-    return ok, bad
-
-
-# ──────────────────────────────────────────────────────────────────────────────
 # Main conversion
 # ──────────────────────────────────────────────────────────────────────────────
 
@@ -647,10 +617,7 @@ def convert(args):
 
     dtype = getattr(torch, args.dtype)
 
-    # ── Add diffusers to path ────────────────────────────────────────────────
-    repo_root = Path(__file__).resolve().parents[1]
-    sys.path.insert(0, str(repo_root / "src"))
-
+    import diffusers
     from diffusers import (
         AutoencoderSAME,
         PingPongScheduler,
@@ -757,7 +724,7 @@ def convert(args):
     dit_cfg = _infer_dit_config(ref_sd)
     print(f"  Inferred DiT config: {dit_cfg}")
 
-    dit_sd, dit_skipped = convert_dit(ref_sd, differential=dit_cfg["use_differential_attention"])
+    dit_sd = convert_dit(ref_sd, differential=dit_cfg["use_differential_attention"])
 
     transformer = StableAudio3DiTModel(**dit_cfg)
     dit_missing, dit_unexpected = transformer.load_state_dict(dit_sd, strict=False)
@@ -765,11 +732,7 @@ def convert(args):
         print(f"  DiT missing keys ({len(dit_missing)}): {dit_missing[:5]} …")
     if dit_unexpected:
         print(f"  DiT unexpected keys ({len(dit_unexpected)}): {dit_unexpected[:5]} …")
-    print(
-        f"  DiT: loaded {len(dit_sd)} keys "
-        f"({len(dit_missing)} missing, {len(dit_unexpected)} unexpected, "
-        f"{len(dit_skipped)} skipped/no-op)"
-    )
+    print(f"  DiT: loaded {len(dit_sd)} keys ({len(dit_missing)} missing, {len(dit_unexpected)} unexpected)")
 
     transformer = transformer.to(dtype)
     transformer.save_pretrained(output_dir / "transformer")
@@ -813,7 +776,7 @@ def convert(args):
     print("\n── Writing model_index.json ─────────────────────────────────────────")
     model_index = {
         "_class_name": "StableAudio3Pipeline",
-        "_diffusers_version": "0.0.0.dev0",
+        "_diffusers_version": diffusers.__version__,
         "vae": ["diffusers", "AutoencoderSAME"],
         "text_encoder": ["transformers", text_encoder_cls_name],
         "tokenizer": ["transformers", tokenizer_cls_name],

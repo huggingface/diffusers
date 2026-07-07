@@ -66,8 +66,8 @@ class StableAudio3PipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             "latents",
             "output_type",
             "return_dict",
-            "callback",
-            "callback_steps",
+            "callback_on_step_end",
+            "callback_on_step_end_tensor_inputs",
         ]
     )
     # SA3 uses a bespoke attention path with no xformers processor, and CFG is not

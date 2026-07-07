@@ -19,18 +19,15 @@ Covers:
   - I/O tensor shapes for encode and decode
   - Round-trip reconstruct (decode(encode(x)) ≈ x shape)
   - downsampling_ratio matches config arithmetic
-  - Chunked encode/decode produces same shapes as non-chunked
-  - RuntimeSpeed benchmark vs reference (if stable_audio_3 is installed)
 """
 
-import time
 import unittest
 
 import torch
 
 from diffusers import AutoencoderSAME
 
-from ...testing_utils import require_torch, slow, torch_device
+from ...testing_utils import require_torch, torch_device
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -67,9 +64,6 @@ SAME_S_SMALL_CFG = {
     "ff_mult": 3,
     "sampling_rate": 44100,
 }
-
-# Kept for the @slow benchmark (also updated to SAME-S architecture)
-SMALL_CFG = SAME_S_SMALL_CFG
 
 
 def _make_model(cfg: dict, device: str = "cpu") -> AutoencoderSAME:
@@ -140,32 +134,6 @@ class TestAutoencoderSAMETinyConfig(unittest.TestCase):
         self.assertEqual(len(out_tuple), 1)
 
     # ------------------------------------------------------------------
-    def test_encode_audio_convenience(self):
-        lat = self.model.encode_audio(self.audio)
-        expected_shape = self.model.encode(self.audio).latents.shape
-        self.assertEqual(lat.shape, expected_shape)
-
-    # ------------------------------------------------------------------
-    def test_decode_audio_convenience(self):
-        latents = self.model.encode(self.audio).latents
-        audio_out = self.model.decode_audio(latents)
-        decoded_shape = self.model.decode(latents).sample.shape
-        self.assertEqual(audio_out.shape, decoded_shape)
-
-    # ------------------------------------------------------------------
-    def test_chunked_encode_shape(self):
-        lat_chunked = self.model.encode_audio(self.audio, chunked=True, chunk_size=4, overlap=1)
-        lat_direct = self.model.encode_audio(self.audio, chunked=False)
-        self.assertEqual(lat_chunked.shape, lat_direct.shape)
-
-    # ------------------------------------------------------------------
-    def test_chunked_decode_shape(self):
-        latents = self.model.encode(self.audio).latents
-        dec_chunked = self.model.decode_audio(latents, chunked=True, chunk_size=4, overlap=1)
-        dec_direct = self.model.decode_audio(latents, chunked=False)
-        self.assertEqual(dec_chunked.shape, dec_direct.shape)
-
-    # ------------------------------------------------------------------
     def test_different_batch_sizes(self):
         for b in (1, 3, 4):
             audio = _make_audio(b, self.C, self.T)
@@ -227,68 +195,6 @@ class TestAutoencoderSAMEOnDevice(unittest.TestCase):
         lat = self.model.encode(audio).latents
         dec = self.model.decode(lat).sample
         self.assertEqual(dec.device.type, torch.device(self.device).type)
-
-
-@require_torch
-class TestAutoencoderSAMERuntimeBenchmark(unittest.TestCase):
-    """
-    Benchmark: compare AutoencoderSAME (diffusers) vs the reference implementation
-    from stable_audio_3 on a ~30 s audio clip (1,323,000 samples @ 44.1 kHz stereo).
-
-    The test is *skipped* automatically when stable_audio_3 is not installed.
-    It does not assert speed — it just prints a comparison table.
-    """
-
-    @slow
-    def test_speed_vs_reference(self):
-        try:
-            import json
-
-            from stable_audio_3.factory import create_autoencoder_from_config
-            from stable_audio_3.model_configs import SAME_L_CONFIG_PATH  # noqa: F401
-
-            with open(SAME_L_CONFIG_PATH) as f:
-                ref_config = json.load(f)
-            ref_model = create_autoencoder_from_config(ref_config["model"], ref_config["sample_rate"])
-            ref_model.eval()
-        except (ImportError, FileNotFoundError, AttributeError):
-            self.skipTest("stable_audio_3 not installed or config not found — skipping speed comparison")
-
-        torch.manual_seed(0)
-        T = 1_323_000  # ≈ 30 s at 44.1 kHz
-        audio = torch.randn(1, 2, T)
-
-        diffusers_model = _make_model(SMALL_CFG)
-
-        N_WARMUP = 1
-        N_RUNS = 3
-
-        def _time_fn(fn, x, n_warmup, n_runs):
-            for _ in range(n_warmup):
-                with torch.no_grad():
-                    fn(x)
-            t0 = time.perf_counter()
-            for _ in range(n_runs):
-                with torch.no_grad():
-                    fn(x)
-            return (time.perf_counter() - t0) / n_runs
-
-        diffusers_enc_t = _time_fn(lambda x: diffusers_model.encode_audio(x), audio, N_WARMUP, N_RUNS)
-
-        print(f"\n[Speed] diffusers AutoencoderSAME encode: {diffusers_enc_t * 1000:.1f} ms/call")
-
-        try:
-            ref_enc_t = _time_fn(
-                lambda x: ref_model.encode_audio(x, chunked=True),
-                audio,
-                N_WARMUP,
-                N_RUNS,
-            )
-            ratio = ref_enc_t / diffusers_enc_t if diffusers_enc_t > 0 else float("nan")
-            print(f"[Speed] reference encode: {ref_enc_t * 1000:.1f} ms/call")
-            print(f"[Speed] diffusers / reference speedup: {ratio:.2f}×")
-        except Exception:
-            pass
 
 
 if __name__ == "__main__":

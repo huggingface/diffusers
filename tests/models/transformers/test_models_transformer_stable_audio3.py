@@ -29,6 +29,7 @@ Covers:
 import unittest
 
 import torch
+from accelerate import init_empty_weights
 
 from diffusers import StableAudio3DiTModel
 
@@ -320,7 +321,8 @@ class TestStableAudio3DiTProductionStructure(unittest.TestCase):
     exactly, so converted SA3 Medium weights load with ``strict=True``."""
 
     def test_state_dict_matches_checkpoint(self):
-        model = StableAudio3DiTModel(**PROD_CFG)
+        with init_empty_weights():
+            model = StableAudio3DiTModel(**PROD_CFG)
         actual = {k: tuple(v.shape) for k, v in model.state_dict().items()}
         expected = _expected_prod_state_dict_shapes()
 

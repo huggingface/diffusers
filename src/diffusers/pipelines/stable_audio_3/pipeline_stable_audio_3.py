@@ -36,7 +36,7 @@ from ...models.transformers.transformer_stable_audio3 import StableAudio3DiTMode
 from ...schedulers.scheduling_flow_match_euler_discrete import FlowMatchEulerDiscreteScheduler
 from ...schedulers.scheduling_ping_pong import PingPongScheduler
 from ...schedulers.scheduling_stable_audio3_euler import StableAudio3EulerScheduler
-from ...utils import is_torch_xla_available, logging
+from ...utils import is_torch_xla_available, logging, replace_example_docstring
 from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import AudioPipelineOutput, DiffusionPipeline
 from .modeling_stable_audio_3 import StableAudio3DurationEmbedder
@@ -99,6 +99,7 @@ class StableAudio3Pipeline(DiffusionPipeline):
     """
 
     model_cpu_offload_seq = "text_encoder->duration_embedder->transformer->vae"
+    _callback_tensor_inputs = ["latents", "prompt_embeds"]
 
     def __init__(
         self,
@@ -119,6 +120,10 @@ class StableAudio3Pipeline(DiffusionPipeline):
             transformer=transformer,
             scheduler=scheduler,
         )
+
+    @property
+    def num_timesteps(self):
+        return self._num_timesteps
 
     # ------------------------------------------------------------------
     # Encoding helpers
@@ -191,16 +196,16 @@ class StableAudio3Pipeline(DiffusionPipeline):
 
     def encode_duration(
         self,
-        duration: Union[float, List[float]],
+        duration: float,
         device: torch.device,
         num_waveforms_per_prompt: int,
         batch_size: int,
     ) -> torch.Tensor:
         """
-        Embed duration value(s) into the global conditioning vector.
+        Embed the duration value into the global conditioning vector.
 
         Args:
-            duration: Duration in seconds, or list of per-sample durations.
+            duration: Duration in seconds, applied to every sample in the batch.
             device: Target device.
             num_waveforms_per_prompt: Tile factor.
             batch_size: Number of prompts.
@@ -208,17 +213,10 @@ class StableAudio3Pipeline(DiffusionPipeline):
         Returns:
             ``(batch * num_waveforms_per_prompt, output_dim)`` tensor.
         """
-        if isinstance(duration, (int, float)):
-            duration = [float(duration)] * batch_size
-        elif len(duration) == 1:
-            duration = [float(duration[0])] * batch_size
-        elif len(duration) != batch_size:
-            raise ValueError(
-                f"`duration` has {len(duration)} entries but batch_size is {batch_size}. "
-                "Pass a single float, a list of length 1, or a list with one entry per prompt."
-            )
+        if not isinstance(duration, (int, float)):
+            raise ValueError(f"`duration` must be a single `float`, got {type(duration)}.")
 
-        duration_tensor = torch.tensor(duration, dtype=torch.float32, device=device)
+        duration_tensor = torch.tensor([float(duration)] * batch_size, dtype=torch.float32, device=device)
         global_hidden_states = self.duration_embedder(duration_tensor)  # (batch, output_dim)
         global_hidden_states = global_hidden_states.repeat_interleave(num_waveforms_per_prompt, dim=0)
         return global_hidden_states
@@ -275,6 +273,7 @@ class StableAudio3Pipeline(DiffusionPipeline):
         duration: float,
         prompt_embeds: Optional[torch.Tensor] = None,
         encoder_attention_mask: Optional[torch.LongTensor] = None,
+        callback_on_step_end_tensor_inputs: Optional[List[str]] = None,
     ) -> None:
         if prompt is None and prompt_embeds is None:
             raise ValueError("Provide either `prompt` or `prompt_embeds`.")
@@ -293,8 +292,16 @@ class StableAudio3Pipeline(DiffusionPipeline):
                 f"`encoder_attention_mask` shape {encoder_attention_mask.shape} must match "
                 f"`prompt_embeds` batch and sequence dimensions {prompt_embeds.shape[:2]}."
             )
+        if callback_on_step_end_tensor_inputs is not None and not all(
+            k in self._callback_tensor_inputs for k in callback_on_step_end_tensor_inputs
+        ):
+            raise ValueError(
+                f"`callback_on_step_end_tensor_inputs` has to be in {self._callback_tensor_inputs}, but found "
+                f"{[k for k in callback_on_step_end_tensor_inputs if k not in self._callback_tensor_inputs]}"
+            )
 
     @torch.no_grad()
+    @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
         self,
         prompt: Optional[Union[str, List[str]]] = None,
@@ -307,8 +314,8 @@ class StableAudio3Pipeline(DiffusionPipeline):
         prompt_embeds: Optional[torch.Tensor] = None,
         encoder_attention_mask: Optional[torch.LongTensor] = None,
         return_dict: bool = True,
-        callback: Optional[Callable[[int, int, torch.Tensor], None]] = None,
-        callback_steps: int = 1,
+        callback_on_step_end: Optional[Callable[[int, int, dict], dict]] = None,
+        callback_on_step_end_tensor_inputs: List[str] = ["latents"],
         output_type: str = "pt",
     ) -> Union[AudioPipelineOutput, tuple]:
         r"""
@@ -339,10 +346,12 @@ class StableAudio3Pipeline(DiffusionPipeline):
                 Boolean mask for pre-computed embeddings.
             return_dict (`bool`, defaults to `True`):
                 Return an `AudioPipelineOutput` or a plain tuple.
-            callback (`Callable`, *optional*):
-                Called every ``callback_steps`` denoising steps with ``(step_idx, timestep, latents)``.
-            callback_steps (`int`, defaults to 1):
-                Frequency of ``callback`` calls.
+            callback_on_step_end (`Callable`, *optional*):
+                Called at the end of each denoising step with `(self, step_idx, timestep, callback_kwargs)`, where
+                `callback_kwargs` contains the tensors listed in `callback_on_step_end_tensor_inputs`. Must return a
+                dict with the (optionally modified) tensors to use for the rest of the loop.
+            callback_on_step_end_tensor_inputs (`list[str]`, defaults to `["latents"]`):
+                The tensors passed to `callback_on_step_end`. Must be a subset of `self._callback_tensor_inputs`.
             output_type (`str`, defaults to ``"pt"``):
                 ``"pt"`` for a PyTorch tensor, ``"np"`` for a NumPy array, or ``"latent"`` to skip decoding and return
                 the raw latents.
@@ -351,9 +360,11 @@ class StableAudio3Pipeline(DiffusionPipeline):
             [`~pipelines.AudioPipelineOutput`] or `tuple`:
                 ``.audios`` is a tensor / array of shape ``(batch * num_waveforms_per_prompt, audio_channels,
                 samples)``.
+
+        Examples:
         """
         # 0. Validate
-        self.check_inputs(prompt, duration, prompt_embeds, encoder_attention_mask)
+        self.check_inputs(prompt, duration, prompt_embeds, encoder_attention_mask, callback_on_step_end_tensor_inputs)
 
         if prompt is not None and isinstance(prompt, str):
             batch_size = 1
@@ -416,6 +427,7 @@ class StableAudio3Pipeline(DiffusionPipeline):
                 )
         self.scheduler.set_timesteps(num_inference_steps, device=device)
         timesteps = self.scheduler.timesteps
+        self._num_timesteps = len(timesteps)
 
         # 6. Ping-pong denoising loop  (no CFG — distillation baked in)
         with self.progress_bar(total=num_inference_steps) as progress_bar:
@@ -435,10 +447,15 @@ class StableAudio3Pipeline(DiffusionPipeline):
                 # x̂₀ = x_t − t·v  →  re-noise with fresh ε
                 latents = self.scheduler.step(velocity, t, latents, generator=generator).prev_sample
 
-                if i == len(timesteps) - 1 or (i + 1) % callback_steps == 0:
-                    progress_bar.update()
-                    if callback is not None and i % callback_steps == 0:
-                        callback(i, t, latents)
+                if callback_on_step_end is not None:
+                    callback_kwargs = {}
+                    for k in callback_on_step_end_tensor_inputs:
+                        callback_kwargs[k] = locals()[k]
+                    callback_outputs = callback_on_step_end(self, i, t, callback_kwargs)
+                    latents = callback_outputs.pop("latents", latents)
+                    prompt_embeds = callback_outputs.pop("prompt_embeds", prompt_embeds)
+
+                progress_bar.update()
 
                 if XLA_AVAILABLE:
                     xm.mark_step()
