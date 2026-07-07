@@ -48,7 +48,6 @@ from .modular_pipeline_utils import (
     InsertableDict,
     OutputParam,
     _validate_requirements,
-    combine_inputs,
     combine_outputs,
     format_components,
     format_configs,
@@ -500,7 +499,10 @@ class ModularPipelineBlocks(ConfigMixin, PushToHubMixin):
         # Check inputs
         for input_param in state_inputs:
             if input_param.name:
-                value = state.get(input_param.name)
+                if input_param.name in state.values:
+                    value = state.get(input_param.name)
+                else:
+                    value = input_param.default
                 if input_param.required and value is None:
                     raise ValueError(f"Required input '{input_param.name}' is missing")
                 elif value is not None or (value is None and input_param.name not in data):
@@ -666,7 +668,45 @@ class ConditionalPipelineBlocks(ModularPipelineBlocks):
     @property
     def inputs(self) -> list[tuple[str, Any]]:
         named_inputs = [(name, block.inputs) for name, block in self.sub_blocks.items()]
-        combined_inputs = combine_inputs(*named_inputs)
+
+        def get_input_key(input_param: InputParam) -> str:
+            if input_param.name is None and input_param.kwargs_type is not None:
+                return "*_" + input_param.kwargs_type
+            return input_param.name
+
+        combined_inputs = []
+        combined_by_key = {}
+        block_count = len(named_inputs)
+        input_occurrences = {}
+        input_defaults = {}
+
+        for _, block_inputs in named_inputs:
+            seen_inputs = set()
+            for input_param in block_inputs:
+                input_key = get_input_key(input_param)
+                if input_key in seen_inputs:
+                    continue
+
+                if input_key not in combined_by_key:
+                    combined_by_key[input_key] = deepcopy(input_param)
+                    combined_inputs.append(combined_by_key[input_key])
+
+                input_occurrences[input_key] = input_occurrences.get(input_key, 0) + 1
+                input_defaults.setdefault(input_key, []).append(input_param.default)
+                seen_inputs.add(input_key)
+
+        # Conditional blocks should only expose a pipeline-level default when every branch
+        # declares the input with the same default. Otherwise, keep the pipeline-level
+        # default unset and let the selected block apply its own local default.
+        for input_param in combined_inputs:
+            input_key = get_input_key(input_param)
+            defaults = input_defaults.get(input_key, [])
+
+            if input_occurrences.get(input_key, 0) != block_count:
+                input_param.default = None
+            elif defaults and any(default != defaults[0] for default in defaults[1:]):
+                input_param.default = None
+
         # mark Required inputs only if that input is required by all the blocks
         for input_param in combined_inputs:
             if input_param.name in self.required_inputs:
@@ -2821,7 +2861,7 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
                 kwargs_dict = passed_kwargs.pop(kwargs_type)
                 for k, v in kwargs_dict.items():
                     state.set(k, v, kwargs_type)
-            elif name is not None and name not in state.values:
+            elif name is not None and name not in state.values and default is not None:
                 state.set(name, default, kwargs_type)
 
         # Warn about unexpected inputs
