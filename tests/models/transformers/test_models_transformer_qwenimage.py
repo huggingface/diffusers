@@ -22,6 +22,7 @@ from diffusers.utils.torch_utils import randn_tensor
 
 from ...testing_utils import enable_full_determinism, torch_device
 from ..testing_utils import (
+    AttentionBackendTesterMixin,
     AttentionTesterMixin,
     BaseModelTesterConfig,
     BitsAndBytesTesterMixin,
@@ -248,6 +249,21 @@ class TestQwenImageTransformerTraining(QwenImageTransformerTesterConfig, Trainin
 
 class TestQwenImageTransformerAttention(QwenImageTransformerTesterConfig, AttentionTesterMixin):
     """Attention processor tests for QwenImage Transformer."""
+
+
+class TestQwenImageTransformerAttentionBackend(QwenImageTransformerTesterConfig, AttentionBackendTesterMixin):
+    """Attention backend tests for QwenImage Transformer."""
+
+    unsupported_attn_backends = ["flash_hub", "_flash_3_hub"]
+
+    def get_dummy_inputs(self, batch_size: int = 2):
+        inputs = super().get_dummy_inputs(batch_size=batch_size)
+        mask = inputs["encoder_hidden_states_mask"]
+        mask[...] = 0
+        mask[0, :2] = 1
+        mask[1, :6] = 1
+        inputs["encoder_hidden_states_mask"] = mask.bool()
+        return inputs
 
 
 class TestQwenImageTransformerContextParallel(QwenImageTransformerTesterConfig, ContextParallelTesterMixin):
