@@ -17,8 +17,9 @@ from .denoise import Cosmos3DenoiseStep
 from .encoders import (
     Cosmos3ActionTextStep,
     Cosmos3ActionVisionVaeEncoderStep,
+    Cosmos3ImageVaeEncoderStep,
     Cosmos3TextEncoderStep,
-    Cosmos3VaeEncoderStep,
+    Cosmos3VideoVaeEncoderStep,
 )
 
 
@@ -42,16 +43,22 @@ class Cosmos3AutoTextEncoderStep(AutoPipelineBlocks):
 
 class Cosmos3AutoVaeEncoderStep(ConditionalPipelineBlocks):
     model_name = "cosmos3-omni"
-    block_classes = [Cosmos3ActionVisionVaeEncoderStep, Cosmos3VaeEncoderStep]
-    block_names = ["action_conditioning", "vision_conditioning"]
+    block_classes = [Cosmos3ActionVisionVaeEncoderStep, Cosmos3VideoVaeEncoderStep, Cosmos3ImageVaeEncoderStep]
+    block_names = ["action_conditioning", "video_conditioning", "image_conditioning"]
     block_trigger_inputs = ["action", "video", "image"]
     default_block_name = None
 
     def select_block(self, **kwargs) -> str | None:
         if kwargs.get("action") is not None:
             return "action_conditioning"
-        if kwargs.get("video") is not None or kwargs.get("image") is not None:
-            return "vision_conditioning"
+        image = kwargs.get("image")
+        video = kwargs.get("video")
+        if image is not None and video is not None:
+            raise ValueError("Pass either `image` or `video`, not both.")
+        if video is not None:
+            return "video_conditioning"
+        if image is not None:
+            return "image_conditioning"
         return None
 
     @property
@@ -60,7 +67,8 @@ class Cosmos3AutoVaeEncoderStep(ConditionalPipelineBlocks):
             "Auto VAE conditioning block for Cosmos3.\n"
             + " - `Cosmos3ActionVisionVaeEncoderStep` runs when `action` is provided.\n"
             + "   Note: this branch VAE-encodes action visual inputs (image/video), not action vectors.\n"
-            + " - `Cosmos3VaeEncoderStep` runs for image/video non-action paths.\n"
+            + " - `Cosmos3VideoVaeEncoderStep` runs for the non-action `video` path.\n"
+            + " - `Cosmos3ImageVaeEncoderStep` runs for the non-action `image` path.\n"
             + " - when no action/image/video conditioning is provided (text-only), this block is skipped."
         )
 

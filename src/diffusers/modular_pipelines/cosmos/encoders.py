@@ -247,12 +247,12 @@ class Cosmos3ActionTextStep(ModularPipelineBlocks):
         return components, state
 
 
-class Cosmos3VaeEncoderStep(ModularPipelineBlocks):
+class Cosmos3ImageVaeEncoderStep(ModularPipelineBlocks):
     model_name = "cosmos3-omni"
 
     @property
     def description(self) -> str:
-        return "Encodes non-action vision conditioning into Cosmos3 vision latents."
+        return "Encodes non-action image conditioning into Cosmos3 vision latents."
 
     @property
     def expected_components(self) -> list[ComponentSpec]:
@@ -270,6 +270,90 @@ class Cosmos3VaeEncoderStep(ModularPipelineBlocks):
     def inputs(self) -> list[InputParam]:
         return [
             InputParam(name="image", default=None),
+            InputParam(name="num_frames", required=True),
+            InputParam(name="height", required=True),
+            InputParam(name="width", required=True),
+        ]
+
+    @property
+    def intermediate_outputs(self) -> list[OutputParam]:
+        return [
+            OutputParam("x0_tokens_vision"),
+            OutputParam("vision_condition_frames"),
+        ]
+
+    @torch.no_grad()
+    def __call__(self, components: Cosmos3OmniModularPipeline, state: PipelineState) -> PipelineState:
+        block_state = self.get_block_state(state)
+
+        block_state.device = components._execution_device
+        block_state.dtype = components.transformer.dtype
+
+        if block_state.image is None:
+            raise ValueError("`Cosmos3ImageVaeEncoderStep` requires an `image` input.")
+        if block_state.num_frames < 1:
+            raise ValueError(f"`num_frames` must be >= 1, got {block_state.num_frames}.")
+
+        sf = int(components.vae.config.scale_factor_spatial)
+        if block_state.height % sf != 0 or block_state.width % sf != 0:
+            raise ValueError(
+                f"`height` and `width` must be multiples of {sf}, got ({block_state.height}, {block_state.width})."
+            )
+
+        conditioning_frame_2d = components.video_processor.preprocess(
+            block_state.image, height=block_state.height, width=block_state.width
+        ).to(device=block_state.device, dtype=block_state.dtype)
+
+        is_image = block_state.num_frames == 1
+        vision_condition_frames: list[int] = []
+        if is_image:
+            vision_tensor = conditioning_frame_2d.unsqueeze(2)
+        else:
+            vision_tensor = torch.zeros(
+                1,
+                3,
+                block_state.num_frames,
+                block_state.height,
+                block_state.width,
+                dtype=block_state.dtype,
+                device=block_state.device,
+            )
+            vision_tensor[:, :, 0] = conditioning_frame_2d
+            if block_state.num_frames > 1:
+                vision_tensor[:, :, 1:] = conditioning_frame_2d.unsqueeze(2).expand(
+                    -1, -1, block_state.num_frames - 1, -1, -1
+                )
+            vision_condition_frames = [0]
+
+        block_state.x0_tokens_vision = components._encode_video(vision_tensor).contiguous().float()
+        block_state.vision_condition_frames = vision_condition_frames
+
+        self.set_block_state(state, block_state)
+        return components, state
+
+
+class Cosmos3VideoVaeEncoderStep(ModularPipelineBlocks):
+    model_name = "cosmos3-omni"
+
+    @property
+    def description(self) -> str:
+        return "Encodes non-action video conditioning into Cosmos3 vision latents."
+
+    @property
+    def expected_components(self) -> list[ComponentSpec]:
+        return [
+            ComponentSpec("vae", AutoencoderKLWan),
+            ComponentSpec(
+                "video_processor",
+                VideoProcessor,
+                config=FrozenDict({"vae_scale_factor": 16, "resample": "bilinear"}),
+                default_creation_method="from_config",
+            ),
+        ]
+
+    @property
+    def inputs(self) -> list[InputParam]:
+        return [
             InputParam(name="video", default=None),
             InputParam(name="condition_frame_indexes_vision", default=(0, 1)),
             InputParam(name="condition_video_keep", default="first"),
@@ -292,9 +376,9 @@ class Cosmos3VaeEncoderStep(ModularPipelineBlocks):
         block_state.device = components._execution_device
         block_state.dtype = components.transformer.dtype
 
-        if block_state.image is not None and block_state.video is not None:
-            raise ValueError("Pass either `image` or `video`, not both.")
-        if block_state.video is not None and block_state.num_frames == 1:
+        if block_state.video is None:
+            raise ValueError("`Cosmos3VideoVaeEncoderStep` requires a `video` input.")
+        if block_state.num_frames == 1:
             raise ValueError("`video` conditioning requires `num_frames` > 1.")
         if block_state.num_frames < 1:
             raise ValueError(f"`num_frames` must be >= 1, got {block_state.num_frames}.")
@@ -319,77 +403,44 @@ class Cosmos3VaeEncoderStep(ModularPipelineBlocks):
             )
         if block_state.condition_video_keep not in {"first", "last"}:
             raise ValueError("`condition_video_keep` must be either 'first' or 'last'.")
-        if block_state.video is not None:
-            indexes = tuple(block_state.condition_frame_indexes_vision)
-            if not indexes:
-                raise ValueError("`condition_frame_indexes_vision` must contain at least one index.")
-            latent_t = (block_state.num_frames - 1) // int(components.vae.config.scale_factor_temporal) + 1
-            if max(indexes) >= latent_t:
-                raise ValueError(
-                    f"`condition_frame_indexes_vision` {indexes} contains an index outside the latent timeline "
-                    f"(latent_frames={latent_t} for num_frames={block_state.num_frames})."
-                )
 
-        is_image = block_state.num_frames == 1
-        conditioning_frame_2d = None
-        if block_state.image is not None:
-            conditioning_frame_2d = components.video_processor.preprocess(
-                block_state.image, height=block_state.height, width=block_state.width
-            ).to(device=block_state.device, dtype=block_state.dtype)
-
-        conditioning_frames_3d = None
-        condition_indexes_vision = tuple(block_state.condition_frame_indexes_vision)
-        vision_condition_frames: list[int] = []
-        if block_state.video is not None:
-            conditioning_frames_3d = components.video_processor.preprocess_video(
-                block_state.video, height=block_state.height, width=block_state.width
-            ).to(device=block_state.device, dtype=block_state.dtype)
-            temporal_compression = int(components.vae.config.scale_factor_temporal)
-            max_cond_frames = max(condition_indexes_vision) * temporal_compression + 1
-            if block_state.condition_video_keep == "first":
-                conditioning_frames_3d = conditioning_frames_3d[:, :, :max_cond_frames]
-            else:
-                conditioning_frames_3d = conditioning_frames_3d[:, :, -max_cond_frames:]
-
-        if is_image:
-            vision_tensor = (
-                conditioning_frame_2d.unsqueeze(2)
-                if conditioning_frame_2d is not None
-                else torch.zeros(
-                    1,
-                    3,
-                    1,
-                    block_state.height,
-                    block_state.width,
-                    dtype=block_state.dtype,
-                    device=block_state.device,
-                )
+        indexes = tuple(block_state.condition_frame_indexes_vision)
+        if not indexes:
+            raise ValueError("`condition_frame_indexes_vision` must contain at least one index.")
+        latent_t = (block_state.num_frames - 1) // int(components.vae.config.scale_factor_temporal) + 1
+        if max(indexes) >= latent_t:
+            raise ValueError(
+                f"`condition_frame_indexes_vision` {indexes} contains an index outside the latent timeline "
+                f"(latent_frames={latent_t} for num_frames={block_state.num_frames})."
             )
+
+        condition_indexes_vision = indexes
+        conditioning_frames_3d = components.video_processor.preprocess_video(
+            block_state.video, height=block_state.height, width=block_state.width
+        ).to(device=block_state.device, dtype=block_state.dtype)
+        temporal_compression = int(components.vae.config.scale_factor_temporal)
+        max_cond_frames = max(condition_indexes_vision) * temporal_compression + 1
+        if block_state.condition_video_keep == "first":
+            conditioning_frames_3d = conditioning_frames_3d[:, :, :max_cond_frames]
         else:
-            vision_tensor = torch.zeros(
-                1,
-                3,
-                block_state.num_frames,
-                block_state.height,
-                block_state.width,
-                dtype=block_state.dtype,
-                device=block_state.device,
+            conditioning_frames_3d = conditioning_frames_3d[:, :, -max_cond_frames:]
+
+        vision_tensor = torch.zeros(
+            1,
+            3,
+            block_state.num_frames,
+            block_state.height,
+            block_state.width,
+            dtype=block_state.dtype,
+            device=block_state.device,
+        )
+        t_fill = min(conditioning_frames_3d.shape[2], block_state.num_frames)
+        vision_tensor[:, :, :t_fill] = conditioning_frames_3d[:, :, :t_fill]
+        if t_fill < block_state.num_frames:
+            vision_tensor[:, :, t_fill:] = vision_tensor[:, :, t_fill - 1 : t_fill].expand(
+                -1, -1, block_state.num_frames - t_fill, -1, -1
             )
-            if conditioning_frames_3d is not None:
-                t_fill = min(conditioning_frames_3d.shape[2], block_state.num_frames)
-                vision_tensor[:, :, :t_fill] = conditioning_frames_3d[:, :, :t_fill]
-                if t_fill < block_state.num_frames:
-                    vision_tensor[:, :, t_fill:] = vision_tensor[:, :, t_fill - 1 : t_fill].expand(
-                        -1, -1, block_state.num_frames - t_fill, -1, -1
-                    )
-                vision_condition_frames = list(condition_indexes_vision)
-            elif conditioning_frame_2d is not None:
-                vision_tensor[:, :, 0] = conditioning_frame_2d
-                if block_state.num_frames > 1:
-                    vision_tensor[:, :, 1:] = conditioning_frame_2d.unsqueeze(2).expand(
-                        -1, -1, block_state.num_frames - 1, -1, -1
-                    )
-                vision_condition_frames = [0]
+        vision_condition_frames = list(condition_indexes_vision)
 
         block_state.x0_tokens_vision = components._encode_video(vision_tensor).contiguous().float()
         block_state.vision_condition_frames = vision_condition_frames
