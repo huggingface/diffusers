@@ -215,8 +215,6 @@ class Cosmos3DenoiseLoopWrapper(LoopSequentialPipelineBlocks):
             InputParam.template("timesteps", required=True),
             InputParam.template("num_inference_steps", required=True),
             InputParam(name="num_warmup_steps", required=True),
-            InputParam(name="callback_on_step_end", default=None),
-            InputParam(name="callback_on_step_end_tensor_inputs", default=["latents"]),
         ]
 
     @torch.no_grad()
@@ -230,16 +228,6 @@ class Cosmos3DenoiseLoopWrapper(LoopSequentialPipelineBlocks):
                     continue
 
                 components, block_state = self.loop_step(components, block_state, i=i, t=t)
-
-                if block_state.callback_on_step_end is not None:
-                    callback_kwargs = {
-                        k: getattr(block_state, k) for k in block_state.callback_on_step_end_tensor_inputs
-                    }
-                    callback_outputs = block_state.callback_on_step_end(components, i, t, callback_kwargs)
-                    if callback_outputs is not None and isinstance(callback_outputs, dict):
-                        block_state.latents = callback_outputs.pop("latents", block_state.latents)
-                        block_state.sound_latents = callback_outputs.pop("sound_latents", block_state.sound_latents)
-                        block_state.action_latents = callback_outputs.pop("action_latents", block_state.action_latents)
 
                 if i == len(block_state.timesteps) - 1 or (
                     (i + 1) > block_state.num_warmup_steps and (i + 1) % components.scheduler.order == 0
