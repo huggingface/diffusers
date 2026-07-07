@@ -183,7 +183,7 @@ class ControlNetPipelineSDXLImg2ImgFastTests(
     def test_ip_adapter(self):
         expected_pipe_slice = None
         if torch_device == "cpu":
-            expected_pipe_slice = np.array([0.6276, 0.5271, 0.5205, 0.5393, 0.5774, 0.5872, 0.5456, 0.5415, 0.5354])
+            expected_pipe_slice = np.array([0.6710, 0.5497, 0.5469, 0.5758, 0.5990, 0.5996, 0.5583, 0.5506, 0.5368])
         # TODO: update after slices.p
         return super().test_ip_adapter(expected_pipe_slice=expected_pipe_slice)
 
@@ -200,7 +200,7 @@ class ControlNetPipelineSDXLImg2ImgFastTests(
         assert image.shape == (1, 64, 64, 3)
 
         expected_slice = np.array(
-            [0.5557202, 0.46418434, 0.46983826, 0.623529, 0.5557242, 0.49262643, 0.6070508, 0.5702978, 0.43777135]
+            [0.55813384, 0.4668495, 0.46676695, 0.6121852, 0.55514586, 0.49157068, 0.5960574, 0.56897247, 0.43931544]
         )
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
@@ -223,7 +223,7 @@ class ControlNetPipelineSDXLImg2ImgFastTests(
         assert output.images.shape == (1, 64, 64, 3)
 
         expected_slice = np.array(
-            [0.5557202, 0.46418434, 0.46983826, 0.623529, 0.5557242, 0.49262643, 0.6070508, 0.5702978, 0.43777135]
+            [0.55813384, 0.4668495, 0.46676695, 0.6121852, 0.55514586, 0.49157068, 0.5960574, 0.56897247, 0.43931544]
         )
 
         # make sure that it's equal

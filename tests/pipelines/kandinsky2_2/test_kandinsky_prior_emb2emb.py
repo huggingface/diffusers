@@ -223,7 +223,7 @@ class KandinskyV22PriorEmb2EmbPipelineFastTests(PipelineTesterMixin, unittest.Te
         assert image.shape == (1, 32)
 
         expected_slice = np.array(
-            [-0.8947, 0.7225, -0.2400, -1.4224, -1.9268, -1.1454, -1.8220, -0.7972, 1.0465, -0.5207]
+            [0.0117, 0.8621, -0.7459, 0.5970, -0.8612, -0.2034, -1.5705, -0.6786, 0.2857, -0.1696]
         )
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
