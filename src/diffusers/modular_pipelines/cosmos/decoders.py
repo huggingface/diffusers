@@ -93,11 +93,15 @@ class Cosmos3SoundDecodeStep(ModularPipelineBlocks):
 
     @property
     def intermediate_outputs(self) -> list[OutputParam]:
-        return [OutputParam("sound")]
+        return [
+            OutputParam("sound"),
+            OutputParam("sampling_rate"),
+        ]
 
     @torch.no_grad()
     def __call__(self, components: Cosmos3OmniModularPipeline, state: PipelineState) -> PipelineState:
         block_state = self.get_block_state(state)
         block_state.sound = components.decode_sound(block_state.sound_latents)
+        block_state.sampling_rate = int(components.sound_tokenizer.config.sampling_rate)
         self.set_block_state(state, block_state)
         return components, state

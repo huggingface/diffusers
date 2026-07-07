@@ -1,6 +1,6 @@
 import torch
 
-from ...pipelines.cosmos.pipeline_cosmos3_omni import Cosmos3OmniPipelineOutput
+from ...utils import encode_video, export_to_video
 from ..modular_pipeline import ModularPipelineBlocks, PipelineState
 from ..modular_pipeline_utils import InputParam, OutputParam
 from .modular_pipeline import Cosmos3OmniModularPipeline
@@ -39,44 +39,48 @@ class Cosmos3ActionOutputStep(ModularPipelineBlocks):
         return components, state
 
 
-class Cosmos3AssembleResultStep(ModularPipelineBlocks):
+class Cosmos3ExportStep(ModularPipelineBlocks):
     model_name = "cosmos3-omni"
 
     @property
     def description(self) -> str:
-        return "Assembles modality outputs into tuple/dataclass return payload."
+        return (
+            "Optional export block that writes decoded outputs to disk. Writes `videos` to `output_path` via "
+            "`export_to_video`, or muxes `videos` with `sound` via `encode_video` when a waveform is present. "
+            "Not wired into the default blocks; add it explicitly when you want the pipeline to produce a file."
+        )
 
     @property
     def inputs(self) -> list[InputParam]:
         return [
             InputParam(name="videos", required=True),
+            InputParam(name="output_path", required=True),
+            InputParam(name="fps", type_hint=float, default=24.0),
             InputParam(name="sound", default=None),
-            InputParam(name="sound_latents", default=None),
-            InputParam(name="action", default=None),
-            InputParam(name="action_mode", default=None),
-            InputParam(name="return_dict", default=True),
+            InputParam(name="sampling_rate", default=None),
         ]
 
     @property
     def intermediate_outputs(self) -> list[OutputParam]:
-        return [OutputParam("result")]
+        return [OutputParam("output_path")]
 
     @torch.no_grad()
     def __call__(self, components: Cosmos3OmniModularPipeline, state: PipelineState) -> PipelineState:
         block_state = self.get_block_state(state)
-        if block_state.sound_latents is None:
-            block_state.sound = None
-        if not block_state.return_dict:
-            if block_state.action_mode is not None:
-                block_state.result = (block_state.videos, block_state.sound, block_state.action)
-            else:
-                block_state.result = (block_state.videos, block_state.sound)
-        else:
-            block_state.result = Cosmos3OmniPipelineOutput(
-                video=block_state.videos,
-                sound=block_state.sound,
-                action=block_state.action,
+        output_path = str(block_state.output_path)
+        fps = int(round(block_state.fps))
+        if block_state.sound is not None:
+            if block_state.sampling_rate is None:
+                raise ValueError("`sampling_rate` is required to export a video with sound.")
+            encode_video(
+                block_state.videos,
+                fps=fps,
+                audio=block_state.sound,
+                audio_sample_rate=int(block_state.sampling_rate),
+                output_path=output_path,
             )
-
+        else:
+            export_to_video(block_state.videos, output_path, fps=fps, macro_block_size=1)
+        block_state.output_path = output_path
         self.set_block_state(state, block_state)
         return components, state

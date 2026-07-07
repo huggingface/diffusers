@@ -5,7 +5,7 @@ from ..modular_pipeline import (
     SequentialPipelineBlocks,
 )
 from ..modular_pipeline_utils import OutputParam
-from .after_decode import Cosmos3ActionOutputStep, Cosmos3AssembleResultStep
+from .after_decode import Cosmos3ActionOutputStep
 from .before_denoise import (
     Cosmos3PackSequenceStep,
     Cosmos3PrepareLatentsStep,
@@ -98,16 +98,6 @@ class Cosmos3DecodeStep(SequentialPipelineBlocks):
         return "Decodes denoised latents into modality outputs (video and optional sound)."
 
 
-class Cosmos3AfterDecodeStep(SequentialPipelineBlocks):
-    model_name = "cosmos3-omni"
-    block_classes = [Cosmos3ActionOutputStep, Cosmos3AssembleResultStep]
-    block_names = ["action", "assemble"]
-
-    @property
-    def description(self) -> str:
-        return "Builds post-decode action output and assembles final return payload."
-
-
 # auto_docstring
 class Cosmos3CoreDenoiseStep(SequentialPipelineBlocks):
     model_name = "cosmos3-omni"
@@ -146,7 +136,7 @@ class Cosmos3CoreDenoiseStep(SequentialPipelineBlocks):
 # auto_docstring
 class Cosmos3OmniBlocks(SequentialPipelineBlocks):
     model_name = "cosmos3-omni"
-    block_classes = [Cosmos3AutoTextEncoderStep, Cosmos3CoreDenoiseStep, Cosmos3DecodeStep, Cosmos3AfterDecodeStep]
+    block_classes = [Cosmos3AutoTextEncoderStep, Cosmos3CoreDenoiseStep, Cosmos3DecodeStep, Cosmos3ActionOutputStep]
     block_names = ["text_encoder", "denoise", "decode", "after_decode"]
     _workflow_map = {
         "text2image": {"prompt": True, "num_frames": 1},
@@ -168,8 +158,8 @@ class Cosmos3OmniBlocks(SequentialPipelineBlocks):
     @property
     def outputs(self):
         return [
-            OutputParam("result"),
             OutputParam.template("videos"),
             OutputParam("sound"),
+            OutputParam("sampling_rate"),
             OutputParam("action"),
         ]

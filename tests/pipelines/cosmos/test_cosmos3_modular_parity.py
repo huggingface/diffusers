@@ -13,6 +13,7 @@
 # limitations under the License.
 
 import unittest
+from types import SimpleNamespace
 
 import numpy as np
 import pytest
@@ -172,6 +173,22 @@ def _make_modular_pipe() -> Cosmos3OmniModularPipeline:
     return pipe
 
 
+def _call_pipe(pipe, **kwargs):
+    """Run a task or modular pipe and normalize to an object exposing `.video`/`.sound`/`.action`.
+
+    The modular pipeline no longer wraps outputs in a dataclass; callers request intermediates directly via
+    `pipe(..., output=[...])`. This helper adapts that dict back to the task pipeline's output shape so the parity
+    assertions can compare both uniformly.
+    """
+    if isinstance(pipe, Cosmos3OmniModularPipeline):
+        kwargs = dict(kwargs)
+        kwargs.pop("enable_safety_check", None)
+        kwargs.pop("return_dict", None)
+        out = pipe(**kwargs, output=["videos", "sound", "action"])
+        return SimpleNamespace(video=out["videos"], sound=out["sound"], action=out["action"])
+    return pipe(**kwargs)
+
+
 def _assert_close_outputs(task_out, modular_out, *, atol=0.0, rtol=0.0):
     torch.testing.assert_close(task_out.video, modular_out.video, atol=atol, rtol=rtol)
 
@@ -321,8 +338,8 @@ def _run_case(case_name: str):
     task_kwargs["generator"] = torch.Generator(device="cpu").manual_seed(1234)
     modular_kwargs["generator"] = torch.Generator(device="cpu").manual_seed(1234)
 
-    task_out = task_pipe(**task_kwargs)
-    modular_out = modular_pipe(**modular_kwargs)
+    task_out = _call_pipe(task_pipe, **task_kwargs)
+    modular_out = _call_pipe(modular_pipe, **modular_kwargs)
 
     if case_name in {"action_policy_image", "action_policy_video", "action_inverse_video"}:
         assert task_out.action is not None, f"Task pipeline must return action outputs for {case_name}"
@@ -382,8 +399,7 @@ def test_cosmos3_modular_workflow_extraction():
         "denoise.denoise",
         "decode.video",
         "decode.sound",
-        "after_decode.action",
-        "after_decode.assemble",
+        "after_decode",
     ]
 
     with pytest.raises(ValueError):
@@ -412,11 +428,15 @@ class Cosmos3ModularParitySmokeTests(unittest.TestCase):
         task_kwargs = dict(kwargs)
         modular_kwargs = dict(kwargs)
         modular_kwargs.pop("enable_safety_check", None)
+        modular_kwargs.pop("return_dict", None)
         task_kwargs["generator"] = torch.Generator(device="cpu").manual_seed(7)
         modular_kwargs["generator"] = torch.Generator(device="cpu").manual_seed(7)
 
+        # Task pipeline keeps the standard tuple return (`return_dict=False`); the modular pipeline exposes the
+        # same values as requested intermediates.
         task_video, task_sound = task_pipe(**task_kwargs)
-        modular_video, modular_sound = modular_pipe(**modular_kwargs)
+        modular_out = modular_pipe(**modular_kwargs, output=["videos", "sound"])
+        modular_video, modular_sound = modular_out["videos"], modular_out["sound"]
 
         torch.testing.assert_close(task_video, modular_video, atol=0.0, rtol=0.0)
         torch.testing.assert_close(task_sound, modular_sound, atol=0.0, rtol=0.0)

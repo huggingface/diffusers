@@ -2,7 +2,7 @@ import torch
 
 from ...pipelines.cosmos.pipeline_cosmos3_omni import Cosmos3OmniPipeline, CosmosSafetyChecker
 from ...utils import logging
-from ..modular_pipeline import ModularPipeline, PipelineState
+from ..modular_pipeline import ModularPipeline
 
 
 logger = logging.get_logger(__name__)
@@ -59,13 +59,6 @@ class Cosmos3OmniModularPipeline(ModularPipeline):
     @property
     def requires_safety_checker(self):
         return getattr(self, "_is_safety_checker_enabled", True)
-
-    # NOTE: thin override that only supplies the default `output="result"`; removed together
-    # with the assemble step (result/return_dict) once callers switch to `pipe(..., output=[...])`.
-    def __call__(self, state: PipelineState = None, output: str | list[str] | None = None, **kwargs):
-        if output is None:
-            output = "result"
-        return super().__call__(state=state, output=output, **kwargs)
 
     def _get_execution_device(self):
         return Cosmos3OmniPipeline._get_execution_device(self)
