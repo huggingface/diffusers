@@ -6,7 +6,6 @@ from ...models.transformers.transformer_cosmos3 import Cosmos3OmniTransformer
 from ...pipelines.cosmos.pipeline_cosmos3_omni import (
     _ACTION_RESOLUTION_BINS,
     CosmosActionCondition,
-    CosmosSafetyChecker,
 )
 from ...utils import logging
 from ...video_processor import VideoProcessor
@@ -58,7 +57,6 @@ class Cosmos3TextEncoderStep(ModularPipelineBlocks):
             InputParam(name="use_system_prompt", type_hint=bool, default=True),
             InputParam(name="add_resolution_template", type_hint=bool, default=True),
             InputParam(name="add_duration_template", type_hint=bool, default=True),
-            InputParam(name="enable_safety_check", type_hint=bool, default=True),
         ]
 
     @property
@@ -88,13 +86,13 @@ class Cosmos3TextEncoderStep(ModularPipelineBlocks):
         if isinstance(block_state.negative_prompt, list):
             block_state.negative_prompt = block_state.negative_prompt[0]
 
-        device = components._get_execution_device()
-        if block_state.enable_safety_check and getattr(components, "safety_checker", None) is None:
-            try:
-                components._ensure_safety_checker()
-            except ImportError:
-                pass
-        if block_state.enable_safety_check and isinstance(components.safety_checker, CosmosSafetyChecker):
+        if components.requires_safety_checker:
+            if getattr(components, "safety_checker", None) is None:
+                raise ValueError(
+                    "Cosmos3 requires a safety checker by default. Call `pipe.enable_safety_checker()` to load it "
+                    "(or pass your own), or opt out explicitly with `pipe.disable_safety_checker()`."
+                )
+            device = components._execution_device
             components.safety_checker.to(device)
             try:
                 if not components.safety_checker.check_text_safety(block_state.prompt):
@@ -176,7 +174,6 @@ class Cosmos3ActionTextStep(ModularPipelineBlocks):
             InputParam(name="use_system_prompt", type_hint=bool, default=True),
             InputParam(name="add_resolution_template", type_hint=bool, default=True),
             InputParam(name="add_duration_template", type_hint=bool, default=True),
-            InputParam(name="enable_safety_check", type_hint=bool, default=True),
         ]
 
     @property
@@ -211,13 +208,13 @@ class Cosmos3ActionTextStep(ModularPipelineBlocks):
         if isinstance(block_state.negative_prompt, list):
             block_state.negative_prompt = block_state.negative_prompt[0]
 
-        device = components._get_execution_device()
-        if block_state.enable_safety_check and getattr(components, "safety_checker", None) is None:
-            try:
-                components._ensure_safety_checker()
-            except ImportError:
-                pass
-        if block_state.enable_safety_check and isinstance(components.safety_checker, CosmosSafetyChecker):
+        if components.requires_safety_checker:
+            if getattr(components, "safety_checker", None) is None:
+                raise ValueError(
+                    "Cosmos3 requires a safety checker by default. Call `pipe.enable_safety_checker()` to load it "
+                    "(or pass your own), or opt out explicitly with `pipe.disable_safety_checker()`."
+                )
+            device = components._execution_device
             components.safety_checker.to(device)
             try:
                 if not components.safety_checker.check_text_safety(block_state.prompt):

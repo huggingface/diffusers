@@ -166,6 +166,7 @@ def _make_modular_pipe() -> Cosmos3OmniModularPipeline:
     pipe = Cosmos3OmniModularPipeline(blocks=Cosmos3OmniBlocks())
     pipe.update_components(**components)
     pipe.safety_checker = safety_checker
+    pipe.disable_safety_checker()
     pipe.to("cpu")
     pipe.set_progress_bar_config(disable=None)
     return pipe
@@ -316,6 +317,7 @@ def _run_case(case_name: str):
 
     task_kwargs = dict(kwargs)
     modular_kwargs = dict(kwargs)
+    modular_kwargs.pop("enable_safety_check", None)
     task_kwargs["generator"] = torch.Generator(device="cpu").manual_seed(1234)
     modular_kwargs["generator"] = torch.Generator(device="cpu").manual_seed(1234)
 
@@ -409,6 +411,7 @@ class Cosmos3ModularParitySmokeTests(unittest.TestCase):
         }
         task_kwargs = dict(kwargs)
         modular_kwargs = dict(kwargs)
+        modular_kwargs.pop("enable_safety_check", None)
         task_kwargs["generator"] = torch.Generator(device="cpu").manual_seed(7)
         modular_kwargs["generator"] = torch.Generator(device="cpu").manual_seed(7)
 

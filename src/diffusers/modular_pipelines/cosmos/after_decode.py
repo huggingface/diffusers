@@ -78,8 +78,6 @@ class Cosmos3AssembleResultStep(ModularPipelineBlocks):
                 action=block_state.action,
             )
 
-        components.maybe_free_model_hooks()
-
         self.set_block_state(state, block_state)
         return components, state
 

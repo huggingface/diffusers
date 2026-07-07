@@ -2,7 +2,6 @@ import torch
 
 from ...models.autoencoders.autoencoder_cosmos3_audio import Cosmos3AVAEAudioTokenizer
 from ...models.autoencoders.autoencoder_kl_wan import AutoencoderKLWan
-from ...pipelines.cosmos.pipeline_cosmos3_omni import CosmosSafetyChecker
 from ...utils import logging
 from ..modular_pipeline import AutoPipelineBlocks, ModularPipelineBlocks, PipelineState, SequentialPipelineBlocks
 from ..modular_pipeline_utils import ComponentSpec, InputParam, OutputParam
@@ -28,7 +27,6 @@ class Cosmos3VideoDecodeStep(ModularPipelineBlocks):
         return [
             InputParam(name="latents", required=True),
             InputParam.template("output_type", default="pil"),
-            InputParam(name="enable_safety_check", default=True),
         ]
 
     @property
@@ -54,11 +52,12 @@ class Cosmos3VideoDecodeStep(ModularPipelineBlocks):
                 decoded, output_type=block_state.output_type
             )[0]
 
-        if (
-            block_state.enable_safety_check
-            and isinstance(components.safety_checker, CosmosSafetyChecker)
-            and block_state.output_type != "latent"
-        ):
+        if components.requires_safety_checker and block_state.output_type != "latent":
+            if getattr(components, "safety_checker", None) is None:
+                raise ValueError(
+                    "Cosmos3 requires a safety checker by default. Call `pipe.enable_safety_checker()` to load it "
+                    "(or pass your own), or opt out explicitly with `pipe.disable_safety_checker()`."
+                )
             block_state.videos = components._apply_video_safety_check(
                 block_state.videos, output_type=block_state.output_type, device=block_state.device
             )
