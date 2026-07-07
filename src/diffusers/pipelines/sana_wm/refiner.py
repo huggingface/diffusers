@@ -140,6 +140,8 @@ class SanaWMLTX2Refiner(DiffusionPipeline):
                 writes a ``state.pt`` after every completed block (atomic replace) and resumes from there if it already
                 exists. Lets a refinement survive SLURM preemption — the run resumes from the last completed block
                 instead of recomputing from scratch.
+            device: execution device for the refiner's sub-modules. If ``None``, falls back to where the transformer
+                currently lives. The refiner moves each sub-module on/off this device as it runs.
 
         Returns:
             `torch.Tensor`: Refined VAE latents of shape ``(B, C, F, H, W)`` — the first ``sink_size`` frames carry the
