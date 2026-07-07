@@ -61,7 +61,6 @@ class Cosmos3TextEncoderStep(ModularPipelineBlocks):
     @property
     def intermediate_outputs(self) -> list[OutputParam]:
         return [
-            OutputParam("action_mode"),
             OutputParam("num_frames"),
             OutputParam("height"),
             OutputParam("width"),
@@ -102,7 +101,6 @@ class Cosmos3TextEncoderStep(ModularPipelineBlocks):
             finally:
                 components.safety_checker.to("cpu")
 
-        block_state.action_mode = None
         block_state.cond_input_ids, block_state.uncond_input_ids = components.tokenize_prompt(
             block_state.prompt,
             block_state.negative_prompt,
