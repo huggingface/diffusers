@@ -37,7 +37,7 @@ def _state_dict(precision="int4"):
         "linear2.wscales": torch.randn(1, 128, dtype=torch.bfloat16),
         "linear2.wzeros": torch.randn(1, 128, dtype=torch.bfloat16),
     }
-    if precision == "fp4":
+    if precision == "nvfp4":
         state_dict["linear1.wcscales"] = torch.randn(128, dtype=torch.bfloat16)
         state_dict["linear1.wscales"] = torch.empty(4, 128, dtype=torch.float8_e4m3fn)
         state_dict["linear1.wtscale"] = torch.randn(1, dtype=torch.bfloat16)
@@ -49,7 +49,7 @@ def _state_dict(precision="int4"):
 def _compact_config():
     return {
         "svdq_w4a4": {
-            "precision": "fp4",
+            "precision": "nvfp4",
             "group_size": 16,
             "rank": 4,
             "targets": ["linear1"],
@@ -103,7 +103,7 @@ class NunchakuLiteBasicTests(unittest.TestCase):
         config_dict = quantization_config.to_dict()
 
         self.assertEqual(config_dict["compute_dtype"], "bfloat16")
-        self.assertEqual(config_dict["svdq_w4a4"]["precision"], "fp4")
+        self.assertEqual(config_dict["svdq_w4a4"]["precision"], "nvfp4")
 
         reloaded_config = NunchakuLiteQuantizationConfig.from_dict(config_dict)
         self.assertEqual(reloaded_config.compute_dtype, torch.bfloat16)
@@ -144,7 +144,7 @@ class NunchakuLiteBasicTests(unittest.TestCase):
                 json.dump(config, handle)
 
             svdq_config = compact_config["svdq_w4a4"]
-            precision = "fp4" if svdq_config["precision"] == "fp4" else "int4"
+            precision = "nvfp4" if svdq_config["precision"] == "nvfp4" else "int4"
             save_file(_state_dict(precision=precision), os.path.join(tmpdir, "diffusion_pytorch_model.safetensors"))
 
             loaded_model = self.model_cls.from_pretrained(tmpdir)

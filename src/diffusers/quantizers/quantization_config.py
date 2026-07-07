@@ -451,7 +451,7 @@ class NunchakuLiteQuantizationConfig(QuantizationConfigMixin):
         "quant_method": "nunchaku_lite",
         "compute_dtype": "bfloat16",
         "svdq_w4a4": {
-          "precision": "fp4",
+          "precision": "nvfp4",
           "group_size": 16,
           "rank": 32,
           "targets": ["layers.0.self_attention.to_q"]
@@ -520,7 +520,7 @@ class NunchakuLiteQuantizationConfig(QuantizationConfigMixin):
             precision = raw["precision"]
             group_size = raw["group_size"]
             targets = raw["targets"]
-            if precision not in ("int4", "fp4"):
+            if precision not in ("int4", "nvfp4"):
                 raise ValueError(f"Unsupported Nunchaku precision {precision!r} for {op!r}.")
             if group_size <= 0:
                 raise ValueError(f"Nunchaku compact config section {op!r} must have positive group_size.")
@@ -536,7 +536,7 @@ class NunchakuLiteQuantizationConfig(QuantizationConfigMixin):
                     raise ValueError(f"Nunchaku compact config section {op!r} field 'rank' must be int.")
                 if raw["rank"] < 0:
                     raise ValueError(f"Nunchaku compact config section {op!r} must have non-negative rank.")
-                expected_group_size = 16 if precision == "fp4" else 64
+                expected_group_size = 16 if precision == "nvfp4" else 64
                 if group_size != expected_group_size:
                     raise ValueError(
                         f"Nunchaku SVDQ config with precision={precision!r} requires "
