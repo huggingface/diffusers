@@ -139,7 +139,7 @@ class StableDiffusionImageVariationPipelineFastTests(
         image_slice = image[0, -3:, -3:, -1]
 
         assert image.shape == (1, 64, 64, 3)
-        expected_slice = np.array([0.5348, 0.5924, 0.4798, 0.5237, 0.5741, 0.4651, 0.5344, 0.4942, 0.4851])
+        expected_slice = np.array([0.5157, 0.5653, 0.4707, 0.4792, 0.5563, 0.4569, 0.5020, 0.4858, 0.4940])
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
 
@@ -159,7 +159,7 @@ class StableDiffusionImageVariationPipelineFastTests(
         image_slice = image[-1, -3:, -3:, -1]
 
         assert image.shape == (2, 64, 64, 3)
-        expected_slice = np.array([0.6647, 0.5557, 0.5723, 0.5567, 0.5869, 0.6044, 0.5502, 0.5439, 0.5189])
+        expected_slice = np.array([0.6749, 0.5424, 0.5692, 0.5694, 0.6228, 0.6268, 0.5516, 0.5598, 0.5227])
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
 

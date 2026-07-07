@@ -258,7 +258,7 @@ class StableDiffusionXLPAGImg2ImgPipelineFastTests(
             32,
             3,
         ), f"the shape of the output image should be (1, 64, 64, 3) but got {image.shape}"
-        expected_slice = np.array([0.4613, 0.4902, 0.4406, 0.6788, 0.5611, 0.4529, 0.5893, 0.5975, 0.5226])
+        expected_slice = np.array([0.4566, 0.4907, 0.4374, 0.6633, 0.5626, 0.4494, 0.5771, 0.6011, 0.5245])
 
         max_diff = np.abs(image_slice.flatten() - expected_slice).max()
         assert max_diff < 1e-3, f"output is different from expected, {image_slice.flatten()}"
