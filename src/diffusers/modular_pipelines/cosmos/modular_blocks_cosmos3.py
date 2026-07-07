@@ -1,19 +1,103 @@
 from ...utils import logging
-from ..modular_pipeline import SequentialPipelineBlocks
+from ..modular_pipeline import (
+    AutoPipelineBlocks,
+    ConditionalPipelineBlocks,
+    SequentialPipelineBlocks,
+)
 from ..modular_pipeline_utils import OutputParam
-from .after_decode import Cosmos3AfterDecodeStep
+from .after_decode import Cosmos3ActionOutputStep, Cosmos3AssembleResultStep
 from .before_denoise import (
     Cosmos3PackSequenceStep,
     Cosmos3PrepareLatentsStep,
     Cosmos3PrepareTextSegmentsStep,
     Cosmos3SetTimestepsStep,
 )
-from .decoders import Cosmos3DecodeStep
+from .decoders import Cosmos3SoundDecodeStep, Cosmos3VideoDecodeStep
 from .denoise import Cosmos3DenoiseStep
-from .encoders import Cosmos3AutoTextEncoderStep, Cosmos3AutoVaeEncoderStep
+from .encoders import (
+    Cosmos3ActionTextStep,
+    Cosmos3ActionVisionVaeEncoderStep,
+    Cosmos3TextEncoderStep,
+    Cosmos3VaeEncoderStep,
+)
 
 
 logger = logging.get_logger(__name__)
+
+
+class Cosmos3AutoTextEncoderStep(AutoPipelineBlocks):
+    model_name = "cosmos3-omni"
+    block_classes = [Cosmos3ActionTextStep, Cosmos3TextEncoderStep]
+    block_names = ["action_text", "text"]
+    block_trigger_inputs = ["action", None]
+
+    @property
+    def description(self):
+        return (
+            "Auto text encoder block for Cosmos3.\n"
+            + " - `Cosmos3ActionTextStep` runs when `action` is provided.\n"
+            + " - `Cosmos3TextEncoderStep` runs otherwise."
+        )
+
+
+class Cosmos3AutoVaeEncoderStep(ConditionalPipelineBlocks):
+    model_name = "cosmos3-omni"
+    block_classes = [Cosmos3ActionVisionVaeEncoderStep, Cosmos3VaeEncoderStep]
+    block_names = ["action_conditioning", "vision_conditioning"]
+    block_trigger_inputs = ["action", "video", "image"]
+    default_block_name = None
+
+    def select_block(self, **kwargs) -> str | None:
+        if kwargs.get("action") is not None:
+            return "action_conditioning"
+        if kwargs.get("video") is not None or kwargs.get("image") is not None:
+            return "vision_conditioning"
+        return None
+
+    @property
+    def description(self):
+        return (
+            "Auto VAE conditioning block for Cosmos3.\n"
+            + " - `Cosmos3ActionVisionVaeEncoderStep` runs when `action` is provided.\n"
+            + "   Note: this branch VAE-encodes action visual inputs (image/video), not action vectors.\n"
+            + " - `Cosmos3VaeEncoderStep` runs for image/video non-action paths.\n"
+            + " - when no action/image/video conditioning is provided (text-only), this block is skipped."
+        )
+
+
+class Cosmos3AutoSoundDecodeStep(AutoPipelineBlocks):
+    model_name = "cosmos3-omni"
+    block_classes = [Cosmos3SoundDecodeStep]
+    block_names = ["decode"]
+    block_trigger_inputs = ["sound_latents"]
+
+    @property
+    def description(self):
+        return (
+            "Auto sound decoder block for Cosmos3.\n"
+            + " - `Cosmos3SoundDecodeStep` runs when `sound_latents` are present.\n"
+            + " - if `sound_latents` are not provided, this block is skipped."
+        )
+
+
+class Cosmos3DecodeStep(SequentialPipelineBlocks):
+    model_name = "cosmos3-omni"
+    block_classes = [Cosmos3VideoDecodeStep, Cosmos3AutoSoundDecodeStep]
+    block_names = ["video", "sound"]
+
+    @property
+    def description(self) -> str:
+        return "Decodes denoised latents into modality outputs (video and optional sound)."
+
+
+class Cosmos3AfterDecodeStep(SequentialPipelineBlocks):
+    model_name = "cosmos3-omni"
+    block_classes = [Cosmos3ActionOutputStep, Cosmos3AssembleResultStep]
+    block_names = ["action", "assemble"]
+
+    @property
+    def description(self) -> str:
+        return "Builds post-decode action output and assembles final return payload."
 
 
 # auto_docstring

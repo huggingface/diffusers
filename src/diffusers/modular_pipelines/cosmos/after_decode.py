@@ -1,7 +1,7 @@
 import torch
 
 from ...pipelines.cosmos.pipeline_cosmos3_omni import Cosmos3OmniPipelineOutput
-from ..modular_pipeline import ModularPipelineBlocks, PipelineState, SequentialPipelineBlocks
+from ..modular_pipeline import ModularPipelineBlocks, PipelineState
 from ..modular_pipeline_utils import InputParam, OutputParam
 from .modular_pipeline import Cosmos3OmniModularPipeline
 
@@ -80,13 +80,3 @@ class Cosmos3AssembleResultStep(ModularPipelineBlocks):
 
         self.set_block_state(state, block_state)
         return components, state
-
-
-class Cosmos3AfterDecodeStep(SequentialPipelineBlocks):
-    model_name = "cosmos3-omni"
-    block_classes = [Cosmos3ActionOutputStep, Cosmos3AssembleResultStep]
-    block_names = ["action", "assemble"]
-
-    @property
-    def description(self) -> str:
-        return "Builds post-decode action output and assembles final return payload."

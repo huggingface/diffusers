@@ -3,7 +3,7 @@ import torch
 from ...models.autoencoders.autoencoder_cosmos3_audio import Cosmos3AVAEAudioTokenizer
 from ...models.autoencoders.autoencoder_kl_wan import AutoencoderKLWan
 from ...utils import logging
-from ..modular_pipeline import AutoPipelineBlocks, ModularPipelineBlocks, PipelineState, SequentialPipelineBlocks
+from ..modular_pipeline import ModularPipelineBlocks, PipelineState
 from ..modular_pipeline_utils import ComponentSpec, InputParam, OutputParam
 from .modular_pipeline import Cosmos3OmniModularPipeline
 
@@ -91,28 +91,3 @@ class Cosmos3SoundDecodeStep(ModularPipelineBlocks):
         block_state.sound = components.decode_sound(block_state.sound_latents)
         self.set_block_state(state, block_state)
         return components, state
-
-
-class Cosmos3AutoSoundDecodeStep(AutoPipelineBlocks):
-    model_name = "cosmos3-omni"
-    block_classes = [Cosmos3SoundDecodeStep]
-    block_names = ["decode"]
-    block_trigger_inputs = ["sound_latents"]
-
-    @property
-    def description(self):
-        return (
-            "Auto sound decoder block for Cosmos3.\n"
-            + " - `Cosmos3SoundDecodeStep` runs when `sound_latents` are present.\n"
-            + " - if `sound_latents` are not provided, this block is skipped."
-        )
-
-
-class Cosmos3DecodeStep(SequentialPipelineBlocks):
-    model_name = "cosmos3-omni"
-    block_classes = [Cosmos3VideoDecodeStep, Cosmos3AutoSoundDecodeStep]
-    block_names = ["video", "sound"]
-
-    @property
-    def description(self) -> str:
-        return "Decodes denoised latents into modality outputs (video and optional sound)."

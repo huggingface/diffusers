@@ -9,7 +9,7 @@ from ...pipelines.cosmos.pipeline_cosmos3_omni import (
 )
 from ...utils import logging
 from ...video_processor import VideoProcessor
-from ..modular_pipeline import AutoPipelineBlocks, ConditionalPipelineBlocks, ModularPipelineBlocks, PipelineState
+from ..modular_pipeline import ModularPipelineBlocks, PipelineState
 from ..modular_pipeline_utils import ComponentSpec, InputParam, OutputParam
 from .modular_pipeline import Cosmos3OmniModularPipeline
 
@@ -241,21 +241,6 @@ class Cosmos3ActionTextStep(ModularPipelineBlocks):
 
         self.set_block_state(state, block_state)
         return components, state
-
-
-class Cosmos3AutoTextEncoderStep(AutoPipelineBlocks):
-    model_name = "cosmos3-omni"
-    block_classes = [Cosmos3ActionTextStep, Cosmos3TextEncoderStep]
-    block_names = ["action_text", "text"]
-    block_trigger_inputs = ["action", None]
-
-    @property
-    def description(self):
-        return (
-            "Auto text encoder block for Cosmos3.\n"
-            + " - `Cosmos3ActionTextStep` runs when `action` is provided.\n"
-            + " - `Cosmos3TextEncoderStep` runs otherwise."
-        )
 
 
 class Cosmos3VaeEncoderStep(ModularPipelineBlocks):
@@ -496,28 +481,3 @@ class Cosmos3ActionVisionVaeEncoderStep(ModularPipelineBlocks):
 
         self.set_block_state(state, block_state)
         return components, state
-
-
-class Cosmos3AutoVaeEncoderStep(ConditionalPipelineBlocks):
-    model_name = "cosmos3-omni"
-    block_classes = [Cosmos3ActionVisionVaeEncoderStep, Cosmos3VaeEncoderStep]
-    block_names = ["action_conditioning", "vision_conditioning"]
-    block_trigger_inputs = ["action", "video", "image"]
-    default_block_name = None
-
-    def select_block(self, **kwargs) -> str | None:
-        if kwargs.get("action") is not None:
-            return "action_conditioning"
-        if kwargs.get("video") is not None or kwargs.get("image") is not None:
-            return "vision_conditioning"
-        return None
-
-    @property
-    def description(self):
-        return (
-            "Auto VAE conditioning block for Cosmos3.\n"
-            + " - `Cosmos3ActionVisionVaeEncoderStep` runs when `action` is provided.\n"
-            + "   Note: this branch VAE-encodes action visual inputs (image/video), not action vectors.\n"
-            + " - `Cosmos3VaeEncoderStep` runs for image/video non-action paths.\n"
-            + " - when no action/image/video conditioning is provided (text-only), this block is skipped."
-        )
