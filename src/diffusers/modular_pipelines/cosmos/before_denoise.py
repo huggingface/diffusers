@@ -219,6 +219,8 @@ class Cosmos3PrepareLatentsStep(ModularPipelineBlocks):
         block_state.action_condition_mask = None
         block_state.action_domain_id = None
         if action_mode is not None:
+            if not getattr(components.transformer.config, "action_gen", False):
+                raise ValueError("`action` requires a transformer trained with action_gen=True.")
             action_chunk_size = action.chunk_size
             action_dim = components.transformer.action_dim
             if action_mode == "forward_dynamics":

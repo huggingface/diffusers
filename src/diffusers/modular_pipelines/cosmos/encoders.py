@@ -2,7 +2,6 @@ import torch
 from transformers import AutoTokenizer
 
 from ...models.autoencoders.autoencoder_kl_wan import AutoencoderKLWan
-from ...models.transformers.transformer_cosmos3 import Cosmos3OmniTransformer
 from ...pipelines.cosmos.pipeline_cosmos3_omni import (
     _ACTION_RESOLUTION_BINS,
     CosmosActionCondition,
@@ -53,7 +52,6 @@ class Cosmos3TextEncoderStep(ModularPipelineBlocks):
             InputParam(name="height", default=None),
             InputParam(name="width", default=None),
             InputParam(name="fps", type_hint=float, default=24.0),
-            InputParam(name="guidance_scale", type_hint=float, default=6.0),
             InputParam(name="use_system_prompt", type_hint=bool, default=True),
             InputParam(name="add_resolution_template", type_hint=bool, default=True),
             InputParam(name="add_duration_template", type_hint=bool, default=True),
@@ -170,7 +168,6 @@ class Cosmos3ActionTextStep(ModularPipelineBlocks):
             InputParam(name="height", default=None),
             InputParam(name="width", default=None),
             InputParam(name="fps", type_hint=float, default=24.0),
-            InputParam(name="guidance_scale", type_hint=float, default=6.0),
             InputParam(name="use_system_prompt", type_hint=bool, default=True),
             InputParam(name="add_resolution_template", type_hint=bool, default=True),
             InputParam(name="add_duration_template", type_hint=bool, default=True),
@@ -400,7 +397,6 @@ class Cosmos3ActionVisionVaeEncoderStep(ModularPipelineBlocks):
     def expected_components(self) -> list[ComponentSpec]:
         return [
             ComponentSpec("vae", AutoencoderKLWan),
-            ComponentSpec("transformer", Cosmos3OmniTransformer),
         ]
 
     @property
@@ -431,16 +427,13 @@ class Cosmos3ActionVisionVaeEncoderStep(ModularPipelineBlocks):
         block_state = self.get_block_state(state)
 
         block_state.device = components._execution_device
-        block_state.dtype = components.transformer.dtype
+        block_state.dtype = components.vae.dtype
 
         action = block_state.action
         if block_state.image is not None or block_state.video is not None:
             raise ValueError(
                 "Pass action conditioning via `action.image` / `action.video`, not top-level image/video."
             )
-
-        if not getattr(components.transformer.config, "action_gen", False):
-            raise ValueError("`action` requires a transformer trained with action_gen=True.")
 
         target_frames = action.chunk_size + 1
         conditioning_clip = [action.image] if action.image is not None else action.video

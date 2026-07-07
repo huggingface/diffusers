@@ -224,9 +224,6 @@ class Cosmos3DenoiseLoopWrapper(LoopSequentialPipelineBlocks):
 
         with self.progress_bar(total=block_state.num_inference_steps) as progress_bar:
             for i, t in enumerate(block_state.timesteps):
-                if components.interrupt:
-                    continue
-
                 components, block_state = self.loop_step(components, block_state, i=i, t=t)
 
                 if i == len(block_state.timesteps) - 1 or (

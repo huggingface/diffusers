@@ -16,7 +16,6 @@ class Cosmos3OmniModularPipeline(ModularPipeline):
 
     default_blocks_name = "Cosmos3OmniBlocks"
     _callback_tensor_inputs = ["latents"]
-    model_cpu_offload_seq = "transformer->vae->sound_tokenizer"
 
     duration_template = "The video is {duration:.1f} seconds long and is of {fps:.0f} FPS."
     image_resolution_template = "This image is of {height}x{width} resolution."
