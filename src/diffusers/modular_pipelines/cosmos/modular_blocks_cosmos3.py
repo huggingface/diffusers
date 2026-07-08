@@ -1,19 +1,28 @@
-from ...utils import logging
-from ..modular_pipeline import (
-    AutoPipelineBlocks,
-    ConditionalPipelineBlocks,
-    SequentialPipelineBlocks,
-)
-from ..modular_pipeline_utils import OutputParam
+from ..modular_pipeline import AutoPipelineBlocks, ConditionalPipelineBlocks, SequentialPipelineBlocks
+from ..modular_pipeline_utils import InputParam, OutputParam
 from .after_decode import Cosmos3ActionOutputStep
 from .before_denoise import (
-    Cosmos3PackSequenceStep,
-    Cosmos3PrepareLatentsStep,
+    Cosmos3ActionPackSequenceStep,
+    Cosmos3ActionPrepareLatentsStep,
     Cosmos3PrepareTextSegmentsStep,
     Cosmos3SetTimestepsStep,
+    Cosmos3SoundActionPackSequenceStep,
+    Cosmos3SoundPackSequenceStep,
+    Cosmos3SoundPrepareLatentsStep,
+    Cosmos3VisionPackSequenceStep,
+    Cosmos3VisionPrepareLatentsStep,
 )
 from .decoders import Cosmos3SoundDecodeStep, Cosmos3VideoDecodeStep
-from .denoise import Cosmos3DenoiseStep
+from .denoise import (
+    Cosmos3VisionActionDenoiseInputStep,
+    Cosmos3VisionActionDenoiseStep,
+    Cosmos3VisionDenoiseInputStep,
+    Cosmos3VisionDenoiseStep,
+    Cosmos3VisionSoundActionDenoiseInputStep,
+    Cosmos3VisionSoundActionDenoiseStep,
+    Cosmos3VisionSoundDenoiseInputStep,
+    Cosmos3VisionSoundDenoiseStep,
+)
 from .encoders import (
     Cosmos3ActionTextStep,
     Cosmos3ActionVisionVaeEncoderStep,
@@ -21,9 +30,6 @@ from .encoders import (
     Cosmos3TextEncoderStep,
     Cosmos3VideoVaeEncoderStep,
 )
-
-
-logger = logging.get_logger(__name__)
 
 
 class Cosmos3AutoTextEncoderStep(AutoPipelineBlocks):
@@ -36,8 +42,8 @@ class Cosmos3AutoTextEncoderStep(AutoPipelineBlocks):
     def description(self):
         return (
             "Auto text encoder block for Cosmos3.\n"
-            + " - `Cosmos3ActionTextStep` runs when `action` is provided.\n"
-            + " - `Cosmos3TextEncoderStep` runs otherwise."
+            + " - Cosmos3ActionTextStep runs when action is provided.\n"
+            + " - Cosmos3TextEncoderStep runs otherwise."
         )
 
 
@@ -54,7 +60,7 @@ class Cosmos3AutoVaeEncoderStep(ConditionalPipelineBlocks):
         image = kwargs.get("image")
         video = kwargs.get("video")
         if image is not None and video is not None:
-            raise ValueError("Pass either `image` or `video`, not both.")
+            raise ValueError("Pass either image or video, not both.")
         if video is not None:
             return "video_conditioning"
         if image is not None:
@@ -65,11 +71,10 @@ class Cosmos3AutoVaeEncoderStep(ConditionalPipelineBlocks):
     def description(self):
         return (
             "Auto VAE conditioning block for Cosmos3.\n"
-            + " - `Cosmos3ActionVisionVaeEncoderStep` runs when `action` is provided.\n"
-            + "   Note: this branch VAE-encodes action visual inputs (image/video), not action vectors.\n"
-            + " - `Cosmos3VideoVaeEncoderStep` runs for the non-action `video` path.\n"
-            + " - `Cosmos3ImageVaeEncoderStep` runs for the non-action `image` path.\n"
-            + " - when no action/image/video conditioning is provided (text-only), this block is skipped."
+            + " - Cosmos3ActionVisionVaeEncoderStep runs when action is provided.\n"
+            + " - Cosmos3VideoVaeEncoderStep runs for the non-action video path.\n"
+            + " - Cosmos3ImageVaeEncoderStep runs for the non-action image path.\n"
+            + " - when no action, image, or video conditioning is provided, this block is skipped."
         )
 
 
@@ -83,8 +88,8 @@ class Cosmos3AutoSoundDecodeStep(AutoPipelineBlocks):
     def description(self):
         return (
             "Auto sound decoder block for Cosmos3.\n"
-            + " - `Cosmos3SoundDecodeStep` runs when `sound_latents` are present.\n"
-            + " - if `sound_latents` are not provided, this block is skipped."
+            + " - Cosmos3SoundDecodeStep runs when sound_latents are present.\n"
+            + " - if sound_latents are not provided, this block is skipped."
         )
 
 
@@ -95,34 +100,145 @@ class Cosmos3DecodeStep(SequentialPipelineBlocks):
 
     @property
     def description(self) -> str:
-        return "Decodes denoised latents into modality outputs (video and optional sound)."
+        return "Decodes denoised latents into modality outputs."
 
 
-# auto_docstring
-class Cosmos3CoreDenoiseStep(SequentialPipelineBlocks):
+class Cosmos3VisionCoreDenoiseStep(SequentialPipelineBlocks):
     model_name = "cosmos3-omni"
     block_classes = [
         Cosmos3PrepareTextSegmentsStep,
         Cosmos3AutoVaeEncoderStep,
-        Cosmos3PrepareLatentsStep,
-        Cosmos3PackSequenceStep,
+        Cosmos3VisionPrepareLatentsStep,
+        Cosmos3VisionPackSequenceStep,
         Cosmos3SetTimestepsStep,
-        Cosmos3DenoiseStep,
+        Cosmos3VisionDenoiseInputStep,
+        Cosmos3VisionDenoiseStep,
     ]
     block_names = [
         "prepare_text_segments",
         "vae_encoder",
-        "prepare_latents",
-        "pack_sequence",
+        "prepare_vision_latents",
+        "pack_vision_sequence",
         "set_timesteps",
+        "prepare_denoiser_inputs",
         "denoise",
     ]
 
     @property
     def description(self):
-        return (
-            "Prepares text segments/vision latents/modalities, packs sequences, initializes timesteps, and denoises."
-        )
+        return "Runs the text-and-vision Cosmos3 denoising workflow."
+
+    @property
+    def outputs(self):
+        return [OutputParam.template("latents")]
+
+
+class Cosmos3VisionSoundCoreDenoiseStep(SequentialPipelineBlocks):
+    model_name = "cosmos3-omni"
+    block_classes = [
+        Cosmos3PrepareTextSegmentsStep,
+        Cosmos3AutoVaeEncoderStep,
+        Cosmos3VisionPrepareLatentsStep,
+        Cosmos3SoundPrepareLatentsStep,
+        Cosmos3VisionPackSequenceStep,
+        Cosmos3SoundPackSequenceStep,
+        Cosmos3SetTimestepsStep,
+        Cosmos3VisionSoundDenoiseInputStep,
+        Cosmos3VisionSoundDenoiseStep,
+    ]
+    block_names = [
+        "prepare_text_segments",
+        "vae_encoder",
+        "prepare_vision_latents",
+        "prepare_sound_latents",
+        "pack_vision_sequence",
+        "pack_sound_sequence",
+        "set_timesteps",
+        "prepare_denoiser_inputs",
+        "denoise",
+    ]
+
+    @property
+    def description(self):
+        return "Runs the text, vision, and sound Cosmos3 denoising workflow."
+
+    @property
+    def outputs(self):
+        return [
+            OutputParam.template("latents"),
+            OutputParam("sound_latents"),
+        ]
+
+
+class Cosmos3VisionActionCoreDenoiseStep(SequentialPipelineBlocks):
+    model_name = "cosmos3-omni"
+    block_classes = [
+        Cosmos3PrepareTextSegmentsStep,
+        Cosmos3AutoVaeEncoderStep,
+        Cosmos3VisionPrepareLatentsStep,
+        Cosmos3ActionPrepareLatentsStep,
+        Cosmos3VisionPackSequenceStep,
+        Cosmos3ActionPackSequenceStep,
+        Cosmos3SetTimestepsStep,
+        Cosmos3VisionActionDenoiseInputStep,
+        Cosmos3VisionActionDenoiseStep,
+    ]
+    block_names = [
+        "prepare_text_segments",
+        "vae_encoder",
+        "prepare_vision_latents",
+        "prepare_action_latents",
+        "pack_vision_sequence",
+        "pack_action_sequence",
+        "set_timesteps",
+        "prepare_denoiser_inputs",
+        "denoise",
+    ]
+
+    @property
+    def description(self):
+        return "Runs the text, vision, and action Cosmos3 denoising workflow."
+
+    @property
+    def outputs(self):
+        return [
+            OutputParam.template("latents"),
+            OutputParam("action_latents"),
+        ]
+
+
+class Cosmos3VisionSoundActionCoreDenoiseStep(SequentialPipelineBlocks):
+    model_name = "cosmos3-omni"
+    block_classes = [
+        Cosmos3PrepareTextSegmentsStep,
+        Cosmos3AutoVaeEncoderStep,
+        Cosmos3VisionPrepareLatentsStep,
+        Cosmos3SoundPrepareLatentsStep,
+        Cosmos3ActionPrepareLatentsStep,
+        Cosmos3VisionPackSequenceStep,
+        Cosmos3SoundPackSequenceStep,
+        Cosmos3SoundActionPackSequenceStep,
+        Cosmos3SetTimestepsStep,
+        Cosmos3VisionSoundActionDenoiseInputStep,
+        Cosmos3VisionSoundActionDenoiseStep,
+    ]
+    block_names = [
+        "prepare_text_segments",
+        "vae_encoder",
+        "prepare_vision_latents",
+        "prepare_sound_latents",
+        "prepare_action_latents",
+        "pack_vision_sequence",
+        "pack_sound_sequence",
+        "pack_action_sequence",
+        "set_timesteps",
+        "prepare_denoiser_inputs",
+        "denoise",
+    ]
+
+    @property
+    def description(self):
+        return "Runs the text, vision, sound, and action Cosmos3 denoising workflow."
 
     @property
     def outputs(self):
@@ -133,10 +249,141 @@ class Cosmos3CoreDenoiseStep(SequentialPipelineBlocks):
         ]
 
 
+class Cosmos3AutoCoreDenoiseStep(ConditionalPipelineBlocks):
+    model_name = "cosmos3-omni"
+    block_classes = [
+        Cosmos3VisionSoundActionCoreDenoiseStep,
+        Cosmos3VisionActionCoreDenoiseStep,
+        Cosmos3VisionSoundCoreDenoiseStep,
+        Cosmos3VisionCoreDenoiseStep,
+    ]
+    block_names = ["vision_sound_action", "vision_action", "vision_sound", "vision"]
+    block_trigger_inputs = ["action", "enable_sound"]
+    default_block_name = "vision"
+
+    @property
+    def inputs(self):
+        inputs = super().inputs
+        inputs.append(InputParam(name="enable_sound", type_hint=bool, default=False))
+        return inputs
+
+    def select_block(self, **kwargs) -> str | None:
+        action = kwargs.get("action")
+        enable_sound = kwargs.get("enable_sound")
+        if action is not None and enable_sound:
+            return "vision_sound_action"
+        if action is not None:
+            return "vision_action"
+        if enable_sound:
+            return "vision_sound"
+        return "vision"
+
+    @property
+    def description(self):
+        return (
+            "Selects the Cosmos3 core denoising workflow.\n"
+            + " - vision_sound_action runs when action and enable_sound are provided.\n"
+            + " - vision_action runs when action is provided.\n"
+            + " - vision_sound runs when enable_sound is true.\n"
+            + " - vision runs otherwise."
+        )
+
+
 # auto_docstring
 class Cosmos3OmniBlocks(SequentialPipelineBlocks):
+    """
+    Modular pipeline blocks for Cosmos3 generation modes.
+
+      Supported workflows:
+        - `text2image`: requires `prompt`, `num_frames`
+        - `text2video`: requires `prompt`
+        - `image2video`: requires `prompt`, `image`
+        - `video2video`: requires `prompt`, `video`
+        - `text2video_with_sound`: requires `prompt`, `enable_sound`
+        - `image2video_with_sound`: requires `prompt`, `image`, `enable_sound`
+        - `video2video_with_sound`: requires `prompt`, `video`, `enable_sound`
+        - `action_policy`: requires `prompt`, `action`
+        - `action_forward_dynamics`: requires `prompt`, `action`
+        - `action_inverse_dynamics`: requires `prompt`, `action`
+
+      Components:
+          text_tokenizer (`AutoTokenizer`)
+          video_processor (`VideoProcessor`)
+          transformer (`Cosmos3OmniTransformer`)
+          vae (`AutoencoderKLWan`)
+          sound_tokenizer (`Cosmos3AVAEAudioTokenizer`)
+          scheduler (`UniPCMultistepScheduler`)
+
+      Inputs:
+          prompt (`str`):
+              TODO: Add description.
+          negative_prompt (`None`, *optional*):
+              TODO: Add description.
+          action (`CosmosActionCondition`, *optional*):
+              TODO: Add description.
+          num_frames (`None`, *optional*):
+              TODO: Add description.
+          height (`None`, *optional*):
+              TODO: Add description.
+          width (`None`, *optional*):
+              TODO: Add description.
+          fps (`float`, *optional*, defaults to 24.0):
+              TODO: Add description.
+          use_system_prompt (`bool`, *optional*, defaults to True):
+              TODO: Add description.
+          add_resolution_template (`bool`, *optional*, defaults to True):
+              TODO: Add description.
+          add_duration_template (`bool`, *optional*, defaults to True):
+              TODO: Add description.
+          image (`None`, *optional*):
+              TODO: Add description.
+          video (`None`, *optional*):
+              TODO: Add description.
+          condition_frame_indexes_vision (`None`, *optional*, defaults to (0, 1)):
+              TODO: Add description.
+          condition_video_keep (`None`, *optional*, defaults to first):
+              TODO: Add description.
+          x0_tokens_vision (`None`, *optional*):
+              TODO: Add description.
+          vision_condition_frames (`None`, *optional*):
+              TODO: Add description.
+          latents (`None`):
+              TODO: Add description.
+          generator (`None`, *optional*):
+              TODO: Add description.
+          sound_latents (`None`, *optional*):
+              TODO: Add description.
+          action_condition_frame_indexes (`None`, *optional*):
+              TODO: Add description.
+          action_latents (`None`, *optional*):
+              TODO: Add description.
+          num_inference_steps (`int`):
+              The number of denoising steps.
+          guidance_scale (`None`, *optional*, defaults to 6.0):
+              TODO: Add description.
+          enable_sound (`bool`, *optional*, defaults to False):
+              TODO: Add description.
+          output_type (`str`, *optional*, defaults to pil):
+              Output format: 'pil', 'np', 'pt'.
+
+      Outputs:
+          videos (`list`):
+              The generated videos.
+          sound (`None`):
+              TODO: Add description.
+          sampling_rate (`None`):
+              TODO: Add description.
+          action (`None`):
+              TODO: Add description.
+    """
+
     model_name = "cosmos3-omni"
-    block_classes = [Cosmos3AutoTextEncoderStep, Cosmos3CoreDenoiseStep, Cosmos3DecodeStep, Cosmos3ActionOutputStep]
+    block_classes = [
+        Cosmos3AutoTextEncoderStep,
+        Cosmos3AutoCoreDenoiseStep,
+        Cosmos3DecodeStep,
+        Cosmos3ActionOutputStep,
+    ]
     block_names = ["text_encoder", "denoise", "decode", "after_decode"]
     _workflow_map = {
         "text2image": {"prompt": True, "num_frames": 1},

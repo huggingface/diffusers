@@ -286,9 +286,35 @@ def _build_case_kwargs(case_name: str) -> dict:
                 video=action_video,
             ),
         }
+    elif case_name == "action_policy_video_sound":
+        kwargs = {
+            **common,
+            "guidance_scale": 1.0,
+            "enable_sound": True,
+            "action": CosmosActionCondition(
+                mode="policy",
+                chunk_size=4,
+                domain_name="bridge_orig_lerobot",
+                resolution_tier=480,
+                video=action_video,
+            ),
+        }
     elif case_name == "action_forward_video_bridge":
         kwargs = {
             **common,
+            "action": CosmosActionCondition(
+                mode="forward_dynamics",
+                chunk_size=4,
+                domain_name="bridge_orig_lerobot",
+                resolution_tier=480,
+                raw_actions=torch.linspace(-0.1, 0.1, steps=40, dtype=torch.float32).reshape(4, 10),
+                video=action_video,
+            ),
+        }
+    elif case_name == "action_forward_video_bridge_sound":
+        kwargs = {
+            **common,
+            "enable_sound": True,
             "action": CosmosActionCondition(
                 mode="forward_dynamics",
                 chunk_size=4,
@@ -363,7 +389,9 @@ def _run_case(case_name: str):
         "video2video_sound",
         "action_policy_image",
         "action_policy_video",
+        "action_policy_video_sound",
         "action_forward_video_bridge",
+        "action_forward_video_bridge_sound",
         "action_inverse_video",
         "action_forward_image_av",
     ],
@@ -393,9 +421,73 @@ def test_cosmos3_modular_workflow_extraction():
         "text_encoder",
         "denoise.prepare_text_segments",
         "denoise.vae_encoder",
-        "denoise.prepare_latents",
-        "denoise.pack_sequence",
+        "denoise.prepare_vision_latents",
+        "denoise.pack_vision_sequence",
         "denoise.set_timesteps",
+        "denoise.prepare_denoiser_inputs",
+        "denoise.denoise",
+        "decode.video",
+        "after_decode",
+    ]
+
+    vision_blocks = list(pipe.blocks.get_execution_blocks(enable_sound=False).sub_blocks.keys())
+    assert vision_blocks == [
+        "text_encoder",
+        "denoise.prepare_text_segments",
+        "denoise.prepare_vision_latents",
+        "denoise.pack_vision_sequence",
+        "denoise.set_timesteps",
+        "denoise.prepare_denoiser_inputs",
+        "denoise.denoise",
+        "decode.video",
+        "after_decode",
+    ]
+
+    sound_blocks = list(pipe.blocks.get_execution_blocks(enable_sound=True).sub_blocks.keys())
+    assert sound_blocks == [
+        "text_encoder",
+        "denoise.prepare_text_segments",
+        "denoise.prepare_vision_latents",
+        "denoise.prepare_sound_latents",
+        "denoise.pack_vision_sequence",
+        "denoise.pack_sound_sequence",
+        "denoise.set_timesteps",
+        "denoise.prepare_denoiser_inputs",
+        "denoise.denoise",
+        "decode.video",
+        "decode.sound",
+        "after_decode",
+    ]
+
+    action_blocks = list(pipe.blocks.get_execution_blocks(action=object()).sub_blocks.keys())
+    assert action_blocks == [
+        "text_encoder",
+        "denoise.prepare_text_segments",
+        "denoise.vae_encoder",
+        "denoise.prepare_vision_latents",
+        "denoise.prepare_action_latents",
+        "denoise.pack_vision_sequence",
+        "denoise.pack_action_sequence",
+        "denoise.set_timesteps",
+        "denoise.prepare_denoiser_inputs",
+        "denoise.denoise",
+        "decode.video",
+        "after_decode",
+    ]
+
+    action_sound_blocks = list(pipe.blocks.get_execution_blocks(action=object(), enable_sound=True).sub_blocks.keys())
+    assert action_sound_blocks == [
+        "text_encoder",
+        "denoise.prepare_text_segments",
+        "denoise.vae_encoder",
+        "denoise.prepare_vision_latents",
+        "denoise.prepare_sound_latents",
+        "denoise.prepare_action_latents",
+        "denoise.pack_vision_sequence",
+        "denoise.pack_sound_sequence",
+        "denoise.pack_action_sequence",
+        "denoise.set_timesteps",
+        "denoise.prepare_denoiser_inputs",
         "denoise.denoise",
         "decode.video",
         "decode.sound",
@@ -404,6 +496,53 @@ def test_cosmos3_modular_workflow_extraction():
 
     with pytest.raises(ValueError):
         pipe.blocks.get_workflow("non_existent_workflow")
+
+
+def test_cosmos3_modular_segments_are_assembled_in_denoise():
+    pipe = _make_modular_pipe()
+    kwargs = _build_case_kwargs("action_forward_video_bridge_sound")
+    kwargs.pop("enable_safety_check")
+    kwargs["generator"] = torch.Generator(device="cpu").manual_seed(1234)
+
+    state = pipe(**kwargs)
+
+    assert state.get("cond_packed_static") is None
+    assert state.get("uncond_packed_static") is None
+
+    cond_text_segment = state.get("cond_text_segment")
+    cond_vision_segment = state.get("cond_vision_segment")
+    cond_sound_segment = state.get("cond_sound_segment")
+    cond_action_segment = state.get("cond_action_segment")
+    expected_cond_position_ids = torch.cat(
+        [
+            cond_text_segment["text_mrope_ids"],
+            cond_vision_segment["vision_mrope_ids"],
+            cond_sound_segment["sound_mrope_ids"],
+            cond_action_segment["action_mrope_ids"],
+        ],
+        dim=1,
+    )
+    expected_cond_sequence_length = (
+        cond_text_segment["und_len"]
+        + cond_vision_segment["num_vision_tokens"]
+        + cond_sound_segment["sound_len"]
+        + cond_action_segment["action_len"]
+    )
+
+    torch.testing.assert_close(state.get("cond_position_ids"), expected_cond_position_ids)
+    assert state.get("cond_sequence_length") == expected_cond_sequence_length
+
+    action_sound_core = pipe.blocks.sub_blocks["denoise"].sub_blocks["vision_sound_action"]
+    action_sound_loop = action_sound_core.sub_blocks["denoise"]
+    assert list(action_sound_loop.sub_blocks.keys()) == [
+        "prepare_vision",
+        "prepare_sound",
+        "prepare_action",
+        "denoiser",
+        "update_vision",
+        "update_sound",
+        "update_action",
+    ]
 
 
 class Cosmos3ModularParitySmokeTests(unittest.TestCase):
