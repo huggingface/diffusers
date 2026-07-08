@@ -847,10 +847,7 @@ class QuarkConfig(QuantizationConfigMixin):
       the custom mode tag and the rest of the body matches the AutoAWQ / native-FP8 schemas.
     """
 
-    def __init__(self, quant_config_dict: dict[str, Any] | None = None, **kwargs):
-        if quant_config_dict is not None:
-            kwargs = {**quant_config_dict, **kwargs}
-
+    def __init__(self, **kwargs):
         if not (is_torch_available() and is_quark_available()):
             raise ImportError(
                 "Quark is not installed. Install it with `pip install amd-quark` or "

@@ -114,6 +114,67 @@ class QuarkConfigParseTest(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
+# Pre-quantized reload: export a quantized model and reload it via
+# from_pretrained, which must auto-select Quark from config.json.
+# ---------------------------------------------------------------------------
+
+
+def _tiny_unet() -> "UNet2DModel":
+    return UNet2DModel(
+        sample_size=32,
+        in_channels=1,
+        out_channels=1,
+        block_out_channels=(32, 64),
+        down_block_types=("DownBlock2D", "AttnDownBlock2D"),
+        up_block_types=("AttnUpBlock2D", "UpBlock2D"),
+    )
+
+
+@requires_quark
+class QuarkReloadRoundtripTest(unittest.TestCase):
+    def test_prequantized_reload_auto_dispatch(self):
+        import tempfile
+
+        from quark.torch import ModelQuantizer, export_safetensors
+        from quark.torch.quantization.config.config import Int8PerTensorSpec, QConfig, QLayerConfig
+        from quark.torch.quantization.nn.modules.mixin import QuantMixin
+
+        weight_spec = Int8PerTensorSpec(
+            observer_method="min_max",
+            symmetric=True,
+            scale_type="float",
+            round_method="half_even",
+            is_dynamic=False,
+        ).to_quantization_spec()
+        qconfig = QConfig(global_quant_config=QLayerConfig(weight=weight_spec))
+
+        torch.manual_seed(0)
+        model = _tiny_unet().eval()
+        model = ModelQuantizer(qconfig).quantize_model(model, dataloader=None)
+
+        sample = torch.randn(1, 1, 32, 32)
+        timestep = torch.tensor([1.0])
+        with torch.no_grad():
+            out_before = model(sample, timestep).sample
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            export_safetensors(model, tmpdir)
+            # No quantization_config passed: the loader must select Quark from config.json.
+            reloaded = UNet2DModel.from_pretrained(tmpdir, torch_dtype=torch.float32)
+
+        self.assertIsInstance(reloaded.hf_quantizer, QuarkDiffusersQuantizer)
+        self.assertEqual(reloaded.quantization_method, QuantizationMethod.QUARK)
+        self.assertTrue(any(isinstance(m, QuantMixin) for m in reloaded.modules()))
+
+        reloaded.eval()
+        with torch.no_grad():
+            out_after = reloaded(sample, timestep).sample
+        self.assertEqual(out_before.shape, out_after.shape)
+        self.assertFalse(torch.isnan(out_after).any())
+        self.assertTrue(torch.allclose(out_before, out_after, atol=1e-3))
+
+
+# ---------------------------------------------------------------------------
 # On-the-fly weight-only round trip on a tiny UNet.
 # ---------------------------------------------------------------------------
 

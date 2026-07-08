@@ -15,28 +15,28 @@
 
 Two load paths are supported:
 
-* **Pre-quantized.**  The model on the Hub already carries a
-  ``quantization_config`` block in ``config.json`` and the state dict is
-  in Quark's QParams format.  ``_map_to_quark`` swaps ``nn.Linear`` /
-  ``nn.Conv2d`` for ``QParamsLinear`` so the state-dict load populates
-  the right modules.  ``QParamsLinear.forward`` dispatches to the FP8
-  ``scaled_mm`` kernel when applicable, giving native-inference
-  performance without any extra plumbing.  This mirrors the Quark
-  integration in 🤗 Transformers.
+* **Pre-quantized reload.**  The model on the Hub carries a
+  ``quantization_config`` block in ``config.json``, and the quantized
+  module tree is reconstructed so the checkpoint's state dict loads into
+  the matching modules.  Quark's standard diffusers export uses the
+  fake-quantized (QDQ) format, rebuilt here with
+  ``process_model_transformation``.  Real-quantized ``QParams``
+  checkpoints are instead rebuilt with ``_map_to_quark`` (``nn.Linear``
+  only), whose ``QParamsLinear.forward`` can dispatch to the FP8
+  ``scaled_mm`` kernel; this mirrors the Quark integration in
+  Transformers.
 
 * **On-the-fly weight-only.**  The user passes
   ``quantization_config=QuarkConfig(...)`` against a vanilla fp16/bf16
-  model.  Weights load normally and Quark applies weight-only
-  quantization after loading via ``ModelQuantizer``.  No calibration
-  data is required.  The current implementation produces fake-quant
-  modules (slower than the pre-quantized path).  See the
-  NATIVE-INFERENCE SLOT-IN comments below for the upgrade path.
+  model, and Quark applies weight-only quantization after loading via
+  ``ModelQuantizer``.  No calibration data is required.  This produces
+  fake-quant (QDQ) modules.
 
 On-the-fly **activation** quantization (SmoothQuant, SVDQuant w4a4,
 FP8 with calibrated activations, etc.) is not supported through
 ``from_pretrained``: calibration data for diffusion models depends on
-running the full pipeline, which is not naturally available at load
-time.  Use ``quark.torch.utils.diffusers.get_calib_dataloader`` +
+running the full pipeline, which is not available at load time.  Use
+``quark.torch.utils.diffusers.get_calib_dataloader`` +
 ``quark.torch.ModelQuantizer`` to quantize first, then save and reload.
 """
 
@@ -121,6 +121,10 @@ class QuarkDiffusersQuantizer(DiffusersQuantizer):
                 process_model_transformation(model, self.quantization_config.quant_config)
                 model.quant_config = self.quantization_config.quant_config  # type: ignore[attr-defined]
             else:
+                # Real-quantized (QParams) checkpoint: rebuild QParamsLinear so the
+                # saved state dict loads directly and QParamsLinear.forward can use the
+                # FP8 scaled_mm kernel. Quark's standard diffusers export does not emit
+                # this format yet; it uses the fake-quantized path above.
                 from quark.torch.export.api import _map_to_quark
 
                 _map_to_quark(
@@ -193,17 +197,9 @@ class QuarkDiffusersQuantizer(DiffusersQuantizer):
 
     def _process_model_after_weight_loading(self, model: "ModelMixin", **kwargs: Any) -> "ModelMixin":
         if not self.pre_quantized:
-            # On-the-fly weight-only: quantize now that fp16/bf16
-            # weights are populated.  ``dataloader=None`` is fine because
-            # we already rejected activation-quantized configs.
-            #
-            # NATIVE-INFERENCE SLOT-IN: this branch currently lands in
-            # the FrozenFakeQuantize slow path.  Once the on-the-fly
-            # path runs ``ModelPostProcessor`` (or equivalent) to convert
-            # QuantLinear -> QParamsLinear here, the same FP8 / MXFP4 /
-            # NVFP4 kernels available on the pre-quantized branch will
-            # apply automatically.  See Quark PR #4841 for the
-            # NativeInferenceLinear extension.
+            # On-the-fly weight-only: quantize now that the fp16/bf16 weights are
+            # populated. dataloader=None is fine because activation-quantized configs
+            # were rejected above. This produces fake-quant (QDQ) modules.
             from quark.torch import ModelQuantizer
 
             qconfig = self.quantization_config.quant_config

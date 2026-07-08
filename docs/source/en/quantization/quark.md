@@ -97,13 +97,13 @@ The exported directory then reloads through `from_pretrained` per the first sect
 
 | Feature | Supported |
 | --- | --- |
-| Data types | INT8, INT4, INT2, BFloat16, Float16, FP8 (E4M3/E5M2), FP6, FP4, OCP MX, MX6, MX9, BFP16 |
-| Pre-quantization transforms | SmoothQuant, QuaRot, SpinQuant, AWQ |
-| Quantization algorithms | GPTQ, SVDQuant |
+| Data types | INT4, UINT4, INT8, UINT8, Float16, BFloat16, FP8 (E4M3/E5M2), OCP MX-INT8, MXFP4, MXFP6, MXFP8 |
+| Pre-quantization transforms | SmoothQuant, QuaRot |
+| Quantization algorithms | AWQ, GPTQ, SVDQuant |
 | Operators | `nn.Linear`, `nn.Conv2d`, `nn.ConvTranspose2d`, `nn.Embedding`, `nn.EmbeddingBag` |
-| Granularity | per-tensor, per-channel, per-group, per-block, per-layer, per-layer-type |
-| Activation calibration | min/max, percentile, histogram, MSE |
-| Quantization strategy | weight-only, static, dynamic, with or without output quantization |
+| Granularity | per-tensor, per-channel, per-group, per-block |
+| Activation calibration | MinMax, Percentile, MSE |
+| Quantization strategy | weight-only, static, dynamic |
 | `torch.compile` | yes (after `ModelQuantizer.freeze`) |
 
 ## Resources
