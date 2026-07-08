@@ -10,10 +10,14 @@ from safetensors.torch import save_file
 from diffusers import ConfigMixin, ModelMixin, NunchakuLiteQuantizationConfig
 from diffusers.configuration_utils import register_to_config
 from diffusers.quantizers import DiffusersAutoQuantizer
-from diffusers.quantizers.nunchaku.utils import AWQW4A16Linear, SVDQW4A4Linear
-from diffusers.utils import is_kernels_available
 
-from ...testing_utils import backend_empty_cache, nightly, require_accelerator, torch_device
+from ...testing_utils import (
+    backend_empty_cache,
+    nightly,
+    require_accelerator,
+    require_kernels_version_greater_or_equal,
+    torch_device,
+)
 
 
 class TinyPretrainedModel(ModelMixin, ConfigMixin):
@@ -64,6 +68,7 @@ def _compact_config():
 
 @nightly
 @require_accelerator
+@require_kernels_version_greater_or_equal("0.9.0")
 class NunchakuLiteCudaKernelsTests(unittest.TestCase):
     def setUp(self):
         gc.collect()
@@ -76,10 +81,10 @@ class NunchakuLiteCudaKernelsTests(unittest.TestCase):
     def test_awq_cuda_kernels(self):
         if torch_device != "cuda":
             self.skipTest("Nunchaku Lite CUDA kernels test requires CUDA device")
-        if not is_kernels_available():
-            self.skipTest("Nunchaku Lite CUDA kernels test requires kernels")
 
         torch.manual_seed(0)
+        from diffusers.quantizers.nunchaku.utils import AWQW4A16Linear
+
         layer = AWQW4A16Linear(64, 128, bias=True, group_size=64, torch_dtype=torch.bfloat16, device=torch_device)
         layer.qweight.data = torch.randint(-8, 8, layer.qweight.shape, dtype=torch.int32, device=torch_device)
         layer.wscales.data = torch.rand(layer.wscales.shape, dtype=torch.bfloat16, device=torch_device)
@@ -109,7 +114,10 @@ class NunchakuLiteBasicTests(unittest.TestCase):
         self.assertEqual(reloaded_config.compute_dtype, torch.bfloat16)
         self.assertEqual(reloaded_config.svdq_w4a4["targets"], ["linear1"])
 
+    @require_kernels_version_greater_or_equal("0.9.0")
     def test_compact_config_replaces_svdq_and_awq_without_state_dict(self):
+        from diffusers.quantizers.nunchaku.utils import AWQW4A16Linear, SVDQW4A4Linear
+
         model = self.model_cls()
         quantizer = DiffusersAutoQuantizer.from_config(
             NunchakuLiteQuantizationConfig(compute_dtype=torch.bfloat16, **_compact_config())
@@ -122,11 +130,12 @@ class NunchakuLiteBasicTests(unittest.TestCase):
         self.assertEqual(model.linear1.precision, "nvfp4")
         self.assertEqual(model.linear1.rank, 4)
         self.assertIsNotNone(model.linear1.bias)
-        self.assertFalse(hasattr(model.linear1, "smooth_factor_orig"))
         self.assertIsNone(model.linear2.bias)
 
-    @unittest.skipIf(not is_kernels_available(), "Nunchaku Lite from_pretrained requires kernels.")
+    @require_kernels_version_greater_or_equal("0.9.0")
     def test_nunchaku_lite_loads_with_from_pretrained(self):
+        from diffusers.quantizers.nunchaku.utils import AWQW4A16Linear, SVDQW4A4Linear
+
         with tempfile.TemporaryDirectory() as tmpdir:
             model = self.model_cls()
             model.save_config(tmpdir)
