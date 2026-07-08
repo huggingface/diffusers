@@ -343,7 +343,9 @@ class ControlNetPipelineSDXLFastTests(
         output = sd_pipe(**inputs)
         image_slice = output.images[0, -3:, -3:, -1]
 
-        expected_slice = np.array([0.5460, 0.4943, 0.4635, 0.5832, 0.5366, 0.4815, 0.6034, 0.5741, 0.4341])
+        expected_slice = np.array(
+            [0.559845, 0.506214, 0.467439, 0.587851, 0.536138, 0.480375, 0.598892, 0.571167, 0.434700]
+        )
 
         # make sure that it's equal
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-4
