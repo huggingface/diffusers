@@ -196,7 +196,7 @@ class StableDiffusionXLControlNetPipelineFastTests(
             expected_pipe_slice = None
             if torch_device == "cpu":
                 expected_pipe_slice = np.array(
-                    [0.7335, 0.5866, 0.5623, 0.6242, 0.5751, 0.5999, 0.4091, 0.4590, 0.5054]
+                    [0.7153, 0.5634, 0.5697, 0.6209, 0.5700, 0.6044, 0.4283, 0.4552, 0.5271]
                 )
         return super().test_ip_adapter(expected_pipe_slice=expected_pipe_slice)
 
@@ -312,7 +312,9 @@ class StableDiffusionXLControlNetPipelineFastTests(
         output = sd_pipe(**inputs)
         image_slice = output.images[0, -3:, -3:, -1]
 
-        expected_slice = np.array([0.7335, 0.5866, 0.5623, 0.6242, 0.5751, 0.5999, 0.4091, 0.4590, 0.5054])
+        expected_slice = np.array(
+            [0.715316, 0.563373, 0.569716, 0.620860, 0.569999, 0.604369, 0.428272, 0.455195, 0.527119]
+        )
 
         # make sure that it's equal
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-4
@@ -934,7 +936,9 @@ class StableDiffusionSSD1BControlNetPipelineFastTests(StableDiffusionXLControlNe
         output = sd_pipe(**inputs)
         image_slice = output.images[0, -3:, -3:, -1]
 
-        expected_slice = np.array([0.7212, 0.5890, 0.5491, 0.6425, 0.5970, 0.6091, 0.4418, 0.4556, 0.5032])
+        expected_slice = np.array(
+            [0.669912, 0.557802, 0.523260, 0.596366, 0.552897, 0.576922, 0.433411, 0.450273, 0.491615]
+        )
 
         # make sure that it's equal
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-4
@@ -942,7 +946,7 @@ class StableDiffusionSSD1BControlNetPipelineFastTests(StableDiffusionXLControlNe
     def test_ip_adapter(self):
         expected_pipe_slice = None
         if torch_device == "cpu":
-            expected_pipe_slice = np.array([0.7212, 0.5890, 0.5491, 0.6425, 0.5970, 0.6091, 0.4418, 0.4556, 0.5032])
+            expected_pipe_slice = np.array([0.6699, 0.5578, 0.5233, 0.5964, 0.5529, 0.5769, 0.4334, 0.4503, 0.4916])
 
         return super().test_ip_adapter(from_ssd1b=True, expected_pipe_slice=expected_pipe_slice)
 

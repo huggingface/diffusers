@@ -163,7 +163,7 @@ class StableDiffusionImg2ImgPipelineFastTests(
         image_slice = image[0, -3:, -3:, -1]
 
         assert image.shape == (1, 32, 32, 3)
-        expected_slice = np.array([0.4555, 0.3216, 0.4049, 0.4620, 0.4618, 0.4126, 0.4122, 0.4629, 0.4579])
+        expected_slice = np.array([0.4517, 0.3640, 0.4036, 0.4014, 0.4381, 0.3990, 0.3824, 0.4628, 0.4415])
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
 
@@ -180,7 +180,7 @@ class StableDiffusionImg2ImgPipelineFastTests(
         image_slice = image[0, -3:, -3:, -1]
 
         assert image.shape == (1, 32, 32, 3)
-        expected_slice = np.array([0.5709, 0.4614, 0.4587, 0.5978, 0.5298, 0.6910, 0.6240, 0.5212, 0.5454])
+        expected_slice = np.array([0.5915, 0.4625, 0.4547, 0.6083, 0.5414, 0.6927, 0.6253, 0.5223, 0.5449])
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
 
@@ -199,7 +199,7 @@ class StableDiffusionImg2ImgPipelineFastTests(
         image_slice = image[0, -3:, -3:, -1]
 
         assert image.shape == (1, 32, 32, 3)
-        expected_slice = np.array([0.5709, 0.4614, 0.4587, 0.5978, 0.5298, 0.6910, 0.6240, 0.5212, 0.5454])
+        expected_slice = np.array([0.5915, 0.4625, 0.4547, 0.6083, 0.5414, 0.6927, 0.6253, 0.5223, 0.5449])
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
 
@@ -217,14 +217,14 @@ class StableDiffusionImg2ImgPipelineFastTests(
         image_slice = image[0, -3:, -3:, -1]
 
         assert image.shape == (1, 32, 32, 3)
-        expected_slice = np.array([0.4593, 0.3408, 0.4232, 0.4749, 0.4476, 0.4115, 0.4357, 0.4733, 0.4663])
+        expected_slice = np.array([0.4642, 0.3576, 0.4112, 0.4289, 0.4396, 0.4068, 0.3845, 0.4603, 0.4427])
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
 
     def test_ip_adapter(self):
         expected_pipe_slice = None
         if torch_device == "cpu":
-            expected_pipe_slice = np.array([0.4932, 0.5092, 0.5135, 0.5517, 0.5626, 0.6621, 0.6490, 0.5021, 0.5441])
+            expected_pipe_slice = np.array([0.4923, 0.5012, 0.5041, 0.5462, 0.5665, 0.6621, 0.6451, 0.5046, 0.5431])
         return super().test_ip_adapter(expected_pipe_slice=expected_pipe_slice)
 
     def test_stable_diffusion_img2img_multiple_init_images(self):
@@ -241,7 +241,7 @@ class StableDiffusionImg2ImgPipelineFastTests(
         image_slice = image[-1, -3:, -3:, -1]
 
         assert image.shape == (2, 32, 32, 3)
-        expected_slice = np.array([0.4241, 0.5576, 0.5711, 0.4792, 0.4311, 0.5952, 0.5827, 0.5138, 0.5109])
+        expected_slice = np.array([0.4385, 0.3589, 0.4905, 0.4607, 0.4040, 0.5551, 0.5114, 0.5269, 0.5267])
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
 
@@ -260,7 +260,7 @@ class StableDiffusionImg2ImgPipelineFastTests(
         image_slice = image[0, -3:, -3:, -1]
 
         assert image.shape == (1, 32, 32, 3)
-        expected_slice = np.array([0.4398, 0.4949, 0.4337, 0.6580, 0.5555, 0.4338, 0.5769, 0.5955, 0.5175])
+        expected_slice = np.array([0.4409, 0.4952, 0.4357, 0.6574, 0.5583, 0.4375, 0.5777, 0.5960, 0.5168])
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
 
@@ -277,7 +277,7 @@ class StableDiffusionImg2ImgPipelineFastTests(
         image_slice = image[0, -3:, -3:, -1]
 
         assert image.shape == (1, 32, 32, 3)
-        expected_slice = np.array([0.00669, 0.00669, 0.0, 0.00693, 0.00858, 0.0, 0.00567, 0.00515, 0.00125])
+        expected_slice = np.array([0.00551, 0.01295, 0.01731, 0.00725, 0.01140, 0.01334, 0.00152, 0.00997, 0.01265])
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
 

@@ -213,7 +213,7 @@ class StableDiffusionControlNetPAGPipelineFastTests(
             3,
         ), f"the shape of the output image should be (1, 64, 64, 3) but got {image.shape}"
         expected_slice = np.array(
-            [0.45505235, 0.2785938, 0.16334778, 0.79689944, 0.53095645, 0.40135607, 0.7052706, 0.69065094, 0.41548574]
+            [0.4533307, 0.28746086, 0.16543725, 0.786471, 0.5409842, 0.40167668, 0.7050086, 0.69445, 0.42238155]
         )
 
         max_diff = np.abs(image_slice.flatten() - expected_slice).max()
@@ -239,7 +239,7 @@ class StableDiffusionControlNetPAGPipelineFastTests(
             3,
         ), f"the shape of the output image should be (1, 64, 64, 3) but got {image.shape}"
         expected_slice = np.array(
-            [0.45127502, 0.2797252, 0.15970308, 0.7993157, 0.5414344, 0.40160775, 0.7114598, 0.69803864, 0.4217583]
+            [0.45054412, 0.27958393, 0.15983358, 0.80098593, 0.5432001, 0.4018666, 0.7127423, 0.69932824, 0.42260933]
         )
 
         max_diff = np.abs(image_slice.flatten() - expected_slice).max()

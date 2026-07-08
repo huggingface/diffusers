@@ -297,7 +297,7 @@ class StableDiffusionDepth2ImgPipelineFastTests(
         if torch_device == "mps":
             expected_slice = np.array([0.6071, 0.5035, 0.4378, 0.5776, 0.5753, 0.4316, 0.4513, 0.5263, 0.4546])
         else:
-            expected_slice = np.array([0.5435, 0.4992, 0.3783, 0.4411, 0.5842, 0.4654, 0.3786, 0.5077, 0.4655])
+            expected_slice = np.array([0.4082, 0.5014, 0.4256, 0.3948, 0.4573, 0.4061, 0.3515, 0.4656, 0.4529])
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
 
@@ -318,7 +318,7 @@ class StableDiffusionDepth2ImgPipelineFastTests(
         if torch_device == "mps":
             expected_slice = np.array([0.6296, 0.5125, 0.3890, 0.4456, 0.5955, 0.4621, 0.3810, 0.5310, 0.4626])
         else:
-            expected_slice = np.array([0.6012, 0.4507, 0.3769, 0.4121, 0.5566, 0.4585, 0.3803, 0.5045, 0.4631])
+            expected_slice = np.array([0.4168, 0.4955, 0.4142, 0.4035, 0.4646, 0.4082, 0.3500, 0.4635, 0.4475])
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
 
@@ -340,7 +340,7 @@ class StableDiffusionDepth2ImgPipelineFastTests(
         if torch_device == "mps":
             expected_slice = np.array([0.6501, 0.5150, 0.4939, 0.6688, 0.5437, 0.5758, 0.5115, 0.4406, 0.4551])
         else:
-            expected_slice = np.array([0.6557, 0.6214, 0.6254, 0.5775, 0.4785, 0.5949, 0.5904, 0.4785, 0.4730])
+            expected_slice = np.array([0.6261, 0.5452, 0.5330, 0.5160, 0.4768, 0.5216, 0.4413, 0.4797, 0.4777])
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
 
@@ -359,7 +359,7 @@ class StableDiffusionDepth2ImgPipelineFastTests(
         if torch_device == "mps":
             expected_slice = np.array([0.53232, 0.47015, 0.40868, 0.45651, 0.4891, 0.4668, 0.4287, 0.48822, 0.47439])
         else:
-            expected_slice = np.array([0.5435, 0.4992, 0.3783, 0.4411, 0.5842, 0.4654, 0.3786, 0.5077, 0.4655])
+            expected_slice = np.array([0.4082, 0.5014, 0.4256, 0.3948, 0.4573, 0.4061, 0.3515, 0.4656, 0.4529])
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
 

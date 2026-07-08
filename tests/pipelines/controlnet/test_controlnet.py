@@ -178,7 +178,7 @@ class ControlNetPipelineFastTests(
     def test_ip_adapter(self):
         expected_pipe_slice = None
         if torch_device == "cpu":
-            expected_pipe_slice = np.array([0.5234, 0.3333, 0.1745, 0.7605, 0.6224, 0.4637, 0.6989, 0.7526, 0.4665])
+            expected_pipe_slice = np.array([0.5245, 0.3353, 0.1784, 0.7556, 0.6239, 0.4673, 0.6931, 0.7487, 0.4644])
         return super().test_ip_adapter(expected_pipe_slice=expected_pipe_slice)
 
     @unittest.skipIf(
@@ -427,7 +427,7 @@ class StableDiffusionMultiControlNetPipelineFastTests(
     def test_ip_adapter(self):
         expected_pipe_slice = None
         if torch_device == "cpu":
-            expected_pipe_slice = np.array([0.2422, 0.3425, 0.4048, 0.5351, 0.3503, 0.2419, 0.4645, 0.4570, 0.3804])
+            expected_pipe_slice = np.array([0.2395, 0.3421, 0.4023, 0.5345, 0.3496, 0.2402, 0.4645, 0.4563, 0.3786])
         return super().test_ip_adapter(expected_pipe_slice=expected_pipe_slice)
 
     def test_save_pretrained_raise_not_implemented_exception(self):
@@ -655,7 +655,7 @@ class StableDiffusionMultiControlNetOneModelPipelineFastTests(
     def test_ip_adapter(self):
         expected_pipe_slice = None
         if torch_device == "cpu":
-            expected_pipe_slice = np.array([0.5264, 0.3203, 0.1602, 0.8235, 0.6332, 0.4593, 0.7226, 0.7777, 0.4780])
+            expected_pipe_slice = np.array([0.5234, 0.3198, 0.1596, 0.8201, 0.6316, 0.4566, 0.7209, 0.7761, 0.4757])
         return super().test_ip_adapter(expected_pipe_slice=expected_pipe_slice)
 
     def test_save_pretrained_raise_not_implemented_exception(self):

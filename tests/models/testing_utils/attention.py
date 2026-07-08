@@ -70,8 +70,38 @@ _PARAM_FLASH_3_HUB = pytest.param(
     ],
 )
 
+_PARAM_FLASH_VARLEN_HUB = pytest.param(
+    AttentionBackendName.FLASH_VARLEN_HUB,
+    id="flash_varlen_hub",
+    marks=[
+        pytest.mark.skipif(not _CUDA_AVAILABLE, reason="CUDA is required for flash_varlen_hub backend."),
+        pytest.mark.skipif(
+            not is_kernels_available(),
+            reason="`kernels` package is required for flash_varlen_hub backend. Install with `pip install kernels`.",
+        ),
+    ],
+)
+
+_PARAM_FLASH_3_VARLEN_HUB = pytest.param(
+    AttentionBackendName._FLASH_3_VARLEN_HUB,
+    id="flash_3_varlen_hub",
+    marks=[
+        pytest.mark.skipif(not _CUDA_AVAILABLE, reason="CUDA is required for _flash_3_varlen_hub backend."),
+        pytest.mark.skipif(
+            not is_kernels_available(),
+            reason="`kernels` package is required for _flash_3_varlen_hub backend. Install with `pip install kernels`.",
+        ),
+    ],
+)
+
 # All backends under test.
-_ALL_BACKEND_PARAMS = [_PARAM_NATIVE_CUDNN, _PARAM_FLASH_HUB, _PARAM_FLASH_3_HUB]
+_ALL_BACKEND_PARAMS = [
+    _PARAM_NATIVE_CUDNN,
+    _PARAM_FLASH_HUB,
+    _PARAM_FLASH_3_HUB,
+    _PARAM_FLASH_VARLEN_HUB,
+    _PARAM_FLASH_3_VARLEN_HUB,
+]
 
 # Backends that perform non-deterministic operations and therefore cannot run when
 # torch.use_deterministic_algorithms(True) is active (e.g. after enable_full_determinism()).
@@ -267,6 +297,8 @@ class AttentionBackendTesterMixin:
         Use `pytest -m "not attention"` to skip these tests.
     """
 
+    unsupported_attn_backends: list[str] = []
+
     def setup_method(self):
         gc.collect()
         backend_empty_cache(torch_device)
@@ -280,6 +312,8 @@ class AttentionBackendTesterMixin:
     def test_set_attention_backend_matches_context_manager(self, backend):
         """set_attention_backend() and the attention_backend() context manager must yield identical outputs."""
         _skip_if_backend_requires_nondeterminism(backend)
+        if backend.value in self.unsupported_attn_backends:
+            pytest.skip(f"{backend.value} is not supported for this model.")
 
         init_dict = self.get_init_dict()
         inputs_dict = self.get_dummy_inputs()
@@ -318,6 +352,8 @@ class AttentionBackendTesterMixin:
     def test_output_close_to_native(self, backend, atol=1e-2, rtol=1e-2):
         """All backends should produce model output numerically close to the native SDPA reference."""
         _skip_if_backend_requires_nondeterminism(backend)
+        if backend.value in self.unsupported_attn_backends:
+            pytest.skip(f"{backend.value} is not supported for this model.")
 
         init_dict = self.get_init_dict()
         inputs_dict = self.get_dummy_inputs()
@@ -378,6 +414,8 @@ class AttentionBackendTesterMixin:
         as opposed to `model.compile`).
         """
         _skip_if_backend_requires_nondeterminism(backend)
+        if backend.value in self.unsupported_attn_backends:
+            pytest.skip(f"{backend.value} is not supported for this model.")
         if getattr(self.model_class, "_repeated_blocks", None) is None:
             pytest.skip("Skipping tests as regional compilation is not supported.")
 

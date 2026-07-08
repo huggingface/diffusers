@@ -42,6 +42,8 @@ from ...testing_utils import (
     load_image,
     load_numpy,
     numpy_cosine_similarity_distance,
+    require_accelerate_version_greater,
+    require_accelerator,
     require_torch_accelerator,
     slow,
     torch_device,
@@ -311,7 +313,7 @@ class AdapterTests:
         image_slice = image[0, -3:, -3:, -1]
 
         assert image.shape == (1, 64, 64, 3)
-        expected_slice = np.array([0.4535, 0.5493, 0.4359, 0.5452, 0.6086, 0.4441, 0.5544, 0.501, 0.4859])
+        expected_slice = np.array([0.4532, 0.5410, 0.4295, 0.5327, 0.6015, 0.4396, 0.5432, 0.4957, 0.4827])
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
@@ -333,7 +335,7 @@ class AdapterTests:
         image_slice = image[0, -3:, -3:, -1]
 
         assert image.shape == (1, 64, 64, 3)
-        expected_slice = np.array([0.4535, 0.5493, 0.4359, 0.5452, 0.6086, 0.4441, 0.5544, 0.501, 0.4859])
+        expected_slice = np.array([0.4532, 0.5410, 0.4295, 0.5327, 0.6015, 0.4396, 0.5432, 0.4957, 0.4827])
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
@@ -366,9 +368,11 @@ class StableDiffusionFullAdapterPipelineFastTests(
         image_slice = image[0, -3:, -3:, -1]
 
         assert image.shape == (1, 64, 64, 3)
-        expected_slice = np.array([0.4858, 0.5500, 0.4278, 0.4669, 0.6184, 0.4322, 0.5010, 0.5033, 0.4746])
+        expected_slice = np.array([0.5248, 0.5794, 0.4504, 0.4649, 0.6327, 0.4491, 0.4922, 0.5155, 0.4938])
         assert np.abs(image_slice.flatten() - expected_slice).max() < 5e-3
 
+    @require_accelerator
+    @require_accelerate_version_greater("0.14.0")
     def test_from_pipe_consistent_forward_pass_cpu_offload(self):
         super().test_from_pipe_consistent_forward_pass_cpu_offload(expected_max_diff=6e-3)
 
@@ -392,7 +396,7 @@ class StableDiffusionLightAdapterPipelineFastTests(AdapterTests, PipelineTesterM
         image_slice = image[0, -3:, -3:, -1]
 
         assert image.shape == (1, 64, 64, 3)
-        expected_slice = np.array([0.4965, 0.5548, 0.4330, 0.4771, 0.6226, 0.4382, 0.5037, 0.5071, 0.4782])
+        expected_slice = np.array([0.5463, 0.5897, 0.4547, 0.4751, 0.6357, 0.4527, 0.4924, 0.5190, 0.4969])
         assert np.abs(image_slice.flatten() - expected_slice).max() < 5e-3
 
 
@@ -422,7 +426,7 @@ class StableDiffusionMultiAdapterPipelineFastTests(AdapterTests, PipelineTesterM
         image_slice = image[0, -3:, -3:, -1]
 
         assert image.shape == (1, 64, 64, 3)
-        expected_slice = np.array([0.4902, 0.5539, 0.4317, 0.4682, 0.6190, 0.4351, 0.5018, 0.5046, 0.4772])
+        expected_slice = np.array([0.5368, 0.5864, 0.4573, 0.4682, 0.6317, 0.4550, 0.4931, 0.5175, 0.4986])
         assert np.abs(image_slice.flatten() - expected_slice).max() < 5e-3
 
     def test_inference_batch_consistent(

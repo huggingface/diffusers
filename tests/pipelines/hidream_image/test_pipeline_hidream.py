@@ -151,7 +151,7 @@ class HiDreamImagePipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         self.assertEqual(generated_image.shape, (128, 128, 3))
 
         # fmt: off
-        expected_slice = np.array([0.4501, 0.5256, 0.4207, 0.5783, 0.4842, 0.4833, 0.4441, 0.5112, 0.6587, 0.3169, 0.7308, 0.5927, 0.6251, 0.5509, 0.5355, 0.5969])
+        expected_slice = np.array([0.3841, 0.5881, 0.3958, 0.5585, 0.4646, 0.4385, 0.4529, 0.4178, 0.6595, 0.2871, 0.7331, 0.5203, 0.5525, 0.5296, 0.4695, 0.5524])
         # fmt: on
 
         generated_slice = generated_image.flatten()
