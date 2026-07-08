@@ -77,16 +77,18 @@ class HeliosDecodeStep(ModularPipelineBlocks):
 
         vae = components.vae
 
-        latents_mean = (
-            torch.tensor(vae.config.latents_mean).view(1, vae.config.z_dim, 1, 1, 1).to(vae.device, vae.dtype)
-        )
-        latents_std = 1.0 / torch.tensor(vae.config.latents_std).view(1, vae.config.z_dim, 1, 1, 1).to(
-            vae.device, vae.dtype
-        )
-
         history_video = None
         for chunk_latents in block_state.latent_chunks:
-            current_latents = chunk_latents.to(vae.dtype) / latents_std + latents_mean
+            latents_mean = (
+                torch.tensor(vae.config.latents_mean).view(1, vae.config.z_dim, 1, 1, 1).to(
+                    chunk_latents.device, chunk_latents.dtype
+                )
+            )
+            latents_std = 1.0 / torch.tensor(vae.config.latents_std).view(1, vae.config.z_dim, 1, 1, 1).to(
+                chunk_latents.device, chunk_latents.dtype
+            )
+            current_latents = chunk_latents / latents_std + latents_mean
+            current_latents = current_latents.to(vae.dtype)
             current_video = vae.decode(current_latents, return_dict=False)[0]
 
             if history_video is None:
