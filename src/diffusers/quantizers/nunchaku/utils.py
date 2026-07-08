@@ -2,10 +2,17 @@ from __future__ import annotations
 
 import itertools
 import math
+from contextlib import nullcontext
 from typing import Any
 
 import torch
 import torch.nn as nn
+
+from ...utils import is_accelerate_available
+
+
+if is_accelerate_available():
+    from accelerate import init_empty_weights
 
 
 _HF_KERNEL_REPO = "rootonchair/nunchaku-lite-kernels"
@@ -105,8 +112,6 @@ class SVDQW4A4Linear(nn.Module):
         act_unsigned: bool = False,
     ):
         super().__init__()
-        if device is None:
-            device = torch.device("cpu")
 
         self.in_features = in_features
         self.out_features = out_features
@@ -209,8 +214,6 @@ class AWQW4A16Linear(nn.Module):
         device: str | torch.device | None = None,
     ):
         super().__init__()
-        if device is None:
-            device = torch.device("cpu")
 
         self.in_features = in_features
         self.out_features = out_features
@@ -294,26 +297,26 @@ def _replace_quantize_targets(model: nn.Module, op: str, raw: Any, compute_dtype
         if not isinstance(in_features, int) or not isinstance(out_features, int):
             raise TypeError(f"Nunchaku target {target!r} must expose integer in_features/out_features.")
 
-        if op == "svdq_w4a4":
-            replacement = SVDQW4A4Linear(
-                in_features,
-                out_features,
-                rank=rank,
-                bias=bias is not None,
-                precision=precision,
-                group_size=group_size,
-                torch_dtype=compute_dtype,
-                device=_module_device(module),
-            )
-        elif op == "awq_w4a16":
-            replacement = AWQW4A16Linear(
-                in_features,
-                out_features,
-                bias=bias is not None,
-                group_size=group_size,
-                torch_dtype=compute_dtype,
-                device=_module_device(module),
-            )
+        ctx = init_empty_weights if is_accelerate_available() else nullcontext
+        with ctx():
+            if op == "svdq_w4a4":
+                replacement = SVDQW4A4Linear(
+                    in_features,
+                    out_features,
+                    rank=rank,
+                    bias=bias is not None,
+                    precision=precision,
+                    group_size=group_size,
+                    torch_dtype=compute_dtype,
+                )
+            elif op == "awq_w4a16":
+                replacement = AWQW4A16Linear(
+                    in_features,
+                    out_features,
+                    bias=bias is not None,
+                    group_size=group_size,
+                    torch_dtype=compute_dtype,
+                )
 
         _set_submodule(model, target, replacement)
 
@@ -327,13 +330,6 @@ def _set_submodule(model: nn.Module, path: str, module: nn.Module) -> None:
         parent[int(child_name)] = module
     else:
         setattr(parent, child_name, module)
-
-
-def _module_device(module: nn.Module) -> torch.device:
-    parameter = next(module.parameters(recurse=False), None)
-    if parameter is not None:
-        return parameter.device
-    return torch.device("cpu")
 
 
 def check_strict_state_dict_match(model: nn.Module, state_dict: dict[str, Any]) -> None:
