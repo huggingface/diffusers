@@ -27,7 +27,6 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torch.nn.attention.flex_attention import create_block_mask
 from torch.nn.modules.batchnorm import _BatchNorm
 from torch.utils.checkpoint import checkpoint
 
@@ -73,8 +72,10 @@ except ImportError:
 
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...utils import logging
+from ..embeddings import get_1d_rotary_pos_embed
 from ..modeling_outputs import Transformer2DModelOutput
 from ..modeling_utils import ModelMixin
+from ..normalization import FP32LayerNorm
 from .transformer_sana_wm_kernels import (
     _prepare_ucpe_rope_tables,
     _process_camera_conditions_raymats_only,
@@ -352,12 +353,6 @@ def get_weight_dtype(mixed_precision):
         return torch.float32
     else:
         raise ValueError(f"weigh precision {mixed_precision} is not defined")
-
-
-@lru_cache
-def create_block_mask_cached(score_mod, B, H, M, N, device="cuda", _compile=False):
-    block_mask = create_block_mask(score_mod, B, H, M, N, device=device, _compile=_compile)
-    return block_mask
 
 
 def chunk_index_from_chunk_size(
@@ -1362,8 +1357,6 @@ class FlashAttention(Attention_):
             self.q_norm = nn.Identity()
             self.k_norm = nn.Identity()
 
-        self.qkv_store_buffer = None
-
     def forward(self, x, mask=None, HW=None, rotary_emb=None, block_id=None, block_mask=None, **kwargs):
         B, N, C = x.shape
 
@@ -1395,11 +1388,6 @@ class FlashAttention(Attention_):
         if rotary_emb is not None:
             q = apply_rotary_emb(q, rotary_emb)
             k = apply_rotary_emb(k, rotary_emb)
-
-        if self.qkv_store_buffer is not None:
-            self.qkv_store_buffer["q"] = q[0].cpu()  # b, n, h, h_d
-            self.qkv_store_buffer["k"] = k[0].cpu()  # b, n, h, h_d
-            self.qkv_store_buffer["v"] = v[0].cpu()  # b, n, h, h_d
 
         if _xformers_available:
             x = xformers.ops.memory_efficient_attention(q, k, v, p=self.attn_drop.p, attn_bias=attn_bias)  # noqa: F821
@@ -1700,42 +1688,6 @@ class PatchEmbed(nn.Module):
         return x
 
 
-class PatchEmbedMS(nn.Module):
-    """2D Image to Patch Embedding"""
-
-    def __init__(
-        self,
-        patch_size=16,
-        in_chans=3,
-        embed_dim=768,
-        kernel_size=None,
-        padding=0,
-        norm_layer=None,
-        flatten=True,
-        bias=True,
-    ):
-        super().__init__()
-        kernel_size = kernel_size or patch_size
-        if isinstance(kernel_size, tuple) or isinstance(kernel_size, list):
-            kernel_size = kernel_size[0]
-        patch_size = to_2tuple(patch_size)
-        self.patch_size = patch_size
-        self.flatten = flatten
-        if not padding and kernel_size % 2 > 0:
-            padding = get_same_padding(kernel_size)
-        self.proj = nn.Conv2d(
-            in_chans, embed_dim, kernel_size=kernel_size, stride=patch_size, padding=padding, bias=bias
-        )
-        self.norm = norm_layer(embed_dim) if norm_layer else nn.Identity()
-
-    def forward(self, x):
-        x = self.proj(x)
-        if self.flatten:
-            x = x.flatten(2).transpose(1, 2)  # BCHW -> BNC
-        x = self.norm(x)
-        return x
-
-
 class PatchEmbedMS3D(nn.Module):
     """3D Image to Patch Embedding"""
 
@@ -1933,72 +1885,6 @@ class WanRotaryTemporalPosEmbed(nn.Module):
         freqs_f = freqs[0][:ppf].view(ppf, 1, 1, -1).expand(ppf, pph, ppw, -1)
         freqs = torch.cat([freqs_f], dim=-1).reshape(1, 1, ppf * pph * ppw, -1)
         return freqs
-
-
-def get_1d_rotary_pos_embed(
-    dim: int,
-    pos: Union[np.ndarray, int],
-    theta: float = 10000.0,
-    use_real=False,
-    linear_factor=1.0,
-    ntk_factor=1.0,
-    repeat_interleave_real=True,
-    freqs_dtype=torch.float32,  #  torch.float32, torch.float64 (flux)
-):
-    """
-    Precompute the frequency tensor for complex exponentials (cis) with given dimensions.
-
-    This function calculates a frequency tensor with complex exponentials using the given dimension 'dim' and the end
-    index 'end'. The 'theta' parameter scales the frequencies. The returned tensor contains complex values in complex64
-    data type.
-
-    Args:
-        dim (`int`): Dimension of the frequency tensor.
-        pos (`np.ndarray` or `int`): Position indices for the frequency tensor. [S] or scalar
-        theta (`float`, *optional*, defaults to 10000.0):
-            Scaling factor for frequency computation. Defaults to 10000.0.
-        use_real (`bool`, *optional*):
-            If True, return real part and imaginary part separately. Otherwise, return complex numbers.
-        linear_factor (`float`, *optional*, defaults to 1.0):
-            Scaling factor for the context extrapolation. Defaults to 1.0.
-        ntk_factor (`float`, *optional*, defaults to 1.0):
-            Scaling factor for the NTK-Aware RoPE. Defaults to 1.0.
-        repeat_interleave_real (`bool`, *optional*, defaults to `True`):
-            If `True` and `use_real`, real part and imaginary part are each interleaved with themselves to reach `dim`.
-            Otherwise, they are concateanted with themselves.
-        freqs_dtype (`torch.float32` or `torch.float64`, *optional*, defaults to `torch.float32`):
-            the dtype of the frequency tensor.
-    Returns:
-        `torch.Tensor`: Precomputed frequency tensor with complex exponentials. [S, D/2]
-    """
-    assert dim % 2 == 0
-
-    if isinstance(pos, int):
-        pos = torch.arange(pos)
-    if isinstance(pos, np.ndarray):
-        pos = torch.from_numpy(pos)  # type: ignore  # [S]
-
-    theta = theta * ntk_factor
-    freqs = (
-        1.0
-        / (theta ** (torch.arange(0, dim, 2, dtype=freqs_dtype, device=pos.device)[: (dim // 2)] / dim))
-        / linear_factor
-    )  # [D/2]
-    freqs = torch.outer(pos, freqs)  # type: ignore   # [S, D/2]
-    if use_real and repeat_interleave_real:
-        # flux, hunyuan-dit, cogvideox
-        freqs_cos = freqs.cos().repeat_interleave(2, dim=1, output_size=freqs.shape[1] * 2).float()  # [S, D]
-        freqs_sin = freqs.sin().repeat_interleave(2, dim=1, output_size=freqs.shape[1] * 2).float()  # [S, D]
-        return freqs_cos, freqs_sin
-    elif use_real:
-        # stable audio, allegro
-        freqs_cos = torch.cat([freqs.cos(), freqs.cos()], dim=-1).float()  # [S, D]
-        freqs_sin = torch.cat([freqs.sin(), freqs.sin()], dim=-1).float()  # [S, D]
-        return freqs_cos, freqs_sin
-    else:
-        # lumina
-        freqs_cis = torch.polar(torch.ones_like(freqs), freqs)  # complex64     # [S, D/2]
-        return freqs_cis
 
 
 def apply_rotary_emb(
@@ -2955,8 +2841,6 @@ class GDN(Attention_):
             self.output_gate = nn.Linear(in_dim, out_dim, bias=True)
         else:
             self.output_gate = None
-
-        self.qkv_store_buffer = None
 
         if update_rule_func == "torch_recurrent_sana_gdn":
             self.update_rule_func = torch_recurrent_sana_gdn
@@ -6011,11 +5895,6 @@ class DeltaActionEmbedder(nn.Module):
         return self.mlp(x)
 
 
-class FP32LayerNorm(nn.LayerNorm):
-    def forward(self, x):
-        return super().forward(x.float()).type_as(x)
-
-
 class FP32NormProxy(nn.Module):
     def __init__(self, norm_module):
         super().__init__()
@@ -6234,9 +6113,7 @@ class SanaVideoMSCamCtrlBlock(nn.Module):
         S = N // T
         return m.to(device=device, dtype=dtype).view(B, T, 1).expand(B, T, S).reshape(B, N, 1)
 
-    def forward_frame_aware(
-        self, x, y, t, mask=None, THW=None, rotary_emb=None, block_mask=None, chunk_index=None, **kwargs
-    ):
+    def forward(self, x, y, t, mask=None, THW=None, rotary_emb=None, block_mask=None, chunk_index=None, **kwargs):
         B, N, C = x.shape
         num_frames = t.shape[2]
         frame_valid_mask = kwargs.get("frame_valid_mask", None)
@@ -6340,132 +6217,6 @@ class SanaVideoMSCamCtrlBlock(nn.Module):
         x = x + self.drop_path(mlp_out)
         if frame_token_mask is not None:
             x = x * frame_token_mask
-
-        return x
-
-    def forward(self, x, y, t, mask=None, THW=None, rotary_emb=None, block_mask=None, chunk_index=None, **kwargs):
-        if len(t.shape) > 2:
-            return self.forward_frame_aware(
-                x,
-                y,
-                t,
-                mask=mask,
-                THW=THW,
-                rotary_emb=rotary_emb,
-                block_mask=block_mask,
-                chunk_index=chunk_index,
-                **kwargs,
-            )
-        intermediate_feats = {
-            "x_in": x,
-            "x_self_attn": None,
-            "x_cross_attn": None,
-            "x_ffn": None,
-        }
-        B, N, C = x.shape
-        frame_valid_mask = kwargs.get("frame_valid_mask", None)
-        frame_token_mask = (
-            self._build_frame_token_mask(
-                frame_valid_mask,
-                B=B,
-                T=THW[0],
-                N=N,
-                device=x.device,
-                dtype=x.dtype,
-            )
-            if THW is not None
-            else None
-        )
-        if frame_token_mask is not None:
-            x = x * frame_token_mask
-        shift_msa, scale_msa, gate_msa, shift_mlp, scale_mlp, gate_mlp = (
-            self.scale_shift_table[None] + t.reshape(B, 6, -1)
-        ).chunk(6, dim=1)
-        x_sa_in = t2i_modulate(self.norm1(x), shift_msa, scale_msa)
-        if frame_token_mask is not None:
-            x_sa_in = x_sa_in * frame_token_mask
-        self_attn_kwargs = {
-            "HW": THW,
-            "rotary_emb": rotary_emb,
-            "block_mask": block_mask,
-            "camera_conditions": kwargs.get("camera_conditions", None),
-            "prope_fns": kwargs.get("prope_fns", None),
-            "frame_valid_mask": frame_valid_mask,
-        }
-        cam_branch_drop_prob = kwargs.get("cam_branch_drop_prob", None)
-        if cam_branch_drop_prob is not None:
-            self_attn_kwargs["cam_branch_drop_prob"] = cam_branch_drop_prob
-        if chunk_index is not None:
-            self_attn_kwargs["chunk_index"] = chunk_index[:]  # NOTE: important, copy the list
-        if kwargs.get("chunk_index_global", None) is not None:
-            self_attn_kwargs["chunk_index_global"] = kwargs.get("chunk_index_global")
-        chunk_split_strategy = kwargs.get("chunk_split_strategy", getattr(self, "chunk_split_strategy", "uniform"))
-        if chunk_split_strategy is not None:
-            self_attn_kwargs["chunk_split_strategy"] = chunk_split_strategy
-
-        chunk_size = kwargs.get("chunk_size", getattr(self, "chunk_size", 10))
-        if chunk_size is not None:
-            self_attn_kwargs["chunk_size"] = chunk_size
-
-        if frame_token_mask is not None:
-            x_sa = x_sa * frame_token_mask  # noqa: F821  (dead path; x_sa assigned in subclasses' forward)
-
-        intermediate_feats["x_self_attn"] = x_sa  # noqa: F821  (see above)
-
-        if self.flash_attn_additional:
-            x_sa = x_sa + self.learnable_fa_scale * self.flash_attn_additional(x_sa_in, rotary_emb=rotary_emb, HW=THW)
-            if frame_token_mask is not None:
-                x_sa = x_sa * frame_token_mask
-
-        x = x + self.drop_path(gate_msa * x_sa)
-        if frame_token_mask is not None:
-            x = x * frame_token_mask
-
-        delta_pose_emb = kwargs.get("delta_pose_emb", None)
-        if delta_pose_emb is not None and hasattr(self, "delta_pose_proj"):
-            T_dp = delta_pose_emb.shape[1]
-            S_dp = N // T_dp
-            dpe = delta_pose_emb.unsqueeze(2).expand(-1, -1, S_dp, -1).reshape(B, N, C)
-            x = x + self.delta_pose_proj(dpe)
-
-        plucker_emb = kwargs.get("plucker_emb", None)
-        if plucker_emb is not None and hasattr(self, "plucker_proj"):
-            x = x + self.plucker_proj(plucker_emb)
-
-        if self.cross_attn_image_embeds:
-            x = x + self.cross_attn(x, y, mask=mask, image_embeds=kwargs.get("image_embeds", None))
-        else:
-            x = x + self.cross_attn(x, y, mask=mask)
-        if frame_token_mask is not None:
-            x = x * frame_token_mask
-
-        intermediate_feats["x_cross_attn"] = x
-
-        mlp_kwargs = {
-            "HW": THW,
-            "frame_valid_mask": frame_valid_mask,
-        }
-        if chunk_index is not None:
-            mlp_kwargs["chunk_index"] = chunk_index[:]  # NOTE: important, copy the list
-        if kwargs.get("chunk_index_global", None) is not None:
-            mlp_kwargs["chunk_index_global"] = kwargs.get("chunk_index_global")
-        if chunk_split_strategy is not None:
-            mlp_kwargs["chunk_split_strategy"] = chunk_split_strategy
-
-        chunk_size = kwargs.get("chunk_size", getattr(self, "chunk_size", 10))
-        if chunk_size is not None:
-            mlp_kwargs["chunk_size"] = chunk_size
-
-        if frame_token_mask is not None:
-            mlp_out = mlp_out * frame_token_mask  # noqa: F821  (dead path; mlp_out assigned in subclasses' forward)
-        x = x + self.drop_path(gate_mlp * mlp_out)  # noqa: F821  (see above)
-        if frame_token_mask is not None:
-            x = x * frame_token_mask
-
-        intermediate_feats["x_ffn"] = x
-
-        if self.block_hook is not None:
-            self.block_hook(**intermediate_feats)
 
         return x
 
@@ -6705,12 +6456,6 @@ class SanaMSVideoCamCtrl(Sana):
         else:
             additional_flash_attn = [False] * depth
 
-        # visualize qkv
-        self.save_qkv = False
-        self.qkv_store_buffer = {}
-
-        # diagonal mask
-        self.diagonal_mask = None
         self.softmax_every_n = softmax_every_n
         attn_type_list = [attn_type] * depth
         camctrl_type_list = [camctrl_type if i < self.camctrl_layers_num else None for i in range(depth)]
@@ -6830,8 +6575,6 @@ class SanaMSVideoCamCtrl(Sana):
             image_embeds = self.image_embedder(image_embeds)
             kwargs["image_embeds"] = image_embeds
 
-        if self.save_qkv:
-            self.qkv_store_buffer[int(timestep[0].item())] = {}
         if self.save_block_output:
             self.inference_timestep = int(timestep[0].item())
 
@@ -6932,16 +6675,6 @@ class SanaMSVideoCamCtrl(Sana):
             while image_pos_embed.ndim > 4:
                 image_pos_embed = image_pos_embed.squeeze(1)
 
-        # --- FSDP2 block timing (SANA_FSDP2_BLOCK_TIMING=1) ---
-        import os as _os_fwd
-
-        _fsdp2_block_timing = _os_fwd.environ.get("SANA_FSDP2_BLOCK_TIMING", "0") in ("1", "true")
-        if _fsdp2_block_timing:
-            import time as _time_fwd
-
-            torch.cuda.synchronize()
-            _t_embed_start = _time_fwd.perf_counter()
-
         t = self.t_embedder(timestep.flatten())  # (N, D)
         t0 = self.t_block(t)
         t = t.unflatten(dim=0, sizes=timestep.shape)
@@ -6985,19 +6718,7 @@ class SanaMSVideoCamCtrl(Sana):
         else:
             raise ValueError(f"Attention type is not available due to _xformers_available={_xformers_available}.")
 
-        if self.diagonal_mask is not None:
-            seq_len = x.shape[1]
-            self.diagonal_mask = self.diagonal_mask.to(x.device)
-            # self.diagonal_mask = torch.ones_like(self.diagonal_mask).bool().to(x.device)
-
-            def mask_mod(b, h, q_idx, kv_idx):
-                return self.diagonal_mask[q_idx, kv_idx].bool()
-
-            block_mask = create_block_mask_cached(
-                mask_mod, None, None, seq_len, seq_len, device=x.device, _compile=False
-            )
-        else:
-            block_mask = None
+        block_mask = None
 
         if kwargs.get("camera_conditions") is not None:
             # Pre-compute UCPE projection functions to share across blocks
@@ -7031,19 +6752,7 @@ class SanaMSVideoCamCtrl(Sana):
                 cam_pos_embeds=cam_pos_embeds,
             )
 
-        if _fsdp2_block_timing:
-            torch.cuda.synchronize()
-            _t_pre_blocks = _time_fwd.perf_counter()
-            print(f"[FSDP2-BT] embeddings+prep: {(_t_pre_blocks - _t_embed_start) * 1000:.1f}ms", flush=True)
-
         for i, block in enumerate(self.blocks):
-            if self.save_qkv:
-                block.attn.qkv_store_buffer = {}
-
-            if _fsdp2_block_timing:
-                torch.cuda.synchronize()
-                _t_blk_start = _time_fwd.perf_counter()
-
             x = auto_grad_checkpoint(
                 block,
                 x,
@@ -7056,26 +6765,6 @@ class SanaMSVideoCamCtrl(Sana):
                 **kwargs,
                 use_reentrant=False,
             )  # (N, T, D) #support grad checkpoint
-
-            if _fsdp2_block_timing:
-                torch.cuda.synchronize()
-                _t_blk_end = _time_fwd.perf_counter()
-                _blk_ms = (_t_blk_end - _t_blk_start) * 1000
-                _attn_name = (
-                    type(block.attn).__name__
-                    if not hasattr(block, "_checkpoint_wrapped_module")
-                    else type(getattr(block, "_checkpoint_wrapped_module", block).attn).__name__
-                )
-                print(f"[FSDP2-BT] block[{i}] ({_attn_name}): {_blk_ms:.1f}ms", flush=True)
-
-            if self.save_qkv:
-                self.qkv_store_buffer[int(timestep[0].item())][f"block_{i}"] = block.attn.qkv_store_buffer
-                block.attn.qkv_store_buffer = None
-
-        if _fsdp2_block_timing:
-            torch.cuda.synchronize()
-            _t_post_blocks = _time_fwd.perf_counter()
-            print(f"[FSDP2-BT] all blocks: {(_t_post_blocks - _t_pre_blocks) * 1000:.1f}ms", flush=True)
 
         if _delta_t_emb is not None:
             if t.ndim == 2:
@@ -7169,197 +6858,6 @@ class SanaMSVideoCamCtrl(Sana):
 
         if self.init_cam_from_base:
             self.init_cam_branch_from_base()
-
-    def load_state_dict(self, state_dict, strict=True, **kwargs):
-        """when the channel in FFN is not the same as the checkpoint, load the checkpoint"""
-        current_state_dict = self.state_dict()
-        new_state_dict = {}
-
-        for key, current_param in current_state_dict.items():
-            checkpoint_param = state_dict.get(key)
-            if checkpoint_param is None:
-                if strict:
-                    raise KeyError(f"Missing key in state dict: {key}")
-                continue
-            try:
-                new_param = torch.zeros_like(current_param)
-
-                if current_param.shape == checkpoint_param.shape:
-                    new_param.copy_(checkpoint_param)
-                    new_state_dict[key] = checkpoint_param
-                    continue
-                else:
-                    self.logger(
-                        f"Loading {key} from checkpoint, shape: {checkpoint_param.shape}, current_param.shape: {current_param.shape}"
-                    )
-                if "x_embedder.proj.weight" in key:
-                    new_param[: checkpoint_param.shape[0], : checkpoint_param.shape[1]] = checkpoint_param
-                elif "x_embedder.proj.bias" in key:
-                    new_param[: checkpoint_param.shape[0]] = checkpoint_param
-                elif "attn.qkv.weight" in key:
-                    old_hidden_size = checkpoint_param.shape[1]
-                    new_hidden_size = current_param.shape[1]
-                    # split qkv into 3 parts
-                    for i in range(3):
-                        start_idx = i * old_hidden_size
-                        new_start_idx = i * new_hidden_size
-                        new_param[new_start_idx : new_start_idx + old_hidden_size, :old_hidden_size] = (
-                            checkpoint_param[start_idx : start_idx + old_hidden_size]
-                        )
-                elif "attn.qkv.bias" in key:
-                    old_hidden_size = checkpoint_param.shape[0] // 3
-                    new_hidden_size = current_param.shape[0] // 3
-                    new_param[:old_hidden_size] = checkpoint_param[:old_hidden_size]
-                    new_param[new_hidden_size : new_hidden_size + old_hidden_size] = checkpoint_param[
-                        old_hidden_size : 2 * old_hidden_size
-                    ]
-                    new_param[2 * new_hidden_size : 2 * new_hidden_size + old_hidden_size] = checkpoint_param[
-                        2 * old_hidden_size :
-                    ]
-                elif "q_norm.weight" in key:
-                    new_param[: checkpoint_param.shape[0]] = checkpoint_param
-                elif "q_norm.bias" in key:
-                    new_param[: checkpoint_param.shape[0]] = checkpoint_param
-                elif "k_norm.weight" in key:
-                    new_param[: checkpoint_param.shape[0]] = checkpoint_param
-                elif "k_norm.bias" in key:
-                    new_param[: checkpoint_param.shape[0]] = checkpoint_param
-                elif "cross_attn.q_linear.weight" in key:
-                    new_param[: checkpoint_param.shape[0], : checkpoint_param.shape[1]] = checkpoint_param
-                elif "cross_attn.q_linear.bias" in key:
-                    new_param[: checkpoint_param.shape[0]] = checkpoint_param
-                elif "cross_attn.kv_linear.weight" in key:
-                    new_param[: checkpoint_param.shape[0], : checkpoint_param.shape[1]] = checkpoint_param
-                elif "cross_attn.kv_linear.bias" in key:
-                    new_param[: checkpoint_param.shape[0]] = checkpoint_param
-                elif "attn.proj.weight" in key:
-                    old_hidden_size = checkpoint_param.shape[0]
-                    new_param[:old_hidden_size, :old_hidden_size] = checkpoint_param
-                elif "attn.proj.bias" in key:
-                    old_hidden_size = checkpoint_param.shape[0]
-                    new_param[:old_hidden_size] = checkpoint_param
-                elif "scale_shift_table" in key:
-                    # scale_shift_table shape: [6, hidden_size]
-                    old_hidden_size = checkpoint_param.shape[1]
-                    new_param[:, :old_hidden_size] = checkpoint_param
-                elif "final_layer.linear.weight" in key:
-                    new_param[:, : checkpoint_param.shape[1]] = checkpoint_param
-                elif "final_layer.linear.bias" in key:
-                    new_param[: checkpoint_param.shape[0]] = checkpoint_param
-                elif "t_embedder.mlp.0.weight" in key:
-                    new_param[: checkpoint_param.shape[0]] = checkpoint_param
-                elif "t_embedder.mlp.0.bias" in key:
-                    new_param[: checkpoint_param.shape[0]] = checkpoint_param
-                elif "t_embedder.mlp.2.weight" in key:
-                    new_param[: checkpoint_param.shape[0], : checkpoint_param.shape[1]] = checkpoint_param
-                elif "t_embedder.mlp.2.bias" in key:
-                    new_param[: checkpoint_param.shape[0]] = checkpoint_param
-                elif "t_block.1.weight" in key:
-                    # t_block.1.weight shape: [6 * hidden_size, hidden_size]
-                    old_hidden_size = checkpoint_param.shape[1]
-                    new_hidden_size = current_param.shape[1]
-                    # split t_block.1.weight into 6 parts
-                    for i in range(6):
-                        start_idx = i * old_hidden_size
-                        new_start_idx = i * new_hidden_size
-                        new_param[new_start_idx : new_start_idx + old_hidden_size, :old_hidden_size] = (
-                            checkpoint_param[start_idx : start_idx + old_hidden_size]
-                        )
-                elif "t_block.1.bias" in key:
-                    # t_block.1.bias shape: [6 * hidden_size]
-                    old_hidden_size = checkpoint_param.shape[0] // 6
-                    new_hidden_size = current_param.shape[0] // 6
-                    # split t_block.1.bias into 6 parts
-                    for i in range(6):
-                        start_idx = i * old_hidden_size
-                        new_start_idx = i * new_hidden_size
-                        new_param[new_start_idx : new_start_idx + old_hidden_size] = checkpoint_param[
-                            start_idx : start_idx + old_hidden_size
-                        ]
-                elif "t_block.2.weight" in key:
-                    new_param[: checkpoint_param.shape[0], : checkpoint_param.shape[1]] = checkpoint_param
-                elif "y_embedder.y_proj.fc1.weight" in key:
-                    new_param[: checkpoint_param.shape[0]] = checkpoint_param
-                elif "y_embedder.y_proj.fc1.bias" in key:
-                    new_param[: checkpoint_param.shape[0]] = checkpoint_param
-                elif "y_embedder.y_proj.fc2.weight" in key:
-                    new_param[: checkpoint_param.shape[0], : checkpoint_param.shape[1]] = checkpoint_param
-                elif "y_embedder.y_proj.fc2.bias" in key:
-                    new_param[: checkpoint_param.shape[0]] = checkpoint_param
-                elif "y_embedder.y_embedding" in key:
-                    pass
-                elif "attention_y_norm.weight" in key:
-                    new_param[: checkpoint_param.shape[0]] = checkpoint_param
-                elif (
-                    "inverted_conv.conv.weight" in key
-                    or "inverted_conv.conv.bias" in key
-                    or "depth_conv.conv.bias" in key
-                ):
-                    num_old_channels = checkpoint_param.shape[0] // 2
-                    num_new_channels = new_param.shape[0] // 2
-                    if new_param.dim() == 1:
-                        new_param[:num_old_channels] = checkpoint_param[:num_old_channels]
-                        new_param[num_new_channels : num_new_channels + num_old_channels] = checkpoint_param[
-                            num_old_channels:
-                        ]
-                    else:
-                        new_param[:num_old_channels, : checkpoint_param.shape[1]] = checkpoint_param[:num_old_channels]
-                        new_param[
-                            num_new_channels : num_new_channels + num_old_channels, : checkpoint_param.shape[1]
-                        ] = checkpoint_param[num_old_channels:]
-                elif "depth_conv.conv.weight" in key:
-                    assert checkpoint_param.shape[1] == 1
-                    num_old_channels = checkpoint_param.shape[0] // 2
-                    new_param[:num_old_channels] = checkpoint_param[:num_old_channels]
-                    new_param[num_new_channels : num_new_channels + num_old_channels] = checkpoint_param[
-                        num_old_channels:
-                    ]
-                elif "point_conv.conv.weight" in key:
-                    new_param[: checkpoint_param.shape[0], : checkpoint_param.shape[1]] = checkpoint_param
-                elif "t_conv.weight" in key:
-                    if new_param.shape[2] != checkpoint_param.shape[2]:
-                        new_t_kernel_size = new_param.shape[2]
-                        original_t_kernel_size = checkpoint_param.shape[2]
-                        discrepancy = new_t_kernel_size - original_t_kernel_size
-                        if discrepancy == 0:
-                            new_param[: checkpoint_param.shape[0], : checkpoint_param.shape[1]] = checkpoint_param
-                        elif discrepancy > 0:
-                            if discrepancy % 2 != 0:
-                                raise ValueError(
-                                    f"Discrepancy {discrepancy} is not even, please check the t_kernel_size"
-                                )
-                            new_param[
-                                : checkpoint_param.shape[0],
-                                : checkpoint_param.shape[1],
-                                discrepancy // 2 : -discrepancy // 2,
-                            ] = checkpoint_param
-                        else:
-                            if (-discrepancy) % 2 != 0:
-                                raise ValueError(
-                                    f"Discrepancy {discrepancy} is not even, please check the t_kernel_size"
-                                )
-                            start = (-discrepancy) // 2
-                            end = start + new_t_kernel_size
-                            new_param[: checkpoint_param.shape[0], : checkpoint_param.shape[1]] = checkpoint_param[
-                                :, :, start:end
-                            ]
-                        # self.logger(
-                        #     f"Loading {key} with t_kernel_size {new_t_kernel_size} from checkpoint with t_kernel_size {original_t_kernel_size}"
-                        # )
-                    else:
-                        new_param[: checkpoint_param.shape[0], : checkpoint_param.shape[1]] = checkpoint_param
-                else:
-                    raise KeyError(f"Unhandled key: {key}")
-
-            except Exception as e:
-                print(f"Error loading {key}: {e}")
-                new_param = checkpoint_param
-
-            new_state_dict[key] = new_param
-
-        result = super().load_state_dict(new_state_dict, strict=strict, **kwargs)
-
-        return result
 
     def init_cam_branch_from_base(self):
         for i, block in enumerate(self.blocks):
