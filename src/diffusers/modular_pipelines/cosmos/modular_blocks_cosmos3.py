@@ -1,6 +1,11 @@
 import torch
 
-from ..modular_pipeline import AutoPipelineBlocks, ConditionalPipelineBlocks, SequentialPipelineBlocks
+from ..modular_pipeline import (
+    AutoPipelineBlocks,
+    ConditionalPipelineBlocks,
+    PipelineState,
+    SequentialPipelineBlocks,
+)
 from ..modular_pipeline_utils import InputParam, OutputParam
 from .after_decode import Cosmos3ActionOutputStep
 from .before_denoise import (
@@ -12,12 +17,22 @@ from .before_denoise import (
     Cosmos3SoundDenoiseInputStep,
     Cosmos3SoundPackSequenceStep,
     Cosmos3SoundPrepareLatentsStep,
+    Cosmos3TransferPackSequenceStep,
+    Cosmos3TransferPrepareLatentsStep,
+    Cosmos3TransferSetTimestepsStep,
+    Cosmos3TransferSetupStep,
     Cosmos3VisionDenoiseInputStep,
     Cosmos3VisionPackSequenceStep,
     Cosmos3VisionPrepareLatentsStep,
 )
-from .decoders import Cosmos3SoundDecodeStep, Cosmos3VideoDecodeStep
+from .decoders import (
+    Cosmos3SoundDecodeStep,
+    Cosmos3TransferDecodeChunkStep,
+    Cosmos3TransferStitchStep,
+    Cosmos3VideoDecodeStep,
+)
 from .denoise import (
+    Cosmos3TransferDenoiseStep,
     Cosmos3VisionActionDenoiseStep,
     Cosmos3VisionDenoiseStep,
     Cosmos3VisionSoundActionDenoiseStep,
@@ -28,8 +43,23 @@ from .encoders import (
     Cosmos3ActionVisionVaeEncoderStep,
     Cosmos3ImageVaeEncoderStep,
     Cosmos3TextEncoderStep,
+    Cosmos3TransferTextStep,
     Cosmos3VideoVaeEncoderStep,
 )
+from .modular_pipeline import Cosmos3OmniModularPipeline
+
+
+class Cosmos3TransferTextBlocks(SequentialPipelineBlocks):
+    model_name = "cosmos3-omni"
+    block_classes = [Cosmos3TransferSetupStep, Cosmos3TransferTextStep]
+    block_names = ["setup", "transfer_text"]
+
+    @property
+    def description(self):
+        return (
+            "Transfer text branch: resolves the control-video chunk geometry, then tokenizes the (pre-upsampled) "
+            "prompt in transfer mode using the per-chunk frame count."
+        )
 
 
 # auto_docstring
@@ -80,14 +110,15 @@ class Cosmos3AutoTextEncoderStep(AutoPipelineBlocks):
     """
 
     model_name = "cosmos3-omni"
-    block_classes = [Cosmos3ActionTextStep, Cosmos3TextEncoderStep]
-    block_names = ["action_text", "text"]
-    block_trigger_inputs = ["action", None]
+    block_classes = [Cosmos3TransferTextBlocks, Cosmos3ActionTextStep, Cosmos3TextEncoderStep]
+    block_names = ["transfer_text", "action_text", "text"]
+    block_trigger_inputs = ["control_videos", "action", None]
 
     @property
     def description(self):
         return (
             "Auto text encoder block for Cosmos3.\n"
+            + " - Cosmos3TransferTextBlocks runs when control_videos are provided.\n"
             + " - Cosmos3ActionTextStep runs when action is provided.\n"
             + " - Cosmos3TextEncoderStep runs otherwise."
         )
@@ -135,13 +166,17 @@ class Cosmos3AutoVaeEncoderStep(ConditionalPipelineBlocks):
     model_name = "cosmos3-omni"
     block_classes = [Cosmos3ActionVisionVaeEncoderStep, Cosmos3VideoVaeEncoderStep, Cosmos3ImageVaeEncoderStep]
     block_names = ["action_conditioning", "video_conditioning", "image_conditioning"]
-    block_trigger_inputs = ["action", "video", "image"]
+    block_trigger_inputs = ["action", "video", "image", "control_videos"]
     default_block_name = None
 
     def select_block(self, **kwargs) -> str | None:
         action = kwargs.get("action")
         image = kwargs.get("image")
         video = kwargs.get("video")
+        # Transfer preprocesses/encodes its control maps inside the denoise chunk loop, so the standard VAE
+        # conditioning stage is skipped when control_videos drive the workflow.
+        if kwargs.get("control_videos") is not None:
+            return None
         if action is not None:
             if image is not None or video is not None:
                 raise ValueError(
@@ -234,6 +269,27 @@ class Cosmos3DecodeStep(SequentialPipelineBlocks):
     @property
     def description(self) -> str:
         return "Decodes denoised latents into modality outputs."
+
+
+class Cosmos3AutoDecodeStep(ConditionalPipelineBlocks):
+    model_name = "cosmos3-omni"
+    block_classes = [Cosmos3TransferStitchStep, Cosmos3DecodeStep]
+    block_names = ["transfer", "standard"]
+    block_trigger_inputs = ["control_videos"]
+    default_block_name = "standard"
+
+    def select_block(self, **kwargs) -> str | None:
+        if kwargs.get("control_videos") is not None:
+            return "transfer"
+        return "standard"
+
+    @property
+    def description(self) -> str:
+        return (
+            "Selects the Cosmos3 decode workflow.\n"
+            + " - Cosmos3TransferStitchStep stitches the decoded transfer chunks when control_videos are provided.\n"
+            + " - Cosmos3DecodeStep decodes the denoised latents otherwise."
+        )
 
 
 # auto_docstring
@@ -566,6 +622,60 @@ class Cosmos3VisionSoundActionCoreDenoiseStep(SequentialPipelineBlocks):
         ]
 
 
+class Cosmos3TransferChunkDenoiseStep(SequentialPipelineBlocks):
+    model_name = "cosmos3-omni"
+    block_classes = [
+        Cosmos3TransferPrepareLatentsStep,
+        Cosmos3TransferPackSequenceStep,
+        Cosmos3TransferSetTimestepsStep,
+        Cosmos3TransferDenoiseStep,
+        Cosmos3TransferDecodeChunkStep,
+    ]
+    block_names = [
+        "prepare_transfer_latents",
+        "pack_transfer_sequence",
+        "set_timesteps",
+        "denoise",
+        "decode_chunk",
+    ]
+
+    @property
+    def description(self) -> str:
+        return (
+            "Autoregressive transfer chunk loop. Overrides __call__ to iterate chunks (the inner timestep loop is a "
+            "non-leaf LoopSequentialPipelineBlocks, so this outer loop cannot itself be a LoopSequentialPipelineBlocks). "
+            "Per-chunk cross-carry (previous_output, output_chunks) lives on PipelineState."
+        )
+
+    @property
+    def inputs(self) -> list[InputParam]:
+        return super().inputs + [InputParam(name="num_chunks", required=True)]
+
+    @torch.no_grad()
+    def __call__(self, components: Cosmos3OmniModularPipeline, state: PipelineState) -> PipelineState:
+        num_chunks = state.get("num_chunks")
+        state.set("output_chunks", [])
+        state.set("previous_output", None)
+        for chunk_id in range(num_chunks):
+            state.set("chunk_id", chunk_id)
+            for _, block in self.sub_blocks.items():
+                components, state = block(components, state)
+        return components, state
+
+
+class Cosmos3TransferCoreDenoiseStep(SequentialPipelineBlocks):
+    model_name = "cosmos3-omni"
+    block_classes = [
+        Cosmos3PrepareTextSegmentsStep,
+        Cosmos3TransferChunkDenoiseStep,
+    ]
+    block_names = ["prepare_text_segments", "chunk_denoise"]
+
+    @property
+    def description(self) -> str:
+        return "Transfer denoise stage: prepare shared text segments once, then run the autoregressive chunk loop."
+
+
 # auto_docstring
 class Cosmos3AutoCoreDenoiseStep(ConditionalPipelineBlocks):
     """
@@ -627,13 +737,14 @@ class Cosmos3AutoCoreDenoiseStep(ConditionalPipelineBlocks):
 
     model_name = "cosmos3-omni"
     block_classes = [
+        Cosmos3TransferCoreDenoiseStep,
         Cosmos3VisionSoundActionCoreDenoiseStep,
         Cosmos3VisionActionCoreDenoiseStep,
         Cosmos3VisionSoundCoreDenoiseStep,
         Cosmos3VisionCoreDenoiseStep,
     ]
-    block_names = ["vision_sound_action", "vision_action", "vision_sound", "vision"]
-    block_trigger_inputs = ["action", "enable_sound"]
+    block_names = ["transfer", "vision_sound_action", "vision_action", "vision_sound", "vision"]
+    block_trigger_inputs = ["action", "enable_sound", "control_videos"]
     default_block_name = "vision"
 
     @property
@@ -652,6 +763,8 @@ class Cosmos3AutoCoreDenoiseStep(ConditionalPipelineBlocks):
     def select_block(self, **kwargs) -> str | None:
         action = kwargs.get("action")
         enable_sound = kwargs.get("enable_sound")
+        if kwargs.get("control_videos") is not None:
+            return "transfer"
         if action is not None and enable_sound:
             return "vision_sound_action"
         if action is not None:
@@ -664,6 +777,7 @@ class Cosmos3AutoCoreDenoiseStep(ConditionalPipelineBlocks):
     def description(self):
         return (
             "Selects the Cosmos3 core denoising workflow.\n"
+            + " - transfer runs the autoregressive control-video (ControlNet-style) chunk loop when control_videos are provided.\n"
             + " - vision_sound_action runs when action and enable_sound are provided.\n"
             + " - vision_action runs when action is provided.\n"
             + " - vision_sound runs when enable_sound is true.\n"
@@ -763,7 +877,7 @@ class Cosmos3OmniBlocks(SequentialPipelineBlocks):
         Cosmos3AutoTextEncoderStep,
         Cosmos3AutoVaeEncoderStep,
         Cosmos3AutoCoreDenoiseStep,
-        Cosmos3DecodeStep,
+        Cosmos3AutoDecodeStep,
         Cosmos3ActionOutputStep,
     ]
     block_names = ["text_encoder", "vae_encoder", "denoise", "decode", "after_decode"]
@@ -778,6 +892,7 @@ class Cosmos3OmniBlocks(SequentialPipelineBlocks):
         "action_policy": {"prompt": True, "action": True},
         "action_forward_dynamics": {"prompt": True, "action": True},
         "action_inverse_dynamics": {"prompt": True, "action": True},
+        "transfer": {"prompt": True, "control_videos": True},
     }
 
     @property

@@ -4,7 +4,12 @@ import torch
 
 from ...models.transformers.transformer_cosmos3 import Cosmos3OmniTransformer
 from ...schedulers import UniPCMultistepScheduler
-from ..modular_pipeline import BlockState, LoopSequentialPipelineBlocks, ModularPipelineBlocks, PipelineState
+from ..modular_pipeline import (
+    BlockState,
+    LoopSequentialPipelineBlocks,
+    ModularPipelineBlocks,
+    PipelineState,
+)
 from ..modular_pipeline_utils import ComponentSpec, InputParam, OutputParam
 from .modular_pipeline import Cosmos3OmniModularPipeline
 
@@ -475,3 +480,195 @@ class Cosmos3VisionSoundActionDenoiseStep(Cosmos3DenoiseLoopWrapper):
     @property
     def description(self) -> str:
         return "Runs the vision, sound, and action Cosmos3 denoising loop."
+
+
+class Cosmos3TransferLoopPrepareStep(ModularPipelineBlocks):
+    model_name = "cosmos3-omni"
+
+    @property
+    def description(self) -> str:
+        return "Prepares the full [control..., target] and target-only vision token lists plus timesteps for one transfer iteration."
+
+    @property
+    def expected_components(self) -> list[ComponentSpec]:
+        return [ComponentSpec("transformer", Cosmos3OmniTransformer)]
+
+    @property
+    def inputs(self) -> list[InputParam]:
+        return [
+            InputParam(name="control_latents", required=True),
+            InputParam(name="latents", required=True),
+            InputParam(name="num_noisy_vision_tokens", required=True),
+        ]
+
+    @property
+    def intermediate_outputs(self) -> list[OutputParam]:
+        return [
+            OutputParam("vision_tokens_full"),
+            OutputParam("vision_tokens_target"),
+            OutputParam("vision_timesteps"),
+        ]
+
+    @torch.no_grad()
+    def __call__(self, components: Cosmos3OmniModularPipeline, block_state: BlockState, i: int, t: torch.Tensor):
+        device = components._execution_device
+        dtype = components.transformer.dtype
+        block_state.vision_tokens_full = [c.to(device=device, dtype=dtype) for c in block_state.control_latents] + [
+            block_state.latents.to(device=device, dtype=dtype)
+        ]
+        block_state.vision_tokens_target = [block_state.latents.to(device=device, dtype=dtype)]
+        block_state.vision_timesteps = torch.full((block_state.num_noisy_vision_tokens,), t.item(), device=device)
+        return components, block_state
+
+
+class Cosmos3TransferLoopDenoiser(ModularPipelineBlocks):
+    model_name = "cosmos3-omni"
+
+    @property
+    def description(self) -> str:
+        return (
+            "Predicts the transfer velocity with nested control/text CFG over [control..., target]. Each branch is "
+            "gated by its guidance interval, and the result is masked so conditioned frames get zero velocity."
+        )
+
+    @property
+    def expected_components(self) -> list[ComponentSpec]:
+        return [ComponentSpec("transformer", Cosmos3OmniTransformer)]
+
+    @property
+    def inputs(self) -> list[InputParam]:
+        return [
+            InputParam(name="cond_full_static", required=True),
+            InputParam(name="cond_no_control_static", required=True),
+            InputParam(name="uncond_full_static", required=True),
+            InputParam(name="vision_tokens_full", required=True),
+            InputParam(name="vision_tokens_target", required=True),
+            InputParam(name="vision_timesteps", required=True),
+            InputParam(name="velocity_mask", required=True),
+            InputParam(name="guidance_scale", default=6.0),
+            InputParam(name="control_guidance", type_hint=float, default=1.0),
+            InputParam(name="guidance_interval", default=None),
+            InputParam(name="control_guidance_interval", default=None),
+        ]
+
+    @property
+    def intermediate_outputs(self) -> list[OutputParam]:
+        return [OutputParam("velocity")]
+
+    @staticmethod
+    def _forward(components, static, vision_tokens, vision_timesteps):
+        preds_vision, _, _ = components.transformer(
+            input_ids=static["input_ids"],
+            text_indexes=static["text_indexes"],
+            position_ids=static["position_ids"],
+            und_len=static["und_len"],
+            sequence_length=static["sequence_length"],
+            vision_tokens=vision_tokens,
+            vision_token_shapes=static["vision_token_shapes"],
+            vision_sequence_indexes=static["vision_sequence_indexes"],
+            vision_mse_loss_indexes=static["vision_mse_loss_indexes"],
+            vision_timesteps=vision_timesteps,
+            vision_noisy_frame_indexes=static["vision_noisy_frame_indexes"],
+        )
+        return preds_vision[-1]
+
+    @torch.no_grad()
+    def __call__(self, components: Cosmos3OmniModularPipeline, block_state: BlockState, i: int, t: torch.Tensor):
+        # active-at: a None interval is always active; otherwise the timestep must fall within [lo, hi].
+        guidance_interval = block_state.guidance_interval
+        guidance_active = guidance_interval is None or (
+            float(guidance_interval[0]) <= float(t.item()) <= float(guidance_interval[1])
+        )
+        control_interval = block_state.control_guidance_interval
+        control_active = control_interval is None or (
+            float(control_interval[0]) <= float(t.item()) <= float(control_interval[1])
+        )
+        step_guidance = block_state.guidance_scale if guidance_active else 1.0
+        step_control = block_state.control_guidance if control_active else 1.0
+        needs_text_cfg = step_guidance > 1.0
+        needs_control_cfg = step_control != 1.0
+
+        cond_full = self._forward(
+            components, block_state.cond_full_static, block_state.vision_tokens_full, block_state.vision_timesteps
+        )
+
+        cond_no_control = None
+        if needs_control_cfg:
+            cond_no_control = self._forward(
+                components,
+                block_state.cond_no_control_static,
+                block_state.vision_tokens_target,
+                block_state.vision_timesteps,
+            )
+
+        uncond_full = None
+        if needs_text_cfg:
+            uncond_full = self._forward(
+                components,
+                block_state.uncond_full_static,
+                block_state.vision_tokens_full,
+                block_state.vision_timesteps,
+            )
+
+        if needs_control_cfg and needs_text_cfg:
+            control_cond = cond_no_control + step_control * (cond_full - cond_no_control)
+            velocity = uncond_full + step_guidance * (control_cond - uncond_full)
+        elif needs_control_cfg:
+            velocity = cond_no_control + step_control * (cond_full - cond_no_control)
+        elif needs_text_cfg:
+            velocity = uncond_full + step_guidance * (cond_full - uncond_full)
+        else:
+            velocity = cond_full
+
+        block_state.velocity = velocity * block_state.velocity_mask
+        return components, block_state
+
+
+class Cosmos3TransferLoopSchedulerStep(ModularPipelineBlocks):
+    model_name = "cosmos3-omni"
+
+    @property
+    def description(self) -> str:
+        return "Steps the scheduler and re-pins the conditioned frames exactly for one transfer iteration."
+
+    @property
+    def expected_components(self) -> list[ComponentSpec]:
+        return [ComponentSpec("scheduler", UniPCMultistepScheduler)]
+
+    @property
+    def inputs(self) -> list[InputParam]:
+        return [
+            InputParam(name="latents", required=True),
+            InputParam(name="velocity", required=True),
+            InputParam(name="velocity_mask", required=True),
+            InputParam(name="condition_latents", required=True),
+        ]
+
+    @property
+    def intermediate_outputs(self) -> list[OutputParam]:
+        return [OutputParam("latents")]
+
+    @torch.no_grad()
+    def __call__(self, components: Cosmos3OmniModularPipeline, block_state: BlockState, i: int, t: torch.Tensor):
+        block_state.latents = components.scheduler.step(
+            block_state.velocity.unsqueeze(0), t, block_state.latents.unsqueeze(0), return_dict=False
+        )[0].squeeze(0)
+        # Re-pin conditioned frames exactly (the autoregressive seed), guarding multistep drift.
+        block_state.latents = (
+            block_state.velocity_mask * block_state.latents
+            + (1.0 - block_state.velocity_mask) * block_state.condition_latents
+        )
+        return components, block_state
+
+
+class Cosmos3TransferDenoiseStep(Cosmos3DenoiseLoopWrapper):
+    block_classes = [
+        Cosmos3TransferLoopPrepareStep,
+        Cosmos3TransferLoopDenoiser,
+        Cosmos3TransferLoopSchedulerStep,
+    ]
+    block_names = ["prepare_transfer", "denoiser", "update_transfer"]
+
+    @property
+    def description(self) -> str:
+        return "Runs the per-chunk transfer denoising loop over scheduler timesteps."

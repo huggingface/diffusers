@@ -1,11 +1,15 @@
 import copy
+import math
 
 import torch
 
+from ...configuration_utils import FrozenDict
+from ...models.autoencoders.autoencoder_kl_wan import AutoencoderKLWan
 from ...models.transformers.transformer_cosmos3 import Cosmos3OmniTransformer
 from ...pipelines.cosmos.pipeline_cosmos3_omni import _EMBODIMENT_TO_DOMAIN_ID, CosmosActionCondition
 from ...schedulers import UniPCMultistepScheduler
 from ...utils.torch_utils import randn_tensor
+from ...video_processor import VideoProcessor
 from ..modular_pipeline import ModularPipelineBlocks, PipelineState
 from ..modular_pipeline_utils import ComponentSpec, InputParam, OutputParam
 from .modular_pipeline import Cosmos3OmniModularPipeline
@@ -947,6 +951,377 @@ class Cosmos3SetTimestepsStep(ModularPipelineBlocks):
         return [
             OutputParam("timesteps", type_hint=torch.Tensor, description="Scheduler timesteps for denoising."),
             OutputParam("num_warmup_steps", type_hint=int, description="Number of scheduler warmup steps."),
+        ]
+
+    @torch.no_grad()
+    def __call__(self, components: Cosmos3OmniModularPipeline, state: PipelineState) -> PipelineState:
+        block_state = self.get_block_state(state)
+        device = components._execution_device
+        components.scheduler.set_timesteps(block_state.num_inference_steps, device=device)
+        block_state.timesteps = components.scheduler.timesteps
+        block_state.num_warmup_steps = (
+            len(block_state.timesteps) - block_state.num_inference_steps * components.scheduler.order
+        )
+        self.set_block_state(state, block_state)
+        return components, state
+
+
+class Cosmos3TransferSetupStep(ModularPipelineBlocks):
+    model_name = "cosmos3-omni"
+
+    @property
+    def description(self) -> str:
+        return (
+            "Preprocesses the transfer control videos and resolves the autoregressive chunk geometry "
+            "(total_frames / chunk_frames / num_chunks / stride). Chunk-invariant, so it runs once before the loop."
+        )
+
+    @property
+    def expected_components(self) -> list[ComponentSpec]:
+        return [
+            ComponentSpec("vae", AutoencoderKLWan),
+            ComponentSpec(
+                "video_processor",
+                VideoProcessor,
+                config=FrozenDict({"vae_scale_factor": 16, "resample": "bilinear"}),
+                default_creation_method="from_config",
+            ),
+        ]
+
+    @property
+    def inputs(self) -> list[InputParam]:
+        return [
+            InputParam(name="control_videos", required=True),
+            InputParam(name="height", default=None),
+            InputParam(name="width", default=None),
+            InputParam(name="num_frames", default=None),
+            InputParam(name="num_video_frames_per_chunk", default=None),
+            InputParam(name="num_conditional_frames", type_hint=int, default=1),
+        ]
+
+    @property
+    def intermediate_outputs(self) -> list[OutputParam]:
+        return [
+            OutputParam("height"),
+            OutputParam("width"),
+            OutputParam("control_frames"),
+            OutputParam("total_frames"),
+            OutputParam("chunk_frames"),
+            OutputParam("num_chunks"),
+            OutputParam("stride"),
+        ]
+
+    @torch.no_grad()
+    def __call__(self, components: Cosmos3OmniModularPipeline, state: PipelineState) -> PipelineState:
+        block_state = self.get_block_state(state)
+        device = components._execution_device
+        dtype = components.transformer.dtype
+
+        if block_state.height is None:
+            block_state.height = 720
+        if block_state.width is None:
+            block_state.width = 1280
+
+        # Canonical hint order used both to validate and to order the preprocessed control maps.
+        hint_order = ["edge", "blur", "depth", "seg", "wsm"]
+        control_videos = block_state.control_videos
+        if not isinstance(control_videos, dict) or not control_videos:
+            raise ValueError("`control_videos` must be a non-empty dict mapping hint name -> control video.")
+        unknown = [k for k in control_videos if k not in hint_order]
+        if unknown:
+            raise ValueError(f"`control_videos` has unknown hint(s) {unknown}; expected keys from {hint_order}.")
+        if any(v is None for v in control_videos.values()):
+            raise ValueError("`control_videos` entries must be loaded videos, not None.")
+
+        tcf = int(components.vae.config.scale_factor_temporal)
+        sf = int(components.vae.config.scale_factor_spatial)
+        if block_state.height % sf != 0 or block_state.width % sf != 0:
+            raise ValueError(
+                f"`height` and `width` must be multiples of {sf}, got ({block_state.height}, {block_state.width})."
+            )
+
+        # Preprocess every control map to [1, 3, T, H, W] in [-1, 1] at target geometry, in canonical hint order.
+        # The dict preserves this order, so downstream blocks just iterate control_frames (no separate hint_keys).
+        hint_keys = [k for k in hint_order if k in control_videos]
+        control_frames = {
+            key: components.video_processor.preprocess_video(
+                control_videos[key], height=block_state.height, width=block_state.width
+            ).to(device=device, dtype=dtype)
+            for key in hint_keys
+        }
+
+        # Output frame count / chunking come from the (first) control video, optionally capped by num_frames.
+        total_frames = next(iter(control_frames.values())).shape[2]
+        if block_state.num_frames is not None:
+            total_frames = min(total_frames, block_state.num_frames)
+        total_frames = max(1, total_frames)
+
+        per_chunk = (
+            block_state.num_video_frames_per_chunk
+            if block_state.num_video_frames_per_chunk is not None
+            else total_frames
+        )
+        chunk_frames = 1 if total_frames == 1 else per_chunk
+        chunk_frames = math.ceil((chunk_frames - 1) / tcf) * tcf + 1
+
+        if total_frames <= chunk_frames:
+            num_chunks, stride = 1, chunk_frames
+        else:
+            stride = chunk_frames - block_state.num_conditional_frames
+            if stride <= 0:
+                raise ValueError("`num_conditional_frames` must be smaller than `num_video_frames_per_chunk`.")
+            remaining = total_frames - chunk_frames
+            num_chunks = 1 + (remaining // stride + (1 if remaining % stride else 0))
+
+        # Reflect-pad each control map along time up to `padded` (repeat the last frame once the clip is too short to
+        # keep reflecting). No truncation here; per-chunk slicing happens later.
+        padded = max(total_frames, chunk_frames)
+        control_frames_padded = {}
+        for key, frames in control_frames.items():
+            while frames.shape[2] < padded:
+                pad_len = min(frames.shape[2] - 1, padded - frames.shape[2])
+                if pad_len <= 0:
+                    pad_frame = frames[:, :, -1:].repeat(1, 1, padded - frames.shape[2], 1, 1)
+                    frames = torch.cat([frames, pad_frame], dim=2)
+                    break
+                frames = torch.cat([frames, frames.flip(dims=[2])[:, :, :pad_len]], dim=2)
+            control_frames_padded[key] = frames
+        block_state.control_frames = control_frames_padded
+        block_state.total_frames = total_frames
+        block_state.chunk_frames = chunk_frames
+        block_state.num_chunks = num_chunks
+        block_state.stride = stride
+
+        self.set_block_state(state, block_state)
+        return components, state
+
+
+class Cosmos3TransferPrepareLatentsStep(ModularPipelineBlocks):
+    model_name = "cosmos3-omni"
+
+    @property
+    def description(self) -> str:
+        return (
+            "Per-chunk transfer latent prep: slice + pad the chunk's control maps, seed the target's conditioning "
+            "frames (first chunk from the input video, later chunks from the previous chunk's tail), encode the "
+            "controls as clean latents and build the noisy target latents, velocity mask and condition latents."
+        )
+
+    @property
+    def expected_components(self) -> list[ComponentSpec]:
+        return [
+            ComponentSpec("transformer", Cosmos3OmniTransformer),
+            ComponentSpec("vae", AutoencoderKLWan),
+            ComponentSpec(
+                "video_processor",
+                VideoProcessor,
+                config=FrozenDict({"vae_scale_factor": 16, "resample": "bilinear"}),
+                default_creation_method="from_config",
+            ),
+        ]
+
+    @property
+    def inputs(self) -> list[InputParam]:
+        return [
+            # Loop carry (set by the chunk-loop wrapper):
+            InputParam(name="chunk_id", type_hint=int, default=0),
+            InputParam(name="previous_output", default=None),
+            # Setup artifacts the loop can't cheaply re-derive (preprocessed controls + chunk geometry):
+            InputParam(name="control_frames", required=True),
+            InputParam(name="chunk_frames", required=True),
+            InputParam(name="total_frames", required=True),
+            InputParam(name="stride", required=True),
+            # User inputs (mirrors how the other prepare-latents steps declare height/width/generator/etc.):
+            InputParam(name="height", required=True),
+            InputParam(name="width", required=True),
+            InputParam(name="video", default=None),
+            InputParam(name="num_first_chunk_conditional_frames", type_hint=int, default=0),
+            InputParam(name="num_conditional_frames", type_hint=int, default=1),
+            InputParam(name="generator", default=None),
+        ]
+
+    @property
+    def intermediate_outputs(self) -> list[OutputParam]:
+        return [
+            OutputParam("latents"),
+            OutputParam("control_latents"),
+            OutputParam("velocity_mask"),
+            OutputParam("condition_latents"),
+            OutputParam("target_condition_indexes"),
+            OutputParam("current_conditional_frames"),
+        ]
+
+    @torch.no_grad()
+    def __call__(self, components: Cosmos3OmniModularPipeline, state: PipelineState) -> PipelineState:
+        block_state = self.get_block_state(state)
+        device = components._execution_device
+        dtype = components.transformer.dtype
+
+        chunk_id = block_state.chunk_id
+        chunk_frames = block_state.chunk_frames
+        height = block_state.height
+        width = block_state.width
+        tcf = int(components.vae.config.scale_factor_temporal)
+
+        # Slice this chunk's window out of the (padded) control maps and reflect-pad it up to a full chunk (repeat the
+        # last frame once too short to keep reflecting). control_frames is already in canonical hint order.
+        start_frame = chunk_id * block_state.stride
+        end_frame = min(start_frame + chunk_frames, block_state.total_frames)
+        chunk_controls = []
+        for frames in block_state.control_frames.values():
+            frames = frames[:, :, start_frame:end_frame]
+            while frames.shape[2] < chunk_frames:
+                pad_len = min(frames.shape[2] - 1, chunk_frames - frames.shape[2])
+                if pad_len <= 0:
+                    pad_frame = frames[:, :, -1:].repeat(1, 1, chunk_frames - frames.shape[2], 1, 1)
+                    frames = torch.cat([frames, pad_frame], dim=2)
+                    break
+                frames = torch.cat([frames, frames.flip(dims=[2])[:, :, :pad_len]], dim=2)
+            chunk_controls.append(frames)
+
+        # Seed the target with conditioning frames (first chunk from the input video, later chunks from the
+        # previous chunk's tail), repeat-padding the remaining frames so the whole clip is well-defined.
+        target = torch.zeros(1, 3, chunk_frames, height, width, device=device, dtype=dtype)
+        current_conditional_frames = 0
+        if chunk_id == 0 and block_state.num_first_chunk_conditional_frames > 0 and block_state.video is not None:
+            input_frames = components.video_processor.preprocess_video(
+                block_state.video, height=height, width=width
+            ).to(device=device, dtype=dtype)
+            current_conditional_frames = min(
+                block_state.num_first_chunk_conditional_frames, input_frames.shape[2], chunk_frames
+            )
+            if current_conditional_frames > 0:
+                target[:, :, :current_conditional_frames] = input_frames[:, :, :current_conditional_frames]
+        elif chunk_id > 0 and block_state.previous_output is not None:
+            current_conditional_frames = min(
+                block_state.num_conditional_frames, block_state.previous_output.shape[2], chunk_frames
+            )
+            if current_conditional_frames > 0:
+                target[:, :, :current_conditional_frames] = block_state.previous_output[
+                    :, :, -current_conditional_frames:
+                ].to(device=device, dtype=dtype)
+        if 0 < current_conditional_frames < chunk_frames:
+            fill = target[:, :, current_conditional_frames - 1 : current_conditional_frames]
+            target[:, :, current_conditional_frames:] = fill.expand(
+                -1, -1, chunk_frames - current_conditional_frames, -1, -1
+            )
+
+        # Encode controls as clean latents and build the noisy target latents + conditioning mask.
+        block_state.control_latents = [components._encode_video(ctrl).contiguous().float() for ctrl in chunk_controls]
+        target_x0 = components._encode_video(target).contiguous().float()
+        latent_t = target_x0.shape[2]
+        condition_mask = torch.zeros((latent_t, 1, 1), device=device, dtype=dtype)
+        latent_condition_frames = 0
+        if current_conditional_frames > 0:
+            latent_condition_frames = (current_conditional_frames - 1) // tcf + 1
+            condition_mask[:latent_condition_frames] = 1.0
+        noise = randn_tensor(tuple(target_x0.shape), generator=block_state.generator, device=device, dtype=dtype)
+        block_state.latents = condition_mask * target_x0 + (1.0 - condition_mask) * noise
+        block_state.velocity_mask = 1.0 - condition_mask
+        block_state.condition_latents = condition_mask * target_x0
+        block_state.target_condition_indexes = list(range(latent_condition_frames))
+        block_state.current_conditional_frames = current_conditional_frames
+
+        self.set_block_state(state, block_state)
+        return components, state
+
+
+class Cosmos3TransferPackSequenceStep(ModularPipelineBlocks):
+    model_name = "cosmos3-omni"
+
+    @property
+    def description(self) -> str:
+        return (
+            "Pre-packs the three transfer CFG sequence variants: cond_full / uncond_full carry every control item, "
+            "the no-control branch drops them (only [text, target]) so the control axis can be amplified."
+        )
+
+    @property
+    def inputs(self) -> list[InputParam]:
+        return [
+            InputParam(name="cond_text_segment", required=True),
+            InputParam(name="uncond_text_segment", required=True),
+            InputParam(name="control_latents", required=True),
+            InputParam(name="latents", required=True),
+            InputParam(name="target_condition_indexes", required=True),
+            InputParam(name="fps", type_hint=float, default=24.0),
+            InputParam(name="share_vision_temporal_positions", type_hint=bool, default=True),
+        ]
+
+    @property
+    def intermediate_outputs(self) -> list[OutputParam]:
+        return [
+            OutputParam("cond_full_static"),
+            OutputParam("cond_no_control_static"),
+            OutputParam("uncond_full_static"),
+            OutputParam("num_noisy_vision_tokens"),
+        ]
+
+    @torch.no_grad()
+    def __call__(self, components: Cosmos3OmniModularPipeline, state: PipelineState) -> PipelineState:
+        block_state = self.get_block_state(state)
+        device = components._execution_device
+        num_hints = len(block_state.control_latents)
+
+        def _vision_pack(text_segment: dict, include_controls: bool) -> dict:
+            if include_controls:
+                vision_items = [*block_state.control_latents, block_state.latents]
+                condition_indexes = [None] * num_hints + [block_state.target_condition_indexes]
+                clean_flags = [True] * num_hints + [False]
+            else:
+                vision_items = [block_state.latents]
+                condition_indexes = [block_state.target_condition_indexes]
+                clean_flags = [False]
+            vision_segment = components._prepare_vision_segment(
+                input_vision_tokens=vision_items,
+                has_image_condition=False,
+                mrope_offset=text_segment["vision_start_temporal_offset"],
+                vision_fps=block_state.fps,
+                curr=text_segment["und_len"],
+                device=device,
+                condition_frame_indexes=condition_indexes,
+                clean_item_flags=clean_flags,
+                share_vision_temporal_positions=block_state.share_vision_temporal_positions,
+            )
+            return {
+                **text_segment,
+                **vision_segment,
+                "position_ids": torch.cat([text_segment["text_mrope_ids"], vision_segment["vision_mrope_ids"]], dim=1),
+                "sequence_length": text_segment["und_len"] + vision_segment["num_vision_tokens"],
+            }
+
+        block_state.cond_full_static = _vision_pack(block_state.cond_text_segment, include_controls=True)
+        block_state.cond_no_control_static = _vision_pack(block_state.cond_text_segment, include_controls=False)
+        block_state.uncond_full_static = _vision_pack(block_state.uncond_text_segment, include_controls=True)
+        block_state.num_noisy_vision_tokens = block_state.cond_full_static["num_noisy_vision_tokens"]
+
+        self.set_block_state(state, block_state)
+        return components, state
+
+
+class Cosmos3TransferSetTimestepsStep(ModularPipelineBlocks):
+    model_name = "cosmos3-omni"
+
+    @property
+    def description(self) -> str:
+        return (
+            "Resets the scheduler and computes timesteps for a single transfer chunk. UniPCMultistepScheduler keeps "
+            "per-step state on the instance, so it is reset per chunk (each autoregressive chunk is a full denoise)."
+        )
+
+    @property
+    def expected_components(self) -> list[ComponentSpec]:
+        return [ComponentSpec("scheduler", UniPCMultistepScheduler)]
+
+    @property
+    def inputs(self) -> list[InputParam]:
+        return [InputParam.template("num_inference_steps", required=True)]
+
+    @property
+    def intermediate_outputs(self) -> list[OutputParam]:
+        return [
+            OutputParam("timesteps"),
+            OutputParam("num_warmup_steps"),
         ]
 
     @torch.no_grad()

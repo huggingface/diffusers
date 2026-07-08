@@ -144,6 +144,103 @@ class Cosmos3TextEncoderStep(ModularPipelineBlocks):
         return components, state
 
 
+class Cosmos3TransferTextStep(ModularPipelineBlocks):
+    model_name = "cosmos3-omni"
+
+    @property
+    def description(self) -> str:
+        return (
+            "Tokenizes the transfer prompt in transfer mode using the per-chunk frame count. Transfer prompts are "
+            "pre-upsampled JSON captions passed through verbatim (the metadata templates are skipped)."
+        )
+
+    @staticmethod
+    def _check_inputs(block_state) -> None:
+        prompt = block_state.prompt
+        negative_prompt = block_state.negative_prompt
+
+        if not isinstance(prompt, (str, list)) or (
+            isinstance(prompt, list) and not all(isinstance(p, str) for p in prompt)
+        ):
+            raise ValueError(f"`prompt` must be a str or list of str, got {type(prompt).__name__}.")
+        if negative_prompt is not None and not isinstance(negative_prompt, (str, list)):
+            raise ValueError(
+                f"`negative_prompt` must be a str, list of str, or None, got {type(negative_prompt).__name__}."
+            )
+
+    @property
+    def expected_components(self) -> list[ComponentSpec]:
+        return [
+            ComponentSpec("text_tokenizer", AutoTokenizer),
+        ]
+
+    @property
+    def inputs(self) -> list[InputParam]:
+        return [
+            InputParam(name="prompt", type_hint=str, required=True),
+            InputParam(name="negative_prompt", default=None),
+            InputParam(name="chunk_frames", type_hint=int, required=True),
+            InputParam(name="height", default=None),
+            InputParam(name="width", default=None),
+            InputParam(name="fps", type_hint=float, default=24.0),
+            InputParam(name="use_system_prompt", type_hint=bool, default=True),
+            InputParam(name="add_resolution_template", type_hint=bool, default=True),
+            InputParam(name="add_duration_template", type_hint=bool, default=True),
+        ]
+
+    @property
+    def intermediate_outputs(self) -> list[OutputParam]:
+        return [
+            OutputParam("cond_input_ids"),
+            OutputParam("uncond_input_ids"),
+        ]
+
+    @torch.no_grad()
+    def __call__(self, components: Cosmos3OmniModularPipeline, state: PipelineState) -> PipelineState:
+        block_state = self.get_block_state(state)
+        self._check_inputs(block_state)
+
+        if isinstance(block_state.prompt, list):
+            block_state.prompt = block_state.prompt[0]
+        if isinstance(block_state.negative_prompt, list):
+            block_state.negative_prompt = block_state.negative_prompt[0]
+
+        if components.requires_safety_checker:
+            if getattr(components, "safety_checker", None) is None:
+                raise ValueError(
+                    "Cosmos3 requires a safety checker by default. Call `pipe.enable_safety_checker()` to load it "
+                    "(or pass your own), or opt out explicitly with `pipe.disable_safety_checker()`."
+                )
+            device = components._execution_device
+            components.safety_checker.to(device)
+            try:
+                if not components.safety_checker.check_text_safety(block_state.prompt):
+                    raise ValueError(
+                        f"Cosmos Guardrail detected unsafe text in the prompt: {block_state.prompt}. "
+                        "Please ensure that the prompt abides by the NVIDIA Open Model License Agreement."
+                    )
+            finally:
+                components.safety_checker.to("cpu")
+
+        block_state.cond_input_ids, block_state.uncond_input_ids = components.tokenize_prompt(
+            block_state.prompt,
+            block_state.negative_prompt,
+            num_frames=block_state.chunk_frames,
+            height=block_state.height,
+            width=block_state.width,
+            fps=block_state.fps,
+            use_system_prompt=block_state.use_system_prompt,
+            add_resolution_template=block_state.add_resolution_template,
+            add_duration_template=block_state.add_duration_template,
+            action_mode=None,
+            action_view_point=None,
+            transfer_mode=True,
+        )
+
+        self.set_block_state(state, block_state)
+        return components, state
+
+
 class Cosmos3ActionTextStep(ModularPipelineBlocks):
     model_name = "cosmos3-omni"
 
