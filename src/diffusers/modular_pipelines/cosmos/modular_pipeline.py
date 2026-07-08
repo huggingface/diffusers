@@ -25,6 +25,30 @@ class Cosmos3OmniModularPipeline(ModularPipeline):
         return 16
 
     @property
+    def vae_scale_factor_temporal(self):
+        if getattr(self, "vae", None) is not None:
+            return int(self.vae.config.scale_factor_temporal)
+        return 4
+
+    @property
+    def num_channels_latents(self):
+        if getattr(self, "transformer", None) is not None:
+            return int(self.transformer.config.latent_channel)
+        return 48
+
+    @property
+    def sound_sampling_rate(self):
+        if getattr(self, "sound_tokenizer", None) is not None:
+            return int(self.sound_tokenizer.config.sampling_rate)
+        return 48000
+
+    @property
+    def sound_hop_size(self):
+        if getattr(self, "sound_tokenizer", None) is not None:
+            return int(self.sound_tokenizer._hop_size)
+        return 1920
+
+    @property
     def _vae_latents_mean(self):
         return torch.tensor(self.vae.config.latents_mean, dtype=self.vae.dtype)
 

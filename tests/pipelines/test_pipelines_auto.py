@@ -31,9 +31,11 @@ from diffusers import (
     DiffusionPipeline,
 )
 from diffusers.pipelines.auto_pipeline import (
+    AUTO_CONDITION2VIDEO_PIPELINES_MAPPING,
     AUTO_IMAGE2IMAGE_PIPELINES_MAPPING,
     AUTO_INPAINT_PIPELINES_MAPPING,
     AUTO_TEXT2IMAGE_PIPELINES_MAPPING,
+    _get_model,
 )
 
 from ..testing_utils import slow
@@ -50,6 +52,10 @@ PRETRAINED_MODEL_REPO_MAPPING = OrderedDict(
 
 
 class AutoPipelineFastTest(unittest.TestCase):
+    def test_condition2video_mapping(self):
+        assert AUTO_CONDITION2VIDEO_PIPELINES_MAPPING["cosmos3-omni"].__name__ == "Cosmos3OmniPipeline"
+        assert _get_model("Cosmos3OmniPipeline") == "cosmos3-omni"
+
     @property
     def dummy_image_encoder(self):
         torch.manual_seed(0)

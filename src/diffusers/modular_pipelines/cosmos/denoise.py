@@ -1,3 +1,5 @@
+import inspect
+
 import torch
 
 from ...models.transformers.transformer_cosmos3 import Cosmos3OmniTransformer
@@ -5,244 +7,6 @@ from ...schedulers import UniPCMultistepScheduler
 from ..modular_pipeline import BlockState, LoopSequentialPipelineBlocks, ModularPipelineBlocks, PipelineState
 from ..modular_pipeline_utils import ComponentSpec, InputParam, OutputParam
 from .modular_pipeline import Cosmos3OmniModularPipeline
-
-
-class Cosmos3VisionDenoiseInputStep(ModularPipelineBlocks):
-    model_name = "cosmos3-omni"
-
-    @property
-    def description(self) -> str:
-        return "Assembles text and vision sequence metadata for the denoising loop."
-
-    @property
-    def inputs(self) -> list[InputParam]:
-        return [
-            InputParam(name="cond_text_segment", required=True),
-            InputParam(name="uncond_text_segment", required=True),
-            InputParam(name="cond_vision_segment", required=True),
-            InputParam(name="uncond_vision_segment", required=True),
-        ]
-
-    @property
-    def intermediate_outputs(self) -> list[OutputParam]:
-        return [
-            OutputParam("cond_position_ids"),
-            OutputParam("uncond_position_ids"),
-            OutputParam("cond_sequence_length"),
-            OutputParam("uncond_sequence_length"),
-        ]
-
-    @torch.no_grad()
-    def __call__(self, components: Cosmos3OmniModularPipeline, state: PipelineState) -> PipelineState:
-        block_state = self.get_block_state(state)
-        block_state.cond_position_ids = torch.cat(
-            [
-                block_state.cond_text_segment["text_mrope_ids"],
-                block_state.cond_vision_segment["vision_mrope_ids"],
-            ],
-            dim=1,
-        )
-        block_state.uncond_position_ids = torch.cat(
-            [
-                block_state.uncond_text_segment["text_mrope_ids"],
-                block_state.uncond_vision_segment["vision_mrope_ids"],
-            ],
-            dim=1,
-        )
-        block_state.cond_sequence_length = (
-            block_state.cond_text_segment["und_len"] + block_state.cond_vision_segment["num_vision_tokens"]
-        )
-        block_state.uncond_sequence_length = (
-            block_state.uncond_text_segment["und_len"] + block_state.uncond_vision_segment["num_vision_tokens"]
-        )
-        self.set_block_state(state, block_state)
-        return components, state
-
-
-class Cosmos3VisionSoundDenoiseInputStep(ModularPipelineBlocks):
-    model_name = "cosmos3-omni"
-
-    @property
-    def description(self) -> str:
-        return "Assembles text, vision, and sound sequence metadata for the denoising loop."
-
-    @property
-    def inputs(self) -> list[InputParam]:
-        return [
-            InputParam(name="cond_text_segment", required=True),
-            InputParam(name="uncond_text_segment", required=True),
-            InputParam(name="cond_vision_segment", required=True),
-            InputParam(name="uncond_vision_segment", required=True),
-            InputParam(name="cond_sound_segment", required=True),
-            InputParam(name="uncond_sound_segment", required=True),
-        ]
-
-    @property
-    def intermediate_outputs(self) -> list[OutputParam]:
-        return [
-            OutputParam("cond_position_ids"),
-            OutputParam("uncond_position_ids"),
-            OutputParam("cond_sequence_length"),
-            OutputParam("uncond_sequence_length"),
-        ]
-
-    @torch.no_grad()
-    def __call__(self, components: Cosmos3OmniModularPipeline, state: PipelineState) -> PipelineState:
-        block_state = self.get_block_state(state)
-        block_state.cond_position_ids = torch.cat(
-            [
-                block_state.cond_text_segment["text_mrope_ids"],
-                block_state.cond_vision_segment["vision_mrope_ids"],
-                block_state.cond_sound_segment["sound_mrope_ids"],
-            ],
-            dim=1,
-        )
-        block_state.uncond_position_ids = torch.cat(
-            [
-                block_state.uncond_text_segment["text_mrope_ids"],
-                block_state.uncond_vision_segment["vision_mrope_ids"],
-                block_state.uncond_sound_segment["sound_mrope_ids"],
-            ],
-            dim=1,
-        )
-        block_state.cond_sequence_length = (
-            block_state.cond_text_segment["und_len"]
-            + block_state.cond_vision_segment["num_vision_tokens"]
-            + block_state.cond_sound_segment["sound_len"]
-        )
-        block_state.uncond_sequence_length = (
-            block_state.uncond_text_segment["und_len"]
-            + block_state.uncond_vision_segment["num_vision_tokens"]
-            + block_state.uncond_sound_segment["sound_len"]
-        )
-        self.set_block_state(state, block_state)
-        return components, state
-
-
-class Cosmos3VisionActionDenoiseInputStep(ModularPipelineBlocks):
-    model_name = "cosmos3-omni"
-
-    @property
-    def description(self) -> str:
-        return "Assembles text, vision, and action sequence metadata for the denoising loop."
-
-    @property
-    def inputs(self) -> list[InputParam]:
-        return [
-            InputParam(name="cond_text_segment", required=True),
-            InputParam(name="uncond_text_segment", required=True),
-            InputParam(name="cond_vision_segment", required=True),
-            InputParam(name="uncond_vision_segment", required=True),
-            InputParam(name="cond_action_segment", required=True),
-            InputParam(name="uncond_action_segment", required=True),
-        ]
-
-    @property
-    def intermediate_outputs(self) -> list[OutputParam]:
-        return [
-            OutputParam("cond_position_ids"),
-            OutputParam("uncond_position_ids"),
-            OutputParam("cond_sequence_length"),
-            OutputParam("uncond_sequence_length"),
-        ]
-
-    @torch.no_grad()
-    def __call__(self, components: Cosmos3OmniModularPipeline, state: PipelineState) -> PipelineState:
-        block_state = self.get_block_state(state)
-        block_state.cond_position_ids = torch.cat(
-            [
-                block_state.cond_text_segment["text_mrope_ids"],
-                block_state.cond_vision_segment["vision_mrope_ids"],
-                block_state.cond_action_segment["action_mrope_ids"],
-            ],
-            dim=1,
-        )
-        block_state.uncond_position_ids = torch.cat(
-            [
-                block_state.uncond_text_segment["text_mrope_ids"],
-                block_state.uncond_vision_segment["vision_mrope_ids"],
-                block_state.uncond_action_segment["action_mrope_ids"],
-            ],
-            dim=1,
-        )
-        block_state.cond_sequence_length = (
-            block_state.cond_text_segment["und_len"]
-            + block_state.cond_vision_segment["num_vision_tokens"]
-            + block_state.cond_action_segment["action_len"]
-        )
-        block_state.uncond_sequence_length = (
-            block_state.uncond_text_segment["und_len"]
-            + block_state.uncond_vision_segment["num_vision_tokens"]
-            + block_state.uncond_action_segment["action_len"]
-        )
-        self.set_block_state(state, block_state)
-        return components, state
-
-
-class Cosmos3VisionSoundActionDenoiseInputStep(ModularPipelineBlocks):
-    model_name = "cosmos3-omni"
-
-    @property
-    def description(self) -> str:
-        return "Assembles text, vision, sound, and action sequence metadata for the denoising loop."
-
-    @property
-    def inputs(self) -> list[InputParam]:
-        return [
-            InputParam(name="cond_text_segment", required=True),
-            InputParam(name="uncond_text_segment", required=True),
-            InputParam(name="cond_vision_segment", required=True),
-            InputParam(name="uncond_vision_segment", required=True),
-            InputParam(name="cond_sound_segment", required=True),
-            InputParam(name="uncond_sound_segment", required=True),
-            InputParam(name="cond_action_segment", required=True),
-            InputParam(name="uncond_action_segment", required=True),
-        ]
-
-    @property
-    def intermediate_outputs(self) -> list[OutputParam]:
-        return [
-            OutputParam("cond_position_ids"),
-            OutputParam("uncond_position_ids"),
-            OutputParam("cond_sequence_length"),
-            OutputParam("uncond_sequence_length"),
-        ]
-
-    @torch.no_grad()
-    def __call__(self, components: Cosmos3OmniModularPipeline, state: PipelineState) -> PipelineState:
-        block_state = self.get_block_state(state)
-        block_state.cond_position_ids = torch.cat(
-            [
-                block_state.cond_text_segment["text_mrope_ids"],
-                block_state.cond_vision_segment["vision_mrope_ids"],
-                block_state.cond_sound_segment["sound_mrope_ids"],
-                block_state.cond_action_segment["action_mrope_ids"],
-            ],
-            dim=1,
-        )
-        block_state.uncond_position_ids = torch.cat(
-            [
-                block_state.uncond_text_segment["text_mrope_ids"],
-                block_state.uncond_vision_segment["vision_mrope_ids"],
-                block_state.uncond_sound_segment["sound_mrope_ids"],
-                block_state.uncond_action_segment["action_mrope_ids"],
-            ],
-            dim=1,
-        )
-        block_state.cond_sequence_length = (
-            block_state.cond_text_segment["und_len"]
-            + block_state.cond_vision_segment["num_vision_tokens"]
-            + block_state.cond_sound_segment["sound_len"]
-            + block_state.cond_action_segment["action_len"]
-        )
-        block_state.uncond_sequence_length = (
-            block_state.uncond_text_segment["und_len"]
-            + block_state.uncond_vision_segment["num_vision_tokens"]
-            + block_state.uncond_sound_segment["sound_len"]
-            + block_state.uncond_action_segment["action_len"]
-        )
-        self.set_block_state(state, block_state)
-        return components, state
 
 
 class Cosmos3VisionLoopPrepareStep(ModularPipelineBlocks):
@@ -273,7 +37,7 @@ class Cosmos3VisionLoopPrepareStep(ModularPipelineBlocks):
     @torch.no_grad()
     def __call__(self, components: Cosmos3OmniModularPipeline, block_state: BlockState, i: int, t: torch.Tensor):
         device = components._execution_device
-        block_state.vision_tokens = block_state.latents.to(device=device, dtype=components.transformer.dtype)
+        block_state.vision_tokens = [block_state.latents.to(device=device, dtype=components.transformer.dtype)]
         block_state.vision_timesteps = torch.full(
             (block_state.cond_vision_segment["num_noisy_vision_tokens"],), t.item(), device=device
         )
@@ -308,7 +72,7 @@ class Cosmos3SoundLoopPrepareStep(ModularPipelineBlocks):
     @torch.no_grad()
     def __call__(self, components: Cosmos3OmniModularPipeline, block_state: BlockState, i: int, t: torch.Tensor):
         device = components._execution_device
-        block_state.sound_tokens = block_state.sound_latents.to(device=device, dtype=components.transformer.dtype)
+        block_state.sound_tokens = [block_state.sound_latents.to(device=device, dtype=components.transformer.dtype)]
         block_state.sound_timesteps = torch.full(
             (block_state.cond_sound_segment["sound_len"],), t.item(), device=device
         )
@@ -343,19 +107,19 @@ class Cosmos3ActionLoopPrepareStep(ModularPipelineBlocks):
     @torch.no_grad()
     def __call__(self, components: Cosmos3OmniModularPipeline, block_state: BlockState, i: int, t: torch.Tensor):
         device = components._execution_device
-        block_state.action_tokens = block_state.action_latents.to(device=device, dtype=components.transformer.dtype)
+        block_state.action_tokens = [block_state.action_latents.to(device=device, dtype=components.transformer.dtype)]
         block_state.action_timesteps = torch.full(
             (block_state.cond_action_segment["num_noisy_action_tokens"],), t.item(), device=device
         )
         return components, block_state
 
 
-class Cosmos3VisionLoopDenoiser(ModularPipelineBlocks):
+class Cosmos3LoopDenoiser(ModularPipelineBlocks):
     model_name = "cosmos3-omni"
 
     @property
     def description(self) -> str:
-        return "Predicts vision velocity for one denoising iteration."
+        return "Predicts available Cosmos3 modality velocities for one denoising iteration."
 
     @property
     def expected_components(self) -> list[ComponentSpec]:
@@ -364,401 +128,7 @@ class Cosmos3VisionLoopDenoiser(ModularPipelineBlocks):
     @property
     def inputs(self) -> list[InputParam]:
         return [
-            InputParam(name="cond_text_segment", required=True),
-            InputParam(name="uncond_text_segment", required=True),
-            InputParam(name="cond_vision_segment", required=True),
-            InputParam(name="uncond_vision_segment", required=True),
-            InputParam(name="cond_position_ids", required=True),
-            InputParam(name="uncond_position_ids", required=True),
-            InputParam(name="cond_sequence_length", required=True),
-            InputParam(name="uncond_sequence_length", required=True),
-            InputParam(name="vision_tokens", required=True),
-            InputParam(name="vision_timesteps", required=True),
-            InputParam(name="vision_condition_mask", required=True),
-            InputParam(name="guidance_scale", default=6.0),
-        ]
-
-    @property
-    def intermediate_outputs(self) -> list[OutputParam]:
-        return [OutputParam("velocity_vision")]
-
-    @torch.no_grad()
-    def __call__(self, components: Cosmos3OmniModularPipeline, block_state: BlockState, i: int, t: torch.Tensor):
-        do_cfg = block_state.guidance_scale != 1.0
-        preds_vision, preds_sound, preds_action = components.transformer(
-            input_ids=block_state.cond_text_segment["input_ids"],
-            text_indexes=block_state.cond_text_segment["text_indexes"],
-            position_ids=block_state.cond_position_ids,
-            und_len=block_state.cond_text_segment["und_len"],
-            sequence_length=block_state.cond_sequence_length,
-            vision_tokens=[block_state.vision_tokens],
-            vision_token_shapes=block_state.cond_vision_segment["vision_token_shapes"],
-            vision_sequence_indexes=block_state.cond_vision_segment["vision_sequence_indexes"],
-            vision_mse_loss_indexes=block_state.cond_vision_segment["vision_mse_loss_indexes"],
-            vision_timesteps=block_state.vision_timesteps,
-            vision_noisy_frame_indexes=block_state.cond_vision_segment["vision_noisy_frame_indexes"],
-            sound_tokens=None,
-            sound_token_shapes=None,
-            sound_sequence_indexes=None,
-            sound_mse_loss_indexes=None,
-            sound_timesteps=None,
-            sound_noisy_frame_indexes=None,
-            action_tokens=None,
-            action_token_shapes=None,
-            action_sequence_indexes=None,
-            action_mse_loss_indexes=None,
-            action_timesteps=None,
-            action_noisy_frame_indexes=None,
-            action_domain_ids=None,
-        )
-        cond_v_vision, _, _ = components._mask_velocity_predictions(
-            preds_vision,
-            preds_sound,
-            vision_condition_mask=[block_state.vision_condition_mask],
-            sound_condition_mask=None,
-            preds_action=preds_action,
-            action_condition_mask=None,
-            raw_action_dim=None,
-        )
-
-        if do_cfg:
-            preds_vision, preds_sound, preds_action = components.transformer(
-                input_ids=block_state.uncond_text_segment["input_ids"],
-                text_indexes=block_state.uncond_text_segment["text_indexes"],
-                position_ids=block_state.uncond_position_ids,
-                und_len=block_state.uncond_text_segment["und_len"],
-                sequence_length=block_state.uncond_sequence_length,
-                vision_tokens=[block_state.vision_tokens],
-                vision_token_shapes=block_state.uncond_vision_segment["vision_token_shapes"],
-                vision_sequence_indexes=block_state.uncond_vision_segment["vision_sequence_indexes"],
-                vision_mse_loss_indexes=block_state.uncond_vision_segment["vision_mse_loss_indexes"],
-                vision_timesteps=block_state.vision_timesteps,
-                vision_noisy_frame_indexes=block_state.uncond_vision_segment["vision_noisy_frame_indexes"],
-                sound_tokens=None,
-                sound_token_shapes=None,
-                sound_sequence_indexes=None,
-                sound_mse_loss_indexes=None,
-                sound_timesteps=None,
-                sound_noisy_frame_indexes=None,
-                action_tokens=None,
-                action_token_shapes=None,
-                action_sequence_indexes=None,
-                action_mse_loss_indexes=None,
-                action_timesteps=None,
-                action_noisy_frame_indexes=None,
-                action_domain_ids=None,
-            )
-            uncond_v_vision, _, _ = components._mask_velocity_predictions(
-                preds_vision,
-                preds_sound,
-                vision_condition_mask=[block_state.vision_condition_mask],
-                sound_condition_mask=None,
-                preds_action=preds_action,
-                action_condition_mask=None,
-                raw_action_dim=None,
-            )
-            block_state.velocity_vision = uncond_v_vision + block_state.guidance_scale * (
-                cond_v_vision - uncond_v_vision
-            )
-        else:
-            block_state.velocity_vision = cond_v_vision
-
-        return components, block_state
-
-
-class Cosmos3VisionSoundLoopDenoiser(ModularPipelineBlocks):
-    model_name = "cosmos3-omni"
-
-    @property
-    def description(self) -> str:
-        return "Predicts vision and sound velocities for one denoising iteration."
-
-    @property
-    def expected_components(self) -> list[ComponentSpec]:
-        return [ComponentSpec("transformer", Cosmos3OmniTransformer)]
-
-    @property
-    def inputs(self) -> list[InputParam]:
-        return [
-            InputParam(name="cond_text_segment", required=True),
-            InputParam(name="uncond_text_segment", required=True),
-            InputParam(name="cond_vision_segment", required=True),
-            InputParam(name="uncond_vision_segment", required=True),
-            InputParam(name="cond_sound_segment", required=True),
-            InputParam(name="uncond_sound_segment", required=True),
-            InputParam(name="cond_position_ids", required=True),
-            InputParam(name="uncond_position_ids", required=True),
-            InputParam(name="cond_sequence_length", required=True),
-            InputParam(name="uncond_sequence_length", required=True),
-            InputParam(name="vision_tokens", required=True),
-            InputParam(name="vision_timesteps", required=True),
-            InputParam(name="sound_tokens", required=True),
-            InputParam(name="sound_timesteps", required=True),
-            InputParam(name="vision_condition_mask", required=True),
-            InputParam(name="sound_condition_mask", required=True),
-            InputParam(name="guidance_scale", default=6.0),
-        ]
-
-    @property
-    def intermediate_outputs(self) -> list[OutputParam]:
-        return [
-            OutputParam("velocity_vision"),
-            OutputParam("velocity_sound"),
-        ]
-
-    @torch.no_grad()
-    def __call__(self, components: Cosmos3OmniModularPipeline, block_state: BlockState, i: int, t: torch.Tensor):
-        do_cfg = block_state.guidance_scale != 1.0
-        preds_vision, preds_sound, preds_action = components.transformer(
-            input_ids=block_state.cond_text_segment["input_ids"],
-            text_indexes=block_state.cond_text_segment["text_indexes"],
-            position_ids=block_state.cond_position_ids,
-            und_len=block_state.cond_text_segment["und_len"],
-            sequence_length=block_state.cond_sequence_length,
-            vision_tokens=[block_state.vision_tokens],
-            vision_token_shapes=block_state.cond_vision_segment["vision_token_shapes"],
-            vision_sequence_indexes=block_state.cond_vision_segment["vision_sequence_indexes"],
-            vision_mse_loss_indexes=block_state.cond_vision_segment["vision_mse_loss_indexes"],
-            vision_timesteps=block_state.vision_timesteps,
-            vision_noisy_frame_indexes=block_state.cond_vision_segment["vision_noisy_frame_indexes"],
-            sound_tokens=[block_state.sound_tokens],
-            sound_token_shapes=block_state.cond_sound_segment["sound_token_shapes"],
-            sound_sequence_indexes=block_state.cond_sound_segment["sound_sequence_indexes"],
-            sound_mse_loss_indexes=block_state.cond_sound_segment["sound_mse_loss_indexes"],
-            sound_timesteps=block_state.sound_timesteps,
-            sound_noisy_frame_indexes=block_state.cond_sound_segment["sound_noisy_frame_indexes"],
-            action_tokens=None,
-            action_token_shapes=None,
-            action_sequence_indexes=None,
-            action_mse_loss_indexes=None,
-            action_timesteps=None,
-            action_noisy_frame_indexes=None,
-            action_domain_ids=None,
-        )
-        cond_v_vision, cond_v_sound, _ = components._mask_velocity_predictions(
-            preds_vision,
-            preds_sound,
-            vision_condition_mask=[block_state.vision_condition_mask],
-            sound_condition_mask=[block_state.sound_condition_mask],
-            preds_action=preds_action,
-            action_condition_mask=None,
-            raw_action_dim=None,
-        )
-
-        if do_cfg:
-            preds_vision, preds_sound, preds_action = components.transformer(
-                input_ids=block_state.uncond_text_segment["input_ids"],
-                text_indexes=block_state.uncond_text_segment["text_indexes"],
-                position_ids=block_state.uncond_position_ids,
-                und_len=block_state.uncond_text_segment["und_len"],
-                sequence_length=block_state.uncond_sequence_length,
-                vision_tokens=[block_state.vision_tokens],
-                vision_token_shapes=block_state.uncond_vision_segment["vision_token_shapes"],
-                vision_sequence_indexes=block_state.uncond_vision_segment["vision_sequence_indexes"],
-                vision_mse_loss_indexes=block_state.uncond_vision_segment["vision_mse_loss_indexes"],
-                vision_timesteps=block_state.vision_timesteps,
-                vision_noisy_frame_indexes=block_state.uncond_vision_segment["vision_noisy_frame_indexes"],
-                sound_tokens=[block_state.sound_tokens],
-                sound_token_shapes=block_state.uncond_sound_segment["sound_token_shapes"],
-                sound_sequence_indexes=block_state.uncond_sound_segment["sound_sequence_indexes"],
-                sound_mse_loss_indexes=block_state.uncond_sound_segment["sound_mse_loss_indexes"],
-                sound_timesteps=block_state.sound_timesteps,
-                sound_noisy_frame_indexes=block_state.uncond_sound_segment["sound_noisy_frame_indexes"],
-                action_tokens=None,
-                action_token_shapes=None,
-                action_sequence_indexes=None,
-                action_mse_loss_indexes=None,
-                action_timesteps=None,
-                action_noisy_frame_indexes=None,
-                action_domain_ids=None,
-            )
-            uncond_v_vision, uncond_v_sound, _ = components._mask_velocity_predictions(
-                preds_vision,
-                preds_sound,
-                vision_condition_mask=[block_state.vision_condition_mask],
-                sound_condition_mask=[block_state.sound_condition_mask],
-                preds_action=preds_action,
-                action_condition_mask=None,
-                raw_action_dim=None,
-            )
-            block_state.velocity_vision = uncond_v_vision + block_state.guidance_scale * (
-                cond_v_vision - uncond_v_vision
-            )
-            block_state.velocity_sound = uncond_v_sound + block_state.guidance_scale * (cond_v_sound - uncond_v_sound)
-        else:
-            block_state.velocity_vision = cond_v_vision
-            block_state.velocity_sound = cond_v_sound
-
-        return components, block_state
-
-
-class Cosmos3VisionActionLoopDenoiser(ModularPipelineBlocks):
-    model_name = "cosmos3-omni"
-
-    @property
-    def description(self) -> str:
-        return "Predicts vision and action velocities for one denoising iteration."
-
-    @property
-    def expected_components(self) -> list[ComponentSpec]:
-        return [ComponentSpec("transformer", Cosmos3OmniTransformer)]
-
-    @property
-    def inputs(self) -> list[InputParam]:
-        return [
-            InputParam(name="cond_text_segment", required=True),
-            InputParam(name="uncond_text_segment", required=True),
-            InputParam(name="cond_vision_segment", required=True),
-            InputParam(name="uncond_vision_segment", required=True),
-            InputParam(name="cond_action_segment", required=True),
-            InputParam(name="uncond_action_segment", required=True),
-            InputParam(name="cond_position_ids", required=True),
-            InputParam(name="uncond_position_ids", required=True),
-            InputParam(name="cond_sequence_length", required=True),
-            InputParam(name="uncond_sequence_length", required=True),
-            InputParam(name="vision_tokens", required=True),
-            InputParam(name="vision_timesteps", required=True),
-            InputParam(name="action_tokens", required=True),
-            InputParam(name="action_timesteps", required=True),
-            InputParam(name="vision_condition_mask", required=True),
-            InputParam(name="action_condition_mask", required=True),
-            InputParam(name="action_domain_id", required=True),
-            InputParam(name="raw_action_dim_resolved", default=None),
-            InputParam(name="guidance_scale", default=6.0),
-        ]
-
-    @property
-    def intermediate_outputs(self) -> list[OutputParam]:
-        return [
-            OutputParam("velocity_vision"),
-            OutputParam("velocity_action"),
-        ]
-
-    @torch.no_grad()
-    def __call__(self, components: Cosmos3OmniModularPipeline, block_state: BlockState, i: int, t: torch.Tensor):
-        do_cfg = block_state.guidance_scale != 1.0
-        preds_vision, preds_sound, preds_action = components.transformer(
-            input_ids=block_state.cond_text_segment["input_ids"],
-            text_indexes=block_state.cond_text_segment["text_indexes"],
-            position_ids=block_state.cond_position_ids,
-            und_len=block_state.cond_text_segment["und_len"],
-            sequence_length=block_state.cond_sequence_length,
-            vision_tokens=[block_state.vision_tokens],
-            vision_token_shapes=block_state.cond_vision_segment["vision_token_shapes"],
-            vision_sequence_indexes=block_state.cond_vision_segment["vision_sequence_indexes"],
-            vision_mse_loss_indexes=block_state.cond_vision_segment["vision_mse_loss_indexes"],
-            vision_timesteps=block_state.vision_timesteps,
-            vision_noisy_frame_indexes=block_state.cond_vision_segment["vision_noisy_frame_indexes"],
-            sound_tokens=None,
-            sound_token_shapes=None,
-            sound_sequence_indexes=None,
-            sound_mse_loss_indexes=None,
-            sound_timesteps=None,
-            sound_noisy_frame_indexes=None,
-            action_tokens=[block_state.action_tokens],
-            action_token_shapes=block_state.cond_action_segment["action_token_shapes"],
-            action_sequence_indexes=block_state.cond_action_segment["action_sequence_indexes"],
-            action_mse_loss_indexes=block_state.cond_action_segment["action_mse_loss_indexes"],
-            action_timesteps=block_state.action_timesteps,
-            action_noisy_frame_indexes=block_state.cond_action_segment["action_noisy_frame_indexes"],
-            action_domain_ids=[block_state.action_domain_id],
-        )
-        cond_v_vision, _, cond_v_action = components._mask_velocity_predictions(
-            preds_vision,
-            preds_sound,
-            vision_condition_mask=[block_state.vision_condition_mask],
-            sound_condition_mask=None,
-            preds_action=preds_action,
-            action_condition_mask=[block_state.action_condition_mask],
-            raw_action_dim=block_state.raw_action_dim_resolved,
-        )
-
-        if do_cfg:
-            preds_vision, preds_sound, preds_action = components.transformer(
-                input_ids=block_state.uncond_text_segment["input_ids"],
-                text_indexes=block_state.uncond_text_segment["text_indexes"],
-                position_ids=block_state.uncond_position_ids,
-                und_len=block_state.uncond_text_segment["und_len"],
-                sequence_length=block_state.uncond_sequence_length,
-                vision_tokens=[block_state.vision_tokens],
-                vision_token_shapes=block_state.uncond_vision_segment["vision_token_shapes"],
-                vision_sequence_indexes=block_state.uncond_vision_segment["vision_sequence_indexes"],
-                vision_mse_loss_indexes=block_state.uncond_vision_segment["vision_mse_loss_indexes"],
-                vision_timesteps=block_state.vision_timesteps,
-                vision_noisy_frame_indexes=block_state.uncond_vision_segment["vision_noisy_frame_indexes"],
-                sound_tokens=None,
-                sound_token_shapes=None,
-                sound_sequence_indexes=None,
-                sound_mse_loss_indexes=None,
-                sound_timesteps=None,
-                sound_noisy_frame_indexes=None,
-                action_tokens=[block_state.action_tokens],
-                action_token_shapes=block_state.uncond_action_segment["action_token_shapes"],
-                action_sequence_indexes=block_state.uncond_action_segment["action_sequence_indexes"],
-                action_mse_loss_indexes=block_state.uncond_action_segment["action_mse_loss_indexes"],
-                action_timesteps=block_state.action_timesteps,
-                action_noisy_frame_indexes=block_state.uncond_action_segment["action_noisy_frame_indexes"],
-                action_domain_ids=[block_state.action_domain_id],
-            )
-            uncond_v_vision, _, uncond_v_action = components._mask_velocity_predictions(
-                preds_vision,
-                preds_sound,
-                vision_condition_mask=[block_state.vision_condition_mask],
-                sound_condition_mask=None,
-                preds_action=preds_action,
-                action_condition_mask=[block_state.action_condition_mask],
-                raw_action_dim=block_state.raw_action_dim_resolved,
-            )
-            block_state.velocity_vision = uncond_v_vision + block_state.guidance_scale * (
-                cond_v_vision - uncond_v_vision
-            )
-            block_state.velocity_action = uncond_v_action + block_state.guidance_scale * (
-                cond_v_action - uncond_v_action
-            )
-        else:
-            block_state.velocity_vision = cond_v_vision
-            block_state.velocity_action = cond_v_action
-
-        return components, block_state
-
-
-class Cosmos3VisionSoundActionLoopDenoiser(ModularPipelineBlocks):
-    model_name = "cosmos3-omni"
-
-    @property
-    def description(self) -> str:
-        return "Predicts vision, sound, and action velocities for one denoising iteration."
-
-    @property
-    def expected_components(self) -> list[ComponentSpec]:
-        return [ComponentSpec("transformer", Cosmos3OmniTransformer)]
-
-    @property
-    def inputs(self) -> list[InputParam]:
-        return [
-            InputParam(name="cond_text_segment", required=True),
-            InputParam(name="uncond_text_segment", required=True),
-            InputParam(name="cond_vision_segment", required=True),
-            InputParam(name="uncond_vision_segment", required=True),
-            InputParam(name="cond_sound_segment", required=True),
-            InputParam(name="uncond_sound_segment", required=True),
-            InputParam(name="cond_action_segment", required=True),
-            InputParam(name="uncond_action_segment", required=True),
-            InputParam(name="cond_position_ids", required=True),
-            InputParam(name="uncond_position_ids", required=True),
-            InputParam(name="cond_sequence_length", required=True),
-            InputParam(name="uncond_sequence_length", required=True),
-            InputParam(name="vision_tokens", required=True),
-            InputParam(name="vision_timesteps", required=True),
-            InputParam(name="sound_tokens", required=True),
-            InputParam(name="sound_timesteps", required=True),
-            InputParam(name="action_tokens", required=True),
-            InputParam(name="action_timesteps", required=True),
-            InputParam(name="vision_condition_mask", required=True),
-            InputParam(name="sound_condition_mask", required=True),
-            InputParam(name="action_condition_mask", required=True),
-            InputParam(name="action_domain_id", required=True),
-            InputParam(name="raw_action_dim_resolved", default=None),
+            InputParam.template("denoiser_input_fields"),
             InputParam(name="guidance_scale", default=6.0),
         ]
 
@@ -772,90 +142,70 @@ class Cosmos3VisionSoundActionLoopDenoiser(ModularPipelineBlocks):
 
     @torch.no_grad()
     def __call__(self, components: Cosmos3OmniModularPipeline, block_state: BlockState, i: int, t: torch.Tensor):
+        denoiser_input_fields = block_state.denoiser_input_fields
+        loop_input_fields = block_state.as_dict()
+        has_sound = "sound_tokens" in loop_input_fields
+        has_action = "action_tokens" in loop_input_fields
         do_cfg = block_state.guidance_scale != 1.0
-        preds_vision, preds_sound, preds_action = components.transformer(
-            input_ids=block_state.cond_text_segment["input_ids"],
-            text_indexes=block_state.cond_text_segment["text_indexes"],
-            position_ids=block_state.cond_position_ids,
-            und_len=block_state.cond_text_segment["und_len"],
-            sequence_length=block_state.cond_sequence_length,
-            vision_tokens=[block_state.vision_tokens],
-            vision_token_shapes=block_state.cond_vision_segment["vision_token_shapes"],
-            vision_sequence_indexes=block_state.cond_vision_segment["vision_sequence_indexes"],
-            vision_mse_loss_indexes=block_state.cond_vision_segment["vision_mse_loss_indexes"],
-            vision_timesteps=block_state.vision_timesteps,
-            vision_noisy_frame_indexes=block_state.cond_vision_segment["vision_noisy_frame_indexes"],
-            sound_tokens=[block_state.sound_tokens],
-            sound_token_shapes=block_state.cond_sound_segment["sound_token_shapes"],
-            sound_sequence_indexes=block_state.cond_sound_segment["sound_sequence_indexes"],
-            sound_mse_loss_indexes=block_state.cond_sound_segment["sound_mse_loss_indexes"],
-            sound_timesteps=block_state.sound_timesteps,
-            sound_noisy_frame_indexes=block_state.cond_sound_segment["sound_noisy_frame_indexes"],
-            action_tokens=[block_state.action_tokens],
-            action_token_shapes=block_state.cond_action_segment["action_token_shapes"],
-            action_sequence_indexes=block_state.cond_action_segment["action_sequence_indexes"],
-            action_mse_loss_indexes=block_state.cond_action_segment["action_mse_loss_indexes"],
-            action_timesteps=block_state.action_timesteps,
-            action_noisy_frame_indexes=block_state.cond_action_segment["action_noisy_frame_indexes"],
-            action_domain_ids=[block_state.action_domain_id],
-        )
-        cond_v_vision, cond_v_sound, cond_v_action = components._mask_velocity_predictions(
-            preds_vision,
-            preds_sound,
-            vision_condition_mask=[block_state.vision_condition_mask],
-            sound_condition_mask=[block_state.sound_condition_mask],
-            preds_action=preds_action,
-            action_condition_mask=[block_state.action_condition_mask],
-            raw_action_dim=block_state.raw_action_dim_resolved,
-        )
+        transformer_args = set(inspect.signature(components.transformer.forward).parameters)
 
+        prediction_passes = ["cond"]
         if do_cfg:
-            preds_vision, preds_sound, preds_action = components.transformer(
-                input_ids=block_state.uncond_text_segment["input_ids"],
-                text_indexes=block_state.uncond_text_segment["text_indexes"],
-                position_ids=block_state.uncond_position_ids,
-                und_len=block_state.uncond_text_segment["und_len"],
-                sequence_length=block_state.uncond_sequence_length,
-                vision_tokens=[block_state.vision_tokens],
-                vision_token_shapes=block_state.uncond_vision_segment["vision_token_shapes"],
-                vision_sequence_indexes=block_state.uncond_vision_segment["vision_sequence_indexes"],
-                vision_mse_loss_indexes=block_state.uncond_vision_segment["vision_mse_loss_indexes"],
-                vision_timesteps=block_state.vision_timesteps,
-                vision_noisy_frame_indexes=block_state.uncond_vision_segment["vision_noisy_frame_indexes"],
-                sound_tokens=[block_state.sound_tokens],
-                sound_token_shapes=block_state.uncond_sound_segment["sound_token_shapes"],
-                sound_sequence_indexes=block_state.uncond_sound_segment["sound_sequence_indexes"],
-                sound_mse_loss_indexes=block_state.uncond_sound_segment["sound_mse_loss_indexes"],
-                sound_timesteps=block_state.sound_timesteps,
-                sound_noisy_frame_indexes=block_state.uncond_sound_segment["sound_noisy_frame_indexes"],
-                action_tokens=[block_state.action_tokens],
-                action_token_shapes=block_state.uncond_action_segment["action_token_shapes"],
-                action_sequence_indexes=block_state.uncond_action_segment["action_sequence_indexes"],
-                action_mse_loss_indexes=block_state.uncond_action_segment["action_mse_loss_indexes"],
-                action_timesteps=block_state.action_timesteps,
-                action_noisy_frame_indexes=block_state.uncond_action_segment["action_noisy_frame_indexes"],
-                action_domain_ids=[block_state.action_domain_id],
+            prediction_passes.append("uncond")
+
+        velocities = {}
+        for pass_name in prediction_passes:
+            transformer_kwargs = {}
+            for field_name, field_value in denoiser_input_fields.items():
+                if field_name.startswith(f"{pass_name}_"):
+                    transformer_field_name = field_name.removeprefix(f"{pass_name}_")
+                    if transformer_field_name.endswith("_segment"):
+                        transformer_kwargs.update(field_value)
+                    else:
+                        transformer_kwargs[transformer_field_name] = field_value
+                elif field_name in transformer_args:
+                    transformer_kwargs[field_name] = field_value
+            transformer_kwargs.update(
+                {
+                    field_name: field_value
+                    for field_name, field_value in loop_input_fields.items()
+                    if field_name in transformer_args
+                }
             )
-            uncond_v_vision, uncond_v_sound, uncond_v_action = components._mask_velocity_predictions(
+            transformer_kwargs = {
+                name: value for name, value in transformer_kwargs.items() if name in transformer_args
+            }
+            preds_vision, preds_sound, preds_action = components.transformer(**transformer_kwargs)
+            velocities[pass_name] = components._mask_velocity_predictions(
                 preds_vision,
                 preds_sound,
-                vision_condition_mask=[block_state.vision_condition_mask],
-                sound_condition_mask=[block_state.sound_condition_mask],
+                vision_condition_mask=[loop_input_fields["vision_condition_mask"]],
+                sound_condition_mask=[loop_input_fields["sound_condition_mask"]] if has_sound else None,
                 preds_action=preds_action,
-                action_condition_mask=[block_state.action_condition_mask],
-                raw_action_dim=block_state.raw_action_dim_resolved,
+                action_condition_mask=[loop_input_fields["action_condition_mask"]] if has_action else None,
+                raw_action_dim=loop_input_fields.get("raw_action_dim_resolved"),
             )
-            block_state.velocity_vision = uncond_v_vision + block_state.guidance_scale * (
-                cond_v_vision - uncond_v_vision
+
+        cond_velocity_vision, cond_velocity_sound, cond_velocity_action = velocities["cond"]
+        if do_cfg:
+            uncond_velocity_vision, uncond_velocity_sound, uncond_velocity_action = velocities["uncond"]
+            block_state.velocity_vision = uncond_velocity_vision + block_state.guidance_scale * (
+                cond_velocity_vision - uncond_velocity_vision
             )
-            block_state.velocity_sound = uncond_v_sound + block_state.guidance_scale * (cond_v_sound - uncond_v_sound)
-            block_state.velocity_action = uncond_v_action + block_state.guidance_scale * (
-                cond_v_action - uncond_v_action
+            block_state.velocity_sound = (
+                uncond_velocity_sound + block_state.guidance_scale * (cond_velocity_sound - uncond_velocity_sound)
+                if has_sound
+                else None
+            )
+            block_state.velocity_action = (
+                uncond_velocity_action + block_state.guidance_scale * (cond_velocity_action - uncond_velocity_action)
+                if has_action
+                else None
             )
         else:
-            block_state.velocity_vision = cond_v_vision
-            block_state.velocity_sound = cond_v_sound
-            block_state.velocity_action = cond_v_action
+            block_state.velocity_vision = cond_velocity_vision
+            block_state.velocity_sound = cond_velocity_sound if has_sound else None
+            block_state.velocity_action = cond_velocity_action if has_action else None
 
         return components, block_state
 
@@ -989,7 +339,7 @@ class Cosmos3DenoiseLoopWrapper(LoopSequentialPipelineBlocks):
 class Cosmos3VisionDenoiseStep(Cosmos3DenoiseLoopWrapper):
     block_classes = [
         Cosmos3VisionLoopPrepareStep,
-        Cosmos3VisionLoopDenoiser,
+        Cosmos3LoopDenoiser,
         Cosmos3VisionLoopSchedulerStep,
     ]
     block_names = ["prepare_vision", "denoiser", "update_vision"]
@@ -1003,7 +353,7 @@ class Cosmos3VisionSoundDenoiseStep(Cosmos3DenoiseLoopWrapper):
     block_classes = [
         Cosmos3VisionLoopPrepareStep,
         Cosmos3SoundLoopPrepareStep,
-        Cosmos3VisionSoundLoopDenoiser,
+        Cosmos3LoopDenoiser,
         Cosmos3VisionLoopSchedulerStep,
         Cosmos3SoundLoopSchedulerStep,
     ]
@@ -1018,7 +368,7 @@ class Cosmos3VisionActionDenoiseStep(Cosmos3DenoiseLoopWrapper):
     block_classes = [
         Cosmos3VisionLoopPrepareStep,
         Cosmos3ActionLoopPrepareStep,
-        Cosmos3VisionActionLoopDenoiser,
+        Cosmos3LoopDenoiser,
         Cosmos3VisionLoopSchedulerStep,
         Cosmos3ActionLoopSchedulerStep,
     ]
@@ -1034,7 +384,7 @@ class Cosmos3VisionSoundActionDenoiseStep(Cosmos3DenoiseLoopWrapper):
         Cosmos3VisionLoopPrepareStep,
         Cosmos3SoundLoopPrepareStep,
         Cosmos3ActionLoopPrepareStep,
-        Cosmos3VisionSoundActionLoopDenoiser,
+        Cosmos3LoopDenoiser,
         Cosmos3VisionLoopSchedulerStep,
         Cosmos3SoundLoopSchedulerStep,
         Cosmos3ActionLoopSchedulerStep,

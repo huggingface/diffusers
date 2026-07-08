@@ -2,25 +2,23 @@ from ..modular_pipeline import AutoPipelineBlocks, ConditionalPipelineBlocks, Se
 from ..modular_pipeline_utils import InputParam, OutputParam
 from .after_decode import Cosmos3ActionOutputStep
 from .before_denoise import (
+    Cosmos3ActionDenoiseInputStep,
     Cosmos3ActionPackSequenceStep,
     Cosmos3ActionPrepareLatentsStep,
     Cosmos3PrepareTextSegmentsStep,
     Cosmos3SetTimestepsStep,
-    Cosmos3SoundActionPackSequenceStep,
+    Cosmos3SoundDenoiseInputStep,
     Cosmos3SoundPackSequenceStep,
     Cosmos3SoundPrepareLatentsStep,
+    Cosmos3VisionDenoiseInputStep,
     Cosmos3VisionPackSequenceStep,
     Cosmos3VisionPrepareLatentsStep,
 )
 from .decoders import Cosmos3SoundDecodeStep, Cosmos3VideoDecodeStep
 from .denoise import (
-    Cosmos3VisionActionDenoiseInputStep,
     Cosmos3VisionActionDenoiseStep,
-    Cosmos3VisionDenoiseInputStep,
     Cosmos3VisionDenoiseStep,
-    Cosmos3VisionSoundActionDenoiseInputStep,
     Cosmos3VisionSoundActionDenoiseStep,
-    Cosmos3VisionSoundDenoiseInputStep,
     Cosmos3VisionSoundDenoiseStep,
 )
 from .encoders import (
@@ -114,16 +112,16 @@ class Cosmos3VisionCoreDenoiseStep(SequentialPipelineBlocks):
         Cosmos3PrepareTextSegmentsStep,
         Cosmos3VisionPrepareLatentsStep,
         Cosmos3VisionPackSequenceStep,
-        Cosmos3SetTimestepsStep,
         Cosmos3VisionDenoiseInputStep,
+        Cosmos3SetTimestepsStep,
         Cosmos3VisionDenoiseStep,
     ]
     block_names = [
         "prepare_text_segments",
         "prepare_vision_latents",
         "pack_vision_sequence",
+        "prepare_vision_denoiser_inputs",
         "set_timesteps",
-        "prepare_denoiser_inputs",
         "denoise",
     ]
 
@@ -141,21 +139,23 @@ class Cosmos3VisionSoundCoreDenoiseStep(SequentialPipelineBlocks):
     block_classes = [
         Cosmos3PrepareTextSegmentsStep,
         Cosmos3VisionPrepareLatentsStep,
-        Cosmos3SoundPrepareLatentsStep,
         Cosmos3VisionPackSequenceStep,
-        Cosmos3SoundPackSequenceStep,
+        Cosmos3VisionDenoiseInputStep,
         Cosmos3SetTimestepsStep,
-        Cosmos3VisionSoundDenoiseInputStep,
+        Cosmos3SoundPrepareLatentsStep,
+        Cosmos3SoundPackSequenceStep,
+        Cosmos3SoundDenoiseInputStep,
         Cosmos3VisionSoundDenoiseStep,
     ]
     block_names = [
         "prepare_text_segments",
         "prepare_vision_latents",
-        "prepare_sound_latents",
         "pack_vision_sequence",
-        "pack_sound_sequence",
+        "prepare_vision_denoiser_inputs",
         "set_timesteps",
-        "prepare_denoiser_inputs",
+        "prepare_sound_latents",
+        "pack_sound_sequence",
+        "prepare_sound_denoiser_inputs",
         "denoise",
     ]
 
@@ -176,21 +176,23 @@ class Cosmos3VisionActionCoreDenoiseStep(SequentialPipelineBlocks):
     block_classes = [
         Cosmos3PrepareTextSegmentsStep,
         Cosmos3VisionPrepareLatentsStep,
-        Cosmos3ActionPrepareLatentsStep,
         Cosmos3VisionPackSequenceStep,
-        Cosmos3ActionPackSequenceStep,
+        Cosmos3VisionDenoiseInputStep,
         Cosmos3SetTimestepsStep,
-        Cosmos3VisionActionDenoiseInputStep,
+        Cosmos3ActionPrepareLatentsStep,
+        Cosmos3ActionPackSequenceStep,
+        Cosmos3ActionDenoiseInputStep,
         Cosmos3VisionActionDenoiseStep,
     ]
     block_names = [
         "prepare_text_segments",
         "prepare_vision_latents",
-        "prepare_action_latents",
         "pack_vision_sequence",
-        "pack_action_sequence",
+        "prepare_vision_denoiser_inputs",
         "set_timesteps",
-        "prepare_denoiser_inputs",
+        "prepare_action_latents",
+        "pack_action_sequence",
+        "prepare_action_denoiser_inputs",
         "denoise",
     ]
 
@@ -211,25 +213,29 @@ class Cosmos3VisionSoundActionCoreDenoiseStep(SequentialPipelineBlocks):
     block_classes = [
         Cosmos3PrepareTextSegmentsStep,
         Cosmos3VisionPrepareLatentsStep,
-        Cosmos3SoundPrepareLatentsStep,
-        Cosmos3ActionPrepareLatentsStep,
         Cosmos3VisionPackSequenceStep,
-        Cosmos3SoundPackSequenceStep,
-        Cosmos3SoundActionPackSequenceStep,
+        Cosmos3VisionDenoiseInputStep,
         Cosmos3SetTimestepsStep,
-        Cosmos3VisionSoundActionDenoiseInputStep,
+        Cosmos3SoundPrepareLatentsStep,
+        Cosmos3SoundPackSequenceStep,
+        Cosmos3SoundDenoiseInputStep,
+        Cosmos3ActionPrepareLatentsStep,
+        Cosmos3ActionPackSequenceStep,
+        Cosmos3ActionDenoiseInputStep,
         Cosmos3VisionSoundActionDenoiseStep,
     ]
     block_names = [
         "prepare_text_segments",
         "prepare_vision_latents",
-        "prepare_sound_latents",
-        "prepare_action_latents",
         "pack_vision_sequence",
-        "pack_sound_sequence",
-        "pack_action_sequence",
+        "prepare_vision_denoiser_inputs",
         "set_timesteps",
-        "prepare_denoiser_inputs",
+        "prepare_sound_latents",
+        "pack_sound_sequence",
+        "prepare_sound_denoiser_inputs",
+        "prepare_action_latents",
+        "pack_action_sequence",
+        "prepare_action_denoiser_inputs",
         "denoise",
     ]
 
@@ -304,12 +310,9 @@ class Cosmos3OmniBlocks(SequentialPipelineBlocks):
         - `action_inverse_dynamics`: requires `prompt`, `action`
 
       Components:
-          text_tokenizer (`AutoTokenizer`)
-          video_processor (`VideoProcessor`)
-          vae (`AutoencoderKLWan`)
-          transformer (`Cosmos3OmniTransformer`)
-          sound_tokenizer (`Cosmos3AVAEAudioTokenizer`)
-          scheduler (`UniPCMultistepScheduler`)
+          text_tokenizer (`AutoTokenizer`) video_processor (`VideoProcessor`) vae (`AutoencoderKLWan`) transformer
+          (`Cosmos3OmniTransformer`) scheduler (`UniPCMultistepScheduler`) sound_tokenizer
+          (`Cosmos3AVAEAudioTokenizer`)
 
       Inputs:
           prompt (`str`):
@@ -348,14 +351,16 @@ class Cosmos3OmniBlocks(SequentialPipelineBlocks):
               TODO: Add description.
           generator (`None`, *optional*):
               TODO: Add description.
+          num_inference_steps (`int`):
+              The number of denoising steps.
           sound_latents (`None`, *optional*):
               TODO: Add description.
           action_condition_frame_indexes (`None`, *optional*):
               TODO: Add description.
           action_latents (`None`, *optional*):
               TODO: Add description.
-          num_inference_steps (`int`):
-              The number of denoising steps.
+          **denoiser_input_fields (`None`, *optional*):
+              conditional model inputs for the denoiser: e.g. prompt_embeds, negative_prompt_embeds, etc.
           guidance_scale (`None`, *optional*, defaults to 6.0):
               TODO: Add description.
           enable_sound (`bool`, *optional*, defaults to False):

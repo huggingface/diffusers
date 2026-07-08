@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import json
 import unittest
 from types import SimpleNamespace
 
@@ -21,9 +22,10 @@ import torch
 from PIL import Image
 
 from diffusers import AutoencoderKLWan, Cosmos3AVAEAudioTokenizer, Cosmos3OmniTransformer, UniPCMultistepScheduler
+from diffusers.modular_pipelines.cosmos.denoise import Cosmos3LoopDenoiser
 from diffusers.modular_pipelines.cosmos.modular_blocks_cosmos3 import Cosmos3OmniBlocks
 from diffusers.modular_pipelines.cosmos.modular_pipeline import Cosmos3OmniModularPipeline
-from diffusers.modular_pipelines.modular_pipeline import PipelineState
+from diffusers.modular_pipelines.modular_pipeline import ModularPipeline, PipelineState
 from diffusers.pipelines.cosmos.pipeline_cosmos3_omni import Cosmos3OmniPipeline, CosmosActionCondition
 
 from ...testing_utils import enable_full_determinism
@@ -113,8 +115,8 @@ def _build_tiny_components():
         temperal_downsample=[False],
         in_channels=3,
         out_channels=3,
-        scale_factor_temporal=4,
-        scale_factor_spatial=16,
+        scale_factor_temporal=1,
+        scale_factor_spatial=2,
         latents_mean=[0.0, 0.0, 0.0, 0.0],
         latents_std=[1.0, 1.0, 1.0, 1.0],
     )
@@ -423,8 +425,8 @@ def test_cosmos3_modular_workflow_extraction():
         "denoise.prepare_text_segments",
         "denoise.prepare_vision_latents",
         "denoise.pack_vision_sequence",
+        "denoise.prepare_vision_denoiser_inputs",
         "denoise.set_timesteps",
-        "denoise.prepare_denoiser_inputs",
         "denoise.denoise",
         "decode.video",
         "after_decode",
@@ -438,8 +440,8 @@ def test_cosmos3_modular_workflow_extraction():
         "denoise.prepare_text_segments",
         "denoise.prepare_vision_latents",
         "denoise.pack_vision_sequence",
+        "denoise.prepare_vision_denoiser_inputs",
         "denoise.set_timesteps",
-        "denoise.prepare_denoiser_inputs",
         "denoise.denoise",
         "decode.video",
         "after_decode",
@@ -450,11 +452,12 @@ def test_cosmos3_modular_workflow_extraction():
         "text_encoder",
         "denoise.prepare_text_segments",
         "denoise.prepare_vision_latents",
-        "denoise.prepare_sound_latents",
         "denoise.pack_vision_sequence",
-        "denoise.pack_sound_sequence",
+        "denoise.prepare_vision_denoiser_inputs",
         "denoise.set_timesteps",
-        "denoise.prepare_denoiser_inputs",
+        "denoise.prepare_sound_latents",
+        "denoise.pack_sound_sequence",
+        "denoise.prepare_sound_denoiser_inputs",
         "denoise.denoise",
         "decode.video",
         "decode.sound",
@@ -467,11 +470,12 @@ def test_cosmos3_modular_workflow_extraction():
         "vae_encoder",
         "denoise.prepare_text_segments",
         "denoise.prepare_vision_latents",
-        "denoise.prepare_action_latents",
         "denoise.pack_vision_sequence",
-        "denoise.pack_action_sequence",
+        "denoise.prepare_vision_denoiser_inputs",
         "denoise.set_timesteps",
-        "denoise.prepare_denoiser_inputs",
+        "denoise.prepare_action_latents",
+        "denoise.pack_action_sequence",
+        "denoise.prepare_action_denoiser_inputs",
         "denoise.denoise",
         "decode.video",
         "after_decode",
@@ -483,13 +487,15 @@ def test_cosmos3_modular_workflow_extraction():
         "vae_encoder",
         "denoise.prepare_text_segments",
         "denoise.prepare_vision_latents",
-        "denoise.prepare_sound_latents",
-        "denoise.prepare_action_latents",
         "denoise.pack_vision_sequence",
-        "denoise.pack_sound_sequence",
-        "denoise.pack_action_sequence",
+        "denoise.prepare_vision_denoiser_inputs",
         "denoise.set_timesteps",
-        "denoise.prepare_denoiser_inputs",
+        "denoise.prepare_sound_latents",
+        "denoise.pack_sound_sequence",
+        "denoise.prepare_sound_denoiser_inputs",
+        "denoise.prepare_action_latents",
+        "denoise.pack_action_sequence",
+        "denoise.prepare_action_denoiser_inputs",
         "denoise.denoise",
         "decode.video",
         "decode.sound",
@@ -501,6 +507,36 @@ def test_cosmos3_modular_workflow_extraction():
 
     for core_denoise_step in pipe.blocks.sub_blocks["denoise"].sub_blocks.values():
         assert "vae_encoder" not in core_denoise_step.sub_blocks
+        assert isinstance(core_denoise_step.sub_blocks["denoise"].sub_blocks["denoiser"], Cosmos3LoopDenoiser)
+
+
+def test_cosmos3_modular_model_index_takes_precedence(tmp_path):
+    (tmp_path / "model_index.json").write_text(json.dumps({"_class_name": "Cosmos3OmniDiffusersPipeline"}))
+    (tmp_path / "modular_model_index.json").write_text(
+        json.dumps(
+            {
+                "_class_name": "Cosmos3OmniModularPipeline",
+                "_blocks_class_name": "Cosmos3OmniBlocks",
+            }
+        )
+    )
+
+    modular_pipe = ModularPipeline.from_pretrained(str(tmp_path))
+    explicit_modular_pipe = Cosmos3OmniModularPipeline.from_pretrained(str(tmp_path))
+
+    assert isinstance(modular_pipe, Cosmos3OmniModularPipeline)
+    assert isinstance(modular_pipe.blocks, Cosmos3OmniBlocks)
+    assert isinstance(explicit_modular_pipe, Cosmos3OmniModularPipeline)
+    assert isinstance(explicit_modular_pipe.blocks, Cosmos3OmniBlocks)
+
+
+def test_cosmos3_model_index_fallback_resolves_modular_pipeline(tmp_path):
+    (tmp_path / "model_index.json").write_text(json.dumps({"_class_name": "Cosmos3OmniPipeline"}))
+
+    pipe = ModularPipeline.from_pretrained(str(tmp_path))
+
+    assert isinstance(pipe, Cosmos3OmniModularPipeline)
+    assert isinstance(pipe.blocks, Cosmos3OmniBlocks)
 
 
 def test_cosmos3_modular_vae_encoder_is_standalone_and_validates_conditioning_inputs():
@@ -544,6 +580,25 @@ def test_cosmos3_modular_vae_encoder_is_standalone_and_validates_conditioning_in
         pipe(**kwargs)
 
 
+@pytest.mark.parametrize(
+    ("case_name", "prompt_name"),
+    [
+        ("text2video", "prompt"),
+        ("text2video", "negative_prompt"),
+        ("action_policy_image", "prompt"),
+        ("action_policy_image", "negative_prompt"),
+    ],
+)
+def test_cosmos3_modular_rejects_batched_prompts(case_name, prompt_name):
+    pipe = _make_modular_pipe()
+    kwargs = _build_case_kwargs(case_name)
+    kwargs.pop("enable_safety_check")
+    kwargs[prompt_name] = ["first prompt", "second prompt"]
+
+    with pytest.raises(ValueError, match="batched prompts are not supported"):
+        pipe(**kwargs)
+
+
 def test_cosmos3_modular_segments_are_assembled_in_denoise():
     pipe = _make_modular_pipe()
     kwargs = _build_case_kwargs("action_forward_video_bridge_sound")
@@ -577,6 +632,9 @@ def test_cosmos3_modular_segments_are_assembled_in_denoise():
 
     torch.testing.assert_close(state.get("cond_position_ids"), expected_cond_position_ids)
     assert state.get("cond_sequence_length") == expected_cond_sequence_length
+    assert cond_action_segment["action_sequence_indexes"][0].item() == (
+        cond_text_segment["und_len"] + cond_vision_segment["num_vision_tokens"] + cond_sound_segment["sound_len"]
+    )
 
     action_sound_core = pipe.blocks.sub_blocks["denoise"].sub_blocks["vision_sound_action"]
     action_sound_loop = action_sound_core.sub_blocks["denoise"]

@@ -29,13 +29,14 @@ class Cosmos3TextEncoderStep(ModularPipelineBlocks):
         prompt = block_state.prompt
         negative_prompt = block_state.negative_prompt
 
-        if not isinstance(prompt, (str, list)) or (
-            isinstance(prompt, list) and not all(isinstance(p, str) for p in prompt)
-        ):
-            raise ValueError(f"`prompt` must be a str or list of str, got {type(prompt).__name__}.")
-        if negative_prompt is not None and not isinstance(negative_prompt, (str, list)):
+        if not isinstance(prompt, str):
             raise ValueError(
-                f"`negative_prompt` must be a str, list of str, or None, got {type(negative_prompt).__name__}."
+                f"`prompt` must be a str; batched prompts are not supported, got {type(prompt).__name__}."
+            )
+        if negative_prompt is not None and not isinstance(negative_prompt, str):
+            raise ValueError(
+                "`negative_prompt` must be a str or None; batched prompts are not supported, "
+                f"got {type(negative_prompt).__name__}."
             )
 
     @property
@@ -79,11 +80,6 @@ class Cosmos3TextEncoderStep(ModularPipelineBlocks):
             block_state.width = 1280
 
         self._check_inputs(block_state)
-        if isinstance(block_state.prompt, list):
-            block_state.prompt = block_state.prompt[0]
-        if isinstance(block_state.negative_prompt, list):
-            block_state.negative_prompt = block_state.negative_prompt[0]
-
         if components.requires_safety_checker:
             if getattr(components, "safety_checker", None) is None:
                 raise ValueError(
@@ -134,13 +130,14 @@ class Cosmos3ActionTextStep(ModularPipelineBlocks):
         num_frames = block_state.num_frames
         height = block_state.height
         width = block_state.width
-        if not isinstance(prompt, (str, list)) or (
-            isinstance(prompt, list) and not all(isinstance(p, str) for p in prompt)
-        ):
-            raise ValueError(f"`prompt` must be a str or list of str, got {type(prompt).__name__}.")
-        if negative_prompt is not None and not isinstance(negative_prompt, (str, list)):
+        if not isinstance(prompt, str):
             raise ValueError(
-                f"`negative_prompt` must be a str, list of str, or None, got {type(negative_prompt).__name__}."
+                f"`prompt` must be a str; batched prompts are not supported, got {type(prompt).__name__}."
+            )
+        if negative_prompt is not None and not isinstance(negative_prompt, str):
+            raise ValueError(
+                "`negative_prompt` must be a str or None; batched prompts are not supported, "
+                f"got {type(negative_prompt).__name__}."
             )
         if action is None:
             raise ValueError("`action` is required for Cosmos3ActionTextStep.")
@@ -204,11 +201,6 @@ class Cosmos3ActionTextStep(ModularPipelineBlocks):
         block_state.height, block_state.width = VideoProcessor.classify_height_width_bin(
             source_h, source_w, ratios=_ACTION_RESOLUTION_BINS[resolution_key]
         )
-
-        if isinstance(block_state.prompt, list):
-            block_state.prompt = block_state.prompt[0]
-        if isinstance(block_state.negative_prompt, list):
-            block_state.negative_prompt = block_state.negative_prompt[0]
 
         if components.requires_safety_checker:
             if getattr(components, "safety_checker", None) is None:

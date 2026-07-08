@@ -1866,19 +1866,15 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
         if modular_config_dict is not None:
             pipeline_class = _get_pipeline_class(cls, config=modular_config_dict)
         elif config_dict is not None:
-            if cls is not ModularPipeline:
-                # Keep explicit modular subclasses on their own class when loading from model_index.json.
-                pipeline_class = cls
-            else:
-                from diffusers.pipelines.auto_pipeline import _get_model
+            from diffusers.pipelines.auto_pipeline import _get_model
 
-                logger.debug(" try to determine the modular pipeline class from model_index.json")
-                standard_pipeline_class = _get_pipeline_class(cls, config=config_dict)
-                model_name = _get_model(standard_pipeline_class.__name__)
-                map_fn = MODULAR_PIPELINE_MAPPING.get(model_name, _create_default_map_fn("ModularPipeline"))
-                pipeline_class_name = map_fn(config_dict)
-                diffusers_module = importlib.import_module("diffusers")
-                pipeline_class = getattr(diffusers_module, pipeline_class_name)
+            logger.debug(" try to determine the modular pipeline class from model_index.json")
+            standard_pipeline_class = _get_pipeline_class(cls, config=config_dict)
+            model_name = _get_model(standard_pipeline_class.__name__)
+            map_fn = MODULAR_PIPELINE_MAPPING.get(model_name, _create_default_map_fn("ModularPipeline"))
+            pipeline_class_name = map_fn(config_dict)
+            diffusers_module = importlib.import_module("diffusers")
+            pipeline_class = getattr(diffusers_module, pipeline_class_name)
         else:
             # there is no config for modular pipeline, assuming that the pipeline block does not need any from_pretrained components
             pipeline_class = cls

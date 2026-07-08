@@ -2,7 +2,6 @@ import copy
 
 import torch
 
-from ...models.autoencoders.autoencoder_cosmos3_audio import Cosmos3AVAEAudioTokenizer
 from ...models.autoencoders.autoencoder_kl_wan import AutoencoderKLWan
 from ...models.transformers.transformer_cosmos3 import Cosmos3OmniTransformer
 from ...pipelines.cosmos.pipeline_cosmos3_omni import _EMBODIMENT_TO_DOMAIN_ID
@@ -34,8 +33,8 @@ class Cosmos3PrepareTextSegmentsStep(ModularPipelineBlocks):
     @property
     def intermediate_outputs(self) -> list[OutputParam]:
         return [
-            OutputParam("cond_text_segment"),
-            OutputParam("uncond_text_segment"),
+            OutputParam("cond_text_segment", kwargs_type="denoiser_input_fields"),
+            OutputParam("uncond_text_segment", kwargs_type="denoiser_input_fields"),
         ]
 
     @torch.no_grad()
@@ -57,10 +56,7 @@ class Cosmos3VisionPrepareLatentsStep(ModularPipelineBlocks):
 
     @property
     def expected_components(self) -> list[ComponentSpec]:
-        return [
-            ComponentSpec("transformer", Cosmos3OmniTransformer),
-            ComponentSpec("vae", AutoencoderKLWan),
-        ]
+        return [ComponentSpec("transformer", Cosmos3OmniTransformer)]
 
     @property
     def inputs(self) -> list[InputParam]:
@@ -80,7 +76,7 @@ class Cosmos3VisionPrepareLatentsStep(ModularPipelineBlocks):
         return [
             OutputParam("latents"),
             OutputParam("fps_vision"),
-            OutputParam("vision_condition_mask"),
+            OutputParam("vision_condition_mask", kwargs_type="denoiser_input_fields"),
             OutputParam("vision_condition_indexes_for_pack"),
         ]
 
@@ -94,21 +90,19 @@ class Cosmos3VisionPrepareLatentsStep(ModularPipelineBlocks):
         if x0_tokens_vision is None:
             if block_state.num_frames < 1:
                 raise ValueError(f"num_frames must be >= 1, got {block_state.num_frames}.")
-            sf_spatial = int(components.vae.config.scale_factor_spatial)
+            sf_spatial = components.vae_scale_factor_spatial
             if block_state.height % sf_spatial != 0 or block_state.width % sf_spatial != 0:
                 raise ValueError(
                     f"height and width must be multiples of {sf_spatial}, got ({block_state.height}, {block_state.width})."
                 )
-            vision_tensor = torch.zeros(
+            latent_shape = (
                 1,
-                3,
-                block_state.num_frames,
-                block_state.height,
-                block_state.width,
-                device=device,
-                dtype=dtype,
+                components.num_channels_latents,
+                (block_state.num_frames - 1) // components.vae_scale_factor_temporal + 1,
+                block_state.height // sf_spatial,
+                block_state.width // sf_spatial,
             )
-            x0_tokens_vision = components._encode_video(vision_tensor).contiguous().float()
+            x0_tokens_vision = torch.zeros(latent_shape, device=device, dtype=torch.float32)
         else:
             x0_tokens_vision = x0_tokens_vision.to(device=device, dtype=torch.float32)
 
@@ -150,7 +144,7 @@ class Cosmos3SoundPrepareLatentsStep(ModularPipelineBlocks):
     def expected_components(self) -> list[ComponentSpec]:
         return [
             ComponentSpec("transformer", Cosmos3OmniTransformer),
-            ComponentSpec("sound_tokenizer", Cosmos3AVAEAudioTokenizer),
+            ComponentSpec("scheduler", UniPCMultistepScheduler),
         ]
 
     @property
@@ -167,7 +161,8 @@ class Cosmos3SoundPrepareLatentsStep(ModularPipelineBlocks):
         return [
             OutputParam("sound_latents"),
             OutputParam("fps_sound"),
-            OutputParam("sound_condition_mask"),
+            OutputParam("sound_condition_mask", kwargs_type="denoiser_input_fields"),
+            OutputParam("sound_scheduler"),
         ]
 
     @torch.no_grad()
@@ -176,17 +171,13 @@ class Cosmos3SoundPrepareLatentsStep(ModularPipelineBlocks):
         device = components._execution_device
         dtype = components.transformer.dtype
 
-        if components.sound_tokenizer is None:
-            raise ValueError("Sound generation requires a sound-capable checkpoint with a sound_tokenizer.")
         if not components.transformer.config.sound_gen:
             raise ValueError("Sound generation requires a transformer trained with sound_gen=True.")
 
         sound_dim = components.transformer.config.sound_dim
         block_state.fps_sound = float(components.transformer.config.sound_latent_fps)
-        n_audio_samples = int(
-            block_state.num_frames / block_state.fps * components.sound_tokenizer.config.sampling_rate
-        )
-        hop_size = components.sound_tokenizer._hop_size
+        n_audio_samples = int(block_state.num_frames / block_state.fps * components.sound_sampling_rate)
+        hop_size = components.sound_hop_size
         t_sound = (n_audio_samples + hop_size - 1) // hop_size
         x0_tokens_sound = torch.zeros(sound_dim, t_sound, device=device, dtype=dtype)
         block_state.sound_condition_mask = torch.zeros((x0_tokens_sound.shape[1], 1), device=device, dtype=dtype)
@@ -202,6 +193,8 @@ class Cosmos3SoundPrepareLatentsStep(ModularPipelineBlocks):
         else:
             block_state.sound_latents = block_state.sound_latents.to(device=device, dtype=dtype)
 
+        block_state.sound_scheduler = copy.deepcopy(components.scheduler)
+
         self.set_block_state(state, block_state)
         return components, state
 
@@ -215,7 +208,10 @@ class Cosmos3ActionPrepareLatentsStep(ModularPipelineBlocks):
 
     @property
     def expected_components(self) -> list[ComponentSpec]:
-        return [ComponentSpec("transformer", Cosmos3OmniTransformer)]
+        return [
+            ComponentSpec("transformer", Cosmos3OmniTransformer),
+            ComponentSpec("scheduler", UniPCMultistepScheduler),
+        ]
 
     @property
     def inputs(self) -> list[InputParam]:
@@ -230,9 +226,10 @@ class Cosmos3ActionPrepareLatentsStep(ModularPipelineBlocks):
     def intermediate_outputs(self) -> list[OutputParam]:
         return [
             OutputParam("action_latents"),
-            OutputParam("action_condition_mask"),
-            OutputParam("action_domain_id"),
-            OutputParam("raw_action_dim_resolved"),
+            OutputParam("action_condition_mask", kwargs_type="denoiser_input_fields"),
+            OutputParam("action_domain_ids", kwargs_type="denoiser_input_fields"),
+            OutputParam("raw_action_dim_resolved", kwargs_type="denoiser_input_fields"),
+            OutputParam("action_scheduler"),
         ]
 
     @torch.no_grad()
@@ -288,9 +285,9 @@ class Cosmos3ActionPrepareLatentsStep(ModularPipelineBlocks):
             raise ValueError(
                 f"Unknown Cosmos3 action domain_name={action.domain_name!r}; expected one of {sorted(_EMBODIMENT_TO_DOMAIN_ID)}."
             )
-        block_state.action_domain_id = torch.tensor(
-            [_EMBODIMENT_TO_DOMAIN_ID[action.domain_name]], dtype=torch.long, device=device
-        )
+        block_state.action_domain_ids = [
+            torch.tensor([_EMBODIMENT_TO_DOMAIN_ID[action.domain_name]], dtype=torch.long, device=device)
+        ]
         condition_frames = block_state.action_condition_frame_indexes or []
         block_state.action_condition_mask = torch.zeros((x0_tokens_action.shape[0], 1), device=device, dtype=dtype)
         for frame_idx in condition_frames:
@@ -310,6 +307,8 @@ class Cosmos3ActionPrepareLatentsStep(ModularPipelineBlocks):
         else:
             block_state.action_latents = block_state.action_latents.to(device=device, dtype=dtype)
 
+        block_state.action_scheduler = copy.deepcopy(components.scheduler)
+
         self.set_block_state(state, block_state)
         return components, state
 
@@ -320,6 +319,13 @@ class Cosmos3VisionPackSequenceStep(ModularPipelineBlocks):
     @property
     def description(self) -> str:
         return "Builds separate cond/uncond vision sequence segments."
+
+    @property
+    def expected_components(self) -> list[ComponentSpec]:
+        return [
+            ComponentSpec("transformer", Cosmos3OmniTransformer),
+            ComponentSpec("vae", AutoencoderKLWan),
+        ]
 
     @property
     def inputs(self) -> list[InputParam]:
@@ -334,8 +340,8 @@ class Cosmos3VisionPackSequenceStep(ModularPipelineBlocks):
     @property
     def intermediate_outputs(self) -> list[OutputParam]:
         return [
-            OutputParam("cond_vision_segment"),
-            OutputParam("uncond_vision_segment"),
+            OutputParam("cond_vision_segment", kwargs_type="denoiser_input_fields"),
+            OutputParam("uncond_vision_segment", kwargs_type="denoiser_input_fields"),
         ]
 
     @torch.no_grad()
@@ -375,12 +381,16 @@ class Cosmos3SoundPackSequenceStep(ModularPipelineBlocks):
         return "Builds separate cond/uncond sound sequence segments."
 
     @property
+    def expected_components(self) -> list[ComponentSpec]:
+        return [ComponentSpec("transformer", Cosmos3OmniTransformer)]
+
+    @property
     def inputs(self) -> list[InputParam]:
         return [
             InputParam(name="cond_text_segment", required=True),
             InputParam(name="uncond_text_segment", required=True),
-            InputParam(name="cond_vision_segment", required=True),
-            InputParam(name="uncond_vision_segment", required=True),
+            InputParam(name="cond_sequence_length", required=True),
+            InputParam(name="uncond_sequence_length", required=True),
             InputParam(name="sound_latents", required=True),
             InputParam(name="fps_sound", required=True),
         ]
@@ -388,8 +398,8 @@ class Cosmos3SoundPackSequenceStep(ModularPipelineBlocks):
     @property
     def intermediate_outputs(self) -> list[OutputParam]:
         return [
-            OutputParam("cond_sound_segment"),
-            OutputParam("uncond_sound_segment"),
+            OutputParam("cond_sound_segment", kwargs_type="denoiser_input_fields"),
+            OutputParam("uncond_sound_segment", kwargs_type="denoiser_input_fields"),
         ]
 
     @torch.no_grad()
@@ -401,14 +411,14 @@ class Cosmos3SoundPackSequenceStep(ModularPipelineBlocks):
             input_sound_tokens=block_state.sound_latents,
             mrope_offset=block_state.cond_text_segment["vision_start_temporal_offset"],
             sound_fps=block_state.fps_sound,
-            curr=block_state.cond_text_segment["und_len"] + block_state.cond_vision_segment["num_vision_tokens"],
+            curr=block_state.cond_sequence_length,
             device=device,
         )
         block_state.uncond_sound_segment = components._prepare_sound_segment(
             input_sound_tokens=block_state.sound_latents,
             mrope_offset=block_state.uncond_text_segment["vision_start_temporal_offset"],
             sound_fps=block_state.fps_sound,
-            curr=block_state.uncond_text_segment["und_len"] + block_state.uncond_vision_segment["num_vision_tokens"],
+            curr=block_state.uncond_sequence_length,
             device=device,
         )
 
@@ -424,12 +434,19 @@ class Cosmos3ActionPackSequenceStep(ModularPipelineBlocks):
         return "Builds separate cond/uncond action sequence segments."
 
     @property
+    def expected_components(self) -> list[ComponentSpec]:
+        return [
+            ComponentSpec("transformer", Cosmos3OmniTransformer),
+            ComponentSpec("vae", AutoencoderKLWan),
+        ]
+
+    @property
     def inputs(self) -> list[InputParam]:
         return [
             InputParam(name="cond_text_segment", required=True),
             InputParam(name="uncond_text_segment", required=True),
-            InputParam(name="cond_vision_segment", required=True),
-            InputParam(name="uncond_vision_segment", required=True),
+            InputParam(name="cond_sequence_length", required=True),
+            InputParam(name="uncond_sequence_length", required=True),
             InputParam(name="action_latents", required=True),
             InputParam(name="action_condition_frame_indexes", default=None),
             InputParam(name="fps_vision", required=True),
@@ -438,8 +455,8 @@ class Cosmos3ActionPackSequenceStep(ModularPipelineBlocks):
     @property
     def intermediate_outputs(self) -> list[OutputParam]:
         return [
-            OutputParam("cond_action_segment"),
-            OutputParam("uncond_action_segment"),
+            OutputParam("cond_action_segment", kwargs_type="denoiser_input_fields"),
+            OutputParam("uncond_action_segment", kwargs_type="denoiser_input_fields"),
         ]
 
     @torch.no_grad()
@@ -452,7 +469,7 @@ class Cosmos3ActionPackSequenceStep(ModularPipelineBlocks):
             condition_frame_indexes=block_state.action_condition_frame_indexes,
             mrope_offset=block_state.cond_text_segment["vision_start_temporal_offset"],
             action_fps=block_state.fps_vision,
-            curr=block_state.cond_text_segment["und_len"] + block_state.cond_vision_segment["num_vision_tokens"],
+            curr=block_state.cond_sequence_length,
             device=device,
         )
         block_state.uncond_action_segment = components._prepare_action_segment(
@@ -460,7 +477,7 @@ class Cosmos3ActionPackSequenceStep(ModularPipelineBlocks):
             condition_frame_indexes=block_state.action_condition_frame_indexes,
             mrope_offset=block_state.uncond_text_segment["vision_start_temporal_offset"],
             action_fps=block_state.fps_vision,
-            curr=block_state.uncond_text_segment["und_len"] + block_state.uncond_vision_segment["num_vision_tokens"],
+            curr=block_state.uncond_sequence_length,
             device=device,
         )
 
@@ -468,12 +485,12 @@ class Cosmos3ActionPackSequenceStep(ModularPipelineBlocks):
         return components, state
 
 
-class Cosmos3SoundActionPackSequenceStep(ModularPipelineBlocks):
+class Cosmos3VisionDenoiseInputStep(ModularPipelineBlocks):
     model_name = "cosmos3-omni"
 
     @property
     def description(self) -> str:
-        return "Builds separate cond/uncond action sequence segments after sound segments."
+        return "Assembles text and vision sequence metadata for the denoising loop."
 
     @property
     def inputs(self) -> list[InputParam]:
@@ -482,46 +499,124 @@ class Cosmos3SoundActionPackSequenceStep(ModularPipelineBlocks):
             InputParam(name="uncond_text_segment", required=True),
             InputParam(name="cond_vision_segment", required=True),
             InputParam(name="uncond_vision_segment", required=True),
-            InputParam(name="cond_sound_segment", required=True),
-            InputParam(name="uncond_sound_segment", required=True),
-            InputParam(name="action_latents", required=True),
-            InputParam(name="action_condition_frame_indexes", default=None),
-            InputParam(name="fps_vision", required=True),
         ]
 
     @property
     def intermediate_outputs(self) -> list[OutputParam]:
         return [
-            OutputParam("cond_action_segment"),
-            OutputParam("uncond_action_segment"),
+            OutputParam("cond_position_ids", kwargs_type="denoiser_input_fields"),
+            OutputParam("uncond_position_ids", kwargs_type="denoiser_input_fields"),
+            OutputParam("cond_sequence_length", kwargs_type="denoiser_input_fields"),
+            OutputParam("uncond_sequence_length", kwargs_type="denoiser_input_fields"),
         ]
 
     @torch.no_grad()
     def __call__(self, components: Cosmos3OmniModularPipeline, state: PipelineState) -> PipelineState:
         block_state = self.get_block_state(state)
-        device = components._execution_device
-
-        block_state.cond_action_segment = components._prepare_action_segment(
-            input_action_tokens=block_state.action_latents,
-            condition_frame_indexes=block_state.action_condition_frame_indexes,
-            mrope_offset=block_state.cond_text_segment["vision_start_temporal_offset"],
-            action_fps=block_state.fps_vision,
-            curr=block_state.cond_text_segment["und_len"]
-            + block_state.cond_vision_segment["num_vision_tokens"]
-            + block_state.cond_sound_segment["sound_len"],
-            device=device,
+        block_state.cond_position_ids = torch.cat(
+            [
+                block_state.cond_text_segment["text_mrope_ids"],
+                block_state.cond_vision_segment["vision_mrope_ids"],
+            ],
+            dim=1,
         )
-        block_state.uncond_action_segment = components._prepare_action_segment(
-            input_action_tokens=block_state.action_latents,
-            condition_frame_indexes=block_state.action_condition_frame_indexes,
-            mrope_offset=block_state.uncond_text_segment["vision_start_temporal_offset"],
-            action_fps=block_state.fps_vision,
-            curr=block_state.uncond_text_segment["und_len"]
-            + block_state.uncond_vision_segment["num_vision_tokens"]
-            + block_state.uncond_sound_segment["sound_len"],
-            device=device,
+        block_state.uncond_position_ids = torch.cat(
+            [
+                block_state.uncond_text_segment["text_mrope_ids"],
+                block_state.uncond_vision_segment["vision_mrope_ids"],
+            ],
+            dim=1,
         )
+        block_state.cond_sequence_length = (
+            block_state.cond_text_segment["und_len"] + block_state.cond_vision_segment["num_vision_tokens"]
+        )
+        block_state.uncond_sequence_length = (
+            block_state.uncond_text_segment["und_len"] + block_state.uncond_vision_segment["num_vision_tokens"]
+        )
+        self.set_block_state(state, block_state)
+        return components, state
 
+
+class Cosmos3SoundDenoiseInputStep(ModularPipelineBlocks):
+    model_name = "cosmos3-omni"
+
+    @property
+    def description(self) -> str:
+        return "Appends sound sequence metadata to the denoising-loop inputs."
+
+    @property
+    def inputs(self) -> list[InputParam]:
+        return [
+            InputParam(name="cond_position_ids", required=True),
+            InputParam(name="uncond_position_ids", required=True),
+            InputParam(name="cond_sequence_length", required=True),
+            InputParam(name="uncond_sequence_length", required=True),
+            InputParam(name="cond_sound_segment", required=True),
+            InputParam(name="uncond_sound_segment", required=True),
+        ]
+
+    @property
+    def intermediate_outputs(self) -> list[OutputParam]:
+        return [
+            OutputParam("cond_position_ids", kwargs_type="denoiser_input_fields"),
+            OutputParam("uncond_position_ids", kwargs_type="denoiser_input_fields"),
+            OutputParam("cond_sequence_length", kwargs_type="denoiser_input_fields"),
+            OutputParam("uncond_sequence_length", kwargs_type="denoiser_input_fields"),
+        ]
+
+    @torch.no_grad()
+    def __call__(self, components: Cosmos3OmniModularPipeline, state: PipelineState) -> PipelineState:
+        block_state = self.get_block_state(state)
+        block_state.cond_position_ids = torch.cat(
+            [block_state.cond_position_ids, block_state.cond_sound_segment["sound_mrope_ids"]], dim=1
+        )
+        block_state.uncond_position_ids = torch.cat(
+            [block_state.uncond_position_ids, block_state.uncond_sound_segment["sound_mrope_ids"]], dim=1
+        )
+        block_state.cond_sequence_length += block_state.cond_sound_segment["sound_len"]
+        block_state.uncond_sequence_length += block_state.uncond_sound_segment["sound_len"]
+        self.set_block_state(state, block_state)
+        return components, state
+
+
+class Cosmos3ActionDenoiseInputStep(ModularPipelineBlocks):
+    model_name = "cosmos3-omni"
+
+    @property
+    def description(self) -> str:
+        return "Appends action sequence metadata to the denoising-loop inputs."
+
+    @property
+    def inputs(self) -> list[InputParam]:
+        return [
+            InputParam(name="cond_position_ids", required=True),
+            InputParam(name="uncond_position_ids", required=True),
+            InputParam(name="cond_sequence_length", required=True),
+            InputParam(name="uncond_sequence_length", required=True),
+            InputParam(name="cond_action_segment", required=True),
+            InputParam(name="uncond_action_segment", required=True),
+        ]
+
+    @property
+    def intermediate_outputs(self) -> list[OutputParam]:
+        return [
+            OutputParam("cond_position_ids", kwargs_type="denoiser_input_fields"),
+            OutputParam("uncond_position_ids", kwargs_type="denoiser_input_fields"),
+            OutputParam("cond_sequence_length", kwargs_type="denoiser_input_fields"),
+            OutputParam("uncond_sequence_length", kwargs_type="denoiser_input_fields"),
+        ]
+
+    @torch.no_grad()
+    def __call__(self, components: Cosmos3OmniModularPipeline, state: PipelineState) -> PipelineState:
+        block_state = self.get_block_state(state)
+        block_state.cond_position_ids = torch.cat(
+            [block_state.cond_position_ids, block_state.cond_action_segment["action_mrope_ids"]], dim=1
+        )
+        block_state.uncond_position_ids = torch.cat(
+            [block_state.uncond_position_ids, block_state.uncond_action_segment["action_mrope_ids"]], dim=1
+        )
+        block_state.cond_sequence_length += block_state.cond_action_segment["action_len"]
+        block_state.uncond_sequence_length += block_state.uncond_action_segment["action_len"]
         self.set_block_state(state, block_state)
         return components, state
 
@@ -531,7 +626,7 @@ class Cosmos3SetTimestepsStep(ModularPipelineBlocks):
 
     @property
     def description(self) -> str:
-        return "Initializes scheduler timesteps and modality schedulers."
+        return "Initializes scheduler timesteps."
 
     @property
     def expected_components(self) -> list[ComponentSpec]:
@@ -541,16 +636,12 @@ class Cosmos3SetTimestepsStep(ModularPipelineBlocks):
     def inputs(self) -> list[InputParam]:
         return [
             InputParam.template("num_inference_steps", required=True),
-            InputParam(name="sound_latents", default=None),
-            InputParam(name="action_latents", default=None),
         ]
 
     @property
     def intermediate_outputs(self) -> list[OutputParam]:
         return [
             OutputParam("timesteps"),
-            OutputParam("sound_scheduler"),
-            OutputParam("action_scheduler"),
             OutputParam("num_warmup_steps"),
         ]
 
@@ -560,12 +651,6 @@ class Cosmos3SetTimestepsStep(ModularPipelineBlocks):
         device = components._execution_device
         components.scheduler.set_timesteps(block_state.num_inference_steps, device=device)
         block_state.timesteps = components.scheduler.timesteps
-        block_state.sound_scheduler = (
-            copy.deepcopy(components.scheduler) if block_state.sound_latents is not None else None
-        )
-        block_state.action_scheduler = (
-            copy.deepcopy(components.scheduler) if block_state.action_latents is not None else None
-        )
         block_state.num_warmup_steps = (
             len(block_state.timesteps) - block_state.num_inference_steps * components.scheduler.order
         )

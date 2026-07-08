@@ -101,6 +101,8 @@ class Cosmos3SoundDecodeStep(ModularPipelineBlocks):
     @torch.no_grad()
     def __call__(self, components: Cosmos3OmniModularPipeline, state: PipelineState) -> PipelineState:
         block_state = self.get_block_state(state)
+        if components.sound_tokenizer is None:
+            raise ValueError("Sound decoding requires a sound-capable checkpoint with a sound_tokenizer.")
         block_state.sound = components.decode_sound(block_state.sound_latents)
         block_state.sampling_rate = int(components.sound_tokenizer.config.sampling_rate)
         self.set_block_state(state, block_state)
