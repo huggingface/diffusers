@@ -579,3 +579,10 @@ class Cosmos3ModularParitySmokeTests(unittest.TestCase):
 
         torch.testing.assert_close(task_video, modular_video, atol=0.0, rtol=0.0)
         torch.testing.assert_close(task_sound, modular_sound, atol=0.0, rtol=0.0)
+
+        video_only_pipe = _make_modular_pipe()
+        video_only_kwargs = dict(modular_kwargs)
+        video_only_kwargs["generator"] = torch.Generator(device="cpu").manual_seed(7)
+        video_only = video_only_pipe(**video_only_kwargs, output="videos")
+
+        torch.testing.assert_close(task_video, video_only, atol=0.0, rtol=0.0)

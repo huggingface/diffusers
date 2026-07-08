@@ -751,15 +751,17 @@ pipe = Cosmos3OmniModularPipeline.from_pretrained(
 )
 pipe.load_components(torch_dtype=torch.bfloat16)
 
-result = pipe(
+videos = pipe(
     prompt='{"scene":"A robot arm in a kitchen"}',
     num_frames=1,
     height=720,
     width=1280,
+    output="videos",
 )
 
-# Same return payload as the task pipeline.
-image = result.video[0]
+# Modular pipelines expose declared outputs directly instead of using the task pipeline's
+# `return_dict`/`Cosmos3OmniPipelineOutput` API.
+image = videos[0]
 ```
 
 You can also load through [`ModularPipeline`] and let the repository config select the blocks class:
@@ -770,7 +772,9 @@ from diffusers import ModularPipeline
 
 pipe = ModularPipeline.from_pretrained("nvidia/Cosmos3-Nano", torch_dtype=torch.bfloat16)
 pipe.load_components(torch_dtype=torch.bfloat16)
-result = pipe(prompt='{"scene":"A robot arm in a kitchen"}', num_frames=1, height=720, width=1280)
+videos = pipe(
+    prompt='{"scene":"A robot arm in a kitchen"}', num_frames=1, height=720, width=1280, output="videos"
+)
 ```
 
 To inspect or customize a specific Cosmos modular workflow, use `available_workflows` + `get_workflow()`:
@@ -801,7 +805,7 @@ pipe.scheduler = UniPCMultistepScheduler.from_config(
 # text2video
 json_prompt = json.load(open("assets/example_t2v_prompt.json"))
 negative_prompt = json.load(open("assets/negative_prompt.json"))
-result = pipe(
+videos = pipe(
     prompt=json.dumps(json_prompt),
     negative_prompt=json.dumps(negative_prompt),
     num_frames=189,
@@ -810,19 +814,20 @@ result = pipe(
     num_inference_steps=35,
     guidance_scale=6.0,
     fps=24.0,
+    output="videos",
 )
-export_to_video(result.video, "cosmos3_modular_t2v.mp4", fps=24, macro_block_size=1)
+export_to_video(videos, "cosmos3_modular_t2v.mp4", fps=24, macro_block_size=1)
 
 # text2image
 json_prompt = json.load(open("assets/example_t2i_prompt.json"))
-result = pipe(prompt=json.dumps(json_prompt), num_frames=1, height=720, width=1280)
-result.video[0].save("cosmos3_modular_t2i.jpg", format="JPEG", quality=85)
+videos = pipe(prompt=json.dumps(json_prompt), num_frames=1, height=720, width=1280, output="videos")
+videos[0].save("cosmos3_modular_t2i.jpg", format="JPEG", quality=85)
 
 # image2video
 json_prompt = json.load(open("assets/example_i2v_prompt.json"))
 negative_prompt = json.load(open("assets/negative_prompt_i2v.json"))
 image = load_image("https://github.com/nvidia-cosmos/cosmos-dependencies/releases/download/assets/robot_153.jpg")
-result = pipe(
+videos = pipe(
     prompt=json.dumps(json_prompt),
     negative_prompt=json.dumps(negative_prompt),
     image=image,
@@ -830,8 +835,9 @@ result = pipe(
     height=720,
     width=1280,
     fps=24.0,
+    output="videos",
 )
-export_to_video(result.video, "cosmos3_modular_i2v.mp4", fps=24, macro_block_size=1)
+export_to_video(videos, "cosmos3_modular_i2v.mp4", fps=24, macro_block_size=1)
 
 # video2video
 json_prompt = json.load(open("assets/example_v2v_prompt.json"))
@@ -839,7 +845,7 @@ negative_prompt = json.load(open("assets/negative_prompt_i2v.json"))
 video = load_video(
     "https://github.com/nvidia-cosmos/cosmos-dependencies/raw/refs/heads/assets/cosmos3/inputs/vision/robot_pouring.mp4"
 )
-result = pipe(
+videos = pipe(
     prompt=json.dumps(json_prompt),
     negative_prompt=json.dumps(negative_prompt),
     video=video,
@@ -851,11 +857,12 @@ result = pipe(
     num_inference_steps=35,
     guidance_scale=6.0,
     fps=24.0,
+    output="videos",
 )
-export_to_video(result.video, "cosmos3_modular_v2v.mp4", fps=24, macro_block_size=1)
+export_to_video(videos, "cosmos3_modular_v2v.mp4", fps=24, macro_block_size=1)
 
 # video2video_sound
-result = pipe(
+outputs = pipe(
     prompt=json.dumps(json_prompt),
     negative_prompt=json.dumps(negative_prompt),
     video=video,
@@ -866,19 +873,20 @@ result = pipe(
     width=1280,
     fps=24.0,
     enable_sound=True,
+    output=["videos", "sound", "sampling_rate"],
 )
 encode_video(
-    result.video,
+    outputs["videos"],
     fps=24,
-    audio=result.sound,
-    audio_sample_rate=pipe.sound_tokenizer.config.sampling_rate,
+    audio=outputs["sound"],
+    audio_sample_rate=outputs["sampling_rate"],
     output_path="cosmos3_modular_v2v_with_sound.mp4",
 )
 
 # text2video_sound
 json_prompt = json.load(open("assets/example_t2v_sound_prompt.json"))
 negative_prompt = json.load(open("assets/negative_prompt.json"))
-result = pipe(
+outputs = pipe(
     prompt=json.dumps(json_prompt),
     negative_prompt=json.dumps(negative_prompt),
     num_frames=189,
@@ -886,12 +894,13 @@ result = pipe(
     width=1280,
     fps=24.0,
     enable_sound=True,
+    output=["videos", "sound", "sampling_rate"],
 )
 encode_video(
-    result.video,
+    outputs["videos"],
     fps=24,
-    audio=result.sound,
-    audio_sample_rate=pipe.sound_tokenizer.config.sampling_rate,
+    audio=outputs["sound"],
+    audio_sample_rate=outputs["sampling_rate"],
     output_path="cosmos3_modular_t2v_with_sound.mp4",
 )
 
@@ -900,7 +909,7 @@ prompt = "Put the pot to the left of the purple item."
 action_video = load_video(
     "https://github.com/nvidia-cosmos/cosmos-dependencies/raw/refs/heads/assets/cosmos3/inputs/action/bridge_20260501_0.mp4"
 )
-result = pipe(
+outputs = pipe(
     prompt=prompt,
     action=CosmosActionCondition(
         mode="policy",
@@ -914,11 +923,12 @@ result = pipe(
     num_inference_steps=30,
     guidance_scale=1.0,
     use_system_prompt=False,
+    output=["videos", "action"],
 )
-export_to_video(result.video, "cosmos3_modular_action_policy.mp4", fps=5, macro_block_size=1)
-if result.action is not None:
+export_to_video(outputs["videos"], "cosmos3_modular_action_policy.mp4", fps=5, macro_block_size=1)
+if outputs["action"] is not None:
     with open("cosmos3_modular_action_policy.json", "w") as f:
-        json.dump(result.action[0].tolist(), f)
+        json.dump(outputs["action"][0].tolist(), f)
 ```
 
 [[autodoc]] Cosmos3OmniModularPipeline
