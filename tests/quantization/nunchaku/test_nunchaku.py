@@ -3,6 +3,7 @@ import json
 import os
 import tempfile
 import unittest
+from unittest.mock import patch
 
 import torch
 from safetensors.torch import save_file
@@ -10,6 +11,7 @@ from safetensors.torch import save_file
 from diffusers import ConfigMixin, ModelMixin, NunchakuLiteQuantizationConfig
 from diffusers.configuration_utils import register_to_config
 from diffusers.quantizers import DiffusersAutoQuantizer
+from diffusers.quantizers.nunchaku.nunchaku_quantizer import NunchakuLiteQuantizer
 
 from ...testing_utils import (
     backend_empty_cache,
@@ -113,6 +115,72 @@ class NunchakuLiteBasicTests(unittest.TestCase):
         reloaded_config = NunchakuLiteQuantizationConfig.from_dict(config_dict)
         self.assertEqual(reloaded_config.compute_dtype, torch.bfloat16)
         self.assertEqual(reloaded_config.svdq_w4a4["targets"], ["linear1"])
+
+    def test_nvfp4_environment_requires_blackwell_cuda(self):
+        quantization_config = NunchakuLiteQuantizationConfig(compute_dtype=torch.bfloat16, **_compact_config())
+        quantizer = NunchakuLiteQuantizer(quantization_config)
+
+        with (
+            patch("diffusers.quantizers.nunchaku.nunchaku_quantizer.is_kernels_available", return_value=True),
+            patch("torch.cuda.is_available", return_value=True),
+            patch("torch.cuda.get_device_capability", return_value=(9, 0)),
+        ):
+            with self.assertRaisesRegex(ValueError, "Blackwell or newer NVIDIA GPU"):
+                quantizer.validate_environment()
+
+    def test_nvfp4_environment_allows_blackwell_cuda(self):
+        quantization_config = NunchakuLiteQuantizationConfig(compute_dtype=torch.bfloat16, **_compact_config())
+        quantizer = NunchakuLiteQuantizer(quantization_config)
+
+        with (
+            patch("diffusers.quantizers.nunchaku.nunchaku_quantizer.is_kernels_available", return_value=True),
+            patch("torch.cuda.is_available", return_value=True),
+            patch("torch.cuda.get_device_capability", return_value=(10, 0)),
+        ):
+            quantizer.validate_environment()
+
+    def test_int4_environment_requires_turing_cuda(self):
+        compact_config = _compact_config()
+        compact_config["svdq_w4a4"]["precision"] = "int4"
+        compact_config["svdq_w4a4"]["group_size"] = 64
+        quantization_config = NunchakuLiteQuantizationConfig(compute_dtype=torch.bfloat16, **compact_config)
+        quantizer = NunchakuLiteQuantizer(quantization_config)
+
+        with (
+            patch("diffusers.quantizers.nunchaku.nunchaku_quantizer.is_kernels_available", return_value=True),
+            patch("torch.cuda.is_available", return_value=True),
+            patch("torch.cuda.get_device_capability", return_value=(7, 0)),
+        ):
+            with self.assertRaisesRegex(ValueError, "Turing or newer NVIDIA GPU"):
+                quantizer.validate_environment()
+
+    def test_int4_environment_allows_turing_cuda(self):
+        compact_config = _compact_config()
+        compact_config["svdq_w4a4"]["precision"] = "int4"
+        compact_config["svdq_w4a4"]["group_size"] = 64
+        quantization_config = NunchakuLiteQuantizationConfig(compute_dtype=torch.bfloat16, **compact_config)
+        quantizer = NunchakuLiteQuantizer(quantization_config)
+
+        with (
+            patch("diffusers.quantizers.nunchaku.nunchaku_quantizer.is_kernels_available", return_value=True),
+            patch("torch.cuda.is_available", return_value=True),
+            patch("torch.cuda.get_device_capability", return_value=(7, 5)),
+        ):
+            quantizer.validate_environment()
+
+    def test_environment_requires_cuda(self):
+        compact_config = _compact_config()
+        compact_config["svdq_w4a4"]["precision"] = "int4"
+        compact_config["svdq_w4a4"]["group_size"] = 64
+        quantization_config = NunchakuLiteQuantizationConfig(compute_dtype=torch.bfloat16, **compact_config)
+        quantizer = NunchakuLiteQuantizer(quantization_config)
+
+        with (
+            patch("diffusers.quantizers.nunchaku.nunchaku_quantizer.is_kernels_available", return_value=True),
+            patch("torch.cuda.is_available", return_value=False),
+        ):
+            with self.assertRaisesRegex(ValueError, "CUDA-capable NVIDIA GPU"):
+                quantizer.validate_environment()
 
     @require_kernels_version_greater_or_equal("0.9.0")
     def test_compact_config_replaces_svdq_and_awq_without_state_dict(self):

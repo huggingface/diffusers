@@ -27,6 +27,26 @@ class NunchakuLiteQuantizer(DiffusersQuantizer):
                 "Loading Nunchaku checkpoints requires the Hugging Face `kernels` package. "
                 "Install it with `pip install kernels`."
             )
+        import torch
+
+        cuda_available = torch.cuda.is_available()
+        if not cuda_available:
+            raise ValueError("Loading Nunchaku checkpoints requires a CUDA-capable NVIDIA GPU.")
+
+        device_capability = torch.cuda.get_device_capability()
+
+        has_nvfp4_config = (
+            self.quantization_config.svdq_w4a4 is not None
+            and self.quantization_config.svdq_w4a4["precision"] == "nvfp4"
+        )
+        has_int4_config = any(
+            config is not None and config["precision"] == "int4"
+            for config in (self.quantization_config.svdq_w4a4, self.quantization_config.awq_w4a16)
+        )
+        if has_nvfp4_config and device_capability < (10, 0):
+            raise ValueError("Loading Nunchaku NVFP4 checkpoints requires a Blackwell or newer NVIDIA GPU.")
+        if has_int4_config and device_capability < (7, 5):
+            raise ValueError("Loading Nunchaku INT4 checkpoints on CUDA requires a Turing or newer NVIDIA GPU.")
 
     def update_torch_dtype(self, torch_dtype):
         if torch_dtype is None:
