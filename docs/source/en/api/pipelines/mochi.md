@@ -86,7 +86,7 @@ pipe = MochiPipeline.from_pretrained("genmo/mochi-1-preview")
 
 # Enable memory savings
 pipe.enable_model_cpu_offload()
-pipe.enable_vae_tiling()
+pipe.vae.enable_tiling()
 
 prompt = "Close-up of a chameleon's eye, with its scaly skin changing color. Ultra high resolution 4k."
 
@@ -109,7 +109,7 @@ pipe = MochiPipeline.from_pretrained("genmo/mochi-1-preview", variant="bf16", to
 
 # Enable memory savings
 pipe.enable_model_cpu_offload()
-pipe.enable_vae_tiling()
+pipe.vae.enable_tiling()
 
 prompt = "Close-up of a chameleon's eye, with its scaly skin changing color. Ultra high resolution 4k."
 frames = pipe(prompt, num_frames=85).frames[0]
@@ -138,7 +138,7 @@ from diffusers.utils import export_to_video
 from diffusers.video_processor import VideoProcessor
 
 pipe = MochiPipeline.from_pretrained("genmo/mochi-1-preview", force_zeros_for_empty_prompt=True)
-pipe.enable_vae_tiling()
+pipe.vae.enable_tiling()
 pipe.enable_model_cpu_offload()
 
 prompt =  "An aerial shot of a parade of elephants walking across the African savannah. The camera showcases the herd and the surrounding landscape."
@@ -205,7 +205,7 @@ transformer = MochiTransformer3DModel.from_pretrained(
 
 pipe = MochiPipeline.from_pretrained(model_id,  transformer=transformer)
 pipe.enable_model_cpu_offload()
-pipe.enable_vae_tiling()
+pipe.vae.enable_tiling()
 
 with torch.autocast(device_type="cuda", dtype=torch.bfloat16, cache_enabled=False):
     frames = pipe(
@@ -245,7 +245,7 @@ transformer = MochiTransformer3DModel.from_pretrained(ckpt_path, torch_dtype=tor
 
 pipe = MochiPipeline.from_pretrained(model_id,  transformer=transformer)
 pipe.enable_model_cpu_offload()
-pipe.enable_vae_tiling()
+pipe.vae.enable_tiling()
 
 with torch.autocast(device_type="cuda", dtype=torch.bfloat16, cache_enabled=False):
     frames = pipe(
