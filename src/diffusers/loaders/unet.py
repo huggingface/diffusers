@@ -40,7 +40,7 @@ from ..utils import (
 )
 from ..utils.torch_utils import empty_device_cache
 from .lora_base import _func_optionally_disable_offloading
-from .lora_pipeline import TEXT_ENCODER_NAME, UNET_NAME
+from .lora_pipeline import LORA_WEIGHT_NAME, LORA_WEIGHT_NAME_SAFE, TEXT_ENCODER_NAME, UNET_NAME
 from .utils import AttnProcsLayers
 
 
@@ -145,7 +145,7 @@ class UNet2DConditionLoadersMixin:
                 try:
                     model_file = _get_model_file(
                         pretrained_model_name_or_path_or_dict,
-                        weights_name=weight_name or CUSTOM_DIFFUSION_WEIGHT_NAME_SAFE,
+                        weights_name=weight_name or LORA_WEIGHT_NAME_SAFE,
                         cache_dir=cache_dir,
                         force_download=force_download,
                         proxies=proxies,
@@ -164,7 +164,7 @@ class UNet2DConditionLoadersMixin:
             if model_file is None:
                 model_file = _get_model_file(
                     pretrained_model_name_or_path_or_dict,
-                    weights_name=weight_name or CUSTOM_DIFFUSION_WEIGHT_NAME,
+                    weights_name=weight_name or LORA_WEIGHT_NAME,
                     cache_dir=cache_dir,
                     force_download=force_download,
                     proxies=proxies,
