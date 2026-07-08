@@ -277,6 +277,7 @@ class CogVideoXImageToVideoPipelineFastTests(PipelineTesterMixin, unittest.TestC
         # The reason to modify it this way is because I2V Transformer limits the generation to resolutions used during initialization.
         # This limitation comes from using learned positional embeddings which cannot be generated on-the-fly like sincos or RoPE embeddings.
         # See the if-statement on "self.use_learned_positional_embeddings" in diffusers/models/embeddings.py
+        torch.manual_seed(0)
         components["transformer"] = CogVideoXTransformer3DModel.from_config(
             components["transformer"].config,
             sample_height=16,

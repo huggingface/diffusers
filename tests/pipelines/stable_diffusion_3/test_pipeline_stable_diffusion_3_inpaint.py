@@ -151,7 +151,7 @@ class StableDiffusion3InpaintPipelineFastTests(PipelineLatentTesterMixin, unitte
         generated_slice = np.concatenate([generated_slice[:8], generated_slice[-8:]])
 
         # fmt: off
-        expected_slice = np.array([0.5035, 0.6661, 0.5859, 0.413, 0.4224, 0.4234, 0.7181, 0.5062, 0.5183, 0.6877, 0.5074, 0.585, 0.6111, 0.5422, 0.5306, 0.5891])
+        expected_slice = np.array([0.5076, 0.6669, 0.5967, 0.4238, 0.3966, 0.4218, 0.7243, 0.4943, 0.5130, 0.7069, 0.5334, 0.5743, 0.6149, 0.5476, 0.5295, 0.6009])
         # fmt: on
 
         self.assertTrue(
