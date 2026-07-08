@@ -2014,6 +2014,16 @@ class PipelineFastTests(unittest.TestCase):
                 "DDUF/tiny-flux-dev-pipe-dduf", dduf_file="fluxpipeline.dduf", load_connected_pipeline=True
             )
 
+    @require_hf_hub_version_greater("0.26.5")
+    @require_transformers_version_greater("4.47.1")
+    def test_dduf_file_is_deprecated(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            with self.assertWarns(FutureWarning) as warning_ctx:
+                _ = DiffusionPipeline.from_pretrained(
+                    "DDUF/tiny-flux-dev-pipe-dduf", dduf_file="fluxpipeline.dduf", cache_dir=tmpdir
+                )
+        assert "dduf_file" in str(warning_ctx.warning)
+
     @pytest.mark.xfail(condition=is_transformers_version(">", "4.56.2"), reason="Some import error", strict=False)
     def test_wrong_model(self):
         tokenizer = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip")
