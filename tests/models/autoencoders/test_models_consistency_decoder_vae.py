@@ -218,7 +218,7 @@ class TestConsistencyDecoderVAEIntegration:
             generator=torch.Generator("cpu").manual_seed(0),
         ).images[0]
 
-        pipe.enable_vae_tiling()
+        pipe.vae.enable_tiling()
         out_2 = pipe(
             "horse",
             num_inference_steps=2,

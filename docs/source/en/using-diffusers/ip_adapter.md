@@ -180,7 +180,7 @@ scheduler = DDIMScheduler.from_pretrained(
     steps_offset=1,
 )
 pipeline.scheduler = scheduler
-pipeline.enable_vae_slicing()
+pipeline.vae.enable_slicing()
 pipeline.load_ip_adapter("h94/IP-Adapter", subfolder="models", weight_name="ip-adapter_sd15.bin")
 pipeline.enable_model_cpu_offload()
 

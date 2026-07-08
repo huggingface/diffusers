@@ -471,7 +471,7 @@ class StableDiffusionPipelineFastTests(
         output_1 = sd_pipe(**inputs)
 
         # make sure sliced vae decode yields the same result
-        sd_pipe.enable_vae_slicing()
+        sd_pipe.vae.enable_slicing()
         inputs = self.get_dummy_inputs(device)
         inputs["prompt"] = [inputs["prompt"]] * image_count
         output_2 = sd_pipe(**inputs)
@@ -496,7 +496,7 @@ class StableDiffusionPipelineFastTests(
         output_1 = sd_pipe([prompt], generator=generator, guidance_scale=6.0, num_inference_steps=2, output_type="np")
 
         # make sure tiled vae decode yields the same result
-        sd_pipe.enable_vae_tiling()
+        sd_pipe.vae.enable_tiling()
         generator = torch.Generator(device=device).manual_seed(0)
         output_2 = sd_pipe([prompt], generator=generator, guidance_scale=6.0, num_inference_steps=2, output_type="np")
 
@@ -889,7 +889,7 @@ class StableDiffusionPipelineSlowTests(unittest.TestCase):
         pipe.enable_attention_slicing()
 
         # enable vae slicing
-        pipe.enable_vae_slicing()
+        pipe.vae.enable_slicing()
         inputs = self.get_inputs(torch_device, dtype=torch.float16)
         inputs["prompt"] = [inputs["prompt"]] * 4
         inputs["latents"] = torch.cat([inputs["latents"]] * 4)
@@ -901,7 +901,7 @@ class StableDiffusionPipelineSlowTests(unittest.TestCase):
         assert mem_bytes < 4e9
 
         # disable vae slicing
-        pipe.disable_vae_slicing()
+        pipe.vae.disable_slicing()
         inputs = self.get_inputs(torch_device, dtype=torch.float16)
         inputs["prompt"] = [inputs["prompt"]] * 4
         inputs["latents"] = torch.cat([inputs["latents"]] * 4)
@@ -928,7 +928,7 @@ class StableDiffusionPipelineSlowTests(unittest.TestCase):
         prompt = "a photograph of an astronaut riding a horse"
 
         # enable vae tiling
-        pipe.enable_vae_tiling()
+        pipe.vae.enable_tiling()
         pipe.enable_model_cpu_offload(device=torch_device)
         generator = torch.Generator(device="cpu").manual_seed(0)
         output_chunked = pipe(
@@ -945,7 +945,7 @@ class StableDiffusionPipelineSlowTests(unittest.TestCase):
         mem_bytes = backend_max_memory_allocated(torch_device)
 
         # disable vae tiling
-        pipe.disable_vae_tiling()
+        pipe.vae.disable_tiling()
         generator = torch.Generator(device="cpu").manual_seed(0)
         output = pipe(
             [prompt],
