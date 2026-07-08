@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2025 HuggingFace Inc.
+# Copyright 2026 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -181,7 +181,7 @@ class StableDiffusionPipelineFastTests(
         image_slice = image[0, -3:, -3:, -1]
 
         assert image.shape == (1, 64, 64, 3)
-        expected_slice = np.array([0.1763, 0.4776, 0.4986, 0.2566, 0.3802, 0.4596, 0.5363, 0.3277, 0.3949])
+        expected_slice = np.array([0.1641, 0.4640, 0.4864, 0.2683, 0.3652, 0.4507, 0.5290, 0.3307, 0.3977])
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
@@ -356,7 +356,7 @@ class StableDiffusionPipelineFastTests(
         image_slice = image[0, -3:, -3:, -1]
 
         assert image.shape == (1, 136, 136, 3)
-        expected_slice = np.array([0.4720, 0.5426, 0.5160, 0.3961, 0.4696, 0.4296, 0.5738, 0.5888, 0.5481])
+        expected_slice = np.array([0.4587, 0.5238, 0.5006, 0.3869, 0.4538, 0.4228, 0.5666, 0.5814, 0.5468])
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
@@ -374,7 +374,7 @@ class StableDiffusionPipelineFastTests(
         image_slice = image[0, -3:, -3:, -1]
 
         assert image.shape == (1, 64, 64, 3)
-        expected_slice = np.array([0.1941, 0.4748, 0.4880, 0.2222, 0.4221, 0.4545, 0.5604, 0.3488, 0.3902])
+        expected_slice = np.array([0.1791, 0.4611, 0.4741, 0.2336, 0.4175, 0.4484, 0.5582, 0.3556, 0.3951])
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
@@ -414,7 +414,7 @@ class StableDiffusionPipelineFastTests(
         image_slice = image[0, -3:, -3:, -1]
 
         assert image.shape == (1, 64, 64, 3)
-        expected_slice = np.array([0.2681, 0.4785, 0.4857, 0.2426, 0.4473, 0.4481, 0.5610, 0.3676, 0.3855])
+        expected_slice = np.array([0.2185, 0.4538, 0.4660, 0.2454, 0.4408, 0.4377, 0.5629, 0.3754, 0.3927])
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
@@ -433,7 +433,7 @@ class StableDiffusionPipelineFastTests(
         image_slice = image[0, -3:, -3:, -1]
 
         assert image.shape == (1, 64, 64, 3)
-        expected_slice = np.array([0.2682, 0.4782, 0.4855, 0.2424, 0.4472, 0.4479, 0.5612, 0.3676, 0.3854])
+        expected_slice = np.array([0.2185, 0.4534, 0.4657, 0.2452, 0.4406, 0.4375, 0.5631, 0.3755, 0.3927])
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
@@ -452,7 +452,7 @@ class StableDiffusionPipelineFastTests(
         image_slice = image[0, -3:, -3:, -1]
 
         assert image.shape == (1, 64, 64, 3)
-        expected_slice = np.array([0.2681, 0.4785, 0.4857, 0.2426, 0.4473, 0.4481, 0.5610, 0.3676, 0.3855])
+        expected_slice = np.array([0.2185, 0.4538, 0.4660, 0.2454, 0.4408, 0.4377, 0.5629, 0.3754, 0.3927])
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
@@ -471,7 +471,7 @@ class StableDiffusionPipelineFastTests(
         output_1 = sd_pipe(**inputs)
 
         # make sure sliced vae decode yields the same result
-        sd_pipe.enable_vae_slicing()
+        sd_pipe.vae.enable_slicing()
         inputs = self.get_dummy_inputs(device)
         inputs["prompt"] = [inputs["prompt"]] * image_count
         output_2 = sd_pipe(**inputs)
@@ -496,7 +496,7 @@ class StableDiffusionPipelineFastTests(
         output_1 = sd_pipe([prompt], generator=generator, guidance_scale=6.0, num_inference_steps=2, output_type="np")
 
         # make sure tiled vae decode yields the same result
-        sd_pipe.enable_vae_tiling()
+        sd_pipe.vae.enable_tiling()
         generator = torch.Generator(device=device).manual_seed(0)
         output_2 = sd_pipe([prompt], generator=generator, guidance_scale=6.0, num_inference_steps=2, output_type="np")
 
@@ -524,7 +524,7 @@ class StableDiffusionPipelineFastTests(
         image_slice = image[0, -3:, -3:, -1]
 
         assert image.shape == (1, 64, 64, 3)
-        expected_slice = np.array([0.1907, 0.4709, 0.4858, 0.2224, 0.4223, 0.4539, 0.5606, 0.3489, 0.3900])
+        expected_slice = np.array([0.1772, 0.4578, 0.4700, 0.2363, 0.4173, 0.4462, 0.5595, 0.3588, 0.3959])
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
@@ -889,7 +889,7 @@ class StableDiffusionPipelineSlowTests(unittest.TestCase):
         pipe.enable_attention_slicing()
 
         # enable vae slicing
-        pipe.enable_vae_slicing()
+        pipe.vae.enable_slicing()
         inputs = self.get_inputs(torch_device, dtype=torch.float16)
         inputs["prompt"] = [inputs["prompt"]] * 4
         inputs["latents"] = torch.cat([inputs["latents"]] * 4)
@@ -901,7 +901,7 @@ class StableDiffusionPipelineSlowTests(unittest.TestCase):
         assert mem_bytes < 4e9
 
         # disable vae slicing
-        pipe.disable_vae_slicing()
+        pipe.vae.disable_slicing()
         inputs = self.get_inputs(torch_device, dtype=torch.float16)
         inputs["prompt"] = [inputs["prompt"]] * 4
         inputs["latents"] = torch.cat([inputs["latents"]] * 4)
@@ -928,7 +928,7 @@ class StableDiffusionPipelineSlowTests(unittest.TestCase):
         prompt = "a photograph of an astronaut riding a horse"
 
         # enable vae tiling
-        pipe.enable_vae_tiling()
+        pipe.vae.enable_tiling()
         pipe.enable_model_cpu_offload(device=torch_device)
         generator = torch.Generator(device="cpu").manual_seed(0)
         output_chunked = pipe(
@@ -945,7 +945,7 @@ class StableDiffusionPipelineSlowTests(unittest.TestCase):
         mem_bytes = backend_max_memory_allocated(torch_device)
 
         # disable vae tiling
-        pipe.disable_vae_tiling()
+        pipe.vae.disable_tiling()
         generator = torch.Generator(device="cpu").manual_seed(0)
         output = pipe(
             [prompt],
