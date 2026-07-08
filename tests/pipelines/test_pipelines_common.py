@@ -137,7 +137,7 @@ class SDFunctionTesterMixin:
         output_1 = pipe(**inputs)
 
         # make sure sliced vae decode yields the same result
-        pipe.enable_vae_slicing()
+        pipe.vae.enable_slicing()
         inputs = self.get_dummy_inputs(device)
         inputs["prompt"] = [inputs["prompt"]] * image_count
         if "image" in inputs:
@@ -164,7 +164,7 @@ class SDFunctionTesterMixin:
         output_1 = pipe(**inputs)[0]
 
         # make sure tiled vae decode yields the same result
-        pipe.enable_vae_tiling()
+        pipe.vae.enable_tiling()
         inputs = self.get_dummy_inputs(torch_device)
         inputs["return_dict"] = False
         output_2 = pipe(**inputs)[0]
