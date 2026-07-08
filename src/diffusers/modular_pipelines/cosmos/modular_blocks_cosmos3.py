@@ -55,10 +55,15 @@ class Cosmos3AutoVaeEncoderStep(ConditionalPipelineBlocks):
     default_block_name = None
 
     def select_block(self, **kwargs) -> str | None:
-        if kwargs.get("action") is not None:
-            return "action_conditioning"
+        action = kwargs.get("action")
         image = kwargs.get("image")
         video = kwargs.get("video")
+        if action is not None:
+            if image is not None or video is not None:
+                raise ValueError(
+                    "Pass action conditioning via `action.image` / `action.video`, not top-level image/video."
+                )
+            return "action_conditioning"
         if image is not None and video is not None:
             raise ValueError("Pass either image or video, not both.")
         if video is not None:
@@ -107,7 +112,6 @@ class Cosmos3VisionCoreDenoiseStep(SequentialPipelineBlocks):
     model_name = "cosmos3-omni"
     block_classes = [
         Cosmos3PrepareTextSegmentsStep,
-        Cosmos3AutoVaeEncoderStep,
         Cosmos3VisionPrepareLatentsStep,
         Cosmos3VisionPackSequenceStep,
         Cosmos3SetTimestepsStep,
@@ -116,7 +120,6 @@ class Cosmos3VisionCoreDenoiseStep(SequentialPipelineBlocks):
     ]
     block_names = [
         "prepare_text_segments",
-        "vae_encoder",
         "prepare_vision_latents",
         "pack_vision_sequence",
         "set_timesteps",
@@ -137,7 +140,6 @@ class Cosmos3VisionSoundCoreDenoiseStep(SequentialPipelineBlocks):
     model_name = "cosmos3-omni"
     block_classes = [
         Cosmos3PrepareTextSegmentsStep,
-        Cosmos3AutoVaeEncoderStep,
         Cosmos3VisionPrepareLatentsStep,
         Cosmos3SoundPrepareLatentsStep,
         Cosmos3VisionPackSequenceStep,
@@ -148,7 +150,6 @@ class Cosmos3VisionSoundCoreDenoiseStep(SequentialPipelineBlocks):
     ]
     block_names = [
         "prepare_text_segments",
-        "vae_encoder",
         "prepare_vision_latents",
         "prepare_sound_latents",
         "pack_vision_sequence",
@@ -174,7 +175,6 @@ class Cosmos3VisionActionCoreDenoiseStep(SequentialPipelineBlocks):
     model_name = "cosmos3-omni"
     block_classes = [
         Cosmos3PrepareTextSegmentsStep,
-        Cosmos3AutoVaeEncoderStep,
         Cosmos3VisionPrepareLatentsStep,
         Cosmos3ActionPrepareLatentsStep,
         Cosmos3VisionPackSequenceStep,
@@ -185,7 +185,6 @@ class Cosmos3VisionActionCoreDenoiseStep(SequentialPipelineBlocks):
     ]
     block_names = [
         "prepare_text_segments",
-        "vae_encoder",
         "prepare_vision_latents",
         "prepare_action_latents",
         "pack_vision_sequence",
@@ -211,7 +210,6 @@ class Cosmos3VisionSoundActionCoreDenoiseStep(SequentialPipelineBlocks):
     model_name = "cosmos3-omni"
     block_classes = [
         Cosmos3PrepareTextSegmentsStep,
-        Cosmos3AutoVaeEncoderStep,
         Cosmos3VisionPrepareLatentsStep,
         Cosmos3SoundPrepareLatentsStep,
         Cosmos3ActionPrepareLatentsStep,
@@ -224,7 +222,6 @@ class Cosmos3VisionSoundActionCoreDenoiseStep(SequentialPipelineBlocks):
     ]
     block_names = [
         "prepare_text_segments",
-        "vae_encoder",
         "prepare_vision_latents",
         "prepare_sound_latents",
         "prepare_action_latents",
@@ -309,8 +306,8 @@ class Cosmos3OmniBlocks(SequentialPipelineBlocks):
       Components:
           text_tokenizer (`AutoTokenizer`)
           video_processor (`VideoProcessor`)
-          transformer (`Cosmos3OmniTransformer`)
           vae (`AutoencoderKLWan`)
+          transformer (`Cosmos3OmniTransformer`)
           sound_tokenizer (`Cosmos3AVAEAudioTokenizer`)
           scheduler (`UniPCMultistepScheduler`)
 
@@ -335,13 +332,13 @@ class Cosmos3OmniBlocks(SequentialPipelineBlocks):
               TODO: Add description.
           add_duration_template (`bool`, *optional*, defaults to True):
               TODO: Add description.
-          image (`None`, *optional*):
-              TODO: Add description.
           video (`None`, *optional*):
               TODO: Add description.
           condition_frame_indexes_vision (`None`, *optional*, defaults to (0, 1)):
               TODO: Add description.
           condition_video_keep (`None`, *optional*, defaults to first):
+              TODO: Add description.
+          image (`None`, *optional*):
               TODO: Add description.
           x0_tokens_vision (`None`, *optional*):
               TODO: Add description.
@@ -380,11 +377,12 @@ class Cosmos3OmniBlocks(SequentialPipelineBlocks):
     model_name = "cosmos3-omni"
     block_classes = [
         Cosmos3AutoTextEncoderStep,
+        Cosmos3AutoVaeEncoderStep,
         Cosmos3AutoCoreDenoiseStep,
         Cosmos3DecodeStep,
         Cosmos3ActionOutputStep,
     ]
-    block_names = ["text_encoder", "denoise", "decode", "after_decode"]
+    block_names = ["text_encoder", "vae_encoder", "denoise", "decode", "after_decode"]
     _workflow_map = {
         "text2image": {"prompt": True, "num_frames": 1},
         "text2video": {"prompt": True},

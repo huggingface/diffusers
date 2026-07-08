@@ -1,11 +1,7 @@
 import torch
 
 from ...pipelines.cosmos.pipeline_cosmos3_omni import Cosmos3OmniPipeline, CosmosSafetyChecker
-from ...utils import logging
 from ..modular_pipeline import ModularPipeline
-
-
-logger = logging.get_logger(__name__)
 
 
 class Cosmos3OmniModularPipeline(ModularPipeline):
@@ -14,7 +10,6 @@ class Cosmos3OmniModularPipeline(ModularPipeline):
     """
 
     default_blocks_name = "Cosmos3OmniBlocks"
-    _callback_tensor_inputs = ["latents"]
 
     duration_template = "The video is {duration:.1f} seconds long and is of {fps:.0f} FPS."
     image_resolution_template = "This image is of {height}x{width} resolution."
@@ -60,9 +55,6 @@ class Cosmos3OmniModularPipeline(ModularPipeline):
     def requires_safety_checker(self):
         return getattr(self, "_is_safety_checker_enabled", True)
 
-    def _get_execution_device(self):
-        return Cosmos3OmniPipeline._get_execution_device(self)
-
     def _encode_video(self, x):
         return Cosmos3OmniPipeline._encode_video(self, x)
 
@@ -86,12 +78,6 @@ class Cosmos3OmniModularPipeline(ModularPipeline):
 
     def _remove_action_video_padding_from_latent(self, *args, **kwargs):
         return Cosmos3OmniPipeline._remove_action_video_padding_from_latent(self, *args, **kwargs)
-
-    def prepare_latents(self, *args, **kwargs):
-        return Cosmos3OmniPipeline.prepare_latents(self, *args, **kwargs)
-
-    def check_inputs(self, *args, **kwargs):
-        return Cosmos3OmniPipeline.check_inputs(self, *args, **kwargs)
 
     @staticmethod
     def _build_action_json_prompt(*args, **kwargs):

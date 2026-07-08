@@ -250,7 +250,7 @@ class Cosmos3ImageVaeEncoderStep(ModularPipelineBlocks):
 
     @property
     def description(self) -> str:
-        return "Encodes non-action image conditioning into Cosmos3 vision latents."
+        return "Encodes non-action image-to-video conditioning into Cosmos3 vision latents."
 
     @property
     def expected_components(self) -> list[ComponentSpec]:
@@ -289,6 +289,10 @@ class Cosmos3ImageVaeEncoderStep(ModularPipelineBlocks):
 
         if block_state.image is None:
             raise ValueError("`Cosmos3ImageVaeEncoderStep` requires an `image` input.")
+        if block_state.num_frames == 1:
+            raise ValueError(
+                "`image` conditioning requires `num_frames` > 1; image-to-image generation is not supported."
+            )
         if block_state.num_frames < 1:
             raise ValueError(f"`num_frames` must be >= 1, got {block_state.num_frames}.")
 
@@ -302,29 +306,20 @@ class Cosmos3ImageVaeEncoderStep(ModularPipelineBlocks):
             block_state.image, height=block_state.height, width=block_state.width
         ).to(device=block_state.device, dtype=block_state.dtype)
 
-        is_image = block_state.num_frames == 1
-        vision_condition_frames: list[int] = []
-        if is_image:
-            vision_tensor = conditioning_frame_2d.unsqueeze(2)
-        else:
-            vision_tensor = torch.zeros(
-                1,
-                3,
-                block_state.num_frames,
-                block_state.height,
-                block_state.width,
-                dtype=block_state.dtype,
-                device=block_state.device,
-            )
-            vision_tensor[:, :, 0] = conditioning_frame_2d
-            if block_state.num_frames > 1:
-                vision_tensor[:, :, 1:] = conditioning_frame_2d.unsqueeze(2).expand(
-                    -1, -1, block_state.num_frames - 1, -1, -1
-                )
-            vision_condition_frames = [0]
+        vision_tensor = torch.zeros(
+            1,
+            3,
+            block_state.num_frames,
+            block_state.height,
+            block_state.width,
+            dtype=block_state.dtype,
+            device=block_state.device,
+        )
+        vision_tensor[:, :, 0] = conditioning_frame_2d
+        vision_tensor[:, :, 1:] = conditioning_frame_2d.unsqueeze(2).expand(-1, -1, block_state.num_frames - 1, -1, -1)
 
         block_state.x0_tokens_vision = components._encode_video(vision_tensor).contiguous().float()
-        block_state.vision_condition_frames = vision_condition_frames
+        block_state.vision_condition_frames = [0]
 
         self.set_block_state(state, block_state)
         return components, state
@@ -473,11 +468,6 @@ class Cosmos3ActionVisionVaeEncoderStep(ModularPipelineBlocks):
     def inputs(self) -> list[InputParam]:
         return [
             InputParam(name="action", type_hint=CosmosActionCondition, required=True),
-            InputParam(name="image", default=None),
-            InputParam(name="video", default=None),
-            InputParam(name="num_frames", default=None),
-            InputParam(name="height", default=None),
-            InputParam(name="width", default=None),
         ]
 
     @property
@@ -486,10 +476,6 @@ class Cosmos3ActionVisionVaeEncoderStep(ModularPipelineBlocks):
             OutputParam("x0_tokens_vision"),
             OutputParam("vision_condition_frames"),
             OutputParam("action_condition_frame_indexes"),
-            OutputParam("action_image_size"),
-            OutputParam("num_frames"),
-            OutputParam("height"),
-            OutputParam("width"),
         ]
 
     @torch.no_grad()
@@ -500,14 +486,9 @@ class Cosmos3ActionVisionVaeEncoderStep(ModularPipelineBlocks):
         block_state.dtype = components.vae.dtype
 
         action = block_state.action
-        if block_state.image is not None or block_state.video is not None:
-            raise ValueError(
-                "Pass action conditioning via `action.image` / `action.video`, not top-level image/video."
-            )
-
         target_frames = action.chunk_size + 1
         conditioning_clip = [action.image] if action.image is not None else action.video
-        vision_tensor, action_image_size, height, width = components._prepare_action_video_conditioning(
+        vision_tensor, action_image_size, _, _ = components._prepare_action_video_conditioning(
             conditioning_clip,
             action.resolution_tier,
             target_frames,
@@ -537,10 +518,6 @@ class Cosmos3ActionVisionVaeEncoderStep(ModularPipelineBlocks):
         block_state.x0_tokens_vision = x0_tokens_vision
         block_state.vision_condition_frames = vision_condition_frames
         block_state.action_condition_frame_indexes = action_condition_frame_indexes
-        block_state.action_image_size = action_image_size
-        block_state.num_frames = target_frames
-        block_state.height = height
-        block_state.width = width
 
         self.set_block_state(state, block_state)
         return components, state

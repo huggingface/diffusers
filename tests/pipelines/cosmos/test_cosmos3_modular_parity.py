@@ -23,6 +23,7 @@ from PIL import Image
 from diffusers import AutoencoderKLWan, Cosmos3AVAEAudioTokenizer, Cosmos3OmniTransformer, UniPCMultistepScheduler
 from diffusers.modular_pipelines.cosmos.modular_blocks_cosmos3 import Cosmos3OmniBlocks
 from diffusers.modular_pipelines.cosmos.modular_pipeline import Cosmos3OmniModularPipeline
+from diffusers.modular_pipelines.modular_pipeline import PipelineState
 from diffusers.pipelines.cosmos.pipeline_cosmos3_omni import Cosmos3OmniPipeline, CosmosActionCondition
 
 from ...testing_utils import enable_full_determinism
@@ -416,11 +417,10 @@ def test_cosmos3_modular_workflow_extraction():
     }
     assert set(pipe.blocks.available_workflows) == expected
 
-    image2video_blocks = pipe.blocks.get_workflow("image2video")
-    assert list(image2video_blocks.sub_blocks.keys()) == [
+    expected_vision_conditioning_blocks = [
         "text_encoder",
+        "vae_encoder",
         "denoise.prepare_text_segments",
-        "denoise.vae_encoder",
         "denoise.prepare_vision_latents",
         "denoise.pack_vision_sequence",
         "denoise.set_timesteps",
@@ -429,6 +429,8 @@ def test_cosmos3_modular_workflow_extraction():
         "decode.video",
         "after_decode",
     ]
+    assert list(pipe.blocks.get_workflow("image2video").sub_blocks.keys()) == expected_vision_conditioning_blocks
+    assert list(pipe.blocks.get_workflow("video2video").sub_blocks.keys()) == expected_vision_conditioning_blocks
 
     vision_blocks = list(pipe.blocks.get_execution_blocks(enable_sound=False).sub_blocks.keys())
     assert vision_blocks == [
@@ -462,8 +464,8 @@ def test_cosmos3_modular_workflow_extraction():
     action_blocks = list(pipe.blocks.get_execution_blocks(action=object()).sub_blocks.keys())
     assert action_blocks == [
         "text_encoder",
+        "vae_encoder",
         "denoise.prepare_text_segments",
-        "denoise.vae_encoder",
         "denoise.prepare_vision_latents",
         "denoise.prepare_action_latents",
         "denoise.pack_vision_sequence",
@@ -478,8 +480,8 @@ def test_cosmos3_modular_workflow_extraction():
     action_sound_blocks = list(pipe.blocks.get_execution_blocks(action=object(), enable_sound=True).sub_blocks.keys())
     assert action_sound_blocks == [
         "text_encoder",
+        "vae_encoder",
         "denoise.prepare_text_segments",
-        "denoise.vae_encoder",
         "denoise.prepare_vision_latents",
         "denoise.prepare_sound_latents",
         "denoise.prepare_action_latents",
@@ -496,6 +498,50 @@ def test_cosmos3_modular_workflow_extraction():
 
     with pytest.raises(ValueError):
         pipe.blocks.get_workflow("non_existent_workflow")
+
+    for core_denoise_step in pipe.blocks.sub_blocks["denoise"].sub_blocks.values():
+        assert "vae_encoder" not in core_denoise_step.sub_blocks
+
+
+def test_cosmos3_modular_vae_encoder_is_standalone_and_validates_conditioning_inputs():
+    pipe = _make_modular_pipe()
+    vae_encoder = pipe.blocks.sub_blocks["vae_encoder"]
+
+    assert vae_encoder.select_block(action=None, image=None, video=None) is None
+    assert vae_encoder.select_block(action=None, image=object(), video=None) == "image_conditioning"
+    assert vae_encoder.select_block(action=None, image=None, video=object()) == "video_conditioning"
+    assert vae_encoder.select_block(action=object(), image=None, video=None) == "action_conditioning"
+
+    state = PipelineState()
+    state.set("image", _make_pil_video(seed=1, num_frames=1, height=32, width=32)[0])
+    state.set("num_frames", 5)
+    state.set("height", 32)
+    state.set("width", 32)
+    _, state = vae_encoder(pipe, state)
+
+    assert state.get("x0_tokens_vision") is not None
+    assert state.get("vision_condition_frames") == [0]
+
+    action_vae_encoder = vae_encoder.sub_blocks["action_conditioning"]
+    assert [input_param.name for input_param in action_vae_encoder.inputs] == ["action"]
+    assert [output_param.name for output_param in action_vae_encoder.intermediate_outputs] == [
+        "x0_tokens_vision",
+        "vision_condition_frames",
+        "action_condition_frame_indexes",
+    ]
+
+    with pytest.raises(ValueError, match="action.image.*top-level image/video"):
+        pipe.blocks.get_execution_blocks(action=object(), image=object())
+    with pytest.raises(ValueError, match="action.image.*top-level image/video"):
+        pipe.blocks.get_execution_blocks(action=object(), video=object())
+    with pytest.raises(ValueError, match="either image or video"):
+        pipe.blocks.get_execution_blocks(image=object(), video=object())
+
+    kwargs = _build_case_kwargs("image2video")
+    kwargs.pop("enable_safety_check")
+    kwargs["num_frames"] = 1
+    with pytest.raises(ValueError, match="image-to-image generation is not supported"):
+        pipe(**kwargs)
 
 
 def test_cosmos3_modular_segments_are_assembled_in_denoise():
