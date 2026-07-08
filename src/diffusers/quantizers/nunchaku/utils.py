@@ -8,7 +8,7 @@ from typing import Any
 import torch
 import torch.nn as nn
 
-from ...utils import is_accelerate_available
+from ...utils import is_accelerate_available, is_kernels_available
 
 
 if is_accelerate_available():
@@ -19,16 +19,15 @@ _HF_KERNEL_REPO = "rootonchair/nunchaku-lite-kernels"
 _HF_KERNEL_VERSION = 1
 
 
-_ops = None
+if is_kernels_available():
+    from kernels import get_kernel
 
-
-def _get_ops():
-    global _ops
-    if _ops is None:
-        from kernels import get_kernel
-
-        _ops = get_kernel(_HF_KERNEL_REPO, version=_HF_KERNEL_VERSION, trust_remote_code=True).ops
-    return _ops
+    ops = get_kernel(_HF_KERNEL_REPO, version=_HF_KERNEL_VERSION, trust_remote_code=True).ops
+else:
+    raise ImportError(
+        "Loading Nunchaku checkpoints requires the Hugging Face `kernels` package. "
+        "Install it with `pip install kernels`."
+    )
 
 
 def _gemm_w4a4(
@@ -46,7 +45,7 @@ def _gemm_w4a4(
     alpha: torch.Tensor | None,
     wcscales: torch.Tensor | None,
 ) -> None:
-    _get_ops().gemm_w4a4(
+    ops.gemm_w4a4(
         act,
         wgt,
         out,
@@ -174,7 +173,7 @@ class SVDQW4A4Linear(nn.Module):
             ascales = torch.empty(channels // 64, batch_size_pad, dtype=x.dtype, device=x.device)
         lora_act = torch.empty(batch_size_pad, self.rank, dtype=torch.float32, device=x.device)
 
-        _get_ops().quantize_w4a4_act_fuse_lora(
+        ops.quantize_w4a4_act_fuse_lora(
             x,
             quantized_x,
             ascales,
@@ -246,12 +245,10 @@ class AWQW4A16Linear(nn.Module):
             output = x.new_empty(output_shape)
         elif self._use_gemm(x_flat.shape[0]):
             output = (
-                _get_ops()
-                .awq_gemm_w4a16_g64_int32(x_flat, self.qweight, self.wscales, self.wzeros)
-                .reshape(output_shape)
+                ops.awq_gemm_w4a16_g64_int32(x_flat, self.qweight, self.wscales, self.wzeros).reshape(output_shape)
             )
         else:
-            output = self._forward_gemv_chunks(x_flat, _get_ops().gemv_awq).reshape(output_shape)
+            output = self._forward_gemv_chunks(x_flat, ops.gemv_awq).reshape(output_shape)
 
         if self.bias is not None:
             output = output + self.bias.view([1] * (output.ndim - 1) + [-1])

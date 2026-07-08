@@ -3,10 +3,6 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 from ..base import DiffusersQuantizer
-from .utils import (
-    check_strict_state_dict_match,
-    replace_with_nunchaku_linear,
-)
 
 
 if TYPE_CHECKING:
@@ -45,6 +41,11 @@ class NunchakuLiteQuantizer(DiffusersQuantizer):
         state_dict: dict[str, Any] | None = None,
         **kwargs,
     ):
+        from .utils import (
+            check_strict_state_dict_match,
+            replace_with_nunchaku_linear,
+        )
+
         quantization_config = self.quantization_config.to_dict()
         num_replaced = replace_with_nunchaku_linear(model, quantization_config, self.compute_dtype)
 
