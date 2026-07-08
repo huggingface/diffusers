@@ -284,8 +284,8 @@ class Cosmos3ImageVaeEncoderStep(ModularPipelineBlocks):
     def __call__(self, components: Cosmos3OmniModularPipeline, state: PipelineState) -> PipelineState:
         block_state = self.get_block_state(state)
 
-        block_state.device = components._execution_device
-        block_state.dtype = components.transformer.dtype
+        device = components._execution_device
+        dtype = components.transformer.dtype
 
         if block_state.image is None:
             raise ValueError("`Cosmos3ImageVaeEncoderStep` requires an `image` input.")
@@ -304,7 +304,7 @@ class Cosmos3ImageVaeEncoderStep(ModularPipelineBlocks):
 
         conditioning_frame_2d = components.video_processor.preprocess(
             block_state.image, height=block_state.height, width=block_state.width
-        ).to(device=block_state.device, dtype=block_state.dtype)
+        ).to(device=device, dtype=dtype)
 
         vision_tensor = torch.zeros(
             1,
@@ -312,8 +312,8 @@ class Cosmos3ImageVaeEncoderStep(ModularPipelineBlocks):
             block_state.num_frames,
             block_state.height,
             block_state.width,
-            dtype=block_state.dtype,
-            device=block_state.device,
+            dtype=dtype,
+            device=device,
         )
         vision_tensor[:, :, 0] = conditioning_frame_2d
         vision_tensor[:, :, 1:] = conditioning_frame_2d.unsqueeze(2).expand(-1, -1, block_state.num_frames - 1, -1, -1)
@@ -366,8 +366,8 @@ class Cosmos3VideoVaeEncoderStep(ModularPipelineBlocks):
     def __call__(self, components: Cosmos3OmniModularPipeline, state: PipelineState) -> PipelineState:
         block_state = self.get_block_state(state)
 
-        block_state.device = components._execution_device
-        block_state.dtype = components.transformer.dtype
+        device = components._execution_device
+        dtype = components.transformer.dtype
 
         if block_state.video is None:
             raise ValueError("`Cosmos3VideoVaeEncoderStep` requires a `video` input.")
@@ -410,7 +410,7 @@ class Cosmos3VideoVaeEncoderStep(ModularPipelineBlocks):
         condition_indexes_vision = indexes
         conditioning_frames_3d = components.video_processor.preprocess_video(
             block_state.video, height=block_state.height, width=block_state.width
-        ).to(device=block_state.device, dtype=block_state.dtype)
+        ).to(device=device, dtype=dtype)
         temporal_compression = int(components.vae.config.scale_factor_temporal)
         max_cond_frames = max(condition_indexes_vision) * temporal_compression + 1
         if block_state.condition_video_keep == "first":
@@ -424,8 +424,8 @@ class Cosmos3VideoVaeEncoderStep(ModularPipelineBlocks):
             block_state.num_frames,
             block_state.height,
             block_state.width,
-            dtype=block_state.dtype,
-            device=block_state.device,
+            dtype=dtype,
+            device=device,
         )
         t_fill = min(conditioning_frames_3d.shape[2], block_state.num_frames)
         vision_tensor[:, :, :t_fill] = conditioning_frames_3d[:, :, :t_fill]
@@ -482,8 +482,8 @@ class Cosmos3ActionVisionVaeEncoderStep(ModularPipelineBlocks):
     def __call__(self, components: Cosmos3OmniModularPipeline, state: PipelineState) -> PipelineState:
         block_state = self.get_block_state(state)
 
-        block_state.device = components._execution_device
-        block_state.dtype = components.vae.dtype
+        device = components._execution_device
+        dtype = components.vae.dtype
 
         action = block_state.action
         target_frames = action.chunk_size + 1
@@ -492,8 +492,8 @@ class Cosmos3ActionVisionVaeEncoderStep(ModularPipelineBlocks):
             conditioning_clip,
             action.resolution_tier,
             target_frames,
-            device=block_state.device,
-            dtype=block_state.dtype,
+            device=device,
+            dtype=dtype,
         )
 
         if action.mode == "forward_dynamics":

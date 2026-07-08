@@ -47,7 +47,7 @@ class Cosmos3VideoDecodeStep(ModularPipelineBlocks):
     def __call__(self, components: Cosmos3OmniModularPipeline, state: PipelineState) -> PipelineState:
         block_state = self.get_block_state(state)
 
-        block_state.device = components._execution_device
+        device = components._execution_device
 
         if block_state.output_type == "latent":
             block_state.videos = block_state.latents
@@ -69,7 +69,7 @@ class Cosmos3VideoDecodeStep(ModularPipelineBlocks):
                     "(or pass your own), or opt out explicitly with `pipe.disable_safety_checker()`."
                 )
             block_state.videos = components._apply_video_safety_check(
-                block_state.videos, output_type=block_state.output_type, device=block_state.device
+                block_state.videos, output_type=block_state.output_type, device=device
             )
 
         self.set_block_state(state, block_state)
