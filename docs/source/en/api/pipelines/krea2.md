@@ -50,6 +50,27 @@ image = pipe(
 image.save("krea2.png")
 ```
 
+We additionally provide an example for using Krea2 Turbo :
+
+```python
+import torch
+from diffusers import Krea2Pipeline
+
+pipe = Krea2Pipeline.from_pretrained("krea/Krea-2-Turbo", torch_dtype=torch.bfloat16)
+pipe.to("cuda")
+
+image = pipe(
+    "a fox in the snow",
+    height=1024,
+    width=1024,
+    num_inference_steps=8,
+    guidance_scale=0.0,
+    generator=torch.Generator("cuda").manual_seed(0),
+).images[0]
+image.save("krea2_turbo.png")
+```
+
+
 ## Krea2Pipeline
 
 [[autodoc]] Krea2Pipeline
@@ -87,24 +108,27 @@ image = pipe(
 image.save("krea2.png")
 ```
 
-We additionally provide an example for using Krea2 Turbo :
+We additionally provide an example for using Krea2 Turbo. The distilled checkpoint disables guidance by
+setting the `guider` scale to `0.0` and samples in a few steps:
 
 ```python
 import torch
-from diffusers import Krea2Pipeline
+from diffusers import ClassifierFreeGuidance, ModularPipeline
 
-pipe = Krea2Pipeline.from_pretrained("krea/Krea-2-Turbo", torch_dtype=torch.bfloat16)
+pipe = ModularPipeline.from_pretrained("krea/Krea-2-Turbo")
+pipe.load_components(torch_dtype=torch.bfloat16)
 pipe.to("cuda")
 
+pipe.update_components(guider=ClassifierFreeGuidance(guidance_scale=0.0, use_original_formulation=True))
+
 image = pipe(
-    "a fox in the snow",
+    prompt="a fox in the snow",
     height=1024,
     width=1024,
     num_inference_steps=8,
-    guidance_scale=0.0,
     generator=torch.Generator("cuda").manual_seed(0),
 ).images[0]
-image.save("krea2_distilled.png")
+image.save("krea2_turbo.png")
 ```
 
 ## Krea2ModularPipeline
