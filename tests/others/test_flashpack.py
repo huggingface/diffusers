@@ -19,8 +19,9 @@ import shutil
 import tempfile
 import unittest
 from fnmatch import fnmatch
+from unittest import mock
 
-from diffusers import AutoPipelineForText2Image
+from diffusers import AutoPipelineForText2Image, DiffusionPipeline
 from diffusers.models.auto_model import AutoModel
 from diffusers.pipelines.pipeline_loading_utils import (
     _get_ignore_patterns,
@@ -262,3 +263,14 @@ class FlashPackTests(unittest.TestCase):
             variant=None,
         )
         self.assertFalse(any(fnmatch("text_encoder/model.safetensors", p) for p in patterns))
+
+    @require_flashpack
+    def test_from_pretrained_forwards_use_flashpack_to_download(self):
+        # Without the forwarding, `download` treats the repo as `use_flashpack=False` and never
+        # downloads the flashpack weights the loader then needs.
+        pipeline = AutoPipelineForText2Image.from_pretrained(self.model_id)
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as temp_dir:
+            pipeline.save_pretrained(temp_dir, use_flashpack=True)
+            with mock.patch.object(DiffusionPipeline, "download", return_value=temp_dir) as download:
+                DiffusionPipeline.from_pretrained("hf-internal-testing/does-not-matter", use_flashpack=True)
+            self.assertTrue(download.call_args.kwargs["use_flashpack"])
