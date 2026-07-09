@@ -758,7 +758,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         >>> pipeline.scheduler = scheduler
         ```
         """
-        # Copy the kwargs to re-use during loading connected pipeline.
+        # Copy the kwargs to reuse during loading connected pipeline.
         kwargs_copied = kwargs.copy()
 
         cache_dir = kwargs.pop("cache_dir", None)

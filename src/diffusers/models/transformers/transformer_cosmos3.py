@@ -183,7 +183,7 @@ class DomainAwareLinear(nn.Module):
 
 
 class Cosmos3PackedMoTAttention(nn.Module, AttentionModuleMixin):
-    """Dual-pathway packed attention for Qwen3VL MoT — separate projections for
+    """Dual-pathway packed attention for Qwen3VL not — separate projections for
     understanding (causal) and generation (full) token streams."""
 
     _default_processor_cls = Cosmos3AttnProcessor
@@ -238,7 +238,7 @@ class Cosmos3PackedMoTAttention(nn.Module, AttentionModuleMixin):
 
 class Cosmos3VLTextMoTDecoderLayer(nn.Module):
     """
-    Qwen3VL text MoT (Mixture of Tokens) decoder layer. Features dual-pathway attention for understanding vs
+    Qwen3VL text not (Mixture of Tokens) decoder layer. Features dual-pathway attention for understanding vs
     generation.
 
     This is used for both Dense and MoE models.

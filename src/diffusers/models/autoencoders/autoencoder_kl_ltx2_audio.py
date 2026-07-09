@@ -740,7 +740,7 @@ class AutoencoderKLLTX2Audio(ModelMixin, AutoencoderMixin, ConfigMixin):
             mel_bins=mel_bins,
         )
 
-        # Per-channel statistics for normalizing and denormalizing the latent representation. This statics is computed over
+        # Per-channel statistics for normalizing and denormalizing the latent representation. This statistics is computed over
         # the entire dataset and stored in model's checkpoint under AudioVAE state_dict
         latents_std = torch.ones((base_channels,))
         latents_mean = torch.zeros((base_channels,))

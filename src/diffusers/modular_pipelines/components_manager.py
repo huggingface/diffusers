@@ -181,7 +181,7 @@ class AutoOffloadStrategy:
         min_memory_offload = current_module_size - mem_on_device
         logger.info(f" search for models to offload in order to free up {min_memory_offload / 1024**3:.2f} GB memory")
 
-        # exlucde models that's not currently loaded on the device
+        # exclude models that's not currently loaded on the device
         module_sizes = dict(
             sorted(
                 {hook.model_id: hook.model.get_memory_footprint() for hook in hooks}.items(),

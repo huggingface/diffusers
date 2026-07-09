@@ -501,7 +501,7 @@ class QwenImageDenoiseStep(QwenImageDenoiseLoopWrapper):
     """
     Denoise step that iteratively denoise the latents.
       Its loop logic is defined in `QwenImageDenoiseLoopWrapper.__call__` method At each iteration, it runs blocks
-      defined in `sub_blocks` sequencially:
+      defined in `sub_blocks` sequentially:
        - `QwenImageLoopBeforeDenoiser`
        - `QwenImageLoopDenoiser`
        - `QwenImageLoopAfterDenoiser`
@@ -544,7 +544,7 @@ class QwenImageDenoiseStep(QwenImageDenoiseLoopWrapper):
         return (
             "Denoise step that iteratively denoise the latents.\n"
             "Its loop logic is defined in `QwenImageDenoiseLoopWrapper.__call__` method\n"
-            "At each iteration, it runs blocks defined in `sub_blocks` sequencially:\n"
+            "At each iteration, it runs blocks defined in `sub_blocks` sequentially:\n"
             " - `QwenImageLoopBeforeDenoiser`\n"
             " - `QwenImageLoopDenoiser`\n"
             " - `QwenImageLoopAfterDenoiser`\n"
@@ -558,7 +558,7 @@ class QwenImageInpaintDenoiseStep(QwenImageDenoiseLoopWrapper):
     """
     Denoise step that iteratively denoise the latents.
       Its loop logic is defined in `QwenImageDenoiseLoopWrapper.__call__` method At each iteration, it runs blocks
-      defined in `sub_blocks` sequencially:
+      defined in `sub_blocks` sequentially:
        - `QwenImageLoopBeforeDenoiser`
        - `QwenImageLoopDenoiser`
        - `QwenImageLoopAfterDenoiser`
@@ -608,7 +608,7 @@ class QwenImageInpaintDenoiseStep(QwenImageDenoiseLoopWrapper):
         return (
             "Denoise step that iteratively denoise the latents. \n"
             "Its loop logic is defined in `QwenImageDenoiseLoopWrapper.__call__` method \n"
-            "At each iteration, it runs blocks defined in `sub_blocks` sequencially:\n"
+            "At each iteration, it runs blocks defined in `sub_blocks` sequentially:\n"
             " - `QwenImageLoopBeforeDenoiser`\n"
             " - `QwenImageLoopDenoiser`\n"
             " - `QwenImageLoopAfterDenoiser`\n"
@@ -623,7 +623,7 @@ class QwenImageControlNetDenoiseStep(QwenImageDenoiseLoopWrapper):
     """
     Denoise step that iteratively denoise the latents.
       Its loop logic is defined in `QwenImageDenoiseLoopWrapper.__call__` method At each iteration, it runs blocks
-      defined in `sub_blocks` sequencially:
+      defined in `sub_blocks` sequentially:
        - `QwenImageLoopBeforeDenoiser`
        - `QwenImageLoopBeforeDenoiserControlNet`
        - `QwenImageLoopDenoiser`
@@ -673,7 +673,7 @@ class QwenImageControlNetDenoiseStep(QwenImageDenoiseLoopWrapper):
         return (
             "Denoise step that iteratively denoise the latents. \n"
             "Its loop logic is defined in `QwenImageDenoiseLoopWrapper.__call__` method \n"
-            "At each iteration, it runs blocks defined in `sub_blocks` sequencially:\n"
+            "At each iteration, it runs blocks defined in `sub_blocks` sequentially:\n"
             " - `QwenImageLoopBeforeDenoiser`\n"
             " - `QwenImageLoopBeforeDenoiserControlNet`\n"
             " - `QwenImageLoopDenoiser`\n"
@@ -688,7 +688,7 @@ class QwenImageInpaintControlNetDenoiseStep(QwenImageDenoiseLoopWrapper):
     """
     Denoise step that iteratively denoise the latents.
       Its loop logic is defined in `QwenImageDenoiseLoopWrapper.__call__` method At each iteration, it runs blocks
-      defined in `sub_blocks` sequencially:
+      defined in `sub_blocks` sequentially:
        - `QwenImageLoopBeforeDenoiser`
        - `QwenImageLoopBeforeDenoiserControlNet`
        - `QwenImageLoopDenoiser`
@@ -752,7 +752,7 @@ class QwenImageInpaintControlNetDenoiseStep(QwenImageDenoiseLoopWrapper):
         return (
             "Denoise step that iteratively denoise the latents. \n"
             "Its loop logic is defined in `QwenImageDenoiseLoopWrapper.__call__` method \n"
-            "At each iteration, it runs blocks defined in `sub_blocks` sequencially:\n"
+            "At each iteration, it runs blocks defined in `sub_blocks` sequentially:\n"
             " - `QwenImageLoopBeforeDenoiser`\n"
             " - `QwenImageLoopBeforeDenoiserControlNet`\n"
             " - `QwenImageLoopDenoiser`\n"
@@ -768,7 +768,7 @@ class QwenImageEditDenoiseStep(QwenImageDenoiseLoopWrapper):
     """
     Denoise step that iteratively denoise the latents.
       Its loop logic is defined in `QwenImageDenoiseLoopWrapper.__call__` method At each iteration, it runs blocks
-      defined in `sub_blocks` sequencially:
+      defined in `sub_blocks` sequentially:
        - `QwenImageEditLoopBeforeDenoiser`
        - `QwenImageEditLoopDenoiser`
        - `QwenImageLoopAfterDenoiser`
@@ -812,7 +812,7 @@ class QwenImageEditDenoiseStep(QwenImageDenoiseLoopWrapper):
         return (
             "Denoise step that iteratively denoise the latents. \n"
             "Its loop logic is defined in `QwenImageDenoiseLoopWrapper.__call__` method \n"
-            "At each iteration, it runs blocks defined in `sub_blocks` sequencially:\n"
+            "At each iteration, it runs blocks defined in `sub_blocks` sequentially:\n"
             " - `QwenImageEditLoopBeforeDenoiser`\n"
             " - `QwenImageEditLoopDenoiser`\n"
             " - `QwenImageLoopAfterDenoiser`\n"
@@ -826,7 +826,7 @@ class QwenImageEditInpaintDenoiseStep(QwenImageDenoiseLoopWrapper):
     """
     Denoise step that iteratively denoise the latents.
       Its loop logic is defined in `QwenImageDenoiseLoopWrapper.__call__` method At each iteration, it runs blocks
-      defined in `sub_blocks` sequencially:
+      defined in `sub_blocks` sequentially:
        - `QwenImageEditLoopBeforeDenoiser`
        - `QwenImageEditLoopDenoiser`
        - `QwenImageLoopAfterDenoiser`
@@ -876,7 +876,7 @@ class QwenImageEditInpaintDenoiseStep(QwenImageDenoiseLoopWrapper):
         return (
             "Denoise step that iteratively denoise the latents. \n"
             "Its loop logic is defined in `QwenImageDenoiseLoopWrapper.__call__` method \n"
-            "At each iteration, it runs blocks defined in `sub_blocks` sequencially:\n"
+            "At each iteration, it runs blocks defined in `sub_blocks` sequentially:\n"
             " - `QwenImageEditLoopBeforeDenoiser`\n"
             " - `QwenImageEditLoopDenoiser`\n"
             " - `QwenImageLoopAfterDenoiser`\n"
@@ -891,7 +891,7 @@ class QwenImageLayeredDenoiseStep(QwenImageDenoiseLoopWrapper):
     """
     Denoise step that iteratively denoise the latents.
       Its loop logic is defined in `QwenImageDenoiseLoopWrapper.__call__` method At each iteration, it runs blocks
-      defined in `sub_blocks` sequencially:
+      defined in `sub_blocks` sequentially:
        - `QwenImageEditLoopBeforeDenoiser`
        - `QwenImageEditLoopDenoiser`
        - `QwenImageLoopAfterDenoiser`
@@ -935,7 +935,7 @@ class QwenImageLayeredDenoiseStep(QwenImageDenoiseLoopWrapper):
         return (
             "Denoise step that iteratively denoise the latents. \n"
             "Its loop logic is defined in `QwenImageDenoiseLoopWrapper.__call__` method \n"
-            "At each iteration, it runs blocks defined in `sub_blocks` sequencially:\n"
+            "At each iteration, it runs blocks defined in `sub_blocks` sequentially:\n"
             " - `QwenImageEditLoopBeforeDenoiser`\n"
             " - `QwenImageEditLoopDenoiser`\n"
             " - `QwenImageLoopAfterDenoiser`\n"
