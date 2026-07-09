@@ -351,7 +351,7 @@ class BooguImagePipeline(DiffusionPipeline):
             List[Optional[torch.FloatTensor]]: List of encoded latent representations for each image.
         """
 
-        success, max_images_per_sample, wrapped_input_images = self._check_and_wrap_input_images(images)
+        _, wrapped_input_images = self._check_and_wrap_input_images(images)
 
         if wrapped_input_images is not None:
             assert len(wrapped_input_images) == batch_size, (
@@ -385,176 +385,58 @@ class BooguImagePipeline(DiffusionPipeline):
     def _check_and_wrap_input_images(
         self,
         input_images: Any,
-        treat_empty_list_as_none: bool = False,
-    ) -> Tuple[bool, int, Optional[Union[List[List[PIL.Image.Image]], List[List[str]]]]]:
+    ) -> Tuple[int, Optional[List[List[PIL.Image.Image]]]]:
         """
-        Normalize input_images into a two-level batch structure with per-sample lists:
-            - List[List[PIL.Image.Image]]  or
-            - List[List[str]]              (each str is an image path)
-            - Allowed per-sample "empty" markers: [] or None
+        Validate ``input_images`` and normalize it to a per-sample batch structure
+        ``List[List[PIL.Image.Image]]`` (one inner list per sample).
 
-        Rules:
-            - If input_images is None or []:
-                return (True, 0, None)
-            - If already in batch form such as [[image], [image,image], [], None] or [[str], [], [str,str], None],
-              return as is (optionally convert [] -> None if treat_empty_list_as_none=True).
-            - If List[PIL.Image.Image] / List[str] / List[None|PIL|str], wrap each non-None element as a single-image sample:
-              e.g. [img1, img2, None] -> [[img1], [img2], None]
-            - If single PIL.Image.Image / single str, wrap as [[item]]
-            - Otherwise attempt to iterate and collect valid items (PIL first, else paths) into a single batch sample.
+        Accepted inputs:
+            - ``None`` or ``[]`` -> no reference images.
+            - ``List[PIL.Image.Image]`` -> a single sample with those reference images,
+              wrapped to ``[[img, ...]]``.
+            - ``List[List[PIL.Image.Image]]`` -> an already-batched input; each inner list is one
+              sample, and ``None`` / ``[]`` marks a sample with no reference image.
+
+        Anything else (a bare image, file paths, or mixed / nested types) raises a ``ValueError``.
+        The pipeline does not guess intent or load images from disk.
 
         Returns:
-            (success, max_images_per_sample, wrapped_input_images)
-            - success: whether input_images is successfully wrapped
-            - max_images_per_sample: max number of images in any sample of the batch
-            - wrapped_input_images: List[List[PIL.Image.Image]] or List[List[str]] or None
+            ``(max_images_per_sample, wrapped_input_images)``.
         """
+        if input_images is None or (isinstance(input_images, list) and len(input_images) == 0):
+            return 0, None
 
-        # Case 0: input is None or empty
-        if input_images is None:
-            return True, 0, None
-        try:
-            # Safely check for emptiness without assuming it is a sequence
-            if hasattr(input_images, "__len__") and len(input_images) == 0:
-                return True, 0, None
-        except TypeError:
-            # If __len__ raises, ignore here; further logic will handle it
-            pass
+        if not isinstance(input_images, list):
+            raise ValueError(
+                "`input_images` must be a list of PIL images (one sample) or a list of lists of PIL images "
+                f"(one inner list per sample), but got {type(input_images)}."
+            )
 
-        def is_pil_image(x: Any) -> bool:
-            return isinstance(x, Image.Image)
+        # List[PIL.Image.Image] -> a single sample.
+        if all(isinstance(img, Image.Image) for img in input_images):
+            return len(input_images), [list(input_images)]
 
-        def is_path(x: Any) -> bool:
-            return isinstance(x, str)
-
-        def is_list_of_pil_images(x: Any) -> bool:
-            return isinstance(x, list) and all(is_pil_image(i) for i in x)
-
-        def is_list_of_paths(x: Any) -> bool:
-            return isinstance(x, list) and all(is_path(i) for i in x)
-
-        def is_list_of_list_of_pil_images(x: Any) -> bool:
-            return isinstance(x, list) and len(x) > 0 and all(is_list_of_pil_images(i) for i in x)
-
-        def is_list_of_list_of_paths(x: Any) -> bool:
-            return isinstance(x, list) and len(x) > 0 and all(is_list_of_paths(i) for i in x)
-
-        def is_batch_two_level_with_none(x: Any) -> bool:
-            """
-            Accept batch-shaped inputs where each sample is:
-              - None (represents no image)
-              - []   (empty sample, can be converted to None if treat_empty_list_as_none=True)
-              - List[PIL.Image.Image] or List[str]
-            """
-            if not isinstance(x, list) or len(x) == 0:
-                return False
-            for sample in x:
-                if sample is None:
-                    continue
-                if isinstance(sample, list):
-                    if len(sample) == 0:
-                        continue
-                    # Allow mixed PIL/str but all elements must be either PIL or str
-                    all_pil = all(is_pil_image(i) for i in sample)
-                    all_str = all(is_path(i) for i in sample)
-                    if not (all_pil or all_str):
-                        return False
-                else:
-                    # Non-list, non-None found => not batch two-level
-                    return False
-            return True
-
-        # Case 1: already in normalized batch form (with None/[] allowed)
-        if is_batch_two_level_with_none(input_images):
-            wrapped = list(input_images)  # shallow copy
-            # Optionally convert empty lists to None per sample
-            if treat_empty_list_as_none:
-                for idx, sample in enumerate(wrapped):
-                    if isinstance(sample, list) and len(sample) == 0:
-                        wrapped[idx] = None
-            max_len = 0
-            for sample in wrapped:
-                if isinstance(sample, list):
-                    max_len = max(max_len, len(sample))
-            return True, max_len, wrapped
-
-        # Case 2: List[PIL.Image.Image] -> single batch
-        if is_list_of_pil_images(input_images):
-            wrapped = [input_images]
-            max_len = len(input_images)
-            return True, max_len, wrapped
-
-        # Case 2b: List[str] (paths) -> single batch
-        if is_list_of_paths(input_images):
-            wrapped = [input_images]
-            max_len = len(input_images)
-            return True, max_len, wrapped
-
-        # Case 2c: Flat batch where elements can be PIL/str/None
-        if isinstance(input_images, list) and all(
-            (is_pil_image(x) or is_path(x) or x is None or (isinstance(x, list))) for x in input_images
-        ):
-            wrapped: List[Optional[List[Any]]] = []
-            max_len = 0
-            for item in input_images:
-                if item is None:
+        # List[List[PIL.Image.Image]] -> already batched (None / [] marks a sample with no image).
+        if all(sample is None or isinstance(sample, list) for sample in input_images):
+            wrapped: List[Optional[List[PIL.Image.Image]]] = []
+            max_images_per_sample = 0
+            for sample in input_images:
+                if sample is None or len(sample) == 0:
                     wrapped.append(None)
-                elif is_pil_image(item) or is_path(item):
-                    wrapped.append([item])
-                    max_len = max(max_len, 1)
-                elif isinstance(item, list):
-                    # Clean sublist: keep only PIL or str
-                    pil_sub = [i for i in item if is_pil_image(i)]
-                    str_sub = [i for i in item if is_path(i)]
-                    if len(pil_sub) > 0 and len(str_sub) == 0:
-                        wrapped.append(pil_sub)
-                        max_len = max(max_len, len(pil_sub))
-                    elif len(str_sub) > 0 and len(pil_sub) == 0:
-                        wrapped.append(str_sub)
-                        max_len = max(max_len, len(str_sub))
-                    else:
-                        # Empty or mixed invalid -> treat as empty
-                        wrapped.append(None if treat_empty_list_as_none else [])
-                else:
-                    # Unknown element -> treat as empty
-                    wrapped.append(None if treat_empty_list_as_none else [])
-            # If all are None and we prefer None, keep as batch-level structure per spec
-            return True, max_len, wrapped
+                    continue
+                if not all(isinstance(img, Image.Image) for img in sample):
+                    raise ValueError(
+                        "Each sample in a batched `input_images` must be a list of PIL images; "
+                        "file paths and other types are not accepted."
+                    )
+                wrapped.append(list(sample))
+                max_images_per_sample = max(max_images_per_sample, len(sample))
+            return max_images_per_sample, wrapped
 
-        # Case 3: single PIL.Image.Image -> [[image]]
-        if is_pil_image(input_images):
-            wrapped = [[input_images]]
-            return True, 1, wrapped
-
-        # Case 3b: single path str -> [[path]]
-        if is_path(input_images):
-            wrapped = [[input_images]]
-            return True, 1, wrapped
-
-        # Case 4: other types -> try to interpret as iterable and collect images/paths as a single sample
-        try:
-            as_list = list(input_images)
-        except TypeError:
-            # Cannot iterate; normalization fails
-            return False, 0, None
-
-        pil_items = [x for x in as_list if is_pil_image(x)]
-        path_items = [x for x in as_list if is_path(x)]
-
-        if pil_items:
-            # Treat all collected PIL images as one sample in a single batch
-            wrapped = [pil_items]
-            max_len = len(pil_items)
-            return True, max_len, wrapped
-
-        if path_items:
-            # Treat all collected paths as one sample in a single batch
-            wrapped = [path_items]
-            max_len = len(path_items)
-            return True, max_len, wrapped
-
-        # No valid entries found
-        return False, 0, None
+        raise ValueError(
+            "`input_images` must be a list of PIL images (one sample) or a list of lists of PIL images "
+            "(batched); mixing bare images with lists, or passing file paths, is not supported."
+        )
 
     def _get_instruction_feature_embeds(
         self,
@@ -1053,7 +935,7 @@ class BooguImagePipeline(DiffusionPipeline):
 
         max_images_per_sample = 0
         if input_images:
-            success, max_images_per_sample, input_images = self._check_and_wrap_input_images(input_images)
+            max_images_per_sample, input_images = self._check_and_wrap_input_images(input_images)
 
         task_type = self._get_task_type_by_input_images(input_images)
 
