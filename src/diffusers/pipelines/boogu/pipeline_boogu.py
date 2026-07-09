@@ -52,15 +52,19 @@ def set_flow_match_timesteps(
     device: str | torch.device | None = None,
     seq_len: int | None = None,
 ) -> tuple[torch.Tensor, int]:
-    """Set Boogu's training-aligned timesteps on the official flow-match scheduler.
+    """Set Boogu's training-aligned schedule on the official flow-match scheduler.
 
     Boogu trains with a static ``v1`` time shift and a sigma schedule that runs
-    ``0 -> 1``, feeding that sigma to the transformer as the timestep directly
-    (unlike the built-in scheduler, whose timesteps run ``1000 -> 0``). The shift
-    amount ``mu`` is a fixed function of ``seq_len`` (resolution-independent), and
-    the shift itself reuses the parent's exponential formula. This overwrites the
-    scheduler's ``timesteps`` / ``sigmas`` to that convention; ``step`` is the
-    official one and works unchanged on the resulting schedule.
+    ``0 -> 1`` (inverted vs the built-in scheduler, whose sigmas run ``1 -> 0``).
+    The shift amount ``mu`` is a fixed function of ``seq_len`` (resolution-independent)
+    and reuses the parent's exponential formula. The custom sigmas are installed
+    through the public ``set_timesteps(sigmas=...)`` API; the only fix-up is the
+    terminal sigma, which ``set_timesteps`` appends as ``0.0`` (its "fully denoised"
+    endpoint) whereas Boogu's inverted schedule ends at ``1.0``.
+
+    The returned ``timesteps`` therefore run ``0 -> num_train_timesteps``; the
+    transformer is conditioned on the raw ``0 -> 1`` sigma, which the denoising loop
+    recovers by dividing the timestep by ``num_train_timesteps`` before each forward.
     """
     if seq_len is None:
         seq_len = scheduler.config.seq_len
@@ -76,14 +80,11 @@ def set_flow_match_timesteps(
 
     t = np.linspace(0.0, 1.0, num_inference_steps + 1, dtype=np.float32)[:-1]
     # Boogu v1 == 1 - exponential_shift(mu, 1, 1 - t); reuse the parent's formula.
-    t = (1.0 - scheduler._time_shift_exponential(mu, 1.0, 1.0 - torch.from_numpy(t))).numpy()
+    sigmas = (1.0 - scheduler._time_shift_exponential(mu, 1.0, 1.0 - torch.from_numpy(t))).numpy()
 
-    timesteps = torch.from_numpy(t).to(dtype=torch.float32, device=device)
-    scheduler.timesteps = timesteps  # 0-1 sigma, fed to the transformer as the timestep
-    scheduler.sigmas = torch.cat([timesteps, torch.ones(1, device=timesteps.device)])
-    scheduler.num_inference_steps = num_inference_steps
-    scheduler._step_index = None
-    scheduler._begin_index = None
+    scheduler.set_timesteps(sigmas=sigmas.tolist(), device=device)
+    # set_timesteps appends a terminal sigma of 0.0; Boogu's 0 -> 1 schedule ends at 1.0.
+    scheduler.sigmas = torch.cat([scheduler.sigmas[:-1], torch.ones(1, device=scheduler.sigmas.device)])
 
     return scheduler.timesteps, num_inference_steps
 
@@ -1155,8 +1156,11 @@ class BooguImagePipeline(DiffusionPipeline):
 
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
+                # `timesteps` run 0..num_train_timesteps (for scheduler.step); the transformer is
+                # conditioned on the raw 0..1 sigma, so rescale before every `predict` call.
+                sigma_t = t / self.scheduler.config.num_train_timesteps
                 model_pred = self.predict(
-                    t=t,
+                    t=sigma_t,
                     latents=latents,
                     instruction_embeds=instruction_embeds,
                     freqs_cis=freqs_cis,
@@ -1178,7 +1182,7 @@ class BooguImagePipeline(DiffusionPipeline):
 
                 if (task_type == "ti2i") and (text_guidance_scale > 1.0) and (image_guidance_scale > 1.0):  # Checked
                     model_pred_drop_text = self.predict(
-                        t=t,
+                        t=sigma_t,
                         latents=latents,
                         instruction_embeds=negative_instruction_embeds,
                         freqs_cis=freqs_cis,
@@ -1187,7 +1191,7 @@ class BooguImagePipeline(DiffusionPipeline):
                     )
 
                     model_pred_drop_all = self.predict(
-                        t=t,
+                        t=sigma_t,
                         latents=latents,
                         instruction_embeds=negative_instruction_embeds,
                         freqs_cis=freqs_cis,
@@ -1201,7 +1205,7 @@ class BooguImagePipeline(DiffusionPipeline):
                     ):
                         # Predict ref-image condition using an "empty" instruction embedding.
                         model_pred_drop_text_empty_instruct = self.predict(
-                            t=t,
+                            t=sigma_t,
                             latents=latents,
                             instruction_embeds=empty_instruction_embeds,
                             freqs_cis=freqs_cis,
@@ -1243,7 +1247,7 @@ class BooguImagePipeline(DiffusionPipeline):
                 elif (task_type == "ti2i") and (text_guidance_scale > 1.0):  # checked
                     # TI2I text-only guidance (keep reference-image condition, guide only by text):
                     model_pred_drop_text = self.predict(
-                        t=t,
+                        t=sigma_t,
                         latents=latents,
                         instruction_embeds=negative_instruction_embeds,
                         freqs_cis=freqs_cis,
@@ -1258,7 +1262,7 @@ class BooguImagePipeline(DiffusionPipeline):
                 elif (task_type == "ti2i") and (image_guidance_scale > 1.0):  # Checked
                     # TI2I image-only guidance (keep text condition, guide only by reference image):
                     model_pred_drop_image = self.predict(
-                        t=t,
+                        t=sigma_t,
                         latents=latents,
                         instruction_embeds=instruction_embeds,
                         freqs_cis=freqs_cis,
@@ -1272,7 +1276,7 @@ class BooguImagePipeline(DiffusionPipeline):
 
                 elif text_guidance_scale > 1.0:  # Checked
                     model_pred_drop_all = self.predict(
-                        t=t,
+                        t=sigma_t,
                         latents=latents,
                         instruction_embeds=negative_instruction_embeds,
                         freqs_cis=freqs_cis,
