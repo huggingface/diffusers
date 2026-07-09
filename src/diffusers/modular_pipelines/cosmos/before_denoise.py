@@ -979,7 +979,6 @@ class Cosmos3TransferSetupStep(ModularPipelineBlocks):
     @property
     def expected_components(self) -> list[ComponentSpec]:
         return [
-            ComponentSpec("vae", AutoencoderKLWan),
             ComponentSpec(
                 "video_processor",
                 VideoProcessor,
@@ -991,24 +990,52 @@ class Cosmos3TransferSetupStep(ModularPipelineBlocks):
     @property
     def inputs(self) -> list[InputParam]:
         return [
-            InputParam(name="control_videos", required=True),
-            InputParam(name="height", default=None),
-            InputParam(name="width", default=None),
-            InputParam(name="num_frames", default=None),
-            InputParam(name="num_video_frames_per_chunk", default=None),
-            InputParam(name="num_conditional_frames", type_hint=int, default=1),
+            InputParam(
+                name="control_videos",
+                type_hint=dict,
+                required=True,
+                description="Mapping of hint name (edge/blur/depth/seg/wsm) to the control video for that modality.",
+            ),
+            InputParam(
+                name="height", type_hint=int, default=None, description="Height of the generated video in pixels."
+            ),
+            InputParam(
+                name="width", type_hint=int, default=None, description="Width of the generated video in pixels."
+            ),
+            InputParam(
+                name="num_frames",
+                type_hint=int,
+                default=None,
+                description="Optional cap on the number of output frames (defaults to the control video length).",
+            ),
+            InputParam(
+                name="num_video_frames_per_chunk",
+                type_hint=int,
+                default=None,
+                description="Number of pixel frames generated per autoregressive chunk.",
+            ),
+            InputParam(
+                name="num_conditional_frames",
+                type_hint=int,
+                default=1,
+                description="Number of frames each chunk reuses from the previous chunk's tail.",
+            ),
         ]
 
     @property
     def intermediate_outputs(self) -> list[OutputParam]:
         return [
-            OutputParam("height"),
-            OutputParam("width"),
-            OutputParam("control_frames"),
-            OutputParam("total_frames"),
-            OutputParam("chunk_frames"),
-            OutputParam("num_chunks"),
-            OutputParam("stride"),
+            OutputParam("height", type_hint=int, description="Resolved output height in pixels."),
+            OutputParam("width", type_hint=int, description="Resolved output width in pixels."),
+            OutputParam(
+                "control_frames",
+                type_hint=dict,
+                description="Preprocessed, time-padded control maps in canonical hint order.",
+            ),
+            OutputParam("total_frames", type_hint=int, description="Total number of output frames to generate."),
+            OutputParam("chunk_frames", type_hint=int, description="Number of pixel frames per autoregressive chunk."),
+            OutputParam("num_chunks", type_hint=int, description="Number of autoregressive chunks."),
+            OutputParam("stride", type_hint=int, description="Frame stride between consecutive chunks."),
         ]
 
     @torch.no_grad()
@@ -1033,8 +1060,8 @@ class Cosmos3TransferSetupStep(ModularPipelineBlocks):
         if any(v is None for v in control_videos.values()):
             raise ValueError("`control_videos` entries must be loaded videos, not None.")
 
-        tcf = int(components.vae.config.scale_factor_temporal)
-        sf = int(components.vae.config.scale_factor_spatial)
+        tcf = components.vae_scale_factor_temporal
+        sf = components.vae_scale_factor_spatial
         if block_state.height % sf != 0 or block_state.width % sf != 0:
             raise ValueError(
                 f"`height` and `width` must be multiples of {sf}, got ({block_state.height}, {block_state.width})."
@@ -1161,7 +1188,7 @@ class Cosmos3TransferPrepareLatentsStep(ModularPipelineBlocks):
         chunk_frames = block_state.chunk_frames
         height = block_state.height
         width = block_state.width
-        tcf = int(components.vae.config.scale_factor_temporal)
+        tcf = components.vae_scale_factor_temporal
 
         # Slice this chunk's window out of the (padded) control maps and reflect-pad it up to a full chunk (repeat the
         # last frame once too short to keep reflecting). control_frames is already in canonical hint order.
