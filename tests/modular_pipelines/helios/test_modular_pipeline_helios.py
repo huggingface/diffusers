@@ -13,7 +13,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from types import SimpleNamespace
+
 import pytest
+import torch
 
 from diffusers.modular_pipelines import (
     HeliosAutoBlocks,
@@ -21,7 +24,10 @@ from diffusers.modular_pipelines import (
     HeliosPyramidAutoBlocks,
     HeliosPyramidModularPipeline,
 )
+from diffusers.modular_pipelines.helios.decoders import HeliosDecodeStep
+from diffusers.modular_pipelines.modular_pipeline import PipelineState
 
+from ...testing_utils import torch_device
 from ..test_modular_pipelines_common import ModularPipelineTesterMixin
 
 
@@ -89,6 +95,51 @@ class TestHeliosModularPipelineFast(ModularPipelineTesterMixin):
     @pytest.mark.skip(reason="num_videos_per_prompt")
     def test_num_images_per_prompt(self):
         pass
+
+
+class DummyHeliosVAE:
+    def __init__(self):
+        self.config = SimpleNamespace(latents_mean=[0.5, -0.5], latents_std=[2.0, 4.0], z_dim=2)
+        self.dtype = torch.float32
+        self.device = torch.device("cpu")
+        self.last_decode_latents = None
+
+    def decode(self, latents, return_dict=False):
+        self.last_decode_latents = latents
+        return (latents,)
+
+
+class DummyVideoProcessor:
+    def postprocess_video(self, history_video, output_type="pt"):
+        return history_video
+
+
+@pytest.mark.skipif(torch_device == "cpu", reason="Helios offload regression requires an accelerator device")
+def test_helios_decode_uses_execution_device_for_chunk_latents():
+    decode_step = HeliosDecodeStep()
+    components = SimpleNamespace(
+        vae=DummyHeliosVAE(),
+        video_processor=DummyVideoProcessor(),
+        vae_scale_factor_temporal=4,
+        _execution_device=torch.device(torch_device),
+    )
+    latent_chunks = [
+        torch.arange(18, device=torch_device, dtype=torch.float32).reshape(1, 2, 9, 1, 1),
+    ]
+    state = PipelineState()
+    state.set("latent_chunks", latent_chunks)
+    state.set("num_frames", 33)
+    state.set("output_type", "pt")
+
+    _, state = decode_step(components, state)
+
+    expected = latent_chunks[0].to(device=torch_device, dtype=torch.float32)
+    expected = expected / torch.tensor([0.5, 0.25], device=torch_device, dtype=torch.float32).view(1, 2, 1, 1, 1)
+    expected = expected + torch.tensor([0.5, -0.5], device=torch_device, dtype=torch.float32).view(1, 2, 1, 1, 1)
+
+    torch.testing.assert_close(components.vae.last_decode_latents, expected)
+    assert components.vae.last_decode_latents.device.type == torch_device
+    torch.testing.assert_close(state.videos, expected)
 
 
 HELIOS_PYRAMID_WORKFLOWS = {
