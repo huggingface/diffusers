@@ -227,7 +227,7 @@ class TaylorSeerCacheHook(ModelHook):
         state.current_step += 1
         current_step = state.current_step
         is_warmup_phase = current_step < self.disable_cache_before_step
-        is_compute_interval = (current_step - self.disable_cache_before_step - 1) % self.cache_interval == 0
+        is_compute_interval = (current_step - self.disable_cache_before_step) % self.cache_interval == 0
         is_cooldown_phase = self.disable_cache_after_step is not None and current_step >= self.disable_cache_after_step
         should_compute = is_warmup_phase or is_compute_interval or is_cooldown_phase
         return should_compute, state
