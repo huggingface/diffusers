@@ -16,14 +16,26 @@ class Cosmos3ActionOutputStep(ModularPipelineBlocks):
     @property
     def inputs(self) -> list[InputParam]:
         return [
-            InputParam(name="action_latents", default=None),
-            InputParam(name="action_mode", default=None),
-            InputParam(name="raw_action_dim_resolved", default=None),
+            InputParam(
+                name="action_latents",
+                type_hint=torch.Tensor,
+                default=None,
+                description="Denoised action latents.",
+            ),
+            InputParam(
+                name="action_mode", type_hint=str, default=None, description="Requested action-generation mode."
+            ),
+            InputParam(
+                name="raw_action_dim_resolved",
+                type_hint=int,
+                default=None,
+                description="Unpadded action-vector dimension.",
+            ),
         ]
 
     @property
     def intermediate_outputs(self) -> list[OutputParam]:
-        return [OutputParam("action")]
+        return [OutputParam("action", type_hint=list[torch.Tensor], description="Generated action vectors.")]
 
     @torch.no_grad()
     def __call__(self, components: Cosmos3OmniModularPipeline, state: PipelineState) -> PipelineState:
@@ -53,16 +65,31 @@ class Cosmos3ExportStep(ModularPipelineBlocks):
     @property
     def inputs(self) -> list[InputParam]:
         return [
-            InputParam(name="videos", required=True),
-            InputParam(name="output_path", required=True),
-            InputParam(name="fps", type_hint=float, default=24.0),
-            InputParam(name="sound", default=None),
-            InputParam(name="sampling_rate", default=None),
+            InputParam(name="videos", required=True, description="Generated video frames to export."),
+            InputParam(
+                name="output_path",
+                type_hint=str,
+                required=True,
+                description="Destination path for the exported video.",
+            ),
+            InputParam(name="fps", type_hint=float, default=24.0, description="Frame rate of the exported video."),
+            InputParam(
+                name="sound",
+                type_hint=torch.Tensor,
+                default=None,
+                description="Generated waveform to mux into the video.",
+            ),
+            InputParam(
+                name="sampling_rate",
+                type_hint=int,
+                default=None,
+                description="Sample rate of the generated waveform in Hz.",
+            ),
         ]
 
     @property
     def intermediate_outputs(self) -> list[OutputParam]:
-        return [OutputParam("output_path")]
+        return [OutputParam("output_path", type_hint=str, description="Path of the exported video file.")]
 
     @torch.no_grad()
     def __call__(self, components: Cosmos3OmniModularPipeline, state: PipelineState) -> PipelineState:

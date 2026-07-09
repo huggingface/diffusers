@@ -48,25 +48,54 @@ class Cosmos3TextEncoderStep(ModularPipelineBlocks):
     @property
     def inputs(self) -> list[InputParam]:
         return [
-            InputParam(name="prompt", type_hint=str, required=True),
-            InputParam(name="negative_prompt", default=None),
-            InputParam(name="num_frames", default=None),
-            InputParam(name="height", default=None),
-            InputParam(name="width", default=None),
-            InputParam(name="fps", type_hint=float, default=24.0),
-            InputParam(name="use_system_prompt", type_hint=bool, default=True),
-            InputParam(name="add_resolution_template", type_hint=bool, default=True),
-            InputParam(name="add_duration_template", type_hint=bool, default=True),
+            InputParam.template("prompt", description="The text prompt that guides Cosmos3 generation."),
+            InputParam.template(
+                "negative_prompt", description="The negative text prompt used for classifier-free guidance."
+            ),
+            InputParam(name="num_frames", type_hint=int, default=None, description="Number of frames to generate."),
+            InputParam(
+                name="height",
+                type_hint=int,
+                default=None,
+                description="Height of the generated video or image in pixels.",
+            ),
+            InputParam(
+                name="width",
+                type_hint=int,
+                default=None,
+                description="Width of the generated video or image in pixels.",
+            ),
+            InputParam(name="fps", type_hint=float, default=24.0, description="Frame rate of the generated video."),
+            InputParam(
+                name="use_system_prompt",
+                type_hint=bool,
+                default=True,
+                description="Whether to prepend the Cosmos3 system prompt.",
+            ),
+            InputParam(
+                name="add_resolution_template",
+                type_hint=bool,
+                default=True,
+                description="Whether to add resolution metadata to the prompt.",
+            ),
+            InputParam(
+                name="add_duration_template",
+                type_hint=bool,
+                default=True,
+                description="Whether to add duration metadata to the prompt.",
+            ),
         ]
 
     @property
     def intermediate_outputs(self) -> list[OutputParam]:
         return [
-            OutputParam("num_frames"),
-            OutputParam("height"),
-            OutputParam("width"),
-            OutputParam("cond_input_ids"),
-            OutputParam("uncond_input_ids"),
+            OutputParam("num_frames", type_hint=int, description="Number of frames to generate."),
+            OutputParam("height", type_hint=int, description="Height of the generated video or image in pixels."),
+            OutputParam("width", type_hint=int, description="Width of the generated video or image in pixels."),
+            OutputParam("cond_input_ids", type_hint=torch.Tensor, description="Token IDs for the conditional prompt."),
+            OutputParam(
+                "uncond_input_ids", type_hint=torch.Tensor, description="Token IDs for the unconditional prompt."
+            ),
         ]
 
     @torch.no_grad()
@@ -163,27 +192,61 @@ class Cosmos3ActionTextStep(ModularPipelineBlocks):
     @property
     def inputs(self) -> list[InputParam]:
         return [
-            InputParam(name="prompt", type_hint=str, required=True),
-            InputParam(name="negative_prompt", default=None),
-            InputParam(name="action", type_hint=CosmosActionCondition, required=True),
-            InputParam(name="num_frames", default=None),
-            InputParam(name="height", default=None),
-            InputParam(name="width", default=None),
-            InputParam(name="fps", type_hint=float, default=24.0),
-            InputParam(name="use_system_prompt", type_hint=bool, default=True),
-            InputParam(name="add_resolution_template", type_hint=bool, default=True),
-            InputParam(name="add_duration_template", type_hint=bool, default=True),
+            InputParam.template("prompt", description="The text prompt that guides Cosmos3 generation."),
+            InputParam.template(
+                "negative_prompt", description="The negative text prompt used for classifier-free guidance."
+            ),
+            InputParam(
+                name="action",
+                type_hint=CosmosActionCondition,
+                required=True,
+                description="Action-conditioning metadata and its reference visual input.",
+            ),
+            InputParam(name="num_frames", type_hint=int, default=None, description="Number of frames to generate."),
+            InputParam(
+                name="height",
+                type_hint=int,
+                default=None,
+                description="Height of the generated video or image in pixels.",
+            ),
+            InputParam(
+                name="width",
+                type_hint=int,
+                default=None,
+                description="Width of the generated video or image in pixels.",
+            ),
+            InputParam(name="fps", type_hint=float, default=24.0, description="Frame rate of the generated video."),
+            InputParam(
+                name="use_system_prompt",
+                type_hint=bool,
+                default=True,
+                description="Whether to prepend the Cosmos3 system prompt.",
+            ),
+            InputParam(
+                name="add_resolution_template",
+                type_hint=bool,
+                default=True,
+                description="Whether to add resolution metadata to the prompt.",
+            ),
+            InputParam(
+                name="add_duration_template",
+                type_hint=bool,
+                default=True,
+                description="Whether to add duration metadata to the prompt.",
+            ),
         ]
 
     @property
     def intermediate_outputs(self) -> list[OutputParam]:
         return [
-            OutputParam("action_mode"),
-            OutputParam("num_frames"),
-            OutputParam("height"),
-            OutputParam("width"),
-            OutputParam("cond_input_ids"),
-            OutputParam("uncond_input_ids"),
+            OutputParam("action_mode", type_hint=str, description="Requested action-generation mode."),
+            OutputParam("num_frames", type_hint=int, description="Number of frames to generate."),
+            OutputParam("height", type_hint=int, description="Height of the generated video or image in pixels."),
+            OutputParam("width", type_hint=int, description="Width of the generated video or image in pixels."),
+            OutputParam("cond_input_ids", type_hint=torch.Tensor, description="Token IDs for the conditional prompt."),
+            OutputParam(
+                "uncond_input_ids", type_hint=torch.Tensor, description="Token IDs for the unconditional prompt."
+            ),
         ]
 
     @torch.no_grad()
@@ -259,17 +322,29 @@ class Cosmos3ImageVaeEncoderStep(ModularPipelineBlocks):
     @property
     def inputs(self) -> list[InputParam]:
         return [
-            InputParam(name="image", default=None),
-            InputParam(name="num_frames", required=True),
-            InputParam(name="height", required=True),
-            InputParam(name="width", required=True),
+            InputParam(name="image", default=None, description="Reference image for image-to-video conditioning."),
+            InputParam(name="num_frames", type_hint=int, required=True, description="Number of frames to generate."),
+            InputParam(
+                name="height", type_hint=int, required=True, description="Height of the generated video in pixels."
+            ),
+            InputParam(
+                name="width", type_hint=int, required=True, description="Width of the generated video in pixels."
+            ),
         ]
 
     @property
     def intermediate_outputs(self) -> list[OutputParam]:
         return [
-            OutputParam("x0_tokens_vision"),
-            OutputParam("vision_condition_frames"),
+            OutputParam(
+                "x0_tokens_vision",
+                type_hint=torch.Tensor,
+                description="Vision latents encoded from the conditioning image or video.",
+            ),
+            OutputParam(
+                "vision_condition_frames",
+                type_hint=list[int],
+                description="Latent-frame indexes fixed by visual conditioning.",
+            ),
         ]
 
     @torch.no_grad()
@@ -339,19 +414,41 @@ class Cosmos3VideoVaeEncoderStep(ModularPipelineBlocks):
     @property
     def inputs(self) -> list[InputParam]:
         return [
-            InputParam(name="video", default=None),
-            InputParam(name="condition_frame_indexes_vision", default=(0, 1)),
-            InputParam(name="condition_video_keep", default="first"),
-            InputParam(name="num_frames", required=True),
-            InputParam(name="height", required=True),
-            InputParam(name="width", required=True),
+            InputParam(name="video", default=None, description="Reference video for video-to-video conditioning."),
+            InputParam(
+                name="condition_frame_indexes_vision",
+                type_hint=tuple[int, ...] | list[int],
+                default=(0, 1),
+                description="Latent-frame indexes to preserve from the conditioning video.",
+            ),
+            InputParam(
+                name="condition_video_keep",
+                type_hint=str,
+                default="first",
+                description="Which end of a longer conditioning video to use: `first` or `last`.",
+            ),
+            InputParam(name="num_frames", type_hint=int, required=True, description="Number of frames to generate."),
+            InputParam(
+                name="height", type_hint=int, required=True, description="Height of the generated video in pixels."
+            ),
+            InputParam(
+                name="width", type_hint=int, required=True, description="Width of the generated video in pixels."
+            ),
         ]
 
     @property
     def intermediate_outputs(self) -> list[OutputParam]:
         return [
-            OutputParam("x0_tokens_vision"),
-            OutputParam("vision_condition_frames"),
+            OutputParam(
+                "x0_tokens_vision",
+                type_hint=torch.Tensor,
+                description="Vision latents encoded from the conditioning image or video.",
+            ),
+            OutputParam(
+                "vision_condition_frames",
+                type_hint=list[int],
+                description="Latent-frame indexes fixed by visual conditioning.",
+            ),
         ]
 
     @torch.no_grad()
@@ -459,15 +556,32 @@ class Cosmos3ActionVisionVaeEncoderStep(ModularPipelineBlocks):
     @property
     def inputs(self) -> list[InputParam]:
         return [
-            InputParam(name="action", type_hint=CosmosActionCondition, required=True),
+            InputParam(
+                name="action",
+                type_hint=CosmosActionCondition,
+                required=True,
+                description="Action-conditioning metadata and its reference visual input.",
+            ),
         ]
 
     @property
     def intermediate_outputs(self) -> list[OutputParam]:
         return [
-            OutputParam("x0_tokens_vision"),
-            OutputParam("vision_condition_frames"),
-            OutputParam("action_condition_frame_indexes"),
+            OutputParam(
+                "x0_tokens_vision",
+                type_hint=torch.Tensor,
+                description="Vision latents encoded from the conditioning image or video.",
+            ),
+            OutputParam(
+                "vision_condition_frames",
+                type_hint=list[int],
+                description="Latent-frame indexes fixed by visual conditioning.",
+            ),
+            OutputParam(
+                "action_condition_frame_indexes",
+                type_hint=list[int],
+                description="Action-frame indexes fixed by action conditioning.",
+            ),
         ]
 
     @torch.no_grad()

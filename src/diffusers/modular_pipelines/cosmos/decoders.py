@@ -35,13 +35,13 @@ class Cosmos3VideoDecodeStep(ModularPipelineBlocks):
     @property
     def inputs(self) -> list[InputParam]:
         return [
-            InputParam(name="latents", required=True),
+            InputParam.template("latents", required=True, description="Denoised vision latents to decode."),
             InputParam.template("output_type", default="pil"),
         ]
 
     @property
     def intermediate_outputs(self) -> list[OutputParam]:
-        return [OutputParam("videos")]
+        return [OutputParam.template("videos")]
 
     @torch.no_grad()
     def __call__(self, components: Cosmos3OmniModularPipeline, state: PipelineState) -> PipelineState:
@@ -89,13 +89,20 @@ class Cosmos3SoundDecodeStep(ModularPipelineBlocks):
 
     @property
     def inputs(self) -> list[InputParam]:
-        return [InputParam(name="sound_latents", required=True)]
+        return [
+            InputParam(
+                name="sound_latents",
+                type_hint=torch.Tensor,
+                required=True,
+                description="Denoised sound latents to decode.",
+            )
+        ]
 
     @property
     def intermediate_outputs(self) -> list[OutputParam]:
         return [
-            OutputParam("sound"),
-            OutputParam("sampling_rate"),
+            OutputParam("sound", type_hint=torch.Tensor, description="Generated waveform."),
+            OutputParam("sampling_rate", type_hint=int, description="Sample rate of the generated waveform in Hz."),
         ]
 
     @torch.no_grad()

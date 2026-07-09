@@ -2,9 +2,8 @@ import copy
 
 import torch
 
-from ...models.autoencoders.autoencoder_kl_wan import AutoencoderKLWan
 from ...models.transformers.transformer_cosmos3 import Cosmos3OmniTransformer
-from ...pipelines.cosmos.pipeline_cosmos3_omni import _EMBODIMENT_TO_DOMAIN_ID
+from ...pipelines.cosmos.pipeline_cosmos3_omni import _EMBODIMENT_TO_DOMAIN_ID, CosmosActionCondition
 from ...schedulers import UniPCMultistepScheduler
 from ...utils.torch_utils import randn_tensor
 from ..modular_pipeline import ModularPipelineBlocks, PipelineState
@@ -26,15 +25,25 @@ class Cosmos3PrepareTextSegmentsStep(ModularPipelineBlocks):
     @property
     def inputs(self) -> list[InputParam]:
         return [
-            InputParam(name="cond_input_ids", required=True),
-            InputParam(name="uncond_input_ids", required=True),
+            InputParam(name="cond_input_ids", required=True, description="Token IDs for the conditional prompt."),
+            InputParam(name="uncond_input_ids", required=True, description="Token IDs for the unconditional prompt."),
         ]
 
     @property
     def intermediate_outputs(self) -> list[OutputParam]:
         return [
-            OutputParam("cond_text_segment", kwargs_type="denoiser_input_fields"),
-            OutputParam("uncond_text_segment", kwargs_type="denoiser_input_fields"),
+            OutputParam(
+                "cond_text_segment",
+                type_hint=dict,
+                kwargs_type="denoiser_input_fields",
+                description="Conditional text segment for the denoiser.",
+            ),
+            OutputParam(
+                "uncond_text_segment",
+                type_hint=dict,
+                kwargs_type="denoiser_input_fields",
+                description="Unconditional text segment for the denoiser.",
+            ),
         ]
 
     @torch.no_grad()
@@ -61,23 +70,51 @@ class Cosmos3VisionPrepareLatentsStep(ModularPipelineBlocks):
     @property
     def inputs(self) -> list[InputParam]:
         return [
-            InputParam(name="x0_tokens_vision", default=None),
-            InputParam(name="vision_condition_frames", default=None),
-            InputParam(name="num_frames", required=True),
-            InputParam(name="height", required=True),
-            InputParam(name="width", required=True),
-            InputParam(name="fps", type_hint=float, default=24.0),
-            InputParam(name="latents", default=None),
-            InputParam(name="generator", default=None),
+            InputParam(
+                name="x0_tokens_vision",
+                type_hint=torch.Tensor,
+                default=None,
+                description="Vision latents encoded from the conditioning image or video.",
+            ),
+            InputParam(
+                name="vision_condition_frames",
+                type_hint=list[int],
+                default=None,
+                description="Latent-frame indexes fixed by visual conditioning.",
+            ),
+            InputParam(name="num_frames", type_hint=int, required=True, description="Number of frames to generate."),
+            InputParam(
+                name="height", type_hint=int, required=True, description="Height of the generated video in pixels."
+            ),
+            InputParam(
+                name="width", type_hint=int, required=True, description="Width of the generated video in pixels."
+            ),
+            InputParam(name="fps", type_hint=float, default=24.0, description="Frame rate of the generated video."),
+            InputParam(
+                name="latents",
+                type_hint=torch.Tensor,
+                default=None,
+                description="Pre-generated noisy vision latents.",
+            ),
+            InputParam.template("generator"),
         ]
 
     @property
     def intermediate_outputs(self) -> list[OutputParam]:
         return [
-            OutputParam("latents"),
-            OutputParam("fps_vision"),
-            OutputParam("vision_condition_mask", kwargs_type="denoiser_input_fields"),
-            OutputParam("vision_condition_indexes_for_pack"),
+            OutputParam("latents", type_hint=torch.Tensor, description="Noisy vision latents for denoising."),
+            OutputParam("fps_vision", type_hint=float, description="Frame rate used to pack vision latents."),
+            OutputParam(
+                "vision_condition_mask",
+                type_hint=torch.Tensor,
+                kwargs_type="denoiser_input_fields",
+                description="Mask marking conditioned vision latent frames.",
+            ),
+            OutputParam(
+                "vision_condition_indexes_for_pack",
+                type_hint=list[int],
+                description="Indexes of conditioned vision latent frames.",
+            ),
         ]
 
     @torch.no_grad()
@@ -150,19 +187,29 @@ class Cosmos3SoundPrepareLatentsStep(ModularPipelineBlocks):
     @property
     def inputs(self) -> list[InputParam]:
         return [
-            InputParam(name="num_frames", required=True),
-            InputParam(name="fps", type_hint=float, default=24.0),
-            InputParam(name="sound_latents", default=None),
-            InputParam(name="generator", default=None),
+            InputParam(name="num_frames", type_hint=int, required=True, description="Number of frames to generate."),
+            InputParam(name="fps", type_hint=float, default=24.0, description="Frame rate of the generated video."),
+            InputParam(
+                name="sound_latents",
+                type_hint=torch.Tensor,
+                default=None,
+                description="Pre-generated noisy sound latents.",
+            ),
+            InputParam.template("generator"),
         ]
 
     @property
     def intermediate_outputs(self) -> list[OutputParam]:
         return [
-            OutputParam("sound_latents"),
-            OutputParam("fps_sound"),
-            OutputParam("sound_condition_mask", kwargs_type="denoiser_input_fields"),
-            OutputParam("sound_scheduler"),
+            OutputParam("sound_latents", type_hint=torch.Tensor, description="Noisy sound latents for denoising."),
+            OutputParam("fps_sound", type_hint=float, description="Frame rate of the sound latent sequence."),
+            OutputParam(
+                "sound_condition_mask",
+                type_hint=torch.Tensor,
+                kwargs_type="denoiser_input_fields",
+                description="Mask marking conditioned sound latent frames.",
+            ),
+            OutputParam("sound_scheduler", description="Scheduler used to update sound latents."),
         ]
 
     @torch.no_grad()
@@ -216,20 +263,50 @@ class Cosmos3ActionPrepareLatentsStep(ModularPipelineBlocks):
     @property
     def inputs(self) -> list[InputParam]:
         return [
-            InputParam(name="action", required=True),
-            InputParam(name="action_condition_frame_indexes", default=None),
-            InputParam(name="action_latents", default=None),
-            InputParam(name="generator", default=None),
+            InputParam(
+                name="action",
+                type_hint=CosmosActionCondition,
+                required=True,
+                description="Action-conditioning metadata.",
+            ),
+            InputParam(
+                name="action_condition_frame_indexes",
+                type_hint=list[int],
+                default=None,
+                description="Action-frame indexes fixed by action conditioning.",
+            ),
+            InputParam(
+                name="action_latents",
+                type_hint=torch.Tensor,
+                default=None,
+                description="Pre-generated noisy action latents.",
+            ),
+            InputParam.template("generator"),
         ]
 
     @property
     def intermediate_outputs(self) -> list[OutputParam]:
         return [
-            OutputParam("action_latents"),
-            OutputParam("action_condition_mask", kwargs_type="denoiser_input_fields"),
-            OutputParam("action_domain_ids", kwargs_type="denoiser_input_fields"),
-            OutputParam("raw_action_dim_resolved", kwargs_type="denoiser_input_fields"),
-            OutputParam("action_scheduler"),
+            OutputParam("action_latents", type_hint=torch.Tensor, description="Noisy action latents for denoising."),
+            OutputParam(
+                "action_condition_mask",
+                type_hint=torch.Tensor,
+                kwargs_type="denoiser_input_fields",
+                description="Mask marking conditioned action latent frames.",
+            ),
+            OutputParam(
+                "action_domain_ids",
+                type_hint=list[torch.Tensor],
+                kwargs_type="denoiser_input_fields",
+                description="Embodiment domain IDs for action conditioning.",
+            ),
+            OutputParam(
+                "raw_action_dim_resolved",
+                type_hint=int,
+                kwargs_type="denoiser_input_fields",
+                description="Unpadded action-vector dimension.",
+            ),
+            OutputParam("action_scheduler", description="Scheduler used to update action latents."),
         ]
 
     @torch.no_grad()
@@ -322,26 +399,52 @@ class Cosmos3VisionPackSequenceStep(ModularPipelineBlocks):
 
     @property
     def expected_components(self) -> list[ComponentSpec]:
-        return [
-            ComponentSpec("transformer", Cosmos3OmniTransformer),
-            ComponentSpec("vae", AutoencoderKLWan),
-        ]
+        return [ComponentSpec("transformer", Cosmos3OmniTransformer)]
 
     @property
     def inputs(self) -> list[InputParam]:
         return [
-            InputParam(name="cond_text_segment", required=True),
-            InputParam(name="uncond_text_segment", required=True),
-            InputParam(name="latents", required=True),
-            InputParam(name="fps_vision", required=True),
-            InputParam(name="vision_condition_indexes_for_pack", required=True),
+            InputParam(
+                name="cond_text_segment", type_hint=dict, required=True, description="Conditional text segment."
+            ),
+            InputParam(
+                name="uncond_text_segment",
+                type_hint=dict,
+                required=True,
+                description="Unconditional text segment.",
+            ),
+            InputParam(
+                name="latents", type_hint=torch.Tensor, required=True, description="Noisy vision latents to pack."
+            ),
+            InputParam(
+                name="fps_vision",
+                type_hint=float,
+                required=True,
+                description="Frame rate used to pack vision latents.",
+            ),
+            InputParam(
+                name="vision_condition_indexes_for_pack",
+                type_hint=list[int],
+                required=True,
+                description="Indexes of conditioned vision latent frames.",
+            ),
         ]
 
     @property
     def intermediate_outputs(self) -> list[OutputParam]:
         return [
-            OutputParam("cond_vision_segment", kwargs_type="denoiser_input_fields"),
-            OutputParam("uncond_vision_segment", kwargs_type="denoiser_input_fields"),
+            OutputParam(
+                "cond_vision_segment",
+                type_hint=dict,
+                kwargs_type="denoiser_input_fields",
+                description="Conditional vision segment for the denoiser.",
+            ),
+            OutputParam(
+                "uncond_vision_segment",
+                type_hint=dict,
+                kwargs_type="denoiser_input_fields",
+                description="Unconditional vision segment for the denoiser.",
+            ),
         ]
 
     @torch.no_grad()
@@ -387,19 +490,53 @@ class Cosmos3SoundPackSequenceStep(ModularPipelineBlocks):
     @property
     def inputs(self) -> list[InputParam]:
         return [
-            InputParam(name="cond_text_segment", required=True),
-            InputParam(name="uncond_text_segment", required=True),
-            InputParam(name="cond_sequence_length", required=True),
-            InputParam(name="uncond_sequence_length", required=True),
-            InputParam(name="sound_latents", required=True),
-            InputParam(name="fps_sound", required=True),
+            InputParam(
+                name="cond_text_segment", type_hint=dict, required=True, description="Conditional text segment."
+            ),
+            InputParam(
+                name="uncond_text_segment",
+                type_hint=dict,
+                required=True,
+                description="Unconditional text segment.",
+            ),
+            InputParam(
+                name="cond_sequence_length",
+                type_hint=int,
+                required=True,
+                description="Conditional multimodal sequence length.",
+            ),
+            InputParam(
+                name="uncond_sequence_length",
+                type_hint=int,
+                required=True,
+                description="Unconditional multimodal sequence length.",
+            ),
+            InputParam(
+                name="sound_latents", type_hint=torch.Tensor, required=True, description="Noisy sound latents to pack."
+            ),
+            InputParam(
+                name="fps_sound",
+                type_hint=float,
+                required=True,
+                description="Frame rate of the sound latent sequence.",
+            ),
         ]
 
     @property
     def intermediate_outputs(self) -> list[OutputParam]:
         return [
-            OutputParam("cond_sound_segment", kwargs_type="denoiser_input_fields"),
-            OutputParam("uncond_sound_segment", kwargs_type="denoiser_input_fields"),
+            OutputParam(
+                "cond_sound_segment",
+                type_hint=dict,
+                kwargs_type="denoiser_input_fields",
+                description="Conditional sound segment for the denoiser.",
+            ),
+            OutputParam(
+                "uncond_sound_segment",
+                type_hint=dict,
+                kwargs_type="denoiser_input_fields",
+                description="Unconditional sound segment for the denoiser.",
+            ),
         ]
 
     @torch.no_grad()
@@ -435,28 +572,67 @@ class Cosmos3ActionPackSequenceStep(ModularPipelineBlocks):
 
     @property
     def expected_components(self) -> list[ComponentSpec]:
-        return [
-            ComponentSpec("transformer", Cosmos3OmniTransformer),
-            ComponentSpec("vae", AutoencoderKLWan),
-        ]
+        return [ComponentSpec("transformer", Cosmos3OmniTransformer)]
 
     @property
     def inputs(self) -> list[InputParam]:
         return [
-            InputParam(name="cond_text_segment", required=True),
-            InputParam(name="uncond_text_segment", required=True),
-            InputParam(name="cond_sequence_length", required=True),
-            InputParam(name="uncond_sequence_length", required=True),
-            InputParam(name="action_latents", required=True),
-            InputParam(name="action_condition_frame_indexes", default=None),
-            InputParam(name="fps_vision", required=True),
+            InputParam(
+                name="cond_text_segment", type_hint=dict, required=True, description="Conditional text segment."
+            ),
+            InputParam(
+                name="uncond_text_segment",
+                type_hint=dict,
+                required=True,
+                description="Unconditional text segment.",
+            ),
+            InputParam(
+                name="cond_sequence_length",
+                type_hint=int,
+                required=True,
+                description="Conditional multimodal sequence length.",
+            ),
+            InputParam(
+                name="uncond_sequence_length",
+                type_hint=int,
+                required=True,
+                description="Unconditional multimodal sequence length.",
+            ),
+            InputParam(
+                name="action_latents",
+                type_hint=torch.Tensor,
+                required=True,
+                description="Noisy action latents to pack.",
+            ),
+            InputParam(
+                name="action_condition_frame_indexes",
+                type_hint=list[int],
+                default=None,
+                description="Action-frame indexes fixed by action conditioning.",
+            ),
+            InputParam(
+                name="fps_vision",
+                type_hint=float,
+                required=True,
+                description="Frame rate used to pack vision latents.",
+            ),
         ]
 
     @property
     def intermediate_outputs(self) -> list[OutputParam]:
         return [
-            OutputParam("cond_action_segment", kwargs_type="denoiser_input_fields"),
-            OutputParam("uncond_action_segment", kwargs_type="denoiser_input_fields"),
+            OutputParam(
+                "cond_action_segment",
+                type_hint=dict,
+                kwargs_type="denoiser_input_fields",
+                description="Conditional action segment for the denoiser.",
+            ),
+            OutputParam(
+                "uncond_action_segment",
+                type_hint=dict,
+                kwargs_type="denoiser_input_fields",
+                description="Unconditional action segment for the denoiser.",
+            ),
         ]
 
     @torch.no_grad()
@@ -495,19 +671,53 @@ class Cosmos3VisionDenoiseInputStep(ModularPipelineBlocks):
     @property
     def inputs(self) -> list[InputParam]:
         return [
-            InputParam(name="cond_text_segment", required=True),
-            InputParam(name="uncond_text_segment", required=True),
-            InputParam(name="cond_vision_segment", required=True),
-            InputParam(name="uncond_vision_segment", required=True),
+            InputParam(
+                name="cond_text_segment", type_hint=dict, required=True, description="Conditional text segment."
+            ),
+            InputParam(
+                name="uncond_text_segment",
+                type_hint=dict,
+                required=True,
+                description="Unconditional text segment.",
+            ),
+            InputParam(
+                name="cond_vision_segment", type_hint=dict, required=True, description="Conditional vision segment."
+            ),
+            InputParam(
+                name="uncond_vision_segment",
+                type_hint=dict,
+                required=True,
+                description="Unconditional vision segment.",
+            ),
         ]
 
     @property
     def intermediate_outputs(self) -> list[OutputParam]:
         return [
-            OutputParam("cond_position_ids", kwargs_type="denoiser_input_fields"),
-            OutputParam("uncond_position_ids", kwargs_type="denoiser_input_fields"),
-            OutputParam("cond_sequence_length", kwargs_type="denoiser_input_fields"),
-            OutputParam("uncond_sequence_length", kwargs_type="denoiser_input_fields"),
+            OutputParam(
+                "cond_position_ids",
+                type_hint=torch.Tensor,
+                kwargs_type="denoiser_input_fields",
+                description="Conditional multimodal RoPE position IDs.",
+            ),
+            OutputParam(
+                "uncond_position_ids",
+                type_hint=torch.Tensor,
+                kwargs_type="denoiser_input_fields",
+                description="Unconditional multimodal RoPE position IDs.",
+            ),
+            OutputParam(
+                "cond_sequence_length",
+                type_hint=int,
+                kwargs_type="denoiser_input_fields",
+                description="Conditional multimodal sequence length.",
+            ),
+            OutputParam(
+                "uncond_sequence_length",
+                type_hint=int,
+                kwargs_type="denoiser_input_fields",
+                description="Unconditional multimodal sequence length.",
+            ),
         ]
 
     @torch.no_grad()
@@ -547,21 +757,68 @@ class Cosmos3SoundDenoiseInputStep(ModularPipelineBlocks):
     @property
     def inputs(self) -> list[InputParam]:
         return [
-            InputParam(name="cond_position_ids", required=True),
-            InputParam(name="uncond_position_ids", required=True),
-            InputParam(name="cond_sequence_length", required=True),
-            InputParam(name="uncond_sequence_length", required=True),
-            InputParam(name="cond_sound_segment", required=True),
-            InputParam(name="uncond_sound_segment", required=True),
+            InputParam(
+                name="cond_position_ids",
+                type_hint=torch.Tensor,
+                required=True,
+                description="Conditional multimodal RoPE position IDs.",
+            ),
+            InputParam(
+                name="uncond_position_ids",
+                type_hint=torch.Tensor,
+                required=True,
+                description="Unconditional multimodal RoPE position IDs.",
+            ),
+            InputParam(
+                name="cond_sequence_length",
+                type_hint=int,
+                required=True,
+                description="Conditional multimodal sequence length.",
+            ),
+            InputParam(
+                name="uncond_sequence_length",
+                type_hint=int,
+                required=True,
+                description="Unconditional multimodal sequence length.",
+            ),
+            InputParam(
+                name="cond_sound_segment", type_hint=dict, required=True, description="Conditional sound segment."
+            ),
+            InputParam(
+                name="uncond_sound_segment",
+                type_hint=dict,
+                required=True,
+                description="Unconditional sound segment.",
+            ),
         ]
 
     @property
     def intermediate_outputs(self) -> list[OutputParam]:
         return [
-            OutputParam("cond_position_ids", kwargs_type="denoiser_input_fields"),
-            OutputParam("uncond_position_ids", kwargs_type="denoiser_input_fields"),
-            OutputParam("cond_sequence_length", kwargs_type="denoiser_input_fields"),
-            OutputParam("uncond_sequence_length", kwargs_type="denoiser_input_fields"),
+            OutputParam(
+                "cond_position_ids",
+                type_hint=torch.Tensor,
+                kwargs_type="denoiser_input_fields",
+                description="Conditional multimodal RoPE position IDs.",
+            ),
+            OutputParam(
+                "uncond_position_ids",
+                type_hint=torch.Tensor,
+                kwargs_type="denoiser_input_fields",
+                description="Unconditional multimodal RoPE position IDs.",
+            ),
+            OutputParam(
+                "cond_sequence_length",
+                type_hint=int,
+                kwargs_type="denoiser_input_fields",
+                description="Conditional multimodal sequence length.",
+            ),
+            OutputParam(
+                "uncond_sequence_length",
+                type_hint=int,
+                kwargs_type="denoiser_input_fields",
+                description="Unconditional multimodal sequence length.",
+            ),
         ]
 
     @torch.no_grad()
@@ -589,21 +846,68 @@ class Cosmos3ActionDenoiseInputStep(ModularPipelineBlocks):
     @property
     def inputs(self) -> list[InputParam]:
         return [
-            InputParam(name="cond_position_ids", required=True),
-            InputParam(name="uncond_position_ids", required=True),
-            InputParam(name="cond_sequence_length", required=True),
-            InputParam(name="uncond_sequence_length", required=True),
-            InputParam(name="cond_action_segment", required=True),
-            InputParam(name="uncond_action_segment", required=True),
+            InputParam(
+                name="cond_position_ids",
+                type_hint=torch.Tensor,
+                required=True,
+                description="Conditional multimodal RoPE position IDs.",
+            ),
+            InputParam(
+                name="uncond_position_ids",
+                type_hint=torch.Tensor,
+                required=True,
+                description="Unconditional multimodal RoPE position IDs.",
+            ),
+            InputParam(
+                name="cond_sequence_length",
+                type_hint=int,
+                required=True,
+                description="Conditional multimodal sequence length.",
+            ),
+            InputParam(
+                name="uncond_sequence_length",
+                type_hint=int,
+                required=True,
+                description="Unconditional multimodal sequence length.",
+            ),
+            InputParam(
+                name="cond_action_segment", type_hint=dict, required=True, description="Conditional action segment."
+            ),
+            InputParam(
+                name="uncond_action_segment",
+                type_hint=dict,
+                required=True,
+                description="Unconditional action segment.",
+            ),
         ]
 
     @property
     def intermediate_outputs(self) -> list[OutputParam]:
         return [
-            OutputParam("cond_position_ids", kwargs_type="denoiser_input_fields"),
-            OutputParam("uncond_position_ids", kwargs_type="denoiser_input_fields"),
-            OutputParam("cond_sequence_length", kwargs_type="denoiser_input_fields"),
-            OutputParam("uncond_sequence_length", kwargs_type="denoiser_input_fields"),
+            OutputParam(
+                "cond_position_ids",
+                type_hint=torch.Tensor,
+                kwargs_type="denoiser_input_fields",
+                description="Conditional multimodal RoPE position IDs.",
+            ),
+            OutputParam(
+                "uncond_position_ids",
+                type_hint=torch.Tensor,
+                kwargs_type="denoiser_input_fields",
+                description="Unconditional multimodal RoPE position IDs.",
+            ),
+            OutputParam(
+                "cond_sequence_length",
+                type_hint=int,
+                kwargs_type="denoiser_input_fields",
+                description="Conditional multimodal sequence length.",
+            ),
+            OutputParam(
+                "uncond_sequence_length",
+                type_hint=int,
+                kwargs_type="denoiser_input_fields",
+                description="Unconditional multimodal sequence length.",
+            ),
         ]
 
     @torch.no_grad()
@@ -641,8 +945,8 @@ class Cosmos3SetTimestepsStep(ModularPipelineBlocks):
     @property
     def intermediate_outputs(self) -> list[OutputParam]:
         return [
-            OutputParam("timesteps"),
-            OutputParam("num_warmup_steps"),
+            OutputParam("timesteps", type_hint=torch.Tensor, description="Scheduler timesteps for denoising."),
+            OutputParam("num_warmup_steps", type_hint=int, description="Number of scheduler warmup steps."),
         ]
 
     @torch.no_grad()

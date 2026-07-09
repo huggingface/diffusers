@@ -23,15 +23,21 @@ class Cosmos3VisionLoopPrepareStep(ModularPipelineBlocks):
     @property
     def inputs(self) -> list[InputParam]:
         return [
-            InputParam(name="latents", required=True),
-            InputParam(name="cond_vision_segment", required=True),
+            InputParam.template("latents", required=True, description="Noisy vision latents to denoise."),
+            InputParam(
+                name="cond_vision_segment", type_hint=dict, required=True, description="Conditional vision segment."
+            ),
         ]
 
     @property
     def intermediate_outputs(self) -> list[OutputParam]:
         return [
-            OutputParam("vision_tokens"),
-            OutputParam("vision_timesteps"),
+            OutputParam(
+                "vision_tokens",
+                type_hint=list[torch.Tensor],
+                description="Vision tokens for the transformer denoiser.",
+            ),
+            OutputParam("vision_timesteps", type_hint=torch.Tensor, description="Timesteps for the vision tokens."),
         ]
 
     @torch.no_grad()
@@ -58,15 +64,24 @@ class Cosmos3SoundLoopPrepareStep(ModularPipelineBlocks):
     @property
     def inputs(self) -> list[InputParam]:
         return [
-            InputParam(name="sound_latents", required=True),
-            InputParam(name="cond_sound_segment", required=True),
+            InputParam(
+                name="sound_latents",
+                type_hint=torch.Tensor,
+                required=True,
+                description="Noisy sound latents to denoise.",
+            ),
+            InputParam(
+                name="cond_sound_segment", type_hint=dict, required=True, description="Conditional sound segment."
+            ),
         ]
 
     @property
     def intermediate_outputs(self) -> list[OutputParam]:
         return [
-            OutputParam("sound_tokens"),
-            OutputParam("sound_timesteps"),
+            OutputParam(
+                "sound_tokens", type_hint=list[torch.Tensor], description="Sound tokens for the transformer denoiser."
+            ),
+            OutputParam("sound_timesteps", type_hint=torch.Tensor, description="Timesteps for the sound tokens."),
         ]
 
     @torch.no_grad()
@@ -93,15 +108,26 @@ class Cosmos3ActionLoopPrepareStep(ModularPipelineBlocks):
     @property
     def inputs(self) -> list[InputParam]:
         return [
-            InputParam(name="action_latents", required=True),
-            InputParam(name="cond_action_segment", required=True),
+            InputParam(
+                name="action_latents",
+                type_hint=torch.Tensor,
+                required=True,
+                description="Noisy action latents to denoise.",
+            ),
+            InputParam(
+                name="cond_action_segment", type_hint=dict, required=True, description="Conditional action segment."
+            ),
         ]
 
     @property
     def intermediate_outputs(self) -> list[OutputParam]:
         return [
-            OutputParam("action_tokens"),
-            OutputParam("action_timesteps"),
+            OutputParam(
+                "action_tokens",
+                type_hint=list[torch.Tensor],
+                description="Action tokens for the transformer denoiser.",
+            ),
+            OutputParam("action_timesteps", type_hint=torch.Tensor, description="Timesteps for the action tokens."),
         ]
 
     @torch.no_grad()
@@ -129,15 +155,24 @@ class Cosmos3LoopDenoiser(ModularPipelineBlocks):
     def inputs(self) -> list[InputParam]:
         return [
             InputParam.template("denoiser_input_fields"),
-            InputParam(name="guidance_scale", default=6.0),
+            InputParam(
+                name="guidance_scale",
+                type_hint=float,
+                default=6.0,
+                description="Scale for classifier-free guidance.",
+            ),
         ]
 
     @property
     def intermediate_outputs(self) -> list[OutputParam]:
         return [
-            OutputParam("velocity_vision"),
-            OutputParam("velocity_sound"),
-            OutputParam("velocity_action"),
+            OutputParam(
+                "velocity_vision", type_hint=torch.Tensor, description="Predicted velocity for vision latents."
+            ),
+            OutputParam("velocity_sound", type_hint=torch.Tensor, description="Predicted velocity for sound latents."),
+            OutputParam(
+                "velocity_action", type_hint=torch.Tensor, description="Predicted velocity for action latents."
+            ),
         ]
 
     @torch.no_grad()
@@ -224,13 +259,15 @@ class Cosmos3VisionLoopSchedulerStep(ModularPipelineBlocks):
     @property
     def inputs(self) -> list[InputParam]:
         return [
-            InputParam(name="latents", required=True),
-            InputParam(name="velocity_vision", required=True),
+            InputParam.template("latents", required=True, description="Noisy vision latents to update."),
+            InputParam(
+                name="velocity_vision", type_hint=torch.Tensor, required=True, description="Predicted vision velocity."
+            ),
         ]
 
     @property
     def intermediate_outputs(self) -> list[OutputParam]:
-        return [OutputParam("latents")]
+        return [OutputParam.template("latents")]
 
     @torch.no_grad()
     def __call__(self, components: Cosmos3OmniModularPipeline, block_state: BlockState, i: int, t: torch.Tensor):
@@ -250,14 +287,26 @@ class Cosmos3SoundLoopSchedulerStep(ModularPipelineBlocks):
     @property
     def inputs(self) -> list[InputParam]:
         return [
-            InputParam(name="sound_latents", required=True),
-            InputParam(name="sound_scheduler", required=True),
-            InputParam(name="velocity_sound", required=True),
+            InputParam(
+                name="sound_latents",
+                type_hint=torch.Tensor,
+                required=True,
+                description="Noisy sound latents to update.",
+            ),
+            InputParam(
+                name="sound_scheduler",
+                type_hint=UniPCMultistepScheduler,
+                required=True,
+                description="Scheduler used to update sound latents.",
+            ),
+            InputParam(
+                name="velocity_sound", type_hint=torch.Tensor, required=True, description="Predicted sound velocity."
+            ),
         ]
 
     @property
     def intermediate_outputs(self) -> list[OutputParam]:
-        return [OutputParam("sound_latents")]
+        return [OutputParam("sound_latents", type_hint=torch.Tensor, description="Updated sound latents.")]
 
     @torch.no_grad()
     def __call__(self, components: Cosmos3OmniModularPipeline, block_state: BlockState, i: int, t: torch.Tensor):
@@ -277,16 +326,38 @@ class Cosmos3ActionLoopSchedulerStep(ModularPipelineBlocks):
     @property
     def inputs(self) -> list[InputParam]:
         return [
-            InputParam(name="action_latents", required=True),
-            InputParam(name="action_scheduler", required=True),
-            InputParam(name="velocity_action", required=True),
-            InputParam(name="action_condition_mask", required=True),
-            InputParam(name="raw_action_dim_resolved", default=None),
+            InputParam(
+                name="action_latents",
+                type_hint=torch.Tensor,
+                required=True,
+                description="Noisy action latents to update.",
+            ),
+            InputParam(
+                name="action_scheduler",
+                type_hint=UniPCMultistepScheduler,
+                required=True,
+                description="Scheduler used to update action latents.",
+            ),
+            InputParam(
+                name="velocity_action", type_hint=torch.Tensor, required=True, description="Predicted action velocity."
+            ),
+            InputParam(
+                name="action_condition_mask",
+                type_hint=torch.Tensor,
+                required=True,
+                description="Mask marking conditioned action latent frames.",
+            ),
+            InputParam(
+                name="raw_action_dim_resolved",
+                type_hint=int,
+                default=None,
+                description="Unpadded action-vector dimension.",
+            ),
         ]
 
     @property
     def intermediate_outputs(self) -> list[OutputParam]:
-        return [OutputParam("action_latents")]
+        return [OutputParam("action_latents", type_hint=torch.Tensor, description="Updated action latents.")]
 
     @torch.no_grad()
     def __call__(self, components: Cosmos3OmniModularPipeline, block_state: BlockState, i: int, t: torch.Tensor):
@@ -319,7 +390,9 @@ class Cosmos3DenoiseLoopWrapper(LoopSequentialPipelineBlocks):
         return [
             InputParam.template("timesteps", required=True),
             InputParam.template("num_inference_steps", required=True),
-            InputParam(name="num_warmup_steps", required=True),
+            InputParam(
+                name="num_warmup_steps", type_hint=int, required=True, description="Number of scheduler warmup steps."
+            ),
         ]
 
     @torch.no_grad()

@@ -750,6 +750,7 @@ pipe = Cosmos3OmniModularPipeline.from_pretrained(
     "nvidia/Cosmos3-Nano", torch_dtype=torch.bfloat16
 )
 pipe.load_components(torch_dtype=torch.bfloat16)
+pipe.enable_safety_checker()
 
 videos = pipe(
     prompt='{"scene":"A robot arm in a kitchen"}',
@@ -772,6 +773,7 @@ from diffusers import ModularPipeline
 
 pipe = ModularPipeline.from_pretrained("nvidia/Cosmos3-Nano", torch_dtype=torch.bfloat16)
 pipe.load_components(torch_dtype=torch.bfloat16)
+pipe.enable_safety_checker()
 videos = pipe(
     prompt='{"scene":"A robot arm in a kitchen"}', num_frames=1, height=720, width=1280, output="videos"
 )
@@ -797,6 +799,7 @@ from diffusers.utils import encode_video, export_to_video, load_image, load_vide
 
 pipe = Cosmos3OmniModularPipeline.from_pretrained("nvidia/Cosmos3-Nano", torch_dtype=torch.bfloat16)
 pipe.load_components(torch_dtype=torch.bfloat16)
+pipe.enable_safety_checker()
 pipe.to("cuda")
 pipe.scheduler = UniPCMultistepScheduler.from_config(
     pipe.scheduler.config, flow_shift=10.0, use_karras_sigmas=False
