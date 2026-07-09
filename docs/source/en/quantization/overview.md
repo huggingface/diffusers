@@ -28,7 +28,7 @@ There are two ways to use [`~quantizers.PipelineQuantizationConfig`] depending o
 
 Initialize [`~quantizers.PipelineQuantizationConfig`] with the following parameters.
 
-- `quant_backend` specifies which quantization backend to use. Currently supported backends include: `bitsandbytes_4bit`, `bitsandbytes_8bit`, `gguf`, `nunchaku_lite`, `quanto`, and `torchao`. Nunchaku Lite is used for loading prequantized checkpoints; see the [Nunchaku Lite](./nunchaku) guide for checkpoint requirements.
+- `quant_backend` specifies which quantization backend to use. Currently supported backends include: `bitsandbytes_4bit`, `bitsandbytes_8bit`, `gguf`, `nunchaku_lite`, `quanto`, and `torchao`.
 - `quant_kwargs` specifies the quantization arguments to use.
 
 > [!TIP]
