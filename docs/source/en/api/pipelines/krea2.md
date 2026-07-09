@@ -35,7 +35,7 @@ import torch
 from diffusers import Krea2Pipeline
 
 # Load from a local directory produced by the Krea 2 conversion (no hub repo yet).
-pipe = Krea2Pipeline.from_pretrained("path/to/krea2-diffusers", torch_dtype=torch.bfloat16)
+pipe = Krea2Pipeline.from_pretrained("krea/Krea-2-Raw", torch_dtype=torch.bfloat16)
 pipe.to("cuda")
 
 prompt = "a fox in the snow"
@@ -85,6 +85,26 @@ image = pipe(
     generator=torch.Generator("cuda").manual_seed(0),
 ).images[0]
 image.save("krea2.png")
+```
+
+We additionally provide an example for using Krea2 Turbo :
+
+```python
+import torch
+from diffusers import Krea2Pipeline
+
+pipe = Krea2Pipeline.from_pretrained("krea/Krea-2-Turbo", torch_dtype=torch.bfloat16)
+pipe.to("cuda")
+
+image = pipe(
+    "a fox in the snow",
+    height=1024,
+    width=1024,
+    num_inference_steps=8,
+    guidance_scale=0.0,
+    generator=torch.Generator("cuda").manual_seed(0),
+).images[0]
+image.save("krea2_distilled.png")
 ```
 
 ## Krea2ModularPipeline
