@@ -37,6 +37,7 @@ from ..utils import (
     deprecate,
     get_class_from_dynamic_module,
     is_accelerate_available,
+    is_flashpack_available,
     is_peft_available,
     is_transformers_available,
     is_transformers_version,
@@ -831,6 +832,45 @@ def load_sub_model(
         and issubclass(class_obj, PreTrainedModel)
         and transformers_version >= version.parse("4.20.0")
     )
+
+    # transformers' `from_pretrained` has no FlashPack support, so when a transformers component ships
+    # FlashPack weights, load it here the way `ModelMixin.from_pretrained` does for diffusers models:
+    # initialize the model on empty weights from its config, then assign the packed weights onto it.
+    # Component folders without a flashpack file (e.g. from repos saved before transformers components
+    # were packed) keep loading through their regular `load_method` below.
+    flashpack_file = os.path.join(cached_folder, name, FLASHPACK_WEIGHTS_NAME)
+    if use_flashpack and is_transformers_model and os.path.isfile(flashpack_file):
+        if not is_flashpack_available():
+            raise ImportError("Please install flashpack to load a pipeline with `use_flashpack=True`.")
+        import flashpack
+
+        config = class_obj.config_class.from_pretrained(os.path.join(cached_folder, name))
+        dtype_orig = None
+        if dtype is not None:
+            dtype_orig = torch.get_default_dtype()
+            torch.set_default_dtype(dtype)
+        with accelerate.init_empty_weights():
+            loaded_sub_model = class_obj(config)
+        if dtype_orig is not None:
+            torch.set_default_dtype(dtype_orig)
+
+        if device_map is None:
+            logger.warning(
+                "`device_map` has not been provided for FlashPack, model will be on `cpu` - provide `device_map` to fully utilize "
+                "the benefit of FlashPack."
+            )
+            flashpack_device = torch.device("cpu")
+        else:
+            device = device_map[""]
+            if isinstance(device, str) and device in ["auto", "balanced", "balanced_low_0", "sequential"]:
+                raise ValueError(
+                    "FlashPack `device_map` should not be one of `auto`, `balanced`, `balanced_low_0`, `sequential`. Use a specific device instead, e.g., `device_map='cuda'` or `device_map='cuda:0'"
+                )
+            flashpack_device = torch.device(device) if not isinstance(device, torch.device) else device
+
+        flashpack.mixin.assign_from_file(model=loaded_sub_model, path=flashpack_file, device=flashpack_device)
+        # transformers' `from_pretrained` always returns models in eval mode.
+        return loaded_sub_model.eval()
 
     # For transformers models >= 4.56.0, use 'dtype' instead of 'torch_dtype' to avoid deprecation warnings
     if issubclass(class_obj, torch.nn.Module):

@@ -61,6 +61,7 @@ from ..schedulers.scheduling_utils import SCHEDULER_CONFIG_NAME
 from ..utils import (
     CONFIG_NAME,
     DEPRECATED_REVISION_ARGS,
+    FLASHPACK_WEIGHTS_NAME,
     BaseOutput,
     PushToHubMixin,
     _get_detailed_type,
@@ -70,9 +71,11 @@ from ..utils import (
     is_accelerate_available,
     is_accelerate_version,
     is_bitsandbytes_version,
+    is_flashpack_available,
     is_hpu_available,
     is_torch_npu_available,
     is_torch_version,
+    is_transformers_available,
     is_transformers_version,
     logging,
     numpy_to_pil,
@@ -84,6 +87,9 @@ from ..utils.torch_utils import empty_device_cache, get_device, is_compiled_modu
 
 if is_torch_npu_available():
     import torch_npu  # noqa: F401
+
+if is_transformers_available():
+    from transformers import PreTrainedModel
 
 from .pipeline_loading_utils import (
     ALL_IMPORTABLE_CLASSES,
@@ -284,6 +290,9 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 Whether or not to push your model to the Hugging Face model hub after saving it. You can specify the
                 repository you want to push to with `repo_id` (will default to the name of `save_directory` in your
                 namespace).
+            use_flashpack (`bool`, *optional*, defaults to `False`):
+                If set to `True`, model components (diffusers models as well as transformers models such as text
+                encoders) save their weights as a single `model.flashpack` file instead of safetensors.
 
             kwargs (`Dict[str, Any]`, *optional*):
                 Additional keyword arguments passed along to the [`~utils.PushToHubMixin.push_to_hub`] method.
@@ -321,6 +330,26 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             if is_compiled_module(sub_model):
                 sub_model = _unwrap_model(sub_model)
                 model_cls = sub_model.__class__
+
+            # transformers' `save_pretrained` has no FlashPack support, so mirror what
+            # `ModelMixin.save_pretrained(use_flashpack=True)` does for diffusers models: save the
+            # config as usual and pack the weights to a single `model.flashpack` file.
+            if use_flashpack and is_transformers_available() and isinstance(sub_model, PreTrainedModel):
+                if not is_flashpack_available():
+                    raise ImportError("Please install flashpack to save a pipeline with `use_flashpack=True`.")
+                import flashpack
+
+                component_directory = os.path.join(save_directory, pipeline_component_name)
+                os.makedirs(component_directory, exist_ok=True)
+                sub_model.config.save_pretrained(component_directory)
+                if sub_model.can_generate():
+                    sub_model.generation_config.save_pretrained(component_directory)
+                flashpack.serialization.pack_to_file(
+                    state_dict_or_model=sub_model.state_dict(),
+                    destination_path=os.path.join(component_directory, FLASHPACK_WEIGHTS_NAME),
+                    target_dtype=sub_model.dtype,
+                )
+                continue
 
             save_method_name = None
             # search for the model's base class in LOADABLE_CLASSES
@@ -745,6 +774,11 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             dduf_file(`str`, *optional*):
                 Load weights from the specified dduf file. <Deprecated> This argument is deprecated and will be removed
                 in version 0.41.0. </Deprecated>
+            use_flashpack (`bool`, *optional*, defaults to `False`):
+                If set to `True`, model components whose folder contains a `model.flashpack` file (diffusers models as
+                well as transformers models such as text encoders) load their weights from it; FlashPack weights are
+                downloaded instead of the other formats for those components. If set to `False`, FlashPack weights are
+                never downloaded.
             disable_mmap ('bool', *optional*, defaults to 'False'):
                 Whether to disable mmap when loading a Safetensors model. This option can perform better when the model
                 is on a network mount or hard drive, which may not handle the seeky-ness of mmap very well.

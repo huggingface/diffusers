@@ -118,17 +118,20 @@ class FlashPackTests(unittest.TestCase):
 
     @require_flashpack
     def test_download_filter_flashpack_pipeline_roundtrip(self):
-        # A flashpack pipeline mixes flashpack weights (diffusers components) with safetensors weights
-        # (transformers components). The download path must keep both; on `main` it drops the
-        # transformers safetensors, so the filtered snapshot fails to load. This is the e2e repro,
-        # inverted into a green test.
+        # A mixed repo pairs flashpack weights (diffusers components) with safetensors weights
+        # (transformers components) — the layout `save_pretrained(use_flashpack=True)` produced
+        # before transformers components were packed too. The download path must keep both formats;
+        # on `main` it drops the transformers safetensors, so the filtered snapshot fails to load.
         pipeline = AutoPipelineForText2Image.from_pretrained(self.model_id)
         # `ignore_cleanup_errors` because on Windows flashpack keeps `model.flashpack` mmap'd, which
         # blocks the temp-dir teardown (unrelated to what this test asserts).
         with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as temp_dir:
             saved = os.path.join(temp_dir, "saved")
             downloaded = os.path.join(temp_dir, "downloaded")
-            pipeline.save_pretrained(saved, use_flashpack=True)
+            pipeline.save_pretrained(saved)
+            for component in ("transformer", "vae"):
+                getattr(pipeline, component).save_pretrained(os.path.join(saved, component), use_flashpack=True)
+                os.remove(os.path.join(saved, component, "diffusion_pytorch_model.safetensors"))
             self.assertTrue((pathlib.Path(saved) / "transformer" / "model.flashpack").exists())
             self.assertTrue((pathlib.Path(saved) / "text_encoder" / "model.safetensors").exists())
 
@@ -147,6 +150,39 @@ class FlashPackTests(unittest.TestCase):
                 self.assertEqual(original.keys(), restored.keys())
                 for key, value in original.items():
                     self.assertTrue(torch.equal(value, restored[key]))
+
+    @require_flashpack
+    def test_save_load_pipeline_transformers_flashpack(self):
+        # With `use_flashpack=True`, transformers components (text encoders) are packed too, so the
+        # pipeline is FlashPack end to end: no safetensors are written, the download filter keeps the
+        # flashpack weights, and the round trip restores every model component bitwise.
+        pipeline = AutoPipelineForText2Image.from_pretrained(self.model_id)
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as temp_dir:
+            saved = os.path.join(temp_dir, "saved")
+            downloaded = os.path.join(temp_dir, "downloaded")
+            pipeline.save_pretrained(saved, use_flashpack=True)
+            for component in ("transformer", "vae", "text_encoder", "text_encoder_2"):
+                component_files = os.listdir(os.path.join(saved, component))
+                self.assertIn("model.flashpack", component_files)
+                self.assertFalse(any(f.endswith(".safetensors") for f in component_files))
+
+            kept = _files_kept_by_download_filter(saved, use_flashpack=True)
+            for component in ("transformer", "vae", "text_encoder", "text_encoder_2"):
+                self.assertIn(f"{component}/model.flashpack", kept)
+            for f in kept:
+                dst = os.path.join(downloaded, f)
+                os.makedirs(os.path.dirname(dst), exist_ok=True)
+                shutil.copy2(os.path.join(saved, f), dst)
+
+            reloaded = AutoPipelineForText2Image.from_pretrained(downloaded, use_flashpack=True)
+            for name in ("transformer", "vae", "text_encoder", "text_encoder_2"):
+                original = getattr(pipeline, name).state_dict()
+                restored = getattr(reloaded, name).state_dict()
+                self.assertEqual(original.keys(), restored.keys())
+                for key, value in original.items():
+                    self.assertTrue(torch.equal(value, restored[key]))
+            # transformers' `from_pretrained` returns models in eval mode; the flashpack path must too
+            self.assertFalse(reloaded.text_encoder.training)
 
     def test_ignore_patterns_flashpack_false_excludes_flashpack(self):
         # Dual-format repo (both safetensors and flashpack shipped). With `use_flashpack=False` the
