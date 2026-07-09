@@ -503,17 +503,14 @@ class BooguImageTurboPipeline(DiffusionPipeline):
             "num_instruction_feature_layers", 1
         )
 
-        with torch.no_grad():
-            if num_instruction_feature_layers > 1:
-                text_encoder_outputs = self.mllm(**vlm_inputs, output_hidden_states=True, return_dict=True)
-                all_hidden_states = (
-                    text_encoder_outputs.hidden_states
-                )  # Tuple of [B, extended_seq_len, text_hidden_dim]
-                instruction_feats = list(all_hidden_states)[
-                    -num_instruction_feature_layers:
-                ]  # Convert to list for model processing
-            else:
-                instruction_feats = self.mllm(**vlm_inputs).last_hidden_state
+        if num_instruction_feature_layers > 1:
+            text_encoder_outputs = self.mllm(**vlm_inputs, output_hidden_states=True, return_dict=True)
+            all_hidden_states = text_encoder_outputs.hidden_states  # Tuple of [B, extended_seq_len, text_hidden_dim]
+            instruction_feats = list(all_hidden_states)[
+                -num_instruction_feature_layers:
+            ]  # Convert to list for model processing
+        else:
+            instruction_feats = self.mllm(**vlm_inputs).last_hidden_state
 
         if self.mllm is not None:
             dtype = self.mllm.dtype
