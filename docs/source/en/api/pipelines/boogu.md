@@ -148,6 +148,6 @@ Runnable scripts for every variant are available in
   - all
   - __call__
 
-## FMPipelineOutput
+## BooguImagePipelineOutput
 
-[[autodoc]] pipelines.boogu.pipeline_boogu.FMPipelineOutput
+[[autodoc]] pipelines.boogu.pipeline_output.BooguImagePipelineOutput

@@ -36,7 +36,7 @@ from diffusers.utils.torch_utils import randn_tensor
 
 from ...models.transformers import BooguImageTransformer2DModel
 from .image_processor import BooguImageProcessor
-from .pipeline_boogu import FMPipelineOutput
+from .pipeline_output import BooguImagePipelineOutput
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -620,7 +620,6 @@ class BooguImageTurboPipeline(DiffusionPipeline):
         num_instruction_feature_layers = self.transformer.instruction_feature_configs.get(
             "num_instruction_feature_layers", 1
         )
-        final_instruction_mask = instruction_mask
 
         with torch.no_grad():
             if num_instruction_feature_layers > 1:
@@ -647,7 +646,7 @@ class BooguImageTurboPipeline(DiffusionPipeline):
             final_instruction_feats = instruction_feats.to(dtype=dtype, device=device)
         # Keep the attention mask on the same execution device as the features
         # before passing both into the diffusion transformer.
-        final_instruction_mask = final_instruction_mask.to(device=device)
+        final_instruction_mask = instruction_mask.to(device=device)
 
         return final_instruction_feats, final_instruction_mask
 
@@ -1127,7 +1126,7 @@ class BooguImageTurboPipeline(DiffusionPipeline):
         if not return_dict:
             return image
         else:
-            return FMPipelineOutput(images=image)
+            return BooguImagePipelineOutput(images=image)
 
     # Copied from diffusers.pipelines.boogu.pipeline_boogu.BooguImagePipeline._resolve_output_and_original_size
     def _resolve_output_and_original_size(

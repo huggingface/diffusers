@@ -1,5 +1,4 @@
 import inspect
-from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 import numpy as np
@@ -14,7 +13,6 @@ from diffusers.models.transformers.transformer_boogu import get_freqs_cis
 from diffusers.pipelines.pipeline_utils import DiffusionPipeline
 from diffusers.schedulers import FlowMatchEulerDiscreteScheduler
 from diffusers.utils import (
-    BaseOutput,
     is_torch_xla_available,
     logging,
 )
@@ -22,6 +20,7 @@ from diffusers.utils.torch_utils import randn_tensor
 
 from ...models.transformers import BooguImageTransformer2DModel
 from .image_processor import BooguImageProcessor
+from .pipeline_output import BooguImagePipelineOutput
 
 
 if is_torch_xla_available():
@@ -31,20 +30,6 @@ else:
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
-
-
-@dataclass
-class FMPipelineOutput(BaseOutput):
-    """
-    Output class for BooguImagePipeline.
-
-    Args:
-        images (Union[List[PIL.Image.Image], np.ndarray]):
-            List of denoised PIL images of length `batch_size` or numpy array of shape
-            `(batch_size, height, width, num_channels)`. Contains the generated images.
-    """
-
-    images: Union[List[PIL.Image.Image], np.ndarray]
 
 
 # Copied from diffusers.pipelines.flux.pipeline_flux.calculate_shift
@@ -682,7 +667,6 @@ class BooguImagePipeline(DiffusionPipeline):
         num_instruction_feature_layers = self.transformer.instruction_feature_configs.get(
             "num_instruction_feature_layers", 1
         )
-        final_instruction_mask = instruction_mask
 
         with torch.no_grad():
             if num_instruction_feature_layers > 1:
@@ -709,7 +693,7 @@ class BooguImagePipeline(DiffusionPipeline):
             final_instruction_feats = instruction_feats.to(dtype=dtype, device=device)
         # Keep the attention mask on the same execution device as the features
         # before passing both into the diffusion transformer.
-        final_instruction_mask = final_instruction_mask.to(device=device)
+        final_instruction_mask = instruction_mask.to(device=device)
 
         return final_instruction_feats, final_instruction_mask
 
@@ -1185,7 +1169,7 @@ class BooguImagePipeline(DiffusionPipeline):
         if not return_dict:
             return image
         else:
-            return FMPipelineOutput(images=image)
+            return BooguImagePipelineOutput(images=image)
 
     def _resolve_output_and_original_size(
         self,

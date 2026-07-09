@@ -11,7 +11,10 @@ from ...utils import (
 
 
 _dummy_objects = {}
-_import_structure = {"image_processor": ["BooguImageProcessor"]}
+_import_structure = {
+    "image_processor": ["BooguImageProcessor"],
+    "pipeline_output": ["BooguImagePipelineOutput"],
+}
 
 try:
     if not (is_transformers_available() and is_torch_available()):
@@ -25,6 +28,7 @@ else:
     _import_structure["pipeline_boogu_turbo"] = ["BooguImageTurboPipeline"]
 if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     from .image_processor import BooguImageProcessor
+    from .pipeline_output import BooguImagePipelineOutput
 
     try:
         if not (is_transformers_available() and is_torch_available()):

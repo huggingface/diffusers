@@ -245,12 +245,8 @@ class BooguImageDoubleStreamRotaryPosEmbed(nn.Module):
 
 
 # --------------- Norm / FeedForward / Embedding ----------------
-def _torch_swiglu(x, y):
+def swiglu(x, y):
     return F.silu(x.float(), inplace=False).to(x.dtype) * y
-
-
-swiglu = _torch_swiglu
-torch_swiglu = _torch_swiglu
 
 
 class BooguImageRMSNormZero(nn.Module):
@@ -360,7 +356,6 @@ class BooguImageFeedForward(nn.Module):
         ffn_dim_multiplier: Optional[float] = None,
     ):
         super().__init__()
-        self.swiglu = swiglu
 
         # custom hidden_size factor multiplier
         if ffn_dim_multiplier is not None:
@@ -385,8 +380,7 @@ class BooguImageFeedForward(nn.Module):
 
     def forward(self, x):
         h1, h2 = self.linear_1(x), self.linear_3(x)
-        swiglu_fn = torch_swiglu if torch.compiler.is_compiling() else self.swiglu
-        return self.linear_2(swiglu_fn(h1, h2))
+        return self.linear_2(swiglu(h1, h2))
 
 
 class BooguImageCombinedTimestepCaptionEmbedding(nn.Module):
