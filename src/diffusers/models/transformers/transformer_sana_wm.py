@@ -28,7 +28,6 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.nn.modules.batchnorm import _BatchNorm
-from torch.utils.checkpoint import checkpoint
 
 
 # Optional third-party deps. These are kept optional so that `import diffusers`
@@ -279,42 +278,6 @@ def set_fp32_attention(model):
         module.fp32_attention = True
 
     model.apply(set_attr)
-
-
-def auto_grad_checkpoint(module, *args, **kwargs):
-    if getattr(module, "grad_checkpointing", False):
-        if isinstance(module, Iterable):
-            gc_step = module[0].grad_checkpointing_step
-            return checkpoint_sequential(module, gc_step, *args, **kwargs)
-        else:
-            return checkpoint(module, *args, **kwargs)
-    return module(*args, **kwargs)
-
-
-def checkpoint_sequential(functions, step, input, *args, **kwargs):
-    # Hack for keyword-only parameter in a python 2.7-compliant way
-    preserve = kwargs.pop("preserve_rng_state", True)
-    if kwargs:
-        raise ValueError("Unexpected keyword arguments: " + ",".join(arg for arg in kwargs))
-
-    def run_function(start, end, functions):
-        def forward(input):
-            for j in range(start, end + 1):
-                input = functions[j](input, *args)
-            return input
-
-        return forward
-
-    if isinstance(functions, torch.nn.Sequential):
-        functions = list(functions.children())
-
-    # the last chunk has to be non-volatile
-    end = -1
-    segment = len(functions) // step
-    for start in range(0, step * (segment - 1), step):
-        end = start + step - 1
-        input = checkpoint(run_function(start, end, functions), input, preserve_rng_state=preserve)
-    return run_function(end + 1, len(functions) - 1, functions)(input)
 
 
 def val2list(x: list or tuple or any, repeat_time=1) -> list:  # type: ignore
@@ -6423,8 +6386,7 @@ class SanaWMTransformer3DModel(ModelMixin, ConfigMixin):
             )
 
         for i, block in enumerate(self.blocks):
-            x = auto_grad_checkpoint(
-                block,
+            x = block(
                 x,
                 y,
                 t0,
@@ -6433,8 +6395,7 @@ class SanaWMTransformer3DModel(ModelMixin, ConfigMixin):
                 image_pos_embed,
                 block_mask=block_mask if i > 1 else None,
                 **kwargs,
-                use_reentrant=False,
-            )  # (N, T, D) #support grad checkpoint
+            )  # (N, T, D)
 
         if _delta_t_emb is not None:
             if t.ndim == 2:
