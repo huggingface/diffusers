@@ -154,9 +154,9 @@ class Krea2AutoBlocks(SequentialPipelineBlocks):
 
     model_name = "krea2"
     block_classes = [
-        Krea2TextEncoderStep(),
-        Krea2CoreDenoiseStep(),
-        Krea2DecodeStep(),
+        Krea2TextEncoderStep,
+        Krea2CoreDenoiseStep,
+        Krea2DecodeStep,
     ]
     block_names = ["text_encoder", "denoise", "decode"]
 
