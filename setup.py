@@ -114,6 +114,9 @@ _deps = [
     "torchsde",
     "note_seq",
     "librosa",
+    # librosa pulls in numba/llvmlite; pin to versions that support Python 3.10+
+    "llvmlite>=0.40.0",
+    "numba>=0.57.0",
     "numpy",
     "parameterized",
     "peft>=0.17.0",
@@ -228,6 +231,8 @@ extras["test"] = deps_list(
     "Jinja2",
     "invisible-watermark",
     "librosa",
+    "llvmlite",
+    "numba",
     "parameterized",
     "protobuf",
     "pytest",
@@ -277,7 +282,7 @@ version_range_max = max(sys.version_info[1], 10) + 1
 
 setup(
     name="diffusers",
-    version="0.39.0.dev0",  # expected format is one of x.y.z.dev0, or x.y.z.rc1 or x.y.z (no to dashes, yes to dots)
+    version="0.40.0.dev0",  # expected format is one of x.y.z.dev0, or x.y.z.rc1 or x.y.z (no to dashes, yes to dots)
     description="State-of-the-art diffusion in PyTorch and JAX.",
     long_description=open("README.md", "r", encoding="utf-8").read(),
     long_description_content_type="text/markdown",

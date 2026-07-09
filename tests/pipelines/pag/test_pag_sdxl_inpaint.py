@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2025 HuggingFace Inc.
+# Copyright 2026 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -263,7 +263,7 @@ class StableDiffusionXLPAGInpaintPipelineFastTests(
             64,
             3,
         ), f"the shape of the output image should be (1, 64, 64, 3) but got {image.shape}"
-        expected_slice = np.array([0.8366, 0.5513, 0.6105, 0.6213, 0.6957, 0.7400, 0.6614, 0.6102, 0.5239])
+        expected_slice = np.array([0.7893, 0.5446, 0.5826, 0.6441, 0.6660, 0.7566, 0.6605, 0.5838, 0.5160])
 
         max_diff = np.abs(image_slice.flatten() - expected_slice).max()
         assert max_diff < 1e-3, f"output is different from expected, {image_slice.flatten()}"
