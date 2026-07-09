@@ -224,6 +224,7 @@ def variant_compatible_siblings(filenames, variant=None, ignore_patterns=None) -
         SAFETENSORS_WEIGHTS_NAME,
         ONNX_WEIGHTS_NAME,
         ONNX_EXTERNAL_WEIGHTS_NAME,
+        FLASHPACK_WEIGHTS_NAME,
     ]
 
     if is_transformers_available():
@@ -1106,28 +1107,35 @@ def _get_ignore_patterns(
     use_flashpack: bool,
     variant: str | None = None,
 ) -> list[str]:
-    if (
-        use_safetensors
-        and not allow_pickle
-        and not is_safetensors_compatible(
-            model_filenames, passed_components=passed_components, folder_names=model_folder_names, variant=variant
-        )
-    ):
+    # Folders whose weights ship as flashpack. When `use_flashpack` is set we download only their
+    # flashpack file; when it is not set flashpack files are ignored entirely (see below), so these
+    # folders play no role and safetensors compatibility is judged over every folder as usual.
+    flashpack_folders = set()
+    if use_flashpack:
+        flashpack_folders = {os.path.split(f)[0] for f in model_filenames if f.endswith(".flashpack")}
+
+    # Flashpack-covered folders legitimately have no safetensors, so exclude them when judging
+    # whether the remaining (e.g. transformers) folders can be served from safetensors.
+    safetensors_filenames = [f for f in model_filenames if os.path.split(f)[0] not in flashpack_folders]
+    safetensors_folder_names = [f for f in model_folder_names if f not in flashpack_folders]
+    safetensors_compatible = is_safetensors_compatible(
+        safetensors_filenames,
+        passed_components=passed_components,
+        folder_names=safetensors_folder_names,
+        variant=variant,
+    )
+
+    if use_safetensors and not allow_pickle and not safetensors_compatible:
         raise EnvironmentError(
             f"Could not find the necessary `safetensors` weights in {model_filenames} (variant={variant})"
         )
 
-    if use_safetensors and is_safetensors_compatible(
-        model_filenames, passed_components=passed_components, folder_names=model_folder_names, variant=variant
-    ):
+    if use_safetensors and safetensors_compatible:
         ignore_patterns = ["*.bin", "*.msgpack"]
 
         use_onnx = use_onnx if use_onnx is not None else is_onnx
         if not use_onnx:
             ignore_patterns += ["*.onnx", "*.pb"]
-
-    elif use_flashpack:
-        ignore_patterns = ["*.bin", "*.safetensors", "*.onnx", "*.pb", "*.msgpack"]
 
     else:
         ignore_patterns = ["*.safetensors", "*.msgpack"]
@@ -1135,6 +1143,15 @@ def _get_ignore_patterns(
         use_onnx = use_onnx if use_onnx is not None else is_onnx
         if not use_onnx:
             ignore_patterns += ["*.onnx", "*.pb"]
+
+    # Keep only the flashpack file inside flashpack folders (hub ignore patterns match full relative
+    # paths, so this is per-folder and leaves other folders' safetensors/bin untouched).
+    for folder in flashpack_folders:
+        ignore_patterns += [f"{folder}/*.safetensors", f"{folder}/*.bin"]
+
+    # `use_flashpack=False` must never pull flashpack weights, in any of the branches above.
+    if not use_flashpack:
+        ignore_patterns.append("*.flashpack")
 
     return ignore_patterns
 
