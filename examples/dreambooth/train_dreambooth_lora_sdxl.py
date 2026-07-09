@@ -1853,6 +1853,12 @@ def main(args):
                     loss = loss.mean(dim=list(range(1, len(loss.shape)))) * mse_loss_weights
                     loss = loss.mean()
 
+                    if args.with_prior_preservation:
+                        # Apply the same SNR weighting to the prior loss for consistency.
+                        prior_loss = F.mse_loss(model_pred_prior.float(), target_prior.float(), reduction="none")
+                        prior_loss = prior_loss.mean(dim=list(range(1, len(prior_loss.shape)))) * mse_loss_weights
+                        prior_loss = prior_loss.mean()
+
                 if args.with_prior_preservation:
                     # Add the prior loss to the instance loss.
                     loss = loss + args.prior_loss_weight * prior_loss
