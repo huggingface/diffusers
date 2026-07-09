@@ -218,10 +218,12 @@ class KarrasVeScheduler(SchedulerMixin, ConfigMixin):
             sample_prev (`torch.Tensor`): TODO
             derivative (`torch.Tensor`): TODO
             return_dict (`bool`, *optional*, defaults to `True`):
-                Whether or not to return a [`~schedulers.scheduling_ddpm.DDPMSchedulerOutput`] or `tuple`.
+                Whether or not to return a [`~schedulers.scheduling_karras_ve.KarrasVESchedulerOutput`] or `tuple`.
 
         Returns:
-            prev_sample (TODO): updated sample in the diffusion chain. derivative (TODO): TODO
+            [`~schedulers.scheduling_karras_ve.KarrasVESchedulerOutput`] or `tuple`:
+                If return_dict is `True`, [`~schedulers.scheduling_karras_ve.KarrasVESchedulerOutput`] is returned,
+                otherwise a tuple is returned where the first element is the sample tensor.
 
         """
         pred_original_sample = sample_prev + sigma_prev * model_output
