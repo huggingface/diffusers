@@ -149,6 +149,12 @@ CHECKPOINT_KEY_NAMES = {
         "net.pos_embedder.dim_spatial_range",
     ],
     "flux2": ["model.diffusion_model.single_stream_modulation.lin.weight", "single_stream_modulation.lin.weight"],
+    "ideogram4": [
+        "diffusion_model.llm_cond_proj.weight",
+        "conditional_transformer.llm_cond_proj.weight",
+        "llm_cond_proj.weight",
+    ],
+    "krea2": ["diffusion_model.txtfusion.projector.weight", "txtfusion.projector.weight"],
     "ltx2": [
         "model.diffusion_model.av_ca_a2v_gate_adaln_single.emb.timestep_embedder.linear_1.weight",
         "vae.per_channel_statistics.mean-of-means",
@@ -237,6 +243,8 @@ DIFFUSERS_DEFAULT_PIPELINE_PATHS = {
     "z-image-turbo-controlnet-2.0": {"pretrained_model_name_or_path": "hlky/Z-Image-Turbo-Fun-Controlnet-Union-2.0"},
     "z-image-turbo-controlnet-2.1": {"pretrained_model_name_or_path": "hlky/Z-Image-Turbo-Fun-Controlnet-Union-2.1"},
     "ltx2-dev": {"pretrained_model_name_or_path": "Lightricks/LTX-2"},
+    "ideogram4": {"pretrained_model_name_or_path": "ideogram-ai/ideogram-v4"},
+    "krea2": {"pretrained_model_name_or_path": "krea/Krea-2-Turbo"},
 }
 
 # Use to configure model sample size when original config is provided
@@ -682,6 +690,12 @@ def infer_diffusers_model_type(checkpoint):
 
     elif any(key in checkpoint for key in CHECKPOINT_KEY_NAMES["flux2"]):
         model_type = "flux-2-dev"
+
+    elif any(key in checkpoint for key in CHECKPOINT_KEY_NAMES["ideogram4"]):
+        model_type = "ideogram4"
+
+    elif any(key in checkpoint for key in CHECKPOINT_KEY_NAMES["krea2"]):
+        model_type = "krea2"
 
     elif any(key in checkpoint for key in CHECKPOINT_KEY_NAMES["flux"]):
         if any(
