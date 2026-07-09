@@ -236,6 +236,17 @@ class Krea2PrepareLatentsStep(ModularPipelineBlocks):
         device = components._execution_device
         p = components.patch_size
         num_channels_latents = components.transformer.config.in_channels // (p**2)
+        
+        multiple = components.vae_scale_factor * components.patch_size 
+        if block_state.height % multiple != 0 or block_state.width % multiple != 0: 
+            rounded_height = ((block_state.height + multiple - 1) // multiple) * multiple 
+            rounded_width = ((block_state.width + multiple - 1) // multiple) * multiple 
+            logger.warning( 
+                f"`height` and `width` must be multiples of {multiple}; rounding up from {block_state.height}x{block_state.width} to" 
+                f" {rounded_height}x{rounded_width}." 
+            ) 
+            block_state.height, block_state.width = rounded_height, rounded_width 
+        
         latent_height = block_state.height // components.vae_scale_factor
         latent_width = block_state.width // components.vae_scale_factor
 

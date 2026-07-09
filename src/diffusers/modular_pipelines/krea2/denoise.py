@@ -89,6 +89,7 @@ class Krea2LoopDenoiser(ModularPipelineBlocks):
     def inputs(self) -> list[InputParam]:
         return [
             InputParam(name="latents", required=True, type_hint=torch.Tensor, description="Packed image latents."),
+            InputParam.template("num_inference_steps", required=True),
             InputParam(
                 name="prompt_embeds",
                 required=True,
@@ -108,6 +109,7 @@ class Krea2LoopDenoiser(ModularPipelineBlocks):
                 name="negative_prompt_embeds", type_hint=torch.Tensor, description="Negative stacked text features."
             ),
             InputParam(name="negative_prompt_embeds_mask", type_hint=torch.Tensor, description="Negative text mask."),
+            InputParam.template("attention_kwargs"),
         ]
 
     @torch.no_grad()
