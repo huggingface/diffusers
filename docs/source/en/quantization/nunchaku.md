@@ -18,6 +18,10 @@ Nunchaku Lite is a quantization backend for loading prequantized checkpoints in 
 or adapting a target config for the model architecture, quantizing and exporting the transformer, and packaging the
 result as a Diffusers pipeline repository.
 
+Nunchaku Lite builds on the original [Nunchaku](https://github.com/nunchaku-ai/nunchaku) inference engine,
+[DeepCompressor](https://github.com/nunchaku-ai/deepcompressor) quantization library, and
+[SVDQuant paper](https://arxiv.org/abs/2411.05007).
+
 ## Load a quantized pipeline
 
 Load the packaged prequantized pipeline with [`~DiffusionPipeline.from_pretrained`]. Diffusers reads the quantization
@@ -64,24 +68,44 @@ pip install -U kernels
 Nunchaku Lite supports the following quantized linear layer formats.
 
 > [!TIP]
-> Use `fp4` on Blackwell GPUs. Running `int4` checkpoints on Blackwell can be slower than `fp4`.
+> Use `nvfp4` on Blackwell GPUs. Running `int4` checkpoints on Blackwell can be slower than `nvfp4`.
+
+The CUDA kernels currently support the following NVIDIA GPU architectures:
+
+- `sm_75` (Turing, for example RTX 2080)
+- `sm_80` (Ampere, for example A100)
+- `sm_86` (Ampere, for example RTX 3090 and RTX A6000)
+- `sm_89` (Ada, for example RTX 4090)
+- `sm_120` (Blackwell, for example RTX 5090)
+
+> [!NOTE]
+> Hopper GPUs, such as `sm_90` H100 and H200, are not currently supported.
+
+`nvfp4` checkpoints require a Blackwell or newer NVIDIA GPU. On Blackwell GPUs, use PyTorch >= 2.7 with CUDA >= 12.8.
+`int4` checkpoints require a Turing or newer NVIDIA GPU.
 
 | Method | Precision | Group size | Notes |
 |---|---:|---:|---|
-| `svdq_w4a4` | `fp4` | 16 | Uses NVFP4 runtime kernels with SVDQ low-rank correction. |
+| `svdq_w4a4` | `nvfp4` | 16 | Uses NVFP4 runtime kernels with SVDQ low-rank correction. |
 | `svdq_w4a4` | `int4` | 64 | Uses INT4 W4A4 kernels with SVDQ low-rank correction. |
 | `awq_w4a16` | `int4` | 64 | Uses INT4 weight-only AWQ-style kernels. |
 
 ## NunchakuLiteQuantizationConfig
 
-The `model.json` file must include a compact [`NunchakuLiteQuantizationConfig`]. It defines the runtime
+The `config.json` file must include a compact [`NunchakuLiteQuantizationConfig`]. It defines the runtime
 `compute_dtype` and the target modules for each Nunchaku Lite quantization method.
 
 - `compute_dtype`: runtime dtype for floating-point buffers in quantized modules, typically `torch.bfloat16`.
 - `svdq_w4a4`: SVDQ W4A4 target config with `precision`, `group_size`, `rank`, and `targets`.
 - `awq_w4a16`: AWQ W4A16 target config with `precision`, `group_size`, and `targets`.
 
-The example below shows the expected shape with shortened target lists.
+Each entry in `targets` must point to a linear layer. Diffusers replaces the linear layers listed under `svdq_w4a4`
+with SVDQ W4A4 layers and the linear layers listed under `awq_w4a16` with AWQ W4A16 layers. The example below shows the
+expected shape with shortened target lists.
+
+> [!NOTE]
+> A target module can only use one Nunchaku Lite quantization method. Do not list the same target under both
+> `svdq_w4a4` and `awq_w4a16`.
 
 ```json
 {
@@ -90,7 +114,7 @@ The example below shows the expected shape with shortened target lists.
     "quant_method": "nunchaku_lite",
     "compute_dtype": "bfloat16",
     "svdq_w4a4": {
-      "precision": "fp4",
+      "precision": "nvfp4",
       "group_size": 16,
       "rank": 32,
       "targets": ["layers.0.self_attention.to_q"]
@@ -119,3 +143,4 @@ Nunchaku Lite NVFP4 pipeline reached a 1.8x speedup.
 ## Resources
 
 - [diffuse-compressor](https://github.com/rootonchair/diffuse-compressor)
+- [Nunchaku installation requirements](https://nunchaku.tech/docs/nunchaku/installation/installation.html)
