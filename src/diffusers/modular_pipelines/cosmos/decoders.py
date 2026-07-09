@@ -134,17 +134,37 @@ class Cosmos3TransferDecodeChunkStep(ModularPipelineBlocks):
     @property
     def inputs(self) -> list[InputParam]:
         return [
-            InputParam(name="latents", required=True),
-            InputParam(name="chunk_id", type_hint=int, default=0),
-            InputParam(name="current_conditional_frames", required=True),
-            InputParam(name="output_chunks", required=True),
+            InputParam(
+                name="latents", type_hint=torch.Tensor, required=True, description="Denoised target latents for this chunk."
+            ),
+            InputParam(name="chunk_id", type_hint=int, default=0, description="Index of the current chunk."),
+            InputParam(
+                name="current_conditional_frames",
+                type_hint=int,
+                required=True,
+                description="Number of pixel frames this chunk reused from the previous chunk.",
+            ),
+            InputParam(
+                name="output_chunks",
+                type_hint=list[torch.Tensor],
+                required=True,
+                description="Decoded pixel chunks accumulated so far.",
+            ),
         ]
 
     @property
     def intermediate_outputs(self) -> list[OutputParam]:
         return [
-            OutputParam("previous_output"),
-            OutputParam("output_chunks"),
+            OutputParam(
+                "previous_output",
+                type_hint=torch.Tensor,
+                description="Decoded pixels of this chunk, used to seed the next chunk.",
+            ),
+            OutputParam(
+                "output_chunks",
+                type_hint=list[torch.Tensor],
+                description="Decoded pixel chunks accumulated so far (with this chunk appended).",
+            ),
         ]
 
     @torch.no_grad()
@@ -190,17 +210,24 @@ class Cosmos3TransferStitchStep(ModularPipelineBlocks):
     @property
     def inputs(self) -> list[InputParam]:
         return [
-            InputParam(name="output_chunks", required=True),
-            InputParam(name="total_frames", required=True),
+            InputParam(
+                name="output_chunks",
+                type_hint=list[torch.Tensor],
+                required=True,
+                description="Decoded pixel chunks to stitch together.",
+            ),
+            InputParam(
+                name="total_frames", type_hint=int, required=True, description="Total number of output frames to keep."
+            ),
             InputParam.template("output_type", default="pil"),
         ]
 
     @property
     def intermediate_outputs(self) -> list[OutputParam]:
         return [
-            OutputParam("videos"),
-            OutputParam("sound"),
-            OutputParam("sampling_rate"),
+            OutputParam("videos", description="The generated transfer video."),
+            OutputParam("sound", description="Always None for transfer (no audio)."),
+            OutputParam("sampling_rate", description="Always None for transfer (no audio)."),
         ]
 
     @torch.no_grad()

@@ -4,7 +4,6 @@ import math
 import torch
 
 from ...configuration_utils import FrozenDict
-from ...models.autoencoders.autoencoder_kl_wan import AutoencoderKLWan
 from ...models.transformers.transformer_cosmos3 import Cosmos3OmniTransformer
 from ...pipelines.cosmos.pipeline_cosmos3_omni import _EMBODIMENT_TO_DOMAIN_ID, CosmosActionCondition
 from ...schedulers import UniPCMultistepScheduler
@@ -1129,53 +1128,52 @@ class Cosmos3TransferPrepareLatentsStep(ModularPipelineBlocks):
     @property
     def description(self) -> str:
         return (
-            "Per-chunk transfer latent prep: slice + pad the chunk's control maps, seed the target's conditioning "
-            "frames (first chunk from the input video, later chunks from the previous chunk's tail), encode the "
-            "controls as clean latents and build the noisy target latents, velocity mask and condition latents."
+            "Per-chunk transfer latent prep: takes the clean target latents encoded by "
+            "Cosmos3TransferChunkVaeEncoderStep and builds the noisy target latents, velocity mask, condition latents "
+            "and conditioned-frame indexes for this chunk."
         )
 
     @property
     def expected_components(self) -> list[ComponentSpec]:
-        return [
-            ComponentSpec("transformer", Cosmos3OmniTransformer),
-            ComponentSpec("vae", AutoencoderKLWan),
-            ComponentSpec(
-                "video_processor",
-                VideoProcessor,
-                config=FrozenDict({"vae_scale_factor": 16, "resample": "bilinear"}),
-                default_creation_method="from_config",
-            ),
-        ]
+        return [ComponentSpec("transformer", Cosmos3OmniTransformer)]
 
     @property
     def inputs(self) -> list[InputParam]:
         return [
-            # Loop carry (set by the chunk-loop wrapper):
-            InputParam(name="chunk_id", type_hint=int, default=0),
-            InputParam(name="previous_output", default=None),
-            # Setup artifacts the loop can't cheaply re-derive (preprocessed controls + chunk geometry):
-            InputParam(name="control_frames", required=True),
-            InputParam(name="chunk_frames", required=True),
-            InputParam(name="total_frames", required=True),
-            InputParam(name="stride", required=True),
-            # User inputs (mirrors how the other prepare-latents steps declare height/width/generator/etc.):
-            InputParam(name="height", required=True),
-            InputParam(name="width", required=True),
-            InputParam(name="video", default=None),
-            InputParam(name="num_first_chunk_conditional_frames", type_hint=int, default=0),
-            InputParam(name="num_conditional_frames", type_hint=int, default=1),
-            InputParam(name="generator", default=None),
+            InputParam(
+                name="x0_tokens_vision",
+                type_hint=torch.Tensor,
+                required=True,
+                description="Clean target vision latents encoded from the seeded target frames.",
+            ),
+            InputParam(
+                name="current_conditional_frames",
+                type_hint=int,
+                required=True,
+                description="Number of pixel frames used to seed this chunk's target.",
+            ),
+            InputParam.template("generator"),
         ]
 
     @property
     def intermediate_outputs(self) -> list[OutputParam]:
         return [
-            OutputParam("latents"),
-            OutputParam("control_latents"),
-            OutputParam("velocity_mask"),
-            OutputParam("condition_latents"),
-            OutputParam("target_condition_indexes"),
-            OutputParam("current_conditional_frames"),
+            OutputParam("latents", type_hint=torch.Tensor, description="Noisy target latents for this chunk."),
+            OutputParam(
+                "velocity_mask",
+                type_hint=torch.Tensor,
+                description="Mask that zeroes the velocity on conditioned (clean) latent frames.",
+            ),
+            OutputParam(
+                "condition_latents",
+                type_hint=torch.Tensor,
+                description="Clean target latents on the conditioned frames (the autoregressive seed).",
+            ),
+            OutputParam(
+                "target_condition_indexes",
+                type_hint=list[int],
+                description="Latent-frame indexes fixed by the chunk's conditioning.",
+            ),
         ]
 
     @torch.no_grad()
@@ -1183,59 +1181,12 @@ class Cosmos3TransferPrepareLatentsStep(ModularPipelineBlocks):
         block_state = self.get_block_state(state)
         device = components._execution_device
         dtype = components.transformer.dtype
-
-        chunk_id = block_state.chunk_id
-        chunk_frames = block_state.chunk_frames
-        height = block_state.height
-        width = block_state.width
         tcf = components.vae_scale_factor_temporal
 
-        # Slice this chunk's window out of the (padded) control maps and reflect-pad it up to a full chunk (repeat the
-        # last frame once too short to keep reflecting). control_frames is already in canonical hint order.
-        start_frame = chunk_id * block_state.stride
-        end_frame = min(start_frame + chunk_frames, block_state.total_frames)
-        chunk_controls = []
-        for frames in block_state.control_frames.values():
-            frames = frames[:, :, start_frame:end_frame]
-            while frames.shape[2] < chunk_frames:
-                pad_len = min(frames.shape[2] - 1, chunk_frames - frames.shape[2])
-                if pad_len <= 0:
-                    pad_frame = frames[:, :, -1:].repeat(1, 1, chunk_frames - frames.shape[2], 1, 1)
-                    frames = torch.cat([frames, pad_frame], dim=2)
-                    break
-                frames = torch.cat([frames, frames.flip(dims=[2])[:, :, :pad_len]], dim=2)
-            chunk_controls.append(frames)
+        target_x0 = block_state.x0_tokens_vision.to(device=device)
+        current_conditional_frames = block_state.current_conditional_frames
 
-        # Seed the target with conditioning frames (first chunk from the input video, later chunks from the
-        # previous chunk's tail), repeat-padding the remaining frames so the whole clip is well-defined.
-        target = torch.zeros(1, 3, chunk_frames, height, width, device=device, dtype=dtype)
-        current_conditional_frames = 0
-        if chunk_id == 0 and block_state.num_first_chunk_conditional_frames > 0 and block_state.video is not None:
-            input_frames = components.video_processor.preprocess_video(
-                block_state.video, height=height, width=width
-            ).to(device=device, dtype=dtype)
-            current_conditional_frames = min(
-                block_state.num_first_chunk_conditional_frames, input_frames.shape[2], chunk_frames
-            )
-            if current_conditional_frames > 0:
-                target[:, :, :current_conditional_frames] = input_frames[:, :, :current_conditional_frames]
-        elif chunk_id > 0 and block_state.previous_output is not None:
-            current_conditional_frames = min(
-                block_state.num_conditional_frames, block_state.previous_output.shape[2], chunk_frames
-            )
-            if current_conditional_frames > 0:
-                target[:, :, :current_conditional_frames] = block_state.previous_output[
-                    :, :, -current_conditional_frames:
-                ].to(device=device, dtype=dtype)
-        if 0 < current_conditional_frames < chunk_frames:
-            fill = target[:, :, current_conditional_frames - 1 : current_conditional_frames]
-            target[:, :, current_conditional_frames:] = fill.expand(
-                -1, -1, chunk_frames - current_conditional_frames, -1, -1
-            )
-
-        # Encode controls as clean latents and build the noisy target latents + conditioning mask.
-        block_state.control_latents = [components._encode_video(ctrl).contiguous().float() for ctrl in chunk_controls]
-        target_x0 = components._encode_video(target).contiguous().float()
+        # Build the noisy target latents + conditioning mask from the clean target latents.
         latent_t = target_x0.shape[2]
         condition_mask = torch.zeros((latent_t, 1, 1), device=device, dtype=dtype)
         latent_condition_frames = 0
@@ -1247,7 +1198,6 @@ class Cosmos3TransferPrepareLatentsStep(ModularPipelineBlocks):
         block_state.velocity_mask = 1.0 - condition_mask
         block_state.condition_latents = condition_mask * target_x0
         block_state.target_condition_indexes = list(range(latent_condition_frames))
-        block_state.current_conditional_frames = current_conditional_frames
 
         self.set_block_state(state, block_state)
         return components, state
@@ -1266,22 +1216,60 @@ class Cosmos3TransferPackSequenceStep(ModularPipelineBlocks):
     @property
     def inputs(self) -> list[InputParam]:
         return [
-            InputParam(name="cond_text_segment", required=True),
-            InputParam(name="uncond_text_segment", required=True),
-            InputParam(name="control_latents", required=True),
-            InputParam(name="latents", required=True),
-            InputParam(name="target_condition_indexes", required=True),
-            InputParam(name="fps", type_hint=float, default=24.0),
-            InputParam(name="share_vision_temporal_positions", type_hint=bool, default=True),
+            InputParam(name="cond_text_segment", type_hint=dict, required=True, description="Conditional text segment."),
+            InputParam(
+                name="uncond_text_segment", type_hint=dict, required=True, description="Unconditional text segment."
+            ),
+            InputParam(
+                name="control_latents",
+                type_hint=list[torch.Tensor],
+                required=True,
+                description="Clean control latents for this chunk, one per hint in canonical order.",
+            ),
+            InputParam(
+                name="latents", type_hint=torch.Tensor, required=True, description="Noisy target latents for this chunk."
+            ),
+            InputParam(
+                name="target_condition_indexes",
+                type_hint=list[int],
+                required=True,
+                description="Latent-frame indexes fixed by the chunk's conditioning.",
+            ),
+            InputParam(name="fps", type_hint=float, default=24.0, description="Frame rate of the generated video."),
+            InputParam(
+                name="share_vision_temporal_positions",
+                type_hint=bool,
+                default=True,
+                description="Whether control and target items share vision temporal positions.",
+            ),
         ]
 
     @property
     def intermediate_outputs(self) -> list[OutputParam]:
         return [
-            OutputParam("cond_full_static"),
-            OutputParam("cond_no_control_static"),
-            OutputParam("uncond_full_static"),
-            OutputParam("num_noisy_vision_tokens"),
+            OutputParam(
+                "cond_full_static",
+                type_hint=dict,
+                kwargs_type="denoiser_input_fields",
+                description="Conditional [control..., target] transfer sequence carrying every control item.",
+            ),
+            OutputParam(
+                "cond_no_control_static",
+                type_hint=dict,
+                kwargs_type="denoiser_input_fields",
+                description="Conditional [target] transfer sequence with the control items dropped.",
+            ),
+            OutputParam(
+                "uncond_full_static",
+                type_hint=dict,
+                kwargs_type="denoiser_input_fields",
+                description="Unconditional [control..., target] transfer sequence for text CFG.",
+            ),
+            OutputParam(
+                "num_noisy_vision_tokens",
+                type_hint=int,
+                description="Number of noisy target vision tokens denoised each step.",
+            ),
         ]
 
     @torch.no_grad()
@@ -1347,8 +1335,10 @@ class Cosmos3TransferSetTimestepsStep(ModularPipelineBlocks):
     @property
     def intermediate_outputs(self) -> list[OutputParam]:
         return [
-            OutputParam("timesteps"),
-            OutputParam("num_warmup_steps"),
+            OutputParam("timesteps", type_hint=torch.Tensor, description="Scheduler timesteps for this chunk."),
+            OutputParam(
+                "num_warmup_steps", type_hint=int, description="Number of scheduler warmup steps for this chunk."
+            ),
         ]
 
     @torch.no_grad()

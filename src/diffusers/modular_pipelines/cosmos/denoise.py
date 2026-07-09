@@ -496,17 +496,39 @@ class Cosmos3TransferLoopPrepareStep(ModularPipelineBlocks):
     @property
     def inputs(self) -> list[InputParam]:
         return [
-            InputParam(name="control_latents", required=True),
-            InputParam(name="latents", required=True),
-            InputParam(name="num_noisy_vision_tokens", required=True),
+            InputParam(
+                name="control_latents",
+                type_hint=list[torch.Tensor],
+                required=True,
+                description="Clean control latents for this chunk, one per hint in canonical order.",
+            ),
+            InputParam(
+                name="latents", type_hint=torch.Tensor, required=True, description="Noisy target latents to denoise."
+            ),
+            InputParam(
+                name="num_noisy_vision_tokens",
+                type_hint=int,
+                required=True,
+                description="Number of noisy target vision tokens denoised each step.",
+            ),
         ]
 
     @property
     def intermediate_outputs(self) -> list[OutputParam]:
         return [
-            OutputParam("vision_tokens_full"),
-            OutputParam("vision_tokens_target"),
-            OutputParam("vision_timesteps"),
+            OutputParam(
+                "vision_tokens_full",
+                type_hint=list[torch.Tensor],
+                description="Token list for the [control..., target] forward passes.",
+            ),
+            OutputParam(
+                "vision_tokens_target",
+                type_hint=list[torch.Tensor],
+                description="Token list for the target-only (no-control) forward pass.",
+            ),
+            OutputParam(
+                "vision_timesteps", type_hint=torch.Tensor, description="Timesteps for the noisy target tokens."
+            ),
         ]
 
     @torch.no_grad()
@@ -522,6 +544,8 @@ class Cosmos3TransferLoopPrepareStep(ModularPipelineBlocks):
 
 
 class Cosmos3TransferLoopDenoiser(ModularPipelineBlocks):
+    # Dedicated (not Cosmos3LoopDenoiser): transfer runs up to 3 passes over different token sequences with nested
+    # control/text CFG and interval gating, which the generic cond/uncond denoiser cannot express.
     model_name = "cosmos3-omni"
 
     @property
@@ -538,22 +562,59 @@ class Cosmos3TransferLoopDenoiser(ModularPipelineBlocks):
     @property
     def inputs(self) -> list[InputParam]:
         return [
-            InputParam(name="cond_full_static", required=True),
-            InputParam(name="cond_no_control_static", required=True),
-            InputParam(name="uncond_full_static", required=True),
-            InputParam(name="vision_tokens_full", required=True),
-            InputParam(name="vision_tokens_target", required=True),
-            InputParam(name="vision_timesteps", required=True),
-            InputParam(name="velocity_mask", required=True),
-            InputParam(name="guidance_scale", default=6.0),
-            InputParam(name="control_guidance", type_hint=float, default=1.0),
-            InputParam(name="guidance_interval", default=None),
-            InputParam(name="control_guidance_interval", default=None),
+            # The three pre-packed CFG sequence variants (cond_full / cond_no_control / uncond_full) flow in as
+            # denoiser_input_fields, gathered generically like the other Cosmos3 denoisers.
+            InputParam.template("denoiser_input_fields"),
+            InputParam(
+                name="vision_tokens_full",
+                type_hint=list[torch.Tensor],
+                required=True,
+                description="Token list for the [control..., target] forward passes.",
+            ),
+            InputParam(
+                name="vision_tokens_target",
+                type_hint=list[torch.Tensor],
+                required=True,
+                description="Token list for the target-only (no-control) forward pass.",
+            ),
+            InputParam(
+                name="vision_timesteps",
+                type_hint=torch.Tensor,
+                required=True,
+                description="Timesteps for the noisy target tokens.",
+            ),
+            InputParam(
+                name="velocity_mask",
+                type_hint=torch.Tensor,
+                required=True,
+                description="Mask that zeroes the velocity on conditioned (clean) latent frames.",
+            ),
+            InputParam(
+                name="guidance_scale", type_hint=float, default=6.0, description="Scale for text classifier-free guidance."
+            ),
+            InputParam(
+                name="control_guidance",
+                type_hint=float,
+                default=1.0,
+                description="Scale for the control (structural) guidance axis.",
+            ),
+            InputParam(
+                name="guidance_interval",
+                type_hint=tuple,
+                default=None,
+                description="Timestep interval [lo, hi] over which text guidance is active (None = always).",
+            ),
+            InputParam(
+                name="control_guidance_interval",
+                type_hint=tuple,
+                default=None,
+                description="Timestep interval [lo, hi] over which control guidance is active (None = always).",
+            ),
         ]
 
     @property
     def intermediate_outputs(self) -> list[OutputParam]:
-        return [OutputParam("velocity")]
+        return [OutputParam("velocity", type_hint=torch.Tensor, description="Predicted (masked) transfer velocity.")]
 
     @staticmethod
     def _forward(components, static, vision_tokens, vision_timesteps):
@@ -588,15 +649,20 @@ class Cosmos3TransferLoopDenoiser(ModularPipelineBlocks):
         needs_text_cfg = step_guidance > 1.0
         needs_control_cfg = step_control != 1.0
 
+        denoiser_input_fields = block_state.denoiser_input_fields
+        cond_full_static = denoiser_input_fields["cond_full_static"]
+        cond_no_control_static = denoiser_input_fields["cond_no_control_static"]
+        uncond_full_static = denoiser_input_fields["uncond_full_static"]
+
         cond_full = self._forward(
-            components, block_state.cond_full_static, block_state.vision_tokens_full, block_state.vision_timesteps
+            components, cond_full_static, block_state.vision_tokens_full, block_state.vision_timesteps
         )
 
         cond_no_control = None
         if needs_control_cfg:
             cond_no_control = self._forward(
                 components,
-                block_state.cond_no_control_static,
+                cond_no_control_static,
                 block_state.vision_tokens_target,
                 block_state.vision_timesteps,
             )
@@ -605,7 +671,7 @@ class Cosmos3TransferLoopDenoiser(ModularPipelineBlocks):
         if needs_text_cfg:
             uncond_full = self._forward(
                 components,
-                block_state.uncond_full_static,
+                uncond_full_static,
                 block_state.vision_tokens_full,
                 block_state.vision_timesteps,
             )
@@ -638,15 +704,29 @@ class Cosmos3TransferLoopSchedulerStep(ModularPipelineBlocks):
     @property
     def inputs(self) -> list[InputParam]:
         return [
-            InputParam(name="latents", required=True),
-            InputParam(name="velocity", required=True),
-            InputParam(name="velocity_mask", required=True),
-            InputParam(name="condition_latents", required=True),
+            InputParam(
+                name="latents", type_hint=torch.Tensor, required=True, description="Noisy target latents to update."
+            ),
+            InputParam(
+                name="velocity", type_hint=torch.Tensor, required=True, description="Predicted (masked) transfer velocity."
+            ),
+            InputParam(
+                name="velocity_mask",
+                type_hint=torch.Tensor,
+                required=True,
+                description="Mask that zeroes the velocity on conditioned (clean) latent frames.",
+            ),
+            InputParam(
+                name="condition_latents",
+                type_hint=torch.Tensor,
+                required=True,
+                description="Clean target latents on the conditioned frames (the autoregressive seed).",
+            ),
         ]
 
     @property
     def intermediate_outputs(self) -> list[OutputParam]:
-        return [OutputParam("latents")]
+        return [OutputParam("latents", type_hint=torch.Tensor, description="Updated target latents for this chunk.")]
 
     @torch.no_grad()
     def __call__(self, components: Cosmos3OmniModularPipeline, block_state: BlockState, i: int, t: torch.Tensor):

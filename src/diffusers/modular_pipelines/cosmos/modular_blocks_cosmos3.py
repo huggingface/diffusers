@@ -43,6 +43,7 @@ from .encoders import (
     Cosmos3ActionVisionVaeEncoderStep,
     Cosmos3ImageVaeEncoderStep,
     Cosmos3TextEncoderStep,
+    Cosmos3TransferChunkVaeEncoderStep,
     Cosmos3TransferTextStep,
     Cosmos3VideoVaeEncoderStep,
 )
@@ -66,25 +67,31 @@ class Cosmos3TransferTextBlocks(SequentialPipelineBlocks):
 class Cosmos3AutoTextEncoderStep(AutoPipelineBlocks):
     """
     Auto text encoder block for Cosmos3.
+       - Cosmos3TransferTextBlocks runs when control_videos are provided.
        - Cosmos3ActionTextStep runs when action is provided.
        - Cosmos3TextEncoderStep runs otherwise.
 
       Components:
-          text_tokenizer (`AutoTokenizer`) video_processor (`VideoProcessor`)
+          video_processor (`VideoProcessor`)
+          text_tokenizer (`AutoTokenizer`)
 
       Inputs:
+          control_videos (`dict`, *optional*):
+              Mapping of hint name (edge/blur/depth/seg/wsm) to the control video for that modality.
+          height (`int`, *optional*):
+              Height of the generated video in pixels.
+          width (`int`, *optional*):
+              Width of the generated video in pixels.
+          num_frames (`int`, *optional*):
+              Optional cap on the number of output frames (defaults to the control video length).
+          num_video_frames_per_chunk (`int`, *optional*):
+              Number of pixel frames generated per autoregressive chunk.
+          num_conditional_frames (`int`, *optional*, defaults to 1):
+              Number of frames each chunk reuses from the previous chunk's tail.
           prompt (`str`):
               The text prompt that guides Cosmos3 generation.
           negative_prompt (`str`, *optional*):
               The negative text prompt used for classifier-free guidance.
-          action (`CosmosActionCondition`, *optional*):
-              Action-conditioning metadata and its reference visual input.
-          num_frames (`int`, *optional*):
-              Number of frames to generate.
-          height (`int`, *optional*):
-              Height of the generated video or image in pixels.
-          width (`int`, *optional*):
-              Width of the generated video or image in pixels.
           fps (`float`, *optional*, defaults to 24.0):
               Frame rate of the generated video.
           use_system_prompt (`bool`, *optional*, defaults to True):
@@ -93,20 +100,32 @@ class Cosmos3AutoTextEncoderStep(AutoPipelineBlocks):
               Whether to add resolution metadata to the prompt.
           add_duration_template (`bool`, *optional*, defaults to True):
               Whether to add duration metadata to the prompt.
+          action (`CosmosActionCondition`, *optional*):
+              Action-conditioning metadata and its reference visual input.
 
       Outputs:
-          action_mode (`str`):
-              Requested action-generation mode.
-          num_frames (`int`):
-              Number of frames to generate.
           height (`int`):
-              Height of the generated video or image in pixels.
+              Resolved output height in pixels.
           width (`int`):
-              Width of the generated video or image in pixels.
+              Resolved output width in pixels.
+          control_frames (`dict`):
+              Preprocessed, time-padded control maps in canonical hint order.
+          total_frames (`int`):
+              Total number of output frames to generate.
+          chunk_frames (`int`):
+              Number of pixel frames per autoregressive chunk.
+          num_chunks (`int`):
+              Number of autoregressive chunks.
+          stride (`int`):
+              Frame stride between consecutive chunks.
           cond_input_ids (`Tensor`):
               Token IDs for the conditional prompt.
           uncond_input_ids (`Tensor`):
               Token IDs for the unconditional prompt.
+          action_mode (`str`):
+              Requested action-generation mode.
+          num_frames (`int`):
+              Number of frames to generate.
     """
 
     model_name = "cosmos3-omni"
@@ -134,7 +153,8 @@ class Cosmos3AutoVaeEncoderStep(ConditionalPipelineBlocks):
        - when no action, image, or video conditioning is provided, this block is skipped.
 
       Components:
-          vae (`AutoencoderKLWan`) video_processor (`VideoProcessor`)
+          vae (`AutoencoderKLWan`)
+          video_processor (`VideoProcessor`)
 
       Inputs:
           action (`CosmosActionCondition`, *optional*):
@@ -243,7 +263,9 @@ class Cosmos3DecodeStep(SequentialPipelineBlocks):
     Decodes denoised latents into modality outputs.
 
       Components:
-          vae (`AutoencoderKLWan`) video_processor (`VideoProcessor`) sound_tokenizer (`Cosmos3AVAEAudioTokenizer`)
+          vae (`AutoencoderKLWan`)
+          video_processor (`VideoProcessor`)
+          sound_tokenizer (`Cosmos3AVAEAudioTokenizer`)
 
       Inputs:
           latents (`Tensor`):
@@ -298,7 +320,8 @@ class Cosmos3VisionCoreDenoiseStep(SequentialPipelineBlocks):
     Runs the text-and-vision Cosmos3 denoising workflow.
 
       Components:
-          transformer (`Cosmos3OmniTransformer`) scheduler (`UniPCMultistepScheduler`)
+          transformer (`Cosmos3OmniTransformer`)
+          scheduler (`UniPCMultistepScheduler`)
 
       Inputs:
           cond_input_ids (`None`):
@@ -366,7 +389,8 @@ class Cosmos3VisionSoundCoreDenoiseStep(SequentialPipelineBlocks):
     Runs the text, vision, and sound Cosmos3 denoising workflow.
 
       Components:
-          transformer (`Cosmos3OmniTransformer`) scheduler (`UniPCMultistepScheduler`)
+          transformer (`Cosmos3OmniTransformer`)
+          scheduler (`UniPCMultistepScheduler`)
 
       Inputs:
           cond_input_ids (`None`):
@@ -447,7 +471,8 @@ class Cosmos3VisionActionCoreDenoiseStep(SequentialPipelineBlocks):
     Runs the text, vision, and action Cosmos3 denoising workflow.
 
       Components:
-          transformer (`Cosmos3OmniTransformer`) scheduler (`UniPCMultistepScheduler`)
+          transformer (`Cosmos3OmniTransformer`)
+          scheduler (`UniPCMultistepScheduler`)
 
       Inputs:
           cond_input_ids (`None`):
@@ -532,7 +557,8 @@ class Cosmos3VisionSoundActionCoreDenoiseStep(SequentialPipelineBlocks):
     Runs the text, vision, sound, and action Cosmos3 denoising workflow.
 
       Components:
-          transformer (`Cosmos3OmniTransformer`) scheduler (`UniPCMultistepScheduler`)
+          transformer (`Cosmos3OmniTransformer`)
+          scheduler (`UniPCMultistepScheduler`)
 
       Inputs:
           cond_input_ids (`None`):
@@ -625,6 +651,7 @@ class Cosmos3VisionSoundActionCoreDenoiseStep(SequentialPipelineBlocks):
 class Cosmos3TransferChunkDenoiseStep(SequentialPipelineBlocks):
     model_name = "cosmos3-omni"
     block_classes = [
+        Cosmos3TransferChunkVaeEncoderStep,
         Cosmos3TransferPrepareLatentsStep,
         Cosmos3TransferPackSequenceStep,
         Cosmos3TransferSetTimestepsStep,
@@ -632,6 +659,7 @@ class Cosmos3TransferChunkDenoiseStep(SequentialPipelineBlocks):
         Cosmos3TransferDecodeChunkStep,
     ]
     block_names = [
+        "encode_transfer_chunk",
         "prepare_transfer_latents",
         "pack_transfer_sequence",
         "set_timesteps",
@@ -649,7 +677,9 @@ class Cosmos3TransferChunkDenoiseStep(SequentialPipelineBlocks):
 
     @property
     def inputs(self) -> list[InputParam]:
-        return super().inputs + [InputParam(name="num_chunks", required=True)]
+        return super().inputs + [
+            InputParam(name="num_chunks", type_hint=int, required=True, description="Number of autoregressive chunks.")
+        ]
 
     @torch.no_grad()
     def __call__(self, components: Cosmos3OmniModularPipeline, state: PipelineState) -> PipelineState:
@@ -680,37 +710,75 @@ class Cosmos3TransferCoreDenoiseStep(SequentialPipelineBlocks):
 class Cosmos3AutoCoreDenoiseStep(ConditionalPipelineBlocks):
     """
     Selects the Cosmos3 core denoising workflow.
+       - transfer runs the autoregressive control-video (ControlNet-style) chunk loop when control_videos are provided.
        - vision_sound_action runs when action and enable_sound are provided.
        - vision_action runs when action is provided.
        - vision_sound runs when enable_sound is true.
        - vision runs otherwise.
 
       Components:
-          transformer (`Cosmos3OmniTransformer`) scheduler (`UniPCMultistepScheduler`)
+          transformer (`Cosmos3OmniTransformer`)
+          vae (`AutoencoderKLWan`)
+          video_processor (`VideoProcessor`)
+          scheduler (`UniPCMultistepScheduler`)
 
       Inputs:
           cond_input_ids (`None`):
               Token IDs for the conditional prompt.
           uncond_input_ids (`None`):
               Token IDs for the unconditional prompt.
-          x0_tokens_vision (`Tensor`, *optional*):
-              Vision latents encoded from the conditioning image or video.
-          vision_condition_frames (`list`, *optional*):
-              Latent-frame indexes fixed by visual conditioning.
-          num_frames (`int`):
-              Number of frames to generate.
+          chunk_id (`int`, *optional*, defaults to 0):
+              Index of the current chunk.
+          previous_output (`None`, *optional*):
+              Decoded pixels of the previous chunk, used to seed later chunks.
+          control_frames (`dict`, *optional*):
+              Preprocessed, time-padded control maps in canonical hint order.
+          chunk_frames (`int`, *optional*):
+              Pixel frames per chunk.
+          total_frames (`int`, *optional*):
+              Total number of output frames.
+          stride (`int`, *optional*):
+              Frame stride between chunks.
           height (`int`):
               Height of the generated video in pixels.
           width (`int`):
               Width of the generated video in pixels.
-          fps (`float`, *optional*, defaults to 24.0):
-              Frame rate of the generated video.
-          latents (`Tensor`):
-              Pre-generated noisy vision latents.
+          video (`None`, *optional*):
+              Optional input video that seeds the first chunk's conditioning.
+          num_first_chunk_conditional_frames (`int`, *optional*, defaults to 0):
+              Number of frames the first chunk reuses from the input video.
+          num_conditional_frames (`int`, *optional*, defaults to 1):
+              Number of frames each later chunk reuses from the previous chunk's tail.
           generator (`Generator`, *optional*):
               Torch generator for deterministic generation.
+          fps (`float`, *optional*, defaults to 24.0):
+              Frame rate of the generated video.
+          share_vision_temporal_positions (`bool`, *optional*, defaults to True):
+              Whether control and target items share vision temporal positions.
           num_inference_steps (`int`):
               The number of denoising steps.
+          **denoiser_input_fields (`None`, *optional*):
+              conditional model inputs for the denoiser: e.g. prompt_embeds, negative_prompt_embeds, etc.
+          guidance_scale (`float`, *optional*, defaults to 6.0):
+              Scale for text classifier-free guidance.
+          control_guidance (`float`, *optional*, defaults to 1.0):
+              Scale for the control (structural) guidance axis.
+          guidance_interval (`tuple`, *optional*):
+              Timestep interval [lo, hi] over which text guidance is active (None = always).
+          control_guidance_interval (`tuple`, *optional*):
+              Timestep interval [lo, hi] over which control guidance is active (None = always).
+          output_chunks (`list`, *optional*):
+              Decoded pixel chunks accumulated so far.
+          num_chunks (`int`, *optional*):
+              Number of autoregressive chunks.
+          x0_tokens_vision (`Tensor`, *optional*):
+              Vision latents encoded from the conditioning image or video.
+          vision_condition_frames (`list`, *optional*):
+              Latent-frame indexes fixed by visual conditioning.
+          num_frames (`int`, *optional*):
+              Number of frames to generate.
+          latents (`Tensor`):
+              Pre-generated noisy vision latents.
           sound_latents (`Tensor`, *optional*):
               Pre-generated noisy sound latents.
           action (`CosmosActionCondition`, *optional*):
@@ -719,16 +787,52 @@ class Cosmos3AutoCoreDenoiseStep(ConditionalPipelineBlocks):
               Action-frame indexes fixed by action conditioning.
           action_latents (`Tensor`, *optional*):
               Pre-generated noisy action latents.
-          **denoiser_input_fields (`None`, *optional*):
-              conditional model inputs for the denoiser: e.g. prompt_embeds, negative_prompt_embeds, etc.
-          guidance_scale (`float`, *optional*, defaults to 6.0):
-              Scale for classifier-free guidance.
           enable_sound (`bool`, *optional*, defaults to False):
               Whether to generate a synchronized sound track.
 
       Outputs:
+          cond_text_segment (`dict`):
+              Conditional text segment for the denoiser.
+          uncond_text_segment (`dict`):
+              Unconditional text segment for the denoiser.
+          control_latents (`list`):
+              Clean control latents for this chunk, one per hint in canonical order.
+          x0_tokens_vision (`Tensor`):
+              Clean target vision latents encoded from the seeded target frames.
+          current_conditional_frames (`int`):
+              Number of pixel frames actually used to seed this chunk's target.
           latents (`Tensor`):
-              Denoised latents.
+              Noisy target latents for this chunk.
+          velocity_mask (`Tensor`):
+              Mask that zeroes the velocity on conditioned (clean) latent frames.
+          condition_latents (`Tensor`):
+              Clean target latents on the conditioned frames (the autoregressive seed).
+          target_condition_indexes (`list`):
+              Latent-frame indexes fixed by the chunk's conditioning.
+          cond_full_static (`dict`):
+              Conditional [control..., target] transfer sequence carrying every control item.
+          cond_no_control_static (`dict`):
+              Conditional [target] transfer sequence with the control items dropped.
+          uncond_full_static (`dict`):
+              Unconditional [control..., target] transfer sequence for text CFG.
+          num_noisy_vision_tokens (`int`):
+              Number of noisy target vision tokens denoised each step.
+          timesteps (`Tensor`):
+              Scheduler timesteps for this chunk.
+          num_warmup_steps (`int`):
+              Number of scheduler warmup steps for this chunk.
+          vision_tokens_full (`list`):
+              Token list for the [control..., target] forward passes.
+          vision_tokens_target (`list`):
+              Token list for the target-only (no-control) forward pass.
+          vision_timesteps (`Tensor`):
+              Timesteps for the noisy target tokens.
+          velocity (`Tensor`):
+              Predicted (masked) transfer velocity.
+          previous_output (`Tensor`):
+              Decoded pixels of this chunk, used to seed the next chunk.
+          output_chunks (`list`):
+              Decoded pixel chunks accumulated so far (with this chunk appended).
           sound_latents (`Tensor`):
               Denoised sound latents.
           action_latents (`Tensor`):
@@ -801,25 +905,33 @@ class Cosmos3OmniBlocks(SequentialPipelineBlocks):
         - `action_policy`: requires `prompt`, `action`
         - `action_forward_dynamics`: requires `prompt`, `action`
         - `action_inverse_dynamics`: requires `prompt`, `action`
+        - `transfer`: requires `prompt`, `control_videos`
 
       Components:
-          text_tokenizer (`AutoTokenizer`) video_processor (`VideoProcessor`) vae (`AutoencoderKLWan`) transformer
-          (`Cosmos3OmniTransformer`) scheduler (`UniPCMultistepScheduler`) sound_tokenizer
-          (`Cosmos3AVAEAudioTokenizer`)
+          video_processor (`VideoProcessor`)
+          text_tokenizer (`AutoTokenizer`)
+          vae (`AutoencoderKLWan`)
+          transformer (`Cosmos3OmniTransformer`)
+          scheduler (`UniPCMultistepScheduler`)
+          sound_tokenizer (`Cosmos3AVAEAudioTokenizer`)
 
       Inputs:
+          control_videos (`dict`, *optional*):
+              Mapping of hint name (edge/blur/depth/seg/wsm) to the control video for that modality.
+          height (`int`, *optional*):
+              Height of the generated video in pixels.
+          width (`int`, *optional*):
+              Width of the generated video in pixels.
+          num_frames (`int`, *optional*):
+              Optional cap on the number of output frames (defaults to the control video length).
+          num_video_frames_per_chunk (`int`, *optional*):
+              Number of pixel frames generated per autoregressive chunk.
+          num_conditional_frames (`int`, *optional*, defaults to 1):
+              Number of frames each chunk reuses from the previous chunk's tail.
           prompt (`str`):
               The text prompt that guides Cosmos3 generation.
           negative_prompt (`str`, *optional*):
               The negative text prompt used for classifier-free guidance.
-          action (`CosmosActionCondition`, *optional*):
-              Action-conditioning metadata and its reference visual input.
-          num_frames (`int`, *optional*):
-              Number of frames to generate.
-          height (`int`, *optional*):
-              Height of the generated video or image in pixels.
-          width (`int`, *optional*):
-              Width of the generated video or image in pixels.
           fps (`float`, *optional*, defaults to 24.0):
               Frame rate of the generated video.
           use_system_prompt (`bool`, *optional*, defaults to True):
@@ -828,6 +940,8 @@ class Cosmos3OmniBlocks(SequentialPipelineBlocks):
               Whether to add resolution metadata to the prompt.
           add_duration_template (`bool`, *optional*, defaults to True):
               Whether to add duration metadata to the prompt.
+          action (`CosmosActionCondition`, *optional*):
+              Action-conditioning metadata and its reference visual input.
           video (`None`, *optional*):
               Reference video for video-to-video conditioning.
           condition_frame_indexes_vision (`tuple | list`, *optional*, defaults to (0, 1)):
@@ -836,26 +950,42 @@ class Cosmos3OmniBlocks(SequentialPipelineBlocks):
               Which end of a longer conditioning video to use: `first` or `last`.
           image (`None`, *optional*):
               Reference image for image-to-video conditioning.
+          chunk_id (`int`, *optional*, defaults to 0):
+              Index of the current chunk.
+          previous_output (`None`, *optional*):
+              Decoded pixels of the previous chunk, used to seed later chunks.
+          num_first_chunk_conditional_frames (`int`, *optional*, defaults to 0):
+              Number of frames the first chunk reuses from the input video.
+          generator (`Generator`, *optional*):
+              Torch generator for deterministic generation.
+          share_vision_temporal_positions (`bool`, *optional*, defaults to True):
+              Whether control and target items share vision temporal positions.
+          num_inference_steps (`int`):
+              The number of denoising steps.
+          **denoiser_input_fields (`None`, *optional*):
+              conditional model inputs for the denoiser: e.g. prompt_embeds, negative_prompt_embeds, etc.
+          guidance_scale (`float`, *optional*, defaults to 6.0):
+              Scale for text classifier-free guidance.
+          control_guidance (`float`, *optional*, defaults to 1.0):
+              Scale for the control (structural) guidance axis.
+          guidance_interval (`tuple`, *optional*):
+              Timestep interval [lo, hi] over which text guidance is active (None = always).
+          control_guidance_interval (`tuple`, *optional*):
+              Timestep interval [lo, hi] over which control guidance is active (None = always).
+          output_chunks (`list`, *optional*):
+              Decoded pixel chunks accumulated so far.
           x0_tokens_vision (`Tensor`, *optional*):
               Vision latents encoded from the conditioning image or video.
           vision_condition_frames (`list`, *optional*):
               Latent-frame indexes fixed by visual conditioning.
           latents (`Tensor`):
               Pre-generated noisy vision latents.
-          generator (`Generator`, *optional*):
-              Torch generator for deterministic generation.
-          num_inference_steps (`int`):
-              The number of denoising steps.
           sound_latents (`Tensor`, *optional*):
               Pre-generated noisy sound latents.
           action_condition_frame_indexes (`list`, *optional*):
               Action-frame indexes fixed by action conditioning.
           action_latents (`Tensor`, *optional*):
               Pre-generated noisy action latents.
-          **denoiser_input_fields (`None`, *optional*):
-              conditional model inputs for the denoiser: e.g. prompt_embeds, negative_prompt_embeds, etc.
-          guidance_scale (`float`, *optional*, defaults to 6.0):
-              Scale for classifier-free guidance.
           enable_sound (`bool`, *optional*, defaults to False):
               Whether to generate a synchronized sound track.
           output_type (`str`, *optional*, defaults to pil):
