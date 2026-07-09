@@ -71,7 +71,7 @@ checkpoint).
 import torch
 from diffusers import ClassifierFreeGuidance, ModularPipeline
 
-pipe = ModularPipeline.from_pretrained("path/to/krea2-diffusers")
+pipe = ModularPipeline.from_pretrained("krea/Krea-2-Raw")
 pipe.load_components(torch_dtype=torch.bfloat16)
 pipe.to("cuda")
 
