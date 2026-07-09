@@ -1644,50 +1644,6 @@ class ClipVisionProjection(nn.Module):
         return hidden_states
 
 
-class PatchEmbed(nn.Module):
-    """2D Image to Patch Embedding"""
-
-    def __init__(
-        self,
-        img_size=224,
-        patch_size=16,
-        in_chans=3,
-        embed_dim=768,
-        kernel_size=None,
-        padding=0,
-        norm_layer=None,
-        flatten=True,
-        bias=True,
-    ):
-        super().__init__()
-        kernel_size = kernel_size or patch_size
-        if isinstance(kernel_size, tuple) or isinstance(kernel_size, list):
-            kernel_size = kernel_size[0]
-        img_size = to_2tuple(img_size)
-        patch_size = to_2tuple(patch_size)
-        self.img_size = img_size
-        self.patch_size = patch_size
-        self.grid_size = (img_size[0] // patch_size[0], img_size[1] // patch_size[1])
-        self.num_patches = self.grid_size[0] * self.grid_size[1]
-        self.flatten = flatten
-        if not padding and kernel_size % 2 > 0:
-            padding = get_same_padding(kernel_size)
-        self.proj = nn.Conv2d(
-            in_chans, embed_dim, kernel_size=kernel_size, stride=patch_size, padding=padding, bias=bias
-        )
-        self.norm = norm_layer(embed_dim) if norm_layer else nn.Identity()
-
-    def forward(self, x):
-        B, C, H, W = x.shape
-        assert H == self.img_size[0], f"Input image height ({H}) doesn't match model ({self.img_size[0]})."
-        assert W == self.img_size[1], f"Input image width ({W}) doesn't match model ({self.img_size[1]})."
-        x = self.proj(x)
-        if self.flatten:
-            x = x.flatten(2).transpose(1, 2)  # BCHW -> BNC
-        x = self.norm(x)
-        return x
-
-
 class PatchEmbedMS3D(nn.Module):
     """3D Image to Patch Embedding"""
 
@@ -5488,346 +5444,6 @@ class BidirectionalGDNUCPESinglePathLiteLABothTriton(BidirectionalGDNUCPESingleP
 # ============================================================================
 
 
-class SanaBlock(nn.Module):
-    """
-    A Sana block with global shared adaptive layer norm (adaLN-single) conditioning.
-    """
-
-    def __init__(
-        self,
-        hidden_size,
-        num_heads,
-        mlp_ratio=4.0,
-        drop_path=0,
-        qk_norm=False,
-        cross_norm=False,
-        attn_type="flash",
-        ffn_type="mlp",
-        mlp_acts=("silu", "silu", None),
-        linear_head_dim=32,
-        cross_attn_type="flash",
-        **block_kwargs,
-    ):
-        super().__init__()
-        self.norm1 = nn.LayerNorm(hidden_size, elementwise_affine=False, eps=1e-6)
-        if attn_type == "flash":
-            # flash self attention
-            self.attn = FlashAttention(
-                hidden_size,
-                num_heads=num_heads,
-                qkv_bias=True,
-                qk_norm=qk_norm,
-                **block_kwargs,
-            )
-        elif attn_type == "linear":
-            # linear self attention
-            # TODO: Here the num_heads set to 36 for tmp used
-            self_num_heads = hidden_size // linear_head_dim
-            self.attn = LiteLA(hidden_size, hidden_size, heads=self_num_heads, eps=1e-8, qk_norm=qk_norm)
-        elif attn_type == "vanilla":
-            # vanilla self attention
-            self.attn = Attention(hidden_size, num_heads=num_heads, qkv_bias=True)
-        else:
-            self.attn = None
-
-        if cross_attn_type in ["flash", "linear"]:
-            self.cross_attn = MultiHeadCrossAttention(hidden_size, num_heads, qk_norm=cross_norm, **block_kwargs)
-        elif cross_attn_type == "vanilla":
-            self.cross_attn = MultiHeadCrossVallinaAttention(
-                hidden_size, num_heads, qk_norm=cross_norm, **block_kwargs
-            )
-        else:
-            raise ValueError(f"{cross_attn_type} type is not defined.")
-        self.norm2 = nn.LayerNorm(hidden_size, elementwise_affine=False, eps=1e-6)
-        # to be compatible with lower version pytorch
-        if ffn_type == "dwmlp":
-
-            def approx_gelu():
-                return nn.GELU(approximate="tanh")
-
-            self.mlp = DWMlp(
-                in_features=hidden_size, hidden_features=int(hidden_size * mlp_ratio), act_layer=approx_gelu, drop=0
-            )
-        elif ffn_type == "glumbconv":
-            self.mlp = GLUMBConv(
-                in_features=hidden_size,
-                hidden_features=int(hidden_size * mlp_ratio),
-                use_bias=(True, True, False),
-                norm=(None, None, None),
-                act=mlp_acts,
-            )
-        elif ffn_type == "glumbconv_dilate":
-            self.mlp = GLUMBConv(
-                in_features=hidden_size,
-                hidden_features=int(hidden_size * mlp_ratio),
-                use_bias=(True, True, False),
-                norm=(None, None, None),
-                act=mlp_acts,
-                dilation=2,
-            )
-        elif ffn_type == "mlp":
-
-            def approx_gelu():
-                return nn.GELU(approximate="tanh")
-
-            self.mlp = Mlp(
-                in_features=hidden_size, hidden_features=int(hidden_size * mlp_ratio), act_layer=approx_gelu, drop=0
-            )
-        else:
-            self.mlp = None
-
-        self.drop_path = DropPath(drop_path) if drop_path > 0.0 else nn.Identity()
-        self.scale_shift_table = nn.Parameter(torch.randn(6, hidden_size) / hidden_size**0.5)
-
-    def forward(self, x, y, t, mask=None, **kwargs):
-        B, N, C = x.shape
-
-        shift_msa, scale_msa, gate_msa, shift_mlp, scale_mlp, gate_mlp = (
-            self.scale_shift_table[None] + t.reshape(B, 6, -1)
-        ).chunk(6, dim=1)
-        x = x + self.drop_path(
-            gate_msa * self.attn(t2i_modulate(self.norm1(x), shift_msa, scale_msa)).reshape(B, N, C)
-        )
-        x = x + self.cross_attn(x, y, mask)
-        x = x + self.drop_path(gate_mlp * self.mlp(t2i_modulate(self.norm2(x), shift_mlp, scale_mlp)))
-
-        return x
-
-
-class Sana(nn.Module):
-    """
-    Diffusion model with a Transformer backbone.
-    """
-
-    def __init__(
-        self,
-        input_size=32,
-        patch_size=2,
-        in_channels=4,
-        hidden_size=1152,
-        depth=28,
-        num_heads=16,
-        mlp_ratio=4.0,
-        class_dropout_prob=0.1,
-        pred_sigma=True,
-        drop_path: float = 0.0,
-        caption_channels=2304,
-        pe_interpolation=1.0,
-        config=None,
-        model_max_length=120,
-        qk_norm=False,
-        y_norm=False,
-        norm_eps=1e-5,
-        attn_type="flash",
-        cross_attn_type="flash",
-        ffn_type="mlp",
-        use_pe=True,
-        y_norm_scale_factor=1.0,
-        patch_embed_kernel=None,
-        mlp_acts=("silu", "silu", None),
-        linear_head_dim=32,
-        cross_norm=False,
-        pos_embed_type="sincos",
-        cfg_embed=False,
-        timestep_norm_scale_factor=1.0,
-        null_embed_path=None,
-        **kwargs,
-    ):
-        super().__init__()
-        self.pred_sigma = pred_sigma
-        self.in_channels = in_channels
-        self.out_channels = in_channels * 2 if pred_sigma else in_channels
-        self.hidden_size = hidden_size
-        self.patch_size = patch_size[0] if isinstance(patch_size, tuple) else patch_size
-        self.num_heads = num_heads
-        self.linear_head_dim = linear_head_dim
-        self.pe_interpolation = pe_interpolation
-        self.depth = depth
-        self.use_pe = use_pe
-        self.pos_embed_type = pos_embed_type
-        self.y_norm = y_norm
-        self.config = config
-        self.fp32_attention = kwargs.get("use_fp32_attention", False)
-        self.null_embed_path = null_embed_path
-        self.timestep_norm_scale_factor = timestep_norm_scale_factor
-
-        kernel_size = patch_embed_kernel or patch_size
-        self.x_embedder = PatchEmbed(
-            input_size, patch_size, in_channels, hidden_size, kernel_size=kernel_size, bias=True
-        )
-        self.t_embedder = TimestepEmbedder(hidden_size)
-        self.cfg_embedder = None
-        if cfg_embed:
-            self.cfg_embedder = TimestepEmbedder(hidden_size)
-        num_patches = self.x_embedder.num_patches
-        self.base_size = input_size // self.patch_size
-        # Will use fixed sin-cos embedding:
-        self.register_buffer("pos_embed", torch.zeros(1, num_patches, hidden_size))
-
-        def approx_gelu():
-            return nn.GELU(approximate="tanh")
-
-        self.t_block = nn.Sequential(nn.SiLU(), nn.Linear(hidden_size, 6 * hidden_size, bias=True))
-        self.y_embedder = CaptionEmbedder(
-            in_channels=caption_channels,
-            hidden_size=hidden_size,
-            uncond_prob=class_dropout_prob,
-            act_layer=approx_gelu,
-            token_num=model_max_length,
-        )
-        if self.y_norm:
-            self.attention_y_norm = RMSNorm(hidden_size, scale_factor=y_norm_scale_factor, eps=norm_eps)
-        drop_path = [x.item() for x in torch.linspace(0, drop_path, depth)]  # stochastic depth decay rule
-        if attn_type == "flash":
-            hidden_size // num_heads
-        else:
-            pass
-        self.blocks = nn.ModuleList(
-            [
-                SanaBlock(
-                    hidden_size,
-                    num_heads,
-                    mlp_ratio=mlp_ratio,
-                    drop_path=drop_path[i],
-                    qk_norm=qk_norm,
-                    cross_norm=cross_norm,
-                    attn_type=attn_type,
-                    ffn_type=ffn_type,
-                    mlp_acts=mlp_acts,
-                    linear_head_dim=linear_head_dim,
-                    cross_attn_type=cross_attn_type,
-                )
-                for i in range(depth)
-            ]
-        )
-        self.final_layer = T2IFinalLayer(hidden_size, patch_size, self.out_channels)
-
-        self.logger = print
-
-        # Fixed image size pos embed
-        if self.use_pe and self.pos_embed_type in ["sincos", "flux_rope"]:
-            if self.pos_embed_type == "sincos":
-                # Initialize (and freeze) pos_embed by sin-cos embedding:
-                pos_embed = get_2d_sincos_pos_embed(
-                    self.pos_embed.shape[-1],
-                    int(self.x_embedder.num_patches**0.5),
-                    pe_interpolation=self.pe_interpolation,
-                    base_size=self.base_size,
-                )
-                self.pos_embed.data.copy_(torch.from_numpy(pos_embed).float().unsqueeze(0))
-            elif self.pos_embed_type == "flux_rope":
-                # Initialize (and freeze) pos_embed by 3D-Rope embedding:
-                self.pos_embed = RopePosEmbed(theta=10000, axes_dim=[0, 16, 16])
-
-        self.initialize_weights()
-
-    def forward(self, x, timestep, y, mask=None, data_info=None, **kwargs):
-        """
-        Forward pass of Sana. x: (N, C, H, W) tensor of spatial inputs (images or latent representations of images) t:
-        (N,) tensor of diffusion timesteps y: (N, 1, 120, C) tensor of class labels
-        """
-        x = x.to(self.dtype)
-        timestep = timestep.to(self.dtype)
-        y = y.to(self.dtype)
-        pos_embed = self.pos_embed.to(self.dtype)
-        self.h, self.w = x.shape[-2] // self.patch_size, x.shape[-1] // self.patch_size
-        x = self.x_embedder(x)
-        image_pos_embed = None
-        if self.use_pe:
-            if self.pos_embed_type == "sincos":
-                x = x + pos_embed  # (N, T, D), where T = H * W / patch_size ** 2
-            elif self.pos_embed_type == "flux_rope":
-                image_pos_embed = pos_embed
-                x += image_pos_embed
-        t = self.t_embedder(timestep.to(x.dtype))  # (N, D)
-        t0 = self.t_block(t)
-        y = self.y_embedder(y, self.training)  # (N, 1, L, D)
-        if self.y_norm:
-            y = self.attention_y_norm(y)
-        if mask is not None:
-            if mask.shape[0] != y.shape[0]:
-                mask = mask.repeat(y.shape[0] // mask.shape[0], 1)
-            mask = mask.squeeze(1).squeeze(1)
-            y = y.squeeze(1).masked_select(mask.unsqueeze(-1) != 0).view(1, -1, x.shape[-1])
-            y_lens = mask.sum(dim=1).tolist()
-        else:
-            y_lens = [y.shape[2]] * y.shape[0]
-            y = y.squeeze(1).view(1, -1, x.shape[-1])
-        for block in self.blocks:
-            x = auto_grad_checkpoint(block, x, y, t0, y_lens, image_pos_embed)  # (N, T, D) #support grad checkpoint
-        x = self.final_layer(x, t)  # (N, T, patch_size ** 2 * out_channels)
-        x = self.unpatchify(x)  # (N, out_channels, H, W)
-        return x
-
-    def __call__(self, *args, **kwargs):
-        """
-        This method allows the object to be called like a function. It simply calls the forward method.
-        """
-        return self.forward(*args, **kwargs)
-
-    def forward_with_dpmsolver(self, x, timestep, y, mask=None, **kwargs):
-        """
-        dpm solver donnot need variance prediction
-        """
-        # https://github.com/openai/glide-text2im/blob/main/notebooks/text2im.ipynb
-        model_out = self.forward(x, timestep, y, mask)
-        return model_out.chunk(2, dim=1)[0] if self.pred_sigma else model_out
-
-    def unpatchify(self, x):
-        """
-        x: (N, T, patch_size**2 * C) imgs: (N, H, W, C)
-        """
-        c = self.out_channels
-        p = self.x_embedder.patch_size[0]
-        h = w = int(x.shape[1] ** 0.5)
-        assert h * w == x.shape[1]
-
-        x = x.reshape(shape=(x.shape[0], h, w, p, p, c))
-        x = torch.einsum("nhwpqc->nchpwq", x)
-        imgs = x.reshape(shape=(x.shape[0], c, h * p, h * p))
-        return imgs
-
-    def initialize_weights(self):
-        # Initialize transformer layers:
-        def _basic_init(module):
-            if isinstance(module, nn.Linear):
-                torch.nn.init.xavier_uniform_(module.weight)
-                if module.bias is not None:
-                    nn.init.constant_(module.bias, 0)
-
-        self.apply(_basic_init)
-
-        # Initialize patch_embed like nn.Linear (instead of nn.Conv2d):
-        w = self.x_embedder.proj.weight.data
-        nn.init.xavier_uniform_(w.view([w.shape[0], -1]))
-
-        # Initialize timestep embedding MLP:
-        nn.init.normal_(self.t_embedder.mlp[0].weight, std=0.02)
-        nn.init.normal_(self.t_embedder.mlp[2].weight, std=0.02)
-        nn.init.normal_(self.t_block[1].weight, std=0.02)
-
-        # Initialize caption embedding MLP:
-        nn.init.normal_(self.y_embedder.y_proj.fc1.weight, std=0.02)
-        nn.init.normal_(self.y_embedder.y_proj.fc2.weight, std=0.02)
-
-        # load null embed
-        try:
-            null_embed = torch.load(self.null_embed_path, map_location="cpu")
-            self.y_embedder.y_embedding.data = null_embed["uncond_prompt_embeds"][0]
-            self.logger(colored(f"Load null embed from {self.null_embed_path}....", "green"))
-        except Exception as e:
-            self.logger(
-                colored(
-                    f"Failed to load null embed from {self.null_embed_path}....{e}. Ignore the error during inference",
-                    "red",
-                )
-            )
-
-    @property
-    def dtype(self):
-        return next(self.parameters()).dtype
-
-
 def get_2d_sincos_pos_embed(embed_dim, grid_size, cls_token=False, extra_tokens=0, pe_interpolation=1.0, base_size=16):
     """
     grid_size: int of the grid height and width return: pos_embed: [grid_size*grid_size, embed_dim] or
@@ -6246,102 +5862,145 @@ def _inject_softmax_layers(
     return attn_out, camctrl_out
 
 
-class SanaMSVideoCamCtrl(Sana):
-    """
-    Diffusion model with a Transformer backbone.
+class SanaWMTransformer3DModel(ModelMixin, ConfigMixin):
+    r"""
+    SANA-WM 1600M bidirectional camera-controlled DiT.
+
+    A single-class DiT (depth=20, hidden_size=2240, patch_size=(1,1,1), num_heads=20 — i.e. the public
+    ``Efficient-Large-Model/SANA-WM_bidirectional`` release). ``save_pretrained`` / ``from_pretrained`` work out of the
+    box via :class:`~diffusers.configuration_utils.ConfigMixin`.
+
+    Args:
+        in_channels (`int`, defaults to 128): VAE latent channels (LTX-2).
+        attn_type (`str`): Main-branch attention, e.g. ``"BidirectionalGDNTriton"``.
+        camctrl_type (`str`): Camera-branch attention, e.g.
+            ``"BidirectionalGDNUCPESinglePathLiteLABothTriton"``.
+        softmax_every_n (`int`, defaults to 4): Inject a softmax block every N blocks.
+        linear_head_dim (`int`, defaults to 112): GDN head dimension.
+        ffn_type (`str`, defaults to ``"GLUMBConvTemp"``): FFN.
+        t_kernel_size (`int`, defaults to 3): Temporal conv kernel.
+        conv_kernel_size (`int`, defaults to 4): Spatial conv kernel inside attention.
+        k_conv_only (`bool`, defaults to True): Apply conv only on K.
+        pos_embed_type (`str`, defaults to ``"wan_rope"``): Position embedding.
+        qk_norm (`bool`, defaults to True): RMSNorm on Q/K.
+        cross_norm (`bool`, defaults to True): RMSNorm on cross-attention K.
+        y_norm (`bool`, defaults to True): Apply ``attention_y_norm`` to text embeddings.
+        y_norm_scale_factor (`float`, defaults to 0.01): Scale factor for ``attention_y_norm``.
+        init_cam_from_base (`bool`, defaults to True): Initialize camera branch QKV from main.
+        chunk_split_strategy (`str`, defaults to ``"first_chunk_plus_one"``).
+        use_chunk_plucker_post_attn (`bool`, defaults to True).
+        chunk_plucker_channels (`int`, defaults to 48): ``6 dims * temporal_stride 8``.
+        chunk_plucker_post_attn_blocks (`int`, defaults to 20): All blocks.
+        fp32_attention (`bool`, defaults to True): Run attention in fp32.
+        image_size (`int`, defaults to 720): Nominal image size.
+        caption_channels (`int`, defaults to 2304): Gemma-2 hidden size.
+        model_max_length (`int`, defaults to 300): Max prompt tokens.
+
+    The state-dict is identical to the public sana checkpoint apart from the intentionally-removed ``pos_embed``
+    buffer.
     """
 
+    _supports_gradient_checkpointing = False
+    _no_split_modules = ["blocks"]
+
+    @register_to_config
     def __init__(
         self,
-        input_size=32,
-        patch_size=(1, 2, 2),
-        in_channels=4,
-        hidden_size=1152,
-        depth=28,
-        num_heads=16,
-        mlp_ratio=4.0,
-        class_dropout_prob=0.1,
-        learn_sigma=True,
-        pred_sigma=True,
-        drop_path: float = 0.0,
-        caption_channels=2304,
-        pe_interpolation=1.0,
-        config=None,
-        model_max_length=300,
-        qk_norm=False,
-        y_norm=False,
-        norm_eps=1e-5,
-        attn_type="flash",
-        ffn_type="mlp",
-        use_pe=True,
-        y_norm_scale_factor=1.0,
-        patch_embed_kernel=None,
-        mlp_acts=("silu", "silu", None),
-        linear_head_dim=32,
-        cross_norm=False,
-        cross_attn_type="flash",
-        cross_attn_image_embeds=False,
-        image_embed_channels=1152,
-        pos_embed_type="wan_rope",
-        rope_fhw_dim=None,
-        t_kernel_size=3,
-        flash_attn_layer_idx=None,
-        flash_attn_layer_type=None,
-        flash_attn_window_count=None,
-        pack_latents=False,
-        camctrl_type: str = "PluckerPatchifyAdd",
-        camctrl_layers_num: int = None,
-        cam_attn_compress: int = 2,
-        init_cam_from_base: bool = False,
-        use_delta_actions: bool = False,
-        delta_action_dim: int = 16 * 4,
-        use_delta_translation: bool = False,
-        fp32_norm: bool = False,
-        chunk_size: int = 10,
-        chunk_split_strategy: str = "uniform",
+        in_channels: int = 128,
+        attn_type: str = "BidirectionalGDNTriton",
+        camctrl_type: str = "BidirectionalGDNUCPESinglePathLiteLABothTriton",
+        softmax_every_n: int = 4,
+        linear_head_dim: int = 112,
+        ffn_type: str = "GLUMBConvTemp",
+        t_kernel_size: int = 3,
         conv_kernel_size: int = 4,
         k_conv_only: bool = True,
-        softmax_every_n: int = 4,
-        use_delta_pose_additive: bool = False,
-        delta_pose_additive_dim: int = 64,
-        use_chunk_plucker_input: bool = False,
-        use_chunk_plucker_post_attn: bool = False,
+        pos_embed_type: str = "wan_rope",
+        qk_norm: bool = True,
+        cross_norm: bool = True,
+        y_norm: bool = True,
+        y_norm_scale_factor: float = 0.01,
+        cam_attn_compress: int = 1,
+        init_cam_from_base: bool = True,
+        chunk_split_strategy: str = "first_chunk_plus_one",
+        use_chunk_plucker_post_attn: bool = True,
         chunk_plucker_channels: int = 48,
-        chunk_plucker_post_attn_blocks: int = -1,
-        use_autograd_kernel: bool = False,
-        **kwargs,
-    ):
-        super().__init__(
-            input_size=input_size,
-            patch_size=patch_size,
-            in_channels=in_channels,
-            hidden_size=hidden_size,
-            depth=depth,
-            num_heads=num_heads,
-            mlp_ratio=mlp_ratio,
-            class_dropout_prob=class_dropout_prob,
-            learn_sigma=learn_sigma,
-            pred_sigma=pred_sigma,
-            drop_path=drop_path,
-            caption_channels=caption_channels,
-            pe_interpolation=pe_interpolation,
-            config=config,
-            model_max_length=model_max_length,
-            qk_norm=qk_norm,
-            y_norm=y_norm,
-            norm_eps=norm_eps,
-            attn_type=attn_type,
-            ffn_type=ffn_type,
-            use_pe=use_pe,
-            y_norm_scale_factor=y_norm_scale_factor,
-            patch_embed_kernel=patch_embed_kernel,
-            mlp_acts=mlp_acts,
-            linear_head_dim=linear_head_dim,
-            cross_norm=cross_norm,
-            cross_attn_type=cross_attn_type,
-            pos_embed_type=pos_embed_type,
-            **kwargs,
-        )
+        chunk_plucker_post_attn_blocks: int = 20,
+        fp32_attention: bool = True,
+        image_size: int = 720,
+        caption_channels: int = 2304,
+        model_max_length: int = 300,
+        mlp_ratio: float = 3.0,
+        mlp_acts: tuple = ("silu", "silu", None),
+        use_pe: bool = True,
+        learn_sigma: bool = False,
+        pred_sigma: bool = False,
+        mixed_precision: str = "bf16",
+    ) -> None:
+        super().__init__()
+
+        # Hardcoded architecture of the public SANA-WM_bidirectional release.
+        depth = 20
+        hidden_size = 2240
+        patch_size = (1, 1, 1)
+        num_heads = 20
+
+        # Remaining SanaMSVideoCamCtrl.__init__ defaults not exposed by the config signature.
+        mlp_acts = list(mlp_acts)
+        class_dropout_prob = 0.1
+        drop_path = 0.0
+        pe_interpolation = 1.0
+        norm_eps = 1e-5
+        patch_embed_kernel = None
+        cfg_embed = False
+        timestep_norm_scale_factor = 1.0
+        null_embed_path = None
+        cross_attn_image_embeds = False
+        image_embed_channels = 1152
+        rope_fhw_dim = None
+        flash_attn_layer_idx = None
+        flash_attn_layer_type = None
+        flash_attn_window_count = None
+        pack_latents = False
+        camctrl_layers_num = None
+        use_delta_actions = False
+        delta_action_dim = 16 * 4
+        use_delta_translation = False
+        fp32_norm = False
+        chunk_size = 10
+        use_delta_pose_additive = False
+        delta_pose_additive_dim = 64
+        use_chunk_plucker_input = False
+        use_autograd_kernel = False
+
+        # --- Base DiT config attributes (from Sana.__init__) ---
+        self.pred_sigma = pred_sigma
+        self.in_channels = in_channels
+        self.out_channels = in_channels * 2 if pred_sigma else in_channels
+        self.hidden_size = hidden_size
+        self.num_heads = num_heads
+        self.linear_head_dim = linear_head_dim
+        self.pe_interpolation = pe_interpolation
+        self.depth = depth
+        self.use_pe = use_pe
+        self.pos_embed_type = pos_embed_type
+        self.y_norm = y_norm
+        # NOTE: ``self.config`` is provided (read-only) by ConfigMixin via @register_to_config.
+        self.fp32_attention = False
+        self.null_embed_path = null_embed_path
+        self.timestep_norm_scale_factor = timestep_norm_scale_factor
+
+        self.t_embedder = TimestepEmbedder(hidden_size)
+        self.cfg_embedder = None
+        if cfg_embed:
+            self.cfg_embedder = TimestepEmbedder(hidden_size)
+
+        if self.y_norm:
+            self.attention_y_norm = RMSNorm(hidden_size, scale_factor=y_norm_scale_factor, eps=norm_eps)
+
+        self.logger = print
+
+        # --- Video camera-controlled DiT modules (from SanaMSVideoCamCtrl.__init__) ---
         self.chunk_size = chunk_size
         self.chunk_split_strategy = chunk_split_strategy
         self.patch_size = patch_size
@@ -6445,7 +6104,8 @@ class SanaMSVideoCamCtrl(Sana):
             self.rope = WanRotaryTemporalPosEmbed(
                 attention_head_dim=attention_head_dim, patch_size=patch_size, max_seq_len=1024
             )
-        drop_path = [x.item() for x in torch.linspace(0, drop_path, depth)]  # stochastic depth decay rule
+        # stochastic depth decay rule (build on CPU so meta-device construction works)
+        drop_path = [x.item() for x in torch.linspace(0, drop_path, depth, device="cpu")]
 
         # insert flash attention layers
         if flash_attn_layer_idx is not None and flash_attn_layer_type is not None:
@@ -6523,6 +6183,10 @@ class SanaMSVideoCamCtrl(Sana):
         self.save_block_output = False
         self.block_output_buffer = {}
 
+        if fp32_attention:
+            set_fp32_attention(self)
+        self.in_channels = self.out_channels = in_channels
+
     @staticmethod
     def _pack_latents(latents, batch_size, num_channels_latents, height, width, frame):
         latents = latents.view(batch_size, num_channels_latents, frame, height // 2, 2, width // 2, 2)
@@ -6547,12 +6211,40 @@ class SanaMSVideoCamCtrl(Sana):
         """Compute RoPE frequencies for the local frame window."""
         return self.rope((self.f, h, w), device)
 
-    def forward(self, x, timestep, y, mask=None, **kwargs):
+    def forward(
+        self,
+        hidden_states: torch.Tensor,
+        timestep: torch.Tensor,
+        encoder_hidden_states: torch.Tensor,
+        encoder_attention_mask: torch.Tensor | None = None,
+        mask: torch.Tensor | None = None,
+        return_dict: bool = True,
+        **kwargs: Any,
+    ):
+        """Run the SANA-WM DiT.
+
+        Args:
+            hidden_states: ``(B, C, T, H, W)`` latents.
+            timestep: ``(B, 1, T)`` per-frame diffusion timesteps (LTX style).
+            encoder_hidden_states: ``(B, 1, L, D_caption)`` text embeddings.
+            encoder_attention_mask: ``(B, L)`` text attention mask (diffusers convention).
+            mask: Alias for ``encoder_attention_mask`` matching the sana DiT's
+                kwarg name. If both are passed, ``mask`` takes precedence.
+            return_dict: If ``True`` (default), returns a :class:`Transformer2DModelOutput`;
+                otherwise returns a one-tuple ``(sample,)``.
+            **kwargs: SANA-WM-specific conditioning — at minimum
+                ``data_info``, ``camera_conditions``, ``chunk_plucker``.
+
+        Returns:
+            :class:`Transformer2DModelOutput` with ``sample`` of shape ``(B, C, T, H, W)``.
         """
-        Forward pass of Sana. x: (N, C, T, H, W) tensor of spatial inputs (images or latent representations of images)
-        t: (N,) tensor of diffusion timesteps or (N, 1, F) tensor of diffusion timesteps y: (N, 1, 120, C) tensor of
-        class labels
-        """
+        # The sana DiT names its text mask kwarg ``mask``.
+        # Accept both ``mask=`` (sana convention) and ``encoder_attention_mask=``
+        # (diffusers convention); the former wins if both are provided.
+        if mask is None:
+            mask = encoder_attention_mask
+        x = hidden_states
+        y = encoder_hidden_states
 
         bs = x.shape[0]
         x = x.to(self.dtype)
@@ -6640,29 +6332,7 @@ class SanaMSVideoCamCtrl(Sana):
 
         image_pos_embed = kwargs.get("pos_embeds", None)
         if self.use_pe and image_pos_embed is None:
-            if self.pos_embed_type == "sincos":
-                if self.pos_embed_ms is None or self.pos_embed_ms.shape[1:] != x.shape[1:]:
-                    self.pos_embed_ms = (
-                        torch.from_numpy(
-                            get_2d_sincos_pos_embed(
-                                self.pos_embed.shape[-1],
-                                (self.h, self.w),
-                                pe_interpolation=self.pe_interpolation,
-                                base_size=self.base_size,
-                            )
-                        )
-                        .unsqueeze(0)
-                        .to(x.device)
-                        .to(self.dtype)
-                    )
-                x += self.pos_embed_ms  # (N, T, D), where T = H * W / patch_size ** 2
-            elif self.pos_embed_type == "flux_rope":
-                self.pos_embed_ms = RopePosEmbed(theta=10000, axes_dim=[12, 10, 10])
-                latent_image_ids = self.pos_embed_ms._prepare_latent_image_ids(
-                    bs, self.h, self.w, x.device, x.dtype, frame=self.f
-                )
-                image_pos_embed = self.pos_embed_ms(latent_image_ids)
-            elif self.pos_embed_type == "wan_rope":
+            if self.pos_embed_type == "wan_rope":
                 image_pos_embed = self._compute_rope_with_cp(x.device, self.h, self.w)
             elif self.pos_embed_type == "casual_wan_rope":
                 image_pos_embed = self.rope((self.f, self.h, self.w), x.device)
@@ -6782,7 +6452,7 @@ class SanaMSVideoCamCtrl(Sana):
         if self.save_block_output:
             block_output = self.get_block_output()
             self.block_output_buffer[self.inference_timestep] = block_output
-        return x
+        return Transformer2DModelOutput(sample=x) if return_dict else (x,)
 
     def unpatchify(self, x):
         """
@@ -6800,7 +6470,7 @@ class SanaMSVideoCamCtrl(Sana):
         return imgs
 
     def initialize(self):
-        super().initialize_weights()
+        self.initialize_weights()
 
         # Initialize transformer layers:
         def _basic_init(module):
@@ -6864,175 +6534,38 @@ class SanaMSVideoCamCtrl(Sana):
             if hasattr(block.attn, "init_cam_branch_weights"):
                 block.attn.init_cam_branch_weights()
 
+    def initialize_weights(self):
+        # Initialize transformer layers:
+        def _basic_init(module):
+            if isinstance(module, nn.Linear):
+                torch.nn.init.xavier_uniform_(module.weight)
+                if module.bias is not None:
+                    nn.init.constant_(module.bias, 0)
 
-# ---------------------------------------------------------------------------
-# Public diffusers wrapper
-# ---------------------------------------------------------------------------
+        self.apply(_basic_init)
 
+        # Initialize patch_embed like nn.Linear (instead of nn.Conv2d):
+        w = self.x_embedder.proj.weight.data
+        nn.init.xavier_uniform_(w.view([w.shape[0], -1]))
 
-class SanaWMTransformer3DModel(ModelMixin, ConfigMixin):
-    r"""
-    SANA-WM 1600M bidirectional camera-controlled DiT.
+        # Initialize timestep embedding MLP:
+        nn.init.normal_(self.t_embedder.mlp[0].weight, std=0.02)
+        nn.init.normal_(self.t_embedder.mlp[2].weight, std=0.02)
+        nn.init.normal_(self.t_block[1].weight, std=0.02)
 
-    Wraps :class:`SanaMSVideoCamCtrl` (depth=20, hidden_size=2240, patch_size=(1,1,1), num_heads=20 — i.e. the public
-    ``Efficient-Large-Model/SANA-WM_bidirectional`` release). ``save_pretrained`` / ``from_pretrained`` work out of the
-    box via :class:`~diffusers.configuration_utils.ConfigMixin`.
+        # Initialize caption embedding MLP:
+        nn.init.normal_(self.y_embedder.y_proj.fc1.weight, std=0.02)
+        nn.init.normal_(self.y_embedder.y_proj.fc2.weight, std=0.02)
 
-    Args:
-        in_channels (`int`, defaults to 128): VAE latent channels (LTX-2).
-        attn_type (`str`): Main-branch attention, e.g. ``"BidirectionalGDNTriton"``.
-        camctrl_type (`str`): Camera-branch attention, e.g.
-            ``"BidirectionalGDNUCPESinglePathLiteLABothTriton"``.
-        softmax_every_n (`int`, defaults to 4): Inject a softmax block every N blocks.
-        linear_head_dim (`int`, defaults to 112): GDN head dimension.
-        ffn_type (`str`, defaults to ``"GLUMBConvTemp"``): FFN.
-        t_kernel_size (`int`, defaults to 3): Temporal conv kernel.
-        conv_kernel_size (`int`, defaults to 4): Spatial conv kernel inside attention.
-        k_conv_only (`bool`, defaults to True): Apply conv only on K.
-        pos_embed_type (`str`, defaults to ``"wan_rope"``): Position embedding.
-        qk_norm (`bool`, defaults to True): RMSNorm on Q/K.
-        cross_norm (`bool`, defaults to True): RMSNorm on cross-attention K.
-        y_norm (`bool`, defaults to True): Apply ``attention_y_norm`` to text embeddings.
-        y_norm_scale_factor (`float`, defaults to 0.01): Scale factor for ``attention_y_norm``.
-        init_cam_from_base (`bool`, defaults to True): Initialize camera branch QKV from main.
-        chunk_split_strategy (`str`, defaults to ``"first_chunk_plus_one"``).
-        use_chunk_plucker_post_attn (`bool`, defaults to True).
-        chunk_plucker_channels (`int`, defaults to 48): ``6 dims * temporal_stride 8``.
-        chunk_plucker_post_attn_blocks (`int`, defaults to 20): All blocks.
-        fp32_attention (`bool`, defaults to True): Run attention in fp32.
-        image_size (`int`, defaults to 720): Nominal image size.
-        caption_channels (`int`, defaults to 2304): Gemma-2 hidden size.
-        model_max_length (`int`, defaults to 300): Max prompt tokens.
-
-    The state-dict is identical to the public sana checkpoint apart from the fixed ``_inner.`` prefix the wrapper adds
-    (see :meth:`add_inner_prefix`).
-    """
-
-    _supports_gradient_checkpointing = False
-    _no_split_modules = ["_inner"]
-
-    @register_to_config
-    def __init__(
-        self,
-        in_channels: int = 128,
-        attn_type: str = "BidirectionalGDNTriton",
-        camctrl_type: str = "BidirectionalGDNUCPESinglePathLiteLABothTriton",
-        softmax_every_n: int = 4,
-        linear_head_dim: int = 112,
-        ffn_type: str = "GLUMBConvTemp",
-        t_kernel_size: int = 3,
-        conv_kernel_size: int = 4,
-        k_conv_only: bool = True,
-        pos_embed_type: str = "wan_rope",
-        qk_norm: bool = True,
-        cross_norm: bool = True,
-        y_norm: bool = True,
-        y_norm_scale_factor: float = 0.01,
-        cam_attn_compress: int = 1,
-        init_cam_from_base: bool = True,
-        chunk_split_strategy: str = "first_chunk_plus_one",
-        use_chunk_plucker_post_attn: bool = True,
-        chunk_plucker_channels: int = 48,
-        chunk_plucker_post_attn_blocks: int = 20,
-        fp32_attention: bool = True,
-        image_size: int = 720,
-        caption_channels: int = 2304,
-        model_max_length: int = 300,
-        mlp_ratio: float = 3.0,
-        mlp_acts: tuple = ("silu", "silu", None),
-        use_pe: bool = True,
-        learn_sigma: bool = False,
-        pred_sigma: bool = False,
-        mixed_precision: str = "bf16",
-    ) -> None:
-        super().__init__()
-
-        self._inner = SanaMSVideoCamCtrl(
-            depth=20,
-            hidden_size=2240,
-            patch_size=(1, 1, 1),
-            num_heads=20,
-            input_size=image_size // 32,
-            image_size=image_size,
-            in_channels=in_channels,
-            mlp_ratio=mlp_ratio,
-            mlp_acts=list(mlp_acts),
-            caption_channels=caption_channels,
-            model_max_length=model_max_length,
-            attn_type=attn_type,
-            camctrl_type=camctrl_type,
-            softmax_every_n=softmax_every_n,
-            linear_head_dim=linear_head_dim,
-            ffn_type=ffn_type,
-            t_kernel_size=t_kernel_size,
-            conv_kernel_size=conv_kernel_size,
-            k_conv_only=k_conv_only,
-            pos_embed_type=pos_embed_type,
-            qk_norm=qk_norm,
-            cross_norm=cross_norm,
-            y_norm=y_norm,
-            y_norm_scale_factor=y_norm_scale_factor,
-            cam_attn_compress=cam_attn_compress,
-            init_cam_from_base=init_cam_from_base,
-            chunk_split_strategy=chunk_split_strategy,
-            use_chunk_plucker_post_attn=use_chunk_plucker_post_attn,
-            chunk_plucker_channels=chunk_plucker_channels,
-            chunk_plucker_post_attn_blocks=chunk_plucker_post_attn_blocks,
-            use_pe=use_pe,
-            learn_sigma=learn_sigma,
-            pred_sigma=pred_sigma,
-            mixed_precision=mixed_precision,
-        )
-        if fp32_attention:
-            set_fp32_attention(self._inner)
-        self.in_channels = in_channels
-        self.out_channels = in_channels
-
-    @staticmethod
-    def add_inner_prefix(state_dict: dict) -> dict:
-        """Re-key a public SANA-WM state-dict for loading into this wrapper.
-
-        The public release ships keys like ``blocks.0.attn.qkv.weight``; the diffusers wrapper holds those parameters
-        under the ``_inner.`` prefix. Use this helper before ``load_state_dict``:
-
-            state = load_file(release_safetensors) state.pop("pos_embed", None)
-            model.load_state_dict(model.add_inner_prefix(state), strict=False)
-        """
-        return {f"_inner.{k}": v for k, v in state_dict.items()}
-
-    def forward(
-        self,
-        hidden_states: torch.Tensor,
-        timestep: torch.Tensor,
-        encoder_hidden_states: torch.Tensor,
-        encoder_attention_mask: torch.Tensor | None = None,
-        mask: torch.Tensor | None = None,
-        return_dict: bool = True,
-        **kwargs: Any,
-    ):
-        """Run the SANA-WM DiT.
-
-        Args:
-            hidden_states: ``(B, C, T, H, W)`` latents.
-            timestep: ``(B, 1, T)`` per-frame diffusion timesteps (LTX style).
-            encoder_hidden_states: ``(B, 1, L, D_caption)`` text embeddings.
-            encoder_attention_mask: ``(B, L)`` text attention mask (diffusers convention).
-            mask: Alias for ``encoder_attention_mask`` matching the inner Sana DiT's
-                kwarg name. If both are passed, ``mask`` takes precedence.
-            return_dict: If ``True`` (default), returns a :class:`Transformer2DModelOutput`;
-                otherwise returns a one-tuple ``(sample,)``.
-            **kwargs: SANA-WM-specific conditioning — at minimum
-                ``data_info``, ``camera_conditions``, ``chunk_plucker``.
-
-        Returns:
-            :class:`Transformer2DModelOutput` with ``sample`` of shape ``(B, C, T, H, W)``.
-        """
-        # The sana inner DiT names its text mask kwarg ``mask``.
-        # Accept both ``mask=`` (sana convention) and ``encoder_attention_mask=``
-        # (diffusers convention); the former wins if both are provided.
-        if mask is None:
-            mask = encoder_attention_mask
-        out = self._inner(hidden_states, timestep, encoder_hidden_states, mask=mask, **kwargs)
-        if return_dict:
-            return Transformer2DModelOutput(sample=out)
-        return (out,)
+        # load null embed
+        try:
+            null_embed = torch.load(self.null_embed_path, map_location="cpu")
+            self.y_embedder.y_embedding.data = null_embed["uncond_prompt_embeds"][0]
+            self.logger(colored(f"Load null embed from {self.null_embed_path}....", "green"))
+        except Exception as e:
+            self.logger(
+                colored(
+                    f"Failed to load null embed from {self.null_embed_path}....{e}. Ignore the error during inference",
+                    "red",
+                )
+            )

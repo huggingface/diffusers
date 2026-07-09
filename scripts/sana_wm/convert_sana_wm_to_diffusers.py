@@ -110,7 +110,8 @@ def main() -> None:
 
     sd = load_file(str(dit_ckpt))
     sd.pop("pos_embed", None)  # unused at inference (wan_rope is computed on-the-fly)
-    sd = SanaWMTransformer3DModel.add_inner_prefix(sd)
+    # The public release keys (``blocks.0...``) load directly into the merged
+    # SanaWMTransformer3DModel — no ``_inner.`` prefix anymore.
     missing, unexpected = transformer.load_state_dict(sd, strict=False)
     if missing:
         missing_nontrivial = [k for k in missing if not k.endswith(".pos_embed")]
