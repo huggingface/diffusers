@@ -1350,38 +1350,19 @@ class BooguImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Fr
 
         self.gradient_checkpointing = False
 
-    def img_patch_embed_and_refine(
-        self,
-        hidden_states,
-        ref_image_hidden_states,
-        padded_img_mask,
-        padded_ref_img_mask,
-        noise_rotary_emb,
-        ref_img_rotary_emb,
-        l_effective_ref_img_len,
-        l_effective_img_len,
-        temb,
-    ):
-        """Embed image patches and run the refiner blocks."""
-        batch_size = len(hidden_states)
-        max_combined_img_len = max(
-            [img_len + sum(ref_img_len) for img_len, ref_img_len in zip(l_effective_img_len, l_effective_ref_img_len)]
-        )
-
-        hidden_states = self.x_embedder(hidden_states)
-        ref_image_hidden_states = self.ref_image_patch_embedder(ref_image_hidden_states)
-
-        for i in range(batch_size):
+    def _add_image_index_embedding(self, ref_image_hidden_states, l_effective_ref_img_len):
+        """Add the per-position image-index embedding to each reference image's tokens."""
+        for i in range(len(ref_image_hidden_states)):
             shift = 0
             for j, ref_img_len in enumerate(l_effective_ref_img_len[i]):
                 ref_image_hidden_states[i, shift : shift + ref_img_len, :] = (
                     ref_image_hidden_states[i, shift : shift + ref_img_len, :] + self.image_index_embedding[j]
                 )
                 shift += ref_img_len
+        return ref_image_hidden_states
 
-        for layer in self.noise_refiner:
-            hidden_states = layer(hidden_states, padded_img_mask, noise_rotary_emb, temb)
-
+    def _flatten_ref_images(self, ref_image_hidden_states, ref_img_rotary_emb, temb, l_effective_ref_img_len):
+        """Flatten every reference image across the batch into one temporary batch for the refiner."""
         flat_l_effective_ref_img_len = list(itertools.chain(*l_effective_ref_img_len))
         num_ref_images = len(flat_l_effective_ref_img_len)
         max_ref_img_len = max(flat_l_effective_ref_img_len)
@@ -1390,7 +1371,7 @@ class BooguImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Fr
         batch_ref_image_hidden_states = ref_image_hidden_states.new_zeros(
             num_ref_images, max_ref_img_len, self.config.hidden_size
         )
-        batch_ref_img_rotary_emb = hidden_states.new_zeros(
+        batch_ref_img_rotary_emb = ref_image_hidden_states.new_zeros(
             num_ref_images,
             max_ref_img_len,
             ref_img_rotary_emb.shape[-1],
@@ -1398,9 +1379,8 @@ class BooguImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Fr
         )
         batch_temb = temb.new_zeros(num_ref_images, *temb.shape[1:], dtype=temb.dtype)
 
-        # Flatten reference images into a temporary batch.
         idx = 0
-        for i in range(batch_size):
+        for i in range(len(l_effective_ref_img_len)):
             shift = 0
             for ref_img_len in l_effective_ref_img_len[i]:
                 batch_ref_img_mask[idx, :ref_img_len] = True
@@ -1411,15 +1391,18 @@ class BooguImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Fr
                 batch_temb[idx] = temb[i]
                 shift += ref_img_len
                 idx += 1
+        return batch_ref_image_hidden_states, batch_ref_img_mask, batch_ref_img_rotary_emb, batch_temb
 
-        # Refine each reference-image sample.
-        for layer in self.ref_image_refiner:
-            batch_ref_image_hidden_states = layer(
-                batch_ref_image_hidden_states,
-                batch_ref_img_mask,
-                batch_ref_img_rotary_emb,
-                batch_temb,
-            )
+    def _combine_ref_and_noise_img(
+        self,
+        hidden_states,
+        ref_image_hidden_states,
+        batch_ref_image_hidden_states,
+        l_effective_ref_img_len,
+        l_effective_img_len,
+    ):
+        """Scatter the refined reference images back, then concatenate ref + noise tokens per sample."""
+        batch_size = len(hidden_states)
 
         # Restore reference-image sequence layout.
         idx = 0
@@ -1432,11 +1415,13 @@ class BooguImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Fr
                 shift += ref_img_len
                 idx += 1
 
+        max_combined_img_len = max(
+            [img_len + sum(ref_img_len) for img_len, ref_img_len in zip(l_effective_img_len, l_effective_ref_img_len)]
+        )
         combined_img_hidden_states = hidden_states.new_zeros(batch_size, max_combined_img_len, self.config.hidden_size)
         for i, (ref_img_len, img_len) in enumerate(zip(l_effective_ref_img_len, l_effective_img_len)):
             combined_img_hidden_states[i, : sum(ref_img_len)] = ref_image_hidden_states[i, : sum(ref_img_len)]
             combined_img_hidden_states[i, sum(ref_img_len) : sum(ref_img_len) + img_len] = hidden_states[i, :img_len]
-
         return combined_img_hidden_states
 
     def flat_and_pad_to_seq(self, hidden_states, ref_image_hidden_states):
@@ -1503,11 +1488,9 @@ class BooguImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Fr
             device=device,
             dtype=flat_hidden_states[0].dtype,
         )
-        padded_ref_img_mask = torch.zeros(batch_size, max_ref_img_len, dtype=torch.bool, device=device)
         for i in range(batch_size):
             if ref_img_sizes[i] is not None:
                 padded_ref_img_hidden_states[i, : sum(l_effective_ref_img_len[i])] = flat_ref_img_hidden_states[i]
-                padded_ref_img_mask[i, : sum(l_effective_ref_img_len[i])] = True
 
         padded_hidden_states = torch.zeros(
             batch_size,
@@ -1525,7 +1508,6 @@ class BooguImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Fr
             padded_hidden_states,
             padded_ref_img_hidden_states,
             padded_img_mask,
-            padded_ref_img_mask,
             l_effective_ref_img_len,
             l_effective_img_len,
             ref_img_sizes,
@@ -1632,7 +1614,6 @@ class BooguImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Fr
             hidden_states,
             ref_image_hidden_states,
             img_mask,
-            ref_img_mask,
             l_effective_ref_img_len,
             l_effective_img_len,
             ref_img_sizes,
@@ -1667,17 +1648,35 @@ class BooguImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Fr
                 context_rotary_emb,
             )
 
-        # Image patch embedding and refinement.
-        combined_img_hidden_states = self.img_patch_embed_and_refine(
+        # Image patch embedding.
+        hidden_states = self.x_embedder(hidden_states)
+        ref_image_hidden_states = self.ref_image_patch_embedder(ref_image_hidden_states)
+        ref_image_hidden_states = self._add_image_index_embedding(ref_image_hidden_states, l_effective_ref_img_len)
+
+        # Refine the noise (target) image tokens.
+        for layer in self.noise_refiner:
+            hidden_states = layer(hidden_states, img_mask, noise_rotary_emb, temb)
+
+        # Refine the reference-image tokens: flatten every ref image into a temporary batch, refine, restore + combine.
+        (
+            batch_ref_image_hidden_states,
+            batch_ref_img_mask,
+            batch_ref_img_rotary_emb,
+            batch_temb,
+        ) = self._flatten_ref_images(ref_image_hidden_states, ref_img_rotary_emb, temb, l_effective_ref_img_len)
+        for layer in self.ref_image_refiner:
+            batch_ref_image_hidden_states = layer(
+                batch_ref_image_hidden_states,
+                batch_ref_img_mask,
+                batch_ref_img_rotary_emb,
+                batch_temb,
+            )
+        combined_img_hidden_states = self._combine_ref_and_noise_img(
             hidden_states,
             ref_image_hidden_states,
-            img_mask,
-            ref_img_mask,
-            noise_rotary_emb,
-            ref_img_rotary_emb,
+            batch_ref_image_hidden_states,
             l_effective_ref_img_len,
             l_effective_img_len,
-            temb,
         )
 
         # Dual-stream (double-stream) stage.
