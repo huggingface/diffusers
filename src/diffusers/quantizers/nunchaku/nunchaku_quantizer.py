@@ -35,6 +35,9 @@ class NunchakuLiteQuantizer(DiffusersQuantizer):
 
         device_capability = torch.cuda.get_device_capability()
 
+        if device_capability[0] == 9:
+            raise ValueError("Loading Nunchaku checkpoints is not supported on Hopper NVIDIA GPUs.")
+
         has_nvfp4_config = (
             self.quantization_config.svdq_w4a4 is not None
             and self.quantization_config.svdq_w4a4["precision"] == "nvfp4"
