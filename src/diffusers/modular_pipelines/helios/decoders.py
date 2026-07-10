@@ -79,7 +79,9 @@ class HeliosDecodeStep(ModularPipelineBlocks):
         device = components._execution_device
         decode_dtype = vae.dtype
 
-        latents_mean = torch.tensor(vae.config.latents_mean).view(1, vae.config.z_dim, 1, 1, 1).to(device, decode_dtype)
+        latents_mean = (
+            torch.tensor(vae.config.latents_mean).view(1, vae.config.z_dim, 1, 1, 1).to(device, decode_dtype)
+        )
         latents_std = 1.0 / torch.tensor(vae.config.latents_std).view(1, vae.config.z_dim, 1, 1, 1).to(
             device, decode_dtype
         )
