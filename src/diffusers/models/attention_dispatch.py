@@ -408,16 +408,13 @@ def dispatch_attention_fn(
 ) -> torch.Tensor:
     attention_kwargs = attention_kwargs or {}
 
-    # Under autocast, RMSNorm QK norms return fp32 while value stays bf16/fp16. Torch SDPA casts
-    # its inputs to the autocast dtype internally, but backends calling external kernels
-    # (flash-attn, sage, ...) receive the mix as-is and crash, so do the same cast here.
-    # float64 is not autocast-eligible. See https://github.com/huggingface/diffusers/issues/14104.
-    # is_compiling() short-circuits the is_autocast_available guard (it protects eager runs on
-    # devices without autocast, e.g. "meta"; Dynamo can't trace it before torch 2.12).
+    # Under autocast, fp32-cast-policy ops (like the RMSNorm QK norms in Flux models) return fp32
+    # while `value` stays bf16/fp16. SDPA casts its inputs inside its C++ autocast kernel; backends
+    # calling external kernels (flash-attn, sage, ...) crash on the mix, so do the same cast here.
+    # float64 is not autocast-eligible; "meta" has no autocast key and `is_autocast_enabled` raises.
+    # See https://github.com/huggingface/diffusers/issues/14104.
     device_type = query.device.type
-    if (torch.compiler.is_compiling() or torch.amp.is_autocast_available(device_type)) and torch.is_autocast_enabled(
-        device_type
-    ):
+    if device_type != "meta" and torch.is_autocast_enabled(device_type):
         autocast_dtype = torch.get_autocast_dtype(device_type)
         if query.dtype != torch.float64:
             query, key, value = query.to(autocast_dtype), key.to(autocast_dtype), value.to(autocast_dtype)
