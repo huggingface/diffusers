@@ -883,13 +883,6 @@ class Flux2KleinPipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
                         # some platforms (eg. apple mps) misbehave due to a pytorch bug: https://github.com/pytorch/pytorch/pull/99272
                         latents = latents.to(latents_dtype)
 
-                # When running with tensor parallelism all ranks run the same
-                # (deterministic) scheduler step, so this broadcast is a safety
-                # measure only — it keeps ranks in sync if numerical drift
-                # or non-determinism ever causes a divergence.
-                if torch.distributed.is_available() and torch.distributed.is_initialized():
-                    torch.distributed.broadcast(latents, src=0)
-
                 if callback_on_step_end is not None:
                     callback_kwargs = {}
                     for k in callback_on_step_end_tensor_inputs:

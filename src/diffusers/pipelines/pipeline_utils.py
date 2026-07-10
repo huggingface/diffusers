@@ -593,13 +593,6 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         modules = [getattr(self, n, None) for n in module_names]
         modules = [m for m in modules if isinstance(m, torch.nn.Module)]
 
-        # Prefer any non-CPU, non-meta component so that when text encoders are
-        # offloaded to CPU the pipeline still reports the accelerator device. This
-        # also handles TP-sharded models whose DTensor params are on CUDA/XPU/etc.
-        for module in modules:
-            if module.device.type not in ("cpu", "meta"):
-                return module.device
-
         for module in modules:
             return module.device
 

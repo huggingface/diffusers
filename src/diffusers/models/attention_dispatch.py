@@ -3213,13 +3213,17 @@ def _flash_attention_3_varlen_hub(
     return_lse: bool = False,
     _parallel_config: "ParallelConfig" | None = None,
 ) -> torch.Tensor:
-    if _parallel_config is not None and _parallel_config.context_parallel_config.ring_degree > 1:
+    if (
+        _parallel_config is not None
+        and _parallel_config.context_parallel_config is not None
+        and _parallel_config.context_parallel_config.ring_degree > 1
+    ):
         raise NotImplementedError("`ring_degree > 1` is not yet supported for the _FLASH_3_VARLEN_HUB backend.")
 
     batch_size, seq_len_q, _, _ = query.shape
     _, seq_len_kv, _, _ = key.shape
 
-    if _parallel_config is None:
+    if _parallel_config is None or _parallel_config.context_parallel_config is None:
         if attn_mask is not None:
             attn_mask = _normalize_attn_mask(attn_mask, batch_size, seq_len_kv)
             (_, _), (cu_seqlens_q, cu_seqlens_k), (max_seqlen_q, max_seqlen_k) = (

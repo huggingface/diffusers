@@ -123,27 +123,28 @@ def _styles(relative_plan: dict) -> dict:
                 blocks = _blocks if _blocks is not None else getattr(module, "_tp_packed_col_blocks")
                 rank = device_mesh.get_local_rank()
                 tp_size = device_mesh.size()
+                # Both weight (`[out, in]`) and bias (`[out]`) are sharded row-wise (dim 0) with the same per-block
+                # slicing so each rank's bias rows line up with its weight rows for the packed layout.
                 for param_name, param in module.named_parameters():
-                    if param_name == "weight":
-                        full = distribute_tensor(
-                            param, device_mesh, [Replicate()], src_data_rank=self.src_data_rank
-                        ).to_local()
-                        block_sizes = _blocks_to_block_sizes(full.shape[0], blocks)
-                        parts, offset = [], 0
-                        for bs in block_sizes:
-                            chunk = bs // tp_size
-                            parts.append(full[offset + rank * chunk : offset + (rank + 1) * chunk].contiguous())
-                            offset += bs
-                        local = torch.cat(parts, dim=0)
-                        dist_param = nn.Parameter(
-                            DTensor.from_local(local, device_mesh, [Shard(0)], run_check=False),
-                            requires_grad=param.requires_grad,
-                        )
-                    else:
-                        dist_param = nn.Parameter(
-                            distribute_tensor(param, device_mesh, [Shard(0)], src_data_rank=self.src_data_rank),
-                            requires_grad=param.requires_grad,
-                        )
+                    full = distribute_tensor(
+                        param, device_mesh, [Replicate()], src_data_rank=self.src_data_rank
+                    ).to_local()
+                    block_sizes = _blocks_to_block_sizes(full.shape[0], blocks)
+                    parts, offset = [], 0
+                    for bs in block_sizes:
+                        if bs % tp_size != 0:
+                            raise ValueError(
+                                f"Cannot shard packed block of size {bs} across {tp_size} tensor-parallel ranks: "
+                                f"{bs} is not divisible by {tp_size}."
+                            )
+                        chunk = bs // tp_size
+                        parts.append(full[offset + rank * chunk : offset + (rank + 1) * chunk].contiguous())
+                        offset += bs
+                    local = torch.cat(parts, dim=0)
+                    dist_param = nn.Parameter(
+                        DTensor.from_local(local, device_mesh, [Shard(0)], run_check=False),
+                        requires_grad=param.requires_grad,
+                    )
                     module.register_parameter(param_name, dist_param)
 
         return _PackedColwiseImpl()
@@ -164,6 +165,11 @@ def _styles(relative_plan: dict) -> dict:
                         block_sizes = _blocks_to_block_sizes(full.shape[1], blocks)
                         parts, offset = [], 0
                         for bs in block_sizes:
+                            if bs % tp_size != 0:
+                                raise ValueError(
+                                    f"Cannot shard packed block of size {bs} across {tp_size} tensor-parallel ranks: "
+                                    f"{bs} is not divisible by {tp_size}."
+                                )
                             chunk = bs // tp_size
                             parts.append(full[:, offset + rank * chunk : offset + (rank + 1) * chunk].contiguous())
                             offset += bs

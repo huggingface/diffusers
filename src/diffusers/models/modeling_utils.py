@@ -1647,12 +1647,6 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         elif isinstance(config, TensorParallelConfig):
             config = ParallelConfig(tensor_parallel_config=config)
 
-        if config.context_parallel_config is not None and config.tensor_parallel_config is not None:
-            raise ValueError(
-                "Combining context parallelism and tensor parallelism in a single "
-                "`enable_parallelism()` call is not yet supported. Please enable only one at a time."
-            )
-
         rank = torch.distributed.get_rank()
         world_size = torch.distributed.get_world_size()
         device_type = torch._C._get_accelerator().type

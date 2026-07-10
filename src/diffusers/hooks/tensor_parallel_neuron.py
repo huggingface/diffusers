@@ -87,7 +87,7 @@ def _pre_shard_and_tp(
             submod = getattr(submod, part)
 
         if not hasattr(submod, "weight"):
-            continue
+            raise ValueError(f"`_tp_plan` entry '{path}' does not resolve to a module with a `weight` parameter.")
 
         w = submod.weight.data  # CPU at this point
         b = submod.bias.data if submod.bias is not None else None
@@ -96,6 +96,11 @@ def _pre_shard_and_tp(
             block_sizes = _blocks_to_block_sizes(w.shape[0], blocks)
             parts, bias_parts, offset = [], [], 0
             for bs in block_sizes:
+                if bs % tp_size != 0:
+                    raise ValueError(
+                        f"Cannot shard packed block of size {bs} across {tp_size} tensor-parallel ranks: "
+                        f"{bs} is not divisible by {tp_size}."
+                    )
                 chunk = bs // tp_size
                 sl = slice(offset + rank * chunk, offset + (rank + 1) * chunk)
                 parts.append(w[sl, :].contiguous())
@@ -112,6 +117,11 @@ def _pre_shard_and_tp(
             block_sizes = _blocks_to_block_sizes(w.shape[1], blocks)
             parts, offset = [], 0
             for bs in block_sizes:
+                if bs % tp_size != 0:
+                    raise ValueError(
+                        f"Cannot shard packed block of size {bs} across {tp_size} tensor-parallel ranks: "
+                        f"{bs} is not divisible by {tp_size}."
+                    )
                 chunk = bs // tp_size
                 parts.append(w[:, offset + rank * chunk : offset + (rank + 1) * chunk].contiguous())
                 offset += bs
@@ -120,12 +130,22 @@ def _pre_shard_and_tp(
             if b is not None:  # rowwise bias is added post-reduction → keep it replicated
                 submod.bias = nn.Parameter(DTensor.from_local(b.to(device), tp_mesh, [Replicate()]))
         elif orig_style == "colwise":
+            if w.shape[0] % tp_size != 0:
+                raise ValueError(
+                    f"Cannot colwise-shard '{path}' weight rows ({w.shape[0]}) across {tp_size} "
+                    f"tensor-parallel ranks: not divisible by {tp_size}."
+                )
             rows = w.shape[0] // tp_size
             sl = slice(rank * rows, (rank + 1) * rows)
             submod.weight = nn.Parameter(DTensor.from_local(w[sl, :].contiguous().to(device), tp_mesh, [Shard(0)]))
             if b is not None:
                 submod.bias = nn.Parameter(DTensor.from_local(b[sl].contiguous().to(device), tp_mesh, [Shard(0)]))
         elif orig_style == "rowwise":
+            if w.shape[1] % tp_size != 0:
+                raise ValueError(
+                    f"Cannot rowwise-shard '{path}' weight columns ({w.shape[1]}) across {tp_size} "
+                    f"tensor-parallel ranks: not divisible by {tp_size}."
+                )
             cols = w.shape[1] // tp_size
             shard = w[:, rank * cols : (rank + 1) * cols].contiguous().to(device)
             submod.weight = nn.Parameter(DTensor.from_local(shard, tp_mesh, [Shard(1)]))
