@@ -33,11 +33,13 @@ from huggingface_hub import (
     DDUFEntry,
     ModelCard,
     create_repo,
+    get_cached_repo_tree,
     hf_hub_download,
     model_info,
     read_dduf_file,
     snapshot_download,
 )
+from huggingface_hub.errors import CachedRepoTreeNotFoundError
 from huggingface_hub.utils import (
     HfHubHTTPError,
     LocalEntryNotFoundError,
@@ -1665,11 +1667,10 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         else:
             # We are offline (either the user asked for `local_files_only` or the `model_info` call above
             # failed), so the repo's file listing needed to compute the allow/ignore patterns below cannot be
-            # fetched. Source the listing from the cached snapshot instead: it holds exactly the (already
-            # filtered) files a previous online call downloaded, so both code paths compute the same patterns
-            # and `snapshot_download` validates the cached snapshot against them (catching e.g. a download
-            # that was interrupted midway). If the config isn't cached, skip straight to `snapshot_download`
-            # below, which raises the appropriate offline not-found error.
+            # fetched from the Hub. Read it from the local cache with `get_cached_repo_tree` instead: it returns
+            # the file listing that a previous online call cached, so both code paths compute the same patterns.
+            # If nothing is cached for this repo, skip straight to `snapshot_download` below, which raises the
+            # appropriate offline not-found error.
             try:
                 config_file = hf_hub_download(
                     pretrained_model_name,
@@ -1679,15 +1680,14 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                     token=token,
                     local_files_only=True,
                 )
-            except LocalEntryNotFoundError:
+                filenames = {
+                    f.path for f in get_cached_repo_tree(pretrained_model_name, revision=revision, cache_dir=cache_dir)
+                }
+            except (LocalEntryNotFoundError, CachedRepoTreeNotFoundError):
                 config_file = None
 
         if config_file is not None:
             snapshot_folder = Path(config_file).parent
-            if local_files_only:
-                filenames = {
-                    f.relative_to(snapshot_folder).as_posix() for f in snapshot_folder.rglob("*") if f.is_file()
-                }
 
             config_dict = cls._dict_from_json_file(config_file)
             ignore_filenames = config_dict.pop("_ignore_files", [])
@@ -1795,20 +1795,18 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
 
             # Don't download index files of forbidden patterns either
             ignore_patterns = ignore_patterns + [f"{i}.index.*json" for i in ignore_patterns]
+            re_ignore_pattern = [re.compile(fnmatch.translate(p)) for p in ignore_patterns]
+            re_allow_pattern = [re.compile(fnmatch.translate(p)) for p in allow_patterns]
 
-            if not local_files_only:
-                re_ignore_pattern = [re.compile(fnmatch.translate(p)) for p in ignore_patterns]
-                re_allow_pattern = [re.compile(fnmatch.translate(p)) for p in allow_patterns]
+            expected_files = [f for f in filenames if not any(p.match(f) for p in re_ignore_pattern)]
+            expected_files = [f for f in expected_files if any(p.match(f) for p in re_allow_pattern)]
 
-                expected_files = [f for f in filenames if not any(p.match(f) for p in re_ignore_pattern)]
-                expected_files = [f for f in expected_files if any(p.match(f) for p in re_allow_pattern)]
+            pipeline_is_cached = all((snapshot_folder / f).is_file() for f in expected_files)
 
-                pipeline_is_cached = all((snapshot_folder / f).is_file() for f in expected_files)
-
-                if pipeline_is_cached and not force_download:
-                    # if the pipeline is cached, we can directly return it
-                    # else call snapshot_download
-                    return snapshot_folder
+            if pipeline_is_cached and not force_download:
+                # if the pipeline is cached, we can directly return it
+                # else call snapshot_download
+                return snapshot_folder
 
         user_agent = {"pipeline_class": cls.__name__}
         if custom_pipeline is not None and not custom_pipeline.endswith(".py"):
