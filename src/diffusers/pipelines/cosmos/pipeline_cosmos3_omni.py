@@ -398,6 +398,9 @@ class Cosmos3OmniPipeline(DiffusionPipeline):
 
         # Image preprocessor for caller-supplied conditioning frames (PIL / tensor / numpy).
         self.vae_scale_factor_spatial = int(self.vae.config.scale_factor_spatial) if getattr(self, "vae", None) else 16
+        self.vae_scale_factor_temporal = (
+            int(self.vae.config.scale_factor_temporal) if getattr(self, "vae", None) else 4
+        )
         self.video_processor = VideoProcessor(vae_scale_factor=self.vae_scale_factor_spatial, resample="bilinear")
 
         self.llm_special_tokens = {
@@ -451,9 +454,9 @@ class Cosmos3OmniPipeline(DiffusionPipeline):
         matches Wan2pt2VAEInterface; no autocast (WanVAE was trained with is_amp=False)."""
         in_dtype = x.dtype
         dtype = self.vae.dtype
-        mean = self._vae_latents_mean.to(device=x.device, dtype=dtype)
-        inv_std = self._vae_latents_inv_std.to(device=x.device, dtype=dtype)
         raw_mu = retrieve_latents(self.vae.encode(x.to(dtype)), sample_mode="argmax")
+        mean = self._vae_latents_mean.to(device=raw_mu.device, dtype=dtype)
+        inv_std = self._vae_latents_inv_std.to(device=raw_mu.device, dtype=dtype)
         return ((raw_mu - mean.view(1, -1, 1, 1, 1)) * inv_std.view(1, -1, 1, 1, 1)).to(in_dtype)
 
     def decode_sound(self, latent: torch.Tensor) -> torch.Tensor:
@@ -545,7 +548,7 @@ class Cosmos3OmniPipeline(DiffusionPipeline):
             reset_spatial_indices=config.unified_3d_mrope_reset_spatial_ids,
             fps=effective_fps,
             base_fps=float(config.base_fps),
-            temporal_compression_factor=self.vae.config.scale_factor_temporal,
+            temporal_compression_factor=self.vae_scale_factor_temporal,
         )
 
         return {
@@ -628,7 +631,7 @@ class Cosmos3OmniPipeline(DiffusionPipeline):
             fps=effective_fps,
             base_fps=float(config.base_fps),
             temporal_compression_factor=1,
-            base_temporal_compression_factor=self.vae.config.scale_factor_temporal,
+            base_temporal_compression_factor=self.vae_scale_factor_temporal,
             start_frame_offset=1,
         )
 

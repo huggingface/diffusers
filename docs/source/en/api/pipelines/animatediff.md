@@ -68,7 +68,7 @@ scheduler = DDIMScheduler.from_pretrained(
 pipe.scheduler = scheduler
 
 # enable memory savings
-pipe.enable_vae_slicing()
+pipe.vae.enable_slicing()
 pipe.enable_model_cpu_offload()
 
 output = pipe(
@@ -395,8 +395,8 @@ pipe = AnimateDiffSDXLPipeline.from_pretrained(
 ).to("cuda")
 
 # enable memory savings
-pipe.enable_vae_slicing()
-pipe.enable_vae_tiling()
+pipe.vae.enable_slicing()
+pipe.vae.enable_tiling()
 
 output = pipe(
     prompt="a panda surfing in the ocean, realistic, high quality",
@@ -441,7 +441,7 @@ scheduler = DDIMScheduler.from_pretrained(
 pipe.scheduler = scheduler
 
 # enable memory savings
-pipe.enable_vae_slicing()
+pipe.vae.enable_slicing()
 pipe.enable_model_cpu_offload()
 
 # helper function to load videos
@@ -640,7 +640,7 @@ scheduler = DDIMScheduler.from_pretrained(
 pipe.scheduler = scheduler
 
 # enable memory savings
-pipe.enable_vae_slicing()
+pipe.vae.enable_slicing()
 pipe.enable_model_cpu_offload()
 
 output = pipe(
@@ -714,7 +714,7 @@ scheduler = DDIMScheduler.from_pretrained(
 pipe.scheduler = scheduler
 
 # enable memory savings
-pipe.enable_vae_slicing()
+pipe.vae.enable_slicing()
 pipe.enable_model_cpu_offload()
 
 output = pipe(
@@ -772,8 +772,8 @@ pipe.scheduler = DDIMScheduler.from_pretrained(
 )
 
 # enable memory savings
-pipe.enable_vae_slicing()
-pipe.enable_vae_tiling()
+pipe.vae.enable_slicing()
+pipe.vae.enable_tiling()
 
 # enable FreeInit
 # Refer to the enable_free_init documentation for a full list of configurable parameters
@@ -840,7 +840,7 @@ pipe.scheduler = LCMScheduler.from_config(pipe.scheduler.config, beta_schedule="
 
 pipe.load_lora_weights("wangfuyun/AnimateLCM", weight_name="sd15_lora_beta.safetensors", adapter_name="lcm-lora")
 
-pipe.enable_vae_slicing()
+pipe.vae.enable_slicing()
 pipe.enable_model_cpu_offload()
 
 output = pipe(
@@ -882,7 +882,7 @@ pipe.load_lora_weights("wangfuyun/AnimateLCM", weight_name="sd15_lora_beta.safet
 pipe.load_lora_weights("guoyww/animatediff-motion-lora-tilt-up", adapter_name="tilt-up")
 
 pipe.set_adapters(["lcm-lora", "tilt-up"], [1.0, 0.8])
-pipe.enable_vae_slicing()
+pipe.vae.enable_slicing()
 pipe.enable_model_cpu_offload()
 
 output = pipe(

@@ -58,7 +58,6 @@ from ..utils import (
     PushToHubMixin,
     _get_detailed_type,
     _is_valid_type,
-    deprecate,
     is_accelerate_available,
     is_accelerate_version,
     is_bitsandbytes_version,
@@ -82,6 +81,7 @@ from .pipeline_loading_utils import (
     CONNECTED_PIPES_KEYS,
     CUSTOM_PIPELINE_FILE_NAME,
     LOADABLE_CLASSES,
+    TRANSFORMERS_COMPONENT_AUX_FILES,
     _download_dduf_file,
     _fetch_class_library_tuple,
     _get_custom_components_and_folders,
@@ -1751,6 +1751,11 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 p for p in allow_patterns if not (len(p.split("/")) == 2 and p.split("/")[0] in passed_components)
             ]
 
+            # Repos with a flat, transformers-style layout host a component's files at the repo root instead of
+            # in a subfolder, where the folder-based allow patterns above miss its auxiliary files (root-hosted
+            # weights are already included via `model_filenames`, root `config.json` via `CONFIG_NAME`).
+            allow_patterns += TRANSFORMERS_COMPONENT_AUX_FILES
+
             if pipeline_class._load_connected_pipes:
                 allow_patterns.append("README.md")
 
@@ -2257,59 +2262,6 @@ class StableDiffusionMixin:
     r"""
     Helper for DiffusionPipeline with vae and unet.(mainly for LDM such as stable diffusion)
     """
-
-    def enable_vae_slicing(self):
-        r"""
-        Enable sliced VAE decoding. When this option is enabled, the VAE will split the input tensor in slices to
-        compute decoding in several steps. This is useful to save some memory and allow larger batch sizes.
-        """
-        depr_message = f"Calling `enable_vae_slicing()` on a `{self.__class__.__name__}` is deprecated and this method will be removed in a future version. Please use `pipe.vae.enable_slicing()`."
-        deprecate(
-            "enable_vae_slicing",
-            "0.40.0",
-            depr_message,
-        )
-        self.vae.enable_slicing()
-
-    def disable_vae_slicing(self):
-        r"""
-        Disable sliced VAE decoding. If `enable_vae_slicing` was previously enabled, this method will go back to
-        computing decoding in one step.
-        """
-        depr_message = f"Calling `disable_vae_slicing()` on a `{self.__class__.__name__}` is deprecated and this method will be removed in a future version. Please use `pipe.vae.disable_slicing()`."
-        deprecate(
-            "disable_vae_slicing",
-            "0.40.0",
-            depr_message,
-        )
-        self.vae.disable_slicing()
-
-    def enable_vae_tiling(self):
-        r"""
-        Enable tiled VAE decoding. When this option is enabled, the VAE will split the input tensor into tiles to
-        compute decoding and encoding in several steps. This is useful for saving a large amount of memory and to allow
-        processing larger images.
-        """
-        depr_message = f"Calling `enable_vae_tiling()` on a `{self.__class__.__name__}` is deprecated and this method will be removed in a future version. Please use `pipe.vae.enable_tiling()`."
-        deprecate(
-            "enable_vae_tiling",
-            "0.40.0",
-            depr_message,
-        )
-        self.vae.enable_tiling()
-
-    def disable_vae_tiling(self):
-        r"""
-        Disable tiled VAE decoding. If `enable_vae_tiling` was previously enabled, this method will go back to
-        computing decoding in one step.
-        """
-        depr_message = f"Calling `disable_vae_tiling()` on a `{self.__class__.__name__}` is deprecated and this method will be removed in a future version. Please use `pipe.vae.disable_tiling()`."
-        deprecate(
-            "disable_vae_tiling",
-            "0.40.0",
-            depr_message,
-        )
-        self.vae.disable_tiling()
 
     def enable_freeu(self, s1: float, s2: float, b1: float, b2: float):
         r"""Enables the FreeU mechanism as in https://huggingface.co/papers/2309.11497.

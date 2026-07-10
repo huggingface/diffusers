@@ -37,8 +37,6 @@ The original codebase can be found at [lllyasviel/ControlNet](https://github.com
 	- __call__
 	- enable_attention_slicing
 	- disable_attention_slicing
-	- enable_vae_slicing
-	- disable_vae_slicing
 	- enable_xformers_memory_efficient_attention
 	- disable_xformers_memory_efficient_attention
 	- load_textual_inversion
@@ -49,8 +47,6 @@ The original codebase can be found at [lllyasviel/ControlNet](https://github.com
 	- __call__
 	- enable_attention_slicing
 	- disable_attention_slicing
-	- enable_vae_slicing
-	- disable_vae_slicing
 	- enable_xformers_memory_efficient_attention
 	- disable_xformers_memory_efficient_attention
 	- load_textual_inversion
@@ -61,8 +57,6 @@ The original codebase can be found at [lllyasviel/ControlNet](https://github.com
 	- __call__
 	- enable_attention_slicing
 	- disable_attention_slicing
-	- enable_vae_slicing
-	- disable_vae_slicing
 	- enable_xformers_memory_efficient_attention
 	- disable_xformers_memory_efficient_attention
 	- load_textual_inversion
