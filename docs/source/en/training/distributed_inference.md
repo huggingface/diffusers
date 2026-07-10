@@ -473,5 +473,5 @@ if __name__ == "__main__":
 ```
 
 ```shell
-torchrun --nproc-per-node 2 above_script.py
+torchrun --nproc-per-node 2 tensor_parallel_flux.py
 ```
