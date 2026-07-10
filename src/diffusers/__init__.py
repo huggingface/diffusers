@@ -477,6 +477,8 @@ else:
         [
             "AnimaAutoBlocks",
             "AnimaModularPipeline",
+            "Cosmos3OmniBlocks",
+            "Cosmos3OmniModularPipeline",
             "ErnieImageAutoBlocks",
             "ErnieImageModularPipeline",
             "Flux2AutoBlocks",
@@ -1327,6 +1329,8 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .modular_pipelines import (
             AnimaAutoBlocks,
             AnimaModularPipeline,
+            Cosmos3OmniBlocks,
+            Cosmos3OmniModularPipeline,
             ErnieImageAutoBlocks,
             ErnieImageModularPipeline,
             Flux2AutoBlocks,
