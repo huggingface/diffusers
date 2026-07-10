@@ -20,11 +20,11 @@ from .before_denoise import (
     Cosmos3TransferPackSequenceStep,
     Cosmos3TransferPrepareLatentsStep,
     Cosmos3TransferSetTimestepsStep,
-    Cosmos3TransferSetupStep,
     Cosmos3VisionDenoiseInputStep,
     Cosmos3VisionPackSequenceStep,
     Cosmos3VisionPrepareLatentsStep,
 )
+from .before_encoder import Cosmos3TransferSetupStep
 from .decoders import (
     Cosmos3SoundDecodeStep,
     Cosmos3TransferDecodeChunkStep,
