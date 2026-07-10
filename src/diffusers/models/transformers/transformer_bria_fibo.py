@@ -64,7 +64,6 @@ def _get_qkv_projections(attn: "BriaFiboAttention", hidden_states, encoder_hidde
     return _get_projections(attn, hidden_states, encoder_hidden_states)
 
 
-# Copied from diffusers.models.transformers.transformer_flux.FluxAttnProcessor with FluxAttnProcessor->BriaFiboAttnProcessor, FluxAttention->BriaFiboAttention
 class BriaFiboAttnProcessor:
     _attention_backend = None
     _parallel_config = None
@@ -85,19 +84,17 @@ class BriaFiboAttnProcessor:
             attn, hidden_states, encoder_hidden_states
         )
 
-        # Reshape by a fixed ``head_dim`` and let ``-1`` absorb the head count. Under tensor parallelism each rank
-        # holds a column-sharded slice (``attn.heads // tp_degree`` heads); this keeps the processor TP-agnostic.
-        query = query.unflatten(-1, (-1, attn.head_dim))
-        key = key.unflatten(-1, (-1, attn.head_dim))
-        value = value.unflatten(-1, (-1, attn.head_dim))
+        query = query.unflatten(-1, (attn.heads, -1))
+        key = key.unflatten(-1, (attn.heads, -1))
+        value = value.unflatten(-1, (attn.heads, -1))
 
         query = attn.norm_q(query)
         key = attn.norm_k(key)
 
         if attn.added_kv_proj_dim is not None:
-            encoder_query = encoder_query.unflatten(-1, (-1, attn.head_dim))
-            encoder_key = encoder_key.unflatten(-1, (-1, attn.head_dim))
-            encoder_value = encoder_value.unflatten(-1, (-1, attn.head_dim))
+            encoder_query = encoder_query.unflatten(-1, (attn.heads, -1))
+            encoder_key = encoder_key.unflatten(-1, (attn.heads, -1))
+            encoder_value = encoder_value.unflatten(-1, (attn.heads, -1))
 
             encoder_query = attn.norm_added_q(encoder_query)
             encoder_key = attn.norm_added_k(encoder_key)
@@ -471,7 +468,7 @@ class BriaFiboTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, From
         self.time_embed = BriaFiboTimestepProjEmbeddings(embedding_dim=self.inner_dim, time_theta=time_theta)
 
         if guidance_embeds:
-            self.guidance_embed = BriaFiboTimestepProjEmbeddings(embedding_dim=self.inner_dim, time_theta=time_theta)
+            self.guidance_embed = BriaFiboTimestepProjEmbeddings(embedding_dim=self.inner_dim)
 
         self.context_embedder = nn.Linear(self.config.joint_attention_dim, self.inner_dim)
         self.x_embedder = torch.nn.Linear(self.config.in_channels, self.inner_dim)
@@ -564,7 +561,7 @@ class BriaFiboTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, From
 
         temb = self.time_embed(timestep, dtype=hidden_states.dtype)
 
-        if guidance is not None:
+        if guidance:
             temb += self.guidance_embed(guidance, dtype=hidden_states.dtype)
 
         encoder_hidden_states = self.context_embedder(encoder_hidden_states)

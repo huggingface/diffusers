@@ -36,26 +36,52 @@ from ..normalization import AdaLayerNormContinuous, RMSNorm
 logger = logging.get_logger(__name__)
 
 
-def _apply_rotary_emb_nucleus(x: torch.Tensor, freqs: torch.Tensor) -> torch.Tensor:
-    """Apply rotary position embeddings to `x` using real-valued cos/sin.
-
-    `freqs` holds the per-position rotation *angles* with shape `[seq_len, head_dim // 2]`. The real cos/sin rotation
-    is numerically identical to the equivalent complex-exponential formulation.
+def _apply_rotary_emb_nucleus(
+    x: torch.Tensor,
+    freqs_cis: torch.Tensor | tuple[torch.Tensor],
+    use_real: bool = True,
+    use_real_unbind_dim: int = -1,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """
+    Apply rotary embeddings to input tensors using the given frequency tensor. This function applies rotary embeddings
+    to the given query or key 'x' tensors using the provided frequency tensor 'freqs_cis'. The input tensors are
+    reshaped as complex numbers, and the frequency tensor is reshaped for broadcasting compatibility. The resulting
+    tensors contain rotary embeddings and are returned as real tensors.
 
     Args:
-        x (`torch.Tensor`): Query or key tensor to rotate, shape `[B, S, H, D]`.
-        freqs (`torch.Tensor`): Rotation angles, shape `[S, D // 2]`.
+        x (`torch.Tensor`):
+            Query or key tensor to apply rotary embeddings. [B, S, H, D] xk (torch.Tensor): Key tensor to apply
+        freqs_cis (`tuple[torch.Tensor]`): Precomputed frequency tensor for complex exponentials. ([S, D], [S, D],)
 
     Returns:
-        `torch.Tensor`: `x` with rotary embeddings applied.
+        tuple[torch.Tensor, torch.Tensor]: tuple of modified query tensor and key tensor with rotary embeddings.
     """
-    # Adjacent feature pairs (2k, 2k+1) share angle k, so each angle is repeated twice along the last dim; unsqueeze
-    # the head axis so the freqs broadcast over heads (this is what keeps it tensor-parallel-agnostic).
-    cos = torch.cos(freqs).repeat_interleave(2, dim=-1).unsqueeze(1)  # [S, 1, D]
-    sin = torch.sin(freqs).repeat_interleave(2, dim=-1).unsqueeze(1)  # [S, 1, D]
-    x_real, x_imag = x.reshape(*x.shape[:-1], -1, 2).unbind(-1)  # [B, S, H, D//2]
-    x_rotated = torch.stack([-x_imag, x_real], dim=-1).flatten(3)  # [B, S, H, D]
-    return (x.float() * cos + x_rotated.float() * sin).to(x.dtype)
+    if use_real:
+        cos, sin = freqs_cis  # [S, D]
+        cos = cos[None, None]
+        sin = sin[None, None]
+        cos, sin = cos.to(x.device), sin.to(x.device)
+
+        if use_real_unbind_dim == -1:
+            # Used for flux, cogvideox, hunyuan-dit
+            x_real, x_imag = x.reshape(*x.shape[:-1], -1, 2).unbind(-1)  # [B, S, H, D//2]
+            x_rotated = torch.stack([-x_imag, x_real], dim=-1).flatten(3)
+        elif use_real_unbind_dim == -2:
+            # Used for Stable Audio, OmniGen, CogView4 and Cosmos
+            x_real, x_imag = x.reshape(*x.shape[:-1], 2, -1).unbind(-2)  # [B, S, H, D//2]
+            x_rotated = torch.cat([-x_imag, x_real], dim=-1)
+        else:
+            raise ValueError(f"`use_real_unbind_dim={use_real_unbind_dim}` but should be -1 or -2.")
+
+        out = (x.float() * cos + x_rotated.float() * sin).to(x.dtype)
+
+        return out
+    else:
+        x_rotated = torch.view_as_complex(x.float().reshape(*x.shape[:-1], -1, 2))
+        freqs_cis = freqs_cis.unsqueeze(1)
+        x_out = torch.view_as_real(x_rotated * freqs_cis).flatten(3)
+
+        return x_out.type_as(x)
 
 
 def _compute_text_seq_len_from_mask(
@@ -144,8 +170,8 @@ class NucleusMoEEmbedRope(nn.Module):
     @staticmethod
     def _rope_params(index, dim, theta=10000):
         assert dim % 2 == 0
-        # Return the raw rotation angles (real); cos/sin are taken later in _apply_rotary_emb_nucleus.
         freqs = torch.outer(index, 1.0 / torch.pow(theta, torch.arange(0, dim, 2).to(torch.float32).div(dim)))
+        freqs = torch.polar(torch.ones_like(freqs), freqs)
         return freqs
 
     def forward(
@@ -270,8 +296,8 @@ class NucleusMoEAttnProcessor2_0:
 
         if image_rotary_emb is not None:
             img_freqs, txt_freqs = image_rotary_emb
-            img_query = _apply_rotary_emb_nucleus(img_query, img_freqs)
-            img_key = _apply_rotary_emb_nucleus(img_key, img_freqs)
+            img_query = _apply_rotary_emb_nucleus(img_query, img_freqs, use_real=False)
+            img_key = _apply_rotary_emb_nucleus(img_key, img_freqs, use_real=False)
 
         if cached_txt_key is not None and cached_txt_value is not None:
             txt_key, txt_value = cached_txt_key, cached_txt_value
@@ -285,7 +311,7 @@ class NucleusMoEAttnProcessor2_0:
                 txt_key = attn.norm_added_k(txt_key)
 
             if image_rotary_emb is not None:
-                txt_key = _apply_rotary_emb_nucleus(txt_key, txt_freqs)
+                txt_key = _apply_rotary_emb_nucleus(txt_key, txt_freqs, use_real=False)
 
             joint_key = torch.cat([img_key, txt_key], dim=1)
             joint_value = torch.cat([img_value, txt_value], dim=1)

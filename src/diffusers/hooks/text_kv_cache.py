@@ -1,4 +1,4 @@
-# Copyright 2026 The HuggingFace Team. All rights reserved.
+# Copyright 2025 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -136,7 +136,7 @@ class TextKVCacheBlockHook(ModelHook):
 
             if image_rotary_emb is not None:
                 _, txt_freqs = image_rotary_emb
-                txt_key = _apply_rotary_emb_nucleus(txt_key, txt_freqs)
+                txt_key = _apply_rotary_emb_nucleus(txt_key, txt_freqs, use_real=False)
 
             block_state.kv_cache[cache_key] = (txt_key, txt_value)
 
