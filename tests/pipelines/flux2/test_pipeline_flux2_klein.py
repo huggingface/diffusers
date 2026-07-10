@@ -18,6 +18,8 @@ from ...testing_utils import (
     assert_tensors_close,
     backend_empty_cache,
     backend_synchronize,
+    nightly,
+    require_big_accelerator,
     require_torch_neuron,
     torch_device,
 )
@@ -189,6 +191,18 @@ class TestFlux2KleinPipeline(Flux2KleinPipelineTesterConfig, PipelineTesterMixin
         # fmt: on
         assert_tensors_close(generated_slice, expected_slice, atol=1e-4, rtol=1e-4)
 
+    def test_image_input_max_area(self):
+        # `max_area` (previously hardcoded to 1024**2) is the condition-image downscale threshold:
+        # condition images whose area exceeds it are downscaled while preserving aspect ratio.
+        pipe = self.get_pipeline().to(torch_device)
+        inputs = self.get_dummy_inputs()
+        height, width = inputs["height"], inputs["width"]
+
+        inputs.update({"image": Image.new("RGB", (128, 128)), "max_area": 64 * 64})
+        image = pipe(**inputs).images[0]
+        _, output_height, output_width = image.shape
+        assert (output_height, output_width) == (height, width)
+
     @pytest.mark.skip("Needs to be revisited")
     def test_encode_prompt_works_in_isolation(self):
         pass
@@ -281,5 +295,46 @@ class TestFlux2KleinPipelineIntegration:
         ).images
 
         assert image.shape == (1, 128, 128, 3)
+        assert not np.isnan(image).any(), "Output contains NaN values"
+        assert (image >= 0.0).all() and (image <= 1.0).all(), "Output pixel values outside [0, 1]"
+
+
+@nightly
+@require_big_accelerator
+class TestFlux2KleinPipelineConditionImageSlow:
+    ckpt_id = "black-forest-labs/FLUX.2-klein-4B"
+    prompt = "A small cactus with a happy face in the Sahara desert."
+
+    @pytest.fixture(autouse=True)
+    def cleanup(self):
+        gc.collect()
+        backend_empty_cache(torch_device)
+        yield
+        gc.collect()
+        backend_empty_cache(torch_device)
+
+    def test_flux2_klein_2048_condition_image(self):
+        # A 2048x2048 condition image used to be silently downscaled to fit the hardcoded
+        # 1024**2 threshold; passing max_area=2048**2 lets the pipeline consume it at full
+        # resolution.
+        pipe = Flux2KleinPipeline.from_pretrained(self.ckpt_id, torch_dtype=torch.bfloat16)
+        pipe.to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
+
+        generator = torch.Generator("cpu").manual_seed(0)
+        condition_image = Image.new("RGB", (2048, 2048), (128, 128, 128))
+        image = pipe(
+            prompt=self.prompt,
+            image=condition_image,
+            height=512,
+            width=512,
+            num_inference_steps=4,
+            guidance_scale=1.0,
+            generator=generator,
+            max_area=2048 * 2048,
+            output_type="np",
+        ).images
+
+        assert image.shape == (1, 512, 512, 3)
         assert not np.isnan(image).any(), "Output contains NaN values"
         assert (image >= 0.0).all() and (image <= 1.0).all(), "Output pixel values outside [0, 1]"
