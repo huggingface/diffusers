@@ -17,6 +17,14 @@ from .modular_pipeline import Cosmos3OmniModularPipeline
 logger = logging.get_logger(__name__)
 
 
+# Transfer conditions on control signals (edge/blur/depth/seg/wsm), so it uses its own system prompt instead of the
+# plain image/video ones. Defined here (not on the task pipeline) so the transfer text block is self-contained.
+_SYSTEM_PROMPT_TRANSFER = (
+    "You are a helpful assistant that generates images or videos following the user's instructions"
+    " and control signals (edge maps, blur, depth, or segmentation)."
+)
+
+
 class Cosmos3TextEncoderStep(ModularPipelineBlocks):
     model_name = "cosmos3-omni"
 
@@ -150,8 +158,9 @@ class Cosmos3TransferTextStep(ModularPipelineBlocks):
     @property
     def description(self) -> str:
         return (
-            "Tokenizes the transfer prompt in transfer mode using the per-chunk frame count. Transfer prompts are "
-            "pre-upsampled JSON captions passed through verbatim (the metadata templates are skipped)."
+            "Tokenizes the transfer prompt with the transfer system prompt. Transfer prompts are pre-upsampled JSON "
+            "captions passed through verbatim (no resolution/duration templates), so this is self-contained and does "
+            "not reuse the standard text step."
         )
 
     @staticmethod
@@ -190,35 +199,10 @@ class Cosmos3TransferTextStep(ModularPipelineBlocks):
                 description="The negative text prompt used for classifier-free guidance.",
             ),
             InputParam(
-                name="chunk_frames", type_hint=int, required=True, description="Number of pixel frames in this chunk."
-            ),
-            InputParam(
-                name="height",
-                type_hint=int,
-                default=None,
-                description="Height of the generated video in pixels.",
-            ),
-            InputParam(
-                name="width", type_hint=int, default=None, description="Width of the generated video in pixels."
-            ),
-            InputParam(name="fps", type_hint=float, default=24.0, description="Frame rate of the generated video."),
-            InputParam(
                 name="use_system_prompt",
                 type_hint=bool,
                 default=True,
-                description="Whether to prepend the Cosmos3 system prompt.",
-            ),
-            InputParam(
-                name="add_resolution_template",
-                type_hint=bool,
-                default=True,
-                description="Whether to add resolution metadata to the prompt.",
-            ),
-            InputParam(
-                name="add_duration_template",
-                type_hint=bool,
-                default=True,
-                description="Whether to add duration metadata to the prompt.",
+                description="Whether to prepend the Cosmos3 transfer system prompt.",
             ),
         ]
 
@@ -258,20 +242,30 @@ class Cosmos3TransferTextStep(ModularPipelineBlocks):
             finally:
                 components.safety_checker.to("cpu")
 
-        block_state.cond_input_ids, block_state.uncond_input_ids = components.tokenize_prompt(
-            block_state.prompt,
-            block_state.negative_prompt,
-            num_frames=block_state.chunk_frames,
-            height=block_state.height,
-            width=block_state.width,
-            fps=block_state.fps,
-            use_system_prompt=block_state.use_system_prompt,
-            add_resolution_template=block_state.add_resolution_template,
-            add_duration_template=block_state.add_duration_template,
-            action_mode=None,
-            action_view_point=None,
-            transfer_mode=True,
-        )
+        # Transfer prompts are pre-upsampled JSON captions: tokenize them verbatim (no resolution/duration templates)
+        # under the transfer system prompt. Kept self-contained here rather than adding a flag to the standard step.
+        negative_prompt = block_state.negative_prompt if block_state.negative_prompt is not None else ""
+        special_tokens = components.llm_special_tokens
+
+        def _tokenize(text: str) -> list[int]:
+            conversations = []
+            if block_state.use_system_prompt:
+                conversations.append({"role": "system", "content": _SYSTEM_PROMPT_TRANSFER})
+            conversations.append({"role": "user", "content": text})
+            encoding = components.text_tokenizer.apply_chat_template(
+                conversations,
+                tokenize=True,
+                add_generation_prompt=True,
+                add_vision_id=False,
+                return_dict=True,
+            )
+            return list(encoding.input_ids) + [
+                special_tokens["eos_token_id"],
+                special_tokens["start_of_generation"],
+            ]
+
+        block_state.cond_input_ids = _tokenize(block_state.prompt)
+        block_state.uncond_input_ids = _tokenize(negative_prompt)
 
         self.set_block_state(state, block_state)
         return components, state

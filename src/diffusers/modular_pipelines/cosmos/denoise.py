@@ -590,7 +590,10 @@ class Cosmos3TransferLoopDenoiser(ModularPipelineBlocks):
                 description="Mask that zeroes the velocity on conditioned (clean) latent frames.",
             ),
             InputParam(
-                name="guidance_scale", type_hint=float, default=6.0, description="Scale for text classifier-free guidance."
+                name="guidance_scale",
+                type_hint=float,
+                default=6.0,
+                description="Scale for text classifier-free guidance.",
             ),
             InputParam(
                 name="control_guidance",
@@ -708,7 +711,10 @@ class Cosmos3TransferLoopSchedulerStep(ModularPipelineBlocks):
                 name="latents", type_hint=torch.Tensor, required=True, description="Noisy target latents to update."
             ),
             InputParam(
-                name="velocity", type_hint=torch.Tensor, required=True, description="Predicted (masked) transfer velocity."
+                name="velocity",
+                type_hint=torch.Tensor,
+                required=True,
+                description="Predicted (masked) transfer velocity.",
             ),
             InputParam(
                 name="velocity_mask",

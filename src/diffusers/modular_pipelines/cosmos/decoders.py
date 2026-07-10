@@ -135,7 +135,10 @@ class Cosmos3TransferDecodeChunkStep(ModularPipelineBlocks):
     def inputs(self) -> list[InputParam]:
         return [
             InputParam(
-                name="latents", type_hint=torch.Tensor, required=True, description="Denoised target latents for this chunk."
+                name="latents",
+                type_hint=torch.Tensor,
+                required=True,
+                description="Denoised target latents for this chunk.",
             ),
             InputParam(name="chunk_id", type_hint=int, default=0, description="Index of the current chunk."),
             InputParam(

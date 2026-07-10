@@ -1056,7 +1056,9 @@ class Cosmos3TransferPackSequenceStep(ModularPipelineBlocks):
     @property
     def inputs(self) -> list[InputParam]:
         return [
-            InputParam(name="cond_text_segment", type_hint=dict, required=True, description="Conditional text segment."),
+            InputParam(
+                name="cond_text_segment", type_hint=dict, required=True, description="Conditional text segment."
+            ),
             InputParam(
                 name="uncond_text_segment", type_hint=dict, required=True, description="Unconditional text segment."
             ),
@@ -1067,7 +1069,10 @@ class Cosmos3TransferPackSequenceStep(ModularPipelineBlocks):
                 description="Clean control latents for this chunk, one per hint in canonical order.",
             ),
             InputParam(
-                name="latents", type_hint=torch.Tensor, required=True, description="Noisy target latents for this chunk."
+                name="latents",
+                type_hint=torch.Tensor,
+                required=True,
+                description="Noisy target latents for this chunk.",
             ),
             InputParam(
                 name="target_condition_indexes",
@@ -1076,12 +1081,6 @@ class Cosmos3TransferPackSequenceStep(ModularPipelineBlocks):
                 description="Latent-frame indexes fixed by the chunk's conditioning.",
             ),
             InputParam(name="fps", type_hint=float, default=24.0, description="Frame rate of the generated video."),
-            InputParam(
-                name="share_vision_temporal_positions",
-                type_hint=bool,
-                default=True,
-                description="Whether control and target items share vision temporal positions.",
-            ),
         ]
 
     @property
@@ -1127,17 +1126,50 @@ class Cosmos3TransferPackSequenceStep(ModularPipelineBlocks):
                 vision_items = [block_state.latents]
                 condition_indexes = [block_state.target_condition_indexes]
                 clean_flags = [False]
-            vision_segment = components._prepare_vision_segment(
-                input_vision_tokens=vision_items,
-                has_image_condition=False,
-                mrope_offset=text_segment["vision_start_temporal_offset"],
-                vision_fps=block_state.fps,
-                curr=text_segment["und_len"],
-                device=device,
-                condition_frame_indexes=condition_indexes,
-                clean_item_flags=clean_flags,
-                share_vision_temporal_positions=block_state.share_vision_temporal_positions,
-            )
+
+            # Transfer packs [ctrl_1, ..., ctrl_N, target] into one vision segment
+            mrope_offset = text_segment["vision_start_temporal_offset"]
+            item_curr = text_segment["und_len"]
+            token_shapes = []
+            sequence_index_parts = []
+            mse_loss_index_parts = []
+            noisy_frame_indexes_per_item = []
+            mrope_id_parts = []
+            num_vision_tokens = 0
+            num_noisy_vision_tokens = 0
+            for item, item_condition, is_clean in zip(vision_items, condition_indexes, clean_flags):
+                latent_t = item.shape[2]
+                if is_clean:
+                    frame_condition = list(range(latent_t))
+                else:
+                    frame_condition = item_condition if item_condition is not None else []
+                item_segment = components._prepare_vision_segment(
+                    input_vision_tokens=item,
+                    has_image_condition=False,
+                    mrope_offset=mrope_offset,
+                    vision_fps=block_state.fps,
+                    curr=item_curr,
+                    device=device,
+                    condition_frame_indexes=frame_condition,
+                )
+                token_shapes.extend(item_segment["vision_token_shapes"])
+                sequence_index_parts.append(item_segment["vision_sequence_indexes"])
+                mse_loss_index_parts.append(item_segment["vision_mse_loss_indexes"])
+                noisy_frame_indexes_per_item.extend(item_segment["vision_noisy_frame_indexes"])
+                mrope_id_parts.append(item_segment["vision_mrope_ids"])
+                num_vision_tokens += item_segment["num_vision_tokens"]
+                num_noisy_vision_tokens += item_segment["num_noisy_vision_tokens"]
+                item_curr += item_segment["num_vision_tokens"]
+
+            vision_segment = {
+                "vision_token_shapes": token_shapes,
+                "vision_sequence_indexes": torch.cat(sequence_index_parts, dim=0),
+                "vision_mse_loss_indexes": torch.cat(mse_loss_index_parts, dim=0),
+                "vision_noisy_frame_indexes": noisy_frame_indexes_per_item,
+                "vision_mrope_ids": torch.cat(mrope_id_parts, dim=1),
+                "num_vision_tokens": num_vision_tokens,
+                "num_noisy_vision_tokens": num_noisy_vision_tokens,
+            }
             return {
                 **text_segment,
                 **vision_segment,

@@ -753,8 +753,6 @@ class Cosmos3AutoCoreDenoiseStep(ConditionalPipelineBlocks):
               Torch generator for deterministic generation.
           fps (`float`, *optional*, defaults to 24.0):
               Frame rate of the generated video.
-          share_vision_temporal_positions (`bool`, *optional*, defaults to True):
-              Whether control and target items share vision temporal positions.
           num_inference_steps (`int`):
               The number of denoising steps.
           **denoiser_input_fields (`None`, *optional*):
@@ -958,8 +956,6 @@ class Cosmos3OmniBlocks(SequentialPipelineBlocks):
               Number of frames the first chunk reuses from the input video.
           generator (`Generator`, *optional*):
               Torch generator for deterministic generation.
-          share_vision_temporal_positions (`bool`, *optional*, defaults to True):
-              Whether control and target items share vision temporal positions.
           num_inference_steps (`int`):
               The number of denoising steps.
           **denoiser_input_fields (`None`, *optional*):
