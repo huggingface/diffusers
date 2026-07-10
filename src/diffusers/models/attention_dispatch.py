@@ -408,16 +408,12 @@ def dispatch_attention_fn(
 ) -> torch.Tensor:
     attention_kwargs = attention_kwargs or {}
 
-    # Match the autocast behavior of `torch.nn.functional.scaled_dot_product_attention`: its autocast
-    # registration casts eligible floating-point inputs (autocast skips float64) to the autocast dtype
-    # before running. Under an active autocast context, ops with an fp32 cast policy (such as the
-    # `torch.nn.RMSNorm` QK norms in Flux-family models) return float32 even for bf16/fp16 inputs while
-    # `value` keeps the autocast dtype, and backends that call external kernels (flash-attn, sage,
-    # xformers, ...) bypass autocast's dispatch handling and fail on such inputs. Normalizing here keeps
-    # every backend consistent with the native backend. See https://github.com/huggingface/diffusers/issues/14104.
-    # `is_autocast_available` guards device types without an autocast dispatch key (e.g. "meta"), for
-    # which `is_autocast_enabled` raises. It is skipped when compiling: Dynamo cannot trace it before
-    # torch 2.12, and compiled graphs never run on such devices anyway.
+    # Under autocast, RMSNorm QK norms return fp32 while value stays bf16/fp16. Torch SDPA casts
+    # its inputs to the autocast dtype internally, but backends calling external kernels
+    # (flash-attn, sage, ...) receive the mix as-is and crash, so do the same cast here.
+    # float64 is not autocast-eligible. See https://github.com/huggingface/diffusers/issues/14104.
+    # is_compiling() short-circuits the is_autocast_available guard (it protects eager runs on
+    # devices without autocast, e.g. "meta"; Dynamo can't trace it before torch 2.12).
     device_type = query.device.type
     if (torch.compiler.is_compiling() or torch.amp.is_autocast_available(device_type)) and torch.is_autocast_enabled(
         device_type
