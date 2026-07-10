@@ -16,7 +16,7 @@ if is_accelerate_available():
 
 
 _HF_KERNEL_REPO = "rootonchair/nunchaku-lite-kernels"
-_HF_KERNEL_VERSION = 1
+_HF_KERNEL_VERSION = 2
 
 
 if is_kernels_available():

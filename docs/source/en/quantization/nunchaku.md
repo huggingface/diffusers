@@ -134,7 +134,7 @@ Nunchaku Lite kernels and quantized linear layers are compatible with [`torch.co
 Compile the quantized transformer after loading the pipeline for faster inference.
 
 ```python
-pipe.transformer = torch.compile(pipe.transformer, mode="default", fullgraph=False)
+pipe.transformer = torch.compile(pipe.transformer, mode="default", fullgraph=True)
 ```
 
 An ERNIE-Image-Turbo benchmark on an RTX PRO 6000 reported that Nunchaku Lite NVFP4 with `torch.compile` reduced the full pipeline latency from 2.271s to 1.675s. Compared to the original BF16 pipeline, the compiled
