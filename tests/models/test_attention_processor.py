@@ -141,7 +141,7 @@ class DeprecatedAttentionBlockTests(unittest.TestCase):
         self.assertTrue(np.allclose(conversion, after_conversion, atol=1e-3))
 
 
-class AttentionDispatchAutocastTests(unittest.TestCase):
+class TestAttentionDispatchAutocast:
     """Regression tests for https://github.com/huggingface/diffusers/issues/14104.
 
     Under an active torch.autocast context, ops with an fp32 cast policy (e.g. the `torch.nn.RMSNorm`
@@ -182,10 +182,10 @@ class AttentionDispatchAutocastTests(unittest.TestCase):
             with torch.autocast(device_type, dtype=torch.bfloat16):
                 out = dispatch_attention_fn(query, key, value, backend=AttentionBackendName.NATIVE)
 
-        self.assertEqual(received["query"], torch.bfloat16)
-        self.assertEqual(received["key"], torch.bfloat16)
-        self.assertEqual(received["value"], torch.bfloat16)
-        self.assertEqual(out.dtype, torch.bfloat16)
+        assert received["query"] == torch.bfloat16
+        assert received["key"] == torch.bfloat16
+        assert received["value"] == torch.bfloat16
+        assert out.dtype == torch.bfloat16
 
     def test_autocast_casts_floating_point_mask_but_not_bool_mask(self):
         query, key, value = self._qkv()
@@ -196,33 +196,29 @@ class AttentionDispatchAutocastTests(unittest.TestCase):
         with self._record_native_backend_input_dtypes() as received:
             with torch.autocast(device_type, dtype=torch.bfloat16):
                 dispatch_attention_fn(query, key, value, attn_mask=float_mask, backend=AttentionBackendName.NATIVE)
-        self.assertEqual(received["attn_mask"], torch.bfloat16)
+        assert received["attn_mask"] == torch.bfloat16
 
         with self._record_native_backend_input_dtypes() as received:
             with torch.autocast(device_type, dtype=torch.bfloat16):
                 dispatch_attention_fn(query, key, value, attn_mask=bool_mask, backend=AttentionBackendName.NATIVE)
-        self.assertEqual(received["attn_mask"], torch.bool)
+        assert received["attn_mask"] == torch.bool
 
-    def test_autocast_passes_backend_dtype_checks(self):
+    def test_autocast_passes_backend_dtype_checks(self, monkeypatch):
         # The opt-in debugging checks (DIFFUSERS_ATTN_CHECKS) validate the tensors the backend will
         # actually receive, so mixed autocast inputs must not trip them.
         query, key, value = self._qkv()
         device_type = torch.device(torch_device).type
 
-        original = _AttentionBackendRegistry._checks_enabled
-        _AttentionBackendRegistry._checks_enabled = True
-        try:
-            with torch.autocast(device_type, dtype=torch.bfloat16):
-                out = dispatch_attention_fn(query, key, value, backend=AttentionBackendName.NATIVE)
-        finally:
-            _AttentionBackendRegistry._checks_enabled = original
-        self.assertEqual(out.dtype, torch.bfloat16)
+        monkeypatch.setattr(_AttentionBackendRegistry, "_checks_enabled", True)
+        with torch.autocast(device_type, dtype=torch.bfloat16):
+            out = dispatch_attention_fn(query, key, value, backend=AttentionBackendName.NATIVE)
+        assert out.dtype == torch.bfloat16
 
     def test_no_autocast_dtypes_pass_through_unchanged(self):
         # Outside autocast the dispatcher must not touch dtypes: mismatched inputs keep raising
         # (from SDPA itself for the native backend), exactly as before.
         query, key, value = self._qkv()
-        with self.assertRaises(RuntimeError):
+        with pytest.raises(RuntimeError):
             dispatch_attention_fn(query, key, value, backend=AttentionBackendName.NATIVE)
 
     @require_torch_accelerator
@@ -232,24 +228,24 @@ class AttentionDispatchAutocastTests(unittest.TestCase):
         # only registers for CUDA/XPU and only on recent torch, so probe for it instead of assuming.
         device_type = torch.device(torch_device).type
         if device_type not in ("cuda", "xpu"):
-            self.skipTest("aten::rms_norm only registers an fp32 autocast policy for CUDA/XPU.")
+            pytest.skip("aten::rms_norm only registers an fp32 autocast policy for CUDA/XPU.")
 
         norm = torch.nn.RMSNorm(16, eps=1e-6, device=torch_device, dtype=torch.bfloat16)
         query, key, value = self._qkv(qk_dtype=torch.bfloat16)
 
         with torch.autocast(device_type, dtype=torch.bfloat16):
             if norm(query).dtype != torch.float32:
-                self.skipTest("this torch version has no fp32 autocast policy for aten::rms_norm.")
+                pytest.skip("this torch version has no fp32 autocast policy for aten::rms_norm.")
 
         with self._record_native_backend_input_dtypes() as received:
             with torch.autocast(device_type, dtype=torch.bfloat16):
                 query, key = norm(query), norm(key)
                 out = dispatch_attention_fn(query, key, value, backend=AttentionBackendName.NATIVE)
 
-        self.assertEqual(received["query"], torch.bfloat16)
-        self.assertEqual(received["key"], torch.bfloat16)
-        self.assertEqual(received["value"], torch.bfloat16)
-        self.assertEqual(out.dtype, torch.bfloat16)
+        assert received["query"] == torch.bfloat16
+        assert received["key"] == torch.bfloat16
+        assert received["value"] == torch.bfloat16
+        assert out.dtype == torch.bfloat16
 
     @is_torch_compile
     def test_torch_compile_fullgraph_under_autocast(self):
@@ -264,9 +260,9 @@ class AttentionDispatchAutocastTests(unittest.TestCase):
         compiled = torch.compile(dispatch_attention_fn, fullgraph=True)
         with torch.autocast(device_type, dtype=torch.bfloat16):
             out = compiled(query, key, value)
-        self.assertEqual(out.dtype, torch.bfloat16)
+        assert out.dtype == torch.bfloat16
 
         torch.compiler.reset()
         compiled = torch.compile(dispatch_attention_fn, fullgraph=True)
         out = compiled(query, key, value)
-        self.assertEqual(out.dtype, torch.bfloat16)
+        assert out.dtype == torch.bfloat16
