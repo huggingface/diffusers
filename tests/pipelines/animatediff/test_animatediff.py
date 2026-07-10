@@ -583,7 +583,7 @@ class AnimateDiffPipelineSlowTests(unittest.TestCase):
             steps_offset=1,
             clip_sample=False,
         )
-        pipe.enable_vae_slicing()
+        pipe.vae.enable_slicing()
         pipe.enable_model_cpu_offload(device=torch_device)
         pipe.set_progress_bar_config(disable=None)
 

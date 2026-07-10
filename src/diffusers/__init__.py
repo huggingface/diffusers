@@ -1,4 +1,4 @@
-__version__ = "0.39.0.dev0"
+__version__ = "0.40.0.dev0"
 
 from typing import TYPE_CHECKING
 
@@ -274,6 +274,7 @@ else:
             "HunyuanVideoTransformer3DModel",
             "I2VGenXLUNet",
             "Ideogram4Transformer2DModel",
+            "JoyImageEditPlusTransformer3DModel",
             "JoyImageEditTransformer3DModel",
             "Kandinsky3UNet",
             "Kandinsky5Transformer3DModel",
@@ -476,6 +477,8 @@ else:
         [
             "AnimaAutoBlocks",
             "AnimaModularPipeline",
+            "Cosmos3OmniBlocks",
+            "Cosmos3OmniModularPipeline",
             "ErnieImageAutoBlocks",
             "ErnieImageModularPipeline",
             "Flux2AutoBlocks",
@@ -630,6 +633,8 @@ else:
             "ImageTextPipelineOutput",
             "JoyImageEditPipeline",
             "JoyImageEditPipelineOutput",
+            "JoyImageEditPlusPipeline",
+            "JoyImageEditPlusPipelineOutput",
             "Kandinsky3Img2ImgPipeline",
             "Kandinsky3Pipeline",
             "Kandinsky5I2IPipeline",
@@ -1142,6 +1147,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             HunyuanVideoTransformer3DModel,
             I2VGenXLUNet,
             Ideogram4Transformer2DModel,
+            JoyImageEditPlusTransformer3DModel,
             JoyImageEditTransformer3DModel,
             Kandinsky3UNet,
             Kandinsky5Transformer3DModel,
@@ -1323,6 +1329,8 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .modular_pipelines import (
             AnimaAutoBlocks,
             AnimaModularPipeline,
+            Cosmos3OmniBlocks,
+            Cosmos3OmniModularPipeline,
             ErnieImageAutoBlocks,
             ErnieImageModularPipeline,
             Flux2AutoBlocks,
@@ -1473,6 +1481,8 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             ImageTextPipelineOutput,
             JoyImageEditPipeline,
             JoyImageEditPipelineOutput,
+            JoyImageEditPlusPipeline,
+            JoyImageEditPlusPipelineOutput,
             Kandinsky3Img2ImgPipeline,
             Kandinsky3Pipeline,
             Kandinsky5I2IPipeline,
