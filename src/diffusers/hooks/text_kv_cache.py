@@ -136,7 +136,7 @@ class TextKVCacheBlockHook(ModelHook):
 
             if image_rotary_emb is not None:
                 _, txt_freqs = image_rotary_emb
-                txt_key = _apply_rotary_emb_nucleus(txt_key, txt_freqs)
+                txt_key = _apply_rotary_emb_nucleus(txt_key, txt_freqs, use_real=False)
 
             block_state.kv_cache[cache_key] = (txt_key, txt_value)
 
