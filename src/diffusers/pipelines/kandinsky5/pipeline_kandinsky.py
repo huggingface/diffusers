@@ -456,8 +456,6 @@ class Kandinsky5T2VPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
         if not isinstance(prompt, list):
             prompt = [prompt]
 
-        batch_size = len(prompt)
-
         prompt = [prompt_clean(p) for p in prompt]
 
         # Encode with Qwen2.5-VL
@@ -479,20 +477,10 @@ class Kandinsky5T2VPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
 
         # Repeat embeddings for num_videos_per_prompt
         # Qwen embeddings: repeat sequence for each video, then reshape
-        prompt_embeds_qwen = prompt_embeds_qwen.repeat(
-            1, num_videos_per_prompt, 1
-        )  # [batch_size, seq_len * num_videos_per_prompt, embed_dim]
-        # Reshape to [batch_size * num_videos_per_prompt, seq_len, embed_dim]
-        prompt_embeds_qwen = prompt_embeds_qwen.view(
-            batch_size * num_videos_per_prompt, -1, prompt_embeds_qwen.shape[-1]
-        )
+        prompt_embeds_qwen = prompt_embeds_qwen.repeat_interleave(num_videos_per_prompt, dim=0)
 
         # CLIP embeddings: repeat for each video
-        prompt_embeds_clip = prompt_embeds_clip.repeat(
-            1, num_videos_per_prompt, 1
-        )  # [batch_size, num_videos_per_prompt, clip_embed_dim]
-        # Reshape to [batch_size * num_videos_per_prompt, clip_embed_dim]
-        prompt_embeds_clip = prompt_embeds_clip.view(batch_size * num_videos_per_prompt, -1)
+        prompt_embeds_clip = prompt_embeds_clip.repeat_interleave(num_videos_per_prompt, dim=0)
 
         # Repeat cumulative sequence lengths for num_videos_per_prompt
         # Original cu_seqlens: [0, len1, len1+len2, ...]
@@ -565,6 +553,13 @@ class Kandinsky5T2VPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
                     "If any of `prompt_embeds_qwen`, `prompt_embeds_clip`, or `prompt_cu_seqlens` is provided, "
                     "all three must be provided."
                 )
+            if (
+                prompt_embeds_qwen.shape[0] != prompt_embeds_clip.shape[0]
+                or prompt_cu_seqlens.shape[0] != prompt_embeds_qwen.shape[0] + 1
+            ):
+                raise ValueError(
+                    "Precomputed positive prompt embeddings and sequence lengths must have matching batch sizes."
+                )
 
         # Check for consistency within negative prompt embeddings and sequence lengths
         if (
@@ -580,6 +575,13 @@ class Kandinsky5T2VPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
                 raise ValueError(
                     "If any of `negative_prompt_embeds_qwen`, `negative_prompt_embeds_clip`, or `negative_prompt_cu_seqlens` is provided, "
                     "all three must be provided."
+                )
+            if (
+                negative_prompt_embeds_qwen.shape[0] != negative_prompt_embeds_clip.shape[0]
+                or negative_prompt_cu_seqlens.shape[0] != negative_prompt_embeds_qwen.shape[0] + 1
+            ):
+                raise ValueError(
+                    "Precomputed negative prompt embeddings and sequence lengths must have matching batch sizes."
                 )
 
         # Check if prompt or embeddings are provided (either prompt or all required embedding components for positive)
@@ -806,31 +808,47 @@ class Kandinsky5T2VPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
         if prompt_embeds_qwen is None:
             prompt_embeds_qwen, prompt_embeds_clip, prompt_cu_seqlens = self.encode_prompt(
                 prompt=prompt,
+                num_videos_per_prompt=num_videos_per_prompt,
                 max_sequence_length=max_sequence_length,
                 device=device,
                 dtype=dtype,
             )
+        else:
+            prompt_embeds_qwen = prompt_embeds_qwen.repeat_interleave(num_videos_per_prompt, dim=0)
+            prompt_embeds_clip = prompt_embeds_clip.repeat_interleave(num_videos_per_prompt, dim=0)
+            prompt_lengths = prompt_cu_seqlens.diff().repeat_interleave(num_videos_per_prompt)
+            prompt_cu_seqlens = F.pad(prompt_lengths.cumsum(0), (1, 0), value=0)
 
         if self.guidance_scale > 1.0:
-            if negative_prompt is None:
+            if negative_prompt is None and negative_prompt_embeds_qwen is None:
                 negative_prompt = "Static, 2D cartoon, cartoon, 2d animation, paintings, images, worst quality, low quality, ugly, deformed, walking backwards"
 
             if isinstance(negative_prompt, str):
-                negative_prompt = [negative_prompt] * len(prompt) if prompt is not None else [negative_prompt]
-            elif len(negative_prompt) != len(prompt):
+                negative_prompt = [negative_prompt] * batch_size
+            elif negative_prompt is not None and len(negative_prompt) != batch_size:
                 raise ValueError(
-                    f"`negative_prompt` must have same length as `prompt`. Got {len(negative_prompt)} vs {len(prompt)}."
+                    f"`negative_prompt` must have the same batch size as `prompt`. Got {len(negative_prompt)} vs {batch_size}."
                 )
 
             if negative_prompt_embeds_qwen is None:
                 negative_prompt_embeds_qwen, negative_prompt_embeds_clip, negative_prompt_cu_seqlens = (
                     self.encode_prompt(
                         prompt=negative_prompt,
+                        num_videos_per_prompt=num_videos_per_prompt,
                         max_sequence_length=max_sequence_length,
                         device=device,
                         dtype=dtype,
                     )
                 )
+            else:
+                negative_prompt_embeds_qwen = negative_prompt_embeds_qwen.repeat_interleave(
+                    num_videos_per_prompt, dim=0
+                )
+                negative_prompt_embeds_clip = negative_prompt_embeds_clip.repeat_interleave(
+                    num_videos_per_prompt, dim=0
+                )
+                negative_prompt_lengths = negative_prompt_cu_seqlens.diff().repeat_interleave(num_videos_per_prompt)
+                negative_prompt_cu_seqlens = F.pad(negative_prompt_lengths.cumsum(0), (1, 0), value=0)
 
         # 4. Prepare timesteps
         self.scheduler.set_timesteps(num_inference_steps, device=device)
