@@ -698,7 +698,7 @@ class WanImageToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
                     image_embeds = self.encode_image(image, device)
                 else:
                     image_embeds = self.encode_image([image, last_image], device)
-            image_embeds = image_embeds.repeat(batch_size, 1, 1)
+            image_embeds = image_embeds.repeat(batch_size * num_videos_per_prompt, 1, 1)
             image_embeds = image_embeds.to(transformer_dtype)
 
         # 4. Prepare timesteps

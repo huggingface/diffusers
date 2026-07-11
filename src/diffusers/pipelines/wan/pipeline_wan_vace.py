@@ -196,8 +196,8 @@ class WanVACEPipeline(DiffusionPipeline, WanLoraLoaderMixin):
             scheduler=scheduler,
         )
         self.register_to_config(boundary_ratio=boundary_ratio)
-        self.vae_scale_factor_temporal = 2 ** sum(self.vae.temperal_downsample) if getattr(self, "vae", None) else 4
-        self.vae_scale_factor_spatial = 2 ** len(self.vae.temperal_downsample) if getattr(self, "vae", None) else 8
+        self.vae_scale_factor_temporal = self.vae.config.scale_factor_temporal if getattr(self, "vae", None) else 4
+        self.vae_scale_factor_spatial = self.vae.config.scale_factor_spatial if getattr(self, "vae", None) else 8
         self.video_processor = VideoProcessor(vae_scale_factor=self.vae_scale_factor_spatial)
 
     # Copied from diffusers.pipelines.wan.pipeline_wan.WanPipeline._get_t5_prompt_embeds
@@ -1020,8 +1020,8 @@ class WanVACEPipeline(DiffusionPipeline, WanLoraLoaderMixin):
 
         self._current_timestep = None
 
+        latents = latents[:, :, num_reference_images:]
         if not output_type == "latent":
-            latents = latents[:, :, num_reference_images:]
             latents = latents.to(vae_dtype)
             latents_mean = (
                 torch.tensor(self.vae.config.latents_mean)
