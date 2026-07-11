@@ -545,8 +545,8 @@ class AnimaSetTimestepsStep(ModularPipelineBlocks):
 class AnimaImg2ImgSetTimestepsStep(ModularPipelineBlocks):
     """Set the scheduler timesteps for Anima image-to-image inference.
 
-    This step computes the full timestep schedule, then slices it based on ``strength`` via
-    ``get_timesteps()``, which also sets the scheduler's begin index.
+    This step computes the full timestep schedule, then slices it based on ``strength`` via ``get_timesteps()``, which
+    also sets the scheduler's begin index.
 
     Components:
         scheduler (`FlowMatchEulerDiscreteScheduler`)
@@ -625,9 +625,8 @@ class AnimaImg2ImgSetTimestepsStep(ModularPipelineBlocks):
 class AnimaImg2ImgPrepareLatentsStep(ModularPipelineBlocks):
     """Prepares noisy latents for Anima image-to-image generation.
 
-    Generates noise and mixes it with the image latents via ``scheduler.scale_noise()`` at the
-    first sliced timestep. The image latents are expected to already be expanded to the final
-    batch size by ``AnimaImageInputStep``.
+    Generates noise and mixes it with the image latents via ``scheduler.scale_noise()`` at the first sliced timestep.
+    The image latents are expected to already be expanded to the final batch size by ``AnimaImageInputStep``.
 
     Components:
         scheduler (`FlowMatchEulerDiscreteScheduler`)

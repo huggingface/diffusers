@@ -316,13 +316,11 @@ def encode_vae_image(
 class AnimaImg2ImgVaeEncoderStep(ModularPipelineBlocks):
     """VAE Encoder step for Anima image-to-image generation.
 
-    Preprocesses the input image and encodes it with the VAE, producing ``image_latents``.
-    Timestep slicing is handled downstream by ``AnimaImg2ImgSetTimestepsStep`` and noise
-    addition by ``AnimaImg2ImgPrepareLatentsStep``.
+    Preprocesses the input image and encodes it with the VAE, producing ``image_latents``. Timestep slicing is handled
+    downstream by ``AnimaImg2ImgSetTimestepsStep`` and noise addition by ``AnimaImg2ImgPrepareLatentsStep``.
 
     Components:
-        vae (`AutoencoderKLQwenImage`)
-        image_processor (`VaeImageProcessor`)
+        vae (`AutoencoderKLQwenImage`) image_processor (`VaeImageProcessor`)
 
     Inputs:
         image (`PIL.Image.Image`):

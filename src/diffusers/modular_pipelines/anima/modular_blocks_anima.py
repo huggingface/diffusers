@@ -128,12 +128,12 @@ class AnimaDecodeStep(SequentialPipelineBlocks):
 # auto_docstring
 class AnimaImg2ImgCoreDenoiseStep(SequentialPipelineBlocks):
     """
-    Denoise block for Anima image-to-image generation. Expects ``image_latents`` already in
-    state (produced by ``AnimaImg2ImgVaeEncoderStep`` upstream).
+    Denoise block for Anima image-to-image generation. Expects ``image_latents`` already in state (produced by
+    ``AnimaImg2ImgVaeEncoderStep`` upstream).
 
       Components:
-          text_conditioner (`AnimaTextConditioner`) transformer (`CosmosTransformer3DModel`)
-          scheduler (`FlowMatchEulerDiscreteScheduler`) guider (`ClassifierFreeGuidance`)
+          text_conditioner (`AnimaTextConditioner`) transformer (`CosmosTransformer3DModel`) scheduler
+          (`FlowMatchEulerDiscreteScheduler`) guider (`ClassifierFreeGuidance`)
 
       Inputs:
           qwen_prompt_embeds (`Tensor`):
@@ -203,10 +203,10 @@ class AnimaImg2ImgCoreDenoiseStep(SequentialPipelineBlocks):
 # auto_docstring
 class AnimaAutoDenoiseStep(AutoPipelineBlocks):
     """
-    Denoise step that selects between text-to-image and image-to-image denoising based on whether
-    ``image_latents`` is present in state. - `AnimaCoreDenoiseStep` (text2image) is used when no
-    ``image_latents`` are present. - `AnimaImg2ImgCoreDenoiseStep` (img2img) is used when
-    ``image_latents`` are present (set upstream by ``AnimaAutoVaeImageEncoderStep``).
+    Denoise step that selects between text-to-image and image-to-image denoising based on whether ``image_latents`` is
+    present in state. - `AnimaCoreDenoiseStep` (text2image) is used when no ``image_latents`` are present. -
+    `AnimaImg2ImgCoreDenoiseStep` (img2img) is used when ``image_latents`` are present (set upstream by
+    ``AnimaAutoVaeImageEncoderStep``).
 
       Components:
           text_conditioner (`AnimaTextConditioner`) transformer (`CosmosTransformer3DModel`) vae
@@ -273,16 +273,16 @@ class AnimaAutoDenoiseStep(AutoPipelineBlocks):
 # auto_docstring
 class AnimaAutoVaeImageEncoderStep(AutoPipelineBlocks):
     """
-    VAE Image Encoder step that encodes the input image to produce ``image_latents``. This step is
-    skipped when no image is provided (text-to-image workflow).
+    VAE Image Encoder step that encodes the input image to produce ``image_latents``. This step is skipped when no
+    image is provided (text-to-image workflow).
 
       Components:
           vae (`AutoencoderKLQwenImage`) image_processor (`VaeImageProcessor`)
 
       Inputs:
           image (`Image`, *optional*):
-              Input image for image-to-image generation. When provided, the image is encoded to
-              ``image_latents``. When not provided, this step is skipped.
+              Input image for image-to-image generation. When provided, the image is encoded to ``image_latents``. When
+              not provided, this step is skipped.
           height (`int`, *optional*):
               Height of the output image.
           width (`int`, *optional*):
