@@ -903,8 +903,6 @@ class Cosmos3OmniBlocks(SequentialPipelineBlocks):
         - `action_policy`: requires `prompt`, `action`
         - `action_forward_dynamics`: requires `prompt`, `action`
         - `action_inverse_dynamics`: requires `prompt`, `action`
-        - `transfer`: requires `prompt`, `control_videos`
-
       Components:
           video_processor (`VideoProcessor`)
           text_tokenizer (`AutoTokenizer`)
@@ -1018,12 +1016,21 @@ class Cosmos3OmniBlocks(SequentialPipelineBlocks):
         "action_policy": {"prompt": True, "action": True},
         "action_forward_dynamics": {"prompt": True, "action": True},
         "action_inverse_dynamics": {"prompt": True, "action": True},
-        "transfer": {"prompt": True, "control_videos": True},
     }
 
     @property
     def description(self):
         return "Modular pipeline blocks for Cosmos3 generation modes."
+
+    def get_workflow(self, workflow_name: str):
+        if workflow_name == "transfer":
+            raise NotImplementedError(
+                'The standalone "transfer" workflow is temporarily unavailable because its nested autoregressive '
+                "chunk and denoising loops cannot be preserved by the current workflow extraction logic. Transfer "
+                "remains available through the full Cosmos3OmniBlocks pipeline. The standalone workflow will be "
+                "enabled after migration to the upcoming composable nested-loop abstraction."
+            )
+        return super().get_workflow(workflow_name)
 
     @property
     def outputs(self):
