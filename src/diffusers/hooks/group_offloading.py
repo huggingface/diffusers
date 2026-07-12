@@ -22,7 +22,7 @@ from typing import Set
 import safetensors.torch
 import torch
 
-from ..utils import get_logger, is_accelerate_available, is_torchao_available
+from ..utils import get_logger, is_accelerate_available, is_optimum_quanto_available, is_torchao_available
 from ._common import _GO_LC_SUPPORTED_PYTORCH_LAYERS
 from .hooks import HookRegistry, ModelHook
 
@@ -80,6 +80,41 @@ def _restore_torchao_tensor(param: torch.Tensor, source: torch.Tensor) -> None:
 def _record_stream_torchao_tensor(param: torch.Tensor, stream) -> None:
     """Record stream for all internal tensors of a TorchAO parameter."""
     for attr_name in _get_torchao_inner_tensor_names(param):
+        getattr(param, attr_name).record_stream(stream)
+
+
+def _is_quanto_tensor(tensor: torch.Tensor) -> bool:
+    if not is_optimum_quanto_available():
+        return False
+    from optimum.quanto import QTensor
+
+    return isinstance(tensor, QTensor)
+
+
+def _get_quanto_inner_tensor_names(tensor: torch.Tensor) -> list[str]:
+    """Get names of all internal tensor data attributes from a quanto QTensor (e.g. `_data`, `_scale`)."""
+    return list(tensor.__tensor_flatten__()[0])
+
+
+def _swap_quanto_tensor(param: torch.Tensor, source: torch.Tensor) -> None:
+    """Move a quanto QTensor to the device of `source` via `swap_tensors`.
+
+    `param.data = source` does not work for quanto tensor subclasses because it updates only the outer wrapper while
+    leaving the subclass internal tensors (e.g. `._data`, `._scale`) on the original device. `swap_tensors` swaps the
+    full tensor contents in-place, preserving the parameter's identity.
+    """
+    torch.utils.swap_tensors(param, source)
+
+
+def _restore_quanto_tensor(param: torch.Tensor, source: torch.Tensor) -> None:
+    """Restore internal tensor data of a quanto QTensor from `source` without mutating `source`."""
+    for attr_name in _get_quanto_inner_tensor_names(source):
+        setattr(param, attr_name, getattr(source, attr_name))
+
+
+def _record_stream_quanto_tensor(param: torch.Tensor, stream) -> None:
+    """Record stream for all internal tensors of a quanto QTensor."""
+    for attr_name in _get_quanto_inner_tensor_names(param):
         getattr(param, attr_name).record_stream(stream)
 
 
@@ -174,10 +209,15 @@ class ModuleGroup:
 
     @staticmethod
     def _to_cpu(tensor, low_cpu_mem_usage):
-        # For TorchAO tensors, `.data` returns an incomplete wrapper without internal attributes
-        # (e.g. `.qdata`, `.scale`), so we must call `.cpu()` on the tensor directly.
-        t = tensor.cpu() if _is_torchao_tensor(tensor) else tensor.data.cpu()
-        return t if low_cpu_mem_usage else t.pin_memory()
+        is_torchao_tensor = _is_torchao_tensor(tensor)
+        is_quanto_tensor = _is_quanto_tensor(tensor)
+        # For tensor subclasses (TorchAO / quanto), `.data` returns an incomplete wrapper without internal
+        # attributes (e.g. `.qdata`/`.scale`, `._data`/`._scale`), so we must call `.cpu()` on the tensor directly.
+        t = tensor.cpu() if (is_torchao_tensor or is_quanto_tensor) else tensor.data.cpu()
+        # Quanto tensors do not keep their subclass identity through `pin_memory()`, so skip pinning for them.
+        if low_cpu_mem_usage or is_quanto_tensor:
+            return t
+        return t.pin_memory()
 
     def _init_cpu_param_dict(self):
         cpu_param_dict = {}
@@ -202,7 +242,7 @@ class ModuleGroup:
     def _pinned_memory_tensors(self):
         try:
             pinned_dict = {
-                param: tensor.pin_memory() if not tensor.is_pinned() else tensor
+                param: tensor if (_is_quanto_tensor(tensor) or tensor.is_pinned()) else tensor.pin_memory()
                 for param, tensor in self.cpu_param_dict.items()
             }
             yield pinned_dict
@@ -213,11 +253,15 @@ class ModuleGroup:
         moved = source_tensor.to(self.onload_device, non_blocking=self.non_blocking)
         if _is_torchao_tensor(tensor):
             _swap_torchao_tensor(tensor, moved)
+        elif _is_quanto_tensor(tensor):
+            _swap_quanto_tensor(tensor, moved)
         else:
             tensor.data = moved
         if self.record_stream:
             if _is_torchao_tensor(tensor):
                 _record_stream_torchao_tensor(tensor, default_stream)
+            elif _is_quanto_tensor(tensor):
+                _record_stream_quanto_tensor(tensor, default_stream)
             else:
                 tensor.data.record_stream(default_stream)
 
@@ -238,18 +282,19 @@ class ModuleGroup:
             source = pinned_memory[buffer] if pinned_memory else buffer.data
             self._transfer_tensor_to_device(buffer, source, default_stream)
 
-    def _check_disk_offload_torchao(self):
+    def _check_disk_offload_tensor_subclasses(self):
         all_tensors = list(self.tensor_to_key.keys())
         has_torchao = any(_is_torchao_tensor(t) for t in all_tensors)
-        if has_torchao:
+        has_quanto = any(_is_quanto_tensor(t) for t in all_tensors)
+        if has_torchao or has_quanto:
             raise ValueError(
-                "Disk offloading is not supported for TorchAO quantized tensors because safetensors "
-                "cannot serialize TorchAO subclass tensors. Use memory offloading instead by not "
+                "Disk offloading is not supported for TorchAO or quanto tensor subclasses because saving only "
+                "`.data` would drop the subclass tensor internals. Use memory offloading instead by not "
                 "setting `offload_to_disk_path`."
             )
 
     def _onload_from_disk(self):
-        self._check_disk_offload_torchao()
+        self._check_disk_offload_tensor_subclasses()
 
         if self.stream is not None:
             # Wait for previous Host->Device transfer to complete
@@ -292,7 +337,7 @@ class ModuleGroup:
                 self._process_tensors_from_modules(None)
 
     def _offload_to_disk(self):
-        self._check_disk_offload_torchao()
+        self._check_disk_offload_tensor_subclasses()
 
         # TODO: we can potentially optimize this code path by checking if the _all_ the desired
         # safetensor files exist on the disk and if so, skip this step entirely, reducing IO
@@ -320,16 +365,22 @@ class ModuleGroup:
                 for param in group_module.parameters():
                     if _is_torchao_tensor(param):
                         _restore_torchao_tensor(param, self.cpu_param_dict[param])
+                    elif _is_quanto_tensor(param):
+                        _restore_quanto_tensor(param, self.cpu_param_dict[param])
                     else:
                         param.data = self.cpu_param_dict[param]
             for param in self.parameters:
                 if _is_torchao_tensor(param):
                     _restore_torchao_tensor(param, self.cpu_param_dict[param])
+                elif _is_quanto_tensor(param):
+                    _restore_quanto_tensor(param, self.cpu_param_dict[param])
                 else:
                     param.data = self.cpu_param_dict[param]
             for buffer in self.buffers:
                 if _is_torchao_tensor(buffer):
                     _restore_torchao_tensor(buffer, self.cpu_param_dict[buffer])
+                elif _is_quanto_tensor(buffer):
+                    _restore_quanto_tensor(buffer, self.cpu_param_dict[buffer])
                 else:
                     buffer.data = self.cpu_param_dict[buffer]
         else:
@@ -339,12 +390,16 @@ class ModuleGroup:
                 if _is_torchao_tensor(param):
                     moved = param.to(self.offload_device, non_blocking=False)
                     _swap_torchao_tensor(param, moved)
+                elif _is_quanto_tensor(param):
+                    _swap_quanto_tensor(param, param.to(self.offload_device, non_blocking=False))
                 else:
                     param.data = param.data.to(self.offload_device, non_blocking=False)
             for buffer in self.buffers:
                 if _is_torchao_tensor(buffer):
                     moved = buffer.to(self.offload_device, non_blocking=False)
                     _swap_torchao_tensor(buffer, moved)
+                elif _is_quanto_tensor(buffer):
+                    _swap_quanto_tensor(buffer, buffer.to(self.offload_device, non_blocking=False))
                 else:
                     buffer.data = buffer.data.to(self.offload_device, non_blocking=False)
 
