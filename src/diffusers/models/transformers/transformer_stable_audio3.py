@@ -22,6 +22,8 @@ import torch.nn.functional as F
 
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...utils import BaseOutput, logging
+from ..attention import AttentionMixin, AttentionModuleMixin
+from ..attention_dispatch import dispatch_attention_fn
 from ..modeling_utils import ModelMixin
 
 
@@ -89,7 +91,9 @@ class StableAudio3ExpoFourierFeatures(nn.Module):
 
 
 class StableAudio3RotaryEmbedding(nn.Module):
-    """Shared rotary positional embedding (partial RoPE over the first `2 * (dim // 2)` head channels)."""
+    """Shared rotary positional embedding. Stable Audio 3 applies the RoPE embeddings partially over only the first
+    `2 * (dim // 2)` head channels).
+    """
 
     def __init__(self, dim: int, base: int = 10000):
         super().__init__()
@@ -110,12 +114,16 @@ def _rotate_half(x: torch.Tensor) -> torch.Tensor:
     return torch.cat((-x2, x1), dim=-1)
 
 
-def _apply_rotary(t: torch.Tensor, freqs: torch.Tensor) -> torch.Tensor:
+def _apply_rotary_partial(t: torch.Tensor, freqs: torch.Tensor) -> torch.Tensor:
+    """Partial RoPE — rotate the first `rot_dim` channels, leave the rest.
+
+    `t` has shape `(batch, seq_len, heads, head_dim)`; `freqs` has shape `(seq_len, rot_dim)`.
+    """
     rot_dim = freqs.shape[-1]
     out_dtype = t.dtype
     t_rot, t_pass = t[..., :rot_dim], t[..., rot_dim:]
     t_rot = t_rot.float()
-    freqs = freqs[-t_rot.shape[-2] :].float()
+    freqs = freqs[-t_rot.shape[-3] :].float().unsqueeze(1)  # (seq_len, 1, rot_dim) broadcasts over heads
     t_rot = t_rot * freqs.cos() + _rotate_half(t_rot) * freqs.sin()
     return torch.cat((t_rot.to(out_dtype), t_pass), dim=-1)
 
@@ -139,102 +147,134 @@ class StableAudio3FeedForward(nn.Module):
         return self.proj_out(hidden_states * F.silu(gate))
 
 
-class StableAudio3SelfAttention(nn.Module):
-    """Self-attention with RMS QK-norm and partial RoPE.
+class StableAudio3SelfAttnProcessor:
+    """Differential self-attention with RMS QK-norm and partial RoPE."""
 
-    When `use_differential` is `True` (SA3 default) the attention is differential: `Attn(Q1, K1, V) - Attn(Q2, K2, V)`.
-    The fused `to_qkv` projection produces `[q1 | q2 | k1 | k2 | v]`.
-    """
+    _attention_backend = None
+    _parallel_config = None
 
-    def __init__(self, dim: int, dim_heads: int = 64, use_differential: bool = True):
-        super().__init__()
-        self.dim_heads = dim_heads
-        self.num_heads = dim // dim_heads
-        self.use_differential = use_differential
+    def __call__(self, attn: "StableAudio3Attention", hidden_states: torch.Tensor, rope: torch.Tensor) -> torch.Tensor:
+        def heads(x: torch.Tensor) -> torch.Tensor:
+            return x.unflatten(-1, (attn.heads, attn.dim_heads))
 
-        n_proj = 5 if use_differential else 3
-        self.to_qkv = nn.Linear(dim, dim * n_proj, bias=False)
-        self.to_out = nn.Linear(dim, dim, bias=False)
-
-        self.q_norm = StableAudio3RMSNorm(dim_heads)
-        self.k_norm = StableAudio3RMSNorm(dim_heads)
-
-    def _heads(self, x: torch.Tensor) -> torch.Tensor:
-        return x.unflatten(-1, (self.num_heads, self.dim_heads)).transpose(1, 2)
-
-    def forward(self, hidden_states: torch.Tensor, rope: torch.Tensor) -> torch.Tensor:
-        if self.use_differential:
-            q1, q2, k1, k2, v = self.to_qkv(hidden_states).chunk(5, dim=-1)
-            q1, q2, k1, k2, v = map(self._heads, (q1, q2, k1, k2, v))
-            q1, q2 = self.q_norm(q1), self.q_norm(q2)
-            k1, k2 = self.k_norm(k1), self.k_norm(k2)
-            q1, q2 = _apply_rotary(q1, rope), _apply_rotary(q2, rope)
-            k1, k2 = _apply_rotary(k1, rope), _apply_rotary(k2, rope)
-            out = F.scaled_dot_product_attention(q1, k1, v) - F.scaled_dot_product_attention(q2, k2, v)
+        if attn.use_differential:
+            q1, q2, k1, k2, v = attn.to_qkv(hidden_states).chunk(5, dim=-1)
+            q1, q2, k1, k2, v = map(heads, (q1, q2, k1, k2, v))
+            q1, q2 = attn.q_norm(q1), attn.q_norm(q2)
+            k1, k2 = attn.k_norm(k1), attn.k_norm(k2)
+            q1, q2 = _apply_rotary_partial(q1, rope), _apply_rotary_partial(q2, rope)
+            k1, k2 = _apply_rotary_partial(k1, rope), _apply_rotary_partial(k2, rope)
+            out = dispatch_attention_fn(
+                q1, k1, v, backend=self._attention_backend, parallel_config=self._parallel_config
+            ) - dispatch_attention_fn(
+                q2, k2, v, backend=self._attention_backend, parallel_config=self._parallel_config
+            )
         else:
-            q, k, v = self.to_qkv(hidden_states).chunk(3, dim=-1)
-            q, k, v = map(self._heads, (q, k, v))
-            q, k = self.q_norm(q), self.k_norm(k)
-            q, k = _apply_rotary(q, rope), _apply_rotary(k, rope)
-            out = F.scaled_dot_product_attention(q, k, v)
+            q, k, v = attn.to_qkv(hidden_states).chunk(3, dim=-1)
+            q, k, v = map(heads, (q, k, v))
+            q, k = attn.q_norm(q), attn.k_norm(k)
+            q, k = _apply_rotary_partial(q, rope), _apply_rotary_partial(k, rope)
+            out = dispatch_attention_fn(
+                q, k, v, backend=self._attention_backend, parallel_config=self._parallel_config
+            )
 
-        return self.to_out(out.transpose(1, 2).flatten(-2))
+        return attn.to_out(out.flatten(2, 3))
 
 
-class StableAudio3CrossAttention(nn.Module):
-    """Cross-attention from audio latents to the text/duration context.
+class StableAudio3CrossAttnProcessor:
+    """Differential cross-attention from audio latents to the text/duration context (see [`StableAudio3Attention`]).
 
-    Differential variant: `to_q` produces `[q1 | q2]` and `to_kv` produces `[k1 | k2 | v]`. No RoPE (context tokens
-    have no positional order relative to the audio latents).
+    No RoPE — context tokens have no positional order relative to the audio latents.
     """
 
-    def __init__(self, dim: int, context_dim: int, dim_heads: int = 64, use_differential: bool = True):
-        super().__init__()
-        self.dim_heads = dim_heads
-        self.num_heads = dim // dim_heads
-        self.use_differential = use_differential
+    _attention_backend = None
+    _parallel_config = None
 
-        n_q = 2 if use_differential else 1
-        n_kv = 3 if use_differential else 2
-        self.to_q = nn.Linear(dim, dim * n_q, bias=False)
-        self.to_kv = nn.Linear(context_dim, dim * n_kv, bias=False)
-        self.to_out = nn.Linear(dim, dim, bias=False)
-
-        self.q_norm = StableAudio3RMSNorm(dim_heads)
-        self.k_norm = StableAudio3RMSNorm(dim_heads)
-
-    def _heads(self, x: torch.Tensor) -> torch.Tensor:
-        return x.unflatten(-1, (self.num_heads, self.dim_heads)).transpose(1, 2)
-
-    def _attn_mask(self, context_mask: Optional[torch.Tensor]) -> Optional[torch.Tensor]:
-        if context_mask is None:
-            return None
-        # Boolean mask (B, T_ctx), True = valid. SDPA accepts a boolean mask directly.
-        return context_mask[:, None, None, :].bool()
-
-    def forward(
+    def __call__(
         self,
+        attn: "StableAudio3Attention",
         hidden_states: torch.Tensor,
         context: torch.Tensor,
         context_mask: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
-        attn_mask = self._attn_mask(context_mask)
-        if self.use_differential:
-            q1, q2 = self.to_q(hidden_states).chunk(2, dim=-1)
-            k1, k2, v = self.to_kv(context).chunk(3, dim=-1)
-            q1, q2, k1, k2, v = map(self._heads, (q1, q2, k1, k2, v))
-            q1, q2 = self.q_norm(q1), self.q_norm(q2)
-            k1, k2 = self.k_norm(k1), self.k_norm(k2)
-            out = F.scaled_dot_product_attention(q1, k1, v, attn_mask=attn_mask) - F.scaled_dot_product_attention(
-                q2, k2, v, attn_mask=attn_mask
+        def heads(x: torch.Tensor) -> torch.Tensor:
+            return x.unflatten(-1, (attn.heads, attn.dim_heads))
+
+        # Boolean mask (B, T_ctx), True = valid. SDPA accepts a boolean mask directly.
+        attn_mask = None if context_mask is None else context_mask[:, None, None, :].bool()
+
+        if attn.use_differential:
+            q1, q2 = attn.to_q(hidden_states).chunk(2, dim=-1)
+            k1, k2, v = attn.to_kv(context).chunk(3, dim=-1)
+            q1, q2, k1, k2, v = map(heads, (q1, q2, k1, k2, v))
+            q1, q2 = attn.q_norm(q1), attn.q_norm(q2)
+            k1, k2 = attn.k_norm(k1), attn.k_norm(k2)
+            out = dispatch_attention_fn(
+                q1, k1, v, attn_mask=attn_mask, backend=self._attention_backend, parallel_config=self._parallel_config
+            ) - dispatch_attention_fn(
+                q2, k2, v, attn_mask=attn_mask, backend=self._attention_backend, parallel_config=self._parallel_config
             )
         else:
-            q = self._heads(self.to_q(hidden_states))
-            k, v = map(self._heads, self.to_kv(context).chunk(2, dim=-1))
-            q, k = self.q_norm(q), self.k_norm(k)
-            out = F.scaled_dot_product_attention(q, k, v, attn_mask=attn_mask)
+            q = heads(attn.to_q(hidden_states))
+            k, v = map(heads, attn.to_kv(context).chunk(2, dim=-1))
+            q, k = attn.q_norm(q), attn.k_norm(k)
+            out = dispatch_attention_fn(
+                q, k, v, attn_mask=attn_mask, backend=self._attention_backend, parallel_config=self._parallel_config
+            )
 
-        return self.to_out(out.transpose(1, 2).flatten(-2))
+        return attn.to_out(out.flatten(2, 3))
+
+
+class StableAudio3Attention(nn.Module, AttentionModuleMixin):
+    """Shared self-/cross-attention module for the SA3 DiT, built on the `AttentionModuleMixin` +
+    `AttentionProcessor` pattern (see [`StableAudio3SelfAttnProcessor`] / [`StableAudio3CrossAttnProcessor`]).
+
+    Self-attention (`context_dim=None`): the fused `to_qkv` projection produces `[q1 | q2 | k1 | k2 | v]`.
+    Cross-attention (`context_dim` set): `to_q` produces `[q1 | q2]` and `to_kv` produces `[k1 | k2 | v]`. When
+    `use_differential` is `True` (SA3 default) the attention is differential: `Attn(Q1, K1, V) - Attn(Q2, K2, V)`.
+    """
+
+    _available_processors = [StableAudio3SelfAttnProcessor, StableAudio3CrossAttnProcessor]
+    # The QKV projections are fused (self-attn) or split into differential q/kv groups (cross-attn), neither of
+    # which matches the plain to_q/to_k/to_v shape `fuse_projections`/`unfuse_projections` assume.
+    _supports_qkv_fusion = False
+
+    def __init__(
+        self,
+        dim: int,
+        dim_heads: int = 64,
+        use_differential: bool = True,
+        context_dim: Optional[int] = None,
+        processor=None,
+    ):
+        super().__init__()
+        self.dim_heads = dim_heads
+        self.heads = dim // dim_heads
+        self.use_differential = use_differential
+        self.is_cross_attention = context_dim is not None
+
+        if self.is_cross_attention:
+            n_q = 2 if use_differential else 1
+            n_kv = 3 if use_differential else 2
+            self.to_q = nn.Linear(dim, dim * n_q, bias=False)
+            self.to_kv = nn.Linear(context_dim, dim * n_kv, bias=False)
+        else:
+            n_proj = 5 if use_differential else 3
+            self.to_qkv = nn.Linear(dim, dim * n_proj, bias=False)
+
+        self.to_out = nn.Linear(dim, dim, bias=False)
+
+        self.q_norm = StableAudio3RMSNorm(dim_heads)
+        self.k_norm = StableAudio3RMSNorm(dim_heads)
+
+        if processor is None:
+            processor = (
+                StableAudio3CrossAttnProcessor() if self.is_cross_attention else StableAudio3SelfAttnProcessor()
+            )
+        self.set_processor(processor)
+
+    def forward(self, hidden_states: torch.Tensor, **kwargs) -> torch.Tensor:
+        return self.processor(self, hidden_states, **kwargs)
 
 
 class StableAudio3DiTBlock(nn.Module):
@@ -264,10 +304,10 @@ class StableAudio3DiTBlock(nn.Module):
     ):
         super().__init__()
         self.pre_norm = StableAudio3RMSNorm(dim)
-        self.self_attn = StableAudio3SelfAttention(dim, dim_heads=dim_heads, use_differential=use_differential)
+        self.self_attn = StableAudio3Attention(dim, dim_heads=dim_heads, use_differential=use_differential)
 
         self.cross_attend_norm = StableAudio3RMSNorm(dim)
-        self.cross_attn = StableAudio3CrossAttention(
+        self.cross_attn = StableAudio3Attention(
             dim, context_dim=context_dim, dim_heads=dim_heads, use_differential=use_differential
         )
 
@@ -324,7 +364,7 @@ class StableAudio3DiTBlock(nn.Module):
         return hidden_states
 
 
-class StableAudio3DiTModel(ModelMixin, ConfigMixin):
+class StableAudio3DiTModel(ModelMixin, ConfigMixin, AttentionMixin):
     r"""
     The Diffusion Transformer (DiT) backbone of [Stable Audio 3](https://stability.ai/news/stable-audio-3).
 
@@ -375,9 +415,6 @@ class StableAudio3DiTModel(ModelMixin, ConfigMixin):
     ):
         super().__init__()
 
-        self.patch_size = patch_size
-        self.io_channels = io_channels
-        self.num_memory_tokens = num_memory_tokens
         dim_heads = embed_dim // num_heads
 
         # Timestep embedding.
@@ -493,23 +530,23 @@ class StableAudio3DiTModel(ModelMixin, ConfigMixin):
 
         # Patch + project into the transformer dim.
         x = hidden_states.transpose(1, 2)  # (batch, T, io_channels)
-        if self.patch_size > 1:
+        if self.config.patch_size > 1:
             B, T, C = x.shape
-            x = x.reshape(B, T // self.patch_size, C * self.patch_size)
+            x = x.reshape(B, T // self.config.patch_size, C * self.config.patch_size)
         x = self.proj_in(x)  # (batch, T, embed_dim)
 
         # Local-additive (inpaint) sequence, projected per-block inside the blocks.
         local_seq = None
         if local_add_cond is not None:
-            if self.patch_size > 1:
+            if self.config.patch_size > 1:
                 raise ValueError(
                     f"`local_add_cond` is not supported with `patch_size > 1` "
-                    f"(got patch_size={self.patch_size}). Use patch_size=1 for inpainting."
+                    f"(got patch_size={self.config.patch_size}). Use patch_size=1 for inpainting."
                 )
             local_seq = local_add_cond.transpose(1, 2)  # (batch, T, local_add_cond_dim)
 
         # Prepend memory tokens.
-        if self.num_memory_tokens > 0:
+        if self.config.num_memory_tokens > 0:
             memory = self.memory_tokens.unsqueeze(0).expand(batch_size, -1, -1)
             x = torch.cat([memory, x], dim=1)
 
@@ -525,7 +562,7 @@ class StableAudio3DiTModel(ModelMixin, ConfigMixin):
                     rope,
                     encoder_attention_mask,
                     local_seq,
-                    self.num_memory_tokens,
+                    self.config.num_memory_tokens,
                 )
             else:
                 x = block(
@@ -535,19 +572,19 @@ class StableAudio3DiTModel(ModelMixin, ConfigMixin):
                     rope=rope,
                     context_mask=encoder_attention_mask,
                     local_seq=local_seq,
-                    num_memory_tokens=self.num_memory_tokens,
+                    num_memory_tokens=self.config.num_memory_tokens,
                 )
 
         # Remove memory tokens.
-        if self.num_memory_tokens > 0:
-            x = x[:, self.num_memory_tokens :]
+        if self.config.num_memory_tokens > 0:
+            x = x[:, self.config.num_memory_tokens :]
 
         x = self.proj_out(x)
 
         # Unpatch.
-        if self.patch_size > 1:
+        if self.config.patch_size > 1:
             B, T_p, CP = x.shape
-            x = x.reshape(B, T_p * self.patch_size, CP // self.patch_size)
+            x = x.reshape(B, T_p * self.config.patch_size, CP // self.config.patch_size)
 
         output = x.transpose(1, 2)  # (batch, io_channels, T)
         output = self.postprocess_conv(output) + output

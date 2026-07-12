@@ -60,6 +60,12 @@ import torch
 from safetensors.torch import load_file
 
 
+# Ensure UTF-8 stdout/stderr for Unicode output
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8")
+    sys.stderr.reconfigure(encoding="utf-8")
+
+
 # ──────────────────────────────────────────────────────────────────────────────
 # Tensor-level helpers
 # ──────────────────────────────────────────────────────────────────────────────
@@ -746,8 +752,10 @@ def convert(args):
     # Euler over many steps; the distilled model (rf_denoiser) uses the 8-step ping-pong sampler.
     diffusion_objective = None
     if model_config is not None:
-        diffusion_objective = model_config.get("model", {}).get("diffusion_objective") or model_config.get(
-            "diffusion_objective"
+        diffusion_objective = (
+            model_config.get("model", {}).get("diffusion", {}).get("diffusion_objective")
+            or model_config.get("model", {}).get("diffusion_objective")
+            or model_config.get("diffusion_objective")
         )
 
     if diffusion_objective == "rf_denoiser":

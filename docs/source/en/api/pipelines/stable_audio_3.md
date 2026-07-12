@@ -90,8 +90,9 @@ pipe = AutoPipelineForText2Audio.from_pretrained("/tmp/sa3-diffusers-euler", tor
 ## Tips
 
 * Use `torch.float32` on CPU or MPS (Apple Silicon) — `torch.float16` on MPS produces noise.
-* The distilled model is **adversarially distilled** — guidance is baked into the weights. Do not pass a
-  `negative_prompt`; there is no `guidance_scale`.
+* The distilled model (`stable-audio-3-medium`) is **adversarially distilled** — guidance is baked into the weights.
+  Leave `guidance_scale=1.0` (the default) and don't pass a `negative_prompt` for that checkpoint; both only do
+  something useful for the non-distilled `stable-audio-3-medium-base` checkpoint.
 * `silence_padding_duration` (default `0.0`) adds silent headroom at the end of the latent sequence. Leave it at `0.0`
   unless the model is trained to mask that padding — otherwise the extra frames drain output energy and the result
   gets quiet.
@@ -106,6 +107,16 @@ pipe = AutoPipelineForText2Audio.from_pretrained("/tmp/sa3-diffusers-euler", tor
 ## StableAudio3InpaintPipeline
 
 [[autodoc]] StableAudio3InpaintPipeline
+	- all
+	- __call__
+
+## StableAudio3AudioToAudioPipeline
+
+Generates a variation of a reference audio clip: the whole reference is noised to `init_noise_level` and denoised
+from there, unlike [`StableAudio3InpaintPipeline`]'s per-frame local-additive conditioning which preserves specific
+frames exactly.
+
+[[autodoc]] StableAudio3AudioToAudioPipeline
 	- all
 	- __call__
 

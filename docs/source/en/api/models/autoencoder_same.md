@@ -19,7 +19,7 @@ The encoder stacks [`SAMETransformerResamplingBlock`] modules, each of which gro
 patch frames and produces one learnable output token via a differential transformer. The decoder inverts this
 process, expanding each latent token back to a patch of audio frames.
 
-A soft-norm bottleneck ([`_SoftNormBottleneck`]) normalises latents before and after the diffusion model,
+A soft-norm bottleneck ([`SoftNormBottleneck`]) normalises latents before and after the diffusion model,
 providing stable training dynamics.
 
 ## AutoencoderSAME

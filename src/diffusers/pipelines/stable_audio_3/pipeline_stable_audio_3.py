@@ -17,7 +17,9 @@ Text-to-audio pipeline for Stable Audio 3 (distilled rectified flow).
 
 Key differences from the original ``StableAudioPipeline``:
 
-* **No ``guidance_scale``** — SA3 Medium is adversarially distilled; CFG is baked into the model weights.
+* **``guidance_scale`` defaults to 1.0 (off)** — SA3 Medium is adversarially distilled; CFG is baked into the model
+  weights, so classifier-free guidance is unnecessary (and adds compute) for the distilled checkpoint. It is meaningful
+  for the non-distilled ``stable-audio-3-medium-base`` checkpoint.
 * **``duration`` in seconds** (single float) replaces the ``audio_start_in_s`` / ``audio_end_in_s`` pair.
 * **No ``projection_model``** — T5Gemma output (768 d) feeds cross-attention directly; duration is embedded by
   ``StableAudio3DurationEmbedder``.
@@ -77,7 +79,9 @@ class StableAudio3Pipeline(DiffusionPipeline):
     r"""
     Pipeline for text-to-audio generation using Stable Audio 3.
 
-    SA3 uses a distilled rectified-flow DiT with ping-pong sampling — no classifier-free guidance at inference.
+    SA3 uses a distilled rectified-flow DiT with ping-pong sampling. Classifier-free guidance (``guidance_scale`` /
+    ``negative_prompt``) is unnecessary for the distilled checkpoint (leave ``guidance_scale=1.0``, the default) but is
+    meaningful for the non-distilled ``stable-audio-3-medium-base`` checkpoint.
 
     This model inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods
     implemented for all pipelines.
@@ -124,6 +128,14 @@ class StableAudio3Pipeline(DiffusionPipeline):
     @property
     def num_timesteps(self):
         return self._num_timesteps
+
+    @property
+    def guidance_scale(self):
+        return self._guidance_scale
+
+    @property
+    def do_classifier_free_guidance(self):
+        return self._guidance_scale > 1.0
 
     # ------------------------------------------------------------------
     # Encoding helpers
@@ -213,9 +225,6 @@ class StableAudio3Pipeline(DiffusionPipeline):
         Returns:
             ``(batch * num_waveforms_per_prompt, output_dim)`` tensor.
         """
-        if not isinstance(duration, (int, float)):
-            raise ValueError(f"`duration` must be a single `float`, got {type(duration)}.")
-
         duration_tensor = torch.tensor([float(duration)] * batch_size, dtype=torch.float32, device=device)
         global_hidden_states = self.duration_embedder(duration_tensor)  # (batch, output_dim)
         global_hidden_states = global_hidden_states.repeat_interleave(num_waveforms_per_prompt, dim=0)
@@ -273,6 +282,8 @@ class StableAudio3Pipeline(DiffusionPipeline):
         duration: float,
         prompt_embeds: Optional[torch.Tensor] = None,
         encoder_attention_mask: Optional[torch.LongTensor] = None,
+        negative_prompt: Optional[Union[str, List[str]]] = None,
+        negative_prompt_embeds: Optional[torch.Tensor] = None,
         callback_on_step_end_tensor_inputs: Optional[List[str]] = None,
     ) -> None:
         if prompt is None and prompt_embeds is None:
@@ -292,6 +303,10 @@ class StableAudio3Pipeline(DiffusionPipeline):
                 f"`encoder_attention_mask` shape {encoder_attention_mask.shape} must match "
                 f"`prompt_embeds` batch and sequence dimensions {prompt_embeds.shape[:2]}."
             )
+        if negative_prompt is not None and negative_prompt_embeds is not None:
+            raise ValueError("Cannot provide both `negative_prompt` and `negative_prompt_embeds`. Use one of the two.")
+        if negative_prompt is not None and not isinstance(negative_prompt, (str, list)):
+            raise ValueError(f"`negative_prompt` must be `str` or `list[str]`, got {type(negative_prompt)}.")
         if callback_on_step_end_tensor_inputs is not None and not all(
             k in self._callback_tensor_inputs for k in callback_on_step_end_tensor_inputs
         ):
@@ -308,11 +323,15 @@ class StableAudio3Pipeline(DiffusionPipeline):
         duration: float = 10.0,
         num_inference_steps: Optional[int] = None,
         silence_padding_duration: float = 0.0,
+        guidance_scale: float = 1.0,
+        negative_prompt: Optional[Union[str, List[str]]] = None,
         num_waveforms_per_prompt: int = 1,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
         latents: Optional[torch.Tensor] = None,
         prompt_embeds: Optional[torch.Tensor] = None,
         encoder_attention_mask: Optional[torch.LongTensor] = None,
+        negative_prompt_embeds: Optional[torch.Tensor] = None,
+        negative_encoder_attention_mask: Optional[torch.LongTensor] = None,
         return_dict: bool = True,
         callback_on_step_end: Optional[Callable[[int, int, dict], dict]] = None,
         callback_on_step_end_tensor_inputs: List[str] = ["latents"],
@@ -334,6 +353,15 @@ class StableAudio3Pipeline(DiffusionPipeline):
                 Extra seconds of latent context generated beyond the target content, giving the model headroom at the
                 boundary; the output is trimmed back to `duration`. Defaults to 0.0 (disabled). Increase only if the
                 model is trained/distilled to mask this padding — otherwise the extra frames drain output energy.
+            guidance_scale (`float`, defaults to 1.0):
+                Classifier-free guidance scale. ``1.0`` disables guidance (the default, and the only sensible value for
+                the distilled SA3 Medium checkpoint, whose CFG is baked into the weights). Values ``> 1.0`` are
+                meaningful for the non-distilled ``stable-audio-3-medium-base`` checkpoint; higher values follow the
+                prompt more closely at the cost of diversity.
+            negative_prompt (`str` or `list[str]`, *optional*):
+                Prompt(s) describing what to steer away from when ``guidance_scale > 1.0``. Defaults to an empty string
+                (unconditional) when ``guidance_scale > 1.0`` and neither this nor `negative_prompt_embeds` is given.
+                Ignored when ``guidance_scale <= 1.0``.
             num_waveforms_per_prompt (`int`, defaults to 1):
                 Number of waveforms to generate per prompt.
             generator (`torch.Generator` or `list[torch.Generator]`, *optional*):
@@ -344,6 +372,10 @@ class StableAudio3Pipeline(DiffusionPipeline):
                 Pre-computed text embeddings ``(batch, seq_len, 768)``.
             encoder_attention_mask (`torch.LongTensor`, *optional*):
                 Boolean mask for pre-computed embeddings.
+            negative_prompt_embeds (`torch.Tensor`, *optional*):
+                Pre-computed negative text embeddings, as an alternative to `negative_prompt`.
+            negative_encoder_attention_mask (`torch.LongTensor`, *optional*):
+                Boolean mask for pre-computed negative embeddings.
             return_dict (`bool`, defaults to `True`):
                 Return an `AudioPipelineOutput` or a plain tuple.
             callback_on_step_end (`Callable`, *optional*):
@@ -364,7 +396,17 @@ class StableAudio3Pipeline(DiffusionPipeline):
         Examples:
         """
         # 0. Validate
-        self.check_inputs(prompt, duration, prompt_embeds, encoder_attention_mask, callback_on_step_end_tensor_inputs)
+        self.check_inputs(
+            prompt,
+            duration,
+            prompt_embeds,
+            encoder_attention_mask,
+            negative_prompt,
+            negative_prompt_embeds,
+            callback_on_step_end_tensor_inputs,
+        )
+
+        self._guidance_scale = guidance_scale
 
         if prompt is not None and isinstance(prompt, str):
             batch_size = 1
@@ -384,11 +426,33 @@ class StableAudio3Pipeline(DiffusionPipeline):
             encoder_attention_mask,
         )
 
-        # 2. Encode duration → global conditioning for AdaLN, and append it as a cross-attn token
+        # 2. Encode duration for AdaLN/global conditioning; shared by all branches.
         global_hidden_states = self.encode_duration(duration, device, num_waveforms_per_prompt, batch_size)
         prompt_embeds, encoder_attention_mask = self.prepare_cross_attention(
             prompt_embeds, encoder_attention_mask, global_hidden_states
         )
+
+        if self.do_classifier_free_guidance:
+            if negative_prompt_embeds is None:
+                if isinstance(negative_prompt, str):
+                    uncond_tokens = [negative_prompt] * batch_size
+                elif negative_prompt is None:
+                    uncond_tokens = [""] * batch_size
+                else:
+                    uncond_tokens = negative_prompt
+                negative_prompt_embeds, negative_encoder_attention_mask = self.encode_prompt(
+                    uncond_tokens, device, num_waveforms_per_prompt, None, None
+                )
+            else:
+                negative_prompt_embeds, negative_encoder_attention_mask = self.encode_prompt(
+                    None, device, num_waveforms_per_prompt, negative_prompt_embeds, negative_encoder_attention_mask
+                )
+            negative_prompt_embeds, negative_encoder_attention_mask = self.prepare_cross_attention(
+                negative_prompt_embeds, negative_encoder_attention_mask, global_hidden_states
+            )
+            model_global_hidden_states = torch.cat([global_hidden_states, global_hidden_states])
+        else:
+            model_global_hidden_states = global_hidden_states
 
         # 3. Compute latent shape
         sampling_rate: int = self.vae.config.sampling_rate
@@ -429,20 +493,32 @@ class StableAudio3Pipeline(DiffusionPipeline):
         timesteps = self.scheduler.timesteps
         self._num_timesteps = len(timesteps)
 
-        # 6. Ping-pong denoising loop  (no CFG — distillation baked in)
+        # 6. Ping-pong denoising loop (CFG only if `guidance_scale > 1.0`; the distilled model bakes it in)
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
-                latent_model_input = self.scheduler.scale_model_input(latents, t)
+                if self.do_classifier_free_guidance:
+                    latent_model_input = torch.cat([latents, latents])
+                    model_prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds])
+                    model_encoder_attention_mask = torch.cat([negative_encoder_attention_mask, encoder_attention_mask])
+                else:
+                    latent_model_input = latents
+                    model_prompt_embeds = prompt_embeds
+                    model_encoder_attention_mask = encoder_attention_mask
+                latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
 
                 # Predict velocity v(x_t, t)
                 velocity = self.transformer(
                     latent_model_input,
-                    t.expand(latents.shape[0]),
-                    encoder_hidden_states=prompt_embeds,
-                    global_hidden_states=global_hidden_states,
-                    encoder_attention_mask=encoder_attention_mask,
+                    t.expand(latent_model_input.shape[0]),
+                    encoder_hidden_states=model_prompt_embeds,
+                    global_hidden_states=model_global_hidden_states,
+                    encoder_attention_mask=model_encoder_attention_mask,
                     return_dict=False,
                 )[0]
+
+                if self.do_classifier_free_guidance:
+                    velocity_uncond, velocity_text = velocity.chunk(2)
+                    velocity = velocity_uncond + self.guidance_scale * (velocity_text - velocity_uncond)
 
                 # x̂₀ = x_t − t·v  →  re-noise with fresh ε
                 latents = self.scheduler.step(velocity, t, latents, generator=generator).prev_sample
@@ -462,14 +538,13 @@ class StableAudio3Pipeline(DiffusionPipeline):
 
         # 7. Decode latents
         if output_type == "latent":
-            return AudioPipelineOutput(audios=latents)
+            audio = latents
+        else:
+            audio = self.vae.decode(latents).sample
+            audio = audio[:, :, :waveform_length].clamp(-1.0, 1.0)
 
-        audio = self.vae.decode(latents).sample
-        # Trim to the exact requested duration
-        audio = audio[:, :, :waveform_length].clamp(-1.0, 1.0)
-
-        if output_type == "np":
-            audio = audio.cpu().float().numpy()
+            if output_type == "np":
+                audio = audio.cpu().float().numpy()
 
         self.maybe_free_model_hooks()
 

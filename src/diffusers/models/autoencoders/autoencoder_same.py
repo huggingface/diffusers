@@ -35,6 +35,8 @@ from torch.nn.utils import weight_norm
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...utils import BaseOutput, logging
 from ...utils.accelerate_utils import apply_forward_hook
+from ..attention import AttentionMixin, AttentionModuleMixin
+from ..attention_dispatch import dispatch_attention_fn
 from ..modeling_utils import ModelMixin
 
 
@@ -87,12 +89,15 @@ def _rotate_half(x: torch.Tensor) -> torch.Tensor:
 
 
 def _apply_rotary(t: torch.Tensor, freqs: torch.Tensor) -> torch.Tensor:
-    """Partial RoPE — rotate the first *rot_dim* channels, leave the rest."""
+    """Partial RoPE — rotate the first *rot_dim* channels, leave the rest.
+
+    `t` has shape `(batch, seq_len, heads, head_dim)`; `freqs` has shape `(seq_len, rot_dim)`.
+    """
     rot_dim = freqs.shape[-1]
     out_dtype = t.dtype
     t_rot, t_pass = t[..., :rot_dim], t[..., rot_dim:]
     t_rot = t_rot.float()
-    freqs = freqs[-t_rot.shape[-2] :].float()
+    freqs = freqs[-t_rot.shape[-3] :].float().unsqueeze(1)  # (seq_len, 1, rot_dim) broadcasts over heads
     t_rot = (t_rot * freqs.cos()) + (_rotate_half(t_rot) * freqs.sin())
     return torch.cat((t_rot.to(out_dtype), t_pass), dim=-1)
 
@@ -102,7 +107,7 @@ def _apply_rotary(t: torch.Tensor, freqs: torch.Tensor) -> torch.Tensor:
 # ──────────────────────────────────────────────────────────────────────────────
 
 
-class _DynamicTanh(nn.Module):
+class DynamicTanh(nn.Module):
     """Dynamic-Tanh (DyT) normalisation used in production SAME configs."""
 
     def __init__(self, dim: int, init_alpha: float = 4.0):
@@ -120,7 +125,7 @@ class _DynamicTanh(nn.Module):
 # ──────────────────────────────────────────────────────────────────────────────
 
 
-class _RotaryEmbedding(nn.Module):
+class RotaryEmbedding(nn.Module):
     def __init__(self, dim: int, base: int = 10000):
         super().__init__()
         inv = 1.0 / (base ** (torch.arange(0, dim, 2).float() / dim))
@@ -137,7 +142,7 @@ class _RotaryEmbedding(nn.Module):
 # ──────────────────────────────────────────────────────────────────────────────
 
 
-class _FeedForward(nn.Module):
+class FeedForward(nn.Module):
     """
     GLU FFN with zero-initialised output projection.
 
@@ -165,18 +170,62 @@ class _FeedForward(nn.Module):
 # ──────────────────────────────────────────────────────────────────────────────
 
 
-class _Attention(nn.Module):
+class SAMEAttnProcessor:
+    """Differential self-attention with QK-DyT norm and partial RoPE (see [`Attention`])."""
+
+    _attention_backend = None
+    _parallel_config = None
+
+    def __call__(
+        self, attn: "Attention", hidden_states: torch.Tensor, attn_mask: Optional[torch.Tensor] = None
+    ) -> torch.Tensor:
+        def heads(x: torch.Tensor) -> torch.Tensor:
+            return x.unflatten(-1, (attn.heads, attn.dim_heads))
+
+        N = hidden_states.shape[1]
+        freqs = attn.rope(N, hidden_states.device)
+
+        if attn.use_differential:
+            q1, q2, k1, k2, v = attn.to_qkv(hidden_states).chunk(5, dim=-1)
+            q1, q2, k1, k2, v = map(heads, (q1, q2, k1, k2, v))
+            q1, q2 = attn.q_norm(q1), attn.q_norm(q2)
+            k1, k2 = attn.k_norm(k1), attn.k_norm(k2)
+            q1, q2 = _apply_rotary(q1, freqs), _apply_rotary(q2, freqs)
+            k1, k2 = _apply_rotary(k1, freqs), _apply_rotary(k2, freqs)
+            out = dispatch_attention_fn(
+                q1, k1, v, attn_mask=attn_mask, backend=self._attention_backend, parallel_config=self._parallel_config
+            ) - dispatch_attention_fn(
+                q2, k2, v, attn_mask=attn_mask, backend=self._attention_backend, parallel_config=self._parallel_config
+            )
+        else:
+            q, k, v = attn.to_qkv(hidden_states).chunk(3, dim=-1)
+            q, k, v = map(heads, (q, k, v))
+            q, k = attn.q_norm(q), attn.k_norm(k)
+            q, k = _apply_rotary(q, freqs), _apply_rotary(k, freqs)
+            out = dispatch_attention_fn(
+                q, k, v, attn_mask=attn_mask, backend=self._attention_backend, parallel_config=self._parallel_config
+            )
+
+        return attn.to_out(out.flatten(2, 3))
+
+
+class Attention(nn.Module, AttentionModuleMixin):
     """
-    Self-attention used inside TRB transformer blocks.
+    Self-attention used inside TRB transformer blocks, built on the `AttentionModuleMixin` + `AttentionProcessor`
+    pattern (see [`SAMEAttnProcessor`]).
 
     When *use_differential* is True (default for SAME-L), the block runs two independent attention maps — Attn(Q1,K1,V)
     − Attn(Q2,K2,V) — so that attention patterns common to both heads cancel out, improving focus.
     """
 
-    def __init__(self, dim: int, dim_heads: int = 128, use_differential: bool = True, qk_norm_eps: float = 1e-3):
+    _default_processor_cls = SAMEAttnProcessor
+    _available_processors = [SAMEAttnProcessor]
+    _supports_qkv_fusion = False
+
+    def __init__(self, dim: int, dim_heads: int = 128, use_differential: bool = True, processor=None):
         super().__init__()
         self.dim_heads = dim_heads
-        self.num_heads = dim // dim_heads
+        self.heads = dim // dim_heads
         self.use_differential = use_differential
 
         n_proj = 5 if use_differential else 3
@@ -184,35 +233,16 @@ class _Attention(nn.Module):
         self.to_out = nn.Linear(dim, dim, bias=False)
         nn.init.zeros_(self.to_out.weight)
 
-        self.q_norm = _DynamicTanh(dim_heads)
-        self.k_norm = _DynamicTanh(dim_heads)
-        self.rope = _RotaryEmbedding(dim_heads // 2)
+        self.q_norm = DynamicTanh(dim_heads)
+        self.k_norm = DynamicTanh(dim_heads)
+        self.rope = RotaryEmbedding(dim_heads // 2)
 
-    def _heads(self, x: torch.Tensor) -> torch.Tensor:
-        return x.unflatten(-1, (self.num_heads, self.dim_heads)).transpose(1, 2)
+        if processor is None:
+            processor = self._default_processor_cls()
+        self.set_processor(processor)
 
-    def forward(self, x: torch.Tensor, attn_mask: Optional[torch.Tensor] = None) -> torch.Tensor:
-        B, N, _ = x.shape
-        freqs = self.rope(N, x.device)
-
-        if self.use_differential:
-            q1, q2, k1, k2, v = self.to_qkv(x).chunk(5, dim=-1)
-            q1, q2, k1, k2, v = map(self._heads, (q1, q2, k1, k2, v))
-            q1, q2 = self.q_norm(q1), self.q_norm(q2)
-            k1, k2 = self.k_norm(k1), self.k_norm(k2)
-            q1, q2 = _apply_rotary(q1, freqs), _apply_rotary(q2, freqs)
-            k1, k2 = _apply_rotary(k1, freqs), _apply_rotary(k2, freqs)
-            out = F.scaled_dot_product_attention(q1, k1, v, attn_mask=attn_mask) - F.scaled_dot_product_attention(
-                q2, k2, v, attn_mask=attn_mask
-            )
-        else:
-            q, k, v = self.to_qkv(x).chunk(3, dim=-1)
-            q, k, v = map(self._heads, (q, k, v))
-            q, k = self.q_norm(q), self.k_norm(k)
-            q, k = _apply_rotary(q, freqs), _apply_rotary(k, freqs)
-            out = F.scaled_dot_product_attention(q, k, v, attn_mask=attn_mask)
-
-        return self.to_out(out.transpose(1, 2).flatten(-2))
+    def forward(self, hidden_states: torch.Tensor, attn_mask: Optional[torch.Tensor] = None) -> torch.Tensor:
+        return self.processor(self, hidden_states, attn_mask=attn_mask)
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -220,7 +250,7 @@ class _Attention(nn.Module):
 # ──────────────────────────────────────────────────────────────────────────────
 
 
-class _TransformerBlock(nn.Module):
+class TransformerBlock(nn.Module):
     def __init__(
         self,
         dim: int,
@@ -230,10 +260,10 @@ class _TransformerBlock(nn.Module):
         sinusoidal: bool = False,
     ):
         super().__init__()
-        self.norm_attn = _DynamicTanh(dim)
-        self.attn = _Attention(dim, dim_heads=dim_heads, use_differential=use_differential)
-        self.norm_ff = _DynamicTanh(dim)
-        self.ff = _FeedForward(dim, mult=ff_mult, sinusoidal=sinusoidal)
+        self.norm_attn = DynamicTanh(dim)
+        self.attn = Attention(dim, dim_heads=dim_heads, use_differential=use_differential)
+        self.norm_ff = DynamicTanh(dim)
+        self.ff = FeedForward(dim, mult=ff_mult, sinusoidal=sinusoidal)
 
     def forward(self, x: torch.Tensor, attn_mask: Optional[torch.Tensor] = None) -> torch.Tensor:
         x = x + self.attn(self.norm_attn(x), attn_mask=attn_mask)
@@ -281,7 +311,7 @@ class SAMETransformerResamplingBlock(nn.Module):
         out_channels: Number of output channels.
         stride: Down-/up-sampling factor.
         mode: ``"encoder"`` or ``"decoder"``.
-        transformer_depth: Number of :class:`_TransformerBlock` layers.
+        transformer_depth: Number of :class:`TransformerBlock` layers.
         dim_heads: Attention head dimension.
         use_differential: Whether to use differential attention.
         chunk_size: Kept for config/back-compat; no longer used by the band-mask attention.
@@ -322,7 +352,7 @@ class SAMETransformerResamplingBlock(nn.Module):
         )
         self.transformers = nn.ModuleList(
             [
-                _TransformerBlock(
+                TransformerBlock(
                     tdim,
                     dim_heads=min(dim_heads, tdim),
                     use_differential=use_differential,
@@ -415,7 +445,7 @@ class SAMETransformerResamplingBlock(nn.Module):
 # ──────────────────────────────────────────────────────────────────────────────
 
 
-class _PatchEmbed(nn.Module):
+class PatchEmbed(nn.Module):
     """
     Groups consecutive audio samples into non-overlapping patches, trading the time dimension for extra channels (256×
     or similar downsampling with zero learnable parameters).
@@ -445,7 +475,7 @@ class _PatchEmbed(nn.Module):
 # ──────────────────────────────────────────────────────────────────────────────
 
 
-class _SoftNormBottleneck(nn.Module):
+class SoftNormBottleneck(nn.Module):
     """
     Learnable affine normalisation of latents with running-std tracking.
 
@@ -580,7 +610,7 @@ class SAMEDecoder(nn.Module):
 # ──────────────────────────────────────────────────────────────────────────────
 
 
-class AutoencoderSAME(ModelMixin, ConfigMixin):
+class AutoencoderSAME(ModelMixin, ConfigMixin, AttentionMixin):
     r"""
     Semantically-Aligned Music Encoder (SAME) autoencoder from *Stable Audio 3* (`arXiv 2605.17991
     <https://arxiv.org/abs/2605.17991>`_).
@@ -661,10 +691,6 @@ class AutoencoderSAME(ModelMixin, ConfigMixin):
     ):
         super().__init__()
 
-        # Derived constants — set as attributes so they're accessible without
-        # touching the (possibly absent) sub-modules.
-        self.sampling_rate = sampling_rate
-        self.latent_dim = latent_dim
         self.downsampling_ratio = patch_size * math.prod(encoder_strides)
 
         patched_in = audio_channels * patch_size
@@ -682,7 +708,7 @@ class AutoencoderSAME(ModelMixin, ConfigMixin):
         encoder_sinusoidal_blocks = _per_level(encoder_sinusoidal_blocks, "encoder_sinusoidal_blocks")
         decoder_sinusoidal_blocks = _per_level(decoder_sinusoidal_blocks, "decoder_sinusoidal_blocks")
 
-        self.patch_embed = _PatchEmbed(patch_size)
+        self.patch_embed = PatchEmbed(patch_size)
         self.encoder = SAMEEncoder(
             in_channels=patched_in,
             channels=encoder_channels,
@@ -697,7 +723,7 @@ class AutoencoderSAME(ModelMixin, ConfigMixin):
             sliding_window=sliding_window,
             sinusoidal_blocks=list(encoder_sinusoidal_blocks),
         )
-        self.bottleneck = _SoftNormBottleneck(latent_dim)
+        self.bottleneck = SoftNormBottleneck(latent_dim)
         self.decoder = SAMEDecoder(
             out_channels=patched_in,
             channels=encoder_channels,

@@ -13,22 +13,19 @@
 # limitations under the License.
 
 """
-Audio inpainting pipeline for Stable Audio 3.
+Audio-to-audio variation pipeline for Stable Audio 3.
 
-Adds a local-additive conditioning path on top of the text-to-audio logic shared with ``StableAudio3Pipeline``:
-
-    ``local_add_cond = cat([mask, masked_latent], dim=1)`` shape: ``(batch, 1 + latent_dim, L)``
-
-At each DiT block a small MLP (``to_local_embed``) projects this tensor along the channel dimension and adds it to the
-per-frame hidden states before the self-attention operation. This pathway is implemented in [`StableAudio3DiTModel`]
-(the ``local_add_cond`` forward argument), so the conditioning is active end-to-end.
+Unlike [`StableAudio3InpaintPipeline`] (which preserves specific frames exactly via local-additive conditioning), this
+pipeline noises the *entire* reference audio to a given ``init_noise_level`` and denoises it from there — matching
+Stability's reference ``init_audio`` / ``init_noise_level`` workflow. ``init_noise_level=1.0`` is equivalent to plain
+text-to-audio generation (the reference contributes nothing); lower values retain progressively more of the reference's
+structure.
 """
 
 import math
 from typing import Callable, List, Optional, Union
 
 import torch
-import torch.nn.functional as F
 from transformers import GemmaTokenizer, GemmaTokenizerFast, T5GemmaEncoderModel
 
 from ...models.autoencoders.autoencoder_same import AutoencoderSAME
@@ -51,9 +48,9 @@ EXAMPLE_DOC_STRING = """
         >>> import torch
         >>> import soundfile as sf
         >>> import torchaudio
-        >>> from diffusers import StableAudio3InpaintPipeline, PingPongScheduler
+        >>> from diffusers import StableAudio3AudioToAudioPipeline, PingPongScheduler
 
-        >>> pipe = StableAudio3InpaintPipeline.from_pretrained(
+        >>> pipe = StableAudio3AudioToAudioPipeline.from_pretrained(
         ...     "stabilityai/stable-audio-3-medium", torch_dtype=torch.float16
         ... )
         >>> pipe = pipe.to("cuda")
@@ -66,8 +63,7 @@ EXAMPLE_DOC_STRING = """
         ...     "A gentle piano melody with soft strings in a concert hall",
         ...     duration=10.0,
         ...     audio=audio,
-        ...     mask_start_seconds=4.0,
-        ...     mask_end_seconds=6.0,
+        ...     init_noise_level=0.6,
         ...     generator=generator,
         ... ).audios
 
@@ -76,14 +72,14 @@ EXAMPLE_DOC_STRING = """
 """
 
 
-class StableAudio3InpaintPipeline(DiffusionPipeline):
+class StableAudio3AudioToAudioPipeline(DiffusionPipeline):
     r"""
-    Audio inpainting pipeline for Stable Audio 3.
+    Audio-to-audio variation pipeline for Stable Audio 3.
 
-    Shares its text-to-audio logic with [`StableAudio3Pipeline`] (kept in sync via `# Copied from`). When ``audio`` and
-    ``mask`` are provided, encodes the reference audio with the frozen SAME encoder and injects ``masked_latent ∥
-    mask`` as local-additive conditioning into each DiT block via the transformer's ``local_add_cond`` pathway
-    (``to_local_embed``).
+    Shares its text-to-audio logic with [`StableAudio3Pipeline`] (kept in sync via `# Copied from`). Encodes the
+    reference audio with the frozen SAME encoder, mixes it with fresh noise according to ``init_noise_level``, and
+    denoises from there — the whole signal is noised/denoised globally, unlike [`StableAudio3InpaintPipeline`]'s
+    per-frame local-additive conditioning.
 
     Args:
         vae ([`AutoencoderSAME`]):
@@ -103,8 +99,9 @@ class StableAudio3InpaintPipeline(DiffusionPipeline):
     Call signature extension (see :meth:`__call__`):
         audio (`torch.Tensor` of shape ``(batch, channels, samples)``):
             Reference audio waveform at ``vae.config.sampling_rate`` Hz.
-        mask (`torch.Tensor` of shape ``(batch, 1, latent_length)``):
-            Per-frame binary mask in latent space. ``1`` = preserve original audio; ``0`` = region to be inpainted.
+        init_noise_level (`float`):
+            How much noise to mix into the reference before denoising. ``1.0`` = full noise (equivalent to
+            text-to-audio); lower values retain more of the reference.
     """
 
     model_cpu_offload_seq = "text_encoder->duration_embedder->transformer->vae"
@@ -313,64 +310,36 @@ class StableAudio3InpaintPipeline(DiffusionPipeline):
             )
 
     # ------------------------------------------------------------------
-    # Inpaint-specific helpers
+    # Audio-to-audio-specific helpers
 
     def _encode_reference_audio(
         self,
         audio: torch.Tensor,
         device: torch.device,
+        target_length: int,
     ) -> torch.Tensor:
         """
-        Encode a reference waveform to latent space.
+        Encode a reference waveform to latent space and pad/crop it to `target_length`.
 
         Args:
             audio: ``(batch, channels, samples)`` at ``vae.config.sampling_rate``.
             device: Target device.
+            target_length: Required latent length ``L`` (may differ from the reference's own encoded length due to
+                rounding or a `duration` that doesn't match the reference's length).
 
         Returns:
             ``(batch, latent_dim, L)`` latent tensor.
         """
         audio = audio.to(device=device, dtype=next(self.vae.parameters()).dtype)
-        return self.vae.encode(audio).latents
+        audio_latents = self.vae.encode(audio).latents
 
-    def _build_local_add_cond(
-        self,
-        audio_latents: torch.Tensor,
-        mask: torch.Tensor,
-        target_length: int,
-    ) -> torch.Tensor:
-        """
-        Build the local-additive conditioning tensor.
-
-        Concatenates the binary mask with the masked latent along the channel axis to form ``(batch, 1 + latent_dim,
-        L)`` — the expected shape for the DiT's ``local_add_cond`` argument.
-
-        Args:
-            audio_latents: ``(batch, latent_dim, L_ref)`` encoded reference.
-            mask: ``(batch, 1, L_ref)`` per-frame mask (0/1).
-            target_length: Required latent length ``L`` (may differ from
-                ``L_ref`` due to rounding).
-
-        Returns:
-            ``(batch, 1 + latent_dim, L)`` tensor.
-        """
-        # Resize mask to target latent length via nearest-neighbor interpolation
-        if mask.shape[-1] != target_length:
-            mask = F.interpolate(mask.float(), size=target_length, mode="nearest")
-
-        # Pad or crop reference audio latents to match target length
         L_ref = audio_latents.shape[-1]
         if L_ref < target_length:
             pad = audio_latents.new_zeros(*audio_latents.shape[:2], target_length - L_ref)
             audio_latents = torch.cat([audio_latents, pad], dim=-1)
         elif L_ref > target_length:
             audio_latents = audio_latents[:, :, :target_length]
-
-        # Masked latent: zero out the inpaint region
-        masked_latent = audio_latents * mask
-
-        # Concat along channel dim: (batch, 1 + latent_dim, L)
-        return torch.cat([mask, masked_latent], dim=1)
+        return audio_latents
 
     @torch.no_grad()
     @replace_example_docstring(EXAMPLE_DOC_STRING)
@@ -379,9 +348,7 @@ class StableAudio3InpaintPipeline(DiffusionPipeline):
         prompt: Optional[Union[str, List[str]]] = None,
         duration: float = 10.0,
         audio: Optional[torch.Tensor] = None,
-        mask: Optional[torch.Tensor] = None,
-        mask_start_seconds: Optional[Union[float, List[float]]] = None,
-        mask_end_seconds: Optional[Union[float, List[float]]] = None,
+        init_noise_level: float = 1.0,
         num_inference_steps: Optional[int] = None,
         silence_padding_duration: float = 0.0,
         num_waveforms_per_prompt: int = 1,
@@ -395,7 +362,7 @@ class StableAudio3InpaintPipeline(DiffusionPipeline):
         output_type: str = "pt",
     ) -> Union[AudioPipelineOutput, tuple]:
         r"""
-        Generate inpainted audio conditioned on a text prompt and reference.
+        Generate an audio variation conditioned on a text prompt and a reference waveform.
 
         Args:
             prompt (`str` or `list[str]`, *optional*):
@@ -403,15 +370,12 @@ class StableAudio3InpaintPipeline(DiffusionPipeline):
             duration (`float`, defaults to 10.0):
                 Output duration in seconds. Should match the reference audio.
             audio (`torch.Tensor`, *optional*):
-                Reference waveform ``(batch, channels, samples)`` at ``vae.config.sampling_rate`` Hz. Required for
-                inpainting.
-            mask (`torch.Tensor`, *optional*):
-                Per-frame latent-space mask ``(batch, 1, L)`` with 0 = inpaint region, 1 = preserve. Either ``mask`` or
-                ``mask_start_seconds`` / ``mask_end_seconds`` must be provided.
-            mask_start_seconds (`float` or `list[float]`, *optional*):
-                Start time(s) of the inpaint region in seconds.
-            mask_end_seconds (`float` or `list[float]`, *optional*):
-                End time(s) of the inpaint region (must pair with ``mask_start_seconds``).
+                Reference waveform ``(batch, channels, samples)`` at ``vae.config.sampling_rate`` Hz. Required.
+            init_noise_level (`float`, defaults to 1.0):
+                Noise level (in ``(0, 1]``) mixed into the reference before denoising: ``x_start = (1 -
+                init_noise_level) * reference_latents + init_noise_level * noise``. ``1.0`` discards the reference
+                entirely (equivalent to [`StableAudio3Pipeline`]); lower values retain progressively more of the
+                reference's structure while still running the full step count.
             num_inference_steps (`int`, *optional*):
                 Number of denoising steps. When ``None`` (default), the step count is taken from the checkpoint's
                 scheduler config, matching [`StableAudio3Pipeline`].
@@ -437,16 +401,14 @@ class StableAudio3InpaintPipeline(DiffusionPipeline):
 
         Examples:
         """
-        # Validate inpaint inputs
+        # Validate audio-to-audio inputs
         if audio is None:
             raise ValueError(
-                "`audio` (reference waveform) is required for inpainting. Use `StableAudio3Pipeline` for plain "
-                "text-to-audio generation."
+                "`audio` (reference waveform) is required. Use `StableAudio3Pipeline` for plain text-to-audio "
+                "generation."
             )
-        if mask is None and (mask_start_seconds is None or mask_end_seconds is None):
-            raise ValueError(
-                "Provide either a pre-built `mask` tensor or both `mask_start_seconds` and `mask_end_seconds`."
-            )
+        if not (0.0 < init_noise_level <= 1.0):
+            raise ValueError(f"`init_noise_level` must be in (0, 1], got {init_noise_level}.")
 
         # 0. Common setup (shared with base class)
         self.check_inputs(prompt, duration, prompt_embeds, encoder_attention_mask, callback_on_step_end_tensor_inputs)
@@ -483,33 +445,13 @@ class StableAudio3InpaintPipeline(DiffusionPipeline):
         latent_length = total_audio_samples // downsampling_ratio
         waveform_length = int(duration * sampling_rate)
 
-        # 4. Build mask tensor in latent space
-        if mask is None:
-            starts = [mask_start_seconds] if isinstance(mask_start_seconds, (int, float)) else list(mask_start_seconds)
-            ends = [mask_end_seconds] if isinstance(mask_end_seconds, (int, float)) else list(mask_end_seconds)
-            if len(starts) != len(ends):
-                raise ValueError("`mask_start_seconds` and `mask_end_seconds` must have the same length.")
-            # Mask in latent frame space (1 = preserve, 0 = inpaint)
-            mask_audio = torch.ones(batch_size, 1, latent_length, device=device)
-            for start_s, end_s in zip(starts, ends):
-                start_f = int(start_s * sampling_rate / downsampling_ratio)
-                end_f = min(int(end_s * sampling_rate / downsampling_ratio), latent_length)
-                mask_audio[:, :, start_f:end_f] = 0.0
-        else:
-            mask_audio = mask.to(device=device, dtype=torch.float32)
+        # 4. Encode reference audio and pad/crop to the target latent length
+        audio_latents = self._encode_reference_audio(audio, device, latent_length)
+        audio_latents = audio_latents.to(prompt_embeds.dtype)
+        audio_latents = audio_latents.repeat_interleave(num_waveforms_per_prompt, dim=0)
 
-        # 5. Encode reference audio
-        audio_latents = self._encode_reference_audio(audio, device)
-
-        # 6. Build local-additive conditioning: (batch, 1 + latent_dim, L)
-        local_add_cond = self._build_local_add_cond(audio_latents, mask_audio, latent_length)
-        local_add_cond = local_add_cond.to(prompt_embeds.dtype)
-        # Tile for num_waveforms_per_prompt
-        local_add_cond = local_add_cond.repeat_interleave(num_waveforms_per_prompt, dim=0)
-
-        # 7. Starting latents: pure noise — frame preservation comes entirely from local_add_cond,
-        #    not RePaint-style blending.
-        noise_latents = self.prepare_latents(
+        # 5. Mix reference latents with fresh noise: x_start = (1 - init_noise_level) * ref + init_noise_level * noise
+        noise = self.prepare_latents(
             batch_size * num_waveforms_per_prompt,
             latent_dim,
             latent_length,
@@ -518,8 +460,12 @@ class StableAudio3InpaintPipeline(DiffusionPipeline):
             generator,
             latents,
         )
+        init_noise_level_tensor = torch.full(
+            (batch_size * num_waveforms_per_prompt,), init_noise_level, dtype=prompt_embeds.dtype, device=device
+        )
+        latents = self.scheduler.add_noise(audio_latents, noise, init_noise_level_tensor)
 
-        # 8. Timesteps: fall back to the checkpoint's scheduler config, matching StableAudio3Pipeline
+        # 6. Timesteps: compress the schedule to [init_noise_level, 0] while keeping the full step count
         if num_inference_steps is None:
             num_inference_steps = getattr(self.scheduler.config, "num_inference_steps", None)
             if num_inference_steps is None:
@@ -528,24 +474,21 @@ class StableAudio3InpaintPipeline(DiffusionPipeline):
                     f"({self.scheduler.__class__.__name__}) does not define a default "
                     "`num_inference_steps` in its config. Pass `num_inference_steps` explicitly."
                 )
-        self.scheduler.set_timesteps(num_inference_steps, device=device)
+        self.scheduler.set_timesteps(num_inference_steps, device=device, sigma_max=init_noise_level)
         timesteps = self.scheduler.timesteps
         self._num_timesteps = len(timesteps)
 
-        # 9. Denoising loop with local-additive conditioning
-        latents = noise_latents
+        # 7. Denoising loop
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
                 latent_model_input = self.scheduler.scale_model_input(latents, t)
 
-                # local_add_cond is projected by to_local_embed in each DiT block.
                 velocity = self.transformer(
                     latent_model_input,
                     t.expand(latents.shape[0]),
                     encoder_hidden_states=prompt_embeds,
                     global_hidden_states=global_hidden_states,
                     encoder_attention_mask=encoder_attention_mask,
-                    local_add_cond=local_add_cond,
                     return_dict=False,
                 )[0]
 
@@ -561,7 +504,7 @@ class StableAudio3InpaintPipeline(DiffusionPipeline):
 
                 progress_bar.update()
 
-        # 10. Decode
+        # 8. Decode
         if output_type == "latent":
             audio_out = latents
         else:

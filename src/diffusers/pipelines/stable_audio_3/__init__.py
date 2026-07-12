@@ -23,6 +23,7 @@ except OptionalDependencyNotAvailable:
 else:
     _import_structure["modeling_stable_audio_3"] = ["StableAudio3DurationEmbedder"]
     _import_structure["pipeline_stable_audio_3"] = ["StableAudio3Pipeline"]
+    _import_structure["pipeline_stable_audio_3_audio2audio"] = ["StableAudio3AudioToAudioPipeline"]
     _import_structure["pipeline_stable_audio_3_inpaint"] = ["StableAudio3InpaintPipeline"]
 
 
@@ -36,6 +37,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     else:
         from .modeling_stable_audio_3 import StableAudio3DurationEmbedder
         from .pipeline_stable_audio_3 import StableAudio3Pipeline
+        from .pipeline_stable_audio_3_audio2audio import StableAudio3AudioToAudioPipeline
         from .pipeline_stable_audio_3_inpaint import StableAudio3InpaintPipeline
 
 else:

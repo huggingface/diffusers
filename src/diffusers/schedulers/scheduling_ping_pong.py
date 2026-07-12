@@ -19,34 +19,15 @@ Reference: ``sample_flow_pingpong`` in
   stable_audio_3/inference/sampling.py
 """
 
-from dataclasses import dataclass
-from typing import List, Optional, Tuple, Union
+from typing import Literal, Optional, Union
 
 import torch
 
-from ..configuration_utils import ConfigMixin, register_to_config
-from ..utils import BaseOutput
-from ..utils.torch_utils import randn_tensor
-from .scheduling_utils import SchedulerMixin
+from ..configuration_utils import register_to_config
+from .scheduling_flow_match_euler_discrete import FlowMatchEulerDiscreteScheduler
 
 
-@dataclass
-class PingPongSchedulerOutput(BaseOutput):
-    """
-    Output class for `PingPongScheduler.step`.
-
-    Args:
-        prev_sample (`torch.Tensor`):
-            Computed sample at the previous (less noisy) timestep.
-        pred_original_sample (`torch.Tensor`, *optional*):
-            The predicted de-noised sample (x₀ prediction) at the current step.
-    """
-
-    prev_sample: torch.Tensor
-    pred_original_sample: Optional[torch.Tensor] = None
-
-
-class PingPongScheduler(SchedulerMixin, ConfigMixin):
+class PingPongScheduler(FlowMatchEulerDiscreteScheduler):
     """
     Ping-pong sampler for Stable Audio 3's distilled rectified-flow model.
 
@@ -57,13 +38,13 @@ class PingPongScheduler(SchedulerMixin, ConfigMixin):
        · ε``, ``ε ~ N(0, I)``
 
     The "ping-pong" character is the fresh noise draw — unlike DDIM, the noise direction is resampled each step rather
-    than being inferred from the model.
+    than being inferred from the model. This is exactly [`FlowMatchEulerDiscreteScheduler`]'s
+    ``stochastic_sampling=True`` update rule, so this class only supplies the SA3-specific noise schedule (via
+    `set_timesteps`) and reuses the parent's ``step``.
 
     The schedule is logSNR-uniform: ``N+1`` breakpoints equally spaced in log-SNR space ``[logsnr_min, logsnr_max]``,
     converted to the flow-matching *t* variable via ``t = sigmoid(−λ)``. Because ``sigmoid`` is decreasing, the first
     sigma is the highest (most noisy) and the last is the lowest.
-
-    This model inherits from [`SchedulerMixin`] and [`ConfigMixin`].
 
     Args:
         num_inference_steps (`int`, defaults to 8):
@@ -72,9 +53,12 @@ class PingPongScheduler(SchedulerMixin, ConfigMixin):
             Minimum log-SNR value — maps to the high-noise start of the schedule.
         logsnr_max (`float`, defaults to 2.0):
             Maximum log-SNR value — maps to the low-noise end of the schedule.
-    """
 
-    order = 1
+    The remaining arguments configure the inherited [`FlowMatchEulerDiscreteScheduler`] machinery and should be left at
+    their defaults for SA3 — ``num_train_timesteps=1`` and ``shift=1.0`` make the parent's *t* variable equal to the
+    sigma directly (no rescaling to ``[0, 1000]`` or shift-warping), matching SA3's timestep embedding, and
+    ``stochastic_sampling=True`` selects the ping-pong (denoise + re-noise) update rule.
+    """
 
     @register_to_config
     def __init__(
@@ -82,95 +66,74 @@ class PingPongScheduler(SchedulerMixin, ConfigMixin):
         num_inference_steps: int = 8,
         logsnr_min: float = -6.2,
         logsnr_max: float = 2.0,
+        num_train_timesteps: int = 1,
+        shift: float = 1.0,
+        use_dynamic_shifting: bool = False,
+        base_shift: Optional[float] = 0.5,
+        max_shift: Optional[float] = 1.15,
+        base_image_seq_len: int = 256,
+        max_image_seq_len: int = 4096,
+        invert_sigmas: bool = False,
+        shift_terminal: Optional[float] = None,
+        use_karras_sigmas: bool = False,
+        use_exponential_sigmas: bool = False,
+        use_beta_sigmas: bool = False,
+        time_shift_type: Literal["exponential", "linear"] = "exponential",
+        stochastic_sampling: bool = True,
     ) -> None:
-        self.num_inference_steps: Optional[int] = None
-        self.sigmas: Optional[torch.Tensor] = None
-        self.timesteps: Optional[torch.Tensor] = None
+        super().__init__(
+            num_train_timesteps=num_train_timesteps,
+            shift=shift,
+            use_dynamic_shifting=use_dynamic_shifting,
+            base_shift=base_shift,
+            max_shift=max_shift,
+            base_image_seq_len=base_image_seq_len,
+            max_image_seq_len=max_image_seq_len,
+            invert_sigmas=invert_sigmas,
+            shift_terminal=shift_terminal,
+            use_karras_sigmas=use_karras_sigmas,
+            use_exponential_sigmas=use_exponential_sigmas,
+            use_beta_sigmas=use_beta_sigmas,
+            time_shift_type=time_shift_type,
+            stochastic_sampling=stochastic_sampling,
+        )
 
     def set_timesteps(
         self,
         num_inference_steps: Optional[int] = None,
         device: Optional[Union[str, torch.device]] = None,
+        sigma_max: float = 1.0,
     ) -> None:
         """
         Build the logSNR-uniform noise schedule and store it.
-
-        Sets:
-          - ``self.sigmas``: shape ``(N+1,)``, decreasing from ~1 to ~0.
-          - ``self.timesteps``: shape ``(N,)`` — the *t* values at which the model is called (``sigmas[:-1]``).
 
         Args:
             num_inference_steps (`int`, *optional*):
                 Override the configured step count.
             device (`str` or `torch.device`, *optional*):
                 Device for the schedule tensors.
+            sigma_max (`float`, defaults to 1.0):
+                Compresses the schedule to ``[sigma_max, 0]`` instead of ``[1, 0]``, while keeping the full step count.
+                Used for audio-to-audio variation (``init_noise_level``): a lower `sigma_max` starts the denoising loop
+                closer to the clean signal, so less of the original audio is altered.
         """
         n = num_inference_steps if num_inference_steps is not None else self.config.num_inference_steps
-        self.num_inference_steps = n
 
         logsnr = torch.linspace(self.config.logsnr_min, self.config.logsnr_max, n + 1)
         sigmas = torch.sigmoid(-logsnr)  # (N+1,), decreasing
         sigmas[0] = 1.0  # sigma_max: start from pure noise
         sigmas[-1] = 0.0  # end fully denoised
+        sigmas = sigmas * sigma_max
 
-        if device is not None:
-            sigmas = sigmas.to(device)
+        super().set_timesteps(num_inference_steps=n, sigmas=sigmas[:-1].tolist(), device=device)
 
-        self.sigmas = sigmas
-        self.timesteps = sigmas[:-1]  # model is called at these t values
-        self._step_index = 0
-
-    def step(
+    def scale_model_input(
         self,
-        model_output: torch.Tensor,
-        timestep: Union[float, torch.Tensor],
         sample: torch.Tensor,
-        generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
-        return_dict: bool = True,
-    ) -> Union[PingPongSchedulerOutput, Tuple[torch.Tensor, ...]]:
-        """
-        Perform one ping-pong denoising step.
-
-        Args:
-            model_output (`torch.Tensor`):
-                Velocity prediction ``v(x_t, t)`` from the diffusion model.
-            timestep (`float` or `torch.Tensor`):
-                Current *t* value. Should match one entry of ``self.timesteps``.
-            sample (`torch.Tensor`):
-                Current noisy sample ``x_t``.
-            generator (`torch.Generator` or `list[torch.Generator]`, *optional*):
-                RNG for the re-noising step. Accepts a list (one per batch item) or a CPU generator with a CUDA sample
-                — handled by `randn_tensor`.
-            return_dict (`bool`, defaults to `True`):
-                Return a `PingPongSchedulerOutput`; if ``False`` return a tuple.
-
-        Returns:
-            `PingPongSchedulerOutput` or `tuple`:
-                - **prev_sample** — less-noisy sample ``x_{t+1}``
-                - **pred_original_sample** — predicted clean sample ``x̂₀``
-        """
-        if self.sigmas is None:
-            raise RuntimeError("Call `set_timesteps` before calling `step`.")
-
-        step_index = self._step_index
-        t_curr = self.sigmas[step_index]
-        t_next = self.sigmas[step_index + 1]
-        self._step_index += 1
-
-        # Broadcast t over (batch, channel, time, ...) dimensions
-        t_curr_b = t_curr.to(sample.dtype).reshape(*([1] * sample.ndim))
-        t_next_b = t_next.to(sample.dtype).reshape(*([1] * sample.ndim))
-
-        # Step 1 — predict clean sample: x̂₀ = x_t − t·v
-        pred_original_sample = sample - t_curr_b * model_output
-
-        # Step 2 — re-noise with fresh ε
-        noise = randn_tensor(sample.shape, generator=generator, device=sample.device, dtype=sample.dtype)
-        prev_sample = (1.0 - t_next_b) * pred_original_sample + t_next_b * noise
-
-        if not return_dict:
-            return (prev_sample, pred_original_sample)
-        return PingPongSchedulerOutput(prev_sample=prev_sample, pred_original_sample=pred_original_sample)
+        timestep: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
+        """Identity — SA3 does not pre-condition model inputs."""
+        return sample
 
     def add_noise(
         self,
@@ -187,14 +150,6 @@ class PingPongScheduler(SchedulerMixin, ConfigMixin):
         while t.ndim < original_samples.ndim:
             t = t.unsqueeze(-1)
         return (1.0 - t) * original_samples + t * noise
-
-    def scale_model_input(
-        self,
-        sample: torch.Tensor,
-        timestep: Optional[torch.Tensor] = None,
-    ) -> torch.Tensor:
-        """Identity — SA3 does not pre-condition model inputs."""
-        return sample
 
     def __len__(self) -> int:
         return self.config.num_inference_steps

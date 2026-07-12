@@ -20,7 +20,7 @@ import unittest
 import torch
 
 from diffusers import StableAudio3EulerScheduler
-from diffusers.schedulers.scheduling_stable_audio3_euler import StableAudio3EulerSchedulerOutput
+from diffusers.schedulers.scheduling_flow_match_euler_discrete import FlowMatchEulerDiscreteSchedulerOutput
 
 from ..testing_utils import require_torch
 
@@ -71,9 +71,8 @@ class TestStableAudio3EulerScheduler(unittest.TestCase):
         sample = torch.randn(B, C, T)
         v = torch.randn(B, C, T)
         out = s.step(v, s.timesteps[0], sample)
-        self.assertIsInstance(out, StableAudio3EulerSchedulerOutput)
+        self.assertIsInstance(out, FlowMatchEulerDiscreteSchedulerOutput)
         self.assertEqual(out.prev_sample.shape, (B, C, T))
-        self.assertEqual(out.pred_original_sample.shape, (B, C, T))
 
     # ------------------------------------------------------------------
     def test_step_return_dict_false(self):
@@ -82,7 +81,7 @@ class TestStableAudio3EulerScheduler(unittest.TestCase):
         v = torch.randn(2, 4, 8)
         out = s.step(v, s.timesteps[0], sample, return_dict=False)
         self.assertIsInstance(out, tuple)
-        self.assertEqual(len(out), 2)
+        self.assertEqual(len(out), 1)
 
     # ------------------------------------------------------------------
     def test_step_euler_update_formula(self):
@@ -95,17 +94,6 @@ class TestStableAudio3EulerScheduler(unittest.TestCase):
         out = s.step(v, s.timesteps[0], sample, return_dict=False)
         expected = sample + (t_next - t_curr) * v
         self.assertTrue(torch.allclose(out[0], expected))
-
-    # ------------------------------------------------------------------
-    def test_step_pred_original_sample_formula(self):
-        """x̂₀ = x_t − t·v  should hold exactly."""
-        s = _scheduler()
-        t = s.sigmas[0]
-        sample = torch.ones(1, 1, 4)
-        v = torch.full((1, 1, 4), 0.5)
-        out = s.step(v, s.timesteps[0], sample, return_dict=False)
-        expected_x0 = sample - t * v
-        self.assertTrue(torch.allclose(out[1], expected_x0))
 
     # ------------------------------------------------------------------
     def test_step_is_deterministic(self):
@@ -149,7 +137,7 @@ class TestStableAudio3EulerScheduler(unittest.TestCase):
     # ------------------------------------------------------------------
     def test_step_without_set_timesteps_raises(self):
         s = StableAudio3EulerScheduler()
-        with self.assertRaises(RuntimeError):
+        with self.assertRaises((RuntimeError, IndexError)):
             s.step(torch.zeros(1, 1, 4), 0.5, torch.zeros(1, 1, 4))
 
     # ------------------------------------------------------------------
@@ -196,11 +184,12 @@ class TestStableAudio3EulerScheduler(unittest.TestCase):
         s = _scheduler()
         sample = torch.randn(2, 4, 8)
         v = torch.randn(2, 4, 8)
-        self.assertEqual(s._step_index, 0)
+        # step_index is lazily set on the first `step()` call (matching FlowMatchEulerDiscreteScheduler).
+        self.assertIsNone(s.step_index)
         s.step(v, s.timesteps[0], sample)
-        self.assertEqual(s._step_index, 1)
+        self.assertEqual(s.step_index, 1)
         s.step(v, s.timesteps[1], sample)
-        self.assertEqual(s._step_index, 2)
+        self.assertEqual(s.step_index, 2)
 
     # ------------------------------------------------------------------
     def test_set_timesteps_resets_step_index(self):
@@ -209,7 +198,7 @@ class TestStableAudio3EulerScheduler(unittest.TestCase):
         v = torch.randn(1, 4, 8)
         s.step(v, s.timesteps[0], sample)
         s.set_timesteps()  # reset
-        self.assertEqual(s._step_index, 0)
+        self.assertIsNone(s.step_index)
 
 
 if __name__ == "__main__":
