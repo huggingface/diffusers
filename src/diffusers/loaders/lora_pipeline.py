@@ -5657,9 +5657,18 @@ class Krea2LoraLoaderMixin(LoraBaseMixin):
         if not is_correct_format:
             raise ValueError("Invalid LoRA checkpoint. Make sure all LoRA param names contain `'lora'` substring.")
 
+        transformer = self.transformer if hasattr(self, "transformer") else getattr(self, self.transformer_name, None)
+        if transformer is None:
+            logger.warning(
+                f"No `{self.transformer_name}` module was found in {self.__class__.__name__}, so the transformer LoRA "
+                "layers will not be loaded. This can happen when a pipeline does not include a transformer component "
+                "(for example, a text-encoder-only sub-pipeline)."
+            )
+            return
+
         self.load_lora_into_transformer(
             state_dict,
-            transformer=getattr(self, self.transformer_name) if not hasattr(self, "transformer") else self.transformer,
+            transformer=transformer,
             adapter_name=adapter_name,
             metadata=metadata,
             _pipeline=self,
@@ -6500,9 +6509,18 @@ class Ideogram4LoraLoaderMixin(LoraBaseMixin):
         if not is_correct_format:
             raise ValueError("Invalid LoRA checkpoint. Make sure all LoRA param names contain `'lora'` substring.")
 
+        transformer = self.transformer if hasattr(self, "transformer") else getattr(self, self.transformer_name, None)
+        if transformer is None:
+            logger.warning(
+                f"No `{self.transformer_name}` module was found in {self.__class__.__name__}, so the transformer LoRA "
+                "layers will not be loaded. This can happen when a pipeline does not include a transformer component "
+                "(for example, a text-encoder-only sub-pipeline)."
+            )
+            return
+
         self.load_lora_into_transformer(
             state_dict,
-            transformer=getattr(self, self.transformer_name) if not hasattr(self, "transformer") else self.transformer,
+            transformer=transformer,
             adapter_name=adapter_name,
             metadata=metadata,
             _pipeline=self,
