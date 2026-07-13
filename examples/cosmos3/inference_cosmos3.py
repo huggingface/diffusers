@@ -27,7 +27,7 @@ Text-to-video-with-sound (requires a sound-capable checkpoint):
 Multi-GPU (any modality above): launch with torchrun and pass parallelism degrees.
 ``--tp-degree`` shards the weights (so large checkpoints fit), ``--cp-degree`` shards
 the sequence (Ulysses, lower latency); ``--nproc_per_node`` must equal their product.
-These reuse the helpers in the ``cosmos_{context,tensor}_parallel_inference.py`` examples.
+These reuse the helpers in ``cosmos_parallel.py``.
     # TP=2 x CP=2 across 4 GPUs (Super):
     torchrun --nproc_per_node 4 inference_cosmos3.py --model super --tp-degree 2 --cp-degree 2 --prompt "..."
 """
@@ -42,7 +42,7 @@ import urllib.request
 import torch
 from huggingface_hub import snapshot_download
 
-from diffusers import Cosmos3OmniPipeline, CosmosActionCondition, UniPCMultistepScheduler
+from diffusers import Cosmos3OmniModularPipeline, CosmosActionCondition, UniPCMultistepScheduler
 from diffusers.utils import encode_video, export_to_video, load_image, load_video
 
 
@@ -204,13 +204,13 @@ def main():
         "--disable-safety-checker",
         action="store_true",
         default=False,
-        help="Disable the Cosmos Guardrail safety checker at pipeline construction (no checker instantiated).",
+        help="Disable the Cosmos Guardrail safety checker (no checker instantiated).",
     )
     parser.add_argument(
         "--no-safety-check",
         action="store_true",
         default=False,
-        help="Skip the Cosmos Guardrail text/video safety checks for this call (checker still constructed).",
+        help="Skip the Cosmos Guardrail text/video safety checks for this run (checker still constructed).",
     )
     args = parser.parse_args()
 
@@ -245,13 +245,17 @@ def main():
     pipeline_path = pathlib.Path(snapshot_download(repo_id=hf_repo))
     log(f"Loading pipeline from {pipeline_path} …")
 
+    # Components load lazily on CPU so a TP-sharded model never needs to fit on one GPU.
+    pipeline = Cosmos3OmniModularPipeline.from_pretrained(str(pipeline_path))
+    pipeline.load_components(torch_dtype=torch.bfloat16)
+    if args.disable_safety_checker:
+        pipeline.disable_safety_checker()
+    else:
+        pipeline.enable_safety_checker()
+        if args.no_safety_check:
+            pipeline.disable_safety_checker()
+
     if distributed:
-        # Load on CPU first (a TP-sharded model may not fit one GPU), then place / shard.
-        pipeline = Cosmos3OmniPipeline.from_pretrained(
-            str(pipeline_path),
-            torch_dtype=torch.bfloat16,
-            enable_safety_checker=not args.disable_safety_checker,
-        )
         qh = pipeline.transformer.config.num_attention_heads
         kv = pipeline.transformer.config.num_key_value_heads
         if kv % tp != 0:
@@ -269,17 +273,14 @@ def main():
             enable_cosmos3_flash_attention(pipeline.transformer)  # GQA-safe dense attention
         log(f"Parallelism: TP={tp} x CP={cp} over {world} GPUs.")
     else:
-        pipeline = Cosmos3OmniPipeline.from_pretrained(
-            str(pipeline_path),
-            torch_dtype=torch.bfloat16,
-            device_map="cuda",
-            enable_safety_checker=not args.disable_safety_checker,
-        )
+        pipeline.to(dev)
     log("Pipeline loaded successfully.")
 
     if args.flow_shift is not None:
-        pipeline.scheduler = UniPCMultistepScheduler.from_config(
-            pipeline.scheduler.config, flow_shift=args.flow_shift, use_karras_sigmas=False
+        pipeline.update_components(
+            scheduler=UniPCMultistepScheduler.from_config(
+                pipeline.scheduler.config, flow_shift=args.flow_shift, use_karras_sigmas=False
+            )
         )
 
     output_dir = pathlib.Path(args.output)
@@ -312,7 +313,7 @@ def main():
             use_system_prompt=False,
             add_resolution_template=args.add_resolution_template,
             add_duration_template=args.add_duration_template,
-            enable_safety_check=not args.no_safety_check,
+            output=["videos", "sound", "sampling_rate", "action"],
         )
     elif args.video_path is not None:
         video = load_video(args.video_path)
@@ -336,7 +337,7 @@ def main():
             generator=generator,
             add_resolution_template=args.add_resolution_template,
             add_duration_template=args.add_duration_template,
-            enable_safety_check=not args.no_safety_check,
+            output=["videos", "sound", "sampling_rate", "action"],
         )
     else:
         image = load_image(args.vision_path) if args.vision_path is not None else None
@@ -353,32 +354,31 @@ def main():
             generator=generator,
             add_resolution_template=args.add_resolution_template,
             add_duration_template=args.add_duration_template,
-            enable_safety_check=not args.no_safety_check,
+            output=["videos", "sound", "sampling_rate", "action"],
         )
 
     # Every rank produces the same output under parallelism; only rank 0 writes it.
     if rank == 0:
         if args.num_frames == 1:
             save_path = output_dir / "sample.jpg"
-            result.video[0].save(save_path, format="JPEG", quality=85)
+            result["videos"][0].save(save_path, format="JPEG", quality=85)
         else:
             save_path = output_dir / "sample.mp4"
-            if result.sound is not None:
-                assert pipeline.sound_tokenizer is not None
+            if result["sound"] is not None:
                 encode_video(
-                    result.video,
+                    result["videos"],
                     fps=int(args.fps),
-                    audio=result.sound,
-                    audio_sample_rate=pipeline.sound_tokenizer.config.sampling_rate,
+                    audio=result["sound"],
+                    audio_sample_rate=result["sampling_rate"],
                     output_path=str(save_path),
                 )
             else:
                 # macro_block_size=1 allows arbitrary frame sizes (Cosmos3 outputs are not always divisible by 16).
-                export_to_video(result.video, str(save_path), fps=int(args.fps), quality=10, macro_block_size=1)
+                export_to_video(result["videos"], str(save_path), fps=int(args.fps), quality=10, macro_block_size=1)
         print(f"Saved: {save_path}")
 
-        if result.action is not None:
-            for action in result.action:
+        if result["action"] is not None:
+            for action in result["action"]:
                 action_path = output_dir / "sample_action.json"
                 with open(action_path, "w") as f:
                     json.dump(action.tolist(), f)

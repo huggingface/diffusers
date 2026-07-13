@@ -682,7 +682,7 @@ Two requirements are specific to Cosmos 3:
 
 ### Run it
 
-The full CLI [`examples/cosmos3/inference_cosmos3.py`](https://github.com/huggingface/diffusers/blob/main/examples/cosmos3/inference_cosmos3.py) reuses these helpers, so **any modality** (text-to-image/video, image-to-video, sound, action modes) runs multi-GPU via `--tp-degree` / `--cp-degree`. Launch with [torchrun](https://docs.pytorch.org/docs/stable/elastic/run.html); `--tp-degree * --cp-degree` must equal `--nproc_per_node`. Every rank produces the same output; rank 0 writes it.
+The full CLI [`examples/cosmos3/inference_cosmos3.py`](https://github.com/huggingface/diffusers/blob/main/examples/cosmos3/inference_cosmos3.py) uses [`Cosmos3OmniModularPipeline`] and reuses these helpers, so **any modality** (text-to-image/video, image-to-video, sound, action modes) runs multi-GPU via `--tp-degree` / `--cp-degree`. Launch with [torchrun](https://docs.pytorch.org/docs/stable/elastic/run.html); `--tp-degree * --cp-degree` must equal `--nproc_per_node`. Every rank produces the same output; rank 0 writes it.
 
 ```bash
 # CP only — Nano (fits one GPU); CP degree must divide 32 query heads.
@@ -709,15 +709,21 @@ CP shards *activations* but replicates every weight on every rank, so it does no
 > [!TIP]
 > TP issues an all-reduce on every attention and MLP block, so it is bandwidth-heavy. On hosts without NVLink it is the dominant cost; prefer the smallest TP degree that makes the weights fit and put the remaining GPUs into CP.
 
-### Use it in your own pipeline
+### Use it in your own modular pipeline
 
-The CLI flags are convenient, but you can call the helpers directly. Build the device mesh, apply TP *before* the model lands on the GPUs, switch to the `native` backend, then enable CP — the rest of your pipeline code is unchanged:
+The CLI flags are convenient, but you can call the helpers directly with [`Cosmos3OmniModularPipeline`]. Load the pipeline configuration and components on CPU, apply TP *before* moving the pipeline to the rank-local GPU, switch to the `native` backend, and then enable CP. Do not use `device_map` for this flow:
 
 ```python
+import os
+import sys
+
+import torch
+import torch.distributed as dist
+from diffusers import Cosmos3OmniModularPipeline
+from diffusers.schedulers.scheduling_unipc_multistep import UniPCMultistepScheduler
 from torch.distributed.device_mesh import init_device_mesh
 
 # Make the helper module importable.
-import sys
 sys.path.insert(0, "examples/cosmos3")
 from cosmos_parallel import (
     enable_cosmos3_context_parallel,
@@ -726,10 +732,16 @@ from cosmos_parallel import (
 )
 
 # torchrun sets RANK / WORLD_SIZE / LOCAL_RANK. Pick tp_degree * cp_degree == world size.
+local_rank = int(os.environ["LOCAL_RANK"])
+torch.cuda.set_device(local_rank)
+dist.init_process_group("nccl")
 mesh = init_device_mesh("cuda", (tp_degree, cp_degree), mesh_dim_names=("tp", "cp"))
 
-# Load on CPU first; a TP-sharded model may not fit one GPU.
-pipe = Cosmos3OmniPipeline.from_pretrained(model_id, torch_dtype=torch.bfloat16)
+# Load components on CPU first; a TP-sharded model may not fit one GPU.
+pipe = Cosmos3OmniModularPipeline.from_pretrained(model_id)
+pipe.load_components(torch_dtype=torch.bfloat16)
+pipe.enable_safety_checker()
+
 if tp_degree > 1:
     enable_cosmos3_tensor_parallel(pipe.transformer, mesh["tp"])  # shard weights -> GPUs
 pipe.to(f"cuda:{local_rank}")                                     # move the replicated remainder
@@ -739,10 +751,28 @@ if cp_degree > 1:
 elif tp_degree > 1:
     enable_cosmos3_flash_attention(pipe.transformer)               # GQA-safe dense attention
 
-# `pipe(...)` is called exactly as in the single-GPU workflows above.
+# Modular pipelines replace components through update_components().
+scheduler = UniPCMultistepScheduler.from_config(
+    pipe.scheduler.config, flow_shift=10.0, use_karras_sigmas=False
+)
+pipe.update_components(scheduler=scheduler)
+
+# A single output name returns that value; a list returns a dictionary.
+outputs = pipe(
+    prompt='{"scene":"A robot arm in a kitchen"}',
+    num_frames=189,
+    height=720,
+    width=1280,
+    output=["videos", "sound", "sampling_rate", "action"],
+)
+videos = outputs["videos"]
+sound = outputs["sound"]  # None unless sound generation was requested.
+action = outputs["action"]  # None unless an action workflow produced actions.
 ```
 
 For CP only (no weight sharding), use a 1-D mesh: `init_device_mesh("cuda", (world_size,), mesh_dim_names=("cp",))` and just `enable_cosmos3_context_parallel`.
+
+`enable_safety_checker()` loads and enables the default checker; `disable_safety_checker()` explicitly disables it. Use those pipeline methods instead of the task-pipeline `enable_safety_checker=` construction argument or `enable_safety_check=` call argument. Modular pipelines also do not return `Cosmos3OmniPipelineOutput`: use `output="videos"` for frames alone, or an output list and its returned dictionary as shown above instead of `result.video`, `result.sound`, or `result.action`.
 
 > [!TIP]
 > On some multi-GPU topologies the first NCCL all-to-all can hang. If a CP run stalls at the start of the first denoising step, set `NCCL_P2P_DISABLE=1` in the environment before launching `torchrun`.

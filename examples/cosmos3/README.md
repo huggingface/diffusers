@@ -1,15 +1,15 @@
 # Cosmos3 — smoke-test runner
 
-The canonical reference for `Cosmos3OmniPipeline` lives in the diffusers docs:
+The canonical reference for `Cosmos3OmniModularPipeline` lives in the diffusers docs:
 [`docs/source/en/api/pipelines/cosmos3.md`](../../docs/source/en/api/pipelines/cosmos3.md). Use the
 examples there as the source of truth for application code — they cover text-to-image,
 text-to-video, image-to-video, and text+sound modes.
 
 This directory provides two files:
 
-- `inference_cosmos3.py` — the runnable CLI (text-to-image/video, image-to-video, sound, action
-  modes). Single-GPU by default; pass `--tp-degree` / `--cp-degree` and launch with `torchrun`
-  to run any modality multi-GPU (see [Multi-GPU inference](#multi-gpu-inference-context-parallelism)
+- `inference_cosmos3.py` — the runnable `Cosmos3OmniModularPipeline` CLI (text-to-image/video,
+  image-to-video, sound, action modes). Single-GPU by default; pass `--tp-degree` / `--cp-degree`
+  and launch with `torchrun` to run any modality multi-GPU (see [Multi-GPU inference](#multi-gpu-inference-context-parallelism)
   below).
 - `cosmos_parallel.py` — the importable multi-GPU helpers (context + tensor parallelism). No
   `main`; the CLI imports from it. Read it to understand or adapt the sharding.
@@ -218,6 +218,31 @@ torchrun --nproc_per_node 4 examples/cosmos3/inference_cosmos3.py --model super 
 torchrun --nproc_per_node 4 examples/cosmos3/inference_cosmos3.py \
     --model super --tp-degree 2 --cp-degree 2 --enable-sound --prompt "A waterfall in a forest."
 ```
+
+### Modular pipeline setup
+
+The CLI uses `Cosmos3OmniModularPipeline`, not the legacy task pipeline. Its distributed setup order is important:
+
+1. Construct it with `Cosmos3OmniModularPipeline.from_pretrained(...)` and call
+   `pipe.load_components(torch_dtype=torch.bfloat16)` while it is still on CPU. Do not use
+   `device_map`.
+2. Initialize the NCCL process group and call `torch.cuda.set_device(local_rank)` before building
+   the device mesh or applying TP. If needed, replace the scheduler with
+   `pipe.update_components(scheduler=...)` and apply TP to `pipe.transformer` while it is still on
+   CPU.
+3. Move the pipeline to `cuda:${LOCAL_RANK}`, select the `native` attention backend, and then
+   enable CP (or the GQA-safe dense attention helper for TP-only runs).
+4. Before generation, call `pipe.enable_safety_checker()` to load and enable the default checker,
+   or `pipe.disable_safety_checker()` to explicitly opt out. The task-pipeline
+   `enable_safety_checker=` construction argument and `enable_safety_check=` call argument do not
+   configure the modular pipeline.
+
+Modular calls request outputs explicitly: `output="videos"` returns frames directly, while
+`output=["videos", "sound", "sampling_rate", "action"]` returns a dictionary. Read values such as
+`outputs["videos"]` from that dictionary rather than `result.video`, `result.sound`, or
+`result.action`; sound and action are `None` when their respective workflows are not used. The
+[pipeline documentation](../../docs/source/en/api/pipelines/cosmos3.md#context-parallelism) has a
+complete direct-use example.
 
 Notes:
 
