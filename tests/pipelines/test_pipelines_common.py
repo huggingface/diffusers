@@ -2995,29 +2995,50 @@ class FirstBlockCacheTesterMixin:
         )
 
     def test_first_block_cache_enabled_after_inference(self):
-        # Regression test for https://github.com/huggingface/diffusers/issues/14037. The pipeline
-        # wraps every forward in cache_context(), so running once before enabling the cache builds
-        # the transformer's child-registry cache without the block hooks. enable_cache() then
-        # registers those hooks, and the next run must still reach them rather than a stale cache.
+        # Regression test for https://github.com/huggingface/diffusers/issues/14037. Running the
+        # pipeline once before enabling the cache enters cache_context() and populates the
+        # transformer's child-registry cache without the block hooks. enable_cache() then registers
+        # those hooks, and a subsequent cache_context() must reach them rather than a stale cache,
+        # otherwise the block StateManagers never receive a context and the forward raises
+        # "No context is set".
         device = "cpu"
 
         torch.manual_seed(0)
         components = self.get_dummy_components(num_layers=2)
         pipe = self.pipeline_class(**components).to(device)
         pipe.set_progress_bar_config(disable=None)
+        transformer = pipe.transformer
 
-        def run_forward():
+        # Capture the exact keyword arguments the pipeline passes to the transformer so we can call
+        # it directly afterwards, mirroring the issue's reproduction without hardcoding a
+        # per-pipeline forward signature.
+        captured_kwargs = {}
+        original_forward = transformer.forward
+
+        def capture_forward(*args, **kwargs):
+            if not captured_kwargs:
+                captured_kwargs.update(kwargs)
+            return original_forward(*args, **kwargs)
+
+        transformer.forward = capture_forward
+        try:
             torch.manual_seed(0)
             inputs = self.get_dummy_inputs(device)
             inputs["num_inference_steps"] = 4
-            return pipe(**inputs)[0]
+            pipe(**inputs)
+        finally:
+            transformer.forward = original_forward
 
-        # First run populates the child-registry cache while caching is disabled.
-        run_forward()
+        assert captured_kwargs, "The pipeline did not call the transformer during inference."
 
-        # Enabling the cache and running again previously raised "No context is set".
-        pipe.transformer.enable_cache(self.first_block_cache_config)
-        run_forward()
+        # Enabling the cache after the first run registers the block hooks. The two cache_context()
+        # forwards below match the reproduction in the issue: the second one previously raised
+        # "No context is set" because the child-registry cache was stale.
+        transformer.enable_cache(self.first_block_cache_config)
+        with torch.no_grad(), transformer.cache_context("cond"):
+            transformer(**captured_kwargs)
+        with torch.no_grad(), transformer.cache_context("cond"):
+            transformer(**captured_kwargs)
 
 
 class TaylorSeerCacheTesterMixin:
