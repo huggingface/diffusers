@@ -2411,9 +2411,6 @@ class PipelineTesterMixin:
     def test_dtype_alias(self):
         # `dtype` is an alias for `torch_dtype` in `from_pretrained`.
         components = self.get_dummy_components()
-        if not components:
-            self.skipTest("No dummy components defined.")
-
         pipe = self.pipeline_class(**components)
 
         with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname:

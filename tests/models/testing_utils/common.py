@@ -382,12 +382,12 @@ class ModelTesterMixin(BaseModelOutputMixin):
     @pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.bfloat16], ids=["fp32", "fp16", "bf16"])
     def test_from_pretrained_dtype_alias(self, tmp_path, dtype):
         # `dtype` is an alias for `torch_dtype` in `from_pretrained`.
+        if torch_device == "mps" and dtype == torch.bfloat16:
+            pytest.skip(reason=f"{dtype} is not supported on {torch_device}")
+
         model = self.model_class(**self.get_init_dict())
         model.to(torch_device)
         model.eval()
-
-        if torch_device == "mps" and dtype == torch.bfloat16:
-            pytest.skip(reason=f"{dtype} is not supported on {torch_device}")
 
         model.to(dtype)
         model.save_pretrained(tmp_path)
