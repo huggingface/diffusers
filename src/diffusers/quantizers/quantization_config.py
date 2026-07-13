@@ -435,9 +435,9 @@ class NunchakuLiteQuantizationConfig(QuantizationConfigMixin):
     """Configuration for loading Nunchaku Lite checkpoints.
 
     Nunchaku Lite support in Diffusers loads prequantized checkpoints. To create a compatible checkpoint, use
-    [`diffuse-compressor`](https://github.com/rootonchair/diffuse-compressor) to choose or adapt a target
-    configuration for the model architecture, quantize and export the transformer, and package it as a Diffusers
-    pipeline with the compact `quantization_config` stored in `config.json`.
+    [`diffuse-compressor`](https://github.com/rootonchair/diffuse-compressor) to choose or adapt a target configuration
+    for the model architecture, quantize and export the transformer, and package it as a Diffusers pipeline with the
+    compact `quantization_config` stored in `config.json`.
 
     The exported state dict must match the target Diffusers model architecture exactly. Checkpoints quantized with
     fused QKV projections won't load into a model config that expects separate Q, K, and V projection modules.

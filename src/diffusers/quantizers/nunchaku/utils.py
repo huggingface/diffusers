@@ -244,8 +244,8 @@ class AWQW4A16Linear(nn.Module):
         if x_flat.shape[0] == 0:
             output = x.new_empty(output_shape)
         elif self._use_gemm(x_flat.shape[0]):
-            output = (
-                ops.awq_gemm_w4a16_g64_int32(x_flat, self.qweight, self.wscales, self.wzeros).reshape(output_shape)
+            output = ops.awq_gemm_w4a16_g64_int32(x_flat, self.qweight, self.wscales, self.wzeros).reshape(
+                output_shape
             )
         else:
             output = self._forward_gemv_chunks(x_flat, ops.gemv_awq).reshape(output_shape)
