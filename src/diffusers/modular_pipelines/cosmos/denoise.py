@@ -747,7 +747,50 @@ class Cosmos3TransferLoopSchedulerStep(ModularPipelineBlocks):
         return components, block_state
 
 
+# auto_docstring
 class Cosmos3TransferDenoiseStep(Cosmos3DenoiseLoopWrapper):
+    """
+    Runs the per-chunk transfer denoising loop over scheduler timesteps.
+
+      Components:
+          transformer (`Cosmos3OmniTransformer`)
+          scheduler (`UniPCMultistepScheduler`)
+
+      Inputs:
+          timesteps (`Tensor`):
+              Timesteps for the denoising process.
+          num_inference_steps (`int`):
+              The number of denoising steps.
+          num_warmup_steps (`int`):
+              Number of scheduler warmup steps.
+          control_latents (`list`):
+              Clean control latents for this chunk, one per hint in canonical order.
+          latents (`Tensor`):
+              Noisy target latents to denoise.
+          num_noisy_vision_tokens (`int`):
+              Number of noisy target vision tokens denoised each step.
+          **denoiser_input_fields (`None`, *optional*):
+              conditional model inputs for the denoiser: e.g. prompt_embeds, negative_prompt_embeds, etc.
+          velocity_mask (`Tensor`):
+              Mask that zeroes the velocity on conditioned (clean) latent frames.
+          guidance_scale (`float`, *optional*, defaults to 6.0):
+              Scale for text classifier-free guidance.
+          control_guidance (`float`, *optional*, defaults to 1.0):
+              Scale for the control (structural) guidance axis.
+          guidance_interval (`tuple`, *optional*):
+              Timestep interval [lo, hi] over which text guidance is active (None = always).
+          control_guidance_interval (`tuple`, *optional*):
+              Timestep interval [lo, hi] over which control guidance is active (None = always).
+          latents (`Tensor`):
+              Noisy target latents to update.
+          condition_latents (`Tensor`):
+              Clean target latents on the conditioned frames (the autoregressive seed).
+
+      Outputs:
+          latents (`Tensor`):
+              Updated target latents for this chunk.
+    """
+
     block_classes = [
         Cosmos3TransferLoopPrepareStep,
         Cosmos3TransferLoopDenoiser,
