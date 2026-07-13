@@ -218,6 +218,44 @@ class IsSafetensorsCompatibleTests(unittest.TestCase):
         ]
         self.assertFalse(is_safetensors_compatible(filenames))
 
+    def test_diffusers_is_compatible_no_components_safetensors(self):
+        filenames = [
+            "diffusion_pytorch_model.safetensors",
+        ]
+        self.assertTrue(is_safetensors_compatible(filenames))
+
+    def test_diffusers_is_compatible_no_components_safetensors_only_variants(self):
+        filenames = [
+            "diffusion_pytorch_model.fp16.safetensors",
+        ]
+        self.assertTrue(is_safetensors_compatible(filenames, variant="fp16"))
+
+    def test_transformers_is_compatible_weightless_subfolder(self):
+        # transformers-style flat layout: transformers-named weights at the root + a weight-less subfolder
+        filenames = [
+            "model.safetensors",
+            "scheduler/scheduler_config.json",
+        ]
+        self.assertTrue(is_safetensors_compatible(filenames))
+
+    def test_transformers_is_not_compatible_weightless_subfolder(self):
+        # same flat layout but only .bin weights at the root -> not safetensors compatible
+        filenames = [
+            "pytorch_model.bin",
+            "scheduler/scheduler_config.json",
+        ]
+        self.assertFalse(is_safetensors_compatible(filenames))
+
+    def test_transformers_is_compatible_sharded_root_weights(self):
+        # sharded transformers-style weights at the repo root (e.g. DiffusionGemma's model-00001-of-00011.safetensors)
+        filenames = [
+            "model-00001-of-00002.safetensors",
+            "model-00002-of-00002.safetensors",
+            "model.safetensors.index.json",
+            "scheduler/scheduler_config.json",
+        ]
+        self.assertTrue(is_safetensors_compatible(filenames))
+
     def test_is_compatible_mixed_variants(self):
         filenames = [
             "unet/diffusion_pytorch_model.fp16.safetensors",

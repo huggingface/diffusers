@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2025 HuggingFace Inc.
+# Copyright 2026 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -383,6 +383,11 @@ class LayerwiseCastingTesterMixin:
         - get_dummy_inputs(): Returns dict of inputs to pass to the model forward pass
     """
 
+    @pytest.mark.xfail(
+        condition=torch_device == "mps",
+        reason="MPS does not support float8 casting.",
+        strict=True,
+    )
     @torch.no_grad()
     def test_layerwise_casting_memory(self):
         MB_TOLERANCE = 0.2
@@ -436,6 +441,11 @@ class LayerwiseCastingTesterMixin:
             or abs(fp8_e4m3_fp32_max_memory - fp32_max_memory) < MB_TOLERANCE
         ), "Peak memory should be lower or within tolerance with fp8 storage"
 
+    @pytest.mark.xfail(
+        condition=torch_device == "mps",
+        reason="MPS does not support float8 casting.",
+        strict=True,
+    )
     def test_layerwise_casting_training(self):
         def test_fn(storage_dtype, compute_dtype):
             if torch.device(torch_device).type == "cpu" and compute_dtype == torch.bfloat16:

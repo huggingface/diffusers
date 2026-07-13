@@ -41,6 +41,7 @@ from .controlnet_sd3 import (
     StableDiffusion3ControlNetInpaintingPipeline,
     StableDiffusion3ControlNetPipeline,
 )
+from .cosmos import Cosmos3OmniPipeline
 from .deepfloyd_if import IFImg2ImgPipeline, IFInpaintingPipeline, IFPipeline
 from .deprecated.wuerstchen import WuerstchenCombinedPipeline, WuerstchenDecoderPipeline
 from .flux import (
@@ -270,6 +271,12 @@ AUTO_TEXT2VIDEO_PIPELINES_MAPPING = OrderedDict(
     ]
 )
 
+AUTO_CONDITION2VIDEO_PIPELINES_MAPPING = OrderedDict(
+    [
+        ("cosmos3-omni", Cosmos3OmniPipeline),
+    ]
+)
+
 AUTO_IMAGE2VIDEO_PIPELINES_MAPPING = OrderedDict(
     [
         ("anyflow-far", AnyFlowFARPipeline),
@@ -318,6 +325,7 @@ SUPPORTED_TASKS_MAPPINGS = [
     AUTO_IMAGE2IMAGE_PIPELINES_MAPPING,
     AUTO_INPAINT_PIPELINES_MAPPING,
     AUTO_TEXT2VIDEO_PIPELINES_MAPPING,
+    AUTO_CONDITION2VIDEO_PIPELINES_MAPPING,
     AUTO_IMAGE2VIDEO_PIPELINES_MAPPING,
     AUTO_VIDEO2VIDEO_PIPELINES_MAPPING,
     AUTO_TEXT2AUDIO_PIPELINES_MAPPING,
