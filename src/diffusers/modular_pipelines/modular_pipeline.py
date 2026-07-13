@@ -133,6 +133,7 @@ MODULAR_PIPELINE_MAPPING = OrderedDict(
         ("qwenimage-layered", _create_default_map_fn("QwenImageLayeredModularPipeline")),
         ("anima", _create_default_map_fn("AnimaModularPipeline")),
         ("z-image", _create_default_map_fn("ZImageModularPipeline")),
+        ("cosmos3-omni", _create_default_map_fn("Cosmos3OmniModularPipeline")),
         ("helios", _create_default_map_fn("HeliosModularPipeline")),
         ("helios-pyramid", _helios_pyramid_map_fn),
         ("hunyuan-video-1.5", _create_default_map_fn("HunyuanVideo15ModularPipeline")),
