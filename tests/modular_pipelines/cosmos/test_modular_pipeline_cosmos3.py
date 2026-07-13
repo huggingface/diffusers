@@ -19,15 +19,17 @@ import pytest
 import torch
 from PIL import Image
 
-from diffusers import Cosmos3OmniTransformer, ModularPipeline
+from diffusers import Cosmos3OmniTransformer, ModularPipeline, UniPCMultistepScheduler
 from diffusers.modular_pipelines import Cosmos3OmniBlocks, Cosmos3OmniModularPipeline
 from diffusers.modular_pipelines.cosmos.before_denoise import (
     Cosmos3ActionDenoiseInputStep,
     Cosmos3ActionPackSequenceStep,
+    Cosmos3SetTimestepsStep,
     Cosmos3SoundDenoiseInputStep,
     Cosmos3VisionDenoiseInputStep,
     Cosmos3VisionPackSequenceStep,
 )
+from diffusers.modular_pipelines.cosmos.encoders import Cosmos3TextEncoderStep
 from diffusers.modular_pipelines.modular_pipeline import PipelineState
 
 from ...testing_utils import torch_device
@@ -317,6 +319,60 @@ def test_cosmos3_denoise_input_steps_assemble_modality_segments():
     assert state.get("uncond_packed_static") is None
 
 
+def test_cosmos3_text_step_uses_pipeline_system_prompt_and_safety_configs(monkeypatch):
+    text_encoder = Cosmos3TextEncoderStep()
+    pipe = Cosmos3OmniModularPipeline(
+        blocks=text_encoder,
+        config_dict={"default_use_system_prompt": False, "enable_safety_checker": False},
+    )
+    captured = {}
+
+    def tokenize_prompt(*args, **kwargs):
+        captured["use_system_prompt"] = kwargs["use_system_prompt"]
+        return torch.zeros((1, 1), dtype=torch.long), torch.zeros((1, 1), dtype=torch.long)
+
+    monkeypatch.setattr(pipe, "tokenize_prompt", tokenize_prompt)
+
+    state = PipelineState()
+    state.set("prompt", "A small robot moves across a table.")
+    state.set("negative_prompt", "")
+    state.set("num_frames", 5)
+    state.set("height", 32)
+    state.set("width", 32)
+    state.set("fps", 24.0)
+    state.set("add_resolution_template", True)
+    state.set("add_duration_template", True)
+    _, state = text_encoder(pipe, state)
+
+    assert captured["use_system_prompt"] is False
+    assert not pipe.requires_safety_checker
+    assert state.get("cond_input_ids").shape == (1, 1)
+
+
+def test_cosmos3_native_flow_schedule_uses_edge_sigma_grid(monkeypatch):
+    set_timesteps = Cosmos3SetTimestepsStep()
+    pipe = Cosmos3OmniModularPipeline(blocks=set_timesteps, config_dict={"use_native_flow_schedule": True})
+    scheduler = UniPCMultistepScheduler(num_train_timesteps=100, use_flow_sigmas=True)
+    pipe.update_components(scheduler=scheduler)
+    captured = {}
+
+    def capture_set_timesteps(num_inference_steps, device=None, sigmas=None):
+        captured["num_inference_steps"] = num_inference_steps
+        captured["device"] = device
+        captured["sigmas"] = sigmas
+        scheduler.timesteps = torch.arange(num_inference_steps)
+
+    monkeypatch.setattr(scheduler, "set_timesteps", capture_set_timesteps)
+
+    state = PipelineState()
+    state.set("num_inference_steps", 4)
+    _, state = set_timesteps(pipe, state)
+
+    assert captured["num_inference_steps"] == 4
+    assert captured["sigmas"] == pytest.approx([0.99, 0.7425, 0.495, 0.2475])
+    assert state.get("timesteps").tolist() == [0, 1, 2, 3]
+
+
 def test_cosmos3_modular_model_index_takes_precedence(tmp_path):
     (tmp_path / "model_index.json").write_text(json.dumps({"_class_name": "Cosmos3OmniDiffusersPipeline"}))
     (tmp_path / "modular_model_index.json").write_text(
@@ -338,9 +394,22 @@ def test_cosmos3_modular_model_index_takes_precedence(tmp_path):
 
 
 def test_cosmos3_model_index_fallback_resolves_modular_pipeline(tmp_path):
-    (tmp_path / "model_index.json").write_text(json.dumps({"_class_name": "Cosmos3OmniPipeline"}))
+    (tmp_path / "model_index.json").write_text(
+        json.dumps(
+            {
+                "_class_name": "Cosmos3OmniPipeline",
+                "default_use_system_prompt": False,
+                "enable_safety_checker": False,
+                "use_native_flow_schedule": True,
+            }
+        )
+    )
 
     pipe = ModularPipeline.from_pretrained(str(tmp_path))
 
     assert isinstance(pipe, Cosmos3OmniModularPipeline)
     assert isinstance(pipe.blocks, Cosmos3OmniBlocks)
+    assert not pipe.config.default_use_system_prompt
+    assert not pipe.config.enable_safety_checker
+    assert pipe.config.use_native_flow_schedule
+    assert not pipe.requires_safety_checker

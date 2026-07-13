@@ -57,8 +57,8 @@ class Cosmos3AutoTextEncoderStep(AutoPipelineBlocks):
               Width of the generated video or image in pixels.
           fps (`float`, *optional*, defaults to 24.0):
               Frame rate of the generated video.
-          use_system_prompt (`bool`, *optional*, defaults to True):
-              Whether to prepend the Cosmos3 system prompt.
+          use_system_prompt (`bool`, *optional*):
+              Whether to prepend the Cosmos3 system prompt. Defaults to the pipeline configuration.
           add_resolution_template (`bool`, *optional*, defaults to True):
               Whether to add resolution metadata to the prompt.
           add_duration_template (`bool`, *optional*, defaults to True):
@@ -708,8 +708,8 @@ class Cosmos3OmniBlocks(SequentialPipelineBlocks):
               Width of the generated video or image in pixels.
           fps (`float`, *optional*, defaults to 24.0):
               Frame rate of the generated video.
-          use_system_prompt (`bool`, *optional*, defaults to True):
-              Whether to prepend the Cosmos3 system prompt.
+          use_system_prompt (`bool`, *optional*):
+              Whether to prepend the Cosmos3 system prompt. Defaults to the pipeline configuration.
           add_resolution_template (`bool`, *optional*, defaults to True):
               Whether to add resolution metadata to the prompt.
           add_duration_template (`bool`, *optional*, defaults to True):

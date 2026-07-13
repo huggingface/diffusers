@@ -139,15 +139,37 @@ class Cosmos3VLTextRotaryEmbedding(nn.Module):
         return emb.cos().to(dtype=dtype), emb.sin().to(dtype=dtype)  # each: [B,N,head_dim]
 
 
-class Cosmos3VLTextMLP(nn.Module):
-    def __init__(self, hidden_size: int, intermediate_size: int):
+class Cosmos3NemotronRMSNorm(nn.Module):
+    def __init__(self, dim: int, eps: float, elementwise_affine: bool = True, bias: bool = False):
         super().__init__()
-        self.gate_proj = nn.Linear(hidden_size, intermediate_size, bias=False)
+        if not elementwise_affine or bias:
+            raise ValueError("Cosmos3NemotronRMSNorm requires an affine weight without a bias.")
+        self.eps = eps
+        self.weight = nn.Parameter(torch.ones(dim))
+
+    def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
+        input_dtype = hidden_states.dtype
+        hidden_states = hidden_states.float()
+        variance = hidden_states.pow(2).mean(-1, keepdim=True)
+        hidden_states = hidden_states * torch.rsqrt(variance + self.eps)
+        return (self.weight.float() * hidden_states).to(input_dtype)
+
+
+class Cosmos3VLTextMLP(nn.Module):
+    def __init__(self, hidden_size: int, intermediate_size: int, hidden_act: str = "silu"):
+        super().__init__()
+        if hidden_act not in ("relu2", "silu"):
+            raise ValueError(f"Cosmos3 only supports `hidden_act` values 'relu2' and 'silu', got {hidden_act!r}.")
+        self.hidden_act = hidden_act
+        if hidden_act == "silu":
+            self.gate_proj = nn.Linear(hidden_size, intermediate_size, bias=False)
         self.up_proj = nn.Linear(hidden_size, intermediate_size, bias=False)
         self.down_proj = nn.Linear(intermediate_size, hidden_size, bias=False)
-        self.act_fn = nn.SiLU()
+        self.act_fn = nn.SiLU() if hidden_act == "silu" else None
 
     def forward(self, x):
+        if self.hidden_act == "relu2":
+            return self.down_proj(torch.relu(self.up_proj(x)).square())
         return self.down_proj(self.act_fn(self.gate_proj(x)) * self.up_proj(x))
 
 
@@ -183,8 +205,7 @@ class DomainAwareLinear(nn.Module):
 
 
 class Cosmos3PackedMoTAttention(nn.Module, AttentionModuleMixin):
-    """Dual-pathway packed attention for Qwen3VL MoT — separate projections for
-    understanding (causal) and generation (full) token streams."""
+    """Dual-pathway packed attention with separate projections for the understanding and generation token streams."""
 
     _default_processor_cls = Cosmos3AttnProcessor
     _available_processors = [Cosmos3AttnProcessor]
@@ -197,6 +218,8 @@ class Cosmos3PackedMoTAttention(nn.Module, AttentionModuleMixin):
         num_key_value_heads: int,
         attention_bias: bool,
         rms_norm_eps: float,
+        qk_norm_for_text: bool = True,
+        norm_cls: type[nn.Module] = RMSNorm,
         processor=None,
     ):
         super().__init__()
@@ -212,16 +235,24 @@ class Cosmos3PackedMoTAttention(nn.Module, AttentionModuleMixin):
         self.to_k = nn.Linear(hidden_size, num_key_value_heads * head_dim, bias=attention_bias)
         self.to_v = nn.Linear(hidden_size, num_key_value_heads * head_dim, bias=attention_bias)
         self.to_out = nn.Linear(num_attention_heads * head_dim, hidden_size, bias=attention_bias)
-        self.norm_q = RMSNorm(head_dim, eps=rms_norm_eps, elementwise_affine=True, bias=False)
-        self.norm_k = RMSNorm(head_dim, eps=rms_norm_eps, elementwise_affine=True, bias=False)
+        self.norm_q = (
+            norm_cls(head_dim, eps=rms_norm_eps, elementwise_affine=True, bias=False)
+            if qk_norm_for_text
+            else nn.Identity()
+        )
+        self.norm_k = (
+            norm_cls(head_dim, eps=rms_norm_eps, elementwise_affine=True, bias=False)
+            if qk_norm_for_text
+            else nn.Identity()
+        )
 
         # Generation pathway
         self.add_q_proj = nn.Linear(hidden_size, num_attention_heads * head_dim, bias=attention_bias)
         self.add_k_proj = nn.Linear(hidden_size, num_key_value_heads * head_dim, bias=attention_bias)
         self.add_v_proj = nn.Linear(hidden_size, num_key_value_heads * head_dim, bias=attention_bias)
         self.to_add_out = nn.Linear(num_attention_heads * head_dim, hidden_size, bias=attention_bias)
-        self.norm_added_q = RMSNorm(head_dim, eps=rms_norm_eps, elementwise_affine=True, bias=False)
-        self.norm_added_k = RMSNorm(head_dim, eps=rms_norm_eps, elementwise_affine=True, bias=False)
+        self.norm_added_q = norm_cls(head_dim, eps=rms_norm_eps, elementwise_affine=True, bias=False)
+        self.norm_added_k = norm_cls(head_dim, eps=rms_norm_eps, elementwise_affine=True, bias=False)
 
         if processor is None:
             processor = self._default_processor_cls()
@@ -237,12 +268,7 @@ class Cosmos3PackedMoTAttention(nn.Module, AttentionModuleMixin):
 
 
 class Cosmos3VLTextMoTDecoderLayer(nn.Module):
-    """
-    Qwen3VL text MoT (Mixture of Tokens) decoder layer. Features dual-pathway attention for understanding vs
-    generation.
-
-    This is used for both Dense and MoE models.
-    """
+    """Cosmos3 text MoT decoder layer for the Qwen3 and Nemotron dense backbones."""
 
     def __init__(
         self,
@@ -253,9 +279,12 @@ class Cosmos3VLTextMoTDecoderLayer(nn.Module):
         intermediate_size: int,
         attention_bias: bool,
         rms_norm_eps: float,
+        hidden_act: str = "silu",
+        qk_norm_for_text: bool = True,
     ):
         super().__init__()
         self.hidden_size = hidden_size
+        norm_cls = Cosmos3NemotronRMSNorm if hidden_act == "relu2" else RMSNorm
         self.self_attn = Cosmos3PackedMoTAttention(
             hidden_size=hidden_size,
             head_dim=head_dim,
@@ -263,15 +292,21 @@ class Cosmos3VLTextMoTDecoderLayer(nn.Module):
             num_key_value_heads=num_key_value_heads,
             attention_bias=attention_bias,
             rms_norm_eps=rms_norm_eps,
+            qk_norm_for_text=qk_norm_for_text,
+            norm_cls=norm_cls,
         )
 
-        self.mlp = Cosmos3VLTextMLP(hidden_size=hidden_size, intermediate_size=intermediate_size)
-        self.mlp_moe_gen = Cosmos3VLTextMLP(hidden_size=hidden_size, intermediate_size=intermediate_size)
+        self.mlp = Cosmos3VLTextMLP(
+            hidden_size=hidden_size, intermediate_size=intermediate_size, hidden_act=hidden_act
+        )
+        self.mlp_moe_gen = Cosmos3VLTextMLP(
+            hidden_size=hidden_size, intermediate_size=intermediate_size, hidden_act=hidden_act
+        )
 
-        self.input_layernorm = RMSNorm(hidden_size, eps=rms_norm_eps, elementwise_affine=True, bias=False)
-        self.input_layernorm_moe_gen = RMSNorm(hidden_size, eps=rms_norm_eps, elementwise_affine=True, bias=False)
-        self.post_attention_layernorm = RMSNorm(hidden_size, eps=rms_norm_eps, elementwise_affine=True, bias=False)
-        self.post_attention_layernorm_moe_gen = RMSNorm(
+        self.input_layernorm = norm_cls(hidden_size, eps=rms_norm_eps, elementwise_affine=True, bias=False)
+        self.input_layernorm_moe_gen = norm_cls(hidden_size, eps=rms_norm_eps, elementwise_affine=True, bias=False)
+        self.post_attention_layernorm = norm_cls(hidden_size, eps=rms_norm_eps, elementwise_affine=True, bias=False)
+        self.post_attention_layernorm_moe_gen = norm_cls(
             hidden_size, eps=rms_norm_eps, elementwise_affine=True, bias=False
         )
 
@@ -335,10 +370,18 @@ class Cosmos3OmniTransformer(ModelMixin, ConfigMixin, PeftAdapterMixin, Attentio
         sound_latent_fps: float = 25.0,
         timestep_scale: float = 0.001,
         vocab_size: int = 151936,
+        hidden_act: str = "silu",
+        qk_norm_for_text: bool = True,
+        rope_axes_dim: tuple[int, int, int] | list[int] | None = None,
+        backbone_type: str = "cosmos3_qwen3vl",
+        temporal_compression_factor: int = 4,
     ):
         super().__init__()
 
-        rope_axes_dim = rope_scaling.get("mrope_section", [24, 20, 20]) if rope_scaling is not None else [24, 20, 20]
+        if rope_axes_dim is None:
+            rope_axes_dim = (
+                rope_scaling.get("mrope_section", [24, 20, 20]) if rope_scaling is not None else [24, 20, 20]
+            )
         self.register_to_config(rope_axes_dim=rope_axes_dim)
 
         # Text-model layers live directly on the transformer (flat layout). The published
@@ -355,12 +398,15 @@ class Cosmos3OmniTransformer(ModelMixin, ConfigMixin, PeftAdapterMixin, Attentio
                     intermediate_size=intermediate_size,
                     attention_bias=attention_bias,
                     rms_norm_eps=rms_norm_eps,
+                    hidden_act=hidden_act,
+                    qk_norm_for_text=qk_norm_for_text,
                 )
                 for _ in range(num_hidden_layers)
             ]
         )
-        self.norm = RMSNorm(hidden_size, eps=rms_norm_eps, elementwise_affine=True, bias=False)
-        self.norm_moe_gen = RMSNorm(hidden_size, eps=rms_norm_eps, elementwise_affine=True, bias=False)
+        norm_cls = Cosmos3NemotronRMSNorm if hidden_act == "relu2" else RMSNorm
+        self.norm = norm_cls(hidden_size, eps=rms_norm_eps, elementwise_affine=True, bias=False)
+        self.norm_moe_gen = norm_cls(hidden_size, eps=rms_norm_eps, elementwise_affine=True, bias=False)
         self.rotary_emb = Cosmos3VLTextRotaryEmbedding(
             head_dim=head_dim, rope_theta=rope_theta, rope_axes_dim=rope_axes_dim
         )

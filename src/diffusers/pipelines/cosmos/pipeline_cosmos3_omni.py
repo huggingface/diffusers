@@ -377,8 +377,15 @@ class Cosmos3OmniPipeline(DiffusionPipeline):
         sound_tokenizer: Cosmos3AVAEAudioTokenizer | None = None,
         safety_checker: CosmosSafetyChecker | None = None,
         enable_safety_checker: bool = True,
+        default_use_system_prompt: bool = True,
+        use_native_flow_schedule: bool = False,
     ):
         super().__init__()
+        self.register_to_config(
+            enable_safety_checker=enable_safety_checker,
+            default_use_system_prompt=default_use_system_prompt,
+            use_native_flow_schedule=use_native_flow_schedule,
+        )
         if enable_safety_checker:
             if safety_checker is None:
                 safety_checker = CosmosSafetyChecker()
@@ -1083,15 +1090,15 @@ class Cosmos3OmniPipeline(DiffusionPipeline):
         height: int = 720,
         width: int = 1280,
         fps: float = 24.0,
-        use_system_prompt: bool = True,
+        use_system_prompt: bool | None = None,
         add_resolution_template: bool = True,
         add_duration_template: bool = True,
         action_mode: str | None = None,
         action_view_point: str | None = None,
     ) -> tuple[list[int], list[int]]:
-        """Apply prompt-augmentation templates and tokenize cond/uncond prompts via the Qwen2 chat template.
+        """Apply prompt-augmentation templates and tokenize cond/uncond prompts via the configured chat template.
 
-        This pipeline does not run a separate text encoder: the joint Cosmos3 transformer consumes raw Qwen2 token IDs
+        This pipeline does not run a separate text encoder: the joint Cosmos3 transformer consumes raw token IDs
         alongside vision (and optionally sound) tokens.
 
         When ``negative_prompt`` is ``None``, an empty string is used; the Cosmos3 docs page documents recommended
@@ -1105,6 +1112,9 @@ class Cosmos3OmniPipeline(DiffusionPipeline):
         Returns:
             ``(cond_input_ids, uncond_input_ids)`` — token-id lists for this sample.
         """
+        if use_system_prompt is None:
+            use_system_prompt = self.config.default_use_system_prompt
+
         is_image = num_frames == 1
 
         if negative_prompt is None:
@@ -1272,7 +1282,7 @@ class Cosmos3OmniPipeline(DiffusionPipeline):
         action: CosmosActionCondition | None = None,
         output_type: str = "pil",
         return_dict: bool = True,
-        use_system_prompt: bool = True,
+        use_system_prompt: bool | None = None,
         callback_on_step_end: Callable[[int, int, dict[str, Any]], None]
         | PipelineCallback
         | MultiPipelineCallbacks
@@ -1355,9 +1365,9 @@ class Cosmos3OmniPipeline(DiffusionPipeline):
                 W, C]`), `"pt"` (`torch.Tensor`, `[T, C, H, W]`), or `"latent"` (raw vision latents).
             return_dict (`bool`, *optional*, defaults to `True`):
                 When `True`, returns a [`Cosmos3OmniPipelineOutput`]; otherwise a plain tuple `(video, sound)`.
-            use_system_prompt (`bool`, *optional*, defaults to `True`):
-                When `True`, prepends the mode-specific Cosmos 3 system prompt to the chat template before
-                tokenization.
+            use_system_prompt (`bool`, *optional*):
+                Whether to prepend the mode-specific Cosmos 3 system prompt to the chat template before tokenization.
+                Defaults to the pipeline's `default_use_system_prompt` configuration.
             callback_on_step_end (`Callable`, `PipelineCallback`, or `MultiPipelineCallbacks`, *optional*):
                 A callback invoked at the end of each denoising step. Receives `(step_index, timestep, kwargs)` where
                 `kwargs` is keyed by `callback_on_step_end_tensor_inputs`.
@@ -1609,7 +1619,15 @@ class Cosmos3OmniPipeline(DiffusionPipeline):
 
         # 6. Set timesteps. UniPCMultistepScheduler keeps per-step state (_step_index,
         # model_outputs history) on the instance, so sound/action each get their own copy.
-        self.scheduler.set_timesteps(num_inference_steps, device=device)
+        if self.config.use_native_flow_schedule:
+            sigmas = np.linspace(
+                1.0 - 1.0 / self.scheduler.config.num_train_timesteps,
+                0.0,
+                num_inference_steps + 1,
+            )[:-1]
+            self.scheduler.set_timesteps(num_inference_steps, device=device, sigmas=sigmas)
+        else:
+            self.scheduler.set_timesteps(num_inference_steps, device=device)
         timesteps = self.scheduler.timesteps
         sound_scheduler = copy.deepcopy(self.scheduler) if sound_latents is not None else None
         action_scheduler = copy.deepcopy(self.scheduler) if action_latents is not None else None

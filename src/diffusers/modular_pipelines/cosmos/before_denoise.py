@@ -1,5 +1,6 @@
 import copy
 
+import numpy as np
 import torch
 
 from ...models.transformers.transformer_cosmos3 import Cosmos3OmniTransformer
@@ -7,7 +8,7 @@ from ...pipelines.cosmos.pipeline_cosmos3_omni import _EMBODIMENT_TO_DOMAIN_ID, 
 from ...schedulers import UniPCMultistepScheduler
 from ...utils.torch_utils import randn_tensor
 from ..modular_pipeline import ModularPipelineBlocks, PipelineState
-from ..modular_pipeline_utils import ComponentSpec, InputParam, OutputParam
+from ..modular_pipeline_utils import ComponentSpec, ConfigSpec, InputParam, OutputParam
 from .modular_pipeline import Cosmos3OmniModularPipeline
 
 
@@ -937,6 +938,10 @@ class Cosmos3SetTimestepsStep(ModularPipelineBlocks):
         return [ComponentSpec("scheduler", UniPCMultistepScheduler)]
 
     @property
+    def expected_configs(self) -> list[ConfigSpec]:
+        return [ConfigSpec(name="use_native_flow_schedule", default=False)]
+
+    @property
     def inputs(self) -> list[InputParam]:
         return [
             InputParam.template("num_inference_steps", required=True),
@@ -953,7 +958,15 @@ class Cosmos3SetTimestepsStep(ModularPipelineBlocks):
     def __call__(self, components: Cosmos3OmniModularPipeline, state: PipelineState) -> PipelineState:
         block_state = self.get_block_state(state)
         device = components._execution_device
-        components.scheduler.set_timesteps(block_state.num_inference_steps, device=device)
+        if components.config.use_native_flow_schedule:
+            sigmas = np.linspace(
+                1.0 - 1.0 / components.scheduler.config.num_train_timesteps,
+                0.0,
+                block_state.num_inference_steps + 1,
+            )[:-1]
+            components.scheduler.set_timesteps(block_state.num_inference_steps, device=device, sigmas=sigmas)
+        else:
+            components.scheduler.set_timesteps(block_state.num_inference_steps, device=device)
         block_state.timesteps = components.scheduler.timesteps
         block_state.num_warmup_steps = (
             len(block_state.timesteps) - block_state.num_inference_steps * components.scheduler.order

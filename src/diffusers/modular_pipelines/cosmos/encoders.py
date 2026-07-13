@@ -10,7 +10,7 @@ from ...pipelines.cosmos.pipeline_cosmos3_omni import (
 from ...utils import logging
 from ...video_processor import VideoProcessor
 from ..modular_pipeline import ModularPipelineBlocks, PipelineState
-from ..modular_pipeline_utils import ComponentSpec, InputParam, OutputParam
+from ..modular_pipeline_utils import ComponentSpec, ConfigSpec, InputParam, OutputParam
 from .modular_pipeline import Cosmos3OmniModularPipeline
 
 
@@ -46,6 +46,13 @@ class Cosmos3TextEncoderStep(ModularPipelineBlocks):
         ]
 
     @property
+    def expected_configs(self) -> list[ConfigSpec]:
+        return [
+            ConfigSpec(name="default_use_system_prompt", default=True),
+            ConfigSpec(name="enable_safety_checker", default=True),
+        ]
+
+    @property
     def inputs(self) -> list[InputParam]:
         return [
             InputParam.template("prompt", description="The text prompt that guides Cosmos3 generation."),
@@ -68,8 +75,8 @@ class Cosmos3TextEncoderStep(ModularPipelineBlocks):
             InputParam(name="fps", type_hint=float, default=24.0, description="Frame rate of the generated video."),
             InputParam(
                 name="use_system_prompt",
-                type_hint=bool,
-                default=True,
+                type_hint=bool | None,
+                default=None,
                 description="Whether to prepend the Cosmos3 system prompt.",
             ),
             InputParam(
@@ -107,6 +114,8 @@ class Cosmos3TextEncoderStep(ModularPipelineBlocks):
             block_state.height = 720
         if block_state.width is None:
             block_state.width = 1280
+        if block_state.use_system_prompt is None:
+            block_state.use_system_prompt = components.config.default_use_system_prompt
 
         self._check_inputs(block_state)
         if components.requires_safety_checker:
@@ -190,6 +199,13 @@ class Cosmos3ActionTextStep(ModularPipelineBlocks):
         ]
 
     @property
+    def expected_configs(self) -> list[ConfigSpec]:
+        return [
+            ConfigSpec(name="default_use_system_prompt", default=True),
+            ConfigSpec(name="enable_safety_checker", default=True),
+        ]
+
+    @property
     def inputs(self) -> list[InputParam]:
         return [
             InputParam.template("prompt", description="The text prompt that guides Cosmos3 generation."),
@@ -218,8 +234,8 @@ class Cosmos3ActionTextStep(ModularPipelineBlocks):
             InputParam(name="fps", type_hint=float, default=24.0, description="Frame rate of the generated video."),
             InputParam(
                 name="use_system_prompt",
-                type_hint=bool,
-                default=True,
+                type_hint=bool | None,
+                default=None,
                 description="Whether to prepend the Cosmos3 system prompt.",
             ),
             InputParam(
@@ -253,6 +269,8 @@ class Cosmos3ActionTextStep(ModularPipelineBlocks):
     def __call__(self, components: Cosmos3OmniModularPipeline, state: PipelineState) -> PipelineState:
         block_state = self.get_block_state(state)
         self._check_inputs(block_state)
+        if block_state.use_system_prompt is None:
+            block_state.use_system_prompt = components.config.default_use_system_prompt
 
         action = block_state.action
         block_state.action_mode = action.mode
