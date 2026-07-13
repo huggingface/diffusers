@@ -34,7 +34,7 @@ In the following, we give an overview of different ways to contribute, ranked by
 * 6. Contribute a [Community Pipeline](https://github.com/huggingface/diffusers/issues?q=is%3Aopen+is%3Aissue+label%3Acommunity-examples).
 * 7. Contribute to the [examples](https://github.com/huggingface/diffusers/tree/main/examples).
 * 8. Fix a more difficult issue, marked by the "Good second issue" label, see [here](https://github.com/huggingface/diffusers/issues?q=is%3Aopen+is%3Aissue+label%3A%22Good+second+issue%22).
-* 9. Add a new pipeline, model, or scheduler, see ["New Pipeline/Model"](https://github.com/huggingface/diffusers/issues?q=is%3Aopen+is%3Aissue+label%3A%22New+pipeline%2Fmodel%22) and ["New scheduler"](https://github.com/huggingface/diffusers/issues?q=is%3Aopen+is%3Aissue+label%3A%22New+scheduler%22) issues. For this contribution, please have a look at [Design Philosophy](https://github.com/huggingface/diffusers/blob/main/PHILOSOPHY.md).
+* 9. Add a new pipeline, model, or scheduler, see ["New Pipeline/Model"](https://github.com/huggingface/diffusers/issues?q=is%3Aopen+is%3Aissue+label%3A%22New+pipeline%2Fmodel%22) and ["New scheduler"](https://github.com/huggingface/diffusers/issues?q=is%3Aopen+is%3Aissue+label%3A%22New+scheduler%22) issues. For this contribution, please have a look at [Design Philosophy](https://huggingface.co/docs/diffusers/main/en/conceptual/philosophy).
 
 As said before, **all contributions are valuable to the community**.
 In the following, we will explain each contribution a bit more in detail.
@@ -570,9 +570,9 @@ For documentation strings, 🧨 Diffusers follows the [Google style](https://goo
 
 ## Coding with AI agents
 
-The repository keeps AI-agent configuration in [`.ai/`](https://github.com/huggingface/diffusers/tree/main/.ai) and exposes local agent files via symlinks. If you use a coding agent (Claude Code, OpenAI Codex, etc.) to help with a contribution, point it at this directory — it contains the project conventions and on-demand task knowledge maintainers expect contributors to follow.
+The repository keeps AI-agent configuration in [`.ai/`](https://github.com/huggingface/diffusers/tree/main/.ai). Run `make claude` / `make codex` to additionally wire up the on-demand task skills for your tool.
 
-- **Read-only for contributors** — `.ai/` is maintained by the core maintainers. Please do not edit files under `.ai/` (or the generated root-level `AGENTS.md`, `CLAUDE.md`, `.agents/skills`, `.claude/skills`, which are symlinks) in your PR. If you find something missing or wrong, open an issue or flag it on the PR and a maintainer will update it.
+- **Read-only for contributors** — `.ai/` is maintained by the core maintainers. Please do not edit files under `.ai/` (or the root-level `AGENTS.md` / `CLAUDE.md` symlinks, or the generated `.agents/skills` / `.claude/skills`) in your PR. If you find something missing or wrong, open an issue or flag it on the PR and a maintainer will update it.
 - **Guidelines** (loaded into every agent session):
   - [`.ai/AGENTS.md`](https://github.com/huggingface/diffusers/blob/main/.ai/AGENTS.md) — top-level coding guidelines
   - [`.ai/models.md`](https://github.com/huggingface/diffusers/blob/main/.ai/models.md) — attention pattern, model implementation rules, common conventions
@@ -583,9 +583,9 @@ The repository keeps AI-agent configuration in [`.ai/`](https://github.com/huggi
   - `model-integration` — adding a new model or pipeline to diffusers end-to-end (file structure, integration checklist, testing layout, weight conversion)
   - `self-review` — review your changes against the project rules before opening a PR
 - **Setup commands**:
-  - `make codex` — symlink guidelines + skills for OpenAI Codex
-  - `make claude` — symlink guidelines + skills for Claude Code
-  - `make clean-ai` — remove all generated symlinks
+  - `make codex` — wire up skills for OpenAI Codex (under `.agents/`)
+  - `make claude` — wire up skills for Claude Code (under `.claude/`)
+  - `make clean-ai` — remove the generated skills symlinks
 
 ### AI-assisted and agentic contributions
 

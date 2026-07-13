@@ -6,8 +6,10 @@ on:
   workflow_dispatch:
 
 jobs:
-  remind_or_close:
-    name: Remind or close PRs without a linked issue
+  remind:
+    # Reminds external contributors to link an issue. PRs from maintainers, users
+    # with write/admin access, and collaborators are skipped by the script.
+    name: Remind external contributors to link an issue
     if: github.repository == 'huggingface/diffusers'
     runs-on: ubuntu-22.04
     permissions:
