@@ -20,7 +20,7 @@ Fixes # (issue)
 ## Before submitting
 - [ ] Did you use an AI agent (Claude Code, Codex, Cursor, etc.) to help with this PR? If so:
   - [ ] Did you read the [Coding with AI agents](https://huggingface.co/docs/diffusers/main/en/conceptual/contribution#coding-with-ai-agents) guide?
-  - [ ] Did you self-review the diff against [`.ai/review-rules.md`](https://github.com/huggingface/diffusers/blob/main/.ai/review-rules.md)?
+  - [ ] Did you run the [`self-review`](https://github.com/huggingface/diffusers/blob/main/.ai/skills/self-review/SKILL.md) skill on the diff?
   - [ ] Did you share the final self-review notes in the PR description or a comment?
 - [ ] Did you read the [contributor guideline](https://huggingface.co/docs/diffusers/main/en/conceptual/contribution)?
 - [ ] Did you read our [philosophy doc](https://huggingface.co/docs/diffusers/main/en/conceptual/philosophy)? (important for complex PRs)
