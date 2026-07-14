@@ -600,29 +600,32 @@ class DummyKwargsProducerStep(ModularPipelineBlocks):
 
 
 class DummyKwargsConsumerStep(ModularPipelineBlocks):
-    """Consumes the `typea` bag and the named input `b`, and verifies what it received against
-    the expected values passed as inputs (`expected_a`, `expected_b`, `expected_typea`)."""
+    """Consumes the values tagged `typea` (as the `typea` dict) and the named input `b`, and
+    records what it received as outputs (`received_*`) so tests can assert on the returned state."""
 
     @property
     def inputs(self) -> List[InputParam]:
         return [
             InputParam(kwargs_type="typea"),
             InputParam(name="b", default=None),
-            InputParam(name="expected_a", default=None),
-            InputParam(name="expected_b", default=None),
-            InputParam(name="expected_typea", default=None),
+        ]
+
+    @property
+    def intermediate_outputs(self) -> List[OutputParam]:
+        return [
+            OutputParam("received_typea"),
+            OutputParam("received_a"),
+            OutputParam("received_b"),
         ]
 
     def __call__(self, components, state: PipelineState) -> PipelineState:
         block_state = self.get_block_state(state)
-        assert block_state.typea == block_state.expected_typea
-        assert block_state.b == block_state.expected_b
-        # values delivered through the bag are also set individually on block_state;
-        # `a` only exists here if it was delivered through the bag
-        if block_state.expected_a is None:
-            assert not hasattr(block_state, "a")
-        else:
-            assert block_state.a == block_state.expected_a
+        block_state.received_typea = block_state.typea
+        # tagged values delivered through the `typea` dict are also set individually on
+        # block_state; `a` only exists here if it was delivered as a tagged value
+        block_state.received_a = getattr(block_state, "a", "<not-set>")
+        block_state.received_b = block_state.b
+        self.set_block_state(state, block_state)
         return components, state
 
 
@@ -635,7 +638,7 @@ class TestBlockKwargsTypeInputs:
     written by a block is tagged if the block declared it with
     `OutputParam(..., kwargs_type=...)`, and a user-passed input is tagged if the pipeline's
     `InputParam` for it declares a kwargs_type. A named input declared *without* a kwargs_type
-    therefore never reaches the bag, even though it is available in state by name.
+    therefore never reaches the consumer's dict, even though it is available in state by name.
     """
 
     def test_tagged_block_outputs_are_delivered_to_consumer(self):
@@ -645,41 +648,47 @@ class TestBlockKwargsTypeInputs:
         pipe = blocks.init_pipeline()
 
         # `a` goes through the producer and is written back as a tagged output, so it reaches
-        # the consumer through the bag; `b` also goes through the producer, but its output is
-        # untagged: it reaches the consumer only as the named input, never through the bag
-        pipe(
-            a="testa",
-            b="testb",
-            expected_a="testa-producer",
-            expected_b="testb-producer",
-            expected_typea={"a": "testa-producer"},
-        )
+        # the consumer through the `typea` dict; `b` also goes through the producer, but its
+        # output is untagged: it reaches the consumer only as the named input
+        received = pipe(a="testa", b="testb", output=["received_typea", "received_a", "received_b"])
+        assert received["received_typea"] == {"a": "testa-producer"}
+        assert received["received_a"] == "testa-producer"
+        assert received["received_b"] == "testb-producer"
 
-    def test_user_inputs_passed_by_name_do_not_reach_the_bag(self):
+    def test_user_inputs_passed_by_name_are_not_tagged(self):
         pipe = DummyKwargsConsumerStep().init_pipeline()
 
-        # the consumer only knows `a` through the `typea` bag: passing it by name does not
-        # reach the block at all. `b` is declared by name without a kwargs_type: it reaches
-        # the block as the named input, but never through the bag.
-        pipe(
-            a="testa",
-            b="testb",
-            expected_a=None,
-            expected_b="testb",
-            expected_typea={},
-        )
+        # the consumer only knows `a` as a tagged value: passing it by name does not reach
+        # the block at all. `b` is declared by name without a kwargs_type: it reaches the
+        # block as the named input, but never through the `typea` dict.
+        received = pipe(a="testa", b="testb", output=["received_typea", "received_a", "received_b"])
+        assert received["received_typea"] == {}
+        assert received["received_a"] == "<not-set>"
+        assert received["received_b"] == "testb"
 
     def test_kwargs_type_dict_input_is_delivered(self):
         pipe = DummyKwargsConsumerStep().init_pipeline()
 
-        # the whole bag can be passed as a dict under the kwargs_type name: every entry is
-        # tagged individually, so `a` now reaches the consumer through the bag
-        pipe(
-            typea={"a": "testa"},
-            expected_a="testa",
-            expected_b=None,
-            expected_typea={"a": "testa"},
+        # tagged values can be passed as a dict under the kwargs_type name: every entry is
+        # tagged individually, so `a` now reaches the consumer through the `typea` dict
+        received = pipe(typea={"a": "testa"}, output=["received_typea", "received_a", "received_b"])
+        assert received["received_typea"] == {"a": "testa"}
+        assert received["received_a"] == "testa"
+        assert received["received_b"] is None
+
+    def test_kwargs_type_input_in_pipeline_call_params(self):
+        blocks = SequentialPipelineBlocks.from_blocks_dict(
+            {"producer": DummyKwargsProducerStep(), "consumer": DummyKwargsConsumerStep()}
         )
+        pipe = blocks.init_pipeline()
+
+        # the kwargs_type input is exposed as a single nameless param alongside the named
+        # inputs, and renders as a `**typea` kwargs-style param in the docstring
+        named = [inp.name for inp in pipe.blocks.inputs if inp.name is not None]
+        kwargs_inputs = [inp.kwargs_type for inp in pipe.blocks.inputs if inp.name is None]
+        assert named == ["a", "b"]
+        assert kwargs_inputs == ["typea"]
+        assert "**typea" in pipe.blocks.doc
 
 
 @slow
