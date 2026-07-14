@@ -7,6 +7,8 @@ Once merged, your PR is going to appear in the release notes with the title you 
 
 Then, please replace this with a description of the change and which issue is fixed (if applicable). Please also include relevant motivation and context. List any dependencies (if any) that are required for this change.
 
+If you used an AI agent, also include your final self-review notes here (or post them as a comment) — the report from the last self-review round, including any findings you intentionally did not fix and why. See https://github.com/huggingface/diffusers/blob/main/.ai/skills/self-review/SKILL.md
+
 Once you're done, someone will review your PR shortly (see the section "Who can review?" below to tag some potential reviewers). They may suggest changes to make the code even better. If no one reviewed your PR after a week has passed, don't hesitate to post a new comment @-mentioning the same persons---sometimes notifications get lost.
 -->
 
