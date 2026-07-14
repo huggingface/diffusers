@@ -140,10 +140,8 @@ class Cosmos3VLTextRotaryEmbedding(nn.Module):
 
 
 class Cosmos3NemotronRMSNorm(nn.Module):
-    def __init__(self, dim: int, eps: float, elementwise_affine: bool = True, bias: bool = False):
+    def __init__(self, dim: int, eps: float):
         super().__init__()
-        if not elementwise_affine or bias:
-            raise ValueError("Cosmos3NemotronRMSNorm requires an affine weight without a bias.")
         self.eps = eps
         self.weight = nn.Parameter(torch.ones(dim))
 
@@ -219,7 +217,7 @@ class Cosmos3PackedMoTAttention(nn.Module, AttentionModuleMixin):
         attention_bias: bool,
         rms_norm_eps: float,
         qk_norm_for_text: bool = True,
-        norm_cls: type[nn.Module] = RMSNorm,
+        norm_type: str = "rms_norm",
         processor=None,
     ):
         super().__init__()
@@ -235,24 +233,27 @@ class Cosmos3PackedMoTAttention(nn.Module, AttentionModuleMixin):
         self.to_k = nn.Linear(hidden_size, num_key_value_heads * head_dim, bias=attention_bias)
         self.to_v = nn.Linear(hidden_size, num_key_value_heads * head_dim, bias=attention_bias)
         self.to_out = nn.Linear(num_attention_heads * head_dim, hidden_size, bias=attention_bias)
-        self.norm_q = (
-            norm_cls(head_dim, eps=rms_norm_eps, elementwise_affine=True, bias=False)
-            if qk_norm_for_text
-            else nn.Identity()
-        )
-        self.norm_k = (
-            norm_cls(head_dim, eps=rms_norm_eps, elementwise_affine=True, bias=False)
-            if qk_norm_for_text
-            else nn.Identity()
-        )
+        if not qk_norm_for_text:
+            self.norm_q = nn.Identity()
+            self.norm_k = nn.Identity()
+        elif norm_type == "nemotron_rms_norm":
+            self.norm_q = Cosmos3NemotronRMSNorm(head_dim, eps=rms_norm_eps)
+            self.norm_k = Cosmos3NemotronRMSNorm(head_dim, eps=rms_norm_eps)
+        else:
+            self.norm_q = RMSNorm(head_dim, eps=rms_norm_eps, elementwise_affine=True, bias=False)
+            self.norm_k = RMSNorm(head_dim, eps=rms_norm_eps, elementwise_affine=True, bias=False)
 
         # Generation pathway
         self.add_q_proj = nn.Linear(hidden_size, num_attention_heads * head_dim, bias=attention_bias)
         self.add_k_proj = nn.Linear(hidden_size, num_key_value_heads * head_dim, bias=attention_bias)
         self.add_v_proj = nn.Linear(hidden_size, num_key_value_heads * head_dim, bias=attention_bias)
         self.to_add_out = nn.Linear(num_attention_heads * head_dim, hidden_size, bias=attention_bias)
-        self.norm_added_q = norm_cls(head_dim, eps=rms_norm_eps, elementwise_affine=True, bias=False)
-        self.norm_added_k = norm_cls(head_dim, eps=rms_norm_eps, elementwise_affine=True, bias=False)
+        if norm_type == "nemotron_rms_norm":
+            self.norm_added_q = Cosmos3NemotronRMSNorm(head_dim, eps=rms_norm_eps)
+            self.norm_added_k = Cosmos3NemotronRMSNorm(head_dim, eps=rms_norm_eps)
+        else:
+            self.norm_added_q = RMSNorm(head_dim, eps=rms_norm_eps, elementwise_affine=True, bias=False)
+            self.norm_added_k = RMSNorm(head_dim, eps=rms_norm_eps, elementwise_affine=True, bias=False)
 
         if processor is None:
             processor = self._default_processor_cls()
@@ -284,7 +285,7 @@ class Cosmos3VLTextMoTDecoderLayer(nn.Module):
     ):
         super().__init__()
         self.hidden_size = hidden_size
-        norm_cls = Cosmos3NemotronRMSNorm if hidden_act == "relu2" else RMSNorm
+        norm_type = "nemotron_rms_norm" if hidden_act == "relu2" else "rms_norm"
         self.self_attn = Cosmos3PackedMoTAttention(
             hidden_size=hidden_size,
             head_dim=head_dim,
@@ -293,7 +294,7 @@ class Cosmos3VLTextMoTDecoderLayer(nn.Module):
             attention_bias=attention_bias,
             rms_norm_eps=rms_norm_eps,
             qk_norm_for_text=qk_norm_for_text,
-            norm_cls=norm_cls,
+            norm_type=norm_type,
         )
 
         self.mlp = Cosmos3VLTextMLP(
@@ -303,12 +304,18 @@ class Cosmos3VLTextMoTDecoderLayer(nn.Module):
             hidden_size=hidden_size, intermediate_size=intermediate_size, hidden_act=hidden_act
         )
 
-        self.input_layernorm = norm_cls(hidden_size, eps=rms_norm_eps, elementwise_affine=True, bias=False)
-        self.input_layernorm_moe_gen = norm_cls(hidden_size, eps=rms_norm_eps, elementwise_affine=True, bias=False)
-        self.post_attention_layernorm = norm_cls(hidden_size, eps=rms_norm_eps, elementwise_affine=True, bias=False)
-        self.post_attention_layernorm_moe_gen = norm_cls(
-            hidden_size, eps=rms_norm_eps, elementwise_affine=True, bias=False
-        )
+        if norm_type == "nemotron_rms_norm":
+            self.input_layernorm = Cosmos3NemotronRMSNorm(hidden_size, eps=rms_norm_eps)
+            self.input_layernorm_moe_gen = Cosmos3NemotronRMSNorm(hidden_size, eps=rms_norm_eps)
+            self.post_attention_layernorm = Cosmos3NemotronRMSNorm(hidden_size, eps=rms_norm_eps)
+            self.post_attention_layernorm_moe_gen = Cosmos3NemotronRMSNorm(hidden_size, eps=rms_norm_eps)
+        else:
+            self.input_layernorm = RMSNorm(hidden_size, eps=rms_norm_eps, elementwise_affine=True, bias=False)
+            self.input_layernorm_moe_gen = RMSNorm(hidden_size, eps=rms_norm_eps, elementwise_affine=True, bias=False)
+            self.post_attention_layernorm = RMSNorm(hidden_size, eps=rms_norm_eps, elementwise_affine=True, bias=False)
+            self.post_attention_layernorm_moe_gen = RMSNorm(
+                hidden_size, eps=rms_norm_eps, elementwise_affine=True, bias=False
+            )
 
     def forward(
         self,
@@ -404,9 +411,12 @@ class Cosmos3OmniTransformer(ModelMixin, ConfigMixin, PeftAdapterMixin, Attentio
                 for _ in range(num_hidden_layers)
             ]
         )
-        norm_cls = Cosmos3NemotronRMSNorm if hidden_act == "relu2" else RMSNorm
-        self.norm = norm_cls(hidden_size, eps=rms_norm_eps, elementwise_affine=True, bias=False)
-        self.norm_moe_gen = norm_cls(hidden_size, eps=rms_norm_eps, elementwise_affine=True, bias=False)
+        if hidden_act == "relu2":
+            self.norm = Cosmos3NemotronRMSNorm(hidden_size, eps=rms_norm_eps)
+            self.norm_moe_gen = Cosmos3NemotronRMSNorm(hidden_size, eps=rms_norm_eps)
+        else:
+            self.norm = RMSNorm(hidden_size, eps=rms_norm_eps, elementwise_affine=True, bias=False)
+            self.norm_moe_gen = RMSNorm(hidden_size, eps=rms_norm_eps, elementwise_affine=True, bias=False)
         self.rotary_emb = Cosmos3VLTextRotaryEmbedding(
             head_dim=head_dim, rope_theta=rope_theta, rope_axes_dim=rope_axes_dim
         )

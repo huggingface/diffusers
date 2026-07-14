@@ -46,9 +46,17 @@ def get_edge_transformer(action_gen: bool = False):
 def test_cosmos3_edge_uses_nemotron_parameter_layout():
     transformer = get_edge_transformer(action_gen=True)
     state_dict = transformer.state_dict()
+    layer = transformer.layers[0]
 
     assert transformer.config.backbone_type == "cosmos3_edge_nemotron_dense"
     assert transformer.config.temporal_compression_factor == 4
+    assert isinstance(layer.self_attn.norm_q, torch.nn.Identity)
+    assert isinstance(layer.self_attn.norm_k, torch.nn.Identity)
+    assert isinstance(layer.self_attn.norm_added_q, Cosmos3NemotronRMSNorm)
+    assert isinstance(layer.self_attn.norm_added_k, Cosmos3NemotronRMSNorm)
+    assert isinstance(layer.input_layernorm, Cosmos3NemotronRMSNorm)
+    assert isinstance(layer.post_attention_layernorm, Cosmos3NemotronRMSNorm)
+    assert isinstance(transformer.norm, Cosmos3NemotronRMSNorm)
     assert not any("gate_proj" in key for key in state_dict)
     assert not any(".norm_q." in key or ".norm_k." in key for key in state_dict)
     assert "layers.0.self_attn.norm_added_q.weight" in state_dict
