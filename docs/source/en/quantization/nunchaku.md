@@ -13,10 +13,7 @@ specific language governing permissions and limitations under the License.
 
 # Nunchaku Lite
 
-Nunchaku Lite is a quantization backend for loading prequantized checkpoints in Diffusers. Use
-[`diffuse-compressor`](https://github.com/rootonchair/diffuse-compressor) to create compatible checkpoints by choosing
-or adapting a target config for the model architecture, quantizing and exporting the transformer, and packaging the
-result as a Diffusers pipeline repository.
+Nunchaku Lite is a quantization backend for loading prequantized checkpoints in Diffusers. Create compatible checkpoints with [diffuse-compressor](https://github.com/rootonchair/diffuse-compressor). It quantizes and exports a transformer, then packages it as a Diffusers pipeline.
 
 Nunchaku Lite builds on the original [Nunchaku](https://github.com/nunchaku-ai/nunchaku) inference engine,
 [DeepCompressor](https://github.com/nunchaku-ai/deepcompressor) quantization library, and
@@ -24,7 +21,7 @@ Nunchaku Lite builds on the original [Nunchaku](https://github.com/nunchaku-ai/n
 
 ## Load a quantized pipeline
 
-Load the packaged prequantized pipeline with [`~DiffusionPipeline.from_pretrained`]. Diffusers reads the quantization
+Load the prequantized pipeline with [`~DiffusionPipeline.from_pretrained`], which reads the quantization
 config from `config.json`.
 
 ```python
@@ -44,15 +41,13 @@ image = pipe(
     width=1024,
     num_inference_steps=8,
     guidance_scale=1.0,
-    use_pe=False,
 ).images[0]
 image.save("ernie-image-turbo-nunchaku-lite.png")
 ```
 
-## Using Optimized CUDA Kernels with Nunchaku Lite
+## Install the CUDA kernels
 
-Nunchaku Lite uses optimized CUDA kernels through the `kernels` package. The kernels are loaded automatically when you
-load a Nunchaku Lite checkpoint. Install the runtime dependency before loading a Nunchaku Lite checkpoint.
+The kernels package supplies the optimized CUDA kernels, which load automatically. Install it first.
 
 ```bash
 pip install -U kernels
@@ -63,7 +58,7 @@ pip install -U kernels
 > quantized with fused QKV projections won't load into a model config that expects separate Q, K, and V projection
 > modules.
 
-## Supported Quantization Types
+## Supported quantization types
 
 Nunchaku Lite supports the following quantized linear layer formats.
 
@@ -92,20 +87,17 @@ The CUDA kernels currently support the following NVIDIA GPU architectures:
 
 ## NunchakuLiteQuantizationConfig
 
-The `config.json` file must include a compact [`NunchakuLiteQuantizationConfig`]. It defines the runtime
+The `config.json` file must include a [`NunchakuLiteQuantizationConfig`]. It defines the runtime
 `compute_dtype` and the target modules for each Nunchaku Lite quantization method.
 
 - `compute_dtype`: runtime dtype for floating-point buffers in quantized modules, typically `torch.bfloat16`.
 - `svdq_w4a4`: SVDQ W4A4 target config with `precision`, `group_size`, `rank`, and `targets`.
 - `awq_w4a16`: AWQ W4A16 target config with `precision`, `group_size`, and `targets`.
 
-Each entry in `targets` must point to a linear layer. Diffusers replaces the linear layers listed under `svdq_w4a4`
-with SVDQ W4A4 layers and the linear layers listed under `awq_w4a16` with AWQ W4A16 layers. The example below shows the
+Each entry in `targets` must point to a linear layer. Diffusers swaps each `svdq_w4a4` target for an SVDQ W4A4 layer and each `awq_w4a16` target for an AWQ W4A16 layer. The example below shows the
 expected shape with shortened target lists.
 
-> [!NOTE]
-> A target module can only use one Nunchaku Lite quantization method. Do not list the same target under both
-> `svdq_w4a4` and `awq_w4a16`.
+List each module you want to quantize under `svdq_w4a4` or `awq_w4a16`. A module can only use one method, so don't list the same target under both.
 
 ```json
 {
@@ -137,8 +129,7 @@ Compile the quantized transformer after loading the pipeline for faster inferenc
 pipe.transformer = torch.compile(pipe.transformer, mode="default", fullgraph=True)
 ```
 
-An ERNIE-Image-Turbo benchmark on an RTX PRO 6000 reported that Nunchaku Lite NVFP4 with `torch.compile` reduced the full pipeline latency from 2.271s to 1.675s. Compared to the original BF16 pipeline, the compiled
-Nunchaku Lite NVFP4 pipeline reached a 1.8x speedup.
+The compiled Nunchaku Lite NVFP4 pipeline runs 1.8x faster than the original BF16 pipeline (2.271s → 1.675s on an RTX PRO 6000).
 
 ## Resources
 
