@@ -27,7 +27,6 @@ from diffusers import (
     QuantoConfig,
     TorchAoConfig,
 )
-from diffusers.quantizers.nunchaku.utils import AWQW4A16Linear, SVDQW4A4Linear
 from diffusers.utils.import_utils import (
     is_bitsandbytes_available,
     is_gguf_available,
@@ -1425,6 +1424,8 @@ class NunchakuLiteConfigMixin:
         return self.model_class.from_pretrained(self.quantized_model_name_or_path, **kwargs)
 
     def _verify_if_layer_quantized(self, name, module, config_kwargs):
+        from diffusers.quantizers.nunchaku.utils import AWQW4A16Linear, SVDQW4A4Linear
+
         assert isinstance(module, (SVDQW4A4Linear, AWQW4A16Linear)), (
             f"Layer {name} is not a Nunchaku Lite layer, got {type(module)}"
         )
@@ -1450,6 +1451,8 @@ class NunchakuLiteTesterMixin(NunchakuLiteConfigMixin, QuantizationTesterMixin):
         self._test_quantization_inference(self.config_dict)
 
     def _is_module_quantized(self, module):
+        from diffusers.quantizers.nunchaku.utils import AWQW4A16Linear, SVDQW4A4Linear
+
         return isinstance(module, (SVDQW4A4Linear, AWQW4A16Linear))
 
     def _test_quantized_layers(self, config_kwargs):
