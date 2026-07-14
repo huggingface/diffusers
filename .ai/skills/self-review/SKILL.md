@@ -47,19 +47,17 @@ touched, also read `.ai/models.md`, `.ai/pipelines.md`, or `.ai/modular.md`.
 Report only — do not edit files. Be concrete, cite the rule, review the whole
 diff, and don't invent issues or flag pure style.
 
-## 4. Save the notes for the reviewer
+## 4. Share the notes with the reviewer
 
 The report is not just for you — sharing it on the PR is part of the
 contribution workflow (see the "AI-assisted and agentic contributions" section
 of the contributor guide). Reviewers read it to see what was checked, what was
 fixed, and what you deliberately left.
 
-- Save each round's full report to a local notes file (e.g.
-  `self-review-notes.md` outside the repo, or gitignored). Re-running
-  self-review after addressing findings or reviewer feedback is a **new
-  round** — append it with a heading (`## Round 2 — <date>`); never overwrite
-  earlier rounds.
-- When the PR is opened, post the complete notes — **all rounds** — in the PR
-  description or as a PR comment, including findings you intentionally did not
-  fix and why.
-- Do not commit the notes file as part of the PR diff.
+- You may run several rounds (fix findings, re-run). Share the **final
+  round's** report — the one that reflects the diff you're actually
+  submitting — in the PR description or as a PR comment, including any
+  findings you intentionally did not fix and why.
+- If you self-review again later (e.g. after addressing reviewer feedback),
+  post that round's report as a new PR comment.
+- Do not commit the notes as part of the PR diff.
