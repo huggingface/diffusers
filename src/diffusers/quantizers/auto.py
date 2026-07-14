@@ -30,9 +30,11 @@ from .quantization_config import (
     QuantizationConfigMixin,
     QuantizationMethod,
     QuantoConfig,
+    QuarkConfig,
     TorchAoConfig,
 )
 from .quanto import QuantoQuantizer
+from .quark import QuarkDiffusersQuantizer
 from .torchao import TorchAoHfQuantizer
 
 
@@ -44,6 +46,7 @@ AUTO_QUANTIZER_MAPPING = {
     "torchao": TorchAoHfQuantizer,
     "modelopt": NVIDIAModelOptQuantizer,
     "auto-round": AutoRoundQuantizer,
+    "quark": QuarkDiffusersQuantizer,
 }
 
 AUTO_QUANTIZATION_CONFIG_MAPPING = {
@@ -54,6 +57,7 @@ AUTO_QUANTIZATION_CONFIG_MAPPING = {
     "torchao": TorchAoConfig,
     "modelopt": NVIDIAModelOptConfig,
     "auto-round": AutoRoundConfig,
+    "quark": QuarkConfig,
 }
 
 
