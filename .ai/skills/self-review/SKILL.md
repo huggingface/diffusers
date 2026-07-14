@@ -55,5 +55,5 @@ Keep working with them to fix as much as possible until the verdict is
 **READY** — the **Leave for the actual review** items are the only ones that
 should reach the reviewer unresolved. End the final round's report by
 reminding the contributor to share it on the PR (description or a comment) —
-it saves the reviewer a round of back-and-forth. Never commit the notes as
+it saves the reviewer a few rounds of back-and-forth. Never commit the notes as
 part of the diff.
