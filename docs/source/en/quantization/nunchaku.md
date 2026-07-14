@@ -19,6 +19,14 @@ Nunchaku Lite builds on the original [Nunchaku](https://github.com/nunchaku-ai/n
 [DeepCompressor](https://github.com/nunchaku-ai/deepcompressor) quantization library, and
 [SVDQuant paper](https://arxiv.org/abs/2411.05007).
 
+## Install the CUDA kernels
+
+The kernels package supplies the optimized CUDA kernels, which load automatically. Install it first.
+
+```bash
+pip install -U kernels
+```
+
 ## Load a quantized pipeline
 
 Load the prequantized pipeline with [`~DiffusionPipeline.from_pretrained`], which reads the quantization
@@ -43,14 +51,6 @@ image = pipe(
     guidance_scale=1.0,
 ).images[0]
 image.save("ernie-image-turbo-nunchaku-lite.png")
-```
-
-## Install the CUDA kernels
-
-The kernels package supplies the optimized CUDA kernels, which load automatically. Install it first.
-
-```bash
-pip install -U kernels
 ```
 
 > [!NOTE]

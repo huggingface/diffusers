@@ -28,7 +28,7 @@ There are two ways to use [`~quantizers.PipelineQuantizationConfig`] depending o
 
 Initialize [`~quantizers.PipelineQuantizationConfig`] with the following parameters.
 
-- `quant_backend` specifies which quantization backend to use. Currently supported backends include: `bitsandbytes_4bit`, `bitsandbytes_8bit`, `gguf`, `nunchaku_lite`, `quanto`, and `torchao`.
+- `quant_backend` specifies which quantization backend to use. Currently supported backends include: `bitsandbytes_4bit`, `bitsandbytes_8bit`, `gguf`, `quanto`, and `torchao`.
 - `quant_kwargs` specifies the quantization arguments to use.
 
 > [!TIP]
@@ -124,6 +124,30 @@ pipe = DiffusionPipeline.from_pretrained(
 
 image = pipe("photo of a cute dog").images[0]
 ```
+
+## Loading prequantized checkpoints
+
+Some quantization backends support loading checkpoints that were already quantized and uploaded to the Hub. In this case, the quantization configuration is stored in the model's `config.json` and is read automatically — you do not need to create a [`~quantizers.PipelineQuantizationConfig`] or pass a `quantization_config` argument.
+
+```py
+import torch
+from diffusers import DiffusionPipeline
+
+pipe = DiffusionPipeline.from_pretrained(
+    "rootonchair/ERNIE-Image-Turbo-nunchaku-lite-nvfp4",
+    torch_dtype=torch.bfloat16,
+).to("cuda")
+```
+
+The following backends support loading prequantized checkpoints out of the box.
+
+| Backend | Notes |
+|---|---|
+| [bitsandbytes](./bitsandbytes) | Config is saved in `config.json`; no extra arguments needed. |
+| [GGUF](./gguf) | Uses `from_single_file` with Model classes; pipeline-level loading is not supported. |
+| [AutoRound](./autoround) | Only loading is supported; quantize first with the AutoRound CLI or Python API. |
+| [Nunchaku Lite](./nunchaku) | Config is saved in `config.json`; requires the `kernels` package. |
+| [ModelOpt](./modelopt) | Supports both quantizing on the fly and loading prequantized models. |
 
 ## Resources
 
