@@ -22,6 +22,7 @@ from diffusers import (
     AutoRoundConfig,
     BitsAndBytesConfig,
     GGUFQuantizationConfig,
+    NunchakuLiteQuantizationConfig,
     NVIDIAModelOptConfig,
     QuantoConfig,
     TorchAoConfig,
@@ -29,6 +30,7 @@ from diffusers import (
 from diffusers.utils.import_utils import (
     is_bitsandbytes_available,
     is_gguf_available,
+    is_kernels_available,
     is_nvidia_modelopt_available,
     is_optimum_quanto_available,
     is_torchao_available,
@@ -1397,6 +1399,108 @@ class GGUFCompileTesterMixin(GGUFConfigMixin, QuantizationCompileTesterMixin):
 
     def test_gguf_torch_compile_with_group_offload(self):
         self._test_torch_compile_with_group_offload({"compute_dtype": torch.bfloat16})
+
+
+@pytest.mark.skipif(not is_kernels_available(), reason="`kernels` is not available.")
+@require_accelerate
+@require_accelerator
+class NunchakuLiteConfigMixin:
+    """
+    Base mixin providing Nunchaku Lite quantization config and model creation.
+
+    Expected class attributes:
+        - model_class: The model class to test
+        - quantized_model_name_or_path: Hub repository ID or local path for the quantized model
+        - pretrained_model_kwargs: (Optional) Dict of kwargs to pass to from_pretrained
+    """
+
+    config_dict = None
+
+    def _create_quantized_model(self, config_kwargs=None, **extra_kwargs):
+        kwargs = getattr(self, "pretrained_model_kwargs", {}).copy()
+        if config_kwargs is not None:
+            kwargs["quantization_config"] = NunchakuLiteQuantizationConfig(**config_kwargs)
+        kwargs.update(extra_kwargs)
+        return self.model_class.from_pretrained(self.quantized_model_name_or_path, **kwargs)
+
+    def _verify_if_layer_quantized(self, name, module, config_kwargs):
+        from diffusers.quantizers.nunchaku.utils import AWQW4A16Linear, SVDQW4A4Linear
+
+        assert isinstance(module, (SVDQW4A4Linear, AWQW4A16Linear)), (
+            f"Layer {name} is not a Nunchaku Lite layer, got {type(module)}"
+        )
+
+
+@pytest.mark.skipif(not is_kernels_available(), reason="`kernels` is not available.")
+@require_accelerate
+@require_accelerator
+class NunchakuLiteTesterMixin(NunchakuLiteConfigMixin, QuantizationTesterMixin):
+    """
+    Mixin class for testing Nunchaku Lite quantization on models.
+
+    Expected class attributes:
+        - model_class: The model class to test
+        - quantized_model_name_or_path: Hub repository ID or local path for the quantized model
+        - pretrained_model_kwargs: (Optional) Dict of kwargs to pass to from_pretrained
+
+    Expected methods to be implemented by subclasses:
+        - get_dummy_inputs(): Returns dict of inputs to pass to the model forward pass
+    """
+
+    def test_nunchaku_lite_quantization_inference(self):
+        self._test_quantization_inference(self.config_dict)
+
+    def _is_module_quantized(self, module):
+        from diffusers.quantizers.nunchaku.utils import AWQW4A16Linear, SVDQW4A4Linear
+
+        return isinstance(module, (SVDQW4A4Linear, AWQW4A16Linear))
+
+    def _test_quantized_layers(self, config_kwargs):
+        model = self._create_quantized_model(config_kwargs)
+
+        num_quantized_layers = 0
+        for name, module in model.named_modules():
+            if self._is_module_quantized(module):
+                self._verify_if_layer_quantized(name, module, config_kwargs)
+                num_quantized_layers += 1
+
+        expected_quantized_layers = sum(
+            len(config_kwargs.get(section, {}).get("targets", [])) for section in ("svdq_w4a4", "awq_w4a16")
+        )
+
+        assert num_quantized_layers > 0, (
+            f"No quantized layers found in model (expected {expected_quantized_layers} Nunchaku Lite layers)"
+        )
+        assert num_quantized_layers == expected_quantized_layers, (
+            f"Quantized layer count mismatch: expected {expected_quantized_layers}, got {num_quantized_layers} "
+            f"(configured Nunchaku Lite targets: {expected_quantized_layers})"
+        )
+
+    def test_nunchaku_lite_quantized_layers(self):
+        self._test_quantized_layers(self.config_dict)
+
+
+@pytest.mark.skipif(not is_kernels_available(), reason="`kernels` is not available.")
+@require_accelerate
+@require_accelerator
+class NunchakuLiteCompileTesterMixin(NunchakuLiteConfigMixin, QuantizationCompileTesterMixin):
+    """
+    Mixin class for testing torch.compile with Nunchaku Lite quantized models.
+
+    Expected class attributes:
+        - model_class: The model class to test
+        - quantized_model_name_or_path: Hub repository ID or local path for the quantized model
+        - pretrained_model_kwargs: (Optional) Dict of kwargs to pass to from_pretrained
+
+    Expected methods to be implemented by subclasses:
+        - get_dummy_inputs(): Returns dict of inputs to pass to the model forward pass
+    """
+
+    def test_nunchaku_lite_torch_compile(self):
+        self._test_torch_compile(self.config_dict)
+
+    def test_nunchaku_lite_torch_compile_with_group_offload(self):
+        self._test_torch_compile_with_group_offload(self.config_dict)
 
 
 @is_modelopt
