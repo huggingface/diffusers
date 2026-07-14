@@ -318,6 +318,11 @@ class SD3Transformer2DModel(
                     joint_attention_kwargs=joint_attention_kwargs,
                 )
 
+            # Ensure contiguous memory layout for downstream ops.
+            hidden_states = hidden_states.contiguous()
+            if encoder_hidden_states is not None:
+                encoder_hidden_states = encoder_hidden_states.contiguous()
+
             # controlnet residual
             if block_controlnet_hidden_states is not None and block.context_pre_only is False:
                 interval_control = len(self.transformer_blocks) / len(block_controlnet_hidden_states)
