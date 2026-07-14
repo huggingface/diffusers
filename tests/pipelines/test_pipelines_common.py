@@ -2408,6 +2408,23 @@ class PipelineTesterMixin:
                     f"Component '{name}' has dtype {component.dtype} but expected {expected_dtype}",
                 )
 
+    def test_dtype_alias(self):
+        # `dtype` is an alias for `torch_dtype` in `from_pretrained`.
+        components = self.get_dummy_components()
+        pipe = self.pipeline_class(**components)
+
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname:
+            pipe.save_pretrained(tmpdirname, safe_serialization=False)
+            loaded_pipe = self.pipeline_class.from_pretrained(tmpdirname, dtype=torch.float16)
+
+        for name, component in loaded_pipe.components.items():
+            if isinstance(component, torch.nn.Module) and hasattr(component, "dtype"):
+                self.assertEqual(
+                    component.dtype,
+                    torch.float16,
+                    f"Component '{name}' has dtype {component.dtype} but expected {torch.float16}",
+                )
+
     def test_pipeline_with_accelerator_device_map(self, expected_max_difference=1e-4):
         components = self.get_dummy_components()
         # Set text encoders to eval mode to match from_pretrained behavior

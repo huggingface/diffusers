@@ -426,6 +426,28 @@ class Cosmos2_5_TransferPipelineFastTests(PipelineTesterMixin, unittest.TestCase
                     f"Component '{name}' has dtype {component.dtype} but expected {expected_dtype}",
                 )
 
+    def test_dtype_alias(self):
+        # `dtype` is an alias for `torch_dtype` in `from_pretrained`.
+        components = self.get_dummy_components()
+        pipe = self.pipeline_class(**components)
+
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname:
+            pipe.save_pretrained(tmpdirname, safe_serialization=False)
+            loaded_pipe = self.pipeline_class.from_pretrained(
+                tmpdirname, safety_checker=DummyCosmosSafetyChecker(), dtype=torch.float16
+            )
+
+        for name, component in loaded_pipe.components.items():
+            # Skip components that are not loaded from disk or have special handling
+            if name == "safety_checker":
+                continue
+            if isinstance(component, torch.nn.Module) and hasattr(component, "dtype"):
+                self.assertEqual(
+                    component.dtype,
+                    torch.float16,
+                    f"Component '{name}' has dtype {component.dtype} but expected {torch.float16}",
+                )
+
     def test_save_load_optional_components(self, expected_max_difference=1e-4):
         self.pipeline_class._optional_components.remove("safety_checker")
         super().test_save_load_optional_components(expected_max_difference=expected_max_difference)
