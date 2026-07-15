@@ -95,7 +95,7 @@ Two test layers must be added for any new pipeline: pipeline-level tests, and (i
 - No LoRA tests in the initial PR (no `LoraTesterMixin`, no `tests/lora/test_lora_layers_<model>.py`).
 - No integration / slow tests in the initial PR — don't add anything gated on `@slow` / `RUN_SLOW=1` yet.
 
-### Pipeline-level tests
+### Pipeline-level tests (standard pipelines)
 
 - Location: `tests/pipelines/<model>/test_<model>.py` (one file per pipeline variant, e.g. T2V, I2V).
 - Subclass both `PipelineTesterMixin` (from `..test_pipelines_common`) and `unittest.TestCase`.
@@ -103,6 +103,14 @@ Two test layers must be added for any new pipeline: pipeline-level tests, and (i
 - Implement `get_dummy_components()` (build all sub-modules with tiny configs and a fixed `torch.manual_seed(0)` before each) and `get_dummy_inputs(device, seed=0)`.
 - Skip any inherited tests that don't apply with `@unittest.skip("Test not supported")` rather than deleting them.
 - Reference: `tests/pipelines/wan/test_wan.py`.
+
+### Pipeline-level tests (modular pipelines)
+
+- Location: `tests/modular_pipelines/<model>/test_modular_pipeline_<model>.py` (one test class per blocks assembly / pipeline variant).
+- Subclass `ModularPipelineTesterMixin` (from `..test_modular_pipelines_common`) — it runs the pipeline end-to-end (call signature, batch consistency, float16, device placement) against a tiny checkpoint.
+- Set `pipeline_class`, `pipeline_blocks_class`, `pretrained_model_name_or_path`, `params` / `batch_params`, and implement `get_dummy_inputs(seed=0)`. Set `expected_workflow_blocks` to pin the block name → class ordering per workflow.
+- `pretrained_model_name_or_path` is a tiny repo with real components (tiny transformer, real scheduler / VAE / tokenizer configs). Develop against a personal repo; tiny repos ultimately live under `hf-internal-testing/` — not merge-blocking, a maintainer moves it before or after merge.
+- Reference: `tests/modular_pipelines/flux2/test_modular_pipeline_flux2_klein.py` (plus `..._klein_base.py` for the base/distilled variant split).
 
 ### Model-level tests
 
