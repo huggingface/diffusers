@@ -345,7 +345,7 @@ class Krea2SetTimestepsStep(ModularPipelineBlocks):
         if sigmas is None:
             sigmas = np.linspace(1.0, 1 / num_inference_steps, num_inference_steps)
         else:
-            num_inference_steps = len(sigmas)
+            block_state.num_inference_steps = len(sigmas)
 
         if components.config.is_distilled:
             mu = 1.15
