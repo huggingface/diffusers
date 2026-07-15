@@ -521,10 +521,13 @@ class DownloadTests(unittest.TestCase):
                 )
                 online_kwargs = mock_snapshot_download.call_args.kwargs
 
+                # `force_download=True` skips the fully-cached early return so `snapshot_download` runs
+                # offline and validates the computed patterns against the cached snapshot.
                 offline_folder = DiffusionPipeline.download(
                     "hf-internal-testing/tiny-stable-diffusion-torch",
                     cache_dir=tmpdirname,
                     local_files_only=True,
+                    force_download=True,
                 )
                 offline_kwargs = mock_snapshot_download.call_args.kwargs
 
