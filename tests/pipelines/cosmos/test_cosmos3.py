@@ -13,78 +13,166 @@
 # limitations under the License.
 
 import json
-from types import SimpleNamespace
+import tempfile
+import unittest
+from unittest import mock
 
 import torch
+from transformers import AutoTokenizer
 
 from diffusers import AutoencoderKLWan, Cosmos3OmniPipeline, Cosmos3OmniTransformer, UniPCMultistepScheduler
 
-
-class DummyTokenizer:
-    eos_token_id = 11
-
-    def __init__(self):
-        self.conversations = []
-
-    def convert_tokens_to_ids(self, token):
-        return {"<|vision_start|>": 20}.get(token, 0)
-
-    def apply_chat_template(self, conversations, **kwargs):
-        self.conversations.append(conversations)
-        return SimpleNamespace(input_ids=[1, 2])
+from ...testing_utils import enable_full_determinism, torch_device
+from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_PARAMS
+from ..test_pipelines_common import PipelineTesterMixin
 
 
-def get_dummy_pipeline(**kwargs):
-    transformer = Cosmos3OmniTransformer(
-        hidden_size=16,
-        intermediate_size=32,
-        head_dim=4,
-        num_attention_heads=4,
-        num_key_value_heads=2,
-        num_hidden_layers=1,
-        latent_channel=1,
-        latent_patch_size=1,
-        patch_latent_dim=1,
-        vocab_size=32,
+enable_full_determinism()
+
+
+class Cosmos3OmniPipelineWrapper(Cosmos3OmniPipeline):
+    @staticmethod
+    def from_pretrained(*args, **kwargs):
+        kwargs.setdefault("enable_safety_checker", False)
+        kwargs.setdefault("safety_checker", None)
+        return Cosmos3OmniPipeline.from_pretrained(*args, **kwargs)
+
+
+class Cosmos3OmniPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
+    pipeline_class = Cosmos3OmniPipelineWrapper
+    params = TEXT_TO_IMAGE_PARAMS - {"cross_attention_kwargs", "negative_prompt_embeds", "prompt_embeds"}
+    batch_params = TEXT_TO_IMAGE_BATCH_PARAMS
+    required_optional_params = frozenset(
+        [
+            "num_inference_steps",
+            "generator",
+            "latents",
+            "output_type",
+            "return_dict",
+            "callback_on_step_end",
+            "callback_on_step_end_tensor_inputs",
+        ]
     )
+    supports_dduf = False
+    test_xformers_attention = False
+    test_layerwise_casting = False
+    test_group_offloading = True
 
-    torch.manual_seed(0)
-    vae = AutoencoderKLWan(
-        base_dim=3,
-        z_dim=16,
-        dim_mult=[1, 1, 1, 1],
-        num_res_blocks=1,
-        temperal_downsample=[False, True, True],
-    )
+    def get_dummy_components(self):
+        torch.manual_seed(0)
+        transformer = Cosmos3OmniTransformer(
+            head_dim=6,
+            hidden_act="relu2",
+            hidden_size=6,
+            intermediate_size=12,
+            latent_channel=16,
+            latent_patch_size=1,
+            num_attention_heads=1,
+            num_hidden_layers=1,
+            num_key_value_heads=1,
+            patch_latent_dim=16,
+            qk_norm_for_text=False,
+            rms_norm_eps=1e-5,
+            rope_axes_dim=[1, 1, 1],
+            vocab_size=151657,
+        )
 
-    return Cosmos3OmniPipeline(
-        transformer=transformer,
-        text_tokenizer=DummyTokenizer(),
-        vae=vae,
-        scheduler=UniPCMultistepScheduler(),
-        enable_safety_checker=False,
-        **kwargs,
-    )
+        torch.manual_seed(0)
+        vae = AutoencoderKLWan(
+            base_dim=3,
+            z_dim=16,
+            dim_mult=[1, 1, 1, 1],
+            num_res_blocks=1,
+            temperal_downsample=[False, True, True],
+        )
 
+        text_tokenizer = AutoTokenizer.from_pretrained(
+            "hf-internal-testing/tiny-cosmos3-modular-pipe", subfolder="text_tokenizer"
+        )
 
-def test_cosmos3_pipeline_saves_edge_configuration(tmp_path):
-    pipeline = get_dummy_pipeline(default_use_system_prompt=False, use_native_flow_schedule=True)
+        return {
+            "transformer": transformer,
+            "text_tokenizer": text_tokenizer,
+            "vae": vae,
+            "scheduler": UniPCMultistepScheduler(),
+            "sound_tokenizer": None,
+            "safety_checker": None,
+            "enable_safety_checker": False,
+        }
 
-    assert not pipeline.config.enable_safety_checker
-    assert not pipeline.config.default_use_system_prompt
-    assert pipeline.config.use_native_flow_schedule
-    assert pipeline.safety_checker is None
+    def get_dummy_inputs(self, device, seed=0):
+        generator = torch.Generator(device="cpu").manual_seed(seed)
+        return {
+            "prompt": "a dog",
+            "negative_prompt": "bad quality",
+            "height": 16,
+            "width": 16,
+            "num_frames": 1,
+            "num_inference_steps": 2,
+            "guidance_scale": 1.0,
+            "generator": generator,
+            "output_type": "np",
+            "use_system_prompt": False,
+            "add_resolution_template": False,
+            "add_duration_template": False,
+        }
 
-    pipeline.save_config(tmp_path)
-    model_index = json.loads((tmp_path / "model_index.json").read_text())
-    assert model_index["enable_safety_checker"] is False
-    assert model_index["default_use_system_prompt"] is False
-    assert model_index["use_native_flow_schedule"] is True
+    def test_inference(self):
+        pipeline = self.pipeline_class(**self.get_dummy_components()).to(torch_device)
+        pipeline.set_progress_bar_config(disable=None)
 
+        video = pipeline(**self.get_dummy_inputs(torch_device)).video
 
-def test_cosmos3_tokenize_prompt_uses_checkpoint_system_prompt_default():
-    pipeline = get_dummy_pipeline(default_use_system_prompt=False)
+        self.assertEqual(video.shape, (1, 16, 16, 3))
 
-    pipeline.tokenize_prompt("A prompt", num_frames=1, add_resolution_template=False)
+    def test_components_function(self):
+        init_components = self.get_dummy_components()
+        pipeline = self.pipeline_class(**init_components)
+        component_names = {
+            name for name, component in init_components.items() if not isinstance(component, (str, int, float))
+        }
 
-    assert all(conversation[0]["role"] == "user" for conversation in pipeline.text_tokenizer.conversations)
+        self.assertTrue(hasattr(pipeline, "components"))
+        self.assertEqual(set(pipeline.components), component_names)
+
+    def test_cosmos3_pipeline_saves_edge_configuration(self):
+        components = self.get_dummy_components()
+        components["enable_safety_checker"] = False
+        components["default_use_system_prompt"] = False
+        components["use_native_flow_schedule"] = True
+        pipeline = self.pipeline_class(**components)
+
+        assert not pipeline.config.enable_safety_checker
+        assert not pipeline.config.default_use_system_prompt
+        assert pipeline.config.use_native_flow_schedule
+        assert pipeline.safety_checker is None
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            pipeline.save_config(tmpdir)
+            with open(f"{tmpdir}/model_index.json") as model_index_file:
+                model_index = json.load(model_index_file)
+        assert model_index["enable_safety_checker"] is False
+        assert model_index["default_use_system_prompt"] is False
+        assert model_index["use_native_flow_schedule"] is True
+
+    def test_cosmos3_tokenize_prompt_uses_checkpoint_system_prompt_default(self):
+        components = self.get_dummy_components()
+        components["default_use_system_prompt"] = False
+        pipeline = self.pipeline_class(**components)
+
+        with mock.patch.object(
+            pipeline.text_tokenizer,
+            "apply_chat_template",
+            wraps=pipeline.text_tokenizer.apply_chat_template,
+        ) as apply_chat_template:
+            pipeline.tokenize_prompt("A prompt", num_frames=1, add_resolution_template=False)
+
+        assert all(call.args[0][0]["role"] == "user" for call in apply_chat_template.call_args_list)
+
+    @unittest.skip("Cosmos3 currently supports one prompt per pipeline call.")
+    def test_inference_batch_consistent(self):
+        pass
+
+    @unittest.skip("Cosmos3 currently supports one prompt per pipeline call.")
+    def test_inference_batch_single_identical(self):
+        pass

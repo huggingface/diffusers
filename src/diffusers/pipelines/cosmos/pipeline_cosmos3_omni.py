@@ -1252,6 +1252,14 @@ class Cosmos3OmniPipeline(DiffusionPipeline):
         return self._current_timestep
 
     @property
+    def guidance_scale(self):
+        return self._guidance_scale
+
+    @property
+    def num_timesteps(self):
+        return self._num_timesteps
+
+    @property
     def interrupt(self):
         return self._interrupt
 
@@ -1684,6 +1692,7 @@ class Cosmos3OmniPipeline(DiffusionPipeline):
                     action_timesteps=action_timesteps,
                     action_noisy_frame_indexes=cond_packed_static.get("action_noisy_frame_indexes"),
                     action_domain_ids=[action_domain_id] if action_domain_id is not None else None,
+                    return_dict=False,
                 )
                 cond_v_vision, cond_v_sound, cond_v_action = self._mask_velocity_predictions(
                     preds_vision,
@@ -1723,6 +1732,7 @@ class Cosmos3OmniPipeline(DiffusionPipeline):
                         action_timesteps=action_timesteps,
                         action_noisy_frame_indexes=uncond_packed_static.get("action_noisy_frame_indexes"),
                         action_domain_ids=[action_domain_id] if action_domain_id is not None else None,
+                        return_dict=False,
                     )
                     uncond_v_vision, uncond_v_sound, uncond_v_action = self._mask_velocity_predictions(
                         preds_vision,

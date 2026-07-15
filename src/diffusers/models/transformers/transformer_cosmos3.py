@@ -13,17 +13,37 @@
 # limitations under the License.
 
 import math
+from dataclasses import dataclass
 
 import torch
 import torch.nn as nn
 
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...loaders import PeftAdapterMixin
+from ...utils import BaseOutput
 from ..attention import AttentionMixin, AttentionModuleMixin
 from ..attention_dispatch import dispatch_attention_fn
 from ..embeddings import TimestepEmbedding, Timesteps
 from ..modeling_utils import ModelMixin
 from ..normalization import RMSNorm
+
+
+@dataclass
+class Cosmos3OmniTransformerOutput(BaseOutput):
+    """Output of [`Cosmos3OmniTransformer`].
+
+    Args:
+        sample (`list[torch.Tensor]`):
+            Per-item vision velocity predictions.
+        sound (`list[torch.Tensor]`, *optional*):
+            Per-item sound velocity predictions when sound generation is enabled.
+        action (`list[torch.Tensor]`, *optional*):
+            Per-item action velocity predictions when action generation is enabled.
+    """
+
+    sample: list[torch.Tensor]
+    sound: list[torch.Tensor] | None = None
+    action: list[torch.Tensor] | None = None
 
 
 class Cosmos3AttnProcessor:
@@ -207,6 +227,7 @@ class Cosmos3PackedMoTAttention(nn.Module, AttentionModuleMixin):
 
     _default_processor_cls = Cosmos3AttnProcessor
     _available_processors = [Cosmos3AttnProcessor]
+    _supports_qkv_fusion = False
 
     def __init__(
         self,
@@ -380,8 +401,6 @@ class Cosmos3OmniTransformer(ModelMixin, ConfigMixin, PeftAdapterMixin, Attentio
         hidden_act: str = "silu",
         qk_norm_for_text: bool = True,
         rope_axes_dim: tuple[int, int, int] | list[int] | None = None,
-        backbone_type: str = "cosmos3_qwen3vl",
-        temporal_compression_factor: int = 4,
     ):
         super().__init__()
 
@@ -633,7 +652,10 @@ class Cosmos3OmniTransformer(ModelMixin, ConfigMixin, PeftAdapterMixin, Attentio
         action_timesteps: torch.Tensor | None = None,
         action_noisy_frame_indexes: list[torch.Tensor] | None = None,
         action_domain_ids: list[torch.Tensor] | None = None,
-    ) -> tuple[list[torch.Tensor], list[torch.Tensor] | None, list[torch.Tensor] | None]:
+        return_dict: bool = True,
+    ) -> (
+        Cosmos3OmniTransformerOutput | tuple[list[torch.Tensor], list[torch.Tensor] | None, list[torch.Tensor] | None]
+    ):
         """Run a full denoising-step forward pass.
 
         Args:
@@ -661,10 +683,11 @@ class Cosmos3OmniTransformer(ModelMixin, ConfigMixin, PeftAdapterMixin, Attentio
             action_timesteps: Optional per-token diffusion timesteps for action tokens.
             action_noisy_frame_indexes: Optional noisy frame indices per action item.
             action_domain_ids: Optional per-item domain IDs selecting the action head weights.
+            return_dict: Whether to return a [`Cosmos3OmniTransformerOutput`] instead of a tuple.
 
         Returns:
-            ``(preds_vision, preds_sound, preds_action)`` — lists of per-modality predictions. Optional modalities
-            return ``None`` when their inputs are omitted.
+            A [`Cosmos3OmniTransformerOutput`] or a tuple of per-modality prediction lists. Optional modalities return
+            ``None`` when their inputs are omitted.
         """
         has_sound = sound_tokens is not None and sound_sequence_indexes is not None
         has_action = action_tokens is not None and action_sequence_indexes is not None
@@ -778,4 +801,7 @@ class Cosmos3OmniTransformer(ModelMixin, ConfigMixin, PeftAdapterMixin, Attentio
                 preds_action_packed, action_token_shapes, action_noisy_frame_indexes
             )
 
-        return preds_vision, preds_sound, preds_action
+        if not return_dict:
+            return preds_vision, preds_sound, preds_action
+
+        return Cosmos3OmniTransformerOutput(sample=preds_vision, sound=preds_sound, action=preds_action)

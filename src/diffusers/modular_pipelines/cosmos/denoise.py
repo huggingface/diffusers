@@ -215,7 +215,7 @@ class Cosmos3LoopDenoiser(ModularPipelineBlocks):
             transformer_kwargs = {
                 name: value for name, value in transformer_kwargs.items() if name in transformer_args
             }
-            preds_vision, preds_sound, preds_action = components.transformer(**transformer_kwargs)
+            preds_vision, preds_sound, preds_action = components.transformer(**transformer_kwargs, return_dict=False)
             velocities[pass_name] = components._mask_velocity_predictions(
                 preds_vision,
                 preds_sound,
@@ -633,6 +633,7 @@ class Cosmos3TransferLoopDenoiser(ModularPipelineBlocks):
             vision_mse_loss_indexes=static["vision_mse_loss_indexes"],
             vision_timesteps=vision_timesteps,
             vision_noisy_frame_indexes=static["vision_noisy_frame_indexes"],
+            return_dict=False,
         )
         return preds_vision[-1]
 
