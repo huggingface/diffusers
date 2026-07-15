@@ -14,6 +14,7 @@ Before reviewing, read and apply the guidelines in:
 Common mistakes are covered in the common-mistakes / gotcha sections in [AGENTS.md](AGENTS.md), [models.md](models.md), [pipelines.md](pipelines.md), and [modular.md](modular.md). Additionally, watch for below patterns that aren't covered there:
 
 - **Ephemeral context.** Comments, docstrings, and files that only made sense to the current PR's author or reviewer don't help a future reader/user/developer. Examples: `# per reviewer comment on PR #NNNN`, `# as discussed in review`, `# TODO from offline chat`, debug printouts. Same for files: parity harnesses, comparison scripts, anything in `scripts/` with hardcoded developer paths or imports from the reference repo. State the *reason* so the comment stands alone, or drop it.
+- **Mocked test components.** Pipeline tests should build dummy components from the real classes at tiny config; flag hand-rolled mocks (a bare `nn.Module` with a `SimpleNamespace` config, a fake tokenizer) unless there's a good reason for one — e.g. an external component that's impractical to instantiate where only its I/O matters, like the Cosmos guardrail stub. A mock is written from whatever the pipeline currently reads, so it only confirms the pipeline against itself and stays green when the pipeline and the real component drift apart. See the testing rules in [skills/model-integration/SKILL.md](skills/model-integration/SKILL.md).
 
 ## Documentation impact
 

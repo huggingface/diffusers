@@ -91,6 +91,7 @@ Two test layers must be added for any new pipeline: pipeline-level tests, and (i
 
 **General rules (apply to both layers):**
 - Keep component sizes tiny so the suite runs fast — small `num_layers`, small hidden/attention dims, low resolution, few frames. Reference `tests/pipelines/wan/test_wan.py` (`get_dummy_components` and `get_dummy_inputs`) for the size scale to target.
+- Build dummy components from the **real classes** at tiny config — a real VAE with tiny dims, a real tokenizer from an `hf-internal-testing/tiny-random-*` repo. Don't substitute a hand-rolled mock (a bare `nn.Module` with a `SimpleNamespace` config, a fake tokenizer) without a good reason: a mock is written by copying whatever the pipeline reads from the component today, so it can only confirm the pipeline against itself — the test stays green when the component renames a config field or the pipeline starts reading one the component doesn't have, and catching exactly that pipeline↔component contract is what a pipeline test is for. A good reason to stub: the component is impractical to instantiate and only its I/O matters to the pipeline (e.g. `DummyCosmosSafetyChecker` standing in for the huge Cosmos guardrail) — then make it a shared, purpose-built class honoring the real interface.
 - No LoRA tests in the initial PR (no `LoraTesterMixin`, no `tests/lora/test_lora_layers_<model>.py`).
 - No integration / slow tests in the initial PR — don't add anything gated on `@slow` / `RUN_SLOW=1` yet.
 
