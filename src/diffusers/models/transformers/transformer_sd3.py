@@ -319,6 +319,7 @@ class SD3Transformer2DModel(
                     temb=temb,
                     joint_attention_kwargs=joint_attention_kwargs,
                 )
+
             # controlnet residual
             if block_controlnet_hidden_states is not None and block.context_pre_only is False:
                 interval_control = len(self.transformer_blocks) / len(block_controlnet_hidden_states)
