@@ -532,7 +532,6 @@ class DownloadTests(unittest.TestCase):
             assert set(offline_kwargs["allow_patterns"]) == set(online_kwargs["allow_patterns"])
             assert set(offline_kwargs["ignore_patterns"]) == set(online_kwargs["ignore_patterns"])
 
-    @require_hf_hub_version_greater("1.21.0")
     def test_local_files_only_raises_for_snapshot_with_missing_weights(self):
         # An interrupted download leaves a cached snapshot without some weights; loading it offline must
         # surface `huggingface_hub`'s incomplete-snapshot error instead of failing later at model load time.
