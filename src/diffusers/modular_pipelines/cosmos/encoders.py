@@ -271,6 +271,23 @@ class Cosmos3TransferTextStep(ModularPipelineBlocks):
         return components, state
 
 
+class Cosmos3DistilledTextEncoderStep(Cosmos3TextEncoderStep):
+    model_name = "cosmos3-omni"
+
+    @property
+    def description(self) -> str:
+        return "Prepares distilled prompt token IDs; rejects `negative_prompt` since guidance is baked in."
+
+    @staticmethod
+    def _check_inputs(block_state) -> None:
+        if block_state.negative_prompt is not None:
+            raise ValueError(
+                "This is a distilled Cosmos3 checkpoint; classifier-free guidance is baked into the weights, so "
+                "`negative_prompt` is not supported. Leave it unset."
+            )
+        Cosmos3TextEncoderStep._check_inputs(block_state)
+
+
 class Cosmos3ActionTextStep(ModularPipelineBlocks):
     model_name = "cosmos3-omni"
 
