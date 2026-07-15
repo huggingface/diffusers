@@ -116,7 +116,7 @@ COSMOS3_OMNI_WORKFLOWS = {
 class TestCosmos3OmniModularPipelineFast(ModularPipelineTesterMixin):
     pipeline_class = Cosmos3OmniModularPipeline
     pipeline_blocks_class = Cosmos3OmniBlocks
-    pretrained_model_name_or_path = "atharvajoshi10/tiny-cosmos3-modular-pipe"
+    pretrained_model_name_or_path = "hf-internal-testing/tiny-cosmos3-modular-pipe"
 
     params = frozenset(["prompt", "height", "width", "num_frames", "guidance_scale"])
     batch_params = frozenset()
