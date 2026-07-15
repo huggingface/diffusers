@@ -17,7 +17,7 @@ from types import SimpleNamespace
 
 import torch
 
-from diffusers import Cosmos3OmniPipeline, Cosmos3OmniTransformer, UniPCMultistepScheduler
+from diffusers import AutoencoderKLWan, Cosmos3OmniPipeline, Cosmos3OmniTransformer, UniPCMultistepScheduler
 
 
 class DummyTokenizer:
@@ -34,22 +34,6 @@ class DummyTokenizer:
         return SimpleNamespace(input_ids=[1, 2])
 
 
-class DummyVAE(torch.nn.Module):
-    def __init__(self):
-        super().__init__()
-        self.weight = torch.nn.Parameter(torch.zeros(()))
-        self.config = SimpleNamespace(
-            latents_mean=[0.0],
-            latents_std=[1.0],
-            scale_factor_spatial=16,
-            scale_factor_temporal=4,
-        )
-
-    @property
-    def dtype(self):
-        return self.weight.dtype
-
-
 def get_dummy_pipeline(**kwargs):
     transformer = Cosmos3OmniTransformer(
         hidden_size=16,
@@ -63,10 +47,20 @@ def get_dummy_pipeline(**kwargs):
         patch_latent_dim=1,
         vocab_size=32,
     )
+
+    torch.manual_seed(0)
+    vae = AutoencoderKLWan(
+        base_dim=3,
+        z_dim=16,
+        dim_mult=[1, 1, 1, 1],
+        num_res_blocks=1,
+        temperal_downsample=[False, True, True],
+    )
+
     return Cosmos3OmniPipeline(
         transformer=transformer,
         text_tokenizer=DummyTokenizer(),
-        vae=DummyVAE(),
+        vae=vae,
         scheduler=UniPCMultistepScheduler(),
         enable_safety_checker=False,
         **kwargs,
