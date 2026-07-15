@@ -14,7 +14,8 @@ Runs the same rubric as the `@claude` CI reviewer, so you catch issues before a
 maintainer does — but over your **whole** PR diff. (The CI scopes itself to
 `src/diffusers/` and `.ai/`; for your own PR, also review your tests, docs, and
 scripts.) You're already on the branch with the conventions loaded, so: get the
-diff → review it against the rubric → report.
+diff → review it against the rubric → report → iterate with the contributor
+until it's ready, then remind them to share the final notes on the PR.
 
 ## 1. Get the diff
 
@@ -46,3 +47,13 @@ touched, also read `.ai/models.md`, `.ai/pipelines.md`, or `.ai/modular.md`.
 
 Report only — do not edit files. Be concrete, cite the rule, review the whole
 diff, and don't invent issues or flag pure style.
+
+## 4. Iterate until ready, then share
+
+Expect several rounds: the contributor addresses findings, you review again.
+Keep working with them to fix as much as possible until the verdict is
+**READY** — the **Leave for the actual review** items are the only ones that
+should reach the reviewer unresolved. End the final round's report by
+reminding the contributor to share it on the PR (description or a comment) —
+it saves the reviewer a few rounds of back-and-forth. Never commit the notes as
+part of the diff.
