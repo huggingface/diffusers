@@ -25,6 +25,7 @@ import traceback
 import unittest
 import unittest.mock as mock
 import warnings
+from pathlib import Path
 
 import numpy as np
 import PIL.Image
@@ -503,6 +504,53 @@ class DownloadTests(unittest.TestCase):
             for p1, p2 in zip(m1.parameters(), m2.parameters()):
                 if p1.data.ne(p2.data).sum() > 0:
                     assert False, "Parameters not the same!"
+
+    def test_local_files_only_uses_same_snapshot_download_patterns(self):
+        # diffusers downloads a filtered subset of a repo (skipping e.g. `.gitattributes`). Newer
+        # `huggingface_hub` versions validate that a cached snapshot contains every file matching the
+        # requested patterns under `local_files_only=True`, so an offline
+        # `snapshot_download(allow_patterns=None)` would wrongly expect the whole repo. The offline path
+        # must compute the same patterns as the online one (from the cached snapshot instead of
+        # `model_info`). See https://github.com/huggingface/diffusers/issues/14117
+        with tempfile.TemporaryDirectory() as tmpdirname:
+            with mock.patch(
+                "diffusers.pipelines.pipeline_utils.snapshot_download", side_effect=snapshot_download
+            ) as mock_snapshot_download:
+                cached_folder = DiffusionPipeline.download(
+                    "hf-internal-testing/tiny-stable-diffusion-torch", cache_dir=tmpdirname
+                )
+                online_kwargs = mock_snapshot_download.call_args.kwargs
+
+                # `force_download=True` skips the fully-cached early return so `snapshot_download` runs
+                # offline and validates the computed patterns against the cached snapshot.
+                offline_folder = DiffusionPipeline.download(
+                    "hf-internal-testing/tiny-stable-diffusion-torch",
+                    cache_dir=tmpdirname,
+                    local_files_only=True,
+                    force_download=True,
+                )
+                offline_kwargs = mock_snapshot_download.call_args.kwargs
+
+            assert os.path.samefile(offline_folder, cached_folder)
+            assert set(offline_kwargs["allow_patterns"]) == set(online_kwargs["allow_patterns"])
+            assert set(offline_kwargs["ignore_patterns"]) == set(online_kwargs["ignore_patterns"])
+
+    def test_local_files_only_raises_for_snapshot_with_missing_weights(self):
+        # An interrupted download leaves a cached snapshot without some weights; loading it offline must
+        # surface `huggingface_hub`'s incomplete-snapshot error instead of failing later at model load time.
+        with tempfile.TemporaryDirectory() as tmpdirname:
+            cached_folder = DiffusionPipeline.download(
+                "hf-internal-testing/tiny-stable-diffusion-torch", cache_dir=tmpdirname
+            )
+            for weights_file in Path(cached_folder).glob("unet/diffusion_pytorch_model*"):
+                weights_file.unlink()
+
+            with self.assertRaisesRegex(OSError, "incomplete"):
+                DiffusionPipeline.download(
+                    "hf-internal-testing/tiny-stable-diffusion-torch",
+                    cache_dir=tmpdirname,
+                    local_files_only=True,
+                )
 
     def test_download_from_variant_folder(self):
         for use_safetensors in [False, True]:
