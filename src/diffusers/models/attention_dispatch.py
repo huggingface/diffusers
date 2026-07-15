@@ -408,6 +408,19 @@ def dispatch_attention_fn(
 ) -> torch.Tensor:
     attention_kwargs = attention_kwargs or {}
 
+    # Under autocast, fp32-cast-policy ops (like the RMSNorm QK norms in Flux models) return fp32
+    # while `value` stays bf16/fp16. SDPA casts its inputs inside its C++ autocast kernel; backends
+    # calling external kernels (flash-attn, sage, ...) crash on the mix, so do the same cast here.
+    # float64 is not autocast-eligible; "meta" has no autocast key and `is_autocast_enabled` raises.
+    # See https://github.com/huggingface/diffusers/issues/14104.
+    device_type = query.device.type
+    if device_type != "meta" and torch.is_autocast_enabled(device_type):
+        autocast_dtype = torch.get_autocast_dtype(device_type)
+        if query.dtype != torch.float64:
+            query, key, value = query.to(autocast_dtype), key.to(autocast_dtype), value.to(autocast_dtype)
+        if attn_mask is not None and torch.is_floating_point(attn_mask) and attn_mask.dtype != torch.float64:
+            attn_mask = attn_mask.to(autocast_dtype)
+
     if backend is None:
         # If no backend is specified, we either use the default backend (set via the DIFFUSERS_ATTN_BACKEND environment
         # variable), or we use a custom backend based on whether user is using the `attention_backend` context manager

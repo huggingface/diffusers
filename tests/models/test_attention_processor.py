@@ -1,3 +1,4 @@
+import contextlib
 import importlib.metadata
 import tempfile
 import unittest
@@ -8,9 +9,14 @@ import torch
 from packaging import version
 
 from diffusers import DiffusionPipeline
+from diffusers.models.attention_dispatch import (
+    AttentionBackendName,
+    _AttentionBackendRegistry,
+    dispatch_attention_fn,
+)
 from diffusers.models.attention_processor import Attention, AttnAddedKVProcessor
 
-from ..testing_utils import torch_device
+from ..testing_utils import is_torch_compile, require_torch_accelerator, torch_device
 
 
 class AttnAddedKVProcessorTests(unittest.TestCase):
@@ -133,3 +139,125 @@ class DeprecatedAttentionBlockTests(unittest.TestCase):
 
         self.assertTrue(np.allclose(pre_conversion, conversion, atol=1e-3))
         self.assertTrue(np.allclose(conversion, after_conversion, atol=1e-3))
+
+
+@require_torch_accelerator
+class TestAttentionDispatchAutocast:
+    """Regression tests for https://github.com/huggingface/diffusers/issues/14104.
+
+    Under an active torch.autocast context, ops with an fp32 cast policy (e.g. the `torch.nn.RMSNorm`
+    QK norms in Flux-family models) return float32 while `value` keeps the autocast dtype. Native SDPA
+    downcasts all of its inputs itself, but backends calling external kernels (flash-attn, sage, ...)
+    receive the tensors as-is and reject the mismatch, so `dispatch_attention_fn` must normalize
+    dtypes the same way SDPA's autocast registration does.
+    """
+
+    def _qkv(self, qk_dtype=torch.float32, v_dtype=torch.bfloat16):
+        # The fp32 q/k + bf16 v defaults reproduce what the fp32 autocast policy for `aten::rms_norm`
+        # does to the QK-norm pattern: q/k leave the norm upcast, value never passes through it.
+        query = torch.randn(1, 8, 2, 16, device=torch_device, dtype=qk_dtype)
+        key = torch.randn(1, 8, 2, 16, device=torch_device, dtype=qk_dtype)
+        value = torch.randn(1, 8, 2, 16, device=torch_device, dtype=v_dtype)
+        return query, key, value
+
+    @contextlib.contextmanager
+    def _record_native_backend_input_dtypes(self):
+        original = _AttentionBackendRegistry._backends[AttentionBackendName.NATIVE]
+        received = {}
+
+        def recording_backend(query, key, value, **kwargs):
+            received["query"], received["key"], received["value"] = query.dtype, key.dtype, value.dtype
+            if kwargs.get("attn_mask") is not None:
+                received["attn_mask"] = kwargs["attn_mask"].dtype
+            return original(query, key, value, **kwargs)
+
+        _AttentionBackendRegistry._backends[AttentionBackendName.NATIVE] = recording_backend
+        try:
+            yield received
+        finally:
+            _AttentionBackendRegistry._backends[AttentionBackendName.NATIVE] = original
+
+    def test_autocast_casts_inputs_to_autocast_dtype(self, monkeypatch):
+        # Checks on: the opt-in DIFFUSERS_ATTN_CHECKS validation sees the tensors the backend will
+        # actually receive, so it must not raise on mixed autocast inputs (on main it false-raised).
+        monkeypatch.setattr(_AttentionBackendRegistry, "_checks_enabled", True)
+        query, key, value = self._qkv()
+        device_type = torch.device(torch_device).type
+
+        with self._record_native_backend_input_dtypes() as received:
+            with torch.autocast(device_type, dtype=torch.bfloat16):
+                out = dispatch_attention_fn(query, key, value, backend=AttentionBackendName.NATIVE)
+
+        assert received["query"] == torch.bfloat16
+        assert received["key"] == torch.bfloat16
+        assert received["value"] == torch.bfloat16
+        assert out.dtype == torch.bfloat16
+
+    def test_autocast_casts_floating_point_mask_but_not_bool_mask(self):
+        query, key, value = self._qkv()
+        device_type = torch.device(torch_device).type
+        float_mask = torch.zeros(1, 2, 8, 8, device=torch_device, dtype=torch.float32)
+        bool_mask = torch.ones(1, 2, 8, 8, device=torch_device, dtype=torch.bool)
+
+        with self._record_native_backend_input_dtypes() as received:
+            with torch.autocast(device_type, dtype=torch.bfloat16):
+                dispatch_attention_fn(query, key, value, attn_mask=float_mask, backend=AttentionBackendName.NATIVE)
+        assert received["attn_mask"] == torch.bfloat16
+
+        with self._record_native_backend_input_dtypes() as received:
+            with torch.autocast(device_type, dtype=torch.bfloat16):
+                dispatch_attention_fn(query, key, value, attn_mask=bool_mask, backend=AttentionBackendName.NATIVE)
+        assert received["attn_mask"] == torch.bool
+
+    def test_no_autocast_dtypes_pass_through_unchanged(self):
+        # Outside autocast the dispatcher must not touch dtypes: mismatched inputs keep raising
+        # (from SDPA itself for the native backend), exactly as before.
+        query, key, value = self._qkv()
+        with pytest.raises(RuntimeError, match="Expected query, key, and value to have the same dtype"):
+            dispatch_attention_fn(query, key, value, backend=AttentionBackendName.NATIVE)
+
+    @pytest.mark.skipif(
+        torch_device not in ["cuda", "xpu"], reason="aten::rms_norm has an fp32 autocast policy for CUDA/XPU only"
+    )
+    def test_rms_norm_qk_pattern_under_autocast(self):
+        # End-to-end shape of the Flux-family bug: bf16 q/k go through `torch.nn.RMSNorm` under
+        # autocast and come out fp32, value stays bf16. The policy only exists on recent torch
+        # (and is debated upstream), so probe for it instead of assuming.
+        device_type = torch.device(torch_device).type
+
+        norm = torch.nn.RMSNorm(16, eps=1e-6, device=torch_device, dtype=torch.bfloat16)
+        query, key, value = self._qkv(qk_dtype=torch.bfloat16)
+
+        with torch.autocast(device_type, dtype=torch.bfloat16):
+            if norm(query).dtype != torch.float32:
+                pytest.skip("this torch version has no fp32 autocast policy for aten::rms_norm.")
+
+        with self._record_native_backend_input_dtypes() as received:
+            with torch.autocast(device_type, dtype=torch.bfloat16):
+                query, key = norm(query), norm(key)
+                out = dispatch_attention_fn(query, key, value, backend=AttentionBackendName.NATIVE)
+
+        assert received["query"] == torch.bfloat16
+        assert received["key"] == torch.bfloat16
+        assert received["value"] == torch.bfloat16
+        assert out.dtype == torch.bfloat16
+
+    @is_torch_compile
+    def test_torch_compile_fullgraph_under_autocast(self):
+        # The autocast branch must stay fullgraph-traceable: probing autocast state with APIs that
+        # Dynamo cannot trace would graph-break every compiled model at each attention call.
+        # `backend` is left unset (default active backend, i.e. native): passing the enum explicitly
+        # takes the `AttentionBackendName(backend)` path, which Dynamo cannot trace before torch 2.12,
+        # and model processors compile with `backend=None` anyway.
+        query, key, value = self._qkv(qk_dtype=torch.bfloat16)
+        device_type = torch.device(torch_device).type
+
+        compiled = torch.compile(dispatch_attention_fn, fullgraph=True)
+        with torch.autocast(device_type, dtype=torch.bfloat16):
+            out = compiled(query, key, value)
+        assert out.dtype == torch.bfloat16
+
+        torch.compiler.reset()
+        compiled = torch.compile(dispatch_attention_fn, fullgraph=True)
+        out = compiled(query, key, value)
+        assert out.dtype == torch.bfloat16
