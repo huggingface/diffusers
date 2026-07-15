@@ -593,7 +593,7 @@ class LMSDiscreteScheduler(SchedulerMixin, ConfigMixin):
             pred_original_sample = model_output
         else:
             raise ValueError(
-                f"prediction_type given as {self.config.prediction_type} must be one of `epsilon`, or `v_prediction`"
+                f"prediction_type given as {self.config.prediction_type} must be one of `epsilon`, `sample`, or `v_prediction`"
             )
 
         # 2. Convert to an ODE derivative
