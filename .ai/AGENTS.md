@@ -40,4 +40,4 @@ Task-specific guides live in `.ai/skills/` and are loaded on demand by AI agents
 
 ## Self-review before a PR
 
-Before opening a PR, run self-review against [review-rules.md](review-rules.md). The [self-review skill](skills/self-review/SKILL.md) runs this as the same pass the `@claude` CI reviewer uses.
+Before opening a PR, run self-review against [review-rules.md](review-rules.md). The [self-review skill](skills/self-review/SKILL.md) runs this as the same pass the `@claude` CI reviewer uses. Share the final report on the PR (description or comment) — see the skill for details.

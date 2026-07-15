@@ -639,7 +639,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                       saved using
                     [`~DiffusionPipeline.save_pretrained`].
                     - A path to a *directory* (for example `./my_pipeline_directory/`) containing a dduf file
-            torch_dtype (`torch.dtype` or `dict[str, Union[str, torch.dtype]]`, *optional*):
+            dtype (`torch.dtype` or `dict[str, Union[str, torch.dtype]]`, *optional*):
                 Override the default `torch.dtype` and load the model with another dtype. To load submodels with
                 different dtype pass a `dict` (for example `{'transformer': torch.bfloat16, 'vae': torch.float16}`).
                 Set the default dtype for unspecified components with `default` (for example `{'transformer':
@@ -769,6 +769,8 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         revision = kwargs.pop("revision", None)
         from_flax = kwargs.pop("from_flax", False)
         torch_dtype = kwargs.pop("torch_dtype", None)
+        dtype = kwargs.pop("dtype", None)
+        torch_dtype = dtype if dtype is not None else torch_dtype
         custom_pipeline = kwargs.pop("custom_pipeline", None)
         custom_revision = kwargs.pop("custom_revision", None)
         provider = kwargs.pop("provider", None)
@@ -2121,7 +2123,9 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         """
 
         original_config = dict(pipeline.config)
-        torch_dtype = kwargs.pop("torch_dtype", torch.float32)
+        torch_dtype = kwargs.pop("torch_dtype", None)
+        dtype = kwargs.pop("dtype", None)
+        torch_dtype = dtype if dtype is not None else (torch_dtype if torch_dtype is not None else torch.float32)
         trust_remote_code = kwargs.pop("trust_remote_code", False)
 
         # derive the pipeline class to instantiate
