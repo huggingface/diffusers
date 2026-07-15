@@ -280,3 +280,7 @@ class PRXPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     @unittest.skip("Custom T5GemmaEncoder not compatible with transformers v5.")
     def test_torch_dtype_dict(self):
         pass
+
+    @unittest.skip("Custom T5GemmaEncoder not compatible with transformers v5.")
+    def test_dtype_alias(self):
+        pass

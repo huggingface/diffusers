@@ -17,6 +17,14 @@ from .modular_pipeline import Cosmos3OmniModularPipeline
 logger = logging.get_logger(__name__)
 
 
+# Transfer conditions on control signals (edge/blur/depth/seg/wsm), so it uses its own system prompt instead of the
+# plain image/video ones. Defined here (not on the task pipeline) so the transfer text block is self-contained.
+_SYSTEM_PROMPT_TRANSFER = (
+    "You are a helpful assistant that generates images or videos following the user's instructions"
+    " and control signals (edge maps, blur, depth, or segmentation)."
+)
+
+
 class Cosmos3TextEncoderStep(ModularPipelineBlocks):
     model_name = "cosmos3-omni"
 
@@ -139,6 +147,125 @@ class Cosmos3TextEncoderStep(ModularPipelineBlocks):
             action_mode=None,
             action_view_point=None,
         )
+
+        self.set_block_state(state, block_state)
+        return components, state
+
+
+class Cosmos3TransferTextStep(ModularPipelineBlocks):
+    model_name = "cosmos3-omni"
+
+    @property
+    def description(self) -> str:
+        return (
+            "Tokenizes the transfer prompt with the transfer system prompt. Transfer prompts are pre-upsampled JSON "
+            "captions passed through verbatim (no resolution/duration templates), so this is self-contained and does "
+            "not reuse the standard text step."
+        )
+
+    @staticmethod
+    def _check_inputs(block_state) -> None:
+        prompt = block_state.prompt
+        negative_prompt = block_state.negative_prompt
+
+        if not isinstance(prompt, (str, list)) or (
+            isinstance(prompt, list) and not all(isinstance(p, str) for p in prompt)
+        ):
+            raise ValueError(f"`prompt` must be a str or list of str, got {type(prompt).__name__}.")
+        if negative_prompt is not None and not isinstance(negative_prompt, (str, list)):
+            raise ValueError(
+                f"`negative_prompt` must be a str, list of str, or None, got {type(negative_prompt).__name__}."
+            )
+
+    @property
+    def expected_components(self) -> list[ComponentSpec]:
+        return [
+            ComponentSpec("text_tokenizer", AutoTokenizer),
+        ]
+
+    @property
+    def inputs(self) -> list[InputParam]:
+        return [
+            InputParam(
+                name="prompt",
+                type_hint=str,
+                required=True,
+                description="The text prompt that guides Cosmos3 generation.",
+            ),
+            InputParam(
+                name="negative_prompt",
+                type_hint=str,
+                default=None,
+                description="The negative text prompt used for classifier-free guidance.",
+            ),
+            InputParam(
+                name="use_system_prompt",
+                type_hint=bool,
+                default=True,
+                description="Whether to prepend the Cosmos3 transfer system prompt.",
+            ),
+        ]
+
+    @property
+    def intermediate_outputs(self) -> list[OutputParam]:
+        return [
+            OutputParam("cond_input_ids", type_hint=torch.Tensor, description="Token IDs for the conditional prompt."),
+            OutputParam(
+                "uncond_input_ids", type_hint=torch.Tensor, description="Token IDs for the unconditional prompt."
+            ),
+        ]
+
+    @torch.no_grad()
+    def __call__(self, components: Cosmos3OmniModularPipeline, state: PipelineState) -> PipelineState:
+        block_state = self.get_block_state(state)
+        self._check_inputs(block_state)
+
+        if isinstance(block_state.prompt, list):
+            block_state.prompt = block_state.prompt[0]
+        if isinstance(block_state.negative_prompt, list):
+            block_state.negative_prompt = block_state.negative_prompt[0]
+
+        if components.requires_safety_checker:
+            if getattr(components, "safety_checker", None) is None:
+                raise ValueError(
+                    "Cosmos3 requires a safety checker by default. Call `pipe.enable_safety_checker()` to load it "
+                    "(or pass your own), or opt out explicitly with `pipe.disable_safety_checker()`."
+                )
+            device = components._execution_device
+            components.safety_checker.to(device)
+            try:
+                if not components.safety_checker.check_text_safety(block_state.prompt):
+                    raise ValueError(
+                        f"Cosmos Guardrail detected unsafe text in the prompt: {block_state.prompt}. "
+                        "Please ensure that the prompt abides by the NVIDIA Open Model License Agreement."
+                    )
+            finally:
+                components.safety_checker.to("cpu")
+
+        # Transfer prompts are pre-upsampled JSON captions: tokenize them verbatim (no resolution/duration templates)
+        # under the transfer system prompt. Kept self-contained here rather than adding a flag to the standard step.
+        negative_prompt = block_state.negative_prompt if block_state.negative_prompt is not None else ""
+        special_tokens = components.llm_special_tokens
+
+        def _tokenize(text: str) -> list[int]:
+            conversations = []
+            if block_state.use_system_prompt:
+                conversations.append({"role": "system", "content": _SYSTEM_PROMPT_TRANSFER})
+            conversations.append({"role": "user", "content": text})
+            encoding = components.text_tokenizer.apply_chat_template(
+                conversations,
+                tokenize=True,
+                add_generation_prompt=True,
+                add_vision_id=False,
+                return_dict=True,
+            )
+            return list(encoding.input_ids) + [
+                special_tokens["eos_token_id"],
+                special_tokens["start_of_generation"],
+            ]
+
+        block_state.cond_input_ids = _tokenize(block_state.prompt)
+        block_state.uncond_input_ids = _tokenize(negative_prompt)
 
         self.set_block_state(state, block_state)
         return components, state
@@ -526,6 +653,157 @@ class Cosmos3VideoVaeEncoderStep(ModularPipelineBlocks):
 
         block_state.x0_tokens_vision = components._encode_video(vision_tensor).contiguous().float()
         block_state.vision_condition_frames = vision_condition_frames
+
+        self.set_block_state(state, block_state)
+        return components, state
+
+
+class Cosmos3TransferChunkVaeEncoderStep(ModularPipelineBlocks):
+    model_name = "cosmos3-omni"
+
+    @property
+    def description(self) -> str:
+        return (
+            "Per-chunk transfer VAE encode: slices + pads this chunk's control maps, seeds the target's conditioning "
+            "frames (first chunk from the input video, later chunks from the previous chunk's tail), and encodes both "
+            "the controls and the seeded target into clean Cosmos3 vision latents. Runs inside the autoregressive "
+            "chunk loop."
+        )
+
+    @property
+    def expected_components(self) -> list[ComponentSpec]:
+        return [
+            ComponentSpec("vae", AutoencoderKLWan),
+            ComponentSpec(
+                "video_processor",
+                VideoProcessor,
+                config=FrozenDict({"vae_scale_factor": 16, "resample": "bilinear"}),
+                default_creation_method="from_config",
+            ),
+        ]
+
+    @property
+    def inputs(self) -> list[InputParam]:
+        return [
+            InputParam(name="chunk_id", type_hint=int, default=0, description="Index of the current chunk."),
+            InputParam(
+                name="previous_output",
+                default=None,
+                description="Decoded pixels of the previous chunk, used to seed later chunks.",
+            ),
+            InputParam(
+                name="control_frames",
+                type_hint=dict,
+                required=True,
+                description="Preprocessed, time-padded control maps in canonical hint order.",
+            ),
+            InputParam(name="chunk_frames", type_hint=int, required=True, description="Pixel frames per chunk."),
+            InputParam(
+                name="total_frames", type_hint=int, required=True, description="Total number of output frames."
+            ),
+            InputParam(name="stride", type_hint=int, required=True, description="Frame stride between chunks."),
+            InputParam(
+                name="height", type_hint=int, required=True, description="Height of the generated video in pixels."
+            ),
+            InputParam(
+                name="width", type_hint=int, required=True, description="Width of the generated video in pixels."
+            ),
+            InputParam(
+                name="video",
+                default=None,
+                description="Optional input video that seeds the first chunk's conditioning.",
+            ),
+            InputParam(
+                name="num_first_chunk_conditional_frames",
+                type_hint=int,
+                default=0,
+                description="Number of frames the first chunk reuses from the input video.",
+            ),
+            InputParam(
+                name="num_conditional_frames",
+                type_hint=int,
+                default=1,
+                description="Number of frames each later chunk reuses from the previous chunk's tail.",
+            ),
+        ]
+
+    @property
+    def intermediate_outputs(self) -> list[OutputParam]:
+        return [
+            OutputParam(
+                "control_latents",
+                type_hint=list[torch.Tensor],
+                description="Clean control latents for this chunk, one per hint in canonical order.",
+            ),
+            OutputParam(
+                "x0_tokens_vision",
+                type_hint=torch.Tensor,
+                description="Clean target vision latents encoded from the seeded target frames.",
+            ),
+            OutputParam(
+                "current_conditional_frames",
+                type_hint=int,
+                description="Number of pixel frames actually used to seed this chunk's target.",
+            ),
+        ]
+
+    @torch.no_grad()
+    def __call__(self, components: Cosmos3OmniModularPipeline, state: PipelineState) -> PipelineState:
+        block_state = self.get_block_state(state)
+        device = components._execution_device
+        dtype = components.transformer.dtype
+
+        chunk_id = block_state.chunk_id
+        chunk_frames = block_state.chunk_frames
+        height = block_state.height
+        width = block_state.width
+
+        # Slice this chunk's window out of the (padded) control maps and reflect-pad it up to a full chunk (repeat the
+        # last frame once too short to keep reflecting). control_frames is already in canonical hint order.
+        start_frame = chunk_id * block_state.stride
+        end_frame = min(start_frame + chunk_frames, block_state.total_frames)
+        chunk_controls = []
+        for frames in block_state.control_frames.values():
+            frames = frames[:, :, start_frame:end_frame]
+            while frames.shape[2] < chunk_frames:
+                pad_len = min(frames.shape[2] - 1, chunk_frames - frames.shape[2])
+                if pad_len <= 0:
+                    pad_frame = frames[:, :, -1:].repeat(1, 1, chunk_frames - frames.shape[2], 1, 1)
+                    frames = torch.cat([frames, pad_frame], dim=2)
+                    break
+                frames = torch.cat([frames, frames.flip(dims=[2])[:, :, :pad_len]], dim=2)
+            chunk_controls.append(frames)
+
+        # Seed the target with conditioning frames (first chunk from the input video, later chunks from the
+        # previous chunk's tail), repeat-padding the remaining frames so the whole clip is well-defined.
+        target = torch.zeros(1, 3, chunk_frames, height, width, device=device, dtype=dtype)
+        current_conditional_frames = 0
+        if chunk_id == 0 and block_state.num_first_chunk_conditional_frames > 0 and block_state.video is not None:
+            input_frames = components.video_processor.preprocess_video(
+                block_state.video, height=height, width=width
+            ).to(device=device, dtype=dtype)
+            current_conditional_frames = min(
+                block_state.num_first_chunk_conditional_frames, input_frames.shape[2], chunk_frames
+            )
+            if current_conditional_frames > 0:
+                target[:, :, :current_conditional_frames] = input_frames[:, :, :current_conditional_frames]
+        elif chunk_id > 0 and block_state.previous_output is not None:
+            current_conditional_frames = min(
+                block_state.num_conditional_frames, block_state.previous_output.shape[2], chunk_frames
+            )
+            if current_conditional_frames > 0:
+                target[:, :, :current_conditional_frames] = block_state.previous_output[
+                    :, :, -current_conditional_frames:
+                ].to(device=device, dtype=dtype)
+        if 0 < current_conditional_frames < chunk_frames:
+            fill = target[:, :, current_conditional_frames - 1 : current_conditional_frames]
+            target[:, :, current_conditional_frames:] = fill.expand(
+                -1, -1, chunk_frames - current_conditional_frames, -1, -1
+            )
+
+        block_state.control_latents = [components._encode_video(ctrl).contiguous().float() for ctrl in chunk_controls]
+        block_state.x0_tokens_vision = components._encode_video(target).contiguous().float()
+        block_state.current_conditional_frames = current_conditional_frames
 
         self.set_block_state(state, block_state)
         return components, state

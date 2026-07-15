@@ -6,6 +6,7 @@ Linked from `AGENTS.md`, `skills/model-integration/SKILL.md`, and `review-rules.
 ## Coding style
 
 - All layer calls should be visible directly in `forward` — avoid helper functions that hide `nn.Module` calls.
+- Prefer descriptive variable names over short ones. For example, prefer spelling out `query` over `q`.
 - Avoid graph breaks for `torch.compile` compatibility — do not insert NumPy operations in forward implementations and any other patterns that can break `torch.compile` compatibility with `fullgraph=True`.
 - No new mandatory dependency without discussion (e.g. `einops`). Optional deps guarded with `is_X_available()` and a dummy in `utils/dummy_*.py`.
 
@@ -183,3 +184,7 @@ Boolean gate. If `False` (default), calling that method raises `ValueError`. All
       See `transformer_flux.py`, `transformer_flux2.py`, `transformer_wan.py`, `unet_2d_condition.py`, and `pipeline_pixart_alpha.py` for reference usages. Never leave an unconditional `torch.float64` in the model.
 
 6. **Using `torch.empty`.** - Do not use `torch.empty` to initialize parameters. Use `torch.zeros` or `torch.ones`, instead.
+
+7. **Tensor contiguity.** - Non-contiguous tensors can degrade performance. Therefore, try to maintain contiguity
+of the tensors whenever possible. A non-contiguous tensor is usually produced because of the operations. A common
+example is a `flatten()` followed by a `transpose()`. This sequence is known to produce non-contiguous layouts. So, prefer calling `contiguous()` on the output tensor to maintain performance.
