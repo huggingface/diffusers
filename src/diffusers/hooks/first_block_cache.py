@@ -76,7 +76,9 @@ class FBCHeadBlockHook(ModelHook):
         return module
 
     def new_forward(self, module: torch.nn.Module, *args, **kwargs):
-        original_hidden_states = self._metadata._get_parameter_from_args_kwargs("hidden_states", args, kwargs)
+        original_hidden_states = self._metadata._get_parameter_from_args_kwargs(
+            self._metadata.hidden_states_argument_name, args, kwargs
+        )
 
         output = self.fn_ref.original_forward(*args, **kwargs)
         is_output_tuple = isinstance(output, tuple)
@@ -155,11 +157,13 @@ class FBCBlockHook(ModelHook):
         return module
 
     def new_forward(self, module: torch.nn.Module, *args, **kwargs):
-        original_hidden_states = self._metadata._get_parameter_from_args_kwargs("hidden_states", args, kwargs)
+        original_hidden_states = self._metadata._get_parameter_from_args_kwargs(
+            self._metadata.hidden_states_argument_name, args, kwargs
+        )
         original_encoder_hidden_states = None
         if self._metadata.return_encoder_hidden_states_index is not None:
             original_encoder_hidden_states = self._metadata._get_parameter_from_args_kwargs(
-                "encoder_hidden_states", args, kwargs
+                self._metadata.encoder_hidden_states_argument_name, args, kwargs
             )
 
         shared_state = self.state_manager.get_state()
