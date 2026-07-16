@@ -457,9 +457,15 @@ def main():
 
     pipeline = DiffusionPipeline.from_pretrained(
         "black-forest-labs/FLUX.2-dev", torch_dtype=torch.bfloat16
-    ).to(device)
+    )  # weights stay on CPU
 
+    # Shard the transformer first, then move only each rank's slice onto the accelerator.
     pipeline.transformer.enable_parallelism(config=TensorParallelConfig(tp_degree=world_size))
+    pipeline.transformer.to(device)
+
+    # Move the remaining, non-sharded components onto the accelerator individually.
+    pipeline.text_encoder.to(device)
+    pipeline.vae.to(device)
 
     generator = torch.Generator().manual_seed(42)
     image = pipeline("a cat holding a sign that says hello", generator=generator).images[0]
