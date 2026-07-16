@@ -497,7 +497,7 @@ class Cosmos3ImageVaeEncoderStep(ModularPipelineBlocks):
         block_state = self.get_block_state(state)
 
         device = components._execution_device
-        dtype = components.transformer.dtype
+        dtype = components.vae.dtype
 
         if block_state.image is None:
             raise ValueError("`Cosmos3ImageVaeEncoderStep` requires an `image` input.")
@@ -601,7 +601,7 @@ class Cosmos3VideoVaeEncoderStep(ModularPipelineBlocks):
         block_state = self.get_block_state(state)
 
         device = components._execution_device
-        dtype = components.transformer.dtype
+        dtype = components.vae.dtype
 
         if block_state.video is None:
             raise ValueError("`Cosmos3VideoVaeEncoderStep` requires a `video` input.")
@@ -769,7 +769,7 @@ class Cosmos3TransferChunkVaeEncoderStep(ModularPipelineBlocks):
     def __call__(self, components: Cosmos3OmniModularPipeline, state: PipelineState) -> PipelineState:
         block_state = self.get_block_state(state)
         device = components._execution_device
-        dtype = components.transformer.dtype
+        dtype = components.vae.dtype
 
         chunk_id = block_state.chunk_id
         chunk_frames = block_state.chunk_frames
