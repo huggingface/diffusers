@@ -33,9 +33,9 @@ DISTILLED_WORKFLOW = [
 ]
 
 
-def _fake_distilled_components(t_list=(1.0, 0.75, 0.5, 0.25)):
-    scheduler = SimpleNamespace(config={"fixed_step_sampler_config": {"t_list": list(t_list)}})
-    return SimpleNamespace(_execution_device="cpu", scheduler=scheduler)
+def _fake_distilled_components(sigmas=(1.0, 0.75, 0.5, 0.25)):
+    config = SimpleNamespace(distilled_sigmas=list(sigmas))
+    return SimpleNamespace(_execution_device="cpu", config=config)
 
 
 def test_cosmos3_distilled_blocks_workflow_ordering():
@@ -67,15 +67,21 @@ def test_cosmos3_distilled_vae_encoder_select_block():
         vae_encoder.select_block(image=object(), video=object())
 
 
-def test_cosmos3_distilled_set_timesteps_declares_is_distilled_config():
+def test_cosmos3_distilled_set_timesteps_declares_distilled_configs():
     configs = {spec.name: spec.default for spec in Cosmos3DistilledSetTimestepsStep().expected_configs}
-    assert configs == {"is_distilled": True}
+    assert configs == {"is_distilled": True, "distilled_sigmas": None}
 
 
-def test_cosmos3_distilled_rejects_negative_prompt():
-    Cosmos3DistilledTextEncoderStep._check_inputs(SimpleNamespace(prompt="a robot", negative_prompt=None))
-    with pytest.raises(ValueError, match="`negative_prompt` is not supported"):
-        Cosmos3DistilledTextEncoderStep._check_inputs(SimpleNamespace(prompt="a robot", negative_prompt="blurry"))
+def test_cosmos3_distilled_text_encoder_omits_negative_prompt():
+    input_names = {inp.name for inp in Cosmos3DistilledTextEncoderStep().inputs}
+    assert "prompt" in input_names
+    assert "negative_prompt" not in input_names
+
+
+def test_cosmos3_distilled_text_encoder_requires_str_prompt():
+    Cosmos3DistilledTextEncoderStep._check_inputs(SimpleNamespace(prompt="a robot"))
+    with pytest.raises(ValueError, match="`prompt` must be a str"):
+        Cosmos3DistilledTextEncoderStep._check_inputs(SimpleNamespace(prompt=["a robot", "another"]))
 
 
 def test_cosmos3_distilled_set_timesteps_rejects_step_count_override():
@@ -94,8 +100,8 @@ def test_cosmos3_distilled_set_timesteps_rejects_guidance_override():
         step(_fake_distilled_components(), state)
 
 
-def test_cosmos3_distilled_set_timesteps_requires_fixed_step_config():
+def test_cosmos3_distilled_set_timesteps_requires_distilled_sigmas():
     step = Cosmos3DistilledSetTimestepsStep()
-    components = SimpleNamespace(_execution_device="cpu", scheduler=SimpleNamespace(config={}))
-    with pytest.raises(ValueError, match="fixed_step_sampler_config"):
+    components = SimpleNamespace(_execution_device="cpu", config=SimpleNamespace(distilled_sigmas=None))
+    with pytest.raises(ValueError, match="distilled_sigmas"):
         step(components, PipelineState())

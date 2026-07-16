@@ -1237,7 +1237,7 @@ class Cosmos3DistilledSetTimestepsStep(ModularPipelineBlocks):
 
     @property
     def description(self) -> str:
-        return "Initializes the fixed distilled sampling schedule from the scheduler's `fixed_step_sampler_config`."
+        return "Initializes the fixed distilled sampling schedule from the pipeline's `distilled_sigmas` config."
 
     @property
     def expected_components(self) -> list[ComponentSpec]:
@@ -1245,7 +1245,10 @@ class Cosmos3DistilledSetTimestepsStep(ModularPipelineBlocks):
 
     @property
     def expected_configs(self) -> list[ConfigSpec]:
-        return [ConfigSpec(name="is_distilled", default=True)]
+        return [
+            ConfigSpec(name="is_distilled", default=True),
+            ConfigSpec(name="distilled_sigmas", default=None),
+        ]
 
     @property
     def inputs(self) -> list[InputParam]:
@@ -1284,20 +1287,20 @@ class Cosmos3DistilledSetTimestepsStep(ModularPipelineBlocks):
         block_state = self.get_block_state(state)
         device = components._execution_device
 
-        fixed_step_cfg = components.scheduler.config.get("fixed_step_sampler_config", None)
-        if not fixed_step_cfg or not fixed_step_cfg.get("t_list"):
+        sigmas = components.config.distilled_sigmas
+        if not sigmas:
             raise ValueError(
-                "Cosmos3DistilledSetTimestepsStep requires a scheduler that ships a distilled "
-                "`fixed_step_sampler_config.t_list`. Load a distilled Cosmos3 checkpoint or use "
-                "`Cosmos3OmniModularPipeline` for base checkpoints."
+                "Cosmos3DistilledSetTimestepsStep requires the pipeline config `distilled_sigmas` to be set "
+                "(populated from the distilled checkpoint's `modular_model_index.json`). Load a distilled Cosmos3 "
+                "checkpoint or use `Cosmos3OmniModularPipeline` for base checkpoints."
             )
-        sigmas = [float(s) for s in fixed_step_cfg["t_list"]]
+        sigmas = [float(s) for s in sigmas]
         distilled_steps = len(sigmas)
 
         if block_state.num_inference_steps is not None and block_state.num_inference_steps != distilled_steps:
             raise ValueError(
-                "This is a distilled checkpoint; the step count is fixed by the scheduler's "
-                f"`fixed_step_sampler_config.t_list` ({distilled_steps} steps). "
+                "This is a distilled checkpoint; the step count is fixed by the pipeline's "
+                f"`distilled_sigmas` config ({distilled_steps} steps). "
                 f"`num_inference_steps` must be {distilled_steps} or left unset (got {block_state.num_inference_steps})."
             )
         if block_state.guidance_scale is not None and block_state.guidance_scale != 1.0:

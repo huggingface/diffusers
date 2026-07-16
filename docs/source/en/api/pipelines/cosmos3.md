@@ -1054,9 +1054,6 @@ videos = pipe(
 export_to_video(videos, "cosmos3_distilled_i2v.mp4", fps=24, macro_block_size=1)
 ```
 
-For a CLI wrapper with warmup / iteration timing, see
-[`examples/cosmos3/inference_cosmos3_modular_distilled.py`](../../../examples/cosmos3/inference_cosmos3_modular_distilled.py).
-
 [[autodoc]] Cosmos3OmniModularPipeline
 
 - all

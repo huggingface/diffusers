@@ -116,16 +116,6 @@ def _helios_pyramid_map_fn(config_dict=None):
         return "HeliosPyramidModularPipeline"
 
 
-def _cosmos3_map_fn(config_dict=None):
-    if config_dict is None:
-        return "Cosmos3OmniModularPipeline"
-
-    if config_dict.get("is_distilled", False):
-        return "Cosmos3DistilledModularPipeline"
-    else:
-        return "Cosmos3OmniModularPipeline"
-
-
 MODULAR_PIPELINE_MAPPING = OrderedDict(
     [
         ("stable-diffusion-xl", _create_default_map_fn("StableDiffusionXLModularPipeline")),
@@ -143,7 +133,7 @@ MODULAR_PIPELINE_MAPPING = OrderedDict(
         ("qwenimage-layered", _create_default_map_fn("QwenImageLayeredModularPipeline")),
         ("anima", _create_default_map_fn("AnimaModularPipeline")),
         ("z-image", _create_default_map_fn("ZImageModularPipeline")),
-        ("cosmos3-omni", _cosmos3_map_fn),
+        ("cosmos3-omni", _create_default_map_fn("Cosmos3OmniModularPipeline")),
         ("helios", _create_default_map_fn("HeliosModularPipeline")),
         ("helios-pyramid", _helios_pyramid_map_fn),
         ("hunyuan-video-1.5", _create_default_map_fn("HunyuanVideo15ModularPipeline")),
