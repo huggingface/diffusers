@@ -19,7 +19,7 @@ import numpy as np
 import PIL.Image
 import torch
 
-from diffusers.image_processor import VaeImageProcessor
+from diffusers.image_processor import VaeImageProcessor, VaeImageProcessorLDM3D
 
 
 class ImageProcessorTest(unittest.TestCase):
@@ -308,3 +308,37 @@ class ImageProcessorTest(unittest.TestCase):
         assert out_np.shape == exp_np_shape, (
             f"resized image output shape '{out_np.shape}' didn't match expected shape '{exp_np_shape}'."
         )
+
+
+class Ldm3dImageProcessorTest(unittest.TestCase):
+    def test_rgblike_to_depthmap_combines_two_bytes_into_16bit(self):
+        # green * 256 + blue must be a 16-bit value; casting the result back to
+        # the 8-bit input dtype drops the high byte (e.g. 1480 -> 200).
+        processor = VaeImageProcessorLDM3D()
+
+        rgb_np = np.zeros((2, 2, 3), dtype=np.uint8)
+        rgb_np[..., 1] = 5  # green (high byte)
+        rgb_np[..., 2] = 200  # blue (low byte)
+        depth_np = processor.rgblike_to_depthmap(rgb_np)
+        assert depth_np.dtype == np.uint16
+        assert int(depth_np.max()) == 5 * 256 + 200
+
+        rgb_pt = torch.zeros(2, 2, 3, dtype=torch.uint8)
+        rgb_pt[..., 1] = 5
+        rgb_pt[..., 2] = 200
+        depth_pt = processor.rgblike_to_depthmap(rgb_pt)
+        assert int(depth_pt.max()) == 5 * 256 + 200
+
+    def test_postprocess_pil_depth_does_not_crash(self):
+        # numpy_to_depth feeds rgblike_to_depthmap into Image.fromarray(mode="I;16"),
+        # which requires 16-bit-wide data; an 8-bit result raised
+        # "ValueError: buffer is not large enough".
+        processor = VaeImageProcessorLDM3D()
+        image = torch.zeros(1, 6, 4, 4)
+        image[:, 4] = 5 / 255.0
+        image[:, 5] = 200 / 255.0
+
+        rgb, depth = processor.postprocess(image, output_type="pil")
+
+        assert len(depth) == 1
+        assert depth[0].mode == "I;16"
