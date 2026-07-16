@@ -25,6 +25,7 @@ import traceback
 import unittest
 import unittest.mock as mock
 import warnings
+from pathlib import Path
 
 import numpy as np
 import PIL.Image
@@ -503,6 +504,53 @@ class DownloadTests(unittest.TestCase):
             for p1, p2 in zip(m1.parameters(), m2.parameters()):
                 if p1.data.ne(p2.data).sum() > 0:
                     assert False, "Parameters not the same!"
+
+    def test_local_files_only_uses_same_snapshot_download_patterns(self):
+        # diffusers downloads a filtered subset of a repo (skipping e.g. `.gitattributes`). Newer
+        # `huggingface_hub` versions validate that a cached snapshot contains every file matching the
+        # requested patterns under `local_files_only=True`, so an offline
+        # `snapshot_download(allow_patterns=None)` would wrongly expect the whole repo. The offline path
+        # must compute the same patterns as the online one (from the cached snapshot instead of
+        # `model_info`). See https://github.com/huggingface/diffusers/issues/14117
+        with tempfile.TemporaryDirectory() as tmpdirname:
+            with mock.patch(
+                "diffusers.pipelines.pipeline_utils.snapshot_download", side_effect=snapshot_download
+            ) as mock_snapshot_download:
+                cached_folder = DiffusionPipeline.download(
+                    "hf-internal-testing/tiny-stable-diffusion-torch", cache_dir=tmpdirname
+                )
+                online_kwargs = mock_snapshot_download.call_args.kwargs
+
+                # `force_download=True` skips the fully-cached early return so `snapshot_download` runs
+                # offline and validates the computed patterns against the cached snapshot.
+                offline_folder = DiffusionPipeline.download(
+                    "hf-internal-testing/tiny-stable-diffusion-torch",
+                    cache_dir=tmpdirname,
+                    local_files_only=True,
+                    force_download=True,
+                )
+                offline_kwargs = mock_snapshot_download.call_args.kwargs
+
+            assert os.path.samefile(offline_folder, cached_folder)
+            assert set(offline_kwargs["allow_patterns"]) == set(online_kwargs["allow_patterns"])
+            assert set(offline_kwargs["ignore_patterns"]) == set(online_kwargs["ignore_patterns"])
+
+    def test_local_files_only_raises_for_snapshot_with_missing_weights(self):
+        # An interrupted download leaves a cached snapshot without some weights; loading it offline must
+        # surface `huggingface_hub`'s incomplete-snapshot error instead of failing later at model load time.
+        with tempfile.TemporaryDirectory() as tmpdirname:
+            cached_folder = DiffusionPipeline.download(
+                "hf-internal-testing/tiny-stable-diffusion-torch", cache_dir=tmpdirname
+            )
+            for weights_file in Path(cached_folder).glob("unet/diffusion_pytorch_model*"):
+                weights_file.unlink()
+
+            with self.assertRaisesRegex(OSError, "incomplete"):
+                DiffusionPipeline.download(
+                    "hf-internal-testing/tiny-stable-diffusion-torch",
+                    cache_dir=tmpdirname,
+                    local_files_only=True,
+                )
 
     def test_download_from_variant_folder(self):
         for use_safetensors in [False, True]:
@@ -1005,18 +1053,6 @@ class DownloadTests(unittest.TestCase):
             # https://huggingface.co/hf-internal-testing/tiny-stable-diffusion-pipe/blob/main/unet/diffusion_flax_model.msgpack
             assert not any(f in ["vae/diffusion_pytorch_model.bin", "text_encoder/config.json"] for f in files)
             assert len(files) == 14
-
-    def test_download_dduf_with_custom_pipeline_raises_error(self):
-        with self.assertRaises(NotImplementedError):
-            _ = DiffusionPipeline.download(
-                "DDUF/tiny-flux-dev-pipe-dduf", dduf_file="fluxpipeline.dduf", custom_pipeline="my_pipeline"
-            )
-
-    def test_download_dduf_with_connected_pipeline_raises_error(self):
-        with self.assertRaises(NotImplementedError):
-            _ = DiffusionPipeline.download(
-                "DDUF/tiny-flux-dev-pipe-dduf", dduf_file="fluxpipeline.dduf", load_connected_pipeline=True
-            )
 
     def test_get_pipeline_class_from_flax(self):
         flax_config = {"_class_name": "FlaxStableDiffusionPipeline"}
@@ -1965,54 +2001,15 @@ class PipelineFastTests(unittest.TestCase):
         sd.maybe_free_model_hooks()
         assert sd._offload_gpu_id == 5
 
-    @parameterized.expand([torch.float32, torch.float16])
     @require_hf_hub_version_greater("0.26.5")
     @require_transformers_version_greater("4.47.1")
-    def test_load_dduf_from_hub(self, dtype):
+    def test_dduf_file_is_deprecated(self):
         with tempfile.TemporaryDirectory() as tmpdir:
-            pipe = DiffusionPipeline.from_pretrained(
-                "DDUF/tiny-flux-dev-pipe-dduf", dduf_file="fluxpipeline.dduf", cache_dir=tmpdir, torch_dtype=dtype
-            ).to(torch_device)
-            out_1 = pipe(prompt="dog", num_inference_steps=5, generator=torch.manual_seed(0), output_type="np").images
-
-            pipe.save_pretrained(tmpdir)
-            loaded_pipe = DiffusionPipeline.from_pretrained(tmpdir, torch_dtype=dtype).to(torch_device)
-
-            out_2 = loaded_pipe(
-                prompt="dog", num_inference_steps=5, generator=torch.manual_seed(0), output_type="np"
-            ).images
-
-        self.assertTrue(np.allclose(out_1, out_2, atol=1e-4, rtol=1e-4))
-
-    @require_hf_hub_version_greater("0.26.5")
-    @require_transformers_version_greater("4.47.1")
-    def test_load_dduf_from_hub_local_files_only(self):
-        with tempfile.TemporaryDirectory() as tmpdir:
-            pipe = DiffusionPipeline.from_pretrained(
-                "DDUF/tiny-flux-dev-pipe-dduf", dduf_file="fluxpipeline.dduf", cache_dir=tmpdir
-            ).to(torch_device)
-            out_1 = pipe(prompt="dog", num_inference_steps=5, generator=torch.manual_seed(0), output_type="np").images
-
-            local_files_pipe = DiffusionPipeline.from_pretrained(
-                "DDUF/tiny-flux-dev-pipe-dduf", dduf_file="fluxpipeline.dduf", cache_dir=tmpdir, local_files_only=True
-            ).to(torch_device)
-            out_2 = local_files_pipe(
-                prompt="dog", num_inference_steps=5, generator=torch.manual_seed(0), output_type="np"
-            ).images
-
-        self.assertTrue(np.allclose(out_1, out_2, atol=1e-4, rtol=1e-4))
-
-    def test_dduf_raises_error_with_custom_pipeline(self):
-        with self.assertRaises(NotImplementedError):
-            _ = DiffusionPipeline.from_pretrained(
-                "DDUF/tiny-flux-dev-pipe-dduf", dduf_file="fluxpipeline.dduf", custom_pipeline="my_pipeline"
-            )
-
-    def test_dduf_raises_error_with_connected_pipeline(self):
-        with self.assertRaises(NotImplementedError):
-            _ = DiffusionPipeline.from_pretrained(
-                "DDUF/tiny-flux-dev-pipe-dduf", dduf_file="fluxpipeline.dduf", load_connected_pipeline=True
-            )
+            with self.assertWarns(FutureWarning) as warning_ctx:
+                _ = DiffusionPipeline.from_pretrained(
+                    "DDUF/tiny-flux-dev-pipe-dduf", dduf_file="fluxpipeline.dduf", cache_dir=tmpdir
+                )
+        assert "dduf_file" in str(warning_ctx.warning)
 
     @pytest.mark.xfail(condition=is_transformers_version(">", "4.56.2"), reason="Some import error", strict=False)
     def test_wrong_model(self):
@@ -2024,27 +2021,6 @@ class PipelineFastTests(unittest.TestCase):
 
         assert "is of type" in str(error_context.exception)
         assert "but should be" in str(error_context.exception)
-
-    @require_hf_hub_version_greater("0.26.5")
-    @require_transformers_version_greater("4.47.1")
-    def test_dduf_load_sharded_checkpoint_diffusion_model(self):
-        with tempfile.TemporaryDirectory() as tmpdir:
-            pipe = DiffusionPipeline.from_pretrained(
-                "hf-internal-testing/tiny-flux-dev-pipe-sharded-checkpoint-DDUF",
-                dduf_file="tiny-flux-dev-pipe-sharded-checkpoint.dduf",
-                cache_dir=tmpdir,
-            ).to(torch_device)
-
-            out_1 = pipe(prompt="dog", num_inference_steps=5, generator=torch.manual_seed(0), output_type="np").images
-
-            pipe.save_pretrained(tmpdir)
-            loaded_pipe = DiffusionPipeline.from_pretrained(tmpdir).to(torch_device)
-
-            out_2 = loaded_pipe(
-                prompt="dog", num_inference_steps=5, generator=torch.manual_seed(0), output_type="np"
-            ).images
-
-        self.assertTrue(np.allclose(out_1, out_2, atol=1e-4, rtol=1e-4))
 
 
 @slow
