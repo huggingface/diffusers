@@ -38,6 +38,7 @@ from ..utils import (
     WEIGHTS_INDEX_NAME,
     _add_variant,
     _get_model_file,
+    _is_lfs_pointer,
     deprecate,
     is_accelerate_available,
     is_accelerate_version,
@@ -164,6 +165,22 @@ def load_state_dict(
     # TODO: maybe refactor a bit this part where we pass a dict here
     if isinstance(checkpoint_file, dict):
         return checkpoint_file
+
+    # Detect Git LFS pointer stubs before attempting to load. Without this, safetensors /
+    # torch.load fails far away from the real cause with a confusing deserialization error.
+    # The check covers both `git clone` without `git lfs pull` and bucket mirrors created
+    # with `gsutil rsync` / `aws s3 sync` that copied the LFS pointer text rather than
+    # the underlying weights.
+    if dduf_entries is None and _is_lfs_pointer(checkpoint_file):
+        raise OSError(
+            f"`{checkpoint_file}` is a Git LFS pointer file, not the actual weights. This typically "
+            f"happens when a Hugging Face repository was mirrored without LFS-aware copying — for "
+            f"example, `git clone` without a subsequent `git lfs pull`, or `gsutil rsync` / "
+            f"`aws s3 sync` from a bucket that holds the original git checkout. Re-mirror with "
+            f"`git lfs pull` (or with an LFS-aware tool such as "
+            f"`huggingface-cli download <repo_id> --local-dir <dir>`) and try again."
+        )
+
     try:
         file_extension = os.path.basename(checkpoint_file).split(".")[-1]
         if file_extension == SAFETENSORS_FILE_EXTENSION:
