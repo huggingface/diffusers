@@ -1783,7 +1783,9 @@ class Cosmos3OmniPipeline(DiffusionPipeline):
                         action_latents[:, raw_action_dim_resolved:] = 0
 
                 if callback_on_step_end is not None:
-                    callback_kwargs = {k: locals()[k] for k in callback_on_step_end_tensor_inputs}
+                    callback_kwargs = {}
+                    for key in callback_on_step_end_tensor_inputs:
+                        callback_kwargs[key] = locals()[key]
                     callback_outputs = callback_on_step_end(self, i, t, callback_kwargs)
                     latents = callback_outputs.pop("latents", latents)
 
