@@ -15,6 +15,8 @@
 import tempfile
 import unittest
 
+import numpy as np
+import PIL.Image
 import torch
 from transformers import Qwen2Tokenizer, Qwen3Config, Qwen3Model, T5TokenizerFast
 
@@ -41,6 +43,21 @@ ANIMA_TEXT2IMAGE_WORKFLOWS = {
         ("denoise.input", "AnimaTextInputStep"),
         ("denoise.prepare_latents", "AnimaPrepareLatentsStep"),
         ("denoise.set_timesteps", "AnimaSetTimestepsStep"),
+        ("denoise.denoise", "AnimaDenoiseStep"),
+        ("decode.decode", "AnimaVaeDecoderStep"),
+        ("decode.postprocess", "AnimaProcessImagesOutputStep"),
+    ],
+}
+
+ANIMA_IMG2IMG_WORKFLOWS = {
+    "img2img": [
+        ("text_encoder", "AnimaTextEncoderStep"),
+        ("vae_encoder", "AnimaImg2ImgVaeEncoderStep"),
+        ("denoise.text_conditioning", "AnimaTextConditioningStep"),
+        ("denoise.input", "AnimaTextInputStep"),
+        ("denoise.image_input", "AnimaImageInputStep"),
+        ("denoise.set_timesteps", "AnimaImg2ImgSetTimestepsStep"),
+        ("denoise.prepare_latents", "AnimaImg2ImgPrepareLatentsStep"),
         ("denoise.denoise", "AnimaDenoiseStep"),
         ("decode.decode", "AnimaVaeDecoderStep"),
         ("decode.postprocess", "AnimaProcessImagesOutputStep"),
@@ -116,6 +133,11 @@ def get_dummy_components():
         "t5_tokenizer": t5_tokenizer,
         "text_conditioner": text_conditioner,
     }
+
+
+def get_dummy_image(height=32, width=32):
+    image_array = np.random.randint(0, 256, (height, width, 3), dtype=np.uint8)
+    return PIL.Image.fromarray(image_array)
 
 
 class AnimaTextConditionerFastTests(unittest.TestCase):
@@ -229,3 +251,72 @@ class TestAnimaModularPipelineFast(ModularPipelineTesterMixin, ModularGuiderTest
 
         assert "dummy" in pipe.transformer.peft_config
         assert "dummy" in pipe.text_conditioner.peft_config
+
+
+class TestAnimaImg2ImgModularPipelineFast(ModularPipelineTesterMixin):
+    pipeline_class = AnimaModularPipeline
+    pipeline_blocks_class = AnimaAutoBlocks
+    pretrained_model_name_or_path = "hf-internal-testing/tiny-anima-modular-pipe"
+    params = frozenset(["prompt", "image", "strength", "height", "width", "negative_prompt"])
+    batch_params = frozenset(["prompt", "negative_prompt"])
+    expected_workflow_blocks = ANIMA_IMG2IMG_WORKFLOWS
+
+    def get_pipeline(self, components_manager=None, torch_dtype=torch.float32):
+        pipe = self.pipeline_blocks_class().init_pipeline(components_manager=components_manager)
+        pipe.update_components(**get_dummy_components())
+        pipe.to(dtype=torch_dtype)
+        pipe.set_progress_bar_config(disable=None)
+        return pipe
+
+    def get_dummy_inputs(self, seed=0):
+        generator = torch.Generator(device="cpu").manual_seed(seed)
+        return {
+            "prompt": "dance monkey",
+            "negative_prompt": "bad quality",
+            "image": get_dummy_image(32, 32),
+            "strength": 0.8,
+            "generator": generator,
+            "num_inference_steps": 2,
+            "height": 32,
+            "width": 32,
+            "max_sequence_length": 16,
+            "output_type": "pt",
+        }
+
+    def test_inference_basic(self):
+        pipe = self.get_pipeline()
+        inputs = self.get_dummy_inputs()
+        output = pipe(**inputs).images
+
+        assert output.shape == (1, 3, 32, 32)
+        assert not torch.isnan(output).any()
+
+    def test_inference_strength_low(self):
+        pipe = self.get_pipeline()
+        inputs = self.get_dummy_inputs()
+        inputs["strength"] = 0.3
+        output = pipe(**inputs).images
+
+        assert output.shape == (1, 3, 32, 32)
+        assert not torch.isnan(output).any()
+
+    def test_inference_strength_high(self):
+        pipe = self.get_pipeline()
+        inputs = self.get_dummy_inputs()
+        inputs["strength"] = 0.95
+        output = pipe(**inputs).images
+
+        assert output.shape == (1, 3, 32, 32)
+        assert not torch.isnan(output).any()
+
+    def test_inference_empty_negative_prompt(self):
+        pipe = self.get_pipeline()
+        inputs = self.get_dummy_inputs()
+        inputs["negative_prompt"] = ""
+        output = pipe(**inputs).images
+
+        assert output.shape == (1, 3, 32, 32)
+        assert not torch.isnan(output).any()
+
+    def test_inference_batch_single_identical(self):
+        super().test_inference_batch_single_identical(expected_max_diff=5e-4)

@@ -32,8 +32,6 @@ class Flux2KleinPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     test_layerwise_casting = True
     test_group_offloading = True
 
-    supports_dduf = False
-
     def get_dummy_components(self, num_layers: int = 1, num_single_layers: int = 1):
         torch.manual_seed(0)
         transformer = Flux2Transformer2DModel(
