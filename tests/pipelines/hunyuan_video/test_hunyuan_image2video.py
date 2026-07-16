@@ -62,7 +62,6 @@ class HunyuanVideoImageToVideoPipelineFastTests(
             "callback_on_step_end_tensor_inputs",
         ]
     )
-    supports_dduf = False
 
     # there is no xformers processor for Flux
     test_xformers_attention = False
