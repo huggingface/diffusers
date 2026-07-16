@@ -16,46 +16,116 @@
 from types import SimpleNamespace
 
 import pytest
+import torch
 
-from diffusers.modular_pipelines import Cosmos3DistilledBlocks
+from diffusers import ModularPipeline
+from diffusers.modular_pipelines import Cosmos3DistilledBlocks, Cosmos3DistilledModularPipeline
 from diffusers.modular_pipelines.cosmos.before_denoise import Cosmos3DistilledSetTimestepsStep
 from diffusers.modular_pipelines.cosmos.encoders import Cosmos3DistilledTextEncoderStep
 from diffusers.modular_pipelines.modular_pipeline import PipelineState
 
+from ...testing_utils import torch_device
+from ..test_modular_pipelines_common import ModularPipelineTesterMixin
 
-DISTILLED_WORKFLOW = [
-    "prepare_text_segments",
-    "prepare_vision_latents",
-    "pack_vision_sequence",
-    "prepare_vision_denoiser_inputs",
-    "set_timesteps",
-    "denoise",
+
+# TODO: move this fixture to `hf-internal-testing/tiny-cosmos3-distilled-modular-pipe` and update the
+# repo name here. Hosted on a personal account for now so the PR can be tested.
+TINY_DISTILLED_REPO = "yzhautouskay/tiny-cosmos3-distilled-modular-pipe"
+
+
+# text2image / text2video: no visual conditioning, so the auto VAE encoder is skipped.
+TEXT_DISTILLED_WORKFLOW = [
+    ("text_encoder", "Cosmos3DistilledTextEncoderStep"),
+    ("denoise.prepare_text_segments", "Cosmos3PrepareTextSegmentsStep"),
+    ("denoise.prepare_vision_latents", "Cosmos3VisionPrepareLatentsStep"),
+    ("denoise.pack_vision_sequence", "Cosmos3VisionPackSequenceStep"),
+    ("denoise.prepare_vision_denoiser_inputs", "Cosmos3VisionDenoiseInputStep"),
+    ("denoise.set_timesteps", "Cosmos3DistilledSetTimestepsStep"),
+    ("denoise.denoise", "Cosmos3DistilledVisionDenoiseStep"),
+    ("decode", "Cosmos3VideoDecodeStep"),
 ]
 
+IMAGE_DISTILLED_WORKFLOW = [
+    ("text_encoder", "Cosmos3DistilledTextEncoderStep"),
+    ("vae_encoder", "Cosmos3ImageVaeEncoderStep"),
+    *TEXT_DISTILLED_WORKFLOW[1:],
+]
 
-def _fake_distilled_components(sigmas=(1.0, 0.75, 0.5, 0.25)):
+VIDEO_DISTILLED_WORKFLOW = [
+    ("text_encoder", "Cosmos3DistilledTextEncoderStep"),
+    ("vae_encoder", "Cosmos3VideoVaeEncoderStep"),
+    *TEXT_DISTILLED_WORKFLOW[1:],
+]
+
+COSMOS3_DISTILLED_WORKFLOWS = {
+    "text2image": TEXT_DISTILLED_WORKFLOW,
+    "text2video": TEXT_DISTILLED_WORKFLOW,
+    "image2video": IMAGE_DISTILLED_WORKFLOW,
+    "video2video": VIDEO_DISTILLED_WORKFLOW,
+}
+
+
+class TestCosmos3DistilledModularPipelineFast(ModularPipelineTesterMixin):
+    pipeline_class = Cosmos3DistilledModularPipeline
+    pipeline_blocks_class = Cosmos3DistilledBlocks
+    pretrained_model_name_or_path = TINY_DISTILLED_REPO
+
+    params = frozenset(["prompt", "height", "width", "num_frames"])
+    batch_params = frozenset()
+    optional_params = frozenset(["num_inference_steps", "output_type"])
+    output_name = "videos"
+    expected_workflow_blocks = COSMOS3_DISTILLED_WORKFLOWS
+
+    def get_pipeline(self, components_manager=None, torch_dtype=torch.float32):
+        pipe = super().get_pipeline(components_manager, torch_dtype)
+        pipe.disable_safety_checker()
+        return pipe
+
+    def get_dummy_inputs(self, seed=0):
+        return {
+            "prompt": "A small robot moves across a table.",
+            "generator": self.get_generator(seed),
+            "num_inference_steps": 4,
+            "height": 32,
+            "width": 32,
+            "num_frames": 5,
+            "output_type": "latent",
+        }
+
+    def test_save_from_pretrained(self, tmp_path):
+        base_pipe = self.get_pipeline().to(torch_device)
+        base_pipe.save_pretrained(str(tmp_path))
+
+        loaded_pipe = ModularPipeline.from_pretrained(str(tmp_path))
+        loaded_pipe.load_components(torch_dtype=torch.float32)
+        loaded_pipe.disable_safety_checker()
+        loaded_pipe.to(torch_device)
+
+        base_output = base_pipe(**self.get_dummy_inputs(), output=self.output_name)
+        loaded_output = loaded_pipe(**self.get_dummy_inputs(), output=self.output_name)
+
+        assert torch.abs(base_output - loaded_output).max() < 1e-3
+
+    @pytest.mark.skip(reason="Cosmos3 does not support batched prompts.")
+    def test_inference_batch_consistent(self):
+        pass
+
+    @pytest.mark.skip(reason="Cosmos3 does not support batched prompts.")
+    def test_inference_batch_single_identical(self):
+        pass
+
+    @pytest.mark.skip(reason="Cosmos3 does not support multiple videos per prompt.")
+    def test_num_images_per_prompt(self):
+        pass
+
+    @pytest.mark.skip(reason="Cosmos3 checkpoints support bfloat16, not float16, inference.")
+    def test_float16_inference(self):
+        pass
+
+
+def _fake_distilled_components(sigmas=(1.0, 0.9375, 0.8333333333333334, 0.625)):
     config = SimpleNamespace(distilled_sigmas=list(sigmas))
     return SimpleNamespace(_execution_device="cpu", config=config)
-
-
-def test_cosmos3_distilled_blocks_workflow_ordering():
-    blocks = Cosmos3DistilledBlocks()
-    assert blocks.block_names == ["text_encoder", "vae_encoder", "denoise", "decode"]
-    assert type(blocks.sub_blocks["text_encoder"]).__name__ == "Cosmos3DistilledTextEncoderStep"
-
-    denoise = blocks.sub_blocks["denoise"]
-    assert denoise.block_names == DISTILLED_WORKFLOW
-    assert type(denoise.sub_blocks["set_timesteps"]).__name__ == "Cosmos3DistilledSetTimestepsStep"
-
-    inner_loop = denoise.sub_blocks["denoise"]
-    assert type(inner_loop).__name__ == "Cosmos3DistilledVisionDenoiseStep"
-    assert inner_loop.block_names == ["prepare_vision", "denoiser", "update_vision"]
-    assert type(inner_loop.sub_blocks["update_vision"]).__name__ == "Cosmos3DistilledVisionLoopSchedulerStep"
-
-
-def test_cosmos3_distilled_supported_workflows():
-    blocks = Cosmos3DistilledBlocks()
-    assert set(blocks._workflow_map) == {"text2image", "text2video", "image2video", "video2video"}
 
 
 def test_cosmos3_distilled_vae_encoder_select_block():
