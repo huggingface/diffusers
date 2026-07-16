@@ -35,6 +35,7 @@ from diffusers.utils import is_accelerate_version
 
 from ...testing_utils import (
     CaptureLogger,
+    Expectations,
     backend_empty_cache,
     is_bitsandbytes_available,
     is_torch_available,
@@ -750,7 +751,15 @@ class SlowBnb4BitFluxControlWithLoraTests(Base8bitTests):
             generator=torch.Generator().manual_seed(42),
         ).images
         out_slice = output[0, -3:, -3:, -1].flatten()
-        expected_slice = np.array([0.2029, 0.2136, 0.2268, 0.1921, 0.1997, 0.2185, 0.2021, 0.2183, 0.2292])
+        # Expected slices are hardware-dependent because the Flux Control LoRA expands and dequantizes the
+        # quantized `x_embedder` layer, so the reference values are stored per accelerator backend.
+        expected_slices = Expectations(
+            {
+                (None, None): np.array([0.2029, 0.2136, 0.2268, 0.1921, 0.1997, 0.2185, 0.2021, 0.2183, 0.2292]),
+                ("xpu", 5): np.array([0.0955, 0.1223, 0.1509, 0.0872, 0.1155, 0.1890, 0.0754, 0.1028, 0.2178]),
+            }
+        )
+        expected_slice = expected_slices.get_expectation()
 
         max_diff = numpy_cosine_similarity_distance(expected_slice, out_slice)
         self.assertTrue(max_diff < 1e-3, msg=f"{out_slice=} != {expected_slice=}")
