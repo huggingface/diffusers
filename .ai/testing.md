@@ -12,7 +12,9 @@ Two test layers must be added for any new pipeline: pipeline-level tests, and (i
 - No LoRA tests in the initial PR (no `LoraTesterMixin`, no `tests/lora/test_lora_layers_<model>.py`).
 - No integration / slow tests in the initial PR — don't add anything gated on `@slow` / `RUN_SLOW=1` yet.
 
-## Pipeline-level tests (standard pipelines)
+## Pipeline-level tests 
+
+### Stanard pipelines
 
 - Location: `tests/pipelines/<model>/test_<model>.py` (one file per pipeline variant, e.g. T2V, I2V).
 - Subclass both `PipelineTesterMixin` (from `..test_pipelines_common`) and `unittest.TestCase`.
@@ -21,7 +23,7 @@ Two test layers must be added for any new pipeline: pipeline-level tests, and (i
 - Skip any inherited tests that don't apply with `@unittest.skip("Test not supported")` rather than deleting them.
 - Reference: `tests/pipelines/wan/test_wan.py`.
 
-## Pipeline-level tests (modular pipelines)
+### Modular pipelines
 
 - Location: `tests/modular_pipelines/<model>/test_modular_pipeline_<model>.py` (one test class per blocks assembly / pipeline variant).
 - Subclass `ModularPipelineTesterMixin` (from `..test_modular_pipelines_common`) — it runs the pipeline end-to-end (call signature, batch consistency, float16, device placement) against a tiny checkpoint.

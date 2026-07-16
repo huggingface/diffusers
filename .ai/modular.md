@@ -8,7 +8,7 @@ When adding a new modular pipeline (or reviewing one), skim `src/diffusers/modul
 
 ## Running a modular pipeline
 
-How to execute pipelines and blocks — in scripts, debugging sessions, and tests alike.
+This section provides guidance on how to execute pipelines and blocks — in scripts, debugging sessions, and tests alike.
 
 - **Full pipeline from a repo**: `ModularPipeline.from_pretrained(repo_id)` — the base class, not the model subclass; it resolves the right class from the repo's `modular_model_index.json` (falling back to a standard `model_index.json`). Then `pipe.load_components()` and call it.
 - **A single block or sub-workflow**: convert it to a pipeline first with `init_pipeline()`. Blocks are never executed directly.
