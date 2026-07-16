@@ -37,7 +37,6 @@ class LuminaPipelineFastTests(unittest.TestCase, PipelineTesterMixin):
     )
     batch_params = frozenset(["prompt", "negative_prompt"])
 
-    supports_dduf = False
     test_layerwise_casting = True
     test_group_offloading = True
 

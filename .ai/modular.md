@@ -102,6 +102,37 @@ class HeliosChunkDenoiseStep(HeliosChunkLoopWrapper):
 
 Note: sub-blocks inside `LoopSequentialPipelineBlocks` receive `(components, block_state, i, t)` for denoise loops or `(components, block_state, k)` for chunk loops.
 
+## Key pattern: `kwargs_type` inputs (`denoiser_input_fields`)
+
+The conditioning inputs a denoiser needs often vary by workflow — especially for omni models like Cosmos3, where the action workflow requires additional action conditioning, and a workflow that generates sound along with video requires additional sound inputs. Tag these outputs with `kwargs_type="denoiser_input_fields"` when they are written; the denoiser then declares a single input with that `kwargs_type` and receives every tagged value collected into one dict. This avoids creating a new denoiser block for each workflow just to list its specific inputs:
+
+```python
+# producer side: standard conditioning outputs already carry the tag via their templates
+OutputParam.template("prompt_embeds")  # kwargs_type="denoiser_input_fields"
+# workflow-specific fields declare it explicitly
+OutputParam(
+    "action_embeds",
+    kwargs_type="denoiser_input_fields",
+    type_hint=torch.Tensor,
+    description="Action conditioning fed into the transformer.",
+)
+
+# consumer side (the loop denoiser): declare the kwargs_type input once
+InputParam.template("denoiser_input_fields")
+
+# inside the denoiser __call__: every tagged value arrives in one dict —
+# and also individually (block_state.prompt_embeds, block_state.action_embeds, ...)
+block_state.denoiser_input_fields  # {"prompt_embeds": ..., "action_embeds": ...}
+```
+
+The denoiser typically filters this dict against the transformer's forward signature and forwards the matches — so a new block can add conditioning just by tagging its output (no change to the denoiser), and tagged fields the transformer doesn't accept are silently ignored (see `qwenimage/denoise.py` or `helios/denoise.py`; `z_image/denoise.py` is a minimal consumer).
+
+How the tagging works (behavior is pinned down in `tests/modular_pipelines/test_modular_pipelines_custom_blocks.py::TestBlockKwargsTypeInputs`):
+
+- A value gets its tag when it is **written** to pipeline state: a block output is tagged if declared with `OutputParam(..., kwargs_type=...)`; a user-passed input is tagged if the pipeline-level `InputParam` it matches declares a kwargs_type.
+- Users can always pass all the tagged values as a dict under the kwargs_type name — `pipe(denoiser_input_fields={"prompt_embeds": ...})` — and every entry gets tagged. In a full pipeline this is rarely needed: named inputs and tagged block outputs get tagged on their own; the dict form matters mainly for standalone runs (below).
+- **Gotcha — standalone runs:** a named input declared *without* the kwargs_type lands in state by name but never gets tagged, so it never reaches the consumer's dict. So when a denoise block runs standalone (without the upstream blocks whose tagged outputs normally supply these values), passing them as plain named inputs silently does nothing — they must go through the `denoiser_input_fields={...}` dict, or the block must declare them as named `InputParam(..., kwargs_type="denoiser_input_fields")` inputs.
+
 ## Key pattern: Workflow selection
 
 ```python
