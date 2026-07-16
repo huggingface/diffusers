@@ -201,7 +201,7 @@ class AnimaImg2ImgCoreDenoiseStep(SequentialPipelineBlocks):
 
 
 # auto_docstring
-class AnimaAutoDenoiseStep(AutoPipelineBlocks):
+class AnimaAutoCoreDenoiseStep(AutoPipelineBlocks):
     """
     Denoise step that selects between text-to-image and image-to-image denoising based on whether ``image_latents`` is
     present in state. - `AnimaCoreDenoiseStep` (text2image) is used when no ``image_latents`` are present. -
@@ -292,7 +292,7 @@ class AnimaAutoVaeImageEncoderStep(AutoPipelineBlocks):
 
       Outputs:
           image_latents (`Tensor`):
-              Encoded image latents used by ``AnimaAutoDenoiseStep`` to trigger img2img denoising.
+              Encoded image latents used by ``AnimaAutoCoreDenoiseStep`` to trigger img2img denoising.
     """
 
     block_classes = [AnimaImg2ImgVaeEncoderStep]
@@ -360,7 +360,7 @@ class AnimaAutoBlocks(SequentialPipelineBlocks):
     block_classes = [
         AnimaTextEncoderStep,
         AnimaAutoVaeImageEncoderStep,
-        AnimaAutoDenoiseStep,
+        AnimaAutoCoreDenoiseStep,
         AnimaDecodeStep,
     ]
     block_names = ["text_encoder", "vae_encoder", "denoise", "decode"]
