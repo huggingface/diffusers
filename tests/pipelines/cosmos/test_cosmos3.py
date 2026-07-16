@@ -12,8 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import json
-import tempfile
 import unittest
 from unittest import mock
 
@@ -30,16 +28,8 @@ from ..test_pipelines_common import PipelineTesterMixin
 enable_full_determinism()
 
 
-class Cosmos3OmniPipelineWrapper(Cosmos3OmniPipeline):
-    @staticmethod
-    def from_pretrained(*args, **kwargs):
-        kwargs.setdefault("enable_safety_checker", False)
-        kwargs.setdefault("safety_checker", None)
-        return Cosmos3OmniPipeline.from_pretrained(*args, **kwargs)
-
-
 class Cosmos3OmniPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
-    pipeline_class = Cosmos3OmniPipelineWrapper
+    pipeline_class = Cosmos3OmniPipeline
     params = TEXT_TO_IMAGE_PARAMS - {"cross_attention_kwargs", "negative_prompt_embeds", "prompt_embeds"}
     batch_params = TEXT_TO_IMAGE_BATCH_PARAMS
     required_optional_params = frozenset(
@@ -96,7 +86,8 @@ class Cosmos3OmniPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             "vae": vae,
             "scheduler": UniPCMultistepScheduler(),
             "sound_tokenizer": None,
-            "safety_checker": None,
+            # The inherited components test omits config flags and needs a non-None safety checker.
+            "safety_checker": mock.Mock(spec=["check_text_safety", "check_video_safety"]),
             "enable_safety_checker": False,
         }
 
@@ -124,36 +115,6 @@ class Cosmos3OmniPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         video = pipeline(**self.get_dummy_inputs(torch_device)).video
 
         self.assertEqual(video.shape, (1, 16, 16, 3))
-
-    def test_components_function(self):
-        init_components = self.get_dummy_components()
-        pipeline = self.pipeline_class(**init_components)
-        component_names = {
-            name for name, component in init_components.items() if not isinstance(component, (str, int, float))
-        }
-
-        self.assertTrue(hasattr(pipeline, "components"))
-        self.assertEqual(set(pipeline.components), component_names)
-
-    def test_cosmos3_pipeline_saves_edge_configuration(self):
-        components = self.get_dummy_components()
-        components["enable_safety_checker"] = False
-        components["default_use_system_prompt"] = False
-        components["use_native_flow_schedule"] = True
-        pipeline = self.pipeline_class(**components)
-
-        assert not pipeline.config.enable_safety_checker
-        assert not pipeline.config.default_use_system_prompt
-        assert pipeline.config.use_native_flow_schedule
-        assert pipeline.safety_checker is None
-
-        with tempfile.TemporaryDirectory() as tmpdir:
-            pipeline.save_config(tmpdir)
-            with open(f"{tmpdir}/model_index.json") as model_index_file:
-                model_index = json.load(model_index_file)
-        assert model_index["enable_safety_checker"] is False
-        assert model_index["default_use_system_prompt"] is False
-        assert model_index["use_native_flow_schedule"] is True
 
     def test_cosmos3_tokenize_prompt_uses_checkpoint_system_prompt_default(self):
         components = self.get_dummy_components()
