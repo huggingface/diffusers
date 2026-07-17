@@ -13,22 +13,25 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import json
-
 import pytest
 import torch
 from PIL import Image
 
-from diffusers import Cosmos3OmniTransformer, ModularPipeline
-from diffusers.modular_pipelines import Cosmos3OmniBlocks, Cosmos3OmniModularPipeline
+from diffusers import ModularPipeline, UniPCMultistepScheduler
+from diffusers.modular_pipelines import (
+    Cosmos3OmniBlocks,
+    Cosmos3OmniModularPipeline,
+    SequentialPipelineBlocks,
+)
 from diffusers.modular_pipelines.cosmos.before_denoise import (
     Cosmos3ActionDenoiseInputStep,
     Cosmos3ActionPackSequenceStep,
+    Cosmos3SetTimestepsStep,
     Cosmos3SoundDenoiseInputStep,
     Cosmos3VisionDenoiseInputStep,
     Cosmos3VisionPackSequenceStep,
 )
-from diffusers.modular_pipelines.modular_pipeline import PipelineState
+from diffusers.modular_pipelines.cosmos.encoders import Cosmos3TextEncoderStep
 
 from ...testing_utils import torch_device
 from ..test_modular_pipelines_common import ModularPipelineTesterMixin
@@ -114,7 +117,7 @@ COSMOS3_OMNI_WORKFLOWS = {
 class TestCosmos3OmniModularPipelineFast(ModularPipelineTesterMixin):
     pipeline_class = Cosmos3OmniModularPipeline
     pipeline_blocks_class = Cosmos3OmniBlocks
-    pretrained_model_name_or_path = "atharvajoshi10/tiny-cosmos3-modular-pipe"
+    pretrained_model_name_or_path = "hf-internal-testing/tiny-cosmos3-modular-pipe"
 
     params = frozenset(["prompt", "height", "width", "num_frames", "guidance_scale"])
     batch_params = frozenset()
@@ -179,15 +182,18 @@ class TestCosmos3OmniModularPipelineFast(ModularPipelineTesterMixin):
         assert vae_encoder.select_block(action=None, image=None, video=object()) == "video_conditioning"
         assert vae_encoder.select_block(action=object(), image=None, video=None) == "action_conditioning"
 
-        state = PipelineState()
-        state.set("image", Image.new("RGB", (32, 32)))
-        state.set("num_frames", 5)
-        state.set("height", 32)
-        state.set("width", 32)
-        _, state = vae_encoder(pipe, state)
+        vae_pipe = vae_encoder.init_pipeline(self.pretrained_model_name_or_path)
+        vae_pipe.load_components(torch_dtype=torch.float32)
+        outputs = vae_pipe(
+            image=Image.new("RGB", (32, 32)),
+            num_frames=5,
+            height=32,
+            width=32,
+            output=["x0_tokens_vision", "vision_condition_frames"],
+        )
 
-        assert state.get("x0_tokens_vision") is not None
-        assert state.get("vision_condition_frames") == [0]
+        assert outputs["x0_tokens_vision"] is not None
+        assert outputs["vision_condition_frames"] == [0]
 
         action_vae_encoder = vae_encoder.sub_blocks["action_conditioning"]
         assert [input_param.name for input_param in action_vae_encoder.inputs] == ["action"]
@@ -218,129 +224,152 @@ class TestCosmos3OmniModularPipelineFast(ModularPipelineTesterMixin):
         with pytest.raises(ValueError, match="batched prompts are not supported"):
             pipe(**inputs, output=self.output_name)
 
+    def test_pack_steps_do_not_require_vae(self):
+        cond_text_segment = {"vision_start_temporal_offset": 0, "und_len": 2}
+        uncond_text_segment = {"vision_start_temporal_offset": 0, "und_len": 1}
 
-def test_cosmos3_pack_steps_do_not_require_vae():
-    transformer = Cosmos3OmniTransformer(
-        hidden_size=32,
-        intermediate_size=64,
-        num_hidden_layers=2,
-        num_attention_heads=4,
-        num_key_value_heads=2,
-        head_dim=8,
-        latent_channel=4,
-        latent_patch_size=2,
-        patch_latent_dim=16,
-        vocab_size=16,
-        rope_scaling={"mrope_section": [2, 1, 1]},
-        action_gen=True,
-        action_dim=10,
-    )
-    pipe = Cosmos3OmniModularPipeline(blocks=Cosmos3VisionPackSequenceStep())
-    pipe.update_components(transformer=transformer)
+        vision_pipe = Cosmos3VisionPackSequenceStep().init_pipeline(self.pretrained_model_name_or_path)
+        vision_pipe.load_components(torch_dtype=torch.float32)
+        vision_segments = vision_pipe(
+            cond_text_segment=cond_text_segment,
+            uncond_text_segment=uncond_text_segment,
+            latents=torch.zeros(1, vision_pipe.transformer.config.latent_channel, 2, 2, 2),
+            fps_vision=5.0,
+            vision_condition_indexes_for_pack=[],
+            output=["cond_vision_segment", "uncond_vision_segment"],
+        )
 
-    assert [component.name for component in Cosmos3VisionPackSequenceStep().expected_components] == ["transformer"]
-    assert [component.name for component in Cosmos3ActionPackSequenceStep().expected_components] == ["transformer"]
-    assert not hasattr(pipe, "vae")
+        assert set(vision_pipe.components) == {"transformer"}
+        assert vision_segments["cond_vision_segment"]["vision_mrope_ids"].shape == (3, 2)
+        assert vision_segments["uncond_vision_segment"]["vision_mrope_ids"].shape == (3, 2)
 
-    vision_segment = pipe._prepare_vision_segment(
-        input_vision_tokens=torch.zeros(1, transformer.config.latent_channel, 2, 2, 2),
-        has_image_condition=False,
-        mrope_offset=0,
-        vision_fps=5.0,
-        curr=1,
-        device="cpu",
-    )
-    action_segment = pipe._prepare_action_segment(
-        input_action_tokens=torch.zeros(4, transformer.config.action_dim),
-        condition_frame_indexes=[],
-        mrope_offset=0,
-        action_fps=5.0,
-        curr=1,
-        device="cpu",
-    )
+        action_pipe = Cosmos3ActionPackSequenceStep().init_pipeline(self.pretrained_model_name_or_path)
+        action_pipe.load_components(torch_dtype=torch.float32)
+        action_segments = action_pipe(
+            cond_text_segment=cond_text_segment,
+            uncond_text_segment=uncond_text_segment,
+            cond_sequence_length=2,
+            uncond_sequence_length=1,
+            action_latents=torch.zeros(4, action_pipe.transformer.config.action_dim),
+            action_condition_frame_indexes=[],
+            fps_vision=5.0,
+            output=["cond_action_segment", "uncond_action_segment"],
+        )
 
-    assert vision_segment["vision_mrope_ids"].shape == (3, 2)
-    assert action_segment["action_mrope_ids"].shape == (3, 4)
+        assert set(action_pipe.components) == {"transformer"}
+        assert action_segments["cond_action_segment"]["action_mrope_ids"].shape == (3, 4)
+        assert action_segments["uncond_action_segment"]["action_mrope_ids"].shape == (3, 4)
 
+    def test_denoise_input_steps_assemble_modality_segments(self):
+        cond_text_segment = {"text_mrope_ids": torch.tensor([[1, 2], [3, 4], [5, 6]]), "und_len": 2}
+        uncond_text_segment = {"text_mrope_ids": torch.tensor([[7], [8], [9]]), "und_len": 1}
+        cond_vision_segment = {"vision_mrope_ids": torch.tensor([[10], [11], [12]]), "num_vision_tokens": 1}
+        uncond_vision_segment = {
+            "vision_mrope_ids": torch.tensor([[13, 14], [15, 16], [17, 18]]),
+            "num_vision_tokens": 2,
+        }
+        cond_sound_segment = {
+            "sound_mrope_ids": torch.tensor([[19, 20], [21, 22], [23, 24]]),
+            "sound_len": 2,
+        }
+        uncond_sound_segment = {"sound_mrope_ids": torch.tensor([[25], [26], [27]]), "sound_len": 1}
+        cond_action_segment = {"action_mrope_ids": torch.tensor([[28], [29], [30]]), "action_len": 1}
+        uncond_action_segment = {
+            "action_mrope_ids": torch.tensor([[31, 32], [33, 34], [35, 36]]),
+            "action_len": 2,
+        }
 
-def test_cosmos3_denoise_input_steps_assemble_modality_segments():
-    cond_text_segment = {"text_mrope_ids": torch.tensor([[1, 2], [3, 4], [5, 6]]), "und_len": 2}
-    uncond_text_segment = {"text_mrope_ids": torch.tensor([[7], [8], [9]]), "und_len": 1}
-    cond_vision_segment = {"vision_mrope_ids": torch.tensor([[10], [11], [12]]), "num_vision_tokens": 1}
-    uncond_vision_segment = {"vision_mrope_ids": torch.tensor([[13, 14], [15, 16], [17, 18]]), "num_vision_tokens": 2}
-    cond_sound_segment = {"sound_mrope_ids": torch.tensor([[19, 20], [21, 22], [23, 24]]), "sound_len": 2}
-    uncond_sound_segment = {"sound_mrope_ids": torch.tensor([[25], [26], [27]]), "sound_len": 1}
-    cond_action_segment = {"action_mrope_ids": torch.tensor([[28], [29], [30]]), "action_len": 1}
-    uncond_action_segment = {"action_mrope_ids": torch.tensor([[31, 32], [33, 34], [35, 36]]), "action_len": 2}
-
-    state = PipelineState()
-    state.set("cond_text_segment", cond_text_segment)
-    state.set("uncond_text_segment", uncond_text_segment)
-    state.set("cond_vision_segment", cond_vision_segment)
-    state.set("uncond_vision_segment", uncond_vision_segment)
-    state.set("cond_sound_segment", cond_sound_segment)
-    state.set("uncond_sound_segment", uncond_sound_segment)
-    state.set("cond_action_segment", cond_action_segment)
-    state.set("uncond_action_segment", uncond_action_segment)
-
-    _, state = Cosmos3VisionDenoiseInputStep()(None, state)
-    _, state = Cosmos3SoundDenoiseInputStep()(None, state)
-    _, state = Cosmos3ActionDenoiseInputStep()(None, state)
-
-    torch.testing.assert_close(
-        state.get("cond_position_ids"),
-        torch.cat(
-            [
-                cond_text_segment["text_mrope_ids"],
-                cond_vision_segment["vision_mrope_ids"],
-                cond_sound_segment["sound_mrope_ids"],
-                cond_action_segment["action_mrope_ids"],
-            ],
-            dim=1,
-        ),
-    )
-    torch.testing.assert_close(
-        state.get("uncond_position_ids"),
-        torch.cat(
-            [
-                uncond_text_segment["text_mrope_ids"],
-                uncond_vision_segment["vision_mrope_ids"],
-                uncond_sound_segment["sound_mrope_ids"],
-                uncond_action_segment["action_mrope_ids"],
-            ],
-            dim=1,
-        ),
-    )
-    assert state.get("cond_sequence_length") == 6
-    assert state.get("uncond_sequence_length") == 6
-    assert state.get("cond_packed_static") is None
-    assert state.get("uncond_packed_static") is None
-
-
-def test_cosmos3_modular_model_index_takes_precedence(tmp_path):
-    (tmp_path / "model_index.json").write_text(json.dumps({"_class_name": "Cosmos3OmniDiffusersPipeline"}))
-    (tmp_path / "modular_model_index.json").write_text(
-        json.dumps(
+        blocks = SequentialPipelineBlocks.from_blocks_dict(
             {
-                "_class_name": "Cosmos3OmniModularPipeline",
-                "_blocks_class_name": "Cosmos3OmniBlocks",
+                "vision": Cosmos3VisionDenoiseInputStep(),
+                "sound": Cosmos3SoundDenoiseInputStep(),
+                "action": Cosmos3ActionDenoiseInputStep(),
             }
         )
-    )
+        pipe = blocks.init_pipeline()
+        state = pipe(
+            cond_text_segment=cond_text_segment,
+            uncond_text_segment=uncond_text_segment,
+            cond_vision_segment=cond_vision_segment,
+            uncond_vision_segment=uncond_vision_segment,
+            cond_sound_segment=cond_sound_segment,
+            uncond_sound_segment=uncond_sound_segment,
+            cond_action_segment=cond_action_segment,
+            uncond_action_segment=uncond_action_segment,
+        )
 
-    modular_pipe = ModularPipeline.from_pretrained(str(tmp_path))
-    explicit_modular_pipe = Cosmos3OmniModularPipeline.from_pretrained(str(tmp_path))
+        torch.testing.assert_close(
+            state.get("cond_position_ids"),
+            torch.cat(
+                [
+                    cond_text_segment["text_mrope_ids"],
+                    cond_vision_segment["vision_mrope_ids"],
+                    cond_sound_segment["sound_mrope_ids"],
+                    cond_action_segment["action_mrope_ids"],
+                ],
+                dim=1,
+            ),
+        )
+        torch.testing.assert_close(
+            state.get("uncond_position_ids"),
+            torch.cat(
+                [
+                    uncond_text_segment["text_mrope_ids"],
+                    uncond_vision_segment["vision_mrope_ids"],
+                    uncond_sound_segment["sound_mrope_ids"],
+                    uncond_action_segment["action_mrope_ids"],
+                ],
+                dim=1,
+            ),
+        )
+        assert state.get("cond_sequence_length") == 6
+        assert state.get("uncond_sequence_length") == 6
+        assert state.get("cond_packed_static") is None
+        assert state.get("uncond_packed_static") is None
 
-    assert isinstance(modular_pipe, Cosmos3OmniModularPipeline)
-    assert isinstance(modular_pipe.blocks, Cosmos3OmniBlocks)
-    assert isinstance(explicit_modular_pipe, Cosmos3OmniModularPipeline)
-    assert isinstance(explicit_modular_pipe.blocks, Cosmos3OmniBlocks)
+    def test_text_step_uses_pipeline_system_prompt_and_safety_configs(self):
+        text_pipe = Cosmos3TextEncoderStep().init_pipeline(self.pretrained_model_name_or_path)
+        text_pipe.load_components()
+        text_pipe.disable_safety_checker()
+        assert text_pipe.config.default_use_system_prompt
+        assert not text_pipe.requires_safety_checker
 
+        inputs = {
+            "prompt": "A small robot moves across a table.",
+            "negative_prompt": "",
+            "num_frames": 5,
+            "height": 32,
+            "width": 32,
+        }
+        default_with_system_prompt = text_pipe(**inputs, output="cond_input_ids")
+        explicit_with_system_prompt = text_pipe(**inputs, use_system_prompt=True, output="cond_input_ids")
+        explicit_without_system_prompt = text_pipe(**inputs, use_system_prompt=False, output="cond_input_ids")
 
-def test_cosmos3_model_index_fallback_resolves_modular_pipeline(tmp_path):
-    (tmp_path / "model_index.json").write_text(json.dumps({"_class_name": "Cosmos3OmniPipeline"}))
+        text_pipe.update_components(default_use_system_prompt=False)
+        assert not text_pipe.config.default_use_system_prompt
 
-    pipe = ModularPipeline.from_pretrained(str(tmp_path))
+        default_without_system_prompt = text_pipe(**inputs, output="cond_input_ids")
+        updated_with_system_prompt = text_pipe(**inputs, use_system_prompt=True, output="cond_input_ids")
+        updated_without_system_prompt = text_pipe(**inputs, use_system_prompt=False, output="cond_input_ids")
 
-    assert isinstance(pipe, Cosmos3OmniModularPipeline)
-    assert isinstance(pipe.blocks, Cosmos3OmniBlocks)
+        assert default_with_system_prompt == explicit_with_system_prompt == updated_with_system_prompt
+        assert explicit_without_system_prompt == default_without_system_prompt == updated_without_system_prompt
+        assert len(default_with_system_prompt) > len(default_without_system_prompt)
+
+    def test_set_timesteps_native_flow_schedule(self):
+        timesteps_pipe = Cosmos3SetTimestepsStep().init_pipeline(self.pretrained_model_name_or_path)
+        timesteps_pipe.load_components()
+        assert not timesteps_pipe.config.use_native_flow_schedule
+
+        default_timesteps = timesteps_pipe(num_inference_steps=4, output="timesteps")
+
+        timesteps_pipe.update_components(
+            scheduler=UniPCMultistepScheduler(num_train_timesteps=100, use_flow_sigmas=True),
+            use_native_flow_schedule=True,
+        )
+        native_timesteps = timesteps_pipe(num_inference_steps=4, output="timesteps")
+
+        expected_sigmas = torch.tensor([0.99, 0.7425, 0.495, 0.2475])
+        torch.testing.assert_close(timesteps_pipe.scheduler.sigmas[:-1], expected_sigmas)
+        assert native_timesteps.tolist() == [99, 74, 49, 24]
+        assert not torch.equal(native_timesteps, default_timesteps)
