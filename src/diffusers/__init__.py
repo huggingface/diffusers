@@ -1,4 +1,4 @@
-__version__ = "0.39.0.dev0"
+__version__ = "0.40.0.dev0"
 
 from typing import TYPE_CHECKING
 
@@ -123,6 +123,18 @@ except OptionalDependencyNotAvailable:
     ]
 else:
     _import_structure["quantizers.quantization_config"].append("NVIDIAModelOptConfig")
+
+try:
+    if not is_torch_available():
+        raise OptionalDependencyNotAvailable()
+except OptionalDependencyNotAvailable:
+    from .utils import dummy_nunchaku_lite_objects
+
+    _import_structure["utils.dummy_nunchaku_lite_objects"] = [
+        name for name in dir(dummy_nunchaku_lite_objects) if not name.startswith("_")
+    ]
+else:
+    _import_structure["quantizers.quantization_config"].append("NunchakuLiteQuantizationConfig")
 
 try:
     if not is_auto_round_available():
@@ -274,6 +286,7 @@ else:
             "HunyuanVideoTransformer3DModel",
             "I2VGenXLUNet",
             "Ideogram4Transformer2DModel",
+            "JoyImageEditPlusTransformer3DModel",
             "JoyImageEditTransformer3DModel",
             "Kandinsky3UNet",
             "Kandinsky5Transformer3DModel",
@@ -477,6 +490,8 @@ else:
         [
             "AnimaAutoBlocks",
             "AnimaModularPipeline",
+            "Cosmos3OmniBlocks",
+            "Cosmos3OmniModularPipeline",
             "ErnieImageAutoBlocks",
             "ErnieImageModularPipeline",
             "Flux2AutoBlocks",
@@ -631,6 +646,8 @@ else:
             "ImageTextPipelineOutput",
             "JoyImageEditPipeline",
             "JoyImageEditPipelineOutput",
+            "JoyImageEditPlusPipeline",
+            "JoyImageEditPlusPipelineOutput",
             "Kandinsky3Img2ImgPipeline",
             "Kandinsky3Pipeline",
             "Kandinsky5I2IPipeline",
@@ -1011,6 +1028,14 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .quantizers.quantization_config import NVIDIAModelOptConfig
 
     try:
+        if not is_torch_available():
+            raise OptionalDependencyNotAvailable()
+    except OptionalDependencyNotAvailable:
+        from .utils.dummy_nunchaku_lite_objects import *
+    else:
+        from .quantizers.quantization_config import NunchakuLiteQuantizationConfig
+
+    try:
         if not is_auto_round_available():
             raise OptionalDependencyNotAvailable()
     except OptionalDependencyNotAvailable:
@@ -1143,6 +1168,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             HunyuanVideoTransformer3DModel,
             I2VGenXLUNet,
             Ideogram4Transformer2DModel,
+            JoyImageEditPlusTransformer3DModel,
             JoyImageEditTransformer3DModel,
             Kandinsky3UNet,
             Kandinsky5Transformer3DModel,
@@ -1325,6 +1351,8 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .modular_pipelines import (
             AnimaAutoBlocks,
             AnimaModularPipeline,
+            Cosmos3OmniBlocks,
+            Cosmos3OmniModularPipeline,
             ErnieImageAutoBlocks,
             ErnieImageModularPipeline,
             Flux2AutoBlocks,
@@ -1475,6 +1503,8 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             ImageTextPipelineOutput,
             JoyImageEditPipeline,
             JoyImageEditPipelineOutput,
+            JoyImageEditPlusPipeline,
+            JoyImageEditPlusPipelineOutput,
             Kandinsky3Img2ImgPipeline,
             Kandinsky3Pipeline,
             Kandinsky5I2IPipeline,

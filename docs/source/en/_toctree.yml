@@ -174,6 +174,8 @@
     title: bitsandbytes
   - local: quantization/gguf
     title: gguf
+  - local: quantization/nunchaku
+    title: Nunchaku Lite
   - local: quantization/torchao
     title: torchao
   - local: quantization/quanto
@@ -353,6 +355,8 @@
         title: HunyuanVideoTransformer3DModel
       - local: api/models/ideogram4_transformer2d
         title: Ideogram4Transformer2DModel
+      - local: api/models/transformer_joyimage_edit_plus
+        title: JoyImageEditPlusTransformer3DModel
       - local: api/models/transformer_joyimage
         title: JoyImageEditTransformer3DModel
       - local: api/models/krea2_transformer2d
@@ -555,6 +559,8 @@
         title: InstructPix2Pix
       - local: api/pipelines/joyimage_edit
         title: JoyImage Edit
+      - local: api/pipelines/joyimage_edit_plus
+        title: JoyImage Edit Plus
       - local: api/pipelines/kandinsky
         title: Kandinsky 2.1
       - local: api/pipelines/kandinsky_v22
@@ -718,6 +724,8 @@
       title: DDPMScheduler
     - local: api/schedulers/deis
       title: DEISMultistepScheduler
+    - local: api/schedulers/discrete_ddim
+      title: DiscreteDDIMScheduler
     - local: api/schedulers/multistep_dpm_solver_inverse
       title: DPMSolverMultistepInverse
     - local: api/schedulers/multistep_dpm_solver
@@ -730,6 +738,8 @@
       title: EDMDPMSolverMultistepScheduler
     - local: api/schedulers/edm_euler
       title: EDMEulerScheduler
+    - local: api/schedulers/entropy_bound
+      title: EntropyBoundScheduler
     - local: api/schedulers/euler_ancestral
       title: EulerAncestralDiscreteScheduler
     - local: api/schedulers/euler

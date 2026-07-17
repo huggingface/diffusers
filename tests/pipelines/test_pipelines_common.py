@@ -70,10 +70,8 @@ from ..testing_utils import (
     numpy_cosine_similarity_distance,
     require_accelerate_version_greater,
     require_accelerator,
-    require_hf_hub_version_greater,
     require_torch,
     require_torch_accelerator,
-    require_transformers_version_greater,
     skip_mps,
     torch_device,
 )
@@ -137,7 +135,7 @@ class SDFunctionTesterMixin:
         output_1 = pipe(**inputs)
 
         # make sure sliced vae decode yields the same result
-        pipe.enable_vae_slicing()
+        pipe.vae.enable_slicing()
         inputs = self.get_dummy_inputs(device)
         inputs["prompt"] = [inputs["prompt"]] * image_count
         if "image" in inputs:
@@ -164,7 +162,7 @@ class SDFunctionTesterMixin:
         output_1 = pipe(**inputs)[0]
 
         # make sure tiled vae decode yields the same result
-        pipe.enable_vae_tiling()
+        pipe.vae.enable_tiling()
         inputs = self.get_dummy_inputs(torch_device)
         inputs["return_dict"] = False
         output_2 = pipe(**inputs)[0]
@@ -1064,7 +1062,6 @@ class PipelineTesterMixin:
     test_xformers_attention = True
     test_layerwise_casting = False
     test_group_offloading = False
-    supports_dduf = True
 
     def get_generator(self, seed):
         device = torch_device if torch_device != "mps" else "cpu"
@@ -2256,42 +2253,11 @@ class PipelineTesterMixin:
             )
         )
 
-    @require_hf_hub_version_greater("0.26.5")
-    @require_transformers_version_greater("4.47.1")
-    def test_save_load_dduf(self, atol=1e-4, rtol=1e-4):
-        if not self.supports_dduf:
-            return
-
-        from huggingface_hub import export_folder_as_dduf
-
-        components = self.get_dummy_components()
-        for key in components:
-            if "text_encoder" in key and hasattr(components[key], "eval"):
-                components[key].eval()
-        pipe = self.pipeline_class(**components)
-        pipe = pipe.to(torch_device)
-        pipe.set_progress_bar_config(disable=None)
-
-        inputs = self.get_dummy_inputs(device="cpu")
-        inputs.pop("generator")
-        inputs["generator"] = torch.manual_seed(0)
-
-        pipeline_out = pipe(**inputs)[0]
-
-        with tempfile.TemporaryDirectory() as tmpdir:
-            dduf_filename = os.path.join(tmpdir, f"{pipe.__class__.__name__.lower()}.dduf")
-            pipe.save_pretrained(tmpdir, safe_serialization=True)
-            export_folder_as_dduf(dduf_filename, folder_path=tmpdir)
-            loaded_pipe = self.pipeline_class.from_pretrained(tmpdir, dduf_file=dduf_filename).to(torch_device)
-
-        inputs["generator"] = torch.manual_seed(0)
-        loaded_pipeline_out = loaded_pipe(**inputs)[0]
-
-        if isinstance(pipeline_out, np.ndarray) and isinstance(loaded_pipeline_out, np.ndarray):
-            assert np.allclose(pipeline_out, loaded_pipeline_out, atol=atol, rtol=rtol)
-        elif isinstance(pipeline_out, torch.Tensor) and isinstance(loaded_pipeline_out, torch.Tensor):
-            assert torch.allclose(pipeline_out, loaded_pipeline_out, atol=atol, rtol=rtol)
-
+    @pytest.mark.xfail(
+        condition=torch_device == "mps",
+        reason="MPS does not support float8 casting.",
+        strict=True,
+    )
     def test_layerwise_casting_inference(self):
         if not self.test_layerwise_casting:
             return
@@ -2401,6 +2367,23 @@ class PipelineTesterMixin:
                     component.dtype,
                     expected_dtype,
                     f"Component '{name}' has dtype {component.dtype} but expected {expected_dtype}",
+                )
+
+    def test_dtype_alias(self):
+        # `dtype` is an alias for `torch_dtype` in `from_pretrained`.
+        components = self.get_dummy_components()
+        pipe = self.pipeline_class(**components)
+
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname:
+            pipe.save_pretrained(tmpdirname, safe_serialization=False)
+            loaded_pipe = self.pipeline_class.from_pretrained(tmpdirname, dtype=torch.float16)
+
+        for name, component in loaded_pipe.components.items():
+            if isinstance(component, torch.nn.Module) and hasattr(component, "dtype"):
+                self.assertEqual(
+                    component.dtype,
+                    torch.float16,
+                    f"Component '{name}' has dtype {component.dtype} but expected {torch.float16}",
                 )
 
     def test_pipeline_with_accelerator_device_map(self, expected_max_difference=1e-4):

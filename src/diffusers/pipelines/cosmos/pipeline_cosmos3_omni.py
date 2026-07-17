@@ -377,8 +377,15 @@ class Cosmos3OmniPipeline(DiffusionPipeline):
         sound_tokenizer: Cosmos3AVAEAudioTokenizer | None = None,
         safety_checker: CosmosSafetyChecker | None = None,
         enable_safety_checker: bool = True,
+        default_use_system_prompt: bool = True,
+        use_native_flow_schedule: bool = False,
     ):
         super().__init__()
+        self.register_to_config(
+            enable_safety_checker=enable_safety_checker,
+            default_use_system_prompt=default_use_system_prompt,
+            use_native_flow_schedule=use_native_flow_schedule,
+        )
         if enable_safety_checker:
             if safety_checker is None:
                 safety_checker = CosmosSafetyChecker()
@@ -398,6 +405,9 @@ class Cosmos3OmniPipeline(DiffusionPipeline):
 
         # Image preprocessor for caller-supplied conditioning frames (PIL / tensor / numpy).
         self.vae_scale_factor_spatial = int(self.vae.config.scale_factor_spatial) if getattr(self, "vae", None) else 16
+        self.vae_scale_factor_temporal = (
+            int(self.vae.config.scale_factor_temporal) if getattr(self, "vae", None) else 4
+        )
         self.video_processor = VideoProcessor(vae_scale_factor=self.vae_scale_factor_spatial, resample="bilinear")
 
         self.llm_special_tokens = {
@@ -451,9 +461,9 @@ class Cosmos3OmniPipeline(DiffusionPipeline):
         matches Wan2pt2VAEInterface; no autocast (WanVAE was trained with is_amp=False)."""
         in_dtype = x.dtype
         dtype = self.vae.dtype
-        mean = self._vae_latents_mean.to(device=x.device, dtype=dtype)
-        inv_std = self._vae_latents_inv_std.to(device=x.device, dtype=dtype)
         raw_mu = retrieve_latents(self.vae.encode(x.to(dtype)), sample_mode="argmax")
+        mean = self._vae_latents_mean.to(device=raw_mu.device, dtype=dtype)
+        inv_std = self._vae_latents_inv_std.to(device=raw_mu.device, dtype=dtype)
         return ((raw_mu - mean.view(1, -1, 1, 1, 1)) * inv_std.view(1, -1, 1, 1, 1)).to(in_dtype)
 
     def decode_sound(self, latent: torch.Tensor) -> torch.Tensor:
@@ -545,7 +555,7 @@ class Cosmos3OmniPipeline(DiffusionPipeline):
             reset_spatial_indices=config.unified_3d_mrope_reset_spatial_ids,
             fps=effective_fps,
             base_fps=float(config.base_fps),
-            temporal_compression_factor=self.vae.config.scale_factor_temporal,
+            temporal_compression_factor=self.vae_scale_factor_temporal,
         )
 
         return {
@@ -628,7 +638,7 @@ class Cosmos3OmniPipeline(DiffusionPipeline):
             fps=effective_fps,
             base_fps=float(config.base_fps),
             temporal_compression_factor=1,
-            base_temporal_compression_factor=self.vae.config.scale_factor_temporal,
+            base_temporal_compression_factor=self.vae_scale_factor_temporal,
             start_frame_offset=1,
         )
 
@@ -1080,15 +1090,15 @@ class Cosmos3OmniPipeline(DiffusionPipeline):
         height: int = 720,
         width: int = 1280,
         fps: float = 24.0,
-        use_system_prompt: bool = True,
+        use_system_prompt: bool | None = None,
         add_resolution_template: bool = True,
         add_duration_template: bool = True,
         action_mode: str | None = None,
         action_view_point: str | None = None,
     ) -> tuple[list[int], list[int]]:
-        """Apply prompt-augmentation templates and tokenize cond/uncond prompts via the Qwen2 chat template.
+        """Apply prompt-augmentation templates and tokenize cond/uncond prompts via the configured chat template.
 
-        This pipeline does not run a separate text encoder: the joint Cosmos3 transformer consumes raw Qwen2 token IDs
+        This pipeline does not run a separate text encoder: the joint Cosmos3 transformer consumes raw token IDs
         alongside vision (and optionally sound) tokens.
 
         When ``negative_prompt`` is ``None``, an empty string is used; the Cosmos3 docs page documents recommended
@@ -1102,6 +1112,9 @@ class Cosmos3OmniPipeline(DiffusionPipeline):
         Returns:
             ``(cond_input_ids, uncond_input_ids)`` — token-id lists for this sample.
         """
+        if use_system_prompt is None:
+            use_system_prompt = self.config.default_use_system_prompt
+
         is_image = num_frames == 1
 
         if negative_prompt is None:
@@ -1239,6 +1252,14 @@ class Cosmos3OmniPipeline(DiffusionPipeline):
         return self._current_timestep
 
     @property
+    def guidance_scale(self):
+        return self._guidance_scale
+
+    @property
+    def num_timesteps(self):
+        return self._num_timesteps
+
+    @property
     def interrupt(self):
         return self._interrupt
 
@@ -1269,7 +1290,7 @@ class Cosmos3OmniPipeline(DiffusionPipeline):
         action: CosmosActionCondition | None = None,
         output_type: str = "pil",
         return_dict: bool = True,
-        use_system_prompt: bool = True,
+        use_system_prompt: bool | None = None,
         callback_on_step_end: Callable[[int, int, dict[str, Any]], None]
         | PipelineCallback
         | MultiPipelineCallbacks
@@ -1352,9 +1373,9 @@ class Cosmos3OmniPipeline(DiffusionPipeline):
                 W, C]`), `"pt"` (`torch.Tensor`, `[T, C, H, W]`), or `"latent"` (raw vision latents).
             return_dict (`bool`, *optional*, defaults to `True`):
                 When `True`, returns a [`Cosmos3OmniPipelineOutput`]; otherwise a plain tuple `(video, sound)`.
-            use_system_prompt (`bool`, *optional*, defaults to `True`):
-                When `True`, prepends the mode-specific Cosmos 3 system prompt to the chat template before
-                tokenization.
+            use_system_prompt (`bool`, *optional*):
+                Whether to prepend the mode-specific Cosmos 3 system prompt to the chat template before tokenization.
+                Defaults to the pipeline's `default_use_system_prompt` configuration.
             callback_on_step_end (`Callable`, `PipelineCallback`, or `MultiPipelineCallbacks`, *optional*):
                 A callback invoked at the end of each denoising step. Receives `(step_index, timestep, kwargs)` where
                 `kwargs` is keyed by `callback_on_step_end_tensor_inputs`.
@@ -1606,7 +1627,15 @@ class Cosmos3OmniPipeline(DiffusionPipeline):
 
         # 6. Set timesteps. UniPCMultistepScheduler keeps per-step state (_step_index,
         # model_outputs history) on the instance, so sound/action each get their own copy.
-        self.scheduler.set_timesteps(num_inference_steps, device=device)
+        if self.config.use_native_flow_schedule:
+            sigmas = np.linspace(
+                1.0 - 1.0 / self.scheduler.config.num_train_timesteps,
+                0.0,
+                num_inference_steps + 1,
+            )[:-1]
+            self.scheduler.set_timesteps(num_inference_steps, device=device, sigmas=sigmas)
+        else:
+            self.scheduler.set_timesteps(num_inference_steps, device=device)
         timesteps = self.scheduler.timesteps
         sound_scheduler = copy.deepcopy(self.scheduler) if sound_latents is not None else None
         action_scheduler = copy.deepcopy(self.scheduler) if action_latents is not None else None
@@ -1663,6 +1692,7 @@ class Cosmos3OmniPipeline(DiffusionPipeline):
                     action_timesteps=action_timesteps,
                     action_noisy_frame_indexes=cond_packed_static.get("action_noisy_frame_indexes"),
                     action_domain_ids=[action_domain_id] if action_domain_id is not None else None,
+                    return_dict=False,
                 )
                 cond_v_vision, cond_v_sound, cond_v_action = self._mask_velocity_predictions(
                     preds_vision,
@@ -1702,6 +1732,7 @@ class Cosmos3OmniPipeline(DiffusionPipeline):
                         action_timesteps=action_timesteps,
                         action_noisy_frame_indexes=uncond_packed_static.get("action_noisy_frame_indexes"),
                         action_domain_ids=[action_domain_id] if action_domain_id is not None else None,
+                        return_dict=False,
                     )
                     uncond_v_vision, uncond_v_sound, uncond_v_action = self._mask_velocity_predictions(
                         preds_vision,
@@ -1752,7 +1783,9 @@ class Cosmos3OmniPipeline(DiffusionPipeline):
                         action_latents[:, raw_action_dim_resolved:] = 0
 
                 if callback_on_step_end is not None:
-                    callback_kwargs = {k: locals()[k] for k in callback_on_step_end_tensor_inputs}
+                    callback_kwargs = {}
+                    for key in callback_on_step_end_tensor_inputs:
+                        callback_kwargs[key] = locals()[key]
                     callback_outputs = callback_on_step_end(self, i, t, callback_kwargs)
                     latents = callback_outputs.pop("latents", latents)
 

@@ -163,7 +163,7 @@ class MultiControlNetModel(ModelMixin):
                 A path to a *directory* containing model weights saved using
                 [`~models.controlnets.multicontrolnet.MultiControlNetModel.save_pretrained`], e.g.,
                 `./my_model_directory/controlnet`.
-            torch_dtype (`torch.dtype`, *optional*):
+            dtype (`torch.dtype`, *optional*):
                 Override the default `torch.dtype` and load the model under this dtype.
             output_loading_info(`bool`, *optional*, defaults to `False`):
                 Whether or not to also return a dictionary containing missing keys, unexpected keys and error messages.

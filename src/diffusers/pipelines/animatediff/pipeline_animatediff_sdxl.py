@@ -1,4 +1,4 @@
-# Copyright 2025 The HuggingFace Team. All rights reserved.
+# Copyright 2026 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -101,8 +101,8 @@ EXAMPLE_DOC_STRING = """
         ... ).to("cuda")
 
         >>> # enable memory savings
-        >>> pipe.enable_vae_slicing()
-        >>> pipe.enable_vae_tiling()
+        >>> pipe.vae.enable_slicing()
+        >>> pipe.vae.enable_tiling()
 
         >>> output = pipe(
         ...     prompt="a panda surfing in the ocean, realistic, high quality",

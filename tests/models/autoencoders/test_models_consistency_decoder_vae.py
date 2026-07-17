@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2025 HuggingFace Inc.
+# Copyright 2026 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -16,6 +16,7 @@
 import gc
 
 import numpy as np
+import pytest
 import torch
 
 from diffusers import ConsistencyDecoderVAE, StableDiffusionPipeline
@@ -86,7 +87,12 @@ class ConsistencyDecoderVAETesterConfig(BaseModelTesterConfig):
 
 
 class TestConsistencyDecoderVAE(ConsistencyDecoderVAETesterConfig, ModelTesterMixin):
-    pass
+    @pytest.mark.skip(
+        reason="The consistency decoder samples noise (`randn_tensor`) during `decode`, so two forward passes "
+        "diverge regardless of dtype. This makes a save/load output comparison non-deterministic."
+    )
+    def test_from_save_pretrained_dtype_inference(self, *args, **kwargs):
+        pass
 
 
 class TestConsistencyDecoderVAETraining(ConsistencyDecoderVAETesterConfig, TrainingTesterMixin):
@@ -212,7 +218,7 @@ class TestConsistencyDecoderVAEIntegration:
             generator=torch.Generator("cpu").manual_seed(0),
         ).images[0]
 
-        pipe.enable_vae_tiling()
+        pipe.vae.enable_tiling()
         out_2 = pipe(
             "horse",
             num_inference_steps=2,
