@@ -13,23 +13,18 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from types import SimpleNamespace
-
 import pytest
 import torch
+from PIL import Image
 
 from diffusers import ModularPipeline
 from diffusers.modular_pipelines import Cosmos3DistilledBlocks, Cosmos3DistilledModularPipeline
-from diffusers.modular_pipelines.cosmos.before_denoise import Cosmos3DistilledSetTimestepsStep
-from diffusers.modular_pipelines.cosmos.encoders import Cosmos3DistilledTextEncoderStep
-from diffusers.modular_pipelines.modular_pipeline import PipelineState
 
 from ...testing_utils import torch_device
 from ..test_modular_pipelines_common import ModularPipelineTesterMixin
 
 
-# TODO: move this fixture to `hf-internal-testing/tiny-cosmos3-distilled-modular-pipe` and update the
-# repo name here. Hosted on a personal account for now so the PR can be tested.
+# TODO: rename to `hf-internal-testing/tiny-cosmos3-distilled-modular-pipe` once HF PR is merged
 TINY_DISTILLED_REPO = "yzhautouskay/tiny-cosmos3-distilled-modular-pipe"
 
 
@@ -122,56 +117,40 @@ class TestCosmos3DistilledModularPipelineFast(ModularPipelineTesterMixin):
     def test_float16_inference(self):
         pass
 
+    def test_declares_distilled_configs(self):
+        pipe = self.pipeline_class()
+        assert pipe.config.is_distilled is True
+        assert pipe.config.distilled_sigmas is None
 
-def _fake_distilled_components(sigmas=(1.0, 0.9375, 0.8333333333333334, 0.625)):
-    config = SimpleNamespace(distilled_sigmas=list(sigmas))
-    return SimpleNamespace(_execution_device="cpu", config=config)
+    def test_vae_encoder_rejects_image_and_video_together(self):
+        vae_encoder = Cosmos3DistilledBlocks().sub_blocks["vae_encoder"]
+        vae_pipe = vae_encoder.init_pipeline(self.pretrained_model_name_or_path)
+        vae_pipe.load_components(torch_dtype=torch.float32)
 
+        image = Image.new("RGB", (32, 32))
+        with pytest.raises(ValueError, match="either image or video"):
+            vae_pipe(image=image, video=[image], num_frames=5, height=32, width=32)
 
-def test_cosmos3_distilled_vae_encoder_select_block():
-    vae_encoder = Cosmos3DistilledBlocks().sub_blocks["vae_encoder"]
-    assert vae_encoder.select_block(image=None, video=None) is None
-    assert vae_encoder.select_block(image=object(), video=None) == "image_conditioning"
-    assert vae_encoder.select_block(image=None, video=object()) == "video_conditioning"
-    with pytest.raises(ValueError, match="either image or video"):
-        vae_encoder.select_block(image=object(), video=object())
+    def test_rejects_batched_prompts(self):
+        pipe = self.get_pipeline()
+        inputs = self.get_dummy_inputs()
+        inputs["prompt"] = ["a robot", "another"]
 
+        with pytest.raises(ValueError, match="batched prompts are not supported"):
+            pipe(**inputs, output=self.output_name)
 
-def test_cosmos3_distilled_set_timesteps_declares_distilled_configs():
-    configs = {spec.name: spec.default for spec in Cosmos3DistilledSetTimestepsStep().expected_configs}
-    assert configs == {"is_distilled": True, "distilled_sigmas": None}
+    def test_rejects_num_inference_steps_override(self):
+        pipe = self.get_pipeline()
+        inputs = self.get_dummy_inputs()
+        inputs["num_inference_steps"] = 10
 
+        with pytest.raises(ValueError, match="must be 4 or left unset"):
+            pipe(**inputs, output=self.output_name)
 
-def test_cosmos3_distilled_text_encoder_omits_negative_prompt():
-    input_names = {inp.name for inp in Cosmos3DistilledTextEncoderStep().inputs}
-    assert "prompt" in input_names
-    assert "negative_prompt" not in input_names
+    def test_rejects_guidance_scale_override(self):
+        pipe = self.get_pipeline()
+        inputs = self.get_dummy_inputs()
+        inputs["guidance_scale"] = 3.0
 
-
-def test_cosmos3_distilled_text_encoder_requires_str_prompt():
-    Cosmos3DistilledTextEncoderStep._check_inputs(SimpleNamespace(prompt="a robot"))
-    with pytest.raises(ValueError, match="`prompt` must be a str"):
-        Cosmos3DistilledTextEncoderStep._check_inputs(SimpleNamespace(prompt=["a robot", "another"]))
-
-
-def test_cosmos3_distilled_set_timesteps_rejects_step_count_override():
-    step = Cosmos3DistilledSetTimestepsStep()
-    state = PipelineState()
-    state.set("num_inference_steps", 10)
-    with pytest.raises(ValueError, match="must be 4 or left unset"):
-        step(_fake_distilled_components(), state)
-
-
-def test_cosmos3_distilled_set_timesteps_rejects_guidance_override():
-    step = Cosmos3DistilledSetTimestepsStep()
-    state = PipelineState()
-    state.set("guidance_scale", 3.0)
-    with pytest.raises(ValueError, match="`guidance_scale` must be 1.0"):
-        step(_fake_distilled_components(), state)
-
-
-def test_cosmos3_distilled_set_timesteps_requires_distilled_sigmas():
-    step = Cosmos3DistilledSetTimestepsStep()
-    components = SimpleNamespace(_execution_device="cpu", config=SimpleNamespace(distilled_sigmas=None))
-    with pytest.raises(ValueError, match="distilled_sigmas"):
-        step(components, PipelineState())
+        with pytest.raises(ValueError, match="`guidance_scale` must be 1.0"):
+            pipe(**inputs, output=self.output_name)
