@@ -392,6 +392,13 @@ def _get_checkpoint_shard_files(
             index = json.loads(f.read())
 
     original_shard_filenames = sorted(set(index["weight_map"].values()))
+    for shard_filename in original_shard_filenames:
+        if os.path.basename(shard_filename) != shard_filename:
+            raise ValueError(
+                f"The shard filename {shard_filename!r} in the checkpoint index contains a path separator or a "
+                "parent-directory reference, which is not allowed. Shard filenames must be plain filenames located "
+                "in the model directory."
+            )
     sharded_metadata = index["metadata"]
     sharded_metadata["all_checkpoint_keys"] = list(index["weight_map"].keys())
     sharded_metadata["weight_map"] = index["weight_map"].copy()

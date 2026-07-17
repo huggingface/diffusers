@@ -578,6 +578,119 @@ class TestCustomBlockRequirements:
         assert expected_requirements == config["requirements"]
 
 
+class DummyKwargsProducerStep(ModularPipelineBlocks):
+    """Takes `a` and `b` as regular named inputs and passes them through (with a `-producer`
+    suffix so tests can see the values went through this block), writing `a` back as an output
+    tagged with kwargs_type `typea` and `b` as an untagged output."""
+
+    @property
+    def inputs(self) -> List[InputParam]:
+        return [InputParam(name="a", default=None), InputParam(name="b", default=None)]
+
+    @property
+    def intermediate_outputs(self) -> List[OutputParam]:
+        return [OutputParam("a", kwargs_type="typea"), OutputParam("b")]
+
+    def __call__(self, components, state: PipelineState) -> PipelineState:
+        block_state = self.get_block_state(state)
+        block_state.a = f"{block_state.a}-producer"
+        block_state.b = f"{block_state.b}-producer"
+        self.set_block_state(state, block_state)
+        return components, state
+
+
+class DummyKwargsConsumerStep(ModularPipelineBlocks):
+    """Consumes the values tagged `typea` (as the `typea` dict) and the named input `b`, and
+    records what it received as outputs (`received_*`) so tests can assert on the returned state."""
+
+    @property
+    def inputs(self) -> List[InputParam]:
+        return [
+            InputParam(kwargs_type="typea"),
+            InputParam(name="b", default=None),
+        ]
+
+    @property
+    def intermediate_outputs(self) -> List[OutputParam]:
+        return [
+            OutputParam("received_typea"),
+            OutputParam("received_a"),
+            OutputParam("received_b"),
+        ]
+
+    def __call__(self, components, state: PipelineState) -> PipelineState:
+        block_state = self.get_block_state(state)
+        block_state.received_typea = block_state.typea
+        # tagged values delivered through the `typea` dict are also set individually on
+        # block_state; `a` only exists here if it was delivered as a tagged value
+        block_state.received_a = getattr(block_state, "a", "<not-set>")
+        block_state.received_b = block_state.b
+        self.set_block_state(state, block_state)
+        return components, state
+
+
+class TestBlockKwargsTypeInputs:
+    """Test how `kwargs_type` fields flow from user inputs and block outputs to consumer blocks.
+
+    This is the mechanism behind `denoiser_input_fields`: a block declaring
+    `InputParam(kwargs_type=...)` receives a dict of every state value *tagged* with that
+    kwargs_type. A value gets its tag when it is written to the pipeline state: an output
+    written by a block is tagged if the block declared it with
+    `OutputParam(..., kwargs_type=...)`, and a user-passed input is tagged if the pipeline's
+    `InputParam` for it declares a kwargs_type. A named input declared *without* a kwargs_type
+    therefore never reaches the consumer's dict, even though it is available in state by name.
+    """
+
+    def test_tagged_block_outputs_are_delivered_to_consumer(self):
+        blocks = SequentialPipelineBlocks.from_blocks_dict(
+            {"producer": DummyKwargsProducerStep(), "consumer": DummyKwargsConsumerStep()}
+        )
+        pipe = blocks.init_pipeline()
+
+        # `a` goes through the producer and is written back as a tagged output, so it reaches
+        # the consumer through the `typea` dict; `b` also goes through the producer, but its
+        # output is untagged: it reaches the consumer only as the named input
+        received = pipe(a="testa", b="testb", output=["received_typea", "received_a", "received_b"])
+        assert received["received_typea"] == {"a": "testa-producer"}
+        assert received["received_a"] == "testa-producer"
+        assert received["received_b"] == "testb-producer"
+
+    def test_user_inputs_passed_by_name_are_not_tagged(self):
+        pipe = DummyKwargsConsumerStep().init_pipeline()
+
+        # the consumer only knows `a` as a tagged value: passing it by name does not reach
+        # the block at all. `b` is declared by name without a kwargs_type: it reaches the
+        # block as the named input, but never through the `typea` dict.
+        received = pipe(a="testa", b="testb", output=["received_typea", "received_a", "received_b"])
+        assert received["received_typea"] == {}
+        assert received["received_a"] == "<not-set>"
+        assert received["received_b"] == "testb"
+
+    def test_kwargs_type_dict_input_is_delivered(self):
+        pipe = DummyKwargsConsumerStep().init_pipeline()
+
+        # tagged values can be passed as a dict under the kwargs_type name: every entry is
+        # tagged individually, so `a` now reaches the consumer through the `typea` dict
+        received = pipe(typea={"a": "testa"}, output=["received_typea", "received_a", "received_b"])
+        assert received["received_typea"] == {"a": "testa"}
+        assert received["received_a"] == "testa"
+        assert received["received_b"] is None
+
+    def test_kwargs_type_input_in_pipeline_call_params(self):
+        blocks = SequentialPipelineBlocks.from_blocks_dict(
+            {"producer": DummyKwargsProducerStep(), "consumer": DummyKwargsConsumerStep()}
+        )
+        pipe = blocks.init_pipeline()
+
+        # the kwargs_type input is exposed as a single nameless param alongside the named
+        # inputs, and renders as a `**typea` kwargs-style param in the docstring
+        named = [inp.name for inp in pipe.blocks.inputs if inp.name is not None]
+        kwargs_inputs = [inp.kwargs_type for inp in pipe.blocks.inputs if inp.name is None]
+        assert named == ["a", "b"]
+        assert kwargs_inputs == ["typea"]
+        assert "**typea" in pipe.blocks.doc
+
+
 @slow
 @nightly
 @require_torch

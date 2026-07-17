@@ -52,8 +52,6 @@ class KandinskyPipelineCombinedFastTests(PipelineTesterMixin, unittest.TestCase)
     ]
     test_xformers_attention = True
 
-    supports_dduf = False
-
     def get_dummy_components(self):
         dummy = Dummies()
         prior_dummy = PriorDummies()
@@ -170,8 +168,6 @@ class KandinskyPipelineImg2ImgCombinedFastTests(PipelineTesterMixin, unittest.Te
         "return_dict",
     ]
     test_xformers_attention = False
-
-    supports_dduf = False
 
     def get_dummy_components(self):
         dummy = Img2ImgDummies()
@@ -290,8 +286,6 @@ class KandinskyPipelineInpaintCombinedFastTests(PipelineTesterMixin, unittest.Te
         "return_dict",
     ]
     test_xformers_attention = False
-
-    supports_dduf = False
 
     def get_dummy_components(self):
         dummy = InpaintDummies()
