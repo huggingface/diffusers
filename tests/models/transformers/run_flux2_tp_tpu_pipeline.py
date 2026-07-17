@@ -8,9 +8,11 @@ Usage (TPU topology env-vars must be set first):
 """
 
 import argparse
-import numpy as np
 import os
 import sys
+
+import numpy as np
+
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "..", "src"))
 
