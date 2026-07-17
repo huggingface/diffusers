@@ -281,7 +281,11 @@ class LayerwiseCastingTesterMixin:
         denoiser.enable_layerwise_casting(storage_dtype=torch.float8_e4m3fn, compute_dtype=torch.bfloat16)
 
         inputs = self.get_dummy_inputs()
-        _ = pipe(**inputs)[0]
+        output = pipe(**inputs)[0]
+
+        assert not torch.isnan(output).any(), (
+            f"`{self.pipeline_class.__name__}` produced NaNs during layerwise casting inference."
+        )
 
 
 @is_group_offload
