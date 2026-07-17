@@ -140,8 +140,9 @@ class Cosmos3AutoTextEncoderStep(AutoPipelineBlocks):
               The text prompt that guides Cosmos3 generation.
           negative_prompt (`str`, *optional*):
               The negative text prompt used for classifier-free guidance.
-          use_system_prompt (`bool`, *optional*, defaults to True):
-              Whether to prepend the Cosmos3 transfer system prompt.
+          use_system_prompt (`bool`, *optional*):
+              Whether to prepend the system prompt. Defaults to the pipeline configuration for standard and action
+              workflows and to True for transfer.
           action (`CosmosActionCondition`, *optional*):
               Action-conditioning metadata and its reference visual input.
           fps (`float`, *optional*, defaults to 24.0):
@@ -1165,8 +1166,9 @@ class Cosmos3OmniBlocks(SequentialPipelineBlocks):
               The text prompt that guides Cosmos3 generation.
           negative_prompt (`str`, *optional*):
               The negative text prompt used for classifier-free guidance.
-          use_system_prompt (`bool`, *optional*, defaults to True):
-              Whether to prepend the Cosmos3 transfer system prompt.
+          use_system_prompt (`bool`, *optional*):
+              Whether to prepend the system prompt. Defaults to the pipeline configuration for standard and action
+              workflows and to True for transfer.
           action (`CosmosActionCondition`, *optional*):
               Action-conditioning metadata and its reference visual input.
           fps (`float`, *optional*, defaults to 24.0):

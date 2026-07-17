@@ -1,4 +1,6 @@
+import copy
 import gc
+import os
 import tempfile
 import unittest
 
@@ -19,6 +21,7 @@ from diffusers.utils.testing_utils import (
 
 
 if is_nvidia_modelopt_available():
+    import modelopt.torch.opt as mto
     import modelopt.torch.quantization as mtq
 
 if is_torch_available():
@@ -253,6 +256,39 @@ class SanaTransformerFP8WeightsTest(ModelOptBaseTesterMixin, unittest.TestCase):
 
     def get_dummy_init_kwargs(self):
         return {"quant_type": "FP8"}
+
+    @require_modelopt_version_greater_or_equal("0.44.0")
+    def test_prequantized_serialization_with_device_map(self):
+        mto.enable_huggingface_checkpointing()
+        model = self.model_cls.from_pretrained(
+            self.model_id,
+            subfolder="transformer",
+            torch_dtype=self.torch_dtype,
+            quantization_config=NVIDIAModelOptConfig(
+                quant_type="FP8", modelopt_config=copy.deepcopy(mtq.FP8_DEFAULT_CFG)
+            ),
+        )
+        model.to(torch_device)
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            model.save_pretrained(tmp_dir)
+            self.assertTrue(os.path.isfile(os.path.join(tmp_dir, "modelopt_state.pth")))
+            saved_model = self.model_cls.from_pretrained(
+                tmp_dir,
+                torch_dtype=self.torch_dtype,
+                device_map=torch_device,
+            )
+
+        named_parameters = list(saved_model.named_parameters())
+        named_buffers = list(saved_model.named_buffers())
+        self.assertTrue(
+            any(name.endswith(("_amax", "_scale")) for name, _ in named_buffers),
+            "The restored model did not contain ModelOpt quantizer buffers.",
+        )
+
+        for tensor_kind, named_tensors in (("parameter", named_parameters), ("buffer", named_buffers)):
+            for name, tensor in named_tensors:
+                self.assertFalse(tensor.is_meta, f"{tensor_kind} {name} was not materialized from meta.")
 
 
 class SanaTransformerINT8WeightsTest(ModelOptBaseTesterMixin, unittest.TestCase):
