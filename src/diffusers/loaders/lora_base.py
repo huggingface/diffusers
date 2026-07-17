@@ -664,6 +664,13 @@ class LoraBaseMixin:
         if len(components) == 0:
             raise ValueError("`components` cannot be an empty list.")
 
+        # self._merged_adapters is shared across the whole pipeline (all _lora_loadable_modules), while
+        # merge state is tracked per component by PEFT. The same adapter name can be fused into multiple
+        # components independently, so unmerging it in only some of them doesn't mean it's fully unfused.
+        # Track candidates here and only drop them from the pipeline-wide set once confirmed unmerged
+        # everywhere, below.
+        unmerge_candidates: set[str] = set()
+
         for fuse_component in components:
             if fuse_component not in self._lora_loadable_modules:
                 raise ValueError(f"{fuse_component} is not found in {self._lora_loadable_modules=}.")
@@ -673,10 +680,27 @@ class LoraBaseMixin:
                 if issubclass(model.__class__, (ModelMixin, PreTrainedModel)):
                     for module in model.modules():
                         if isinstance(module, BaseTunerLayer):
-                            for adapter in set(module.merged_adapters):
-                                if adapter and adapter in self._merged_adapters:
-                                    self._merged_adapters = self._merged_adapters - {adapter}
+                            unmerge_candidates.update(module.merged_adapters)
                             module.unmerge()
+
+        for adapter in unmerge_candidates:
+            if adapter not in self._merged_adapters:
+                continue
+            if not self._is_adapter_merged_in_any_component(adapter):
+                self._merged_adapters = self._merged_adapters - {adapter}
+
+    def _is_adapter_merged_in_any_component(self, adapter_name: str) -> bool:
+        """Whether `adapter_name` is still merged into the base weights of any `_lora_loadable_modules`
+        component, used to keep the pipeline-wide `_merged_adapters` bookkeeping in sync with the real,
+        per-component PEFT merge state after a partial `unfuse_lora(components=...)` call."""
+        for component in self._lora_loadable_modules:
+            model = getattr(self, component, None)
+            if model is None or not issubclass(model.__class__, (ModelMixin, PreTrainedModel)):
+                continue
+            for module in model.modules():
+                if isinstance(module, BaseTunerLayer) and adapter_name in module.merged_adapters:
+                    return True
+        return False
 
     def set_adapters(
         self,

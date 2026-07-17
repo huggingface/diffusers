@@ -1711,6 +1711,45 @@ class PeftLoraLoaderMixinTests:
         pipe.unfuse_lora(components=self.pipeline_class._lora_loadable_modules)
         self.assertTrue(pipe.num_fused_loras == 0, f"{pipe.num_fused_loras=}, {pipe.fused_loras=}")
 
+    def test_fuse_unfuse_partial_components_keeps_merged_adapter_bookkeeping(self):
+        """
+        `_merged_adapters` (backing `num_fused_loras`/`fused_loras`) is shared across the whole pipeline,
+        while actual merge state is tracked per component by PEFT. Fusing an adapter into every loadable
+        component and then unfusing only *some* of them should not report the adapter as fully unfused,
+        it's still merged into the untouched component(s).
+        """
+        if "text_encoder" not in self.pipeline_class._lora_loadable_modules:
+            return
+
+        components, text_lora_config, denoiser_lora_config = self.get_dummy_components()
+        pipe = self.pipeline_class(**components)
+        pipe = pipe.to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
+
+        pipe.text_encoder.add_adapter(text_lora_config, "adapter-1")
+        self.assertTrue(check_if_lora_correctly_set(pipe.text_encoder), "Lora not correctly set in text encoder")
+
+        denoiser = pipe.transformer if self.unet_kwargs is None else pipe.unet
+        denoiser_component_name = "unet" if self.unet_kwargs is not None else "transformer"
+        denoiser.add_adapter(denoiser_lora_config, "adapter-1")
+        self.assertTrue(check_if_lora_correctly_set(denoiser), "Lora not correctly set in denoiser.")
+
+        pipe.fuse_lora(components=["text_encoder", denoiser_component_name], adapter_names=["adapter-1"])
+        self.assertTrue(pipe.num_fused_loras == 1, f"{pipe.num_fused_loras=}, {pipe.fused_loras=}")
+
+        # Only unfuse the text encoder; the denoiser still has "adapter-1" merged into its base weights.
+        pipe.unfuse_lora(components=["text_encoder"])
+        self.assertTrue(
+            pipe.num_fused_loras == 1,
+            f"adapter-1 is still merged into {denoiser_component_name}, but num_fused_loras dropped to "
+            f"{pipe.num_fused_loras=}, {pipe.fused_loras=}",
+        )
+        self.assertIn("adapter-1", pipe.fused_loras)
+
+        # Now unfuse the remaining component; bookkeeping should correctly drop to 0.
+        pipe.unfuse_lora(components=[denoiser_component_name])
+        self.assertTrue(pipe.num_fused_loras == 0, f"{pipe.num_fused_loras=}, {pipe.fused_loras=}")
+
     def test_lora_scale_kwargs_match_fusion(self, expected_atol: float = 1e-3, expected_rtol: float = 1e-3):
         attention_kwargs_name = determine_attention_kwargs_name(self.pipeline_class)
 
