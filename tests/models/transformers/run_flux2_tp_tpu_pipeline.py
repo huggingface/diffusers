@@ -41,8 +41,13 @@ def main():
 
     # self-relaunch under torchrun when not already a distributed worker
     if os.environ.get("LOCAL_RANK") is None:
-        cmd = [sys.executable, "-m", "torch.distributed.run",
-               f"--nproc-per-node={args.tp_degree}", os.path.abspath(__file__)] + sys.argv[1:]
+        cmd = [
+            sys.executable,
+            "-m",
+            "torch.distributed.run",
+            f"--nproc-per-node={args.tp_degree}",
+            os.path.abspath(__file__),
+        ] + sys.argv[1:]
         raise SystemExit(os.execvp(sys.executable, cmd))
 
     dist.init_process_group(backend="tpu_dist")
@@ -57,7 +62,9 @@ def main():
     if rank == 0:
         print("Encoding prompt ...", flush=True)
     prompt_embeds, text_ids = pipe.encode_prompt(
-        prompt=args.prompt, device=torch.device("cpu"), max_sequence_length=512,
+        prompt=args.prompt,
+        device=torch.device("cpu"),
+        max_sequence_length=512,
     )
 
     # apply TP to the transformer and move it to TPU
@@ -69,9 +76,13 @@ def main():
     generator = torch.Generator(device="cpu").manual_seed(args.seed)
     num_channels = pipe.transformer.config.in_channels // 4
     latents, latent_ids = pipe.prepare_latents(
-        batch_size=1, num_latents_channels=num_channels,
-        height=args.height, width=args.width,
-        dtype=torch.bfloat16, device=torch.device("cpu"), generator=generator,
+        batch_size=1,
+        num_latents_channels=num_channels,
+        height=args.height,
+        width=args.width,
+        dtype=torch.bfloat16,
+        device=torch.device("cpu"),
+        generator=generator,
     )
     latent_ids_cpu = latent_ids.clone()
     latents = latents.to("tpu")
@@ -106,9 +117,9 @@ def main():
         latents_cpu = latents.detach().to("cpu").to(torch.float32)
         latents_cpu = pipe._unpack_latents_with_ids(latents_cpu, latent_ids_cpu)
         bn_mean = pipe.vae.bn.running_mean.view(1, -1, 1, 1).to(latents_cpu.device, latents_cpu.dtype)
-        bn_std = torch.sqrt(
-            pipe.vae.bn.running_var.view(1, -1, 1, 1) + pipe.vae.config.batch_norm_eps
-        ).to(latents_cpu.device, latents_cpu.dtype)
+        bn_std = torch.sqrt(pipe.vae.bn.running_var.view(1, -1, 1, 1) + pipe.vae.config.batch_norm_eps).to(
+            latents_cpu.device, latents_cpu.dtype
+        )
         latents_cpu = pipe._unpatchify_latents(latents_cpu * bn_std + bn_mean)
         with torch.no_grad():
             image = pipe.vae.decode(latents_cpu.to(torch.bfloat16), return_dict=False)[0]

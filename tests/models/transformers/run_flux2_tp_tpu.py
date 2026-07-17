@@ -49,6 +49,7 @@ from diffusers import Flux2Transformer2DModel, TensorParallelConfig
 
 # ── helpers ──────────────────────────────────────────────────────────────────
 
+
 def log(rank: int, msg: str) -> None:
     if rank == 0:
         print(f"[flux2-tp-tpu] {msg}", flush=True)
@@ -68,7 +69,9 @@ def relaunch_via_torchrun(tp_degree: int, topology: str | None, addresses: str |
         os.environ["TORCH_TPU_SLICEBUILDER_ADDRESSES"] = addresses
 
     cmd = [
-        sys.executable, "-m", "torch.distributed.run",
+        sys.executable,
+        "-m",
+        "torch.distributed.run",
         f"--nproc-per-node={tp_degree}",
         os.path.abspath(__file__),
     ] + sys.argv[1:]  # forward all original flags to workers
@@ -97,9 +100,12 @@ def _make_inputs(
     l_c = torch.arange(1)
     img_ids = torch.cartesian_prod(t_c, h_c, w_c, l_c).unsqueeze(0).expand(batch_size, -1, -1).to(device)
 
-    txt_ids = torch.cartesian_prod(
-        torch.arange(1), torch.arange(1), torch.arange(1), torch.arange(txt_len)
-    ).unsqueeze(0).expand(batch_size, -1, -1).to(device)
+    txt_ids = (
+        torch.cartesian_prod(torch.arange(1), torch.arange(1), torch.arange(1), torch.arange(txt_len))
+        .unsqueeze(0)
+        .expand(batch_size, -1, -1)
+        .to(device)
+    )
 
     timestep = torch.tensor([500.0], dtype=dtype, device=device).expand(batch_size)
     guidance = torch.tensor([3.5], dtype=dtype, device=device).expand(batch_size)
@@ -115,6 +121,7 @@ def _make_inputs(
 
 
 # ── main worker ───────────────────────────────────────────────────────────────
+
 
 def run(args: argparse.Namespace) -> int:
     dist.init_process_group(backend="tpu_dist")
@@ -152,7 +159,7 @@ def run(args: argparse.Namespace) -> int:
         if rank == 0:
             traceback.print_exc()
         return 1
-    log(rank, f"load OK ({time.perf_counter()-t0:.1f}s)")
+    log(rank, f"load OK ({time.perf_counter() - t0:.1f}s)")
 
     cfg = model.config
     latent_h = args.latent_height
@@ -168,9 +175,14 @@ def run(args: argparse.Namespace) -> int:
         tpu_sync.synchronize(None, wait=True)
         torch.manual_seed(0)
         ref_inputs = _make_inputs(
-            cfg.in_channels, cfg.joint_attention_dim,
-            latent_h, latent_w, txt_len,
-            batch_size=1, device="tpu", dtype=torch.bfloat16,
+            cfg.in_channels,
+            cfg.joint_attention_dim,
+            latent_h,
+            latent_w,
+            txt_len,
+            batch_size=1,
+            device="tpu",
+            dtype=torch.bfloat16,
         )
         ref_model.eval()
         with torch.no_grad():
@@ -198,9 +210,14 @@ def run(args: argparse.Namespace) -> int:
     # ── build inputs ──────────────────────────────────────────────────────────
     torch.manual_seed(0)
     tpu_inputs = _make_inputs(
-        cfg.in_channels, cfg.joint_attention_dim,
-        latent_h, latent_w, txt_len,
-        batch_size=1, device="tpu", dtype=torch.bfloat16,
+        cfg.in_channels,
+        cfg.joint_attention_dim,
+        latent_h,
+        latent_w,
+        txt_len,
+        batch_size=1,
+        device="tpu",
+        dtype=torch.bfloat16,
     )
 
     # ── warm-up forward (triggers XLA compilation) ────────────────────────────
@@ -242,7 +259,7 @@ def run(args: argparse.Namespace) -> int:
         return 1
 
     if rank == 0:
-        stats = f"shape={tuple(tp_out_cpu.shape)}  max_abs={tp_out_cpu.abs().max():.4f}  time={elapsed*1000:.1f}ms"
+        stats = f"shape={tuple(tp_out_cpu.shape)}  max_abs={tp_out_cpu.abs().max():.4f}  time={elapsed * 1000:.1f}ms"
 
         if ref_output is not None:
             # dummy-model mode: compare TP output against single-device TPU reference
@@ -268,16 +285,29 @@ def run(args: argparse.Namespace) -> int:
 
 # ── entry point ───────────────────────────────────────────────────────────────
 
+
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description="Flux2 TP-on-TPU verification script.")
     p.add_argument("--tp-degree", type=int, default=4, help="number of TPU chips to shard across")
     p.add_argument("--model-id", type=str, default="", help="HuggingFace model ID (empty = random weights)")
-    p.add_argument("--latent-height", type=int, default=16,
-                   help="latent grid height (default 16; combined with txt-len=256 gives joint-seq=512)")
-    p.add_argument("--latent-width", type=int, default=16,
-                   help="latent grid width  (default 16; combined with txt-len=256 gives joint-seq=512)")
-    p.add_argument("--txt-len", type=int, default=256,
-                   help="text sequence length (default 256; combined with 16x16 image gives joint-seq=512)")
+    p.add_argument(
+        "--latent-height",
+        type=int,
+        default=16,
+        help="latent grid height (default 16; combined with txt-len=256 gives joint-seq=512)",
+    )
+    p.add_argument(
+        "--latent-width",
+        type=int,
+        default=16,
+        help="latent grid width  (default 16; combined with txt-len=256 gives joint-seq=512)",
+    )
+    p.add_argument(
+        "--txt-len",
+        type=int,
+        default=256,
+        help="text sequence length (default 256; combined with 16x16 image gives joint-seq=512)",
+    )
     p.add_argument("--topology", type=str, default="", help="TORCH_TPU_TOPOLOGY (e.g. '2,2,1')")
     p.add_argument("--addresses", type=str, default="", help="TORCH_TPU_SLICEBUILDER_ADDRESSES")
     return p.parse_args()
