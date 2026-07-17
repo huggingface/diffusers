@@ -25,7 +25,7 @@ from ..test_modular_pipelines_common import ModularPipelineTesterMixin
 
 
 # TODO: rename to `hf-internal-testing/tiny-cosmos3-distilled-modular-pipe` once HF PR is merged
-TINY_DISTILLED_REPO = "yzhautouskay/tiny-cosmos3-distilled-modular-pipe"
+TINY_DISTILLED_REPO = "hf-internal-testing/tiny-cosmos3-distilled-modular-pipe"
 
 
 # text2image / text2video: no visual conditioning, so the auto VAE encoder is skipped.
