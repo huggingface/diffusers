@@ -16,6 +16,14 @@
 from diffusers.models.attention import AttentionModuleMixin
 
 
+"""
+TODO (related to methods like `check_qkv_fusion_matches_attn_procs_length()`):
+After https://github.com/huggingface/diffusers/pull/14113 is merged, move those
+checks out of pipeline-level testing and ensure that these are sufficiently
+tested in model-level tests.
+"""
+
+
 def check_same_shape(tensor_list):
     shapes = [tensor.shape for tensor in tensor_list]
     return all(shape == shapes[0] for shape in shapes[1:])
