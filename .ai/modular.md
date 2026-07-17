@@ -40,7 +40,7 @@ src/diffusers/modular_pipelines/<model>/
   before_denoise.py                    # Pre-denoise setup blocks (timesteps, latent prep, noise)
   denoise.py                           # The denoising loop blocks
   decoders.py                          # VAE decode block
-  modular_blocks_<model>.py            # Block assembly (AutoBlocks)
+  modular_blocks_<model>.py            # Blocksets (AutoBlocks)
 ```
 
 ## Block types decision tree
@@ -60,8 +60,8 @@ Does it choose ONE block based on which input is present?
     NO  -> ConditionalPipelineBlocks (custom select_block method)
 
 Is it a different CHECKPOINT (distilled / turbo / a variant with its own schedule)?
-  YES -> its own blocks assembly, unless it behaves literally the same
-         (see Key pattern: Checkpoint variants)
+  YES -> create a separate blockset for the variant, unless it behaves
+         literally the same (see Key pattern: Checkpoint variants)
 ```
 
 ## Build order (easiest first)
@@ -73,11 +73,11 @@ Is it a different CHECKPOINT (distilled / turbo / a variant with its own schedul
 
 ## Growing a pipeline: one workflow at a time
 
-Build one workflow end-to-end first (e.g. t2v), then add the next workflow — and later the next blocks assembly / checkpoint variant — one at a time. Each addition should **introduce new blocks rather than modify existing ones**: existing blocks are already wired into working workflows, and a new leaf block plus a new assembly entry can't break them.
+Build one workflow end-to-end first (e.g. t2v), then add the next workflow — and later the next blockset / checkpoint variant — one at a time. Each addition should **introduce new blocks rather than modify existing ones**: existing blocks are already wired into working workflows, and a new leaf block plus a new blockset entry can't break them. See `flux2/` for the shape: `modular_blocks_flux2.py` builds the base workflows, and `modular_blocks_flux2_klein.py` adds the klein (distilled) variant as new blocksets composing the same leaf blocks, with new block classes only for the steps that differ.
 
 The one good reason to touch an existing block is to make it strictly more **general**. Be honest about which direction the edit goes:
 
-- **Adding a branch is not generalizing — it's specializing.** `if components.config.foo:` or `if block_state.image is not None:` inside an existing block means the block now does two things. Add a new block for the new case instead, and let workflow selection or a variant assembly pick between them.
+- **Adding a branch is not generalizing — it's specializing.** `if components.config.foo:` or `if block_state.image is not None:` inside an existing block means the block now does two things. Add a new block for the new case instead, and let workflow selection or a variant blockset pick between them.
 - **Collapsing duplicates is generalizing.** If two blocks are identical except for which conditioning inputs they pass to the denoiser, don't keep both — rework the one block to take `kwargs_type="denoiser_input_fields"` (see the `kwargs_type` pattern below) so the same block serves every workflow, as the Cosmos3 denoise step does.
 
 Rule of thumb: a generalizing edit *removes* an if/else or a duplicate block. If your edit *adds* an if/else, it's a new block trying to get out.
@@ -183,9 +183,9 @@ class AutoDenoise(ConditionalPipelineBlocks):
 
 ## Key pattern: Checkpoint variants
 
-A different checkpoint (distilled / turbo / a variant with its own schedule) can have its own blocks assembly mapped to it: give the variant a `ModularPipeline` subclass carrying its `default_blocks_name`, and checkpoints route to it automatically — via `_class_name` in `modular_model_index.json`, or, for repos that only ship a standard `model_index.json`, a config-keyed map fn in `MODULAR_PIPELINE_MAPPING` (see `_flux2_klein_map_fn`).
+A different checkpoint (distilled / turbo / a variant with its own schedule) can have its own blockset mapped to it: give the variant a `ModularPipeline` subclass carrying its `default_blocks_name`, and checkpoints route to it automatically — via `_class_name` in `modular_model_index.json`, or, for repos that only ship a standard `model_index.json`, a config-keyed map fn in `MODULAR_PIPELINE_MAPPING` (see `_flux2_klein_map_fn`).
 
-Default to taking that option. The only reason not to is when the variant behaves literally the same; if the split buys anything at all — the distilled variant doesn't have to declare `negative_prompt`, doesn't carry a guider, its docs describe exactly what the checkpoint does — make the separate assembly. It costs almost nothing: assemblies compose the same shared leaf blocks, and only the steps that truly differ need new block classes. See `modular_blocks_flux2_klein.py`, which reuses the base flux2 leaf blocks and swaps in just a `negative_prompt`-free text encoder and a guider-free denoise step.
+Default to taking that option. The only reason not to split is when the variant behaves literally the same. If the split buys anything at all — the distilled variant doesn't have to declare `negative_prompt`, doesn't carry a guider, and its docs describe exactly what the checkpoint does — make the separate blockset. It costs almost nothing: blocksets compose the same shared leaf blocks, and only the steps that truly differ need new block classes. See `modular_blocks_flux2_klein.py`, which reuses the base flux2 leaf blocks and swaps in just a `negative_prompt`-free text encoder and a guider-free denoise step.
 
 Don't fall back to the standard-pipeline habit of a config flag branching inside a shared block (`ConfigSpec(name="is_distilled")` + `if components.config.is_distilled:`). That keeps both variants' behavior bundled in one blockset — and the input surface is the one thing it can never fix: a repo can override components and config values per checkpoint, but never which inputs the blocks declare, so the distilled checkpoint would still accept `negative_prompt` and silently ignore it.
 
@@ -205,7 +205,7 @@ Two consequences for input plumbing:
 
 Standard pipelines accept `prompt_embeds` / `image_latents` as `__call__` inputs so users can skip encoding. In modular pipelines this is unnecessary — users just pop out the encoder block and run it standalone. Don't accept pre-computed encoder outputs as `__call__` inputs of an encoder block.
 
-## Key pattern: Flat block assembly
+## Key pattern: Flat blocksets
 
 Prefer flat sequences over nested compositions. Put the `Auto` / `Conditional` selection at the top level and make each workflow variant a flat `InsertableDict` of leaf blocks. Try not to nest `AutoPipelineBlocks` inside `SequentialPipelineBlocks` inside `AutoPipelineBlocks` — debugging which workflow was selected, and which block inside which sub-block touched which state, becomes painful. See `flux2/modular_blocks_flux2_klein.py` for the canonical shape.
 
@@ -272,7 +272,7 @@ ComponentSpec(
 
 8. **No-op skip logic inside an optional block.** If a step is conditional (e.g. an optional prompt enhancer), don't have the block check a flag at the top of `__call__` and `return` early. Wrap it in an `AutoPipelineBlocks` with `block_trigger_inputs = ["use_xxx"]` so the block is only assembled into the pipeline when the trigger input is provided. The block's own `__call__` should always assume its components and inputs are present.
 
-9. **Serving a checkpoint variant through a config flag in a shared block.** `ConfigSpec(name="is_distilled")` plus `if components.config.is_distilled:` bundles two checkpoints' behavior into one blockset — and it can't change the input surface at all (the distilled variant would still accept `negative_prompt`). Suggest a separate blocks assembly for the variant instead (see Key pattern: Checkpoint variants).
+9. **Serving a checkpoint variant through a config flag in a shared block.** `ConfigSpec(name="is_distilled")` plus `if components.config.is_distilled:` bundles two checkpoints' behavior into one blockset — and it can't change the input surface at all (the distilled variant would still accept `negative_prompt`). Suggest a separate blockset for the variant instead (see Key pattern: Checkpoint variants).
 
 ## Conversion checklist
 
