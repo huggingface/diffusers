@@ -13,6 +13,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import os
+import subprocess
+import sys
+
 import torch
 
 from diffusers import Flux2Transformer2DModel
@@ -24,7 +28,13 @@ from diffusers.models.transformers.transformer_flux2 import (
 )
 from diffusers.utils.torch_utils import randn_tensor
 
-from ...testing_utils import enable_full_determinism, torch_device
+from ...testing_utils import (
+    enable_full_determinism,
+    is_tensor_parallel,
+    require_torch_neuron,
+    require_torch_tpu,
+    torch_device,
+)
 from ..testing_utils import (
     AttentionTesterMixin,
     BaseModelTesterConfig,
@@ -36,6 +46,7 @@ from ..testing_utils import (
     LoraTesterMixin,
     MemoryTesterMixin,
     ModelTesterMixin,
+    TensorParallelTesterMixin,
     TorchAoCompileTesterMixin,
     TorchAoTesterMixin,
     TorchCompileTesterMixin,
@@ -90,16 +101,18 @@ class Flux2TransformerTesterConfig(BaseModelTesterConfig):
             "axes_dims_rope": [4, 4, 4, 4],
         }
 
-    def get_dummy_inputs(self, height: int = 4, width: int = 4, batch_size: int = 1) -> dict[str, torch.Tensor]:
+    def get_dummy_inputs(
+        self, height: int = 4, width: int = 4, batch_size: int = 1, device: str = torch_device
+    ) -> dict[str, torch.Tensor]:
         num_latent_channels = 4
         sequence_length = 48
         embedding_dim = 32
 
         hidden_states = randn_tensor(
-            (batch_size, height * width, num_latent_channels), generator=self.generator, device=torch_device
+            (batch_size, height * width, num_latent_channels), generator=self.generator, device=device
         )
         encoder_hidden_states = randn_tensor(
-            (batch_size, sequence_length, embedding_dim), generator=self.generator, device=torch_device
+            (batch_size, sequence_length, embedding_dim), generator=self.generator, device=device
         )
 
         t_coords = torch.arange(1)
@@ -107,17 +120,17 @@ class Flux2TransformerTesterConfig(BaseModelTesterConfig):
         w_coords = torch.arange(width)
         l_coords = torch.arange(1)
         image_ids = torch.cartesian_prod(t_coords, h_coords, w_coords, l_coords)  # [height * width, 4]
-        image_ids = image_ids.unsqueeze(0).expand(batch_size, -1, -1).to(torch_device)
+        image_ids = image_ids.unsqueeze(0).expand(batch_size, -1, -1).to(device)
 
         text_t_coords = torch.arange(1)
         text_h_coords = torch.arange(1)
         text_w_coords = torch.arange(1)
         text_l_coords = torch.arange(sequence_length)
         text_ids = torch.cartesian_prod(text_t_coords, text_h_coords, text_w_coords, text_l_coords)
-        text_ids = text_ids.unsqueeze(0).expand(batch_size, -1, -1).to(torch_device)
+        text_ids = text_ids.unsqueeze(0).expand(batch_size, -1, -1).to(device)
 
-        timestep = torch.tensor([1.0]).to(torch_device).expand(batch_size)
-        guidance = torch.tensor([1.0]).to(torch_device).expand(batch_size)
+        timestep = torch.tensor([1.0]).to(device).expand(batch_size)
+        guidance = torch.tensor([1.0]).to(device).expand(batch_size)
 
         return {
             "hidden_states": hidden_states,
@@ -151,6 +164,80 @@ class TestFlux2TransformerAttention(Flux2TransformerTesterConfig, AttentionTeste
 
 class TestFlux2TransformerContextParallel(Flux2TransformerTesterConfig, ContextParallelTesterMixin):
     """Context Parallel inference tests for Flux2 Transformer."""
+
+
+class TestFlux2TransformerTensorParallel(Flux2TransformerTesterConfig, TensorParallelTesterMixin):
+    """Tensor Parallel inference tests for Flux2 Transformer (CUDA/XPU multi-accelerator)."""
+
+
+def make_neuron_tp_spec():
+    """Model spec consumed by the generic Neuron TP worker (``_neuron_tp_worker.py``).
+
+    Returns ``(model_class, init_dict, cpu_inputs)``. Defined here so all Flux2-specific test data lives in this file
+    while the worker stays model-agnostic. Reuses the shared tester config so the spec never drifts from the rest of
+    the Flux2 tests.
+    """
+    config = Flux2TransformerTesterConfig()
+    return Flux2Transformer2DModel, config.get_init_dict(), config.get_dummy_inputs(device="cpu")
+
+
+def make_tpu_tp_spec():
+    """Model spec consumed by the generic TPU TP worker (``_tpu_tp_worker.py``).
+
+    Returns ``(model_class, init_dict, cpu_inputs)``. Defined here so all Flux2-specific test data lives in this file
+    while the worker stays model-agnostic. Reuses the shared tester config so the spec never drifts from the rest of
+    the Flux2 tests.
+    """
+    config = Flux2TransformerTesterConfig()
+    return Flux2Transformer2DModel, config.get_init_dict(), config.get_dummy_inputs(device="cpu")
+
+
+@is_tensor_parallel
+@require_torch_tpu
+class TestFlux2TransformerTensorParallelTPU:
+    """Tensor Parallel inference test for Flux2 Transformer on TPU.
+
+    TPU TP runs through ``torchrun`` with the ``"tpu_dist"`` distributed backend, so it cannot use the
+    ``torch.multiprocessing``/NCCL spawn path of ``TensorParallelTesterMixin``. This launches the generic worker with
+    the Flux2 model spec (``make_tpu_tp_spec``); the worker asserts the sharded output matches a single-device
+    reference, and the test checks its exit code.
+
+    Requires ``TORCH_TPU_TOPOLOGY`` and ``TORCH_TPU_SLICEBUILDER_ADDRESSES`` to be set. Source them via::
+
+        eval $(python -m torch_tpu._internal.distributed.launchers.singlehost_wrapper | sed 's/^/export /')
+    """
+
+    def test_tensor_parallel_tpu_inference(self):
+        worker = os.path.join(os.path.dirname(__file__), "_tpu_tp_worker.py")
+        spec = "tests.models.transformers.test_models_transformer_flux2:make_tpu_tp_spec"
+        cmd = [sys.executable, "-m", "torch.distributed.run", "--nproc_per_node=2", worker, spec]
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        assert result.returncode == 0, (
+            f"TPU tensor-parallel worker failed (exit {result.returncode}).\n"
+            f"--- stdout ---\n{result.stdout}\n--- stderr ---\n{result.stderr}"
+        )
+
+
+@is_tensor_parallel
+@require_torch_neuron
+class TestFlux2TransformerTensorParallelNeuron:
+    """Tensor Parallel inference test for Flux2 Transformer on AWS Neuron.
+
+    Neuron TP runs through ``torchrun`` with the ``"neuron"`` distributed backend and an XLA runtime, so it cannot use
+    the ``torch.multiprocessing``/NCCL spawn path of ``TensorParallelTesterMixin``. This launches the generic worker
+    with the Flux2 model spec (``make_neuron_tp_spec``); the worker asserts the sharded output matches a single-device
+    reference, and the test checks its exit code.
+    """
+
+    def test_tensor_parallel_neuron_inference(self):
+        worker = os.path.join(os.path.dirname(__file__), "_neuron_tp_worker.py")
+        spec = "tests.models.transformers.test_models_transformer_flux2:make_neuron_tp_spec"
+        cmd = [sys.executable, "-m", "torch.distributed.run", "--nproc_per_node=2", worker, spec]
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        assert result.returncode == 0, (
+            f"Neuron tensor-parallel worker failed (exit {result.returncode}).\n"
+            f"--- stdout ---\n{result.stdout}\n--- stderr ---\n{result.stderr}"
+        )
 
 
 class TestFlux2TransformerLoRA(Flux2TransformerTesterConfig, LoraTesterMixin):
