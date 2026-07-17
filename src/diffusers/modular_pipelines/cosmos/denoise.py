@@ -318,6 +318,7 @@ class Cosmos3DistilledVisionLoopSchedulerStep(ModularPipelineBlocks):
                 default=None,
                 description="Indexes of conditioned vision latent frames; non-empty for image-to-video.",
             ),
+            InputParam.template("generator"),
         ]
 
     @property
@@ -326,8 +327,13 @@ class Cosmos3DistilledVisionLoopSchedulerStep(ModularPipelineBlocks):
 
     @torch.no_grad()
     def __call__(self, components: Cosmos3OmniModularPipeline, block_state: BlockState, i: int, t: torch.Tensor):
+        # Pass the generator so the scheduler's stochastic (SDE) re-noising is seedable/reproducible.
         block_state.latents = components.scheduler.step(
-            block_state.velocity_vision.unsqueeze(0), t, block_state.latents.unsqueeze(0), return_dict=False
+            block_state.velocity_vision.unsqueeze(0),
+            t,
+            block_state.latents.unsqueeze(0),
+            generator=block_state.generator,
+            return_dict=False,
         )[0].squeeze(0)
 
         # Distilled checkpoints use stochastic (SDE) scheduler steps that re-noise every position.
