@@ -27,7 +27,7 @@ from ...testing_utils import assert_tensors_close, is_cache, torch_device
 from .common import BasePipelineOutputMixin
 
 
-class CacheTesterMixin:
+class CacheTesterMixin(BasePipelineOutputMixin):
     """
     Shared machinery for cache-hook tester mixins. Each cache backend subclasses this and supplies its own config,
     mirroring the model-level `cache.py` layout. Backends store their config *kwargs* as a dict class attribute and
@@ -44,11 +44,7 @@ class CacheTesterMixin:
 
         def create_pipe():
             torch.manual_seed(0)
-            components = self.get_dummy_components(num_layers=2)
-            pipe = self.pipeline_class(**components)
-            pipe = pipe.to(device)
-            pipe.set_progress_bar_config(disable=None)
-            return pipe
+            return self.get_pipeline(**self.get_dummy_components(num_layers=2)).to(device)
 
         def run_forward(pipe):
             torch.manual_seed(0)
@@ -91,7 +87,7 @@ class CacheTesterMixin:
 
 
 @is_cache
-class PyramidAttentionBroadcastTesterMixin(CacheTesterMixin, BasePipelineOutputMixin):
+class PyramidAttentionBroadcastTesterMixin(CacheTesterMixin):
     PAB_CONFIG = {
         "spatial_attention_block_skip_range": 2,
         "spatial_attention_timestep_skip_range": (100, 800),
@@ -113,9 +109,7 @@ class PyramidAttentionBroadcastTesterMixin(CacheTesterMixin, BasePipelineOutputM
             num_single_layers = 2
             dummy_component_kwargs["num_single_layers"] = num_single_layers
 
-        components = self.get_dummy_components(**dummy_component_kwargs)
-        pipe = self.pipeline_class(**components)
-        pipe.set_progress_bar_config(disable=None)
+        pipe = self.get_pipeline(**self.get_dummy_components(**dummy_component_kwargs))
 
         pab_config = self._get_cache_config()
         pab_config.current_timestep_callback = lambda: pipe.current_timestep
@@ -175,13 +169,7 @@ class PyramidAttentionBroadcastTesterMixin(CacheTesterMixin, BasePipelineOutputM
         # runs below reuse the same components/inputs the fixture does (default `get_dummy_components()` and
         # `get_dummy_inputs()`) and reseed the global RNG before each forward, so the disabled run reproduces the
         # reference and the only remaining differences come from PAB itself.
-        components = self.get_dummy_components()
-        for key in components:
-            if "text_encoder" in key and hasattr(components[key], "eval"):
-                components[key].eval()
-        pipe = self.pipeline_class(**components)
-        pipe.to(torch_device)
-        pipe.set_progress_bar_config(disable=None)
+        pipe = self.get_pipeline().to(torch_device)
 
         # Reference (no PAB) output, computed once per test class by the `base_pipe_output` fixture.
         original_image_slice = base_pipe_output.flatten()
@@ -253,9 +241,7 @@ class FasterCacheTesterMixin(CacheTesterMixin):
             num_single_layers = 2
             dummy_component_kwargs["num_single_layers"] = num_single_layers
 
-        components = self.get_dummy_components(**dummy_component_kwargs)
-        pipe = self.pipeline_class(**components)
-        pipe.set_progress_bar_config(disable=None)
+        pipe = self.get_pipeline(**self.get_dummy_components(**dummy_component_kwargs))
 
         faster_cache_config = self._get_cache_config()
         faster_cache_config.current_timestep_callback = lambda: pipe.current_timestep

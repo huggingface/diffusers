@@ -143,24 +143,34 @@ class BasePipelineTesterConfig:
 
 
 class BasePipelineOutputMixin:
-    """Provides the class-scoped `base_pipe_output` fixture shared across tester mixins.
+    """Provides the `get_pipeline` builder and the class-scoped `base_pipe_output` fixture shared across tester
+    mixins.
 
     Kept separate from `BasePipelineTesterConfig` — which only declares the testing contract and performs no
-    computation — so any mixin that needs the cached reference output (`PipelineTesterMixin`, the memory offload
-    mixins, ...) can inherit it without duplicating the build-and-forward. Mirrors the model-level
-    `BaseModelOutputMixin`.
+    computation — so any mixin that needs to build a pipeline or read the cached reference output
+    (`PipelineTesterMixin`, the memory offload mixins, ...) can inherit it without duplicating the
+    build-and-forward. Mirrors the model-level `BaseModelOutputMixin`.
     """
+
+    def get_pipeline(self, **components):
+        """Build the pipeline under test, with every component in eval mode and the progress bar disabled.
+
+        Pass components as keyword arguments to override the full `get_dummy_components()` set. The pipeline is
+        left on CPU — callers that need it elsewhere should chain `.to(torch_device)`.
+        """
+        components = components or self.get_dummy_components()
+        pipe = self.pipeline_class(**components)
+        for component in pipe.components.values():
+            if hasattr(component, "eval"):
+                component.eval()
+        pipe.set_progress_bar_config(disable=None)
+
+        return pipe
 
     @pytest.fixture(scope="class")
     def base_pipe_output(self):
         """Output of a freshly constructed pipeline on the standard dummy inputs, computed once per test class."""
-        components = self.get_dummy_components()
-        for key in components:
-            if "text_encoder" in key and hasattr(components[key], "eval"):
-                components[key].eval()
-        pipe = self.pipeline_class(**components)
-        pipe.to(torch_device)
-        pipe.set_progress_bar_config(disable=None)
+        pipe = self.get_pipeline().to(torch_device)
 
         inputs = self.get_dummy_inputs()
         torch.manual_seed(0)
@@ -177,13 +187,7 @@ class PipelineTesterMixin(BasePipelineOutputMixin):
     """
 
     def test_save_load_local(self, tmp_path, base_pipe_output, expected_max_difference=5e-4):
-        components = self.get_dummy_components()
-        for key in components:
-            if "text_encoder" in key and hasattr(components[key], "eval"):
-                components[key].eval()
-        pipe = self.pipeline_class(**components)
-        pipe.to(torch_device)
-        pipe.set_progress_bar_config(disable=None)
+        pipe = self.get_pipeline().to(torch_device)
 
         logger = logging.get_logger("diffusers.pipelines.pipeline_utils")
         logger.setLevel(diffusers.logging.INFO)
@@ -237,10 +241,7 @@ class PipelineTesterMixin(BasePipelineOutputMixin):
         )
 
     def test_inference_batch_consistent(self, batch_sizes=[2], batch_generator=True):
-        components = self.get_dummy_components()
-        pipe = self.pipeline_class(**components)
-        pipe.to(torch_device)
-        pipe.set_progress_bar_config(disable=None)
+        pipe = self.get_pipeline().to(torch_device)
 
         inputs = self.get_dummy_inputs()
         inputs["generator"] = self.get_generator(0)
@@ -284,14 +285,8 @@ class PipelineTesterMixin(BasePipelineOutputMixin):
     def test_inference_batch_single_identical(
         self, batch_size=3, expected_max_diff=1e-4, additional_params_copy_to_batched_inputs=["num_inference_steps"]
     ):
-        components = self.get_dummy_components()
-        for key in components:
-            if "text_encoder" in key and hasattr(components[key], "eval"):
-                components[key].eval()
-        pipe = self.pipeline_class(**components)
+        pipe = self.get_pipeline().to(torch_device)
 
-        pipe.to(torch_device)
-        pipe.set_progress_bar_config(disable=None)
         inputs = self.get_dummy_inputs()
         # Reset generator in case it has been used in self.get_dummy_inputs
         inputs["generator"] = self.get_generator(0)
@@ -334,14 +329,7 @@ class PipelineTesterMixin(BasePipelineOutputMixin):
         )
 
     def test_dict_tuple_outputs_equivalent(self, expected_slice=None, expected_max_difference=1e-4):
-        components = self.get_dummy_components()
-        for key in components:
-            if "text_encoder" in key and hasattr(components[key], "eval"):
-                components[key].eval()
-        pipe = self.pipeline_class(**components)
-
-        pipe.to(torch_device)
-        pipe.set_progress_bar_config(disable=None)
+        pipe = self.get_pipeline().to(torch_device)
 
         if expected_slice is None:
             output = pipe(**self.get_dummy_inputs())[0]
@@ -367,7 +355,7 @@ class PipelineTesterMixin(BasePipelineOutputMixin):
         init_components = self.get_dummy_components()
         init_components = {k: v for k, v in init_components.items() if not isinstance(v, (str, int, float))}
 
-        pipe = self.pipeline_class(**init_components)
+        pipe = self.get_pipeline(**init_components)
 
         assert hasattr(pipe, "components")
         assert set(pipe.components.keys()) == set(init_components.keys())
@@ -378,10 +366,7 @@ class PipelineTesterMixin(BasePipelineOutputMixin):
     def test_half_precision_inference_no_nan(self, dtype):
         # Models are usually run in half precision (fp16/bf16), so rather than comparing against an fp32 reference
         # (which carries little signal) we just run half-precision inference and check the output has no NaNs.
-        components = self.get_dummy_components()
-        pipe = self.pipeline_class(**components)
-        pipe.to(torch_device, dtype)
-        pipe.set_progress_bar_config(disable=None)
+        pipe = self.get_pipeline().to(torch_device, dtype)
 
         inputs = self.get_dummy_inputs()
         if "generator" in inputs:
@@ -421,13 +406,7 @@ class PipelineTesterMixin(BasePipelineOutputMixin):
             elif hasattr(module, "half"):
                 components[name] = module.to(torch_device).half()
 
-        for key, component in components.items():
-            if hasattr(component, "eval"):
-                component.eval()
-
-        pipe = self.pipeline_class(**components)
-        pipe.to(torch_device)
-        pipe.set_progress_bar_config(disable=None)
+        pipe = self.get_pipeline(**components).to(torch_device)
 
         inputs = self.get_dummy_inputs()
         output = pipe(**inputs)[0]
@@ -456,13 +435,7 @@ class PipelineTesterMixin(BasePipelineOutputMixin):
         if not getattr(self.pipeline_class, "_optional_components", None):
             pytest.skip(f"Skipping test because {self.pipeline_class} has no `_optional_components`.")
 
-        components = self.get_dummy_components()
-        for key in components:
-            if "text_encoder" in key and hasattr(components[key], "eval"):
-                components[key].eval()
-        pipe = self.pipeline_class(**components)
-        pipe.to(torch_device)
-        pipe.set_progress_bar_config(disable=None)
+        pipe = self.get_pipeline().to(torch_device)
 
         # set all optional components to None
         for optional_component in pipe._optional_components:
@@ -496,8 +469,7 @@ class PipelineTesterMixin(BasePipelineOutputMixin):
     @require_accelerator
     def test_to_device(self):
         components = self.get_dummy_components()
-        pipe = self.pipeline_class(**components)
-        pipe.set_progress_bar_config(disable=None)
+        pipe = self.get_pipeline(**components)
 
         pipe.to("cpu")
         model_devices = [
@@ -519,8 +491,7 @@ class PipelineTesterMixin(BasePipelineOutputMixin):
 
     def test_to_dtype(self):
         components = self.get_dummy_components()
-        pipe = self.pipeline_class(**components)
-        pipe.set_progress_bar_config(disable=None)
+        pipe = self.get_pipeline(**components)
 
         model_dtypes = [component.dtype for component in components.values() if getattr(component, "dtype", None)]
         assert all(dtype == torch.float32 for dtype in model_dtypes)
@@ -537,10 +508,7 @@ class PipelineTesterMixin(BasePipelineOutputMixin):
                 f"Skipping test because `num_images_per_prompt` wasn't found in the args accepted in {self.pipeline_class}'s call."
             )
 
-        components = self.get_dummy_components()
-        pipe = self.pipeline_class(**components)
-        pipe = pipe.to(torch_device)
-        pipe.set_progress_bar_config(disable=None)
+        pipe = self.get_pipeline().to(torch_device)
 
         batch_sizes = [1, 2]
         num_images_per_prompts = [1, 2]
@@ -565,10 +533,7 @@ class PipelineTesterMixin(BasePipelineOutputMixin):
                 f"Skipping test because `guidance_scale` wasn't found in the args accepted in {self.pipeline_class}'s call."
             )
 
-        components = self.get_dummy_components()
-        pipe = self.pipeline_class(**components)
-        pipe = pipe.to(torch_device)
-        pipe.set_progress_bar_config(disable=None)
+        pipe = self.get_pipeline().to(torch_device)
 
         inputs = self.get_dummy_inputs()
 
@@ -590,10 +555,7 @@ class PipelineTesterMixin(BasePipelineOutputMixin):
                 f"Skipping test because `callback_on_step_end` and `callback_on_step_end_tensor_inputs` weren't both found in the args accepted in {self.pipeline_class}'s call."
             )
 
-        components = self.get_dummy_components()
-        pipe = self.pipeline_class(**components)
-        pipe = pipe.to(torch_device)
-        pipe.set_progress_bar_config(disable=None)
+        pipe = self.get_pipeline().to(torch_device)
         assert hasattr(pipe, "_callback_tensor_inputs"), (
             f"{self.pipeline_class} should have `_callback_tensor_inputs` that defines a list of tensor variables "
             "its callback function can use as inputs"
@@ -657,10 +619,7 @@ class PipelineTesterMixin(BasePipelineOutputMixin):
                 f"Skipping test because `guidance_scale` wasn't found in the args accepted in {self.pipeline_class}'s call."
             )
 
-        components = self.get_dummy_components()
-        pipe = self.pipeline_class(**components)
-        pipe.to(torch_device)
-        pipe.set_progress_bar_config(disable=None)
+        pipe = self.get_pipeline().to(torch_device)
         assert hasattr(pipe, "_callback_tensor_inputs"), (
             f"{self.pipeline_class} should have `_callback_tensor_inputs` that defines a list of tensor variables "
             "its callback function can use as inputs"
@@ -684,8 +643,7 @@ class PipelineTesterMixin(BasePipelineOutputMixin):
         assert pipe.guidance_scale == (inputs["guidance_scale"] + pipe.num_timesteps)
 
     def test_serialization_with_variants(self, tmp_path):
-        components = self.get_dummy_components()
-        pipe = self.pipeline_class(**components)
+        pipe = self.get_pipeline()
         model_components = [
             component_name for component_name, component in pipe.components.items() if isinstance(component, nn.Module)
         ]
@@ -703,8 +661,7 @@ class PipelineTesterMixin(BasePipelineOutputMixin):
                 assert is_folder and any(p.split(".")[1].startswith(variant) for p in os.listdir(folder_path))
 
     def test_loading_with_variants(self, tmp_path):
-        components = self.get_dummy_components()
-        pipe = self.pipeline_class(**components)
+        pipe = self.get_pipeline()
         variant = "fp16"
 
         def is_nan(tensor):
@@ -745,8 +702,7 @@ class PipelineTesterMixin(BasePipelineOutputMixin):
                     assert torch.equal(p1, p2)
 
     def test_loading_with_incorrect_variants_raises_error(self, tmp_path):
-        components = self.get_dummy_components()
-        pipe = self.pipeline_class(**components)
+        pipe = self.get_pipeline()
         variant = "fp16"
 
         # Don't save with variants.
@@ -762,9 +718,6 @@ class PipelineTesterMixin(BasePipelineOutputMixin):
             pytest.skip(f"Skipping test because {self.pipeline_class} doesn't have an `encode_prompt` method.")
 
         components = self.get_dummy_components()
-        for key in components:
-            if "text_encoder" in key and hasattr(components[key], "eval"):
-                components[key].eval()
 
         # We initialize the pipeline with only text encoders and tokenizers, mimicking a real-world scenario.
         components_with_text_encoders = {}
@@ -773,8 +726,7 @@ class PipelineTesterMixin(BasePipelineOutputMixin):
                 components_with_text_encoders[k] = components[k]
             else:
                 components_with_text_encoders[k] = None
-        pipe_with_just_text_encoder = self.pipeline_class(**components_with_text_encoders)
-        pipe_with_just_text_encoder = pipe_with_just_text_encoder.to(torch_device)
+        pipe_with_just_text_encoder = self.get_pipeline(**components_with_text_encoders).to(torch_device)
 
         # Get inputs and also the args of `encode_prompts`.
         inputs = self.get_dummy_inputs()
@@ -837,7 +789,7 @@ class PipelineTesterMixin(BasePipelineOutputMixin):
                 components_with_text_encoders[k] = None
             else:
                 components_with_text_encoders[k] = components[k]
-        pipe_without_text_encoders = self.pipeline_class(**components_with_text_encoders).to(torch_device)
+        pipe_without_text_encoders = self.get_pipeline(**components_with_text_encoders).to(torch_device)
 
         # Set `negative_prompt` to None as we have already calculated its embeds if it was present in `inputs`.
         # This is because otherwise we will interfere wrongly for non-None `negative_prompt` values as defaults
@@ -861,7 +813,7 @@ class PipelineTesterMixin(BasePipelineOutputMixin):
         pipe_out = pipe_without_text_encoders(**pipe_without_tes_inputs)[0]
 
         # Compare against regular pipeline outputs.
-        full_pipe = self.pipeline_class(**components).to(torch_device)
+        full_pipe = self.get_pipeline(**components).to(torch_device)
         inputs = self.get_dummy_inputs()
         pipe_out_2 = full_pipe(**inputs)[0]
 
@@ -874,7 +826,7 @@ class PipelineTesterMixin(BasePipelineOutputMixin):
         if not components:
             pytest.skip("No dummy components defined.")
 
-        pipe = self.pipeline_class(**components)
+        pipe = self.get_pipeline(**components)
         specified_key = next(iter(components.keys()))
 
         pipe.save_pretrained(str(tmp_path), safe_serialization=False)

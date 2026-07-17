@@ -44,13 +44,7 @@ class PipelineOffloadTesterMixin(BasePipelineOutputMixin):
     @require_accelerator
     @require_accelerate_version_greater("0.14.0")
     def test_sequential_cpu_offload_forward_pass(self, base_pipe_output, expected_max_diff=1e-4):
-        components = self.get_dummy_components()
-        for key in components:
-            if "text_encoder" in key and hasattr(components[key], "eval"):
-                components[key].eval()
-        pipe = self.pipeline_class(**components)
-        pipe.to(torch_device)
-        pipe.set_progress_bar_config(disable=None)
+        pipe = self.get_pipeline().to(torch_device)
 
         pipe.enable_sequential_cpu_offload(device=torch_device)
         assert pipe._execution_device.type == torch_device
@@ -100,13 +94,7 @@ class PipelineOffloadTesterMixin(BasePipelineOutputMixin):
     @require_accelerator
     @require_accelerate_version_greater("0.17.0")
     def test_model_cpu_offload_forward_pass(self, base_pipe_output, expected_max_diff=2e-4):
-        components = self.get_dummy_components()
-        for key in components:
-            if "text_encoder" in key and hasattr(components[key], "eval"):
-                components[key].eval()
-        pipe = self.pipeline_class(**components)
-        pipe.to(torch_device)
-        pipe.set_progress_bar_config(disable=None)
+        pipe = self.get_pipeline().to(torch_device)
 
         pipe.enable_model_cpu_offload(device=torch_device)
         assert pipe._execution_device.type == torch_device
@@ -148,10 +136,7 @@ class PipelineOffloadTesterMixin(BasePipelineOutputMixin):
     @require_accelerator
     @require_accelerate_version_greater("0.17.0")
     def test_cpu_offload_forward_pass_twice(self, expected_max_diff=2e-4):
-        components = self.get_dummy_components()
-        pipe = self.pipeline_class(**components)
-
-        pipe.set_progress_bar_config(disable=None)
+        pipe = self.get_pipeline()
 
         pipe.enable_model_cpu_offload()
         inputs = self.get_dummy_inputs()
@@ -194,10 +179,7 @@ class PipelineOffloadTesterMixin(BasePipelineOutputMixin):
     @require_accelerator
     @require_accelerate_version_greater("0.14.0")
     def test_sequential_offload_forward_pass_twice(self, expected_max_diff=2e-4):
-        components = self.get_dummy_components()
-        pipe = self.pipeline_class(**components)
-
-        pipe.set_progress_bar_config(disable=None)
+        pipe = self.get_pipeline()
 
         pipe.enable_sequential_cpu_offload(device=torch_device)
         inputs = self.get_dummy_inputs()
@@ -245,13 +227,7 @@ class PipelineOffloadTesterMixin(BasePipelineOutputMixin):
         )
 
     def test_pipeline_with_accelerator_device_map(self, tmp_path, base_pipe_output, expected_max_difference=1e-4):
-        components = self.get_dummy_components()
-        for key in components:
-            if "text_encoder" in key and hasattr(components[key], "eval"):
-                components[key].eval()
-        pipe = self.pipeline_class(**components)
-        pipe.to(torch_device)
-        pipe.set_progress_bar_config(disable=None)
+        pipe = self.get_pipeline().to(torch_device)
 
         pipe.save_pretrained(tmp_path)
 
@@ -265,12 +241,11 @@ class PipelineOffloadTesterMixin(BasePipelineOutputMixin):
         )
 
 
-class LayerwiseCastingTesterMixin:
+class LayerwiseCastingTesterMixin(BasePipelineOutputMixin):
     """Layerwise FP8 casting during pipeline inference."""
 
     def test_layerwise_casting_inference(self):
-        components = self.get_dummy_components()
-        pipe = self.pipeline_class(**components)
+        pipe = self.get_pipeline()
         denoiser = getattr(pipe, "transformer", None) or getattr(pipe, "unet", None)
         if denoiser is None or not hasattr(denoiser, "enable_layerwise_casting"):
             pytest.skip(f"{self.pipeline_class.__name__} has no denoiser that supports layerwise casting.")
@@ -294,18 +269,14 @@ class GroupOffloadTesterMixin(BasePipelineOutputMixin):
 
     @require_torch_accelerator
     def test_group_offloading_inference(self):
-        components = self.get_dummy_components()
-        pipe = self.pipeline_class(**components)
+        pipe = self.get_pipeline()
         for name, component in pipe.components.items():
             if hasattr(component, "_supports_group_offloading") and not component._supports_group_offloading:
                 pytest.skip(f"{self.pipeline_class.__name__} has a component that does not support group offloading.")
 
         def create_pipe():
             torch.manual_seed(0)
-            components = self.get_dummy_components()
-            pipe = self.pipeline_class(**components)
-            pipe.set_progress_bar_config(disable=None)
-            return pipe
+            return self.get_pipeline()
 
         def enable_group_offload_on_component(pipe, group_offloading_kwargs):
             # We intentionally don't test VAE's here. This is because some tests enable tiling on the VAE. If
@@ -376,8 +347,7 @@ class GroupOffloadTesterMixin(BasePipelineOutputMixin):
 
     @require_torch_accelerator
     def test_pipeline_level_group_offloading_sanity_checks(self):
-        components = self.get_dummy_components()
-        pipe: DiffusionPipeline = self.pipeline_class(**components)
+        pipe: DiffusionPipeline = self.get_pipeline()
 
         for name, component in pipe.components.items():
             if hasattr(component, "_supports_group_offloading"):
@@ -410,13 +380,9 @@ class GroupOffloadTesterMixin(BasePipelineOutputMixin):
 
     @require_torch_accelerator
     def test_pipeline_level_group_offloading_inference(self, base_pipe_output, expected_max_difference=1e-4):
-        # Build the offload pipeline with the same canonical preamble as `base_pipe_output` (eval text encoders +
-        # default attn processors) so that group offloading is the only difference under test.
-        components = self.get_dummy_components()
-        for key in components:
-            if "text_encoder" in key and hasattr(components[key], "eval"):
-                components[key].eval()
-        pipe: DiffusionPipeline = self.pipeline_class(**components)
+        # Build the offload pipeline the same way as `base_pipe_output` so that group offloading is the only
+        # difference under test. It stays on CPU here — `enable_group_offload` places the components.
+        pipe: DiffusionPipeline = self.get_pipeline()
 
         for name, component in pipe.components.items():
             if hasattr(component, "_supports_group_offloading"):
