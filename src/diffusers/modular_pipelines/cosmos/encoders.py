@@ -305,6 +305,13 @@ class Cosmos3DistilledTextEncoderStep(ModularPipelineBlocks):
         ]
 
     @property
+    def expected_configs(self) -> list[ConfigSpec]:
+        return [
+            ConfigSpec(name="default_use_system_prompt", default=True),
+            ConfigSpec(name="enable_safety_checker", default=True),
+        ]
+
+    @property
     def inputs(self) -> list[InputParam]:
         return [
             InputParam.template("prompt", description="The text prompt that guides Cosmos3 generation."),

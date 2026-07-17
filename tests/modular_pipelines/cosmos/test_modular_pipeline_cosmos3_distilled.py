@@ -24,7 +24,6 @@ from ...testing_utils import torch_device
 from ..test_modular_pipelines_common import ModularPipelineTesterMixin
 
 
-# TODO: rename to `hf-internal-testing/tiny-cosmos3-distilled-modular-pipe` once HF PR is merged
 TINY_DISTILLED_REPO = "hf-internal-testing/tiny-cosmos3-distilled-modular-pipe"
 
 
