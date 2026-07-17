@@ -274,7 +274,7 @@ class TestSanaTransformerFP8Weights(ModelOptBaseTesterMixin):
 
         with tempfile.TemporaryDirectory() as tmp_dir:
             model.save_pretrained(tmp_dir)
-            self.assertTrue(os.path.isfile(os.path.join(tmp_dir, "modelopt_state.pth")))
+            assert os.path.isfile(os.path.join(tmp_dir, "modelopt_state.pth"))
             saved_model = self.model_cls.from_pretrained(
                 tmp_dir,
                 torch_dtype=self.torch_dtype,
@@ -283,14 +283,13 @@ class TestSanaTransformerFP8Weights(ModelOptBaseTesterMixin):
 
         named_parameters = list(saved_model.named_parameters())
         named_buffers = list(saved_model.named_buffers())
-        self.assertTrue(
-            any(name.endswith(("_amax", "_scale")) for name, _ in named_buffers),
-            "The restored model did not contain ModelOpt quantizer buffers.",
+        assert any(name.endswith(("_amax", "_scale")) for name, _ in named_buffers), (
+            "The restored model did not contain ModelOpt quantizer buffers."
         )
 
         for tensor_kind, named_tensors in (("parameter", named_parameters), ("buffer", named_buffers)):
             for name, tensor in named_tensors:
-                self.assertFalse(tensor.is_meta, f"{tensor_kind} {name} was not materialized from meta.")
+                assert not tensor.is_meta, f"{tensor_kind} {name} was not materialized from meta."
 
 
 class TestSanaTransformerINT8Weights(ModelOptBaseTesterMixin):
