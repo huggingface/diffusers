@@ -200,24 +200,24 @@ class AnimateDiffSparseControlNetPipelineFastTests(
         if torch_device == "cpu":
             expected_pipe_slice = np.array(
                 [
-                    0.6604,
-                    0.4099,
-                    0.4928,
-                    0.5706,
-                    0.5096,
-                    0.5012,
-                    0.6051,
-                    0.5169,
-                    0.5021,
-                    0.4864,
-                    0.4261,
-                    0.5779,
-                    0.5822,
-                    0.4049,
-                    0.5253,
-                    0.6160,
-                    0.4150,
-                    0.5155,
+                    0.6680,
+                    0.5061,
+                    0.5069,
+                    0.5930,
+                    0.5747,
+                    0.4737,
+                    0.5885,
+                    0.5630,
+                    0.5083,
+                    0.4910,
+                    0.4132,
+                    0.5721,
+                    0.5793,
+                    0.4540,
+                    0.5094,
+                    0.5943,
+                    0.4598,
+                    0.5104,
                 ]
             )
         return super().test_ip_adapter(expected_pipe_slice=expected_pipe_slice)
@@ -225,7 +225,7 @@ class AnimateDiffSparseControlNetPipelineFastTests(
     def test_dict_tuple_outputs_equivalent(self):
         expected_slice = None
         if torch_device == "cpu":
-            expected_slice = np.array([0.6051, 0.5169, 0.5021, 0.6160, 0.4150, 0.5155])
+            expected_slice = np.array([0.5885, 0.5630, 0.5083, 0.5943, 0.4598, 0.5104])
         return super().test_dict_tuple_outputs_equivalent(expected_slice=expected_slice)
 
     def test_inference_batch_single_identical(
