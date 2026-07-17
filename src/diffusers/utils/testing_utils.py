@@ -648,7 +648,7 @@ def require_torchao_version_greater_or_equal(torchao_version):
 def require_modelopt_version_greater_or_equal(modelopt_version):
     def decorator(test_case):
         correct_nvidia_modelopt_version = is_nvidia_modelopt_available() and version.parse(
-            version.parse(importlib.metadata.version("modelopt")).base_version
+            version.parse(importlib.metadata.version("nvidia-modelopt")).base_version
         ) >= version.parse(modelopt_version)
         return unittest.skipUnless(
             correct_nvidia_modelopt_version, f"Test requires modelopt with version greater than {modelopt_version}."
