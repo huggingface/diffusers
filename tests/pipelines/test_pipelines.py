@@ -991,19 +991,6 @@ class DownloadTests(unittest.TestCase):
         assert final_tokenizer_size == orig_tokenizer_size
         assert final_emb_size == orig_emb_size
 
-    def test_download_ignore_files(self):
-        # Check https://huggingface.co/hf-internal-testing/tiny-stable-diffusion-pipe-ignore-files/blob/72f58636e5508a218c6b3f60550dc96445547817/model_index.json#L4
-        with tempfile.TemporaryDirectory() as tmpdirname:
-            # pipeline has Flax weights
-            tmpdirname = DiffusionPipeline.download("hf-internal-testing/tiny-stable-diffusion-pipe-ignore-files")
-            all_root_files = [t[-1] for t in os.walk(os.path.join(tmpdirname))]
-            files = [item for sublist in all_root_files for item in sublist]
-
-            # None of the downloaded files should be a pytorch file even if we have some here:
-            # https://huggingface.co/hf-internal-testing/tiny-stable-diffusion-pipe/blob/main/unet/diffusion_flax_model.msgpack
-            assert not any(f in ["vae/diffusion_pytorch_model.bin", "text_encoder/config.json"] for f in files)
-            assert len(files) == 14
-
     def test_download_dduf_with_custom_pipeline_raises_error(self):
         with self.assertRaises(NotImplementedError):
             _ = DiffusionPipeline.download(

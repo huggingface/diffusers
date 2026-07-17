@@ -66,7 +66,7 @@ class AutoPipelineFastTest(unittest.TestCase):
 
     def test_from_pipe_consistent(self):
         pipe = AutoPipelineForText2Image.from_pretrained(
-            "hf-internal-testing/tiny-stable-diffusion-pipe", requires_safety_checker=False
+            "hf-internal-testing/tiny-stable-diffusion-torch", requires_safety_checker=False
         )
         original_config = dict(pipe.config)
 
@@ -78,7 +78,7 @@ class AutoPipelineFastTest(unittest.TestCase):
 
     def test_from_pipe_override(self):
         pipe = AutoPipelineForText2Image.from_pretrained(
-            "hf-internal-testing/tiny-stable-diffusion-pipe", requires_safety_checker=False
+            "hf-internal-testing/tiny-stable-diffusion-torch", requires_safety_checker=False
         )
 
         pipe = AutoPipelineForImage2Image.from_pipe(pipe, requires_safety_checker=True)
@@ -346,7 +346,7 @@ class AutoPipelineFastTest(unittest.TestCase):
         assert pipe_pag_inpaint.__class__.__name__ == "StableDiffusionXLPAGInpaintPipeline"
 
     def test_from_pipe_controlnet_text2img(self):
-        pipe = AutoPipelineForText2Image.from_pretrained("hf-internal-testing/tiny-stable-diffusion-pipe")
+        pipe = AutoPipelineForText2Image.from_pretrained("hf-internal-testing/tiny-stable-diffusion-torch")
         controlnet = ControlNetModel.from_pretrained("hf-internal-testing/tiny-controlnet")
 
         pipe = AutoPipelineForText2Image.from_pipe(pipe, controlnet=controlnet)
@@ -358,7 +358,7 @@ class AutoPipelineFastTest(unittest.TestCase):
         assert "controlnet" not in pipe.components
 
     def test_from_pipe_controlnet_img2img(self):
-        pipe = AutoPipelineForImage2Image.from_pretrained("hf-internal-testing/tiny-stable-diffusion-pipe")
+        pipe = AutoPipelineForImage2Image.from_pretrained("hf-internal-testing/tiny-stable-diffusion-torch")
         controlnet = ControlNetModel.from_pretrained("hf-internal-testing/tiny-controlnet")
 
         pipe = AutoPipelineForImage2Image.from_pipe(pipe, controlnet=controlnet)
@@ -445,7 +445,7 @@ class AutoPipelineFastTest(unittest.TestCase):
         image_encoder = self.dummy_image_encoder
 
         pipe = AutoPipelineForText2Image.from_pretrained(
-            "hf-internal-testing/tiny-stable-diffusion-pipe",
+            "hf-internal-testing/tiny-stable-diffusion-torch",
             image_encoder=image_encoder,
         )
 
