@@ -26,7 +26,7 @@ from ...utils import (
     deprecate,
     logging,
 )
-from ...utils.torch_utils import is_compiled_module, maybe_adjust_dtype_for_device
+from ...utils.torch_utils import maybe_adjust_dtype_for_device
 from ..activations import get_activation
 from ..attention import AttentionMixin
 from ..attention_processor import (

@@ -71,7 +71,6 @@ from ..utils import (
     is_bitsandbytes_version,
     is_hpu_available,
     is_torch_npu_available,
-    is_torch_tpu_available,
     is_torch_version,
     is_transformers_version,
     logging,
