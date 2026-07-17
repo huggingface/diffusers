@@ -740,7 +740,7 @@ pipe = Cosmos3OmniPipeline.from_pretrained(
 
 ## Cosmos3OmniModularPipeline
 
-Cosmos 3 is also available as a Modular Diffusers pipeline. The task-based [`Cosmos3OmniPipeline`] remains available; the modular pipeline coexists with it and covers the same modes (`text2image`, `text2video`, `image2video`, `video2video`, and action-conditioned generation, with optional sound when supported by the checkpoint).
+Cosmos 3 is also available as a Modular Diffusers pipeline. The task-based [`Cosmos3OmniPipeline`] remains available; the modular pipeline coexists with it and covers the same modes (`text2image`, `text2video`, `image2video`, `video2video`, action-conditioned generation, and `transfer` (structural control), with optional sound when supported by the checkpoint).
 
 ```python
 import torch
@@ -788,7 +788,7 @@ image2video_blocks = pipe.blocks.get_workflow("image2video")
 
 ### Modular examples for all existing workflows
 
-The modular pipeline supports the same call signatures as the task pipeline. The snippets below mirror every generation example shown above (`text2video`, `text2image`, `image2video`, `video2video`, `video2video_sound`, `text2video_sound`, and `action_policy`).
+The modular pipeline supports the same call signatures as the task pipeline. The snippets below mirror every generation example shown above (`text2video`, `text2image`, `image2video`, `video2video`, `video2video_sound`, `text2video_sound`, and `action_policy`). Transfer (structural control) has its own inputs and is shown separately in [Modular transfer](#modular-transfer-structural-control) below.
 
 ```python
 import json
@@ -932,6 +932,61 @@ export_to_video(outputs["videos"], "cosmos3_modular_action_policy.mp4", fps=5, m
 if outputs["action"] is not None:
     with open("cosmos3_modular_action_policy.json", "w") as f:
         json.dump(outputs["action"][0].tolist(), f)
+```
+
+### Modular transfer (structural control)
+
+Transfer follows a **precomputed control video** (edge, blur, depth, segmentation, or a world-scenario map) passed through `control_videos=` as a `{hint: video}` mapping. It is video-only (no `image` / `video` / `action` / `enable_sound`), the prompt is a pre-upsampled JSON caption (see [Prompt upsampling](#prompt-upsampling)), and long clips are generated autoregressively in chunks of `num_video_frames_per_chunk` and stitched automatically. `guidance_scale` is the usual text CFG; `control_guidance` (`!= 1.0`) additionally amplifies the control signal. Recommended starting values per hint:
+
+| Hint | `guidance_scale` | `control_guidance` | `flow_shift` | Geometry |
+| --- | --- | --- | --- | --- |
+| Edge / Blur / Depth | 3.0 | 1.5 | 10.0 | 121 frames @ 30 FPS |
+| Segmentation | 3.0 | 2.0 | 10.0 | 121 frames @ 30 FPS |
+| World scenario (WSM) | 1.0 | 3.0 | 10.0 | 101 frames @ 10 FPS |
+
+Diffusers does not ship the control assets. Ready-made ones (a control video + matching `prompt.json` per hint, plus a shared `negative_prompt.json`) live in the [Cosmos cookbook](https://github.com/NVIDIA/cosmos/tree/main/cookbooks/cosmos3/generator/transfer/assets). For the edge example below, download them into a local `assets/` folder:
+
+```bash
+base=https://github.com/NVIDIA/cosmos/raw/refs/heads/main/cookbooks/cosmos3/generator/transfer/assets
+mkdir -p assets/edge
+curl -sL "$base/edge/control_edge.mp4" -o assets/edge/control_edge.mp4
+curl -sL "$base/edge/prompt.json"      -o assets/edge/prompt.json
+curl -sL "$base/negative_prompt.json"  -o assets/negative_prompt.json
+```
+
+```python
+import json
+import torch
+from diffusers import Cosmos3OmniModularPipeline
+from diffusers.schedulers.scheduling_unipc_multistep import UniPCMultistepScheduler
+from diffusers.utils import export_to_video, load_video
+
+pipe = Cosmos3OmniModularPipeline.from_pretrained("nvidia/Cosmos3-Nano", torch_dtype=torch.bfloat16)
+pipe.load_components(torch_dtype=torch.bfloat16)
+pipe.to("cuda")
+pipe.scheduler = UniPCMultistepScheduler.from_config(
+    pipe.scheduler.config, flow_shift=10.0, use_karras_sigmas=False
+)
+
+# Downloaded into assets/ from the Cosmos cookbook (see the curl snippet above).
+json_prompt = json.load(open("assets/edge/prompt.json"))
+negative_prompt = json.load(open("assets/negative_prompt.json"))
+control_edge = load_video("assets/edge/control_edge.mp4")
+
+videos = pipe(
+    prompt=json.dumps(json_prompt),
+    negative_prompt=json.dumps(negative_prompt),
+    control_videos={"edge": control_edge},
+    num_frames=121,
+    height=720,
+    width=1280,
+    fps=30.0,
+    num_inference_steps=35,
+    guidance_scale=3.0,
+    control_guidance=1.5,
+    output="videos",
+)
+export_to_video(videos, "cosmos3_modular_transfer_edge.mp4", fps=30, macro_block_size=1)
 ```
 
 [[autodoc]] Cosmos3OmniModularPipeline
