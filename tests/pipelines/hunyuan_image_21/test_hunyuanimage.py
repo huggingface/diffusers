@@ -63,7 +63,6 @@ class HunyuanImagePipelineFastTests(
     test_layerwise_casting = True
     test_group_offloading = True
     test_attention_slicing = False
-    supports_dduf = False
 
     def get_dummy_components(self, num_layers: int = 1, num_single_layers: int = 1, guidance_embeds: bool = False):
         torch.manual_seed(0)
