@@ -6,6 +6,30 @@ Shared reference for modular pipeline conventions, patterns, and gotchas.
 
 When adding a new modular pipeline (or reviewing one), skim `src/diffusers/modular_pipelines/qwenimage/`, `src/diffusers/modular_pipelines/flux2/`, `src/diffusers/modular_pipelines/wan/`, and `src/diffusers/modular_pipelines/helios/` first to establish the pattern. Most conventions (file split between `encoders.py` / `before_denoise.py` / `denoise.py` / `decoders.py`, how `expected_components` / `inputs` / `intermediate_outputs` are declared, the denoise-loop wrapping with `LoopSequentialPipelineBlocks`, top-level assembly via `AutoPipelineBlocks` / `SequentialPipelineBlocks` in `modular_blocks_<model>.py`, the `ModularPipeline` subclass shape, the guider-abstracted denoise body, `kwargs_type="denoiser_input_fields"` plumbing) are easiest to internalize by comparison rather than from a fixed list.
 
+## Running a modular pipeline
+
+This section provides guidance on how to execute pipelines and blocks — in scripts, debugging sessions, and tests alike.
+
+- **Full pipeline from a repo**: `ModularPipeline.from_pretrained(repo_id)` — the base class, not the model subclass; it resolves the right class from the repo's `modular_model_index.json` (falling back to a standard `model_index.json`). Then `pipe.load_components()` and call it.
+- **A single block or sub-workflow**: convert it to a pipeline first with `init_pipeline()`. Blocks are never executed directly.
+
+```python
+# one block
+pipe = MyTextEncoderStep().init_pipeline("some-org/tiny-model")  # repo optional if the block needs no pretrained components
+pipe.load_components()                                           # init_pipeline only wires specs; this materializes components
+
+# a chain of blocks
+blocks = SequentialPipelineBlocks.from_blocks_dict({"vision": VisionStep(), "sound": SoundStep()})
+pipe = blocks.init_pipeline()
+
+# run it: declared InputParams are call kwargs; `output=` selects what comes back
+ids = pipe(prompt="a robot", output="cond_input_ids")   # one value (any declared output/intermediate)
+state = pipe(prompt="a robot")                          # or the full state — read values with state.get("name")
+```
+
+- **Swap components and config values** with `pipe.update_components(scheduler=new_scheduler, my_config_flag=False)` — it handles both, keeping the specs and the saved `modular_model_index.json` in sync. Read config via `pipe.config.<name>` (direct attribute access is deprecated).
+- **Don't call a block directly** (`block(components, state)`) and don't hand-build a `PipelineState` to feed it. That is the executor's internal protocol — it only *appears* to work for blocks that never touch `components`, and breaks the moment the block gains a component or config dependency. If you find yourself constructing a `PipelineState`, you want `init_pipeline()` and a normal call instead.
+
 ## File structure
 
 ```
@@ -102,6 +126,37 @@ class HeliosChunkDenoiseStep(HeliosChunkLoopWrapper):
 
 Note: sub-blocks inside `LoopSequentialPipelineBlocks` receive `(components, block_state, i, t)` for denoise loops or `(components, block_state, k)` for chunk loops.
 
+## Key pattern: `kwargs_type` inputs (`denoiser_input_fields`)
+
+The conditioning inputs a denoiser needs often vary by workflow — especially for omni models like Cosmos3, where the action workflow requires additional action conditioning, and a workflow that generates sound along with video requires additional sound inputs. Tag these outputs with `kwargs_type="denoiser_input_fields"` when they are written; the denoiser then declares a single input with that `kwargs_type` and receives every tagged value collected into one dict. This avoids creating a new denoiser block for each workflow just to list its specific inputs:
+
+```python
+# producer side: standard conditioning outputs already carry the tag via their templates
+OutputParam.template("prompt_embeds")  # kwargs_type="denoiser_input_fields"
+# workflow-specific fields declare it explicitly
+OutputParam(
+    "action_embeds",
+    kwargs_type="denoiser_input_fields",
+    type_hint=torch.Tensor,
+    description="Action conditioning fed into the transformer.",
+)
+
+# consumer side (the loop denoiser): declare the kwargs_type input once
+InputParam.template("denoiser_input_fields")
+
+# inside the denoiser __call__: every tagged value arrives in one dict —
+# and also individually (block_state.prompt_embeds, block_state.action_embeds, ...)
+block_state.denoiser_input_fields  # {"prompt_embeds": ..., "action_embeds": ...}
+```
+
+The denoiser typically filters this dict against the transformer's forward signature and forwards the matches — so a new block can add conditioning just by tagging its output (no change to the denoiser), and tagged fields the transformer doesn't accept are silently ignored (see `qwenimage/denoise.py` or `helios/denoise.py`; `z_image/denoise.py` is a minimal consumer).
+
+How the tagging works (behavior is pinned down in `tests/modular_pipelines/test_modular_pipelines_custom_blocks.py::TestBlockKwargsTypeInputs`):
+
+- A value gets its tag when it is **written** to pipeline state: a block output is tagged if declared with `OutputParam(..., kwargs_type=...)`; a user-passed input is tagged if the pipeline-level `InputParam` it matches declares a kwargs_type.
+- Users can always pass all the tagged values as a dict under the kwargs_type name — `pipe(denoiser_input_fields={"prompt_embeds": ...})` — and every entry gets tagged. In a full pipeline this is rarely needed: named inputs and tagged block outputs get tagged on their own; the dict form matters mainly for standalone runs (below).
+- **Gotcha — standalone runs:** a named input declared *without* the kwargs_type lands in state by name but never gets tagged, so it never reaches the consumer's dict. So when a denoise block runs standalone (without the upstream blocks whose tagged outputs normally supply these values), passing them as plain named inputs silently does nothing — they must go through the `denoiser_input_fields={...}` dict, or the block must declare them as named `InputParam(..., kwargs_type="denoiser_input_fields")` inputs.
+
 ## Key pattern: Workflow selection
 
 ```python
@@ -185,7 +240,7 @@ ComponentSpec(
 
 5. **Using `InputParam.template()` / `OutputParam.template()` when semantics don't match.** Templates carry predefined descriptions — e.g. the `"latents"` output template means "Denoised latents". Don't use it for initial noisy latents from a prepare-latents step. Use a plain `InputParam(...)` / `OutputParam(...)` with an accurate description instead.
 
-6. **Test model paths pointing to contributor repos.** Tiny test models must live under `hf-internal-testing/`, not personal repos like `username/tiny-model`. Move the model before merge.
+6. **Test model paths pointing to contributor repos.** Tiny test models ultimately live under `hf-internal-testing/`, not personal repos like `username/tiny-model`. Developing against a personal repo is fine and not merge-blocking — a maintainer moves the model (before or after merge) and updates the path.
 
 7. **Respect the declared IO system.** Components in `expected_components`, fields in `inputs` / `intermediate_outputs` — once declared, the modular framework guarantees them. So:
     - **Don't read defensively.** Declared components are always set as attributes (possibly `None`); declared upstream outputs are always populated in `block_state` after the upstream block runs. `getattr(components, "vae", None)`, `hasattr(self, "vae")`, `getattr(block_state, "prompt_embeds", None)` are dead code that hides typos. Use `components.vae` / `block_state.prompt_embeds` directly. Check `is not None` only when nullability is meaningful (a component the user might not have loaded).

@@ -65,6 +65,7 @@ from ..utils import (
     PushToHubMixin,
     _get_detailed_type,
     _is_valid_type,
+    deprecate,
     is_accelerate_available,
     is_accelerate_version,
     is_bitsandbytes_version,
@@ -120,6 +121,11 @@ for library in LOADABLE_CLASSES:
     LIBRARIES.append(library)
 
 SUPPORTED_DEVICE_MAP = ["balanced"] + [get_device(), "cpu"]
+
+_DDUF_DEPRECATION_MESSAGE = (
+    "Loading pipelines from DDUF files is deprecated and DDUF support will be removed entirely. "
+    "Please save and load your pipelines using the standard Diffusers directory format instead."
+)
 
 logger = logging.get_logger(__name__)
 
@@ -737,7 +743,8 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 Load weights from a specified variant filename such as `"fp16"` or `"ema"`. This is ignored when
                 loading `from_flax`.
             dduf_file(`str`, *optional*):
-                Load weights from the specified dduf file.
+                Load weights from the specified dduf file. <Deprecated> This argument is deprecated and will be removed
+                in version 0.41.0. </Deprecated>
             disable_mmap ('bool', *optional*, defaults to 'False'):
                 Whether to disable mmap when loading a Safetensors model. This option can perform better when the model
                 is on a network mount or hard drive, which may not handle the seeky-ness of mmap very well.
@@ -852,6 +859,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             )
 
         if dduf_file:
+            deprecate("dduf_file", "0.41.0", _DDUF_DEPRECATION_MESSAGE)
             if custom_pipeline:
                 raise NotImplementedError("Custom pipelines are not supported with DDUF at the moment.")
             if load_connected_pipeline:
@@ -1581,7 +1589,8 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 Load weights from a specified variant filename such as `"fp16"` or `"ema"`. This is ignored when
                 loading `from_flax`.
             dduf_file(`str`, *optional*):
-                Load weights from the specified DDUF file.
+                Load weights from the specified DDUF file. <Deprecated> This argument is deprecated and will be removed
+                in version 0.41.0. </Deprecated>
             use_safetensors (`bool`, *optional*, defaults to `None`):
                 If set to `None`, the safetensors weights are downloaded if they're available **and** if the
                 safetensors library is installed. If set to `True`, the model is forcibly loaded from safetensors
@@ -1625,6 +1634,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         use_flashpack = kwargs.pop("use_flashpack", False)
 
         if dduf_file:
+            deprecate("dduf_file", "0.41.0", _DDUF_DEPRECATION_MESSAGE)
             if custom_pipeline:
                 raise NotImplementedError("Custom pipelines are not supported with DDUF at the moment.")
             if load_connected_pipeline:

@@ -61,6 +61,63 @@ def retrieve_timesteps(
     return timesteps, num_inference_steps
 
 
+# Copied from diffusers.modular_pipelines.z_image.before_denoise.repeat_tensor_to_batch_size
+def repeat_tensor_to_batch_size(
+    input_name: str,
+    input_tensor: torch.Tensor,
+    batch_size: int,
+    num_images_per_prompt: int = 1,
+) -> torch.Tensor:
+    """Repeat tensor elements to match the final batch size.
+
+    This function expands a tensor's batch dimension to match the final batch size (batch_size * num_images_per_prompt)
+    by repeating each element along dimension 0.
+
+    The input tensor must have batch size 1 or batch_size. The function will:
+    - If batch size is 1: repeat each element (batch_size * num_images_per_prompt) times
+    - If batch size equals batch_size: repeat each element num_images_per_prompt times
+
+    Args:
+        input_name (str): Name of the input tensor (used for error messages)
+        input_tensor (torch.Tensor): The tensor to repeat. Must have batch size 1 or batch_size.
+        batch_size (int): The base batch size (number of prompts)
+        num_images_per_prompt (int, optional): Number of images to generate per prompt. Defaults to 1.
+
+    Returns:
+        torch.Tensor: The repeated tensor with final batch size (batch_size * num_images_per_prompt)
+
+    Raises:
+        ValueError: If input_tensor is not a torch.Tensor or has invalid batch size
+
+    Examples:
+        tensor = torch.tensor([[1, 2, 3]]) # shape: [1, 3] repeated = repeat_tensor_to_batch_size("image", tensor,
+        batch_size=2, num_images_per_prompt=2) repeated # tensor([[1, 2, 3], [1, 2, 3], [1, 2, 3], [1, 2, 3]]) - shape:
+        [4, 3]
+
+        tensor = torch.tensor([[1, 2, 3], [4, 5, 6]]) # shape: [2, 3] repeated = repeat_tensor_to_batch_size("image",
+        tensor, batch_size=2, num_images_per_prompt=2) repeated # tensor([[1, 2, 3], [1, 2, 3], [4, 5, 6], [4, 5, 6]])
+        - shape: [4, 3]
+    """
+    # make sure input is a tensor
+    if not isinstance(input_tensor, torch.Tensor):
+        raise ValueError(f"`{input_name}` must be a tensor")
+
+    # make sure input tensor e.g. image_latents has batch size 1 or batch_size same as prompts
+    if input_tensor.shape[0] == 1:
+        repeat_by = batch_size * num_images_per_prompt
+    elif input_tensor.shape[0] == batch_size:
+        repeat_by = num_images_per_prompt
+    else:
+        raise ValueError(
+            f"`{input_name}` must have have batch size 1 or {batch_size}, but got {input_tensor.shape[0]}"
+        )
+
+    # expand the tensor to match the batch_size * num_images_per_prompt
+    input_tensor = input_tensor.repeat_interleave(repeat_by, dim=0)
+
+    return input_tensor
+
+
 class AnimaTextConditioningStep(ModularPipelineBlocks):
     model_name = "anima"
 
@@ -270,6 +327,62 @@ class AnimaTextInputStep(ModularPipelineBlocks):
         return components, state
 
 
+class AnimaImageInputStep(ModularPipelineBlocks):
+    model_name = "anima"
+
+    @property
+    def description(self) -> str:
+        return (
+            "Input processing step that expands Anima image latents to the final denoising batch "
+            "and derives height/width from the latents when not provided."
+        )
+
+    @property
+    def inputs(self) -> list[InputParam]:
+        return [
+            InputParam.template("image_latents"),
+            InputParam(
+                "batch_size",
+                required=True,
+                type_hint=int,
+                description="Number of input prompts before `num_images_per_prompt` expansion.",
+            ),
+            InputParam.template("num_images_per_prompt"),
+            InputParam.template("height"),
+            InputParam.template("width"),
+        ]
+
+    @property
+    def intermediate_outputs(self) -> list[OutputParam]:
+        return [
+            OutputParam(
+                "image_latents",
+                type_hint=torch.Tensor,
+                description="Image latents expanded to the final denoising batch.",
+            ),
+            OutputParam("height", type_hint=int, description="Image height used for generation."),
+            OutputParam("width", type_hint=int, description="Image width used for generation."),
+        ]
+
+    @torch.no_grad()
+    def __call__(self, components: AnimaModularPipeline, state: PipelineState) -> PipelineState:
+        block_state = self.get_block_state(state)
+
+        latent_height, latent_width = block_state.image_latents.shape[-2:]
+        block_state.height = block_state.height or latent_height * components.vae_scale_factor
+        block_state.width = block_state.width or latent_width * components.vae_scale_factor
+
+        block_state.image_latents = repeat_tensor_to_batch_size(
+            input_name="image_latents",
+            input_tensor=block_state.image_latents,
+            batch_size=block_state.batch_size,
+            num_images_per_prompt=block_state.num_images_per_prompt,
+        )
+
+        self.set_block_state(state, block_state)
+        return components, state
+
+
 class AnimaPrepareLatentsStep(ModularPipelineBlocks):
     model_name = "anima"
 
@@ -370,6 +483,19 @@ class AnimaPrepareLatentsStep(ModularPipelineBlocks):
         return components, state
 
 
+# Copied from diffusers.modular_pipelines.qwenimage.before_denoise.get_timesteps
+def get_timesteps(scheduler, num_inference_steps, strength):
+    # get the original timestep using init_timestep
+    init_timestep = min(num_inference_steps * strength, num_inference_steps)
+
+    t_start = int(max(num_inference_steps - init_timestep, 0))
+    timesteps = scheduler.timesteps[t_start * scheduler.order :]
+    if hasattr(scheduler, "set_begin_index"):
+        scheduler.set_begin_index(t_start * scheduler.order)
+
+    return timesteps, num_inference_steps - t_start
+
+
 class AnimaSetTimestepsStep(ModularPipelineBlocks):
     model_name = "anima"
 
@@ -411,6 +537,178 @@ class AnimaSetTimestepsStep(ModularPipelineBlocks):
             sigmas=sigmas,
         )
         components.scheduler.set_begin_index(0)
+
+        self.set_block_state(state, block_state)
+        return components, state
+
+
+class AnimaImg2ImgSetTimestepsStep(ModularPipelineBlocks):
+    """Set the scheduler timesteps for Anima image-to-image inference.
+
+    This step computes the full timestep schedule, then slices it based on ``strength`` via ``get_timesteps()``, which
+    also sets the scheduler's begin index.
+
+    Components:
+        scheduler (`FlowMatchEulerDiscreteScheduler`)
+
+    Inputs:
+        num_inference_steps (`int`, *optional*, defaults to 50):
+            The number of denoising steps.
+        sigmas (`list`, *optional*):
+            Custom sigmas for the denoising process.
+        strength (`float`, *optional*, defaults to 0.9):
+            How much to transform the reference image.
+
+    Outputs:
+        timesteps (`Tensor`):
+            Timestep schedule sliced by ``strength``.
+        num_inference_steps (`int`):
+            Number of denoising steps after strength-based slicing.
+    """
+
+    model_name = "anima"
+
+    @property
+    def expected_components(self) -> list[ComponentSpec]:
+        return [ComponentSpec("scheduler", FlowMatchEulerDiscreteScheduler)]
+
+    @property
+    def description(self) -> str:
+        return "Set the scheduler timesteps for Anima image-to-image inference, sliced by strength."
+
+    @property
+    def inputs(self) -> list[InputParam]:
+        return [
+            InputParam.template("num_inference_steps"),
+            InputParam.template("sigmas"),
+            InputParam.template("strength"),
+        ]
+
+    @property
+    def intermediate_outputs(self) -> list[OutputParam]:
+        return [
+            OutputParam(
+                "timesteps",
+                type_hint=torch.Tensor,
+                description="Timestep schedule sliced by strength.",
+            ),
+            OutputParam(
+                "num_inference_steps",
+                type_hint=int,
+                description="Number of denoising steps after strength-based slicing.",
+            ),
+        ]
+
+    @torch.no_grad()
+    def __call__(self, components: AnimaModularPipeline, state: PipelineState) -> PipelineState:
+        block_state = self.get_block_state(state)
+        device = components._execution_device
+
+        sigmas = (
+            np.linspace(1.0, 1 / block_state.num_inference_steps, block_state.num_inference_steps)
+            if block_state.sigmas is None
+            else block_state.sigmas
+        )
+        block_state.timesteps, block_state.num_inference_steps = retrieve_timesteps(
+            components.scheduler,
+            device=device,
+            sigmas=sigmas,
+        )
+        block_state.timesteps, block_state.num_inference_steps = get_timesteps(
+            components.scheduler, block_state.num_inference_steps, block_state.strength
+        )
+
+        self.set_block_state(state, block_state)
+        return components, state
+
+
+class AnimaImg2ImgPrepareLatentsStep(ModularPipelineBlocks):
+    """Prepares noisy latents for Anima image-to-image generation.
+
+    Generates noise and mixes it with the image latents via ``scheduler.scale_noise()`` at the first sliced timestep.
+    The image latents are expected to already be expanded to the final batch size by ``AnimaImageInputStep``.
+
+    Components:
+        scheduler (`FlowMatchEulerDiscreteScheduler`)
+
+    Inputs:
+        image_latents (`Tensor`):
+            Encoded image latents, expanded to the final denoising batch.
+        timesteps (`Tensor`):
+            Timestep schedule sliced by ``strength`` from ``AnimaImg2ImgSetTimestepsStep``.
+        generator (`Generator`, *optional*):
+            Torch generator for deterministic generation.
+        latents (`Tensor`, *optional*):
+            Pre-computed noise tensor. Generated randomly if ``None``.
+        dtype (`torch.dtype`):
+            Dtype used by the Anima denoiser.
+        height (`int`):
+            Image height.
+        width (`int`):
+            Image width.
+
+    Outputs:
+        latents (`Tensor`):
+            Noisy image latents for the denoising loop.
+        padding_mask (`Tensor`):
+            Cosmos padding mask for the image latents.
+    """
+
+    model_name = "anima"
+
+    @property
+    def expected_components(self) -> list[ComponentSpec]:
+        return [ComponentSpec("scheduler", FlowMatchEulerDiscreteScheduler)]
+
+    @property
+    def description(self) -> str:
+        return (
+            "Prepares noisy image-to-image latents for Anima by adding noise to the encoded "
+            "image latents via scheduler.scale_noise()."
+        )
+
+    @property
+    def inputs(self) -> list[InputParam]:
+        return [
+            InputParam.template("image_latents"),
+            InputParam.template("timesteps", required=True),
+            InputParam.template("generator"),
+            InputParam.template("latents"),
+            InputParam("dtype", type_hint=torch.dtype, description="Dtype used by the Anima denoiser."),
+            InputParam.template("height"),
+            InputParam.template("width"),
+        ]
+
+    @property
+    def intermediate_outputs(self) -> list[OutputParam]:
+        return [
+            OutputParam("latents", type_hint=torch.Tensor, description="Noisy latents for the denoising loop."),
+            OutputParam("padding_mask", type_hint=torch.Tensor, description="Cosmos padding mask for image latents."),
+        ]
+
+    @torch.no_grad()
+    def __call__(self, components: AnimaModularPipeline, state: PipelineState) -> PipelineState:
+        block_state = self.get_block_state(state)
+
+        device = components._execution_device
+        image_latents = block_state.image_latents.to(device=device, dtype=torch.float32)
+
+        if block_state.latents is None:
+            noise = randn_tensor(
+                image_latents.shape,
+                generator=block_state.generator,
+                device=device,
+                dtype=torch.float32,
+            )
+        else:
+            noise = block_state.latents.to(device=device, dtype=torch.float32)
+
+        latent_timestep = block_state.timesteps[:1].repeat(image_latents.shape[0])
+        block_state.latents = components.scheduler.scale_noise(image_latents, latent_timestep, noise)
+
+        block_state.padding_mask = block_state.latents.new_zeros(
+            1, 1, block_state.height, block_state.width, dtype=block_state.dtype
+        )
 
         self.set_block_state(state, block_state)
         return components, state

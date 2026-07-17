@@ -77,7 +77,7 @@ class Cosmos3OmniModularPipeline(ModularPipeline):
 
     @property
     def requires_safety_checker(self):
-        return getattr(self, "_is_safety_checker_enabled", True)
+        return getattr(self, "_is_safety_checker_enabled", self.config.enable_safety_checker)
 
     def _encode_video(self, x):
         return Cosmos3OmniPipeline._encode_video(self, x)
