@@ -1,9 +1,15 @@
 import contextlib
 import io
+import json
+import os
 import re
-import unittest
+import tempfile
+import uuid
 
+import pytest
 import torch
+from huggingface_hub import ModelCard, delete_repo
+from huggingface_hub.utils import is_jinja_available
 from PIL import Image
 from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer
 
@@ -20,10 +26,11 @@ from diffusers import (
 )
 from diffusers.pipelines.pipeline_loading_utils import is_safetensors_compatible, variant_compatible_siblings
 
+from ..others.test_utils import TOKEN, USER, is_staging_test
 from ..testing_utils import require_torch_accelerator, torch_device
 
 
-class IsSafetensorsCompatibleTests(unittest.TestCase):
+class TestIsSafetensorsCompatible:
     def test_all_is_compatible(self):
         filenames = [
             "safety_checker/pytorch_model.bin",
@@ -35,14 +42,14 @@ class IsSafetensorsCompatibleTests(unittest.TestCase):
             "unet/diffusion_pytorch_model.bin",
             "unet/diffusion_pytorch_model.safetensors",
         ]
-        self.assertTrue(is_safetensors_compatible(filenames))
+        assert is_safetensors_compatible(filenames)
 
     def test_diffusers_model_is_compatible(self):
         filenames = [
             "unet/diffusion_pytorch_model.bin",
             "unet/diffusion_pytorch_model.safetensors",
         ]
-        self.assertTrue(is_safetensors_compatible(filenames))
+        assert is_safetensors_compatible(filenames)
 
     def test_diffusers_model_is_not_compatible(self):
         filenames = [
@@ -55,14 +62,14 @@ class IsSafetensorsCompatibleTests(unittest.TestCase):
             "unet/diffusion_pytorch_model.bin",
             # Removed: 'unet/diffusion_pytorch_model.safetensors',
         ]
-        self.assertFalse(is_safetensors_compatible(filenames))
+        assert not is_safetensors_compatible(filenames)
 
     def test_transformer_model_is_compatible(self):
         filenames = [
             "text_encoder/pytorch_model.bin",
             "text_encoder/model.safetensors",
         ]
-        self.assertTrue(is_safetensors_compatible(filenames))
+        assert is_safetensors_compatible(filenames)
 
     def test_transformer_model_is_not_compatible(self):
         filenames = [
@@ -75,7 +82,7 @@ class IsSafetensorsCompatibleTests(unittest.TestCase):
             "unet/diffusion_pytorch_model.bin",
             "unet/diffusion_pytorch_model.safetensors",
         ]
-        self.assertFalse(is_safetensors_compatible(filenames))
+        assert not is_safetensors_compatible(filenames)
 
     def test_all_is_compatible_variant(self):
         filenames = [
@@ -88,24 +95,24 @@ class IsSafetensorsCompatibleTests(unittest.TestCase):
             "unet/diffusion_pytorch_model.fp16.bin",
             "unet/diffusion_pytorch_model.fp16.safetensors",
         ]
-        self.assertFalse(is_safetensors_compatible(filenames))
-        self.assertTrue(is_safetensors_compatible(filenames, variant="fp16"))
+        assert not is_safetensors_compatible(filenames)
+        assert is_safetensors_compatible(filenames, variant="fp16")
 
     def test_diffusers_model_is_compatible_variant(self):
         filenames = [
             "unet/diffusion_pytorch_model.fp16.bin",
             "unet/diffusion_pytorch_model.fp16.safetensors",
         ]
-        self.assertFalse(is_safetensors_compatible(filenames))
-        self.assertTrue(is_safetensors_compatible(filenames, variant="fp16"))
+        assert not is_safetensors_compatible(filenames)
+        assert is_safetensors_compatible(filenames, variant="fp16")
 
     def test_diffusers_model_is_compatible_variant_mixed(self):
         filenames = [
             "unet/diffusion_pytorch_model.bin",
             "unet/diffusion_pytorch_model.fp16.safetensors",
         ]
-        self.assertFalse(is_safetensors_compatible(filenames))
-        self.assertTrue(is_safetensors_compatible(filenames, variant="fp16"))
+        assert not is_safetensors_compatible(filenames)
+        assert is_safetensors_compatible(filenames, variant="fp16")
 
     def test_diffusers_model_is_not_compatible_variant(self):
         filenames = [
@@ -118,15 +125,15 @@ class IsSafetensorsCompatibleTests(unittest.TestCase):
             "unet/diffusion_pytorch_model.fp16.bin",
             # Removed: 'unet/diffusion_pytorch_model.fp16.safetensors',
         ]
-        self.assertFalse(is_safetensors_compatible(filenames))
+        assert not is_safetensors_compatible(filenames)
 
     def test_transformer_model_is_compatible_variant(self):
         filenames = [
             "text_encoder/pytorch_model.fp16.bin",
             "text_encoder/model.fp16.safetensors",
         ]
-        self.assertFalse(is_safetensors_compatible(filenames))
-        self.assertTrue(is_safetensors_compatible(filenames, variant="fp16"))
+        assert not is_safetensors_compatible(filenames)
+        assert is_safetensors_compatible(filenames, variant="fp16")
 
     def test_transformer_model_is_not_compatible_variant(self):
         filenames = [
@@ -138,7 +145,7 @@ class IsSafetensorsCompatibleTests(unittest.TestCase):
             "unet/diffusion_pytorch_model.fp16.bin",
             "unet/diffusion_pytorch_model.fp16.safetensors",
         ]
-        self.assertFalse(is_safetensors_compatible(filenames))
+        assert not is_safetensors_compatible(filenames)
 
     def test_transformer_model_is_compatible_variant_extra_folder(self):
         filenames = [
@@ -150,8 +157,8 @@ class IsSafetensorsCompatibleTests(unittest.TestCase):
             "unet/diffusion_pytorch_model.fp16.bin",
             "unet/diffusion_pytorch_model.fp16.safetensors",
         ]
-        self.assertFalse(is_safetensors_compatible(filenames, folder_names={"vae", "unet"}))
-        self.assertTrue(is_safetensors_compatible(filenames, folder_names={"vae", "unet"}, variant="fp16"))
+        assert not is_safetensors_compatible(filenames, folder_names={"vae", "unet"})
+        assert is_safetensors_compatible(filenames, folder_names={"vae", "unet"}, variant="fp16")
 
     def test_transformer_model_is_not_compatible_variant_extra_folder(self):
         filenames = [
@@ -163,7 +170,7 @@ class IsSafetensorsCompatibleTests(unittest.TestCase):
             "unet/diffusion_pytorch_model.fp16.bin",
             "unet/diffusion_pytorch_model.fp16.safetensors",
         ]
-        self.assertFalse(is_safetensors_compatible(filenames, folder_names={"text_encoder"}))
+        assert not is_safetensors_compatible(filenames, folder_names={"text_encoder"})
 
     def test_transformers_is_compatible_sharded(self):
         filenames = [
@@ -171,7 +178,7 @@ class IsSafetensorsCompatibleTests(unittest.TestCase):
             "text_encoder/model-00001-of-00002.safetensors",
             "text_encoder/model-00002-of-00002.safetensors",
         ]
-        self.assertTrue(is_safetensors_compatible(filenames))
+        assert is_safetensors_compatible(filenames)
 
     def test_transformers_is_compatible_variant_sharded(self):
         filenames = [
@@ -179,8 +186,8 @@ class IsSafetensorsCompatibleTests(unittest.TestCase):
             "text_encoder/model.fp16-00001-of-00002.safetensors",
             "text_encoder/model.fp16-00001-of-00002.safetensors",
         ]
-        self.assertFalse(is_safetensors_compatible(filenames))
-        self.assertTrue(is_safetensors_compatible(filenames, variant="fp16"))
+        assert not is_safetensors_compatible(filenames)
+        assert is_safetensors_compatible(filenames, variant="fp16")
 
     def test_diffusers_is_compatible_sharded(self):
         filenames = [
@@ -188,7 +195,7 @@ class IsSafetensorsCompatibleTests(unittest.TestCase):
             "unet/diffusion_pytorch_model-00001-of-00002.safetensors",
             "unet/diffusion_pytorch_model-00002-of-00002.safetensors",
         ]
-        self.assertTrue(is_safetensors_compatible(filenames))
+        assert is_safetensors_compatible(filenames)
 
     def test_diffusers_is_compatible_variant_sharded(self):
         filenames = [
@@ -196,39 +203,39 @@ class IsSafetensorsCompatibleTests(unittest.TestCase):
             "unet/diffusion_pytorch_model.fp16-00001-of-00002.safetensors",
             "unet/diffusion_pytorch_model.fp16-00001-of-00002.safetensors",
         ]
-        self.assertFalse(is_safetensors_compatible(filenames))
-        self.assertTrue(is_safetensors_compatible(filenames, variant="fp16"))
+        assert not is_safetensors_compatible(filenames)
+        assert is_safetensors_compatible(filenames, variant="fp16")
 
     def test_diffusers_is_compatible_only_variants(self):
         filenames = [
             "unet/diffusion_pytorch_model.fp16.safetensors",
         ]
-        self.assertFalse(is_safetensors_compatible(filenames))
-        self.assertTrue(is_safetensors_compatible(filenames, variant="fp16"))
+        assert not is_safetensors_compatible(filenames)
+        assert is_safetensors_compatible(filenames, variant="fp16")
 
     def test_diffusers_is_compatible_no_components(self):
         filenames = [
             "diffusion_pytorch_model.bin",
         ]
-        self.assertFalse(is_safetensors_compatible(filenames))
+        assert not is_safetensors_compatible(filenames)
 
     def test_diffusers_is_compatible_no_components_only_variants(self):
         filenames = [
             "diffusion_pytorch_model.fp16.bin",
         ]
-        self.assertFalse(is_safetensors_compatible(filenames))
+        assert not is_safetensors_compatible(filenames)
 
     def test_diffusers_is_compatible_no_components_safetensors(self):
         filenames = [
             "diffusion_pytorch_model.safetensors",
         ]
-        self.assertTrue(is_safetensors_compatible(filenames))
+        assert is_safetensors_compatible(filenames)
 
     def test_diffusers_is_compatible_no_components_safetensors_only_variants(self):
         filenames = [
             "diffusion_pytorch_model.fp16.safetensors",
         ]
-        self.assertTrue(is_safetensors_compatible(filenames, variant="fp16"))
+        assert is_safetensors_compatible(filenames, variant="fp16")
 
     def test_transformers_is_compatible_weightless_subfolder(self):
         # transformers-style flat layout: transformers-named weights at the root + a weight-less subfolder
@@ -236,7 +243,7 @@ class IsSafetensorsCompatibleTests(unittest.TestCase):
             "model.safetensors",
             "scheduler/scheduler_config.json",
         ]
-        self.assertTrue(is_safetensors_compatible(filenames))
+        assert is_safetensors_compatible(filenames)
 
     def test_transformers_is_not_compatible_weightless_subfolder(self):
         # same flat layout but only .bin weights at the root -> not safetensors compatible
@@ -244,7 +251,7 @@ class IsSafetensorsCompatibleTests(unittest.TestCase):
             "pytorch_model.bin",
             "scheduler/scheduler_config.json",
         ]
-        self.assertFalse(is_safetensors_compatible(filenames))
+        assert not is_safetensors_compatible(filenames)
 
     def test_transformers_is_compatible_sharded_root_weights(self):
         # sharded transformers-style weights at the repo root (e.g. DiffusionGemma's model-00001-of-00011.safetensors)
@@ -254,24 +261,24 @@ class IsSafetensorsCompatibleTests(unittest.TestCase):
             "model.safetensors.index.json",
             "scheduler/scheduler_config.json",
         ]
-        self.assertTrue(is_safetensors_compatible(filenames))
+        assert is_safetensors_compatible(filenames)
 
     def test_is_compatible_mixed_variants(self):
         filenames = [
             "unet/diffusion_pytorch_model.fp16.safetensors",
             "vae/diffusion_pytorch_model.safetensors",
         ]
-        self.assertTrue(is_safetensors_compatible(filenames, variant="fp16"))
+        assert is_safetensors_compatible(filenames, variant="fp16")
 
     def test_is_compatible_variant_and_non_safetensors(self):
         filenames = [
             "unet/diffusion_pytorch_model.fp16.safetensors",
             "vae/diffusion_pytorch_model.bin",
         ]
-        self.assertFalse(is_safetensors_compatible(filenames, variant="fp16"))
+        assert not is_safetensors_compatible(filenames, variant="fp16")
 
 
-class VariantCompatibleSiblingsTest(unittest.TestCase):
+class TestVariantCompatibleSiblings:
     def test_only_non_variants_downloaded(self):
         ignore_patterns = ["*.bin"]
         variant = "fp16"
@@ -511,7 +518,7 @@ class VariantCompatibleSiblingsTest(unittest.TestCase):
         ignore_patterns = ["*.bin"]
         variant = "fp16"
         filenames = ["model.safetensors", "diffusion_pytorch_model.safetensors"]
-        with self.assertRaisesRegex(ValueError, "but no such modeling files are available. "):
+        with pytest.raises(ValueError, match="but no such modeling files are available. "):
             model_filenames, variant_filenames = variant_compatible_siblings(
                 filenames, variant=variant, ignore_patterns=ignore_patterns
             )
@@ -574,7 +581,7 @@ class VariantCompatibleSiblingsTest(unittest.TestCase):
             "unet/diffusion_pytorch_model-00003-of-00003.safetensors",
             f"vae/diffusion_pytorch_model.{variant}-00001-of-00002.bin",
         ]
-        with self.assertRaisesRegex(ValueError, "but no such modeling files are available. "):
+        with pytest.raises(ValueError, match="but no such modeling files are available. "):
             model_filenames, variant_filenames = variant_compatible_siblings(
                 filenames, variant=variant, ignore_patterns=ignore_patterns
             )
@@ -641,7 +648,7 @@ class VariantCompatibleSiblingsTest(unittest.TestCase):
         assert model_filenames == set(filenames)
 
 
-class ProgressBarTests(unittest.TestCase):
+class TestProgressBar:
     def get_dummy_components_image_generation(self):
         cross_attention_dim = 8
 
@@ -779,15 +786,13 @@ class ProgressBarTests(unittest.TestCase):
             # we can't calculate the number of progress steps beforehand e.g. for strength-dependent img2img,
             # so we just match "5" in "#####| 1/5 [00:01<00:00]"
             max_steps = re.search("/(.*?) ", stderr).group(1)
-            self.assertTrue(max_steps is not None and len(max_steps) > 0)
-            self.assertTrue(
-                f"{max_steps}/{max_steps}" in stderr, "Progress bar should be enabled and stopped at the max step"
-            )
+            assert max_steps is not None and len(max_steps) > 0
+            assert f"{max_steps}/{max_steps}" in stderr, "Progress bar should be enabled and stopped at the max step"
 
         pipe.set_progress_bar_config(disable=True)
         with io.StringIO() as stderr, contextlib.redirect_stderr(stderr):
             _ = pipe(**inputs)
-            self.assertTrue(stderr.getvalue() == "", "Progress bar should be disabled")
+            assert stderr.getvalue() == "", "Progress bar should be disabled"
 
     def test_image_to_image(self):
         components = self.get_dummy_components_image_generation()
@@ -802,15 +807,13 @@ class ProgressBarTests(unittest.TestCase):
             # we can't calculate the number of progress steps beforehand e.g. for strength-dependent img2img,
             # so we just match "5" in "#####| 1/5 [00:01<00:00]"
             max_steps = re.search("/(.*?) ", stderr).group(1)
-            self.assertTrue(max_steps is not None and len(max_steps) > 0)
-            self.assertTrue(
-                f"{max_steps}/{max_steps}" in stderr, "Progress bar should be enabled and stopped at the max step"
-            )
+            assert max_steps is not None and len(max_steps) > 0
+            assert f"{max_steps}/{max_steps}" in stderr, "Progress bar should be enabled and stopped at the max step"
 
         pipe.set_progress_bar_config(disable=True)
         with io.StringIO() as stderr, contextlib.redirect_stderr(stderr):
             _ = pipe(**inputs)
-            self.assertTrue(stderr.getvalue() == "", "Progress bar should be disabled")
+            assert stderr.getvalue() == "", "Progress bar should be disabled"
 
     def test_inpainting(self):
         components = self.get_dummy_components_image_generation()
@@ -832,15 +835,13 @@ class ProgressBarTests(unittest.TestCase):
             # we can't calculate the number of progress steps beforehand e.g. for strength-dependent img2img,
             # so we just match "5" in "#####| 1/5 [00:01<00:00]"
             max_steps = re.search("/(.*?) ", stderr).group(1)
-            self.assertTrue(max_steps is not None and len(max_steps) > 0)
-            self.assertTrue(
-                f"{max_steps}/{max_steps}" in stderr, "Progress bar should be enabled and stopped at the max step"
-            )
+            assert max_steps is not None and len(max_steps) > 0
+            assert f"{max_steps}/{max_steps}" in stderr, "Progress bar should be enabled and stopped at the max step"
 
         pipe.set_progress_bar_config(disable=True)
         with io.StringIO() as stderr, contextlib.redirect_stderr(stderr):
             _ = pipe(**inputs)
-            self.assertTrue(stderr.getvalue() == "", "Progress bar should be disabled")
+            assert stderr.getvalue() == "", "Progress bar should be disabled"
 
     def test_text_to_video(self):
         components = self.get_dummy_components_video_generation()
@@ -854,15 +855,13 @@ class ProgressBarTests(unittest.TestCase):
             # we can't calculate the number of progress steps beforehand e.g. for strength-dependent img2img,
             # so we just match "5" in "#####| 1/5 [00:01<00:00]"
             max_steps = re.search("/(.*?) ", stderr).group(1)
-            self.assertTrue(max_steps is not None and len(max_steps) > 0)
-            self.assertTrue(
-                f"{max_steps}/{max_steps}" in stderr, "Progress bar should be enabled and stopped at the max step"
-            )
+            assert max_steps is not None and len(max_steps) > 0
+            assert f"{max_steps}/{max_steps}" in stderr, "Progress bar should be enabled and stopped at the max step"
 
         pipe.set_progress_bar_config(disable=True)
         with io.StringIO() as stderr, contextlib.redirect_stderr(stderr):
             _ = pipe(**inputs)
-            self.assertTrue(stderr.getvalue() == "", "Progress bar should be disabled")
+            assert stderr.getvalue() == "", "Progress bar should be disabled"
 
     def test_video_to_video(self):
         components = self.get_dummy_components_video_generation()
@@ -878,19 +877,16 @@ class ProgressBarTests(unittest.TestCase):
             # we can't calculate the number of progress steps beforehand e.g. for strength-dependent img2img,
             # so we just match "5" in "#####| 1/5 [00:01<00:00]"
             max_steps = re.search("/(.*?) ", stderr).group(1)
-            self.assertTrue(max_steps is not None and len(max_steps) > 0)
-            self.assertTrue(
-                f"{max_steps}/{max_steps}" in stderr, "Progress bar should be enabled and stopped at the max step"
-            )
+            assert max_steps is not None and len(max_steps) > 0
+            assert f"{max_steps}/{max_steps}" in stderr, "Progress bar should be enabled and stopped at the max step"
 
         pipe.set_progress_bar_config(disable=True)
         with io.StringIO() as stderr, contextlib.redirect_stderr(stderr):
             _ = pipe(**inputs)
-            self.assertTrue(stderr.getvalue() == "", "Progress bar should be disabled")
+            assert stderr.getvalue() == "", "Progress bar should be disabled"
 
 
-@require_torch_accelerator
-class PipelineDeviceAndDtypeStabilityTests(unittest.TestCase):
+class TestPipelineDeviceAndDtypeStability:
     expected_pipe_device = torch.device(f"{torch_device}:0")
     expected_pipe_dtype = torch.float64
 
@@ -953,6 +949,7 @@ class PipelineDeviceAndDtypeStabilityTests(unittest.TestCase):
         }
         return components
 
+    @require_torch_accelerator
     def test_deterministic_device(self):
         components = self.get_dummy_components_image_generation()
 
@@ -965,12 +962,11 @@ class PipelineDeviceAndDtypeStabilityTests(unittest.TestCase):
 
         pipe_device = pipe.device
 
-        self.assertEqual(
-            self.expected_pipe_device,
-            pipe_device,
-            f"Wrong expected device. Expected {self.expected_pipe_device}. Got {pipe_device}.",
+        assert self.expected_pipe_device == pipe_device, (
+            f"Wrong expected device. Expected {self.expected_pipe_device}. Got {pipe_device}."
         )
 
+    @require_torch_accelerator
     def test_deterministic_dtype(self):
         components = self.get_dummy_components_image_generation()
 
@@ -983,8 +979,146 @@ class PipelineDeviceAndDtypeStabilityTests(unittest.TestCase):
 
         pipe_dtype = pipe.dtype
 
-        self.assertEqual(
-            self.expected_pipe_dtype,
-            pipe_dtype,
-            f"Wrong expected dtype. Expected {self.expected_pipe_dtype}. Got {pipe_dtype}.",
+        assert self.expected_pipe_dtype == pipe_dtype, (
+            f"Wrong expected dtype. Expected {self.expected_pipe_dtype}. Got {pipe_dtype}."
         )
+
+
+@is_staging_test
+class TestPipelinePushToHub:
+    identifier = uuid.uuid4()
+    repo_id = f"test-pipeline-{identifier}"
+    org_repo_id = f"valid_org/{repo_id}-org"
+
+    def get_pipeline_components(self):
+        unet = UNet2DConditionModel(
+            block_out_channels=(32, 64),
+            layers_per_block=2,
+            sample_size=32,
+            in_channels=4,
+            out_channels=4,
+            down_block_types=("DownBlock2D", "CrossAttnDownBlock2D"),
+            up_block_types=("CrossAttnUpBlock2D", "UpBlock2D"),
+            cross_attention_dim=32,
+        )
+
+        scheduler = DDIMScheduler(
+            beta_start=0.00085,
+            beta_end=0.012,
+            beta_schedule="scaled_linear",
+            clip_sample=False,
+            set_alpha_to_one=False,
+        )
+
+        vae = AutoencoderKL(
+            block_out_channels=[32, 64],
+            in_channels=3,
+            out_channels=3,
+            down_block_types=["DownEncoderBlock2D", "DownEncoderBlock2D"],
+            up_block_types=["UpDecoderBlock2D", "UpDecoderBlock2D"],
+            latent_channels=4,
+        )
+
+        text_encoder_config = CLIPTextConfig(
+            bos_token_id=0,
+            eos_token_id=2,
+            hidden_size=32,
+            intermediate_size=37,
+            layer_norm_eps=1e-05,
+            num_attention_heads=4,
+            num_hidden_layers=5,
+            pad_token_id=1,
+            vocab_size=1000,
+        )
+        text_encoder = CLIPTextModel(text_encoder_config)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            dummy_vocab = {"<|startoftext|>": 0, "<|endoftext|>": 1, "!": 2}
+            vocab_path = os.path.join(tmpdir, "vocab.json")
+            with open(vocab_path, "w") as f:
+                json.dump(dummy_vocab, f)
+
+            merges = "Ġ t\nĠt h"
+            merges_path = os.path.join(tmpdir, "merges.txt")
+            with open(merges_path, "w") as f:
+                f.writelines(merges)
+            tokenizer = CLIPTokenizer(vocab_file=vocab_path, merges_file=merges_path)
+
+        components = {
+            "unet": unet,
+            "scheduler": scheduler,
+            "vae": vae,
+            "text_encoder": text_encoder,
+            "tokenizer": tokenizer,
+            "safety_checker": None,
+            "feature_extractor": None,
+        }
+        return components
+
+    def test_push_to_hub(self):
+        components = self.get_pipeline_components()
+        pipeline = StableDiffusionPipeline(**components)
+        pipeline.push_to_hub(self.repo_id, token=TOKEN)
+
+        new_model = UNet2DConditionModel.from_pretrained(f"{USER}/{self.repo_id}", subfolder="unet")
+        unet = components["unet"]
+        for p1, p2 in zip(unet.parameters(), new_model.parameters()):
+            assert torch.equal(p1, p2)
+
+        # Push to hub via save_pretrained to a separate repo. Reusing `self.repo_id` after
+        # deleting it makes the staging server's LFS GC reject the next commit with
+        # "LFS pointer pointed to a file that does not exist" when the model bytes are identical.
+        save_repo_id = f"{self.repo_id}-saved"
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            pipeline.save_pretrained(tmp_dir, repo_id=save_repo_id, push_to_hub=True, token=TOKEN)
+
+        new_model = UNet2DConditionModel.from_pretrained(f"{USER}/{save_repo_id}", subfolder="unet")
+        for p1, p2 in zip(unet.parameters(), new_model.parameters()):
+            assert torch.equal(p1, p2)
+
+        # Reset repos
+        delete_repo(token=TOKEN, repo_id=self.repo_id)
+        delete_repo(save_repo_id, token=TOKEN)
+
+    def test_push_to_hub_in_organization(self):
+        components = self.get_pipeline_components()
+        pipeline = StableDiffusionPipeline(**components)
+        pipeline.push_to_hub(self.org_repo_id, token=TOKEN)
+
+        new_model = UNet2DConditionModel.from_pretrained(self.org_repo_id, subfolder="unet")
+        unet = components["unet"]
+        for p1, p2 in zip(unet.parameters(), new_model.parameters()):
+            assert torch.equal(p1, p2)
+
+        # Push to hub via save_pretrained to a separate repo. Reusing `self.org_repo_id` after
+        # deleting it makes the staging server's LFS GC reject the next commit with
+        # "LFS pointer pointed to a file that does not exist" when the model bytes are identical.
+        save_org_repo_id = f"{self.org_repo_id}-saved"
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            pipeline.save_pretrained(tmp_dir, push_to_hub=True, token=TOKEN, repo_id=save_org_repo_id)
+
+        new_model = UNet2DConditionModel.from_pretrained(save_org_repo_id, subfolder="unet")
+        for p1, p2 in zip(unet.parameters(), new_model.parameters()):
+            assert torch.equal(p1, p2)
+
+        # Reset repos
+        delete_repo(token=TOKEN, repo_id=self.org_repo_id)
+        delete_repo(save_org_repo_id, token=TOKEN)
+
+    @pytest.mark.skipif(
+        not is_jinja_available(),
+        reason="Model card tests cannot be performed without Jinja installed.",
+    )
+    def test_push_to_hub_library_name(self):
+        components = self.get_pipeline_components()
+        pipeline = StableDiffusionPipeline(**components)
+        # Use a method-unique repo to avoid recycling a name that `test_push_to_hub` just deleted,
+        # which the staging server rejects with an LFS pointer error.
+        repo_id = f"test-pipeline-library-name-{uuid.uuid4()}"
+        pipeline.push_to_hub(repo_id, token=TOKEN)
+
+        model_card = ModelCard.load(f"{USER}/{repo_id}", token=TOKEN).data
+        assert model_card.library_name == "diffusers"
+
+        # Reset repo
+        delete_repo(repo_id, token=TOKEN)

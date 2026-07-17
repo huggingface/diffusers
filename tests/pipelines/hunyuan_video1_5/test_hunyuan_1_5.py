@@ -63,7 +63,6 @@ class HunyuanVideo15PipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     test_xformers_attention = False
     test_layerwise_casting = True
     test_group_offloading = False
-    supports_dduf = False
 
     def get_dummy_components(self, num_layers: int = 1):
         torch.manual_seed(0)

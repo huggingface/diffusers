@@ -1,7 +1,7 @@
 import gc
-import unittest
 
 import numpy as np
+import pytest
 import torch
 import torch.nn as nn
 
@@ -56,23 +56,23 @@ enable_full_determinism()
 @require_accelerator
 @require_gguf_version_greater_or_equal("0.10.0")
 @require_kernels_version_greater_or_equal("0.9.0")
-class GGUFCudaKernelsTests(unittest.TestCase):
-    def setUp(self):
+class TestGGUFCudaKernels:
+    @pytest.fixture(autouse=True)
+    def _setup_cuda_kernels(self):
         gc.collect()
         backend_empty_cache(torch_device)
-
-    def tearDown(self):
+        yield
         gc.collect()
         backend_empty_cache(torch_device)
 
     def test_cuda_kernels_vs_native(self):
         if torch_device != "cuda":
-            self.skipTest("CUDA kernels test requires CUDA device")
+            pytest.skip("CUDA kernels test requires CUDA device")
 
         from diffusers.quantizers.gguf.utils import GGUFLinear, can_use_cuda_kernels
 
         if not can_use_cuda_kernels:
-            self.skipTest("CUDA kernels not available (compute capability < 7 or kernels not installed)")
+            pytest.skip("CUDA kernels not available (compute capability < 7 or kernels not installed)")
 
         test_quant_types = ["Q4_0", "Q4_K"]
         test_shape = (1, 64, 512)  # batch, seq_len, hidden_dim
@@ -172,20 +172,20 @@ class GGUFSingleFileTesterMixin:
         quantization_config = GGUFQuantizationConfig(compute_dtype=self.torch_dtype)
         model = self.model_cls.from_single_file(self.ckpt_path, quantization_config=quantization_config)
 
-        with self.assertRaises(ValueError):
+        with pytest.raises(ValueError):
             # Tries with a `dtype`
             model.to(torch.float16)
 
-        with self.assertRaises(ValueError):
+        with pytest.raises(ValueError):
             # Tries with a `device` and `dtype`
             device_0 = f"{torch_device}:0"
             model.to(device=device_0, dtype=torch.float16)
 
-        with self.assertRaises(ValueError):
+        with pytest.raises(ValueError):
             # Tries with a cast
             model.float()
 
-        with self.assertRaises(ValueError):
+        with pytest.raises(ValueError):
             # Tries with a cast
             model.half()
 
@@ -211,18 +211,18 @@ class GGUFSingleFileTesterMixin:
             _check_for_gguf_linear(module)
 
 
-class FluxGGUFSingleFileTests(GGUFSingleFileTesterMixin, unittest.TestCase):
+class TestFluxGGUFSingleFile(GGUFSingleFileTesterMixin):
     ckpt_path = "https://huggingface.co/city96/FLUX.1-dev-gguf/blob/main/flux1-dev-Q2_K.gguf"
     diffusers_ckpt_path = "https://huggingface.co/sayakpaul/flux-diffusers-gguf/blob/main/model-Q4_0.gguf"
     torch_dtype = torch.bfloat16
     model_cls = FluxTransformer2DModel
     expected_memory_use_in_gb = 5
 
-    def setUp(self):
+    @pytest.fixture(autouse=True)
+    def _setup_flux(self):
         gc.collect()
         backend_empty_cache(torch_device)
-
-    def tearDown(self):
+        yield
         gc.collect()
         backend_empty_cache(torch_device)
 
@@ -309,17 +309,17 @@ class FluxGGUFSingleFileTests(GGUFSingleFileTesterMixin, unittest.TestCase):
         model(**self.get_dummy_inputs())
 
 
-class SD35LargeGGUFSingleFileTests(GGUFSingleFileTesterMixin, unittest.TestCase):
+class TestSD35LargeGGUFSingleFile(GGUFSingleFileTesterMixin):
     ckpt_path = "https://huggingface.co/city96/stable-diffusion-3.5-large-gguf/blob/main/sd3.5_large-Q4_0.gguf"
     torch_dtype = torch.bfloat16
     model_cls = SD3Transformer2DModel
     expected_memory_use_in_gb = 5
 
-    def setUp(self):
+    @pytest.fixture(autouse=True)
+    def _setup_sd35_large(self):
         gc.collect()
         backend_empty_cache(torch_device)
-
-    def tearDown(self):
+        yield
         gc.collect()
         backend_empty_cache(torch_device)
 
@@ -428,17 +428,17 @@ class SD35LargeGGUFSingleFileTests(GGUFSingleFileTesterMixin, unittest.TestCase)
         assert max_diff < 1e-4
 
 
-class SD35MediumGGUFSingleFileTests(GGUFSingleFileTesterMixin, unittest.TestCase):
+class TestSD35MediumGGUFSingleFile(GGUFSingleFileTesterMixin):
     ckpt_path = "https://huggingface.co/city96/stable-diffusion-3.5-medium-gguf/blob/main/sd3.5_medium-Q3_K_M.gguf"
     torch_dtype = torch.bfloat16
     model_cls = SD3Transformer2DModel
     expected_memory_use_in_gb = 2
 
-    def setUp(self):
+    @pytest.fixture(autouse=True)
+    def _setup_sd35_medium(self):
         gc.collect()
         backend_empty_cache(torch_device)
-
-    def tearDown(self):
+        yield
         gc.collect()
         backend_empty_cache(torch_device)
 
@@ -508,17 +508,17 @@ class SD35MediumGGUFSingleFileTests(GGUFSingleFileTesterMixin, unittest.TestCase
         assert max_diff < 1e-4
 
 
-class AuraFlowGGUFSingleFileTests(GGUFSingleFileTesterMixin, unittest.TestCase):
+class TestAuraFlowGGUFSingleFile(GGUFSingleFileTesterMixin):
     ckpt_path = "https://huggingface.co/city96/AuraFlow-v0.3-gguf/blob/main/aura_flow_0.3-Q2_K.gguf"
     torch_dtype = torch.bfloat16
     model_cls = AuraFlowTransformer2DModel
     expected_memory_use_in_gb = 4
 
-    def setUp(self):
+    @pytest.fixture(autouse=True)
+    def _setup_auraflow(self):
         gc.collect()
         backend_empty_cache(torch_device)
-
-    def tearDown(self):
+        yield
         gc.collect()
         backend_empty_cache(torch_device)
 
@@ -589,7 +589,7 @@ class AuraFlowGGUFSingleFileTests(GGUFSingleFileTesterMixin, unittest.TestCase):
 @require_big_accelerator
 @require_accelerate
 @require_gguf_version_greater_or_equal("0.10.0")
-class FluxControlLoRAGGUFTests(unittest.TestCase):
+class TestFluxControlLoRAGGUF:
     def test_lora_loading(self):
         ckpt_path = "https://huggingface.co/city96/FLUX.1-dev-gguf/blob/main/flux1-dev-Q2_K.gguf"
         transformer = FluxTransformer2DModel.from_single_file(
@@ -624,10 +624,10 @@ class FluxControlLoRAGGUFTests(unittest.TestCase):
         expected_slice = np.array([0.8047, 0.8359, 0.8711, 0.6875, 0.7070, 0.7383, 0.5469, 0.5820, 0.6641])
 
         max_diff = numpy_cosine_similarity_distance(expected_slice, out_slice)
-        self.assertTrue(max_diff < 1e-3)
+        assert max_diff < 1e-3
 
 
-class HiDreamGGUFSingleFileTests(GGUFSingleFileTesterMixin, unittest.TestCase):
+class TestHiDreamGGUFSingleFile(GGUFSingleFileTesterMixin):
     ckpt_path = "https://huggingface.co/city96/HiDream-I1-Dev-gguf/blob/main/hidream-i1-dev-Q2_K.gguf"
     torch_dtype = torch.bfloat16
     model_cls = HiDreamImageTransformer2DModel
@@ -654,7 +654,7 @@ class HiDreamGGUFSingleFileTests(GGUFSingleFileTesterMixin, unittest.TestCase):
         }
 
 
-class WanGGUFTexttoVideoSingleFileTests(GGUFSingleFileTesterMixin, unittest.TestCase):
+class TestWanGGUFTexttoVideoSingleFile(GGUFSingleFileTesterMixin):
     ckpt_path = "https://huggingface.co/city96/Wan2.1-T2V-14B-gguf/blob/main/wan2.1-t2v-14b-Q3_K_S.gguf"
     torch_dtype = torch.bfloat16
     model_cls = WanTransformer3DModel
@@ -673,7 +673,7 @@ class WanGGUFTexttoVideoSingleFileTests(GGUFSingleFileTesterMixin, unittest.Test
         }
 
 
-class WanGGUFImagetoVideoSingleFileTests(GGUFSingleFileTesterMixin, unittest.TestCase):
+class TestWanGGUFImagetoVideoSingleFile(GGUFSingleFileTesterMixin):
     ckpt_path = "https://huggingface.co/city96/Wan2.1-I2V-14B-480P-gguf/blob/main/wan2.1-i2v-14b-480p-Q3_K_S.gguf"
     torch_dtype = torch.bfloat16
     model_cls = WanTransformer3DModel
@@ -695,7 +695,7 @@ class WanGGUFImagetoVideoSingleFileTests(GGUFSingleFileTesterMixin, unittest.Tes
         }
 
 
-class WanVACEGGUFSingleFileTests(GGUFSingleFileTesterMixin, unittest.TestCase):
+class TestWanVACEGGUFSingleFile(GGUFSingleFileTesterMixin):
     ckpt_path = "https://huggingface.co/QuantStack/Wan2.1_14B_VACE-GGUF/blob/main/Wan2.1_14B_VACE-Q3_K_S.gguf"
     torch_dtype = torch.bfloat16
     model_cls = WanVACETransformer3DModel
@@ -722,7 +722,7 @@ class WanVACEGGUFSingleFileTests(GGUFSingleFileTesterMixin, unittest.TestCase):
         }
 
 
-class WanAnimateGGUFSingleFileTests(GGUFSingleFileTesterMixin, unittest.TestCase):
+class TestWanAnimateGGUFSingleFile(GGUFSingleFileTesterMixin):
     ckpt_path = "https://huggingface.co/QuantStack/Wan2.2-Animate-14B-GGUF/blob/main/Wan2.2-Animate-14B-Q3_K_S.gguf"
     torch_dtype = torch.bfloat16
     model_cls = WanAnimateTransformer3DModel
@@ -750,7 +750,7 @@ class WanAnimateGGUFSingleFileTests(GGUFSingleFileTesterMixin, unittest.TestCase
 
 
 @require_torch_version_greater("2.7.1")
-class GGUFCompileTests(QuantCompileTests, unittest.TestCase):
+class TestGGUFCompile(QuantCompileTests):
     torch_dtype = torch.bfloat16
     gguf_ckpt = "https://huggingface.co/city96/FLUX.1-dev-gguf/blob/main/flux1-dev-Q2_K.gguf"
 
