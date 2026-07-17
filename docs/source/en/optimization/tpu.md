@@ -19,8 +19,6 @@ Four execution modes are available:
 | Mode | Constant | How to activate | Notes |
 |---|---|---|---|
 | **Strict Eager** (default) | `EagerMode.DEFER_NEVER` | just `import torch_tpu` | Operations dispatched one at a time, asynchronous |
-| **Debug Eager** | `EagerMode.DEFER_NEVER_AND_LAUNCH_BLOCKING` | `set_eager_mode(EagerMode.DEFER_NEVER_AND_LAUNCH_BLOCKING)` or `TPU_LAUNCH_BLOCKING=1` | Synchronous execution; useful for pinpointing errors |
-| **Fused Eager** | `EagerMode.DEFER_AND_FUSE` | `set_eager_mode(EagerMode.DEFER_AND_FUSE)` or `TPU_DEFER_AND_FUSE=1` | Groups multiple ops for XLA fusion; best throughput in eager mode |
 | **Compile** | — | `pipe.enable_tpu_compile()` | AOT compilation with `TpuBackend` |
 
 ## Installation
@@ -109,48 +107,10 @@ image.save("output.png")
 ## Eager mode
 
 TorchTPU defaults to **Strict Eager** (`EagerMode.DEFER_NEVER`): operations are dispatched one
-at a time asynchronously, matching standard PyTorch GPU behaviour. Two alternative eager modes
-are available:
-
-**Debug Eager** — synchronous execution; every op blocks until the TPU finishes. Useful for
-pinpointing the exact line that raises an error. Equivalent to `CUDA_LAUNCH_BLOCKING=1` on GPU.
-
-```python
-from torch_tpu._internal import execution_mode as em
-
-# Globally for the session
-em.eager_mode = em.EagerMode.DEFER_NEVER_AND_LAUNCH_BLOCKING
-
-# Or via environment variable (before importing torch_tpu):
-# TPU_LAUNCH_BLOCKING=1
-```
-
-**Fused Eager** — defers ops and lets the XLA compiler fuse across operation boundaries,
-reducing memory traffic and dispatch overhead without full AOT compilation.
-
-```python
-from torch_tpu._internal import execution_mode as em
-
-# Globally for the session
-em.eager_mode = em.EagerMode.DEFER_AND_FUSE
-
-# Or via environment variable (before importing torch_tpu):
-# TPU_DEFER_AND_FUSE=1
-```
-
-Use `set_eager_mode` as a context manager to switch modes for a single block:
-
-```python
-from torch_tpu._internal import execution_mode as em
-
-with em.set_eager_mode(em.EagerMode.DEFER_NEVER_AND_LAUNCH_BLOCKING):
-    # synchronous — pinpoints the exact failing line
-    output = model(input_data)
-```
+at a time asynchronously, matching standard PyTorch GPU behaviour.
 
 > [!TIP]
-> For the best production throughput, prefer `torch.compile` via `pipe.enable_tpu_compile()`,
-> which uses an Ahead-of-Time (AOT) strategy more aggressive than Fused Eager.
+> For the best production throughput, prefer `torch.compile` via `pipe.enable_tpu_compile()`.
 
 ## API reference
 
