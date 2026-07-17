@@ -277,15 +277,14 @@ def _fetch_state_dict(
 def _best_guess_weight_name(
     pretrained_model_name_or_path_or_dict, file_extension=".safetensors", local_files_only=False
 ):
-    if local_files_only or HF_HUB_OFFLINE:
-        raise ValueError("When using the offline mode, you must specify a `weight_name`.")
-
     targeted_files = []
 
     if os.path.isfile(pretrained_model_name_or_path_or_dict):
         return
     elif os.path.isdir(pretrained_model_name_or_path_or_dict):
         targeted_files = [f for f in os.listdir(pretrained_model_name_or_path_or_dict) if f.endswith(file_extension)]
+    elif local_files_only or HF_HUB_OFFLINE:
+        raise ValueError("When using the offline mode, you must specify a `weight_name`.")
     else:
         files_in_repo = model_info(pretrained_model_name_or_path_or_dict).siblings
         targeted_files = [f.rfilename for f in files_in_repo if f.rfilename.endswith(file_extension)]

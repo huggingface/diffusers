@@ -70,7 +70,6 @@ class HunyuanVideoFramepackPipelineFastTests(
         ]
     )
 
-    supports_dduf = False
     test_xformers_attention = False
     test_layerwise_casting = True
     test_group_offloading = True

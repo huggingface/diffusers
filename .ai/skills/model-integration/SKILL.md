@@ -87,41 +87,13 @@ Common conversion patterns to watch for model-level components:
 
 ## Testing
 
-Two test layers must be added for any new pipeline: pipeline-level tests, and (if a new model is introduced) model-level tests. Integration/slow tests and LoRA tests are **not** added in the initial PR — they come later, after discussion with maintainers.
-
-**General rules (apply to both layers):**
-- Keep component sizes tiny so the suite runs fast — small `num_layers`, small hidden/attention dims, low resolution, few frames. Reference `tests/pipelines/wan/test_wan.py` (`get_dummy_components` and `get_dummy_inputs`) for the size scale to target.
-- No LoRA tests in the initial PR (no `LoraTesterMixin`, no `tests/lora/test_lora_layers_<model>.py`).
-- No integration / slow tests in the initial PR — don't add anything gated on `@slow` / `RUN_SLOW=1` yet.
-
-### Pipeline-level tests
-
-- Location: `tests/pipelines/<model>/test_<model>.py` (one file per pipeline variant, e.g. T2V, I2V).
-- Subclass both `PipelineTesterMixin` (from `..test_pipelines_common`) and `unittest.TestCase`.
-- Set `pipeline_class`, `params`, `batch_params`, `image_params` from `..pipeline_params`, and any `required_optional_params` / capability flags (`test_xformers_attention`, `supports_dduf`, etc.) that apply.
-- Implement `get_dummy_components()` (build all sub-modules with tiny configs and a fixed `torch.manual_seed(0)` before each) and `get_dummy_inputs(device, seed=0)`.
-- Skip any inherited tests that don't apply with `@unittest.skip("Test not supported")` rather than deleting them.
-- Reference: `tests/pipelines/wan/test_wan.py`.
-
-### Model-level tests
-
-Only required if the pipeline introduces a new model class (transformer, VAE, etc.). Don't write these by hand — generate them (example command below):
-
-```bash
-python utils/generate_model_tests.py src/diffusers/models/transformers/transformer_<model>.py
-```
-
-- Run with **no `--include` flags** initially. The generator auto-detects mixins/attributes and emits the always-on testers (`ModelTesterMixin`, `MemoryTesterMixin`, `TorchCompileTesterMixin`, plus `AttentionTesterMixin` / `ContextParallelTesterMixin` / `TrainingTesterMixin` as applicable). Optional testers (quantization, caching, single-file, IP adapter, etc.) are added later, after maintainer discussion.
-- The generator writes to `tests/models/transformers/test_models_transformer_<model>.py` (or the matching `unets/` / `autoencoders/` subdir).
-- Fill in the `TODO`s in the generated `<Model>TesterConfig`: `pretrained_model_name_or_path`, `get_init_dict()` (tiny config), `get_dummy_inputs()`, `input_shape`, `output_shape`. Keep init dims small for speed.
-- Do **not** add `LoraTesterMixin` at the start, even if the model subclasses `PeftAdapterMixin` — strip it from the generated file for the initial PR.
-- Reference: `tests/models/transformers/test_models_transformer_flux.py`.
+Two test layers must be added for any new pipeline: pipeline-level tests, and (if a new model is introduced) model-level tests. Conventions for both layers — file locations, tester mixins, dummy-component rules — live in [testing.md](../../testing.md); follow it when writing the tests.
 
 ## Model parity test
 
 Confirm the diffusers implementation matches the reference. Test each component on **CPU/float32** with a strict tolerance (`max_diff < 1e-3`), comparing the **freshly converted** weights against the reference in a single script — both sides side by side, nothing saved to disk in between. See [pitfalls.md](pitfalls.md) for the common sources of numerical discrepancy.
 
-This is an **internal verification tool for integration — it should not be shipped in the PR** (it imports the reference repo). The tests that ship with the PR are the model-level and pipeline-level tests in **Testing**.
+This is an **internal verification tool for integration — it should not be shipped in the PR** (it imports the reference repo). The tests that ship with the PR are the model-level and pipeline-level tests in [testing.md](../../testing.md).
 
 The example below is schematic (placeholder names). `ReferenceModel` is the component **imported from the original repo**, and `convert_my_component` is **the same conversion function you wrote for the conversion script for the component**. You should make sure both load the *same* checkpoint weights and run the *same* input, so any difference is a conversion or implementation bug — not a difference in inputs.
 
