@@ -454,7 +454,8 @@ class PipelineTesterMixin(BasePipelineOutputMixin):
 
     def test_save_load_optional_components(self, tmp_path, expected_max_difference=1e-4):
         if not getattr(self.pipeline_class, "_optional_components", None):
-            return
+            pytest.skip(f"Skipping test because {self.pipeline_class} has no `_optional_components`.")
+
         components = self.get_dummy_components()
         for key in components:
             if "text_encoder" in key and hasattr(components[key], "eval"):
@@ -560,7 +561,9 @@ class PipelineTesterMixin(BasePipelineOutputMixin):
         sig = inspect.signature(self.pipeline_class.__call__)
 
         if "guidance_scale" not in sig.parameters:
-            return
+            pytest.skip(
+                f"Skipping test because `guidance_scale` wasn't found in the args accepted in {self.pipeline_class}'s call."
+            )
 
         components = self.get_dummy_components()
         pipe = self.pipeline_class(**components)
@@ -583,7 +586,9 @@ class PipelineTesterMixin(BasePipelineOutputMixin):
         has_callback_step_end = "callback_on_step_end" in sig.parameters
 
         if not (has_callback_tensor_inputs and has_callback_step_end):
-            return
+            pytest.skip(
+                f"Skipping test because `callback_on_step_end` and `callback_on_step_end_tensor_inputs` weren't both found in the args accepted in {self.pipeline_class}'s call."
+            )
 
         components = self.get_dummy_components()
         pipe = self.pipeline_class(**components)
@@ -643,10 +648,14 @@ class PipelineTesterMixin(BasePipelineOutputMixin):
         has_callback_step_end = "callback_on_step_end" in sig.parameters
 
         if not (has_callback_tensor_inputs and has_callback_step_end):
-            return
+            pytest.skip(
+                f"Skipping test because `callback_on_step_end` and `callback_on_step_end_tensor_inputs` weren't both found in the args accepted in {self.pipeline_class}'s call."
+            )
 
         if "guidance_scale" not in sig.parameters:
-            return
+            pytest.skip(
+                f"Skipping test because `guidance_scale` wasn't found in the args accepted in {self.pipeline_class}'s call."
+            )
 
         components = self.get_dummy_components()
         pipe = self.pipeline_class(**components)
@@ -750,7 +759,7 @@ class PipelineTesterMixin(BasePipelineOutputMixin):
 
     def test_encode_prompt_works_in_isolation(self, extra_required_param_value_dict=None, atol=1e-4, rtol=1e-4):
         if not hasattr(self.pipeline_class, "encode_prompt"):
-            return
+            pytest.skip(f"Skipping test because {self.pipeline_class} doesn't have an `encode_prompt` method.")
 
         components = self.get_dummy_components()
         for key in components:
