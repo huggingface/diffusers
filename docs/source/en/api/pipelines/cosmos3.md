@@ -991,16 +991,12 @@ export_to_video(videos, "cosmos3_modular_transfer_edge.mp4", fps=30, macro_block
 
 ### Distilled (few-step) text-to-image and image-to-video
 
-Few-step distilled checkpoints ship a fixed sigma schedule in
-`scheduler.config.fixed_step_sampler_config.t_list` and bake classifier-free guidance into
-the weights. They are served by the dedicated [`Cosmos3DistilledModularPipeline`] (blocks:
-`Cosmos3DistilledBlocks`) — the task-based [`Cosmos3OmniPipeline`] and the base
-[`Cosmos3OmniModularPipeline`] do not implement the distilled contract.
-
-Load a distilled repo and call the pipeline **without** `num_inference_steps` or
-`guidance_scale`; `Cosmos3DistilledSetTimestepsStep` reads the fixed step count from the
-scheduler config and forces `guidance_scale=1.0`. Because classifier-free guidance is baked
-into the weights, `negative_prompt` is not supported (passing one raises an error).
+Few-step distilled checkpoints are served by [`Cosmos3DistilledModularPipeline`] (blocks:
+`Cosmos3DistilledBlocks`); the base [`Cosmos3OmniModularPipeline`] and [`Cosmos3OmniPipeline`] do
+not support them. `num_inference_steps` is fixed to the length of the `distilled_sigmas` pipeline
+config (from the checkpoint's `modular_model_index.json`) and `guidance_scale` is forced to
+1.0 since guidance is baked into the weights — passing any other value for either raises an error,
+and `negative_prompt` is warned about and ignored.
 
 Prompts follow the same descriptive JSON structure as the non-distilled models, so short text
 must be upsampled first — use `--mode text2image` (T2I) or `--mode image2video` (I2V) as
