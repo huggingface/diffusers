@@ -532,7 +532,9 @@ class PipelineTesterMixin(BasePipelineOutputMixin):
         sig = inspect.signature(self.pipeline_class.__call__)
 
         if "num_images_per_prompt" not in sig.parameters:
-            return
+            pytest.skip(
+                f"Skipping test because `num_images_per_prompt` wasn't found in the args accepted in {self.pipeline_class}'s call."
+            )
 
         components = self.get_dummy_components()
         pipe = self.pipeline_class(**components)
