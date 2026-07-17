@@ -61,7 +61,6 @@ class Cosmos2TextToImagePipelineFastTests(PipelineTesterMixin, unittest.TestCase
             "callback_on_step_end_tensor_inputs",
         ]
     )
-    supports_dduf = False
     test_xformers_attention = False
     test_layerwise_casting = True
     test_group_offloading = True
@@ -331,6 +330,27 @@ class Cosmos2TextToImagePipelineFastTests(PipelineTesterMixin, unittest.TestCase
                     component.dtype,
                     expected_dtype,
                     f"Component '{name}' has dtype {component.dtype} but expected {expected_dtype}",
+                )
+
+    def test_dtype_alias(self):
+        # `dtype` is an alias for `torch_dtype` in `from_pretrained`.
+        components = self.get_dummy_components()
+        pipe = self.pipeline_class(**components)
+
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname:
+            pipe.save_pretrained(tmpdirname, safe_serialization=False)
+            loaded_pipe = self.pipeline_class.from_pretrained(
+                tmpdirname, safety_checker=DummyCosmosSafetyChecker(), dtype=torch.float16
+            )
+
+        for name, component in loaded_pipe.components.items():
+            if name == "safety_checker":
+                continue
+            if isinstance(component, torch.nn.Module) and hasattr(component, "dtype"):
+                self.assertEqual(
+                    component.dtype,
+                    torch.float16,
+                    f"Component '{name}' has dtype {component.dtype} but expected {torch.float16}",
                 )
 
     @unittest.skip(

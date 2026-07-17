@@ -132,6 +132,11 @@ def save_model_card(
     if not _is_hub_id(inference_model):
         inference_model = "krea/Krea-2-Turbo"
 
+    # List Turbo first in the card's `base_model` metadata: the Hub keys the Inference Providers
+    # widget off the first entry, and these LoRAs are served on Turbo — so leading with it enables
+    # the widget on the pushed LoRA. RAW (the training base) stays linked as the second entry.
+    card_base_models = [inference_model] + ([card_base_model] if card_base_model != inference_model else [])
+
     model_description = f"""
 # Krea 2 DreamBooth LoRA - {repo_id}
 
@@ -174,7 +179,7 @@ For more details, including weighting, merging and fusing LoRAs, check the [docu
         repo_id_or_path=repo_id,
         from_training=True,
         license="apache-2.0",
-        base_model=card_base_model,
+        base_model=card_base_models,
         prompt=instance_prompt,
         model_description=model_description,
         widget=widget_dict,

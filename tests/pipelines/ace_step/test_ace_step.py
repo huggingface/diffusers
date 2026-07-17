@@ -139,7 +139,6 @@ class AceStepPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     # ACE-Step uses custom attention, not standard diffusers attention processors
     test_attention_slicing = False
     test_xformers_attention = False
-    supports_dduf = False
 
     def get_dummy_components(self):
         torch.manual_seed(0)

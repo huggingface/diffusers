@@ -46,7 +46,6 @@ class CogView4PipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         ]
     )
 
-    supports_dduf = False
     test_xformers_attention = False
     test_layerwise_casting = True
 
