@@ -195,7 +195,9 @@ class TestCosmos3OmniTransformerModel(Cosmos3OmniTransformerTesterConfig, ModelT
 
 
 class TestCosmos3OmniTransformerMemory(Cosmos3OmniTransformerTesterConfig, MemoryTesterMixin):
-    pass
+    @pytest.mark.skip("The transformer returns one tensor list per generated modality.")
+    def test_layerwise_casting_training(self):
+        super().test_layerwise_casting_training()
 
 
 class TestCosmos3OmniTransformerTorchCompile(Cosmos3OmniTransformerTesterConfig, TorchCompileTesterMixin):
