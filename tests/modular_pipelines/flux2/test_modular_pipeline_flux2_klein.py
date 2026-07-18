@@ -49,6 +49,7 @@ class TestFlux2KleinModularPipelineFast(ModularPipelineTesterMixin):
 
     params = frozenset(["prompt", "height", "width"])
     batch_params = frozenset(["prompt"])
+    not_params = frozenset(["negative_prompt"])
     expected_workflow_blocks = FLUX2_KLEIN_WORKFLOWS
 
     def get_dummy_inputs(self, seed=0):
@@ -94,6 +95,7 @@ class TestFlux2KleinImageConditionedModularPipelineFast(ModularPipelineTesterMix
 
     params = frozenset(["prompt", "height", "width", "image"])
     batch_params = frozenset(["prompt", "image"])
+    not_params = frozenset(["negative_prompt"])
     expected_workflow_blocks = FLUX2_KLEIN_IMAGE_CONDITIONED_WORKFLOWS
 
     def get_dummy_inputs(self, seed=0):
