@@ -762,15 +762,17 @@ def format_params(params, header="Args", indent_level=4, max_line_length=115):
         if hasattr(param, "required"):
             if not param.required:
                 param_str += ", *optional*"
-                if param.default is not None:
+                if getattr(param, "defaults_by_block", None):
+                    distinct_defaults = list(dict.fromkeys(param.defaults_by_block.values()))
+                    param_str += (
+                        f", defaults to {' or '.join(str(v) for v in distinct_defaults)}, depending on the workflow"
+                    )
+                elif param.default is not None:
                     param_str += f", defaults to {param.default}"
         param_str += "):"
 
         # Add description on a new line with additional indentation and wrapping
         desc = param.description if param.description else "TODO: Add description."
-        if getattr(param, "defaults_by_block", None):
-            per_block = ", ".join(f"{v} (`{block}`)" for block, v in param.defaults_by_block.items())
-            desc = f"{desc} Default depends on the selected block: {per_block}."
         desc = re.sub(r"\[(.*?)\]\((https?://[^\s\)]+)\)", r"[\1](\2)", desc)
         wrapped_desc = wrap_text(desc, desc_indent, max_line_length)
         param_str += f"\n{desc_indent}{wrapped_desc}"
@@ -837,14 +839,16 @@ def format_params_markdown(params, header="Inputs"):
 
         if hasattr(param, "required") and not param.required:
             param_str += ", *optional*"
-            if param.default is not None:
+            if getattr(param, "defaults_by_block", None):
+                distinct_defaults = list(dict.fromkeys(param.defaults_by_block.values()))
+                param_str += (
+                    f", defaults to {' or '.join(f'`{v}`' for v in distinct_defaults)}, depending on the workflow"
+                )
+            elif param.default is not None:
                 param_str += f", defaults to `{param.default}`"
         param_str += ")"
 
         desc = param.description if param.description else "No description provided"
-        if getattr(param, "defaults_by_block", None):
-            per_block = ", ".join(f"`{v}` (`{block}`)" for block, v in param.defaults_by_block.items())
-            desc = f"{desc} Default depends on the selected block: {per_block}."
         param_str += f": {desc}"
         lines.append(param_str)
 

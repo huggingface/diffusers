@@ -387,7 +387,7 @@ class TestConditionalBlocksBranchDefaults:
 
     def test_doc_renders_per_block_defaults(self):
         doc = " ".join(AutoVideoBlocks().doc.split())
-        assert "Default depends on the selected block: None (`action`), 189 (`plain`)." in doc
+        assert "num_frames (`int`, *optional*, defaults to None or 189, depending on the workflow):" in doc
 
     def test_nested_defaults_prefixed_with_sub_block_name(self):
         merged = {p.name: p for p in NestedVideoBlocks().inputs}["num_frames"]
