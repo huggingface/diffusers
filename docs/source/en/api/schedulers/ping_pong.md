@@ -29,7 +29,3 @@ This "ping-pong" of denoise → re-noise encourages diversity while remaining ef
 [[autodoc]] PingPongScheduler
 	- all
 	- step
-
-## PingPongSchedulerOutput
-
-[[autodoc]] PingPongSchedulerOutput
