@@ -42,13 +42,13 @@ class QwenImagePipelineTesterConfig(BasePipelineTesterConfig):
     )
     batch_input_params = frozenset(["prompt"])
 
-    def get_dummy_components(self):
+    def get_dummy_components(self, num_layers: int = 2):
         torch.manual_seed(0)
         transformer = QwenImageTransformer2DModel(
             patch_size=2,
             in_channels=16,
             out_channels=4,
-            num_layers=2,
+            num_layers=num_layers,
             attention_head_dim=16,
             num_attention_heads=3,
             joint_attention_dim=16,
