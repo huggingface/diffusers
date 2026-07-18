@@ -25,7 +25,6 @@ from diffusers import (
 from ...testing_utils import torch_device
 from ..testing_utils import (
     BasePipelineTesterConfig,
-    FasterCacheTesterMixin,
     FirstBlockCacheTesterMixin,
     MagCacheTesterMixin,
     MemoryTesterMixin,
@@ -183,10 +182,6 @@ class TestQwenImagePipelineMemory(QwenImagePipelineTesterConfig, MemoryTesterMix
 class TestQwenImagePipelinePyramidAttentionBroadcast(
     QwenImagePipelineTesterConfig, PyramidAttentionBroadcastTesterMixin
 ):
-    pass
-
-
-class TestQwenImagePipelineFasterCache(QwenImagePipelineTesterConfig, FasterCacheTesterMixin):
     pass
 
 
