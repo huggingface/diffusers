@@ -26,15 +26,8 @@ from transformers import (
 
 from diffusers import AutoencoderKLWan, FlowMatchEulerDiscreteScheduler, WanImageToVideoPipeline, WanTransformer3DModel
 
-from ...testing_utils import (
-    assert_tensors_close,
-    torch_device,
-)
-from ..testing_utils import (
-    BasePipelineTesterConfig,
-    MemoryTesterMixin,
-    PipelineTesterMixin,
-)
+from ...testing_utils import assert_tensors_close, torch_device
+from ..testing_utils import BasePipelineTesterConfig, MemoryTesterMixin, PipelineTesterMixin
 
 
 class WanImageToVideoPipelineTesterConfig(BasePipelineTesterConfig):
