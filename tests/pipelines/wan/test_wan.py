@@ -27,11 +27,7 @@ from ...testing_utils import (
     slow,
     torch_device,
 )
-from ..testing_utils import (
-    BasePipelineTesterConfig,
-    MemoryTesterMixin,
-    PipelineTesterMixin,
-)
+from ..testing_utils import BasePipelineTesterConfig, MemoryTesterMixin, PipelineTesterMixin
 
 
 class WanPipelineTesterConfig(BasePipelineTesterConfig):
