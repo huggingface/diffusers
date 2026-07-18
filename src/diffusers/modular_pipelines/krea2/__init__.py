@@ -22,7 +22,8 @@ except OptionalDependencyNotAvailable:
     _dummy_objects.update(get_objects_from_module(dummy_torch_and_transformers_objects))
 else:
     _import_structure["modular_blocks_krea2"] = ["Krea2AutoBlocks"]
-    _import_structure["modular_pipeline"] = ["Krea2ModularPipeline"]
+    _import_structure["modular_blocks_krea2_turbo"] = ["Krea2TurboAutoBlocks"]
+    _import_structure["modular_pipeline"] = ["Krea2ModularPipeline", "Krea2TurboModularPipeline"]
 
 if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     try:
@@ -32,7 +33,8 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from ...utils.dummy_torch_and_transformers_objects import *  # noqa F403
     else:
         from .modular_blocks_krea2 import Krea2AutoBlocks
-        from .modular_pipeline import Krea2ModularPipeline
+        from .modular_blocks_krea2_turbo import Krea2TurboAutoBlocks
+        from .modular_pipeline import Krea2ModularPipeline, Krea2TurboModularPipeline
 else:
     import sys
 

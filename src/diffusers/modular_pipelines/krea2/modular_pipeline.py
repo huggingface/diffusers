@@ -50,3 +50,18 @@ class Krea2ModularPipeline(ModularPipeline, Krea2LoraLoaderMixin):
         if hasattr(self, "guider") and self.guider is not None:
             requires_unconditional_embeds = self.guider._enabled and self.guider.num_conditions > 1
         return requires_unconditional_embeds
+
+
+class Krea2TurboModularPipeline(Krea2ModularPipeline):
+    """
+    A ModularPipeline for the distilled Krea 2 turbo (TDM) checkpoint. It runs without classifier-free guidance, so it
+    takes no negative prompt and has no guider.
+
+    > [!WARNING] > This is an experimental feature!
+    """
+
+    default_blocks_name = "Krea2TurboAutoBlocks"
+
+    @property
+    def requires_unconditional_embeds(self):
+        return False

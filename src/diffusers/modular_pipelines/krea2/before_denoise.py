@@ -21,7 +21,7 @@ from ...schedulers import FlowMatchEulerDiscreteScheduler
 from ...utils import logging
 from ...utils.torch_utils import randn_tensor
 from ..modular_pipeline import ModularPipelineBlocks, PipelineState
-from ..modular_pipeline_utils import ComponentSpec, ConfigSpec, InputParam, OutputParam
+from ..modular_pipeline_utils import ComponentSpec, InputParam, OutputParam
 from .modular_pipeline import Krea2ModularPipeline
 
 
@@ -165,6 +165,93 @@ class Krea2TextInputsStep(ModularPipelineBlocks):
 
 
 # auto_docstring
+class Krea2TurboTextInputsStep(ModularPipelineBlocks):
+    """
+    Input step for the distilled Krea 2 turbo checkpoint that determines `batch_size`/`dtype` from the per-prompt
+    `prompt_embeds` and replicates the text conditioning to `batch_size * num_images_per_prompt`. The distilled
+    checkpoint runs without classifier-free guidance, so there is no negative branch. Place after the text encoder.
+
+      Inputs:
+          num_images_per_prompt (`int`, *optional*, defaults to 1):
+              The number of images to generate per prompt.
+          prompt_embeds (`Tensor`):
+              Per-prompt stacked text features (B, text_seq_len, num_text_layers, text_hidden_dim).
+          prompt_embeds_mask (`Tensor`):
+              Per-prompt boolean text mask (B, text_seq_len).
+
+      Outputs:
+          batch_size (`int`):
+              Effective batch size (num prompts * num_images_per_prompt).
+          dtype (`dtype`):
+              The dtype of the text features.
+          prompt_embeds (`Tensor`):
+              Text features, batch-expanded.
+          prompt_embeds_mask (`Tensor`):
+              Text mask, batch-expanded.
+    """
+
+    model_name = "krea2"
+
+    @property
+    def description(self) -> str:
+        return (
+            "Input step for the distilled Krea 2 turbo checkpoint that determines `batch_size`/`dtype` from the "
+            "per-prompt `prompt_embeds` and replicates the text conditioning to `batch_size * num_images_per_prompt`. "
+            "The distilled checkpoint runs without classifier-free guidance, so there is no negative branch. Place "
+            "after the text encoder."
+        )
+
+    @property
+    def inputs(self) -> list[InputParam]:
+        return [
+            InputParam.template("num_images_per_prompt", default=1),
+            InputParam(
+                name="prompt_embeds",
+                required=True,
+                type_hint=torch.Tensor,
+                description="Per-prompt stacked text features (B, text_seq_len, num_text_layers, text_hidden_dim).",
+            ),
+            InputParam(
+                name="prompt_embeds_mask",
+                required=True,
+                type_hint=torch.Tensor,
+                description="Per-prompt boolean text mask (B, text_seq_len).",
+            ),
+        ]
+
+    @property
+    def intermediate_outputs(self) -> list[OutputParam]:
+        return [
+            OutputParam(
+                name="batch_size",
+                type_hint=int,
+                description="Effective batch size (num prompts * num_images_per_prompt).",
+            ),
+            OutputParam(name="dtype", type_hint=torch.dtype, description="The dtype of the text features."),
+            OutputParam(name="prompt_embeds", type_hint=torch.Tensor, description="Text features, batch-expanded."),
+            OutputParam(name="prompt_embeds_mask", type_hint=torch.Tensor, description="Text mask, batch-expanded."),
+        ]
+
+    @torch.no_grad()
+    def __call__(self, components: Krea2ModularPipeline, state: PipelineState) -> PipelineState:
+        block_state = self.get_block_state(state)
+
+        prompt_batch, seq_len, num_layers, dim = block_state.prompt_embeds.shape
+        n = block_state.num_images_per_prompt
+
+        block_state.dtype = block_state.prompt_embeds.dtype
+        block_state.batch_size = prompt_batch * n
+
+        block_state.prompt_embeds = block_state.prompt_embeds.repeat(1, n, 1, 1).view(
+            prompt_batch * n, seq_len, num_layers, dim
+        )
+        block_state.prompt_embeds_mask = block_state.prompt_embeds_mask.repeat(1, n).view(prompt_batch * n, seq_len)
+
+        self.set_block_state(state, block_state)
+        return components, state
+
+
+# auto_docstring
 class Krea2PrepareLatentsStep(ModularPipelineBlocks):
     """
     Step that samples the spatial image latents and patch-packs them into (B, image_seq_len, in_channels) for the
@@ -277,13 +364,10 @@ class Krea2PrepareLatentsStep(ModularPipelineBlocks):
 class Krea2SetTimestepsStep(ModularPipelineBlocks):
     """
     Step that sets the Krea 2 flow-matching schedule on the scheduler: a linear sigma schedule with a resolution-aware
-    (or fixed, for distilled checkpoints) dynamic time shift `mu`.
+    dynamic time shift `mu`.
 
       Components:
           scheduler (`FlowMatchEulerDiscreteScheduler`)
-
-      Configs:
-          is_distilled (default: False)
 
       Inputs:
           num_inference_steps (`int`, *optional*, defaults to 28):
@@ -304,16 +388,12 @@ class Krea2SetTimestepsStep(ModularPipelineBlocks):
     def description(self) -> str:
         return (
             "Step that sets the Krea 2 flow-matching schedule on the scheduler: a linear sigma schedule with a "
-            "resolution-aware (or fixed, for distilled checkpoints) dynamic time shift `mu`."
+            "resolution-aware dynamic time shift `mu`."
         )
 
     @property
     def expected_components(self) -> list[ComponentSpec]:
         return [ComponentSpec("scheduler", FlowMatchEulerDiscreteScheduler)]
-
-    @property
-    def expected_configs(self) -> list[ConfigSpec]:
-        return [ConfigSpec(name="is_distilled", default=False)]
 
     @property
     def inputs(self) -> list[InputParam]:
@@ -347,19 +427,83 @@ class Krea2SetTimestepsStep(ModularPipelineBlocks):
         else:
             block_state.num_inference_steps = len(sigmas)
 
-        if components.config.is_distilled:
-            mu = 1.15
-        else:
-            config = components.scheduler.config
-            mu = calculate_shift(
-                block_state.image_seq_len,
-                config.get("base_image_seq_len", 256),
-                config.get("max_image_seq_len", 6400),
-                config.get("base_shift", 0.5),
-                config.get("max_shift", 1.15),
-            )
+        config = components.scheduler.config
+        mu = calculate_shift(
+            block_state.image_seq_len,
+            config.get("base_image_seq_len", 256),
+            config.get("max_image_seq_len", 6400),
+            config.get("base_shift", 0.5),
+            config.get("max_shift", 1.15),
+        )
 
         components.scheduler.set_timesteps(sigmas=sigmas, mu=mu, device=device)
+        components.scheduler.set_begin_index(0)
+        block_state.timesteps = components.scheduler.timesteps
+
+        self.set_block_state(state, block_state)
+        return components, state
+
+
+# auto_docstring
+class Krea2TurboSetTimestepsStep(ModularPipelineBlocks):
+    """
+    Step that sets the flow-matching schedule for the distilled Krea 2 turbo checkpoint on the scheduler: a linear
+    sigma schedule with the fixed time shift `mu=1.15` the checkpoint was distilled with.
+
+      Components:
+          scheduler (`FlowMatchEulerDiscreteScheduler`)
+
+      Inputs:
+          num_inference_steps (`int`, *optional*, defaults to 28):
+              The number of denoising steps.
+          sigmas (`list`, *optional*):
+              Custom sigma schedule (defaults to a linear ramp).
+
+      Outputs:
+          timesteps (`Tensor`):
+              The denoising timesteps.
+    """
+
+    model_name = "krea2"
+
+    @property
+    def description(self) -> str:
+        return (
+            "Step that sets the flow-matching schedule for the distilled Krea 2 turbo checkpoint on the scheduler: a "
+            "linear sigma schedule with the fixed time shift `mu=1.15` the checkpoint was distilled with."
+        )
+
+    @property
+    def expected_components(self) -> list[ComponentSpec]:
+        return [ComponentSpec("scheduler", FlowMatchEulerDiscreteScheduler)]
+
+    @property
+    def inputs(self) -> list[InputParam]:
+        return [
+            InputParam.template("num_inference_steps", default=28),
+            InputParam(
+                name="sigmas", type_hint=list, description="Custom sigma schedule (defaults to a linear ramp)."
+            ),
+        ]
+
+    @property
+    def intermediate_outputs(self) -> list[OutputParam]:
+        return [OutputParam(name="timesteps", type_hint=torch.Tensor, description="The denoising timesteps.")]
+
+    @torch.no_grad()
+    def __call__(self, components: Krea2ModularPipeline, state: PipelineState) -> PipelineState:
+        block_state = self.get_block_state(state)
+
+        device = components._execution_device
+        num_inference_steps = block_state.num_inference_steps
+
+        sigmas = block_state.sigmas
+        if sigmas is None:
+            sigmas = np.linspace(1.0, 1 / num_inference_steps, num_inference_steps)
+        else:
+            block_state.num_inference_steps = len(sigmas)
+
+        components.scheduler.set_timesteps(sigmas=sigmas, mu=1.15, device=device)
         components.scheduler.set_begin_index(0)
         block_state.timesteps = components.scheduler.timesteps
 

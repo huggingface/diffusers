@@ -86,6 +86,8 @@ else:
     _import_structure["krea2"] = [
         "Krea2AutoBlocks",
         "Krea2ModularPipeline",
+        "Krea2TurboAutoBlocks",
+        "Krea2TurboModularPipeline",
     ]
     _import_structure["qwenimage"] = [
         "QwenImageAutoBlocks",
@@ -162,6 +164,8 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .krea2 import (
             Krea2AutoBlocks,
             Krea2ModularPipeline,
+            Krea2TurboAutoBlocks,
+            Krea2TurboModularPipeline,
         )
         from .ltx import LTXAutoBlocks, LTXModularPipeline
         from .modular_pipeline import (

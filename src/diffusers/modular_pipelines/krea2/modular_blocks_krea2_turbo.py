@@ -19,12 +19,12 @@ from ..modular_pipeline_utils import InsertableDict, OutputParam
 from .before_denoise import (
     Krea2PrepareLatentsStep,
     Krea2PreparePositionIdsStep,
-    Krea2SetTimestepsStep,
-    Krea2TextInputsStep,
+    Krea2TurboSetTimestepsStep,
+    Krea2TurboTextInputsStep,
 )
 from .decoders import Krea2DecodeStep
-from .denoise import Krea2DenoiseStep
-from .encoders import Krea2TextEncoderStep
+from .denoise import Krea2TurboDenoiseStep
+from .encoders import Krea2TurboTextEncoderStep
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -32,24 +32,24 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 CORE_DENOISE_BLOCKS = InsertableDict(
     [
-        ("input", Krea2TextInputsStep()),
+        ("input", Krea2TurboTextInputsStep()),
         ("prepare_latents", Krea2PrepareLatentsStep()),
-        ("set_timesteps", Krea2SetTimestepsStep()),
+        ("set_timesteps", Krea2TurboSetTimestepsStep()),
         ("prepare_position_ids", Krea2PreparePositionIdsStep()),
-        ("denoise", Krea2DenoiseStep()),
+        ("denoise", Krea2TurboDenoiseStep()),
     ]
 )
 
 
 # auto_docstring
-class Krea2CoreDenoiseStep(SequentialPipelineBlocks):
+class Krea2TurboCoreDenoiseStep(SequentialPipelineBlocks):
     """
-    Core denoising workflow for Krea 2 text-to-image: prepares the batch/latents/timesteps and the shared position ids,
-    then runs the symmetric-CFG denoising loop, producing the denoised packed latents for the decoder.
+    Core denoising workflow for the distilled Krea 2 turbo text-to-image checkpoint: prepares the
+    batch/latents/timesteps and the shared position ids, then runs the guidance-free denoising loop, producing the
+    denoised packed latents for the decoder.
 
       Components:
-          transformer (`Krea2Transformer2DModel`) scheduler (`FlowMatchEulerDiscreteScheduler`) guider
-          (`ClassifierFreeGuidance`)
+          transformer (`Krea2Transformer2DModel`) scheduler (`FlowMatchEulerDiscreteScheduler`)
 
       Inputs:
           num_images_per_prompt (`int`, *optional*, defaults to 1):
@@ -58,10 +58,6 @@ class Krea2CoreDenoiseStep(SequentialPipelineBlocks):
               Per-prompt stacked text features (B, text_seq_len, num_text_layers, text_hidden_dim).
           prompt_embeds_mask (`Tensor`):
               Per-prompt boolean text mask (B, text_seq_len).
-          negative_prompt_embeds (`Tensor`, *optional*):
-              Per-prompt negative text features.
-          negative_prompt_embeds_mask (`Tensor`, *optional*):
-              Per-prompt negative text mask.
           latents (`Tensor`, *optional*):
               Pre-generated noisy latents for image generation.
           height (`int`):
@@ -89,9 +85,9 @@ class Krea2CoreDenoiseStep(SequentialPipelineBlocks):
     @property
     def description(self) -> str:
         return (
-            "Core denoising workflow for Krea 2 text-to-image: prepares the batch/latents/timesteps and the shared "
-            "position ids, then runs the symmetric-CFG denoising loop, producing the denoised packed latents for the "
-            "decoder."
+            "Core denoising workflow for the distilled Krea 2 turbo text-to-image checkpoint: prepares the "
+            "batch/latents/timesteps and the shared position ids, then runs the guidance-free denoising loop, "
+            "producing the denoised packed latents for the decoder."
         )
 
     @property
@@ -102,24 +98,22 @@ class Krea2CoreDenoiseStep(SequentialPipelineBlocks):
 
 
 # auto_docstring
-class Krea2AutoBlocks(SequentialPipelineBlocks):
+class Krea2TurboAutoBlocks(SequentialPipelineBlocks):
     """
-    Auto Modular pipeline for text-to-image generation using Krea 2: encode text -> core denoise (symmetric CFG) ->
-    decode.
+    Auto Modular pipeline for text-to-image generation using the distilled Krea 2 turbo checkpoint: encode text -> core
+    denoise (guidance-free) -> decode.
 
       Supported workflows:
         - `text2image`: requires `prompt`
 
       Components:
           text_encoder (`Qwen3VLModel`): The Qwen3-VL text encoder. tokenizer (`AutoTokenizer`): The tokenizer paired
-          with the text encoder. guider (`ClassifierFreeGuidance`) transformer (`Krea2Transformer2DModel`) scheduler
-          (`FlowMatchEulerDiscreteScheduler`) vae (`AutoencoderKLQwenImage`) image_processor (`VaeImageProcessor`)
+          with the text encoder. transformer (`Krea2Transformer2DModel`) scheduler (`FlowMatchEulerDiscreteScheduler`)
+          vae (`AutoencoderKLQwenImage`) image_processor (`VaeImageProcessor`)
 
       Inputs:
           prompt (`str`):
               The prompt or prompts to guide image generation.
-          negative_prompt (`str`, *optional*):
-              The negative prompt(s) for CFG.
           max_sequence_length (`int`, *optional*, defaults to 512):
               Maximum sequence length for prompt encoding.
           num_images_per_prompt (`int`, *optional*, defaults to 1):
@@ -148,8 +142,8 @@ class Krea2AutoBlocks(SequentialPipelineBlocks):
 
     model_name = "krea2"
     block_classes = [
-        Krea2TextEncoderStep,
-        Krea2CoreDenoiseStep,
+        Krea2TurboTextEncoderStep,
+        Krea2TurboCoreDenoiseStep,
         Krea2DecodeStep,
     ]
     block_names = ["text_encoder", "denoise", "decode"]
@@ -161,8 +155,8 @@ class Krea2AutoBlocks(SequentialPipelineBlocks):
     @property
     def description(self) -> str:
         return (
-            "Auto Modular pipeline for text-to-image generation using Krea 2: encode text -> core denoise "
-            "(symmetric CFG) -> decode."
+            "Auto Modular pipeline for text-to-image generation using the distilled Krea 2 turbo checkpoint: encode "
+            "text -> core denoise (guidance-free) -> decode."
         )
 
     @property

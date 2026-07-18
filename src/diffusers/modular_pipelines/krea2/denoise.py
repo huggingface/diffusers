@@ -40,7 +40,7 @@ class Krea2LoopBeforeDenoiser(ModularPipelineBlocks):
     def description(self) -> str:
         return (
             "Within the denoising loop: normalize the scheduler timestep into the model's flow time and broadcast it "
-            "across the batch. Compose into the `sub_blocks` of `Krea2DenoiseStep`."
+            "across the batch. Compose into the `sub_blocks` of a `Krea2DenoiseLoopWrapper`-based step."
         )
 
     @property
@@ -152,12 +152,68 @@ class Krea2LoopDenoiser(ModularPipelineBlocks):
         return components, block_state
 
 
+class Krea2TurboLoopDenoiser(ModularPipelineBlocks):
+    model_name = "krea2"
+
+    @property
+    def description(self) -> str:
+        return (
+            "Within the denoising loop: run the `transformer` on the conditional text features. The distilled Krea 2 "
+            "turbo checkpoint runs without classifier-free guidance, so there is no negative branch or guider. Compose "
+            "into the `sub_blocks` of `Krea2TurboDenoiseStep`."
+        )
+
+    @property
+    def expected_components(self) -> list[ComponentSpec]:
+        return [ComponentSpec("transformer", Krea2Transformer2DModel)]
+
+    @property
+    def inputs(self) -> list[InputParam]:
+        return [
+            InputParam(name="latents", required=True, type_hint=torch.Tensor, description="Packed image latents."),
+            InputParam(
+                name="prompt_embeds",
+                required=True,
+                type_hint=torch.Tensor,
+                description="Conditional stacked text features.",
+            ),
+            InputParam(
+                name="prompt_embeds_mask", required=True, type_hint=torch.Tensor, description="Conditional text mask."
+            ),
+            InputParam(
+                name="position_ids",
+                required=True,
+                type_hint=torch.Tensor,
+                description="Shared rotary coordinates for the [text | image] sequence.",
+            ),
+            InputParam.template("attention_kwargs"),
+        ]
+
+    @torch.no_grad()
+    def __call__(self, components: Krea2ModularPipeline, block_state: BlockState, i: int, t: torch.Tensor):
+        transformer = components.transformer
+
+        latents = block_state.latents.to(transformer.dtype)
+        timestep = block_state.timestep.to(transformer.dtype)
+
+        block_state.noise_pred = transformer(
+            hidden_states=latents,
+            timestep=timestep,
+            position_ids=block_state.position_ids,
+            attention_kwargs=block_state.attention_kwargs,
+            encoder_hidden_states=block_state.prompt_embeds.to(transformer.dtype),
+            encoder_attention_mask=block_state.prompt_embeds_mask,
+            return_dict=False,
+        )[0]
+        return components, block_state
+
+
 class Krea2LoopAfterDenoiser(ModularPipelineBlocks):
     model_name = "krea2"
 
     @property
     def description(self) -> str:
-        return "Within the denoising loop: scheduler step. Compose into `Krea2DenoiseStep`."
+        return "Within the denoising loop: scheduler step. Compose into a `Krea2DenoiseLoopWrapper`-based step."
 
     @property
     def expected_components(self) -> list[ComponentSpec]:
@@ -177,53 +233,14 @@ class Krea2LoopAfterDenoiser(ModularPipelineBlocks):
         return components, block_state
 
 
-# auto_docstring
-class Krea2DenoiseStep(LoopSequentialPipelineBlocks):
-    """
-    Denoising loop that iteratively denoises the packed image latents over `timesteps`, running the transformer on the
-    conditional (and, when the guider enables CFG, the negative) text features and combining them through the `guider`.
-
-      Components:
-          scheduler (`FlowMatchEulerDiscreteScheduler`) guider (`ClassifierFreeGuidance`) transformer
-          (`Krea2Transformer2DModel`)
-
-      Inputs:
-          timesteps (`Tensor`):
-              Denoising timesteps from set_timesteps.
-          num_inference_steps (`int`, *optional*, defaults to 28):
-              The number of denoising steps.
-          attention_kwargs (`dict`, *optional*):
-              Additional kwargs for attention processors.
-          latents (`Tensor`):
-              Packed image latents.
-          batch_size (`int`):
-              Effective batch size.
-          prompt_embeds (`Tensor`):
-              Conditional stacked text features.
-          prompt_embeds_mask (`Tensor`):
-              Conditional text mask.
-          position_ids (`Tensor`):
-              Shared rotary coordinates for the [text | image] sequence.
-          negative_prompt_embeds (`Tensor`, *optional*):
-              Negative stacked text features.
-          negative_prompt_embeds_mask (`Tensor`, *optional*):
-              Negative text mask.
-
-      Outputs:
-          latents (`Tensor`):
-              The denoised latents.
-    """
-
+class Krea2DenoiseLoopWrapper(LoopSequentialPipelineBlocks):
     model_name = "krea2"
-    block_classes = [Krea2LoopBeforeDenoiser, Krea2LoopDenoiser, Krea2LoopAfterDenoiser]
-    block_names = ["before_denoiser", "denoiser", "after_denoiser"]
 
     @property
     def description(self) -> str:
         return (
-            "Denoising loop that iteratively denoises the packed image latents over `timesteps`, running the "
-            "transformer on the conditional (and, when the guider enables CFG, the negative) text features and "
-            "combining them through the `guider`."
+            "Pipeline block that iteratively denoises the packed image latents over `timesteps`. "
+            "The specific steps within each iteration can be customized with the `sub_blocks` attribute."
         )
 
     @property
@@ -254,3 +271,101 @@ class Krea2DenoiseStep(LoopSequentialPipelineBlocks):
 
         self.set_block_state(state, block_state)
         return components, state
+
+
+# auto_docstring
+class Krea2DenoiseStep(Krea2DenoiseLoopWrapper):
+    """
+    Denoising loop that iteratively denoises the packed image latents over `timesteps`, running the transformer on the
+    conditional (and, when the guider enables CFG, the negative) text features and combining them through the `guider`.
+
+      Components:
+          scheduler (`FlowMatchEulerDiscreteScheduler`) guider (`ClassifierFreeGuidance`) transformer
+          (`Krea2Transformer2DModel`)
+
+      Inputs:
+          timesteps (`Tensor`):
+              Denoising timesteps from set_timesteps.
+          num_inference_steps (`int`):
+              The number of denoising steps.
+          attention_kwargs (`dict`, *optional*):
+              Additional kwargs for attention processors.
+          latents (`Tensor`):
+              Packed image latents.
+          batch_size (`int`):
+              Effective batch size.
+          num_inference_steps (`int`):
+              The number of denoising steps.
+          prompt_embeds (`Tensor`):
+              Conditional stacked text features.
+          prompt_embeds_mask (`Tensor`):
+              Conditional text mask.
+          position_ids (`Tensor`):
+              Shared rotary coordinates for the [text | image] sequence.
+          negative_prompt_embeds (`Tensor`, *optional*):
+              Negative stacked text features.
+          negative_prompt_embeds_mask (`Tensor`, *optional*):
+              Negative text mask.
+
+      Outputs:
+          latents (`Tensor`):
+              The denoised latents.
+    """
+
+    model_name = "krea2"
+    block_classes = [Krea2LoopBeforeDenoiser, Krea2LoopDenoiser, Krea2LoopAfterDenoiser]
+    block_names = ["before_denoiser", "denoiser", "after_denoiser"]
+
+    @property
+    def description(self) -> str:
+        return (
+            "Denoising loop that iteratively denoises the packed image latents over `timesteps`, running the "
+            "transformer on the conditional (and, when the guider enables CFG, the negative) text features and "
+            "combining them through the `guider`."
+        )
+
+
+# auto_docstring
+class Krea2TurboDenoiseStep(Krea2DenoiseLoopWrapper):
+    """
+    Denoising loop for the distilled Krea 2 turbo checkpoint that iteratively denoises the packed image latents over
+    `timesteps`, running the transformer on the conditional text features. The distilled checkpoint runs without
+    classifier-free guidance.
+
+      Components:
+          scheduler (`FlowMatchEulerDiscreteScheduler`) transformer (`Krea2Transformer2DModel`)
+
+      Inputs:
+          timesteps (`Tensor`):
+              Denoising timesteps from set_timesteps.
+          num_inference_steps (`int`, *optional*, defaults to 28):
+              The number of denoising steps.
+          attention_kwargs (`dict`, *optional*):
+              Additional kwargs for attention processors.
+          latents (`Tensor`):
+              Packed image latents.
+          batch_size (`int`):
+              Effective batch size.
+          prompt_embeds (`Tensor`):
+              Conditional stacked text features.
+          prompt_embeds_mask (`Tensor`):
+              Conditional text mask.
+          position_ids (`Tensor`):
+              Shared rotary coordinates for the [text | image] sequence.
+
+      Outputs:
+          latents (`Tensor`):
+              The denoised latents.
+    """
+
+    model_name = "krea2"
+    block_classes = [Krea2LoopBeforeDenoiser, Krea2TurboLoopDenoiser, Krea2LoopAfterDenoiser]
+    block_names = ["before_denoiser", "denoiser", "after_denoiser"]
+
+    @property
+    def description(self) -> str:
+        return (
+            "Denoising loop for the distilled Krea 2 turbo checkpoint that iteratively denoises the packed image "
+            "latents over `timesteps`, running the transformer on the conditional text features. The distilled "
+            "checkpoint runs without classifier-free guidance."
+        )

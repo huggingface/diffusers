@@ -194,3 +194,83 @@ class Krea2TextEncoderStep(ModularPipelineBlocks):
 
         self.set_block_state(state, block_state)
         return components, state
+
+
+# auto_docstring
+class Krea2TurboTextEncoderStep(Krea2TextEncoderStep):
+    """
+    Text encoder step for the distilled Krea 2 turbo checkpoint that tokenizes the prompt(s) with the Krea 2 chat
+    template, runs the Qwen3-VL text encoder, and stacks a fixed set of decoder-layer hidden states per token as the
+    transformer's text conditioning. The distilled checkpoint runs without classifier-free guidance, so it takes no
+    negative prompt and has no guider.
+
+      Components:
+          text_encoder (`Qwen3VLModel`): The Qwen3-VL text encoder. tokenizer (`AutoTokenizer`): The tokenizer paired
+          with the text encoder.
+
+      Inputs:
+          prompt (`str`):
+              The prompt or prompts to guide image generation.
+          max_sequence_length (`int`, *optional*, defaults to 512):
+              Maximum sequence length for prompt encoding.
+
+      Outputs:
+          prompt_embeds (`Tensor`):
+              Per-prompt stacked text features (B, text_seq_len, num_text_layers, text_hidden_dim).
+          prompt_embeds_mask (`Tensor`):
+              Per-prompt boolean text mask (B, text_seq_len).
+    """
+
+    model_name = "krea2"
+
+    @property
+    def description(self) -> str:
+        return (
+            "Text encoder step for the distilled Krea 2 turbo checkpoint that tokenizes the prompt(s) with the Krea 2 "
+            "chat template, runs the Qwen3-VL text encoder, and stacks a fixed set of decoder-layer hidden states per "
+            "token as the transformer's text conditioning. The distilled checkpoint runs without classifier-free "
+            "guidance, so it takes no negative prompt and has no guider."
+        )
+
+    @property
+    def expected_components(self) -> list[ComponentSpec]:
+        return [
+            ComponentSpec("text_encoder", Qwen3VLModel, description="The Qwen3-VL text encoder."),
+            ComponentSpec("tokenizer", AutoTokenizer, description="The tokenizer paired with the text encoder."),
+        ]
+
+    @property
+    def inputs(self) -> list[InputParam]:
+        return [
+            InputParam.template("prompt", required=True),
+            InputParam.template("max_sequence_length", default=512),
+        ]
+
+    @property
+    def intermediate_outputs(self) -> list[OutputParam]:
+        return [
+            OutputParam(
+                name="prompt_embeds",
+                type_hint=torch.Tensor,
+                description="Per-prompt stacked text features (B, text_seq_len, num_text_layers, text_hidden_dim).",
+            ),
+            OutputParam(
+                name="prompt_embeds_mask",
+                type_hint=torch.Tensor,
+                description="Per-prompt boolean text mask (B, text_seq_len).",
+            ),
+        ]
+
+    @torch.no_grad()
+    def __call__(self, components: Krea2ModularPipeline, state: PipelineState) -> PipelineState:
+        block_state = self.get_block_state(state)
+
+        device = components._execution_device
+        prompts = [block_state.prompt] if isinstance(block_state.prompt, str) else list(block_state.prompt)
+
+        block_state.prompt_embeds, block_state.prompt_embeds_mask = self._encode_prompt(
+            components, prompts, block_state.max_sequence_length, device
+        )
+
+        self.set_block_state(state, block_state)
+        return components, state
