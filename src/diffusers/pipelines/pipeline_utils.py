@@ -59,13 +59,13 @@ from ..quantizers import PipelineQuantizationConfig
 from ..quantizers.bitsandbytes.utils import _check_bnb_status
 from ..schedulers.scheduling_utils import SCHEDULER_CONFIG_NAME
 from ..utils import (
-    _TORCH_DTYPE_DEPRECATION_MESSAGE,
     CONFIG_NAME,
     DEPRECATED_REVISION_ARGS,
     BaseOutput,
     PushToHubMixin,
     _get_detailed_type,
     _is_valid_type,
+    _resolve_dtype,
     deprecate,
     is_accelerate_available,
     is_accelerate_version,
@@ -784,14 +784,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         revision = kwargs.pop("revision", None)
         from_flax = kwargs.pop("from_flax", False)
         torch_dtype = kwargs.pop("torch_dtype", None)
-        dtype = kwargs.pop("dtype", None)
-        if torch_dtype is not None:
-            if dtype is not None:
-                raise ValueError(
-                    "You have passed both `dtype` and `torch_dtype`. Please only pass `dtype`, `torch_dtype` is deprecated."
-                )
-            deprecate("torch_dtype", "1.0.0", _TORCH_DTYPE_DEPRECATION_MESSAGE)
-            dtype = torch_dtype
+        dtype = _resolve_dtype(kwargs.pop("dtype", None), torch_dtype)
         custom_pipeline = kwargs.pop("custom_pipeline", None)
         custom_revision = kwargs.pop("custom_revision", None)
         provider = kwargs.pop("provider", None)
@@ -2170,16 +2163,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
 
         original_config = dict(pipeline.config)
         torch_dtype = kwargs.pop("torch_dtype", None)
-        dtype = kwargs.pop("dtype", None)
-        if torch_dtype is not None:
-            if dtype is not None:
-                raise ValueError(
-                    "You have passed both `dtype` and `torch_dtype`. Please only pass `dtype`, `torch_dtype` is deprecated."
-                )
-            deprecate("torch_dtype", "1.0.0", _TORCH_DTYPE_DEPRECATION_MESSAGE)
-            dtype = torch_dtype
-        if dtype is None:
-            dtype = torch.float32
+        dtype = _resolve_dtype(kwargs.pop("dtype", None), torch_dtype) or torch.float32
         trust_remote_code = kwargs.pop("trust_remote_code", False)
 
         # derive the pipeline class to instantiate

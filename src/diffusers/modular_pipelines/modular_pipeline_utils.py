@@ -26,7 +26,7 @@ from packaging.specifiers import InvalidSpecifier, SpecifierSet
 
 from ..configuration_utils import ConfigMixin, FrozenDict
 from ..loaders.single_file_utils import _is_single_file_path_or_url
-from ..utils import _TORCH_DTYPE_DEPRECATION_MESSAGE, DIFFUSERS_LOAD_ID_FIELDS, deprecate, is_torch_available, logging
+from ..utils import DIFFUSERS_LOAD_ID_FIELDS, _resolve_dtype, is_torch_available, logging
 from ..utils.import_utils import _is_package_available
 
 
@@ -295,12 +295,7 @@ class ComponentSpec:
         """Load component using from_pretrained."""
         torch_dtype = kwargs.pop("torch_dtype", None)
         if torch_dtype is not None:
-            if kwargs.get("dtype") is not None:
-                raise ValueError(
-                    "You have passed both `dtype` and `torch_dtype`. Please only pass `dtype`, `torch_dtype` is deprecated."
-                )
-            deprecate("torch_dtype", "1.0.0", _TORCH_DTYPE_DEPRECATION_MESSAGE)
-            kwargs["dtype"] = torch_dtype
+            kwargs["dtype"] = _resolve_dtype(kwargs.get("dtype"), torch_dtype)
 
         # select loading fields from kwargs passed from user: e.g. pretrained_model_name_or_path, subfolder, variant, revision, note the list could change
         passed_loading_kwargs = {key: kwargs.pop(key) for key in self.loading_fields() if key in kwargs}
