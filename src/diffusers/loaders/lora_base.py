@@ -635,6 +635,11 @@ class LoraBaseMixin:
             unfuse_text_encoder (`bool`, defaults to `True`):
                 Whether to unfuse the text encoder LoRA parameters. If the text encoder wasn't monkey-patched with the
                 LoRA parameters then it won't have any effect.
+
+        Note that `num_fused_loras`/`fused_loras` (backed by `self._merged_adapters`) are tracked pipeline-wide,
+        not per component. An adapter fused into multiple `_lora_loadable_modules` components only drops out of
+        `fused_loras` once it has been unfused from all of them; unfusing it from only some components leaves it
+        listed as fused.
         """
         if components is None:
             components = []

@@ -1749,6 +1749,7 @@ class PeftLoraLoaderMixinTests:
         # Now unfuse the remaining component; bookkeeping should correctly drop to 0.
         pipe.unfuse_lora(components=[denoiser_component_name])
         self.assertTrue(pipe.num_fused_loras == 0, f"{pipe.num_fused_loras=}, {pipe.fused_loras=}")
+        self.assertNotIn("adapter-1", pipe.fused_loras)
 
     def test_lora_scale_kwargs_match_fusion(self, expected_atol: float = 1e-3, expected_rtol: float = 1e-3):
         attention_kwargs_name = determine_attention_kwargs_name(self.pipeline_class)
