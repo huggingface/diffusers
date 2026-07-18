@@ -85,8 +85,11 @@ class TestAutoencoderKL(AutoencoderKLTesterConfig, ModelTesterMixin, TrainingTes
     def test_from_save_pretrained_dtype_inference(self, tmp_path, dtype):
         # The reference and reloaded models hold identical weights, so any output difference is
         # half-precision kernel nondeterminism between the two module instances rather than a save/load
-        # fidelity issue. The default 1e-4 tolerance is too tight for that fp16/bf16 noise on some GPUs.
-        super().test_from_save_pretrained_dtype_inference(tmp_path, dtype, atol=1e-3)
+        # fidelity issue. The default zero-rtol, 1e-4-atol tolerance is too tight for that fp16/bf16 noise on
+        # some GPUs: a pure absolute bound does not account for the output magnitude, so large outputs can drift
+        # past it while still being relatively close. We instead follow `torch.testing.assert_close`'s
+        # recommended bf16 tolerances, whose non-zero rtol scales the allowed error with the output.
+        super().test_from_save_pretrained_dtype_inference(tmp_path, dtype, atol=1e-5, rtol=1.6e-2)
 
     def test_gradient_checkpointing_is_applied(self):
         expected_set = {"Decoder", "Encoder", "UNetMidBlock2D"}
