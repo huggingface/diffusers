@@ -22,7 +22,6 @@ import shutil
 import sys
 import tempfile
 import traceback
-import unittest
 import unittest.mock as mock
 import warnings
 from pathlib import Path
@@ -36,7 +35,6 @@ import torch
 import torch.nn as nn
 from huggingface_hub import snapshot_download
 from huggingface_hub.utils import HfHubHTTPError
-from parameterized import parameterized
 from PIL import Image
 from transformers import CLIPImageProcessor, CLIPModel, CLIPTextConfig, CLIPTextModel, CLIPTokenizer
 
@@ -153,8 +151,8 @@ class CustomPipeline(DiffusionPipeline):
         self.register_modules(encoder=encoder, scheduler=scheduler)
 
 
-class DownloadTests(unittest.TestCase):
-    @unittest.skip("Flaky behaviour on CI. Re-enable after migrating to new runners")
+class TestDownload:
+    @pytest.mark.skip(reason="Flaky behaviour on CI. Re-enable after migrating to new runners")
     def test_one_request_upon_cached(self):
         # TODO: For some reason this test fails on MPS where no HEAD call is made.
         if torch_device == "mps":
@@ -200,7 +198,7 @@ class DownloadTests(unittest.TestCase):
             assert "scheduler" in os.listdir(cached_folder)
             assert "feature_extractor" in os.listdir(cached_folder)
 
-    @unittest.skip("Flaky behaviour on CI. Re-enable after migrating to new runners")
+    @pytest.mark.skip(reason="Flaky behaviour on CI. Re-enable after migrating to new runners")
     def test_less_downloads_passed_object_calls(self):
         # TODO: For some reason this test fails on MPS where no HEAD call is made.
         if torch_device == "mps":
@@ -252,7 +250,7 @@ class DownloadTests(unittest.TestCase):
     def test_force_safetensors_error(self):
         with tempfile.TemporaryDirectory() as tmpdirname:
             # pipeline has Flax weights
-            with self.assertRaises(EnvironmentError):
+            with pytest.raises(EnvironmentError):
                 tmpdirname = DiffusionPipeline.download(
                     "hf-internal-testing/tiny-stable-diffusion-pipe-no-safetensors",
                     safety_checker=None,
@@ -478,7 +476,7 @@ class DownloadTests(unittest.TestCase):
         response_mock.json.return_value = {}
 
         # first check that with local files only the pipeline can only be used if cached
-        with self.assertRaises(FileNotFoundError):
+        with pytest.raises(FileNotFoundError):
             with tempfile.TemporaryDirectory() as tmpdirname:
                 orig_pipe = DiffusionPipeline.from_pretrained(
                     "hf-internal-testing/tiny-stable-diffusion-torch", local_files_only=True, cache_dir=tmpdirname
@@ -545,7 +543,7 @@ class DownloadTests(unittest.TestCase):
             for weights_file in Path(cached_folder).glob("unet/diffusion_pytorch_model*"):
                 weights_file.unlink()
 
-            with self.assertRaisesRegex(OSError, "incomplete"):
+            with pytest.raises(OSError, match="incomplete"):
                 DiffusionPipeline.download(
                     "hf-internal-testing/tiny-stable-diffusion-torch",
                     cache_dir=tmpdirname,
@@ -672,14 +670,14 @@ class DownloadTests(unittest.TestCase):
 
         # text encoder is missing no variant weights, so the following can't work
         with tempfile.TemporaryDirectory() as tmpdirname:
-            with self.assertRaises(OSError) as error_context:
+            with pytest.raises(OSError) as error_context:
                 tmpdirname = StableDiffusionPipeline.from_pretrained(
                     "hf-internal-testing/stable-diffusion-broken-variants",
                     cache_dir=tmpdirname,
                     variant=variant,
                     use_safetensors=use_safetensors,
                 )
-            assert "Could not find the necessary `safetensors` weights" in str(error_context.exception)
+            assert "Could not find the necessary `safetensors` weights" in str(error_context.value)
 
         # text encoder has fp16 variants so we can load it
         with tempfile.TemporaryDirectory() as tmpdirname:
@@ -702,14 +700,14 @@ class DownloadTests(unittest.TestCase):
 
         # text encoder is missing Non-variant weights, so the following can't work
         with tempfile.TemporaryDirectory() as tmpdirname:
-            with self.assertRaises(OSError) as error_context:
+            with pytest.raises(OSError) as error_context:
                 tmpdirname = StableDiffusionPipeline.from_pretrained(
                     "hf-internal-testing/stable-diffusion-broken-variants",
                     cache_dir=tmpdirname,
                     variant=variant,
                     use_safetensors=use_safetensors,
                 )
-            assert "Error no file name" in str(error_context.exception)
+            assert "Error no file name" in str(error_context.value)
 
         # text encoder has fp16 variants so we can load it
         with tempfile.TemporaryDirectory() as tmpdirname:
@@ -731,7 +729,7 @@ class DownloadTests(unittest.TestCase):
 
         # text encoder is missing no_ema variant weights, so the following can't work
         with tempfile.TemporaryDirectory() as tmpdirname:
-            with self.assertRaises(OSError) as error_context:
+            with pytest.raises(OSError) as error_context:
                 tmpdirname = StableDiffusionPipeline.from_pretrained(
                     "hf-internal-testing/stable-diffusion-broken-variants",
                     cache_dir=tmpdirname,
@@ -739,7 +737,7 @@ class DownloadTests(unittest.TestCase):
                     use_safetensors=use_safetensors,
                 )
 
-            assert "Could not find the necessary `safetensors` weights" in str(error_context.exception)
+            assert "Could not find the necessary `safetensors` weights" in str(error_context.value)
 
     @pytest.mark.xfail(condition=is_transformers_version(">", "4.56.2"), reason="Some import error", strict=False)
     def test_download_bin_variant_does_not_exist_for_model(self):
@@ -748,14 +746,14 @@ class DownloadTests(unittest.TestCase):
 
         # text encoder is missing no_ema variant weights, so the following can't work
         with tempfile.TemporaryDirectory() as tmpdirname:
-            with self.assertRaises(OSError) as error_context:
+            with pytest.raises(OSError) as error_context:
                 tmpdirname = StableDiffusionPipeline.from_pretrained(
                     "hf-internal-testing/stable-diffusion-broken-variants",
                     cache_dir=tmpdirname,
                     variant=variant,
                     use_safetensors=use_safetensors,
                 )
-            assert "Error no file name" in str(error_context.exception)
+            assert "Error no file name" in str(error_context.value)
 
     @pytest.mark.xfail(condition=is_transformers_version(">", "4.56.2"), reason="Some import error", strict=False)
     def test_local_save_load_index(self):
@@ -1063,16 +1061,13 @@ class DownloadTests(unittest.TestCase):
         assert _get_pipeline_class(DiffusionPipeline, flax_config) == _get_pipeline_class(DiffusionPipeline, config)
 
 
-class CustomPipelineTests(unittest.TestCase):
+class TestCustomPipeline:
     def test_load_custom_pipeline(self):
-        with self.assertRaises(ValueError) as cm:
+        with pytest.raises(ValueError) as cm:
             pipeline = DiffusionPipeline.from_pretrained(
                 "google/ddpm-cifar10-32", custom_pipeline="hf-internal-testing/diffusers-dummy-pipeline"
             )
-        self.assertIn(
-            "Pass `trust_remote_code=True` to allow loading remote code modules.",
-            str(cm.exception),
-        )
+        assert "Pass `trust_remote_code=True` to allow loading remote code modules." in str(cm.value)
 
         pipeline = DiffusionPipeline.from_pretrained(
             "google/ddpm-cifar10-32",
@@ -1087,16 +1082,16 @@ class CustomPipelineTests(unittest.TestCase):
     def test_global_disable_remote_code(self):
         with (
             mock.patch("diffusers.utils.dynamic_modules_utils.DIFFUSERS_DISABLE_REMOTE_CODE", True),
-            self.assertRaises(ValueError) as cm,
+            pytest.raises(ValueError) as cm,
         ):
             DiffusionPipeline.from_pretrained(
                 "google/ddpm-cifar10-32",
                 custom_pipeline="one_step_unet",
                 custom_revision="main",
             )
-        self.assertIn(
-            "Downloading remote code is disabled globally via the DIFFUSERS_DISABLE_REMOTE_CODE environment variable.",
-            str(cm.exception),
+        assert (
+            "Downloading remote code is disabled globally via the DIFFUSERS_DISABLE_REMOTE_CODE environment variable."
+            in str(cm.value)
         )
 
     def test_load_custom_github(self):
@@ -1125,14 +1120,11 @@ class CustomPipelineTests(unittest.TestCase):
         assert pipeline.__class__.__name__ == "UnetSchedulerOneForwardPipeline"
 
     def test_run_custom_pipeline(self):
-        with self.assertRaises(ValueError) as cm:
+        with pytest.raises(ValueError) as cm:
             pipeline = DiffusionPipeline.from_pretrained(
                 "google/ddpm-cifar10-32", custom_pipeline="hf-internal-testing/diffusers-dummy-pipeline"
             )
-        self.assertIn(
-            "Pass `trust_remote_code=True` to allow loading remote code modules.",
-            str(cm.exception),
-        )
+        assert "Pass `trust_remote_code=True` to allow loading remote code modules." in str(cm.value)
 
         pipeline = DiffusionPipeline.from_pretrained(
             "google/ddpm-cifar10-32",
@@ -1149,12 +1141,9 @@ class CustomPipelineTests(unittest.TestCase):
 
     def test_remote_components(self):
         # make sure that trust remote code has to be passed
-        with self.assertRaises(ValueError) as cm:
+        with pytest.raises(ValueError) as cm:
             pipeline = DiffusionPipeline.from_pretrained("hf-internal-testing/tiny-sdxl-custom-components")
-        self.assertIn(
-            "Pass `trust_remote_code=True` to allow loading remote code modules.",
-            str(cm.exception),
-        )
+        assert "Pass `trust_remote_code=True` to allow loading remote code modules." in str(cm.value)
 
         # Check that only loading custom components "my_unet", "my_scheduler" works
         pipeline = DiffusionPipeline.from_pretrained(
@@ -1188,12 +1177,9 @@ class CustomPipelineTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdirname:
             path = snapshot_download("hf-internal-testing/tiny-sdxl-custom-components", cache_dir=tmpdirname)
             # make sure that trust remote code has to be passed
-            with self.assertRaises(ValueError) as cm:
+            with pytest.raises(ValueError) as cm:
                 pipeline = DiffusionPipeline.from_pretrained(path)
-            self.assertIn(
-                "Pass `trust_remote_code=True` to allow loading remote code modules.",
-                str(cm.exception),
-            )
+            assert "Pass `trust_remote_code=True` to allow loading remote code modules." in str(cm.value)
 
             # Check that only loading custom components "my_unet", "my_scheduler" works
             pipeline = DiffusionPipeline.from_pretrained(path, trust_remote_code=True)
@@ -1221,12 +1207,9 @@ class CustomPipelineTests(unittest.TestCase):
 
     def test_remote_auto_custom_pipe(self):
         # make sure that trust remote code has to be passed
-        with self.assertRaises(ValueError) as cm:
+        with pytest.raises(ValueError) as cm:
             pipeline = DiffusionPipeline.from_pretrained("hf-internal-testing/tiny-sdxl-custom-all")
-        self.assertIn(
-            "Pass `trust_remote_code=True` to allow loading remote code modules.",
-            str(cm.exception),
-        )
+        assert "Pass `trust_remote_code=True` to allow loading remote code modules." in str(cm.value)
 
         # Check that only loading custom components "my_unet", "my_scheduler" and auto custom pipeline works
         pipeline = DiffusionPipeline.from_pretrained(
@@ -1244,12 +1227,9 @@ class CustomPipelineTests(unittest.TestCase):
 
     def test_remote_custom_pipe_with_dot_in_name(self):
         # make sure that trust remote code has to be passed
-        with self.assertRaises(ValueError) as cm:
+        with pytest.raises(ValueError) as cm:
             pipeline = DiffusionPipeline.from_pretrained("akasharidas/ddpm-cifar10-32-dot.in.name")
-        self.assertIn(
-            "Pass `trust_remote_code=True` to allow loading remote code modules.",
-            str(cm.exception),
-        )
+        assert "Pass `trust_remote_code=True` to allow loading remote code modules." in str(cm.value)
 
         pipeline = DiffusionPipeline.from_pretrained("akasharidas/ddpm-cifar10-32-dot.in.name", trust_remote_code=True)
 
@@ -1263,14 +1243,11 @@ class CustomPipelineTests(unittest.TestCase):
 
     def test_local_custom_pipeline_repo(self):
         local_custom_pipeline_path = get_tests_dir("fixtures/custom_pipeline")
-        with self.assertRaises(ValueError) as cm:
+        with pytest.raises(ValueError) as cm:
             pipeline = DiffusionPipeline.from_pretrained(
                 "google/ddpm-cifar10-32", custom_pipeline=local_custom_pipeline_path
             )
-        self.assertIn(
-            "Pass `trust_remote_code=True` to allow loading remote code modules.",
-            str(cm.exception),
-        )
+        assert "Pass `trust_remote_code=True` to allow loading remote code modules." in str(cm.value)
 
         pipeline = DiffusionPipeline.from_pretrained(
             "google/ddpm-cifar10-32", custom_pipeline=local_custom_pipeline_path, trust_remote_code=True
@@ -1286,14 +1263,11 @@ class CustomPipelineTests(unittest.TestCase):
     def test_local_custom_pipeline_file(self):
         local_custom_pipeline_path = get_tests_dir("fixtures/custom_pipeline")
         local_custom_pipeline_path = os.path.join(local_custom_pipeline_path, "what_ever.py")
-        with self.assertRaises(ValueError) as cm:
+        with pytest.raises(ValueError) as cm:
             pipeline = DiffusionPipeline.from_pretrained(
                 "google/ddpm-cifar10-32", custom_pipeline=local_custom_pipeline_path
             )
-        self.assertIn(
-            "Pass `trust_remote_code=True` to allow loading remote code modules.",
-            str(cm.exception),
-        )
+        assert "Pass `trust_remote_code=True` to allow loading remote code modules." in str(cm.value)
 
         pipeline = DiffusionPipeline.from_pretrained(
             "google/ddpm-cifar10-32",
@@ -1374,16 +1348,14 @@ class CustomPipelineTests(unittest.TestCase):
             assert pipe.scheduler.__class__.__name__ == "DPMSolverMultistepScheduler"
 
 
-class PipelineFastTests(unittest.TestCase):
-    def setUp(self):
+class TestPipelineFast:
+    def setup_method(self):
         # clean up the VRAM before each test
-        super().setUp()
         gc.collect()
         backend_empty_cache(torch_device)
 
-    def tearDown(self):
+    def teardown_method(self):
         # clean up the VRAM after each test
-        super().tearDown()
         gc.collect()
         backend_empty_cache(torch_device)
 
@@ -1466,15 +1438,16 @@ class PipelineFastTests(unittest.TestCase):
 
         return extract
 
-    @parameterized.expand(
+    @pytest.mark.parametrize(
+        "scheduler_fn,pipeline_fn,sample_size",
         [
             [DDIMScheduler, DDIMPipeline, 32],
             [DDPMScheduler, DDPMPipeline, 32],
             [DDIMScheduler, DDIMPipeline, (32, 64)],
             [DDPMScheduler, DDPMPipeline, (64, 32)],
-        ]
+        ],
     )
-    def test_uncond_unet_components(self, scheduler_fn=DDPMScheduler, pipeline_fn=DDPMPipeline, sample_size=32):
+    def test_uncond_unet_components(self, scheduler_fn, pipeline_fn, sample_size):
         unet = self.dummy_uncond_unet(sample_size)
         scheduler = scheduler_fn()
         pipeline = pipeline_fn(unet, scheduler).to(torch_device)
@@ -1905,13 +1878,13 @@ class PipelineFastTests(unittest.TestCase):
 
     def test_error_no_variant_available(self):
         variant = "fp16"
-        with self.assertRaises(ValueError) as error_context:
+        with pytest.raises(ValueError) as error_context:
             _ = StableDiffusionPipeline.from_pretrained(
                 "hf-internal-testing/diffusers-stable-diffusion-tiny-all", variant=variant
             )
 
-        assert "but no such modeling files are available" in str(error_context.exception)
-        assert variant in str(error_context.exception)
+        assert "but no such modeling files are available" in str(error_context.value)
+        assert variant in str(error_context.value)
 
     def test_pipe_to(self):
         unet = self.dummy_cond_unet()
@@ -2005,36 +1978,34 @@ class PipelineFastTests(unittest.TestCase):
     @require_transformers_version_greater("4.47.1")
     def test_dduf_file_is_deprecated(self):
         with tempfile.TemporaryDirectory() as tmpdir:
-            with self.assertWarns(FutureWarning) as warning_ctx:
+            with pytest.warns(FutureWarning) as warning_ctx:
                 _ = DiffusionPipeline.from_pretrained(
                     "DDUF/tiny-flux-dev-pipe-dduf", dduf_file="fluxpipeline.dduf", cache_dir=tmpdir
                 )
-        assert "dduf_file" in str(warning_ctx.warning)
+        assert "dduf_file" in str(warning_ctx[0].message)
 
     @pytest.mark.xfail(condition=is_transformers_version(">", "4.56.2"), reason="Some import error", strict=False)
     def test_wrong_model(self):
         tokenizer = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip")
-        with self.assertRaises(ValueError) as error_context:
+        with pytest.raises(ValueError) as error_context:
             _ = StableDiffusionPipeline.from_pretrained(
                 "hf-internal-testing/diffusers-stable-diffusion-tiny-all", text_encoder=tokenizer
             )
 
-        assert "is of type" in str(error_context.exception)
-        assert "but should be" in str(error_context.exception)
+        assert "is of type" in str(error_context.value)
+        assert "but should be" in str(error_context.value)
 
 
 @slow
 @require_torch_accelerator
-class PipelineSlowTests(unittest.TestCase):
-    def setUp(self):
+class TestPipelineSlow:
+    def setup_method(self):
         # clean up the VRAM before each test
-        super().setUp()
         gc.collect()
         backend_empty_cache(torch_device)
 
-    def tearDown(self):
+    def teardown_method(self):
         # clean up the VRAM after each test
-        super().tearDown()
         gc.collect()
         backend_empty_cache(torch_device)
 
@@ -2130,14 +2101,14 @@ class PipelineSlowTests(unittest.TestCase):
 
     @is_torch_compile
     @require_torch_2
-    @unittest.skipIf(
+    @pytest.mark.skipif(
         get_python_version == (3, 12),
         reason="Torch Dynamo isn't yet supported for Python 3.12.",
     )
     def test_from_save_pretrained_dynamo(self):
         torch.compiler.rest()
         with torch._inductor.utils.fresh_inductor_cache():
-            run_test_in_subprocess(test_case=self, target_func=_test_from_save_pretrained_dynamo, inputs=None)
+            run_test_in_subprocess(target_func=_test_from_save_pretrained_dynamo, inputs=None)
 
     def test_from_pretrained_hub(self):
         model_path = "google/ddpm-cifar10-32"
@@ -2280,16 +2251,14 @@ class PipelineSlowTests(unittest.TestCase):
 
 @nightly
 @require_torch_accelerator
-class PipelineNightlyTests(unittest.TestCase):
-    def setUp(self):
+class TestPipelineNightly:
+    def setup_method(self):
         # clean up the VRAM before each test
-        super().setUp()
         gc.collect()
         backend_empty_cache(torch_device)
 
-    def tearDown(self):
+    def teardown_method(self):
         # clean up the VRAM after each test
-        super().tearDown()
         gc.collect()
         backend_empty_cache(torch_device)
 
@@ -2332,7 +2301,7 @@ class PipelineNightlyTests(unittest.TestCase):
 @require_peft_backend
 @require_peft_version_greater("0.14.0")
 @is_torch_compile
-class TestLoraHotSwappingForPipeline(unittest.TestCase):
+class TestLoraHotSwappingForPipeline:
     """Test that hotswapping does not result in recompilation in a pipeline.
 
     We're not extensively testing the hotswapping functionality since it is implemented in PEFT and is extensively
@@ -2345,10 +2314,9 @@ class TestLoraHotSwappingForPipeline(unittest.TestCase):
 
     """
 
-    def tearDown(self):
+    def teardown_method(self):
         # It is critical that the dynamo cache is reset for each test. Otherwise, if the test re-uses the same model,
         # there will be recompilation errors, as torch caches the model when run in the same process.
-        super().tearDown()
         torch.compiler.reset()
         gc.collect()
         backend_empty_cache(torch_device)
@@ -2464,27 +2432,35 @@ class TestLoraHotSwappingForPipeline(unittest.TestCase):
             # sanity check: since it's the same LoRA, the results should be identical
             assert np.allclose(output1_before, output1_after, atol=tol, rtol=tol)
 
-    @parameterized.expand([(11, 11), (7, 13), (13, 7)])  # important to test small to large and vice versa
+    @pytest.mark.parametrize(
+        "rank0,rank1", [(11, 11), (7, 13), (13, 7)]
+    )  # important to test small to large and vice versa
     def test_hotswapping_pipeline(self, rank0, rank1):
         self.check_pipeline_hotswap(
             do_compile=False, rank0=rank0, rank1=rank1, target_modules0=["to_q", "to_k", "to_v", "to_out.0"]
         )
 
-    @parameterized.expand([(11, 11), (7, 13), (13, 7)])  # important to test small to large and vice versa
+    @pytest.mark.parametrize(
+        "rank0,rank1", [(11, 11), (7, 13), (13, 7)]
+    )  # important to test small to large and vice versa
     def test_hotswapping_compiled_pipline_linear(self, rank0, rank1):
         # It's important to add this context to raise an error on recompilation
         target_modules = ["to_q", "to_k", "to_v", "to_out.0"]
         with torch._dynamo.config.patch(error_on_recompile=True), torch._inductor.utils.fresh_inductor_cache():
             self.check_pipeline_hotswap(do_compile=True, rank0=rank0, rank1=rank1, target_modules0=target_modules)
 
-    @parameterized.expand([(11, 11), (7, 13), (13, 7)])  # important to test small to large and vice versa
+    @pytest.mark.parametrize(
+        "rank0,rank1", [(11, 11), (7, 13), (13, 7)]
+    )  # important to test small to large and vice versa
     def test_hotswapping_compiled_pipline_conv2d(self, rank0, rank1):
         # It's important to add this context to raise an error on recompilation
         target_modules = ["conv", "conv1", "conv2"]
         with torch._dynamo.config.patch(error_on_recompile=True), torch._inductor.utils.fresh_inductor_cache():
             self.check_pipeline_hotswap(do_compile=True, rank0=rank0, rank1=rank1, target_modules0=target_modules)
 
-    @parameterized.expand([(11, 11), (7, 13), (13, 7)])  # important to test small to large and vice versa
+    @pytest.mark.parametrize(
+        "rank0,rank1", [(11, 11), (7, 13), (13, 7)]
+    )  # important to test small to large and vice versa
     def test_hotswapping_compiled_pipline_both_linear_and_conv2d(self, rank0, rank1):
         # It's important to add this context to raise an error on recompilation
         target_modules = ["to_q", "conv"]
@@ -2497,10 +2473,10 @@ class TestLoraHotSwappingForPipeline(unittest.TestCase):
         pipeline = StableDiffusionPipeline.from_pretrained("hf-internal-testing/tiny-sd-pipe").to(torch_device)
         pipeline.unet.add_adapter(lora_config)
         msg = re.escape("Call `enable_lora_hotswap` before loading the first adapter.")
-        with self.assertRaisesRegex(RuntimeError, msg):
+        with pytest.raises(RuntimeError, match=msg):
             pipeline.enable_lora_hotswap(target_rank=32)
 
-    def test_enable_lora_hotswap_called_after_adapter_added_warns(self):
+    def test_enable_lora_hotswap_called_after_adapter_added_warns(self, caplog):
         # ensure that enable_lora_hotswap is called before loading the first adapter
         from diffusers.loaders.peft import logger
 
@@ -2510,9 +2486,9 @@ class TestLoraHotSwappingForPipeline(unittest.TestCase):
         msg = (
             "It is recommended to call `enable_lora_hotswap` before loading the first adapter to avoid recompilation."
         )
-        with self.assertLogs(logger=logger, level="WARNING") as cm:
+        with caplog.at_level(logging.WARNING, logger=logger.name):
             pipeline.enable_lora_hotswap(target_rank=32, check_compiled="warn")
-            assert any(msg in log for log in cm.output)
+        assert any(msg in record.message for record in caplog.records)
 
     def test_enable_lora_hotswap_called_after_adapter_added_ignore(self):
         # check possibility to ignore the error/warning
@@ -2522,7 +2498,7 @@ class TestLoraHotSwappingForPipeline(unittest.TestCase):
         with warnings.catch_warnings(record=True) as w:
             warnings.simplefilter("always")  # Capture all warnings
             pipeline.enable_lora_hotswap(target_rank=32, check_compiled="warn")
-            self.assertEqual(len(w), 0, f"Expected no warnings, but got: {[str(warn.message) for warn in w]}")
+            assert len(w) == 0, f"Expected no warnings, but got: {[str(warn.message) for warn in w]}"
 
     def test_enable_lora_hotswap_wrong_check_compiled_argument_raises(self):
         # check that wrong argument value raises an error
@@ -2530,22 +2506,22 @@ class TestLoraHotSwappingForPipeline(unittest.TestCase):
         pipeline = StableDiffusionPipeline.from_pretrained("hf-internal-testing/tiny-sd-pipe").to(torch_device)
         pipeline.unet.add_adapter(lora_config)
         msg = re.escape("check_compiles should be one of 'error', 'warn', or 'ignore', got 'wrong-argument' instead.")
-        with self.assertRaisesRegex(ValueError, msg):
+        with pytest.raises(ValueError, match=msg):
             pipeline.enable_lora_hotswap(target_rank=32, check_compiled="wrong-argument")
 
-    def test_hotswap_second_adapter_targets_more_layers_raises(self):
+    def test_hotswap_second_adapter_targets_more_layers_raises(self, caplog):
         # check the error and log
         from diffusers.loaders.peft import logger
 
         # at the moment, PEFT requires the 2nd adapter to target the same or a subset of layers
         target_modules0 = ["to_q"]
         target_modules1 = ["to_q", "to_k"]
-        with self.assertRaises(RuntimeError):  # peft raises RuntimeError
-            with self.assertLogs(logger=logger, level="ERROR") as cm:
+        with caplog.at_level(logging.ERROR, logger=logger.name):
+            with pytest.raises(RuntimeError):  # peft raises RuntimeError
                 self.check_pipeline_hotswap(
                     do_compile=True, rank0=8, rank1=8, target_modules0=target_modules0, target_modules1=target_modules1
                 )
-                assert any("Hotswapping adapter0 was unsuccessful" in log for log in cm.output)
+        assert any("Hotswapping adapter0 was unsuccessful" in record.message for record in caplog.records)
 
     def test_hotswap_component_not_supported_raises(self):
         # right now, not some components don't support hotswapping, e.g. the text_encoder
@@ -2583,5 +2559,5 @@ class TestLoraHotSwappingForPipeline(unittest.TestCase):
             msg = re.escape(
                 "At the moment, hotswapping is not supported for text encoders, please pass `hotswap=False`"
             )
-            with self.assertRaisesRegex(ValueError, msg):
+            with pytest.raises(ValueError, match=msg):
                 pipeline.load_lora_weights(file_name1, hotswap=True, adapter_name="default_0")
