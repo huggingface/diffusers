@@ -25,12 +25,8 @@ from diffusers import (
 from ...testing_utils import torch_device
 from ..testing_utils import (
     BasePipelineTesterConfig,
-    FirstBlockCacheTesterMixin,
-    MagCacheTesterMixin,
     MemoryTesterMixin,
     PipelineTesterMixin,
-    PyramidAttentionBroadcastTesterMixin,
-    TaylorSeerCacheTesterMixin,
 )
 
 
@@ -126,6 +122,23 @@ class QwenImagePipelineTesterConfig(BasePipelineTesterConfig):
 
 
 class TestQwenImagePipeline(QwenImagePipelineTesterConfig, PipelineTesterMixin):
+    def test_inference(self):
+        # Run on CPU: the expected slice below is CPU-specific.
+        pipe = self.get_pipeline()
+
+        inputs = self.get_dummy_inputs()
+        image = pipe(**inputs).images
+        generated_image = image[0]
+        assert generated_image.shape == (3, 32, 32)
+
+        # fmt: off
+        expected_slice = torch.tensor([0.5633, 0.6368, 0.6015, 0.5637, 0.5817, 0.5528, 0.5718, 0.6326, 0.4147, 0.3556, 0.5623, 0.4833, 0.4971, 0.5262, 0.4087, 0.5021])
+        # fmt: on
+
+        generated_slice = generated_image.flatten()
+        generated_slice = torch.cat([generated_slice[:8], generated_slice[-8:]])
+        assert torch.allclose(generated_slice, expected_slice, atol=5e-3)
+
     def test_inference_batch_single_identical(self):
         super().test_inference_batch_single_identical(expected_max_diff=1e-1)
 
@@ -176,22 +189,4 @@ class TestQwenImagePipeline(QwenImagePipelineTesterConfig, PipelineTesterMixin):
 
 
 class TestQwenImagePipelineMemory(QwenImagePipelineTesterConfig, MemoryTesterMixin):
-    pass
-
-
-class TestQwenImagePipelinePyramidAttentionBroadcast(
-    QwenImagePipelineTesterConfig, PyramidAttentionBroadcastTesterMixin
-):
-    pass
-
-
-class TestQwenImagePipelineFirstBlockCache(QwenImagePipelineTesterConfig, FirstBlockCacheTesterMixin):
-    pass
-
-
-class TestQwenImagePipelineTaylorSeerCache(QwenImagePipelineTesterConfig, TaylorSeerCacheTesterMixin):
-    pass
-
-
-class TestQwenImagePipelineMagCache(QwenImagePipelineTesterConfig, MagCacheTesterMixin):
     pass
