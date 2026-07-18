@@ -761,7 +761,7 @@ def format_params(params, header="Args", indent_level=4, max_line_length=115):
         if hasattr(param, "required"):
             if not param.required:
                 param_str += ", *optional*"
-                if getattr(param, "defaults_by_block", None):
+                if param.defaults_by_block is not None:
                     distinct_defaults = list(dict.fromkeys(param.defaults_by_block.values()))
                     param_str += (
                         f", defaults to {' or '.join(str(v) for v in distinct_defaults)}, depending on the workflow"
@@ -838,7 +838,7 @@ def format_params_markdown(params, header="Inputs"):
 
         if hasattr(param, "required") and not param.required:
             param_str += ", *optional*"
-            if getattr(param, "defaults_by_block", None):
+            if param.defaults_by_block is not None:
                 distinct_defaults = list(dict.fromkeys(param.defaults_by_block.values()))
                 param_str += (
                     f", defaults to {' or '.join(f'`{v}`' for v in distinct_defaults)}, depending on the workflow"
