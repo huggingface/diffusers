@@ -69,6 +69,10 @@ class ModularPipelineTesterMixin:
     # of the type of pipeline. They are always optional and have common
     # sense default values.
     optional_params = frozenset(["num_inference_steps", "num_images_per_prompt", "latents", "output_type"])
+    # Parameters the pipeline deliberately does NOT accept — e.g. `negative_prompt` on a
+    # guidance-distilled pipeline. `test_pipeline_call_signature` asserts they are absent,
+    # so accidentally (re)introducing one fails the test.
+    not_params = frozenset()
     # this is modular specific: generator needs to be a intermediate input because it's mutable
     intermediate_params = frozenset(["generator"])
     # Output type for the pipeline (e.g., "images" for image pipelines, "videos" for video pipelines)
@@ -175,6 +179,11 @@ class ModularPipelineTesterMixin:
 
         _check_for_parameters(self.params, input_parameters, "input")
         _check_for_parameters(self.optional_params, optional_parameters, "optional")
+
+        unsupported_parameters = {param for param in self.not_params if param in input_parameters}
+        assert len(unsupported_parameters) == 0, (
+            f"Parameters declared in `not_params` unexpectedly present in the pipeline inputs: {unsupported_parameters}"
+        )
 
     def test_inference_batch_consistent(self, batch_sizes=[2], batch_generator=True):
         pipe = self.get_pipeline().to(torch_device)
