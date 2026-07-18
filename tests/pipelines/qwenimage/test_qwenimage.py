@@ -139,9 +139,6 @@ class TestQwenImagePipeline(QwenImagePipelineTesterConfig, PipelineTesterMixin):
         generated_slice = torch.cat([generated_slice[:8], generated_slice[-8:]])
         assert torch.allclose(generated_slice, expected_slice, atol=5e-3)
 
-    def test_inference_batch_single_identical(self):
-        super().test_inference_batch_single_identical(expected_max_diff=1e-1)
-
     def test_vae_tiling(self, expected_diff_max: float = 0.2):
         pipe = self.pipeline_class(**self.get_dummy_components()).to(torch_device)
         pipe.set_progress_bar_config(disable=None)
