@@ -3,7 +3,7 @@ import inspect
 import torch
 
 from ...models.transformers.transformer_cosmos3 import Cosmos3OmniTransformer
-from ...schedulers import UniPCMultistepScheduler
+from ...schedulers import FlowMatchEulerDiscreteScheduler, UniPCMultistepScheduler
 from ..modular_pipeline import (
     BlockState,
     LoopSequentialPipelineBlocks,
@@ -282,6 +282,71 @@ class Cosmos3VisionLoopSchedulerStep(ModularPipelineBlocks):
         return components, block_state
 
 
+class Cosmos3DistilledVisionLoopSchedulerStep(ModularPipelineBlocks):
+    model_name = "cosmos3-omni"
+
+    @property
+    def description(self) -> str:
+        return "Updates vision latents after one distilled denoising iteration, re-anchoring conditioned frames."
+
+    @property
+    def expected_components(self) -> list[ComponentSpec]:
+        return [ComponentSpec("scheduler", FlowMatchEulerDiscreteScheduler)]
+
+    @property
+    def inputs(self) -> list[InputParam]:
+        return [
+            InputParam.template("latents", required=True, description="Noisy vision latents to update."),
+            InputParam(
+                name="velocity_vision", type_hint=torch.Tensor, required=True, description="Predicted vision velocity."
+            ),
+            InputParam(
+                name="vision_condition_mask",
+                type_hint=torch.Tensor,
+                required=True,
+                description="Mask marking conditioned vision latent frames.",
+            ),
+            InputParam(
+                name="vision_conditioning_latents",
+                type_hint=torch.Tensor,
+                default=None,
+                description="Clean encoded vision latents for re-anchoring conditioned frames.",
+            ),
+            InputParam(
+                name="vision_condition_indexes_for_pack",
+                type_hint=list,
+                default=None,
+                description="Indexes of conditioned vision latent frames; non-empty for image-to-video.",
+            ),
+            InputParam.template("generator"),
+        ]
+
+    @property
+    def intermediate_outputs(self) -> list[OutputParam]:
+        return [OutputParam.template("latents")]
+
+    @torch.no_grad()
+    def __call__(self, components: Cosmos3OmniModularPipeline, block_state: BlockState, i: int, t: torch.Tensor):
+        # Pass the generator so the scheduler's stochastic (SDE) re-noising is seedable/reproducible.
+        block_state.latents = components.scheduler.step(
+            block_state.velocity_vision.unsqueeze(0),
+            t,
+            block_state.latents.unsqueeze(0),
+            generator=block_state.generator,
+            return_dict=False,
+        )[0].squeeze(0)
+
+        # Distilled checkpoints use stochastic (SDE) scheduler steps that re-noise every position.
+        # Re-anchor conditioned frames to the clean encoded reference after each step.
+        has_image_condition = bool(block_state.vision_condition_indexes_for_pack)
+        if has_image_condition and block_state.vision_conditioning_latents is not None:
+            mask = block_state.vision_condition_mask
+            reference = block_state.vision_conditioning_latents.to(block_state.latents.dtype)
+            block_state.latents = mask * reference + (1.0 - mask) * block_state.latents
+
+        return components, block_state
+
+
 class Cosmos3SoundLoopSchedulerStep(ModularPipelineBlocks):
     model_name = "cosmos3-omni"
 
@@ -425,6 +490,27 @@ class Cosmos3VisionDenoiseStep(Cosmos3DenoiseLoopWrapper):
     @property
     def description(self) -> str:
         return "Runs the vision-only Cosmos3 denoising loop."
+
+
+class Cosmos3DistilledVisionDenoiseStep(Cosmos3DenoiseLoopWrapper):
+    model_name = "cosmos3-omni"
+    block_classes = [
+        Cosmos3VisionLoopPrepareStep,
+        Cosmos3LoopDenoiser,
+        Cosmos3DistilledVisionLoopSchedulerStep,
+    ]
+    block_names = ["prepare_vision", "denoiser", "update_vision"]
+
+    @property
+    def description(self) -> str:
+        return "Runs the vision-only distilled Cosmos3 denoising loop."
+
+    @property
+    def loop_expected_components(self) -> list[ComponentSpec]:
+        return [
+            ComponentSpec("scheduler", FlowMatchEulerDiscreteScheduler),
+            ComponentSpec("transformer", Cosmos3OmniTransformer),
+        ]
 
 
 class Cosmos3VisionSoundDenoiseStep(Cosmos3DenoiseLoopWrapper):

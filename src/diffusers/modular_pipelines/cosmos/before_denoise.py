@@ -5,7 +5,7 @@ import torch
 
 from ...models.transformers.transformer_cosmos3 import Cosmos3OmniTransformer
 from ...pipelines.cosmos.pipeline_cosmos3_omni import _EMBODIMENT_TO_DOMAIN_ID, CosmosActionCondition
-from ...schedulers import UniPCMultistepScheduler
+from ...schedulers import FlowMatchEulerDiscreteScheduler, UniPCMultistepScheduler
 from ...utils.torch_utils import randn_tensor
 from ..modular_pipeline import ModularPipelineBlocks, PipelineState
 from ..modular_pipeline_utils import ComponentSpec, ConfigSpec, InputParam, OutputParam
@@ -116,6 +116,11 @@ class Cosmos3VisionPrepareLatentsStep(ModularPipelineBlocks):
                 type_hint=list[int],
                 description="Indexes of conditioned vision latent frames.",
             ),
+            OutputParam(
+                "vision_conditioning_latents",
+                type_hint=torch.Tensor,
+                description="Clean encoded vision latents used to re-anchor image conditioning each step.",
+            ),
         ]
 
     @torch.no_grad()
@@ -166,6 +171,7 @@ class Cosmos3VisionPrepareLatentsStep(ModularPipelineBlocks):
             block_state.vision_condition_mask[:, 0, 0] > 0, as_tuple=False
         ).flatten()
         block_state.vision_condition_indexes_for_pack = [int(idx.item()) for idx in vision_condition_indexes]
+        block_state.vision_conditioning_latents = x0_tokens_vision
 
         self.set_block_state(state, block_state)
         return components, state
@@ -1235,5 +1241,91 @@ class Cosmos3TransferSetTimestepsStep(ModularPipelineBlocks):
         block_state.num_warmup_steps = (
             len(block_state.timesteps) - block_state.num_inference_steps * components.scheduler.order
         )
+        self.set_block_state(state, block_state)
+        return components, state
+
+
+class Cosmos3DistilledSetTimestepsStep(ModularPipelineBlocks):
+    model_name = "cosmos3-omni"
+
+    @property
+    def description(self) -> str:
+        return "Initializes the fixed distilled sampling schedule from the pipeline's `distilled_sigmas` config."
+
+    @property
+    def expected_components(self) -> list[ComponentSpec]:
+        return [ComponentSpec("scheduler", FlowMatchEulerDiscreteScheduler)]
+
+    @property
+    def expected_configs(self) -> list[ConfigSpec]:
+        return [
+            ConfigSpec(name="is_distilled", default=True),
+            ConfigSpec(name="distilled_sigmas", default=None),
+        ]
+
+    @property
+    def inputs(self) -> list[InputParam]:
+        return [
+            InputParam.template("num_inference_steps", required=False, default=None),
+            InputParam(
+                name="guidance_scale",
+                type_hint=float,
+                default=None,
+                description=(
+                    "Unused for distilled checkpoints; classifier-free guidance is baked into the weights and the "
+                    "scale is forced to 1.0. Passing a value other than 1.0 raises an error."
+                ),
+            ),
+        ]
+
+    @property
+    def intermediate_outputs(self) -> list[OutputParam]:
+        return [
+            OutputParam("timesteps", type_hint=torch.Tensor, description="Scheduler timesteps for denoising."),
+            OutputParam("num_warmup_steps", type_hint=int, description="Number of scheduler warmup steps."),
+            OutputParam(
+                "num_inference_steps",
+                type_hint=int,
+                description="Resolved number of denoising steps (fixed by the distilled schedule).",
+            ),
+            OutputParam(
+                name="guidance_scale",
+                type_hint=float,
+                description="Resolved classifier-free guidance scale (always 1.0 for distilled checkpoints).",
+            ),
+        ]
+
+    @torch.no_grad()
+    def __call__(self, components: Cosmos3OmniModularPipeline, state: PipelineState) -> PipelineState:
+        block_state = self.get_block_state(state)
+        device = components._execution_device
+
+        sigmas = components.config.distilled_sigmas
+        if not sigmas:
+            raise ValueError(
+                "Cosmos3DistilledSetTimestepsStep requires the pipeline config `distilled_sigmas` to be set "
+                "(populated from the distilled checkpoint's `modular_model_index.json`). Load a distilled Cosmos3 "
+                "checkpoint or use `Cosmos3OmniModularPipeline` for base checkpoints."
+            )
+        sigmas = [float(s) for s in sigmas]
+        distilled_steps = len(sigmas)
+
+        if block_state.num_inference_steps is not None and block_state.num_inference_steps != distilled_steps:
+            raise ValueError(
+                "This is a distilled checkpoint; the step count is fixed by the pipeline's "
+                f"`distilled_sigmas` config ({distilled_steps} steps). "
+                f"`num_inference_steps` must be {distilled_steps} or left unset (got {block_state.num_inference_steps})."
+            )
+        if block_state.guidance_scale is not None and block_state.guidance_scale != 1.0:
+            raise ValueError(
+                "This is a distilled checkpoint; classifier-free guidance is baked into the weights. "
+                f"`guidance_scale` must be 1.0 or left unset (got {block_state.guidance_scale})."
+            )
+
+        components.scheduler.set_timesteps(sigmas=sigmas, device=device)
+        block_state.num_inference_steps = distilled_steps
+        block_state.guidance_scale = 1.0
+        block_state.timesteps = components.scheduler.timesteps
+        block_state.num_warmup_steps = len(block_state.timesteps) - distilled_steps * components.scheduler.order
         self.set_block_state(state, block_state)
         return components, state

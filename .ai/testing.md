@@ -25,7 +25,7 @@ Two test layers must be added for any new pipeline: pipeline-level tests, and (i
 
 ### Modular pipelines
 
-- Location: `tests/modular_pipelines/<model>/test_modular_pipeline_<model>.py` (one test class per blocks assembly / pipeline variant).
+- Location: `tests/modular_pipelines/<model>/test_modular_pipeline_<model>.py` (one test class per blockset / pipeline variant).
 - Subclass `ModularPipelineTesterMixin` (from `..test_modular_pipelines_common`) — it runs the pipeline end-to-end (call signature, batch consistency, float16, device placement) against a tiny checkpoint.
 - Set `pipeline_class`, `pipeline_blocks_class`, `pretrained_model_name_or_path`, `params` / `batch_params`, and implement `get_dummy_inputs(seed=0)`. Set `expected_workflow_blocks` to pin the block name → class ordering per workflow.
 - `pretrained_model_name_or_path` is a tiny repo with real components (tiny transformer, real scheduler / VAE / tokenizer configs). Develop against a personal repo; tiny repos ultimately live under `hf-internal-testing/` — not merge-blocking, a maintainer moves it before or after merge.
