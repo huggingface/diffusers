@@ -636,10 +636,10 @@ class LoraBaseMixin:
                 Whether to unfuse the text encoder LoRA parameters. If the text encoder wasn't monkey-patched with the
                 LoRA parameters then it won't have any effect.
 
-        Note that `num_fused_loras`/`fused_loras` (backed by `self._merged_adapters`) are tracked pipeline-wide,
-        not per component. An adapter fused into multiple `_lora_loadable_modules` components only drops out of
-        `fused_loras` once it has been unfused from all of them; unfusing it from only some components leaves it
-        listed as fused.
+        Note that `num_fused_loras`/`fused_loras` (backed by `self._merged_adapters`) are tracked pipeline-wide, not
+        per component. An adapter fused into multiple `_lora_loadable_modules` components only drops out of
+        `fused_loras` once it has been unfused from all of them; unfusing it from only some components leaves it listed
+        as fused.
         """
         if components is None:
             components = []
@@ -696,8 +696,8 @@ class LoraBaseMixin:
 
     def _is_adapter_merged_in_any_component(self, adapter_name: str) -> bool:
         """Whether `adapter_name` is still merged into the base weights of any `_lora_loadable_modules`
-        component, used to keep the pipeline-wide `_merged_adapters` bookkeeping in sync with the real,
-        per-component PEFT merge state after a partial `unfuse_lora(components=...)` call."""
+        component, used to keep the pipeline-wide `_merged_adapters` bookkeeping in sync with the real, per-component
+        PEFT merge state after a partial `unfuse_lora(components=...)` call."""
         for component in self._lora_loadable_modules:
             model = getattr(self, component, None)
             if model is None or not issubclass(model.__class__, (ModelMixin, PreTrainedModel)):
