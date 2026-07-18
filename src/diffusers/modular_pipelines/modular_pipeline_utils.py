@@ -14,9 +14,8 @@
 
 import inspect
 import re
-import warnings
 from collections import OrderedDict
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from types import UnionType
 from typing import Any, Literal, Type, Union, get_args, get_origin
 
@@ -556,6 +555,10 @@ class InputParam:
     description: str = ""
     kwargs_type: str = None
     metadata: dict[str, Any] = None
+    # set by `combine_inputs` when sub-blocks of a ConditionalPipelineBlocks declare different defaults for this
+    # input: maps block name -> that block's declared default; `default` is None in that case and each block
+    # resolves its own default at runtime in `get_block_state`
+    defaults_by_block: dict[str, Any] = None
 
     def __repr__(self):
         return f"<{self.name}: {'required' if self.required else 'optional'}, default={self.default}>"
@@ -764,12 +767,13 @@ def format_params(params, header="Args", indent_level=4, max_line_length=115):
         param_str += "):"
 
         # Add description on a new line with additional indentation and wrapping
-        if param.description:
-            desc = re.sub(r"\[(.*?)\]\((https?://[^\s\)]+)\)", r"[\1](\2)", param.description)
-            wrapped_desc = wrap_text(desc, desc_indent, max_line_length)
-            param_str += f"\n{desc_indent}{wrapped_desc}"
-        else:
-            param_str += f"\n{desc_indent}TODO: Add description."
+        desc = param.description if param.description else "TODO: Add description."
+        if getattr(param, "defaults_by_block", None):
+            per_block = ", ".join(f"{v} (`{block}`)" for block, v in param.defaults_by_block.items())
+            desc = f"{desc} Default depends on the selected block: {per_block}."
+        desc = re.sub(r"\[(.*?)\]\((https?://[^\s\)]+)\)", r"[\1](\2)", desc)
+        wrapped_desc = wrap_text(desc, desc_indent, max_line_length)
+        param_str += f"\n{desc_indent}{wrapped_desc}"
 
         formatted_params.append(param_str)
 
@@ -838,6 +842,9 @@ def format_params_markdown(params, header="Inputs"):
         param_str += ")"
 
         desc = param.description if param.description else "No description provided"
+        if getattr(param, "defaults_by_block", None):
+            per_block = ", ".join(f"`{v}` (`{block}`)" for block, v in param.defaults_by_block.items())
+            desc = f"{desc} Default depends on the selected block: {per_block}."
         param_str += f": {desc}"
         lines.append(param_str)
 
@@ -1102,9 +1109,10 @@ def _normalize_requirements(reqs):
 
 def combine_inputs(*named_input_lists: list[tuple[str, list[InputParam]]]) -> list[InputParam]:
     """
-    Combines multiple lists of InputParam objects from different blocks. For duplicate inputs, updates only if current
-    default value is None and new default value is not None. Warns if multiple non-None default values exist for the
-    same input.
+    Combines multiple lists of InputParam objects from different blocks. Duplicate inputs keep the first occurrence.
+    If duplicate inputs declare different defaults, the combined input's default is None and the per-block defaults
+    are recorded in `defaults_by_block`; each block resolves its own default at runtime in `get_block_state`, and the
+    docstring formatters render the per-block defaults.
 
     Args:
         named_input_lists: List of tuples containing (block_name, input_param_list) pairs
@@ -1113,7 +1121,7 @@ def combine_inputs(*named_input_lists: list[tuple[str, list[InputParam]]]) -> li
         List[InputParam]: Combined list of unique InputParam objects
     """
     combined_dict = {}  # name -> InputParam
-    value_sources = {}  # name -> block_name
+    defaults_by_block = {}  # name -> {block_name: default}
 
     for block_name, inputs in named_input_lists:
         for input_param in inputs:
@@ -1121,24 +1129,24 @@ def combine_inputs(*named_input_lists: list[tuple[str, list[InputParam]]]) -> li
                 input_name = "*_" + input_param.kwargs_type
             else:
                 input_name = input_param.name
-            if input_name in combined_dict:
-                current_param = combined_dict[input_name]
-                if (
-                    current_param.default is not None
-                    and input_param.default is not None
-                    and current_param.default != input_param.default
-                ):
-                    warnings.warn(
-                        f"Multiple different default values found for input '{input_name}': "
-                        f"{current_param.default} (from block '{value_sources[input_name]}') and "
-                        f"{input_param.default} (from block '{block_name}'). Using {current_param.default}."
-                    )
-                if current_param.default is None and input_param.default is not None:
-                    combined_dict[input_name] = input_param
-                    value_sources[input_name] = block_name
+
+            if input_param.defaults_by_block:
+                # nested conditional block: prefix its block names with the sub-block name
+                new_defaults = {f"{block_name}.{k}": v for k, v in input_param.defaults_by_block.items()}
             else:
+                new_defaults = {block_name: input_param.default}
+
+            if input_name not in combined_dict:
                 combined_dict[input_name] = input_param
-                value_sources[input_name] = block_name
+                defaults_by_block[input_name] = new_defaults
+                continue
+
+            defaults_by_block[input_name].update(new_defaults)
+            defaults = list(defaults_by_block[input_name].values())
+            if any(d != defaults[0] for d in defaults[1:]):
+                combined_dict[input_name] = replace(
+                    combined_dict[input_name], default=None, defaults_by_block=dict(defaults_by_block[input_name])
+                )
 
     return list(combined_dict.values())
 

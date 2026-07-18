@@ -13,12 +13,16 @@
 # limitations under the License.
 
 
+import pytest
+
 from diffusers.modular_pipelines import (
     AutoPipelineBlocks,
     ConditionalPipelineBlocks,
     InputParam,
     ModularPipelineBlocks,
+    OutputParam,
 )
+from diffusers.modular_pipelines.modular_pipeline_utils import combine_inputs
 
 
 class TextToImageBlock(ModularPipelineBlocks):
@@ -240,3 +244,152 @@ class TestConditionalPipelineBlocksStructure:
     def test_description(self):
         blocks = ConditionalImageBlocks()
         assert "Conditional" in blocks.description
+
+
+class PlainVideoBlock(ModularPipelineBlocks):
+    model_name = "video"
+
+    @property
+    def inputs(self):
+        return [
+            InputParam(name="prompt"),
+            InputParam(name="num_frames", type_hint=int, default=189, description="Number of frames to generate."),
+        ]
+
+    @property
+    def intermediate_outputs(self):
+        return [OutputParam(name="resolved_num_frames")]
+
+    @property
+    def description(self):
+        return "plain video workflow: uses its declared num_frames default"
+
+    def __call__(self, components, state):
+        block_state = self.get_block_state(state)
+        block_state.resolved_num_frames = block_state.num_frames
+        self.set_block_state(state, block_state)
+        return components, state
+
+
+class ActionVideoBlock(ModularPipelineBlocks):
+    model_name = "video"
+
+    @property
+    def inputs(self):
+        return [
+            InputParam(name="prompt"),
+            InputParam(name="action"),
+            InputParam(name="num_frames", type_hint=int, default=None, description="Number of frames to generate."),
+        ]
+
+    @property
+    def intermediate_outputs(self):
+        return [OutputParam(name="resolved_num_frames")]
+
+    @property
+    def description(self):
+        return "action video workflow: num_frames must not be passed, it is derived from action"
+
+    def __call__(self, components, state):
+        block_state = self.get_block_state(state)
+        if block_state.num_frames is not None:
+            raise ValueError("`num_frames` has to be None if `action` is provided.")
+        block_state.resolved_num_frames = block_state.action + 1
+        self.set_block_state(state, block_state)
+        return components, state
+
+
+class SingleFrameBlock(ModularPipelineBlocks):
+    model_name = "video"
+
+    @property
+    def inputs(self):
+        return [
+            InputParam(name="prompt"),
+            InputParam(name="image"),
+            InputParam(name="num_frames", type_hint=int, default=1, description="Number of frames to generate."),
+        ]
+
+    @property
+    def intermediate_outputs(self):
+        return [OutputParam(name="resolved_num_frames")]
+
+    @property
+    def description(self):
+        return "single frame workflow"
+
+    def __call__(self, components, state):
+        block_state = self.get_block_state(state)
+        block_state.resolved_num_frames = block_state.num_frames
+        self.set_block_state(state, block_state)
+        return components, state
+
+
+class AutoVideoBlocks(AutoPipelineBlocks):
+    block_classes = [ActionVideoBlock, PlainVideoBlock]
+    block_names = ["action", "plain"]
+    block_trigger_inputs = ["action", None]
+
+    @property
+    def description(self):
+        return "Auto video blocks: runs the action workflow when `action` is provided, plain otherwise"
+
+
+class NestedVideoBlocks(ConditionalPipelineBlocks):
+    block_classes = [SingleFrameBlock, AutoVideoBlocks]
+    block_names = ["image", "video"]
+    block_trigger_inputs = ["image"]
+    default_block_name = "video"
+
+    @property
+    def description(self):
+        return "Nested conditional blocks: single frame when `image` is provided, video otherwise"
+
+    def select_block(self, image=None) -> str | None:
+        if image is not None:
+            return "image"
+        return None
+
+
+class TestConditionalBlocksBranchDefaults:
+    def test_conflicting_defaults_merge_to_none(self):
+        merged = {p.name: p for p in AutoVideoBlocks().inputs}["num_frames"]
+        assert merged.default is None
+        assert merged.defaults_by_block == {"action": None, "plain": 189}
+
+    def test_agreeing_defaults_stay_untouched(self):
+        combined = combine_inputs(
+            ("a", [InputParam(name="x", default=5)]),
+            ("b", [InputParam(name="x", default=5)]),
+        )
+        assert combined[0].default == 5
+        assert combined[0].defaults_by_block is None
+
+    def test_default_branch_resolves_own_default(self):
+        pipe = AutoVideoBlocks().init_pipeline()
+        state = pipe(prompt="p")
+        assert state.get("resolved_num_frames") == 189
+
+    def test_sentinel_branch_not_polluted_by_sibling_default(self):
+        pipe = AutoVideoBlocks().init_pipeline()
+        state = pipe(prompt="p", action=8)
+        assert state.get("resolved_num_frames") == 9
+
+    def test_sentinel_branch_rejects_explicit_value(self):
+        pipe = AutoVideoBlocks().init_pipeline()
+        with pytest.raises(ValueError, match="has to be None"):
+            pipe(prompt="p", action=8, num_frames=10)
+
+    def test_standalone_branch_keeps_default(self):
+        pipe = PlainVideoBlock().init_pipeline()
+        state = pipe(prompt="p")
+        assert state.get("resolved_num_frames") == 189
+
+    def test_doc_renders_per_block_defaults(self):
+        doc = " ".join(AutoVideoBlocks().doc.split())
+        assert "Default depends on the selected block: None (`action`), 189 (`plain`)." in doc
+
+    def test_nested_defaults_prefixed_with_sub_block_name(self):
+        merged = {p.name: p for p in NestedVideoBlocks().inputs}["num_frames"]
+        assert merged.default is None
+        assert merged.defaults_by_block == {"image": 1, "video.action": None, "video.plain": 189}
