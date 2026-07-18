@@ -1,4 +1,4 @@
-# Copyright 2025 Berrada et al.
+# Copyright 2026 Berrada et al.
 
 import numpy as np
 import torch

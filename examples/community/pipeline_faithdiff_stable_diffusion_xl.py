@@ -1,4 +1,4 @@
-# Copyright 2025 Junyang Chen, Jinshan Pan, Jiangxin Dong, IMAG Lab Team
+# Copyright 2026 Junyang Chen, Jinshan Pan, Jiangxin Dong, IMAG Lab Team
 # and The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");

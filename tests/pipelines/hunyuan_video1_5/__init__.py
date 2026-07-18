@@ -1,1 +1,1 @@
-# Copyright 2025 The HuggingFace Team.
+# Copyright 2026 The HuggingFace Team.
