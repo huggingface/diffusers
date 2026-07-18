@@ -1718,8 +1718,8 @@ class PeftLoraLoaderMixinTests:
         component and then unfusing only *some* of them should not report the adapter as fully unfused,
         it's still merged into the untouched component(s).
         """
-        if "text_encoder" not in self.pipeline_class._lora_loadable_modules:
-            return
+        if not self.supports_text_encoder_loras:
+            pytest.skip("Skipping test as text encoder LoRAs are not currently supported.")
 
         components, text_lora_config, denoiser_lora_config = self.get_dummy_components()
         pipe = self.pipeline_class(**components)
