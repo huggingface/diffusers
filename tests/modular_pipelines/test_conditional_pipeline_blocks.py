@@ -13,14 +13,11 @@
 # limitations under the License.
 
 
-import pytest
-
 from diffusers.modular_pipelines import (
     AutoPipelineBlocks,
     ConditionalPipelineBlocks,
     InputParam,
     ModularPipelineBlocks,
-    OutputParam,
 )
 from diffusers.modular_pipelines.modular_pipeline_utils import combine_inputs
 
@@ -30,8 +27,7 @@ class TextToImageBlock(ModularPipelineBlocks):
 
     @property
     def inputs(self):
-        # strength does not apply to text2img: None is a "user didn't pass this" sentinel
-        return [InputParam(name="prompt"), InputParam(name="strength", type_hint=float, default=None)]
+        return [InputParam(name="prompt")]
 
     @property
     def intermediate_outputs(self):
@@ -43,8 +39,6 @@ class TextToImageBlock(ModularPipelineBlocks):
 
     def __call__(self, components, state):
         block_state = self.get_block_state(state)
-        if block_state.strength is not None:
-            raise ValueError("`strength` is not supported for text2img.")
         block_state.workflow = "text2img"
         self.set_block_state(state, block_state)
         return components, state
@@ -63,7 +57,7 @@ class ImageToImageBlock(ModularPipelineBlocks):
 
     @property
     def intermediate_outputs(self):
-        return [OutputParam(name="resolved_strength")]
+        return []
 
     @property
     def description(self):
@@ -72,7 +66,6 @@ class ImageToImageBlock(ModularPipelineBlocks):
     def __call__(self, components, state):
         block_state = self.get_block_state(state)
         block_state.workflow = "img2img"
-        block_state.resolved_strength = block_state.strength
         self.set_block_state(state, block_state)
         return components, state
 
@@ -91,7 +84,7 @@ class InpaintBlock(ModularPipelineBlocks):
 
     @property
     def intermediate_outputs(self):
-        return [OutputParam(name="resolved_strength")]
+        return []
 
     @property
     def description(self):
@@ -100,7 +93,6 @@ class InpaintBlock(ModularPipelineBlocks):
     def __call__(self, components, state):
         block_state = self.get_block_state(state)
         block_state.workflow = "inpaint"
-        block_state.resolved_strength = block_state.strength
         self.set_block_state(state, block_state)
         return components, state
 
@@ -280,7 +272,7 @@ class TestConditionalBlocksBranchDefaults:
     def test_conflicting_defaults_merge_to_none(self):
         merged = {p.name: p for p in AutoImageBlocks().inputs}["strength"]
         assert merged.default is None
-        assert merged.defaults_by_block == {"inpaint": 0.9999, "img2img": 0.3, "text2img": None}
+        assert merged.defaults_by_block == {"inpaint": 0.9999, "img2img": 0.3}
 
     def test_agreeing_defaults_stay_untouched(self):
         combined = combine_inputs(
@@ -290,39 +282,36 @@ class TestConditionalBlocksBranchDefaults:
         assert combined[0].default == 5
         assert combined[0].defaults_by_block is None
 
+    def test_none_default_counts_as_disagreement(self):
+        # a None default is a sentinel ("user didn't pass this"), it must not be overridden by a sibling's default
+        combined = combine_inputs(
+            ("a", [InputParam(name="x", default=None)]),
+            ("b", [InputParam(name="x", default=5)]),
+        )
+        assert combined[0].default is None
+        assert combined[0].defaults_by_block == {"a": None, "b": 5}
+
     def test_branch_resolves_own_default(self):
         pipe = AutoImageBlocks().init_pipeline()
         state = pipe(prompt="p", image="i")
-        assert state.get("resolved_strength") == 0.3
+        assert state.get("strength") == 0.3
 
         state = pipe(prompt="p", image="i", mask="m")
-        assert state.get("resolved_strength") == 0.9999
+        assert state.get("strength") == 0.9999
 
     def test_explicit_value_overrides_branch_default(self):
         pipe = AutoImageBlocks().init_pipeline()
         state = pipe(prompt="p", image="i", strength=0.7)
-        assert state.get("resolved_strength") == 0.7
-
-    def test_sentinel_branch_not_polluted_by_sibling_default(self):
-        pipe = AutoImageBlocks().init_pipeline()
-        # text2img uses None as a "user didn't pass this" sentinel: without the per-block merge,
-        # img2img's 0.3 would leak into state and this call would raise
-        state = pipe(prompt="p")
-        assert state.get("resolved_strength") is None
-
-    def test_sentinel_branch_rejects_explicit_value(self):
-        pipe = AutoImageBlocks().init_pipeline()
-        with pytest.raises(ValueError, match="not supported for text2img"):
-            pipe(prompt="p", strength=0.5)
+        assert state.get("strength") == 0.7
 
     def test_standalone_branch_keeps_default(self):
         pipe = ImageToImageBlock().init_pipeline()
         state = pipe(prompt="p", image="i")
-        assert state.get("resolved_strength") == 0.3
+        assert state.get("strength") == 0.3
 
     def test_doc_renders_per_block_defaults(self):
         doc = " ".join(AutoImageBlocks().doc.split())
-        assert "strength (`float`, *optional*, defaults to 0.9999 or 0.3 or None, depending on the workflow):" in doc
+        assert "strength (`float`, *optional*, defaults to 0.9999 or 0.3, depending on the workflow):" in doc
 
     def test_nested_defaults_prefixed_with_sub_block_name(self):
         merged = {p.name: p for p in NestedImageBlocks().inputs}["strength"]
@@ -331,5 +320,4 @@ class TestConditionalBlocksBranchDefaults:
             "refine": 0.9999,
             "image.inpaint": 0.9999,
             "image.img2img": 0.3,
-            "image.text2img": None,
         }
