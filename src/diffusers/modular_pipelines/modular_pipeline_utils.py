@@ -1158,9 +1158,13 @@ def combine_inputs(*named_input_lists: list[tuple[str, list[InputParam]]]) -> li
                 defaults_by_block[input_name] = new_defaults
                 continue
 
+            # duplicate input: accumulate this block's default,
+            # e.g. "strength" was {"img2img": 0.3}, after inpaint's turn it is {"img2img": 0.3, "inpaint": 0.9999}
             defaults_by_block[input_name].update(new_defaults)
             defaults = list(defaults_by_block[input_name].values())
             if any(d != defaults[0] for d in defaults[1:]):
+                # blocks disagree (0.3 vs 0.9999): combined default becomes None and the per-block defaults are
+                # recorded on the param; `replace` creates a fresh copy so the blocks' own params are never mutated
                 combined_dict[input_name] = replace(
                     combined_dict[input_name], default=None, defaults_by_block=dict(defaults_by_block[input_name])
                 )
