@@ -181,6 +181,8 @@ class AutoDenoise(ConditionalPipelineBlocks):
     default_block_name = "text2video"
 ```
 
+Conditional blocks can also declare `_workflow_map` (workflow name → trigger inputs), like the final blockset does — then `block.get_workflow("image2video")` resolves the branch for that workflow. Opt-in per block; when set, use the same workflow names as the final blockset (`test_sub_block_workflow_map` in the tester mixin checks the two levels agree), and map each name to the triggers *this* block switches on — which may be intermediates rather than user inputs (e.g. flux2's core denoise switches on `image_latents`, not `image`). A workflow where the block is skipped maps to `{}`.
+
 ## Key pattern: Checkpoint variants
 
 A different checkpoint (distilled / turbo / a variant with its own schedule) can have its own blockset mapped to it: give the variant a `ModularPipeline` subclass carrying its `default_blocks_name`, and checkpoints route to it automatically — via `_class_name` in `modular_model_index.json`, or, for repos that only ship a standard `model_index.json`, a config-keyed map fn in `MODULAR_PIPELINE_MAPPING` (see `_flux2_klein_map_fn`).

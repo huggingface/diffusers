@@ -385,23 +385,38 @@ class ModularPipelineBlocks(ConfigMixin, PushToHubMixin):
         """
         raise NotImplementedError(f"`get_execution_blocks` is not implemented for {self.__class__.__name__}")
 
-    # currently only SequentialPipelineBlocks support workflows
     @property
     def available_workflows(self):
         """
-        Returns a list of available workflow names. Must be implemented by subclasses that define `_workflow_map`.
+        Returns a list of available workflow names, as defined by `_workflow_map`.
         """
-        raise NotImplementedError(f"`available_workflows` is not implemented for {self.__class__.__name__}")
+        if self._workflow_map is None:
+            raise NotImplementedError(
+                f"workflows is not supported because _workflow_map is not set for {self.__class__.__name__}"
+            )
+
+        return list(self._workflow_map.keys())
 
     def get_workflow(self, workflow_name: str):
         """
-        Get the execution blocks for a specific workflow. Must be implemented by subclasses that define
-        `_workflow_map`.
+        Get the execution blocks for a specific workflow, resolved by passing the workflow's trigger inputs to
+        `get_execution_blocks`.
 
         Args:
             workflow_name: Name of the workflow to retrieve.
         """
-        raise NotImplementedError(f"`get_workflow` is not implemented for {self.__class__.__name__}")
+        if self._workflow_map is None:
+            raise NotImplementedError(
+                f"workflows is not supported because _workflow_map is not set for {self.__class__.__name__}"
+            )
+
+        if workflow_name not in self._workflow_map:
+            raise ValueError(f"Workflow {workflow_name} not found in {self.__class__.__name__}")
+
+        trigger_inputs = self._workflow_map[workflow_name]
+        workflow_blocks = self.get_execution_blocks(**trigger_inputs)
+
+        return workflow_blocks
 
     @classmethod
     def from_pretrained(
@@ -983,29 +998,6 @@ class SequentialPipelineBlocks(ModularPipelineBlocks):
                 if config not in expected_configs:
                     expected_configs.append(config)
         return expected_configs
-
-    @property
-    def available_workflows(self):
-        if self._workflow_map is None:
-            raise NotImplementedError(
-                f"workflows is not supported because _workflow_map is not set for {self.__class__.__name__}"
-            )
-
-        return list(self._workflow_map.keys())
-
-    def get_workflow(self, workflow_name: str):
-        if self._workflow_map is None:
-            raise NotImplementedError(
-                f"workflows is not supported because _workflow_map is not set for {self.__class__.__name__}"
-            )
-
-        if workflow_name not in self._workflow_map:
-            raise ValueError(f"Workflow {workflow_name} not found in {self.__class__.__name__}")
-
-        trigger_inputs = self._workflow_map[workflow_name]
-        workflow_blocks = self.get_execution_blocks(**trigger_inputs)
-
-        return workflow_blocks
 
     @classmethod
     def from_blocks_dict(

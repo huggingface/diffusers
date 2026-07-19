@@ -104,6 +104,10 @@ class Flux2AutoVaeEncoderStep(AutoPipelineBlocks):
     block_classes = [Flux2VaeEncoderSequentialStep]
     block_names = ["img_conditioning"]
     block_trigger_inputs = ["image"]
+    _workflow_map = {
+        "text2image": {},
+        "image_conditioned": {"image": True},
+    }
 
     @property
     def description(self):
@@ -260,6 +264,10 @@ class Flux2AutoCoreDenoiseStep(AutoPipelineBlocks):
     block_classes = [Flux2ImageConditionedCoreDenoiseStep, Flux2CoreDenoiseStep]
     block_names = ["image_conditioned", "text2image"]
     block_trigger_inputs = ["image_latents", None]
+    _workflow_map = {
+        "text2image": {},
+        "image_conditioned": {"image_latents": True},
+    }
 
     @property
     def description(self):
