@@ -22,6 +22,60 @@ from diffusers.modular_pipelines import (
 from diffusers.modular_pipelines.modular_pipeline_utils import combine_inputs
 
 
+def test_combine_inputs_agreeing_defaults_stay_untouched():
+    combined = combine_inputs(
+        ("block-a", [InputParam(name="x", default=5)]),
+        ("block-b", [InputParam(name="x", default=5)]),
+    )
+    assert combined == [InputParam(name="x", default=5)]
+
+
+def test_combine_inputs_first_occurrence_wins():
+    combined = combine_inputs(
+        ("block-a", [InputParam(name="x", default=5, description="from block-a")]),
+        ("block-b", [InputParam(name="x", default=5, description="from block-b")]),
+    )
+    # duplicate inputs keep the first occurrence: block-b's description is dropped
+    assert combined == [InputParam(name="x", default=5, description="from block-a")]
+
+
+def test_combine_inputs_none_default_counts_as_disagreement():
+    # a None default is a sentinel ("user didn't pass this"), it must not be overridden by a sibling's default
+    combined = combine_inputs(
+        ("block-a", [InputParam(name="x", default=None)]),
+        ("block-b", [InputParam(name="x", default=5)]),
+    )
+    assert combined == [InputParam(name="x", default=None, defaults_by_block={"block-a": None, "block-b": 5})]
+
+
+def test_combine_inputs_disagreement_records_every_block():
+    combined = combine_inputs(
+        ("block-a", [InputParam(name="x", default=1)]),
+        ("block-b", [InputParam(name="x", default=2)]),
+        ("block-c", [InputParam(name="x", default=1)]),
+    )
+    # any disagreement records every block's default, including the ones that agree with each other
+    assert combined == [
+        InputParam(name="x", default=None, defaults_by_block={"block-a": 1, "block-b": 2, "block-c": 1})
+    ]
+
+
+def test_combine_inputs_nested_defaults_prefixed():
+    # block-b is itself a conditional block whose branches already disagree, so its param carries defaults_by_block;
+    # merging at the outer level prefixes those entries with the sub-block name
+    combined = combine_inputs(
+        ("block-a", [InputParam(name="x", default=3)]),
+        ("block-b", [InputParam(name="x", default=None, defaults_by_block={"branch-a": 1, "branch-b": 2})]),
+    )
+    assert combined == [
+        InputParam(
+            name="x",
+            default=None,
+            defaults_by_block={"block-a": 3, "block-b.branch-a": 1, "block-b.branch-b": 2},
+        )
+    ]
+
+
 class TextToImageBlock(ModularPipelineBlocks):
     model_name = "text2img"
 
@@ -273,23 +327,6 @@ class TestConditionalBlocksBranchDefaults:
         merged = {p.name: p for p in AutoImageBlocks().inputs}["strength"]
         assert merged.default is None
         assert merged.defaults_by_block == {"inpaint": 0.9999, "img2img": 0.3}
-
-    def test_agreeing_defaults_stay_untouched(self):
-        combined = combine_inputs(
-            ("a", [InputParam(name="x", default=5)]),
-            ("b", [InputParam(name="x", default=5)]),
-        )
-        assert combined[0].default == 5
-        assert combined[0].defaults_by_block is None
-
-    def test_none_default_counts_as_disagreement(self):
-        # a None default is a sentinel ("user didn't pass this"), it must not be overridden by a sibling's default
-        combined = combine_inputs(
-            ("a", [InputParam(name="x", default=None)]),
-            ("b", [InputParam(name="x", default=5)]),
-        )
-        assert combined[0].default is None
-        assert combined[0].defaults_by_block == {"a": None, "b": 5}
 
     def test_branch_resolves_own_default(self):
         pipe = AutoImageBlocks().init_pipeline()
