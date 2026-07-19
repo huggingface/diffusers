@@ -762,6 +762,7 @@ def format_params(params, header="Args", indent_level=4, max_line_length=115):
             if not param.required:
                 param_str += ", *optional*"
                 if param.defaults_by_block is not None:
+                    # e.g. ", defaults to None or 189, depending on the workflow"
                     distinct_defaults = list(dict.fromkeys(param.defaults_by_block.values()))
                     param_str += (
                         f", defaults to {' or '.join(str(v) for v in distinct_defaults)}, depending on the workflow"
@@ -771,10 +772,12 @@ def format_params(params, header="Args", indent_level=4, max_line_length=115):
         param_str += "):"
 
         # Add description on a new line with additional indentation and wrapping
-        desc = param.description if param.description else "TODO: Add description."
-        desc = re.sub(r"\[(.*?)\]\((https?://[^\s\)]+)\)", r"[\1](\2)", desc)
-        wrapped_desc = wrap_text(desc, desc_indent, max_line_length)
-        param_str += f"\n{desc_indent}{wrapped_desc}"
+        if param.description:
+            desc = re.sub(r"\[(.*?)\]\((https?://[^\s\)]+)\)", r"[\1](\2)", param.description)
+            wrapped_desc = wrap_text(desc, desc_indent, max_line_length)
+            param_str += f"\n{desc_indent}{wrapped_desc}"
+        else:
+            param_str += f"\n{desc_indent}TODO: Add description."
 
         formatted_params.append(param_str)
 
@@ -839,6 +842,7 @@ def format_params_markdown(params, header="Inputs"):
         if hasattr(param, "required") and not param.required:
             param_str += ", *optional*"
             if param.defaults_by_block is not None:
+                # e.g. ", defaults to `None` or `189`, depending on the workflow"
                 distinct_defaults = list(dict.fromkeys(param.defaults_by_block.values()))
                 param_str += (
                     f", defaults to {' or '.join(f'`{v}`' for v in distinct_defaults)}, depending on the workflow"
@@ -1117,6 +1121,15 @@ def combine_inputs(*named_input_lists: list[tuple[str, list[InputParam]]]) -> li
     are recorded in `defaults_by_block`; each block resolves its own default at runtime in `get_block_state`, and the
     docstring formatters render the per-block defaults.
 
+    Example:
+        combine_inputs(
+            ("img2img", [InputParam("prompt"), InputParam("strength", default=0.3)]),
+            ("inpaint", [InputParam("prompt"), InputParam("strength", default=0.9999)]),
+        )
+        returns:
+            InputParam("prompt")  # no disagreement -> first occurrence kept as-is
+            InputParam("strength", default=None, defaults_by_block={"img2img": 0.3, "inpaint": 0.9999})
+
     Args:
         named_input_lists: List of tuples containing (block_name, input_param_list) pairs
 
@@ -1134,7 +1147,8 @@ def combine_inputs(*named_input_lists: list[tuple[str, list[InputParam]]]) -> li
                 input_name = input_param.name
 
             if input_param.defaults_by_block:
-                # nested conditional block: prefix its block names with the sub-block name
+                # nested conditional block: prefix its block names with the sub-block name,
+                # e.g. {"img2img": 0.3, "inpaint": 0.9999} from sub-block "image" -> {"image.img2img": 0.3, "image.inpaint": 0.9999}
                 new_defaults = {f"{block_name}.{k}": v for k, v in input_param.defaults_by_block.items()}
             else:
                 new_defaults = {block_name: input_param.default}
