@@ -18,6 +18,7 @@ from diffusers.modular_pipelines import (
     ConditionalPipelineBlocks,
     InputParam,
     ModularPipelineBlocks,
+    OutputParam,
 )
 from diffusers.modular_pipelines.modular_pipeline_utils import combine_inputs
 
@@ -82,7 +83,7 @@ class TextToImageBlock(ModularPipelineBlocks):
 
     @property
     def intermediate_outputs(self):
-        return []
+        return [OutputParam(name="workflow")]
 
     @property
     def description(self):
@@ -108,7 +109,7 @@ class ImageToImageBlock(ModularPipelineBlocks):
 
     @property
     def intermediate_outputs(self):
-        return []
+        return [OutputParam(name="workflow")]
 
     @property
     def description(self):
@@ -135,7 +136,7 @@ class InpaintBlock(ModularPipelineBlocks):
 
     @property
     def intermediate_outputs(self):
-        return []
+        return [OutputParam(name="workflow")]
 
     @property
     def description(self):
@@ -321,6 +322,8 @@ class NestedImageBlocks(ConditionalPipelineBlocks):
 
 class TestConditionalBlocksBranchDefaults:
     def test_conflicting_defaults_merge_to_none(self):
+        # inpaint (0.9999) and img2img (0.3) disagree on strength: the merged input's default becomes None
+        # and the per-block defaults are recorded in defaults_by_block
         strength_params = [p for p in AutoImageBlocks().inputs if p.name == "strength"]
         assert len(strength_params) == 1
         assert strength_params[0] == InputParam(
@@ -330,27 +333,31 @@ class TestConditionalBlocksBranchDefaults:
             defaults_by_block={"inpaint": 0.9999, "img2img": 0.3},
         )
 
+        # the docstring renders the distinct per-block defaults instead of a single value
+        doc = " ".join(AutoImageBlocks().doc.split())
+        assert "strength (`float`, *optional*, defaults to 0.9999 or 0.3, depending on the workflow):" in doc
+
     def test_branch_resolves_own_default(self):
         pipe = AutoImageBlocks().init_pipeline()
         state = pipe(prompt="p", image="i")
+        assert state.get("workflow") == "img2img"
         assert state.get("strength") == 0.3
 
         state = pipe(prompt="p", image="i", mask="m")
+        assert state.get("workflow") == "inpaint"
         assert state.get("strength") == 0.9999
 
     def test_explicit_value_overrides_branch_default(self):
         pipe = AutoImageBlocks().init_pipeline()
         state = pipe(prompt="p", image="i", strength=0.7)
+        assert state.get("workflow") == "img2img"
         assert state.get("strength") == 0.7
 
     def test_standalone_branch_keeps_default(self):
         pipe = ImageToImageBlock().init_pipeline()
         state = pipe(prompt="p", image="i")
+        assert state.get("workflow") == "img2img"
         assert state.get("strength") == 0.3
-
-    def test_doc_renders_per_block_defaults(self):
-        doc = " ".join(AutoImageBlocks().doc.split())
-        assert "strength (`float`, *optional*, defaults to 0.9999 or 0.3, depending on the workflow):" in doc
 
     def test_nested_defaults_prefixed_with_sub_block_name(self):
         strength_params = [p for p in NestedImageBlocks().inputs if p.name == "strength"]
@@ -361,3 +368,7 @@ class TestConditionalBlocksBranchDefaults:
             default=None,
             defaults_by_block={"refine": 0.9999, "image.inpaint": 0.9999, "image.img2img": 0.3},
         )
+
+        # the docstring renders distinct values only: refine and image.inpaint both use 0.9999, shown once
+        doc = " ".join(NestedImageBlocks().doc.split())
+        assert "strength (`float`, *optional*, defaults to 0.9999 or 0.3, depending on the workflow):" in doc
