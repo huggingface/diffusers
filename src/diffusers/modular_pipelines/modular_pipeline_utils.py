@@ -1116,19 +1116,22 @@ def _normalize_requirements(reqs):
 
 def combine_inputs(*named_input_lists: list[tuple[str, list[InputParam]]]) -> list[InputParam]:
     """
-    Combines multiple lists of InputParam objects from different blocks. Duplicate inputs keep the first occurrence.
-    If duplicate inputs declare different defaults, the combined input's default is None and the per-block defaults
-    are recorded in `defaults_by_block`; each block resolves its own default at runtime in `get_block_state`, and the
+    Combines multiple lists of InputParam objects from different blocks. Duplicate inputs keep the first occurrence. If
+    duplicate inputs declare different defaults, the combined input's default is None and the per-block defaults are
+    recorded in `defaults_by_block`; each block resolves its own default at runtime in `get_block_state`, and the
     docstring formatters render the per-block defaults.
 
     Example:
-        combine_inputs(
-            ("img2img", [InputParam("prompt"), InputParam("strength", default=0.3)]),
-            ("inpaint", [InputParam("prompt"), InputParam("strength", default=0.9999)]),
-        )
-        returns:
-            InputParam("prompt")  # no disagreement -> first occurrence kept as-is
-            InputParam("strength", default=None, defaults_by_block={"img2img": 0.3, "inpaint": 0.9999})
+
+    ```python
+    combine_inputs(
+        ("img2img", [InputParam("prompt"), InputParam("strength", default=0.3)]),
+        ("inpaint", [InputParam("prompt"), InputParam("strength", default=0.9999)]),
+    )
+    # returns:
+    #   InputParam("prompt")  # no disagreement -> first occurrence kept as-is
+    #   InputParam("strength", default=None, defaults_by_block={"img2img": 0.3, "inpaint": 0.9999})
+    ```
 
     See `TestConditionalBlocksInputs` in `tests/modular_pipelines/test_conditional_pipeline_blocks.py` for the full
     behavior.
