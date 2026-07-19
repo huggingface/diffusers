@@ -1136,8 +1136,8 @@ def combine_inputs(*named_input_lists: list[tuple[str, list[InputParam]]]) -> li
     Returns:
         List[InputParam]: Combined list of unique InputParam objects
     """
-    combined_dict = {}  # name -> InputParam
-    defaults_by_block = {}  # name -> {block_name: default}
+    combined_dict = {}  # name -> InputParam, e.g. {"strength": InputParam("strength", default=0.3)}
+    defaults_by_block = {}  # name -> {block_name: default}, e.g. {"strength": {"img2img": 0.3, "inpaint": 0.9999}}
 
     for block_name, inputs in named_input_lists:
         for input_param in inputs:

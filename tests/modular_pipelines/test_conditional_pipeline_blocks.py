@@ -30,7 +30,8 @@ class TextToImageBlock(ModularPipelineBlocks):
 
     @property
     def inputs(self):
-        return [InputParam(name="prompt")]
+        # strength does not apply to text2img: None is a "user didn't pass this" sentinel
+        return [InputParam(name="prompt"), InputParam(name="strength", type_hint=float, default=None)]
 
     @property
     def intermediate_outputs(self):
@@ -42,6 +43,8 @@ class TextToImageBlock(ModularPipelineBlocks):
 
     def __call__(self, components, state):
         block_state = self.get_block_state(state)
+        if block_state.strength is not None:
+            raise ValueError("`strength` is not supported for text2img.")
         block_state.workflow = "text2img"
         self.set_block_state(state, block_state)
         return components, state
@@ -52,11 +55,15 @@ class ImageToImageBlock(ModularPipelineBlocks):
 
     @property
     def inputs(self):
-        return [InputParam(name="prompt"), InputParam(name="image")]
+        return [
+            InputParam(name="prompt"),
+            InputParam(name="image"),
+            InputParam(name="strength", type_hint=float, default=0.3),
+        ]
 
     @property
     def intermediate_outputs(self):
-        return []
+        return [OutputParam(name="resolved_strength")]
 
     @property
     def description(self):
@@ -65,6 +72,7 @@ class ImageToImageBlock(ModularPipelineBlocks):
     def __call__(self, components, state):
         block_state = self.get_block_state(state)
         block_state.workflow = "img2img"
+        block_state.resolved_strength = block_state.strength
         self.set_block_state(state, block_state)
         return components, state
 
@@ -74,11 +82,16 @@ class InpaintBlock(ModularPipelineBlocks):
 
     @property
     def inputs(self):
-        return [InputParam(name="prompt"), InputParam(name="image"), InputParam(name="mask")]
+        return [
+            InputParam(name="prompt"),
+            InputParam(name="image"),
+            InputParam(name="mask"),
+            InputParam(name="strength", type_hint=float, default=0.9999),
+        ]
 
     @property
     def intermediate_outputs(self):
-        return []
+        return [OutputParam(name="resolved_strength")]
 
     @property
     def description(self):
@@ -87,6 +100,7 @@ class InpaintBlock(ModularPipelineBlocks):
     def __call__(self, components, state):
         block_state = self.get_block_state(state)
         block_state.workflow = "inpaint"
+        block_state.resolved_strength = block_state.strength
         self.set_block_state(state, block_state)
         return components, state
 
@@ -246,116 +260,27 @@ class TestConditionalPipelineBlocksStructure:
         assert "Conditional" in blocks.description
 
 
-class PlainVideoBlock(ModularPipelineBlocks):
-    model_name = "video"
-
-    @property
-    def inputs(self):
-        return [
-            InputParam(name="prompt"),
-            InputParam(name="num_frames", type_hint=int, default=189, description="Number of frames to generate."),
-        ]
-
-    @property
-    def intermediate_outputs(self):
-        return [OutputParam(name="resolved_num_frames")]
+class NestedImageBlocks(ConditionalPipelineBlocks):
+    block_classes = [InpaintBlock, AutoImageBlocks]
+    block_names = ["refine", "image"]
+    block_trigger_inputs = ["mask"]
+    default_block_name = "image"
 
     @property
     def description(self):
-        return "plain video workflow: uses its declared num_frames default"
+        return "Nested conditional blocks: refine when `mask` is provided, auto image blocks otherwise"
 
-    def __call__(self, components, state):
-        block_state = self.get_block_state(state)
-        block_state.resolved_num_frames = block_state.num_frames
-        self.set_block_state(state, block_state)
-        return components, state
-
-
-class ActionVideoBlock(ModularPipelineBlocks):
-    model_name = "video"
-
-    @property
-    def inputs(self):
-        return [
-            InputParam(name="prompt"),
-            InputParam(name="action"),
-            InputParam(name="num_frames", type_hint=int, default=None, description="Number of frames to generate."),
-        ]
-
-    @property
-    def intermediate_outputs(self):
-        return [OutputParam(name="resolved_num_frames")]
-
-    @property
-    def description(self):
-        return "action video workflow: num_frames must not be passed, it is derived from action"
-
-    def __call__(self, components, state):
-        block_state = self.get_block_state(state)
-        if block_state.num_frames is not None:
-            raise ValueError("`num_frames` has to be None if `action` is provided.")
-        block_state.resolved_num_frames = block_state.action + 1
-        self.set_block_state(state, block_state)
-        return components, state
-
-
-class SingleFrameBlock(ModularPipelineBlocks):
-    model_name = "video"
-
-    @property
-    def inputs(self):
-        return [
-            InputParam(name="prompt"),
-            InputParam(name="image"),
-            InputParam(name="num_frames", type_hint=int, default=1, description="Number of frames to generate."),
-        ]
-
-    @property
-    def intermediate_outputs(self):
-        return [OutputParam(name="resolved_num_frames")]
-
-    @property
-    def description(self):
-        return "single frame workflow"
-
-    def __call__(self, components, state):
-        block_state = self.get_block_state(state)
-        block_state.resolved_num_frames = block_state.num_frames
-        self.set_block_state(state, block_state)
-        return components, state
-
-
-class AutoVideoBlocks(AutoPipelineBlocks):
-    block_classes = [ActionVideoBlock, PlainVideoBlock]
-    block_names = ["action", "plain"]
-    block_trigger_inputs = ["action", None]
-
-    @property
-    def description(self):
-        return "Auto video blocks: runs the action workflow when `action` is provided, plain otherwise"
-
-
-class NestedVideoBlocks(ConditionalPipelineBlocks):
-    block_classes = [SingleFrameBlock, AutoVideoBlocks]
-    block_names = ["image", "video"]
-    block_trigger_inputs = ["image"]
-    default_block_name = "video"
-
-    @property
-    def description(self):
-        return "Nested conditional blocks: single frame when `image` is provided, video otherwise"
-
-    def select_block(self, image=None) -> str | None:
-        if image is not None:
-            return "image"
+    def select_block(self, mask=None) -> str | None:
+        if mask is not None:
+            return "refine"
         return None
 
 
 class TestConditionalBlocksBranchDefaults:
     def test_conflicting_defaults_merge_to_none(self):
-        merged = {p.name: p for p in AutoVideoBlocks().inputs}["num_frames"]
+        merged = {p.name: p for p in AutoImageBlocks().inputs}["strength"]
         assert merged.default is None
-        assert merged.defaults_by_block == {"action": None, "plain": 189}
+        assert merged.defaults_by_block == {"inpaint": 0.9999, "img2img": 0.3, "text2img": None}
 
     def test_agreeing_defaults_stay_untouched(self):
         combined = combine_inputs(
@@ -365,31 +290,46 @@ class TestConditionalBlocksBranchDefaults:
         assert combined[0].default == 5
         assert combined[0].defaults_by_block is None
 
-    def test_default_branch_resolves_own_default(self):
-        pipe = AutoVideoBlocks().init_pipeline()
-        state = pipe(prompt="p")
-        assert state.get("resolved_num_frames") == 189
+    def test_branch_resolves_own_default(self):
+        pipe = AutoImageBlocks().init_pipeline()
+        state = pipe(prompt="p", image="i")
+        assert state.get("resolved_strength") == 0.3
+
+        state = pipe(prompt="p", image="i", mask="m")
+        assert state.get("resolved_strength") == 0.9999
+
+    def test_explicit_value_overrides_branch_default(self):
+        pipe = AutoImageBlocks().init_pipeline()
+        state = pipe(prompt="p", image="i", strength=0.7)
+        assert state.get("resolved_strength") == 0.7
 
     def test_sentinel_branch_not_polluted_by_sibling_default(self):
-        pipe = AutoVideoBlocks().init_pipeline()
-        state = pipe(prompt="p", action=8)
-        assert state.get("resolved_num_frames") == 9
+        pipe = AutoImageBlocks().init_pipeline()
+        # text2img uses None as a "user didn't pass this" sentinel: without the per-block merge,
+        # img2img's 0.3 would leak into state and this call would raise
+        state = pipe(prompt="p")
+        assert state.get("resolved_strength") is None
 
     def test_sentinel_branch_rejects_explicit_value(self):
-        pipe = AutoVideoBlocks().init_pipeline()
-        with pytest.raises(ValueError, match="has to be None"):
-            pipe(prompt="p", action=8, num_frames=10)
+        pipe = AutoImageBlocks().init_pipeline()
+        with pytest.raises(ValueError, match="not supported for text2img"):
+            pipe(prompt="p", strength=0.5)
 
     def test_standalone_branch_keeps_default(self):
-        pipe = PlainVideoBlock().init_pipeline()
-        state = pipe(prompt="p")
-        assert state.get("resolved_num_frames") == 189
+        pipe = ImageToImageBlock().init_pipeline()
+        state = pipe(prompt="p", image="i")
+        assert state.get("resolved_strength") == 0.3
 
     def test_doc_renders_per_block_defaults(self):
-        doc = " ".join(AutoVideoBlocks().doc.split())
-        assert "num_frames (`int`, *optional*, defaults to None or 189, depending on the workflow):" in doc
+        doc = " ".join(AutoImageBlocks().doc.split())
+        assert "strength (`float`, *optional*, defaults to 0.9999 or 0.3 or None, depending on the workflow):" in doc
 
     def test_nested_defaults_prefixed_with_sub_block_name(self):
-        merged = {p.name: p for p in NestedVideoBlocks().inputs}["num_frames"]
+        merged = {p.name: p for p in NestedImageBlocks().inputs}["strength"]
         assert merged.default is None
-        assert merged.defaults_by_block == {"image": 1, "video.action": None, "video.plain": 189}
+        assert merged.defaults_by_block == {
+            "refine": 0.9999,
+            "image.inpaint": 0.9999,
+            "image.img2img": 0.3,
+            "image.text2img": None,
+        }
