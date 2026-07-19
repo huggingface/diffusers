@@ -1130,6 +1130,9 @@ def combine_inputs(*named_input_lists: list[tuple[str, list[InputParam]]]) -> li
             InputParam("prompt")  # no disagreement -> first occurrence kept as-is
             InputParam("strength", default=None, defaults_by_block={"img2img": 0.3, "inpaint": 0.9999})
 
+    See `TestConditionalBlocksInputs` in `tests/modular_pipelines/test_conditional_pipeline_blocks.py` for the full
+    behavior.
+
     Args:
         named_input_lists: List of tuples containing (block_name, input_param_list) pairs
 
