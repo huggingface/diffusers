@@ -123,6 +123,9 @@ class Cosmos3AutoTextEncoderStep(AutoPipelineBlocks):
       Components:
           video_processor (`VideoProcessor`) text_tokenizer (`AutoTokenizer`)
 
+      Configs:
+          default_use_system_prompt (default: True) enable_safety_checker (default: True)
+
       Inputs:
           control_videos (`dict`, *optional*):
               Mapping of hint name (edge/blur/depth/seg/wsm) to the control video for that modality.
@@ -367,6 +370,9 @@ class Cosmos3VisionCoreDenoiseStep(SequentialPipelineBlocks):
       Components:
           transformer (`Cosmos3OmniTransformer`) scheduler (`UniPCMultistepScheduler`)
 
+      Configs:
+          use_native_flow_schedule (default: False)
+
       Inputs:
           cond_input_ids (`None`):
               Token IDs for the conditional prompt.
@@ -434,6 +440,9 @@ class Cosmos3VisionSoundCoreDenoiseStep(SequentialPipelineBlocks):
 
       Components:
           transformer (`Cosmos3OmniTransformer`) scheduler (`UniPCMultistepScheduler`)
+
+      Configs:
+          use_native_flow_schedule (default: False)
 
       Inputs:
           cond_input_ids (`None`):
@@ -515,6 +524,9 @@ class Cosmos3VisionActionCoreDenoiseStep(SequentialPipelineBlocks):
 
       Components:
           transformer (`Cosmos3OmniTransformer`) scheduler (`UniPCMultistepScheduler`)
+
+      Configs:
+          use_native_flow_schedule (default: False)
 
       Inputs:
           cond_input_ids (`None`):
@@ -600,6 +612,9 @@ class Cosmos3VisionSoundActionCoreDenoiseStep(SequentialPipelineBlocks):
 
       Components:
           transformer (`Cosmos3OmniTransformer`) scheduler (`UniPCMultistepScheduler`)
+
+      Configs:
+          use_native_flow_schedule (default: False)
 
       Inputs:
           cond_input_ids (`None`):
@@ -961,6 +976,9 @@ class Cosmos3AutoCoreDenoiseStep(ConditionalPipelineBlocks):
           transformer (`Cosmos3OmniTransformer`) vae (`AutoencoderKLWan`) video_processor (`VideoProcessor`) scheduler
           (`UniPCMultistepScheduler`)
 
+      Configs:
+          use_native_flow_schedule (default: False)
+
       Inputs:
           cond_input_ids (`None`):
               Token IDs for the conditional prompt.
@@ -1147,6 +1165,10 @@ class Cosmos3OmniBlocks(SequentialPipelineBlocks):
           video_processor (`VideoProcessor`) text_tokenizer (`AutoTokenizer`) vae (`AutoencoderKLWan`) transformer
           (`Cosmos3OmniTransformer`) scheduler (`UniPCMultistepScheduler`) sound_tokenizer
           (`Cosmos3AVAEAudioTokenizer`)
+
+      Configs:
+          default_use_system_prompt (default: True) enable_safety_checker (default: True) use_native_flow_schedule
+          (default: False)
 
       Inputs:
           control_videos (`dict`, *optional*):
