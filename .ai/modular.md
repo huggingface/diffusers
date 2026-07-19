@@ -235,6 +235,8 @@ OutputParam(
 
 If a template's predefined description doesn't fit (e.g. the `"latents"` output template means "Denoised latents", which is wrong for the noisy latents out of a prepare-latents step) — drop the template and declare the field directly with an accurate description. See gotcha #5.
 
+**Declare defaults in the `InputParam`, not inside `__call__`.** A declared default is part of the block's contract, so the assembled pipeline is aware of it: the generated docstring shows it, `default_call_parameters` reports it, and when branches of a conditional blockset declare different defaults for the same input, the merged input records each branch's value (`defaults_by_block`) and every branch resolves its own default at runtime. Resolving a static default inside the block body instead (`if block_state.num_frames is None: block_state.num_frames = 189`) also works — nothing stops you — but the assembled pipeline is not aware of it: the input renders as `*optional*` with no default, and nothing at the pipeline level can report what the block will actually do. Resolve inside `__call__` only when the default is *computed* — derived from other inputs or component config (`height = components.default_sample_size * components.vae_scale_factor`) — since that genuinely can't be declared. And when several blocks in a sequence share an input, declare the same default on each (or only on the first block that reads it): in a sequence the input is one shared value, so disagreeing declarations are silently resolved first-block-wins.
+
 ## ComponentSpec patterns
 
 ```python
