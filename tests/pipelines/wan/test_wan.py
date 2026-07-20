@@ -12,21 +12,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import gc
 
-import pytest
 import torch
 from transformers import AutoConfig, AutoTokenizer, T5EncoderModel
 
 from diffusers import AutoencoderKLWan, FlowMatchEulerDiscreteScheduler, WanPipeline, WanTransformer3DModel
 
-from ...testing_utils import (
-    assert_tensors_close,
-    backend_empty_cache,
-    require_torch_accelerator,
-    slow,
-    torch_device,
-)
+from ...testing_utils import assert_tensors_close, torch_device
 from ..testing_utils import BasePipelineTesterConfig, MemoryTesterMixin, PipelineTesterMixin
 
 
@@ -147,21 +139,3 @@ class TestWanPipeline(WanPipelineTesterConfig, PipelineTesterMixin):
 
 class TestWanPipelineMemory(WanPipelineTesterConfig, MemoryTesterMixin):
     pass
-
-
-@slow
-@require_torch_accelerator
-class TestWanPipelineSlow:
-    prompt = "A painting of a squirrel eating a burger."
-
-    @pytest.fixture(autouse=True)
-    def cleanup(self):
-        gc.collect()
-        backend_empty_cache(torch_device)
-        yield
-        gc.collect()
-        backend_empty_cache(torch_device)
-
-    @pytest.mark.skip(reason="TODO: test needs to be implemented")
-    def test_wan(self):
-        pass
