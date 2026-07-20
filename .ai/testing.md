@@ -14,14 +14,22 @@ Two test layers must be added for any new pipeline: pipeline-level tests, and (i
 
 ## Pipeline-level tests 
 
-### Stanard pipelines
+### Standard pipelines
 
-- Location: `tests/pipelines/<model>/test_<model>.py` (one file per pipeline variant, e.g. T2V, I2V).
-- Subclass both `PipelineTesterMixin` (from `..test_pipelines_common`) and `unittest.TestCase`.
-- Set `pipeline_class`, `params`, `batch_params`, `image_params` from `..pipeline_params`, and any `required_optional_params` / capability flags (`test_xformers_attention`, `supports_dduf`, etc.) that apply.
-- Implement `get_dummy_components()` (build all sub-modules with tiny configs and a fixed `torch.manual_seed(0)` before each) and `get_dummy_inputs(device, seed=0)`.
-- Skip any inherited tests that don't apply with `@unittest.skip("Test not supported")` rather than deleting them.
-- Reference: `tests/pipelines/wan/test_wan.py`.
+Follow the style introduced in [#14113](https://github.com/huggingface/diffusers/pull/14113), which moved the shared infrastructure into the `tests/pipelines/testing_utils/` package and split the old monolithic `unittest.TestCase` into a **config class + composable pytest mixins**. Reference: `tests/pipelines/flux/test_pipeline_flux.py`.
+
+- Location: `tests/pipelines/<model>/test_pipeline_<model>.py` (one file per pipeline variant, e.g. T2V, I2V).
+- **These are pytest-style, not `unittest`** — no `unittest.TestCase` subclassing, no `setUp`/`tearDown` (a `cleanup` fixture handles VRAM), and skips use `pytest.skip` / `@pytest.mark.skip`, never `@unittest.skip`. Fixtures like `tmp_path` and the cached `base_pipe_output` are injected into test methods as arguments.
+- **Define one config class**, `<Pipeline>PipelineTesterConfig`, subclassing `BasePipelineTesterConfig` (from `..testing_utils`). It holds the whole testing contract and performs no assertions:
+  - Set `pipeline_class`, `required_input_params_in_call_signature` (params that must appear in `__call__`'s signature), and `batch_input_params` (params that get batched). Use the canonical sets in `..pipeline_params` where one fits, or an inline `frozenset([...])`.
+  - Implement `get_dummy_components(...)` — build every sub-module from the **real classes** at tiny config, each preceded by `torch.manual_seed(0)`.
+  - Implement `get_dummy_inputs()` — **no `device` / `seed` arguments** (unlike the old style). Use `self.get_generator(0)` for the generator, keep sizes tiny, and set `output_type="pt"` so tests compare torch tensors directly with `assert_tensors_close` (no numpy round-trip). Remember `"pt"` images are `(batch, channels, height, width)`.
+- **Compose the config with one mixin per concern**, one test class each, named `Test<Pipeline>...`. Add only the mixins that apply:
+  - `PipelineTesterMixin` — core save/load, dict-vs-tuple equivalence, batching, dtype/device, callbacks. Put pipeline-specific tests as methods on this class.
+  - `MemoryTesterMixin` — CPU offload, group offload, layerwise casting.
+  - Cache mixins — `PyramidAttentionBroadcastTesterMixin`, `FasterCacheTesterMixin`, `FirstBlockCacheTesterMixin`, `TaylorSeerCacheTesterMixin`, `MagCacheTesterMixin`. Guidance-distilled models override the cache config (e.g. `FASTER_CACHE_CONFIG = {... "is_guidance_distilled": True}`). Don't introduce caching related tests in the first iteration. These tests are added on a case-by-case basis.
+  - In the first pass, just add tests related to `PipelineTesterMixin` and `MemoryTesterMixin`.
+- **IP-Adapter tests** live in their own class decorated with `@is_ip_adapter`, subclassing only the config (not `PipelineTesterMixin`).
 
 ### Modular pipelines
 
