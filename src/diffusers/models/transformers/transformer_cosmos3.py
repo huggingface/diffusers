@@ -73,6 +73,7 @@ class Cosmos3AttnProcessor:
 
         q_und = attn.norm_q(q_und)
         k_und = attn.norm_k(k_und)
+        k_und_for_gen = attn.k_norm_und_for_gen(k_und) if attn.k_norm_und_for_gen is not None else k_und
         q_gen = attn.norm_added_q(q_gen)
         k_gen = attn.norm_added_k(k_gen)
 
@@ -82,6 +83,7 @@ class Cosmos3AttnProcessor:
         sin_und = sin_und.unsqueeze(1)
         q_und = q_und * cos_und + _rotate_half(q_und) * sin_und
         k_und = k_und * cos_und + _rotate_half(k_und) * sin_und
+        k_und_for_gen = k_und_for_gen * cos_und + _rotate_half(k_und_for_gen) * sin_und
         cos_gen = cos_gen.unsqueeze(1)
         sin_gen = sin_gen.unsqueeze(1)
         q_gen = q_gen * cos_gen + _rotate_half(q_gen) * sin_gen
@@ -100,7 +102,7 @@ class Cosmos3AttnProcessor:
         causal_out = causal_out.squeeze(0).flatten(-2, -1)
 
         # Full pathway (generation): gen tokens cross-attend to all (und + gen) keys/values.
-        all_k = torch.cat([k_und, k_gen], dim=0)
+        all_k = torch.cat([k_und_for_gen, k_gen], dim=0)
         all_v = torch.cat([v_und, v_gen], dim=0)
         full_out = dispatch_attention_fn(
             q_gen.unsqueeze(0),
@@ -238,6 +240,7 @@ class Cosmos3PackedMoTAttention(nn.Module, AttentionModuleMixin):
         attention_bias: bool,
         rms_norm_eps: float,
         qk_norm_for_text: bool = True,
+        use_und_k_norm_for_gen: bool = False,
         norm_type: str = "rms_norm",
         processor=None,
     ):
@@ -263,6 +266,14 @@ class Cosmos3PackedMoTAttention(nn.Module, AttentionModuleMixin):
         else:
             self.norm_q = RMSNorm(head_dim, eps=rms_norm_eps, elementwise_affine=True, bias=False)
             self.norm_k = RMSNorm(head_dim, eps=rms_norm_eps, elementwise_affine=True, bias=False)
+
+        if use_und_k_norm_for_gen and not qk_norm_for_text:
+            if norm_type == "nemotron_rms_norm":
+                self.k_norm_und_for_gen = Cosmos3NemotronRMSNorm(head_dim, eps=rms_norm_eps)
+            else:
+                self.k_norm_und_for_gen = RMSNorm(head_dim, eps=rms_norm_eps, elementwise_affine=True, bias=False)
+        else:
+            self.k_norm_und_for_gen = None
 
         # Generation pathway
         self.add_q_proj = nn.Linear(hidden_size, num_attention_heads * head_dim, bias=attention_bias)
@@ -303,6 +314,7 @@ class Cosmos3VLTextMoTDecoderLayer(nn.Module):
         rms_norm_eps: float,
         hidden_act: str = "silu",
         qk_norm_for_text: bool = True,
+        use_und_k_norm_for_gen: bool = False,
     ):
         super().__init__()
         self.hidden_size = hidden_size
@@ -315,6 +327,7 @@ class Cosmos3VLTextMoTDecoderLayer(nn.Module):
             attention_bias=attention_bias,
             rms_norm_eps=rms_norm_eps,
             qk_norm_for_text=qk_norm_for_text,
+            use_und_k_norm_for_gen=use_und_k_norm_for_gen,
             norm_type=norm_type,
         )
 
@@ -400,6 +413,7 @@ class Cosmos3OmniTransformer(ModelMixin, ConfigMixin, PeftAdapterMixin, Attentio
         vocab_size: int = 151936,
         hidden_act: str = "silu",
         qk_norm_for_text: bool = True,
+        use_und_k_norm_for_gen: bool = False,
         rope_axes_dim: tuple[int, int, int] | list[int] | None = None,
     ):
         super().__init__()
@@ -426,6 +440,7 @@ class Cosmos3OmniTransformer(ModelMixin, ConfigMixin, PeftAdapterMixin, Attentio
                     rms_norm_eps=rms_norm_eps,
                     hidden_act=hidden_act,
                     qk_norm_for_text=qk_norm_for_text,
+                    use_und_k_norm_for_gen=use_und_k_norm_for_gen,
                 )
                 for _ in range(num_hidden_layers)
             ]
