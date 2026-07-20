@@ -20,6 +20,7 @@ from diffusers import Cosmos3OmniTransformer
 from diffusers.models.transformers.transformer_cosmos3 import (
     Cosmos3NemotronRMSNorm,
     Cosmos3OmniTransformerOutput,
+    Cosmos3PackedMoTAttention,
 )
 from diffusers.utils.torch_utils import randn_tensor
 
@@ -136,10 +137,17 @@ class TestCosmos3OmniTransformerModel(Cosmos3OmniTransformerTesterConfig, ModelT
         assert output.action is output_tuple[2] is None
 
     def test_cosmos3_edge_uses_nemotron_parameter_layout(self):
-        transformer = self.model_class(**self.get_init_dict(), action_dim=3, action_gen=True, num_embodiment_domains=2)
+        transformer = self.model_class(
+            **self.get_init_dict(),
+            action_dim=3,
+            action_gen=True,
+            num_embodiment_domains=2,
+            use_und_k_norm_for_gen=True,
+        )
         state_dict = transformer.state_dict()
         layer = transformer.layers[0]
 
+        assert transformer.config.use_und_k_norm_for_gen
         assert isinstance(layer.self_attn.norm_q, torch.nn.Identity)
         assert isinstance(layer.self_attn.norm_k, torch.nn.Identity)
         assert isinstance(layer.self_attn.norm_added_q, Cosmos3NemotronRMSNorm)
@@ -151,10 +159,40 @@ class TestCosmos3OmniTransformerModel(Cosmos3OmniTransformerTesterConfig, ModelT
         assert not any(".norm_q." in key or ".norm_k." in key for key in state_dict)
         assert "layers.0.self_attn.norm_added_q.weight" in state_dict
         assert "layers.0.self_attn.norm_added_k.weight" in state_dict
+        assert "layers.0.self_attn.k_norm_und_for_gen.weight" in state_dict
         assert "layers.0.mlp.up_proj.weight" in state_dict
         assert "layers.0.mlp.down_proj.weight" in state_dict
         assert "action_proj_in.fc.weight" in state_dict
         assert "action_proj_out.fc.weight" in state_dict
+
+    def test_cosmos3_edge_generator_k_norm_does_not_change_causal_attention(self):
+        attention = Cosmos3PackedMoTAttention(
+            hidden_size=12,
+            head_dim=6,
+            num_attention_heads=2,
+            num_key_value_heads=1,
+            attention_bias=False,
+            rms_norm_eps=1e-5,
+            qk_norm_for_text=False,
+            use_und_k_norm_for_gen=True,
+            norm_type="nemotron_rms_norm",
+        ).to(torch_device)
+        und_seq = torch.randn(3, 12, device=torch_device)
+        gen_seq = torch.randn(2, 12, device=torch_device)
+        rotary_emb = (
+            torch.ones(3, 6, device=torch_device),
+            torch.zeros(3, 6, device=torch_device),
+            torch.ones(2, 6, device=torch_device),
+            torch.zeros(2, 6, device=torch_device),
+        )
+
+        with torch.no_grad():
+            causal_before, generation_before = attention(und_seq, gen_seq, rotary_emb)
+            attention.k_norm_und_for_gen.weight.fill_(2)
+            causal_after, generation_after = attention(und_seq, gen_seq, rotary_emb)
+
+        torch.testing.assert_close(causal_before, causal_after)
+        assert not torch.allclose(generation_before, generation_after)
 
     def test_cosmos3_edge_transformer_runs_action_workflow(self):
         transformer = self.model_class(
