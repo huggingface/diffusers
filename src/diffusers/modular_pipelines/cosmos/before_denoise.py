@@ -1,13 +1,14 @@
 import copy
 
+import numpy as np
 import torch
 
 from ...models.transformers.transformer_cosmos3 import Cosmos3OmniTransformer
 from ...pipelines.cosmos.pipeline_cosmos3_omni import _EMBODIMENT_TO_DOMAIN_ID, CosmosActionCondition
-from ...schedulers import UniPCMultistepScheduler
+from ...schedulers import FlowMatchEulerDiscreteScheduler, UniPCMultistepScheduler
 from ...utils.torch_utils import randn_tensor
 from ..modular_pipeline import ModularPipelineBlocks, PipelineState
-from ..modular_pipeline_utils import ComponentSpec, InputParam, OutputParam
+from ..modular_pipeline_utils import ComponentSpec, ConfigSpec, InputParam, OutputParam
 from .modular_pipeline import Cosmos3OmniModularPipeline
 
 
@@ -115,6 +116,11 @@ class Cosmos3VisionPrepareLatentsStep(ModularPipelineBlocks):
                 type_hint=list[int],
                 description="Indexes of conditioned vision latent frames.",
             ),
+            OutputParam(
+                "vision_conditioning_latents",
+                type_hint=torch.Tensor,
+                description="Clean encoded vision latents used to re-anchor image conditioning each step.",
+            ),
         ]
 
     @torch.no_grad()
@@ -165,6 +171,7 @@ class Cosmos3VisionPrepareLatentsStep(ModularPipelineBlocks):
             block_state.vision_condition_mask[:, 0, 0] > 0, as_tuple=False
         ).flatten()
         block_state.vision_condition_indexes_for_pack = [int(idx.item()) for idx in vision_condition_indexes]
+        block_state.vision_conditioning_latents = x0_tokens_vision
 
         self.set_block_state(state, block_state)
         return components, state
@@ -937,6 +944,10 @@ class Cosmos3SetTimestepsStep(ModularPipelineBlocks):
         return [ComponentSpec("scheduler", UniPCMultistepScheduler)]
 
     @property
+    def expected_configs(self) -> list[ConfigSpec]:
+        return [ConfigSpec(name="use_native_flow_schedule", default=False)]
+
+    @property
     def inputs(self) -> list[InputParam]:
         return [
             InputParam.template("num_inference_steps", required=True),
@@ -953,10 +964,368 @@ class Cosmos3SetTimestepsStep(ModularPipelineBlocks):
     def __call__(self, components: Cosmos3OmniModularPipeline, state: PipelineState) -> PipelineState:
         block_state = self.get_block_state(state)
         device = components._execution_device
+        if components.config.use_native_flow_schedule:
+            sigmas = np.linspace(
+                1.0 - 1.0 / components.scheduler.config.num_train_timesteps,
+                0.0,
+                block_state.num_inference_steps + 1,
+            )[:-1]
+            components.scheduler.set_timesteps(block_state.num_inference_steps, device=device, sigmas=sigmas)
+        else:
+            components.scheduler.set_timesteps(block_state.num_inference_steps, device=device)
+        block_state.timesteps = components.scheduler.timesteps
+        block_state.num_warmup_steps = (
+            len(block_state.timesteps) - block_state.num_inference_steps * components.scheduler.order
+        )
+        self.set_block_state(state, block_state)
+        return components, state
+
+
+class Cosmos3TransferPrepareLatentsStep(ModularPipelineBlocks):
+    model_name = "cosmos3-omni"
+
+    @property
+    def description(self) -> str:
+        return (
+            "Per-chunk transfer latent prep: takes the clean target latents encoded by "
+            "Cosmos3TransferChunkVaeEncoderStep and builds the noisy target latents, velocity mask, condition latents "
+            "and conditioned-frame indexes for this chunk."
+        )
+
+    @property
+    def expected_components(self) -> list[ComponentSpec]:
+        return [ComponentSpec("transformer", Cosmos3OmniTransformer)]
+
+    @property
+    def inputs(self) -> list[InputParam]:
+        return [
+            InputParam(
+                name="x0_tokens_vision",
+                type_hint=torch.Tensor,
+                required=True,
+                description="Clean target vision latents encoded from the seeded target frames.",
+            ),
+            InputParam(
+                name="current_conditional_frames",
+                type_hint=int,
+                required=True,
+                description="Number of pixel frames used to seed this chunk's target.",
+            ),
+            InputParam.template("generator"),
+        ]
+
+    @property
+    def intermediate_outputs(self) -> list[OutputParam]:
+        return [
+            OutputParam("latents", type_hint=torch.Tensor, description="Noisy target latents for this chunk."),
+            OutputParam(
+                "velocity_mask",
+                type_hint=torch.Tensor,
+                description="Mask that zeroes the velocity on conditioned (clean) latent frames.",
+            ),
+            OutputParam(
+                "condition_latents",
+                type_hint=torch.Tensor,
+                description="Clean target latents on the conditioned frames (the autoregressive seed).",
+            ),
+            OutputParam(
+                "target_condition_indexes",
+                type_hint=list[int],
+                description="Latent-frame indexes fixed by the chunk's conditioning.",
+            ),
+        ]
+
+    @torch.no_grad()
+    def __call__(self, components: Cosmos3OmniModularPipeline, state: PipelineState) -> PipelineState:
+        block_state = self.get_block_state(state)
+        device = components._execution_device
+        dtype = components.transformer.dtype
+        tcf = components.vae_scale_factor_temporal
+
+        target_x0 = block_state.x0_tokens_vision.to(device=device)
+        current_conditional_frames = block_state.current_conditional_frames
+
+        # Build the noisy target latents + conditioning mask from the clean target latents.
+        latent_t = target_x0.shape[2]
+        condition_mask = torch.zeros((latent_t, 1, 1), device=device, dtype=dtype)
+        latent_condition_frames = 0
+        if current_conditional_frames > 0:
+            latent_condition_frames = (current_conditional_frames - 1) // tcf + 1
+            condition_mask[:latent_condition_frames] = 1.0
+        noise = randn_tensor(tuple(target_x0.shape), generator=block_state.generator, device=device, dtype=dtype)
+        block_state.latents = condition_mask * target_x0 + (1.0 - condition_mask) * noise
+        block_state.velocity_mask = 1.0 - condition_mask
+        block_state.condition_latents = condition_mask * target_x0
+        block_state.target_condition_indexes = list(range(latent_condition_frames))
+
+        self.set_block_state(state, block_state)
+        return components, state
+
+
+class Cosmos3TransferPackSequenceStep(ModularPipelineBlocks):
+    model_name = "cosmos3-omni"
+
+    @property
+    def description(self) -> str:
+        return (
+            "Pre-packs the three transfer CFG sequence variants: cond_full / uncond_full carry every control item, "
+            "the no-control branch drops them (only [text, target]) so the control axis can be amplified."
+        )
+
+    @property
+    def inputs(self) -> list[InputParam]:
+        return [
+            InputParam(
+                name="cond_text_segment", type_hint=dict, required=True, description="Conditional text segment."
+            ),
+            InputParam(
+                name="uncond_text_segment", type_hint=dict, required=True, description="Unconditional text segment."
+            ),
+            InputParam(
+                name="control_latents",
+                type_hint=list[torch.Tensor],
+                required=True,
+                description="Clean control latents for this chunk, one per hint in canonical order.",
+            ),
+            InputParam(
+                name="latents",
+                type_hint=torch.Tensor,
+                required=True,
+                description="Noisy target latents for this chunk.",
+            ),
+            InputParam(
+                name="target_condition_indexes",
+                type_hint=list[int],
+                required=True,
+                description="Latent-frame indexes fixed by the chunk's conditioning.",
+            ),
+            InputParam(name="fps", type_hint=float, default=24.0, description="Frame rate of the generated video."),
+        ]
+
+    @property
+    def intermediate_outputs(self) -> list[OutputParam]:
+        return [
+            OutputParam(
+                "cond_full_static",
+                type_hint=dict,
+                kwargs_type="denoiser_input_fields",
+                description="Conditional [control..., target] transfer sequence carrying every control item.",
+            ),
+            OutputParam(
+                "cond_no_control_static",
+                type_hint=dict,
+                kwargs_type="denoiser_input_fields",
+                description="Conditional [target] transfer sequence with the control items dropped.",
+            ),
+            OutputParam(
+                "uncond_full_static",
+                type_hint=dict,
+                kwargs_type="denoiser_input_fields",
+                description="Unconditional [control..., target] transfer sequence for text CFG.",
+            ),
+            OutputParam(
+                "num_noisy_vision_tokens",
+                type_hint=int,
+                description="Number of noisy target vision tokens denoised each step.",
+            ),
+        ]
+
+    @torch.no_grad()
+    def __call__(self, components: Cosmos3OmniModularPipeline, state: PipelineState) -> PipelineState:
+        block_state = self.get_block_state(state)
+        device = components._execution_device
+        num_hints = len(block_state.control_latents)
+
+        def _vision_pack(text_segment: dict, include_controls: bool) -> dict:
+            if include_controls:
+                vision_items = [*block_state.control_latents, block_state.latents]
+                condition_indexes = [None] * num_hints + [block_state.target_condition_indexes]
+                clean_flags = [True] * num_hints + [False]
+            else:
+                vision_items = [block_state.latents]
+                condition_indexes = [block_state.target_condition_indexes]
+                clean_flags = [False]
+
+            # Transfer packs [ctrl_1, ..., ctrl_N, target] into one vision segment
+            mrope_offset = text_segment["vision_start_temporal_offset"]
+            item_curr = text_segment["und_len"]
+            token_shapes = []
+            sequence_index_parts = []
+            mse_loss_index_parts = []
+            noisy_frame_indexes_per_item = []
+            mrope_id_parts = []
+            num_vision_tokens = 0
+            num_noisy_vision_tokens = 0
+            for item, item_condition, is_clean in zip(vision_items, condition_indexes, clean_flags):
+                latent_t = item.shape[2]
+                if is_clean:
+                    frame_condition = list(range(latent_t))
+                else:
+                    frame_condition = item_condition if item_condition is not None else []
+                item_segment = components._prepare_vision_segment(
+                    input_vision_tokens=item,
+                    has_image_condition=False,
+                    mrope_offset=mrope_offset,
+                    vision_fps=block_state.fps,
+                    curr=item_curr,
+                    device=device,
+                    condition_frame_indexes=frame_condition,
+                )
+                token_shapes.extend(item_segment["vision_token_shapes"])
+                sequence_index_parts.append(item_segment["vision_sequence_indexes"])
+                mse_loss_index_parts.append(item_segment["vision_mse_loss_indexes"])
+                noisy_frame_indexes_per_item.extend(item_segment["vision_noisy_frame_indexes"])
+                mrope_id_parts.append(item_segment["vision_mrope_ids"])
+                num_vision_tokens += item_segment["num_vision_tokens"]
+                num_noisy_vision_tokens += item_segment["num_noisy_vision_tokens"]
+                item_curr += item_segment["num_vision_tokens"]
+
+            vision_segment = {
+                "vision_token_shapes": token_shapes,
+                "vision_sequence_indexes": torch.cat(sequence_index_parts, dim=0),
+                "vision_mse_loss_indexes": torch.cat(mse_loss_index_parts, dim=0),
+                "vision_noisy_frame_indexes": noisy_frame_indexes_per_item,
+                "vision_mrope_ids": torch.cat(mrope_id_parts, dim=1),
+                "num_vision_tokens": num_vision_tokens,
+                "num_noisy_vision_tokens": num_noisy_vision_tokens,
+            }
+            return {
+                **text_segment,
+                **vision_segment,
+                "position_ids": torch.cat([text_segment["text_mrope_ids"], vision_segment["vision_mrope_ids"]], dim=1),
+                "sequence_length": text_segment["und_len"] + vision_segment["num_vision_tokens"],
+            }
+
+        block_state.cond_full_static = _vision_pack(block_state.cond_text_segment, include_controls=True)
+        block_state.cond_no_control_static = _vision_pack(block_state.cond_text_segment, include_controls=False)
+        block_state.uncond_full_static = _vision_pack(block_state.uncond_text_segment, include_controls=True)
+        block_state.num_noisy_vision_tokens = block_state.cond_full_static["num_noisy_vision_tokens"]
+
+        self.set_block_state(state, block_state)
+        return components, state
+
+
+class Cosmos3TransferSetTimestepsStep(ModularPipelineBlocks):
+    model_name = "cosmos3-omni"
+
+    @property
+    def description(self) -> str:
+        return (
+            "Resets the scheduler and computes timesteps for a single transfer chunk. UniPCMultistepScheduler keeps "
+            "per-step state on the instance, so it is reset per chunk (each autoregressive chunk is a full denoise)."
+        )
+
+    @property
+    def expected_components(self) -> list[ComponentSpec]:
+        return [ComponentSpec("scheduler", UniPCMultistepScheduler)]
+
+    @property
+    def inputs(self) -> list[InputParam]:
+        return [InputParam.template("num_inference_steps", required=True)]
+
+    @property
+    def intermediate_outputs(self) -> list[OutputParam]:
+        return [
+            OutputParam("timesteps", type_hint=torch.Tensor, description="Scheduler timesteps for this chunk."),
+            OutputParam(
+                "num_warmup_steps", type_hint=int, description="Number of scheduler warmup steps for this chunk."
+            ),
+        ]
+
+    @torch.no_grad()
+    def __call__(self, components: Cosmos3OmniModularPipeline, state: PipelineState) -> PipelineState:
+        block_state = self.get_block_state(state)
+        device = components._execution_device
         components.scheduler.set_timesteps(block_state.num_inference_steps, device=device)
         block_state.timesteps = components.scheduler.timesteps
         block_state.num_warmup_steps = (
             len(block_state.timesteps) - block_state.num_inference_steps * components.scheduler.order
         )
+        self.set_block_state(state, block_state)
+        return components, state
+
+
+class Cosmos3DistilledSetTimestepsStep(ModularPipelineBlocks):
+    model_name = "cosmos3-omni"
+
+    @property
+    def description(self) -> str:
+        return "Initializes the fixed distilled sampling schedule from the pipeline's `distilled_sigmas` config."
+
+    @property
+    def expected_components(self) -> list[ComponentSpec]:
+        return [ComponentSpec("scheduler", FlowMatchEulerDiscreteScheduler)]
+
+    @property
+    def expected_configs(self) -> list[ConfigSpec]:
+        return [
+            ConfigSpec(name="is_distilled", default=True),
+            ConfigSpec(name="distilled_sigmas", default=None),
+        ]
+
+    @property
+    def inputs(self) -> list[InputParam]:
+        return [
+            InputParam.template("num_inference_steps", required=False, default=None),
+            InputParam(
+                name="guidance_scale",
+                type_hint=float,
+                default=None,
+                description=(
+                    "Unused for distilled checkpoints; classifier-free guidance is baked into the weights and the "
+                    "scale is forced to 1.0. Passing a value other than 1.0 raises an error."
+                ),
+            ),
+        ]
+
+    @property
+    def intermediate_outputs(self) -> list[OutputParam]:
+        return [
+            OutputParam("timesteps", type_hint=torch.Tensor, description="Scheduler timesteps for denoising."),
+            OutputParam("num_warmup_steps", type_hint=int, description="Number of scheduler warmup steps."),
+            OutputParam(
+                "num_inference_steps",
+                type_hint=int,
+                description="Resolved number of denoising steps (fixed by the distilled schedule).",
+            ),
+            OutputParam(
+                name="guidance_scale",
+                type_hint=float,
+                description="Resolved classifier-free guidance scale (always 1.0 for distilled checkpoints).",
+            ),
+        ]
+
+    @torch.no_grad()
+    def __call__(self, components: Cosmos3OmniModularPipeline, state: PipelineState) -> PipelineState:
+        block_state = self.get_block_state(state)
+        device = components._execution_device
+
+        sigmas = components.config.distilled_sigmas
+        if not sigmas:
+            raise ValueError(
+                "Cosmos3DistilledSetTimestepsStep requires the pipeline config `distilled_sigmas` to be set "
+                "(populated from the distilled checkpoint's `modular_model_index.json`). Load a distilled Cosmos3 "
+                "checkpoint or use `Cosmos3OmniModularPipeline` for base checkpoints."
+            )
+        sigmas = [float(s) for s in sigmas]
+        distilled_steps = len(sigmas)
+
+        if block_state.num_inference_steps is not None and block_state.num_inference_steps != distilled_steps:
+            raise ValueError(
+                "This is a distilled checkpoint; the step count is fixed by the pipeline's "
+                f"`distilled_sigmas` config ({distilled_steps} steps). "
+                f"`num_inference_steps` must be {distilled_steps} or left unset (got {block_state.num_inference_steps})."
+            )
+        if block_state.guidance_scale is not None and block_state.guidance_scale != 1.0:
+            raise ValueError(
+                "This is a distilled checkpoint; classifier-free guidance is baked into the weights. "
+                f"`guidance_scale` must be 1.0 or left unset (got {block_state.guidance_scale})."
+            )
+
+        components.scheduler.set_timesteps(sigmas=sigmas, device=device)
+        block_state.num_inference_steps = distilled_steps
+        block_state.guidance_scale = 1.0
+        block_state.timesteps = components.scheduler.timesteps
+        block_state.num_warmup_steps = len(block_state.timesteps) - distilled_steps * components.scheduler.order
         self.set_block_state(state, block_state)
         return components, state
