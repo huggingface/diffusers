@@ -29,7 +29,3 @@ log-SNR-uniform over λ ∈ [−6.2, 2.0], mapped to the flow-matching `t` varia
 [[autodoc]] StableAudio3EulerScheduler
 	- all
 	- step
-
-## StableAudio3EulerSchedulerOutput
-
-[[autodoc]] StableAudio3EulerSchedulerOutput
