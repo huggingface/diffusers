@@ -670,6 +670,9 @@ class WanTransformer3DModel(
         hidden_states = self.patch_embedding(hidden_states)
         hidden_states = hidden_states.flatten(2).transpose(1, 2)
 
+        # flatten+transpose produces a non-contiguous tensor; make it contiguous before the block loop.
+        hidden_states = hidden_states.contiguous()
+
         # timestep shape: batch_size, or batch_size, seq_len (wan 2.2 ti2v)
         if timestep.ndim == 2:
             ts_seq_len = timestep.shape[1]
