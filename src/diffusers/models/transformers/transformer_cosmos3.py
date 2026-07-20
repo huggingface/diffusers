@@ -702,7 +702,8 @@ class Cosmos3OmniTransformer(ModelMixin, ConfigMixin, PeftAdapterMixin, Attentio
         packed_tokens_vision, original_latent_shapes = self._patchify_and_pack_latents(vision_tokens)
         packed_tokens_vision = self.proj_in(packed_tokens_vision)
         timesteps_vision = vision_timesteps * self.config.timestep_scale
-        packed_timestep_embeds_vision = self.time_embedder(self.time_proj(timesteps_vision))
+        time_embedder_dtype = next(self.time_embedder.parameters()).dtype
+        packed_timestep_embeds_vision = self.time_embedder(self.time_proj(timesteps_vision).to(time_embedder_dtype))
         packed_timestep_embeds_vision = packed_timestep_embeds_vision.to(target_dtype)
         packed_tokens_vision = self._apply_timestep_embeds_to_noisy_tokens(
             packed_tokens=packed_tokens_vision,
@@ -717,7 +718,7 @@ class Cosmos3OmniTransformer(ModelMixin, ConfigMixin, PeftAdapterMixin, Attentio
             packed_tokens_sound = self._pack_sound_latents(sound_tokens, sound_token_shapes).to(target_dtype)
             packed_tokens_sound = self.audio_proj_in(packed_tokens_sound) + self.audio_modality_embed
             timesteps_sound = sound_timesteps * self.config.timestep_scale
-            packed_timestep_embeds_sound = self.time_embedder(self.time_proj(timesteps_sound))
+            packed_timestep_embeds_sound = self.time_embedder(self.time_proj(timesteps_sound).to(time_embedder_dtype))
             packed_timestep_embeds_sound = packed_timestep_embeds_sound.to(target_dtype)
             packed_tokens_sound = self._apply_timestep_embeds_to_noisy_tokens(
                 packed_tokens=packed_tokens_sound,
@@ -738,7 +739,9 @@ class Cosmos3OmniTransformer(ModelMixin, ConfigMixin, PeftAdapterMixin, Attentio
             packed_tokens_action = packed_tokens_action + self.action_modality_embed
             if action_mse_loss_indexes.numel() > 0:
                 timesteps_action = action_timesteps * self.config.timestep_scale
-                packed_timestep_embeds_action = self.time_embedder(self.time_proj(timesteps_action))
+                packed_timestep_embeds_action = self.time_embedder(
+                    self.time_proj(timesteps_action).to(time_embedder_dtype)
+                )
                 packed_timestep_embeds_action = packed_timestep_embeds_action.to(target_dtype)
                 packed_tokens_action = self._apply_timestep_embeds_to_noisy_tokens(
                     packed_tokens=packed_tokens_action,
