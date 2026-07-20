@@ -336,7 +336,7 @@ class FlaxDiffusionPipeline(ConfigMixin, PushToHubMixin):
             )
             # make sure we only download sub-folders and `diffusers` filenames
             folder_names = [k for k in config_dict.keys() if not k.startswith("_")]
-            allow_patterns = [os.path.join(k, "*") for k in folder_names]
+            allow_patterns = [f"{k}/*" for k in folder_names]
             allow_patterns += [FLAX_WEIGHTS_NAME, SCHEDULER_CONFIG_NAME, CONFIG_NAME, cls.config_name]
 
             ignore_patterns = ["*.bin", "*.safetensors"] if not from_pt else []
