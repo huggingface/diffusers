@@ -12,10 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import gc
-import unittest
-
-import numpy as np
+import pytest
 import torch
 from PIL import Image
 from transformers import (
@@ -34,37 +31,19 @@ from diffusers import (
     WanAnimateTransformer3DModel,
 )
 
-from ...testing_utils import (
-    backend_empty_cache,
-    enable_full_determinism,
-    require_torch_accelerator,
-    slow,
-    torch_device,
-)
-from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_IMAGE_PARAMS, TEXT_TO_IMAGE_PARAMS
-from ..test_pipelines_common import PipelineTesterMixin
+from ..testing_utils import BasePipelineTesterConfig, MemoryTesterMixin, PipelineTesterMixin
 
 
-enable_full_determinism()
-
-
-class WanAnimatePipelineFastTests(PipelineTesterMixin, unittest.TestCase):
+class WanAnimatePipelineTesterConfig(BasePipelineTesterConfig):
     pipeline_class = WanAnimatePipeline
-    params = TEXT_TO_IMAGE_PARAMS - {"cross_attention_kwargs"}
-    batch_params = TEXT_TO_IMAGE_BATCH_PARAMS
-    image_params = TEXT_TO_IMAGE_IMAGE_PARAMS
-    image_latents_params = TEXT_TO_IMAGE_IMAGE_PARAMS
-    required_optional_params = frozenset(
-        [
-            "num_inference_steps",
-            "generator",
-            "latents",
-            "return_dict",
-            "callback_on_step_end",
-            "callback_on_step_end_tensor_inputs",
-        ]
+    required_input_params_in_call_signature = frozenset(
+        ["prompt", "negative_prompt", "height", "width", "guidance_scale", "prompt_embeds", "negative_prompt_embeds"]
     )
-    test_xformers_attention = False
+    batch_input_params = frozenset(["prompt"])
+    # Wan is a video pipeline: it exposes `num_videos_per_prompt`, not the base default `num_images_per_prompt`.
+    optional_input_params = frozenset(
+        ["num_inference_steps", "num_videos_per_prompt", "generator", "latents", "output_type", "return_dict"]
+    )
 
     def get_dummy_components(self):
         torch.manual_seed(0)
@@ -124,7 +103,7 @@ class WanAnimatePipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         torch.manual_seed(0)
         image_processor = CLIPImageProcessor(crop_size=4, size=4)
 
-        components = {
+        return {
             "transformer": transformer,
             "vae": vae,
             "scheduler": scheduler,
@@ -133,14 +112,8 @@ class WanAnimatePipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             "image_encoder": image_encoder,
             "image_processor": image_processor,
         }
-        return components
 
-    def get_dummy_inputs(self, device, seed=0):
-        if str(device).startswith("mps"):
-            generator = torch.manual_seed(seed)
-        else:
-            generator = torch.Generator(device=device).manual_seed(seed)
-
+    def get_dummy_inputs(self):
         num_frames = 17
         height = 16
         width = 16
@@ -151,7 +124,7 @@ class WanAnimatePipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         pose_video = [Image.new("RGB", (height, width))] * num_frames
         face_video = [Image.new("RGB", (face_height, face_width))] * num_frames
 
-        inputs = {
+        return {
             "image": image,
             "pose_video": pose_video,
             "face_video": face_video,
@@ -163,40 +136,36 @@ class WanAnimatePipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             "num_inference_steps": 2,
             "mode": "animate",
             "prev_segment_conditioning_frames": 1,
-            "generator": generator,
+            "generator": self.get_generator(0),
             "guidance_scale": 1.0,
+            # Request torch outputs so tests compare torch tensors directly (see `BasePipelineTesterConfig`).
             "output_type": "pt",
             "max_sequence_length": 16,
         }
-        return inputs
 
+
+class TestWanAnimatePipeline(WanAnimatePipelineTesterConfig, PipelineTesterMixin):
     def test_inference(self):
-        """Test basic inference in animation mode."""
-        device = "cpu"
+        # Basic inference in animation mode. Run on CPU.
+        pipe = self.get_pipeline()
 
-        components = self.get_dummy_components()
-        pipe = self.pipeline_class(**components)
-        pipe.to(device)
-        pipe.set_progress_bar_config(disable=None)
-
-        inputs = self.get_dummy_inputs(device)
+        inputs = self.get_dummy_inputs()
         video = pipe(**inputs).frames[0]
-        self.assertEqual(video.shape, (17, 3, 16, 16))
+        assert video.shape == (17, 3, 16, 16)
 
-        expected_video = torch.randn(17, 3, 16, 16)
-        max_diff = np.abs(video - expected_video).max()
-        self.assertLessEqual(max_diff, 1e10)
+        # fmt: off
+        expected_slice = torch.tensor([0.4525, 0.4521, 0.4486, 0.4534, 0.4523, 0.4529, 0.454, 0.4533, 0.5055, 0.5203, 0.5363, 0.4827, 0.5057, 0.5176, 0.5117, 0.5139])
+        # fmt: on
+
+        generated_slice = video.flatten()
+        generated_slice = torch.cat([generated_slice[:8], generated_slice[-8:]])
+        assert torch.allclose(generated_slice, expected_slice, atol=1e-3)
 
     def test_inference_replacement(self):
-        """Test the pipeline in replacement mode with background and mask videos."""
-        device = "cpu"
+        # Replacement mode with background and mask videos. Run on CPU.
+        pipe = self.get_pipeline()
 
-        components = self.get_dummy_components()
-        pipe = self.pipeline_class(**components)
-        pipe.to(device)
-        pipe.set_progress_bar_config(disable=None)
-
-        inputs = self.get_dummy_inputs(device)
+        inputs = self.get_dummy_inputs()
         inputs["mode"] = "replace"
         num_frames = 17
         height = 16
@@ -205,36 +174,16 @@ class WanAnimatePipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         inputs["mask_video"] = [Image.new("L", (height, width))] * num_frames
 
         video = pipe(**inputs).frames[0]
-        self.assertEqual(video.shape, (17, 3, 16, 16))
+        assert video.shape == (17, 3, 16, 16)
 
-    @unittest.skip("Test not supported")
-    def test_attention_slicing_forward_pass(self):
-        pass
-
-    @unittest.skip(
-        "Setting the Wan Animate latents to zero at the last denoising step does not guarantee that the output will be"
-        " zero. I believe this is because the latents are further processed in the outer loop where we loop over"
-        " inference segments."
+    @pytest.mark.skip(
+        reason="Setting the Wan Animate latents to zero at the last denoising step does not guarantee that the output"
+        " will be zero. I believe this is because the latents are further processed in the outer loop where we loop"
+        " over inference segments."
     )
     def test_callback_inputs(self):
         pass
 
 
-@slow
-@require_torch_accelerator
-class WanAnimatePipelineIntegrationTests(unittest.TestCase):
-    prompt = "A painting of a squirrel eating a burger."
-
-    def setUp(self):
-        super().setUp()
-        gc.collect()
-        backend_empty_cache(torch_device)
-
-    def tearDown(self):
-        super().tearDown()
-        gc.collect()
-        backend_empty_cache(torch_device)
-
-    @unittest.skip("TODO: test needs to be implemented")
-    def test_wan_animate(self):
-        pass
+class TestWanAnimatePipelineMemory(WanAnimatePipelineTesterConfig, MemoryTesterMixin):
+    pass
