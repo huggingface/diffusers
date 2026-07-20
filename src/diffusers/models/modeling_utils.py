@@ -644,8 +644,10 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                 continue
             processor._attention_backend = backend
 
-        # Important to set the active backend so that it propagates gracefully throughout.
-        _AttentionBackendRegistry.set_active_backend(backend)
+        # Only pin the backend on this model's attention modules.
+        # Do not flip the process-wide active backend: that would leak into
+        # other models whose per-module backend is still unset (see #14249).
+        # Use `attention_backend(...)` when a temporary global override is needed.
 
     def reset_attention_backend(self) -> None:
         """
