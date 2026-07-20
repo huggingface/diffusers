@@ -82,6 +82,7 @@ from diffusers.training_utils import (
     compute_loss_weighting_for_sd3,
     find_nearest_bucket,
     free_memory,
+    generate_aspect_ratio_buckets,
     get_fsdp_kwargs_from_accelerator,
     offload_models,
     parse_buckets_string,
@@ -446,14 +447,19 @@ def parse_args(input_args=None):
         default=None,
         help=(
             "Aspect ratio buckets to use for training. Define as a string of 'h1,w1;h2,w2;...'. "
-            "e.g. '1024,1024;768,1360;1360,768;880,1168;1168,880;1248,832;832,1248'"
-            "Images will be resized and cropped to fit the nearest bucket. If provided, --resolution is ignored."
+            "e.g. '1024,1024;768,1360;1360,768;880,1168;1168,880;1248,832;832,1248'. "
+            "Passing this enables aspect-ratio bucketing; images are resized to cover and cropped to the "
+            "nearest listed bucket (smaller images are upscaled). If provided, --resolution is ignored."
         ),
     )
     parser.add_argument(
-        "--bucket_no_upscale",
+        "--use_aspect_ratio_buckets",
         action="store_true",
-        help="If set, images smaller than their aspect-ratio bucket are padded instead of upscaled.",
+        help=(
+            "Enable aspect-ratio bucketing. When set without --aspect_ratio_buckets, the buckets are computed "
+            "on the fly from --resolution and capped to each image's own resolution, so smaller images are "
+            "assigned to a smaller bucket instead of being upscaled. Passing --aspect_ratio_buckets implies this."
+        ),
     )
     parser.add_argument(
         "--center_crop",
@@ -785,15 +791,24 @@ class DreamBoothDataset(Dataset):
         repeats=1,
         center_crop=False,
         buckets=None,
+        use_aspect_ratio_buckets=False,
+        bucket_divisibility=16,
+        bucket_base_resolutions=None,
     ):
         self.size = size
+        self.resolution = size
         self.center_crop = center_crop
 
         self.instance_prompt = instance_prompt
         self.custom_instance_prompts = None
         self.class_prompt = class_prompt
 
-        self.buckets = buckets
+        # Explicit user-provided bucket list (or None). The concrete list of buckets actually used is
+        # built from the data in `self.buckets` during preprocessing below.
+        self._explicit_buckets = buckets
+        self.use_aspect_ratio_buckets = use_aspect_ratio_buckets
+        self.bucket_divisibility = bucket_divisibility
+        self.bucket_base_resolutions = bucket_base_resolutions
 
         # if --dataset_name is provided or a metadata jsonl file is provided in the local --instance_data directory,
         # we load the training data using load_dataset
@@ -859,6 +874,8 @@ class DreamBoothDataset(Dataset):
             self.instance_images.extend(itertools.repeat(img, repeats))
 
         self.pixel_values = []
+        self.buckets = []
+        bucket_to_idx = {}
         for i, image in enumerate(self.instance_images):
             image = exif_transpose(image)
             if not image.mode == "RGB":
@@ -866,15 +883,17 @@ class DreamBoothDataset(Dataset):
 
             width, height = image.size
 
-            # Find the closest bucket
-            bucket_idx = find_nearest_bucket(height, width, self.buckets)
-            target_height, target_width = self.buckets[bucket_idx]
-            self.size = (target_height, target_width)
+            # Assign the image to a bucket.
+            target = self._bucket_for_image(height, width)
+            if target not in bucket_to_idx:
+                bucket_to_idx[target] = len(self.buckets)
+                self.buckets.append(target)
+            bucket_idx = bucket_to_idx[target]
 
             # based on the bucket assignment, define the transformations
             image = self.train_transform(
                 image,
-                size=self.size,
+                size=target,
                 center_crop=args.center_crop,
                 random_flip=args.random_flip,
             )
@@ -928,19 +947,30 @@ class DreamBoothDataset(Dataset):
 
         return example
 
+    def _bucket_for_image(self, height, width):
+        # An explicit bucket list takes priority: pick the nearest, upscaling smaller images to cover it.
+        if self._explicit_buckets is not None:
+            return self._explicit_buckets[find_nearest_bucket(height, width, self._explicit_buckets)]
+        # On-the-fly bucketing: cap the ladder to the image's own resolution so smaller images are
+        # assigned to a smaller bucket rather than being upscaled (mirrors ostris' bucketing).
+        if self.use_aspect_ratio_buckets:
+            resolution = min(self.resolution, round((height * width) ** 0.5))
+            ladder = generate_aspect_ratio_buckets(
+                resolution,
+                divisibility=self.bucket_divisibility,
+                base_resolutions=self.bucket_base_resolutions,
+            )
+            return ladder[find_nearest_bucket(height, width, ladder)]
+        # No bucketing: a single square bucket reproduces the fixed-size resize + crop.
+        return (self.resolution, self.resolution)
+
     def train_transform(self, image, size, center_crop=False, random_flip=False):
         # Resize preserving aspect ratio so the image covers the bucket, then crop to the bucket size.
         target_height, target_width = size
         width, height = image.size
         scale = max(target_height / height, target_width / width)
-        if args.bucket_no_upscale:
-            scale = min(scale, 1.0)
         new_height, new_width = round(height * scale), round(width * scale)
         image = TF.resize(image, [new_height, new_width], interpolation=transforms.InterpolationMode.BILINEAR)
-        # Pad to the bucket when no-upscale leaves the image smaller, so batched samples share a shape.
-        pad_w, pad_h = max(0, target_width - new_width), max(0, target_height - new_height)
-        if pad_w or pad_h:
-            image = TF.pad(image, [pad_w // 2, pad_h // 2, pad_w - pad_w // 2, pad_h - pad_h // 2])
         if center_crop:
             image = TF.center_crop(image, size)
         else:
@@ -1455,11 +1485,20 @@ def main(args):
             safeguard_warmup=args.prodigy_safeguard_warmup,
         )
 
+    # Resolve the bucketing mode. An explicit --aspect_ratio_buckets list drives assignment directly;
+    # --use_aspect_ratio_buckets (without a list) computes buckets on the fly inside the dataset;
+    # otherwise a single square bucket reproduces the fixed-size resize + crop.
     if args.aspect_ratio_buckets is not None:
         buckets = parse_buckets_string(args.aspect_ratio_buckets)
+        use_aspect_ratio_buckets = False
+        logger.info(f"Using explicit aspect ratio buckets: {buckets}")
+    elif args.use_aspect_ratio_buckets:
+        buckets = None
+        use_aspect_ratio_buckets = True
+        logger.info("Using aspect ratio buckets computed on the fly from --resolution.")
     else:
         buckets = [(args.resolution, args.resolution)]
-    logger.info(f"Using parsed aspect ratio buckets: {buckets}")
+        use_aspect_ratio_buckets = False
 
     # Dataset and DataLoaders creation:
     train_dataset = DreamBoothDataset(
@@ -1472,6 +1511,7 @@ def main(args):
         repeats=args.repeats,
         center_crop=args.center_crop,
         buckets=buckets,
+        use_aspect_ratio_buckets=use_aspect_ratio_buckets,
     )
     precompute_latents = args.cache_latents or train_dataset.custom_instance_prompts
     batch_sampler = BucketBatchSampler(train_dataset, batch_size=args.train_batch_size, drop_last=True, seed=args.seed)
