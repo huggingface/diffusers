@@ -12,8 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import gc
-
 import pytest
 import torch
 from PIL import Image
@@ -33,12 +31,6 @@ from diffusers import (
     WanAnimateTransformer3DModel,
 )
 
-from ...testing_utils import (
-    backend_empty_cache,
-    require_torch_accelerator,
-    slow,
-    torch_device,
-)
 from ..testing_utils import BasePipelineTesterConfig, MemoryTesterMixin, PipelineTesterMixin
 
 
@@ -161,9 +153,13 @@ class TestWanAnimatePipeline(WanAnimatePipelineTesterConfig, PipelineTesterMixin
         video = pipe(**inputs).frames[0]
         assert video.shape == (17, 3, 16, 16)
 
-        expected_video = torch.randn(17, 3, 16, 16)
-        max_diff = (video - expected_video).abs().max()
-        assert max_diff <= 1e10
+        # fmt: off
+        expected_slice = torch.tensor([0.4525, 0.4521, 0.4486, 0.4534, 0.4523, 0.4529, 0.454, 0.4533, 0.5055, 0.5203, 0.5363, 0.4827, 0.5057, 0.5176, 0.5117, 0.5139])
+        # fmt: on
+
+        generated_slice = video.flatten()
+        generated_slice = torch.cat([generated_slice[:8], generated_slice[-8:]])
+        assert torch.allclose(generated_slice, expected_slice, atol=1e-3)
 
     def test_inference_replacement(self):
         # Replacement mode with background and mask videos. Run on CPU.
@@ -191,21 +187,3 @@ class TestWanAnimatePipeline(WanAnimatePipelineTesterConfig, PipelineTesterMixin
 
 class TestWanAnimatePipelineMemory(WanAnimatePipelineTesterConfig, MemoryTesterMixin):
     pass
-
-
-@slow
-@require_torch_accelerator
-class TestWanAnimatePipelineSlow:
-    prompt = "A painting of a squirrel eating a burger."
-
-    @pytest.fixture(autouse=True)
-    def cleanup(self):
-        gc.collect()
-        backend_empty_cache(torch_device)
-        yield
-        gc.collect()
-        backend_empty_cache(torch_device)
-
-    @pytest.mark.skip(reason="TODO: test needs to be implemented")
-    def test_wan_animate(self):
-        pass
