@@ -38,7 +38,6 @@ class Lumina2PipelineFastTests(unittest.TestCase, PipelineTesterMixin):
         ]
     )
 
-    supports_dduf = False
     test_xformers_attention = False
     test_layerwise_casting = True
 

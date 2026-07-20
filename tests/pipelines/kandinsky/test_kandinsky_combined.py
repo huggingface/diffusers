@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2025 HuggingFace Inc.
+# Copyright 2026 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -51,8 +51,6 @@ class KandinskyPipelineCombinedFastTests(PipelineTesterMixin, unittest.TestCase)
         "return_dict",
     ]
     test_xformers_attention = True
-
-    supports_dduf = False
 
     def get_dummy_components(self):
         dummy = Dummies()
@@ -171,8 +169,6 @@ class KandinskyPipelineImg2ImgCombinedFastTests(PipelineTesterMixin, unittest.Te
     ]
     test_xformers_attention = False
 
-    supports_dduf = False
-
     def get_dummy_components(self):
         dummy = Img2ImgDummies()
         prior_dummy = PriorDummies()
@@ -290,8 +286,6 @@ class KandinskyPipelineInpaintCombinedFastTests(PipelineTesterMixin, unittest.Te
         "return_dict",
     ]
     test_xformers_attention = False
-
-    supports_dduf = False
 
     def get_dummy_components(self):
         dummy = InpaintDummies()

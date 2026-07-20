@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2025 HuggingFace Inc.
+# Copyright 2026 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -49,6 +49,7 @@ class TestFlux2KleinModularPipelineFast(ModularPipelineTesterMixin):
 
     params = frozenset(["prompt", "height", "width"])
     batch_params = frozenset(["prompt"])
+    not_params = frozenset(["negative_prompt"])
     expected_workflow_blocks = FLUX2_KLEIN_WORKFLOWS
 
     def get_dummy_inputs(self, seed=0):
@@ -94,6 +95,7 @@ class TestFlux2KleinImageConditionedModularPipelineFast(ModularPipelineTesterMix
 
     params = frozenset(["prompt", "height", "width", "image"])
     batch_params = frozenset(["prompt", "image"])
+    not_params = frozenset(["negative_prompt"])
     expected_workflow_blocks = FLUX2_KLEIN_IMAGE_CONDITIONED_WORKFLOWS
 
     def get_dummy_inputs(self, seed=0):

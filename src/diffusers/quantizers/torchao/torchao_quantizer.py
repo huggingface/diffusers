@@ -18,6 +18,7 @@ https://github.com/huggingface/transformers/blob/3a8eb74668e9c2cc563b2f5c62fac17
 """
 
 import importlib
+import json
 import re
 import types
 from typing import TYPE_CHECKING, Any
@@ -26,6 +27,7 @@ from packaging import version
 
 from ...utils import (
     get_module_from_name,
+    is_safetensors_available,
     is_torch_available,
     is_torch_version,
     is_torchao_available,
@@ -40,6 +42,9 @@ logger = logging.get_logger(__name__)
 
 if TYPE_CHECKING:
     from ...models.modeling_utils import ModelMixin
+
+if is_safetensors_available():
+    from safetensors import safe_open
 
 
 if is_torch_available():
@@ -71,6 +76,13 @@ if is_torch_available():
 
 if is_torchao_available():
     from torchao.quantization import quantize_
+
+    if is_torchao_version(">=", "0.16.0"):
+        from torchao.prototype.safetensors.safetensors_support import (
+            flatten_tensor_state_dict,
+            unflatten_tensor_state_dict,
+        )
+        from torchao.prototype.safetensors.safetensors_utils import is_metadata_torchao
 
 
 def _update_torch_safe_globals():
@@ -154,6 +166,9 @@ class TorchAoHfQuantizer(DiffusersQuantizer):
     def __init__(self, quantization_config, **kwargs):
         super().__init__(quantization_config, **kwargs)
 
+        self._metadata = {}
+        self._pending_flattened_state_dict = {}
+
     def validate_environment(self, *args, **kwargs):
         if not is_torchao_available():
             raise ImportError(
@@ -235,6 +250,72 @@ class TorchAoHfQuantizer(DiffusersQuantizer):
     def adjust_max_memory(self, max_memory: dict[str, int | str]) -> dict[str, int | str]:
         max_memory = {key: val * 0.9 for key, val in max_memory.items()}
         return max_memory
+
+    def get_state_dict_and_metadata(self, state_dict: dict[str, Any], safe_serialization: bool = False):
+        """
+        We flatten the state dict of tensor subclasses so that it is compatible with the safetensors format.
+        """
+        if not safe_serialization or not is_torchao_available() or not is_torchao_version(">=", "0.16.0"):
+            return state_dict, {}
+
+        flattened_state_dict = flatten_tensor_state_dict(state_dict)
+        if isinstance(flattened_state_dict, tuple):
+            return flattened_state_dict
+
+        return flattened_state_dict, {}
+
+    def maybe_update_loaded_keys(self, loaded_keys: list[str], checkpoint_files: list[str]) -> list[str]:
+        self.set_metadata(checkpoint_files)
+        if self._metadata:
+            return list(self.get_weight_names())
+        return loaded_keys
+
+    def set_metadata(self, checkpoint_files: list[str]):
+        self._metadata = {}
+        self._pending_flattened_state_dict = {}
+
+        if not is_safetensors_available() or not is_torchao_version(">=", "0.16.0"):
+            return
+
+        if len(checkpoint_files) == 0:
+            return
+
+        if not all(
+            isinstance(checkpoint, str) and checkpoint.endswith(".safetensors") for checkpoint in checkpoint_files
+        ):
+            return
+
+        metadata = {}
+        for checkpoint in checkpoint_files:
+            with safe_open(checkpoint, framework="pt") as f:
+                metadata.update(f.metadata() or {})
+
+        self._metadata = metadata if is_metadata_torchao(metadata) else {}
+
+    @property
+    def metadata(self):
+        return self._metadata
+
+    def maybe_update_state_dict(self, state_dict: dict[str, Any]) -> dict[str, Any]:
+        if not self._metadata or not is_torchao_version(">=", "0.16.0") or not is_metadata_torchao(self._metadata):
+            return state_dict
+
+        merged_state_dict = {**self._pending_flattened_state_dict, **state_dict}
+        reconstructed_state_dict, self._pending_flattened_state_dict = unflatten_tensor_state_dict(
+            merged_state_dict, self._metadata
+        )
+
+        return reconstructed_state_dict
+
+    @property
+    def supports_parallel_loading(self) -> bool:
+        # Safetensors reconstruction can carry leftover flattened tensor pieces from one shard to the next.
+        return not self._metadata
+
+    def get_weight_names(self):
+        if not self._metadata:
+            return set()
+        return set(json.loads(self._metadata["tensor_names"]))
 
     def check_if_quantized_param(
         self,
@@ -337,14 +418,19 @@ class TorchAoHfQuantizer(DiffusersQuantizer):
     def _process_model_after_weight_loading(self, model: "ModelMixin"):
         return model
 
-    def is_serializable(self, safe_serialization=None):
-        # TODO(aryan): needs to be tested
-        if safe_serialization:
+    @property
+    def supports_safetensors_serialization(self):
+        if not is_torchao_version(">=", "0.16.0"):
             logger.warning(
-                "torchao quantized model does not support safe serialization, please set `safe_serialization` to False."
+                "TorchAO quantized model is not serializable with safe serialization without safetensors support "
+                "from the installed torchao version."
             )
             return False
 
+        return True
+
+    @property
+    def is_serializable(self):
         _is_torchao_serializable = version.parse(importlib.metadata.version("huggingface_hub")) >= version.parse(
             "0.25.0"
         )

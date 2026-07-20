@@ -56,7 +56,6 @@ class LTX2InContextPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     )
     test_attention_slicing = False
     test_xformers_attention = False
-    supports_dduf = False
 
     base_text_encoder_ckpt_id = "hf-internal-testing/tiny-gemma3"
 

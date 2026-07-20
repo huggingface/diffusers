@@ -34,7 +34,7 @@ In the following, we give an overview of different ways to contribute, ranked by
 * 6. Contribute a [Community Pipeline](https://github.com/huggingface/diffusers/issues?q=is%3Aopen+is%3Aissue+label%3Acommunity-examples).
 * 7. Contribute to the [examples](https://github.com/huggingface/diffusers/tree/main/examples).
 * 8. Fix a more difficult issue, marked by the "Good second issue" label, see [here](https://github.com/huggingface/diffusers/issues?q=is%3Aopen+is%3Aissue+label%3A%22Good+second+issue%22).
-* 9. Add a new pipeline, model, or scheduler, see ["New Pipeline/Model"](https://github.com/huggingface/diffusers/issues?q=is%3Aopen+is%3Aissue+label%3A%22New+pipeline%2Fmodel%22) and ["New scheduler"](https://github.com/huggingface/diffusers/issues?q=is%3Aopen+is%3Aissue+label%3A%22New+scheduler%22) issues. For this contribution, please have a look at [Design Philosophy](https://github.com/huggingface/diffusers/blob/main/PHILOSOPHY.md).
+* 9. Add a new pipeline, model, or scheduler, see ["New Pipeline/Model"](https://github.com/huggingface/diffusers/issues?q=is%3Aopen+is%3Aissue+label%3A%22New+pipeline%2Fmodel%22) and ["New scheduler"](https://github.com/huggingface/diffusers/issues?q=is%3Aopen+is%3Aissue+label%3A%22New+scheduler%22) issues. For this contribution, please have a look at [Design Philosophy](https://huggingface.co/docs/diffusers/main/en/conceptual/philosophy).
 
 As said before, **all contributions are valuable to the community**.
 In the following, we will explain each contribution a bit more in detail.
@@ -570,9 +570,9 @@ For documentation strings, 🧨 Diffusers follows the [Google style](https://goo
 
 ## Coding with AI agents
 
-The repository keeps AI-agent configuration in [`.ai/`](https://github.com/huggingface/diffusers/tree/main/.ai) and exposes local agent files via symlinks. If you use a coding agent (Claude Code, OpenAI Codex, etc.) to help with a contribution, point it at this directory — it contains the project conventions and on-demand task knowledge maintainers expect contributors to follow.
+The repository keeps AI-agent configuration in [`.ai/`](https://github.com/huggingface/diffusers/tree/main/.ai). Run `make claude` / `make codex` to additionally wire up the on-demand task skills for your tool.
 
-- **Read-only for contributors** — `.ai/` is maintained by the core maintainers. Please do not edit files under `.ai/` (or the generated root-level `AGENTS.md`, `CLAUDE.md`, `.agents/skills`, `.claude/skills`, which are symlinks) in your PR. If you find something missing or wrong, open an issue or flag it on the PR and a maintainer will update it.
+- **Read-only for contributors** — `.ai/` is maintained by the core maintainers. Please do not edit files under `.ai/` (or the root-level `AGENTS.md` / `CLAUDE.md` symlinks, or the generated `.agents/skills` / `.claude/skills`) in your PR. If you find something missing or wrong, open an issue or flag it on the PR and a maintainer will update it.
 - **Guidelines** (loaded into every agent session):
   - [`.ai/AGENTS.md`](https://github.com/huggingface/diffusers/blob/main/.ai/AGENTS.md) — top-level coding guidelines
   - [`.ai/models.md`](https://github.com/huggingface/diffusers/blob/main/.ai/models.md) — attention pattern, model implementation rules, common conventions
@@ -581,11 +581,11 @@ The repository keeps AI-agent configuration in [`.ai/`](https://github.com/huggi
   - [`.ai/review-rules.md`](https://github.com/huggingface/diffusers/blob/main/.ai/review-rules.md) — what reviewers look for
 - **Skills** (under [`.ai/skills/`](https://github.com/huggingface/diffusers/tree/main/.ai/skills), loaded on demand for specific tasks):
   - `model-integration` — adding a new model or pipeline to diffusers end-to-end (file structure, integration checklist, testing layout, weight conversion)
-  - `parity-testing` — verifying numerical parity between the diffusers implementation and a reference implementation
+  - `self-review` — review your changes against the project rules before opening a PR
 - **Setup commands**:
-  - `make codex` — symlink guidelines + skills for OpenAI Codex
-  - `make claude` — symlink guidelines + skills for Claude Code
-  - `make clean-ai` — remove all generated symlinks
+  - `make codex` — wire up skills for OpenAI Codex (under `.agents/`)
+  - `make claude` — wire up skills for Claude Code (under `.claude/`)
+  - `make clean-ai` — remove the generated skills symlinks
 
 ### AI-assisted and agentic contributions
 
@@ -593,6 +593,9 @@ AI-assisted contributions are welcome, but they must be coordinated, scoped, and
 
 - **Coordinate before opening a PR.** Find or open an issue, review similar PRs (open and recently closed), and wait for an explicit acknowledgment from a maintainer on that issue before opening a PR. This gives us a chance to discuss scope, avoid duplicate work, and confirm the approach.
 - **Fix patterns, not one-offs.** If you spot an recurring issue, search the codebase for similar instances and open a *single* issue with a clear, systematic scope (e.g. "fix mutable defaults across all schedulers") rather than many issues or PRs for individual instances. 
+- **Self-review before opening.** Run the [`self-review`](https://github.com/huggingface/diffusers/blob/main/.ai/skills/self-review/SKILL.md) skill — it reviews your diff against [`.ai/review-rules.md`](https://github.com/huggingface/diffusers/blob/main/.ai/review-rules.md), the same rubric the `@claude` CI reviewer uses — and address what it reports — it's a helper, not authoritative, and can be wrong. Focus on the blocking issues that make sense to you, and clean up dead/unused code as much as possible. If you disagree with a suggestion, it's fine to leave it for the reviewer to discuss after the PR is opened — the notes you share (see below) tell the reviewer it was a deliberate call.
+- **Share your self-review notes.** Please post the final self-review report — the round that reflects the diff you're submitting — on the PR, in the description or as a comment, including findings you intentionally did not fix and why. It helps the reviewer see what has already been checked and which calls were deliberate, and usually saves a few rounds of back-and-forth.
 - **Include in the PR description:**
   - A **coordination link** to the issue or discussion where a maintainer acknowledged the work.
   - The **test commands you ran** and their results (paste relevant output, not just "tests pass").
+  - Your **self-review notes** (or a link to the PR comment containing them), as described above.

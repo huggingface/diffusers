@@ -7,6 +7,8 @@ Once merged, your PR is going to appear in the release notes with the title you 
 
 Then, please replace this with a description of the change and which issue is fixed (if applicable). Please also include relevant motivation and context. List any dependencies (if any) that are required for this change.
 
+If you used an AI agent, also include your final self-review notes here (or post them as a comment) — the report from the last self-review round, including any findings you intentionally did not fix and why. See https://github.com/huggingface/diffusers/blob/main/.ai/skills/self-review/SKILL.md
+
 Once you're done, someone will review your PR shortly (see the section "Who can review?" below to tag some potential reviewers). They may suggest changes to make the code even better. If no one reviewed your PR after a week has passed, don't hesitate to post a new comment @-mentioning the same persons---sometimes notifications get lost.
 -->
 
@@ -16,14 +18,18 @@ Fixes # (issue)
 
 
 ## Before submitting
-- [ ] This PR fixes a typo or improves the docs (you can dismiss the other checks if that's the case).
-- [ ] Did you read the [contributor guideline](https://github.com/huggingface/diffusers/blob/main/CONTRIBUTING.md)?
-- [ ] Did you read our [philosophy doc](https://github.com/huggingface/diffusers/blob/main/PHILOSOPHY.md) (important for complex PRs)?
+- [ ] Did you use an AI agent (Claude Code, Codex, Cursor, etc.) to help with this PR? If so:
+  - [ ] Did you read the [Coding with AI agents](https://huggingface.co/docs/diffusers/main/en/conceptual/contribution#coding-with-ai-agents) guide?
+  - [ ] Did you run the [`self-review`](https://github.com/huggingface/diffusers/blob/main/.ai/skills/self-review/SKILL.md) skill on the diff?
+  - [ ] Did you share the final self-review notes in the PR description or a comment?
+- [ ] Did you read the [contributor guideline](https://huggingface.co/docs/diffusers/main/en/conceptual/contribution)?
+- [ ] Did you read our [philosophy doc](https://huggingface.co/docs/diffusers/main/en/conceptual/philosophy)? (important for complex PRs)
 - [ ] Was this discussed/approved via a GitHub issue or the [forum](https://discuss.huggingface.co/c/discussion-related-to-httpsgithubcomhuggingfacediffusers/63)? Please add a link to it if that's the case.
 - [ ] Did you make sure to update the documentation with your changes? Here are the
       [documentation guidelines](https://github.com/huggingface/diffusers/tree/main/docs), and
       [here are tips on formatting docstrings](https://github.com/huggingface/diffusers/tree/main/docs#writing-source-documentation).
 - [ ] Did you write any new necessary tests?
+- [ ] Are you the author (or part of the team) of the model/pipeline (only applicable for model/pipeline related PRs)?
 
 
 ## Who can review?
@@ -38,12 +44,11 @@ members/contributors who may be interested in your PR.
 
 Core library:
 
-- Schedulers: @yiyixuxu
-- Pipelines and pipeline callbacks: @yiyixuxu and @asomoza
-- Training examples: @sayakpaul
+- Schedulers: @yiyixuxu @dg845
+- Pipelines and models: @yiyixuxu @dg845 and @asomoza
+- Training examples: @sayakpaul @linoytsaban
 - Docs: @stevhliu and @sayakpaul
-- JAX and MPS: @pcuenca
-- Audio: @sanchit-gandhi
+- MPS: @pcuenca
 - General functionalities: @sayakpaul @yiyixuxu @DN6
 
 Integrations:
