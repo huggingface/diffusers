@@ -16,7 +16,7 @@ specific language governing permissions and limitations under the License.
 > [!WARNING]
 > text-to-image 파인튜닝 스크립트는 experimental 상태입니다. 과적합하기 쉽고 치명적인 망각과 같은 문제에 부딪히기 쉽습니다. 자체 데이터셋에서 최상의 결과를 얻으려면 다양한 하이퍼파라미터를 탐색하는 것이 좋습니다.
 
-Stable Diffusion과 같은 text-to-image 모델은 텍스트 프롬프트에서 이미지를 생성합니다. 이 가이드는 PyTorch 및 Flax를 사용하여 자체 데이터셋에서 [`CompVis/stable-diffusion-v1-4`](https://huggingface.co/CompVis/stable-diffusion-v1-4) 모델로 파인튜닝하는 방법을 보여줍니다. 이 가이드에 사용된 text-to-image 파인튜닝을 위한 모든 학습 스크립트에 관심이 있는 경우 이 [리포지토리](https://github.com/huggingface/diffusers/tree/main/examples/text_to_image)에서 자세히 찾을 수 있습니다.
+Stable Diffusion과 같은 text-to-image 모델은 텍스트 프롬프트에서 이미지를 생성합니다. 이 가이드는 PyTorch를 사용하여 자체 데이터셋에서 [`CompVis/stable-diffusion-v1-4`](https://huggingface.co/CompVis/stable-diffusion-v1-4) 모델로 파인튜닝하는 방법을 보여줍니다. 이 가이드에 사용된 text-to-image 파인튜닝을 위한 모든 학습 스크립트에 관심이 있는 경우 이 [리포지토리](https://github.com/huggingface/diffusers/tree/main/examples/text_to_image)에서 자세히 찾을 수 있습니다.
 
 스크립트를 실행하기 전에, 라이브러리의 학습 dependency들을 설치해야 합니다:
 
@@ -35,11 +35,9 @@ accelerate config
 
 ### 하드웨어 요구 사항
 
-`gradient_checkpointing` 및 `mixed_precision`을 사용하면 단일 24GB GPU에서 모델을 파인튜닝할 수 있습니다. 더 높은 `batch_size`와 더 빠른 훈련을 위해서는 GPU 메모리가 30GB 이상인 GPU를 사용하는 것이 좋습니다. TPU 또는 GPU에서 파인튜닝을 위해 JAX나 Flax를 사용할 수도 있습니다. 자세한 내용은 [아래](#flax-jax-finetuning)를 참조하세요.
+`gradient_checkpointing` 및 `mixed_precision`을 사용하면 단일 24GB GPU에서 모델을 파인튜닝할 수 있습니다. 더 높은 `batch_size`와 더 빠른 훈련을 위해서는 GPU 메모리가 30GB 이상인 GPU를 사용하는 것이 좋습니다.
 
 xFormers로 memory efficient attention을 활성화하여 메모리 사용량 훨씬 더 줄일 수 있습니다. [xFormers가 설치](./optimization/xformers)되어 있는지 확인하고 `--enable_xformers_memory_efficient_attention`를 학습 스크립트에 명시합니다.
-
-xFormers는 Flax에 사용할 수 없습니다.
 
 ## Hub에 모델 업로드하기
 
@@ -120,52 +118,6 @@ accelerate launch train_text_to_image.py \
 ```
 
 </pt>
-<jax>
-[@duongna211](https://github.com/duongna21)의 기여로, Flax를 사용해 TPU 및 GPU에서 Stable Diffusion 모델을 더 빠르게 학습할 수 있습니다. 이는 TPU 하드웨어에서 매우 효율적이지만 GPU에서도 훌륭하게 작동합니다. Flax 학습 스크립트는 gradient checkpointing나 gradient accumulation과 같은 기능을 아직 지원하지 않으므로 메모리가 30GB 이상인 GPU 또는 TPU v3가 필요합니다.
-
-스크립트를 실행하기 전에 요구 사항이 설치되어 있는지 확인하십시오:
-
-```bash
-pip install -U -r requirements_flax.txt
-```
-
-그러면 다음과 같이 [Flax 학습 스크립트](https://github.com/huggingface/diffusers/blob/main/examples/text_to_image/train_text_to_image_flax.py)를 실행할 수 있습니다.
-
-```bash
-export MODEL_NAME="stable-diffusion-v1-5/stable-diffusion-v1-5"
-export dataset_name="lambdalabs/naruto-blip-captions"
-
-python train_text_to_image_flax.py \
-  --pretrained_model_name_or_path=$MODEL_NAME \
-  --dataset_name=$dataset_name \
-  --resolution=512 --center_crop --random_flip \
-  --train_batch_size=1 \
-  --max_train_steps=15000 \
-  --learning_rate=1e-05 \
-  --max_grad_norm=1 \
-  --output_dir="sd-naruto-model"
-```
-
-자체 데이터셋으로 파인튜닝하려면 🤗 [Datasets](https://huggingface.co/docs/datasets/index)에서 요구하는 형식에 따라 데이터셋을 준비하세요. [데이터셋을 허브에 업로드](https://huggingface.co/docs/datasets/image_dataset#upload-dataset-to-the-hub)하거나 [파일들이 있는 로컬 폴더를 준비](https ://huggingface.co/docs/datasets/image_dataset#imagefolder)할 수 있습니다.
-
-사용자 커스텀 loading logic을 사용하려면 스크립트를 수정하십시오. 도움이 되도록 코드의 적절한 위치에 포인터를 남겼습니다. 🤗 아래 예제 스크립트는 `TRAIN_DIR`의 로컬 데이터셋으로를 파인튜닝하는 방법을 보여줍니다:
-
-```bash
-export MODEL_NAME="duongna/stable-diffusion-v1-4-flax"
-export TRAIN_DIR="path_to_your_dataset"
-
-python train_text_to_image_flax.py \
-  --pretrained_model_name_or_path=$MODEL_NAME \
-  --train_data_dir=$TRAIN_DIR \
-  --resolution=512 --center_crop --random_flip \
-  --train_batch_size=1 \
-  --mixed_precision="fp16" \
-  --max_train_steps=15000 \
-  --learning_rate=1e-05 \
-  --max_grad_norm=1 \
-  --output_dir="sd-naruto-model"
-```
-</jax>
 </frameworkcontent>
 
 ## LoRA
@@ -189,33 +141,4 @@ image = pipe(prompt="yoda").images[0]
 image.save("yoda-naruto.png")
 ```
 </pt>
-<jax>
-```python
-import jax
-import numpy as np
-from flax.jax_utils import replicate
-from flax.training.common_utils import shard
-from diffusers import FlaxStableDiffusionPipeline
-
-model_path = "path_to_saved_model"
-pipe, params = FlaxStableDiffusionPipeline.from_pretrained(model_path, dtype=jax.numpy.bfloat16)
-
-prompt = "yoda naruto"
-prng_seed = jax.random.PRNGKey(0)
-num_inference_steps = 50
-
-num_samples = jax.device_count()
-prompt = num_samples * [prompt]
-prompt_ids = pipeline.prepare_inputs(prompt)
-
-# shard inputs and rng
-params = replicate(params)
-prng_seed = jax.random.split(prng_seed, jax.device_count())
-prompt_ids = shard(prompt_ids)
-
-images = pipeline(prompt_ids, params, prng_seed, num_inference_steps, jit=True).images
-images = pipeline.numpy_to_pil(np.asarray(images.reshape((num_samples,) + images.shape[-3:])))
-image.save("yoda-naruto.png")
-```
-</jax>
 </frameworkcontent>

@@ -12,10 +12,9 @@ specific language governing permissions and limitations under the License.
 
 # Instalação
 
-🤗 Diffusers é testado no Python 3.8+, PyTorch 1.7.0+, e Flax. Siga as instruções de instalação abaixo para a biblioteca de deep learning que você está utilizando:
+🤗 Diffusers é testado no Python 3.8+ e PyTorch 1.7.0+. Siga as instruções de instalação abaixo para a biblioteca de deep learning que você está utilizando:
 
 - [PyTorch](https://pytorch.org/get-started/locally/) instruções de instalação
-- [Flax](https://flax.readthedocs.io/en/latest/) instruções de instalação
 
 ## Instalação com pip
 
@@ -43,11 +42,6 @@ Recomenda-se a instalação do 🤗 Transformers porque 🤗 Diffusers depende d
 pip install diffusers["torch"] transformers
 ```
 </pt>
-<jax>
-```bash
-pip install diffusers["flax"] transformers
-```
-</jax>
 </frameworkcontent>
 
 ## Instalação a partir do código fonte
@@ -93,11 +87,6 @@ cd diffusers
 pip install -e ".[torch]"
 ```
 </pt>
-<jax>
-```bash
-pip install -e ".[flax]"
-```
-</jax>
 </frameworkcontent>
 
 Esses comandos irão vincular a pasta que você clonou o repositório e os caminhos das suas bibliotecas Python.
@@ -131,7 +120,7 @@ Para mais detalhes de como gerenciar e limpar o cache, olhe o guia de [caching](
 ## Telemetria
 
 Nossa biblioteca coleta informações de telemetria durante as requisições [`~DiffusionPipeline.from_pretrained`].
-O dado coletado inclui a versão do 🤗 Diffusers e PyTorch/Flax, o modelo ou classe de pipeline requisitado,
+O dado coletado inclui a versão do 🤗 Diffusers e PyTorch, o modelo ou classe de pipeline requisitado,
 e o caminho para um checkpoint pré-treinado se ele estiver hospedado no Hugging Face Hub.
 Esse dado de uso nos ajuda a debugar problemas e priorizar novas funcionalidades.
 Telemetria é enviada apenas quando é carregado modelos e pipelines do Hub,
