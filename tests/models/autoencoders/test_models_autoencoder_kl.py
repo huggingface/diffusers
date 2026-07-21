@@ -13,8 +13,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import gc
-
 import pytest
 import torch
 from parameterized import parameterized
@@ -24,7 +22,6 @@ from diffusers.utils.import_utils import is_xformers_available
 from diffusers.utils.torch_utils import randn_tensor
 
 from ...testing_utils import (
-    backend_empty_cache,
     enable_full_determinism,
     load_hf_numpy,
     require_torch_accelerator,
@@ -180,11 +177,6 @@ class TestAutoencoderKLSlicingTiling(AutoencoderKLTesterConfig, NewAutoencoderTe
 class AutoencoderKLIntegrationTests:
     def get_file_format(self, seed, shape):
         return f"gaussian_noise_s={seed}_shape={'_'.join([str(s) for s in shape])}.npy"
-
-    def teardown_method(self):
-        # clean up the VRAM after each test
-        gc.collect()
-        backend_empty_cache(torch_device)
 
     def get_sd_image(self, seed=0, shape=(4, 3, 512, 512), fp16=False):
         dtype = torch.float16 if fp16 else torch.float32

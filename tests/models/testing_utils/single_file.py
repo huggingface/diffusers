@@ -98,14 +98,6 @@ class SingleFileTesterMixin:
         """List of alternate checkpoint paths for variant testing."""
         return None
 
-    def setup_method(self):
-        gc.collect()
-        backend_empty_cache(torch_device)
-
-    def teardown_method(self):
-        gc.collect()
-        backend_empty_cache(torch_device)
-
     def test_single_file_model_config(self):
         pretrained_kwargs = {"device_map": "auto", **self.pretrained_model_kwargs}
         single_file_kwargs = {"device_map": "auto"}

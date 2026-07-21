@@ -14,7 +14,6 @@
 # limitations under the License.
 
 import copy
-import gc
 import os
 import tempfile
 import unittest
@@ -1136,12 +1135,6 @@ class TestUNet2DConditionModelLoRAHotSwap(UNet2DConditionTesterConfig, LoraHotSw
 class UNet2DConditionModelIntegrationTests(unittest.TestCase):
     def get_file_format(self, seed, shape):
         return f"gaussian_noise_s={seed}_shape={'_'.join([str(s) for s in shape])}.npy"
-
-    def tearDown(self):
-        # clean up the VRAM after each test
-        super().tearDown()
-        gc.collect()
-        backend_empty_cache(torch_device)
 
     def get_latents(self, seed=0, shape=(4, 4, 64, 64), fp16=False):
         dtype = torch.float16 if fp16 else torch.float32

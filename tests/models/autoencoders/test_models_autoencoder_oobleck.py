@@ -13,7 +13,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import gc
 import unittest
 
 import pytest
@@ -25,7 +24,6 @@ from diffusers import AutoencoderOobleck
 from diffusers.utils.torch_utils import randn_tensor
 
 from ...testing_utils import (
-    backend_empty_cache,
     enable_full_determinism,
     slow,
     torch_all_close,
@@ -133,11 +131,6 @@ class TestAutoencoderOobleckSlicingTiling(AutoencoderOobleckTesterConfig, NewAut
 
 @slow
 class AutoencoderOobleckIntegrationTests(unittest.TestCase):
-    def tearDown(self):
-        super().tearDown()
-        gc.collect()
-        backend_empty_cache(torch_device)
-
     def _load_datasamples(self, num_samples):
         ds = load_dataset(
             "hf-internal-testing/librispeech_asr_dummy", "clean", split="validation", trust_remote_code=True

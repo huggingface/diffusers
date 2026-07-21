@@ -13,14 +13,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import gc
 import os
 
 import pytest
 import torch
 
 from ...testing_utils import (
-    backend_empty_cache,
     is_torch_compile,
     require_accelerator,
     require_torch_version_greater,
@@ -53,16 +51,6 @@ class TorchCompileTesterMixin:
     def different_shapes_for_compilation(self) -> list[tuple[int, int]] | None:
         """Optional list of (height, width) tuples for dynamic shape testing."""
         return None
-
-    def setup_method(self):
-        torch.compiler.reset()
-        gc.collect()
-        backend_empty_cache(torch_device)
-
-    def teardown_method(self):
-        torch.compiler.reset()
-        gc.collect()
-        backend_empty_cache(torch_device)
 
     @torch.no_grad()
     def test_torch_compile_recompilation_and_graph_break(self):

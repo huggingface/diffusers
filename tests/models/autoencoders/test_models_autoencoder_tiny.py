@@ -14,7 +14,6 @@
 # limitations under the License.
 
 import copy
-import gc
 import unittest
 
 import pytest
@@ -25,7 +24,6 @@ from diffusers import AutoencoderTiny
 from diffusers.utils.torch_utils import randn_tensor
 
 from ...testing_utils import (
-    backend_empty_cache,
     enable_full_determinism,
     load_hf_numpy,
     slow,
@@ -157,11 +155,6 @@ class TestAutoencoderTinySlicingTiling(AutoencoderTinyTesterConfig, NewAutoencod
 
 @slow
 class AutoencoderTinyIntegrationTests(unittest.TestCase):
-    def tearDown(self):
-        super().tearDown()
-        gc.collect()
-        backend_empty_cache(torch_device)
-
     def get_file_format(self, seed, shape):
         return f"gaussian_noise_s={seed}_shape={'_'.join([str(s) for s in shape])}.npy"
 

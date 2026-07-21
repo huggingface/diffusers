@@ -13,7 +13,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import gc
 import inspect
 import unittest
 
@@ -24,7 +23,6 @@ from diffusers import PriorTransformer
 from diffusers.utils.torch_utils import randn_tensor
 
 from ...testing_utils import (
-    backend_empty_cache,
     enable_full_determinism,
     slow,
     torch_all_close,
@@ -174,12 +172,6 @@ class PriorTransformerIntegrationTests(unittest.TestCase):
             "proj_embedding": proj_embedding,
             "encoder_hidden_states": encoder_hidden_states,
         }
-
-    def tearDown(self):
-        # clean up the VRAM after each test
-        super().tearDown()
-        gc.collect()
-        backend_empty_cache(torch_device)
 
     @parameterized.expand(
         [

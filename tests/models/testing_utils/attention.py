@@ -13,7 +13,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import gc
 import logging
 
 import pytest
@@ -24,7 +23,7 @@ from diffusers.models.attention_dispatch import AttentionBackendName, _Attention
 from diffusers.models.attention_processor import AttnProcessor
 from diffusers.utils import is_kernels_available, is_torch_version
 
-from ...testing_utils import assert_tensors_close, backend_empty_cache, is_attention, is_torch_compile, torch_device
+from ...testing_utils import assert_tensors_close, is_attention, is_torch_compile, torch_device
 from .utils import _maybe_cast_to_bf16
 
 
@@ -142,14 +141,6 @@ class AttentionTesterMixin:
     Pytest mark: attention
         Use `pytest -m "not attention"` to skip these tests
     """
-
-    def setup_method(self):
-        gc.collect()
-        backend_empty_cache(torch_device)
-
-    def teardown_method(self):
-        gc.collect()
-        backend_empty_cache(torch_device)
 
     @torch.no_grad()
     def test_fuse_unfuse_qkv_projections(self, atol=1e-3, rtol=0):
@@ -298,14 +289,6 @@ class AttentionBackendTesterMixin:
     """
 
     unsupported_attn_backends: list[str] = []
-
-    def setup_method(self):
-        gc.collect()
-        backend_empty_cache(torch_device)
-
-    def teardown_method(self):
-        gc.collect()
-        backend_empty_cache(torch_device)
 
     @torch.no_grad()
     @pytest.mark.parametrize("backend", _ALL_BACKEND_PARAMS)

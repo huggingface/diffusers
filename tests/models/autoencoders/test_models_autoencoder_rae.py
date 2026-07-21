@@ -13,8 +13,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import gc
-
 import pytest
 import torch
 import torch.nn.functional as F
@@ -29,7 +27,6 @@ from diffusers.models.autoencoders.autoencoder_rae import (
 from diffusers.utils import load_image
 
 from ...testing_utils import (
-    backend_empty_cache,
     enable_full_determinism,
     slow,
     torch_all_close,
@@ -231,10 +228,6 @@ class TestAutoEncoderRAESlicingTiling(AutoencoderRAETesterConfig, AutoencoderTes
 @slow
 @pytest.mark.skip(reason="Not enough model usage to justify slow tests yet.")
 class AutoencoderRAEEncoderIntegrationTests:
-    def teardown_method(self):
-        gc.collect()
-        backend_empty_cache(torch_device)
-
     def test_dinov2_encoder_forward_shape(self):
         encoder = _build_encoder("dinov2", hidden_size=768, patch_size=14, num_hidden_layers=12).to(torch_device)
         x = torch.rand(1, 3, 224, 224, device=torch_device)
@@ -269,10 +262,6 @@ class AutoencoderRAEEncoderIntegrationTests:
 @slow
 @pytest.mark.skip(reason="Not enough model usage to justify slow tests yet.")
 class AutoencoderRAEIntegrationTests:
-    def teardown_method(self):
-        gc.collect()
-        backend_empty_cache(torch_device)
-
     def test_autoencoder_rae_from_pretrained_dinov2(self):
         model = AutoencoderRAE.from_pretrained("nyu-visionx/RAE-dinov2-wReg-base-ViTXL-n08").to(torch_device)
         model.eval()

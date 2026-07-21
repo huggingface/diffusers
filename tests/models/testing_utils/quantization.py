@@ -119,14 +119,6 @@ class QuantizationTesterMixin:
         - get_dummy_inputs(): Returns dict of inputs to pass to the model forward pass
     """
 
-    def setup_method(self):
-        gc.collect()
-        backend_empty_cache(torch_device)
-
-    def teardown_method(self):
-        gc.collect()
-        backend_empty_cache(torch_device)
-
     def _create_quantized_model(self, config_kwargs, **extra_kwargs):
         """
         Create a quantized model with the given config kwargs.
@@ -1222,16 +1214,6 @@ class QuantizationCompileTesterMixin:
     Expected methods in test classes:
         - get_dummy_inputs(): Returns dict of inputs to pass to the model forward pass
     """
-
-    def setup_method(self):
-        gc.collect()
-        backend_empty_cache(torch_device)
-        torch.compiler.reset()
-
-    def teardown_method(self):
-        gc.collect()
-        backend_empty_cache(torch_device)
-        torch.compiler.reset()
 
     @torch.no_grad()
     def _test_torch_compile(self, config_kwargs, fullgraph=True, error_on_recompile=True):

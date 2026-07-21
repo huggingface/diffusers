@@ -13,7 +13,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import gc
 import json
 import os
 import re
@@ -28,7 +27,6 @@ from diffusers.utils.testing_utils import check_if_dicts_are_equal
 
 from ...testing_utils import (
     assert_tensors_close,
-    backend_empty_cache,
     is_lora,
     is_torch_compile,
     require_peft_backend,
@@ -276,13 +274,6 @@ class LoraHotSwappingForModelTesterMixin:
     def setup_method(self):
         if not issubclass(self.model_class, PeftAdapterMixin):
             pytest.skip(f"PEFT is not supported for this model ({self.model_class.__name__}).")
-
-    def teardown_method(self):
-        # It is critical that the dynamo cache is reset for each test. Otherwise, if the test re-uses the same model,
-        # there will be recompilation errors, as torch caches the model when run in the same process.
-        torch.compiler.reset()
-        gc.collect()
-        backend_empty_cache(torch_device)
 
     def _get_lora_config(self, lora_rank, lora_alpha, target_modules):
         from peft import LoraConfig

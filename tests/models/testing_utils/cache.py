@@ -13,8 +13,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import gc
-
 import pytest
 import torch
 
@@ -32,7 +30,7 @@ from diffusers.hooks.pyramid_attention_broadcast import _PYRAMID_ATTENTION_BROAD
 from diffusers.hooks.taylorseer_cache import _TAYLORSEER_CACHE_HOOK
 from diffusers.models.cache_utils import CacheMixin
 
-from ...testing_utils import assert_tensors_close, backend_empty_cache, is_cache, torch_device
+from ...testing_utils import assert_tensors_close, is_cache, torch_device
 
 
 def require_cache_mixin(func):
@@ -69,14 +67,6 @@ class CacheTesterMixin:
     @property
     def cache_input_key(self):
         return "hidden_states"
-
-    def setup_method(self):
-        gc.collect()
-        backend_empty_cache(torch_device)
-
-    def teardown_method(self):
-        gc.collect()
-        backend_empty_cache(torch_device)
 
     def _get_cache_config(self):
         """

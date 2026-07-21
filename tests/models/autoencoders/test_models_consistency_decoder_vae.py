@@ -13,8 +13,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import gc
-
 import numpy as np
 import pytest
 import torch
@@ -23,7 +21,6 @@ from diffusers import ConsistencyDecoderVAE, StableDiffusionPipeline
 from diffusers.utils.torch_utils import randn_tensor
 
 from ...testing_utils import (
-    backend_empty_cache,
     enable_full_determinism,
     load_image,
     slow,
@@ -109,14 +106,6 @@ class TestConsistencyDecoderVAESlicingTiling(ConsistencyDecoderVAETesterConfig, 
 
 @slow
 class TestConsistencyDecoderVAEIntegration:
-    def setup_method(self):
-        gc.collect()
-        backend_empty_cache(torch_device)
-
-    def teardown_method(self):
-        gc.collect()
-        backend_empty_cache(torch_device)
-
     @torch.no_grad()
     def test_encode_decode(self):
         vae = ConsistencyDecoderVAE.from_pretrained("openai/consistency-decoder")

@@ -14,7 +14,6 @@
 # limitations under the License.
 
 import copy
-import gc
 
 import pytest
 import torch
@@ -22,7 +21,6 @@ import torch
 from diffusers.training_utils import EMAModel
 
 from ...testing_utils import (
-    backend_empty_cache,
     is_training,
     require_torch_accelerator_with_training,
     torch_all_close,
@@ -47,14 +45,6 @@ class TrainingTesterMixin:
     Pytest mark: training
         Use `pytest -m "not training"` to skip these tests
     """
-
-    def setup_method(self):
-        gc.collect()
-        backend_empty_cache(torch_device)
-
-    def teardown_method(self):
-        gc.collect()
-        backend_empty_cache(torch_device)
 
     def test_training(self):
         init_dict = self.get_init_dict()

@@ -1,4 +1,5 @@
 import functools
+import gc
 import glob
 import importlib
 import importlib.metadata
@@ -1557,6 +1558,13 @@ def backend_synchronize(device: str):
 
 def backend_empty_cache(device: str):
     return _device_agnostic_dispatch(device, BACKEND_EMPTY_CACHE)
+
+
+def _cleanup():
+    # Reset the dynamo cache so tests that reuse a model in the same process don't hit recompilation errors.
+    torch.compiler.reset()
+    gc.collect()
+    backend_empty_cache(torch_device)
 
 
 def backend_device_count(device: str):

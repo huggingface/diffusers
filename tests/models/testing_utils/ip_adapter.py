@@ -13,12 +13,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import gc
-
 import pytest
 import torch
 
-from ...testing_utils import backend_empty_cache, is_ip_adapter, torch_device
+from ...testing_utils import is_ip_adapter, torch_device
 
 
 def check_if_ip_adapter_correctly_set(model, processor_cls) -> bool:
@@ -59,14 +57,6 @@ class IPAdapterTesterMixin:
     Pytest mark: ip_adapter
         Use `pytest -m "not ip_adapter"` to skip these tests
     """
-
-    def setup_method(self):
-        gc.collect()
-        backend_empty_cache(torch_device)
-
-    def teardown_method(self):
-        gc.collect()
-        backend_empty_cache(torch_device)
 
     @property
     def ip_adapter_processor_cls(self):
