@@ -31,6 +31,7 @@ LoRA is a fast and lightweight training method that inserts and trains a signifi
 - [`CogView4LoraLoaderMixin`] provides similar functions for [CogView4](https://huggingface.co/docs/diffusers/main/en/api/pipelines/cogview4).
 - [`AmusedLoraLoaderMixin`] is for the [`AmusedPipeline`].
 - [`AnimaLoraLoaderMixin`] provides similar functions for [Anima](https://huggingface.co/docs/diffusers/main/en/api/pipelines/anima).
+- [`AceStepLoraLoaderMixin`] provides similar functions for [ACE-Step](https://huggingface.co/docs/diffusers/main/en/api/pipelines/ace_step).
 - [`HiDreamImageLoraLoaderMixin`] provides similar functions for [HiDream Image](https://huggingface.co/docs/diffusers/main/en/api/pipelines/hidream)
 - [`QwenImageLoraLoaderMixin`] provides similar functions for [Qwen Image](https://huggingface.co/docs/diffusers/main/en/api/pipelines/qwen).
 - [`ZImageLoraLoaderMixin`] provides similar functions for [Z-Image](https://huggingface.co/docs/diffusers/main/en/api/pipelines/zimage).
@@ -124,6 +125,10 @@ LoRA is a fast and lightweight training method that inserts and trains a signifi
 ## AnimaLoraLoaderMixin
 
 [[autodoc]] loaders.lora_pipeline.AnimaLoraLoaderMixin
+
+## AceStepLoraLoaderMixin
+
+[[autodoc]] loaders.lora_pipeline.AceStepLoraLoaderMixin
 
 ## HiDreamImageLoraLoaderMixin
 

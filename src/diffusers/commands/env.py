@@ -23,7 +23,6 @@ from .. import __version__ as version
 from ..utils import (
     is_accelerate_available,
     is_bitsandbytes_available,
-    is_flax_available,
     is_gguf_available,
     is_google_colab,
     is_nvidia_modelopt_available,
@@ -74,20 +73,6 @@ class EnvironmentCommand(BaseDiffusersCLICommand):
 
             pt_version = torch.__version__
             pt_cuda_available = torch.cuda.is_available()
-
-        flax_version = "not installed"
-        jax_version = "not installed"
-        jaxlib_version = "not installed"
-        jax_backend = "NA"
-        if is_flax_available():
-            import flax
-            import jax
-            import jaxlib
-
-            flax_version = flax.__version__
-            jax_version = jax.__version__
-            jaxlib_version = jaxlib.__version__
-            jax_backend = jax.lib.xla_bridge.get_backend().platform
 
         transformers_version = "not installed"
         if is_transformers_available():
@@ -173,9 +158,6 @@ class EnvironmentCommand(BaseDiffusersCLICommand):
             "Running on Google Colab?": is_google_colab_str,
             "Python version": platform.python_version(),
             "PyTorch version (GPU?)": f"{pt_version} ({pt_cuda_available})",
-            "Flax version (CPU?/GPU?/TPU?)": f"{flax_version} ({jax_backend})",
-            "Jax version": jax_version,
-            "JaxLib version": jaxlib_version,
             "Huggingface_hub version": hub_version,
             "Transformers version": transformers_version,
             "Accelerate version": accelerate_version,

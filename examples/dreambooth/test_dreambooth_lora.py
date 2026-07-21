@@ -39,7 +39,7 @@ class DreamBoothLoRA(ExamplesTestsAccelerate):
         with tempfile.TemporaryDirectory() as tmpdir:
             test_args = f"""
                 examples/dreambooth/train_dreambooth_lora.py
-                --pretrained_model_name_or_path hf-internal-testing/tiny-stable-diffusion-pipe
+                --pretrained_model_name_or_path hf-internal-testing/tiny-stable-diffusion-torch
                 --instance_data_dir docs/source/en/imgs
                 --instance_prompt photo
                 --resolution 64
@@ -71,7 +71,7 @@ class DreamBoothLoRA(ExamplesTestsAccelerate):
         with tempfile.TemporaryDirectory() as tmpdir:
             test_args = f"""
                 examples/dreambooth/train_dreambooth_lora.py
-                --pretrained_model_name_or_path hf-internal-testing/tiny-stable-diffusion-pipe
+                --pretrained_model_name_or_path hf-internal-testing/tiny-stable-diffusion-torch
                 --instance_data_dir docs/source/en/imgs
                 --instance_prompt photo
                 --resolution 64
@@ -105,7 +105,7 @@ class DreamBoothLoRA(ExamplesTestsAccelerate):
         with tempfile.TemporaryDirectory() as tmpdir:
             test_args = f"""
             examples/dreambooth/train_dreambooth_lora.py
-            --pretrained_model_name_or_path=hf-internal-testing/tiny-stable-diffusion-pipe
+            --pretrained_model_name_or_path=hf-internal-testing/tiny-stable-diffusion-torch
             --instance_data_dir=docs/source/en/imgs
             --output_dir={tmpdir}
             --instance_prompt=prompt
@@ -128,7 +128,7 @@ class DreamBoothLoRA(ExamplesTestsAccelerate):
         with tempfile.TemporaryDirectory() as tmpdir:
             test_args = f"""
             examples/dreambooth/train_dreambooth_lora.py
-            --pretrained_model_name_or_path=hf-internal-testing/tiny-stable-diffusion-pipe
+            --pretrained_model_name_or_path=hf-internal-testing/tiny-stable-diffusion-torch
             --instance_data_dir=docs/source/en/imgs
             --output_dir={tmpdir}
             --instance_prompt=prompt
@@ -145,7 +145,7 @@ class DreamBoothLoRA(ExamplesTestsAccelerate):
 
             resume_run_args = f"""
             examples/dreambooth/train_dreambooth_lora.py
-            --pretrained_model_name_or_path=hf-internal-testing/tiny-stable-diffusion-pipe
+            --pretrained_model_name_or_path=hf-internal-testing/tiny-stable-diffusion-torch
             --instance_data_dir=docs/source/en/imgs
             --output_dir={tmpdir}
             --instance_prompt=prompt

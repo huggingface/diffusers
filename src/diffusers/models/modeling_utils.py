@@ -43,7 +43,6 @@ from ..quantizers.quantization_config import QuantizationMethod
 from ..utils import (
     CONFIG_NAME,
     FLASHPACK_WEIGHTS_NAME,
-    FLAX_WEIGHTS_NAME,
     HF_ENABLE_PARALLEL_LOADING,
     SAFE_WEIGHTS_INDEX_NAME,
     SAFETENSORS_WEIGHTS_NAME,
@@ -911,8 +910,6 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             revision (`str`, *optional*, defaults to `"main"`):
                 The specific model version to use. It can be a branch name, a tag name, a commit id, or any identifier
                 allowed by Git.
-            from_flax (`bool`, *optional*, defaults to `False`):
-                Load the model weights from a Flax checkpoint save file.
             subfolder (`str`, *optional*, defaults to `""`):
                 The subfolder location of a model file within a larger model repository on the Hub or locally.
             mirror (`str`, *optional*):
@@ -971,8 +968,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                 Only supported for PyTorch >= 1.9.0. If you are using an older version of PyTorch, setting this
                 argument to `True` will raise an error.
             variant (`str`, *optional*):
-                Load weights from a specified `variant` filename such as `"fp16"` or `"ema"`. This is ignored when
-                loading `from_flax`.
+                Load weights from a specified `variant` filename such as `"fp16"` or `"ema"`.
             use_safetensors (`bool`, *optional*, defaults to `None`):
                 If set to `None`, the `safetensors` weights are downloaded if they're available **and** if the
                 `safetensors` library is installed. If set to `True`, the model is forcibly loaded from `safetensors`
@@ -1011,7 +1007,6 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         cache_dir = kwargs.pop("cache_dir", None)
         ignore_mismatched_sizes = kwargs.pop("ignore_mismatched_sizes", False)
         force_download = kwargs.pop("force_download", False)
-        from_flax = kwargs.pop("from_flax", False)
         proxies = kwargs.pop("proxies", None)
         output_loading_info = kwargs.pop("output_loading_info", False)
         local_files_only = kwargs.pop("local_files_only", None)
@@ -1161,7 +1156,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             hf_quantizer = None
 
         if hf_quantizer is not None:
-            hf_quantizer.validate_environment(torch_dtype=torch_dtype, from_flax=from_flax, device_map=device_map)
+            hf_quantizer.validate_environment(torch_dtype=torch_dtype, device_map=device_map)
             torch_dtype = hf_quantizer.update_torch_dtype(torch_dtype)
             device_map = hf_quantizer.update_device_map(device_map)
 
@@ -1225,14 +1220,57 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         if index_file is not None and (dduf_entries or index_file.is_file()):
             is_sharded = True
 
-        if is_sharded and from_flax:
-            raise ValueError("Loading of sharded checkpoints is not supported when `from_flax=True`.")
-
         # load model
-        if from_flax:
+        # in the case it is sharded, we have already the index
+        if is_sharded:
+            resolved_model_file, sharded_metadata = _get_checkpoint_shard_files(
+                pretrained_model_name_or_path,
+                index_file,
+                cache_dir=cache_dir,
+                proxies=proxies,
+                local_files_only=local_files_only,
+                token=token,
+                user_agent=user_agent,
+                revision=revision,
+                subfolder=subfolder or "",
+                dduf_entries=dduf_entries,
+            )
+        else:
+            if use_flashpack:
+                weights_name = FLASHPACK_WEIGHTS_NAME
+            elif use_safetensors:
+                weights_name = _add_variant(SAFETENSORS_WEIGHTS_NAME, variant)
+            else:
+                weights_name = None
+            if weights_name is not None:
+                try:
+                    resolved_model_file = _get_model_file(
+                        pretrained_model_name_or_path,
+                        weights_name=weights_name,
+                        cache_dir=cache_dir,
+                        force_download=force_download,
+                        proxies=proxies,
+                        local_files_only=local_files_only,
+                        token=token,
+                        revision=revision,
+                        subfolder=subfolder,
+                        user_agent=user_agent,
+                        commit_hash=commit_hash,
+                        dduf_entries=dduf_entries,
+                    )
+
+                except IOError as e:
+                    logger.error(f"An error occurred while trying to fetch {pretrained_model_name_or_path}: {e}")
+                    if not allow_pickle:
+                        raise
+                    logger.warning(
+                        "Defaulting to unsafe serialization. Pass `allow_pickle=False` to raise an error instead."
+                    )
+
+        if resolved_model_file is None and not is_sharded:
             resolved_model_file = _get_model_file(
                 pretrained_model_name_or_path,
-                weights_name=FLAX_WEIGHTS_NAME,
+                weights_name=_add_variant(WEIGHTS_NAME, variant),
                 cache_dir=cache_dir,
                 force_download=force_download,
                 proxies=proxies,
@@ -1242,75 +1280,8 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                 subfolder=subfolder,
                 user_agent=user_agent,
                 commit_hash=commit_hash,
+                dduf_entries=dduf_entries,
             )
-            model = cls.from_config(config, **unused_kwargs)
-
-            # Convert the weights
-            from .modeling_pytorch_flax_utils import load_flax_checkpoint_in_pytorch_model
-
-            model = load_flax_checkpoint_in_pytorch_model(model, resolved_model_file)
-        else:
-            # in the case it is sharded, we have already the index
-            if is_sharded:
-                resolved_model_file, sharded_metadata = _get_checkpoint_shard_files(
-                    pretrained_model_name_or_path,
-                    index_file,
-                    cache_dir=cache_dir,
-                    proxies=proxies,
-                    local_files_only=local_files_only,
-                    token=token,
-                    user_agent=user_agent,
-                    revision=revision,
-                    subfolder=subfolder or "",
-                    dduf_entries=dduf_entries,
-                )
-            else:
-                if use_flashpack:
-                    weights_name = FLASHPACK_WEIGHTS_NAME
-                elif use_safetensors:
-                    weights_name = _add_variant(SAFETENSORS_WEIGHTS_NAME, variant)
-                else:
-                    weights_name = None
-                if weights_name is not None:
-                    try:
-                        resolved_model_file = _get_model_file(
-                            pretrained_model_name_or_path,
-                            weights_name=weights_name,
-                            cache_dir=cache_dir,
-                            force_download=force_download,
-                            proxies=proxies,
-                            local_files_only=local_files_only,
-                            token=token,
-                            revision=revision,
-                            subfolder=subfolder,
-                            user_agent=user_agent,
-                            commit_hash=commit_hash,
-                            dduf_entries=dduf_entries,
-                        )
-
-                    except IOError as e:
-                        logger.error(f"An error occurred while trying to fetch {pretrained_model_name_or_path}: {e}")
-                        if not allow_pickle:
-                            raise
-                        logger.warning(
-                            "Defaulting to unsafe serialization. Pass `allow_pickle=False` to raise an error instead."
-                        )
-
-            if resolved_model_file is None and not is_sharded:
-                resolved_model_file = _get_model_file(
-                    pretrained_model_name_or_path,
-                    weights_name=_add_variant(WEIGHTS_NAME, variant),
-                    cache_dir=cache_dir,
-                    force_download=force_download,
-                    proxies=proxies,
-                    local_files_only=local_files_only,
-                    token=token,
-                    revision=revision,
-                    subfolder=subfolder,
-                    user_agent=user_agent,
-                    commit_hash=commit_hash,
-                    dduf_entries=dduf_entries,
-                )
 
         if not isinstance(resolved_model_file, list):
             resolved_model_file = [resolved_model_file]

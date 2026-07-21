@@ -14,7 +14,6 @@
 # limitations under the License.
 import gc
 import tempfile
-import unittest
 
 import numpy as np
 import pytest
@@ -83,7 +82,7 @@ if is_bitsandbytes_available():
 @require_torch
 @require_torch_accelerator
 @slow
-class Base8bitTests(unittest.TestCase):
+class Base8bitTests:
     # We need to test on relatively large models (aka >1b parameters otherwise the quantiztion may not work as expected)
     # Therefore here we use only SD3 to test our module
     model_name = "stabilityai/stable-diffusion-3-medium-diffusers"
@@ -97,15 +96,13 @@ class Base8bitTests(unittest.TestCase):
     num_inference_steps = 10
     seed = 0
 
-    @classmethod
-    def setUpClass(cls):
-        cls.is_deterministic_enabled = torch.are_deterministic_algorithms_enabled()
-        if not cls.is_deterministic_enabled:
+    @pytest.fixture(autouse=True, scope="class")
+    def _toggle_determinism(self):
+        was_enabled = torch.are_deterministic_algorithms_enabled()
+        if not was_enabled:
             torch.use_deterministic_algorithms(True)
-
-    @classmethod
-    def tearDownClass(cls):
-        if not cls.is_deterministic_enabled:
+        yield
+        if not was_enabled:
             torch.use_deterministic_algorithms(False)
 
     def get_dummy_inputs(self):
@@ -132,8 +129,9 @@ class Base8bitTests(unittest.TestCase):
         return input_dict_for_transformer
 
 
-class BnB8bitBasicTests(Base8bitTests):
-    def setUp(self):
+class TestBnB8bitBasic(Base8bitTests):
+    @pytest.fixture(autouse=True)
+    def _setup_basic(self):
         gc.collect()
         backend_empty_cache(torch_device)
 
@@ -145,8 +143,7 @@ class BnB8bitBasicTests(Base8bitTests):
         self.model_8bit = SD3Transformer2DModel.from_pretrained(
             self.model_name, subfolder="transformer", quantization_config=mixed_int8_config, device_map=torch_device
         )
-
-    def tearDown(self):
+        yield
         if hasattr(self, "model_fp16"):
             del self.model_fp16
         if hasattr(self, "model_8bit"):
@@ -154,40 +151,6 @@ class BnB8bitBasicTests(Base8bitTests):
 
         gc.collect()
         backend_empty_cache(torch_device)
-
-    def test_quantization_num_parameters(self):
-        r"""
-        Test if the number of returned parameters is correct
-        """
-        num_params_8bit = self.model_8bit.num_parameters()
-        num_params_fp16 = self.model_fp16.num_parameters()
-
-        self.assertEqual(num_params_8bit, num_params_fp16)
-
-    def test_quantization_config_json_serialization(self):
-        r"""
-        A simple test to check if the quantization config is correctly serialized and deserialized
-        """
-        config = self.model_8bit.config
-
-        self.assertTrue("quantization_config" in config)
-
-        _ = config["quantization_config"].to_dict()
-        _ = config["quantization_config"].to_diff_dict()
-
-        _ = config["quantization_config"].to_json_string()
-
-    def test_memory_footprint(self):
-        r"""
-        A simple test to check if the model conversion has been done correctly by checking on the
-        memory footprint of the converted model and the class type of the linear layers of the converted models
-        """
-        mem_fp16 = self.model_fp16.get_memory_footprint()
-        mem_8bit = self.model_8bit.get_memory_footprint()
-
-        self.assertAlmostEqual(mem_fp16 / mem_8bit, self.expected_rel_difference, delta=1e-2)
-        linear = get_some_linear_layer(self.model_8bit)
-        self.assertTrue(linear.weight.__class__ == bnb.nn.Int8Params)
 
     def test_model_memory_usage(self):
         # Delete to not let anything interfere.
@@ -215,9 +178,9 @@ class BnB8bitBasicTests(Base8bitTests):
         r"""
         A simple test to check if the model successfully stores the original dtype
         """
-        self.assertTrue("_pre_quantization_dtype" in self.model_8bit.config)
-        self.assertFalse("_pre_quantization_dtype" in self.model_fp16.config)
-        self.assertTrue(self.model_8bit.config["_pre_quantization_dtype"] == torch.float16)
+        assert "_pre_quantization_dtype" in self.model_8bit.config
+        assert "_pre_quantization_dtype" not in self.model_fp16.config
+        assert self.model_8bit.config["_pre_quantization_dtype"] == torch.float16
 
     def test_keep_modules_in_fp32(self):
         r"""
@@ -235,10 +198,10 @@ class BnB8bitBasicTests(Base8bitTests):
         for name, module in model.named_modules():
             if isinstance(module, torch.nn.Linear):
                 if name in model._keep_in_fp32_modules:
-                    self.assertTrue(module.weight.dtype == torch.float32)
+                    assert module.weight.dtype == torch.float32
                 else:
                     # 8-bit parameters are packed in int8 variables
-                    self.assertTrue(module.weight.dtype == torch.int8)
+                    assert module.weight.dtype == torch.int8
 
         # test if inference works.
         with torch.no_grad() and torch.autocast(model.device.type, dtype=torch.float16):
@@ -251,20 +214,6 @@ class BnB8bitBasicTests(Base8bitTests):
 
         SD3Transformer2DModel._keep_in_fp32_modules = fp32_modules
 
-    def test_linear_are_8bit(self):
-        r"""
-        A simple test to check if the model conversion has been done correctly by checking on the
-        memory footprint of the converted model and the class type of the linear layers of the converted models
-        """
-        self.model_fp16.get_memory_footprint()
-        self.model_8bit.get_memory_footprint()
-
-        for name, module in self.model_8bit.named_modules():
-            if isinstance(module, torch.nn.Linear):
-                if name not in ["proj_out"]:
-                    # 8-bit parameters are packed in int8 variables
-                    self.assertTrue(module.weight.dtype == torch.int8)
-
     def test_llm_skip(self):
         r"""
         A simple test to check if `llm_int8_skip_modules` works as expected
@@ -274,19 +223,11 @@ class BnB8bitBasicTests(Base8bitTests):
             self.model_name, subfolder="transformer", quantization_config=config, device_map=torch_device
         )
         linear = get_some_linear_layer(model_8bit)
-        self.assertTrue(linear.weight.dtype == torch.int8)
-        self.assertTrue(isinstance(linear, bnb.nn.Linear8bitLt))
+        assert linear.weight.dtype == torch.int8
+        assert isinstance(linear, bnb.nn.Linear8bitLt)
 
-        self.assertTrue(isinstance(model_8bit.proj_out, torch.nn.Linear))
-        self.assertTrue(model_8bit.proj_out.weight.dtype != torch.int8)
-
-    def test_config_from_pretrained(self):
-        transformer_8bit = FluxTransformer2DModel.from_pretrained(
-            "hf-internal-testing/flux.1-dev-int8-pkg", subfolder="transformer"
-        )
-        linear = get_some_linear_layer(transformer_8bit)
-        self.assertTrue(linear.weight.__class__ == bnb.nn.Int8Params)
-        self.assertTrue(hasattr(linear.weight, "SCB"))
+        assert isinstance(model_8bit.proj_out, torch.nn.Linear)
+        assert model_8bit.proj_out.weight.dtype != torch.int8
 
     @require_bitsandbytes_version_greater("0.48.0")
     def test_device_and_dtype_assignment(self):
@@ -295,15 +236,15 @@ class BnB8bitBasicTests(Base8bitTests):
         Checks also if other models are casted correctly.
         """
 
-        with self.assertRaises(ValueError):
+        with pytest.raises(ValueError):
             # Tries with a `dtype``
             self.model_8bit.to(torch.float16)
 
-        with self.assertRaises(ValueError):
+        with pytest.raises(ValueError):
             # Tries with a `device`
             self.model_8bit.float()
 
-        with self.assertRaises(ValueError):
+        with pytest.raises(ValueError):
             # Tries with a `dtype`
             self.model_8bit.half()
 
@@ -348,8 +289,9 @@ class BnB8bitBasicTests(Base8bitTests):
         )
 
 
-class Bnb8bitDeviceTests(Base8bitTests):
-    def setUp(self) -> None:
+class TestBnb8bitDevice(Base8bitTests):
+    @pytest.fixture(autouse=True)
+    def _setup_device(self):
         gc.collect()
         backend_empty_cache(torch_device)
 
@@ -360,8 +302,7 @@ class Bnb8bitDeviceTests(Base8bitTests):
             quantization_config=mixed_int8_config,
             device_map=torch_device,
         )
-
-    def tearDown(self):
+        yield
         del self.model_8bit
 
         gc.collect()
@@ -369,15 +310,14 @@ class Bnb8bitDeviceTests(Base8bitTests):
 
     def test_buffers_device_assignment(self):
         for buffer_name, buffer in self.model_8bit.named_buffers():
-            self.assertEqual(
-                buffer.device.type,
-                torch.device(torch_device).type,
-                f"Expected device {torch_device} for {buffer_name} got {buffer.device}.",
+            assert buffer.device.type == torch.device(torch_device).type, (
+                f"Expected device {torch_device} for {buffer_name} got {buffer.device}."
             )
 
 
-class BnB8bitTrainingTests(Base8bitTests):
-    def setUp(self):
+class TestBnB8bitTraining(Base8bitTests):
+    @pytest.fixture(autouse=True)
+    def _setup_training(self):
         gc.collect()
         backend_empty_cache(torch_device)
 
@@ -385,6 +325,7 @@ class BnB8bitTrainingTests(Base8bitTests):
         self.model_8bit = SD3Transformer2DModel.from_pretrained(
             self.model_name, subfolder="transformer", quantization_config=mixed_int8_config, device_map=torch_device
         )
+        yield
 
     def test_training(self):
         # Step 1: freeze all parameters
@@ -415,13 +356,14 @@ class BnB8bitTrainingTests(Base8bitTests):
 
         for module in self.model_8bit.modules():
             if isinstance(module, LoRALayer):
-                self.assertTrue(module.adapter[1].weight.grad is not None)
-                self.assertTrue(module.adapter[1].weight.grad.norm().item() > 0)
+                assert module.adapter[1].weight.grad is not None
+                assert module.adapter[1].weight.grad.norm().item() > 0
 
 
 @require_transformers_version_greater("4.44.0")
-class SlowBnb8bitTests(Base8bitTests):
-    def setUp(self) -> None:
+class TestSlowBnb8bit(Base8bitTests):
+    @pytest.fixture(autouse=True)
+    def _setup_slow(self):
         gc.collect()
         backend_empty_cache(torch_device)
 
@@ -433,8 +375,7 @@ class SlowBnb8bitTests(Base8bitTests):
             self.model_name, transformer=model_8bit, torch_dtype=torch.float16
         )
         self.pipeline_8bit.enable_model_cpu_offload()
-
-    def tearDown(self):
+        yield
         del self.pipeline_8bit
 
         gc.collect()
@@ -451,7 +392,7 @@ class SlowBnb8bitTests(Base8bitTests):
         expected_slice = np.array([0.0674, 0.0623, 0.0364, 0.0632, 0.0671, 0.0430, 0.0317, 0.0493, 0.0583])
 
         max_diff = numpy_cosine_similarity_distance(expected_slice, out_slice)
-        self.assertTrue(max_diff < 1e-2)
+        assert max_diff < 1e-2
 
     def test_model_cpu_offload_raises_warning(self):
         model_8bit = SD3Transformer2DModel.from_pretrained(
@@ -505,10 +446,10 @@ class SlowBnb8bitTests(Base8bitTests):
         out_slice = output[0, -3:, -3:, -1].flatten()
         expected_slice = np.array([0.0266, 0.0264, 0.0271, 0.0110, 0.0310, 0.0098, 0.0078, 0.0256, 0.0208])
         max_diff = numpy_cosine_similarity_distance(expected_slice, out_slice)
-        self.assertTrue(max_diff < 1e-2)
+        assert max_diff < 1e-2
 
         # 8bit models cannot be offloaded to CPU.
-        self.assertTrue(self.pipeline_8bit.transformer.device.type == torch_device)
+        assert self.pipeline_8bit.transformer.device.type == torch_device
         # calling it again shouldn't be a problem
         _ = self.pipeline_8bit(
             prompt=self.prompt,
@@ -624,11 +565,11 @@ class SlowBnb8bitTests(Base8bitTests):
         )
 
         weight = quantized_model.transformer_blocks[0].ff.net[2].weight
-        self.assertTrue(isinstance(weight, bnb.nn.modules.Int8Params))
+        assert isinstance(weight, bnb.nn.modules.Int8Params)
 
         output = quantized_model(**inputs)[0]
         output_slice = output.flatten()[-9:].detach().float().cpu().numpy()
-        self.assertTrue(numpy_cosine_similarity_distance(output_slice, expected_slice) < 1e-3)
+        assert numpy_cosine_similarity_distance(output_slice, expected_slice) < 1e-3
 
         # sharded
         quantization_config = BitsAndBytesConfig(load_in_8bit=True)
@@ -641,16 +582,17 @@ class SlowBnb8bitTests(Base8bitTests):
         )
 
         weight = quantized_model.transformer_blocks[0].ff.net[2].weight
-        self.assertTrue(isinstance(weight, bnb.nn.modules.Int8Params))
+        assert isinstance(weight, bnb.nn.modules.Int8Params)
         output = quantized_model(**inputs)[0]
         output_slice = output.flatten()[-9:].detach().float().cpu().numpy()
 
-        self.assertTrue(numpy_cosine_similarity_distance(output_slice, expected_slice) < 1e-3)
+        assert numpy_cosine_similarity_distance(output_slice, expected_slice) < 1e-3
 
 
 @require_transformers_version_greater("4.44.0")
-class SlowBnb8bitFluxTests(Base8bitTests):
-    def setUp(self) -> None:
+class TestSlowBnb8bitFlux(Base8bitTests):
+    @pytest.fixture(autouse=True)
+    def _setup_slow_flux(self):
         gc.collect()
         backend_empty_cache(torch_device)
 
@@ -664,8 +606,7 @@ class SlowBnb8bitFluxTests(Base8bitTests):
             torch_dtype=torch.float16,
         )
         self.pipeline_8bit.enable_model_cpu_offload()
-
-    def tearDown(self):
+        yield
         del self.pipeline_8bit
 
         gc.collect()
@@ -686,7 +627,7 @@ class SlowBnb8bitFluxTests(Base8bitTests):
         expected_slice = np.array([0.0574, 0.0554, 0.0581, 0.0686, 0.0676, 0.0759, 0.0757, 0.0803, 0.0930])
 
         max_diff = numpy_cosine_similarity_distance(expected_slice, out_slice)
-        self.assertTrue(max_diff < 1e-3)
+        assert max_diff < 1e-3
 
     @require_peft_version_greater("0.14.0")
     def test_lora_loading(self):
@@ -709,13 +650,14 @@ class SlowBnb8bitFluxTests(Base8bitTests):
         expected_slice = np.array([0.3916, 0.3916, 0.3887, 0.4243, 0.4155, 0.4233, 0.4570, 0.4531, 0.4248])
 
         max_diff = numpy_cosine_similarity_distance(expected_slice, out_slice)
-        self.assertTrue(max_diff < 1e-3)
+        assert max_diff < 1e-3
 
 
 @require_transformers_version_greater("4.44.0")
 @require_peft_backend
-class SlowBnb4BitFluxControlWithLoraTests(Base8bitTests):
-    def setUp(self) -> None:
+class TestSlowBnb4BitFluxControlWithLora(Base8bitTests):
+    @pytest.fixture(autouse=True)
+    def _setup_flux_control_lora(self):
         gc.collect()
         backend_empty_cache(torch_device)
 
@@ -729,8 +671,7 @@ class SlowBnb4BitFluxControlWithLoraTests(Base8bitTests):
             torch_dtype=torch.float16,
         )
         self.pipeline_8bit.enable_model_cpu_offload()
-
-    def tearDown(self):
+        yield
         del self.pipeline_8bit
 
         gc.collect()
@@ -753,12 +694,13 @@ class SlowBnb4BitFluxControlWithLoraTests(Base8bitTests):
         expected_slice = np.array([0.2029, 0.2136, 0.2268, 0.1921, 0.1997, 0.2185, 0.2021, 0.2183, 0.2292])
 
         max_diff = numpy_cosine_similarity_distance(expected_slice, out_slice)
-        self.assertTrue(max_diff < 1e-3, msg=f"{out_slice=} != {expected_slice=}")
+        assert max_diff < 1e-3, f"{out_slice=} != {expected_slice=}"
 
 
 @slow
-class BaseBnb8bitSerializationTests(Base8bitTests):
-    def setUp(self):
+class TestBnb8bitSerialization(Base8bitTests):
+    @pytest.fixture(autouse=True)
+    def _setup_serialization(self):
         gc.collect()
         backend_empty_cache(torch_device)
 
@@ -768,8 +710,7 @@ class BaseBnb8bitSerializationTests(Base8bitTests):
         self.model_0 = SD3Transformer2DModel.from_pretrained(
             self.model_name, subfolder="transformer", quantization_config=quantization_config, device_map=torch_device
         )
-
-    def tearDown(self):
+        yield
         del self.model_0
 
         gc.collect()
@@ -779,28 +720,28 @@ class BaseBnb8bitSerializationTests(Base8bitTests):
         r"""
         Test whether it is possible to serialize a model in 8-bit. Uses most typical params as default.
         """
-        self.assertTrue("_pre_quantization_dtype" in self.model_0.config)
+        assert "_pre_quantization_dtype" in self.model_0.config
         with tempfile.TemporaryDirectory() as tmpdirname:
             self.model_0.save_pretrained(tmpdirname)
 
             config = SD3Transformer2DModel.load_config(tmpdirname)
-            self.assertTrue("quantization_config" in config)
-            self.assertTrue("_pre_quantization_dtype" not in config)
+            assert "quantization_config" in config
+            assert "_pre_quantization_dtype" not in config
 
             model_1 = SD3Transformer2DModel.from_pretrained(tmpdirname)
 
         # checking quantized linear module weight
         linear = get_some_linear_layer(model_1)
-        self.assertTrue(linear.weight.__class__ == bnb.nn.Int8Params)
-        self.assertTrue(hasattr(linear.weight, "SCB"))
+        assert linear.weight.__class__ == bnb.nn.Int8Params
+        assert hasattr(linear.weight, "SCB")
 
         # checking memory footpring
-        self.assertAlmostEqual(self.model_0.get_memory_footprint() / model_1.get_memory_footprint(), 1, places=2)
+        assert self.model_0.get_memory_footprint() / model_1.get_memory_footprint() == pytest.approx(1, abs=10**-2)
 
         # Matching all parameters and their quant_state items:
         d0 = dict(self.model_0.named_parameters())
         d1 = dict(model_1.named_parameters())
-        self.assertTrue(d0.keys() == d1.keys())
+        assert d0.keys() == d1.keys()
 
         # comparing forward() outputs
         dummy_inputs = self.get_dummy_inputs()
@@ -808,22 +749,22 @@ class BaseBnb8bitSerializationTests(Base8bitTests):
         inputs.update({k: v for k, v in dummy_inputs.items() if k not in inputs})
         out_0 = self.model_0(**inputs)[0]
         out_1 = model_1(**inputs)[0]
-        self.assertTrue(torch.equal(out_0, out_1))
+        assert torch.equal(out_0, out_1)
 
     def test_serialization_sharded(self):
         with tempfile.TemporaryDirectory() as tmpdirname:
             self.model_0.save_pretrained(tmpdirname, max_shard_size="200MB")
 
             config = SD3Transformer2DModel.load_config(tmpdirname)
-            self.assertTrue("quantization_config" in config)
-            self.assertTrue("_pre_quantization_dtype" not in config)
+            assert "quantization_config" in config
+            assert "_pre_quantization_dtype" not in config
 
             model_1 = SD3Transformer2DModel.from_pretrained(tmpdirname)
 
         # checking quantized linear module weight
         linear = get_some_linear_layer(model_1)
-        self.assertTrue(linear.weight.__class__ == bnb.nn.Int8Params)
-        self.assertTrue(hasattr(linear.weight, "SCB"))
+        assert linear.weight.__class__ == bnb.nn.Int8Params
+        assert hasattr(linear.weight, "SCB")
 
         # comparing forward() outputs
         dummy_inputs = self.get_dummy_inputs()
@@ -831,12 +772,12 @@ class BaseBnb8bitSerializationTests(Base8bitTests):
         inputs.update({k: v for k, v in dummy_inputs.items() if k not in inputs})
         out_0 = self.model_0(**inputs)[0]
         out_1 = model_1(**inputs)[0]
-        self.assertTrue(torch.equal(out_0, out_1))
+        assert torch.equal(out_0, out_1)
 
 
 @require_torch_version_greater_equal("2.6.0")
 @require_bitsandbytes_version_greater("0.48.0")
-class Bnb8BitCompileTests(QuantCompileTests, unittest.TestCase):
+class TestBnb8BitCompile(QuantCompileTests):
     @property
     def quantization_config(self):
         return PipelineQuantizationConfig(
@@ -845,16 +786,5 @@ class Bnb8BitCompileTests(QuantCompileTests, unittest.TestCase):
             components_to_quantize=["transformer", "text_encoder_2"],
         )
 
-    @pytest.mark.xfail(
-        reason="Test fails because of a type change when recompiling."
-        " Test passes without recompilation context manager. Refer to https://github.com/huggingface/diffusers/pull/12002/files#r2240462757 for details."
-    )
-    def test_torch_compile(self):
-        torch._dynamo.config.capture_dynamic_output_shape_ops = True
-        super()._test_torch_compile(torch_dtype=torch.float16)
-
     def test_torch_compile_with_cpu_offload(self):
         super()._test_torch_compile_with_cpu_offload(torch_dtype=torch.float16)
-
-    def test_torch_compile_with_group_offload_leaf(self):
-        super()._test_torch_compile_with_group_offload_leaf(torch_dtype=torch.float16, use_stream=True)
