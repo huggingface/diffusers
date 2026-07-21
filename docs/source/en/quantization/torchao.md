@@ -39,6 +39,19 @@ pipeline = DiffusionPipeline.from_pretrained(
 )
 ```
 
+`device_map="cuda"` quantizes on the GPU, so it loads fast but needs extra headroom while each layer is converted. On a model that nearly fills the card, this can OOM during loading. If that happens, drop `device_map` and move the pipeline afterwards:
+
+```py
+pipeline = DiffusionPipeline.from_pretrained(
+    "black-forest-labs/FLUX.1-dev",
+    quantization_config=pipeline_quant_config,
+    torch_dtype=torch.bfloat16,
+)
+pipeline.to("cuda")
+```
+
+Quantization now runs on the CPU (slower) and only the quantized weights land on the GPU, so the peak is lower. For even tighter memory, use `pipeline.enable_model_cpu_offload()` instead of `pipeline.to("cuda")`. Quantizing more components (e.g. the text encoder, not just the transformer) also lowers the resident footprint.
+
 ## torch.compile
 
 torchao supports [torch.compile](../optimization/fp16#torchcompile) which can speed up inference with one line of code.
