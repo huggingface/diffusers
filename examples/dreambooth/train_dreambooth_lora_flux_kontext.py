@@ -1669,9 +1669,23 @@ def main(args):
     # Kontext's own preferred resolutions (mirrors PREFERRED_KONTEXT_RESOLUTIONS in the Kontext
     # pipeline, stored here as (height, width)); used to seed on-the-fly bucket aspect ratios.
     kontext_base_resolutions = [
-        (1568, 672), (1504, 688), (1456, 720), (1392, 752), (1328, 800), (1248, 832),
-        (1184, 880), (1104, 944), (1024, 1024), (944, 1104), (880, 1184), (832, 1248),
-        (800, 1328), (752, 1392), (720, 1456), (688, 1504), (672, 1568),
+        (1568, 672),
+        (1504, 688),
+        (1456, 720),
+        (1392, 752),
+        (1328, 800),
+        (1248, 832),
+        (1184, 880),
+        (1104, 944),
+        (1024, 1024),
+        (944, 1104),
+        (880, 1184),
+        (832, 1248),
+        (800, 1328),
+        (752, 1392),
+        (720, 1456),
+        (688, 1504),
+        (672, 1568),
     ]
     # Resolve the bucketing mode. Bucketing must be enabled explicitly with --use_aspect_ratio_buckets;
     # a bucket list without that flag is an error. With the flag, an explicit --aspect_ratio_buckets list
