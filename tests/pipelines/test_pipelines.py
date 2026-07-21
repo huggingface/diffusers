@@ -62,7 +62,6 @@ from diffusers import (
     UniPCMultistepScheduler,
     logging,
 )
-from diffusers.pipelines.pipeline_utils import _get_pipeline_class
 from diffusers.schedulers.scheduling_utils import SCHEDULER_CONFIG_NAME
 from diffusers.utils import CONFIG_NAME, WEIGHTS_NAME, is_transformers_version
 from diffusers.utils.torch_utils import is_compiled_module
@@ -78,7 +77,6 @@ from ..testing_utils import (
     load_numpy,
     nightly,
     require_compel,
-    require_flax,
     require_hf_hub_version_greater,
     require_onnxruntime,
     require_peft_backend,
@@ -1041,27 +1039,6 @@ class DownloadTests(unittest.TestCase):
         assert final_tokenizer_size == orig_tokenizer_size
         assert final_emb_size == orig_emb_size
 
-    def test_download_ignore_files(self):
-        # Check https://huggingface.co/hf-internal-testing/tiny-stable-diffusion-pipe-ignore-files/blob/72f58636e5508a218c6b3f60550dc96445547817/model_index.json#L4
-        with tempfile.TemporaryDirectory() as tmpdirname:
-            # pipeline has Flax weights
-            tmpdirname = DiffusionPipeline.download("hf-internal-testing/tiny-stable-diffusion-pipe-ignore-files")
-            all_root_files = [t[-1] for t in os.walk(os.path.join(tmpdirname))]
-            files = [item for sublist in all_root_files for item in sublist]
-
-            # None of the downloaded files should be a pytorch file even if we have some here:
-            # https://huggingface.co/hf-internal-testing/tiny-stable-diffusion-pipe/blob/main/unet/diffusion_flax_model.msgpack
-            assert not any(f in ["vae/diffusion_pytorch_model.bin", "text_encoder/config.json"] for f in files)
-            assert len(files) == 14
-
-    def test_get_pipeline_class_from_flax(self):
-        flax_config = {"_class_name": "FlaxStableDiffusionPipeline"}
-        config = {"_class_name": "StableDiffusionPipeline"}
-
-        # when loading a PyTorch Pipeline from a FlaxPipeline `model_index.json`, e.g.: https://huggingface.co/hf-internal-testing/tiny-stable-diffusion-lms-pipe/blob/7a9063578b325779f0f1967874a6771caa973cad/model_index.json#L2
-        # we need to make sure that we don't load the Flax Pipeline class, but instead the PyTorch pipeline class
-        assert _get_pipeline_class(DiffusionPipeline, flax_config) == _get_pipeline_class(DiffusionPipeline, config)
-
 
 class CustomPipelineTests(unittest.TestCase):
     def test_load_custom_pipeline(self):
@@ -1342,7 +1319,7 @@ class CustomPipelineTests(unittest.TestCase):
             custom_pipeline="clip_guided_stable_diffusion",
             clip_model=clip_model,
             feature_extractor=feature_extractor,
-            torch_dtype=torch.float16,
+            dtype=torch.float16,
         )
         pipeline.enable_attention_slicing()
         pipeline = pipeline.to(torch_device)
@@ -1938,7 +1915,6 @@ class PipelineFastTests(unittest.TestCase):
         sd4 = sd.to(device=device_type)
         sd5 = sd.to(torch_device=device_type)
         sd6 = sd.to(device_type, dtype=torch.float32)
-        sd7 = sd.to(device_type, torch_dtype=torch.float32)
 
         assert sd1.device.type == device_type
         assert sd2.device.type == device_type
@@ -1946,33 +1922,27 @@ class PipelineFastTests(unittest.TestCase):
         assert sd4.device.type == device_type
         assert sd5.device.type == device_type
         assert sd6.device.type == device_type
-        assert sd7.device.type == device_type
 
         sd1 = sd.to(torch.float16)
         sd2 = sd.to(None, torch.float16)
         sd3 = sd.to(dtype=torch.float16)
         sd4 = sd.to(dtype=torch.float16)
         sd5 = sd.to(None, dtype=torch.float16)
-        sd6 = sd.to(None, torch_dtype=torch.float16)
 
         assert sd1.dtype == torch.float16
         assert sd2.dtype == torch.float16
         assert sd3.dtype == torch.float16
         assert sd4.dtype == torch.float16
         assert sd5.dtype == torch.float16
-        assert sd6.dtype == torch.float16
 
         sd1 = sd.to(device=device_type, dtype=torch.float16)
-        sd2 = sd.to(torch_device=device_type, torch_dtype=torch.float16)
-        sd3 = sd.to(device_type, torch.float16)
+        sd2 = sd.to(device_type, torch.float16)
 
         assert sd1.dtype == torch.float16
         assert sd2.dtype == torch.float16
-        assert sd3.dtype == torch.float16
 
         assert sd1.device.type == device_type
         assert sd2.device.type == device_type
-        assert sd3.device.type == device_type
 
     def test_pipe_same_device_id_offload(self):
         unet = self.dummy_cond_unet()
@@ -2010,6 +1980,82 @@ class PipelineFastTests(unittest.TestCase):
                     "DDUF/tiny-flux-dev-pipe-dduf", dduf_file="fluxpipeline.dduf", cache_dir=tmpdir
                 )
         assert "dduf_file" in str(warning_ctx.warning)
+
+    def test_torch_dtype_is_deprecated(self):
+        sd = StableDiffusionPipeline(
+            unet=self.dummy_cond_unet(),
+            scheduler=PNDMScheduler(skip_prk_steps=True),
+            vae=self.dummy_vae,
+            text_encoder=self.dummy_text_encoder,
+            tokenizer=CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip"),
+            safety_checker=None,
+            feature_extractor=self.dummy_extractor,
+        )
+
+        with tempfile.TemporaryDirectory() as tmpdirname:
+            sd.save_pretrained(tmpdirname)
+            with self.assertWarns(FutureWarning) as warning_ctx:
+                loaded_sd = StableDiffusionPipeline.from_pretrained(tmpdirname, torch_dtype=torch.float16)
+
+        assert "torch_dtype" in str(warning_ctx.warning)
+        assert "Please use `dtype` instead." in str(warning_ctx.warning)
+        # The deprecated argument is still honoured until it is removed.
+        assert loaded_sd.unet.dtype == torch.float16
+
+    def test_dtype_does_not_warn(self):
+        sd = StableDiffusionPipeline(
+            unet=self.dummy_cond_unet(),
+            scheduler=PNDMScheduler(skip_prk_steps=True),
+            vae=self.dummy_vae,
+            text_encoder=self.dummy_text_encoder,
+            tokenizer=CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip"),
+            safety_checker=None,
+            feature_extractor=self.dummy_extractor,
+        )
+
+        with tempfile.TemporaryDirectory() as tmpdirname:
+            sd.save_pretrained(tmpdirname)
+            with warnings.catch_warnings(record=True) as caught:
+                warnings.simplefilter("always")
+                loaded_sd = StableDiffusionPipeline.from_pretrained(tmpdirname, dtype=torch.float16)
+
+        assert not [w for w in caught if issubclass(w.category, FutureWarning) and "torch_dtype" in str(w.message)]
+        assert loaded_sd.unet.dtype == torch.float16
+
+    def test_torch_dtype_and_dtype_raises(self):
+        sd = StableDiffusionPipeline(
+            unet=self.dummy_cond_unet(),
+            scheduler=PNDMScheduler(skip_prk_steps=True),
+            vae=self.dummy_vae,
+            text_encoder=self.dummy_text_encoder,
+            tokenizer=CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip"),
+            safety_checker=None,
+            feature_extractor=self.dummy_extractor,
+        )
+
+        with tempfile.TemporaryDirectory() as tmpdirname:
+            sd.save_pretrained(tmpdirname)
+            with self.assertRaises(ValueError) as error_context:
+                _ = StableDiffusionPipeline.from_pretrained(tmpdirname, dtype=torch.float16, torch_dtype=torch.float16)
+
+        assert "passed both `dtype` and `torch_dtype`" in str(error_context.exception)
+
+    def test_from_pipe_torch_dtype_is_deprecated(self):
+        sd = StableDiffusionPipeline(
+            unet=self.dummy_cond_unet(),
+            scheduler=PNDMScheduler(skip_prk_steps=True),
+            vae=self.dummy_vae,
+            text_encoder=self.dummy_text_encoder,
+            tokenizer=CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip"),
+            safety_checker=None,
+            feature_extractor=self.dummy_extractor,
+        )
+
+        with self.assertWarns(FutureWarning) as warning_ctx:
+            img2img = StableDiffusionImg2ImgPipeline.from_pipe(sd, torch_dtype=torch.float16)
+
+        assert "torch_dtype" in str(warning_ctx.warning)
+        assert img2img.unet.dtype == torch.float16
 
     @pytest.mark.xfail(condition=is_transformers_version(">", "4.56.2"), reason="Some import error", strict=False)
     def test_wrong_model(self):
@@ -2204,47 +2250,6 @@ class PipelineSlowTests(unittest.TestCase):
         images = pipe(num_inference_steps=4).images
         assert isinstance(images, list)
         assert isinstance(images[0], PIL.Image.Image)
-
-    @require_flax
-    def test_from_flax_from_pt(self):
-        pipe_pt = StableDiffusionPipeline.from_pretrained(
-            "hf-internal-testing/tiny-stable-diffusion-torch", safety_checker=None
-        )
-        pipe_pt.to(torch_device)
-
-        from diffusers import FlaxStableDiffusionPipeline
-
-        with tempfile.TemporaryDirectory() as tmpdirname:
-            pipe_pt.save_pretrained(tmpdirname)
-
-            pipe_flax, params = FlaxStableDiffusionPipeline.from_pretrained(
-                tmpdirname, safety_checker=None, from_pt=True
-            )
-
-        with tempfile.TemporaryDirectory() as tmpdirname:
-            pipe_flax.save_pretrained(tmpdirname, params=params)
-            pipe_pt_2 = StableDiffusionPipeline.from_pretrained(tmpdirname, safety_checker=None, from_flax=True)
-            pipe_pt_2.to(torch_device)
-
-        prompt = "Hello"
-
-        generator = torch.manual_seed(0)
-        image_0 = pipe_pt(
-            [prompt],
-            generator=generator,
-            num_inference_steps=2,
-            output_type="np",
-        ).images[0]
-
-        generator = torch.manual_seed(0)
-        image_1 = pipe_pt_2(
-            [prompt],
-            generator=generator,
-            num_inference_steps=2,
-            output_type="np",
-        ).images[0]
-
-        assert np.abs(image_0 - image_1).sum() < 1e-5, "Models don't give the same forward pass"
 
     @require_compel
     def test_weighted_prompts_compel(self):
