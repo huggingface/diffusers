@@ -549,8 +549,6 @@ class StableDiffusionLoraLoaderMixin(LoraBaseMixin):
         r"""
         Fuses the LoRA parameters into the original parameters of the corresponding blocks.
 
-        > [!WARNING] > This is an experimental API.
-
         Args:
             components: (`list[str]`): list of LoRA-injectable components to fuse the LoRAs into.
             lora_scale (`float`, defaults to 1.0):
@@ -585,8 +583,6 @@ class StableDiffusionLoraLoaderMixin(LoraBaseMixin):
         r"""
         Reverses the effect of
         [`pipe.fuse_lora()`](https://huggingface.co/docs/diffusers/main/en/api/loaders#diffusers.loaders.LoraBaseMixin.fuse_lora).
-
-        > [!WARNING] > This is an experimental API.
 
         Args:
             components (`list[str]`): list of LoRA-injectable components to unfuse LoRA from.
@@ -1974,8 +1970,6 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
         r"""
         Reverses the effect of
         [`pipe.fuse_lora()`](https://huggingface.co/docs/diffusers/main/en/api/loaders#diffusers.loaders.LoraBaseMixin.fuse_lora).
-
-        > [!WARNING] > This is an experimental API.
 
         Args:
             components (`list[str]`): list of LoRA-injectable components to unfuse LoRA from.

@@ -1464,7 +1464,7 @@ class PipelineTesterMixin:
 
         with tempfile.TemporaryDirectory() as tmpdir:
             pipe.save_pretrained(tmpdir)
-            pipe_loaded = self.pipeline_class.from_pretrained(tmpdir, torch_dtype=torch.float16)
+            pipe_loaded = self.pipeline_class.from_pretrained(tmpdir, dtype=torch.float16)
             for component in pipe_loaded.components.values():
                 if hasattr(component, "set_default_attn_processor"):
                     component.set_default_attn_processor()
@@ -2341,7 +2341,7 @@ class PipelineTesterMixin:
         self.assertTrue(np.allclose(output_without_group_offloading, output_with_group_offloading1, atol=1e-4))
         self.assertTrue(np.allclose(output_without_group_offloading, output_with_group_offloading2, atol=1e-4))
 
-    def test_torch_dtype_dict(self):
+    def test_dtype_dict(self):
         components = self.get_dummy_components()
         if not components:
             self.skipTest("No dummy components defined.")
@@ -2351,12 +2351,12 @@ class PipelineTesterMixin:
 
         with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname:
             pipe.save_pretrained(tmpdirname, safe_serialization=False)
-            torch_dtype_dict = {specified_key: torch.bfloat16, "default": torch.float16}
-            loaded_pipe = self.pipeline_class.from_pretrained(tmpdirname, torch_dtype=torch_dtype_dict)
+            dtype_dict = {specified_key: torch.bfloat16, "default": torch.float16}
+            loaded_pipe = self.pipeline_class.from_pretrained(tmpdirname, dtype=dtype_dict)
 
         for name, component in loaded_pipe.components.items():
             if isinstance(component, torch.nn.Module) and hasattr(component, "dtype"):
-                expected_dtype = torch_dtype_dict.get(name, torch_dtype_dict.get("default", torch.float32))
+                expected_dtype = dtype_dict.get(name, dtype_dict.get("default", torch.float32))
                 self.assertEqual(
                     component.dtype,
                     expected_dtype,
@@ -2364,7 +2364,7 @@ class PipelineTesterMixin:
                 )
 
     def test_dtype_alias(self):
-        # `dtype` is an alias for `torch_dtype` in `from_pretrained`.
+        # `torch_dtype` is deprecated in favor of `dtype` in `from_pretrained`.
         components = self.get_dummy_components()
         pipe = self.pipeline_class(**components)
 

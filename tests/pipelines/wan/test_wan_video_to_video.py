@@ -12,42 +12,27 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import unittest
 
+import pytest
 import torch
 from PIL import Image
 from transformers import AutoConfig, AutoTokenizer, T5EncoderModel
 
 from diffusers import AutoencoderKLWan, UniPCMultistepScheduler, WanTransformer3DModel, WanVideoToVideoPipeline
 
-from ...testing_utils import (
-    enable_full_determinism,
-)
-from ..pipeline_params import TEXT_TO_IMAGE_IMAGE_PARAMS, TEXT_TO_IMAGE_PARAMS
-from ..test_pipelines_common import (
-    PipelineTesterMixin,
-)
+from ..testing_utils import BasePipelineTesterConfig, MemoryTesterMixin, PipelineTesterMixin
 
 
-enable_full_determinism()
-
-
-class WanVideoToVideoPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
+class WanVideoToVideoPipelineTesterConfig(BasePipelineTesterConfig):
     pipeline_class = WanVideoToVideoPipeline
-    params = TEXT_TO_IMAGE_PARAMS - {"cross_attention_kwargs"}
-    batch_params = frozenset(["video", "prompt", "negative_prompt"])
-    image_latents_params = TEXT_TO_IMAGE_IMAGE_PARAMS
-    required_optional_params = frozenset(
-        [
-            "num_inference_steps",
-            "generator",
-            "latents",
-            "return_dict",
-            "callback_on_step_end",
-            "callback_on_step_end_tensor_inputs",
-        ]
+    required_input_params_in_call_signature = frozenset(
+        ["prompt", "negative_prompt", "height", "width", "guidance_scale", "prompt_embeds", "negative_prompt_embeds"]
     )
-    test_xformers_attention = False
+    batch_input_params = frozenset(["prompt", "video"])
+    # Wan is a video pipeline: it exposes `num_videos_per_prompt`, not the base default `num_images_per_prompt`.
+    optional_input_params = frozenset(
+        ["num_inference_steps", "num_videos_per_prompt", "generator", "latents", "output_type", "return_dict"]
+    )
 
     def get_dummy_components(self):
         torch.manual_seed(0)
@@ -81,69 +66,61 @@ class WanVideoToVideoPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             rope_max_seq_len=32,
         )
 
-        components = {
+        return {
             "transformer": transformer,
             "vae": vae,
             "scheduler": scheduler,
             "text_encoder": text_encoder,
             "tokenizer": tokenizer,
         }
-        return components
 
-    def get_dummy_inputs(self, device, seed=0):
-        if str(device).startswith("mps"):
-            generator = torch.manual_seed(seed)
-        else:
-            generator = torch.Generator(device=device).manual_seed(seed)
-
+    def get_dummy_inputs(self):
         video = [Image.new("RGB", (16, 16))] * 17
-        inputs = {
+        return {
             "video": video,
             "prompt": "dance monkey",
             "negative_prompt": "negative",  # TODO
-            "generator": generator,
+            "generator": self.get_generator(0),
             "num_inference_steps": 4,
             "guidance_scale": 6.0,
             "height": 16,
             "width": 16,
             "max_sequence_length": 16,
+            # Request torch outputs so tests compare torch tensors directly (see `BasePipelineTesterConfig`).
             "output_type": "pt",
         }
-        return inputs
 
+
+class TestWanVideoToVideoPipeline(WanVideoToVideoPipelineTesterConfig, PipelineTesterMixin):
     def test_inference(self):
-        device = "cpu"
+        # Run on CPU: the expected slice below is CPU-specific.
+        pipe = self.get_pipeline()
 
-        components = self.get_dummy_components()
-        pipe = self.pipeline_class(**components)
-        pipe.to(device)
-        pipe.set_progress_bar_config(disable=None)
-
-        inputs = self.get_dummy_inputs(device)
+        inputs = self.get_dummy_inputs()
         video = pipe(**inputs).frames
         generated_video = video[0]
-        self.assertEqual(generated_video.shape, (17, 3, 16, 16))
+        assert generated_video.shape == (17, 3, 16, 16)
 
         # fmt: off
         expected_slice = torch.tensor([0.4522, 0.4534, 0.4532, 0.4553, 0.4526, 0.4538, 0.4533, 0.4547, 0.513, 0.5176, 0.5286, 0.4958, 0.4955, 0.5381, 0.5154, 0.5195])
-        # fmt:on
+        # fmt: on
 
         generated_slice = generated_video.flatten()
         generated_slice = torch.cat([generated_slice[:8], generated_slice[-8:]])
-        self.assertTrue(torch.allclose(generated_slice, expected_slice, atol=1e-3))
+        assert torch.allclose(generated_slice, expected_slice, atol=1e-3)
 
-    @unittest.skip("Test not supported")
-    def test_attention_slicing_forward_pass(self):
-        pass
-
-    @unittest.skip(
-        "WanVideoToVideoPipeline has to run in mixed precision. Casting the entire pipeline will result in errors"
+    @pytest.mark.skip(
+        reason="WanVideoToVideoPipeline has to run in mixed precision. Casting the entire pipeline will result in errors"
     )
-    def test_float16_inference(self):
+    def test_half_precision_inference_no_nan(self):
         pass
 
-    @unittest.skip(
-        "WanVideoToVideoPipeline has to run in mixed precision. Save/Load the entire pipeline in FP16 will result in errors"
+    @pytest.mark.skip(
+        reason="WanVideoToVideoPipeline has to run in mixed precision. Save/Load the entire pipeline in FP16 will result in errors"
     )
     def test_save_load_float16(self):
         pass
+
+
+class TestWanVideoToVideoPipelineMemory(WanVideoToVideoPipelineTesterConfig, MemoryTesterMixin):
+    pass
