@@ -95,7 +95,6 @@ pipe = ModularPipeline.from_pretrained("krea/Krea-2-Raw")
 pipe.load_components(torch_dtype=torch.bfloat16)
 pipe.to("cuda")
 
-pipe.update_components(guider=ClassifierFreeGuidance(guidance_scale=4.5, use_original_formulation=True))
 
 image = pipe(
     prompt="a fox in the snow",
