@@ -29,6 +29,7 @@ class WanVideoToVideoPipelineTesterConfig(BasePipelineTesterConfig):
         ["prompt", "negative_prompt", "height", "width", "guidance_scale", "prompt_embeds", "negative_prompt_embeds"]
     )
     batch_input_params = frozenset(["prompt", "video"])
+    output_shape = (17, 3, 16, 16)
     # Wan is a video pipeline: it exposes `num_videos_per_prompt`, not the base default `num_images_per_prompt`.
     optional_input_params = frozenset(
         ["num_inference_steps", "num_videos_per_prompt", "generator", "latents", "output_type", "return_dict"]

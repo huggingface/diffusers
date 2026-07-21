@@ -30,6 +30,7 @@ class Wan22ImageToVideoPipelineTesterConfig(BasePipelineTesterConfig):
         ["prompt", "negative_prompt", "height", "width", "guidance_scale", "prompt_embeds", "negative_prompt_embeds"]
     )
     batch_input_params = frozenset(["prompt"])
+    output_shape = (9, 3, 16, 16)
     # Wan is a video pipeline: it exposes `num_videos_per_prompt`, not the base default `num_images_per_prompt`.
     optional_input_params = frozenset(
         ["num_inference_steps", "num_videos_per_prompt", "generator", "latents", "output_type", "return_dict"]
@@ -175,6 +176,7 @@ class Wan225BImageToVideoPipelineTesterConfig(BasePipelineTesterConfig):
         ["prompt", "negative_prompt", "height", "width", "guidance_scale", "prompt_embeds", "negative_prompt_embeds"]
     )
     batch_input_params = frozenset(["prompt"])
+    output_shape = (9, 3, 32, 32)
     # Wan is a video pipeline: it exposes `num_videos_per_prompt`, not the base default `num_images_per_prompt`.
     optional_input_params = frozenset(
         ["num_inference_steps", "num_videos_per_prompt", "generator", "latents", "output_type", "return_dict"]
