@@ -398,7 +398,7 @@ class Krea2SetTimestepsStep(ModularPipelineBlocks):
     @property
     def inputs(self) -> list[InputParam]:
         return [
-            InputParam.template("num_inference_steps", default=28),
+            InputParam.template("num_inference_steps", default=8),
             InputParam(
                 name="sigmas", type_hint=list, description="Custom sigma schedule (defaults to a linear ramp)."
             ),
