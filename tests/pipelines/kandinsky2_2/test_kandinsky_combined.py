@@ -55,8 +55,6 @@ class KandinskyV22PipelineCombinedFastTests(PipelineTesterMixin, unittest.TestCa
     test_xformers_attention = True
     callback_cfg_params = ["image_embds"]
 
-    supports_dduf = False
-
     def get_dummy_components(self):
         dummy = Dummies()
         prior_dummy = PriorDummies()
@@ -181,8 +179,6 @@ class KandinskyV22PipelineImg2ImgCombinedFastTests(PipelineTesterMixin, unittest
     ]
     test_xformers_attention = False
     callback_cfg_params = ["image_embds"]
-
-    supports_dduf = False
 
     def get_dummy_components(self):
         dummy = Img2ImgDummies()
@@ -310,8 +306,6 @@ class KandinskyV22PipelineInpaintCombinedFastTests(PipelineTesterMixin, unittest
         "return_dict",
     ]
     test_xformers_attention = False
-
-    supports_dduf = False
 
     def get_dummy_components(self):
         dummy = InpaintDummies()

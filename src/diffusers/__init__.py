@@ -122,6 +122,18 @@ else:
     _import_structure["quantizers.quantization_config"].append("NVIDIAModelOptConfig")
 
 try:
+    if not is_torch_available():
+        raise OptionalDependencyNotAvailable()
+except OptionalDependencyNotAvailable:
+    from .utils import dummy_nunchaku_lite_objects
+
+    _import_structure["utils.dummy_nunchaku_lite_objects"] = [
+        name for name in dir(dummy_nunchaku_lite_objects) if not name.startswith("_")
+    ]
+else:
+    _import_structure["quantizers.quantization_config"].append("NunchakuLiteQuantizationConfig")
+
+try:
     if not is_auto_round_available():
         raise OptionalDependencyNotAvailable()
 except OptionalDependencyNotAvailable:
@@ -474,6 +486,10 @@ else:
         [
             "AnimaAutoBlocks",
             "AnimaModularPipeline",
+            "Cosmos3DistilledBlocks",
+            "Cosmos3DistilledModularPipeline",
+            "Cosmos3OmniBlocks",
+            "Cosmos3OmniModularPipeline",
             "ErnieImageAutoBlocks",
             "ErnieImageModularPipeline",
             "Flux2AutoBlocks",
@@ -956,6 +972,14 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .quantizers.quantization_config import NVIDIAModelOptConfig
 
     try:
+        if not is_torch_available():
+            raise OptionalDependencyNotAvailable()
+    except OptionalDependencyNotAvailable:
+        from .utils.dummy_nunchaku_lite_objects import *
+    else:
+        from .quantizers.quantization_config import NunchakuLiteQuantizationConfig
+
+    try:
         if not is_auto_round_available():
             raise OptionalDependencyNotAvailable()
     except OptionalDependencyNotAvailable:
@@ -1270,6 +1294,10 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .modular_pipelines import (
             AnimaAutoBlocks,
             AnimaModularPipeline,
+            Cosmos3DistilledBlocks,
+            Cosmos3DistilledModularPipeline,
+            Cosmos3OmniBlocks,
+            Cosmos3OmniModularPipeline,
             ErnieImageAutoBlocks,
             ErnieImageModularPipeline,
             Flux2AutoBlocks,

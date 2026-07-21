@@ -66,7 +66,6 @@ class ZImageImg2ImgPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             "callback_on_step_end_tensor_inputs",
         ]
     )
-    supports_dduf = False
     test_xformers_attention = False
     test_layerwise_casting = True
     test_group_offloading = True

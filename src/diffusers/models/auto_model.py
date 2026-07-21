@@ -173,7 +173,7 @@ class AutoModel(ConfigMixin):
             cache_dir (`str | os.PathLike`, *optional*):
                 Path to a directory where a downloaded pretrained model configuration is cached if the standard cache
                 is not used.
-            torch_dtype (`torch.dtype`, *optional*):
+            dtype (`torch.dtype`, *optional*):
                 Override the default `torch.dtype` and load the model with another dtype.
             force_download (`bool`, *optional*, defaults to `False`):
                 Whether or not to force the (re-)download of the model weights and configuration files, overriding the
