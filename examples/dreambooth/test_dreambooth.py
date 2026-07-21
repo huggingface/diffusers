@@ -38,7 +38,7 @@ class DreamBooth(ExamplesTestsAccelerate):
         with tempfile.TemporaryDirectory() as tmpdir:
             test_args = f"""
                 examples/dreambooth/train_dreambooth.py
-                --pretrained_model_name_or_path hf-internal-testing/tiny-stable-diffusion-pipe
+                --pretrained_model_name_or_path hf-internal-testing/tiny-stable-diffusion-torch
                 --instance_data_dir docs/source/en/imgs
                 --instance_prompt photo
                 --resolution 64
@@ -85,7 +85,7 @@ class DreamBooth(ExamplesTestsAccelerate):
 
     def test_dreambooth_checkpointing(self):
         instance_prompt = "photo"
-        pretrained_model_name_or_path = "hf-internal-testing/tiny-stable-diffusion-pipe"
+        pretrained_model_name_or_path = "hf-internal-testing/tiny-stable-diffusion-torch"
 
         with tempfile.TemporaryDirectory() as tmpdir:
             # Run training script with checkpointing
@@ -166,7 +166,7 @@ class DreamBooth(ExamplesTestsAccelerate):
         with tempfile.TemporaryDirectory() as tmpdir:
             test_args = f"""
             examples/dreambooth/train_dreambooth.py
-            --pretrained_model_name_or_path=hf-internal-testing/tiny-stable-diffusion-pipe
+            --pretrained_model_name_or_path=hf-internal-testing/tiny-stable-diffusion-torch
             --instance_data_dir=docs/source/en/imgs
             --output_dir={tmpdir}
             --instance_prompt=prompt
@@ -189,7 +189,7 @@ class DreamBooth(ExamplesTestsAccelerate):
         with tempfile.TemporaryDirectory() as tmpdir:
             test_args = f"""
             examples/dreambooth/train_dreambooth.py
-            --pretrained_model_name_or_path=hf-internal-testing/tiny-stable-diffusion-pipe
+            --pretrained_model_name_or_path=hf-internal-testing/tiny-stable-diffusion-torch
             --instance_data_dir=docs/source/en/imgs
             --output_dir={tmpdir}
             --instance_prompt=prompt
@@ -209,7 +209,7 @@ class DreamBooth(ExamplesTestsAccelerate):
 
             resume_run_args = f"""
             examples/dreambooth/train_dreambooth.py
-            --pretrained_model_name_or_path=hf-internal-testing/tiny-stable-diffusion-pipe
+            --pretrained_model_name_or_path=hf-internal-testing/tiny-stable-diffusion-torch
             --instance_data_dir=docs/source/en/imgs
             --output_dir={tmpdir}
             --instance_prompt=prompt

@@ -18,7 +18,7 @@ specific language governing permissions and limitations under the License.
 <small>에서의 Dreambooth 예시 <a href="https://dreambooth.github.io">project's blog.</a></small>
 
 
-이 가이드는 다양한 GPU, Flax 사양에 대해 [`CompVis/stable-diffusion-v1-4`](https://huggingface.co/CompVis/stable-diffusion-v1-4) 모델로 DreamBooth를 파인튜닝하는 방법을 보여줍니다. 더 깊이 파고들어 작동 방식을 확인하는 데 관심이 있는 경우, 이 가이드에 사용된 DreamBooth의 모든 학습 스크립트를 [여기](https://github.com/huggingface/diffusers/tree/main/examples/dreambooth)에서 찾을 수 있습니다.
+이 가이드는 다양한 GPU 사양에 대해 [`CompVis/stable-diffusion-v1-4`](https://huggingface.co/CompVis/stable-diffusion-v1-4) 모델로 DreamBooth를 파인튜닝하는 방법을 보여줍니다. 더 깊이 파고들어 작동 방식을 확인하는 데 관심이 있는 경우, 이 가이드에 사용된 DreamBooth의 모든 학습 스크립트를 [여기](https://github.com/huggingface/diffusers/tree/main/examples/dreambooth)에서 찾을 수 있습니다.
 
 스크립트를 실행하기 전에 라이브러리의 학습에 필요한 dependencies를 설치해야 합니다. 또한 `main` GitHub 브랜치에서 🧨 Diffusers를 설치하는 것이 좋습니다.
 
@@ -83,34 +83,6 @@ accelerate launch train_dreambooth.py \
   --max_train_steps=400
 ```
 </pt>
-<jax>
-
-TPU에 액세스할 수 있거나 더 빠르게 훈련하고 싶다면 [Flax 학습 스크립트](https://github.com/huggingface/diffusers/blob/main/examples/dreambooth/train_dreambooth_flax.py)를 사용해 볼 수 있습니다. Flax 학습 스크립트는 gradient checkpointing 또는 gradient accumulation을 지원하지 않으므로, 메모리가 30GB 이상인 GPU가 필요합니다.
-
-스크립트를 실행하기 전에 요구 사항이 설치되어 있는지 확인하십시오.
-
-```bash
-pip install -U -r requirements.txt
-```
-
-그러면 다음 명령어로 학습 스크립트를 실행시킬 수 있습니다:
-
-```bash
-export MODEL_NAME="duongna/stable-diffusion-v1-4-flax"
-export INSTANCE_DIR="path-to-instance-images"
-export OUTPUT_DIR="path-to-save-model"
-
-python train_dreambooth_flax.py \
-  --pretrained_model_name_or_path=$MODEL_NAME  \
-  --instance_data_dir=$INSTANCE_DIR \
-  --output_dir=$OUTPUT_DIR \
-  --instance_prompt="a photo of sks dog" \
-  --resolution=512 \
-  --train_batch_size=1 \
-  --learning_rate=5e-6 \
-  --max_train_steps=400
-```
-</jax>
 </frameworkcontent>
 
 ### Prior-preserving(사전 보존) loss를 사용한 파인튜닝
@@ -145,28 +117,6 @@ accelerate launch train_dreambooth.py \
   --max_train_steps=800
 ```
 </pt>
-<jax>
-```bash
-export MODEL_NAME="duongna/stable-diffusion-v1-4-flax"
-export INSTANCE_DIR="path-to-instance-images"
-export CLASS_DIR="path-to-class-images"
-export OUTPUT_DIR="path-to-save-model"
-
-python train_dreambooth_flax.py \
-  --pretrained_model_name_or_path=$MODEL_NAME  \
-  --instance_data_dir=$INSTANCE_DIR \
-  --class_data_dir=$CLASS_DIR \
-  --output_dir=$OUTPUT_DIR \
-  --with_prior_preservation --prior_loss_weight=1.0 \
-  --instance_prompt="a photo of sks dog" \
-  --class_prompt="a photo of dog" \
-  --resolution=512 \
-  --train_batch_size=1 \
-  --learning_rate=5e-6 \
-  --num_class_images=200 \
-  --max_train_steps=800
-```
-</jax>
 </frameworkcontent>
 
 ## 텍스트 인코더와 and UNet로 파인튜닝하기
@@ -206,29 +156,6 @@ accelerate launch train_dreambooth.py \
   --max_train_steps=800
 ```
 </pt>
-<jax>
-```bash
-export MODEL_NAME="duongna/stable-diffusion-v1-4-flax"
-export INSTANCE_DIR="path-to-instance-images"
-export CLASS_DIR="path-to-class-images"
-export OUTPUT_DIR="path-to-save-model"
-
-python train_dreambooth_flax.py \
-  --pretrained_model_name_or_path=$MODEL_NAME  \
-  --train_text_encoder \
-  --instance_data_dir=$INSTANCE_DIR \
-  --class_data_dir=$CLASS_DIR \
-  --output_dir=$OUTPUT_DIR \
-  --with_prior_preservation --prior_loss_weight=1.0 \
-  --instance_prompt="a photo of sks dog" \
-  --class_prompt="a photo of dog" \
-  --resolution=512 \
-  --train_batch_size=1 \
-  --learning_rate=2e-6 \
-  --num_class_images=200 \
-  --max_train_steps=800
-```
-</jax>
 </frameworkcontent>
 
 ## LoRA로 파인튜닝하기
@@ -321,8 +248,6 @@ pipeline.save_pretrained("dreambooth-pipeline")
 ```bash
   --enable_xformers_memory_efficient_attention
 ```
-
-xFormers는 Flax에서 사용할 수 없습니다.
 
 ### 그래디언트 없음으로 설정
 

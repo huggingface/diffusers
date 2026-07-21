@@ -41,14 +41,6 @@ pip install -r requirements.txt
 ```
 
 </hfoption>
-<hfoption id="Flax">
-
-```bash
-cd examples/text_to_image
-pip install -r requirements_flax.txt
-```
-
-</hfoption>
 </hfoptions>
 
 > [!TIP]
