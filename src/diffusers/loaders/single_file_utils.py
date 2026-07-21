@@ -4230,12 +4230,48 @@ def convert_krea2_transformer_checkpoint_to_diffusers(checkpoint, **kwargs):
 
     ATTN_MAP = {"wq": "to_q", "wk": "to_k", "wv": "to_v", "wo": "to_out.0", "gate": "to_gate"}
     FF_MAP = {"gate": "ff.gate", "up": "ff.up", "down": "ff.down"}
+    # native layout (krea-ai/krea-2 inference code, also used by community GGUF exports)
+    NORM_MAP = {
+        "prenorm.scale": "norm1.weight",
+        "postnorm.scale": "norm2.weight",
+        "attn.qknorm.qnorm.scale": "attn.norm_q.weight",
+        "attn.qknorm.knorm.scale": "attn.norm_k.weight",
+    }
+    TOP_MAP = {
+        "first.weight": "img_in.weight",
+        "first.bias": "img_in.bias",
+        "tmlp.0.weight": "time_embed.linear_1.weight",
+        "tmlp.0.bias": "time_embed.linear_1.bias",
+        "tmlp.2.weight": "time_embed.linear_2.weight",
+        "tmlp.2.bias": "time_embed.linear_2.bias",
+        "tproj.1.weight": "time_mod_proj.weight",
+        "tproj.1.bias": "time_mod_proj.bias",
+        "txtmlp.0.scale": "txt_in.norm.weight",
+        "txtmlp.1.weight": "txt_in.linear_1.weight",
+        "txtmlp.1.bias": "txt_in.linear_1.bias",
+        "txtmlp.3.weight": "txt_in.linear_2.weight",
+        "txtmlp.3.bias": "txt_in.linear_2.bias",
+        "last.norm.scale": "final_layer.norm.weight",
+        "last.linear.weight": "final_layer.linear.weight",
+        "last.linear.bias": "final_layer.linear.bias",
+        "last.modulation.lin": "final_layer.scale_shift_table",
+    }
+    # present in some native exports but absent from the current LastLayer
+    # (the official diffusers conversion drops them as well)
+    DROP_KEYS = {"last.up.weight", "last.down.weight"}
 
     def remap_key(key):
+        if key in TOP_MAP:
+            return TOP_MAP[key]
+
         # transformer blocks: blocks.{i}.*
         m = re.match(r"^blocks\.(\d+)\.(.+)$", key)
         if m:
             idx, tail = m.groups()
+            if tail in NORM_MAP:
+                return f"transformer_blocks.{idx}.{NORM_MAP[tail]}"
+            if tail == "mod.lin":
+                return f"transformer_blocks.{idx}.scale_shift_table"
             if tail.startswith("attn."):
                 sub_m = re.match(r"^attn\.(\w+)(.*)$", tail)
                 if sub_m:
@@ -4255,6 +4291,8 @@ def convert_krea2_transformer_checkpoint_to_diffusers(checkpoint, **kwargs):
         m = re.match(r"^txtfusion\.(layerwise_blocks|refiner_blocks)\.(\d+)\.(.+)$", key)
         if m:
             block_group, idx, tail = m.groups()
+            if tail in NORM_MAP:
+                return f"text_fusion.{block_group}.{idx}.{NORM_MAP[tail]}"
             if tail.startswith("attn."):
                 sub_m = re.match(r"^attn\.(\w+)(.*)$", tail)
                 if sub_m:
@@ -4277,6 +4315,15 @@ def convert_krea2_transformer_checkpoint_to_diffusers(checkpoint, **kwargs):
 
     result = {}
     for key, value in converted_state_dict.items():
-        result[remap_key(key)] = value
+        if key in DROP_KEYS:
+            continue
+        new_key = remap_key(key)
+        # native exports store the modulation tables flat and the projector
+        # squeezed; reshape them to the diffusers parameter shapes
+        if new_key.endswith("scale_shift_table") and value.ndim == 1:
+            value = value.reshape(6 if new_key.startswith("transformer_blocks.") else 2, -1)
+        if new_key == "text_fusion.projector.weight" and value.ndim == 1:
+            value = value.reshape(1, -1)
+        result[new_key] = value
 
     return result
