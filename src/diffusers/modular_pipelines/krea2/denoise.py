@@ -256,7 +256,7 @@ class Krea2DenoiseLoopWrapper(LoopSequentialPipelineBlocks):
                 type_hint=torch.Tensor,
                 description="Denoising timesteps from set_timesteps.",
             ),
-            InputParam.template("num_inference_steps", default=28),
+            InputParam.template("num_inference_steps", required=True),
             InputParam.template("attention_kwargs"),
         ]
 

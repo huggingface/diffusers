@@ -298,8 +298,8 @@ class Krea2PrepareLatentsStep(ModularPipelineBlocks):
     def inputs(self) -> list[InputParam]:
         return [
             InputParam.template("latents"),
-            InputParam.template("height", required=True),
-            InputParam.template("width", required=True),
+            InputParam.template("height", default=1024),
+            InputParam.template("width", default=1024),
             InputParam.template("generator"),
             InputParam(name="batch_size", required=True, type_hint=int, description="Effective batch size."),
             InputParam(name="dtype", required=True, type_hint=torch.dtype, description="The working dtype."),
@@ -398,7 +398,7 @@ class Krea2SetTimestepsStep(ModularPipelineBlocks):
     @property
     def inputs(self) -> list[InputParam]:
         return [
-            InputParam.template("num_inference_steps", default=8),
+            InputParam.template("num_inference_steps", default=28),
             InputParam(
                 name="sigmas", type_hint=list, description="Custom sigma schedule (defaults to a linear ramp)."
             ),
@@ -454,7 +454,7 @@ class Krea2TurboSetTimestepsStep(ModularPipelineBlocks):
           scheduler (`FlowMatchEulerDiscreteScheduler`)
 
       Inputs:
-          num_inference_steps (`int`, *optional*, defaults to 28):
+          num_inference_steps (`int`, *optional*, defaults to 8):
               The number of denoising steps.
           sigmas (`list`, *optional*):
               Custom sigma schedule (defaults to a linear ramp).
@@ -480,7 +480,7 @@ class Krea2TurboSetTimestepsStep(ModularPipelineBlocks):
     @property
     def inputs(self) -> list[InputParam]:
         return [
-            InputParam.template("num_inference_steps", default=28),
+            InputParam.template("num_inference_steps", default=8),
             InputParam(
                 name="sigmas", type_hint=list, description="Custom sigma schedule (defaults to a linear ramp)."
             ),
@@ -542,8 +542,8 @@ class Krea2PreparePositionIdsStep(ModularPipelineBlocks):
     @property
     def inputs(self) -> list[InputParam]:
         return [
-            InputParam.template("height", required=True),
-            InputParam.template("width", required=True),
+            InputParam.template("height", default=1024),
+            InputParam.template("width", default=1024),
             InputParam(
                 name="prompt_embeds",
                 required=True,

@@ -77,8 +77,8 @@ class Krea2DecodeStep(ModularPipelineBlocks):
     def inputs(self) -> list[InputParam]:
         return [
             InputParam.template("output_type", default="pil"),
-            InputParam.template("height", required=True),
-            InputParam.template("width", required=True),
+            InputParam.template("height", default=1024),
+            InputParam.template("width", default=1024),
             InputParam(
                 name="latents",
                 required=True,

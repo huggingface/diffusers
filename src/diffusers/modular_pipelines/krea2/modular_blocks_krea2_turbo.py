@@ -66,7 +66,7 @@ class Krea2TurboCoreDenoiseStep(SequentialPipelineBlocks):
               The width in pixels of the generated image.
           generator (`Generator`, *optional*):
               Torch generator for deterministic generation.
-          num_inference_steps (`int`, *optional*, defaults to 28):
+          num_inference_steps (`int`, *optional*, defaults to 8):
               The number of denoising steps.
           sigmas (`list`, *optional*):
               Custom sigma schedule (defaults to a linear ramp).
@@ -126,7 +126,7 @@ class Krea2TurboAutoBlocks(SequentialPipelineBlocks):
               The width in pixels of the generated image.
           generator (`Generator`, *optional*):
               Torch generator for deterministic generation.
-          num_inference_steps (`int`, *optional*, defaults to 28):
+          num_inference_steps (`int`, *optional*, defaults to 8):
               The number of denoising steps.
           sigmas (`list`, *optional*):
               Custom sigma schedule (defaults to a linear ramp).

@@ -35,7 +35,7 @@ KREA2_TURBO_WORKFLOWS = {
 class TestKrea2TurboModularPipelineFast(ModularPipelineTesterMixin):
     pipeline_class = Krea2TurboModularPipeline
     pipeline_blocks_class = Krea2TurboAutoBlocks
-    pretrained_model_name_or_path = "hf-internal-testing/tiny-krea2-turbo-modular-pipe"
+    pretrained_model_name_or_path = "CedricPerauer/tiny-krea2-turbo-modular-pipe"
 
     params = frozenset(["prompt", "height", "width"])
     batch_params = frozenset(["prompt"])
