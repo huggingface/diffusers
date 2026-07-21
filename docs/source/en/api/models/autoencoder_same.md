@@ -31,12 +31,12 @@ providing stable training dynamics.
 
 ## SAMETransformerResamplingBlock
 
-[[autodoc]] SAMETransformerResamplingBlock
+[[autodoc]] models.autoencoders.autoencoder_same.SAMETransformerResamplingBlock
 
 ## AutoencoderSAMEOutput
 
-[[autodoc]] AutoencoderSAMEOutput
+[[autodoc]] models.autoencoders.autoencoder_same.AutoencoderSAMEOutput
 
 ## AutoencoderSAMEDecoderOutput
 
-[[autodoc]] AutoencoderSAMEDecoderOutput
+[[autodoc]] models.autoencoders.autoencoder_same.AutoencoderSAMEDecoderOutput

@@ -32,8 +32,8 @@ conditioning vector** (duration embedding from [`StableAudio3DurationEmbedder`])
 
 ## StableAudio3DiTBlock
 
-[[autodoc]] StableAudio3DiTBlock
+[[autodoc]] models.transformers.transformer_stable_audio3.StableAudio3DiTBlock
 
 ## StableAudio3DiTModelOutput
 
-[[autodoc]] StableAudio3DiTModelOutput
+[[autodoc]] models.transformers.transformer_stable_audio3.StableAudio3DiTModelOutput
