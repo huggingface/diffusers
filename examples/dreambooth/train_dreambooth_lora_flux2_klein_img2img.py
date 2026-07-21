@@ -433,17 +433,17 @@ def parse_args(input_args=None):
         help=(
             "Aspect ratio buckets to use for training. Define as a string of 'h1,w1;h2,w2;...'. "
             "e.g. '1024,1024;768,1360;1360,768;880,1168;1168,880;1248,832;832,1248'. "
-            "Passing this enables aspect-ratio bucketing; images are resized to cover and cropped to the "
-            "nearest listed bucket (smaller images are upscaled). If provided, --resolution is ignored."
+            "Requires --use_aspect_ratio_buckets. Images are resized to cover and cropped to the nearest "
+            "listed bucket (smaller images are upscaled). When set, --resolution is ignored."
         ),
     )
     parser.add_argument(
         "--use_aspect_ratio_buckets",
         action="store_true",
         help=(
-            "Enable aspect-ratio bucketing. When set without --aspect_ratio_buckets, the buckets are computed "
-            "on the fly from --resolution and capped to each image's own resolution, so smaller images are "
-            "assigned to a smaller bucket instead of being upscaled. Passing --aspect_ratio_buckets implies this."
+            "Enable aspect-ratio bucketing. Without --aspect_ratio_buckets, the buckets are computed on the "
+            "fly from --resolution and capped to each image's own resolution, so smaller images are assigned "
+            "to a smaller bucket instead of being upscaled. Provide --aspect_ratio_buckets to use an explicit list."
         ),
     )
     parser.add_argument(
@@ -1429,9 +1429,12 @@ def main(args):
             safeguard_warmup=args.prodigy_safeguard_warmup,
         )
 
-    # Resolve the bucketing mode. An explicit --aspect_ratio_buckets list drives assignment directly;
-    # --use_aspect_ratio_buckets (without a list) computes buckets on the fly inside the dataset;
-    # otherwise a single square bucket reproduces the fixed-size resize + crop.
+    # Resolve the bucketing mode. Bucketing must be enabled explicitly with --use_aspect_ratio_buckets;
+    # a bucket list without that flag is an error. With the flag, an explicit --aspect_ratio_buckets list
+    # drives assignment, otherwise buckets are computed on the fly inside the dataset. Without the flag a
+    # single square bucket reproduces the fixed-size resize + crop.
+    if args.aspect_ratio_buckets is not None and not args.use_aspect_ratio_buckets:
+        raise ValueError("--aspect_ratio_buckets requires --use_aspect_ratio_buckets to be set.")
     if args.aspect_ratio_buckets is not None:
         buckets = parse_buckets_string(args.aspect_ratio_buckets)
         use_aspect_ratio_buckets = False
@@ -1439,7 +1442,9 @@ def main(args):
     elif args.use_aspect_ratio_buckets:
         buckets = None
         use_aspect_ratio_buckets = True
-        logger.info("Using aspect ratio buckets computed on the fly from --resolution.")
+        logger.info(
+            "No --aspect_ratio_buckets provided; auto-computing aspect ratio buckets on the fly from --resolution."
+        )
     else:
         buckets = [(args.resolution, args.resolution)]
         use_aspect_ratio_buckets = False
