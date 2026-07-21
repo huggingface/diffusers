@@ -26,7 +26,7 @@ from packaging.specifiers import InvalidSpecifier, SpecifierSet
 
 from ..configuration_utils import ConfigMixin, FrozenDict
 from ..loaders.single_file_utils import _is_single_file_path_or_url
-from ..utils import DIFFUSERS_LOAD_ID_FIELDS, is_torch_available, logging
+from ..utils import DIFFUSERS_LOAD_ID_FIELDS, _resolve_dtype, is_torch_available, logging
 from ..utils.import_utils import _is_package_available
 
 
@@ -293,6 +293,10 @@ class ComponentSpec:
     # YiYi TODO: add guard for type of model, if it is supported by from_pretrained
     def load(self, **kwargs) -> Any:
         """Load component using from_pretrained."""
+        torch_dtype = kwargs.pop("torch_dtype", None)
+        if torch_dtype is not None:
+            kwargs["dtype"] = _resolve_dtype(kwargs.get("dtype"), torch_dtype)
+
         # select loading fields from kwargs passed from user: e.g. pretrained_model_name_or_path, subfolder, variant, revision, note the list could change
         passed_loading_kwargs = {key: kwargs.pop(key) for key in self.loading_fields() if key in kwargs}
         # merge loading field value in the spec with user passed values to create load_kwargs
@@ -311,12 +315,11 @@ class ComponentSpec:
 
         from diffusers import AutoModel
 
-        # `dtype`/`torch_dtype` is not an accepted parameter for tokenizers and processors.
+        # `dtype` is not an accepted parameter for tokenizers and processors.
         # As a result, it gets stored in `init_kwargs`, which are written to the config
         # during save. This causes JSON serialization to fail when saving the component.
         if self.type_hint is not None and not issubclass(self.type_hint, (torch.nn.Module, AutoModel)):
             kwargs.pop("dtype", None)
-            kwargs.pop("torch_dtype", None)
 
         if self.type_hint is None:
             try:

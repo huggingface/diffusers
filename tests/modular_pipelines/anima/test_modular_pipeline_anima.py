@@ -177,10 +177,10 @@ class TestAnimaModularPipelineFast(ModularPipelineTesterMixin, ModularGuiderTest
     batch_params = frozenset(["prompt", "negative_prompt"])
     expected_workflow_blocks = ANIMA_TEXT2IMAGE_WORKFLOWS
 
-    def get_pipeline(self, components_manager=None, torch_dtype=torch.float32):
+    def get_pipeline(self, components_manager=None, dtype=torch.float32):
         pipe = self.pipeline_blocks_class().init_pipeline(components_manager=components_manager)
         pipe.update_components(**get_dummy_components())
-        pipe.to(dtype=torch_dtype)
+        pipe.to(dtype=dtype)
         pipe.set_progress_bar_config(disable=None)
         return pipe
 
