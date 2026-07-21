@@ -71,8 +71,8 @@ class TestRunCommand:
         assert argv.count("--dependencies") == 2 and "torch" in argv and "accelerate" in argv
 
     def test_remote_argv_omits_hf_job_args(self):
-        # `_build_task_kwargs` must strip HF_JOBS_KEYS (flags that control the local job submission,
-        # not the container) plus None/False values before we forward argv to the container.
+        # `_build_task_kwargs` must strip REMOTE_KEYS (flags that control how the remote run is
+        # dispatched, not the sandbox CLI) plus None/False values before we forward argv to the sandbox.
         args = Namespace(
             remote=True,
             flavor="a100-large",
@@ -82,7 +82,7 @@ class TestRunCommand:
             func=object(),
             model="x",
             dtype="bf16",
-            device_map="cuda",  # not in HF_JOBS_KEYS: forwarded to the container
+            device_map="cuda",  # not in REMOTE_KEYS: forwarded to the sandbox
             revision=None,
             trust_remote_code=False,
             vae_tiling=True,

@@ -15,7 +15,7 @@
 """`diffusers-cli run` — single agentic entry point.
 
 Runs any diffusers pipeline (standard or modular) by forwarding `--pipeline-kwargs` verbatim, saves the output by
-sniffing its runtime type, and can submit the same call to HF Jobs via `--remote`.
+detecting its runtime type, and can submit the same call to an HF Sandbox via `--remote`.
 """
 
 from __future__ import annotations
@@ -82,34 +82,37 @@ _DEFAULT_REMOTE_DEPS = (
     "ftfy",  # required by older CLIP text-encoder paths
 )
 
-# Base container image — provides torch + CUDA so `uv pip install --system`
+# Base sandbox image — provides torch + CUDA so `uv pip install --system`
 # only has to add the small Python deps. cuda12.8 is the highest cuda12.x tag
 # below the HF Jobs host driver's CUDA 12.9 max.
 _DEFAULT_REMOTE_IMAGE = "pytorch/pytorch:2.10.0-cuda12.8-cudnn9-runtime"
 
-# Installed console-script name invoked inside the container after the deps land.
+# Installed console-script name invoked inside the sandbox after the deps land.
 _CONTAINER_CLI_BINARY = "diffusers-cli"
 
-# Mount path inside the container for the bucket volume that carries local media
-# uploaded from `--pipeline-kwargs` for `--remote` runs.
-_INPUTS_MOUNT_ROOT = "/mnt/inputs"
+# Working directories inside the sandbox: local media from `--pipeline-kwargs` is uploaded
+# under _SANDBOX_INPUTS_DIR, and the sandbox CLI is told to write its outputs under
+# _SANDBOX_OUTPUTS_DIR so we can download them back afterwards.
+_SANDBOX_INPUTS_DIR = "/tmp/diffusers-cli/inputs"
+_SANDBOX_OUTPUTS_DIR = "/tmp/diffusers-cli/outputs"
 
 RUN_ID_ENV = "DIFFUSERS_CLI_RUN_ID"
 
-# Namespace keys that control *how* a remote job runs locally, not what runs
-# inside the container. They are stripped when forwarding argv to the container.
-HF_JOBS_KEYS = frozenset(
+# Namespace keys that control *how* a remote run is dispatched, not what the sandbox CLI
+# runs. They are stripped when forwarding argv to the sandbox.
+REMOTE_KEYS = frozenset(
     {
         "remote",
         "flavor",
         "timeout",
         "dependencies",
         "namespace",
-        "no_wait",
-        "poll_interval",
         "image",
+        "keep_alive",
+        "sandbox_id",
+        "idle_timeout",
         "func",
-        "format",  # top-level --format is a local rendering flag; never forward to the container
+        "format",  # top-level --format is a local rendering flag; never forward to the sandbox
     }
 )
 
@@ -209,7 +212,8 @@ def _add_output_arguments(parser: ArgumentParser) -> None:
         default=None,
         help=(
             "Upload the generated files to this HF bucket id after saving (created if missing). "
-            "When --remote is set, defaults to <user>/jobs-artifacts."
+            "Under --remote the upload runs inside the sandbox; without an explicit --output the "
+            "bucket becomes the sole destination and nothing is downloaded back."
         ),
     )
 
@@ -218,48 +222,64 @@ def _add_remote_arguments(parser: ArgumentParser) -> None:
     parser.add_argument(
         "--remote",
         action="store_true",
-        help="Submit this command to Hugging Face Jobs instead of running locally.",
+        help="Run this command in a Hugging Face Sandbox instead of on the local machine.",
     )
     parser.add_argument(
         "--flavor",
         default="a10g-small",
-        help="HF Jobs hardware flavor for --remote (e.g. a10g-small, a100-large, cpu-basic).",
+        help="HF Sandbox hardware flavor for --remote (e.g. a10g-small, a100-large, cpu-basic).",
     )
     parser.add_argument(
         "--timeout",
         default="10m",
-        help="HF Jobs timeout for --remote (e.g. 30m, 2h). Defaults to 10m.",
+        help="Max wallclock for the run command inside the sandbox (e.g. 30m, 2h). Defaults to 10m.",
     )
     parser.add_argument(
         "--dependencies",
         action="append",
         default=None,
-        help="Extra pip dependencies for the --remote job. Repeat to add multiple.",
+        help="Extra pip dependencies to install in the sandbox. Repeat to add multiple.",
     )
     parser.add_argument(
         "--namespace",
         default=None,
-        help="HF namespace to run the --remote job under (defaults to the current user).",
+        help="HF namespace to create the sandbox under (defaults to the current user).",
     )
     parser.add_argument(
         "--image",
         default=None,
         help=(
-            "Container image for the --remote job (defaults to "
+            "Sandbox image for --remote (defaults to "
             f"{_DEFAULT_REMOTE_IMAGE!r}). Must provide torch + CUDA; the CLI installs the "
             "small Python deps on top via `uv pip install --system`."
         ),
     )
     parser.add_argument(
-        "--no-wait",
+        "--keep-alive",
         action="store_true",
-        help="Don't wait for the --remote job to finish — submit and print the job id.",
+        help=(
+            "Don't terminate the sandbox after the run. Its id is printed so a later --remote run "
+            "can reconnect with --sandbox-id and reuse the warm deps/weights/compile cache."
+        ),
     )
     parser.add_argument(
-        "--poll-interval",
-        type=float,
-        default=5.0,
-        help="Seconds between job-status polls when waiting for --remote completion.",
+        "--sandbox-id",
+        default=None,
+        help=(
+            "Reconnect to an existing sandbox (from a prior --keep-alive run) instead of creating a new "
+            "one, reusing its warm deps/weights/compile cache. Implies --keep-alive; stop it with "
+            "`hf sandbox kill <id>`."
+        ),
+    )
+    parser.add_argument(
+        "--idle-timeout",
+        default="10m",
+        help=(
+            "Auto-shutdown the sandbox after this much inactivity (e.g. 30m, 1h). Defaults to 10m — the "
+            "billing backstop for --keep-alive sandboxes. Pass 'none' to disable the auto-reaper; the "
+            "sandbox then runs until the 24h hard cap unless killed. Only applied on new sandbox "
+            "creation — ignored when reconnecting via --sandbox-id."
+        ),
     )
 
 
@@ -584,7 +604,7 @@ def _get_generator(seed: int | None, device: str):
 
 
 def _unwrap_pipeline_output(result: Any) -> Any:
-    """Unwrap a pipeline-output object into the raw payload the saver can sniff."""
+    """Unwrap a pipeline-output object into the raw payload the saver can dispatch on."""
     if hasattr(result, "images"):
         return result.images
     if hasattr(result, "frames"):
@@ -595,7 +615,7 @@ def _unwrap_pipeline_output(result: Any) -> Any:
 
 
 # ---------------------------------------------------------------------------
-# Output saving (auto-sniff by type)
+# Output saving (dispatch by type)
 # ---------------------------------------------------------------------------
 
 
@@ -713,7 +733,7 @@ def _save_audio_arrays(audios, sampling_rate: int, args: Namespace, task: str) -
 
 
 def _save_output(value: Any, args: Namespace, task: str) -> list[str]:
-    """Save `value` by sniffing its runtime type."""
+    """Save `value` by dispatching on its runtime type."""
     pil_images = _as_pil_list(value)
     if pil_images is not None:
         paths = _resolve_output_paths(task, len(pil_images), args.output, ext="png")
@@ -762,22 +782,22 @@ def _push_outputs(args: Namespace, saved_paths: list[str], task: str) -> dict[st
 
 
 # ---------------------------------------------------------------------------
-# Remote submission (HF Jobs)
+# Remote execution (HF Sandbox)
 # ---------------------------------------------------------------------------
 
 
 def _build_task_kwargs(args: Namespace) -> dict[str, Any]:
-    """Pick out the kwargs the container should invoke the task with."""
+    """Pick out the kwargs the sandbox CLI should invoke the task with."""
     out: dict[str, Any] = {}
     for key, value in vars(args).items():
-        if key in HF_JOBS_KEYS or value is None or value is False:
+        if key in REMOTE_KEYS or value is None or value is False:
             continue
         out[key] = value
     return out
 
 
 def _kwargs_to_argv(task: str, task_kwargs: dict[str, Any]) -> list[str]:
-    """Render `task_kwargs` as the argv list the container's argparse will see."""
+    """Render `task_kwargs` as the argv list the sandbox CLI's argparse will see."""
     argv: list[str] = [task]
     for key, value in task_kwargs.items():
         flag = "--" + key.replace("_", "-")
@@ -791,125 +811,181 @@ def _kwargs_to_argv(task: str, task_kwargs: dict[str, Any]) -> list[str]:
     return argv
 
 
-def _maybe_upload_local_media(args: Namespace, api: Any, run_id: str) -> bool:
-    """Upload any local media paths in `--pipeline-kwargs` to the artifacts bucket.
+def _duration_to_seconds(value: str) -> float:
+    """Parse a duration like `30s`, `10m`, `2h` (or a bare number of seconds) into seconds."""
+    value = value.strip()
+    units = {"s": 1, "m": 60, "h": 3600}
+    if value and value[-1] in units:
+        return float(value[:-1]) * units[value[-1]]
+    return float(value)
+
+
+def _upload_inputs_to_sandbox(args: Namespace, sbx: Any, run_id: str) -> None:
+    """Upload local media paths in `--pipeline-kwargs` into the sandbox and rewrite the JSON in place.
 
     Walks known image/video-input keys; any string value that resolves to a local file is uploaded to
-    `<bucket>/<run_id>/inputs/<key>_<basename>` and the JSON is rewritten so the container sees the mounted-volume path
-    instead. Returns True iff any files were uploaded (caller then mounts the bucket at `_INPUTS_MOUNT_ROOT`).
-
-    URLs, `hf://` URIs, and non-existent paths pass through untouched.
+    `<_SANDBOX_INPUTS_DIR>/<run_id>/<key>_<basename>` and the JSON path is rewritten to that in-sandbox path. URLs,
+    `hf://` URIs, and non-existent paths pass through untouched.
     """
     if not args.pipeline_kwargs:
-        return False
+        return
     try:
         parsed = json.loads(args.pipeline_kwargs)
     except json.JSONDecodeError:
-        return False  # container will fail loudly with a parse error later
+        return  # the sandbox CLI will fail loudly with a parse error later
     if not isinstance(parsed, dict):
-        return False
+        return
 
-    uploads: list[tuple[str, str]] = []
+    uploaded = 0
     for key in (*_IMAGE_INPUT_KEYS, *_VIDEO_INPUT_KEYS):
         value = parsed.get(key)
         if not isinstance(value, str) or not Path(value).is_file():
             continue
         local = Path(value)
-        remote_path = f"{run_id}/inputs/{key}_{local.name}"
-        uploads.append((str(local), remote_path))
-        parsed[key] = f"{_INPUTS_MOUNT_ROOT}/{remote_path}"
+        remote_path = f"{_SANDBOX_INPUTS_DIR}/{run_id}/{key}_{local.name}"
+        sbx.files.upload(str(local), remote_path)
+        parsed[key] = remote_path
+        uploaded += 1
 
-    if not uploads:
-        return False
+    if uploaded:
+        logger.info(f"uploaded {uploaded} local input file(s) to the sandbox")
+        args.pipeline_kwargs = json.dumps(parsed)
 
-    print(
-        f"[diffusers-cli] uploading {len(uploads)} local input file(s) to bucket {args.push_to!r}...",
-        file=sys.stderr,
-        flush=True,
-    )
-    api.create_bucket(args.push_to, exist_ok=True)
-    api.batch_bucket_files(args.push_to, add=uploads)
-    args.pipeline_kwargs = json.dumps(parsed)
-    return True
+
+def _download_outputs_from_sandbox(sbx: Any, local_dir: Path) -> list[str]:
+    """Download every file the sandbox CLI wrote under `_SANDBOX_OUTPUTS_DIR` into `local_dir`."""
+    local_dir.mkdir(parents=True, exist_ok=True)
+    saved: list[str] = []
+    for entry in sbx.files.list(_SANDBOX_OUTPUTS_DIR):
+        if entry.type != "file":
+            continue
+        target = local_dir / Path(entry.path).name
+        sbx.files.download(entry.path, str(target))
+        saved.append(str(target))
+    return saved
 
 
 def _maybe_submit_remote(args: Namespace, task: str) -> bool:
-    """If `--remote` was set, submit this invocation to HF Jobs and return True."""
+    """If `--remote` was set, run this invocation inside an HF Sandbox and return True."""
     if not args.remote:
         return False
 
-    print(
-        f"[diffusers-cli] preparing remote {task!r} job on flavor={args.flavor!r}...",
-        file=sys.stderr,
-        flush=True,
-    )
-
     import shlex
+    import time
 
-    from huggingface_hub import HfApi, get_token, run_job
+    from huggingface_hub import get_token
     from huggingface_hub.utils import send_telemetry
 
     import diffusers
 
-    hf_token = args.token or get_token()
-    api = HfApi(token=hf_token)
-
-    # If the user passed --push-to explicitly, treat the bucket as their destination and
-    # skip downloading artifacts locally. Auto-defaulted buckets are internal transport.
-    user_bucket = bool(args.push_to)
-    if not args.push_to:
-        args.push_to = f"{api.whoami()['name']}/jobs-artifacts"
-
-    run_id = _get_or_create_run_id()
-
-    inputs_mounted = _maybe_upload_local_media(args, api, run_id)
-
-    task_kwargs = _build_task_kwargs(args)
-    dependencies = list(_DEFAULT_REMOTE_DEPS)
-    if args.dependencies:
-        dependencies.extend(args.dependencies)
-
-    secrets = {"HF_TOKEN": hf_token} if hf_token else None
-    env = {
-        RUN_ID_ENV: run_id,
-        "HF_ENABLE_PARALLEL_LOADING": "1",  # thread-pool the safetensors load step
-    }
+    try:
+        from huggingface_hub import Sandbox
+    except ImportError:
+        raise SystemExit(
+            "--remote requires huggingface_hub>=1.23 for HF Sandbox support. "
+            "Upgrade with `pip install -U huggingface_hub`."
+        )
 
     if Path(args.model).exists():
         raise SystemExit(
-            f"--model {args.model!r} is a local path; the container can't see it. "
-            "Pass a Hub repo id so the job can download it."
+            f"--model {args.model!r} is a local path; the sandbox can't see it. "
+            "Pass a Hub repo id so the sandbox can download it."
         )
 
-    # --break-system-packages bypasses PEP 668; safe because the container is ephemeral.
-    # torchrun wraps the CLI for --context-parallel so torch.distributed initializes
-    # across every visible GPU before the run command starts.
-    install_cmd = shlex.join(["uv", "pip", "install", "--system", "--break-system-packages", *dependencies])
-    cli_argv = _kwargs_to_argv(task, task_kwargs)
-    if args.context_parallel:
-        cli_argv = ["torchrun", "--nproc-per-node=gpu", "-m", "diffusers.commands.diffusers_cli", *cli_argv]
+    hf_token = args.token or get_token()
+    run_id = _get_or_create_run_id()
+
+    # An explicit --push-to means the bucket is the user's destination, so skip the local
+    # download unless they also asked for a local path via --output.
+    user_bucket = bool(args.push_to)
+    download_locally = (not user_bucket) or (args.output is not None)
+    local_dir = Path(args.output) if args.output else Path(DEFAULT_OUTPUT_DIR) / run_id
+
+    reused = bool(args.sandbox_id)
+    keep_alive = args.keep_alive or reused
+    if reused:
+        logger.info(f"reconnecting to sandbox {args.sandbox_id!r}...")
+        sbx = Sandbox.connect(args.sandbox_id, token=hf_token)
     else:
-        cli_argv = [_CONTAINER_CLI_BINARY, *cli_argv]
-    cli_cmd = shlex.join(cli_argv)
-    container_cmd = ["sh", "-c", f"{install_cmd} && {cli_cmd}"]
+        logger.info(f"creating sandbox on flavor={args.flavor!r}...")
+        # "none"/"off"/"0" are user-friendly aliases for disabling the reaper; Sandbox.create
+        # takes idle_timeout=None to mean the same thing.
+        disabled = args.idle_timeout.strip().lower() in ("none", "off", "0")
+        create_kwargs: dict[str, Any] = {
+            "image": args.image or _DEFAULT_REMOTE_IMAGE,
+            "flavor": args.flavor,
+            "forward_hf_token": True,
+            "token": hf_token,
+            "env": {RUN_ID_ENV: run_id, "HF_ENABLE_PARALLEL_LOADING": "1"},
+            "idle_timeout": None if disabled else args.idle_timeout,
+        }
+        if args.namespace is not None:
+            create_kwargs["namespace"] = args.namespace
+        sbx = Sandbox.create(**create_kwargs)
 
-    volumes = None
-    if inputs_mounted:
-        from huggingface_hub import Volume
+    def _stream(chunk: str) -> None:
+        sys.stderr.write(chunk)
+        sys.stderr.flush()
 
-        volumes = [Volume(type="bucket", source=args.push_to, mount_path=_INPUTS_MOUNT_ROOT)]
+    exit_code = 0
+    saved: list[str] = []
+    run_seconds = 0.0
+    try:
+        _upload_inputs_to_sandbox(args, sbx, run_id)
 
-    job = run_job(
-        image=args.image or _DEFAULT_REMOTE_IMAGE,
-        command=container_cmd,
-        volumes=volumes,
-        flavor=args.flavor,
-        timeout=args.timeout,
-        namespace=args.namespace,
-        secrets=secrets,
-        env=env,
-        token=hf_token,
-    )
+        dependencies = list(_DEFAULT_REMOTE_DEPS)
+        if args.dependencies:
+            dependencies.extend(args.dependencies)
+        # --break-system-packages bypasses PEP 668; harmless in a throwaway sandbox. uv is a
+        # near no-op when the deps are already satisfied, so this stays cheap on a reused sandbox.
+        install_cmd = shlex.join(["uv", "pip", "install", "--system", "--break-system-packages", *dependencies])
+        logger.info("installing dependencies in the sandbox...")
+        sbx.run(install_cmd, on_stdout=_stream, on_stderr=_stream)
+
+        # Point the sandbox CLI's --output at a known directory (trailing slash → treated as a
+        # directory) so we can download every artifact back regardless of the pipeline output type.
+        task_kwargs = _build_task_kwargs(args)
+        task_kwargs["output"] = _SANDBOX_OUTPUTS_DIR + "/"
+        cli_argv = _kwargs_to_argv(task, task_kwargs)
+        # Suppress the container CLI's own `out.result(...)` payload — the outer wrapper owns the
+        # final structured output for --remote runs.
+        format_argv = ["--format", "quiet"]
+        # torchrun wraps the CLI for --context-parallel so torch.distributed initializes across
+        # every visible GPU before the run command starts.
+        if args.context_parallel:
+            cli_argv = [
+                "torchrun",
+                "--nproc-per-node=gpu",
+                "-m",
+                "diffusers.commands.diffusers_cli",
+                *format_argv,
+                *cli_argv,
+            ]
+        else:
+            cli_argv = [_CONTAINER_CLI_BINARY, *format_argv, *cli_argv]
+
+        started = time.perf_counter()
+        result = sbx.run(
+            cli_argv,
+            on_stdout=_stream,
+            on_stderr=_stream,
+            timeout=_duration_to_seconds(args.timeout),
+            check=False,
+        )
+        run_seconds = time.perf_counter() - started
+        exit_code = result.exit_code
+
+        if exit_code == 0 and download_locally:
+            saved = _download_outputs_from_sandbox(sbx, local_dir)
+    finally:
+        if keep_alive:
+            logger.info(
+                f"sandbox {sbx.id} kept alive — reconnect with "
+                f"`--remote --sandbox-id {sbx.id}`, stop with `hf sandbox kill {sbx.id}`."
+            )
+        else:
+            sbx.kill()
+
     send_telemetry(
         topic="diffusers/cli/run/remote",
         library_name="diffusers",
@@ -917,112 +993,22 @@ def _maybe_submit_remote(args: Namespace, task: str) -> bool:
     )
 
     payload: dict[str, Any] = {
-        "task": "remote-submit",
-        "job_id": getattr(job, "id", None),
-        "job_status": str(getattr(job, "status", "")),
-        "job_url": getattr(job, "url", "https://huggingface.co/jobs"),
+        "task": "remote-run",
+        "sandbox_id": sbx.id,
         "flavor": args.flavor,
-        "push_to": args.push_to,
+        "reused": reused,
+        "kept_alive": keep_alive,
         "run_id": run_id,
+        "exit_code": exit_code,
+        "run_seconds": round(run_seconds, 1),
     }
-
-    if args.no_wait:
-        out.result(payload["task"], **payload)
-        return True
-
-    final_status = _wait_for_job(api, job.id, args.namespace, args.poll_interval)
-    payload["job_status"] = final_status
-    payload["timing"] = _job_timing(api, job.id, args.namespace)
-    # Download if the bucket was auto-defaulted (internal transport) OR if the user explicitly
-    # asked for a local path via --output. An explicit --push-to alone stays bucket-only.
-    if not user_bucket or args.output is not None:
-        payload["outputs"] = _download_job_artifacts(api, args.push_to, run_id, args.output)
+    if download_locally:
+        payload["outputs"] = saved
     out.result(payload["task"], **payload)
+
+    if exit_code != 0:
+        raise SystemExit(f"remote run failed with exit code {exit_code}")
     return True
-
-
-def _job_timing(api: Any, job_id: str, namespace: str | None) -> dict[str, float | None]:
-    """Return queue/run/total wallclock seconds for `job_id` from inspect_job timestamps.
-
-    inspect_job sometimes returns finished_at=None for a few seconds after the container exits while HF Jobs propagates
-    the terminal state; retry briefly so we don't miss run/total.
-    """
-    import time
-
-    info = api.inspect_job(job_id=job_id, namespace=namespace)
-    for _ in range(5):
-        if info.finished_at is not None:
-            break
-        time.sleep(1.0)
-        info = api.inspect_job(job_id=job_id, namespace=namespace)
-
-    def _delta(start, end) -> float | None:
-        return (end - start).total_seconds() if (start is not None and end is not None) else None
-
-    timing = {
-        "queued_seconds": _delta(info.created_at, info.started_at),
-        "run_seconds": _delta(info.started_at, info.finished_at),
-        "total_seconds": _delta(info.created_at, info.finished_at),
-    }
-    parts = [f"{k.replace('_seconds', '')}={v:.1f}s" for k, v in timing.items() if v is not None]
-    if parts:
-        print(f"[diffusers-cli] timing: {' '.join(parts)}", file=sys.stderr, flush=True)
-    return timing
-
-
-def _wait_for_job(api: Any, job_id: str, namespace: str | None, poll_interval: float) -> str:
-    """Stream container logs to stderr until the job terminates; return the final stage."""
-    fetch = getattr(api, "fetch_job_logs", None)
-    if fetch is not None:
-        try:
-            for line in fetch(job_id=job_id, namespace=namespace, follow=True):
-                print(line, file=sys.stderr, flush=True)
-        except TypeError:
-            return _poll_for_job(api, job_id, namespace, poll_interval)
-        info = api.inspect_job(job_id=job_id, namespace=namespace)
-        return str(info.status.stage) if info.status else "UNKNOWN"
-    return _poll_for_job(api, job_id, namespace, poll_interval)
-
-
-def _poll_for_job(api: Any, job_id: str, namespace: str | None, poll_interval: float) -> str:
-    """Heartbeat-style fallback when `fetch_job_logs` isn't available."""
-    import time
-
-    terminal = {"COMPLETED", "CANCELED", "ERROR", "DELETED"}
-    last_stage: str | None = None
-    while True:
-        info = api.inspect_job(job_id=job_id, namespace=namespace)
-        stage = str(info.status.stage) if info.status else "UNKNOWN"
-        if stage != last_stage:
-            if last_stage is not None:
-                print("", file=sys.stderr, flush=True)
-            print(f"[diffusers-cli] job {job_id}: {stage}", file=sys.stderr, flush=True)
-            last_stage = stage
-        else:
-            print(".", end="", file=sys.stderr, flush=True)
-        if stage in terminal:
-            print("", file=sys.stderr, flush=True)
-            return stage
-        time.sleep(poll_interval)
-
-
-def _download_job_artifacts(api: Any, bucket_id: str, run_id: str, output: str | None) -> list[str]:
-    """Download every file under `<run_id>/` from `bucket_id` into a local directory."""
-    from huggingface_hub import BucketFile
-
-    local_dir = Path(output) if output else Path(DEFAULT_OUTPUT_DIR) / run_id
-    local_dir.mkdir(parents=True, exist_ok=True)
-
-    pairs: list[tuple[Any, Path]] = []
-    for entry in api.list_bucket_tree(bucket_id, prefix=f"{run_id}/", recursive=True):
-        if not isinstance(entry, BucketFile):
-            continue
-        pairs.append((entry, local_dir / Path(entry.path).name))
-
-    if not pairs:
-        return []
-    api.download_bucket_files(bucket_id, files=pairs)
-    return [str(local) for _, local in pairs]
 
 
 # ---------------------------------------------------------------------------
@@ -1058,7 +1044,7 @@ class RunCommand(BaseDiffusersCLICommand):
 
         parser: ArgumentParser = subparsers.add_parser(
             "run",
-            help="Run any diffusers pipeline locally or remotely with HF Jobs.",
+            help="Run any diffusers pipeline locally or remotely in an HF Sandbox.",
             usage="\n  diffusers-cli run [options]",
             epilog=epilog,
             formatter_class=RawDescriptionHelpFormatter,

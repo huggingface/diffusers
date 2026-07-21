@@ -2,7 +2,7 @@
 name: diffusers-cli
 description: >
   Use when the user wants to run a diffusers pipeline from a terminal (one-off
-  generation, batch jobs, smoke-testing a new model), submit jobs to HF Jobs
+  generation, batch jobs, smoke-testing a new model), run on HF Sandbox
   hardware via `--remote`, introspect a pipeline's input schema before
   calling it, or attach a LoRA at inference time. Prefer this over writing
   ad-hoc Python scripts for generation tasks.
@@ -14,7 +14,7 @@ description: >
 
 | Command         | Purpose                                                                                                                                                                                       |
 | --------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `run`      | Run any `DiffusionPipeline` or `ModularPipeline`. Forwards `--pipeline-kwargs` verbatim, saves output by sniffing its runtime type, optionally runs on HF Jobs via `--remote`.                |
+| `run`      | Run any `DiffusionPipeline` or `ModularPipeline`. Forwards `--pipeline-kwargs` verbatim, saves output by detecting its runtime type, optionally runs on HF Jobs via `--remote`.                |
 | `schema`      | Print the input schema for a pipeline repo (kwarg names, types, defaults, descriptions). **No weights downloaded** — only the small index file.                                               |
 | `custom_blocks` | Package a local `ModularPipelineBlocks` subclass for the Hub.                                                                                                                                 |
 | `env`           | Print versions of diffusers + torch + transformers + accelerate + safetensors + CUDA + GPU info. Use when investigating environment issues, dtype/precision support, or building bug reports. |

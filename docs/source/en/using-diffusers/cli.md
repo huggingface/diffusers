@@ -10,7 +10,7 @@ an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express o
 specific language governing permissions and limitations under the License.
 -->
 
-# Command line interface (`diffusers-cli`)
+# Command line interface
 
 `diffusers-cli` is a command line entry point for running, inspecting, and packaging Diffusers pipelines
 without writing Python. It's installed alongside the `diffusers` package.
@@ -21,26 +21,28 @@ The CLI adapts its output for whoever's reading it:
   `CLAUDECODE`, `CURSOR_AI`, `AIDER_AI_CONTEXT`), output switches to a compact `key=value` / TSV format with
   no progress bars.
 - In a normal terminal, it prints human-friendly summaries.
-- Force a specific format with `--format {auto, human, agent, json, quiet}` **before** the subcommand:
-  `diffusers-cli --format json run --model ...`.
+- Force a specific format with `--format {auto, human, agent, json, quiet}`.
+- Control log verbosity with the `DIFFUSERS_VERBOSITY` environment variable (`debug`, `info`, `warning`,
+  `error`, `critical`; defaults to `warning`). Set to `info` to surface progress messages like sandbox
+  creation, dependency install, and file upload counts.
 
 ## Available commands
 
 | Command | Purpose |
 |---|---|
 | [`env`](#env) | Print environment info for bug reports. |
-| [`schema`](#schema) | Introspect a pipeline's `__call__` signature without downloading weights. |
-| [`run`](#run) | Run a pipeline locally or submit it to Hugging Face Jobs. |
+| [`schema`](#schema) | Inspect a pipeline's `__call__` signature without downloading weights. |
+| [`run`](#run) | Run a pipeline locally or in a Hugging Face Sandbox. |
 | [`custom_blocks`](#custom_blocks) | Package a local `ModularPipelineBlocks` subclass for the Hub. |
 | [`fp16_safetensors`](#fp16_safetensors) | Convert a checkpoint to fp16 `.safetensors`. |
 | [`skills`](#skills) | Install pre-authored skill bundles into your AI coding agent. |
 
 > [!TIP]
-> This page covers the common flags. For the full, always-current list of options for any subcommand, run `diffusers-cli <command> --help` (e.g. `diffusers-cli run --help`).
+> This page covers the common flags. For the full, always-current list of options for any subcommand, run `diffusers-cli <command> --help` (`diffusers-cli run --help`).
 
 ## `env`
 
-Prints Python / PyTorch / diffusers versions, CUDA info, and installed optional deps. Use it when opening an
+Prints Python/PyTorch/Diffusers versions, CUDA info, and installed optional deps. Use it when opening an
 issue so maintainers can reproduce your setup.
 
 ```bash
@@ -49,9 +51,10 @@ diffusers-cli env
 
 ## `schema`
 
-Prints the accepted `__call__` arguments for a pipeline, without downloading weights. It fetches the repo's
-`model_index.json` (or `modular_model_index.json`), resolves the pipeline class, and inspects its signature.
-For modular repos with custom code, pass `--trust-remote-code`.
+`schema` reads `model_index.json` for standard pipelines, `modular_model_index.json` for modular pipelines, or
+`modular_config.json` for custom block repositories. Standard pipelines expose their `__call__` signature, and
+modular repositories expose declared block inputs. For modular repos with custom code, pass
+`--trust-remote-code`.
 
 ```bash
 diffusers-cli --format json schema --model black-forest-labs/FLUX.1-dev
@@ -60,8 +63,8 @@ diffusers-cli --format json schema --model black-forest-labs/FLUX.1-dev
 ## `run`
 
 Run a pipeline end-to-end. Auto-detects standard vs modular repos, auto-loads media inputs from URLs or local
-paths, saves outputs by sniffing the pipeline's return type, and can submit the same call to Hugging Face Jobs
-via `--remote`.
+paths, saves outputs by detecting the pipeline's return type, and can submit the same call to a Hugging Face
+Sandbox via `--remote`.
 
 Minimal example:
 
@@ -77,10 +80,10 @@ diffusers-cli run \
 `--pipeline-kwargs` takes a JSON object that's forwarded to `pipeline(**kwargs)`. String values at known
 media-input keys are auto-loaded:
 
-- **Images** (`image`, `mask_image`, `control_image`, `ip_adapter_image`, `image_2`) → `PIL.Image` via
-  [`load_image`].
-- **Videos** (`video`, `control_video`) → `list[PIL.Image]` via [`load_video`].
-- **Audio** (`initial_audio_waveforms`, `reference_audio`, `src_audio`) → `torch.Tensor` via `torchaudio.load`.
+- Images (`image`, `mask_image`, `control_image`, `ip_adapter_image`, `image_2`) → `PIL.Image` via
+  `load_image`.
+- Videos (`video`, `control_video`) → `list[PIL.Image]` via `load_video`.
+- Audio (`initial_audio_waveforms`, `reference_audio`, `src_audio`) → `torch.Tensor` via `torchaudio.load`.
 
 ```bash
 diffusers-cli run \
@@ -91,8 +94,9 @@ diffusers-cli run \
 
 ### Loading
 
-- `--dtype {auto, bf16, fp16, fp32, ...}` — weight dtype. See
-  [Pipeline data types](../using-diffusers/loading#pipeline-data-types).
+Configure how the CLI loads model weights and custom pipeline code.
+
+- `--dtype {auto, bfloat16, bf16, float16, fp16, float32, fp32}` — weight dtype.
 - `--device-map <value>` — component placement. Accepts a torch device string (`cuda`, `cuda:0`, `cpu`, `mps`),
   `balanced` (auto-splits components across visible GPUs), or a JSON dict for explicit per-component placement.
   Auto-detected if omitted. See [device_map](../training/distributed_inference#device_map) for more details
@@ -107,7 +111,7 @@ diffusers-cli run \
   - Single: `--lora '{"lora_id": "alvdansen/flux-koda", "lora_scale": 0.8}'`
   - Multiple: `--lora '[{"lora_id": "alvdansen/flux-koda", "lora_scale": 0.6, "adapter_name": "koda"}, {"lora_id": "Shakker-Labs/FLUX.1-dev-LoRA-AntiBlur", "lora_scale": 0.4}]'`
 
-  All specs are loaded via `pipeline.load_lora_weights(...)`, then activated together via a single
+  All specs are loaded by `pipeline.load_lora_weights(...)`, then activated together with a single
   `pipeline.set_adapters(names, adapter_weights=scales)` call. See [LoRA](../tutorials/using_peft_for_inference)
   for a deeper walkthrough of adapter stacking, scale scheduling, and hotswapping.
 
@@ -123,33 +127,35 @@ diffusers-cli run \
   pipelines. See [Attention backends](../optimization/attention_backends).
 - `--vae-tiling` / `--vae-slicing` — lower VAE decode VRAM. See
   [VAE tiling](../optimization/memory#vae-tiling) and [VAE slicing](../optimization/memory#vae-slicing).
-- `--compile [JSON]` — `torch.compile` every denoiser submodule. Prefers regional compilation via
-  `compile_repeated_blocks` where available. Bare `--compile` uses `fullgraph=true`; a JSON object is forwarded
-  to `torch.compile`. Currently not supported with `--context-parallel` — the CLI logs a warning and skips the
-  compile step in that case. See [torch.compile](../optimization/fp16#torchcompile) and
-  [Regional compilation](../optimization/fp16#regional-compilation).
+- `--compile [JSON]` — compile denoiser modules with [torch.compile](../optimization/fp16#torchcompile). The
+  CLI prefers [regional compilation](../optimization/fp16#regional-compilation) for modules with repeated
+  blocks. Bare `--compile` uses `fullgraph=true`. A JSON object is forwarded to `torch.compile`. Not supported
+  with `--context-parallel`.
 - `--context-parallel` — Ulysses-style context parallelism on a DiT-based pipeline. Locally requires torchrun;
   under `--remote` the CLI wraps `torchrun --nproc-per-node=gpu` for you. See
   [Context parallelism](../training/distributed_inference#context-parallelism).
 
 ### Outputs
 
-`run` sniffs the pipeline output type:
+`run` detects the pipeline output type:
 
-- `PIL.Image` / list → `<task>-<i>.png`
+- `PIL.Image`/list → `<task>-<i>.png`
 - Frame sequence → `<task>-0.mp4` (`--fps` controls framerate, default 8)
 - Audio array → `<task>-0.wav` (`--sampling-rate` controls rate)
 - Anything else → JSON dump
 
 Default output directory is `~/.diffusers/cli/run/outputs/diffusers-run-<YYYYMMDDTHHMMSS>-<uuid>/`. Each run
 gets its own subdirectory so consecutive invocations don't overwrite. Override with `--output <path>` (file or
-directory) — explicit paths bypass the namespaced default and land flat.
+directory) — explicit paths bypass the namespaced default.
 
 Use `--push-to <your-bucket-id>` to upload outputs to a
 [Hugging Face storage bucket](https://huggingface.co/docs/hub/en/storage-buckets). `<your-bucket-id>` is a
 bare bucket id in `<namespace>/<name>` form (same shape as a Hub repo id) — `hf://` URIs are not accepted here.
 The bucket is created if missing; objects land under `<run_id>/<filename>` and are addressable as
 `hf://buckets/<your-bucket-id>/<run_id>/<filename>`.
+
+The table below describes remote runs. For local runs, `--push-to` uploads the locally saved output. It does
+not suppress local file creation.
 
 | `--push-to` set? | `--output` set? | Result |
 |---|---|---|
@@ -158,13 +164,14 @@ The bucket is created if missing; objects land under `<run_id>/<filename>` and a
 | yes | no | bucket only, no local download |
 | yes | yes | bucket AND `--output` |
 
-`--format` shapes the **stdout metadata** (paths, timing, job info) — it does not change the file format of
+`--format` shapes the stdout metadata (paths, timing, sandbox info) — it does not change the file format of
 the media itself. Written images are always PNG, videos MP4, audio WAV.
 
 ### Remote execution (`--remote`)
 
-Submit the same call as a Hugging Face Job. See the
-[HF Jobs overview](https://huggingface.co/docs/hub/en/jobs-overview) for background.
+Run the same call inside a [Hugging Face Sandbox](https://huggingface.co/docs/huggingface_hub/en/guides/sandbox)
+— an isolated cloud VM the CLI drives over HTTP: it uploads inputs, installs deps, runs the pipeline, downloads
+outputs, then terminates the sandbox. Requires `huggingface_hub>=1.23`.
 
 ```bash
 diffusers-cli run \
@@ -175,14 +182,36 @@ diffusers-cli run \
 
 Remote flags:
 
-- `--flavor <name>` — HF Jobs hardware (e.g. `a10g-small`, `h200`, `rtx-pro-6000`).
-- `--timeout <duration>` — max wallclock (default `10m`).
+- `--flavor <name>` — sandbox hardware (e.g. `a10g-small`, `h200`, `rtx-pro-6000`).
+- `--timeout <duration>` — max wallclock for the run command inside the sandbox (default `10m`).
 - `--dependencies <pkg>` — extra pip deps (repeatable). Useful for pinning a diffusers branch tarball or
   adding pipeline-specific extras.
-- `--namespace <name>` — run under a different HF org/account.
-- `--no-wait` — submit, print the job id and URL, return immediately.
-- `--image <ref>` — override the container image. Must ship torch + CUDA compatible with your `--flavor`'s
+- `--namespace <name>` — create the sandbox under a different HF org/account.
+- `--image <ref>` — override the sandbox image. Must ship torch + CUDA compatible with your `--flavor`'s
   driver.
+
+By default each `--remote` run is ephemeral (create → run → download → kill). To reuse a warm sandbox across
+runs — keeping deps, the model weight cache, and the `torch.compile` cache on its disk — keep it alive and
+reconnect:
+
+- `--keep-alive` — don't terminate the sandbox after the run; its id is printed.
+- `--sandbox-id <id>` — reconnect to a kept-alive sandbox instead of creating a new one. Implies `--keep-alive`.
+- `--idle-timeout <duration>` — auto-shutdown after this much inactivity (default `10m`); the billing backstop.
+  Pass `none` to disable the auto-reaper; the sandbox then runs until the 24h hard cap unless killed. Applied
+  only on new sandbox creation — ignored when reconnecting via `--sandbox-id`.
+
+```bash
+# First run keeps the sandbox alive and prints sandbox_id=<id>.
+diffusers-cli run -m black-forest-labs/FLUX.1-dev --dtype bf16 \
+    --pipeline-kwargs '{"prompt": "a cat"}' --remote --flavor a100-large --keep-alive
+
+# Reconnect for the next run — the model is already cached, so only inference runs.
+diffusers-cli run -m black-forest-labs/FLUX.1-dev --dtype bf16 \
+    --pipeline-kwargs '{"prompt": "a dog"}' --remote --flavor a100-large --sandbox-id <id>
+
+# Stop it when done (or let --idle-timeout reap it).
+hf sandbox kill <id>
+```
 
 ## `custom_blocks`
 
@@ -232,7 +261,3 @@ diffusers-cli skills add diffusers-cli --global
 
 `--force` overwrites an existing install. `--all` fetches every skill in the registry in one call
 and downgrades individual failures to warnings so one broken skill doesn't abort the batch.
-
-<!-- Doc link references -->
-[`load_image`]: /docs/diffusers/api/utilities#diffusers.utils.load_image
-[`load_video`]: /docs/diffusers/api/utilities#diffusers.utils.load_video
