@@ -76,8 +76,6 @@ class AudioLDM2PipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         ]
     )
 
-    supports_dduf = False
-
     def get_dummy_components(self):
         torch.manual_seed(0)
         unet = AudioLDM2UNet2DConditionModel(

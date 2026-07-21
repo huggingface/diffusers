@@ -35,7 +35,7 @@ class ControlNet(ExamplesTestsAccelerate):
         with tempfile.TemporaryDirectory() as tmpdir:
             test_args = f"""
             examples/controlnet/train_controlnet.py
-            --pretrained_model_name_or_path=hf-internal-testing/tiny-stable-diffusion-pipe
+            --pretrained_model_name_or_path=hf-internal-testing/tiny-stable-diffusion-torch
             --dataset_name=hf-internal-testing/fill10
             --output_dir={tmpdir}
             --resolution=64
@@ -58,7 +58,7 @@ class ControlNet(ExamplesTestsAccelerate):
         with tempfile.TemporaryDirectory() as tmpdir:
             test_args = f"""
             examples/controlnet/train_controlnet.py
-            --pretrained_model_name_or_path=hf-internal-testing/tiny-stable-diffusion-pipe
+            --pretrained_model_name_or_path=hf-internal-testing/tiny-stable-diffusion-torch
             --dataset_name=hf-internal-testing/fill10
             --output_dir={tmpdir}
             --resolution=64
@@ -78,7 +78,7 @@ class ControlNet(ExamplesTestsAccelerate):
 
             resume_run_args = f"""
             examples/controlnet/train_controlnet.py
-            --pretrained_model_name_or_path=hf-internal-testing/tiny-stable-diffusion-pipe
+            --pretrained_model_name_or_path=hf-internal-testing/tiny-stable-diffusion-torch
             --dataset_name=hf-internal-testing/fill10
             --output_dir={tmpdir}
             --resolution=64
