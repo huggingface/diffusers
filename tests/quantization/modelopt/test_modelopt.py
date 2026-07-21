@@ -2,11 +2,13 @@ import copy
 import gc
 import os
 import tempfile
-import unittest
+
+import pytest
 
 from diffusers import NVIDIAModelOptConfig, SD3Transformer2DModel, StableDiffusion3Pipeline
 from diffusers.utils import is_nvidia_modelopt_available, is_torch_available
-from diffusers.utils.testing_utils import (
+
+from ...testing_utils import (
     backend_empty_cache,
     backend_reset_peak_memory_stats,
     enable_full_determinism,
@@ -46,12 +48,12 @@ class ModelOptBaseTesterMixin:
     modules_to_not_convert = ""
     _test_torch_compile = False
 
-    def setUp(self):
+    @pytest.fixture(autouse=True)
+    def _setup(self):
         backend_reset_peak_memory_stats(torch_device)
         backend_empty_cache(torch_device)
         gc.collect()
-
-    def tearDown(self):
+        yield
         backend_reset_peak_memory_stats(torch_device)
         backend_empty_cache(torch_device)
         gc.collect()
@@ -121,17 +123,17 @@ class ModelOptBaseTesterMixin:
     def test_dtype_assignment(self):
         model = self.model_cls.from_pretrained(**self.get_dummy_model_init_kwargs())
 
-        with self.assertRaises(ValueError):
+        with pytest.raises(ValueError):
             model.to(torch.float16)
 
-        with self.assertRaises(ValueError):
+        with pytest.raises(ValueError):
             device_0 = f"{torch_device}:0"
             model.to(device=device_0, dtype=torch.float16)
 
-        with self.assertRaises(ValueError):
+        with pytest.raises(ValueError):
             model.float()
 
-        with self.assertRaises(ValueError):
+        with pytest.raises(ValueError):
             model.half()
 
         model.to(torch_device)
@@ -179,7 +181,7 @@ class ModelOptBaseTesterMixin:
         assert max_diff < 1e-3
 
     def test_device_map_error(self):
-        with self.assertRaises(ValueError):
+        with pytest.raises(ValueError):
             _ = self.model_cls.from_pretrained(
                 **self.get_dummy_model_init_kwargs(),
                 device_map={0: "8GB", "cpu": "16GB"},
@@ -248,10 +250,10 @@ class ModelOptBaseTesterMixin:
 
         for module in quantized_model.modules():
             if isinstance(module, LoRALayer):
-                self.assertTrue(module.adapter[1].weight.grad is not None)
+                assert module.adapter[1].weight.grad is not None
 
 
-class SanaTransformerFP8WeightsTest(ModelOptBaseTesterMixin, unittest.TestCase):
+class TestSanaTransformerFP8Weights(ModelOptBaseTesterMixin):
     expected_memory_reduction = 0.6
 
     def get_dummy_init_kwargs(self):
@@ -272,7 +274,7 @@ class SanaTransformerFP8WeightsTest(ModelOptBaseTesterMixin, unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as tmp_dir:
             model.save_pretrained(tmp_dir)
-            self.assertTrue(os.path.isfile(os.path.join(tmp_dir, "modelopt_state.pth")))
+            assert os.path.isfile(os.path.join(tmp_dir, "modelopt_state.pth"))
             saved_model = self.model_cls.from_pretrained(
                 tmp_dir,
                 torch_dtype=self.torch_dtype,
@@ -281,17 +283,16 @@ class SanaTransformerFP8WeightsTest(ModelOptBaseTesterMixin, unittest.TestCase):
 
         named_parameters = list(saved_model.named_parameters())
         named_buffers = list(saved_model.named_buffers())
-        self.assertTrue(
-            any(name.endswith(("_amax", "_scale")) for name, _ in named_buffers),
-            "The restored model did not contain ModelOpt quantizer buffers.",
+        assert any(name.endswith(("_amax", "_scale")) for name, _ in named_buffers), (
+            "The restored model did not contain ModelOpt quantizer buffers."
         )
 
         for tensor_kind, named_tensors in (("parameter", named_parameters), ("buffer", named_buffers)):
             for name, tensor in named_tensors:
-                self.assertFalse(tensor.is_meta, f"{tensor_kind} {name} was not materialized from meta.")
+                assert not tensor.is_meta, f"{tensor_kind} {name} was not materialized from meta."
 
 
-class SanaTransformerINT8WeightsTest(ModelOptBaseTesterMixin, unittest.TestCase):
+class TestSanaTransformerINT8Weights(ModelOptBaseTesterMixin):
     expected_memory_reduction = 0.6
     _test_torch_compile = True
 
@@ -300,7 +301,7 @@ class SanaTransformerINT8WeightsTest(ModelOptBaseTesterMixin, unittest.TestCase)
 
 
 @require_torch_cuda_compatibility(8.0)
-class SanaTransformerINT4WeightsTest(ModelOptBaseTesterMixin, unittest.TestCase):
+class TestSanaTransformerINT4Weights(ModelOptBaseTesterMixin):
     expected_memory_reduction = 0.55
 
     def get_dummy_init_kwargs(self):
@@ -313,7 +314,7 @@ class SanaTransformerINT4WeightsTest(ModelOptBaseTesterMixin, unittest.TestCase)
 
 
 @require_torch_cuda_compatibility(8.0)
-class SanaTransformerNF4WeightsTest(ModelOptBaseTesterMixin, unittest.TestCase):
+class TestSanaTransformerNF4Weights(ModelOptBaseTesterMixin):
     expected_memory_reduction = 0.65
 
     def get_dummy_init_kwargs(self):
@@ -328,7 +329,7 @@ class SanaTransformerNF4WeightsTest(ModelOptBaseTesterMixin, unittest.TestCase):
 
 
 @require_torch_cuda_compatibility(8.0)
-class SanaTransformerNVFP4WeightsTest(ModelOptBaseTesterMixin, unittest.TestCase):
+class TestSanaTransformerNVFP4Weights(ModelOptBaseTesterMixin):
     expected_memory_reduction = 0.65
 
     def get_dummy_init_kwargs(self):

@@ -1342,7 +1342,7 @@ class CustomPipelineTests(unittest.TestCase):
             custom_pipeline="clip_guided_stable_diffusion",
             clip_model=clip_model,
             feature_extractor=feature_extractor,
-            torch_dtype=torch.float16,
+            dtype=torch.float16,
         )
         pipeline.enable_attention_slicing()
         pipeline = pipeline.to(torch_device)
@@ -1938,7 +1938,6 @@ class PipelineFastTests(unittest.TestCase):
         sd4 = sd.to(device=device_type)
         sd5 = sd.to(torch_device=device_type)
         sd6 = sd.to(device_type, dtype=torch.float32)
-        sd7 = sd.to(device_type, torch_dtype=torch.float32)
 
         assert sd1.device.type == device_type
         assert sd2.device.type == device_type
@@ -1946,33 +1945,27 @@ class PipelineFastTests(unittest.TestCase):
         assert sd4.device.type == device_type
         assert sd5.device.type == device_type
         assert sd6.device.type == device_type
-        assert sd7.device.type == device_type
 
         sd1 = sd.to(torch.float16)
         sd2 = sd.to(None, torch.float16)
         sd3 = sd.to(dtype=torch.float16)
         sd4 = sd.to(dtype=torch.float16)
         sd5 = sd.to(None, dtype=torch.float16)
-        sd6 = sd.to(None, torch_dtype=torch.float16)
 
         assert sd1.dtype == torch.float16
         assert sd2.dtype == torch.float16
         assert sd3.dtype == torch.float16
         assert sd4.dtype == torch.float16
         assert sd5.dtype == torch.float16
-        assert sd6.dtype == torch.float16
 
         sd1 = sd.to(device=device_type, dtype=torch.float16)
-        sd2 = sd.to(torch_device=device_type, torch_dtype=torch.float16)
-        sd3 = sd.to(device_type, torch.float16)
+        sd2 = sd.to(device_type, torch.float16)
 
         assert sd1.dtype == torch.float16
         assert sd2.dtype == torch.float16
-        assert sd3.dtype == torch.float16
 
         assert sd1.device.type == device_type
         assert sd2.device.type == device_type
-        assert sd3.device.type == device_type
 
     def test_pipe_same_device_id_offload(self):
         unet = self.dummy_cond_unet()
@@ -2010,6 +2003,82 @@ class PipelineFastTests(unittest.TestCase):
                     "DDUF/tiny-flux-dev-pipe-dduf", dduf_file="fluxpipeline.dduf", cache_dir=tmpdir
                 )
         assert "dduf_file" in str(warning_ctx.warning)
+
+    def test_torch_dtype_is_deprecated(self):
+        sd = StableDiffusionPipeline(
+            unet=self.dummy_cond_unet(),
+            scheduler=PNDMScheduler(skip_prk_steps=True),
+            vae=self.dummy_vae,
+            text_encoder=self.dummy_text_encoder,
+            tokenizer=CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip"),
+            safety_checker=None,
+            feature_extractor=self.dummy_extractor,
+        )
+
+        with tempfile.TemporaryDirectory() as tmpdirname:
+            sd.save_pretrained(tmpdirname)
+            with self.assertWarns(FutureWarning) as warning_ctx:
+                loaded_sd = StableDiffusionPipeline.from_pretrained(tmpdirname, torch_dtype=torch.float16)
+
+        assert "torch_dtype" in str(warning_ctx.warning)
+        assert "Please use `dtype` instead." in str(warning_ctx.warning)
+        # The deprecated argument is still honoured until it is removed.
+        assert loaded_sd.unet.dtype == torch.float16
+
+    def test_dtype_does_not_warn(self):
+        sd = StableDiffusionPipeline(
+            unet=self.dummy_cond_unet(),
+            scheduler=PNDMScheduler(skip_prk_steps=True),
+            vae=self.dummy_vae,
+            text_encoder=self.dummy_text_encoder,
+            tokenizer=CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip"),
+            safety_checker=None,
+            feature_extractor=self.dummy_extractor,
+        )
+
+        with tempfile.TemporaryDirectory() as tmpdirname:
+            sd.save_pretrained(tmpdirname)
+            with warnings.catch_warnings(record=True) as caught:
+                warnings.simplefilter("always")
+                loaded_sd = StableDiffusionPipeline.from_pretrained(tmpdirname, dtype=torch.float16)
+
+        assert not [w for w in caught if issubclass(w.category, FutureWarning) and "torch_dtype" in str(w.message)]
+        assert loaded_sd.unet.dtype == torch.float16
+
+    def test_torch_dtype_and_dtype_raises(self):
+        sd = StableDiffusionPipeline(
+            unet=self.dummy_cond_unet(),
+            scheduler=PNDMScheduler(skip_prk_steps=True),
+            vae=self.dummy_vae,
+            text_encoder=self.dummy_text_encoder,
+            tokenizer=CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip"),
+            safety_checker=None,
+            feature_extractor=self.dummy_extractor,
+        )
+
+        with tempfile.TemporaryDirectory() as tmpdirname:
+            sd.save_pretrained(tmpdirname)
+            with self.assertRaises(ValueError) as error_context:
+                _ = StableDiffusionPipeline.from_pretrained(tmpdirname, dtype=torch.float16, torch_dtype=torch.float16)
+
+        assert "passed both `dtype` and `torch_dtype`" in str(error_context.exception)
+
+    def test_from_pipe_torch_dtype_is_deprecated(self):
+        sd = StableDiffusionPipeline(
+            unet=self.dummy_cond_unet(),
+            scheduler=PNDMScheduler(skip_prk_steps=True),
+            vae=self.dummy_vae,
+            text_encoder=self.dummy_text_encoder,
+            tokenizer=CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip"),
+            safety_checker=None,
+            feature_extractor=self.dummy_extractor,
+        )
+
+        with self.assertWarns(FutureWarning) as warning_ctx:
+            img2img = StableDiffusionImg2ImgPipeline.from_pipe(sd, torch_dtype=torch.float16)
+
+        assert "torch_dtype" in str(warning_ctx.warning)
+        assert img2img.unet.dtype == torch.float16
 
     @pytest.mark.xfail(condition=is_transformers_version(">", "4.56.2"), reason="Some import error", strict=False)
     def test_wrong_model(self):

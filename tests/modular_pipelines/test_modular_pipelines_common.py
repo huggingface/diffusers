@@ -69,6 +69,10 @@ class ModularPipelineTesterMixin:
     # of the type of pipeline. They are always optional and have common
     # sense default values.
     optional_params = frozenset(["num_inference_steps", "num_images_per_prompt", "latents", "output_type"])
+    # Parameters the pipeline deliberately does NOT accept — e.g. `negative_prompt` on a
+    # guidance-distilled pipeline. `test_pipeline_call_signature` asserts they are absent,
+    # so accidentally (re)introducing one fails the test.
+    not_params = frozenset()
     # this is modular specific: generator needs to be a intermediate input because it's mutable
     intermediate_params = frozenset(["generator"])
     # Output type for the pipeline (e.g., "images" for image pipelines, "videos" for video pipelines)
@@ -154,11 +158,11 @@ class ModularPipelineTesterMixin:
         gc.collect()
         backend_empty_cache(torch_device)
 
-    def get_pipeline(self, components_manager=None, torch_dtype=torch.float32):
+    def get_pipeline(self, components_manager=None, dtype=torch.float32):
         pipeline = self.pipeline_blocks_class().init_pipeline(
             self.pretrained_model_name_or_path, components_manager=components_manager
         )
-        pipeline.load_components(torch_dtype=torch_dtype)
+        pipeline.load_components(dtype=dtype)
         pipeline.set_progress_bar_config(disable=None)
         return pipeline
 
@@ -175,6 +179,11 @@ class ModularPipelineTesterMixin:
 
         _check_for_parameters(self.params, input_parameters, "input")
         _check_for_parameters(self.optional_params, optional_parameters, "optional")
+
+        unsupported_parameters = {param for param in self.not_params if param in input_parameters}
+        assert len(unsupported_parameters) == 0, (
+            f"Parameters declared in `not_params` unexpectedly present in the pipeline inputs: {unsupported_parameters}"
+        )
 
     def test_inference_batch_consistent(self, batch_sizes=[2], batch_generator=True):
         pipe = self.get_pipeline().to(torch_device)
@@ -369,7 +378,7 @@ class ModularPipelineTesterMixin:
 
         base_pipe.save_pretrained(str(tmp_path))
         pipe = ModularPipeline.from_pretrained(tmp_path).to(torch_device)
-        pipe.load_components(torch_dtype=torch.float32)
+        pipe.load_components(dtype=torch.float32)
         pipe.to(torch_device)
 
         pipes.append(pipe)
@@ -403,7 +412,7 @@ class ModularPipelineTesterMixin:
 
         expected = _get_specified_components(save_dir)
         loaded_pipe = ModularPipeline.from_pretrained(save_dir)
-        loaded_pipe.load_components(torch_dtype=torch.float32)
+        loaded_pipe.load_components(dtype=torch.float32)
 
         actual = {
             name
@@ -714,7 +723,7 @@ class TestAutoModelLoadIdTagging:
 
     def test_automodel_update_components(self):
         pipe = ModularPipeline.from_pretrained("hf-internal-testing/tiny-stable-diffusion-xl-pipe")
-        pipe.load_components(torch_dtype=torch.float32)
+        pipe.load_components(dtype=torch.float32)
 
         auto_model = AutoModel.from_pretrained("hf-internal-testing/tiny-stable-diffusion-xl-pipe", subfolder="unet")
 
@@ -751,7 +760,7 @@ class TestAutoModelLoadIdTagging:
 class TestLoadComponentsSkipBehavior:
     def test_load_components_skips_already_loaded(self):
         pipe = ModularPipeline.from_pretrained("hf-internal-testing/tiny-stable-diffusion-xl-pipe")
-        pipe.load_components(torch_dtype=torch.float32)
+        pipe.load_components(dtype=torch.float32)
 
         original_unet = pipe.unet
 
@@ -763,7 +772,7 @@ class TestLoadComponentsSkipBehavior:
     def test_load_components_selective_loading(self):
         pipe = ModularPipeline.from_pretrained("hf-internal-testing/tiny-stable-diffusion-xl-pipe")
 
-        pipe.load_components(names="unet", torch_dtype=torch.float32)
+        pipe.load_components(names="unet", dtype=torch.float32)
 
         # Verify only requested component was loaded.
         assert hasattr(pipe, "unet")
@@ -774,8 +783,8 @@ class TestLoadComponentsSkipBehavior:
         """Loading a subset of components should not affect already-loaded components."""
         pipe = ModularPipeline.from_pretrained("hf-internal-testing/tiny-stable-diffusion-xl-pipe")
 
-        pipe.load_components(names="unet", torch_dtype=torch.float32)
-        pipe.load_components(names="text_encoder", torch_dtype=torch.float32)
+        pipe.load_components(names="unet", dtype=torch.float32)
+        pipe.load_components(names="text_encoder", dtype=torch.float32)
 
         assert hasattr(pipe, "unet")
         assert pipe.unet is not None
@@ -791,7 +800,7 @@ class TestLoadComponentsSkipBehavior:
             pretrained_model_name_or_path=None,
             default_creation_method="from_pretrained",
         )
-        pipe.load_components(torch_dtype=torch.float32)
+        pipe.load_components(dtype=torch.float32)
 
         # Verify test_component was not loaded
         assert not hasattr(pipe, "test_component") or pipe.test_component is None
@@ -804,7 +813,7 @@ class TestCustomModelSavePretrained:
         import json
 
         pipe = ModularPipeline.from_pretrained("hf-internal-testing/tiny-stable-diffusion-xl-pipe")
-        pipe.load_components(torch_dtype=torch.float32)
+        pipe.load_components(dtype=torch.float32)
 
         pipe.unet._diffusers_load_id = "null"
 
@@ -824,7 +833,7 @@ class TestCustomModelSavePretrained:
     def test_save_pretrained_roundtrip_with_local_model(self, tmp_path):
         """A pipeline with a custom/local model should be saveable and re-loadable with identical outputs."""
         pipe = ModularPipeline.from_pretrained("hf-internal-testing/tiny-stable-diffusion-xl-pipe")
-        pipe.load_components(torch_dtype=torch.float32)
+        pipe.load_components(dtype=torch.float32)
 
         pipe.unet._diffusers_load_id = "null"
 
@@ -834,7 +843,7 @@ class TestCustomModelSavePretrained:
         pipe.save_pretrained(save_dir)
 
         loaded_pipe = ModularPipeline.from_pretrained(save_dir)
-        loaded_pipe.load_components(torch_dtype=torch.float32)
+        loaded_pipe.load_components(dtype=torch.float32)
 
         assert loaded_pipe.unet is not None
         assert loaded_pipe.unet.__class__.__name__ == pipe.unet.__class__.__name__
@@ -852,7 +861,7 @@ class TestCustomModelSavePretrained:
         from diffusers import UNet2DConditionModel
 
         pipe = ModularPipeline.from_pretrained("hf-internal-testing/tiny-stable-diffusion-xl-pipe")
-        pipe.load_components(torch_dtype=torch.float32)
+        pipe.load_components(dtype=torch.float32)
 
         unet = UNet2DConditionModel.from_pretrained(
             "hf-internal-testing/tiny-stable-diffusion-xl-pipe", subfolder="unet"
@@ -879,7 +888,7 @@ class TestCustomModelSavePretrained:
         import json
 
         pipe = ModularPipeline.from_pretrained("hf-internal-testing/tiny-stable-diffusion-xl-pipe")
-        pipe.load_components(torch_dtype=torch.float32)
+        pipe.load_components(dtype=torch.float32)
 
         save_dir = str(tmp_path / "my-pipeline")
         pipe.save_pretrained(save_dir, overwrite_modular_index=True)
@@ -897,7 +906,7 @@ class TestCustomModelSavePretrained:
             assert spec["subfolder"] == component_name
 
         loaded_pipe = ModularPipeline.from_pretrained(save_dir)
-        loaded_pipe.load_components(torch_dtype=torch.float32)
+        loaded_pipe.load_components(dtype=torch.float32)
 
         assert loaded_pipe.unet is not None
         assert loaded_pipe.vae is not None
