@@ -514,11 +514,10 @@ _DEFAULT_BUCKET_ASPECT_RATIOS = [
 def generate_aspect_ratio_buckets(resolution, divisibility=16, base_resolutions=None):
     """Generate a discrete list of ``(height, width)`` buckets for a target pixel budget.
 
-    Buckets are sized so that ``height * width`` is close to ``resolution ** 2`` while spanning a
-    range of aspect ratios, with each dimension rounded to a multiple of ``divisibility``. When
-    ``base_resolutions`` (a list of ``(height, width)`` pairs, e.g. a model's preferred resolutions)
-    is provided, its aspect ratios are used instead of the default set and rescaled to the target
-    pixel budget.
+    Buckets are sized so that ``height * width`` is close to ``resolution ** 2`` while spanning a range of aspect
+    ratios, with each dimension rounded to a multiple of ``divisibility``. When ``base_resolutions`` (a list of
+    ``(height, width)`` pairs, e.g. a model's preferred resolutions) is provided, its aspect ratios are used instead of
+    the default set and rescaled to the target pixel budget.
 
     Args:
         resolution (`int`): Target resolution; the pixel budget is ``resolution ** 2``.
