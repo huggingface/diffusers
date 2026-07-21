@@ -26,7 +26,7 @@ specific language governing permissions and limitations under the License.
 | [`skills`](#skills) | Install pre-authored skill bundles into your AI coding agent. |
 
 > [!TIP]
-> This page covers the available commands, but does not provide details for all available options under each subcommand. For the full, always-current list of options for any subcommand, run `diffusers-cli <command> --help` (`diffusers-cli run --help`).
+> This page does not provide details for all options under each subcommand. For the full, always-current list of options for any subcommand, run `diffusers-cli <command> --help` (`diffusers-cli run --help`).
 
 ## `env`
 
@@ -154,11 +154,23 @@ The default output directory format is `~/.diffusers/cli/run/outputs/diffusers-r
 gets its own subdirectory so consecutive invocations don't overwrite. Override with `--output <path>` (file or
 directory)
 
-Use `--push-to <your-bucket-id>` to upload outputs to a
-[Hugging Face storage bucket](https://huggingface.co/docs/hub/en/storage-buckets). `<your-bucket-id>` is a
-bare bucket id in `<namespace>/<name>` form (same shape as a Hub repo id) — `hf://` URIs are not accepted here.
-The bucket is created if missing; objects land under `<run_id>/<filename>` and are addressable as
-`hf://buckets/<your-bucket-id>/<run_id>/<filename>`.
+Use `--push-to` to upload outputs to a
+[Hugging Face storage bucket](https://huggingface.co/docs/hub/en/storage-buckets). Accepts an HF bucket
+id (`<namespace>/<name>`), an `hf://buckets/<namespace>/<name>[/<subpath>]`
+[HF URI](https://huggingface.co/docs/huggingface_hub/main/en/package_reference/hf_uris), or a browser URL
+for the same — a subpath is used as a folder prefix. The bucket is created if missing; objects land under
+`[<subpath>/]<run_id>/<filename>`.
+
+```bash
+# HF bucket id — files at hf://buckets/alice/edit-outputs/<run_id>/<file>
+--push-to alice/edit-outputs
+
+# URI with subpath — files at hf://buckets/alice/edit-outputs/greyscale/2026-07/<run_id>/<file>
+--push-to hf://buckets/alice/edit-outputs/greyscale/2026-07
+
+# Browser URL copy-paste from the Hub also works.
+--push-to https://huggingface.co/buckets/alice/edit-outputs/tree/greyscale/2026-07
+```
 
 The table below describes remote runs. For local runs, `--push-to` uploads the locally saved output. It does
 not suppress local file creation.

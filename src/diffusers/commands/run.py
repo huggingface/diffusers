@@ -212,9 +212,11 @@ def _add_output_arguments(parser: ArgumentParser) -> None:
         "--push-to",
         default=None,
         help=(
-            "Upload the generated files to this HF bucket id after saving (created if missing). "
-            "Under --remote the upload runs inside the sandbox; without an explicit --output the "
-            "bucket becomes the sole destination and nothing is downloaded back."
+            "Upload the generated files to this HF bucket after saving (created if missing). Accepts "
+            "an HF bucket id (`<namespace>/<name>`), an `hf://buckets/<namespace>/<name>[/<subpath>]` "
+            "URI, or a browser URL for the same — a subpath is used as a folder prefix. Under --remote "
+            "the upload runs inside the sandbox; without an explicit --output the bucket becomes the "
+            "sole destination and nothing is downloaded back."
         ),
     )
 
@@ -792,6 +794,24 @@ def _save_output(value: Any, args: Namespace, task: str) -> list[str]:
 # ---------------------------------------------------------------------------
 
 
+def _parse_push_to(spec: str) -> tuple[str, str]:
+    """Split `--push-to` into a bucket id and an optional subpath prefix.
+
+    Accepts an HF bucket id (`<namespace>/<name>[/<subpath>]`), a canonical
+    `hf://buckets/<namespace>/<name>[/<subpath>]` URI, or a Hub web URL for the same. Non-bucket URIs (models,
+    datasets, spaces) are rejected — `--push-to` targets storage buckets only.
+    """
+    from huggingface_hub import parse_hf_uri
+
+    # Bare shorthand → canonical URI so a single parser handles every accepted form.
+    if not spec.startswith(("hf://", "http://", "https://")):
+        spec = f"hf://buckets/{spec.strip('/')}"
+    uri = parse_hf_uri(spec)
+    if not uri.is_bucket:
+        raise SystemExit(f"--push-to must point at a bucket; got {uri.type!r} URI {spec!r}.")
+    return uri.id, uri.path_in_repo
+
+
 def _push_outputs(args: Namespace, saved_paths: list[str], task: str) -> dict[str, Any] | None:
     """Upload `saved_paths` to the `--push-to` bucket. Returns a summary or None."""
     if not args.push_to:
@@ -799,15 +819,17 @@ def _push_outputs(args: Namespace, saved_paths: list[str], task: str) -> dict[st
 
     from huggingface_hub import HfApi
 
+    bucket_id, subpath = _parse_push_to(args.push_to)
     api = HfApi(token=args.token)
-    api.create_bucket(args.push_to, exist_ok=True)
+    api.create_bucket(bucket_id, exist_ok=True)
 
-    prefix = _get_or_create_run_id()
+    run_id = _get_or_create_run_id()
+    prefix = f"{subpath}/{run_id}" if subpath else run_id
     add = [(local, f"{prefix}/{Path(local).name}") for local in saved_paths]
-    api.batch_bucket_files(args.push_to, add=add)
+    api.batch_bucket_files(bucket_id, add=add)
 
-    uploaded = [f"hf://buckets/{args.push_to}/{dest}" for _, dest in add]
-    return {"bucket_id": args.push_to, "uploaded": uploaded}
+    uploaded = [f"hf://buckets/{bucket_id}/{dest}" for _, dest in add]
+    return {"bucket_id": bucket_id, "uploaded": uploaded}
 
 
 # ---------------------------------------------------------------------------
