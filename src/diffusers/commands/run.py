@@ -1118,7 +1118,8 @@ class RunCommand(BaseDiffusersCLICommand):
             help=(
                 "JSON object of kwargs passed to the pipeline call. String values at known "
                 f"image-input keys ({', '.join(_IMAGE_INPUT_KEYS)}) are auto-loaded as PIL images; "
-                f"video-input keys ({', '.join(_VIDEO_INPUT_KEYS)}) are auto-loaded as frame lists."
+                f"video-input keys ({', '.join(_VIDEO_INPUT_KEYS)}) are auto-loaded as frame lists; "
+                f"audio-input keys ({', '.join(_AUDIO_INPUT_KEYS)}) are auto-loaded via torchaudio."
             ),
         )
         parser.add_argument(

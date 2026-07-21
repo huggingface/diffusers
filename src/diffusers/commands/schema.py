@@ -28,7 +28,11 @@ from typing import Any
 
 from huggingface_hub.cli._output import OutputFormat, out
 
+from ..utils import logging
 from . import BaseDiffusersCLICommand
+
+
+logger = logging.get_logger("diffusers-cli/schema")
 
 
 def _schema(args: Namespace) -> None:
@@ -155,10 +159,9 @@ def _warn_custom_block_requirements(args: Namespace) -> None:
         return
 
     formatted = ", ".join(f"{name}=={version}" for name, version in pairs)
-    print(
-        f"[diffusers-cli] {args.model!r} ships custom block code with external dependencies: {formatted}. "
-        "You will need to install these in order to determine the pipeline schema.",
-        flush=True,
+    logger.warning(
+        f"{args.model!r} ships custom block code with external dependencies: {formatted}. "
+        "You will need to install these in order to determine the pipeline schema."
     )
 
 
