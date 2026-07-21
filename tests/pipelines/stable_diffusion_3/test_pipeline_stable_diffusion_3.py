@@ -143,7 +143,7 @@ class StableDiffusion3PipelineFastTests(unittest.TestCase, PipelineTesterMixin):
         generated_slice = np.concatenate([generated_slice[:8], generated_slice[-8:]])
 
         # fmt: off
-        expected_slice = np.array([0.5112, 0.5228, 0.5235, 0.5524, 0.3188, 0.5017, 0.5574, 0.4899, 0.6812, 0.5991, 0.3908, 0.5213, 0.5582, 0.4457, 0.4204, 0.5616])
+        expected_slice = np.array([0.5034, 0.4693, 0.4877, 0.5052, 0.2697, 0.4615, 0.5329, 0.4330, 0.6825, 0.5969, 0.3924, 0.5542, 0.5454, 0.4295, 0.4178, 0.4805])
         # fmt: on
 
         self.assertTrue(

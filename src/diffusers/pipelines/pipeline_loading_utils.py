@@ -69,6 +69,19 @@ DUMMY_MODULES_FOLDER = "diffusers.utils"
 TRANSFORMERS_DUMMY_MODULES_FOLDER = "transformers.utils"
 CONNECTED_PIPES_KEYS = ["prior"]
 
+# Auxiliary (non-weight) files a transformers component saves next to its weights. Repos with a flat,
+# transformers-style layout host a component's files at the repo root instead of in a subfolder, where the
+# folder-based allow patterns of `DiffusionPipeline.download` would miss them. Root-hosted weights and
+# `config.json` are matched by their own patterns, so only these auxiliary filenames need listing.
+# Currently the set needed by DiffusionGemma — extend as new flat-layout pipelines require it.
+TRANSFORMERS_COMPONENT_AUX_FILES = [
+    "chat_template.jinja",
+    "generation_config.json",
+    "processor_config.json",
+    "tokenizer.json",
+    "tokenizer_config.json",
+]
+
 logger = logging.get_logger(__name__)
 
 LOADABLE_CLASSES = {
@@ -136,6 +149,8 @@ def is_safetensors_compatible(filenames, passed_components=None, folder_names=No
     )
 
     passed_components = passed_components or []
+    # only weight files matter for safetensors compatibility
+    filenames = filter_model_files(filenames)
     if folder_names:
         filenames = {f for f in filenames if os.path.split(f)[0] in folder_names}
 
@@ -548,7 +563,7 @@ def _load_empty_model(
     pipelines: Any,
     is_pipeline_module: bool,
     name: str,
-    torch_dtype: str | torch.dtype,
+    dtype: str | torch.dtype,
     cached_folder: str | os.PathLike,
     **kwargs,
 ):
@@ -621,7 +636,7 @@ def _load_empty_model(
             model = class_obj(config)
 
     if model is not None:
-        model = model.to(dtype=torch_dtype)
+        model = model.to(dtype=dtype)
     return model
 
 
@@ -662,7 +677,7 @@ def _get_final_device_map(device_map, pipeline_class, passed_class_obj, init_dic
     # To avoid circular import problem.
     from diffusers import pipelines
 
-    torch_dtype = kwargs.get("torch_dtype", torch.float32)
+    dtype = kwargs.get("dtype", torch.float32)
 
     # Load each module in the pipeline on a meta device so that we can derive the device map.
     init_empty_modules = {}
@@ -693,9 +708,7 @@ def _get_final_device_map(device_map, pipeline_class, passed_class_obj, init_dic
 
         else:
             sub_model_dtype = (
-                torch_dtype.get(name, torch_dtype.get("default", torch.float32))
-                if isinstance(torch_dtype, dict)
-                else torch_dtype
+                dtype.get(name, dtype.get("default", torch.float32)) if isinstance(dtype, dict) else dtype
             )
             loaded_sub_model = _load_empty_model(
                 library_name=library_name,
@@ -705,7 +718,7 @@ def _get_final_device_map(device_map, pipeline_class, passed_class_obj, init_dic
                 is_pipeline_module=is_pipeline_module,
                 pipeline_class=pipeline_class,
                 name=name,
-                torch_dtype=sub_model_dtype,
+                dtype=sub_model_dtype,
                 cached_folder=kwargs.get("cached_folder", None),
                 force_download=kwargs.get("force_download", None),
                 proxies=kwargs.get("proxies", None),
@@ -723,9 +736,7 @@ def _get_final_device_map(device_map, pipeline_class, passed_class_obj, init_dic
     module_sizes = {
         module_name: compute_module_sizes(
             module,
-            dtype=torch_dtype.get(module_name, torch_dtype.get("default", torch.float32))
-            if isinstance(torch_dtype, dict)
-            else torch_dtype,
+            dtype=dtype.get(module_name, dtype.get("default", torch.float32)) if isinstance(dtype, dict) else dtype,
         )[""]
         for module_name, module in init_empty_modules.items()
         if isinstance(module, torch.nn.Module)
@@ -761,7 +772,7 @@ def load_sub_model(
     pipelines: Any,
     is_pipeline_module: bool,
     pipeline_class: Any,
-    torch_dtype: torch.dtype,
+    dtype: torch.dtype,
     provider: Any,
     sess_options: Any,
     device_map: dict[str, torch.device] | str | None,
@@ -841,9 +852,9 @@ def load_sub_model(
     # For transformers models >= 4.56.0, use 'dtype' instead of 'torch_dtype' to avoid deprecation warnings
     if issubclass(class_obj, torch.nn.Module):
         if is_transformers_model and transformers_version >= version.parse("4.56.0"):
-            loading_kwargs["dtype"] = torch_dtype
+            loading_kwargs["dtype"] = dtype
         else:
-            loading_kwargs["torch_dtype"] = torch_dtype
+            loading_kwargs["torch_dtype"] = dtype
     if issubclass(class_obj, diffusers_module.OnnxRuntimeModel):
         loading_kwargs["provider"] = provider
         loading_kwargs["sess_options"] = sess_options

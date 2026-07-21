@@ -80,3 +80,11 @@ src/diffusers/pipelines/<model>/
 7. **Don't modify the state of a registered component on the fly.** From inside `__call__` or other helper methods, don't change the state of `self.text_encoder` / `self.transformer` / `self.vae` — no in-place `.to(dtype/device)`, no setting attributes/buffers or swapping submodules. Components are shared and routinely reused across pipelines, so a per-call mutation may silently change another pipeline's outputs. You should pass a component that's already in the right state, and document that expectation explicitly. Only when that's genuinely inconvenient and you must change state for the duration of a call — e.g. swapping in an attention processor — save the original first and restore it before returning, so the component is left exactly as you found it. The PAG pipelines are the reference for this: `pipeline_pag_sd.py` snapshots `original_attn_proc = self.unet.attn_processors`, installs the PAG processors for the denoising loop, then calls `self.unet.set_attn_processor(original_attn_proc)` at the end of `__call__`.
 
 8. **Don't reimplement `DiffusionPipeline`.** A pipeline subclass adds only *pipeline-specific* steps (`__call__`, `check_inputs`, `encode_prompt`, `prepare_latents`, …). Device placement, offloading, and component loading/registration already live on the base class — don't add your own; use what's there.
+
+9. **Build `callback_kwargs` with a loop, never a dict comprehension.** `{k: locals()[k] for k in callback_on_step_end_tensor_inputs}` always raises `KeyError`: inside a comprehension, `locals()` is the comprehension's own scope, not `__call__`'s. Use the standard form (see `pipeline_stable_diffusion.py`):
+   ```python
+   callback_kwargs = {}
+   for k in callback_on_step_end_tensor_inputs:
+       callback_kwargs[k] = locals()[k]
+   ```
+   The bug is invisible until someone actually passes `callback_on_step_end` — the `PipelineTesterMixin` callback tests are what catch it.

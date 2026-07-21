@@ -1,66 +1,51 @@
 import gc
-import unittest
+import inspect
+from typing import Any
 
 import numpy as np
+import pytest
 import torch
 from huggingface_hub import hf_hub_download
 from transformers import AutoConfig, AutoTokenizer, CLIPTextConfig, CLIPTextModel, CLIPTokenizer, T5EncoderModel
 
 from diffusers import (
     AutoencoderKL,
-    FasterCacheConfig,
     FlowMatchEulerDiscreteScheduler,
     FluxPipeline,
     FluxTransformer2DModel,
 )
+from diffusers.loaders import FluxIPAdapterMixin
 
+from ...models.transformers.test_models_transformer_flux import create_flux_ip_adapter_state_dict
 from ...testing_utils import (
     Expectations,
+    assert_tensors_close,
     backend_empty_cache,
+    is_ip_adapter,
     nightly,
     numpy_cosine_similarity_distance,
     require_big_accelerator,
     slow,
     torch_device,
 )
-from ..test_pipelines_common import (
+from ..testing_utils import (
+    BasePipelineTesterConfig,
     FasterCacheTesterMixin,
     FirstBlockCacheTesterMixin,
-    FluxIPAdapterTesterMixin,
     MagCacheTesterMixin,
+    MemoryTesterMixin,
     PipelineTesterMixin,
     PyramidAttentionBroadcastTesterMixin,
     TaylorSeerCacheTesterMixin,
-    check_qkv_fused_layers_exist,
 )
 
 
-class FluxPipelineFastTests(
-    PipelineTesterMixin,
-    FluxIPAdapterTesterMixin,
-    PyramidAttentionBroadcastTesterMixin,
-    FasterCacheTesterMixin,
-    FirstBlockCacheTesterMixin,
-    TaylorSeerCacheTesterMixin,
-    MagCacheTesterMixin,
-    unittest.TestCase,
-):
+class FluxPipelineTesterConfig(BasePipelineTesterConfig):
     pipeline_class = FluxPipeline
-    params = frozenset(["prompt", "height", "width", "guidance_scale", "prompt_embeds", "pooled_prompt_embeds"])
-    batch_params = frozenset(["prompt"])
-
-    # there is no xformers processor for Flux
-    test_xformers_attention = False
-    test_layerwise_casting = True
-    test_group_offloading = True
-
-    faster_cache_config = FasterCacheConfig(
-        spatial_attention_block_skip_range=2,
-        spatial_attention_timestep_skip_range=(-1, 901),
-        unconditional_batch_skip_range=2,
-        attention_weight_callback=lambda _: 0.5,
-        is_guidance_distilled=True,
+    required_input_params_in_call_signature = frozenset(
+        ["prompt", "height", "width", "guidance_scale", "prompt_embeds", "pooled_prompt_embeds"]
     )
+    batch_input_params = frozenset(["prompt"])
 
     def get_dummy_components(self, num_layers: int = 1, num_single_layers: int = 1):
         torch.manual_seed(0)
@@ -128,84 +113,42 @@ class FluxPipelineFastTests(
             "feature_extractor": None,
         }
 
-    def get_dummy_inputs(self, device, seed=0):
-        if str(device).startswith("mps"):
-            generator = torch.manual_seed(seed)
-        else:
-            generator = torch.Generator(device="cpu").manual_seed(seed)
-
+    def get_dummy_inputs(self):
         inputs = {
             "prompt": "A painting of a squirrel eating a burger",
-            "generator": generator,
+            "generator": self.get_generator(0),
             "num_inference_steps": 2,
             "guidance_scale": 5.0,
             "height": 8,
             "width": 8,
             "max_sequence_length": 48,
-            "output_type": "np",
+            # Request torch outputs so tests compare torch tensors directly (see `BasePipelineTesterConfig`).
+            # Note `"pt"` images are `(batch, channels, height, width)`, unlike `"np"` (`(batch, h, w, c)`).
+            "output_type": "pt",
         }
         return inputs
 
+
+class TestFluxPipeline(FluxPipelineTesterConfig, PipelineTesterMixin):
     def test_flux_different_prompts(self):
         pipe = self.pipeline_class(**self.get_dummy_components()).to(torch_device)
 
-        inputs = self.get_dummy_inputs(torch_device)
+        inputs = self.get_dummy_inputs()
         output_same_prompt = pipe(**inputs).images[0]
 
-        inputs = self.get_dummy_inputs(torch_device)
+        inputs = self.get_dummy_inputs()
         inputs["prompt_2"] = "a different prompt"
         output_different_prompts = pipe(**inputs).images[0]
 
-        max_diff = np.abs(output_same_prompt - output_different_prompts).max()
+        max_diff = (output_same_prompt - output_different_prompts).abs().max()
 
         # Outputs should be different here
         # For some reasons, they don't show large differences
-        self.assertGreater(max_diff, 1e-6, "Outputs should be different for different prompts.")
-
-    def test_fused_qkv_projections(self):
-        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
-        components = self.get_dummy_components()
-        pipe = self.pipeline_class(**components)
-        pipe = pipe.to(device)
-        pipe.set_progress_bar_config(disable=None)
-
-        inputs = self.get_dummy_inputs(device)
-        image = pipe(**inputs).images
-        original_image_slice = image[0, -3:, -3:, -1]
-
-        # TODO (sayakpaul): will refactor this once `fuse_qkv_projections()` has been added
-        # to the pipeline level.
-        pipe.transformer.fuse_qkv_projections()
-        self.assertTrue(
-            check_qkv_fused_layers_exist(pipe.transformer, ["to_qkv"]),
-            ("Something wrong with the fused attention layers. Expected all the attention projections to be fused."),
-        )
-
-        inputs = self.get_dummy_inputs(device)
-        image = pipe(**inputs).images
-        image_slice_fused = image[0, -3:, -3:, -1]
-
-        pipe.transformer.unfuse_qkv_projections()
-        inputs = self.get_dummy_inputs(device)
-        image = pipe(**inputs).images
-        image_slice_disabled = image[0, -3:, -3:, -1]
-
-        self.assertTrue(
-            np.allclose(original_image_slice, image_slice_fused, atol=1e-3, rtol=1e-3),
-            ("Fusion of QKV projections shouldn't affect the outputs."),
-        )
-        self.assertTrue(
-            np.allclose(image_slice_fused, image_slice_disabled, atol=1e-3, rtol=1e-3),
-            ("Outputs, with QKV projection fusion enabled, shouldn't change when fused QKV projections are disabled."),
-        )
-        self.assertTrue(
-            np.allclose(original_image_slice, image_slice_disabled, atol=1e-2, rtol=1e-2),
-            ("Original outputs should match when fused QKV projections are disabled."),
-        )
+        assert max_diff > 1e-6, "Outputs should be different for different prompts."
 
     def test_flux_image_output_shape(self):
         pipe = self.pipeline_class(**self.get_dummy_components()).to(torch_device)
-        inputs = self.get_dummy_inputs(torch_device)
+        inputs = self.get_dummy_inputs()
 
         height_width_pairs = [(32, 32), (72, 57)]
         for height, width in height_width_pairs:
@@ -214,24 +157,22 @@ class FluxPipelineFastTests(
 
             inputs.update({"height": height, "width": width})
             image = pipe(**inputs).images[0]
-            output_height, output_width, _ = image.shape
-            self.assertEqual(
-                (output_height, output_width),
-                (expected_height, expected_width),
-                f"Output shape {image.shape} does not match expected shape {(expected_height, expected_width)}",
+            _, output_height, output_width = image.shape
+            assert (output_height, output_width) == (expected_height, expected_width), (
+                f"Output shape {image.shape} does not match expected shape {(expected_height, expected_width)}"
             )
 
     def test_flux_true_cfg(self):
         pipe = self.pipeline_class(**self.get_dummy_components()).to(torch_device)
-        inputs = self.get_dummy_inputs(torch_device)
+        inputs = self.get_dummy_inputs()
         inputs.pop("generator")
 
         no_true_cfg_out = pipe(**inputs, generator=torch.manual_seed(0)).images[0]
         inputs["negative_prompt"] = "bad quality"
         inputs["true_cfg_scale"] = 2.0
         true_cfg_out = pipe(**inputs, generator=torch.manual_seed(0)).images[0]
-        self.assertFalse(
-            np.allclose(no_true_cfg_out, true_cfg_out), "Outputs should be different when true_cfg_scale is set."
+        assert not torch.allclose(no_true_cfg_out, true_cfg_out), (
+            "Outputs should be different when true_cfg_scale is set."
         )
 
     def test_flux_negative_embeds_shape_check(self):
@@ -248,25 +189,184 @@ class FluxPipelineFastTests(
             "output_type": "latent",
         }
 
-        with self.assertRaisesRegex(ValueError, "must have the same shape when passed directly"):
+        with pytest.raises(ValueError, match="must have the same shape when passed directly"):
             pipe(**base_inputs, true_cfg_scale=2.0, generator=torch.manual_seed(0))
 
         pipe(**base_inputs, true_cfg_scale=1.0, generator=torch.manual_seed(0))
 
 
+@is_ip_adapter
+class TestFluxPipelineIPAdapter(FluxPipelineTesterConfig):
+    """IP-Adapter tests for the Flux pipeline."""
+
+    def test_pipeline_signature(self):
+        parameters = inspect.signature(self.pipeline_class.__call__).parameters
+
+        assert issubclass(self.pipeline_class, FluxIPAdapterMixin)
+        assert "ip_adapter_image" in parameters, (
+            "`ip_adapter_image` argument must be supported by the `__call__` method"
+        )
+        assert "ip_adapter_image_embeds" in parameters, (
+            "`ip_adapter_image_embeds` argument must be supported by the `__call__` method"
+        )
+
+    def _get_dummy_image_embeds(self, image_embed_dim: int = 768):
+        return torch.randn((1, 1, image_embed_dim), device=torch_device)
+
+    def _modify_inputs_for_ip_adapter_test(self, inputs: dict[str, Any]):
+        inputs["negative_prompt"] = ""
+        if "true_cfg_scale" in inspect.signature(self.pipeline_class.__call__).parameters:
+            inputs["true_cfg_scale"] = 4.0
+        # Request torch outputs so comparisons run on torch tensors directly (see `BasePipelineTesterConfig`).
+        inputs["output_type"] = "pt"
+        inputs["return_dict"] = False
+        return inputs
+
+    def test_ip_adapter(self, expected_max_diff: float = 1e-4, expected_pipe_slice=None):
+        r"""Tests for IP-Adapter.
+
+        The following scenarios are tested:
+          - Single IP-Adapter with scale=0 should produce same output as no IP-Adapter.
+          - Multi IP-Adapter with scale=0 should produce same output as no IP-Adapter.
+          - Single IP-Adapter with scale!=0 should produce different output compared to no IP-Adapter.
+          - Multi IP-Adapter with scale!=0 should produce different output compared to no IP-Adapter.
+        """
+        # Raising the tolerance for this test when it's run on a CPU because we compare against static slices and
+        # that can be shaky (with a VVVV low probability).
+        expected_max_diff = 9e-4 if torch_device == "cpu" else expected_max_diff
+
+        components = self.get_dummy_components()
+        pipe = self.pipeline_class(**components).to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
+        image_embed_dim = (
+            pipe.transformer.config.pooled_projection_dim
+            if hasattr(pipe.transformer.config, "pooled_projection_dim")
+            else 768
+        )
+
+        # forward pass without ip adapter
+        inputs = self._modify_inputs_for_ip_adapter_test(self.get_dummy_inputs())
+        if expected_pipe_slice is None:
+            output_without_adapter = pipe(**inputs)[0]
+        else:
+            output_without_adapter = expected_pipe_slice
+
+        # 1. Single IP-Adapter test cases
+        adapter_state_dict = create_flux_ip_adapter_state_dict(pipe.transformer)
+        # Load through the pipeline's public IP-Adapter API. `image_encoder_pretrained_model_name_or_path=None`
+        # skips fetching a CLIP image encoder since we feed pre-computed `ip_adapter_image_embeds` directly.
+        pipe.load_ip_adapter(adapter_state_dict, weight_name="", image_encoder_pretrained_model_name_or_path=None)
+
+        # forward pass with single ip adapter, but scale=0 which should have no effect
+        inputs = self._modify_inputs_for_ip_adapter_test(self.get_dummy_inputs())
+        inputs["ip_adapter_image_embeds"] = [self._get_dummy_image_embeds(image_embed_dim)]
+        inputs["negative_ip_adapter_image_embeds"] = [self._get_dummy_image_embeds(image_embed_dim)]
+        pipe.set_ip_adapter_scale(0.0)
+        output_without_adapter_scale = pipe(**inputs)[0]
+        if expected_pipe_slice is not None:
+            output_without_adapter_scale = output_without_adapter_scale[0, -3:, -3:, -1].flatten()
+
+        # forward pass with single ip adapter, but with scale of adapter weights
+        inputs = self._modify_inputs_for_ip_adapter_test(self.get_dummy_inputs())
+        inputs["ip_adapter_image_embeds"] = [self._get_dummy_image_embeds(image_embed_dim)]
+        inputs["negative_ip_adapter_image_embeds"] = [self._get_dummy_image_embeds(image_embed_dim)]
+        pipe.set_ip_adapter_scale(42.0)
+        output_with_adapter_scale = pipe(**inputs)[0]
+        if expected_pipe_slice is not None:
+            output_with_adapter_scale = output_with_adapter_scale[0, -3:, -3:, -1].flatten()
+
+        assert_tensors_close(
+            output_without_adapter_scale,
+            output_without_adapter,
+            atol=expected_max_diff,
+            msg="Output without ip-adapter must be same as normal inference",
+        )
+        max_diff_with_adapter_scale = (output_with_adapter_scale - output_without_adapter).abs().max()
+        assert max_diff_with_adapter_scale > 1e-2, "Output with ip-adapter must be different from normal inference"
+
+        # 2. Multi IP-Adapter test cases
+        adapter_state_dict_1 = create_flux_ip_adapter_state_dict(pipe.transformer)
+        adapter_state_dict_2 = create_flux_ip_adapter_state_dict(pipe.transformer)
+        pipe.load_ip_adapter(
+            [adapter_state_dict_1, adapter_state_dict_2],
+            weight_name=["", ""],
+            image_encoder_pretrained_model_name_or_path=None,
+        )
+
+        # forward pass with multi ip adapter, but scale=0 which should have no effect
+        inputs = self._modify_inputs_for_ip_adapter_test(self.get_dummy_inputs())
+        inputs["ip_adapter_image_embeds"] = [self._get_dummy_image_embeds(image_embed_dim)] * 2
+        inputs["negative_ip_adapter_image_embeds"] = [self._get_dummy_image_embeds(image_embed_dim)] * 2
+        pipe.set_ip_adapter_scale([0.0, 0.0])
+        output_without_multi_adapter_scale = pipe(**inputs)[0]
+        if expected_pipe_slice is not None:
+            output_without_multi_adapter_scale = output_without_multi_adapter_scale[0, -3:, -3:, -1].flatten()
+
+        # forward pass with multi ip adapter, but with scale of adapter weights
+        inputs = self._modify_inputs_for_ip_adapter_test(self.get_dummy_inputs())
+        inputs["ip_adapter_image_embeds"] = [self._get_dummy_image_embeds(image_embed_dim)] * 2
+        inputs["negative_ip_adapter_image_embeds"] = [self._get_dummy_image_embeds(image_embed_dim)] * 2
+        pipe.set_ip_adapter_scale([42.0, 42.0])
+        output_with_multi_adapter_scale = pipe(**inputs)[0]
+        if expected_pipe_slice is not None:
+            output_with_multi_adapter_scale = output_with_multi_adapter_scale[0, -3:, -3:, -1].flatten()
+
+        assert_tensors_close(
+            output_without_multi_adapter_scale,
+            output_without_adapter,
+            atol=expected_max_diff,
+            msg="Output without multi-ip-adapter must be same as normal inference",
+        )
+        max_diff_with_multi_adapter_scale = (output_with_multi_adapter_scale - output_without_adapter).abs().max()
+        assert max_diff_with_multi_adapter_scale > 1e-2, (
+            "Output with multi-ip-adapter scale must be different from normal inference"
+        )
+
+
+class TestFluxPipelineMemory(FluxPipelineTesterConfig, MemoryTesterMixin):
+    """Memory optimization tests (CPU offload, group offload, layerwise casting) for the Flux pipeline."""
+
+
+class TestFluxPipelinePyramidAttentionBroadcast(FluxPipelineTesterConfig, PyramidAttentionBroadcastTesterMixin):
+    """Pyramid Attention Broadcast cache tests for the Flux pipeline."""
+
+
+class TestFluxPipelineFasterCache(FluxPipelineTesterConfig, FasterCacheTesterMixin):
+    """FasterCache tests for the Flux pipeline."""
+
+    # Flux is guidance-distilled, so the FasterCache tester must skip the low/high-frequency-delta state checks.
+    FASTER_CACHE_CONFIG = {
+        "spatial_attention_block_skip_range": 2,
+        "spatial_attention_timestep_skip_range": (-1, 901),
+        "unconditional_batch_skip_range": 2,
+        "attention_weight_callback": lambda _: 0.5,
+        "is_guidance_distilled": True,
+    }
+
+
+class TestFluxPipelineFirstBlockCache(FluxPipelineTesterConfig, FirstBlockCacheTesterMixin):
+    """First Block Cache tests for the Flux pipeline."""
+
+
+class TestFluxPipelineTaylorSeerCache(FluxPipelineTesterConfig, TaylorSeerCacheTesterMixin):
+    """TaylorSeer cache tests for the Flux pipeline."""
+
+
+class TestFluxPipelineMagCache(FluxPipelineTesterConfig, MagCacheTesterMixin):
+    """MagCache tests for the Flux pipeline."""
+
+
 @nightly
 @require_big_accelerator
-class FluxPipelineSlowTests(unittest.TestCase):
+class TestFluxPipelineSlow:
     pipeline_class = FluxPipeline
     repo_id = "black-forest-labs/FLUX.1-schnell"
 
-    def setUp(self):
-        super().setUp()
+    @pytest.fixture(autouse=True)
+    def cleanup(self):
         gc.collect()
         backend_empty_cache(torch_device)
-
-    def tearDown(self):
-        super().tearDown()
+        yield
         gc.collect()
         backend_empty_cache(torch_device)
 
@@ -312,27 +412,23 @@ class FluxPipelineSlowTests(unittest.TestCase):
         # fmt: on
 
         max_diff = numpy_cosine_similarity_distance(expected_slice.flatten(), image_slice.flatten())
-        self.assertLess(
-            max_diff, 1e-4, f"Image slice is different from expected slice: {image_slice} != {expected_slice}"
-        )
+        assert max_diff < 1e-4, f"Image slice is different from expected slice: {image_slice} != {expected_slice}"
 
 
 @slow
 @require_big_accelerator
-class FluxIPAdapterPipelineSlowTests(unittest.TestCase):
+class TestFluxIPAdapterPipelineSlow:
     pipeline_class = FluxPipeline
     repo_id = "black-forest-labs/FLUX.1-dev"
     image_encoder_pretrained_model_name_or_path = "openai/clip-vit-large-patch14"
     weight_name = "ip_adapter.safetensors"
     ip_adapter_repo_id = "XLabs-AI/flux-ip-adapter"
 
-    def setUp(self):
-        super().setUp()
+    @pytest.fixture(autouse=True)
+    def cleanup(self):
         gc.collect()
         backend_empty_cache(torch_device)
-
-    def tearDown(self):
-        super().tearDown()
+        yield
         gc.collect()
         backend_empty_cache(torch_device)
 
@@ -392,6 +488,4 @@ class FluxIPAdapterPipelineSlowTests(unittest.TestCase):
         # fmt: on
 
         max_diff = numpy_cosine_similarity_distance(expected_slice.flatten(), image_slice.flatten())
-        self.assertLess(
-            max_diff, 1e-4, f"Image slice is different from expected slice: {image_slice} != {expected_slice}"
-        )
+        assert max_diff < 1e-4, f"Image slice is different from expected slice: {image_slice} != {expected_slice}"
