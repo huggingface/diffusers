@@ -52,6 +52,16 @@ diffusers-cli run \
 Media resolution runs **before** the pipeline weights load, so a dead URL or missing file fails within
 seconds instead of after a multi-minute model download.
 
+**Batched inputs**: any media key (and `prompt`) accepts a JSON array — each string in the list is loaded
+individually, and the pipeline processes the whole list in one forward pass on the GPU. Use this when you
+have several inputs that share flavor/model/dtype and want them batched:
+
+```bash
+diffusers-cli run --model black-forest-labs/FLUX.1-Kontext-dev \
+    --pipeline-kwargs '{"prompt": ["make it grey", "make it pink", "make it blue"],
+                        "image": ["https://.../cat1.png", "https://.../cat2.png", "https://.../cat3.png"]}'
+```
+
 **Shell-quoting gotcha**: the JSON must be on one line (or use `\` to line-continue). A literal newline inside the
 single-quoted argument lands as a raw control char inside the string and breaks `json.loads`.
 
@@ -186,8 +196,7 @@ Flags:
 - `--keep-alive` — don't terminate the sandbox after the run; its id is printed so a later run can reconnect.
 - `--sandbox-id <id>` — reconnect to a kept-alive sandbox instead of creating a new one. Implies `--keep-alive`.
 - `--idle-timeout <duration>` — auto-shutdown after this much inactivity (default 10m). The billing backstop
-  for kept-alive sandboxes. Pass `none` to disable it; the sandbox is then always force-terminated after the
-  run (even with `--keep-alive`) so nothing bills to the 24h cap.
+  for kept-alive sandboxes. Only applied on new sandbox creation — ignored when reconnecting via `--sandbox-id`.
 
 ### Reusing a warm sandbox (`--keep-alive` / `--sandbox-id`)
 

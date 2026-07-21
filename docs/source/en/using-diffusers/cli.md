@@ -12,19 +12,7 @@ specific language governing permissions and limitations under the License.
 
 # Command line interface
 
-`diffusers-cli` is a command line entry point for running, inspecting, and packaging Diffusers pipelines
-without writing Python. It's installed alongside the `diffusers` package.
-
-The CLI adapts its output for whoever's reading it:
-
-- Under an AI coding agent (Claude Code, Cursor, Aider, GitHub Copilot Agent — detected via env vars like
-  `CLAUDECODE`, `CURSOR_AI`, `AIDER_AI_CONTEXT`), output switches to a compact `key=value` / TSV format with
-  no progress bars.
-- In a normal terminal, it prints human-friendly summaries.
-- Force a specific format with `--format {auto, human, agent, json, quiet}`.
-- Control log verbosity with the `DIFFUSERS_VERBOSITY` environment variable (`debug`, `info`, `warning`,
-  `error`, `critical`; defaults to `warning`). Set to `info` to surface progress messages like sandbox
-  creation, dependency install, and file upload counts.
+`diffusers-cli` is a command line client for running, inspecting, and packaging Diffusers pipelines. 
 
 ## Available commands
 
@@ -38,7 +26,7 @@ The CLI adapts its output for whoever's reading it:
 | [`skills`](#skills) | Install pre-authored skill bundles into your AI coding agent. |
 
 > [!TIP]
-> This page covers the common flags. For the full, always-current list of options for any subcommand, run `diffusers-cli <command> --help` (`diffusers-cli run --help`).
+> This page covers the available commands, but does not provide details for all available options under each subcommand. For the full, always-current list of options for any subcommand, run `diffusers-cli <command> --help` (`diffusers-cli run --help`).
 
 ## `env`
 
@@ -51,19 +39,21 @@ diffusers-cli env
 
 ## `schema`
 
-`schema` reads `model_index.json` for standard pipelines, `modular_model_index.json` for modular pipelines, or
-`modular_config.json` for custom block repositories. Standard pipelines expose their `__call__` signature, and
-modular repositories expose declared block inputs. For modular repos with custom code, pass
-`--trust-remote-code`.
+Returns the pipeline's accepted inputs without downloading weights. This is useful when building `--pipeline-kwargs`
+
+Only the index file is fetched. Standard pipelines read `model_index.json`; modular pipelines read
+`modular_model_index.json`; custom-block repos read `modular_config.json` and need `--trust-remote-code` since
+loading them runs code from the Hub.
 
 ```bash
 diffusers-cli --format json schema --model black-forest-labs/FLUX.1-dev
+diffusers-cli schema --model my-org/my-custom-blocks --trust-remote-code
 ```
 
 ## `run`
 
 Run a pipeline end-to-end. Auto-detects standard vs modular repos, auto-loads media inputs from URLs or local
-paths, saves outputs by detecting the pipeline's return type, and can submit the same call to a Hugging Face
+paths, saves outputs by detecting the pipeline's return type, and can run remotely on a Hugging Face
 Sandbox via `--remote`.
 
 Minimal example:
@@ -156,13 +146,13 @@ Configure how the CLI loads model weights and custom pipeline code.
 `run` detects the pipeline output type:
 
 - `PIL.Image`/list → `<task>-<i>.png`
-- Frame sequence → `<task>-0.mp4` (`--fps` controls framerate, default 8)
+- Image sequence → `<task>-0.mp4` (`--fps` controls framerate, default 8)
 - Audio array → `<task>-0.wav` (`--sampling-rate` controls rate)
 - Anything else → JSON dump
 
-Default output directory is `~/.diffusers/cli/run/outputs/diffusers-run-<YYYYMMDDTHHMMSS>-<uuid>/`. Each run
+The default output directory format is `~/.diffusers/cli/run/outputs/diffusers-run-<YYYYMMDDTHHMMSS>-<uuid>/`. Each run
 gets its own subdirectory so consecutive invocations don't overwrite. Override with `--output <path>` (file or
-directory) — explicit paths bypass the namespaced default.
+directory)
 
 Use `--push-to <your-bucket-id>` to upload outputs to a
 [Hugging Face storage bucket](https://huggingface.co/docs/hub/en/storage-buckets). `<your-bucket-id>` is a
@@ -215,11 +205,8 @@ runs — keeping deps, the model weight cache, and the `torch.compile` cache on 
 reconnect:
 
 - `--keep-alive` — don't terminate the sandbox after the run; its id is printed.
-- `--sandbox-id <id>` — reconnect to a kept-alive sandbox instead of creating a new one. Implies `--keep-alive`.
-- `--idle-timeout <duration>` — auto-shutdown after this much inactivity (defers to the Sandbox default of
-  `10m` when unset); the billing backstop. Pass `none` to disable the auto-reaper; the sandbox then runs
-  until the 24h hard cap unless killed. Applied only on new sandbox creation — ignored when reconnecting via
-  `--sandbox-id`.
+- `--sandbox-id <id>` — reconnect to a kept-alive sandbox instead of creating a new one. 
+- `--idle-timeout <duration>` — auto-shutdown after this much inactivity (default `10m`). Applied only on new sandbox creation — ignored when reconnecting via `--sandbox-id`.
 
 ```bash
 # First run keeps the sandbox alive and prints sandbox_id=<id>.
@@ -230,44 +217,9 @@ diffusers-cli run -m black-forest-labs/FLUX.1-dev --dtype bf16 \
 diffusers-cli run -m black-forest-labs/FLUX.1-dev --dtype bf16 \
     --pipeline-kwargs '{"prompt": "a dog"}' --remote --flavor a100-large --sandbox-id <id>
 
-# Stop it when done (or let --idle-timeout reap it).
+# Stop it when done (or let it timeout).
 hf sandbox kill <id>
 ```
-
-#### Batch editing with mounted buckets
-
-Combine `--volume` (inputs), `--keep-alive` (warm sandbox across runs), and `--push-to` (outputs) to run a
-pipeline over a batch of inputs sitting in an HF bucket:
-
-```bash
-# One-time: upload your source images to a bucket.
-hf buckets create alice/edit-inputs
-hf buckets upload alice/edit-inputs ./local-cats/ cats/
-
-# Warm the sandbox once — mount the input bucket, load the model, keep it alive.
-diffusers-cli run \
-    -m black-forest-labs/FLUX.1-Kontext-dev --dtype bf16 \
-    --remote --flavor a100-large --keep-alive \
-    --volume alice/edit-inputs \
-    --push-to alice/edit-outputs \
-    --pipeline-kwargs '{"prompt": "make it grey", "image": "/mnt/buckets/alice/edit-inputs/cats/01.png"}'
-# Prints sandbox_id=<id>. Note it.
-
-# Loop the rest of the batch through the warm sandbox — each call reuses the loaded weights.
-for img in $(hf buckets ls alice/edit-inputs cats | awk '{print $NF}'); do
-    diffusers-cli run \
-        -m black-forest-labs/FLUX.1-Kontext-dev --dtype bf16 \
-        --remote --sandbox-id <id> \
-        --push-to alice/edit-outputs \
-        --pipeline-kwargs "{\"prompt\": \"make it grey\", \"image\": \"/mnt/buckets/alice/edit-inputs/cats/$img\"}"
-done
-
-hf sandbox kill <id>
-```
-
-The container FUSE-mounts the bucket at `/mnt/buckets/alice/edit-inputs/`, so `image:` in
-`--pipeline-kwargs` resolves to a real file inside the sandbox and no local upload happens. Outputs land in
-`alice/edit-outputs` via `--push-to` — each run gets its own `<run_id>/` prefix so files don't overwrite.
 
 ## `custom_blocks`
 
