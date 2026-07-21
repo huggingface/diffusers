@@ -141,13 +141,13 @@ def _add_loading_arguments(parser: ArgumentParser) -> None:
     parser.add_argument("--trust-remote-code", action="store_true", help="Allow custom code from the Hub.")
     parser.add_argument(
         "--lora",
+        action="append",
         default=None,
+        metavar="JSON",
         help=(
-            "JSON spec describing one or more LoRA adapters to attach after the pipeline loads. "
-            'Single: \'{"lora_id": "<id>", "lora_scale": <float>}\'. '
-            'Multiple: \'[{"lora_id": "a/b", "lora_scale": 0.5, "adapter_name": "a"}, '
-            '{"lora_id": "c/d", "lora_scale": 0.3}]\'. `adapter_name` is optional (defaults '
-            "to `lora_<i>` when stacking).`lora_scale` defaults to 1.0."
+            "JSON dict describing a LoRA adapter to attach after the pipeline loads. Repeat to stack "
+            'multiple adapters. Format: \'{"lora_id": "<id>", "lora_scale": <float>}\'. `lora_scale` '
+            "defaults to 1.0; `adapter_name` is optional (auto-generated as `lora_<i>` when stacking)."
         ),
     )
 
@@ -469,22 +469,23 @@ def _compile_denoiser(pipeline: Any, compile_spec: str) -> None:
 
 
 def _load_lora(pipeline: Any, args: Namespace) -> None:
-    """Attach one or more LoRA adapters from a JSON spec.
+    """Attach one or more LoRA adapters. Each `--lora` value is a JSON dict.
 
-    Accepts either a single object or a list of objects. Each entry supports: `lora_id` (required), `lora_scale`
-    (optional float), `adapter_name` (optional; auto-generated as `lora_<i>` if omitted). Multiple adapters are stacked
-    via a single `set_adapters(...)` call.
+    Per-entry fields: `lora_id` (required), `lora_scale` (optional float, default 1.0), `adapter_name` (optional;
+    auto-generated as `lora_<i>` when stacking). Multiple `--lora` flags stack via a single `set_adapters(...)` call at
+    the end.
     """
     if not args.lora:
         return
-    try:
-        parsed = json.loads(args.lora)
-    except json.JSONDecodeError as e:
-        raise SystemExit(f"--lora must be valid JSON: {e}") from e
-
-    specs = parsed if isinstance(parsed, list) else [parsed]
-    if not all(isinstance(s, dict) for s in specs):
-        raise SystemExit("--lora must decode to a JSON object or list of objects.")
+    specs = []
+    for raw in args.lora:
+        try:
+            parsed = json.loads(raw)
+        except json.JSONDecodeError as e:
+            raise SystemExit(f"--lora must be valid JSON: {e}") from e
+        if not isinstance(parsed, dict):
+            raise SystemExit(f"--lora must decode to a JSON object; got {type(parsed).__name__}.")
+        specs.append(parsed)
     if not hasattr(pipeline, "load_lora_weights"):
         raise SystemExit(f"{type(pipeline).__name__} does not support LoRA loading.")
 

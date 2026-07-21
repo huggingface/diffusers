@@ -111,11 +111,11 @@ Configure how the CLI loads model weights and custom pipeline code.
 - `--trust-remote-code` — allow custom code from the Hub (required for repos that ship custom pipeline classes
   or modular blocks). See [Community pipelines](../using-diffusers/custom_pipeline_overview) for standard custom
   pipelines and [Modular Diffusers](../modular_diffusers/overview).
-- `--lora <spec>` — attach one or more LoRA adapters after loading. Accepts a single JSON object
-  or a list of them. `lora_id` is required per entry; `lora_scale` defaults to `1.0`; `adapter_name`
-  is optional (auto-generated as `lora_<i>` when stacking).
+- `--lora <spec>` — attach a LoRA adapter after loading. Each value is a JSON dict; repeat the flag to
+  stack multiple adapters. `lora_id` is required per entry; `lora_scale` defaults to `1.0`;
+  `adapter_name` is optional (auto-generated as `lora_<i>` when stacking).
   - Single: `--lora '{"lora_id": "alvdansen/flux-koda", "lora_scale": 0.8}'`
-  - Multiple: `--lora '[{"lora_id": "alvdansen/flux-koda", "lora_scale": 0.6, "adapter_name": "koda"}, {"lora_id": "Shakker-Labs/FLUX.1-dev-LoRA-AntiBlur", "lora_scale": 0.4}]'`
+  - Multiple: `--lora '{"lora_id": "alvdansen/flux-koda", "lora_scale": 0.6, "adapter_name": "koda"}' --lora '{"lora_id": "Shakker-Labs/FLUX.1-dev-LoRA-AntiBlur", "lora_scale": 0.4}'`
 
   All specs are loaded by `pipeline.load_lora_weights(...)`, then activated together with a single
   `pipeline.set_adapters(names, adapter_weights=scales)` call. See [LoRA](../tutorials/using_peft_for_inference)
