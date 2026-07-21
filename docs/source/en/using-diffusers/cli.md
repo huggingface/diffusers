@@ -91,6 +91,22 @@ diffusers-cli run \
     --pipeline-kwargs '{"prompt": "make the fur grey", "image": "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/cat.png", "strength": 0.6}'
 ```
 
+Both media keys and text keys accept a JSON array to run a batch through a single pipeline call. Each entry
+in a media list is loaded individually (URL, local path, or bucket-mount path), and diffusers processes the
+whole list in one forward pass on the GPU:
+
+```bash
+diffusers-cli run \
+    --model black-forest-labs/FLUX.1-Kontext-dev --dtype bf16 \
+    --pipeline-kwargs '{
+        "prompt": ["make it grey", "make it pink", "make it blue"],
+        "image": [
+            "https://.../cat1.png",
+            "https://.../cat2.png",
+            "https://.../cat3.png"
+        ]
+    }'
+```
 
 ### Loading
 
@@ -189,6 +205,10 @@ Remote flags:
 - `--namespace <name>` — create the sandbox under a different HF org/account.
 - `--image <ref>` — override the sandbox image. Must ship torch + CUDA compatible with your `--flavor`'s
   driver.
+- `--volume <bucket-id>[:<mount-path>]` — mount an [HF storage bucket](https://huggingface.co/docs/hub/en/storage-buckets)
+  into the sandbox as a read-write directory. Repeatable. Default mount path is
+  `/mnt/buckets/<bucket-id>`. Reference mounted files from `--pipeline-kwargs` like any other local path.
+  Applied only on new sandbox creation — ignored when reconnecting via `--sandbox-id`.
 
 By default each `--remote` run is ephemeral (create → run → download → kill). To reuse a warm sandbox across
 runs — keeping deps, the model weight cache, and the `torch.compile` cache on its disk — keep it alive and
@@ -196,9 +216,10 @@ reconnect:
 
 - `--keep-alive` — don't terminate the sandbox after the run; its id is printed.
 - `--sandbox-id <id>` — reconnect to a kept-alive sandbox instead of creating a new one. Implies `--keep-alive`.
-- `--idle-timeout <duration>` — auto-shutdown after this much inactivity (default `10m`); the billing backstop.
-  Pass `none` to disable the auto-reaper; the sandbox then runs until the 24h hard cap unless killed. Applied
-  only on new sandbox creation — ignored when reconnecting via `--sandbox-id`.
+- `--idle-timeout <duration>` — auto-shutdown after this much inactivity (defers to the Sandbox default of
+  `10m` when unset); the billing backstop. Pass `none` to disable the auto-reaper; the sandbox then runs
+  until the 24h hard cap unless killed. Applied only on new sandbox creation — ignored when reconnecting via
+  `--sandbox-id`.
 
 ```bash
 # First run keeps the sandbox alive and prints sandbox_id=<id>.
@@ -212,6 +233,41 @@ diffusers-cli run -m black-forest-labs/FLUX.1-dev --dtype bf16 \
 # Stop it when done (or let --idle-timeout reap it).
 hf sandbox kill <id>
 ```
+
+#### Batch editing with mounted buckets
+
+Combine `--volume` (inputs), `--keep-alive` (warm sandbox across runs), and `--push-to` (outputs) to run a
+pipeline over a batch of inputs sitting in an HF bucket:
+
+```bash
+# One-time: upload your source images to a bucket.
+hf buckets create alice/edit-inputs
+hf buckets upload alice/edit-inputs ./local-cats/ cats/
+
+# Warm the sandbox once — mount the input bucket, load the model, keep it alive.
+diffusers-cli run \
+    -m black-forest-labs/FLUX.1-Kontext-dev --dtype bf16 \
+    --remote --flavor a100-large --keep-alive \
+    --volume alice/edit-inputs \
+    --push-to alice/edit-outputs \
+    --pipeline-kwargs '{"prompt": "make it grey", "image": "/mnt/buckets/alice/edit-inputs/cats/01.png"}'
+# Prints sandbox_id=<id>. Note it.
+
+# Loop the rest of the batch through the warm sandbox — each call reuses the loaded weights.
+for img in $(hf buckets ls alice/edit-inputs cats | awk '{print $NF}'); do
+    diffusers-cli run \
+        -m black-forest-labs/FLUX.1-Kontext-dev --dtype bf16 \
+        --remote --sandbox-id <id> \
+        --push-to alice/edit-outputs \
+        --pipeline-kwargs "{\"prompt\": \"make it grey\", \"image\": \"/mnt/buckets/alice/edit-inputs/cats/$img\"}"
+done
+
+hf sandbox kill <id>
+```
+
+The container FUSE-mounts the bucket at `/mnt/buckets/alice/edit-inputs/`, so `image:` in
+`--pipeline-kwargs` resolves to a real file inside the sandbox and no local upload happens. Outputs land in
+`alice/edit-outputs` via `--push-to` — each run gets its own `<run_id>/` prefix so files don't overwrite.
 
 ## `custom_blocks`
 

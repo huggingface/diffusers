@@ -178,6 +178,11 @@ Flags:
   value with no `--output` makes the bucket the sole destination and skips the local download.
 - `--image <ref>` — override the sandbox image. Must ship torch + CUDA; the CLI installs the small Python
   deps on top via `uv pip install --system`. Useful for pinning a specific torch or bundling extra system libs.
+- `--volume <bucket-id>[:<mount-path>]` — mount an HF storage bucket into the sandbox as a read-write directory.
+  Repeatable. Default mount is `/mnt/buckets/<bucket-id>`. Reference mounted files from `--pipeline-kwargs`
+  like any other local path — no upload happens, the container reads straight from the FUSE mount. Applied
+  only on new sandbox creation — ignored when reconnecting via `--sandbox-id`. Enables batch workflows:
+  loop over bucket contents on the host, one `--sandbox-id` call per input.
 - `--keep-alive` — don't terminate the sandbox after the run; its id is printed so a later run can reconnect.
 - `--sandbox-id <id>` — reconnect to a kept-alive sandbox instead of creating a new one. Implies `--keep-alive`.
 - `--idle-timeout <duration>` — auto-shutdown after this much inactivity (default 10m). The billing backstop

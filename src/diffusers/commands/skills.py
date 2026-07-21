@@ -29,6 +29,7 @@ import httpx
 from huggingface_hub.cli._output import out
 
 from ..utils import logging
+from ..utils.constants import DIFFUSERS_REQUEST_TIMEOUT
 from . import BaseDiffusersCLICommand
 
 
@@ -73,7 +74,7 @@ def _registry_url(name: str = "") -> str:
 
 def _fetch_json(url: str) -> list[dict]:
     try:
-        resp = httpx.get(url)
+        resp = httpx.get(url, timeout=DIFFUSERS_REQUEST_TIMEOUT)
         resp.raise_for_status()
         return resp.json()
     except httpx.HTTPStatusError as e:
@@ -104,7 +105,7 @@ def _download_skill_bundle(name: str) -> dict[str, bytes]:
         raise SystemExit(f"Skill '{name}' has no files in the registry.")
     bundle: dict[str, bytes] = {}
     for rel_path, url in files:
-        resp = httpx.get(url)
+        resp = httpx.get(url, timeout=DIFFUSERS_REQUEST_TIMEOUT)
         resp.raise_for_status()
         bundle[rel_path] = resp.content
     return bundle
@@ -140,6 +141,22 @@ def _install_skill(name: str, bundle: dict[str, bytes], root: Path, skills_dir: 
         target.write_bytes(data)
     (skill_dir / _MANAGED_MARKER_FILE).touch()
     return skill_dir
+
+
+def _has_local_changes(skill_dir: Path, bundle: dict[str, bytes]) -> bool:
+    """True if the installed skill has any file that differs from `bundle` or has extra files.
+
+    The marker file is ignored. Compares raw bytes so a whitespace-only edit still counts as dirty.
+    """
+    on_disk: dict[str, bytes] = {}
+    for path in skill_dir.rglob("*"):
+        if not path.is_file():
+            continue
+        rel = str(path.relative_to(skill_dir))
+        if rel == _MANAGED_MARKER_FILE:
+            continue
+        on_disk[rel] = path.read_bytes()
+    return on_disk != bundle
 
 
 def _discover_installed(root: Path) -> list[tuple[Path, str]]:
@@ -205,6 +222,11 @@ class SkillsCommand(BaseDiffusersCLICommand):
             dest="install_global",
             action="store_true",
             help="Update skills installed globally (user-level) instead of the current project.",
+        )
+        update.add_argument(
+            "--force",
+            action="store_true",
+            help="Overwrite skills even if they have local modifications since install.",
         )
         update.set_defaults(func=SkillsCommand)
 
@@ -275,12 +297,21 @@ class SkillsCommand(BaseDiffusersCLICommand):
 
         updated: list[str] = []
         failed: list[str] = []
+        skipped: list[str] = []
         for name, dirs in sorted(by_name.items()):
             try:
                 bundle = _download_skill_bundle(name)
                 for skills_dir in dirs:
+                    skill_dir = root / skills_dir / name
+                    if not self.args.force and _has_local_changes(skill_dir, bundle):
+                        logger.warning(
+                            f"Skill {name!r} at {skill_dir} has local modifications; "
+                            "skipping. Pass --force to overwrite them."
+                        )
+                        skipped.append(name)
+                        continue
                     _install_skill(name, bundle, root, skills_dir, force=True)
-                updated.append(name)
+                    updated.append(name)
             except (SystemExit, httpx.HTTPError) as e:
                 logger.warning(f"Skipping skill {name!r}: {e}")
                 failed.append(name)
@@ -288,6 +319,7 @@ class SkillsCommand(BaseDiffusersCLICommand):
         out.result(
             f"Updated {len(updated)} skill(s)",
             updated=", ".join(updated),
+            skipped=", ".join(skipped) if skipped else None,
             failed=", ".join(failed) if failed else None,
         )
 

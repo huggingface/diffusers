@@ -29,6 +29,7 @@ from diffusers.commands.run import (
     _parse_pipeline_kwargs,
     _resolve_dtype,
     _resolve_media_inputs,
+    _upload_inputs_to_sandbox,
 )
 from diffusers.commands.schema import _parse_docstring_args
 from diffusers.utils.testing_utils import require_accelerator, require_torch_gpu
@@ -52,14 +53,77 @@ class TestRunCommand:
     def test_resolve_media_inputs(self, monkeypatch):
         monkeypatch.setattr("diffusers.commands.run.load_image", lambda v: f"img({v})")
         monkeypatch.setattr("diffusers.commands.run.load_video", lambda v: [f"frame({v})"])
-        kwargs = {"image": "url1", "control_video": "url2", "prompt": "text", "mask_image": ["pre", "loaded"]}
+        # Scalar strings load individually; string-lists load each entry (batched inputs);
+        # `prompt` isn't a media key so it passes through; non-string / non-string-list values
+        # (e.g. a pre-loaded PIL object modeled here as a dict) pass through untouched.
+        preloaded = {"pre": "loaded"}
+        kwargs = {
+            "image": "url1",
+            "control_video": "url2",
+            "prompt": "text",
+            "mask_image": ["a.png", "b.png"],
+            "control_image": ["c.png"],
+            "video": ["v1.mp4", "v2.mp4"],
+            "ip_adapter_image": preloaded,
+        }
         _resolve_media_inputs(kwargs)
         assert kwargs == {
             "image": "img(url1)",
             "control_video": ["frame(url2)"],
             "prompt": "text",
-            "mask_image": ["pre", "loaded"],  # non-string values pass through untouched
+            "mask_image": ["img(a.png)", "img(b.png)"],
+            "control_image": ["img(c.png)"],
+            "video": [["frame(v1.mp4)"], ["frame(v2.mp4)"]],
+            "ip_adapter_image": preloaded,
         }
+
+    def test_resolve_media_inputs_audio_batch(self, monkeypatch):
+        # Batched audio: each entry loads, the paired sampling-rate kwarg defaults to the first entry's rate.
+        monkeypatch.setattr("diffusers.commands.run._load_audio", lambda v: (f"wave({v})", 44100))
+        kwargs = {"initial_audio_waveforms": ["a.wav", "b.wav"]}
+        _resolve_media_inputs(kwargs)
+        assert kwargs == {
+            "initial_audio_waveforms": ["wave(a.wav)", "wave(b.wav)"],
+            "initial_audio_sampling_rate": 44100,
+        }
+
+    def test_upload_inputs_to_sandbox_batched(self, tmp_path):
+        # Batched media on --remote: `_upload_inputs_to_sandbox` uploads each local path in a list
+        # and rewrites the JSON in place. URLs and non-existent paths pass through untouched.
+        import json as _json
+
+        local_a = tmp_path / "a.png"
+        local_b = tmp_path / "b.png"
+        local_a.write_bytes(b"a")
+        local_b.write_bytes(b"b")
+
+        uploads: list[tuple[str, str]] = []
+
+        class FakeFiles:
+            def upload(self, src, dst):
+                uploads.append((src, dst))
+
+        class FakeSbx:
+            files = FakeFiles()
+
+        args = Namespace(
+            pipeline_kwargs=_json.dumps(
+                {
+                    "image": str(local_a),  # scalar local → uploaded
+                    "mask_image": [str(local_a), "https://example.com/x.png", str(local_b)],  # mixed batch
+                    "prompt": "unchanged",
+                }
+            )
+        )
+        _upload_inputs_to_sandbox(args, FakeSbx(), run_id="rid")
+
+        assert len(uploads) == 3  # a (scalar), a (list[0]), b (list[2]); URL skipped
+        rewritten = _json.loads(args.pipeline_kwargs)
+        assert rewritten["image"].startswith("/tmp/diffusers-cli/inputs/rid/image_")
+        assert rewritten["mask_image"][0].startswith("/tmp/diffusers-cli/inputs/rid/mask_image_0_")
+        assert rewritten["mask_image"][1] == "https://example.com/x.png"  # URL untouched
+        assert rewritten["mask_image"][2].startswith("/tmp/diffusers-cli/inputs/rid/mask_image_2_")
+        assert rewritten["prompt"] == "unchanged"
 
     def test_kwargs_to_argv(self):
         argv = _kwargs_to_argv(

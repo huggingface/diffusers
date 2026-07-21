@@ -111,6 +111,7 @@ REMOTE_KEYS = frozenset(
         "keep_alive",
         "sandbox_id",
         "idle_timeout",
+        "volume",
         "func",
         "format",  # top-level --format is a local rendering flag; never forward to the sandbox
     }
@@ -275,10 +276,21 @@ def _add_remote_arguments(parser: ArgumentParser) -> None:
         "--idle-timeout",
         default="10m",
         help=(
-            "Auto-shutdown the sandbox after this much inactivity (e.g. 30m, 1h). Defaults to 10m — the "
-            "billing backstop for --keep-alive sandboxes. Pass 'none' to disable the auto-reaper; the "
-            "sandbox then runs until the 24h hard cap unless killed. Only applied on new sandbox "
-            "creation — ignored when reconnecting via --sandbox-id."
+            "Auto-shutdown the sandbox after this much inactivity (e.g. 30m, 1h). Defaults to 10m. "
+            "Only applied on new sandbox creation — ignored when reconnecting via --sandbox-id."
+        ),
+    )
+    parser.add_argument(
+        "--volume",
+        action="append",
+        default=None,
+        metavar="BUCKET_ID[:MOUNT_PATH]",
+        help=(
+            "Mount an HF bucket into the sandbox as a read-write directory. Repeatable. Format: "
+            "`<namespace>/<name>` (mounts at `/mnt/buckets/<namespace>/<name>`) or "
+            "`<namespace>/<name>:/some/path` for a custom path. Reference mounted files from "
+            "--pipeline-kwargs like any other local path. Applied only on new sandbox creation — "
+            "ignored when reconnecting via --sandbox-id."
         ),
     )
 
@@ -564,7 +576,9 @@ def _load_audio(url_or_path: str) -> tuple[Any, int]:
 
         import httpx
 
-        resp = httpx.get(url_or_path, follow_redirects=True, timeout=30)
+        from ..utils.constants import DIFFUSERS_REQUEST_TIMEOUT
+
+        resp = httpx.get(url_or_path, follow_redirects=True, timeout=DIFFUSERS_REQUEST_TIMEOUT)
         resp.raise_for_status()
         return torchaudio.load(io.BytesIO(resp.content))
     return torchaudio.load(url_or_path)
@@ -575,16 +589,25 @@ def _resolve_media_inputs(call_kwargs: dict[str, Any]) -> None:
 
     Images resolve to `PIL.Image.Image` via `load_image`; videos to `list[PIL.Image.Image]` via `load_video`; audio to
     a `torch.Tensor` via `_load_audio` (also auto-sets the paired sampling-rate kwarg for `initial_audio_waveforms` if
-    the user didn't supply it). Non-string values pass through untouched.
+    the user didn't supply it). A `list[str]` at any key is treated as a batch: each entry is loaded and the value
+    becomes a list of loaded objects. Non-string, non-list values pass through untouched.
     """
+
+    def _is_string_list(v: Any) -> bool:
+        return isinstance(v, list) and bool(v) and all(isinstance(x, str) for x in v)
+
     for key in _IMAGE_INPUT_KEYS:
         value = call_kwargs.get(key)
         if isinstance(value, str):
             call_kwargs[key] = load_image(value)
+        elif _is_string_list(value):
+            call_kwargs[key] = [load_image(v) for v in value]
     for key in _VIDEO_INPUT_KEYS:
         value = call_kwargs.get(key)
         if isinstance(value, str):
             call_kwargs[key] = load_video(value)
+        elif _is_string_list(value):
+            call_kwargs[key] = [load_video(v) for v in value]
     for key in _AUDIO_INPUT_KEYS:
         value = call_kwargs.get(key)
         if isinstance(value, str):
@@ -592,6 +615,12 @@ def _resolve_media_inputs(call_kwargs: dict[str, Any]) -> None:
             call_kwargs[key] = waveform
             if key == "initial_audio_waveforms" and "initial_audio_sampling_rate" not in call_kwargs:
                 call_kwargs["initial_audio_sampling_rate"] = sr
+        elif _is_string_list(value):
+            pairs = [_load_audio(v) for v in value]
+            call_kwargs[key] = [w for w, _ in pairs]
+            if key == "initial_audio_waveforms" and "initial_audio_sampling_rate" not in call_kwargs:
+                # All batched waveforms must share a sampling rate; use the first entry's.
+                call_kwargs["initial_audio_sampling_rate"] = pairs[0][1]
 
 
 def _get_generator(seed: int | None, device: str):
@@ -773,7 +802,7 @@ def _push_outputs(args: Namespace, saved_paths: list[str], task: str) -> dict[st
     api = HfApi(token=args.token)
     api.create_bucket(args.push_to, exist_ok=True)
 
-    prefix = os.environ.get(RUN_ID_ENV) or task
+    prefix = _get_or_create_run_id()
     add = [(local, f"{prefix}/{Path(local).name}") for local in saved_paths]
     api.batch_bucket_files(args.push_to, add=add)
 
@@ -823,7 +852,7 @@ def _duration_to_seconds(value: str) -> float:
 def _upload_inputs_to_sandbox(args: Namespace, sbx: Any, run_id: str) -> None:
     """Upload local media paths in `--pipeline-kwargs` into the sandbox and rewrite the JSON in place.
 
-    Walks known image/video-input keys; any string value that resolves to a local file is uploaded to
+    Walks known image/video/audio-input keys; any string value that resolves to a local file is uploaded to
     `<_SANDBOX_INPUTS_DIR>/<run_id>/<key>_<basename>` and the JSON path is rewritten to that in-sandbox path. URLs,
     `hf://` URIs, and non-existent paths pass through untouched.
     """
@@ -836,27 +865,39 @@ def _upload_inputs_to_sandbox(args: Namespace, sbx: Any, run_id: str) -> None:
     if not isinstance(parsed, dict):
         return
 
-    uploaded = 0
-    for key in (*_IMAGE_INPUT_KEYS, *_VIDEO_INPUT_KEYS):
-        value = parsed.get(key)
-        if not isinstance(value, str) or not Path(value).is_file():
-            continue
-        local = Path(value)
-        remote_path = f"{_SANDBOX_INPUTS_DIR}/{run_id}/{key}_{local.name}"
+    def _upload_one(key: str, index: int | None, local_str: str) -> str:
+        # `index` is None for scalar entries, an int for list entries (used to disambiguate names).
+        local = Path(local_str)
+        suffix = f"_{index}" if index is not None else ""
+        remote_path = f"{_SANDBOX_INPUTS_DIR}/{run_id}/{key}{suffix}_{local.name}"
         sbx.files.upload(str(local), remote_path)
-        parsed[key] = remote_path
-        uploaded += 1
+        return remote_path
+
+    uploaded = 0
+    for key in (*_IMAGE_INPUT_KEYS, *_VIDEO_INPUT_KEYS, *_AUDIO_INPUT_KEYS):
+        value = parsed.get(key)
+        if isinstance(value, str) and Path(value).is_file():
+            parsed[key] = _upload_one(key, None, value)
+            uploaded += 1
+        elif isinstance(value, list):
+            # Batched inputs: upload each local path, leave URLs/hf:// URIs alone.
+            new_list = list(value)
+            for i, entry in enumerate(value):
+                if isinstance(entry, str) and Path(entry).is_file():
+                    new_list[i] = _upload_one(key, i, entry)
+                    uploaded += 1
+            parsed[key] = new_list
 
     if uploaded:
         logger.info(f"uploaded {uploaded} local input file(s) to the sandbox")
         args.pipeline_kwargs = json.dumps(parsed)
 
 
-def _download_outputs_from_sandbox(sbx: Any, local_dir: Path) -> list[str]:
-    """Download every file the sandbox CLI wrote under `_SANDBOX_OUTPUTS_DIR` into `local_dir`."""
+def _download_outputs_from_sandbox(sbx: Any, sandbox_dir: str, local_dir: Path) -> list[str]:
+    """Download every file the sandbox CLI wrote under `sandbox_dir` into `local_dir`."""
     local_dir.mkdir(parents=True, exist_ok=True)
     saved: list[str] = []
-    for entry in sbx.files.list(_SANDBOX_OUTPUTS_DIR):
+    for entry in sbx.files.list(sandbox_dir):
         if entry.type != "file":
             continue
         target = local_dir / Path(entry.path).name
@@ -901,24 +942,42 @@ def _maybe_submit_remote(args: Namespace, task: str) -> bool:
     download_locally = (not user_bucket) or (args.output is not None)
     local_dir = Path(args.output) if args.output else Path(DEFAULT_OUTPUT_DIR) / run_id
 
-    reused = bool(args.sandbox_id)
-    keep_alive = args.keep_alive or reused
-    if reused:
+    use_existing_sandbox = bool(args.sandbox_id)
+    keep_alive = args.keep_alive or use_existing_sandbox
+    if use_existing_sandbox and args.volume:
+        logger.warning(
+            "--volume is ignored when reconnecting to an existing sandbox (mounts are set at creation time)."
+        )
+    if use_existing_sandbox:
         logger.info(f"reconnecting to sandbox {args.sandbox_id!r}...")
         sbx = Sandbox.connect(args.sandbox_id, token=hf_token)
     else:
         logger.info(f"creating sandbox on flavor={args.flavor!r}...")
-        # "none"/"off"/"0" are user-friendly aliases for disabling the reaper; Sandbox.create
-        # takes idle_timeout=None to mean the same thing.
-        disabled = args.idle_timeout.strip().lower() in ("none", "off", "0")
         create_kwargs: dict[str, Any] = {
             "image": args.image or _DEFAULT_REMOTE_IMAGE,
             "flavor": args.flavor,
             "forward_hf_token": True,
             "token": hf_token,
-            "env": {RUN_ID_ENV: run_id, "HF_ENABLE_PARALLEL_LOADING": "1"},
-            "idle_timeout": None if disabled else args.idle_timeout,
+            "env": {
+                "HF_ENABLE_PARALLEL_LOADING": "1",
+                "DIFFUSERS_VERBOSITY": os.environ.get("DIFFUSERS_VERBOSITY", "info"),
+            },
+            "idle_timeout": args.idle_timeout,
         }
+        if args.volume:
+            from huggingface_hub import Volume
+
+            volumes = []
+            for spec in args.volume:
+                bucket_id, sep, mount_path = spec.partition(":")
+                if not sep:
+                    mount_path = f"/mnt/buckets/{bucket_id}"
+                if bucket_id.count("/") != 1:
+                    raise SystemExit(f"--volume: bucket id must be <namespace>/<name>, got {bucket_id!r}")
+                if not mount_path.startswith("/"):
+                    raise SystemExit(f"--volume: mount path must be absolute, got {mount_path!r}")
+                volumes.append(Volume(type="bucket", source=bucket_id, mount_path=mount_path))
+            create_kwargs["volumes"] = volumes
         if args.namespace is not None:
             create_kwargs["namespace"] = args.namespace
         sbx = Sandbox.create(**create_kwargs)
@@ -942,10 +1001,11 @@ def _maybe_submit_remote(args: Namespace, task: str) -> bool:
         logger.info("installing dependencies in the sandbox...")
         sbx.run(install_cmd, on_stdout=_stream, on_stderr=_stream)
 
-        # Point the sandbox CLI's --output at a known directory (trailing slash → treated as a
-        # directory) so we can download every artifact back regardless of the pipeline output type.
+        # Per-run outputs subdirectory so a reused sandbox doesn't leak files from prior runs
+        # into this run's download set.
+        sandbox_output_dir = f"{_SANDBOX_OUTPUTS_DIR}/{run_id}"
         task_kwargs = _build_task_kwargs(args)
-        task_kwargs["output"] = _SANDBOX_OUTPUTS_DIR + "/"
+        task_kwargs["output"] = sandbox_output_dir + "/"
         cli_argv = _kwargs_to_argv(task, task_kwargs)
         # Suppress the container CLI's own `out.result(...)` payload — the outer wrapper owns the
         # final structured output for --remote runs.
@@ -965,8 +1025,12 @@ def _maybe_submit_remote(args: Namespace, task: str) -> bool:
             cli_argv = [_CONTAINER_CLI_BINARY, *format_argv, *cli_argv]
 
         started = time.perf_counter()
+        # Per-invocation env: RUN_ID_ENV must be fresh each run. Sandbox.create-time env is
+        # baked in and would go stale on reused sandboxes, silently reusing the initial run's
+        # bucket prefix in `_push_outputs`.
         result = sbx.run(
             cli_argv,
+            env={RUN_ID_ENV: run_id},
             on_stdout=_stream,
             on_stderr=_stream,
             timeout=_duration_to_seconds(args.timeout),
@@ -976,7 +1040,7 @@ def _maybe_submit_remote(args: Namespace, task: str) -> bool:
         exit_code = result.exit_code
 
         if exit_code == 0 and download_locally:
-            saved = _download_outputs_from_sandbox(sbx, local_dir)
+            saved = _download_outputs_from_sandbox(sbx, sandbox_output_dir, local_dir)
     finally:
         if keep_alive:
             logger.info(
@@ -993,18 +1057,14 @@ def _maybe_submit_remote(args: Namespace, task: str) -> bool:
     )
 
     payload: dict[str, Any] = {
-        "task": "remote-run",
-        "sandbox_id": sbx.id,
-        "flavor": args.flavor,
-        "reused": reused,
-        "kept_alive": keep_alive,
-        "run_id": run_id,
         "exit_code": exit_code,
         "run_seconds": round(run_seconds, 1),
     }
+    if keep_alive:
+        payload["sandbox_id"] = sbx.id
     if download_locally:
         payload["outputs"] = saved
-    out.result(payload["task"], **payload)
+    out.result("remote-run", **payload)
 
     if exit_code != 0:
         raise SystemExit(f"remote run failed with exit code {exit_code}")
