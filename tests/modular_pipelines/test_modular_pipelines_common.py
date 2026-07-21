@@ -158,11 +158,11 @@ class ModularPipelineTesterMixin:
         gc.collect()
         backend_empty_cache(torch_device)
 
-    def get_pipeline(self, components_manager=None, torch_dtype=torch.float32):
+    def get_pipeline(self, components_manager=None, dtype=torch.float32):
         pipeline = self.pipeline_blocks_class().init_pipeline(
             self.pretrained_model_name_or_path, components_manager=components_manager
         )
-        pipeline.load_components(torch_dtype=torch_dtype)
+        pipeline.load_components(dtype=dtype)
         pipeline.set_progress_bar_config(disable=None)
         return pipeline
 
@@ -378,7 +378,7 @@ class ModularPipelineTesterMixin:
 
         base_pipe.save_pretrained(str(tmp_path))
         pipe = ModularPipeline.from_pretrained(tmp_path).to(torch_device)
-        pipe.load_components(torch_dtype=torch.float32)
+        pipe.load_components(dtype=torch.float32)
         pipe.to(torch_device)
 
         pipes.append(pipe)
@@ -412,7 +412,7 @@ class ModularPipelineTesterMixin:
 
         expected = _get_specified_components(save_dir)
         loaded_pipe = ModularPipeline.from_pretrained(save_dir)
-        loaded_pipe.load_components(torch_dtype=torch.float32)
+        loaded_pipe.load_components(dtype=torch.float32)
 
         actual = {
             name
@@ -723,7 +723,7 @@ class TestAutoModelLoadIdTagging:
 
     def test_automodel_update_components(self):
         pipe = ModularPipeline.from_pretrained("hf-internal-testing/tiny-stable-diffusion-xl-pipe")
-        pipe.load_components(torch_dtype=torch.float32)
+        pipe.load_components(dtype=torch.float32)
 
         auto_model = AutoModel.from_pretrained("hf-internal-testing/tiny-stable-diffusion-xl-pipe", subfolder="unet")
 
@@ -760,7 +760,7 @@ class TestAutoModelLoadIdTagging:
 class TestLoadComponentsSkipBehavior:
     def test_load_components_skips_already_loaded(self):
         pipe = ModularPipeline.from_pretrained("hf-internal-testing/tiny-stable-diffusion-xl-pipe")
-        pipe.load_components(torch_dtype=torch.float32)
+        pipe.load_components(dtype=torch.float32)
 
         original_unet = pipe.unet
 
@@ -772,7 +772,7 @@ class TestLoadComponentsSkipBehavior:
     def test_load_components_selective_loading(self):
         pipe = ModularPipeline.from_pretrained("hf-internal-testing/tiny-stable-diffusion-xl-pipe")
 
-        pipe.load_components(names="unet", torch_dtype=torch.float32)
+        pipe.load_components(names="unet", dtype=torch.float32)
 
         # Verify only requested component was loaded.
         assert hasattr(pipe, "unet")
@@ -783,8 +783,8 @@ class TestLoadComponentsSkipBehavior:
         """Loading a subset of components should not affect already-loaded components."""
         pipe = ModularPipeline.from_pretrained("hf-internal-testing/tiny-stable-diffusion-xl-pipe")
 
-        pipe.load_components(names="unet", torch_dtype=torch.float32)
-        pipe.load_components(names="text_encoder", torch_dtype=torch.float32)
+        pipe.load_components(names="unet", dtype=torch.float32)
+        pipe.load_components(names="text_encoder", dtype=torch.float32)
 
         assert hasattr(pipe, "unet")
         assert pipe.unet is not None
@@ -800,7 +800,7 @@ class TestLoadComponentsSkipBehavior:
             pretrained_model_name_or_path=None,
             default_creation_method="from_pretrained",
         )
-        pipe.load_components(torch_dtype=torch.float32)
+        pipe.load_components(dtype=torch.float32)
 
         # Verify test_component was not loaded
         assert not hasattr(pipe, "test_component") or pipe.test_component is None
@@ -813,7 +813,7 @@ class TestCustomModelSavePretrained:
         import json
 
         pipe = ModularPipeline.from_pretrained("hf-internal-testing/tiny-stable-diffusion-xl-pipe")
-        pipe.load_components(torch_dtype=torch.float32)
+        pipe.load_components(dtype=torch.float32)
 
         pipe.unet._diffusers_load_id = "null"
 
@@ -833,7 +833,7 @@ class TestCustomModelSavePretrained:
     def test_save_pretrained_roundtrip_with_local_model(self, tmp_path):
         """A pipeline with a custom/local model should be saveable and re-loadable with identical outputs."""
         pipe = ModularPipeline.from_pretrained("hf-internal-testing/tiny-stable-diffusion-xl-pipe")
-        pipe.load_components(torch_dtype=torch.float32)
+        pipe.load_components(dtype=torch.float32)
 
         pipe.unet._diffusers_load_id = "null"
 
@@ -843,7 +843,7 @@ class TestCustomModelSavePretrained:
         pipe.save_pretrained(save_dir)
 
         loaded_pipe = ModularPipeline.from_pretrained(save_dir)
-        loaded_pipe.load_components(torch_dtype=torch.float32)
+        loaded_pipe.load_components(dtype=torch.float32)
 
         assert loaded_pipe.unet is not None
         assert loaded_pipe.unet.__class__.__name__ == pipe.unet.__class__.__name__
@@ -861,7 +861,7 @@ class TestCustomModelSavePretrained:
         from diffusers import UNet2DConditionModel
 
         pipe = ModularPipeline.from_pretrained("hf-internal-testing/tiny-stable-diffusion-xl-pipe")
-        pipe.load_components(torch_dtype=torch.float32)
+        pipe.load_components(dtype=torch.float32)
 
         unet = UNet2DConditionModel.from_pretrained(
             "hf-internal-testing/tiny-stable-diffusion-xl-pipe", subfolder="unet"
@@ -888,7 +888,7 @@ class TestCustomModelSavePretrained:
         import json
 
         pipe = ModularPipeline.from_pretrained("hf-internal-testing/tiny-stable-diffusion-xl-pipe")
-        pipe.load_components(torch_dtype=torch.float32)
+        pipe.load_components(dtype=torch.float32)
 
         save_dir = str(tmp_path / "my-pipeline")
         pipe.save_pretrained(save_dir, overwrite_modular_index=True)
@@ -906,7 +906,7 @@ class TestCustomModelSavePretrained:
             assert spec["subfolder"] == component_name
 
         loaded_pipe = ModularPipeline.from_pretrained(save_dir)
-        loaded_pipe.load_components(torch_dtype=torch.float32)
+        loaded_pipe.load_components(dtype=torch.float32)
 
         assert loaded_pipe.unet is not None
         assert loaded_pipe.vae is not None

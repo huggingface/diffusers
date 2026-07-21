@@ -125,8 +125,8 @@ class TestCosmos3OmniModularPipelineFast(ModularPipelineTesterMixin):
     output_name = "videos"
     expected_workflow_blocks = COSMOS3_OMNI_WORKFLOWS
 
-    def get_pipeline(self, components_manager=None, torch_dtype=torch.float32):
-        pipe = super().get_pipeline(components_manager, torch_dtype)
+    def get_pipeline(self, components_manager=None, dtype=torch.float32):
+        pipe = super().get_pipeline(components_manager, dtype)
         pipe.disable_safety_checker()
         return pipe
 
@@ -164,7 +164,7 @@ class TestCosmos3OmniModularPipelineFast(ModularPipelineTesterMixin):
         base_pipe.save_pretrained(str(tmp_path))
 
         loaded_pipe = ModularPipeline.from_pretrained(str(tmp_path))
-        loaded_pipe.load_components(torch_dtype=torch.float32)
+        loaded_pipe.load_components(dtype=torch.float32)
         loaded_pipe.disable_safety_checker()
         loaded_pipe.to(torch_device)
 

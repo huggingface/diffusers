@@ -62,6 +62,7 @@ if is_torch_available():
     if is_transformers_available():
         _import_structure["single_file"] = ["FromSingleFileMixin"]
         _import_structure["lora_pipeline"] = [
+            "AceStepLoraLoaderMixin",
             "AmusedLoraLoaderMixin",
             "AnimaLoraLoaderMixin",
             "StableDiffusionLoraLoaderMixin",
@@ -118,6 +119,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
                 SD3IPAdapterMixin,
             )
             from .lora_pipeline import (
+                AceStepLoraLoaderMixin,
                 AmusedLoraLoaderMixin,
                 AnimaLoraLoaderMixin,
                 AuraFlowLoraLoaderMixin,
