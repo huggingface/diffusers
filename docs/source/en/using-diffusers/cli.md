@@ -145,14 +145,24 @@ Configure how the CLI loads model weights and custom pipeline code.
 
 `run` detects the pipeline output type:
 
-- `PIL.Image`/list → `<task>-<i>.png`
-- Image sequence → `<task>-0.mp4` (`--fps` controls framerate, default 8)
-- Audio array → `<task>-0.wav` (`--sampling-rate` controls rate)
+- `PIL.Image`/list → `<NNNN>.png` (zero-padded index, e.g. `0000.png`)
+- Image sequence → `0000.mp4` (`--fps` controls framerate, default 8)
+- Audio array → `0000.wav` (`--sampling-rate` controls rate)
 - Anything else → JSON dump
 
-The default output directory format is `~/.diffusers/cli/run/outputs/diffusers-run-<YYYYMMDDTHHMMSS>-<uuid>/`. Each run
-gets its own subdirectory so consecutive invocations don't overwrite. Override with `--output <path>` (file or
-directory)
+The default output directory format is `~/.diffusers/cli/run/outputs/diffusers-run-<YYYYMMDDTHHMMSS>-<uuid>/`. Each
+run gets its own subdirectory so consecutive invocations don't overwrite.
+
+Override with `--output <path>`. How the path expands depends on its shape and the batch size:
+
+| `--output` | 1 output | N outputs |
+|---|---|---|
+| _omitted_ | default dir → `0000.png` | default dir → `0000.png`, `0001.png`, `0002.png`, … |
+| `./results/` (trailing `/` or an existing directory) | `./results/0000.png` | `./results/0000.png`, `./results/0001.png`, … |
+| `my-cat.png` (file path) | `my-cat.png` (used verbatim) | `my-cat-0000.png`, `my-cat-0001.png`, … |
+
+Directory outputs always use bare padded names (`0000`, `0001`, …). Explicit file paths preserve your chosen
+stem and get the padded index appended when the batch produces multiple outputs.
 
 Use `--push-to` to upload outputs to a
 [Hugging Face storage bucket](https://huggingface.co/docs/hub/en/storage-buckets). Accepts an HF bucket

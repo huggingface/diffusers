@@ -205,7 +205,7 @@ def _add_output_arguments(parser: ArgumentParser) -> None:
         default=None,
         help=(
             "Output file or directory. Defaults to "
-            "~/.diffusers/cli/run/outputs/diffusers-run-<YYYYMMDDTHHMMSS>-<short-uuid>/<task>-<index>.<ext>."
+            "~/.diffusers/cli/run/outputs/diffusers-run-<YYYYMMDDTHHMMSS>-<short-uuid>/<NNNN>.<ext>."
         ),
     )
     parser.add_argument(
@@ -672,18 +672,18 @@ def _resolve_output_paths(task: str, num: int, explicit: str | None, ext: str) -
     if explicit is None:
         base = Path(DEFAULT_OUTPUT_DIR) / _get_or_create_run_id()
         base.mkdir(parents=True, exist_ok=True)
-        return [base / f"{task}-{i}.{ext}" for i in range(num)]
+        return [base / f"{i:04d}.{ext}" for i in range(num)]
 
     p = Path(explicit)
     if explicit.endswith(os.sep) or p.is_dir():
         p.mkdir(parents=True, exist_ok=True)
-        return [p / f"{task}-{i}.{ext}" for i in range(num)]
+        return [p / f"{i:04d}.{ext}" for i in range(num)]
 
     p.parent.mkdir(parents=True, exist_ok=True)
     if num == 1:
         return [p]
     stem, suffix = p.stem, p.suffix or f".{ext}"
-    return [p.with_name(f"{stem}-{i}{suffix}") for i in range(num)]
+    return [p.with_name(f"{stem}-{i:04d}{suffix}") for i in range(num)]
 
 
 def _as_pil_list(value: Any):
@@ -1087,6 +1087,10 @@ def _maybe_submit_remote(args: Namespace, task: str) -> bool:
         payload["sandbox_id"] = sbx.id
     if download_locally:
         payload["outputs"] = saved
+    if args.push_to:
+        bucket_id, subpath = _parse_push_to(args.push_to)
+        prefix = f"{subpath}/{run_id}" if subpath else run_id
+        payload["pushed-to"] = f"hf://buckets/{bucket_id}/{prefix}/"
     out.result("remote-run", **payload)
 
     if exit_code != 0:

@@ -120,9 +120,9 @@ Each entry calls `pipeline.load_lora_weights(<lora_id>, adapter_name=<name>)`. A
 
 `run` detects the pipeline return type and saves accordingly:
 
-- `PIL.Image` / list of them → `run-<i>.png`
-- Frame sequence (≥2 PILs or ndarrays) → `run-0.mp4` (uses `--fps`, default 8)
-- Numpy audio array → `run-0.wav` (uses `--sampling-rate`)
+- `PIL.Image` / list of them → `<NNNN>.png` (zero-padded, e.g. `0000.png`)
+- Frame sequence (≥2 PILs or ndarrays) → `0000.mp4` (uses `--fps`, default 8)
+- Numpy audio array → `0000.wav` (uses `--sampling-rate`)
 - Anything else → JSON dump
 
 **Default output directory** is `~/.diffusers/cli/run/outputs/diffusers-run-<YYYYMMDDTHHMMSS>-<short-uuid>/`.
