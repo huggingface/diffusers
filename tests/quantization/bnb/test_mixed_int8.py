@@ -41,6 +41,7 @@ from ...testing_utils import (
     load_pt,
     numpy_cosine_similarity_distance,
     require_accelerate,
+    require_big_accelerator,
     require_bitsandbytes_version_greater,
     require_peft_backend,
     require_peft_version_greater,
@@ -590,6 +591,7 @@ class TestSlowBnb8bit(Base8bitTests):
 
 
 @require_transformers_version_greater("4.44.0")
+@require_big_accelerator
 class TestSlowBnb8bitFlux(Base8bitTests):
     @pytest.fixture(autouse=True)
     def _setup_slow_flux(self):
