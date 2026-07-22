@@ -23,20 +23,25 @@ import safetensors.torch
 import torch
 import torch.nn as nn
 
+from diffusers.utils import logging
 from diffusers.utils.import_utils import is_peft_available
 from diffusers.utils.testing_utils import check_if_dicts_are_equal
 
 from ...testing_utils import (
+    CaptureLogger,
     assert_tensors_close,
     backend_empty_cache,
     is_lora,
     is_torch_compile,
+    is_torch_version,
     require_peft_backend,
     require_peft_version_greater,
     require_torch_accelerator,
     require_torch_version_greater,
+    skip_mps,
     torch_device,
 )
+from .common import cast_inputs_to_dtype
 
 
 if is_peft_available():
@@ -82,8 +87,9 @@ class LoraTesterMixin:
         if not issubclass(self.model_class, PeftAdapterMixin):
             pytest.skip(f"PEFT is not supported for this model ({self.model_class.__name__}).")
 
+    @pytest.mark.parametrize("use_dora", [False, True], ids=["lora", "dora"])
     @torch.no_grad()
-    def test_save_load_lora_adapter(self, tmp_path, rank=4, lora_alpha=4, use_dora=False, atol=1e-4, rtol=1e-4):
+    def test_save_load_lora_adapter(self, tmp_path, use_dora, rank=4, lora_alpha=4, atol=1e-4, rtol=1e-4):
         from peft import LoraConfig
         from peft.utils import get_peft_model_state_dict
 
@@ -234,6 +240,378 @@ class LoraTesterMixin:
         with pytest.raises(TypeError) as exc_info:
             model.load_lora_adapter(tmp_path, prefix=None, use_safetensors=True)
         assert "`LoraConfig` class could not be instantiated" in str(exc_info.value)
+
+    def _model_output(self, model, inputs_dict):
+        output = model(**inputs_dict, return_dict=False)[0]
+        # Some models (e.g. Z-Image) return a list of per-sample tensors — flatten so the tensor comparisons in
+        # the tests below work regardless of the output layout.
+        if isinstance(output, (list, tuple)):
+            output = torch.cat([t.flatten() for t in output])
+        return output
+
+    @require_peft_version_greater("0.13.1")
+    @torch.no_grad()
+    def test_lora_low_cpu_mem_usage_with_injection(self):
+        """Tests that the LoRA state dict can be injected with low_cpu_mem_usage."""
+        from peft import LoraConfig, inject_adapter_in_model, set_peft_model_state_dict
+        from peft.utils import get_peft_model_state_dict
+
+        model = self.model_class(**self.get_init_dict()).to(torch_device)
+        lora_config = LoraConfig(
+            r=4,
+            lora_alpha=4,
+            target_modules=["to_q", "to_k", "to_v", "to_out.0"],
+            init_lora_weights=False,
+            use_dora=False,
+        )
+        inject_adapter_in_model(lora_config, model, low_cpu_mem_usage=True)
+        assert check_if_lora_correctly_set(model), "LoRA layers not set correctly"
+        assert "meta" in {p.device.type for p in model.parameters()}, "The LoRA params should be on 'meta' device."
+
+        peft_state_dict = get_peft_model_state_dict(model)
+        assert all(v.device.type == "meta" for v in peft_state_dict.values()), "The LoRA state dict should be on meta."
+        dummy_state_dict = {
+            k: torch.randn(v.shape, device=torch_device, dtype=v.dtype) for k, v in peft_state_dict.items()
+        }
+        set_peft_model_state_dict(model, dummy_state_dict, low_cpu_mem_usage=True)
+        assert "meta" not in {p.device.type for p in model.parameters()}, "No param should be on 'meta' device."
+
+        output = self._model_output(model, self.get_dummy_inputs())
+        assert not torch.isnan(output).any(), "Forward pass should work after low_cpu_mem_usage injection."
+
+    @skip_mps
+    @pytest.mark.xfail(
+        condition=torch.device(torch_device).type == "cpu" and is_torch_version(">=", "2.5"),
+        reason="Test currently fails on CPU and PyTorch 2.5.1 but not on PyTorch 2.4.1.",
+        strict=False,
+    )
+    @torch.no_grad()
+    def test_lora_fuse_nan(self):
+        from peft import LoraConfig
+        from peft.tuners.tuners_utils import BaseTunerLayer
+
+        model = self.model_class(**self.get_init_dict()).to(torch_device)
+        lora_config = LoraConfig(
+            r=4,
+            lora_alpha=4,
+            target_modules=["to_q", "to_k", "to_v", "to_out.0"],
+            init_lora_weights=False,
+            use_dora=False,
+        )
+        model.add_adapter(lora_config, adapter_name="adapter-1")
+        assert check_if_lora_correctly_set(model), "LoRA layers not set correctly"
+
+        # corrupt the LoRA weights with `inf` values
+        for module in model.modules():
+            if isinstance(module, BaseTunerLayer) and hasattr(module, "lora_A"):
+                module.lora_A["adapter-1"].weight += float("inf")
+
+        # with `safe_fusing=True` we should see an Error
+        with pytest.raises(ValueError):
+            model.fuse_lora(safe_fusing=True)
+
+        # without we should not see an error, but every output will be NaN
+        model.fuse_lora(safe_fusing=False)
+        output = self._model_output(model, self.get_dummy_inputs())
+        assert torch.isnan(output).all()
+
+    @require_peft_version_greater("0.13.2")
+    @torch.no_grad()
+    def test_lora_B_bias(self, atol=1e-3, rtol=1e-3):
+        from peft import LoraConfig
+
+        model = self.model_class(**self.get_init_dict()).to(torch_device)
+        inputs_dict = self.get_dummy_inputs()
+
+        torch.manual_seed(0)
+        original_output = self._model_output(model, inputs_dict)
+
+        lora_config_kwargs = {
+            "r": 4,
+            "lora_alpha": 4,
+            "target_modules": ["to_q", "to_k", "to_v", "to_out.0"],
+            "init_lora_weights": False,
+        }
+        model.add_adapter(LoraConfig(**lora_config_kwargs, lora_bias=False), adapter_name="adapter-1")
+        torch.manual_seed(0)
+        lora_bias_false_output = self._model_output(model, inputs_dict)
+        model.delete_adapters("adapter-1")
+
+        model.add_adapter(LoraConfig(**lora_config_kwargs, lora_bias=True), adapter_name="adapter-1")
+        torch.manual_seed(0)
+        lora_bias_true_output = self._model_output(model, inputs_dict)
+
+        assert not torch.allclose(original_output, lora_bias_false_output, atol=atol, rtol=rtol)
+        assert not torch.allclose(original_output, lora_bias_true_output, atol=atol, rtol=rtol)
+        assert not torch.allclose(lora_bias_false_output, lora_bias_true_output, atol=atol, rtol=rtol)
+
+    @torch.no_grad()
+    def test_correct_lora_configs_with_different_ranks(self, atol=1e-3, rtol=1e-3):
+        from peft import LoraConfig
+
+        model = self.model_class(**self.get_init_dict()).to(torch_device)
+        inputs_dict = self.get_dummy_inputs()
+
+        torch.manual_seed(0)
+        original_output = self._model_output(model, inputs_dict)
+
+        lora_config = LoraConfig(
+            r=4,
+            lora_alpha=4,
+            target_modules=["to_q", "to_k", "to_v", "to_out.0"],
+            init_lora_weights=False,
+            use_dora=False,
+        )
+        model.add_adapter(lora_config, adapter_name="adapter-1")
+        torch.manual_seed(0)
+        lora_output_same_rank = self._model_output(model, inputs_dict)
+        model.delete_adapters("adapter-1")
+
+        # Prefer a `to_k` projection inside an attention module, but fall back to any `to_k` for models whose
+        # attention modules are named differently (e.g. Z-Image's `attention`-prefixed towers).
+        candidates = [name for name, _ in model.named_modules() if "to_k" in name and "lora" not in name]
+        preferred = [name for name in candidates if "attn" in name or "attention" in name]
+        module_name_to_rank_update = (preferred or candidates)[0].replace(".base_layer.", ".")
+
+        # change the rank_pattern
+        updated_rank = lora_config.r * 2
+        lora_config.rank_pattern = {module_name_to_rank_update: updated_rank}
+
+        model.add_adapter(lora_config, adapter_name="adapter-1")
+        assert model.peft_config["adapter-1"].rank_pattern == {module_name_to_rank_update: updated_rank}
+
+        torch.manual_seed(0)
+        lora_output_diff_rank = self._model_output(model, inputs_dict)
+        assert not torch.allclose(original_output, lora_output_same_rank, atol=atol, rtol=rtol)
+        assert not torch.allclose(lora_output_diff_rank, lora_output_same_rank, atol=atol, rtol=rtol)
+
+        model.delete_adapters("adapter-1")
+
+        # similarly change the alpha_pattern
+        updated_alpha = lora_config.lora_alpha * 2
+        lora_config.alpha_pattern = {module_name_to_rank_update: updated_alpha}
+        model.add_adapter(lora_config, adapter_name="adapter-1")
+        assert model.peft_config["adapter-1"].alpha_pattern == {module_name_to_rank_update: updated_alpha}
+
+        torch.manual_seed(0)
+        lora_output_diff_alpha = self._model_output(model, inputs_dict)
+        assert not torch.allclose(original_output, lora_output_diff_alpha, atol=atol, rtol=rtol)
+        assert not torch.allclose(lora_output_diff_alpha, lora_output_same_rank, atol=atol, rtol=rtol)
+
+    def test_lora_missing_keys_warning(self, tmp_path):
+        from peft import LoraConfig
+
+        model = self.model_class(**self.get_init_dict()).to(torch_device)
+        lora_config = LoraConfig(
+            r=4,
+            lora_alpha=4,
+            target_modules=["to_q", "to_k", "to_v", "to_out.0"],
+            init_lora_weights=False,
+            use_dora=False,
+        )
+        model.add_adapter(lora_config)
+        assert check_if_lora_correctly_set(model), "LoRA layers not set correctly"
+
+        model.save_lora_adapter(tmp_path)
+        state_dict = safetensors.torch.load_file(os.path.join(tmp_path, "pytorch_lora_weights.safetensors"))
+        model.unload_lora()
+
+        # To make things dynamic since we cannot settle with a single key for all the models where we
+        # offer PEFT support.
+        missing_key = [k for k in state_dict if "lora_A" in k][0]
+        del state_dict[missing_key]
+
+        logger = logging.get_logger("diffusers.utils.peft_utils")
+        logger.setLevel(logging.WARNING)
+        with CaptureLogger(logger) as cap_logger:
+            model.load_lora_adapter(state_dict, prefix=None)
+
+        # Since the missing key won't contain the adapter name ("default_0").
+        assert missing_key in cap_logger.out.replace("default_0.", "")
+
+    def test_lora_unexpected_keys_warning(self, tmp_path):
+        from peft import LoraConfig
+
+        model = self.model_class(**self.get_init_dict()).to(torch_device)
+        lora_config = LoraConfig(
+            r=4,
+            lora_alpha=4,
+            target_modules=["to_q", "to_k", "to_v", "to_out.0"],
+            init_lora_weights=False,
+            use_dora=False,
+        )
+        model.add_adapter(lora_config)
+        assert check_if_lora_correctly_set(model), "LoRA layers not set correctly"
+
+        model.save_lora_adapter(tmp_path)
+        state_dict = safetensors.torch.load_file(os.path.join(tmp_path, "pytorch_lora_weights.safetensors"))
+        model.unload_lora()
+
+        unexpected_key = [k for k in state_dict if "lora_A" in k][0] + ".diffusers_cat"
+        state_dict[unexpected_key] = torch.tensor(1.0, device=torch_device)
+
+        logger = logging.get_logger("diffusers.utils.peft_utils")
+        logger.setLevel(logging.WARNING)
+        with CaptureLogger(logger) as cap_logger:
+            model.load_lora_adapter(state_dict, prefix=None)
+
+        assert ".diffusers_cat" in cap_logger.out
+
+    def test_logs_info_when_no_lora_keys_found(self):
+        model = self.model_class(**self.get_init_dict()).to(torch_device)
+
+        no_op_state_dict = {"lora_foo": torch.tensor(2.0), "lora_bar": torch.tensor(3.0)}
+        logger = logging.get_logger("diffusers.loaders.peft")
+        logger.setLevel(logging.WARNING)
+
+        with CaptureLogger(logger) as cap_logger:
+            model.load_lora_adapter(no_op_state_dict, prefix="transformer")
+
+        assert cap_logger.out.startswith(f"No LoRA keys associated to {self.model_class.__name__}")
+        assert not check_if_lora_correctly_set(model), "No LoRA layers should have been set"
+
+    @pytest.mark.xfail(
+        condition=torch_device == "mps",
+        reason="MPS does not support float8 casting.",
+        strict=True,
+    )
+    @torch.no_grad()
+    def test_lora_layerwise_casting_inference(self):
+        from peft import LoraConfig
+
+        from diffusers.hooks._common import _GO_LC_SUPPORTED_PYTORCH_LAYERS
+        from diffusers.hooks.layerwise_casting import DEFAULT_SKIP_MODULES_PATTERN
+
+        def check_linear_dtype(module, storage_dtype, compute_dtype):
+            patterns_to_check = DEFAULT_SKIP_MODULES_PATTERN
+            if getattr(module, "_skip_layerwise_casting_patterns", None) is not None:
+                patterns_to_check += tuple(module._skip_layerwise_casting_patterns)
+            for name, submodule in module.named_modules():
+                if not isinstance(submodule, _GO_LC_SUPPORTED_PYTORCH_LAYERS):
+                    continue
+                dtype_to_check = storage_dtype
+                if "lora" in name or any(re.search(pattern, name) for pattern in patterns_to_check):
+                    dtype_to_check = compute_dtype
+                if getattr(submodule, "weight", None) is not None:
+                    assert submodule.weight.dtype == dtype_to_check
+                if getattr(submodule, "bias", None) is not None:
+                    assert submodule.bias.dtype == dtype_to_check
+
+        def run_inference(storage_dtype, compute_dtype):
+            model = self.model_class(**self.get_init_dict()).to(torch_device, dtype=compute_dtype)
+            lora_config = LoraConfig(
+                r=4,
+                lora_alpha=4,
+                target_modules=["to_q", "to_k", "to_v", "to_out.0"],
+                init_lora_weights=False,
+                use_dora=False,
+            )
+            model.add_adapter(lora_config)
+            assert check_if_lora_correctly_set(model), "LoRA layers not set correctly"
+
+            if storage_dtype is not None:
+                model.enable_layerwise_casting(storage_dtype=storage_dtype, compute_dtype=compute_dtype)
+                check_linear_dtype(model, storage_dtype, compute_dtype)
+
+            inputs_dict = cast_inputs_to_dtype(self.get_dummy_inputs(), torch.float32, compute_dtype)
+            return model(**inputs_dict, return_dict=False)[0]
+
+        run_inference(storage_dtype=None, compute_dtype=torch.float32)
+        run_inference(storage_dtype=torch.float8_e4m3fn, compute_dtype=torch.float32)
+        run_inference(storage_dtype=torch.float8_e4m3fn, compute_dtype=torch.bfloat16)
+
+    @pytest.mark.xfail(
+        condition=torch_device == "mps",
+        reason="MPS does not support float8 casting.",
+        strict=True,
+    )
+    @require_peft_version_greater("0.14.0")
+    @torch.no_grad()
+    def test_lora_layerwise_casting_peft_input_autocast(self, tmp_path):
+        r"""
+        A test that checks if layerwise casting works correctly with PEFT layers and forward pass does not fail. This
+        is different from `test_lora_layerwise_casting_inference` as that disables the application of layerwise cast
+        hooks on the PEFT layers (relevant logic in `models.modeling_utils.ModelMixin.enable_layerwise_casting`). In
+        this test, we enable the layerwise casting on the PEFT layers as well. If run with PEFT version <= 0.14.0,
+        this test will fail with the following error:
+
+        ```
+        RuntimeError: expected mat1 and mat2 to have the same dtype, but got: c10::Float8_e4m3fn != float
+        ```
+
+        See the docstring of [`hooks.layerwise_casting.PeftInputAutocastDisableHook`] for more details.
+        """
+        from peft import LoraConfig
+        from peft.tuners.tuners_utils import BaseTunerLayer
+
+        from diffusers.hooks._common import _GO_LC_SUPPORTED_PYTORCH_LAYERS
+        from diffusers.hooks.layerwise_casting import (
+            _PEFT_AUTOCAST_DISABLE_HOOK,
+            DEFAULT_SKIP_MODULES_PATTERN,
+            apply_layerwise_casting,
+        )
+
+        storage_dtype = torch.float8_e4m3fn
+        compute_dtype = torch.float32
+
+        def check_module(model):
+            # This will also check if the peft layers are in torch.float8_e4m3fn dtype (unlike
+            # test_lora_layerwise_casting_inference)
+            for name, module in model.named_modules():
+                if not isinstance(module, _GO_LC_SUPPORTED_PYTORCH_LAYERS):
+                    continue
+                dtype_to_check = storage_dtype
+                if any(re.search(pattern, name) for pattern in patterns_to_check):
+                    dtype_to_check = compute_dtype
+                if getattr(module, "weight", None) is not None:
+                    assert module.weight.dtype == dtype_to_check
+                if getattr(module, "bias", None) is not None:
+                    assert module.bias.dtype == dtype_to_check
+                if isinstance(module, BaseTunerLayer):
+                    assert getattr(module, "_diffusers_hook", None) is not None
+                    assert module._diffusers_hook.get_hook(_PEFT_AUTOCAST_DISABLE_HOOK) is not None
+
+        lora_config = LoraConfig(
+            r=4,
+            lora_alpha=4,
+            target_modules=["to_q", "to_k", "to_v", "to_out.0"],
+            init_lora_weights=False,
+            use_dora=False,
+        )
+
+        # 1. Test forward with add_adapter
+        model = self.model_class(**self.get_init_dict()).to(torch_device, dtype=compute_dtype)
+        model.add_adapter(lora_config)
+        assert check_if_lora_correctly_set(model), "LoRA layers not set correctly"
+
+        patterns_to_check = DEFAULT_SKIP_MODULES_PATTERN
+        if getattr(model, "_skip_layerwise_casting_patterns", None) is not None:
+            patterns_to_check += tuple(model._skip_layerwise_casting_patterns)
+
+        apply_layerwise_casting(
+            model, storage_dtype=storage_dtype, compute_dtype=compute_dtype, skip_modules_pattern=patterns_to_check
+        )
+        check_module(model)
+
+        inputs_dict = self.get_dummy_inputs()
+        model(**inputs_dict, return_dict=False)
+
+        # 2. Test forward with load_lora_adapter
+        model.save_lora_adapter(tmp_path)
+        assert os.path.isfile(os.path.join(tmp_path, "pytorch_lora_weights.safetensors")), (
+            "LoRA weights file not created"
+        )
+
+        model = self.model_class(**self.get_init_dict()).to(torch_device, dtype=compute_dtype)
+        model.load_lora_adapter(tmp_path, prefix=None, use_safetensors=True)
+        assert check_if_lora_correctly_set(model), "LoRA layers not set correctly"
+
+        apply_layerwise_casting(
+            model, storage_dtype=storage_dtype, compute_dtype=compute_dtype, skip_modules_pattern=patterns_to_check
+        )
+        check_module(model)
+
+        model(**inputs_dict, return_dict=False)
 
 
 @is_lora
