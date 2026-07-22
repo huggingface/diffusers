@@ -1299,7 +1299,7 @@ class LTX2HDRPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoaderMixi
         # 6. Prepare timesteps
         sigmas = np.linspace(1.0, 1 / num_inference_steps, num_inference_steps) if sigmas is None else sigmas
         mu = calculate_shift(
-            self.scheduler.config.get("max_image_seq_len", 4096),
+            latents.shape[1],
             self.scheduler.config.get("base_image_seq_len", 1024),
             self.scheduler.config.get("max_image_seq_len", 4096),
             self.scheduler.config.get("base_shift", 0.95),
