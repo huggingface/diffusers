@@ -277,15 +277,14 @@ def _fetch_state_dict(
 def _best_guess_weight_name(
     pretrained_model_name_or_path_or_dict, file_extension=".safetensors", local_files_only=False
 ):
-    if local_files_only or HF_HUB_OFFLINE:
-        raise ValueError("When using the offline mode, you must specify a `weight_name`.")
-
     targeted_files = []
 
     if os.path.isfile(pretrained_model_name_or_path_or_dict):
         return
     elif os.path.isdir(pretrained_model_name_or_path_or_dict):
         targeted_files = [f for f in os.listdir(pretrained_model_name_or_path_or_dict) if f.endswith(file_extension)]
+    elif local_files_only or HF_HUB_OFFLINE:
+        raise ValueError("When using the offline mode, you must specify a `weight_name`.")
     else:
         files_in_repo = model_info(pretrained_model_name_or_path_or_dict).siblings
         targeted_files = [f.rfilename for f in files_in_repo if f.rfilename.endswith(file_extension)]
@@ -545,8 +544,6 @@ class LoraBaseMixin:
         r"""
         Fuses the LoRA parameters into the original parameters of the corresponding blocks.
 
-        > [!WARNING] > This is an experimental API.
-
         Args:
             components: (`list[str]`): list of LoRA-injectable components to fuse the LoRAs into.
             lora_scale (`float`, defaults to 1.0):
@@ -627,8 +624,6 @@ class LoraBaseMixin:
         r"""
         Reverses the effect of
         [`pipe.fuse_lora()`](https://huggingface.co/docs/diffusers/main/en/api/loaders#diffusers.loaders.LoraBaseMixin.fuse_lora).
-
-        > [!WARNING] > This is an experimental API.
 
         Args:
             components (`list[str]`): list of LoRA-injectable components to unfuse LoRA from.

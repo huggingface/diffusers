@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2025 HuggingFace Inc.
+# Copyright 2026 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -106,7 +106,7 @@ class SDXLModularIPAdapterTesterMixin:
         blocks = self.pipeline_blocks_class()
         _ = blocks.sub_blocks.pop("ip_adapter")
         pipe = blocks.init_pipeline(self.pretrained_model_name_or_path)
-        pipe.load_components(torch_dtype=torch.float32)
+        pipe.load_components(dtype=torch.float32)
         pipe = pipe.to(torch_device)
 
         cross_attention_dim = pipe.unet.config.get("cross_attention_dim")

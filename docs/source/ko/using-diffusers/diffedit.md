@@ -53,7 +53,7 @@ pipeline = StableDiffusionDiffEditPipeline.from_pretrained(
 pipeline.scheduler = DDIMScheduler.from_config(pipeline.scheduler.config)
 pipeline.inverse_scheduler = DDIMInverseScheduler.from_config(pipeline.scheduler.config)
 pipeline.enable_model_cpu_offload()
-pipeline.enable_vae_slicing()
+pipeline.vae.enable_slicing()
 ```
 
 수정하기 위한 이미지를 불러옵니다:
@@ -169,7 +169,7 @@ pipeline = StableDiffusionDiffEditPipeline.from_pretrained(
     "stabilityai/stable-diffusion-2-1", torch_dtype=torch.float16, use_safetensors=True
 )
 pipeline.enable_model_cpu_offload()
-pipeline.enable_vae_slicing()
+pipeline.vae.enable_slicing()
 
 @torch.no_grad()
 def embed_prompts(sentences, tokenizer, text_encoder, device="cuda"):

@@ -15,7 +15,6 @@
 # limitations under the License.
 """ConfigMixin base class and utilities."""
 
-import dataclasses
 import functools
 import importlib
 import inspect
@@ -510,10 +509,6 @@ class ConfigMixin:
         # remove general kwargs if present in dict
         if "kwargs" in expected_keys:
             expected_keys.remove("kwargs")
-        # remove flax internal keys
-        if hasattr(cls, "_flax_internal_args"):
-            for arg in cls._flax_internal_args:
-                expected_keys.remove(arg)
 
         # 2. Remove attributes that cannot be expected from expected config attributes
         # remove keys to be ignored
@@ -735,54 +730,6 @@ def register_to_config(init):
         init(self, *args, **init_kwargs)
 
     return inner_init
-
-
-def flax_register_to_config(cls):
-    original_init = cls.__init__
-
-    @functools.wraps(original_init)
-    def init(self, *args, **kwargs):
-        if not isinstance(self, ConfigMixin):
-            raise RuntimeError(
-                f"`@register_for_config` was applied to {self.__class__.__name__} init method, but this class does "
-                "not inherit from `ConfigMixin`."
-            )
-
-        # Ignore private kwargs in the init. Retrieve all passed attributes
-        init_kwargs = dict(kwargs.items())
-
-        # Retrieve default values
-        fields = dataclasses.fields(self)
-        default_kwargs = {}
-        for field in fields:
-            # ignore flax specific attributes
-            if field.name in self._flax_internal_args:
-                continue
-            if type(field.default) == dataclasses._MISSING_TYPE:
-                default_kwargs[field.name] = None
-            else:
-                default_kwargs[field.name] = getattr(self, field.name)
-
-        # Make sure init_kwargs override default kwargs
-        new_kwargs = {**default_kwargs, **init_kwargs}
-        # dtype should be part of `init_kwargs`, but not `new_kwargs`
-        if "dtype" in new_kwargs:
-            new_kwargs.pop("dtype")
-
-        # Get positional arguments aligned with kwargs
-        for i, arg in enumerate(args):
-            name = fields[i].name
-            new_kwargs[name] = arg
-
-        # Take note of the parameters that were not present in the loaded config
-        if len(set(new_kwargs.keys()) - set(init_kwargs)) > 0:
-            new_kwargs["_use_default_values"] = list(set(new_kwargs.keys()) - set(init_kwargs))
-
-        getattr(self, "register_to_config")(**new_kwargs)
-        original_init(self, *args, **kwargs)
-
-    cls.__init__ = init
-    return cls
 
 
 class LegacyConfigMixin(ConfigMixin):

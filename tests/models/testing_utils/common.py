@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2025 HuggingFace Inc.
+# Copyright 2026 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -378,6 +378,21 @@ class ModelTesterMixin(BaseModelOutputMixin):
             # When loading without accelerate dtype == torch.float32 if _keep_in_fp32_modules is not None
             new_model = self.model_class.from_pretrained(tmp_path, low_cpu_mem_usage=False, torch_dtype=dtype)
             assert new_model.dtype == dtype
+
+    @pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.bfloat16], ids=["fp32", "fp16", "bf16"])
+    def test_from_pretrained_dtype_alias(self, tmp_path, dtype):
+        # `dtype` is an alias for `torch_dtype` in `from_pretrained`.
+        if torch_device == "mps" and dtype == torch.bfloat16:
+            pytest.skip(reason=f"{dtype} is not supported on {torch_device}")
+
+        model = self.model_class(**self.get_init_dict())
+        model.to(torch_device)
+        model.eval()
+
+        model.to(dtype)
+        model.save_pretrained(tmp_path)
+        new_model = self.model_class.from_pretrained(tmp_path, low_cpu_mem_usage=True, dtype=dtype)
+        assert new_model.dtype == dtype
 
     @torch.no_grad()
     def test_determinism(self, atol=1e-5, rtol=0):

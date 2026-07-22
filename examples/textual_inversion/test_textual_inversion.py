@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2025 HuggingFace Inc.
+# Copyright 2026 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -35,7 +35,7 @@ class TextualInversion(ExamplesTestsAccelerate):
         with tempfile.TemporaryDirectory() as tmpdir:
             test_args = f"""
                 examples/textual_inversion/textual_inversion.py
-                --pretrained_model_name_or_path hf-internal-testing/tiny-stable-diffusion-pipe
+                --pretrained_model_name_or_path hf-internal-testing/tiny-stable-diffusion-torch
                 --train_data_dir docs/source/en/imgs
                 --learnable_property object
                 --placeholder_token <cat-toy>
@@ -61,7 +61,7 @@ class TextualInversion(ExamplesTestsAccelerate):
         with tempfile.TemporaryDirectory() as tmpdir:
             test_args = f"""
                 examples/textual_inversion/textual_inversion.py
-                --pretrained_model_name_or_path hf-internal-testing/tiny-stable-diffusion-pipe
+                --pretrained_model_name_or_path hf-internal-testing/tiny-stable-diffusion-torch
                 --train_data_dir docs/source/en/imgs
                 --learnable_property object
                 --placeholder_token <cat-toy>
@@ -93,7 +93,7 @@ class TextualInversion(ExamplesTestsAccelerate):
         with tempfile.TemporaryDirectory() as tmpdir:
             test_args = f"""
                 examples/textual_inversion/textual_inversion.py
-                --pretrained_model_name_or_path hf-internal-testing/tiny-stable-diffusion-pipe
+                --pretrained_model_name_or_path hf-internal-testing/tiny-stable-diffusion-torch
                 --train_data_dir docs/source/en/imgs
                 --learnable_property object
                 --placeholder_token <cat-toy>
@@ -122,7 +122,7 @@ class TextualInversion(ExamplesTestsAccelerate):
 
             resume_run_args = f"""
                 examples/textual_inversion/textual_inversion.py
-                --pretrained_model_name_or_path hf-internal-testing/tiny-stable-diffusion-pipe
+                --pretrained_model_name_or_path hf-internal-testing/tiny-stable-diffusion-torch
                 --train_data_dir docs/source/en/imgs
                 --learnable_property object
                 --placeholder_token <cat-toy>

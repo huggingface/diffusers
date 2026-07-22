@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2025 HuggingFace Inc.
+# Copyright 2026 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -264,8 +264,6 @@ class MultiControlNetInpaintPipelineFastTests(
     pipeline_class = StableDiffusionControlNetInpaintPipeline
     params = TEXT_GUIDED_IMAGE_INPAINTING_PARAMS
     batch_params = TEXT_GUIDED_IMAGE_INPAINTING_BATCH_PARAMS
-
-    supports_dduf = False
 
     def get_dummy_components(self):
         torch.manual_seed(0)
