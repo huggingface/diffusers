@@ -371,6 +371,33 @@ class ModularPipelineTesterMixin:
 
         assert torch.abs(image_slices[0] - image_slices[1]).max() < 1e-3
 
+    @require_accelerator
+    def test_group_offloading_execution_device(self):
+        from diffusers.hooks import apply_group_offloading
+
+        pipe = self.get_pipeline().to("cpu")
+        assert pipe._execution_device.type == "cpu"
+
+        offloaded = None
+        for name, component in pipe.components.items():
+            if not isinstance(component, torch.nn.Module):
+                continue
+            if not getattr(component, "_supports_group_offloading", True):
+                continue
+            apply_group_offloading(
+                component,
+                onload_device=torch.device(torch_device),
+                offload_device=torch.device("cpu"),
+                offload_type="leaf_level",
+            )
+            offloaded = name
+            break
+
+        if offloaded is None:
+            pytest.skip("No component supports group offloading.")
+
+        assert pipe._execution_device.type == torch.device(torch_device).type
+
     def test_save_from_pretrained(self, tmp_path):
         pipes = []
         base_pipe = self.get_pipeline().to(torch_device)
