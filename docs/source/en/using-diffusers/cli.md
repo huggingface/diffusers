@@ -257,11 +257,11 @@ weight size for faster loading. See `diffusers-cli fp16_safetensors --help` for 
 
 ## `skills`
 
-Install Agent Skills bundles from the diffusers repo (`.ai/skills/`).
+Install skills from the diffusers repo ([`.ai/skills/`](https://github.com/huggingface/diffusers/tree/main/.ai/skills)).
 
 ```bash
-# Install the diffusers-cli skill
-diffusers-cli skills add diffusers-cli
+# Install a single skill
+diffusers-cli skills add "<skill name>"
 
 # Install every skill in the registry
 diffusers-cli skills add --all
@@ -279,5 +279,4 @@ diffusers-cli skills update
 diffusers-cli skills add diffusers-cli --global
 ```
 
-`--force` overwrites an existing install. `--all` fetches every skill in the registry in one call
-and downgrades individual failures to warnings so one broken skill doesn't abort the batch.
+
