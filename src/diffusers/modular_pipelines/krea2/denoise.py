@@ -294,8 +294,6 @@ class Krea2DenoiseStep(Krea2DenoiseLoopWrapper):
               Packed image latents.
           batch_size (`int`):
               Effective batch size.
-          num_inference_steps (`int`):
-              The number of denoising steps.
           prompt_embeds (`Tensor`):
               Conditional stacked text features.
           prompt_embeds_mask (`Tensor`):
@@ -338,7 +336,7 @@ class Krea2TurboDenoiseStep(Krea2DenoiseLoopWrapper):
       Inputs:
           timesteps (`Tensor`):
               Denoising timesteps from set_timesteps.
-          num_inference_steps (`int`, *optional*, defaults to 28):
+          num_inference_steps (`int`):
               The number of denoising steps.
           attention_kwargs (`dict`, *optional*):
               Additional kwargs for attention processors.

@@ -64,9 +64,9 @@ class Krea2CoreDenoiseStep(SequentialPipelineBlocks):
               Per-prompt negative text mask.
           latents (`Tensor`, *optional*):
               Pre-generated noisy latents for image generation.
-          height (`int`):
+          height (`int`, *optional*, defaults to 1024):
               The height in pixels of the generated image.
-          width (`int`):
+          width (`int`, *optional*, defaults to 1024):
               The width in pixels of the generated image.
           generator (`Generator`, *optional*):
               Torch generator for deterministic generation.
@@ -126,9 +126,9 @@ class Krea2AutoBlocks(SequentialPipelineBlocks):
               The number of images to generate per prompt.
           latents (`Tensor`, *optional*):
               Pre-generated noisy latents for image generation.
-          height (`int`):
+          height (`int`, *optional*, defaults to 1024):
               The height in pixels of the generated image.
-          width (`int`):
+          width (`int`, *optional*, defaults to 1024):
               The width in pixels of the generated image.
           generator (`Generator`, *optional*):
               Torch generator for deterministic generation.

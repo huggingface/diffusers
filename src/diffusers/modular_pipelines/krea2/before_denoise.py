@@ -263,9 +263,9 @@ class Krea2PrepareLatentsStep(ModularPipelineBlocks):
       Inputs:
           latents (`Tensor`, *optional*):
               Pre-generated noisy latents for image generation.
-          height (`int`):
+          height (`int`, *optional*, defaults to 1024):
               The height in pixels of the generated image.
-          width (`int`):
+          width (`int`, *optional*, defaults to 1024):
               The width in pixels of the generated image.
           generator (`Generator`, *optional*):
               Torch generator for deterministic generation.
@@ -518,9 +518,9 @@ class Krea2PreparePositionIdsStep(ModularPipelineBlocks):
     tokens at their (0, h, w) latent-grid coordinates. Place after prepare_latents.
 
       Inputs:
-          height (`int`):
+          height (`int`, *optional*, defaults to 1024):
               The height in pixels of the generated image.
-          width (`int`):
+          width (`int`, *optional*, defaults to 1024):
               The width in pixels of the generated image.
           prompt_embeds (`Tensor`):
               Batch-expanded text features (only text_seq_len is used).

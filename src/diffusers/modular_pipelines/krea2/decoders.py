@@ -39,9 +39,9 @@ class Krea2DecodeStep(ModularPipelineBlocks):
       Inputs:
           output_type (`str`, *optional*, defaults to pil):
               Output format: 'pil', 'np', 'pt'.
-          height (`int`):
+          height (`int`, *optional*, defaults to 1024):
               The height in pixels of the generated image.
-          width (`int`):
+          width (`int`, *optional*, defaults to 1024):
               The width in pixels of the generated image.
           latents (`Tensor`):
               The denoised packed latents (B, image_seq_len, in_channels) from the denoising loop.
