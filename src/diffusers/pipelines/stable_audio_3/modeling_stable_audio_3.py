@@ -96,11 +96,9 @@ class StableAudio3DurationEmbedder(ModelMixin, ConfigMixin):
         Returns:
             `torch.Tensor` of shape `(batch, output_dim)` — duration embeddings.
         """
-        cfg = self.config
-
         # 1. Normalize to [0, 1]
-        seconds = seconds.float().clamp(cfg.min_val, cfg.max_val)
-        t_norm = (seconds - cfg.min_val) / (cfg.max_val - cfg.min_val)
+        seconds = seconds.float().clamp(self.config.min_val, self.config.max_val)
+        t_norm = (seconds - self.config.min_val) / (self.config.max_val - self.config.min_val)
 
         # 2. Exponential Fourier features — run in fp32 for stability
         t_norm = t_norm.reshape(-1, 1)  # (B, 1)
@@ -108,4 +106,4 @@ class StableAudio3DurationEmbedder(ModelMixin, ConfigMixin):
         fourier = torch.cat([args.cos(), args.sin()], dim=-1)  # (B, fourier_dim)
 
         # 3. Linear projection
-        return self.linear(fourier.to(self.linear.weight.dtype))  # (B, output_dim)
+        return self.linear(fourier.to(self.dtype))  # (B, output_dim)

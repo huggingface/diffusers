@@ -72,13 +72,11 @@ else:
     _import_structure["scheduling_k_dpm_2_discrete"] = ["KDPM2DiscreteScheduler"]
     _import_structure["scheduling_lcm"] = ["LCMScheduler"]
     _import_structure["scheduling_ltx_euler_ancestral_rf"] = ["LTXEulerAncestralRFScheduler"]
-    _import_structure["scheduling_ping_pong"] = ["PingPongScheduler"]
     _import_structure["scheduling_pndm"] = ["PNDMScheduler"]
     _import_structure["scheduling_repaint"] = ["RePaintScheduler"]
     _import_structure["scheduling_sasolver"] = ["SASolverScheduler"]
     _import_structure["scheduling_scm"] = ["SCMScheduler"]
     _import_structure["scheduling_sde_ve"] = ["ScoreSdeVeScheduler"]
-    _import_structure["scheduling_stable_audio3_euler"] = ["StableAudio3EulerScheduler"]
     _import_structure["scheduling_tcd"] = ["TCDScheduler"]
     _import_structure["scheduling_unclip"] = ["UnCLIPScheduler"]
     _import_structure["scheduling_unipc_multistep"] = ["UniPCMultistepScheduler"]
@@ -157,13 +155,11 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .scheduling_k_dpm_2_discrete import KDPM2DiscreteScheduler
         from .scheduling_lcm import LCMScheduler
         from .scheduling_ltx_euler_ancestral_rf import LTXEulerAncestralRFScheduler
-        from .scheduling_ping_pong import PingPongScheduler
         from .scheduling_pndm import PNDMScheduler
         from .scheduling_repaint import RePaintScheduler
         from .scheduling_sasolver import SASolverScheduler
         from .scheduling_scm import SCMScheduler
         from .scheduling_sde_ve import ScoreSdeVeScheduler
-        from .scheduling_stable_audio3_euler import StableAudio3EulerScheduler
         from .scheduling_tcd import TCDScheduler
         from .scheduling_unclip import UnCLIPScheduler
         from .scheduling_unipc_multistep import UniPCMultistepScheduler

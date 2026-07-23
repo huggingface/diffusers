@@ -21,15 +21,16 @@ stereo audio at 44.1 kHz. It uses a rectified-flow DiT conditioned on two signal
 
 Audio is decoded by the SAME (Semantically-Aligned Music Encoder) autoencoder, [`AutoencoderSAME`].
 
-There are two checkpoints, each with its own scheduler and step count:
+Both checkpoints use [`FlowMatchEulerDiscreteScheduler`] with a log-SNR-uniform sigma schedule, differing only in
+`stochastic_sampling` and the default step count:
 
-| Checkpoint | `diffusion_objective` | Scheduler | `num_inference_steps` |
+| Checkpoint | `diffusion_objective` | `stochastic_sampling` | `num_inference_steps` |
 |---|---|---|---|
-| `stable-audio-3-medium-base` | `rectified_flow` | [`StableAudio3EulerScheduler`] | **100** (not distilled) |
-| `stable-audio-3-medium` (distilled) | `rf_denoiser` | [`PingPongScheduler`] | **8** (distilled for 8 steps) |
+| `stable-audio-3-medium-base` | `rectified_flow` | `False` (deterministic Euler) | **100** (not distilled) |
+| `stable-audio-3-medium` (distilled) | `rf_denoiser` | `True` (ping-pong re-noise) | **8** (distilled for 8 steps) |
 
-The correct scheduler is baked into each converted checkpoint, so `num_inference_steps` defaults to the right value
-when you leave it unset. Only pass it to override.
+The correct scheduler config is baked into each converted checkpoint, so `num_inference_steps` defaults to the right
+value when you leave it unset. Only pass it to override.
 
 Original codebase: [Stability-AI/stable-audio-3](https://github.com/Stability-AI/stable-audio-3).
 

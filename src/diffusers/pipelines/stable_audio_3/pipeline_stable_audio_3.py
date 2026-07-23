@@ -23,8 +23,9 @@ Key differences from the original ``StableAudioPipeline``:
 * **``duration`` in seconds** (single float) replaces the ``audio_start_in_s`` / ``audio_end_in_s`` pair.
 * **No ``projection_model``** — T5Gemma output (768 d) feeds cross-attention directly; duration is embedded by
   ``StableAudio3DurationEmbedder``.
-* **PingPongScheduler** (N=8 stochastic re-noise steps) is the production scheduler, but any compatible scheduler can
-  be substituted.
+* **``FlowMatchEulerDiscreteScheduler`` with ``stochastic_sampling=True``** (N=8 steps) reproduces the reference
+  "ping-pong" stochastic re-noise sampler used by the distilled production checkpoint; any compatible scheduler can be
+  substituted.
 """
 
 import math
@@ -36,8 +37,6 @@ from transformers import GemmaTokenizer, GemmaTokenizerFast, T5GemmaEncoderModel
 from ...models.autoencoders.autoencoder_same import AutoencoderSAME
 from ...models.transformers.transformer_stable_audio3 import StableAudio3DiTModel
 from ...schedulers.scheduling_flow_match_euler_discrete import FlowMatchEulerDiscreteScheduler
-from ...schedulers.scheduling_ping_pong import PingPongScheduler
-from ...schedulers.scheduling_stable_audio3_euler import StableAudio3EulerScheduler
 from ...utils import is_torch_xla_available, logging, replace_example_docstring
 from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import AudioPipelineOutput, DiffusionPipeline
@@ -53,12 +52,92 @@ else:
 
 logger = logging.get_logger(__name__)
 
+
+def retrieve_timesteps(
+    scheduler,
+    num_inference_steps: Optional[int] = None,
+    device: Optional[Union[str, torch.device]] = None,
+    sigmas: Optional[List[float]] = None,
+    **kwargs,
+):
+    r"""
+    Calls the scheduler's `set_timesteps` method and retrieves timesteps from the scheduler after the call.
+
+    Args:
+        scheduler (`SchedulerMixin`):
+            The scheduler to get timesteps from.
+        num_inference_steps (`int`, *optional*):
+            The number of diffusion steps used when generating samples with a pre-trained model. If used, `sigmas` must
+            be `None`.
+        device (`str` or `torch.device`, *optional*):
+            The device to which the timesteps should be moved to. If `None`, the timesteps are not moved.
+        sigmas (`List[float]`, *optional*):
+            Custom sigmas used to override the timestep spacing strategy of the scheduler. If `sigmas` is passed,
+            `num_inference_steps` must be `None`.
+
+    Returns:
+        `Tuple[torch.Tensor, int]`: A tuple where the first element is the timestep schedule from the scheduler and the
+        second element is the number of inference steps.
+    """
+    if sigmas is not None:
+        scheduler.set_timesteps(sigmas=sigmas, device=device, **kwargs)
+        timesteps = scheduler.timesteps
+        num_inference_steps = len(timesteps)
+    else:
+        scheduler.set_timesteps(num_inference_steps, device=device, **kwargs)
+        timesteps = scheduler.timesteps
+    return timesteps, num_inference_steps
+
+
+def logsnr_sigma_schedule(
+    num_inference_steps: int,
+    logsnr_min: float,
+    logsnr_max: float,
+    sigma_max: float = 1.0,
+) -> List[float]:
+    """
+    Build the log-SNR-warped sigma schedule used by Stable Audio 3's rectified-flow sampling.
+
+    A linear grid ``t`` of ``num_inference_steps + 1`` breakpoints over ``[sigma_max, 0]`` is warped through the
+    log-SNR affine map ``logsnr = logsnr_max − t · (logsnr_max − logsnr_min)`` and converted to the flow-matching sigma
+    variable via ``sigma = sigmoid(-logsnr)``. The start is then forced to exactly ``sigma_max`` — required because
+    that's also the exact noise level the starting latents were mixed at, whereas the natural ``sigmoid(-logsnr)``
+    value would be off by a small amount — before the terminal breakpoint is dropped, leaving ``num_inference_steps``
+    sigmas to pass to `FlowMatchEulerDiscreteScheduler.set_timesteps(sigmas=...)`. The dropped terminal breakpoint
+    doesn't need to be forced to 0 itself: the scheduler unconditionally appends its own terminal zero sigma, which is
+    what actually determines the final denoising step's target.
+
+    When ``sigma_max=1.0`` this is equivalent to placing the breakpoints uniformly in log-SNR space over ``[logsnr_min,
+    logsnr_max]``. For ``sigma_max < 1.0`` (audio-to-audio variation via ``init_noise_level``), the schedule is *not*
+    uniform in log-SNR space, and its first two breakpoints are not guaranteed to be monotonic — both are properties of
+    the reference implementation, reproduced here for parity.
+
+    Args:
+        num_inference_steps (`int`): Number of denoising steps.
+        logsnr_min (`float`): Minimum log-SNR value — maps to the high-noise end of the schedule (``t=sigma_max``).
+        logsnr_max (`float`): Maximum log-SNR value — maps to the low-noise end of the schedule (``t=0``).
+        sigma_max (`float`, defaults to 1.0):
+            Starting noise level. ``1.0`` for full generation; ``< 1.0`` for audio-to-audio variation
+            (``init_noise_level``), where the starting latents are already partially denoised.
+
+    Returns:
+        `List[float]`: `num_inference_steps` sigma values, starting at exactly `sigma_max` and decreasing from
+            there. The scheduler appends its own terminal 0 after this list, so the full schedule used at inference
+            time ends at exactly 0 even though the last value here does not.
+    """
+    t = torch.linspace(sigma_max, 0.0, num_inference_steps + 1)
+    logsnr = logsnr_max - t * (logsnr_max - logsnr_min)
+    sigmas = torch.sigmoid(-logsnr)  # (N+1,)
+    sigmas[0] = sigma_max
+    return sigmas[:-1].tolist()
+
+
 EXAMPLE_DOC_STRING = """
     Examples:
         ```py
         >>> import torch
         >>> import soundfile as sf
-        >>> from diffusers import StableAudio3Pipeline, PingPongScheduler
+        >>> from diffusers import StableAudio3Pipeline
 
         >>> pipe = StableAudio3Pipeline.from_pretrained("stabilityai/stable-audio-3-medium", torch_dtype=torch.float16)
         >>> pipe = pipe.to("cuda")
@@ -70,7 +149,7 @@ EXAMPLE_DOC_STRING = """
         ...     generator=generator,
         ... ).audios
 
-        >>> sf.write("output.wav", audio[0].T.cpu().float().numpy(), samplerate=44100)
+        >>> sf.write("output.wav", audio[0].T.cpu().float().numpy(), samplerate=pipe.vae.config.sampling_rate)
         ```
 """
 
@@ -97,9 +176,10 @@ class StableAudio3Pipeline(DiffusionPipeline):
             Maps ``duration`` in seconds to a global conditioning vector for AdaLN in each DiT block.
         transformer ([`StableAudio3DiTModel`]):
             The rectified-flow velocity-prediction DiT.
-        scheduler ([`PingPongScheduler`] or compatible):
-            Scheduler for the iterative denoising loop. The production SA3 Medium model is distilled for exactly 8
-            ping-pong steps.
+        scheduler ([`FlowMatchEulerDiscreteScheduler`]):
+            Scheduler for the iterative denoising loop. The production (distilled) SA3 Medium checkpoint uses
+            `stochastic_sampling=True` for exactly 8 ping-pong steps; the non-distilled base checkpoint uses
+            `stochastic_sampling=False` for ~100 deterministic Euler steps.
     """
 
     model_cpu_offload_seq = "text_encoder->duration_embedder->transformer->vae"
@@ -112,7 +192,7 @@ class StableAudio3Pipeline(DiffusionPipeline):
         tokenizer: Union[GemmaTokenizer, GemmaTokenizerFast],
         duration_embedder: StableAudio3DurationEmbedder,
         transformer: StableAudio3DiTModel,
-        scheduler: Union[PingPongScheduler, StableAudio3EulerScheduler, FlowMatchEulerDiscreteScheduler],
+        scheduler: FlowMatchEulerDiscreteScheduler,
     ) -> None:
         super().__init__()
 
@@ -322,6 +402,8 @@ class StableAudio3Pipeline(DiffusionPipeline):
         prompt: Optional[Union[str, List[str]]] = None,
         duration: float = 10.0,
         num_inference_steps: Optional[int] = None,
+        logsnr_min: float = -6.2,
+        logsnr_max: float = 2.0,
         silence_padding_duration: float = 0.0,
         guidance_scale: float = 1.0,
         negative_prompt: Optional[Union[str, List[str]]] = None,
@@ -346,9 +428,13 @@ class StableAudio3Pipeline(DiffusionPipeline):
             duration (`float`, defaults to 10.0):
                 Requested output duration in seconds.
             num_inference_steps (`int`, *optional*):
-                Number of denoising steps. When ``None`` (default), the step count is taken from the checkpoint's
-                scheduler config: **8** for the distilled model (`PingPongScheduler`) and **100** for the base model
-                (`StableAudio3EulerScheduler`). Pass an explicit value to override.
+                Number of denoising steps. When ``None`` (default), the step count is chosen from the scheduler's
+                `stochastic_sampling` config: **8** when `True` (the distilled ping-pong-style checkpoint) and **100**
+                when `False` (the non-distilled base checkpoint). Pass an explicit value to override.
+            logsnr_min (`float`, defaults to -6.2):
+                Minimum log-SNR value for the noise schedule — maps to the high-noise start of the schedule.
+            logsnr_max (`float`, defaults to 2.0):
+                Maximum log-SNR value for the noise schedule — maps to the low-noise end of the schedule.
             silence_padding_duration (`float`, defaults to 0.0):
                 Extra seconds of latent context generated beyond the target content, giving the model headroom at the
                 boundary; the output is trimmed back to `duration`. Defaults to 0.0 (disabled). Increase only if the
@@ -480,17 +566,11 @@ class StableAudio3Pipeline(DiffusionPipeline):
             latents,
         )
 
-        # 5. Set timesteps: (8 for the distilled PingPong model, 100 for the base Euler model)
+        # 5. Set timesteps: (8 for the distilled ping-pong-style model, 100 for the base Euler-style model)
         if num_inference_steps is None:
-            num_inference_steps = getattr(self.scheduler.config, "num_inference_steps", None)
-            if num_inference_steps is None:
-                raise ValueError(
-                    "`num_inference_steps` was not provided and the scheduler "
-                    f"({self.scheduler.__class__.__name__}) does not define a default "
-                    "`num_inference_steps` in its config. Pass `num_inference_steps` explicitly."
-                )
-        self.scheduler.set_timesteps(num_inference_steps, device=device)
-        timesteps = self.scheduler.timesteps
+            num_inference_steps = 8 if self.scheduler.config.stochastic_sampling else 100
+        sigmas = logsnr_sigma_schedule(num_inference_steps, logsnr_min, logsnr_max)
+        timesteps, num_inference_steps = retrieve_timesteps(self.scheduler, sigmas=sigmas, device=device)
         self._num_timesteps = len(timesteps)
 
         # 6. Ping-pong denoising loop (CFG only if `guidance_scale > 1.0`; the distilled model bakes it in)
@@ -504,7 +584,6 @@ class StableAudio3Pipeline(DiffusionPipeline):
                     latent_model_input = latents
                     model_prompt_embeds = prompt_embeds
                     model_encoder_attention_mask = encoder_attention_mask
-                latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
 
                 # Predict velocity v(x_t, t)
                 velocity = self.transformer(

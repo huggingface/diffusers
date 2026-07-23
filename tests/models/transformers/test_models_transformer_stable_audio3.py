@@ -15,15 +15,17 @@
 """
 Unit tests for StableAudio3DiTModel.
 
-Covers:
-  - Output shape matches input shape
-  - return_dict=False returns a plain tuple
-  - Gradient checkpointing can be toggled without errors
-  - Different batch sizes work
-  - Timestep boundary values (t=0 and t=1)
-  - Attention mask is accepted without error
-  - Config round-trip: save / reload produces identical output
-  - Device placement
+The generic model test mixins (`ModelTesterMixin`, `TrainingTesterMixin`, `MemoryTesterMixin`,
+`TorchCompileTesterMixin`) cover save/load, determinism, dtype casting, gradient checkpointing, and
+compilation via `get_init_dict()` / `get_dummy_inputs()`. `AttentionTesterMixin` is intentionally not used:
+its generic `test_fuse_unfuse_qkv_projections` assumes any `Attention` submodule exposing `to_qkv`/`to_kv`
+supports fusion, which doesn't hold here — the SA3 attention modules set `_supports_qkv_fusion = False`
+because their fused projections are differential-attention groups (`[q1|q2|k1|k2|v]`), not the plain
+`to_q`/`to_k`/`to_v` layout `fuse_projections` assumes.
+
+This file also covers what those mixins don't reach: structural parity with the released SA3 Medium
+checkpoint, the local-additive (inpaint) conditioning path, and encoder-attention-mask / timestep-boundary
+behavior.
 """
 
 import unittest
@@ -34,6 +36,13 @@ from accelerate import init_empty_weights
 from diffusers import StableAudio3DiTModel
 
 from ...testing_utils import require_torch, torch_device
+from ..testing_utils import (
+    BaseModelTesterConfig,
+    MemoryTesterMixin,
+    ModelTesterMixin,
+    TorchCompileTesterMixin,
+    TrainingTesterMixin,
+)
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -58,6 +67,7 @@ TINY_CFG = {
 LOCAL_ADD_COND_DIM = TINY_CFG["local_add_cond_dim"]
 
 # For the tiny config: io_channels=8, T_audio=16, T_text=4
+BATCH_SIZE = 2
 T_AUDIO = 16
 T_TEXT = 4
 GLOBAL_DIM = TINY_CFG["global_cond_dim"]
@@ -65,14 +75,7 @@ COND_DIM = TINY_CFG["cond_token_dim"]
 IO_CHANNELS = TINY_CFG["io_channels"]
 
 
-def _make_model(cfg: dict = None, device: str = "cpu") -> StableAudio3DiTModel:
-    if cfg is None:
-        cfg = TINY_CFG
-    model = StableAudio3DiTModel(**cfg).to(device).eval()
-    return model
-
-
-def _make_inputs(batch: int = 2, device: str = "cpu"):
+def _make_inputs(batch: int = BATCH_SIZE, device: str = "cpu"):
     torch.manual_seed(0)
     hidden_states = torch.randn(batch, IO_CHANNELS, T_AUDIO, device=device)
     timestep = torch.rand(batch, device=device)
@@ -81,138 +84,119 @@ def _make_inputs(batch: int = 2, device: str = "cpu"):
     return hidden_states, timestep, encoder_hidden_states, global_hidden_states
 
 
+class StableAudio3DiTTesterConfig(BaseModelTesterConfig):
+    @property
+    def model_class(self):
+        return StableAudio3DiTModel
+
+    @property
+    def main_input_name(self) -> str:
+        return "hidden_states"
+
+    @property
+    def output_shape(self) -> tuple:
+        return (IO_CHANNELS, T_AUDIO)
+
+    def get_init_dict(self) -> dict:
+        return dict(TINY_CFG)
+
+    def get_dummy_inputs(self) -> dict:
+        hidden_states, timestep, encoder_hidden_states, global_hidden_states = _make_inputs(
+            batch=BATCH_SIZE, device=torch_device
+        )
+        return {
+            "hidden_states": hidden_states,
+            "timestep": timestep,
+            "encoder_hidden_states": encoder_hidden_states,
+            "global_hidden_states": global_hidden_states,
+        }
+
+
+class TestStableAudio3DiTModel(StableAudio3DiTTesterConfig, ModelTesterMixin):
+    pass
+
+
+class TestStableAudio3DiTModelTraining(StableAudio3DiTTesterConfig, TrainingTesterMixin):
+    def test_gradient_checkpointing_is_applied(self):
+        # `gradient_checkpointing` lives on the top-level model (it wraps the block loop in `forward`), not
+        # on `StableAudio3DiTBlock` itself.
+        super().test_gradient_checkpointing_is_applied(expected_set={"StableAudio3DiTModel"})
+
+
+class TestStableAudio3DiTModelMemory(StableAudio3DiTTesterConfig, MemoryTesterMixin):
+    pass
+
+
+class TestStableAudio3DiTModelCompile(StableAudio3DiTTesterConfig, TorchCompileTesterMixin):
+    pass
+
+
 @require_torch
-class TestStableAudio3DiTModelTinyConfig(unittest.TestCase):
-    """Fast unit tests on a tiny model configuration."""
+class TestStableAudio3DiTModelBehavior(unittest.TestCase):
+    """Coverage beyond the generic mixins: encoder-attention-mask handling, timestep-boundary values,
+    `patch_size` / `use_differential_attention` variants, batch-size handling, the local-additive
+    (inpaint) conditioning path, and memory-token registration."""
 
     def setUp(self):
         torch.manual_seed(0)
-        self.model = _make_model()
-        self.batch = 2
-
-    # ------------------------------------------------------------------
-
-    def test_output_shape(self):
-        hs, t, ctx, glob = _make_inputs(self.batch)
-        out = self.model(hs, t, ctx, glob)
-        self.assertEqual(out.sample.shape, hs.shape)
-
-    # ------------------------------------------------------------------
-
-    def test_return_dict_false(self):
-        hs, t, ctx, glob = _make_inputs(self.batch)
-        out = self.model(hs, t, ctx, glob, return_dict=False)
-        self.assertIsInstance(out, tuple)
-        self.assertEqual(len(out), 1)
-        self.assertEqual(out[0].shape, hs.shape)
-
-    # ------------------------------------------------------------------
+        self.model = StableAudio3DiTModel(**TINY_CFG).eval()
 
     def test_attention_mask(self):
-        hs, t, ctx, glob = _make_inputs(self.batch)
-        mask = torch.ones(self.batch, T_TEXT, dtype=torch.bool)
+        hs, t, ctx, glob = _make_inputs()
+        mask = torch.ones(BATCH_SIZE, T_TEXT, dtype=torch.bool)
         mask[0, -1] = False  # mask out last token for first sample
         out = self.model(hs, t, ctx, glob, encoder_attention_mask=mask)
         self.assertEqual(out.sample.shape, hs.shape)
 
-    # ------------------------------------------------------------------
-
-    def test_batch_size_1(self):
-        hs, t, ctx, glob = _make_inputs(1)
-        out = self.model(hs, t, ctx, glob)
-        self.assertEqual(out.sample.shape[0], 1)
-
-    # ------------------------------------------------------------------
-
-    def test_batch_size_4(self):
-        hs, t, ctx, glob = _make_inputs(4)
-        out = self.model(hs, t, ctx, glob)
-        self.assertEqual(out.sample.shape[0], 4)
-
-    # ------------------------------------------------------------------
+    def test_different_batch_sizes(self):
+        for batch in (1, 3, 4):
+            hs, t, ctx, glob = _make_inputs(batch=batch)
+            out = self.model(hs, t, ctx, glob)
+            self.assertEqual(out.sample.shape[0], batch)
 
     def test_timestep_boundary_zero(self):
         """t=0 should not produce NaN (logSNR clamp handles edge)."""
-        hs, _, ctx, glob = _make_inputs(self.batch)
-        t = torch.zeros(self.batch)
+        hs, _, ctx, glob = _make_inputs()
+        t = torch.zeros(BATCH_SIZE)
         out = self.model(hs, t, ctx, glob)
         self.assertFalse(out.sample.isnan().any())
-
-    # ------------------------------------------------------------------
 
     def test_timestep_boundary_one(self):
         """t=1 should not produce NaN."""
-        hs, _, ctx, glob = _make_inputs(self.batch)
-        t = torch.ones(self.batch)
+        hs, _, ctx, glob = _make_inputs()
+        t = torch.ones(BATCH_SIZE)
         out = self.model(hs, t, ctx, glob)
         self.assertFalse(out.sample.isnan().any())
 
-    # ------------------------------------------------------------------
-
     def test_gradient_checkpointing_toggle(self):
-        """enable_gradient_checkpointing / disable should not raise."""
+        """enable_gradient_checkpointing / disable should not raise, independent of accelerator availability."""
         self.model.enable_gradient_checkpointing()
         self.assertTrue(self.model.gradient_checkpointing)
         self.model.disable_gradient_checkpointing()
         self.assertFalse(self.model.gradient_checkpointing)
 
-    # ------------------------------------------------------------------
-
-    def test_config_roundtrip(self):
-        import tempfile
-
-        with tempfile.TemporaryDirectory() as tmpdir:
-            self.model.save_pretrained(tmpdir)
-            reloaded = StableAudio3DiTModel.from_pretrained(tmpdir).eval()
-
-        hs, t, ctx, glob = _make_inputs(self.batch)
-        with torch.no_grad():
-            out_orig = self.model(hs, t, ctx, glob).sample
-            out_rel = reloaded(hs, t, ctx, glob).sample
-
-        self.assertTrue(torch.allclose(out_orig, out_rel, atol=1e-5))
-
-    # ------------------------------------------------------------------
-
     def test_patch_size_2(self):
         """patch_size=2 should halve T in the transformer and restore it on output."""
-        cfg = dict(TINY_CFG, patch_size=2)
-        model = _make_model(cfg)
-        hs, t, ctx, glob = _make_inputs(self.batch)
+        model = StableAudio3DiTModel(**dict(TINY_CFG, patch_size=2))
+        hs, t, ctx, glob = _make_inputs()
         out = model(hs, t, ctx, glob)
         self.assertEqual(out.sample.shape, hs.shape)
-
-    # ------------------------------------------------------------------
 
     def test_differential_attention(self):
         """use_differential_attention=True should produce valid output shape."""
-        cfg = dict(TINY_CFG, use_differential_attention=True)
-        model = _make_model(cfg)
-        hs, t, ctx, glob = _make_inputs(self.batch)
+        model = StableAudio3DiTModel(**dict(TINY_CFG, use_differential_attention=True))
+        hs, t, ctx, glob = _make_inputs()
         out = model(hs, t, ctx, glob)
         self.assertEqual(out.sample.shape, hs.shape)
 
-    # ------------------------------------------------------------------
-
-    def test_no_nan_in_output(self):
-        """Smoke test: deterministic inputs produce no NaN."""
-        hs, t, ctx, glob = _make_inputs(self.batch)
-        out = self.model(hs, t, ctx, glob)
-        self.assertFalse(out.sample.isnan().any())
-        self.assertFalse(out.sample.isinf().any())
-
-    # ------------------------------------------------------------------
-
     def test_local_add_cond_zero_init_is_noop(self):
         """`to_local_embed` is zero-initialised, so inpaint conditioning is a no-op until trained."""
-        hs, t, ctx, glob = _make_inputs(self.batch)
-        local = torch.randn(self.batch, LOCAL_ADD_COND_DIM, T_AUDIO)
+        hs, t, ctx, glob = _make_inputs()
+        local = torch.randn(BATCH_SIZE, LOCAL_ADD_COND_DIM, T_AUDIO)
         out_base = self.model(hs, t, ctx, glob).sample
         out_local = self.model(hs, t, ctx, glob, local_add_cond=local).sample
         self.assertEqual(out_local.shape, hs.shape)
         self.assertTrue(torch.allclose(out_base, out_local))
-
-    # ------------------------------------------------------------------
 
     def test_local_add_cond_changes_output_when_trained(self):
         """With non-zero `to_local_embed` weights, inpaint conditioning must alter the output."""
@@ -220,13 +204,11 @@ class TestStableAudio3DiTModelTinyConfig(unittest.TestCase):
             for block in self.model.transformer_blocks:
                 block.to_local_embed[-1].weight.normal_()
                 block.to_local_embed[-1].bias.normal_()
-        hs, t, ctx, glob = _make_inputs(self.batch)
-        local = torch.randn(self.batch, LOCAL_ADD_COND_DIM, T_AUDIO)
+        hs, t, ctx, glob = _make_inputs()
+        local = torch.randn(BATCH_SIZE, LOCAL_ADD_COND_DIM, T_AUDIO)
         out_base = self.model(hs, t, ctx, glob).sample
         out_local = self.model(hs, t, ctx, glob, local_add_cond=local).sample
         self.assertFalse(torch.allclose(out_base, out_local))
-
-    # ------------------------------------------------------------------
 
     def test_memory_tokens_present(self):
         """Memory tokens parameter exists with the configured count."""
@@ -337,26 +319,6 @@ class TestStableAudio3DiTProductionStructure(unittest.TestCase):
         # The released SA3 Medium DiT has 522 tensors, plus the learned text-padding embedding
         # (relocated from the reference conditioner into the diffusers DiT) → 523.
         self.assertEqual(len(actual), 523)
-
-
-@require_torch
-class TestStableAudio3DiTModelOnDevice(unittest.TestCase):
-    """Test model runs on whichever device pytest selects."""
-
-    def setUp(self):
-        torch.manual_seed(42)
-        self.device = torch_device
-        self.model = _make_model(device=str(self.device))
-
-    def test_output_on_device(self):
-        hs, t, ctx, glob = _make_inputs(1, device=str(self.device))
-        out = self.model(hs, t, ctx, glob)
-        self.assertEqual(out.sample.device.type, torch.device(self.device).type)
-
-    def test_output_shape_on_device(self):
-        hs, t, ctx, glob = _make_inputs(2, device=str(self.device))
-        out = self.model(hs, t, ctx, glob)
-        self.assertEqual(out.sample.shape, hs.shape)
 
 
 if __name__ == "__main__":

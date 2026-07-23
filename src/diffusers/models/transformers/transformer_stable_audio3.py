@@ -153,7 +153,9 @@ class StableAudio3SelfAttnProcessor:
     _attention_backend = None
     _parallel_config = None
 
-    def __call__(self, attn: "StableAudio3Attention", hidden_states: torch.Tensor, rope: torch.Tensor) -> torch.Tensor:
+    def __call__(
+        self, attn: "StableAudio3SelfAttention", hidden_states: torch.Tensor, rope: torch.Tensor
+    ) -> torch.Tensor:
         def heads(x: torch.Tensor) -> torch.Tensor:
             return x.unflatten(-1, (attn.heads, attn.dim_heads))
 
@@ -182,7 +184,8 @@ class StableAudio3SelfAttnProcessor:
 
 
 class StableAudio3CrossAttnProcessor:
-    """Differential cross-attention from audio latents to the text/duration context (see [`StableAudio3Attention`]).
+    """Differential cross-attention from audio latents to the text/duration context (see
+    [`StableAudio3CrossAttention`]).
 
     No RoPE — context tokens have no positional order relative to the audio latents.
     """
@@ -192,7 +195,7 @@ class StableAudio3CrossAttnProcessor:
 
     def __call__(
         self,
-        attn: "StableAudio3Attention",
+        attn: "StableAudio3CrossAttention",
         hidden_states: torch.Tensor,
         context: torch.Tensor,
         context_mask: Optional[torch.Tensor] = None,
@@ -225,18 +228,16 @@ class StableAudio3CrossAttnProcessor:
         return attn.to_out(out.flatten(2, 3))
 
 
-class StableAudio3Attention(nn.Module, AttentionModuleMixin):
-    """Shared self-/cross-attention module for the SA3 DiT, built on the `AttentionModuleMixin` +
-    `AttentionProcessor` pattern (see [`StableAudio3SelfAttnProcessor`] / [`StableAudio3CrossAttnProcessor`]).
+class StableAudio3SelfAttention(nn.Module, AttentionModuleMixin):
+    """Self-attention module for the SA3 DiT, built on the `AttentionModuleMixin` + `AttentionProcessor` pattern
+    (see [`StableAudio3SelfAttnProcessor`]).
 
-    Self-attention (`context_dim=None`): the fused `to_qkv` projection produces `[q1 | q2 | k1 | k2 | v]`.
-    Cross-attention (`context_dim` set): `to_q` produces `[q1 | q2]` and `to_kv` produces `[k1 | k2 | v]`. When
-    `use_differential` is `True` (SA3 default) the attention is differential: `Attn(Q1, K1, V) - Attn(Q2, K2, V)`.
+    The fused `to_qkv` projection produces `[q1 | q2 | k1 | k2 | v]`. When `use_differential` is `True` (SA3 default)
+    the attention is differential: `Attn(Q1, K1, V) - Attn(Q2, K2, V)`.
     """
 
-    _available_processors = [StableAudio3SelfAttnProcessor, StableAudio3CrossAttnProcessor]
-    # The QKV projections are fused (self-attn) or split into differential q/kv groups (cross-attn), neither of
-    # which matches the plain to_q/to_k/to_v shape `fuse_projections`/`unfuse_projections` assume.
+    _default_processor_cls = StableAudio3SelfAttnProcessor
+    _available_processors = [StableAudio3SelfAttnProcessor]
     _supports_qkv_fusion = False
 
     def __init__(
@@ -244,37 +245,72 @@ class StableAudio3Attention(nn.Module, AttentionModuleMixin):
         dim: int,
         dim_heads: int = 64,
         use_differential: bool = True,
-        context_dim: Optional[int] = None,
         processor=None,
     ):
         super().__init__()
         self.dim_heads = dim_heads
         self.heads = dim // dim_heads
         self.use_differential = use_differential
-        self.is_cross_attention = context_dim is not None
 
-        if self.is_cross_attention:
-            n_q = 2 if use_differential else 1
-            n_kv = 3 if use_differential else 2
-            self.to_q = nn.Linear(dim, dim * n_q, bias=False)
-            self.to_kv = nn.Linear(context_dim, dim * n_kv, bias=False)
-        else:
-            n_proj = 5 if use_differential else 3
-            self.to_qkv = nn.Linear(dim, dim * n_proj, bias=False)
-
+        n_proj = 5 if use_differential else 3
+        self.to_qkv = nn.Linear(dim, dim * n_proj, bias=False)
         self.to_out = nn.Linear(dim, dim, bias=False)
 
         self.q_norm = StableAudio3RMSNorm(dim_heads)
         self.k_norm = StableAudio3RMSNorm(dim_heads)
 
         if processor is None:
-            processor = (
-                StableAudio3CrossAttnProcessor() if self.is_cross_attention else StableAudio3SelfAttnProcessor()
-            )
+            processor = self._default_processor_cls()
         self.set_processor(processor)
 
-    def forward(self, hidden_states: torch.Tensor, **kwargs) -> torch.Tensor:
-        return self.processor(self, hidden_states, **kwargs)
+    def forward(self, hidden_states: torch.Tensor, rope: torch.Tensor) -> torch.Tensor:
+        return self.processor(self, hidden_states, rope=rope)
+
+
+class StableAudio3CrossAttention(nn.Module, AttentionModuleMixin):
+    """Cross-attention module for the SA3 DiT, built on the `AttentionModuleMixin` + `AttentionProcessor` pattern
+    (see [`StableAudio3CrossAttnProcessor`]).
+
+    `to_q` produces `[q1 | q2]` and `to_kv` produces `[k1 | k2 | v]`. When `use_differential` is `True` (SA3 default)
+    the attention is differential: `Attn(Q1, K1, V) - Attn(Q2, K2, V)`.
+    """
+
+    _default_processor_cls = StableAudio3CrossAttnProcessor
+    _available_processors = [StableAudio3CrossAttnProcessor]
+    # The Q/KV projections are split into differential q/kv groups, which doesn't match the plain
+    # to_q/to_k/to_v shape `fuse_projections`/`unfuse_projections` assume.
+    _supports_qkv_fusion = False
+
+    def __init__(
+        self,
+        dim: int,
+        context_dim: int,
+        dim_heads: int = 64,
+        use_differential: bool = True,
+        processor=None,
+    ):
+        super().__init__()
+        self.dim_heads = dim_heads
+        self.heads = dim // dim_heads
+        self.use_differential = use_differential
+
+        n_q = 2 if use_differential else 1
+        n_kv = 3 if use_differential else 2
+        self.to_q = nn.Linear(dim, dim * n_q, bias=False)
+        self.to_kv = nn.Linear(context_dim, dim * n_kv, bias=False)
+        self.to_out = nn.Linear(dim, dim, bias=False)
+
+        self.q_norm = StableAudio3RMSNorm(dim_heads)
+        self.k_norm = StableAudio3RMSNorm(dim_heads)
+
+        if processor is None:
+            processor = self._default_processor_cls()
+        self.set_processor(processor)
+
+    def forward(
+        self, hidden_states: torch.Tensor, context: torch.Tensor, context_mask: Optional[torch.Tensor] = None
+    ) -> torch.Tensor:
+        return self.processor(self, hidden_states, context=context, context_mask=context_mask)
 
 
 class StableAudio3DiTBlock(nn.Module):
@@ -304,10 +340,10 @@ class StableAudio3DiTBlock(nn.Module):
     ):
         super().__init__()
         self.pre_norm = StableAudio3RMSNorm(dim)
-        self.self_attn = StableAudio3Attention(dim, dim_heads=dim_heads, use_differential=use_differential)
+        self.self_attn = StableAudio3SelfAttention(dim, dim_heads=dim_heads, use_differential=use_differential)
 
         self.cross_attend_norm = StableAudio3RMSNorm(dim)
-        self.cross_attn = StableAudio3Attention(
+        self.cross_attn = StableAudio3CrossAttention(
             dim, context_dim=context_dim, dim_heads=dim_heads, use_differential=use_differential
         )
 
@@ -396,6 +432,8 @@ class StableAudio3DiTModel(ModelMixin, ConfigMixin, AttentionMixin):
     """
 
     _supports_gradient_checkpointing = True
+    _no_split_modules = ["StableAudio3DiTBlock"]
+    _repeated_blocks = ["StableAudio3DiTBlock"]
 
     @register_to_config
     def __init__(

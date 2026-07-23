@@ -22,8 +22,8 @@ from transformers.models.t5gemma.configuration_t5gemma import T5GemmaModuleConfi
 
 from diffusers import (
     AutoencoderSAME,
+    FlowMatchEulerDiscreteScheduler,
     StableAudio3DiTModel,
-    StableAudio3EulerScheduler,
     StableAudio3Pipeline,
 )
 from diffusers.pipelines.stable_audio_3.modeling_stable_audio_3 import StableAudio3DurationEmbedder
@@ -91,11 +91,7 @@ class StableAudio3PipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             num_memory_tokens=3,
             use_differential_attention=False,
         )
-        scheduler = StableAudio3EulerScheduler(
-            num_inference_steps=4,
-            logsnr_min=-6.2,
-            logsnr_max=2.0,
-        )
+        scheduler = FlowMatchEulerDiscreteScheduler(num_train_timesteps=1, shift=1.0, stochastic_sampling=False)
         torch.manual_seed(0)
         vae = AutoencoderSAME(
             audio_channels=2,
@@ -107,7 +103,6 @@ class StableAudio3PipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             latent_dim=8,
             use_differential_attention=False,
             dim_heads=4,
-            encoder_chunk_size=8,
             ff_mult=2,
             sampling_rate=16,
         )
@@ -236,18 +231,20 @@ class StableAudio3PipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         assert (audio_1 - audio_2).abs().max().item() < 1e-2
 
     def test_stable_audio_3_default_steps_follow_scheduler(self):
-        # When num_inference_steps is None, the pipeline must fall back to the scheduler's
-        # config default (e.g. 100 for the base Euler model), not a hardcoded value.
+        # When num_inference_steps is None, the pipeline must fall back to a step count based on
+        # the scheduler's `stochastic_sampling` config: 8 for the distilled (ping-pong-style) model.
         device = "cpu"
         components = self.get_dummy_components()
-        components["scheduler"] = StableAudio3EulerScheduler(num_inference_steps=5)
+        components["scheduler"] = FlowMatchEulerDiscreteScheduler(
+            num_train_timesteps=1, shift=1.0, stochastic_sampling=True
+        )
         pipe = StableAudio3Pipeline(**components).to(torch_device)
         pipe.set_progress_bar_config(disable=None)
 
         inputs = self.get_dummy_inputs(device)
-        inputs.pop("num_inference_steps")  # let the scheduler config decide
+        inputs.pop("num_inference_steps")  # let the pipeline default decide
         pipe(**inputs)
-        assert len(pipe.scheduler.timesteps) == 5
+        assert len(pipe.scheduler.timesteps) == 8
 
     def test_stable_audio_3_silence_padding_default_is_zero(self):
         # The padding is not masked in this pipeline, so the default must stay 0 to avoid

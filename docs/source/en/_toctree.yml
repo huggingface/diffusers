@@ -776,8 +776,6 @@
       title: LCMScheduler
     - local: api/schedulers/lms_discrete
       title: LMSDiscreteScheduler
-    - local: api/schedulers/ping_pong
-      title: PingPongScheduler
     - local: api/schedulers/pndm
       title: PNDMScheduler
     - local: api/schedulers/repaint
@@ -786,8 +784,6 @@
       title: ScoreSdeVeScheduler
     - local: api/schedulers/score_sde_vp
       title: ScoreSdeVpScheduler
-    - local: api/schedulers/stable_audio3_euler
-      title: StableAudio3EulerScheduler
     - local: api/schedulers/tcd
       title: TCDScheduler
     - local: api/schedulers/unipc

@@ -15,19 +15,22 @@
 """
 Unit tests for AutoencoderSAME.
 
-Covers:
-  - I/O tensor shapes for encode and decode
-  - Round-trip reconstruct (decode(encode(x)) ≈ x shape)
-  - downsampling_ratio matches config arithmetic
+The generic model test mixins (`ModelTesterMixin`, `TrainingTesterMixin`, `MemoryTesterMixin`) cover
+save/load, determinism, dtype casting, and memory optimizations via a shared `forward()`. This file also
+covers what those mixins don't reach: the `encode()` / `decode()` methods' own `return_dict` handling, and
+`downsampling_ratio` arithmetic (including the production SAME-S preset).
 """
 
 import unittest
 
+import pytest
 import torch
 
 from diffusers import AutoencoderSAME
+from diffusers.utils.torch_utils import randn_tensor
 
 from ...testing_utils import require_torch, torch_device
+from ..testing_utils import BaseModelTesterConfig, MemoryTesterMixin, ModelTesterMixin, TrainingTesterMixin
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -44,7 +47,6 @@ TINY_CFG = {
     "latent_dim": 8,
     "use_differential_attention": False,  # saves memory in tests
     "dim_heads": 8,
-    "encoder_chunk_size": 4,
     "ff_mult": 2,
     "sampling_rate": 44100,
 }
@@ -60,141 +62,107 @@ SAME_S_SMALL_CFG = {
     "latent_dim": 256,
     "use_differential_attention": False,
     "dim_heads": 64,
-    "encoder_chunk_size": 32,
     "ff_mult": 3,
     "sampling_rate": 44100,
 }
 
+# 128 audio samples, TINY_CFG's downsampling_ratio = patch_size(4) * strides(2*2) = 16 → evenly divides 128,
+# so decode(encode(x)) reproduces x's exact shape (no padding-derived length mismatch).
+BATCH_SIZE = 2
+T_AUDIO = 128
 
-def _make_model(cfg: dict, device: str = "cpu") -> AutoencoderSAME:
-    model = AutoencoderSAME(**cfg)
-    model.to(device).eval()
-    return model
+
+class AutoencoderSAMETesterConfig(BaseModelTesterConfig):
+    @property
+    def model_class(self):
+        return AutoencoderSAME
+
+    @property
+    def main_input_name(self) -> str:
+        return "sample"
+
+    @property
+    def output_shape(self) -> tuple:
+        return (TINY_CFG["audio_channels"], T_AUDIO)
+
+    @property
+    def generator(self):
+        return torch.Generator("cpu").manual_seed(0)
+
+    def get_init_dict(self) -> dict:
+        return dict(TINY_CFG)
+
+    def get_dummy_inputs(self) -> dict:
+        audio = randn_tensor(
+            (BATCH_SIZE, TINY_CFG["audio_channels"], T_AUDIO), generator=self.generator, device=torch_device
+        )
+        return {"sample": audio}
 
 
-def _make_audio(batch: int, channels: int, n_samples: int, device: str = "cpu") -> torch.Tensor:
-    return torch.randn(batch, channels, n_samples, device=device)
+class TestAutoencoderSAME(AutoencoderSAMETesterConfig, ModelTesterMixin):
+    pass
+
+
+class TestAutoencoderSAMETraining(AutoencoderSAMETesterConfig, TrainingTesterMixin):
+    """Training tests for AutoencoderSAME."""
+
+
+class TestAutoencoderSAMEMemory(AutoencoderSAMETesterConfig, MemoryTesterMixin):
+    """Memory optimization tests for AutoencoderSAME."""
+
+    @pytest.mark.skip(
+        "Test not supported because of 'weight_norm_fwd_first_dim_kernel' not implemented for 'Float8_e4m3fn'"
+    )
+    def test_layerwise_casting_training(self):
+        super().test_layerwise_casting_training()
+
+    @pytest.mark.skip(
+        "The TRB `mapping` convs of AutoencoderSAME are wrapped with torch.nn.utils.weight_norm. This causes the "
+        "hook's pre_forward to not cast the module weights to compute_dtype."
+    )
+    def test_layerwise_casting_memory(self):
+        super().test_layerwise_casting_memory()
 
 
 @require_torch
-class TestAutoencoderSAMETinyConfig(unittest.TestCase):
-    """Fast tests using the tiny config — runs on CPU in seconds."""
+class TestAutoencoderSAMEBehavior(unittest.TestCase):
+    """Coverage beyond the generic mixins: `encode()`/`decode()`'s own `return_dict` handling,
+    `downsampling_ratio` arithmetic, and the SAME-S production-shape preset."""
 
     def setUp(self):
         torch.manual_seed(0)
-        self.model = _make_model(TINY_CFG)
-        self.B = 2
-        self.C = TINY_CFG["audio_channels"]
-        # 128 audio samples → 128 / (patch×strides) = 128 / 16 = 8 latent frames
-        self.T = 128
-        self.audio = _make_audio(self.B, self.C, self.T)
+        self.model = AutoencoderSAME(**TINY_CFG).eval()
+        self.audio = torch.randn(BATCH_SIZE, TINY_CFG["audio_channels"], T_AUDIO)
 
-    # ------------------------------------------------------------------
     def test_downsampling_ratio(self):
         expected = TINY_CFG["patch_size"]
         for s in TINY_CFG["encoder_strides"]:
             expected *= s
         self.assertEqual(self.model.downsampling_ratio, expected)
 
-    # ------------------------------------------------------------------
-    def test_encode_output_shape(self):
-        out = self.model.encode(self.audio)
-        latents = out.latents
-        T_lat = self.T // self.model.downsampling_ratio
-        self.assertEqual(latents.shape, (self.B, TINY_CFG["latent_dim"], T_lat))
-
-    # ------------------------------------------------------------------
-    def test_decode_output_shape(self):
-        latents = self.model.encode(self.audio).latents
-        decoded = self.model.decode(latents).sample
-        # Decoded length may differ from original because of padding in encode
-        self.assertEqual(decoded.shape[0], self.B)
-        self.assertEqual(decoded.shape[1], self.C)
-        self.assertGreaterEqual(decoded.shape[2], self.T)
-
-    # ------------------------------------------------------------------
     def test_roundtrip_shape_consistency(self):
         latents = self.model.encode(self.audio).latents
         decoded = self.model.decode(latents).sample
         re_encoded = self.model.encode(decoded).latents
         self.assertEqual(latents.shape, re_encoded.shape)
 
-    # ------------------------------------------------------------------
     def test_encode_no_dict(self):
         out_tuple = self.model.encode(self.audio, return_dict=False)
         self.assertIsInstance(out_tuple, tuple)
         self.assertEqual(len(out_tuple), 1)
         self.assertIsInstance(out_tuple[0], torch.Tensor)
 
-    # ------------------------------------------------------------------
     def test_decode_no_dict(self):
         latents = self.model.encode(self.audio).latents
         out_tuple = self.model.decode(latents, return_dict=False)
         self.assertIsInstance(out_tuple, tuple)
         self.assertEqual(len(out_tuple), 1)
 
-    # ------------------------------------------------------------------
-    def test_different_batch_sizes(self):
-        for b in (1, 3, 4):
-            audio = _make_audio(b, self.C, self.T)
-            lat = self.model.encode(audio).latents
-            self.assertEqual(lat.shape[0], b)
-
-    # ------------------------------------------------------------------
-    def test_config_serialisation_round_trip(self):
-        cfg = self.model.config
-        model2 = AutoencoderSAME(**{k: v for k, v in cfg.items() if not k.startswith("_")})
-        self.assertEqual(model2.downsampling_ratio, self.model.downsampling_ratio)
-        self.assertEqual(model2.latent_dim, self.model.latent_dim)
-
-    # ------------------------------------------------------------------
-    def test_forward_shape(self):
-        out = self.model(self.audio)
-        self.assertIsInstance(out.sample, torch.Tensor)
-        self.assertEqual(out.sample.shape[:2], (self.B, self.C))
-
-    # ------------------------------------------------------------------
-    def test_forward_no_dict(self):
-        out = self.model(self.audio, return_dict=False)
-        self.assertIsInstance(out, tuple)
-        self.assertEqual(len(out), 1)
-
-    # ------------------------------------------------------------------
     def test_same_s_preset_downsampling_ratio(self):
-        """Model with SAME-S production defaults should give 4096× ratio."""
-        model = _make_model(SAME_S_SMALL_CFG)
+        """Model with SAME-S production defaults should give 4096x ratio."""
+        model = AutoencoderSAME(**SAME_S_SMALL_CFG)
         # patch_size=256, strides=[16] → 256×16 = 4096
         self.assertEqual(model.downsampling_ratio, 4096)
-
-    # ------------------------------------------------------------------
-    def test_training_mode(self):
-        self.model.train()
-        audio = _make_audio(1, self.C, self.T)
-        lat = self.model.encode(audio).latents
-        dec = self.model.decode(lat).sample
-        self.assertEqual(lat.ndim, 3)
-        self.assertEqual(dec.ndim, 3)
-
-
-@require_torch
-class TestAutoencoderSAMEOnDevice(unittest.TestCase):
-    """Tests that the tiny model runs on whatever device pytest selects."""
-
-    def setUp(self):
-        torch.manual_seed(42)
-        self.device = torch_device
-        self.model = _make_model(TINY_CFG, device=str(self.device))
-
-    def test_encode_on_device(self):
-        audio = _make_audio(1, 2, 64, device=str(self.device))
-        lat = self.model.encode(audio).latents
-        self.assertEqual(lat.device.type, torch.device(self.device).type)
-
-    def test_decode_on_device(self):
-        audio = _make_audio(1, 2, 64, device=str(self.device))
-        lat = self.model.encode(audio).latents
-        dec = self.model.decode(lat).sample
-        self.assertEqual(dec.device.type, torch.device(self.device).type)
 
 
 if __name__ == "__main__":

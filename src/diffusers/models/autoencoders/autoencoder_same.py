@@ -82,14 +82,16 @@ def _pad_to_multiple(x: torch.Tensor, multiple: int, dim: int = -1) -> torch.Ten
     return torch.cat([x, x.new_zeros(shape)], dim=dim)
 
 
+# Copied from diffusers.models.transformers.transformer_stable_audio3._rotate_half
 def _rotate_half(x: torch.Tensor) -> torch.Tensor:
     x = x.unflatten(-1, (2, -1))
     x1, x2 = x.unbind(-2)
     return torch.cat((-x2, x1), dim=-1)
 
 
-def _apply_rotary(t: torch.Tensor, freqs: torch.Tensor) -> torch.Tensor:
-    """Partial RoPE — rotate the first *rot_dim* channels, leave the rest.
+# Copied from diffusers.models.transformers.transformer_stable_audio3._apply_rotary_partial
+def _apply_rotary_partial(t: torch.Tensor, freqs: torch.Tensor) -> torch.Tensor:
+    """Partial RoPE — rotate the first `rot_dim` channels, leave the rest.
 
     `t` has shape `(batch, seq_len, heads, head_dim)`; `freqs` has shape `(seq_len, rot_dim)`.
     """
@@ -98,7 +100,7 @@ def _apply_rotary(t: torch.Tensor, freqs: torch.Tensor) -> torch.Tensor:
     t_rot, t_pass = t[..., :rot_dim], t[..., rot_dim:]
     t_rot = t_rot.float()
     freqs = freqs[-t_rot.shape[-3] :].float().unsqueeze(1)  # (seq_len, 1, rot_dim) broadcasts over heads
-    t_rot = (t_rot * freqs.cos()) + (_rotate_half(t_rot) * freqs.sin())
+    t_rot = t_rot * freqs.cos() + _rotate_half(t_rot) * freqs.sin()
     return torch.cat((t_rot.to(out_dtype), t_pass), dim=-1)
 
 
@@ -171,13 +173,13 @@ class FeedForward(nn.Module):
 
 
 class SAMEAttnProcessor:
-    """Differential self-attention with QK-DyT norm and partial RoPE (see [`Attention`])."""
+    """Differential self-attention with QK-DyT norm and partial RoPE (see [`SAMEAttention`])."""
 
     _attention_backend = None
     _parallel_config = None
 
     def __call__(
-        self, attn: "Attention", hidden_states: torch.Tensor, attn_mask: Optional[torch.Tensor] = None
+        self, attn: "SAMEAttention", hidden_states: torch.Tensor, attn_mask: Optional[torch.Tensor] = None
     ) -> torch.Tensor:
         def heads(x: torch.Tensor) -> torch.Tensor:
             return x.unflatten(-1, (attn.heads, attn.dim_heads))
@@ -190,8 +192,8 @@ class SAMEAttnProcessor:
             q1, q2, k1, k2, v = map(heads, (q1, q2, k1, k2, v))
             q1, q2 = attn.q_norm(q1), attn.q_norm(q2)
             k1, k2 = attn.k_norm(k1), attn.k_norm(k2)
-            q1, q2 = _apply_rotary(q1, freqs), _apply_rotary(q2, freqs)
-            k1, k2 = _apply_rotary(k1, freqs), _apply_rotary(k2, freqs)
+            q1, q2 = _apply_rotary_partial(q1, freqs), _apply_rotary_partial(q2, freqs)
+            k1, k2 = _apply_rotary_partial(k1, freqs), _apply_rotary_partial(k2, freqs)
             out = dispatch_attention_fn(
                 q1, k1, v, attn_mask=attn_mask, backend=self._attention_backend, parallel_config=self._parallel_config
             ) - dispatch_attention_fn(
@@ -201,7 +203,7 @@ class SAMEAttnProcessor:
             q, k, v = attn.to_qkv(hidden_states).chunk(3, dim=-1)
             q, k, v = map(heads, (q, k, v))
             q, k = attn.q_norm(q), attn.k_norm(k)
-            q, k = _apply_rotary(q, freqs), _apply_rotary(k, freqs)
+            q, k = _apply_rotary_partial(q, freqs), _apply_rotary_partial(k, freqs)
             out = dispatch_attention_fn(
                 q, k, v, attn_mask=attn_mask, backend=self._attention_backend, parallel_config=self._parallel_config
             )
@@ -209,7 +211,7 @@ class SAMEAttnProcessor:
         return attn.to_out(out.flatten(2, 3))
 
 
-class Attention(nn.Module, AttentionModuleMixin):
+class SAMEAttention(nn.Module, AttentionModuleMixin):
     """
     Self-attention used inside TRB transformer blocks, built on the `AttentionModuleMixin` + `AttentionProcessor`
     pattern (see [`SAMEAttnProcessor`]).
@@ -261,7 +263,7 @@ class TransformerBlock(nn.Module):
     ):
         super().__init__()
         self.norm_attn = DynamicTanh(dim)
-        self.attn = Attention(dim, dim_heads=dim_heads, use_differential=use_differential)
+        self.attn = SAMEAttention(dim, dim_heads=dim_heads, use_differential=use_differential)
         self.norm_ff = DynamicTanh(dim)
         self.ff = FeedForward(dim, mult=ff_mult, sinusoidal=sinusoidal)
 
@@ -314,7 +316,6 @@ class SAMETransformerResamplingBlock(nn.Module):
         transformer_depth: Number of :class:`TransformerBlock` layers.
         dim_heads: Attention head dimension.
         use_differential: Whether to use differential attention.
-        chunk_size: Kept for config/back-compat; no longer used by the band-mask attention.
         ff_mult: Feed-forward expansion factor.
         sliding_window: Sliding-window half-width in latents (band half-width is ``sliding_window * (stride + 1)``).
         sinusoidal_blocks: Number of trailing transformer layers that use ``sin`` FFN gating instead of SiLU.
@@ -329,7 +330,6 @@ class SAMETransformerResamplingBlock(nn.Module):
         transformer_depth: int = 3,
         dim_heads: int = 128,
         use_differential: bool = True,
-        chunk_size: int = 128,
         ff_mult: int = 3,
         sliding_window: int = 1,
         sinusoidal_blocks: int = 0,
@@ -339,7 +339,6 @@ class SAMETransformerResamplingBlock(nn.Module):
             raise ValueError(f"mode must be 'encoder' or 'decoder', got {mode}")
 
         self.stride = stride
-        self.chunk_size = chunk_size
         self.mode = mode
         self.in_channels = in_channels
         self.out_channels = out_channels
@@ -358,7 +357,7 @@ class SAMETransformerResamplingBlock(nn.Module):
                     use_differential=use_differential,
                     ff_mult=ff_mult,
                     # The trailing `sinusoidal_blocks` layers use sin gating (matches the reference).
-                    sinusoidal=(transformer_depth - i) < sinusoidal_blocks,
+                    sinusoidal=(transformer_depth - i) <= sinusoidal_blocks,
                 )
                 for i in range(transformer_depth)
             ]
@@ -519,7 +518,6 @@ class SAMEEncoder(nn.Module):
         latent_dim: int,
         dim_heads: int = 128,
         use_differential: bool = True,
-        chunk_size: int = 128,
         ff_mult: int = 3,
         sliding_window: int = 1,
         sinusoidal_blocks: List[int] = (0,),
@@ -536,7 +534,6 @@ class SAMEEncoder(nn.Module):
                     transformer_depth=transformer_depths[i],
                     dim_heads=dim_heads,
                     use_differential=use_differential,
-                    chunk_size=chunk_size,
                     ff_mult=ff_mult,
                     sliding_window=sliding_window,
                     sinusoidal_blocks=sinusoidal_blocks[i],
@@ -570,7 +567,6 @@ class SAMEDecoder(nn.Module):
         latent_dim: int,
         dim_heads: int = 128,
         use_differential: bool = True,
-        chunk_size: int = 128,
         ff_mult: int = 3,
         sliding_window: int = 1,
         sinusoidal_blocks: List[int] = (0,),
@@ -588,7 +584,6 @@ class SAMEDecoder(nn.Module):
                     transformer_depth=transformer_depths[i],
                     dim_heads=dim_heads,
                     use_differential=use_differential,
-                    chunk_size=chunk_size,
                     ff_mult=ff_mult,
                     sliding_window=sliding_window,
                     sinusoidal_blocks=sinusoidal_blocks[i],
@@ -655,8 +650,6 @@ class AutoencoderSAME(ModelMixin, ConfigMixin, AttentionMixin):
         use_differential_attention: If ``True``, use differential attention
             inside each TRB transformer block (default on for SAME-S/L).
         dim_heads: Attention head dimension. 64 for production SAME-S/L.
-        encoder_chunk_size: Kept for config/back-compat; no longer governs
-            attention (the sliding-window band mask spans the full sequence).
         ff_mult: SwiGLU feed-forward expansion factor.
         sliding_window: Sliding-window half-width (in latents) for the band-mask
             attention. Production SAME-S/L use 1.
@@ -682,7 +675,6 @@ class AutoencoderSAME(ModelMixin, ConfigMixin, AttentionMixin):
         latent_dim: int = 256,
         use_differential_attention: bool = True,
         dim_heads: int = 64,
-        encoder_chunk_size: int = 32,
         ff_mult: int = 3,
         sliding_window: int = 1,
         encoder_sinusoidal_blocks: List[int] = (0,),
@@ -718,7 +710,6 @@ class AutoencoderSAME(ModelMixin, ConfigMixin, AttentionMixin):
             latent_dim=latent_dim,
             dim_heads=dim_heads,
             use_differential=use_differential_attention,
-            chunk_size=encoder_chunk_size,
             ff_mult=ff_mult,
             sliding_window=sliding_window,
             sinusoidal_blocks=list(encoder_sinusoidal_blocks),
@@ -733,7 +724,6 @@ class AutoencoderSAME(ModelMixin, ConfigMixin, AttentionMixin):
             latent_dim=latent_dim,
             dim_heads=dim_heads,
             use_differential=use_differential_attention,
-            chunk_size=encoder_chunk_size,
             ff_mult=ff_mult,
             sliding_window=sliding_window,
             sinusoidal_blocks=list(decoder_sinusoidal_blocks),

@@ -257,7 +257,7 @@ def convert_vae(ref_sd: dict, differential: bool = True) -> dict:
             out[f"bottleneck.{our_suffix}"] = ref_sd[full_key]
 
     if skipped:
-        print(f"  VAE: skipped {len(skipped)} keys (pretransform.* patcher, noise_scaling_factor, …)")
+        print(f"  VAE: skipped {len(skipped)} keys (pretransform.* patcher, noise_scaling_factor, ...)")
 
     return out
 
@@ -482,9 +482,6 @@ def _infer_vae_config(ref_sd: dict, model_config: Optional[dict] = None) -> dict
         transformer_depths = [trb_trans_depth] * enc_depth
         patch_size = patched_in // audio_channels
 
-    # chunk_size retained for back-compat; unused by the band-mask attention.
-    chunk_size = 32
-
     return {
         "audio_channels": audio_channels,
         "patch_size": patch_size,
@@ -495,7 +492,6 @@ def _infer_vae_config(ref_sd: dict, model_config: Optional[dict] = None) -> dict
         "latent_dim": latent_dim,
         "use_differential_attention": True,
         "dim_heads": dim_heads,
-        "encoder_chunk_size": chunk_size,
         "ff_mult": 3,
         "sliding_window": sliding_window,
         "encoder_sinusoidal_blocks": encoder_sinusoidal_blocks,
@@ -626,10 +622,9 @@ def convert(args):
     import diffusers
     from diffusers import (
         AutoencoderSAME,
-        PingPongScheduler,
+        FlowMatchEulerDiscreteScheduler,
         StableAudio3DiTModel,
         StableAudio3DurationEmbedder,
-        StableAudio3EulerScheduler,
         StableAudio3Pipeline,
     )
 
@@ -644,7 +639,7 @@ def convert(args):
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     # 1. VAE
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    print("\n── Converting VAE ──────────────────────────────────────────────────")
+    print("\n-- Converting VAE --------------------------------------------------")
     vae_cfg = _infer_vae_config(ref_sd, model_config)
     print(f"  Inferred VAE config: {vae_cfg}")
 
@@ -660,12 +655,12 @@ def convert(args):
 
     vae = vae.to(dtype)
     vae.save_pretrained(output_dir / "vae")
-    print(f"  Saved → {output_dir / 'vae'}")
+    print(f"  Saved -> {output_dir / 'vae'}")
 
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     # 2. Duration embedder
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    print("\n── Converting DurationEmbedder ─────────────────────────────────────")
+    print("\n-- Converting DurationEmbedder -------------------------------------")
     dur_cfg = _infer_duration_embedder_config(ref_sd)
     print(f"  Inferred config: {dur_cfg}")
 
@@ -677,12 +672,12 @@ def convert(args):
 
     dur_emb = dur_emb.to(dtype)
     dur_emb.save_pretrained(output_dir / "duration_embedder")
-    print(f"  Saved → {output_dir / 'duration_embedder'}")
+    print(f"  Saved -> {output_dir / 'duration_embedder'}")
 
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     # 3. Text encoder + tokenizer
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    print("\n── Converting TextEncoder ──────────────────────────────────────────")
+    print("\n-- Converting TextEncoder ------------------------------------------")
     te_sd = extract_text_encoder(ref_sd)
 
     text_encoder_repo = args.text_encoder_repo
@@ -702,12 +697,12 @@ def convert(args):
         text_encoder = T5GemmaEncoderModel.from_pretrained(text_encoder_repo, config=te_config)
 
         if te_sd:
-            print(f"  Applying {len(te_sd)} weights extracted from SA3 checkpoint …")
+            print(f"  Applying {len(te_sd)} weights extracted from SA3 checkpoint ...")
             te_missing, te_unexpected = text_encoder.load_state_dict(te_sd, strict=False)
             if te_missing:
-                print(f"    TE missing: {te_missing[:5]} …")
+                print(f"    TE missing: {te_missing[:5]} ...")
             if te_unexpected:
-                print(f"    TE unexpected: {te_unexpected[:5]} …")
+                print(f"    TE unexpected: {te_unexpected[:5]} ...")
         else:
             print(
                 "  No text-encoder weights found in SA3 checkpoint (expected if frozen). Using base T5Gemma weights."
@@ -717,7 +712,7 @@ def convert(args):
         text_encoder_cls_name = type(text_encoder).__name__
         text_encoder.save_pretrained(output_dir / "text_encoder")
         tokenizer.save_pretrained(output_dir / "tokenizer")
-        print(f"  Saved → {output_dir / 'text_encoder'}, {output_dir / 'tokenizer'}")
+        print(f"  Saved -> {output_dir / 'text_encoder'}, {output_dir / 'tokenizer'}")
     except ImportError:
         print("  WARNING: transformers not installed; skipping text_encoder & tokenizer.")
     except Exception as exc:
@@ -726,7 +721,7 @@ def convert(args):
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     # 4. DiT
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    print("\n── Converting DiT ──────────────────────────────────────────────────")
+    print("\n-- Converting DiT --------------------------------------------------")
     dit_cfg = _infer_dit_config(ref_sd)
     print(f"  Inferred DiT config: {dit_cfg}")
 
@@ -735,19 +730,19 @@ def convert(args):
     transformer = StableAudio3DiTModel(**dit_cfg)
     dit_missing, dit_unexpected = transformer.load_state_dict(dit_sd, strict=False)
     if dit_missing:
-        print(f"  DiT missing keys ({len(dit_missing)}): {dit_missing[:5]} …")
+        print(f"  DiT missing keys ({len(dit_missing)}): {dit_missing[:5]} ...")
     if dit_unexpected:
-        print(f"  DiT unexpected keys ({len(dit_unexpected)}): {dit_unexpected[:5]} …")
+        print(f"  DiT unexpected keys ({len(dit_unexpected)}): {dit_unexpected[:5]} ...")
     print(f"  DiT: loaded {len(dit_sd)} keys ({len(dit_missing)} missing, {len(dit_unexpected)} unexpected)")
 
     transformer = transformer.to(dtype)
     transformer.save_pretrained(output_dir / "transformer")
-    print(f"  Saved → {output_dir / 'transformer'}")
+    print(f"  Saved -> {output_dir / 'transformer'}")
 
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     # 5. Scheduler
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    print("\n── Saving scheduler ────────────────────────────────────────────────")
+    print("\n-- Saving scheduler ------------------------------------------------")
     # The base model is a (non-distilled) rectified_flow model that samples with deterministic
     # Euler over many steps; the distilled model (rf_denoiser) uses the 8-step ping-pong sampler.
     diffusion_objective = None
@@ -759,29 +754,21 @@ def convert(args):
         )
 
     if diffusion_objective == "rf_denoiser":
-        scheduler = PingPongScheduler(
-            num_inference_steps=8,
-            logsnr_min=-6.2,
-            logsnr_max=2.0,
-        )
-        scheduler_cls_name = "PingPongScheduler"
+        # Distilled model: stochastic ping-pong sampling, 8 steps by default.
+        scheduler = FlowMatchEulerDiscreteScheduler(num_train_timesteps=1, shift=1.0, stochastic_sampling=True)
     else:
-        # Default (and explicit "rectified_flow"): base model -> deterministic Euler sampler.
+        # Default (and explicit "rectified_flow"): base model -> deterministic Euler sampler, ~100 steps.
         if diffusion_objective is None:
             print("  diffusion_objective not found in model_config; defaulting to Euler (base model).")
-        scheduler = StableAudio3EulerScheduler(
-            num_inference_steps=100,
-            logsnr_min=-6.2,
-            logsnr_max=2.0,
-        )
-        scheduler_cls_name = "StableAudio3EulerScheduler"
+        scheduler = FlowMatchEulerDiscreteScheduler(num_train_timesteps=1, shift=1.0, stochastic_sampling=False)
+    scheduler_cls_name = "FlowMatchEulerDiscreteScheduler"
     scheduler.save_pretrained(output_dir / "scheduler")
-    print(f"  Saved {scheduler_cls_name} → {output_dir / 'scheduler'}")
+    print(f"  Saved {scheduler_cls_name} -> {output_dir / 'scheduler'}")
 
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     # 6. model_index.json
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    print("\n── Writing model_index.json ─────────────────────────────────────────")
+    print("\n-- Writing model_index.json -----------------------------------------")
     model_index = {
         "_class_name": "StableAudio3Pipeline",
         "_diffusers_version": diffusers.__version__,
@@ -794,35 +781,35 @@ def convert(args):
     }
     with open(output_dir / "model_index.json", "w") as f:
         json.dump(model_index, f, indent=2)
-    print(f"  Saved → {output_dir / 'model_index.json'}")
+    print(f"  Saved -> {output_dir / 'model_index.json'}")
 
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     # 7. Round-trip sanity check
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     if args.skip_sanity_check:
-        print("\n── Skipping round-trip sanity check (--skip_sanity_check) ─────────")
+        print("\n-- Skipping round-trip sanity check (--skip_sanity_check) ---------")
     else:
-        print("\n── Round-trip sanity check ──────────────────────────────────────────")
+        print("\n-- Round-trip sanity check ------------------------------------------")
         try:
             pipeline = StableAudio3Pipeline.from_pretrained(str(output_dir))
-            print("  ✓ Pipeline loaded successfully.")
+            print("  [DONE] Pipeline loaded successfully.")
 
             # Quick VAE encode/decode check
             dummy = torch.zeros(1, 2, 44100)
             with torch.no_grad():
                 lat = pipeline.vae.encode(dummy).latents
                 rec = pipeline.vae.decode(lat).sample
-            print(f"  ✓ VAE encode→decode: input {dummy.shape} → latent {lat.shape} → output {rec.shape}")
+            print(f"  [DONE] VAE encode->decode: input {dummy.shape} -> latent {lat.shape} -> output {rec.shape}")
 
             # Quick duration embedder check
             with torch.no_grad():
                 d = pipeline.duration_embedder(torch.tensor([10.0]))
-            print(f"  ✓ DurationEmbedder output shape: {d.shape}")
+            print(f"  [DONE] DurationEmbedder output shape: {d.shape}")
 
         except Exception as exc:
             print(f"  WARNING: sanity check failed: {exc}")
 
-    print(f"\n✓ Conversion complete. Output at: {output_dir}")
+    print(f"\n[DONE] Conversion complete. Output at: {output_dir}")
     print("\nThe full DiT architecture is converted (AdaLN, memory tokens, RoPE, inpaint).")
 
 
