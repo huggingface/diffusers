@@ -967,8 +967,8 @@ class SDNQConfig(QuantizationConfigMixin):
             The target dtype for the weights after quantization, e.g. `"int8"`, `"uint4"`, `"float8_e4m3fn"`. See
             `sdnq.common.accepted_weight_dtypes` for all supported values.
         group_size (`int`, *optional*, defaults to `0`):
-            How many elements of a tensor share the same quantization group. `0` auto-selects based on
-            `weights_dtype`, `-1` disables grouping and uses row-wise quantization.
+            How many elements of a tensor share the same quantization group. `0` auto-selects based on `weights_dtype`,
+            `-1` disables grouping and uses row-wise quantization.
         use_svd (`bool`, *optional*, defaults to `False`):
             Whether to apply the SVDQuant algorithm on top of SDNQ quantization.
         use_quantized_matmul (`bool`, *optional*, defaults to `False`):
