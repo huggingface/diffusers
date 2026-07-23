@@ -13,6 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import importlib
+import json
 import os
 import re
 import warnings
@@ -887,6 +888,16 @@ def load_sub_model(
         )
         if model_quant_config is not None:
             loading_kwargs["quantization_config"] = model_quant_config
+
+    # Prequantized SDNQ transformers components need `sdnq` imported so it registers itself with transformers.
+    if is_transformers_model:
+        component_config_path = os.path.join(cached_folder, name, "config.json")
+        if os.path.isfile(component_config_path):
+            from ..quantizers.sdnq.sdnq_quantizer import _maybe_import_sdnq
+
+            with open(component_config_path, encoding="utf-8") as f:
+                component_config = json.load(f)
+            _maybe_import_sdnq(component_config.get("quantization_config"))
 
     # check if the module is in a subdirectory
     if dduf_entries:

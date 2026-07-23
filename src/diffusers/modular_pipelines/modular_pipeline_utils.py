@@ -336,6 +336,27 @@ class ComponentSpec:
                 else getattr(self.type_hint, "from_pretrained")
             )
 
+            # Prequantized SDNQ transformers components need `sdnq` imported so it registers itself with transformers.
+            if (
+                not is_single_file
+                and issubclass(self.type_hint, torch.nn.Module)
+                and self.type_hint.__module__.startswith("transformers")
+            ):
+                from ..quantizers.sdnq.sdnq_quantizer import _maybe_import_sdnq
+
+                try:
+                    from transformers import PretrainedConfig
+
+                    config_dict, _ = PretrainedConfig.get_config_dict(
+                        pretrained_model_name_or_path,
+                        subfolder=load_kwargs.get("subfolder"),
+                        revision=load_kwargs.get("revision"),
+                    )
+                except Exception:
+                    config_dict = None
+                if config_dict is not None:
+                    _maybe_import_sdnq(config_dict.get("quantization_config"))
+
             try:
                 component = load_method(pretrained_model_name_or_path, **load_kwargs, **kwargs)
             except Exception as e:

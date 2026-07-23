@@ -107,6 +107,7 @@ from .import_utils import (
     is_sageattention_available,
     is_sageattention_version,
     is_scipy_available,
+    is_sdnq_available,
     is_sentencepiece_available,
     is_tensorboard_available,
     is_timm_available,

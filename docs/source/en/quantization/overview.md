@@ -148,6 +148,7 @@ The following backends support loading prequantized checkpoints out of the box.
 | [AutoRound](./autoround) | Only loading is supported; quantize first with the AutoRound CLI or Python API. |
 | [Nunchaku Lite](./nunchaku) | Config is saved in `config.json`; requires the `kernels` package. |
 | [ModelOpt](./modelopt) | Supports both quantizing on the fly and loading prequantized models. |
+| [SDNQ](./sdnq) | Supports both quantizing on the fly and loading prequantized models; requires the `sdnq` package. |
 
 ## Resources
 
