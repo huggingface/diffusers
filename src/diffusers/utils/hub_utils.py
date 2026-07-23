@@ -54,11 +54,8 @@ from .constants import (
 )
 from .import_utils import (
     ENV_VARS_TRUE_VALUES,
-    _flax_version,
-    _jax_version,
     _onnxruntime_version,
     _torch_version,
-    is_flax_available,
     is_onnx_available,
     is_torch_available,
 )
@@ -80,9 +77,6 @@ def http_user_agent(user_agent: dict | str | None = None) -> str:
         return ua + "; telemetry/off"
     if is_torch_available():
         ua += f"; torch/{_torch_version}"
-    if is_flax_available():
-        ua += f"; jax/{_jax_version}"
-        ua += f"; flax/{_flax_version}"
     if is_onnx_available():
         ua += f"; onnxruntime/{_onnxruntime_version}"
     # CI will set this value to True
@@ -392,6 +386,13 @@ def _get_checkpoint_shard_files(
             index = json.loads(f.read())
 
     original_shard_filenames = sorted(set(index["weight_map"].values()))
+    for shard_filename in original_shard_filenames:
+        if os.path.basename(shard_filename) != shard_filename:
+            raise ValueError(
+                f"The shard filename {shard_filename!r} in the checkpoint index contains a path separator or a "
+                "parent-directory reference, which is not allowed. Shard filenames must be plain filenames located "
+                "in the model directory."
+            )
     sharded_metadata = index["metadata"]
     sharded_metadata["all_checkpoint_keys"] = list(index["weight_map"].keys())
     sharded_metadata["weight_map"] = index["weight_map"].copy()

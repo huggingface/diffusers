@@ -220,6 +220,9 @@ pipeline = DiffusionPipeline.from_single_file(
 
 ### dduf
 
+> [!WARNING]
+> DDUF support is deprecated and will be removed in version 0.41.0. Save and load your pipelines using the standard Diffusers directory format instead.
+
 > [!TIP]
 > DDUF is an experimental file type and the API may change. Refer to the DDUF [docs](https://huggingface.co/docs/hub/dduf) to learn more.
 

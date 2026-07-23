@@ -170,7 +170,7 @@ class BriaPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as tmpdir:
             pipe.save_pretrained(tmpdir)
-            pipe_loaded = self.pipeline_class.from_pretrained(tmpdir, torch_dtype=torch.float16)
+            pipe_loaded = self.pipeline_class.from_pretrained(tmpdir, dtype=torch.float16)
             for component in pipe_loaded.components.values():
                 if hasattr(component, "set_default_attn_processor"):
                     component.set_default_attn_processor()
@@ -215,14 +215,14 @@ class BriaPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         model_dtypes = [component.dtype for component in components.values() if hasattr(component, "dtype")]
         self.assertTrue([dtype == torch.float32 for dtype in model_dtypes] == [True, True, True])
 
-    def test_torch_dtype_dict(self):
+    def test_dtype_dict(self):
         components = self.get_dummy_components()
         pipe = self.pipeline_class(**components)
 
         with tempfile.TemporaryDirectory() as tmpdirname:
             pipe.save_pretrained(tmpdirname)
-            torch_dtype_dict = {"transformer": torch.bfloat16, "default": torch.float16}
-            loaded_pipe = self.pipeline_class.from_pretrained(tmpdirname, torch_dtype=torch_dtype_dict)
+            dtype_dict = {"transformer": torch.bfloat16, "default": torch.float16}
+            loaded_pipe = self.pipeline_class.from_pretrained(tmpdirname, dtype=dtype_dict)
 
             self.assertEqual(loaded_pipe.transformer.dtype, torch.bfloat16)
             self.assertEqual(loaded_pipe.text_encoder.dtype, torch.float16)
@@ -230,8 +230,8 @@ class BriaPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as tmpdirname:
             pipe.save_pretrained(tmpdirname)
-            torch_dtype_dict = {"default": torch.float16}
-            loaded_pipe = self.pipeline_class.from_pretrained(tmpdirname, torch_dtype=torch_dtype_dict)
+            dtype_dict = {"default": torch.float16}
+            loaded_pipe = self.pipeline_class.from_pretrained(tmpdirname, dtype=dtype_dict)
 
             self.assertEqual(loaded_pipe.transformer.dtype, torch.float16)
             self.assertEqual(loaded_pipe.text_encoder.dtype, torch.float16)
@@ -272,7 +272,7 @@ class BriaPipelineSlowTests(unittest.TestCase):
 
     def test_bria_inference_bf16(self):
         pipe = self.pipeline_class.from_pretrained(
-            self.repo_id, torch_dtype=torch.bfloat16, text_encoder=None, tokenizer=None
+            self.repo_id, dtype=torch.bfloat16, text_encoder=None, tokenizer=None
         )
         pipe.to(torch_device)
 

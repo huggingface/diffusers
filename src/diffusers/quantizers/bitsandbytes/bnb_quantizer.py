@@ -72,12 +72,6 @@ class BnB4BitDiffusersQuantizer(DiffusersQuantizer):
                 "Using `bitsandbytes` 4-bit quantization requires the latest version of bitsandbytes: `pip install -U bitsandbytes`"
             )
 
-        if kwargs.get("from_flax", False):
-            raise ValueError(
-                "Converting into 4-bit weights from flax weights is currently not supported, please make"
-                " sure the weights are in PyTorch format."
-            )
-
         device_map = kwargs.get("device_map", None)
         if (
             device_map is not None
@@ -361,12 +355,6 @@ class BnB8BitDiffusersQuantizer(DiffusersQuantizer):
         if not is_bitsandbytes_available() or is_bitsandbytes_version("<", "0.43.3"):
             raise ImportError(
                 "Using `bitsandbytes` 8-bit quantization requires the latest version of bitsandbytes: `pip install -U bitsandbytes`"
-            )
-
-        if kwargs.get("from_flax", False):
-            raise ValueError(
-                "Converting into 8-bit weights from flax weights is currently not supported, please make"
-                " sure the weights are in PyTorch format."
             )
 
         device_map = kwargs.get("device_map", None)

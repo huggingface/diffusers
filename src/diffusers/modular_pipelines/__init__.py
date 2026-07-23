@@ -98,6 +98,8 @@ else:
         "AnimaModularPipeline",
     ]
     _import_structure["cosmos"] = [
+        "Cosmos3DistilledBlocks",
+        "Cosmos3DistilledModularPipeline",
         "Cosmos3OmniBlocks",
         "Cosmos3OmniModularPipeline",
     ]
@@ -128,7 +130,12 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     else:
         from .anima import AnimaAutoBlocks, AnimaModularPipeline
         from .components_manager import ComponentsManager
-        from .cosmos import Cosmos3OmniBlocks, Cosmos3OmniModularPipeline
+        from .cosmos import (
+            Cosmos3DistilledBlocks,
+            Cosmos3DistilledModularPipeline,
+            Cosmos3OmniBlocks,
+            Cosmos3OmniModularPipeline,
+        )
         from .ernie_image import ErnieImageAutoBlocks, ErnieImageModularPipeline
         from .flux import FluxAutoBlocks, FluxKontextAutoBlocks, FluxKontextModularPipeline, FluxModularPipeline
         from .flux2 import (
