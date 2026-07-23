@@ -23,6 +23,13 @@ import safetensors.torch
 import torch
 import torch.nn as nn
 
+from diffusers.hooks._common import _GO_LC_SUPPORTED_PYTORCH_LAYERS
+from diffusers.hooks.layerwise_casting import (
+    _PEFT_AUTOCAST_DISABLE_HOOK,
+    DEFAULT_SKIP_MODULES_PATTERN,
+    apply_layerwise_casting,
+)
+from diffusers.loaders.lora_base import LORA_ADAPTER_METADATA_KEY
 from diffusers.utils import logging
 from diffusers.utils.import_utils import is_peft_available
 from diffusers.utils.testing_utils import check_if_dicts_are_equal
@@ -45,6 +52,10 @@ from .common import cast_inputs_to_dtype
 
 
 if is_peft_available():
+    from peft import LoraConfig, inject_adapter_in_model, set_peft_model_state_dict
+    from peft.tuners.tuners_utils import BaseTunerLayer
+    from peft.utils import get_peft_model_state_dict
+
     from diffusers.loaders.peft import PeftAdapterMixin
 
 
@@ -58,7 +69,6 @@ def check_if_lora_correctly_set(model) -> bool:
     Returns:
         bool: True if LoRA is correctly set, False otherwise
     """
-    from peft.tuners.tuners_utils import BaseTunerLayer
 
     for module in model.modules():
         if isinstance(module, BaseTunerLayer):
@@ -90,9 +100,6 @@ class LoraTesterMixin:
     @pytest.mark.parametrize("use_dora", [False, True], ids=["lora", "dora"])
     @torch.no_grad()
     def test_save_load_lora_adapter(self, tmp_path, use_dora, rank=4, lora_alpha=4, atol=1e-4, rtol=1e-4):
-        from peft import LoraConfig
-        from peft.utils import get_peft_model_state_dict
-
         init_dict = self.get_init_dict()
         inputs_dict = self.get_dummy_inputs()
         model = self.model_class(**init_dict).to(torch_device)
@@ -152,8 +159,6 @@ class LoraTesterMixin:
         )
 
     def test_lora_wrong_adapter_name_raises_error(self, tmp_path):
-        from peft import LoraConfig
-
         init_dict = self.get_init_dict()
         model = self.model_class(**init_dict).to(torch_device)
 
@@ -174,8 +179,6 @@ class LoraTesterMixin:
         assert f"Adapter name {wrong_name} not found in the model." in str(exc_info.value)
 
     def test_lora_adapter_metadata_is_loaded_correctly(self, tmp_path, rank=4, lora_alpha=4, use_dora=False):
-        from peft import LoraConfig
-
         init_dict = self.get_init_dict()
         model = self.model_class(**init_dict).to(torch_device)
 
@@ -202,10 +205,6 @@ class LoraTesterMixin:
         check_if_dicts_are_equal(metadata, parsed_metadata)
 
     def test_lora_adapter_wrong_metadata_raises_error(self, tmp_path):
-        from peft import LoraConfig
-
-        from diffusers.loaders.lora_base import LORA_ADAPTER_METADATA_KEY
-
         init_dict = self.get_init_dict()
         model = self.model_class(**init_dict).to(torch_device)
 
@@ -253,8 +252,6 @@ class LoraTesterMixin:
     @torch.no_grad()
     def test_lora_low_cpu_mem_usage_with_injection(self):
         """Tests that the LoRA state dict can be injected with low_cpu_mem_usage."""
-        from peft import LoraConfig, inject_adapter_in_model, set_peft_model_state_dict
-        from peft.utils import get_peft_model_state_dict
 
         model = self.model_class(**self.get_init_dict()).to(torch_device)
         lora_config = LoraConfig(
@@ -287,9 +284,6 @@ class LoraTesterMixin:
     )
     @torch.no_grad()
     def test_lora_fuse_nan(self):
-        from peft import LoraConfig
-        from peft.tuners.tuners_utils import BaseTunerLayer
-
         model = self.model_class(**self.get_init_dict()).to(torch_device)
         lora_config = LoraConfig(
             r=4,
@@ -318,8 +312,6 @@ class LoraTesterMixin:
     @require_peft_version_greater("0.13.2")
     @torch.no_grad()
     def test_lora_B_bias(self, atol=1e-3, rtol=1e-3):
-        from peft import LoraConfig
-
         model = self.model_class(**self.get_init_dict()).to(torch_device)
         inputs_dict = self.get_dummy_inputs()
 
@@ -347,8 +339,6 @@ class LoraTesterMixin:
 
     @torch.no_grad()
     def test_correct_lora_configs_with_different_ranks(self, atol=1e-3, rtol=1e-3):
-        from peft import LoraConfig
-
         model = self.model_class(**self.get_init_dict()).to(torch_device)
         inputs_dict = self.get_dummy_inputs()
 
@@ -399,8 +389,6 @@ class LoraTesterMixin:
         assert not torch.allclose(lora_output_diff_alpha, lora_output_same_rank, atol=atol, rtol=rtol)
 
     def test_lora_missing_keys_warning(self, tmp_path):
-        from peft import LoraConfig
-
         model = self.model_class(**self.get_init_dict()).to(torch_device)
         lora_config = LoraConfig(
             r=4,
@@ -430,8 +418,6 @@ class LoraTesterMixin:
         assert missing_key in cap_logger.out.replace("default_0.", "")
 
     def test_lora_unexpected_keys_warning(self, tmp_path):
-        from peft import LoraConfig
-
         model = self.model_class(**self.get_init_dict()).to(torch_device)
         lora_config = LoraConfig(
             r=4,
@@ -477,11 +463,6 @@ class LoraTesterMixin:
     )
     @torch.no_grad()
     def test_lora_layerwise_casting_inference(self):
-        from peft import LoraConfig
-
-        from diffusers.hooks._common import _GO_LC_SUPPORTED_PYTORCH_LAYERS
-        from diffusers.hooks.layerwise_casting import DEFAULT_SKIP_MODULES_PATTERN
-
         def check_linear_dtype(module, storage_dtype, compute_dtype):
             patterns_to_check = DEFAULT_SKIP_MODULES_PATTERN
             if getattr(module, "_skip_layerwise_casting_patterns", None) is not None:
@@ -541,15 +522,6 @@ class LoraTesterMixin:
 
         See the docstring of [`hooks.layerwise_casting.PeftInputAutocastDisableHook`] for more details.
         """
-        from peft import LoraConfig
-        from peft.tuners.tuners_utils import BaseTunerLayer
-
-        from diffusers.hooks._common import _GO_LC_SUPPORTED_PYTORCH_LAYERS
-        from diffusers.hooks.layerwise_casting import (
-            _PEFT_AUTOCAST_DISABLE_HOOK,
-            DEFAULT_SKIP_MODULES_PATTERN,
-            apply_layerwise_casting,
-        )
 
         storage_dtype = torch.float8_e4m3fn
         compute_dtype = torch.float32
@@ -663,8 +635,6 @@ class LoraHotSwappingForModelTesterMixin:
         backend_empty_cache(torch_device)
 
     def _get_lora_config(self, lora_rank, lora_alpha, target_modules):
-        from peft import LoraConfig
-
         lora_config = LoraConfig(
             r=lora_rank,
             lora_alpha=lora_alpha,

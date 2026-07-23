@@ -18,6 +18,7 @@ from diffusers import (
     FluxTransformer2DModel,
 )
 from diffusers.loaders import FluxIPAdapterMixin
+from diffusers.utils.import_utils import is_peft_available
 
 from ...models.testing_utils.lora import check_if_lora_correctly_set
 from ...models.transformers.test_models_transformer_flux import create_flux_ip_adapter_state_dict
@@ -45,6 +46,10 @@ from ..testing_utils import (
     PyramidAttentionBroadcastTesterMixin,
     TaylorSeerCacheTesterMixin,
 )
+
+
+if is_peft_available():
+    from peft.utils import get_peft_model_state_dict
 
 
 class FluxPipelineTesterConfig(BasePipelineTesterConfig):
@@ -367,8 +372,6 @@ class TestFluxPipelineLoRA(FluxPipelineTesterConfig, LoraTesterMixin):
     """LoRA tests for the Flux pipeline."""
 
     def test_with_alpha_in_state_dict(self, tmp_path, denoiser_lora_config):
-        from peft.utils import get_peft_model_state_dict
-
         pipe = self.get_pipeline().to(torch_device)
         pipe.transformer.add_adapter(denoiser_lora_config)
         assert check_if_lora_correctly_set(pipe.transformer), "Lora not correctly set in transformer"
@@ -409,8 +412,6 @@ class TestFluxPipelineLoRA(FluxPipelineTesterConfig, LoraTesterMixin):
         assert not torch.allclose(images_lora_with_alpha, images_lora, atol=1e-3, rtol=1e-3)
 
     def test_lora_expansion_works_for_absent_keys(self, tmp_path, base_pipe_output, denoiser_lora_config):
-        from peft.utils import get_peft_model_state_dict
-
         pipe = self.get_pipeline().to(torch_device)
 
         # Modify the config to have a layer which won't be present in the second LoRA we will load.
@@ -449,8 +450,6 @@ class TestFluxPipelineLoRA(FluxPipelineTesterConfig, LoraTesterMixin):
         )
 
     def test_lora_expansion_works_for_extra_keys(self, tmp_path, base_pipe_output, denoiser_lora_config):
-        from peft.utils import get_peft_model_state_dict
-
         pipe = self.get_pipeline().to(torch_device)
 
         # Modify the config to have a layer which won't be present in the first LoRA we will load.

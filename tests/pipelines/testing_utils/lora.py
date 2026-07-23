@@ -20,9 +20,14 @@ from itertools import product
 import pytest
 import torch
 
-from diffusers.hooks.group_offloading import _GROUP_OFFLOADING, apply_group_offloading
+from diffusers.hooks.group_offloading import (
+    _GROUP_OFFLOADING,
+    _get_top_level_group_offload_hook,
+    apply_group_offloading,
+)
 from diffusers.loaders.lora_base import LoraBaseMixin
 from diffusers.utils import logging
+from diffusers.utils.import_utils import is_peft_available
 
 from ...models.testing_utils.lora import check_if_lora_correctly_set
 from ...testing_utils import (
@@ -37,6 +42,11 @@ from ...testing_utils import (
     torch_device,
 )
 from .common import BasePipelineOutputMixin
+
+
+if is_peft_available():
+    from peft import LoraConfig
+    from peft.utils import get_peft_model_state_dict
 
 
 def _transformers_strips_text_model_prefix() -> bool:
@@ -105,8 +115,6 @@ class BaseLoraTesterMixin(BasePipelineOutputMixin):
 
     @pytest.fixture
     def text_lora_config(self):
-        from peft import LoraConfig
-
         return LoraConfig(
             r=self.lora_rank,
             lora_alpha=self.lora_alpha,
@@ -117,8 +125,6 @@ class BaseLoraTesterMixin(BasePipelineOutputMixin):
 
     @pytest.fixture
     def denoiser_lora_config(self):
-        from peft import LoraConfig
-
         return LoraConfig(
             r=self.lora_rank,
             lora_alpha=self.lora_alpha,
@@ -166,8 +172,6 @@ class BaseLoraTesterMixin(BasePipelineOutputMixin):
         return denoiser
 
     def _get_lora_state_dicts(self, modules_to_save):
-        from peft.utils import get_peft_model_state_dict
-
         state_dicts = {}
         for module_name, module in modules_to_save.items():
             if module is not None:
@@ -423,9 +427,6 @@ class LoraTesterMixin(BaseLoraTesterMixin):
         """
         if not self.supports_text_encoder_loras:
             pytest.skip("Text encoder LoRAs are not currently supported for this pipeline.")
-
-        from peft import LoraConfig
-        from peft.utils import get_peft_model_state_dict
 
         # Verify `load_lora_into_text_encoder` handles different ranks per module (PR#8324).
         text_lora_config = LoraConfig(
@@ -1093,8 +1094,6 @@ class LoraTesterMixin(BaseLoraTesterMixin):
 
     @pytest.mark.parametrize("lora_alpha", [4, 8, 16])
     def test_lora_adapter_metadata_is_loaded_correctly(self, tmp_path, lora_alpha):
-        from peft import LoraConfig
-
         text_lora_config = LoraConfig(
             r=self.lora_rank,
             lora_alpha=lora_alpha,
@@ -1148,8 +1147,6 @@ class LoraTesterMixin(BaseLoraTesterMixin):
 
     @pytest.mark.parametrize("lora_alpha", [4, 8, 16])
     def test_lora_adapter_metadata_save_load_inference(self, tmp_path, lora_alpha):
-        from peft import LoraConfig
-
         text_lora_config = LoraConfig(
             r=self.lora_rank,
             lora_alpha=lora_alpha,
@@ -1250,8 +1247,6 @@ class LoraMemoryTesterMixin(BaseLoraTesterMixin):
     )
     @require_torch_accelerator
     def test_group_offloading_inference_denoiser(self, tmp_path, denoiser_lora_config, offload_type, use_stream):
-        from diffusers.hooks.group_offloading import _get_top_level_group_offload_hook
-
         onload_device = torch_device
         offload_device = torch.device("cpu")
 
