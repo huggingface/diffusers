@@ -1,6 +1,5 @@
 import copy
 
-import numpy as np
 import torch
 
 from ...models.transformers.transformer_cosmos3 import Cosmos3OmniTransformer
@@ -945,7 +944,10 @@ class Cosmos3SetTimestepsStep(ModularPipelineBlocks):
 
     @property
     def expected_configs(self) -> list[ConfigSpec]:
-        return [ConfigSpec(name="use_native_flow_schedule", default=False)]
+        return [
+            ConfigSpec(name="use_native_flow_schedule", default=False),
+            ConfigSpec(name="native_flow_shift", default=None),
+        ]
 
     @property
     def inputs(self) -> list[InputParam]:
@@ -965,12 +967,11 @@ class Cosmos3SetTimestepsStep(ModularPipelineBlocks):
         block_state = self.get_block_state(state)
         device = components._execution_device
         if components.config.use_native_flow_schedule:
-            sigmas = np.linspace(
-                1.0 - 1.0 / components.scheduler.config.num_train_timesteps,
-                0.0,
-                block_state.num_inference_steps + 1,
-            )[:-1]
-            components.scheduler.set_timesteps(block_state.num_inference_steps, device=device, sigmas=sigmas)
+            components.scheduler.set_cosmos3_edge_native_flow_timesteps(
+                block_state.num_inference_steps,
+                device=device,
+                shift=components.config.native_flow_shift,
+            )
         else:
             components.scheduler.set_timesteps(block_state.num_inference_steps, device=device)
         block_state.timesteps = components.scheduler.timesteps

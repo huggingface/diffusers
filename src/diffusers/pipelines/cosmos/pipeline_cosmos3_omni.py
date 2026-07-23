@@ -379,12 +379,14 @@ class Cosmos3OmniPipeline(DiffusionPipeline):
         enable_safety_checker: bool = True,
         default_use_system_prompt: bool = True,
         use_native_flow_schedule: bool = False,
+        native_flow_shift: float | None = None,
     ):
         super().__init__()
         self.register_to_config(
             enable_safety_checker=enable_safety_checker,
             default_use_system_prompt=default_use_system_prompt,
             use_native_flow_schedule=use_native_flow_schedule,
+            native_flow_shift=native_flow_shift,
         )
         if enable_safety_checker:
             if safety_checker is None:
@@ -1628,12 +1630,11 @@ class Cosmos3OmniPipeline(DiffusionPipeline):
         # 6. Set timesteps. UniPCMultistepScheduler keeps per-step state (_step_index,
         # model_outputs history) on the instance, so sound/action each get their own copy.
         if self.config.use_native_flow_schedule:
-            sigmas = np.linspace(
-                1.0 - 1.0 / self.scheduler.config.num_train_timesteps,
-                0.0,
-                num_inference_steps + 1,
-            )[:-1]
-            self.scheduler.set_timesteps(num_inference_steps, device=device, sigmas=sigmas)
+            self.scheduler.set_cosmos3_edge_native_flow_timesteps(
+                num_inference_steps,
+                device=device,
+                shift=self.config.native_flow_shift,
+            )
         else:
             self.scheduler.set_timesteps(num_inference_steps, device=device)
         timesteps = self.scheduler.timesteps
