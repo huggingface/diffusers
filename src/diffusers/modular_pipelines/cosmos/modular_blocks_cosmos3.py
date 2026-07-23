@@ -123,6 +123,9 @@ class Cosmos3AutoTextEncoderStep(AutoPipelineBlocks):
       Components:
           video_processor (`VideoProcessor`) text_tokenizer (`AutoTokenizer`)
 
+      Configs:
+          default_use_system_prompt (default: True) enable_safety_checker (default: True)
+
       Inputs:
           control_videos (`dict`, *optional*):
               Mapping of hint name (edge/blur/depth/seg/wsm) to the control video for that modality.
@@ -140,9 +143,8 @@ class Cosmos3AutoTextEncoderStep(AutoPipelineBlocks):
               The text prompt that guides Cosmos3 generation.
           negative_prompt (`str`, *optional*):
               The negative text prompt used for classifier-free guidance.
-          use_system_prompt (`bool`, *optional*):
-              Whether to prepend the system prompt. Defaults to the pipeline configuration for standard and action
-              workflows and to True for transfer.
+          use_system_prompt (`bool`, *optional*, defaults to True):
+              Whether to prepend the Cosmos3 transfer system prompt.
           action (`CosmosActionCondition`, *optional*):
               Action-conditioning metadata and its reference visual input.
           fps (`float`, *optional*, defaults to 24.0):
@@ -368,6 +370,9 @@ class Cosmos3VisionCoreDenoiseStep(SequentialPipelineBlocks):
       Components:
           transformer (`Cosmos3OmniTransformer`) scheduler (`UniPCMultistepScheduler`)
 
+      Configs:
+          use_native_flow_schedule (default: False)
+
       Inputs:
           cond_input_ids (`None`):
               Token IDs for the conditional prompt.
@@ -435,6 +440,9 @@ class Cosmos3VisionSoundCoreDenoiseStep(SequentialPipelineBlocks):
 
       Components:
           transformer (`Cosmos3OmniTransformer`) scheduler (`UniPCMultistepScheduler`)
+
+      Configs:
+          use_native_flow_schedule (default: False)
 
       Inputs:
           cond_input_ids (`None`):
@@ -516,6 +524,9 @@ class Cosmos3VisionActionCoreDenoiseStep(SequentialPipelineBlocks):
 
       Components:
           transformer (`Cosmos3OmniTransformer`) scheduler (`UniPCMultistepScheduler`)
+
+      Configs:
+          use_native_flow_schedule (default: False)
 
       Inputs:
           cond_input_ids (`None`):
@@ -601,6 +612,9 @@ class Cosmos3VisionSoundActionCoreDenoiseStep(SequentialPipelineBlocks):
 
       Components:
           transformer (`Cosmos3OmniTransformer`) scheduler (`UniPCMultistepScheduler`)
+
+      Configs:
+          use_native_flow_schedule (default: False)
 
       Inputs:
           cond_input_ids (`None`):
@@ -962,6 +976,9 @@ class Cosmos3AutoCoreDenoiseStep(ConditionalPipelineBlocks):
           transformer (`Cosmos3OmniTransformer`) vae (`AutoencoderKLWan`) video_processor (`VideoProcessor`) scheduler
           (`UniPCMultistepScheduler`)
 
+      Configs:
+          use_native_flow_schedule (default: False)
+
       Inputs:
           cond_input_ids (`None`):
               Token IDs for the conditional prompt.
@@ -1149,6 +1166,10 @@ class Cosmos3OmniBlocks(SequentialPipelineBlocks):
           (`Cosmos3OmniTransformer`) scheduler (`UniPCMultistepScheduler`) sound_tokenizer
           (`Cosmos3AVAEAudioTokenizer`)
 
+      Configs:
+          default_use_system_prompt (default: True) enable_safety_checker (default: True) use_native_flow_schedule
+          (default: False)
+
       Inputs:
           control_videos (`dict`, *optional*):
               Mapping of hint name (edge/blur/depth/seg/wsm) to the control video for that modality.
@@ -1166,9 +1187,8 @@ class Cosmos3OmniBlocks(SequentialPipelineBlocks):
               The text prompt that guides Cosmos3 generation.
           negative_prompt (`str`, *optional*):
               The negative text prompt used for classifier-free guidance.
-          use_system_prompt (`bool`, *optional*):
-              Whether to prepend the system prompt. Defaults to the pipeline configuration for standard and action
-              workflows and to True for transfer.
+          use_system_prompt (`bool`, *optional*, defaults to True):
+              Whether to prepend the Cosmos3 transfer system prompt.
           action (`CosmosActionCondition`, *optional*):
               Action-conditioning metadata and its reference visual input.
           fps (`float`, *optional*, defaults to 24.0):
