@@ -220,6 +220,8 @@
     title: Task recipes
   - local: using-diffusers/write_own_pipeline
     title: Understanding pipelines, models and schedulers
+  - local: using-diffusers/cli
+    title: Command line interface
   - local: community_projects
     title: Projects built with Diffusers
   - local: conceptual/philosophy

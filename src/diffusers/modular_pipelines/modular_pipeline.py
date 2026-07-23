@@ -2171,6 +2171,16 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
         [`~DiffusionPipeline.enable_sequential_cpu_offload`] the execution device can only be inferred from
         Accelerate's module hooks.
         """
+        from ..hooks.group_offloading import _get_group_onload_device
+
+        for name, model in self.components.items():
+            if not isinstance(model, torch.nn.Module):
+                continue
+            try:
+                return _get_group_onload_device(model)
+            except ValueError:
+                pass
+
         for name, model in self.components.items():
             if not isinstance(model, torch.nn.Module):
                 continue

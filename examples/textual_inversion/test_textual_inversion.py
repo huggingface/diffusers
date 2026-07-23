@@ -35,7 +35,7 @@ class TextualInversion(ExamplesTestsAccelerate):
         with tempfile.TemporaryDirectory() as tmpdir:
             test_args = f"""
                 examples/textual_inversion/textual_inversion.py
-                --pretrained_model_name_or_path hf-internal-testing/tiny-stable-diffusion-pipe
+                --pretrained_model_name_or_path hf-internal-testing/tiny-stable-diffusion-torch
                 --train_data_dir docs/source/en/imgs
                 --learnable_property object
                 --placeholder_token <cat-toy>
@@ -61,7 +61,7 @@ class TextualInversion(ExamplesTestsAccelerate):
         with tempfile.TemporaryDirectory() as tmpdir:
             test_args = f"""
                 examples/textual_inversion/textual_inversion.py
-                --pretrained_model_name_or_path hf-internal-testing/tiny-stable-diffusion-pipe
+                --pretrained_model_name_or_path hf-internal-testing/tiny-stable-diffusion-torch
                 --train_data_dir docs/source/en/imgs
                 --learnable_property object
                 --placeholder_token <cat-toy>
@@ -93,7 +93,7 @@ class TextualInversion(ExamplesTestsAccelerate):
         with tempfile.TemporaryDirectory() as tmpdir:
             test_args = f"""
                 examples/textual_inversion/textual_inversion.py
-                --pretrained_model_name_or_path hf-internal-testing/tiny-stable-diffusion-pipe
+                --pretrained_model_name_or_path hf-internal-testing/tiny-stable-diffusion-torch
                 --train_data_dir docs/source/en/imgs
                 --learnable_property object
                 --placeholder_token <cat-toy>
@@ -122,7 +122,7 @@ class TextualInversion(ExamplesTestsAccelerate):
 
             resume_run_args = f"""
                 examples/textual_inversion/textual_inversion.py
-                --pretrained_model_name_or_path hf-internal-testing/tiny-stable-diffusion-pipe
+                --pretrained_model_name_or_path hf-internal-testing/tiny-stable-diffusion-torch
                 --train_data_dir docs/source/en/imgs
                 --learnable_property object
                 --placeholder_token <cat-toy>
