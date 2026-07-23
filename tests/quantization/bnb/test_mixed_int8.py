@@ -751,8 +751,9 @@ class SlowBnb4BitFluxControlWithLoraTests(Base8bitTests):
             generator=torch.Generator().manual_seed(42),
         ).images
         out_slice = output[0, -3:, -3:, -1].flatten()
-        # Expected slices are hardware-dependent because the Flux Control LoRA expands and dequantizes the
-        # quantized `x_embedder` layer, so the reference values are stored per accelerator backend.
+        # Hardware-dependent: the Control LoRA dequantizes and expands `x_embedder`, and the error
+        # accumulates over the 8 denoising steps enough that even different CUDA GPUs disagree, so
+        # reference slices are stored per accelerator backend.
         expected_slices = Expectations(
             {
                 (None, None): np.array([0.2029, 0.2136, 0.2268, 0.1921, 0.1997, 0.2185, 0.2021, 0.2183, 0.2292]),
