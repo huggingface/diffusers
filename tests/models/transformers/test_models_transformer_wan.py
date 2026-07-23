@@ -24,6 +24,7 @@ from ..testing_utils import (
     BitsAndBytesTesterMixin,
     GGUFCompileTesterMixin,
     GGUFTesterMixin,
+    LoraTesterMixin,
     MemoryTesterMixin,
     ModelTesterMixin,
     TorchAoTesterMixin,
@@ -228,3 +229,7 @@ class TestWanTransformer3DGGUFCompile(WanTransformer3DTesterConfig, GGUFCompileT
             ),
             "timestep": torch.tensor([1.0]).to(torch_device, self.torch_dtype),
         }
+
+
+class TestWanTransformer3DLoRA(WanTransformer3DTesterConfig, LoraTesterMixin):
+    pass

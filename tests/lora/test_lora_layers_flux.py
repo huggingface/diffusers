@@ -566,10 +566,6 @@ class FluxControlLoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
         pass
 
     @unittest.skip("Not supported in Flux.")
-    def test_modify_padding_mode(self):
-        pass
-
-    @unittest.skip("Not supported in Flux.")
     def test_simple_inference_with_text_denoiser_multi_adapter_block_lora(self):
         pass
 

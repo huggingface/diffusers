@@ -323,6 +323,39 @@ Implementation notes:
 - Resulting counts for Flux: 41 pipeline-level LoRA tests, 14 model-level LoRA tests
   (`TestFluxTransformerLoRA`).
 
+## Model-level rollout (implemented): every `tests/lora/` pipeline now has model-level coverage
+
+The audit's moved tests were deleted from `tests/lora/utils.py` (10 methods: the 9 in the table above
+plus `test_simple_inference_with_dora`), together with their now-dangling per-pipeline overrides and
+skip stubs across 20 `test_lora_layers_*.py` files (~820 lines removed). To keep this
+coverage-neutral, a `Test<X>LoRA(<X>TesterConfig, LoraTesterMixin)` class was added to the model
+test file of every denoiser exercised by `tests/lora/` that didn't have one yet — 16 new classes:
+AceStep, AuraFlow, CogVideoX, CogView4, Helios, HunyuanVideo, Ideogram4, Krea2, LTX, LTX2, Lumina2,
+Mochi, Sana, SD3, Wan, WanVACE (Flux, Flux2, QwenImage, Z-Image, Chroma and UNet2DCondition already
+had them). Per-model deviations, all mirrored from the old `tests/lora/` files or found empirically:
+
+- AceStep: skips `test_correct_lora_configs_with_different_ranks` (tiny GQA model gives numerically
+  close outputs) and `test_lora_B_bias` (attention layers have no bias) — same reasons as before.
+- Sana: `test_lora_layerwise_casting_inference` keeps its `IS_GITHUB_ACTIONS` skip.
+- AuraFlow: `test_lora_B_bias` and `test_correct_lora_configs_with_different_ranks` run with
+  `atol/rtol=1e-4` — the tiny model's LoRA deltas fall below the default `1e-3`.
+- The old Ideogram4/Z-Image/Lumina2/Flux2 `test_lora_fuse_nan` and rank-pattern overrides needed no
+  model-level counterpart: the generic mixin versions are structure-agnostic (see audit notes).
+
+`TestFluxPipelineLoRA`'s three Flux-specific tests were re-checked for placement and stay at the
+pipeline level: `test_with_alpha_in_state_dict` exercises the `.alpha`-key → `network_alphas`
+parsing in `FluxLoraLoaderMixin.lora_state_dict` (`lora_pipeline.py:1602`), and the two
+`test_lora_expansion_works_for_*_keys` tests exercise
+`_maybe_expand_transformer_param_shape_or_error_` / `_maybe_expand_lora_state_dict`
+(`lora_pipeline.py:2053`/`2177`) — all pipeline-loader code reachable only via
+`pipe.load_lora_weights`.
+
+CI needs no further changes: the 16 new classes flow into the existing `tests/models/ -k "lora"`
+pass of `run_lora_tests` automatically (every mixin test name contains `lora`). `-k "lora"` was
+kept over `-m "lora"` deliberately — it is a strict superset that additionally matches the
+quantization x LoRA tests (`test_*_quantization_lora_inference`), which are accelerator-gated and
+skip cleanly on the CPU job.
+
 ## Follow-up phases (separate PRs, same recipe)
 
 1. Migrate remaining transformer-based pipelines whose pipeline test files already use the new config

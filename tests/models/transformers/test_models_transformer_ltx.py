@@ -20,6 +20,7 @@ from diffusers.utils.torch_utils import randn_tensor
 from ...testing_utils import enable_full_determinism, torch_device
 from ..testing_utils import (
     BaseModelTesterConfig,
+    LoraTesterMixin,
     MemoryTesterMixin,
     ModelTesterMixin,
     TorchCompileTesterMixin,
@@ -116,3 +117,7 @@ class TestLTXTransformerCompile(LTXTransformerTesterConfig, TorchCompileTesterMi
 # TODO: Add pretrained_model_name_or_path once a tiny LTX model is available on the Hub
 # class TestLTXTransformerTorchAo(LTXTransformerTesterConfig, TorchAoTesterMixin):
 #     """TorchAo quantization tests for LTX Video Transformer."""
+
+
+class TestLTXTransformerLoRA(LTXTransformerTesterConfig, LoraTesterMixin):
+    pass

@@ -22,6 +22,7 @@ from ...testing_utils import enable_full_determinism, torch_device
 from ..testing_utils import (
     AttentionTesterMixin,
     BaseModelTesterConfig,
+    LoraTesterMixin,
     MemoryTesterMixin,
     ModelTesterMixin,
     TrainingTesterMixin,
@@ -104,3 +105,12 @@ class TestAuraFlowTransformerTraining(AuraFlowTransformerTesterConfig, TrainingT
     def test_gradient_checkpointing_is_applied(self):
         expected_set = {"AuraFlowTransformer2DModel"}
         super().test_gradient_checkpointing_is_applied(expected_set=expected_set)
+
+
+class TestAuraFlowTransformerLoRA(AuraFlowTransformerTesterConfig, LoraTesterMixin):
+    # The tiny AuraFlow model produces LoRA deltas below the default 1e-3 tolerance.
+    def test_lora_B_bias(self):
+        super().test_lora_B_bias(atol=1e-4, rtol=1e-4)
+
+    def test_correct_lora_configs_with_different_ranks(self):
+        super().test_correct_lora_configs_with_different_ranks(atol=1e-4, rtol=1e-4)
