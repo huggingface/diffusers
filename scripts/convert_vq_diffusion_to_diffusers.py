@@ -8,7 +8,7 @@ ITHQ dataset:
 # From the root directory of diffusers.
 
 # Download the VQVAE checkpoint
-$ wget https://facevcstandard.blob.core.windows.net/v-zhictang/Improved-VQ-Diffusion_model_release/ithq_vqvae.pth?sv=2020-10-02&st=2022-05-30T15%3A17%3A18Z&se=2030-05-31T15%3A17%3A00Z&sr=b&sp=r&sig=1jVavHFPpUjDs%2FTO1V3PTezaNbPp2Nx8MxiWI7y6fEY%3D -O ithq_vqvae.pth  # trufflehog:ignore
+$ Refer to https://github.com/microsoft/VQ-Diffusion/blob/main/vqdiffusion_download_checkpoints.sh
 
 # Download the VQVAE config
 # NOTE that in VQ-diffusion the documented file is `configs/ithq.yaml` but the target class
