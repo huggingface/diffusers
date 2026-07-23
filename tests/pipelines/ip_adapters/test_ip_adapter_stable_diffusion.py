@@ -223,13 +223,11 @@ class IPAdapterSDIntegrationTests(IPAdapterNightlyTestsMixin):
         with self.get_fixed_randn_tensor_patch(pipeline):
             images = pipeline(**inputs).images
         image_slice = images[0, :3, :3, -1].flatten()
-
         expected_slice = Expectations(
             {
                 ("cuda", None): np.array([0.1238, 0.0579, 0.0312, 0.0493, 0.0010, 0.0, 0.0188, 0.0, 0.0]),
-                ("xpu", None): np.array(
-                    [0.11938477, 0.05249023, 0.02490234, 0.04370117, 0.0, 0.0, 0.01342773, 0.0, 0.0]
-                ),
+                ("xpu", 3): np.array([0.1194, 0.0525, 0.0249, 0.0437, 0.0, 0.0, 0.0134, 0.0, 0.0]),
+                ("xpu", 5): np.array([0.1228, 0.0566, 0.0286, 0.0479, 0.0, 0.0, 0.0173, 0.0, 0.0]),
                 (None, None): np.array([0.1238, 0.0579, 0.0312, 0.0493, 0.0010, 0.0, 0.0188, 0.0, 0.0]),
             }
         ).get_expectation()
