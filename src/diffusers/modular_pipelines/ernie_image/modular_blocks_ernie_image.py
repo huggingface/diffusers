@@ -36,7 +36,7 @@ class ErnieImageAutoPromptEnhancerStep(ConditionalPipelineBlocks):
        - If `use_pe` is `None` or `False`, the step is skipped.
 
       Components:
-          pe (`AutoModelForCausalLM`) pe_tokenizer (`AutoTokenizer`)
+          pe (`Ministral3ForCausalLM`) pe_tokenizer (`AutoTokenizer`)
 
       Inputs:
           prompt (`str`, *optional*):
@@ -140,9 +140,10 @@ class ErnieImageAutoBlocks(SequentialPipelineBlocks):
         - `text2image`: requires `prompt`
 
       Components:
-          pe (`AutoModelForCausalLM`) pe_tokenizer (`AutoTokenizer`) text_encoder (`AutoModel`) tokenizer
+          pe (`Ministral3ForCausalLM`) pe_tokenizer (`AutoTokenizer`) text_encoder (`Mistral3Model`) tokenizer
           (`AutoTokenizer`) guider (`ClassifierFreeGuidance`) transformer (`ErnieImageTransformer2DModel`) scheduler
           (`FlowMatchEulerDiscreteScheduler`) vae (`AutoencoderKLFlux2`) pachifier (`ErnieImagePachifier`)
+          image_processor (`VaeImageProcessor`)
 
       Inputs:
           prompt (`str`, *optional*):
