@@ -989,7 +989,75 @@ videos = pipe(
 export_to_video(videos, "cosmos3_modular_transfer_edge.mp4", fps=30, macro_block_size=1)
 ```
 
+### Distilled (few-step) text-to-image and image-to-video
+
+Few-step distilled checkpoints are served by [`Cosmos3DistilledModularPipeline`] (blocks:
+`Cosmos3DistilledBlocks`); the base [`Cosmos3OmniModularPipeline`] and [`Cosmos3OmniPipeline`] do
+not support them. `num_inference_steps` is fixed to the length of the `distilled_sigmas` pipeline
+config (from the checkpoint's `modular_model_index.json`) and `guidance_scale` is forced to
+1.0 since guidance is baked into the weights — passing any other value for either raises an error,
+and `negative_prompt` is warned about and ignored.
+
+Prompts follow the same descriptive JSON structure as the non-distilled models, so short text
+must be upsampled first — use `--mode text2image` (T2I) or `--mode image2video` (I2V) as
+described in [Prompt upsampling](#prompt-upsampling), then pass the JSON via `json.dumps(...)`.
+
+```python
+import json
+import torch
+from diffusers import Cosmos3DistilledModularPipeline
+from diffusers.utils import export_to_video, load_image
+
+# JSON-upsampled prompt (see "Prompt upsampling" above).
+json_prompt = json.load(open("assets/example_t2i_prompt.json"))
+
+repo = "nvidia/Cosmos3-Super-Text2Image-4Step"
+pipe = Cosmos3DistilledModularPipeline.from_pretrained(repo, torch_dtype=torch.bfloat16)
+pipe.load_components(torch_dtype=torch.bfloat16)
+pipe.to("cuda")
+
+# text-to-image (distilled)
+videos = pipe(
+    prompt=json.dumps(json_prompt),
+    num_frames=1,
+    height=720,
+    width=1280,
+    output="videos",
+)
+videos[0].save("cosmos3_distilled_t2i.jpg", format="JPEG", quality=85)
+
+# image-to-video (distilled) — load the I2V repo instead
+# JSON-upsampled prompt (see "Prompt upsampling" above); upsampled from the source prompt
+# "The right robotic hand picks up the red sphere on the shelf."
+json_prompt_i2v = json.load(open("assets/example_i2v_prompt.json"))
+
+repo_i2v = "nvidia/Cosmos3-Super-Image2Video-4Step"
+pipe = Cosmos3DistilledModularPipeline.from_pretrained(repo_i2v, torch_dtype=torch.bfloat16)
+pipe.load_components(torch_dtype=torch.bfloat16)
+pipe.to("cuda")
+
+image = load_image(
+    "https://github.com/nvidia-cosmos/cosmos-dependencies/raw/refs/heads/assets/cosmos3/inputs/vision/robot_153.jpg"
+)
+videos = pipe(
+    prompt=json.dumps(json_prompt_i2v),
+    image=image,
+    num_frames=189,
+    height=720,
+    width=1280,
+    output="videos",
+)
+export_to_video(videos, "cosmos3_distilled_i2v.mp4", fps=24, macro_block_size=1)
+```
+
 [[autodoc]] Cosmos3OmniModularPipeline
+
+- all
+- __call__
+
+## Cosmos3DistilledModularPipeline
+
+[[autodoc]] Cosmos3DistilledModularPipeline
 
 - all
 - __call__

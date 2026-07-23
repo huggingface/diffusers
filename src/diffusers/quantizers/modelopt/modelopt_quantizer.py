@@ -69,7 +69,11 @@ class NVIDIAModelOptQuantizer(DiffusersQuantizer):
 
         module, tensor_name = get_module_from_name(model, param_name)
         if self.pre_quantized:
-            return True
+            # ModelOpt restoration recreates quantizer state such as `_amax` and
+            # `_scale` as buffers. Let the regular low-memory loader materialize
+            # those buffers on their target device. Only parameters need the
+            # wrapper-aware assignment below.
+            return tensor_name in module._parameters
         elif is_quantized(module) and "weight" in tensor_name:
             return True
         return False
@@ -92,6 +96,8 @@ class NVIDIAModelOptQuantizer(DiffusersQuantizer):
         dtype = kwargs.get("dtype", torch.float32)
         module, tensor_name = get_module_from_name(model, param_name)
         if self.pre_quantized:
+            if tensor_name not in module._parameters:
+                raise ValueError(f"Expected {param_name} to be a parameter in the restored ModelOpt graph.")
             module._parameters[tensor_name] = torch.nn.Parameter(param_value.to(device=target_device))
         else:
             set_module_tensor_to_device(model, param_name, target_device, param_value, dtype)

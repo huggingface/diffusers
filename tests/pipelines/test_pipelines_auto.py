@@ -72,7 +72,7 @@ class AutoPipelineFastTest(unittest.TestCase):
 
     def test_from_pipe_consistent(self):
         pipe = AutoPipelineForText2Image.from_pretrained(
-            "hf-internal-testing/tiny-stable-diffusion-pipe", requires_safety_checker=False
+            "hf-internal-testing/tiny-stable-diffusion-torch", requires_safety_checker=False
         )
         original_config = dict(pipe.config)
 
@@ -84,7 +84,7 @@ class AutoPipelineFastTest(unittest.TestCase):
 
     def test_from_pipe_override(self):
         pipe = AutoPipelineForText2Image.from_pretrained(
-            "hf-internal-testing/tiny-stable-diffusion-pipe", requires_safety_checker=False
+            "hf-internal-testing/tiny-stable-diffusion-torch", requires_safety_checker=False
         )
 
         pipe = AutoPipelineForImage2Image.from_pipe(pipe, requires_safety_checker=True)
@@ -352,7 +352,7 @@ class AutoPipelineFastTest(unittest.TestCase):
         assert pipe_pag_inpaint.__class__.__name__ == "StableDiffusionXLPAGInpaintPipeline"
 
     def test_from_pipe_controlnet_text2img(self):
-        pipe = AutoPipelineForText2Image.from_pretrained("hf-internal-testing/tiny-stable-diffusion-pipe")
+        pipe = AutoPipelineForText2Image.from_pretrained("hf-internal-testing/tiny-stable-diffusion-torch")
         controlnet = ControlNetModel.from_pretrained("hf-internal-testing/tiny-controlnet")
 
         pipe = AutoPipelineForText2Image.from_pipe(pipe, controlnet=controlnet)
@@ -364,7 +364,7 @@ class AutoPipelineFastTest(unittest.TestCase):
         assert "controlnet" not in pipe.components
 
     def test_from_pipe_controlnet_img2img(self):
-        pipe = AutoPipelineForImage2Image.from_pretrained("hf-internal-testing/tiny-stable-diffusion-pipe")
+        pipe = AutoPipelineForImage2Image.from_pretrained("hf-internal-testing/tiny-stable-diffusion-torch")
         controlnet = ControlNetModel.from_pretrained("hf-internal-testing/tiny-controlnet")
 
         pipe = AutoPipelineForImage2Image.from_pipe(pipe, controlnet=controlnet)
@@ -451,7 +451,7 @@ class AutoPipelineFastTest(unittest.TestCase):
         image_encoder = self.dummy_image_encoder
 
         pipe = AutoPipelineForText2Image.from_pretrained(
-            "hf-internal-testing/tiny-stable-diffusion-pipe",
+            "hf-internal-testing/tiny-stable-diffusion-torch",
             image_encoder=image_encoder,
         )
 
@@ -467,9 +467,7 @@ class AutoPipelineIntegrationTest(unittest.TestCase):
     def test_pipe_auto(self):
         for model_name, model_repo in PRETRAINED_MODEL_REPO_MAPPING.items():
             # test txt2img
-            pipe_txt2img = AutoPipelineForText2Image.from_pretrained(
-                model_repo, variant="fp16", torch_dtype=torch.float16
-            )
+            pipe_txt2img = AutoPipelineForText2Image.from_pretrained(model_repo, variant="fp16", dtype=torch.float16)
             self.assertIsInstance(pipe_txt2img, AUTO_TEXT2IMAGE_PIPELINES_MAPPING[model_name])
 
             pipe_to = AutoPipelineForText2Image.from_pipe(pipe_txt2img)
@@ -487,9 +485,7 @@ class AutoPipelineIntegrationTest(unittest.TestCase):
 
             # test img2img
 
-            pipe_img2img = AutoPipelineForImage2Image.from_pretrained(
-                model_repo, variant="fp16", torch_dtype=torch.float16
-            )
+            pipe_img2img = AutoPipelineForImage2Image.from_pretrained(model_repo, variant="fp16", dtype=torch.float16)
             self.assertIsInstance(pipe_img2img, AUTO_IMAGE2IMAGE_PIPELINES_MAPPING[model_name])
 
             pipe_to = AutoPipelineForText2Image.from_pipe(pipe_img2img)
@@ -509,7 +505,7 @@ class AutoPipelineIntegrationTest(unittest.TestCase):
 
             if "kandinsky" not in model_name:
                 pipe_inpaint = AutoPipelineForInpainting.from_pretrained(
-                    model_repo, variant="fp16", torch_dtype=torch.float16
+                    model_repo, variant="fp16", dtype=torch.float16
                 )
                 self.assertIsInstance(pipe_inpaint, AUTO_INPAINT_PIPELINES_MAPPING[model_name])
 
@@ -534,7 +530,7 @@ class AutoPipelineIntegrationTest(unittest.TestCase):
 
             # test from_pretrained
             for pipe_from_class in auto_pipes:
-                pipe_from = pipe_from_class.from_pretrained(model_repo, variant="fp16", torch_dtype=torch.float16)
+                pipe_from = pipe_from_class.from_pretrained(model_repo, variant="fp16", dtype=torch.float16)
                 pipe_from_config = dict(pipe_from.config)
 
                 for pipe_to_class in auto_pipes:
@@ -552,17 +548,17 @@ class AutoPipelineIntegrationTest(unittest.TestCase):
         controlnet = ControlNetModel.from_pretrained(controlnet_repo, torch_dtype=torch.float16)
 
         pipe_txt2img = AutoPipelineForText2Image.from_pretrained(
-            model_repo, controlnet=controlnet, torch_dtype=torch.float16
+            model_repo, controlnet=controlnet, dtype=torch.float16
         )
         self.assertIsInstance(pipe_txt2img, AUTO_TEXT2IMAGE_PIPELINES_MAPPING["stable-diffusion-controlnet"])
 
         pipe_img2img = AutoPipelineForImage2Image.from_pretrained(
-            model_repo, controlnet=controlnet, torch_dtype=torch.float16
+            model_repo, controlnet=controlnet, dtype=torch.float16
         )
         self.assertIsInstance(pipe_img2img, AUTO_IMAGE2IMAGE_PIPELINES_MAPPING["stable-diffusion-controlnet"])
 
         pipe_inpaint = AutoPipelineForInpainting.from_pretrained(
-            model_repo, controlnet=controlnet, torch_dtype=torch.float16
+            model_repo, controlnet=controlnet, dtype=torch.float16
         )
         self.assertIsInstance(pipe_inpaint, AUTO_INPAINT_PIPELINES_MAPPING["stable-diffusion-controlnet"])
 

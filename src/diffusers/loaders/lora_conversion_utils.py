@@ -3094,3 +3094,31 @@ def _convert_non_diffusers_krea2_lora_to_diffusers(state_dict):
         raise ValueError(f"`state_dict` should be empty at this point but has {state_dict.keys()=}")
 
     return converted_state_dict
+
+
+def _convert_non_diffusers_ace_step_lora_to_diffusers(state_dict):
+    """Convert an ACE-Step-1.5 (PEFT format) LoRA state dict to diffusers key names.
+
+    The original ACE-Step repo targets ``q_proj``, ``k_proj``, ``v_proj``, ``o_proj`` on the DiT decoder while
+    diffusers renames them to ``to_q``, ``to_k``, ``to_v``, ``to_out.0``. Keys arrive as
+    ``base_model.model.layers.{i}.{self_attn|cross_attn}.{proj}.lora_{A|B}.weight`` and are mapped to
+    ``transformer.layers.{i}.{self_attn|cross_attn}.{proj_diffusers}.lora_{A|B}.weight``.
+    """
+    _PROJ_RENAMES = {
+        ".q_proj.": ".to_q.",
+        ".k_proj.": ".to_k.",
+        ".v_proj.": ".to_v.",
+        ".o_proj.": ".to_out.0.",
+    }
+
+    converted_state_dict = {}
+    for key in list(state_dict.keys()):
+        new_key = key
+        if new_key.startswith("base_model.model."):
+            new_key = new_key[len("base_model.model.") :]
+        for old, new in _PROJ_RENAMES.items():
+            new_key = new_key.replace(old, new)
+        new_key = f"transformer.{new_key}"
+        converted_state_dict[new_key] = state_dict.pop(key)
+
+    return converted_state_dict

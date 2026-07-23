@@ -67,8 +67,8 @@ class TestStableDiffusion3ModularPipelineFast(ModularPipelineTesterMixin):
             "output_type": "pt",
         }
 
-    def get_pipeline(self, components_manager=None, torch_dtype=torch.float32):
-        return super().get_pipeline(components_manager, torch_dtype)
+    def get_pipeline(self, components_manager=None, dtype=torch.float32):
+        return super().get_pipeline(components_manager, dtype)
 
     def test_save_from_pretrained(self, tmp_path):
         pipes = []
@@ -77,7 +77,7 @@ class TestStableDiffusion3ModularPipelineFast(ModularPipelineTesterMixin):
 
         base_pipe.save_pretrained(str(tmp_path))
         pipe = self.pipeline_class.from_pretrained(tmp_path).to(torch_device)
-        pipe.load_components(torch_dtype=torch.float32)
+        pipe.load_components(dtype=torch.float32)
         pipe.to(torch_device)
         pipes.append(pipe)
 
@@ -94,7 +94,7 @@ class TestStableDiffusion3ModularPipelineFast(ModularPipelineTesterMixin):
         base_pipe.save_pretrained(str(tmp_path))
 
         pipe = self.pipeline_class.from_pretrained(tmp_path)
-        pipe.load_components(torch_dtype=torch.float32)
+        pipe.load_components(dtype=torch.float32)
 
         assert set(base_pipe.components.keys()) == set(pipe.components.keys())
 
@@ -135,8 +135,8 @@ class TestStableDiffusion3Img2ImgModularPipelineFast(ModularPipelineTesterMixin)
         # (guidance_scale) which are intentionally omitted from pipeline inputs.
         pass
 
-    def get_pipeline(self, components_manager=None, torch_dtype=torch.float32):
-        pipeline = super().get_pipeline(components_manager, torch_dtype)
+    def get_pipeline(self, components_manager=None, dtype=torch.float32):
+        pipeline = super().get_pipeline(components_manager, dtype)
         pipeline.image_processor = VaeImageProcessor(vae_scale_factor=8)
         return pipeline
 
@@ -165,7 +165,7 @@ class TestStableDiffusion3Img2ImgModularPipelineFast(ModularPipelineTesterMixin)
 
         base_pipe.save_pretrained(str(tmp_path))
         pipe = self.pipeline_class.from_pretrained(tmp_path).to(torch_device)
-        pipe.load_components(torch_dtype=torch.float32)
+        pipe.load_components(dtype=torch.float32)
         pipe.to(torch_device)
         pipe.image_processor = VaeImageProcessor(vae_scale_factor=8)
         pipes.append(pipe)
@@ -183,7 +183,7 @@ class TestStableDiffusion3Img2ImgModularPipelineFast(ModularPipelineTesterMixin)
         base_pipe.save_pretrained(str(tmp_path))
 
         pipe = self.pipeline_class.from_pretrained(tmp_path)
-        pipe.load_components(torch_dtype=torch.float32)
+        pipe.load_components(dtype=torch.float32)
 
         assert set(base_pipe.components.keys()) == set(pipe.components.keys())
 

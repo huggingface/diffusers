@@ -295,13 +295,6 @@ class DreamLitePipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     def test_encode_prompt_works_in_isolation(self, extra_required_param_value_dict=None, atol=1e-4, rtol=1e-4):
         pass
 
-    @unittest.skip(
-        "Qwen3VLProcessor save_pretrained does not currently round-trip through DDUF "
-        "(image_processor sub-config is dropped); orthogonal to DreamLite."
-    )
-    def test_save_load_dduf(self, atol=1e-4, rtol=1e-4):
-        pass
-
     @unittest.skip("DreamLite forces batch_size=1 internally.")
     def test_inference_batch_consistent(self):
         pass

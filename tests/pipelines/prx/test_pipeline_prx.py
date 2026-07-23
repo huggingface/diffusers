@@ -258,10 +258,6 @@ class PRXPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         self.assertLessEqual(max_diff, 1e10)
 
     @unittest.skip("Custom T5GemmaEncoder not compatible with transformers v5.")
-    def test_save_load_dduf(self):
-        pass
-
-    @unittest.skip("Custom T5GemmaEncoder not compatible with transformers v5.")
     def test_loading_with_variants(self):
         pass
 
@@ -278,7 +274,7 @@ class PRXPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         pass
 
     @unittest.skip("Custom T5GemmaEncoder not compatible with transformers v5.")
-    def test_torch_dtype_dict(self):
+    def test_dtype_dict(self):
         pass
 
     @unittest.skip("Custom T5GemmaEncoder not compatible with transformers v5.")
