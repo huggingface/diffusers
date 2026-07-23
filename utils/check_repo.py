@@ -23,7 +23,7 @@ from difflib import get_close_matches
 from pathlib import Path
 
 from diffusers.models.auto import get_values
-from diffusers.utils import ENV_VARS_TRUE_VALUES, is_flax_available, is_torch_available
+from diffusers.utils import ENV_VARS_TRUE_VALUES, is_torch_available
 
 
 # All paths are set with the intent you should run this script from the root of the repo with the command
@@ -270,7 +270,7 @@ def get_model_modules():
 def get_models(module, include_pretrained=False):
     """Get the objects in module that are models."""
     models = []
-    model_classes = (diffusers.ModelMixin, diffusers.TFModelMixin, diffusers.FlaxModelMixin)
+    model_classes = (diffusers.ModelMixin, diffusers.TFModelMixin)
     for attr_name in dir(module):
         if not include_pretrained and ("Pretrained" in attr_name or "PreTrained" in attr_name):
             continue
@@ -421,10 +421,6 @@ def get_all_auto_configured_models():
         for attr_name in dir(diffusers.models.auto.modeling_auto):
             if attr_name.startswith("MODEL_") and attr_name.endswith("MAPPING_NAMES"):
                 result = result | set(get_values(getattr(diffusers.models.auto.modeling_auto, attr_name)))
-    if is_flax_available():
-        for attr_name in dir(diffusers.models.auto.modeling_flax_auto):
-            if attr_name.startswith("FLAX_MODEL_") and attr_name.endswith("MAPPING_NAMES"):
-                result = result | set(get_values(getattr(diffusers.models.auto.modeling_flax_auto, attr_name)))
     return list(result)
 
 
@@ -458,8 +454,6 @@ def check_all_models_are_auto_configured():
     missing_backends = []
     if not is_torch_available():
         missing_backends.append("PyTorch")
-    if not is_flax_available():
-        missing_backends.append("Flax")
     if len(missing_backends) > 0:
         missing = ", ".join(missing_backends)
         if os.getenv("TRANSFORMERS_IS_CI", "").upper() in ENV_VARS_TRUE_VALUES:

@@ -74,7 +74,7 @@ class TextToImageLoRA(ExamplesTestsAccelerate):
             self.assertEqual({x for x in os.listdir(tmpdir) if "checkpoint" in x}, {"checkpoint-4", "checkpoint-6"})
 
     def test_text_to_image_lora_checkpointing_checkpoints_total_limit(self):
-        pretrained_model_name_or_path = "hf-internal-testing/tiny-stable-diffusion-pipe"
+        pretrained_model_name_or_path = "hf-internal-testing/tiny-stable-diffusion-torch"
         prompt = "a prompt"
 
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -107,7 +107,7 @@ class TextToImageLoRA(ExamplesTestsAccelerate):
             run_command(self._launch_args + initial_run_args)
 
             pipe = DiffusionPipeline.from_pretrained(
-                "hf-internal-testing/tiny-stable-diffusion-pipe", safety_checker=None
+                "hf-internal-testing/tiny-stable-diffusion-torch", safety_checker=None
             )
             pipe.load_lora_weights(tmpdir)
             pipe(prompt, num_inference_steps=1)
@@ -117,7 +117,7 @@ class TextToImageLoRA(ExamplesTestsAccelerate):
             self.assertEqual({x for x in os.listdir(tmpdir) if "checkpoint" in x}, {"checkpoint-4", "checkpoint-6"})
 
     def test_text_to_image_lora_checkpointing_checkpoints_total_limit_removes_multiple_checkpoints(self):
-        pretrained_model_name_or_path = "hf-internal-testing/tiny-stable-diffusion-pipe"
+        pretrained_model_name_or_path = "hf-internal-testing/tiny-stable-diffusion-torch"
         prompt = "a prompt"
 
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -148,7 +148,7 @@ class TextToImageLoRA(ExamplesTestsAccelerate):
             run_command(self._launch_args + initial_run_args)
 
             pipe = DiffusionPipeline.from_pretrained(
-                "hf-internal-testing/tiny-stable-diffusion-pipe", safety_checker=None
+                "hf-internal-testing/tiny-stable-diffusion-torch", safety_checker=None
             )
             pipe.load_lora_weights(tmpdir)
             pipe(prompt, num_inference_steps=1)
@@ -187,7 +187,7 @@ class TextToImageLoRA(ExamplesTestsAccelerate):
             run_command(self._launch_args + resume_run_args)
 
             pipe = DiffusionPipeline.from_pretrained(
-                "hf-internal-testing/tiny-stable-diffusion-pipe", safety_checker=None
+                "hf-internal-testing/tiny-stable-diffusion-torch", safety_checker=None
             )
             pipe.load_lora_weights(tmpdir)
             pipe(prompt, num_inference_steps=1)

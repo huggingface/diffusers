@@ -57,7 +57,6 @@ class ChronoEditPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         ]
     )
     test_xformers_attention = False
-    supports_dduf = False
 
     def get_dummy_components(self):
         torch.manual_seed(0)
@@ -156,7 +155,7 @@ class ChronoEditPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         self.assertEqual(generated_video.shape, (5, 3, 16, 16))
 
         # fmt: off
-        expected_slice = torch.tensor([0.4525, 0.4520, 0.4485, 0.4534, 0.4523, 0.4522, 0.4529, 0.4528, 0.5022, 0.5064, 0.5011, 0.5061, 0.5028, 0.4979, 0.5117, 0.5192])
+        expected_slice = torch.tensor([0.4525, 0.4520, 0.4485, 0.4533, 0.4522, 0.4522, 0.4529, 0.4528, 0.5023, 0.5067, 0.5023, 0.5061, 0.5024, 0.4977, 0.5118, 0.5190])
         # fmt: on
 
         generated_slice = generated_video.flatten()

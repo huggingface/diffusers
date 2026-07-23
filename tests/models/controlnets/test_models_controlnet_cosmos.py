@@ -1,4 +1,4 @@
-# Copyright 2025 HuggingFace Inc.
+# Copyright 2026 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -250,6 +250,10 @@ class TestCosmosControlNetModel(CosmosControlNetModelTesterConfig, ModelTesterMi
     @pytest.mark.skip("Output is a list of tensors; comparison helper calls .shape on it.")
     def test_from_save_pretrained(self):
         super().test_from_save_pretrained()
+
+    @pytest.mark.skip("Output is a list of tensors; comparison helper calls .shape on it.")
+    def test_from_save_pretrained_dtype_inference(self, *args, **kwargs):
+        super().test_from_save_pretrained_dtype_inference(*args, **kwargs)
 
     @pytest.mark.skip("Output is a list of tensors; comparison helper calls .shape on it.")
     def test_from_save_pretrained_variant(self):

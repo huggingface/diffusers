@@ -133,6 +133,7 @@ MODULAR_PIPELINE_MAPPING = OrderedDict(
         ("qwenimage-layered", _create_default_map_fn("QwenImageLayeredModularPipeline")),
         ("anima", _create_default_map_fn("AnimaModularPipeline")),
         ("z-image", _create_default_map_fn("ZImageModularPipeline")),
+        ("cosmos3-omni", _create_default_map_fn("Cosmos3OmniModularPipeline")),
         ("helios", _create_default_map_fn("HeliosModularPipeline")),
         ("helios-pyramid", _helios_pyramid_map_fn),
         ("hunyuan-video-1.5", _create_default_map_fn("HunyuanVideo15ModularPipeline")),
@@ -2170,6 +2171,16 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
         [`~DiffusionPipeline.enable_sequential_cpu_offload`] the execution device can only be inferred from
         Accelerate's module hooks.
         """
+        from ..hooks.group_offloading import _get_group_onload_device
+
+        for name, model in self.components.items():
+            if not isinstance(model, torch.nn.Module):
+                continue
+            try:
+                return _get_group_onload_device(model)
+            except ValueError:
+                pass
+
         for name, model in self.components.items():
             if not isinstance(model, torch.nn.Module):
                 continue
@@ -2346,8 +2357,8 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
                    default_creation_method == "from_pretrained". If provided as a list or string, will load only the
                    specified components.
             **kwargs: additional kwargs to be passed to `from_pretrained()`.Can be:
-             - a single value to be applied to all components to be loaded, e.g. torch_dtype=torch.bfloat16
-             - a dict, e.g. torch_dtype={"unet": torch.bfloat16, "default": torch.float32}
+             - a single value to be applied to all components to be loaded, e.g. dtype=torch.bfloat16
+             - a dict, e.g. dtype={"unet": torch.bfloat16, "default": torch.float32}
              - if potentially override ComponentSpec if passed a different loading field in kwargs, e.g.
                `pretrained_model_name_or_path`, `variant`, `revision`, etc.
              - if potentially override ComponentSpec if passed a different loading field in kwargs, e.g.
@@ -2637,7 +2648,7 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
                     " is not recommended to move them to `cpu` as running them will fail. Please make"
                     " sure to use an accelerator to run the pipeline in inference, due to the lack of"
                     " support for`float16` operations on this device in PyTorch. Please, remove the"
-                    " `torch_dtype=torch.float16` argument, or use another device for inference."
+                    " `dtype=torch.float16` argument, or use another device for inference."
                 )
         return self
 

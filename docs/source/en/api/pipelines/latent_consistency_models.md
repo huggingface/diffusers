@@ -643,10 +643,6 @@ export_to_gif(frames, "animation.gif")
     - __call__
     - enable_freeu
     - disable_freeu
-    - enable_vae_slicing
-    - disable_vae_slicing
-    - enable_vae_tiling
-    - disable_vae_tiling
 
 ## LatentConsistencyModelImg2ImgPipeline
 
@@ -655,10 +651,6 @@ export_to_gif(frames, "animation.gif")
     - __call__
     - enable_freeu
     - disable_freeu
-    - enable_vae_slicing
-    - disable_vae_slicing
-    - enable_vae_tiling
-    - disable_vae_tiling
 
 ## StableDiffusionPipelineOutput
 

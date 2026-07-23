@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2025 HuggingFace Inc.
+# Copyright 2026 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -179,7 +179,7 @@ class StableDiffusionXLPipelineFastTests(
         image_slice = image[0, -3:, -3:, -1]
 
         assert image.shape == (1, 64, 64, 3)
-        expected_slice = np.array([0.5388, 0.5452, 0.4694, 0.4583, 0.5253, 0.4832, 0.5288, 0.5035, 0.47])
+        expected_slice = np.array([0.5556, 0.5318, 0.4649, 0.4321, 0.4824, 0.4624, 0.5183, 0.4981, 0.4692])
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
@@ -260,7 +260,7 @@ class StableDiffusionXLPipelineFastTests(
     def test_ip_adapter(self):
         expected_pipe_slice = None
         if torch_device == "cpu":
-            expected_pipe_slice = np.array([0.5388, 0.5452, 0.4694, 0.4583, 0.5253, 0.4832, 0.5288, 0.5035, 0.4766])
+            expected_pipe_slice = np.array([0.5556, 0.5318, 0.4649, 0.4321, 0.4824, 0.4624, 0.5183, 0.4981, 0.4692])
 
         return super().test_ip_adapter(expected_pipe_slice=expected_pipe_slice)
 

@@ -7,6 +7,7 @@ Before reviewing, read and apply the guidelines in:
 - [models.md](models.md) — model conventions, attention pattern, implementation rules, dependencies, gotchas
 - [pipelines.md](pipelines.md) — pipeline conventions, coding style, gotchas
 - [modular.md](modular.md) — modular pipeline conventions, patterns, common mistakes
+- [testing.md](testing.md) — test conventions: required test layers, tester mixins, dummy-component rules. When a PR adds or changes tests, check them against this guide.
 - [skills/model-integration/pitfalls.md](skills/model-integration/pitfalls.md) — known pitfalls causing numerical discrepancies between the reference implementation and the diffusers port (dtype mismatches, config assumptions, etc.)
 
 ## Common mistakes
@@ -20,7 +21,7 @@ Common mistakes are covered in the common-mistakes / gotcha sections in [AGENTS.
 A PR can leave existing docs stale or surface a pattern worth recording. Scan the docs related to what the PR touches and flag updates as a **suggestions / additional info** section (not blocking):
 
 - **Usage docs.** New or changed public behavior — a new pipeline/model, a new argument, changed defaults, a renamed API — should have matching updates in `docs/`, docstrings, and examples. Flag any that now describe outdated behavior or that are missing for the new surface.
-- **Agent docs.** If the review turns up a rule, pattern, or common gotcha that isn't written down yet — especially one the author got wrong or that you had to reason out — propose adding it to the relevant agent guide ([AGENTS.md](AGENTS.md), [models.md](models.md), [pipelines.md](pipelines.md), [modular.md](modular.md), a skill, or this file) so the next contributor/agent gets it for free instead of repeating the mistake.
+- **Agent docs.** If the review turns up a rule, pattern, or common gotcha that isn't written down yet — especially one the author got wrong or that you had to reason out — propose adding it to the relevant agent guide ([AGENTS.md](AGENTS.md), [models.md](models.md), [pipelines.md](pipelines.md), [modular.md](modular.md), a skill, or this file) so the next contributor/agent gets it for free instead of repeating the mistake. Human review comments on the PR are a good source for these: if a human reviewer pointed something out and your review missed it, that usually indicates a doc gap — figure out what's missing and propose the addition.
 
 ## Dead code analysis (new models)
 
