@@ -920,22 +920,30 @@ def _cudnn_attention_forward_op(
     if enable_gqa:
         raise ValueError("`enable_gqa` is not yet supported for cuDNN attention.")
 
-    tensors_to_save = ()
+    # The backward pass always needs the log-sum-exp, so compute it whenever a gradient may be
+    # required — not only when the caller asked for it via `return_lse`. Otherwise training with
+    # this backend (e.g. under context parallelism) would save `lse=None` and produce wrong grads.
+    # Under context parallelism the QKV entering this op are intermediates created inside a custom
+    # autograd.Function.forward (which runs under no-grad), so `requires_grad` is False even during
+    # training; the `_world_size > 1` guard forces LSE in that case, mirroring the flash backend.
+    grad_enabled = any(x.requires_grad for x in (query, key, value))
+    cp_enabled = _parallel_config is not None and _parallel_config.context_parallel_config._world_size > 1
+    compute_log_sumexp = return_lse or grad_enabled or cp_enabled
 
     # Contiguous is a must here! Calling cuDNN backend with aten ops produces incorrect results
-    # if the input tensors are not contiguous.
-    query = query.transpose(1, 2).contiguous()
-    key = key.transpose(1, 2).contiguous()
-    value = value.transpose(1, 2).contiguous()
-    tensors_to_save += (query, key, value)
+    # if the input tensors are not contiguous. Keep the model-layout (B, S, H, D) inputs to save
+    # for backward; the kernel needs (B, H, S, D).
+    query_t = query.transpose(1, 2).contiguous()
+    key_t = key.transpose(1, 2).contiguous()
+    value_t = value.transpose(1, 2).contiguous()
 
     out, lse, cum_seq_q, cum_seq_k, max_q, max_k, philox_seed, philox_offset, debug_attn_mask = (
         torch.ops.aten._scaled_dot_product_cudnn_attention(
-            query=query,
-            key=key,
-            value=value,
+            query=query_t,
+            key=key_t,
+            value=value_t,
             attn_bias=attn_mask,
-            compute_log_sumexp=return_lse,
+            compute_log_sumexp=compute_log_sumexp,
             dropout_p=dropout_p,
             is_causal=is_causal,
             return_debug_mask=False,
@@ -943,9 +951,15 @@ def _cudnn_attention_forward_op(
         )
     )
 
-    tensors_to_save += (out, lse, cum_seq_q, cum_seq_k, philox_seed, philox_offset)
+    out = out.transpose(1, 2).contiguous()
+    if compute_log_sumexp:
+        # cuDNN returns LSE as (B, H, S, 1); normalize to model layout (B, S, H) like the other
+        # backends. The backward pass restores the trailing dim the cuDNN kernel expects.
+        lse = lse.squeeze(-1).transpose(1, 2).contiguous()
+    # Everything is saved in model layout (B, S, H, D) / (B, S, H) so the ring backward can
+    # override query/key/value/out/lse with its per-iteration tensors in the same layout.
     if _save_ctx:
-        ctx.save_for_backward(*tensors_to_save)
+        ctx.save_for_backward(query, key, value, out, lse, cum_seq_q, cum_seq_k, philox_seed, philox_offset)
         ctx.dropout_p = dropout_p
         ctx.is_causal = is_causal
         ctx.scale = scale
@@ -953,9 +967,6 @@ def _cudnn_attention_forward_op(
         ctx.max_q = max_q
         ctx.max_k = max_k
 
-    out = out.transpose(1, 2).contiguous()
-    if lse is not None:
-        lse = lse.transpose(1, 2).contiguous()
     return (out, lse) if return_lse else out
 
 
@@ -965,13 +976,31 @@ def _cudnn_attention_backward_op(
     ctx: torch.autograd.function.FunctionCtx,
     grad_out: torch.Tensor,
     *args,
+    query: torch.Tensor | None = None,
+    key: torch.Tensor | None = None,
+    value: torch.Tensor | None = None,
+    out: torch.Tensor | None = None,
+    lse: torch.Tensor | None = None,
     **kwargs,
 ):
-    query, key, value, out, lse, cum_seq_q, cum_seq_k, philox_seed, philox_offset = ctx.saved_tensors
+    # See `_flash_attention_backward_op` for why these tensors may be overridden by the ring loop.
+    # All saved/overridden tensors are in model layout (B, S, H, D) / (B, S, H); transpose once here.
+    saved_query, saved_key, saved_value, saved_out, saved_lse, cum_seq_q, cum_seq_k, philox_seed, philox_offset = (
+        ctx.saved_tensors
+    )
+    query = saved_query if query is None else query
+    key = saved_key if key is None else key
+    value = saved_value if value is None else value
+    out = saved_out if out is None else out
+    lse = saved_lse if lse is None else lse
 
     grad_out = grad_out.transpose(1, 2).contiguous()
+    query = query.transpose(1, 2).contiguous()
     key = key.transpose(1, 2).contiguous()
     value = value.transpose(1, 2).contiguous()
+    out = out.transpose(1, 2).contiguous()
+    # Model layout (B, S, H) -> the (B, H, S, 1) shape the cuDNN backward kernel expects.
+    lse = lse.transpose(1, 2).unsqueeze(-1).contiguous()
 
     # Cannot pass first 5 arguments as kwargs because: https://github.com/pytorch/pytorch/blob/d26ca5de058dbcf56ac52bb43e84dd98df2ace97/torch/_dynamo/variables/torch.py#L1341
     grad_query, grad_key, grad_value = torch.ops.aten._scaled_dot_product_cudnn_attention_backward(
@@ -1017,18 +1046,16 @@ def _native_flash_attention_forward_op(
     if enable_gqa:
         raise ValueError("`enable_gqa` is not yet supported for native flash attention.")
 
-    tensors_to_save = ()
-
-    query = query.transpose(1, 2).contiguous()
-    key = key.transpose(1, 2).contiguous()
-    value = value.transpose(1, 2).contiguous()
-    tensors_to_save += (query, key, value)
+    # Keep the model-layout (B, S, H, D) inputs to save for backward; the kernel needs (B, H, S, D).
+    query_t = query.transpose(1, 2).contiguous()
+    key_t = key.transpose(1, 2).contiguous()
+    value_t = value.transpose(1, 2).contiguous()
 
     out, lse, cum_seq_q, cum_seq_k, max_q, max_k, philox_seed, philox_offset, debug_attn_mask = (
         torch.ops.aten._scaled_dot_product_flash_attention(
-            query=query,
-            key=key,
-            value=value,
+            query=query_t,
+            key=key_t,
+            value=value_t,
             dropout_p=dropout_p,
             is_causal=is_causal,
             return_debug_mask=False,
@@ -1036,18 +1063,18 @@ def _native_flash_attention_forward_op(
         )
     )
 
-    tensors_to_save += (out, lse, cum_seq_q, cum_seq_k, philox_seed, philox_offset)
+    out = out.transpose(1, 2).contiguous()
+    lse = lse.transpose(1, 2).contiguous()
+    # Everything is saved in model layout (B, S, H, D) / (B, S, H) so the ring backward can
+    # override query/key/value/out/lse with its per-iteration tensors in the same layout.
     if _save_ctx:
-        ctx.save_for_backward(*tensors_to_save)
+        ctx.save_for_backward(query, key, value, out, lse, cum_seq_q, cum_seq_k, philox_seed, philox_offset)
         ctx.dropout_p = dropout_p
         ctx.is_causal = is_causal
         ctx.scale = scale
         ctx.max_q = max_q
         ctx.max_k = max_k
 
-    out = out.transpose(1, 2).contiguous()
-    if lse is not None:
-        lse = lse.transpose(1, 2).contiguous()
     return (out, lse) if return_lse else out
 
 
@@ -1058,13 +1085,30 @@ def _native_flash_attention_backward_op(
     ctx: torch.autograd.function.FunctionCtx,
     grad_out: torch.Tensor,
     *args,
+    query: torch.Tensor | None = None,
+    key: torch.Tensor | None = None,
+    value: torch.Tensor | None = None,
+    out: torch.Tensor | None = None,
+    lse: torch.Tensor | None = None,
     **kwargs,
 ):
-    query, key, value, out, lse, cum_seq_q, cum_seq_k, philox_seed, philox_offset = ctx.saved_tensors
+    # See `_flash_attention_backward_op` for why these tensors may be overridden by the ring loop.
+    # All saved/overridden tensors are in model layout (B, S, H, D) / (B, S, H); transpose once here.
+    saved_query, saved_key, saved_value, saved_out, saved_lse, cum_seq_q, cum_seq_k, philox_seed, philox_offset = (
+        ctx.saved_tensors
+    )
+    query = saved_query if query is None else query
+    key = saved_key if key is None else key
+    value = saved_value if value is None else value
+    out = saved_out if out is None else out
+    lse = saved_lse if lse is None else lse
 
     grad_out = grad_out.transpose(1, 2).contiguous()
+    query = query.transpose(1, 2).contiguous()
     key = key.transpose(1, 2).contiguous()
     value = value.transpose(1, 2).contiguous()
+    out = out.transpose(1, 2).contiguous()
+    lse = lse.transpose(1, 2).contiguous()
 
     grad_query, grad_key, grad_value = torch.ops.aten._scaled_dot_product_flash_attention_backward(
         grad_out,
@@ -1155,9 +1199,22 @@ def _flash_attention_backward_op(
     ctx: torch.autograd.function.FunctionCtx,
     grad_out: torch.Tensor,
     *args,
+    query: torch.Tensor | None = None,
+    key: torch.Tensor | None = None,
+    value: torch.Tensor | None = None,
+    out: torch.Tensor | None = None,
+    lse: torch.Tensor | None = None,
     **kwargs,
 ):
-    query, key, value, out, lse, rng_state = ctx.saved_tensors
+    # Ring attention re-drives this op once per KV chunk, passing the rotated key/value and the
+    # fully-reduced out/lse for the current iteration. When not overridden (Ulysses / non-CP), we
+    # fall back to the tensors saved during the forward pass.
+    saved_query, saved_key, saved_value, saved_out, saved_lse, rng_state = ctx.saved_tensors
+    query = saved_query if query is None else query
+    key = saved_key if key is None else key
+    value = saved_value if value is None else value
+    out = saved_out if out is None else out
+    lse = saved_lse if lse is None else lse
     grad_query, grad_key, grad_value = torch.empty_like(query), torch.empty_like(key), torch.empty_like(value)
 
     lse_d = _wrapped_flash_attn_backward(  # noqa: F841
@@ -1263,6 +1320,11 @@ def _flash_attention_hub_backward_op(
     ctx: torch.autograd.function.FunctionCtx,
     grad_out: torch.Tensor,
     *args,
+    query: torch.Tensor | None = None,
+    key: torch.Tensor | None = None,
+    value: torch.Tensor | None = None,
+    out: torch.Tensor | None = None,
+    lse: torch.Tensor | None = None,
     **kwargs,
 ):
     config = _HUB_KERNELS_REGISTRY[AttentionBackendName.FLASH_HUB]
@@ -1272,7 +1334,13 @@ def _flash_attention_hub_backward_op(
             "Flash attention hub kernels must expose `_wrapped_flash_attn_backward` for context parallel execution."
         )
 
-    query, key, value, out, lse, rng_state = ctx.saved_tensors
+    # See `_flash_attention_backward_op` for why these tensors may be overridden by the ring loop.
+    saved_query, saved_key, saved_value, saved_out, saved_lse, rng_state = ctx.saved_tensors
+    query = saved_query if query is None else query
+    key = saved_key if key is None else key
+    value = saved_value if value is None else value
+    out = saved_out if out is None else out
+    lse = saved_lse if lse is None else lse
     grad_query, grad_key, grad_value = torch.empty_like(query), torch.empty_like(key), torch.empty_like(value)
 
     _ = wrapped_backward_fn(
@@ -1549,10 +1617,12 @@ def _flash_attention_3_hub_forward_op(
         sm_margin=sm_margin,
     )
 
-    lse = softmax_lse.permute(0, 2, 1).contiguous() if return_lse else None
+    # Save LSE in model layout (B, S, H) so the backward pass — including the ring loop, which
+    # overrides it with the reduced LSE — always sees the same layout regardless of `return_lse`.
+    lse = softmax_lse.permute(0, 2, 1).contiguous()
 
     if _save_ctx:
-        ctx.save_for_backward(query, key, value, out, softmax_lse)
+        ctx.save_for_backward(query, key, value, out, lse)
         ctx.scale = scale
         ctx.is_causal = is_causal
         ctx.window_size = window_size
@@ -1567,6 +1637,11 @@ def _flash_attention_3_hub_backward_op(
     ctx: torch.autograd.function.FunctionCtx,
     grad_out: torch.Tensor,
     *args,
+    query: torch.Tensor | None = None,
+    key: torch.Tensor | None = None,
+    value: torch.Tensor | None = None,
+    out: torch.Tensor | None = None,
+    lse: torch.Tensor | None = None,
     **kwargs,
 ):
     config = _HUB_KERNELS_REGISTRY[AttentionBackendName._FLASH_3_HUB]
@@ -1577,7 +1652,15 @@ def _flash_attention_3_hub_backward_op(
             "for context parallel execution."
         )
 
-    query, key, value, out, softmax_lse = ctx.saved_tensors
+    # See `_flash_attention_backward_op` for why these tensors may be overridden by the ring loop.
+    saved_query, saved_key, saved_value, saved_out, saved_lse = ctx.saved_tensors
+    query = saved_query if query is None else query
+    key = saved_key if key is None else key
+    value = saved_value if value is None else value
+    out = saved_out if out is None else out
+    lse = saved_lse if lse is None else lse
+    # FA3's backward kernel expects LSE in (B, H, S); forward saves it in model layout (B, S, H).
+    softmax_lse = lse.permute(0, 2, 1).contiguous()
     grad_query = torch.empty_like(query)
     grad_key = torch.empty_like(key)
     grad_value = torch.empty_like(value)
@@ -2302,6 +2385,13 @@ class TemplatedRingAttention(torch.autograd.Function):
         out = out.to(query.dtype)
         lse = lse.squeeze(-1)
 
+        # The backward op reconstructs each ring iteration's attention from the fully-reduced
+        # out/lse (the global softmax normalizer) and the per-iteration KV chunk. The KV chunk
+        # saved via `_save_ctx` at iteration 0 is only the local chunk, so stash the reduced
+        # out/lse here (detached to avoid a reference cycle through the returned output).
+        ctx.ring_out = out.detach()
+        ctx.ring_lse = lse.detach()
+
         return (out, lse) if return_lse else out
 
     @staticmethod
@@ -2322,7 +2412,11 @@ class TemplatedRingAttention(torch.autograd.Function):
         grad_value = torch.zeros(ctx.kv_shape, dtype=accum_dtype, device=grad_out.device)
         next_grad_kv = None
 
+        # `query` stays fixed across ring iterations; `out`/`lse` are the fully-reduced tensors
+        # (global softmax normalizer). Only key/value rotate, mirroring the forward pass — the
+        # backward op recomputes each iteration's attention against the correct remote KV chunk.
         query, key, value, *_ = ctx.saved_tensors
+        out, lse = ctx.ring_out, ctx.ring_lse
         kv_buffer = torch.cat([key.flatten(), value.flatten()]).contiguous()
         kv_buffer = funcol.all_gather_tensor(kv_buffer, gather_dim=0, group=ring_mesh.get_group())
         kv_buffer = kv_buffer.chunk(world_size)
@@ -2335,7 +2429,9 @@ class TemplatedRingAttention(torch.autograd.Function):
                 value = kv[key_numel:].reshape_as(value)
                 next_rank = (next_rank + 1) % world_size
 
-            grad_query_op, grad_key_op, grad_value_op, *_ = ctx.backward_op(ctx, grad_out)
+            grad_query_op, grad_key_op, grad_value_op, *_ = ctx.backward_op(
+                ctx, grad_out, query=query, key=key, value=value, out=out, lse=lse
+            )
 
             if i > 0:
                 grad_kv_buffer = _wait_tensor(next_grad_kv)
@@ -2350,6 +2446,16 @@ class TemplatedRingAttention(torch.autograd.Function):
             if i < world_size - 1:
                 grad_kv_buffer = torch.cat([grad_key.flatten(), grad_value.flatten()]).contiguous()
                 next_grad_kv = funcol.permute_tensor(grad_kv_buffer, next_ranks, group=ring_mesh.get_group())
+
+        # After the loop, rank r holds the fully-accumulated gradient for the KV chunk owned by
+        # rank (r - 1) % world_size (the accumulator travels one hop per iteration for world_size - 1
+        # hops). One final rotation returns each chunk's gradient to its owning rank so it lines up
+        # with that rank's local key/value inputs.
+        grad_kv_buffer = torch.cat([grad_key.flatten(), grad_value.flatten()]).contiguous()
+        grad_kv_buffer = _wait_tensor(funcol.permute_tensor(grad_kv_buffer, next_ranks, group=ring_mesh.get_group()))
+        grad_key_numel = grad_key.numel()
+        grad_key = grad_kv_buffer[:grad_key_numel].reshape_as(grad_key)
+        grad_value = grad_kv_buffer[grad_key_numel:].reshape_as(grad_value)
 
         grad_query, grad_key, grad_value = (x.to(grad_out.dtype) for x in (grad_query, grad_key, grad_value))
 
