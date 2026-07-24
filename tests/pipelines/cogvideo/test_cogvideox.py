@@ -13,7 +13,6 @@
 # limitations under the License.
 
 import gc
-import inspect
 
 import numpy as np
 import pytest
@@ -144,61 +143,6 @@ class TestCogVideoXPipeline(CogVideoXPipelineTesterConfig, PipelineTesterMixin):
         generated_slice = generated_video.flatten()
         generated_slice = torch.cat([generated_slice[:8], generated_slice[-8:]])
         assert torch.allclose(generated_slice, expected_slice, atol=1e-3)
-
-    def test_callback_inputs(self):
-        sig = inspect.signature(self.pipeline_class.__call__)
-        has_callback_tensor_inputs = "callback_on_step_end_tensor_inputs" in sig.parameters
-        has_callback_step_end = "callback_on_step_end" in sig.parameters
-
-        if not (has_callback_tensor_inputs and has_callback_step_end):
-            return
-
-        pipe = self.get_pipeline().to(torch_device)
-        assert hasattr(pipe, "_callback_tensor_inputs"), (
-            f" {self.pipeline_class} should have `_callback_tensor_inputs` that defines a list of tensor variables its callback function can use as inputs"
-        )
-
-        def callback_inputs_subset(pipe, i, t, callback_kwargs):
-            # iterate over callback args
-            for tensor_name, tensor_value in callback_kwargs.items():
-                # check that we're only passing in allowed tensor inputs
-                assert tensor_name in pipe._callback_tensor_inputs
-
-            return callback_kwargs
-
-        def callback_inputs_all(pipe, i, t, callback_kwargs):
-            for tensor_name in pipe._callback_tensor_inputs:
-                assert tensor_name in callback_kwargs
-
-            # iterate over callback args
-            for tensor_name, tensor_value in callback_kwargs.items():
-                # check that we're only passing in allowed tensor inputs
-                assert tensor_name in pipe._callback_tensor_inputs
-
-            return callback_kwargs
-
-        inputs = self.get_dummy_inputs()
-
-        # Test passing in a subset
-        inputs["callback_on_step_end"] = callback_inputs_subset
-        inputs["callback_on_step_end_tensor_inputs"] = ["latents"]
-        output = pipe(**inputs)[0]
-
-        # Test passing in a everything
-        inputs["callback_on_step_end"] = callback_inputs_all
-        inputs["callback_on_step_end_tensor_inputs"] = pipe._callback_tensor_inputs
-        output = pipe(**inputs)[0]
-
-        def callback_inputs_change_tensor(pipe, i, t, callback_kwargs):
-            is_last = i == (pipe.num_timesteps - 1)
-            if is_last:
-                callback_kwargs["latents"] = torch.zeros_like(callback_kwargs["latents"])
-            return callback_kwargs
-
-        inputs["callback_on_step_end"] = callback_inputs_change_tensor
-        inputs["callback_on_step_end_tensor_inputs"] = pipe._callback_tensor_inputs
-        output = pipe(**inputs)[0]
-        assert output.abs().sum() < 1e10
 
     def test_inference_batch_single_identical(self):
         super().test_inference_batch_single_identical(batch_size=3, expected_max_diff=1e-3)
