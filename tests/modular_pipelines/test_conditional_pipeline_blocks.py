@@ -18,6 +18,7 @@ from diffusers.modular_pipelines import (
     ConditionalPipelineBlocks,
     InputParam,
     ModularPipelineBlocks,
+    OutputParam,
 )
 
 
@@ -133,6 +134,126 @@ class AutoImageBlocks(AutoPipelineBlocks):
         return "Auto image blocks for testing"
 
 
+class PlainFramesStep(ModularPipelineBlocks):
+    model_name = "plain"
+
+    @property
+    def inputs(self):
+        return [InputParam(name="num_frames", default=189)]
+
+    @property
+    def intermediate_outputs(self):
+        return [OutputParam("resolved_num_frames")]
+
+    @property
+    def description(self):
+        return "Plain branch: declares a real default for num_frames."
+
+    def __call__(self, components, state):
+        block_state = self.get_block_state(state)
+        block_state.resolved_num_frames = block_state.num_frames
+        self.set_block_state(state, block_state)
+        return components, state
+
+
+class ActionFramesStep(ModularPipelineBlocks):
+    model_name = "action"
+
+    @property
+    def inputs(self):
+        return [InputParam(name="action", required=True), InputParam(name="num_frames", default=None)]
+
+    @property
+    def intermediate_outputs(self):
+        return [OutputParam("resolved_num_frames")]
+
+    @property
+    def description(self):
+        return "Action branch: num_frames must not be passed explicitly."
+
+    def __call__(self, components, state):
+        block_state = self.get_block_state(state)
+        if block_state.num_frames is not None:
+            raise ValueError("`num_frames` has to be None if `action` is provided.")
+        block_state.resolved_num_frames = 100
+        self.set_block_state(state, block_state)
+        return components, state
+
+
+class SharedFramesStep(ModularPipelineBlocks):
+    model_name = "shared"
+
+    @property
+    def inputs(self):
+        return [InputParam(name="num_frames", default=24)]
+
+    @property
+    def intermediate_outputs(self):
+        return [OutputParam("resolved_num_frames")]
+
+    @property
+    def description(self):
+        return "Branch with a shared default."
+
+    def __call__(self, components, state):
+        block_state = self.get_block_state(state)
+        block_state.resolved_num_frames = block_state.num_frames
+        self.set_block_state(state, block_state)
+        return components, state
+
+
+class AlternateFramesStep(ModularPipelineBlocks):
+    model_name = "alternate"
+
+    @property
+    def inputs(self):
+        return [InputParam(name="num_frames", default=32)]
+
+    @property
+    def intermediate_outputs(self):
+        return [OutputParam("resolved_num_frames")]
+
+    @property
+    def description(self):
+        return "Branch with a conflicting default."
+
+    def __call__(self, components, state):
+        block_state = self.get_block_state(state)
+        block_state.resolved_num_frames = block_state.num_frames
+        self.set_block_state(state, block_state)
+        return components, state
+
+
+class BranchDefaultBlocks(AutoPipelineBlocks):
+    block_classes = [ActionFramesStep, PlainFramesStep]
+    block_names = ["action", "plain"]
+    block_trigger_inputs = ["action", None]
+
+    @property
+    def description(self):
+        return "Auto blocks used to reproduce branch-local default leakage."
+
+
+class SharedDefaultBlocks(AutoPipelineBlocks):
+    block_classes = [SharedFramesStep, SharedFramesStep]
+    block_names = ["first", "second"]
+    block_trigger_inputs = ["first_trigger", None]
+
+    @property
+    def description(self):
+        return "Auto blocks with a genuinely shared default."
+
+
+class ConflictingDefaultBlocks(AutoPipelineBlocks):
+    block_classes = [AlternateFramesStep, SharedFramesStep]
+    block_names = ["first", "second"]
+    block_trigger_inputs = ["first_trigger", None]
+
+    @property
+    def description(self):
+        return "Auto blocks with conflicting non-None defaults."
+
+
 class TestConditionalPipelineBlocksSelectBlock:
     def test_select_block_with_mask(self):
         blocks = ConditionalImageBlocks()
@@ -240,3 +361,34 @@ class TestConditionalPipelineBlocksStructure:
     def test_description(self):
         blocks = ConditionalImageBlocks()
         assert "Conditional" in blocks.description
+
+
+class TestConditionalPipelineBlockDefaults:
+    def test_branch_local_default_does_not_leak_into_sibling_branch(self):
+        pipe = BranchDefaultBlocks().init_pipeline()
+
+        state = pipe(action="dummy-action")
+
+        assert state.get("resolved_num_frames") == 100
+
+    def test_default_branch_still_receives_its_own_default(self):
+        pipe = BranchDefaultBlocks().init_pipeline()
+
+        state = pipe()
+
+        assert state.get("resolved_num_frames") == 189
+
+    def test_default_call_parameters_hide_branch_local_defaults(self):
+        pipe = BranchDefaultBlocks().init_pipeline()
+
+        assert pipe.default_call_parameters["num_frames"] is None
+
+    def test_shared_defaults_are_preserved(self):
+        pipe = SharedDefaultBlocks().init_pipeline()
+
+        assert pipe.default_call_parameters["num_frames"] == 24
+
+    def test_conflicting_non_none_defaults_are_not_promoted(self):
+        pipe = ConflictingDefaultBlocks().init_pipeline()
+
+        assert pipe.default_call_parameters["num_frames"] is None
