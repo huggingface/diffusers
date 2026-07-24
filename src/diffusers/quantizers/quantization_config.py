@@ -33,7 +33,7 @@ from typing import Any, Callable
 
 from packaging import version
 
-from ..utils import deprecate, is_sdnq_available, is_torch_available, is_torchao_version, logging
+from ..utils import deprecate, is_torch_available, is_torchao_version, logging
 
 
 if is_torch_available():
@@ -981,10 +981,9 @@ class SDNQConfig(QuantizationConfigMixin):
     """
 
     def __new__(cls, *args, **kwargs):
-        if not is_sdnq_available():
-            raise ImportError(
-                "Loading or creating an SDNQ quantized model requires the sdnq library: `pip install sdnq`"
-            )
+        from .sdnq.sdnq_quantizer import _check_sdnq_requirement
+
+        _check_sdnq_requirement()
         from sdnq import SDNQConfig as SDNQLibConfig
 
         return SDNQLibConfig(*args, **kwargs)

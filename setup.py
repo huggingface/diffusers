@@ -252,6 +252,7 @@ extras["gguf"] = deps_list("gguf", "accelerate")
 extras["optimum_quanto"] = deps_list("optimum_quanto", "accelerate")
 extras["torchao"] = deps_list("torchao", "accelerate")
 extras["nvidia_modelopt"] = deps_list("nvidia_modelopt[hf]")
+extras["sdnq"] = deps_list("sdnq")
 extras["flashpack"] = deps_list("flashpack")
 
 extras["dev"] = extras["quality"] + extras["test"] + extras["training"] + extras["docs"] + extras["torch"]

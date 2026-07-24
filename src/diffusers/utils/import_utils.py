@@ -830,6 +830,22 @@ def is_gguf_version(operation: str, version: str):
 
 
 @cache
+def is_sdnq_version(operation: str, version: str):
+    """
+    Compares the current sdnq version to a given reference with an operation.
+
+    Args:
+        operation (`str`):
+            A string representation of an operator, such as `">"` or `"<="`
+        version (`str`):
+            A version string
+    """
+    if not _sdnq_available:
+        return False
+    return compare_versions(parse(_sdnq_version), operation, version)
+
+
+@cache
 def is_torchao_version(operation: str, version: str):
     """
     Compares the current torchao version to a given reference with an operation.

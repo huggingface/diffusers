@@ -12,11 +12,29 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from ...utils import is_sdnq_available, logging
+from ...utils import is_sdnq_available, is_sdnq_version, logging
 from ..base import DiffusersQuantizer
 
 
 logger = logging.get_logger(__name__)
+
+# Recommended sdnq version. Older versions load/save most SDNQ checkpoints fine; only some of the
+# latest ones require this version, so a mismatch is a warning, not a hard error.
+_RECOMMENDED_SDNQ_VERSION = "0.2.2"
+
+
+def _check_sdnq_requirement():
+    if not is_sdnq_available():
+        raise ImportError(
+            f"Loading or creating an SDNQ quantized model requires the sdnq library: "
+            f"`pip install 'sdnq>={_RECOMMENDED_SDNQ_VERSION}'`"
+        )
+    if is_sdnq_version("<", _RECOMMENDED_SDNQ_VERSION):
+        logger.warning(
+            f"Your installed sdnq is older than {_RECOMMENDED_SDNQ_VERSION}. Most SDNQ checkpoints will still "
+            f"load and save fine, but some of the latest ones require sdnq>={_RECOMMENDED_SDNQ_VERSION}. "
+            f"If you hit issues, upgrade with `pip install -U sdnq`."
+        )
 
 
 class SDNQQuantizer(DiffusersQuantizer):
@@ -30,10 +48,7 @@ class SDNQQuantizer(DiffusersQuantizer):
     """
 
     def __new__(cls, quantization_config, **kwargs):
-        if not is_sdnq_available():
-            raise ImportError(
-                "Loading or creating an SDNQ quantized model requires the sdnq library: `pip install sdnq`"
-            )
+        _check_sdnq_requirement()
         from sdnq import SDNQQuantizer as SDNQLibQuantizer
 
         return SDNQLibQuantizer(quantization_config, **kwargs)
@@ -46,6 +61,5 @@ def _maybe_import_sdnq(quantization_config: dict | None):
     """
     if not quantization_config or quantization_config.get("quant_method") != "sdnq":
         return
-    if not is_sdnq_available():
-        raise ImportError("Loading or creating an SDNQ quantized model requires the sdnq library: `pip install sdnq`")
+    _check_sdnq_requirement()
     import sdnq  # noqa: F401
