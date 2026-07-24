@@ -117,7 +117,7 @@ def _determine_device_map(
 
 def _fetch_remapped_cls_from_config(config, old_class):
     previous_class_name = old_class.__name__
-    remapped_class_name = _CLASS_REMAPPING_DICT.get(previous_class_name).get(config["norm_type"], None)
+    remapped_class_name = _CLASS_REMAPPING_DICT.get(previous_class_name, {}).get(config["norm_type"], None)
 
     # Details:
     # https://github.com/huggingface/diffusers/pull/7647#discussion_r1621344818
