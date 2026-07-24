@@ -18,12 +18,6 @@ import torch
 
 from ...configuration_utils import FrozenDict
 from ...models import AutoencoderKLLTX2Audio, AutoencoderKLLTX2Video
-from ...utils import logging
-from ...utils.torch_utils import randn_tensor
-from ...video_processor import VideoProcessor
-from ..modular_pipeline import ModularPipelineBlocks, PipelineState
-from ..modular_pipeline_utils import ComponentSpec, InputParam, OutputParam
-
 
 # NOTE (modular.md gotcha #1): `LTX2Vocoder` / `LTX2VocoderWithBWE` currently live under
 # `diffusers.pipelines.ltx2.vocoder`, and modular blocks must not import from `diffusers.pipelines.*`.
@@ -31,6 +25,11 @@ from ..modular_pipeline_utils import ComponentSpec, InputParam, OutputParam
 # `src/diffusers/models/` and re-export from `diffusers.models` before this lands. Imported from the
 # pipelines path here only so the draft is runnable; switch to the models path once moved.
 from ...pipelines.ltx2.vocoder import LTX2Vocoder
+from ...utils import logging
+from ...utils.torch_utils import randn_tensor
+from ...video_processor import VideoProcessor
+from ..modular_pipeline import ModularPipelineBlocks, PipelineState
+from ..modular_pipeline_utils import ComponentSpec, InputParam, OutputParam
 
 
 logger = logging.get_logger(__name__)
@@ -237,7 +236,9 @@ class LTX2AudioDecoderStep(ModularPipelineBlocks):
         audio_latents = _denormalize_audio_latents(
             block_state.audio_latents, audio_vae.latents_mean, audio_vae.latents_std
         )
-        audio_latents = _unpack_audio_latents(audio_latents, block_state.audio_num_frames, num_mel_bins=latent_mel_bins)
+        audio_latents = _unpack_audio_latents(
+            audio_latents, block_state.audio_num_frames, num_mel_bins=latent_mel_bins
+        )
 
         if block_state.output_type == "latent":
             block_state.audio = audio_latents

@@ -115,6 +115,10 @@ else:
         "LTXAutoBlocks",
         "LTXModularPipeline",
     ]
+    _import_structure["ltx2"] = [
+        "LTX2AutoBlocks",
+        "LTX2ModularPipeline",
+    ]
     _import_structure["z_image"] = [
         "ZImageAutoBlocks",
         "ZImageModularPipeline",
@@ -163,6 +167,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             Ideogram4ModularPipeline,
         )
         from .ltx import LTXAutoBlocks, LTXModularPipeline
+        from .ltx2 import LTX2AutoBlocks, LTX2ModularPipeline
         from .modular_pipeline import (
             AutoPipelineBlocks,
             BlockState,
