@@ -354,6 +354,7 @@ else:
     _import_structure["lumina"] = ["LuminaPipeline", "LuminaText2ImgPipeline"]
     _import_structure["lumina2"] = ["Lumina2Pipeline", "Lumina2Text2ImgPipeline"]
     _import_structure["lucy"] = ["LucyEditPipeline"]
+    _import_structure["mage_flow"] = ["MageFlowPipeline", "MageFlowPipelineOutput"]
     _import_structure["longcat_image"] = ["LongCatImagePipeline", "LongCatImageEditPipeline"]
     _import_structure["longcat_audio_dit"] = ["LongCatAudioDiTPipeline"]
     _import_structure["marigold"].extend(
@@ -804,6 +805,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .lucy import LucyEditPipeline
         from .lumina import LuminaPipeline, LuminaText2ImgPipeline
         from .lumina2 import Lumina2Pipeline, Lumina2Text2ImgPipeline
+        from .mage_flow import MageFlowPipeline, MageFlowPipelineOutput
         from .marigold import (
             MarigoldDepthPipeline,
             MarigoldIntrinsicsPipeline,

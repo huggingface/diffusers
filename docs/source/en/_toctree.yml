@@ -375,6 +375,8 @@
         title: Lumina2Transformer2DModel
       - local: api/models/lumina_nextdit2d
         title: LuminaNextDiT2DModel
+      - local: api/models/mage_flow_transformer2d
+        title: MageFlowTransformer2DModel
       - local: api/models/mochi_transformer3d
         title: MochiTransformer3DModel
       - local: api/models/motif_video_transformer_3d
@@ -587,6 +589,8 @@
         title: Lumina 2.0
       - local: api/pipelines/lumina
         title: Lumina-T2X
+      - local: api/pipelines/mage_flow
+        title: Mage-Flow
       - local: api/pipelines/marigold
         title: Marigold
       - local: api/pipelines/nucleusmoe_image
