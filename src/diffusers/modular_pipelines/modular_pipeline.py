@@ -561,6 +561,25 @@ class ModularPipelineBlocks(ConfigMixin, PushToHubMixin):
                     if current_value is not param:  # Using identity comparison to check if object was modified
                         state.set(param_name, param, input_param.kwargs_type)
 
+    @torch.compiler.disable
+    def progress_bar(self, iterable=None, total=None):
+        if not hasattr(self, "_progress_bar_config"):
+            self._progress_bar_config = {}
+        elif not isinstance(self._progress_bar_config, dict):
+            raise ValueError(
+                f"`self._progress_bar_config` should be of type `dict`, but is {type(self._progress_bar_config)}."
+            )
+
+        if iterable is not None:
+            return tqdm(iterable, **self._progress_bar_config)
+        elif total is not None:
+            return tqdm(total=total, **self._progress_bar_config)
+        else:
+            raise ValueError("Either `total` or `iterable` has to be defined.")
+
+    def set_progress_bar_config(self, **kwargs):
+        self._progress_bar_config = kwargs
+
     @property
     def input_names(self) -> list[str]:
         return [input_param.name for input_param in self.inputs if input_param.name is not None]
@@ -587,6 +606,27 @@ class ModularPipelineBlocks(ConfigMixin, PushToHubMixin):
             expected_components=self.expected_components,
             expected_configs=self.expected_configs,
         )
+
+    def __call__(self, components, state: PipelineState) -> PipelineState:
+        raise NotImplementedError(f"`__call__` method must be implemented in {self.__class__.__name__}")
+
+
+class ModularLoopPipelineBlocks(ModularPipelineBlocks):
+    """
+    Base class for leaf blocks that run inside an [`IterativePipelineBlocks`] loop.
+
+    The only difference from [`ModularPipelineBlocks`] is the `__call__` contract: in addition to
+    `(components, state)`, the block accepts the enclosing loop's variables as call arguments — its signature
+    must name exactly the loop's `loop_variables` (e.g. `def __call__(self, components, state, i, t)`), which
+    the loop validates before the first iteration.
+
+    > [!WARNING] > This is an experimental feature and is likely to change in the future.
+    """
+
+    def __call__(self, components, state: PipelineState, **kwargs) -> PipelineState:
+        # Subclasses name the enclosing loop's variables explicitly, e.g.
+        # `def __call__(self, components, state, i, t)`.
+        raise NotImplementedError(f"`__call__` method must be implemented in {self.__class__.__name__}")
 
 
 class ConditionalPipelineBlocks(ModularPipelineBlocks):
@@ -786,7 +826,7 @@ class ConditionalPipelineBlocks(ModularPipelineBlocks):
         Get the block(s) that would execute given the inputs.
 
         Recursively resolves nested ConditionalPipelineBlocks until reaching either:
-        - A leaf block (no sub_blocks or LoopSequentialPipelineBlocks) → returns single `ModularPipelineBlocks`
+        - A leaf block (no sub_blocks, or a loop block: IterativePipelineBlocks / LoopSequentialPipelineBlocks) → returns single `ModularPipelineBlocks`
         - A `SequentialPipelineBlocks` → delegates to its `get_execution_blocks()` which returns
         a `SequentialPipelineBlocks` containing the resolved execution blocks
 
@@ -809,7 +849,7 @@ class ConditionalPipelineBlocks(ModularPipelineBlocks):
         block = self.sub_blocks[block_name]
 
         # Recursively resolve until we hit a leaf block
-        if block.sub_blocks and not isinstance(block, LoopSequentialPipelineBlocks):
+        if block.sub_blocks and not isinstance(block, (IterativePipelineBlocks, LoopSequentialPipelineBlocks)):
             return block.get_execution_blocks(**kwargs)
 
         return block
@@ -1190,13 +1230,13 @@ class SequentialPipelineBlocks(ModularPipelineBlocks):
                     return result_blocks
 
             # Has sub_blocks (SequentialPipelineBlocks/ConditionalPipelineBlocks)
-            if block.sub_blocks and not isinstance(block, LoopSequentialPipelineBlocks):
+            if block.sub_blocks and not isinstance(block, (IterativePipelineBlocks, LoopSequentialPipelineBlocks)):
                 for sub_block_name, sub_block in block.sub_blocks.items():
                     nested_blocks = fn_recursive_traverse(sub_block, sub_block_name, active_inputs)
                     nested_blocks = {f"{block_name}.{k}": v for k, v in nested_blocks.items()}
                     result_blocks.update(nested_blocks)
             else:
-                # Leaf block: single ModularPipelineBlocks or LoopSequentialPipelineBlocks
+                # Leaf block: single ModularPipelineBlocks or a loop block (IterativePipelineBlocks / LoopSequentialPipelineBlocks)
                 result_blocks[block_name] = block
                 # Add outputs to active_inputs so subsequent blocks can use them as triggers
                 if hasattr(block, "intermediate_outputs"):
@@ -1304,6 +1344,118 @@ class SequentialPipelineBlocks(ModularPipelineBlocks):
             if getattr(block, "_requirements", None):
                 requirements[block_name] = block._requirements
         return requirements
+
+
+class IterativePipelineBlocks(SequentialPipelineBlocks):
+    """
+    A pipeline blocks that runs its sub-blocks multiple times. Subclasses declare their loop-variable names in
+    `loop_variables` and implement `__call__` with their loop logic — the same way leaf blocks implement
+    `__call__` around `get_block_state` — calling `loop_step` once per iteration with the loop variables:
+
+    ```python
+    @property
+    def loop_variables(self):
+        return ["i", "t"]
+
+    @torch.no_grad()
+    def __call__(self, components, state):
+        block_state = self.get_block_state(state)
+        for i, t in enumerate(block_state.timesteps):
+            components, state = self.loop_step(components, state, i=i, t=t)
+        return components, state
+    ```
+
+    Unlike [`LoopSequentialPipelineBlocks`], sub-blocks operate on the full [`PipelineState`] with the regular
+    `get_block_state`/`set_block_state` behavior, so an `IterativePipelineBlocks` can itself be a sub-block of
+    another one — loops can be nested and composed freely. Sub-blocks must be [`ModularLoopPipelineBlocks`]
+    (loop steps) or nested `IterativePipelineBlocks`, which is validated at construction.
+
+    Loop variables are passed to sub-blocks as call arguments: every sub-block must have the signature
+    `__call__(self, components, state, <loop_variables...>)`, which is validated against `loop_variables` at
+    construction. A nested loop accepts the outer loop's variables in its own hand-written `__call__`
+    (ignoring or forwarding them) and passes its own `loop_variables` to its own sub-blocks:
+
+    ```python
+    class InnerDenoiseLoop(IterativePipelineBlocks):
+        @property
+        def loop_variables(self):
+            return ["i", "t"]                          # what it passes to ITS sub-blocks
+
+        @torch.no_grad()
+        def __call__(self, components, state, k):      # accepts the OUTER chunk loop's variable
+            block_state = self.get_block_state(state)
+            for i, t in enumerate(block_state.timesteps):
+                components, state = self.loop_step(components, state, i=i, t=t)
+            return components, state
+    ```
+
+    Sub-block outputs are written to the pipeline state as usual and persist after the loop. If the loop logic in
+    `__call__` itself consumes inputs (e.g. `timesteps`) or uses components (e.g. the scheduler) beyond what the
+    sub-blocks declare, override the aggregated `inputs` / `expected_components` / ... properties to add them.
+
+    > [!WARNING] > This is an experimental feature and is likely to change in the future.
+
+    Attributes:
+        block_classes: list of block classes to be used (same as `SequentialPipelineBlocks`)
+        block_names: list of names for each block (same as `SequentialPipelineBlocks`)
+    """
+
+    @property
+    def loop_variables(self) -> list[str]:
+        """Names of the loop variables `loop_step` passes to leaf sub-blocks each iteration (e.g. `["i", "t"]`)."""
+        return []
+
+    def __init__(self):
+        super().__init__()
+        self._validate_sub_blocks()
+
+    @classmethod
+    def from_blocks_dict(cls, blocks_dict, description: str | None = None) -> "IterativePipelineBlocks":
+        instance = super().from_blocks_dict(blocks_dict, description)
+        # sub_blocks are assigned after __init__ on this path, so validate again
+        instance._validate_sub_blocks()
+        return instance
+
+    def _validate_sub_blocks(self):
+        """Sub-blocks must be loop steps (`ModularLoopPipelineBlocks`) or nested loops (`IterativePipelineBlocks`)
+        and accept exactly the loop variables after `(components, state)`."""
+        expected = set(self.loop_variables)
+        for block_name, block in self.sub_blocks.items():
+            if not isinstance(block, (ModularLoopPipelineBlocks, IterativePipelineBlocks)):
+                raise ValueError(
+                    f"Sub-block '{block_name}' ({block.__class__.__name__}) of {self.__class__.__name__} must be "
+                    "a `ModularLoopPipelineBlocks` (a loop step) or an `IterativePipelineBlocks` (a nested loop); "
+                    f"got `{block.__class__.__bases__[0].__name__}`."
+                )
+            params = list(inspect.signature(block.__call__).parameters)
+            extra = set(params[2:])
+            if extra != expected:
+                raise ValueError(
+                    f"Loop sub-block '{block_name}' ({block.__class__.__name__}) of {self.__class__.__name__} "
+                    f"must accept the loop variables {sorted(expected)} after `(components, state)`; "
+                    f"its `__call__` accepts {sorted(extra)}."
+                )
+
+    def loop_step(self, components, state: PipelineState, **loop_kwargs) -> PipelineState:
+        """Run all sub-blocks once over the pipeline state (one loop iteration), passing the loop variables."""
+        for block_name, block in self.sub_blocks.items():
+            try:
+                components, state = block(components, state, **loop_kwargs)
+            except Exception as e:
+                error_msg = (
+                    f"\nError in block: ({block_name}, {block.__class__.__name__})\n"
+                    f"Error details: {str(e)}\n"
+                    f"Traceback:\n{traceback.format_exc()}"
+                )
+                logger.error(error_msg)
+                raise
+        return components, state
+
+    def __call__(self, components, state: PipelineState, **kwargs) -> PipelineState:
+        # Subclasses implement their loop logic here. When the loop is nested inside another
+        # IterativePipelineBlocks, the signature must also accept the outer loop's variables,
+        # e.g. `def __call__(self, components, state, k)`.
+        raise NotImplementedError("`__call__` method needs to be implemented by the subclass")
 
 
 class LoopSequentialPipelineBlocks(ModularPipelineBlocks):
@@ -1579,25 +1731,6 @@ class LoopSequentialPipelineBlocks(ModularPipelineBlocks):
         result += f"\n\n{blocks_str})"
 
         return result
-
-    @torch.compiler.disable
-    def progress_bar(self, iterable=None, total=None):
-        if not hasattr(self, "_progress_bar_config"):
-            self._progress_bar_config = {}
-        elif not isinstance(self._progress_bar_config, dict):
-            raise ValueError(
-                f"`self._progress_bar_config` should be of type `dict`, but is {type(self._progress_bar_config)}."
-            )
-
-        if iterable is not None:
-            return tqdm(iterable, **self._progress_bar_config)
-        elif total is not None:
-            return tqdm(total=total, **self._progress_bar_config)
-        else:
-            raise ValueError("Either `total` or `iterable` has to be defined.")
-
-    def set_progress_bar_config(self, **kwargs):
-        self._progress_bar_config = kwargs
 
 
 # YiYi TODO:
