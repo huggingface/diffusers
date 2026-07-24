@@ -83,6 +83,12 @@ else:
         "Ideogram4AutoBlocks",
         "Ideogram4ModularPipeline",
     ]
+    _import_structure["krea2"] = [
+        "Krea2AutoBlocks",
+        "Krea2ModularPipeline",
+        "Krea2TurboAutoBlocks",
+        "Krea2TurboModularPipeline",
+    ]
     _import_structure["qwenimage"] = [
         "QwenImageAutoBlocks",
         "QwenImageModularPipeline",
@@ -161,6 +167,12 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .ideogram4 import (
             Ideogram4AutoBlocks,
             Ideogram4ModularPipeline,
+        )
+        from .krea2 import (
+            Krea2AutoBlocks,
+            Krea2ModularPipeline,
+            Krea2TurboAutoBlocks,
+            Krea2TurboModularPipeline,
         )
         from .ltx import LTXAutoBlocks, LTXModularPipeline
         from .modular_pipeline import (
