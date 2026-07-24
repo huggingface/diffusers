@@ -26,7 +26,7 @@ from packaging.specifiers import InvalidSpecifier, SpecifierSet
 
 from ..configuration_utils import ConfigMixin, FrozenDict
 from ..loaders.single_file_utils import _is_single_file_path_or_url
-from ..utils import DIFFUSERS_LOAD_ID_FIELDS, _resolve_dtype, is_torch_available, logging
+from ..utils import DIFFUSERS_LOAD_ID_FIELDS, _resolve_dtype, is_sdnq_available, is_torch_available, logging
 from ..utils.import_utils import _is_package_available
 
 
@@ -339,11 +339,13 @@ class ComponentSpec:
             # Prequantized SDNQ transformers components need `sdnq` imported so it registers itself with transformers.
             if (
                 not is_single_file
+                and is_sdnq_available()
                 and issubclass(self.type_hint, torch.nn.Module)
                 and self.type_hint.__module__.startswith("transformers")
             ):
                 from ..quantizers.sdnq.sdnq_quantizer import _maybe_import_sdnq
 
+                config_dict = None
                 try:
                     from transformers import PretrainedConfig
 
@@ -352,8 +354,8 @@ class ComponentSpec:
                         subfolder=load_kwargs.get("subfolder"),
                         revision=load_kwargs.get("revision"),
                     )
-                except Exception:
-                    config_dict = None
+                except (OSError, ValueError) as e:
+                    logger.debug(f"Could not read config for {pretrained_model_name_or_path} to detect SDNQ: {e}")
                 if config_dict is not None:
                     _maybe_import_sdnq(config_dict.get("quantization_config"))
 

@@ -39,6 +39,7 @@ from ..utils import (
     get_class_from_dynamic_module,
     is_accelerate_available,
     is_peft_available,
+    is_sdnq_available,
     is_transformers_available,
     is_transformers_version,
     logging,
@@ -890,7 +891,7 @@ def load_sub_model(
             loading_kwargs["quantization_config"] = model_quant_config
 
     # Prequantized SDNQ transformers components need `sdnq` imported so it registers itself with transformers.
-    if is_transformers_model:
+    if is_transformers_model and is_sdnq_available():
         component_config_path = os.path.join(cached_folder, name, "config.json")
         if os.path.isfile(component_config_path):
             from ..quantizers.sdnq.sdnq_quantizer import _maybe_import_sdnq
