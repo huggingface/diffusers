@@ -133,6 +133,52 @@ class AutoImageBlocks(AutoPipelineBlocks):
         return "Auto image blocks for testing"
 
 
+class TextToVideoBlock(ModularPipelineBlocks):
+    model_name = "text2video"
+
+    @property
+    def inputs(self):
+        return [InputParam(name="prompt")]
+
+    @property
+    def intermediate_outputs(self):
+        return []
+
+    @property
+    def description(self):
+        return "text-to-video workflow"
+
+    def __call__(self, components, state):
+        block_state = self.get_block_state(state)
+        block_state.workflow = "text2video"
+        self.set_block_state(state, block_state)
+        return components, state
+
+
+class ModeConditionalBlocks(ConditionalPipelineBlocks):
+    """Routes on the *value* of a trigger input that declares an `InputParam` default."""
+
+    block_classes = [TextToVideoBlock, TextToImageBlock]
+    block_names = ["text2video", "text2img"]
+    block_trigger_inputs = ["mode"]
+    default_block_name = "text2img"
+
+    @property
+    def inputs(self):
+        return super().inputs + [InputParam(name="mode", type_hint=str, default="image")]
+
+    @property
+    def description(self):
+        return "Mode-routed conditional blocks for testing"
+
+    def select_block(self, mode=None) -> str | None:
+        if mode not in ("image", "video"):
+            raise ValueError(f'`mode` must be one of "image", "video", got {mode!r}.')
+        if mode == "video":
+            return "text2video"
+        return "text2img"
+
+
 class TestConditionalPipelineBlocksSelectBlock:
     def test_select_block_with_mask(self):
         blocks = ConditionalImageBlocks()
@@ -186,6 +232,30 @@ class TestConditionalPipelineBlocksWorkflowSelection:
         blocks = OptionalConditionalBlocks()
         execution = blocks.get_execution_blocks(image=True)
         assert isinstance(execution, ImageToImageBlock)
+
+
+class TestConditionalPipelineBlocksTriggerDefaults:
+    """A trigger input's declared `InputParam` default is applied when the trigger is unset."""
+
+    def test_unset_trigger_resolves_to_declared_default(self):
+        blocks = ModeConditionalBlocks()
+        execution = blocks.get_execution_blocks()
+        assert isinstance(execution, TextToImageBlock)
+
+    def test_explicit_value_overrides_declared_default(self):
+        blocks = ModeConditionalBlocks()
+        execution = blocks.get_execution_blocks(mode="video")
+        assert isinstance(execution, TextToVideoBlock)
+
+    def test_explicit_none_means_unset(self):
+        blocks = ModeConditionalBlocks()
+        execution = blocks.get_execution_blocks(mode=None)
+        assert isinstance(execution, TextToImageBlock)
+
+    def test_presence_trigger_without_default_unchanged(self):
+        blocks = ConditionalImageBlocks()
+        execution = blocks.get_execution_blocks()
+        assert isinstance(execution, TextToImageBlock)
 
 
 class TestAutoPipelineBlocksSelectBlock:
