@@ -16,7 +16,9 @@ The `DiscreteDDIMScheduler` samples each canvas position from the exact discrete
 process (D3PM), following [Structured Denoising Diffusion Models in Discrete State-Spaces](https://huggingface.co/papers/2107.03006).
 It is parameter free, and the final step deterministically commits the predicted tokens. An optional predictor-corrector
 mode adds the leave-one-out Gibbs sweeps of [Uniform Diffusion Models Revisited: Leave-One-Out Denoiser and Absorbing State Reformulation](https://huggingface.co/papers/2605.22765)
-through `corrector_steps`.
+through `corrector_steps`. An optional remasking mode follows the max-capped schedule of [Remasking Discrete Diffusion Models with Inference-Time Scaling](https://huggingface.co/papers/2503.00307):
+with `remasking_max_cap` above `0.0`, each step can re-corrupt an already-committed token so the sampler can revise it
+later, while the final step still commits deterministically.
 
 This scheduler is used by [`DiffusionGemmaPipeline`].
 
