@@ -103,13 +103,13 @@ def load_video(
 
     pil_images = []
     if video.endswith(".gif"):
-        gif = PIL.Image.open(video)
-        try:
-            while True:
-                pil_images.append(gif.copy())
-                gif.seek(gif.tell() + 1)
-        except EOFError:
-            pass
+        with PIL.Image.open(video) as gif:
+            try:
+                while True:
+                    pil_images.append(gif.copy())
+                    gif.seek(gif.tell() + 1)
+            except EOFError:
+                pass
 
     else:
         if is_imageio_available():
