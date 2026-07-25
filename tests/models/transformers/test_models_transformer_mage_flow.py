@@ -153,7 +153,9 @@ class TestMageFlowTransformerTorchCompile(MageFlowTransformerTesterConfig, Torch
 
 
 class TestMageFlowTransformerTraining(MageFlowTransformerTesterConfig, TrainingTesterMixin):
-    pass
+    def test_gradient_checkpointing_is_applied(self):
+        expected_set = {"MageFlowTransformer2DModel"}
+        super().test_gradient_checkpointing_is_applied(expected_set=expected_set)
 
 
 class TestMageFlowTransformerAttention(MageFlowTransformerTesterConfig, AttentionTesterMixin):
