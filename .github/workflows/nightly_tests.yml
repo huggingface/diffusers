@@ -95,7 +95,7 @@ jobs:
           CUBLAS_WORKSPACE_CONFIG: :16:8
         run: |
           pytest -n 1 --max-worker-restart=0 --dist=loadfile \
-             -k "not Flax and not Onnx" \
+             -k "not Onnx" \
             --make-reports=tests_pipeline_${{ matrix.module }}_cuda \
             --report-log=tests_pipeline_${{ matrix.module }}_cuda.log \
             tests/pipelines/${{ matrix.module }}
@@ -151,7 +151,7 @@ jobs:
         CUBLAS_WORKSPACE_CONFIG: :16:8
       run: |
         pytest -n 1 --max-worker-restart=0 --dist=loadfile \
-          -k "not Flax and not Onnx" \
+          -k "not Onnx" \
           --make-reports=tests_torch_${{ matrix.module }}_cuda \
           --report-log=tests_torch_${{ matrix.module }}_cuda.log \
           tests/${{ matrix.module }}
@@ -312,7 +312,7 @@ jobs:
           CUBLAS_WORKSPACE_CONFIG: :16:8
         run: |
           pytest -n 1 --max-worker-restart=0 --dist=loadfile \
-            -k "not Flax and not Onnx" \
+            -k "not Onnx" \
             --make-reports=tests_torch_minimum_version_cuda \
             tests/models/test_modeling_common.py \
             tests/pipelines/test_pipelines_common.py \
@@ -466,7 +466,6 @@ jobs:
       run_nightly_pipeline_level_quantization_tests,
       # run_nightly_onnx_tests,
       torch_minimum_version_cuda_tests,
-      # run_flax_tpu_tests
     ]
     if: always()
     runs-on:

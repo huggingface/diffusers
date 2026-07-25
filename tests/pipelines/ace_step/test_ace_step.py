@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2025 HuggingFace Inc.
+# Copyright 2026 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -139,7 +139,6 @@ class AceStepPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     # ACE-Step uses custom attention, not standard diffusers attention processors
     test_attention_slicing = False
     test_xformers_attention = False
-    supports_dduf = False
 
     def get_dummy_components(self):
         torch.manual_seed(0)

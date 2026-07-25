@@ -174,6 +174,8 @@
     title: bitsandbytes
   - local: quantization/gguf
     title: gguf
+  - local: quantization/nunchaku
+    title: Nunchaku Lite
   - local: quantization/torchao
     title: torchao
   - local: quantization/quanto
@@ -218,6 +220,8 @@
     title: Task recipes
   - local: using-diffusers/write_own_pipeline
     title: Understanding pipelines, models and schedulers
+  - local: using-diffusers/cli
+    title: Command line interface
   - local: community_projects
     title: Projects built with Diffusers
   - local: conceptual/philosophy
@@ -353,6 +357,8 @@
         title: HunyuanVideoTransformer3DModel
       - local: api/models/ideogram4_transformer2d
         title: Ideogram4Transformer2DModel
+      - local: api/models/transformer_joyimage_edit_plus
+        title: JoyImageEditPlusTransformer3DModel
       - local: api/models/transformer_joyimage
         title: JoyImageEditTransformer3DModel
       - local: api/models/krea2_transformer2d
@@ -555,6 +561,8 @@
         title: InstructPix2Pix
       - local: api/pipelines/joyimage_edit
         title: JoyImage Edit
+      - local: api/pipelines/joyimage_edit_plus
+        title: JoyImage Edit Plus
       - local: api/pipelines/kandinsky
         title: Kandinsky 2.1
       - local: api/pipelines/kandinsky_v22

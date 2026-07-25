@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2025 HuggingFace Inc.
+# Copyright 2026 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -218,7 +218,7 @@ class TestConsistencyDecoderVAEIntegration:
             generator=torch.Generator("cpu").manual_seed(0),
         ).images[0]
 
-        pipe.enable_vae_tiling()
+        pipe.vae.enable_tiling()
         out_2 = pipe(
             "horse",
             num_inference_steps=2,
