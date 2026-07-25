@@ -31,6 +31,7 @@ import torch.nn.functional as F
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...loaders import FromOriginalModelMixin
 from ...utils import logging
+from ...utils.torch_utils import randn_tensor
 from ..modeling_utils import ModelMixin
 from .vae import DecoderOutput
 
@@ -360,13 +361,17 @@ class MageVAEAttnBlock(nn.Module):
             .reshape(batch_size * num_patches, channels, d * d)
         )
 
-        # Attention
-        attn_weights = torch.bmm(query.permute(0, 2, 1), key) * (channels**-0.5)
-        attn_weights = F.softmax(attn_weights, dim=2).permute(0, 2, 1)
+        # Attention via F.scaled_dot_product_attention
+        # query/key/value: [B*np, C, d*d] -> [B*np, 1, d*d, C] for SDPA (batch, heads, seq, head_dim)
+        q = query.permute(0, 2, 1).unsqueeze(1)
+        k = key.permute(0, 2, 1).unsqueeze(1)
+        v = value.permute(0, 2, 1).unsqueeze(1)
+        h_ = F.scaled_dot_product_attention(q, k, v, dropout_p=0.0, is_causal=False)
+        h_ = h_.squeeze(1).permute(0, 2, 1)  # back to [B*np, C, d*d]
 
         # Reconstruct
         hidden_states = (
-            torch.bmm(value, attn_weights)
+            h_
             .reshape(batch_size, num_patches_h, num_patches_w, channels, d, d)
             .permute(0, 3, 1, 4, 2, 5)
             .reshape(batch_size, channels, height_padded, width_padded)
@@ -476,18 +481,20 @@ class MageVAEDecoder(nn.Module):
         )
         self.norm_out = nn.GroupNorm(num_groups=32, num_channels=out_ch, eps=1e-6, affine=True)
         self.conv_out = nn.Conv2d(out_ch, out_ch, kernel_size=3, stride=1, padding=1)
-        self.ada = nn.Identity()
 
     def forward(self, z):
         hidden_states = self.block(self.conv_in(z))
         hidden_states = self.conv_out(F.silu(self.norm_out(hidden_states)))
-        return self.ada(hidden_states)
+        return hidden_states
 
 
 # ---------------------------------------------------------------------------
 # Y-Embedder wrapper (holds the CoD decoder)
 # ---------------------------------------------------------------------------
 class _MageVAEYEmbedder(nn.Module):
+    """Namespace wrapper for the CoD decoder, matching the original checkpoint's
+    ``pipeline.y_embedder.decoder.*`` weight key hierarchy."""
+
     def __init__(self, hidden_size=384, latent_channels=128):
         super().__init__()
         self.decoder = MageVAEDecoder(out_ch=hidden_size, z_ch=latent_channels)
@@ -536,12 +543,9 @@ class MageVAEDConvDenoiser(nn.Module):
         self.final_layer = MageVAENerfFinalLayer(hidden_size_x, in_channels)
         self.y_embedder = _MageVAEYEmbedder(hidden_size=hidden_size, latent_channels=bottleneck_dim)
 
-    def forward(self, x, t, conditioning_or_latent):
-        # If conditioning_or_latent has 128 channels (latent), run CoD decoder first
-        if conditioning_or_latent.shape[1] != self.hidden_size:
-            conditioning = self.y_embedder.decoder(conditioning_or_latent)
-        else:
-            conditioning = conditioning_or_latent
+    def forward(self, x, t, conditioning, is_latent=False):
+        if is_latent:
+            conditioning = self.y_embedder.decoder(conditioning)
 
         batch_size, _, height, width = x.shape
         timestep_embedding = self.t_embedder(t.view(-1))
@@ -623,6 +627,9 @@ class AutoencoderMageVAE(ModelMixin, ConfigMixin, FromOriginalModelMixin):
             Whether to sample from the posterior (mean + noise * std) or use the mean directly.
     """
 
+    _no_split_modules = ["MageVAEDiCoBlock", "MageVAEResnetBlock", "MageVAEAttnBlock"]
+    _supports_gradient_checkpointing = False
+
     @register_to_config
     def __init__(
         self,
@@ -662,13 +669,15 @@ class AutoencoderMageVAE(ModelMixin, ConfigMixin, FromOriginalModelMixin):
             bottleneck_dim=decoder_bottleneck_dim,
         )
 
-    def encode(self, x: torch.Tensor) -> torch.Tensor:
+    def encode(self, x: torch.Tensor, generator: torch.Generator | None = None) -> torch.Tensor:
         """
         Encode images to latents.
 
         Args:
             x (`torch.Tensor`): Input images of shape `[B, 3, H, W]`. H and W must be
                 multiples of `encoder_patch_size`.
+            generator (`torch.Generator`, *optional*):
+                A torch generator for reproducible sampling.
 
         Returns:
             `torch.Tensor`: Latent of shape `[B, 128, H/16, W/16]`.
@@ -692,8 +701,12 @@ class AutoencoderMageVAE(ModelMixin, ConfigMixin, FromOriginalModelMixin):
         logvar = out[:, latent_channels:].clamp(min=-20.0, max=10.0)
 
         if self.config.sample_posterior:
-            return mean + torch.exp(0.5 * logvar) * torch.randn_like(mean)
+            noise = randn_tensor(mean.shape, generator=generator, device=mean.device, dtype=mean.dtype)
+            return mean + torch.exp(0.5 * logvar) * noise
         return mean
+
+    def forward(self, z: torch.Tensor, return_dict: bool = True) -> DecoderOutput | tuple[torch.Tensor]:
+        return self.decode(z, return_dict=return_dict)
 
     def decode(self, z: torch.Tensor, return_dict: bool = True) -> DecoderOutput | tuple[torch.Tensor]:
         """
@@ -713,7 +726,7 @@ class AutoencoderMageVAE(ModelMixin, ConfigMixin, FromOriginalModelMixin):
         width = z.shape[3] * self.config.downsample_factor
         noise = torch.zeros(batch_size, 3, height, width, device=z.device, dtype=z.dtype)
         t = torch.zeros(batch_size, device=z.device, dtype=z.dtype)
-        sample = self.decoder(noise, t, z)
+        sample = self.decoder(noise, t, z, is_latent=True)
 
         if not return_dict:
             return (sample,)
@@ -753,14 +766,3 @@ class AutoencoderMageVAE(ModelMixin, ConfigMixin, FromOriginalModelMixin):
             child.adaLN_modulation = _MageVAEConstAdaLN(modulation)
             count += 1
         return count
-
-    def forward(self, sample: torch.Tensor) -> torch.Tensor:
-        """
-        Args:
-            sample (`torch.Tensor`): Input image of shape `[B, 3, H, W]`.
-
-        Returns:
-            `torch.Tensor`: Reconstructed image of shape `[B, 3, H, W]`.
-        """
-        latent = self.encode(sample)
-        return self.decode(latent)

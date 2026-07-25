@@ -72,23 +72,21 @@ class MageFlowPosEmbed(nn.Module):
     """Complex RoPE with symmetric positive/negative frequency scaling for MageFlow.
 
     Computes multi-scale rotary positional embeddings for video/image tokens using
-    three axes (frame, height, width). When ``scale_rope=True``, height and width
-    axes use symmetric positive/negative frequency indices centered around the
-    spatial midpoint.
+    three axes (frame, height, width). Height and width axes use symmetric
+    positive/negative frequency indices centered around the spatial midpoint.
     """
 
-    def __init__(self, theta: int = 10000, axes_dim: list[int] = None, scale_rope: bool = True):
+    def __init__(self, theta: int = 10000, axes_dim: list[int] = None):
         super().__init__()
         if axes_dim is None:
             axes_dim = [16, 48, 48]
         self.theta = theta
         self.axes_dim = axes_dim
-        self.scale_rope = scale_rope
 
         pos_index = torch.arange(4096)
         neg_index = torch.arange(4096).flip(0) * -1 - 1
 
-        self.pos_freqs = torch.cat(
+        pos_freqs = torch.cat(
             [
                 self._rope_params(pos_index, self.axes_dim[0], self.theta),
                 self._rope_params(pos_index, self.axes_dim[1], self.theta),
@@ -96,7 +94,7 @@ class MageFlowPosEmbed(nn.Module):
             ],
             dim=1,
         )
-        self.neg_freqs = torch.cat(
+        neg_freqs = torch.cat(
             [
                 self._rope_params(neg_index, self.axes_dim[0], self.theta),
                 self._rope_params(neg_index, self.axes_dim[1], self.theta),
@@ -104,7 +102,10 @@ class MageFlowPosEmbed(nn.Module):
             ],
             dim=1,
         )
-        # Complex tensors cannot be stored via register_buffer (imaginary part gets dropped).
+        self.register_buffer("pos_freqs_real", pos_freqs.real.contiguous(), persistent=False)
+        self.register_buffer("pos_freqs_imag", pos_freqs.imag.contiguous(), persistent=False)
+        self.register_buffer("neg_freqs_real", neg_freqs.real.contiguous(), persistent=False)
+        self.register_buffer("neg_freqs_imag", neg_freqs.imag.contiguous(), persistent=False)
         self._video_freq_cache: dict[tuple, torch.Tensor] = {}
 
     @staticmethod
@@ -118,24 +119,22 @@ class MageFlowPosEmbed(nn.Module):
 
     def _compute_video_freqs(self, frame: int, height: int, width: int, idx: int = 0) -> torch.Tensor:
         seq_len = frame * height * width
-        freqs_pos = self.pos_freqs.split([x // 2 for x in self.axes_dim], dim=1)
-        freqs_neg = self.neg_freqs.split([x // 2 for x in self.axes_dim], dim=1)
+        pos_freqs = torch.complex(self.pos_freqs_real.float(), self.pos_freqs_imag.float())
+        neg_freqs = torch.complex(self.neg_freqs_real.float(), self.neg_freqs_imag.float())
+        freqs_pos = pos_freqs.split([x // 2 for x in self.axes_dim], dim=1)
+        freqs_neg = neg_freqs.split([x // 2 for x in self.axes_dim], dim=1)
 
         freqs_frame = freqs_pos[0][idx : idx + frame].view(frame, 1, 1, -1).expand(frame, height, width, -1)
-        if self.scale_rope:
-            freqs_height = torch.cat(
-                [freqs_neg[1][-(height - height // 2) :], freqs_pos[1][: height // 2]],
-                dim=0,
-            )
-            freqs_height = freqs_height.view(1, height, 1, -1).expand(frame, height, width, -1)
-            freqs_width = torch.cat(
-                [freqs_neg[2][-(width - width // 2) :], freqs_pos[2][: width // 2]],
-                dim=0,
-            )
-            freqs_width = freqs_width.view(1, 1, width, -1).expand(frame, height, width, -1)
-        else:
-            freqs_height = freqs_pos[1][:height].view(1, height, 1, -1).expand(frame, height, width, -1)
-            freqs_width = freqs_pos[2][:width].view(1, 1, width, -1).expand(frame, height, width, -1)
+        freqs_height = torch.cat(
+            [freqs_neg[1][-(height - height // 2) :], freqs_pos[1][: height // 2]],
+            dim=0,
+        )
+        freqs_height = freqs_height.view(1, height, 1, -1).expand(frame, height, width, -1)
+        freqs_width = torch.cat(
+            [freqs_neg[2][-(width - width // 2) :], freqs_pos[2][: width // 2]],
+            dim=0,
+        )
+        freqs_width = freqs_width.view(1, 1, width, -1).expand(frame, height, width, -1)
 
         freqs = torch.cat([freqs_frame, freqs_height, freqs_width], dim=-1).reshape(seq_len, -1)
         return freqs.clone().contiguous()
@@ -154,9 +153,6 @@ class MageFlowPosEmbed(nn.Module):
             Complex frequency tensor of shape ``[seq_len, head_dim // 2]``.
         """
         device = img_ids.device
-        if self.pos_freqs.device != device:
-            self.pos_freqs = self.pos_freqs.to(device)
-            self.neg_freqs = self.neg_freqs.to(device)
 
         if height is not None and width is not None:
             frame = 1
@@ -527,6 +523,7 @@ class MageFlowTransformer2DModel(
     _no_split_modules = ["MageFlowTransformerBlock"]
     _repeated_blocks = ["MageFlowTransformerBlock"]
     _skip_layerwise_casting_patterns = ["pos_embed", "norm"]
+    main_input_name = "hidden_states"
 
     @register_to_config
     def __init__(
@@ -546,7 +543,7 @@ class MageFlowTransformer2DModel(
         self.num_attention_heads = num_attention_heads
         attention_head_dim = hidden_size // num_attention_heads
 
-        self.pos_embed = MageFlowPosEmbed(theta=10000, axes_dim=axes_dim, scale_rope=True)
+        self.pos_embed = MageFlowPosEmbed(theta=10000, axes_dim=axes_dim)
 
         self.x_embedder = nn.Linear(in_channels, self.inner_dim)
         self.context_embedder_norm = nn.RMSNorm(context_in_dim, eps=1e-6)

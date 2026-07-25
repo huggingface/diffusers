@@ -528,14 +528,18 @@ class MageFlowPipeline(DiffusionPipeline):
             max_sequence_length=max_sequence_length,
         )
         if do_classifier_free_guidance:
-            negative_prompt_embeds, negative_prompt_embeds_mask = self.encode_prompt(
-                prompt=negative_prompt if negative_prompt is not None else [""] * batch_size,
-                prompt_embeds=negative_prompt_embeds,
-                prompt_embeds_mask=negative_prompt_embeds_mask,
-                device=device,
-                num_images_per_prompt=num_images_per_prompt,
-                max_sequence_length=max_sequence_length,
-            )
+            if negative_prompt_embeds is None and self.text_encoder is None:
+                # text_encoder unavailable and no negative_prompt_embeds provided, skip CFG
+                do_classifier_free_guidance = False
+            else:
+                negative_prompt_embeds, negative_prompt_embeds_mask = self.encode_prompt(
+                    prompt=negative_prompt if negative_prompt is not None else [""] * batch_size,
+                    prompt_embeds=negative_prompt_embeds,
+                    prompt_embeds_mask=negative_prompt_embeds_mask,
+                    device=device,
+                    num_images_per_prompt=num_images_per_prompt,
+                    max_sequence_length=max_sequence_length,
+                )
 
         # 4. Prepare latent variables
         num_channels_latents = self.transformer.config.in_channels
@@ -652,7 +656,7 @@ class MageFlowPipeline(DiffusionPipeline):
             latents = latents.reshape(batch_size * num_images_per_prompt, latent_h, latent_w, num_channels_latents)
             latents = latents.permute(0, 3, 1, 2)
             latents = latents.to(self.vae.dtype)
-            image = self.vae.decode(latents, return_dict=False)[0]
+            image = self.vae(latents, return_dict=False)[0]
             image = image.clamp(-1, 1)
             image = self.image_processor.postprocess(image, output_type=output_type)
 

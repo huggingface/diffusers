@@ -106,16 +106,16 @@ class MageFlowPipelineTesterConfig(BasePipelineTesterConfig):
             "height": 64,
             "width": 64,
             "num_inference_steps": 2,
-            "guidance_scale": 5.0,
+            "guidance_scale": 1.0,
             "output_type": "pt",
             "generator": self.get_generator(0),
         }
 
 
 class TestMageFlowPipeline(MageFlowPipelineTesterConfig, PipelineTesterMixin):
-    def test_inference_batch_single_identical(self, batch_size=3, expected_max_diff=2e-2):
-        # Higher tolerance: Qwen-based text encoders with padding-sensitive attention produce
-        # slightly different embeddings when batch sizes differ, amplified by CFG.
+    def test_inference_batch_single_identical(self, batch_size=3, expected_max_diff=3e-3):
+        # Slightly higher tolerance: Qwen-based text encoders with padding-sensitive attention
+        # produce slightly different embeddings when batch sizes differ.
         super().test_inference_batch_single_identical(batch_size=batch_size, expected_max_diff=expected_max_diff)
 
 

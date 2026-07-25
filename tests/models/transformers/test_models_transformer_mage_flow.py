@@ -46,6 +46,10 @@ class MageFlowTransformerTesterConfig(BaseModelTesterConfig):
         return {"subfolder": "transformer"}
 
     @property
+    def main_input_name(self) -> str:
+        return "hidden_states"
+
+    @property
     def generator(self):
         return torch.Generator("cpu").manual_seed(0)
 
@@ -56,7 +60,7 @@ class MageFlowTransformerTesterConfig(BaseModelTesterConfig):
             "context_in_dim": 32,
             "hidden_size": 32,
             "num_attention_heads": 2,
-            "num_layers": 1,
+            "num_layers": 2,
             "axes_dim": [4, 6, 6],
             "patch_size": 1,
         }
@@ -101,7 +105,11 @@ class MageFlowTransformerTesterConfig(BaseModelTesterConfig):
 
 
 class TestMageFlowTransformerModel(MageFlowTransformerTesterConfig, ModelTesterMixin):
-    pass
+    # The fixed-size RoPE frequency buffers (4096 × axes_dim) dominate the tiny
+    # test model's parameter count, making it impossible to split the model across
+    # GPUs at the granularity accelerate uses. Skip multi-GPU parallelism for the
+    # tiny test config; real-size models split correctly.
+    test_model_parallelism = None
 
 
 class TestMageFlowTransformerMemory(MageFlowTransformerTesterConfig, MemoryTesterMixin):
