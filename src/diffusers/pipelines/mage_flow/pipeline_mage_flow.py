@@ -121,7 +121,7 @@ class MageFlowPipeline(DiffusionPipeline):
             Conditional Transformer (MMDiT) architecture to denoise the encoded image latents.
         scheduler ([`FlowMatchEulerDiscreteScheduler`]):
             A scheduler to be used in combination with `transformer` to denoise the encoded image latents.
-        vae ([`AutoencoderKL`]):
+        vae ([`AutoencoderMageVAE`]):
             Variational Auto-Encoder (VAE) Model to encode and decode images to and from latent representations.
         text_encoder ([`Qwen3VLForConditionalGeneration`]):
             Qwen3-VL text encoder for producing text conditioning embeddings.
@@ -556,7 +556,10 @@ class MageFlowPipeline(DiffusionPipeline):
         img_ids = self._prepare_latent_image_ids(latent_h, latent_w, device, prompt_embeds.dtype)
 
         # 6. Prepare timesteps
-        sigmas = np.linspace(1.0, 1.0 / num_inference_steps, num_inference_steps) if sigmas is None else sigmas
+        # Mage-Flow uses base_sigmas = linspace(1, 1/N, N) which differs from the scheduler's
+        # default sigma computation. The scheduler's shift=6.0 is applied on top of these.
+        if sigmas is None:
+            sigmas = np.linspace(1.0, 1.0 / num_inference_steps, num_inference_steps)
         timesteps, num_inference_steps = retrieve_timesteps(
             self.scheduler,
             num_inference_steps,
@@ -584,18 +587,20 @@ class MageFlowPipeline(DiffusionPipeline):
                     noise_pred_cond = self.transformer(
                         hidden_states=latents,
                         encoder_hidden_states=prompt_embeds,
-                        encoder_hidden_states_mask=prompt_embeds_mask,
                         timestep=timestep / 1000,
                         img_ids=img_ids,
+                        latent_height=latent_h,
+                        latent_width=latent_w,
                         joint_attention_kwargs=self.attention_kwargs,
                         return_dict=False,
                     )[0]
                     noise_pred_uncond = self.transformer(
                         hidden_states=latents,
                         encoder_hidden_states=negative_prompt_embeds,
-                        encoder_hidden_states_mask=negative_prompt_embeds_mask,
                         timestep=timestep / 1000,
                         img_ids=img_ids,
+                        latent_height=latent_h,
+                        latent_width=latent_w,
                         joint_attention_kwargs=self.attention_kwargs,
                         return_dict=False,
                     )[0]
@@ -604,9 +609,10 @@ class MageFlowPipeline(DiffusionPipeline):
                     noise_pred = self.transformer(
                         hidden_states=latents,
                         encoder_hidden_states=prompt_embeds,
-                        encoder_hidden_states_mask=prompt_embeds_mask,
                         timestep=timestep / 1000,
                         img_ids=img_ids,
+                        latent_height=latent_h,
+                        latent_width=latent_w,
                         joint_attention_kwargs=self.attention_kwargs,
                         return_dict=False,
                     )[0]

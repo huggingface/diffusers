@@ -140,12 +140,15 @@ class MageFlowPosEmbed(nn.Module):
         freqs = torch.cat([freqs_frame, freqs_height, freqs_width], dim=-1).reshape(seq_len, -1)
         return freqs.clone().contiguous()
 
-    def forward(self, img_ids: torch.Tensor) -> torch.Tensor:
+    def forward(self, img_ids: torch.Tensor, height: int = None, width: int = None) -> torch.Tensor:
         """Compute RoPE frequencies from image position ids.
 
         Args:
             img_ids: ``[seq_len, 3]`` tensor with (frame, height, width) position
                 indices for each image token.
+            height: Latent spatial height. If provided (together with *width*),
+                avoids a GPU→CPU sync that would break ``torch.compile``.
+            width: Latent spatial width.
 
         Returns:
             Complex frequency tensor of shape ``[seq_len, head_dim // 2]``.
@@ -155,17 +158,18 @@ class MageFlowPosEmbed(nn.Module):
             self.pos_freqs = self.pos_freqs.to(device)
             self.neg_freqs = self.neg_freqs.to(device)
 
-        # Determine spatial extents from the ids.
-        frame = int(img_ids[:, 0].max().item()) + 1
-        height = int(img_ids[:, 1].max().item()) + 1
-        width = int(img_ids[:, 2].max().item()) + 1
+        if height is not None and width is not None:
+            frame = 1
+        else:
+            frame = int(img_ids[:, 0].max().item()) + 1
+            height = int(img_ids[:, 1].max().item()) + 1
+            width = int(img_ids[:, 2].max().item()) + 1
 
         key = (frame, height, width, 0)
         if key not in self._video_freq_cache:
             self._video_freq_cache[key] = self._compute_video_freqs(frame, height, width, idx=0)
         freqs = self._video_freq_cache[key].to(device)
 
-        # If img_ids has more tokens than the grid (padding), pad with zeros.
         if freqs.shape[0] < img_ids.shape[0]:
             pad_len = img_ids.shape[0] - freqs.shape[0]
             freqs = F.pad(freqs, (0, 0, 0, pad_len))
@@ -570,10 +574,10 @@ class MageFlowTransformer2DModel(
         self,
         hidden_states: torch.Tensor,
         encoder_hidden_states: torch.Tensor = None,
-        encoder_hidden_states_mask: torch.Tensor | None = None,
         timestep: torch.Tensor = None,
         img_ids: torch.Tensor = None,
-        txt_ids: torch.Tensor = None,
+        latent_height: int | None = None,
+        latent_width: int | None = None,
         joint_attention_kwargs: dict[str, Any] | None = None,
         return_dict: bool = True,
     ) -> torch.Tensor | Transformer2DModelOutput:
@@ -586,11 +590,13 @@ class MageFlowTransformer2DModel(
             encoder_hidden_states (`torch.Tensor` of shape `(batch_size, txt_seq_len, context_in_dim)`):
                 Text encoder hidden states (Qwen3-VL embeddings).
             timestep (`torch.Tensor`):
-                Raw sigma value in ``[0, 1]``. Internally multiplied by 1000.
+                Raw sigma value in ``[0, 1]``.
             img_ids (`torch.Tensor` of shape `(img_seq_len, 3)`):
                 Image position ids ``(frame, height, width)`` for RoPE computation.
-            txt_ids (`torch.Tensor`, *optional*):
-                Text position ids (unused, kept for API compatibility with pipelines).
+            latent_height (`int`, *optional*):
+                Latent spatial height. Avoids a GPU-CPU sync when computing RoPE.
+            latent_width (`int`, *optional*):
+                Latent spatial width. Avoids a GPU-CPU sync when computing RoPE.
             joint_attention_kwargs (`dict`, *optional*):
                 Additional keyword arguments passed to the attention processor.
             return_dict (`bool`, defaults to ``True``):
@@ -610,19 +616,10 @@ class MageFlowTransformer2DModel(
         timestep = timestep.to(hidden_states.dtype)
         temb = self.time_text_embed(timestep, hidden_states)
 
-        # Add zero text vector (MageFlow does not use pooled text embeddings)
-        txt_vec = torch.zeros(
-            encoder_hidden_states.shape[0],
-            self.inner_dim,
-            dtype=temb.dtype,
-            device=temb.device,
-        )
-        temb = temb + txt_vec
-
         # Compute image RoPE (text tokens are not rotated)
         if img_ids.ndim == 3:
             img_ids = img_ids[0]
-        image_rotary_emb = self.pos_embed(img_ids)
+        image_rotary_emb = self.pos_embed(img_ids, height=latent_height, width=latent_width)
 
         # Transformer blocks
         for block in self.transformer_blocks:

@@ -16,11 +16,11 @@ import torch
 from transformers import Qwen3VLConfig, Qwen3VLForConditionalGeneration, Qwen2Tokenizer
 
 from diffusers import (
+    AutoencoderMageVAE,
     FlowMatchEulerDiscreteScheduler,
     MageFlowPipeline,
+    MageFlowTransformer2DModel,
 )
-from diffusers.models.autoencoders.autoencoder_mage_vae import AutoencoderMageVAE
-from diffusers.models.transformers.transformer_mage_flow import MageFlowTransformer2DModel
 
 from ..testing_utils import (
     BasePipelineTesterConfig,

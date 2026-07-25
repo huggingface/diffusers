@@ -4,8 +4,8 @@ Example
 -------
 
     python scripts/convert_mage_flow_to_diffusers.py \
-        --input_dir  /nas/zcy/github_issue/models/Mage-Flow-Base \
-        --output_dir /nas/zcy/github_issue/models/Mage-Flow-Base-diffusers \
+        --input_dir  path/to/Mage-Flow-Base \
+        --output_dir path/to/Mage-Flow-Base-diffusers \
         --dtype bfloat16
 """
 
