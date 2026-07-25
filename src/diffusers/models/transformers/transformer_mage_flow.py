@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import math
 from typing import Any
 
 import torch
@@ -24,7 +25,7 @@ from ...utils import logging
 from ..attention import AttentionMixin, AttentionModuleMixin, FeedForward
 from ..attention_dispatch import dispatch_attention_fn
 from ..cache_utils import CacheMixin
-from ..embeddings import TimestepEmbedding, Timesteps
+from ..embeddings import TimestepEmbedding
 from ..modeling_outputs import Transformer2DModelOutput
 from ..modeling_utils import ModelMixin
 from ..normalization import AdaLayerNormContinuous
@@ -175,17 +176,43 @@ class MageFlowPosEmbed(nn.Module):
 class MageFlowTimestepProjEmbeddings(nn.Module):
     """Timestep projection embeddings for MageFlow.
 
-    Applies sinusoidal projection (scaled by 1000) followed by an MLP to produce
-    the conditioning embedding.
+    Uses a custom sinusoidal embedding that downcasts the frequency table to the
+    input dtype before computing the embedding. The model was trained with this
+    exact bf16 rounding, so using diffusers' standard float32 variant degrades
+    output quality.
     """
 
     def __init__(self, embedding_dim: int):
         super().__init__()
-        self.time_proj = Timesteps(num_channels=256, flip_sin_to_cos=True, downscale_freq_shift=0, scale=1000)
         self.timestep_embedder = TimestepEmbedding(in_channels=256, time_embed_dim=embedding_dim)
+        self.num_channels = 256
+        self.scale = 1000
+
+    @staticmethod
+    def _sinusoidal_embedding(
+        timesteps: torch.Tensor,
+        embedding_dim: int,
+        scale: float = 1.0,
+        max_period: int = 10000,
+    ) -> torch.Tensor:
+        half_dim = embedding_dim // 2
+        exponent = -math.log(max_period) * torch.arange(
+            start=0, end=half_dim, dtype=torch.float32, device=timesteps.device
+        )
+        exponent = exponent / half_dim
+
+        # Downcast frequency table to input dtype (bf16) before multiplying —
+        # the model was trained with this exact rounding.
+        emb = torch.exp(exponent).to(timesteps.dtype)
+        emb = timesteps[:, None].float() * emb[None, :]
+        emb = scale * emb
+        emb = torch.cat([torch.sin(emb), torch.cos(emb)], dim=-1)
+        # flip sin to cos
+        emb = torch.cat([emb[:, half_dim:], emb[:, :half_dim]], dim=-1)
+        return emb
 
     def forward(self, timestep: torch.Tensor, hidden_states: torch.Tensor) -> torch.Tensor:
-        timesteps_proj = self.time_proj(timestep)
+        timesteps_proj = self._sinusoidal_embedding(timestep, self.num_channels, scale=self.scale)
         timesteps_emb = self.timestep_embedder(timesteps_proj.to(dtype=hidden_states.dtype))
         return timesteps_emb
 
