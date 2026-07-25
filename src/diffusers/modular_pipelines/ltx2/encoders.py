@@ -420,22 +420,27 @@ class LTX2TextConnectorStep(ModularPipelineBlocks):
         block_state = self.get_block_state(state)
         padding_side = getattr(components.tokenizer, "padding_side", "left")
 
-        # The connectors are applied per batch element, so running cond and uncond separately is equivalent to the
-        # standard pipeline's single call on the CFG-concatenated batch, while keeping the two reusable independently.
-        (
-            block_state.connector_prompt_embeds,
-            block_state.connector_audio_prompt_embeds,
-            block_state.connector_attention_mask,
-        ) = components.connectors(
-            block_state.prompt_embeds, block_state.prompt_attention_mask, padding_side=padding_side
+        # Run the connector once on the CFG-concatenated `[uncond, cond]` batch, matching the standard pipeline
+        # (`LTX2Pipeline` concatenates before the single `self.connectors(...)` call). The connector is applied per
+        # batch element, so cond/uncond are mathematically independent either way, but a single batched call keeps the
+        # results bitwise-identical to the standard pipeline: the connector's GEMM/attention kernels round the same for
+        # a given row only at batch >= 2, so running the branches separately would diverge by ~1e-6 at batch size 1.
+        num_negative = block_state.negative_prompt_embeds.shape[0]
+        prompt_embeds = torch.cat([block_state.negative_prompt_embeds, block_state.prompt_embeds], dim=0)
+        prompt_attention_mask = torch.cat(
+            [block_state.negative_prompt_attention_mask, block_state.prompt_attention_mask], dim=0
         )
-        (
-            block_state.negative_connector_prompt_embeds,
-            block_state.negative_connector_audio_prompt_embeds,
-            block_state.negative_connector_attention_mask,
-        ) = components.connectors(
-            block_state.negative_prompt_embeds, block_state.negative_prompt_attention_mask, padding_side=padding_side
+        connector_prompt_embeds, connector_audio_prompt_embeds, connector_attention_mask = components.connectors(
+            prompt_embeds, prompt_attention_mask, padding_side=padding_side
         )
+
+        # Split back into uncond (first `num_negative`) and cond (rest).
+        block_state.negative_connector_prompt_embeds = connector_prompt_embeds[:num_negative]
+        block_state.negative_connector_audio_prompt_embeds = connector_audio_prompt_embeds[:num_negative]
+        block_state.negative_connector_attention_mask = connector_attention_mask[:num_negative]
+        block_state.connector_prompt_embeds = connector_prompt_embeds[num_negative:]
+        block_state.connector_audio_prompt_embeds = connector_audio_prompt_embeds[num_negative:]
+        block_state.connector_attention_mask = connector_attention_mask[num_negative:]
 
         self.set_block_state(state, block_state)
         return components, state

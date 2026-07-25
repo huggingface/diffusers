@@ -97,6 +97,13 @@ DTYPE_TOLERANCES = {
 }
 
 
+def _tensor_stats(modality: str, std: torch.Tensor, mod: torch.Tensor) -> None:
+    print(f"{modality} min std: {std.min()} | mod: {mod.min()}")
+    print(f"{modality} mean std: {std.mean()} | mod: {mod.mean()}")
+    print(f"{modality} stddev std: {std.std()} | mod: {mod.std()}")
+    print(f"{modality} max std: {std.max()} | mod: {mod.max()}")
+
+
 def _report(name: str, a: torch.Tensor, b: torch.Tensor, atol: float, rtol: float) -> bool:
     a = a.float().cpu()
     b = b.float().cpu()
@@ -144,6 +151,7 @@ def main(args):
         "frame_rate": args.frame_rate,
         "num_inference_steps": args.num_inference_steps,
         "max_sequence_length": args.max_sequence_length,
+        "num_videos_per_prompt": args.num_videos_per_prompt,
         "output_type": "latent",
         **GUIDANCE,
     }
@@ -171,6 +179,9 @@ def main(args):
     audio_mod = state.get("audio")
 
     # 5. Compare denoised latents.
+    if args.check_tensor_stats:
+        _tensor_stats("Video", video_std, video_mod)
+        _tensor_stats("Audio", audio_std, audio_mod)
     ok_video = _report("video latents", video_std, video_mod, atol=args.atol, rtol=args.rtol)
     ok_audio = _report("audio latents", audio_std, audio_mod, atol=args.atol, rtol=args.rtol)
 
@@ -202,6 +213,7 @@ if __name__ == "__main__":
     parser.add_argument("--frame_rate", type=float, default=24.0)
     parser.add_argument("--num_inference_steps", type=int, default=6)
     parser.add_argument("--max_sequence_length", type=int, default=1024)
+    parser.add_argument("--num_videos_per_prompt", type=int, default=1)
 
     parser.add_argument(
         "--atol",
@@ -214,6 +226,11 @@ if __name__ == "__main__":
         type=float,
         default=None,
         help="Relative tolerance for assert_close; defaults to a dtype-aware value (fp32: 1.3e-6, bf16: 1.6e-2).",
+    )
+    parser.add_argument(
+        "--check_tensor_stats",
+        action="store_true",
+        help="Whether to print individual tensor stats for std and modular pipeline outputs",
     )
 
     args = parser.parse_args()
