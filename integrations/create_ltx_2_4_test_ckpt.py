@@ -11,7 +11,7 @@ from diffusers import (
     LTX2VideoTransformer3DModel,
 )
 from diffusers.pipelines.ltx2 import LTX2TextConnectors
-from diffusers.pipelines.ltx2.vocoder import LTX2Vocoder, LTX2VocoderWithBWE
+from diffusers.pipelines.ltx2.vocoder import LTX2VocoderWithBWE
 
 
 def main(args):
@@ -133,18 +133,53 @@ def main(args):
         mel_bins=8,
     )
 
+    # Tiny LTX2VocoderWithBWE (LTX-2.3's vocoder), scaled down but keeping LTX-2.3's flags
+    # (snakebeta + antialiasing, no final activation/bias, 16kHz -> 48kHz bandwidth extension).
+    # Shape invariants that must hold for the two-stage forward (stage-1 vocoder -> mel STFT -> BWE
+    # generator -> resampled residual) to line up:
+    #   1. in_channels == audio_vae.output_channels * audio_vae.mel_bins  (the packed mel fed by the pipeline).
+    #   2. bwe_in_channels == out_channels * num_mel_channels  (BWE consumes the stage-1 output's mel).
+    #   3. filter_length == window_length  (so the STFT frame count is exactly padded_len // hop_length).
+    #   4. prod(bwe_upsample_factors) == (output_sampling_rate // input_sampling_rate) * hop_length, and
+    #      prod(upsample_factors) is a multiple of hop_length, so the BWE residual and the resampled stage-1
+    #      skip connection have matching lengths (here bwe_V = 3 * 4 = 12, stage-1 V = 4).
+    num_mel_channels = 8
     torch.manual_seed(0)
-    # TODO: use LTX2VocoderWithBWE since this is probably what LTX-2.4 uses??
-    vocoder = LTX2Vocoder(
-        in_channels=audio_vae.config.output_channels * audio_vae.config.mel_bins,
+    vocoder = LTX2VocoderWithBWE(
+        in_channels=audio_vae.config.output_channels * audio_vae.config.mel_bins,  # 2 * 8 = 16
         hidden_channels=32,
         out_channels=2,
         upsample_kernel_sizes=[4, 4],
-        upsample_factors=[2, 2],
+        upsample_factors=[2, 2],  # stage-1 V = 4 (multiple of hop_length)
         resnet_kernel_sizes=[3],
         resnet_dilations=[[1, 3, 5]],
+        act_fn="snakebeta",  # LTX-2.3
         leaky_relu_negative_slope=0.1,
-        output_sampling_rate=16000,
+        antialias=True,  # LTX-2.3
+        antialias_ratio=2,
+        antialias_kernel_size=12,
+        final_act_fn=None,  # LTX-2.3
+        final_bias=False,  # LTX-2.3
+        bwe_in_channels=2 * num_mel_channels,  # out_channels * num_mel_channels = 16
+        bwe_hidden_channels=32,
+        bwe_out_channels=2,
+        bwe_upsample_kernel_sizes=[5, 4, 4],
+        bwe_upsample_factors=[3, 2, 2],  # bwe_V = 12 = (48000 / 16000) * hop_length
+        bwe_resnet_kernel_sizes=[3],
+        bwe_resnet_dilations=[[1, 3, 5]],
+        bwe_act_fn="snakebeta",  # LTX-2.3
+        bwe_leaky_relu_negative_slope=0.1,
+        bwe_antialias=True,  # LTX-2.3
+        bwe_antialias_ratio=2,
+        bwe_antialias_kernel_size=12,
+        bwe_final_act_fn=None,  # LTX-2.3
+        bwe_final_bias=False,  # LTX-2.3
+        filter_length=16,
+        hop_length=4,
+        window_length=16,
+        num_mel_channels=num_mel_channels,
+        input_sampling_rate=16000,  # LTX-2.3
+        output_sampling_rate=48000,  # LTX-2.3
     )
 
     # NOTE: for now match LTX-2.3's scheduler params
