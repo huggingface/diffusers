@@ -146,3 +146,18 @@ class KolorsPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
     def test_inference_batch_single_identical(self):
         self._test_inference_batch_single_identical(expected_max_diff=5e-3)
+
+    def test_chatglm_tokenizer_properties(self):
+        components = self.get_dummy_components()
+        tokenizer = components["tokenizer"]
+        self.assertEqual(tokenizer.pad_token, "<pad>")
+        self.assertEqual(tokenizer.unk_token, "<unk>")
+        self.assertEqual(tokenizer.eos_token, "</s>")
+
+        tokenizer.pad_token = "<custom_pad>"
+        tokenizer.unk_token = "<custom_unk>"
+        tokenizer.eos_token = "<custom_eos>"
+
+        self.assertEqual(tokenizer.pad_token, "<custom_pad>")
+        self.assertEqual(tokenizer.unk_token, "<custom_unk>")
+        self.assertEqual(tokenizer.eos_token, "<custom_eos>")
