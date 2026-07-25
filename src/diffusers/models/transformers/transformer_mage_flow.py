@@ -106,7 +106,6 @@ class MageFlowPosEmbed(nn.Module):
         self.register_buffer("pos_freqs_imag", pos_freqs.imag.contiguous(), persistent=False)
         self.register_buffer("neg_freqs_real", neg_freqs.real.contiguous(), persistent=False)
         self.register_buffer("neg_freqs_imag", neg_freqs.imag.contiguous(), persistent=False)
-        self._video_freq_cache: dict[tuple, torch.Tensor] = {}
 
     @staticmethod
     def _rope_params(index: torch.Tensor, dim: int, theta: float = 10000.0) -> torch.Tensor:
@@ -145,32 +144,21 @@ class MageFlowPosEmbed(nn.Module):
         Args:
             img_ids: ``[seq_len, 3]`` tensor with (frame, height, width) position
                 indices for each image token.
-            height: Latent spatial height. If provided (together with *width*),
-                avoids a GPU→CPU sync that would break ``torch.compile``.
+            height: Latent spatial height.
             width: Latent spatial width.
 
         Returns:
             Complex frequency tensor of shape ``[seq_len, head_dim // 2]``.
         """
-        device = img_ids.device
+        frame = 1
+        freqs = self._compute_video_freqs(frame, height, width, idx=0)
+        return freqs.to(img_ids.device)
 
-        if height is not None and width is not None:
-            frame = 1
-        else:
-            frame = int(img_ids[:, 0].max().item()) + 1
-            height = int(img_ids[:, 1].max().item()) + 1
-            width = int(img_ids[:, 2].max().item()) + 1
-
-        key = (frame, height, width, 0)
-        if key not in self._video_freq_cache:
-            self._video_freq_cache[key] = self._compute_video_freqs(frame, height, width, idx=0)
-        freqs = self._video_freq_cache[key].to(device)
-
-        if freqs.shape[0] < img_ids.shape[0]:
-            pad_len = img_ids.shape[0] - freqs.shape[0]
-            freqs = F.pad(freqs, (0, 0, 0, pad_len))
-
-        return freqs
+    @staticmethod
+    def _infer_grid_size(img_ids: torch.Tensor) -> tuple[int, int]:
+        height = int(img_ids[:, 1].max().item()) + 1
+        width = int(img_ids[:, 2].max().item()) + 1
+        return height, width
 
 
 class MageFlowTimestepProjEmbeddings(nn.Module):
@@ -573,8 +561,6 @@ class MageFlowTransformer2DModel(
         encoder_hidden_states: torch.Tensor = None,
         timestep: torch.Tensor = None,
         img_ids: torch.Tensor = None,
-        latent_height: int | None = None,
-        latent_width: int | None = None,
         joint_attention_kwargs: dict[str, Any] | None = None,
         return_dict: bool = True,
     ) -> torch.Tensor | Transformer2DModelOutput:
@@ -590,10 +576,6 @@ class MageFlowTransformer2DModel(
                 Raw sigma value in ``[0, 1]``.
             img_ids (`torch.Tensor` of shape `(img_seq_len, 3)`):
                 Image position ids ``(frame, height, width)`` for RoPE computation.
-            latent_height (`int`, *optional*):
-                Latent spatial height. Avoids a GPU-CPU sync when computing RoPE.
-            latent_width (`int`, *optional*):
-                Latent spatial width. Avoids a GPU-CPU sync when computing RoPE.
             joint_attention_kwargs (`dict`, *optional*):
                 Additional keyword arguments passed to the attention processor.
             return_dict (`bool`, defaults to ``True``):
@@ -616,7 +598,7 @@ class MageFlowTransformer2DModel(
         # Compute image RoPE (text tokens are not rotated)
         if img_ids.ndim == 3:
             img_ids = img_ids[0]
-        image_rotary_emb = self.pos_embed(img_ids, height=latent_height, width=latent_width)
+        image_rotary_emb = self.pos_embed(img_ids, *MageFlowPosEmbed._infer_grid_size(img_ids))
 
         # Transformer blocks
         for block in self.transformer_blocks:

@@ -593,8 +593,6 @@ class MageFlowPipeline(DiffusionPipeline):
                         encoder_hidden_states=prompt_embeds,
                         timestep=timestep / 1000,
                         img_ids=img_ids,
-                        latent_height=latent_h,
-                        latent_width=latent_w,
                         joint_attention_kwargs=self.attention_kwargs,
                         return_dict=False,
                     )[0]
@@ -603,8 +601,6 @@ class MageFlowPipeline(DiffusionPipeline):
                         encoder_hidden_states=negative_prompt_embeds,
                         timestep=timestep / 1000,
                         img_ids=img_ids,
-                        latent_height=latent_h,
-                        latent_width=latent_w,
                         joint_attention_kwargs=self.attention_kwargs,
                         return_dict=False,
                     )[0]
@@ -615,8 +611,6 @@ class MageFlowPipeline(DiffusionPipeline):
                         encoder_hidden_states=prompt_embeds,
                         timestep=timestep / 1000,
                         img_ids=img_ids,
-                        latent_height=latent_h,
-                        latent_width=latent_w,
                         joint_attention_kwargs=self.attention_kwargs,
                         return_dict=False,
                     )[0]

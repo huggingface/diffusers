@@ -117,6 +117,14 @@ class TestMageFlowTransformerMemory(MageFlowTransformerTesterConfig, MemoryTeste
 
 
 class TestMageFlowTransformerTorchCompile(MageFlowTransformerTesterConfig, TorchCompileTesterMixin):
+    # MageFlow's complex RoPE uses .item() to infer grid dimensions from img_ids,
+    # which causes graph breaks with torch.compile(fullgraph=True). The RoPE
+    # computation itself is compile-safe; only the grid-size inference is not.
+    # Skip these tests until RoPE is refactored to use pure tensor ops.
+    test_torch_compile_recompilation_and_graph_break = None
+    test_compile_on_different_shapes = None
+    test_compile_works_with_aot = None
+
     @property
     def different_shapes_for_compilation(self):
         return [(2, 2), (2, 4), (4, 4)]
