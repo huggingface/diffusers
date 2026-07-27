@@ -52,7 +52,7 @@ from accelerate.utils import write_basic_config
 write_basic_config()
 ```
 
-마지막으로, Memory-Efficient Attention을 통해 메모리 사용량을 줄이기 위해 [xFormers](https://huggingface.co/docs/diffusers/main/en/training/optimization/xformers)를 설치합니다. xFormers를 설치한 후, 학습 스크립트에 `--enable_xformers_memory_efficient_attention` 인자를 추가합니다. xFormers는 Flax에서 지원되지 않습니다.
+마지막으로, Memory-Efficient Attention을 통해 메모리 사용량을 줄이기 위해 [xFormers](https://huggingface.co/docs/diffusers/main/en/training/optimization/xformers)를 설치합니다. xFormers를 설치한 후, 학습 스크립트에 `--enable_xformers_memory_efficient_attention` 인자를 추가합니다.
 
 ## 허브에 모델 업로드하기
 
@@ -129,37 +129,6 @@ accelerate launch textual_inversion.py \
 > --num_vectors=5
 > ```
 </pt>
-<jax>
-
-TPU에 액세스할 수 있는 경우, [Flax 학습 스크립트](https://github.com/huggingface/diffusers/blob/main/examples/textual_inversion/textual_inversion_flax.py)를 사용하여 더 빠르게 모델을 학습시켜보세요. (물론 GPU에서도 작동합니다.) 동일한 설정에서 Flax 학습 스크립트는 PyTorch 학습 스크립트보다 최소 70% 더 빨라야 합니다! ⚡️
-
-시작하기 앞서 Flax에 대한 의존성 라이브러리들을 설치해야 합니다.
-
-```bash
-pip install -U -r requirements_flax.txt
-```
-
-모델의 리포지토리 ID(또는 모델 가중치가 포함된 디렉터리 경로)를 `MODEL_NAME` 환경 변수에 할당하고, 해당 값을 [`pretrained_model_name_or_path`](https://huggingface.co/docs/diffusers/en/api/diffusion_pipeline#diffusers.DiffusionPipeline.from_pretrained.pretrained_model_name_or_path) 인자에 전달합니다.
-
-그런 다음 [학습 스크립트](https://github.com/huggingface/diffusers/blob/main/examples/textual_inversion/textual_inversion_flax.py)를 시작할 수 있습니다.
-
-```bash
-export MODEL_NAME="duongna/stable-diffusion-v1-4-flax"
-export DATA_DIR="./cat"
-
-python textual_inversion_flax.py \
-  --pretrained_model_name_or_path=$MODEL_NAME \
-  --train_data_dir=$DATA_DIR \
-  --learnable_property="object" \
-  --placeholder_token="<cat-toy>" --initializer_token="toy" \
-  --resolution=512 \
-  --train_batch_size=1 \
-  --max_train_steps=3000 \
-  --learning_rate=5.0e-04 --scale_lr \
-  --output_dir="textual_inversion_cat" \
-  --push_to_hub
-```
-</jax>
 </frameworkcontent>
 
 ### 중간 로깅
@@ -218,38 +187,6 @@ image.save("cat-backpack.png")
 pipe.load_textual_inversion("./charturnerv2.pt")
 ```
 </pt>
-<jax>
-
-현재 Flax에 대한 `load_textual_inversion` 함수는 없습니다. 따라서 학습 후 textual-inversion 임베딩 벡터가 모델의 일부로서 저장되었는지를 확인해야 합니다. 그런 다음은 다른 Flax 모델과 마찬가지로 실행할 수 있습니다.
-
-```python
-import jax
-import numpy as np
-from flax.jax_utils import replicate
-from flax.training.common_utils import shard
-from diffusers import FlaxStableDiffusionPipeline
-
-model_path = "path-to-your-trained-model"
-pipeline, params = FlaxStableDiffusionPipeline.from_pretrained(model_path, dtype=jax.numpy.bfloat16)
-
-prompt = "A <cat-toy> backpack"
-prng_seed = jax.random.PRNGKey(0)
-num_inference_steps = 50
-
-num_samples = jax.device_count()
-prompt = num_samples * [prompt]
-prompt_ids = pipeline.prepare_inputs(prompt)
-
-# shard inputs and rng
-params = replicate(params)
-prng_seed = jax.random.split(prng_seed, jax.device_count())
-prompt_ids = shard(prompt_ids)
-
-images = pipeline(prompt_ids, params, prng_seed, num_inference_steps, jit=True).images
-images = pipeline.numpy_to_pil(np.asarray(images.reshape((num_samples,) + images.shape[-3:])))
-image.save("cat-backpack.png")
-```
-</jax>
 </frameworkcontent>
 
 ## 작동 방식

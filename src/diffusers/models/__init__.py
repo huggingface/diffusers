@@ -17,7 +17,6 @@ from typing import TYPE_CHECKING
 from ..utils import (
     DIFFUSERS_SLOW_IMPORT,
     _LazyModule,
-    is_flax_available,
     is_torch_available,
 )
 
@@ -155,11 +154,6 @@ if is_torch_available():
     _import_structure["unets.unet_spatio_temporal_condition"] = ["UNetSpatioTemporalConditionModel"]
     _import_structure["unets.unet_stable_cascade"] = ["StableCascadeUNet"]
     _import_structure["unets.uvit_2d"] = ["UVit2DModel"]
-
-if is_flax_available():
-    _import_structure["controlnets.controlnet_flax"] = ["FlaxControlNetModel"]
-    _import_structure["unets.unet_2d_condition_flax"] = ["FlaxUNet2DConditionModel"]
-    _import_structure["vae_flax"] = ["FlaxAutoencoderKL"]
 
 
 if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
@@ -302,11 +296,6 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             UNetSpatioTemporalConditionModel,
             UVit2DModel,
         )
-
-    if is_flax_available():
-        from .controlnets import FlaxControlNetModel
-        from .unets import FlaxUNet2DConditionModel
-        from .vae_flax import FlaxAutoencoderKL
 
 else:
     import sys

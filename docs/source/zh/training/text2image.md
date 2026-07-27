@@ -17,7 +17,7 @@ specific language governing permissions and limitations under the License.
 
 Stable Diffusion 等文生图模型能够根据文本提示生成对应图像。
 
-模型训练对硬件要求较高，但启用 `gradient_checkpointing` 和 `mixed_precision` 后，可在单块24GB显存GPU上完成训练。如需更大批次或更快训练速度，建议使用30GB以上显存的GPU设备。通过启用 [xFormers](../optimization/xformers) 内存高效注意力机制可降低显存占用。JAX/Flax 训练方案也支持TPU/GPU高效训练，但不支持梯度检查点、梯度累积和xFormers。使用Flax训练时建议配备30GB以上显存GPU或TPU v3。
+模型训练对硬件要求较高，但启用 `gradient_checkpointing` 和 `mixed_precision` 后，可在单块24GB显存GPU上完成训练。如需更大批次或更快训练速度，建议使用30GB以上显存的GPU设备。通过启用 [xFormers](../optimization/xformers) 内存高效注意力机制可降低显存占用。
 
 本指南将详解 [train_text_to_image.py](https://github.com/huggingface/diffusers/blob/main/examples/text_to_image/train_text_to_image.py) 训练脚本，助您掌握其原理并适配自定义需求。
 
@@ -36,12 +36,6 @@ pip install .
 ```bash
 cd examples/text_to_image
 pip install -r requirements.txt
-```
-</hfoption>
-<hfoption id="Flax">
-```bash
-cd examples/text_to_image
-pip install -r requirements_flax.txt
 ```
 </hfoption>
 </hfoptions>
@@ -97,7 +91,7 @@ accelerate launch train_text_to_image.py \
 
 ### Min-SNR加权策略
 
-[Min-SNR](https://huggingface.co/papers/2303.09556) 加权策略通过重新平衡损失函数加速模型收敛。训练脚本支持预测 `epsilon`（噪声）或 `v_prediction`，而Min-SNR兼容两种预测类型。该策略仅限PyTorch版本，Flax训练脚本不支持。
+[Min-SNR](https://huggingface.co/papers/2303.09556) 加权策略通过重新平衡损失函数加速模型收敛。训练脚本支持预测 `epsilon`（噪声）或 `v_prediction`，而Min-SNR兼容两种预测类型。
 
 添加 `--snr_gamma` 参数并设为推荐值5.0：
 
@@ -176,32 +170,6 @@ accelerate launch --mixed_precision="fp16"  train_text_to_image.py \
 ```
 
 </hfoption>
-<hfoption id="Flax">
-
-Flax训练方案在TPU/GPU上效率更高（由 [@duongna211](https://github.com/duongna21) 实现），TPU性能更优但GPU表现同样出色。
-
-设置环境变量 `MODEL_NAME` 和 `dataset_name` 指定模型和数据集（Hub或本地路径）。
-
-> [!TIP]
-> 使用本地数据集时，设置 `TRAIN_DIR` 和 `OUTPUT_DIR` 环境变量为数据集路径和模型保存路径。
-
-```bash
-export MODEL_NAME="stable-diffusion-v1-5/stable-diffusion-v1-5"
-export dataset_name="lambdalabs/naruto-blip-captions"
-
-python train_text_to_image_flax.py \
-  --pretrained_model_name_or_path=$MODEL_NAME \
-  --dataset_name=$dataset_name \
-  --resolution=512 --center_crop --random_flip \
-  --train_batch_size=1 \
-  --max_train_steps=15000 \
-  --learning_rate=1e-05 \
-  --max_grad_norm=1 \
-  --output_dir="sd-naruto-model" \
-  --push_to_hub
-```
-
-</hfoption>
 </hfoptions>
 
 训练完成后，即可使用新模型进行推理：
@@ -216,36 +184,6 @@ import torch
 pipeline = StableDiffusionPipeline.from_pretrained("path/to/saved_model", torch_dtype=torch.float16, use_safetensors=True).to("cuda")
 
 image = pipeline(prompt="yoda").images[0]
-image.save("yoda-naruto.png")
-```
-
-</hfoption>
-<hfoption id="Flax">
-
-```py
-import jax
-import numpy as np
-from flax.jax_utils import replicate
-from flax.training.common_utils import shard
-from diffusers import FlaxStableDiffusionPipeline
-
-pipeline, params = FlaxStableDiffusionPipeline.from_pretrained("path/to/saved_model", dtype=jax.numpy.bfloat16)
-
-prompt = "yoda naruto"
-prng_seed = jax.random.PRNGKey(0)
-num_inference_steps = 50
-
-num_samples = jax.device_count()
-prompt = num_samples * [prompt]
-prompt_ids = pipeline.prepare_inputs(prompt)
-
-# 分片输入和随机数
-params = replicate(params)
-prng_seed = jax.random.split(prng_seed, jax.device_count())
-prompt_ids = shard(prompt_ids)
-
-images = pipeline(prompt_ids, params, prng_seed, num_inference_steps, jit=True).images
-images = pipeline.numpy_to_pil(np.asarray(images.reshape((num_samples,) + images.shape[-3:])))
 image.save("yoda-naruto.png")
 ```
 
