@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import contextlib
 import gc
 from unittest import mock
 
@@ -22,7 +23,13 @@ from diffusers import ComponentsManager
 from diffusers.models import ModelMixin
 from diffusers.utils import is_accelerate_available
 
-from ..testing_utils import backend_empty_cache, require_accelerate, require_accelerator, torch_device
+from ..testing_utils import (
+    backend_empty_cache,
+    require_accelerate,
+    require_accelerator,
+    simulate_accelerator_memory,
+    torch_device,
+)
 
 
 if is_accelerate_available():
@@ -36,6 +43,10 @@ if is_accelerate_available():
 # hardware (an 80GB GPU never runs low on a handful of KB-sized models).
 UNIT = 1024
 
+# More free memory than any tiny test checkpoint could ever need, so the strategy never
+# decides to offload. Used to assert the *negative*: no eviction without memory pressure.
+_AMPLE_FREE_BYTES = 1024**4
+
 
 class DummyModel(ModelMixin):
     def __init__(self, footprint_bytes: int = UNIT):
@@ -46,6 +57,19 @@ class DummyModel(ModelMixin):
 
     def forward(self, x):
         return x + self.weight.sum()
+
+
+class OOMOnceModel(DummyModel):
+    """Raises a fake device OOM on its first `_oom_calls` forwards (or on every forward with `_repeated_oom`)."""
+
+    _repeated_oom = False
+    _oom_calls = 1
+
+    def forward(self, x):
+        self.forward_calls = getattr(self, "forward_calls", 0) + 1
+        if self.forward_calls <= self._oom_calls or self._repeated_oom:
+            raise torch.OutOfMemoryError("fake OOM")
+        return super().forward(x)
 
 
 class _FakeHook:
@@ -62,20 +86,33 @@ class _FakeHook:
         self.model = model
 
 
-def _patch_cuda_mem_get_info(free_bytes: int, total_bytes: int = 80 * UNIT):
+@contextlib.contextmanager
+def _patch_memory_stats(device_module, free_bytes, total_bytes, cached_bytes=0):
+    # `mem_get_info` returns `(free, total)` and is where the strategy learns how much
+    # memory is free; the dynamic mode additionally counts the allocator's reusable
+    # cache (`memory_reserved - memory_allocated`) as available, so those are pinned
+    # too — `cached_bytes` simulates reusable cache on top of `free_bytes`.
+    with contextlib.ExitStack() as stack:
+        stack.enter_context(mock.patch.object(device_module, "mem_get_info", return_value=(free_bytes, total_bytes)))
+        if hasattr(device_module, "memory_reserved") and hasattr(device_module, "memory_allocated"):
+            stack.enter_context(mock.patch.object(device_module, "memory_reserved", return_value=cached_bytes))
+            stack.enter_context(mock.patch.object(device_module, "memory_allocated", return_value=0))
+        yield
+
+
+def _patch_cuda_mem_get_info(free_bytes: int, total_bytes: int = 80 * UNIT, cached_bytes: int = 0):
     # Strategy unit tests use a `cuda:0` execution-device *descriptor* (which needs no
-    # real GPU), so they patch `torch.cuda.mem_get_info` directly.
-    return mock.patch.object(torch.cuda, "mem_get_info", return_value=(free_bytes, total_bytes))
+    # real GPU), so they patch the `torch.cuda` memory introspection directly.
+    return _patch_memory_stats(torch.cuda, free_bytes, total_bytes, cached_bytes=cached_bytes)
 
 
 def _patch_free_memory(free_bytes: int, total_bytes: int = 80 * UNIT):
-    # Integration tests run on the real `torch_device`; patch `mem_get_info` on
-    # whichever backend module (cuda/xpu/...) actually backs it. `mem_get_info` returns
-    # `(free, total)` and is the single point where the strategy learns how much memory
-    # is available, so patching it simulates arbitrary memory pressure.
+    # Integration tests run on the real `torch_device`; patch the memory introspection
+    # on whichever backend module (cuda/xpu/...) actually backs it to simulate
+    # arbitrary memory pressure.
     device_type = torch.device(torch_device).type
     device_module = getattr(torch, device_type, torch.cuda)
-    return mock.patch.object(device_module, "mem_get_info", return_value=(free_bytes, total_bytes))
+    return _patch_memory_stats(device_module, free_bytes, total_bytes)
 
 
 @require_accelerate
@@ -85,7 +122,7 @@ class ComponentsManagerTesterMixin:
     """
 
     # A `cuda:0` device descriptor is enough to drive the strategy's device-type and
-    # index logic; no real GPU is required because `mem_get_info` is mocked.
+    # index logic; no real GPU is required because the memory readings are mocked.
     strategy_execution_device = torch.device("cuda:0")
 
     def setup_method(self):
@@ -106,11 +143,19 @@ class ComponentsManagerTesterMixin:
     # ------------------------------------------------------------------
     # AutoOffloadStrategy unit tests (hardware-independent)
     # ------------------------------------------------------------------
-    def _select_offload(self, *, incoming_footprint, free_bytes, hook_sizes, memory_reserve_margin=UNIT):
-        strategy = AutoOffloadStrategy(memory_reserve_margin=memory_reserve_margin)
+    def _select_offload(
+        self,
+        *,
+        incoming_footprint,
+        free_bytes,
+        hook_sizes,
+        memory_reserve=UNIT,
+        cached_bytes=0,
+    ):
+        strategy = AutoOffloadStrategy(memory_reserve=memory_reserve)
         hooks = [_FakeHook(model_id, self.get_dummy_model(fp)) for model_id, fp in hook_sizes.items()]
         incoming = self.get_dummy_model(incoming_footprint)
-        with _patch_cuda_mem_get_info(free_bytes):
+        with _patch_cuda_mem_get_info(free_bytes, cached_bytes=cached_bytes):
             selected = strategy(
                 hooks=hooks,
                 model_id="incoming",
@@ -166,20 +211,20 @@ class ComponentsManagerTesterMixin:
         )
         assert selected == []
 
-    def test_strategy_memory_reserve_margin_changes_decision(self):
-        # Same device free memory and incoming model; only the reserve margin differs.
-        # A small margin leaves enough room; a large margin forces an offload. We check
-        # this both with a single resident model and with several, to confirm the margin
+    def test_strategy_memory_reserve_changes_decision(self):
+        # Same device free memory and incoming model; only the reserve differs.
+        # A small reserve leaves enough room; a large reserve forces an offload. We check
+        # this both with a single resident model and with several, to confirm the reserve
         # participates in the selection regardless of how many candidates exist.
 
-        # Single candidate: free=5, incoming=3. margin 1 -> usable 4 (fits); margin 3 ->
+        # Single candidate: free=5, incoming=3. reserve 1 -> usable 4 (fits); reserve 3 ->
         # usable 2, must free 1 -> offload "a".
         assert (
             self._select_offload(
                 incoming_footprint=3 * UNIT,
                 free_bytes=5 * UNIT,
                 hook_sizes={"a": 2 * UNIT},
-                memory_reserve_margin=1 * UNIT,
+                memory_reserve=1 * UNIT,
             )
             == []
         )
@@ -187,10 +232,10 @@ class ComponentsManagerTesterMixin:
             incoming_footprint=3 * UNIT,
             free_bytes=5 * UNIT,
             hook_sizes={"a": 2 * UNIT},
-            memory_reserve_margin=3 * UNIT,
+            memory_reserve=3 * UNIT,
         ) == ["a"]
 
-        # Multiple candidates: free=6, incoming=4. margin 1 -> usable 5 (fits); margin 3
+        # Multiple candidates: free=6, incoming=4. reserve 1 -> usable 5 (fits); reserve 3
         # -> usable 3, must free 1 -> smallest sufficient model "c" (1) is offloaded.
         multi_hooks = {"a": 3 * UNIT, "b": 2 * UNIT, "c": 1 * UNIT}
         assert (
@@ -198,7 +243,7 @@ class ComponentsManagerTesterMixin:
                 incoming_footprint=4 * UNIT,
                 free_bytes=6 * UNIT,
                 hook_sizes=multi_hooks,
-                memory_reserve_margin=1 * UNIT,
+                memory_reserve=1 * UNIT,
             )
             == []
         )
@@ -206,8 +251,42 @@ class ComponentsManagerTesterMixin:
             incoming_footprint=4 * UNIT,
             free_bytes=6 * UNIT,
             hook_sizes=multi_hooks,
-            memory_reserve_margin=3 * UNIT,
+            memory_reserve=3 * UNIT,
         ) == ["c"]
+
+    def test_strategy_reserve_zero_packs_tight(self):
+        # `memory_reserve=0` uses every last byte for weights: incoming exactly equals
+        # the free memory and still fits without evicting.
+        selected = self._select_offload(
+            incoming_footprint=4 * UNIT,
+            free_bytes=4 * UNIT,
+            hook_sizes={"a": 4 * UNIT},
+            memory_reserve=0,
+        )
+        assert selected == []
+
+    def test_strategy_allocator_cache_counts_as_available(self):
+        # `mem_get_info` reports only 2 units free, but 6 units of the allocator's cache
+        # are reusable: available = 2 + 6 = 8, minus 1 reserve -> the incoming 4 fits
+        # with nothing evicted. Without the cache add-back this would over-evict.
+        selected = self._select_offload(
+            incoming_footprint=4 * UNIT,
+            free_bytes=2 * UNIT,
+            hook_sizes={"a": 4 * UNIT},
+            cached_bytes=6 * UNIT,
+        )
+        assert selected == []
+
+    def test_strategy_memory_reserve_accepts_file_size_strings(self):
+        # "3KiB" = 3 * 1024 bytes = a 3-unit reserve; free 4 - 3 = 1 usable but the
+        # incoming needs 4, so the resident model must go.
+        selected = self._select_offload(
+            incoming_footprint=4 * UNIT,
+            free_bytes=4 * UNIT,
+            hook_sizes={"a": 4 * UNIT},
+            memory_reserve="3KiB",
+        )
+        assert selected == ["a"]
 
     # ------------------------------------------------------------------
     # Registry tests (hardware-independent)
@@ -249,7 +328,7 @@ class ComponentsManagerTesterMixin:
         cm = ComponentsManager()
         model = self.get_dummy_model(4 * UNIT)
         cm.add("m1", model)
-        cm.enable_auto_cpu_offload(device=torch_device, memory_reserve_margin=UNIT)
+        cm.enable_auto_cpu_offload(device=torch_device, memory_reserve=UNIT)
         try:
             assert next(model.parameters()).device.type == "cpu"
         finally:
@@ -263,7 +342,7 @@ class ComponentsManagerTesterMixin:
         m2 = self.get_dummy_model(4 * UNIT)
         cm.add("m1", m1)
         cm.add("m2", m2)
-        cm.enable_auto_cpu_offload(device=torch_device, memory_reserve_margin=UNIT)
+        cm.enable_auto_cpu_offload(device=torch_device, memory_reserve=UNIT)
         try:
             # Both components start offloaded on the CPU.
             assert next(m1.parameters()).device.type == "cpu"
@@ -294,7 +373,7 @@ class ComponentsManagerTesterMixin:
         m2 = self.get_dummy_model(4 * UNIT)
         cm.add("m1", m1)
         cm.add("m2", m2)
-        cm.enable_auto_cpu_offload(device=torch_device, memory_reserve_margin=UNIT)
+        cm.enable_auto_cpu_offload(device=torch_device, memory_reserve=UNIT)
         try:
             x = torch.randn(2, 4, device=torch_device)
             with _patch_free_memory(70 * UNIT):
@@ -311,9 +390,126 @@ class TestComponentsManager(ComponentsManagerTesterMixin):
     pass
 
 
-# More free memory than any tiny test checkpoint could ever need, so the strategy never
-# decides to offload. Used to assert the *negative*: no eviction without memory pressure.
-_AMPLE_FREE_BYTES = 1024**4
+@require_accelerate
+class TestOffloadHookBehavior:
+    """CPU-level tests of the hook machinery: OOM retry and non-disruptive add/remove."""
+
+    def _manager(self, components, **offload_kwargs):
+        manager = ComponentsManager()
+        for name, component in components.items():
+            manager.add(name, component)
+        # These tests exercise the hook machinery only: with a cpu execution device the models
+        # never move, so the strategy is never consulted — but enabling requires the device to
+        # implement `mem_get_info`, which cpu doesn't, so provide an ample fake one.
+        with mock.patch.object(
+            torch.cpu, "mem_get_info", create=True, return_value=(_AMPLE_FREE_BYTES, _AMPLE_FREE_BYTES)
+        ):
+            manager.enable_auto_cpu_offload(device="cpu", **offload_kwargs)
+        return manager
+
+    @staticmethod
+    def _record_offloads(manager):
+        """
+        Record which models the OOM retry picks, in order.
+
+        The execution device is the cpu here, so the offload itself is a no-op move and leaves nothing to observe —
+        what these tests are about is *which* model gets selected.
+        """
+        offloaded = []
+
+        def recorder(user_hook):
+            # model ids are `<name>_<id(component)>`; record the name the test added it under
+            return lambda: offloaded.append(user_hook.model_id.rsplit("_", 1)[0])
+
+        for user_hook in manager.model_hooks:
+            user_hook.offload = recorder(user_hook)
+        return offloaded
+
+    def test_oom_retry_offloads_smallest_and_reruns(self):
+        model = OOMOnceModel()
+        smallest = DummyModel(UNIT)
+        larger = DummyModel(4 * UNIT)
+        manager = self._manager({"model": model, "larger": larger, "smallest": smallest})
+        offloaded = self._record_offloads(manager)
+
+        out = model(torch.zeros(2, 4))
+        assert out.shape == (2, 4)
+        assert model.forward_calls == 2
+        # one OOM costs the smallest resident model, not everything on the device
+        assert offloaded == ["smallest"]
+
+    def test_oom_retry_escalates_one_model_at_a_time(self):
+        model = OOMOnceModel()
+        model._oom_calls = 2
+        smallest = DummyModel(UNIT)
+        larger = DummyModel(4 * UNIT)
+        manager = self._manager({"model": model, "larger": larger, "smallest": smallest})
+        offloaded = self._record_offloads(manager)
+
+        out = model(torch.zeros(2, 4))
+        assert out.shape == (2, 4)
+        assert model.forward_calls == 3
+        assert offloaded == ["smallest", "larger"]
+
+    def test_oom_reraises_when_nothing_to_evict(self):
+        model = OOMOnceModel()
+        self._manager({"model": model})
+
+        with pytest.raises(torch.OutOfMemoryError, match="group offloading"):
+            model(torch.zeros(2, 4))
+
+    def test_oom_reraises_once_everything_is_offloaded(self):
+        model = OOMOnceModel()
+        model._repeated_oom = True
+        smallest = DummyModel(UNIT)
+        larger = DummyModel(4 * UNIT)
+        manager = self._manager({"model": model, "larger": larger, "smallest": smallest})
+        offloaded = self._record_offloads(manager)
+
+        with pytest.raises(torch.OutOfMemoryError, match="group offloading"):
+            model(torch.zeros(2, 4))
+        # one attempt per model offloaded, plus the initial one
+        assert model.forward_calls == 3
+        assert offloaded == ["smallest", "larger"]
+
+    def test_retry_on_oom_false_leaves_the_forward_alone(self):
+        model = OOMOnceModel()
+        other = DummyModel()
+        manager = self._manager({"model": model, "other": other}, retry_on_oom=False)
+
+        with pytest.raises(torch.OutOfMemoryError, match="fake OOM"):
+            model(torch.zeros(2, 4))
+        assert model.forward_calls == 1
+        assert all(user_hook.hook._forward_before_oom_wrap is None for user_hook in manager.model_hooks)
+
+    def test_add_does_not_rebuild_existing_hooks(self):
+        model_a = DummyModel()
+        manager = self._manager({"a": model_a})
+        hooks_before = list(manager.model_hooks)
+
+        model_b = DummyModel()
+        manager.add("b", model_b)
+
+        assert len(manager.model_hooks) == 2
+        assert manager.model_hooks[0] is hooks_before[0], "existing hook was rebuilt"
+        hook_a, hook_b = manager.model_hooks
+        assert hook_b.hook.other_hooks == [hook_a]
+        assert hook_a.hook.other_hooks == [hook_b]
+
+    def test_remove_detaches_only_that_hook(self):
+        model_a = DummyModel()
+        model_b = DummyModel()
+        manager = self._manager({"a": model_a, "b": model_b})
+        hook_a = manager.model_hooks[0]
+        b_id = [cid for cid in manager.components if cid.startswith("b_")][0]
+
+        manager.remove(b_id)
+
+        assert manager.model_hooks == [hook_a]
+        assert hook_a.hook.other_hooks == []
+        assert not hasattr(model_b, "_hf_hook")
+        # model a still hooked and functional
+        assert model_a(torch.zeros(2, 4)).shape == (2, 4)
 
 
 class ModularPipelineOffloadTesterMixin:
@@ -346,7 +542,7 @@ class ModularPipelineOffloadTesterMixin:
         """
         cm = ComponentsManager()
         pipe = self.get_pipeline(components_manager=cm)
-        cm.enable_auto_cpu_offload(device=torch_device, memory_reserve_margin=0)
+        cm.enable_auto_cpu_offload(device=torch_device, memory_reserve=0)
 
         records = []
         original_call = AutoOffloadStrategy.__call__
@@ -444,3 +640,81 @@ class ModularPipelineOffloadTesterMixin:
             assert max_diff < expected_max_diff, f"offloaded output diverged from baseline (max diff {max_diff})"
         finally:
             cm.disable_auto_cpu_offload()
+
+
+@require_accelerator
+class TestSimulateAcceleratorMemory:
+    """
+    Validates the `simulate_accelerator_memory` testing util itself against the real device: unlike
+    `_patch_memory_stats` (which pins scripted readings for hardware-independent unit tests), the
+    util wraps `mem_get_info` so real allocations show up live on a simulated smaller card, and
+    hard-caps the allocator so overshooting the simulated capacity raises a real OOM.
+    """
+
+    MB = 2**20
+
+    def setup_method(self):
+        gc.collect()
+        backend_empty_cache(torch_device)
+
+    def teardown_method(self):
+        gc.collect()
+        backend_empty_cache(torch_device)
+
+    @staticmethod
+    def _device_module():
+        return getattr(torch, torch.device(torch_device).type)
+
+    def test_readings_translate_to_simulated_card(self):
+        device_module = self._device_module()
+        free, real_total = device_module.mem_get_info()
+        # Simulate a card with 64MB of headroom on top of whatever the device currently holds.
+        sim_total = (real_total - free) + 64 * self.MB
+
+        with simulate_accelerator_memory(sim_total, device=torch_device, hard=False):
+            free0, total0 = device_module.mem_get_info()
+            assert total0 == sim_total
+            assert free0 <= 64 * self.MB
+
+            # A real allocation is visible on the simulated card: free drops by at least its size.
+            x = torch.zeros(8 * self.MB, dtype=torch.float32, device=torch_device)  # 32MB
+            free1, total1 = device_module.mem_get_info()
+            assert total1 == sim_total
+            assert free1 <= free0 - 32 * self.MB
+            del x
+
+        # Exiting the context restores the real readings.
+        assert device_module.mem_get_info()[1] == real_total
+
+    def test_run_ooms_when_simulated_card_is_too_small(self):
+        device_module = self._device_module()
+        model = DummyModel(footprint_bytes=64 * self.MB)
+        x = torch.randn(4, device=torch_device)
+
+        # Measure what the run actually needs on the device (weights + forward).
+        device_module.reset_peak_memory_stats()
+        model.to(torch_device)
+        model(x)
+        requirement = device_module.max_memory_allocated()
+        model.to("cpu")
+        backend_empty_cache(torch_device)
+
+        try:
+            # Control: a simulated card with comfortable headroom runs the model fine.
+            free, real_total = device_module.mem_get_info()
+            with simulate_accelerator_memory((real_total - free) + 2 * requirement, device=torch_device):
+                model.to(torch_device)
+                model(x)
+            model.to("cpu")
+            backend_empty_cache(torch_device)
+
+            # A card with only half the requirement left cannot: the hard cap turns the
+            # overshoot into a real device OOM instead of using the extra physical memory.
+            free, real_total = device_module.mem_get_info()
+            with simulate_accelerator_memory((real_total - free) + requirement // 2, device=torch_device):
+                with pytest.raises(torch.OutOfMemoryError):
+                    model.to(torch_device)
+                    model(x)
+        finally:
+            model.to("cpu")
+            backend_empty_cache(torch_device)

@@ -702,6 +702,55 @@ def require_accelerator(test_case):
     return pytest.mark.skipif(torch_device == "cpu", reason="test requires a hardware accelerator")(test_case)
 
 
+@contextmanager
+def simulate_accelerator_memory(total: Union[int, str], device=None, hard: bool = True):
+    """
+    Make the accelerator behave like a card with `total` memory (e.g. `"20GB"`) for the duration of the context, so
+    behavior under consumer-sized memory constraints can be exercised with real models on a large dev GPU.
+
+    Unlike pinning `mem_get_info` to fixed values, this *wraps* it: the free-memory reading keeps tracking real
+    allocations live, translated onto the simulated capacity. Consumers that make decisions from memory readings
+    (e.g. the dynamic mode of `ComponentsManager.enable_auto_cpu_offload`) therefore behave exactly as they would on
+    the smaller card.
+
+    With `hard=True` (the default) the caching allocator is additionally capped, so an allocation that would not fit
+    on the simulated card raises a real `torch.OutOfMemoryError` instead of silently using the extra physical
+    memory. Memory the allocator does not manage (the device context, other processes) occupies the simulated card
+    too — as it would on real hardware — so it is deducted from the allocator's share of the capacity.
+
+    Requires a backend that implements `mem_get_info` (CUDA/XPU). `total` accepts bytes or a size string (size
+    strings require `accelerate`).
+    """
+    if isinstance(total, str):
+        from accelerate.utils.modeling import convert_file_size_to_int
+
+        total = convert_file_size_to_int(total)
+
+    device = torch.device(device if device is not None else torch_device)
+    device_module = getattr(torch, device.type)
+    real_mem_get_info = device_module.mem_get_info
+    free_bytes, real_total = real_mem_get_info(device.index)
+
+    def simulated_mem_get_info(dev=None):
+        free, _ = real_mem_get_info(dev if dev is not None else device.index)
+        used = real_total - free
+        return max(total - used, 0), total
+
+    hard = hard and hasattr(device_module, "set_per_process_memory_fraction")
+    if hard:
+        non_allocator_overhead = (real_total - free_bytes) - device_module.memory_reserved(device.index)
+        allocator_share = max(total - non_allocator_overhead, 0)
+        device_module.set_per_process_memory_fraction(min(allocator_share / real_total, 1.0), device.index)
+
+    device_module.mem_get_info = simulated_mem_get_info
+    try:
+        yield
+    finally:
+        device_module.mem_get_info = real_mem_get_info
+        if hard:
+            device_module.set_per_process_memory_fraction(1.0, device.index)
+
+
 def require_torchsde(test_case):
     """
     Decorator marking a test that requires torchsde. These tests are skipped when torchsde isn't installed.

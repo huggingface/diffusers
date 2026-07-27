@@ -15,6 +15,7 @@
 from __future__ import annotations
 
 import copy
+import functools
 import time
 from collections import OrderedDict
 from itertools import combinations
@@ -49,6 +50,9 @@ class CustomOffloadHook(ModelHook):
         execution_device(`str`, `int` or `torch.device`, *optional*):
             The device on which the model should be executed. Will default to the MPS device if it's available, then
             GPU 0 if there is a GPU, and finally to the CPU.
+        retry_on_oom(`bool`, *optional*, defaults to `True`):
+            Whether to recover from a forward pass that runs out of device memory by offloading the other models one
+            at a time and retrying. If `False`, the error is raised to the caller.
     """
 
     no_grad = False
@@ -58,11 +62,14 @@ class CustomOffloadHook(ModelHook):
         execution_device: str | int | torch.device | None = None,
         other_hooks: list["UserCustomOffloadHook"] | None = None,
         offload_strategy: "AutoOffloadStrategy" | None = None,
+        retry_on_oom: bool = True,
     ):
         self.execution_device = execution_device if execution_device is not None else PartialState().default_device
         self.other_hooks = other_hooks
         self.offload_strategy = offload_strategy
+        self.retry_on_oom = retry_on_oom
         self.model_id = None
+        self._forward_before_oom_wrap = None
 
     def set_strategy(self, offload_strategy: "AutoOffloadStrategy"):
         self.offload_strategy = offload_strategy
@@ -107,6 +114,69 @@ class CustomOffloadHook(ModelHook):
             module.to(self.execution_device)
         return send_to_device(args, self.execution_device), send_to_device(kwargs, self.execution_device)
 
+    def resident_other_hooks(self):
+        """
+        The other managed models that are currently on the execution device.
+        """
+        return [
+            other
+            for other in (self.other_hooks or [])
+            # compare with a normalized index: model.device reports no index for the default device
+            if other.model.device.type == self.execution_device.type
+            and (other.model.device.index or 0) == (self.execution_device.index or 0)
+        ]
+
+    # YiYi TODO: diffusers' own `ModelHook` (`diffusers.hooks.hooks`) supports a `new_forward` around-hook, which
+    # would replace this manual wrapping - we may migrate this class to it in the future.
+    def wrap_forward(self, module):
+        # `pre_forward`/`post_forward` cannot see an exception raised by the forward itself, so wrap the (already
+        # hooked) forward here: if it runs out of device memory, free the smallest resident model and retry,
+        # escalating until it fits. The memory readings cannot guide this - the failed forward has already unwound,
+        # so its activations are freed and the device looks free again. Inference only: the retried forward re-runs
+        # cleanly from its original inputs.
+        if not self.retry_on_oom:
+            return
+
+        hooked_forward = module.forward
+
+        @functools.wraps(hooked_forward)
+        def forward_with_oom_retry(*args, **kwargs):
+            # each pass offloads one more model, so this terminates once they all have been. Tracked explicitly
+            # rather than by device, so that a model that did not actually move cannot be picked twice.
+            offloaded = set()
+            while True:
+                try:
+                    return hooked_forward(*args, **kwargs)
+                except torch.OutOfMemoryError as e:
+                    resident = sorted(
+                        (hook for hook in self.resident_other_hooks() if id(hook) not in offloaded),
+                        key=lambda hook: hook.model.get_memory_footprint(),
+                    )
+                    if not resident:
+                        raise torch.OutOfMemoryError(
+                            f"{self.model_id} ran out of device memory ({e}) with every other managed model already "
+                            "offloaded, so it does not fit on its own. Consider group offloading "
+                            "(`ModelMixin.enable_group_offload`), which offloads a single model in groups of "
+                            "internal layers."
+                        ) from e
+                    smallest = resident[0]
+                    logger.warning(
+                        f"{self.model_id} ran out of device memory ({e}); offloading {smallest.model_id} and "
+                        "retrying. If this happens repeatedly, set a larger `memory_reserve` in "
+                        "`enable_auto_cpu_offload`."
+                    )
+                    smallest.offload()
+                    offloaded.add(id(smallest))
+                    clear_device_cache()
+
+        module.forward = forward_with_oom_retry
+        self._forward_before_oom_wrap = hooked_forward
+
+    def unwrap_forward(self, module):
+        if self._forward_before_oom_wrap is not None:
+            module.forward = self._forward_before_oom_wrap
+            self._forward_before_oom_wrap = None
+
 
 class UserCustomOffloadHook:
     """
@@ -125,8 +195,10 @@ class UserCustomOffloadHook:
     def attach(self):
         add_hook_to_module(self.model, self.hook)
         self.hook.model_id = self.model_id
+        self.hook.wrap_forward(self.model)
 
     def remove(self):
+        self.hook.unwrap_forward(self.model)
         remove_hook_from_module(self.model)
         self.hook.model_id = None
 
@@ -139,8 +211,11 @@ def custom_offload_with_hook(
     model: torch.nn.Module,
     execution_device: str | int | torch.device = None,
     offload_strategy: "AutoOffloadStrategy" | None = None,
+    retry_on_oom: bool = True,
 ):
-    hook = CustomOffloadHook(execution_device=execution_device, offload_strategy=offload_strategy)
+    hook = CustomOffloadHook(
+        execution_device=execution_device, offload_strategy=offload_strategy, retry_on_oom=retry_on_oom
+    )
     user_hook = UserCustomOffloadHook(model_id=model_id, model=model, hook=hook)
     user_hook.attach()
     return user_hook
@@ -149,14 +224,17 @@ def custom_offload_with_hook(
 # this is the class that user can customize to implement their own offload strategy
 class AutoOffloadStrategy:
     """
-    Offload strategy that should be used with `CustomOffloadHook` to automatically offload models to the CPU based on
-    the available memory on the device.
+    Offload strategy that should be used with `CustomOffloadHook` to automatically offload models to the CPU so the
+    incoming model fits on the device: at each offload decision, check the memory actually available on the device
+    and keep `memory_reserve` of it free.
+
+    The sizes cover the weights managed by this strategy only — the actual memory requirements will include
+    activations and any other allocations, so `memory_reserve` covers exactly that headroom; a `memory_reserve` of 0
+    packs the device as full as the weights allow, relying on the OOM retry as a backstop.
     """
 
-    # YiYi TODO: instead of memory_reserve_margin, we should let user set the maximum_total_models_size to keep on device
-    # the actual memory usage would be higher. But it's simpler this way, and can be tested
-    def __init__(self, memory_reserve_margin="3GB"):
-        self.memory_reserve_margin = convert_file_size_to_int(memory_reserve_margin)
+    def __init__(self, memory_reserve="3GB"):
+        self.memory_reserve = convert_file_size_to_int(memory_reserve)
 
     def __call__(self, hooks, model_id, model, execution_device):
         if len(hooks) == 0:
@@ -167,18 +245,30 @@ class AutoOffloadStrategy:
         except AttributeError:
             raise AttributeError(f"Do not know how to compute memory footprint of `{model.__class__.__name__}.")
 
-        device_type = execution_device.type
-        device_module = getattr(torch, device_type, torch.cuda)
-        try:
-            mem_on_device = device_module.mem_get_info(execution_device.index)[0]
-        except AttributeError:
-            raise AttributeError(f"Do not know how to obtain obtain memory info for {str(device_module)}.")
+        resident_size = sum(hook.model.get_memory_footprint() for hook in hooks)
 
-        mem_on_device = mem_on_device - self.memory_reserve_margin
-        if current_module_size < mem_on_device:
+        # Check the memory actually available on the device right now. The allocator keeps freed memory in its
+        # cache (mem_get_info reports it as used), but it is reusable — count it as available.
+        device_module = getattr(torch, execution_device.type, torch.cuda)
+        available_memory = device_module.mem_get_info(execution_device.index)[0]
+        if hasattr(device_module, "memory_reserved") and hasattr(device_module, "memory_allocated"):
+            available_memory += device_module.memory_reserved(execution_device) - device_module.memory_allocated(
+                execution_device
+            )
+
+        if current_module_size <= available_memory - self.memory_reserve:
             return []
 
-        min_memory_offload = current_module_size - mem_on_device
+        min_memory_offload = current_module_size - (available_memory - self.memory_reserve)
+        if min_memory_offload >= resident_size:
+            logger.warning(
+                f"fitting {model_id} ({current_module_size / 1024**3:.2f} GB) needs "
+                f"{min_memory_offload / 1024**3:.2f} GB but only {resident_size / 1024**3:.2f} GB of managed "
+                "weights are resident, offloading all other models. If it still does not fit, consider group "
+                "offloading (`ModelMixin.enable_group_offload`)."
+            )
+            return hooks
+
         logger.info(f" search for models to offload in order to free up {min_memory_offload / 1024**3:.2f} GB memory")
 
         # exlucde models that's not currently loaded on the device
@@ -214,16 +304,11 @@ class AutoOffloadStrategy:
 
             return best_candidate
 
+        # a combination is guaranteed to exist: offloading everything frees `resident_size`, which is more than
+        # `min_memory_offload` (the case where it isn't returned early above)
         best_offload_model_ids = search_best_candidate(module_sizes, min_memory_offload)
 
-        if best_offload_model_ids is None:
-            # if no combination is found, meaning that we cannot meet the memory requirement, offload all models
-            logger.warning("no combination of models to offload to cpu is found, offloading all models")
-            hooks_to_offload = hooks
-        else:
-            hooks_to_offload = [hook for hook in hooks if hook.model_id in best_offload_model_ids]
-
-        return hooks_to_offload
+        return [hook for hook in hooks if hook.model_id in best_offload_model_ids]
 
 
 # utils for display component info in a readable format
@@ -331,11 +416,12 @@ class ComponentsManager:
 
     def __init__(self):
         self.components = OrderedDict()
-        # YiYi TODO: can remove once confirm we don't need this in mellon
         self.added_time = OrderedDict()  # Store when components were added
         self.collections = OrderedDict()  # collection_name -> set of component_names
         self.model_hooks = None
         self._auto_offload_enabled = False
+        self._offload_strategy = None
+        self._offload_retry_on_oom = True
 
     def _lookup_ids(
         self,
@@ -450,8 +536,8 @@ class ComponentsManager:
         else:
             logger.info(f"ComponentsManager: added component '{name}' as '{component_id}'")
 
-        if self._auto_offload_enabled and is_new_component:
-            self.enable_auto_cpu_offload(self._auto_offload_device)
+        if self._auto_offload_enabled and is_new_component and isinstance(component, torch.nn.Module):
+            self._attach_offload_hook(component_id, component)
 
         return component_id
 
@@ -491,11 +577,10 @@ class ComponentsManager:
             if component_id in self.collections[collection]:
                 self.collections[collection].remove(component_id)
 
-        if self._auto_offload_enabled:
-            self.enable_auto_cpu_offload(self._auto_offload_device)
-        else:
-            if isinstance(component, torch.nn.Module):
-                component.to("cpu")
+        if isinstance(component, torch.nn.Module):
+            if self._auto_offload_enabled:
+                self._detach_offload_hook(component)
+            component.to("cpu")
             del component
             import gc
 
@@ -692,22 +777,37 @@ class ComponentsManager:
 
         return get_return_dict(matches, return_dict_with_names)
 
-    def enable_auto_cpu_offload(self, device: str | int | torch.device = None, memory_reserve_margin="3GB"):
+    def enable_auto_cpu_offload(
+        self,
+        device: str | int | torch.device = None,
+        memory_reserve: str | int = "3GB",
+        retry_on_oom: bool = True,
+    ):
         """
         Enable automatic CPU offloading for all components.
 
         The algorithm works as follows:
         1. All models start on CPU by default
         2. When a model's forward pass is called, it's moved to the execution device
-        3. If there's insufficient memory, other models on the device are moved back to CPU
+        3. If it doesn't fit into the memory currently available on the device minus `memory_reserve`, other models
+           on the device are moved back to CPU first
         4. The system tries to offload the smallest combination of models that frees enough memory
         5. Models stay on the execution device until another model needs memory and forces them off
+        6. If a forward pass still runs out of device memory, the smallest model on the device is offloaded and the
+           forward is retried, escalating one model at a time until it fits (inference only: each retried forward
+           re-runs from its original inputs)
 
         Args:
             device (str | int | torch.device): The execution device where models are moved for forward passes
-            memory_reserve_margin (str): The memory reserve margin to use, default is 3GB. This is the amount of
-                                        memory to keep free on the device to avoid running out of memory during model
-                                        execution (e.g., for intermediate activations, gradients, etc.)
+            memory_reserve (str | int, *optional*, defaults to `"3GB"`):
+                The amount of available device memory to keep free when deciding whether an incoming model fits,
+                checked at each offloading decision — e.g. `"3GB"` or a number of bytes. The reserve is what covers
+                allocations the offloading cannot see, mainly activations, which scale with resolution / batch size /
+                sequence length. Set it to `0` to keep as much on the device as possible, relying on the OOM retry.
+            retry_on_oom (bool, *optional*, defaults to `True`):
+                Whether to recover from a forward pass that runs out of device memory by offloading the models on the
+                device one at a time, smallest first, and retrying until it fits. Set it to `False` to raise the error
+                instead — the forward passes are then left untouched.
         """
         if not is_accelerate_available():
             raise ImportError("Make sure to install accelerate to use auto_cpu_offload")
@@ -717,27 +817,28 @@ class ComponentsManager:
         if not isinstance(device, torch.device):
             device = torch.device(device)
 
-        device_type = device.type
-        device_module = getattr(torch, device_type, torch.cuda)
-        if not hasattr(device_module, "mem_get_info"):
-            raise NotImplementedError(
-                f"`enable_auto_cpu_offload() relies on the `mem_get_info()` method. It's not implemented for {str(device.type)}."
-            )
-
         if device.index is None:
             device = torch.device(f"{device.type}:{0}")
+
+        device_module = getattr(torch, device.type, torch.cuda)
+        if not hasattr(device_module, "mem_get_info"):
+            raise NotImplementedError(
+                f"Offloading decisions rely on `mem_get_info()`, which is not implemented for {str(device.type)}."
+            )
 
         for name, component in self.components.items():
             if isinstance(component, torch.nn.Module) and hasattr(component, "_hf_hook"):
                 remove_hook_from_module(component, recurse=True)
 
         self.disable_auto_cpu_offload()
-        offload_strategy = AutoOffloadStrategy(memory_reserve_margin=memory_reserve_margin)
+        offload_strategy = AutoOffloadStrategy(memory_reserve=memory_reserve)
 
         all_hooks = []
         for name, component in self.components.items():
             if isinstance(component, torch.nn.Module):
-                hook = custom_offload_with_hook(name, component, device, offload_strategy=offload_strategy)
+                hook = custom_offload_with_hook(
+                    name, component, device, offload_strategy=offload_strategy, retry_on_oom=retry_on_oom
+                )
                 all_hooks.append(hook)
 
         for hook in all_hooks:
@@ -749,6 +850,36 @@ class ComponentsManager:
         self.model_hooks = all_hooks
         self._auto_offload_enabled = True
         self._auto_offload_device = device
+        self._offload_strategy = offload_strategy
+        self._offload_retry_on_oom = retry_on_oom
+
+    def _attach_offload_hook(self, component_id: str, component: torch.nn.Module):
+        """
+        Attach an offload hook to a newly added component without disturbing the models already managed: the new
+        component starts on CPU (like every model under auto offload), everything else stays where it is.
+        """
+        hook = custom_offload_with_hook(
+            component_id,
+            component,
+            self._auto_offload_device,
+            offload_strategy=self._offload_strategy,
+            retry_on_oom=self._offload_retry_on_oom,
+        )
+        for other_hook in self.model_hooks:
+            if other_hook.hook.execution_device == hook.hook.execution_device:
+                hook.add_other_hook(other_hook)
+                other_hook.add_other_hook(hook)
+        hook.offload()
+        self.model_hooks.append(hook)
+
+    def _detach_offload_hook(self, component: torch.nn.Module):
+        """Detach a removed component's offload hook, leaving all other managed models where they are."""
+        hook = next(user_hook for user_hook in self.model_hooks if user_hook.model is component)
+        hook.remove()
+        self.model_hooks.remove(hook)
+        for other_hook in self.model_hooks:
+            if other_hook.hook.other_hooks and hook in other_hook.hook.other_hooks:
+                other_hook.hook.other_hooks.remove(hook)
 
     def disable_auto_cpu_offload(self):
         """
@@ -765,6 +896,8 @@ class ComponentsManager:
             clear_device_cache()
         self.model_hooks = None
         self._auto_offload_enabled = False
+        self._offload_strategy = None
+        self._offload_retry_on_oom = True
 
     def get_model_info(
         self,

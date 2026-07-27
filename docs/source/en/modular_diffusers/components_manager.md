@@ -87,7 +87,15 @@ The [`~ComponentsManager.enable_auto_cpu_offload`] method is a global offloading
 manager.enable_auto_cpu_offload(device="cuda")
 ```
 
-All models begin on the CPU and [`ComponentsManager`] moves them to the appropriate device right before they're needed, and moves other models back to the CPU when GPU memory is low.
+All models begin on the CPU and [`ComponentsManager`] moves them to the appropriate device right before they're needed, and moves other models back to the CPU when the incoming model wouldn't fit. Each offloading decision checks the memory actually available on the device at that moment and keeps `memory_reserve` (3GB unless you change it) of it free as headroom for activations, which scale with resolution, batch size, and sequence length rather than with the number of models — image models around 1024px are comfortable with a few GB, while video models need more.
+
+```py
+manager.enable_auto_cpu_offload(device="cuda", memory_reserve="1GB")
+```
+
+Set `memory_reserve=0` to keep as much on the device as possible. If a forward pass runs out of memory anyway, the manager offloads the smallest model on the device and retries it, escalating one model at a time until it fits — pass `retry_on_oom=False` to raise the error instead. A model that still doesn't fit once everything else is offloaded is too large for the device on its own; use [group offloading](../optimization/memory#group-offloading) for it.
+
+Components added while offloading is enabled join the managed set without disturbing it: the new component starts on CPU and everything already resident stays where it is; removing a component likewise detaches only that component.
 
 Call [`~ComponentsManager.disable_auto_cpu_offload`] to disable offloading.
 
