@@ -123,7 +123,7 @@ Once a model is quantized, you can push the model to the Hub with the [`~ModelMi
 
 Quantizing a model in 4-bit reduces your memory-usage by 4x:
 
-bitsandbytes is supported in both Transformers and Diffusers, so you can can quantize both the
+bitsandbytes is supported in both Transformers and Diffusers, so you can quantize both the
 [`FluxTransformer2DModel`] and [`~transformers.T5EncoderModel`].
 
 For Ada and higher-series GPUs. we recommend changing `torch_dtype` to `torch.bfloat16`.
