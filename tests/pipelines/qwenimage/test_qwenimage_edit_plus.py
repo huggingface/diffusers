@@ -170,6 +170,65 @@ class QwenImageEditPlusPipelineFastTests(PipelineTesterMixin, unittest.TestCase)
         generated_slice = torch.cat([generated_slice[:8], generated_slice[-8:]])
         self.assertTrue(torch.allclose(generated_slice, expected_slice, atol=1e-3))
 
+    def test_mm_token_type_ids_forwarding_is_backward_compatible(self):
+        components = self.get_dummy_components()
+        pipe = self.pipeline_class(**components)
+        pipe.to("cpu")
+
+        image = Image.new("RGB", (32, 32))
+        original_processor = pipe.processor
+
+        class ProcessorWithMMTokenTypeIds:
+            def __call__(self, *args, **kwargs):
+                model_inputs = original_processor(*args, **kwargs)
+                model_inputs["mm_token_type_ids"] = torch.zeros_like(model_inputs["input_ids"])
+                return model_inputs
+
+        pipe.processor = ProcessorWithMMTokenTypeIds()
+        original_forward = pipe.text_encoder.forward
+        received_mm_token_type_ids = []
+
+        def current_forward(
+            input_ids,
+            attention_mask,
+            pixel_values,
+            image_grid_thw,
+            output_hidden_states,
+            mm_token_type_ids=None,
+        ):
+            received_mm_token_type_ids.append(mm_token_type_ids)
+            return original_forward(
+                input_ids=input_ids,
+                attention_mask=attention_mask,
+                pixel_values=pixel_values,
+                image_grid_thw=image_grid_thw,
+                output_hidden_states=output_hidden_states,
+                mm_token_type_ids=mm_token_type_ids,
+            )
+
+        pipe.text_encoder.forward = current_forward
+        pipe.encode_prompt(prompt="dance monkey", image=[image, image], device="cpu")
+
+        self.assertEqual(len(received_mm_token_type_ids), 1)
+        self.assertIsNotNone(received_mm_token_type_ids[0])
+
+        legacy_forward_called = []
+
+        def legacy_forward(input_ids, attention_mask, pixel_values, image_grid_thw, output_hidden_states):
+            legacy_forward_called.append(True)
+            return original_forward(
+                input_ids=input_ids,
+                attention_mask=attention_mask,
+                pixel_values=pixel_values,
+                image_grid_thw=image_grid_thw,
+                output_hidden_states=output_hidden_states,
+            )
+
+        pipe.text_encoder.forward = legacy_forward
+        pipe.encode_prompt(prompt="dance monkey", image=[image, image], device="cpu")
+
+        self.assertEqual(legacy_forward_called, [True])
+
     def test_attention_slicing_forward_pass(
         self, test_max_difference=True, test_mean_pixel_difference=True, expected_max_diff=1e-3
     ):
