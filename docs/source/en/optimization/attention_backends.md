@@ -82,6 +82,20 @@ with attention_backend("_flash_3_hub"):
 > [!TIP]
 > Most attention backends support `torch.compile` without graph breaks and can be used to further speed up inference.
 
+## Trusting remote kernels
+
+Hub backends and other kernel-backed features (such as [GGUF](../quantization/gguf) and [Nunchaku Lite](../quantization/nunchaku)) download compute kernels from the Hub with [`kernels`](https://github.com/huggingface/kernels) and execute their code locally.
+
+By default, `kernels` only loads a kernel when its publisher is a trusted kernel publisher on the Hub. Kernels published under the [`kernels-community`](https://huggingface.co/kernels-community) organization are trusted, so Diffusers loads them without any additional configuration. The `_flash_3_hub`, `flash_hub`, `sage_hub`, and the other Hub attention backends all resolve to `kernels-community` repositories.
+
+Kernels from any other publisher are not vetted. Loading one downloads and runs code that Diffusers cannot vouch for, so Diffusers keeps it disabled unless you explicitly opt in with the `DIFFUSERS_TRUST_REMOTE_KERNELS` environment variable. When set, Diffusers forwards `trust_remote_code=True` to `kernels` so it loads kernels from untrusted publishers too.
+
+```bash
+export DIFFUSERS_TRUST_REMOTE_KERNELS=true
+```
+
+Only enable this after inspecting the kernel repository, since it grants the downloaded code the ability to run on your machine. Without it, loading a kernel from an untrusted publisher raises an error. This requires `kernels>=0.14.0`, which introduced the `trust_remote_code` check.
+
 ## Checks
 
 The attention dispatcher includes debugging checks that catch common errors before they cause problems.

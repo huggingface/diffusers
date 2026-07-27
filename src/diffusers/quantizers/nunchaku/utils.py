@@ -9,6 +9,7 @@ import torch
 import torch.nn as nn
 
 from ...utils import is_accelerate_available, is_kernels_available
+from ...utils.constants import DIFFUSERS_TRUST_REMOTE_KERNELS
 
 
 if is_accelerate_available():
@@ -22,7 +23,7 @@ _HF_KERNEL_VERSION = 2
 if is_kernels_available():
     from kernels import get_kernel
 
-    ops = get_kernel(_HF_KERNEL_REPO, version=_HF_KERNEL_VERSION, trust_remote_code=True).ops
+    ops = get_kernel(_HF_KERNEL_REPO, version=_HF_KERNEL_VERSION, trust_remote_code=DIFFUSERS_TRUST_REMOTE_KERNELS).ops
 else:
     raise ImportError(
         "Loading Nunchaku checkpoints requires the Hugging Face `kernels` package. "
