@@ -1,3 +1,24 @@
+# /// script
+# requires-python = ">=3.10"
+# dependencies = [
+#   "torch",
+#   "torchvision",
+#   "diffusers @ git+https://github.com/huggingface/diffusers.git@main",
+#   "transformers",
+#   "accelerate",
+#   "peft",
+#   "safetensors",
+#   "huggingface_hub",
+#   "datasets",
+#   "Pillow",
+#   "tqdm",
+#   "bitsandbytes",
+#   "sentencepiece",
+#   "protobuf",
+#   "prodigyopt",
+# ]
+# ///
+
 #!/usr/bin/env python
 # coding=utf-8
 # Copyright 2025 The HuggingFace Inc. team. All rights reserved.
