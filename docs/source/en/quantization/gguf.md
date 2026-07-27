@@ -63,8 +63,6 @@ pip install -U kernels
 
 Once installed, set `DIFFUSERS_GGUF_CUDA_KERNELS=true`  to use optimized kernels when available. Note that CUDA kernels may introduce minor numerical differences compared to the original GGUF implementation, potentially causing subtle visual variations in generated images. To disable CUDA kernel usage, set the environment variable `DIFFUSERS_GGUF_CUDA_KERNELS=false`.
 
-The GGUF kernels are downloaded from the [`Isotr0py/ggml`](https://huggingface.co/Isotr0py/ggml) repository, whose publisher is not a trusted kernel publisher on the Hub. Loading it downloads and executes code from the Hub, so Diffusers requires you to explicitly opt in by setting `DIFFUSERS_TRUST_REMOTE_KERNELS=true`. See [Trusting remote kernels](../optimization/attention_backends#trusting-remote-kernels) for details.
-
 ## Supported Quantization Types
 
 - BF16

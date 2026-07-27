@@ -27,8 +27,6 @@ The kernels package supplies the optimized CUDA kernels, which load automaticall
 pip install -U kernels
 ```
 
-Nunchaku Lite loads its kernels from the [`rootonchair/nunchaku-lite-kernels`](https://huggingface.co/rootonchair/nunchaku-lite-kernels) repository, whose publisher is not a trusted kernel publisher on the Hub. Loading it downloads and executes code from the Hub, so Diffusers requires you to explicitly opt in by setting `DIFFUSERS_TRUST_REMOTE_KERNELS=true`. See [Trusting remote kernels](../optimization/attention_backends#trusting-remote-kernels) for details.
-
 ## Load a quantized pipeline
 
 Load the prequantized pipeline with [`~DiffusionPipeline.from_pretrained`], which reads the quantization

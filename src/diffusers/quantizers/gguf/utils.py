@@ -21,7 +21,6 @@ import torch
 import torch.nn as nn
 
 from ...utils import is_accelerate_available, is_kernels_available
-from ...utils.constants import DIFFUSERS_TRUST_REMOTE_KERNELS
 
 
 if is_accelerate_available():
@@ -38,7 +37,7 @@ can_use_cuda_kernels = (
 if can_use_cuda_kernels and is_kernels_available():
     from kernels import get_kernel
 
-    ops = get_kernel("Isotr0py/ggml", trust_remote_code=DIFFUSERS_TRUST_REMOTE_KERNELS)
+    ops = get_kernel("Isotr0py/ggml")
 else:
     ops = None
 
