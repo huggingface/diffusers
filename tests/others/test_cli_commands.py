@@ -32,7 +32,9 @@ from diffusers.commands.run import (
     _upload_inputs_to_sandbox,
 )
 from diffusers.commands.schema import _parse_docstring_args
-from diffusers.utils.testing_utils import require_accelerator, require_torch_gpu
+from diffusers.utils.testing_utils import (
+    require_accelerator, require_kernels_version_greater_or_equal, require_torch_gpu
+)
 
 
 AVAILABLE_COMMANDS = ("env", "fp16_safetensors", "custom_blocks", "run", "schema", "skills")
@@ -213,17 +215,22 @@ class TestRunCommand:
     def test_compile_arg(self):
         args = self._parse_run_argv(["--compile"])
         pipeline = _load_pipeline(args)
-        # `_compile_denoiser` either applies `torch.compile` (which wraps the module in an
-        # `OptimizedModule` with an `_orig_mod` attribute), or calls `compile_repeated_blocks`
-        # which mutates the transformer's inner blocks in place. Either path leaves
-        # `_orig_mod` on either the transformer itself or on one of its repeated blocks.
-        has_torch_compile_wrapper = hasattr(pipeline.transformer, "_orig_mod") or any(
-            hasattr(m, "_orig_mod") for m in pipeline.transformer.modules()
-        )
-        assert has_torch_compile_wrapper
+        # `FluxTransformer2DModel` declares `_repeated_blocks`, so `_compile_denoiser` takes the
+        # regional path: `compile_repeated_blocks` calls `nn.Module.compile()` on each repeated
+        # block, which sets that block's `_compiled_call_impl` in place (no `OptimizedModule`
+        # wrapper, hence no `_orig_mod`, is created).
+        compiled_blocks = [
+            m for m in pipeline.transformer.modules() if m.__class__.__name__ in pipeline.transformer._repeated_blocks
+        ]
+        assert compiled_blocks
+        assert all(m._compiled_call_impl is not None for m in compiled_blocks)
 
     @require_torch_gpu
+    # `--attention-backend` only exposes Hub-hosted kernels, all of which need `kernels>=0.12`.
+    @require_kernels_version_greater_or_equal("0.12")
     def test_attention_backend_arg(self):
+        from diffusers.models.attention_dispatch import AttentionBackendName
+
         args = self._parse_run_argv(["--attention-backend", "flash_hub"])
         pipeline = _load_pipeline(args)
         # `set_attention_backend` stamps each attention processor's `_attention_backend` attr.
@@ -232,7 +239,7 @@ class TestRunCommand:
             for m in pipeline.transformer.modules()
             if hasattr(m, "processor") and hasattr(m.processor, "_attention_backend")
         }
-        assert any(b.value == "flash_hub" for b in backends)
+        assert backends == {AttentionBackendName.FLASH_HUB}
 
 
 class TestSchemaCommand:
