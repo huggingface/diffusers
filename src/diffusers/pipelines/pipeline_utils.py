@@ -885,6 +885,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 dduf_file=dduf_file,
                 load_connected_pipeline=load_connected_pipeline,
                 trust_remote_code=trust_remote_code,
+                use_flashpack=use_flashpack,
                 **kwargs,
             )
         else:
