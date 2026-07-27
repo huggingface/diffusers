@@ -35,7 +35,7 @@ import torch
 from diffusers import Krea2Pipeline
 
 # Load from a local directory produced by the Krea 2 conversion (no hub repo yet).
-pipe = Krea2Pipeline.from_pretrained("path/to/krea2-diffusers", torch_dtype=torch.bfloat16)
+pipe = Krea2Pipeline.from_pretrained("krea/Krea-2-Raw", torch_dtype=torch.bfloat16)
 pipe.to("cuda")
 
 prompt = "a fox in the snow"
@@ -50,6 +50,27 @@ image = pipe(
 image.save("krea2.png")
 ```
 
+We additionally provide an example for using Krea2 Turbo :
+
+```python
+import torch
+from diffusers import Krea2Pipeline
+
+pipe = Krea2Pipeline.from_pretrained("krea/Krea-2-Turbo", torch_dtype=torch.bfloat16)
+pipe.to("cuda")
+
+image = pipe(
+    "a fox in the snow",
+    height=1024,
+    width=1024,
+    num_inference_steps=8,
+    guidance_scale=0.0,
+    generator=torch.Generator("cuda").manual_seed(0),
+).images[0]
+image.save("krea2_turbo.png")
+```
+
+
 ## Krea2Pipeline
 
 [[autodoc]] Krea2Pipeline
@@ -59,3 +80,67 @@ image.save("krea2.png")
 ## Krea2PipelineOutput
 
 [[autodoc]] pipelines.krea2.pipeline_output.Krea2PipelineOutput
+
+## Modular
+
+Krea 2 is also available as a [modular pipeline](../../modular_diffusers/overview). Classifier-free guidance is
+configured through the `guider` component rather than a `guidance_scale` call argument. Krea 2 uses cond-anchored CFG,
+which is [`ClassifierFreeGuidance`] with `use_original_formulation=True`.
+
+```python
+import torch
+from diffusers import ClassifierFreeGuidance, ModularPipeline
+
+pipe = ModularPipeline.from_pretrained("krea/Krea-2-Raw")
+pipe.load_components(torch_dtype=torch.bfloat16)
+pipe.to("cuda")
+
+
+image = pipe(
+    prompt="a fox in the snow",
+    height=1024,
+    width=1024,
+    num_inference_steps=28,
+    generator=torch.Generator("cuda").manual_seed(0),
+).images[0]
+image.save("krea2.png")
+```
+
+We additionally provide an example for using Krea2 Turbo. The distilled checkpoint maps to its own set of blocks
+([`Krea2TurboAutoBlocks`]): it runs guidance-free (no `guider`), takes no negative prompt, and samples in a few steps.
+`ModularPipeline.from_pretrained` picks the turbo blocks automatically from the checkpoint's `is_distilled` config, so
+no guidance configuration is needed:
+
+```python
+import torch
+from diffusers import ModularPipeline
+
+pipe = ModularPipeline.from_pretrained("krea/Krea-2-Turbo")
+pipe.load_components(torch_dtype=torch.bfloat16)
+pipe.to("cuda")
+
+image = pipe(
+    prompt="a fox in the snow",
+    height=1024,
+    width=1024,
+    num_inference_steps=8,
+    generator=torch.Generator("cuda").manual_seed(0),
+).images[0]
+image.save("krea2_turbo.png")
+```
+
+## Krea2ModularPipeline
+
+[[autodoc]] Krea2ModularPipeline
+
+## Krea2AutoBlocks
+
+[[autodoc]] Krea2AutoBlocks
+
+## Krea2TurboModularPipeline
+
+[[autodoc]] Krea2TurboModularPipeline
+
+## Krea2TurboAutoBlocks
+
+[[autodoc]] Krea2TurboAutoBlocks
