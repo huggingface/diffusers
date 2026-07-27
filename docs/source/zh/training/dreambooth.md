@@ -11,7 +11,7 @@ http://www.apache.org/licenses/LICENSE-2.0
 
 [DreamBooth](https://huggingface.co/papers/2208.12242) 是一种训练技术，通过仅训练少数主题或风格的图像来更新整个扩散模型。它通过在提示中关联一个特殊词与示例图像来工作。
 
-如果您在 vRAM 有限的 GPU 上训练，应尝试在训练命令中启用 `gradient_checkpointing` 和 `mixed_precision` 参数。您还可以通过使用 [xFormers](../optimization/xformers) 的内存高效注意力来减少内存占用。JAX/Flax 训练也支持在 TPU 和 GPU 上进行高效训练，但不支持梯度检查点或 xFormers。如果您想使用 Flax 更快地训练，应拥有内存 >30GB 的 GPU。
+如果您在 vRAM 有限的 GPU 上训练，应尝试在训练命令中启用 `gradient_checkpointing` 和 `mixed_precision` 参数。您还可以通过使用 [xFormers](../optimization/xformers) 的内存高效注意力来减少内存占用。
 
 本指南将探索 [train_dreambooth.py](https://github.com/huggingface/diffusers/blob/main/examples/dreambooth/train_dreambooth.py) 脚本，帮助您更熟悉它，以及如何根据您的用例进行适配。
 
@@ -31,14 +31,6 @@ pip install .
 ```bash
 cd examples/dreambooth
 pip install -r requirements.txt
-```
-
-</hfoption>
-<hfoption id="Flax">
-
-```bash
-cd examples/dreambooth
-pip install -r requirements_flax.txt
 ```
 
 </hfoption>
@@ -99,7 +91,7 @@ accelerate launch train_dreambooth.py \
 
 ### Min-SNR 加权
 
-[Min-SNR](https://huggingface.co/papers/2303.09556) 加权策略可以通过重新平衡损失来帮助训练，以实现更快的收敛。训练脚本支持预测 `epsilon`（噪声）或 `v_prediction`，但 Min-SNR 与两种预测类型都兼容。此加权策略仅由 PyTorch 支持，在 Flax 训练脚本中不可用。
+[Min-SNR](https://huggingface.co/papers/2303.09556) 加权策略可以通过重新平衡损失来帮助训练，以实现更快的收敛。训练脚本支持预测 `epsilon`（噪声）或 `v_prediction`，但 Min-SNR 与两种预测类型都兼容。
 
 添加 `--snr_gamma` 参数并将其设置为推荐值 5.0：
 
@@ -326,26 +318,6 @@ accelerate launch train_dreambooth.py \
 ```
 
 </hfoption>
-<hfoption id="Flax">
-
-```bash
-export MODEL_NAME="duongna/stable-diffusion-v1-4-flax"
-export INSTANCE_DIR="./dog"
-export OUTPUT_DIR="path-to-save-model"
-
-python train_dreambooth_flax.py \
-  --pretrained_model_name_or_path=$MODEL_NAME  \
-  --instance_data_dir=$INSTANCE_DIR \
-  --output_dir=$OUTPUT_DIR \
-  --instance_prompt="a photo of sks dog" \
-  --resolution=512 \
-  --train_batch_size=1 \
-  --learning_rate=5e-6 \
-  --max_train_steps=400 \
-  --push_to_hub
-```
-
-</hfoption>
 </hfoptions>
 
 训练完成后，您可以使用新训练的模型进行推理！
@@ -380,37 +352,6 @@ import torch
 
 pipeline = DiffusionPipeline.from_pretrained("path_to_saved_model", torch_dtype=torch.float16, use_safetensors=True).to("cuda")
 image = pipeline("A photo of sks dog in a bucket", num_inference_steps=50, guidance_scale=7.5).images[0]
-image.save("dog-bucket.png")
-```
-
-</hfoption>
-<hfoption id="Flax">
-
-```py
-import jax
-import numpy as np
-from flax.jax_utils import replicate
-from flax.training.common_utils import shard
-from diffusers import FlaxStableDiffusionPipeline
-
-pipeline, params = FlaxStableDiffusionPipeline.from_pretrained("path-to-your-trained-model", dtype=jax.numpy.bfloat16)
-
-prompt = "A photo of sks dog in a bucket"
-prng_seed = jax.random.PRNGKey(0)
-num_inference_steps = 50
-
-num_samples = jax.device_count()
-prompt = num_samples * [prompt]
-prompt_ids = pipeline.prepare_inputs(prompt)
-
-# 分片输入和随机数生成器
-params = replicate(params)
-prng_seed = jax.random.split(prng_seed, jax.device_count())
-prompt_ids = shard(prompt_ids)
-
-images = pipeline(prompt_ids, params, prng_seed, num_inference_
-steps, jit=True).images
-images = pipeline.numpy_to_pil(np.asarray(images.reshape((num_samples,) + images.shape[-3:])))
 image.save("dog-bucket.png")
 ```
 

@@ -36,7 +36,6 @@ from diffusers.utils.import_utils import (
     is_bitsandbytes_available,
     is_compel_available,
     is_flashpack_available,
-    is_flax_available,
     is_gguf_available,
     is_kernels_available,
     is_note_seq_available,
@@ -671,13 +670,6 @@ def require_torch_accelerator_with_training(test_case):
 def skip_mps(test_case):
     """Decorator marking a test to skip if torch_device is 'mps'"""
     return pytest.mark.skipif(torch_device == "mps", reason="test requires non 'mps' device")(test_case)
-
-
-def require_flax(test_case):
-    """
-    Decorator marking a test that requires JAX & Flax. These tests are skipped when one / both are not installed
-    """
-    return pytest.mark.skipif(not is_flax_available(), reason="test requires JAX & Flax")(test_case)
 
 
 def require_compel(test_case):

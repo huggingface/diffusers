@@ -826,7 +826,7 @@ class PipelineFromPipeTesterMixin:
 
     def test_from_pipe_consistent_config(self):
         if self.original_pipeline_class == StableDiffusionPipeline:
-            original_repo = "hf-internal-testing/tiny-stable-diffusion-pipe"
+            original_repo = "hf-internal-testing/tiny-stable-diffusion-torch"
             original_kwargs = {"requires_safety_checker": False}
         elif self.original_pipeline_class == StableDiffusionXLPipeline:
             original_repo = "hf-internal-testing/tiny-stable-diffusion-xl-pipe"
