@@ -13,6 +13,7 @@
 # limitations under the License.
 
 import gc
+import inspect
 
 import pytest
 import torch
@@ -60,6 +61,16 @@ class DummyModel(torch.nn.Module):
             x = block(x)
         x = self.linear_2(x)
         return x
+
+
+class ExportModel(torch.nn.Module):
+    def forward(
+        self,
+        hidden_states: torch.Tensor,
+        timestep: torch.Tensor,
+        encoder_hidden_states: torch.Tensor | None = None,
+    ) -> torch.Tensor:
+        return hidden_states + timestep.float().reshape(1, 1, 1)
 
 
 class AddHook(ModelHook):
@@ -177,6 +188,54 @@ class TestHooks:
 
         assert len(registry.hooks) == 1
         assert registry._hook_order == ["multiply_hook"]
+
+    def test_hook_registry_preserves_forward_signature(self):
+        model = ExportModel().to(torch_device)
+        expected_signature = inspect.signature(model.forward)
+
+        registry = HookRegistry.check_if_exists_or_initialize(model)
+        registry.register_hook(ModelHook(), "noop_hook")
+
+        assert inspect.signature(model.forward) == expected_signature
+
+    def test_hook_registry_preserves_forward_signature_with_multiple_hooks(self):
+        model = ExportModel().to(torch_device)
+        original_signature = inspect.signature(model.forward)
+
+        registry = HookRegistry.check_if_exists_or_initialize(model)
+        registry.register_hook(ModelHook(), "noop_hook")
+        registry.register_hook(ModelHook(), "noop_hook_2")
+
+        assert inspect.signature(model.forward) == original_signature
+
+    def test_hook_registry_keeps_torch_export_keyword_binding(self):
+        model = ExportModel().to(torch_device)
+        registry = HookRegistry.check_if_exists_or_initialize(model)
+        registry.register_hook(ModelHook(), "noop_hook")
+
+        hidden_states = torch.randn(1, 4, 8, device=torch_device)
+        timestep = torch.tensor([1], device=torch_device)
+
+        torch.export.export(
+            model,
+            args=(),
+            kwargs={"hidden_states": hidden_states, "timestep": timestep},
+        )
+
+    def test_hook_registry_multiple_hooks_keep_torch_export_keyword_binding(self):
+        model = ExportModel().to(torch_device)
+        registry = HookRegistry.check_if_exists_or_initialize(model)
+        registry.register_hook(ModelHook(), "noop_hook")
+        registry.register_hook(ModelHook(), "noop_hook_2")
+
+        hidden_states = torch.randn(1, 4, 8, device=torch_device)
+        timestep = torch.tensor([1], device=torch_device)
+
+        torch.export.export(
+            model,
+            args=(),
+            kwargs={"hidden_states": hidden_states, "timestep": timestep},
+        )
 
     def test_stateful_hook(self):
         registry = HookRegistry.check_if_exists_or_initialize(self.model)

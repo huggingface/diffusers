@@ -13,6 +13,7 @@
 # limitations under the License.
 
 import functools
+import inspect
 from typing import Any
 
 import torch
@@ -192,6 +193,7 @@ class HookRegistry:
             return new_forward
 
         forward = self._module_ref.forward
+        forward_signature = inspect.signature(forward)
 
         fn_ref = HookFunctionReference()
         fn_ref.pre_forward = hook.pre_forward
@@ -208,6 +210,7 @@ class HookRegistry:
         self._module_ref.forward = functools.update_wrapper(
             functools.partial(rewritten_forward, self._module_ref), rewritten_forward
         )
+        self._module_ref.forward.__signature__ = forward_signature
 
         hook.fn_ref = fn_ref
         self.hooks[name] = hook
