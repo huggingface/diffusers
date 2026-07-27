@@ -54,11 +54,8 @@ from .constants import (
 )
 from .import_utils import (
     ENV_VARS_TRUE_VALUES,
-    _flax_version,
-    _jax_version,
     _onnxruntime_version,
     _torch_version,
-    is_flax_available,
     is_onnx_available,
     is_torch_available,
 )
@@ -80,9 +77,6 @@ def http_user_agent(user_agent: dict | str | None = None) -> str:
         return ua + "; telemetry/off"
     if is_torch_available():
         ua += f"; torch/{_torch_version}"
-    if is_flax_available():
-        ua += f"; jax/{_jax_version}"
-        ua += f"; flax/{_flax_version}"
     if is_onnx_available():
         ua += f"; onnxruntime/{_onnxruntime_version}"
     # CI will set this value to True

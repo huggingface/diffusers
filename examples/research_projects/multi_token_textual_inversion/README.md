@@ -114,6 +114,9 @@ image.save("cat-backpack.png")
 
 ## Training with Flax/JAX
 
+> [!WARNING]
+> JAX/Flax support was removed from the `diffusers` library in v0.40.0. These scripts require `diffusers<=0.39.x` to run.
+
 For faster training on TPUs and GPUs you can leverage the flax training example. Follow the instructions above to get the model and dataset before running the script.
 
 Before running the scripts, make sure to install the library's training dependencies:

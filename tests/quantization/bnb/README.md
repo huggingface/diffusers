@@ -28,9 +28,6 @@ They were conducted on the `audace` machine, using a single RTX 4090. Below is `
 - Running on Google Colab?: No
 - Python version: 3.10.12
 - PyTorch version (GPU?): 2.5.0.dev20240818+cu124 (True)
-- Flax version (CPU?/GPU?/TPU?): not installed (NA)
-- Jax version: not installed
-- JaxLib version: not installed
 - Huggingface_hub version: 0.24.5
 - Transformers version: 4.44.2
 - Accelerate version: 0.34.0.dev0

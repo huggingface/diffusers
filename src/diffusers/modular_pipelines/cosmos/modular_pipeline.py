@@ -116,3 +116,15 @@ class Cosmos3OmniModularPipeline(ModularPipeline):
 
     def _apply_video_safety_check(self, *args, **kwargs):
         return Cosmos3OmniPipeline._apply_video_safety_check(self, *args, **kwargs)
+
+
+class Cosmos3DistilledModularPipeline(Cosmos3OmniModularPipeline):
+    """
+    A ModularPipeline for distilled (few-step) Cosmos 3 omni generation.
+
+    Distilled checkpoints bake classifier-free guidance into the weights and sample on a fixed schedule read from the
+    pipeline's `distilled_sigmas` config (populated from `modular_model_index.json`), so `guidance_scale` and
+    `num_inference_steps` are fixed and `negative_prompt` is not supported.
+    """
+
+    default_blocks_name = "Cosmos3DistilledBlocks"

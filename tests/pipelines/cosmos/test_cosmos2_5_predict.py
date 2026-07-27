@@ -44,9 +44,9 @@ class Cosmos2_5_PredictBaseWrapper(Cosmos2_5_PredictBasePipeline):
         if "safety_checker" not in kwargs or kwargs["safety_checker"] is None:
             safety_checker = DummyCosmosSafetyChecker()
             device_map = kwargs.get("device_map", "cpu")
-            torch_dtype = kwargs.get("torch_dtype")
-            if device_map is not None or torch_dtype is not None:
-                safety_checker = safety_checker.to(device_map, dtype=torch_dtype)
+            dtype = kwargs.get("dtype")
+            if device_map is not None or dtype is not None:
+                safety_checker = safety_checker.to(device_map, dtype=dtype)
             kwargs["safety_checker"] = safety_checker
         return Cosmos2_5_PredictBasePipeline.from_pretrained(*args, **kwargs)
 
@@ -300,7 +300,7 @@ class Cosmos2_5_PredictPipelineFastTests(PipelineTesterMixin, unittest.TestCase)
                     is_folder = os.path.isdir(folder_path) and subfolder in config
                     assert is_folder and any(p.split(".")[1].startswith(variant) for p in os.listdir(folder_path))
 
-    def test_torch_dtype_dict(self):
+    def test_dtype_dict(self):
         components = self.get_dummy_components()
         if not components:
             self.skipTest("No dummy components defined.")
@@ -311,16 +311,16 @@ class Cosmos2_5_PredictPipelineFastTests(PipelineTesterMixin, unittest.TestCase)
 
         with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname:
             pipe.save_pretrained(tmpdirname, safe_serialization=False)
-            torch_dtype_dict = {specified_key: torch.bfloat16, "default": torch.float16}
+            dtype_dict = {specified_key: torch.bfloat16, "default": torch.float16}
             loaded_pipe = self.pipeline_class.from_pretrained(
-                tmpdirname, safety_checker=DummyCosmosSafetyChecker(), torch_dtype=torch_dtype_dict
+                tmpdirname, safety_checker=DummyCosmosSafetyChecker(), dtype=dtype_dict
             )
 
         for name, component in loaded_pipe.components.items():
             if name == "safety_checker":
                 continue
             if isinstance(component, torch.nn.Module) and hasattr(component, "dtype"):
-                expected_dtype = torch_dtype_dict.get(name, torch_dtype_dict.get("default", torch.float32))
+                expected_dtype = dtype_dict.get(name, dtype_dict.get("default", torch.float32))
                 self.assertEqual(
                     component.dtype,
                     expected_dtype,
@@ -328,7 +328,7 @@ class Cosmos2_5_PredictPipelineFastTests(PipelineTesterMixin, unittest.TestCase)
                 )
 
     def test_dtype_alias(self):
-        # `dtype` is an alias for `torch_dtype` in `from_pretrained`.
+        # `torch_dtype` is deprecated in favor of `dtype` in `from_pretrained`.
         components = self.get_dummy_components()
         pipe = self.pipeline_class(**components)
 

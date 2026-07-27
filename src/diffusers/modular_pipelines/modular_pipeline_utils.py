@@ -26,7 +26,7 @@ from packaging.specifiers import InvalidSpecifier, SpecifierSet
 
 from ..configuration_utils import ConfigMixin, FrozenDict
 from ..loaders.single_file_utils import _is_single_file_path_or_url
-from ..utils import DIFFUSERS_LOAD_ID_FIELDS, is_torch_available, logging
+from ..utils import DIFFUSERS_LOAD_ID_FIELDS, _resolve_dtype, is_torch_available, logging
 from ..utils.import_utils import _is_package_available
 
 
@@ -293,6 +293,10 @@ class ComponentSpec:
     # YiYi TODO: add guard for type of model, if it is supported by from_pretrained
     def load(self, **kwargs) -> Any:
         """Load component using from_pretrained."""
+        torch_dtype = kwargs.pop("torch_dtype", None)
+        if torch_dtype is not None:
+            kwargs["dtype"] = _resolve_dtype(kwargs.get("dtype"), torch_dtype)
+
         # select loading fields from kwargs passed from user: e.g. pretrained_model_name_or_path, subfolder, variant, revision, note the list could change
         passed_loading_kwargs = {key: kwargs.pop(key) for key in self.loading_fields() if key in kwargs}
         # merge loading field value in the spec with user passed values to create load_kwargs
@@ -311,12 +315,11 @@ class ComponentSpec:
 
         from diffusers import AutoModel
 
-        # `dtype`/`torch_dtype` is not an accepted parameter for tokenizers and processors.
+        # `dtype` is not an accepted parameter for tokenizers and processors.
         # As a result, it gets stored in `init_kwargs`, which are written to the config
         # during save. This causes JSON serialization to fail when saving the component.
         if self.type_hint is not None and not issubclass(self.type_hint, (torch.nn.Module, AutoModel)):
             kwargs.pop("dtype", None)
-            kwargs.pop("torch_dtype", None)
 
         if self.type_hint is None:
             try:
@@ -646,56 +649,6 @@ def format_inputs_short(inputs):
     return inputs_str
 
 
-def format_intermediates_short(intermediate_inputs, required_intermediate_inputs, intermediate_outputs):
-    """
-    Formats intermediate inputs and outputs of a block into a string representation.
-
-    Args:
-        intermediate_inputs: list of intermediate input parameters
-        required_intermediate_inputs: list of required intermediate input names
-        intermediate_outputs: list of intermediate output parameters
-
-    Returns:
-        str: Formatted string like:
-            Intermediates:
-                - inputs: Required(latents), dtype
-                - modified: latents # variables that appear in both inputs and outputs
-                - outputs: images # new outputs only
-    """
-    # Handle inputs
-    input_parts = []
-    for inp in intermediate_inputs:
-        if inp.name in required_intermediate_inputs:
-            input_parts.append(f"Required({inp.name})")
-        else:
-            if inp.name is None and inp.kwargs_type is not None:
-                inp_name = "*_" + inp.kwargs_type
-            else:
-                inp_name = inp.name
-            input_parts.append(inp_name)
-
-    # Handle modified variables (appear in both inputs and outputs)
-    inputs_set = {inp.name for inp in intermediate_inputs}
-    modified_parts = []
-    new_output_parts = []
-
-    for out in intermediate_outputs:
-        if out.name in inputs_set:
-            modified_parts.append(out.name)
-        else:
-            new_output_parts.append(out.name)
-
-    result = []
-    if input_parts:
-        result.append(f"    - inputs: {', '.join(input_parts)}")
-    if modified_parts:
-        result.append(f"    - modified: {', '.join(modified_parts)}")
-    if new_output_parts:
-        result.append(f"    - outputs: {', '.join(new_output_parts)}")
-
-    return "\n".join(result) if result else "    (none)"
-
-
 def format_params(params, header="Args", indent_level=4, max_line_length=115):
     """Format a list of InputParam or OutputParam objects into a readable string representation.
 
@@ -974,7 +927,6 @@ def make_doc_string(
 
     Args:
         inputs: list of input parameters
-        intermediate_inputs: list of intermediate input parameters
         outputs: list of output parameters
         description (str, *optional*): Description of the block
         class_name (str, *optional*): Name of the class to include in the documentation
