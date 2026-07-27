@@ -234,7 +234,11 @@ class TestRunCommand:
         from diffusers.models.attention_dispatch import AttentionBackendName
 
         args = self._parse_run_argv(["--attention-backend", "flash_hub"])
-        pipeline = _load_pipeline(args)
+        try:
+            pipeline = _load_pipeline(args)
+        except FileNotFoundError as e:
+            # The Hub kernel has no prebuilt variant for this torch/CUDA/arch combination.
+            pytest.skip(f"`flash_hub` kernel unavailable in this environment: {e}")
         # `set_attention_backend` stamps each attention processor's `_attention_backend` attr.
         backends = {
             m.processor._attention_backend
