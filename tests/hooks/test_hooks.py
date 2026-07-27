@@ -408,7 +408,16 @@ class TestHooks:
         hidden_states = torch.randn(1, 4, 8, device=torch_device)
         timestep = torch.tensor([1.0], device=torch_device)
 
-        assert tuple(model(hidden_states, timestep).shape) == (1, 4, 8)
+        eager_output = model(hidden_states, timestep)
+        assert tuple(eager_output.shape) == (1, 4, 8)
 
         exported = torch.export.export(model, args=(), kwargs={"hidden_states": hidden_states, "timestep": timestep})
         assert exported is not None
+
+        exported_output = exported.module()(hidden_states=hidden_states, timestep=timestep)
+        assert torch.allclose(exported_output, eager_output)
+
+        new_hidden_states = torch.randn(1, 4, 8, device=torch_device)
+        new_timestep = torch.tensor([2.0], device=torch_device)
+        exported_output = exported.module()(hidden_states=new_hidden_states, timestep=new_timestep)
+        assert torch.allclose(exported_output, model(new_hidden_states, new_timestep))
