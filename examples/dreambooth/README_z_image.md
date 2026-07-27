@@ -297,9 +297,12 @@ To allow more flexibility and control over the targeted modules we added `--lora
 
 We've added aspect ratio bucketing support which allows training on images with different aspect ratios without cropping them to a single square resolution. This technique helps preserve the original composition of training images and can improve training efficiency.
 
-To enable aspect ratio bucketing, pass `--aspect_ratio_buckets` argument with a semicolon-separated list of height,width pairs, such as:
+To enable aspect ratio bucketing, pass `--use_aspect_ratio_buckets`. Without an explicit list, the buckets are computed automatically from `--resolution` and capped to each image's own resolution, so smaller images are assigned to a smaller bucket instead of being upscaled.
+
+To use your own buckets instead, additionally pass `--aspect_ratio_buckets` with a semicolon-separated list of height,width pairs (this requires `--use_aspect_ratio_buckets`; passing the list on its own raises an error), such as:
 
 ```bash
+--use_aspect_ratio_buckets \
 --aspect_ratio_buckets="672,1568;688,1504;720,1456;752,1392;800,1328;832,1248;880,1184;944,1104;1024,1024;1104,944;1184,880;1248,832;1328,800;1392,752;1456,720;1504,688;1568,672"
 ```
 
