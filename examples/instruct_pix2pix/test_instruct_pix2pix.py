@@ -35,7 +35,7 @@ class InstructPix2Pix(ExamplesTestsAccelerate):
         with tempfile.TemporaryDirectory() as tmpdir:
             test_args = f"""
                 examples/instruct_pix2pix/train_instruct_pix2pix.py
-                --pretrained_model_name_or_path=hf-internal-testing/tiny-stable-diffusion-pipe
+                --pretrained_model_name_or_path=hf-internal-testing/tiny-stable-diffusion-torch
                 --dataset_name=hf-internal-testing/instructpix2pix-10-samples
                 --resolution=64
                 --random_flip
@@ -58,7 +58,7 @@ class InstructPix2Pix(ExamplesTestsAccelerate):
         with tempfile.TemporaryDirectory() as tmpdir:
             test_args = f"""
                 examples/instruct_pix2pix/train_instruct_pix2pix.py
-                --pretrained_model_name_or_path=hf-internal-testing/tiny-stable-diffusion-pipe
+                --pretrained_model_name_or_path=hf-internal-testing/tiny-stable-diffusion-torch
                 --dataset_name=hf-internal-testing/instructpix2pix-10-samples
                 --resolution=64
                 --random_flip
@@ -79,7 +79,7 @@ class InstructPix2Pix(ExamplesTestsAccelerate):
 
             resume_run_args = f"""
                 examples/instruct_pix2pix/train_instruct_pix2pix.py
-                --pretrained_model_name_or_path=hf-internal-testing/tiny-stable-diffusion-pipe
+                --pretrained_model_name_or_path=hf-internal-testing/tiny-stable-diffusion-torch
                 --dataset_name=hf-internal-testing/instructpix2pix-10-samples
                 --resolution=64
                 --random_flip
