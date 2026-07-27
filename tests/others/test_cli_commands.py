@@ -33,7 +33,9 @@ from diffusers.commands.run import (
 )
 from diffusers.commands.schema import _parse_docstring_args
 from diffusers.utils.testing_utils import (
-    require_accelerator, require_kernels_version_greater_or_equal, require_torch_gpu
+    require_accelerator,
+    require_kernels_version_greater_or_equal,
+    require_torch_gpu,
 )
 
 
