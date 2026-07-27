@@ -37,6 +37,7 @@ from ..utils import (
     deprecate,
     get_class_from_dynamic_module,
     is_accelerate_available,
+    is_flashpack_available,
     is_peft_available,
     is_transformers_available,
     is_transformers_version,
@@ -224,6 +225,7 @@ def variant_compatible_siblings(filenames, variant=None, ignore_patterns=None) -
         SAFETENSORS_WEIGHTS_NAME,
         ONNX_WEIGHTS_NAME,
         ONNX_EXTERNAL_WEIGHTS_NAME,
+        FLASHPACK_WEIGHTS_NAME,
     ]
 
     if is_transformers_available():
@@ -831,6 +833,45 @@ def load_sub_model(
         and transformers_version >= version.parse("4.20.0")
     )
 
+    # transformers' `from_pretrained` has no FlashPack support, so when a transformers component ships
+    # FlashPack weights, load it here the way `ModelMixin.from_pretrained` does for diffusers models:
+    # initialize the model on empty weights from its config, then assign the packed weights onto it.
+    # Component folders without a flashpack file (e.g. from repos saved before transformers components
+    # were packed) keep loading through their regular `load_method` below.
+    flashpack_file = os.path.join(cached_folder, name, FLASHPACK_WEIGHTS_NAME)
+    if use_flashpack and is_transformers_model and os.path.isfile(flashpack_file):
+        if not is_flashpack_available():
+            raise ImportError("Please install flashpack to load a pipeline with `use_flashpack=True`.")
+        import flashpack
+
+        config = class_obj.config_class.from_pretrained(os.path.join(cached_folder, name))
+        dtype_orig = None
+        if dtype is not None:
+            dtype_orig = torch.get_default_dtype()
+            torch.set_default_dtype(dtype)
+        with accelerate.init_empty_weights():
+            loaded_sub_model = class_obj(config)
+        if dtype_orig is not None:
+            torch.set_default_dtype(dtype_orig)
+
+        if device_map is None:
+            logger.warning(
+                "`device_map` has not been provided for FlashPack, model will be on `cpu` - provide `device_map` to fully utilize "
+                "the benefit of FlashPack."
+            )
+            flashpack_device = torch.device("cpu")
+        else:
+            device = device_map[""]
+            if isinstance(device, str) and device in ["auto", "balanced", "balanced_low_0", "sequential"]:
+                raise ValueError(
+                    "FlashPack `device_map` should not be one of `auto`, `balanced`, `balanced_low_0`, `sequential`. Use a specific device instead, e.g., `device_map='cuda'` or `device_map='cuda:0'"
+                )
+            flashpack_device = torch.device(device) if not isinstance(device, torch.device) else device
+
+        flashpack.mixin.assign_from_file(model=loaded_sub_model, path=flashpack_file, device=flashpack_device)
+        # transformers' `from_pretrained` always returns models in eval mode.
+        return loaded_sub_model.eval()
+
     # For transformers models >= 4.56.0, use 'dtype' instead of 'torch_dtype' to avoid deprecation warnings
     if issubclass(class_obj, torch.nn.Module):
         if is_transformers_model and transformers_version >= version.parse("4.56.0"):
@@ -1106,28 +1147,35 @@ def _get_ignore_patterns(
     use_flashpack: bool,
     variant: str | None = None,
 ) -> list[str]:
-    if (
-        use_safetensors
-        and not allow_pickle
-        and not is_safetensors_compatible(
-            model_filenames, passed_components=passed_components, folder_names=model_folder_names, variant=variant
-        )
-    ):
+    # Folders whose weights ship as flashpack. When `use_flashpack` is set we download only their
+    # flashpack file; when it is not set flashpack files are ignored entirely (see below), so these
+    # folders play no role and safetensors compatibility is judged over every folder as usual.
+    flashpack_folders = set()
+    if use_flashpack:
+        flashpack_folders = {os.path.split(f)[0] for f in model_filenames if f.endswith(".flashpack")}
+
+    # Flashpack-covered folders legitimately have no safetensors, so exclude them when judging
+    # whether the remaining (e.g. transformers) folders can be served from safetensors.
+    safetensors_filenames = [f for f in model_filenames if os.path.split(f)[0] not in flashpack_folders]
+    safetensors_folder_names = [f for f in model_folder_names if f not in flashpack_folders]
+    safetensors_compatible = is_safetensors_compatible(
+        safetensors_filenames,
+        passed_components=passed_components,
+        folder_names=safetensors_folder_names,
+        variant=variant,
+    )
+
+    if use_safetensors and not allow_pickle and not safetensors_compatible:
         raise EnvironmentError(
             f"Could not find the necessary `safetensors` weights in {model_filenames} (variant={variant})"
         )
 
-    if use_safetensors and is_safetensors_compatible(
-        model_filenames, passed_components=passed_components, folder_names=model_folder_names, variant=variant
-    ):
+    if use_safetensors and safetensors_compatible:
         ignore_patterns = ["*.bin", "*.msgpack"]
 
         use_onnx = use_onnx if use_onnx is not None else is_onnx
         if not use_onnx:
             ignore_patterns += ["*.onnx", "*.pb"]
-
-    elif use_flashpack:
-        ignore_patterns = ["*.bin", "*.safetensors", "*.onnx", "*.pb", "*.msgpack"]
 
     else:
         ignore_patterns = ["*.safetensors", "*.msgpack"]
@@ -1135,6 +1183,15 @@ def _get_ignore_patterns(
         use_onnx = use_onnx if use_onnx is not None else is_onnx
         if not use_onnx:
             ignore_patterns += ["*.onnx", "*.pb"]
+
+    # Keep only the flashpack file inside flashpack folders (hub ignore patterns match full relative
+    # paths, so this is per-folder and leaves other folders' safetensors/bin untouched).
+    for folder in flashpack_folders:
+        ignore_patterns += [f"{folder}/*.safetensors", f"{folder}/*.bin"]
+
+    # `use_flashpack=False` must never pull flashpack weights, in any of the branches above.
+    if not use_flashpack:
+        ignore_patterns.append("*.flashpack")
 
     return ignore_patterns
 
