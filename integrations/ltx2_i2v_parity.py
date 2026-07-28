@@ -139,7 +139,11 @@ def main(args):
 
     # 1. Load the standard pipeline once.
     print(f"Loading {args.model_path} ...")
-    std = LTX2ImageToVideoPipeline.from_pretrained(args.model_path, torch_dtype=args.dtype).to(args.device)
+    std = LTX2ImageToVideoPipeline.from_pretrained(args.model_path, torch_dtype=args.dtype)
+    if args.cpu_offload:
+        std.enable_model_cpu_offload(device=args.device)
+    else:
+        std.to(args.device)
 
     common_kwargs = {
         "image": image,
@@ -201,6 +205,7 @@ if __name__ == "__main__":
     parser.add_argument("--device", type=str, default="cuda:0")
     parser.add_argument("--dtype", type=str, default="fp32")
     parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument("--cpu_offload", action="store_true")
 
     parser.add_argument("--prompt", type=str, default=None)
     parser.add_argument("--negative_prompt", type=str, default=None)
