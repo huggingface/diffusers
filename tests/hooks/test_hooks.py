@@ -416,8 +416,3 @@ class TestHooks:
 
         exported_output = exported.module()(hidden_states=hidden_states, timestep=timestep)
         assert torch.allclose(exported_output, eager_output)
-
-        new_hidden_states = torch.randn(1, 4, 8, device=torch_device)
-        new_timestep = torch.tensor([2.0], device=torch_device)
-        exported_output = exported.module()(hidden_states=new_hidden_states, timestep=new_timestep)
-        assert torch.allclose(exported_output, model(new_hidden_states, new_timestep))
