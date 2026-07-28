@@ -693,56 +693,6 @@ def format_inputs_short(inputs):
     return inputs_str
 
 
-def format_intermediates_short(intermediate_inputs, required_intermediate_inputs, intermediate_outputs):
-    """
-    Formats intermediate inputs and outputs of a block into a string representation.
-
-    Args:
-        intermediate_inputs: list of intermediate input parameters
-        required_intermediate_inputs: list of required intermediate input names
-        intermediate_outputs: list of intermediate output parameters
-
-    Returns:
-        str: Formatted string like:
-            Intermediates:
-                - inputs: Required(latents), dtype
-                - modified: latents # variables that appear in both inputs and outputs
-                - outputs: images # new outputs only
-    """
-    # Handle inputs
-    input_parts = []
-    for inp in intermediate_inputs:
-        if inp.name in required_intermediate_inputs:
-            input_parts.append(f"Required({inp.name})")
-        else:
-            if inp.name is None and inp.kwargs_type is not None:
-                inp_name = "*_" + inp.kwargs_type
-            else:
-                inp_name = inp.name
-            input_parts.append(inp_name)
-
-    # Handle modified variables (appear in both inputs and outputs)
-    inputs_set = {inp.name for inp in intermediate_inputs}
-    modified_parts = []
-    new_output_parts = []
-
-    for out in intermediate_outputs:
-        if out.name in inputs_set:
-            modified_parts.append(out.name)
-        else:
-            new_output_parts.append(out.name)
-
-    result = []
-    if input_parts:
-        result.append(f"    - inputs: {', '.join(input_parts)}")
-    if modified_parts:
-        result.append(f"    - modified: {', '.join(modified_parts)}")
-    if new_output_parts:
-        result.append(f"    - outputs: {', '.join(new_output_parts)}")
-
-    return "\n".join(result) if result else "    (none)"
-
-
 def format_params(params, header="Args", indent_level=4, max_line_length=115):
     """Format a list of InputParam or OutputParam objects into a readable string representation.
 
@@ -1021,7 +971,6 @@ def make_doc_string(
 
     Args:
         inputs: list of input parameters
-        intermediate_inputs: list of intermediate input parameters
         outputs: list of output parameters
         description (str, *optional*): Description of the block
         class_name (str, *optional*): Name of the class to include in the documentation
