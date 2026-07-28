@@ -13,7 +13,7 @@ specific language governing permissions and limitations under the License.
 
 # GemLite
 
-[GemLite](https://github.com/mobiusml/gemlite) is a quantization backend for loading prequantized checkpoints in
+[GemLite](https://github.com/dropbox/gemlite) is a quantization backend for loading prequantized checkpoints in
 Diffusers. It replaces supported `torch.nn.Linear` layers with GemLite layers, which run packed low-bit weights
 directly with GemLite kernels.
 
