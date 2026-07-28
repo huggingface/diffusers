@@ -14,7 +14,7 @@ specific language governing permissions and limitations under the License.
 
 [ControlNet](https://hf.co/papers/2302.05543) 是一种基于预训练模型的适配器架构。它通过额外输入的条件图像（如边缘检测图、深度图、人体姿态图等），实现对生成图像的精细化控制。
 
-在显存有限的GPU上训练时，建议启用训练命令中的 `gradient_checkpointing`（梯度检查点）、`gradient_accumulation_steps`（梯度累积步数）和 `mixed_precision`（混合精度）参数。还可使用 [xFormers](../optimization/xformers) 的内存高效注意力机制进一步降低显存占用。虽然JAX/Flax训练支持在TPU和GPU上高效运行，但不支持梯度检查点和xFormers。若需通过Flax加速训练，建议使用显存大于30GB的GPU。
+在显存有限的GPU上训练时，建议启用训练命令中的 `gradient_checkpointing`（梯度检查点）、`gradient_accumulation_steps`（梯度累积步数）和 `mixed_precision`（混合精度）参数。还可使用 [xFormers](../optimization/xformers) 的内存高效注意力机制进一步降低显存占用。
 
 本指南将解析 [train_controlnet.py](https://github.com/huggingface/diffusers/blob/main/examples/controlnet/train_controlnet.py) 训练脚本，帮助您理解其逻辑并适配自定义需求。
 
@@ -34,37 +34,6 @@ pip install .
 cd examples/controlnet
 pip install -r requirements.txt
 ```
-</hfoption>
-<hfoption id="Flax">
-
-若可访问TPU设备，Flax训练脚本将运行得更快！以下是在 [Google Cloud TPU VM](https://cloud.google.com/tpu/docs/run-calculation-jax) 上的配置流程。创建单个TPU v4-8虚拟机并连接：
-
-```bash
-ZONE=us-central2-b
-TPU_TYPE=v4-8
-VM_NAME=hg_flax
-
-gcloud alpha compute tpus tpu-vm create $VM_NAME \
- --zone $ZONE \
- --accelerator-type $TPU_TYPE \
- --version  tpu-vm-v4-base
-
-gcloud alpha compute tpus tpu-vm ssh $VM_NAME --zone $ZONE -- \
-```
-
-安装JAX 0.4.5：
-
-```bash
-pip install "jax[tpu]==0.4.5" -f https://storage.googleapis.com/jax-releases/libtpu_releases.html
-```
-
-然后安装Flax脚本的依赖：
-
-```bash
-cd examples/controlnet
-pip install -r requirements_flax.txt
-```
-
 </hfoption>
 </hfoptions>
 
@@ -114,7 +83,7 @@ accelerate launch train_controlnet.py \
 
 ### Min-SNR加权策略
 
-[Min-SNR](https://huggingface.co/papers/2303.09556) 加权策略通过重新平衡损失函数加速模型收敛。虽然训练脚本支持预测 `epsilon`（噪声）或 `v_prediction`，但Min-SNR对两种预测类型均兼容。该策略仅适用于PyTorch版本，Flax训练脚本暂不支持。
+[Min-SNR](https://huggingface.co/papers/2303.09556) 加权策略通过重新平衡损失函数加速模型收敛。虽然训练脚本支持预测 `epsilon`（噪声）或 `v_prediction`，但Min-SNR对两种预测类型均兼容。
 
 推荐值设为5.0：
 
@@ -281,41 +250,6 @@ accelerate launch train_controlnet.py \
  --train_batch_size=1 \
  --gradient_accumulation_steps=4 \
  --push_to_hub
-```
-
-</hfoption>
-<hfoption id="Flax">
-
-Flax版本支持通过 `--profile_steps==5` 参数进行性能分析：
-
-```bash
-pip install tensorflow tensorboard-plugin-profile
-tensorboard --logdir runs/fill-circle-100steps-20230411_165612/
-```
-
-在 [http://localhost:6006/#profile](http://localhost:6006/#profile) 查看分析结果。
-
-> [!WARNING]
-> 若遇到插件版本冲突，建议重新安装TensorFlow和Tensorboard。注意性能分析插件仍处实验阶段，部分视图可能不完整。`trace_viewer` 会截断超过1M的事件记录，在编译步骤分析时可能导致设备轨迹丢失。
-
-```bash
-python3 train_controlnet_flax.py \
- --pretrained_model_name_or_path=$MODEL_DIR \
- --output_dir=$OUTPUT_DIR \
- --dataset_name=fusing/fill50k \
- --resolution=512 \
- --learning_rate=1e-5 \
- --validation_image "./conditioning_image_1.png" "./conditioning_image_2.png" \
- --validation_prompt "red circle with blue background" "cyan circle with brown floral background" \
- --validation_steps=1000 \
- --train_batch_size=2 \
- --revision="non-ema" \
- --from_pt \
- --report_to="wandb" \
- --tracker_project_name=$HUB_MODEL_ID \
- --num_train_epochs=11 \
- --push_to_hub \
- --hub_model_id=$HUB_MODEL_ID
 ```
 
 </hfoption>

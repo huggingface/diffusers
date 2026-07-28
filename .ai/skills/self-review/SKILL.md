@@ -12,8 +12,9 @@ description: >
 
 Runs the same rubric as the `@claude` CI reviewer, so you catch issues before a
 maintainer does — but over your **whole** PR diff. (The CI scopes itself to
-`src/diffusers/` and `.ai/`; for your own PR, also review your tests, docs, and
-scripts.) You're already on the branch with the conventions loaded, so: get the
+`src/diffusers/`, `tests/`, and `.ai/`; for your own PR, also review your docs
+and scripts.) You're already on the branch with the conventions loaded, so: get
+the
 diff → review it against the rubric → report → iterate with the contributor
 until it's ready, then remind them to share the final notes on the PR.
 

@@ -81,6 +81,22 @@ class AutoencoderKLTesterConfig(BaseModelTesterConfig):
 
 
 class TestAutoencoderKL(AutoencoderKLTesterConfig, ModelTesterMixin, TrainingTesterMixin):
+    @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16], ids=["fp16", "bf16"])
+    def test_from_save_pretrained_dtype_inference(self, tmp_path, dtype):
+        # The reference and reloaded models hold identical weights, so any output difference is
+        # half-precision kernel nondeterminism between the two module instances rather than a save/load
+        # fidelity issue. The default zero-rtol, 1e-4-atol tolerance is too tight for that noise, and it has to
+        # be relaxed per dtype: bf16's coarser mantissa produces a larger absolute noise floor (~1 ULP, e.g.
+        # 3.9e-3 near magnitude 0.5) than fp16's (~1e-3), so a single shared tolerance is either too tight for
+        # bf16 or needlessly loose for fp16. Each dtype gets an absolute floor sized to its own noise plus
+        # `torch.testing.assert_close`'s recommended rtol (1e-3 for fp16, 1.6e-2 for bf16) so the allowed error
+        # also scales with the output magnitude.
+        atol, rtol = {
+            torch.float16: (2e-3, 1e-3),
+            torch.bfloat16: (5e-3, 1.6e-2),
+        }[dtype]
+        super().test_from_save_pretrained_dtype_inference(tmp_path, dtype, atol=atol, rtol=rtol)
+
     def test_gradient_checkpointing_is_applied(self):
         expected_set = {"Decoder", "Encoder", "UNetMidBlock2D"}
         super().test_gradient_checkpointing_is_applied(expected_set=expected_set)

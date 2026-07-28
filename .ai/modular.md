@@ -6,6 +6,30 @@ Shared reference for modular pipeline conventions, patterns, and gotchas.
 
 When adding a new modular pipeline (or reviewing one), skim `src/diffusers/modular_pipelines/qwenimage/`, `src/diffusers/modular_pipelines/flux2/`, `src/diffusers/modular_pipelines/wan/`, and `src/diffusers/modular_pipelines/helios/` first to establish the pattern. Most conventions (file split between `encoders.py` / `before_denoise.py` / `denoise.py` / `decoders.py`, how `expected_components` / `inputs` / `intermediate_outputs` are declared, the denoise-loop wrapping with `LoopSequentialPipelineBlocks`, top-level assembly via `AutoPipelineBlocks` / `SequentialPipelineBlocks` in `modular_blocks_<model>.py`, the `ModularPipeline` subclass shape, the guider-abstracted denoise body, `kwargs_type="denoiser_input_fields"` plumbing) are easiest to internalize by comparison rather than from a fixed list.
 
+## Running a modular pipeline
+
+This section provides guidance on how to execute pipelines and blocks — in scripts, debugging sessions, and tests alike.
+
+- **Full pipeline from a repo**: `ModularPipeline.from_pretrained(repo_id)` — the base class, not the model subclass; it resolves the right class from the repo's `modular_model_index.json` (falling back to a standard `model_index.json`). Then `pipe.load_components()` and call it.
+- **A single block or sub-workflow**: convert it to a pipeline first with `init_pipeline()`. Blocks are never executed directly.
+
+```python
+# one block
+pipe = MyTextEncoderStep().init_pipeline("some-org/tiny-model")  # repo optional if the block needs no pretrained components
+pipe.load_components()                                           # init_pipeline only wires specs; this materializes components
+
+# a chain of blocks
+blocks = SequentialPipelineBlocks.from_blocks_dict({"vision": VisionStep(), "sound": SoundStep()})
+pipe = blocks.init_pipeline()
+
+# run it: declared InputParams are call kwargs; `output=` selects what comes back
+ids = pipe(prompt="a robot", output="cond_input_ids")   # one value (any declared output/intermediate)
+state = pipe(prompt="a robot")                          # or the full state — read values with state.get("name")
+```
+
+- **Swap components and config values** with `pipe.update_components(scheduler=new_scheduler, my_config_flag=False)` — it handles both, keeping the specs and the saved `modular_model_index.json` in sync. Read config via `pipe.config.<name>` (direct attribute access is deprecated).
+- **Don't call a block directly** (`block(components, state)`) and don't hand-build a `PipelineState` to feed it. That is the executor's internal protocol — it only *appears* to work for blocks that never touch `components`, and breaks the moment the block gains a component or config dependency. If you find yourself constructing a `PipelineState`, you want `init_pipeline()` and a normal call instead.
+
 ## File structure
 
 ```
@@ -16,7 +40,7 @@ src/diffusers/modular_pipelines/<model>/
   before_denoise.py                    # Pre-denoise setup blocks (timesteps, latent prep, noise)
   denoise.py                           # The denoising loop blocks
   decoders.py                          # VAE decode block
-  modular_blocks_<model>.py            # Block assembly (AutoBlocks)
+  modular_blocks_<model>.py            # Blocksets (AutoBlocks)
 ```
 
 ## Block types decision tree
@@ -34,6 +58,10 @@ Does it choose ONE block based on which input is present?
   Is the selection 1:1 with trigger inputs?
     YES -> AutoPipelineBlocks (simple trigger mapping)
     NO  -> ConditionalPipelineBlocks (custom select_block method)
+
+Is it a different CHECKPOINT (distilled / turbo / a variant with its own schedule)?
+  YES -> create a separate blockset for the variant, unless it behaves
+         literally the same (see Key pattern: Checkpoint variants)
 ```
 
 ## Build order (easiest first)
@@ -42,6 +70,17 @@ Does it choose ONE block based on which input is present?
 2. `encoders.py` -- Takes prompt, returns prompt_embeds. Add image/video VAE encoder if needed
 3. `before_denoise.py` -- Timesteps, latent prep, noise setup. Each logical operation = one block
 4. `denoise.py` -- The hardest. Convert guidance to guider abstraction
+
+## Growing a pipeline: one workflow at a time
+
+Build one workflow end-to-end first (e.g. t2v), then add the next workflow — and later the next blockset / checkpoint variant — one at a time. Each addition should **introduce new blocks rather than modify existing ones**: existing blocks are already wired into working workflows, and a new leaf block plus a new blockset entry can't break them. See `flux2/` for the shape: `modular_blocks_flux2.py` builds the base workflows, and `modular_blocks_flux2_klein.py` adds the klein (distilled) variant as new blocksets composing the same leaf blocks, with new block classes only for the steps that differ.
+
+The one good reason to touch an existing block is to make it strictly more **general**. Be honest about which direction the edit goes:
+
+- **Adding a branch is not generalizing — it's specializing.** `if components.config.foo:` or `if block_state.image is not None:` inside an existing block means the block now does two things. Add a new block for the new case instead, and let workflow selection or a variant blockset pick between them.
+- **Collapsing duplicates is generalizing.** If two blocks are identical except for which conditioning inputs they pass to the denoiser, don't keep both — rework the one block to take `kwargs_type="denoiser_input_fields"` (see the `kwargs_type` pattern below) so the same block serves every workflow, as the Cosmos3 denoise step does.
+
+Rule of thumb: a generalizing edit *removes* an if/else or a duplicate block. If your edit *adds* an if/else, it's a new block trying to get out.
 
 ## Key pattern: Guider abstraction
 
@@ -142,6 +181,14 @@ class AutoDenoise(ConditionalPipelineBlocks):
     default_block_name = "text2video"
 ```
 
+## Key pattern: Checkpoint variants
+
+A different checkpoint (distilled / turbo / a variant with its own schedule) can have its own blockset mapped to it: give the variant a `ModularPipeline` subclass carrying its `default_blocks_name`, and checkpoints route to it automatically — via `_class_name` in `modular_model_index.json`, or, for repos that only ship a standard `model_index.json`, a config-keyed map fn in `MODULAR_PIPELINE_MAPPING` (see `_flux2_klein_map_fn`).
+
+Default to taking that option. The only reason not to split is when the variant behaves literally the same. If the split buys anything at all — the distilled variant doesn't have to declare `negative_prompt`, doesn't carry a guider, and its docs describe exactly what the checkpoint does — make the separate blockset. It costs almost nothing: blocksets compose the same shared leaf blocks, and only the steps that truly differ need new block classes. See `modular_blocks_flux2_klein.py`, which reuses the base flux2 leaf blocks and swaps in just a `negative_prompt`-free text encoder and a guider-free denoise step.
+
+Don't fall back to the standard-pipeline habit of a config flag branching inside a shared block (`ConfigSpec(name="is_distilled")` + `if components.config.is_distilled:`). That keeps both variants' behavior bundled in one blockset — and the input surface is the one thing it can never fix: a repo can override components and config values per checkpoint, but never which inputs the blocks declare, so the distilled checkpoint would still accept `negative_prompt` and silently ignore it.
+
 ## Key pattern: Standalone block reusability
 
 One of the core reason a pipeline is split into blocks at all: each block (text encoder, VAE encoder, prepare-latents, denoise, decoder) must be runnable on its own, and its output must be reusable as the input to a different downstream chain.
@@ -158,7 +205,7 @@ Two consequences for input plumbing:
 
 Standard pipelines accept `prompt_embeds` / `image_latents` as `__call__` inputs so users can skip encoding. In modular pipelines this is unnecessary — users just pop out the encoder block and run it standalone. Don't accept pre-computed encoder outputs as `__call__` inputs of an encoder block.
 
-## Key pattern: Flat block assembly
+## Key pattern: Flat blocksets
 
 Prefer flat sequences over nested compositions. Put the `Auto` / `Conditional` selection at the top level and make each workflow variant a flat `InsertableDict` of leaf blocks. Try not to nest `AutoPipelineBlocks` inside `SequentialPipelineBlocks` inside `AutoPipelineBlocks` — debugging which workflow was selected, and which block inside which sub-block touched which state, becomes painful. See `flux2/modular_blocks_flux2_klein.py` for the canonical shape.
 
@@ -216,7 +263,7 @@ ComponentSpec(
 
 5. **Using `InputParam.template()` / `OutputParam.template()` when semantics don't match.** Templates carry predefined descriptions — e.g. the `"latents"` output template means "Denoised latents". Don't use it for initial noisy latents from a prepare-latents step. Use a plain `InputParam(...)` / `OutputParam(...)` with an accurate description instead.
 
-6. **Test model paths pointing to contributor repos.** Tiny test models must live under `hf-internal-testing/`, not personal repos like `username/tiny-model`. Move the model before merge.
+6. **Test model paths pointing to contributor repos.** Tiny test models ultimately live under `hf-internal-testing/`, not personal repos like `username/tiny-model`. Developing against a personal repo is fine and not merge-blocking — a maintainer moves the model (before or after merge) and updates the path.
 
 7. **Respect the declared IO system.** Components in `expected_components`, fields in `inputs` / `intermediate_outputs` — once declared, the modular framework guarantees them. So:
     - **Don't read defensively.** Declared components are always set as attributes (possibly `None`); declared upstream outputs are always populated in `block_state` after the upstream block runs. `getattr(components, "vae", None)`, `hasattr(self, "vae")`, `getattr(block_state, "prompt_embeds", None)` are dead code that hides typos. Use `components.vae` / `block_state.prompt_embeds` directly. Check `is not None` only when nullability is meaningful (a component the user might not have loaded).
@@ -224,6 +271,8 @@ ComponentSpec(
     - **Don't call `state.set()` directly inside a block.** Write to state only through declared `intermediate_outputs` via `self.get_block_state(state)` / `self.set_block_state(state, block_state)`. A direct `state.set("foo", value)` bypasses the block's interface entirely — the field never appears as a declared output, so downstream blocks can't see it through the normal wiring and the framework can't generate docs / validate types for it.
 
 8. **No-op skip logic inside an optional block.** If a step is conditional (e.g. an optional prompt enhancer), don't have the block check a flag at the top of `__call__` and `return` early. Wrap it in an `AutoPipelineBlocks` with `block_trigger_inputs = ["use_xxx"]` so the block is only assembled into the pipeline when the trigger input is provided. The block's own `__call__` should always assume its components and inputs are present.
+
+9. **Serving a checkpoint variant through a config flag in a shared block.** `ConfigSpec(name="is_distilled")` plus `if components.config.is_distilled:` bundles two checkpoints' behavior into one blockset — and it can't change the input surface at all (the distilled variant would still accept `negative_prompt`). Suggest a separate blockset for the variant instead (see Key pattern: Checkpoint variants).
 
 ## Conversion checklist
 
