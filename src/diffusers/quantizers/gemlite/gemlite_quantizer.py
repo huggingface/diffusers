@@ -113,8 +113,9 @@ class GemLiteQuantizer(DiffusersQuantizer):
     This quantizer only loads pre-quantized checkpoints. It replaces `torch.nn.Linear` modules with
     `GemLiteLinearTriton` modules before weight loading, then restores the serialized GemLite state (`W_q`, `scales`,
     `zeros`, `metadata`, `orig_shape`, `meta_scale`, ...) through the low-memory loader. The quantization config
-    provides the serialized layout, so the replacement tensors have the checkpoint's exact shapes and dtypes before
-    Accelerate estimates module sizes for `device_map="auto"`.
+    provides the packed weight layout, so replacement `W_q`, `scales`, and `zeros` tensors have the checkpoint's
+    exact shapes and dtypes before Accelerate estimates module sizes for `device_map="auto"`. Serialization metadata
+    is restored during weight loading and is not used for device-map sizing.
 
     Modules listed in `modules_to_not_convert` are skipped and left in their original dtype.
     """
@@ -233,8 +234,8 @@ class GemLiteQuantizer(DiffusersQuantizer):
         **kwargs,
     ):
         """
-        Replace `nn.Linear` modules with GemLite modules before the checkpoint tensors are loaded. The serialized
-        layout in the config creates correctly shaped GemLite tensors. Modules in `keep_in_fp32_modules` are excluded.
+        Replace `nn.Linear` modules with GemLite modules before the checkpoint tensors are loaded. The packed layout
+        in the config creates correctly shaped compute tensors. Modules in `keep_in_fp32_modules` are excluded.
         """
         state_dict = kwargs.get("state_dict")
         if state_dict is not None:

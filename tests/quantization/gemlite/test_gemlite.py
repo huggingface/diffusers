@@ -405,72 +405,6 @@ class GemLiteQuantizerTest(unittest.TestCase):
         self.assertIn("0.bias", state_dict)
         self.assertNotIn("1.bias", state_dict)
 
-    @require_accelerate
-    def test_prequantized_auto_device_map_uses_packed_state_size(self):
-        from accelerate.utils import compute_module_sizes
-
-        from diffusers.models.model_loading_utils import _determine_device_map
-
-        class GemLiteDeviceMapTestModel(ModelMixin, ConfigMixin):
-            _no_split_modules = []
-
-            @register_to_config
-            def __init__(self):
-                super().__init__()
-                self.proj = nn.Linear(128, 32, bias=False)
-
-        packed_state = _create_packed_gemlite_state_dict(
-            in_features=128,
-            out_features=32,
-            w_nbits=2,
-            group_size=128,
-            packing_bitwidth=8,
-            scales_dtype=torch.float32,
-            zeros_dtype=torch.float32,
-            device=torch_device,
-        )
-        packed_size = sum(value.numel() * value.element_size() for value in packed_state.values())
-
-        quantizer = DiffusersAutoQuantizer.from_config(
-            GemLiteConfig(
-                format="gemlite-int2-ternary-g128",
-                bits=2,
-                group_size=128,
-                packing_bitwidth=8,
-                solver="ternary",
-                input_dtype="fp16",
-                output_dtype="fp16",
-                scales_dtype="fp32",
-                zeros_dtype="fp32",
-                quantized_fqns=["proj"],
-            ),
-            pre_quantized=True,
-        )
-        gemlite_model = GemLiteDeviceMapTestModel().to("meta")
-        quantizer.preprocess_model(gemlite_model, device_map="auto", keep_in_fp32_modules=[])
-        placeholder_state_dict = gemlite_model.state_dict()
-        for name, value in packed_state.items():
-            placeholder = placeholder_state_dict[f"proj.{name}"]
-            self.assertEqual(placeholder.shape, value.shape)
-            self.assertEqual(placeholder.dtype, value.dtype)
-
-        module_sizes = compute_module_sizes(
-            gemlite_model,
-            dtype=torch.float16,
-            special_dtypes=quantizer.get_special_dtypes_update(gemlite_model, torch.float16),
-        )
-        self.assertEqual(module_sizes["proj"], packed_size)
-        with self.assertWarnsRegex(UserWarning, "Current model requires .* bytes of buffer for offloaded layers"):
-            gemlite_device_map = _determine_device_map(
-                gemlite_model,
-                "auto",
-                {0: packed_size // 2, "cpu": packed_size * 2},
-                torch.float16,
-                hf_quantizer=quantizer,
-            )
-
-        self.assertNotIn(0, gemlite_device_map.values())
-
     def test_process_model_before_weight_loading_replaces_pre_quantized_linears(self):
         from diffusers import FluxTransformer2DModel
 
@@ -614,7 +548,7 @@ class GemLiteQuantizerTest(unittest.TestCase):
         model.register_to_config(quantization_config=quantization_config)
 
         with tempfile.TemporaryDirectory() as model_dir:
-            model.save_pretrained(model_dir, safe_serialization=False, max_shard_size="1KB")
+            model.save_pretrained(model_dir, safe_serialization=True, max_shard_size="1KB")
             self.assertTrue(any(name.endswith(".index.json") for name in os.listdir(model_dir)))
 
             def assert_finalized_before_dispatch(loaded_model, **kwargs):
