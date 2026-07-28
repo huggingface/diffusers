@@ -7,7 +7,7 @@ import safetensors.torch
 import torch
 from accelerate import init_empty_weights
 from huggingface_hub import hf_hub_download
-from transformers import AutoTokenizer, Gemma3ForConditionalGeneration, Gemma3Processor
+from transformers import AutoConfig, AutoModelForImageTextToText, AutoProcessor, AutoTokenizer
 
 from diffusers import (
     AutoencoderKLLTX2Audio,
@@ -367,10 +367,65 @@ def get_ltx2_transformer_config(version: str) -> tuple[dict[str, Any], dict[str,
         }
         rename_dict = LTX_2_3_TRANSFORMER_KEYS_RENAME_DICT
         special_keys_remap = LTX_2_0_TRANSFORMER_SPECIAL_KEYS_REMAP
+    elif version == "2.4":
+        config = {
+            "model_id": "Lightricks/LTX-2.4",
+            "diffusers_config": {
+                "in_channels": 128,
+                "out_channels": 128,
+                "patch_size": 1,
+                "patch_size_t": 1,
+                "num_attention_heads": 32,
+                "attention_head_dim": 128,
+                "cross_attention_dim": 4096,
+                "vae_scale_factors": (8, 32, 32),
+                "pos_embed_max_pos": 20,
+                "base_height": 2048,
+                "base_width": 2048,
+                "gated_attn": True,
+                "cross_attn_mod": True,
+                "audio_in_channels": 128,
+                "audio_out_channels": 128,
+                "audio_patch_size": 1,
+                "audio_patch_size_t": 1,
+                "audio_num_attention_heads": 32,
+                "audio_attention_head_dim": 64,
+                "audio_cross_attention_dim": 2048,
+                "audio_scale_factor": 4,
+                "audio_pos_embed_max_pos": 20,
+                "audio_sampling_rate": 16000,
+                "audio_hop_length": 160,
+                "audio_gated_attn": True,
+                "audio_cross_attn_mod": True,
+                "num_layers": 48,
+                "activation_fn": "gelu-approximate",
+                "qk_norm": "rms_norm_across_heads",
+                "norm_elementwise_affine": False,
+                "norm_eps": 1e-6,
+                "caption_channels": 3840,
+                "attention_bias": True,
+                "attention_out_bias": True,
+                "rope_theta": 10000.0,
+                "rope_double_precision": True,
+                "causal_offset": 1,
+                "timestep_scale_multiplier": 1000,
+                "cross_attn_timestep_scale_multiplier": 1000,
+                "rope_type": "split",
+                "use_prompt_embeddings": False,
+                "perturbed_attn": True,
+                # The only transformer-level delta from 2.3: the video FFN drops its bias (audio_ff_bias and
+                # use_prompt_adaln_single keep their True defaults for this checkpoint).
+                "ff_bias": False,
+            },
+        }
+        rename_dict = LTX_2_3_TRANSFORMER_KEYS_RENAME_DICT
+        special_keys_remap = LTX_2_0_TRANSFORMER_SPECIAL_KEYS_REMAP
     return config, rename_dict, special_keys_remap
 
 
-def get_ltx2_connectors_config(version: str) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
+def get_ltx2_connectors_config(
+    version: str, gemma_text_config: Any | None = None
+) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
     if version == "test":
         config = {
             "model_id": "diffusers-internal-dev/dummy-ltx2",
@@ -447,6 +502,41 @@ def get_ltx2_connectors_config(version: str) -> tuple[dict[str, Any], dict[str, 
         }
         rename_dict = LTX_2_3_CONNECTORS_KEYS_RENAME_DICT
         special_keys_remap = LTX_2_0_CONNECTORS_SPECIAL_KEYS_REMAP
+    elif version == "2.4":
+        if gemma_text_config is None:
+            raise ValueError("gemma_text_config is required to derive connector dims for LTX-2.4.")
+        config = {
+            "model_id": "Lightricks/LTX-2.4",
+            "diffusers_config": {
+                # Derived from the Gemma 4 text config rather than hardcoded, since (unlike Gemma-3-12B) the
+                # 2.4 text encoder isn't a single fixed checkpoint. Formula matches the reference
+                # (`encoder_configurator._create_feature_extractor`): hidden_size, and num_hidden_layers + 1
+                # for the embedding layer.
+                "caption_channels": gemma_text_config.hidden_size,
+                "text_proj_in_factor": gemma_text_config.num_hidden_layers + 1,
+                "video_connector_num_attention_heads": 32,
+                "video_connector_attention_head_dim": 128,
+                "video_connector_num_layers": 8,
+                "video_connector_num_learnable_registers": 128,
+                "video_gated_attn": True,
+                "audio_connector_num_attention_heads": 32,
+                "audio_connector_attention_head_dim": 64,
+                "audio_connector_num_layers": 8,
+                "audio_connector_num_learnable_registers": 128,
+                "audio_gated_attn": True,
+                "connector_rope_base_seq_len": 4096,
+                "rope_theta": 10000.0,
+                "rope_double_precision": True,
+                "causal_temporal_positioning": False,
+                "rope_type": "split",
+                "per_modality_projections": True,
+                "video_hidden_dim": 4096,
+                "audio_hidden_dim": 2048,
+                "proj_bias": True,
+            },
+        }
+        rename_dict = LTX_2_3_CONNECTORS_KEYS_RENAME_DICT
+        special_keys_remap = LTX_2_0_CONNECTORS_SPECIAL_KEYS_REMAP
 
     return config, rename_dict, special_keys_remap
 
@@ -479,8 +569,10 @@ def convert_ltx2_transformer(original_state_dict: dict[str, Any], version: str) 
     return transformer
 
 
-def convert_ltx2_connectors(original_state_dict: dict[str, Any], version: str) -> LTX2TextConnectors:
-    config, rename_dict, special_keys_remap = get_ltx2_connectors_config(version)
+def convert_ltx2_connectors(
+    original_state_dict: dict[str, Any], version: str, gemma_text_config: Any | None = None
+) -> LTX2TextConnectors:
+    config, rename_dict, special_keys_remap = get_ltx2_connectors_config(version, gemma_text_config=gemma_text_config)
     diffusers_config = config["diffusers_config"]
 
     _, connector_state_dict = split_transformer_and_connector_state_dict(original_state_dict)
@@ -622,6 +714,46 @@ def get_ltx2_video_vae_config(
         }
         rename_dict = LTX_2_3_VIDEO_VAE_RENAME_DICT
         special_keys_remap = LTX_2_0_VAE_SPECIAL_KEYS_REMAP
+    elif version == "2.4":
+        # Same block structure as 2.3 (32x32x8 compression); confirmed against the checkpoint's
+        # config["vae"]["encoder_blocks"]/["decoder_blocks"] metadata, which is byte-identical to 2.3's.
+        config = {
+            "model_id": "Lightricks/LTX-2.4",
+            "diffusers_config": {
+                "in_channels": 3,
+                "out_channels": 3,
+                "latent_channels": 128,
+                "block_out_channels": (256, 512, 1024, 1024),
+                "down_block_types": (
+                    "LTX2VideoDownBlock3D",
+                    "LTX2VideoDownBlock3D",
+                    "LTX2VideoDownBlock3D",
+                    "LTX2VideoDownBlock3D",
+                ),
+                "decoder_block_out_channels": (256, 512, 512, 1024),
+                "layers_per_block": (4, 6, 4, 2, 2),
+                "decoder_layers_per_block": (4, 6, 4, 2, 2),
+                "spatio_temporal_scaling": (True, True, True, True),
+                "decoder_spatio_temporal_scaling": (True, True, True, True),
+                "decoder_inject_noise": (False, False, False, False, False),
+                "downsample_type": ("spatial", "temporal", "spatiotemporal", "spatiotemporal"),
+                "upsample_type": ("spatiotemporal", "spatiotemporal", "temporal", "spatial"),
+                "upsample_residual": (False, False, False, False),
+                "upsample_factor": (2, 2, 1, 2),
+                "timestep_conditioning": timestep_conditioning,
+                "patch_size": 4,
+                "patch_size_t": 1,
+                "resnet_norm_eps": 1e-6,
+                "encoder_causal": True,
+                "decoder_causal": False,
+                "encoder_spatial_padding_mode": "zeros",
+                "decoder_spatial_padding_mode": "zeros",
+                "spatial_compression_ratio": 32,
+                "temporal_compression_ratio": 8,
+            },
+        }
+        rename_dict = LTX_2_3_VIDEO_VAE_RENAME_DICT
+        special_keys_remap = LTX_2_0_VAE_SPECIAL_KEYS_REMAP
     return config, rename_dict, special_keys_remap
 
 
@@ -701,6 +833,31 @@ def get_ltx2_audio_vae_config(version: str) -> tuple[dict[str, Any], dict[str, A
                 "mel_bins": 64,
                 "double_z": True,
             },  # Same config as LTX-2.0
+        }
+        rename_dict = LTX_2_0_AUDIO_VAE_RENAME_DICT
+        special_keys_remap = LTX_2_0_AUDIO_VAE_SPECIAL_KEYS_REMAP
+    elif version == "2.4":
+        config = {
+            "model_id": "Lightricks/LTX-2.4",
+            "diffusers_config": {
+                "base_channels": 128,
+                "output_channels": 2,
+                "ch_mult": (1, 2, 4),
+                "num_res_blocks": 2,
+                "attn_resolutions": None,
+                "in_channels": 2,
+                "resolution": 256,
+                "latent_channels": 8,
+                "norm_type": "pixel",
+                "causality_axis": "height",
+                "dropout": 0.0,
+                "mid_block_add_attention": False,
+                "sample_rate": 16000,
+                "mel_hop_length": 160,
+                "is_causal": True,
+                "mel_bins": 64,
+                "double_z": True,
+            },  # Same config as LTX-2.0 / 2.3
         }
         rename_dict = LTX_2_0_AUDIO_VAE_RENAME_DICT
         special_keys_remap = LTX_2_0_AUDIO_VAE_SPECIAL_KEYS_REMAP
@@ -797,13 +954,55 @@ def get_ltx2_vocoder_config(version: str) -> tuple[dict[str, Any], dict[str, Any
         }
         rename_dict = LTX_2_3_VOCODER_RENAME_DICT
         special_keys_remap = LTX_2_3_VOCODER_SPECIAL_KEYS_REMAP
+    elif version == "2.4":
+        config = {
+            "model_id": "Lightricks/LTX-2.4",
+            "diffusers_config": {
+                "in_channels": 128,
+                "hidden_channels": 1536,
+                "out_channels": 2,
+                "upsample_kernel_sizes": [11, 4, 4, 4, 4, 4],
+                "upsample_factors": [5, 2, 2, 2, 2, 2],
+                "resnet_kernel_sizes": [3, 7, 11],
+                "resnet_dilations": [[1, 3, 5], [1, 3, 5], [1, 3, 5]],
+                "act_fn": "snakebeta",
+                "leaky_relu_negative_slope": 0.1,
+                "antialias": True,
+                "antialias_ratio": 2,
+                "antialias_kernel_size": 12,
+                "final_act_fn": None,
+                "final_bias": False,
+                "bwe_in_channels": 128,
+                "bwe_hidden_channels": 512,
+                "bwe_out_channels": 2,
+                "bwe_upsample_kernel_sizes": [12, 11, 4, 4, 4],
+                "bwe_upsample_factors": [6, 5, 2, 2, 2],
+                "bwe_resnet_kernel_sizes": [3, 7, 11],
+                "bwe_resnet_dilations": [[1, 3, 5], [1, 3, 5], [1, 3, 5]],
+                "bwe_act_fn": "snakebeta",
+                "bwe_leaky_relu_negative_slope": 0.1,
+                "bwe_antialias": True,
+                "bwe_antialias_ratio": 2,
+                "bwe_antialias_kernel_size": 12,
+                "bwe_final_act_fn": None,
+                "bwe_final_bias": False,
+                "filter_length": 512,
+                "hop_length": 80,
+                "window_length": 512,
+                "num_mel_channels": 64,
+                "input_sampling_rate": 16000,
+                "output_sampling_rate": 48000,
+            },  # Same config as LTX-2.3
+        }
+        rename_dict = LTX_2_3_VOCODER_RENAME_DICT
+        special_keys_remap = LTX_2_3_VOCODER_SPECIAL_KEYS_REMAP
     return config, rename_dict, special_keys_remap
 
 
 def convert_ltx2_vocoder(original_state_dict: dict[str, Any], version: str) -> dict[str, Any]:
     config, rename_dict, special_keys_remap = get_ltx2_vocoder_config(version)
     diffusers_config = config["diffusers_config"]
-    if version == "2.3":
+    if version in ("2.3", "2.4"):
         vocoder_cls = LTX2VocoderWithBWE
     else:
         vocoder_cls = LTX2Vocoder
@@ -948,7 +1147,7 @@ def get_args():
         "--version",
         type=str,
         default="2.0",
-        choices=["test", "2.0", "2.3"],
+        choices=["test", "2.0", "2.3", "2.4"],
         help="Version of the LTX 2.0 model",
     )
 
@@ -975,13 +1174,28 @@ def get_args():
         "--text_encoder_model_id",
         default="google/gemma-3-12b-it-qat-q4_0-unquantized",
         type=none_or_str,
-        help="HF Hub id for the LTX 2.0 base text encoder model",
+        help=(
+            "HF Hub id for the text encoder model. Default is Gemma 3, used by LTX 2.0/2.3. LTX-2.4 requires a "
+            "Gemma 4 (`gemma4_unified`) checkpoint here instead -- passing the Gemma 3 default with `--version 2.4` "
+            "raises an error."
+        ),
     )
     parser.add_argument(
         "--tokenizer_id",
         default="google/gemma-3-12b-it-qat-q4_0-unquantized",
         type=none_or_str,
-        help="HF Hub id for the LTX 2.0 text tokenizer",
+        help="HF Hub id for the text tokenizer. Should match --text_encoder_model_id's family (Gemma 3 vs Gemma 4).",
+    )
+    parser.add_argument(
+        "--prompt_enhancer_model_id",
+        default=None,
+        type=none_or_str,
+        help=(
+            "HF Hub id for the prompt-enhancer model (used with --add_processor). For LTX-2.0/2.3, defaults to "
+            "--text_encoder_model_id (the same Gemma 3 checkpoint serves both roles). LTX-2.4's fine-tuned text "
+            "encoder is not trained for enhancement, so this must be set explicitly for --version 2.4 -- e.g. to "
+            "google/gemma-4-E2B-it or google/gemma-4-E4B-it."
+        ),
     )
     parser.add_argument(
         "--latent_upsampler_filename",
@@ -1013,7 +1227,7 @@ def get_args():
     parser.add_argument(
         "--add_processor",
         action="store_true",
-        help="Whether to add a Gemma3Processor to the pipeline for prompt enhancement.",
+        help="Whether to add a text-encoder processor to the pipeline for prompt enhancement.",
     )
 
     parser.add_argument("--vae_dtype", type=str, default="bf16", choices=["fp32", "fp16", "bf16"])
@@ -1068,6 +1282,34 @@ def main(args):
     if args.combined_filename is not None and load_combined_models:
         combined_ckpt = load_original_checkpoint(args, filename=args.combined_filename)
 
+    # LTX-2.4 only works with a Gemma 4 (`gemma4_unified`) text encoder; --text_encoder_model_id defaults to
+    # Gemma 3 (for 2.0/2.3), so silently proceeding would pair a 2.4 checkpoint with the wrong text encoder.
+    gemma_text_config = None
+    if args.version == "2.4" and (args.text_encoder or args.connectors or args.full_pipeline):
+        gemma_config = AutoConfig.from_pretrained(args.text_encoder_model_id)
+        if gemma_config.model_type != "gemma4_unified":
+            raise ValueError(
+                f"LTX-2.4 requires a Gemma 4 (`gemma4_unified`) text encoder, but --text_encoder_model_id="
+                f"{args.text_encoder_model_id!r} has model_type={gemma_config.model_type!r}. Pass "
+                "--text_encoder_model_id pointing at a Gemma 4 checkpoint (the default is Gemma 3, for 2.0/2.3)."
+            )
+        gemma_text_config = gemma_config.text_config
+
+    # LTX-2.4's fine-tuned text encoder is never a valid prompt enhancer (unlike LTX-2.0/2.3, where the same Gemma 3
+    # checkpoint serves both roles) -- require an explicit, separate --prompt_enhancer_model_id instead of silently
+    # falling back to --text_encoder_model_id.
+    if (
+        args.version == "2.4"
+        and args.add_processor
+        and (args.text_encoder or args.full_pipeline)
+        and args.prompt_enhancer_model_id is None
+    ):
+        raise ValueError(
+            "LTX-2.4's text encoder is not trained for prompt enhancement, so --prompt_enhancer_model_id must be "
+            "set explicitly when --add_processor is used with --version 2.4 -- e.g. to google/gemma-4-E2B-it or "
+            "google/gemma-4-E4B-it."
+        )
+
     if args.vae or args.full_pipeline or args.upsample_pipeline:
         if args.vae_filename is not None:
             original_vae_ckpt = load_hub_or_local_checkpoint(filename=args.vae_filename)
@@ -1102,7 +1344,9 @@ def main(args):
             original_connectors_ckpt = load_hub_or_local_checkpoint(filename=args.dit_filename)
         elif combined_ckpt is not None:
             original_connectors_ckpt = get_model_state_dict_from_combined_ckpt(combined_ckpt, args.dit_prefix)
-        connectors = convert_ltx2_connectors(original_connectors_ckpt, version=args.version)
+        connectors = convert_ltx2_connectors(
+            original_connectors_ckpt, version=args.version, gemma_text_config=gemma_text_config
+        )
         if not args.full_pipeline:
             connectors.to(dit_dtype).save_pretrained(os.path.join(args.output_path, "connectors"))
 
@@ -1116,8 +1360,7 @@ def main(args):
             vocoder.to(vocoder_dtype).save_pretrained(os.path.join(args.output_path, "vocoder"))
 
     if args.text_encoder or args.full_pipeline:
-        # text_encoder = AutoModel.from_pretrained(args.text_encoder_model_id)
-        text_encoder = Gemma3ForConditionalGeneration.from_pretrained(args.text_encoder_model_id)
+        text_encoder = AutoModelForImageTextToText.from_pretrained(args.text_encoder_model_id)
         if not args.full_pipeline:
             text_encoder.to(text_encoder_dtype).save_pretrained(os.path.join(args.output_path, "text_encoder"))
 
@@ -1125,10 +1368,22 @@ def main(args):
         if not args.full_pipeline:
             tokenizer.save_pretrained(os.path.join(args.output_path, "tokenizer"))
 
+        processor = None
+        prompt_enhancer = None
         if args.add_processor:
-            processor = Gemma3Processor.from_pretrained(args.text_encoder_model_id)
+            enhancer_model_id = args.prompt_enhancer_model_id or args.text_encoder_model_id
+            processor = AutoProcessor.from_pretrained(enhancer_model_id)
             if not args.full_pipeline:
                 processor.save_pretrained(os.path.join(args.output_path, "processor"))
+
+            if args.prompt_enhancer_model_id is not None:
+                # Separate, dedicated enhancer model (required for LTX-2.4); for LTX-2.0/2.3, the same
+                # `text_encoder` checkpoint already serves as its own enhancer, so nothing extra is saved.
+                prompt_enhancer = AutoModelForImageTextToText.from_pretrained(enhancer_model_id)
+                if not args.full_pipeline:
+                    prompt_enhancer.to(text_encoder_dtype).save_pretrained(
+                        os.path.join(args.output_path, "prompt_enhancer")
+                    )
 
     if args.latent_upsampler or args.upsample_pipeline:
         original_latent_upsampler_ckpt = load_hub_or_local_checkpoint(
@@ -1174,6 +1429,8 @@ def main(args):
             connectors=connectors,
             transformer=transformer,
             vocoder=vocoder,
+            processor=processor,
+            prompt_enhancer=prompt_enhancer,
         )
 
         pipe.save_pretrained(args.output_path, safe_serialization=True, max_shard_size="5GB")

@@ -18,7 +18,14 @@ from typing import Any, Callable
 
 import numpy as np
 import torch
-from transformers import Gemma3ForConditionalGeneration, Gemma3Processor, GemmaTokenizer, GemmaTokenizerFast
+from transformers import (
+    Gemma3ForConditionalGeneration,
+    Gemma4ForConditionalGeneration,
+    Gemma4UnifiedForConditionalGeneration,
+    GemmaTokenizer,
+    GemmaTokenizerFast,
+    ProcessorMixin,
+)
 
 from ...callbacks import MultiPipelineCallbacks, PipelineCallback
 from ...loaders import FromSingleFileMixin, LTX2LoraLoaderMixin
@@ -31,6 +38,7 @@ from ...video_processor import VideoProcessor
 from ..pipeline_utils import DiffusionPipeline
 from .connectors import LTX2TextConnectors
 from .pipeline_output import LTX2PipelineOutput
+from .utils import GEMMA3_PROMPT_ENHANCEMENT_CONFIG, GEMMA4_PROMPT_ENHANCEMENT_CONFIG, LTX2_4_T2V_DEFAULT_SYSTEM_PROMPT
 from .vocoder import LTX2Vocoder, LTX2VocoderWithBWE
 
 
@@ -208,8 +216,8 @@ class LTX2Pipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoaderMixin):
             Text connector stack used to adapt text encoder hidden states for the video and audio branches.
     """
 
-    model_cpu_offload_seq = "text_encoder->connectors->transformer->vae->audio_vae->vocoder"
-    _optional_components = ["processor"]
+    model_cpu_offload_seq = "prompt_enhancer->text_encoder->connectors->transformer->vae->audio_vae->vocoder"
+    _optional_components = ["processor", "prompt_enhancer"]
     _callback_tensor_inputs = ["latents", "prompt_embeds", "negative_prompt_embeds"]
 
     def __init__(
@@ -217,12 +225,13 @@ class LTX2Pipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoaderMixin):
         scheduler: FlowMatchEulerDiscreteScheduler,
         vae: AutoencoderKLLTX2Video,
         audio_vae: AutoencoderKLLTX2Audio,
-        text_encoder: Gemma3ForConditionalGeneration,
+        text_encoder: Gemma3ForConditionalGeneration | Gemma4UnifiedForConditionalGeneration,
         tokenizer: GemmaTokenizer | GemmaTokenizerFast,
         connectors: LTX2TextConnectors,
         transformer: LTX2VideoTransformer3DModel,
         vocoder: LTX2Vocoder | LTX2VocoderWithBWE,
-        processor: Gemma3Processor | None = None,
+        processor: ProcessorMixin | None = None,
+        prompt_enhancer: Gemma4ForConditionalGeneration | None = None,
     ):
         super().__init__()
 
@@ -236,6 +245,7 @@ class LTX2Pipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoaderMixin):
             vocoder=vocoder,
             scheduler=scheduler,
             processor=processor,
+            prompt_enhancer=prompt_enhancer,
         )
 
         self.vae_spatial_compression_ratio = (
@@ -432,21 +442,32 @@ class LTX2Pipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoaderMixin):
         device: str | torch.device | None = None,
     ):
         """
-        Enhances the supplied `prompt` by generating a new prompt using the current text encoder (default is a
-        `transformers.Gemma3ForConditionalGeneration` model) from it and a system prompt.
+        Enhances the supplied `prompt` by generating a new prompt using the prompt enhancer (a Gemma
+        conditional-generation model) from it and a system prompt. Uses the dedicated `prompt_enhancer` component if
+        one is configured (e.g. LTX-2.4, whose text encoder isn't trained for enhancement), otherwise falls back to the
+        main `text_encoder` (LTX-2.0/2.3, which double as their own enhancer).
+
+        `generation_kwargs`, if not supplied, always matches whichever model is doing the enhancing: greedy decoding
+        (`do_sample=False`, `no_repeat_ngram_size=3`) for a dedicated `prompt_enhancer` (LTX-2.4's
+        `google/gemma-4-E2B-it`); sampling (`do_sample=True`, `temperature=0.7`) for the `text_encoder` fallback
+        (LTX-2.0/2.3). `max_new_tokens`/`seed` are unaffected by this switch -- greedy decoding doesn't consume
+        randomness, so `seed` is inert for the dedicated-enhancer case, and 512 tokens comfortably covers LTX-2.4's
+        ~150-220 word target caption length.
         """
         device = device or self._execution_device
-        if generation_kwargs is None:
-            # Set to default generation kwargs
-            generation_kwargs = {"do_sample": True, "temperature": 0.7}
+        using_dedicated_enhancer = getattr(self, "prompt_enhancer", None) is not None
+        enhancer = self.prompt_enhancer if using_dedicated_enhancer else self.text_encoder
+        config = GEMMA4_PROMPT_ENHANCEMENT_CONFIG if using_dedicated_enhancer else GEMMA3_PROMPT_ENHANCEMENT_CONFIG
+
+        generation_kwargs = generation_kwargs if generation_kwargs is not None else config.generation_kwargs
 
         messages = [
             {"role": "system", "content": system_prompt},
-            {"role": "user", "content": f"user prompt: {prompt}"},
+            {"role": "user", "content": f"{config.user_prompt_prefix}: {prompt}"},
         ]
         template = self.processor.tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
         model_inputs = self.processor(text=template, images=None, return_tensors="pt").to(device)
-        self.text_encoder.to(device)
+        enhancer.to(device)
 
         # `transformers.GenerationMixin.generate` does not support using a `torch.Generator` to control randomness,
         # so manually apply a seed for reproducible generation.
@@ -454,7 +475,7 @@ class LTX2Pipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoaderMixin):
             # Overwrite seed to generator's initial seed
             seed = generator.initial_seed()
         torch.manual_seed(seed)
-        generated_sequences = self.text_encoder.generate(
+        generated_sequences = enhancer.generate(
             **model_inputs,
             max_new_tokens=max_new_tokens,
             **generation_kwargs,
@@ -462,6 +483,7 @@ class LTX2Pipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoaderMixin):
 
         generated_ids = [seq[len(model_inputs.input_ids[i]) :] for i, seq in enumerate(generated_sequences)]
         enhanced_prompt = self.processor.tokenizer.batch_decode(generated_ids, skip_special_tokens=True)
+
         return enhanced_prompt
 
     def check_inputs(
@@ -477,6 +499,8 @@ class LTX2Pipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoaderMixin):
         spatio_temporal_guidance_blocks=None,
         stg_scale=None,
         audio_stg_scale=None,
+        system_prompt=None,
+        enable_prompt_enhancement=None,
     ):
         if height % 32 != 0 or width % 32 != 0:
             raise ValueError(f"`height` and `width` have to be divisible by 32 but are {height} and {width}.")
@@ -524,6 +548,19 @@ class LTX2Pipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoaderMixin):
             raise ValueError(
                 "Spatio-Temporal Guidance (STG) is specified but no STG blocks are supplied. Please supply a list of"
                 "block indices at which to apply STG in `spatio_temporal_guidance_blocks`"
+            )
+
+        if enable_prompt_enhancement is None:
+            enable_prompt_enhancement = system_prompt is not None or getattr(self, "prompt_enhancer", None) is not None
+        if (
+            enable_prompt_enhancement
+            and prompt is not None
+            and system_prompt is None
+            and getattr(self, "prompt_enhancer", None) is None
+        ):
+            raise ValueError(
+                "`system_prompt` must be supplied to enable prompt enhancement when no dedicated "
+                "`prompt_enhancer` component is configured (LTX-2.0/2.3)."
             )
 
     @staticmethod
@@ -840,6 +877,7 @@ class LTX2Pipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoaderMixin):
         decode_noise_scale: float | list[float] | None = None,
         use_cross_timestep: bool = False,
         system_prompt: str | None = None,
+        enable_prompt_enhancement: bool | None = None,
         prompt_max_new_tokens: int = 512,
         prompt_enhancement_kwargs: dict[str, Any] | None = None,
         prompt_enhancement_seed: int = 10,
@@ -960,18 +998,27 @@ class LTX2Pipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoaderMixin):
                 calculating the cross attention modulation parameters. `True` is the newer (e.g. LTX-2.3) behavior;
                 `False` is the legacy LTX-2.0 behavior.
             system_prompt (`str`, *optional*, defaults to `None`):
-                Optional system prompt to use for prompt enhancement. The system prompt will be used by the current
-                text encoder (by default, a `Gemma3ForConditionalGeneration` model) to generate an enhanced prompt from
-                the original `prompt` to condition generation. If not supplied, prompt enhancement will not be
-                performed.
+                Optional system prompt to use for prompt enhancement. The system prompt will be used by the prompt
+                enhancer (a Gemma conditional-generation model -- the dedicated `prompt_enhancer` component if one is
+                configured, otherwise the main `text_encoder`) to generate an enhanced prompt from the original
+                `prompt` to condition generation. If not supplied and a dedicated `prompt_enhancer` is configured
+                (LTX-2.4), defaults to `LTX2_4_T2V_DEFAULT_SYSTEM_PROMPT` (from `diffusers.pipelines.ltx2.utils`) --
+                see `enable_prompt_enhancement`.
+            enable_prompt_enhancement (`bool`, *optional*, defaults to `None`):
+                Whether to run prompt enhancement. If not supplied, defaults to `True` when a dedicated
+                `prompt_enhancer` is configured (LTX-2.4, where enhancement is strongly recommended) or when
+                `system_prompt` was explicitly passed (LTX-2.0/2.3 fallback, matching prior behavior); `False`
+                otherwise. Pass `False` explicitly to disable enhancement even for LTX-2.4.
             prompt_max_new_tokens (`int`, *optional*, defaults to `512`):
                 The maximum number of new tokens to generate when performing prompt enhancement.
             prompt_enhancement_kwargs (`dict[str, Any]`, *optional*, defaults to `None`):
-                Keyword arguments for `self.text_encoder.generate`. If not supplied, default arguments of
-                `do_sample=True` and `temperature=0.7` will be used. See
+                Keyword arguments for the prompt enhancer's `.generate` call. If not supplied, always matches whichever
+                model is doing the enhancing: `do_sample=False, no_repeat_ngram_size=3` (greedy) when using a dedicated
+                `prompt_enhancer` (LTX-2.4), or `do_sample=True, temperature=0.7` for the `text_encoder` fallback
+                (LTX-2.0/2.3). See
                 https://huggingface.co/docs/transformers/main/en/main_classes/text_generation#transformers.GenerationMixin.generate
                 for more details.
-            prompt_enhancement_seed (`int`, *optional*, default to `10`):
+            prompt_enhancement_seed (`int`, *optional*, defaults to `10`):
                 Random seed for any random operations during prompt enhancement.
             output_type (`str`, *optional*, defaults to `"pil"`):
                 The output format of the generate image. Choose between
@@ -1023,6 +1070,8 @@ class LTX2Pipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoaderMixin):
             spatio_temporal_guidance_blocks=spatio_temporal_guidance_blocks,
             stg_scale=stg_scale,
             audio_stg_scale=audio_stg_scale,
+            system_prompt=system_prompt,
+            enable_prompt_enhancement=enable_prompt_enhancement,
         )
 
         # Per-modality guidance scales (video, audio)
@@ -1050,7 +1099,14 @@ class LTX2Pipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoaderMixin):
         device = self._execution_device
 
         # 3. Prepare text embeddings
-        if system_prompt is not None and prompt is not None:
+        if enable_prompt_enhancement is None:
+            # Auto: on if the caller explicitly asked (system_prompt given -- the LTX-2.0/2.3 trigger, unchanged)
+            # or this pipeline has a dedicated prompt_enhancer (LTX-2.4, where enhancement is strongly recommended).
+            enable_prompt_enhancement = system_prompt is not None or getattr(self, "prompt_enhancer", None) is not None
+
+        if enable_prompt_enhancement and prompt is not None:
+            if system_prompt is None:
+                system_prompt = LTX2_4_T2V_DEFAULT_SYSTEM_PROMPT
             prompt = self.enhance_prompt(
                 prompt=prompt,
                 system_prompt=system_prompt,
@@ -1082,7 +1138,7 @@ class LTX2Pipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoaderMixin):
             prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds], dim=0)
             prompt_attention_mask = torch.cat([negative_prompt_attention_mask, prompt_attention_mask], dim=0)
 
-        tokenizer_padding_side = "left"  # Padding side for default Gemma3-12B text encoder
+        tokenizer_padding_side = "left"  # Padding side for the default Gemma text encoder
         if getattr(self, "tokenizer", None) is not None:
             tokenizer_padding_side = getattr(self.tokenizer, "padding_side", "left")
         connector_prompt_embeds, connector_audio_prompt_embeds, connector_attention_mask = self.connectors(

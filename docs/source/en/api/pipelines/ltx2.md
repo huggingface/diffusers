@@ -502,6 +502,131 @@ encode_video(
 )
 ```
 
+## LTX-2.4
+
+LTX-2.4 reuses the same `LTX2Pipeline`/`LTX2VideoTransformer3DModel`/`AutoencoderKLLTX2Video`/etc. classes as LTX-2.3 — there is no separate pipeline class for it. The only user-visible difference is the text encoder: LTX-2.4 is paired with a Gemma 4 (`gemma4_unified`) checkpoint instead of Gemma 3. This is loaded automatically when you call `from_pretrained` on a converted LTX-2.4 checkpoint (via the `transformers` `Auto*` classes), so no extra setup is needed at inference time — just point `from_pretrained` at an LTX-2.4 repo instead of an LTX-2.3 one:
+
+```py
+import torch
+from diffusers import LTX2Pipeline
+from diffusers.utils import encode_video
+from diffusers.pipelines.ltx2.utils import DEFAULT_NEGATIVE_PROMPT
+
+device = "cuda"
+width = 768
+height = 512
+random_seed = 42
+frame_rate = 24.0
+generator = torch.Generator(device).manual_seed(random_seed)
+model_path = "diffusers/LTX-2.4-Diffusers"
+
+pipe = LTX2Pipeline.from_pretrained(model_path, torch_dtype=torch.bfloat16)
+pipe.enable_sequential_cpu_offload(device=device)
+pipe.vae.enable_tiling()
+
+prompt = "A cinematic shot of a red fox walking through a snowy forest at dawn, golden light filtering through pine trees."
+
+video, audio = pipe(
+    prompt=prompt,
+    negative_prompt=DEFAULT_NEGATIVE_PROMPT,
+    width=width,
+    height=height,
+    num_frames=121,
+    frame_rate=frame_rate,
+    num_inference_steps=40,
+    guidance_scale=3.0,  # Same recommended guidance parameters as LTX-2.3, see Multimodal Guidance above
+    stg_scale=1.0,
+    modality_scale=3.0,
+    guidance_rescale=0.7,
+    audio_guidance_scale=7.0,
+    audio_stg_scale=1.0,
+    audio_modality_scale=3.0,
+    audio_guidance_rescale=0.7,
+    spatio_temporal_guidance_blocks=[29],
+    use_cross_timestep=True,
+    generator=generator,
+    output_type="np",
+    return_dict=False,
+)
+
+encode_video(
+    video[0],
+    fps=frame_rate,
+    audio=audio[0].float().cpu(),
+    audio_sample_rate=pipe.vocoder.config.output_sampling_rate,
+    output_path="ltx2_4_t2v.mp4",
+)
+```
+
+A few things carry over from LTX-2.3 unchanged: the [Multimodal Guidance](#multimodal-guidance) recommendations above apply equally to LTX-2.4 (only the STG block index differs — `29` instead of `28`). One thing does *not* carry over:
+
+- **Single-stage checkpoint only.** LTX-2.4 currently ships as a single-stage (text/image-to-video) checkpoint — the [two-stage generation](#two-stages-generation) workflow (distilled LoRA + latent upsampler) is not yet available for it.
+
+### Prompt Enhancement for LTX-2.4
+
+**Using prompt enhancement is strongly recommended for LTX-2.4, and it's enabled by default.** Unlike LTX-2.0/2.3, where the same text encoder checkpoint doubles as the enhancer (see [Prompt Enhancement](#prompt-enhancement) above), LTX-2.4's fine-tuned text encoder was not trained for enhancement. Instead, enhancement uses a separate, off-the-shelf `google/gemma-4-E2B-it` checkpoint. Load it into the pipeline's optional `prompt_enhancer`/`processor` components; once configured, calling the pipeline with just `prompt=` automatically enhances it using `LTX2_4_T2V_DEFAULT_SYSTEM_PROMPT` and the recipe `google/gemma-4-E2B-it` was evaluated with -- greedy decoding (`do_sample=False`, `no_repeat_ngram_size=3`). Pass `enable_prompt_enhancement=False` to disable it, or an explicit `system_prompt=` to use a different one:
+
+```py
+import torch
+from transformers import AutoModelForImageTextToText, AutoProcessor
+from diffusers import LTX2Pipeline
+from diffusers.utils import encode_video
+from diffusers.pipelines.ltx2.utils import DEFAULT_NEGATIVE_PROMPT
+
+device = "cuda"
+width = 768
+height = 512
+random_seed = 42
+frame_rate = 24.0
+generator = torch.Generator(device).manual_seed(random_seed)
+model_path = "diffusers/LTX-2.4-Diffusers"
+enhancer_model_id = "google/gemma-4-E2B-it"
+
+pipe = LTX2Pipeline.from_pretrained(model_path, torch_dtype=torch.bfloat16)
+pipe.enable_model_cpu_offload(device=device)
+pipe.vae.enable_tiling()
+if getattr(pipe, "prompt_enhancer", None) is None:
+    pipe.prompt_enhancer = AutoModelForImageTextToText.from_pretrained(enhancer_model_id)
+    pipe.processor = AutoProcessor.from_pretrained(enhancer_model_id)
+
+prompt = "A cinematic shot of a red fox walking through a snowy forest at dawn, golden light filtering through pine trees."
+
+video, audio = pipe(
+    prompt=prompt,
+    negative_prompt=DEFAULT_NEGATIVE_PROMPT,
+    width=width,
+    height=height,
+    num_frames=121,
+    frame_rate=frame_rate,
+    num_inference_steps=40,
+    guidance_scale=3.0,
+    stg_scale=1.0,
+    modality_scale=3.0,
+    guidance_rescale=0.7,
+    audio_guidance_scale=7.0,
+    audio_stg_scale=1.0,
+    audio_modality_scale=3.0,
+    audio_guidance_rescale=0.7,
+    spatio_temporal_guidance_blocks=[29],
+    use_cross_timestep=True,
+    # No `system_prompt=` needed -- enhancement runs automatically using `LTX2_4_T2V_DEFAULT_SYSTEM_PROMPT`
+    # because `prompt_enhancer` is configured. Pass `enable_prompt_enhancement=False` to opt out.
+    generator=generator,
+    output_type="np",
+    return_dict=False,
+)
+
+encode_video(
+    video[0],
+    fps=frame_rate,
+    audio=audio[0].float().cpu(),
+    audio_sample_rate=pipe.vocoder.config.output_sampling_rate,
+    output_path="ltx2_4_t2v_enhanced.mp4",
+)
+```
+
+The same applies to image-to-video with `LTX2ImageToVideoPipeline`: set `pipe.prompt_enhancer`/`pipe.processor` the same way, and enhancement runs automatically (using `LTX2_4_I2V_DEFAULT_SYSTEM_PROMPT`, conditioning on both the reference image and the text prompt) — again, no `system_prompt=` needed unless you want to override it.
+
 ## LTX2Pipeline
 
 [[autodoc]] LTX2Pipeline

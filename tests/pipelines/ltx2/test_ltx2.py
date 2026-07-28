@@ -171,6 +171,7 @@ class LTX2PipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             "connectors": connectors,
             "vocoder": vocoder,
             "processor": None,
+            "prompt_enhancer": None,
         }
 
         return components
