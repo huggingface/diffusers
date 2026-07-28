@@ -33,97 +33,79 @@ def _normalize_torch_device(device: Any) -> "torch.device":
     return torch.device(device)
 
 
-def _replace_with_gemlite_linear(
-    model: "ModelMixin", modules_to_not_convert: list[str], quantization_config: "GemLiteConfig"
-) -> int:
-    """
-    Replace eligible `nn.Linear` modules in `model` with GemLite modules whose serialized tensors have meta shapes.
+class _GemLiteDiffusersProcessor:
+    """Implement GemLite's `patch_model` protocol for Diffusers' pre-quantized loading path."""
 
-    Returns the number of replaced modules. Modules in `modules_to_not_convert` are left unchanged.
-    """
-    from gemlite.core import DType, GemLiteLinearTriton
-    from gemlite.dtypes import DTYPE_TO_TORCH, PACKING_BITWIDTH_TO_TORCH_DTYPE
+    def __init__(self, quantization_config: "GemLiteConfig", modules_to_not_convert: list[str]):
+        from gemlite.core import DType
+        from gemlite.dtypes import DTYPE_TO_TORCH, PACKING_BITWIDTH_TO_TORCH_DTYPE
 
-    gemlite_dtypes = {
-        "fp16": DType.FP16,
-        "float16": DType.FP16,
-        "bf16": DType.BF16,
-        "bfloat16": DType.BF16,
-        "fp32": DType.FP32,
-        "float32": DType.FP32,
-    }
-    input_dtype = gemlite_dtypes[quantization_config.input_dtype]
-    output_dtype = gemlite_dtypes[quantization_config.output_dtype]
-    scales_gemlite_dtype = gemlite_dtypes[quantization_config.scales_dtype]
-    scales_dtype = DTYPE_TO_TORCH[scales_gemlite_dtype.value]
-    zeros_dtype = DTYPE_TO_TORCH[gemlite_dtypes[quantization_config.zeros_dtype].value]
-    packed_dtype = PACKING_BITWIDTH_TO_TORCH_DTYPE[quantization_config.packing_bitwidth]
+        gemlite_dtypes = {
+            "fp16": DType.FP16,
+            "float16": DType.FP16,
+            "bf16": DType.BF16,
+            "bfloat16": DType.BF16,
+            "fp32": DType.FP32,
+            "float32": DType.FP32,
+        }
+        self.bits = quantization_config.bits
+        self.group_size = quantization_config.group_size
+        self.input_dtype = gemlite_dtypes[quantization_config.input_dtype]
+        self.output_dtype = gemlite_dtypes[quantization_config.output_dtype]
+        self.scales_gemlite_dtype = gemlite_dtypes[quantization_config.scales_dtype]
+        self.scales_dtype = DTYPE_TO_TORCH[self.scales_gemlite_dtype.value]
+        self.zeros_dtype = DTYPE_TO_TORCH[gemlite_dtypes[quantization_config.zeros_dtype].value]
+        self.packed_dtype = PACKING_BITWIDTH_TO_TORCH_DTYPE[quantization_config.packing_bitwidth]
+        self.elements_per_sample = quantization_config.packing_bitwidth // quantization_config.bits
+        self.modules_to_not_convert = modules_to_not_convert
+        self.quantized_fqns = (
+            set(quantization_config.quantized_fqns) if quantization_config.quantized_fqns is not None else None
+        )
 
-    elements_per_sample = quantization_config.packing_bitwidth // quantization_config.bits
-    quantized_fqns = (
-        set(quantization_config.quantized_fqns) if quantization_config.quantized_fqns is not None else None
-    )
+    def from_linear(self, linear: "nn.Linear") -> "nn.Module":
+        from gemlite.core import GemLiteLinearTriton
 
-    def initialize_serialized_tensors(gemlite_linear: "nn.Module", linear: "nn.Linear") -> None:
-        gemlite_linear.elements_per_sample = elements_per_sample
-        gemlite_linear.meta_dtype = scales_gemlite_dtype
+        should_skip_linear = (
+            self.quantized_fqns is not None and linear.name not in self.quantized_fqns
+        ) or _is_in_skip_modules(linear.name, self.modules_to_not_convert)
+        if should_skip_linear:
+            return linear
+
+        gemlite_linear = GemLiteLinearTriton(
+            W_nbits=self.bits,
+            group_size=self.group_size,
+            in_features=linear.in_features,
+            out_features=linear.out_features,
+            input_dtype=self.input_dtype,
+            output_dtype=self.output_dtype,
+        ).to(linear.weight.device)
+        gemlite_linear.elements_per_sample = self.elements_per_sample
+        gemlite_linear.meta_dtype = self.scales_gemlite_dtype
         gemlite_linear.channel_scale_mode = 0
         gemlite_linear.W_group_mode = 0
         gemlite_linear.data_contiguous = True
         gemlite_linear.W_q = torch.empty(
-            linear.in_features // elements_per_sample,
+            linear.in_features // self.elements_per_sample,
             linear.out_features,
-            dtype=packed_dtype,
+            dtype=self.packed_dtype,
             device=linear.weight.device,
         )
         gemlite_linear.scales = torch.empty(
-            linear.in_features // quantization_config.group_size,
+            linear.in_features // self.group_size,
             linear.out_features,
-            dtype=scales_dtype,
+            dtype=self.scales_dtype,
             device=linear.weight.device,
         )
         gemlite_linear.zeros = torch.empty(
-            linear.in_features // quantization_config.group_size,
+            linear.in_features // self.group_size,
             linear.out_features,
-            dtype=zeros_dtype,
+            dtype=self.zeros_dtype,
             device=linear.weight.device,
         )
-        gemlite_linear.metadata = torch.empty(
-            len(gemlite_linear.get_meta_args()), dtype=torch.int32, device=linear.weight.device
-        )
-        gemlite_linear.orig_shape = torch.empty(2, dtype=torch.int32, device=linear.weight.device)
-        gemlite_linear.meta_scale = torch.empty((), dtype=torch.float32, device=linear.weight.device)
-
-    def replace(module: "nn.Module", prefix: str = "") -> int:
-        replaced = 0
-        for name, child in module.named_children():
-            child_name = f"{prefix}.{name}" if prefix else name
-            should_replace = (
-                isinstance(child, nn.Linear)
-                and (quantized_fqns is None or child_name in quantized_fqns)
-                and not _is_in_skip_modules(child_name, modules_to_not_convert)
-            )
-            if should_replace:
-                gemlite_linear = GemLiteLinearTriton(
-                    W_nbits=quantization_config.bits,
-                    group_size=quantization_config.group_size,
-                    in_features=child.in_features,
-                    out_features=child.out_features,
-                    input_dtype=input_dtype,
-                    output_dtype=output_dtype,
-                ).to(child.weight.device)
-                # Match the checkpoint's serialized tensor shapes and dtypes so Accelerate sizes the device map correctly.
-                initialize_serialized_tensors(gemlite_linear, child)
-                if child.bias is not None:
-                    gemlite_linear.bias = nn.Parameter(torch.empty_like(child.bias), requires_grad=False)
-                gemlite_linear._gemlite_loaded_param_names = set()
-                setattr(module, name, gemlite_linear)
-                replaced += 1
-            else:
-                replaced += replace(child, child_name)
-        return replaced
-
-    return replace(model)
+        if linear.bias is not None:
+            gemlite_linear.bias = nn.Parameter(torch.empty_like(linear.bias), requires_grad=False)
+        gemlite_linear._gemlite_loaded_param_names = set()
+        return gemlite_linear
 
 
 class GemLiteQuantizer(DiffusersQuantizer):
@@ -255,7 +237,14 @@ class GemLiteQuantizer(DiffusersQuantizer):
         self.modules_to_not_convert.extend(keep_in_fp32_modules)
         self.modules_to_not_convert = [module for module in self.modules_to_not_convert if module is not None]
 
-        _replace_with_gemlite_linear(model, self.modules_to_not_convert, self.quantization_config)
+        from gemlite.helper import patch_model
+
+        processor = _GemLiteDiffusersProcessor(self.quantization_config, self.modules_to_not_convert)
+        patch_model(
+            model,
+            device=next(model.parameters()).device,
+            processor=processor,
+        )
         model.config.quantization_config = self.quantization_config
 
     def _process_model_after_weight_loading(self, model: "ModelMixin", **kwargs):

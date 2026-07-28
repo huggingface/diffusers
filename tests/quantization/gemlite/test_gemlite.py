@@ -12,9 +12,9 @@ from diffusers.configuration_utils import ConfigMixin, register_to_config
 from diffusers.models.modeling_utils import ModelMixin
 from diffusers.quantizers.auto import DiffusersAutoQuantizer
 from diffusers.quantizers.gemlite.gemlite_quantizer import (
+    _GemLiteDiffusersProcessor,
     _is_in_skip_modules,
     _normalize_torch_device,
-    _replace_with_gemlite_linear,
 )
 from diffusers.quantizers.quantization_config import GemLiteConfig, QuantizationMethod
 from diffusers.utils import get_module_from_name, is_gemlite_available
@@ -321,7 +321,9 @@ class GemLiteQuantizerEnvironmentTest(unittest.TestCase):
 @require_gemlite_version_greater_or_equal("0.6.0")
 @require_torch_gpu
 class GemLiteQuantizerTest(unittest.TestCase):
-    def test_replace_with_gemlite_linear(self):
+    def test_processor_replaces_gemlite_linears(self):
+        from gemlite.helper import patch_model
+
         from diffusers import FluxTransformer2DModel
 
         skip_patterns = [
@@ -348,9 +350,7 @@ class GemLiteQuantizerTest(unittest.TestCase):
         original_linear_names = {name for name, module in model.named_modules() if isinstance(module, nn.Linear)}
         skipped_linear_names = {name for name in original_linear_names if _is_in_skip_modules(name, skip_patterns)}
 
-        replaced = _replace_with_gemlite_linear(
-            model,
-            skip_patterns,
+        processor = _GemLiteDiffusersProcessor(
             GemLiteConfig(
                 bits=2,
                 group_size=16,
@@ -360,21 +360,28 @@ class GemLiteQuantizerTest(unittest.TestCase):
                 scales_dtype="fp32",
                 zeros_dtype="fp32",
             ),
+            skip_patterns,
+        )
+        patch_model(
+            model,
+            device=torch_device,
+            processor=processor,
+            skip_modules=[],
         )
 
-        self.assertEqual(replaced, 20)
+        self.assertEqual(sum(isinstance(module, GemLiteLinearTriton) for module in model.modules()), 20)
         for name, module in model.named_modules():
             if name in skipped_linear_names:
                 self.assertIs(type(module), nn.Linear)
             elif name in original_linear_names:
                 self.assertIsInstance(module, GemLiteLinearTriton)
 
-    def test_replace_preserves_bias_state_key(self):
+    def test_processor_preserves_bias_state_key(self):
+        from gemlite.helper import patch_model
+
         model = nn.Sequential(nn.Linear(32, 32, bias=True), nn.Linear(32, 32, bias=False)).to(torch_device)
 
-        replaced = _replace_with_gemlite_linear(
-            model,
-            [],
+        processor = _GemLiteDiffusersProcessor(
             GemLiteConfig(
                 bits=2,
                 group_size=16,
@@ -384,9 +391,16 @@ class GemLiteQuantizerTest(unittest.TestCase):
                 scales_dtype="fp32",
                 zeros_dtype="fp32",
             ),
+            [],
+        )
+        patch_model(
+            model,
+            device=torch_device,
+            processor=processor,
+            skip_modules=[],
         )
 
-        self.assertEqual(replaced, 2)
+        self.assertEqual(sum(isinstance(module, GemLiteLinearTriton) for module in model.modules()), 2)
         state_dict = model.state_dict()
         assert _GEMLITE_SERIALIZED_STATE_NAMES.issubset(
             {name.removeprefix("0.") for name in state_dict if name.startswith("0.")}
