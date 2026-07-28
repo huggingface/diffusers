@@ -12,6 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import os
+from functools import lru_cache
+
 from ...utils import is_sdnq_available, is_sdnq_version, logging
 from ..base import DiffusersQuantizer
 
@@ -29,7 +32,8 @@ def _check_sdnq_requirement():
             f"Loading or creating an SDNQ quantized model requires the sdnq library: "
             f"`pip install 'sdnq>={_RECOMMENDED_SDNQ_VERSION}'`"
         )
-    if is_sdnq_version("<", _RECOMMENDED_SDNQ_VERSION):
+
+    if is_sdnq_version("<", _RECOMMENDED_SDNQ_VERSION) and not os.getenv("DIFFUSERS_NO_ADVISORY_WARNINGS"):
         logger.warning(
             f"Your installed sdnq is older than {_RECOMMENDED_SDNQ_VERSION}. Most SDNQ checkpoints will still "
             f"load and save fine, but some of the latest ones require sdnq>={_RECOMMENDED_SDNQ_VERSION}. "
@@ -54,12 +58,11 @@ class SDNQQuantizer(DiffusersQuantizer):
         return SDNQLibQuantizer(quantization_config, **kwargs)
 
 
-def _maybe_import_sdnq(quantization_config: dict | None):
+@lru_cache
+def _ensure_sdnq_registered():
     """
-    Import sdnq if `quantization_config` declares it, so it registers itself with transformers. Without this,
-    transformers silently skips the quantization config of prequantized SDNQ components and mis-loads the weights.
+    Import sdnq once so it registers itself with transformers (import side effect). transformers loads text encoders
+    through its own quantizer registry and only learns about SDNQ once sdnq has been imported; without this it
+    silently skips the quantization config of a prequantized SDNQ component and mis-loads the weights.
     """
-    if not quantization_config or quantization_config.get("quant_method") != "sdnq":
-        return
-    _check_sdnq_requirement()
     import sdnq  # noqa: F401

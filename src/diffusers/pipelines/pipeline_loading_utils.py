@@ -13,7 +13,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import importlib
-import json
 import os
 import re
 import warnings
@@ -39,6 +38,7 @@ from ..utils import (
     get_class_from_dynamic_module,
     is_accelerate_available,
     is_peft_available,
+    is_sdnq_available,
     is_transformers_available,
     is_transformers_version,
     logging,
@@ -889,15 +889,11 @@ def load_sub_model(
         if model_quant_config is not None:
             loading_kwargs["quantization_config"] = model_quant_config
 
-    if is_transformers_model:
-        component_config_path = os.path.join(cached_folder, name, "config.json")
-        if os.path.isfile(component_config_path):
-            # Prequantized SDNQ transformers components need `sdnq` imported so it registers itself with transformers.
-            from ..quantizers.sdnq.sdnq_quantizer import _maybe_import_sdnq
+    if is_transformers_model and is_sdnq_available():
+        # Prequantized SDNQ text encoders need `sdnq` imported so it registers itself with transformers.
+        from ..quantizers.sdnq.sdnq_quantizer import _ensure_sdnq_registered
 
-            with open(component_config_path, encoding="utf-8") as f:
-                component_config = json.load(f)
-            _maybe_import_sdnq(component_config.get("quantization_config"))
+        _ensure_sdnq_registered()
 
     # check if the module is in a subdirectory
     if dduf_entries:

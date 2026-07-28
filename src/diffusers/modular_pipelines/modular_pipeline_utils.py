@@ -13,8 +13,6 @@
 # limitations under the License.
 
 import inspect
-import json
-import os
 import re
 import warnings
 from collections import OrderedDict
@@ -28,7 +26,7 @@ from packaging.specifiers import InvalidSpecifier, SpecifierSet
 
 from ..configuration_utils import ConfigMixin, FrozenDict
 from ..loaders.single_file_utils import _is_single_file_path_or_url
-from ..utils import DIFFUSERS_LOAD_ID_FIELDS, _resolve_dtype, is_torch_available, logging
+from ..utils import DIFFUSERS_LOAD_ID_FIELDS, _resolve_dtype, is_sdnq_available, is_torch_available, logging
 from ..utils.import_utils import _is_package_available
 
 
@@ -36,34 +34,6 @@ if is_torch_available():
     pass
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
-
-
-def _read_transformers_quantization_config(pretrained_model_name_or_path, subfolder, revision):
-    """Read a transformers component's `quantization_config` from its `config.json`, preferring the local cache to
-    avoid a network round-trip. Falls back to a Hub fetch only when the config isn't cached yet, where
-    `from_pretrained` downloads it anyway. Returns `None` if it can't be located or read."""
-    subfolder = subfolder or ""
-    try:
-        config_file = os.path.join(pretrained_model_name_or_path, subfolder, "config.json")
-        if not os.path.isfile(config_file):
-            from huggingface_hub import try_to_load_from_cache
-
-            filename = f"{subfolder}/config.json" if subfolder else "config.json"
-            cached = try_to_load_from_cache(pretrained_model_name_or_path, filename, revision=revision)
-            config_file = cached if isinstance(cached, str) else None
-        if config_file is not None:
-            with open(config_file, encoding="utf-8") as f:
-                return json.load(f).get("quantization_config")
-
-        from transformers import PretrainedConfig
-
-        config_dict, _ = PretrainedConfig.get_config_dict(
-            pretrained_model_name_or_path, subfolder=subfolder, revision=revision
-        )
-        return config_dict.get("quantization_config")
-    except (OSError, ValueError) as e:
-        logger.debug(f"Could not read config for {pretrained_model_name_or_path} to detect SDNQ: {e}")
-        return None
 
 
 # Template for modular pipeline model card description with placeholders
@@ -369,16 +339,14 @@ class ComponentSpec:
 
             if (
                 not is_single_file
+                and is_sdnq_available()
                 and issubclass(self.type_hint, torch.nn.Module)
                 and self.type_hint.__module__.startswith("transformers")
             ):
-                # Prequantized SDNQ transformers components need `sdnq` imported so it registers itself with transformers.
-                from ..quantizers.sdnq.sdnq_quantizer import _maybe_import_sdnq
+                # Prequantized SDNQ text encoders need `sdnq` imported so it registers itself with transformers.
+                from ..quantizers.sdnq.sdnq_quantizer import _ensure_sdnq_registered
 
-                quantization_config = _read_transformers_quantization_config(
-                    pretrained_model_name_or_path, load_kwargs.get("subfolder"), load_kwargs.get("revision")
-                )
-                _maybe_import_sdnq(quantization_config)
+                _ensure_sdnq_registered()
 
             try:
                 component = load_method(pretrained_model_name_or_path, **load_kwargs, **kwargs)
