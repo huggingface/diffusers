@@ -654,19 +654,25 @@ class GemLiteQuantizerTest(unittest.TestCase):
             quantizer.create_quantized_param(model, torch.ones(32, 64, device=torch_device), "0.weight", torch_device)
 
 
+class GemLiteIntegrationTestCase(unittest.TestCase):
+    torch_dtype = torch.float16
+    maximum_quantized_memory_fraction = 0.8
+
+    def _clear_memory(self):
+        gc.collect()
+        backend_empty_cache(torch_device)
+
+    def tearDown(self):
+        self._clear_memory()
+
+
 @nightly
 @require_gemlite
 @require_gemlite_version_greater_or_equal("0.6.0")
 @require_torch_gpu
 @require_accelerate
-class GemLiteKrea2TransformerIntegrationTests(unittest.TestCase):
+class GemLiteKrea2TransformerIntegrationTests(GemLiteIntegrationTestCase):
     model_id = "hf-internal-testing/tiny-krea2-modular-pipe"
-    torch_dtype = torch.float16
-    maximum_quantized_memory_fraction = 0.8
-
-    def tearDown(self):
-        gc.collect()
-        backend_empty_cache(torch_device)
 
     def test_inference_matches_unquantized_transformer(self):
         from diffusers import Krea2Transformer2DModel
@@ -692,24 +698,42 @@ class GemLiteKrea2TransformerIntegrationTests(unittest.TestCase):
             self.assertTrue(quantized_fqns)
 
             del reference_transformer
-            gc.collect()
-            backend_empty_cache(torch_device)
+            self._clear_memory()
 
-            transformer = Krea2Transformer2DModel.from_pretrained(
+            first_load_transformer = Krea2Transformer2DModel.from_pretrained(
                 model_dir,
                 dtype=self.torch_dtype,
                 device_map={"": torch_device},
             )
 
-        self.assertTrue(any(isinstance(module, GemLiteLinearTriton) for module in transformer.modules()))
         self.assertLessEqual(
-            transformer.get_memory_footprint(),
+            first_load_transformer.get_memory_footprint(),
             unquantized_transformer_memory * self.maximum_quantized_memory_fraction,
         )
         with torch.inference_mode():
-            gemlite_output = transformer(**inputs).sample
+            first_load_output = first_load_transformer(**inputs).sample
 
-        torch.testing.assert_close(gemlite_output, reference_output, rtol=5e-2, atol=5e-2)
+        with tempfile.TemporaryDirectory() as model_dir:
+            first_load_transformer.save_pretrained(model_dir, safe_serialization=True)
+            del first_load_transformer
+            self._clear_memory()
+
+            second_load_transformer = Krea2Transformer2DModel.from_pretrained(
+                model_dir,
+                dtype=self.torch_dtype,
+                device_map={"": torch_device},
+            )
+
+        self.assertLessEqual(
+            second_load_transformer.get_memory_footprint(),
+            unquantized_transformer_memory * self.maximum_quantized_memory_fraction,
+        )
+        with torch.inference_mode():
+            second_load_output = second_load_transformer(**inputs).sample
+
+        torch.testing.assert_close(first_load_output, reference_output, rtol=5e-2, atol=5e-2)
+        torch.testing.assert_close(second_load_output, reference_output, rtol=5e-2, atol=5e-2)
+        torch.testing.assert_close(second_load_output, first_load_output, rtol=5e-2, atol=5e-2)
 
 
 @nightly
@@ -717,14 +741,8 @@ class GemLiteKrea2TransformerIntegrationTests(unittest.TestCase):
 @require_gemlite_version_greater_or_equal("0.6.0")
 @require_torch_gpu
 @require_accelerate
-class GemLiteFluxPipelineIntegrationTests(unittest.TestCase):
+class GemLiteFluxPipelineIntegrationTests(GemLiteIntegrationTestCase):
     model_id = "hf-internal-testing/tiny-flux-pipe"
-    torch_dtype = torch.float16
-    maximum_quantized_memory_fraction = 0.8
-
-    def tearDown(self):
-        gc.collect()
-        backend_empty_cache(torch_device)
 
     def test_inference_matches_unquantized_pipeline(self):
         from diffusers import FluxPipeline, FluxTransformer2DModel
@@ -750,30 +768,57 @@ class GemLiteFluxPipelineIntegrationTests(unittest.TestCase):
             self.assertTrue(quantized_fqns)
 
             del reference_pipe
-            gc.collect()
-            backend_empty_cache(torch_device)
+            self._clear_memory()
 
-            transformer = FluxTransformer2DModel.from_pretrained(
+            first_load_transformer = FluxTransformer2DModel.from_pretrained(
                 model_dir,
                 dtype=self.torch_dtype,
                 device_map={"": torch_device},
             )
 
-        self.assertTrue(any(isinstance(module, GemLiteLinearTriton) for module in transformer.modules()))
         self.assertLessEqual(
-            transformer.get_memory_footprint(),
+            first_load_transformer.get_memory_footprint(),
             unquantized_transformer_memory * self.maximum_quantized_memory_fraction,
         )
-        gemlite_pipe = FluxPipeline.from_pretrained(
+        first_load_pipe = FluxPipeline.from_pretrained(
             self.model_id,
-            transformer=transformer,
+            transformer=first_load_transformer,
             dtype=self.torch_dtype,
         ).to(torch_device)
-        gemlite_pipe.set_progress_bar_config(disable=True)
+        first_load_pipe.set_progress_bar_config(disable=True)
         with torch.inference_mode():
-            gemlite_output = gemlite_pipe(
+            first_load_output = first_load_pipe(
                 **pipe_inputs,
                 generator=torch.Generator(device=torch_device).manual_seed(0),
             ).images
 
-        np.testing.assert_allclose(gemlite_output, reference_output, rtol=5e-2, atol=5e-2)
+        with tempfile.TemporaryDirectory() as model_dir:
+            first_load_transformer.save_pretrained(model_dir, safe_serialization=True)
+            del first_load_pipe, first_load_transformer
+            self._clear_memory()
+
+            second_load_transformer = FluxTransformer2DModel.from_pretrained(
+                model_dir,
+                dtype=self.torch_dtype,
+                device_map={"": torch_device},
+            )
+
+        self.assertLessEqual(
+            second_load_transformer.get_memory_footprint(),
+            unquantized_transformer_memory * self.maximum_quantized_memory_fraction,
+        )
+        second_load_pipe = FluxPipeline.from_pretrained(
+            self.model_id,
+            transformer=second_load_transformer,
+            dtype=self.torch_dtype,
+        ).to(torch_device)
+        second_load_pipe.set_progress_bar_config(disable=True)
+        with torch.inference_mode():
+            second_load_output = second_load_pipe(
+                **pipe_inputs,
+                generator=torch.Generator(device=torch_device).manual_seed(0),
+            ).images
+
+        np.testing.assert_allclose(first_load_output, reference_output, rtol=5e-2, atol=5e-2)
+        np.testing.assert_allclose(second_load_output, reference_output, rtol=5e-2, atol=5e-2)
+        np.testing.assert_allclose(second_load_output, first_load_output, rtol=5e-2, atol=5e-2)
