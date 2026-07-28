@@ -184,10 +184,6 @@ class GemLiteQuantizer(DiffusersQuantizer):
                 f"Using GemLite quantization requires gemlite>={_GEMLITE_MIN_VERSION}. "
                 "Please upgrade with `pip install -U gemlite`."
             )
-        try:
-            __import__("gemlite.core")
-        except Exception as error:
-            raise ImportError("GemLite is installed but its core linear module could not be imported.") from error
 
     def check_if_quantized_param(
         self,

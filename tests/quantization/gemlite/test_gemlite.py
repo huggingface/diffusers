@@ -302,20 +302,6 @@ class GemLiteQuantizerEnvironmentTest(unittest.TestCase):
             with self.assertRaisesRegex(ImportError, "requires gemlite>=0.6.0"):
                 quantizer.validate_environment()
 
-    def test_validate_environment_rejects_broken_gemlite_core_import(self):
-        quantizer = DiffusersAutoQuantizer.from_config(_get_gemlite_config(), pre_quantized=True)
-        original_import = __import__
-
-        def import_with_broken_gemlite_core(name, *args, **kwargs):
-            if name == "gemlite.core":
-                raise RuntimeError("broken gemlite core")
-            return original_import(name, *args, **kwargs)
-
-        with self._mock_module_availability(gemlite=True, cuda=True, old_gemlite=False):
-            with mock.patch("builtins.__import__", side_effect=import_with_broken_gemlite_core):
-                with self.assertRaisesRegex(ImportError, "core linear module could not be imported"):
-                    quantizer.validate_environment()
-
 
 @require_gemlite
 @require_gemlite_version_greater_or_equal("0.6.0")
