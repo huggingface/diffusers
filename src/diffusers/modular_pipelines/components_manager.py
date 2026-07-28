@@ -17,7 +17,8 @@ from __future__ import annotations
 import copy
 import functools
 import time
-from collections import OrderedDict
+from collections import OrderedDict, deque
+from dataclasses import dataclass
 from itertools import combinations
 from typing import Any
 
@@ -40,6 +41,147 @@ if is_accelerate_available():
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
+# Default number of events an `OffloadRecord` keeps. A generation step produces at most a handful, so this
+# holds a long run while staying bounded for a long-lived manager (e.g. in a server).
+MAX_RECORDED_OFFLOAD_EVENTS = 10000
+
+
+def format_size(num_bytes: int | None) -> str:
+    """Bytes as a human-readable size, so that both a 20GB transformer and a KB-sized test model read sensibly."""
+    if num_bytes is None:
+        return "-"
+    for unit in ("B", "KB", "MB"):
+        if abs(num_bytes) < 1024:
+            return f"{num_bytes:.0f} {unit}" if unit == "B" else f"{num_bytes:.2f} {unit}"
+        num_bytes /= 1024
+    return f"{num_bytes:.2f} GB"
+
+
+@dataclass
+class OffloadEvent:
+    """
+    A single thing the offloader did: a model moved onto the execution device (`"onload"`), a model moved back to the
+    CPU (`"offload"`), or a forward pass that ran out of device memory (`"oom"`).
+    """
+
+    action: str
+    model_id: str
+    model_size: int | None = None
+    # why the model moved: which model needed the room, the OOM retry, attaching a new component, ...
+    reason: str | None = None
+    # what the strategy saw when it decided (`None` for a custom strategy that does not report it)
+    available_memory: int | None = None
+    memory_reserve: int | None = None
+    resident_before: tuple[str, ...] = ()
+    offloaded: tuple[str, ...] = ()
+    seconds: float | None = None
+
+
+class OffloadRecord:
+    """
+    What the offloader did, in order.
+
+    Every offloading decision appends to this record, so after a run it holds the full sequence of moves, what each
+    move cost, and where the forward passes ran out of memory. Printing it shows that sequence as a table followed by
+    a summary; [`~OffloadRecord.summary`] returns the same numbers as a dict.
+
+    With `measure_activations=True` in [`~ComponentsManager.enable_auto_cpu_offload`], the record additionally
+    measures how much memory the forward passes need on top of the weights, and reports the `memory_reserve` that
+    would have covered it — measured on your hardware, at your resolution and batch size.
+    """
+
+    def __init__(self, maxlen: int = MAX_RECORDED_OFFLOAD_EVENTS):
+        self.events: deque[OffloadEvent] = deque(maxlen=maxlen)
+        self.activations: dict[str, int] = {}
+        self._recorded = 0
+
+    def add(self, event: OffloadEvent):
+        self.events.append(event)
+        self._recorded += 1
+
+    def note_activation(self, model_id: str, activation_bytes: int):
+        """Keep the largest activation cost seen for a model."""
+        self.activations[model_id] = max(self.activations.get(model_id, 0), activation_bytes)
+
+    def clear(self):
+        self.events.clear()
+        self.activations.clear()
+        self._recorded = 0
+
+    @property
+    def dropped(self) -> int:
+        """How many events fell out of the (bounded) log."""
+        return max(self._recorded - len(self.events), 0)
+
+    @property
+    def activation_peak(self) -> int | None:
+        """
+        The largest activation cost measured across all forward passes, or `None` if activations were not measured.
+        """
+        return max(self.activations.values()) if self.activations else None
+
+    @property
+    def suggested_memory_reserve(self) -> int | None:
+        """
+        A `memory_reserve` that would have covered the measured activations, with a margin. `None` if activations were
+        not measured. Only as representative as the run it was measured on — activations grow with resolution, batch
+        size and sequence length.
+        """
+        peak = self.activation_peak
+        return int(peak * 1.2) if peak is not None else None
+
+    def summary(self) -> dict[str, Any]:
+        onloads = [event for event in self.events if event.action == "onload"]
+        offloads = [event for event in self.events if event.action == "offload"]
+        resident, peak_co_residency = set(), 0
+        for event in self.events:
+            if event.action == "onload":
+                resident.add(event.model_id)
+                peak_co_residency = max(peak_co_residency, len(resident))
+            elif event.action == "offload":
+                resident.discard(event.model_id)
+        return {
+            "onloads": len(onloads),
+            "offloads": len(offloads),
+            "oom_retries": sum(event.action == "oom" for event in self.events),
+            "peak_co_residency": peak_co_residency,
+            "bytes_onloaded": sum(event.model_size or 0 for event in onloads),
+            "bytes_offloaded": sum(event.model_size or 0 for event in offloads),
+            "activation_peak": self.activation_peak,
+            "suggested_memory_reserve": self.suggested_memory_reserve,
+        }
+
+    def __len__(self):
+        return len(self.events)
+
+    def __repr__(self):
+        if not self.events:
+            return "Offload record: nothing recorded yet"
+
+        header = f"{'#':<5} | {'Action':<8} | {'Model':<40} | {'Size':<10} | {'Available':<10} | Reason"
+        lines = [header, "-" * len(header)]
+        for index, event in enumerate(self.events, start=self.dropped + 1):
+            lines.append(
+                f"{index:<5} | {event.action:<8} | {event.model_id:<40} | {format_size(event.model_size):<10} | "
+                f"{format_size(event.available_memory):<10} | {event.reason or ''}"
+            )
+        if self.dropped:
+            lines.insert(2, f"... {self.dropped} earlier events dropped from the log ...")
+
+        summary = self.summary()
+        lines += [
+            "-" * len(header),
+            f"{summary['onloads']} onloads ({format_size(summary['bytes_onloaded'])}) / "
+            f"{summary['offloads']} offloads ({format_size(summary['bytes_offloaded'])}), "
+            f"{summary['oom_retries']} OOM retries, peak co-residency {summary['peak_co_residency']}",
+        ]
+        if summary["activation_peak"] is not None:
+            lines.append(
+                f"activations peaked at {format_size(summary['activation_peak'])} -> a `memory_reserve` of "
+                f"{format_size(summary['suggested_memory_reserve'])} would have covered this run"
+            )
+        return "\n".join(lines)
+
 
 class CustomOffloadHook(ModelHook):
     """
@@ -53,6 +195,11 @@ class CustomOffloadHook(ModelHook):
         retry_on_oom(`bool`, *optional*, defaults to `True`):
             Whether to recover from a forward pass that runs out of device memory by offloading the other models one
             at a time and retrying. If `False`, the error is raised to the caller.
+        record(`OffloadRecord`, *optional*):
+            Where to record the moves this hook makes.
+        measure_activations(`bool`, *optional*, defaults to `False`):
+            Whether to measure how much device memory each forward pass needs on top of the weights. Owns the
+            device's peak-memory stats while enabled.
     """
 
     no_grad = False
@@ -63,13 +210,18 @@ class CustomOffloadHook(ModelHook):
         other_hooks: list["UserCustomOffloadHook"] | None = None,
         offload_strategy: "AutoOffloadStrategy" | None = None,
         retry_on_oom: bool = True,
+        record: OffloadRecord | None = None,
+        measure_activations: bool = False,
     ):
         self.execution_device = execution_device if execution_device is not None else PartialState().default_device
         self.other_hooks = other_hooks
         self.offload_strategy = offload_strategy
         self.retry_on_oom = retry_on_oom
+        self.record = record if record is not None else OffloadRecord()
+        self.measure_activations = measure_activations
         self.model_id = None
         self._forward_before_oom_wrap = None
+        self._allocated_before_forward = None
 
     def set_strategy(self, offload_strategy: "AutoOffloadStrategy"):
         self.offload_strategy = offload_strategy
@@ -87,8 +239,10 @@ class CustomOffloadHook(ModelHook):
 
     def pre_forward(self, module, *args, **kwargs):
         if module.device != self.execution_device:
+            resident_before, hooks_to_offload, elapsed = (), [], None
             if self.other_hooks is not None:
                 hooks_to_offload = [hook for hook in self.other_hooks if hook.model.device == self.execution_device]
+                resident_before = tuple(hook.model_id for hook in hooks_to_offload)
                 # offload all other hooks
                 start_time = time.perf_counter()
                 if self.offload_strategy is not None:
@@ -99,19 +253,39 @@ class CustomOffloadHook(ModelHook):
                         execution_device=self.execution_device,
                     )
                 end_time = time.perf_counter()
-                logger.info(
-                    f" time taken to apply offload strategy for {self.model_id}: {(end_time - start_time):.2f} seconds"
-                )
+                elapsed = end_time - start_time
+                logger.info(f" time taken to apply offload strategy for {self.model_id}: {elapsed:.2f} seconds")
 
                 for hook in hooks_to_offload:
                     logger.info(
                         f"moving {self.model_id} to {self.execution_device}, offloading {hook.model_id} to cpu"
                     )
-                    hook.offload()
+                    hook.offload(reason=f"needed_by:{self.model_id}")
 
                 if hooks_to_offload:
                     clear_device_cache()
             module.to(self.execution_device)
+            # what the strategy saw, when it is one that reports it
+            decision = getattr(self.offload_strategy, "last_decision", None) or {}
+            self.record.add(
+                OffloadEvent(
+                    action="onload",
+                    model_id=self.model_id,
+                    model_size=module.get_memory_footprint(),
+                    reason="forward",
+                    available_memory=decision.get("available_memory"),
+                    memory_reserve=decision.get("memory_reserve"),
+                    resident_before=resident_before,
+                    offloaded=tuple(hook.model_id for hook in hooks_to_offload),
+                    seconds=elapsed,
+                )
+            )
+        if self.measure_activations:
+            # baseline for the activation measurement: everything allocated once this model is on the device
+            device_module = getattr(torch, self.execution_device.type, torch.cuda)
+            if hasattr(device_module, "reset_peak_memory_stats"):
+                device_module.reset_peak_memory_stats(self.execution_device)
+                self._allocated_before_forward = device_module.memory_allocated(self.execution_device)
         return send_to_device(args, self.execution_device), send_to_device(kwargs, self.execution_device)
 
     def resident_other_hooks(self):
@@ -126,15 +300,25 @@ class CustomOffloadHook(ModelHook):
             and (other.model.device.index or 0) == (self.execution_device.index or 0)
         ]
 
+    def _run_forward(self, hooked_forward, args, kwargs):
+        if not self.measure_activations:
+            return hooked_forward(*args, **kwargs)
+        output = hooked_forward(*args, **kwargs)
+        device_module = getattr(torch, self.execution_device.type, torch.cuda)
+        if self._allocated_before_forward is not None and hasattr(device_module, "max_memory_allocated"):
+            peak = device_module.max_memory_allocated(self.execution_device)
+            self.record.note_activation(self.model_id, max(peak - self._allocated_before_forward, 0))
+        return output
+
     # YiYi TODO: diffusers' own `ModelHook` (`diffusers.hooks.hooks`) supports a `new_forward` around-hook, which
     # would replace this manual wrapping - we may migrate this class to it in the future.
     def wrap_forward(self, module):
-        # `pre_forward`/`post_forward` cannot see an exception raised by the forward itself, so wrap the (already
-        # hooked) forward here: if it runs out of device memory, free the smallest resident model and retry,
-        # escalating until it fits. The memory readings cannot guide this - the failed forward has already unwound,
-        # so its activations are freed and the device looks free again. Inference only: the retried forward re-runs
-        # cleanly from its original inputs.
-        if not self.retry_on_oom:
+        # `pre_forward`/`post_forward` cannot see the forward pass itself - neither its memory peak nor an exception
+        # it raises - so wrap the (already hooked) forward here. On an OOM, free the smallest resident model and
+        # retry, escalating until it fits. The memory readings cannot guide this: the failed forward has already
+        # unwound, so its activations are freed and the device looks free again. Inference only: the retried forward
+        # re-runs cleanly from its original inputs.
+        if not (self.retry_on_oom or self.measure_activations):
             return
 
         hooked_forward = module.forward
@@ -146,8 +330,11 @@ class CustomOffloadHook(ModelHook):
             offloaded = set()
             while True:
                 try:
-                    return hooked_forward(*args, **kwargs)
+                    return self._run_forward(hooked_forward, args, kwargs)
                 except torch.OutOfMemoryError as e:
+                    if not self.retry_on_oom:
+                        raise
+                    self.record.add(OffloadEvent(action="oom", model_id=self.model_id, reason=str(e).split(".")[0]))
                     resident = sorted(
                         (hook for hook in self.resident_other_hooks() if id(hook) not in offloaded),
                         key=lambda hook: hook.model.get_memory_footprint(),
@@ -165,7 +352,7 @@ class CustomOffloadHook(ModelHook):
                         "retrying. If this happens repeatedly, set a larger `memory_reserve` in "
                         "`enable_auto_cpu_offload`."
                     )
-                    smallest.offload()
+                    smallest.offload(reason=f"oom_retry:{self.model_id}")
                     offloaded.add(id(smallest))
                     clear_device_cache()
 
@@ -189,8 +376,18 @@ class UserCustomOffloadHook:
         self.model = model
         self.hook = hook
 
-    def offload(self):
+    def offload(self, reason: str | None = None):
+        was_resident = self.model.device.type == self.hook.execution_device.type
         self.hook.init_hook(self.model)
+        if was_resident:
+            self.hook.record.add(
+                OffloadEvent(
+                    action="offload",
+                    model_id=self.model_id,
+                    model_size=self.model.get_memory_footprint(),
+                    reason=reason,
+                )
+            )
 
     def attach(self):
         add_hook_to_module(self.model, self.hook)
@@ -212,9 +409,15 @@ def custom_offload_with_hook(
     execution_device: str | int | torch.device = None,
     offload_strategy: "AutoOffloadStrategy" | None = None,
     retry_on_oom: bool = True,
+    record: OffloadRecord | None = None,
+    measure_activations: bool = False,
 ):
     hook = CustomOffloadHook(
-        execution_device=execution_device, offload_strategy=offload_strategy, retry_on_oom=retry_on_oom
+        execution_device=execution_device,
+        offload_strategy=offload_strategy,
+        retry_on_oom=retry_on_oom,
+        record=record,
+        measure_activations=measure_activations,
     )
     user_hook = UserCustomOffloadHook(model_id=model_id, model=model, hook=hook)
     user_hook.attach()
@@ -235,8 +438,13 @@ class AutoOffloadStrategy:
 
     def __init__(self, memory_reserve="3GB"):
         self.memory_reserve = convert_file_size_to_int(memory_reserve)
+        # what the last decision saw, for the hook to record. A custom strategy that does not set it simply
+        # leaves those columns empty in the record.
+        self.last_decision = None
 
     def __call__(self, hooks, model_id, model, execution_device):
+        # cleared first so that a decision that returns early is never recorded with the previous decision's readings
+        self.last_decision = None
         if len(hooks) == 0:
             return []
 
@@ -255,6 +463,7 @@ class AutoOffloadStrategy:
             available_memory += device_module.memory_reserved(execution_device) - device_module.memory_allocated(
                 execution_device
             )
+        self.last_decision = {"available_memory": available_memory, "memory_reserve": self.memory_reserve}
 
         if current_module_size <= available_memory - self.memory_reserve:
             return []
@@ -422,6 +631,8 @@ class ComponentsManager:
         self._auto_offload_enabled = False
         self._offload_strategy = None
         self._offload_retry_on_oom = True
+        self._offload_measure_activations = False
+        self._offload_record = OffloadRecord()
 
     def _lookup_ids(
         self,
@@ -782,6 +993,7 @@ class ComponentsManager:
         device: str | int | torch.device = None,
         memory_reserve: str | int = "3GB",
         retry_on_oom: bool = True,
+        measure_activations: bool = False,
     ):
         """
         Enable automatic CPU offloading for all components.
@@ -808,6 +1020,13 @@ class ComponentsManager:
                 Whether to recover from a forward pass that runs out of device memory by offloading the models on the
                 device one at a time, smallest first, and retrying until it fits. Set it to `False` to raise the error
                 instead — the forward passes are then left untouched.
+            measure_activations (bool, *optional*, defaults to `False`):
+                Whether to measure how much device memory each forward pass needs on top of the weights, and report
+                the `memory_reserve` that would have covered it (see [`~ComponentsManager.offload_record`]). This
+                resets the device's peak-memory stats around every forward pass, so leave it off if you are measuring
+                peak memory yourself.
+
+        Every move the offloader makes is recorded in [`~ComponentsManager.offload_record`].
         """
         if not is_accelerate_available():
             raise ImportError("Make sure to install accelerate to use auto_cpu_offload")
@@ -832,12 +1051,19 @@ class ComponentsManager:
 
         self.disable_auto_cpu_offload()
         offload_strategy = AutoOffloadStrategy(memory_reserve=memory_reserve)
+        self._offload_record.clear()
 
         all_hooks = []
         for name, component in self.components.items():
             if isinstance(component, torch.nn.Module):
                 hook = custom_offload_with_hook(
-                    name, component, device, offload_strategy=offload_strategy, retry_on_oom=retry_on_oom
+                    name,
+                    component,
+                    device,
+                    offload_strategy=offload_strategy,
+                    retry_on_oom=retry_on_oom,
+                    record=self._offload_record,
+                    measure_activations=measure_activations,
                 )
                 all_hooks.append(hook)
 
@@ -852,6 +1078,18 @@ class ComponentsManager:
         self._auto_offload_device = device
         self._offload_strategy = offload_strategy
         self._offload_retry_on_oom = retry_on_oom
+        self._offload_measure_activations = measure_activations
+
+    @property
+    def offload_record(self) -> OffloadRecord:
+        """
+        What the offloader has done so far: every model moved onto or off the device, in order, and where a forward
+        pass ran out of memory. Print it to see the sequence, or read
+        [`~OffloadRecord.summary`]/[`~OffloadRecord.suggested_memory_reserve`] for the numbers behind it. Kept across
+        [`~ComponentsManager.disable_auto_cpu_offload`] (it is the post-mortem of the run), and cleared when
+        offloading is enabled again.
+        """
+        return self._offload_record
 
     def _attach_offload_hook(self, component_id: str, component: torch.nn.Module):
         """
@@ -864,12 +1102,14 @@ class ComponentsManager:
             self._auto_offload_device,
             offload_strategy=self._offload_strategy,
             retry_on_oom=self._offload_retry_on_oom,
+            record=self._offload_record,
+            measure_activations=self._offload_measure_activations,
         )
         for other_hook in self.model_hooks:
             if other_hook.hook.execution_device == hook.hook.execution_device:
                 hook.add_other_hook(other_hook)
                 other_hook.add_other_hook(hook)
-        hook.offload()
+        hook.offload(reason="component_added")
         self.model_hooks.append(hook)
 
     def _detach_offload_hook(self, component: torch.nn.Module):
@@ -890,7 +1130,7 @@ class ComponentsManager:
             return
 
         for hook in self.model_hooks:
-            hook.offload()
+            hook.offload(reason="offloading_disabled")
             hook.remove()
         if self.model_hooks:
             clear_device_cache()
@@ -898,6 +1138,7 @@ class ComponentsManager:
         self._auto_offload_enabled = False
         self._offload_strategy = None
         self._offload_retry_on_oom = True
+        self._offload_measure_activations = False
 
     def get_model_info(
         self,

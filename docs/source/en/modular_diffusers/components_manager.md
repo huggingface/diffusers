@@ -97,6 +97,40 @@ Set `memory_reserve=0` to keep as much on the device as possible. If a forward p
 
 Components added while offloading is enabled join the managed set without disturbing it: the new component starts on CPU and everything already resident stays where it is; removing a component likewise detaches only that component.
 
+### Inspecting what the offloader did
+
+Every move is recorded. Print [`ComponentsManager.offload_record`] after a run to see the sequence, what each move cost, and where a forward pass ran out of memory.
+
+```py
+manager.enable_auto_cpu_offload(device="cuda")
+pipe(prompt="a cat")
+print(manager.offload_record)
+```
+
+```py
+#     | Action   | Model                     | Size       | Available  | Reason
+------------------------------------------------------------------------------------
+1     | onload   | text_encoder_140458257514 | 9.52 GB    | -          | forward
+2     | offload  | text_encoder_140458257514 | 9.52 GB    | 4.31 GB    | needed_by:transformer_140458257515616
+3     | onload   | transformer_1404582575156 | 23.80 GB   | 4.31 GB    | forward
+------------------------------------------------------------------------------------
+2 onloads (33.32 GB) / 1 offloads (9.52 GB), 0 OOM retries, peak co-residency 1
+```
+
+A model appearing repeatedly in this table is thrashing — it is being evicted and re-loaded every step, which costs a PCIe transfer each way. That usually means `memory_reserve` is too large (models are pushed off that would have fit) or too small (each step ends in an OOM retry).
+
+To find the right value, let the manager measure it. `measure_activations=True` records how much memory the forward passes actually need on top of the weights — the exact thing `memory_reserve` covers — and reports the reserve that would have covered your run:
+
+```py
+manager.enable_auto_cpu_offload(device="cuda", memory_reserve=0, measure_activations=True)
+pipe(prompt="a cat")
+
+manager.offload_record.activation_peak            # what the forward passes needed
+manager.offload_record.suggested_memory_reserve   # a reserve that would have covered it
+```
+
+Measure at the resolution, batch size, and sequence length you intend to use — activations scale with all three. Leave `measure_activations` off if you are measuring peak memory yourself, since it resets the device's peak-memory stats around every forward pass.
+
 Call [`~ComponentsManager.disable_auto_cpu_offload`] to disable offloading.
 
 ```py
