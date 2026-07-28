@@ -106,6 +106,16 @@ def _wan_i2v_map_fn(config_dict=None):
         return "WanImage2VideoModularPipeline"
 
 
+def _krea2_map_fn(config_dict=None):
+    if config_dict is None:
+        return "Krea2ModularPipeline"
+
+    if config_dict.get("is_distilled", False):
+        return "Krea2TurboModularPipeline"
+    else:
+        return "Krea2ModularPipeline"
+
+
 def _helios_pyramid_map_fn(config_dict=None):
     if config_dict is None:
         return "HeliosPyramidModularPipeline"
@@ -127,6 +137,7 @@ MODULAR_PIPELINE_MAPPING = OrderedDict(
         ("flux2", _create_default_map_fn("Flux2ModularPipeline")),
         ("flux2-klein", _flux2_klein_map_fn),
         ("ideogram4", _create_default_map_fn("Ideogram4ModularPipeline")),
+        ("krea2", _krea2_map_fn),
         ("qwenimage", _create_default_map_fn("QwenImageModularPipeline")),
         ("qwenimage-edit", _create_default_map_fn("QwenImageEditModularPipeline")),
         ("qwenimage-edit-plus", _create_default_map_fn("QwenImageEditPlusModularPipeline")),
