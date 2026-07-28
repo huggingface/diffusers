@@ -8,7 +8,7 @@ from typing import Any
 import torch
 import torch.nn as nn
 
-from ...utils import is_accelerate_available, is_kernels_available
+from ...utils import is_accelerate_available, is_kernels_available, is_kernels_version
 from ...utils.constants import DIFFUSERS_TRUST_REMOTE_KERNELS
 
 
@@ -23,7 +23,14 @@ _HF_KERNEL_VERSION = 2
 if is_kernels_available():
     from kernels import get_kernel
 
-    ops = get_kernel(_HF_KERNEL_REPO, version=_HF_KERNEL_VERSION, trust_remote_code=DIFFUSERS_TRUST_REMOTE_KERNELS).ops
+    if not DIFFUSERS_TRUST_REMOTE_KERNELS:
+        raise ValueError(
+            f"`{_HF_KERNEL_REPO}` is not published by a trusted kernel publisher on the Hub, so loading it "
+            "downloads and executes remote code. Set `DIFFUSERS_TRUST_REMOTE_KERNELS=true` to allow it."
+        )
+    # `kernels<0.14.0` has no `trust_remote_code` argument and executes the downloaded code unconditionally.
+    trust_kwargs = {"trust_remote_code": True} if is_kernels_version(">=", "0.14.0") else {}
+    ops = get_kernel(_HF_KERNEL_REPO, version=_HF_KERNEL_VERSION, **trust_kwargs).ops
 else:
     raise ImportError(
         "Loading Nunchaku checkpoints requires the Hugging Face `kernels` package. "

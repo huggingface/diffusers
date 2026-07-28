@@ -94,7 +94,7 @@ Kernels from any other publisher are not vetted. Loading one downloads and runs 
 export DIFFUSERS_TRUST_REMOTE_KERNELS=true
 ```
 
-Only enable this after inspecting the kernel repository, since it grants the downloaded code the ability to run on your machine. Without it, loading a kernel from an untrusted publisher raises an error. This requires `kernels>=0.14.0`, which introduced the `trust_remote_code` check.
+Only enable this after inspecting the kernel repository, since it grants the downloaded code the ability to run on your machine. Without it, loading a kernel from an untrusted publisher raises an error. Diffusers performs this check itself, so it also applies to `kernels<0.14.0`, which predates the `trust_remote_code` argument. Setting `DIFFUSERS_DISABLE_REMOTE_CODE=true` disables remote code globally and takes precedence over `DIFFUSERS_TRUST_REMOTE_KERNELS`.
 
 ## Checks
 

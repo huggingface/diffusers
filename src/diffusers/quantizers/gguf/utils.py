@@ -20,7 +20,7 @@ import gguf
 import torch
 import torch.nn as nn
 
-from ...utils import is_accelerate_available, is_kernels_available
+from ...utils import is_accelerate_available, is_kernels_available, is_kernels_version
 from ...utils.constants import DIFFUSERS_TRUST_REMOTE_KERNELS
 
 
@@ -38,7 +38,15 @@ can_use_cuda_kernels = (
 if can_use_cuda_kernels and is_kernels_available():
     from kernels import get_kernel
 
-    ops = get_kernel("Isotr0py/ggml", trust_remote_code=DIFFUSERS_TRUST_REMOTE_KERNELS)
+    if not DIFFUSERS_TRUST_REMOTE_KERNELS:
+        raise ValueError(
+            "`Isotr0py/ggml` is not published by a trusted kernel publisher on the Hub, so loading it downloads "
+            "and executes remote code. Set `DIFFUSERS_TRUST_REMOTE_KERNELS=true` to allow it, or set "
+            "`DIFFUSERS_GGUF_CUDA_KERNELS=false` to run without the CUDA kernels."
+        )
+    # `kernels<0.14.0` has no `trust_remote_code` argument and executes the downloaded code unconditionally.
+    trust_kwargs = {"trust_remote_code": True} if is_kernels_version(">=", "0.14.0") else {}
+    ops = get_kernel("Isotr0py/ggml", **trust_kwargs)
 else:
     ops = None
 
