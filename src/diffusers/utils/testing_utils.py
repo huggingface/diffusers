@@ -639,7 +639,7 @@ def require_gemlite_version_greater_or_equal(gemlite_version):
             version.parse(importlib.metadata.version("gemlite")).base_version
         ) >= version.parse(gemlite_version)
         return unittest.skipUnless(
-            correct_gemlite_version, f"Test requires gemlite with the version greater than {gemlite_version}."
+            correct_gemlite_version, f"Test requires gemlite with the version greater than or equal to {gemlite_version}."
         )(test_case)
 
     return decorator
