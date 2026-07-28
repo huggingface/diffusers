@@ -710,8 +710,7 @@ def simulate_accelerator_memory(total: Union[int, str], device=None, hard: bool 
 
     Unlike pinning `mem_get_info` to fixed values, this *wraps* it: the free-memory reading keeps tracking real
     allocations live, translated onto the simulated capacity. Consumers that make decisions from memory readings
-    (e.g. the dynamic mode of `ComponentsManager.enable_auto_cpu_offload`) therefore behave exactly as they would on
-    the smaller card.
+    (e.g. `ComponentsManager.enable_auto_cpu_offload`) therefore behave exactly as they would on the smaller card.
 
     With `hard=True` (the default) the caching allocator is additionally capped, so an allocation that would not fit
     on the simulated card raises a real `torch.OutOfMemoryError` instead of silently using the extra physical

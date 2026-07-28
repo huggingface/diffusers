@@ -89,9 +89,9 @@ class _FakeHook:
 @contextlib.contextmanager
 def _patch_memory_stats(device_module, free_bytes, total_bytes, cached_bytes=0):
     # `mem_get_info` returns `(free, total)` and is where the strategy learns how much
-    # memory is free; the dynamic mode additionally counts the allocator's reusable
-    # cache (`memory_reserved - memory_allocated`) as available, so those are pinned
-    # too — `cached_bytes` simulates reusable cache on top of `free_bytes`.
+    # memory is free; the strategy additionally counts the allocator's reusable cache
+    # (`memory_reserved - memory_allocated`) as available, so those are pinned too —
+    # `cached_bytes` simulates reusable cache on top of `free_bytes`.
     with contextlib.ExitStack() as stack:
         stack.enter_context(mock.patch.object(device_module, "mem_get_info", return_value=(free_bytes, total_bytes)))
         if hasattr(device_module, "memory_reserved") and hasattr(device_module, "memory_allocated"):
