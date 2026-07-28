@@ -514,7 +514,12 @@ class GemLiteConfig(QuantizationConfigMixin):
         if self.compute_dtype is None:
             self.compute_dtype = torch.float16
         elif isinstance(self.compute_dtype, str):
-            self.compute_dtype = getattr(torch, self.compute_dtype)
+            compute_dtype = getattr(torch, self.compute_dtype, None)
+            if not isinstance(compute_dtype, torch.dtype):
+                raise ValueError(f"Unsupported GemLite compute dtype: {self.compute_dtype!r}.")
+            self.compute_dtype = compute_dtype
+        elif not isinstance(self.compute_dtype, torch.dtype):
+            raise ValueError("GemLite compute_dtype must be a torch.dtype.")
 
         self.post_init()
 

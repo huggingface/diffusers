@@ -195,6 +195,16 @@ class GemLiteConfigTest(unittest.TestCase):
         self.assertEqual(config.compute_dtype, torch.bfloat16)
         self.assertEqual(config.modules_to_not_convert, ["proj_out"])
 
+    def test_config_rejects_invalid_compute_dtype(self):
+        config_dict = _get_gemlite_config().to_dict()
+
+        for compute_dtype in ("foo", "nn"):
+            with self.subTest(compute_dtype=compute_dtype):
+                config_dict["compute_dtype"] = compute_dtype
+
+                with self.assertRaisesRegex(ValueError, "Unsupported GemLite compute dtype"):
+                    DiffusersAutoQuantizer.from_dict(config_dict)
+
     def test_config_round_trip(self):
         config = GemLiteConfig(
             compute_dtype=torch.bfloat16,
