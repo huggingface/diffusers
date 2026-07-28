@@ -11,11 +11,7 @@ import torch.nn as nn
 from diffusers.configuration_utils import ConfigMixin, register_to_config
 from diffusers.models.modeling_utils import ModelMixin
 from diffusers.quantizers.auto import DiffusersAutoQuantizer
-from diffusers.quantizers.gemlite.gemlite_quantizer import (
-    _GemLiteDiffusersProcessor,
-    _is_in_skip_modules,
-    _normalize_torch_device,
-)
+from diffusers.quantizers.gemlite.gemlite_quantizer import _GemLiteDiffusersProcessor, _is_in_skip_modules
 from diffusers.quantizers.quantization_config import GemLiteConfig, QuantizationMethod
 from diffusers.utils import get_module_from_name, is_gemlite_available
 
@@ -257,11 +253,6 @@ class GemLiteQuantizerHelperTest(unittest.TestCase):
         self.assertTrue(_is_in_skip_modules("blocks.0.attn.to_q", modules_to_not_convert))
         self.assertFalse(_is_in_skip_modules("proj_output", modules_to_not_convert))
         self.assertFalse(_is_in_skip_modules("blocks.01.attn.to_q", modules_to_not_convert))
-
-    def test_normalize_torch_device_handles_int_device_map_values(self):
-        self.assertEqual(_normalize_torch_device(0), torch.device("cuda:0"))
-        self.assertEqual(_normalize_torch_device("cpu"), torch.device("cpu"))
-        self.assertEqual(_normalize_torch_device(torch.device("meta")), torch.device("meta"))
 
 
 @require_gemlite

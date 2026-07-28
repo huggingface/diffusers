@@ -27,12 +27,6 @@ def _is_in_skip_modules(name: str, modules_to_not_convert: list[str]) -> bool:
     return any((key + "." in name) or (key == name) for key in modules_to_not_convert)
 
 
-def _normalize_torch_device(device: Any) -> "torch.device":
-    if isinstance(device, int):
-        return torch.device(f"cuda:{device}")
-    return torch.device(device)
-
-
 class _GemLiteDiffusersProcessor:
     """Implement GemLite's `patch_model` protocol for Diffusers' pre-quantized loading path."""
 
@@ -209,7 +203,6 @@ class GemLiteQuantizer(DiffusersQuantizer):
         **kwargs,
     ):
         module, tensor_name = get_module_from_name(model, param_name)
-        target_device = _normalize_torch_device(target_device)
         if tensor_name not in GEMLITE_STATE_NAMES:
             raise ValueError(f"`{param_name}` is not a GemLite serialized tensor.")
 
