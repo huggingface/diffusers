@@ -468,7 +468,7 @@ def main():
     pipeline.vae.to(device)
 
     generator = torch.Generator().manual_seed(42)
-    image = pipeline("a cat holding a sign that says hello", generator=generator).images[0]
+    image = pipeline(prompt="a cat holding a sign that says hello", generator=generator).images[0]
     if dist.get_rank() == 0:
         image.save("output.png")
     if dist.is_initialized():
