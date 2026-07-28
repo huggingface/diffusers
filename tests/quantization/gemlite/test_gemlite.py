@@ -1,5 +1,6 @@
 import contextlib
 import gc
+import os
 import tempfile
 import unittest
 from unittest import mock
@@ -122,6 +123,15 @@ def _save_packed_gemlite_transformer(transformer, save_directory):
     transformer.save_pretrained(save_directory, safe_serialization=True)
 
     return quantized_fqns
+
+
+class GemLiteTestModel(ModelMixin, ConfigMixin):
+    _no_split_modules = []
+
+    @register_to_config
+    def __init__(self):
+        super().__init__()
+        self.proj = nn.Linear(256, 64, bias=False)
 
 
 class GemLiteConfigTest(unittest.TestCase):
@@ -529,6 +539,7 @@ class GemLiteQuantizerTest(unittest.TestCase):
         model = nn.Sequential(GemLiteLinearTriton()).to(torch_device)
         model[0]._gemlite_loaded_param_names = set()
         quantizer = DiffusersAutoQuantizer.from_config(_get_gemlite_config(), pre_quantized=True)
+        quantizer.maybe_update_loaded_keys([f"0.{name}" for name in gemlite_state_dict], [])
 
         for name, value in gemlite_state_dict.items():
             with self.subTest(name=name):
@@ -543,6 +554,7 @@ class GemLiteQuantizerTest(unittest.TestCase):
                 self.assertTrue(torch.equal(loaded_value, value))
 
         self.assertEqual(model[0]._gemlite_loaded_param_names, set(gemlite_state_dict))
+        self.assertEqual(model[0].W_group_mode, gemlite_state_dict["metadata"][10].item())
 
     def test_create_quantized_param_preserves_serialized_dtypes(self):
         quantizer = DiffusersAutoQuantizer.from_config(_get_gemlite_config(), pre_quantized=True)
@@ -552,6 +564,7 @@ class GemLiteQuantizerTest(unittest.TestCase):
             "0.W_q": torch.arange(4, dtype=torch.float16, device=torch_device).reshape(2, 2).to(torch.float8_e5m2),
             "0.scales": torch.tensor([[0.12345679], [0.9876543]], dtype=torch.float32, device=torch_device),
         }
+        quantizer.maybe_update_loaded_keys([f"0.{name}" for name in _GEMLITE_SERIALIZED_STATE_NAMES], [])
 
         for param_name, original_value in serialized_state.items():
             with self.subTest(param_name=param_name):
@@ -566,6 +579,44 @@ class GemLiteQuantizerTest(unittest.TestCase):
                 loaded_value = getattr(model[0], param_name.removeprefix("0."))
                 self.assertEqual(loaded_value.dtype, original_value.dtype)
                 self.assertTrue(torch.equal(loaded_value, original_value))
+
+    @require_accelerate
+    def test_finalizes_gemlite_modules_before_dispatch(self):
+        quantization_config = _get_gemlite_config(
+            bits=4,
+            group_size=64,
+            packing_bitwidth=32,
+            quantized_fqns=["proj"],
+        )
+        packed_state = _create_packed_gemlite_state_dict(
+            in_features=256,
+            out_features=64,
+            w_nbits=4,
+            group_size=64,
+            packing_bitwidth=32,
+            device=torch_device,
+        )
+        self.assertNotEqual(packed_state["metadata"][10].item(), 0)
+
+        model = GemLiteTestModel().to(torch_device)
+        model.proj = GemLiteLinearTriton()
+        model.proj.load_state_dict(packed_state.copy())
+        model.register_to_config(quantization_config=quantization_config)
+
+        with tempfile.TemporaryDirectory() as model_dir:
+            model.save_pretrained(model_dir, safe_serialization=False, max_shard_size="1KB")
+            self.assertTrue(any(name.endswith(".index.json") for name in os.listdir(model_dir)))
+
+            def assert_finalized_before_dispatch(loaded_model, **kwargs):
+                self.assertEqual(loaded_model.proj.W_group_mode, packed_state["metadata"][10].item())
+                self.assertTrue(torch.equal(loaded_model.state_dict()["proj.metadata"], packed_state["metadata"]))
+
+            with mock.patch(
+                "diffusers.models.modeling_utils.dispatch_model", side_effect=assert_finalized_before_dispatch
+            ) as dispatch_model:
+                GemLiteTestModel.from_pretrained(model_dir, dtype=torch.float16, device_map={"": torch_device})
+
+        dispatch_model.assert_called_once()
 
     def test_get_state_dict_and_metadata_sets_data_contiguous_for_serialization(self):
         quantizer = DiffusersAutoQuantizer.from_config(_get_gemlite_config(), pre_quantized=True)

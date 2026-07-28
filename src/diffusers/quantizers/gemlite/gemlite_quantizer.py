@@ -143,6 +143,14 @@ class GemLiteQuantizer(DiffusersQuantizer):
             )
         return torch_dtype
 
+    def maybe_update_loaded_keys(self, loaded_keys: list[str], checkpoint_files: list[str]) -> list[str]:
+        self._gemlite_module_state_names = {}
+        for key in loaded_keys:
+            module_name, _, tensor_name = key.rpartition(".")
+            if tensor_name in GEMLITE_STATE_NAMES:
+                self._gemlite_module_state_names.setdefault(module_name, set()).add(tensor_name)
+        return loaded_keys
+
     def get_special_dtypes_update(self, model, torch_dtype: "torch.dtype") -> dict[str, "torch.dtype"]:
         special_dtypes = super().get_special_dtypes_update(model, torch_dtype)
 
@@ -212,6 +220,11 @@ class GemLiteQuantizer(DiffusersQuantizer):
         setattr(module, tensor_name, torch.nn.Parameter(value, requires_grad=False))
         module._gemlite_loaded_param_names.add(tensor_name)
 
+        module_name, _, _ = param_name.rpartition(".")
+        expected_state_names = self._gemlite_module_state_names[module_name]
+        if module._gemlite_loaded_param_names == expected_state_names:
+            module.load_state_dict({name: getattr(module, name) for name in expected_state_names})
+
     def _process_model_before_weight_loading(
         self,
         model: "ModelMixin",
@@ -223,6 +236,10 @@ class GemLiteQuantizer(DiffusersQuantizer):
         Replace `nn.Linear` modules with GemLite modules before the checkpoint tensors are loaded. The serialized
         layout in the config creates correctly shaped GemLite tensors. Modules in `keep_in_fp32_modules` are excluded.
         """
+        state_dict = kwargs.get("state_dict")
+        if state_dict is not None:
+            self.maybe_update_loaded_keys(list(state_dict), [])
+
         self.modules_to_not_convert.extend(keep_in_fp32_modules)
         self.modules_to_not_convert = [module for module in self.modules_to_not_convert if module is not None]
 
@@ -239,19 +256,7 @@ class GemLiteQuantizer(DiffusersQuantizer):
     def _process_model_after_weight_loading(self, model: "ModelMixin", **kwargs):
         from gemlite.core import GemLiteLinearTriton
 
-        has_gemlite_linear = False
-        for module in model.modules():
-            if not isinstance(module, GemLiteLinearTriton):
-                continue
-            has_gemlite_linear = True
-            state_dict = {
-                name: getattr(module, name)
-                for name in GEMLITE_STATE_NAMES
-                if name in module._gemlite_loaded_param_names
-            }
-            module.load_state_dict(state_dict)
-
-        if not has_gemlite_linear:
+        if not any(isinstance(module, GemLiteLinearTriton) for module in model.modules()):
             logger.warning("No linear modules are using GemLite.")
         return model
 
