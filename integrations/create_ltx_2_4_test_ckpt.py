@@ -46,9 +46,8 @@ def main(args):
         rope_type="split",
         use_prompt_embeddings=False,  # LTX-2.3
         perturbed_attn=True,  # LTX-2.3
-        ff_bias=False,  # LTX-2.4
-        audio_ff_bias=False,  # LTX-2.4
-        use_prompt_adaln_single=False,  # LTX-2.4
+        ff_bias=False,  # LTX-2.4: the only transformer-level delta from 2.3
+        # audio_ff_bias and use_prompt_adaln_single keep their True defaults (per convert_ltx2_to_diffusers.py 2.4)
     )
 
     # Connector <-> transformer shape dependencies (must hold per modality, video and audio):
