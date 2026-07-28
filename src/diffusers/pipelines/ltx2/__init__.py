@@ -23,6 +23,7 @@ except OptionalDependencyNotAvailable:
     _dummy_objects.update(get_objects_from_module(dummy_torch_and_transformers_objects))
 else:
     _import_structure["connectors"] = ["LTX2TextConnectors"]
+    _import_structure["duration_head"] = ["LTX2AutoDuration", "LTX2DurationHead"]
     _import_structure["image_processor"] = ["LTX2VideoHDRProcessor"]
     _import_structure["latent_upsampler"] = ["LTX2LatentUpsamplerModel"]
     _import_structure["pipeline_ltx2"] = ["LTX2Pipeline"]
@@ -42,6 +43,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from ...utils.dummy_torch_and_transformers_objects import *
     else:
         from .connectors import LTX2TextConnectors
+        from .duration_head import LTX2AutoDuration, LTX2DurationHead
         from .image_processor import LTX2VideoHDRProcessor
         from .latent_upsampler import LTX2LatentUpsamplerModel
         from .pipeline_ltx2 import LTX2Pipeline

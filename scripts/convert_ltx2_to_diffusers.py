@@ -17,7 +17,13 @@ from diffusers import (
     LTX2Pipeline,
     LTX2VideoTransformer3DModel,
 )
-from diffusers.pipelines.ltx2 import LTX2LatentUpsamplerModel, LTX2TextConnectors, LTX2Vocoder, LTX2VocoderWithBWE
+from diffusers.pipelines.ltx2 import (
+    LTX2DurationHead,
+    LTX2LatentUpsamplerModel,
+    LTX2TextConnectors,
+    LTX2Vocoder,
+    LTX2VocoderWithBWE,
+)
 from diffusers.utils.import_utils import is_accelerate_available
 
 
@@ -598,6 +604,50 @@ def convert_ltx2_connectors(
     return connectors
 
 
+def convert_ltx2_duration_head(original_state_dict: dict[str, Any]) -> LTX2DurationHead | None:
+    """Builds an `LTX2DurationHead` from a duration-head state dict, or `None` if the checkpoint has none.
+
+    The duration head ships from LTX-2.4 onward. Its hyperparameters are absent from checkpoint metadata, so the
+    dimensions are read back from the weight shapes; `num_pooler_heads` cannot be recovered that way and is fixed at
+    the value the head was trained with.
+
+    The original checkpoint stores the pooler's projections fused, in `torch.nn.MultiheadAttention` layout. They are
+    split here into the separate q/k/v projections `LTX2DurationAttentionPooler` uses.
+    """
+    state_dict = dict(original_state_dict)
+    if len(state_dict) == 0:
+        print("No duration_head weights found in the checkpoint; skipping (expected for pre-2.4 checkpoints).")
+        return None
+
+    in_proj_weight = state_dict.pop("attention_pooler.cross_attn.in_proj_weight")
+    in_proj_bias = state_dict.pop("attention_pooler.cross_attn.in_proj_bias")
+    query_weight, key_weight, value_weight = in_proj_weight.chunk(3, dim=0)
+    query_bias, key_bias, value_bias = in_proj_bias.chunk(3, dim=0)
+    state_dict["attention_pooler.to_q.weight"] = query_weight
+    state_dict["attention_pooler.to_k.weight"] = key_weight
+    state_dict["attention_pooler.to_v.weight"] = value_weight
+    state_dict["attention_pooler.to_q.bias"] = query_bias
+    state_dict["attention_pooler.to_k.bias"] = key_bias
+    state_dict["attention_pooler.to_v.bias"] = value_bias
+    state_dict["attention_pooler.to_out.weight"] = state_dict.pop("attention_pooler.cross_attn.out_proj.weight")
+    state_dict["attention_pooler.to_out.bias"] = state_dict.pop("attention_pooler.cross_attn.out_proj.bias")
+
+    diffusers_config = {
+        "video_cross_attention_dim": state_dict["video_input_proj.weight"].shape[1],
+        "audio_cross_attention_dim": state_dict["audio_input_proj.weight"].shape[1],
+        "pooler_hidden_dim": state_dict["attention_pooler.to_q.weight"].shape[1],
+        "num_queries": state_dict["attention_pooler.query_tokens"].shape[0],
+        "mlp_hidden_dim": state_dict["mlp_hidden.weight"].shape[0],
+        "num_pooler_heads": 4,
+    }
+
+    with init_empty_weights():
+        duration_head = LTX2DurationHead.from_config(diffusers_config)
+
+    duration_head.load_state_dict(state_dict, strict=True, assign=True)
+    return duration_head
+
+
 def get_ltx2_video_vae_config(
     version: str, timestep_conditioning: bool = False
 ) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
@@ -1161,6 +1211,7 @@ def get_args():
     parser.add_argument("--audio_vae_prefix", default="audio_vae.", type=str)
     parser.add_argument("--dit_prefix", default="model.diffusion_model.", type=str)
     parser.add_argument("--vocoder_prefix", default="vocoder.", type=str)
+    parser.add_argument("--duration_head_prefix", default="duration_head.", type=str)
 
     parser.add_argument("--vae_filename", default=None, type=str, help="VAE filename; overrides combined ckpt if set")
     parser.add_argument(
@@ -1211,6 +1262,11 @@ def get_args():
     parser.add_argument("--audio_vae", action="store_true", help="Whether to convert the audio VAE model")
     parser.add_argument("--dit", action="store_true", help="Whether to convert the DiT model")
     parser.add_argument("--connectors", action="store_true", help="Whether to convert the connector model")
+    parser.add_argument(
+        "--duration_head",
+        action="store_true",
+        help="Whether to convert the duration head (present in LTX-2.4 and later checkpoints only)",
+    )
     parser.add_argument("--vocoder", action="store_true", help="Whether to convert the vocoder model")
     parser.add_argument("--text_encoder", action="store_true", help="Whether to conver the text encoder")
     parser.add_argument("--latent_upsampler", action="store_true", help="Whether to convert the latent upsampler")
@@ -1349,6 +1405,16 @@ def main(args):
         )
         if not args.full_pipeline:
             connectors.to(dit_dtype).save_pretrained(os.path.join(args.output_path, "connectors"))
+
+    duration_head = None
+    if args.duration_head or args.full_pipeline:
+        if combined_ckpt is not None:
+            original_duration_head_ckpt = get_model_state_dict_from_combined_ckpt(
+                combined_ckpt, args.duration_head_prefix
+            )
+            duration_head = convert_ltx2_duration_head(original_duration_head_ckpt)
+        if duration_head is not None and not args.full_pipeline:
+            duration_head.to(dit_dtype).save_pretrained(os.path.join(args.output_path, "duration_head"))
 
     if args.vocoder or args.full_pipeline:
         if args.vocoder_filename is not None:

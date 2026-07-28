@@ -24,11 +24,16 @@ from diffusers import (
     LTX2ImageToVideoPipeline,
     LTX2VideoTransformer3DModel,
 )
-from diffusers.pipelines.ltx2 import LTX2LatentUpsamplePipeline, LTX2TextConnectors
+from diffusers.pipelines.ltx2 import (
+    LTX2AutoDuration,
+    LTX2DurationHead,
+    LTX2LatentUpsamplePipeline,
+    LTX2TextConnectors,
+)
 from diffusers.pipelines.ltx2.latent_upsampler import LTX2LatentUpsamplerModel
 from diffusers.pipelines.ltx2.vocoder import LTX2Vocoder
 
-from ...testing_utils import enable_full_determinism
+from ...testing_utils import enable_full_determinism, torch_device
 from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_IMAGE_PARAMS, TEXT_TO_IMAGE_PARAMS
 from ..test_pipelines_common import PipelineTesterMixin
 
@@ -172,6 +177,7 @@ class LTX2ImageToVideoPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             "vocoder": vocoder,
             "processor": None,
             "prompt_enhancer": None,
+            "duration_head": None,
         }
 
         return components
@@ -355,3 +361,120 @@ class LTX2ImageToVideoPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
     def test_inference_batch_single_identical(self):
         self._test_inference_batch_single_identical(batch_size=2, expected_max_diff=2e-2)
+
+    def get_dummy_duration_head(self):
+        torch.manual_seed(0)
+        # The dummy connectors emit 4 heads * 8 head_dim = 32 wide output for both streams.
+        return LTX2DurationHead(
+            video_cross_attention_dim=32,
+            audio_cross_attention_dim=32,
+            pooler_hidden_dim=8,
+            num_queries=1,
+            num_pooler_heads=2,
+            mlp_hidden_dim=8,
+        )
+
+    def test_auto_duration_produces_a_grid_valid_frame_count(self):
+        components = self.get_dummy_components()
+        components["duration_head"] = self.get_dummy_duration_head()
+        pipe = self.pipeline_class(**components).to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_dummy_inputs(torch_device)
+        inputs["num_frames"] = LTX2AutoDuration(min_seconds=0.5, max_seconds=2.0)
+        frames = pipe(**inputs).frames[0]
+
+        ratio = pipe.vae_temporal_compression_ratio
+        assert (len(frames) - 1) % ratio == 0
+        assert 0 < len(frames) <= round(2.0 * inputs["frame_rate"])
+
+    def test_omitting_num_frames_auto_predicts_when_a_head_is_present(self):
+        components = self.get_dummy_components()
+        components["duration_head"] = self.get_dummy_duration_head()
+        pipe = self.pipeline_class(**components).to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_dummy_inputs(torch_device)
+        inputs.pop("num_frames")
+        inputs["output_type"] = "latent"
+        latents = pipe(**inputs).frames
+
+        legacy_latent_frames = (121 - 1) // pipe.vae_temporal_compression_ratio + 1
+        assert latents.shape[2] != legacy_latent_frames, (
+            "omitting num_frames with a head present must not use the legacy default"
+        )
+
+    def test_omitting_num_frames_uses_the_legacy_default_without_a_head(self):
+        # Guards backwards compatibility: a pre-2.4 pipeline has no duration_head and must keep 121.
+        components = self.get_dummy_components()
+        assert components.get("duration_head") is None
+        pipe = self.pipeline_class(**components).to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_dummy_inputs(torch_device)
+        inputs.pop("num_frames")
+        # Decoding 121 frames is needlessly slow here; the latent frame count already pins num_frames down.
+        inputs["output_type"] = "latent"
+        latents = pipe(**inputs).frames
+
+        # Latents come back unpacked as [batch, channels, latent_frames, height, width].
+        expected_latent_frames = (121 - 1) // pipe.vae_temporal_compression_ratio + 1
+        assert latents.shape[2] == expected_latent_frames
+
+    def test_explicit_num_frames_wins_over_a_present_head(self):
+        components = self.get_dummy_components()
+        components["duration_head"] = self.get_dummy_duration_head()
+        pipe = self.pipeline_class(**components).to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_dummy_inputs(torch_device)
+        inputs["num_frames"] = 9
+        frames = pipe(**inputs).frames[0]
+
+        assert len(frames) == 9
+
+    def test_auto_duration_with_multiple_prompts_raises(self):
+        # The head predicts one duration, so it cannot serve prompts with different natural lengths.
+        # Without this guard the pipeline silently applied the first prompt's length to all of them.
+        components = self.get_dummy_components()
+        components["duration_head"] = self.get_dummy_duration_head()
+        pipe = self.pipeline_class(**components).to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_dummy_inputs(torch_device)
+        inputs["prompt"] = ["a robot dancing", "a much longer and quite different scene"]
+        inputs["negative_prompt"] = ["", ""]
+        inputs["num_frames"] = LTX2AutoDuration()
+
+        with self.assertRaises(ValueError) as ctx:
+            pipe(**inputs)
+        assert "2 prompts were supplied" in str(ctx.exception)
+
+    def test_multiple_prompts_still_work_with_an_explicit_num_frames(self):
+        # The guard must be scoped to the auto path -- batched prompts with an integer are unaffected.
+        components = self.get_dummy_components()
+        components["duration_head"] = self.get_dummy_duration_head()
+        pipe = self.pipeline_class(**components).to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_dummy_inputs(torch_device)
+        inputs["prompt"] = ["a robot dancing", "a much longer and quite different scene"]
+        inputs["negative_prompt"] = ["", ""]
+        inputs["num_frames"] = 5
+        inputs["output_type"] = "latent"
+
+        latents = pipe(**inputs).frames
+
+        assert latents.shape[0] == 2
+
+    def test_auto_duration_without_a_head_raises(self):
+        components = self.get_dummy_components()
+        pipe = self.pipeline_class(**components).to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_dummy_inputs(torch_device)
+        inputs["num_frames"] = LTX2AutoDuration()
+
+        with self.assertRaises(ValueError) as ctx:
+            pipe(**inputs)
+        assert "duration_head" in str(ctx.exception)

@@ -627,6 +627,58 @@ encode_video(
 
 The same applies to image-to-video with `LTX2ImageToVideoPipeline`: set `pipe.prompt_enhancer`/`pipe.processor` the same way, and enhancement runs automatically (using `LTX2_4_I2V_DEFAULT_SYSTEM_PROMPT`, conditioning on both the reference image and the text prompt) — again, no `system_prompt=` needed unless you want to override it.
 
+### Automatic duration for LTX-2.4
+
+LTX-2.4 checkpoints ship a small `duration_head` that predicts how long the described shot should be, from the same text-connector output the transformer is conditioned on. When the loaded pipeline has one, **`num_frames` is auto-predicted by default** — omit it and the model chooses the length:
+
+```py
+video, audio = pipe(prompt=prompt, output_type="np", return_dict=False)
+```
+
+To set the length yourself, pass `num_frames` explicitly. An integer always wins over the head:
+
+```py
+video, audio = pipe(prompt=prompt, num_frames=121, output_type="np", return_dict=False)
+```
+
+Pipelines loaded from LTX-2.0 or LTX-2.3 checkpoints have no duration head and keep the previous default of 121 frames, so this changes nothing for them.
+
+Pass an [`~pipelines.ltx2.duration_head.LTX2AutoDuration`] to constrain the prediction. The raw prediction is clamped into the range, then converted to frames:
+
+```py
+from diffusers.pipelines.ltx2 import LTX2AutoDuration
+
+video, audio = pipe(
+    prompt=prompt,
+    num_frames=LTX2AutoDuration(min_seconds=2.0, max_seconds=10.0),
+    frame_rate=frame_rate,
+    output_type="np",
+    return_dict=False,
+)
+```
+
+Predicted frame counts are snapped to the VAE's causal temporal grid (`8k + 1`), so the realized duration is quantized — about 0.33s per step at 24 fps — and it shifts with `frame_rate`, since the head predicts seconds rather than frames. `min_seconds` must be strictly less than `max_seconds`.
+
+Bounds narrower than one grid step may not be satisfiable exactly: at 24 fps `[1.0s, 1.02s]` converts to `[24, 24]` frames, and 24 is not `8k + 1`. The nearest grid point is used and a warning is logged, so the returned length can fall just outside bounds that tight.
+
+To inspect a prediction without generating a video, call the head directly. Everything it needs is public:
+
+```py
+prompt_embeds, prompt_attention_mask, _, _ = pipe.encode_prompt(prompt, do_classifier_free_guidance=False)
+video_tokens, audio_tokens, _ = pipe.connectors(prompt_embeds, prompt_attention_mask)
+
+num_frames = pipe.duration_head.predict_num_frames(
+    video_tokens,
+    audio_tokens,
+    frame_rate=24.0,
+    temporal_compression_ratio=pipe.vae_temporal_compression_ratio,
+)
+seconds = pipe.duration_head(video_tokens, audio_tokens).item()  # raw, before clamping
+print(f"predicted {seconds:.2f}s -> {num_frames} frames")
+```
+
+Converting a 2.4 checkpoint picks the head up automatically with `--full_pipeline`, or on its own with `--duration_head`. Checkpoints predating 2.4 have no such weights, and conversion skips the component rather than failing.
+
 ## LTX2Pipeline
 
 [[autodoc]] LTX2Pipeline
@@ -650,6 +702,16 @@ The same applies to image-to-video with `LTX2ImageToVideoPipeline`: set `pipe.pr
 [[autodoc]] LTX2LatentUpsamplePipeline
   - all
   - __call__
+
+## LTX2DurationHead
+
+[[autodoc]] pipelines.ltx2.duration_head.LTX2DurationHead
+    - forward
+    - predict_num_frames
+
+## LTX2AutoDuration
+
+[[autodoc]] pipelines.ltx2.duration_head.LTX2AutoDuration
 
 ## LTX2PipelineOutput
 
