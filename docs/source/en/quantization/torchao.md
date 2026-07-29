@@ -39,7 +39,7 @@ pipeline = DiffusionPipeline.from_pretrained(
 )
 ```
 
-`device_map="cuda"` quantizes on the GPU, so it loads fast but needs extra headroom while each layer is converted. On a model that nearly fills the card, this can OOM during loading. If that happens, drop `device_map` and move the pipeline afterwards:
+`device_map="cuda"` quantizes each layer on the GPU while it loads. This is fast, but it temporarily requires additional GPU memory for the original and quantized weights. If the model already uses most of your GPU memory, loading can fail with an out-of-memory error. In that case, drop `device_map` and move the pipeline to the GPU after loading:
 
 ```py
 pipeline = DiffusionPipeline.from_pretrained(
@@ -50,7 +50,7 @@ pipeline = DiffusionPipeline.from_pretrained(
 pipeline.to("cuda")
 ```
 
-Quantization now runs on the CPU (slower) and only the quantized weights land on the GPU, so the peak is lower. For even tighter memory, use `pipeline.enable_model_cpu_offload()` instead of `pipeline.to("cuda")`. Quantizing more components (e.g. the text encoder, not just the transformer) also lowers the resident footprint.
+Without `device_map`, Diffusers quantizes the layers on the CPU. This is slower, but avoids the temporary GPU-memory spike during quantization. To reduce GPU memory usage further, use [`~DiffusionPipeline.enable_model_cpu_offload`] instead. You can also quantize additional components, such as the text encoder.
 
 ## torch.compile
 
