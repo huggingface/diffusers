@@ -218,59 +218,59 @@ class CustomOffloadHook(ModelHook):
             )
         return send_to_device(args, self.execution_device), send_to_device(kwargs, self.execution_device)
 
-    def _with_oom_retry(self, entry_point):
-        # On an OOM, free the smallest resident model and retry, escalating until it fits. The memory readings
-        # cannot guide this: the failed forward has already unwound, so its activations are freed and the device
-        # looks free again. Inference only: the retried forward re-runs cleanly from its original inputs.
-        @functools.wraps(entry_point)
-        def run_with_oom_retry(*args, **kwargs):
-            # each pass offloads one more model, so this terminates once they all have been. Tracked explicitly
-            # rather than by device, so that a model that did not actually move cannot be picked twice.
-            offloaded = set()
-            while True:
-                try:
-                    return entry_point(*args, **kwargs)
-                except torch.OutOfMemoryError as e:
-                    resident = sorted(
-                        (
-                            hook
-                            for hook in (self.other_hooks or [])
-                            # compare with a normalized index: model.device reports no index for the
-                            # default device
-                            if hook.model.device.type == self.execution_device.type
-                            and (hook.model.device.index or 0) == (self.execution_device.index or 0)
-                            and id(hook) not in offloaded
-                        ),
-                        key=lambda hook: hook.model.get_memory_footprint(),
-                    )
-                    if not resident:
-                        raise torch.OutOfMemoryError(
-                            f"{self.model_id} ran out of device memory ({e}) with every other managed model "
-                            "already offloaded, so it does not fit on its own. Consider group offloading "
-                            "(`ModelMixin.enable_group_offload`), which offloads a single model in groups of "
-                            "internal layers."
-                        ) from e
-                    smallest = resident[0]
-                    logger.warning(
-                        f"{self.model_id} ran out of device memory ({e}); offloading {smallest.model_id} and "
-                        "retrying. If this happens repeatedly, set a larger `memory_reserve` in "
-                        "`enable_auto_cpu_offload`."
-                    )
-                    smallest.offload(reason=f"oom_retry:{self.model_id}")
-                    offloaded.add(id(smallest))
-                    clear_device_cache()
-
-        return run_with_oom_retry
-
     # YiYi TODO: diffusers' own `ModelHook` (`diffusers.hooks.hooks`) supports a `new_forward` around-hook, which
     # would replace this manual wrapping - we may migrate this class to it in the future.
     def wrap_forward(self, module):
         # `pre_forward`/`post_forward` cannot see an exception the forward pass raises, so wrap the (already
         # hooked) entry points here. `forward` is how most models run; autoencoders enter through the methods
         # `apply_forward_hook` marks as device entry points (their encode/decode), which fire `pre_forward` but
-        # route around `forward`.
+        # route around `forward`. On an OOM, free the smallest resident model and retry, escalating until it
+        # fits. The memory readings cannot guide this: the failed forward has already unwound, so its activations
+        # are freed and the device looks free again. Inference only: the retried forward re-runs cleanly from its
+        # original inputs.
         if not self.retry_on_oom:
             return
+
+        def with_oom_retry(entry_point):
+            @functools.wraps(entry_point)
+            def run_with_oom_retry(*args, **kwargs):
+                # each pass offloads one more model, so this terminates once they all have been. Tracked explicitly
+                # rather than by device, so that a model that did not actually move cannot be picked twice.
+                offloaded = set()
+                while True:
+                    try:
+                        return entry_point(*args, **kwargs)
+                    except torch.OutOfMemoryError as e:
+                        resident = sorted(
+                            (
+                                hook
+                                for hook in (self.other_hooks or [])
+                                # compare with a normalized index: model.device reports no index for the
+                                # default device
+                                if hook.model.device.type == self.execution_device.type
+                                and (hook.model.device.index or 0) == (self.execution_device.index or 0)
+                                and id(hook) not in offloaded
+                            ),
+                            key=lambda hook: hook.model.get_memory_footprint(),
+                        )
+                        if not resident:
+                            raise torch.OutOfMemoryError(
+                                f"{self.model_id} ran out of device memory ({e}) with every other managed model "
+                                "already offloaded, so it does not fit on its own. Consider group offloading "
+                                "(`ModelMixin.enable_group_offload`), which offloads a single model in groups of "
+                                "internal layers."
+                            ) from e
+                        smallest = resident[0]
+                        logger.warning(
+                            f"{self.model_id} ran out of device memory ({e}); offloading {smallest.model_id} and "
+                            "retrying. If this happens repeatedly, set a larger `memory_reserve` in "
+                            "`enable_auto_cpu_offload`."
+                        )
+                        smallest.offload(reason=f"oom_retry:{self.model_id}")
+                        offloaded.add(id(smallest))
+                        clear_device_cache()
+
+            return run_with_oom_retry
 
         entry_point_names = {"forward"}
         for klass in type(module).__mro__:
@@ -279,7 +279,7 @@ class CustomOffloadHook(ModelHook):
                     entry_point_names.add(name)
         for name in sorted(entry_point_names):
             self._wrapped_methods[name] = getattr(module, name)
-            setattr(module, name, self._with_oom_retry(self._wrapped_methods[name]))
+            setattr(module, name, with_oom_retry(self._wrapped_methods[name]))
 
     def unwrap_forward(self, module):
         for name, entry_point in self._wrapped_methods.items():
