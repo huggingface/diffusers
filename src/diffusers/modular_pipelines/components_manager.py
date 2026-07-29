@@ -219,7 +219,7 @@ class CustomOffloadHook(ModelHook):
         return send_to_device(args, self.execution_device), send_to_device(kwargs, self.execution_device)
 
     # YiYi TODO: diffusers' own `ModelHook` (`diffusers.hooks.hooks`) supports a `new_forward` around-hook, which
-    # would replace this manual wrapping - we may migrate this class to it in the future.
+    # would replace this manual wrapping - see issue tracked in https://github.com/huggingface/diffusers/issues/14328.
     def wrap_forward(self, module):
         # `pre_forward`/`post_forward` cannot see an exception the forward pass raises, so wrap the (already
         # hooked) entry points here. `forward` is how most models run; autoencoders enter through the methods
