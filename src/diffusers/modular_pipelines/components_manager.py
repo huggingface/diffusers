@@ -63,46 +63,38 @@ def available_device_memory(execution_device: torch.device) -> int:
 @dataclass
 class OffloadEvent:
     """
-    A single thing the offloader did: a model moved onto the execution device (`"onload"`), a model moved back to the
-    CPU (`"offload"`), or a forward pass that ran out of device memory (`"oom"`).
+    A single move the offloader made: a model moved onto the execution device (`"onload"`) or back to the CPU
+    (`"offload"`), with `reason` explaining why.
     """
 
     action: str
+    # the model this event moved
     model_id: str
     model_size: int | None = None
-    # why the model moved: which model needed the room, the OOM retry, attaching a new component, ...
+    # why the model moved: which model needed the room ("needed_by:<model>"), an OOM retry
+    # ("oom_retry:<model>"), attaching a new component, disabling offloading, ...
     reason: str | None = None
     # free device memory read just before the onload's eviction decision (`None` if the device cannot report it)
     available_memory: int | None = None
-    resident_before: tuple[str, ...] = ()
-    offloaded: tuple[str, ...] = ()
 
 
 class OffloadRecord:
     """
     What the offloader did, in order.
 
-    Every offloading decision appends to this record, so after a run it holds the full sequence of moves, what each
-    move cost, and where the forward passes ran out of memory. Printing it shows that sequence as a table followed by
-    a summary; [`~OffloadRecord.summary`] returns the same numbers as a dict.
+    Every move appends to this record, so after a run it holds the full sequence, what each move cost, and where the
+    forward passes ran out of memory. Printing it shows that sequence as a table followed by a summary;
+    [`~OffloadRecord.summary`] returns the same numbers as a dict.
     """
 
     def __init__(self, maxlen: int = MAX_RECORDED_OFFLOAD_EVENTS):
         self.events: deque[OffloadEvent] = deque(maxlen=maxlen)
-        self._recorded = 0
 
     def add(self, event: OffloadEvent):
         self.events.append(event)
-        self._recorded += 1
 
     def clear(self):
         self.events.clear()
-        self._recorded = 0
-
-    @property
-    def dropped(self) -> int:
-        """How many events fell out of the (bounded) log."""
-        return max(self._recorded - len(self.events), 0)
 
     def summary(self) -> dict[str, Any]:
         onloads = [event for event in self.events if event.action == "onload"]
@@ -112,12 +104,12 @@ class OffloadRecord:
             if event.action == "onload":
                 resident.add(event.model_id)
                 peak_co_residency = max(peak_co_residency, len(resident))
-            elif event.action == "offload":
+            else:
                 resident.discard(event.model_id)
         return {
             "onloads": len(onloads),
             "offloads": len(offloads),
-            "oom_retries": sum(event.action == "oom" for event in self.events),
+            "oom_retries": sum(event.reason.startswith("oom_retry:") for event in offloads if event.reason),
             "peak_co_residency": peak_co_residency,
             "bytes_onloaded": sum(event.model_size or 0 for event in onloads),
             "bytes_offloaded": sum(event.model_size or 0 for event in offloads),
@@ -130,34 +122,36 @@ class OffloadRecord:
         if not self.events:
             return "Offload record: nothing recorded yet"
 
-        # One row per decision: an onload and the evictions it caused (its "needed_by" offload events) share a
-        # row. Offloads with other causes (OOM retry, offloading disabled) and OOMs get their own rows.
+        # One row per decision: an onload and the evictions it caused share a row, correlated through the
+        # eviction's "needed_by:<onloader>" reason (evictions precede their onload in the event sequence).
+        # Offloads with other causes (OOM retry, offloading disabled) get their own rows.
         sizes = {event.model_id: event.model_size for event in self.events if event.model_size is not None}
 
         def label(model_id):
             return f"{model_id} ({format_size(sizes.get(model_id))})"
 
-        rows = []
+        rows, pending_evictions = [], {}
         for event in self.events:
             if event.action == "onload":
-                offloaded = ", ".join(label(model_id) for model_id in event.offloaded) or "-"
+                evicted = pending_evictions.pop(event.model_id, [])
+                offloaded = ", ".join(label(model_id) for model_id in evicted) or "-"
                 rows.append(
                     [label(event.model_id), offloaded, format_size(event.available_memory), event.reason or ""]
                 )
-            elif event.action == "offload":
-                if event.reason is not None and event.reason.startswith("needed_by:"):
-                    continue  # shown on the row of the onload that caused it
+            elif event.reason is not None and event.reason.startswith("needed_by:"):
+                pending_evictions.setdefault(event.reason.removeprefix("needed_by:"), []).append(event.model_id)
+            else:
                 rows.append(["-", label(event.model_id), "-", event.reason or ""])
-            else:  # oom
-                rows.append(["-", "-", "-", f"oom:{event.model_id}"])
+        # evictions whose onload never happened (its forward raised) still deserve a row
+        for reason_target, evicted in pending_evictions.items():
+            for model_id in evicted:
+                rows.append(["-", label(model_id), "-", f"needed_by:{reason_target}"])
 
         table = format_table(
             ["#", "Onload", "Offloaded", "Available", "Reason"],
             [[str(index), *row] for index, row in enumerate(rows, start=1)],
         )
         lines = [table[0], "-" * len(table[0]), *table[1:]]
-        if self.dropped:
-            lines.insert(2, f"... {self.dropped} earlier events dropped from the log ...")
 
         summary = self.summary()
         lines += [
@@ -224,10 +218,8 @@ class CustomOffloadHook(ModelHook):
             available_memory = (
                 available_device_memory(self.execution_device) if hasattr(device_module, "mem_get_info") else None
             )
-            resident_before, hooks_to_offload = (), []
             if self.other_hooks is not None:
                 hooks_to_offload = [hook for hook in self.other_hooks if hook.model.device == self.execution_device]
-                resident_before = tuple(hook.model_id for hook in hooks_to_offload)
                 # offload all other hooks
                 start_time = time.perf_counter()
                 if self.offload_strategy is not None:
@@ -255,8 +247,6 @@ class CustomOffloadHook(ModelHook):
                     model_id=self.model_id,
                     model_size=module.get_memory_footprint(),
                     available_memory=available_memory,
-                    resident_before=resident_before,
-                    offloaded=tuple(hook.model_id for hook in hooks_to_offload),
                 )
             )
         return send_to_device(args, self.execution_device), send_to_device(kwargs, self.execution_device)
@@ -297,7 +287,6 @@ class CustomOffloadHook(ModelHook):
                     except torch.OutOfMemoryError as e:
                         if not self.retry_on_oom:
                             raise
-                        self.record.add(OffloadEvent(action="oom", model_id=self.model_id))
                         resident = sorted(
                             (hook for hook in self.resident_other_hooks() if id(hook) not in offloaded),
                             key=lambda hook: hook.model.get_memory_footprint(),
