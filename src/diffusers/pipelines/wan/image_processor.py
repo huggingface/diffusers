@@ -72,8 +72,8 @@ class WanAnimateImageProcessor(VaeImageProcessor):
         if do_convert_rgb and do_convert_grayscale:
             raise ValueError(
                 "`do_convert_rgb` and `do_convert_grayscale` can not both be set to `True`,"
-                " if you intended to convert the image into RGB format, please set `do_convert_grayscale = False`.",
-                " if you intended to convert the image into grayscale format, please set `do_convert_rgb = False`",
+                " if you intended to convert the image into RGB format, please set `do_convert_grayscale = False`."
+                " if you intended to convert the image into grayscale format, please set `do_convert_rgb = False`"
             )
 
     def _resize_and_fill(

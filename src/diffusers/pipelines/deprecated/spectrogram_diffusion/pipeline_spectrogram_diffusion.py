@@ -249,7 +249,7 @@ class SpectrogramDiffusionPipeline(DiffusionPipeline):
             if callback is not None and i % callback_steps == 0:
                 callback(i, full_pred_mel)
 
-            logger.info("Generated segment", i)
+            logger.info("Generated segment %d", i)
 
         if output_type == "np" and not is_onnx_available():
             raise ValueError(

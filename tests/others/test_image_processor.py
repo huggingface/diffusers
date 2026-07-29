@@ -308,3 +308,16 @@ class ImageProcessorTest(unittest.TestCase):
         assert out_np.shape == exp_np_shape, (
             f"resized image output shape '{out_np.shape}' didn't match expected shape '{exp_np_shape}'."
         )
+
+    def test_rgb_and_grayscale_conflict_message_is_one_string(self):
+        # The ValueError used to be raised with two arguments, so str(e) rendered the tuple
+        # repr and the second half of the guidance arrived wrapped in quotes and parentheses.
+        with self.assertRaises(ValueError) as ctx:
+            VaeImageProcessor(do_convert_rgb=True, do_convert_grayscale=True)
+
+        assert len(ctx.exception.args) == 1
+        message = str(ctx.exception)
+        assert message.startswith("`do_convert_rgb` and `do_convert_grayscale` can not both be set to `True`,")
+        assert "please set `do_convert_grayscale = False`" in message
+        assert "please set `do_convert_rgb = False`" in message
+        assert not message.startswith("(")
