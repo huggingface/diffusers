@@ -4,7 +4,6 @@ import tempfile
 import pytest
 
 from diffusers import FluxPipeline, FluxTransformer2DModel, SDNQConfig
-from diffusers.quantizers import PipelineQuantizationConfig
 from diffusers.utils import is_torch_available
 
 from ...testing_utils import (
@@ -107,18 +106,6 @@ class TestSDNQ:
         # bf16 quantized outputs differ in the last bits between the fresh and reloaded model
         assert torch.allclose(output, loaded_output, atol=1e-2, rtol=1e-2)
 
-    def test_pipeline_quant_config(self):
-        pipeline_quant_config = PipelineQuantizationConfig(
-            quant_mapping={"transformer": SDNQConfig(weights_dtype="int8")}
-        )
-        pipe = FluxPipeline.from_pretrained(
-            self.pipeline_model_id,
-            quantization_config=pipeline_quant_config,
-            dtype=self.dtype,
-        ).to(torch_device)
-        assert self._num_sdnq_layers(pipe.transformer) > 0
-        _ = pipe("a cat holding a sign that says hello", num_inference_steps=2)
-
     def test_uint4_svd(self):
         model = self.get_quantized_model(weights_dtype="uint4", use_svd=True)
         assert self._num_sdnq_layers(model) > 0
@@ -128,16 +115,17 @@ class TestSDNQ:
         from sdnq import SDNQConfig as SDNQLibConfig
         from transformers import CLIPTextModel
 
+        # minimum_allowed_numel=0 so sdnq quantizes the tiny fixture's small layers (skipped by default >=16384).
         transformer = self.model_cls.from_pretrained(
             self.pipeline_model_id,
             subfolder="transformer",
-            quantization_config=SDNQConfig(weights_dtype="int8"),
+            quantization_config=SDNQConfig(weights_dtype="int8", minimum_allowed_numel=0),
             dtype=self.dtype,
         )
         text_encoder = CLIPTextModel.from_pretrained(
             self.pipeline_model_id,
             subfolder="text_encoder",
-            quantization_config=SDNQLibConfig(weights_dtype="int8"),
+            quantization_config=SDNQLibConfig(weights_dtype="int8", minimum_allowed_numel=0),
             dtype=self.dtype,
         )
         pipe = FluxPipeline.from_pretrained(

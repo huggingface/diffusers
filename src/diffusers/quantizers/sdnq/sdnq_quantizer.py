@@ -62,7 +62,7 @@ class SDNQQuantizer(DiffusersQuantizer):
 def _ensure_sdnq_registered():
     """
     Import sdnq once so it registers itself with transformers (import side effect). transformers loads text encoders
-    through its own quantizer registry and only learns about SDNQ once sdnq has been imported; without this it
-    silently skips the quantization config of a prequantized SDNQ component and mis-loads the weights.
+    through its own quantizer registry and only learns about SDNQ once sdnq has been imported; without this it silently
+    skips the quantization config of a prequantized SDNQ component and mis-loads the weights.
     """
     import sdnq  # noqa: F401
