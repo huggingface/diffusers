@@ -116,10 +116,9 @@ On a 20GB card, the Z-Image pipeline from the example above records this:
 2 | transformer_140458257515616 (11.46 GB) | text_encoder_140458257514752 (7.49 GB) | 10.38 GB  |
 3 | vae_140458257515376 (159.87 MB)        | -                                      | 6.36 GB   |
 --------------------------------------------------------------------------------------------------------
-3 onloads (19.11 GB) / 1 offloads (7.49 GB), 0 OOM retries, peak co-residency 2
 ```
 
-Each row is one decision: the model that loaded, what was evicted to make room for it, and the free device memory (`Available`, read just before each load) the decision was based on. Here the transformer found 10.38 GB free — not enough for its 11.46 GB of weights while keeping the 3GB `memory_reserve` — so the text encoder was evicted first. The VAE then fit into the 6.36 GB left next to the transformer, so it loaded without evicting anything (peak co-residency 2). The `Reason` column only speaks on moves an onload did not cause — an OOM retry (`oom_retry:<model>`), disabling offloading — which appear as their own rows. To watch the moves live as they happen instead, enable info logging with `diffusers.logging.set_verbosity_info()`.
+Each row is one decision: the model that loaded, what was evicted to make room for it, and the free device memory (`Available`, read just before each load) the decision was based on. Here the transformer found 10.38 GB free — not enough for its 11.46 GB of weights while keeping the 3GB `memory_reserve` — so the text encoder was evicted first. The VAE then fit into the 6.36 GB left next to the transformer, so it loaded without evicting anything. The `Reason` column only speaks on moves an onload did not cause — an OOM retry (`oom_retry:<model>`), disabling offloading — which appear as their own rows. To watch the moves live as they happen instead, enable info logging with `diffusers.logging.set_verbosity_info()`.
 
 A model appearing repeatedly in this table is thrashing — it is being evicted and re-loaded every step, which costs a PCIe transfer each way. That usually means `memory_reserve` is too large (models are pushed off that would have fit) or too small (each step ends in an OOM retry).
 

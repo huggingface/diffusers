@@ -83,8 +83,7 @@ class OffloadRecord:
     What the offloader did, in order.
 
     Every move appends to this record, so after a run it holds the full sequence, what each move cost, and where the
-    forward passes ran out of memory. Printing it shows that sequence as a table followed by a summary;
-    [`~OffloadRecord.summary`] returns the same numbers as a dict.
+    forward passes ran out of memory. Printing it shows that sequence as a table, one row per decision.
     """
 
     def __init__(self, maxlen: int = MAX_RECORDED_OFFLOAD_EVENTS):
@@ -95,28 +94,6 @@ class OffloadRecord:
 
     def clear(self):
         self.events.clear()
-
-    def summary(self) -> dict[str, Any]:
-        onloads = [event for event in self.events if event.action == "onload"]
-        offloads = [event for event in self.events if event.action == "offload"]
-        resident, peak_co_residency = set(), 0
-        for event in self.events:
-            if event.action == "onload":
-                resident.add(event.model_id)
-                peak_co_residency = max(peak_co_residency, len(resident))
-            else:
-                resident.discard(event.model_id)
-        return {
-            "onloads": len(onloads),
-            "offloads": len(offloads),
-            "oom_retries": sum(event.reason.startswith("oom_retry:") for event in offloads if event.reason),
-            "peak_co_residency": peak_co_residency,
-            "bytes_onloaded": sum(event.model_size or 0 for event in onloads),
-            "bytes_offloaded": sum(event.model_size or 0 for event in offloads),
-        }
-
-    def __len__(self):
-        return len(self.events)
 
     def __repr__(self):
         if not self.events:
@@ -151,16 +128,7 @@ class OffloadRecord:
             ["#", "Onload", "Offloaded", "Available", "Reason"],
             [[str(index), *row] for index, row in enumerate(rows, start=1)],
         )
-        lines = [table[0], "-" * len(table[0]), *table[1:]]
-
-        summary = self.summary()
-        lines += [
-            "-" * len(table[0]),
-            f"{summary['onloads']} onloads ({format_size(summary['bytes_onloaded'])}) / "
-            f"{summary['offloads']} offloads ({format_size(summary['bytes_offloaded'])}), "
-            f"{summary['oom_retries']} OOM retries, peak co-residency {summary['peak_co_residency']}",
-        ]
-        return "\n".join(lines)
+        return "\n".join([table[0], "-" * len(table[0]), *table[1:]])
 
 
 class CustomOffloadHook(ModelHook):
@@ -955,9 +923,9 @@ class ComponentsManager:
     def offload_record(self) -> OffloadRecord:
         """
         What the offloader has done so far: every model moved onto or off the device, in order, and where a forward
-        pass ran out of memory. Print it to see the sequence, or read [`~OffloadRecord.summary`] for the numbers
-        behind it. Kept across [`~ComponentsManager.disable_auto_cpu_offload`] (it is the post-mortem of the run),
-        and cleared when offloading is enabled again.
+        pass ran out of memory. Print it to see the sequence, or read `events` for the data behind it. Kept across
+        [`~ComponentsManager.disable_auto_cpu_offload`] (it is the post-mortem of the run), and cleared when
+        offloading is enabled again.
         """
         return self._offload_record
 

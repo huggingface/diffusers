@@ -50,6 +50,18 @@ UNIT = 1024
 _AMPLE_FREE_BYTES = 1024**4
 
 
+def _peak_co_residency(events):
+    """Largest number of models simultaneously on the device, replayed from the recorded moves."""
+    resident, peak = set(), 0
+    for event in events:
+        if event.action == "onload":
+            resident.add(event.model_id)
+            peak = max(peak, len(resident))
+        else:
+            resident.discard(event.model_id)
+    return peak
+
+
 class DummyModel(ModelMixin):
     def __init__(self, footprint_bytes: int = UNIT):
         super().__init__()
@@ -405,7 +417,7 @@ class ComponentsManagerTesterMixin:
             eviction = next(event for event in cm.offload_record.events if event.action == "offload")
             assert eviction.model_id == cm.model_hooks[0].model_id
             assert eviction.reason == f"needed_by:{cm.model_hooks[1].model_id}"
-            assert cm.offload_record.summary()["peak_co_residency"] == 1
+            assert _peak_co_residency(cm.offload_record.events) == 1
             # the printed table shows one row per decision: m2's row carries the m1 eviction it caused
             m2_row = next(line for line in repr(cm.offload_record).splitlines() if line.startswith("2 "))
             assert cm.model_hooks[1].model_id in m2_row and cm.model_hooks[0].model_id in m2_row
@@ -539,10 +551,7 @@ class TestOffloadHookBehavior:
         onloads = [event for event in manager.offload_record.events if event.action == "onload"]
         assert [event.model_id.rsplit("_", 1)[0] for event in onloads] == ["a", "b"]
         assert [event.model_size for event in onloads] == [UNIT, 4 * UNIT]
-        summary = manager.offload_record.summary()
-        assert summary["onloads"] == 2
-        assert summary["bytes_onloaded"] == 5 * UNIT
-        assert summary["oom_retries"] == 0
+        assert [event.action for event in manager.offload_record.events] == ["onload", "onload"]
 
     def test_record_captures_oom_and_the_escalation(self):
         model = OOMOnceModel()
@@ -551,12 +560,11 @@ class TestOffloadHookBehavior:
 
         model(torch.zeros(2, 4))
 
-        summary = manager.offload_record.summary()
-        assert summary["oom_retries"] == 1
-        assert summary["offloads"] == 1
-        assert summary["bytes_offloaded"] == UNIT
         # the OOM shows up as the eviction it caused, attributed to the model that ran out of memory
-        offload_event = next(event for event in manager.offload_record.events if event.action == "offload")
+        offloads = [event for event in manager.offload_record.events if event.action == "offload"]
+        assert len(offloads) == 1
+        offload_event = offloads[0]
+        assert offload_event.model_size == UNIT
         assert offload_event.model_id.rsplit("_", 1)[0] == "smallest"
         assert offload_event.reason == f"oom_retry:{manager.model_hooks[0].model_id}"
 
@@ -567,12 +575,12 @@ class TestOffloadHookBehavior:
 
         model_a(torch.zeros(2, 4))
         model_b(torch.zeros(2, 4))
-        assert manager.offload_record.summary()["peak_co_residency"] == 2
+        assert _peak_co_residency(manager.offload_record.events) == 2
 
         # an offload brings residency back down, so a later onload does not raise the peak
         manager.model_hooks[0].offload(reason="test")
         model_a(torch.zeros(2, 4))
-        assert manager.offload_record.summary()["peak_co_residency"] == 2
+        assert _peak_co_residency(manager.offload_record.events) == 2
 
     def test_record_is_bounded_and_clearable(self):
         model = DummyModel()
@@ -585,7 +593,7 @@ class TestOffloadHookBehavior:
         assert len(manager.offload_record.events) == 2
 
         manager.offload_record.clear()
-        assert len(manager.offload_record) == 0
+        assert len(manager.offload_record.events) == 0
         assert "nothing recorded yet" in repr(manager.offload_record)
 
     def test_record_survives_disable(self):
@@ -595,7 +603,7 @@ class TestOffloadHookBehavior:
 
         manager.disable_auto_cpu_offload()
         # the record is the post-mortem of the run that just ended
-        assert manager.offload_record.summary()["onloads"] == 1
+        assert sum(event.action == "onload" for event in manager.offload_record.events) == 1
 
     def test_add_does_not_rebuild_existing_hooks(self):
         model_a = DummyModel()
@@ -675,7 +683,7 @@ class ModularPipelineOffloadTesterMixin:
             assert any(event.action == "offload" for event in events), "expected at least one eviction"
 
             # Sequencing: models run one at a time, never two co-resident on the device.
-            peak = cm.offload_record.summary()["peak_co_residency"]
+            peak = _peak_co_residency(events)
             assert peak == 1, f"expected serialized execution under pressure, saw {peak} models co-resident"
 
             # Device placement after the run: at most the last-run model stays on the
@@ -702,7 +710,7 @@ class ModularPipelineOffloadTesterMixin:
             assert all(event.action == "onload" for event in events), "no model should be evicted"
 
             # ...and models accumulate on the device instead of being serialized.
-            peak = cm.offload_record.summary()["peak_co_residency"]
+            peak = _peak_co_residency(events)
             assert peak >= 2, f"expected models to co-reside without pressure, saw peak {peak}"
 
             models = self._managed_models(cm)
