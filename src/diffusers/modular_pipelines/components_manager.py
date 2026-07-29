@@ -592,7 +592,22 @@ class ComponentsManager:
             logger.info(f"ComponentsManager: added component '{name}' as '{component_id}'")
 
         if self._auto_offload_enabled and is_new_component and isinstance(component, torch.nn.Module):
-            self._attach_offload_hook(component_id, component)
+            # attach an offload hook without disturbing the models already managed: the new component starts
+            # on CPU (like every model under auto offload), everything else stays where it is
+            hook = custom_offload_with_hook(
+                component_id,
+                component,
+                self._auto_offload_device,
+                offload_strategy=self._offload_strategy,
+                retry_on_oom=self._offload_retry_on_oom,
+                record=self._offload_record,
+            )
+            for other_hook in self.model_hooks:
+                if other_hook.hook.execution_device == hook.hook.execution_device:
+                    hook.add_other_hook(other_hook)
+                    other_hook.add_other_hook(hook)
+            hook.offload(reason="component_added")
+            self.model_hooks.append(hook)
 
         return component_id
 
@@ -634,7 +649,13 @@ class ComponentsManager:
 
         if isinstance(component, torch.nn.Module):
             if self._auto_offload_enabled:
-                self._detach_offload_hook(component)
+                # detach only this component's offload hook, leaving all other managed models where they are
+                hook = next(user_hook for user_hook in self.model_hooks if user_hook.model is component)
+                hook.remove()
+                self.model_hooks.remove(hook)
+                for other_hook in self.model_hooks:
+                    if other_hook.hook.other_hooks and hook in other_hook.hook.other_hooks:
+                        other_hook.hook.other_hooks.remove(hook)
             component.to("cpu")
             del component
             import gc
@@ -644,193 +665,6 @@ class ComponentsManager:
                 torch.cuda.empty_cache()
             if torch.xpu.is_available():
                 torch.xpu.empty_cache()
-
-    # YiYi TODO: rename to search_components for now, may remove this method
-    def search_components(
-        self,
-        names: str | None = None,
-        collection: str | None = None,
-        load_id: str | None = None,
-        return_dict_with_names: bool = True,
-    ):
-        """
-        Search components by name with simple pattern matching. Optionally filter by collection or load_id.
-
-        Args:
-            names: Component name(s) or pattern(s)
-                Patterns:
-                - "unet" : match any component with base name "unet" (e.g., unet_123abc)
-                - "!unet" : everything except components with base name "unet"
-                - "unet*" : anything with base name starting with "unet"
-                - "!unet*" : anything with base name NOT starting with "unet"
-                - "*unet*" : anything with base name containing "unet"
-                - "!*unet*" : anything with base name NOT containing "unet"
-                - "refiner|vae|unet" : anything with base name exactly matching "refiner", "vae", or "unet"
-                - "!refiner|vae|unet" : anything with base name NOT exactly matching "refiner", "vae", or "unet"
-                - "unet*|vae*" : anything with base name starting with "unet" OR starting with "vae"
-            collection: Optional collection to filter by
-            load_id: Optional load_id to filter by
-            return_dict_with_names:
-                                    If True, returns a dictionary with component names as keys, throw an error if
-                                    multiple components with the same name are found If False, returns a dictionary
-                                    with component IDs as keys
-
-        Returns:
-            Dictionary mapping component names to components if return_dict_with_names=True, or a dictionary mapping
-            component IDs to components if return_dict_with_names=False
-        """
-
-        # select components based on collection and load_id filters
-        selected_ids = self._lookup_ids(collection=collection, load_id=load_id)
-        components = {k: self.components[k] for k in selected_ids}
-
-        def get_return_dict(components, return_dict_with_names):
-            """
-            Create a dictionary mapping component names to components if return_dict_with_names=True, or a dictionary
-            mapping component IDs to components if return_dict_with_names=False, throw an error if duplicate component
-            names are found when return_dict_with_names=True
-            """
-            if return_dict_with_names:
-                dict_to_return = {}
-                for comp_id, comp in components.items():
-                    comp_name = self._id_to_name(comp_id)
-                    if comp_name in dict_to_return:
-                        raise ValueError(
-                            f"Duplicate component names found in the search results: {comp_name}, please set `return_dict_with_names=False` to return a dictionary with component IDs as keys"
-                        )
-                    dict_to_return[comp_name] = comp
-                return dict_to_return
-            else:
-                return components
-
-        # if no names are provided, return the filtered components as it is
-        if names is None:
-            return get_return_dict(components, return_dict_with_names)
-
-        # if names is not a string, raise an error
-        elif not isinstance(names, str):
-            raise ValueError(f"Invalid type for `names: {type(names)}, only support string")
-
-        # Create mapping from component_id to base_name for components to be used for pattern matching
-        base_names = {comp_id: self._id_to_name(comp_id) for comp_id in components.keys()}
-
-        # Helper function to check if a component matches a pattern based on its base name
-        def matches_pattern(component_id, pattern, exact_match=False):
-            """
-            Helper function to check if a component matches a pattern based on its base name.
-
-            Args:
-                component_id: The component ID to check
-                pattern: The pattern to match against
-                exact_match: If True, only exact matches to base_name are considered
-            """
-            base_name = base_names[component_id]
-
-            # Exact match with base name
-            if exact_match:
-                return pattern == base_name
-
-            # Prefix match (ends with *)
-            elif pattern.endswith("*"):
-                prefix = pattern[:-1]
-                return base_name.startswith(prefix)
-
-            # Contains match (starts with *)
-            elif pattern.startswith("*"):
-                search = pattern[1:-1] if pattern.endswith("*") else pattern[1:]
-                return search in base_name
-
-            # Exact match (no wildcards)
-            else:
-                return pattern == base_name
-
-        # Check if this is a "not" pattern
-        is_not_pattern = names.startswith("!")
-        if is_not_pattern:
-            names = names[1:]  # Remove the ! prefix
-
-        # Handle OR patterns (containing |)
-        if "|" in names:
-            terms = names.split("|")
-            matches = {}
-
-            for comp_id, comp in components.items():
-                # For OR patterns with exact names (no wildcards), we do exact matching on base names
-                exact_match = all(not (term.startswith("*") or term.endswith("*")) for term in terms)
-
-                # Check if any of the terms match this component
-                should_include = any(matches_pattern(comp_id, term, exact_match) for term in terms)
-
-                # Flip the decision if this is a NOT pattern
-                if is_not_pattern:
-                    should_include = not should_include
-
-                if should_include:
-                    matches[comp_id] = comp
-
-            log_msg = "NOT " if is_not_pattern else ""
-            match_type = "exactly matching" if exact_match else "matching any of patterns"
-            logger.info(f"Getting components {log_msg}{match_type} {terms}: {list(matches.keys())}")
-
-        # Try exact match with a base name
-        elif any(names == base_name for base_name in base_names.values()):
-            # Find all components with this base name
-            matches = {
-                comp_id: comp
-                for comp_id, comp in components.items()
-                if (base_names[comp_id] == names) != is_not_pattern
-            }
-
-            if is_not_pattern:
-                logger.info(f"Getting all components except those with base name '{names}': {list(matches.keys())}")
-            else:
-                logger.info(f"Getting components with base name '{names}': {list(matches.keys())}")
-
-        # Prefix match (ends with *)
-        elif names.endswith("*"):
-            prefix = names[:-1]
-            matches = {
-                comp_id: comp
-                for comp_id, comp in components.items()
-                if base_names[comp_id].startswith(prefix) != is_not_pattern
-            }
-            if is_not_pattern:
-                logger.info(f"Getting components NOT starting with '{prefix}': {list(matches.keys())}")
-            else:
-                logger.info(f"Getting components starting with '{prefix}': {list(matches.keys())}")
-
-        # Contains match (starts with *)
-        elif names.startswith("*"):
-            search = names[1:-1] if names.endswith("*") else names[1:]
-            matches = {
-                comp_id: comp
-                for comp_id, comp in components.items()
-                if (search in base_names[comp_id]) != is_not_pattern
-            }
-            if is_not_pattern:
-                logger.info(f"Getting components NOT containing '{search}': {list(matches.keys())}")
-            else:
-                logger.info(f"Getting components containing '{search}': {list(matches.keys())}")
-
-        # Substring match (no wildcards, but not an exact component name)
-        elif any(names in base_name for base_name in base_names.values()):
-            matches = {
-                comp_id: comp
-                for comp_id, comp in components.items()
-                if (names in base_names[comp_id]) != is_not_pattern
-            }
-            if is_not_pattern:
-                logger.info(f"Getting components NOT containing '{names}': {list(matches.keys())}")
-            else:
-                logger.info(f"Getting components containing '{names}': {list(matches.keys())}")
-
-        else:
-            raise ValueError(f"Component or pattern '{names}' not found in ComponentsManager")
-
-        if not matches:
-            raise ValueError(f"No components found matching pattern '{names}'")
-
-        return get_return_dict(matches, return_dict_with_names)
 
     def enable_auto_cpu_offload(
         self,
@@ -925,35 +759,6 @@ class ComponentsManager:
         offloading is enabled again.
         """
         return self._offload_record
-
-    def _attach_offload_hook(self, component_id: str, component: torch.nn.Module):
-        """
-        Attach an offload hook to a newly added component without disturbing the models already managed: the new
-        component starts on CPU (like every model under auto offload), everything else stays where it is.
-        """
-        hook = custom_offload_with_hook(
-            component_id,
-            component,
-            self._auto_offload_device,
-            offload_strategy=self._offload_strategy,
-            retry_on_oom=self._offload_retry_on_oom,
-            record=self._offload_record,
-        )
-        for other_hook in self.model_hooks:
-            if other_hook.hook.execution_device == hook.hook.execution_device:
-                hook.add_other_hook(other_hook)
-                other_hook.add_other_hook(hook)
-        hook.offload(reason="component_added")
-        self.model_hooks.append(hook)
-
-    def _detach_offload_hook(self, component: torch.nn.Module):
-        """Detach a removed component's offload hook, leaving all other managed models where they are."""
-        hook = next(user_hook for user_hook in self.model_hooks if user_hook.model is component)
-        hook.remove()
-        self.model_hooks.remove(hook)
-        for other_hook in self.model_hooks:
-            if other_hook.hook.other_hooks and hook in other_hook.hook.other_hooks:
-                other_hook.hook.other_hooks.remove(hook)
 
     def disable_auto_cpu_offload(self):
         """
@@ -1116,13 +921,13 @@ class ComponentsManager:
     ) -> Any:
         """
         Get a single component by either:
-        - searching name (pattern matching), collection, or load_id.
+        - searching name, collection, or load_id.
         - passing in a component_id
         Raises an error if multiple components match or none are found.
 
         Args:
             component_id (str | None): Optional component ID to get
-            name (str | None): Component name or pattern
+            name (str | None): Component name
             collection (str | None): Optional collection to filter by
             load_id (str | None): Optional load_id to filter by
 
@@ -1142,33 +947,15 @@ class ComponentsManager:
                 raise ValueError(f"Component '{component_id}' not found in ComponentsManager")
             return self.components[component_id]
         # search with name/collection/load_id
-        results = self.search_components(name, collection, load_id)
+        results = self._lookup_ids(name=name, collection=collection, load_id=load_id)
 
         if not results:
             raise ValueError(f"No components found matching '{name}'")
 
         if len(results) > 1:
-            raise ValueError(f"Multiple components found matching '{name}': {list(results.keys())}")
+            raise ValueError(f"Multiple components found matching '{name}': {sorted(results)}")
 
-        return next(iter(results.values()))
-
-    def get_ids(self, names: str | list[str] = None, collection: str | None = None):
-        """
-        Get component IDs by a list of names, optionally filtered by collection.
-
-        Args:
-            names (str | list[str]): list of component names
-            collection (str | None): Optional collection to filter by
-
-        Returns:
-            list[str]: list of component IDs
-        """
-        ids = set()
-        if not isinstance(names, list):
-            names = [names]
-        for name in names:
-            ids.update(self._lookup_ids(name=name, collection=collection))
-        return list(ids)
+        return self.components[next(iter(results))]
 
     def get_components_by_ids(self, ids: list[str], return_dict_with_names: bool | None = True):
         """
@@ -1202,20 +989,3 @@ class ComponentsManager:
             return dict_to_return
         else:
             return components
-
-    def get_components_by_names(self, names: list[str], collection: str | None = None):
-        """
-        Get components by a list of names, optionally filtered by collection.
-
-        Args:
-            names (list[str]): list of component names
-            collection (str | None): Optional collection to filter by
-
-        Returns:
-            dict[str, Any]: Dictionary of components with component names as keys
-
-        Raises:
-            ValueError: If duplicate component names are found in the search results
-        """
-        ids = self.get_ids(names, collection)
-        return self.get_components_by_ids(ids)
