@@ -42,7 +42,8 @@ def format_table(headers: list[str], rows: list[list[str]]) -> list[str]:
             widths[index] = max(widths[index], len(cell))
 
     def line(cells: list[str]) -> str:
-        return " | ".join([cell.ljust(width) for cell, width in zip(cells[:-1], widths)] + [cells[-1]])
+        # rstrip so a row whose last cell is empty does not end in "| " + trailing space
+        return " | ".join([cell.ljust(width) for cell, width in zip(cells[:-1], widths)] + [cells[-1]]).rstrip()
 
     return [line(headers), *(line(row) for row in rows)]
 

@@ -46,6 +46,20 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 MAX_RECORDED_OFFLOAD_EVENTS = 10000
 
 
+def available_device_memory(execution_device: torch.device) -> int:
+    """
+    The device memory available for new weights right now: what the driver reports free, plus the allocator's
+    reusable cache (`mem_get_info` counts the cache as used, but freed tensors in it can be reallocated).
+    """
+    device_module = getattr(torch, execution_device.type, torch.cuda)
+    available_memory = device_module.mem_get_info(execution_device.index)[0]
+    if hasattr(device_module, "memory_reserved") and hasattr(device_module, "memory_allocated"):
+        available_memory += device_module.memory_reserved(execution_device) - device_module.memory_allocated(
+            execution_device
+        )
+    return available_memory
+
+
 @dataclass
 class OffloadEvent:
     """
@@ -58,12 +72,10 @@ class OffloadEvent:
     model_size: int | None = None
     # why the model moved: which model needed the room, the OOM retry, attaching a new component, ...
     reason: str | None = None
-    # what the strategy saw when it decided (`None` for a custom strategy that does not report it)
+    # free device memory read just before the onload's eviction decision (`None` if the device cannot report it)
     available_memory: int | None = None
-    memory_reserve: int | None = None
     resident_before: tuple[str, ...] = ()
     offloaded: tuple[str, ...] = ()
-    seconds: float | None = None
 
 
 class OffloadRecord:
@@ -129,7 +141,9 @@ class OffloadRecord:
         for event in self.events:
             if event.action == "onload":
                 offloaded = ", ".join(label(model_id) for model_id in event.offloaded) or "-"
-                rows.append([label(event.model_id), offloaded, format_size(event.available_memory), event.reason])
+                rows.append(
+                    [label(event.model_id), offloaded, format_size(event.available_memory), event.reason or ""]
+                )
             elif event.action == "offload":
                 if event.reason is not None and event.reason.startswith("needed_by:"):
                     continue  # shown on the row of the onload that caused it
@@ -205,7 +219,12 @@ class CustomOffloadHook(ModelHook):
 
     def pre_forward(self, module, *args, **kwargs):
         if module.device != self.execution_device:
-            resident_before, hooks_to_offload, elapsed = (), [], None
+            # read before any eviction: this is the number the eviction decision is based on
+            device_module = getattr(torch, self.execution_device.type, torch.cuda)
+            available_memory = (
+                available_device_memory(self.execution_device) if hasattr(device_module, "mem_get_info") else None
+            )
+            resident_before, hooks_to_offload = (), []
             if self.other_hooks is not None:
                 hooks_to_offload = [hook for hook in self.other_hooks if hook.model.device == self.execution_device]
                 resident_before = tuple(hook.model_id for hook in hooks_to_offload)
@@ -218,8 +237,7 @@ class CustomOffloadHook(ModelHook):
                         model=module,
                         execution_device=self.execution_device,
                     )
-                end_time = time.perf_counter()
-                elapsed = end_time - start_time
+                elapsed = time.perf_counter() - start_time
                 logger.info(f" time taken to apply offload strategy for {self.model_id}: {elapsed:.2f} seconds")
 
                 for hook in hooks_to_offload:
@@ -231,19 +249,14 @@ class CustomOffloadHook(ModelHook):
                 if hooks_to_offload:
                     clear_device_cache()
             module.to(self.execution_device)
-            # what the strategy saw, when it is one that reports it
-            decision = getattr(self.offload_strategy, "last_decision", None) or {}
             self.record.add(
                 OffloadEvent(
                     action="onload",
                     model_id=self.model_id,
                     model_size=module.get_memory_footprint(),
-                    reason="forward",
-                    available_memory=decision.get("available_memory"),
-                    memory_reserve=decision.get("memory_reserve"),
+                    available_memory=available_memory,
                     resident_before=resident_before,
                     offloaded=tuple(hook.model_id for hook in hooks_to_offload),
-                    seconds=elapsed,
                 )
             )
         return send_to_device(args, self.execution_device), send_to_device(kwargs, self.execution_device)
@@ -284,9 +297,7 @@ class CustomOffloadHook(ModelHook):
                     except torch.OutOfMemoryError as e:
                         if not self.retry_on_oom:
                             raise
-                        self.record.add(
-                            OffloadEvent(action="oom", model_id=self.model_id, reason=str(e).split(".")[0])
-                        )
+                        self.record.add(OffloadEvent(action="oom", model_id=self.model_id))
                         resident = sorted(
                             (hook for hook in self.resident_other_hooks() if id(hook) not in offloaded),
                             key=lambda hook: hook.model.get_memory_footprint(),
@@ -393,13 +404,8 @@ class AutoOffloadStrategy:
 
     def __init__(self, memory_reserve="3GB"):
         self.memory_reserve = convert_file_size_to_int(memory_reserve)
-        # what the last decision saw, for the hook to record. A custom strategy that does not set it simply
-        # leaves those columns empty in the record.
-        self.last_decision = None
 
     def __call__(self, hooks, model_id, model, execution_device):
-        # cleared first so that a decision that returns early is never recorded with the previous decision's readings
-        self.last_decision = None
         if len(hooks) == 0:
             return []
 
@@ -410,16 +416,7 @@ class AutoOffloadStrategy:
 
         resident_size = sum(hook.model.get_memory_footprint() for hook in hooks)
 
-        # Check the memory actually available on the device right now. The allocator keeps freed memory in its
-        # cache (mem_get_info reports it as used), but it is reusable — count it as available.
-        device_module = getattr(torch, execution_device.type, torch.cuda)
-        available_memory = device_module.mem_get_info(execution_device.index)[0]
-        if hasattr(device_module, "memory_reserved") and hasattr(device_module, "memory_allocated"):
-            available_memory += device_module.memory_reserved(execution_device) - device_module.memory_allocated(
-                execution_device
-            )
-        self.last_decision = {"available_memory": available_memory, "memory_reserve": self.memory_reserve}
-
+        available_memory = available_device_memory(execution_device)
         if current_module_size <= available_memory - self.memory_reserve:
             return []
 

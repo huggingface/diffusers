@@ -398,12 +398,9 @@ class ComponentsManagerTesterMixin:
             onloads = [event for event in cm.offload_record.events if event.action == "onload"]
             names = [event.model_id.rsplit("_", 1)[0] for event in onloads]
             assert names == ["m1", "m2"]
-            # Nothing was resident when m1 loaded, so the strategy returned without reading memory and
-            # there is nothing to report for that decision.
-            assert onloads[0].available_memory is None
-            # The readings behind a real decision are recorded, so a run can be explained after the fact.
+            # The reading behind each decision is recorded, so a run can be explained after the fact.
+            assert onloads[0].available_memory == 70 * UNIT
             assert onloads[1].available_memory == 4 * UNIT
-            assert onloads[1].memory_reserve == UNIT
             assert onloads[1].resident_before == (cm.model_hooks[0].model_id,)
             assert onloads[1].offloaded == (cm.model_hooks[0].model_id,)
             assert cm.offload_record.summary()["peak_co_residency"] == 1
