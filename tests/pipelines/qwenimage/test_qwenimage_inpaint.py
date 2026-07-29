@@ -13,9 +13,7 @@
 # limitations under the License.
 
 import random
-import unittest
 
-import numpy as np
 import torch
 from transformers import Qwen2_5_VLConfig, Qwen2_5_VLForConditionalGeneration, Qwen2Tokenizer
 
@@ -26,33 +24,31 @@ from diffusers import (
     QwenImageTransformer2DModel,
 )
 
-from ...testing_utils import enable_full_determinism, floats_tensor, torch_device
-from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_IMAGE_PARAMS, TEXT_TO_IMAGE_PARAMS
-from ..test_pipelines_common import PipelineTesterMixin, to_np
+from ...testing_utils import floats_tensor, torch_device
+from ..testing_utils import (
+    BasePipelineTesterConfig,
+    MemoryTesterMixin,
+    PipelineTesterMixin,
+)
 
 
-enable_full_determinism()
-
-
-class QwenImageInpaintPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
+class QwenImageInpaintPipelineTesterConfig(BasePipelineTesterConfig):
     pipeline_class = QwenImageInpaintPipeline
-    params = TEXT_TO_IMAGE_PARAMS - {"cross_attention_kwargs"}
-    batch_params = TEXT_TO_IMAGE_BATCH_PARAMS
-    image_params = TEXT_TO_IMAGE_IMAGE_PARAMS
-    image_latents_params = TEXT_TO_IMAGE_IMAGE_PARAMS
-    required_optional_params = frozenset(
+    required_input_params_in_call_signature = frozenset(
         [
-            "num_inference_steps",
-            "generator",
-            "latents",
-            "return_dict",
-            "callback_on_step_end",
-            "callback_on_step_end_tensor_inputs",
+            "prompt",
+            "negative_prompt",
+            "image",
+            "mask_image",
+            "strength",
+            "height",
+            "width",
+            "guidance_scale",
+            "prompt_embeds",
+            "negative_prompt_embeds",
         ]
     )
-    test_xformers_attention = False
-    test_layerwise_casting = True
-    test_group_offloading = True
+    batch_input_params = frozenset(["prompt", "image", "mask_image"])
 
     def get_dummy_components(self):
         torch.manual_seed(0)
@@ -76,10 +72,8 @@ class QwenImageInpaintPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             dim_mult=[1, 2, 4],
             num_res_blocks=1,
             temperal_downsample=[False, True],
-            # fmt: off
             latents_mean=[0.0] * 4,
             latents_std=[1.0] * 4,
-            # fmt: on
         )
 
         torch.manual_seed(0)
@@ -113,133 +107,86 @@ class QwenImageInpaintPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             vision_start_token_id=151652,
             vision_token_id=151654,
         )
-        text_encoder = Qwen2_5_VLForConditionalGeneration(config)
+        text_encoder = Qwen2_5_VLForConditionalGeneration(config).eval()
         tokenizer = Qwen2Tokenizer.from_pretrained("hf-internal-testing/tiny-random-Qwen2VLForConditionalGeneration")
 
-        components = {
+        return {
             "transformer": transformer,
             "vae": vae,
             "scheduler": scheduler,
             "text_encoder": text_encoder,
             "tokenizer": tokenizer,
         }
-        return components
 
-    def get_dummy_inputs(self, device, seed=0):
-        image = floats_tensor((1, 3, 32, 32), rng=random.Random(seed)).to(device)
-        mask_image = torch.ones((1, 1, 32, 32)).to(device)
-        if str(device).startswith("mps"):
-            generator = torch.manual_seed(seed)
-        else:
-            generator = torch.Generator(device=device).manual_seed(seed)
-
-        inputs = {
+    def get_dummy_inputs(self):
+        image = floats_tensor((1, 3, 32, 32), rng=random.Random(0)).to(torch_device)
+        mask_image = torch.ones((1, 1, 32, 32)).to(torch_device)
+        return {
             "prompt": "dance monkey",
             "negative_prompt": "bad quality",
             "image": image,
             "mask_image": mask_image,
-            "generator": generator,
+            "generator": self.get_generator(0),
             "num_inference_steps": 2,
             "guidance_scale": 3.0,
             "true_cfg_scale": 1.0,
             "height": 32,
             "width": 32,
             "max_sequence_length": 16,
+            # Request torch outputs so tests compare torch tensors directly (see `BasePipelineTesterConfig`).
             "output_type": "pt",
         }
 
-        return inputs
 
+class TestQwenImageInpaintPipeline(QwenImageInpaintPipelineTesterConfig, PipelineTesterMixin):
     def test_inference(self):
-        device = "cpu"
+        # Run on CPU: the expected slice below is CPU-specific.
+        pipe = self.get_pipeline()
 
-        components = self.get_dummy_components()
-        pipe = self.pipeline_class(**components)
-        pipe.to(device)
-        pipe.set_progress_bar_config(disable=None)
-
-        inputs = self.get_dummy_inputs(device)
+        inputs = self.get_dummy_inputs()
         image = pipe(**inputs).images
         generated_image = image[0]
-        self.assertEqual(generated_image.shape, (3, 32, 32))
+        assert generated_image.shape == (3, 32, 32)
+
+        # fmt: off
+        expected_slice = torch.tensor([0.5832, 0.6525, 0.5760, 0.5546, 0.5763, 0.5743, 0.4986, 0.4591, 0.4371, 0.4667, 0.4898, 0.3232, 0.4333, 0.5274, 0.4735, 0.4937])
+        # fmt: on
+
+        generated_slice = generated_image.flatten()
+        generated_slice = torch.cat([generated_slice[:8], generated_slice[-8:]])
+        assert torch.allclose(generated_slice, expected_slice, atol=5e-3)
 
     def test_inference_batch_single_identical(self):
-        self._test_inference_batch_single_identical(batch_size=3, expected_max_diff=1e-1)
-
-    def test_attention_slicing_forward_pass(
-        self, test_max_difference=True, test_mean_pixel_difference=True, expected_max_diff=1e-3
-    ):
-        if not self.test_attention_slicing:
-            return
-
-        components = self.get_dummy_components()
-        pipe = self.pipeline_class(**components)
-        for component in pipe.components.values():
-            if hasattr(component, "set_default_attn_processor"):
-                component.set_default_attn_processor()
-        pipe.to(torch_device)
-        pipe.set_progress_bar_config(disable=None)
-
-        generator_device = "cpu"
-        inputs = self.get_dummy_inputs(generator_device)
-        output_without_slicing = pipe(**inputs)[0]
-
-        pipe.enable_attention_slicing(slice_size=1)
-        inputs = self.get_dummy_inputs(generator_device)
-        output_with_slicing1 = pipe(**inputs)[0]
-
-        pipe.enable_attention_slicing(slice_size=2)
-        inputs = self.get_dummy_inputs(generator_device)
-        output_with_slicing2 = pipe(**inputs)[0]
-
-        if test_max_difference:
-            max_diff1 = np.abs(to_np(output_with_slicing1) - to_np(output_without_slicing)).max()
-            max_diff2 = np.abs(to_np(output_with_slicing2) - to_np(output_without_slicing)).max()
-            self.assertLess(
-                max(max_diff1, max_diff2),
-                expected_max_diff,
-                "Attention slicing should not affect the inference results",
-            )
+        super().test_inference_batch_single_identical(expected_max_diff=1e-1)
 
     def test_vae_tiling(self, expected_diff_max: float = 0.2):
-        generator_device = "cpu"
-        components = self.get_dummy_components()
-
-        pipe = self.pipeline_class(**components)
-        pipe.to("cpu")
+        pipe = self.pipeline_class(**self.get_dummy_components()).to(torch_device)
         pipe.set_progress_bar_config(disable=None)
 
-        # Without tiling
-        inputs = self.get_dummy_inputs(generator_device)
+        inputs = self.get_dummy_inputs()
         inputs["height"] = inputs["width"] = 128
         output_without_tiling = pipe(**inputs)[0]
 
-        # With tiling
         pipe.vae.enable_tiling(
             tile_sample_min_height=96,
             tile_sample_min_width=96,
             tile_sample_stride_height=64,
             tile_sample_stride_width=64,
         )
-        inputs = self.get_dummy_inputs(generator_device)
+        inputs = self.get_dummy_inputs()
         inputs["height"] = inputs["width"] = 128
         output_with_tiling = pipe(**inputs)[0]
 
-        self.assertLess(
-            (to_np(output_without_tiling) - to_np(output_with_tiling)).max(),
-            expected_diff_max,
-            "VAE tiling should not affect the inference results",
+        assert (output_without_tiling - output_with_tiling).abs().max() < expected_diff_max, (
+            "VAE tiling should not affect the inference results."
         )
 
     def test_true_cfg_without_negative_prompt_embeds_mask(self):
-        components = self.get_dummy_components()
-        pipe = self.pipeline_class(**components)
-        pipe.to(torch_device)
+        pipe = self.pipeline_class(**self.get_dummy_components()).to(torch_device)
         pipe.set_progress_bar_config(disable=None)
 
-        inputs = self.get_dummy_inputs(torch_device)
+        inputs = self.get_dummy_inputs()
         prompt = inputs.pop("prompt")
-
         prompt_embeds, prompt_embeds_mask = pipe.encode_prompt(
             prompt=prompt,
             device=torch_device,
@@ -255,4 +202,8 @@ class QwenImageInpaintPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         inputs["true_cfg_scale"] = 2.0
 
         image = pipe(**inputs).images
-        self.assertIsNotNone(image)
+        assert image is not None
+
+
+class TestQwenImageInpaintPipelineMemory(QwenImageInpaintPipelineTesterConfig, MemoryTesterMixin):
+    pass
