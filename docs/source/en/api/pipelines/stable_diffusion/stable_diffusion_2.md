@@ -45,7 +45,7 @@ from diffusers import DiffusionPipeline, DPMSolverMultistepScheduler
 import torch
 
 repo_id = "stabilityai/stable-diffusion-2-base"
-pipe = DiffusionPipeline.from_pretrained(repo_id, torch_dtype=torch.float16, variant="fp16")
+pipe = DiffusionPipeline.from_pretrained(repo_id, dtype=torch.float16, variant="fp16")
 
 pipe.scheduler = DPMSolverMultistepScheduler.from_config(pipe.scheduler.config)
 pipe = pipe.to("cuda")
@@ -69,7 +69,7 @@ init_image = load_image(img_url).resize((512, 512))
 mask_image = load_image(mask_url).resize((512, 512))
 
 repo_id = "stabilityai/stable-diffusion-2-inpainting"
-pipe = DiffusionPipeline.from_pretrained(repo_id, torch_dtype=torch.float16, variant="fp16")
+pipe = DiffusionPipeline.from_pretrained(repo_id, dtype=torch.float16, variant="fp16")
 
 pipe.scheduler = DPMSolverMultistepScheduler.from_config(pipe.scheduler.config)
 pipe = pipe.to("cuda")
@@ -88,7 +88,7 @@ import torch
 
 # load model and scheduler
 model_id = "stabilityai/stable-diffusion-x4-upscaler"
-pipeline = StableDiffusionUpscalePipeline.from_pretrained(model_id, torch_dtype=torch.float16)
+pipeline = StableDiffusionUpscalePipeline.from_pretrained(model_id, dtype=torch.float16)
 pipeline = pipeline.to("cuda")
 
 # let's download an  image
@@ -109,7 +109,7 @@ from diffusers.utils import load_image, make_image_grid
 
 pipe = StableDiffusionDepth2ImgPipeline.from_pretrained(
     "stabilityai/stable-diffusion-2-depth",
-    torch_dtype=torch.float16,
+    dtype=torch.float16,
 ).to("cuda")
 
 

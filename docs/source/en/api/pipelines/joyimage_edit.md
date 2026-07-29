@@ -26,7 +26,7 @@ from diffusers import JoyImageEditPipeline
 from diffusers.utils import load_image
 
 pipeline = JoyImageEditPipeline.from_pretrained(
-    "jdopensource/JoyAI-Image-Edit-Diffusers", torch_dtype=torch.bfloat16
+    "jdopensource/JoyAI-Image-Edit-Diffusers", dtype=torch.bfloat16
 )
 pipeline.to("cuda")
 
