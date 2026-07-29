@@ -52,7 +52,7 @@ text_encoder_8bit = T5EncoderModel.from_pretrained(
     "stabilityai/stable-audio-open-1.0",
     subfolder="text_encoder",
     quantization_config=quant_config,
-    torch_dtype=torch.float16,
+    dtype=torch.float16,
 )
 
 quant_config = DiffusersBitsAndBytesConfig(load_in_8bit=True)
@@ -60,14 +60,14 @@ transformer_8bit = StableAudioDiTModel.from_pretrained(
     "stabilityai/stable-audio-open-1.0",
     subfolder="transformer",
     quantization_config=quant_config,
-    torch_dtype=torch.float16,
+    dtype=torch.float16,
 )
 
 pipeline = StableAudioPipeline.from_pretrained(
     "stabilityai/stable-audio-open-1.0",
     text_encoder=text_encoder_8bit,
     transformer=transformer_8bit,
-    torch_dtype=torch.float16,
+    dtype=torch.float16,
     device_map="balanced",
 )
 
