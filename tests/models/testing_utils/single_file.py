@@ -13,16 +13,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import functools
 import gc
-import json
-import os
-import struct
 
 import huggingface_hub
 import pytest
 import torch
 from accelerate import init_empty_weights
 from huggingface_hub import HfApi
+from safetensors.torch import _getdtype
 
 from diffusers.loaders.single_file_utils import _extract_repo_id_and_weights_name
 
@@ -39,12 +38,13 @@ from .common import check_device_map_is_respected
 PARAMS_TO_IGNORE = ["torch_dtype", "_name_or_path", "_use_default_values", "_diffusers_version"]
 
 
+@functools.lru_cache(maxsize=None)
 def fetch_checkpoint_metadata(ckpt_path):
     """
-    Fetch a single file checkpoint's keys and shapes without downloading its weights.
+    Fetch a single file checkpoint's keys, shapes and dtypes without downloading its weights.
 
-    Only the safetensors header is read, so the returned metadata describes the real checkpoint while nothing but
-    the header crosses the network. Returns `None` for checkpoints that are not safetensors.
+    Only the safetensors header crosses the network, and the result is cached for the session because every test
+    in a class asks for the same one. Returns `None` for checkpoints that are not safetensors.
     """
     pretrained_model_name_or_path, weight_name = _extract_repo_id_and_weights_name(ckpt_path)
     if not weight_name.endswith(".safetensors"):
@@ -95,47 +95,32 @@ class SingleFileTesterMixin:
         gc.collect()
         backend_empty_cache(torch_device)
 
-    def get_dummy_single_file_checkpoint(self, tmpdir):
+    def get_dummy_single_file_state_dict(self):
         """
-        Path to a stand-in for the single file checkpoint, written into `tmpdir`.
+        A stand-in for the single file checkpoint's state dict.
 
-        Nothing but the real checkpoint's header is fetched, so the file matches it key for key, but its data
-        region is a hole -- it reads back as zeros and occupies no disk. Pass the path to `from_single_file` with
-        `device="meta"` to exercise the loading path without materializing a weight.
+        Keys, shapes and dtypes match the real checkpoint exactly, while the tensors themselves are on meta and
+        hold no data. Pass it to `from_single_file` with `device="meta"` to exercise the loading path without
+        materializing a weight. The conversion functions consume the dict they are handed, so build a fresh one
+        for every load.
         """
         metadata = fetch_checkpoint_metadata(self.ckpt_path)
         if metadata is None:
             pytest.skip(f"{self.ckpt_path} is not a safetensors checkpoint")
 
-        header = {
-            name: {
-                "dtype": tensor.dtype,
-                "shape": list(tensor.shape),
-                "data_offsets": list(tensor.data_offsets),
-            }
+        return {
+            name: torch.empty(tuple(tensor.shape), dtype=_getdtype(tensor.dtype), device="meta")
             for name, tensor in metadata.tensors.items()
         }
-        header_bytes = json.dumps(header).encode()
-        data_size = max(tensor.data_offsets[1] for tensor in metadata.tensors.values())
 
-        path = os.path.join(tmpdir, "dummy.safetensors")
-        with open(path, "wb") as f:
-            f.write(struct.pack("<Q", len(header_bytes)))
-            f.write(header_bytes)
-            f.truncate(8 + len(header_bytes) + data_size)
-
-        return path
-
-    def test_single_file_model_config(self, tmp_path):
+    def test_single_file_model_config(self):
         # An empty model supplies the registered defaults (`out_channels` and friends) that a bare config dict
         # would be missing.
         with init_empty_weights():
             model = self.model_class.from_config(self.pretrained_model_name_or_path, **self.pretrained_model_kwargs)
 
         config = model.config
-        model_single_file = self.model_class.from_single_file(
-            self.get_dummy_single_file_checkpoint(str(tmp_path)), device="meta"
-        )
+        model_single_file = self.model_class.from_single_file(self.get_dummy_single_file_state_dict(), device="meta")
 
         for param_name, param_value in model_single_file.config.items():
             if param_name in PARAMS_TO_IGNORE:
@@ -145,17 +130,17 @@ class SingleFileTesterMixin:
                 f"pretrained={config[param_name]}, single_file={param_value}"
             )
 
-    def test_single_file_loading_local_files_only(self, tmp_path, monkeypatch):
-        local_ckpt_path = self.get_dummy_single_file_checkpoint(str(tmp_path))
+    def test_single_file_loading_local_files_only(self, monkeypatch):
+        state_dict = self.get_dummy_single_file_state_dict()
 
-        # The checkpoint is local, so the config is the only thing left to resolve. Fetch it into the cache the
-        # way a previous run would have, and keep it as the reference to compare against.
+        # The checkpoint is already in memory, so the config is the only thing left to resolve. Fetch it into the
+        # cache the way a previous run would have, and keep it as the reference to compare against.
         config = self.model_class.load_config(self.pretrained_model_name_or_path, **self.pretrained_model_kwargs)
 
         # Cut the Hub off, so anything the load does not find locally raises instead of quietly downloading.
         monkeypatch.setattr(huggingface_hub.constants, "HF_HUB_OFFLINE", True)
 
-        model_single_file = self.model_class.from_single_file(local_ckpt_path, local_files_only=True, device="meta")
+        model_single_file = self.model_class.from_single_file(state_dict, local_files_only=True, device="meta")
 
         # Resolving from the cache has to land on the same config as resolving from the Hub.
         for param_name, param_value in config.items():
@@ -166,9 +151,9 @@ class SingleFileTesterMixin:
                 f"pretrained={param_value}, single_file={model_single_file.config[param_name]}"
             )
 
-    def test_single_file_loading_with_diffusers_config(self, tmp_path):
+    def test_single_file_loading_with_diffusers_config(self):
         model_single_file = self.model_class.from_single_file(
-            self.get_dummy_single_file_checkpoint(str(tmp_path)),
+            self.get_dummy_single_file_state_dict(),
             config=self.pretrained_model_name_or_path,
             device="meta",
             **self.pretrained_model_kwargs,
@@ -188,6 +173,13 @@ class SingleFileTesterMixin:
             assert config[param_name] == param_value, (
                 f"{param_name} differs: pretrained={config[param_name]}, single_file={param_value}"
             )
+
+    @pytest.mark.parametrize("dtype", [torch.bfloat16, torch.float16], ids=["bf16", "fp16"])
+    def test_single_file_loading_dtype(self, dtype):
+        model_single_file = self.model_class.from_single_file(
+            self.get_dummy_single_file_state_dict(), device="meta", dtype=dtype
+        )
+        assert model_single_file.dtype == dtype, f"Expected dtype {dtype}, got {model_single_file.dtype}"
 
     @nightly
     def test_single_file_model_parameters(self):
@@ -225,15 +217,6 @@ class SingleFileTesterMixin:
             )
 
             assert torch.equal(param, param_single_file), f"Parameter values differ for {key}"
-
-    @nightly
-    @pytest.mark.parametrize("dtype", [torch.bfloat16, torch.float16], ids=["bf16", "fp16"])
-    def test_single_file_loading_dtype(self, dtype):
-        if torch_device == "mps" and dtype == torch.bfloat16:
-            pytest.skip("mps does not support bfloat16")
-
-        model_single_file = self.model_class.from_single_file(self.ckpt_path, dtype=dtype)
-        assert model_single_file.dtype == dtype, f"Expected dtype {dtype}, got {model_single_file.dtype}"
 
     @nightly
     def test_single_file_loading_with_device_map(self):
