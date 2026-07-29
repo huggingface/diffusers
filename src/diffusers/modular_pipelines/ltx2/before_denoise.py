@@ -247,6 +247,9 @@ class LTX2SetTimestepsStep(ModularPipelineBlocks):
             InputParam.template("num_inference_steps", default=40),
             InputParam.template("timesteps"),
             InputParam.template("sigmas"),
+            InputParam.template("height", default=512),
+            InputParam.template("width", default=704),
+            InputParam("num_frames", type_hint=int, default=121),
         ]
 
     @property
@@ -270,10 +273,20 @@ class LTX2SetTimestepsStep(ModularPipelineBlocks):
         if sigmas is None:
             sigmas = np.linspace(1.0, 1 / num_inference_steps, num_inference_steps)
 
-        # LTX-2 evaluates the shift at `max_image_seq_len`, which makes `mu` collapse to `max_shift` regardless of the
-        # actual video sequence length (i.e. a resolution-independent constant shift). Ported as-is for parity.
+        # Resolution-aware (dynamic) shift: `mu` is computed from the actual packed video sequence length, matching
+        # `latents.shape[1]` in the standard pipeline. The packed length divides the latent grid by the transformer
+        # patch sizes (see `_pack_latents`). `num_frames` must already be a concrete int here -- when auto-duration is
+        # used, the duration step resolves it upstream, before this block runs.
+        latent_num_frames = (block_state.num_frames - 1) // components.vae_temporal_compression_ratio + 1
+        latent_height = block_state.height // components.vae_spatial_compression_ratio
+        latent_width = block_state.width // components.vae_spatial_compression_ratio
+        video_seq_len = (
+            (latent_num_frames // components.transformer_temporal_patch_size)
+            * (latent_height // components.transformer_spatial_patch_size)
+            * (latent_width // components.transformer_spatial_patch_size)
+        )
         mu = calculate_shift(
-            components.scheduler.config.get("max_image_seq_len", 4096),
+            video_seq_len,
             components.scheduler.config.get("base_image_seq_len", 1024),
             components.scheduler.config.get("max_image_seq_len", 4096),
             components.scheduler.config.get("base_shift", 0.95),

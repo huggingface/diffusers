@@ -14,6 +14,9 @@
 
 import torch
 
+# NOTE (modular.md gotcha #1): `LTX2AutoDuration` is imported from `diffusers.pipelines.ltx2.*` only for the
+# `select_block` isinstance check; it should move to a neutral location with the other relocated LTX-2 classes.
+from ...pipelines.ltx2.duration_head import LTX2AutoDuration
 from ...utils import logging
 from ..modular_pipeline import AutoPipelineBlocks, ConditionalPipelineBlocks, SequentialPipelineBlocks
 from ..modular_pipeline_utils import OutputParam
@@ -28,6 +31,7 @@ from .before_denoise import (
 from .decoders import LTX2AudioDecoderStep, LTX2VaeDecoderStep
 from .denoise import LTX2DenoiseStep, LTX2Image2VideoDenoiseStep
 from .encoders import (
+    LTX2DurationStep,
     LTX2ImageToVideoPromptEnhancerStep,
     LTX2PromptEnhancerStep,
     LTX2TextConnectorStep,
@@ -88,6 +92,31 @@ class LTX2AutoPromptEnhancerStep(ConditionalPipelineBlocks):
             " - `LTX2ImageToVideoPromptEnhancerStep` when an `image` is provided (image-to-video).\n"
             " - `LTX2PromptEnhancerStep` otherwise (text-to-video).\n"
             " - Skipped when `enable_prompt_enhancement` is falsy / not provided."
+        )
+
+
+# auto_docstring
+class LTX2AutoDurationStep(ConditionalPipelineBlocks):
+    """
+    Conditional duration-prediction step, run only when `num_frames` is an `LTX2AutoDuration` request.
+     - `LTX2DurationStep` predicts `num_frames` from the connector text conditioning via the `duration_head`.
+     - Skipped when `num_frames` is an integer (or not an `LTX2AutoDuration`).
+    """
+
+    model_name = "ltx2"
+    block_classes = [LTX2DurationStep]
+    block_names = ["duration"]
+    block_trigger_inputs = ["num_frames"]
+
+    def select_block(self, num_frames=None) -> str | None:
+        return "duration" if isinstance(num_frames, LTX2AutoDuration) else None
+
+    @property
+    def description(self):
+        return (
+            "Conditional duration-prediction step, run only when `num_frames` is an `LTX2AutoDuration` request.\n"
+            " - `LTX2DurationStep` predicts `num_frames` from the connector text conditioning via the `duration_head`.\n"
+            " - Skipped when `num_frames` is an integer (or not an `LTX2AutoDuration`)."
         )
 
 
@@ -525,11 +554,12 @@ class LTX2Blocks(SequentialPipelineBlocks):
         LTX2TextEncoderStep,
         LTX2TextInputStep,
         LTX2TextConnectorStep,
+        LTX2AutoDurationStep,
         LTX2CoreDenoiseStep,
         LTX2VaeDecoderStep,
         LTX2AudioDecoderStep,
     ]
-    block_names = ["text_encoder", "text_input", "connectors", "denoise", "video_decode", "audio_decode"]
+    block_names = ["text_encoder", "text_input", "connectors", "duration", "denoise", "video_decode", "audio_decode"]
 
     @property
     def description(self):
@@ -629,6 +659,7 @@ class LTX2ImageToVideoBlocks(SequentialPipelineBlocks):
         LTX2TextEncoderStep,
         LTX2TextInputStep,
         LTX2TextConnectorStep,
+        LTX2AutoDurationStep,
         LTX2AutoVaeEncoderStep,
         LTX2Image2VideoCoreDenoiseStep,
         LTX2VaeDecoderStep,
@@ -638,6 +669,7 @@ class LTX2ImageToVideoBlocks(SequentialPipelineBlocks):
         "text_encoder",
         "text_input",
         "connectors",
+        "duration",
         "vae_encoder",
         "denoise",
         "video_decode",
@@ -756,6 +788,7 @@ class LTX2AutoBlocks(SequentialPipelineBlocks):
         LTX2TextEncoderStep,
         LTX2TextInputStep,
         LTX2TextConnectorStep,
+        LTX2AutoDurationStep,
         LTX2AutoVaeEncoderStep,
         LTX2AutoCoreDenoiseStep,
         LTX2VaeDecoderStep,
@@ -766,6 +799,7 @@ class LTX2AutoBlocks(SequentialPipelineBlocks):
         "text_encoder",
         "text_input",
         "connectors",
+        "duration",
         "vae_encoder",
         "denoise",
         "video_decode",

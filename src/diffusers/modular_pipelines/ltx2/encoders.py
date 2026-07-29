@@ -20,12 +20,14 @@ from transformers import PreTrainedModel, PreTrainedTokenizerBase, ProcessorMixi
 from ...configuration_utils import FrozenDict
 from ...models import AutoencoderKLLTX2Video
 
-# NOTE (modular.md gotcha #1): `LTX2TextConnectors` and the prompt-enhancement constants live under
-# `diffusers.pipelines.ltx2.*`, and modular blocks must not import from `diffusers.pipelines.*`.
-# `LTX2TextConnectors` is a `ModelMixin` / `ConfigMixin` model class (relocate to `src/diffusers/models/`);
-# the enhancement config + system prompts are plain data constants (relocate to a neutral shared module or copy
-# into this package). Imported from the pipelines path here only so the draft is runnable.
+# NOTE (modular.md gotcha #1): `LTX2TextConnectors`, `LTX2DurationHead`, `LTX2AutoDuration`, and the
+# prompt-enhancement constants live under `diffusers.pipelines.ltx2.*`, and modular blocks must not import from
+# `diffusers.pipelines.*`. `LTX2TextConnectors` / `LTX2DurationHead` are `ModelMixin` / `ConfigMixin` model classes
+# (relocate to `src/diffusers/models/`); `LTX2AutoDuration`, the enhancement config, and the system prompts are plain
+# data (relocate to a neutral shared module or copy into this package). Imported from the pipelines path here only so
+# the draft is runnable.
 from ...pipelines.ltx2.connectors import LTX2TextConnectors
+from ...pipelines.ltx2.duration_head import LTX2AutoDuration, LTX2DurationHead
 from ...pipelines.ltx2.utils import (
     GEMMA4_PROMPT_ENHANCEMENT_CONFIG,
     LTX2_4_I2V_DEFAULT_SYSTEM_PROMPT,
@@ -441,6 +443,69 @@ class LTX2TextConnectorStep(ModularPipelineBlocks):
         block_state.connector_prompt_embeds = connector_prompt_embeds[num_negative:]
         block_state.connector_audio_prompt_embeds = connector_audio_prompt_embeds[num_negative:]
         block_state.connector_attention_mask = connector_attention_mask[num_negative:]
+
+        self.set_block_state(state, block_state)
+        return components, state
+
+
+class LTX2DurationStep(ModularPipelineBlocks):
+    model_name = "ltx2"
+
+    @property
+    def description(self) -> str:
+        return (
+            "Predicts `num_frames` from the connector text conditioning using the `duration_head`, replacing an "
+            "`LTX2AutoDuration` request with a concrete frame count snapped to the VAE's temporal grid. Run only when "
+            "`num_frames` is an `LTX2AutoDuration` (see `LTX2AutoDurationStep`)."
+        )
+
+    @property
+    def expected_components(self) -> list[ComponentSpec]:
+        return [ComponentSpec("duration_head", LTX2DurationHead)]
+
+    @property
+    def inputs(self) -> list[InputParam]:
+        return [
+            InputParam(
+                "num_frames",
+                type_hint=LTX2AutoDuration,
+                required=True,
+                description="An `LTX2AutoDuration` request carrying the `[min_seconds, max_seconds]` bounds.",
+            ),
+            InputParam("frame_rate", type_hint=float, default=24.0),
+            InputParam("connector_prompt_embeds", type_hint=torch.Tensor, required=True),
+            InputParam("connector_audio_prompt_embeds", type_hint=torch.Tensor, required=True),
+            InputParam("batch_size", type_hint=int, required=True),
+        ]
+
+    @property
+    def intermediate_outputs(self) -> list[OutputParam]:
+        return [
+            OutputParam("num_frames", type_hint=int, description="The predicted number of frames to generate."),
+        ]
+
+    @torch.no_grad()
+    def __call__(self, components, state: PipelineState) -> PipelineState:
+        block_state = self.get_block_state(state)
+
+        # The head predicts one duration; prompts with different natural lengths cannot share a single frame count.
+        if block_state.batch_size > 1:
+            raise ValueError(
+                f"`num_frames` was an `LTX2AutoDuration` but {block_state.batch_size} prompts were supplied. The "
+                "duration head predicts one duration -- run one prompt at a time, or pass `num_frames` as an integer."
+            )
+
+        auto_duration = block_state.num_frames
+        # `connector_prompt_embeds` is already the positive (conditional) conditioning; rows past the first are
+        # `num_videos_per_prompt` duplicates of the same prompt, so predict from the first.
+        block_state.num_frames = components.duration_head.predict_num_frames(
+            block_state.connector_prompt_embeds[:1],
+            block_state.connector_audio_prompt_embeds[:1],
+            frame_rate=block_state.frame_rate,
+            temporal_compression_ratio=components.vae_temporal_compression_ratio,
+            min_seconds=auto_duration.min_seconds,
+            max_seconds=auto_duration.max_seconds,
+        )
 
         self.set_block_state(state, block_state)
         return components, state
