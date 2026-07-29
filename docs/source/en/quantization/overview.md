@@ -143,11 +143,12 @@ The following backends support loading prequantized checkpoints out of the box.
 
 | Backend | Notes |
 |---|---|
-| [bitsandbytes](./bitsandbytes) | Config is saved in `config.json`; no extra arguments needed. |
+| [bitsandbytes](./bitsandbytes) | Config is saved in `config.json`; no extra arguments needed. Supports quantizing on the fly as well as loading prequantized checkpoints. |
+| [torchao](./torchao) | Same as above. |
 | [GGUF](./gguf) | Uses `from_single_file` with Model classes; pipeline-level loading is not supported. |
 | [AutoRound](./autoround) | Only loading is supported; quantize first with the AutoRound CLI or Python API. |
-| [Nunchaku Lite](./nunchaku) | Config is saved in `config.json`; requires the `kernels` package. |
-| [ModelOpt](./modelopt) | Supports both quantizing on the fly and loading prequantized models. |
+| [Nunchaku Lite](./nunchaku) | Config is saved in `config.json`; requires the `kernels` package. Only loading is supported. |
+| [ModelOpt](./modelopt) | Only loading prequantized models is supported. |
 
 ## Resources
 
