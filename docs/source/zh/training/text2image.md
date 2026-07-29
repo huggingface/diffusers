@@ -181,7 +181,7 @@ accelerate launch --mixed_precision="fp16"  train_text_to_image.py \
 from diffusers import StableDiffusionPipeline
 import torch
 
-pipeline = StableDiffusionPipeline.from_pretrained("path/to/saved_model", torch_dtype=torch.float16, use_safetensors=True).to("cuda")
+pipeline = StableDiffusionPipeline.from_pretrained("path/to/saved_model", dtype=torch.float16, use_safetensors=True).to("cuda")
 
 image = pipeline(prompt="yoda").images[0]
 image.save("yoda-naruto.png")
