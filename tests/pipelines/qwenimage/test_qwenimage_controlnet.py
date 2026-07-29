@@ -12,9 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import unittest
-
-import numpy as np
 import torch
 from transformers import Qwen2_5_VLConfig, Qwen2_5_VLForConditionalGeneration, Qwen2Tokenizer
 
@@ -26,40 +23,32 @@ from diffusers import (
     QwenImageMultiControlNetModel,
     QwenImageTransformer2DModel,
 )
-from diffusers.utils.testing_utils import enable_full_determinism, torch_device
 from diffusers.utils.torch_utils import randn_tensor
 
-from ..pipeline_params import TEXT_TO_IMAGE_PARAMS
-from ..test_pipelines_common import PipelineTesterMixin, to_np
+from ...testing_utils import torch_device
+from ..testing_utils import (
+    BasePipelineTesterConfig,
+    MemoryTesterMixin,
+    PipelineTesterMixin,
+)
 
 
-enable_full_determinism()
-
-
-class QwenControlNetPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
+class QwenImageControlNetPipelineTesterConfig(BasePipelineTesterConfig):
     pipeline_class = QwenImageControlNetPipeline
-    params = (TEXT_TO_IMAGE_PARAMS | frozenset(["control_image", "controlnet_conditioning_scale"])) - {
-        "cross_attention_kwargs"
-    }
-    batch_params = frozenset(["prompt", "negative_prompt", "control_image"])
-    image_params = frozenset(["control_image"])
-    image_latents_params = frozenset(["latents"])
-    required_optional_params = frozenset(
+    required_input_params_in_call_signature = frozenset(
         [
-            "num_inference_steps",
-            "generator",
-            "latents",
+            "prompt",
+            "negative_prompt",
+            "true_cfg_scale",
+            "height",
+            "width",
+            "guidance_scale",
+            "prompt_embeds",
             "control_image",
             "controlnet_conditioning_scale",
-            "return_dict",
-            "callback_on_step_end",
-            "callback_on_step_end_tensor_inputs",
         ]
     )
-
-    test_xformers_attention = False
-    test_layerwise_casting = True
-    test_group_offloading = True
+    batch_input_params = frozenset(["prompt", "control_image"])
 
     def get_dummy_components(self):
         torch.manual_seed(0)
@@ -130,11 +119,10 @@ class QwenControlNetPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             vision_start_token_id=151652,
             vision_token_id=151654,
         )
-
         text_encoder = Qwen2_5_VLForConditionalGeneration(config)
         tokenizer = Qwen2Tokenizer.from_pretrained("hf-internal-testing/tiny-random-Qwen2VLForConditionalGeneration")
 
-        components = {
+        return {
             "transformer": transformer,
             "vae": vae,
             "scheduler": scheduler,
@@ -142,22 +130,17 @@ class QwenControlNetPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             "tokenizer": tokenizer,
             "controlnet": controlnet,
         }
-        return components
 
-    def get_dummy_inputs(self, device, seed=0):
-        if str(device).startswith("mps"):
-            generator = torch.manual_seed(seed)
-        else:
-            generator = torch.Generator(device=device).manual_seed(seed)
-
+    def get_dummy_inputs(self):
+        generator = self.get_generator(0)
         control_image = randn_tensor(
             (1, 3, 32, 32),
             generator=generator,
-            device=torch.device(device),
+            device=torch.device(torch_device),
             dtype=torch.float32,
         )
 
-        inputs = {
+        return {
             "prompt": "dance monkey",
             "negative_prompt": "bad quality",
             "generator": generator,
@@ -169,182 +152,92 @@ class QwenControlNetPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             "max_sequence_length": 16,
             "control_image": control_image,
             "controlnet_conditioning_scale": 0.5,
+            # Request torch outputs so tests compare torch tensors directly (see `BasePipelineTesterConfig`).
             "output_type": "pt",
         }
 
-        return inputs
 
+class TestQwenImageControlNetPipeline(QwenImageControlNetPipelineTesterConfig, PipelineTesterMixin):
     def test_qwen_controlnet(self):
-        device = "cpu"
-        components = self.get_dummy_components()
-        pipe = self.pipeline_class(**components)
-        pipe.to(device)
-        pipe.set_progress_bar_config(disable=None)
+        # Run on CPU: the expected slice below is CPU-specific.
+        pipe = self.get_pipeline()
 
-        inputs = self.get_dummy_inputs(device)
+        inputs = self.get_dummy_inputs()
         image = pipe(**inputs).images
         generated_image = image[0]
-        self.assertEqual(generated_image.shape, (3, 32, 32))
+        assert generated_image.shape == (3, 32, 32)
 
-        # Expected slice from the generated image
-        expected_slice = torch.tensor(
-            [
-                0.4726,
-                0.5549,
-                0.6324,
-                0.6548,
-                0.4968,
-                0.4639,
-                0.4749,
-                0.4898,
-                0.4725,
-                0.4645,
-                0.4435,
-                0.3339,
-                0.3400,
-                0.4630,
-                0.3879,
-                0.4406,
-            ]
-        )
+        # fmt: off
+        expected_slice = torch.tensor([0.4726, 0.5549, 0.6324, 0.6548, 0.4968, 0.4639, 0.4749, 0.4898, 0.4725, 0.4645, 0.4435, 0.3339, 0.3400, 0.4630, 0.3879, 0.4406])
+        # fmt: on
 
         generated_slice = generated_image.flatten()
         generated_slice = torch.cat([generated_slice[:8], generated_slice[-8:]])
-        self.assertTrue(torch.allclose(generated_slice, expected_slice, atol=5e-3))
+        assert torch.allclose(generated_slice, expected_slice, atol=5e-3)
 
     def test_qwen_controlnet_multicondition(self):
-        device = "cpu"
+        # Run on CPU: the expected slice below is CPU-specific.
         components = self.get_dummy_components()
-
         components["controlnet"] = QwenImageMultiControlNetModel([components["controlnet"]])
+        pipe = self.get_pipeline(**components)
 
-        pipe = self.pipeline_class(**components)
-        pipe.to(device)
-        pipe.set_progress_bar_config(disable=None)
-
-        inputs = self.get_dummy_inputs(device)
+        inputs = self.get_dummy_inputs()
         control_image = inputs["control_image"]
         inputs["control_image"] = [control_image, control_image]
         inputs["controlnet_conditioning_scale"] = [0.5, 0.5]
 
         image = pipe(**inputs).images
         generated_image = image[0]
-        self.assertEqual(generated_image.shape, (3, 32, 32))
-        # Expected slice from the generated image
-        expected_slice = torch.tensor(
-            [
-                0.6239,
-                0.6642,
-                0.5768,
-                0.6039,
-                0.5270,
-                0.5070,
-                0.5006,
-                0.5271,
-                0.4506,
-                0.3085,
-                0.3435,
-                0.5152,
-                0.5096,
-                0.5422,
-                0.4286,
-                0.5752,
-            ]
-        )
+        assert generated_image.shape == (3, 32, 32)
+
+        # fmt: off
+        expected_slice = torch.tensor([0.6239, 0.6642, 0.5768, 0.6039, 0.5270, 0.5070, 0.5006, 0.5271, 0.4506, 0.3085, 0.3435, 0.5152, 0.5096, 0.5422, 0.4286, 0.5752])
+        # fmt: on
 
         generated_slice = generated_image.flatten()
         generated_slice = torch.cat([generated_slice[:8], generated_slice[-8:]])
-        self.assertTrue(torch.allclose(generated_slice, expected_slice, atol=5e-3))
-
-    def test_attention_slicing_forward_pass(
-        self, test_max_difference=True, test_mean_pixel_difference=True, expected_max_diff=1e-3
-    ):
-        if not self.test_attention_slicing:
-            return
-
-        components = self.get_dummy_components()
-        pipe = self.pipeline_class(**components)
-        for component in pipe.components.values():
-            if hasattr(component, "set_default_attn_processor"):
-                component.set_default_attn_processor()
-        pipe.to(torch_device)
-        pipe.set_progress_bar_config(disable=None)
-
-        generator_device = "cpu"
-        inputs = self.get_dummy_inputs(generator_device)
-        output_without_slicing = pipe(**inputs)[0]
-
-        pipe.enable_attention_slicing(slice_size=1)
-        inputs = self.get_dummy_inputs(generator_device)
-        output_with_slicing1 = pipe(**inputs)[0]
-
-        pipe.enable_attention_slicing(slice_size=2)
-        inputs = self.get_dummy_inputs(generator_device)
-        output_with_slicing2 = pipe(**inputs)[0]
-
-        if test_max_difference:
-            max_diff1 = np.abs(to_np(output_with_slicing1) - to_np(output_without_slicing)).max()
-            max_diff2 = np.abs(to_np(output_with_slicing2) - to_np(output_without_slicing)).max()
-            self.assertLess(
-                max(max_diff1, max_diff2),
-                expected_max_diff,
-                "Attention slicing should not affect the inference results",
-            )
-
-    def test_inference_batch_single_identical(self):
-        self._test_inference_batch_single_identical(batch_size=3, expected_max_diff=1e-1)
+        assert torch.allclose(generated_slice, expected_slice, atol=5e-3)
 
     def test_vae_tiling(self, expected_diff_max: float = 0.2):
-        generator_device = "cpu"
-        components = self.get_dummy_components()
-
-        pipe = self.pipeline_class(**components)
-        pipe.to("cpu")
+        pipe = self.pipeline_class(**self.get_dummy_components()).to(torch_device)
         pipe.set_progress_bar_config(disable=None)
 
-        # Without tiling
-        inputs = self.get_dummy_inputs(generator_device)
+        inputs = self.get_dummy_inputs()
         inputs["height"] = inputs["width"] = 128
         inputs["control_image"] = randn_tensor(
             (1, 3, 128, 128),
             generator=inputs["generator"],
-            device=torch.device(generator_device),
+            device=torch.device(torch_device),
             dtype=torch.float32,
         )
         output_without_tiling = pipe(**inputs)[0]
 
-        # With tiling
         pipe.vae.enable_tiling(
             tile_sample_min_height=96,
             tile_sample_min_width=96,
             tile_sample_stride_height=64,
             tile_sample_stride_width=64,
         )
-        inputs = self.get_dummy_inputs(generator_device)
+        inputs = self.get_dummy_inputs()
         inputs["height"] = inputs["width"] = 128
         inputs["control_image"] = randn_tensor(
             (1, 3, 128, 128),
             generator=inputs["generator"],
-            device=torch.device(generator_device),
+            device=torch.device(torch_device),
             dtype=torch.float32,
         )
         output_with_tiling = pipe(**inputs)[0]
 
-        self.assertLess(
-            (to_np(output_without_tiling) - to_np(output_with_tiling)).max(),
-            expected_diff_max,
-            "VAE tiling should not affect the inference results",
+        assert (output_without_tiling - output_with_tiling).abs().max() < expected_diff_max, (
+            "VAE tiling should not affect the inference results."
         )
 
     def test_true_cfg_without_negative_prompt_embeds_mask(self):
-        components = self.get_dummy_components()
-        pipe = self.pipeline_class(**components)
-        pipe.to(torch_device)
+        pipe = self.pipeline_class(**self.get_dummy_components()).to(torch_device)
         pipe.set_progress_bar_config(disable=None)
 
-        inputs = self.get_dummy_inputs(torch_device)
+        inputs = self.get_dummy_inputs()
         prompt = inputs.pop("prompt")
-
         prompt_embeds, prompt_embeds_mask = pipe.encode_prompt(
             prompt=prompt,
             device=torch_device,
@@ -360,4 +253,8 @@ class QwenControlNetPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         inputs["true_cfg_scale"] = 2.0
 
         image = pipe(**inputs).images
-        self.assertIsNotNone(image)
+        assert image is not None
+
+
+class TestQwenImageControlNetPipelineMemory(QwenImageControlNetPipelineTesterConfig, MemoryTesterMixin):
+    pass

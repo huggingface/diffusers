@@ -22,7 +22,7 @@ from diffusers import AutoPipelineForText2Image
 
 pipeline = AutoPipelineForText2Image.from_pretrained(
     "stable-diffusion-v1-5/stable-diffusion-v1-5",
-    torch_dtype=torch.float16
+    dtype=torch.float16
 ).to("cuda")
 ```
 
@@ -48,7 +48,7 @@ from diffusers import AutoPipelineForText2Image
 
 pipeline = AutoPipelineForText2Image.from_pretrained(
     "stable-diffusion-v1-5/stable-diffusion-v1-5",
-    torch_dtype=torch.float16
+    dtype=torch.float16
 ).to("cuda")
 pipeline.load_textual_inversion(
     "EvilEngine/easynegative",

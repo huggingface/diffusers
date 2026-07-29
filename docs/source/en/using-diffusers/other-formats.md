@@ -45,7 +45,7 @@ from diffusers import StableDiffusionXLPipeline
 
 pipeline = StableDiffusionXLPipeline.from_single_file(
     "https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0/blob/main/sd_xl_base_1.0.safetensors",
-    torch_dtype=torch.float16,
+    dtype=torch.float16,
     device_map="cuda"
 )
 ```
@@ -57,12 +57,12 @@ import torch
 from diffusers import FluxPipeline, FluxTransformer2DModel
 
 transformer = FluxTransformer2DModel.from_single_file(
-    "https://huggingface.co/Kijai/flux-fp8/blob/main/flux1-dev-fp8.safetensors", torch_dtype=torch.bfloat16
+    "https://huggingface.co/Kijai/flux-fp8/blob/main/flux1-dev-fp8.safetensors", dtype=torch.bfloat16
 )
 pipeline = FluxPipeline.from_pretrained(
     "black-forest-labs/FLUX.1-dev",
     transformer=transformer,
-    torch_dtype=torch.bfloat16,
+    dtype=torch.bfloat16,
     device_map="cuda"
 )
 ```
@@ -180,7 +180,7 @@ pipeline = DiffusionPipeline.from_pretrained(
 
 pipeline = DiffusionPipeline.from_single_file(
     "https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0/blob/main/sd_xl_base_1.0.safetensors",
-    torch_dtype=torch.float16,
+    dtype=torch.float16,
 )
 ```
 
@@ -193,7 +193,7 @@ import torch
 from diffusers import FluxPipeline
 
 pipeline = FluxPipeline.from_pretrained(
-    "black-forest-labs/FLUX.1-dev", torch_dtype=torch.bfloat16
+    "black-forest-labs/FLUX.1-dev", dtype=torch.bfloat16
 ).to("cuda")
 pipeline.load_lora_weights("linoyts/yarn_art_Flux_LoRA")
 pipeline.save_lora_weights(
@@ -237,7 +237,7 @@ from diffusers import DiffusionPipeline
 pipeline = DiffusionPipeline.from_pretrained(
     "DDUF/FLUX.1-dev-DDUF",
     dduf_file="FLUX.1-dev.dduf",
-    torch_dtype=torch.bfloat16,
+    dtype=torch.bfloat16,
     device_map="cuda"
 )
 ```
@@ -249,7 +249,7 @@ import torch
 from diffusers import DiffusionPipeline
 from huggingface_hub import export_folder_as_dduf
 
-pipeline = DiffusionPipeline.from_pretrained("black-forest-labs/FLUX.1-dev", torch_dtype=torch.bfloat16)
+pipeline = DiffusionPipeline.from_pretrained("black-forest-labs/FLUX.1-dev", dtype=torch.bfloat16)
 
 save_folder = "flux-dev"
 pipeline.save_pretrained("flux-dev")
