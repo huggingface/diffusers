@@ -128,7 +128,7 @@ from diffusers import StableDiffusionPipeline
 import torch
 
 model_ckpt = "CompVis/stable-diffusion-v1-4"
-sd_pipeline = StableDiffusionPipeline.from_pretrained(model_ckpt, torch_dtype=torch.float16).to("cuda")
+sd_pipeline = StableDiffusionPipeline.from_pretrained(model_ckpt, dtype=torch.float16).to("cuda")
 ```
 
 Generate some images with multiple prompts:
@@ -183,7 +183,7 @@ Then we load the [v1-5 checkpoint](https://huggingface.co/stable-diffusion-v1-5/
 
 ```python
 model_ckpt_1_5 = "stable-diffusion-v1-5/stable-diffusion-v1-5"
-sd_pipeline_1_5 = StableDiffusionPipeline.from_pretrained(model_ckpt_1_5, torch_dtype=torch.float16).to("cuda")
+sd_pipeline_1_5 = StableDiffusionPipeline.from_pretrained(model_ckpt_1_5, dtype=torch.float16).to("cuda")
 
 images_1_5 = sd_pipeline_1_5(prompts, num_images_per_prompt=1, generator=generator, output_type="np").images
 ```
@@ -278,7 +278,7 @@ Let's first load the [`StableDiffusionInstructPix2PixPipeline`]:
 from diffusers import StableDiffusionInstructPix2PixPipeline
 
 instruct_pix2pix_pipeline = StableDiffusionInstructPix2PixPipeline.from_pretrained(
-    "timbrooks/instruct-pix2pix", torch_dtype=torch.float16
+    "timbrooks/instruct-pix2pix", dtype=torch.float16
 ).to("cuda")
 ```
 
@@ -492,7 +492,7 @@ We now load the [`DiTPipeline`](https://huggingface.co/docs/diffusers/api/pipel
 ```python
 from diffusers import DiTPipeline, DPMSolverMultistepScheduler
 
-dit_pipeline = DiTPipeline.from_pretrained("facebook/DiT-XL-2-256", torch_dtype=torch.float16)
+dit_pipeline = DiTPipeline.from_pretrained("facebook/DiT-XL-2-256", dtype=torch.float16)
 dit_pipeline.scheduler = DPMSolverMultistepScheduler.from_config(dit_pipeline.scheduler.config)
 dit_pipeline = dit_pipeline.to("cuda")
 
