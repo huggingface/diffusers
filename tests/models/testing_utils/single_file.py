@@ -22,7 +22,7 @@ import huggingface_hub
 import pytest
 import torch
 from accelerate import init_empty_weights
-from huggingface_hub import HfApi, snapshot_download
+from huggingface_hub import HfApi
 
 from diffusers.loaders.single_file_utils import _extract_repo_id_and_weights_name
 
@@ -51,48 +51,6 @@ def fetch_checkpoint_metadata(ckpt_path):
         return None
 
     return HfApi().parse_safetensors_file_metadata(pretrained_model_name_or_path, weight_name)
-
-
-def fetch_pretrained_metadata(pretrained_model_name_or_path, subfolder=None):
-    """
-    Map every tensor in a pretrained repo to the shard holding it and its metadata, reading only shard headers.
-
-    Returns `{key: (filename, tensor_info)}`, covering sharded and single file repos alike.
-    """
-    api = HfApi()
-    prefix = f"{subfolder}/" if subfolder else ""
-    filenames = [
-        f
-        for f in api.list_repo_files(pretrained_model_name_or_path)
-        if f.startswith(prefix) and f.endswith(".safetensors") and "/" not in f[len(prefix) :]
-    ]
-
-    metadata = {}
-    for filename in filenames:
-        shard = api.parse_safetensors_file_metadata(pretrained_model_name_or_path, filename)
-        metadata.update({key: (filename, info) for key, info in shard.tensors.items()})
-
-    return metadata
-
-
-def download_diffusers_config(pretrained_model_name_or_path, tmpdir):
-    """Download diffusers config files (excluding weights) from a repository."""
-    path = snapshot_download(
-        pretrained_model_name_or_path,
-        ignore_patterns=[
-            "**/*.ckpt",
-            "*.ckpt",
-            "**/*.bin",
-            "*.bin",
-            "**/*.pt",
-            "*.pt",
-            "**/*.safetensors",
-            "*.safetensors",
-        ],
-        allow_patterns=["**/*.json", "*.json", "*.txt", "**/*.txt"],
-        local_dir=tmpdir,
-    )
-    return path
 
 
 @is_single_file
