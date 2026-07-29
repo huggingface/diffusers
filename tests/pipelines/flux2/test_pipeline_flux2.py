@@ -1,5 +1,3 @@
-import unittest
-
 import numpy as np
 import torch
 from transformers import AutoProcessor, Mistral3Config, Mistral3ForConditionalGeneration
@@ -11,23 +9,21 @@ from diffusers import (
     Flux2Transformer2DModel,
 )
 
-from ...testing_utils import (
-    torch_device,
-)
-from ..test_pipelines_common import (
+from ...testing_utils import torch_device
+from ..testing_utils import (
+    BasePipelineTesterConfig,
+    MemoryTesterMixin,
     PipelineTesterMixin,
     check_qkv_fused_layers_exist,
 )
 
 
-class Flux2PipelineFastTests(PipelineTesterMixin, unittest.TestCase):
+class Flux2PipelineTesterConfig(BasePipelineTesterConfig):
     pipeline_class = Flux2Pipeline
-    params = frozenset(["prompt", "height", "width", "guidance_scale", "prompt_embeds"])
-    batch_params = frozenset(["prompt"])
-
-    test_xformers_attention = False
-    test_layerwise_casting = True
-    test_group_offloading = True
+    required_input_params_in_call_signature = frozenset(
+        ["prompt", "height", "width", "guidance_scale", "prompt_embeds"]
+    )
+    batch_input_params = frozenset(["prompt"])
 
     def get_dummy_components(self, num_layers: int = 1, num_single_layers: int = 1):
         torch.manual_seed(0)
@@ -109,69 +105,61 @@ class Flux2PipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             "vae": vae,
         }
 
-    def get_dummy_inputs(self, device, seed=0):
-        if str(device).startswith("mps"):
-            generator = torch.manual_seed(seed)
-        else:
-            generator = torch.Generator(device="cpu").manual_seed(seed)
-
+    def get_dummy_inputs(self):
         inputs = {
             "prompt": "a dog is dancing",
-            "generator": generator,
+            "generator": self.get_generator(0),
             "num_inference_steps": 2,
             "guidance_scale": 5.0,
             "height": 8,
             "width": 8,
             "max_sequence_length": 8,
-            "output_type": "np",
+            # Request torch outputs so tests compare torch tensors directly (see `BasePipelineTesterConfig`).
+            # Note `"pt"` images are `(batch, channels, height, width)`, unlike `"np"` (`(batch, h, w, c)`).
+            "output_type": "pt",
             "text_encoder_out_layers": (1,),
         }
         return inputs
 
-    def test_fused_qkv_projections(self):
-        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
-        components = self.get_dummy_components()
-        pipe = self.pipeline_class(**components)
-        pipe = pipe.to(device)
-        pipe.set_progress_bar_config(disable=None)
 
-        inputs = self.get_dummy_inputs(device)
+class TestFlux2Pipeline(Flux2PipelineTesterConfig, PipelineTesterMixin):
+    def test_fused_qkv_projections(self):
+        # Run on CPU so the torch tensor slices can be compared with `np.allclose`.
+        pipe = self.get_pipeline()
+
+        inputs = self.get_dummy_inputs()
         image = pipe(**inputs).images
-        original_image_slice = image[0, -3:, -3:, -1]
+        original_image_slice = image[0, -1, -3:, -3:]
 
         # TODO (sayakpaul): will refactor this once `fuse_qkv_projections()` has been added
         # to the pipeline level.
         pipe.transformer.fuse_qkv_projections()
-        self.assertTrue(
-            check_qkv_fused_layers_exist(pipe.transformer, ["to_qkv"]),
-            ("Something wrong with the fused attention layers. Expected all the attention projections to be fused."),
+        assert check_qkv_fused_layers_exist(pipe.transformer, ["to_qkv"]), (
+            "Something wrong with the fused attention layers. Expected all the attention projections to be fused."
         )
 
-        inputs = self.get_dummy_inputs(device)
+        inputs = self.get_dummy_inputs()
         image = pipe(**inputs).images
-        image_slice_fused = image[0, -3:, -3:, -1]
+        image_slice_fused = image[0, -1, -3:, -3:]
 
         pipe.transformer.unfuse_qkv_projections()
-        inputs = self.get_dummy_inputs(device)
+        inputs = self.get_dummy_inputs()
         image = pipe(**inputs).images
-        image_slice_disabled = image[0, -3:, -3:, -1]
+        image_slice_disabled = image[0, -1, -3:, -3:]
 
-        self.assertTrue(
-            np.allclose(original_image_slice, image_slice_fused, atol=1e-3, rtol=1e-3),
-            ("Fusion of QKV projections shouldn't affect the outputs."),
+        assert np.allclose(original_image_slice, image_slice_fused, atol=1e-3, rtol=1e-3), (
+            "Fusion of QKV projections shouldn't affect the outputs."
         )
-        self.assertTrue(
-            np.allclose(image_slice_fused, image_slice_disabled, atol=1e-3, rtol=1e-3),
-            ("Outputs, with QKV projection fusion enabled, shouldn't change when fused QKV projections are disabled."),
+        assert np.allclose(image_slice_fused, image_slice_disabled, atol=1e-3, rtol=1e-3), (
+            "Outputs, with QKV projection fusion enabled, shouldn't change when fused QKV projections are disabled."
         )
-        self.assertTrue(
-            np.allclose(original_image_slice, image_slice_disabled, atol=1e-2, rtol=1e-2),
-            ("Original outputs should match when fused QKV projections are disabled."),
+        assert np.allclose(original_image_slice, image_slice_disabled, atol=1e-2, rtol=1e-2), (
+            "Original outputs should match when fused QKV projections are disabled."
         )
 
     def test_flux_image_output_shape(self):
         pipe = self.pipeline_class(**self.get_dummy_components()).to(torch_device)
-        inputs = self.get_dummy_inputs(torch_device)
+        inputs = self.get_dummy_inputs()
 
         height_width_pairs = [(32, 32), (72, 57)]
         for height, width in height_width_pairs:
@@ -180,9 +168,11 @@ class Flux2PipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
             inputs.update({"height": height, "width": width})
             image = pipe(**inputs).images[0]
-            output_height, output_width, _ = image.shape
-            self.assertEqual(
-                (output_height, output_width),
-                (expected_height, expected_width),
-                f"Output shape {image.shape} does not match expected shape {(expected_height, expected_width)}",
+            _, output_height, output_width = image.shape
+            assert (output_height, output_width) == (expected_height, expected_width), (
+                f"Output shape {image.shape} does not match expected shape {(expected_height, expected_width)}"
             )
+
+
+class TestFlux2PipelineMemory(Flux2PipelineTesterConfig, MemoryTesterMixin):
+    """Memory optimization tests (CPU offload, group offload, layerwise casting) for the Flux2 pipeline."""
