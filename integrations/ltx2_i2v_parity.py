@@ -42,6 +42,7 @@ from PIL import Image
 
 from diffusers import LTX2ImageToVideoPipeline
 from diffusers.modular_pipelines.ltx2 import LTX2ImageToVideoBlocks
+from diffusers.pipelines.ltx2 import LTX2AutoDuration
 from diffusers.pipelines.ltx2.utils import DEFAULT_NEGATIVE_PROMPT
 from diffusers.utils import load_image
 
@@ -145,13 +146,17 @@ def main(args):
     else:
         std.to(args.device)
 
+    if args.predict_duration:
+        num_frames = LTX2AutoDuration(min_seconds=args.min_seconds, max_seconds=args.max_seconds)
+    else:
+        num_frames = args.num_frames
     common_kwargs = {
         "image": image,
         "prompt": args.prompt,
         "negative_prompt": args.negative_prompt,
         "width": args.width,
         "height": args.height,
-        "num_frames": args.num_frames,
+        "num_frames": num_frames,
         "frame_rate": args.frame_rate,
         "num_inference_steps": args.num_inference_steps,
         "max_sequence_length": args.max_sequence_length,
@@ -174,6 +179,8 @@ def main(args):
     print("Building modular LTX2ImageToVideoBlocks pipeline (shared components) ...")
     mod = LTX2ImageToVideoBlocks().init_pipeline()
     mod.update_components(**{name: getattr(std, name) for name in SHARED_COMPONENTS})
+    if hasattr(std, "duration_head"):
+            mod.update_components(duration_head=getattr(std, "duration_head"))
 
     # 4. Modular run.
     print("Running modular LTX2ImageToVideoBlocks ...")
@@ -219,6 +226,10 @@ if __name__ == "__main__":
     parser.add_argument("--num_inference_steps", type=int, default=6)
     parser.add_argument("--max_sequence_length", type=int, default=1024)
     parser.add_argument("--num_videos_per_prompt", type=int, default=1)
+
+    parser.add_argument("--predict_duration", action="store_true")
+    parser.add_argument("--min_seconds", type=float, default=1.0)
+    parser.add_argument("--max_seconds", type=float, default=20.0)
 
     parser.add_argument(
         "--atol",

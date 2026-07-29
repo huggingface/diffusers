@@ -11,6 +11,7 @@ from diffusers import (
     LTX2VideoTransformer3DModel,
 )
 from diffusers.pipelines.ltx2 import LTX2TextConnectors
+from diffusers.pipelines.ltx2.duration_head import LTX2DurationHead
 from diffusers.pipelines.ltx2.vocoder import LTX2VocoderWithBWE
 
 
@@ -86,6 +87,18 @@ def main(args):
         rope_type="split",
         per_modality_projections=True,  # LTX-2.3
         proj_bias=True,  # LTX-2.3
+    )
+
+    # The duration head (LTX-2.4) predicts num_frames from the text connector outputs, so its per-modality
+    # input widths must equal the connector's output widths, i.e. the connector inner_dim (== *_hidden_dim).
+    torch.manual_seed(0)
+    duration_head = LTX2DurationHead(
+        video_cross_attention_dim=connectors.config.video_hidden_dim,  # 16: video connector output width
+        audio_cross_attention_dim=connectors.config.audio_hidden_dim,  # 8: audio connector output width
+        pooler_hidden_dim=8,
+        num_queries=1,
+        num_pooler_heads=4,  # LTX-2.4 (must divide pooler_hidden_dim)
+        mlp_hidden_dim=8,
     )
 
     torch.manual_seed(0)
@@ -200,6 +213,7 @@ def main(args):
         "tokenizer": tokenizer,
         "connectors": connectors,
         "vocoder": vocoder,
+        "duration_head": duration_head,
         "processor": None,
     }
 
