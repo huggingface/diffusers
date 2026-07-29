@@ -1091,18 +1091,6 @@ class LTX2VideoTransformer3DModel(
     _supports_gradient_checkpointing = True
     _skip_layerwise_casting_patterns = ["norm"]
     _repeated_blocks = ["LTX2VideoTransformerBlock"]
-    _cp_plan = {
-        "": {
-            "hidden_states": ContextParallelInput(split_dim=1, expected_dims=3, split_output=False),
-            "encoder_hidden_states": ContextParallelInput(split_dim=1, expected_dims=3, split_output=False),
-            "encoder_attention_mask": ContextParallelInput(split_dim=1, expected_dims=2, split_output=False),
-        },
-        "rope": {
-            0: ContextParallelInput(split_dim=1, expected_dims=3, split_output=True),
-            1: ContextParallelInput(split_dim=1, expected_dims=3, split_output=True),
-        },
-        "proj_out": ContextParallelOutput(gather_dim=1, expected_dims=3),
-    }
 
     @register_to_config
     def __init__(
@@ -1317,6 +1305,37 @@ class LTX2VideoTransformer3DModel(
         self.audio_proj_out = nn.Linear(audio_inner_dim, audio_out_channels)
 
         self.gradient_checkpointing = False
+
+        # RoPE modules return (cos, sin) shaped (B, T, D) for rope_type="interleaved" and (B, H, T, D // 2)
+        # for rope_type="split", so the sequence dim to shard depends on the config.
+        if rope_type == "split":
+            rope_plan = {
+                0: ContextParallelInput(split_dim=2, expected_dims=4, split_output=True),
+                1: ContextParallelInput(split_dim=2, expected_dims=4, split_output=True),
+            }
+        else:
+            rope_plan = {
+                0: ContextParallelInput(split_dim=1, expected_dims=3, split_output=True),
+                1: ContextParallelInput(split_dim=1, expected_dims=3, split_output=True),
+            }
+        self._cp_plan = {
+            "": {
+                "hidden_states": ContextParallelInput(split_dim=1, expected_dims=3, split_output=False),
+                "timestep": ContextParallelInput(split_dim=1, expected_dims=2, split_output=False),
+                "audio_hidden_states": ContextParallelInput(split_dim=1, expected_dims=3, split_output=False),
+                "audio_timestep": ContextParallelInput(split_dim=1, expected_dims=2, split_output=False),
+                "encoder_hidden_states": ContextParallelInput(split_dim=1, expected_dims=3, split_output=False),
+                "encoder_attention_mask": ContextParallelInput(split_dim=1, expected_dims=2, split_output=False),
+                "audio_encoder_hidden_states": ContextParallelInput(split_dim=1, expected_dims=3, split_output=False),
+                "audio_encoder_attention_mask": ContextParallelInput(split_dim=1, expected_dims=2, split_output=False),
+            },
+            "rope": rope_plan,
+            "audio_rope": rope_plan,
+            "cross_attn_rope": rope_plan,
+            "cross_attn_audio_rope": rope_plan,
+            "proj_out": ContextParallelOutput(gather_dim=1, expected_dims=3),
+            "audio_proj_out": ContextParallelOutput(gather_dim=1, expected_dims=3),
+        }
 
     @apply_lora_scale("attention_kwargs")
     def forward(
