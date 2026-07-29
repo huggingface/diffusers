@@ -21,9 +21,9 @@ import torch
 from diffusers import DiffusionPipeline, AutoencoderTiny
 
 pipe = DiffusionPipeline.from_pretrained(
-    "stabilityai/stable-diffusion-2-1-base", torch_dtype=torch.float16
+    "stabilityai/stable-diffusion-2-1-base", dtype=torch.float16
 )
-pipe.vae = AutoencoderTiny.from_pretrained("madebyollin/taesd", torch_dtype=torch.float16)
+pipe.vae = AutoencoderTiny.from_pretrained("madebyollin/taesd", dtype=torch.float16)
 pipe = pipe.to("cuda")
 
 prompt = "slice of delicious New York-style berry cheesecake"
@@ -38,9 +38,9 @@ import torch
 from diffusers import DiffusionPipeline, AutoencoderTiny
 
 pipe = DiffusionPipeline.from_pretrained(
-    "stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.float16
+    "stabilityai/stable-diffusion-xl-base-1.0", dtype=torch.float16
 )
-pipe.vae = AutoencoderTiny.from_pretrained("madebyollin/taesdxl", torch_dtype=torch.float16)
+pipe.vae = AutoencoderTiny.from_pretrained("madebyollin/taesdxl", dtype=torch.float16)
 pipe = pipe.to("cuda")
 
 prompt = "slice of delicious New York-style berry cheesecake"

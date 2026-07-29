@@ -34,7 +34,7 @@ Model weights may be stored in separate subfolders on the Hub or locally, in whi
 import torch
 from diffusers import OmniGenPipeline
 
-pipe = OmniGenPipeline.from_pretrained("Shitao/OmniGen-v1-diffusers", torch_dtype=torch.bfloat16)
+pipe = OmniGenPipeline.from_pretrained("Shitao/OmniGen-v1-diffusers", dtype=torch.bfloat16)
 ```
 
 ## Text-to-image
@@ -48,7 +48,7 @@ from diffusers import OmniGenPipeline
 
 pipe = OmniGenPipeline.from_pretrained(
     "Shitao/OmniGen-v1-diffusers",
-    torch_dtype=torch.bfloat16
+    dtype=torch.bfloat16
 )
 pipe.to("cuda")
 
@@ -80,7 +80,7 @@ from diffusers.utils import load_image
 
 pipe = OmniGenPipeline.from_pretrained(
     "Shitao/OmniGen-v1-diffusers",
-    torch_dtype=torch.bfloat16
+    dtype=torch.bfloat16
 )
 pipe.to("cuda")
 
@@ -139,7 +139,7 @@ from diffusers.utils import load_image
 
 pipe = OmniGenPipeline.from_pretrained(
     "Shitao/OmniGen-v1-diffusers",
-    torch_dtype=torch.bfloat16
+    dtype=torch.bfloat16
 )
 pipe.to("cuda")
 
@@ -193,7 +193,7 @@ from diffusers.utils import load_image
 
 pipe = OmniGenPipeline.from_pretrained(
     "Shitao/OmniGen-v1-diffusers",
-    torch_dtype=torch.bfloat16
+    dtype=torch.bfloat16
 )
 pipe.to("cuda")
 
@@ -229,7 +229,7 @@ from diffusers.utils import load_image
 
 pipe = OmniGenPipeline.from_pretrained(
     "Shitao/OmniGen-v1-diffusers",
-    torch_dtype=torch.bfloat16
+    dtype=torch.bfloat16
 )
 pipe.to("cuda")
 
@@ -271,7 +271,7 @@ from diffusers.utils import load_image
 
 pipe = OmniGenPipeline.from_pretrained(
     "Shitao/OmniGen-v1-diffusers",
-    torch_dtype=torch.bfloat16
+    dtype=torch.bfloat16
 )
 pipe.to("cuda")
 
