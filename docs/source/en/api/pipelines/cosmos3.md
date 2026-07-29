@@ -100,7 +100,7 @@ json_prompt = json.load(open("assets/example_t2v_prompt.json"))
 negative_prompt = json.load(open("assets/negative_prompt.json"))
 
 pipe = Cosmos3OmniPipeline.from_pretrained(
-    "nvidia/Cosmos3-Nano", torch_dtype=torch.bfloat16, device_map="cuda"
+    "nvidia/Cosmos3-Nano", dtype=torch.bfloat16, device_map="cuda"
 )
 pipe.scheduler = UniPCMultistepScheduler.from_config(
     pipe.scheduler.config, flow_shift=10.0, use_karras_sigmas=False
@@ -135,7 +135,7 @@ json_prompt = json.load(open("assets/example_t2v_prompt.json"))
 negative_prompt = json.load(open("assets/negative_prompt.json"))
 
 pipe = Cosmos3OmniPipeline.from_pretrained(
-    "nvidia/Cosmos3-Super", torch_dtype=torch.bfloat16, device_map="cuda"
+    "nvidia/Cosmos3-Super", dtype=torch.bfloat16, device_map="cuda"
 )
 pipe.scheduler = UniPCMultistepScheduler.from_config(
     pipe.scheduler.config, flow_shift=10.0, use_karras_sigmas=False
@@ -174,7 +174,7 @@ from diffusers import Cosmos3OmniPipeline
 json_prompt = json.load(open("assets/example_t2i_prompt.json"))
 
 pipe = Cosmos3OmniPipeline.from_pretrained(
-    "nvidia/Cosmos3-Nano", torch_dtype=torch.bfloat16, device_map="cuda"
+    "nvidia/Cosmos3-Nano", dtype=torch.bfloat16, device_map="cuda"
 )
 
 result = pipe(prompt=json.dumps(json_prompt), num_frames=1, height=720, width=1280)
@@ -193,7 +193,7 @@ from diffusers import Cosmos3OmniPipeline
 json_prompt = json.load(open("assets/example_t2i_prompt.json"))
 
 pipe = Cosmos3OmniPipeline.from_pretrained(
-    "nvidia/Cosmos3-Super", torch_dtype=torch.bfloat16, device_map="cuda"
+    "nvidia/Cosmos3-Super", dtype=torch.bfloat16, device_map="cuda"
 )
 
 result = pipe(prompt=json.dumps(json_prompt), num_frames=1, height=720, width=1280)
@@ -221,7 +221,7 @@ json_prompt = json.load(open("assets/example_i2v_prompt.json"))
 negative_prompt = json.load(open("assets/negative_prompt_i2v.json"))
 
 pipe = Cosmos3OmniPipeline.from_pretrained(
-    "nvidia/Cosmos3-Nano", torch_dtype=torch.bfloat16, device_map="cuda"
+    "nvidia/Cosmos3-Nano", dtype=torch.bfloat16, device_map="cuda"
 )
 
 image = load_image(
@@ -255,7 +255,7 @@ json_prompt = json.load(open("assets/example_i2v_prompt.json"))
 negative_prompt = json.load(open("assets/negative_prompt_i2v.json"))
 
 pipe = Cosmos3OmniPipeline.from_pretrained(
-    "nvidia/Cosmos3-Super", torch_dtype=torch.bfloat16, device_map="cuda"
+    "nvidia/Cosmos3-Super", dtype=torch.bfloat16, device_map="cuda"
 )
 
 image = load_image(
@@ -299,7 +299,7 @@ json_prompt = json.load(open("assets/example_v2v_prompt.json"))
 negative_prompt = json.load(open("assets/negative_prompt_i2v.json"))
 
 pipe = Cosmos3OmniPipeline.from_pretrained(
-    "nvidia/Cosmos3-Nano", torch_dtype=torch.bfloat16, device_map="cuda"
+    "nvidia/Cosmos3-Nano", dtype=torch.bfloat16, device_map="cuda"
 )
 pipe.scheduler = UniPCMultistepScheduler.from_config(
     pipe.scheduler.config, flow_shift=10.0, use_karras_sigmas=False
@@ -341,7 +341,7 @@ json_prompt = json.load(open("assets/example_v2v_prompt.json"))
 negative_prompt = json.load(open("assets/negative_prompt_i2v.json"))
 
 pipe = Cosmos3OmniPipeline.from_pretrained(
-    "nvidia/Cosmos3-Super", torch_dtype=torch.bfloat16, device_map="cuda"
+    "nvidia/Cosmos3-Super", dtype=torch.bfloat16, device_map="cuda"
 )
 pipe.scheduler = UniPCMultistepScheduler.from_config(
     pipe.scheduler.config, flow_shift=10.0, use_karras_sigmas=False
@@ -390,7 +390,7 @@ json_prompt = json.load(open("assets/example_v2v_prompt.json"))
 negative_prompt = json.load(open("assets/negative_prompt_i2v.json"))
 
 pipe = Cosmos3OmniPipeline.from_pretrained(
-    "nvidia/Cosmos3-Nano", torch_dtype=torch.bfloat16, device_map="cuda"
+    "nvidia/Cosmos3-Nano", dtype=torch.bfloat16, device_map="cuda"
 )
 pipe.scheduler = UniPCMultistepScheduler.from_config(
     pipe.scheduler.config, flow_shift=10.0, use_karras_sigmas=False
@@ -437,7 +437,7 @@ json_prompt = json.load(open("assets/example_v2v_prompt.json"))
 negative_prompt = json.load(open("assets/negative_prompt_i2v.json"))
 
 pipe = Cosmos3OmniPipeline.from_pretrained(
-    "nvidia/Cosmos3-Super", torch_dtype=torch.bfloat16, device_map="cuda"
+    "nvidia/Cosmos3-Super", dtype=torch.bfloat16, device_map="cuda"
 )
 pipe.scheduler = UniPCMultistepScheduler.from_config(
     pipe.scheduler.config, flow_shift=10.0, use_karras_sigmas=False
@@ -492,7 +492,7 @@ json_prompt = json.load(open("assets/example_t2v_sound_prompt.json"))
 negative_prompt = json.load(open("assets/negative_prompt.json"))
 
 pipe = Cosmos3OmniPipeline.from_pretrained(
-    "nvidia/Cosmos3-Nano", torch_dtype=torch.bfloat16, device_map="cuda"
+    "nvidia/Cosmos3-Nano", dtype=torch.bfloat16, device_map="cuda"
 )
 
 result = pipe(
@@ -528,7 +528,7 @@ json_prompt = json.load(open("assets/example_t2v_sound_prompt.json"))
 negative_prompt = json.load(open("assets/negative_prompt.json"))
 
 pipe = Cosmos3OmniPipeline.from_pretrained(
-    "nvidia/Cosmos3-Super", torch_dtype=torch.bfloat16, device_map="cuda"
+    "nvidia/Cosmos3-Super", dtype=torch.bfloat16, device_map="cuda"
 )
 
 result = pipe(
@@ -575,7 +575,7 @@ from diffusers.schedulers.scheduling_unipc_multistep import UniPCMultistepSchedu
 from diffusers.utils import export_to_video, load_video
 
 pipe = Cosmos3OmniPipeline.from_pretrained(
-    "nvidia/Cosmos3-Nano", torch_dtype=torch.bfloat16, device_map="cuda"
+    "nvidia/Cosmos3-Nano", dtype=torch.bfloat16, device_map="cuda"
 )
 pipe.scheduler = UniPCMultistepScheduler.from_config(
     pipe.scheduler.config, flow_shift=10.0, use_karras_sigmas=False
@@ -622,7 +622,7 @@ from diffusers.schedulers.scheduling_unipc_multistep import UniPCMultistepSchedu
 from diffusers.utils import export_to_video, load_video
 
 pipe = Cosmos3OmniPipeline.from_pretrained(
-    "nvidia/Cosmos3-Super", torch_dtype=torch.bfloat16, device_map="cuda"
+    "nvidia/Cosmos3-Super", dtype=torch.bfloat16, device_map="cuda"
 )
 pipe.scheduler = UniPCMultistepScheduler.from_config(
     pipe.scheduler.config, flow_shift=10.0, use_karras_sigmas=False
@@ -739,7 +739,7 @@ mesh = init_device_mesh("cuda", (tp_degree, cp_degree), mesh_dim_names=("tp", "c
 
 # Load components on CPU first; a TP-sharded model may not fit one GPU.
 pipe = Cosmos3OmniModularPipeline.from_pretrained(model_id)
-pipe.load_components(torch_dtype=torch.bfloat16)
+pipe.load_components(dtype=torch.bfloat16)
 pipe.enable_safety_checker()
 
 if tp_degree > 1:
@@ -820,7 +820,7 @@ from diffusers import Cosmos3OmniPipeline
 
 pipe = Cosmos3OmniPipeline.from_pretrained(
     "nvidia/Cosmos3-Nano",
-    torch_dtype=torch.bfloat16,
+    dtype=torch.bfloat16,
     device_map="cuda",
     enable_safety_checker=False,
 )
@@ -844,7 +844,7 @@ To supply a custom checker (e.g., a no-op subclass for fast tests), pass it as `
 ```python
 pipe = Cosmos3OmniPipeline.from_pretrained(
     "nvidia/Cosmos3-Nano",
-    torch_dtype=torch.bfloat16,
+    dtype=torch.bfloat16,
     device_map="cuda",
     safety_checker=MyCustomSafetyChecker(),
 )
@@ -866,9 +866,9 @@ import torch
 from diffusers import Cosmos3OmniModularPipeline
 
 pipe = Cosmos3OmniModularPipeline.from_pretrained(
-    "nvidia/Cosmos3-Nano", torch_dtype=torch.bfloat16
+    "nvidia/Cosmos3-Nano", dtype=torch.bfloat16
 )
-pipe.load_components(torch_dtype=torch.bfloat16)
+pipe.load_components(dtype=torch.bfloat16)
 pipe.enable_safety_checker()
 
 videos = pipe(
@@ -890,8 +890,8 @@ You can also load through [`ModularPipeline`] and let the repository config sele
 import torch
 from diffusers import ModularPipeline
 
-pipe = ModularPipeline.from_pretrained("nvidia/Cosmos3-Nano", torch_dtype=torch.bfloat16)
-pipe.load_components(torch_dtype=torch.bfloat16)
+pipe = ModularPipeline.from_pretrained("nvidia/Cosmos3-Nano", dtype=torch.bfloat16)
+pipe.load_components(dtype=torch.bfloat16)
 pipe.enable_safety_checker()
 videos = pipe(
     prompt='{"scene":"A robot arm in a kitchen"}', num_frames=1, height=720, width=1280, output="videos"
@@ -916,8 +916,8 @@ from diffusers import Cosmos3OmniModularPipeline, CosmosActionCondition
 from diffusers.schedulers.scheduling_unipc_multistep import UniPCMultistepScheduler
 from diffusers.utils import encode_video, export_to_video, load_image, load_video
 
-pipe = Cosmos3OmniModularPipeline.from_pretrained("nvidia/Cosmos3-Nano", torch_dtype=torch.bfloat16)
-pipe.load_components(torch_dtype=torch.bfloat16)
+pipe = Cosmos3OmniModularPipeline.from_pretrained("nvidia/Cosmos3-Nano", dtype=torch.bfloat16)
+pipe.load_components(dtype=torch.bfloat16)
 pipe.enable_safety_checker()
 pipe.to("cuda")
 pipe.scheduler = UniPCMultistepScheduler.from_config(
@@ -1080,8 +1080,8 @@ from diffusers import Cosmos3OmniModularPipeline
 from diffusers.schedulers.scheduling_unipc_multistep import UniPCMultistepScheduler
 from diffusers.utils import export_to_video, load_video
 
-pipe = Cosmos3OmniModularPipeline.from_pretrained("nvidia/Cosmos3-Nano", torch_dtype=torch.bfloat16)
-pipe.load_components(torch_dtype=torch.bfloat16)
+pipe = Cosmos3OmniModularPipeline.from_pretrained("nvidia/Cosmos3-Nano", dtype=torch.bfloat16)
+pipe.load_components(dtype=torch.bfloat16)
 pipe.to("cuda")
 pipe.scheduler = UniPCMultistepScheduler.from_config(
     pipe.scheduler.config, flow_shift=10.0, use_karras_sigmas=False
@@ -1131,8 +1131,8 @@ from diffusers.utils import export_to_video, load_image
 json_prompt = json.load(open("assets/example_t2i_prompt.json"))
 
 repo = "nvidia/Cosmos3-Super-Text2Image-4Step"
-pipe = Cosmos3DistilledModularPipeline.from_pretrained(repo, torch_dtype=torch.bfloat16)
-pipe.load_components(torch_dtype=torch.bfloat16)
+pipe = Cosmos3DistilledModularPipeline.from_pretrained(repo, dtype=torch.bfloat16)
+pipe.load_components(dtype=torch.bfloat16)
 pipe.to("cuda")
 
 # text-to-image (distilled)
@@ -1151,8 +1151,8 @@ videos[0].save("cosmos3_distilled_t2i.jpg", format="JPEG", quality=85)
 json_prompt_i2v = json.load(open("assets/example_i2v_prompt.json"))
 
 repo_i2v = "nvidia/Cosmos3-Super-Image2Video-4Step"
-pipe = Cosmos3DistilledModularPipeline.from_pretrained(repo_i2v, torch_dtype=torch.bfloat16)
-pipe.load_components(torch_dtype=torch.bfloat16)
+pipe = Cosmos3DistilledModularPipeline.from_pretrained(repo_i2v, dtype=torch.bfloat16)
+pipe.load_components(dtype=torch.bfloat16)
 pipe.to("cuda")
 
 image = load_image(

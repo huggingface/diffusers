@@ -191,7 +191,7 @@ Train on RAW, then load your LoRA into **Turbo** for fast, high-quality generati
 import torch
 from diffusers import Krea2Pipeline
 
-pipe = Krea2Pipeline.from_pretrained("krea/Krea-2-Turbo", torch_dtype=torch.bfloat16)
+pipe = Krea2Pipeline.from_pretrained("krea/Krea-2-Turbo", dtype=torch.bfloat16)
 pipe.to("cuda")
 
 # Load your trained LoRA (trained on Krea 2 RAW)

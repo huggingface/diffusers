@@ -34,7 +34,7 @@ pipeline_quant_config = PipelineQuantizationConfig(
 pipeline = DiffusionPipeline.from_pretrained(
     "black-forest-labs/FLUX.1-dev",
     quantization_config=pipeline_quant_config,
-    torch_dtype=torch.bfloat16,
+    dtype=torch.bfloat16,
     device_map="cuda"
 )
 ```
@@ -54,7 +54,7 @@ pipeline_quant_config = PipelineQuantizationConfig(
 pipeline = DiffusionPipeline.from_pretrained(
     "black-forest-labs/FLUX.1-dev",
     quantization_config=pipeline_quant_config,
-    torch_dtype=torch.bfloat16,
+    dtype=torch.bfloat16,
     device_map="cuda"
 )
 
@@ -98,7 +98,7 @@ transformer = AutoModel.from_pretrained(
     "black-forest-labs/Flux.1-Dev",
     subfolder="transformer",
     quantization_config=quantization_config,
-    torch_dtype=torch.bfloat16,
+    dtype=torch.bfloat16,
 )
 transformer.save_pretrained("/path/to/flux_int8wo", safe_serialization=False)
 ```
@@ -109,8 +109,8 @@ To load a serialized quantized model, use the [`~ModelMixin.from_pretrained`] me
 import torch
 from diffusers import FluxPipeline, AutoModel
 
-transformer = AutoModel.from_pretrained("/path/to/flux_int8wo", torch_dtype=torch.bfloat16, use_safetensors=False)
-pipe = FluxPipeline.from_pretrained("black-forest-labs/Flux.1-Dev", transformer=transformer, torch_dtype=torch.bfloat16)
+transformer = AutoModel.from_pretrained("/path/to/flux_int8wo", dtype=torch.bfloat16, use_safetensors=False)
+pipe = FluxPipeline.from_pretrained("black-forest-labs/Flux.1-Dev", transformer=transformer, dtype=torch.bfloat16)
 pipe.to("cuda")
 
 prompt = "A cat holding a sign that says hello world"
@@ -131,7 +131,7 @@ transformer = AutoModel.from_pretrained(
     "black-forest-labs/Flux.1-Dev",
     subfolder="transformer",
     quantization_config=TorchAoConfig(IntxWeightOnlyConfig(dtype=torch.uint4)),
-    torch_dtype=torch.bfloat16,
+    dtype=torch.bfloat16,
 )
 transformer.save_pretrained("/path/to/flux_uint4wo", safe_serialization=False, max_shard_size="50GB")
 # ...

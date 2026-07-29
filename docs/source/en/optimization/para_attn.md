@@ -45,7 +45,7 @@ from diffusers import FluxPipeline
 
 pipe = FluxPipeline.from_pretrained(
     "black-forest-labs/FLUX.1-dev",
-    torch_dtype=torch.bfloat16,
+    dtype=torch.bfloat16,
 ).to("cuda")
 
 from para_attn.first_block_cache.diffusers_adapters import apply_cache_on_pipe
@@ -90,13 +90,13 @@ model_id = "tencent/HunyuanVideo"
 transformer = HunyuanVideoTransformer3DModel.from_pretrained(
     model_id,
     subfolder="transformer",
-    torch_dtype=torch.bfloat16,
+    dtype=torch.bfloat16,
     revision="refs/pr/18",
 )
 pipe = HunyuanVideoPipeline.from_pretrained(
     model_id,
     transformer=transformer,
-    torch_dtype=torch.float16,
+    dtype=torch.float16,
     revision="refs/pr/18",
 ).to("cuda")
 
@@ -171,7 +171,7 @@ from diffusers import FluxPipeline
 
 pipe = FluxPipeline.from_pretrained(
     "black-forest-labs/FLUX.1-dev",
-    torch_dtype=torch.bfloat16,
+    dtype=torch.bfloat16,
 ).to("cuda")
 
 from para_attn.first_block_cache.diffusers_adapters import apply_cache_on_pipe
@@ -224,13 +224,13 @@ model_id = "tencent/HunyuanVideo"
 transformer = HunyuanVideoTransformer3DModel.from_pretrained(
     model_id,
     subfolder="transformer",
-    torch_dtype=torch.bfloat16,
+    dtype=torch.bfloat16,
     revision="refs/pr/18",
 )
 pipe = HunyuanVideoPipeline.from_pretrained(
     model_id,
     transformer=transformer,
-    torch_dtype=torch.float16,
+    dtype=torch.float16,
     revision="refs/pr/18",
 ).to("cuda")
 
@@ -303,7 +303,7 @@ torch.cuda.set_device(dist.get_rank())
 
 pipe = FluxPipeline.from_pretrained(
     "black-forest-labs/FLUX.1-dev",
-    torch_dtype=torch.bfloat16,
+    dtype=torch.bfloat16,
 ).to("cuda")
 
 from para_attn.context_parallel import init_context_parallel_mesh
@@ -390,13 +390,13 @@ model_id = "tencent/HunyuanVideo"
 transformer = HunyuanVideoTransformer3DModel.from_pretrained(
     model_id,
     subfolder="transformer",
-    torch_dtype=torch.bfloat16,
+    dtype=torch.bfloat16,
     revision="refs/pr/18",
 )
 pipe = HunyuanVideoPipeline.from_pretrained(
     model_id,
     transformer=transformer,
-    torch_dtype=torch.float16,
+    dtype=torch.float16,
     revision="refs/pr/18",
 ).to("cuda")
 

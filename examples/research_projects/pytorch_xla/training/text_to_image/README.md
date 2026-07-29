@@ -141,7 +141,7 @@ def main():
     model_path = "jffacevedo/pxla_trained_model"
     pipe = StableDiffusionPipeline.from_pretrained(
         model_path, 
-        torch_dtype=torch.bfloat16
+        dtype=torch.bfloat16
     )
     pipe.to(device)
     prompt = ["A naruto with green eyes and red legs."]
