@@ -39,6 +39,19 @@ pipeline = DiffusionPipeline.from_pretrained(
 )
 ```
 
+`device_map="cuda"` quantizes each layer on the GPU while it loads. This is fast, but it temporarily requires additional GPU memory for the original and quantized weights. If the model already uses most of your GPU memory, loading can fail with an out-of-memory error. In that case, drop `device_map` and move the pipeline to the GPU after loading:
+
+```py
+pipeline = DiffusionPipeline.from_pretrained(
+    "black-forest-labs/FLUX.1-dev",
+    quantization_config=pipeline_quant_config,
+    torch_dtype=torch.bfloat16,
+)
+pipeline.to("cuda")
+```
+
+Without `device_map`, Diffusers quantizes the layers on the CPU. This is slower, but avoids the temporary GPU-memory spike during quantization. To reduce GPU memory usage further, use [`~DiffusionPipeline.enable_model_cpu_offload`] instead. You can also quantize additional components, such as the text encoder.
+
 ## torch.compile
 
 torchao supports [torch.compile](../optimization/fp16#torchcompile) which can speed up inference with one line of code.
