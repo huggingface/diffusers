@@ -41,7 +41,7 @@ hf auth login
 import torch
 from diffusers import StableDiffusion3Pipeline
 
-pipe = StableDiffusion3Pipeline.from_pretrained("stabilityai/stable-diffusion-3-medium-diffusers", torch_dtype=torch.float16)
+pipe = StableDiffusion3Pipeline.from_pretrained("stabilityai/stable-diffusion-3-medium-diffusers", dtype=torch.float16)
 pipe.to("cuda")
 
 image = pipe(
@@ -83,16 +83,16 @@ ip_adapter_id = "InstantX/SD3.5-Large-IP-Adapter"
 
 feature_extractor = SiglipImageProcessor.from_pretrained(
     image_encoder_id,
-    torch_dtype=torch.float16
+    dtype=torch.float16
 )
 image_encoder = SiglipVisionModel.from_pretrained(
     image_encoder_id,
-    torch_dtype=torch.float16
+    dtype=torch.float16
 ).to( "cuda")
 
 pipe = StableDiffusion3Pipeline.from_pretrained(
     "stabilityai/stable-diffusion-3.5-large",
-    torch_dtype=torch.float16,
+    dtype=torch.float16,
     feature_extractor=feature_extractor,
     image_encoder=image_encoder,
 ).to("cuda")
@@ -137,7 +137,7 @@ The most basic memory optimization available in Diffusers allows you to offload 
 import torch
 from diffusers import StableDiffusion3Pipeline
 
-pipe = StableDiffusion3Pipeline.from_pretrained("stabilityai/stable-diffusion-3-medium-diffusers", torch_dtype=torch.float16)
+pipe = StableDiffusion3Pipeline.from_pretrained("stabilityai/stable-diffusion-3-medium-diffusers", dtype=torch.float16)
 pipe.enable_model_cpu_offload()
 
 image = pipe(
@@ -164,7 +164,7 @@ pipe = StableDiffusion3Pipeline.from_pretrained(
     "stabilityai/stable-diffusion-3-medium-diffusers",
     text_encoder_3=None,
     tokenizer_3=None,
-    torch_dtype=torch.float16
+    dtype=torch.float16
 )
 pipe.to("cuda")
 
@@ -209,7 +209,7 @@ pipe = StableDiffusion3Pipeline.from_pretrained(
     model_id,
     text_encoder_3=text_encoder,
     device_map="balanced",
-    torch_dtype=torch.float16
+    dtype=torch.float16
 )
 
 image = pipe(
@@ -245,7 +245,7 @@ torch._inductor.config.coordinate_descent_check_all_directions = True
 
 pipe = StableDiffusion3Pipeline.from_pretrained(
     "stabilityai/stable-diffusion-3-medium-diffusers",
-    torch_dtype=torch.float16
+    dtype=torch.float16
 ).to("cuda")
 pipe.set_progress_bar_config(disable=True)
 
@@ -283,7 +283,7 @@ text_encoder_8bit = T5EncoderModel.from_pretrained(
     "stabilityai/stable-diffusion-3.5-large",
     subfolder="text_encoder_3",
     quantization_config=quant_config,
-    torch_dtype=torch.float16,
+    dtype=torch.float16,
 )
 
 quant_config = DiffusersBitsAndBytesConfig(load_in_8bit=True)
@@ -291,14 +291,14 @@ transformer_8bit = SD3Transformer2DModel.from_pretrained(
     "stabilityai/stable-diffusion-3.5-large",
     subfolder="transformer",
     quantization_config=quant_config,
-    torch_dtype=torch.float16,
+    dtype=torch.float16,
 )
 
 pipeline = StableDiffusion3Pipeline.from_pretrained(
     "stabilityai/stable-diffusion-3.5-large",
     text_encoder=text_encoder_8bit,
     transformer=transformer_8bit,
-    torch_dtype=torch.float16,
+    dtype=torch.float16,
     device_map="balanced",
 )
 
@@ -356,9 +356,9 @@ import torch
 from diffusers import StableDiffusion3Pipeline, AutoencoderTiny
 
 pipe = StableDiffusion3Pipeline.from_pretrained(
-    "stabilityai/stable-diffusion-3-medium-diffusers", torch_dtype=torch.float16
+    "stabilityai/stable-diffusion-3-medium-diffusers", dtype=torch.float16
 )
-pipe.vae = AutoencoderTiny.from_pretrained("madebyollin/taesd3", torch_dtype=torch.float16)
+pipe.vae = AutoencoderTiny.from_pretrained("madebyollin/taesd3", dtype=torch.float16)
 pipe = pipe.to("cuda")
 
 prompt = "slice of delicious New York-style berry cheesecake"
@@ -388,7 +388,7 @@ from diffusers import StableDiffusion3Pipeline
 
 pipe = StableDiffusion3Pipeline.from_single_file(
     "https://huggingface.co/stabilityai/stable-diffusion-3-medium/blob/main/sd3_medium_incl_clips.safetensors",
-    torch_dtype=torch.float16,
+    dtype=torch.float16,
     text_encoder_3=None
 )
 pipe.enable_model_cpu_offload()
@@ -408,7 +408,7 @@ from diffusers import StableDiffusion3Pipeline
 
 pipe = StableDiffusion3Pipeline.from_single_file(
     "https://huggingface.co/stabilityai/stable-diffusion-3-medium/blob/main/sd3_medium_incl_clips_t5xxlfp8.safetensors",
-    torch_dtype=torch.float16,
+    dtype=torch.float16,
 )
 pipe.enable_model_cpu_offload()
 
@@ -424,12 +424,12 @@ from diffusers import SD3Transformer2DModel, StableDiffusion3Pipeline
 
 transformer = SD3Transformer2DModel.from_single_file(
     "https://huggingface.co/stabilityai/stable-diffusion-3.5-large-turbo/blob/main/sd3.5_large.safetensors",
-    torch_dtype=torch.bfloat16,
+    dtype=torch.bfloat16,
 )
 pipe = StableDiffusion3Pipeline.from_pretrained(
     "stabilityai/stable-diffusion-3.5-large",
     transformer=transformer,
-    torch_dtype=torch.bfloat16,
+    dtype=torch.bfloat16,
 )
 pipe.enable_model_cpu_offload()
 image = pipe("a cat holding a sign that says hello world").images[0]

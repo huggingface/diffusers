@@ -43,7 +43,7 @@ from diffusers import ControlNetModel, UNet2DConditionModel
 lora_id = "stabilityai/control-lora"
 lora_filename = "control-LoRAs-rank128/control-lora-canny-rank128.safetensors"
 
-unet = UNet2DConditionModel.from_pretrained("stabilityai/stable-diffusion-xl-base-1.0", subfolder="unet", torch_dtype=torch.bfloat16).to("cuda")
+unet = UNet2DConditionModel.from_pretrained("stabilityai/stable-diffusion-xl-base-1.0", subfolder="unet", dtype=torch.bfloat16).to("cuda")
 controlnet = ControlNetModel.from_unet(unet).to(device="cuda", dtype=torch.bfloat16)
 controlnet.load_lora_adapter(lora_id, weight_name=lora_filename, prefix=None, controlnet_config=controlnet.config)
 ```
