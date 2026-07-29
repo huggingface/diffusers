@@ -86,9 +86,17 @@ class OOMOnceModel(DummyModel):
         return super().forward(x)
 
 
-class OOMOnceDecodeModel(DummyModel):
+class DecodeModel(DummyModel):
     """Autoencoder-style model: runs through a `decode` entry point (via `apply_forward_hook`, like the VAEs)
-    instead of `forward`, and raises a fake device OOM on its first decode."""
+    instead of `forward`."""
+
+    @apply_forward_hook
+    def decode(self, x):
+        return x + self.weight.sum()
+
+
+class OOMOnceDecodeModel(DecodeModel):
+    """`DecodeModel` that raises a fake device OOM on its first decode."""
 
     @apply_forward_hook
     def decode(self, x):
@@ -416,7 +424,7 @@ class ComponentsManagerTesterMixin:
             # the eviction is its own event, attributed to the onload that caused it
             eviction = next(event for event in cm.offload_record.events if event.action == "offload")
             assert eviction.model_id == cm.model_hooks[0].model_id
-            assert eviction.reason == f"needed_by:{cm.model_hooks[1].model_id}"
+            assert eviction.reason == f"release_memory_for:{cm.model_hooks[1].model_id}"
             assert _peak_co_residency(cm.offload_record.events) == 1
             # the printed table shows one row per decision: m2's row carries the m1 eviction it caused
             m2_row = next(line for line in repr(cm.offload_record).splitlines() if line.startswith("2 "))
@@ -453,17 +461,21 @@ class TestComponentsManager(ComponentsManagerTesterMixin):
 class TestOffloadHookBehavior:
     """CPU-level tests of the hook machinery: OOM retry and non-disruptive add/remove."""
 
+    @pytest.fixture(autouse=True)
+    def _fake_cpu_mem_get_info(self):
+        # These tests exercise the hook machinery only, on a cpu execution device — but both enabling
+        # offloading and every onload read `mem_get_info`, which cpu doesn't implement, so provide an
+        # ample fake one for the whole test.
+        with mock.patch.object(
+            torch.cpu, "mem_get_info", create=True, return_value=(_AMPLE_FREE_BYTES, _AMPLE_FREE_BYTES)
+        ):
+            yield
+
     def _manager(self, components, **offload_kwargs):
         manager = ComponentsManager()
         for name, component in components.items():
             manager.add(name, component)
-        # These tests exercise the hook machinery only: with a cpu execution device the models
-        # never move, so the strategy is never consulted — but enabling requires the device to
-        # implement `mem_get_info`, which cpu doesn't, so provide an ample fake one.
-        with mock.patch.object(
-            torch.cpu, "mem_get_info", create=True, return_value=(_AMPLE_FREE_BYTES, _AMPLE_FREE_BYTES)
-        ):
-            manager.enable_auto_cpu_offload(device="cpu", **offload_kwargs)
+        manager.enable_auto_cpu_offload(device="cpu", **offload_kwargs)
         return manager
 
     @staticmethod
@@ -530,7 +542,7 @@ class TestOffloadHookBehavior:
 
     def test_oom_retry_covers_apply_forward_hook_entry_points(self):
         # Autoencoders run through `encode`/`decode` (via `apply_forward_hook`), not `forward` - an OOM
-        # there must be retried just like one raised inside `forward`.
+        # there must be retried just like one raised inside `forward`, first call included.
         model = OOMOnceDecodeModel()
         smallest = DummyModel(UNIT)
         manager = self._manager({"model": model, "smallest": smallest})
@@ -658,7 +670,7 @@ class ModularPipelineOffloadTesterMixin:
         """
         Run the pipeline with auto offload on and `free_bytes` of *simulated* device
         memory, recording every move in `cm.offload_record`: an `"onload"` event per model
-        that ran, and an `"offload"` event (`reason="needed_by:<onloader>"`) per eviction.
+        that ran, and an `"offload"` event (`reason="release_memory_for:<onloader>"`) per eviction.
         """
         cm = ComponentsManager()
         pipe = self.get_pipeline(components_manager=cm)
