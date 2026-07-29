@@ -58,23 +58,23 @@ The output below corresponds to the `from_pretrained` example above.
 
 ```py
 Components:
-=============================================================================================================================
+=======================================================================================================================================================================
 Models:
------------------------------------------------------------------------------------------------------------------------------
-Name_ID                      | Class                    | Device: act(exec) | Dtype          | Size (GB) | Load ID
------------------------------------------------------------------------------------------------------------------------------
-text_encoder_140458257514752 | Qwen3Model               | cpu               | torch.bfloat16 | 7.49      | Tongyi-MAI/Z-Image-Turbo|text_encoder|null|null
-vae_140458257515376          | AutoencoderKL            | cpu               | torch.bfloat16 | 0.16      | Tongyi-MAI/Z-Image-Turbo|vae|null|null
-transformer_140458257515616  | ZImageTransformer2DModel | cpu               | torch.bfloat16 | 11.46     | Tongyi-MAI/Z-Image-Turbo|transformer|null|null
------------------------------------------------------------------------------------------------------------------------------
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------
+Name_ID                      | Class                    | Device: act(exec) | Dtype          | Size      | Load ID                                         | Collection
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------
+vae_140458257515376          | AutoencoderKL            | cpu               | torch.bfloat16 | 159.87 MB | Tongyi-MAI/Z-Image-Turbo|vae|null|null          | N/A
+text_encoder_140458257514752 | Qwen3Model               | cpu               | torch.bfloat16 | 7.49 GB   | Tongyi-MAI/Z-Image-Turbo|text_encoder|null|null | N/A
+transformer_140458257515616  | ZImageTransformer2DModel | cpu               | torch.bfloat16 | 11.46 GB  | Tongyi-MAI/Z-Image-Turbo|transformer|null|null  | N/A
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
 Other Components:
------------------------------------------------------------------------------------------------------------------------------
-ID                           | Class                           | Collection
------------------------------------------------------------------------------------------------------------------------------
-scheduler_140461023555264    | FlowMatchEulerDiscreteScheduler | N/A
-tokenizer_140458256346432    | Qwen2Tokenizer                  | N/A
------------------------------------------------------------------------------------------------------------------------------
+------------------------------------------------------------------------
+ID                        | Class                           | Collection
+------------------------------------------------------------------------
+scheduler_140461023555264 | FlowMatchEulerDiscreteScheduler | N/A
+tokenizer_140458256346432 | Qwen2Tokenizer                  | N/A
+------------------------------------------------------------------------
 ```
 
 The table shows models (with device, dtype, and memory info) separately from other components like schedulers and tokenizers. If any models have LoRA adapters, IP-Adapters, or quantization applied, that information is displayed in an additional section at the bottom.
@@ -110,12 +110,12 @@ print(manager.offload_record)
 On a 20GB card, the Z-Image pipeline from the example above records this:
 
 ```py
-#     | Onload                                 | Offloaded                              | Available  | Reason
--------------------------------------------------------------------------------------------------------------
-1     | text_encoder_140458257514752 (7.49 GB) | -                                      | -          | forward
-2     | transformer_140458257515616 (11.46 GB) | text_encoder_140458257514752 (7.49 GB) | 10.38 GB   | forward
-3     | vae_140458257515376 (159.87 MB)        | -                                      | 6.36 GB    | forward
--------------------------------------------------------------------------------------------------------------
+# | Onload                                 | Offloaded                              | Available | Reason
+--------------------------------------------------------------------------------------------------------
+1 | text_encoder_140458257514752 (7.49 GB) | -                                      | -         | forward
+2 | transformer_140458257515616 (11.46 GB) | text_encoder_140458257514752 (7.49 GB) | 10.38 GB  | forward
+3 | vae_140458257515376 (159.87 MB)        | -                                      | 6.36 GB   | forward
+--------------------------------------------------------------------------------------------------------
 3 onloads (19.11 GB) / 1 offloads (7.49 GB), 0 OOM retries, peak co-residency 2
 ```
 
@@ -123,17 +123,16 @@ Each row is one decision: the model that loaded, what was evicted to make room f
 
 A model appearing repeatedly in this table is thrashing — it is being evicted and re-loaded every step, which costs a PCIe transfer each way. That usually means `memory_reserve` is too large (models are pushed off that would have fit) or too small (each step ends in an OOM retry).
 
-To find the right value, let the manager measure it. `measure_activations=True` records how much memory the forward passes actually need on top of the weights — the exact thing `memory_reserve` covers — and reports the reserve that would have covered your run:
+To find the right value, measure your workflow once: run it at the resolution, batch size, and sequence length you intend to use (activations scale with all three), and read the device's peak memory afterwards:
 
 ```py
-manager.enable_auto_cpu_offload(device="cuda", memory_reserve=0, measure_activations=True)
+manager.enable_auto_cpu_offload(device="cuda")
 pipe(prompt="a cat")
 
-manager.offload_record.activation_peak            # what the forward passes needed
-manager.offload_record.suggested_memory_reserve   # a reserve that would have covered it
+torch.cuda.max_memory_allocated()  # peak of the run: resident weights + activations
 ```
 
-Measure at the resolution, batch size, and sequence length you intend to use — activations scale with all three. Leave `measure_activations` off if you are measuring peak memory yourself, since it resets the device's peak-memory stats around every forward pass.
+The peak is the heaviest moment of the run: the weights resident at that point plus the running model's activations. The record shows the weights side — which models were on the device together and their sizes — so subtracting them from the peak gives the activation headroom, and rounding that up generously gives the `memory_reserve`. In the 20GB run above the peak reads 14.15 GB and falls in the decode stage, where the transformer (11.46 GB) and the VAE (159.87 MB) are both resident; the ~2.5 GB left over is what the VAE's decode needed on top of the weights, so the default 3GB reserve covers this workload.
 
 Call [`~ComponentsManager.disable_auto_cpu_offload`] to disable offloading.
 

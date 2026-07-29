@@ -14,7 +14,6 @@
 
 from __future__ import annotations
 
-import copy
 import functools
 import time
 from collections import OrderedDict, deque
@@ -30,6 +29,7 @@ from ..utils import (
     logging,
 )
 from ..utils.torch_utils import get_device
+from .components_manager_utils import format_size, format_table, summarize_dict_by_value_and_parts
 
 
 if is_accelerate_available():
@@ -44,17 +44,6 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 # Default number of events an `OffloadRecord` keeps. A generation step produces at most a handful, so this
 # holds a long run while staying bounded for a long-lived manager (e.g. in a server).
 MAX_RECORDED_OFFLOAD_EVENTS = 10000
-
-
-def format_size(num_bytes: int | None) -> str:
-    """Bytes as a human-readable size, so that both a 20GB transformer and a KB-sized test model read sensibly."""
-    if num_bytes is None:
-        return "-"
-    for unit in ("B", "KB", "MB"):
-        if abs(num_bytes) < 1024:
-            return f"{num_bytes:.0f} {unit}" if unit == "B" else f"{num_bytes:.2f} {unit}"
-        num_bytes /= 1024
-    return f"{num_bytes:.2f} GB"
 
 
 @dataclass
@@ -84,51 +73,24 @@ class OffloadRecord:
     Every offloading decision appends to this record, so after a run it holds the full sequence of moves, what each
     move cost, and where the forward passes ran out of memory. Printing it shows that sequence as a table followed by
     a summary; [`~OffloadRecord.summary`] returns the same numbers as a dict.
-
-    With `measure_activations=True` in [`~ComponentsManager.enable_auto_cpu_offload`], the record additionally
-    measures how much memory the forward passes need on top of the weights, and reports the `memory_reserve` that
-    would have covered it — measured on your hardware, at your resolution and batch size.
     """
 
     def __init__(self, maxlen: int = MAX_RECORDED_OFFLOAD_EVENTS):
         self.events: deque[OffloadEvent] = deque(maxlen=maxlen)
-        self.activations: dict[str, int] = {}
         self._recorded = 0
 
     def add(self, event: OffloadEvent):
         self.events.append(event)
         self._recorded += 1
 
-    def note_activation(self, model_id: str, activation_bytes: int):
-        """Keep the largest activation cost seen for a model."""
-        self.activations[model_id] = max(self.activations.get(model_id, 0), activation_bytes)
-
     def clear(self):
         self.events.clear()
-        self.activations.clear()
         self._recorded = 0
 
     @property
     def dropped(self) -> int:
         """How many events fell out of the (bounded) log."""
         return max(self._recorded - len(self.events), 0)
-
-    @property
-    def activation_peak(self) -> int | None:
-        """
-        The largest activation cost measured across all forward passes, or `None` if activations were not measured.
-        """
-        return max(self.activations.values()) if self.activations else None
-
-    @property
-    def suggested_memory_reserve(self) -> int | None:
-        """
-        A `memory_reserve` that would have covered the measured activations, with a margin. `None` if activations were
-        not measured. Only as representative as the run it was measured on — activations grow with resolution, batch
-        size and sequence length.
-        """
-        peak = self.activation_peak
-        return int(peak * 1.2) if peak is not None else None
 
     def summary(self) -> dict[str, Any]:
         onloads = [event for event in self.events if event.action == "onload"]
@@ -147,8 +109,6 @@ class OffloadRecord:
             "peak_co_residency": peak_co_residency,
             "bytes_onloaded": sum(event.model_size or 0 for event in onloads),
             "bytes_offloaded": sum(event.model_size or 0 for event in offloads),
-            "activation_peak": self.activation_peak,
-            "suggested_memory_reserve": self.suggested_memory_reserve,
         }
 
     def __len__(self):
@@ -169,37 +129,29 @@ class OffloadRecord:
         for event in self.events:
             if event.action == "onload":
                 offloaded = ", ".join(label(model_id) for model_id in event.offloaded) or "-"
-                rows.append((label(event.model_id), offloaded, format_size(event.available_memory), event.reason))
+                rows.append([label(event.model_id), offloaded, format_size(event.available_memory), event.reason])
             elif event.action == "offload":
                 if event.reason is not None and event.reason.startswith("needed_by:"):
                     continue  # shown on the row of the onload that caused it
-                rows.append(("-", label(event.model_id), "-", event.reason or ""))
+                rows.append(["-", label(event.model_id), "-", event.reason or ""])
             else:  # oom
-                rows.append(("-", "-", "-", f"oom:{event.model_id}"))
+                rows.append(["-", "-", "-", f"oom:{event.model_id}"])
 
-        onload_width = max(len("Onload"), *(len(row[0]) for row in rows))
-        offload_width = max(len("Offloaded"), *(len(row[1]) for row in rows))
-        header = f"{'#':<5} | {'Onload':<{onload_width}} | {'Offloaded':<{offload_width}} | {'Available':<10} | Reason"
-        lines = [header, "-" * len(header)]
-        for index, row in enumerate(rows, start=1):
-            lines.append(
-                f"{index:<5} | {row[0]:<{onload_width}} | {row[1]:<{offload_width}} | {row[2]:<10} | {row[3]}"
-            )
+        table = format_table(
+            ["#", "Onload", "Offloaded", "Available", "Reason"],
+            [[str(index), *row] for index, row in enumerate(rows, start=1)],
+        )
+        lines = [table[0], "-" * len(table[0]), *table[1:]]
         if self.dropped:
             lines.insert(2, f"... {self.dropped} earlier events dropped from the log ...")
 
         summary = self.summary()
         lines += [
-            "-" * len(header),
+            "-" * len(table[0]),
             f"{summary['onloads']} onloads ({format_size(summary['bytes_onloaded'])}) / "
             f"{summary['offloads']} offloads ({format_size(summary['bytes_offloaded'])}), "
             f"{summary['oom_retries']} OOM retries, peak co-residency {summary['peak_co_residency']}",
         ]
-        if summary["activation_peak"] is not None:
-            lines.append(
-                f"activations peaked at {format_size(summary['activation_peak'])} -> a `memory_reserve` of "
-                f"{format_size(summary['suggested_memory_reserve'])} would have covered this run"
-            )
         return "\n".join(lines)
 
 
@@ -217,9 +169,6 @@ class CustomOffloadHook(ModelHook):
             at a time and retrying. If `False`, the error is raised to the caller.
         record(`OffloadRecord`, *optional*):
             Where to record the moves this hook makes.
-        measure_activations(`bool`, *optional*, defaults to `False`):
-            Whether to measure how much device memory each forward pass needs on top of the weights. Owns the
-            device's peak-memory stats while enabled.
     """
 
     no_grad = False
@@ -231,17 +180,14 @@ class CustomOffloadHook(ModelHook):
         offload_strategy: "AutoOffloadStrategy" | None = None,
         retry_on_oom: bool = True,
         record: OffloadRecord | None = None,
-        measure_activations: bool = False,
     ):
         self.execution_device = execution_device if execution_device is not None else PartialState().default_device
         self.other_hooks = other_hooks
         self.offload_strategy = offload_strategy
         self.retry_on_oom = retry_on_oom
         self.record = record if record is not None else OffloadRecord()
-        self.measure_activations = measure_activations
         self.model_id = None
-        self._forward_before_oom_wrap = None
-        self._allocated_before_forward = None
+        self._wrapped_methods = {}
 
     def set_strategy(self, offload_strategy: "AutoOffloadStrategy"):
         self.offload_strategy = offload_strategy
@@ -300,12 +246,6 @@ class CustomOffloadHook(ModelHook):
                     seconds=elapsed,
                 )
             )
-        if self.measure_activations:
-            # baseline for the activation measurement: everything allocated once this model is on the device
-            device_module = getattr(torch, self.execution_device.type, torch.cuda)
-            if hasattr(device_module, "reset_peak_memory_stats"):
-                device_module.reset_peak_memory_stats(self.execution_device)
-                self._allocated_before_forward = device_module.memory_allocated(self.execution_device)
         return send_to_device(args, self.execution_device), send_to_device(kwargs, self.execution_device)
 
     def resident_other_hooks(self):
@@ -320,69 +260,66 @@ class CustomOffloadHook(ModelHook):
             and (other.model.device.index or 0) == (self.execution_device.index or 0)
         ]
 
-    def _run_forward(self, hooked_forward, args, kwargs):
-        if not self.measure_activations:
-            return hooked_forward(*args, **kwargs)
-        output = hooked_forward(*args, **kwargs)
-        device_module = getattr(torch, self.execution_device.type, torch.cuda)
-        if self._allocated_before_forward is not None and hasattr(device_module, "max_memory_allocated"):
-            peak = device_module.max_memory_allocated(self.execution_device)
-            self.record.note_activation(self.model_id, max(peak - self._allocated_before_forward, 0))
-        return output
-
     # YiYi TODO: diffusers' own `ModelHook` (`diffusers.hooks.hooks`) supports a `new_forward` around-hook, which
     # would replace this manual wrapping - we may migrate this class to it in the future.
     def wrap_forward(self, module):
-        # `pre_forward`/`post_forward` cannot see the forward pass itself - neither its memory peak nor an exception
-        # it raises - so wrap the (already hooked) forward here. On an OOM, free the smallest resident model and
-        # retry, escalating until it fits. The memory readings cannot guide this: the failed forward has already
-        # unwound, so its activations are freed and the device looks free again. Inference only: the retried forward
-        # re-runs cleanly from its original inputs.
-        if not (self.retry_on_oom or self.measure_activations):
+        # `pre_forward`/`post_forward` cannot see an exception the forward pass raises, so wrap the (already hooked)
+        # entry points here. `forward` is how most models run; autoencoders enter through `encode`/`decode` instead
+        # (decorated with `apply_forward_hook`, which fires `pre_forward` but routes around `forward`). On an OOM,
+        # free the smallest resident model and retry, escalating until it fits. The memory readings cannot guide
+        # this: the failed forward has already unwound, so its activations are freed and the device looks free again.
+        # Inference only: the retried forward re-runs cleanly from its original inputs.
+        if not self.retry_on_oom:
             return
 
-        hooked_forward = module.forward
+        def with_oom_retry(entry_point):
+            @functools.wraps(entry_point)
+            def run_with_oom_retry(*args, **kwargs):
+                # each pass offloads one more model, so this terminates once they all have been. Tracked explicitly
+                # rather than by device, so that a model that did not actually move cannot be picked twice.
+                offloaded = set()
+                while True:
+                    try:
+                        return entry_point(*args, **kwargs)
+                    except torch.OutOfMemoryError as e:
+                        if not self.retry_on_oom:
+                            raise
+                        self.record.add(
+                            OffloadEvent(action="oom", model_id=self.model_id, reason=str(e).split(".")[0])
+                        )
+                        resident = sorted(
+                            (hook for hook in self.resident_other_hooks() if id(hook) not in offloaded),
+                            key=lambda hook: hook.model.get_memory_footprint(),
+                        )
+                        if not resident:
+                            raise torch.OutOfMemoryError(
+                                f"{self.model_id} ran out of device memory ({e}) with every other managed model "
+                                "already offloaded, so it does not fit on its own. Consider group offloading "
+                                "(`ModelMixin.enable_group_offload`), which offloads a single model in groups of "
+                                "internal layers."
+                            ) from e
+                        smallest = resident[0]
+                        logger.warning(
+                            f"{self.model_id} ran out of device memory ({e}); offloading {smallest.model_id} and "
+                            "retrying. If this happens repeatedly, set a larger `memory_reserve` in "
+                            "`enable_auto_cpu_offload`."
+                        )
+                        smallest.offload(reason=f"oom_retry:{self.model_id}")
+                        offloaded.add(id(smallest))
+                        clear_device_cache()
 
-        @functools.wraps(hooked_forward)
-        def forward_with_oom_retry(*args, **kwargs):
-            # each pass offloads one more model, so this terminates once they all have been. Tracked explicitly
-            # rather than by device, so that a model that did not actually move cannot be picked twice.
-            offloaded = set()
-            while True:
-                try:
-                    return self._run_forward(hooked_forward, args, kwargs)
-                except torch.OutOfMemoryError as e:
-                    if not self.retry_on_oom:
-                        raise
-                    self.record.add(OffloadEvent(action="oom", model_id=self.model_id, reason=str(e).split(".")[0]))
-                    resident = sorted(
-                        (hook for hook in self.resident_other_hooks() if id(hook) not in offloaded),
-                        key=lambda hook: hook.model.get_memory_footprint(),
-                    )
-                    if not resident:
-                        raise torch.OutOfMemoryError(
-                            f"{self.model_id} ran out of device memory ({e}) with every other managed model already "
-                            "offloaded, so it does not fit on its own. Consider group offloading "
-                            "(`ModelMixin.enable_group_offload`), which offloads a single model in groups of "
-                            "internal layers."
-                        ) from e
-                    smallest = resident[0]
-                    logger.warning(
-                        f"{self.model_id} ran out of device memory ({e}); offloading {smallest.model_id} and "
-                        "retrying. If this happens repeatedly, set a larger `memory_reserve` in "
-                        "`enable_auto_cpu_offload`."
-                    )
-                    smallest.offload(reason=f"oom_retry:{self.model_id}")
-                    offloaded.add(id(smallest))
-                    clear_device_cache()
+            return run_with_oom_retry
 
-        module.forward = forward_with_oom_retry
-        self._forward_before_oom_wrap = hooked_forward
+        for name in ("forward", "encode", "decode"):
+            entry_point = getattr(module, name, None)
+            if callable(entry_point):
+                self._wrapped_methods[name] = entry_point
+                setattr(module, name, with_oom_retry(entry_point))
 
     def unwrap_forward(self, module):
-        if self._forward_before_oom_wrap is not None:
-            module.forward = self._forward_before_oom_wrap
-            self._forward_before_oom_wrap = None
+        for name, entry_point in self._wrapped_methods.items():
+            setattr(module, name, entry_point)
+        self._wrapped_methods.clear()
 
 
 class UserCustomOffloadHook:
@@ -430,14 +367,12 @@ def custom_offload_with_hook(
     offload_strategy: "AutoOffloadStrategy" | None = None,
     retry_on_oom: bool = True,
     record: OffloadRecord | None = None,
-    measure_activations: bool = False,
 ):
     hook = CustomOffloadHook(
         execution_device=execution_device,
         offload_strategy=offload_strategy,
         retry_on_oom=retry_on_oom,
         record=record,
-        measure_activations=measure_activations,
     )
     user_hook = UserCustomOffloadHook(model_id=model_id, model=model, hook=hook)
     user_hook.attach()
@@ -540,67 +475,6 @@ class AutoOffloadStrategy:
         return [hook for hook in hooks if hook.model_id in best_offload_model_ids]
 
 
-# utils for display component info in a readable format
-# TODO: move to a different file
-def summarize_dict_by_value_and_parts(d: dict[str, Any]) -> dict[str, Any]:
-    """Summarizes a dictionary by finding common prefixes that share the same value.
-
-    For a dictionary with dot-separated keys like: {
-        'down_blocks.1.attentions.1.transformer_blocks.0.attn2.processor': [0.6],
-        'down_blocks.1.attentions.1.transformer_blocks.1.attn2.processor': [0.6],
-        'up_blocks.1.attentions.0.transformer_blocks.0.attn2.processor': [0.3],
-    }
-
-    Returns a dictionary where keys are the shortest common prefixes and values are their shared values: {
-        'down_blocks': [0.6], 'up_blocks': [0.3]
-    }
-    """
-    # First group by values - convert lists to tuples to make them hashable
-    value_to_keys = {}
-    for key, value in d.items():
-        value_tuple = tuple(value) if isinstance(value, list) else value
-        if value_tuple not in value_to_keys:
-            value_to_keys[value_tuple] = []
-        value_to_keys[value_tuple].append(key)
-
-    def find_common_prefix(keys: list[str]) -> str:
-        """Find the shortest common prefix among a list of dot-separated keys."""
-        if not keys:
-            return ""
-        if len(keys) == 1:
-            return keys[0]
-
-        # Split all keys into parts
-        key_parts = [k.split(".") for k in keys]
-
-        # Find how many initial parts are common
-        common_length = 0
-        for parts in zip(*key_parts):
-            if len(set(parts)) == 1:  # All parts at this position are the same
-                common_length += 1
-            else:
-                break
-
-        if common_length == 0:
-            return ""
-
-        # Return the common prefix
-        return ".".join(key_parts[0][:common_length])
-
-    # Create summary by finding common prefixes for each value group
-    summary = {}
-    for value_tuple, keys in value_to_keys.items():
-        prefix = find_common_prefix(keys)
-        if prefix:  # Only add if we found a common prefix
-            # Convert tuple back to list if it was originally a list
-            value = list(value_tuple) if isinstance(d[keys[0]], list) else value_tuple
-            summary[prefix] = value
-        else:
-            summary[""] = value  # Use empty string if no common prefix
-
-    return summary
-
-
 class ComponentsManager:
     """
     A central registry and management system for model components across multiple pipelines.
@@ -651,7 +525,6 @@ class ComponentsManager:
         self._auto_offload_enabled = False
         self._offload_strategy = None
         self._offload_retry_on_oom = True
-        self._offload_measure_activations = False
         self._offload_record = OffloadRecord()
 
     def _lookup_ids(
@@ -1013,7 +886,6 @@ class ComponentsManager:
         device: str | int | torch.device = None,
         memory_reserve: str | int = "3GB",
         retry_on_oom: bool = True,
-        measure_activations: bool = False,
     ):
         """
         Enable automatic CPU offloading for all components.
@@ -1040,11 +912,6 @@ class ComponentsManager:
                 Whether to recover from a forward pass that runs out of device memory by offloading the models on the
                 device one at a time, smallest first, and retrying until it fits. Set it to `False` to raise the error
                 instead — the forward passes are then left untouched.
-            measure_activations (bool, *optional*, defaults to `False`):
-                Whether to measure how much device memory each forward pass needs on top of the weights, and report
-                the `memory_reserve` that would have covered it (see [`~ComponentsManager.offload_record`]). This
-                resets the device's peak-memory stats around every forward pass, so leave it off if you are measuring
-                peak memory yourself.
 
         Every move the offloader makes is recorded in [`~ComponentsManager.offload_record`].
         """
@@ -1083,7 +950,6 @@ class ComponentsManager:
                     offload_strategy=offload_strategy,
                     retry_on_oom=retry_on_oom,
                     record=self._offload_record,
-                    measure_activations=measure_activations,
                 )
                 all_hooks.append(hook)
 
@@ -1098,16 +964,14 @@ class ComponentsManager:
         self._auto_offload_device = device
         self._offload_strategy = offload_strategy
         self._offload_retry_on_oom = retry_on_oom
-        self._offload_measure_activations = measure_activations
 
     @property
     def offload_record(self) -> OffloadRecord:
         """
         What the offloader has done so far: every model moved onto or off the device, in order, and where a forward
-        pass ran out of memory. Print it to see the sequence, or read
-        [`~OffloadRecord.summary`]/[`~OffloadRecord.suggested_memory_reserve`] for the numbers behind it. Kept across
-        [`~ComponentsManager.disable_auto_cpu_offload`] (it is the post-mortem of the run), and cleared when
-        offloading is enabled again.
+        pass ran out of memory. Print it to see the sequence, or read [`~OffloadRecord.summary`] for the numbers
+        behind it. Kept across [`~ComponentsManager.disable_auto_cpu_offload`] (it is the post-mortem of the run),
+        and cleared when offloading is enabled again.
         """
         return self._offload_record
 
@@ -1123,7 +987,6 @@ class ComponentsManager:
             offload_strategy=self._offload_strategy,
             retry_on_oom=self._offload_retry_on_oom,
             record=self._offload_record,
-            measure_activations=self._offload_measure_activations,
         )
         for other_hook in self.model_hooks:
             if other_hook.hook.execution_device == hook.hook.execution_device:
@@ -1158,227 +1021,131 @@ class ComponentsManager:
         self._auto_offload_enabled = False
         self._offload_strategy = None
         self._offload_retry_on_oom = True
-        self._offload_measure_activations = False
 
     def get_model_info(
         self,
         component_id: str,
         fields: str | list[str] | None = None,
-    ) -> dict[str, Any] | None:
+    ) -> dict[str, Any]:
         """Get comprehensive information about a component.
 
         Args:
             component_id (str): Name of the component to get info for
-            fields (str | list[str] | None):
-                   Field(s) to return. Can be a string for single field or list of fields. If None, uses the
-                   available_info_fields setting.
+            fields (str | list[str] | None): Field(s) to return, all fields if `None`.
 
         Returns:
-            Dictionary containing requested component metadata. If fields is specified, returns only those fields.
-            Otherwise, returns all fields.
+            Dictionary containing the requested component metadata.
         """
         if component_id not in self.components:
             raise ValueError(f"Component '{component_id}' not found in ComponentsManager")
-
         component = self.components[component_id]
 
-        # Validate fields if specified
-        if fields is not None:
-            if isinstance(fields, str):
-                fields = [fields]
-            for field in fields:
-                if field not in self._available_info_fields:
-                    raise ValueError(f"Field '{field}' not found in available_info_fields")
-
-        # Build complete info dict first
         info = {
             "model_id": component_id,
             "added_time": self.added_time[component_id],
-            "collection": ", ".join([coll for coll, comps in self.collections.items() if component_id in comps])
-            or None,
+            "collection": ", ".join(coll for coll, comps in self.collections.items() if component_id in comps) or None,
         }
 
-        # Additional info for torch.nn.Module components
         if isinstance(component, torch.nn.Module):
-            # Check for hook information
-            has_hook = hasattr(component, "_hf_hook")
-            execution_device = None
-            if has_hook and hasattr(component._hf_hook, "execution_device"):
-                execution_device = component._hf_hook.execution_device
-
+            hook = getattr(component, "_hf_hook", None)
             info.update(
                 {
                     "class_name": component.__class__.__name__,
-                    "size_gb": component.get_memory_footprint() / (1024**3),
-                    "adapters": None,  # Default to None
-                    "has_hook": has_hook,
-                    "execution_device": execution_device,
+                    "size_gb": component.get_memory_footprint() / 1024**3,
+                    "adapters": list(component.peft_config.keys()) if hasattr(component, "peft_config") else None,
+                    "has_hook": hook is not None,
+                    "execution_device": getattr(hook, "execution_device", None),
                 }
             )
 
-            # Get adapters if applicable
-            if hasattr(component, "peft_config"):
-                info["adapters"] = list(component.peft_config.keys())
-
-            # Check for IP-Adapter scales
+            # IP-Adapter attention processor scales, summarized by shared layer prefix
             if hasattr(component, "_load_ip_adapter_weights") and hasattr(component, "attn_processors"):
-                processors = copy.deepcopy(component.attn_processors)
-                # First check if any processor is an IP-Adapter
-                processor_types = [v.__class__.__name__ for v in processors.values()]
-                if any("IPAdapter" in ptype for ptype in processor_types):
-                    # Then get scales only from IP-Adapter processors
-                    scales = {
-                        k: v.scale
-                        for k, v in processors.items()
-                        if hasattr(v, "scale") and "IPAdapter" in v.__class__.__name__
-                    }
-                    if scales:
-                        info["ip_adapter"] = summarize_dict_by_value_and_parts(scales)
+                scales = {
+                    name: processor.scale
+                    for name, processor in component.attn_processors.items()
+                    if "IPAdapter" in processor.__class__.__name__ and hasattr(processor, "scale")
+                }
+                if scales:
+                    info["ip_adapter"] = summarize_dict_by_value_and_parts(scales)
 
-            # Check for quantization
             hf_quantizer = getattr(component, "hf_quantizer", None)
-            if hf_quantizer is not None:
-                quant_config = hf_quantizer.quantization_config
-                if hasattr(quant_config, "to_diff_dict"):
-                    info["quantization"] = quant_config.to_diff_dict()
-                else:
-                    info["quantization"] = quant_config.to_dict()
-            else:
+            if hf_quantizer is None:
                 info["quantization"] = None
+            else:
+                quant_config = hf_quantizer.quantization_config
+                info["quantization"] = (
+                    quant_config.to_diff_dict() if hasattr(quant_config, "to_diff_dict") else quant_config.to_dict()
+                )
 
-        # If fields specified, filter info
-        if fields is not None:
-            return {k: v for k, v in info.items() if k in fields}
-        else:
+        if fields is None:
             return info
+        if isinstance(fields, str):
+            fields = [fields]
+        for field in fields:
+            if field not in self._available_info_fields:
+                raise ValueError(f"Field '{field}' not found in available_info_fields")
+        return {k: v for k, v in info.items() if k in fields}
 
-    # YiYi TODO: (1) add display fields, allow user to set which fields to display in the comnponents table
+    # YiYi TODO: (1) add display fields, allow user to set which fields to display in the components table
     def __repr__(self):
-        # Handle empty components case
         if not self.components:
             return "Components:\n" + "=" * 50 + "\nNo components registered.\n" + "=" * 50
 
-        # Extract load_id if available
-        def get_load_id(component):
-            if hasattr(component, "_diffusers_load_id"):
-                return component._diffusers_load_id
-            return "N/A"
-
-        # Format device info compactly
-        def format_device(component, info):
-            if not info["has_hook"]:
-                return str(getattr(component, "device", "N/A"))
-            else:
-                device = str(getattr(component, "device", "N/A"))
-                exec_device = str(info["execution_device"] or "N/A")
-                return f"{device}({exec_device})"
-
-        # Get max length of load_ids for models
-        load_ids = [
-            get_load_id(component)
-            for component in self.components.values()
-            if isinstance(component, torch.nn.Module) and hasattr(component, "_diffusers_load_id")
-        ]
-        max_load_id_len = max([15] + [len(str(lid)) for lid in load_ids]) if load_ids else 15
-
-        # Get all collections for each component
-        component_collections = {}
-        for name in self.components.keys():
-            component_collections[name] = []
-            for coll, comps in self.collections.items():
-                if name in comps:
-                    component_collections[name].append(coll)
-            if not component_collections[name]:
-                component_collections[name] = ["N/A"]
-
-        # Find the maximum collection name length
-        all_collections = [coll for colls in component_collections.values() for coll in colls]
-        max_collection_len = max(10, max(len(str(c)) for c in all_collections)) if all_collections else 10
-
-        col_widths = {
-            "id": max(15, max(len(name) for name in self.components.keys())),
-            "class": max(25, max(len(component.__class__.__name__) for component in self.components.values())),
-            "device": 20,
-            "dtype": 15,
-            "size": 10,
-            "load_id": max_load_id_len,
-            "collection": max_collection_len,
+        infos = {name: self.get_model_info(name) for name in self.components}
+        # every collection a component belongs to; the first goes on the component's own row, the rest on
+        # continuation rows below it
+        component_collections = {
+            name: [coll for coll, comps in self.collections.items() if name in comps] or ["N/A"]
+            for name in self.components
         }
 
-        # Create the header lines
-        sep_line = "=" * (sum(col_widths.values()) + len(col_widths) * 3 - 1) + "\n"
-        dash_line = "-" * (sum(col_widths.values()) + len(col_widths) * 3 - 1) + "\n"
+        def rows_with_collections(name: str, cells: list[str]) -> list[list[str]]:
+            first, *rest = component_collections[name]
+            return [[*cells, first]] + [[""] * len(cells) + [coll] for coll in rest]
 
-        output = "Components:\n" + sep_line
+        models = {name: c for name, c in self.components.items() if isinstance(c, torch.nn.Module)}
+        others = {name: c for name, c in self.components.items() if not isinstance(c, torch.nn.Module)}
 
-        # Separate components into models and others
-        models = {k: v for k, v in self.components.items() if isinstance(v, torch.nn.Module)}
-        others = {k: v for k, v in self.components.items() if not isinstance(v, torch.nn.Module)}
-
-        # Models section
+        sections = []
         if models:
-            output += "Models:\n" + dash_line
-            # Column headers
-            output += f"{'Name_ID':<{col_widths['id']}} | {'Class':<{col_widths['class']}} | "
-            output += f"{'Device: act(exec)':<{col_widths['device']}} | {'Dtype':<{col_widths['dtype']}} | "
-            output += f"{'Size (GB)':<{col_widths['size']}} | {'Load ID':<{col_widths['load_id']}} | Collection\n"
-            output += dash_line
-
-            # Model entries
+            rows = []
             for name, component in models.items():
-                info = self.get_model_info(name)
-                device_str = format_device(component, info)
-                dtype = str(component.dtype) if hasattr(component, "dtype") else "N/A"
-                load_id = get_load_id(component)
-
-                # Print first collection on the main line
-                first_collection = component_collections[name][0] if component_collections[name] else "N/A"
-
-                output += f"{name:<{col_widths['id']}} | {info['class_name']:<{col_widths['class']}} | "
-                output += f"{device_str:<{col_widths['device']}} | {dtype:<{col_widths['dtype']}} | "
-                output += f"{info['size_gb']:<{col_widths['size']}.2f} | {load_id:<{col_widths['load_id']}} | {first_collection}\n"
-
-                # Print additional collections on separate lines if they exist
-                for i in range(1, len(component_collections[name])):
-                    collection = component_collections[name][i]
-                    output += f"{'':<{col_widths['id']}} | {'':<{col_widths['class']}} | "
-                    output += f"{'':<{col_widths['device']}} | {'':<{col_widths['dtype']}} | "
-                    output += f"{'':<{col_widths['size']}} | {'':<{col_widths['load_id']}} | {collection}\n"
-
-            output += dash_line
-
-        # Other components section
+                info = infos[name]
+                device = str(getattr(component, "device", "N/A"))
+                if info["has_hook"]:
+                    device = f"{device}({info['execution_device'] or 'N/A'})"
+                rows += rows_with_collections(
+                    name,
+                    [
+                        name,
+                        info["class_name"],
+                        device,
+                        str(component.dtype) if hasattr(component, "dtype") else "N/A",
+                        format_size(component.get_memory_footprint()),
+                        str(getattr(component, "_diffusers_load_id", "N/A")),
+                    ],
+                )
+            headers = ["Name_ID", "Class", "Device: act(exec)", "Dtype", "Size", "Load ID", "Collection"]
+            sections.append(("Models:", format_table(headers, rows)))
         if others:
-            if models:  # Add extra newline if we had models section
+            rows = [
+                row
+                for name, component in others.items()
+                for row in rows_with_collections(name, [name, component.__class__.__name__])
+            ]
+            sections.append(("Other Components:", format_table(["ID", "Class", "Collection"], rows)))
+
+        output = "Components:\n" + "=" * max(len(table[0]) for _, table in sections) + "\n"
+        for index, (title, table) in enumerate(sections):
+            dash_line = "-" * len(table[0]) + "\n"
+            if index:
                 output += "\n"
-            output += "Other Components:\n" + dash_line
-            # Column headers for other components
-            output += f"{'ID':<{col_widths['id']}} | {'Class':<{col_widths['class']}} | Collection\n"
-            output += dash_line
+            output += title + "\n" + dash_line + table[0] + "\n" + dash_line
+            output += "\n".join(table[1:]) + "\n" + dash_line
 
-            # Other component entries
-            for name, component in others.items():
-                info = self.get_model_info(name)
-
-                # Print first collection on the main line
-                first_collection = component_collections[name][0] if component_collections[name] else "N/A"
-
-                output += f"{name:<{col_widths['id']}} | {component.__class__.__name__:<{col_widths['class']}} | {first_collection}\n"
-
-                # Print additional collections on separate lines if they exist
-                for i in range(1, len(component_collections[name])):
-                    collection = component_collections[name][i]
-                    output += f"{'':<{col_widths['id']}} | {'':<{col_widths['class']}} | {collection}\n"
-
-            output += dash_line
-
-        # Add additional component info
         output += "\nAdditional Component Info:\n" + "=" * 50 + "\n"
-        for name in self.components:
-            info = self.get_model_info(name)
-            if info is not None and (
-                info.get("adapters") is not None or info.get("ip_adapter") or info.get("quantization")
-            ):
+        for name, info in infos.items():
+            if info.get("adapters") is not None or info.get("ip_adapter") or info.get("quantization"):
                 output += f"\n{name}:\n"
                 if info.get("adapters") is not None:
                     output += f"  Adapters: {info['adapters']}\n"

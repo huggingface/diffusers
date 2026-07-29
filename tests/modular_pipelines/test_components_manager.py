@@ -23,6 +23,7 @@ import torch
 from diffusers import ComponentsManager
 from diffusers.models import ModelMixin
 from diffusers.utils import is_accelerate_available
+from diffusers.utils.accelerate_utils import apply_forward_hook
 
 from ..testing_utils import (
     backend_empty_cache,
@@ -73,16 +74,16 @@ class OOMOnceModel(DummyModel):
         return super().forward(x)
 
 
-class ActivationHungryModel(DummyModel):
-    """Allocates a scratch tensor of a known size during its forward, giving the activation measurement a floor."""
+class OOMOnceDecodeModel(DummyModel):
+    """Autoencoder-style model: runs through a `decode` entry point (via `apply_forward_hook`, like the VAEs)
+    instead of `forward`, and raises a fake device OOM on its first decode."""
 
-    def __init__(self, footprint_bytes: int = UNIT, activation_bytes: int = 8 * UNIT):
-        super().__init__(footprint_bytes=footprint_bytes)
-        self.activation_bytes = activation_bytes
-
-    def forward(self, x):
-        scratch = torch.zeros(self.activation_bytes // 4, device=x.device)
-        return super().forward(x) + scratch[0]
+    @apply_forward_hook
+    def decode(self, x):
+        self.decode_calls = getattr(self, "decode_calls", 0) + 1
+        if self.decode_calls == 1:
+            raise torch.OutOfMemoryError("fake OOM")
+        return x + self.weight.sum()
 
 
 class _FakeHook:
@@ -413,39 +414,6 @@ class ComponentsManagerTesterMixin:
             cm.disable_auto_cpu_offload()
 
     @require_accelerator
-    def test_record_measures_activations_and_suggests_a_reserve(self):
-        # The point of the measurement: a user who cannot spare memory for a calibration run still learns
-        # what their forward passes need on top of the weights, which is what `memory_reserve` covers.
-        activation_bytes = 4 * 1024**2
-        cm = ComponentsManager()
-        model = ActivationHungryModel(footprint_bytes=4 * UNIT, activation_bytes=activation_bytes)
-        cm.add("model", model)
-        cm.enable_auto_cpu_offload(device=torch_device, memory_reserve=UNIT, measure_activations=True)
-        try:
-            model(torch.randn(2, 4, device=torch_device))
-
-            peak = cm.offload_record.activation_peak
-            assert peak >= activation_bytes, f"expected at least the scratch tensor ({activation_bytes}), saw {peak}"
-            assert cm.offload_record.suggested_memory_reserve > peak
-            assert "memory_reserve" in repr(cm.offload_record)
-        finally:
-            cm.disable_auto_cpu_offload()
-
-    @require_accelerator
-    def test_activations_are_not_measured_by_default(self):
-        cm = ComponentsManager()
-        model = ActivationHungryModel()
-        cm.add("model", model)
-        cm.enable_auto_cpu_offload(device=torch_device, memory_reserve=UNIT)
-        try:
-            model(torch.randn(2, 4, device=torch_device))
-            # peak stats are the user's to own unless they opt in
-            assert cm.offload_record.activation_peak is None
-            assert cm.offload_record.suggested_memory_reserve is None
-        finally:
-            cm.disable_auto_cpu_offload()
-
-    @require_accelerator
     def test_auto_offload_keeps_models_resident_when_memory_is_ample(self):
         device_type = torch.device(torch_device).type
         cm = ComponentsManager()
@@ -547,7 +515,19 @@ class TestOffloadHookBehavior:
         with pytest.raises(torch.OutOfMemoryError, match="fake OOM"):
             model(torch.zeros(2, 4))
         assert model.forward_calls == 1
-        assert all(user_hook.hook._forward_before_oom_wrap is None for user_hook in manager.model_hooks)
+        assert all(not user_hook.hook._wrapped_methods for user_hook in manager.model_hooks)
+
+    def test_oom_retry_covers_apply_forward_hook_entry_points(self):
+        # Autoencoders run through `encode`/`decode` (via `apply_forward_hook`), not `forward` - an OOM
+        # there must be retried just like one raised inside `forward`.
+        model = OOMOnceDecodeModel()
+        smallest = DummyModel(UNIT)
+        manager = self._manager({"model": model, "smallest": smallest})
+
+        out = model.decode(torch.zeros(2, 4))
+        assert out.shape == (2, 4)
+        assert model.decode_calls == 2
+        assert self._offloaded_names(manager) == ["smallest"]
 
     def test_record_captures_the_onload_sequence(self):
         model_a = DummyModel(UNIT)
