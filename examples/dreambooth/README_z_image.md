@@ -326,7 +326,7 @@ Once you have trained a LoRA, you can load it for inference:
 import torch
 from diffusers import ZImagePipeline
 
-pipe = ZImagePipeline.from_pretrained("Tongyi-MAI/Z-Image", torch_dtype=torch.bfloat16)
+pipe = ZImagePipeline.from_pretrained("Tongyi-MAI/Z-Image", dtype=torch.bfloat16)
 pipe.to("cuda")
 
 # Load your trained LoRA

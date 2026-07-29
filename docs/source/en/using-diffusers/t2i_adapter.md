@@ -22,7 +22,7 @@ from diffusers import T2IAdapter, StableDiffusionXLAdapterPipeline, AutoencoderK
 
 t2i_adapter = T2IAdapter.from_pretrained(
     "TencentARC/t2i-adapter-canny-sdxl-1.0",
-    torch_dtype=torch.float16,
+    dtype=torch.float16,
 )
 ```
 
@@ -52,12 +52,12 @@ canny_image = Image.fromarray(image)
 Pass the canny image to the pipeline to generate an image.
 
 ```py
-vae = AutoencoderKL.from_pretrained("madebyollin/sdxl-vae-fp16-fix", torch_dtype=torch.float16)
+vae = AutoencoderKL.from_pretrained("madebyollin/sdxl-vae-fp16-fix", dtype=torch.float16)
 pipeline = StableDiffusionXLAdapterPipeline.from_pretrained(
     "stabilityai/stable-diffusion-xl-base-1.0",
     adapter=t2i_adapter,
     vae=vae,
-    torch_dtype=torch.float16,
+    dtype=torch.float16,
 ).to("cuda")
 
 prompt = """
@@ -115,8 +115,8 @@ bright sunny day, vacation scene, 35mm photograph, film, professional, 4k, highl
 
 adapters = MultiAdapter(
     [
-        T2IAdapter.from_pretrained("TencentARC/t2i-adapter-canny-sdxl-1.0", torch_dtype=torch.float16),
-        T2IAdapter.from_pretrained("TencentARC/t2i-adapter-depth-midas-sdxl-1.0", torch_dtype=torch.float16),
+        T2IAdapter.from_pretrained("TencentARC/t2i-adapter-canny-sdxl-1.0", dtype=torch.float16),
+        T2IAdapter.from_pretrained("TencentARC/t2i-adapter-depth-midas-sdxl-1.0", dtype=torch.float16),
     ]
 )
 ```
@@ -124,10 +124,10 @@ adapters = MultiAdapter(
 Pass the adapters, prompt, and control images to [`StableDiffusionXLAdapterPipeline`]. Use the `adapter_conditioning_scale` parameter to determine how much weight to assign to each control.
 
 ```py
-vae = AutoencoderKL.from_pretrained("madebyollin/sdxl-vae-fp16-fix", torch_dtype=torch.float16)
+vae = AutoencoderKL.from_pretrained("madebyollin/sdxl-vae-fp16-fix", dtype=torch.float16)
 pipeline = StableDiffusionXLAdapterPipeline.from_pretrained(
     "stabilityai/stable-diffusion-xl-base-1.0",
-    torch_dtype=torch.float16,
+    dtype=torch.float16,
     vae=vae,
     adapter=adapters,
 ).to("cuda")

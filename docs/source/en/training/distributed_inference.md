@@ -36,7 +36,7 @@ from accelerate import PartialState
 from diffusers import DiffusionPipeline
 
 pipeline = DiffusionPipeline.from_pretrained(
-    "Qwen/Qwen-Image", torch_dtype=torch.float16
+    "Qwen/Qwen-Image", dtype=torch.float16
 )
 distributed_state = PartialState()
 pipeline.to(distributed_state.device)
@@ -73,7 +73,7 @@ import torch.multiprocessing as mp
 from diffusers import DiffusionPipeline
 
 pipeline = DiffusionPipeline.from_pretrained(
-    "Qwen/Qwen-Image", torch_dtype=torch.float16,
+    "Qwen/Qwen-Image", dtype=torch.float16,
 )
 ```
 
@@ -135,7 +135,7 @@ pipeline = FluxPipeline.from_pretrained(
     vae=None,
     device_map="balanced",
     max_memory={0: "16GB", 1: "16GB"},
-    torch_dtype=torch.bfloat16
+    dtype=torch.bfloat16
 )
 with torch.no_grad():
     print("Encoding prompts.")
@@ -174,7 +174,7 @@ transformer = AutoModel.from_pretrained(
     "black-forest-labs/FLUX.1-dev", 
     subfolder="transformer",
     device_map="auto",
-    torch_dtype=torch.bfloat16
+    dtype=torch.bfloat16
 )
 ```
 
@@ -192,7 +192,7 @@ pipeline = FluxPipeline.from_pretrained(
     tokenizer_2=None,
     vae=None,
     transformer=transformer,
-    torch_dtype=torch.bfloat16
+    dtype=torch.bfloat16
 )
 
 print("Running denoising.")
@@ -215,7 +215,7 @@ import torch
 from diffusers import AutoencoderKL
 from diffusers.image_processor import VaeImageProcessor
 
-vae = AutoencoderKL.from_pretrained(ckpt_id, subfolder="vae", torch_dtype=torch.bfloat16).to("cuda")
+vae = AutoencoderKL.from_pretrained(ckpt_id, subfolder="vae", dtype=torch.bfloat16).to("cuda")
 vae_scale_factor = 2 ** (len(vae.config.block_out_channels) - 1)
 image_processor = VaeImageProcessor(vae_scale_factor=vae_scale_factor)
 
@@ -263,7 +263,7 @@ def main():
     world_size = dist.get_world_size()
 
     pipeline = DiffusionPipeline.from_pretrained(
-        "black-forest-labs/FLUX.1-dev", torch_dtype=torch.bfloat16
+        "black-forest-labs/FLUX.1-dev", dtype=torch.bfloat16
     ).to(device)
     pipeline.transformer.set_attention_backend("_native_cudnn")
 
@@ -423,11 +423,11 @@ cp_config = ContextParallelConfig(ring_degree=2)
 transformer = AutoModel.from_pretrained(
     CKPT_ID, 
     subfolder="transformer", 
-    torch_dtype=torch.bfloat16, 
+    dtype=torch.bfloat16,
     parallel_config=cp_config
 )
 
 pipeline = DiffusionPipeline.from_pretrained(
-    CKPT_ID, transformer=transformer, torch_dtype=torch.bfloat16,
+    CKPT_ID, transformer=transformer, dtype=torch.bfloat16,
 ).to(device)
 ```
