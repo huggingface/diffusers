@@ -66,9 +66,9 @@ from diffusers.hooks.group_offloading import apply_group_offloading
 from diffusers.utils import export_to_video, load_image
 from transformers import UMT5EncoderModel
 
-text_encoder = UMT5EncoderModel.from_pretrained("Wan-AI/Wan2.1-T2V-14B-Diffusers", subfolder="text_encoder", torch_dtype=torch.bfloat16)
-vae = AutoModel.from_pretrained("Wan-AI/Wan2.1-T2V-14B-Diffusers", subfolder="vae", torch_dtype=torch.float32)
-transformer = AutoModel.from_pretrained("Wan-AI/Wan2.1-T2V-14B-Diffusers", subfolder="transformer", torch_dtype=torch.bfloat16)
+text_encoder = UMT5EncoderModel.from_pretrained("Wan-AI/Wan2.1-T2V-14B-Diffusers", subfolder="text_encoder", dtype=torch.bfloat16)
+vae = AutoModel.from_pretrained("Wan-AI/Wan2.1-T2V-14B-Diffusers", subfolder="vae", dtype=torch.float32)
+transformer = AutoModel.from_pretrained("Wan-AI/Wan2.1-T2V-14B-Diffusers", subfolder="transformer", dtype=torch.bfloat16)
 
 # group-offloading
 onload_device = torch.device("cuda")
@@ -91,7 +91,7 @@ pipeline = WanPipeline.from_pretrained(
     vae=vae,
     transformer=transformer,
     text_encoder=text_encoder,
-    torch_dtype=torch.bfloat16
+    dtype=torch.bfloat16
 )
 pipeline.to("cuda")
 
@@ -131,16 +131,16 @@ from diffusers.hooks.group_offloading import apply_group_offloading
 from diffusers.utils import export_to_video, load_image
 from transformers import UMT5EncoderModel
 
-text_encoder = UMT5EncoderModel.from_pretrained("Wan-AI/Wan2.1-T2V-14B-Diffusers", subfolder="text_encoder", torch_dtype=torch.bfloat16)
-vae = AutoModel.from_pretrained("Wan-AI/Wan2.1-T2V-14B-Diffusers", subfolder="vae", torch_dtype=torch.float32)
-transformer = AutoModel.from_pretrained("Wan-AI/Wan2.1-T2V-14B-Diffusers", subfolder="transformer", torch_dtype=torch.bfloat16)
+text_encoder = UMT5EncoderModel.from_pretrained("Wan-AI/Wan2.1-T2V-14B-Diffusers", subfolder="text_encoder", dtype=torch.bfloat16)
+vae = AutoModel.from_pretrained("Wan-AI/Wan2.1-T2V-14B-Diffusers", subfolder="vae", dtype=torch.float32)
+transformer = AutoModel.from_pretrained("Wan-AI/Wan2.1-T2V-14B-Diffusers", subfolder="transformer", dtype=torch.bfloat16)
 
 pipeline = WanPipeline.from_pretrained(
     "Wan-AI/Wan2.1-T2V-14B-Diffusers",
     vae=vae,
     transformer=transformer,
     text_encoder=text_encoder,
-    torch_dtype=torch.bfloat16
+    dtype=torch.bfloat16
 )
 pipeline.to("cuda")
 
@@ -192,10 +192,10 @@ from transformers import CLIPVisionModel
 
 
 model_id = "Wan-AI/Wan2.1-FLF2V-14B-720P-diffusers"
-image_encoder = CLIPVisionModel.from_pretrained(model_id, subfolder="image_encoder", torch_dtype=torch.float32)
-vae = AutoencoderKLWan.from_pretrained(model_id, subfolder="vae", torch_dtype=torch.float32)
+image_encoder = CLIPVisionModel.from_pretrained(model_id, subfolder="image_encoder", dtype=torch.float32)
+vae = AutoencoderKLWan.from_pretrained(model_id, subfolder="vae", dtype=torch.float32)
 pipe = WanImageToVideoPipeline.from_pretrained(
-    model_id, vae=vae, image_encoder=image_encoder, torch_dtype=torch.bfloat16
+    model_id, vae=vae, image_encoder=image_encoder, dtype=torch.bfloat16
 )
 pipe.to("cuda")
 
@@ -292,8 +292,8 @@ from diffusers import AutoencoderKLWan, WanAnimatePipeline
 from diffusers.utils import export_to_video, load_image, load_video
 
 model_id = "Wan-AI/Wan2.2-Animate-14B-Diffusers"
-vae = AutoencoderKLWan.from_pretrained(model_id, subfolder="vae", torch_dtype=torch.float32)
-pipe = WanAnimatePipeline.from_pretrained(model_id, vae=vae, torch_dtype=torch.bfloat16)
+vae = AutoencoderKLWan.from_pretrained(model_id, subfolder="vae", dtype=torch.float32)
+pipe = WanAnimatePipeline.from_pretrained(model_id, vae=vae, dtype=torch.bfloat16)
 pipe.to("cuda")
 
 # Load character image and preprocessed videos
@@ -341,8 +341,8 @@ from diffusers import AutoencoderKLWan, WanAnimatePipeline
 from diffusers.utils import export_to_video, load_image, load_video
 
 model_id = "Wan-AI/Wan2.2-Animate-14B-Diffusers"
-vae = AutoencoderKLWan.from_pretrained(model_id, subfolder="vae", torch_dtype=torch.float32)
-pipe = WanAnimatePipeline.from_pretrained(model_id, vae=vae, torch_dtype=torch.bfloat16)
+vae = AutoencoderKLWan.from_pretrained(model_id, subfolder="vae", dtype=torch.float32)
+pipe = WanAnimatePipeline.from_pretrained(model_id, vae=vae, dtype=torch.bfloat16)
 pipe.to("cuda")
 
 # Load all required inputs for replacement mode
@@ -394,8 +394,8 @@ from diffusers import AutoencoderKLWan, WanAnimatePipeline
 from diffusers.utils import export_to_video, load_image, load_video
 
 model_id = "Wan-AI/Wan2.2-Animate-14B-Diffusers"
-vae = AutoencoderKLWan.from_pretrained(model_id, subfolder="vae", torch_dtype=torch.float32)
-pipe = WanAnimatePipeline.from_pretrained(model_id, vae=vae, torch_dtype=torch.bfloat16)
+vae = AutoencoderKLWan.from_pretrained(model_id, subfolder="vae", dtype=torch.float32)
+pipe = WanAnimatePipeline.from_pretrained(model_id, vae=vae, dtype=torch.bfloat16)
 pipe.to("cuda")
 
 image = load_image("path/to/character.jpg")
@@ -464,10 +464,10 @@ export_to_video(output, "animated_advanced.mp4", fps=30)
   from diffusers.utils import export_to_video
 
   vae = AutoModel.from_pretrained(
-      "Wan-AI/Wan2.1-T2V-1.3B-Diffusers", subfolder="vae", torch_dtype=torch.float32
+      "Wan-AI/Wan2.1-T2V-1.3B-Diffusers", subfolder="vae", dtype=torch.float32
   )
   pipeline = WanPipeline.from_pretrained(
-      "Wan-AI/Wan2.1-T2V-1.3B-Diffusers", vae=vae, torch_dtype=torch.bfloat16
+      "Wan-AI/Wan2.1-T2V-1.3B-Diffusers", vae=vae, dtype=torch.bfloat16
   )
   pipeline.scheduler = UniPCMultistepScheduler.from_config(
       pipeline.scheduler.config, flow_shift=5.0
@@ -513,13 +513,13 @@ export_to_video(output, "animated_advanced.mp4", fps=30)
   )
   transformer = WanTransformer3DModel.from_single_file(
       "https://huggingface.co/Comfy-Org/Wan_2.1_ComfyUI_repackaged/blob/main/split_files/diffusion_models/wan2.1_t2v_1.3B_bf16.safetensors",
-      torch_dtype=torch.bfloat16
+      dtype=torch.bfloat16
   )
   pipeline = WanPipeline.from_pretrained(
       "Wan-AI/Wan2.1-T2V-1.3B-Diffusers",
       vae=vae,
       transformer=transformer,
-      torch_dtype=torch.bfloat16
+      dtype=torch.bfloat16
   )
   ```
 

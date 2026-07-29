@@ -22,7 +22,7 @@ from diffusers.utils import export_to_video
 
 pipe = MotifVideoPipeline.from_pretrained(
     "Motif-Technologies/Motif-Video-2B",
-    torch_dtype=torch.bfloat16,
+    dtype=torch.bfloat16,
 )
 pipe.to("cuda")
 
@@ -52,7 +52,7 @@ from diffusers.utils import export_to_video, load_image
 
 pipe = MotifVideoImage2VideoPipeline.from_pretrained(
     "Motif-Technologies/Motif-Video-2B",
-    torch_dtype=torch.bfloat16,
+    dtype=torch.bfloat16,
 )
 pipe.to("cuda")
 
@@ -88,7 +88,7 @@ from diffusers.utils import export_to_video
 
 pipe = MotifVideoPipeline.from_pretrained(
     "Motif-Technologies/Motif-Video-2B",
-    torch_dtype=torch.bfloat16,
+    dtype=torch.bfloat16,
 )
 pipe.enable_model_cpu_offload()
 

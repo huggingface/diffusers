@@ -61,7 +61,7 @@ pipeline_quant_config = PipelineQuantizationConfig(
 pipeline = DiffusionPipeline.from_pretrained(
     "black-forest-labs/FLUX.1-dev",
     quantization_config=pipeline_quant_config,
-    torch_dtype=torch.bfloat16,
+    dtype=torch.bfloat16,
 ).to("cuda")
 
 # compile
@@ -102,7 +102,7 @@ pipeline_quant_config = PipelineQuantizationConfig(
 pipeline = DiffusionPipeline.from_pretrained(
     "black-forest-labs/FLUX.1-dev",
     quantization_config=pipeline_quant_config,
-    torch_dtype=torch.bfloat16,
+    dtype=torch.bfloat16,
 ).to("cuda")
 
 # model CPU offloading
@@ -142,12 +142,12 @@ pipeline_quant_config = PipelineQuantizationConfig(
 )
 
 text_encoder = UMT5EncoderModel.from_pretrained(
-    "Wan-AI/Wan2.1-T2V-14B-Diffusers", subfolder="text_encoder", torch_dtype=torch.bfloat16
+    "Wan-AI/Wan2.1-T2V-14B-Diffusers", subfolder="text_encoder", dtype=torch.bfloat16
 )
 pipeline = DiffusionPipeline.from_pretrained(
     "Wan-AI/Wan2.1-T2V-14B-Diffusers",
     quantization_config=pipeline_quant_config,
-    torch_dtype=torch.bfloat16,
+    dtype=torch.bfloat16,
 ).to("cuda")
 
 # group offloading
