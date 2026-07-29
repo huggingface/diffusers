@@ -36,6 +36,7 @@ from ..testing_utils import (
     LoraTesterMixin,
     MemoryTesterMixin,
     ModelTesterMixin,
+    SingleFileTesterMixin,
     TorchAoCompileTesterMixin,
     TorchAoTesterMixin,
     TorchCompileTesterMixin,
@@ -622,3 +623,17 @@ class TestFlux2TransformerKVCache(Flux2TransformerKVCacheTesterConfig):
         output = model(**base_config.get_dummy_inputs())
 
         assert output.kv_cache is None
+
+
+class TestFlux2Transformer2DSingleFile(Flux2TransformerTesterConfig, SingleFileTesterMixin):
+    @property
+    def ckpt_path(self):
+        return "https://huggingface.co/black-forest-labs/FLUX.2-dev/blob/main/flux2-dev.safetensors"
+
+    @property
+    def pretrained_model_name_or_path(self):
+        return "black-forest-labs/FLUX.2-dev"
+
+    @property
+    def pretrained_model_kwargs(self):
+        return {"subfolder": "transformer"}

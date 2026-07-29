@@ -28,6 +28,7 @@ from ..testing_utils import (
     LoraTesterMixin,
     MemoryTesterMixin,
     ModelTesterMixin,
+    SingleFileTesterMixin,
     TorchCompileTesterMixin,
     TrainingTesterMixin,
 )
@@ -344,3 +345,17 @@ class TestZImageTransformerAutoRoundCompile(ZImageTransformerAutoRoundTesterConf
         output = output[0] if isinstance(output, (list, tuple)) else output
         assert output is not None, "Model output is None"
         assert not torch.isnan(output).any(), "Model output contains NaN"
+
+
+class TestZImageTransformer2DSingleFile(ZImageTransformerTesterConfig, SingleFileTesterMixin):
+    @property
+    def ckpt_path(self):
+        return "https://huggingface.co/Comfy-Org/z_image_turbo/blob/main/split_files/diffusion_models/z_image_turbo_bf16.safetensors"
+
+    @property
+    def pretrained_model_name_or_path(self):
+        return "Tongyi-MAI/Z-Image-Turbo"
+
+    @property
+    def pretrained_model_kwargs(self):
+        return {"subfolder": "transformer"}

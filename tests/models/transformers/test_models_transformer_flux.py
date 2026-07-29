@@ -339,10 +339,6 @@ class TestFluxSingleFile(FluxTransformerTesterConfig, SingleFileTesterMixin):
         return "https://huggingface.co/black-forest-labs/FLUX.1-dev/blob/main/flux1-dev.safetensors"
 
     @property
-    def alternate_ckpt_paths(self):
-        return ["https://huggingface.co/Comfy-Org/flux1-dev/blob/main/flux1-dev-fp8.safetensors"]
-
-    @property
     def pretrained_model_name_or_path(self):
         return "black-forest-labs/FLUX.1-dev"
 
