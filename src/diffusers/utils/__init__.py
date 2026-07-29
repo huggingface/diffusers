@@ -79,6 +79,8 @@ from .import_utils import (
     is_flash_attn_version,
     is_flashpack_available,
     is_ftfy_available,
+    is_gemlite_available,
+    is_gemlite_version,
     is_gguf_available,
     is_gguf_version,
     is_google_colab,

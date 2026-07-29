@@ -204,6 +204,7 @@ _librosa_available, _librosa_version = _is_package_available("librosa")
 _accelerate_available, _accelerate_version = _is_package_available("accelerate")
 _xformers_available, _xformers_version = _is_package_available("xformers")
 _gguf_available, _gguf_version = _is_package_available("gguf")
+_gemlite_available, _gemlite_version = _is_package_available("gemlite")
 _torchao_available, _torchao_version = _is_package_available("torchao")
 _bitsandbytes_available, _bitsandbytes_version = _is_package_available("bitsandbytes")
 _optimum_quanto_available, _optimum_quanto_version = _is_package_available("optimum", get_dist_name=True)
@@ -352,6 +353,10 @@ def is_imageio_available():
 
 def is_gguf_available():
     return _gguf_available
+
+
+def is_gemlite_available():
+    return _gemlite_available
 
 
 def is_flashpack_available():
@@ -548,6 +553,11 @@ GGUF_IMPORT_ERROR = """
 {0} requires the gguf library but it was not found in your environment. You can install it with pip: `pip install gguf`
 """
 
+GEMLITE_IMPORT_ERROR = """
+{0} requires the gemlite library but it was not found in your environment. You can install it with pip: `pip install
+gemlite`
+"""
+
 TORCHAO_IMPORT_ERROR = """
 {0} requires the torchao library but it was not found in your environment. You can install it with pip: `pip install
 torchao`
@@ -603,6 +613,7 @@ BACKENDS_MAPPING = OrderedDict(
         ("sentencepiece", (is_sentencepiece_available, SENTENCEPIECE_IMPORT_ERROR)),
         ("imageio", (is_imageio_available, IMAGEIO_IMPORT_ERROR)),
         ("gguf", (is_gguf_available, GGUF_IMPORT_ERROR)),
+        ("gemlite", (is_gemlite_available, GEMLITE_IMPORT_ERROR)),
         ("torchao", (is_torchao_available, TORCHAO_IMPORT_ERROR)),
         ("quanto", (is_optimum_quanto_available, QUANTO_IMPORT_ERROR)),
         ("pytorch_retinaface", (is_pytorch_retinaface_available, PYTORCH_RETINAFACE_IMPORT_ERROR)),
@@ -801,6 +812,22 @@ def is_bitsandbytes_version(operation: str, version: str):
     if not _bitsandbytes_available:
         return False
     return compare_versions(parse(_bitsandbytes_version), operation, version)
+
+
+@cache
+def is_gemlite_version(operation: str, version: str):
+    """
+    Compares the current gemlite version to a given reference with an operation.
+
+    Args:
+        operation (`str`):
+            A string representation of an operator, such as `">"` or `"<="`
+        version (`str`):
+            A version string
+    """
+    if not _gemlite_available:
+        return False
+    return compare_versions(parse(_gemlite_version), operation, version)
 
 
 @cache

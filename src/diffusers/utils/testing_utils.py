@@ -35,6 +35,7 @@ from .import_utils import (
     is_accelerate_available,
     is_bitsandbytes_available,
     is_compel_available,
+    is_gemlite_available,
     is_gguf_available,
     is_kernels_available,
     is_note_seq_available,
@@ -535,6 +536,13 @@ def require_quanto(test_case):
     return unittest.skipUnless(is_optimum_quanto_available(), "test requires quanto")(test_case)
 
 
+def require_gemlite(test_case):
+    """
+    Decorator marking a test that requires gemlite. These tests are skipped when gemlite isn't installed.
+    """
+    return unittest.skipUnless(is_gemlite_available(), "test requires gemlite")(test_case)
+
+
 def require_accelerate(test_case):
     """
     Decorator marking a test that requires accelerate. These tests are skipped when accelerate isn't installed.
@@ -620,6 +628,18 @@ def require_gguf_version_greater_or_equal(gguf_version):
         ) >= version.parse(gguf_version)
         return unittest.skipUnless(
             correct_gguf_version, f"Test requires gguf with the version greater than {gguf_version}."
+        )(test_case)
+
+    return decorator
+
+
+def require_gemlite_version_greater_or_equal(gemlite_version):
+    def decorator(test_case):
+        correct_gemlite_version = is_gemlite_available() and version.parse(
+            version.parse(importlib.metadata.version("gemlite")).base_version
+        ) >= version.parse(gemlite_version)
+        return unittest.skipUnless(
+            correct_gemlite_version, f"Test requires gemlite with the version greater than or equal to {gemlite_version}."
         )(test_case)
 
     return decorator

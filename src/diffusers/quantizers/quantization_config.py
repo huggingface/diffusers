@@ -45,6 +45,7 @@ logger = logging.get_logger(__name__)
 class QuantizationMethod(str, Enum):
     BITS_AND_BYTES = "bitsandbytes"
     GGUF = "gguf"
+    GEMLITE = "gemlite"
     NUNCHAKU_LITE = "nunchaku_lite"
     TORCHAO = "torchao"
     QUANTO = "quanto"
@@ -428,6 +429,158 @@ class GGUFQuantizationConfig(QuantizationConfigMixin):
 
         if self.compute_dtype is None:
             self.compute_dtype = torch.float32
+
+
+@dataclass
+class GemLiteConfig(QuantizationConfigMixin):
+    """Configuration class for GemLite quantization.
+
+    GemLite provides Triton kernels for fast low-bit matrix multiplication. In Diffusers, this config replaces
+    supported `torch.nn.Linear` modules with GemLite linear layers so quantized weights can be executed with
+    GemLite kernels directly, without first materializing the weights back to full precision.
+
+    GemLite in Diffusers only loads pre-quantized checkpoints whose linear layers were serialized as
+    `GemLiteLinearTriton` modules (`W_q`, `scales`, `zeros`, `metadata`, ... tensors). The config describes the
+    serialized tensor layout with `bits`, `group_size`, `packing_bitwidth`, `input_dtype`, `output_dtype`,
+    `scales_dtype`, and `zeros_dtype`, allowing Diffusers to construct correctly sized meta tensors before Accelerate
+    assigns modules to devices with `device_map="auto"`.
+
+    Args:
+        compute_dtype (`torch.dtype`, *optional*, defaults to `torch.float16`):
+            The dtype used to load non-quantized modules. If `torch_dtype` is passed to `from_pretrained`, it must
+            match `compute_dtype`.
+        modules_to_not_convert (`list[str]` or `str`, *optional*):
+            The list of modules to not replace with GemLite linear layers.
+        format (`str`, *optional*):
+            Name of the serialized GemLite format, preserved as checkpoint metadata.
+        bits (`int`):
+            Number of bits per quantized weight. Must be one of 1, 2, 4, 8, or 16.
+        group_size (`int`):
+            Positive number of weights represented by each scale and zero-point entry in a pre-quantized checkpoint.
+        packing_bitwidth (`int`):
+            Bitwidth of each packed `W_q` storage element in a pre-quantized checkpoint. Must be 8, 16, 32, or 64 and
+            divisible by `bits`.
+        solver (`str`, *optional*):
+            Quantization solver used to produce the checkpoint, preserved as checkpoint metadata.
+        input_dtype (`str`):
+            GemLite input dtype stored in the serialized metadata of a pre-quantized checkpoint.
+        output_dtype (`str`):
+            GemLite output dtype stored in the serialized metadata of a pre-quantized checkpoint.
+        scales_dtype (`str`):
+            Storage dtype of the serialized `scales` tensor in a pre-quantized checkpoint.
+        zeros_dtype (`str`):
+            Storage dtype of the serialized `zeros` tensor in a pre-quantized checkpoint.
+        quantized_fqns (`list[str]`, *optional*):
+            Fully-qualified names of the `nn.Linear` modules replaced by GemLite linears. When omitted, every linear
+            module except those in `modules_to_not_convert` is replaced.
+    """
+
+    _SUPPORTED_SERIALIZED_DTYPES = ("fp16", "float16", "bf16", "bfloat16", "fp32", "float32")
+    _SUPPORTED_BITS = (1, 2, 4, 8, 16)
+    _SUPPORTED_PACKING_BITWIDTHS = (8, 16, 32, 64)
+
+    def __init__(
+        self,
+        compute_dtype: "torch.dtype" | str | None = None,
+        modules_to_not_convert=None,
+        format: str | None = None,
+        bits: int | None = None,
+        group_size: int | None = None,
+        packing_bitwidth: int | None = None,
+        solver: str | None = None,
+        input_dtype: str | None = None,
+        output_dtype: str | None = None,
+        scales_dtype: str | None = None,
+        zeros_dtype: str | None = None,
+        quantized_fqns: list[str] | None = None,
+        **kwargs,
+    ):
+        self.quant_method = QuantizationMethod.GEMLITE
+        self.compute_dtype = compute_dtype
+        self.modules_to_not_convert = modules_to_not_convert
+        self.format = format
+        self.bits = bits
+        self.group_size = group_size
+        self.packing_bitwidth = packing_bitwidth
+        self.solver = solver
+        self.input_dtype = input_dtype
+        self.output_dtype = output_dtype
+        self.scales_dtype = scales_dtype
+        self.zeros_dtype = zeros_dtype
+        self.quantized_fqns = quantized_fqns
+
+        # Keep the default as `None` in the signature because `torch` is an optional dependency and may not be imported
+        # when this module is loaded. Resolve it here instead of using `compute_dtype=torch.float16`.
+        if self.compute_dtype is None:
+            self.compute_dtype = torch.float16
+        elif isinstance(self.compute_dtype, str):
+            compute_dtype = getattr(torch, self.compute_dtype, None)
+            if not isinstance(compute_dtype, torch.dtype):
+                raise ValueError(f"Unsupported GemLite compute dtype: {self.compute_dtype!r}.")
+            self.compute_dtype = compute_dtype
+        elif not isinstance(self.compute_dtype, torch.dtype):
+            raise ValueError("GemLite compute_dtype must be a torch.dtype.")
+
+        self.post_init()
+
+    def post_init(self):
+        required_config_fields = (
+            "bits",
+            "group_size",
+            "packing_bitwidth",
+            "input_dtype",
+            "output_dtype",
+            "scales_dtype",
+            "zeros_dtype",
+        )
+        missing_config_fields = [field for field in required_config_fields if getattr(self, field) is None]
+        if missing_config_fields:
+            raise ValueError(
+                "Pre-quantized GemLite checkpoints require serialized layout fields in `quantization_config`: "
+                f"{', '.join(missing_config_fields)}."
+            )
+
+        if not all(isinstance(getattr(self, field), int) for field in ("bits", "group_size", "packing_bitwidth")):
+            raise ValueError("GemLite `bits`, `group_size`, and `packing_bitwidth` must be integers.")
+        if self.bits <= 0 or self.group_size <= 0 or self.packing_bitwidth <= 0:
+            raise ValueError("GemLite `bits`, `group_size`, and `packing_bitwidth` must be positive.")
+        if self.packing_bitwidth not in self._SUPPORTED_PACKING_BITWIDTHS:
+            raise ValueError(
+                f"Unsupported GemLite `packing_bitwidth`: {self.packing_bitwidth!r}. "
+                f"Supported values are: {list(self._SUPPORTED_PACKING_BITWIDTHS)}."
+            )
+        if self.packing_bitwidth % self.bits:
+            raise ValueError("GemLite `packing_bitwidth` must be divisible by `bits`.")
+        if self.bits not in self._SUPPORTED_BITS:
+            raise ValueError(
+                f"Unsupported GemLite `bits`: {self.bits!r}. Supported values are: {list(self._SUPPORTED_BITS)}."
+            )
+
+        unsupported_dtype_fields = [
+            field
+            for field in ("input_dtype", "output_dtype", "scales_dtype", "zeros_dtype")
+            if getattr(self, field) not in self._SUPPORTED_SERIALIZED_DTYPES
+        ]
+        if unsupported_dtype_fields:
+            raise ValueError(
+                "Unsupported GemLite serialized dtype in `quantization_config`: "
+                f"{', '.join(unsupported_dtype_fields)}."
+            )
+
+    def to_dict(self) -> dict[str, Any]:
+        output = copy.deepcopy(self.__dict__)
+        output["compute_dtype"] = str(output["compute_dtype"]).split(".")[1]
+        return output
+
+    def to_diff_dict(self) -> dict[str, Any]:
+        config_dict = self.to_dict()
+        serializable_config_dict = {"quant_method": config_dict["quant_method"]}
+        for key, value in config_dict.items():
+            if key == "quant_method":
+                continue
+            if (key == "compute_dtype" and value != "float16") or (key != "compute_dtype" and value is not None):
+                serializable_config_dict[key] = value
+        return serializable_config_dict
 
 
 @dataclass

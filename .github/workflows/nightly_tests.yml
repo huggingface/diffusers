@@ -348,6 +348,9 @@ jobs:
           - backend: "gguf"
             test_location: "gguf"
             additional_deps: ["peft", "kernels"]
+          - backend: "gemlite"
+            test_location: "gemlite"
+            additional_deps: []
           - backend: "torchao"
             test_location: "torchao"
             additional_deps: []
