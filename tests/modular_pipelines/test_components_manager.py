@@ -406,6 +406,9 @@ class ComponentsManagerTesterMixin:
             assert onloads[1].resident_before == (cm.model_hooks[0].model_id,)
             assert onloads[1].offloaded == (cm.model_hooks[0].model_id,)
             assert cm.offload_record.summary()["peak_co_residency"] == 1
+            # the printed table shows one row per decision: m2's row carries the m1 eviction it caused
+            m2_row = next(line for line in repr(cm.offload_record).splitlines() if line.startswith("2 "))
+            assert cm.model_hooks[1].model_id in m2_row and cm.model_hooks[0].model_id in m2_row
         finally:
             cm.disable_auto_cpu_offload()
 

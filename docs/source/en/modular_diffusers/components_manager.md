@@ -107,15 +107,19 @@ pipe(prompt="a cat")
 print(manager.offload_record)
 ```
 
+On a 20GB card, the Z-Image pipeline from the example above records this:
+
 ```py
-#     | Action   | Model                     | Size       | Available  | Reason
-------------------------------------------------------------------------------------
-1     | onload   | text_encoder_140458257514 | 9.52 GB    | -          | forward
-2     | offload  | text_encoder_140458257514 | 9.52 GB    | 4.31 GB    | needed_by:transformer_140458257515616
-3     | onload   | transformer_1404582575156 | 23.80 GB   | 4.31 GB    | forward
-------------------------------------------------------------------------------------
-2 onloads (33.32 GB) / 1 offloads (9.52 GB), 0 OOM retries, peak co-residency 1
+#     | Onload                                 | Offloaded                              | Available  | Reason
+-------------------------------------------------------------------------------------------------------------
+1     | text_encoder_140458257514752 (7.49 GB) | -                                      | -          | forward
+2     | transformer_140458257515616 (11.46 GB) | text_encoder_140458257514752 (7.49 GB) | 10.38 GB   | forward
+3     | vae_140458257515376 (159.87 MB)        | -                                      | 6.36 GB    | forward
+-------------------------------------------------------------------------------------------------------------
+3 onloads (19.11 GB) / 1 offloads (7.49 GB), 0 OOM retries, peak co-residency 2
 ```
+
+Each row is one decision: the model that loaded, what was evicted to make room for it, and the free device memory (`Available`) the decision saw at that moment. Here the transformer found 10.38 GB free — not enough for its 11.46 GB of weights while keeping the 3GB `memory_reserve` — so the text encoder was evicted first. The VAE then fit into the 6.36 GB left next to the transformer, so it loaded without evicting anything (peak co-residency 2). `Available` reads `-` when nothing was resident, so the decision needed no memory reading (row 1). Offloads an onload did not cause — an OOM retry, disabling offloading — appear as their own rows, explained by their `Reason`.
 
 A model appearing repeatedly in this table is thrashing — it is being evicted and re-loaded every step, which costs a PCIe transfer each way. That usually means `memory_reserve` is too large (models are pushed off that would have fit) or too small (each step ends in an OOM retry).
 

@@ -158,12 +158,32 @@ class OffloadRecord:
         if not self.events:
             return "Offload record: nothing recorded yet"
 
-        header = f"{'#':<5} | {'Action':<8} | {'Model':<40} | {'Size':<10} | {'Available':<10} | Reason"
+        # One row per decision: an onload and the evictions it caused (its "needed_by" offload events) share a
+        # row. Offloads with other causes (OOM retry, offloading disabled) and OOMs get their own rows.
+        sizes = {event.model_id: event.model_size for event in self.events if event.model_size is not None}
+
+        def label(model_id):
+            return f"{model_id} ({format_size(sizes.get(model_id))})"
+
+        rows = []
+        for event in self.events:
+            if event.action == "onload":
+                offloaded = ", ".join(label(model_id) for model_id in event.offloaded) or "-"
+                rows.append((label(event.model_id), offloaded, format_size(event.available_memory), event.reason))
+            elif event.action == "offload":
+                if event.reason is not None and event.reason.startswith("needed_by:"):
+                    continue  # shown on the row of the onload that caused it
+                rows.append(("-", label(event.model_id), "-", event.reason or ""))
+            else:  # oom
+                rows.append(("-", "-", "-", f"oom:{event.model_id}"))
+
+        onload_width = max(len("Onload"), *(len(row[0]) for row in rows))
+        offload_width = max(len("Offloaded"), *(len(row[1]) for row in rows))
+        header = f"{'#':<5} | {'Onload':<{onload_width}} | {'Offloaded':<{offload_width}} | {'Available':<10} | Reason"
         lines = [header, "-" * len(header)]
-        for index, event in enumerate(self.events, start=self.dropped + 1):
+        for index, row in enumerate(rows, start=1):
             lines.append(
-                f"{index:<5} | {event.action:<8} | {event.model_id:<40} | {format_size(event.model_size):<10} | "
-                f"{format_size(event.available_memory):<10} | {event.reason or ''}"
+                f"{index:<5} | {row[0]:<{onload_width}} | {row[1]:<{offload_width}} | {row[2]:<10} | {row[3]}"
             )
         if self.dropped:
             lines.insert(2, f"... {self.dropped} earlier events dropped from the log ...")
