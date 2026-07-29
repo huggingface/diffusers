@@ -283,7 +283,7 @@ from diffusers import StableDiffusionPipeline
 import torch
 
 model_id = "path-to-your-trained-model"
-pipe = StableDiffusionPipeline.from_pretrained(model_id, torch_dtype=torch.float16).to("cuda")
+pipe = StableDiffusionPipeline.from_pretrained(model_id, dtype=torch.float16).to("cuda")
 
 prompt = "A photo of sks dog in a bucket"
 image = pipe(prompt, num_inference_steps=50, guidance_scale=7.5).images[0]
@@ -404,7 +404,7 @@ lora_model_id = "patrickvonplaten/lora_dreambooth_dog_example"
 card = RepoCard.load(lora_model_id)
 base_model_id = card.data.to_dict()["base_model"]
 
-pipe = StableDiffusionPipeline.from_pretrained(base_model_id, torch_dtype=torch.float16)
+pipe = StableDiffusionPipeline.from_pretrained(base_model_id, dtype=torch.float16)
 ...
 ```
 
@@ -420,7 +420,7 @@ lora_model_id = "sayakpaul/dreambooth-text-encoder-test"
 card = RepoCard.load(lora_model_id)
 base_model_id = card.data.to_dict()["base_model"]
 
-pipe = StableDiffusionPipeline.from_pretrained(base_model_id, torch_dtype=torch.float16)
+pipe = StableDiffusionPipeline.from_pretrained(base_model_id, dtype=torch.float16)
 pipe = pipe.to("cuda")
 pipe.load_lora_weights(lora_model_id)
 image = pipe("A picture of a sks dog in a bucket", num_inference_steps=25).images[0]
