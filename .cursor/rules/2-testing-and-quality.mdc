@@ -1,0 +1,11 @@
+---
+description: Enforces testing standards and QA anti-pattern checks.
+globs: tests/**/*.py, src/diffusers/**/*.py
+---
+
+# Quality Gate & Testing Rules
+
+- **Documentation Pointer:** When writing, modifying, or reviewing tests, you MUST strictly adhere to the guidelines outlined in `.ai/testing.md`. Read it before generating test files.
+- **Catching Mistakes Early:** Ensure all new pipeline code includes unit tests with lightweight dummy fixtures rather than full model downloads[cite: 1]. 
+- **Validation:** Never claim validation has passed until the explicit commands listed in `.ai/testing.md` have been run successfully.
+- **Hardware Context:** Flag direct memory allocations lacking proper CPU/GPU context (e.g., missing `.to(device)` checks).

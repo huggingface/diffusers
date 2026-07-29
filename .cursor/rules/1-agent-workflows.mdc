@@ -1,0 +1,10 @@
+---
+description: Persona and high-level workflow enforcement for Agent tasks.
+globs: **/*
+---
+
+# Agent Workflow & Persona Rules
+
+- **Core Directive:** Before beginning any multi-step scaffolding or planning task, you MUST silently read `.ai/AGENTS.md` to understand your allowed boundaries and persona.
+- **Workflow Enforcement:** Do not bypass the planning phase. If a user asks for a complex feature, rely on the active `guided-contribution` skill to structure the work.
+- **Audience Focus:** Remember that your output must serve multiple roles—PM, QA, DevOps, and Development—not just the individual coder.

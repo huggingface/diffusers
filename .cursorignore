@@ -1,0 +1,33 @@
+# Secrets and credentials
+.env
+.env.*
+*.pem
+*.key
+*.p12
+*.pfx
+credentials/
+secrets/
+
+# Local Python environment
+.venv/
+venv/
+
+# Caches
+__pycache__/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Generated files
+build/
+dist/
+htmlcov/
+coverage.xml
+*.egg-info/
+
+# Large downloaded assets
+models/
+checkpoints/
+outputs/
+artifacts/
+wandb/

@@ -768,6 +768,8 @@
       title: KDPM2DiscreteScheduler
     - local: api/schedulers/lcm
       title: LCMScheduler
+    - local: api/schedulers/fast_lms_discrete
+      title: FastLMSDiscreteScheduler
     - local: api/schedulers/lms_discrete
       title: LMSDiscreteScheduler
     - local: api/schedulers/pndm

@@ -33,6 +33,7 @@ from diffusers import (
     EDMEulerScheduler,
     EulerAncestralDiscreteScheduler,
     EulerDiscreteScheduler,
+    FastLMSDiscreteScheduler,
     IPNDMScheduler,
     LMSDiscreteScheduler,
     PNDMScheduler,
@@ -376,7 +377,12 @@ class SchedulerCommonTest(unittest.TestCase):
 
         for scheduler_class in self.scheduler_classes:
             # TODO(Suraj) - delete the following two lines once DDPM, DDIM, and PNDM have timesteps casted to float by default
-            if scheduler_class in (EulerAncestralDiscreteScheduler, EulerDiscreteScheduler, LMSDiscreteScheduler):
+            if scheduler_class in (
+                EulerAncestralDiscreteScheduler,
+                EulerDiscreteScheduler,
+                FastLMSDiscreteScheduler,
+                LMSDiscreteScheduler,
+            ):
                 time_step = float(time_step)
 
             scheduler_config = self.get_scheduler_config(**config)
@@ -437,7 +443,12 @@ class SchedulerCommonTest(unittest.TestCase):
         time_step = time_step if time_step is not None else self.default_timestep
 
         for scheduler_class in self.scheduler_classes:
-            if scheduler_class in (EulerAncestralDiscreteScheduler, EulerDiscreteScheduler, LMSDiscreteScheduler):
+            if scheduler_class in (
+                EulerAncestralDiscreteScheduler,
+                EulerDiscreteScheduler,
+                FastLMSDiscreteScheduler,
+                LMSDiscreteScheduler,
+            ):
                 time_step = float(time_step)
 
             scheduler_config = self.get_scheduler_config()
@@ -479,7 +490,12 @@ class SchedulerCommonTest(unittest.TestCase):
 
         for scheduler_class in self.scheduler_classes:
             timestep = self.default_timestep
-            if scheduler_class in (EulerAncestralDiscreteScheduler, EulerDiscreteScheduler, LMSDiscreteScheduler):
+            if scheduler_class in (
+                EulerAncestralDiscreteScheduler,
+                EulerDiscreteScheduler,
+                FastLMSDiscreteScheduler,
+                LMSDiscreteScheduler,
+            ):
                 timestep = float(timestep)
 
             scheduler_config = self.get_scheduler_config()
@@ -567,7 +583,12 @@ class SchedulerCommonTest(unittest.TestCase):
         timestep_1 = self.default_timestep_2
 
         for scheduler_class in self.scheduler_classes:
-            if scheduler_class in (EulerAncestralDiscreteScheduler, EulerDiscreteScheduler, LMSDiscreteScheduler):
+            if scheduler_class in (
+                EulerAncestralDiscreteScheduler,
+                EulerDiscreteScheduler,
+                FastLMSDiscreteScheduler,
+                LMSDiscreteScheduler,
+            ):
                 timestep_0 = float(timestep_0)
                 timestep_1 = float(timestep_1)
 
@@ -629,7 +650,12 @@ class SchedulerCommonTest(unittest.TestCase):
             timestep = 1
 
         for scheduler_class in self.scheduler_classes:
-            if scheduler_class in (EulerAncestralDiscreteScheduler, EulerDiscreteScheduler, LMSDiscreteScheduler):
+            if scheduler_class in (
+                EulerAncestralDiscreteScheduler,
+                EulerDiscreteScheduler,
+                FastLMSDiscreteScheduler,
+                LMSDiscreteScheduler,
+            ):
                 timestep = float(timestep)
 
             scheduler_config = self.get_scheduler_config()

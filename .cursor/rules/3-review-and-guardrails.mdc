@@ -1,0 +1,11 @@
+---
+description: Enforces CI/CD boundaries, security, and pre-commit review standards.
+globs: **/*
+---
+
+# Pre-Review & CI/Deploy Guardrails
+
+- **Documentation Pointer:** Before presenting a final diff or marking a task as complete, you MUST evaluate the code against `.ai/review-rules.md`.
+- **CI/CD Boundaries:** Do not pull in context or external code from outside the approved boundaries[cite: 1]. Specifically, unauthorized networking packages (like `requests`) are forbidden in core pipeline code.
+- **Handoff Briefing:** When finalizing a change, separate findings into blocking, non-blocking, and unverified assumptions as dictated by `.ai/review-rules.md`.
+- **Formatting:** Ensure all code aligns with the repository's formatting checks (e.g., `ruff check .`) before moving safely toward deployment[cite: 1].
