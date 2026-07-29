@@ -400,8 +400,11 @@ class VaeImageProcessor(ConfigMixin):
         ratio = width / height
         src_ratio = image.width / image.height
 
-        src_w = width if ratio < src_ratio else image.width * height // image.height
-        src_h = height if ratio >= src_ratio else image.height * width // image.width
+        # Floor division collapses the scaled side to 0 for extreme aspect ratios (a 1x2000 image
+        # scaled to fit 512x512 gives `1 * 512 // 2000 == 0`), and `Image.resize` then fails with
+        # "height and width must be > 0", which names neither the input nor the side that vanished.
+        src_w = width if ratio < src_ratio else max(1, image.width * height // image.height)
+        src_h = height if ratio >= src_ratio else max(1, image.height * width // image.width)
 
         resized = image.resize((src_w, src_h), resample=PIL_INTERPOLATION[self.config.resample])
         res = Image.new("RGB", (width, height))
@@ -451,8 +454,8 @@ class VaeImageProcessor(ConfigMixin):
         ratio = width / height
         src_ratio = image.width / image.height
 
-        src_w = width if ratio > src_ratio else image.width * height // image.height
-        src_h = height if ratio <= src_ratio else image.height * width // image.width
+        src_w = width if ratio > src_ratio else max(1, image.width * height // image.height)
+        src_h = height if ratio <= src_ratio else max(1, image.height * width // image.width)
 
         resized = image.resize((src_w, src_h), resample=PIL_INTERPOLATION[self.config.resample])
         res = Image.new("RGB", (width, height))

@@ -308,3 +308,28 @@ class ImageProcessorTest(unittest.TestCase):
         assert out_np.shape == exp_np_shape, (
             f"resized image output shape '{out_np.shape}' didn't match expected shape '{exp_np_shape}'."
         )
+
+    def test_resize_fill_and_crop_handle_extreme_aspect_ratios(self):
+        """A side must never be scaled down to zero pixels.
+
+        `src_w`/`src_h` are computed with floor division, so scaling a very thin image to fit a
+        square target collapses the short side: `1 * 512 // 2000 == 0`. `PIL.Image.resize` then
+        raises `ValueError: height and width must be > 0`, which names neither the input nor the
+        side that vanished.
+        """
+        image_processor = VaeImageProcessor(vae_scale_factor=1)
+
+        for size in [(1, 2000), (2000, 1), (1, 1)]:
+            image = PIL.Image.new("RGB", size)
+            for resize_mode in ("fill", "crop"):
+                out = image_processor.resize(image, height=512, width=512, resize_mode=resize_mode)
+                assert out.size == (512, 512), f"{size} with resize_mode={resize_mode} gave {out.size}"
+
+    def test_resize_fill_and_crop_unchanged_for_ordinary_images(self):
+        """The clamp must not perturb sizes that were already computed correctly."""
+        image_processor = VaeImageProcessor(vae_scale_factor=1)
+
+        for size in [(64, 64), (900, 3), (3, 900), (1024, 768)]:
+            image = PIL.Image.new("RGB", size)
+            for resize_mode in ("fill", "crop"):
+                assert image_processor.resize(image, height=512, width=512, resize_mode=resize_mode).size == (512, 512)
