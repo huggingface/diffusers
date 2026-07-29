@@ -308,3 +308,36 @@ class ImageProcessorTest(unittest.TestCase):
         assert out_np.shape == exp_np_shape, (
             f"resized image output shape '{out_np.shape}' didn't match expected shape '{exp_np_shape}'."
         )
+
+    def test_get_crop_region_normal_mask(self):
+        mask = np.zeros((64, 64), dtype=np.uint8)
+        mask[20:40, 10:30] = 255
+
+        region = VaeImageProcessor.get_crop_region(PIL.Image.fromarray(mask), width=512, height=512)
+
+        assert region == (10, 20, 30, 40)
+
+    def test_get_crop_region_rejects_empty_mask(self):
+        """An all-zero mask has no region to crop to and must say so.
+
+        The column/row scan runs off both ends for an empty mask, so `crop_left` reaches `w` and
+        `crop_right` reaches `w` as well, giving an inverted box such as `(64, 64, 0, 0)`. That
+        travels as far as `PIL.Image.crop`, which fails with `Coordinate 'right' is less than
+        'left'` and no mention of the mask.
+        """
+        empty_mask = PIL.Image.fromarray(np.zeros((64, 64), dtype=np.uint8))
+
+        for pad in (0, 8):
+            with self.assertRaises(ValueError) as ctx:
+                VaeImageProcessor.get_crop_region(empty_mask, width=512, height=512, pad=pad)
+            assert "empty" in str(ctx.exception)
+
+    def test_get_crop_region_single_pixel_and_full_mask_still_work(self):
+        """The two extremes on either side of the empty case keep returning a usable box."""
+        single = np.zeros((64, 64), dtype=np.uint8)
+        single[5, 5] = 255
+        x1, y1, x2, y2 = VaeImageProcessor.get_crop_region(PIL.Image.fromarray(single), width=512, height=512)
+        assert x2 > x1 and y2 > y1
+
+        full = np.full((64, 64), 255, dtype=np.uint8)
+        assert VaeImageProcessor.get_crop_region(PIL.Image.fromarray(full), width=512, height=512) == (0, 0, 64, 64)

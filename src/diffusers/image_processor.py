@@ -305,6 +305,16 @@ class VaeImageProcessor(ConfigMixin):
         mask_image = mask_image.convert("L")
         mask = np.array(mask_image)
 
+        # An all-zero mask has no region to find. The scan below would then run off both ends and
+        # produce an inverted box (x1 > x2, y1 > y2), which surfaces much later as
+        # `ValueError: Coordinate 'right' is less than 'left'` from `PIL.Image.crop`, with nothing
+        # pointing back at the mask.
+        if not mask.any():
+            raise ValueError(
+                "`mask_image` is empty: it contains no non-zero pixels, so there is no region to crop to. "
+                "Either pass a mask with a masked area or set `padding_mask_crop=None`."
+            )
+
         # 1. find a rectangular region that contains all masked ares in an image
         h, w = mask.shape
         crop_left = 0
