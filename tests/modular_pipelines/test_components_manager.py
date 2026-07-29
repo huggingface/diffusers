@@ -13,6 +13,7 @@
 # limitations under the License.
 
 import gc
+import time
 from unittest import mock
 
 import pytest
@@ -26,7 +27,10 @@ from ..testing_utils import backend_empty_cache, require_accelerate, require_acc
 
 
 if is_accelerate_available():
-    from diffusers.modular_pipelines.components_manager import AutoOffloadStrategy
+    from diffusers.modular_pipelines.components_manager import (
+        _MAX_EXHAUSTIVE_OFFLOAD_CANDIDATES,
+        AutoOffloadStrategy,
+    )
 
 
 # The offload logic deals in bytes. We keep the test models tiny (a few KB of real
@@ -208,6 +212,29 @@ class ComponentsManagerTesterMixin:
             hook_sizes=multi_hooks,
             memory_reserve_margin=3 * UNIT,
         ) == ["c"]
+
+    def test_strategy_uses_greedy_fallback_above_exhaustive_search_limit(self):
+        # past _MAX_EXHAUSTIVE_OFFLOAD_CANDIDATES, search_best_candidate stops trying
+        # every combination and just grabs the biggest models first. check it still
+        # frees enough memory and does it fast - 28 models is 2^28 combos the old way.
+        num_hooks = _MAX_EXHAUSTIVE_OFFLOAD_CANDIDATES + 4
+        hook_sizes = {f"model_{i}": UNIT for i in range(num_hooks)}
+
+        start = time.perf_counter()
+        selected = self._select_offload(
+            incoming_footprint=15 * UNIT,
+            free_bytes=10 * UNIT,
+            hook_sizes=hook_sizes,
+            memory_reserve_margin=0,
+        )
+        elapsed = time.perf_counter() - start
+
+        # usable = 10 - 0 = 10, incoming needs 15 -> must free 5. The greedy fallback
+        # walks `module_sizes` (already largest-first; here all tied at UNIT) and stops
+        # as soon as it has freed enough, so it should pick exactly 5 of the 28 models.
+        assert len(selected) == 5
+        assert sum(hook_sizes[model_id] for model_id in selected) == 5 * UNIT
+        assert elapsed < 1.0
 
     # ------------------------------------------------------------------
     # Registry tests (hardware-independent)
