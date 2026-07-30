@@ -46,7 +46,7 @@ if is_accelerate_available():
 UNIT = 1024
 
 # More free memory than any tiny test checkpoint could ever need, so the strategy never
-# decides to offload. Used to assert the *negative*: no eviction without memory pressure.
+# decides to offload. Used to assert the *negative*: no offloading without memory pressure.
 _AMPLE_FREE_BYTES = 1024**4
 
 
@@ -290,7 +290,7 @@ class ComponentsManagerTesterMixin:
 
     def test_strategy_reserve_zero_packs_tight(self):
         # `memory_reserve=0` uses every last byte for weights: incoming exactly equals
-        # the free memory and still fits without evicting.
+        # the free memory and still fits without offloading anything.
         selected = self._select_offload(
             incoming_footprint=4 * UNIT,
             free_bytes=4 * UNIT,
@@ -302,7 +302,7 @@ class ComponentsManagerTesterMixin:
     def test_strategy_allocator_cache_counts_as_available(self):
         # `mem_get_info` reports only 2 units free, but 6 units of the allocator's cache
         # are reusable: available = 2 + 6 = 8, minus 1 reserve -> the incoming 4 fits
-        # with nothing evicted. Without the cache add-back this would over-evict.
+        # with nothing offloaded. Without the cache add-back this would offload needlessly.
         selected = self._select_offload(
             incoming_footprint=4 * UNIT,
             free_bytes=2 * UNIT,
@@ -369,7 +369,7 @@ class ComponentsManagerTesterMixin:
             cm.disable_auto_cpu_offload()
 
     @require_accelerator
-    def test_auto_offload_evicts_resident_model_under_memory_pressure(self):
+    def test_auto_offload_offloads_resident_model_under_memory_pressure(self):
         device_type = torch.device(torch_device).type
         cm = ComponentsManager()
         m1 = self.get_dummy_model(4 * UNIT)
@@ -384,14 +384,14 @@ class ComponentsManagerTesterMixin:
 
             x = torch.randn(2, 4, device=torch_device)
 
-            # Ample free memory: running m1 just moves it onto the device, evicting
+            # Ample free memory: running m1 just moves it onto the device, offloading
             # nothing (m2 is not resident, so it is not even a candidate).
             with _patch_free_memory(70 * UNIT):
                 m1(x)
             assert next(m1.parameters()).device.type == device_type
 
             # Memory pressure: usable = 4 - 1 = 3 but m2 needs 4, so the only resident
-            # model (m1) must be evicted back to the CPU to make room for m2.
+            # model (m1) must be offloaded back to the CPU to make room for m2.
             with _patch_free_memory(4 * UNIT):
                 m2(x)
             assert next(m2.parameters()).device.type == device_type
@@ -411,7 +411,7 @@ class ComponentsManagerTesterMixin:
             x = torch.randn(2, 4, device=torch_device)
             with _patch_free_memory(70 * UNIT):
                 m1(x)
-            # m2 does not fit alongside m1 (usable 4 - 1 = 3 < 4), so m1 is evicted for it
+            # m2 does not fit alongside m1 (usable 4 - 1 = 3 < 4), so m1 is offloaded for it
             with _patch_free_memory(4 * UNIT):
                 m2(x)
 
@@ -421,12 +421,13 @@ class ComponentsManagerTesterMixin:
             # The reading behind each decision is recorded, so a run can be explained after the fact.
             assert onloads[0].available_memory == 70 * UNIT
             assert onloads[1].available_memory == 4 * UNIT
-            # the eviction is its own event, attributed to the onload that caused it
-            eviction = next(event for event in cm.offload_record.events if event.action == "offload")
-            assert eviction.model_id == cm.model_hooks[0].model_id
-            assert eviction.reason == f"release_memory_for:{cm.model_hooks[1].model_id}"
+            # the offload is its own event, attributed to the onload that caused it, with its own reading
+            offload_event = next(event for event in cm.offload_record.events if event.action == "offload")
+            assert offload_event.model_id == cm.model_hooks[0].model_id
+            assert offload_event.reason == f"release_memory_for:{cm.model_hooks[1].model_id}"
+            assert offload_event.available_memory == 4 * UNIT
             assert _peak_co_residency(cm.offload_record.events) == 1
-            # the printed table shows one row per decision: m2's row carries the m1 eviction it caused
+            # the printed table shows one row per decision: m2's row carries the m1 offload it caused
             m2_row = next(line for line in repr(cm.offload_record).splitlines() if line.startswith("2 "))
             assert cm.model_hooks[1].model_id in m2_row and cm.model_hooks[0].model_id in m2_row
         finally:
@@ -446,11 +447,103 @@ class ComponentsManagerTesterMixin:
             with _patch_free_memory(70 * UNIT):
                 m1(x)
                 m2(x)
-            # Both fit comfortably, so neither gets evicted.
+            # Both fit comfortably, so neither gets offloaded.
             assert next(m1.parameters()).device.type == device_type
             assert next(m2.parameters()).device.type == device_type
         finally:
             cm.disable_auto_cpu_offload()
+
+    @require_accelerator
+    def test_record_captures_the_onload_sequence(self):
+        cm = ComponentsManager()
+        model_a = self.get_dummy_model(UNIT)
+        model_b = self.get_dummy_model(4 * UNIT)
+        cm.add("a", model_a)
+        cm.add("b", model_b)
+        cm.enable_auto_cpu_offload(device=torch_device, memory_reserve=UNIT)
+        try:
+            x = torch.randn(2, 4, device=torch_device)
+            with _patch_free_memory(70 * UNIT):
+                model_a(x)
+                model_b(x)
+
+            onloads = [event for event in cm.offload_record.events if event.action == "onload"]
+            assert [event.model_id.rsplit("_", 1)[0] for event in onloads] == ["a", "b"]
+            assert [event.model_size for event in onloads] == [UNIT, 4 * UNIT]
+            assert [event.action for event in cm.offload_record.events] == ["onload", "onload"]
+        finally:
+            cm.disable_auto_cpu_offload()
+
+    @require_accelerator
+    def test_record_tracks_peak_co_residency(self):
+        cm = ComponentsManager()
+        m1 = self.get_dummy_model(4 * UNIT)
+        m2 = self.get_dummy_model(4 * UNIT)
+        cm.add("m1", m1)
+        cm.add("m2", m2)
+        cm.enable_auto_cpu_offload(device=torch_device, memory_reserve=UNIT)
+        try:
+            x = torch.randn(2, 4, device=torch_device)
+            with _patch_free_memory(70 * UNIT):
+                m1(x)
+                m2(x)
+            assert _peak_co_residency(cm.offload_record.events) == 2
+
+            # an offload brings residency back down, so a later onload does not raise the peak:
+            # m3 needs 4 but only 4 - 1 = 3 is usable, costing one of the resident models its spot
+            m3 = self.get_dummy_model(4 * UNIT)
+            cm.add("m3", m3)
+            with _patch_free_memory(4 * UNIT):
+                m3(x)
+            assert _peak_co_residency(cm.offload_record.events) == 2
+        finally:
+            cm.disable_auto_cpu_offload()
+
+    @require_accelerator
+    def test_record_is_bounded_and_clearable(self):
+        cm = ComponentsManager()
+        m1 = self.get_dummy_model(4 * UNIT)
+        m2 = self.get_dummy_model(4 * UNIT)
+        cm.add("m1", m1)
+        cm.add("m2", m2)
+        cm.enable_auto_cpu_offload(device=torch_device, memory_reserve=UNIT)
+        cm.offload_record.events = collections.deque(maxlen=2)
+        try:
+            x = torch.randn(2, 4, device=torch_device)
+            # under pressure the two models trade places on every call, producing a steady
+            # stream of events; the record keeps only the last `maxlen`
+            with _patch_free_memory(4 * UNIT):
+                m1(x)
+                m2(x)
+                m1(x)
+
+            assert len(cm.offload_record.events) == 2
+
+            cm.offload_record.clear()
+            assert len(cm.offload_record.events) == 0
+            assert "nothing recorded yet" in repr(cm.offload_record)
+        finally:
+            cm.disable_auto_cpu_offload()
+
+    @require_accelerator
+    def test_record_survives_disable(self):
+        cm = ComponentsManager()
+        m1 = self.get_dummy_model(4 * UNIT)
+        cm.add("m1", m1)
+        cm.enable_auto_cpu_offload(device=torch_device, memory_reserve=UNIT)
+        x = torch.randn(2, 4, device=torch_device)
+        with _patch_free_memory(70 * UNIT):
+            m1(x)
+
+        cm.disable_auto_cpu_offload()
+
+        # the record is the post-mortem of the run that just ended
+        events = list(cm.offload_record.events)
+        assert sum(event.action == "onload" for event in events) == 1
+        # disabling is recorded too: the resident model's final move back to the CPU
+        assert events[-1].action == "offload"
+        assert events[-1].reason == "offloading_disabled"
+        assert events[-1].available_memory is not None
 
 
 class TestComponentsManager(ComponentsManagerTesterMixin):
@@ -463,9 +556,9 @@ class TestOffloadHookBehavior:
 
     @pytest.fixture(autouse=True)
     def _fake_cpu_mem_get_info(self):
-        # These tests exercise the hook machinery only, on a cpu execution device — but both enabling
-        # offloading and every onload read `mem_get_info`, which cpu doesn't implement, so provide an
-        # ample fake one for the whole test.
+        # These tests exercise the hook machinery only, on a cpu execution device — but enabling
+        # offloading requires `mem_get_info`, and the OOM-retry records read it, neither of which cpu
+        # implements, so provide an ample fake one for the whole test.
         with mock.patch.object(
             torch.cpu, "mem_get_info", create=True, return_value=(_AMPLE_FREE_BYTES, _AMPLE_FREE_BYTES)
         ):
@@ -510,7 +603,7 @@ class TestOffloadHookBehavior:
         assert model.forward_calls == 3
         assert self._offloaded_names(manager) == ["smallest", "larger"]
 
-    def test_oom_reraises_when_nothing_to_evict(self):
+    def test_oom_reraises_when_nothing_to_offload(self):
         model = OOMOnceModel()
         self._manager({"model": model})
 
@@ -552,19 +645,6 @@ class TestOffloadHookBehavior:
         assert model.decode_calls == 2
         assert self._offloaded_names(manager) == ["smallest"]
 
-    def test_record_captures_the_onload_sequence(self):
-        model_a = DummyModel(UNIT)
-        model_b = DummyModel(4 * UNIT)
-        manager = self._manager({"a": model_a, "b": model_b})
-
-        model_a(torch.zeros(2, 4))
-        model_b(torch.zeros(2, 4))
-
-        onloads = [event for event in manager.offload_record.events if event.action == "onload"]
-        assert [event.model_id.rsplit("_", 1)[0] for event in onloads] == ["a", "b"]
-        assert [event.model_size for event in onloads] == [UNIT, 4 * UNIT]
-        assert [event.action for event in manager.offload_record.events] == ["onload", "onload"]
-
     def test_record_captures_oom_and_the_escalation(self):
         model = OOMOnceModel()
         smallest = DummyModel(UNIT)
@@ -572,50 +652,13 @@ class TestOffloadHookBehavior:
 
         model(torch.zeros(2, 4))
 
-        # the OOM shows up as the eviction it caused, attributed to the model that ran out of memory
+        # the OOM shows up as the offload it caused, attributed to the model that ran out of memory
         offloads = [event for event in manager.offload_record.events if event.action == "offload"]
         assert len(offloads) == 1
         offload_event = offloads[0]
         assert offload_event.model_size == UNIT
         assert offload_event.model_id.rsplit("_", 1)[0] == "smallest"
         assert offload_event.reason == f"oom_retry:{manager.model_hooks[0].model_id}"
-
-    def test_record_tracks_peak_co_residency(self):
-        model_a = DummyModel(UNIT)
-        model_b = DummyModel(UNIT)
-        manager = self._manager({"a": model_a, "b": model_b})
-
-        model_a(torch.zeros(2, 4))
-        model_b(torch.zeros(2, 4))
-        assert _peak_co_residency(manager.offload_record.events) == 2
-
-        # an offload brings residency back down, so a later onload does not raise the peak
-        manager.model_hooks[0].offload(reason="test")
-        model_a(torch.zeros(2, 4))
-        assert _peak_co_residency(manager.offload_record.events) == 2
-
-    def test_record_is_bounded_and_clearable(self):
-        model = DummyModel()
-        manager = self._manager({"model": model})
-        manager.offload_record.events = collections.deque(maxlen=2)
-
-        for _ in range(4):
-            model(torch.zeros(2, 4))
-
-        assert len(manager.offload_record.events) == 2
-
-        manager.offload_record.clear()
-        assert len(manager.offload_record.events) == 0
-        assert "nothing recorded yet" in repr(manager.offload_record)
-
-    def test_record_survives_disable(self):
-        model = DummyModel()
-        manager = self._manager({"model": model})
-        model(torch.zeros(2, 4))
-
-        manager.disable_auto_cpu_offload()
-        # the record is the post-mortem of the run that just ended
-        assert sum(event.action == "onload" for event in manager.offload_record.events) == 1
 
     def test_add_does_not_rebuild_existing_hooks(self):
         model_a = DummyModel()
@@ -670,7 +713,8 @@ class ModularPipelineOffloadTesterMixin:
         """
         Run the pipeline with auto offload on and `free_bytes` of *simulated* device
         memory, recording every move in `cm.offload_record`: an `"onload"` event per model
-        that ran, and an `"offload"` event (`reason="release_memory_for:<onloader>"`) per eviction.
+        that ran, and an `"offload"` event (`reason="release_memory_for:<onloader>"`) per model
+        offloaded to make room.
         """
         cm = ComponentsManager()
         pipe = self.get_pipeline(components_manager=cm)
@@ -683,7 +727,7 @@ class ModularPipelineOffloadTesterMixin:
     @require_accelerate
     @require_accelerator
     def test_auto_cpu_offload_serializes_models_under_memory_pressure(self):
-        # Zero simulated free memory: every model that runs must first evict whatever is
+        # Zero simulated free memory: every model that runs must first offload whatever is
         # currently resident (comfy-style serialized execution).
         cm, events, _ = self._run_offloaded(free_bytes=0)
         try:
@@ -691,8 +735,8 @@ class ModularPipelineOffloadTesterMixin:
             if len(distinct_models) < 2:
                 pytest.skip("pipeline has fewer than two offloadable model components")
 
-            # Offloading actually fired (at least one eviction happened).
-            assert any(event.action == "offload" for event in events), "expected at least one eviction"
+            # Offloading actually fired (at least one model was pushed off the device).
+            assert any(event.action == "offload" for event in events), "expected at least one offload"
 
             # Sequencing: models run one at a time, never two co-resident on the device.
             peak = _peak_co_residency(events)
@@ -711,7 +755,7 @@ class ModularPipelineOffloadTesterMixin:
     @require_accelerator
     def test_auto_cpu_offload_keeps_models_resident_without_memory_pressure(self):
         # Negative case: with ample simulated memory the strategy is still consulted on
-        # every load, but it must never decide to evict anything.
+        # every load, but it must never decide to offload anything.
         cm, events, _ = self._run_offloaded(free_bytes=_AMPLE_FREE_BYTES)
         try:
             distinct_models = {event.model_id for event in events if event.action == "onload"}
@@ -719,7 +763,7 @@ class ModularPipelineOffloadTesterMixin:
                 pytest.skip("pipeline has fewer than two offloadable model components")
 
             # Nothing was ever offloaded...
-            assert all(event.action == "onload" for event in events), "no model should be evicted"
+            assert all(event.action == "onload" for event in events), "no model should be offloaded"
 
             # ...and models accumulate on the device instead of being serialized.
             peak = _peak_co_residency(events)
