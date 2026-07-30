@@ -285,6 +285,26 @@ class QuantizationTesterMixin:
             f"Quantized layer count mismatch: expected {expected_quantized_layers}, got {num_quantized_layers} (total linear layers: {num_linear_layers}, FP32 modules: {num_fp32_modules})"
         )
 
+    def _test_keep_modules_in_fp32(self, config_kwargs):
+        """
+        Test that modules listed in the model's `_keep_in_fp32_modules` stay in FP32 after quantization.
+
+        Args:
+            config_kwargs: Quantization config parameters
+        """
+        fp32_modules = getattr(self.model_class, "_keep_in_fp32_modules", None)
+        if not fp32_modules:
+            pytest.skip(f"{self.model_class.__name__} does not declare _keep_in_fp32_modules")
+
+        model = self._create_quantized_model(config_kwargs)
+        model.to(torch_device)
+
+        for name, module in model.named_modules():
+            if isinstance(module, torch.nn.Linear) and any(fp32_name in name for fp32_name in fp32_modules):
+                assert module.weight.dtype == torch.float32, (
+                    f"Module {name} should be FP32 but is {module.weight.dtype}"
+                )
+
     def _test_quantization_modules_to_not_convert(self, config_kwargs, modules_to_not_convert):
         """
         Test that modules specified in modules_to_not_convert are not quantized.
@@ -581,30 +601,8 @@ class BitsAndBytesTesterMixin(BitsAndBytesConfigMixin, QuantizationTesterMixin):
             torch.bfloat16,
         ], f"Unexpected dtype: {model.config['_pre_quantization_dtype']}"
 
-    @torch.no_grad()
     def test_bnb_keep_modules_in_fp32(self):
-        fp32_modules = getattr(self.model_class, "_keep_in_fp32_modules", None)
-        if not fp32_modules:
-            pytest.skip(f"{self.model_class.__name__} does not declare _keep_in_fp32_modules")
-
-        config_kwargs = BitsAndBytesConfigMixin.BNB_CONFIGS["4bit_nf4"]
-
-        model = self._create_quantized_model(config_kwargs)
-        model.to(torch_device)
-
-        for name, module in model.named_modules():
-            if isinstance(module, torch.nn.Linear):
-                if any(fp32_name in name for fp32_name in fp32_modules):
-                    assert module.weight.dtype == torch.float32, (
-                        f"Module {name} should be FP32 but is {module.weight.dtype}"
-                    )
-                else:
-                    assert module.weight.dtype == torch.uint8, (
-                        f"Module {name} should be uint8 but is {module.weight.dtype}"
-                    )
-
-        inputs = self.get_dummy_inputs()
-        _ = model(**inputs)
+        self._test_keep_modules_in_fp32(BitsAndBytesConfigMixin.BNB_CONFIGS["4bit_nf4"])
 
     def test_bnb_modules_to_not_convert(self):
         """Test that modules_to_not_convert parameter works correctly."""
@@ -996,6 +994,9 @@ class TorchAoTesterMixin(TorchAoConfigMixin, QuantizationTesterMixin):
         """Test that quantized models can be used for training with adapters."""
         self._test_quantization_training(TorchAoConfigMixin.TORCHAO_QUANT_TYPES["int8wo"])
 
+    def test_torchao_keep_modules_in_fp32(self):
+        self._test_keep_modules_in_fp32(TorchAoConfigMixin.TORCHAO_QUANT_TYPES["int8wo"])
+
 
 @is_quantization
 @is_gguf
@@ -1071,10 +1072,7 @@ class GGUFTesterMixin(GGUFConfigMixin, QuantizationTesterMixin):
         self.model_class._keep_in_fp32_modules = ["proj_out"]
 
         try:
-            model = self._create_quantized_model()
-            for name, module in model.named_modules():
-                if isinstance(module, torch.nn.Linear) and name in model._keep_in_fp32_modules:
-                    assert module.weight.dtype == torch.float32, f"Module {name} should be FP32"
+            self._test_keep_modules_in_fp32({"compute_dtype": torch.bfloat16})
         finally:
             self.model_class._keep_in_fp32_modules = _keep_in_fp32_modules
 
