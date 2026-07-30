@@ -218,6 +218,7 @@ _aiter_available, _aiter_version = _is_package_available("aiter", get_dist_name=
 _kornia_available, _kornia_version = _is_package_available("kornia")
 _nvidia_modelopt_available, _nvidia_modelopt_version = _is_package_available("modelopt", get_dist_name=True)
 _auto_round_available, _auto_round_version = _is_package_available("auto_round")
+_sdnq_available, _sdnq_version = _is_package_available("sdnq")
 _flashpack_available, _flashpack_version = _is_package_available("flashpack")
 _av_available, _av_version = _is_package_available("av")
 
@@ -372,6 +373,10 @@ def is_nvidia_modelopt_available():
 
 def is_auto_round_available():
     return _auto_round_available
+
+
+def is_sdnq_available():
+    return _sdnq_available
 
 
 def is_timm_available():
@@ -558,6 +563,10 @@ QUANTO_IMPORT_ERROR = """
 install optimum-quanto`
 """
 
+SDNQ_IMPORT_ERROR = """
+{0} requires the sdnq library but it was not found in your environment. You can install it with pip: `pip install sdnq`
+"""
+
 # docstyle-ignore
 PYTORCH_RETINAFACE_IMPORT_ERROR = """
 {0} requires the pytorch_retinaface library but it was not found in your environment. You can install it with pip: `pip install pytorch_retinaface`
@@ -605,6 +614,7 @@ BACKENDS_MAPPING = OrderedDict(
         ("gguf", (is_gguf_available, GGUF_IMPORT_ERROR)),
         ("torchao", (is_torchao_available, TORCHAO_IMPORT_ERROR)),
         ("quanto", (is_optimum_quanto_available, QUANTO_IMPORT_ERROR)),
+        ("sdnq", (is_sdnq_available, SDNQ_IMPORT_ERROR)),
         ("pytorch_retinaface", (is_pytorch_retinaface_available, PYTORCH_RETINAFACE_IMPORT_ERROR)),
         ("better_profanity", (is_better_profanity_available, BETTER_PROFANITY_IMPORT_ERROR)),
         ("nltk", (is_nltk_available, NLTK_IMPORT_ERROR)),
@@ -817,6 +827,22 @@ def is_gguf_version(operation: str, version: str):
     if not _gguf_available:
         return False
     return compare_versions(parse(_gguf_version), operation, version)
+
+
+@cache
+def is_sdnq_version(operation: str, version: str):
+    """
+    Compares the current sdnq version to a given reference with an operation.
+
+    Args:
+        operation (`str`):
+            A string representation of an operator, such as `">"` or `"<="`
+        version (`str`):
+            A version string
+    """
+    if not _sdnq_available:
+        return False
+    return compare_versions(parse(_sdnq_version), operation, version)
 
 
 @cache
