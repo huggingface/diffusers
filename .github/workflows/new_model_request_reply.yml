@@ -27,25 +27,17 @@ jobs:
 
             **How new model support works in Diffusers**
 
-            We're a small team and can only integrate and maintain so many models ourselves. We don't want our review process to be the bottleneck.
-
-            So we've been building a system to support a more decentralized way of building with Diffusers: with [Modular Diffusers](https://huggingface.co/docs/diffusers/modular_diffusers/overview), pipelines can be hosted in any Hub repo and loaded straight from there with `from_pretrained`.
+            We're a small team, and our review queue shouldn't be what decides whether a model is usable in Diffusers. With [Modular Diffusers](https://huggingface.co/docs/diffusers/modular_diffusers/overview) it doesn't have to be: a pipeline can live as remote code in any Hub repo and load straight from there with `from_pretrained`.
 
             🛠️ **Want to bring this model to Diffusers?**
 
-            You don't have to send a PR. Build it as a modular pipeline under your own Hub repo and share it in this thread — tag `@asomoza` and we'll give feedback on the implementation, help get it in front of people, and add the ones we like to our hand-picked [Modular Diffusers Custom Blocks](https://huggingface.co/collections/diffusers/modular-diffusers-custom-blocks) collection. The pipelines we integrate into `diffusers` are usually the ones people are already using.
+            Please start with a Hub repo — you don't need anything from us to do that, and people can use it immediately. From there we decide how to support it: we might work with the authors, upstream an existing community version, or just point people at the one on the Hub. The pipelines we integrate are usually the ones people are already running.
 
-            And one of the most valuable contributions you can make is helping us improve the experience of building on it — so tell us about the friction as you go: confusing APIs, missing docs, bugs.
+            Tag `@asomoza` when you have something to share — we'll give feedback on the implementation, help get it in front of people, and add the ones we like to our hand-picked [Custom Blocks](https://huggingface.co/collections/diffusers/modular-diffusers-custom-blocks) collection. Tell us where you hit friction along the way, too: confusing APIs, missing docs, bugs. That feedback is worth as much to us as the pipeline.
 
-            👋 **Are you an author of the model?**
+            👋 **Are you an author of the model?** We'd love to hear from you — comment here and we'll help you pick the path that fits.
 
-            We'd love to hear from you — comment here or reach out and we'll talk through the options. Depending on the model and what you're aiming for, that might be a Hub-hosted modular pipeline (fastest, fully under your control, you own the release timeline) or a PR into the library. Happy to help you figure out which one fits.
-
-            📚 **Resources**
-
-            - [Modular Diffusers quickstart](https://huggingface.co/docs/diffusers/modular_diffusers/quickstart) — start here
-            - [Building custom blocks](https://huggingface.co/docs/diffusers/modular_diffusers/custom_blocks) — template repo, and how to publish to the Hub
-            - [Custom blocks collection](https://huggingface.co/collections/diffusers/modular-diffusers-custom-blocks) — examples to crib from
+            📚 [Quickstart](https://huggingface.co/docs/diffusers/modular_diffusers/quickstart) · [Building custom blocks](https://huggingface.co/docs/diffusers/modular_diffusers/custom_blocks) — template repo, and how to publish to the Hub
 
             *This is an automated message.*
         run: gh issue comment "$ISSUE_NUMBER" --body "$BODY"
