@@ -101,9 +101,9 @@ import torch
 base_model_path = "stabilityai/stable-diffusion-xl-base-1.0"
 controlnet_path = "path to controlnet"
 
-controlnet = ControlNetModel.from_pretrained(controlnet_path, torch_dtype=torch.float16)
+controlnet = ControlNetModel.from_pretrained(controlnet_path, dtype=torch.float16)
 pipe = StableDiffusionXLControlNetPipeline.from_pretrained(
-    base_model_path, controlnet=controlnet, torch_dtype=torch.float16
+    base_model_path, controlnet=controlnet, dtype=torch.float16
 )
 
 # speed up diffusion process with faster scheduler and memory optimization
@@ -133,9 +133,9 @@ SDXL's VAE is known to suffer from numerical instability issues. This is why we 
 If you're using this VAE during training, you need to ensure you're using it during inference too. You do so by:
 
 ```diff
-+ vae = AutoencoderKL.from_pretrained(vae_path_or_repo_id, torch_dtype=torch.float16)
-controlnet = ControlNetModel.from_pretrained(controlnet_path, torch_dtype=torch.float16)
++ vae = AutoencoderKL.from_pretrained(vae_path_or_repo_id, dtype=torch.float16)
+controlnet = ControlNetModel.from_pretrained(controlnet_path, dtype=torch.float16)
 pipe = StableDiffusionXLControlNetPipeline.from_pretrained(
-    base_model_path, controlnet=controlnet, torch_dtype=torch.float16,
+    base_model_path, controlnet=controlnet, dtype=torch.float16,
 +   vae=vae,
 )

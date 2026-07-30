@@ -38,7 +38,7 @@ from diffusers import ShapEPipeline
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-pipe = ShapEPipeline.from_pretrained("openai/shap-e", torch_dtype=torch.float16, variant="fp16")
+pipe = ShapEPipeline.from_pretrained("openai/shap-e", dtype=torch.float16, variant="fp16")
 pipe = pipe.to(device)
 
 guidance_scale = 15.0
@@ -80,8 +80,8 @@ export_to_gif(images[1], "cake_3d.gif")
 from diffusers import DiffusionPipeline
 import torch
 
-prior_pipeline = DiffusionPipeline.from_pretrained("kandinsky-community/kandinsky-2-1-prior", torch_dtype=torch.float16, use_safetensors=True).to("cuda")
-pipeline = DiffusionPipeline.from_pretrained("kandinsky-community/kandinsky-2-1", torch_dtype=torch.float16, use_safetensors=True).to("cuda")
+prior_pipeline = DiffusionPipeline.from_pretrained("kandinsky-community/kandinsky-2-1-prior", dtype=torch.float16, use_safetensors=True).to("cuda")
+pipeline = DiffusionPipeline.from_pretrained("kandinsky-community/kandinsky-2-1", dtype=torch.float16, use_safetensors=True).to("cuda")
 
 prompt = "A cheeseburger, white background"
 
@@ -102,7 +102,7 @@ from PIL import Image
 from diffusers import ShapEImg2ImgPipeline
 from diffusers.utils import export_to_gif
 
-pipe = ShapEImg2ImgPipeline.from_pretrained("openai/shap-e-img2img", torch_dtype=torch.float16, variant="fp16").to("cuda")
+pipe = ShapEImg2ImgPipeline.from_pretrained("openai/shap-e-img2img", dtype=torch.float16, variant="fp16").to("cuda")
 
 guidance_scale = 3.0
 image = Image.open("burger.png").resize((256, 256))
@@ -140,7 +140,7 @@ from diffusers import ShapEPipeline
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-pipe = ShapEPipeline.from_pretrained("openai/shap-e", torch_dtype=torch.float16, variant="fp16")
+pipe = ShapEPipeline.from_pretrained("openai/shap-e", dtype=torch.float16, variant="fp16")
 pipe = pipe.to(device)
 
 guidance_scale = 15.0
