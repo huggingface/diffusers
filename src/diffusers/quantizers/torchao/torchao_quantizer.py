@@ -162,6 +162,7 @@ class TorchAoHfQuantizer(DiffusersQuantizer):
 
     requires_calibration = False
     required_packages = ["torchao"]
+    use_keep_in_fp32_modules = True
 
     def __init__(self, quantization_config, **kwargs):
         super().__init__(quantization_config, **kwargs)

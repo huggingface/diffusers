@@ -117,7 +117,7 @@ import diffusers
 import torch
 
 pipe = diffusers.MarigoldDepthPipeline.from_pretrained(
-    "prs-eth/marigold-depth-v1-1", variant="fp16", torch_dtype=torch.float16
+    "prs-eth/marigold-depth-v1-1", variant="fp16", dtype=torch.float16
 ).to("cuda")
 
 image = diffusers.utils.load_image("https://marigoldmonodepth.github.io/images/einstein.jpg")
@@ -164,7 +164,7 @@ import diffusers
 import torch
 
 pipe = diffusers.MarigoldNormalsPipeline.from_pretrained(
-    "prs-eth/marigold-normals-v1-1", variant="fp16", torch_dtype=torch.float16
+    "prs-eth/marigold-normals-v1-1", variant="fp16", dtype=torch.float16
 ).to("cuda")
 
 image = diffusers.utils.load_image("https://marigoldmonodepth.github.io/images/einstein.jpg")
@@ -214,7 +214,7 @@ import diffusers
 import torch
 
 pipe = diffusers.MarigoldIntrinsicsPipeline.from_pretrained(
-    "prs-eth/marigold-iid-appearance-v1-1", variant="fp16", torch_dtype=torch.float16
+    "prs-eth/marigold-iid-appearance-v1-1", variant="fp16", dtype=torch.float16
 ).to("cuda")
 
 image = diffusers.utils.load_image("https://marigoldmonodepth.github.io/images/einstein.jpg")
@@ -234,7 +234,7 @@ import diffusers
 import torch
 
 pipe = diffusers.MarigoldIntrinsicsPipeline.from_pretrained(
-    "prs-eth/marigold-iid-lighting-v1-1", variant="fp16", torch_dtype=torch.float16
+    "prs-eth/marigold-iid-lighting-v1-1", variant="fp16", dtype=torch.float16
 ).to("cuda")
 
 image = diffusers.utils.load_image("https://marigoldmonodepth.github.io/images/einstein.jpg")
@@ -283,7 +283,7 @@ steps to the minimum:
   import torch
 
   pipe = diffusers.MarigoldDepthPipeline.from_pretrained(
-      "prs-eth/marigold-depth-v1-1", variant="fp16", torch_dtype=torch.float16
+      "prs-eth/marigold-depth-v1-1", variant="fp16", dtype=torch.float16
   ).to("cuda")
 
   image = diffusers.utils.load_image("https://marigoldmonodepth.github.io/images/einstein.jpg")
@@ -306,11 +306,11 @@ Note that using a lightweight VAE may slightly reduce the visual quality of the 
   import torch
 
   pipe = diffusers.MarigoldDepthPipeline.from_pretrained(
-      "prs-eth/marigold-depth-v1-1", variant="fp16", torch_dtype=torch.float16
+      "prs-eth/marigold-depth-v1-1", variant="fp16", dtype=torch.float16
   ).to("cuda")
 
 + pipe.vae = diffusers.AutoencoderTiny.from_pretrained(
-+     "madebyollin/taesd", torch_dtype=torch.float16
++     "madebyollin/taesd", dtype=torch.float16
 + ).cuda()
 
   image = diffusers.utils.load_image("https://marigoldmonodepth.github.io/images/einstein.jpg")
@@ -328,7 +328,7 @@ Speeding them up can be achieved by using a more efficient attention processor:
 + from diffusers.models.attention_processor import AttnProcessor2_0
 
   pipe = diffusers.MarigoldDepthPipeline.from_pretrained(
-      "prs-eth/marigold-depth-v1-1", variant="fp16", torch_dtype=torch.float16
+      "prs-eth/marigold-depth-v1-1", variant="fp16", dtype=torch.float16
   ).to("cuda")
 
 + pipe.vae.set_attn_processor(AttnProcessor2_0()) 
@@ -350,7 +350,7 @@ the same pipeline instance is called repeatedly, such as within a loop.
   from diffusers.models.attention_processor import AttnProcessor2_0
 
   pipe = diffusers.MarigoldDepthPipeline.from_pretrained(
-      "prs-eth/marigold-depth-v1-1", variant="fp16", torch_dtype=torch.float16
+      "prs-eth/marigold-depth-v1-1", variant="fp16", dtype=torch.float16
   ).to("cuda")
 
   pipe.vae.set_attn_processor(AttnProcessor2_0()) 
@@ -442,10 +442,10 @@ path_in = "https://huggingface.co/spaces/prs-eth/marigold-lcm/resolve/c7adb54279
 path_out = "obama_depth.gif"
 
 pipe = diffusers.MarigoldDepthPipeline.from_pretrained(
-    "prs-eth/marigold-depth-v1-1", variant="fp16", torch_dtype=torch.float16
+    "prs-eth/marigold-depth-v1-1", variant="fp16", dtype=torch.float16
 ).to(device)
 pipe.vae = diffusers.AutoencoderTiny.from_pretrained(
-    "madebyollin/taesd", torch_dtype=torch.float16
+    "madebyollin/taesd", dtype=torch.float16
 ).to(device)
 pipe.unet.set_attn_processor(AttnProcessor2_0())
 pipe.vae = torch.compile(pipe.vae, mode="reduce-overhead", fullgraph=True)
@@ -513,7 +513,7 @@ image = diffusers.utils.load_image(
 )
 
 pipe = diffusers.MarigoldDepthPipeline.from_pretrained(
-    "prs-eth/marigold-depth-v1-1", torch_dtype=torch.float16, variant="fp16"
+    "prs-eth/marigold-depth-v1-1", dtype=torch.float16, variant="fp16"
 ).to(device)
 
 depth_image = pipe(image, generator=generator).prediction
@@ -521,10 +521,10 @@ depth_image = pipe.image_processor.visualize_depth(depth_image, color_map="binar
 depth_image[0].save("motorcycle_controlnet_depth.png")
 
 controlnet = diffusers.ControlNetModel.from_pretrained(
-    "diffusers/controlnet-depth-sdxl-1.0", torch_dtype=torch.float16, variant="fp16"
+    "diffusers/controlnet-depth-sdxl-1.0", dtype=torch.float16, variant="fp16"
 ).to(device)
 pipe = diffusers.StableDiffusionXLControlNetPipeline.from_pretrained(
-    "SG161222/RealVisXL_V4.0", torch_dtype=torch.float16, variant="fp16", controlnet=controlnet
+    "SG161222/RealVisXL_V4.0", dtype=torch.float16, variant="fp16", controlnet=controlnet
 ).to(device)
 pipe.scheduler = diffusers.DPMSolverMultistepScheduler.from_config(pipe.scheduler.config, use_karras_sigmas=True)
 
@@ -606,7 +606,7 @@ import diffusers
 import torch
 
 pipe = diffusers.MarigoldDepthPipeline.from_pretrained(
-    "prs-eth/marigold-depth-v1-1", variant="fp16", torch_dtype=torch.float16
+    "prs-eth/marigold-depth-v1-1", variant="fp16", dtype=torch.float16
 ).to("cuda")
 
 image = diffusers.utils.load_image("https://marigoldmonodepth.github.io/images/einstein.jpg")

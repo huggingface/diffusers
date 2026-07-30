@@ -49,7 +49,7 @@ from diffusers import HunyuanDiTPipeline
 import torch
 
 pipeline = HunyuanDiTPipeline.from_pretrained(
-	"Tencent-Hunyuan/HunyuanDiT-Diffusers", torch_dtype=torch.float16
+	"Tencent-Hunyuan/HunyuanDiT-Diffusers", dtype=torch.float16
 ).to("cuda")
 ```
 
