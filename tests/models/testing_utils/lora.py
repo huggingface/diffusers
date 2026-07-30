@@ -325,11 +325,26 @@ class LoraTesterMixin:
             "init_lora_weights": False,
         }
         model.add_adapter(LoraConfig(**lora_config_kwargs, lora_bias=False), adapter_name="adapter-1")
+        # `init_lora_weights=False` initializes `lora_A`/`lora_B` randomly, so keep a copy of them and reuse them for
+        # the `lora_bias=True` adapter below. Otherwise the two adapters would differ by their random init and not by
+        # the presence of the LoRA bias.
+        lora_weights = {k: v.clone() for k, v in get_peft_model_state_dict(model, adapter_name="adapter-1").items()}
         torch.manual_seed(0)
         lora_bias_false_output = self._model_output(model, inputs_dict)
         model.delete_adapters("adapter-1")
 
         model.add_adapter(LoraConfig(**lora_config_kwargs, lora_bias=True), adapter_name="adapter-1")
+        # `lora_weights` has no bias entries, so the (randomly initialized, non-zero as `init_lora_weights=False`)
+        # `lora_B` biases are left untouched and are the only difference w.r.t. the `lora_bias=False` adapter.
+        set_peft_model_state_dict(model, lora_weights, adapter_name="adapter-1")
+        lora_biases = [
+            module.lora_B["adapter-1"].bias
+            for module in model.modules()
+            if isinstance(module, BaseTunerLayer) and hasattr(module, "lora_B")
+        ]
+        assert all(bias is not None and bias.abs().sum() > 0 for bias in lora_biases), (
+            "LoRA biases should be non-zero."
+        )
         torch.manual_seed(0)
         lora_bias_true_output = self._model_output(model, inputs_dict)
 
