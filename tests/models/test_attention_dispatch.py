@@ -52,14 +52,20 @@ class _TemplatedAttentionOp(torch.autograd.Function):
     ],
     ids=["cudnn", "native_flash"],
 )
-def test_templated_attention_op_gradients(forward_op, backward_op):
+@pytest.mark.parametrize(
+    "batch_size,seq_len,num_heads,head_dim",
+    [(2, 16, 16, 64), (2, 1024, 24, 64)],
+    ids=["heads_eq_seq_len", "dit_like"],
+)
+def test_templated_attention_op_gradients(batch_size, seq_len, num_heads, head_dim, forward_op, backward_op):
     """Gradients from the templated forward/backward op pairs must match an eager fp32 reference.
 
-    `num_heads == seq_len` on purpose so that a (B, S, H, D) / (B, H, S, D) layout mix-up cannot be
-    hidden by a shape mismatch. See https://github.com/huggingface/diffusers/issues/14338.
+    The first shape has `num_heads == seq_len` so that a (B, S, H, D) / (B, H, S, D) layout mix-up
+    cannot be hidden by a shape mismatch; it corrupts the gradients instead. The second has
+    `num_heads != seq_len`, where the same mix-up makes the backend reject the head count outright.
+    See https://github.com/huggingface/diffusers/issues/14338.
     """
     torch.manual_seed(0)
-    batch_size, seq_len, num_heads, head_dim = 2, 16, 16, 64
     shape = (batch_size, seq_len, num_heads, head_dim)
     query, key, value, grad_out = (
         torch.randn(shape, device="cuda", dtype=torch.bfloat16, requires_grad=True) for _ in range(4)
