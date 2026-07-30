@@ -84,7 +84,6 @@ To create the package for PyPI.
     you need to go back to main before executing this.
 """
 
-import os
 import re
 import sys
 
@@ -99,7 +98,6 @@ _deps = [
     "accelerate>=0.31.0",
     "datasets",
     "filelock",
-    "flax>=0.4.1",
     "ftfy",
     "hf-doc-builder>=0.3.0",
     "httpx<1.0.0",
@@ -108,8 +106,6 @@ _deps = [
     "importlib_metadata",
     "invisible-watermark>=0.2.0",
     "isort>=5.5.4",
-    "jax>=0.4.1",
-    "jaxlib>=0.4.1",
     "Jinja2",
     "torchsde",
     "note_seq",
@@ -257,14 +253,7 @@ extras["torchao"] = deps_list("torchao", "accelerate")
 extras["nvidia_modelopt"] = deps_list("nvidia_modelopt[hf]")
 extras["flashpack"] = deps_list("flashpack")
 
-if os.name == "nt":  # windows
-    extras["flax"] = []  # jax is not supported on windows
-else:
-    extras["flax"] = deps_list("jax", "jaxlib", "flax")
-
-extras["dev"] = (
-    extras["quality"] + extras["test"] + extras["training"] + extras["docs"] + extras["torch"] + extras["flax"]
-)
+extras["dev"] = extras["quality"] + extras["test"] + extras["training"] + extras["docs"] + extras["torch"]
 
 install_requires = [
     deps["importlib_metadata"],
@@ -283,10 +272,10 @@ version_range_max = max(sys.version_info[1], 10) + 1
 setup(
     name="diffusers",
     version="0.40.0.dev0",  # expected format is one of x.y.z.dev0, or x.y.z.rc1 or x.y.z (no to dashes, yes to dots)
-    description="State-of-the-art diffusion in PyTorch and JAX.",
+    description="State-of-the-art diffusion in PyTorch.",
     long_description=open("README.md", "r", encoding="utf-8").read(),
     long_description_content_type="text/markdown",
-    keywords="deep learning diffusion jax pytorch stable diffusion audioldm",
+    keywords="deep learning diffusion pytorch stable diffusion audioldm",
     license="Apache 2.0 License",
     author="The Hugging Face team (past and future) with the help of all our contributors (https://github.com/huggingface/diffusers/graphs/contributors)",
     author_email="diffusers@huggingface.co",

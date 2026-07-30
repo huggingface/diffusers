@@ -45,7 +45,7 @@ width = 768
 height = 512
 
 pipe = LTX2Pipeline.from_pretrained(
-    "Lightricks/LTX-2", torch_dtype=torch.bfloat16
+    "Lightricks/LTX-2", dtype=torch.bfloat16
 )
 pipe.enable_sequential_cpu_offload(device=device)
 
@@ -71,7 +71,7 @@ video_latent, audio_latent = pipe(
 latent_upsampler = LTX2LatentUpsamplerModel.from_pretrained(
     "Lightricks/LTX-2",
     subfolder="latent_upsampler",
-    torch_dtype=torch.bfloat16,
+    dtype=torch.bfloat16,
 )
 upsample_pipe = LTX2LatentUpsamplePipeline(vae=pipe.vae, latent_upsampler=latent_upsampler)
 upsample_pipe.enable_model_cpu_offload(device=device)
@@ -134,7 +134,7 @@ generator = torch.Generator(device).manual_seed(random_seed)
 model_path = "rootonchair/LTX-2-19b-distilled"
 
 pipe = LTX2Pipeline.from_pretrained(
-    model_path, torch_dtype=torch.bfloat16
+    model_path, dtype=torch.bfloat16
 )
 pipe.enable_sequential_cpu_offload(device=device)
 
@@ -160,7 +160,7 @@ video_latent, audio_latent = pipe(
 latent_upsampler = LTX2LatentUpsamplerModel.from_pretrained(
     model_path,
     subfolder="latent_upsampler",
-    torch_dtype=torch.bfloat16,
+    dtype=torch.bfloat16,
 )
 upsample_pipe = LTX2LatentUpsamplePipeline(vae=pipe.vae, latent_upsampler=latent_upsampler)
 upsample_pipe.enable_model_cpu_offload(device=device)
@@ -213,7 +213,7 @@ random_seed = 42
 generator = torch.Generator(device).manual_seed(random_seed)
 model_path = "rootonchair/LTX-2-19b-distilled"
 
-pipe = LTX2ConditionPipeline.from_pretrained(model_path, torch_dtype=torch.bfloat16)
+pipe = LTX2ConditionPipeline.from_pretrained(model_path, dtype=torch.bfloat16)
 pipe.enable_sequential_cpu_offload(device=device)
 pipe.vae.enable_tiling()
 
@@ -253,7 +253,7 @@ video_latent, audio_latent = pipe(
 latent_upsampler = LTX2LatentUpsamplerModel.from_pretrained(
     model_path,
     subfolder="latent_upsampler",
-    torch_dtype=torch.bfloat16,
+    dtype=torch.bfloat16,
 )
 upsample_pipe = LTX2LatentUpsamplePipeline(vae=pipe.vae, latent_upsampler=latent_upsampler)
 upsample_pipe.enable_model_cpu_offload(device=device)
@@ -303,7 +303,7 @@ random_seed = 42
 generator = torch.Generator(device).manual_seed(random_seed)
 model_path = "rootonchair/LTX-2-19b-distilled"
 
-pipe = LTX2ConditionPipeline.from_pretrained(model_path, torch_dtype=torch.bfloat16)
+pipe = LTX2ConditionPipeline.from_pretrained(model_path, dtype=torch.bfloat16)
 pipe.enable_sequential_cpu_offload(device=device)
 pipe.vae.enable_tiling()
 
@@ -379,7 +379,7 @@ frame_rate = 24.0
 generator = torch.Generator(device).manual_seed(random_seed)
 model_path = "diffusers/LTX-2.3-Diffusers"
 
-pipe = LTX2ImageToVideoPipeline.from_pretrained(model_path, torch_dtype=torch.bfloat16)
+pipe = LTX2ImageToVideoPipeline.from_pretrained(model_path, dtype=torch.bfloat16)
 pipe.enable_sequential_cpu_offload(device=device)
 pipe.vae.enable_tiling()
 
@@ -451,7 +451,7 @@ frame_rate = 24.0
 generator = torch.Generator(device).manual_seed(random_seed)
 model_path = "diffusers/LTX-2.3-Diffusers"
 
-pipe = LTX2Pipeline.from_pretrained(model_path, torch_dtype=torch.bfloat16)
+pipe = LTX2Pipeline.from_pretrained(model_path, dtype=torch.bfloat16)
 pipe.enable_model_cpu_offload(device=device)
 pipe.vae.enable_tiling()
 if getattr(pipe, "processor", None) is None:

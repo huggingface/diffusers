@@ -380,10 +380,10 @@ class StableDiffusionPipelineFastTests(
 
     def test_stable_diffusion_no_safety_checker(self):
         pipe = StableDiffusionPipeline.from_pretrained(
-            "hf-internal-testing/tiny-stable-diffusion-lms-pipe", safety_checker=None
+            "hf-internal-testing/tiny-stable-diffusion-torch", safety_checker=None
         )
         assert isinstance(pipe, StableDiffusionPipeline)
-        assert isinstance(pipe.scheduler, LMSDiscreteScheduler)
+        assert isinstance(pipe.scheduler, PNDMScheduler)
         assert pipe.safety_checker is None
 
         image = pipe("example prompt", num_inference_steps=2).images[0]

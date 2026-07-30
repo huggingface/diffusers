@@ -17,7 +17,7 @@ The model can be loaded with the following code snippet.
 ```python
 from diffusers import LongCatImageTransformer2DModel
 
-transformer = LongCatImageTransformer2DModel.from_pretrained("meituan-longcat/LongCat-Image ", subfolder="transformer", torch_dtype=torch.bfloat16)
+transformer = LongCatImageTransformer2DModel.from_pretrained("meituan-longcat/LongCat-Image ", subfolder="transformer", dtype=torch.bfloat16)
 ```
 
 ## LongCatImageTransformer2DModel

@@ -25,7 +25,7 @@ from diffusers.utils import load_image, make_image_grid
 
 pipeline = StableDiffusionDepth2ImgPipeline.from_pretrained(
     "stabilityai/stable-diffusion-2-depth",
-    torch_dtype=torch.float16,
+    dtype=torch.float16,
     use_safetensors=True,
 ).to("cuda")
 ```

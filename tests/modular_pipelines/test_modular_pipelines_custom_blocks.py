@@ -19,6 +19,7 @@ from collections import deque
 from typing import List
 
 import numpy as np
+import pytest
 import torch
 
 from diffusers import FluxTransformer2DModel
@@ -379,8 +380,8 @@ class TestModularCustomBlocks:
             loaded_pipe.update_components(custom_model=custom_model)
             assert getattr(loaded_pipe, "custom_model", None) is not None
 
-    def test_automodel_type_hint_preserves_torch_dtype(self, tmp_path):
-        """Regression test for #13271: torch_dtype was incorrectly removed when type_hint is AutoModel."""
+    def test_automodel_type_hint_preserves_dtype(self, tmp_path):
+        """Regression test for #13271: dtype was incorrectly removed when type_hint is AutoModel."""
         from diffusers import AutoModel
 
         model_dir = str(tmp_path / "model")
@@ -412,9 +413,26 @@ class TestModularCustomBlocks:
 
         block = DtypeTestBlock()
         pipe = block.init_pipeline()
-        pipe.load_components(torch_dtype=torch.float16, trust_remote_code=True)
+        pipe.load_components(dtype=torch.float16, trust_remote_code=True)
 
         assert pipe.model.dtype == torch.float16
+
+    def test_component_spec_load_torch_dtype_is_deprecated(self, tmp_path):
+        from diffusers import AutoModel
+
+        model_dir = str(tmp_path / "model")
+        os.makedirs(model_dir)
+        _create_tiny_model_dir(model_dir)
+
+        spec = ComponentSpec("model", AutoModel, pretrained_model_name_or_path=model_dir)
+
+        with pytest.warns(FutureWarning, match="torch_dtype"):
+            component = spec.load(torch_dtype=torch.float16, trust_remote_code=True)
+        # The deprecated argument is still honoured until it is removed.
+        assert component.dtype == torch.float16
+
+        with pytest.raises(ValueError, match="passed both `dtype` and `torch_dtype`"):
+            spec.load(dtype=torch.float16, torch_dtype=torch.float16, trust_remote_code=True)
 
     @require_torch_accelerator
     def test_automodel_type_hint_preserves_device(self, tmp_path):
@@ -707,7 +725,7 @@ class TestKreaCustomBlocksIntegration:
         pipe.load_components(
             trust_remote_code=True,
             device_map="cuda",
-            torch_dtype={"default": torch.bfloat16, "vae": torch.float16},
+            dtype={"default": torch.bfloat16, "vae": torch.float16},
         )
         assert len(pipe.components) == 7
         assert sorted(pipe.components) == sorted(
@@ -720,7 +738,7 @@ class TestKreaCustomBlocksIntegration:
         pipe.load_components(
             trust_remote_code=True,
             device_map="cuda",
-            torch_dtype={"default": torch.bfloat16, "vae": torch.float16},
+            dtype={"default": torch.bfloat16, "vae": torch.float16},
         )
 
         num_frames_per_block = 2

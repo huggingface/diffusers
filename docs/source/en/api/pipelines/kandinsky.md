@@ -48,8 +48,8 @@ To use the Kandinsky models for any task, you always start by setting up the pri
 from diffusers import KandinskyPriorPipeline, KandinskyPipeline
 import torch
 
-prior_pipeline = KandinskyPriorPipeline.from_pretrained("kandinsky-community/kandinsky-2-1-prior", torch_dtype=torch.float16).to("cuda")
-pipeline = KandinskyPipeline.from_pretrained("kandinsky-community/kandinsky-2-1", torch_dtype=torch.float16).to("cuda")
+prior_pipeline = KandinskyPriorPipeline.from_pretrained("kandinsky-community/kandinsky-2-1-prior", dtype=torch.float16).to("cuda")
+pipeline = KandinskyPipeline.from_pretrained("kandinsky-community/kandinsky-2-1", dtype=torch.float16).to("cuda")
 
 prompt = "A alien cheeseburger creature eating itself, claymation, cinematic, moody lighting"
 negative_prompt = "low quality, bad quality" # optional to include a negative prompt, but results are usually better
@@ -74,8 +74,8 @@ image
 from diffusers import KandinskyV22PriorPipeline, KandinskyV22Pipeline
 import torch
 
-prior_pipeline = KandinskyV22PriorPipeline.from_pretrained("kandinsky-community/kandinsky-2-2-prior", torch_dtype=torch.float16).to("cuda")
-pipeline = KandinskyV22Pipeline.from_pretrained("kandinsky-community/kandinsky-2-2-decoder", torch_dtype=torch.float16).to("cuda")
+prior_pipeline = KandinskyV22PriorPipeline.from_pretrained("kandinsky-community/kandinsky-2-2-prior", dtype=torch.float16).to("cuda")
+pipeline = KandinskyV22Pipeline.from_pretrained("kandinsky-community/kandinsky-2-2-decoder", dtype=torch.float16).to("cuda")
 
 prompt = "A alien cheeseburger creature eating itself, claymation, cinematic, moody lighting"
 negative_prompt = "low quality, bad quality" # optional to include a negative prompt, but results are usually better
@@ -102,7 +102,7 @@ Kandinsky 3 doesn't require a prior model so you can directly load the [`Kandins
 from diffusers import Kandinsky3Pipeline
 import torch
 
-pipeline = Kandinsky3Pipeline.from_pretrained("kandinsky-community/kandinsky-3", variant="fp16", torch_dtype=torch.float16)
+pipeline = Kandinsky3Pipeline.from_pretrained("kandinsky-community/kandinsky-3", variant="fp16", dtype=torch.float16)
 pipeline.enable_model_cpu_offload()
 
 prompt = "A alien cheeseburger creature eating itself, claymation, cinematic, moody lighting"
@@ -124,7 +124,7 @@ Use the [`AutoPipelineForText2Image`] to automatically call the combined pipelin
 from diffusers import AutoPipelineForText2Image
 import torch
 
-pipeline = AutoPipelineForText2Image.from_pretrained("kandinsky-community/kandinsky-2-1", torch_dtype=torch.float16)
+pipeline = AutoPipelineForText2Image.from_pretrained("kandinsky-community/kandinsky-2-1", dtype=torch.float16)
 pipeline.enable_model_cpu_offload()
 
 prompt = "A alien cheeseburger creature eating itself, claymation, cinematic, moody lighting"
@@ -141,7 +141,7 @@ image
 from diffusers import AutoPipelineForText2Image
 import torch
 
-pipeline = AutoPipelineForText2Image.from_pretrained("kandinsky-community/kandinsky-2-2-decoder", torch_dtype=torch.float16)
+pipeline = AutoPipelineForText2Image.from_pretrained("kandinsky-community/kandinsky-2-2-decoder", dtype=torch.float16)
 pipeline.enable_model_cpu_offload()
 
 prompt = "A alien cheeseburger creature eating itself, claymation, cinematic, moody lighting"
@@ -165,8 +165,8 @@ For image-to-image, pass the initial image and text prompt to condition the imag
 import torch
 from diffusers import KandinskyImg2ImgPipeline, KandinskyPriorPipeline
 
-prior_pipeline = KandinskyPriorPipeline.from_pretrained("kandinsky-community/kandinsky-2-1-prior", torch_dtype=torch.float16, use_safetensors=True).to("cuda")
-pipeline = KandinskyImg2ImgPipeline.from_pretrained("kandinsky-community/kandinsky-2-1", torch_dtype=torch.float16, use_safetensors=True).to("cuda")
+prior_pipeline = KandinskyPriorPipeline.from_pretrained("kandinsky-community/kandinsky-2-1-prior", dtype=torch.float16, use_safetensors=True).to("cuda")
+pipeline = KandinskyImg2ImgPipeline.from_pretrained("kandinsky-community/kandinsky-2-1", dtype=torch.float16, use_safetensors=True).to("cuda")
 ```
 
 </hfoption>
@@ -176,8 +176,8 @@ pipeline = KandinskyImg2ImgPipeline.from_pretrained("kandinsky-community/kandins
 import torch
 from diffusers import KandinskyV22Img2ImgPipeline, KandinskyPriorPipeline
 
-prior_pipeline = KandinskyPriorPipeline.from_pretrained("kandinsky-community/kandinsky-2-2-prior", torch_dtype=torch.float16, use_safetensors=True).to("cuda")
-pipeline = KandinskyV22Img2ImgPipeline.from_pretrained("kandinsky-community/kandinsky-2-2-decoder", torch_dtype=torch.float16, use_safetensors=True).to("cuda")
+prior_pipeline = KandinskyPriorPipeline.from_pretrained("kandinsky-community/kandinsky-2-2-prior", dtype=torch.float16, use_safetensors=True).to("cuda")
+pipeline = KandinskyV22Img2ImgPipeline.from_pretrained("kandinsky-community/kandinsky-2-2-decoder", dtype=torch.float16, use_safetensors=True).to("cuda")
 ```
 
 </hfoption>
@@ -190,7 +190,7 @@ from diffusers import Kandinsky3Img2ImgPipeline
 from diffusers.utils import load_image
 import torch
 
-pipeline = Kandinsky3Img2ImgPipeline.from_pretrained("kandinsky-community/kandinsky-3", variant="fp16", torch_dtype=torch.float16)
+pipeline = Kandinsky3Img2ImgPipeline.from_pretrained("kandinsky-community/kandinsky-3", variant="fp16", dtype=torch.float16)
 pipeline.enable_model_cpu_offload()
 ```
 
@@ -274,7 +274,7 @@ from diffusers import AutoPipelineForImage2Image
 from diffusers.utils import make_image_grid, load_image
 import torch
 
-pipeline = AutoPipelineForImage2Image.from_pretrained("kandinsky-community/kandinsky-2-1", torch_dtype=torch.float16, use_safetensors=True)
+pipeline = AutoPipelineForImage2Image.from_pretrained("kandinsky-community/kandinsky-2-1", dtype=torch.float16, use_safetensors=True)
 pipeline.enable_model_cpu_offload()
 
 prompt = "A fantasy landscape, Cinematic lighting"
@@ -297,7 +297,7 @@ from diffusers import AutoPipelineForImage2Image
 from diffusers.utils import make_image_grid, load_image
 import torch
 
-pipeline = AutoPipelineForImage2Image.from_pretrained("kandinsky-community/kandinsky-2-2-decoder", torch_dtype=torch.float16)
+pipeline = AutoPipelineForImage2Image.from_pretrained("kandinsky-community/kandinsky-2-2-decoder", dtype=torch.float16)
 pipeline.enable_model_cpu_offload()
 
 prompt = "A fantasy landscape, Cinematic lighting"
@@ -341,8 +341,8 @@ import torch
 import numpy as np
 from PIL import Image
 
-prior_pipeline = KandinskyPriorPipeline.from_pretrained("kandinsky-community/kandinsky-2-1-prior", torch_dtype=torch.float16, use_safetensors=True).to("cuda")
-pipeline = KandinskyInpaintPipeline.from_pretrained("kandinsky-community/kandinsky-2-1-inpaint", torch_dtype=torch.float16, use_safetensors=True).to("cuda")
+prior_pipeline = KandinskyPriorPipeline.from_pretrained("kandinsky-community/kandinsky-2-1-prior", dtype=torch.float16, use_safetensors=True).to("cuda")
+pipeline = KandinskyInpaintPipeline.from_pretrained("kandinsky-community/kandinsky-2-1-inpaint", dtype=torch.float16, use_safetensors=True).to("cuda")
 ```
 
 </hfoption>
@@ -355,8 +355,8 @@ import torch
 import numpy as np
 from PIL import Image
 
-prior_pipeline = KandinskyV22PriorPipeline.from_pretrained("kandinsky-community/kandinsky-2-2-prior", torch_dtype=torch.float16, use_safetensors=True).to("cuda")
-pipeline = KandinskyV22InpaintPipeline.from_pretrained("kandinsky-community/kandinsky-2-2-decoder-inpaint", torch_dtype=torch.float16, use_safetensors=True).to("cuda")
+prior_pipeline = KandinskyV22PriorPipeline.from_pretrained("kandinsky-community/kandinsky-2-2-prior", dtype=torch.float16, use_safetensors=True).to("cuda")
+pipeline = KandinskyV22InpaintPipeline.from_pretrained("kandinsky-community/kandinsky-2-2-decoder-inpaint", dtype=torch.float16, use_safetensors=True).to("cuda")
 ```
 
 </hfoption>
@@ -421,7 +421,7 @@ from PIL import Image
 from diffusers import AutoPipelineForInpainting
 from diffusers.utils import load_image, make_image_grid
 
-pipe = AutoPipelineForInpainting.from_pretrained("kandinsky-community/kandinsky-2-1-inpaint", torch_dtype=torch.float16)
+pipe = AutoPipelineForInpainting.from_pretrained("kandinsky-community/kandinsky-2-1-inpaint", dtype=torch.float16)
 pipe.enable_model_cpu_offload()
 
 init_image = load_image("https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/kandinsky/cat.png")
@@ -445,7 +445,7 @@ from PIL import Image
 from diffusers import AutoPipelineForInpainting
 from diffusers.utils import load_image, make_image_grid
 
-pipe = AutoPipelineForInpainting.from_pretrained("kandinsky-community/kandinsky-2-2-decoder-inpaint", torch_dtype=torch.float16)
+pipe = AutoPipelineForInpainting.from_pretrained("kandinsky-community/kandinsky-2-2-decoder-inpaint", dtype=torch.float16)
 pipe.enable_model_cpu_offload()
 
 init_image = load_image("https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/kandinsky/cat.png")
@@ -474,7 +474,7 @@ from diffusers import KandinskyPriorPipeline, KandinskyPipeline
 from diffusers.utils import load_image, make_image_grid
 import torch
 
-prior_pipeline = KandinskyPriorPipeline.from_pretrained("kandinsky-community/kandinsky-2-1-prior", torch_dtype=torch.float16, use_safetensors=True).to("cuda")
+prior_pipeline = KandinskyPriorPipeline.from_pretrained("kandinsky-community/kandinsky-2-1-prior", dtype=torch.float16, use_safetensors=True).to("cuda")
 img_1 = load_image("https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/kandinsky/cat.png")
 img_2 = load_image("https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/kandinsky/starry_night.jpeg")
 make_image_grid([img_1.resize((512,512)), img_2.resize((512,512))], rows=1, cols=2)
@@ -488,7 +488,7 @@ from diffusers import KandinskyV22PriorPipeline, KandinskyV22Pipeline
 from diffusers.utils import load_image, make_image_grid
 import torch
 
-prior_pipeline = KandinskyV22PriorPipeline.from_pretrained("kandinsky-community/kandinsky-2-2-prior", torch_dtype=torch.float16, use_safetensors=True).to("cuda")
+prior_pipeline = KandinskyV22PriorPipeline.from_pretrained("kandinsky-community/kandinsky-2-2-prior", dtype=torch.float16, use_safetensors=True).to("cuda")
 img_1 = load_image("https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/kandinsky/cat.png")
 img_2 = load_image("https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/kandinsky/starry_night.jpeg")
 make_image_grid([img_1.resize((512,512)), img_2.resize((512,512))], rows=1, cols=2)
@@ -525,7 +525,7 @@ Call the `interpolate` function to generate the embeddings, and then pass them t
 prompt = ""
 prior_out = prior_pipeline.interpolate(images_texts, weights)
 
-pipeline = KandinskyPipeline.from_pretrained("kandinsky-community/kandinsky-2-1", torch_dtype=torch.float16, use_safetensors=True).to("cuda")
+pipeline = KandinskyPipeline.from_pretrained("kandinsky-community/kandinsky-2-1", dtype=torch.float16, use_safetensors=True).to("cuda")
 
 image = pipeline(prompt, **prior_out, height=768, width=768).images[0]
 image
@@ -543,7 +543,7 @@ image
 prompt = ""
 prior_out = prior_pipeline.interpolate(images_texts, weights)
 
-pipeline = KandinskyV22Pipeline.from_pretrained("kandinsky-community/kandinsky-2-2-decoder", torch_dtype=torch.float16, use_safetensors=True).to("cuda")
+pipeline = KandinskyV22Pipeline.from_pretrained("kandinsky-community/kandinsky-2-2-decoder", dtype=torch.float16, use_safetensors=True).to("cuda")
 
 image = pipeline(prompt, **prior_out, height=768, width=768).images[0]
 image
@@ -607,11 +607,11 @@ Load the prior pipeline and the [`KandinskyV22ControlnetPipeline`]:
 from diffusers import KandinskyV22PriorPipeline, KandinskyV22ControlnetPipeline
 
 prior_pipeline = KandinskyV22PriorPipeline.from_pretrained(
-    "kandinsky-community/kandinsky-2-2-prior", torch_dtype=torch.float16, use_safetensors=True
+    "kandinsky-community/kandinsky-2-2-prior", dtype=torch.float16, use_safetensors=True
 ).to("cuda")
 
 pipeline = KandinskyV22ControlnetPipeline.from_pretrained(
-    "kandinsky-community/kandinsky-2-2-controlnet-depth", torch_dtype=torch.float16
+    "kandinsky-community/kandinsky-2-2-controlnet-depth", dtype=torch.float16
 ).to("cuda")
 ```
 
@@ -677,11 +677,11 @@ Load the prior pipeline and the [`KandinskyV22ControlnetImg2ImgPipeline`]:
 
 ```py
 prior_pipeline = KandinskyV22PriorEmb2EmbPipeline.from_pretrained(
-    "kandinsky-community/kandinsky-2-2-prior", torch_dtype=torch.float16, use_safetensors=True
+    "kandinsky-community/kandinsky-2-2-prior", dtype=torch.float16, use_safetensors=True
 ).to("cuda")
 
 pipeline = KandinskyV22ControlnetImg2ImgPipeline.from_pretrained(
-    "kandinsky-community/kandinsky-2-2-controlnet-depth", torch_dtype=torch.float16
+    "kandinsky-community/kandinsky-2-2-controlnet-depth", dtype=torch.float16
 ).to("cuda")
 ```
 
@@ -718,7 +718,7 @@ Kandinsky is unique because it requires a prior pipeline to generate the mapping
   from diffusers import DiffusionPipeline
   import torch
 
-  pipe = DiffusionPipeline.from_pretrained("kandinsky-community/kandinsky-2-1", torch_dtype=torch.float16)
+  pipe = DiffusionPipeline.from_pretrained("kandinsky-community/kandinsky-2-1", dtype=torch.float16)
 + pipe.enable_xformers_memory_efficient_attention()
 ```
 
@@ -743,7 +743,7 @@ pipe.unet.set_attn_processor(AttnAddedKVProcessor2_0())
   from diffusers import DiffusionPipeline
   import torch
 
-  pipe = DiffusionPipeline.from_pretrained("kandinsky-community/kandinsky-2-1", torch_dtype=torch.float16)
+  pipe = DiffusionPipeline.from_pretrained("kandinsky-community/kandinsky-2-1", dtype=torch.float16)
 + pipe.enable_model_cpu_offload()
 ```
 
@@ -754,7 +754,7 @@ from diffusers import DDPMScheduler
 from diffusers import DiffusionPipeline
 
 scheduler = DDPMScheduler.from_pretrained("kandinsky-community/kandinsky-2-1", subfolder="ddpm_scheduler")
-pipe = DiffusionPipeline.from_pretrained("kandinsky-community/kandinsky-2-1", scheduler=scheduler, torch_dtype=torch.float16, use_safetensors=True).to("cuda")
+pipe = DiffusionPipeline.from_pretrained("kandinsky-community/kandinsky-2-1", scheduler=scheduler, dtype=torch.float16, use_safetensors=True).to("cuda")
 ```
 
 ## KandinskyPriorPipeline

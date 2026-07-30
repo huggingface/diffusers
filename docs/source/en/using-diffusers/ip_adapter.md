@@ -28,7 +28,7 @@ from diffusers.utils import load_image
 
 pipeline = AutoPipelineForText2Image.from_pretrained(
   "stabilityai/stable-diffusion-xl-base-1.0",
-  torch_dtype=torch.float16
+  dtype=torch.float16
 ).to("cuda")
 pipeline.load_ip_adapter(
   "h94/IP-Adapter",
@@ -72,7 +72,7 @@ from diffusers.utils import load_image
 
 pipeline = AutoPipelineForImage2Image.from_pretrained(
   "stabilityai/stable-diffusion-xl-base-1.0",
-  torch_dtype=torch.float16
+  dtype=torch.float16
 ).to("cuda")
 pipeline.load_ip_adapter(
   "h94/IP-Adapter",
@@ -116,7 +116,7 @@ from diffusers.utils import load_image
 
 pipeline = AutoPipelineForImage2Image.from_pretrained(
   "stabilityai/stable-diffusion-xl-base-1.0",
-  torch_dtype=torch.float16
+  dtype=torch.float16
 ).to("cuda")
 pipeline.load_ip_adapter(
   "h94/IP-Adapter",
@@ -164,12 +164,12 @@ from diffusers.utils import load_image
 
 adapter = MotionAdapter.from_pretrained(
   "guoyww/animatediff-motion-adapter-v1-5-2",
-  torch_dtype=torch.float16
+  dtype=torch.float16
 )
 pipeline = AnimateDiffPipeline.from_pretrained(
   "emilianJR/epiCRealism",
   motion_adapter=adapter,
-  torch_dtype=torch.float16
+  dtype=torch.float16
 )
 scheduler = DDIMScheduler.from_pretrained(
     "emilianJR/epiCRealism",
@@ -223,13 +223,13 @@ from transformers import CLIPVisionModelWithProjection, AutoPipelineForText2Imag
 image_encoder = CLIPVisionModelWithProjection.from_pretrained(
     "h94/IP-Adapter",
     subfolder="models/image_encoder",
-    torch_dtype=torch.float16
+    dtype=torch.float16
 )
 
 pipeline = AutoPipelineForText2Image.from_pretrained(
     "stabilityai/stable-diffusion-xl-base-1.0",
     image_encoder=image_encoder,
-    torch_dtype=torch.float16
+    dtype=torch.float16
 ).to("cuda")
 
 pipeline.load_ip_adapter(
@@ -248,7 +248,7 @@ from transformers import AutoPipelineForText2Image
 
 pipeline = AutoPipelineForText2Image.from_pretrained(
     "stabilityai/stable-diffusion-xl-base-1.0",
-    torch_dtype=torch.float16
+    dtype=torch.float16
 ).to("cuda")
 
 pipeline.load_ip_adapter(
@@ -266,13 +266,13 @@ from transformers import AutoPipelineForText2Image, CLIPVisionModelWithProjectio
 
 image_encoder = CLIPVisionModelWithProjection.from_pretrained(
     "laion/CLIP-ViT-H-14-laion2B-s32B-b79K",
-    torch_dtype=torch.float16,
+    dtype=torch.float16,
 )
 
 pipeline = AutoPipelineForText2Image.from_pretrained(
     "stable-diffusion-v1-5/stable-diffusion-v1-5",
     image_encoder=image_encoder,
-    torch_dtype=torch.float16
+    dtype=torch.float16
 ).to("cuda")
 
 pipeline.load_ip_adapter(
@@ -295,7 +295,7 @@ from diffusers import AutoPipelineForText2Image
 
 pipeline = AutoPipelineForImage2Image.from_pretrained(
   "stabilityai/stable-diffusion-xl-base-1.0",
-  torch_dtype=torch.float16
+  dtype=torch.float16
 ).to("cuda")
 
 image_embeds = pipeline.prepare_ip_adapter_image_embeds(
@@ -346,7 +346,7 @@ from diffusers.utils import load_image
 
 pipeline = AutoPipelineForImage2Image.from_pretrained(
   "stabilityai/stable-diffusion-xl-base-1.0",
-  torch_dtype=torch.float16
+  dtype=torch.float16
 ).to("cuda")
 
 mask1 = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/ip_mask_mask1.png")
@@ -434,7 +434,7 @@ from diffusers.utils import load_image
 
 pipeline = StableDiffusionPipeline.from_pretrained(
   "stable-diffusion-v1-5/stable-diffusion-v1-5",
-  torch_dtype=torch.float16,
+  dtype=torch.float16,
 ).to("cuda")
 pipeline.scheduler = DDIMScheduler.from_config(pipeline.scheduler.config)
 pipeline.load_ip_adapter(
@@ -479,7 +479,7 @@ from insightface.app import FaceAnalysis
 
 pipeline = StableDiffusionPipeline.from_pretrained(
     "stable-diffusion-v1-5/stable-diffusion-v1-5",
-    torch_dtype=torch.float16,
+    dtype=torch.float16,
 ).to("cuda")
 pipeline.scheduler = DDIMScheduler.from_config(pipeline.scheduler.config)
 pipeline.load_ip_adapter(
@@ -539,7 +539,7 @@ from diffusers.utils import load_image
 image_encoder = CLIPVisionModelWithProjection.from_pretrained(
     "h94/IP-Adapter",
     subfolder="models/image_encoder",
-    torch_dtype=torch.float16,
+    dtype=torch.float16,
 )
 ```
 
@@ -551,7 +551,7 @@ Load a base model, scheduler and the following IP-Adapters.
 ```py
 pipeline = AutoPipelineForText2Image.from_pretrained(
     "stabilityai/stable-diffusion-xl-base-1.0",
-    torch_dtype=torch.float16,
+    dtype=torch.float16,
     image_encoder=image_encoder,
 )
 pipeline.scheduler = DDIMScheduler.from_config(pipeline.scheduler.config)
@@ -616,7 +616,7 @@ from diffusers.utils import load_image
 
 pipeline = DiffusionPipeline.from_pretrained(
   "sd-dreambooth-library/herge-style",
-  torch_dtype=torch.float16
+  dtype=torch.float16
 )
 
 pipeline.load_ip_adapter(
@@ -666,13 +666,13 @@ from diffusers import StableDiffusionControlNetPipeline, ControlNetModel
 
 controlnet = ControlNetModel.from_pretrained(
   "lllyasviel/control_v11f1p_sd15_depth",
-  torch_dtype=torch.float16
+  dtype=torch.float16
 )
 
 pipeline = StableDiffusionControlNetPipeline.from_pretrained(
     "stable-diffusion-v1-5/stable-diffusion-v1-5",
     controlnet=controlnet,
-    torch_dtype=torch.float16
+    dtype=torch.float16
 ).to("cuda")
 pipeline.load_ip_adapter(
   "h94/IP-Adapter",
@@ -720,7 +720,7 @@ from diffusers.utils import load_image
 
 pipeline = AutoPipelineForText2Image.from_pretrained(
   "stabilityai/stable-diffusion-xl-base-1.0",
-  torch_dtype=torch.float16
+  dtype=torch.float16
 ).to("cuda")
 pipeline.load_ip_adapter(
   "h94/IP-Adapter",
