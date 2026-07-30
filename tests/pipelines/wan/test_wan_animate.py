@@ -152,7 +152,7 @@ class TestWanAnimatePipeline(WanAnimatePipelineTesterConfig, PipelineTesterMixin
 
         inputs = self.get_dummy_inputs()
         video = pipe(**inputs).frames[0]
-        assert video.shape == (17, 3, 16, 16)
+        assert video.shape == self.output_shape
 
         # fmt: off
         expected_slice = torch.tensor([0.4525, 0.4521, 0.4486, 0.4534, 0.4523, 0.4529, 0.454, 0.4533, 0.5055, 0.5203, 0.5363, 0.4827, 0.5057, 0.5176, 0.5117, 0.5139])
@@ -175,7 +175,7 @@ class TestWanAnimatePipeline(WanAnimatePipelineTesterConfig, PipelineTesterMixin
         inputs["mask_video"] = [Image.new("L", (height, width))] * num_frames
 
         video = pipe(**inputs).frames[0]
-        assert video.shape == (17, 3, 16, 16)
+        assert video.shape == self.output_shape
 
     @pytest.mark.skip(
         reason="Setting the Wan Animate latents to zero at the last denoising step does not guarantee that the output"

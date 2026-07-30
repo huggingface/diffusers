@@ -130,7 +130,7 @@ class TestWanImageToVideoPipeline(WanImageToVideoPipelineTesterConfig, PipelineT
         inputs = self.get_dummy_inputs()
         video = pipe(**inputs).frames
         generated_video = video[0]
-        assert generated_video.shape == (9, 3, 16, 16)
+        assert generated_video.shape == self.output_shape
 
         # fmt: off
         expected_slice = torch.tensor([0.4528, 0.4525, 0.4493, 0.4537, 0.4521, 0.4532, 0.4543, 0.4536, 0.5084, 0.5252, 0.5211, 0.5120, 0.5419, 0.5355, 0.5169, 0.5213])
@@ -275,7 +275,7 @@ class TestWanFLFToVideoPipeline(WanFLFToVideoPipelineTesterConfig, PipelineTeste
         inputs = self.get_dummy_inputs()
         video = pipe(**inputs).frames
         generated_video = video[0]
-        assert generated_video.shape == (9, 3, 16, 16)
+        assert generated_video.shape == self.output_shape
 
         # fmt: off
         expected_slice = torch.tensor([0.4525, 0.4525, 0.4497, 0.4537, 0.4520, 0.4529, 0.4540, 0.4535, 0.5157, 0.5449, 0.5201, 0.5192, 0.5398, 0.5374, 0.5162, 0.5112])
