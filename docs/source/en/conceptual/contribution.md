@@ -332,6 +332,11 @@ Good second issues are usually more difficult to get merged compared to good fir
 
 ### 9. Adding pipelines, models, schedulers
 
+> [!TIP]
+> If you are the model's author, please get in touch so we can coordinate the integration with you: open a feature request, or drop a comment if one is already open.
+>
+> If you are a community contributor, please also let us know you're interested under the feature request, and start with a Hub repo at the same time. See the [Modular Diffusers](../modular_diffusers/overview) guide to get started, and [custom blocks](../modular_diffusers/custom_blocks) for publishing a pipeline as remote code on the Hub.
+
 Pipelines, models, and schedulers are the most important pieces of the Diffusers library.
 They provide easy access to state-of-the-art diffusion technologies and thus allow the community to
 build powerful generative AI applications.
