@@ -75,6 +75,12 @@ def check_module_lora_metadata(parsed_metadata: dict, lora_metadatas: dict, modu
 
 POSSIBLE_ATTENTION_KWARGS_NAMES = ["cross_attention_kwargs", "joint_attention_kwargs", "attention_kwargs"]
 
+# Text encoder keys live here since the architecture of a given text encoder is unlikely to vary across pipelines.
+# Keyed by `config.model_type` — both `CLIPTextModel` and `CLIPTextModelWithProjection` report `clip_text_model`.
+TEXT_ENCODER_TARGET_MODULES = {
+    "clip_text_model": ["q_proj", "k_proj", "v_proj", "out_proj"],
+}
+
 
 def determine_attention_kwargs_name(pipeline_class):
     call_signature_keys = inspect.signature(pipeline_class.__call__).parameters.keys()
@@ -90,7 +96,7 @@ def determine_attention_kwargs_name(pipeline_class):
 @require_peft_backend
 class BaseLoraTesterMixin(BasePipelineOutputMixin):
     """
-    Shared LoRA config fixtures and helpers for the pipeline-level LoRA tester mixins. Not collected on its own —
+    Shared LoRA helpers for the pipeline-level LoRA tester mixins. Not collected on its own —
     compose `LoraTesterMixin`, `LoraMemoryTesterMixin` or `UNetLoraTesterMixin` with a `BasePipelineTesterConfig`
     subclass instead.
 
@@ -105,102 +111,84 @@ class BaseLoraTesterMixin(BasePipelineOutputMixin):
 
     lora_rank = 4
     lora_alpha = 4
-    text_encoder_target_modules = ["q_proj", "k_proj", "v_proj", "out_proj"]
-    denoiser_target_modules = ["to_q", "to_k", "to_v", "to_out.0"]
-    supports_text_encoder_loras = True
+    # Denoiser keys can be overridden per test class since they may vary across architectures. `transformer_2` is
+    # the second denoiser on Wan 2.2-style pipelines, whose attention modules are named like `transformer`'s.
+    denoiser_target_modules = {
+        "unet": ["to_q", "to_k", "to_v", "to_out.0"],
+        "transformer": ["to_q", "to_k", "to_v", "to_out.0"],
+        "transformer_2": ["to_q", "to_k", "to_v", "to_out.0"],
+    }
 
     def setup_method(self):
         if not issubclass(self.pipeline_class, LoraBaseMixin):
             pytest.skip(f"LoRA is not supported for this pipeline ({self.pipeline_class.__name__}).")
 
-    @pytest.fixture
-    def text_lora_config(self):
-        return LoraConfig(
-            r=self.lora_rank,
-            lora_alpha=self.lora_alpha,
-            target_modules=self.text_encoder_target_modules,
-            init_lora_weights=False,
-            use_dora=False,
-        )
+    @property
+    def text_encoder_components(self):
+        """Names of the pipeline's LoRA-loadable text encoders, e.g. `["text_encoder", "text_encoder_2"]`."""
+        return [name for name in self.pipeline_class._lora_loadable_modules if name.startswith("text_encoder")]
 
-    @pytest.fixture
-    def denoiser_lora_config(self):
-        return LoraConfig(
-            r=self.lora_rank,
-            lora_alpha=self.lora_alpha,
-            target_modules=self.denoiser_target_modules,
-            init_lora_weights=False,
-            use_dora=False,
-        )
+    @property
+    def denoiser_components(self):
+        """Names of the pipeline's LoRA-loadable denoisers, e.g. `["unet"]` or `["transformer"]`."""
+        return [name for name in self.pipeline_class._lora_loadable_modules if not name.startswith("text_encoder")]
 
     def get_denoiser(self, pipe):
         return pipe.transformer if hasattr(pipe, "transformer") else pipe.unet
 
-    def _lora_text_encoder_2(self, pipe):
-        """The pipeline's `text_encoder_2` when it exists and supports LoRA loading, else None."""
-        if "text_encoder_2" in self.pipeline_class._lora_loadable_modules:
-            return getattr(pipe, "text_encoder_2", None)
-        return None
+    def get_target_modules(self, name, module):
+        """Return the LoRA `target_modules` for the pipeline component `name`."""
+        if name in self.denoiser_target_modules:
+            return self.denoiser_target_modules[name]
+        if name.startswith("text_encoder"):
+            model_type = module.config.model_type
+            if model_type not in TEXT_ENCODER_TARGET_MODULES:
+                raise ValueError(
+                    f"No LoRA target modules registered for text encoder model_type={model_type!r}. "
+                    f"Add an entry to TEXT_ENCODER_TARGET_MODULES in tests/pipelines/testing_utils/lora.py."
+                )
+            return TEXT_ENCODER_TARGET_MODULES[model_type]
+        raise ValueError(
+            f"Cannot determine LoRA target modules for pipeline component {name!r}. Add an entry to "
+            f"`denoiser_target_modules` on the test class."
+        )
 
-    def add_adapters_to_pipeline(self, pipe, text_lora_config=None, denoiser_lora_config=None, adapter_name="default"):
-        """Attach the given LoRA configs to the pipeline's LoRA-loadable modules. Returns the denoiser (or None)."""
-        if text_lora_config is not None and "text_encoder" in self.pipeline_class._lora_loadable_modules:
-            pipe.text_encoder.add_adapter(text_lora_config, adapter_name=adapter_name)
-            assert check_if_lora_correctly_set(pipe.text_encoder), "Lora not correctly set in text encoder"
+    def add_adapters_to_pipeline(self, pipe, components=None, adapter_name="default", **lora_config_kwargs):
+        """Attach a LoRA adapter to the given components (default: all LoRA-loadable ones).
 
-        denoiser = None
-        if denoiser_lora_config is not None:
-            denoiser = self.get_denoiser(pipe)
-            denoiser.add_adapter(denoiser_lora_config, adapter_name=adapter_name)
-            assert check_if_lora_correctly_set(denoiser), "Lora not correctly set in denoiser."
+        `lora_config_kwargs` override the `LoraConfig` defaults, e.g. `lora_alpha` or `rank_pattern`.
 
-        text_encoder_2 = self._lora_text_encoder_2(pipe)
-        if text_lora_config is not None and text_encoder_2 is not None:
-            text_encoder_2.add_adapter(text_lora_config, adapter_name=adapter_name)
-            assert check_if_lora_correctly_set(text_encoder_2), "Lora not correctly set in text encoder 2"
-
-        return denoiser
+        Returns {component_name: module} for everything adapted, e.g. for passing to
+        `save_lora_weights` via `_get_lora_state_dicts`.
+        """
+        components = components if components is not None else self.pipeline_class._lora_loadable_modules
+        adapted = {}
+        for name in components:
+            module = getattr(pipe, name, None)
+            if module is None:
+                continue
+            config = LoraConfig(
+                **{
+                    "r": self.lora_rank,
+                    "lora_alpha": self.lora_alpha,
+                    "target_modules": self.get_target_modules(name, module),
+                    "init_lora_weights": False,
+                    **lora_config_kwargs,
+                }
+            )
+            module.add_adapter(config, adapter_name=adapter_name)
+            assert check_if_lora_correctly_set(module), f"LoRA not correctly set in {name}"
+            adapted[name] = module
+        return adapted
 
     def _get_lora_state_dicts(self, modules_to_save):
-        state_dicts = {}
-        for module_name, module in modules_to_save.items():
-            if module is not None:
-                state_dicts[f"{module_name}_lora_layers"] = get_peft_model_state_dict(module)
-        return state_dicts
+        return {f"{name}_lora_layers": get_peft_model_state_dict(module) for name, module in modules_to_save.items()}
 
     def _get_lora_adapter_metadata(self, modules_to_save):
-        metadatas = {}
-        for module_name, module in modules_to_save.items():
-            if module is not None:
-                metadatas[f"{module_name}_lora_adapter_metadata"] = module.peft_config["default"].to_dict()
-        return metadatas
-
-    def _get_modules_to_save(self, pipe, has_denoiser=False):
-        modules_to_save = {}
-        lora_loadable_modules = self.pipeline_class._lora_loadable_modules
-
-        if (
-            "text_encoder" in lora_loadable_modules
-            and hasattr(pipe, "text_encoder")
-            and getattr(pipe.text_encoder, "peft_config", None) is not None
-        ):
-            modules_to_save["text_encoder"] = pipe.text_encoder
-
-        if (
-            "text_encoder_2" in lora_loadable_modules
-            and hasattr(pipe, "text_encoder_2")
-            and getattr(pipe.text_encoder_2, "peft_config", None) is not None
-        ):
-            modules_to_save["text_encoder_2"] = pipe.text_encoder_2
-
-        if has_denoiser:
-            if "unet" in lora_loadable_modules and hasattr(pipe, "unet"):
-                modules_to_save["unet"] = pipe.unet
-
-            if "transformer" in lora_loadable_modules and hasattr(pipe, "transformer"):
-                modules_to_save["transformer"] = pipe.transformer
-
-        return modules_to_save
+        return {
+            f"{name}_lora_adapter_metadata": module.peft_config["default"].to_dict()
+            for name, module in modules_to_save.items()
+        }
 
     def _needs_text_encoder_lora_repair(self, pipe) -> bool:
         """
@@ -241,30 +229,29 @@ class LoraTesterMixin(BaseLoraTesterMixin):
     save/load roundtrips and metadata. Runnable on CPU.
     """
 
-    def test_simple_inference_with_text_lora(self, base_pipe_output, text_lora_config):
-        if not self.supports_text_encoder_loras:
-            pytest.skip("Text encoder LoRAs are not currently supported for this pipeline.")
+    def test_simple_inference_with_text_lora(self, base_pipe_output):
+        if not self.text_encoder_components:
+            pytest.skip("Text encoder LoRAs are not supported for this pipeline.")
 
         pipe = self.get_pipeline().to(torch_device)
-        self.add_adapters_to_pipeline(pipe, text_lora_config)
+        self.add_adapters_to_pipeline(pipe, components=self.text_encoder_components)
 
         output_lora = self.run_pipe(pipe)
         assert not torch.allclose(output_lora, base_pipe_output, atol=1e-3, rtol=1e-3), "Lora should change the output"
 
     @require_peft_version_greater("0.13.1")
     @require_transformers_version_greater("4.45.2")
-    def test_low_cpu_mem_usage_with_loading(self, tmp_path, text_lora_config, denoiser_lora_config):
+    def test_low_cpu_mem_usage_with_loading(self, tmp_path):
         """Tests if we can load LoRA state dict with low_cpu_mem_usage."""
         pipe = self.get_pipeline().to(torch_device)
-        self.add_adapters_to_pipeline(pipe, text_lora_config, denoiser_lora_config)
+        adapted = self.add_adapters_to_pipeline(pipe)
 
         images_lora = self.run_pipe(pipe)
 
         needs_lora_repair = self._needs_text_encoder_lora_repair(pipe)
         captured_lora = self._capture_text_encoder_lora_tensors(pipe) if needs_lora_repair else {}
 
-        modules_to_save = self._get_modules_to_save(pipe, has_denoiser=True)
-        lora_state_dicts = self._get_lora_state_dicts(modules_to_save)
+        lora_state_dicts = self._get_lora_state_dicts(adapted)
         self.pipeline_class.save_lora_weights(save_directory=tmp_path, safe_serialization=False, **lora_state_dicts)
 
         assert os.path.isfile(os.path.join(tmp_path, "pytorch_lora_weights.bin"))
@@ -274,8 +261,8 @@ class LoraTesterMixin(BaseLoraTesterMixin):
         if needs_lora_repair:
             self._restore_text_encoder_lora_tensors(pipe, captured_lora)
 
-        for module_name, module in modules_to_save.items():
-            assert check_if_lora_correctly_set(module), f"Lora not correctly set in {module_name}"
+        for name, module in adapted.items():
+            assert check_if_lora_correctly_set(module), f"Lora not correctly set in {name}"
 
         images_lora_from_pretrained = self.run_pipe(pipe)
         assert_tensors_close(
@@ -293,8 +280,8 @@ class LoraTesterMixin(BaseLoraTesterMixin):
         if needs_lora_repair:
             self._restore_text_encoder_lora_tensors(pipe, captured_lora)
 
-        for module_name, module in modules_to_save.items():
-            assert check_if_lora_correctly_set(module), f"Lora not correctly set in {module_name}"
+        for name, module in adapted.items():
+            assert check_if_lora_correctly_set(module), f"Lora not correctly set in {name}"
 
         images_lora_from_pretrained_low_cpu = self.run_pipe(pipe)
         assert_tensors_close(
@@ -305,13 +292,13 @@ class LoraTesterMixin(BaseLoraTesterMixin):
             msg="Loading from saved checkpoints with `low_cpu_mem_usage` should give same results.",
         )
 
-    def test_simple_inference_with_text_lora_and_scale(self, base_pipe_output, text_lora_config):
-        if not self.supports_text_encoder_loras:
-            pytest.skip("Text encoder LoRAs are not currently supported for this pipeline.")
+    def test_simple_inference_with_text_lora_and_scale(self, base_pipe_output):
+        if not self.text_encoder_components:
+            pytest.skip("Text encoder LoRAs are not supported for this pipeline.")
 
         attention_kwargs_name = determine_attention_kwargs_name(self.pipeline_class)
         pipe = self.get_pipeline().to(torch_device)
-        self.add_adapters_to_pipeline(pipe, text_lora_config)
+        self.add_adapters_to_pipeline(pipe, components=self.text_encoder_components)
 
         output_lora = self.run_pipe(pipe)
         assert not torch.allclose(output_lora, base_pipe_output, atol=1e-3, rtol=1e-3), "Lora should change the output"
@@ -330,40 +317,17 @@ class LoraTesterMixin(BaseLoraTesterMixin):
             msg="Lora + 0 scale should lead to same result as no LoRA",
         )
 
-    def test_simple_inference_with_text_lora_fused(self, base_pipe_output, text_lora_config):
-        if not self.supports_text_encoder_loras:
-            pytest.skip("Text encoder LoRAs are not currently supported for this pipeline.")
+    def test_simple_inference_with_text_lora_unloaded(self, base_pipe_output):
+        if not self.text_encoder_components:
+            pytest.skip("Text encoder LoRAs are not supported for this pipeline.")
 
         pipe = self.get_pipeline().to(torch_device)
-        self.add_adapters_to_pipeline(pipe, text_lora_config)
-
-        pipe.fuse_lora()
-        # Fusing should still keep the LoRA layers
-        assert check_if_lora_correctly_set(pipe.text_encoder), "Lora not correctly set in text encoder"
-
-        text_encoder_2 = self._lora_text_encoder_2(pipe)
-        if text_encoder_2 is not None:
-            assert check_if_lora_correctly_set(text_encoder_2), "Lora not correctly set in text encoder 2"
-
-        output_fused = self.run_pipe(pipe)
-        assert not torch.allclose(output_fused, base_pipe_output, atol=1e-3, rtol=1e-3), (
-            "Fused lora should change the output"
-        )
-
-    def test_simple_inference_with_text_lora_unloaded(self, base_pipe_output, text_lora_config):
-        if not self.supports_text_encoder_loras:
-            pytest.skip("Text encoder LoRAs are not currently supported for this pipeline.")
-
-        pipe = self.get_pipeline().to(torch_device)
-        self.add_adapters_to_pipeline(pipe, text_lora_config)
+        adapted = self.add_adapters_to_pipeline(pipe, components=self.text_encoder_components)
 
         pipe.unload_lora_weights()
         # unloading should remove the LoRA layers
-        assert not check_if_lora_correctly_set(pipe.text_encoder), "Lora not correctly unloaded in text encoder"
-
-        text_encoder_2 = self._lora_text_encoder_2(pipe)
-        if text_encoder_2 is not None:
-            assert not check_if_lora_correctly_set(text_encoder_2), "Lora not correctly unloaded in text encoder 2"
+        for name, module in adapted.items():
+            assert not check_if_lora_correctly_set(module), f"Lora not correctly unloaded in {name}"
 
         output_unloaded = self.run_pipe(pipe)
         assert_tensors_close(
@@ -374,21 +338,20 @@ class LoraTesterMixin(BaseLoraTesterMixin):
             msg="Unloading LoRA should restore the base output",
         )
 
-    def test_simple_inference_with_text_lora_save_load(self, tmp_path, text_lora_config):
+    def test_simple_inference_with_text_lora_save_load(self, tmp_path):
         """Tests a simple usecase where users could use saving utilities for LoRA."""
-        if not self.supports_text_encoder_loras:
-            pytest.skip("Text encoder LoRAs are not currently supported for this pipeline.")
+        if not self.text_encoder_components:
+            pytest.skip("Text encoder LoRAs are not supported for this pipeline.")
 
         pipe = self.get_pipeline().to(torch_device)
-        self.add_adapters_to_pipeline(pipe, text_lora_config)
+        adapted = self.add_adapters_to_pipeline(pipe, components=self.text_encoder_components)
 
         images_lora = self.run_pipe(pipe)
 
         needs_lora_repair = self._needs_text_encoder_lora_repair(pipe)
         captured_lora = self._capture_text_encoder_lora_tensors(pipe) if needs_lora_repair else {}
 
-        modules_to_save = self._get_modules_to_save(pipe)
-        lora_state_dicts = self._get_lora_state_dicts(modules_to_save)
+        lora_state_dicts = self._get_lora_state_dicts(adapted)
         self.pipeline_class.save_lora_weights(save_directory=tmp_path, safe_serialization=False, **lora_state_dicts)
 
         assert os.path.isfile(os.path.join(tmp_path, "pytorch_lora_weights.bin"))
@@ -398,8 +361,8 @@ class LoraTesterMixin(BaseLoraTesterMixin):
         if needs_lora_repair:
             self._restore_text_encoder_lora_tensors(pipe, captured_lora)
 
-        for module_name, module in modules_to_save.items():
-            assert check_if_lora_correctly_set(module), f"Lora not correctly set in {module_name}"
+        for name, module in adapted.items():
+            assert check_if_lora_correctly_set(module), f"Lora not correctly set in {name}"
 
         images_lora_from_pretrained = self.run_pipe(pipe)
         assert_tensors_close(
@@ -415,40 +378,27 @@ class LoraTesterMixin(BaseLoraTesterMixin):
         Tests a simple inference with lora attached on the text encoder with different ranks and some adapters
         removed, and makes sure it works as expected.
         """
-        if not self.supports_text_encoder_loras:
-            pytest.skip("Text encoder LoRAs are not currently supported for this pipeline.")
+        if not self.text_encoder_components:
+            pytest.skip("Text encoder LoRAs are not supported for this pipeline.")
 
-        # Verify `load_lora_into_text_encoder` handles different ranks per module (PR#8324).
-        text_lora_config = LoraConfig(
-            r=4,
-            rank_pattern={self.text_encoder_target_modules[i]: i + 1 for i in range(3)},
-            lora_alpha=4,
-            target_modules=self.text_encoder_target_modules,
-            init_lora_weights=False,
-            use_dora=False,
-        )
         pipe = self.get_pipeline().to(torch_device)
-        self.add_adapters_to_pipeline(pipe, text_lora_config)
+        # Verify `load_lora_into_text_encoder` handles different ranks per module (PR#8324).
+        first_text_encoder = self.text_encoder_components[0]
+        target_modules = self.get_target_modules(first_text_encoder, getattr(pipe, first_text_encoder))
+        adapted = self.add_adapters_to_pipeline(
+            pipe,
+            components=self.text_encoder_components,
+            rank_pattern={target_modules[i]: i + 1 for i in range(3)},
+        )
 
-        state_dict = {}
-        if "text_encoder" in self.pipeline_class._lora_loadable_modules:
-            # Gather the state dict for the PEFT model, excluding `layers.4`, to ensure `load_lora_into_text_encoder`
-            # supports missing layers (PR#8324).
-            state_dict = {
-                f"text_encoder.{module_name}": param
-                for module_name, param in get_peft_model_state_dict(pipe.text_encoder).items()
-                if "encoder.layers.4" not in module_name
-            }
-
-        text_encoder_2 = self._lora_text_encoder_2(pipe)
-        if text_encoder_2 is not None:
-            state_dict.update(
-                {
-                    f"text_encoder_2.{module_name}": param
-                    for module_name, param in get_peft_model_state_dict(text_encoder_2).items()
-                    if "encoder.layers.4" not in module_name
-                }
-            )
+        # Gather the state dicts for the PEFT models, excluding `layers.4`, to ensure `load_lora_into_text_encoder`
+        # supports missing layers (PR#8324).
+        state_dict = {
+            f"{name}.{module_name}": param
+            for name, module in adapted.items()
+            for module_name, param in get_peft_model_state_dict(module).items()
+            if "encoder.layers.4" not in module_name
+        }
 
         output_lora = self.run_pipe(pipe)
         assert not torch.allclose(output_lora, base_pipe_output, atol=1e-3, rtol=1e-3), "Lora should change the output"
@@ -462,7 +412,7 @@ class LoraTesterMixin(BaseLoraTesterMixin):
             "Removing adapters should change the output"
         )
 
-    def test_simple_inference_save_pretrained_with_text_lora(self, tmp_path, text_lora_config):
+    def test_simple_inference_save_pretrained_with_text_lora(self, tmp_path):
         """Tests a simple usecase where users could use saving utilities for LoRA through save_pretrained.
 
         transformers>=5.6 registers a `clip_text_model` conversion that strips the `text_model.`
@@ -473,8 +423,8 @@ class LoraTesterMixin(BaseLoraTesterMixin):
         the bug here by reapplying the original LoRA tensors with `load_state_dict(strict=False)`,
         which targets the already-injected adapter modules directly.
         """
-        if not self.supports_text_encoder_loras:
-            pytest.skip("Text encoder LoRAs are not currently supported for this pipeline.")
+        if not self.text_encoder_components:
+            pytest.skip("Text encoder LoRAs are not supported for this pipeline.")
 
         pipe = self.get_pipeline().to(torch_device)
 
@@ -483,14 +433,14 @@ class LoraTesterMixin(BaseLoraTesterMixin):
         # from local configs and carry no such reference, so save the bare base models first and point
         # `name_or_path` at them. This must happen before `add_adapter`, which snapshots the attribute into the
         # adapter config as `base_model_name_or_path`.
-        for name in ("text_encoder", "text_encoder_2", "text_encoder_3"):
+        for name in self.text_encoder_components:
             module = getattr(pipe, name, None)
-            if module is not None and name in self.pipeline_class._lora_loadable_modules:
+            if module is not None:
                 base_path = os.path.join(tmp_path, f"base_{name}")
                 module.save_pretrained(base_path)
                 module.name_or_path = base_path
 
-        self.add_adapters_to_pipeline(pipe, text_lora_config)
+        adapted = self.add_adapters_to_pipeline(pipe, components=self.text_encoder_components)
         images_lora = self.run_pipe(pipe)
 
         needs_lora_repair = self._needs_text_encoder_lora_repair(pipe)
@@ -504,14 +454,10 @@ class LoraTesterMixin(BaseLoraTesterMixin):
         if needs_lora_repair:
             self._restore_text_encoder_lora_tensors(pipe_from_pretrained, captured_lora)
 
-        if "text_encoder" in self.pipeline_class._lora_loadable_modules:
-            assert check_if_lora_correctly_set(pipe_from_pretrained.text_encoder), (
-                "Lora not correctly set in text encoder"
+        for name in adapted:
+            assert check_if_lora_correctly_set(getattr(pipe_from_pretrained, name)), (
+                f"Lora not correctly set in {name}"
             )
-
-        text_encoder_2 = self._lora_text_encoder_2(pipe_from_pretrained)
-        if text_encoder_2 is not None:
-            assert check_if_lora_correctly_set(text_encoder_2), "Lora not correctly set in text encoder 2"
 
         images_lora_save_pretrained = self.run_pipe(pipe_from_pretrained)
         assert_tensors_close(
@@ -522,20 +468,17 @@ class LoraTesterMixin(BaseLoraTesterMixin):
             msg="Loading from saved checkpoints should give same results.",
         )
 
-    def test_simple_inference_with_text_denoiser_lora_save_load(
-        self, tmp_path, text_lora_config, denoiser_lora_config
-    ):
+    def test_simple_inference_with_text_denoiser_lora_save_load(self, tmp_path):
         """Tests a simple usecase where users could use saving utilities for LoRA for denoiser + text encoder."""
         pipe = self.get_pipeline().to(torch_device)
-        self.add_adapters_to_pipeline(pipe, text_lora_config, denoiser_lora_config)
+        adapted = self.add_adapters_to_pipeline(pipe)
 
         images_lora = self.run_pipe(pipe)
 
         needs_lora_repair = self._needs_text_encoder_lora_repair(pipe)
         captured_lora = self._capture_text_encoder_lora_tensors(pipe) if needs_lora_repair else {}
 
-        modules_to_save = self._get_modules_to_save(pipe, has_denoiser=True)
-        lora_state_dicts = self._get_lora_state_dicts(modules_to_save)
+        lora_state_dicts = self._get_lora_state_dicts(adapted)
         self.pipeline_class.save_lora_weights(save_directory=tmp_path, safe_serialization=False, **lora_state_dicts)
 
         assert os.path.isfile(os.path.join(tmp_path, "pytorch_lora_weights.bin"))
@@ -545,8 +488,8 @@ class LoraTesterMixin(BaseLoraTesterMixin):
         if needs_lora_repair:
             self._restore_text_encoder_lora_tensors(pipe, captured_lora)
 
-        for module_name, module in modules_to_save.items():
-            assert check_if_lora_correctly_set(module), f"Lora not correctly set in {module_name}"
+        for name, module in adapted.items():
+            assert check_if_lora_correctly_set(module), f"Lora not correctly set in {name}"
 
         images_lora_from_pretrained = self.run_pipe(pipe)
         assert_tensors_close(
@@ -557,12 +500,10 @@ class LoraTesterMixin(BaseLoraTesterMixin):
             msg="Loading from saved checkpoints should give same results.",
         )
 
-    def test_simple_inference_with_text_denoiser_lora_and_scale(
-        self, base_pipe_output, text_lora_config, denoiser_lora_config
-    ):
+    def test_simple_inference_with_text_denoiser_lora_and_scale(self, base_pipe_output):
         attention_kwargs_name = determine_attention_kwargs_name(self.pipeline_class)
         pipe = self.get_pipeline().to(torch_device)
-        self.add_adapters_to_pipeline(pipe, text_lora_config, denoiser_lora_config)
+        self.add_adapters_to_pipeline(pipe)
 
         output_lora = self.run_pipe(pipe)
         assert not torch.allclose(output_lora, base_pipe_output, atol=1e-3, rtol=1e-3), "Lora should change the output"
@@ -581,50 +522,57 @@ class LoraTesterMixin(BaseLoraTesterMixin):
             msg="Lora + 0 scale should lead to same result as no LoRA",
         )
 
-        if "text_encoder" in self.pipeline_class._lora_loadable_modules:
+        if self.text_encoder_components:
             text_encoder_root = getattr(pipe.text_encoder, "text_model", pipe.text_encoder)
             assert text_encoder_root.encoder.layers[0].self_attn.q_proj.scaling["default"] == 1.0, (
                 "The scaling parameter has not been correctly restored!"
             )
 
-    def test_simple_inference_with_text_lora_denoiser_fused(
-        self, base_pipe_output, text_lora_config, denoiser_lora_config
-    ):
+    def test_lora_fuse_unfuse(self, base_pipe_output):
         pipe = self.get_pipeline().to(torch_device)
-        denoiser = self.add_adapters_to_pipeline(pipe, text_lora_config, denoiser_lora_config)
+        adapted = self.add_adapters_to_pipeline(pipe)
 
-        pipe.fuse_lora(components=self.pipeline_class._lora_loadable_modules)
-
-        # Fusing should still keep the LoRA layers
-        if "text_encoder" in self.pipeline_class._lora_loadable_modules:
-            assert check_if_lora_correctly_set(pipe.text_encoder), "Lora not correctly set in text encoder"
-
-        assert check_if_lora_correctly_set(denoiser), "Lora not correctly set in denoiser"
-
-        text_encoder_2 = self._lora_text_encoder_2(pipe)
-        if text_encoder_2 is not None:
-            assert check_if_lora_correctly_set(text_encoder_2), "Lora not correctly set in text encoder 2"
-
-        output_fused = self.run_pipe(pipe)
-        assert not torch.allclose(output_fused, base_pipe_output, atol=1e-3, rtol=1e-3), (
-            "Fused lora should change the output"
+        output_adapter = self.run_pipe(pipe)
+        assert not torch.allclose(output_adapter, base_pipe_output, atol=1e-3, rtol=1e-3), (
+            "LoRA should change the output"
         )
 
-    def test_simple_inference_with_text_denoiser_lora_unloaded(
-        self, base_pipe_output, text_lora_config, denoiser_lora_config
-    ):
+        pipe.fuse_lora(components=self.pipeline_class._lora_loadable_modules)
+        assert pipe.num_fused_loras >= 1, f"{pipe.num_fused_loras=}, {pipe.fused_loras=}"
+        for name, module in adapted.items():
+            assert check_if_lora_correctly_set(module), f"Fusing should keep LoRA layers in {name}"
+
+        output_fused = self.run_pipe(pipe)
+        assert_tensors_close(
+            output_fused,
+            output_adapter,
+            atol=1e-3,
+            rtol=1e-3,
+            msg="Fusing should not change the output",
+        )
+
+        pipe.unfuse_lora(components=self.pipeline_class._lora_loadable_modules)
+        assert pipe.num_fused_loras == 0, f"{pipe.num_fused_loras=}, {pipe.fused_loras=}"
+        for name, module in adapted.items():
+            assert check_if_lora_correctly_set(module), f"Unfusing should keep LoRA layers in {name}"
+
+        output_unfused = self.run_pipe(pipe)
+        assert_tensors_close(
+            output_unfused,
+            output_adapter,
+            atol=1e-3,
+            rtol=1e-3,
+            msg="Unfusing should restore the dynamic LoRA output",
+        )
+
+    def test_simple_inference_with_text_denoiser_lora_unloaded(self, base_pipe_output):
         pipe = self.get_pipeline().to(torch_device)
-        denoiser = self.add_adapters_to_pipeline(pipe, text_lora_config, denoiser_lora_config)
+        adapted = self.add_adapters_to_pipeline(pipe)
 
         pipe.unload_lora_weights()
         # unloading should remove the LoRA layers
-        if "text_encoder" in self.pipeline_class._lora_loadable_modules:
-            assert not check_if_lora_correctly_set(pipe.text_encoder), "Lora not correctly unloaded in text encoder"
-        assert not check_if_lora_correctly_set(denoiser), "Lora not correctly unloaded in denoiser"
-
-        text_encoder_2 = self._lora_text_encoder_2(pipe)
-        if text_encoder_2 is not None:
-            assert not check_if_lora_correctly_set(text_encoder_2), "Lora not correctly unloaded in text encoder 2"
+        for name, module in adapted.items():
+            assert not check_if_lora_correctly_set(module), f"Lora not correctly unloaded in {name}"
 
         output_unloaded = self.run_pipe(pipe)
         assert_tensors_close(
@@ -635,43 +583,10 @@ class LoraTesterMixin(BaseLoraTesterMixin):
             msg="Unloading LoRA should restore the base output",
         )
 
-    def test_simple_inference_with_text_denoiser_lora_unfused(self, text_lora_config, denoiser_lora_config):
+    def test_simple_inference_with_text_denoiser_multi_adapter(self, base_pipe_output):
         pipe = self.get_pipeline().to(torch_device)
-        denoiser = self.add_adapters_to_pipeline(pipe, text_lora_config, denoiser_lora_config)
-
-        pipe.fuse_lora(components=self.pipeline_class._lora_loadable_modules)
-        assert pipe.num_fused_loras == 1, f"{pipe.num_fused_loras=}, {pipe.fused_loras=}"
-        output_fused_lora = self.run_pipe(pipe)
-
-        pipe.unfuse_lora(components=self.pipeline_class._lora_loadable_modules)
-        assert pipe.num_fused_loras == 0, f"{pipe.num_fused_loras=}, {pipe.fused_loras=}"
-        output_unfused_lora = self.run_pipe(pipe)
-
-        # unfusing should keep the LoRA layers
-        if "text_encoder" in self.pipeline_class._lora_loadable_modules:
-            assert check_if_lora_correctly_set(pipe.text_encoder), "Unfuse should still keep LoRA layers"
-
-        assert check_if_lora_correctly_set(denoiser), "Unfuse should still keep LoRA layers"
-
-        text_encoder_2 = self._lora_text_encoder_2(pipe)
-        if text_encoder_2 is not None:
-            assert check_if_lora_correctly_set(text_encoder_2), "Unfuse should still keep LoRA layers"
-
-        # Fuse and unfuse should lead to the same results
-        assert_tensors_close(
-            output_fused_lora,
-            output_unfused_lora,
-            atol=1e-3,
-            rtol=1e-3,
-            msg="Fused lora should not change the output",
-        )
-
-    def test_simple_inference_with_text_denoiser_multi_adapter(
-        self, base_pipe_output, text_lora_config, denoiser_lora_config
-    ):
-        pipe = self.get_pipeline().to(torch_device)
-        self.add_adapters_to_pipeline(pipe, text_lora_config, denoiser_lora_config, adapter_name="adapter-1")
-        self.add_adapters_to_pipeline(pipe, text_lora_config, denoiser_lora_config, adapter_name="adapter-2")
+        self.add_adapters_to_pipeline(pipe, adapter_name="adapter-1")
+        self.add_adapters_to_pipeline(pipe, adapter_name="adapter-2")
 
         pipe.set_adapters("adapter-1")
         output_adapter_1 = self.run_pipe(pipe)
@@ -711,10 +626,10 @@ class LoraTesterMixin(BaseLoraTesterMixin):
             msg="output with no lora and output with lora disabled should give same results",
         )
 
-    def test_wrong_adapter_name_raises_error(self, text_lora_config, denoiser_lora_config):
+    def test_wrong_adapter_name_raises_error(self):
         adapter_name = "adapter-1"
         pipe = self.get_pipeline().to(torch_device)
-        self.add_adapters_to_pipeline(pipe, text_lora_config, denoiser_lora_config, adapter_name=adapter_name)
+        self.add_adapters_to_pipeline(pipe, adapter_name=adapter_name)
 
         with pytest.raises(ValueError, match="not in the list of present adapters"):
             pipe.set_adapters("test")
@@ -723,10 +638,10 @@ class LoraTesterMixin(BaseLoraTesterMixin):
         pipe.set_adapters(adapter_name)
         _ = self.run_pipe(pipe)
 
-    def test_multiple_wrong_adapter_name_raises_error(self, text_lora_config, denoiser_lora_config):
+    def test_multiple_wrong_adapter_name_raises_error(self):
         adapter_name = "adapter-1"
         pipe = self.get_pipeline().to(torch_device)
-        self.add_adapters_to_pipeline(pipe, text_lora_config, denoiser_lora_config, adapter_name=adapter_name)
+        self.add_adapters_to_pipeline(pipe, adapter_name=adapter_name)
 
         scale_with_wrong_components = {"foo": 0.0, "bar": 0.0, "tik": 0.0}
         logger = logging.get_logger("diffusers.loaders.lora_base")
@@ -742,12 +657,10 @@ class LoraTesterMixin(BaseLoraTesterMixin):
         pipe.set_adapters(adapter_name)
         _ = self.run_pipe(pipe)
 
-    def test_simple_inference_with_text_denoiser_multi_adapter_delete_adapter(
-        self, base_pipe_output, text_lora_config, denoiser_lora_config
-    ):
+    def test_simple_inference_with_text_denoiser_multi_adapter_delete_adapter(self, base_pipe_output):
         pipe = self.get_pipeline().to(torch_device)
-        self.add_adapters_to_pipeline(pipe, text_lora_config, denoiser_lora_config, adapter_name="adapter-1")
-        self.add_adapters_to_pipeline(pipe, text_lora_config, denoiser_lora_config, adapter_name="adapter-2")
+        self.add_adapters_to_pipeline(pipe, adapter_name="adapter-1")
+        self.add_adapters_to_pipeline(pipe, adapter_name="adapter-2")
 
         pipe.set_adapters("adapter-1")
         output_adapter_1 = self.run_pipe(pipe)
@@ -788,8 +701,8 @@ class LoraTesterMixin(BaseLoraTesterMixin):
             msg="Deleting all adapters should restore the base output",
         )
 
-        self.add_adapters_to_pipeline(pipe, text_lora_config, denoiser_lora_config, adapter_name="adapter-1")
-        self.add_adapters_to_pipeline(pipe, text_lora_config, denoiser_lora_config, adapter_name="adapter-2")
+        self.add_adapters_to_pipeline(pipe, adapter_name="adapter-1")
+        self.add_adapters_to_pipeline(pipe, adapter_name="adapter-2")
 
         pipe.set_adapters(["adapter-1", "adapter-2"])
         pipe.delete_adapters(["adapter-1", "adapter-2"])
@@ -803,12 +716,10 @@ class LoraTesterMixin(BaseLoraTesterMixin):
             msg="Deleting all adapters should restore the base output",
         )
 
-    def test_simple_inference_with_text_denoiser_multi_adapter_weighted(
-        self, base_pipe_output, text_lora_config, denoiser_lora_config
-    ):
+    def test_simple_inference_with_text_denoiser_multi_adapter_weighted(self, base_pipe_output):
         pipe = self.get_pipeline().to(torch_device)
-        self.add_adapters_to_pipeline(pipe, text_lora_config, denoiser_lora_config, adapter_name="adapter-1")
-        self.add_adapters_to_pipeline(pipe, text_lora_config, denoiser_lora_config, adapter_name="adapter-2")
+        self.add_adapters_to_pipeline(pipe, adapter_name="adapter-1")
+        self.add_adapters_to_pipeline(pipe, adapter_name="adapter-2")
 
         pipe.set_adapters("adapter-1")
         output_adapter_1 = self.run_pipe(pipe)
@@ -845,50 +756,29 @@ class LoraTesterMixin(BaseLoraTesterMixin):
             msg="output with no lora and output with lora disabled should give same results",
         )
 
-    def test_get_adapters(self, text_lora_config, denoiser_lora_config):
+    def test_get_adapters(self):
         pipe = self.get_pipeline().to(torch_device)
 
-        denoiser = self.get_denoiser(pipe)
-        if "text_encoder" in self.pipeline_class._lora_loadable_modules:
-            pipe.text_encoder.add_adapter(text_lora_config, "adapter-1")
-        denoiser.add_adapter(denoiser_lora_config, "adapter-1")
+        self.add_adapters_to_pipeline(pipe, adapter_name="adapter-1")
+        assert pipe.get_active_adapters() == ["adapter-1"]
 
-        adapter_names = pipe.get_active_adapters()
-        assert adapter_names == ["adapter-1"]
-
-        if "text_encoder" in self.pipeline_class._lora_loadable_modules:
-            pipe.text_encoder.add_adapter(text_lora_config, "adapter-2")
-        denoiser.add_adapter(denoiser_lora_config, "adapter-2")
-
-        adapter_names = pipe.get_active_adapters()
-        assert adapter_names == ["adapter-2"]
+        self.add_adapters_to_pipeline(pipe, adapter_name="adapter-2")
+        assert pipe.get_active_adapters() == ["adapter-2"]
 
         pipe.set_adapters(["adapter-1", "adapter-2"])
         assert pipe.get_active_adapters() == ["adapter-1", "adapter-2"]
 
-    def test_get_list_adapters(self, text_lora_config, denoiser_lora_config):
+    def test_get_list_adapters(self):
         pipe = self.get_pipeline().to(torch_device)
-        denoiser = self.get_denoiser(pipe)
-        denoiser_name = "transformer" if hasattr(pipe, "transformer") else "unet"
 
         # 1.
-        dicts_to_be_checked = {}
-        if "text_encoder" in self.pipeline_class._lora_loadable_modules:
-            pipe.text_encoder.add_adapter(text_lora_config, "adapter-1")
-            dicts_to_be_checked = {"text_encoder": ["adapter-1"]}
-        denoiser.add_adapter(denoiser_lora_config, "adapter-1")
-        dicts_to_be_checked.update({denoiser_name: ["adapter-1"]})
-
+        adapted = self.add_adapters_to_pipeline(pipe, adapter_name="adapter-1")
+        dicts_to_be_checked = {name: ["adapter-1"] for name in adapted}
         assert pipe.get_list_adapters() == dicts_to_be_checked
 
         # 2.
-        dicts_to_be_checked = {}
-        if "text_encoder" in self.pipeline_class._lora_loadable_modules:
-            pipe.text_encoder.add_adapter(text_lora_config, "adapter-2")
-            dicts_to_be_checked = {"text_encoder": ["adapter-1", "adapter-2"]}
-        denoiser.add_adapter(denoiser_lora_config, "adapter-2")
-        dicts_to_be_checked.update({denoiser_name: ["adapter-1", "adapter-2"]})
-
+        self.add_adapters_to_pipeline(pipe, adapter_name="adapter-2")
+        dicts_to_be_checked = {name: ["adapter-1", "adapter-2"] for name in adapted}
         assert pipe.get_list_adapters() == dicts_to_be_checked
 
         # 3.
@@ -896,16 +786,14 @@ class LoraTesterMixin(BaseLoraTesterMixin):
         assert pipe.get_list_adapters() == dicts_to_be_checked
 
         # 4.
-        denoiser.add_adapter(denoiser_lora_config, "adapter-3")
-        dicts_to_be_checked.update({denoiser_name: ["adapter-1", "adapter-2", "adapter-3"]})
+        denoisers = self.add_adapters_to_pipeline(pipe, components=self.denoiser_components, adapter_name="adapter-3")
+        dicts_to_be_checked.update({name: ["adapter-1", "adapter-2", "adapter-3"] for name in denoisers})
         assert pipe.get_list_adapters() == dicts_to_be_checked
 
-    def test_simple_inference_with_text_lora_denoiser_fused_multi(self, text_lora_config, denoiser_lora_config):
+    def test_simple_inference_with_text_lora_denoiser_fused_multi(self):
         pipe = self.get_pipeline().to(torch_device)
-        denoiser = self.add_adapters_to_pipeline(
-            pipe, text_lora_config, denoiser_lora_config, adapter_name="adapter-1"
-        )
-        self.add_adapters_to_pipeline(pipe, text_lora_config, denoiser_lora_config, adapter_name="adapter-2")
+        adapted = self.add_adapters_to_pipeline(pipe, adapter_name="adapter-1")
+        self.add_adapters_to_pipeline(pipe, adapter_name="adapter-2")
 
         # set them to multi-adapter inference mode
         pipe.set_adapters(["adapter-1", "adapter-2"])
@@ -930,14 +818,8 @@ class LoraTesterMixin(BaseLoraTesterMixin):
         pipe.unfuse_lora(components=self.pipeline_class._lora_loadable_modules)
         assert pipe.num_fused_loras == 0, f"{pipe.num_fused_loras=}, {pipe.fused_loras=}"
 
-        if "text_encoder" in self.pipeline_class._lora_loadable_modules:
-            assert check_if_lora_correctly_set(pipe.text_encoder), "Unfuse should still keep LoRA layers"
-
-        assert check_if_lora_correctly_set(denoiser), "Unfuse should still keep LoRA layers"
-
-        text_encoder_2 = self._lora_text_encoder_2(pipe)
-        if text_encoder_2 is not None:
-            assert check_if_lora_correctly_set(text_encoder_2), "Unfuse should still keep LoRA layers"
+        for name, module in adapted.items():
+            assert check_if_lora_correctly_set(module), f"Unfuse should still keep LoRA layers in {name}"
 
         pipe.fuse_lora(components=self.pipeline_class._lora_loadable_modules, adapter_names=["adapter-2", "adapter-1"])
         assert pipe.num_fused_loras == 2, f"{pipe.num_fused_loras=}, {pipe.fused_loras=}"
@@ -955,13 +837,11 @@ class LoraTesterMixin(BaseLoraTesterMixin):
         assert pipe.num_fused_loras == 0, f"{pipe.num_fused_loras=}, {pipe.fused_loras=}"
 
     @pytest.mark.parametrize("lora_scale", [1.0, 0.8])
-    def test_lora_scale_kwargs_match_fusion(
-        self, base_pipe_output, text_lora_config, denoiser_lora_config, lora_scale
-    ):
+    def test_lora_scale_kwargs_match_fusion(self, base_pipe_output, lora_scale):
         attention_kwargs_name = determine_attention_kwargs_name(self.pipeline_class)
 
         pipe = self.get_pipeline().to(torch_device)
-        self.add_adapters_to_pipeline(pipe, text_lora_config, denoiser_lora_config, adapter_name="adapter-1")
+        self.add_adapters_to_pipeline(pipe, adapter_name="adapter-1")
 
         pipe.set_adapters(["adapter-1"])
         outputs_lora_1 = self.run_pipe(pipe, **{attention_kwargs_name: {"scale": lora_scale}})
@@ -1004,27 +884,24 @@ class LoraTesterMixin(BaseLoraTesterMixin):
         )
 
         # test only for text encoder
-        for lora_module in self.pipeline_class._lora_loadable_modules:
-            if "text_encoder" in lora_module:
-                text_encoder = getattr(pipe, lora_module)
+        for name in self.text_encoder_components:
+            text_encoder = getattr(pipe, name)
 
-                logger = logging.get_logger("diffusers.loaders.lora_base")
-                logger.setLevel(logging.WARNING)
+            logger = logging.get_logger("diffusers.loaders.lora_base")
+            logger.setLevel(logging.WARNING)
 
-                with CaptureLogger(logger) as cap_logger:
-                    self.pipeline_class.load_lora_into_text_encoder(
-                        no_op_state_dict, network_alphas=None, text_encoder=text_encoder, prefix=lora_module
-                    )
+            with CaptureLogger(logger) as cap_logger:
+                self.pipeline_class.load_lora_into_text_encoder(
+                    no_op_state_dict, network_alphas=None, text_encoder=text_encoder, prefix=name
+                )
 
-                assert cap_logger.out.startswith(f"No LoRA keys associated to {text_encoder.__class__.__name__}")
+            assert cap_logger.out.startswith(f"No LoRA keys associated to {text_encoder.__class__.__name__}")
 
-    def test_set_adapters_match_attention_kwargs(
-        self, tmp_path, base_pipe_output, text_lora_config, denoiser_lora_config
-    ):
+    def test_set_adapters_match_attention_kwargs(self, tmp_path, base_pipe_output):
         """Test to check if outputs after `set_adapters()` and attention kwargs match."""
         attention_kwargs_name = determine_attention_kwargs_name(self.pipeline_class)
         pipe = self.get_pipeline().to(torch_device)
-        self.add_adapters_to_pipeline(pipe, text_lora_config, denoiser_lora_config)
+        adapted = self.add_adapters_to_pipeline(pipe)
 
         lora_scale = 0.5
         attention_kwargs = {attention_kwargs_name: {"scale": lora_scale}}
@@ -1049,8 +926,7 @@ class LoraTesterMixin(BaseLoraTesterMixin):
         needs_lora_repair = self._needs_text_encoder_lora_repair(pipe)
         captured_lora = self._capture_text_encoder_lora_tensors(pipe) if needs_lora_repair else {}
 
-        modules_to_save = self._get_modules_to_save(pipe, has_denoiser=True)
-        lora_state_dicts = self._get_lora_state_dicts(modules_to_save)
+        lora_state_dicts = self._get_lora_state_dicts(adapted)
         self.pipeline_class.save_lora_weights(save_directory=tmp_path, safe_serialization=True, **lora_state_dicts)
 
         assert os.path.isfile(os.path.join(tmp_path, "pytorch_lora_weights.safetensors"))
@@ -1060,8 +936,8 @@ class LoraTesterMixin(BaseLoraTesterMixin):
         if needs_lora_repair:
             self._restore_text_encoder_lora_tensors(pipe, captured_lora)
 
-        for module_name, module in self._get_modules_to_save(pipe, has_denoiser=True).items():
-            assert check_if_lora_correctly_set(module), f"Lora not correctly set in {module_name}"
+        for name in adapted:
+            assert check_if_lora_correctly_set(getattr(pipe, name)), f"Lora not correctly set in {name}"
 
         output_lora_from_pretrained = self.run_pipe(pipe, **attention_kwargs)
         assert not torch.allclose(base_pipe_output, output_lora_from_pretrained, atol=1e-3, rtol=1e-3), (
@@ -1084,26 +960,11 @@ class LoraTesterMixin(BaseLoraTesterMixin):
 
     @pytest.mark.parametrize("lora_alpha", [4, 8, 16])
     def test_lora_adapter_metadata_is_loaded_correctly(self, tmp_path, lora_alpha):
-        text_lora_config = LoraConfig(
-            r=self.lora_rank,
-            lora_alpha=lora_alpha,
-            target_modules=self.text_encoder_target_modules,
-            init_lora_weights=False,
-            use_dora=False,
-        )
-        denoiser_lora_config = LoraConfig(
-            r=self.lora_rank,
-            lora_alpha=lora_alpha,
-            target_modules=self.denoiser_target_modules,
-            init_lora_weights=False,
-            use_dora=False,
-        )
         pipe = self.get_pipeline()
-        self.add_adapters_to_pipeline(pipe, text_lora_config, denoiser_lora_config)
+        adapted = self.add_adapters_to_pipeline(pipe, lora_alpha=lora_alpha)
 
-        modules_to_save = self._get_modules_to_save(pipe, has_denoiser=True)
-        lora_state_dicts = self._get_lora_state_dicts(modules_to_save)
-        lora_metadatas = self._get_lora_adapter_metadata(modules_to_save)
+        lora_state_dicts = self._get_lora_state_dicts(adapted)
+        lora_metadatas = self._get_lora_adapter_metadata(adapted)
         self.pipeline_class.save_lora_weights(save_directory=tmp_path, **lora_state_dicts, **lora_metadatas)
         pipe.unload_lora_weights()
 
@@ -1113,54 +974,21 @@ class LoraTesterMixin(BaseLoraTesterMixin):
         elif len(out) == 2:
             _, parsed_metadata = out
 
-        denoiser_key = (
-            self.pipeline_class.transformer_name if hasattr(pipe, "transformer") else self.pipeline_class.unet_name
-        )
-        assert any(k.startswith(f"{denoiser_key}.") for k in parsed_metadata)
-        check_module_lora_metadata(
-            parsed_metadata=parsed_metadata, lora_metadatas=lora_metadatas, module_key=denoiser_key
-        )
-
-        if "text_encoder" in self.pipeline_class._lora_loadable_modules:
-            text_encoder_key = self.pipeline_class.text_encoder_name
-            assert any(k.startswith(f"{text_encoder_key}.") for k in parsed_metadata)
-            check_module_lora_metadata(
-                parsed_metadata=parsed_metadata, lora_metadatas=lora_metadatas, module_key=text_encoder_key
-            )
-
-        if "text_encoder_2" in self.pipeline_class._lora_loadable_modules:
-            text_encoder_2_key = "text_encoder_2"
-            assert any(k.startswith(f"{text_encoder_2_key}.") for k in parsed_metadata)
-            check_module_lora_metadata(
-                parsed_metadata=parsed_metadata, lora_metadatas=lora_metadatas, module_key=text_encoder_2_key
-            )
+        for name in adapted:
+            assert any(k.startswith(f"{name}.") for k in parsed_metadata)
+            check_module_lora_metadata(parsed_metadata=parsed_metadata, lora_metadatas=lora_metadatas, module_key=name)
 
     @pytest.mark.parametrize("lora_alpha", [4, 8, 16])
     def test_lora_adapter_metadata_save_load_inference(self, tmp_path, lora_alpha):
-        text_lora_config = LoraConfig(
-            r=self.lora_rank,
-            lora_alpha=lora_alpha,
-            target_modules=self.text_encoder_target_modules,
-            init_lora_weights=False,
-            use_dora=False,
-        )
-        denoiser_lora_config = LoraConfig(
-            r=self.lora_rank,
-            lora_alpha=lora_alpha,
-            target_modules=self.denoiser_target_modules,
-            init_lora_weights=False,
-            use_dora=False,
-        )
         pipe = self.get_pipeline().to(torch_device)
-        self.add_adapters_to_pipeline(pipe, text_lora_config, denoiser_lora_config)
+        adapted = self.add_adapters_to_pipeline(pipe, lora_alpha=lora_alpha)
         output_lora = self.run_pipe(pipe)
 
         needs_lora_repair = self._needs_text_encoder_lora_repair(pipe)
         captured_lora = self._capture_text_encoder_lora_tensors(pipe) if needs_lora_repair else {}
 
-        modules_to_save = self._get_modules_to_save(pipe, has_denoiser=True)
-        lora_state_dicts = self._get_lora_state_dicts(modules_to_save)
-        lora_metadatas = self._get_lora_adapter_metadata(modules_to_save)
+        lora_state_dicts = self._get_lora_state_dicts(adapted)
+        lora_metadatas = self._get_lora_adapter_metadata(adapted)
         self.pipeline_class.save_lora_weights(save_directory=tmp_path, **lora_state_dicts, **lora_metadatas)
         pipe.unload_lora_weights()
         pipe.load_lora_weights(tmp_path)
@@ -1173,31 +1001,28 @@ class LoraTesterMixin(BaseLoraTesterMixin):
             output_lora_pretrained, output_lora, atol=1e-3, rtol=1e-3, msg="Lora outputs should match."
         )
 
-    def test_lora_unload_add_adapter(self, text_lora_config, denoiser_lora_config):
+    def test_lora_unload_add_adapter(self):
         """Tests if `unload_lora_weights()` -> `add_adapter()` works."""
         pipe = self.get_pipeline().to(torch_device)
-        self.add_adapters_to_pipeline(pipe, text_lora_config, denoiser_lora_config)
+        self.add_adapters_to_pipeline(pipe)
         _ = self.run_pipe(pipe)
 
         # unload and then add.
         pipe.unload_lora_weights()
-        self.add_adapters_to_pipeline(pipe, text_lora_config, denoiser_lora_config)
+        self.add_adapters_to_pipeline(pipe)
         _ = self.run_pipe(pipe)
 
-    def test_inference_load_delete_load_adapters(
-        self, tmp_path, base_pipe_output, text_lora_config, denoiser_lora_config
-    ):
+    def test_inference_load_delete_load_adapters(self, tmp_path, base_pipe_output):
         "Tests if `load_lora_weights()` -> `delete_adapters()` -> `load_lora_weights()` works."
         pipe = self.get_pipeline().to(torch_device)
-        self.add_adapters_to_pipeline(pipe, text_lora_config, denoiser_lora_config)
+        adapted = self.add_adapters_to_pipeline(pipe)
 
         output_adapter_1 = self.run_pipe(pipe)
 
         needs_lora_repair = self._needs_text_encoder_lora_repair(pipe)
         captured_lora = self._capture_text_encoder_lora_tensors(pipe) if needs_lora_repair else {}
 
-        modules_to_save = self._get_modules_to_save(pipe, has_denoiser=True)
-        lora_state_dicts = self._get_lora_state_dicts(modules_to_save)
+        lora_state_dicts = self._get_lora_state_dicts(adapted)
         self.pipeline_class.save_lora_weights(save_directory=tmp_path, **lora_state_dicts)
         assert os.path.isfile(os.path.join(tmp_path, "pytorch_lora_weights.safetensors"))
 
@@ -1236,15 +1061,14 @@ class LoraMemoryTesterMixin(BaseLoraTesterMixin):
         "offload_type,use_stream", [("block_level", True), ("leaf_level", False), ("leaf_level", True)]
     )
     @require_torch_accelerator
-    def test_group_offloading_inference_denoiser(self, tmp_path, denoiser_lora_config, offload_type, use_stream):
+    def test_group_offloading_inference_denoiser(self, tmp_path, offload_type, use_stream):
         onload_device = torch_device
         offload_device = torch.device("cpu")
 
         pipe = self.get_pipeline().to(torch_device)
-        self.add_adapters_to_pipeline(pipe, denoiser_lora_config=denoiser_lora_config)
+        adapted = self.add_adapters_to_pipeline(pipe, components=self.denoiser_components)
 
-        modules_to_save = self._get_modules_to_save(pipe, has_denoiser=True)
-        lora_state_dicts = self._get_lora_state_dicts(modules_to_save)
+        lora_state_dicts = self._get_lora_state_dicts(adapted)
         self.pipeline_class.save_lora_weights(save_directory=tmp_path, safe_serialization=True, **lora_state_dicts)
         assert os.path.isfile(os.path.join(tmp_path, "pytorch_lora_weights.safetensors"))
 
@@ -1288,14 +1112,13 @@ class LoraMemoryTesterMixin(BaseLoraTesterMixin):
         )
 
     @require_torch_accelerator
-    def test_lora_loading_model_cpu_offload(self, tmp_path, denoiser_lora_config):
+    def test_lora_loading_model_cpu_offload(self, tmp_path):
         pipe = self.get_pipeline().to(torch_device)
-        self.add_adapters_to_pipeline(pipe, denoiser_lora_config=denoiser_lora_config)
+        adapted = self.add_adapters_to_pipeline(pipe, components=self.denoiser_components)
 
         output_lora = self.run_pipe(pipe)
 
-        modules_to_save = self._get_modules_to_save(pipe, has_denoiser=True)
-        lora_state_dicts = self._get_lora_state_dicts(modules_to_save)
+        lora_state_dicts = self._get_lora_state_dicts(adapted)
         self.pipeline_class.save_lora_weights(save_directory=tmp_path, safe_serialization=True, **lora_state_dicts)
 
         # reinitialize the pipeline to mimic the inference workflow.
@@ -1315,12 +1138,11 @@ class LoraMemoryTesterMixin(BaseLoraTesterMixin):
         )
 
     @require_torch_accelerator
-    def test_lora_group_offloading_delete_adapters(self, tmp_path, denoiser_lora_config):
+    def test_lora_group_offloading_delete_adapters(self, tmp_path):
         pipe = self.get_pipeline().to(torch_device)
-        self.add_adapters_to_pipeline(pipe, denoiser_lora_config=denoiser_lora_config)
+        adapted = self.add_adapters_to_pipeline(pipe, components=self.denoiser_components)
 
-        modules_to_save = self._get_modules_to_save(pipe, has_denoiser=True)
-        lora_state_dicts = self._get_lora_state_dicts(modules_to_save)
+        lora_state_dicts = self._get_lora_state_dicts(adapted)
         self.pipeline_class.save_lora_weights(save_directory=tmp_path, safe_serialization=True, **lora_state_dicts)
 
         pipe = self.get_pipeline().to(torch_device)
@@ -1355,24 +1177,13 @@ class UNetLoraTesterMixin(BaseLoraTesterMixin):
     Compose only into pipeline test classes whose denoiser is a UNet (e.g. SD, SDXL).
     """
 
-    def test_simple_inference_with_text_denoiser_block_scale(
-        self, base_pipe_output, text_lora_config, denoiser_lora_config
-    ):
+    def test_simple_inference_with_text_denoiser_block_scale(self, base_pipe_output):
         """
         Tests a simple inference with lora attached to text encoder and unet, attaches
         one adapter and set different weights for different blocks (i.e. block lora)
         """
         pipe = self.get_pipeline().to(torch_device)
-        pipe.text_encoder.add_adapter(text_lora_config, "adapter-1")
-        assert check_if_lora_correctly_set(pipe.text_encoder), "Lora not correctly set in text encoder"
-
-        pipe.unet.add_adapter(denoiser_lora_config)
-        assert check_if_lora_correctly_set(pipe.unet), "Lora not correctly set in denoiser."
-
-        text_encoder_2 = self._lora_text_encoder_2(pipe)
-        if text_encoder_2 is not None:
-            text_encoder_2.add_adapter(text_lora_config, "adapter-1")
-            assert check_if_lora_correctly_set(text_encoder_2), "Lora not correctly set in text encoder 2"
+        self.add_adapters_to_pipeline(pipe, adapter_name="adapter-1")
 
         weights_1 = {"text_encoder": 2, "unet": {"down": 5}}
         pipe.set_adapters("adapter-1", weights_1)
@@ -1402,16 +1213,14 @@ class UNetLoraTesterMixin(BaseLoraTesterMixin):
             msg="output with no lora and output with lora disabled should give same results",
         )
 
-    def test_simple_inference_with_text_denoiser_multi_adapter_block_lora(
-        self, base_pipe_output, text_lora_config, denoiser_lora_config
-    ):
+    def test_simple_inference_with_text_denoiser_multi_adapter_block_lora(self, base_pipe_output):
         """
         Tests a simple inference with lora attached to text encoder and unet, attaches
         multiple adapters and set different weights for different blocks (i.e. block lora)
         """
         pipe = self.get_pipeline().to(torch_device)
-        self.add_adapters_to_pipeline(pipe, text_lora_config, denoiser_lora_config, adapter_name="adapter-1")
-        self.add_adapters_to_pipeline(pipe, text_lora_config, denoiser_lora_config, adapter_name="adapter-2")
+        self.add_adapters_to_pipeline(pipe, adapter_name="adapter-1")
+        self.add_adapters_to_pipeline(pipe, adapter_name="adapter-2")
 
         scales_1 = {"text_encoder": 2, "unet": {"down": 5}}
         scales_2 = {"unet": {"down": 5, "mid": 5}}
@@ -1449,9 +1258,7 @@ class UNetLoraTesterMixin(BaseLoraTesterMixin):
         with pytest.raises(ValueError):
             pipe.set_adapters(["adapter-1", "adapter-2"], [scales_1])
 
-    def test_simple_inference_with_text_denoiser_block_scale_for_all_dict_options(
-        self, text_lora_config, denoiser_lora_config
-    ):
+    def test_simple_inference_with_text_denoiser_block_scale_for_all_dict_options(self):
         """Tests that any valid combination of lora block scales can be used in pipe.set_adapter"""
 
         def updown_options(blocks_with_tf, layers_per_block, value):
@@ -1518,12 +1325,7 @@ class UNetLoraTesterMixin(BaseLoraTesterMixin):
             return opts
 
         pipe = self.get_pipeline().to(torch_device)
-        pipe.text_encoder.add_adapter(text_lora_config, "adapter-1")
-        pipe.unet.add_adapter(denoiser_lora_config, "adapter-1")
-
-        text_encoder_2 = self._lora_text_encoder_2(pipe)
-        if text_encoder_2 is not None:
-            text_encoder_2.add_adapter(text_lora_config, "adapter-1")
+        self.add_adapters_to_pipeline(pipe, adapter_name="adapter-1")
 
         has_text_encoder_2 = getattr(pipe, "text_encoder_2", None) is not None
         for scale_dict in all_possible_dict_opts(pipe.unet, value=1234):

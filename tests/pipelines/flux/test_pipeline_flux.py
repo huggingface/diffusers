@@ -1,4 +1,3 @@
-import copy
 import gc
 import inspect
 import os
@@ -371,10 +370,9 @@ class TestFluxPipelineMagCache(FluxPipelineTesterConfig, MagCacheTesterMixin):
 class TestFluxPipelineLoRA(FluxPipelineTesterConfig, LoraTesterMixin):
     """LoRA tests for the Flux pipeline."""
 
-    def test_with_alpha_in_state_dict(self, tmp_path, denoiser_lora_config):
+    def test_with_alpha_in_state_dict(self, tmp_path):
         pipe = self.get_pipeline().to(torch_device)
-        pipe.transformer.add_adapter(denoiser_lora_config)
-        assert check_if_lora_correctly_set(pipe.transformer), "Lora not correctly set in transformer"
+        self.add_adapters_to_pipeline(pipe, components=["transformer"])
 
         images_lora = self.run_pipe(pipe)
 
@@ -411,15 +409,12 @@ class TestFluxPipelineLoRA(FluxPipelineTesterConfig, LoraTesterMixin):
         )
         assert not torch.allclose(images_lora_with_alpha, images_lora, atol=1e-3, rtol=1e-3)
 
-    def test_lora_expansion_works_for_absent_keys(self, tmp_path, base_pipe_output, denoiser_lora_config):
+    def test_lora_expansion_works_for_absent_keys(self, tmp_path, base_pipe_output):
         pipe = self.get_pipeline().to(torch_device)
 
-        # Modify the config to have a layer which won't be present in the second LoRA we will load.
-        modified_denoiser_lora_config = copy.deepcopy(denoiser_lora_config)
-        modified_denoiser_lora_config.target_modules.add("x_embedder")
-
-        pipe.transformer.add_adapter(modified_denoiser_lora_config)
-        assert check_if_lora_correctly_set(pipe.transformer), "Lora not correctly set in transformer"
+        # Target a layer which won't be present in the second LoRA we will load.
+        target_modules = [*self.denoiser_target_modules["transformer"], "x_embedder"]
+        self.add_adapters_to_pipeline(pipe, components=["transformer"], target_modules=target_modules)
 
         images_lora = self.run_pipe(pipe)
         assert not torch.allclose(images_lora, base_pipe_output, atol=1e-3, rtol=1e-3), (
@@ -449,15 +444,12 @@ class TestFluxPipelineLoRA(FluxPipelineTesterConfig, LoraTesterMixin):
             "LoRA should lead to different results."
         )
 
-    def test_lora_expansion_works_for_extra_keys(self, tmp_path, base_pipe_output, denoiser_lora_config):
+    def test_lora_expansion_works_for_extra_keys(self, tmp_path, base_pipe_output):
         pipe = self.get_pipeline().to(torch_device)
 
-        # Modify the config to have a layer which won't be present in the first LoRA we will load.
-        modified_denoiser_lora_config = copy.deepcopy(denoiser_lora_config)
-        modified_denoiser_lora_config.target_modules.add("x_embedder")
-
-        pipe.transformer.add_adapter(modified_denoiser_lora_config)
-        assert check_if_lora_correctly_set(pipe.transformer), "Lora not correctly set in transformer"
+        # Target a layer which won't be present in the first LoRA we will load.
+        target_modules = [*self.denoiser_target_modules["transformer"], "x_embedder"]
+        self.add_adapters_to_pipeline(pipe, components=["transformer"], target_modules=target_modules)
 
         images_lora = self.run_pipe(pipe)
         assert not torch.allclose(images_lora, base_pipe_output, atol=1e-3, rtol=1e-3), (
