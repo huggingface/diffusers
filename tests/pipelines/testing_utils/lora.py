@@ -136,16 +136,6 @@ class BaseLoraTesterMixin(BasePipelineOutputMixin):
     def get_denoiser(self, pipe):
         return pipe.transformer if hasattr(pipe, "transformer") else pipe.unet
 
-    def run_pipe(self, pipe, **extra_inputs):
-        """Run the pipeline on the standard dummy inputs (fresh seeded generator) and return the first output.
-
-        Seeded exactly like the `base_pipe_output` fixture so outputs are directly comparable against it.
-        """
-        inputs = self.get_dummy_inputs()
-        inputs.update(extra_inputs)
-        torch.manual_seed(0)
-        return pipe(**inputs)[0]
-
     def _lora_text_encoder_2(self, pipe):
         """The pipeline's `text_encoder_2` when it exists and supports LoRA loading, else None."""
         if "text_encoder_2" in self.pipeline_class._lora_loadable_modules:
