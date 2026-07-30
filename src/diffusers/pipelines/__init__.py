@@ -434,6 +434,7 @@ else:
         "WanVideoToVideoPipeline",
         "WanVACEPipeline",
         "WanAnimatePipeline",
+        "WanAnimate2Pipeline",
     ]
     _import_structure["kandinsky5"] = [
         "Kandinsky5T2VPipeline",
@@ -895,6 +896,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         )
         from .visualcloze import VisualClozeGenerationPipeline, VisualClozePipeline
         from .wan import (
+            WanAnimate2Pipeline,
             WanAnimatePipeline,
             WanImageToVideoPipeline,
             WanPipeline,

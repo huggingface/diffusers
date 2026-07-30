@@ -3289,6 +3289,27 @@ def convert_wan_transformer_to_diffusers(checkpoint, **kwargs):
     return converted_state_dict
 
 
+def convert_wan_animate_2_transformer_to_diffusers(checkpoint, **kwargs):
+    r"""
+    Converts the state dict of the Wan-Animate-2 transformer from the official checkpoint format to the diffusers
+    format.
+    """
+    converted_state_dict = {}
+
+    # Strip model.diffusion_model prefix if present
+    keys = list(checkpoint.keys())
+    for k in keys:
+        if "model.diffusion_model." in k:
+            checkpoint[k.replace("model.diffusion_model.", "")] = checkpoint.pop(k)
+
+    # The official checkpoint already uses the same key format as the diffusers model
+    # (blocks.N.block.*), so no remapping is needed.
+    for key in list(checkpoint.keys()):
+        converted_state_dict[key] = checkpoint.pop(key)
+
+    return converted_state_dict
+
+
 def convert_wan_vae_to_diffusers(checkpoint, **kwargs):
     converted_state_dict = {}
 
