@@ -137,7 +137,7 @@ class ChatGLMTokenizer(PreTrainedTokenizer):
             padding_side=padding_side,
             clean_up_tokenization_spaces=clean_up_tokenization_spaces,
             encode_special_tokens=encode_special_tokens,
-            pad_token=kwargs.pop("pad_token", "<pad>"),
+            pad_token=kwargs.pop("pad_token", "<unk>"),
             unk_token=kwargs.pop("unk_token", "<unk>"),
             eos_token=kwargs.pop("eos_token", "</s>"),
             **kwargs,
@@ -159,7 +159,7 @@ class ChatGLMTokenizer(PreTrainedTokenizer):
 
     @property
     def pad_token(self) -> str:
-        return self._special_tokens_map.get("pad_token", "<pad>")
+        return self._special_tokens_map.get("pad_token", "<unk>")
 
     @pad_token.setter
     def pad_token(self, value: str):

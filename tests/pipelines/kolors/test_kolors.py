@@ -149,7 +149,7 @@ class KolorsPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     def test_chatglm_tokenizer_properties(self):
         components = self.get_dummy_components()
         tokenizer = components["tokenizer"]
-        self.assertEqual(tokenizer.pad_token, "<pad>")
+        self.assertEqual(tokenizer.pad_token, "<unk>")
         self.assertEqual(tokenizer.unk_token, "<unk>")
         self.assertEqual(tokenizer.eos_token, "</s>")
 
