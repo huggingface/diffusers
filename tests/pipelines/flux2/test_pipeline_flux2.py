@@ -1,4 +1,3 @@
-import numpy as np
 import torch
 from transformers import AutoProcessor, Mistral3Config, Mistral3ForConditionalGeneration
 
@@ -9,7 +8,7 @@ from diffusers import (
     Flux2Transformer2DModel,
 )
 
-from ...testing_utils import torch_device
+from ...testing_utils import assert_tensors_close, torch_device
 from ..testing_utils import (
     BasePipelineTesterConfig,
     MemoryTesterMixin,
@@ -124,7 +123,6 @@ class Flux2PipelineTesterConfig(BasePipelineTesterConfig):
 
 class TestFlux2Pipeline(Flux2PipelineTesterConfig, PipelineTesterMixin):
     def test_fused_qkv_projections(self):
-        # Run on CPU so the torch tensor slices can be compared with `np.allclose`.
         pipe = self.get_pipeline()
 
         inputs = self.get_dummy_inputs()
@@ -147,14 +145,26 @@ class TestFlux2Pipeline(Flux2PipelineTesterConfig, PipelineTesterMixin):
         image = pipe(**inputs).images
         image_slice_disabled = image[0, -1, -3:, -3:]
 
-        assert np.allclose(original_image_slice, image_slice_fused, atol=1e-3, rtol=1e-3), (
-            "Fusion of QKV projections shouldn't affect the outputs."
+        assert_tensors_close(
+            original_image_slice,
+            image_slice_fused,
+            atol=1e-3,
+            rtol=1e-3,
+            msg="Fusion of QKV projections shouldn't affect the outputs.",
         )
-        assert np.allclose(image_slice_fused, image_slice_disabled, atol=1e-3, rtol=1e-3), (
-            "Outputs, with QKV projection fusion enabled, shouldn't change when fused QKV projections are disabled."
+        assert_tensors_close(
+            image_slice_fused,
+            image_slice_disabled,
+            atol=1e-3,
+            rtol=1e-3,
+            msg="Outputs, with QKV projection fusion enabled, shouldn't change when fused QKV projections are disabled.",
         )
-        assert np.allclose(original_image_slice, image_slice_disabled, atol=1e-2, rtol=1e-2), (
-            "Original outputs should match when fused QKV projections are disabled."
+        assert_tensors_close(
+            original_image_slice,
+            image_slice_disabled,
+            atol=1e-2,
+            rtol=1e-2,
+            msg="Original outputs should match when fused QKV projections are disabled.",
         )
 
     def test_flux_image_output_shape(self):
