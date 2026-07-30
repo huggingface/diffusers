@@ -14,6 +14,7 @@
 
 import contextlib
 import gc
+from collections import Counter
 from unittest import mock
 
 import pytest
@@ -31,6 +32,7 @@ from ..testing_utils import (
     require_accelerate,
     require_accelerator,
     simulate_accelerator_memory,
+    slow,
     torch_device,
 )
 
@@ -693,6 +695,11 @@ class TestAutoOffload:
             assert records[3].reason == "offloading_disabled"
             assert records[3].available_memory is not None
 
+            # every event carries the device's cumulative peak-memory reading, which never decreases
+            peaks = [record.peak_memory for record in records]
+            assert all(peak is not None for peak in peaks)
+            assert peaks == sorted(peaks)
+
             # the printed table shows one row per decision: m2's row carries the m1 offload it caused
             m2_row = next(line for line in repr(cm.offload_record).splitlines() if line.startswith("2 "))
             assert m2_id in m2_row and m1_id in m2_row
@@ -914,3 +921,128 @@ class ModularPipelineOffloadTesterMixin:
             assert max_diff < expected_max_diff, f"offloaded output diverged from baseline (max diff {max_diff})"
         finally:
             cm.disable_auto_cpu_offload()
+
+
+class ModularPipelineIntegrationTesterMixin:
+    """
+    Slow integration tests that run a modular pipeline against its real checkpoint. Auto
+    offloading is one aspect covered here: `test_auto_cpu_offload_on_cards` verifies that it
+    behaves exactly as declared on a few simulated card sizes, and that it leaves the output
+    untouched. The tests need a device large enough to run the pipeline normally - the simulated
+    cards only cap the memory readings.
+
+    Subclasses set `repo_id`, `get_inputs()`, and `offload_cards` - the expected offloading
+    behavior on each simulated card:
+
+        offload_cards = {
+            "16GB": {
+                "offload": {"text_encoder": 1, "transformer": 1},  # model -> times offloaded
+                "oom": {},  # model whose forward ran out of memory -> times
+                "final_device": {"text_encoder": "cpu", "transformer": "cpu", "vae": "cuda"},
+            },
+        }
+
+    A model missing from "offload" must never have been offloaded, `"oom": {}` means no forward
+    pass needed OOM recovery, and "final_device" is where every model sits right after the run
+    (compared by device type). To discover the expected behavior for a new pipeline or card, run
+    it once and read the record:
+
+        cm.enable_auto_cpu_offload(device="cuda")
+        with simulate_accelerator_memory("16GB", hard=False):
+            pipe(**inputs, output="images")
+        print(cm.offload_record)  # the decisions, one row each -> "offload" and "oom" counts
+        for component_id, component in cm.components.items():
+            print(component_id, component.device)  # -> "final_device"
+
+    check the decisions make sense for the component sizes, then transcribe them into the spec.
+    Pick card sizes with some margin from the fits/doesn't-fit boundary: the offloader reads live
+    free memory, which activations and allocator cache have already reduced, so a card within
+    ~2GB of the weights + reserve line can behave differently across environments.
+    """
+
+    repo_id = None
+    torch_dtype = torch.bfloat16
+    output_name = "images"
+
+    @property
+    def offload_cards(self):
+        # {card label: expected behavior} - see the class docstring
+        raise NotImplementedError
+
+    def get_inputs(self):
+        raise NotImplementedError
+
+    def get_pipeline(self, components_manager=None):
+        from diffusers import ModularPipeline
+
+        pipe = ModularPipeline.from_pretrained(self.repo_id, components_manager=components_manager)
+        pipe.load_components(torch_dtype=self.torch_dtype)
+        return pipe
+
+    def setup_method(self):
+        gc.collect()
+        backend_empty_cache(torch_device)
+
+    def teardown_method(self):
+        gc.collect()
+        backend_empty_cache(torch_device)
+
+    @slow
+    @require_accelerate
+    @require_accelerator
+    def test_auto_cpu_offload_on_cards(self, memory_reserve="3GB", expected_max_diff=5e-2):
+        from accelerate.utils.modeling import convert_file_size_to_int
+
+        # baseline: an ordinary, fully-resident run on the real card
+        baseline_pipe = self.get_pipeline()
+        baseline_pipe.to(torch_device)
+        baseline = baseline_pipe(**self.get_inputs(), output=self.output_name)
+        # move off the device explicitly - `del` alone frees nothing while any reference to the
+        # components survives, and stale weights would occupy every simulated card below
+        baseline_pipe.to("cpu")
+        del baseline_pipe
+        gc.collect()
+        backend_empty_cache(torch_device)
+
+        cm = ComponentsManager()
+        pipe = self.get_pipeline(components_manager=cm)
+
+        for label, expected in self.offload_cards.items():
+            card = convert_file_size_to_int(label)
+            cm.enable_auto_cpu_offload(device=torch_device, memory_reserve=memory_reserve)
+            # Soft simulation: only the memory *readings* see the card, so heavy activations can
+            # never OOM the test - the decisions are verified against the declared spec instead.
+            with simulate_accelerator_memory(card, device=torch_device, hard=False):
+                output = pipe(**self.get_inputs(), output=self.output_name)
+            events = list(cm.offload_record.events)
+            # manager ids are "{name}_{id(model)}" - strip the suffix to compare against the
+            # spec's plain component names
+            final_devices = {
+                component_id.rsplit("_", 1)[0]: component.device.type
+                for component_id, component in cm.components.items()
+                if isinstance(component, torch.nn.Module) and next(component.parameters(), None) is not None
+            }
+            cm.disable_auto_cpu_offload()
+            backend_empty_cache(torch_device)
+
+            offloads = Counter(event.model_id.rsplit("_", 1)[0] for event in events if event.action == "offload")
+            assert offloads == Counter(expected["offload"]), (
+                f"[{label}] offloads {dict(offloads)} != expected {expected['offload']}"
+            )
+
+            ooms = Counter(
+                event.reason.removeprefix("oom_retry:").rsplit("_", 1)[0]
+                for event in events
+                if event.reason is not None and event.reason.startswith("oom_retry:")
+            )
+            assert ooms == Counter(expected["oom"]), f"[{label}] OOMs {dict(ooms)} != expected {expected['oom']}"
+
+            assert final_devices == expected["final_device"], (
+                f"[{label}] final devices {final_devices} != expected {expected['final_device']}"
+            )
+
+            # and none of it changed the result
+            max_diff = torch.abs(baseline - output).max()
+            assert max_diff < expected_max_diff, (
+                f"[{label}] offloaded output diverged from baseline (max diff {max_diff})"
+            )

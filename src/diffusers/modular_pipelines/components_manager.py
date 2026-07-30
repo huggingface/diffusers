@@ -67,6 +67,18 @@ def available_device_memory(execution_device: torch.device) -> int:
     return available_memory
 
 
+def device_peak_memory(execution_device: torch.device) -> int | None:
+    """
+    The device's peak allocated memory so far — cumulative since process start; the offloader never resets it,
+    so the delta between two consecutive recorded events attributes an activation peak to the interval between
+    those moves.
+    """
+    device_module = getattr(torch, execution_device.type, torch.cuda)
+    if hasattr(device_module, "max_memory_allocated"):
+        return device_module.max_memory_allocated(execution_device)
+    return None
+
+
 @dataclass
 class OffloadEvent:
     """
@@ -83,6 +95,9 @@ class OffloadEvent:
     reason: str | None = None
     # free device memory read just before this move
     available_memory: int | None = None
+    # the device's peak allocated memory as of this move (cumulative, never reset by the offloader — the
+    # difference from the previous event's reading is the peak of the interval between the two moves)
+    peak_memory: int | None = None
 
 
 class OffloadRecord:
@@ -231,6 +246,7 @@ class CustomOffloadHook(ModelHook):
                             model_size=hook.model.get_memory_footprint(),
                             reason=f"release_memory_for:{self.model_id}",
                             available_memory=available_device_memory(self.execution_device),
+                            peak_memory=device_peak_memory(self.execution_device),
                         )
                     )
                     hook.offload()
@@ -243,6 +259,7 @@ class CustomOffloadHook(ModelHook):
                     model_id=self.model_id,
                     model_size=module.get_memory_footprint(),
                     available_memory=available_device_memory(self.execution_device),
+                    peak_memory=device_peak_memory(self.execution_device),
                 )
             )
             module.to(self.execution_device)
@@ -296,6 +313,7 @@ class CustomOffloadHook(ModelHook):
                                 model_size=smallest.model.get_memory_footprint(),
                                 reason=f"oom_retry:{self.model_id}",
                                 available_memory=available_device_memory(self.execution_device),
+                                peak_memory=device_peak_memory(self.execution_device),
                             )
                         )
                         smallest.offload()
@@ -794,6 +812,7 @@ class ComponentsManager:
                         model_size=hook.model.get_memory_footprint(),
                         reason="offloading_disabled",
                         available_memory=available_device_memory(hook.hook.execution_device),
+                        peak_memory=device_peak_memory(hook.hook.execution_device),
                     )
                 )
             hook.offload()
