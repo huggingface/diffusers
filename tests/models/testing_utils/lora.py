@@ -48,7 +48,7 @@ from ...testing_utils import (
     skip_mps,
     torch_device,
 )
-from .common import cast_inputs_to_dtype
+from .common import BaseModelOutputMixin, cast_inputs_to_dtype
 
 
 if is_peft_available():
@@ -78,7 +78,7 @@ def check_if_lora_correctly_set(model) -> bool:
 
 @is_lora
 @require_peft_backend
-class LoraTesterMixin:
+class LoraTesterMixin(BaseModelOutputMixin):
     """
     Mixin class for testing LoRA/PEFT functionality on models.
 
@@ -99,13 +99,14 @@ class LoraTesterMixin:
 
     @pytest.mark.parametrize("use_dora", [False, True], ids=["lora", "dora"])
     @torch.no_grad()
-    def test_save_load_lora_adapter(self, tmp_path, use_dora, rank=4, lora_alpha=4, atol=1e-4, rtol=1e-4):
-        init_dict = self.get_init_dict()
-        inputs_dict = self.get_dummy_inputs()
-        model = self.model_class(**init_dict).to(torch_device)
-
+    def test_save_load_lora_adapter(
+        self, base_model_output, tmp_path, use_dora, rank=4, lora_alpha=4, atol=1e-4, rtol=1e-4
+    ):
+        # Seeded like the `base_model_output` fixture, so that fixture is this model's no-LoRA output.
         torch.manual_seed(0)
-        output_no_lora = model(**inputs_dict, return_dict=False)[0]
+        model = self.model_class(**self.get_init_dict()).eval().to(torch_device)
+        inputs_dict = self.get_dummy_inputs()
+        output_no_lora = self._flatten_output(base_model_output)
 
         denoiser_lora_config = LoraConfig(
             r=rank,
@@ -118,7 +119,7 @@ class LoraTesterMixin:
         assert check_if_lora_correctly_set(model), "LoRA layers not set correctly"
 
         torch.manual_seed(0)
-        outputs_with_lora = model(**inputs_dict, return_dict=False)[0]
+        outputs_with_lora = self._model_output(model, inputs_dict)
 
         assert not torch.allclose(output_no_lora, outputs_with_lora, atol=atol, rtol=rtol), (
             "Output should differ with LoRA enabled"
@@ -145,7 +146,7 @@ class LoraTesterMixin:
         assert check_if_lora_correctly_set(model), "LoRA layers not set correctly after reload"
 
         torch.manual_seed(0)
-        outputs_with_lora_2 = model(**inputs_dict, return_dict=False)[0]
+        outputs_with_lora_2 = self._model_output(model, inputs_dict)
 
         assert not torch.allclose(output_no_lora, outputs_with_lora_2, atol=atol, rtol=rtol), (
             "Output should differ with LoRA enabled"
@@ -240,13 +241,15 @@ class LoraTesterMixin:
             model.load_lora_adapter(tmp_path, prefix=None, use_safetensors=True)
         assert "`LoraConfig` class could not be instantiated" in str(exc_info.value)
 
-    def _model_output(self, model, inputs_dict):
-        output = model(**inputs_dict, return_dict=False)[0]
+    def _flatten_output(self, output):
         # Some models (e.g. Z-Image) return a list of per-sample tensors — flatten so the tensor comparisons in
         # the tests below work regardless of the output layout.
         if isinstance(output, (list, tuple)):
-            output = torch.cat([t.flatten() for t in output])
+            return torch.cat([t.flatten() for t in output])
         return output
+
+    def _model_output(self, model, inputs_dict):
+        return self._flatten_output(model(**inputs_dict, return_dict=False)[0])
 
     @require_peft_version_greater("0.13.1")
     @torch.no_grad()
@@ -311,12 +314,12 @@ class LoraTesterMixin:
 
     @require_peft_version_greater("0.13.2")
     @torch.no_grad()
-    def test_lora_B_bias(self, atol=1e-3, rtol=1e-3):
-        model = self.model_class(**self.get_init_dict()).to(torch_device)
-        inputs_dict = self.get_dummy_inputs()
-
+    def test_lora_B_bias(self, base_model_output, atol=1e-3, rtol=1e-3):
+        # Seeded like the `base_model_output` fixture, so that fixture is this model's no-LoRA output.
         torch.manual_seed(0)
-        original_output = self._model_output(model, inputs_dict)
+        model = self.model_class(**self.get_init_dict()).eval().to(torch_device)
+        inputs_dict = self.get_dummy_inputs()
+        original_output = self._flatten_output(base_model_output)
 
         lora_config_kwargs = {
             "r": 4,
@@ -353,12 +356,12 @@ class LoraTesterMixin:
         assert not torch.allclose(lora_bias_false_output, lora_bias_true_output, atol=atol, rtol=rtol)
 
     @torch.no_grad()
-    def test_correct_lora_configs_with_different_ranks(self, atol=1e-3, rtol=1e-3):
-        model = self.model_class(**self.get_init_dict()).to(torch_device)
-        inputs_dict = self.get_dummy_inputs()
-
+    def test_correct_lora_configs_with_different_ranks(self, base_model_output, atol=1e-3, rtol=1e-3):
+        # Seeded like the `base_model_output` fixture, so that fixture is this model's no-LoRA output.
         torch.manual_seed(0)
-        original_output = self._model_output(model, inputs_dict)
+        model = self.model_class(**self.get_init_dict()).eval().to(torch_device)
+        inputs_dict = self.get_dummy_inputs()
+        original_output = self._flatten_output(base_model_output)
 
         lora_config = LoraConfig(
             r=4,
