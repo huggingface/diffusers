@@ -184,6 +184,8 @@
     title: NVIDIA ModelOpt
   - local: quantization/autoround
     title: AutoRound
+  - local: quantization/sdnq
+    title: SDNQ
   title: Quantization
 - isExpanded: false
   sections:
@@ -232,8 +234,6 @@
     title: How to contribute?
   - local: conceptual/ethical_guidelines
     title: Diffusers' Ethical Guidelines
-  - local: conceptual/evaluation
-    title: Evaluating Diffusion Models
   title: Resources
 - isExpanded: false
   sections:

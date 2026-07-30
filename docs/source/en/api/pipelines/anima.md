@@ -21,7 +21,7 @@ import torch
 from diffusers import ModularPipeline
 
 pipe = ModularPipeline.from_pretrained("circlestone-labs/Anima-Base-v1.0-Diffusers")
-pipe.load_components(torch_dtype=torch.bfloat16)
+pipe.load_components(dtype=torch.bfloat16)
 pipe.to("cuda")
 
 image = pipe(prompt="masterpiece, best quality, 1girl, solo, city lights").images[0]

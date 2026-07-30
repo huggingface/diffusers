@@ -33,7 +33,7 @@ Original model checkpoints for Chroma can be found here:
 import torch
 from diffusers import ChromaPipeline
 
-pipe = ChromaPipeline.from_pretrained("lodestones/Chroma1-HD", torch_dtype=torch.bfloat16)
+pipe = ChromaPipeline.from_pretrained("lodestones/Chroma1-HD", dtype=torch.bfloat16)
 pipe.enable_model_cpu_offload()
 
 prompt = [
@@ -67,9 +67,9 @@ from diffusers import ChromaTransformer2DModel, ChromaPipeline
 model_id = "lodestones/Chroma1-HD"
 dtype = torch.bfloat16
 
-transformer = ChromaTransformer2DModel.from_single_file("https://huggingface.co/lodestones/Chroma1-HD/blob/main/Chroma1-HD.safetensors", torch_dtype=dtype)
+transformer = ChromaTransformer2DModel.from_single_file("https://huggingface.co/lodestones/Chroma1-HD/blob/main/Chroma1-HD.safetensors", dtype=dtype)
 
-pipe = ChromaPipeline.from_pretrained(model_id, transformer=transformer, torch_dtype=dtype)
+pipe = ChromaPipeline.from_pretrained(model_id, transformer=transformer, dtype=dtype)
 pipe.enable_model_cpu_offload()
 
 prompt = [

@@ -161,7 +161,7 @@ import torch
 from diffusers import AutoPipelineForText2Image
 from diffusers.pipelines.wuerstchen import DEFAULT_STAGE_C_TIMESTEPS
 
-pipeline = AutoPipelineForText2Image.from_pretrained("path/to/saved/model", torch_dtype=torch.float16).to("cuda")
+pipeline = AutoPipelineForText2Image.from_pretrained("path/to/saved/model", dtype=torch.float16).to("cuda")
 
 caption = "A cute bird naruto holding a shield"
 images = pipeline(
