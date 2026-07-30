@@ -49,7 +49,6 @@ ENV_VARS_TRUE_AND_AUTO_VALUES = ENV_VARS_TRUE_VALUES.union({"AUTO"})
 
 USE_TF = os.environ.get("USE_TF", "AUTO").upper()
 USE_TORCH = os.environ.get("USE_TORCH", "AUTO").upper()
-USE_JAX = os.environ.get("USE_FLAX", "AUTO").upper()
 USE_SAFETENSORS = os.environ.get("USE_SAFETENSORS", "AUTO").upper()
 DIFFUSERS_SLOW_IMPORT = os.environ.get("DIFFUSERS_SLOW_IMPORT", "FALSE").upper()
 DIFFUSERS_SLOW_IMPORT = DIFFUSERS_SLOW_IMPORT in ENV_VARS_TRUE_VALUES
@@ -102,20 +101,6 @@ else:
     logger.info("Disabling PyTorch because USE_TORCH is set")
     _torch_available = False
     _torch_version = "N/A"
-
-_jax_version = "N/A"
-_flax_version = "N/A"
-if USE_JAX in ENV_VARS_TRUE_AND_AUTO_VALUES:
-    _flax_available = importlib.util.find_spec("jax") is not None and importlib.util.find_spec("flax") is not None
-    if _flax_available:
-        try:
-            _jax_version = importlib_metadata.version("jax")
-            _flax_version = importlib_metadata.version("flax")
-            logger.info(f"JAX version {_jax_version}, Flax version {_flax_version} available.")
-        except importlib_metadata.PackageNotFoundError:
-            _flax_available = False
-else:
-    _flax_available = False
 
 if USE_SAFETENSORS in ENV_VARS_TRUE_AND_AUTO_VALUES:
     _safetensors_available, _safetensors_version = _is_package_available("safetensors")
@@ -257,28 +242,8 @@ def is_torch_neuronx_available():
     return _torch_neuronx_available
 
 
-def is_flax_available():
-    return _flax_available
-
-
 def is_transformers_available():
     return _transformers_available
-
-
-def is_transformers_flax_compatible():
-    # Flax classes (e.g. FlaxCLIPTextModel, FlaxPreTrainedModel) were removed from
-    # transformers main on the path to its v5 release. Gate Flax pipeline registration
-    # on transformers still shipping them so `import diffusers` doesn't crash.
-    # Name avoids the `is_*_available()` pattern so utils/check_dummies.py keeps
-    # generating the `flax_and_transformers` backend group when this is combined with
-    # the legacy is_flax_available()/is_transformers_available() pair.
-    if not (_transformers_available and _flax_available):
-        return False
-    try:
-        import transformers
-    except ImportError:
-        return False
-    return hasattr(transformers, "FlaxPreTrainedModel")
 
 
 def is_inflect_available():
@@ -458,12 +423,6 @@ def is_av_available():
 
 
 # docstyle-ignore
-FLAX_IMPORT_ERROR = """
-{0} requires the FLAX library but it was not found in your environment. Checkout the instructions on the
-installation page: https://github.com/google/flax and follow the ones that match your environment.
-"""
-
-# docstyle-ignore
 INFLECT_IMPORT_ERROR = """
 {0} requires the inflect library but it was not found in your environment. You can install it with pip: `pip install
 inflect`
@@ -623,7 +582,6 @@ following the AWS Neuron documentation: https://awsdocs-neuron.readthedocs-hoste
 BACKENDS_MAPPING = OrderedDict(
     [
         ("bs4", (is_bs4_available, BS4_IMPORT_ERROR)),
-        ("flax", (is_flax_available, FLAX_IMPORT_ERROR)),
         ("inflect", (is_inflect_available, INFLECT_IMPORT_ERROR)),
         ("onnx", (is_onnx_available, ONNX_IMPORT_ERROR)),
         ("opencv", (is_opencv_available, OPENCV_IMPORT_ERROR)),

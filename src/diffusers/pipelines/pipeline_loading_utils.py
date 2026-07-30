@@ -29,7 +29,6 @@ from packaging import version
 from .. import __version__
 from ..utils import (
     FLASHPACK_WEIGHTS_NAME,
-    FLAX_WEIGHTS_NAME,
     ONNX_EXTERNAL_WEIGHTS_NAME,
     ONNX_WEIGHTS_NAME,
     SAFETENSORS_WEIGHTS_NAME,
@@ -53,8 +52,6 @@ if is_transformers_available():
     from transformers.utils import SAFE_WEIGHTS_NAME as TRANSFORMERS_SAFE_WEIGHTS_NAME
     from transformers.utils import WEIGHTS_NAME as TRANSFORMERS_WEIGHTS_NAME
 
-    if is_transformers_version("<=", "4.56.2"):
-        from transformers.utils import FLAX_WEIGHTS_NAME as TRANSFORMERS_FLAX_WEIGHTS_NAME
 
 if is_accelerate_available():
     import accelerate
@@ -124,15 +121,12 @@ def is_safetensors_compatible(filenames, passed_components=None, folder_names=No
     weight_names = [
         WEIGHTS_NAME,
         SAFETENSORS_WEIGHTS_NAME,
-        FLAX_WEIGHTS_NAME,
         ONNX_WEIGHTS_NAME,
         ONNX_EXTERNAL_WEIGHTS_NAME,
     ]
 
     if is_transformers_available():
         weight_names += [TRANSFORMERS_WEIGHTS_NAME, TRANSFORMERS_SAFE_WEIGHTS_NAME]
-        if is_transformers_version("<=", "4.56.2"):
-            weight_names += [TRANSFORMERS_FLAX_WEIGHTS_NAME]
 
     # model_pytorch, diffusion_model_pytorch, ...
     weight_prefixes = [w.split(".")[0] for w in weight_names]
@@ -207,7 +201,6 @@ def filter_model_files(filenames):
     weight_names = [
         WEIGHTS_NAME,
         SAFETENSORS_WEIGHTS_NAME,
-        FLAX_WEIGHTS_NAME,
         ONNX_WEIGHTS_NAME,
         ONNX_EXTERNAL_WEIGHTS_NAME,
         FLASHPACK_WEIGHTS_NAME,
@@ -215,8 +208,6 @@ def filter_model_files(filenames):
 
     if is_transformers_available():
         weight_names += [TRANSFORMERS_WEIGHTS_NAME, TRANSFORMERS_SAFE_WEIGHTS_NAME]
-        if is_transformers_version("<=", "4.56.2"):
-            weight_names += [TRANSFORMERS_FLAX_WEIGHTS_NAME]
 
     allowed_extensions = [wn.split(".")[-1] for wn in weight_names]
 
@@ -231,15 +222,12 @@ def variant_compatible_siblings(filenames, variant=None, ignore_patterns=None) -
     weight_names = [
         WEIGHTS_NAME,
         SAFETENSORS_WEIGHTS_NAME,
-        FLAX_WEIGHTS_NAME,
         ONNX_WEIGHTS_NAME,
         ONNX_EXTERNAL_WEIGHTS_NAME,
     ]
 
     if is_transformers_available():
         weight_names += [TRANSFORMERS_WEIGHTS_NAME, TRANSFORMERS_SAFE_WEIGHTS_NAME]
-        if is_transformers_version("<=", "4.56.2"):
-            weight_names += [TRANSFORMERS_FLAX_WEIGHTS_NAME]
 
     # model_pytorch, diffusion_model_pytorch, ...
     weight_prefixes = [w.split(".")[0] for w in weight_names]
@@ -536,8 +524,6 @@ def _get_pipeline_class(
             "The class name could not be found in the configuration file. Please make sure to pass the correct `class_name`."
         )
 
-    class_name = class_name[4:] if class_name.startswith("Flax") else class_name
-
     pipeline_cls = getattr(diffusers_module, class_name)
 
     if load_connected_pipeline:
@@ -682,9 +668,6 @@ def _get_final_device_map(device_map, pipeline_class, passed_class_obj, init_dic
     # Load each module in the pipeline on a meta device so that we can derive the device map.
     init_empty_modules = {}
     for name, (library_name, class_name) in init_dict.items():
-        if class_name.startswith("Flax"):
-            raise ValueError("Flax pipelines are not supported with `device_map`.")
-
         # Define all importable classes
         is_pipeline_module = hasattr(pipelines, library_name)
         importable_classes = ALL_IMPORTABLE_CLASSES
@@ -781,7 +764,6 @@ def load_sub_model(
     offload_state_dict: bool,
     model_variants: dict[str, str],
     name: str,
-    from_flax: bool,
     variant: str,
     low_cpu_mem_usage: bool,
     cached_folder: str | os.PathLike,
@@ -874,9 +856,6 @@ def load_sub_model(
         if is_diffusers_model:
             loading_kwargs["use_flashpack"] = use_flashpack
 
-        if from_flax:
-            loading_kwargs["from_flax"] = True
-
         # the following can be deleted once the minimum required `transformers` version
         # is higher than 4.27
         if (
@@ -890,11 +869,7 @@ def load_sub_model(
         elif is_transformers_model and loading_kwargs["variant"] is None:
             loading_kwargs.pop("variant")
 
-        # if `from_flax` and model is transformer model, can currently not load with `low_cpu_mem_usage`
-        if not (from_flax and is_transformers_model):
-            loading_kwargs["low_cpu_mem_usage"] = low_cpu_mem_usage
-        else:
-            loading_kwargs["low_cpu_mem_usage"] = False
+        loading_kwargs["low_cpu_mem_usage"] = low_cpu_mem_usage
 
     if is_diffusers_model:
         loading_kwargs["disable_mmap"] = disable_mmap
@@ -1125,7 +1100,6 @@ def _get_ignore_patterns(
     model_folder_names: list[str],
     model_filenames: list[str],
     use_safetensors: bool,
-    from_flax: bool,
     allow_pickle: bool,
     use_onnx: bool,
     is_onnx: bool,
@@ -1143,10 +1117,7 @@ def _get_ignore_patterns(
             f"Could not find the necessary `safetensors` weights in {model_filenames} (variant={variant})"
         )
 
-    if from_flax:
-        ignore_patterns = ["*.bin", "*.safetensors", "*.onnx", "*.pb"]
-
-    elif use_safetensors and is_safetensors_compatible(
+    if use_safetensors and is_safetensors_compatible(
         model_filenames, passed_components=passed_components, folder_names=model_folder_names, variant=variant
     ):
         ignore_patterns = ["*.bin", "*.msgpack"]

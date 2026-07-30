@@ -23,7 +23,7 @@ The model can be loaded with the following code snippet.
 from diffusers import SanaVideoTransformer3DModel
 import torch
 
-transformer = SanaVideoTransformer3DModel.from_pretrained("Efficient-Large-Model/SANA-Video_2B_480p_diffusers", subfolder="transformer", torch_dtype=torch.bfloat16)
+transformer = SanaVideoTransformer3DModel.from_pretrained("Efficient-Large-Model/SANA-Video_2B_480p_diffusers", subfolder="transformer", dtype=torch.bfloat16)
 ```
 
 ## SanaVideoTransformer3DModel

@@ -128,8 +128,8 @@ class AnimaDecodeStep(SequentialPipelineBlocks):
 # auto_docstring
 class AnimaImg2ImgCoreDenoiseStep(SequentialPipelineBlocks):
     """
-    Denoise block for Anima image-to-image generation. Expects ``image_latents`` already in state (produced by
-    ``AnimaImg2ImgVaeEncoderStep`` upstream).
+    Denoise block for Anima image-to-image generation. Uses image_latents already in state from
+    AnimaImg2ImgVaeEncoderStep.
 
       Components:
           text_conditioner (`AnimaTextConditioner`) transformer (`CosmosTransformer3DModel`) scheduler
@@ -155,7 +155,7 @@ class AnimaImg2ImgCoreDenoiseStep(SequentialPipelineBlocks):
           num_images_per_prompt (`int`, *optional*, defaults to 1):
               The number of images to generate per prompt.
           image_latents (`Tensor`):
-              Encoded image latents from ``AnimaImg2ImgVaeEncoderStep``.
+              image latents used to guide the image generation. Can be generated from vae_encoder step.
           height (`int`, *optional*):
               The height in pixels of the generated image.
           width (`int`, *optional*):
@@ -165,7 +165,7 @@ class AnimaImg2ImgCoreDenoiseStep(SequentialPipelineBlocks):
           sigmas (`list`, *optional*):
               Custom sigmas for the denoising process.
           strength (`float`, *optional*, defaults to 0.9):
-              Strength for img2img transformation.
+              Strength for img2img/inpainting.
           generator (`Generator`, *optional*):
               Torch generator for deterministic generation.
           latents (`Tensor`, *optional*):
@@ -203,15 +203,13 @@ class AnimaImg2ImgCoreDenoiseStep(SequentialPipelineBlocks):
 # auto_docstring
 class AnimaAutoCoreDenoiseStep(AutoPipelineBlocks):
     """
-    Denoise step that selects between text-to-image and image-to-image denoising based on whether ``image_latents`` is
-    present in state. - `AnimaCoreDenoiseStep` (text2image) is used when no ``image_latents`` are present. -
-    `AnimaImg2ImgCoreDenoiseStep` (img2img) is used when ``image_latents`` are present (set upstream by
-    ``AnimaAutoVaeImageEncoderStep``).
+    Denoise step that selects between text-to-image and image-to-image denoising based on whether image_latents is
+    present in state. - `AnimaCoreDenoiseStep` (text2image) is used when no image_latents are present. -
+    `AnimaImg2ImgCoreDenoiseStep` (img2img) is used when image_latents are present.
 
       Components:
-          text_conditioner (`AnimaTextConditioner`) transformer (`CosmosTransformer3DModel`) vae
-          (`AutoencoderKLQwenImage`) scheduler (`FlowMatchEulerDiscreteScheduler`) image_processor
-          (`VaeImageProcessor`) guider (`ClassifierFreeGuidance`)
+          text_conditioner (`AnimaTextConditioner`) transformer (`CosmosTransformer3DModel`) scheduler
+          (`FlowMatchEulerDiscreteScheduler`) guider (`ClassifierFreeGuidance`)
 
       Inputs:
           qwen_prompt_embeds (`Tensor`):
@@ -233,21 +231,21 @@ class AnimaAutoCoreDenoiseStep(AutoPipelineBlocks):
           num_images_per_prompt (`int`, *optional*, defaults to 1):
               The number of images to generate per prompt.
           image_latents (`Tensor`, *optional*):
-              Encoded image latents. When present in state, img2img denoising is selected.
+              image latents used to guide the image generation. Can be generated from vae_encoder step.
           height (`int`, *optional*):
               The height in pixels of the generated image.
           width (`int`, *optional*):
               The width in pixels of the generated image.
-          latents (`Tensor`, *optional*):
-              Pre-generated noisy latents for image generation.
-          generator (`Generator`, *optional*):
-              Torch generator for deterministic generation.
-          num_inference_steps (`int`, *optional*, defaults to 50):
+          num_inference_steps (`int`):
               The number of denoising steps.
           sigmas (`list`, *optional*):
               Custom sigmas for the denoising process.
           strength (`float`, *optional*, defaults to 0.9):
-              Strength for img2img transformation.
+              Strength for img2img/inpainting.
+          generator (`Generator`, *optional*):
+              Torch generator for deterministic generation.
+          latents (`Tensor`):
+              Pre-generated noisy latents for image generation.
           **denoiser_input_fields (`None`, *optional*):
               The conditional model inputs for the Anima denoiser.
 
@@ -273,26 +271,29 @@ class AnimaAutoCoreDenoiseStep(AutoPipelineBlocks):
 # auto_docstring
 class AnimaAutoVaeImageEncoderStep(AutoPipelineBlocks):
     """
-    VAE Image Encoder step that encodes the input image to produce ``image_latents``. This step is skipped when no
-    image is provided (text-to-image workflow).
+    VAE Image Encoder step that encodes the input image to produce image_latents. Skipped when no image is provided
+    (text-to-image workflow).
 
       Components:
           vae (`AutoencoderKLQwenImage`) image_processor (`VaeImageProcessor`)
 
       Inputs:
-          image (`Image`, *optional*):
-              Input image for image-to-image generation. When provided, the image is encoded to ``image_latents``. When
-              not provided, this step is skipped.
+          image (`Image | list`, *optional*):
+              Reference image(s) for denoising. Can be a single image or list of images.
           height (`int`, *optional*):
-              Height of the output image.
+              The height in pixels of the generated image.
           width (`int`, *optional*):
-              Width of the output image.
+              The width in pixels of the generated image.
           generator (`Generator`, *optional*):
               Torch generator for deterministic generation.
 
       Outputs:
           image_latents (`Tensor`):
-              Encoded image latents used by ``AnimaAutoCoreDenoiseStep`` to trigger img2img denoising.
+              Encoded image latents.
+          height (`int`):
+              Image height used for generation.
+          width (`int`):
+              Image width used for generation.
     """
 
     block_classes = [AnimaImg2ImgVaeEncoderStep]
@@ -314,13 +315,13 @@ class AnimaAutoBlocks(SequentialPipelineBlocks):
 
       Supported workflows:
         - `text2image`: requires `prompt`
-        - `img2img`: requires `prompt`, `image`
+        - `img2img`: requires `image`, `prompt`
 
       Components:
           text_encoder (`Qwen3Model`) tokenizer (`Qwen2Tokenizer`) t5_tokenizer (`T5Tokenizer`) guider
-          (`ClassifierFreeGuidance`) text_conditioner (`AnimaTextConditioner`) transformer (`CosmosTransformer3DModel`)
-          scheduler (`FlowMatchEulerDiscreteScheduler`) vae (`AutoencoderKLQwenImage`) image_processor
-          (`VaeImageProcessor`)
+          (`ClassifierFreeGuidance`) vae (`AutoencoderKLQwenImage`) image_processor (`VaeImageProcessor`)
+          text_conditioner (`AnimaTextConditioner`) transformer (`CosmosTransformer3DModel`) scheduler
+          (`FlowMatchEulerDiscreteScheduler`)
 
       Inputs:
           prompt (`str`):
@@ -329,24 +330,26 @@ class AnimaAutoBlocks(SequentialPipelineBlocks):
               The prompt or prompts not to guide the image generation.
           max_sequence_length (`int`, *optional*, defaults to 512):
               Maximum sequence length for prompt encoding.
-          num_images_per_prompt (`int`, *optional*, defaults to 1):
-              The number of images to generate per prompt.
           image (`Image | list`, *optional*):
-              Reference image(s) for image-to-image generation. When provided, img2img workflow is used.
+              Reference image(s) for denoising. Can be a single image or list of images.
           height (`int`, *optional*):
               The height in pixels of the generated image.
           width (`int`, *optional*):
               The width in pixels of the generated image.
-          latents (`Tensor`, *optional*):
-              Pre-generated noisy latents for image generation.
           generator (`Generator`, *optional*):
               Torch generator for deterministic generation.
-          num_inference_steps (`int`, *optional*, defaults to 50):
+          num_images_per_prompt (`int`, *optional*, defaults to 1):
+              The number of images to generate per prompt.
+          image_latents (`Tensor`, *optional*):
+              image latents used to guide the image generation. Can be generated from vae_encoder step.
+          num_inference_steps (`int`):
               The number of denoising steps.
           sigmas (`list`, *optional*):
               Custom sigmas for the denoising process.
           strength (`float`, *optional*, defaults to 0.9):
-              How much to transform the reference image (img2img only).
+              Strength for img2img/inpainting.
+          latents (`Tensor`):
+              Pre-generated noisy latents for image generation.
           **denoiser_input_fields (`None`, *optional*):
               The conditional model inputs for the Anima denoiser.
           output_type (`str`, *optional*, defaults to pil):

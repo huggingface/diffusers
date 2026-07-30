@@ -25,7 +25,7 @@ import torch
 from diffusers import Cosmos3OmniTransformer
 
 transformer = Cosmos3OmniTransformer.from_pretrained(
-    "nvidia/Cosmos3-Nano", subfolder="transformer", torch_dtype=torch.bfloat16
+    "nvidia/Cosmos3-Nano", subfolder="transformer", dtype=torch.bfloat16
 )
 ```
 

@@ -9,7 +9,6 @@ from .utils import (
     is_accelerate_available,
     is_auto_round_available,
     is_bitsandbytes_available,
-    is_flax_available,
     is_gguf_available,
     is_librosa_available,
     is_note_seq_available,
@@ -23,7 +22,6 @@ from .utils import (
     is_torchao_available,
     is_torchsde_available,
     is_transformers_available,
-    is_transformers_flax_compatible,
     is_transformers_version,
 )
 
@@ -48,7 +46,6 @@ _import_structure = {
     "schedulers": [],
     "utils": [
         "OptionalDependencyNotAvailable",
-        "is_flax_available",
         "is_inflect_available",
         "is_invisible_watermark_available",
         "is_librosa_available",
@@ -515,6 +512,10 @@ else:
             "HunyuanVideo15ModularPipeline",
             "Ideogram4AutoBlocks",
             "Ideogram4ModularPipeline",
+            "Krea2AutoBlocks",
+            "Krea2ModularPipeline",
+            "Krea2TurboAutoBlocks",
+            "Krea2TurboModularPipeline",
             "LTXAutoBlocks",
             "LTXModularPipeline",
             "QwenImageAutoBlocks",
@@ -915,60 +916,6 @@ except OptionalDependencyNotAvailable:
 
 else:
     _import_structure["pipelines"].extend(["SpectrogramDiffusionPipeline"])
-
-try:
-    if not is_flax_available():
-        raise OptionalDependencyNotAvailable()
-except OptionalDependencyNotAvailable:
-    from .utils import dummy_flax_objects  # noqa F403
-
-    _import_structure["utils.dummy_flax_objects"] = [
-        name for name in dir(dummy_flax_objects) if not name.startswith("_")
-    ]
-
-
-else:
-    _import_structure["models.controlnets.controlnet_flax"] = ["FlaxControlNetModel"]
-    _import_structure["models.modeling_flax_utils"] = ["FlaxModelMixin"]
-    _import_structure["models.unets.unet_2d_condition_flax"] = ["FlaxUNet2DConditionModel"]
-    _import_structure["models.vae_flax"] = ["FlaxAutoencoderKL"]
-    _import_structure["schedulers"].extend(
-        [
-            "FlaxDDIMScheduler",
-            "FlaxDDPMScheduler",
-            "FlaxDPMSolverMultistepScheduler",
-            "FlaxEulerDiscreteScheduler",
-            "FlaxKarrasVeScheduler",
-            "FlaxLMSDiscreteScheduler",
-            "FlaxPNDMScheduler",
-            "FlaxSchedulerMixin",
-            "FlaxScoreSdeVeScheduler",
-        ]
-    )
-
-
-try:
-    if not (is_flax_available() and is_transformers_available() and is_transformers_flax_compatible()):
-        raise OptionalDependencyNotAvailable()
-except OptionalDependencyNotAvailable:
-    from .utils import dummy_flax_and_transformers_objects  # noqa F403
-
-    _import_structure["utils.dummy_flax_and_transformers_objects"] = [
-        name for name in dir(dummy_flax_and_transformers_objects) if not name.startswith("_")
-    ]
-
-
-else:
-    _import_structure["pipelines"].extend(
-        [
-            "FlaxDiffusionPipeline",
-            "FlaxStableDiffusionControlNetPipeline",
-            "FlaxStableDiffusionImg2ImgPipeline",
-            "FlaxStableDiffusionInpaintPipeline",
-            "FlaxStableDiffusionPipeline",
-            "FlaxStableDiffusionXLPipeline",
-        ]
-    )
 
 try:
     if not (is_note_seq_available()):
@@ -1377,6 +1324,10 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             HunyuanVideo15ModularPipeline,
             Ideogram4AutoBlocks,
             Ideogram4ModularPipeline,
+            Krea2AutoBlocks,
+            Krea2ModularPipeline,
+            Krea2TurboAutoBlocks,
+            Krea2TurboModularPipeline,
             LTXAutoBlocks,
             LTXModularPipeline,
             QwenImageAutoBlocks,
@@ -1741,43 +1692,6 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .utils.dummy_transformers_and_torch_and_note_seq_objects import *  # noqa F403
     else:
         from .pipelines import SpectrogramDiffusionPipeline
-
-    try:
-        if not is_flax_available():
-            raise OptionalDependencyNotAvailable()
-    except OptionalDependencyNotAvailable:
-        from .utils.dummy_flax_objects import *  # noqa F403
-    else:
-        from .models.controlnets.controlnet_flax import FlaxControlNetModel
-        from .models.modeling_flax_utils import FlaxModelMixin
-        from .models.unets.unet_2d_condition_flax import FlaxUNet2DConditionModel
-        from .models.vae_flax import FlaxAutoencoderKL
-        from .schedulers import (
-            FlaxDDIMScheduler,
-            FlaxDDPMScheduler,
-            FlaxDPMSolverMultistepScheduler,
-            FlaxEulerDiscreteScheduler,
-            FlaxKarrasVeScheduler,
-            FlaxLMSDiscreteScheduler,
-            FlaxPNDMScheduler,
-            FlaxSchedulerMixin,
-            FlaxScoreSdeVeScheduler,
-        )
-
-    try:
-        if not (is_flax_available() and is_transformers_available() and is_transformers_flax_compatible()):
-            raise OptionalDependencyNotAvailable()
-    except OptionalDependencyNotAvailable:
-        from .utils.dummy_flax_and_transformers_objects import *  # noqa F403
-    else:
-        from .pipelines import (
-            FlaxDiffusionPipeline,
-            FlaxStableDiffusionControlNetPipeline,
-            FlaxStableDiffusionImg2ImgPipeline,
-            FlaxStableDiffusionInpaintPipeline,
-            FlaxStableDiffusionPipeline,
-            FlaxStableDiffusionXLPipeline,
-        )
 
     try:
         if not (is_note_seq_available()):
