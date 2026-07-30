@@ -15,6 +15,7 @@
 
 import torch
 
+from ...configuration_utils import FrozenDict
 from ...models import LTX2VideoTransformer3DModel
 from ...schedulers import FlowMatchEulerDiscreteScheduler
 from ..modular_pipeline import (
@@ -24,10 +25,12 @@ from ..modular_pipeline import (
     PipelineState,
 )
 from ..modular_pipeline_utils import ComponentSpec, InputParam
+from .guider import LTX2Guidance, plan_guidance_passes
 
 
-# Guidance / velocity-space helpers, mirrored from `diffusers.pipelines.ltx2.pipeline_ltx2.LTX2Pipeline` and
-# redefined here since modular blocks must not import from `diffusers.pipelines.*` (gotcha #1).
+# Velocity-space helpers, mirrored from `diffusers.pipelines.ltx2.pipeline_ltx2.LTX2Pipeline` and redefined here
+# since modular blocks must not import from `diffusers.pipelines.*` (gotcha #1). The guidance combine itself
+# (delta formulation + rescale) now lives in `LTX2Guidance`.
 def convert_velocity_to_x0(
     sample: torch.Tensor, denoised_output: torch.Tensor, step_idx: int, scheduler
 ) -> torch.Tensor:
@@ -38,15 +41,6 @@ def convert_x0_to_velocity(
     sample: torch.Tensor, denoised_output: torch.Tensor, step_idx: int, scheduler
 ) -> torch.Tensor:
     return (sample - denoised_output) / scheduler.sigmas[step_idx]
-
-
-def rescale_noise_cfg(noise_cfg, noise_pred_text, guidance_rescale=0.0):
-    # Rescales `noise_cfg` toward the std of `noise_pred_text` to fix overexposure (https://hf.co/papers/2305.08891).
-    std_text = noise_pred_text.std(dim=list(range(1, noise_pred_text.ndim)), keepdim=True)
-    std_cfg = noise_cfg.std(dim=list(range(1, noise_cfg.ndim)), keepdim=True)
-    noise_pred_rescaled = noise_cfg * (std_text / std_cfg)
-    noise_cfg = guidance_rescale * noise_pred_rescaled + (1 - guidance_rescale) * noise_cfg
-    return noise_cfg
 
 
 def _pack_latents(latents: torch.Tensor, patch_size: int = 1, patch_size_t: int = 1) -> torch.Tensor:
@@ -134,9 +128,10 @@ class LTX2LoopDenoiser(ModularPipelineBlocks):
     @property
     def description(self) -> str:
         return (
-            "Joint video+audio denoiser with manual guidance. Runs the transformer once for the (batched) "
-            "conditional/unconditional pass and optionally once each for spatio-temporal guidance (STG) and "
-            "modality-isolation guidance, combining the per-modality x0 predictions via the delta formulation."
+            "Joint video+audio denoiser. Runs the transformer once per guidance pass (each a single batch — no "
+            "CFG concatenation), unioned across the video `guider` and audio `audio_guider`, converts each pass's "
+            "velocity to x0, and delegates the per-modality guidance combine (CFG + STG + modality-isolation, in x0 "
+            "space) to the two guiders."
         )
 
     @property
@@ -144,6 +139,18 @@ class LTX2LoopDenoiser(ModularPipelineBlocks):
         return [
             ComponentSpec("transformer", LTX2VideoTransformer3DModel),
             ComponentSpec("scheduler", FlowMatchEulerDiscreteScheduler),
+            ComponentSpec(
+                "guider",
+                LTX2Guidance,
+                config=FrozenDict({"guidance_scale": 4.0}),
+                default_creation_method="from_config",
+            ),
+            ComponentSpec(
+                "audio_guider",
+                LTX2Guidance,
+                config=FrozenDict({"guidance_scale": 4.0}),
+                default_creation_method="from_config",
+            ),
         ]
 
     @property
@@ -161,187 +168,91 @@ class LTX2LoopDenoiser(ModularPipelineBlocks):
             InputParam("negative_connector_attention_mask", type_hint=torch.Tensor, required=True),
             InputParam("video_coords", type_hint=torch.Tensor, required=True),
             InputParam("audio_coords", type_hint=torch.Tensor, required=True),
+            InputParam.template("num_inference_steps", required=True),
             InputParam.template("height", default=512),
             InputParam.template("width", default=704),
             InputParam("num_frames", type_hint=int, default=121),
             InputParam("frame_rate", type_hint=float, default=24.0),
-            InputParam("guidance_scale", type_hint=float, default=4.0),
-            InputParam("audio_guidance_scale", type_hint=float, default=None),
-            InputParam("stg_scale", type_hint=float, default=0.0),
-            InputParam("audio_stg_scale", type_hint=float, default=None),
-            InputParam("modality_scale", type_hint=float, default=1.0),
-            InputParam("audio_modality_scale", type_hint=float, default=None),
-            InputParam("guidance_rescale", type_hint=float, default=0.0),
-            InputParam("audio_guidance_rescale", type_hint=float, default=None),
-            InputParam("spatio_temporal_guidance_blocks", type_hint=list, default=None),
             InputParam("use_cross_timestep", type_hint=bool, default=False),
             InputParam.template("attention_kwargs"),
         ]
 
     @torch.no_grad()
     def __call__(self, components, block_state: BlockState, i: int, t: torch.Tensor):
-        latents = block_state.latents
-        audio_latents = block_state.audio_latents
-        scheduler = components.scheduler
-        audio_scheduler = block_state.audio_scheduler
-
-        # Resolve audio guidance defaults (fall back to the video values).
-        guidance_scale = block_state.guidance_scale
-        audio_guidance_scale = block_state.audio_guidance_scale
-        audio_guidance_scale = audio_guidance_scale if audio_guidance_scale is not None else guidance_scale
-        stg_scale = block_state.stg_scale
-        audio_stg_scale = block_state.audio_stg_scale if block_state.audio_stg_scale is not None else stg_scale
-        modality_scale = block_state.modality_scale
-        audio_modality_scale = (
-            block_state.audio_modality_scale if block_state.audio_modality_scale is not None else modality_scale
-        )
-        guidance_rescale = block_state.guidance_rescale
-        audio_guidance_rescale = (
-            block_state.audio_guidance_rescale if block_state.audio_guidance_rescale is not None else guidance_rescale
-        )
-        do_cfg = guidance_scale > 1.0 or audio_guidance_scale > 1.0
-        do_stg = stg_scale > 0.0 or audio_stg_scale > 0.0
-        do_modality = modality_scale > 1.0 or audio_modality_scale > 1.0
-
         latent_num_frames = (block_state.num_frames - 1) // components.vae_temporal_compression_ratio + 1
         latent_height = block_state.height // components.vae_spatial_compression_ratio
         latent_width = block_state.width // components.vae_spatial_compression_ratio
 
-        def _forward(
-            hidden, audio_hidden, enc, audio_enc, mask, v_coords, a_coords, v_ts, a_ts, isolate, stg_blocks, ctx
-        ):
+        # Batch-invariant transformer kwargs, identical across every guidance pass.
+        shared_kwargs = {
+            "num_frames": latent_num_frames,
+            "height": latent_height,
+            "width": latent_width,
+            "fps": block_state.frame_rate,
+            "audio_num_frames": block_state.audio_num_frames,
+            "use_cross_timestep": block_state.use_cross_timestep,
+            "attention_kwargs": block_state.attention_kwargs,
+            "perturbation_mask": None,
+        }
+
+        def _predict(enc, audio_enc, mask, flags, ctx):
             with components.transformer.cache_context(ctx):
                 noise_pred_video, noise_pred_audio = components.transformer(
-                    hidden_states=hidden,
-                    audio_hidden_states=audio_hidden,
+                    hidden_states=block_state.latent_model_input,
+                    audio_hidden_states=block_state.audio_latent_model_input,
                     encoder_hidden_states=enc,
                     audio_encoder_hidden_states=audio_enc,
-                    timestep=v_ts,
-                    audio_timestep=a_ts,
-                    sigma=a_ts,  # plain (unmasked) timestep, used by LTX-2.3
                     encoder_attention_mask=mask,
                     audio_encoder_attention_mask=mask,
-                    num_frames=latent_num_frames,
-                    height=latent_height,
-                    width=latent_width,
-                    fps=block_state.frame_rate,
-                    audio_num_frames=block_state.audio_num_frames,
-                    video_coords=v_coords,
-                    audio_coords=a_coords,
-                    isolate_modalities=isolate,
-                    spatio_temporal_guidance_blocks=stg_blocks,
-                    perturbation_mask=None,
-                    use_cross_timestep=block_state.use_cross_timestep,
-                    attention_kwargs=block_state.attention_kwargs,
+                    timestep=block_state.video_timestep,
+                    audio_timestep=block_state.audio_timestep,
+                    sigma=block_state.audio_timestep,  # plain (unmasked) timestep, used by LTX-2.3
+                    video_coords=block_state.video_coords,
+                    audio_coords=block_state.audio_coords,
+                    isolate_modalities=flags["isolate_modalities"],
+                    spatio_temporal_guidance_blocks=flags["spatio_temporal_guidance_blocks"],
                     return_dict=False,
+                    **shared_kwargs,
                 )
             return noise_pred_video.float(), noise_pred_audio.float()
 
-        # Positive (conditional) single-batch conditioning, reused by the STG / modality passes.
-        pos_enc = block_state.connector_prompt_embeds
-        pos_audio_enc = block_state.connector_audio_prompt_embeds
-        pos_mask = block_state.connector_attention_mask
-        video_coords = block_state.video_coords
-        audio_coords = block_state.audio_coords
+        components.guider.set_state(step=i, num_inference_steps=block_state.num_inference_steps, timestep=t)
+        components.audio_guider.set_state(step=i, num_inference_steps=block_state.num_inference_steps, timestep=t)
 
-        # 1. Main (conditional / unconditional) pass.
-        if do_cfg:
-            noise_pred_video, noise_pred_audio = _forward(
-                torch.cat([block_state.latent_model_input] * 2),
-                torch.cat([block_state.audio_latent_model_input] * 2),
-                torch.cat([block_state.negative_connector_prompt_embeds, pos_enc]),
-                torch.cat([block_state.negative_connector_audio_prompt_embeds, pos_audio_enc]),
-                torch.cat([block_state.negative_connector_attention_mask, pos_mask]),
-                video_coords.repeat((2,) + (1,) * (video_coords.ndim - 1)),
-                audio_coords.repeat((2,) + (1,) * (audio_coords.ndim - 1)),
-                torch.cat([block_state.video_timestep] * 2),
-                torch.cat([block_state.audio_timestep] * 2),
-                False,
-                None,
-                "cond_uncond",
+        # Run each pass once (single batch); convert velocity->x0 and stash per modality by pass identifier. The
+        # union spans both guiders, so a pass runs if either modality needs it (the other just won't combine it).
+        video_x0, audio_x0 = {}, {}
+        for spec in plan_guidance_passes(components.guider, components.audio_guider):
+            if spec["conditioning"] == "cond":
+                enc, audio_enc, mask = (
+                    block_state.connector_prompt_embeds,
+                    block_state.connector_audio_prompt_embeds,
+                    block_state.connector_attention_mask,
+                )
+            else:
+                enc, audio_enc, mask = (
+                    block_state.negative_connector_prompt_embeds,
+                    block_state.negative_connector_audio_prompt_embeds,
+                    block_state.negative_connector_attention_mask,
+                )
+            v_vel, a_vel = _predict(enc, audio_enc, mask, spec["flags"], spec["identifier"])
+            video_x0[spec["identifier"]] = convert_velocity_to_x0(block_state.latents, v_vel, i, components.scheduler)
+            audio_x0[spec["identifier"]] = convert_velocity_to_x0(
+                block_state.audio_latents, a_vel, i, block_state.audio_scheduler
             )
-            noise_pred_video_uncond, noise_pred_video_cond = noise_pred_video.chunk(2)
-            noise_pred_audio_uncond, noise_pred_audio_cond = noise_pred_audio.chunk(2)
-            video_x0 = convert_velocity_to_x0(latents, noise_pred_video_cond, i, scheduler)
-            video_uncond_x0 = convert_velocity_to_x0(latents, noise_pred_video_uncond, i, scheduler)
-            audio_x0 = convert_velocity_to_x0(audio_latents, noise_pred_audio_cond, i, audio_scheduler)
-            audio_uncond_x0 = convert_velocity_to_x0(audio_latents, noise_pred_audio_uncond, i, audio_scheduler)
-            video_cfg_delta = (guidance_scale - 1) * (video_x0 - video_uncond_x0)
-            audio_cfg_delta = (audio_guidance_scale - 1) * (audio_x0 - audio_uncond_x0)
-        else:
-            noise_pred_video, noise_pred_audio = _forward(
-                block_state.latent_model_input,
-                block_state.audio_latent_model_input,
-                pos_enc,
-                pos_audio_enc,
-                pos_mask,
-                video_coords,
-                audio_coords,
-                block_state.video_timestep,
-                block_state.audio_timestep,
-                False,
-                None,
-                "cond_uncond",
-            )
-            video_x0 = convert_velocity_to_x0(latents, noise_pred_video, i, scheduler)
-            audio_x0 = convert_velocity_to_x0(audio_latents, noise_pred_audio, i, audio_scheduler)
-            video_cfg_delta = audio_cfg_delta = 0
 
-        # 2. Spatio-temporal guidance (extra pass with STG blocks perturbed).
-        if do_stg:
-            stg_video, stg_audio = _forward(
-                block_state.latent_model_input,
-                block_state.audio_latent_model_input,
-                pos_enc,
-                pos_audio_enc,
-                pos_mask,
-                video_coords,
-                audio_coords,
-                block_state.video_timestep,
-                block_state.audio_timestep,
-                False,
-                block_state.spatio_temporal_guidance_blocks,
-                "uncond_stg",
-            )
-            stg_video_x0 = convert_velocity_to_x0(latents, stg_video, i, scheduler)
-            stg_audio_x0 = convert_velocity_to_x0(audio_latents, stg_audio, i, audio_scheduler)
-            video_stg_delta = stg_scale * (video_x0 - stg_video_x0)
-            audio_stg_delta = audio_stg_scale * (audio_x0 - stg_audio_x0)
-        else:
-            video_stg_delta = audio_stg_delta = 0
+        # Combine per modality via each guider (delta formulation + rescale, in x0 space). The denoiser leaves the
+        # guided x0 in `noise_pred_video`/`noise_pred_audio`; the after block converts back to velocity and steps.
+        identifier_key = LTX2Guidance._identifier_key
+        video_state = components.guider.prepare_inputs_from_block_state(block_state, {})
+        audio_state = components.audio_guider.prepare_inputs_from_block_state(block_state, {})
+        for batch in video_state:
+            batch.noise_pred = video_x0[getattr(batch, identifier_key)]
+        for batch in audio_state:
+            batch.noise_pred = audio_x0[getattr(batch, identifier_key)]
 
-        # 3. Modality-isolation guidance (extra pass with A2V/V2A cross-attention disabled).
-        if do_modality:
-            mod_video, mod_audio = _forward(
-                block_state.latent_model_input,
-                block_state.audio_latent_model_input,
-                pos_enc,
-                pos_audio_enc,
-                pos_mask,
-                video_coords,
-                audio_coords,
-                block_state.video_timestep,
-                block_state.audio_timestep,
-                True,
-                None,
-                "uncond_modality",
-            )
-            mod_video_x0 = convert_velocity_to_x0(latents, mod_video, i, scheduler)
-            mod_audio_x0 = convert_velocity_to_x0(audio_latents, mod_audio, i, audio_scheduler)
-            video_modality_delta = (modality_scale - 1) * (video_x0 - mod_video_x0)
-            audio_modality_delta = (audio_modality_scale - 1) * (audio_x0 - mod_audio_x0)
-        else:
-            video_modality_delta = audio_modality_delta = 0
-
-        # 4. Combine guidance terms (in x0 space) and optionally rescale.
-        video_g = video_x0 + video_cfg_delta + video_stg_delta + video_modality_delta
-        audio_g = audio_x0 + audio_cfg_delta + audio_stg_delta + audio_modality_delta
-        block_state.noise_pred_video = (
-            rescale_noise_cfg(video_g, video_x0, guidance_rescale) if guidance_rescale > 0 else video_g
-        )
-        block_state.noise_pred_audio = (
-            rescale_noise_cfg(audio_g, audio_x0, audio_guidance_rescale) if audio_guidance_rescale > 0 else audio_g
-        )
+        block_state.noise_pred_video = components.guider(video_state)[0]
+        block_state.noise_pred_audio = components.audio_guider(audio_state)[0]
         return components, block_state
 
 

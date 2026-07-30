@@ -42,6 +42,7 @@ from PIL import Image
 
 from diffusers import LTX2ImageToVideoPipeline
 from diffusers.modular_pipelines.ltx2 import LTX2ImageToVideoBlocks
+from diffusers.modular_pipelines.ltx2.guider import LTX2Guidance
 from diffusers.pipelines.ltx2 import LTX2AutoDuration
 from diffusers.pipelines.ltx2.utils import DEFAULT_NEGATIVE_PROMPT
 from diffusers.utils import load_image
@@ -50,6 +51,8 @@ from diffusers.utils import load_image
 DEFAULT_PROMPT = "The fox turns its head and blinks slowly as snow begins to fall."
 
 # Full guidance stack (CFG + spatio-temporal guidance + modality-isolation), matching real LTX-2.4 usage.
+# The standard pipeline takes these as `__call__` kwargs; the modular pipeline takes them via its video/audio
+# guider components (see `_make_guiders`). Kept identical so the comparison is apples-to-apples.
 GUIDANCE = {
     "guidance_scale": 3.0,
     "stg_scale": 1.0,
@@ -60,8 +63,29 @@ GUIDANCE = {
     "audio_modality_scale": 3.0,
     "audio_guidance_rescale": 0.7,
     "spatio_temporal_guidance_blocks": [29],
-    "use_cross_timestep": True,
 }
+# A transformer flag (not guidance), so it stays a `__call__` kwarg for both pipelines.
+USE_CROSS_TIMESTEP = True
+
+
+def _make_guiders(args, guidance: dict) -> tuple[LTX2Guidance, LTX2Guidance]:
+    """Build the video/audio guiders from the flat GUIDANCE dict (the modular equivalent of the call kwargs)."""
+    video_guider = LTX2Guidance(
+        guidance_scale=args.guidance_scale or guidance["guidance_scale"],
+        stg_scale=args.stg_scale or guidance["stg_scale"],
+        modality_scale=args.mod_scale or guidance["modality_scale"],
+        guidance_rescale=args.guidance_rescale or guidance["guidance_rescale"],
+        spatio_temporal_guidance_blocks=guidance["spatio_temporal_guidance_blocks"],
+    )
+    audio_guider = LTX2Guidance(
+        guidance_scale=args.audio_guidance_scale or guidance["audio_guidance_scale"],
+        stg_scale=args.audio_stg_scale or guidance["audio_stg_scale"],
+        modality_scale=args.audio_mod_scale or guidance["audio_modality_scale"],
+        guidance_rescale=args.audio_guidance_rescale or guidance["audio_guidance_rescale"],
+        # STG blocks are shared (taken from the video guider at plan time); audio only sets its STG *scale*.
+    )
+    return video_guider, audio_guider
+
 
 # Components shared between the standard and modular pipelines (everything LTX2ImageToVideoBlocks needs).
 SHARED_COMPONENTS = [
@@ -150,6 +174,8 @@ def main(args):
         num_frames = LTX2AutoDuration(min_seconds=args.min_seconds, max_seconds=args.max_seconds)
     else:
         num_frames = args.num_frames
+    # Non-guidance call kwargs shared by both pipelines. Guidance is delivered separately: `__call__` kwargs for
+    # the standard pipeline, guider components for the modular one.
     common_kwargs = {
         "image": image,
         "prompt": args.prompt,
@@ -161,11 +187,11 @@ def main(args):
         "num_inference_steps": args.num_inference_steps,
         "max_sequence_length": args.max_sequence_length,
         "num_videos_per_prompt": args.num_videos_per_prompt,
+        "use_cross_timestep": USE_CROSS_TIMESTEP,
         "output_type": "latent",
-        **GUIDANCE,
     }
 
-    # 2. Standard run.
+    # 2. Standard run — guidance scales passed as `__call__` kwargs.
     print("Running standard LTX2ImageToVideoPipeline ...")
     generator = torch.Generator(args.device).manual_seed(args.seed)
     video_std, audio_std = std(
@@ -173,16 +199,20 @@ def main(args):
         enable_prompt_enhancement=False,  # keep raw prompt for a deterministic comparison
         return_dict=False,
         **common_kwargs,
+        **GUIDANCE,
     )
 
-    # 3. Build the modular i2v pipeline reusing the SAME component objects (identical weights).
+    # 3. Build the modular i2v pipeline reusing the SAME component objects (identical weights), and configure the
+    #    guiders with the same guidance settings (guidance is guider config in modular diffusers, not a call kwarg).
     print("Building modular LTX2ImageToVideoBlocks pipeline (shared components) ...")
     mod = LTX2ImageToVideoBlocks().init_pipeline()
     mod.update_components(**{name: getattr(std, name) for name in SHARED_COMPONENTS})
     if hasattr(std, "duration_head"):
-            mod.update_components(duration_head=getattr(std, "duration_head"))
+        mod.update_components(duration_head=getattr(std, "duration_head"))
+    video_guider, audio_guider = _make_guiders(args, GUIDANCE)
+    mod.update_components(guider=video_guider, audio_guider=audio_guider)
 
-    # 4. Modular run.
+    # 4. Modular run — guidance comes from the guiders, so `GUIDANCE` is NOT passed here.
     print("Running modular LTX2ImageToVideoBlocks ...")
     generator = torch.Generator(args.device).manual_seed(args.seed)
     state = mod(generator=generator, **common_kwargs)
@@ -201,7 +231,7 @@ def main(args):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    
+
     parser.add_argument(
         "--model_path",
         type=str,
@@ -230,6 +260,15 @@ if __name__ == "__main__":
     parser.add_argument("--predict_duration", action="store_true")
     parser.add_argument("--min_seconds", type=float, default=1.0)
     parser.add_argument("--max_seconds", type=float, default=20.0)
+
+    parser.add_argument("--guidance_scale", type=float, default=None, help="Video CFG guidance scale")
+    parser.add_argument("--stg_scale", type=float, default=None, help="Video STG guidance scale")
+    parser.add_argument("--mod_scale", type=float, default=None, help="Video modality isolation guidance scale")
+    parser.add_argument("--guidance_rescale", type=float, default=None, help="Video guidance rescale")
+    parser.add_argument("--audio_guidance_scale", type=float, default=None, help="Audio CFG guidance scale")
+    parser.add_argument("--audio_stg_scale", type=float, default=None, help="Audio STG guidance scale")
+    parser.add_argument("--audio_mod_scale", type=float, default=None, help="Audio modality isolation guidance scale")
+    parser.add_argument("--audio_guidance_rescale", type=float, default=None, help="Audio guidance rescale")
 
     parser.add_argument(
         "--atol",
