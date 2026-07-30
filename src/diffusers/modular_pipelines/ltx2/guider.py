@@ -15,16 +15,22 @@
 # Two-guider design for LTX-2.X: a single-modality guider (`LTX2Guidance`, instantiated once as the video `guider`
 # and once as the `audio_guider`) plus the denoiser-side union-plan helper. Wired into `LTX2LoopDenoiser`.
 #
-# Parity note (bf16 divergence). The denoiser runs each guidance pass as its own single-batch transformer forward,
-# whereas the standard `LTX2Pipeline` batches the cond+uncond CFG pair into one forward (`torch.cat([latents] * 2)`
-# then `.chunk(2)`) and runs STG / modality-isolation as separate single-batch passes. The two are mathematically
-# equivalent -- in fp32 the denoised latents match to ~8e-6 mean abs diff (sparse outliers up to ~3.5e-4) -- but
-# GPU matmul is not batch-invariant, so the cond forward computed alone differs from the same cond computed inside
-# a batch-of-2. In fp32 that difference is negligible; in bf16 it is ~1e-2 per op, and once amplified by the CFG
-# delta and accumulated over sampler steps the modular vs. standard bf16 latents diverge by ~10% (mean relative).
-# This is numerical, not a logic error, but it means the modular pipeline does NOT currently reproduce the standard
-# pipeline bitwise in bf16 (the real inference dtype). Restoring bitwise parity would require re-batching the
-# cond+uncond pair into a single forward to match the reference execution, keeping STG / modality single-batch.
+# Execution mirrors the standard `LTX2Pipeline`: `plan_guidance_passes` batches the cond+uncond CFG pair into a
+# single transformer forward (`torch.cat([latents] * 2)` + `.chunk(2)`) and runs STG / modality-isolation as
+# separate single-batch conditional forwards, matching the reference op-for-op (batch sizes, coords, cache
+# contexts). This gives bitwise parity with the standard pipeline in fp32 -- verified at full-checkpoint scale,
+# including under CPU offload.
+#
+# bf16 note. An earlier prototype ran *every* pass single-batch (no CFG concatenation). It was mathematically
+# equivalent (fp32 still matched) but, because GPU matmul is not batch-invariant, left `cond` computed alone
+# differing from `cond` computed inside a batch-of-2 -- negligible in fp32 (~1e-6/op) but ~1e-2/op in bf16, which
+# the CFG delta and sampler amplified to ~10% mean-relative latent divergence. Batching the CFG pair removes that
+# specific gap. A smaller bf16 gap remains (~1% at tiny scale, ~5% at full), and it is NOT a logic difference: fp32
+# is bitwise across scale and with/without offload, so only the dtype changes the result. It is a bf16-kernel
+# effect -- bf16's 7-bit mantissa (~1e4x coarser than fp32) makes non-associative accumulation-order differences
+# visible, and bf16 uses different kernels than fp32 (layout-sensitive tensor-core GEMM algorithm selection, fused
+# attention backends), so graphs that are byte-identical in fp32 can still dispatch to slightly different bf16
+# kernels. Parity is therefore gated on fp32 (bitwise); the bf16 comparison is a close-but-not-bitwise check.
 
 import math
 
@@ -144,23 +150,25 @@ class LTX2Guidance(BaseGuidance):
         return GuiderOutput(pred=pred, pred_cond=pred_cond, pred_uncond=pred_uncond)
 
 
-# Canonical pass order (also the order the denoiser runs the transformer in).
-_PASS_ORDER = ["pred_cond", "pred_uncond", "pred_cond_stg", "pred_cond_modality"]
-
-
 def plan_guidance_passes(video_guider: LTX2Guidance, audio_guider: LTX2Guidance) -> list[dict]:
     """
-    Denoiser-owned union plan: the set of transformer passes needed this step, unioned across the two guiders.
+    Denoiser-owned union plan: the transformer forwards needed this step, unioned across the two guiders and
+    grouped to mirror the standard `LTX2Pipeline` execution.
 
-    Both guiders share one transformer per pass (it emits both modalities), so the plan is the union of each
-    guider's `active_predictions()`. A guider that doesn't want a term simply omits it from its own combine (its
-    batch list won't include that identifier), but the pass still runs if the *other* modality wants it.
+    Both guiders share one transformer per forward (it emits both modalities), so the set of active passes is the
+    union of each guider's `active_predictions()`. A guider that doesn't want a term simply omits it from its own
+    combine, but the forward still runs if the *other* modality wants it. The passes are grouped into forwards
+    exactly as the reference pipeline does:
+      - one forward for the CFG pair, batching `[uncond, cond]` (`torch.cat([latents] * 2)` + `.chunk(2)`) when
+        either modality wants CFG, else a single conditional forward for `pred_cond` alone;
+      - one single-batch conditional forward each for STG and modality-isolation, carrying that pass's transformer
+        flag (`spatio_temporal_guidance_blocks` / `isolate_modalities`).
 
-    Each entry is `{"identifier", "conditioning", "flags"}`:
-      - `conditioning`: "cond" (positive) or "uncond" (negative) — which text conditioning the denoiser feeds;
-      - `flags`: the transformer kwargs for that pass (`isolate_modalities`, `spatio_temporal_guidance_blocks`).
-
-    Every pass is a single-batch forward (no cond/uncond concatenation), so the denoiser needs no CFG batching.
+    Each entry is `{"identifiers", "conditioning", "flags", "cache_context"}`:
+      - `identifiers` / `conditioning`: aligned lists — the pass identifier and the text conditioning ("cond" or
+        "uncond") for each batch element, in the order the forward's output is chunked;
+      - `flags`: the transformer kwargs for the forward (`isolate_modalities`, `spatio_temporal_guidance_blocks`);
+      - `cache_context`: the transformer cache-context name, matching the reference pipeline.
     """
     active = set(video_guider.active_predictions()) | set(audio_guider.active_predictions())
 
@@ -173,18 +181,33 @@ def plan_guidance_passes(video_guider: LTX2Guidance, audio_guider: LTX2Guidance)
             stg_blocks = guider.spatio_temporal_guidance_blocks
             break
 
-    passes = []
-    for pred in _PASS_ORDER:
-        if pred not in active:
-            continue
+    # CFG forward: `pred_cond` is always present (it is the base for every delta); `pred_uncond` joins the same
+    # forward -- batched as [uncond, cond] -- iff either modality wants CFG.
+    cfg_identifiers = ["pred_uncond", "pred_cond"] if "pred_uncond" in active else ["pred_cond"]
+    passes = [
+        {
+            "identifiers": cfg_identifiers,
+            "conditioning": ["uncond" if pred == "pred_uncond" else "cond" for pred in cfg_identifiers],
+            "flags": {"isolate_modalities": False, "spatio_temporal_guidance_blocks": None},
+            "cache_context": "cond_uncond",
+        }
+    ]
+    if "pred_cond_stg" in active:
         passes.append(
             {
-                "identifier": pred,
-                "conditioning": "uncond" if pred == "pred_uncond" else "cond",
-                "flags": {
-                    "isolate_modalities": pred == "pred_cond_modality",
-                    "spatio_temporal_guidance_blocks": stg_blocks if pred == "pred_cond_stg" else None,
-                },
+                "identifiers": ["pred_cond_stg"],
+                "conditioning": ["cond"],
+                "flags": {"isolate_modalities": False, "spatio_temporal_guidance_blocks": stg_blocks},
+                "cache_context": "uncond_stg",
+            }
+        )
+    if "pred_cond_modality" in active:
+        passes.append(
+            {
+                "identifiers": ["pred_cond_modality"],
+                "conditioning": ["cond"],
+                "flags": {"isolate_modalities": True, "spatio_temporal_guidance_blocks": None},
+                "cache_context": "uncond_modality",
             }
         )
     return passes

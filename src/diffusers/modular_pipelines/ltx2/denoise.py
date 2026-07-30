@@ -195,51 +195,72 @@ class LTX2LoopDenoiser(ModularPipelineBlocks):
             "perturbation_mask": None,
         }
 
-        def _predict(enc, audio_enc, mask, flags, ctx):
+        # Run one transformer forward for a guidance pass. `conditioning` lists the text conditioning per batch
+        # element; the CFG pass batches `[uncond, cond]` into a single forward (mirroring the standard pipeline's
+        # `torch.cat([latents] * 2)` + `.chunk(2)`), while STG / modality-isolation are single-batch conditional
+        # forwards. Coords are repeated to the batch size, matching the standard-pipeline execution op-for-op.
+        def _run_pass(conditioning, flags, ctx):
+            n = len(conditioning)
+            enc = torch.cat(
+                [
+                    block_state.negative_connector_prompt_embeds
+                    if c == "uncond"
+                    else block_state.connector_prompt_embeds
+                    for c in conditioning
+                ]
+            )
+            audio_enc = torch.cat(
+                [
+                    block_state.negative_connector_audio_prompt_embeds
+                    if c == "uncond"
+                    else block_state.connector_audio_prompt_embeds
+                    for c in conditioning
+                ]
+            )
+            mask = torch.cat(
+                [
+                    block_state.negative_connector_attention_mask
+                    if c == "uncond"
+                    else block_state.connector_attention_mask
+                    for c in conditioning
+                ]
+            )
+            video_coords, audio_coords = block_state.video_coords, block_state.audio_coords
             with components.transformer.cache_context(ctx):
                 noise_pred_video, noise_pred_audio = components.transformer(
-                    hidden_states=block_state.latent_model_input,
-                    audio_hidden_states=block_state.audio_latent_model_input,
+                    hidden_states=torch.cat([block_state.latent_model_input] * n),
+                    audio_hidden_states=torch.cat([block_state.audio_latent_model_input] * n),
                     encoder_hidden_states=enc,
                     audio_encoder_hidden_states=audio_enc,
                     encoder_attention_mask=mask,
                     audio_encoder_attention_mask=mask,
-                    timestep=block_state.video_timestep,
-                    audio_timestep=block_state.audio_timestep,
-                    sigma=block_state.audio_timestep,  # plain (unmasked) timestep, used by LTX-2.3
-                    video_coords=block_state.video_coords,
-                    audio_coords=block_state.audio_coords,
+                    timestep=torch.cat([block_state.video_timestep] * n),
+                    audio_timestep=torch.cat([block_state.audio_timestep] * n),
+                    sigma=torch.cat([block_state.audio_timestep] * n),  # plain (unmasked) timestep, used by LTX-2.3
+                    video_coords=video_coords.repeat((n,) + (1,) * (video_coords.ndim - 1)),
+                    audio_coords=audio_coords.repeat((n,) + (1,) * (audio_coords.ndim - 1)),
                     isolate_modalities=flags["isolate_modalities"],
                     spatio_temporal_guidance_blocks=flags["spatio_temporal_guidance_blocks"],
                     return_dict=False,
                     **shared_kwargs,
                 )
-            return noise_pred_video.float(), noise_pred_audio.float()
+            return noise_pred_video.float().chunk(n), noise_pred_audio.float().chunk(n)
 
         components.guider.set_state(step=i, num_inference_steps=block_state.num_inference_steps, timestep=t)
         components.audio_guider.set_state(step=i, num_inference_steps=block_state.num_inference_steps, timestep=t)
 
-        # Run each pass once (single batch); convert velocity->x0 and stash per modality by pass identifier. The
-        # union spans both guiders, so a pass runs if either modality needs it (the other just won't combine it).
+        # Run the planned forwards and stash each pass's x0 by identifier. The plan batches cond+uncond into one
+        # forward and keeps STG / modality single-batch, exactly as the standard pipeline does; the union across
+        # both guiders decides which passes run (a pass runs if either modality needs it; the other won't combine
+        # it). The CFG forward is chunked back into its `[uncond, cond]` identifiers, in order.
         video_x0, audio_x0 = {}, {}
         for spec in plan_guidance_passes(components.guider, components.audio_guider):
-            if spec["conditioning"] == "cond":
-                enc, audio_enc, mask = (
-                    block_state.connector_prompt_embeds,
-                    block_state.connector_audio_prompt_embeds,
-                    block_state.connector_attention_mask,
+            v_chunks, a_chunks = _run_pass(spec["conditioning"], spec["flags"], spec["cache_context"])
+            for identifier, v_vel, a_vel in zip(spec["identifiers"], v_chunks, a_chunks):
+                video_x0[identifier] = convert_velocity_to_x0(block_state.latents, v_vel, i, components.scheduler)
+                audio_x0[identifier] = convert_velocity_to_x0(
+                    block_state.audio_latents, a_vel, i, block_state.audio_scheduler
                 )
-            else:
-                enc, audio_enc, mask = (
-                    block_state.negative_connector_prompt_embeds,
-                    block_state.negative_connector_audio_prompt_embeds,
-                    block_state.negative_connector_attention_mask,
-                )
-            v_vel, a_vel = _predict(enc, audio_enc, mask, spec["flags"], spec["identifier"])
-            video_x0[spec["identifier"]] = convert_velocity_to_x0(block_state.latents, v_vel, i, components.scheduler)
-            audio_x0[spec["identifier"]] = convert_velocity_to_x0(
-                block_state.audio_latents, a_vel, i, block_state.audio_scheduler
-            )
 
         # Combine per modality via each guider (delta formulation + rescale, in x0 space). The denoiser leaves the
         # guided x0 in `noise_pred_video`/`noise_pred_audio`; the after block converts back to velocity and steps.
