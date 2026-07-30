@@ -54,6 +54,11 @@ class VideoProcessor(VaeImageProcessor):
             `torch.Tensor` of shape `(batch_size, num_channels, num_frames, height, width)`:
                 A 5D tensor holding the batched channels-first video(s).
         """
+        if isinstance(video, list) and len(video) == 0:
+            raise ValueError(
+                "Input is in incorrect format. Currently, we only support numpy.ndarray, torch.Tensor, PIL.Image.Image"
+            )
+
         if isinstance(video, list) and isinstance(video[0], np.ndarray) and video[0].ndim == 5:
             warnings.warn(
                 "Passing `video` as a list of 5d np.ndarray is deprecated."

@@ -19,7 +19,7 @@ import numpy as np
 import PIL.Image
 import torch
 
-from diffusers.image_processor import VaeImageProcessor
+from diffusers.image_processor import VaeImageProcessor, is_valid_image_imagelist
 
 
 class ImageProcessorTest(unittest.TestCase):
@@ -51,6 +51,13 @@ class ImageProcessorTest(unittest.TestCase):
         elif isinstance(image, torch.Tensor):
             return image.cpu().numpy().transpose(0, 2, 3, 1)
         return image
+
+    def test_empty_image_list_is_invalid(self):
+        image_processor = VaeImageProcessor(do_resize=False, do_normalize=False)
+
+        assert not is_valid_image_imagelist([])
+        with self.assertRaisesRegex(ValueError, "Input is in incorrect format"):
+            image_processor.preprocess([])
 
     def test_vae_image_processor_pt(self):
         image_processor = VaeImageProcessor(do_resize=False, do_normalize=True)
