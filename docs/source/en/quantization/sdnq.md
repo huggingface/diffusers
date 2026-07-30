@@ -21,7 +21,7 @@ pip install sdnq
 
 ## Load a prequantized checkpoint
 
-The quantization configuration of a prequantized SDNQ checkpoint is stored in its `config.json`, so it loads like any other model — no `quantization_config` argument needed. The only requirement is having `sdnq` installed.
+The quantization configuration of a prequantized SDNQ checkpoint is stored in its `config.json`, so it loads like any other model, with no `quantization_config` argument needed. The only requirement is having `sdnq` installed.
 
 ```python
 import torch
@@ -68,7 +68,11 @@ transformer = ZImageTransformer2DModel.from_pretrained(
 )
 ```
 
-All arguments are forwarded to [`sdnq.SDNQConfig`](https://github.com/Disty0/sdnq) — refer to the SDNQ documentation for the full list of supported dtypes and options.
+All arguments are forwarded to [`sdnq.SDNQConfig`](https://github.com/Disty0/sdnq). Refer to the SDNQ documentation for the full list of supported dtypes and options.
+
+## Choosing which layers to quantize
+
+Some layers are more sensitive to quantization than others, and skipping the sensitive ones improves quality at little memory cost. SDNQ handles this out of the box: it ships built-in skip lists (a generic one plus per-model lists for many architectures) that are applied automatically, so the usual sensitive layers stay unquantized without any configuration. For finer control it can also select layers dynamically, measuring the per-layer quantization error and skipping the ones above a loss threshold. Refer to the [SDNQ dynamic quantization guide](https://github.com/vladmandic/sdnext/wiki/SDNQ-Quantization#dynamic-loss-threshold) for details.
 
 ## Faster inference with quantized matmul
 

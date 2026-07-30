@@ -958,7 +958,7 @@ class SDNQConfig(QuantizationConfigMixin):
 
     The `sdnq` library ships its own diffusers-compatible config and quantizer; this class is a thin factory that
     defers to them so that `quant_method="sdnq"` checkpoints load natively with diffusers. All arguments are forwarded
-    to `sdnq.SDNQConfig` — requires the `sdnq` library: `pip install sdnq`.
+    to `sdnq.SDNQConfig`. Requires the `sdnq` library: `pip install sdnq`.
 
     Reference: https://github.com/Disty0/sdnq
 

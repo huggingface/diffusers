@@ -1293,7 +1293,7 @@ class SDNQTesterMixin(SDNQConfigMixin, QuantizationTesterMixin):
         model = self._create_quantized_model(SDNQConfigMixin.SDNQ_CONFIGS["int8"])
         model.save_pretrained(str(tmp_path), safe_serialization=True)
 
-        # No quantization_config passed — it must be picked up from the saved config.json.
+        # No quantization_config passed, so it must be picked up from the saved config.json.
         model_loaded = self.model_class.from_pretrained(str(tmp_path)).to(torch_device)
 
         inputs = self.get_dummy_inputs()
