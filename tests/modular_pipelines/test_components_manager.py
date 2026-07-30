@@ -215,8 +215,8 @@ class ComponentsManagerTesterMixin:
 
     def test_strategy_uses_greedy_fallback_above_exhaustive_search_limit(self):
         # past _MAX_EXHAUSTIVE_OFFLOAD_CANDIDATES, search_best_candidate stops trying
-        # every combination and just grabs the biggest models first. check it still
-        # frees enough memory and does it fast - 28 models is 2^28 combos the old way.
+        # every combination and grabs models greedily instead. check it still frees
+        # enough memory and does it fast - 28 models is 2^28 combos the old way.
         num_hooks = _MAX_EXHAUSTIVE_OFFLOAD_CANDIDATES + 4
         hook_sizes = {f"model_{i}": UNIT for i in range(num_hooks)}
 
@@ -229,12 +229,34 @@ class ComponentsManagerTesterMixin:
         )
         elapsed = time.perf_counter() - start
 
-        # usable = 10 - 0 = 10, incoming needs 15 -> must free 5. The greedy fallback
-        # walks `module_sizes` (already largest-first; here all tied at UNIT) and stops
-        # as soon as it has freed enough, so it should pick exactly 5 of the 28 models.
+        # usable = 10 - 0 = 10, incoming needs 15 -> must free 5. All 28 models are the
+        # same size here so direction doesn't matter for this assertion, just that it
+        # picks the right count and stays fast - see the next test for direction.
         assert len(selected) == 5
         assert sum(hook_sizes[model_id] for model_id in selected) == 5 * UNIT
         assert elapsed < 1.0
+
+    def test_strategy_greedy_fallback_evicts_smallest_models_first(self):
+        # the greedy fallback should keep bigger models resident and evict smaller
+        # ones first - matches the YiYi/Dhruv TODO above search_best_candidate ("we
+        # would tend to keep the larger models on GPU more often"). Use one big model
+        # plus enough small ones to push past the exhaustive-search cap.
+        num_small = _MAX_EXHAUSTIVE_OFFLOAD_CANDIDATES + 3
+        hook_sizes = {"big": 5 * UNIT}
+        hook_sizes.update({f"small_{i}": UNIT for i in range(num_small)})
+
+        selected = self._select_offload(
+            incoming_footprint=8 * UNIT,
+            free_bytes=5 * UNIT,
+            hook_sizes=hook_sizes,
+            memory_reserve_margin=0,
+        )
+
+        # usable = 5, incoming needs 8 -> must free 3. Three small models cover that
+        # on their own, so "big" should be left alone.
+        assert "big" not in selected
+        assert len(selected) == 3
+        assert all(model_id.startswith("small_") for model_id in selected)
 
     # ------------------------------------------------------------------
     # Registry tests (hardware-independent)
