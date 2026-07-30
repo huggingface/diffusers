@@ -65,4 +65,8 @@ def _ensure_sdnq_registered():
     through its own quantizer registry and only learns about SDNQ once sdnq has been imported; without this it silently
     skips the quantization config of a prequantized SDNQ component and mis-loads the weights.
     """
+    logger.info(
+        "DIFFUSERS_SDNQ_TRANSFORMERS is set; importing sdnq so it registers with transformers "
+        "for loading SDNQ-quantized transformers models (e.g. text encoders or LLMs)."
+    )
     import sdnq  # noqa: F401

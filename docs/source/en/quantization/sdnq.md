@@ -36,6 +36,9 @@ image = pipe("a cat holding a sign that says hello").images[0]
 image.save("output.png")
 ```
 
+> [!TIP]
+> Set `DIFFUSERS_SDNQ_TRANSFORMERS=1` (before importing Diffusers) when you load an SDNQ-quantized Transformers model on its own, such as a quantized text encoder or a standalone LLM component in a modular pipeline. It lets `sdnq` register itself with Transformers so the quantized model loads correctly. You do not need it when an SDNQ-quantized diffusers transformer is loaded alongside it, because loading that transformer already imports `sdnq` and registers it. It is off by default so pipelines that do not use SDNQ never import `sdnq`.
+
 ## Quantize a model on the fly
 
 Pass an [`SDNQConfig`] to `from_pretrained` to quantize a model during loading. Use [`PipelineQuantizationConfig`] to quantize specific pipeline components.

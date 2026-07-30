@@ -27,6 +27,7 @@ from packaging.specifiers import InvalidSpecifier, SpecifierSet
 from ..configuration_utils import ConfigMixin, FrozenDict
 from ..loaders.single_file_utils import _is_single_file_path_or_url
 from ..utils import DIFFUSERS_LOAD_ID_FIELDS, _resolve_dtype, is_sdnq_available, is_torch_available, logging
+from ..utils.constants import DIFFUSERS_SDNQ_TRANSFORMERS
 from ..utils.import_utils import _is_package_available
 
 
@@ -337,13 +338,8 @@ class ComponentSpec:
                 else getattr(self.type_hint, "from_pretrained")
             )
 
-            if (
-                not is_single_file
-                and is_sdnq_available()
-                and issubclass(self.type_hint, torch.nn.Module)
-                and self.type_hint.__module__.startswith("transformers")
-            ):
-                # Prequantized SDNQ text encoders need `sdnq` imported so it registers itself with transformers.
+            if not is_single_file and DIFFUSERS_SDNQ_TRANSFORMERS and is_sdnq_available():
+                # Opt-in via DIFFUSERS_SDNQ_TRANSFORMERS: import sdnq once so it registers with transformers.
                 from ..quantizers.sdnq.sdnq_quantizer import _ensure_sdnq_registered
 
                 _ensure_sdnq_registered()

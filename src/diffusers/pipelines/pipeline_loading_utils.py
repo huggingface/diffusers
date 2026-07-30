@@ -43,6 +43,7 @@ from ..utils import (
     is_transformers_version,
     logging,
 )
+from ..utils.constants import DIFFUSERS_SDNQ_TRANSFORMERS
 from ..utils.torch_utils import is_compiled_module
 from .transformers_loading_utils import _load_tokenizer_from_dduf, _load_transformers_model_from_dduf
 
@@ -889,8 +890,8 @@ def load_sub_model(
         if model_quant_config is not None:
             loading_kwargs["quantization_config"] = model_quant_config
 
-    if is_transformers_model and is_sdnq_available():
-        # Prequantized SDNQ text encoders need `sdnq` imported so it registers itself with transformers.
+    if is_transformers_model and DIFFUSERS_SDNQ_TRANSFORMERS and is_sdnq_available():
+        # Opt-in via DIFFUSERS_SDNQ_TRANSFORMERS: import sdnq so it registers with transformers.
         from ..quantizers.sdnq.sdnq_quantizer import _ensure_sdnq_registered
 
         _ensure_sdnq_registered()
