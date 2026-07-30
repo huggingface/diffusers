@@ -1,8 +1,8 @@
 import gc
 import os
-import unittest
 
 import numpy as np
+import pytest
 import torch
 from PIL import Image
 from transformers import Qwen2TokenizerFast, Qwen3Config, Qwen3ForCausalLM
@@ -20,17 +20,20 @@ from ...testing_utils import (
     require_torch_neuron,
     torch_device,
 )
-from ..test_pipelines_common import PipelineTesterMixin, check_qkv_fused_layers_exist
+from ..testing_utils import (
+    BasePipelineTesterConfig,
+    MemoryTesterMixin,
+    PipelineTesterMixin,
+    check_qkv_fused_layers_exist,
+)
 
 
-class Flux2KleinPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
+class Flux2KleinPipelineTesterConfig(BasePipelineTesterConfig):
     pipeline_class = Flux2KleinPipeline
-    params = frozenset(["prompt", "height", "width", "guidance_scale", "prompt_embeds"])
-    batch_params = frozenset(["prompt"])
-
-    test_xformers_attention = False
-    test_layerwise_casting = True
-    test_group_offloading = True
+    required_input_params_in_call_signature = frozenset(
+        ["prompt", "height", "width", "guidance_scale", "prompt_embeds"]
+    )
+    batch_input_params = frozenset(["prompt"])
 
     def get_dummy_components(self, num_layers: int = 1, num_single_layers: int = 1):
         torch.manual_seed(0)
@@ -90,67 +93,58 @@ class Flux2KleinPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             "vae": vae,
         }
 
-    def get_dummy_inputs(self, device, seed=0):
-        if str(device).startswith("mps"):
-            generator = torch.manual_seed(seed)
-        else:
-            generator = torch.Generator(device="cpu").manual_seed(seed)
-
+    def get_dummy_inputs(self):
         inputs = {
             "prompt": "a dog is dancing",
-            "generator": generator,
+            "generator": self.get_generator(0),
             "num_inference_steps": 2,
             "guidance_scale": 4.0,
             "height": 8,
             "width": 8,
             "max_sequence_length": 64,
-            "output_type": "np",
+            # Request torch outputs so tests compare torch tensors directly (see `BasePipelineTesterConfig`).
+            # Note `"pt"` images are `(batch, channels, height, width)`, unlike `"np"` (`(batch, h, w, c)`).
+            "output_type": "pt",
             "text_encoder_out_layers": (1,),
         }
         return inputs
 
-    def test_fused_qkv_projections(self):
-        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
-        components = self.get_dummy_components()
-        pipe = self.pipeline_class(**components)
-        pipe = pipe.to(device)
-        pipe.set_progress_bar_config(disable=None)
 
-        inputs = self.get_dummy_inputs(device)
+class TestFlux2KleinPipeline(Flux2KleinPipelineTesterConfig, PipelineTesterMixin):
+    def test_fused_qkv_projections(self):
+        pipe = self.get_pipeline()
+
+        inputs = self.get_dummy_inputs()
         image = pipe(**inputs).images
-        original_image_slice = image[0, -3:, -3:, -1]
+        original_image_slice = image[0, -1, -3:, -3:]
 
         pipe.transformer.fuse_qkv_projections()
-        self.assertTrue(
-            check_qkv_fused_layers_exist(pipe.transformer, ["to_qkv"]),
-            ("Something wrong with the fused attention layers. Expected all the attention projections to be fused."),
+        assert check_qkv_fused_layers_exist(pipe.transformer, ["to_qkv"]), (
+            "Something wrong with the fused attention layers. Expected all the attention projections to be fused."
         )
 
-        inputs = self.get_dummy_inputs(device)
+        inputs = self.get_dummy_inputs()
         image = pipe(**inputs).images
-        image_slice_fused = image[0, -3:, -3:, -1]
+        image_slice_fused = image[0, -1, -3:, -3:]
 
         pipe.transformer.unfuse_qkv_projections()
-        inputs = self.get_dummy_inputs(device)
+        inputs = self.get_dummy_inputs()
         image = pipe(**inputs).images
-        image_slice_disabled = image[0, -3:, -3:, -1]
+        image_slice_disabled = image[0, -1, -3:, -3:]
 
-        self.assertTrue(
-            np.allclose(original_image_slice, image_slice_fused, atol=1e-3, rtol=1e-3),
-            ("Fusion of QKV projections shouldn't affect the outputs."),
+        assert torch.allclose(original_image_slice, image_slice_fused, atol=1e-3, rtol=1e-3), (
+            "Fusion of QKV projections shouldn't affect the outputs."
         )
-        self.assertTrue(
-            np.allclose(image_slice_fused, image_slice_disabled, atol=1e-3, rtol=1e-3),
-            ("Outputs, with QKV projection fusion enabled, shouldn't change when fused QKV projections are disabled."),
+        assert torch.allclose(image_slice_fused, image_slice_disabled, atol=1e-3, rtol=1e-3), (
+            "Outputs, with QKV projection fusion enabled, shouldn't change when fused QKV projections are disabled."
         )
-        self.assertTrue(
-            np.allclose(original_image_slice, image_slice_disabled, atol=1e-2, rtol=1e-2),
-            ("Original outputs should match when fused QKV projections are disabled."),
+        assert torch.allclose(original_image_slice, image_slice_disabled, atol=1e-2, rtol=1e-2), (
+            "Original outputs should match when fused QKV projections are disabled."
         )
 
     def test_image_output_shape(self):
-        pipe = self.pipeline_class(**self.get_dummy_components()).to(torch_device)
-        inputs = self.get_dummy_inputs(torch_device)
+        pipe = self.get_pipeline().to(torch_device)
+        inputs = self.get_dummy_inputs()
 
         height_width_pairs = [(32, 32), (72, 57)]
         for height, width in height_width_pairs:
@@ -159,55 +153,55 @@ class Flux2KleinPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
             inputs.update({"height": height, "width": width})
             image = pipe(**inputs).images[0]
-            output_height, output_width, _ = image.shape
-            self.assertEqual(
-                (output_height, output_width),
-                (expected_height, expected_width),
-                f"Output shape {image.shape} does not match expected shape {(expected_height, expected_width)}",
+            _, output_height, output_width = image.shape
+            assert (output_height, output_width) == (expected_height, expected_width), (
+                f"Output shape {image.shape} does not match expected shape {(expected_height, expected_width)}"
             )
 
     def test_image_input(self):
-        device = "cpu"
-        pipe = self.pipeline_class(**self.get_dummy_components()).to(device)
-        inputs = self.get_dummy_inputs(device)
+        pipe = self.get_pipeline()
+        inputs = self.get_dummy_inputs()
 
         inputs["image"] = Image.new("RGB", (64, 64))
-        image = pipe(**inputs).images.flatten()
-        generated_slice = np.concatenate([image[:8], image[-8:]])
+        # Permute the `"pt"` output to the `"np"` layout before flattening so the slice matches the recorded values.
+        image = pipe(**inputs).images.permute(0, 2, 3, 1).flatten()
+        generated_slice = torch.cat([image[:8], image[-8:]])
         # fmt: off
-        expected_slice = np.array(
+        expected_slice = torch.tensor(
             [
                 0.8255048 , 0.66054785, 0.6643694 , 0.67462724, 0.5494932 , 0.3480271 , 0.52535003, 0.44510138, 0.23549396, 0.21372932, 0.21166152, 0.63198495, 0.49942136, 0.39147034, 0.49156153, 0.3713916
             ]
         )
         # fmt: on
-        assert np.allclose(expected_slice, generated_slice, atol=1e-4, rtol=1e-4)
+        assert torch.allclose(expected_slice, generated_slice, atol=1e-4, rtol=1e-4)
 
-    @unittest.skip("Needs to be revisited")
+    @pytest.mark.skip("Needs to be revisited")
     def test_encode_prompt_works_in_isolation(self):
         pass
 
 
+class TestFlux2KleinPipelineMemory(Flux2KleinPipelineTesterConfig, MemoryTesterMixin):
+    """Memory optimization tests (CPU offload, group offload, layerwise casting) for the Flux2 Klein pipeline."""
+
+
 @require_torch_neuron
-class Flux2KleinPipelineIntegrationTests(unittest.TestCase):
+class TestFlux2KleinPipelineIntegration:
     ckpt_id = "black-forest-labs/FLUX.2-klein-4B"
     prompt = "A small cactus with a happy face in the Sahara desert."
 
-    def setUp(self):
-        super().setUp()
-        self._saved_env = {}
+    @pytest.fixture(autouse=True)
+    def neuron_env(self):
+        saved_env = {}
         neff_cache_dir = "/tmp/neff_cache"
         os.makedirs(neff_cache_dir, exist_ok=True)
         for key in ("TORCH_NEURONX_NEFF_CACHE_DIR", "TORCH_NEURONX_ENABLE_NKI_SDPA"):
-            self._saved_env[key] = os.environ.get(key)
+            saved_env[key] = os.environ.get(key)
         os.environ["TORCH_NEURONX_NEFF_CACHE_DIR"] = neff_cache_dir
         os.environ.setdefault("TORCH_NEURONX_ENABLE_NKI_SDPA", "0")
         gc.collect()
         backend_empty_cache(torch_device)
-
-    def tearDown(self):
-        super().tearDown()
-        for key, original in self._saved_env.items():
+        yield
+        for key, original in saved_env.items():
             if original is None:
                 os.environ.pop(key, None)
             else:
@@ -234,12 +228,11 @@ class Flux2KleinPipelineIntegrationTests(unittest.TestCase):
         ).images
 
         image_slice = image[0, -3:, -3:, -1]
-        self.assertEqual(image.shape, (1, 512, 512, 3))
-        self.assertTrue(np.all((image >= 0.0) & (image <= 1.0)), "Pixel values must be in [0, 1]")
+        assert image.shape == (1, 512, 512, 3)
+        assert np.all((image >= 0.0) & (image <= 1.0)), "Pixel values must be in [0, 1]"
         expected_slice = np.array([0.3652, 0.3574, 0.3633, 0.4102, 0.4062, 0.4043, 0.4453, 0.4355, 0.4570])
-        self.assertLess(np.abs(image_slice.flatten() - expected_slice).max(), 5e-2)
+        assert np.abs(image_slice.flatten() - expected_slice).max() < 5e-2
 
-    @require_torch_neuron
     def test_flux2_klein_neuron_compile_128(self):
         from torch_neuronx.neuron_dynamo_backend import set_model_name
 
@@ -273,9 +266,6 @@ class Flux2KleinPipelineIntegrationTests(unittest.TestCase):
             output_type="np",
         ).images
 
-        self.assertEqual(image.shape, (1, 128, 128, 3))
-        self.assertFalse(np.isnan(image).any(), "Output contains NaN values")
-        self.assertTrue(
-            (image >= 0.0).all() and (image <= 1.0).all(),
-            "Output pixel values outside [0, 1]",
-        )
+        assert image.shape == (1, 128, 128, 3)
+        assert not np.isnan(image).any(), "Output contains NaN values"
+        assert (image >= 0.0).all() and (image <= 1.0).all(), "Output pixel values outside [0, 1]"
