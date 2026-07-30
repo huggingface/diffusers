@@ -223,15 +223,15 @@ def _resolve_revision(
     """
     Resolves `revision` to a commit hash, to be called once at the beginning of a loading method.
 
-    Loading a model or a pipeline fetches several files from the same repo (config, weight index, shards, custom
-    code, ...). Resolving the revision upfront and passing the returned `ResolvedRevision` down to every download
-    pins them all to the same commit - even if the repo is updated in the meantime - and lets `huggingface_hub`
-    serve them from the local cache without resolving `revision` again on each call. See
+    Loading a model or a pipeline fetches several files from the same repo (config, weight index, shards, custom code,
+    ...). Resolving the revision upfront and passing the returned `ResolvedRevision` down to every download pins them
+    all to the same commit - even if the repo is updated in the meantime - and lets `huggingface_hub` serve them from
+    the local cache without resolving `revision` again on each call. See
     https://huggingface.co/docs/huggingface_hub/main/en/guides/manage-cache#pin-a-revision-advanced.
 
-    Resolution is best-effort: local folders are returned untouched and, if the Hub cannot answer (repo or revision
-    not found, offline mode with nothing cached, ...), `revision` is returned as is so that the download that
-    follows fails with its usual error message.
+    Resolution is best-effort: local folders are returned untouched and, if the Hub cannot answer (repo or revision not
+    found, offline mode with nothing cached, ...), `revision` is returned as is so that the download that follows fails
+    with its usual error message.
     """
     if pretrained_model_name_or_path is None or os.path.isdir(pretrained_model_name_or_path):
         return revision
