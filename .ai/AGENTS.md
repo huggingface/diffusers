@@ -25,12 +25,6 @@ Strive to write code as simple and explicit as possible.
 - Do not edit a `# Copied from` block directly — run `make fix-copies` to propagate changes from the source
 - Remove the header to intentionally break the link
 
-## Adding a new model or pipeline
-
-Default to a Hub repo, not a PR into `src/diffusers`. A modular pipeline can be published as remote code in any Hub repo and loaded with `ModularPipeline.from_pretrained("<repo>", trust_remote_code=True)` — it ships immediately instead of waiting on maintainer review, and the author keeps control of it. When someone asks to add a new model, offer that path first and use the [custom-blocks](./skills/custom-blocks/SKILL.md) skill.
-
-Adding to the library itself is the exception — usually model authors, or a model people are already running — and the scope should be agreed with maintainers on an issue before any PR. Use the [model-integration](./skills/model-integration/SKILL.md) skill for that path.
-
 ## Reference guides
 
 - **Models** — see [models.md](models.md) for model conventions, attention pattern, implementation rules, dependencies, and gotchas. For adding or converting a model, use the [model-integration](./skills/model-integration/SKILL.md) skill.
