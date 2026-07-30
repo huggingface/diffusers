@@ -37,7 +37,7 @@ from ..pipelines.pipeline_loading_utils import (
 )
 from ..utils import PushToHubMixin, is_accelerate_available, logging
 from ..utils.dynamic_modules_utils import get_class_from_dynamic_module, resolve_trust_remote_code
-from ..utils.hub_utils import load_or_create_model_card, populate_model_card
+from ..utils.hub_utils import _resolve_revision, load_or_create_model_card, populate_model_card
 from ..utils.torch_utils import is_compiled_module
 from .components_manager import ComponentsManager
 from .modular_pipeline_utils import (
@@ -432,6 +432,16 @@ class ModularPipelineBlocks(ConfigMixin, PushToHubMixin):
             "token",
         ]
         hub_kwargs = {name: kwargs.pop(name) for name in hub_kwargs_names if name in kwargs}
+
+        # Resolve the revision once, so that the config and the custom code module downloaded below both come from
+        # the same commit.
+        hub_kwargs["revision"] = _resolve_revision(
+            pretrained_model_name_or_path,
+            revision=hub_kwargs.get("revision"),
+            cache_dir=hub_kwargs.get("cache_dir"),
+            local_files_only=hub_kwargs.get("local_files_only"),
+            token=hub_kwargs.get("token"),
+        )
 
         config = cls.load_config(pretrained_model_name_or_path, **hub_kwargs)
         has_remote_code = "auto_map" in config and cls.__name__ in config["auto_map"]
@@ -1845,6 +1855,16 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
                 Collection name for organizing components in the ComponentsManager.
         """
         from ..pipelines.pipeline_loading_utils import _get_pipeline_class
+
+        # Resolve the revision once, so that the blocks and the pipeline config read below both come from the same
+        # commit.
+        kwargs["revision"] = _resolve_revision(
+            pretrained_model_name_or_path,
+            revision=kwargs.get("revision"),
+            cache_dir=kwargs.get("cache_dir"),
+            local_files_only=kwargs.get("local_files_only"),
+            token=kwargs.get("token"),
+        )
 
         try:
             blocks = ModularPipelineBlocks.from_pretrained(

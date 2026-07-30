@@ -30,14 +30,17 @@ from huggingface_hub import (
     create_repo,
     hf_hub_download,
     model_info,
+    resolve_revision,
     snapshot_download,
     upload_folder,
 )
 from huggingface_hub.constants import HF_HUB_DISABLE_TELEMETRY, HF_HUB_OFFLINE
+from huggingface_hub.errors import RevisionResolutionError
 from huggingface_hub.file_download import REGEX_COMMIT_HASH
 from huggingface_hub.utils import (
     EntryNotFoundError,
     HfHubHTTPError,
+    HFValidationError,
     RepositoryNotFoundError,
     RevisionNotFoundError,
     is_jinja_available,
@@ -207,6 +210,42 @@ def extract_commit_hash(resolved_file: str | None, commit_hash: str | None = Non
         return None
     commit_hash = search.groups()[0]
     return commit_hash if REGEX_COMMIT_HASH.match(commit_hash) else None
+
+
+def _resolve_revision(
+    pretrained_model_name_or_path: str | os.PathLike | None,
+    *,
+    revision: str | None = None,
+    cache_dir: str | os.PathLike | None = None,
+    local_files_only: bool | None = None,
+    token: str | bool | None = None,
+) -> str | None:
+    """
+    Resolves `revision` to a commit hash, to be called once at the beginning of a loading method.
+
+    Loading a model or a pipeline fetches several files from the same repo (config, weight index, shards, custom
+    code, ...). Resolving the revision upfront and passing the returned `ResolvedRevision` down to every download
+    pins them all to the same commit - even if the repo is updated in the meantime - and lets `huggingface_hub`
+    serve them from the local cache without resolving `revision` again on each call. See
+    https://huggingface.co/docs/huggingface_hub/main/en/guides/manage-cache#pin-a-revision-advanced.
+
+    Resolution is best-effort: local folders are returned untouched and, if the Hub cannot answer (repo or revision
+    not found, offline mode with nothing cached, ...), `revision` is returned as is so that the download that
+    follows fails with its usual error message.
+    """
+    if pretrained_model_name_or_path is None or os.path.isdir(pretrained_model_name_or_path):
+        return revision
+
+    try:
+        return resolve_revision(
+            str(pretrained_model_name_or_path),
+            revision=revision,
+            cache_dir=cache_dir,
+            local_files_only=bool(local_files_only),
+            token=token,
+        )
+    except (HfHubHTTPError, RevisionResolutionError, HFValidationError):
+        return revision
 
 
 def _add_variant(weights_name: str, variant: str | None = None) -> str:
