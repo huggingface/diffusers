@@ -49,23 +49,6 @@ if is_peft_available():
     from peft.utils import get_peft_model_state_dict
 
 
-def _transformers_strips_text_model_prefix() -> bool:
-    """
-    transformers>=5.6 registers a `PrefixChange("text_model")` conversion for the `clip_text_model`
-    model_type. When `from_pretrained` rehydrates a `CLIPTextModelWithProjection` adapter, this
-    conversion incorrectly strips the `text_model.` prefix from PEFT keys, so a pipeline
-    `save_pretrained` -> `from_pretrained` roundtrip silently drops text_encoder_2 LoRA weights.
-    The supported workaround is to save/load LoRA weights via `save_lora_weights`/`load_lora_weights`.
-    """
-    try:
-        from transformers.conversion_mapping import get_checkpoint_conversion_mapping
-        from transformers.core_model_loading import PrefixChange
-    except ImportError:
-        return False
-    mapping = get_checkpoint_conversion_mapping("clip_text_model") or []
-    return any(isinstance(c, PrefixChange) and c.prefix_to_remove == "text_model" for c in mapping)
-
-
 def check_module_lora_metadata(parsed_metadata: dict, lora_metadatas: dict, module_key: str):
     extracted = {
         k.removeprefix(f"{module_key}."): v for k, v in parsed_metadata.items() if k.startswith(f"{module_key}.")
@@ -190,38 +173,6 @@ class BaseLoraTesterMixin(BasePipelineOutputMixin):
             for name, module in modules_to_save.items()
         }
 
-    def _needs_text_encoder_lora_repair(self, pipe) -> bool:
-        """
-        transformers>=5.6 strips the `text_model.` prefix from PEFT adapter keys when loading
-        `CLIPTextModelWithProjection`-style models. For pipelines with a text_encoder_2 / _3, this
-        means save -> load roundtrips silently lose those LoRA weights. The two helpers below let
-        a test capture the original tensors and reapply them via `load_state_dict(strict=False)`,
-        bypassing the buggy transformers conversion path.
-        """
-        has_multiple_text_encoders = (
-            getattr(pipe, "text_encoder_2", None) is not None or getattr(pipe, "text_encoder_3", None) is not None
-        )
-        return has_multiple_text_encoders and _transformers_strips_text_model_prefix()
-
-    def _capture_text_encoder_lora_tensors(self, pipe):
-        captured = {}
-        for name in ("text_encoder", "text_encoder_2", "text_encoder_3"):
-            module = getattr(pipe, name, None)
-            if module is not None and getattr(module, "peft_config", None) is not None:
-                captured[name] = {k: v.detach().clone().cpu() for k, v in module.state_dict().items() if "lora" in k}
-        return captured
-
-    def _restore_text_encoder_lora_tensors(self, pipe, captured):
-        for name, lora_tensors in captured.items():
-            module = getattr(pipe, name)
-            new_adapter_name = module.active_adapters()[0]
-            target_device = next(module.parameters()).device
-            repaired = {
-                k.replace(".default.weight", f".{new_adapter_name}.weight"): v.to(target_device)
-                for k, v in lora_tensors.items()
-            }
-            module.load_state_dict(repaired, strict=False)
-
 
 class LoraTesterMixin(BaseLoraTesterMixin):
     """
@@ -248,18 +199,12 @@ class LoraTesterMixin(BaseLoraTesterMixin):
 
         images_lora = self.run_pipe(pipe)
 
-        needs_lora_repair = self._needs_text_encoder_lora_repair(pipe)
-        captured_lora = self._capture_text_encoder_lora_tensors(pipe) if needs_lora_repair else {}
-
         lora_state_dicts = self._get_lora_state_dicts(adapted)
         self.pipeline_class.save_lora_weights(save_directory=tmp_path, safe_serialization=False, **lora_state_dicts)
 
         assert os.path.isfile(os.path.join(tmp_path, "pytorch_lora_weights.bin"))
         pipe.unload_lora_weights()
         pipe.load_lora_weights(os.path.join(tmp_path, "pytorch_lora_weights.bin"), low_cpu_mem_usage=False)
-
-        if needs_lora_repair:
-            self._restore_text_encoder_lora_tensors(pipe, captured_lora)
 
         for name, module in adapted.items():
             assert check_if_lora_correctly_set(module), f"Lora not correctly set in {name}"
@@ -276,9 +221,6 @@ class LoraTesterMixin(BaseLoraTesterMixin):
         # Now, check for `low_cpu_mem_usage.`
         pipe.unload_lora_weights()
         pipe.load_lora_weights(os.path.join(tmp_path, "pytorch_lora_weights.bin"), low_cpu_mem_usage=True)
-
-        if needs_lora_repair:
-            self._restore_text_encoder_lora_tensors(pipe, captured_lora)
 
         for name, module in adapted.items():
             assert check_if_lora_correctly_set(module), f"Lora not correctly set in {name}"
@@ -348,18 +290,12 @@ class LoraTesterMixin(BaseLoraTesterMixin):
 
         images_lora = self.run_pipe(pipe)
 
-        needs_lora_repair = self._needs_text_encoder_lora_repair(pipe)
-        captured_lora = self._capture_text_encoder_lora_tensors(pipe) if needs_lora_repair else {}
-
         lora_state_dicts = self._get_lora_state_dicts(adapted)
         self.pipeline_class.save_lora_weights(save_directory=tmp_path, safe_serialization=False, **lora_state_dicts)
 
         assert os.path.isfile(os.path.join(tmp_path, "pytorch_lora_weights.bin"))
         pipe.unload_lora_weights()
         pipe.load_lora_weights(os.path.join(tmp_path, "pytorch_lora_weights.bin"))
-
-        if needs_lora_repair:
-            self._restore_text_encoder_lora_tensors(pipe, captured_lora)
 
         for name, module in adapted.items():
             assert check_if_lora_correctly_set(module), f"Lora not correctly set in {name}"
@@ -413,16 +349,7 @@ class LoraTesterMixin(BaseLoraTesterMixin):
         )
 
     def test_simple_inference_save_pretrained_with_text_lora(self, tmp_path):
-        """Tests a simple usecase where users could use saving utilities for LoRA through save_pretrained.
-
-        transformers>=5.6 registers a `clip_text_model` conversion that strips the `text_model.`
-        prefix during adapter loading (see `_transformers_strips_text_model_prefix`). For pipelines
-        whose text encoders use this conversion (e.g. SDXL's `CLIPTextModelWithProjection`),
-        `pipe.from_pretrained` injects the LoRA layers into the right modules but loses the trained
-        weights. Going through `load_lora_weights` afterwards hits the same conversion. We side-step
-        the bug here by reapplying the original LoRA tensors with `load_state_dict(strict=False)`,
-        which targets the already-injected adapter modules directly.
-        """
+        """Tests a simple usecase where users could use saving utilities for LoRA through save_pretrained."""
         if not self.text_encoder_components:
             pytest.skip("Text encoder LoRAs are not supported for this pipeline.")
 
@@ -443,16 +370,10 @@ class LoraTesterMixin(BaseLoraTesterMixin):
         adapted = self.add_adapters_to_pipeline(pipe, components=self.text_encoder_components)
         images_lora = self.run_pipe(pipe)
 
-        needs_lora_repair = self._needs_text_encoder_lora_repair(pipe)
-        captured_lora = self._capture_text_encoder_lora_tensors(pipe) if needs_lora_repair else {}
-
         pipeline_path = os.path.join(tmp_path, "pipeline")
         pipe.save_pretrained(pipeline_path)
         pipe_from_pretrained = self.pipeline_class.from_pretrained(pipeline_path)
         pipe_from_pretrained.to(torch_device)
-
-        if needs_lora_repair:
-            self._restore_text_encoder_lora_tensors(pipe_from_pretrained, captured_lora)
 
         for name in adapted:
             assert check_if_lora_correctly_set(getattr(pipe_from_pretrained, name)), (
@@ -475,18 +396,12 @@ class LoraTesterMixin(BaseLoraTesterMixin):
 
         images_lora = self.run_pipe(pipe)
 
-        needs_lora_repair = self._needs_text_encoder_lora_repair(pipe)
-        captured_lora = self._capture_text_encoder_lora_tensors(pipe) if needs_lora_repair else {}
-
         lora_state_dicts = self._get_lora_state_dicts(adapted)
         self.pipeline_class.save_lora_weights(save_directory=tmp_path, safe_serialization=False, **lora_state_dicts)
 
         assert os.path.isfile(os.path.join(tmp_path, "pytorch_lora_weights.bin"))
         pipe.unload_lora_weights()
         pipe.load_lora_weights(os.path.join(tmp_path, "pytorch_lora_weights.bin"))
-
-        if needs_lora_repair:
-            self._restore_text_encoder_lora_tensors(pipe, captured_lora)
 
         for name, module in adapted.items():
             assert check_if_lora_correctly_set(module), f"Lora not correctly set in {name}"
@@ -923,18 +838,12 @@ class LoraTesterMixin(BaseLoraTesterMixin):
             msg="Lora + scale should match the output of `set_adapters()`.",
         )
 
-        needs_lora_repair = self._needs_text_encoder_lora_repair(pipe)
-        captured_lora = self._capture_text_encoder_lora_tensors(pipe) if needs_lora_repair else {}
-
         lora_state_dicts = self._get_lora_state_dicts(adapted)
         self.pipeline_class.save_lora_weights(save_directory=tmp_path, safe_serialization=True, **lora_state_dicts)
 
         assert os.path.isfile(os.path.join(tmp_path, "pytorch_lora_weights.safetensors"))
         pipe = self.get_pipeline().to(torch_device)
         pipe.load_lora_weights(os.path.join(tmp_path, "pytorch_lora_weights.safetensors"))
-
-        if needs_lora_repair:
-            self._restore_text_encoder_lora_tensors(pipe, captured_lora)
 
         for name in adapted:
             assert check_if_lora_correctly_set(getattr(pipe, name)), f"Lora not correctly set in {name}"
@@ -984,17 +893,11 @@ class LoraTesterMixin(BaseLoraTesterMixin):
         adapted = self.add_adapters_to_pipeline(pipe, lora_alpha=lora_alpha)
         output_lora = self.run_pipe(pipe)
 
-        needs_lora_repair = self._needs_text_encoder_lora_repair(pipe)
-        captured_lora = self._capture_text_encoder_lora_tensors(pipe) if needs_lora_repair else {}
-
         lora_state_dicts = self._get_lora_state_dicts(adapted)
         lora_metadatas = self._get_lora_adapter_metadata(adapted)
         self.pipeline_class.save_lora_weights(save_directory=tmp_path, **lora_state_dicts, **lora_metadatas)
         pipe.unload_lora_weights()
         pipe.load_lora_weights(tmp_path)
-
-        if needs_lora_repair:
-            self._restore_text_encoder_lora_tensors(pipe, captured_lora)
 
         output_lora_pretrained = self.run_pipe(pipe)
         assert_tensors_close(
@@ -1019,9 +922,6 @@ class LoraTesterMixin(BaseLoraTesterMixin):
 
         output_adapter_1 = self.run_pipe(pipe)
 
-        needs_lora_repair = self._needs_text_encoder_lora_repair(pipe)
-        captured_lora = self._capture_text_encoder_lora_tensors(pipe) if needs_lora_repair else {}
-
         lora_state_dicts = self._get_lora_state_dicts(adapted)
         self.pipeline_class.save_lora_weights(save_directory=tmp_path, **lora_state_dicts)
         assert os.path.isfile(os.path.join(tmp_path, "pytorch_lora_weights.safetensors"))
@@ -1040,9 +940,6 @@ class LoraTesterMixin(BaseLoraTesterMixin):
 
         # Then load adapter and compare.
         pipe.load_lora_weights(tmp_path)
-
-        if needs_lora_repair:
-            self._restore_text_encoder_lora_tensors(pipe, captured_lora)
 
         output_lora_loaded = self.run_pipe(pipe)
         assert_tensors_close(
