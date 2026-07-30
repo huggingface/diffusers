@@ -52,7 +52,7 @@ All checkpoints have different usage which we detail below.
 import torch
 from diffusers import FluxPipeline
 
-pipe = FluxPipeline.from_pretrained("black-forest-labs/FLUX.1-schnell", torch_dtype=torch.bfloat16)
+pipe = FluxPipeline.from_pretrained("black-forest-labs/FLUX.1-schnell", dtype=torch.bfloat16)
 pipe.enable_model_cpu_offload()
 
 prompt = "A cat holding a sign that says hello world"
@@ -76,7 +76,7 @@ out.save("image.png")
 import torch
 from diffusers import FluxPipeline
 
-pipe = FluxPipeline.from_pretrained("black-forest-labs/FLUX.1-dev", torch_dtype=torch.bfloat16)
+pipe = FluxPipeline.from_pretrained("black-forest-labs/FLUX.1-dev", dtype=torch.bfloat16)
 pipe.enable_model_cpu_offload()
 
 prompt = "a tiny astronaut hatching from an egg on the moon"
@@ -104,7 +104,7 @@ image = load_image("https://huggingface.co/datasets/YiYiXu/testing-images/resolv
 mask = load_image("https://huggingface.co/datasets/YiYiXu/testing-images/resolve/main/cup_mask.png")
 
 repo_id = "black-forest-labs/FLUX.1-Fill-dev"
-pipe = FluxFillPipeline.from_pretrained(repo_id, torch_dtype=torch.bfloat16).to("cuda")
+pipe = FluxFillPipeline.from_pretrained(repo_id, dtype=torch.bfloat16).to("cuda")
 
 image = pipe(
     prompt="a white paper cup",
@@ -129,7 +129,7 @@ from controlnet_aux import CannyDetector
 from diffusers import FluxControlPipeline
 from diffusers.utils import load_image
 
-pipe = FluxControlPipeline.from_pretrained("black-forest-labs/FLUX.1-Canny-dev", torch_dtype=torch.bfloat16).to("cuda")
+pipe = FluxControlPipeline.from_pretrained("black-forest-labs/FLUX.1-Canny-dev", dtype=torch.bfloat16).to("cuda")
 
 prompt = "A robot made of exotic candies and chocolates of different kinds. The background is filled with confetti and celebratory gifts."
 control_image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/robot.png")
@@ -157,7 +157,7 @@ from controlnet_aux import CannyDetector
 from diffusers import FluxControlPipeline
 from diffusers.utils import load_image
 
-pipe = FluxControlPipeline.from_pretrained("black-forest-labs/FLUX.1-dev", torch_dtype=torch.bfloat16).to("cuda")
+pipe = FluxControlPipeline.from_pretrained("black-forest-labs/FLUX.1-dev", dtype=torch.bfloat16).to("cuda")
 pipe.load_lora_weights("black-forest-labs/FLUX.1-Canny-dev-lora")
 
 prompt = "A robot made of exotic candies and chocolates of different kinds. The background is filled with confetti and celebratory gifts."
@@ -188,7 +188,7 @@ from diffusers import FluxControlPipeline, FluxTransformer2DModel
 from diffusers.utils import load_image
 from image_gen_aux import DepthPreprocessor
 
-pipe = FluxControlPipeline.from_pretrained("black-forest-labs/FLUX.1-Depth-dev", torch_dtype=torch.bfloat16).to("cuda")
+pipe = FluxControlPipeline.from_pretrained("black-forest-labs/FLUX.1-Depth-dev", dtype=torch.bfloat16).to("cuda")
 
 prompt = "A robot made of exotic candies and chocolates of different kinds. The background is filled with confetti and celebratory gifts."
 control_image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/robot.png")
@@ -217,7 +217,7 @@ from diffusers import FluxControlPipeline, FluxTransformer2DModel
 from diffusers.utils import load_image
 from image_gen_aux import DepthPreprocessor
 
-pipe = FluxControlPipeline.from_pretrained("black-forest-labs/FLUX.1-dev", torch_dtype=torch.bfloat16).to("cuda")
+pipe = FluxControlPipeline.from_pretrained("black-forest-labs/FLUX.1-dev", dtype=torch.bfloat16).to("cuda")
 pipe.load_lora_weights("black-forest-labs/FLUX.1-Depth-dev-lora")
 
 prompt = "A robot made of exotic candies and chocolates of different kinds. The background is filled with confetti and celebratory gifts."
@@ -254,12 +254,12 @@ dtype = torch.bfloat16
 
 repo_redux = "black-forest-labs/FLUX.1-Redux-dev"
 repo_base = "black-forest-labs/FLUX.1-dev" 
-pipe_prior_redux = FluxPriorReduxPipeline.from_pretrained(repo_redux, torch_dtype=dtype).to(device)
+pipe_prior_redux = FluxPriorReduxPipeline.from_pretrained(repo_redux, dtype=dtype).to(device)
 pipe = FluxPipeline.from_pretrained(
     repo_base, 
     text_encoder=None,
     text_encoder_2=None,
-    torch_dtype=torch.bfloat16
+    dtype=torch.bfloat16
 ).to(device)
 
 image = load_image("https://huggingface.co/datasets/YiYiXu/testing-images/resolve/main/style_ziggy/img5.png")
@@ -283,7 +283,7 @@ from diffusers import FluxKontextPipeline
 from diffusers.utils import load_image
 
 pipe = FluxKontextPipeline.from_pretrained(
-    "black-forest-labs/FLUX.1-Kontext-dev", torch_dtype=torch.bfloat16
+    "black-forest-labs/FLUX.1-Kontext-dev", dtype=torch.bfloat16
 )
 pipe.to("cuda")
 
@@ -336,7 +336,7 @@ source = load_image(img_url)
 mask = load_image(mask_url)
 
 pipe = FluxKontextInpaintPipeline.from_pretrained(
-    "black-forest-labs/FLUX.1-Kontext-dev", torch_dtype=torch.bfloat16
+    "black-forest-labs/FLUX.1-Kontext-dev", dtype=torch.bfloat16
 )
 pipe.to("cuda")
 
@@ -352,7 +352,7 @@ from diffusers import FluxKontextInpaintPipeline
 from diffusers.utils import load_image
 
 pipe = FluxKontextInpaintPipeline.from_pretrained(
-    "black-forest-labs/FLUX.1-Kontext-dev", torch_dtype=torch.bfloat16
+    "black-forest-labs/FLUX.1-Kontext-dev", dtype=torch.bfloat16
 )
 pipe.to("cuda")
 
@@ -385,7 +385,7 @@ from diffusers.utils import load_image
 from huggingface_hub import hf_hub_download
 import torch
 
-control_pipe = FluxControlPipeline.from_pretrained("black-forest-labs/FLUX.1-dev", torch_dtype=torch.bfloat16)
+control_pipe = FluxControlPipeline.from_pretrained("black-forest-labs/FLUX.1-dev", dtype=torch.bfloat16)
 control_pipe.load_lora_weights("black-forest-labs/FLUX.1-Depth-dev-lora", adapter_name="depth")
 control_pipe.load_lora_weights(
     hf_hub_download("ByteDance/Hyper-SD", "Hyper-FLUX.1-dev-8steps-lora.safetensors"), adapter_name="hyper-sd"
@@ -428,7 +428,7 @@ from diffusers import FluxPipeline
 from diffusers.utils import load_image
 
 pipe = FluxPipeline.from_pretrained(
-    "black-forest-labs/FLUX.1-dev", torch_dtype=torch.bfloat16
+    "black-forest-labs/FLUX.1-dev", dtype=torch.bfloat16
 ).to("cuda")
 
 image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/flux_ip_adapter_input.jpg").resize((1024, 1024))
@@ -480,7 +480,7 @@ model_id = "black-forest-labs/FLUX.1-dev"
 dtype = torch.bfloat16
 pipe = FluxPipeline.from_pretrained(
 	model_id,
-	torch_dtype=dtype,
+	dtype=dtype,
 )
 
 apply_group_offloading(
@@ -534,7 +534,7 @@ FP16 inference code:
 import torch
 from diffusers import FluxPipeline
 
-pipe = FluxPipeline.from_pretrained("black-forest-labs/FLUX.1-schnell", torch_dtype=torch.bfloat16) # can replace schnell with dev
+pipe = FluxPipeline.from_pretrained("black-forest-labs/FLUX.1-schnell", dtype=torch.bfloat16) # can replace schnell with dev
 # to run on low vram GPUs (i.e. between 4 and 32 GB VRAM)
 pipe.enable_sequential_cpu_offload()
 pipe.vae.enable_slicing()
@@ -570,7 +570,7 @@ text_encoder_8bit = T5EncoderModel.from_pretrained(
     "black-forest-labs/FLUX.1-dev",
     subfolder="text_encoder_2",
     quantization_config=quant_config,
-    torch_dtype=torch.float16,
+    dtype=torch.float16,
 )
 
 quant_config = DiffusersBitsAndBytesConfig(load_in_8bit=True)
@@ -578,14 +578,14 @@ transformer_8bit = FluxTransformer2DModel.from_pretrained(
     "black-forest-labs/FLUX.1-dev",
     subfolder="transformer",
     quantization_config=quant_config,
-    torch_dtype=torch.float16,
+    dtype=torch.float16,
 )
 
 pipeline = FluxPipeline.from_pretrained(
     "black-forest-labs/FLUX.1-dev",
     text_encoder_2=text_encoder_8bit,
     transformer=transformer_8bit,
-    torch_dtype=torch.float16,
+    dtype=torch.float16,
     device_map="balanced",
 )
 
@@ -620,15 +620,15 @@ from optimum.quanto import freeze, qfloat8, quantize
 bfl_repo = "black-forest-labs/FLUX.1-dev"
 dtype = torch.bfloat16
 
-transformer = FluxTransformer2DModel.from_single_file("https://huggingface.co/Kijai/flux-fp8/blob/main/flux1-dev-fp8.safetensors", torch_dtype=dtype)
+transformer = FluxTransformer2DModel.from_single_file("https://huggingface.co/Kijai/flux-fp8/blob/main/flux1-dev-fp8.safetensors", dtype=dtype)
 quantize(transformer, weights=qfloat8)
 freeze(transformer)
 
-text_encoder_2 = T5EncoderModel.from_pretrained(bfl_repo, subfolder="text_encoder_2", torch_dtype=dtype)
+text_encoder_2 = T5EncoderModel.from_pretrained(bfl_repo, subfolder="text_encoder_2", dtype=dtype)
 quantize(text_encoder_2, weights=qfloat8)
 freeze(text_encoder_2)
 
-pipe = FluxPipeline.from_pretrained(bfl_repo, transformer=None, text_encoder_2=None, torch_dtype=dtype)
+pipe = FluxPipeline.from_pretrained(bfl_repo, transformer=None, text_encoder_2=None, dtype=dtype)
 pipe.transformer = transformer
 pipe.text_encoder_2 = text_encoder_2
 

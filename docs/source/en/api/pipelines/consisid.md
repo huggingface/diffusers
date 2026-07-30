@@ -67,7 +67,7 @@ snapshot_download(repo_id="BestWishYsh/ConsisID-preview", local_dir="BestWishYsh
 face_helper_1, face_helper_2, face_clip_model, face_main_model, eva_transform_mean, eva_transform_std = prepare_face_models("BestWishYsh/ConsisID-preview", device="cuda", dtype=torch.bfloat16)
 
 # Load consisid base model
-pipe = ConsisIDPipeline.from_pretrained("BestWishYsh/ConsisID-preview", torch_dtype=torch.bfloat16)
+pipe = ConsisIDPipeline.from_pretrained("BestWishYsh/ConsisID-preview", dtype=torch.bfloat16)
 pipe.to("cuda")
 ```
 

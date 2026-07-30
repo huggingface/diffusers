@@ -18,7 +18,7 @@ The model can be loaded with the following code snippet.
 ```python
 from diffusers import HiDreamImageTransformer2DModel
 
-transformer = HiDreamImageTransformer2DModel.from_pretrained("HiDream-ai/HiDream-I1-Full", subfolder="transformer", torch_dtype=torch.bfloat16)
+transformer = HiDreamImageTransformer2DModel.from_pretrained("HiDream-ai/HiDream-I1-Full", subfolder="transformer", dtype=torch.bfloat16)
 ```
 
 ## Loading GGUF quantized checkpoints for HiDream-I1
@@ -33,7 +33,7 @@ ckpt_path = "https://huggingface.co/city96/HiDream-I1-Dev-gguf/blob/main/hidream
 transformer = HiDreamImageTransformer2DModel.from_single_file(
     ckpt_path,
     quantization_config=GGUFQuantizationConfig(compute_dtype=torch.bfloat16),
-    torch_dtype=torch.bfloat16
+    dtype=torch.bfloat16
 )
 ```
 

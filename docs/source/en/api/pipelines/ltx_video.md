@@ -49,13 +49,13 @@ from diffusers.utils import export_to_video
 transformer = AutoModel.from_pretrained(
     "Lightricks/LTX-Video",
     subfolder="transformer",
-    torch_dtype=torch.bfloat16
+    dtype=torch.bfloat16
 )
 transformer.enable_layerwise_casting(
     storage_dtype=torch.float8_e4m3fn, compute_dtype=torch.bfloat16
 )
 
-pipeline = LTXPipeline.from_pretrained("Lightricks/LTX-Video", transformer=transformer, torch_dtype=torch.bfloat16)
+pipeline = LTXPipeline.from_pretrained("Lightricks/LTX-Video", transformer=transformer, dtype=torch.bfloat16)
 
 # group-offloading
 onload_device = torch.device("cuda")
@@ -96,7 +96,7 @@ from diffusers import LTXPipeline
 from diffusers.utils import export_to_video
 
 pipeline = LTXPipeline.from_pretrained(
-    "Lightricks/LTX-Video", torch_dtype=torch.bfloat16
+    "Lightricks/LTX-Video", dtype=torch.bfloat16
 )
 
 # torch.compile
@@ -149,8 +149,8 @@ export_to_video(video, "output.mp4", fps=24)
   from diffusers.pipelines.ltx.pipeline_ltx_condition import LTXVideoCondition
   from diffusers.utils import export_to_video, load_video
 
-  pipeline = LTXConditionPipeline.from_pretrained("Lightricks/LTX-Video-0.9.7-dev", torch_dtype=torch.bfloat16)
-  pipeline_upsample = LTXLatentUpsamplePipeline.from_pretrained("Lightricks/ltxv-spatial-upscaler-0.9.7", vae=pipeline.vae, torch_dtype=torch.bfloat16)
+  pipeline = LTXConditionPipeline.from_pretrained("Lightricks/LTX-Video-0.9.7-dev", dtype=torch.bfloat16)
+  pipeline_upsample = LTXLatentUpsamplePipeline.from_pretrained("Lightricks/ltxv-spatial-upscaler-0.9.7", vae=pipeline.vae, dtype=torch.bfloat16)
   pipeline.to("cuda")
   pipe_upsample.to("cuda")
   pipeline.vae.enable_tiling()
@@ -247,8 +247,8 @@ export_to_video(video, "output.mp4", fps=24)
   from diffusers.pipelines.ltx.pipeline_ltx_condition import LTXVideoCondition
   from diffusers.utils import export_to_video, load_video
 
-  pipeline = LTXConditionPipeline.from_pretrained("Lightricks/LTX-Video-0.9.7-distilled", torch_dtype=torch.bfloat16)
-  pipe_upsample = LTXLatentUpsamplePipeline.from_pretrained("Lightricks/ltxv-spatial-upscaler-0.9.7", vae=pipeline.vae, torch_dtype=torch.bfloat16)
+  pipeline = LTXConditionPipeline.from_pretrained("Lightricks/LTX-Video-0.9.7-distilled", dtype=torch.bfloat16)
+  pipe_upsample = LTXLatentUpsamplePipeline.from_pretrained("Lightricks/ltxv-spatial-upscaler-0.9.7", vae=pipeline.vae, dtype=torch.bfloat16)
   pipeline.to("cuda")
   pipe_upsample.to("cuda")
   pipeline.vae.enable_tiling()
@@ -337,9 +337,9 @@ export_to_video(video, "output.mp4", fps=24)
   from diffusers.pipelines.ltx.modeling_latent_upsampler import LTXLatentUpsamplerModel
   from diffusers.utils import export_to_video, load_video
 
-  pipeline = LTXConditionPipeline.from_pretrained("Lightricks/LTX-Video-0.9.8-13B-distilled", torch_dtype=torch.bfloat16)
+  pipeline = LTXConditionPipeline.from_pretrained("Lightricks/LTX-Video-0.9.8-13B-distilled", dtype=torch.bfloat16)
   # TODO: Update the checkpoint here once updated in LTX org
-  upsampler = LTXLatentUpsamplerModel.from_pretrained("a-r-r-o-w/LTX-0.9.8-Latent-Upsampler", torch_dtype=torch.bfloat16)
+  upsampler = LTXLatentUpsamplerModel.from_pretrained("a-r-r-o-w/LTX-0.9.8-Latent-Upsampler", dtype=torch.bfloat16)
   pipe_upsample = LTXLatentUpsamplePipeline(vae=pipeline.vae, latent_upsampler=upsampler).to(torch.bfloat16)
   pipeline.to("cuda")
   pipe_upsample.to("cuda")
@@ -425,7 +425,7 @@ export_to_video(video, "output.mp4", fps=24)
   from diffusers.utils import export_to_video, load_image
 
   pipeline = LTXConditionPipeline.from_pretrained(
-      "Lightricks/LTX-Video-0.9.5", torch_dtype=torch.bfloat16
+      "Lightricks/LTX-Video-0.9.5", dtype=torch.bfloat16
   )
 
   pipeline.load_lora_weights("Lightricks/LTX-Video-Cakeify-LoRA", adapter_name="cakeify")
@@ -463,12 +463,12 @@ export_to_video(video, "output.mp4", fps=24)
   transformer = AutoModel.from_single_file(
       "https://huggingface.co/city96/LTX-Video-gguf/blob/main/ltx-video-2b-v0.9-Q3_K_S.gguf"
       quantization_config=GGUFQuantizationConfig(compute_dtype=torch.bfloat16),
-      torch_dtype=torch.bfloat16
+      dtype=torch.bfloat16
   )
   pipeline = LTXPipeline.from_pretrained(
       "Lightricks/LTX-Video",
       transformer=transformer,
-      torch_dtype=torch.bfloat16
+      dtype=torch.bfloat16
   )
   ```
 

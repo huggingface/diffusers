@@ -165,7 +165,8 @@ class Cosmos3DistilledBlocks(SequentialPipelineBlocks):
           (`Cosmos3OmniTransformer`) scheduler (`FlowMatchEulerDiscreteScheduler`)
 
       Configs:
-          is_distilled (default: True) distilled_sigmas (default: None)
+          default_use_system_prompt (default: True) enable_safety_checker (default: True) is_distilled (default: True)
+          distilled_sigmas (default: None)
 
       Inputs:
           prompt (`str`):

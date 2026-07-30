@@ -40,9 +40,6 @@ HF_XET_HIGH_PERFORMANCE=1 RUN_SLOW=1 pytest -s tests/quantization/torchao/test_t
 - Running on Google Colab?: No
 - Python version: 3.10.14
 - PyTorch version (GPU?): 2.6.0.dev20241112+cu121 (False)
-- Flax version (CPU?/GPU?/TPU?): not installed (NA)
-- Jax version: not installed
-- JaxLib version: not installed
 - Huggingface_hub version: 0.26.2
 - Transformers version: 4.46.3
 - Accelerate version: 1.1.1
