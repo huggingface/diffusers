@@ -23,7 +23,7 @@ import torch
 from diffusers import DiffusionPipeline
 
 pipeline = DiffusionPipeline.from_pretrained(
-    "stable-diffusion-v1-5/stable-diffusion-v1-5", torch_dtype=torch.float16, use_safetensors=True
+    "stable-diffusion-v1-5/stable-diffusion-v1-5", dtype=torch.float16, use_safetensors=True
 ).to("cuda")
 ```
 
@@ -63,7 +63,7 @@ ddim = DDIMScheduler.from_pretrained("stable-diffusion-v1-5/stable-diffusion-v1-
 
 ```python
 pipeline = DiffusionPipeline.from_pretrained(
-    "stable-diffusion-v1-5/stable-diffusion-v1-5", scheduler=ddim, torch_dtype=torch.float16, use_safetensors=True
+    "stable-diffusion-v1-5/stable-diffusion-v1-5", scheduler=ddim, dtype=torch.float16, use_safetensors=True
 ).to("cuda")
 ```
 
@@ -78,7 +78,7 @@ import torch
 from diffusers import DiffusionPipeline
 
 pipeline = DiffusionPipeline.from_pretrained(
-    "stable-diffusion-v1-5/stable-diffusion-v1-5", torch_dtype=torch.float16, use_safetensors=True
+    "stable-diffusion-v1-5/stable-diffusion-v1-5", dtype=torch.float16, use_safetensors=True
 ).to("cuda")
 
 prompt = "A photograph of an astronaut riding a horse on Mars, high resolution, high definition."
@@ -196,14 +196,14 @@ unet = UNet2DConditionModel.from_pretrained(
 unet.save_pretrained("./local-unet", variant="non_ema")
 ```
 
-使用[`~ModelMixin.from_pretrained`]的`torch_dtype`参数指定模型加载精度：
+使用[`~ModelMixin.from_pretrained`]的`dtype`参数指定模型加载精度：
 
 ```python
 from diffusers import AutoModel
 
 unet = AutoModel.from_pretrained(
-    "stabilityai/stable-diffusion-xl-base-1.0", subfolder="unet", torch_dtype=torch.float16
+    "stabilityai/stable-diffusion-xl-base-1.0", subfolder="unet", dtype=torch.float16
 )
 ```
 
-也可使用[torch.Tensor.to](https://docs.pytorch.org/docs/stable/generated/torch.Tensor.to.html)方法即时转换精度，但会转换所有权重（不同于`torch_dtype`参数会保留`_keep_in_fp32_modules`中的层）。这对某些必须保持fp32精度的层尤为重要（参见[示例](https://github.com/huggingface/diffusers/blob/f864a9a352fa4a220d860bfdd1782e3e5af96382/src/diffusers/models/transformers/transformer_wan.py#L374)）。
+也可使用[torch.Tensor.to](https://docs.pytorch.org/docs/stable/generated/torch.Tensor.to.html)方法即时转换精度，但会转换所有权重（不同于`dtype`参数会保留`_keep_in_fp32_modules`中的层）。这对某些必须保持fp32精度的层尤为重要（参见[示例](https://github.com/huggingface/diffusers/blob/f864a9a352fa4a220d860bfdd1782e3e5af96382/src/diffusers/models/transformers/transformer_wan.py#L374)）。
