@@ -22,8 +22,6 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_REPO: ${{ github.repository }}
           ISSUE_NUMBER: ${{ github.event.issue.number }}
-          # `@asomoza` is in backticks on purpose: GitHub does not notify for mentions inside a
-          # code span, so the reply says who to tag without pinging him on every request.
           BODY: |
             Thanks for the request!
 
