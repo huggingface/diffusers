@@ -27,7 +27,7 @@ EXAMPLE_DOC_STRING = """
         >>> import torch
 
         >>> pipe_prior = KandinskyPriorPipeline.from_pretrained(
-        ...     "kandinsky-community/kandinsky-2-2-prior", torch_dtype=torch.float16
+        ...     "kandinsky-community/kandinsky-2-2-prior", dtype=torch.float16
         ... )
         >>> pipe_prior.to("cuda")
 
@@ -39,7 +39,7 @@ EXAMPLE_DOC_STRING = """
         >>> image_emb, nagative_image_emb = pipe_prior(prompt, image=img, strength=0.2).to_tuple()
 
         >>> pipe = KandinskyPipeline.from_pretrained(
-        ...     "kandinsky-community/kandinsky-2-2-decoder, torch_dtype=torch.float16"
+        ...     "kandinsky-community/kandinsky-2-2-decoder, dtype=torch.float16"
         ... )
         >>> pipe.to("cuda")
 
@@ -66,7 +66,7 @@ EXAMPLE_INTERPOLATE_DOC_STRING = """
         >>> from torchvision import transforms
 
         >>> pipe_prior = KandinskyV22PriorPipeline.from_pretrained(
-        ...     "kandinsky-community/kandinsky-2-2-prior", torch_dtype=torch.float16
+        ...     "kandinsky-community/kandinsky-2-2-prior", dtype=torch.float16
         ... )
         >>> pipe_prior.to("cuda")
 
@@ -85,7 +85,7 @@ EXAMPLE_INTERPOLATE_DOC_STRING = """
         >>> image_emb, zero_image_emb = pipe_prior.interpolate(images_texts, weights)
 
         >>> pipe = KandinskyV22Pipeline.from_pretrained(
-        ...     "kandinsky-community/kandinsky-2-2-decoder", torch_dtype=torch.float16
+        ...     "kandinsky-community/kandinsky-2-2-decoder", dtype=torch.float16
         ... )
         >>> pipe.to("cuda")
 

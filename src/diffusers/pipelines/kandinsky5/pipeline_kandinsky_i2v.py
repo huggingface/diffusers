@@ -67,7 +67,7 @@ EXAMPLE_DOC_STRING = """
         >>> # kandinskylab/Kandinsky-5.0-I2V-Pro-sft-5s-Diffusers
 
         >>> model_id = "kandinskylab/Kandinsky-5.0-I2V-Pro-sft-5s-Diffusers"
-        >>> pipe = Kandinsky5I2VPipeline.from_pretrained(model_id, torch_dtype=torch.bfloat16)
+        >>> pipe = Kandinsky5I2VPipeline.from_pretrained(model_id, dtype=torch.bfloat16)
         >>> pipe = pipe.to("cuda")
 
         >>> image = load_image(

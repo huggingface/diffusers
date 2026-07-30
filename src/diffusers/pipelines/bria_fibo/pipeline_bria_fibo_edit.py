@@ -64,7 +64,7 @@ EXAMPLE_DOC_STRING = """
 
     pipe = BriaFiboEditPipeline.from_pretrained(
         "briaai/fibo-edit",
-        torch_dtype=torch.bfloat16,
+        dtype=torch.bfloat16,
     )
     pipe.to("cuda")
 

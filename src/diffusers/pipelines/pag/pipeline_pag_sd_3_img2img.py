@@ -63,7 +63,7 @@ EXAMPLE_DOC_STRING = """
 
         >>> pipe = StableDiffusion3PAGImg2ImgPipeline.from_pretrained(
         ...     "stabilityai/stable-diffusion-3-medium-diffusers",
-        ...     torch_dtype=torch.float16,
+        ...     dtype=torch.float16,
         ...     pag_applied_layers=["blocks.13"],
         ... )
         >>> pipe.to("cuda")

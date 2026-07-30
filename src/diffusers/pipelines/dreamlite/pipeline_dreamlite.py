@@ -51,7 +51,7 @@ EXAMPLE_DOC_STRING = """
         >>> from diffusers import DreamLitePipeline
 
         >>> pipe = DreamLitePipeline.from_pretrained(
-        ...     "carlofkl/DreamLite-base", revision="diffusers", torch_dtype=torch.bfloat16
+        ...     "carlofkl/DreamLite-base", revision="diffusers", dtype=torch.bfloat16
         ... )
         >>> pipe.to("cuda")
 

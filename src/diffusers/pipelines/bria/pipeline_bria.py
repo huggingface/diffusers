@@ -49,7 +49,7 @@ EXAMPLE_DOC_STRING = """
         >>> import torch
         >>> from diffusers import BriaPipeline
 
-        >>> pipe = BriaPipeline.from_pretrained("briaai/BRIA-3.2", torch_dtype=torch.bfloat16)
+        >>> pipe = BriaPipeline.from_pretrained("briaai/BRIA-3.2", dtype=torch.bfloat16)
         >>> pipe.to("cuda")
         # BRIA's T5 text encoder is sensitive to precision. We need to cast it to bfloat16 and keep the final layer in float32.
 

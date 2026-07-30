@@ -59,9 +59,9 @@ EXAMPLE_DOC_STRING = """
 
         >>> repo_redux = "black-forest-labs/FLUX.1-Redux-dev"
         >>> repo_base = "black-forest-labs/FLUX.1-dev"
-        >>> pipe_prior_redux = FluxPriorReduxPipeline.from_pretrained(repo_redux, torch_dtype=dtype).to(device)
+        >>> pipe_prior_redux = FluxPriorReduxPipeline.from_pretrained(repo_redux, dtype=dtype).to(device)
         >>> pipe = FluxPipeline.from_pretrained(
-        ...     repo_base, text_encoder=None, text_encoder_2=None, torch_dtype=torch.bfloat16
+        ...     repo_base, text_encoder=None, text_encoder_2=None, dtype=torch.bfloat16
         ... ).to(device)
 
         >>> image = load_image(

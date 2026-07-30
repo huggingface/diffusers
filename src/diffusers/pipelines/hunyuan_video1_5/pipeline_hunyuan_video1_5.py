@@ -48,7 +48,7 @@ EXAMPLE_DOC_STRING = """
         >>> from diffusers.utils import export_to_video
 
         >>> model_id = "hunyuanvideo-community/HunyuanVideo-1.5-480p_t2v"
-        >>> pipe = HunyuanVideo15Pipeline.from_pretrained(model_id, torch_dtype=torch.float16)
+        >>> pipe = HunyuanVideo15Pipeline.from_pretrained(model_id, dtype=torch.float16)
         >>> pipe.vae.enable_tiling()
         >>> pipe.to("cuda")
 

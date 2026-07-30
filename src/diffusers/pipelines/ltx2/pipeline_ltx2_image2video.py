@@ -52,7 +52,7 @@ EXAMPLE_DOC_STRING = """
         >>> from diffusers.utils import encode_video
         >>> from diffusers.utils import load_image
 
-        >>> pipe = LTX2ImageToVideoPipeline.from_pretrained("Lightricks/LTX-2", torch_dtype=torch.bfloat16)
+        >>> pipe = LTX2ImageToVideoPipeline.from_pretrained("Lightricks/LTX-2", dtype=torch.bfloat16)
         >>> pipe.enable_model_cpu_offload()
 
         >>> image = load_image(

@@ -53,7 +53,7 @@ EXAMPLE_DOC_STRING = """
         >>> device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
         >>> repo = "openai/shap-e-img2img"
-        >>> pipe = DiffusionPipeline.from_pretrained(repo, torch_dtype=torch.float16)
+        >>> pipe = DiffusionPipeline.from_pretrained(repo, dtype=torch.float16)
         >>> pipe = pipe.to(device)
 
         >>> guidance_scale = 3.0
