@@ -12,8 +12,6 @@ Integrate a new model into diffusers end-to-end, to full numerical parity with t
 
 ## Setup — gather before starting
 
-**First, check where this should live.** Default to a Hub repo, not `src/diffusers`: a modular pipeline can be published as remote code and loaded with `ModularPipeline.from_pretrained("<repo>", trust_remote_code=True)`, so it ships immediately instead of waiting on maintainer review. Use the [custom-blocks](../custom-blocks/SKILL.md) skill for that path. Continue with this skill when the target really is the library — model authors, or a model people are already running — with the scope agreed with maintainers on an issue first.
-
 Before writing any code, gather info in this order:
 
 1. **Reference repo** — ask for the github link. If they've already set it up locally, ask for the path. Otherwise, ask what setup steps are needed (install deps, download checkpoints, set env vars, etc.) and run through them before proceeding.
