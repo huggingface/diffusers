@@ -27,7 +27,7 @@ jobs:
 
             **How new model support works in Diffusers**
 
-            We're a small team, and our review queue shouldn't be what decides whether a model is usable in Diffusers. With [Modular Diffusers](https://huggingface.co/docs/diffusers/modular_diffusers/overview) it doesn't have to be: a pipeline can live as remote code in any Hub repo and load straight from there with `from_pretrained`.
+            We're a small team, and our review queue shouldn't be what decides whether a model is usable in Diffusers. With [Modular Diffusers](https://huggingface.co/docs/diffusers/modular_diffusers/overview), a pipeline can live as remote code in any Hub repo and load straight from there with `from_pretrained`.
 
             🛠️ **Want to bring this model to Diffusers?**
 
