@@ -920,6 +920,11 @@ def _cudnn_attention_forward_op(
     if enable_gqa:
         raise ValueError("`enable_gqa` is not yet supported for cuDNN attention.")
 
+    # The aten op takes an additive bias, so a boolean mask has to be converted the same way
+    # `F.scaled_dot_product_attention` does before dispatching to it.
+    if attn_mask is not None and attn_mask.dtype == torch.bool:
+        attn_mask = torch.zeros_like(attn_mask, dtype=query.dtype).masked_fill_(attn_mask.logical_not(), float("-inf"))
+
     tensors_to_save = ()
 
     # Contiguous is a must here! Calling cuDNN backend with aten ops produces incorrect results
