@@ -32,9 +32,9 @@ def format_size(num_bytes: int | None) -> str:
 
 def format_table(headers: list[str], rows: list[list[str]]) -> list[str]:
     """
-    Align `headers` and `rows` into text-table lines (header first), each column as wide as its longest cell and
-    cells joined by " | ". The last column is not padded, so a long final cell (a reason, a load id) runs free
-    without stretching the table. Separator lines are the caller's to add — `len(lines[0])` is the table width.
+    Align `headers` and `rows` into text-table lines (header first), each column as wide as its longest cell and cells
+    joined by " | ". The last column is not padded, so a long final cell (a reason, a load id) runs free without
+    stretching the table. Separator lines are the caller's to add — `len(lines[0])` is the table width.
     """
     widths = [len(header) for header in headers]
     for row in rows:

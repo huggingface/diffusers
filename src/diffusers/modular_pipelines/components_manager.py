@@ -43,9 +43,8 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 def normalize_execution_device(device: str | int | torch.device) -> torch.device:
     """
-    The device in the form tensors report theirs in: accelerator devices always carry an explicit index
-    (`cuda:0`), cpu never does. Normalizing to it lets a model's device be compared with the execution device
-    directly.
+    The device in the form tensors report theirs in: accelerator devices always carry an explicit index (`cuda:0`), cpu
+    never does. Normalizing to it lets a model's device be compared with the execution device directly.
     """
     device = torch.device(device)
     if device.type != "cpu" and device.index is None:
@@ -55,8 +54,8 @@ def normalize_execution_device(device: str | int | torch.device) -> torch.device
 
 def available_device_memory(execution_device: torch.device) -> int:
     """
-    The device memory available for new weights right now: what the driver reports free, plus the allocator's
-    reusable cache (`mem_get_info` counts the cache as used, but freed tensors in it can be reallocated).
+    The device memory available for new weights right now: what the driver reports free, plus the allocator's reusable
+    cache (`mem_get_info` counts the cache as used, but freed tensors in it can be reallocated).
     """
     device_module = getattr(torch, execution_device.type, torch.cuda)
     available_memory = device_module.mem_get_info(execution_device.index)[0]
@@ -69,9 +68,8 @@ def available_device_memory(execution_device: torch.device) -> int:
 
 def device_peak_memory(execution_device: torch.device) -> int | None:
     """
-    The device's peak allocated memory so far — cumulative since process start; the offloader never resets it,
-    so the delta between two consecutive recorded events attributes an activation peak to the interval between
-    those moves.
+    The device's peak allocated memory so far — cumulative since process start; the offloader never resets it, so the
+    delta between two consecutive recorded events attributes an activation peak to the interval between those moves.
     """
     device_module = getattr(torch, execution_device.type, torch.cuda)
     if hasattr(device_module, "max_memory_allocated"):
@@ -191,11 +189,11 @@ class CustomOffloadHook(ModelHook):
             The device on which the model should be executed. Will default to the MPS device if it's available, then
             GPU 0 if there is a GPU, and finally to the CPU.
         retry_on_oom(`bool`, *optional*, defaults to `True`):
-            Whether to recover from a forward pass that runs out of device memory by offloading the other models one
-            at a time and retrying. If `False`, the error is raised to the caller.
+            Whether to recover from a forward pass that runs out of device memory by offloading the other models one at
+            a time and retrying. If `False`, the error is raised to the caller.
         record(`OffloadRecord`, *optional*):
-            Where to record the moves this hook makes. Defaults to a private record; pass a shared one to collect
-            the moves of several hooks in a single sequence (as `ComponentsManager` does).
+            Where to record the moves this hook makes. Defaults to a private record; pass a shared one to collect the
+            moves of several hooks in a single sequence (as `ComponentsManager` does).
     """
 
     no_grad = False
@@ -403,12 +401,12 @@ def custom_offload_with_hook(
 class AutoOffloadStrategy:
     """
     Offload strategy that should be used with `CustomOffloadHook` to automatically offload models to the CPU so the
-    incoming model fits on the device: at each offload decision, check the memory actually available on the device
-    and keep `memory_reserve` of it free.
+    incoming model fits on the device: at each offload decision, check the memory actually available on the device and
+    keep `memory_reserve` of it free.
 
-    The sizes cover the weights managed by this strategy only — the actual memory requirements will include
-    activations and any other allocations, so `memory_reserve` covers exactly that headroom; a `memory_reserve` of 0
-    packs the device as full as the weights allow.
+    The sizes cover the weights managed by this strategy only — the actual memory requirements will include activations
+    and any other allocations, so `memory_reserve` covers exactly that headroom; a `memory_reserve` of 0 packs the
+    device as full as the weights allow.
     """
 
     def __init__(self, memory_reserve="3GB"):
@@ -731,8 +729,8 @@ class ComponentsManager:
         The algorithm works as follows:
         1. All models start on CPU by default
         2. When a model's forward pass is called, it's moved to the execution device
-        3. If it doesn't fit into the memory currently available on the device minus `memory_reserve`, other models
-           on the device are moved back to CPU first
+        3. If it doesn't fit into the memory currently available on the device minus `memory_reserve`, other models on
+           the device are moved back to CPU first
         4. The system tries to offload the smallest combination of models that frees enough memory
         5. Models stay on the execution device until another model needs memory and forces them off
         6. If a forward pass still runs out of device memory, the smallest model on the device is offloaded and the
@@ -820,8 +818,8 @@ class ComponentsManager:
         """
         What the offloader has done so far: every model moved onto or off the device, in order, and where a forward
         pass ran out of memory. Print it to see the sequence, or read `events` for the data behind it. Kept across
-        [`~ComponentsManager.disable_auto_cpu_offload`] (it is the post-mortem of the run), and cleared when
-        offloading is enabled again.
+        [`~ComponentsManager.disable_auto_cpu_offload`] (it is the post-mortem of the run), and cleared when offloading
+        is enabled again.
         """
         return self._offload_record
 
