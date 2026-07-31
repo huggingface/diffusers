@@ -26,7 +26,6 @@ from .constants import (
     DIFFUSERS_LOAD_ID_FIELDS,
     FLASHPACK_FILE_EXTENSION,
     FLASHPACK_WEIGHTS_NAME,
-    FLAX_WEIGHTS_NAME,
     GGUF_FILE_EXTENSION,
     HF_ENABLE_PARALLEL_LOADING,
     HF_MODULES_CACHE,
@@ -41,7 +40,7 @@ from .constants import (
     WEIGHTS_INDEX_NAME,
     WEIGHTS_NAME,
 )
-from .deprecation_utils import _maybe_remap_transformers_class, deprecate
+from .deprecation_utils import _maybe_remap_transformers_class, _resolve_dtype, deprecate
 from .doc_utils import replace_example_docstring
 from .dynamic_modules_utils import get_class_from_dynamic_module
 from .export_utils import encode_video, export_to_gif, export_to_obj, export_to_ply, export_to_video
@@ -58,7 +57,6 @@ from .import_utils import (
     DIFFUSERS_SLOW_IMPORT,
     ENV_VARS_TRUE_AND_AUTO_VALUES,
     ENV_VARS_TRUE_VALUES,
-    USE_JAX,
     USE_TF,
     USE_TORCH,
     DummyObject,
@@ -69,6 +67,7 @@ from .import_utils import (
     is_accelerate_version,
     is_aiter_available,
     is_aiter_version,
+    is_auto_round_available,
     is_av_available,
     is_better_profanity_available,
     is_bitsandbytes_available,
@@ -79,7 +78,6 @@ from .import_utils import (
     is_flash_attn_available,
     is_flash_attn_version,
     is_flashpack_available,
-    is_flax_available,
     is_ftfy_available,
     is_gguf_available,
     is_gguf_version,
@@ -109,6 +107,8 @@ from .import_utils import (
     is_sageattention_available,
     is_sageattention_version,
     is_scipy_available,
+    is_sdnq_available,
+    is_sdnq_version,
     is_sentencepiece_available,
     is_tensorboard_available,
     is_timm_available,
@@ -124,7 +124,6 @@ from .import_utils import (
     is_torchsde_available,
     is_torchvision_available,
     is_transformers_available,
-    is_transformers_flax_compatible,
     is_transformers_version,
     is_unidecode_available,
     is_wandb_available,

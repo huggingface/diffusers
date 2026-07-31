@@ -1,4 +1,4 @@
-# Copyright 2025 HuggingFace Inc.
+# Copyright 2026 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -22,6 +22,7 @@ from diffusers.utils.torch_utils import randn_tensor
 
 from ...testing_utils import enable_full_determinism, torch_device
 from ..testing_utils import (
+    AttentionBackendTesterMixin,
     AttentionTesterMixin,
     BaseModelTesterConfig,
     BitsAndBytesTesterMixin,
@@ -250,6 +251,21 @@ class TestQwenImageTransformerAttention(QwenImageTransformerTesterConfig, Attent
     """Attention processor tests for QwenImage Transformer."""
 
 
+class TestQwenImageTransformerAttentionBackend(QwenImageTransformerTesterConfig, AttentionBackendTesterMixin):
+    """Attention backend tests for QwenImage Transformer."""
+
+    unsupported_attn_backends = ["flash_hub", "_flash_3_hub"]
+
+    def get_dummy_inputs(self, batch_size: int = 2):
+        inputs = super().get_dummy_inputs(batch_size=batch_size)
+        mask = inputs["encoder_hidden_states_mask"]
+        mask[...] = 0
+        mask[0, :2] = 1
+        mask[1, :6] = 1
+        inputs["encoder_hidden_states_mask"] = mask.bool()
+        return inputs
+
+
 class TestQwenImageTransformerContextParallel(QwenImageTransformerTesterConfig, ContextParallelTesterMixin):
     """Context Parallel inference tests for QwenImage Transformer."""
 
@@ -288,14 +304,6 @@ class TestQwenImageTransformerLoRA(QwenImageTransformerTesterConfig, LoraTesterM
 
 class TestQwenImageTransformerLoRAHotSwap(QwenImageTransformerTesterConfig, LoraHotSwappingForModelTesterMixin):
     """LoRA hot-swapping tests for QwenImage Transformer."""
-
-    @pytest.mark.xfail(True, reason="Recompilation issues.", strict=True)
-    def test_hotswapping_compiled_model_linear(self):
-        super().test_hotswapping_compiled_model_linear()
-
-    @pytest.mark.xfail(True, reason="Recompilation issues.", strict=True)
-    def test_hotswapping_compiled_model_both_linear_and_other(self):
-        super().test_hotswapping_compiled_model_both_linear_and_other()
 
     @property
     def different_shapes_for_compilation(self):

@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2025 HuggingFace Inc.
+# Copyright 2026 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -91,9 +91,6 @@ class TorchCompileTesterMixin:
         model = self.model_class(**init_dict).to(torch_device)
         model.eval()
         model.compile_repeated_blocks(fullgraph=True)
-
-        if self.model_class.__name__ == "UNet2DConditionModel":
-            recompile_limit = 2
 
         with (
             torch._inductor.utils.fresh_inductor_cache(),

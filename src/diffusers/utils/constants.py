@@ -29,7 +29,6 @@ _CHECK_PEFT = os.environ.get("_CHECK_PEFT", "1") in ENV_VARS_TRUE_VALUES
 CONFIG_NAME = "config.json"
 WEIGHTS_NAME = "diffusion_pytorch_model.bin"
 WEIGHTS_INDEX_NAME = "diffusion_pytorch_model.bin.index.json"
-FLAX_WEIGHTS_NAME = "diffusion_flax_model.msgpack"
 ONNX_WEIGHTS_NAME = "model.onnx"
 SAFETENSORS_WEIGHTS_NAME = "diffusion_pytorch_model.safetensors"
 SAFE_WEIGHTS_INDEX_NAME = "diffusion_pytorch_model.safetensors.index.json"
@@ -48,6 +47,7 @@ DIFFUSERS_ATTN_CHECKS = os.getenv("DIFFUSERS_ATTN_CHECKS", "0").upper() in ENV_V
 DEFAULT_HF_PARALLEL_LOADING_WORKERS = 8
 HF_ENABLE_PARALLEL_LOADING = os.environ.get("HF_ENABLE_PARALLEL_LOADING", "").upper() in ENV_VARS_TRUE_VALUES
 DIFFUSERS_DISABLE_REMOTE_CODE = os.getenv("DIFFUSERS_DISABLE_REMOTE_CODE", "false").upper() in ENV_VARS_TRUE_VALUES
+DIFFUSERS_SDNQ_TRANSFORMERS = os.getenv("DIFFUSERS_SDNQ_TRANSFORMERS", "false").upper() in ENV_VARS_TRUE_VALUES
 
 # Below should be `True` if the current version of `peft` and `transformers` are compatible with
 # PEFT backend. Will automatically fall back to PEFT backend if the correct versions of the libraries are

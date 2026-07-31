@@ -46,12 +46,12 @@ import torch
 from diffusers import AutoModel, StableDiffusionXLPipeline
 
 unet = AutoModel.from_pretrained(
-    "username/sdxl-unet-sharded", torch_dtype=torch.float16
+    "username/sdxl-unet-sharded", dtype=torch.float16
 )
 pipeline = StableDiffusionXLPipeline.from_pretrained(
     "stabilityai/stable-diffusion-xl-base-1.0",
     unet=unet,
-    torch_dtype=torch.float16
+    dtype=torch.float16
 ).to("cuda")
 ```
 
@@ -74,7 +74,7 @@ from diffusers import AutoModel, StableDiffusionXLPipeline
 
 pipeline = StableDiffusionXLPipeline.from_pretrained(
     "stabilityai/stable-diffusion-xl-base-1.0",
-    torch_dtype=torch.float16,
+    dtype=torch.float16,
     device_map="balanced"
 )
 ```
@@ -99,7 +99,7 @@ transformer = AutoModel.from_pretrained(
     "black-forest-labs/FLUX.1-dev", 
     subfolder="transformer",
     device_map="auto",
-    torch_dtype=torch.bfloat16
+    dtype=torch.bfloat16
 )
 ```
 
@@ -135,7 +135,7 @@ transformer = AutoModel.from_pretrained(
     "black-forest-labs/FLUX.1-dev", 
     subfolder="transformer",
     device_map=device_map,
-    torch_dtype=torch.bfloat16
+    dtype=torch.bfloat16
 )
 ```
 
@@ -148,7 +148,7 @@ from diffusers import AutoModel, StableDiffusionXLPipeline
 max_memory = {0:"1GB", 1:"1GB"}
 pipeline = StableDiffusionXLPipeline.from_pretrained(
     "stabilityai/stable-diffusion-xl-base-1.0",
-    torch_dtype=torch.float16,
+    dtype=torch.float16,
     device_map="balanced",
     max_memory=max_memory
 )
@@ -171,7 +171,7 @@ VAE 切片通过将大批次输入拆分为单个数据批次并分别处理它�
 
 例如，如果您同时生成 4 个图像，解码会将峰值激活内存增加 4 倍。VAE 切片通过一次只解码 1 个图像而不是所有 4 个图像来减少这种情况。
 
-调用 [`~StableDiffusionPipeline.enable_vae_slicing`] 来启用切片 VAE。您可以预期在解码多图像批次时性能会有小幅提升，而在单图像批次时没有性能影响。
+调用 [`~AutoencoderKL.enable_slicing`] 来启用切片 VAE。您可以预期在解码多图像批次时性能会有小幅提升，而在单图像批次时没有性能影响。
 
 ```py
 import torch
@@ -179,9 +179,9 @@ from diffusers import AutoModel, StableDiffusionXLPipeline
 
 pipeline = StableDiffusionXLPipeline.from_pretrained(
     "stabilityai/stable-diffusion-xl-base-1.0",
-    torch_dtype=torch.float16,
+    dtype=torch.float16,
 ).to("cuda")
-pipeline.enable_vae_slicing()
+pipeline.vae.enable_slicing()
 pipeline(["An astronaut riding a horse on Mars"]*32).images[0]
 print(f"Max memory reserved: {torch.cuda.max_memory_allocated() / 1024**3:.2f} GB")
 ```
@@ -193,7 +193,7 @@ print(f"Max memory reserved: {torch.cuda.max_memory_allocated() / 1024**3:.2f} G
 
 VAE 平铺通过将图像划分为较小的重叠图块而不是一次性处理整个图像来节省内存。这也减少了峰值内存使用量，因为 GPU 一次只处理一个图块。
 
-调用 [`~StableDiffusionPipeline.enable_vae_tiling`] 来启用 VAE 平铺。生成的图像可能因图块到图块的色调变化而有所不同，因为它们被单独解码，但图块之间不应有明显的接缝。对于低于预设（但可配置）限制的分辨率，平铺被禁用。例如，对于 [`StableDiffusionPipeline`] 中的 VAE，此限制为 512x512。
+调用 [`~AutoencoderKL.enable_tiling`] 来启用 VAE 平铺。生成的图像可能因图块到图块的色调变化而有所不同，因为它们被单独解码，但图块之间不应有明显的接缝。对于低于预设（但可配置）限制的分辨率，平铺被禁用。例如，对于 [`StableDiffusionPipeline`] 中的 VAE，此限制为 512x512。
 
 ```py
 import torch
@@ -201,9 +201,9 @@ from diffusers import AutoPipelineForImage2Image
 from diffusers.utils import load_image
 
 pipeline = AutoPipelineForImage2Image.from_pretrained(
-    "stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.float16
+    "stabilityai/stable-diffusion-xl-base-1.0", dtype=torch.float16
 ).to("cuda")
-pipeline.enable_vae_tiling()
+pipeline.vae.enable_tiling()
 
 init_image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/img2img-sdxl-init.png")
 prompt = "Astronaut in a jungle, cold color palette, muted colors, detailed, 8k"
@@ -237,7 +237,7 @@ import torch
 from diffusers import DiffusionPipeline
 
 pipeline = DiffusionPipeline.from_pretrained(
-    "black-forest-labs/FLUX.1-schnell", torch_dtype=torch.bfloat16
+    "black-forest-labs/FLUX.1-schnell", dtype=torch.bfloat16
 )
 pipeline.enable_sequential_cpu_offload()
 
@@ -266,7 +266,7 @@ import torch
 from diffusers import DiffusionPipeline
 
 pipeline = DiffusionPipeline.from_pretrained(
-    "black-forest-labs/FLUX.1-schnell", torch_dtype=torch.bfloat16
+    "black-forest-labs/FLUX.1-schnell", dtype=torch.bfloat16
 )
 pipeline.enable_model_cpu_offload()
 
@@ -305,7 +305,7 @@ from diffusers.utils import export_to_video
 
 onload_device = torch.device("cuda")
 offload_device = torch.device("cpu")
-pipeline = CogVideoXPipeline.from_pretrained("THUDM/CogVideoX-5b", torch_dtype=torch.bfloat16)
+pipeline = CogVideoXPipeline.from_pretrained("THUDM/CogVideoX-5b", dtype=torch.bfloat16)
 
 # 对 Diffusers 模型实现使用 enable_group_offload 方法
 pipeline.transformer.enable_group_offload(onload_device=onload_device, offload_device=offload_device, offload_type="leaf_level")
@@ -378,13 +378,13 @@ from diffusers.utils import export_to_video
 transformer = CogVideoXTransformer3DModel.from_pretrained(
     "THUDM/CogVideoX-5b",
     subfolder="transformer",
-    torch_dtype=torch.bfloat16
+    dtype=torch.bfloat16
 )
 transformer.enable_layerwise_casting(storage_dtype=torch.float8_e4m3fn, compute_dtype=torch.bfloat16)
 
 pipeline = CogVideoXPipeline.from_pretrained("THUDM/CogVideoX-5b",
     transformer=transformer,
-    torch_dtype=torch.bfloat16
+    dtype=torch.bfloat16
 ).to("cuda")
 prompt = (
     "A panda, dressed in a small, red jacket and a tiny hat, sits on a wooden stool in a serene bamboo forest. "
@@ -409,7 +409,7 @@ from diffusers.hooks import apply_layerwise_casting
 transformer = CogVideoXTransformer3DModel.from_pretrained(
     "THUDM/CogVideoX-5b",
     subfolder="transformer",
-    torch_dtype=torch.bfloat16
+    dtype=torch.bfloat16
 )
 
 # 跳过归一化层
@@ -463,7 +463,7 @@ def generate_inputs():
 
 pipeline = StableDiffusionPipeline.from_pretrained(
     "stable-diffusion-v1-5/stable-diffusion-v1-5",
-    torch_dtype=torch.float16,
+    dtype=torch.float16,
     use_safetensors=True,
 ).to("cuda")
 unet = pipeline.unet
@@ -524,7 +524,7 @@ class UNet2DConditionOutput:
 
 pipeline = StableDiffusionPipeline.from_pretrained(
     "stable-diffusion-v1-5/stable-diffusion-v1-5",
-    torch_dtype=torch.float16,
+    dtype=torch.float16,
     use_safetensors=True,
 ).to("cuda")
 
@@ -569,7 +569,7 @@ from diffusers import StableDiffusionXLPipeline
 
 pipeline = StableDiffusionXLPipeline.from_pretrained(
     "stabilityai/stable-diffusion-xl-base-1.0",
-    torch_dtype=torch.float16,
+    dtype=torch.float16,
 ).to("cuda")
 pipeline.enable_xformers_memory_efficient_attention()
 ```

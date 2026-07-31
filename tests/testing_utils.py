@@ -32,10 +32,10 @@ from diffusers.utils.constants import DIFFUSERS_REQUEST_TIMEOUT
 from diffusers.utils.import_utils import (
     BACKENDS_MAPPING,
     is_accelerate_available,
+    is_auto_round_available,
     is_bitsandbytes_available,
     is_compel_available,
     is_flashpack_available,
-    is_flax_available,
     is_gguf_available,
     is_kernels_available,
     is_note_seq_available,
@@ -44,6 +44,7 @@ from diffusers.utils.import_utils import (
     is_opencv_available,
     is_optimum_quanto_available,
     is_peft_available,
+    is_sdnq_available,
     is_timm_available,
     is_torch_available,
     is_torch_neuronx_available,
@@ -163,6 +164,17 @@ def assert_tensors_close(
     """
     if not is_torch_available():
         raise ValueError("PyTorch needs to be installed to use this function.")
+
+    # Some models (e.g. Z-Image, Cosmos ControlNet) return a list/tuple of tensors as their output. Compare these
+    # element-wise so the same helper works regardless of whether the output is a single tensor or a sequence.
+    if isinstance(actual, (list, tuple)) or isinstance(expected, (list, tuple)):
+        if not (isinstance(actual, (list, tuple)) and isinstance(expected, (list, tuple))):
+            raise AssertionError(f"{msg} Type mismatch: actual {type(actual)} vs expected {type(expected)}")
+        if len(actual) != len(expected):
+            raise AssertionError(f"{msg} Length mismatch: actual {len(actual)} vs expected {len(expected)}")
+        for i, (a, e) in enumerate(zip(actual, expected)):
+            assert_tensors_close(a, e, atol=atol, rtol=rtol, msg=f"{msg} [element {i}]")
+        return
 
     if actual.shape != expected.shape:
         raise AssertionError(f"{msg} Shape mismatch: actual {actual.shape} vs expected {expected.shape}")
@@ -449,12 +461,29 @@ def is_gguf(test_case):
     return pytest.mark.gguf(test_case)
 
 
+def is_autoround(test_case):
+    """
+    Decorator marking a test as an AutoRound quantization test. These tests can be filtered using:
+        pytest -m "not autoround" to skip
+        pytest -m autoround to run only these tests
+    """
+    return pytest.mark.autoround(test_case)
+
+
 def is_modelopt(test_case):
     """
     Decorator marking a test as a NVIDIA ModelOpt quantization test. These tests can be filtered using:
         pytest -m "not modelopt" to skip pytest -m modelopt to run only these tests
     """
     return pytest.mark.modelopt(test_case)
+
+
+def is_sdnq(test_case):
+    """
+    Decorator marking a test as an SDNQ quantization test. These tests can be filtered using:
+        pytest -m "not sdnq" to skip pytest -m sdnq to run only these tests
+    """
+    return pytest.mark.sdnq(test_case)
 
 
 def is_context_parallel(test_case):
@@ -652,13 +681,6 @@ def skip_mps(test_case):
     return pytest.mark.skipif(torch_device == "mps", reason="test requires non 'mps' device")(test_case)
 
 
-def require_flax(test_case):
-    """
-    Decorator marking a test that requires JAX & Flax. These tests are skipped when one / both are not installed
-    """
-    return pytest.mark.skipif(not is_flax_available(), reason="test requires JAX & Flax")(test_case)
-
-
 def require_compel(test_case):
     """
     Decorator marking a test that requires compel: https://github.com/damian0815/compel. These tests are skipped when
@@ -723,6 +745,13 @@ def require_quanto(test_case):
     Decorator marking a test that requires quanto. These tests are skipped when quanto isn't installed.
     """
     return pytest.mark.skipif(not is_optimum_quanto_available(), reason="test requires quanto")(test_case)
+
+
+def require_sdnq(test_case):
+    """
+    Decorator marking a test that requires sdnq. These tests are skipped when sdnq isn't installed.
+    """
+    return pytest.mark.skipif(not is_sdnq_available(), reason="test requires sdnq")(test_case)
 
 
 def require_accelerate(test_case):
@@ -831,6 +860,19 @@ def require_torchao_version_greater_or_equal(torchao_version):
         ) >= version.parse(torchao_version)
         return pytest.mark.skipif(
             not correct_torchao_version, reason=f"Test requires torchao with version greater than {torchao_version}."
+        )(test_case)
+
+    return decorator
+
+
+def require_auto_round_version_greater_or_equal(auto_round_version):
+    def decorator(test_case):
+        correct_auto_round_version = is_auto_round_available() and version.parse(
+            version.parse(importlib.metadata.version("auto_round")).base_version
+        ) >= version.parse(auto_round_version)
+        return pytest.mark.skipif(
+            not correct_auto_round_version,
+            reason=f"Test requires auto-round with version greater than {auto_round_version}.",
         )(test_case)
 
     return decorator

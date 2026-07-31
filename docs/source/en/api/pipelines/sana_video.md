@@ -48,7 +48,7 @@ The example below demonstrates how to use the text-to-video pipeline to generate
 ```python
 pipe = SanaVideoPipeline.from_pretrained(
     "Efficient-Large-Model/SANA-Video_2B_480p_diffusers", 
-    torch_dtype=torch.bfloat16,
+    dtype=torch.bfloat16,
 )
 pipe.text_encoder.to(torch.bfloat16)
 pipe.vae.to(torch.float32)
@@ -82,7 +82,7 @@ The example below demonstrates how to use the image-to-video pipeline to generat
 ```python
 pipe = SanaImageToVideoPipeline.from_pretrained(
     "Efficient-Large-Model/SANA-Video_2B_480p_diffusers",
-    torch_dtype=torch.bfloat16,
+    dtype=torch.bfloat16,
 )
 pipe.scheduler = FlowMatchEulerDiscreteScheduler.from_config(pipe.scheduler.config, flow_shift=8.0)
 pipe.vae.to(torch.float32)
@@ -133,7 +133,7 @@ text_encoder_8bit = AutoModel.from_pretrained(
     "Efficient-Large-Model/SANA-Video_2B_480p_diffusers",
     subfolder="text_encoder",
     quantization_config=quant_config,
-    torch_dtype=torch.float16,
+    dtype=torch.float16,
 )
 
 quant_config = DiffusersBitsAndBytesConfig(load_in_8bit=True)
@@ -141,14 +141,14 @@ transformer_8bit = SanaVideoTransformer3DModel.from_pretrained(
     "Efficient-Large-Model/SANA-Video_2B_480p_diffusers",
     subfolder="transformer",
     quantization_config=quant_config,
-    torch_dtype=torch.float16,
+    dtype=torch.float16,
 )
 
 pipeline = SanaVideoPipeline.from_pretrained(
     "Efficient-Large-Model/SANA-Video_2B_480p_diffusers",
     text_encoder=text_encoder_8bit,
     transformer=transformer_8bit,
-    torch_dtype=torch.float16,
+    dtype=torch.float16,
     device_map="balanced",
 )
 

@@ -174,12 +174,18 @@
     title: bitsandbytes
   - local: quantization/gguf
     title: gguf
+  - local: quantization/nunchaku
+    title: Nunchaku Lite
   - local: quantization/torchao
     title: torchao
   - local: quantization/quanto
     title: quanto
   - local: quantization/modelopt
     title: NVIDIA ModelOpt
+  - local: quantization/autoround
+    title: AutoRound
+  - local: quantization/sdnq
+    title: SDNQ
   title: Quantization
 - isExpanded: false
   sections:
@@ -216,6 +222,8 @@
     title: Task recipes
   - local: using-diffusers/write_own_pipeline
     title: Understanding pipelines, models and schedulers
+  - local: using-diffusers/cli
+    title: Command line interface
   - local: community_projects
     title: Projects built with Diffusers
   - local: conceptual/philosophy
@@ -226,8 +234,6 @@
     title: How to contribute?
   - local: conceptual/ethical_guidelines
     title: Diffusers' Ethical Guidelines
-  - local: conceptual/evaluation
-    title: Evaluating Diffusion Models
   title: Resources
 - isExpanded: false
   sections:
@@ -351,8 +357,12 @@
         title: HunyuanVideoTransformer3DModel
       - local: api/models/ideogram4_transformer2d
         title: Ideogram4Transformer2DModel
+      - local: api/models/transformer_joyimage_edit_plus
+        title: JoyImageEditPlusTransformer3DModel
       - local: api/models/transformer_joyimage
         title: JoyImageEditTransformer3DModel
+      - local: api/models/krea2_transformer2d
+        title: Krea2Transformer2DModel
       - local: api/models/latte_transformer3d
         title: LatteTransformer3DModel
       - local: api/models/longcat_image_transformer2d
@@ -525,6 +535,8 @@
         title: DeepFloyd IF
       - local: api/pipelines/dit
         title: DiT
+      - local: api/pipelines/dreamlite
+        title: DreamLite
       - local: api/pipelines/easyanimate
         title: EasyAnimate
       - local: api/pipelines/ernie_image
@@ -549,6 +561,8 @@
         title: InstructPix2Pix
       - local: api/pipelines/joyimage_edit
         title: JoyImage Edit
+      - local: api/pipelines/joyimage_edit_plus
+        title: JoyImage Edit Plus
       - local: api/pipelines/kandinsky
         title: Kandinsky 2.1
       - local: api/pipelines/kandinsky_v22
@@ -559,6 +573,8 @@
         title: Kandinsky 5.0 Image
       - local: api/pipelines/kolors
         title: Kolors
+      - local: api/pipelines/krea2
+        title: Krea 2
       - local: api/pipelines/latent_consistency_models
         title: Latent Consistency Models
       - local: api/pipelines/latent_diffusion
@@ -587,6 +603,8 @@
         title: PixArt-Σ
       - local: api/pipelines/prx
         title: PRX
+      - local: api/pipelines/prx_pixel
+        title: PRX Pixel
       - local: api/pipelines/qwenimage
         title: QwenImage
       - local: api/pipelines/sana
@@ -637,6 +655,8 @@
         title: Z-Image
       title: Image
     - sections:
+      - local: api/pipelines/diffusion_gemma
+        title: DiffusionGemma
       - local: api/pipelines/llada2
         title: LLaDA2
       title: Text
@@ -706,6 +726,8 @@
       title: DDPMScheduler
     - local: api/schedulers/deis
       title: DEISMultistepScheduler
+    - local: api/schedulers/discrete_ddim
+      title: DiscreteDDIMScheduler
     - local: api/schedulers/multistep_dpm_solver_inverse
       title: DPMSolverMultistepInverse
     - local: api/schedulers/multistep_dpm_solver
@@ -718,6 +740,8 @@
       title: EDMDPMSolverMultistepScheduler
     - local: api/schedulers/edm_euler
       title: EDMEulerScheduler
+    - local: api/schedulers/entropy_bound
+      title: EntropyBoundScheduler
     - local: api/schedulers/euler_ancestral
       title: EulerAncestralDiscreteScheduler
     - local: api/schedulers/euler

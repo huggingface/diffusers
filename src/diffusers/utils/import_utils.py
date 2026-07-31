@@ -1,4 +1,4 @@
-# Copyright 2025 The HuggingFace Team. All rights reserved.
+# Copyright 2026 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -49,7 +49,6 @@ ENV_VARS_TRUE_AND_AUTO_VALUES = ENV_VARS_TRUE_VALUES.union({"AUTO"})
 
 USE_TF = os.environ.get("USE_TF", "AUTO").upper()
 USE_TORCH = os.environ.get("USE_TORCH", "AUTO").upper()
-USE_JAX = os.environ.get("USE_FLAX", "AUTO").upper()
 USE_SAFETENSORS = os.environ.get("USE_SAFETENSORS", "AUTO").upper()
 DIFFUSERS_SLOW_IMPORT = os.environ.get("DIFFUSERS_SLOW_IMPORT", "FALSE").upper()
 DIFFUSERS_SLOW_IMPORT = DIFFUSERS_SLOW_IMPORT in ENV_VARS_TRUE_VALUES
@@ -102,20 +101,6 @@ else:
     logger.info("Disabling PyTorch because USE_TORCH is set")
     _torch_available = False
     _torch_version = "N/A"
-
-_jax_version = "N/A"
-_flax_version = "N/A"
-if USE_JAX in ENV_VARS_TRUE_AND_AUTO_VALUES:
-    _flax_available = importlib.util.find_spec("jax") is not None and importlib.util.find_spec("flax") is not None
-    if _flax_available:
-        try:
-            _jax_version = importlib_metadata.version("jax")
-            _flax_version = importlib_metadata.version("flax")
-            logger.info(f"JAX version {_jax_version}, Flax version {_flax_version} available.")
-        except importlib_metadata.PackageNotFoundError:
-            _flax_available = False
-else:
-    _flax_available = False
 
 if USE_SAFETENSORS in ENV_VARS_TRUE_AND_AUTO_VALUES:
     _safetensors_available, _safetensors_version = _is_package_available("safetensors")
@@ -232,6 +217,8 @@ _flash_attn_3_available, _flash_attn_3_version = _is_package_available("flash_at
 _aiter_available, _aiter_version = _is_package_available("aiter", get_dist_name=True)
 _kornia_available, _kornia_version = _is_package_available("kornia")
 _nvidia_modelopt_available, _nvidia_modelopt_version = _is_package_available("modelopt", get_dist_name=True)
+_auto_round_available, _auto_round_version = _is_package_available("auto_round")
+_sdnq_available, _sdnq_version = _is_package_available("sdnq")
 _flashpack_available, _flashpack_version = _is_package_available("flashpack")
 _av_available, _av_version = _is_package_available("av")
 
@@ -256,28 +243,8 @@ def is_torch_neuronx_available():
     return _torch_neuronx_available
 
 
-def is_flax_available():
-    return _flax_available
-
-
 def is_transformers_available():
     return _transformers_available
-
-
-def is_transformers_flax_compatible():
-    # Flax classes (e.g. FlaxCLIPTextModel, FlaxPreTrainedModel) were removed from
-    # transformers main on the path to its v5 release. Gate Flax pipeline registration
-    # on transformers still shipping them so `import diffusers` doesn't crash.
-    # Name avoids the `is_*_available()` pattern so utils/check_dummies.py keeps
-    # generating the `flax_and_transformers` backend group when this is combined with
-    # the legacy is_flax_available()/is_transformers_available() pair.
-    if not (_transformers_available and _flax_available):
-        return False
-    try:
-        import transformers
-    except ImportError:
-        return False
-    return hasattr(transformers, "FlaxPreTrainedModel")
 
 
 def is_inflect_available():
@@ -404,6 +371,14 @@ def is_nvidia_modelopt_available():
     return _nvidia_modelopt_available
 
 
+def is_auto_round_available():
+    return _auto_round_available
+
+
+def is_sdnq_available():
+    return _sdnq_available
+
+
 def is_timm_available():
     return _timm_available
 
@@ -451,12 +426,6 @@ def is_kornia_available():
 def is_av_available():
     return _av_available
 
-
-# docstyle-ignore
-FLAX_IMPORT_ERROR = """
-{0} requires the FLAX library but it was not found in your environment. Checkout the instructions on the
-installation page: https://github.com/google/flax and follow the ones that match your environment.
-"""
 
 # docstyle-ignore
 INFLECT_IMPORT_ERROR = """
@@ -594,6 +563,10 @@ QUANTO_IMPORT_ERROR = """
 install optimum-quanto`
 """
 
+SDNQ_IMPORT_ERROR = """
+{0} requires the sdnq library but it was not found in your environment. You can install it with pip: `pip install sdnq`
+"""
+
 # docstyle-ignore
 PYTORCH_RETINAFACE_IMPORT_ERROR = """
 {0} requires the pytorch_retinaface library but it was not found in your environment. You can install it with pip: `pip install pytorch_retinaface`
@@ -618,7 +591,6 @@ following the AWS Neuron documentation: https://awsdocs-neuron.readthedocs-hoste
 BACKENDS_MAPPING = OrderedDict(
     [
         ("bs4", (is_bs4_available, BS4_IMPORT_ERROR)),
-        ("flax", (is_flax_available, FLAX_IMPORT_ERROR)),
         ("inflect", (is_inflect_available, INFLECT_IMPORT_ERROR)),
         ("onnx", (is_onnx_available, ONNX_IMPORT_ERROR)),
         ("opencv", (is_opencv_available, OPENCV_IMPORT_ERROR)),
@@ -642,6 +614,7 @@ BACKENDS_MAPPING = OrderedDict(
         ("gguf", (is_gguf_available, GGUF_IMPORT_ERROR)),
         ("torchao", (is_torchao_available, TORCHAO_IMPORT_ERROR)),
         ("quanto", (is_optimum_quanto_available, QUANTO_IMPORT_ERROR)),
+        ("sdnq", (is_sdnq_available, SDNQ_IMPORT_ERROR)),
         ("pytorch_retinaface", (is_pytorch_retinaface_available, PYTORCH_RETINAFACE_IMPORT_ERROR)),
         ("better_profanity", (is_better_profanity_available, BETTER_PROFANITY_IMPORT_ERROR)),
         ("nltk", (is_nltk_available, NLTK_IMPORT_ERROR)),
@@ -854,6 +827,22 @@ def is_gguf_version(operation: str, version: str):
     if not _gguf_available:
         return False
     return compare_versions(parse(_gguf_version), operation, version)
+
+
+@cache
+def is_sdnq_version(operation: str, version: str):
+    """
+    Compares the current sdnq version to a given reference with an operation.
+
+    Args:
+        operation (`str`):
+            A string representation of an operator, such as `">"` or `"<="`
+        version (`str`):
+            A version string
+    """
+    if not _sdnq_available:
+        return False
+    return compare_versions(parse(_sdnq_version), operation, version)
 
 
 @cache

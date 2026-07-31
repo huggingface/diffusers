@@ -176,13 +176,17 @@ class MarigoldNormalsPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
     def test_marigold_depth_dummy_defaults(self):
         self._test_marigold_normals(
-            expected_slice=np.array([0.0967, 0.5234, 0.1448, -0.3155, -0.2550, -0.5578, 0.6854, 0.5657, -0.1263]),
+            expected_slice=np.array(
+                [0.01655, 0.54110, 0.01681, -0.27346, -0.16697, -0.55219, 0.63358, 0.57275, -0.26173]
+            ),
         )
 
     def test_marigold_depth_dummy_G0_S1_P32_E1_B1_M1(self):
         self._test_marigold_normals(
             generator_seed=0,
-            expected_slice=np.array([0.0967, 0.5234, 0.1448, -0.3155, -0.2550, -0.5578, 0.6854, 0.5657, -0.1263]),
+            expected_slice=np.array(
+                [0.01655, 0.54110, 0.01681, -0.27346, -0.16697, -0.55219, 0.63358, 0.57275, -0.26173]
+            ),
             num_inference_steps=1,
             processing_resolution=32,
             ensemble_size=1,
@@ -193,7 +197,9 @@ class MarigoldNormalsPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     def test_marigold_depth_dummy_G0_S1_P16_E1_B1_M1(self):
         self._test_marigold_normals(
             generator_seed=0,
-            expected_slice=np.array([-0.4128, -0.5918, -0.6540, 0.2446, -0.2687, -0.4607, 0.2935, -0.0483, -0.2086]),
+            expected_slice=np.array(
+                [-0.46928, -0.23894, -0.10984, -0.27850, -0.53089, -0.58686, -0.09792, -0.36364, -0.46909]
+            ),
             num_inference_steps=1,
             processing_resolution=16,
             ensemble_size=1,
@@ -204,7 +210,9 @@ class MarigoldNormalsPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     def test_marigold_depth_dummy_G2024_S1_P32_E1_B1_M1(self):
         self._test_marigold_normals(
             generator_seed=2024,
-            expected_slice=np.array([0.5731, -0.7631, -0.0199, 0.1609, -0.4628, -0.7044, 0.5761, -0.3471, -0.4498]),
+            expected_slice=np.array(
+                [0.75023, -0.90784, -0.08686, 0.07177, -0.59057, -0.73950, 0.52375, -0.26714, -0.43062]
+            ),
             num_inference_steps=1,
             processing_resolution=32,
             ensemble_size=1,
@@ -215,7 +223,9 @@ class MarigoldNormalsPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     def test_marigold_depth_dummy_G0_S2_P32_E1_B1_M1(self):
         self._test_marigold_normals(
             generator_seed=0,
-            expected_slice=np.array([0.1017, -0.6823, -0.2533, 0.1988, 0.3389, 0.8478, 0.7757, 0.5220, 0.8668]),
+            expected_slice=np.array(
+                [0.04868, -0.58444, -0.26729, 0.13351, 0.36448, 0.86063, 0.74093, 0.58727, 0.91568]
+            ),
             num_inference_steps=2,
             processing_resolution=32,
             ensemble_size=1,
@@ -226,7 +236,9 @@ class MarigoldNormalsPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     def test_marigold_depth_dummy_G0_S1_P64_E1_B1_M1(self):
         self._test_marigold_normals(
             generator_seed=0,
-            expected_slice=np.array([-0.2391, 0.7969, 0.6224, 0.0698, 0.5669, -0.2167, -0.1362, -0.8945, -0.5501]),
+            expected_slice=np.array(
+                [-0.31085, 0.85586, 0.43578, 0.23959, 0.64753, -0.33613, -0.02879, -0.78712, -0.56993]
+            ),
             num_inference_steps=1,
             processing_resolution=64,
             ensemble_size=1,
@@ -237,7 +249,9 @@ class MarigoldNormalsPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     def test_marigold_depth_dummy_G0_S1_P32_E3_B1_M1(self):
         self._test_marigold_normals(
             generator_seed=0,
-            expected_slice=np.array([0.3826, -0.9634, -0.3835, 0.3514, 0.0691, -0.6182, 0.8709, 0.1590, -0.2181]),
+            expected_slice=np.array(
+                [0.28313, -0.91824, -0.38751, 0.35233, 0.13069, -0.58350, 0.82024, 0.04305, -0.27604]
+            ),
             num_inference_steps=1,
             processing_resolution=32,
             ensemble_size=3,
@@ -249,7 +263,9 @@ class MarigoldNormalsPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     def test_marigold_depth_dummy_G0_S1_P32_E4_B2_M1(self):
         self._test_marigold_normals(
             generator_seed=0,
-            expected_slice=np.array([0.2500, -0.3928, -0.2415, 0.1133, 0.2357, -0.4223, 0.9967, 0.4859, -0.1282]),
+            expected_slice=np.array(
+                [0.09912, -0.29170, -0.23348, 0.14560, 0.27345, -0.40117, 0.98967, 0.38735, -0.21680]
+            ),
             num_inference_steps=1,
             processing_resolution=32,
             ensemble_size=4,
@@ -261,7 +277,9 @@ class MarigoldNormalsPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     def test_marigold_depth_dummy_G0_S1_P16_E1_B1_M0(self):
         self._test_marigold_normals(
             generator_seed=0,
-            expected_slice=np.array([0.9588, 0.3326, -0.0825, -0.0994, -0.3534, -0.4302, 0.3562, 0.4421, -0.2086]),
+            expected_slice=np.array(
+                [0.87316, 0.43462, -0.15760, 0.20502, -0.42155, 0.07312, 0.36621, 0.03301, -0.46909]
+            ),
             num_inference_steps=1,
             processing_resolution=16,
             ensemble_size=1,

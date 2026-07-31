@@ -33,12 +33,19 @@ from huggingface_hub import (
     DDUFEntry,
     ModelCard,
     create_repo,
+    get_cached_repo_tree,
     hf_hub_download,
     model_info,
     read_dduf_file,
     snapshot_download,
 )
-from huggingface_hub.utils import HfHubHTTPError, OfflineModeIsEnabled, validate_hf_hub_args
+from huggingface_hub.errors import CachedRepoTreeNotFoundError
+from huggingface_hub.utils import (
+    HfHubHTTPError,
+    LocalEntryNotFoundError,
+    OfflineModeIsEnabled,
+    validate_hf_hub_args,
+)
 from packaging import version
 from tqdm.auto import tqdm
 from typing_extensions import Self
@@ -58,6 +65,7 @@ from ..utils import (
     PushToHubMixin,
     _get_detailed_type,
     _is_valid_type,
+    _resolve_dtype,
     deprecate,
     is_accelerate_available,
     is_accelerate_version,
@@ -82,6 +90,7 @@ from .pipeline_loading_utils import (
     CONNECTED_PIPES_KEYS,
     CUSTOM_PIPELINE_FILE_NAME,
     LOADABLE_CLASSES,
+    TRANSFORMERS_COMPONENT_AUX_FILES,
     _download_dduf_file,
     _fetch_class_library_tuple,
     _get_custom_components_and_folders,
@@ -113,6 +122,11 @@ for library in LOADABLE_CLASSES:
     LIBRARIES.append(library)
 
 SUPPORTED_DEVICE_MAP = ["balanced"] + [get_device(), "cpu"]
+
+_DDUF_DEPRECATION_MESSAGE = (
+    "Loading pipelines from DDUF files is deprecated and DDUF support will be removed entirely. "
+    "Please save and load your pipelines using the standard Diffusers directory format instead."
+)
 
 logger = logging.get_logger(__name__)
 
@@ -579,7 +593,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                     " is not recommended to move them to `cpu` as running them will fail. Please make"
                     " sure to use an accelerator to run the pipeline in inference, due to the lack of"
                     " support for`float16` operations on this device in PyTorch. Please, remove the"
-                    " `torch_dtype=torch.float16` argument, or use another device for inference."
+                    " `dtype=torch.float16` argument, or use another device for inference."
                 )
         return self
 
@@ -639,7 +653,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                       saved using
                     [`~DiffusionPipeline.save_pretrained`].
                     - A path to a *directory* (for example `./my_pipeline_directory/`) containing a dduf file
-            torch_dtype (`torch.dtype` or `dict[str, Union[str, torch.dtype]]`, *optional*):
+            dtype (`torch.dtype` or `dict[str, Union[str, torch.dtype]]`, *optional*):
                 Override the default `torch.dtype` and load the model with another dtype. To load submodels with
                 different dtype pass a `dict` (for example `{'transformer': torch.bfloat16, 'vae': torch.float16}`).
                 Set the default dtype for unspecified components with `default` (for example `{'transformer':
@@ -727,10 +741,10 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 class). The overwritten components are passed directly to the pipelines `__init__` method. See example
                 below for more information.
             variant (`str`, *optional*):
-                Load weights from a specified variant filename such as `"fp16"` or `"ema"`. This is ignored when
-                loading `from_flax`.
+                Load weights from a specified variant filename such as `"fp16"` or `"ema"`.
             dduf_file(`str`, *optional*):
-                Load weights from the specified dduf file.
+                Load weights from the specified dduf file. <Deprecated> This argument is deprecated and will be removed
+                in version 0.41.0. </Deprecated>
             disable_mmap ('bool', *optional*, defaults to 'False'):
                 Whether to disable mmap when loading a Safetensors model. This option can perform better when the model
                 is on a network mount or hard drive, which may not handle the seeky-ness of mmap very well.
@@ -767,8 +781,8 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         local_files_only = kwargs.pop("local_files_only", None)
         token = kwargs.pop("token", None)
         revision = kwargs.pop("revision", None)
-        from_flax = kwargs.pop("from_flax", False)
         torch_dtype = kwargs.pop("torch_dtype", None)
+        dtype = _resolve_dtype(kwargs.pop("dtype", None), torch_dtype)
         custom_pipeline = kwargs.pop("custom_pipeline", None)
         custom_revision = kwargs.pop("custom_revision", None)
         provider = kwargs.pop("provider", None)
@@ -789,11 +803,9 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         disable_mmap = kwargs.pop("disable_mmap", False)
         trust_remote_code = kwargs.pop("trust_remote_code", False)
 
-        if torch_dtype is not None and not isinstance(torch_dtype, dict) and not isinstance(torch_dtype, torch.dtype):
-            torch_dtype = torch.float32
-            logger.warning(
-                f"Passed `torch_dtype` {torch_dtype} is not a `torch.dtype`. Defaulting to `torch.float32`."
-            )
+        if dtype is not None and not isinstance(dtype, dict) and not isinstance(dtype, torch.dtype):
+            logger.warning(f"Passed `dtype` {dtype} is not a `torch.dtype`. Defaulting to `torch.float32`.")
+            dtype = torch.float32
 
         if low_cpu_mem_usage and not is_accelerate_available():
             low_cpu_mem_usage = False
@@ -843,6 +855,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             )
 
         if dduf_file:
+            deprecate("dduf_file", "0.41.0", _DDUF_DEPRECATION_MESSAGE)
             if custom_pipeline:
                 raise NotImplementedError("Custom pipelines are not supported with DDUF at the moment.")
             if load_connected_pipeline:
@@ -864,7 +877,6 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 local_files_only=local_files_only,
                 token=token,
                 revision=revision,
-                from_flax=from_flax,
                 use_safetensors=use_safetensors,
                 use_onnx=use_onnx,
                 custom_pipeline=custom_pipeline,
@@ -975,14 +987,6 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
 
         init_dict = {k: v for k, v in init_dict.items() if load_module(k, v)}
 
-        # Special case: safety_checker must be loaded separately when using `from_flax`
-        if from_flax and "safety_checker" in init_dict and "safety_checker" not in passed_class_obj:
-            raise NotImplementedError(
-                "The safety checker cannot be automatically loaded when loading weights `from_flax`."
-                " Please, pass `safety_checker=None` to `from_pretrained`, and load the safety checker"
-                " separately if you need it."
-            )
-
         # 5. Throw nice warnings / errors for fast accelerate loading
         if len(unused_kwargs) > 0:
             logger.warning(
@@ -1002,7 +1006,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 init_dict=init_dict,
                 library=library,
                 max_memory=max_memory,
-                torch_dtype=torch_dtype,
+                dtype=dtype,
                 cached_folder=cached_folder,
                 force_download=force_download,
                 proxies=proxies,
@@ -1030,15 +1034,12 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 elif isinstance(final_device_map, str):
                     current_device_map = final_device_map
 
-            # 7.2 - now that JAX/Flax is an official framework of the library, we might load from Flax names
-            class_name = class_name[4:] if class_name.startswith("Flax") else class_name
-
-            # 7.3 Define all importable classes
+            # 7.2 Define all importable classes
             is_pipeline_module = hasattr(pipelines, library_name)
             importable_classes = ALL_IMPORTABLE_CLASSES
             loaded_sub_model = None
 
-            # 7.4 Use passed sub model or load class_name from library_name
+            # 7.3 Use passed sub model or load class_name from library_name
             if name in passed_class_obj:
                 # if the model is in a pipeline module, then we load it from the pipeline
                 # check that passed_class_obj has correct parent class
@@ -1050,9 +1051,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             else:
                 # load sub model
                 sub_model_dtype = (
-                    torch_dtype.get(name, torch_dtype.get("default", torch.float32))
-                    if isinstance(torch_dtype, dict)
-                    else torch_dtype
+                    dtype.get(name, dtype.get("default", torch.float32)) if isinstance(dtype, dict) else dtype
                 )
                 loaded_sub_model = load_sub_model(
                     library_name=library_name,
@@ -1061,7 +1060,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                     pipelines=pipelines,
                     is_pipeline_module=is_pipeline_module,
                     pipeline_class=pipeline_class,
-                    torch_dtype=sub_model_dtype,
+                    dtype=sub_model_dtype,
                     provider=provider,
                     sess_options=sess_options,
                     device_map=current_device_map,
@@ -1070,7 +1069,6 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                     offload_state_dict=offload_state_dict,
                     model_variants=model_variants,
                     name=name,
-                    from_flax=from_flax,
                     variant=variant,
                     low_cpu_mem_usage=low_cpu_mem_usage,
                     cached_folder=cached_folder,
@@ -1449,7 +1447,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             >>> from diffusers import DiffusionPipeline
             >>> import torch
 
-            >>> pipe = DiffusionPipeline.from_pretrained("Qwen/Qwen-Image", torch_dtype=torch.bfloat16)
+            >>> pipe = DiffusionPipeline.from_pretrained("Qwen/Qwen-Image", dtype=torch.bfloat16)
 
             >>> pipe.enable_group_offload(
             ...     onload_device=torch.device("cuda"),
@@ -1569,10 +1567,10 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 guarantee the timeliness or safety of the source, and you should refer to the mirror site for more
                 information.
             variant (`str`, *optional*):
-                Load weights from a specified variant filename such as `"fp16"` or `"ema"`. This is ignored when
-                loading `from_flax`.
+                Load weights from a specified variant filename such as `"fp16"` or `"ema"`.
             dduf_file(`str`, *optional*):
-                Load weights from the specified DDUF file.
+                Load weights from the specified DDUF file. <Deprecated> This argument is deprecated and will be removed
+                in version 0.41.0. </Deprecated>
             use_safetensors (`bool`, *optional*, defaults to `None`):
                 If set to `None`, the safetensors weights are downloaded if they're available **and** if the
                 safetensors library is installed. If set to `True`, the model is forcibly loaded from safetensors
@@ -1604,7 +1602,6 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         local_files_only = kwargs.pop("local_files_only", None)
         token = kwargs.pop("token", None)
         revision = kwargs.pop("revision", None)
-        from_flax = kwargs.pop("from_flax", False)
         custom_pipeline = kwargs.pop("custom_pipeline", None)
         custom_revision = kwargs.pop("custom_revision", None)
         variant = kwargs.pop("variant", None)
@@ -1616,6 +1613,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         use_flashpack = kwargs.pop("use_flashpack", False)
 
         if dduf_file:
+            deprecate("dduf_file", "0.41.0", _DDUF_DEPRECATION_MESSAGE)
             if custom_pipeline:
                 raise NotImplementedError("Custom pipelines are not supported with DDUF at the moment.")
             if load_connected_pipeline:
@@ -1656,10 +1654,35 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 force_download=force_download,
                 token=token,
             )
+            filenames = {sibling.rfilename for sibling in info.siblings}
+        else:
+            # We are offline (either the user asked for `local_files_only` or the `model_info` call above
+            # failed), so the repo's file listing needed to compute the allow/ignore patterns below cannot be
+            # fetched from the Hub. Read it from the local cache with `get_cached_repo_tree` instead: it returns
+            # the file listing that a previous online call cached, so both code paths compute the same patterns.
+            # If nothing is cached for this repo, skip straight to `snapshot_download` below, which raises the
+            # appropriate offline not-found error.
+            try:
+                config_file = hf_hub_download(
+                    pretrained_model_name,
+                    cls.config_name,
+                    cache_dir=cache_dir,
+                    revision=revision,
+                    token=token,
+                    local_files_only=True,
+                )
+                filenames = {
+                    f.path for f in get_cached_repo_tree(pretrained_model_name, revision=revision, cache_dir=cache_dir)
+                }
+            except (LocalEntryNotFoundError, CachedRepoTreeNotFoundError):
+                config_file = None
+
+        if config_file is not None:
+            snapshot_folder = Path(config_file).parent
+
             config_dict = cls._dict_from_json_file(config_file)
             ignore_filenames = config_dict.pop("_ignore_files", [])
 
-            filenames = {sibling.rfilename for sibling in info.siblings}
             if variant is not None and _check_legacy_sharding_variant_format(filenames=filenames, variant=variant):
                 warn_msg = (
                     f"Warning: The repository contains sharded checkpoints for variant '{variant}' maybe in a deprecated format. "
@@ -1674,9 +1697,11 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 logger.warning(warn_msg)
 
             filenames = set(filenames) - set(ignore_filenames)
-            if revision in DEPRECATED_REVISION_ARGS and version.parse(
-                version.parse(__version__).base_version
-            ) >= version.parse("0.22.0"):
+            if (
+                not local_files_only
+                and revision in DEPRECATED_REVISION_ARGS
+                and version.parse(version.parse(__version__).base_version) >= version.parse("0.22.0")
+            ):
                 warn_deprecated_model_variant(pretrained_model_name, token, variant, revision, filenames)
 
             custom_components, folder_names = _get_custom_components_and_folders(
@@ -1715,7 +1740,6 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 model_folder_names,
                 filenames,
                 use_safetensors,
-                from_flax,
                 allow_pickle,
                 use_onnx,
                 pipeline_class._is_onnx,
@@ -1751,6 +1775,11 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 p for p in allow_patterns if not (len(p.split("/")) == 2 and p.split("/")[0] in passed_components)
             ]
 
+            # Repos with a flat, transformers-style layout host a component's files at the repo root instead of
+            # in a subfolder, where the folder-based allow patterns above miss its auxiliary files (root-hosted
+            # weights are already included via `model_filenames`, root `config.json` via `CONFIG_NAME`).
+            allow_patterns += TRANSFORMERS_COMPONENT_AUX_FILES
+
             if pipeline_class._load_connected_pipes:
                 allow_patterns.append("README.md")
 
@@ -1762,7 +1791,6 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             expected_files = [f for f in filenames if not any(p.match(f) for p in re_ignore_pattern)]
             expected_files = [f for f in expected_files if any(p.match(f) for p in re_allow_pattern)]
 
-            snapshot_folder = Path(config_file).parent
             pipeline_is_cached = all((snapshot_folder / f).is_file() for f in expected_files)
 
             if pipeline_is_cached and not force_download:
@@ -1789,7 +1817,6 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             )
 
             cls_name = cls.load_config(os.path.join(cached_folder, "model_index.json")).get("_class_name", None)
-            cls_name = cls_name[4:] if isinstance(cls_name, str) and cls_name.startswith("Flax") else cls_name
 
             diffusers_module = importlib.import_module(__name__.split(".")[0])
             pipeline_class = getattr(diffusers_module, cls_name, None) if isinstance(cls_name, str) else None
@@ -1811,7 +1838,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
 
             return cached_folder
 
-        except FileNotFoundError:
+        except FileNotFoundError as e:
             # Means we tried to load pipeline with `local_files_only=True` but the files have not been found in local cache.
             # This can happen in two cases:
             # 1. If the user passed `local_files_only=True`                    => we raise the error directly
@@ -1822,9 +1849,9 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             else:
                 # 2. we forced `local_files_only=True` when `model_info` failed
                 raise EnvironmentError(
-                    f"Cannot load model {pretrained_model_name}: model is not cached locally and an error occurred"
-                    " while trying to fetch metadata from the Hub. Please check out the root cause in the stacktrace"
-                    " above."
+                    f"Cannot load model {pretrained_model_name}: the model is not fully cached locally ({e}) and an"
+                    " error occurred while trying to fetch metadata from the Hub. Please check out the root cause in"
+                    " the stacktrace above."
                 ) from model_info_call_error
 
     @classmethod
@@ -2005,7 +2032,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         >>> from diffusers import DiffusionPipeline
         >>> from xformers.ops import MemoryEfficientAttentionFlashAttentionOp
 
-        >>> pipe = DiffusionPipeline.from_pretrained("stabilityai/stable-diffusion-2-1", torch_dtype=torch.float16)
+        >>> pipe = DiffusionPipeline.from_pretrained("stabilityai/stable-diffusion-2-1", dtype=torch.float16)
         >>> pipe = pipe.to("cuda")
         >>> pipe.enable_xformers_memory_efficient_attention(attention_op=MemoryEfficientAttentionFlashAttentionOp)
         >>> # Workaround for not accepting attention shape using VAE for Flash Attention
@@ -2064,7 +2091,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
 
         >>> pipe = StableDiffusionPipeline.from_pretrained(
         ...     "stable-diffusion-v1-5/stable-diffusion-v1-5",
-        ...     torch_dtype=torch.float16,
+        ...     dtype=torch.float16,
         ...     use_safetensors=True,
         ... )
 
@@ -2116,7 +2143,8 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         """
 
         original_config = dict(pipeline.config)
-        torch_dtype = kwargs.pop("torch_dtype", torch.float32)
+        torch_dtype = kwargs.pop("torch_dtype", None)
+        dtype = _resolve_dtype(kwargs.pop("dtype", None), torch_dtype) or torch.float32
         trust_remote_code = kwargs.pop("trust_remote_code", False)
 
         # derive the pipeline class to instantiate
@@ -2214,8 +2242,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             new_pipeline.register_to_config(_name_or_path=pretrained_model_name_or_path)
         new_pipeline.register_to_config(**unused_original_config)
 
-        if torch_dtype is not None:
-            new_pipeline.to(dtype=torch_dtype)
+        new_pipeline.to(dtype=dtype)
 
         return new_pipeline
 
@@ -2257,59 +2284,6 @@ class StableDiffusionMixin:
     r"""
     Helper for DiffusionPipeline with vae and unet.(mainly for LDM such as stable diffusion)
     """
-
-    def enable_vae_slicing(self):
-        r"""
-        Enable sliced VAE decoding. When this option is enabled, the VAE will split the input tensor in slices to
-        compute decoding in several steps. This is useful to save some memory and allow larger batch sizes.
-        """
-        depr_message = f"Calling `enable_vae_slicing()` on a `{self.__class__.__name__}` is deprecated and this method will be removed in a future version. Please use `pipe.vae.enable_slicing()`."
-        deprecate(
-            "enable_vae_slicing",
-            "0.40.0",
-            depr_message,
-        )
-        self.vae.enable_slicing()
-
-    def disable_vae_slicing(self):
-        r"""
-        Disable sliced VAE decoding. If `enable_vae_slicing` was previously enabled, this method will go back to
-        computing decoding in one step.
-        """
-        depr_message = f"Calling `disable_vae_slicing()` on a `{self.__class__.__name__}` is deprecated and this method will be removed in a future version. Please use `pipe.vae.disable_slicing()`."
-        deprecate(
-            "disable_vae_slicing",
-            "0.40.0",
-            depr_message,
-        )
-        self.vae.disable_slicing()
-
-    def enable_vae_tiling(self):
-        r"""
-        Enable tiled VAE decoding. When this option is enabled, the VAE will split the input tensor into tiles to
-        compute decoding and encoding in several steps. This is useful for saving a large amount of memory and to allow
-        processing larger images.
-        """
-        depr_message = f"Calling `enable_vae_tiling()` on a `{self.__class__.__name__}` is deprecated and this method will be removed in a future version. Please use `pipe.vae.enable_tiling()`."
-        deprecate(
-            "enable_vae_tiling",
-            "0.40.0",
-            depr_message,
-        )
-        self.vae.enable_tiling()
-
-    def disable_vae_tiling(self):
-        r"""
-        Disable tiled VAE decoding. If `enable_vae_tiling` was previously enabled, this method will go back to
-        computing decoding in one step.
-        """
-        depr_message = f"Calling `disable_vae_tiling()` on a `{self.__class__.__name__}` is deprecated and this method will be removed in a future version. Please use `pipe.vae.disable_tiling()`."
-        deprecate(
-            "disable_vae_tiling",
-            "0.40.0",
-            depr_message,
-        )
-        self.vae.disable_tiling()
 
     def enable_freeu(self, s1: float, s2: float, b1: float, b2: float):
         r"""Enables the FreeU mechanism as in https://huggingface.co/papers/2309.11497.

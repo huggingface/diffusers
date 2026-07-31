@@ -61,7 +61,7 @@ class BnB4BitDiffusersQuantizer(DiffusersQuantizer):
             self.modules_to_not_convert = self.quantization_config.llm_int8_skip_modules
 
     def validate_environment(self, *args, **kwargs):
-        if not (torch.cuda.is_available() or torch.xpu.is_available()):
+        if not (torch.cuda.is_available() or torch.xpu.is_available() or torch.mps.is_available()):
             raise RuntimeError("No GPU found. A GPU is needed for quantization.")
         if not is_accelerate_available() or is_accelerate_version("<", "0.26.0"):
             raise ImportError(
@@ -70,12 +70,6 @@ class BnB4BitDiffusersQuantizer(DiffusersQuantizer):
         if not is_bitsandbytes_available() or is_bitsandbytes_version("<", "0.43.3"):
             raise ImportError(
                 "Using `bitsandbytes` 4-bit quantization requires the latest version of bitsandbytes: `pip install -U bitsandbytes`"
-            )
-
-        if kwargs.get("from_flax", False):
-            raise ValueError(
-                "Converting into 4-bit weights from flax weights is currently not supported, please make"
-                " sure the weights are in PyTorch format."
             )
 
         device_map = kwargs.get("device_map", None)
@@ -240,6 +234,8 @@ class BnB4BitDiffusersQuantizer(DiffusersQuantizer):
         if device_map is None:
             if torch.xpu.is_available():
                 current_device = f"xpu:{torch.xpu.current_device()}"
+            elif torch.mps.is_available():
+                current_device = "mps"
             else:
                 current_device = f"cuda:{torch.cuda.current_device()}"
             device_map = {"": current_device}
@@ -361,12 +357,6 @@ class BnB8BitDiffusersQuantizer(DiffusersQuantizer):
                 "Using `bitsandbytes` 8-bit quantization requires the latest version of bitsandbytes: `pip install -U bitsandbytes`"
             )
 
-        if kwargs.get("from_flax", False):
-            raise ValueError(
-                "Converting into 8-bit weights from flax weights is currently not supported, please make"
-                " sure the weights are in PyTorch format."
-            )
-
         device_map = kwargs.get("device_map", None)
         if (
             device_map is not None
@@ -411,6 +401,8 @@ class BnB8BitDiffusersQuantizer(DiffusersQuantizer):
         if device_map is None:
             if torch.xpu.is_available():
                 current_device = f"xpu:{torch.xpu.current_device()}"
+            elif torch.mps.is_available():
+                current_device = "mps"
             else:
                 current_device = f"cuda:{torch.cuda.current_device()}"
             device_map = {"": current_device}

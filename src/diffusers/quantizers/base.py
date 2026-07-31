@@ -168,6 +168,25 @@ class DiffusersQuantizer(ABC):
         """
         return
 
+    def maybe_update_loaded_keys(self, loaded_keys: list[str], checkpoint_files: list[str]) -> list[str]:
+        return loaded_keys
+
+    def maybe_update_state_dict(self, state_dict: dict[str, Any]) -> dict[str, Any]:
+        return state_dict
+
+    @property
+    def supports_parallel_loading(self) -> bool:
+        return True
+
+    def get_state_dict_and_metadata(
+        self, state_dict: dict[str, Any], safe_serialization: bool = False
+    ) -> tuple[dict[str, Any], dict[str, Any]]:
+        return state_dict, {}
+
+    @property
+    def supports_safetensors_serialization(self) -> bool:
+        return True
+
     def preprocess_model(self, model: "ModelMixin", **kwargs):
         """
         Setting model attributes and/or converting model before weights loading. At this point the model should be

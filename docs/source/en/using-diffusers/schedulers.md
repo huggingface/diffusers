@@ -29,7 +29,7 @@ import torch
 from diffusers import DiffusionPipeline
 
 pipeline = DiffusionPipeline.from_pretrained(
-    "stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.float16, device_map="cuda"
+    "stabilityai/stable-diffusion-xl-base-1.0", dtype=torch.float16, device_map="cuda"
 )
 pipeline.scheduler
 ```
@@ -45,7 +45,7 @@ dpm = DPMSolverMultistepScheduler.from_pretrained(
 pipeline = DiffusionPipeline.from_pretrained(
     "stabilityai/stable-diffusion-xl-base-1.0",
     scheduler=dpm,
-    torch_dtype=torch.float16,
+    dtype=torch.float16,
     device_map="cuda"
 )
 pipeline.scheduler
@@ -73,7 +73,7 @@ print(sampling_schedule)
 
 pipeline = DiffusionPipeline.from_pretrained(
     "SG161222/RealVisXL_V4.0",
-    torch_dtype=torch.float16,
+    dtype=torch.float16,
     device_map="cuda"
 )
 pipeline.scheduler = DPMSolverMultistepScheduler.from_config(
@@ -167,7 +167,7 @@ from diffusers import DiffusionPipeline, DPMSolverMultistepScheduler
 
 pipeline = DiffusionPipeline.from_pretrained(
     "SG161222/RealVisXL_V4.0",
-    torch_dtype=torch.float16,
+    dtype=torch.float16,
     device_map="cuda"
 )
 pipeline.scheduler = DPMSolverMultistepScheduler.from_config(
@@ -209,7 +209,7 @@ from diffusers import DiffusionPipeline, DPMSolverMultistepScheduler
 
 pipeline = DiffusionPipeline.from_pretrained(
     "SG161222/RealVisXL_V4.0",
-    torch_dtype=torch.float16,
+    dtype=torch.float16,
     device_map="cuda"
 )
 pipeline.scheduler = DPMSolverMultistepScheduler.from_config(
@@ -237,7 +237,7 @@ from diffusers import DiffusionPipeline, DPMSolverMultistepScheduler
 
 pipeline = DiffusionPipeline.from_pretrained(
     "SG161222/RealVisXL_V4.0",
-    torch_dtype=torch.float16,
+    dtype=torch.float16,
     device_map="cuda"
 )
 pipeline.scheduler = DPMSolverMultistepScheduler.from_config(

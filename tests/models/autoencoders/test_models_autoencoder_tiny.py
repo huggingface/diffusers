@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2025 HuggingFace Inc.
+# Copyright 2026 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -76,7 +76,12 @@ class AutoencoderTinyTesterConfig(BaseModelTesterConfig):
 
 
 class TestAutoencoderTiny(AutoencoderTinyTesterConfig, ModelTesterMixin):
-    pass
+    @pytest.mark.skip(
+        "`forward` round-trips the latents through a uint8 byte tensor (`.byte()` / `/ 255.0`), which upcasts to "
+        "float32 regardless of the model dtype, so full fp16/bf16 forward inference is not possible."
+    )
+    def test_from_save_pretrained_dtype_inference(self):
+        pass
 
 
 class TestAutoencoderTinyTraining(AutoencoderTinyTesterConfig, TrainingTesterMixin):
