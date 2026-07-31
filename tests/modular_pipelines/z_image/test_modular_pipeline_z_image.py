@@ -86,11 +86,17 @@ class TestZImageModularIntegration(ModularPipelineIntegrationTesterMixin):
     @property
     def offload_cards(self):
         return {
+            # 19GB of weights + the 3GB reserve fit with room to spare: everything loads, nothing
+            # is ever offloaded
             "32GB": {
                 "offload": {},
                 "oom": {},
                 "final_device": {"text_encoder": "cuda", "transformer": "cuda", "vae": "cuda"},
             },
+            # the weights + reserve fit on paper (22GB < 24GB), but the offloader reads *live* free
+            # memory, and by the time the transformer loads the text encoder's forward has left
+            # ~2GB of activations/allocator cache on the card - so the text encoder is evicted
+            # once, and the vae later fits next to the transformer
             "24GB": {
                 "offload": {"text_encoder": 1},
                 "oom": {},

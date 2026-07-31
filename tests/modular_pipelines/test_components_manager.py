@@ -817,18 +817,6 @@ class ModularPipelineOffloadTesterMixin:
     """
 
     @staticmethod
-    def _peak_co_residency(events):
-        """Largest number of models simultaneously on the device, replayed from the recorded moves."""
-        resident, peak = set(), 0
-        for event in events:
-            if event.action == "onload":
-                resident.add(event.model_id)
-                peak = max(peak, len(resident))
-            else:
-                resident.discard(event.model_id)
-        return peak
-
-    @staticmethod
     def _managed_models(cm):
         """The registered components that the offloader actually manages (parameterized
         `nn.Module`s)."""
@@ -845,34 +833,64 @@ class ModularPipelineOffloadTesterMixin:
     def _run_offloaded(self, free_bytes):
         """
         Run the pipeline with auto offload on and `free_bytes` of *simulated* device
-        memory, recording every move in `cm.offload_record`: an `"onload"` event per model
-        that ran, and an `"offload"` event (`reason="release_memory_for:<onloader>"`) per model
-        offloaded to make room.
+        memory, recording every offload decision the strategy makes.
+
+        Each record is `{"incoming", "resident_before", "offloaded"}` (lists of model
+        ids), captured by spying on `AutoOffloadStrategy.__call__`, which the hooks call
+        each time a model is about to be moved onto the device.
         """
         cm = ComponentsManager()
         pipe = self.get_pipeline(components_manager=cm)
         cm.enable_auto_cpu_offload(device=torch_device, memory_reserve=0)
 
-        with _patch_memory_stats(free_bytes):
+        records = []
+        original_call = AutoOffloadStrategy.__call__
+
+        def spy_call(strategy, hooks, model_id, model, execution_device):
+            selected = original_call(
+                strategy, hooks=hooks, model_id=model_id, model=model, execution_device=execution_device
+            )
+            records.append(
+                {
+                    "incoming": model_id,
+                    "resident_before": [hook.model_id for hook in hooks],
+                    "offloaded": [hook.model_id for hook in selected],
+                }
+            )
+            return selected
+
+        with _patch_memory_stats(free_bytes), mock.patch.object(AutoOffloadStrategy, "__call__", spy_call):
             output = pipe(**self.get_dummy_inputs(), output=self.output_name)
-        return cm, list(cm.offload_record.events), output
+        return cm, records, output
+
+    @staticmethod
+    def _peak_co_residency(records):
+        """
+        Largest number of models simultaneously on the device, reconstructed from the
+        strategy's view of residency just before each load.
+        """
+        peak = 0
+        for record in records:
+            resident = (set(record["resident_before"]) - set(record["offloaded"])) | {record["incoming"]}
+            peak = max(peak, len(resident))
+        return peak
 
     @require_accelerate
     @require_accelerator
     def test_auto_cpu_offload_serializes_models_under_memory_pressure(self):
-        # Zero simulated free memory: every model that runs must first offload whatever is
+        # Zero simulated free memory: every model that runs must first evict whatever is
         # currently resident (comfy-style serialized execution).
-        cm, events, _ = self._run_offloaded(free_bytes=0)
+        cm, records, _ = self._run_offloaded(free_bytes=0)
         try:
-            distinct_models = {event.model_id for event in events if event.action == "onload"}
+            distinct_models = {record["incoming"] for record in records}
             if len(distinct_models) < 2:
                 pytest.skip("pipeline has fewer than two offloadable model components")
 
-            # Offloading actually fired (at least one model was pushed off the device).
-            assert any(event.action == "offload" for event in events), "expected at least one offload"
+            # Offloading actually fired (at least one eviction happened).
+            assert any(record["offloaded"] for record in records), "expected at least one eviction"
 
             # Sequencing: models run one at a time, never two co-resident on the device.
-            peak = self._peak_co_residency(events)
+            peak = self._peak_co_residency(records)
             assert peak == 1, f"expected serialized execution under pressure, saw {peak} models co-resident"
 
             # Device placement after the run: at most the last-run model stays on the
@@ -888,18 +906,18 @@ class ModularPipelineOffloadTesterMixin:
     @require_accelerator
     def test_auto_cpu_offload_keeps_models_resident_without_memory_pressure(self):
         # Negative case: with ample simulated memory the strategy is still consulted on
-        # every load, but it must never decide to offload anything.
-        cm, events, _ = self._run_offloaded(free_bytes=_AMPLE_FREE_BYTES)
+        # every load, but it must never decide to evict anything.
+        cm, records, _ = self._run_offloaded(free_bytes=_AMPLE_FREE_BYTES)
         try:
-            distinct_models = {event.model_id for event in events if event.action == "onload"}
+            distinct_models = {record["incoming"] for record in records}
             if len(distinct_models) < 2:
                 pytest.skip("pipeline has fewer than two offloadable model components")
 
             # Nothing was ever offloaded...
-            assert all(event.action == "onload" for event in events), "no model should be offloaded"
+            assert all(record["offloaded"] == [] for record in records), "no model should be evicted"
 
             # ...and models accumulate on the device instead of being serialized.
-            peak = self._peak_co_residency(events)
+            peak = self._peak_co_residency(records)
             assert peak >= 2, f"expected models to co-reside without pressure, saw peak {peak}"
 
             models = self._managed_models(cm)
