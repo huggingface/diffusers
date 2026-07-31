@@ -141,12 +141,26 @@ class OffloadRecord:
                 # the decision's memory picture is the reading of its first move
                 first_event = caused_offloads[0] if caused_offloads else event
                 rows.append(
-                    [label(event.model_id), offloaded, format_size(first_event.available_memory), event.reason or ""]
+                    [
+                        label(event.model_id),
+                        offloaded,
+                        format_size(first_event.available_memory),
+                        format_size(first_event.peak_memory),
+                        event.reason or "",
+                    ]
                 )
             elif event.reason is not None and event.reason.startswith("release_memory_for:"):
                 pending_offloads.setdefault(event.reason.removeprefix("release_memory_for:"), []).append(event)
             else:
-                rows.append(["-", label(event.model_id), format_size(event.available_memory), event.reason or ""])
+                rows.append(
+                    [
+                        "-",
+                        label(event.model_id),
+                        format_size(event.available_memory),
+                        format_size(event.peak_memory),
+                        event.reason or "",
+                    ]
+                )
         # offloads whose matching onload never made it into the record still deserve a row
         for reason_target, caused_offloads in pending_offloads.items():
             for offload in caused_offloads:
@@ -155,12 +169,13 @@ class OffloadRecord:
                         "-",
                         label(offload.model_id),
                         format_size(offload.available_memory),
+                        format_size(offload.peak_memory),
                         f"release_memory_for:{reason_target}",
                     ]
                 )
 
         table = format_table(
-            ["#", "Onload", "Offloaded", "Available", "Reason"],
+            ["#", "Onload", "Offloaded", "Available", "Peak", "Reason"],
             [[str(index), *row] for index, row in enumerate(rows, start=1)],
         )
         return "\n".join([table[0], "-" * len(table[0]), *table[1:]])
@@ -783,6 +798,22 @@ class ComponentsManager:
         self._auto_offload_device = device
         self._offload_strategy = offload_strategy
         self._offload_retry_on_oom = retry_on_oom
+
+    def set_offload_strategy(self, offload_strategy):
+        """
+        Replace the offload strategy on all managed models. Only valid while auto CPU offloading is enabled.
+
+        Args:
+            offload_strategy:
+                Any callable with the signature `(hooks, model_id, model, execution_device) -> hooks`: it receives the
+                hooks of the models currently on the device and returns the ones to offload before the incoming model
+                loads. The default is `AutoOffloadStrategy`, which frees the smallest sufficient combination.
+        """
+        if not self._auto_offload_enabled:
+            raise ValueError("Auto CPU offloading is not enabled. Call `enable_auto_cpu_offload` first.")
+        for user_hook in self.model_hooks:
+            user_hook.hook.offload_strategy = offload_strategy
+        self._offload_strategy = offload_strategy
 
     @property
     def offload_record(self) -> OffloadRecord:

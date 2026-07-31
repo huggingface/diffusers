@@ -644,6 +644,36 @@ class TestAutoOffload:
 
     @require_accelerate
     @require_accelerator
+    def test_set_offload_strategy_replaces_the_decisions(self):
+        device_type = torch.device(torch_device).type
+        cm = ComponentsManager()
+        m1 = DummyModel(4 * UNIT)
+        m2 = DummyModel(4 * UNIT)
+        cm.add("m1", m1)
+        cm.add("m2", m2)
+
+        offload_everything = lambda hooks, model_id, model, execution_device: hooks  # noqa: E731
+
+        # only valid while auto offloading is enabled
+        with pytest.raises(ValueError, match="not enabled"):
+            cm.set_offload_strategy(offload_everything)
+
+        cm.enable_auto_cpu_offload(device=torch_device, memory_reserve=UNIT)
+        cm.set_offload_strategy(offload_everything)
+        try:
+            x = torch.randn(2, 4, device=torch_device)
+            # ample free memory, where the default strategy would keep both models resident -
+            # the offload-everything strategy serializes anyway
+            with _patch_memory_stats(70 * UNIT):
+                m1(x)
+                m2(x)
+            assert next(m2.parameters()).device.type == device_type
+            assert next(m1.parameters()).device.type == "cpu"
+        finally:
+            cm.disable_auto_cpu_offload()
+
+    @require_accelerate
+    @require_accelerator
     def test_record_captures_what_the_strategy_saw(self):
         cm = ComponentsManager()
         m1 = DummyModel(4 * UNIT)
