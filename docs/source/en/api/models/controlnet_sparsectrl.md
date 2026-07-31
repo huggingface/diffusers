@@ -29,10 +29,10 @@ from diffusers import SparseControlNetModel
 
 # fp32 variant in float16
 # 1. Scribble checkpoint
-controlnet = SparseControlNetModel.from_pretrained("guoyww/animatediff-sparsectrl-scribble", torch_dtype=torch.float16)
+controlnet = SparseControlNetModel.from_pretrained("guoyww/animatediff-sparsectrl-scribble", dtype=torch.float16)
 
 # 2. RGB checkpoint
-controlnet = SparseControlNetModel.from_pretrained("guoyww/animatediff-sparsectrl-rgb", torch_dtype=torch.float16)
+controlnet = SparseControlNetModel.from_pretrained("guoyww/animatediff-sparsectrl-rgb", dtype=torch.float16)
 
 # For loading fp16 variant, pass `variant="fp16"` as an additional parameter
 ```

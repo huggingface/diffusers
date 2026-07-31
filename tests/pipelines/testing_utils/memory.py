@@ -288,12 +288,15 @@ class GroupOffloadTesterMixin(BasePipelineOutputMixin):
                 "text_encoder_2",
                 "text_encoder_3",
                 "transformer",
+                "transformer_2",
                 "unet",
                 "controlnet",
             ]:
                 if not hasattr(pipe, component_name):
                     continue
                 component = getattr(pipe, component_name)
+                if component is None:
+                    continue
                 if not getattr(component, "_supports_group_offloading", True):
                     continue
                 if hasattr(component, "enable_group_offload"):

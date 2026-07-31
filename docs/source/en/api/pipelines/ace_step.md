@@ -54,7 +54,7 @@ import torch
 import soundfile as sf
 from diffusers import AceStepPipeline
 
-pipe = AceStepPipeline.from_pretrained("ACE-Step/acestep-v15-xl-turbo-diffusers", torch_dtype=torch.bfloat16)
+pipe = AceStepPipeline.from_pretrained("ACE-Step/acestep-v15-xl-turbo-diffusers", dtype=torch.bfloat16)
 pipe = pipe.to("cuda")
 
 audio = pipe(
