@@ -25,7 +25,7 @@ from ..modular_pipeline import (
     PipelineState,
 )
 from ..modular_pipeline_utils import ComponentSpec, InputParam
-from .guider import LTX2Guidance, plan_guidance_passes
+from .guider import LTX2Guidance
 
 
 # Velocity-space helpers, mirrored from `diffusers.pipelines.ltx2.pipeline_ltx2.LTX2Pipeline` and redefined here
@@ -128,10 +128,11 @@ class LTX2LoopDenoiser(ModularPipelineBlocks):
     @property
     def description(self) -> str:
         return (
-            "Joint video+audio denoiser. Runs the transformer once per guidance pass (each a single batch — no "
-            "CFG concatenation), unioned across the video `guider` and audio `audio_guider`, converts each pass's "
-            "velocity to x0, and delegates the per-modality guidance combine (CFG + STG + modality-isolation, in x0 "
-            "space) to the two guiders."
+            "Joint video+audio denoiser. Runs the transformer once per guidance pass (each a single batch), with "
+            "each pass's inputs and per-pass model flags (STG blocks, modality isolation) assembled by the guiders "
+            "via `prepare_inputs` and unioned across the video `guider` and audio `audio_guider`. Converts each "
+            "pass's velocity to x0 and delegates the per-modality CFG + STG + modality-isolation combine to the "
+            "two guiders."
         )
 
     @property
@@ -195,85 +196,76 @@ class LTX2LoopDenoiser(ModularPipelineBlocks):
             "perturbation_mask": None,
         }
 
-        # Run one transformer forward for a guidance pass. `conditioning` lists the text conditioning per batch
-        # element; the CFG pass batches `[uncond, cond]` into a single forward (mirroring the standard pipeline's
-        # `torch.cat([latents] * 2)` + `.chunk(2)`), while STG / modality-isolation are single-batch conditional
-        # forwards. Coords are repeated to the batch size, matching the standard-pipeline execution op-for-op.
-        def _run_pass(conditioning, flags, ctx):
-            n = len(conditioning)
-            enc = torch.cat(
-                [
-                    block_state.negative_connector_prompt_embeds
-                    if c == "uncond"
-                    else block_state.connector_prompt_embeds
-                    for c in conditioning
-                ]
-            )
-            audio_enc = torch.cat(
-                [
-                    block_state.negative_connector_audio_prompt_embeds
-                    if c == "uncond"
-                    else block_state.connector_audio_prompt_embeds
-                    for c in conditioning
-                ]
-            )
-            mask = torch.cat(
-                [
-                    block_state.negative_connector_attention_mask
-                    if c == "uncond"
-                    else block_state.connector_attention_mask
-                    for c in conditioning
-                ]
-            )
-            video_coords, audio_coords = block_state.video_coords, block_state.audio_coords
-            with components.transformer.cache_context(ctx):
-                noise_pred_video, noise_pred_audio = components.transformer(
-                    hidden_states=torch.cat([block_state.latent_model_input] * n),
-                    audio_hidden_states=torch.cat([block_state.audio_latent_model_input] * n),
-                    encoder_hidden_states=enc,
-                    audio_encoder_hidden_states=audio_enc,
-                    encoder_attention_mask=mask,
-                    audio_encoder_attention_mask=mask,
-                    timestep=torch.cat([block_state.video_timestep] * n),
-                    audio_timestep=torch.cat([block_state.audio_timestep] * n),
-                    sigma=torch.cat([block_state.audio_timestep] * n),  # plain (unmasked) timestep, used by LTX-2.3
-                    video_coords=video_coords.repeat((n,) + (1,) * (video_coords.ndim - 1)),
-                    audio_coords=audio_coords.repeat((n,) + (1,) * (audio_coords.ndim - 1)),
-                    isolate_modalities=flags["isolate_modalities"],
-                    spatio_temporal_guidance_blocks=flags["spatio_temporal_guidance_blocks"],
-                    return_dict=False,
-                    **shared_kwargs,
-                )
-            return noise_pred_video.float().chunk(n), noise_pred_audio.float().chunk(n)
-
         components.guider.set_state(step=i, num_inference_steps=block_state.num_inference_steps, timestep=t)
         components.audio_guider.set_state(step=i, num_inference_steps=block_state.num_inference_steps, timestep=t)
 
-        # Run the planned forwards and stash each pass's x0 by identifier. The plan batches cond+uncond into one
-        # forward and keeps STG / modality single-batch, exactly as the standard pipeline does; the union across
-        # both guiders decides which passes run (a pass runs if either modality needs it; the other won't combine
-        # it). The CFG forward is chunked back into its `[uncond, cond]` identifiers, in order.
-        video_x0, audio_x0 = {}, {}
-        for spec in plan_guidance_passes(components.guider, components.audio_guider):
-            v_chunks, a_chunks = _run_pass(spec["conditioning"], spec["flags"], spec["cache_context"])
-            for identifier, v_vel, a_vel in zip(spec["identifiers"], v_chunks, a_chunks):
-                video_x0[identifier] = convert_velocity_to_x0(block_state.latents, v_vel, i, components.scheduler)
-                audio_x0[identifier] = convert_velocity_to_x0(
-                    block_state.audio_latents, a_vel, i, block_state.audio_scheduler
-                )
+        # Per-pass guider inputs: one slot per pass identifier [pred_cond, pred_uncond, pred_cond_stg,
+        # pred_cond_modality]. The per-pass model flags ride here alongside the encoder inputs, so each pass fully
+        # describes its own single-batch transformer forward -- CFG uses cond/uncond text; STG perturbs blocks
+        # (from the video guider config); modality-isolation disables A2V/V2A cross-attention.
+        stg_blocks = components.guider.spatio_temporal_guidance_blocks
+        video_cond, video_uncond = block_state.connector_prompt_embeds, block_state.negative_connector_prompt_embeds
+        audio_cond, audio_uncond = (
+            block_state.connector_audio_prompt_embeds,
+            block_state.negative_connector_audio_prompt_embeds,
+        )
+        mask_cond, mask_uncond = block_state.connector_attention_mask, block_state.negative_connector_attention_mask
+        guider_inputs = {
+            "encoder_hidden_states": (video_cond, video_uncond, video_cond, video_cond),
+            "audio_encoder_hidden_states": (audio_cond, audio_uncond, audio_cond, audio_cond),
+            "encoder_attention_mask": (mask_cond, mask_uncond, mask_cond, mask_cond),
+            "audio_encoder_attention_mask": (mask_cond, mask_uncond, mask_cond, mask_cond),
+            "spatio_temporal_guidance_blocks": (None, None, stg_blocks, None),
+            "isolate_modalities": (False, False, False, True),
+        }
 
-        # Combine per modality via each guider (delta formulation + rescale, in x0 space). The denoiser leaves the
-        # guided x0 in `noise_pred_video`/`noise_pred_audio`; the after block converts back to velocity and steps.
+        # A pass runs if *either* modality wants it: union both guiders' `prepare_inputs` batches by identifier
+        # (batches for the same pass are identical, built from the same `guider_inputs`).
         identifier_key = LTX2Guidance._identifier_key
-        video_state = components.guider.prepare_inputs_from_block_state(block_state, {})
-        audio_state = components.audio_guider.prepare_inputs_from_block_state(block_state, {})
-        for batch in video_state:
-            batch.noise_pred = video_x0[getattr(batch, identifier_key)]
-        for batch in audio_state:
-            batch.noise_pred = audio_x0[getattr(batch, identifier_key)]
+        batches_by_id = {}
+        for guider in (components.guider, components.audio_guider):
+            for batch in guider.prepare_inputs(guider_inputs):
+                batches_by_id.setdefault(getattr(batch, identifier_key), batch)
+        guider_state = list(batches_by_id.values())
 
-        block_state.noise_pred_video = components.guider(video_state)[0]
-        block_state.noise_pred_audio = components.audio_guider(audio_state)[0]
+        # One single-batch forward per pass; store each modality's x0 prediction on the batch. `prepare_models` /
+        # `cleanup_models` are the standard per-pass hook points -- no-ops here, since LTX-2 carries its
+        # perturbations as transformer flags (in `guider_inputs`) rather than hooks.
+        input_keys = list(guider_inputs.keys())
+        for batch in guider_state:
+            components.guider.prepare_models(components.transformer)
+            cond_kwargs = {key: getattr(batch, key) for key in input_keys}
+            with components.transformer.cache_context(getattr(batch, identifier_key)):
+                noise_pred_video, noise_pred_audio = components.transformer(
+                    hidden_states=block_state.latent_model_input,
+                    audio_hidden_states=block_state.audio_latent_model_input,
+                    timestep=block_state.video_timestep,
+                    audio_timestep=block_state.audio_timestep,
+                    sigma=block_state.audio_timestep,  # plain (unmasked) timestep, used by LTX-2.3
+                    video_coords=block_state.video_coords,
+                    audio_coords=block_state.audio_coords,
+                    return_dict=False,
+                    **cond_kwargs,
+                    **shared_kwargs,
+                )
+            batch.video_pred = convert_velocity_to_x0(
+                block_state.latents, noise_pred_video.float(), i, components.scheduler
+            )
+            batch.audio_pred = convert_velocity_to_x0(
+                block_state.audio_latents, noise_pred_audio.float(), i, block_state.audio_scheduler
+            )
+            components.guider.cleanup_models(components.transformer)
+
+        # Combine each modality via its own guider, filtered to that guider's active passes so the batch count
+        # matches `num_conditions`. The guiders combine in x0 space; the after block converts back to velocity.
+        def _combine(guider, field):
+            batches = [b for b in guider_state if getattr(b, identifier_key) in guider.active_predictions()]
+            for b in batches:
+                b.noise_pred = getattr(b, field)
+            return guider(batches)[0]
+
+        block_state.noise_pred_video = _combine(components.guider, "video_pred")
+        block_state.noise_pred_audio = _combine(components.audio_guider, "audio_pred")
         return components, block_state
 
 
