@@ -108,7 +108,7 @@ import torch
 base_model_path = "stabilityai/stable-diffusion-3-medium-diffusers"
 controlnet_path = "DavyMorgan/sd3-controlnet-out"
 
-controlnet = SD3ControlNetModel.from_pretrained(controlnet_path, torch_dtype=torch.float16)
+controlnet = SD3ControlNetModel.from_pretrained(controlnet_path, dtype=torch.float16)
 pipe = StableDiffusion3ControlNetPipeline.from_pretrained(
     base_model_path, controlnet=controlnet
 )

@@ -62,7 +62,7 @@ from diffusers.utils import export_to_video
 
 # Load the pipeline
 model_id = "kandinskylab/Kandinsky-5.0-T2V-Pro-sft-5s-Diffusers"
-pipe = Kandinsky5T2VPipeline.from_pretrained(model_id, torch_dtype=torch.bfloat16)
+pipe = Kandinsky5T2VPipeline.from_pretrained(model_id, dtype=torch.bfloat16)
 
 pipe = pipe.to("cuda")
 pipeline.transformer.set_attention_backend("flex")                            # <--- Set attention bakend to Flex
@@ -94,7 +94,7 @@ from diffusers.utils import export_to_video
 
 # Load the pipeline
 model_id = "kandinskylab/Kandinsky-5.0-T2V-Lite-sft-5s-Diffusers"
-pipe = Kandinsky5T2VPipeline.from_pretrained(model_id, torch_dtype=torch.bfloat16)
+pipe = Kandinsky5T2VPipeline.from_pretrained(model_id, dtype=torch.bfloat16)
 pipe = pipe.to("cuda")
 
 # Generate video
@@ -120,7 +120,7 @@ export_to_video(output, "output.mp4", fps=24, quality=9)
 ```python
 pipe = Kandinsky5T2VPipeline.from_pretrained(
     "kandinskylab/Kandinsky-5.0-T2V-Lite-sft-10s-Diffusers", 
-    torch_dtype=torch.bfloat16
+    dtype=torch.bfloat16
 )
 pipe = pipe.to("cuda")
 
@@ -153,7 +153,7 @@ export_to_video(output, "output.mp4", fps=24, quality=9)
 
 ```python
 model_id = "kandinskylab/Kandinsky-5.0-T2V-Lite-distilled16steps-5s-Diffusers"
-pipe = Kandinsky5T2VPipeline.from_pretrained(model_id, torch_dtype=torch.bfloat16)
+pipe = Kandinsky5T2VPipeline.from_pretrained(model_id, dtype=torch.bfloat16)
 pipe = pipe.to("cuda")
 
 output = pipe(
@@ -175,7 +175,7 @@ from diffusers.utils import export_to_video
 
 # Load the pipeline
 model_id = "kandinskylab/Kandinsky-5.0-I2V-Pro-sft-5s-Diffusers"
-pipe = Kandinsky5T2VPipeline.from_pretrained(model_id, torch_dtype=torch.bfloat16)
+pipe = Kandinsky5T2VPipeline.from_pretrained(model_id, dtype=torch.bfloat16)
 
 pipe = pipe.to("cuda")
 pipeline.transformer.set_attention_backend("flex")                            # <--- Set attention bakend to Flex

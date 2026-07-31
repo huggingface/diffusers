@@ -56,7 +56,7 @@ pipeline_quant_config = PipelineQuantizationConfig(
 transformer = AutoModel.from_pretrained(
     "THUDM/CogVideoX-5b",
     subfolder="transformer",
-    torch_dtype=torch.bfloat16
+    dtype=torch.bfloat16
 )
 transformer.enable_layerwise_casting(
     storage_dtype=torch.float8_e4m3fn, compute_dtype=torch.bfloat16
@@ -66,7 +66,7 @@ pipeline = CogVideoXPipeline.from_pretrained(
     "THUDM/CogVideoX-5b",
     transformer=transformer,
     quantization_config=pipeline_quant_config,
-    torch_dtype=torch.bfloat16
+    dtype=torch.bfloat16
 )
 pipeline.to("cuda")
 
@@ -102,7 +102,7 @@ from diffusers.utils import export_to_video
 
 pipeline = CogVideoXPipeline.from_pretrained(
     "THUDM/CogVideoX-2b",
-    torch_dtype=torch.float16
+    dtype=torch.float16
 ).to("cuda")
 
 # torch.compile
@@ -144,7 +144,7 @@ export_to_video(video, "output.mp4", fps=8)
 
   pipeline = CogVideoXPipeline.from_pretrained(
       "THUDM/CogVideoX-5b",
-      torch_dtype=torch.bfloat16
+      dtype=torch.bfloat16
   )
   pipeline.to("cuda")
 

@@ -92,7 +92,7 @@ Then compute the latents with the prompt embeddings as inputs:
 pipe = PixArtAlphaPipeline.from_pretrained(
     "PixArt-alpha/PixArt-XL-2-1024-MS",
     text_encoder=None,
-    torch_dtype=torch.float16,
+    dtype=torch.float16,
 ).to("cuda")
 
 latents = pipe(

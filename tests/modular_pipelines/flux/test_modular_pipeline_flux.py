@@ -29,6 +29,7 @@ from diffusers.modular_pipelines import (
 )
 
 from ...testing_utils import floats_tensor, torch_device
+from ..test_components_manager import ModularPipelineOffloadTesterMixin
 from ..test_modular_pipelines_common import ModularPipelineTesterMixin
 
 
@@ -45,7 +46,7 @@ FLUX_TEXT2IMAGE_WORKFLOWS = {
 }
 
 
-class TestFluxModularPipelineFast(ModularPipelineTesterMixin):
+class TestFluxModularPipelineFast(ModularPipelineOffloadTesterMixin, ModularPipelineTesterMixin):
     pipeline_class = FluxModularPipeline
     pipeline_blocks_class = FluxAutoBlocks
     pretrained_model_name_or_path = "hf-internal-testing/tiny-flux-modular"
@@ -98,8 +99,8 @@ class TestFluxImg2ImgModularPipelineFast(ModularPipelineTesterMixin):
     batch_params = frozenset(["prompt", "image"])
     expected_workflow_blocks = FLUX_IMAGE2IMAGE_WORKFLOWS
 
-    def get_pipeline(self, components_manager=None, torch_dtype=torch.float32):
-        pipeline = super().get_pipeline(components_manager, torch_dtype)
+    def get_pipeline(self, components_manager=None, dtype=torch.float32):
+        pipeline = super().get_pipeline(components_manager, dtype)
 
         # Override `vae_scale_factor` here as currently, `image_processor` is initialized with
         # fixed constants instead of
@@ -135,7 +136,7 @@ class TestFluxImg2ImgModularPipelineFast(ModularPipelineTesterMixin):
 
         base_pipe.save_pretrained(str(tmp_path))
         pipe = ModularPipeline.from_pretrained(tmp_path).to(torch_device)
-        pipe.load_components(torch_dtype=torch.float32)
+        pipe.load_components(dtype=torch.float32)
         pipe.to(torch_device)
         pipe.image_processor = VaeImageProcessor(vae_scale_factor=2)
 
@@ -216,7 +217,7 @@ class TestFluxKontextModularPipelineFast(ModularPipelineTesterMixin):
 
         base_pipe.save_pretrained(str(tmp_path))
         pipe = ModularPipeline.from_pretrained(tmp_path).to(torch_device)
-        pipe.load_components(torch_dtype=torch.float32)
+        pipe.load_components(dtype=torch.float32)
         pipe.to(torch_device)
         pipe.image_processor = VaeImageProcessor(vae_scale_factor=2)
 
