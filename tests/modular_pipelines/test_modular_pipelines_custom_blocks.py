@@ -237,7 +237,7 @@ class TestModularCustomBlocks:
         mellon_config = MellonPipelineConfig.from_custom_block(custom_block)
         custom_node = mellon_config.node_params["custom"]
 
-        assert custom_node["required_inputs"] == ["prompt"]
+        assert mellon_config.node_specs["custom"]["required_inputs"] == ["prompt"]
         assert custom_node["params"]["prompt"]["label"].endswith(" *")
 
     def test_trust_remote_code_not_propagated_to_external_repo(self):
