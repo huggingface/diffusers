@@ -13,6 +13,8 @@
 # limitations under the License.
 
 
+import pytest
+
 from diffusers.modular_pipelines import (
     AutoPipelineBlocks,
     ConditionalPipelineBlocks,
@@ -127,6 +129,11 @@ class AutoImageBlocks(AutoPipelineBlocks):
     block_classes = [InpaintBlock, ImageToImageBlock, TextToImageBlock]
     block_names = ["inpaint", "img2img", "text2img"]
     block_trigger_inputs = ["mask", "image", None]
+    _workflow_map = {
+        "inpaint": {"mask": True},
+        "img2img": {"image": True},
+        "text2img": {},
+    }
 
     @property
     def description(self):
@@ -222,6 +229,27 @@ class TestAutoPipelineBlocksWorkflowSelection:
         blocks = AutoImageBlocks()
         execution = blocks.get_execution_blocks(image=True)
         assert isinstance(execution, ImageToImageBlock)
+
+
+class TestConditionalPipelineBlocksWorkflows:
+    def test_available_workflows(self):
+        assert AutoImageBlocks().available_workflows == ["inpaint", "img2img", "text2img"]
+
+    def test_get_workflow_resolves_branch(self):
+        blocks = AutoImageBlocks()
+        assert isinstance(blocks.get_workflow("inpaint"), InpaintBlock)
+        assert isinstance(blocks.get_workflow("img2img"), ImageToImageBlock)
+        assert isinstance(blocks.get_workflow("text2img"), TextToImageBlock)
+
+    def test_get_workflow_unknown_name_raises(self):
+        with pytest.raises(ValueError, match="not found"):
+            AutoImageBlocks().get_workflow("video")
+
+    def test_workflow_map_not_set_raises(self):
+        with pytest.raises(NotImplementedError, match="_workflow_map is not set"):
+            ConditionalImageBlocks().available_workflows
+        with pytest.raises(NotImplementedError, match="_workflow_map is not set"):
+            ConditionalImageBlocks().get_workflow("inpaint")
 
 
 class TestConditionalPipelineBlocksStructure:

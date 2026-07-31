@@ -396,23 +396,41 @@ class ModularPipelineBlocks(ConfigMixin, PushToHubMixin):
         """
         raise NotImplementedError(f"`get_execution_blocks` is not implemented for {self.__class__.__name__}")
 
-    # currently only SequentialPipelineBlocks support workflows
     @property
     def available_workflows(self):
         """
-        Returns a list of available workflow names. Must be implemented by subclasses that define `_workflow_map`.
+        Returns a list of available workflow names, as defined by `_workflow_map`.
         """
-        raise NotImplementedError(f"`available_workflows` is not implemented for {self.__class__.__name__}")
+        if self._workflow_map is None:
+            raise NotImplementedError(
+                f"workflows is not supported because _workflow_map is not set for {self.__class__.__name__}"
+            )
+
+        return list(self._workflow_map.keys())
 
     def get_workflow(self, workflow_name: str):
         """
-        Get the execution blocks for a specific workflow. Must be implemented by subclasses that define
-        `_workflow_map`.
+        Get the execution blocks for a specific workflow, resolved by passing the workflow's trigger inputs to
+        `get_execution_blocks`.
 
         Args:
             workflow_name: Name of the workflow to retrieve.
         """
-        raise NotImplementedError(f"`get_workflow` is not implemented for {self.__class__.__name__}")
+        if self._workflow_map is None:
+            raise NotImplementedError(
+                f"workflows is not supported because _workflow_map is not set for {self.__class__.__name__}"
+            )
+
+        if workflow_name not in self._workflow_map:
+            raise ValueError(
+                f"Workflow {workflow_name!r} not found in {self.__class__.__name__}; "
+                f"available workflows: {self.available_workflows}"
+            )
+
+        trigger_inputs = self._workflow_map[workflow_name]
+        workflow_blocks = self.get_execution_blocks(**trigger_inputs)
+
+        return workflow_blocks
 
     @classmethod
     def from_pretrained(
@@ -994,29 +1012,6 @@ class SequentialPipelineBlocks(ModularPipelineBlocks):
                 if config not in expected_configs:
                     expected_configs.append(config)
         return expected_configs
-
-    @property
-    def available_workflows(self):
-        if self._workflow_map is None:
-            raise NotImplementedError(
-                f"workflows is not supported because _workflow_map is not set for {self.__class__.__name__}"
-            )
-
-        return list(self._workflow_map.keys())
-
-    def get_workflow(self, workflow_name: str):
-        if self._workflow_map is None:
-            raise NotImplementedError(
-                f"workflows is not supported because _workflow_map is not set for {self.__class__.__name__}"
-            )
-
-        if workflow_name not in self._workflow_map:
-            raise ValueError(f"Workflow {workflow_name} not found in {self.__class__.__name__}")
-
-        trigger_inputs = self._workflow_map[workflow_name]
-        workflow_blocks = self.get_execution_blocks(**trigger_inputs)
-
-        return workflow_blocks
 
     @classmethod
     def from_blocks_dict(
@@ -1627,6 +1622,7 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
         collection: str | None = None,
         modular_config_dict: dict[str, Any] | None = None,
         config_dict: dict[str, Any] | None = None,
+        workflow: str | None = None,
         **kwargs,
     ):
         """
@@ -1651,6 +1647,8 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
                 Optional ComponentsManager for managing multiple component cross different pipelines and apply
                 offloading strategies.
             collection: Optional collection name for organizing components in the ComponentsManager.
+            workflow: Optional workflow name (one of `blocks.available_workflows`); the pipeline is built from that
+                workflow's execution blocks only, so it only expects the components that workflow uses.
             **kwargs: Additional arguments passed to `load_config()` when loading pretrained configuration.
 
         Examples:
@@ -1718,6 +1716,11 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
                 blocks = blocks_class()
             else:
                 logger.warning(f"`blocks` is `None`, no default blocks class found for {self.__class__.__name__}")
+
+        if workflow is not None:
+            if blocks is None:
+                raise ValueError(f"`workflow={workflow!r}` was passed but no pipeline blocks could be resolved.")
+            blocks = blocks.get_workflow(workflow)
 
         self._blocks = blocks
         self._components_manager = components_manager
@@ -1843,6 +1846,10 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
                 offloading strategies.
             collection (`str`, optional):`
                 Collection name for organizing components in the ComponentsManager.
+            workflow (`str`, optional):
+                Build the pipeline from a single workflow of the repo's blocks (one of
+                `blocks.available_workflows`, e.g. `"text2image"`) instead of the full blocks. The pipeline then
+                only expects — and `load_components` only loads — the components that workflow uses.
         """
         from ..pipelines.pipeline_loading_utils import _get_pipeline_class
 
@@ -2359,7 +2366,7 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
             config_to_register[name] = new_value
         self.register_to_config(**config_to_register)
 
-    def load_components(self, names: list[str] | str | None = None, **kwargs):
+    def load_components(self, names: list[str] | str | None = None, workflow: str | None = None, **kwargs):
         """
         Load selected components from specs.
 
@@ -2367,16 +2374,29 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
             names: list of component names to load. If None, will load all components with
                    default_creation_method == "from_pretrained". If provided as a list or string, will load only the
                    specified components.
+            workflow: name of a workflow (one of `blocks.available_workflows`); loads the components that workflow
+                   uses and that are not loaded yet. Call again with another workflow later to load just the missing
+                   pieces. Cannot be combined with `names`.
             **kwargs: additional kwargs to be passed to `from_pretrained()`.Can be:
              - a single value to be applied to all components to be loaded, e.g. dtype=torch.bfloat16
              - a dict, e.g. dtype={"unet": torch.bfloat16, "default": torch.float32}
              - if potentially override ComponentSpec if passed a different loading field in kwargs, e.g.
                `pretrained_model_name_or_path`, `variant`, `revision`, etc.
-             - if potentially override ComponentSpec if passed a different loading field in kwargs, e.g.
-               `pretrained_model_name_or_path`, `variant`, `revision`, etc.
         """
+        if workflow is not None and names is not None:
+            raise ValueError("`names` and `workflow` cannot be passed together.")
 
-        if names is None:
+        if workflow is not None:
+            workflow_components = {c.name for c in self.blocks.get_workflow(workflow).expected_components}
+            names = [
+                name
+                for name in self._component_specs.keys()
+                if name in workflow_components
+                and self._component_specs[name].default_creation_method == "from_pretrained"
+                and self._component_specs[name].pretrained_model_name_or_path is not None
+                and getattr(self, name, None) is None
+            ]
+        elif names is None:
             names = [
                 name
                 for name in self._component_specs.keys()

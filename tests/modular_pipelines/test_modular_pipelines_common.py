@@ -10,6 +10,7 @@ from huggingface_hub import hf_hub_download
 import diffusers
 from diffusers import AutoModel, ComponentsManager, ControlNetModel, ModularPipeline, ModularPipelineBlocks
 from diffusers.guiders import ClassifierFreeGuidance
+from diffusers.modular_pipelines import LoopSequentialPipelineBlocks
 from diffusers.modular_pipelines.modular_pipeline_utils import (
     ComponentSpec,
     ConfigSpec,
@@ -503,6 +504,44 @@ class ModularPipelineTesterMixin:
                 assert actual_block.__class__.__name__ == expected_class_name, (
                     f"Workflow '{workflow_name}': block '{actual_name}' has type "
                     f"{actual_block.__class__.__name__}, expected {expected_class_name}"
+                )
+
+    def test_sub_block_workflow_map(self):
+        blocks = self.pipeline_blocks_class()
+        if blocks._workflow_map is None:
+            pytest.skip("Skipping test as _workflow_map is not set")
+
+        sub_blocks_with_map = {
+            name: sub_block for name, sub_block in blocks.sub_blocks.items() if sub_block._workflow_map is not None
+        }
+        if not sub_blocks_with_map:
+            pytest.skip("Skipping test as no sub-block sets _workflow_map")
+
+        for workflow_name, expected_blocks in self.expected_workflow_blocks.items():
+            for sub_name, sub_block in sub_blocks_with_map.items():
+                # sub-blocks must use the same workflow names as the top-level blocks
+                assert workflow_name in sub_block._workflow_map, (
+                    f"Workflow '{workflow_name}' is not defined in {sub_block.__class__.__name__}._workflow_map"
+                )
+
+                # the expected entries under this sub-block, with the sub-block prefix stripped
+                expected_under = [
+                    (name[len(sub_name) + 1 :] if name != sub_name else "", expected_class_name)
+                    for name, expected_class_name in expected_blocks
+                    if name == sub_name or name.startswith(f"{sub_name}.")
+                ]
+
+                resolved = sub_block.get_workflow(workflow_name)
+                if resolved is None:
+                    actual = []
+                elif resolved.sub_blocks and not isinstance(resolved, LoopSequentialPipelineBlocks):
+                    actual = [(name, block.__class__.__name__) for name, block in resolved.sub_blocks.items()]
+                else:
+                    actual = [("", resolved.__class__.__name__)]
+
+                assert actual == expected_under, (
+                    f"Workflow '{workflow_name}': sub-block '{sub_name}' resolves to {actual}, "
+                    f"expected {expected_under} from expected_workflow_blocks"
                 )
 
 
