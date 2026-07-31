@@ -196,6 +196,121 @@ class Ideogram4TextInputsStep(ModularPipelineBlocks):
 
 
 # auto_docstring
+class Ideogram4ImageInputsStep(ModularPipelineBlocks):
+    """
+    Expand per-image latents to the effective prompt batch for image-to-image and inpainting workflows.
+
+      Inputs:
+          image_latents (`Tensor`):
+              image latents used to guide the image generation. Can be generated from vae_encoder step.
+          num_images_per_prompt (`int`, *optional*, defaults to 1):
+              The number of images to generate per prompt.
+          batch_size (`int`):
+              Effective batch size.
+
+      Outputs:
+          image_latents (`Tensor`):
+              The latent representation of the input image.
+    """
+
+    model_name = "ideogram4"
+
+    @property
+    def description(self) -> str:
+        return "Expand per-image latents to the effective prompt batch for image-to-image and inpainting workflows."
+
+    @property
+    def inputs(self) -> list[InputParam]:
+        return [
+            InputParam.template("image_latents"),
+            InputParam.template("num_images_per_prompt", default=1),
+            InputParam(name="batch_size", required=True, type_hint=int, description="Effective batch size."),
+        ]
+
+    @property
+    def intermediate_outputs(self) -> list[OutputParam]:
+        return [OutputParam.template("image_latents")]
+
+    @torch.no_grad()
+    def __call__(self, components: Ideogram4ModularPipeline, state: PipelineState) -> PipelineState:
+        block_state = self.get_block_state(state)
+
+        prompt_batch = block_state.batch_size // block_state.num_images_per_prompt
+        block_state.image_latents = _expand_tensor_to_effective_batch(
+            block_state.image_latents,
+            prompt_batch,
+            block_state.num_images_per_prompt,
+            "image_latents",
+        ).to(device=components._execution_device, dtype=torch.float32)
+
+        self.set_block_state(state, block_state)
+        return components, state
+
+
+# auto_docstring
+class Ideogram4MaskInputsStep(ModularPipelineBlocks):
+    """
+    Expand a preprocessed inpaint mask to the effective prompt batch.
+
+      Inputs:
+          processed_mask_image (`Tensor`):
+              The binary mask tensor resized to the generation resolution.
+          num_images_per_prompt (`int`, *optional*, defaults to 1):
+              The number of images to generate per prompt.
+          batch_size (`int`):
+              Effective batch size.
+
+      Outputs:
+          processed_mask_image (`Tensor`):
+              The binary mask tensor expanded to the effective prompt batch.
+    """
+
+    model_name = "ideogram4"
+
+    @property
+    def description(self) -> str:
+        return "Expand a preprocessed inpaint mask to the effective prompt batch."
+
+    @property
+    def inputs(self) -> list[InputParam]:
+        return [
+            InputParam(
+                name="processed_mask_image",
+                required=True,
+                type_hint=torch.Tensor,
+                description="The binary mask tensor resized to the generation resolution.",
+            ),
+            InputParam.template("num_images_per_prompt", default=1),
+            InputParam(name="batch_size", required=True, type_hint=int, description="Effective batch size."),
+        ]
+
+    @property
+    def intermediate_outputs(self) -> list[OutputParam]:
+        return [
+            OutputParam(
+                name="processed_mask_image",
+                type_hint=torch.Tensor,
+                description="The binary mask tensor expanded to the effective prompt batch.",
+            )
+        ]
+
+    @torch.no_grad()
+    def __call__(self, components: Ideogram4ModularPipeline, state: PipelineState) -> PipelineState:
+        block_state = self.get_block_state(state)
+
+        prompt_batch = block_state.batch_size // block_state.num_images_per_prompt
+        block_state.processed_mask_image = _expand_tensor_to_effective_batch(
+            block_state.processed_mask_image,
+            prompt_batch,
+            block_state.num_images_per_prompt,
+            "processed_mask_image",
+        ).to(device=components._execution_device, dtype=torch.float32)
+
+        self.set_block_state(state, block_state)
+        return components, state
+
+
+# auto_docstring
 class Ideogram4PrepareLatentsStep(ModularPipelineBlocks):
     """
     Step that prepares the packed image latents (B, num_image_tokens, latent_dim) for the denoising loop.
@@ -275,6 +390,82 @@ class Ideogram4PrepareLatentsStep(ModularPipelineBlocks):
             block_state.latents = block_state.latents.to(device=device, dtype=torch.float32)
 
         block_state.num_image_tokens = num_image_tokens
+
+        self.set_block_state(state, block_state)
+        return components, state
+
+
+# auto_docstring
+class Ideogram4PrepareLatentsWithStrengthStep(ModularPipelineBlocks):
+    """
+    Add the initial noise to encoded image latents at the first strength-adjusted timestep.
+
+      Components:
+          scheduler (`FlowMatchEulerDiscreteScheduler`)
+
+      Inputs:
+          latents (`Tensor`):
+              The initial random noise.
+          image_latents (`Tensor`):
+              image latents used to guide the image generation. Can be generated from vae_encoder step.
+          timesteps (`Tensor`):
+              The strength-adjusted denoising timesteps.
+
+      Outputs:
+          initial_noise (`Tensor`):
+              The initial random noise.
+          latents (`Tensor`):
+              Encoded image latents noised at the first denoising timestep.
+    """
+
+    model_name = "ideogram4"
+
+    @property
+    def description(self) -> str:
+        return "Add the initial noise to encoded image latents at the first strength-adjusted timestep."
+
+    @property
+    def expected_components(self) -> list[ComponentSpec]:
+        return [ComponentSpec("scheduler", FlowMatchEulerDiscreteScheduler)]
+
+    @property
+    def inputs(self) -> list[InputParam]:
+        return [
+            InputParam(name="latents", required=True, type_hint=torch.Tensor, description="The initial random noise."),
+            InputParam.template("image_latents"),
+            InputParam(
+                name="timesteps",
+                required=True,
+                type_hint=torch.Tensor,
+                description="The strength-adjusted denoising timesteps.",
+            ),
+        ]
+
+    @property
+    def intermediate_outputs(self) -> list[OutputParam]:
+        return [
+            OutputParam(name="initial_noise", type_hint=torch.Tensor, description="The initial random noise."),
+            OutputParam(
+                name="latents",
+                type_hint=torch.Tensor,
+                description="Encoded image latents noised at the first denoising timestep.",
+            ),
+        ]
+
+    @torch.no_grad()
+    def __call__(self, components: Ideogram4ModularPipeline, state: PipelineState) -> PipelineState:
+        block_state = self.get_block_state(state)
+
+        if block_state.image_latents.shape != block_state.latents.shape:
+            raise ValueError(
+                f"`image_latents` and `latents` must have the same shape, got {block_state.image_latents.shape} and "
+                f"{block_state.latents.shape}."
+            )
+        block_state.initial_noise = block_state.latents
+        latent_timestep = block_state.timesteps[:1].repeat(block_state.latents.shape[0])
+        block_state.latents = components.scheduler.scale_noise(
+            block_state.image_latents, latent_timestep, block_state.initial_noise
+        )
 
         self.set_block_state(state, block_state)
         return components, state
@@ -367,6 +558,162 @@ class Ideogram4SetTimestepsStep(ModularPipelineBlocks):
 
         block_state.timesteps = components.scheduler.timesteps
         block_state.gw = torch.as_tensor(block_state.guidance_schedule, dtype=torch.float32, device=device)
+
+        self.set_block_state(state, block_state)
+        return components, state
+
+
+# auto_docstring
+class Ideogram4ApplyStrengthStep(ModularPipelineBlocks):
+    """
+    Truncate timesteps and guidance weights according to image-to-image or inpaint strength.
+
+      Components:
+          scheduler (`FlowMatchEulerDiscreteScheduler`)
+
+      Inputs:
+          strength (`float`, *optional*, defaults to 0.9):
+              Strength for img2img/inpainting.
+          num_inference_steps (`int`, *optional*, defaults to 48):
+              The number of denoising steps.
+          timesteps (`Tensor`):
+              The full denoising timesteps.
+          gw (`Tensor`):
+              Per-step guidance weights.
+
+      Outputs:
+          timesteps (`Tensor`):
+              The strength-adjusted denoising timesteps.
+          gw (`Tensor`):
+              The strength-adjusted per-step guidance weights.
+          num_inference_steps (`int`):
+              The number of denoising steps after applying strength.
+    """
+
+    model_name = "ideogram4"
+
+    @property
+    def description(self) -> str:
+        return "Truncate timesteps and guidance weights according to image-to-image or inpaint strength."
+
+    @property
+    def expected_components(self) -> list[ComponentSpec]:
+        return [ComponentSpec("scheduler", FlowMatchEulerDiscreteScheduler)]
+
+    @property
+    def inputs(self) -> list[InputParam]:
+        return [
+            InputParam.template("strength", default=0.9),
+            InputParam.template("num_inference_steps", default=48),
+            InputParam(
+                name="timesteps", required=True, type_hint=torch.Tensor, description="The full denoising timesteps."
+            ),
+            InputParam(name="gw", required=True, type_hint=torch.Tensor, description="Per-step guidance weights."),
+        ]
+
+    @property
+    def intermediate_outputs(self) -> list[OutputParam]:
+        return [
+            OutputParam(
+                name="timesteps", type_hint=torch.Tensor, description="The strength-adjusted denoising timesteps."
+            ),
+            OutputParam(
+                name="gw", type_hint=torch.Tensor, description="The strength-adjusted per-step guidance weights."
+            ),
+            OutputParam(
+                name="num_inference_steps",
+                type_hint=int,
+                description="The number of denoising steps after applying strength.",
+            ),
+        ]
+
+    @torch.no_grad()
+    def __call__(self, components: Ideogram4ModularPipeline, state: PipelineState) -> PipelineState:
+        block_state = self.get_block_state(state)
+
+        if not 0.0 < block_state.strength <= 1.0:
+            raise ValueError(f"`strength` must be in the interval (0, 1], but got {block_state.strength}.")
+
+        init_timestep = min(
+            int(block_state.num_inference_steps * block_state.strength), block_state.num_inference_steps
+        )
+        t_start = block_state.num_inference_steps - init_timestep
+        begin_index = t_start * components.scheduler.order
+        block_state.timesteps = block_state.timesteps[begin_index:]
+        block_state.gw = block_state.gw[t_start:]
+        block_state.num_inference_steps = block_state.num_inference_steps - t_start
+        components.scheduler.set_begin_index(begin_index)
+
+        self.set_block_state(state, block_state)
+        return components, state
+
+
+# auto_docstring
+class Ideogram4PrepareMaskLatentsStep(ModularPipelineBlocks):
+    """
+    Resize and pack an inpaint mask to match the Ideogram4 latent token layout.
+
+      Components:
+          transformer (`Ideogram4Transformer2DModel`)
+
+      Inputs:
+          processed_mask_image (`Tensor`):
+              The binary mask tensor expanded to the effective prompt batch.
+          height (`int`):
+              The height in pixels of the generated image.
+          width (`int`):
+              The width in pixels of the generated image.
+
+      Outputs:
+          mask (`Tensor`):
+              The packed latent-space inpaint mask.
+    """
+
+    model_name = "ideogram4"
+
+    @property
+    def description(self) -> str:
+        return "Resize and pack an inpaint mask to match the Ideogram4 latent token layout."
+
+    @property
+    def expected_components(self) -> list[ComponentSpec]:
+        return [ComponentSpec("transformer", Ideogram4Transformer2DModel)]
+
+    @property
+    def inputs(self) -> list[InputParam]:
+        return [
+            InputParam(
+                name="processed_mask_image",
+                required=True,
+                type_hint=torch.Tensor,
+                description="The binary mask tensor expanded to the effective prompt batch.",
+            ),
+            InputParam.template("height", required=True),
+            InputParam.template("width", required=True),
+        ]
+
+    @property
+    def intermediate_outputs(self) -> list[OutputParam]:
+        return [OutputParam(name="mask", type_hint=torch.Tensor, description="The packed latent-space inpaint mask.")]
+
+    @torch.no_grad()
+    def __call__(self, components: Ideogram4ModularPipeline, state: PipelineState) -> PipelineState:
+        block_state = self.get_block_state(state)
+
+        patch = components.patch_size
+        latent_height = block_state.height // components.vae_scale_factor
+        latent_width = block_state.width // components.vae_scale_factor
+        grid_h, grid_w = latent_height // patch, latent_width // patch
+        latent_channels = components.transformer.config.in_channels // (patch * patch)
+
+        mask = torch.nn.functional.interpolate(
+            block_state.processed_mask_image,
+            size=(latent_height, latent_width),
+            mode="nearest",
+        )
+        mask = mask.repeat(1, latent_channels, 1, 1)
+        mask = mask.view(mask.shape[0], latent_channels, grid_h, patch, grid_w, patch)
+        block_state.mask = mask.permute(0, 2, 4, 3, 5, 1).reshape(mask.shape[0], grid_h * grid_w, -1)
 
         self.set_block_state(state, block_state)
         return components, state

@@ -13,10 +13,12 @@
 # limitations under the License.
 
 
+from typing import Any
+
 import torch
 
 from ...configuration_utils import FrozenDict
-from ...image_processor import VaeImageProcessor
+from ...image_processor import InpaintProcessor, VaeImageProcessor
 from ...models import AutoencoderKLFlux2
 from ...utils import logging
 from ..modular_pipeline import ModularPipelineBlocks, PipelineState
@@ -106,6 +108,92 @@ class Ideogram4DecodeStep(ModularPipelineBlocks):
         decoded = components.vae.decode(z.to(components.vae.dtype), return_dict=False)[0]
         block_state.images = components.image_processor.postprocess(
             decoded.float(), output_type=block_state.output_type
+        )
+
+        self.set_block_state(state, block_state)
+        return components, state
+
+
+# auto_docstring
+class Ideogram4InpaintDecodeStep(ModularPipelineBlocks):
+    """
+    Decode Ideogram4 latents and optionally composite a cropped inpaint result over the source image.
+
+      Components:
+          vae (`AutoencoderKLFlux2`) image_mask_processor (`InpaintProcessor`)
+
+      Inputs:
+          output_type (`str`, *optional*, defaults to pil):
+              Output format: 'pil', 'np', 'pt'.
+          latents (`Tensor`):
+              The unpatchified latents to decode.
+          mask_overlay_kwargs (`dict`):
+              Arguments used to composite a cropped inpaint result over the source image.
+
+      Outputs:
+          images (`list`):
+              Generated images.
+    """
+
+    model_name = "ideogram4"
+
+    @property
+    def description(self) -> str:
+        return "Decode Ideogram4 latents and optionally composite a cropped inpaint result over the source image."
+
+    @property
+    def expected_components(self) -> list[ComponentSpec]:
+        return [
+            ComponentSpec("vae", AutoencoderKLFlux2),
+            ComponentSpec(
+                "image_mask_processor",
+                InpaintProcessor,
+                config=FrozenDict({"vae_scale_factor": 16}),
+                default_creation_method="from_config",
+            ),
+        ]
+
+    @property
+    def inputs(self) -> list[InputParam]:
+        return [
+            InputParam.template("output_type", default="pil"),
+            InputParam(
+                name="latents",
+                required=True,
+                type_hint=torch.Tensor,
+                description="The unpatchified latents to decode.",
+            ),
+            InputParam(
+                name="mask_overlay_kwargs",
+                required=True,
+                type_hint=dict[str, Any],
+                description="Arguments used to composite a cropped inpaint result over the source image.",
+            ),
+        ]
+
+    @property
+    def intermediate_outputs(self) -> list[OutputParam]:
+        return [OutputParam.template("images")]
+
+    @torch.no_grad()
+    def __call__(self, components: Ideogram4ModularPipeline, state: PipelineState) -> PipelineState:
+        block_state = self.get_block_state(state)
+
+        z = block_state.latents
+        patch = components.patch_size
+        ae_channels = z.shape[1]
+        grid_h, grid_w = z.shape[2] // patch, z.shape[3] // patch
+
+        bn_mean = components.vae.bn.running_mean.view(patch, patch, ae_channels).permute(2, 0, 1)
+        bn_std = torch.sqrt(components.vae.bn.running_var + components.vae.config.batch_norm_eps)
+        bn_std = bn_std.view(patch, patch, ae_channels).permute(2, 0, 1)
+        bn_mean = bn_mean.repeat(1, grid_h, grid_w).to(device=z.device, dtype=z.dtype)
+        bn_std = bn_std.repeat(1, grid_h, grid_w).to(device=z.device, dtype=z.dtype)
+        z = z * bn_std + bn_mean
+
+        decoded = components.vae.decode(z.to(components.vae.dtype), return_dict=False)[0]
+        block_state.images = components.image_mask_processor.postprocess(
+            decoded.float(), output_type=block_state.output_type, **block_state.mask_overlay_kwargs
         )
 
         self.set_block_state(state, block_state)
