@@ -347,7 +347,7 @@ class MagCacheBlockHook(ModelHook):
                 if diff == 0:
                     residual = out_hidden - in_hidden
                 elif diff > 0:
-                    residual = out_hidden - in_hidden[:, diff:] # Fallback to matching tail
+                    residual = out_hidden - in_hidden[:, diff:]  # Fallback to matching tail
                 else:
                     residual = out_hidden[:, -diff:] - in_hidden  # Fallback to matching tail
             else:
