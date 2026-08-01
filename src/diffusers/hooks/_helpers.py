@@ -109,6 +109,7 @@ def _register_attention_processors_metadata():
     from ..models.attention_processor import AttnProcessor2_0
     from ..models.transformers.transformer_cogview4 import CogView4AttnProcessor
     from ..models.transformers.transformer_flux import FluxAttnProcessor
+    from ..models.transformers.transformer_flux2 import Flux2AttnProcessor
     from ..models.transformers.transformer_hunyuanimage import HunyuanImageAttnProcessor
     from ..models.transformers.transformer_qwenimage import QwenDoubleStreamAttnProcessor2_0
     from ..models.transformers.transformer_wan import WanAttnProcessor2_0
@@ -144,6 +145,12 @@ def _register_attention_processors_metadata():
         metadata=AttentionProcessorMetadata(skip_processor_output_fn=_skip_proc_output_fn_Attention_FluxAttnProcessor),
     )
 
+    # Flux2AttnProcessor
+    AttentionProcessorRegistry.register(
+        model_class=Flux2AttnProcessor,
+        metadata=AttentionProcessorMetadata(skip_processor_output_fn=_skip_proc_output_fn_Attention_FluxAttnProcessor),
+    )
+
     # QwenDoubleStreamAttnProcessor2
     AttentionProcessorRegistry.register(
         model_class=QwenDoubleStreamAttnProcessor2_0,
@@ -175,6 +182,7 @@ def _register_transformer_blocks_metadata():
     from ..models.transformers.transformer_bria import BriaTransformerBlock
     from ..models.transformers.transformer_cogview4 import CogView4TransformerBlock
     from ..models.transformers.transformer_flux import FluxSingleTransformerBlock, FluxTransformerBlock
+    from ..models.transformers.transformer_flux2 import Flux2SingleTransformerBlock, Flux2TransformerBlock
     from ..models.transformers.transformer_hunyuan_video import (
         HunyuanVideoSingleTransformerBlock,
         HunyuanVideoTokenReplaceSingleTransformerBlock,
@@ -240,6 +248,22 @@ def _register_transformer_blocks_metadata():
     )
     TransformerBlockRegistry.register(
         model_class=FluxSingleTransformerBlock,
+        metadata=TransformerBlockMetadata(
+            return_hidden_states_index=1,
+            return_encoder_hidden_states_index=0,
+        ),
+    )
+
+    # Flux2
+    TransformerBlockRegistry.register(
+        model_class=Flux2TransformerBlock,
+        metadata=TransformerBlockMetadata(
+            return_hidden_states_index=1,
+            return_encoder_hidden_states_index=0,
+        ),
+    )
+    TransformerBlockRegistry.register(
+        model_class=Flux2SingleTransformerBlock,
         metadata=TransformerBlockMetadata(
             return_hidden_states_index=1,
             return_encoder_hidden_states_index=0,
