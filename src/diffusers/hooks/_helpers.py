@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import inspect
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Callable, Type
 
 
