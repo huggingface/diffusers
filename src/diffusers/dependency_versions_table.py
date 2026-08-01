@@ -40,6 +40,7 @@ deps = {
     "torchao": "torchao>=0.7.0",
     "bitsandbytes": "bitsandbytes>=0.43.3",
     "nvidia_modelopt[hf]": "nvidia_modelopt[hf]>=0.33.1",
+    "sdnq": "sdnq>=0.2.2",
     "regex": "regex!=2019.12.17",
     "requests": "requests",
     "tensorboard": "tensorboard",
