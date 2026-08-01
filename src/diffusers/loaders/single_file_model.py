@@ -42,6 +42,8 @@ from .single_file_utils import (
     convert_flux_transformer_checkpoint_to_diffusers,
     convert_hidream_transformer_to_diffusers,
     convert_hunyuan_video_transformer_to_diffusers,
+    convert_hunyuanimage_transformer_to_diffusers,
+    convert_ideogram4_transformer_checkpoint_to_diffusers,
     convert_ldm_unet_checkpoint,
     convert_ldm_vae_checkpoint,
     convert_ltx2_audio_vae_to_diffusers,
@@ -136,6 +138,10 @@ SINGLE_FILE_LOADABLE_CLASSES = {
         "checkpoint_mapping_fn": convert_mochi_transformer_checkpoint_to_diffusers,
         "default_subfolder": "transformer",
     },
+    "HunyuanImageTransformer2DModel": {
+        "checkpoint_mapping_fn": convert_hunyuanimage_transformer_to_diffusers,
+        "default_subfolder": "transformer",
+    },
     "HunyuanVideoTransformer3DModel": {
         "checkpoint_mapping_fn": convert_hunyuan_video_transformer_to_diffusers,
         "default_subfolder": "transformer",
@@ -182,6 +188,10 @@ SINGLE_FILE_LOADABLE_CLASSES = {
     },
     "CosmosTransformer3DModel": {
         "checkpoint_mapping_fn": convert_cosmos_transformer_checkpoint_to_diffusers,
+        "default_subfolder": "transformer",
+    },
+    "Ideogram4Transformer2DModel": {
+        "checkpoint_mapping_fn": convert_ideogram4_transformer_checkpoint_to_diffusers,
         "default_subfolder": "transformer",
     },
     "QwenImageTransformer2DModel": {
