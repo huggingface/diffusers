@@ -328,7 +328,6 @@ class MagCacheBlockHook(ModelHook):
         output = self.fn_ref.original_forward(*args, **kwargs)
 
         if self.is_tail:
-            fuse = False
             # Calculate residual for next steps
             if isinstance(output, tuple):
                 out_hidden = output[self._metadata.return_hidden_states_index]
@@ -345,17 +344,12 @@ class MagCacheBlockHook(ModelHook):
                 residual = out_hidden - in_hidden
             elif out_hidden.ndim == 3 and in_hidden.ndim == 3 and out_hidden.shape[2] == in_hidden.shape[2]:
                 diff = in_hidden.shape[1] - out_hidden.shape[1]
-                print(diff)
                 if diff == 0:
                     residual = out_hidden - in_hidden
                 elif diff > 0:
-                    print("falling back in", diff)
                     residual = out_hidden - in_hidden[:, diff:] # Fallback to matching tail
-                    fuse = diff
                 else:
-                    print("falling back out", diff)
                     residual = out_hidden[:, -diff:] - in_hidden  # Fallback to matching tail
-                    fuse = diff
             else:
                 # Fallback for completely mismatched shapes
                 residual = out_hidden
@@ -365,13 +359,6 @@ class MagCacheBlockHook(ModelHook):
 
             state.previous_residual = residual
             self._advance_step(state)
-            print(fuse)
-            # if fuse:
-            #     if fuse > 0:
-            #         text_tokens = in_hidden[:, :fuse]
-            #         return torch.cat([text_tokens, output], dim=1)
-            #     else:
-            #         return out_hidden
 
         return output
 
