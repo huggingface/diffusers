@@ -265,8 +265,8 @@ def _register_transformer_blocks_metadata():
     TransformerBlockRegistry.register(
         model_class=Flux2SingleTransformerBlock,
         metadata=TransformerBlockMetadata(
-            return_hidden_states_index=1,
-            return_encoder_hidden_states_index=0,
+            return_hidden_states_index=0,
+            return_encoder_hidden_states_index=None,
         ),
     )
 
