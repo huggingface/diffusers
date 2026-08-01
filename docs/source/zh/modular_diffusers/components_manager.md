@@ -55,13 +55,13 @@ pipe.load_components()
 pipe2 = ModularPipeline.from_pretrained("YiYiXu/modular-demo-auto", components_manager=comp, collection="test2")
 ```
 
-使用 [`~ModularPipeline.null_component_names`] 属性来识别需要加载的任何组件，使用 [`~ComponentsManager.get_components_by_names`] 检索它们，然后调用 [`~ModularPipeline.update_components`] 来添加缺失的组件。
+使用 [`~ModularPipeline.null_component_names`] 属性来识别需要加载的任何组件，使用 [`~ComponentsManager.get_one`] 检索它们，然后调用 [`~ModularPipeline.update_components`] 来添加缺失的组件。
 
 ```py
 pipe2.null_component_names 
 ['text_encoder', 'text_encoder_2', 'tokenizer', 'tokenizer_2', 'image_encoder', 'unet', 'vae', 'scheduler', 'controlnet']
 
-comp_dict = comp.get_components_by_names(names=pipe2.null_component_names)
+comp_dict = {name: comp.get_one(name=name) for name in pipe2.null_component_names}
 pipe2.update_components(**comp_dict)
 ```
 
@@ -87,28 +87,12 @@ comp.remove("text_encoder_139917733042864")
 
 ### get_one
 
-[`~ComponentsManager.get_one`] 方法返回单个组件，并支持对 `name` 参数进行模式匹配。如果多个组件匹配，[`~ComponentsManager.get_one`] 会返回错误。
-
-| 模式       | 示例                             | 描述                                   |
-|-------------|----------------------------------|-------------------------------------------|
-| exact       | `comp.get_one(name="unet")`      | 精确名称匹配                          |
-| wildcard    | `comp.get_one(name="unet*")`     | 名称以 "unet" 开头                |
-| exclusion   | `comp.get_one(name="!unet")`     | 排除名为 "unet" 的组件           |
-| or          | `comp.get_one(name="unet&#124;vae")`  | 名称为 "unet" 或 "vae"                   |
+[`~ComponentsManager.get_one`] 方法按 `name` 精确匹配并返回单个组件。如果多个组件匹配，[`~ComponentsManager.get_one`] 会返回错误。
 
 [`~ComponentsManager.get_one`] 还通过 `collection` 参数或 `load_id` 参数过滤组件。
 
 ```py
 comp.get_one(name="unet", collection="sdxl")
-```
-
-### get_components_by_names
-
-[`~ComponentsManager.get_components_by_names`] 方法接受一个名称列表，并返回一个将名称映射到组件的字典。这在 [`ModularPipeline`] 中特别有用，因为它们提供了所需组件名称的列表，并且返回的字典可以直接传递给 [`~ModularPipeline.update_components`]。
-
-```py
-component_dict = comp.get_components_by_names(names=["text_encoder", "unet", "vae"])
-{"text_encoder": component1, "unet": component2, "vae": component3}
 ```
 
 ## 重复检测

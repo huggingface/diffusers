@@ -45,4 +45,5 @@ def apply_forward_hook(method):
             self._hf_hook.pre_forward(self)
         return method(self, *args, **kwargs)
 
+    wrapper._is_forward_entry_point = True  # lets hook machinery statically discover decorated entry points
     return wrapper
