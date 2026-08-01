@@ -13,7 +13,6 @@ from ..utils import (
     is_torch_available,
     is_torch_npu_available,
     is_transformers_available,
-    is_transformers_flax_compatible,
     is_transformers_version,
 )
 
@@ -193,9 +192,8 @@ else:
         "FluxKontextPipeline",
         "FluxKontextInpaintPipeline",
     ]
-    _import_structure["prx"] = ["PRXPipeline"]
+    _import_structure["prx"] = ["PRXPipeline", "PRXPixelPipeline"]
     _import_structure["rae_dit"] = ["RAEDiTPipeline", "RAEDiTPipelineOutput"]
-    _import_structure["audioldm"] = ["AudioLDMPipeline"]
     _import_structure["audioldm2"] = [
         "AudioLDM2Pipeline",
         "AudioLDM2ProjectionModel",
@@ -275,6 +273,8 @@ else:
         "IFPipeline",
         "IFSuperResolutionPipeline",
     ]
+    _import_structure["diffusion_gemma"] = ["DiffusionGemmaPipeline", "DiffusionGemmaPipelineOutput"]
+    _import_structure["dreamlite"] = ["DreamLitePipeline", "DreamLiteMobilePipeline", "DreamLitePipelineOutput"]
     _import_structure["easyanimate"] = [
         "EasyAnimatePipeline",
         "EasyAnimateInpaintPipeline",
@@ -317,6 +317,7 @@ else:
         "Kandinsky3Img2ImgPipeline",
         "Kandinsky3Pipeline",
     ]
+    _import_structure["krea2"] = ["Krea2Pipeline"]
     _import_structure["latent_consistency_models"] = [
         "LatentConsistencyModelImg2ImgPipeline",
         "LatentConsistencyModelPipeline",
@@ -345,7 +346,12 @@ else:
         "LTX2ImageToVideoPipeline",
         "LTX2LatentUpsamplePipeline",
     ]
-    _import_structure["joyimage"] = ["JoyImageEditPipeline", "JoyImageEditPipelineOutput"]
+    _import_structure["joyimage"] = [
+        "JoyImageEditPipeline",
+        "JoyImageEditPipelineOutput",
+        "JoyImageEditPlusPipeline",
+        "JoyImageEditPlusPipelineOutput",
+    ]
     _import_structure["lumina"] = ["LuminaPipeline", "LuminaText2ImgPipeline"]
     _import_structure["lumina2"] = ["Lumina2Pipeline", "Lumina2Text2ImgPipeline"]
     _import_structure["lucy"] = ["LucyEditPipeline"]
@@ -520,37 +526,6 @@ except OptionalDependencyNotAvailable:
 else:
     _import_structure["consisid"] = ["ConsisIDPipeline"]
 
-try:
-    if not is_transformers_flax_compatible():
-        raise OptionalDependencyNotAvailable()
-except OptionalDependencyNotAvailable:
-    from ..utils import dummy_flax_objects  # noqa F403
-
-    _dummy_objects.update(get_objects_from_module(dummy_flax_objects))
-else:
-    _import_structure["pipeline_flax_utils"] = ["FlaxDiffusionPipeline"]
-try:
-    if not is_transformers_flax_compatible():
-        raise OptionalDependencyNotAvailable()
-except OptionalDependencyNotAvailable:
-    from ..utils import dummy_flax_and_transformers_objects  # noqa F403
-
-    _dummy_objects.update(get_objects_from_module(dummy_flax_and_transformers_objects))
-else:
-    _import_structure["controlnet"].extend(["FlaxStableDiffusionControlNetPipeline"])
-    _import_structure["stable_diffusion"].extend(
-        [
-            "FlaxStableDiffusionImg2ImgPipeline",
-            "FlaxStableDiffusionInpaintPipeline",
-            "FlaxStableDiffusionPipeline",
-        ]
-    )
-    _import_structure["stable_diffusion_xl"].extend(
-        [
-            "FlaxStableDiffusionXLPipeline",
-        ]
-    )
-
 if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     try:
         if not is_torch_available():
@@ -717,6 +692,12 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             WuerstchenDecoderPipeline,
             WuerstchenPriorPipeline,
         )
+        from .diffusion_gemma import DiffusionGemmaPipeline, DiffusionGemmaPipelineOutput
+        from .dreamlite import (
+            DreamLiteMobilePipeline,
+            DreamLitePipeline,
+            DreamLitePipelineOutput,
+        )
         from .easyanimate import (
             EasyAnimateControlPipeline,
             EasyAnimateInpaintPipeline,
@@ -753,7 +734,12 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .hunyuan_video1_5 import HunyuanVideo15ImageToVideoPipeline, HunyuanVideo15Pipeline
         from .hunyuandit import HunyuanDiTPipeline
         from .ideogram4 import Ideogram4Pipeline, Ideogram4PromptEnhancerHead
-        from .joyimage import JoyImageEditPipeline, JoyImageEditPipelineOutput
+        from .joyimage import (
+            JoyImageEditPipeline,
+            JoyImageEditPipelineOutput,
+            JoyImageEditPlusPipeline,
+            JoyImageEditPlusPipelineOutput,
+        )
         from .kandinsky import (
             KandinskyCombinedPipeline,
             KandinskyImg2ImgCombinedPipeline,
@@ -785,6 +771,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             Kandinsky5T2IPipeline,
             Kandinsky5T2VPipeline,
         )
+        from .krea2 import Krea2Pipeline
         from .latent_consistency_models import (
             LatentConsistencyModelImg2ImgPipeline,
             LatentConsistencyModelPipeline,
@@ -852,7 +839,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             StableDiffusionXLPAGPipeline,
         )
         from .pixart_alpha import PixArtAlphaPipeline, PixArtSigmaPipeline
-        from .prx import PRXPipeline
+        from .prx import PRXPipeline, PRXPixelPipeline
         from .qwenimage import (
             QwenImageControlNetInpaintPipeline,
             QwenImageControlNetPipeline,
@@ -966,30 +953,6 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             from ..utils.dummy_torch_and_transformers_and_opencv_objects import *
         else:
             from .consisid import ConsisIDPipeline
-
-        try:
-            if not is_transformers_flax_compatible():
-                raise OptionalDependencyNotAvailable()
-        except OptionalDependencyNotAvailable:
-            from ..utils.dummy_flax_objects import *  # noqa F403
-        else:
-            from .pipeline_flax_utils import FlaxDiffusionPipeline
-
-        try:
-            if not is_transformers_flax_compatible():
-                raise OptionalDependencyNotAvailable()
-        except OptionalDependencyNotAvailable:
-            from ..utils.dummy_flax_and_transformers_objects import *
-        else:
-            from .controlnet import FlaxStableDiffusionControlNetPipeline
-            from .stable_diffusion import (
-                FlaxStableDiffusionImg2ImgPipeline,
-                FlaxStableDiffusionInpaintPipeline,
-                FlaxStableDiffusionPipeline,
-            )
-            from .stable_diffusion_xl import (
-                FlaxStableDiffusionXLPipeline,
-            )
 
         try:
             if not (is_transformers_available() and is_torch_available() and is_note_seq_available()):

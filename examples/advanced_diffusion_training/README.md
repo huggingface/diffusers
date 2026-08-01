@@ -194,7 +194,7 @@ repo_id = f"{username}/3d-icon-SDXL-LoRA"
 
 pipe = DiffusionPipeline.from_pretrained(
         "stabilityai/stable-diffusion-xl-base-1.0",
-        torch_dtype=torch.float16,
+        dtype=torch.float16,
         variant="fp16",
 ).to("cuda")
 
@@ -372,11 +372,11 @@ def lora_lora_unet_blocks(lora_path, alpha, target_blocks):
   filtered_state_dict = {k: v * alpha for k, v in state_dict.items() if is_belong_to_blocks(k, target_blocks)}
   return filtered_state_dict
 
-vae = AutoencoderKL.from_pretrained("madebyollin/sdxl-vae-fp16-fix", torch_dtype=torch.float16)
+vae = AutoencoderKL.from_pretrained("madebyollin/sdxl-vae-fp16-fix", dtype=torch.float16)
 pipeline = StableDiffusionXLPipeline.from_pretrained(
     "stabilityai/stable-diffusion-xl-base-1.0",
     vae=vae,
-    torch_dtype=torch.float16,
+    dtype=torch.float16,
 ).to("cuda")
 
 # pick a blora for content/style (you can also set one to None)
@@ -437,11 +437,11 @@ def lora_lora_unet_blocks(lora_path, alpha, target_blocks):
   filtered_state_dict = {k: v * alpha for k, v in state_dict.items() if is_belong_to_blocks(k, target_blocks)}
   return filtered_state_dict
 
-vae = AutoencoderKL.from_pretrained("madebyollin/sdxl-vae-fp16-fix", torch_dtype=torch.float16)
+vae = AutoencoderKL.from_pretrained("madebyollin/sdxl-vae-fp16-fix", dtype=torch.float16)
 pipeline = StableDiffusionXLPipeline.from_pretrained(
     "stabilityai/stable-diffusion-xl-base-1.0",
     vae=vae,
-    torch_dtype=torch.float16,
+    dtype=torch.float16,
 ).to("cuda")
 
 lora_path  = "lora-library/B-LoRA-pen_sketch"

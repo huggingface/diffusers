@@ -18,7 +18,7 @@ The model can be loaded with the following code snippet.
 ```python
 from diffusers import AutoencoderKLAllegro
 
-vae = AutoencoderKLAllegro.from_pretrained("rhymes-ai/Allegro", subfolder="vae", torch_dtype=torch.float32).to("cuda")
+vae = AutoencoderKLAllegro.from_pretrained("rhymes-ai/Allegro", subfolder="vae", dtype=torch.float32).to("cuda")
 ```
 
 ## AutoencoderKLAllegro

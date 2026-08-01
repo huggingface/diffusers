@@ -218,8 +218,8 @@ Once training is complete, you can use your new LCM for inference.
 from diffusers import UNet2DConditionModel, DiffusionPipeline, LCMScheduler
 import torch
 
-unet = UNet2DConditionModel.from_pretrained("your-username/your-model", torch_dtype=torch.float16, variant="fp16")
-pipeline = DiffusionPipeline.from_pretrained("stable-diffusion-v1-5/stable-diffusion-v1-5", unet=unet, torch_dtype=torch.float16, variant="fp16")
+unet = UNet2DConditionModel.from_pretrained("your-username/your-model", dtype=torch.float16, variant="fp16")
+pipeline = DiffusionPipeline.from_pretrained("stable-diffusion-v1-5/stable-diffusion-v1-5", unet=unet, dtype=torch.float16, variant="fp16")
 
 pipeline.scheduler = LCMScheduler.from_config(pipe.scheduler.config)
 pipeline.to("cuda")
