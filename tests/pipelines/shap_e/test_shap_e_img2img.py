@@ -51,8 +51,6 @@ class ShapEImg2ImgPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     ]
     test_xformers_attention = False
 
-    supports_dduf = False
-
     @property
     def text_embedder_hidden_size(self):
         return 16

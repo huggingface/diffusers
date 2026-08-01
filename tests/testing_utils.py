@@ -36,7 +36,6 @@ from diffusers.utils.import_utils import (
     is_bitsandbytes_available,
     is_compel_available,
     is_flashpack_available,
-    is_flax_available,
     is_gguf_available,
     is_kernels_available,
     is_note_seq_available,
@@ -45,6 +44,7 @@ from diffusers.utils.import_utils import (
     is_opencv_available,
     is_optimum_quanto_available,
     is_peft_available,
+    is_sdnq_available,
     is_timm_available,
     is_torch_available,
     is_torch_neuronx_available,
@@ -478,6 +478,14 @@ def is_modelopt(test_case):
     return pytest.mark.modelopt(test_case)
 
 
+def is_sdnq(test_case):
+    """
+    Decorator marking a test as an SDNQ quantization test. These tests can be filtered using:
+        pytest -m "not sdnq" to skip pytest -m sdnq to run only these tests
+    """
+    return pytest.mark.sdnq(test_case)
+
+
 def is_context_parallel(test_case):
     """
     Decorator marking a test as a context parallel inference test. These tests can be filtered using:
@@ -673,13 +681,6 @@ def skip_mps(test_case):
     return pytest.mark.skipif(torch_device == "mps", reason="test requires non 'mps' device")(test_case)
 
 
-def require_flax(test_case):
-    """
-    Decorator marking a test that requires JAX & Flax. These tests are skipped when one / both are not installed
-    """
-    return pytest.mark.skipif(not is_flax_available(), reason="test requires JAX & Flax")(test_case)
-
-
 def require_compel(test_case):
     """
     Decorator marking a test that requires compel: https://github.com/damian0815/compel. These tests are skipped when
@@ -744,6 +745,13 @@ def require_quanto(test_case):
     Decorator marking a test that requires quanto. These tests are skipped when quanto isn't installed.
     """
     return pytest.mark.skipif(not is_optimum_quanto_available(), reason="test requires quanto")(test_case)
+
+
+def require_sdnq(test_case):
+    """
+    Decorator marking a test that requires sdnq. These tests are skipped when sdnq isn't installed.
+    """
+    return pytest.mark.skipif(not is_sdnq_available(), reason="test requires sdnq")(test_case)
 
 
 def require_accelerate(test_case):

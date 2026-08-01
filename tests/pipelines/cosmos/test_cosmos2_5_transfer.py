@@ -45,9 +45,9 @@ class Cosmos2_5_TransferWrapper(Cosmos2_5_TransferPipeline):
         if "safety_checker" not in kwargs or kwargs["safety_checker"] is None:
             safety_checker = DummyCosmosSafetyChecker()
             device_map = kwargs.get("device_map", "cpu")
-            torch_dtype = kwargs.get("torch_dtype")
-            if device_map is not None or torch_dtype is not None:
-                safety_checker = safety_checker.to(device_map, dtype=torch_dtype)
+            dtype = kwargs.get("dtype")
+            if device_map is not None or dtype is not None:
+                safety_checker = safety_checker.to(device_map, dtype=dtype)
             kwargs["safety_checker"] = safety_checker
         return Cosmos2_5_TransferPipeline.from_pretrained(*args, **kwargs)
 
@@ -68,7 +68,6 @@ class Cosmos2_5_TransferPipelineFastTests(PipelineTesterMixin, unittest.TestCase
             "callback_on_step_end_tensor_inputs",
         ]
     )
-    supports_dduf = False
     test_xformers_attention = False
     test_layerwise_casting = True
     test_group_offloading = True
@@ -398,7 +397,7 @@ class Cosmos2_5_TransferPipelineFastTests(PipelineTesterMixin, unittest.TestCase
                     is_folder = os.path.isdir(folder_path) and subfolder in config
                     assert is_folder and any(p.split(".")[1].startswith(variant) for p in os.listdir(folder_path))
 
-    def test_torch_dtype_dict(self):
+    def test_dtype_dict(self):
         components = self.get_dummy_components()
         if not components:
             self.skipTest("No dummy components defined.")
@@ -409,9 +408,9 @@ class Cosmos2_5_TransferPipelineFastTests(PipelineTesterMixin, unittest.TestCase
 
         with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname:
             pipe.save_pretrained(tmpdirname, safe_serialization=False)
-            torch_dtype_dict = {specified_key: torch.bfloat16, "default": torch.float16}
+            dtype_dict = {specified_key: torch.bfloat16, "default": torch.float16}
             loaded_pipe = self.pipeline_class.from_pretrained(
-                tmpdirname, safety_checker=DummyCosmosSafetyChecker(), torch_dtype=torch_dtype_dict
+                tmpdirname, safety_checker=DummyCosmosSafetyChecker(), dtype=dtype_dict
             )
 
         for name, component in loaded_pipe.components.items():
@@ -419,11 +418,33 @@ class Cosmos2_5_TransferPipelineFastTests(PipelineTesterMixin, unittest.TestCase
             if name == "safety_checker":
                 continue
             if isinstance(component, torch.nn.Module) and hasattr(component, "dtype"):
-                expected_dtype = torch_dtype_dict.get(name, torch_dtype_dict.get("default", torch.float32))
+                expected_dtype = dtype_dict.get(name, dtype_dict.get("default", torch.float32))
                 self.assertEqual(
                     component.dtype,
                     expected_dtype,
                     f"Component '{name}' has dtype {component.dtype} but expected {expected_dtype}",
+                )
+
+    def test_dtype_alias(self):
+        # `torch_dtype` is deprecated in favor of `dtype` in `from_pretrained`.
+        components = self.get_dummy_components()
+        pipe = self.pipeline_class(**components)
+
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname:
+            pipe.save_pretrained(tmpdirname, safe_serialization=False)
+            loaded_pipe = self.pipeline_class.from_pretrained(
+                tmpdirname, safety_checker=DummyCosmosSafetyChecker(), dtype=torch.float16
+            )
+
+        for name, component in loaded_pipe.components.items():
+            # Skip components that are not loaded from disk or have special handling
+            if name == "safety_checker":
+                continue
+            if isinstance(component, torch.nn.Module) and hasattr(component, "dtype"):
+                self.assertEqual(
+                    component.dtype,
+                    torch.float16,
+                    f"Component '{name}' has dtype {component.dtype} but expected {torch.float16}",
                 )
 
     def test_save_load_optional_components(self, expected_max_difference=1e-4):

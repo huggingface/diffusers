@@ -48,7 +48,7 @@ from diffusers import AnyFlowPipeline
 from diffusers.utils import export_to_video
 
 pipe = AnyFlowPipeline.from_pretrained(
-    "nvidia/AnyFlow-Wan2.1-T2V-1.3B-Diffusers", torch_dtype=torch.bfloat16
+    "nvidia/AnyFlow-Wan2.1-T2V-1.3B-Diffusers", dtype=torch.bfloat16
 ).to("cuda")
 
 prompt = (
@@ -84,7 +84,7 @@ from diffusers import AnyFlowFARPipeline
 from diffusers.utils import export_to_video
 
 pipe = AnyFlowFARPipeline.from_pretrained(
-    "nvidia/AnyFlow-FAR-Wan2.1-1.3B-Diffusers", torch_dtype=torch.bfloat16
+    "nvidia/AnyFlow-FAR-Wan2.1-1.3B-Diffusers", dtype=torch.bfloat16
 ).to("cuda")
 
 prompt = (
@@ -105,7 +105,7 @@ from diffusers import AnyFlowFARPipeline
 from diffusers.utils import export_to_video, load_image
 
 pipe = AnyFlowFARPipeline.from_pretrained(
-    "nvidia/AnyFlow-FAR-Wan2.1-1.3B-Diffusers", torch_dtype=torch.bfloat16
+    "nvidia/AnyFlow-FAR-Wan2.1-1.3B-Diffusers", dtype=torch.bfloat16
 ).to("cuda")
 
 # Example conditioning image from the AnyFlow repo.
@@ -139,7 +139,7 @@ from diffusers import AnyFlowFARPipeline
 from diffusers.utils import export_to_video, load_video
 
 pipe = AnyFlowFARPipeline.from_pretrained(
-    "nvidia/AnyFlow-FAR-Wan2.1-1.3B-Diffusers", torch_dtype=torch.bfloat16
+    "nvidia/AnyFlow-FAR-Wan2.1-1.3B-Diffusers", dtype=torch.bfloat16
 ).to("cuda")
 
 # Example conditioning clip from the AnyFlow repo — take the first 9 frames (3 latent frames at VAE temporal stride 4).
