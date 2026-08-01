@@ -12,15 +12,16 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# SPIKE (guider-API variant, uncommitted): two single-modality guiders (`LTX2Guidance`, one as the video `guider`
-# and one as the `audio_guider`), driven through the standard guider API. Wired into `LTX2LoopDenoiser`.
+# Two single-modality guiders (`LTX2Guidance`, one as the video `guider` and one as the `audio_guider`), driven
+# through the standard guider API (`prepare_inputs_from_block_state`). Wired into `LTX2LoopDenoiser`.
 #
-# The denoiser builds a `guider_inputs` dict whose values are 4-tuples indexed by pass [cond, uncond, stg,
-# modality]; `guider.prepare_inputs(guider_inputs)` yields one identifier-tagged batch per active pass carrying
-# that pass's encoder inputs AND its per-pass model flags (`spatio_temporal_guidance_blocks`, `isolate_modalities`).
-# The denoiser runs each pass as its own single-batch forward, then each guider's `forward`/`__call__` combines its
-# modality (CFG + STG + modality-isolation, delta formulation in x0 space). Carrying the flags as inputs is what
-# lets STG/modality reuse the same mechanism as the encoder tensors -- the reason this uses the API end-to-end.
+# The denoiser owns a `guider_input_fields` map (transformer arg -> per-pass block-state attribute names, indexed
+# [cond, uncond, stg, modality]); `guider.prepare_inputs_from_block_state(block_state, guider_input_fields)` yields
+# one identifier-tagged batch per active pass, carrying that pass's encoder tensors. The per-pass model flags
+# (`spatio_temporal_guidance_blocks`, `isolate_modalities`) are pass-identity constants rather than block-state
+# conditioning, so the denoiser sets them on each batch by identifier after preparation. The denoiser runs each
+# pass as its own single-batch forward, then each guider's `forward`/`__call__` combines its modality (CFG + STG +
+# modality-isolation, delta formulation in x0 space).
 #
 # Parity note. Because every pass (cond/uncond included) is a separate single-batch forward -- not the batched
 # `torch.cat([latents] * 2)` the standard `LTX2Pipeline` uses -- this does NOT match the reference bitwise. GPU
@@ -114,8 +115,9 @@ class LTX2Guidance(BaseGuidance):
         # batches, so we never drive `prepare_models`/hooks off `_count_prepared` the way SkipLayerGuidance does.
         return True
 
-    # Each pass reads its own slot of every `guider_inputs` tuple, indexed by identifier. Distinct slots (rather
-    # than cond/uncond only) let per-pass model flags ride alongside the encoder inputs -- see `prepare_inputs`.
+    # Each pass reads its own slot ([cond, uncond, stg, modality]) of every `guider_input_fields` tuple, selected
+    # by this per-identifier index. Distinct slots (rather than cond/uncond only) let STG/modality pull the same
+    # conditioning as `pred_cond` while the denoiser overrides their per-pass model flags after preparation.
     _PREDICTION_INDEX = {"pred_cond": 0, "pred_uncond": 1, "pred_cond_stg": 2, "pred_cond_modality": 3}
 
     def prepare_inputs(self, guider_inputs: dict) -> list[BlockState]:
@@ -125,6 +127,16 @@ class LTX2Guidance(BaseGuidance):
         # inputs. The denoiser fills each returned batch's `noise_pred` before calling the guider to combine.
         return [
             self._prepare_batch(guider_inputs, self._PREDICTION_INDEX[pred], pred)
+            for pred in self.active_predictions()
+        ]
+
+    def prepare_inputs_from_block_state(self, data: BlockState, input_fields: dict) -> list[BlockState]:
+        # One identifier-tagged batch per active pass. Each value in `input_fields` maps a transformer argument to a
+        # 4-tuple of block-state attribute names indexed by `_PREDICTION_INDEX` ([cond, uncond, stg, modality]); the
+        # base helper reads the pass's slot off `data`. The denoiser then sets the per-pass model flags and fills
+        # each batch's `noise_pred` before calling the guider to combine.
+        return [
+            self._prepare_batch_from_block_state(input_fields, data, self._PREDICTION_INDEX[pred], pred)
             for pred in self.active_predictions()
         ]
 

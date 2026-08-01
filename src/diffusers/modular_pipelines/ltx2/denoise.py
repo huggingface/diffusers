@@ -13,6 +13,8 @@
 # limitations under the License.
 
 
+from typing import Any
+
 import torch
 
 from ...configuration_utils import FrozenDict
@@ -122,17 +124,65 @@ class LTX2Image2VideoLoopBeforeDenoiser(ModularPipelineBlocks):
         return components, block_state
 
 
+# Default per-pass conditioning map for `LTX2LoopDenoiser`: transformer argument -> block-state attribute names
+# indexed [cond, uncond, stg, modality]. STG and modality-isolation reuse the conditional (positive) tensors and
+# differ only in their per-pass model flags, which the denoiser sets after preparation.
+_DEFAULT_GUIDER_INPUT_FIELDS = {
+    "encoder_hidden_states": (
+        "connector_prompt_embeds",
+        "negative_connector_prompt_embeds",
+        "connector_prompt_embeds",
+        "connector_prompt_embeds",
+    ),
+    "audio_encoder_hidden_states": (
+        "connector_audio_prompt_embeds",
+        "negative_connector_audio_prompt_embeds",
+        "connector_audio_prompt_embeds",
+        "connector_audio_prompt_embeds",
+    ),
+    "encoder_attention_mask": (
+        "connector_attention_mask",
+        "negative_connector_attention_mask",
+        "connector_attention_mask",
+        "connector_attention_mask",
+    ),
+    "audio_encoder_attention_mask": (
+        "connector_attention_mask",
+        "negative_connector_attention_mask",
+        "connector_attention_mask",
+        "connector_attention_mask",
+    ),
+}
+
+
 class LTX2LoopDenoiser(ModularPipelineBlocks):
     model_name = "ltx2"
+
+    def __init__(self, guider_input_fields: dict[str, Any] = _DEFAULT_GUIDER_INPUT_FIELDS):
+        """Initialize the joint video+audio denoiser block for LTX-2.X.
+
+        Args:
+            guider_input_fields: Maps each transformer argument (e.g. "encoder_hidden_states") to the block-state
+                attribute names the guiders read for each guidance pass. Each value is a 4-tuple of names indexed
+                [cond, uncond, stg, modality] -- for example {"encoder_hidden_states": ("connector_prompt_embeds",
+                "negative_connector_prompt_embeds", "connector_prompt_embeds", "connector_prompt_embeds")} reads the
+                positive embeds for the conditional/STG/modality passes and the negative embeds for the
+                unconditional pass. A guider builds only the passes it declares active, so a swapped-in guider that
+                uses fewer passes (e.g. `ClassifierFreeGuidance` -> cond/uncond) reads only the first two slots.
+        """
+        if not isinstance(guider_input_fields, dict):
+            raise ValueError(f"guider_input_fields must be a dictionary but is {type(guider_input_fields)}")
+        self._guider_input_fields = guider_input_fields
+        super().__init__()
 
     @property
     def description(self) -> str:
         return (
             "Joint video+audio denoiser. Runs the transformer once per guidance pass (each a single batch), with "
-            "each pass's inputs and per-pass model flags (STG blocks, modality isolation) assembled by the guiders "
-            "via `prepare_inputs` and unioned across the video `guider` and audio `audio_guider`. Converts each "
-            "pass's velocity to x0 and delegates the per-modality CFG + STG + modality-isolation combine to the "
-            "two guiders."
+            "each pass's conditioning assembled by the guiders via `prepare_inputs_from_block_state` (driven by "
+            "`guider_input_fields`) and unioned across the video `guider` and audio `audio_guider`; the per-pass "
+            "model flags (STG blocks, modality isolation) are set by identifier afterwards. Converts each pass's "
+            "velocity to x0 and delegates the per-modality CFG + STG + modality-isolation combine to the two guiders."
         )
 
     @property
@@ -156,17 +206,11 @@ class LTX2LoopDenoiser(ModularPipelineBlocks):
 
     @property
     def inputs(self) -> list[InputParam]:
-        return [
+        inputs = [
             InputParam("latents", type_hint=torch.Tensor, required=True),
             InputParam("audio_latents", type_hint=torch.Tensor, required=True),
             InputParam("audio_scheduler", required=True),
             InputParam("audio_num_frames", type_hint=int, required=True),
-            InputParam("connector_prompt_embeds", type_hint=torch.Tensor, required=True),
-            InputParam("connector_audio_prompt_embeds", type_hint=torch.Tensor, required=True),
-            InputParam("connector_attention_mask", type_hint=torch.Tensor, required=True),
-            InputParam("negative_connector_prompt_embeds", type_hint=torch.Tensor, required=True),
-            InputParam("negative_connector_audio_prompt_embeds", type_hint=torch.Tensor, required=True),
-            InputParam("negative_connector_attention_mask", type_hint=torch.Tensor, required=True),
             InputParam("video_coords", type_hint=torch.Tensor, required=True),
             InputParam("audio_coords", type_hint=torch.Tensor, required=True),
             InputParam.template("num_inference_steps", required=True),
@@ -177,6 +221,14 @@ class LTX2LoopDenoiser(ModularPipelineBlocks):
             InputParam("use_cross_timestep", type_hint=bool, default=False),
             InputParam.template("attention_kwargs"),
         ]
+        # The per-pass conditioning tensors the guiders read off block_state, declared from the field map so a
+        # custom `guider_input_fields` stays self-describing.
+        guider_input_names = []
+        for value in self._guider_input_fields.values():
+            guider_input_names.extend(value if isinstance(value, tuple) else (value,))
+        for name in dict.fromkeys(guider_input_names):
+            inputs.append(InputParam(name, type_hint=torch.Tensor, required=True))
+        return inputs
 
     @torch.no_grad()
     def __call__(self, components, block_state: BlockState, i: int, t: torch.Tensor):
@@ -199,42 +251,41 @@ class LTX2LoopDenoiser(ModularPipelineBlocks):
         components.guider.set_state(step=i, num_inference_steps=block_state.num_inference_steps, timestep=t)
         components.audio_guider.set_state(step=i, num_inference_steps=block_state.num_inference_steps, timestep=t)
 
-        # Per-pass guider inputs: one slot per pass identifier [pred_cond, pred_uncond, pred_cond_stg,
-        # pred_cond_modality]. The per-pass model flags ride here alongside the encoder inputs, so each pass fully
-        # describes its own single-batch transformer forward -- CFG uses cond/uncond text; STG perturbs blocks
-        # (from the video guider config); modality-isolation disables A2V/V2A cross-attention.
-        stg_blocks = components.guider.spatio_temporal_guidance_blocks
-        video_cond, video_uncond = block_state.connector_prompt_embeds, block_state.negative_connector_prompt_embeds
-        audio_cond, audio_uncond = (
-            block_state.connector_audio_prompt_embeds,
-            block_state.negative_connector_audio_prompt_embeds,
-        )
-        mask_cond, mask_uncond = block_state.connector_attention_mask, block_state.negative_connector_attention_mask
-        guider_inputs = {
-            "encoder_hidden_states": (video_cond, video_uncond, video_cond, video_cond),
-            "audio_encoder_hidden_states": (audio_cond, audio_uncond, audio_cond, audio_cond),
-            "encoder_attention_mask": (mask_cond, mask_uncond, mask_cond, mask_cond),
-            "audio_encoder_attention_mask": (mask_cond, mask_uncond, mask_cond, mask_cond),
-            "spatio_temporal_guidance_blocks": (None, None, stg_blocks, None),
-            "isolate_modalities": (False, False, False, True),
-        }
-
-        # A pass runs if *either* modality wants it: union both guiders' `prepare_inputs` batches by identifier
-        # (batches for the same pass are identical, built from the same `guider_inputs`).
+        # Each guider maps block-state conditioning into one identifier-tagged batch per active pass via
+        # `_guider_input_fields` (transformer arg -> per-pass block-state attribute names, indexed
+        # [cond, uncond, stg, modality]). A pass runs if *either* modality wants it, so union both guiders' batches
+        # by identifier (same identifier => identical conditioning, built from the same map).
         identifier_key = LTX2Guidance._identifier_key
         batches_by_id = {}
         for guider in (components.guider, components.audio_guider):
-            for batch in guider.prepare_inputs(guider_inputs):
+            for batch in guider.prepare_inputs_from_block_state(block_state, self._guider_input_fields):
                 batches_by_id.setdefault(getattr(batch, identifier_key), batch)
         guider_state = list(batches_by_id.values())
 
+        # Per-pass model flags are pass-identity constants, not block-state conditioning, so they ride here rather
+        # than through the name-referenced field map. Keying off the identifier with a plain-conditional default
+        # keeps this correct for any guider: one that emits only a subset of passes (e.g. `ClassifierFreeGuidance`
+        # -> just `pred_cond`/`pred_uncond`) simply gets no STG blocks and no modality isolation.
+        stg_blocks = components.guider.spatio_temporal_guidance_blocks
+        pass_flags = {
+            "pred_cond": (None, False),
+            "pred_uncond": (None, False),
+            "pred_cond_stg": (stg_blocks, False),
+            "pred_cond_modality": (None, True),
+        }
+        for batch in guider_state:
+            batch.spatio_temporal_guidance_blocks, batch.isolate_modalities = pass_flags.get(
+                getattr(batch, identifier_key), (None, False)
+            )
+
         # One single-batch forward per pass; store each modality's x0 prediction on the batch. `prepare_models` /
         # `cleanup_models` are the standard per-pass hook points -- no-ops here, since LTX-2 carries its
-        # perturbations as transformer flags (in `guider_inputs`) rather than hooks.
-        input_keys = list(guider_inputs.keys())
+        # perturbations as transformer flags (set above) rather than hooks.
         for batch in guider_state:
             components.guider.prepare_models(components.transformer)
-            cond_kwargs = {key: getattr(batch, key) for key in input_keys}
+            cond_kwargs = {name: getattr(batch, name) for name in self._guider_input_fields}
+            cond_kwargs["spatio_temporal_guidance_blocks"] = batch.spatio_temporal_guidance_blocks
+            cond_kwargs["isolate_modalities"] = batch.isolate_modalities
             with components.transformer.cache_context(getattr(batch, identifier_key)):
                 noise_pred_video, noise_pred_audio = components.transformer(
                     hidden_states=block_state.latent_model_input,
