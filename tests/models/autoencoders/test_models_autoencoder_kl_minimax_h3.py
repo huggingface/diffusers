@@ -94,19 +94,23 @@ class AutoencoderKLMiniMaxH3TesterConfig(BaseModelTesterConfig):
 class TestAutoencoderKLMiniMaxH3(AutoencoderKLMiniMaxH3TesterConfig, ModelTesterMixin):
     """Core model tests for the MiniMax-H3 video autoencoder."""
 
-    @pytest.mark.skip(
-        reason="`_keep_in_fp32_modules` pins every module, so a `torch_dtype` cast at load time is refused by design"
-        " and `model.dtype` stays float32."
-    )
+    @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16], ids=["fp16", "bf16"])
     def test_from_save_pretrained_dtype(self, tmp_path, dtype):
-        pass
+        # `_keep_in_fp32_modules` pins every module: the released checkpoint is float32 and decoding through
+        # downcast weights degrades (the bfloat16 audio VAE decodes roughly 20 dB too quiet), so a requested
+        # `torch_dtype` cast at load time must be refused and the weights must stay float32.
+        model = self.model_class(**self.get_init_dict())
+        model.save_pretrained(tmp_path)
+        new_model = self.model_class.from_pretrained(tmp_path, torch_dtype=dtype)
+        assert new_model.dtype == torch.float32
 
-    @pytest.mark.skip(
-        reason="`_keep_in_fp32_modules` pins every module, so a `torch_dtype` cast at load time is refused by design"
-        " and `model.dtype` stays float32."
-    )
+    @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16], ids=["fp16", "bf16"])
     def test_from_pretrained_dtype_alias(self, tmp_path, dtype):
-        pass
+        # Same contract through the `dtype` alias.
+        model = self.model_class(**self.get_init_dict())
+        model.save_pretrained(tmp_path)
+        new_model = self.model_class.from_pretrained(tmp_path, dtype=dtype)
+        assert new_model.dtype == torch.float32
 
     def test_encode_decode_temporal_geometry(self):
         r"""
