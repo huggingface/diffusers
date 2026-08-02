@@ -15,6 +15,7 @@ from diffusers import (
 )
 
 from ...testing_utils import (
+    assert_tensors_close,
     backend_empty_cache,
     backend_synchronize,
     require_torch_neuron,
@@ -132,14 +133,26 @@ class TestFlux2KleinPipeline(Flux2KleinPipelineTesterConfig, PipelineTesterMixin
         image = pipe(**inputs).images
         image_slice_disabled = image[0, -1, -3:, -3:]
 
-        assert torch.allclose(original_image_slice, image_slice_fused, atol=1e-3, rtol=1e-3), (
-            "Fusion of QKV projections shouldn't affect the outputs."
+        assert_tensors_close(
+            original_image_slice,
+            image_slice_fused,
+            atol=1e-3,
+            rtol=1e-3,
+            msg="Fusion of QKV projections shouldn't affect the outputs.",
         )
-        assert torch.allclose(image_slice_fused, image_slice_disabled, atol=1e-3, rtol=1e-3), (
-            "Outputs, with QKV projection fusion enabled, shouldn't change when fused QKV projections are disabled."
+        assert_tensors_close(
+            image_slice_fused,
+            image_slice_disabled,
+            atol=1e-3,
+            rtol=1e-3,
+            msg="Outputs, with QKV projection fusion enabled, shouldn't change when fused QKV projections are disabled.",
         )
-        assert torch.allclose(original_image_slice, image_slice_disabled, atol=1e-2, rtol=1e-2), (
-            "Original outputs should match when fused QKV projections are disabled."
+        assert_tensors_close(
+            original_image_slice,
+            image_slice_disabled,
+            atol=1e-2,
+            rtol=1e-2,
+            msg="Original outputs should match when fused QKV projections are disabled.",
         )
 
     def test_image_output_shape(self):
@@ -173,7 +186,7 @@ class TestFlux2KleinPipeline(Flux2KleinPipelineTesterConfig, PipelineTesterMixin
             ]
         )
         # fmt: on
-        assert torch.allclose(expected_slice, generated_slice, atol=1e-4, rtol=1e-4)
+        assert_tensors_close(generated_slice, expected_slice, atol=1e-4, rtol=1e-4)
 
     @pytest.mark.skip("Needs to be revisited")
     def test_encode_prompt_works_in_isolation(self):
