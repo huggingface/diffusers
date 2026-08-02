@@ -131,6 +131,79 @@ class DreamLitePipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     test_layerwise_casting = False
     test_group_offloading = False
 
+    def test_legacy_block_type_aliases(self):
+        unet = DreamLiteUNetModel(
+            sample_size=8,
+            in_channels=4,
+            out_channels=4,
+            down_block_types=(
+                "CrossAttnDownRemoveSelfAttnBlock2D",
+                "CrossAttnDownRemoveSelfAttnBlock2D",
+                "CrossAttnDownBlock2D",
+            ),
+            mid_block_type="UNetMidBlock2DCrossAttn",
+            up_block_types=(
+                "CrossAttnUpBlock2D",
+                "CrossAttnUpRemoveSelfAttnBlock2DV1",
+                "UpBlock2D",
+            ),
+            block_out_channels=(16, 32, 64),
+            cross_attention_dim=_CROSS_ATTN_DIM,
+            attention_head_dim=8,
+            layers_per_block=1,
+            norm_num_groups=8,
+            transformer_layers_per_block=1,
+        )
+
+        self.assertEqual(
+            [block.__class__.__name__ for block in unet.down_blocks],
+            [
+                "DreamLiteCrossAttnNoSelfAttnDownBlock2D",
+                "DreamLiteCrossAttnNoSelfAttnDownBlock2D",
+                "DreamLiteCrossAttnDownBlock2D",
+            ],
+        )
+        self.assertEqual(unet.mid_block.__class__.__name__, "DreamLiteUNetMidBlock2DCrossAttn")
+        self.assertEqual(
+            [block.__class__.__name__ for block in unet.up_blocks],
+            [
+                "DreamLiteCrossAttnUpBlock2D",
+                "DreamLiteCrossAttnNoSelfAttnUpBlock2D",
+                "DreamLiteUpBlock2D",
+            ],
+        )
+
+        unet_with_non_v1_up_alias = DreamLiteUNetModel(
+            sample_size=8,
+            in_channels=4,
+            out_channels=4,
+            down_block_types=(
+                "CrossAttnDownRemoveSelfAttnBlock2D",
+                "CrossAttnDownRemoveSelfAttnBlock2D",
+                "CrossAttnDownBlock2D",
+            ),
+            mid_block_type="UNetMidBlock2DCrossAttn",
+            up_block_types=(
+                "CrossAttnUpBlock2D",
+                "CrossAttnUpRemoveSelfAttnBlock2D",
+                "UpBlock2D",
+            ),
+            block_out_channels=(16, 32, 64),
+            cross_attention_dim=_CROSS_ATTN_DIM,
+            attention_head_dim=8,
+            layers_per_block=1,
+            norm_num_groups=8,
+            transformer_layers_per_block=1,
+        )
+        self.assertEqual(
+            [block.__class__.__name__ for block in unet_with_non_v1_up_alias.up_blocks],
+            [
+                "DreamLiteCrossAttnUpBlock2D",
+                "DreamLiteCrossAttnNoSelfAttnUpBlock2D",
+                "DreamLiteUpBlock2D",
+            ],
+        )
+
     def get_dummy_components(self):
         torch.manual_seed(0)
         unet = DreamLiteUNetModel(
@@ -220,13 +293,6 @@ class DreamLitePipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         "the mixin's test_encode_prompt_works_in_isolation assumes single tensor return."
     )
     def test_encode_prompt_works_in_isolation(self, extra_required_param_value_dict=None, atol=1e-4, rtol=1e-4):
-        pass
-
-    @unittest.skip(
-        "Qwen3VLProcessor save_pretrained does not currently round-trip through DDUF "
-        "(image_processor sub-config is dropped); orthogonal to DreamLite."
-    )
-    def test_save_load_dduf(self, atol=1e-4, rtol=1e-4):
         pass
 
     @unittest.skip("DreamLite forces batch_size=1 internally.")

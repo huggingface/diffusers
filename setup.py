@@ -1,4 +1,4 @@
-# Copyright 2025 The HuggingFace Team. All rights reserved.
+# Copyright 2026 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -84,7 +84,6 @@ To create the package for PyPI.
     you need to go back to main before executing this.
 """
 
-import os
 import re
 import sys
 
@@ -99,21 +98,21 @@ _deps = [
     "accelerate>=0.31.0",
     "datasets",
     "filelock",
-    "flax>=0.4.1",
     "ftfy",
     "hf-doc-builder>=0.3.0",
     "httpx<1.0.0",
-    "huggingface-hub>=0.34.0,<2.0",
+    "huggingface-hub>=1.23.0,<2.0",
     "requests-mock==1.10.0",
     "importlib_metadata",
     "invisible-watermark>=0.2.0",
     "isort>=5.5.4",
-    "jax>=0.4.1",
-    "jaxlib>=0.4.1",
     "Jinja2",
     "torchsde",
     "note_seq",
     "librosa",
+    # librosa pulls in numba/llvmlite; pin to versions that support Python 3.10+
+    "llvmlite>=0.40.0",
+    "numba>=0.57.0",
     "numpy",
     "parameterized",
     "peft>=0.17.0",
@@ -123,7 +122,7 @@ _deps = [
     "pytest-xdist",
     "python>=3.10.0",
     "ruff==0.9.10",
-    "safetensors>=0.8.0-rc.0",
+    "safetensors>=0.8.0",
     "sentencepiece>=0.1.91,!=0.1.92",
     "GitPython<3.1.19",
     "scipy",
@@ -134,6 +133,7 @@ _deps = [
     "torchao>=0.7.0",
     "bitsandbytes>=0.43.3",
     "nvidia_modelopt[hf]>=0.33.1",
+    "sdnq>=0.2.2",
     "regex!=2019.12.17",
     "requests",
     "tensorboard",
@@ -228,6 +228,8 @@ extras["test"] = deps_list(
     "Jinja2",
     "invisible-watermark",
     "librosa",
+    "llvmlite",
+    "numba",
     "parameterized",
     "protobuf",
     "pytest",
@@ -250,16 +252,10 @@ extras["gguf"] = deps_list("gguf", "accelerate")
 extras["optimum_quanto"] = deps_list("optimum_quanto", "accelerate")
 extras["torchao"] = deps_list("torchao", "accelerate")
 extras["nvidia_modelopt"] = deps_list("nvidia_modelopt[hf]")
+extras["sdnq"] = deps_list("sdnq")
 extras["flashpack"] = deps_list("flashpack")
 
-if os.name == "nt":  # windows
-    extras["flax"] = []  # jax is not supported on windows
-else:
-    extras["flax"] = deps_list("jax", "jaxlib", "flax")
-
-extras["dev"] = (
-    extras["quality"] + extras["test"] + extras["training"] + extras["docs"] + extras["torch"] + extras["flax"]
-)
+extras["dev"] = extras["quality"] + extras["test"] + extras["training"] + extras["docs"] + extras["torch"]
 
 install_requires = [
     deps["importlib_metadata"],
@@ -277,11 +273,11 @@ version_range_max = max(sys.version_info[1], 10) + 1
 
 setup(
     name="diffusers",
-    version="0.39.0.dev0",  # expected format is one of x.y.z.dev0, or x.y.z.rc1 or x.y.z (no to dashes, yes to dots)
-    description="State-of-the-art diffusion in PyTorch and JAX.",
+    version="0.40.0.dev0",  # expected format is one of x.y.z.dev0, or x.y.z.rc1 or x.y.z (no to dashes, yes to dots)
+    description="State-of-the-art diffusion in PyTorch.",
     long_description=open("README.md", "r", encoding="utf-8").read(),
     long_description_content_type="text/markdown",
-    keywords="deep learning diffusion jax pytorch stable diffusion audioldm",
+    keywords="deep learning diffusion pytorch stable diffusion audioldm",
     license="Apache 2.0 License",
     author="The Hugging Face team (past and future) with the help of all our contributors (https://github.com/huggingface/diffusers/graphs/contributors)",
     author_email="diffusers@huggingface.co",

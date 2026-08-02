@@ -21,7 +21,7 @@ import torch.nn.functional as F
 
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...loaders import FromOriginalModelMixin, PeftAdapterMixin
-from ...utils import logging
+from ...utils import apply_lora_scale, logging
 from ...utils.torch_utils import maybe_allow_in_graph
 from ..attention import AttentionMixin, AttentionModuleMixin
 from ..attention_dispatch import dispatch_attention_fn
@@ -70,9 +70,14 @@ class Ideogram4MRoPE(nn.Module):
             raise ValueError(f"`position_ids` must have shape (B, L, 3), got {tuple(position_ids.shape)}.")
         batch_size, seq_len, _ = position_ids.shape
 
+        # Ideogram4's image position ids start at IMAGE_POSITION_OFFSET (65536). If an ambient autocast downcasts the
+        # matmul to bfloat16, the image positions will collapse to only a few distinct values because bfloat16 cannot
+        # represent consecutive integers at this value (after pos 65536 each 512-integer block will collapse to the
+        # same value), which causes the image to become essentially flat. Therefore, we need to disable autocast here.
         pos = position_ids.permute(2, 0, 1).to(dtype=torch.float32)
         inv_freq = self.inv_freq.to(dtype=torch.float32)[None, None, :, None].expand(3, batch_size, -1, 1)
-        freqs = inv_freq @ pos.unsqueeze(2)
+        with torch.autocast(device_type=position_ids.device.type, enabled=False):
+            freqs = inv_freq @ pos.unsqueeze(2)
         freqs = freqs.transpose(2, 3)  # (3, B, L, inv_freq_size)
 
         # Interleaved mrope: pull H freqs into idx 1 mod 3, W freqs into idx 2 mod 3.
@@ -83,7 +88,7 @@ class Ideogram4MRoPE(nn.Module):
             freqs_t[..., idx] = freqs[axis][..., idx]
 
         emb = torch.cat((freqs_t, freqs_t), dim=-1)
-        return emb.cos(), emb.sin()
+        return emb.cos().float(), emb.sin().float()
 
 
 class Ideogram4AttnProcessor:
@@ -365,6 +370,7 @@ class Ideogram4Transformer2DModel(ModelMixin, ConfigMixin, AttentionMixin, PeftA
             adaln_dim=adaln_dim,
         )
 
+    @apply_lora_scale("attention_kwargs")
     def forward(
         self,
         hidden_states: torch.Tensor,
@@ -373,6 +379,7 @@ class Ideogram4Transformer2DModel(ModelMixin, ConfigMixin, AttentionMixin, PeftA
         position_ids: torch.Tensor,
         segment_ids: torch.Tensor,
         indicator: torch.Tensor,
+        attention_kwargs: dict | None = None,
         return_dict: bool = True,
     ) -> Transformer2DModelOutput | tuple[torch.Tensor]:
         r"""
@@ -391,6 +398,9 @@ class Ideogram4Transformer2DModel(ModelMixin, ConfigMixin, AttentionMixin, PeftA
                 Per-token sample id within a packed batch. Positions sharing a `segment_id` attend to each other.
             indicator (`torch.Tensor` of shape `(batch_size, sequence_length)`):
                 Per-token role: `LLM_TOKEN_INDICATOR` (text) or `OUTPUT_IMAGE_INDICATOR` (image).
+            attention_kwargs (`dict`, *optional*):
+                A kwargs dictionary passed along to the attention processor. A `"scale"` entry scales the LoRA weights
+                (when the PEFT backend is active).
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether to return a [`~models.modeling_outputs.Transformer2DModelOutput`] instead of a plain tuple.
 

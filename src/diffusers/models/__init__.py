@@ -1,4 +1,4 @@
-# Copyright 2025 The HuggingFace Team. All rights reserved.
+# Copyright 2026 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -17,7 +17,6 @@ from typing import TYPE_CHECKING
 from ..utils import (
     DIFFUSERS_SLOW_IMPORT,
     _LazyModule,
-    is_flax_available,
     is_torch_available,
 )
 
@@ -121,7 +120,9 @@ if is_torch_available():
     _import_structure["transformers.transformer_hunyuanimage"] = ["HunyuanImageTransformer2DModel"]
     _import_structure["transformers.transformer_ideogram4"] = ["Ideogram4Transformer2DModel"]
     _import_structure["transformers.transformer_joyimage"] = ["JoyImageEditTransformer3DModel"]
+    _import_structure["transformers.transformer_joyimage_edit_plus"] = ["JoyImageEditPlusTransformer3DModel"]
     _import_structure["transformers.transformer_kandinsky"] = ["Kandinsky5Transformer3DModel"]
+    _import_structure["transformers.transformer_krea2"] = ["Krea2Transformer2DModel"]
     _import_structure["transformers.transformer_longcat_audio_dit"] = ["LongCatAudioDiTTransformer"]
     _import_structure["transformers.transformer_longcat_image"] = ["LongCatImageTransformer2DModel"]
     _import_structure["transformers.transformer_ltx"] = ["LTXVideoTransformer3DModel"]
@@ -153,11 +154,6 @@ if is_torch_available():
     _import_structure["unets.unet_spatio_temporal_condition"] = ["UNetSpatioTemporalConditionModel"]
     _import_structure["unets.unet_stable_cascade"] = ["StableCascadeUNet"]
     _import_structure["unets.uvit_2d"] = ["UVit2DModel"]
-
-if is_flax_available():
-    _import_structure["controlnets.controlnet_flax"] = ["FlaxControlNetModel"]
-    _import_structure["unets.unet_2d_condition_flax"] = ["FlaxUNet2DConditionModel"]
-    _import_structure["vae_flax"] = ["FlaxAutoencoderKL"]
 
 
 if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
@@ -253,8 +249,10 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             HunyuanVideoFramepackTransformer3DModel,
             HunyuanVideoTransformer3DModel,
             Ideogram4Transformer2DModel,
+            JoyImageEditPlusTransformer3DModel,
             JoyImageEditTransformer3DModel,
             Kandinsky5Transformer3DModel,
+            Krea2Transformer2DModel,
             LatteTransformer3DModel,
             LongCatAudioDiTTransformer,
             LongCatImageTransformer2DModel,
@@ -298,11 +296,6 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             UNetSpatioTemporalConditionModel,
             UVit2DModel,
         )
-
-    if is_flax_available():
-        from .controlnets import FlaxControlNetModel
-        from .unets import FlaxUNet2DConditionModel
-        from .vae_flax import FlaxAutoencoderKL
 
 else:
     import sys

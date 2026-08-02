@@ -83,6 +83,12 @@ else:
         "Ideogram4AutoBlocks",
         "Ideogram4ModularPipeline",
     ]
+    _import_structure["krea2"] = [
+        "Krea2AutoBlocks",
+        "Krea2ModularPipeline",
+        "Krea2TurboAutoBlocks",
+        "Krea2TurboModularPipeline",
+    ]
     _import_structure["qwenimage"] = [
         "QwenImageAutoBlocks",
         "QwenImageModularPipeline",
@@ -96,6 +102,12 @@ else:
     _import_structure["anima"] = [
         "AnimaAutoBlocks",
         "AnimaModularPipeline",
+    ]
+    _import_structure["cosmos"] = [
+        "Cosmos3DistilledBlocks",
+        "Cosmos3DistilledModularPipeline",
+        "Cosmos3OmniBlocks",
+        "Cosmos3OmniModularPipeline",
     ]
     _import_structure["ernie_image"] = [
         "ErnieImageAutoBlocks",
@@ -124,6 +136,12 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     else:
         from .anima import AnimaAutoBlocks, AnimaModularPipeline
         from .components_manager import ComponentsManager
+        from .cosmos import (
+            Cosmos3DistilledBlocks,
+            Cosmos3DistilledModularPipeline,
+            Cosmos3OmniBlocks,
+            Cosmos3OmniModularPipeline,
+        )
         from .ernie_image import ErnieImageAutoBlocks, ErnieImageModularPipeline
         from .flux import FluxAutoBlocks, FluxKontextAutoBlocks, FluxKontextModularPipeline, FluxModularPipeline
         from .flux2 import (
@@ -149,6 +167,12 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .ideogram4 import (
             Ideogram4AutoBlocks,
             Ideogram4ModularPipeline,
+        )
+        from .krea2 import (
+            Krea2AutoBlocks,
+            Krea2ModularPipeline,
+            Krea2TurboAutoBlocks,
+            Krea2TurboModularPipeline,
         )
         from .ltx import LTXAutoBlocks, LTXModularPipeline
         from .modular_pipeline import (

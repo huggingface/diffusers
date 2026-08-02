@@ -47,11 +47,11 @@ import torch
 
 unet = UNet2DConditionModel.from_pretrained(
     "latent-consistency/lcm-sdxl",
-    torch_dtype=torch.float16,
+    dtype=torch.float16,
     variant="fp16",
 )
 pipe = StableDiffusionXLPipeline.from_pretrained(
-    "stabilityai/stable-diffusion-xl-base-1.0", unet=unet, torch_dtype=torch.float16, variant="fp16",
+    "stabilityai/stable-diffusion-xl-base-1.0", unet=unet, dtype=torch.float16, variant="fp16",
 ).to("cuda")
 pipe.scheduler = LCMScheduler.from_config(pipe.scheduler.config)
 
@@ -85,7 +85,7 @@ from diffusers import DiffusionPipeline, LCMScheduler
 pipe = DiffusionPipeline.from_pretrained(
     "stabilityai/stable-diffusion-xl-base-1.0",
     variant="fp16",
-    torch_dtype=torch.float16
+    dtype=torch.float16
 ).to("cuda")
 pipe.scheduler = LCMScheduler.from_config(pipe.scheduler.config)
 pipe.load_lora_weights("latent-consistency/lcm-lora-sdxl")
@@ -123,13 +123,13 @@ from diffusers.utils import load_image
 unet = UNet2DConditionModel.from_pretrained(
     "SimianLuo/LCM_Dreamshaper_v7",
     subfolder="unet",
-    torch_dtype=torch.float16,
+    dtype=torch.float16,
 )
 
 pipe = AutoPipelineForImage2Image.from_pretrained(
     "Lykon/dreamshaper-7",
     unet=unet,
-    torch_dtype=torch.float16,
+    dtype=torch.float16,
     variant="fp16",
 ).to("cuda")
 pipe.scheduler = LCMScheduler.from_config(pipe.scheduler.config)
@@ -174,7 +174,7 @@ from diffusers.utils import make_image_grid, load_image
 
 pipe = AutoPipelineForImage2Image.from_pretrained(
     "Lykon/dreamshaper-7",
-    torch_dtype=torch.float16,
+    dtype=torch.float16,
     variant="fp16",
 ).to("cuda")
 
@@ -222,7 +222,7 @@ from diffusers.utils import load_image, make_image_grid
 
 pipe = AutoPipelineForInpainting.from_pretrained(
     "stable-diffusion-v1-5/stable-diffusion-inpainting",
-    torch_dtype=torch.float16,
+    dtype=torch.float16,
     variant="fp16",
 ).to("cuda")
 
@@ -276,11 +276,11 @@ import torch
 
 unet = UNet2DConditionModel.from_pretrained(
     "latent-consistency/lcm-sdxl",
-    torch_dtype=torch.float16,
+    dtype=torch.float16,
     variant="fp16",
 )
 pipe = StableDiffusionXLPipeline.from_pretrained(
-    "stabilityai/stable-diffusion-xl-base-1.0", unet=unet, torch_dtype=torch.float16, variant="fp16",
+    "stabilityai/stable-diffusion-xl-base-1.0", unet=unet, dtype=torch.float16, variant="fp16",
 ).to("cuda")
 pipe.scheduler = LCMScheduler.from_config(pipe.scheduler.config)
 pipe.load_lora_weights("TheLastBen/Papercut_SDXL", weight_name="papercut.safetensors", adapter_name="papercut")
@@ -309,7 +309,7 @@ from diffusers import DiffusionPipeline, LCMScheduler
 pipe = DiffusionPipeline.from_pretrained(
     "stabilityai/stable-diffusion-xl-base-1.0",
     variant="fp16",
-    torch_dtype=torch.float16
+    dtype=torch.float16
 ).to("cuda")
 
 pipe.scheduler = LCMScheduler.from_config(pipe.scheduler.config)
@@ -369,11 +369,11 @@ image = image[:, :, None]
 image = np.concatenate([image, image, image], axis=2)
 canny_image = Image.fromarray(image)
 
-controlnet = ControlNetModel.from_pretrained("lllyasviel/sd-controlnet-canny", torch_dtype=torch.float16)
+controlnet = ControlNetModel.from_pretrained("lllyasviel/sd-controlnet-canny", dtype=torch.float16)
 pipe = StableDiffusionControlNetPipeline.from_pretrained(
     "SimianLuo/LCM_Dreamshaper_v7",
     controlnet=controlnet,
-    torch_dtype=torch.float16,
+    dtype=torch.float16,
     safety_checker=None,
 ).to("cuda")
 pipe.scheduler = LCMScheduler.from_config(pipe.scheduler.config)
@@ -423,11 +423,11 @@ image = image[:, :, None]
 image = np.concatenate([image, image, image], axis=2)
 canny_image = Image.fromarray(image)
 
-controlnet = ControlNetModel.from_pretrained("lllyasviel/sd-controlnet-canny", torch_dtype=torch.float16)
+controlnet = ControlNetModel.from_pretrained("lllyasviel/sd-controlnet-canny", dtype=torch.float16)
 pipe = StableDiffusionControlNetPipeline.from_pretrained(
     "stable-diffusion-v1-5/stable-diffusion-v1-5",
     controlnet=controlnet,
-    torch_dtype=torch.float16,
+    dtype=torch.float16,
     safety_checker=None,
     variant="fp16"
 ).to("cuda")
@@ -491,18 +491,18 @@ image = image[:, :, None]
 image = np.concatenate([image, image, image], axis=2)
 canny_image = Image.fromarray(image).resize((1024, 1216))
 
-adapter = T2IAdapter.from_pretrained("TencentARC/t2i-adapter-canny-sdxl-1.0", torch_dtype=torch.float16, variant="fp16").to("cuda")
+adapter = T2IAdapter.from_pretrained("TencentARC/t2i-adapter-canny-sdxl-1.0", dtype=torch.float16, variant="fp16").to("cuda")
 
 unet = UNet2DConditionModel.from_pretrained(
     "latent-consistency/lcm-sdxl",
-    torch_dtype=torch.float16,
+    dtype=torch.float16,
     variant="fp16",
 )
 pipe = StableDiffusionXLAdapterPipeline.from_pretrained(
     "stabilityai/stable-diffusion-xl-base-1.0",
     unet=unet,
     adapter=adapter,
-    torch_dtype=torch.float16,
+    dtype=torch.float16,
     variant="fp16",
 ).to("cuda")
 
@@ -557,12 +557,12 @@ image = image[:, :, None]
 image = np.concatenate([image, image, image], axis=2)
 canny_image = Image.fromarray(image).resize((1024, 1024))
 
-adapter = T2IAdapter.from_pretrained("TencentARC/t2i-adapter-canny-sdxl-1.0", torch_dtype=torch.float16, variant="fp16").to("cuda")
+adapter = T2IAdapter.from_pretrained("TencentARC/t2i-adapter-canny-sdxl-1.0", dtype=torch.float16, variant="fp16").to("cuda")
 
 pipe = StableDiffusionXLAdapterPipeline.from_pretrained(
     "stabilityai/stable-diffusion-xl-base-1.0",
     adapter=adapter,
-    torch_dtype=torch.float16,
+    dtype=torch.float16,
     variant="fp16",
 ).to("cuda")
 
@@ -643,10 +643,6 @@ export_to_gif(frames, "animation.gif")
     - __call__
     - enable_freeu
     - disable_freeu
-    - enable_vae_slicing
-    - disable_vae_slicing
-    - enable_vae_tiling
-    - disable_vae_tiling
 
 ## LatentConsistencyModelImg2ImgPipeline
 
@@ -655,10 +651,6 @@ export_to_gif(frames, "animation.gif")
     - __call__
     - enable_freeu
     - disable_freeu
-    - enable_vae_slicing
-    - disable_vae_slicing
-    - enable_vae_tiling
-    - disable_vae_tiling
 
 ## StableDiffusionPipelineOutput
 

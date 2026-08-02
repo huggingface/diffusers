@@ -1,4 +1,4 @@
-# Copyright 2025 The HuggingFace Team. All rights reserved.
+# Copyright 2026 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -19,7 +19,6 @@ from ..utils import (
     OptionalDependencyNotAvailable,
     _LazyModule,
     get_objects_from_module,
-    is_flax_available,
     is_scipy_available,
     is_torch_available,
     is_torchsde_available,
@@ -51,12 +50,14 @@ else:
     _import_structure["scheduling_ddpm_parallel"] = ["DDPMParallelScheduler"]
     _import_structure["scheduling_ddpm_wuerstchen"] = ["DDPMWuerstchenScheduler"]
     _import_structure["scheduling_deis_multistep"] = ["DEISMultistepScheduler"]
+    _import_structure["scheduling_discrete_ddim"] = ["DiscreteDDIMScheduler", "DiscreteDDIMSchedulerOutput"]
     _import_structure["scheduling_dpm_cogvideox"] = ["CogVideoXDPMScheduler"]
     _import_structure["scheduling_dpmsolver_multistep"] = ["DPMSolverMultistepScheduler"]
     _import_structure["scheduling_dpmsolver_multistep_inverse"] = ["DPMSolverMultistepInverseScheduler"]
     _import_structure["scheduling_dpmsolver_singlestep"] = ["DPMSolverSinglestepScheduler"]
     _import_structure["scheduling_edm_dpmsolver_multistep"] = ["EDMDPMSolverMultistepScheduler"]
     _import_structure["scheduling_edm_euler"] = ["EDMEulerScheduler"]
+    _import_structure["scheduling_entropy_bound"] = ["EntropyBoundScheduler", "EntropyBoundSchedulerOutput"]
     _import_structure["scheduling_euler_ancestral_discrete"] = ["EulerAncestralDiscreteScheduler"]
     _import_structure["scheduling_euler_discrete"] = ["EulerDiscreteScheduler"]
     _import_structure["scheduling_flow_map_euler_discrete"] = ["FlowMapEulerDiscreteScheduler"]
@@ -81,31 +82,6 @@ else:
     _import_structure["scheduling_unipc_multistep"] = ["UniPCMultistepScheduler"]
     _import_structure["scheduling_utils"] = ["AysSchedules", "KarrasDiffusionSchedulers", "SchedulerMixin"]
     _import_structure["scheduling_vq_diffusion"] = ["VQDiffusionScheduler"]
-
-try:
-    if not is_flax_available():
-        raise OptionalDependencyNotAvailable()
-except OptionalDependencyNotAvailable:
-    from ..utils import dummy_flax_objects  # noqa F403
-
-    _dummy_modules.update(get_objects_from_module(dummy_flax_objects))
-
-else:
-    _import_structure["scheduling_ddim_flax"] = ["FlaxDDIMScheduler"]
-    _import_structure["scheduling_ddpm_flax"] = ["FlaxDDPMScheduler"]
-    _import_structure["scheduling_dpmsolver_multistep_flax"] = ["FlaxDPMSolverMultistepScheduler"]
-    _import_structure["scheduling_euler_discrete_flax"] = ["FlaxEulerDiscreteScheduler"]
-    _import_structure["scheduling_karras_ve_flax"] = ["FlaxKarrasVeScheduler"]
-    _import_structure["scheduling_lms_discrete_flax"] = ["FlaxLMSDiscreteScheduler"]
-    _import_structure["scheduling_pndm_flax"] = ["FlaxPNDMScheduler"]
-    _import_structure["scheduling_sde_ve_flax"] = ["FlaxScoreSdeVeScheduler"]
-    _import_structure["scheduling_utils_flax"] = [
-        "FlaxKarrasDiffusionSchedulers",
-        "FlaxSchedulerMixin",
-        "FlaxSchedulerOutput",
-        "broadcast_to_shape_from_left",
-    ]
-
 
 try:
     if not (is_torch_available() and is_scipy_available()):
@@ -133,7 +109,6 @@ else:
 if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     from ..utils import (
         OptionalDependencyNotAvailable,
-        is_flax_available,
         is_scipy_available,
         is_torch_available,
         is_torchsde_available,
@@ -158,12 +133,14 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .scheduling_ddpm_parallel import DDPMParallelScheduler
         from .scheduling_ddpm_wuerstchen import DDPMWuerstchenScheduler
         from .scheduling_deis_multistep import DEISMultistepScheduler
+        from .scheduling_discrete_ddim import DiscreteDDIMScheduler, DiscreteDDIMSchedulerOutput
         from .scheduling_dpm_cogvideox import CogVideoXDPMScheduler
         from .scheduling_dpmsolver_multistep import DPMSolverMultistepScheduler
         from .scheduling_dpmsolver_multistep_inverse import DPMSolverMultistepInverseScheduler
         from .scheduling_dpmsolver_singlestep import DPMSolverSinglestepScheduler
         from .scheduling_edm_dpmsolver_multistep import EDMDPMSolverMultistepScheduler
         from .scheduling_edm_euler import EDMEulerScheduler
+        from .scheduling_entropy_bound import EntropyBoundScheduler, EntropyBoundSchedulerOutput
         from .scheduling_euler_ancestral_discrete import EulerAncestralDiscreteScheduler
         from .scheduling_euler_discrete import EulerDiscreteScheduler
         from .scheduling_flow_map_euler_discrete import FlowMapEulerDiscreteScheduler
@@ -188,26 +165,6 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .scheduling_unipc_multistep import UniPCMultistepScheduler
         from .scheduling_utils import AysSchedules, KarrasDiffusionSchedulers, SchedulerMixin
         from .scheduling_vq_diffusion import VQDiffusionScheduler
-    try:
-        if not is_flax_available():
-            raise OptionalDependencyNotAvailable()
-    except OptionalDependencyNotAvailable:
-        from ..utils.dummy_flax_objects import *  # noqa F403
-    else:
-        from .scheduling_ddim_flax import FlaxDDIMScheduler
-        from .scheduling_ddpm_flax import FlaxDDPMScheduler
-        from .scheduling_dpmsolver_multistep_flax import FlaxDPMSolverMultistepScheduler
-        from .scheduling_euler_discrete_flax import FlaxEulerDiscreteScheduler
-        from .scheduling_karras_ve_flax import FlaxKarrasVeScheduler
-        from .scheduling_lms_discrete_flax import FlaxLMSDiscreteScheduler
-        from .scheduling_pndm_flax import FlaxPNDMScheduler
-        from .scheduling_sde_ve_flax import FlaxScoreSdeVeScheduler
-        from .scheduling_utils_flax import (
-            FlaxKarrasDiffusionSchedulers,
-            FlaxSchedulerMixin,
-            FlaxSchedulerOutput,
-            broadcast_to_shape_from_left,
-        )
 
     try:
         if not (is_torch_available() and is_scipy_available()):

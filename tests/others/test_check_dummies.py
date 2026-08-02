@@ -1,4 +1,4 @@
-# Copyright 2025 The HuggingFace Team. All rights reserved.
+# Copyright 2026 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -54,14 +54,11 @@ class CheckDummiesTester(unittest.TestCase):
         # We don't assert on the exact list of keys to allow for smooth grow of backend-specific objects
         self.assertIn("torch", objects)
         self.assertIn("torch_and_transformers", objects)
-        self.assertIn("flax_and_transformers", objects)
         self.assertIn("torch_and_transformers_and_onnx", objects)
 
         # Likewise, we can't assert on the exact content of a key
         self.assertIn("UNet2DModel", objects["torch"])
-        self.assertIn("FlaxUNet2DConditionModel", objects["flax"])
         self.assertIn("StableDiffusionPipeline", objects["torch_and_transformers"])
-        self.assertIn("FlaxStableDiffusionPipeline", objects["flax_and_transformers"])
         self.assertIn("LMSDiscreteScheduler", objects["torch_and_scipy"])
         self.assertIn("OnnxStableDiffusionPipeline", objects["torch_and_transformers_and_onnx"])
 

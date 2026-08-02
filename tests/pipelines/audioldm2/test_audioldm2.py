@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2025 HuggingFace Inc.
+# Copyright 2026 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -75,8 +75,6 @@ class AudioLDM2PipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             "callback_steps",
         ]
     )
-
-    supports_dduf = False
 
     def get_dummy_components(self):
         torch.manual_seed(0)
