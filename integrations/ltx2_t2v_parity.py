@@ -68,20 +68,38 @@ GUIDANCE = {
 USE_CROSS_TIMESTEP = True
 
 
-def _make_guiders(args, guidance: dict) -> tuple[LTX2Guidance, LTX2Guidance]:
-    """Build the video/audio guiders from the flat GUIDANCE dict (the modular equivalent of the call kwargs)."""
+def _resolve_guidance(args) -> dict:
+    """Apply the CLI guidance overrides on top of the GUIDANCE defaults. The SAME resolved dict drives BOTH the
+    standard pipeline (as `__call__` kwargs) and the modular guiders, so an override like `--guidance_scale 1.0`
+    disables CFG on both sides -- otherwise the standard run keeps the hardcoded GUIDANCE and the comparison is
+    apples-to-oranges."""
+    return {
+        "guidance_scale": args.guidance_scale or GUIDANCE["guidance_scale"],
+        "stg_scale": args.stg_scale or GUIDANCE["stg_scale"],
+        "modality_scale": args.mod_scale or GUIDANCE["modality_scale"],
+        "guidance_rescale": args.guidance_rescale or GUIDANCE["guidance_rescale"],
+        "audio_guidance_scale": args.audio_guidance_scale or GUIDANCE["audio_guidance_scale"],
+        "audio_stg_scale": args.audio_stg_scale or GUIDANCE["audio_stg_scale"],
+        "audio_modality_scale": args.audio_mod_scale or GUIDANCE["audio_modality_scale"],
+        "audio_guidance_rescale": args.audio_guidance_rescale or GUIDANCE["audio_guidance_rescale"],
+        "spatio_temporal_guidance_blocks": GUIDANCE["spatio_temporal_guidance_blocks"],
+    }
+
+
+def _make_guiders(guidance: dict) -> tuple[LTX2Guidance, LTX2Guidance]:
+    """Build the video/audio guiders from the resolved guidance dict (the modular equivalent of the call kwargs)."""
     video_guider = LTX2Guidance(
-        guidance_scale=args.guidance_scale or guidance["guidance_scale"],
-        stg_scale=args.stg_scale or guidance["stg_scale"],
-        modality_scale=args.mod_scale or guidance["modality_scale"],
-        guidance_rescale=args.guidance_rescale or guidance["guidance_rescale"],
+        guidance_scale=guidance["guidance_scale"],
+        stg_scale=guidance["stg_scale"],
+        modality_scale=guidance["modality_scale"],
+        guidance_rescale=guidance["guidance_rescale"],
         spatio_temporal_guidance_blocks=guidance["spatio_temporal_guidance_blocks"],
     )
     audio_guider = LTX2Guidance(
-        guidance_scale=args.audio_guidance_scale or guidance["audio_guidance_scale"],
-        stg_scale=args.audio_stg_scale or guidance["audio_stg_scale"],
-        modality_scale=args.audio_mod_scale or guidance["audio_modality_scale"],
-        guidance_rescale=args.audio_guidance_rescale or guidance["audio_guidance_rescale"],
+        guidance_scale=guidance["audio_guidance_scale"],
+        stg_scale=guidance["audio_stg_scale"],
+        modality_scale=guidance["audio_modality_scale"],
+        guidance_rescale=guidance["audio_guidance_rescale"],
         # STG blocks are shared (taken from the video guider at plan time); audio only sets its STG *scale*.
     )
     return video_guider, audio_guider
@@ -186,6 +204,9 @@ def main(args):
         "output_type": "latent",
     }
 
+    # Resolve guidance once (CLI overrides on top of GUIDANCE defaults) and use it for BOTH pipelines.
+    guidance = _resolve_guidance(args)
+
     # 2. Standard run — guidance scales passed as `__call__` kwargs.
     print("Running standard LTX2Pipeline ...")
     generator = torch.Generator(args.device).manual_seed(args.seed)
@@ -194,7 +215,7 @@ def main(args):
         enable_prompt_enhancement=False,  # keep raw prompt for a deterministic comparison
         return_dict=False,
         **common_kwargs,
-        **GUIDANCE,
+        **guidance,
     )
 
     # 3. Build the modular t2v pipeline reusing the SAME component objects (identical weights), and configure the
@@ -204,7 +225,7 @@ def main(args):
     mod.update_components(**{name: getattr(std, name) for name in SHARED_COMPONENTS})
     if hasattr(std, "duration_head"):
         mod.update_components(duration_head=getattr(std, "duration_head"))
-    video_guider, audio_guider = _make_guiders(args, GUIDANCE)
+    video_guider, audio_guider = _make_guiders(guidance)
     mod.update_components(guider=video_guider, audio_guider=audio_guider)
 
     # 4. Modular run — guidance comes from the guiders, so `GUIDANCE` is NOT passed here.
