@@ -527,6 +527,10 @@ class AutoencoderKLMiniMaxH3Audio(ModelMixin, ConfigMixin, AttentionMixin):
     """
 
     _supports_gradient_checkpointing = False
+    # The released checkpoint is float32 and the DAC/BigVGAN stack (weight-normalized convolutions, Snake
+    # activations) degrades audibly under bfloat16 (roughly 20 dB quieter decodes), so a pipeline-level
+    # `torch_dtype=torch.bfloat16` must not downcast the weights.
+    _keep_in_fp32_modules = ["encoder", "decoder", "pre_block", "dec_in_proj", "mean_proj", "logs_proj"]
 
     @register_to_config
     def __init__(

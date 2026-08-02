@@ -526,6 +526,10 @@ class AutoencoderKLMiniMaxH3(ModelMixin, ConfigMixin, AttentionMixin, Autoencode
     _no_split_modules = ["MiniMaxH3VideoResnetBlock3d", "MiniMaxH3VideoTransformerBlock"]
     _repeated_blocks = ["MiniMaxH3VideoTransformerBlock"]
     _skip_layerwise_casting_patterns = ["norm"]
+    # The released checkpoint is float32 and the verified decode recipe is float16 *autocast over float32 weights*
+    # (see `decode`). A pipeline-level `torch_dtype=torch.bfloat16` must therefore not downcast the weights, so every
+    # top-level module is pinned, mirroring the transformer's mixed-precision contract.
+    _keep_in_fp32_modules = ["encoder", "decoder", "quant_conv", "post_quant_conv"]
 
     @register_to_config
     def __init__(
