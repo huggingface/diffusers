@@ -1,7 +1,57 @@
-from ...utils import is_torch_available
+import sys
+import types
+
+from ...utils import deprecate, is_torch_available
+
+
+class _DeprecatedModuleAlias(types.ModuleType):
+    """Backwards-compat alias for a transformer module that's been moved to a subpackage.
+
+    Lives only in ``sys.modules`` — no stub file. Emits a one-time ``deprecate`` warning on first attribute access,
+    then forwards every attribute lookup to the new target module. Used when a flat ``transformer_<name>.py`` is split
+    into a ``<name>/`` subpackage and we want the old import path to keep working for a release cycle.
+    """
+
+    def __init__(self, old_dotted_path: str, target: types.ModuleType):
+        super().__init__(target.__name__, target.__doc__)
+        # Bypass __getattr__ when writing internals.
+        self.__dict__["_target"] = target
+        self.__dict__["_old_path"] = old_dotted_path
+        self.__dict__["_warned"] = False
+
+    def __getattr__(self, name):
+        if not self.__dict__["_warned"]:
+            self.__dict__["_warned"] = True
+            old = self.__dict__["_old_path"]
+            new = self.__dict__["_target"].__name__
+            deprecate(
+                old,
+                "1.0.0",
+                f"Importing from `{old}` is deprecated. Import from `{new}` instead.",
+                standard_warn=True,
+                stacklevel=3,
+            )
+        return getattr(self.__dict__["_target"], name)
+
+
+def _register_legacy_module_alias(old_name: str, new_name: str) -> None:
+    """Register ``old_name`` as a deprecated alias for the already-loaded ``new_name`` submodule.
+
+    Both names are relative to ``diffusers.models.transformers``. The new submodule must already be in ``sys.modules``
+    (loaded by a prior ``from .<new_name> import ...`` in this file).
+    """
+    old_dotted = f"{__name__}.{old_name}"
+    target = sys.modules[f"{__name__}.{new_name}"]
+    sys.modules[old_dotted] = _DeprecatedModuleAlias(old_dotted, target)
 
 
 if is_torch_available():
+    # Load flux first and install the legacy alias before any other transformer module imports,
+    # since some of them still pull from `transformer_flux` during their own load.
+    from .flux import FluxTransformer2DModel
+
+    _register_legacy_module_alias("transformer_flux", "flux")
+
     from .ace_step_transformer import AceStepTransformer1DModel
     from .auraflow_transformer_2d import AuraFlowTransformer2DModel
     from .cogvideox_transformer_3d import CogVideoXTransformer3DModel
@@ -31,7 +81,6 @@ if is_torch_available():
     from .transformer_cosmos3 import Cosmos3OmniTransformer
     from .transformer_easyanimate import EasyAnimateTransformer3DModel
     from .transformer_ernie_image import ErnieImageTransformer2DModel
-    from .transformer_flux import FluxTransformer2DModel
     from .transformer_flux2 import Flux2Transformer2DModel
     from .transformer_glm_image import GlmImageTransformer2DModel
     from .transformer_helios import HeliosTransformer3DModel

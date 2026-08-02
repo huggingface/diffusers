@@ -297,7 +297,7 @@ class Krea2FinalLayer(nn.Module):
         return self.linear(hidden_states)
 
 
-# Copied from diffusers.models.transformers.transformer_flux.FluxPosEmbed with FluxPosEmbed->Krea2RotaryPosEmbed
+# Copied from diffusers.models.transformers.flux.model.FluxPosEmbed with FluxPosEmbed->Krea2RotaryPosEmbed
 class Krea2RotaryPosEmbed(nn.Module):
     # modified from https://github.com/black-forest-labs/flux/blob/c00d7c60b085fce8058b9df845e036090873f2ce/src/flux/modules/layers.py#L11
     def __init__(self, theta: int, axes_dim: list[int]):
