@@ -48,7 +48,7 @@ TEST_REFERENCE_IMAGE_SHORT_EDGE = 64
 
 # Both blocksets read the same repository, as the released one does: `transformer/` serves the `t2va` / `fl2va` half
 # and `transformer_ref/` the `ref2va` one, every other component is shared.
-TINY_MODULAR_REPO_ID = "diffusers-internal-dev/tiny-minimax-h3-modular-pipe"
+TINY_MODULAR_REPO_ID = "hf-internal-testing/tiny-minimax-h3-modular-pipe"
 
 
 T2VA_WORKFLOW = [
