@@ -59,11 +59,8 @@ from .packing import (
     MINIMAX_H3_AUDIO_TAG,
     MINIMAX_H3_CANVAS_MULTIPLE,
     MINIMAX_H3_FPS,
-    MINIMAX_H3_FRAMES_PER_CHUNK,
-    MINIMAX_H3_LATENTS_PER_CHUNK,
     MINIMAX_H3_TEXT_TAG,
     MINIMAX_H3_VIDEO_TAG,
-    MiniMaxH3PackedSequence,
     _spatial_position_grid,
     _temporal_position_grid,
     resolve_canvas_size,
@@ -440,7 +437,7 @@ def build_ref2va_packed_sequence(
     latent_width: int,
     num_audio_latents: int,
     patch_size: tuple[int, int, int],
-) -> MiniMaxH3PackedSequence:
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, int, int]:
     r"""
     Build the `[text | reference blocks | target audio | target video]` layout of the `ref2va` task.
 
@@ -457,7 +454,8 @@ def build_ref2va_packed_sequence(
         patch_size (`tuple[int, int, int]`): The transformer's `(t, h, w)` patch.
 
     Returns:
-        [`MiniMaxH3PackedSequence`]
+        `tuple`: `position_ids`, `token_tags`, `video_indices`, `audio_indices`, `text_indices`, and the number of
+        leading video and audio rows that are references rather than generated.
     """
     _, patch_h, patch_w = patch_size
     num_text_tokens = text_token_tags.shape[0]
@@ -539,15 +537,14 @@ def build_ref2va_packed_sequence(
     token_tags[audio_indices] = MINIMAX_H3_AUDIO_TAG
     token_tags[video_indices] = MINIMAX_H3_VIDEO_TAG
 
-    return MiniMaxH3PackedSequence(
-        sequence_length=sequence_length,
-        position_ids=position_ids,
-        token_tags=token_tags,
-        video_indices=video_indices,
-        audio_indices=audio_indices,
-        text_indices=text_indices,
-        num_condition_video_rows=num_reference_video_rows,
-        num_condition_audio_rows=num_reference_audio_rows,
+    return (
+        position_ids,
+        token_tags,
+        video_indices,
+        audio_indices,
+        text_indices,
+        num_reference_video_rows,
+        num_reference_audio_rows,
     )
 
 
@@ -819,7 +816,7 @@ def build_ref2va_presentation(
     return token_ids, token_tags
 
 
-def trim_reference_num_frames(num_frames: int) -> int:
+def trim_reference_num_frames(num_frames: int, frames_per_chunk: int, latents_per_chunk: int) -> int:
     r"""
     Snap a reference video's frame count *down* to a `17 * n + 5` the video VAE encodes without padding.
 
@@ -834,8 +831,4 @@ def trim_reference_num_frames(num_frames: int) -> int:
     """
     if num_frames < 1:
         raise ValueError(f"A reference video must have at least one frame, got {num_frames}.")
-    return (
-        max(1, (num_frames - MINIMAX_H3_LATENTS_PER_CHUNK) // MINIMAX_H3_FRAMES_PER_CHUNK)
-        * MINIMAX_H3_FRAMES_PER_CHUNK
-        + MINIMAX_H3_LATENTS_PER_CHUNK
-    )
+    return max(1, (num_frames - latents_per_chunk) // frames_per_chunk) * frames_per_chunk + latents_per_chunk

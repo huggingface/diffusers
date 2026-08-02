@@ -36,8 +36,6 @@ without it: `MiniMaxH3Transformer3DModel` then needs no attention mask, which ke
 backends available.
 """
 
-from dataclasses import dataclass
-
 import numpy as np
 import torch
 
@@ -57,11 +55,6 @@ MINIMAX_H3_MIN_ASPECT_RATIO = 1 / 4
 MINIMAX_H3_MAX_ASPECT_RATIO = 4
 MINIMAX_H3_MIN_DURATION = 5.0
 MINIMAX_H3_MAX_DURATION = 15.0
-
-# The video VAE encodes 17 pixel frames per chunk and drops the 3 trailing latent frames of every chunk, so
-# `17 * n + 5` pixel frames map to `5 * n + 2` latent frames.
-MINIMAX_H3_FRAMES_PER_CHUNK = 17
-MINIMAX_H3_LATENTS_PER_CHUNK = 5
 
 # The pixel convention of the video VAE: ImageNet-normalized RGB over a `[0, 1]` base range.
 MINIMAX_H3_PIXEL_MEAN = (0.485, 0.456, 0.406)
@@ -89,40 +82,6 @@ MINIMAX_H3_KEYFRAME_ENCODE_SEED = 42
 _ROPE_FRAME_RESCALE = 5.0 / 3.0
 _ROPE_FRAMES_PER_LATENT = (1, 4, 4, 4, 4)
 _ROPE_SPATIAL_SCALE = 32
-
-
-@dataclass
-class MiniMaxH3PackedSequence:
-    r"""
-    The structural description of one packed MiniMax-H3 sequence.
-
-    Attributes:
-        sequence_length (`int`):
-            Total number of rows, `L + C + A + V`.
-        position_ids (`torch.Tensor` of shape `(sequence_length, 3)`, float64):
-            The `(t, h, w)` rotary coordinate of every row.
-        token_tags (`torch.Tensor` of shape `(sequence_length,)`):
-            The modality tag of every row.
-        video_indices (`torch.Tensor`):
-            Sequence positions of the video rows: the keyframe conditioning rows first, then the target rows.
-        audio_indices (`torch.Tensor`):
-            Sequence positions of the audio rows: reference rows first (`ref2va` only), then the target rows.
-        text_indices (`torch.Tensor`):
-            Sequence positions of the text rows.
-        num_condition_video_rows (`int`):
-            How many leading entries of `video_indices` are conditioning rows rather than generated rows.
-        num_condition_audio_rows (`int`):
-            How many leading entries of `audio_indices` are reference rows rather than generated rows.
-    """
-
-    sequence_length: int
-    position_ids: torch.Tensor
-    token_tags: torch.Tensor
-    video_indices: torch.Tensor
-    audio_indices: torch.Tensor
-    text_indices: torch.Tensor
-    num_condition_video_rows: int
-    num_condition_audio_rows: int
 
 
 def resolve_canvas_size(aspect_width: float, aspect_height: float) -> tuple[int, int]:
@@ -163,24 +122,26 @@ def resolve_canvas_size(aspect_width: float, aspect_height: float) -> tuple[int,
     return max(multiple, round(height / multiple) * multiple), max(multiple, round(width / multiple) * multiple)
 
 
-def align_num_frames(num_frames: int) -> int:
+def align_num_frames(num_frames: int, frames_per_chunk: int, latents_per_chunk: int) -> int:
     r"""
-    Snap a frame count up to the next `17 * n + 5` the video VAE can encode.
+    Snap a frame count up to the next `frames_per_chunk * n + latents_per_chunk` the video VAE can encode.
 
     Args:
         num_frames (`int`): The requested number of frames.
+        frames_per_chunk (`int`): Pixel frames the video VAE encodes per chunk, its `clip_length`.
+        latents_per_chunk (`int`): Latent frames a chunk keeps, the VAE's `tokens_chunk_size`.
 
     Returns:
         `int`: The aligned number of frames.
     """
     if num_frames < 1:
         raise ValueError(f"`num_frames` must be positive, got {num_frames}.")
-    while num_frames % MINIMAX_H3_FRAMES_PER_CHUNK != MINIMAX_H3_LATENTS_PER_CHUNK:
+    while num_frames % frames_per_chunk != latents_per_chunk:
         num_frames += 1
     return num_frames
 
 
-def video_latent_num_frames(num_frames: int) -> int:
+def video_latent_num_frames(num_frames: int, frames_per_chunk: int, latents_per_chunk: int) -> int:
     r"""
     The number of latent frames the video VAE produces for a `17 * n + 5` frame count.
 
@@ -190,11 +151,11 @@ def video_latent_num_frames(num_frames: int) -> int:
     Returns:
         `int`: The number of latent frames, `5 * n + 2`.
     """
-    if num_frames % MINIMAX_H3_FRAMES_PER_CHUNK != MINIMAX_H3_LATENTS_PER_CHUNK:
-        raise ValueError(f"`num_frames` must be of the form 17 * n + 5, got {num_frames}.")
-    return (
-        num_frames - MINIMAX_H3_LATENTS_PER_CHUNK
-    ) // MINIMAX_H3_FRAMES_PER_CHUNK * MINIMAX_H3_LATENTS_PER_CHUNK + 2
+    if num_frames % frames_per_chunk != latents_per_chunk:
+        raise ValueError(
+            f"`num_frames` must be of the form {frames_per_chunk} * n + {latents_per_chunk}, got {num_frames}."
+        )
+    return (num_frames - latents_per_chunk) // frames_per_chunk * latents_per_chunk + 2
 
 
 def audio_latent_num_frames(num_frames: int) -> int:
@@ -240,59 +201,6 @@ def patchify_video_latents(latents: torch.Tensor, patch_size: tuple[int, int, in
     )
     latents = latents.permute(0, 2, 4, 6, 1, 3, 5, 7)
     return latents.reshape(-1, channels * patch_t * patch_h * patch_w).contiguous()
-
-
-def unpatchify_video_tokens(
-    rows: torch.Tensor,
-    num_latent_frames: int,
-    latent_height: int,
-    latent_width: int,
-    channels: int,
-    patch_size: tuple[int, int, int],
-) -> torch.Tensor:
-    r"""
-    Unpack transformer rows back into video latents. The inverse of [`patchify_video_latents`].
-
-    Args:
-        rows (`torch.Tensor` of shape `(num_patches, channels * prod(patch_size))`): The packed rows.
-        num_latent_frames (`int`): Number of latent frames.
-        latent_height (`int`): Latent height.
-        latent_width (`int`): Latent width.
-        channels (`int`): Number of latent channels.
-        patch_size (`tuple[int, int, int]`): The `(t, h, w)` patch.
-
-    Returns:
-        `torch.Tensor` of shape `(batch_size, channels, num_latent_frames, latent_height, latent_width)`.
-    """
-    patch_t, patch_h, patch_w = patch_size
-    rows = rows.reshape(
-        -1,
-        num_latent_frames // patch_t,
-        latent_height // patch_h,
-        latent_width // patch_w,
-        channels,
-        patch_t,
-        patch_h,
-        patch_w,
-    )
-    rows = rows.permute(0, 4, 1, 5, 2, 6, 3, 7)
-    return rows.reshape(-1, channels, num_latent_frames, latent_height, latent_width).contiguous()
-
-
-def unpack_audio_tokens(rows: torch.Tensor, num_audio_latents: int) -> torch.Tensor:
-    r"""
-    Unpack the channel-major audio rows into audio VAE latents.
-
-    Args:
-        rows (`torch.Tensor` of shape `(num_audio_latents * 2, latent_channels)`): The packed audio rows.
-        num_audio_latents (`int`): Number of audio latents per channel.
-
-    Returns:
-        `torch.Tensor` of shape `(2, latent_channels, num_audio_latents)`: One batch item per stereo channel, which
-        is what the mono audio VAE consumes.
-    """
-    rows = rows.reshape(MINIMAX_H3_AUDIO_CHANNELS, num_audio_latents, rows.shape[-1])
-    return rows.permute(0, 2, 1).contiguous()
 
 
 def _spatial_position_grid(dim: int, patch: int, sqrt_area: float) -> torch.Tensor:
@@ -341,7 +249,7 @@ def build_packed_sequence(
     num_audio_latents: int,
     patch_size: tuple[int, int, int],
     keyframe_anchors: tuple[str, ...] = (),
-) -> MiniMaxH3PackedSequence:
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, int, int]:
     r"""
     Build the `[text | keyframe conditions | target audio | target video]` layout used by the `t2va` and `fl2va`
     tasks.
@@ -360,7 +268,8 @@ def build_packed_sequence(
             latent frame, `"last"` at the last one.
 
     Returns:
-        [`MiniMaxH3PackedSequence`]
+        `tuple`: `position_ids`, `token_tags`, `video_indices`, `audio_indices`, `text_indices`, and the number of
+        leading video and audio rows that are conditioning rather than generated.
     """
     _, patch_h, patch_w = patch_size
     rows_per_frame = (latent_height // patch_h) * (latent_width // patch_w)
@@ -421,20 +330,15 @@ def build_packed_sequence(
     token_tags[audio_indices] = MINIMAX_H3_AUDIO_TAG
     token_tags[video_indices] = MINIMAX_H3_VIDEO_TAG
 
-    return MiniMaxH3PackedSequence(
-        sequence_length=sequence_length,
-        position_ids=position_ids,
-        token_tags=token_tags,
-        video_indices=video_indices,
-        audio_indices=audio_indices,
-        text_indices=text_indices,
-        num_condition_video_rows=num_condition_rows,
-        num_condition_audio_rows=0,
-    )
+    return position_ids, token_tags, video_indices, audio_indices, text_indices, num_condition_rows, 0
 
 
 def build_row_timesteps(
-    layout: MiniMaxH3PackedSequence,
+    video_indices: torch.Tensor,
+    audio_indices: torch.Tensor,
+    num_condition_video_rows: int,
+    num_condition_audio_rows: int,
+    num_text_tokens: int,
     video_timestep: float,
     audio_timestep: float,
     condition_video_timestep: float,
@@ -449,7 +353,11 @@ def build_row_timesteps(
     output head and inherit the video timestep.
 
     Args:
-        layout ([`MiniMaxH3PackedSequence`]): The packed layout.
+        video_indices (`torch.Tensor`): Sequence positions of the video rows, conditioning rows first.
+        audio_indices (`torch.Tensor`): Sequence positions of the audio rows, reference rows first.
+        num_condition_video_rows (`int`): How many leading video rows are conditioning rows.
+        num_condition_audio_rows (`int`): How many leading audio rows are reference rows.
+        num_text_tokens (`int`): Number of text rows, which never reach an output head.
         video_timestep (`float`): Timestep of the generated video rows.
         audio_timestep (`float`): Timestep of the generated audio rows.
         condition_video_timestep (`float`): Timestep of the video conditioning rows.
@@ -458,8 +366,9 @@ def build_row_timesteps(
     Returns:
         `tuple[torch.Tensor, torch.Tensor]`: the distinct timesteps, sorted, and the index of every row into them.
     """
-    row_timesteps = torch.full((layout.sequence_length,), video_timestep, dtype=torch.float32)
-    row_timesteps[layout.video_indices[: layout.num_condition_video_rows]] = condition_video_timestep
-    row_timesteps[layout.audio_indices[layout.num_condition_audio_rows :]] = audio_timestep
-    row_timesteps[layout.audio_indices[: layout.num_condition_audio_rows]] = condition_audio_timestep
+    sequence_length = int(video_indices.numel() + audio_indices.numel() + num_text_tokens)
+    row_timesteps = torch.full((sequence_length,), video_timestep, dtype=torch.float32)
+    row_timesteps[video_indices[:num_condition_video_rows]] = condition_video_timestep
+    row_timesteps[audio_indices[num_condition_audio_rows:]] = audio_timestep
+    row_timesteps[audio_indices[:num_condition_audio_rows]] = condition_audio_timestep
     return torch.unique(row_timesteps, sorted=True, return_inverse=True)

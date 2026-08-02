@@ -12,6 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import inspect
+
 import torch
 
 from ...models import MiniMaxH3Transformer3DModel
@@ -28,91 +30,6 @@ from .modular_pipeline import MiniMaxH3ModularPipeline, MiniMaxH3Ref2VAModularPi
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
-
-
-def _denoiser_inputs() -> list[InputParam]:
-    r"""Everything one MiniMax-H3 forward reads, beyond the transformer itself."""
-    return [
-        InputParam(
-            name="latents",
-            type_hint=torch.Tensor,
-            required=True,
-            description="The video rows of the packed sequence, conditioning rows first.",
-        ),
-        InputParam(
-            name="audio_latents",
-            type_hint=torch.Tensor,
-            required=True,
-            description="The channel-major audio rows of the packed sequence, reference rows first.",
-        ),
-        InputParam.template("prompt_embeds"),
-        InputParam(
-            name="row_timestep_plan",
-            type_hint=list,
-            required=True,
-            description="One `(timestep, timestep_indices)` pair per step.",
-        ),
-        InputParam(
-            name="token_tags", type_hint=torch.Tensor, required=True, description="The modality tag of every row."
-        ),
-        InputParam(
-            name="position_ids",
-            type_hint=torch.Tensor,
-            required=True,
-            description="The `(t, h, w)` rotary coordinate of every row.",
-        ),
-        InputParam(
-            name="video_indices",
-            type_hint=torch.Tensor,
-            required=True,
-            description="Sequence positions of the video rows.",
-        ),
-        InputParam(
-            name="audio_indices",
-            type_hint=torch.Tensor,
-            required=True,
-            description="Sequence positions of the audio rows.",
-        ),
-        InputParam(
-            name="text_indices",
-            type_hint=torch.Tensor,
-            required=True,
-            description="Sequence positions of the text rows.",
-        ),
-        InputParam.template("attention_kwargs"),
-    ]
-
-
-def _denoiser_outputs() -> list[OutputParam]:
-    return [
-        OutputParam(
-            "noise_pred", type_hint=torch.Tensor, description="Predicted velocity of the video rows of the sequence."
-        ),
-        OutputParam(
-            "audio_noise_pred",
-            type_hint=torch.Tensor,
-            description="Predicted velocity of the audio rows of the sequence.",
-        ),
-    ]
-
-
-def _predict_velocity(transformer: MiniMaxH3Transformer3DModel, block_state: BlockState, i: int):
-    r"""One MiniMax-H3 forward pass: every row of the packed sequence, at its own noise level, at once."""
-    unique_timesteps, timestep_indices = block_state.row_timestep_plan[i]
-    return transformer(
-        hidden_states=block_state.latents[None],
-        audio_hidden_states=block_state.audio_latents[None],
-        encoder_hidden_states=block_state.prompt_embeds,
-        timestep=unique_timesteps,
-        timestep_indices=timestep_indices,
-        token_tags=block_state.token_tags,
-        position_ids=block_state.position_ids,
-        video_indices=block_state.video_indices,
-        audio_indices=block_state.audio_indices,
-        text_indices=block_state.text_indices,
-        attention_kwargs=block_state.attention_kwargs,
-        return_dict=False,
-    )
 
 
 class MiniMaxH3LoopDenoiser(ModularPipelineBlocks):
@@ -132,16 +49,71 @@ class MiniMaxH3LoopDenoiser(ModularPipelineBlocks):
 
     @property
     def inputs(self) -> list[InputParam]:
-        return _denoiser_inputs()
+        return [
+            InputParam(
+                name="latents",
+                type_hint=torch.Tensor,
+                required=True,
+                description="The video rows of the packed sequence, conditioning rows first.",
+            ),
+            InputParam(
+                name="audio_latents",
+                type_hint=torch.Tensor,
+                required=True,
+                description="The channel-major audio rows of the packed sequence, reference rows first.",
+            ),
+            InputParam.template("prompt_embeds"),
+            InputParam(
+                name="row_timestep_plan",
+                type_hint=list,
+                required=True,
+                description="One `(timestep, timestep_indices)` pair per step.",
+            ),
+            InputParam(
+                kwargs_type="denoiser_input_fields",
+                description=(
+                    "The structural description of the packed sequence the transformer reads by name: `token_tags`, "
+                    "`position_ids` and the three row-index tensors."
+                ),
+            ),
+            InputParam.template("attention_kwargs"),
+        ]
 
     @property
     def intermediate_outputs(self) -> list[OutputParam]:
-        return _denoiser_outputs()
+        return [
+            OutputParam(
+                "noise_pred",
+                type_hint=torch.Tensor,
+                description="Predicted velocity of the video rows of the sequence.",
+            ),
+            OutputParam(
+                "audio_noise_pred",
+                type_hint=torch.Tensor,
+                description="Predicted velocity of the audio rows of the sequence.",
+            ),
+        ]
 
     @torch.no_grad()
     def __call__(self, components: MiniMaxH3ModularPipeline, block_state: BlockState, i: int, t: torch.Tensor):
-        block_state.noise_pred, block_state.audio_noise_pred = _predict_velocity(
-            components.transformer, block_state, i
+        transformer = components.transformer
+        unique_timesteps, timestep_indices = block_state.row_timestep_plan[i]
+        # The layout tags its outputs `denoiser_input_fields`, and their names are the transformer's own parameter
+        # names, so the rows of the packed sequence are described to it without this block enumerating them.
+        layout_kwargs = {
+            name: value
+            for name, value in block_state.denoiser_input_fields.items()
+            if name in inspect.signature(transformer.forward).parameters
+        }
+        block_state.noise_pred, block_state.audio_noise_pred = transformer(
+            hidden_states=block_state.latents[None],
+            audio_hidden_states=block_state.audio_latents[None],
+            encoder_hidden_states=block_state.prompt_embeds,
+            timestep=unique_timesteps,
+            timestep_indices=timestep_indices,
+            attention_kwargs=block_state.attention_kwargs,
+            return_dict=False,
+            **layout_kwargs,
         )
         return components, block_state
 
@@ -162,16 +134,71 @@ class MiniMaxH3Ref2VALoopDenoiser(ModularPipelineBlocks):
 
     @property
     def inputs(self) -> list[InputParam]:
-        return _denoiser_inputs()
+        return [
+            InputParam(
+                name="latents",
+                type_hint=torch.Tensor,
+                required=True,
+                description="The video rows of the packed sequence, conditioning rows first.",
+            ),
+            InputParam(
+                name="audio_latents",
+                type_hint=torch.Tensor,
+                required=True,
+                description="The channel-major audio rows of the packed sequence, reference rows first.",
+            ),
+            InputParam.template("prompt_embeds"),
+            InputParam(
+                name="row_timestep_plan",
+                type_hint=list,
+                required=True,
+                description="One `(timestep, timestep_indices)` pair per step.",
+            ),
+            InputParam(
+                kwargs_type="denoiser_input_fields",
+                description=(
+                    "The structural description of the packed sequence the transformer reads by name: `token_tags`, "
+                    "`position_ids` and the three row-index tensors."
+                ),
+            ),
+            InputParam.template("attention_kwargs"),
+        ]
 
     @property
     def intermediate_outputs(self) -> list[OutputParam]:
-        return _denoiser_outputs()
+        return [
+            OutputParam(
+                "noise_pred",
+                type_hint=torch.Tensor,
+                description="Predicted velocity of the video rows of the sequence.",
+            ),
+            OutputParam(
+                "audio_noise_pred",
+                type_hint=torch.Tensor,
+                description="Predicted velocity of the audio rows of the sequence.",
+            ),
+        ]
 
     @torch.no_grad()
     def __call__(self, components: MiniMaxH3Ref2VAModularPipeline, block_state: BlockState, i: int, t: torch.Tensor):
-        block_state.noise_pred, block_state.audio_noise_pred = _predict_velocity(
-            components.transformer_ref, block_state, i
+        transformer = components.transformer_ref
+        unique_timesteps, timestep_indices = block_state.row_timestep_plan[i]
+        # The layout tags its outputs `denoiser_input_fields`, and their names are the transformer's own parameter
+        # names, so the rows of the packed sequence are described to it without this block enumerating them.
+        layout_kwargs = {
+            name: value
+            for name, value in block_state.denoiser_input_fields.items()
+            if name in inspect.signature(transformer.forward).parameters
+        }
+        block_state.noise_pred, block_state.audio_noise_pred = transformer(
+            hidden_states=block_state.latents[None],
+            audio_hidden_states=block_state.audio_latents[None],
+            encoder_hidden_states=block_state.prompt_embeds,
+            timestep=unique_timesteps,
+            timestep_indices=timestep_indices,
+            attention_kwargs=block_state.attention_kwargs,
+            return_dict=False,
+            **layout_kwargs,
         )
         return components, block_state
 

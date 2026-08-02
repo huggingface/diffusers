@@ -63,6 +63,18 @@ class MiniMaxH3ModularPipeline(ModularPipeline):
         return 24
 
     @property
+    def vae_frames_per_chunk(self):
+        if getattr(self, "vae", None) is not None:
+            return self.vae.config.clip_length
+        return 17
+
+    @property
+    def vae_latents_per_chunk(self):
+        if getattr(self, "vae", None) is not None:
+            return self.vae.tokens_chunk_size
+        return 5
+
+    @property
     def audio_sampling_rate(self):
         if getattr(self, "audio_vae", None) is not None:
             return self.audio_vae.config.sampling_rate

@@ -183,7 +183,13 @@ class MiniMaxH3Ref2VASetupStep(ModularPipelineBlocks):
             )
         # The duration the request generates is the one of the *aligned* frame count, so that is what the ceiling has
         # to hold for: 346 frames would otherwise pass the check and then be rounded up to 362, i.e. 15.083 seconds.
-        aligned_num_frames = None if block_state.num_frames is None else align_num_frames(block_state.num_frames)
+        aligned_num_frames = (
+            None
+            if block_state.num_frames is None
+            else align_num_frames(
+                block_state.num_frames, components.vae_frames_per_chunk, components.vae_latents_per_chunk
+            )
+        )
         duration = None if aligned_num_frames is None else aligned_num_frames / MINIMAX_H3_FPS
         if duration is not None and not MINIMAX_H3_MIN_DURATION <= duration <= MINIMAX_H3_MAX_DURATION:
             raise ValueError(
@@ -310,7 +316,9 @@ class MiniMaxH3Ref2VASetupStep(ModularPipelineBlocks):
                     f"`references[{index}]` is {duration:g} seconds long, outside the "
                     f"{MINIMAX_H3_MIN_DURATION} to {MINIMAX_H3_MAX_DURATION} seconds MiniMax-H3 generates."
                 )
-            num_frames = align_num_frames(round(duration * MINIMAX_H3_FPS))
+            num_frames = align_num_frames(
+                round(duration * MINIMAX_H3_FPS), components.vae_frames_per_chunk, components.vae_latents_per_chunk
+            )
             # The duration the request generates is the one of the *aligned* frame count, so that is what the
             # ceiling has to hold for: a 14.99 second soundtrack rounds up to 362 frames, i.e. 15.083 seconds.
             if num_frames / MINIMAX_H3_FPS > MINIMAX_H3_MAX_DURATION:
@@ -320,7 +328,7 @@ class MiniMaxH3Ref2VASetupStep(ModularPipelineBlocks):
                     f"{MINIMAX_H3_MAX_DURATION} seconds MiniMax-H3 generates. Pass `num_frames` to generate a "
                     "shorter video from this soundtrack."
                 )
-        num_frames = align_num_frames(num_frames)
+        num_frames = align_num_frames(num_frames, components.vae_frames_per_chunk, components.vae_latents_per_chunk)
 
         for reference, entry in zip(resolved, references):
             if reference.kind == "image":

@@ -23,7 +23,7 @@ from .before_denoise import (
     MiniMaxH3SetTimestepsStep,
 )
 from .before_encoder import MiniMaxH3Ref2VASetupStep, MiniMaxH3ResizeStep
-from .decoders import MiniMaxH3AudioDecodeStep, MiniMaxH3VideoDecodeStep
+from .decoders import MiniMaxH3AfterDenoiseStep, MiniMaxH3AudioDecodeStep, MiniMaxH3VideoDecodeStep
 from .denoise import MiniMaxH3DenoiseStep, MiniMaxH3Ref2VADenoiseStep
 from .encoders import (
     MiniMaxH3KeyframeVaeEncoderStep,
@@ -51,29 +51,33 @@ class MiniMaxH3AutoResizeStep(ConditionalPipelineBlocks):
     """
     Keyframe canvas block.
        - MiniMaxH3ResizeStep runs for the `fl2va` task, whichever of the two keyframes is given.
-       - when neither `image` nor `last_image` is provided (`t2va`), this block is skipped and the layout step falls
-         back to MiniMax-H3's own 16:9 canvas.
+       - when neither `image` nor `last_image` is provided (`t2va`), this block is skipped and the layout step falls back to MiniMax-H3's own 16:9 canvas.
 
       Components:
           image_processor (`VaeImageProcessor`)
 
       Inputs:
           image (`Image`, *optional*):
-              Keyframe the video starts from.
+              Keyframe the video starts from. It is *stretched* onto the target canvas, which by default is derived from its own
+              aspect ratio.
           last_image (`Image`, *optional*):
-              Keyframe the video ends on.
+              Keyframe the video ends on. Can be passed on its own to generate *up to* a frame. Combined with `image` it is the
+              follower of the two and is cover-cropped onto the canvas.
           height (`int`, *optional*):
               Height of the generated video in pixels, a multiple of 32.
           width (`int`, *optional*):
               Width of the generated video in pixels, a multiple of 32.
 
       Outputs:
-          height (`int`), width (`int`):
-              The resolved canvas.
+          height (`int`):
+              Resolved height of the generated video in pixels.
+          width (`int`):
+              Resolved width of the generated video in pixels.
           keyframes (`list`):
-              The keyframes put onto that canvas, in packed order.
+              The keyframes put onto the target canvas, in packed order.
           keyframe_anchors (`tuple`):
-              Which end of the video every keyframe is anchored to, in packed order.
+              Which end of the video every keyframe is anchored to, in packed order. Positional with `keyframes`, so both are
+              resolved here.
     """
 
     model_name = "minimax-h3"
@@ -108,12 +112,13 @@ class MiniMaxH3AutoKeyframeVaeEncoderStep(ConditionalPipelineBlocks):
           vae (`AutoencoderKLMiniMaxH3`)
 
       Inputs:
-          keyframes (`list`):
+          keyframes (`list`, *optional*):
               The keyframes put onto the target canvas, in packed order.
 
       Outputs:
           condition_latents (`list`):
-              The normalized video conditioning latents, one tensor per keyframe, in packed order.
+              The normalized video conditioning latents, one `(1, latent_channels, 1, latent_height, latent_width)` tensor per
+              keyframe, in packed order.
     """
 
     model_name = "minimax-h3"
@@ -142,27 +147,17 @@ class MiniMaxH3DecodeStep(SequentialPipelineBlocks):
     Decodes the denoised rows of the packed sequence into the generated video and its soundtrack.
 
       Components:
-          vae (`AutoencoderKLMiniMaxH3`) video_processor (`VideoProcessor`) audio_vae (`AutoencoderKLMiniMaxH3Audio`)
+          vae (`AutoencoderKLMiniMaxH3`)
+          video_processor (`VideoProcessor`)
+          audio_vae (`AutoencoderKLMiniMaxH3Audio`)
 
       Inputs:
           latents (`Tensor`):
-              The denoised video rows of the packed sequence, conditioning rows first.
-          num_condition_video_rows (`int`, *optional*, defaults to 0):
-              How many leading video rows are conditioning rows and are dropped here.
-          num_latent_frames (`int`):
-              Number of video latent frames.
-          latent_height (`int`):
-              Height of the video latents.
-          latent_width (`int`):
-              Width of the video latents.
+              The generated video latents.
           output_type (`str`, *optional*, defaults to pil):
-              Output format: 'pil', 'np', 'pt' or 'latent' for the raw latents.
+              Output format: 'pil', 'np' or 'pt'.
           audio_latents (`Tensor`):
-              The denoised audio rows of the packed sequence, reference rows first.
-          num_condition_audio_rows (`int`, *optional*, defaults to 0):
-              How many leading audio rows are reference rows and are dropped here.
-          num_audio_latents (`int`):
-              Number of audio latents per channel.
+              The generated audio latents, one batch item per stereo channel.
 
       Outputs:
           videos (`list`):
@@ -189,8 +184,7 @@ class MiniMaxH3DecodeStep(SequentialPipelineBlocks):
 # auto_docstring
 class MiniMaxH3Blocks(SequentialPipelineBlocks):
     """
-    Modular pipeline blocks for joint video + audio generation with MiniMax-H3, covering the `t2va` (text only) and
-    `fl2va` (first and/or last keyframe) tasks of the FL2VA checkpoint.
+    Modular pipeline blocks for joint video + audio generation with MiniMax-H3, covering the `t2va` (text only) and `fl2va` (first and/or last keyframe) tasks of the FL2VA checkpoint.
 
       Supported workflows:
         - `t2va`: requires `prompt`
@@ -198,45 +192,58 @@ class MiniMaxH3Blocks(SequentialPipelineBlocks):
         - `fl2va_last_frame`: requires `prompt`, `last_image`
 
       Components:
-          text_encoder (`Qwen3VLForConditionalGeneration`) tokenizer (`Qwen2Tokenizer`) processor (`Qwen3VLProcessor`)
-          vae (`AutoencoderKLMiniMaxH3`) scheduler (`MiniMaxH3Scheduler`) audio_scheduler (`MiniMaxH3Scheduler`)
-          transformer (`MiniMaxH3Transformer3DModel`) video_processor (`VideoProcessor`) audio_vae
-          (`AutoencoderKLMiniMaxH3Audio`)
+          image_processor (`VaeImageProcessor`)
+          text_encoder (`Qwen3VLForConditionalGeneration`)
+          tokenizer (`Qwen2Tokenizer`)
+          processor (`Qwen3VLProcessor`)
+          vae (`AutoencoderKLMiniMaxH3`)
+          scheduler (`MiniMaxH3Scheduler`)
+          audio_scheduler (`MiniMaxH3Scheduler`)
+          transformer (`MiniMaxH3Transformer3DModel`)
+          video_processor (`VideoProcessor`)
+          audio_vae (`AutoencoderKLMiniMaxH3Audio`)
 
       Inputs:
           image (`Image`, *optional*):
-              Keyframe the video starts from. It is *stretched* onto the target canvas, which by default is derived
-              from its own aspect ratio.
+              Keyframe the video starts from. It is *stretched* onto the target canvas, which by default is derived from its own
+              aspect ratio.
           last_image (`Image`, *optional*):
-              Keyframe the video ends on. Can be passed on its own to generate *up to* a frame. Combined with `image`
-              it is the follower of the two and is cover-cropped onto the canvas.
+              Keyframe the video ends on. Can be passed on its own to generate *up to* a frame. Combined with `image` it is the
+              follower of the two and is cover-cropped onto the canvas.
           height (`int`, *optional*):
               Height of the generated video in pixels, a multiple of 32.
           width (`int`, *optional*):
               Width of the generated video in pixels, a multiple of 32.
-          num_frames (`int`, *optional*, defaults to 124):
-              Number of frames to generate, at the fixed 24 fps. Snapped up to the next `17 * n + 5` the video VAE can
-              decode; the resulting duration must stay between 5 and 15 seconds.
           prompt (`str`):
               The prompt to guide generation, a single string.
+          keyframes (`list`, *optional*):
+              The keyframes put onto the target canvas, in packed order (empty or None for `t2va`).
+          num_frames (`int`, *optional*, defaults to 124):
+              Number of frames to generate, at the fixed 24 fps. Snapped up to the next `17 * n + 5` the video VAE can decode;
+              the resulting duration must stay between 5 and 15 seconds.
+          keyframe_anchors (`tuple`, *optional*, defaults to ()):
+              Which end of the video every keyframe is anchored to, in packed order.
           generator (`Generator`, *optional*):
-              The generator of the request. The conditioning noise is drawn from it before the target noise of the
-              prepare-latents step.
+              The generator of the request. The video noise is drawn from it first, then the audio noise.
           latents (`Tensor`, *optional*):
-              Pre-generated video noise of shape `(1, 24, num_latent_frames, latent_height, latent_width)`, used
-              instead of the draw.
+              Pre-generated video noise of shape `(1, 24, num_latent_frames, latent_height, latent_width)`, used instead of the
+              draw.
           audio_latents (`Tensor`, *optional*):
               Pre-generated audio noise of shape `(2, 32, num_audio_latents)`.
-          condition_latents (`Tensor`, *optional*):
-              The video conditioning rows to prepend, or None for a request that has none.
+          condition_latents (`list`, *optional*):
+              The encoded video conditioning latents, one `(1, latent_channels, num_latent_frames, latent_height, latent_width)`
+              tensor per condition in packed order, or None for a request that has none. Noised and packed here.
           audio_condition_latents (`Tensor`, *optional*):
               The audio conditioning rows to prepend, or None for a request that has none.
           num_inference_steps (`int`):
               The number of denoising steps.
+          **denoiser_input_fields (`None`, *optional*):
+              The structural description of the packed sequence the transformer reads by name: `token_tags`, `position_ids` and
+              the three row-index tensors.
           attention_kwargs (`dict`, *optional*):
               Additional kwargs for attention processors.
           output_type (`str`, *optional*, defaults to pil):
-              Output format: 'pil', 'np', 'pt' or 'latent' for the raw latents.
+              Output format: 'pil', 'np' or 'pt'.
 
       Outputs:
           videos (`list`):
@@ -256,6 +263,7 @@ class MiniMaxH3Blocks(SequentialPipelineBlocks):
         MiniMaxH3PrepareLatentsStep,
         MiniMaxH3SetTimestepsStep,
         MiniMaxH3DenoiseStep,
+        MiniMaxH3AfterDenoiseStep,
         MiniMaxH3DecodeStep,
     ]
     block_names = [
@@ -266,6 +274,7 @@ class MiniMaxH3Blocks(SequentialPipelineBlocks):
         "prepare_latents",
         "set_timesteps",
         "denoise",
+        "after_denoise",
         "decode",
     ]
     # One repository holds both checkpoint partitions, so the two blocksets are two workflows over one shared
@@ -293,51 +302,56 @@ class MiniMaxH3Blocks(SequentialPipelineBlocks):
 # auto_docstring
 class MiniMaxH3Ref2VABlocks(SequentialPipelineBlocks):
     """
-    Modular pipeline blocks for joint video + audio generation from an ordered list of image, video and audio
-    references with MiniMax-H3, the `ref2va` task of the Ref2VA checkpoint.
+    Modular pipeline blocks for joint video + audio generation from an ordered list of image, video and audio references with MiniMax-H3, the `ref2va` task of the Ref2VA checkpoint.
 
       Supported workflows:
         - `ref2va`: requires `prompt`, `references`
 
       Components:
-          text_encoder (`Qwen3VLForConditionalGeneration`) tokenizer (`Qwen2Tokenizer`) processor (`Qwen3VLProcessor`)
-          vae (`AutoencoderKLMiniMaxH3`) audio_vae (`AutoencoderKLMiniMaxH3Audio`) scheduler (`MiniMaxH3Scheduler`)
-          audio_scheduler (`MiniMaxH3Scheduler`) transformer_ref (`MiniMaxH3Transformer3DModel`) video_processor
-          (`VideoProcessor`)
+          text_encoder (`Qwen3VLForConditionalGeneration`)
+          tokenizer (`Qwen2Tokenizer`)
+          processor (`Qwen3VLProcessor`)
+          vae (`AutoencoderKLMiniMaxH3`)
+          audio_vae (`AutoencoderKLMiniMaxH3Audio`)
+          scheduler (`MiniMaxH3Scheduler`)
+          audio_scheduler (`MiniMaxH3Scheduler`)
+          transformer_ref (`MiniMaxH3Transformer3DModel`)
+          video_processor (`VideoProcessor`)
 
       Inputs:
           references (`list`):
-              The references to condition on, **in the order the model should read them**: the order labels them in the
-              prompt presentation and lays them out on the shared rotary clock, so a different order is a different
-              request. Every [`MiniMaxH3Reference`] carries exactly one medium, a path or in-memory media — `image` (at
-              most 9), `video` at its own `fps` (at most 3, whose `audio` soundtrack is conditioned on as well), or
-              `audio` at its own `sample_rate` (at most 3) — for at most 12 references in total, and audio references
-              cannot be the only ones. A path is decoded when the reference is built, so these blocks only ever see
-              pixels and samples.
+              The references to condition on, **in the order the model should read them**: the order labels them in the prompt
+              presentation and lays them out on the shared rotary clock, so a different order is a different request. Every
+              [`MiniMaxH3Reference`] carries exactly one medium, a path or in-memory media — `image` (at most 9), `video` at its
+              own `fps` (at most 3, whose `audio` soundtrack is conditioned on as well), or `audio` at its own `sample_rate` (at
+              most 3) — for at most 12 references in total, and audio references cannot be the only ones. A path is decoded when
+              the reference is built, so these blocks only ever see pixels and samples.
           height (`int`, *optional*):
               Height of the generated video in pixels, a multiple of 32.
           width (`int`, *optional*):
               Width of the generated video in pixels, a multiple of 32.
           num_frames (`int`, *optional*):
-              Number of frames to generate, at the fixed 24 fps. Snapped up to the next `17 * n + 5` the video VAE can
-              decode. May be left out, but only when exactly one reference carries audio, in which case the duration is
-              that soundtrack's.
+              Number of frames to generate, at the fixed 24 fps. Snapped up to the next `17 * n + 5` the video VAE can decode.
+              May be left out, but only when exactly one reference carries audio, in which case the duration is that
+              soundtrack's.
           prompt (`str`):
               The prompt to guide generation, a single string.
           generator (`Generator`, *optional*):
-              The generator of the request. The conditioning noise is drawn from it before the target noise of the
-              prepare-latents step.
+              The generator of the request. The video noise is drawn from it first, then the audio noise.
           latents (`Tensor`, *optional*):
-              Pre-generated video noise of shape `(1, 24, num_latent_frames, latent_height, latent_width)`, used
-              instead of the draw.
+              Pre-generated video noise of shape `(1, 24, num_latent_frames, latent_height, latent_width)`, used instead of the
+              draw.
           audio_latents (`Tensor`, *optional*):
               Pre-generated audio noise of shape `(2, 32, num_audio_latents)`.
           num_inference_steps (`int`):
               The number of denoising steps.
+          **denoiser_input_fields (`None`, *optional*):
+              The structural description of the packed sequence the transformer reads by name: `token_tags`, `position_ids` and
+              the three row-index tensors.
           attention_kwargs (`dict`, *optional*):
               Additional kwargs for attention processors.
           output_type (`str`, *optional*, defaults to pil):
-              Output format: 'pil', 'np', 'pt' or 'latent' for the raw latents.
+              Output format: 'pil', 'np' or 'pt'.
 
       Outputs:
           videos (`list`):
@@ -359,6 +373,7 @@ class MiniMaxH3Ref2VABlocks(SequentialPipelineBlocks):
         MiniMaxH3PrepareLatentsStep,
         MiniMaxH3SetTimestepsStep,
         MiniMaxH3Ref2VADenoiseStep,
+        MiniMaxH3AfterDenoiseStep,
         MiniMaxH3DecodeStep,
     ]
     block_names = [
@@ -369,6 +384,7 @@ class MiniMaxH3Ref2VABlocks(SequentialPipelineBlocks):
         "prepare_latents",
         "set_timesteps",
         "denoise",
+        "after_denoise",
         "decode",
     ]
     # The `ref2va` task name, i.e. the value a `workflow=` argument to `ModularPipeline.from_pretrained` would take
