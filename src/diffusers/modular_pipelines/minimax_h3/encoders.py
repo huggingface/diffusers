@@ -17,22 +17,17 @@ import torch
 from transformers import Qwen2TokenizerFast, Qwen3VLForConditionalGeneration, Qwen3VLProcessor
 
 from ...models import AutoencoderKLMiniMaxH3, AutoencoderKLMiniMaxH3Audio
-from ...models.autoencoders.vae import DiagonalGaussianDistribution
-from ...schedulers import MiniMaxH3Scheduler
 from ...utils import logging
 from ..modular_pipeline import ModularPipelineBlocks, PipelineState
 from ..modular_pipeline_utils import ComponentSpec, InputParam, OutputParam
 from .modular_pipeline import MiniMaxH3ModularPipeline, MiniMaxH3Ref2VAModularPipeline
 from .packing import (
     MINIMAX_H3_KEYFRAME_ENCODE_SEED,
-    MINIMAX_H3_KEYFRAME_NOISE_AUG,
     MINIMAX_H3_PIXEL_MEAN,
     MINIMAX_H3_PIXEL_STD,
     MINIMAX_H3_TEXT_ENCODER_LAYER,
     MINIMAX_H3_TEXT_TAG,
     MINIMAX_H3_VIDEO_TAG,
-    keyframe_condition_noise,
-    patchify_video_latents,
 )
 from .packing_ref2va import (
     MiniMaxH3PreparedReference,
@@ -219,17 +214,14 @@ class MiniMaxH3KeyframeVaeEncoderStep(ModularPipelineBlocks):
     @property
     def description(self) -> str:
         return (
-            "Encodes the `fl2va` keyframes into packed conditioning rows and noises them to MiniMax-H3's "
-            "conditioning level. The rows are the anchors of the whole denoising loop: the loop only ever writes the "
-            "generated rows, so they are never updated again."
+            "Encodes the `fl2va` keyframes into conditioning latents. They become the anchors of the whole denoising "
+            "loop, which only ever writes the generated rows, so they are never updated again — the prepare-latents "
+            "step noises them to MiniMax-H3's conditioning level and packs them."
         )
 
     @property
     def expected_components(self) -> list[ComponentSpec]:
-        return [
-            ComponentSpec("vae", AutoencoderKLMiniMaxH3),
-            ComponentSpec("scheduler", MiniMaxH3Scheduler),
-        ]
+        return [ComponentSpec("vae", AutoencoderKLMiniMaxH3)]
 
     @property
     def inputs(self) -> list[InputParam]:
@@ -240,15 +232,6 @@ class MiniMaxH3KeyframeVaeEncoderStep(ModularPipelineBlocks):
                 required=True,
                 description="The keyframes put onto the target canvas, in packed order.",
             ),
-            InputParam(name="latent_height", type_hint=int, required=True, description="Height of the video latents."),
-            InputParam(name="latent_width", type_hint=int, required=True, description="Width of the video latents."),
-            InputParam.template(
-                "generator",
-                description=(
-                    "The generator of the request. The conditioning noise is drawn from it before the target noise "
-                    "of the prepare-latents step."
-                ),
-            ),
         ]
 
     @property
@@ -256,67 +239,58 @@ class MiniMaxH3KeyframeVaeEncoderStep(ModularPipelineBlocks):
         return [
             OutputParam(
                 "condition_latents",
-                type_hint=torch.Tensor,
-                description="The noise-augmented video conditioning rows, in packed order.",
+                type_hint=list[torch.Tensor],
+                description=(
+                    "The normalized video conditioning latents, one `(1, latent_channels, 1, latent_height, "
+                    "latent_width)` tensor per keyframe, in packed order."
+                ),
             )
         ]
 
     @staticmethod
-    def encode_keyframes(components, images: list, device: torch.device | None = None) -> torch.Tensor:
+    def encode_keyframes(vae, images: list, device: torch.device) -> list[torch.Tensor]:
         r"""
-        Encode the `fl2va` keyframes into packed conditioning rows.
+        Encode the `fl2va` keyframes into normalized conditioning latents.
 
-        The keyframes go through the video VAE's spatial encoder only — they are single frames, so none of its
-        17-frame temporal chunking applies — and the posterior is *sampled*, under a generator seeded with 42
-        independently of the request seed. The sampled latent is rounded to float16 before being normalized, as in the
-        reference implementation; both are part of reproducing the released model's conditioning.
+        A keyframe is a single frame, so `vae.encode` runs its spatial encoder alone with none of the 17-frame
+        temporal chunking. The posterior is *sampled*, under a generator seeded with 42 independently of the request
+        seed, and the sampled latent is rounded to float16 before being normalized, as in the reference
+        implementation; both are part of reproducing the released model's conditioning.
 
         Args:
+            vae (`AutoencoderKLMiniMaxH3`): The video VAE.
             images (`list[PIL.Image.Image]`):
                 The keyframes, already prepared onto the target canvas, in packed order.
-            device (`torch.device`, *optional*): The device to run the VAE on.
+            device (`torch.device`): The device to run the VAE on.
 
         Returns:
-            `torch.Tensor` of shape `(num_condition_rows, latent_channels * prod(patch_size))`: the float32
-            conditioning rows.
+            `list[torch.Tensor]`: one `(1, latent_channels, 1, latent_height, latent_width)` float32 CPU tensor per
+            keyframe, in packed order. One entry per condition is what the prepare-latents step draws its noise
+            against, so the list is the unit the request's generator is consumed in.
         """
-        device = device or components._execution_device
-        latents_mean = torch.tensor(components.vae.config.latents_mean).view(1, -1, 1, 1, 1)
-        latents_std = torch.tensor(components.vae.config.latents_std).view(1, -1, 1, 1, 1)
+        latents_mean = torch.tensor(vae.config.latents_mean).view(1, -1, 1, 1, 1)
+        latents_std = torch.tensor(vae.config.latents_std).view(1, -1, 1, 1, 1)
         pixel_mean = torch.tensor(MINIMAX_H3_PIXEL_MEAN, device=device).view(1, -1, 1, 1, 1)
         pixel_std = torch.tensor(MINIMAX_H3_PIXEL_STD, device=device).view(1, -1, 1, 1, 1)
 
-        rows = []
+        keyframe_latents = []
         for image in images:
             pixels = torch.from_numpy(np.array(image)).to(device).permute(2, 0, 1)[None, :, None]
             pixels = (pixels.to(torch.float32).div(255.0) - pixel_mean) / pixel_std
-            # `vae.encode` chunks along time for videos; a keyframe is one frame and is encoded by the (tiled)
-            # spatial encoder alone, which is what the released model conditions on.
-            moments = components.vae._encode_clip(pixels)
-            posterior = DiagonalGaussianDistribution(moments)
+            posterior = vae.encode(pixels, return_dict=False)[0]
             latents = posterior.sample(generator=torch.Generator().manual_seed(MINIMAX_H3_KEYFRAME_ENCODE_SEED))
             # The sampled latent is rounded to float16 before it is normalized: ~11 bits of every conditioning
             # latent, so the released model's conditioning cannot be reproduced without it.
             latents = latents.to(torch.float16).float().cpu()
-            rows.append(patchify_video_latents((latents - latents_mean) / latents_std, components.patch_size))
-        return torch.cat(rows)
+            keyframe_latents.append((latents - latents_mean) / latents_std)
+        return keyframe_latents
 
     @torch.no_grad()
     def __call__(self, components: MiniMaxH3ModularPipeline, state: PipelineState) -> PipelineState:
         block_state = self.get_block_state(state)
         device = components._execution_device
 
-        condition_latents = self.encode_keyframes(components, block_state.keyframes, device=device)
-        noise = keyframe_condition_noise(
-            ((1, block_state.latent_height, block_state.latent_width),) * len(block_state.keyframes),
-            components.patch_size,
-            components.vae_latent_channels,
-            generator=block_state.generator,
-            device=device,
-        )
-        block_state.condition_latents = components.scheduler.scale_noise(
-            condition_latents.to(device), MINIMAX_H3_KEYFRAME_NOISE_AUG, noise
-        )
+        block_state.condition_latents = self.encode_keyframes(components.vae, block_state.keyframes, device)
 
         self.set_block_state(state, block_state)
         return components, state
@@ -480,11 +454,11 @@ class MiniMaxH3Ref2VAReferenceEncoderStep(ModularPipelineBlocks):
     @property
     def description(self) -> str:
         return (
-            "Encodes the `ref2va` references into packed conditioning rows — image and video references through the "
-            "video VAE, soundtracks through the audio VAE — and noises the visual ones to MiniMax-H3's conditioning "
-            "level. Audio references ride along clean, at `t = 1.0`. Both are anchors of the whole denoising loop, "
-            "which only ever writes the generated rows. The latent geometry of every reference is resolved here, so "
-            "this runs before the packed layout is built."
+            "Encodes the `ref2va` references — image and video references through the video VAE, soundtracks through "
+            "the audio VAE. They are the anchors of the whole denoising loop, which only ever writes the generated "
+            "rows; the prepare-latents step noises the visual ones to MiniMax-H3's conditioning level and packs them, "
+            "while soundtracks ride along clean at `t = 1.0`. The latent geometry of every reference is resolved "
+            "here, so this runs before the packed layout is built."
         )
 
     @property
@@ -492,7 +466,6 @@ class MiniMaxH3Ref2VAReferenceEncoderStep(ModularPipelineBlocks):
         return [
             ComponentSpec("vae", AutoencoderKLMiniMaxH3),
             ComponentSpec("audio_vae", AutoencoderKLMiniMaxH3Audio),
-            ComponentSpec("scheduler", MiniMaxH3Scheduler),
         ]
 
     @property
@@ -504,13 +477,6 @@ class MiniMaxH3Ref2VAReferenceEncoderStep(ModularPipelineBlocks):
                 required=True,
                 description="The prepared references, in packed order. Their latent geometry is filled in here.",
             ),
-            InputParam.template(
-                "generator",
-                description=(
-                    "The generator of the request. The conditioning noise is drawn from it before the target noise "
-                    "of the prepare-latents step."
-                ),
-            ),
         ]
 
     @property
@@ -518,9 +484,10 @@ class MiniMaxH3Ref2VAReferenceEncoderStep(ModularPipelineBlocks):
         return [
             OutputParam(
                 "condition_latents",
-                type_hint=torch.Tensor,
+                type_hint=list[torch.Tensor],
                 description=(
-                    "The noise-augmented video conditioning rows of the image and video references, in packed order, "
+                    "The encoded video conditioning latents of the image and video references, one `(1, "
+                    "latent_channels, num_latent_frames, latent_height, latent_width)` tensor each in packed order, "
                     "or None when the references carry none."
                 ),
             ),
@@ -565,7 +532,7 @@ class MiniMaxH3Ref2VAReferenceEncoderStep(ModularPipelineBlocks):
         audio_latents_mean = torch.tensor(components.audio_vae.config.latents_mean).view(1, 1, -1)
         audio_latents_std = torch.tensor(components.audio_vae.config.latents_std).view(1, 1, -1)
 
-        video_rows, audio_rows = [], []
+        video_latents, audio_rows = [], []
         for reference in references:
             if reference.kind != "audio":
                 if reference.kind == "image":
@@ -576,21 +543,14 @@ class MiniMaxH3Ref2VAReferenceEncoderStep(ModularPipelineBlocks):
                 pixels = (pixels.to(torch.float32).div(255.0) - pixel_mean) / pixel_std
                 # A single frame is encoded by the (tiled) spatial encoder alone; a video goes through the temporal
                 # chunking, which is what turns `17 * n + 5` frames into `5 * n + 2` latent frames.
-                moments = (
-                    components.vae._encode_clip(pixels)
-                    if reference.kind == "image"
-                    else components.vae._encode(pixels)
-                )
-                posterior = DiagonalGaussianDistribution(moments)
+                posterior = components.vae.encode(pixels, return_dict=False)[0]
                 latents = posterior.sample(generator=torch.Generator().manual_seed(MINIMAX_H3_KEYFRAME_ENCODE_SEED))
                 # The sampled latent is rounded to float16 before it is normalized: ~11 bits of every conditioning
                 # latent, so the released model's conditioning cannot be reproduced without it.
                 latents = latents.to(torch.float16).float().cpu()
                 reference.num_latent_frames = latents.shape[2]
                 reference.latent_height, reference.latent_width = latents.shape[3], latents.shape[4]
-                video_rows.append(
-                    patchify_video_latents((latents - latents_mean) / latents_std, components.patch_size)
-                )
+                video_latents.append((latents - latents_mean) / latents_std)
 
             if reference.has_audio:
                 posterior = components.audio_vae.encode(reference.waveform.to(device)[:, None], return_dict=False)[0]
@@ -600,39 +560,16 @@ class MiniMaxH3Ref2VAReferenceEncoderStep(ModularPipelineBlocks):
                 normalized = (latents - audio_latents_mean) / audio_latents_std
                 audio_rows.append(normalized.reshape(-1, components.audio_latent_channels))
 
-        return (
-            torch.cat(video_rows) if video_rows else None,
-            torch.cat(audio_rows) if audio_rows else None,
-        )
+        return video_latents or None, torch.cat(audio_rows) if audio_rows else None
 
     @torch.no_grad()
     def __call__(self, components: MiniMaxH3Ref2VAModularPipeline, state: PipelineState) -> PipelineState:
         block_state = self.get_block_state(state)
         device = components._execution_device
 
-        condition_latents, audio_condition_latents = self.encode_references(
+        block_state.condition_latents, block_state.audio_condition_latents = self.encode_references(
             components, block_state.prepared_references, device=device
         )
-        if condition_latents is not None:
-            noise = keyframe_condition_noise(
-                tuple(
-                    (reference.num_latent_frames, reference.latent_height, reference.latent_width)
-                    for reference in block_state.prepared_references
-                    if reference.kind != "audio"
-                ),
-                components.patch_size,
-                components.vae_latent_channels,
-                generator=block_state.generator,
-                device=device,
-            )
-            condition_latents = components.scheduler.scale_noise(
-                condition_latents.to(device), MINIMAX_H3_KEYFRAME_NOISE_AUG, noise
-            )
-        if audio_condition_latents is not None:
-            audio_condition_latents = audio_condition_latents.to(device)
-
-        block_state.condition_latents = condition_latents
-        block_state.audio_condition_latents = audio_condition_latents
 
         self.set_block_state(state, block_state)
         return components, state
