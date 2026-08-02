@@ -328,6 +328,43 @@ class CogVideoXDPMScheduler(SchedulerMixin, ConfigMixin):
 
         self.timesteps = torch.from_numpy(timesteps).to(device)
 
+    # Copied from diffusers.schedulers.scheduling_ddim.DDIMScheduler.previous_timestep
+    def previous_timestep(self, timestep: int | torch.Tensor) -> int | torch.Tensor:
+        """
+        Return the previous timestep from the schedule produced by [`set_timesteps`].
+
+        The schedule already encodes `timestep_spacing` (`leading`, `trailing`, or `linspace`). Deriving the previous
+        value from that list is a no-op for uniform strides and corrects `linspace`, where a fixed
+        `num_train_timesteps // num_inference_steps` step disagrees with the materialised list.
+
+        Args:
+            timestep (`int` or `torch.Tensor`):
+                The current discrete timestep in the diffusion chain (an entry of `self.timesteps`).
+
+        Returns:
+            `int` or `torch.Tensor`:
+                The previous timestep. The final schedule entry returns `-1`, which selects `final_alpha_cumprod`.
+        """
+        if self.num_inference_steps is None:
+            raise ValueError(
+                "Number of inference steps is 'None', you need to run 'set_timesteps' after creating the scheduler"
+            )
+
+        if isinstance(timestep, torch.Tensor) and timestep.ndim > 0:
+            flat = timestep.flatten()
+            prev = torch.stack([self.previous_timestep(t) for t in flat]).reshape(timestep.shape)
+            return prev
+
+        index_candidates = (self.timesteps == timestep).nonzero(as_tuple=True)[0]
+        if len(index_candidates) == 0:
+            # Not an entry of the inference schedule (direct step() calls outside the loop).
+            # Keep the historical unit-stride fallback so off-schedule tooling still works.
+            return timestep - self.config.num_train_timesteps // self.num_inference_steps
+        index = index_candidates[0]
+        if index == self.timesteps.shape[0] - 1:
+            return torch.tensor(-1, device=self.timesteps.device, dtype=self.timesteps.dtype)
+        return self.timesteps[index + 1]
+
     def get_variables(
         self,
         alpha_prod_t: torch.Tensor,
@@ -463,8 +500,8 @@ class CogVideoXDPMScheduler(SchedulerMixin, ConfigMixin):
         # - pred_sample_direction -> "direction pointing to x_t"
         # - pred_prev_sample -> "x_t-1"
 
-        # 1. get previous step value (=t-1)
-        prev_timestep = timestep - self.config.num_train_timesteps // self.num_inference_steps
+        # 1. get previous step value from the materialised schedule (= next entry of self.timesteps)
+        prev_timestep = self.previous_timestep(timestep)
 
         # 2. compute alphas, betas
         alpha_prod_t = self.alphas_cumprod[timestep]
