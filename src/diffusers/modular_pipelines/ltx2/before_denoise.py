@@ -474,7 +474,12 @@ class LTX2PrepareAudioLatentsStep(ModularPipelineBlocks):
     def intermediate_outputs(self) -> list[OutputParam]:
         return [
             OutputParam("audio_latents", type_hint=torch.Tensor, description="Packed noisy audio latents."),
-            OutputParam("audio_num_frames", type_hint=int, description="Number of audio latent frames."),
+            OutputParam(
+                "audio_num_frames",
+                type_hint=int,
+                kwargs_type="denoiser_input_fields",
+                description="Number of audio latent frames.",
+            ),
         ]
 
     @torch.no_grad()
@@ -545,8 +550,18 @@ class LTX2PrepareCoordsStep(ModularPipelineBlocks):
     @property
     def intermediate_outputs(self) -> list[OutputParam]:
         return [
-            OutputParam("video_coords", type_hint=torch.Tensor, description="Video RoPE patch coordinates."),
-            OutputParam("audio_coords", type_hint=torch.Tensor, description="Audio RoPE patch coordinates."),
+            OutputParam(
+                "video_coords",
+                type_hint=torch.Tensor,
+                kwargs_type="denoiser_input_fields",
+                description="Video RoPE patch coordinates.",
+            ),
+            OutputParam(
+                "audio_coords",
+                type_hint=torch.Tensor,
+                kwargs_type="denoiser_input_fields",
+                description="Audio RoPE patch coordinates.",
+            ),
         ]
 
     @torch.no_grad()

@@ -13,6 +13,7 @@
 # limitations under the License.
 
 
+import inspect
 from typing import Any
 
 import torch
@@ -210,9 +211,9 @@ class LTX2LoopDenoiser(ModularPipelineBlocks):
             InputParam("latents", type_hint=torch.Tensor, required=True),
             InputParam("audio_latents", type_hint=torch.Tensor, required=True),
             InputParam("audio_scheduler", required=True),
-            InputParam("audio_num_frames", type_hint=int, required=True),
-            InputParam("video_coords", type_hint=torch.Tensor, required=True),
-            InputParam("audio_coords", type_hint=torch.Tensor, required=True),
+            # `audio_num_frames`, `video_coords`, `audio_coords` arrive tagged `denoiser_input_fields` upstream and
+            # are collected from the tagged dict (filtered against the transformer signature) in `__call__`.
+            InputParam.template("denoiser_input_fields"),
             InputParam.template("num_inference_steps", required=True),
             InputParam.template("height", default=512),
             InputParam.template("width", default=704),
@@ -236,17 +237,21 @@ class LTX2LoopDenoiser(ModularPipelineBlocks):
         latent_height = block_state.height // components.vae_spatial_compression_ratio
         latent_width = block_state.width // components.vae_spatial_compression_ratio
 
-        # Batch-invariant transformer kwargs, identical across every guidance pass.
-        shared_kwargs = {
-            "num_frames": latent_num_frames,
-            "height": latent_height,
-            "width": latent_width,
-            "fps": block_state.frame_rate,
-            "audio_num_frames": block_state.audio_num_frames,
-            "use_cross_timestep": block_state.use_cross_timestep,
-            "attention_kwargs": block_state.attention_kwargs,
-            "perturbation_mask": None,
-        }
+        # Batch-invariant transformer kwargs, identical across every guidance pass. The upstream-produced ones
+        # (`audio_num_frames`, `video_coords`, `audio_coords`) arrive tagged `denoiser_input_fields`; collect them by
+        # filtering the tagged dict against the transformer signature. The latent dims are computed here (not routed
+        # through the tag) so their names don't clash with the pixel-space num_frames/height/width in state.
+        transformer_args = set(inspect.signature(components.transformer.forward).parameters)
+        shared_kwargs = {k: v for k, v in block_state.denoiser_input_fields.items() if k in transformer_args}
+        shared_kwargs.update(
+            num_frames=latent_num_frames,
+            height=latent_height,
+            width=latent_width,
+            fps=block_state.frame_rate,
+            use_cross_timestep=block_state.use_cross_timestep,
+            attention_kwargs=block_state.attention_kwargs,
+            perturbation_mask=None,
+        )
 
         components.guider.set_state(step=i, num_inference_steps=block_state.num_inference_steps, timestep=t)
         components.audio_guider.set_state(step=i, num_inference_steps=block_state.num_inference_steps, timestep=t)
@@ -293,8 +298,6 @@ class LTX2LoopDenoiser(ModularPipelineBlocks):
                     timestep=block_state.video_timestep,
                     audio_timestep=block_state.audio_timestep,
                     sigma=block_state.audio_timestep,  # plain (unmasked) timestep, used by LTX-2.3
-                    video_coords=block_state.video_coords,
-                    audio_coords=block_state.audio_coords,
                     return_dict=False,
                     **cond_kwargs,
                     **shared_kwargs,
