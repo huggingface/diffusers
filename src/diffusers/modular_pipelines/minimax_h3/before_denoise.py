@@ -22,88 +22,24 @@ from ..modular_pipeline_utils import ComponentSpec, InputParam, OutputParam
 from .modular_pipeline import MiniMaxH3ModularPipeline, MiniMaxH3Ref2VAModularPipeline
 from .packing import (
     MINIMAX_H3_AUDIO_CHANNELS,
+    MINIMAX_H3_CANVAS_MULTIPLE,
+    MINIMAX_H3_FPS,
     MINIMAX_H3_KEYFRAME_NOISE_AUG,
+    MINIMAX_H3_MAX_DURATION,
+    MINIMAX_H3_MIN_DURATION,
     MiniMaxH3PackedSequence,
+    align_num_frames,
+    audio_latent_num_frames,
     build_packed_sequence,
     build_row_timesteps,
     patchify_video_latents,
+    resolve_canvas_size,
+    video_latent_num_frames,
 )
 from .packing_ref2va import MiniMaxH3PreparedReference, build_ref2va_packed_sequence
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
-
-
-def _layout_inputs() -> list[InputParam]:
-    r"""What both packed layouts are built from, beyond the conditioning of the task itself."""
-    return [
-        InputParam(
-            name="text_token_tags",
-            type_hint=torch.Tensor,
-            required=True,
-            description="The per-row modality tag of every row of `prompt_embeds`.",
-        ),
-        InputParam(
-            name="num_latent_frames", type_hint=int, required=True, description="Number of video latent frames."
-        ),
-        InputParam(name="latent_height", type_hint=int, required=True, description="Height of the video latents."),
-        InputParam(name="latent_width", type_hint=int, required=True, description="Width of the video latents."),
-        InputParam(
-            name="num_audio_latents",
-            type_hint=int,
-            required=True,
-            description="Number of audio latents per channel.",
-        ),
-    ]
-
-
-def _layout_outputs() -> list[OutputParam]:
-    r"""The row layout of the packed sequence, shared by the two tasks."""
-    return [
-        OutputParam(
-            "layout",
-            type_hint=MiniMaxH3PackedSequence,
-            description="The structural description of the packed sequence.",
-        ),
-        OutputParam(
-            "position_ids",
-            type_hint=torch.Tensor,
-            description="The `(t, h, w)` rotary coordinate of every row, in float64.",
-        ),
-        OutputParam("token_tags", type_hint=torch.Tensor, description="The modality tag of every row."),
-        OutputParam(
-            "video_indices",
-            type_hint=torch.Tensor,
-            description="Sequence positions of the video rows, conditioning rows first.",
-        ),
-        OutputParam(
-            "audio_indices",
-            type_hint=torch.Tensor,
-            description="Sequence positions of the audio rows, reference rows first.",
-        ),
-        OutputParam("text_indices", type_hint=torch.Tensor, description="Sequence positions of the text rows."),
-        OutputParam(
-            "num_condition_video_rows",
-            type_hint=int,
-            description="How many leading video rows are conditioning rows rather than generated rows.",
-        ),
-        OutputParam(
-            "num_condition_audio_rows",
-            type_hint=int,
-            description="How many leading audio rows are reference rows rather than generated rows.",
-        ),
-    ]
-
-
-def _set_layout_state(block_state, layout: MiniMaxH3PackedSequence, device: torch.device) -> None:
-    block_state.layout = layout
-    block_state.position_ids = layout.position_ids.to(device)
-    block_state.token_tags = layout.token_tags.to(device)
-    block_state.video_indices = layout.video_indices.to(device)
-    block_state.audio_indices = layout.audio_indices.to(device)
-    block_state.text_indices = layout.text_indices.to(device)
-    block_state.num_condition_video_rows = layout.num_condition_video_rows
-    block_state.num_condition_audio_rows = layout.num_condition_audio_rows
 
 
 class MiniMaxH3PrepareLayoutStep(ModularPipelineBlocks):
@@ -112,15 +48,33 @@ class MiniMaxH3PrepareLayoutStep(ModularPipelineBlocks):
     @property
     def description(self) -> str:
         return (
-            "Builds the packed layout of a `t2va` / `fl2va` request — `[text | keyframe conditions | target audio | "
-            "target video]` — and its fp64 rotary grid. MiniMax-H3 runs full self-attention over this one sequence, "
-            "so the layout is what every later block addresses rows through."
+            "Resolves the geometry of a `t2va` / `fl2va` request — the canvas, the `17 * n + 5` frame count the video "
+            "VAE can decode and the latent shapes every later block keys off — and builds the packed layout from it: "
+            "`[text | keyframe conditions | target audio | target video]` plus its fp64 rotary grid. MiniMax-H3 runs "
+            "full self-attention over this one sequence, so the layout is what every later block addresses rows "
+            "through."
         )
 
     @property
     def inputs(self) -> list[InputParam]:
         return [
-            *_layout_inputs(),
+            InputParam(
+                name="text_token_tags",
+                type_hint=torch.Tensor,
+                required=True,
+                description="The per-row modality tag of every row of `prompt_embeds`.",
+            ),
+            InputParam.template("height", description="Height of the generated video in pixels, a multiple of 32."),
+            InputParam.template("width", description="Width of the generated video in pixels, a multiple of 32."),
+            InputParam(
+                name="num_frames",
+                type_hint=int,
+                default=124,
+                description=(
+                    "Number of frames to generate, at the fixed 24 fps. Snapped up to the next `17 * n + 5` the video "
+                    "VAE can decode; the resulting duration must stay between 5 and 15 seconds."
+                ),
+            ),
             InputParam(
                 name="keyframe_anchors",
                 type_hint=tuple,
@@ -131,11 +85,87 @@ class MiniMaxH3PrepareLayoutStep(ModularPipelineBlocks):
 
     @property
     def intermediate_outputs(self) -> list[OutputParam]:
-        return _layout_outputs()
+        return [
+            OutputParam("height", type_hint=int, description="Resolved height of the generated video in pixels."),
+            OutputParam("width", type_hint=int, description="Resolved width of the generated video in pixels."),
+            OutputParam("num_frames", type_hint=int, description="Resolved number of frames, of the form 17 * n + 5."),
+            OutputParam("num_latent_frames", type_hint=int, description="Number of generated video latent frames."),
+            OutputParam("latent_height", type_hint=int, description="Height of the generated video latents."),
+            OutputParam("latent_width", type_hint=int, description="Width of the generated video latents."),
+            OutputParam(
+                "num_audio_latents", type_hint=int, description="Number of generated audio latents per channel."
+            ),
+            OutputParam(
+                "layout",
+                type_hint=MiniMaxH3PackedSequence,
+                description="The structural description of the packed sequence.",
+            ),
+            OutputParam(
+                "position_ids",
+                type_hint=torch.Tensor,
+                description="The `(t, h, w)` rotary coordinate of every row, in float64.",
+            ),
+            OutputParam("token_tags", type_hint=torch.Tensor, description="The modality tag of every row."),
+            OutputParam(
+                "video_indices",
+                type_hint=torch.Tensor,
+                description="Sequence positions of the video rows, conditioning rows first.",
+            ),
+            OutputParam(
+                "audio_indices",
+                type_hint=torch.Tensor,
+                description="Sequence positions of the audio rows, reference rows first.",
+            ),
+            OutputParam("text_indices", type_hint=torch.Tensor, description="Sequence positions of the text rows."),
+            OutputParam(
+                "num_condition_video_rows",
+                type_hint=int,
+                description="How many leading video rows are conditioning rows rather than generated rows.",
+            ),
+            OutputParam(
+                "num_condition_audio_rows",
+                type_hint=int,
+                description="How many leading audio rows are reference rows rather than generated rows.",
+            ),
+        ]
 
     @torch.no_grad()
     def __call__(self, components: MiniMaxH3ModularPipeline, state: PipelineState) -> PipelineState:
         block_state = self.get_block_state(state)
+        device = components._execution_device
+
+        # Without a keyframe to take the aspect ratio from, MiniMax-H3 generates on its own 16:9 canvas.
+        if block_state.height is None:
+            block_state.height, block_state.width = resolve_canvas_size(16, 9)
+        if block_state.height % MINIMAX_H3_CANVAS_MULTIPLE or block_state.width % MINIMAX_H3_CANVAS_MULTIPLE:
+            raise ValueError(
+                f"`height` and `width` must be multiples of {MINIMAX_H3_CANVAS_MULTIPLE}, got "
+                f"{block_state.height}x{block_state.width}."
+            )
+
+        aligned_num_frames = align_num_frames(block_state.num_frames)
+        if aligned_num_frames != block_state.num_frames:
+            logger.warning(
+                f"`num_frames` has to be of the form 17 * n + 5 for the video VAE; rounding {block_state.num_frames} "
+                f"up to {aligned_num_frames}."
+            )
+            block_state.num_frames = aligned_num_frames
+        # The duration the request generates is the one of the *aligned* frame count, so that is what the ceiling has
+        # to hold for: 346 frames would otherwise pass the check and then be rounded up to 362, i.e. 15.083 seconds.
+        duration = block_state.num_frames / MINIMAX_H3_FPS
+        if not MINIMAX_H3_MIN_DURATION <= duration <= MINIMAX_H3_MAX_DURATION:
+            raise ValueError(
+                f"MiniMax-H3 generates between {MINIMAX_H3_MIN_DURATION} and {MINIMAX_H3_MAX_DURATION} seconds at "
+                f"{MINIMAX_H3_FPS} fps, so `num_frames`, rounded up to the next `17 * n + 5` the video VAE can "
+                f"encode, must be between {int(MINIMAX_H3_MIN_DURATION * MINIMAX_H3_FPS)} and "
+                f"{int(MINIMAX_H3_MAX_DURATION * MINIMAX_H3_FPS)}, got {block_state.num_frames}."
+            )
+
+        ratio = components.vae_spatial_compression_ratio
+        block_state.num_latent_frames = video_latent_num_frames(block_state.num_frames)
+        block_state.latent_height = block_state.height // ratio
+        block_state.latent_width = block_state.width // ratio
+        block_state.num_audio_latents = audio_latent_num_frames(block_state.num_frames)
 
         layout = build_packed_sequence(
             block_state.text_token_tags,
@@ -146,7 +176,14 @@ class MiniMaxH3PrepareLayoutStep(ModularPipelineBlocks):
             components.patch_size,
             block_state.keyframe_anchors,
         )
-        _set_layout_state(block_state, layout, components._execution_device)
+        block_state.layout = layout
+        block_state.position_ids = layout.position_ids.to(device)
+        block_state.token_tags = layout.token_tags.to(device)
+        block_state.video_indices = layout.video_indices.to(device)
+        block_state.audio_indices = layout.audio_indices.to(device)
+        block_state.text_indices = layout.text_indices.to(device)
+        block_state.num_condition_video_rows = layout.num_condition_video_rows
+        block_state.num_condition_audio_rows = layout.num_condition_audio_rows
 
         self.set_block_state(state, block_state)
         return components, state
@@ -158,30 +195,94 @@ class MiniMaxH3Ref2VAPrepareLayoutStep(ModularPipelineBlocks):
     @property
     def description(self) -> str:
         return (
-            "Builds the packed layout of a `ref2va` request — `[text | reference blocks | target audio | target "
-            "video]` — and its fp64 rotary grid. The reference order advances the shared audio/video rotary clock, so "
-            "it is part of the layout rather than a detail of the presentation."
+            "Resolves the latent shapes of a `ref2va` request and builds its packed layout — `[text | reference "
+            "blocks | target audio | target video]` — plus its fp64 rotary grid. The reference order advances the "
+            "shared audio/video rotary clock, so it is part of the layout rather than a detail of the presentation."
         )
 
     @property
     def inputs(self) -> list[InputParam]:
         return [
-            *_layout_inputs(),
+            InputParam(
+                name="text_token_tags",
+                type_hint=torch.Tensor,
+                required=True,
+                description="The per-row modality tag of every row of `prompt_embeds`.",
+            ),
             InputParam(
                 name="prepared_references",
                 type_hint=list[MiniMaxH3PreparedReference],
                 required=True,
                 description="The prepared references, in packed order, with their latent geometry filled in.",
             ),
+            InputParam.template("height", required=True, description="Height of the generated video in pixels."),
+            InputParam.template("width", required=True, description="Width of the generated video in pixels."),
+            InputParam(
+                name="num_frames",
+                type_hint=int,
+                required=True,
+                description="Resolved number of frames, of the form 17 * n + 5.",
+            ),
         ]
 
     @property
     def intermediate_outputs(self) -> list[OutputParam]:
-        return _layout_outputs()
+        return [
+            OutputParam("height", type_hint=int, description="Resolved height of the generated video in pixels."),
+            OutputParam("width", type_hint=int, description="Resolved width of the generated video in pixels."),
+            OutputParam("num_frames", type_hint=int, description="Resolved number of frames, of the form 17 * n + 5."),
+            OutputParam("num_latent_frames", type_hint=int, description="Number of generated video latent frames."),
+            OutputParam("latent_height", type_hint=int, description="Height of the generated video latents."),
+            OutputParam("latent_width", type_hint=int, description="Width of the generated video latents."),
+            OutputParam(
+                "num_audio_latents", type_hint=int, description="Number of generated audio latents per channel."
+            ),
+            OutputParam(
+                "layout",
+                type_hint=MiniMaxH3PackedSequence,
+                description="The structural description of the packed sequence.",
+            ),
+            OutputParam(
+                "position_ids",
+                type_hint=torch.Tensor,
+                description="The `(t, h, w)` rotary coordinate of every row, in float64.",
+            ),
+            OutputParam("token_tags", type_hint=torch.Tensor, description="The modality tag of every row."),
+            OutputParam(
+                "video_indices",
+                type_hint=torch.Tensor,
+                description="Sequence positions of the video rows, conditioning rows first.",
+            ),
+            OutputParam(
+                "audio_indices",
+                type_hint=torch.Tensor,
+                description="Sequence positions of the audio rows, reference rows first.",
+            ),
+            OutputParam("text_indices", type_hint=torch.Tensor, description="Sequence positions of the text rows."),
+            OutputParam(
+                "num_condition_video_rows",
+                type_hint=int,
+                description="How many leading video rows are conditioning rows rather than generated rows.",
+            ),
+            OutputParam(
+                "num_condition_audio_rows",
+                type_hint=int,
+                description="How many leading audio rows are reference rows rather than generated rows.",
+            ),
+        ]
 
     @torch.no_grad()
     def __call__(self, components: MiniMaxH3Ref2VAModularPipeline, state: PipelineState) -> PipelineState:
         block_state = self.get_block_state(state)
+        device = components._execution_device
+
+        # The canvas and the frame count are settled by the setup step: a `ref2va` soundtrack is truncated to the
+        # generated duration as the references are prepared, so `num_frames` has to be final before that runs.
+        ratio = components.vae_spatial_compression_ratio
+        block_state.num_latent_frames = video_latent_num_frames(block_state.num_frames)
+        block_state.latent_height = block_state.height // ratio
+        block_state.latent_width = block_state.width // ratio
+        block_state.num_audio_latents = audio_latent_num_frames(block_state.num_frames)
 
         layout = build_ref2va_packed_sequence(
             block_state.text_token_tags,
@@ -192,7 +293,14 @@ class MiniMaxH3Ref2VAPrepareLayoutStep(ModularPipelineBlocks):
             block_state.num_audio_latents,
             components.patch_size,
         )
-        _set_layout_state(block_state, layout, components._execution_device)
+        block_state.layout = layout
+        block_state.position_ids = layout.position_ids.to(device)
+        block_state.token_tags = layout.token_tags.to(device)
+        block_state.video_indices = layout.video_indices.to(device)
+        block_state.audio_indices = layout.audio_indices.to(device)
+        block_state.text_indices = layout.text_indices.to(device)
+        block_state.num_condition_video_rows = layout.num_condition_video_rows
+        block_state.num_condition_audio_rows = layout.num_condition_audio_rows
 
         self.set_block_state(state, block_state)
         return components, state
@@ -204,10 +312,14 @@ class MiniMaxH3PrepareLatentsStep(ModularPipelineBlocks):
     @property
     def description(self) -> str:
         return (
-            "Draws the initial noise of the generated rows and prepends the conditioning rows. MiniMax-H3 draws the "
-            "video noise as a latent tensor and patchifies it afterwards, then the audio noise directly in row "
-            "layout — both off the request's generator, after the conditioning noise of the encoder step."
+            "Draws every noise stream of the request and packs the video rows. MiniMax-H3 draws one condition at a "
+            "time first — noising the encoded anchors to its conditioning level — then the video noise as a latent "
+            "tensor, then the audio noise directly in row layout, all off the request's generator, in that order."
         )
+
+    @property
+    def expected_components(self) -> list[ComponentSpec]:
+        return [ComponentSpec("scheduler", MiniMaxH3Scheduler)]
 
     @property
     def inputs(self) -> list[InputParam]:
@@ -244,8 +356,12 @@ class MiniMaxH3PrepareLatentsStep(ModularPipelineBlocks):
             ),
             InputParam(
                 name="condition_latents",
-                type_hint=torch.Tensor,
-                description="The video conditioning rows to prepend, or None for a request that has none.",
+                type_hint=list[torch.Tensor],
+                description=(
+                    "The encoded video conditioning latents, one `(1, latent_channels, num_latent_frames, "
+                    "latent_height, latent_width)` tensor per condition in packed order, or None for a request that "
+                    "has none. Noised and packed here."
+                ),
             ),
             InputParam(
                 name="audio_condition_latents",
@@ -269,83 +385,66 @@ class MiniMaxH3PrepareLatentsStep(ModularPipelineBlocks):
             ),
         ]
 
-    @staticmethod
-    def prepare_latents(
-        components,
-        num_latent_frames: int,
-        latent_height: int,
-        latent_width: int,
-        num_audio_latents: int,
-        device: torch.device,
-        generator: torch.Generator | list[torch.Generator] | None = None,
-        latents: torch.Tensor | None = None,
-        audio_latents: torch.Tensor | None = None,
-    ) -> tuple[torch.Tensor, torch.Tensor]:
-        r"""
-        Draw the initial noise of both modalities and pack it into transformer rows.
+    @torch.no_grad()
+    def __call__(self, components: MiniMaxH3ModularPipeline, state: PipelineState) -> PipelineState:
+        block_state = self.get_block_state(state)
+        device = components._execution_device
+        patch_size = components.patch_size
 
-        A request draws every stream from the one generator it is given, and the order is part of what that generator
-        reproduces: the conditioning noise of the keyframes or references first (one draw per condition, in
-        [`~modular_pipelines.minimax_h3.packing.keyframe_condition_noise`]), then the video noise here, as a latent tensor
-        that is patchified afterwards, then the audio noise, directly in row layout. Passing `latents` or
-        `audio_latents` skips its draw and shifts the ones after it.
+        # A request draws every stream from the one generator it is given, and the order is part of what that
+        # generator reproduces: one draw per condition first, then the video noise as a latent tensor, then the audio
+        # noise directly in row layout. Passing `latents` or `audio_latents` skips its draw and shifts the ones after
+        # it.
+        condition_rows = None
+        if block_state.condition_latents is not None:
+            # One draw per condition, in packed order. Each is packed on its own because `ref2va` references are
+            # encoded at their own resolutions, so their latents do not share a shape.
+            packed = []
+            for condition in block_state.condition_latents:
+                noise = randn_tensor(
+                    condition.shape, generator=block_state.generator, device=device, dtype=torch.float32
+                )
+                # The anchors are not fully clean: the released model noises them to `t = 0.999` and holds them there
+                # for every step. Mixing before the patchify is the same arithmetic, since patchify only permutes.
+                noised = components.scheduler.scale_noise(condition.to(device), MINIMAX_H3_KEYFRAME_NOISE_AUG, noise)
+                packed.append(patchify_video_latents(noised, patch_size))
+            condition_rows = torch.cat(packed)
 
-        Args:
-            num_latent_frames (`int`): Number of video latent frames.
-            latent_height (`int`): Latent height.
-            latent_width (`int`): Latent width.
-            num_audio_latents (`int`): Number of audio latents per channel.
-            device (`torch.device`): The device the rows are drawn on.
-            generator (`torch.Generator`, *optional*): The generator of the request.
-            latents (`torch.Tensor`, *optional*):
-                Pre-generated video noise of shape `(1, latent_channels, num_latent_frames, latent_height,
-                latent_width)`, used instead of the draw.
-            audio_latents (`torch.Tensor`, *optional*):
-                Pre-generated audio noise of shape `(2, audio_latent_channels, num_audio_latents)`.
-
-        Returns:
-            `tuple[torch.Tensor, torch.Tensor]`: the video rows and the channel-major audio rows.
-        """
+        latents = block_state.latents
         if latents is None:
             latents = randn_tensor(
-                (1, components.vae_latent_channels, num_latent_frames, latent_height, latent_width),
-                generator=generator,
+                (
+                    1,
+                    components.vae_latent_channels,
+                    block_state.num_latent_frames,
+                    block_state.latent_height,
+                    block_state.latent_width,
+                ),
+                generator=block_state.generator,
                 device=device,
                 dtype=torch.float32,
             )
-        video_rows = patchify_video_latents(latents.to(torch.float32), components.patch_size)
+        video_rows = patchify_video_latents(latents.to(device, torch.float32), patch_size)
 
-        if audio_latents is None:
+        if block_state.audio_latents is None:
             audio_rows = randn_tensor(
-                (num_audio_latents * MINIMAX_H3_AUDIO_CHANNELS, components.audio_latent_channels),
-                generator=generator,
+                (block_state.num_audio_latents * MINIMAX_H3_AUDIO_CHANNELS, components.audio_latent_channels),
+                generator=block_state.generator,
                 device=device,
                 dtype=torch.float32,
             )
         else:
-            audio_rows = audio_latents.to(torch.float32).permute(0, 2, 1).reshape(-1, components.audio_latent_channels)
-        return video_rows.to(device), audio_rows.to(device)
+            audio_rows = (
+                block_state.audio_latents.to(device, torch.float32)
+                .permute(0, 2, 1)
+                .reshape(-1, components.audio_latent_channels)
+            )
 
-    @torch.no_grad()
-    def __call__(self, components: MiniMaxH3ModularPipeline, state: PipelineState) -> PipelineState:
-        block_state = self.get_block_state(state)
-
-        latents, audio_latents = self.prepare_latents(
-            components,
-            block_state.num_latent_frames,
-            block_state.latent_height,
-            block_state.latent_width,
-            block_state.num_audio_latents,
-            components._execution_device,
-            block_state.generator,
-            block_state.latents,
-            block_state.audio_latents,
-        )
-        if block_state.condition_latents is not None:
-            latents = torch.cat([block_state.condition_latents, latents])
+        if condition_rows is not None:
+            video_rows = torch.cat([condition_rows, video_rows])
         if block_state.audio_condition_latents is not None:
-            audio_latents = torch.cat([block_state.audio_condition_latents, audio_latents])
-        block_state.latents, block_state.audio_latents = latents, audio_latents
+            audio_rows = torch.cat([block_state.audio_condition_latents.to(device), audio_rows])
+        block_state.latents, block_state.audio_latents = video_rows, audio_rows
 
         self.set_block_state(state, block_state)
         return components, state

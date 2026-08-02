@@ -40,9 +40,6 @@ from dataclasses import dataclass
 
 import numpy as np
 import torch
-from PIL import Image
-
-from ...utils.torch_utils import randn_tensor
 
 
 # Per-row modality tags. They index the transformer's AdaLN table, so the values are a checkpoint contract.
@@ -211,36 +208,6 @@ def audio_latent_num_frames(num_frames: int) -> int:
         `int`: The number of audio latents, rounded at the 40 Hz latent grid.
     """
     return int(round(num_frames / MINIMAX_H3_FPS * MINIMAX_H3_AUDIO_LATENTS_PER_SECOND))
-
-
-def prepare_keyframe_image(image, height: int, width: int, stretch: bool):
-    r"""
-    Put a keyframe onto the target canvas.
-
-    The first keyframe of a request is the geometry anchor and is *stretched* onto the canvas, while a second
-    keyframe follows that canvas and is cover-cropped (aspect-preserving max-scale LANCZOS resize plus a centre
-    crop). An image that already is the canvas is returned untouched, without a resampling pass.
-
-    Args:
-        image (`PIL.Image.Image`): The keyframe, in RGB and already EXIF-transposed.
-        height (`int`): Canvas height.
-        width (`int`): Canvas width.
-        stretch (`bool`): Whether to stretch (geometry anchor) instead of cover-cropping (follower).
-
-    Returns:
-        `PIL.Image.Image`: The prepared keyframe.
-    """
-    if image.size == (width, height):
-        return image
-    if stretch:
-        return image.resize((width, height), Image.Resampling.LANCZOS)
-
-    scale = max(width / image.size[0], height / image.size[1])
-    resized_size = (max(width, round(image.size[0] * scale)), max(height, round(image.size[1] * scale)))
-    left = max(0, (resized_size[0] - width) // 2)
-    top = max(0, (resized_size[1] - height) // 2)
-    resized = image.resize(resized_size, Image.Resampling.LANCZOS)
-    return resized.crop((left, top, left + width, top + height))
 
 
 def patchify_video_latents(latents: torch.Tensor, patch_size: tuple[int, int, int]) -> torch.Tensor:
@@ -496,43 +463,3 @@ def build_row_timesteps(
     row_timesteps[layout.audio_indices[layout.num_condition_audio_rows :]] = audio_timestep
     row_timesteps[layout.audio_indices[: layout.num_condition_audio_rows]] = condition_audio_timestep
     return torch.unique(row_timesteps, sorted=True, return_inverse=True)
-
-
-def keyframe_condition_noise(
-    condition_latent_shapes: tuple[tuple[int, int, int], ...],
-    patch_size: tuple[int, int, int],
-    latent_channels: int,
-    generator: torch.Generator | list[torch.Generator] | None = None,
-    device: torch.device | None = None,
-    dtype: torch.dtype = torch.float32,
-) -> torch.Tensor:
-    r"""
-    Draw the noise that the keyframe (or reference) conditioning rows are mixed with.
-
-    One draw per condition, in packed order, off the request's generator. The conditioning rows are prepared before
-    the target rows, so these are the *first* draws of a request, ahead of the video and audio noise of
-    [`~MiniMaxH3PrepareLatentsStep.prepare_latents`] — the order is part of what a generator reproduces.
-
-    Args:
-        condition_latent_shapes (`tuple[tuple[int, int, int], ...]`):
-            The `(num_latent_frames, latent_height, latent_width)` of every condition, in packed order.
-        patch_size (`tuple[int, int, int]`): The transformer's `(t, h, w)` patch.
-        latent_channels (`int`): Number of video latent channels.
-        generator (`torch.Generator`, *optional*): The generator of the request.
-        device (`torch.device`, *optional*): The device the noise is drawn on.
-        dtype (`torch.dtype`, defaults to `torch.float32`): The dtype of the noise.
-
-    Returns:
-        `torch.Tensor` of shape `(num_condition_rows, latent_channels * prod(patch_size))`: the noise rows,
-        concatenated in packed order.
-    """
-    rows = []
-    for num_latent_frames, latent_height, latent_width in condition_latent_shapes:
-        noise = randn_tensor(
-            (1, latent_channels, num_latent_frames, latent_height, latent_width),
-            generator=generator,
-            device=device,
-            dtype=dtype,
-        )
-        rows.append(patchify_video_latents(noise, patch_size))
-    return torch.cat(rows)
