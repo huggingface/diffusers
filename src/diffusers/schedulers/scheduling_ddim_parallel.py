@@ -391,8 +391,8 @@ class DDIMParallelScheduler(SchedulerMixin, ConfigMixin):
         Return the previous timestep from the schedule produced by [`set_timesteps`].
 
         The schedule already encodes `timestep_spacing` (`leading`, `trailing`, or `linspace`). Deriving the previous
-        value from that list is a no-op for uniform strides and corrects `linspace`, where a fixed
-        `num_train_timesteps // num_inference_steps` step disagrees with the materialised list.
+        value from that list is a no-op for uniform strides and corrects `linspace`, where a fixed `num_train_timesteps
+        // num_inference_steps` step disagrees with the materialised list.
 
         Args:
             timestep (`int` or `torch.Tensor`):
