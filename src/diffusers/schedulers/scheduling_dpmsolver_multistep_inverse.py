@@ -118,11 +118,10 @@ class DPMSolverMultistepInverseScheduler(SchedulerMixin, ConfigMixin):
             The threshold value for dynamic thresholding. Valid only when `thresholding=True` and
             `algorithm_type="dpmsolver++"`.
         algorithm_type (`str`, defaults to `dpmsolver++`):
-            Algorithm type for the solver; can be `dpmsolver`, `dpmsolver++`, `sde-dpmsolver` or `sde-dpmsolver++`. The
-            `dpmsolver` type implements the algorithms in the [DPMSolver](https://huggingface.co/papers/2206.00927)
-            paper, and the `dpmsolver++` type implements the algorithms in the
-            [DPMSolver++](https://huggingface.co/papers/2211.01095) paper. It is recommended to use `dpmsolver++` or
-            `sde-dpmsolver++` with `solver_order=2` for guided sampling like in Stable Diffusion.
+            Algorithm type for the solver; can be `dpmsolver` or `dpmsolver++`. The `dpmsolver` type implements the
+            algorithms in the [DPMSolver](https://huggingface.co/papers/2206.00927) paper, and the `dpmsolver++` type
+            implements the algorithms in the [DPMSolver++](https://huggingface.co/papers/2211.01095) paper. Stochastic
+            variants (`sde-dpmsolver`, `sde-dpmsolver++`) are not supported: inversion is deterministic.
         solver_type (`str`, defaults to `midpoint`):
             Solver type for the second-order solver; can be `midpoint` or `heun`. The solver type slightly affects the
             sample quality, especially for a small number of steps. It is recommended to use `midpoint` solvers.
@@ -174,7 +173,7 @@ class DPMSolverMultistepInverseScheduler(SchedulerMixin, ConfigMixin):
         thresholding: bool = False,
         dynamic_thresholding_ratio: float = 0.995,
         sample_max_value: float = 1.0,
-        algorithm_type: Literal["dpmsolver", "dpmsolver++", "sde-dpmsolver", "sde-dpmsolver++"] = "dpmsolver++",
+        algorithm_type: Literal["dpmsolver", "dpmsolver++"] = "dpmsolver++",
         solver_type: Literal["midpoint", "heun"] = "midpoint",
         lower_order_final: bool = True,
         euler_at_final: bool = False,
@@ -188,6 +187,11 @@ class DPMSolverMultistepInverseScheduler(SchedulerMixin, ConfigMixin):
         timestep_spacing: Literal["linspace", "leading", "trailing"] = "linspace",
         steps_offset: int = 0,
     ):
+        if algorithm_type in ["sde-dpmsolver", "sde-dpmsolver++"]:
+            raise ValueError(
+                f"DPMSolverMultistepInverseScheduler does not support algorithm_type='{algorithm_type}' because "
+                "inversion is deterministic; use 'dpmsolver++' or 'dpmsolver' instead."
+            )
         if self.config.use_beta_sigmas and not is_scipy_available():
             raise ImportError("Make sure to install scipy if you want to use beta sigmas.")
         if (
@@ -203,8 +207,11 @@ class DPMSolverMultistepInverseScheduler(SchedulerMixin, ConfigMixin):
             raise ValueError(
                 "Only one of `config.use_beta_sigmas`, `config.use_exponential_sigmas`, `config.use_karras_sigmas` can be used."
             )
-        if algorithm_type in ["dpmsolver", "sde-dpmsolver"]:
-            deprecation_message = f"algorithm_type {algorithm_type} is deprecated and will be removed in a future version. Choose from `dpmsolver++` or `sde-dpmsolver++` instead"
+        if algorithm_type == "dpmsolver":
+            deprecation_message = (
+                "algorithm_type dpmsolver is deprecated and will be removed in a future version. "
+                "Choose `dpmsolver++` instead."
+            )
             deprecate(
                 "algorithm_types dpmsolver and sde-dpmsolver",
                 "1.0.0",
@@ -244,12 +251,7 @@ class DPMSolverMultistepInverseScheduler(SchedulerMixin, ConfigMixin):
         self.init_noise_sigma = 1.0
 
         # settings for DPM-Solver
-        if algorithm_type not in [
-            "dpmsolver",
-            "dpmsolver++",
-            "sde-dpmsolver",
-            "sde-dpmsolver++",
-        ]:
+        if algorithm_type not in ["dpmsolver", "dpmsolver++"]:
             if algorithm_type == "deis":
                 self.register_to_config(algorithm_type="dpmsolver++")
             else:
