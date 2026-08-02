@@ -22,7 +22,7 @@ from .before_denoise import (
     MiniMaxH3Ref2VAPrepareLayoutStep,
     MiniMaxH3SetTimestepsStep,
 )
-from .before_encoder import MiniMaxH3Ref2VASetupStep, MiniMaxH3SetupStep
+from .before_encoder import MiniMaxH3Ref2VASetupStep, MiniMaxH3ResizeStep
 from .decoders import MiniMaxH3AudioDecodeStep, MiniMaxH3VideoDecodeStep
 from .denoise import MiniMaxH3DenoiseStep, MiniMaxH3Ref2VADenoiseStep
 from .encoders import (
@@ -47,6 +47,57 @@ def _generation_outputs() -> list[OutputParam]:
 
 
 # auto_docstring
+class MiniMaxH3AutoResizeStep(ConditionalPipelineBlocks):
+    """
+    Keyframe canvas block.
+       - MiniMaxH3ResizeStep runs for the `fl2va` task, whichever of the two keyframes is given.
+       - when neither `image` nor `last_image` is provided (`t2va`), this block is skipped and the layout step falls
+         back to MiniMax-H3's own 16:9 canvas.
+
+      Components:
+          image_processor (`VaeImageProcessor`)
+
+      Inputs:
+          image (`Image`, *optional*):
+              Keyframe the video starts from.
+          last_image (`Image`, *optional*):
+              Keyframe the video ends on.
+          height (`int`, *optional*):
+              Height of the generated video in pixels, a multiple of 32.
+          width (`int`, *optional*):
+              Width of the generated video in pixels, a multiple of 32.
+
+      Outputs:
+          height (`int`), width (`int`):
+              The resolved canvas.
+          keyframes (`list`):
+              The keyframes put onto that canvas, in packed order.
+          keyframe_anchors (`tuple`):
+              Which end of the video every keyframe is anchored to, in packed order.
+    """
+
+    model_name = "minimax-h3"
+    block_classes = [MiniMaxH3ResizeStep]
+    block_names = ["keyframes"]
+    block_trigger_inputs = ["image", "last_image"]
+    default_block_name = None
+
+    def select_block(self, **kwargs) -> str | None:
+        if kwargs.get("image") is not None or kwargs.get("last_image") is not None:
+            return "keyframes"
+        return None
+
+    @property
+    def description(self):
+        return (
+            "Keyframe canvas block.\n"
+            + " - MiniMaxH3ResizeStep runs for the `fl2va` task, whichever of the two keyframes is given.\n"
+            + " - when neither `image` nor `last_image` is provided (`t2va`), this block is skipped and the layout "
+            "step falls back to MiniMax-H3's own 16:9 canvas."
+        )
+
+
+# auto_docstring
 class MiniMaxH3AutoKeyframeVaeEncoderStep(ConditionalPipelineBlocks):
     """
     Keyframe conditioning block.
@@ -54,22 +105,15 @@ class MiniMaxH3AutoKeyframeVaeEncoderStep(ConditionalPipelineBlocks):
        - when neither `image` nor `last_image` is provided (`t2va`), this block is skipped.
 
       Components:
-          vae (`AutoencoderKLMiniMaxH3`) scheduler (`MiniMaxH3Scheduler`)
+          vae (`AutoencoderKLMiniMaxH3`)
 
       Inputs:
-          keyframes (`list`, *optional*):
+          keyframes (`list`):
               The keyframes put onto the target canvas, in packed order.
-          latent_height (`int`, *optional*):
-              Height of the video latents.
-          latent_width (`int`, *optional*):
-              Width of the video latents.
-          generator (`Generator`, *optional*):
-              The generator of the request. The conditioning noise is drawn from it before the target noise of the
-              prepare-latents step.
 
       Outputs:
-          condition_latents (`Tensor`):
-              The noise-augmented video conditioning rows, in packed order.
+          condition_latents (`list`):
+              The normalized video conditioning latents, one tensor per keyframe, in packed order.
     """
 
     model_name = "minimax-h3"
@@ -205,7 +249,7 @@ class MiniMaxH3Blocks(SequentialPipelineBlocks):
 
     model_name = "minimax-h3"
     block_classes = [
-        MiniMaxH3SetupStep,
+        MiniMaxH3AutoResizeStep,
         MiniMaxH3TextEncoderStep,
         MiniMaxH3AutoKeyframeVaeEncoderStep,
         MiniMaxH3PrepareLayoutStep,
@@ -215,7 +259,7 @@ class MiniMaxH3Blocks(SequentialPipelineBlocks):
         MiniMaxH3DecodeStep,
     ]
     block_names = [
-        "setup",
+        "resize",
         "text_encoder",
         "vae_encoder",
         "prepare_layout",

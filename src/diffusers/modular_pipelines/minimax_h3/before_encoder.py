@@ -16,9 +16,11 @@ import PIL
 import torch
 from PIL import Image, ImageOps
 
+from ...configuration_utils import FrozenDict
+from ...image_processor import VaeImageProcessor
 from ...utils import logging
 from ..modular_pipeline import ModularPipelineBlocks, PipelineState
-from ..modular_pipeline_utils import InputParam, OutputParam
+from ..modular_pipeline_utils import ComponentSpec, InputParam, OutputParam
 from .modular_pipeline import MiniMaxH3ModularPipeline, MiniMaxH3Ref2VAModularPipeline
 from .packing import (
     MINIMAX_H3_CANVAS_MULTIPLE,
@@ -26,10 +28,7 @@ from .packing import (
     MINIMAX_H3_MAX_DURATION,
     MINIMAX_H3_MIN_DURATION,
     align_num_frames,
-    audio_latent_num_frames,
-    prepare_keyframe_image,
     resolve_canvas_size,
-    video_latent_num_frames,
 )
 from .packing_ref2va import (
     MINIMAX_H3_MAX_REFERENCE_AUDIOS,
@@ -51,57 +50,27 @@ from .packing_ref2va import (
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
-def _latent_geometry(components, height: int, width: int, num_frames: int) -> tuple[int, int, int, int]:
-    r"""The latent geometry the packed layout, the noise draws and the decoders all key off."""
-    ratio = components.vae_spatial_compression_ratio
-    return video_latent_num_frames(num_frames), height // ratio, width // ratio, audio_latent_num_frames(num_frames)
-
-
-def _latent_geometry_outputs() -> list[OutputParam]:
-    r"""The declaration of what [`_latent_geometry`] resolves, shared by the two setup blocks."""
-    return [
-        OutputParam("num_latent_frames", type_hint=int, description="Number of generated video latent frames."),
-        OutputParam("latent_height", type_hint=int, description="Height of the generated video latents."),
-        OutputParam("latent_width", type_hint=int, description="Width of the generated video latents."),
-        OutputParam("num_audio_latents", type_hint=int, description="Number of generated audio latents per channel."),
-    ]
-
-
-class MiniMaxH3SetupStep(ModularPipelineBlocks):
+class MiniMaxH3ResizeStep(ModularPipelineBlocks):
     model_name = "minimax-h3"
 
     @property
     def description(self) -> str:
         return (
-            "Resolves the plan shared by the `t2va` and `fl2va` tasks: the canvas (MiniMax-H3's own 768-short-edge "
-            "geometry for the aspect ratio of the first keyframe, or 16:9 without keyframes), the `17 * n + 5` frame "
-            "count the video VAE can decode, the latent geometry every later block keys off, and the keyframes put "
-            "onto that canvas."
+            "Puts the `fl2va` keyframes onto the target canvas — MiniMax-H3's own 768-short-edge geometry for the "
+            "aspect ratio of the first keyframe unless `height` and `width` say otherwise. The canvas resolved here "
+            "is the one the whole request generates at."
         )
 
-    @staticmethod
-    def _check_inputs(block_state) -> None:
-        if (block_state.height is None) != (block_state.width is None):
-            raise ValueError("`height` and `width` have to be passed together, or neither of them.")
-        if block_state.height is not None and (
-            block_state.height % MINIMAX_H3_CANVAS_MULTIPLE or block_state.width % MINIMAX_H3_CANVAS_MULTIPLE
-        ):
-            raise ValueError(
-                f"`height` and `width` must be multiples of {MINIMAX_H3_CANVAS_MULTIPLE}, got "
-                f"{block_state.height}x{block_state.width}."
-            )
-        # The duration the request generates is the one of the *aligned* frame count, so that is what the ceiling has
-        # to hold for: 346 frames would otherwise pass the check and then be rounded up to 362, i.e. 15.083 seconds.
-        aligned_num_frames = align_num_frames(block_state.num_frames)
-        duration = aligned_num_frames / MINIMAX_H3_FPS
-        if not MINIMAX_H3_MIN_DURATION <= duration <= MINIMAX_H3_MAX_DURATION:
-            raise ValueError(
-                f"MiniMax-H3 generates between {MINIMAX_H3_MIN_DURATION} and {MINIMAX_H3_MAX_DURATION} seconds at "
-                f"{MINIMAX_H3_FPS} fps, so `num_frames`, rounded up to the next `17 * n + 5` the video VAE can "
-                f"encode, must be between {int(MINIMAX_H3_MIN_DURATION * MINIMAX_H3_FPS)} and "
-                f"{int(MINIMAX_H3_MAX_DURATION * MINIMAX_H3_FPS)}, got {block_state.num_frames} (rounded up to "
-                f"{aligned_num_frames})."
-            )
+    @property
+    def expected_components(self) -> list[ComponentSpec]:
+        return [
+            ComponentSpec(
+                "image_processor",
+                VaeImageProcessor,
+                config=FrozenDict({"vae_scale_factor": 16}),
+                default_creation_method="from_config",
+            ),
+        ]
 
     @property
     def inputs(self) -> list[InputParam]:
@@ -124,15 +93,6 @@ class MiniMaxH3SetupStep(ModularPipelineBlocks):
             ),
             InputParam.template("height", description="Height of the generated video in pixels, a multiple of 32."),
             InputParam.template("width", description="Width of the generated video in pixels, a multiple of 32."),
-            InputParam(
-                name="num_frames",
-                type_hint=int,
-                default=124,
-                description=(
-                    "Number of frames to generate, at the fixed 24 fps. Snapped up to the next `17 * n + 5` the video "
-                    "VAE can decode; the resulting duration must stay between 5 and 15 seconds."
-                ),
-            ),
         ]
 
     @property
@@ -140,57 +100,61 @@ class MiniMaxH3SetupStep(ModularPipelineBlocks):
         return [
             OutputParam("height", type_hint=int, description="Resolved height of the generated video in pixels."),
             OutputParam("width", type_hint=int, description="Resolved width of the generated video in pixels."),
-            OutputParam("num_frames", type_hint=int, description="Resolved number of frames, of the form 17 * n + 5."),
-            *_latent_geometry_outputs(),
             OutputParam(
                 "keyframes",
                 type_hint=list,
-                description="The keyframes put onto the target canvas, in packed order (empty for `t2va`).",
+                description="The keyframes put onto the target canvas, in packed order.",
             ),
             OutputParam(
                 "keyframe_anchors",
                 type_hint=tuple,
-                description="Which end of the video every keyframe is anchored to, in packed order.",
+                description=(
+                    "Which end of the video every keyframe is anchored to, in packed order. Positional with "
+                    "`keyframes`, so both are resolved here."
+                ),
             ),
         ]
 
     @torch.no_grad()
     def __call__(self, components: MiniMaxH3ModularPipeline, state: PipelineState) -> PipelineState:
         block_state = self.get_block_state(state)
-        self._check_inputs(block_state)
 
-        keyframes = [
-            ImageOps.exif_transpose(keyframe).convert("RGB")
-            for keyframe in (block_state.image, block_state.last_image)
-            if keyframe is not None
-        ]
+        keyframes = [keyframe for keyframe in (block_state.image, block_state.last_image) if keyframe is not None]
         block_state.keyframe_anchors = tuple(
             anchor
             for anchor, keyframe in (("first", block_state.image), ("last", block_state.last_image))
             if keyframe is not None
         )
         if block_state.height is None:
-            block_state.height, block_state.width = resolve_canvas_size(*(keyframes[0].size if keyframes else (16, 9)))
+            block_state.height, block_state.width = resolve_canvas_size(*keyframes[0].size)
 
-        aligned_num_frames = align_num_frames(block_state.num_frames)
-        if aligned_num_frames != block_state.num_frames:
-            logger.warning(
-                f"`num_frames` has to be of the form 17 * n + 5 for the video VAE; rounding {block_state.num_frames} "
-                f"up to {aligned_num_frames}."
-            )
-            block_state.num_frames = aligned_num_frames
+        prepared = []
+        for index, keyframe in enumerate(keyframes):
+            if keyframe.size == (block_state.width, block_state.height):
+                prepared.append(keyframe)
+            elif index == 0:
+                # The geometry anchor is stretched onto the canvas. `resize_mode="default"` is exactly PIL's
+                # `resize((width, height), LANCZOS)`, verified pixel-identical across aspect ratios.
+                prepared.append(
+                    components.image_processor.resize(keyframe, height=block_state.height, width=block_state.width)
+                )
+            else:
+                # The follower is cover-cropped. `VaeImageProcessor`'s `resize_mode="crop"` is *not* a drop-in here:
+                # it sizes with floor division and centres with `w // 2 - src_w // 2`, where MiniMax-H3 rounds and
+                # centres with `(src_w - w) // 2`. The two agree on some aspect ratios and differ by a pixel on
+                # others (106 of 218 sampled), which would move the conditioning latents off the reference
+                # implementation, so the released model's arithmetic is kept.
+                scale = max(block_state.width / keyframe.size[0], block_state.height / keyframe.size[1])
+                resized_size = (
+                    max(block_state.width, round(keyframe.size[0] * scale)),
+                    max(block_state.height, round(keyframe.size[1] * scale)),
+                )
+                left = max(0, (resized_size[0] - block_state.width) // 2)
+                top = max(0, (resized_size[1] - block_state.height) // 2)
+                resized = keyframe.resize(resized_size, Image.Resampling.LANCZOS)
+                prepared.append(resized.crop((left, top, left + block_state.width, top + block_state.height)))
+        block_state.keyframes = prepared
 
-        (
-            block_state.num_latent_frames,
-            block_state.latent_height,
-            block_state.latent_width,
-            block_state.num_audio_latents,
-        ) = _latent_geometry(components, block_state.height, block_state.width, block_state.num_frames)
-
-        block_state.keyframes = [
-            prepare_keyframe_image(keyframe, block_state.height, block_state.width, stretch=index == 0)
-            for index, keyframe in enumerate(keyframes)
-        ]
         self.set_block_state(state, block_state)
         return components, state
 
@@ -288,7 +252,6 @@ class MiniMaxH3Ref2VASetupStep(ModularPipelineBlocks):
             OutputParam("height", type_hint=int, description="Resolved height of the generated video in pixels."),
             OutputParam("width", type_hint=int, description="Resolved width of the generated video in pixels."),
             OutputParam("num_frames", type_hint=int, description="Resolved number of frames, of the form 17 * n + 5."),
-            *_latent_geometry_outputs(),
             OutputParam(
                 "prepared_references",
                 type_hint=list[MiniMaxH3PreparedReference],
@@ -396,13 +359,6 @@ class MiniMaxH3Ref2VASetupStep(ModularPipelineBlocks):
                 f"`num_frames` has to be of the form 17 * n + 5 for the video VAE; rounding {requested_num_frames} up "
                 f"to {block_state.num_frames}."
             )
-
-        (
-            block_state.num_latent_frames,
-            block_state.latent_height,
-            block_state.latent_width,
-            block_state.num_audio_latents,
-        ) = _latent_geometry(components, block_state.height, block_state.width, block_state.num_frames)
 
         self.set_block_state(state, block_state)
         return components, state

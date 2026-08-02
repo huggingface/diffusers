@@ -52,7 +52,7 @@ TINY_MODULAR_REPO_ID = "hf-internal-testing/tiny-minimax-h3-modular-pipe"
 
 
 T2VA_WORKFLOW = [
-    ("setup", "MiniMaxH3SetupStep"),
+    ("resize", "MiniMaxH3AutoResizeStep"),
     ("text_encoder", "MiniMaxH3TextEncoderStep"),
     ("prepare_layout", "MiniMaxH3PrepareLayoutStep"),
     ("prepare_latents", "MiniMaxH3PrepareLatentsStep"),
