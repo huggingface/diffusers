@@ -16,7 +16,11 @@ import PIL
 import torch
 from PIL import Image, ImageOps
 
-from ...pipelines.minimax_h3.packing import (
+from ...utils import logging
+from ..modular_pipeline import ModularPipelineBlocks, PipelineState
+from ..modular_pipeline_utils import InputParam, OutputParam
+from .modular_pipeline import MiniMaxH3ModularPipeline, MiniMaxH3Ref2VAModularPipeline
+from .packing import (
     MINIMAX_H3_CANVAS_MULTIPLE,
     MINIMAX_H3_FPS,
     MINIMAX_H3_MAX_DURATION,
@@ -27,7 +31,7 @@ from ...pipelines.minimax_h3.packing import (
     resolve_canvas_size,
     video_latent_num_frames,
 )
-from ...pipelines.minimax_h3.packing_ref2va import (
+from .packing_ref2va import (
     MINIMAX_H3_MAX_REFERENCE_AUDIOS,
     MINIMAX_H3_MAX_REFERENCE_IMAGES,
     MINIMAX_H3_MAX_REFERENCE_VIDEOS,
@@ -42,10 +46,6 @@ from ...pipelines.minimax_h3.packing_ref2va import (
     resample_reference_frames,
     resolve_reference_image_size,
 )
-from ...utils import logging
-from ..modular_pipeline import ModularPipelineBlocks, PipelineState
-from ..modular_pipeline_utils import InputParam, OutputParam
-from .modular_pipeline import MiniMaxH3ModularPipeline, MiniMaxH3Ref2VAModularPipeline
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -297,7 +297,6 @@ class MiniMaxH3Ref2VASetupStep(ModularPipelineBlocks):
         ]
 
     @staticmethod
-    # Copied from diffusers.pipelines.minimax_h3.pipeline_minimax_h3_ref2va.MiniMaxH3Ref2VAPipeline.prepare_references with self->components
     def prepare_references(
         components, references: list[MiniMaxH3Reference], num_frames: int | None
     ) -> tuple[list[MiniMaxH3PreparedReference], int]:
@@ -319,7 +318,7 @@ class MiniMaxH3Ref2VASetupStep(ModularPipelineBlocks):
 
         Args:
             references (`list[MiniMaxH3Reference]`):
-                The `references` argument of [`~MiniMaxH3Ref2VAPipeline.__call__`].
+                The `references` input of a [`MiniMaxH3Ref2VABlocks`] request.
             num_frames (`int`, *optional*):
                 The requested frame count, or `None` to derive it from the single audio-bearing reference.
 

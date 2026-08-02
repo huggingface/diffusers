@@ -18,7 +18,9 @@ Every source key maps onto a diffusers module by renaming alone, except for thre
 There are no transposes anywhere.
 
 The FL2VA and Ref2VA variants differ only in the transformer weights, so the variant is selected by pointing
-`--checkpoint_path` at the corresponding folder.
+`--checkpoint_path` at the corresponding folder. Both land in one repository, which carries a single
+`modular_model_index.json`: MiniMax-H3 is integrated as Modular Diffusers blocks only, so no `model_index.json` is
+written.
 
 Usage:
 
@@ -27,9 +29,10 @@ Usage:
 python scripts/convert_minimax_h3_to_diffusers.py \
     --checkpoint_path /path/to/MiniMax-H3/FL2VA --output_path /tmp/h3-diffusers --dry_run
 
-# Convert.
+# Convert, and point the component loading specs at the Hub id the result is published under.
 python scripts/convert_minimax_h3_to_diffusers.py \
-    --checkpoint_path /path/to/MiniMax-H3/FL2VA --output_path /tmp/h3-diffusers
+    --checkpoint_path /path/to/MiniMax-H3/FL2VA --output_path /tmp/h3-diffusers \
+    --modular_repo_id MiniMaxAI/MiniMax-H3
 ```
 """
 
@@ -815,61 +818,49 @@ def write_transformer_config(output_path: str, config: dict[str, Any], diffusers
         )
 
 
-def write_model_index(checkpoint_path: str, output_path: str, repo_id: str, diffusers_version: str) -> None:
-    """Emit `model_index.json` for the standard pipelines and `modular_model_index.json` for the modular ones.
+# The components a MiniMax-H3 repository holds, and the class each one loads as. `video_processor` is absent: the
+# blocks create it from config rather than loading it.
+MINIMAX_H3_COMPONENTS = {
+    # The source names a checkpoint-local wrapper class (`MiniMaxH3Qwen3VLHFEncoder`); the conditioner is the
+    # released Qwen3-VL, read at its 50th decoder layer with its language-model head unused.
+    "text_encoder": ["transformers", "Qwen3VLForConditionalGeneration"],
+    "tokenizer": ["transformers", "Qwen2TokenizerFast"],
+    "processor": ["transformers", "Qwen3VLProcessor"],
+    # Renamed to the diffusers audio/video VAE convention (see `LTX2Pipeline`).
+    "vae": ["diffusers", "AutoencoderKLMiniMaxH3"],
+    "audio_vae": ["diffusers", "AutoencoderKLMiniMaxH3Audio"],
+    "transformer": ["diffusers", "MiniMaxH3Transformer3DModel"],
+    # One repository holds both checkpoint partitions: `transformer/` serves `MiniMaxH3Blocks` (`t2va` / `fl2va`) and
+    # `transformer_ref/` serves `MiniMaxH3Ref2VABlocks`, while every other component is shared and converted once.
+    "transformer_ref": ["diffusers", "MiniMaxH3Transformer3DModel"],
+    # The source leaves `scheduler` null. MiniMax-H3 samples with Euler at eta=0 over shifted flow-matching sigmas, at
+    # a different shift per modality, so it needs two scheduler entries (see `write_scheduler_configs`).
+    "scheduler": ["diffusers", "MiniMaxH3Scheduler"],
+    "audio_scheduler": ["diffusers", "MiniMaxH3Scheduler"],
+}
 
-    A modular repository declares one entry per component with its full loading spec rather than just its class, so
-    the two files carry the same component map in two shapes; `video_processor` is absent from both, since the modular
-    blocks create it from config.
+
+def write_model_index(output_path: str, repo_id: str, diffusers_version: str) -> None:
+    """Emit `modular_model_index.json`, the only index a MiniMax-H3 repository carries.
+
+    MiniMax-H3 is integrated as Modular Diffusers blocks only, so there is no `model_index.json`: a modular repository
+    declares one entry per component with its full loading spec rather than just its class, and a blockset then fetches
+    exactly the subfolders it declares. That is what lets one repository hold both transformer partitions, and the
+    original checkpoint folders next to the converted ones, without either half pulling the rest down.
+
+    `_class_name` and `_blocks_class_name` name the `t2va` / `fl2va` half, which is what
+    `ModularPipeline.from_pretrained` resolves to. The `ref2va` half reads the very same file through
+    `MiniMaxH3Ref2VABlocks().init_pipeline(repo_id)`.
+
+    The component map is the static one above, so this needs no source checkpoint: an index can be regenerated for a
+    repository that is already published.
     """
-    with open(os.path.join(checkpoint_path, "model_index.json")) as f:
-        source_index = json.load(f)
-
-    if source_index.get("scheduler") is not None:
-        raise ValueError("The source `model_index.json` is expected to carry `scheduler: null`.")
-
-    index = {
-        "_class_name": "MiniMaxH3Pipeline",
-        "_diffusers_version": diffusers_version,
-        # The source names a checkpoint-local wrapper class (`MiniMaxH3Qwen3VLHFEncoder`); the conditioner is a
-        # Qwen3-VL truncated to its first 50 decoder layers, which the pipeline does at load time.
-        "text_encoder": ["transformers", "Qwen3VLForConditionalGeneration"],
-        "tokenizer": source_index["tokenizer"],
-        "processor": source_index["processor"],
-        # Renamed to the diffusers audio/video VAE convention (see `LTX2Pipeline`).
-        "vae": ["diffusers", "AutoencoderKLMiniMaxH3"],
-        "audio_vae": ["diffusers", "AutoencoderKLMiniMaxH3Audio"],
-        "transformer": ["diffusers", "MiniMaxH3Transformer3DModel"],
-        # One repository holds both checkpoint partitions: `transformer/` serves `MiniMaxH3Pipeline` (`t2va` /
-        # `fl2va`) and `transformer_ref/` serves `MiniMaxH3Ref2VAPipeline`, while every other component is shared and
-        # converted once. Each pipeline declares only its own transformer, so `from_pretrained` loads only that one.
-        "transformer_ref": ["diffusers", "MiniMaxH3Transformer3DModel"],
-        # The source leaves `scheduler` null. MiniMax-H3 samples with Euler at eta=0 over shifted flow-matching
-        # sigmas, at a different shift per modality, so it needs two scheduler entries (see
-        # `write_scheduler_configs`).
-        "scheduler": ["diffusers", "MiniMaxH3Scheduler"],
-        "audio_scheduler": ["diffusers", "MiniMaxH3Scheduler"],
-    }
-    os.makedirs(output_path, exist_ok=True)
-    with open(os.path.join(output_path, "model_index.json"), "w") as f:
-        json.dump(index, f, indent=2)
-    source_meta = source_index["_minimax_h3"]
-    print(f"model_index.json: source partition={source_meta['partition']}, tasks={source_meta['tasks']}.")
-
-    # `ModularPipeline.from_pretrained` reads this one first and falls back to `model_index.json`. `_class_name` and
-    # `_blocks_class_name` name the `t2va` / `fl2va` half, which is what `ModularPipeline.from_pretrained` resolves to.
-    # The `ref2va` half reads the very same file through `MiniMaxH3Ref2VABlocks().init_pipeline(repo_id)`: a component
-    # entry is only picked up when the blocks expect it, so each half loads its own transformer partition and shares
-    # everything else.
     modular_index = {
         "_class_name": "MiniMaxH3ModularPipeline",
         "_diffusers_version": diffusers_version,
         "_blocks_class_name": "MiniMaxH3Blocks",
     }
-    for name, entry in index.items():
-        if name.startswith("_"):
-            continue
-        library, class_name = entry
+    for name, (library, class_name) in MINIMAX_H3_COMPONENTS.items():
         modular_index[name] = [
             library,
             class_name,
@@ -881,9 +872,10 @@ def write_model_index(checkpoint_path: str, output_path: str, repo_id: str, diff
                 "revision": None,
             },
         ]
+    os.makedirs(output_path, exist_ok=True)
     with open(os.path.join(output_path, "modular_model_index.json"), "w") as f:
         json.dump(modular_index, f, indent=2)
-    print(f"modular_model_index.json: components load from {repo_id}.")
+    print(f"modular_model_index.json: {len(MINIMAX_H3_COMPONENTS)} components load from {repo_id}.")
 
 
 def get_args():
@@ -901,7 +893,8 @@ def get_args():
         default=None,
         help=(
             "Repository the component entries of `modular_model_index.json` point at. Defaults to `--output_path`, so "
-            "pass the Hub id the checkpoint is published under."
+            "pass the Hub id the checkpoint is published under. Every entry carries its own loading spec, so a "
+            "blockset fetches exactly the subfolders it declares out of that repository."
         ),
     )
     parser.add_argument(
@@ -947,9 +940,7 @@ def main(args):
     )
     convert_audio_vae(args.checkpoint_path, os.path.join(args.output_path, "audio_vae"), diffusers_version)
     write_scheduler_configs(args.checkpoint_path, args.output_path, diffusers_version)
-    write_model_index(
-        args.checkpoint_path, args.output_path, args.modular_repo_id or args.output_path, diffusers_version
-    )
+    write_model_index(args.output_path, args.modular_repo_id or args.output_path, diffusers_version)
 
 
 if __name__ == "__main__":

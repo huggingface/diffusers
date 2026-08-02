@@ -15,7 +15,7 @@ A Diffusion Transformer model for joint video and audio generation, introduced i
 
 MiniMax-H3 runs a single stack of blocks over **one packed 1-D sequence** that holds the text conditioning, the conditioning image and video rows, the audio rows and the target video rows at once. Attention is full self-attention over that sequence, so there is no cross-attention and no per-modality block weights. Modality-specific behaviour comes only from the two input patch projections, the per-row modality tag that selects the AdaLN modulation parameters, and the two output heads.
 
-Building the packed layout is the caller's job, which is why the forward signature takes the layout apart from the latents: the `(t, h, w)` position grid, the per-row modality tags, the per-row timestep indices and the three index tensors that address the video, audio and text rows. [`MiniMaxH3Pipeline`] and [`MiniMaxH3Ref2VAPipeline`] build all of it.
+Building the packed layout is the caller's job, which is why the forward signature takes the layout apart from the latents: the `(t, h, w)` position grid, the per-row modality tags, the per-row timestep indices and the three index tensors that address the video, audio and text rows. [`MiniMaxH3Blocks`] and [`MiniMaxH3Ref2VABlocks`] build all of it.
 
 A layout that carries padding rows (tag `-1`) needs a masked attention backend, since those rows are kept in their own attention document by a boolean mask; a padless sequence needs no mask and keeps every backend available.
 

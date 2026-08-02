@@ -363,7 +363,6 @@ else:
             "MarigoldNormalsPipeline",
         ]
     )
-    _import_structure["minimax_h3"] = ["MiniMaxH3Pipeline", "MiniMaxH3Ref2VAPipeline"]
     _import_structure["mochi"] = ["MochiPipeline"]
     _import_structure["motif_video"] = [
         "MotifVideoPipeline",
@@ -810,7 +809,6 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             MarigoldIntrinsicsPipeline,
             MarigoldNormalsPipeline,
         )
-        from .minimax_h3 import MiniMaxH3Pipeline, MiniMaxH3Ref2VAPipeline
         from .mochi import MochiPipeline
         from .motif_video import (
             MotifVideoImage2VideoPipeline,

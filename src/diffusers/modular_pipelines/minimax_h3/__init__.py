@@ -23,6 +23,7 @@ except OptionalDependencyNotAvailable:
 else:
     _import_structure["modular_blocks_minimax_h3"] = ["MiniMaxH3Blocks", "MiniMaxH3Ref2VABlocks"]
     _import_structure["modular_pipeline"] = ["MiniMaxH3ModularPipeline", "MiniMaxH3Ref2VAModularPipeline"]
+    _import_structure["packing_ref2va"] = ["MiniMaxH3Reference"]
 
 if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     try:
@@ -33,6 +34,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     else:
         from .modular_blocks_minimax_h3 import MiniMaxH3Blocks, MiniMaxH3Ref2VABlocks
         from .modular_pipeline import MiniMaxH3ModularPipeline, MiniMaxH3Ref2VAModularPipeline
+        from .packing_ref2va import MiniMaxH3Reference
 else:
     import sys
 

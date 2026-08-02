@@ -91,6 +91,20 @@ class AutoencoderKLMiniMaxH3AudioTesterConfig(BaseModelTesterConfig):
 class TestAutoencoderKLMiniMaxH3Audio(AutoencoderKLMiniMaxH3AudioTesterConfig, ModelTesterMixin):
     """Core model tests for the MiniMax-H3 audio autoencoder."""
 
+    @pytest.mark.skip(
+        reason="`_keep_in_fp32_modules` pins every module, so a `torch_dtype` cast at load time is refused by design"
+        " and `model.dtype` stays float32."
+    )
+    def test_from_save_pretrained_dtype(self, tmp_path, dtype):
+        pass
+
+    @pytest.mark.skip(
+        reason="`_keep_in_fp32_modules` pins every module, so a `torch_dtype` cast at load time is refused by design"
+        " and `model.dtype` stays float32."
+    )
+    def test_from_pretrained_dtype_alias(self, tmp_path, dtype):
+        pass
+
     def test_encode_pads_to_the_hop_length(self):
         r"""
         A waveform that is not a whole number of hops is right-padded rather than rejected, and decoding always

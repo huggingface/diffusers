@@ -707,8 +707,14 @@ class AutoencoderKLMiniMaxH3(ModelMixin, ConfigMixin, AttentionMixin, Autoencode
             result_rows.append(torch.cat(result_row, dim=-1))
         return torch.cat(result_rows, dim=-2)
 
+    @apply_forward_hook
     def _encode_clip(self, x: torch.Tensor) -> torch.Tensor:
-        r"""Encode one temporal clip, spatially tiled when tiling is enabled."""
+        r"""
+        Encode one temporal clip, spatially tiled when tiling is enabled.
+
+        MiniMax-H3 encodes a keyframe or an image reference through this method rather than through [`~encode`],
+        because a single frame must not go through the temporal chunking, so it carries the offload hook too.
+        """
         if not self.use_tiling:
             return self.quant_conv(self.encoder(x))
 
@@ -762,8 +768,15 @@ class AutoencoderKLMiniMaxH3(ModelMixin, ConfigMixin, AttentionMixin, Autoencode
 
         return self._stitch_tiles(rows, y_overlaps, x_overlaps)
 
+    @apply_forward_hook
     def _encode(self, x: torch.Tensor) -> torch.Tensor:
-        r"""Encode a video in `clip_length`-frame chunks and drop the `token_drop` trailing latent frames."""
+        r"""
+        Encode a video in `clip_length`-frame chunks and drop the `token_drop` trailing latent frames.
+
+        MiniMax-H3 encodes a video reference through this method rather than through [`~encode`], because the
+        posterior is sampled under a fixed generator rather than through the distribution object, so it carries the
+        offload hook too.
+        """
         clip_length = self.config.clip_length
         num_frames = x.shape[2]
         if num_frames % clip_length != 0:

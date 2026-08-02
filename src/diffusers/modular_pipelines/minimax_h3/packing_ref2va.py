@@ -32,9 +32,9 @@ Unlike a `fl2va` keyframe, a reference never binds the target geometry: every re
 resolution (2048 pixel short edge for images, MiniMax-H3's 768 pixel canvas for videos) and carries its own
 aspect-normalized spatial grid.
 
-References reach the pipeline as in-memory media: a video is decoded frames plus the `fps` they carry, and a soundtrack
+References reach the blocks as in-memory media: a video is decoded frames plus the `fps` they carry, and a soundtrack
 a waveform plus its sample rate. A [`MiniMaxH3Reference`] takes a path or a URL too, but it decodes it when it is
-built, so that no pipeline of this model ever opens a media file.
+built, so that no block of this model ever opens a media file.
 """
 
 import contextlib
@@ -210,19 +210,19 @@ def decode_reference_audio(media) -> tuple[torch.Tensor, int]:
 @dataclass
 class MiniMaxH3Reference:
     r"""
-    One omni-reference of a [`MiniMaxH3Ref2VAPipeline`] request: an image, a video, or an audio clip.
+    One omni-reference of a [`MiniMaxH3Ref2VABlocks`] request: an image, a video, or an audio clip.
 
     A reference carries exactly one medium — plus, for a video, the `audio` of its own soundtrack, which is then
-    conditioned on as that reference's own. References are passed to the pipeline as a list, **in the order the model
+    conditioned on as that reference's own. References are passed to the blocks as a list, **in the order the model
     should read them**: the order labels them in the prompt presentation and lays them out on the shared rotary clock,
     so a different order is a different request.
 
     Every medium may be a path or a URL as well as in-memory media. A path is decoded here, when the reference is
-    built, and with it the rates that come with it: no MiniMax-H3 pipeline opens a media file. Decoding a video or an
+    built, and with it the rates that come with it: no MiniMax-H3 block opens a media file. Decoding a video or an
     audio file needs [PyAV](https://github.com/PyAV-Org/PyAV).
 
     ```py
-    >>> from diffusers.pipelines.minimax_h3 import MiniMaxH3Reference
+    >>> from diffusers.modular_pipelines.minimax_h3 import MiniMaxH3Reference
 
     >>> # A file or a URL is decoded on the spot, at the rate the container reports.
     >>> references = [
@@ -282,7 +282,7 @@ class MiniMaxH3Reference:
                 f"the `audio` of its soundtrack — got {media if media else 'none of them'}."
             )
 
-        # A path is decoded on the spot, so that the pipeline only ever sees in-memory media. A rate the request
+        # A path is decoded on the spot, so that the blocks only ever see in-memory media. A rate the request
         # passed explicitly wins over the one the container reports, for a container whose metadata is wrong.
         if isinstance(self.image, (str, os.PathLike)):
             self.image = load_image(str(self.image))
@@ -322,11 +322,11 @@ def reference_kind(index: int, entry: Any) -> str:
             "the dataclass: `MiniMaxH3Reference(image=...)`, `MiniMaxH3Reference(video=...)` or "
             "`MiniMaxH3Reference(audio=...)`."
         )
-    # A reference decodes a path when it is built, so a pipeline only ever sees in-memory media.
+    # A reference decodes a path when it is built, so the blocks only ever see in-memory media.
     for name in ("image", "video", "audio"):
         if isinstance(getattr(entry, name), (str, os.PathLike)):
             raise ValueError(
-                f"`references[{index}].{name}` is a path. MiniMax-H3 pipelines never open media files: rebuild "
+                f"`references[{index}].{name}` is a path. MiniMax-H3 blocks never open media files: rebuild "
                 "the reference, which decodes a path as it is built."
             )
     return entry.kind
@@ -337,7 +337,7 @@ class MiniMaxH3PreparedReference:
     r"""
     One `ref2va` reference prepared for packing, in packed order.
 
-    A [`MiniMaxH3Reference`] is resolved in three passes: the pipeline reads the modality off the request (`kind`,
+    A [`MiniMaxH3Reference`] is resolved in three passes: the blocks read the modality off the request (`kind`,
     `has_audio`), prepares the pixels or samples (`image`, `frames`, `waveform`), and finally encodes them, which is
     what fixes the latent geometry (`num_latent_frames`, `latent_height`, `latent_width`, `num_audio_latents`) the
     packed layout is built from.
@@ -388,7 +388,7 @@ def _temporal_position_span(num_latent_frames: int) -> float:
     r"""
     The rotary time a video reference advances the clock by.
 
-    Summed sequentially in float64, which is *not* how [`~pipelines.minimax_h3.packing._temporal_position_span`] sums
+    Summed sequentially in float64, which is *not* how [`~modular_pipelines.minimax_h3.packing._temporal_position_span`] sums
     the same series: that one reproduces a numpy pairwise sum, and the two orders differ in the last ulp from 16
     latent frames onwards. The reference implementation keeps both, one per call site, so the port has to as well.
     """

@@ -35,7 +35,7 @@ enable_full_determinism()
 
 
 # The packed layout the dummy inputs describe: a text block, then the audio rows, then the target video rows. It is
-# the layout `MiniMaxH3Pipeline` builds, minus the padding tail the pipeline never emits.
+# the layout `MiniMaxH3Blocks` builds, minus the padding tail the blocks never emit.
 NUM_TEXT_TOKENS = 4
 NUM_AUDIO_TOKENS = 6
 NUM_VIDEO_TOKENS = 8

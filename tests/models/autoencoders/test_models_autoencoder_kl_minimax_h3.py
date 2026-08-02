@@ -13,6 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import pytest
 import torch
 
 from diffusers import AutoencoderKLMiniMaxH3
@@ -92,6 +93,20 @@ class AutoencoderKLMiniMaxH3TesterConfig(BaseModelTesterConfig):
 
 class TestAutoencoderKLMiniMaxH3(AutoencoderKLMiniMaxH3TesterConfig, ModelTesterMixin):
     """Core model tests for the MiniMax-H3 video autoencoder."""
+
+    @pytest.mark.skip(
+        reason="`_keep_in_fp32_modules` pins every module, so a `torch_dtype` cast at load time is refused by design"
+        " and `model.dtype` stays float32."
+    )
+    def test_from_save_pretrained_dtype(self, tmp_path, dtype):
+        pass
+
+    @pytest.mark.skip(
+        reason="`_keep_in_fp32_modules` pins every module, so a `torch_dtype` cast at load time is refused by design"
+        " and `model.dtype` stays float32."
+    )
+    def test_from_pretrained_dtype_alias(self, tmp_path, dtype):
+        pass
 
     def test_encode_decode_temporal_geometry(self):
         r"""

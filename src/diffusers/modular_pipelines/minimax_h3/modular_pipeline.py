@@ -32,10 +32,18 @@ class MiniMaxH3ModularPipeline(ModularPipeline):
     The checkpoint is guidance-distilled: guidance is baked into the weights, so there is no guider, no
     `negative_prompt` and no `guidance_scale`, and every step runs exactly one forward pass.
 
-    This class carries only the config-derived values [`MiniMaxH3Pipeline`] resolves in its `__init__`. The
-    packed-sequence geometry lives in `pipelines.minimax_h3.packing`, which both pipeline systems import, and the
-    conditioning, encoding and noise contracts live in the blocks, as `# Copied from` of the standard pipeline's
-    methods.
+    MiniMax-H3 is modular only: this pipeline and its blocks are the whole integration, there is no
+    `DiffusionPipeline` half. This class carries the config-derived geometry the blocks read off the components, the
+    packed-sequence geometry lives in `modular_pipelines.minimax_h3.packing`, and the conditioning, encoding and noise
+    contracts live on the blocks themselves.
+
+    ```py
+    import torch
+    from diffusers import ModularPipeline
+
+    pipe = ModularPipeline.from_pretrained("MiniMaxAI/MiniMax-H3")
+    pipe.load_components(dtype=torch.bfloat16)
+    ```
 
     > [!WARNING] > This is an experimental feature and is likely to change in the future.
     """
@@ -93,8 +101,7 @@ class MiniMaxH3Ref2VAModularPipeline(MiniMaxH3ModularPipeline):
     pipe.load_components(dtype=torch.bfloat16)
     ```
 
-    The blocks carry the `ref2va` conditioning, encoding and noise contracts as `# Copied from` of
-    [`MiniMaxH3Ref2VAPipeline`]'s methods.
+    The blocks carry the `ref2va` conditioning, encoding and noise contracts themselves.
 
     > [!WARNING] > This is an experimental feature and is likely to change in the future.
     """

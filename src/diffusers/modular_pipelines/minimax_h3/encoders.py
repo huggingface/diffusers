@@ -18,7 +18,12 @@ from transformers import Qwen2TokenizerFast, Qwen3VLForConditionalGeneration, Qw
 
 from ...models import AutoencoderKLMiniMaxH3, AutoencoderKLMiniMaxH3Audio
 from ...models.autoencoders.vae import DiagonalGaussianDistribution
-from ...pipelines.minimax_h3.packing import (
+from ...schedulers import MiniMaxH3Scheduler
+from ...utils import logging
+from ..modular_pipeline import ModularPipelineBlocks, PipelineState
+from ..modular_pipeline_utils import ComponentSpec, InputParam, OutputParam
+from .modular_pipeline import MiniMaxH3ModularPipeline, MiniMaxH3Ref2VAModularPipeline
+from .packing import (
     MINIMAX_H3_KEYFRAME_ENCODE_SEED,
     MINIMAX_H3_KEYFRAME_NOISE_AUG,
     MINIMAX_H3_PIXEL_MEAN,
@@ -29,17 +34,12 @@ from ...pipelines.minimax_h3.packing import (
     keyframe_condition_noise,
     patchify_video_latents,
 )
-from ...pipelines.minimax_h3.packing_ref2va import (
+from .packing_ref2va import (
     MiniMaxH3PreparedReference,
     build_ref2va_presentation,
     sample_reference_video_frames,
     trim_reference_num_frames,
 )
-from ...schedulers import MiniMaxH3Scheduler
-from ...utils import logging
-from ..modular_pipeline import ModularPipelineBlocks, PipelineState
-from ..modular_pipeline_utils import ComponentSpec, InputParam, OutputParam
-from .modular_pipeline import MiniMaxH3ModularPipeline, MiniMaxH3Ref2VAModularPipeline
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -110,7 +110,6 @@ class MiniMaxH3TextEncoderStep(ModularPipelineBlocks):
         return _conditioner_outputs()
 
     @staticmethod
-    # Copied from diffusers.pipelines.minimax_h3.pipeline_minimax_h3.MiniMaxH3Pipeline.encode_prompt with self->components
     def encode_prompt(
         components,
         prompt: str,
@@ -175,6 +174,14 @@ class MiniMaxH3TextEncoderStep(ModularPipelineBlocks):
         mm_token_type_ids = torch.tensor(
             components.processor.create_mm_token_type_ids([token_ids]), dtype=torch.long, device=device
         )
+        # `text_encoder.model` is a submodule, and a CPU-offload hook — accelerate's or the one the
+        # `ComponentsManager` attaches — wraps the *top-level* module's `forward` alone, so calling the submodule
+        # directly would leave the conditioner on the CPU. Fire the hook by hand instead of routing through
+        # `text_encoder(...)`: MiniMax-H3 reads `hidden_states[50]` and never uses the language-model head, whose
+        # vocabulary-wide projection over every token is all the top-level forward would add.
+        hook = getattr(components.text_encoder, "_hf_hook", None)
+        if hook is not None and hasattr(hook, "pre_forward"):
+            hook.pre_forward(components.text_encoder)
         outputs = components.text_encoder.model(
             input_ids=input_ids,
             attention_mask=torch.ones_like(input_ids),
@@ -192,8 +199,8 @@ class MiniMaxH3TextEncoderStep(ModularPipelineBlocks):
         block_state = self.get_block_state(state)
         _check_prompt(block_state.prompt)
 
-        # The standard pipeline defaults the embedding dtype to the denoiser's; a text encoder block has no denoiser
-        # of its own — it is meant to run on its own — so it emits the conditioner's dtype, as every other model does.
+        # `encode_prompt` defaults the embedding dtype to the denoiser's; a text encoder block has no denoiser of
+        # its own — it is meant to run on its own — so it emits the conditioner's dtype, as every other model does.
         block_state.prompt_embeds, block_state.text_token_tags = self.encode_prompt(
             components,
             block_state.prompt,
@@ -255,7 +262,6 @@ class MiniMaxH3KeyframeVaeEncoderStep(ModularPipelineBlocks):
         ]
 
     @staticmethod
-    # Copied from diffusers.pipelines.minimax_h3.pipeline_minimax_h3.MiniMaxH3Pipeline.encode_keyframes with self->components
     def encode_keyframes(components, images: list, device: torch.device | None = None) -> torch.Tensor:
         r"""
         Encode the `fl2va` keyframes into packed conditioning rows.
@@ -349,7 +355,6 @@ class MiniMaxH3Ref2VATextEncoderStep(ModularPipelineBlocks):
         return _conditioner_outputs()
 
     @staticmethod
-    # Copied from diffusers.pipelines.minimax_h3.pipeline_minimax_h3_ref2va.MiniMaxH3Ref2VAPipeline.encode_prompt with self->components
     def encode_prompt(
         components,
         prompt: str,
@@ -371,7 +376,7 @@ class MiniMaxH3Ref2VATextEncoderStep(ModularPipelineBlocks):
             prompt (`str`): The prompt to encode.
             references (`list[MiniMaxH3PreparedReference]`):
                 The prepared references, in packed order, as returned by
-                [`~MiniMaxH3Ref2VAPipeline.prepare_references`].
+                [`~MiniMaxH3Ref2VASetupStep.prepare_references`].
             device (`torch.device`, *optional*): The device to run the conditioner on.
             dtype (`torch.dtype`, *optional*): The dtype of the returned embeddings.
 
@@ -426,6 +431,14 @@ class MiniMaxH3Ref2VATextEncoderStep(ModularPipelineBlocks):
         mm_token_type_ids = torch.tensor(
             components.processor.create_mm_token_type_ids([token_ids]), dtype=torch.long, device=device
         )
+        # `text_encoder.model` is a submodule, and a CPU-offload hook — accelerate's or the one the
+        # `ComponentsManager` attaches — wraps the *top-level* module's `forward` alone, so calling the submodule
+        # directly would leave the conditioner on the CPU. Fire the hook by hand instead of routing through
+        # `text_encoder(...)`: MiniMax-H3 reads `hidden_states[50]` and never uses the language-model head, whose
+        # vocabulary-wide projection over every token is all the top-level forward would add.
+        hook = getattr(components.text_encoder, "_hf_hook", None)
+        if hook is not None and hasattr(hook, "pre_forward"):
+            hook.pre_forward(components.text_encoder)
         outputs = components.text_encoder.model(
             input_ids=input_ids,
             attention_mask=torch.ones_like(input_ids),
@@ -447,8 +460,8 @@ class MiniMaxH3Ref2VATextEncoderStep(ModularPipelineBlocks):
         block_state = self.get_block_state(state)
         _check_prompt(block_state.prompt)
 
-        # The standard pipeline defaults the embedding dtype to the denoiser's; a text encoder block has no denoiser
-        # of its own — it is meant to run on its own — so it emits the conditioner's dtype, as every other model does.
+        # `encode_prompt` defaults the embedding dtype to the denoiser's; a text encoder block has no denoiser of
+        # its own — it is meant to run on its own — so it emits the conditioner's dtype, as every other model does.
         block_state.prompt_embeds, block_state.text_token_tags = self.encode_prompt(
             components,
             block_state.prompt,
@@ -522,7 +535,6 @@ class MiniMaxH3Ref2VAReferenceEncoderStep(ModularPipelineBlocks):
         ]
 
     @staticmethod
-    # Copied from diffusers.pipelines.minimax_h3.pipeline_minimax_h3_ref2va.MiniMaxH3Ref2VAPipeline.encode_references with self->components
     def encode_references(
         components, references: list[MiniMaxH3PreparedReference], device: torch.device | None = None
     ) -> tuple[torch.Tensor | None, torch.Tensor | None]:

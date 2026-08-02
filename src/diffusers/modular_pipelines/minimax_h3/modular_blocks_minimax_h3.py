@@ -224,6 +224,10 @@ class MiniMaxH3Blocks(SequentialPipelineBlocks):
         "denoise",
         "decode",
     ]
+    # One repository holds both checkpoint partitions, so the two blocksets are two workflows over one shared
+    # `modular_model_index.json`, and each declares only the components its own half loads. The keys below are the
+    # task names a `workflow=` argument to `ModularPipeline.from_pretrained` would take, so that the component subset
+    # of a task can be resolved from the index without instantiating the blocks first.
     _workflow_map = {
         "t2va": {"prompt": True},
         "fl2va": {"prompt": True, "image": True},
@@ -323,6 +327,8 @@ class MiniMaxH3Ref2VABlocks(SequentialPipelineBlocks):
         "denoise",
         "decode",
     ]
+    # The `ref2va` task name, i.e. the value a `workflow=` argument to `ModularPipeline.from_pretrained` would take
+    # to resolve this half — and its `transformer_ref` partition — out of the shared `modular_model_index.json`.
     _workflow_map = {
         "ref2va": {"prompt": True, "references": True},
     }

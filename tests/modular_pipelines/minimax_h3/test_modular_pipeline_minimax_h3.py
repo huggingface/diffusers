@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import numpy as np
 import pytest
 import torch
 from PIL import Image
@@ -22,9 +23,11 @@ from diffusers.modular_pipelines import (
     MiniMaxH3Ref2VABlocks,
     MiniMaxH3Ref2VAModularPipeline,
 )
-from diffusers.modular_pipelines.minimax_h3.encoders import MiniMaxH3TextEncoderStep
-from diffusers.pipelines.minimax_h3 import MiniMaxH3Reference, packing, packing_ref2va
+from diffusers.modular_pipelines.minimax_h3 import MiniMaxH3Reference, packing, packing_ref2va
+from diffusers.modular_pipelines.minimax_h3.before_encoder import MiniMaxH3Ref2VASetupStep
+from diffusers.modular_pipelines.minimax_h3.encoders import MiniMaxH3Ref2VATextEncoderStep, MiniMaxH3TextEncoderStep
 
+from ...testing_utils import torch_device
 from ..test_modular_pipelines_common import ModularPipelineTesterMixin, _get_specified_components
 
 
@@ -33,9 +36,12 @@ from ..test_modular_pipelines_common import ModularPipelineTesterMixin, _get_spe
 # pixels is a single `(1, 2, 2)` patch row per latent frame.
 NUM_FRAMES = 124
 RESOLUTION = 32
+NUM_LATENT_FRAMES = 37
 NUM_AUDIO_LATENTS = 207
 # `prod(encoder_rates)` of the tiny audio VAE, standing in for the released 800 samples per latent.
 AUDIO_HOP_LENGTH = 4
+# The tiny audio VAE's own sample rate, so a reference soundtrack is never resampled.
+AUDIO_SAMPLE_RATE = 40 * AUDIO_HOP_LENGTH
 
 # The released short edge of an image reference is 2048 pixels, which packs thousands of conditioning rows.
 TEST_REFERENCE_IMAGE_SHORT_EDGE = 64
@@ -82,6 +88,91 @@ MINIMAX_H3_REF2VA_WORKFLOWS = {
 }
 
 
+def _video_frames(num_frames: int, size: int) -> np.ndarray:
+    """Synthesized video reference frames: `uint8` RGB at MiniMax-H3's own 24 fps."""
+    return (np.random.default_rng(0).random((num_frames, size, size, 3)) * 255).astype("uint8")
+
+
+def _waveform(duration: float) -> torch.Tensor:
+    """A synthesized soundtrack: a stereo waveform at the tiny audio VAE's own sample rate, so nothing is resampled."""
+    return torch.rand(2, round(duration * AUDIO_SAMPLE_RATE), generator=torch.Generator("cpu").manual_seed(1)) * 2 - 1
+
+
+def _reference_video(num_frames: int, size: int) -> MiniMaxH3Reference:
+    """A silent video reference at MiniMax-H3's own 24 fps."""
+    return MiniMaxH3Reference(video=_video_frames(num_frames, size), fps=float(packing.MINIMAX_H3_FPS))
+
+
+def _reference_audio(duration: float) -> MiniMaxH3Reference:
+    """A standalone audio reference at the tiny audio VAE's own sample rate."""
+    return MiniMaxH3Reference(audio=_waveform(duration), sample_rate=AUDIO_SAMPLE_RATE)
+
+
+# The synthesized media fixtures the file-decoding tests are built from: a tiny 8 fps clip with a stereo soundtrack.
+FIXTURE_FPS = 8.0
+FIXTURE_NUM_FRAMES = 8
+FIXTURE_SAMPLE_RATE = 8000
+
+
+def _write_video(path, with_audio: bool) -> None:
+    """Encode a tiny 64x32 clip, with a stereo soundtrack when asked, with PyAV."""
+    av = pytest.importorskip("av")
+
+    with av.open(str(path), "w") as container:
+        # Both streams are declared before anything is muxed, which is what the muxer needs to lay out the file.
+        video_stream = container.add_stream("libx264", rate=int(FIXTURE_FPS))
+        video_stream.width, video_stream.height, video_stream.pix_fmt = 64, 32, "yuv420p"
+        audio_stream = None
+        if with_audio:
+            audio_stream = container.add_stream("aac", rate=FIXTURE_SAMPLE_RATE)
+            audio_stream.codec_context.layout = "stereo"
+
+        for index in range(FIXTURE_NUM_FRAMES):
+            pixels = np.full((32, 64, 3), index * 16, dtype="uint8")
+            frame = av.VideoFrame.from_ndarray(pixels, format="rgb24")
+            frame.pts = index
+            container.mux(video_stream.encode(frame))
+        container.mux(video_stream.encode())
+
+        if audio_stream is None:
+            return
+        num_samples = int(FIXTURE_NUM_FRAMES / FIXTURE_FPS * FIXTURE_SAMPLE_RATE)
+        samples = np.zeros((1, 2 * num_samples), dtype="int16")
+        frame = av.AudioFrame.from_ndarray(samples, format="s16", layout="stereo")
+        frame.sample_rate = FIXTURE_SAMPLE_RATE
+        resampler = av.audio.resampler.AudioResampler(format="fltp", layout="stereo", rate=FIXTURE_SAMPLE_RATE)
+        pts = 0
+        for resampled in resampler.resample(frame):
+            resampled.pts = pts
+            pts += resampled.samples
+            container.mux(audio_stream.encode(resampled))
+        container.mux(audio_stream.encode())
+
+
+def _media_fixtures(directory) -> tuple:
+    """A video with a soundtrack, a still image and an audio clip, as files a reference can be built from."""
+    av = pytest.importorskip("av")
+
+    video_path, image_path, audio_path = (
+        directory / "reference.mp4",
+        directory / "reference.png",
+        directory / "reference.wav",
+    )
+    _write_video(video_path, with_audio=True)
+    Image.new("RGB", (64, 32), color=(10, 20, 30)).save(image_path)
+    with av.open(str(audio_path), "w") as container:
+        stream = container.add_stream("pcm_s16le", rate=FIXTURE_SAMPLE_RATE)
+        stream.codec_context.layout = "stereo"
+        frame = av.AudioFrame.from_ndarray(
+            np.zeros((1, 2 * FIXTURE_SAMPLE_RATE), dtype="int16"), format="s16", layout="stereo"
+        )
+        frame.sample_rate = FIXTURE_SAMPLE_RATE
+        frame.pts = 0
+        container.mux(stream.encode(frame))
+        container.mux(stream.encode())
+    return video_path, image_path, audio_path
+
+
 @pytest.fixture(autouse=True, scope="module")
 def small_references():
     """
@@ -89,7 +180,7 @@ def small_references():
 
     A 2048 pixel short edge packs thousands of conditioning rows, which is minutes per pipeline call on CPU. Every
     request of this module passes `height` and `width`, so the canvas of a generated video is never derived from
-    these.
+    these. `TestMiniMaxH3ReferenceGeometry` restores the released value where it pins it.
     """
     with pytest.MonkeyPatch.context() as patch:
         patch.setattr(packing_ref2va, "MINIMAX_H3_REFERENCE_IMAGE_SHORT_EDGE", TEST_REFERENCE_IMAGE_SHORT_EDGE)
@@ -142,6 +233,34 @@ class MiniMaxH3ModularTesterBase(ModularPipelineTesterMixin):
         assert expected == actual, f"Component mismatch: missing={expected - actual}, unexpected={actual - expected}"
         assert "transformer_ref" in specified and "transformer" in specified
 
+    def injected_noise(self, pipe, seed=3):
+        r"""The video and audio noise a request would otherwise draw, in the shapes the blocks expect back."""
+        latents = torch.randn(
+            1,
+            pipe.vae_latent_channels,
+            NUM_LATENT_FRAMES,
+            RESOLUTION // pipe.vae_spatial_compression_ratio,
+            RESOLUTION // pipe.vae_spatial_compression_ratio,
+            generator=torch.Generator("cpu").manual_seed(seed),
+        )
+        audio_latents = torch.randn(
+            2, pipe.audio_latent_channels, NUM_AUDIO_LATENTS, generator=torch.Generator("cpu").manual_seed(seed + 1)
+        )
+        return latents, audio_latents
+
+    def test_duration_ceiling_holds_for_the_aligned_count(self):
+        r"""
+        346 frames are 14.417 seconds, but they are rounded up to 362, i.e. 15.083 seconds: the ceiling holds for the
+        aligned count, so this is rejected rather than silently generating too long a video.
+        """
+        pipe = self.get_pipeline()
+
+        inputs = self.get_dummy_inputs()
+        inputs["num_frames"] = 346
+
+        with pytest.raises(ValueError, match="rounded up to 362"):
+            pipe(**inputs)
+
 
 class TestMiniMaxH3ModularPipelineFast(MiniMaxH3ModularTesterBase):
     pipeline_class = MiniMaxH3ModularPipeline
@@ -175,30 +294,50 @@ class TestMiniMaxH3ModularPipelineFast(MiniMaxH3ModularTesterBase):
         assert video.min() >= 0.0 and video.max() <= 1.0
         assert state.get("sampling_rate") == pipe.audio_vae.config.sampling_rate
 
-    def test_fl2va_keyframe(self):
-        r"""A keyframe goes through the `fl2va` workflow, which encodes it into conditioning rows."""
+    @pytest.mark.parametrize(
+        "keyframes,num_condition_rows",
+        [(("image",), 1), (("last_image",), 1), (("image", "last_image"), 2)],
+        ids=["first", "last", "first_and_last"],
+    )
+    def test_fl2va_keyframes(self, keyframes, num_condition_rows):
+        r"""
+        A keyframe contributes one conditioning row per latent patch, and those rows are pinned for the whole loop.
+
+        They are packed in front of the generated video rows and ride along at their own `t = 0.999`. The loop only
+        ever writes the generated rows, so the conditioning rows the encoder block produced survive it untouched,
+        which is what the denoised sequence is checked against here. On a `RESOLUTION` canvas a keyframe is a single
+        `(1, 2, 2)` patch row.
+        """
         pipe = self.get_pipeline()
+        keyframe = Image.fromarray((np.random.default_rng(0).random((48, 80, 3)) * 255).astype("uint8"))
 
         inputs = self.get_dummy_inputs()
-        inputs["image"] = Image.new("RGB", (48, 80))
-        video = pipe(**inputs, output="videos")
+        inputs.update(dict.fromkeys(keyframes, keyframe))
+        state = pipe(**inputs)
 
-        assert video.shape == (1, NUM_FRAMES, 3, RESOLUTION, RESOLUTION)
+        assert state.get("videos").shape == (1, NUM_FRAMES, 3, RESOLUTION, RESOLUTION)
+        assert state.get("num_condition_video_rows") == num_condition_rows
+        condition_latents = state.get("condition_latents")
+        assert condition_latents.shape[0] == num_condition_rows
+        assert torch.equal(state.get("latents")[:num_condition_rows], condition_latents)
 
-    def test_generator_reproducibility(self):
+    @pytest.mark.parametrize("with_keyframe", [False, True], ids=["t2va", "fl2va"])
+    def test_generator_reproducibility(self, with_keyframe):
         r"""
         Two runs from the same generator state are identical, two seeds differ.
 
         The blocks draw from the one generator the request carries, in the order they run — the keyframe conditioning
-        noise in the VAE encoder step, then the video and the audio noise in the prepare-latents step — which is what
-        keeps a modular run reproducible, and equal to the standard pipeline's.
+        noise in the VAE encoder step, then the video and the audio noise in the prepare-latents step — which is the
+        whole reproducibility contract of a request.
         """
         pipe = self.get_pipeline()
+        keyframe = Image.new("RGB", (48, 80))
 
         def run(seed):
             inputs = self.get_dummy_inputs()
             inputs["generator"] = torch.Generator("cpu").manual_seed(seed)
-            inputs["image"] = Image.new("RGB", (48, 80))
+            if with_keyframe:
+                inputs["image"] = keyframe
             state = pipe(**inputs)
             return state.get("videos"), state.get("audio")
 
@@ -210,6 +349,52 @@ class TestMiniMaxH3ModularPipelineFast(MiniMaxH3ModularTesterBase):
         assert torch.equal(audio, same_audio)
         assert not torch.equal(video, other_video)
         assert not torch.equal(audio, other_audio)
+
+    def test_injected_latents_replace_the_draws(self):
+        r"""
+        `latents` and `audio_latents` stand in for their draw, which is how a sample is reproduced from outside.
+
+        With both passed in, a `t2va` request draws nothing at all, so two runs with different generators return the
+        very same video and soundtrack.
+        """
+        pipe = self.get_pipeline()
+        latents, audio_latents = self.injected_noise(pipe)
+
+        outputs = []
+        for seed in (7, 8):
+            inputs = self.get_dummy_inputs()
+            inputs["generator"] = torch.Generator("cpu").manual_seed(seed)
+            inputs["latents"] = latents
+            inputs["audio_latents"] = audio_latents
+            state = pipe(**inputs)
+            outputs.append((state.get("videos"), state.get("audio")))
+
+        assert torch.equal(outputs[0][0], outputs[1][0])
+        assert torch.equal(outputs[0][1], outputs[1][1])
+
+    @pytest.mark.parametrize("num_keyframes", [0, 1, 2], ids=["text_only", "one_keyframe", "two_keyframes"])
+    def test_encode_prompt(self, num_keyframes):
+        r"""
+        The presentation is encoded in one conditioner call, whatever it carries.
+
+        A keyframe prepends a `"<Picture i>: "` label and a vision block, whose rows are tagged as *video*; a
+        text-only presentation is the verbatim prompt and is tagged as text throughout. Every vision block also makes
+        Qwen3-VL lay its rotary positions out per modality, which it reads off the `mm_token_type_ids` the processor
+        derives from the vision pad ids.
+        """
+        pipe = self.get_pipeline()
+        keyframe = Image.fromarray((np.random.default_rng(0).random((32, 32, 3)) * 255).astype("uint8"))
+
+        prompt_embeds, text_token_tags = MiniMaxH3TextEncoderStep.encode_prompt(
+            pipe, "a robot dancing", [keyframe] * num_keyframes, device=torch_device
+        )
+
+        assert prompt_embeds.shape[0] == 1
+        assert prompt_embeds.shape[-1] == pipe.transformer.config.text_dim
+        assert prompt_embeds.shape[1] == text_token_tags.shape[0]
+        assert torch.isfinite(prompt_embeds).all()
+        # `0` tags a row of a vision block and `1` a text row, so a text-only presentation carries text rows alone.
+        assert set(text_token_tags.tolist()) == ({0, 1} if num_keyframes else {1})
 
     def test_text_encoder_block_standalone(self):
         r"""
@@ -228,6 +413,52 @@ class TestMiniMaxH3ModularPipelineFast(MiniMaxH3ModularTesterBase):
         assert outputs["prompt_embeds"].shape[1] == outputs["text_token_tags"].shape[0]
         # `1` tags a text row, and a text-only presentation is the verbatim prompt.
         assert set(outputs["text_token_tags"].tolist()) == {1}
+
+    @pytest.mark.parametrize("output_type", ["np", "pil", "latent"])
+    def test_output_type(self, output_type):
+        r"""`"latent"` stops before both VAEs and keeps the denormalized latents of either modality."""
+        pipe = self.get_pipeline()
+
+        inputs = self.get_dummy_inputs()
+        inputs["output_type"] = output_type
+        state = pipe(**inputs)
+        video, audio = state.get("videos"), state.get("audio")
+
+        if output_type == "np":
+            assert video.shape == (1, NUM_FRAMES, RESOLUTION, RESOLUTION, 3)
+        elif output_type == "pil":
+            assert len(video[0]) == NUM_FRAMES
+            assert video[0][0].size == (RESOLUTION, RESOLUTION)
+        else:
+            # The video as `(1, C, F, H, W)` and the audio channel-major.
+            assert video.shape == (1, 4, NUM_LATENT_FRAMES, RESOLUTION // 16, RESOLUTION // 16)
+            assert audio.shape == (2, 8, NUM_AUDIO_LATENTS)
+
+    @pytest.mark.parametrize(
+        "overrides,message",
+        [
+            ({"prompt": ["a robot", "a fox"]}, "must be a single string"),
+            ({"height": 30, "width": 30}, "multiples of 32"),
+            ({"width": None}, "have to be passed together"),
+            ({"num_frames": 96}, "must be between"),
+            ({"num_frames": 400}, "must be between"),
+        ],
+        ids=[
+            "prompt_list",
+            "canvas_not_a_multiple_of_32",
+            "height_without_width",
+            "shorter_than_five_seconds",
+            "longer_than_fifteen_seconds",
+        ],
+    )
+    def test_check_inputs(self, overrides, message):
+        pipe = self.get_pipeline()
+
+        inputs = self.get_dummy_inputs()
+        inputs.update(overrides)
+
+        with pytest.raises(ValueError, match=message):
+            pipe(**inputs)
 
 
 class TestMiniMaxH3Ref2VAModularPipelineFast(MiniMaxH3ModularTesterBase):
@@ -260,13 +491,378 @@ class TestMiniMaxH3Ref2VAModularPipelineFast(MiniMaxH3ModularTesterBase):
         assert audio.shape == (1, 2, NUM_AUDIO_LATENTS * AUDIO_HOP_LENGTH)
         assert video.min() >= 0.0 and video.max() <= 1.0
 
-    def test_audio_reference_alone_is_rejected(self):
-        r"""An audio reference is conditioning for a subject, so it cannot be the only reference of a request."""
+    def test_generator_reproducibility(self):
+        r"""
+        Two runs from the same generator state are identical, two seeds differ.
+
+        A `ref2va` request draws the reference conditioning noise before the video and the audio noise, all three off
+        the one generator it carries, so this covers the whole stream.
+        """
+        pipe = self.get_pipeline()
+
+        def run(seed):
+            inputs = self.get_dummy_inputs()
+            inputs["generator"] = torch.Generator("cpu").manual_seed(seed)
+            state = pipe(**inputs)
+            return state.get("videos"), state.get("audio")
+
+        video, audio = run(7)
+        same_video, same_audio = run(7)
+        other_video, other_audio = run(8)
+
+        assert torch.equal(video, same_video)
+        assert torch.equal(audio, same_audio)
+        assert not torch.equal(video, other_video)
+        assert not torch.equal(audio, other_audio)
+
+    def test_injected_latents_replace_the_draws(self):
+        r"""
+        `latents` and `audio_latents` stand in for their draw, and only for theirs.
+
+        A `ref2va` request draws the reference conditioning noise *before* the two target draws, so injecting the
+        targets replaces those two alone: the same seed with other noise is another sample, and another seed with the
+        same noise is still another sample, through the conditioning noise the references are augmented with.
+        """
+        pipe = self.get_pipeline()
+        latents, audio_latents = self.injected_noise(pipe)
+        other_latents, other_audio_latents = self.injected_noise(pipe, seed=11)
+
+        def run(seed, video_noise, audio_noise):
+            inputs = self.get_dummy_inputs()
+            inputs["generator"] = torch.Generator("cpu").manual_seed(seed)
+            inputs["latents"] = video_noise
+            inputs["audio_latents"] = audio_noise
+            state = pipe(**inputs)
+            return state.get("videos"), state.get("audio")
+
+        video, audio = run(7, latents, audio_latents)
+        same_video, same_audio = run(7, latents, audio_latents)
+        other_noise_video, other_noise_audio = run(7, other_latents, other_audio_latents)
+        other_seed_video, _ = run(8, latents, audio_latents)
+
+        assert torch.equal(video, same_video)
+        assert torch.equal(audio, same_audio)
+        assert not torch.equal(video, other_noise_video)
+        assert not torch.equal(audio, other_noise_audio)
+        assert not torch.equal(video, other_seed_video)
+
+    @pytest.mark.parametrize(
+        "kinds,num_frames",
+        [(("video",), NUM_FRAMES), (("image", "audio"), None), (("video", "image"), NUM_FRAMES)],
+        ids=["video", "image_audio", "video_image"],
+    )
+    def test_reference_combinations(self, kinds, num_frames):
+        r"""
+        Any ordered mix of image, video and audio references is packed, in request order.
+
+        A video reference conditions on its motion *and*, when the request passes one with it, on its soundtrack, so
+        it contributes both visual and audio rows; an audio reference contributes audio rows alone and never reaches
+        the conditioner. The `image_audio` case also leaves `num_frames` to the references, which is admissible
+        because exactly one of them carries audio: the duration is that soundtrack's, snapped up to the next
+        `17 * n + 5` the video VAE can decode.
+
+        The reference rows are pinned for the whole loop, which is what the denoised sequence is checked against: the
+        visual anchors keep their noise-augmented values and the audio anchors stay exactly as the encoder produced
+        them.
+        """
+        media = {
+            "image": MiniMaxH3Reference(image=Image.new("RGB", (48, 80))),
+            # A one-second video reference, soundtrack included, and a six-second standalone soundtrack.
+            "video": MiniMaxH3Reference(
+                video=_video_frames(packing.MINIMAX_H3_FPS, 64),
+                fps=float(packing.MINIMAX_H3_FPS),
+                audio=_waveform(1.0),
+                sample_rate=AUDIO_SAMPLE_RATE,
+            ),
+            "audio": _reference_audio(6.0),
+        }
+
+        pipe = self.get_pipeline()
+        inputs = self.get_dummy_inputs()
+        inputs["references"] = [media[kind] for kind in kinds]
+        inputs["num_frames"] = num_frames
+
+        state = pipe(**inputs)
+
+        num_condition_rows = state.get("num_condition_video_rows")
+        num_audio_condition_rows = state.get("num_condition_audio_rows")
+        assert num_condition_rows > 0
+        assert (num_audio_condition_rows > 0) == any(kind in ("video", "audio") for kind in kinds)
+        assert state.get("videos").shape == (1, state.get("num_frames"), 3, RESOLUTION, RESOLUTION)
+        # The loop only ever writes the generated rows, so the anchors the encoder block produced survive it.
+        assert torch.equal(state.get("latents")[:num_condition_rows], state.get("condition_latents"))
+        if num_audio_condition_rows:
+            assert torch.equal(
+                state.get("audio_latents")[:num_audio_condition_rows], state.get("audio_condition_latents")
+            )
+
+    @pytest.mark.parametrize(
+        "kinds", [("image",), ("video",), ("video", "image")], ids=["image", "video", "video_image"]
+    )
+    def test_encode_prompt(self, kinds):
+        r"""
+        The presentation is encoded in one conditioner call, whatever references it labels.
+
+        The rows of a reference's vision block are tagged as *video*, and those blocks are what makes Qwen3-VL lay its
+        rotary positions out per modality run, which it reads off the `mm_token_type_ids` the processor derives from
+        the vision pad ids. A video reference contributes one timestamped block per merged frame pair.
+        """
+        pipe = self.get_pipeline()
+        media = {"image": MiniMaxH3Reference(image=Image.new("RGB", (48, 80))), "video": _reference_video(25, 32)}
+        references, _ = MiniMaxH3Ref2VASetupStep.prepare_references(pipe, [media[kind] for kind in kinds], NUM_FRAMES)
+
+        prompt_embeds, text_token_tags = MiniMaxH3Ref2VATextEncoderStep.encode_prompt(
+            pipe, "a robot dancing", references, device=torch_device
+        )
+
+        assert prompt_embeds.shape[0] == 1
+        assert prompt_embeds.shape[-1] == pipe.transformer_ref.config.text_dim
+        assert prompt_embeds.shape[1] == text_token_tags.shape[0]
+        assert torch.isfinite(prompt_embeds).all()
+        # `0` tags a row of a vision block and `1` a text row, and every reference here carries a vision block.
+        assert set(text_token_tags.tolist()) == {0, 1}
+        # A 25 frame reference decoded at 24 fps is read at 2 fps, so it is three frames merged into two blocks.
+        for reference in references:
+            if reference.kind == "video":
+                assert reference.block_timestamps == [0.25, 1.0]
+
+    @pytest.mark.parametrize("media_type", ["pil", "np", "pt"], ids=["pil", "numpy", "torch"])
+    def test_reference_media_layouts(self, media_type):
+        r"""
+        Image and video references are in-memory media, in any of the layouts diffusers accepts: images, a
+        channels-last `np.ndarray` or a channels-first `torch.Tensor`, `uint8` or floating point over `[0, 1]`. All
+        three carry the same pixels, and media that already is at the resolution the reference resolves to reaches the
+        VAE untouched.
+        """
+        pipe = self.get_pipeline()
+        pixels = _video_frames(4, TEST_REFERENCE_IMAGE_SHORT_EDGE)
+        if media_type == "pil":
+            image, frames = Image.fromarray(pixels[0]), [Image.fromarray(frame) for frame in pixels]
+        elif media_type == "np":
+            image, frames = pixels[0] / 255.0, pixels
+        else:
+            image, frames = torch.from_numpy(pixels[0]).permute(2, 0, 1), torch.from_numpy(pixels).permute(0, 3, 1, 2)
+
+        references, _ = MiniMaxH3Ref2VASetupStep.prepare_references(
+            pipe,
+            [MiniMaxH3Reference(image=image), MiniMaxH3Reference(video=frames, fps=float(packing.MINIMAX_H3_FPS))],
+            NUM_FRAMES,
+        )
+
+        assert np.array_equal(np.asarray(references[0].image), pixels[0])
+        assert np.array_equal(references[1].frames, pixels)
+
+    def test_reference_rates_default_to_the_model_rates(self):
+        r"""
+        A reference that leaves its rates out is taken to already be at MiniMax-H3's own: the frames flow through
+        untouched, without a resampling pass and without a copy, and so do the samples of a waveform.
+        """
+        pipe = self.get_pipeline()
+        frames = _video_frames(NUM_FRAMES, TEST_REFERENCE_IMAGE_SHORT_EDGE)
+        waveform = _waveform(2.0)
+
+        references, _ = MiniMaxH3Ref2VASetupStep.prepare_references(
+            pipe, [MiniMaxH3Reference(video=frames), MiniMaxH3Reference(audio=waveform)], NUM_FRAMES
+        )
+
+        assert np.shares_memory(references[0].frames, frames)
+        assert torch.equal(references[1].waveform, waveform)
+
+    def test_reference_sample_rate_override_resamples(self):
+        r"""A waveform that says it carries another rate is resampled onto the audio VAE's own."""
+        pipe = self.get_pipeline()
+        waveform = _waveform(2.0)
+
+        references, _ = MiniMaxH3Ref2VASetupStep.prepare_references(
+            pipe,
+            [
+                MiniMaxH3Reference(image=Image.new("RGB", (48, 80))),
+                MiniMaxH3Reference(audio=waveform, sample_rate=AUDIO_SAMPLE_RATE // 2),
+            ],
+            NUM_FRAMES,
+        )
+
+        # Half the audio VAE's rate, so the same samples span twice as many of the VAE's own.
+        assert references[1].waveform.shape == (2, 2 * waveform.shape[-1])
+
+    def test_num_frames_left_open_needs_exactly_one_audio_reference(self):
+        r"""Leaving `num_frames` out is ambiguous unless exactly one reference carries audio."""
         pipe = self.get_pipeline()
 
         inputs = self.get_dummy_inputs()
-        sample_rate = pipe.audio_vae.config.sampling_rate
-        inputs["references"] = [MiniMaxH3Reference(audio=torch.zeros(2, 6 * sample_rate), sample_rate=sample_rate)]
+        inputs["num_frames"] = None
 
-        with pytest.raises(ValueError, match="has to be paired with at least one image or video reference"):
+        with pytest.raises(ValueError, match="may only be left to the references"):
             pipe(**inputs)
+
+    def test_num_frames_left_open_holds_the_ceiling_for_the_aligned_count(self):
+        r"""
+        A soundtrack just under 15 seconds is rejected rather than silently stretched past the ceiling.
+
+        14.99 seconds round to 360 frames, which the video VAE's `17 * n + 5` grid rounds up to 362, i.e. 15.083
+        seconds. The duration the request generates is the aligned one, so that is what the bound holds for.
+        """
+        pipe = self.get_pipeline()
+
+        inputs = self.get_dummy_inputs()
+        inputs["num_frames"] = None
+        inputs["references"] = [MiniMaxH3Reference(image=Image.new("RGB", (48, 80))), _reference_audio(14.99)]
+
+        with pytest.raises(ValueError, match="rounds up to 362 frames"):
+            pipe(**inputs)
+
+    @pytest.mark.parametrize(
+        "references,message",
+        [
+            ([], "at least one reference"),
+            ([_reference_audio(6.0)], "cannot be used"),
+            ([MiniMaxH3Reference(image=Image.new("RGB", (32, 32)))] * 10, "at most 9 image references"),
+            (
+                [MiniMaxH3Reference(image=Image.new("RGB", (32, 32)))] + [_reference_video(2, 32)] * 4,
+                "at most 3 video references",
+            ),
+            ([{"image": Image.new("RGB", (32, 32))}], "must be a \\[`MiniMaxH3Reference`\\]"),
+        ],
+        ids=["no_references", "audio_alone", "too_many_images", "too_many_videos", "dict_entry"],
+    )
+    def test_check_inputs_references(self, references, message):
+        pipe = self.get_pipeline()
+
+        inputs = self.get_dummy_inputs()
+        inputs["references"] = references
+
+        with pytest.raises(ValueError, match=message):
+            pipe(**inputs)
+
+
+class TestMiniMaxH3Reference:
+    """
+    [`MiniMaxH3Reference`] resolves a request's media at construction, before any block sees it.
+
+    None of this needs a pipeline: a reference validates its own modality, decodes a path with PyAV and carries the
+    rates that come with it, which is exactly what makes the blocks able to assume in-memory media throughout.
+    """
+
+    @pytest.mark.parametrize(
+        "kwargs,message",
+        [
+            ({}, "exactly one of"),
+            ({"image": Image.new("RGB", (32, 32)), "video": _video_frames(2, 32)}, "exactly one of"),
+            ({"image": Image.new("RGB", (32, 32)), "audio": _waveform(1.0)}, "exactly one of"),
+            ({"image": "astronaut.png"}, "not a valid path"),
+            ({"video": "motion.mp4"}, "not a valid path"),
+            ({"audio": "voice.wav"}, "not a valid path"),
+        ],
+        ids=[
+            "no_medium",
+            "image_and_video",
+            "image_and_audio",
+            "missing_image_file",
+            "missing_video_file",
+            "missing_audio_file",
+        ],
+    )
+    def test_reference_construction(self, kwargs, message):
+        r"""
+        A reference resolves itself at construction: exactly one medium, bar a video's own soundtrack, and a path that
+        names a file it can actually open.
+        """
+        with pytest.raises(ValueError, match=message):
+            MiniMaxH3Reference(**kwargs)
+
+    def test_reference_decodes_files(self, tmp_path):
+        r"""
+        A reference takes a path as well as in-memory media, and decodes it as it is built: the frames and the samples
+        themselves, plus the rates the container reports, which is what the model conditions on.
+        """
+        video_path, image_path, audio_path = _media_fixtures(tmp_path)
+
+        video = MiniMaxH3Reference(video=str(video_path))
+        image = MiniMaxH3Reference(image=str(image_path))
+        audio = MiniMaxH3Reference(audio=str(audio_path))
+
+        assert video.kind == "video"
+        assert video.video.shape == (FIXTURE_NUM_FRAMES, 32, 64, 3) and video.video.dtype == np.uint8
+        assert video.fps == FIXTURE_FPS
+        # The container carries a soundtrack, which a video reference conditions on as its own.
+        assert video.has_audio and video.audio.shape[0] == 2 and video.sample_rate == FIXTURE_SAMPLE_RATE
+        assert image.kind == "image" and image.image.size == (64, 32)
+        assert audio.kind == "audio" and audio.audio.shape[0] == 2 and audio.sample_rate == FIXTURE_SAMPLE_RATE
+        assert audio.audio.dtype == torch.float32
+
+    def test_reference_silent_file_carries_no_soundtrack(self, tmp_path):
+        r"""There is nothing to adopt from a container without an audio stream."""
+        silent_path = tmp_path / "silent.mp4"
+        _write_video(silent_path, with_audio=False)
+
+        reference = MiniMaxH3Reference(video=str(silent_path))
+
+        assert not reference.has_audio and reference.sample_rate is None
+        assert reference.fps == FIXTURE_FPS
+
+    def test_reference_rates_override_the_container(self, tmp_path):
+        r"""A rate the request passes wins over the one the container reports, whose metadata may be wrong."""
+        video_path, _, audio_path = _media_fixtures(tmp_path)
+
+        video = MiniMaxH3Reference(video=str(video_path), fps=12.0, sample_rate=16000)
+        audio = MiniMaxH3Reference(audio=str(audio_path), sample_rate=16000)
+
+        # The container reports `FIXTURE_FPS` and `FIXTURE_SAMPLE_RATE`, and the request overrides both.
+        assert video.fps == 12.0 and video.sample_rate == 16000
+        assert audio.sample_rate == 16000
+
+    def test_reference_file_needs_pyav(self, tmp_path, monkeypatch):
+        r"""Decoding a video or an audio file is a PyAV job, and says so when PyAV is not installed."""
+        video_path, image_path, audio_path = _media_fixtures(tmp_path)
+        monkeypatch.setattr(packing_ref2va, "is_av_available", lambda: False)
+
+        with pytest.raises(ImportError, match="pip install av"):
+            MiniMaxH3Reference(video=str(video_path))
+        with pytest.raises(ImportError, match="pip install av"):
+            MiniMaxH3Reference(audio=str(audio_path))
+        # An image never needs it.
+        assert MiniMaxH3Reference(image=str(image_path)).image.size == (64, 32)
+
+    def test_reference_defaults(self):
+        r"""A reference knows its own modality, and defaults to MiniMax-H3's own frame rate for its frames."""
+        assert MiniMaxH3Reference(video=_video_frames(2, 32)).fps == float(packing.MINIMAX_H3_FPS)
+        assert MiniMaxH3Reference(image=Image.new("RGB", (32, 32))).kind == "image"
+        assert not MiniMaxH3Reference(image=Image.new("RGB", (32, 32))).has_audio
+        assert _reference_video(2, 32).kind == "video"
+        assert _reference_audio(6.0).kind == "audio"
+        assert _reference_audio(6.0).has_audio
+
+
+class TestMiniMaxH3ReferenceGeometry:
+    """
+    How a reference is prepared, which is pure geometry over the packing module and needs no components.
+
+    These are the passes `MiniMaxH3Ref2VASetupStep` runs a reference through before any VAE sees it.
+    """
+
+    def test_reference_image_geometry(self, monkeypatch):
+        r"""
+        A reference image is encoded at a 2048 pixel short edge, both axes rounded to a multiple of 32, with no area
+        cap. The `small_references` fixture shrinks that short edge for every other test, so restore it here.
+        """
+        monkeypatch.setattr(packing_ref2va, "MINIMAX_H3_REFERENCE_IMAGE_SHORT_EDGE", 2048)
+
+        assert packing_ref2va.resolve_reference_image_size(80, 48) == (2048, 3424)
+        assert packing_ref2va.resolve_reference_image_size(48, 80) == (3424, 2048)
+
+    def test_video_reference_resampled_to_the_model_frame_rate(self):
+        r"""
+        A video reference is resampled onto MiniMax-H3's own 24 fps by dropping and duplicating whole frames, which is
+        what `ffmpeg`'s `fps` filter did in the reference implementation: a frame whose successor rounds onto the same
+        output slot is dropped, so a 30 fps reference loses one frame in five, the later of the two that tie for a
+        slot. Frames already at 24 fps are returned as they are, without a copy.
+        """
+        # Every frame carries its own index as its pixel value, so the resampled frames name the ones that survived.
+        frames = np.arange(30, dtype="uint8").reshape(-1, 1, 1, 1) * np.ones((1, 2, 2, 3), dtype="uint8")
+
+        resampled = packing_ref2va.resample_reference_frames(frames, 30.0)
+
+        assert [int(frame[0, 0, 0]) for frame in resampled] == [
+            index for index in range(30) if index not in (2, 7, 12, 17, 22, 27)
+        ]
+        assert packing_ref2va.resample_reference_frames(frames, float(packing.MINIMAX_H3_FPS)) is frames

@@ -14,7 +14,13 @@
 
 import torch
 
-from ...pipelines.minimax_h3.packing import (
+from ...schedulers import MiniMaxH3Scheduler
+from ...utils import logging
+from ...utils.torch_utils import randn_tensor
+from ..modular_pipeline import ModularPipelineBlocks, PipelineState
+from ..modular_pipeline_utils import ComponentSpec, InputParam, OutputParam
+from .modular_pipeline import MiniMaxH3ModularPipeline, MiniMaxH3Ref2VAModularPipeline
+from .packing import (
     MINIMAX_H3_AUDIO_CHANNELS,
     MINIMAX_H3_KEYFRAME_NOISE_AUG,
     MiniMaxH3PackedSequence,
@@ -22,13 +28,7 @@ from ...pipelines.minimax_h3.packing import (
     build_row_timesteps,
     patchify_video_latents,
 )
-from ...pipelines.minimax_h3.packing_ref2va import MiniMaxH3PreparedReference, build_ref2va_packed_sequence
-from ...schedulers import MiniMaxH3Scheduler
-from ...utils import logging
-from ...utils.torch_utils import randn_tensor
-from ..modular_pipeline import ModularPipelineBlocks, PipelineState
-from ..modular_pipeline_utils import ComponentSpec, InputParam, OutputParam
-from .modular_pipeline import MiniMaxH3ModularPipeline, MiniMaxH3Ref2VAModularPipeline
+from .packing_ref2va import MiniMaxH3PreparedReference, build_ref2va_packed_sequence
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -270,7 +270,6 @@ class MiniMaxH3PrepareLatentsStep(ModularPipelineBlocks):
         ]
 
     @staticmethod
-    # Copied from diffusers.pipelines.minimax_h3.pipeline_minimax_h3.MiniMaxH3Pipeline.prepare_latents with self->components
     def prepare_latents(
         components,
         num_latent_frames: int,
@@ -287,7 +286,7 @@ class MiniMaxH3PrepareLatentsStep(ModularPipelineBlocks):
 
         A request draws every stream from the one generator it is given, and the order is part of what that generator
         reproduces: the conditioning noise of the keyframes or references first (one draw per condition, in
-        [`~pipelines.minimax_h3.packing.keyframe_condition_noise`]), then the video noise here, as a latent tensor
+        [`~modular_pipelines.minimax_h3.packing.keyframe_condition_noise`]), then the video noise here, as a latent tensor
         that is patchified afterwards, then the audio noise, directly in row layout. Passing `latents` or
         `audio_latents` skips its draw and shifts the ones after it.
 

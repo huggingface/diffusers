@@ -16,17 +16,17 @@ import torch
 
 from ...configuration_utils import FrozenDict
 from ...models import AutoencoderKLMiniMaxH3, AutoencoderKLMiniMaxH3Audio
-from ...pipelines.minimax_h3.packing import (
-    MINIMAX_H3_PIXEL_MEAN,
-    MINIMAX_H3_PIXEL_STD,
-    unpack_audio_tokens,
-    unpatchify_video_tokens,
-)
 from ...utils import logging
 from ...video_processor import VideoProcessor
 from ..modular_pipeline import ModularPipelineBlocks, PipelineState
 from ..modular_pipeline_utils import ComponentSpec, InputParam, OutputParam
 from .modular_pipeline import MiniMaxH3ModularPipeline
+from .packing import (
+    MINIMAX_H3_PIXEL_MEAN,
+    MINIMAX_H3_PIXEL_STD,
+    unpack_audio_tokens,
+    unpatchify_video_tokens,
+)
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name

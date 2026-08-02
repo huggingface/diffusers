@@ -13,10 +13,10 @@
 # limitations under the License.
 
 r"""
-Packed-sequence and conditioning machinery shared by the MiniMax-H3 pipelines.
+Packed-sequence and conditioning machinery of the MiniMax-H3 blocks.
 
-This module holds no pipeline of its own: it is the checkpoint's geometry and its constants, imported both by the
-standard pipelines here and by the blocks of `modular_pipelines.minimax_h3`, so that neither reimplements it.
+This module holds no block of its own: it is the checkpoint's geometry and its constants, imported by every block
+of `modular_pipelines.minimax_h3` that has to place a row, so that none of them reimplements it.
 
 MiniMax-H3 runs its transformer over a single packed 1-D sequence that holds every modality at once. For the
 text/keyframe tasks the row order is
@@ -511,7 +511,7 @@ def keyframe_condition_noise(
 
     One draw per condition, in packed order, off the request's generator. The conditioning rows are prepared before
     the target rows, so these are the *first* draws of a request, ahead of the video and audio noise of
-    [`~MiniMaxH3Pipeline.prepare_latents`] — the order is part of what a generator reproduces.
+    [`~MiniMaxH3PrepareLatentsStep.prepare_latents`] — the order is part of what a generator reproduces.
 
     Args:
         condition_latent_shapes (`tuple[tuple[int, int, int], ...]`):
