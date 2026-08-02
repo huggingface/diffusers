@@ -1,4 +1,4 @@
-# Copyright 2025 The HuggingFace Team. All rights reserved.
+# Copyright 2026 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -106,6 +106,16 @@ def _wan_i2v_map_fn(config_dict=None):
         return "WanImage2VideoModularPipeline"
 
 
+def _krea2_map_fn(config_dict=None):
+    if config_dict is None:
+        return "Krea2ModularPipeline"
+
+    if config_dict.get("is_distilled", False):
+        return "Krea2TurboModularPipeline"
+    else:
+        return "Krea2ModularPipeline"
+
+
 def _helios_pyramid_map_fn(config_dict=None):
     if config_dict is None:
         return "HeliosPyramidModularPipeline"
@@ -127,12 +137,14 @@ MODULAR_PIPELINE_MAPPING = OrderedDict(
         ("flux2", _create_default_map_fn("Flux2ModularPipeline")),
         ("flux2-klein", _flux2_klein_map_fn),
         ("ideogram4", _create_default_map_fn("Ideogram4ModularPipeline")),
+        ("krea2", _krea2_map_fn),
         ("qwenimage", _create_default_map_fn("QwenImageModularPipeline")),
         ("qwenimage-edit", _create_default_map_fn("QwenImageEditModularPipeline")),
         ("qwenimage-edit-plus", _create_default_map_fn("QwenImageEditPlusModularPipeline")),
         ("qwenimage-layered", _create_default_map_fn("QwenImageLayeredModularPipeline")),
         ("anima", _create_default_map_fn("AnimaModularPipeline")),
         ("z-image", _create_default_map_fn("ZImageModularPipeline")),
+        ("cosmos3-omni", _create_default_map_fn("Cosmos3OmniModularPipeline")),
         ("helios", _create_default_map_fn("HeliosModularPipeline")),
         ("helios-pyramid", _helios_pyramid_map_fn),
         ("hunyuan-video-1.5", _create_default_map_fn("HunyuanVideo15ModularPipeline")),
@@ -501,6 +513,13 @@ class ModularPipelineBlocks(ConfigMixin, PushToHubMixin):
         for input_param in state_inputs:
             if input_param.name:
                 value = state.get(input_param.name)
+                if value is None:
+                    # if the value is None (not passed, or passed as None), the first block that reads it sets the
+                    # default at call time. For sequential blocks the default is already resolved at compile time
+                    # (first declaring block wins, see _get_inputs), but for conditional blocks the selected branch
+                    # is only known at runtime: disagreeing branch defaults merge to None (see combine_inputs) and
+                    # the block that actually runs applies its own declared default here
+                    value = input_param.default
                 if input_param.required and value is None:
                     raise ValueError(f"Required input '{input_param.name}' is missing")
                 elif value is not None or (value is None and input_param.name not in data):
@@ -2170,6 +2189,16 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
         [`~DiffusionPipeline.enable_sequential_cpu_offload`] the execution device can only be inferred from
         Accelerate's module hooks.
         """
+        from ..hooks.group_offloading import _get_group_onload_device
+
+        for name, model in self.components.items():
+            if not isinstance(model, torch.nn.Module):
+                continue
+            try:
+                return _get_group_onload_device(model)
+            except ValueError:
+                pass
+
         for name, model in self.components.items():
             if not isinstance(model, torch.nn.Module):
                 continue
@@ -2346,8 +2375,8 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
                    default_creation_method == "from_pretrained". If provided as a list or string, will load only the
                    specified components.
             **kwargs: additional kwargs to be passed to `from_pretrained()`.Can be:
-             - a single value to be applied to all components to be loaded, e.g. torch_dtype=torch.bfloat16
-             - a dict, e.g. torch_dtype={"unet": torch.bfloat16, "default": torch.float32}
+             - a single value to be applied to all components to be loaded, e.g. dtype=torch.bfloat16
+             - a dict, e.g. dtype={"unet": torch.bfloat16, "default": torch.float32}
              - if potentially override ComponentSpec if passed a different loading field in kwargs, e.g.
                `pretrained_model_name_or_path`, `variant`, `revision`, etc.
              - if potentially override ComponentSpec if passed a different loading field in kwargs, e.g.
@@ -2637,7 +2666,7 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
                     " is not recommended to move them to `cpu` as running them will fail. Please make"
                     " sure to use an accelerator to run the pipeline in inference, due to the lack of"
                     " support for`float16` operations on this device in PyTorch. Please, remove the"
-                    " `torch_dtype=torch.float16` argument, or use another device for inference."
+                    " `dtype=torch.float16` argument, or use another device for inference."
                 )
         return self
 

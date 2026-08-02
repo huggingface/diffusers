@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2025 HuggingFace Inc.
+# Copyright 2026 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -342,6 +342,6 @@ def is_staging_test(test_case):
     Those tests will run using the staging environment of huggingface.co instead of the real model hub.
     """
     if not _run_staging:
-        return unittest.skip("test is staging test")(test_case)
+        return pytest.mark.skip("test is staging test")(test_case)
     else:
         return pytest.mark.is_staging_test()(test_case)

@@ -9,6 +9,21 @@ from ..utils import logging
 
 logger = logging.get_logger(__name__)
 
+_TORCH_DTYPE_DEPRECATION_MESSAGE = "Please use `dtype` instead."
+
+
+def _resolve_dtype(dtype, torch_dtype):
+    """Resolve the deprecated `torch_dtype` argument into `dtype`."""
+    if torch_dtype is None:
+        return dtype
+    if dtype is not None:
+        raise ValueError(
+            "You have passed both `dtype` and `torch_dtype`. Please only pass `dtype`, `torch_dtype` is deprecated."
+        )
+    deprecate("torch_dtype", "1.0.0", _TORCH_DTYPE_DEPRECATION_MESSAGE)
+    return torch_dtype
+
+
 # Mapping for deprecated Transformers classes to their replacements
 # This is used to handle models that reference deprecated class names in their configs
 # Reference: https://github.com/huggingface/transformers/issues/40822

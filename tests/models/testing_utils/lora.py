@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2025 HuggingFace Inc.
+# Copyright 2026 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -321,6 +321,12 @@ class LoraHotSwappingForModelTesterMixin:
         fine.
         """
         different_shapes = self.different_shapes_for_compilation
+        if different_shapes is not None:
+            # Specifying `use_duck_shape=False` instructs the compiler if it should use the same symbolic
+            # variable to represent input sizes that are the same. For more details,
+            # check out this [comment](https://github.com/huggingface/diffusers/pull/11327#discussion_r2047659790).
+            torch.fx.experimental._config.use_duck_shape = False
+
         # create 2 adapters with different ranks and alphas
         torch.manual_seed(0)
         init_dict = self.get_init_dict()
@@ -557,10 +563,6 @@ class LoraHotSwappingForModelTesterMixin:
         different_shapes_for_compilation = self.different_shapes_for_compilation
         if different_shapes_for_compilation is None:
             pytest.skip(f"Skipping as `different_shapes_for_compilation` is not set for {self.__class__.__name__}.")
-        # Specifying `use_duck_shape=False` instructs the compiler if it should use the same symbolic
-        # variable to represent input sizes that are the same. For more details,
-        # check out this [comment](https://github.com/huggingface/diffusers/pull/11327#discussion_r2047659790).
-        torch.fx.experimental._config.use_duck_shape = False
 
         target_modules = ["to_q", "to_k", "to_v", "to_out.0"]
         with torch._dynamo.config.patch(error_on_recompile=True):

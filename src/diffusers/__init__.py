@@ -1,4 +1,4 @@
-__version__ = "0.39.0.dev0"
+__version__ = "0.40.0.dev0"
 
 from typing import TYPE_CHECKING
 
@@ -9,7 +9,6 @@ from .utils import (
     is_accelerate_available,
     is_auto_round_available,
     is_bitsandbytes_available,
-    is_flax_available,
     is_gguf_available,
     is_librosa_available,
     is_note_seq_available,
@@ -18,12 +17,12 @@ from .utils import (
     is_opencv_available,
     is_optimum_quanto_available,
     is_scipy_available,
+    is_sdnq_available,
     is_sentencepiece_available,
     is_torch_available,
     is_torchao_available,
     is_torchsde_available,
     is_transformers_available,
-    is_transformers_flax_compatible,
     is_transformers_version,
 )
 
@@ -48,7 +47,6 @@ _import_structure = {
     "schedulers": [],
     "utils": [
         "OptionalDependencyNotAvailable",
-        "is_flax_available",
         "is_inflect_available",
         "is_invisible_watermark_available",
         "is_librosa_available",
@@ -125,6 +123,18 @@ else:
     _import_structure["quantizers.quantization_config"].append("NVIDIAModelOptConfig")
 
 try:
+    if not is_torch_available():
+        raise OptionalDependencyNotAvailable()
+except OptionalDependencyNotAvailable:
+    from .utils import dummy_nunchaku_lite_objects
+
+    _import_structure["utils.dummy_nunchaku_lite_objects"] = [
+        name for name in dir(dummy_nunchaku_lite_objects) if not name.startswith("_")
+    ]
+else:
+    _import_structure["quantizers.quantization_config"].append("NunchakuLiteQuantizationConfig")
+
+try:
     if not is_auto_round_available():
         raise OptionalDependencyNotAvailable()
 except OptionalDependencyNotAvailable:
@@ -135,6 +145,18 @@ except OptionalDependencyNotAvailable:
     ]
 else:
     _import_structure["quantizers.quantization_config"].append("AutoRoundConfig")
+
+try:
+    if not is_torch_available() and not is_accelerate_available() and not is_sdnq_available():
+        raise OptionalDependencyNotAvailable()
+except OptionalDependencyNotAvailable:
+    from .utils import dummy_sdnq_objects
+
+    _import_structure["utils.dummy_sdnq_objects"] = [
+        name for name in dir(dummy_sdnq_objects) if not name.startswith("_")
+    ]
+else:
+    _import_structure["quantizers.quantization_config"].append("SDNQConfig")
 
 try:
     if not is_onnx_available():
@@ -274,9 +296,11 @@ else:
             "HunyuanVideoTransformer3DModel",
             "I2VGenXLUNet",
             "Ideogram4Transformer2DModel",
+            "JoyImageEditPlusTransformer3DModel",
             "JoyImageEditTransformer3DModel",
             "Kandinsky3UNet",
             "Kandinsky5Transformer3DModel",
+            "Krea2Transformer2DModel",
             "LatteTransformer3DModel",
             "LongCatAudioDiTTransformer",
             "LongCatAudioDiTVae",
@@ -395,11 +419,15 @@ else:
             "DDPMScheduler",
             "DDPMWuerstchenScheduler",
             "DEISMultistepScheduler",
+            "DiscreteDDIMScheduler",
+            "DiscreteDDIMSchedulerOutput",
             "DPMSolverMultistepInverseScheduler",
             "DPMSolverMultistepScheduler",
             "DPMSolverSinglestepScheduler",
             "EDMDPMSolverMultistepScheduler",
             "EDMEulerScheduler",
+            "EntropyBoundScheduler",
+            "EntropyBoundSchedulerOutput",
             "EulerAncestralDiscreteScheduler",
             "EulerDiscreteScheduler",
             "FlowMapEulerDiscreteScheduler",
@@ -471,6 +499,10 @@ else:
         [
             "AnimaAutoBlocks",
             "AnimaModularPipeline",
+            "Cosmos3DistilledBlocks",
+            "Cosmos3DistilledModularPipeline",
+            "Cosmos3OmniBlocks",
+            "Cosmos3OmniModularPipeline",
             "ErnieImageAutoBlocks",
             "ErnieImageModularPipeline",
             "Flux2AutoBlocks",
@@ -493,6 +525,10 @@ else:
             "HunyuanVideo15ModularPipeline",
             "Ideogram4AutoBlocks",
             "Ideogram4ModularPipeline",
+            "Krea2AutoBlocks",
+            "Krea2ModularPipeline",
+            "Krea2TurboAutoBlocks",
+            "Krea2TurboModularPipeline",
             "LTXAutoBlocks",
             "LTXModularPipeline",
             "QwenImageAutoBlocks",
@@ -572,6 +608,8 @@ else:
             "CosmosTextToWorldPipeline",
             "CosmosVideoToWorldPipeline",
             "CycleDiffusionPipeline",
+            "DiffusionGemmaPipeline",
+            "DiffusionGemmaPipelineOutput",
             "DreamLiteMobilePipeline",
             "DreamLitePipeline",
             "DreamLitePipelineOutput",
@@ -623,6 +661,8 @@ else:
             "ImageTextPipelineOutput",
             "JoyImageEditPipeline",
             "JoyImageEditPipelineOutput",
+            "JoyImageEditPlusPipeline",
+            "JoyImageEditPlusPipelineOutput",
             "Kandinsky3Img2ImgPipeline",
             "Kandinsky3Pipeline",
             "Kandinsky5I2IPipeline",
@@ -646,6 +686,7 @@ else:
             "KandinskyV22Pipeline",
             "KandinskyV22PriorEmb2EmbPipeline",
             "KandinskyV22PriorPipeline",
+            "Krea2Pipeline",
             "LatentConsistencyModelImg2ImgPipeline",
             "LatentConsistencyModelPipeline",
             "LattePipeline",
@@ -690,6 +731,7 @@ else:
             "PixArtSigmaPAGPipeline",
             "PixArtSigmaPipeline",
             "PRXPipeline",
+            "PRXPixelPipeline",
             "QwenImageControlNetInpaintPipeline",
             "QwenImageControlNetPipeline",
             "QwenImageEditInpaintPipeline",
@@ -889,60 +931,6 @@ else:
     _import_structure["pipelines"].extend(["SpectrogramDiffusionPipeline"])
 
 try:
-    if not is_flax_available():
-        raise OptionalDependencyNotAvailable()
-except OptionalDependencyNotAvailable:
-    from .utils import dummy_flax_objects  # noqa F403
-
-    _import_structure["utils.dummy_flax_objects"] = [
-        name for name in dir(dummy_flax_objects) if not name.startswith("_")
-    ]
-
-
-else:
-    _import_structure["models.controlnets.controlnet_flax"] = ["FlaxControlNetModel"]
-    _import_structure["models.modeling_flax_utils"] = ["FlaxModelMixin"]
-    _import_structure["models.unets.unet_2d_condition_flax"] = ["FlaxUNet2DConditionModel"]
-    _import_structure["models.vae_flax"] = ["FlaxAutoencoderKL"]
-    _import_structure["schedulers"].extend(
-        [
-            "FlaxDDIMScheduler",
-            "FlaxDDPMScheduler",
-            "FlaxDPMSolverMultistepScheduler",
-            "FlaxEulerDiscreteScheduler",
-            "FlaxKarrasVeScheduler",
-            "FlaxLMSDiscreteScheduler",
-            "FlaxPNDMScheduler",
-            "FlaxSchedulerMixin",
-            "FlaxScoreSdeVeScheduler",
-        ]
-    )
-
-
-try:
-    if not (is_flax_available() and is_transformers_available() and is_transformers_flax_compatible()):
-        raise OptionalDependencyNotAvailable()
-except OptionalDependencyNotAvailable:
-    from .utils import dummy_flax_and_transformers_objects  # noqa F403
-
-    _import_structure["utils.dummy_flax_and_transformers_objects"] = [
-        name for name in dir(dummy_flax_and_transformers_objects) if not name.startswith("_")
-    ]
-
-
-else:
-    _import_structure["pipelines"].extend(
-        [
-            "FlaxDiffusionPipeline",
-            "FlaxStableDiffusionControlNetPipeline",
-            "FlaxStableDiffusionImg2ImgPipeline",
-            "FlaxStableDiffusionInpaintPipeline",
-            "FlaxStableDiffusionPipeline",
-            "FlaxStableDiffusionXLPipeline",
-        ]
-    )
-
-try:
     if not (is_note_seq_available()):
         raise OptionalDependencyNotAvailable()
 except OptionalDependencyNotAvailable:
@@ -1001,12 +989,28 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .quantizers.quantization_config import NVIDIAModelOptConfig
 
     try:
+        if not is_torch_available():
+            raise OptionalDependencyNotAvailable()
+    except OptionalDependencyNotAvailable:
+        from .utils.dummy_nunchaku_lite_objects import *
+    else:
+        from .quantizers.quantization_config import NunchakuLiteQuantizationConfig
+
+    try:
         if not is_auto_round_available():
             raise OptionalDependencyNotAvailable()
     except OptionalDependencyNotAvailable:
         from .utils.dummy_auto_round_objects import *
     else:
         from .quantizers.quantization_config import AutoRoundConfig
+
+    try:
+        if not is_sdnq_available():
+            raise OptionalDependencyNotAvailable()
+    except OptionalDependencyNotAvailable:
+        from .utils.dummy_sdnq_objects import *
+    else:
+        from .quantizers.quantization_config import SDNQConfig
 
     try:
         if not is_onnx_available():
@@ -1133,9 +1137,11 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             HunyuanVideoTransformer3DModel,
             I2VGenXLUNet,
             Ideogram4Transformer2DModel,
+            JoyImageEditPlusTransformer3DModel,
             JoyImageEditTransformer3DModel,
             Kandinsky3UNet,
             Kandinsky5Transformer3DModel,
+            Krea2Transformer2DModel,
             LatteTransformer3DModel,
             LongCatAudioDiTTransformer,
             LongCatAudioDiTVae,
@@ -1250,11 +1256,15 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             DDPMScheduler,
             DDPMWuerstchenScheduler,
             DEISMultistepScheduler,
+            DiscreteDDIMScheduler,
+            DiscreteDDIMSchedulerOutput,
             DPMSolverMultistepInverseScheduler,
             DPMSolverMultistepScheduler,
             DPMSolverSinglestepScheduler,
             EDMDPMSolverMultistepScheduler,
             EDMEulerScheduler,
+            EntropyBoundScheduler,
+            EntropyBoundSchedulerOutput,
             EulerAncestralDiscreteScheduler,
             EulerDiscreteScheduler,
             FlowMapEulerDiscreteScheduler,
@@ -1309,6 +1319,10 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .modular_pipelines import (
             AnimaAutoBlocks,
             AnimaModularPipeline,
+            Cosmos3DistilledBlocks,
+            Cosmos3DistilledModularPipeline,
+            Cosmos3OmniBlocks,
+            Cosmos3OmniModularPipeline,
             ErnieImageAutoBlocks,
             ErnieImageModularPipeline,
             Flux2AutoBlocks,
@@ -1331,6 +1345,10 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             HunyuanVideo15ModularPipeline,
             Ideogram4AutoBlocks,
             Ideogram4ModularPipeline,
+            Krea2AutoBlocks,
+            Krea2ModularPipeline,
+            Krea2TurboAutoBlocks,
+            Krea2TurboModularPipeline,
             LTXAutoBlocks,
             LTXModularPipeline,
             QwenImageAutoBlocks,
@@ -1406,6 +1424,8 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             CosmosTextToWorldPipeline,
             CosmosVideoToWorldPipeline,
             CycleDiffusionPipeline,
+            DiffusionGemmaPipeline,
+            DiffusionGemmaPipelineOutput,
             DreamLiteMobilePipeline,
             DreamLitePipeline,
             DreamLitePipelineOutput,
@@ -1457,6 +1477,8 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             ImageTextPipelineOutput,
             JoyImageEditPipeline,
             JoyImageEditPipelineOutput,
+            JoyImageEditPlusPipeline,
+            JoyImageEditPlusPipelineOutput,
             Kandinsky3Img2ImgPipeline,
             Kandinsky3Pipeline,
             Kandinsky5I2IPipeline,
@@ -1480,6 +1502,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             KandinskyV22Pipeline,
             KandinskyV22PriorEmb2EmbPipeline,
             KandinskyV22PriorPipeline,
+            Krea2Pipeline,
             LatentConsistencyModelImg2ImgPipeline,
             LatentConsistencyModelPipeline,
             LattePipeline,
@@ -1524,6 +1547,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             PixArtSigmaPAGPipeline,
             PixArtSigmaPipeline,
             PRXPipeline,
+            PRXPixelPipeline,
             QwenImageControlNetInpaintPipeline,
             QwenImageControlNetPipeline,
             QwenImageEditInpaintPipeline,
@@ -1689,43 +1713,6 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .utils.dummy_transformers_and_torch_and_note_seq_objects import *  # noqa F403
     else:
         from .pipelines import SpectrogramDiffusionPipeline
-
-    try:
-        if not is_flax_available():
-            raise OptionalDependencyNotAvailable()
-    except OptionalDependencyNotAvailable:
-        from .utils.dummy_flax_objects import *  # noqa F403
-    else:
-        from .models.controlnets.controlnet_flax import FlaxControlNetModel
-        from .models.modeling_flax_utils import FlaxModelMixin
-        from .models.unets.unet_2d_condition_flax import FlaxUNet2DConditionModel
-        from .models.vae_flax import FlaxAutoencoderKL
-        from .schedulers import (
-            FlaxDDIMScheduler,
-            FlaxDDPMScheduler,
-            FlaxDPMSolverMultistepScheduler,
-            FlaxEulerDiscreteScheduler,
-            FlaxKarrasVeScheduler,
-            FlaxLMSDiscreteScheduler,
-            FlaxPNDMScheduler,
-            FlaxSchedulerMixin,
-            FlaxScoreSdeVeScheduler,
-        )
-
-    try:
-        if not (is_flax_available() and is_transformers_available() and is_transformers_flax_compatible()):
-            raise OptionalDependencyNotAvailable()
-    except OptionalDependencyNotAvailable:
-        from .utils.dummy_flax_and_transformers_objects import *  # noqa F403
-    else:
-        from .pipelines import (
-            FlaxDiffusionPipeline,
-            FlaxStableDiffusionControlNetPipeline,
-            FlaxStableDiffusionImg2ImgPipeline,
-            FlaxStableDiffusionInpaintPipeline,
-            FlaxStableDiffusionPipeline,
-            FlaxStableDiffusionXLPipeline,
-        )
 
     try:
         if not (is_note_seq_available()):

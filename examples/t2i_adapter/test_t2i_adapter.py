@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2025 HuggingFace Inc.
+# Copyright 2026 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -30,7 +30,7 @@ stream_handler = logging.StreamHandler(sys.stdout)
 logger.addHandler(stream_handler)
 
 
-class T2IAdapter(ExamplesTestsAccelerate):
+class TestT2IAdapter(ExamplesTestsAccelerate):
     def test_t2i_adapter_sdxl(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             test_args = f"""
@@ -48,4 +48,4 @@ class T2IAdapter(ExamplesTestsAccelerate):
 
             run_command(self._launch_args + test_args)
 
-            self.assertTrue(os.path.isfile(os.path.join(tmpdir, "diffusion_pytorch_model.safetensors")))
+            assert os.path.isfile(os.path.join(tmpdir, "diffusion_pytorch_model.safetensors"))
