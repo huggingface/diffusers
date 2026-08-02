@@ -100,14 +100,19 @@ pipe = ModularPipeline.from_pretrained("MiniMaxAI/MiniMax-H3")
 pipe.update_components(
     transformer=MiniMaxH3Transformer3DModel.from_pretrained(
         "MiniMaxAI/MiniMax-H3", subfolder="transformer", dtype=torch.bfloat16,
-        quantization_config=TorchAoConfig("int8wo"),
+        quantization_config=TorchAoConfig(Int8WeightOnlyConfig(version=2)),
     ),
     text_encoder=Qwen3VLForConditionalGeneration.from_pretrained(
         "MiniMaxAI/MiniMax-H3", subfolder="text_encoder", dtype=torch.bfloat16,
-        quantization_config=TransformersTorchAoConfig(Int8WeightOnlyConfig()),
+        quantization_config=TransformersTorchAoConfig(Int8WeightOnlyConfig(version=2)),
     ),
 )
 pipe.load_components(dtype=torch.bfloat16)
+
+# version=2 int8 tensors are pinnable, which streamed offload needs, and freezing removes the one autograd
+# path the quantized tensors cannot serve.
+pipe.transformer.requires_grad_(False)
+pipe.text_encoder.requires_grad_(False)
 
 offload = dict(onload_device=torch.device("cuda"), offload_device=torch.device("cpu"), use_stream=True)
 pipe.transformer.enable_group_offload(offload_type="block_level", num_blocks_per_group=1, **offload)
