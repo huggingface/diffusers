@@ -100,11 +100,21 @@ pipe = ModularPipeline.from_pretrained("MiniMaxAI/MiniMax-H3")
 pipe.update_components(
     transformer=MiniMaxH3Transformer3DModel.from_pretrained(
         "MiniMaxAI/MiniMax-H3", subfolder="transformer", dtype=torch.bfloat16,
-        quantization_config=TorchAoConfig(Int8WeightOnlyConfig(version=2)),
+        quantization_config=TorchAoConfig(
+            Int8WeightOnlyConfig(version=2),
+            modules_to_not_convert=[
+                "proj_in", "audio_proj_in", "context_embedder", "time_embedder", "time_proj",
+                "token_refiner", "norm_out", "proj_out", "audio_proj_out",
+            ],
+        ),
+        low_cpu_mem_usage=False,
     ),
     text_encoder=Qwen3VLForConditionalGeneration.from_pretrained(
         "MiniMaxAI/MiniMax-H3", subfolder="text_encoder", dtype=torch.bfloat16,
-        quantization_config=TransformersTorchAoConfig(Int8WeightOnlyConfig(version=2)),
+        quantization_config=TransformersTorchAoConfig(
+            Int8WeightOnlyConfig(version=2),
+            modules_to_not_convert=["model.visual", "model.language_model.embed_tokens", "model.language_model.norm", "lm_head"],
+        ),
     ),
 )
 pipe.load_components(dtype=torch.bfloat16)
