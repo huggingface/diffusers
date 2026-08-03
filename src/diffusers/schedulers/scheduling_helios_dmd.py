@@ -275,7 +275,11 @@ class HeliosDMDScheduler(SchedulerMixin, ConfigMixin):
         # use higher precision for calculations
         original_dtype = flow_pred.dtype
         device = flow_pred.device
-        flow_pred, xt, sigmas, timesteps = (x.double().to(device) for x in (flow_pred, xt, sigmas, timesteps))
+        # mps does not support float64
+        compute_dtype = torch.float32 if device.type == "mps" else torch.float64
+        flow_pred, xt, sigmas, timesteps = (
+            x.to(device=device, dtype=compute_dtype) for x in (flow_pred, xt, sigmas, timesteps)
+        )
 
         timestep_id = torch.argmin((timesteps.unsqueeze(0) - timestep.unsqueeze(1)).abs(), dim=1)
         sigma_t = sigmas[timestep_id].reshape(-1, 1, 1, 1, 1)
