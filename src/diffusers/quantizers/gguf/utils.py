@@ -182,7 +182,9 @@ def _dequantize_gguf_and_restore_linear(model, modules_to_not_convert=[]):
                     module.bias is not None,
                     device=device,
                 )
-            new_module.weight = nn.Parameter(dequantize_gguf_tensor(module.weight))
+            # `dequantize_gguf_tensor` returns fp16 (GGUF scales are half), so cast to the module's
+            # `compute_dtype` to keep the restored layer consistent with the activations.
+            new_module.weight = nn.Parameter(dequantize_gguf_tensor(module.weight).to(module.compute_dtype))
             if bias is not None:
                 new_module.bias = bias
 

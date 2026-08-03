@@ -47,6 +47,7 @@ DIFFUSERS_ATTN_CHECKS = os.getenv("DIFFUSERS_ATTN_CHECKS", "0").upper() in ENV_V
 DEFAULT_HF_PARALLEL_LOADING_WORKERS = 8
 HF_ENABLE_PARALLEL_LOADING = os.environ.get("HF_ENABLE_PARALLEL_LOADING", "").upper() in ENV_VARS_TRUE_VALUES
 DIFFUSERS_DISABLE_REMOTE_CODE = os.getenv("DIFFUSERS_DISABLE_REMOTE_CODE", "false").upper() in ENV_VARS_TRUE_VALUES
+DIFFUSERS_SDNQ_TRANSFORMERS = os.getenv("DIFFUSERS_SDNQ_TRANSFORMERS", "false").upper() in ENV_VARS_TRUE_VALUES
 # Kernels published by untrusted publishers execute remote code, so a globally disabled remote code wins over the opt-in.
 DIFFUSERS_TRUST_REMOTE_KERNELS = (
     os.getenv("DIFFUSERS_TRUST_REMOTE_KERNELS", "false").upper() in ENV_VARS_TRUE_VALUES

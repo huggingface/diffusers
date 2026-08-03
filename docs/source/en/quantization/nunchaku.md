@@ -41,7 +41,7 @@ from diffusers import DiffusionPipeline
 model_id = "rootonchair/ERNIE-Image-Turbo-nunchaku-lite-nvfp4"
 
 pipe = DiffusionPipeline.from_pretrained(
-    model_id, torch_dtype=torch.bfloat16,
+    model_id, dtype=torch.bfloat16,
 ).to("cuda")
 
 prompt = "A modern red armchair in a quiet studio, soft window light, realistic product photography"

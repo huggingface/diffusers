@@ -102,7 +102,7 @@ Once you have trained a model using above command, the inference can be done sim
 from diffusers import StableDiffusionPipeline
 
 model_id = "path-to-your-trained-model"
-pipe = StableDiffusionPipeline.from_pretrained(model_id,torch_dtype=torch.float16).to("cuda")
+pipe = StableDiffusionPipeline.from_pretrained(model_id,dtype=torch.float16).to("cuda")
 
 prompt = "A <cat-toy> backpack"
 

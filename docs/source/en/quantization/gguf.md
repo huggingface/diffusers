@@ -40,12 +40,12 @@ ckpt_path = (
 transformer = FluxTransformer2DModel.from_single_file(
     ckpt_path,
     quantization_config=GGUFQuantizationConfig(compute_dtype=torch.bfloat16),
-    torch_dtype=torch.bfloat16,
+    dtype=torch.bfloat16,
 )
 pipe = FluxPipeline.from_pretrained(
     "black-forest-labs/FLUX.1-dev",
     transformer=transformer,
-    torch_dtype=torch.bfloat16,
+    dtype=torch.bfloat16,
 )
 pipe.enable_model_cpu_offload()
 prompt = "A cat holding a sign that says hello world"
@@ -105,12 +105,12 @@ transformer = FluxTransformer2DModel.from_single_file(
     quantization_config=GGUFQuantizationConfig(compute_dtype=torch.bfloat16),
     config="black-forest-labs/FLUX.1-dev",
     subfolder="transformer",
-    torch_dtype=torch.bfloat16,
+    dtype=torch.bfloat16,
 )
 pipe = FluxPipeline.from_pretrained(
     "black-forest-labs/FLUX.1-dev",
     transformer=transformer,
-    torch_dtype=torch.bfloat16,
+    dtype=torch.bfloat16,
 )
 pipe.enable_model_cpu_offload()
 prompt = "A cat holding a sign that says hello world"
