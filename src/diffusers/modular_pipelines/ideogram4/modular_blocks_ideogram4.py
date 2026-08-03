@@ -121,7 +121,44 @@ class Ideogram4InpaintVaeEncoderStep(SequentialPipelineBlocks):
         return "Preprocess an image and mask, then encode the image into packed Ideogram4 latents for inpainting."
 
 
+# auto_docstring
 class Ideogram4AutoVaeEncoderStep(AutoPipelineBlocks):
+    """
+    Encode image inputs for Ideogram4 image-to-image and inpainting workflows. The step is skipped for text-to-image
+    generation.
+
+      Components:
+          image_processor (`VaeImageProcessor`) image_mask_processor (`InpaintProcessor`) vae (`AutoencoderKLFlux2`)
+
+      Inputs:
+          image (`Image | list`, *optional*):
+              Reference image(s) for denoising. Can be a single image or list of images.
+          mask_image (`Image`, *optional*):
+              Mask image for inpainting.
+          height (`int`, *optional*):
+              The height in pixels of the generated image.
+          width (`int`, *optional*):
+              The width in pixels of the generated image.
+          padding_mask_crop (`int`, *optional*):
+              Padding for mask cropping in inpainting.
+          generator (`Generator`, *optional*):
+              Torch generator for deterministic generation.
+
+      Outputs:
+          processed_image (`Tensor`):
+              The image tensor resized and normalized for VAE encoding.
+          processed_mask_image (`Tensor`):
+              The binary mask tensor resized to the generation resolution.
+          mask_overlay_kwargs (`dict`):
+              Arguments used to composite a cropped inpaint result over the source image.
+          height (`int`):
+              The resolved image height in pixels.
+          width (`int`):
+              The resolved image width in pixels.
+          image_latents (`Tensor`):
+              The latent representation of the input image.
+    """
+
     block_classes = [Ideogram4InpaintVaeEncoderStep, Ideogram4Img2ImgVaeEncoderStep]
     block_names = ["inpaint", "img2img"]
     block_trigger_inputs = ["mask_image", "image"]
@@ -347,7 +384,52 @@ class Ideogram4InpaintCoreDenoiseStep(SequentialPipelineBlocks):
         return [OutputParam.template("latents", description="Unpatchified latents ready for the VAE decoder.")]
 
 
+# auto_docstring
 class Ideogram4AutoCoreDenoiseStep(ConditionalPipelineBlocks):
+    """
+    Select the Ideogram4 text-to-image, image-to-image, or inpaint denoising workflow.
+
+      Components:
+          transformer (`Ideogram4Transformer2DModel`) scheduler (`FlowMatchEulerDiscreteScheduler`)
+          unconditional_transformer (`Ideogram4Transformer2DModel`)
+
+      Inputs:
+          num_images_per_prompt (`int`, *optional*, defaults to 1):
+              The number of images to generate per prompt.
+          text_features (`Tensor`):
+              Per-prompt text features from the encoder.
+          text_lengths (`list`):
+              Per-prompt text-token counts from the encoder.
+          image_latents (`Tensor`, *optional*):
+              image latents used to guide the image generation. Can be generated from vae_encoder step.
+          processed_mask_image (`Tensor`, *optional*):
+              The binary mask tensor resized to the generation resolution.
+          latents (`Tensor`):
+              Pre-generated noisy latents for image generation.
+          height (`int`):
+              The height in pixels of the generated image.
+          width (`int`):
+              The width in pixels of the generated image.
+          generator (`Generator`, *optional*):
+              Torch generator for deterministic generation.
+          num_inference_steps (`int`, *optional*, defaults to 48):
+              The number of denoising steps.
+          mu (`float`, *optional*, defaults to 0.0):
+              Base mean of the logit-normal schedule.
+          std (`float`, *optional*, defaults to 1.5):
+              Std of the logit-normal schedule.
+          guidance_schedule (`list`, *optional*, defaults to (7.0, 7.0, 7.0, 7.0, 7.0, 7.0, 7.0, 7.0, 7.0, 7.0, 7.0,
+          7.0, 7.0, 7.0, 7.0, 7.0, 7.0, 7.0, 7.0, 7.0, 7.0, 7.0, 7.0, 7.0, 7.0, 7.0, 7.0, 7.0, 7.0, 7.0, 7.0, 7.0, 7.0,
+          7.0, 7.0, 7.0, 7.0, 7.0, 7.0, 7.0, 7.0, 7.0, 7.0, 7.0, 7.0, 3.0, 3.0, 3.0)):
+              Per-step guidance scale schedule (length num_inference_steps).
+          strength (`float`, *optional*, defaults to 0.9):
+              Strength for img2img/inpainting.
+
+      Outputs:
+          latents (`Tensor`):
+              Unpatchified latents ready for the VAE decoder.
+    """
+
     block_classes = [Ideogram4InpaintCoreDenoiseStep, Ideogram4Img2ImgCoreDenoiseStep, Ideogram4CoreDenoiseStep]
     block_names = ["inpaint", "img2img", "text2img"]
     block_trigger_inputs = ["processed_mask_image", "image_latents"]
@@ -365,7 +447,27 @@ class Ideogram4AutoCoreDenoiseStep(ConditionalPipelineBlocks):
         return "Select the Ideogram4 text-to-image, image-to-image, or inpaint denoising workflow."
 
 
+# auto_docstring
 class Ideogram4AutoDecodeStep(AutoPipelineBlocks):
+    """
+    Decode Ideogram4 latents and apply the optional cropped-inpaint overlay.
+
+      Components:
+          vae (`AutoencoderKLFlux2`) image_mask_processor (`InpaintProcessor`) image_processor (`VaeImageProcessor`)
+
+      Inputs:
+          output_type (`str`, *optional*, defaults to pil):
+              Output format: 'pil', 'np', 'pt'.
+          latents (`Tensor`):
+              The unpatchified latents to decode.
+          mask_overlay_kwargs (`dict`, *optional*):
+              Arguments used to composite a cropped inpaint result over the source image.
+
+      Outputs:
+          images (`list`):
+              Generated images.
+    """
+
     block_classes = [Ideogram4InpaintDecodeStep, Ideogram4DecodeStep]
     block_names = ["inpaint", "default"]
     block_trigger_inputs = ["mask_overlay_kwargs", None]

@@ -558,7 +558,8 @@ class Ideogram4TextEncoderStep(ModularPipelineBlocks):
     def __call__(self, components: Ideogram4ModularPipeline, state: PipelineState) -> PipelineState:
         block_state = self.get_block_state(state)
 
-        device = components._execution_device
+        # The component-level offload hook does not run because the encoder submodules are called directly below.
+        device = components.text_encoder.device
         tokenizer = components.tokenizer
         max_text_tokens = block_state.max_sequence_length
 
@@ -594,6 +595,7 @@ class Ideogram4TextEncoderStep(ModularPipelineBlocks):
         )
         text_features = torch.stack(selected, dim=0).permute(1, 2, 3, 0).reshape(batch_size, max_text_tokens, -1)
         text_features = (text_features * attention_mask.to(text_features.dtype).unsqueeze(-1)).to(torch.float32)
+        text_features = text_features.to(components._execution_device)
 
         block_state.text_features = text_features
         block_state.text_lengths = text_lengths
