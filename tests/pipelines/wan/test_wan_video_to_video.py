@@ -20,6 +20,7 @@ from transformers import AutoConfig, AutoTokenizer, T5EncoderModel
 
 from diffusers import AutoencoderKLWan, UniPCMultistepScheduler, WanTransformer3DModel, WanVideoToVideoPipeline
 
+from ...testing_utils import assert_tensors_close
 from ..testing_utils import BasePipelineTesterConfig, MemoryTesterMixin, PipelineTesterMixin
 
 
@@ -107,7 +108,7 @@ class TestWanVideoToVideoPipeline(WanVideoToVideoPipelineTesterConfig, PipelineT
 
         generated_slice = generated_video.flatten()
         generated_slice = torch.cat([generated_slice[:8], generated_slice[-8:]])
-        assert torch.allclose(generated_slice, expected_slice, atol=1e-3)
+        assert_tensors_close(generated_slice, expected_slice, atol=1e-3)
 
     @pytest.mark.skip(
         reason="WanVideoToVideoPipeline has to run in mixed precision. Casting the entire pipeline will result in errors"
