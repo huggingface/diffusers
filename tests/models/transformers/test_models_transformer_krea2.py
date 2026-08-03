@@ -131,6 +131,37 @@ class Krea2TransformerTesterConfig(BaseModelTesterConfig):
 class TestKrea2TransformerModel(Krea2TransformerTesterConfig, ModelTesterMixin):
     """Core model tests for the Krea 2 Transformer."""
 
+    def test_reference_hidden_states(self):
+        model = self.model_class(**self.get_init_dict()).to(torch_device).eval()
+        inputs = self.get_dummy_inputs()
+        image_seq_len = inputs["hidden_states"].shape[1]
+        text_seq_len = inputs["encoder_hidden_states"].shape[1]
+        inputs["reference_hidden_states"] = [
+            randn_tensor(
+                inputs["hidden_states"].shape,
+                generator=self.generator,
+                device=torch_device,
+                dtype=self.torch_dtype,
+            )
+            for _ in range(2)
+        ]
+        position_ids = torch.cat(
+            [
+                inputs["position_ids"][:text_seq_len],
+                inputs["position_ids"][text_seq_len:].clone(),
+                inputs["position_ids"][text_seq_len:].clone(),
+                inputs["position_ids"][text_seq_len:],
+            ]
+        )
+        position_ids[text_seq_len : text_seq_len + image_seq_len, 0] = 1
+        position_ids[text_seq_len + image_seq_len : text_seq_len + 2 * image_seq_len, 0] = 2
+        inputs["position_ids"] = position_ids
+
+        output = model(**inputs, reference_attention_scale=[1.0, 1.0]).sample
+        boosted_output = model(**inputs, reference_attention_scale=[1.0, 2.0]).sample
+        assert output.shape == inputs["hidden_states"].shape
+        assert not torch.allclose(output, boosted_output)
+
 
 class TestKrea2TransformerMemory(Krea2TransformerTesterConfig, MemoryTesterMixin):
     """Memory optimization tests for the Krea 2 Transformer."""

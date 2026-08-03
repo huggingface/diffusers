@@ -208,6 +208,113 @@ class Krea2TurboLoopDenoiser(ModularPipelineBlocks):
         return components, block_state
 
 
+class Krea2ReferenceLoopDenoiser(Krea2LoopDenoiser):
+    model_name = "krea2"
+
+    @property
+    def description(self) -> str:
+        return "Run the Krea 2 transformer with clean reference-image tokens prepended to the noisy target tokens."
+
+    @property
+    def inputs(self) -> list[InputParam]:
+        return super().inputs + [
+            InputParam(
+                name="reference_image_latents",
+                required=True,
+                type_hint=list[torch.Tensor],
+                description="Packed clean reference-image latents in conditioning order.",
+            ),
+            InputParam(
+                name="reference_attention_scale",
+                type_hint=float | list[float],
+                default=1.0,
+                description="One multiplier for all references or one multiplier per reference in conditioning order.",
+            ),
+        ]
+
+    @torch.no_grad()
+    def __call__(self, components: Krea2ModularPipeline, block_state: BlockState, i: int, t: torch.Tensor):
+        transformer = components.transformer
+        latents = block_state.latents.to(transformer.dtype)
+        timestep = block_state.timestep.to(transformer.dtype)
+        reference_image_latents = [latents.to(transformer.dtype) for latents in block_state.reference_image_latents]
+        guider_inputs = {
+            "encoder_hidden_states": (
+                block_state.prompt_embeds.to(transformer.dtype),
+                block_state.negative_prompt_embeds.to(transformer.dtype)
+                if block_state.negative_prompt_embeds is not None
+                else None,
+            ),
+            "encoder_attention_mask": (
+                block_state.prompt_embeds_mask,
+                block_state.negative_prompt_embeds_mask,
+            ),
+        }
+
+        components.guider.set_state(step=i, num_inference_steps=block_state.num_inference_steps, timestep=t)
+        guider_state = components.guider.prepare_inputs(guider_inputs)
+        for guider_state_batch in guider_state:
+            components.guider.prepare_models(transformer)
+            cond_kwargs = {name: getattr(guider_state_batch, name) for name in guider_inputs}
+            guider_state_batch.noise_pred = transformer(
+                hidden_states=latents,
+                reference_hidden_states=reference_image_latents,
+                reference_attention_scale=block_state.reference_attention_scale,
+                timestep=timestep,
+                position_ids=block_state.position_ids,
+                attention_kwargs=block_state.attention_kwargs,
+                return_dict=False,
+                **cond_kwargs,
+            )[0]
+            components.guider.cleanup_models(transformer)
+
+        block_state.noise_pred = components.guider(guider_state).pred
+        return components, block_state
+
+
+class Krea2TurboReferenceLoopDenoiser(Krea2TurboLoopDenoiser):
+    model_name = "krea2"
+
+    @property
+    def description(self) -> str:
+        return (
+            "Run the Krea 2 Turbo transformer with clean reference-image tokens prepended to the noisy target tokens."
+        )
+
+    @property
+    def inputs(self) -> list[InputParam]:
+        return super().inputs + [
+            InputParam(
+                name="reference_image_latents",
+                required=True,
+                type_hint=list[torch.Tensor],
+                description="Packed clean reference-image latents in conditioning order.",
+            ),
+            InputParam(
+                name="reference_attention_scale",
+                type_hint=float | list[float],
+                default=1.0,
+                description="One multiplier for all references or one multiplier per reference in conditioning order.",
+            ),
+        ]
+
+    @torch.no_grad()
+    def __call__(self, components: Krea2ModularPipeline, block_state: BlockState, i: int, t: torch.Tensor):
+        transformer = components.transformer
+        block_state.noise_pred = transformer(
+            hidden_states=block_state.latents.to(transformer.dtype),
+            reference_hidden_states=[latents.to(transformer.dtype) for latents in block_state.reference_image_latents],
+            reference_attention_scale=block_state.reference_attention_scale,
+            timestep=block_state.timestep.to(transformer.dtype),
+            position_ids=block_state.position_ids,
+            attention_kwargs=block_state.attention_kwargs,
+            encoder_hidden_states=block_state.prompt_embeds.to(transformer.dtype),
+            encoder_attention_mask=block_state.prompt_embeds_mask,
+            return_dict=False,
+        )[0]
+        return components, block_state
+
+
 class Krea2LoopAfterDenoiser(ModularPipelineBlocks):
     model_name = "krea2"
 
@@ -230,6 +337,43 @@ class Krea2LoopAfterDenoiser(ModularPipelineBlocks):
             block_state.noise_pred, t, block_state.latents, return_dict=False
         )[0]
         block_state.latents = block_state.latents.to(latents_dtype)
+        return components, block_state
+
+
+class Krea2LoopAfterDenoiserInpaint(ModularPipelineBlocks):
+    model_name = "krea2"
+
+    @property
+    def description(self) -> str:
+        return "Within the denoising loop: preserve the unmasked image latents at the next noise level."
+
+    @property
+    def expected_components(self) -> list[ComponentSpec]:
+        return [ComponentSpec("scheduler", FlowMatchEulerDiscreteScheduler)]
+
+    @property
+    def inputs(self) -> list[InputParam]:
+        return [
+            InputParam(name="mask", required=True, type_hint=torch.Tensor, description="The packed inpainting mask."),
+            InputParam.template("image_latents", required=True),
+            InputParam(
+                name="initial_noise", required=True, type_hint=torch.Tensor, description="The sampled initial noise."
+            ),
+        ]
+
+    @property
+    def intermediate_outputs(self) -> list[OutputParam]:
+        return [OutputParam.template("latents")]
+
+    @torch.no_grad()
+    def __call__(self, components: Krea2ModularPipeline, block_state: BlockState, i: int, t: torch.Tensor):
+        image_latents = block_state.image_latents
+        if i < len(block_state.timesteps) - 1:
+            next_timestep = block_state.timesteps[i + 1]
+            image_latents = components.scheduler.scale_noise(
+                image_latents, next_timestep.reshape(1), block_state.initial_noise
+            )
+        block_state.latents = (1 - block_state.mask) * image_latents + block_state.mask * block_state.latents
         return components, block_state
 
 
@@ -367,3 +511,203 @@ class Krea2TurboDenoiseStep(Krea2DenoiseLoopWrapper):
             "latents over `timesteps`, running the transformer on the conditional text features. The distilled "
             "checkpoint runs without classifier-free guidance."
         )
+
+
+# auto_docstring
+class Krea2ReferenceDenoiseStep(Krea2DenoiseLoopWrapper):
+    """
+    Denoise Krea 2 target latents while attending to clean reference-image tokens.
+
+      Components:
+          scheduler (`FlowMatchEulerDiscreteScheduler`) guider (`ClassifierFreeGuidance`) transformer
+          (`Krea2Transformer2DModel`)
+
+      Inputs:
+          timesteps (`Tensor`):
+              Denoising timesteps from set_timesteps.
+          num_inference_steps (`int`):
+              The number of denoising steps.
+          attention_kwargs (`dict`, *optional*):
+              Additional kwargs for attention processors.
+          latents (`Tensor`):
+              Packed image latents.
+          batch_size (`int`):
+              Effective batch size.
+          prompt_embeds (`Tensor`):
+              Conditional stacked text features.
+          prompt_embeds_mask (`Tensor`):
+              Conditional text mask.
+          position_ids (`Tensor`):
+              Shared rotary coordinates for the [text | image] sequence.
+          negative_prompt_embeds (`Tensor`, *optional*):
+              Negative stacked text features.
+          negative_prompt_embeds_mask (`Tensor`, *optional*):
+              Negative text mask.
+          reference_image_latents (`list`):
+              Packed clean reference-image latents in conditioning order.
+          reference_attention_scale (`float | list`, *optional*, defaults to 1.0):
+              One multiplier for all references or one multiplier per reference in conditioning order.
+
+      Outputs:
+          latents (`Tensor`):
+              The denoised latents.
+    """
+
+    model_name = "krea2"
+    block_classes = [Krea2LoopBeforeDenoiser, Krea2ReferenceLoopDenoiser, Krea2LoopAfterDenoiser]
+    block_names = ["before_denoiser", "denoiser", "after_denoiser"]
+
+    @property
+    def description(self) -> str:
+        return "Denoise Krea 2 target latents while attending to clean reference-image tokens."
+
+
+# auto_docstring
+class Krea2TurboReferenceDenoiseStep(Krea2DenoiseLoopWrapper):
+    """
+    Denoise Krea 2 Turbo target latents while attending to clean reference-image tokens.
+
+      Components:
+          scheduler (`FlowMatchEulerDiscreteScheduler`) transformer (`Krea2Transformer2DModel`)
+
+      Inputs:
+          timesteps (`Tensor`):
+              Denoising timesteps from set_timesteps.
+          num_inference_steps (`int`):
+              The number of denoising steps.
+          attention_kwargs (`dict`, *optional*):
+              Additional kwargs for attention processors.
+          latents (`Tensor`):
+              Packed image latents.
+          batch_size (`int`):
+              Effective batch size.
+          prompt_embeds (`Tensor`):
+              Conditional stacked text features.
+          prompt_embeds_mask (`Tensor`):
+              Conditional text mask.
+          position_ids (`Tensor`):
+              Shared rotary coordinates for the [text | image] sequence.
+          reference_image_latents (`list`):
+              Packed clean reference-image latents in conditioning order.
+          reference_attention_scale (`float | list`, *optional*, defaults to 1.0):
+              One multiplier for all references or one multiplier per reference in conditioning order.
+
+      Outputs:
+          latents (`Tensor`):
+              The denoised latents.
+    """
+
+    model_name = "krea2"
+    block_classes = [Krea2LoopBeforeDenoiser, Krea2TurboReferenceLoopDenoiser, Krea2LoopAfterDenoiser]
+    block_names = ["before_denoiser", "denoiser", "after_denoiser"]
+
+    @property
+    def description(self) -> str:
+        return "Denoise Krea 2 Turbo target latents while attending to clean reference-image tokens."
+
+
+# auto_docstring
+class Krea2InpaintDenoiseStep(Krea2DenoiseLoopWrapper):
+    """
+    Krea 2 denoising loop that preserves unmasked source-image latents after every denoising step.
+
+      Components:
+          scheduler (`FlowMatchEulerDiscreteScheduler`) guider (`ClassifierFreeGuidance`) transformer
+          (`Krea2Transformer2DModel`)
+
+      Inputs:
+          timesteps (`Tensor`):
+              Denoising timesteps from set_timesteps.
+          num_inference_steps (`int`):
+              The number of denoising steps.
+          attention_kwargs (`dict`, *optional*):
+              Additional kwargs for attention processors.
+          latents (`Tensor`):
+              Packed image latents.
+          batch_size (`int`):
+              Effective batch size.
+          prompt_embeds (`Tensor`):
+              Conditional stacked text features.
+          prompt_embeds_mask (`Tensor`):
+              Conditional text mask.
+          position_ids (`Tensor`):
+              Shared rotary coordinates for the [text | image] sequence.
+          negative_prompt_embeds (`Tensor`, *optional*):
+              Negative stacked text features.
+          negative_prompt_embeds_mask (`Tensor`, *optional*):
+              Negative text mask.
+          mask (`Tensor`):
+              The packed inpainting mask.
+          image_latents (`Tensor`):
+              image latents used to guide the image generation. Can be generated from vae_encoder step.
+          initial_noise (`Tensor`):
+              The sampled initial noise.
+
+      Outputs:
+          latents (`Tensor`):
+              Denoised latents.
+    """
+
+    model_name = "krea2"
+    block_classes = [
+        Krea2LoopBeforeDenoiser,
+        Krea2LoopDenoiser,
+        Krea2LoopAfterDenoiser,
+        Krea2LoopAfterDenoiserInpaint,
+    ]
+    block_names = ["before_denoiser", "denoiser", "after_denoiser", "inpaint"]
+
+    @property
+    def description(self) -> str:
+        return "Krea 2 denoising loop that preserves unmasked source-image latents after every denoising step."
+
+
+# auto_docstring
+class Krea2TurboInpaintDenoiseStep(Krea2DenoiseLoopWrapper):
+    """
+    Krea 2 Turbo denoising loop that preserves unmasked source-image latents after every denoising step.
+
+      Components:
+          scheduler (`FlowMatchEulerDiscreteScheduler`) transformer (`Krea2Transformer2DModel`)
+
+      Inputs:
+          timesteps (`Tensor`):
+              Denoising timesteps from set_timesteps.
+          num_inference_steps (`int`):
+              The number of denoising steps.
+          attention_kwargs (`dict`, *optional*):
+              Additional kwargs for attention processors.
+          latents (`Tensor`):
+              Packed image latents.
+          batch_size (`int`):
+              Effective batch size.
+          prompt_embeds (`Tensor`):
+              Conditional stacked text features.
+          prompt_embeds_mask (`Tensor`):
+              Conditional text mask.
+          position_ids (`Tensor`):
+              Shared rotary coordinates for the [text | image] sequence.
+          mask (`Tensor`):
+              The packed inpainting mask.
+          image_latents (`Tensor`):
+              image latents used to guide the image generation. Can be generated from vae_encoder step.
+          initial_noise (`Tensor`):
+              The sampled initial noise.
+
+      Outputs:
+          latents (`Tensor`):
+              Denoised latents.
+    """
+
+    model_name = "krea2"
+    block_classes = [
+        Krea2LoopBeforeDenoiser,
+        Krea2TurboLoopDenoiser,
+        Krea2LoopAfterDenoiser,
+        Krea2LoopAfterDenoiserInpaint,
+    ]
+    block_names = ["before_denoiser", "denoiser", "after_denoiser", "inpaint"]
+
+    @property
+    def description(self) -> str:
+        return "Krea 2 Turbo denoising loop that preserves unmasked source-image latents after every denoising step."
