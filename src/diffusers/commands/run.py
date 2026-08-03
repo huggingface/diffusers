@@ -44,7 +44,7 @@ logger = logging.get_logger("diffusers-cli/run")
 
 DEFAULT_OUTPUT_DIR = str(Path.home() / ".diffusers" / "cli" / "run" / "outputs")
 DTYPE_CHOICES = ("auto", "float16", "fp16", "bfloat16", "bf16", "float32", "fp32")
-CPU_OFFLOAD_CHOICES = ("model", "group")
+CPU_OFFLOAD_CHOICES = ("model", "group", "auto")
 
 
 ATTENTION_BACKEND_CHOICES = ("default", *sorted(b.value for b in _HUB_KERNELS_REGISTRY))
@@ -159,8 +159,10 @@ def _add_optimization_arguments(parser: ArgumentParser) -> None:
         default=None,
         help=(
             "Offload pipeline components to CPU during inference. "
-            "'model' uses enable_model_cpu_offload, "
-            "'group' uses pipeline.enable_group_offload(leaf_level, use_stream=True)."
+            "'model' uses enable_model_cpu_offload (standard pipelines only), "
+            "'group' offloads at leaf_level with use_stream=True, "
+            "'auto' uses ComponentsManager.enable_auto_cpu_offload, which onloads a model on demand and "
+            "evicts others only when the device runs low on memory (modular pipelines only)."
         ),
     )
     parser.add_argument(
@@ -350,24 +352,41 @@ def _resolve_device_map(raw: str | None) -> str | dict:
     return raw
 
 
-def _apply_cpu_offload(pipeline: Any, mode: str, device_map: str | dict) -> None:
-    """Apply model or group CPU offload. Requires a single-device target (not balanced or dict)."""
-    if not isinstance(device_map, str) or device_map == "balanced":
-        raise SystemExit(
-            "--cpu-offload requires --device-map to be a single device string (e.g. 'cuda'); "
-            f"got {device_map!r}. balanced/dict placement is incompatible with CPU offload."
-        )
+def _apply_cpu_offload(pipeline: Any, mode: str, device_map: str, components_manager: Any) -> None:
+    """Apply the offload mode `--cpu-offload` asked for to an already-loaded pipeline.
 
-    if mode == "model":
+    `_load_pipeline` has already rejected the mode/pipeline-kind combinations that cannot work, so each branch here
+    only has to apply its mode. `components_manager` is the `ComponentsManager` a modular pipeline was loaded with
+    under `auto`, and None otherwise.
+    """
+    import torch
+
+    import diffusers
+
+    if mode == "auto":
+        # Whole-model offloading for modular pipelines: onload on demand, evict only under memory pressure.
+        components_manager.enable_auto_cpu_offload(device=device_map)
+    elif mode == "model":
         pipeline.enable_model_cpu_offload(device=device_map)
     elif mode == "group":
-        import torch
+        if isinstance(pipeline, diffusers.ModularPipeline):
+            # ModularPipeline has no pipeline-level group offload helper — apply it per model component.
+            from diffusers.hooks import apply_group_offloading
 
-        pipeline.enable_group_offload(
-            onload_device=torch.device(device_map),
-            offload_type="leaf_level",
-            use_stream=True,
-        )
+            for component in pipeline.components.values():
+                if isinstance(component, torch.nn.Module):
+                    apply_group_offloading(
+                        component,
+                        onload_device=torch.device(device_map),
+                        offload_type="leaf_level",
+                        use_stream=True,
+                    )
+        else:
+            pipeline.enable_group_offload(
+                onload_device=torch.device(device_map),
+                offload_type="leaf_level",
+                use_stream=True,
+            )
 
 
 def _set_attention_backend(pipeline: Any, backend: str) -> None:
@@ -530,7 +549,32 @@ def _load_pipeline(args: Namespace) -> Any:
     if not args.cpu_offload:
         common_kwargs["device_map"] = device_map
 
+    # Reject unusable offload requests here rather than in `_apply_cpu_offload`, so the run fails before
+    # downloading the weights instead of after.
+    if args.cpu_offload:
+        if not isinstance(device_map, str) or device_map == "balanced":
+            raise SystemExit(
+                "--cpu-offload requires --device-map to be a single device string (e.g. 'cuda'); "
+                f"got {device_map!r}. balanced/dict placement is incompatible with CPU offload."
+            )
+        if args.cpu_offload == "auto" and not modular:
+            raise SystemExit(
+                "--cpu-offload auto is only supported for modular pipelines — it is driven by the "
+                f"ComponentsManager, which {args.model} does not load with. Use 'model' or 'group'."
+            )
+        if args.cpu_offload == "model" and modular:
+            raise SystemExit(
+                "--cpu-offload model is not supported for modular pipelines; ModularPipeline has no "
+                "enable_model_cpu_offload. Use --cpu-offload auto, which also offloads whole models but "
+                "evicts them only when the device runs low on memory."
+            )
+
+    components_manager = None
     if modular:
+        # `auto` offload lives on the ComponentsManager, which has to be attached before the weights
+        # land: load_components() registers each from_pretrained component with it as it arrives.
+        if args.cpu_offload == "auto":
+            components_manager = diffusers.ComponentsManager()
         # ModularPipeline.from_pretrained fetches only the pipeline config; component
         # weights come in via load_components(). `revision` scopes the config fetch,
         # so it stays on from_pretrained — each ComponentSpec pins its own revision,
@@ -540,6 +584,7 @@ def _load_pipeline(args: Namespace) -> Any:
             trust_remote_code=args.trust_remote_code,
             token=args.token,
             revision=args.revision,
+            components_manager=components_manager,
         )
         pipeline.load_components(**common_kwargs)
     else:
@@ -547,7 +592,7 @@ def _load_pipeline(args: Namespace) -> Any:
 
     _load_lora(pipeline, args)
     if args.cpu_offload:
-        _apply_cpu_offload(pipeline, args.cpu_offload, device_map)
+        _apply_cpu_offload(pipeline, args.cpu_offload, device_map, components_manager)
     _apply_optimizations(pipeline, args)
 
     return pipeline
