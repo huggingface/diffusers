@@ -87,6 +87,7 @@ from .import_utils import (
     is_inflect_available,
     is_invisible_watermark_available,
     is_kernels_available,
+    is_natten_available,
     is_kernels_version,
     is_kornia_available,
     is_librosa_available,
