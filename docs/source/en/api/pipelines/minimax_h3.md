@@ -204,18 +204,17 @@ There is one reference class per modality, each holding in-memory media and the 
 
 The rates are what everything is resampled from: frames onto MiniMax-H3's own 24 fps by dropping and duplicating whole frames, a waveform onto the audio VAE's sample rate. Media at MiniMax-H3's own rates flows through untouched, so only data produced at another rate has to say so.
 
-The blocks never open a media file — decoding a path is the caller's job, as it is everywhere else in the library. [`~modular_pipelines.minimax_h3.decode_reference_video`] and [`~modular_pipelines.minimax_h3.decode_reference_audio`] do it with [PyAV](https://github.com/PyAV-Org/PyAV) and return a reference carrying the rates the container reports — a video brings its frame rate and its soundtrack along. Prefer them over [`~utils.load_video`], which drops the frame rate: a reference built from frames whose real rate was lost is conditioned on at the wrong speed, and nothing raises. For a whole request, [`~modular_pipelines.minimax_h3.MiniMaxH3Ref2VALoadReferencesStep`] is the same thing as a block you can put in front of [`MiniMaxH3Blocks`].
+The blocks never open a media file — decoding a path is the caller's job, as it is everywhere else in the library. Each reference class does it through its `from_file` classmethod, which takes a path or a URL (video and audio through [PyAV](https://github.com/PyAV-Org/PyAV)) and returns a reference carrying the rates the container reports — a video brings its frame rate and its soundtrack along. Prefer `from_file` over [`~utils.load_video`], which drops the frame rate: a reference built from frames whose real rate was lost is conditioned on at the wrong speed, and nothing raises.
 
 ```py
 import torch
 from diffusers import ModularPipeline
 from diffusers.modular_pipelines.minimax_h3 import (
+    MiniMaxH3AudioReference,
     MiniMaxH3ImageReference,
     MiniMaxH3VideoReference,
-    decode_reference_audio,
-    decode_reference_video,
 )
-from diffusers.utils import load_image, load_video
+from diffusers.utils import load_video
 from diffusers.utils.export_utils import encode_video
 
 # `ref2va` is a workflow of the one MiniMax-H3 pipeline; selecting it loads only the `transformer_ref/`
@@ -224,7 +223,7 @@ pipe = ModularPipeline.from_pretrained("MiniMaxAI/MiniMax-H3", workflow="ref2va"
 pipe.load_components(dtype=torch.bfloat16)
 pipe.to("cuda")
 
-subject = load_image(
+subject = MiniMaxH3ImageReference.from_file(
     "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/astronaut.jpg"
 )
 
@@ -232,11 +231,11 @@ subject = load_image(
 state = pipe(
     prompt="The character speaks in time with the reference recording, natural lip movement",
     references=[
-        MiniMaxH3ImageReference(image=subject),
-        decode_reference_video(
+        subject,
+        MiniMaxH3VideoReference.from_file(
             "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/hiker.mp4"
         ),
-        decode_reference_audio("voice.wav"),
+        MiniMaxH3AudioReference.from_file("voice.wav"),
     ],
     num_frames=124,
 )
@@ -245,7 +244,7 @@ state = pipe(
 motion = load_video("motion_ref.mp4")
 state = pipe(
     prompt="The subject walks toward camera, matching the reference video's shot rhythm",
-    references=[MiniMaxH3ImageReference(image=subject), MiniMaxH3VideoReference(frames=motion, fps=30.0)],
+    references=[subject, MiniMaxH3VideoReference(frames=motion, fps=30.0)],
     num_frames=124,
 )
 
@@ -260,6 +259,40 @@ encode_video(
 
 `num_frames` is required for `ref2va`. To generate a video exactly as long as a reference soundtrack, compute it from the clip — `round(samples / sample_rate * 24)` — and it is snapped up to the next `17 * n + 5` the video VAE can decode; the resulting duration must stay between the 5 and 15 seconds MiniMax-H3 generates.
 
+### A generation as a reference
+
+Because the workflows share one pipeline, a `t2va` generation can be fed straight back as a `ref2va` reference — and the in-memory constructor is built for exactly this hand-off. The generated media is already at MiniMax-H3's own rates (frames at 24 fps, the soundtrack at the audio VAE's sample rate), so the reference needs no rate arguments and nothing is re-encoded through a lossy container on the way:
+
+```py
+import torch
+from diffusers import ComponentsManager, ModularPipeline
+from diffusers.modular_pipelines.minimax_h3 import MiniMaxH3VideoReference
+
+manager = ComponentsManager()
+manager.enable_auto_cpu_offload(device="cuda")
+
+# The full pipeline holds every workflow and picks one per call from the inputs. Each
+# `load_components(workflow=...)` loads only what that workflow still misses — the second call adds just
+# the `transformer_ref/` partition, everything else is already there.
+pipe = ModularPipeline.from_pretrained("MiniMaxAI/MiniMax-H3", components_manager=manager)
+pipe.load_components(workflow="t2va", dtype=torch.bfloat16)
+
+state = pipe(prompt="An astronaut hiking through the mountains, humming a tune", num_frames=124)
+
+reference = MiniMaxH3VideoReference(
+    frames=state.get("videos")[0],
+    audio=state.get("audio")[0],
+    sample_rate=state.get("sampling_rate"),
+)
+
+pipe.load_components(workflow="ref2va", dtype=torch.bfloat16)
+state = pipe(
+    prompt="The same astronaut now walks along a beach at sunset, humming the same tune",
+    references=[reference],
+    num_frames=124,
+)
+```
+
 ## MiniMaxH3ModularPipeline
 
 [[autodoc]] MiniMaxH3ModularPipeline
@@ -271,15 +304,14 @@ encode_video(
 ## MiniMaxH3ImageReference
 
 [[autodoc]] modular_pipelines.minimax_h3.MiniMaxH3ImageReference
+    - from_file
 
 ## MiniMaxH3VideoReference
 
 [[autodoc]] modular_pipelines.minimax_h3.MiniMaxH3VideoReference
+    - from_file
 
 ## MiniMaxH3AudioReference
 
 [[autodoc]] modular_pipelines.minimax_h3.MiniMaxH3AudioReference
-
-## MiniMaxH3Ref2VALoadReferencesStep
-
-[[autodoc]] modular_pipelines.minimax_h3.MiniMaxH3Ref2VALoadReferencesStep
+    - from_file

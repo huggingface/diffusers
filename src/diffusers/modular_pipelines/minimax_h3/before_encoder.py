@@ -215,10 +215,8 @@ class MiniMaxH3Ref2VASetupStep(ModularPipelineBlocks):
                     "[`MiniMaxH3ImageReference`] (at most 9), a [`MiniMaxH3VideoReference`] at its own `fps` (at most "
                     "3, whose `audio` soundtrack is conditioned on as well), or a [`MiniMaxH3AudioReference`] at its "
                     "own `sample_rate` (at most 3) — for at most 12 references in total, and audio references cannot "
-                    "be the only ones. These blocks never open a media file: decode with "
-                    "[`~modular_pipelines.minimax_h3.decode_reference_video`] and "
-                    "[`~modular_pipelines.minimax_h3.decode_reference_audio`], which bring the rates along, or put a "
-                    "[`MiniMaxH3Ref2VALoadReferencesStep`] in front of these blocks."
+                    "be the only ones. These blocks never open a media file: decode with each class's `from_file` "
+                    "classmethod, which brings the rates along."
                 ),
             ),
             InputParam.template("height", description="Height of the generated video in pixels, a multiple of 32."),
@@ -370,10 +368,7 @@ class MiniMaxH3Ref2VASetupStep(ModularPipelineBlocks):
                 raise ValueError(
                     f"`references[{index}]` must be a [`MiniMaxH3ImageReference`], [`MiniMaxH3VideoReference`] or "
                     f"[`MiniMaxH3AudioReference`], got {type(entry)}. MiniMax-H3 blocks never open media files, so a "
-                    "request that holds paths decodes them first — with "
-                    "[`~modular_pipelines.minimax_h3.decode_reference_video`] and "
-                    "[`~modular_pipelines.minimax_h3.decode_reference_audio`], or by putting a "
-                    "[`MiniMaxH3Ref2VALoadReferencesStep`] in front of these blocks."
+                    "request that holds paths decodes them first, with each class's `from_file` classmethod."
                 )
         kinds = [entry.kind for entry in block_state.references]
         for kind, limit in (("image", self.max_images), ("video", self.max_videos), ("audio", self.max_audios)):

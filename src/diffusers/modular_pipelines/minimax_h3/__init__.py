@@ -29,11 +29,6 @@ else:
         "MiniMaxH3Reference",
         "MiniMaxH3VideoReference",
     ]
-    _import_structure["reference_loading"] = [
-        "MiniMaxH3Ref2VALoadReferencesStep",
-        "decode_reference_audio",
-        "decode_reference_video",
-    ]
 
 if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     try:
@@ -44,11 +39,6 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     else:
         from .modular_blocks_minimax_h3 import MiniMaxH3Blocks
         from .modular_pipeline import MiniMaxH3ModularPipeline
-        from .reference_loading import (
-            MiniMaxH3Ref2VALoadReferencesStep,
-            decode_reference_audio,
-            decode_reference_video,
-        )
         from .references import (
             MiniMaxH3AudioReference,
             MiniMaxH3ImageReference,

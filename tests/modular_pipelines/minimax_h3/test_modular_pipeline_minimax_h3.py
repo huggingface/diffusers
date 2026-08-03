@@ -24,13 +24,12 @@ from diffusers.modular_pipelines import (
 from diffusers.modular_pipelines.minimax_h3 import (
     MiniMaxH3AudioReference,
     MiniMaxH3ImageReference,
-    MiniMaxH3Ref2VALoadReferencesStep,
     MiniMaxH3VideoReference,
-    decode_reference_audio,
-    decode_reference_video,
-    reference_loading,
 )
 from diffusers.modular_pipelines.minimax_h3 import modular_pipeline as minimax_h3_geometry
+from diffusers.modular_pipelines.minimax_h3 import (
+    references as minimax_h3_references,
+)
 from diffusers.modular_pipelines.minimax_h3.before_encoder import MiniMaxH3Ref2VASetupStep
 from diffusers.modular_pipelines.minimax_h3.encoders import MiniMaxH3Ref2VATextEncoderStep, MiniMaxH3TextEncoderStep
 from diffusers.modular_pipelines.minimax_h3.modular_pipeline import MINIMAX_H3_FPS
@@ -757,9 +756,8 @@ class TestMiniMaxH3ReferenceLoading:
     """
     Decoding references off the filesystem, which is the caller's job rather than the blocks'.
 
-    None of this needs a checkpoint: [`decode_reference_video`] and [`decode_reference_audio`] read a container with
-    PyAV and return a reference carrying the rates it reports, and [`MiniMaxH3Ref2VALoadReferencesStep`] is the block
-    that does the same for a whole ordered request.
+    None of this needs a checkpoint: [`MiniMaxH3VideoReference.from_file`] and [`MiniMaxH3AudioReference.from_file`]
+    read a container with PyAV and return a reference carrying the rates it reports.
     """
 
     def test_decode_video_carries_frames_rate_and_soundtrack(self, tmp_path):
@@ -769,7 +767,7 @@ class TestMiniMaxH3ReferenceLoading:
         """
         video_path, _, _ = _media_fixtures(tmp_path)
 
-        video = decode_reference_video(video_path)
+        video = MiniMaxH3VideoReference.from_file(video_path)
 
         assert isinstance(video, MiniMaxH3VideoReference) and video.kind == "video"
         assert video.frames.shape == (FIXTURE_NUM_FRAMES, 32, 64, 3) and video.frames.dtype == np.uint8
@@ -780,7 +778,7 @@ class TestMiniMaxH3ReferenceLoading:
         r"""A decoded audio file brings the rate its samples are at, which is what they are resampled from."""
         _, _, audio_path = _media_fixtures(tmp_path)
 
-        audio = decode_reference_audio(audio_path)
+        audio = MiniMaxH3AudioReference.from_file(audio_path)
 
         assert isinstance(audio, MiniMaxH3AudioReference) and audio.kind == "audio"
         assert audio.audio.shape[0] == 2 and audio.audio.dtype == torch.float32
@@ -790,7 +788,7 @@ class TestMiniMaxH3ReferenceLoading:
         r"""A container whose metadata is wrong is corrected on the reference the decode returned."""
         video_path, _, _ = _media_fixtures(tmp_path)
 
-        video = decode_reference_video(video_path)
+        video = MiniMaxH3VideoReference.from_file(video_path)
         video.fps = 12.0
 
         assert video.fps == 12.0 and video.sample_rate == FIXTURE_SAMPLE_RATE
@@ -800,7 +798,7 @@ class TestMiniMaxH3ReferenceLoading:
         silent_path = tmp_path / "silent.mp4"
         _write_video(silent_path, with_audio=False)
 
-        reference = decode_reference_video(silent_path)
+        reference = MiniMaxH3VideoReference.from_file(silent_path)
 
         assert not reference.has_audio and reference.sample_rate is None
         assert reference.fps == FIXTURE_FPS
@@ -808,52 +806,26 @@ class TestMiniMaxH3ReferenceLoading:
     def test_decoding_needs_pyav(self, tmp_path, monkeypatch):
         r"""Decoding a video or an audio file is a PyAV job, and says so when PyAV is not installed."""
         video_path, _, audio_path = _media_fixtures(tmp_path)
-        monkeypatch.setattr(reference_loading, "is_av_available", lambda: False)
+        monkeypatch.setattr(minimax_h3_references, "is_av_available", lambda: False)
 
         with pytest.raises(ImportError, match="pip install av"):
-            decode_reference_video(video_path)
+            MiniMaxH3VideoReference.from_file(video_path)
         with pytest.raises(ImportError, match="pip install av"):
-            decode_reference_audio(audio_path)
-
-    def test_load_references_block_decodes_a_request_in_order(self, tmp_path):
-        r"""
-        The block turns an ordered list of named media into the references the `ref2va` blocks take.
-
-        Order is preserved because it is semantic: it labels the references in the prompt presentation and lays them
-        out on the shared rotary clock.
-        """
-        video_path, image_path, audio_path = _media_fixtures(tmp_path)
-        pipe = MiniMaxH3Ref2VALoadReferencesStep().init_pipeline()
-
-        references = pipe(
-            reference_media=[{"image": image_path}, {"video": video_path}, {"audio": audio_path}],
-            output="references",
-        )
-
-        assert [reference.kind for reference in references] == ["image", "video", "audio"]
-        assert references[0].image.size == (64, 32)
-        assert references[1].fps == FIXTURE_FPS and references[1].sample_rate == FIXTURE_SAMPLE_RATE
-        assert references[2].sample_rate == FIXTURE_SAMPLE_RATE
+            MiniMaxH3AudioReference.from_file(audio_path)
 
     @pytest.mark.parametrize(
-        "entry,message",
+        "loader,path",
         [
-            ({}, "must name exactly one medium"),
-            ({"image": "a.png", "video": "b.mp4"}, "must name exactly one medium"),
-            ({"picture": "a.png"}, "must name exactly one medium"),
-            ("a.png", "must name exactly one medium"),
-            ({"image": "missing.png"}, "not a valid path"),
-            ({"video": "missing.mp4"}, "not a valid path"),
-            ({"audio": "missing.wav"}, "not a valid path"),
+            (MiniMaxH3ImageReference.from_file, "missing.png"),
+            (MiniMaxH3VideoReference.from_file, "missing.mp4"),
+            (MiniMaxH3AudioReference.from_file, "missing.wav"),
         ],
-        ids=["empty", "two_media", "unknown_medium", "bare_path", "missing_image", "missing_video", "missing_audio"],
+        ids=["image", "video", "audio"],
     )
-    def test_load_references_block_rejects(self, entry, message):
-        r"""The medium is named rather than guessed from the file, and the path has to name a file it can open."""
-        pipe = MiniMaxH3Ref2VALoadReferencesStep().init_pipeline()
-
-        with pytest.raises(ValueError, match=message):
-            pipe(reference_media=[entry])
+    def test_from_file_needs_a_real_path(self, loader, path):
+        r"""The path has to name a file it can open, or a URL."""
+        with pytest.raises(ValueError, match="not a valid path"):
+            loader(path)
 
 
 class TestMiniMaxH3ReferenceGeometry:

@@ -159,10 +159,8 @@ class MiniMaxH3AutoBeforeEncodeStep(AutoPipelineBlocks):
               dataclass per modality, all holding in-memory media — a [`MiniMaxH3ImageReference`] (at most 9), a
               [`MiniMaxH3VideoReference`] at its own `fps` (at most 3, whose `audio` soundtrack is conditioned on as well), or a
               [`MiniMaxH3AudioReference`] at its own `sample_rate` (at most 3) — for at most 12 references in total, and audio
-              references cannot be the only ones. These blocks never open a media file: decode with
-              [`~modular_pipelines.minimax_h3.decode_reference_video`] and
-              [`~modular_pipelines.minimax_h3.decode_reference_audio`], which bring the rates along, or put a
-              [`MiniMaxH3Ref2VALoadReferencesStep`] in front of these blocks.
+              references cannot be the only ones. These blocks never open a media file: decode with each class's `from_file`
+              classmethod, which brings the rates along.
           height (`int`, *optional*):
               Height of the generated video in pixels, a multiple of 32.
           width (`int`, *optional*):
@@ -694,10 +692,8 @@ class MiniMaxH3Blocks(SequentialPipelineBlocks):
               dataclass per modality, all holding in-memory media — a [`MiniMaxH3ImageReference`] (at most 9), a
               [`MiniMaxH3VideoReference`] at its own `fps` (at most 3, whose `audio` soundtrack is conditioned on as well), or a
               [`MiniMaxH3AudioReference`] at its own `sample_rate` (at most 3) — for at most 12 references in total, and audio
-              references cannot be the only ones. These blocks never open a media file: decode with
-              [`~modular_pipelines.minimax_h3.decode_reference_video`] and
-              [`~modular_pipelines.minimax_h3.decode_reference_audio`], which bring the rates along, or put a
-              [`MiniMaxH3Ref2VALoadReferencesStep`] in front of these blocks.
+              references cannot be the only ones. These blocks never open a media file: decode with each class's `from_file`
+              classmethod, which brings the rates along.
           height (`int`, *optional*):
               Height of the generated video in pixels, a multiple of 32.
           width (`int`, *optional*):
